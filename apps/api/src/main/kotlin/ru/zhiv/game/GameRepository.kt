@@ -1,6 +1,8 @@
 package ru.zhiv.game
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import java.util.UUID
 
 @Serializable
@@ -65,7 +67,12 @@ data class GameLeaderboard(
 )
 
 @Serializable
-data class GameAchievement(val id: String, val progress: Long, val target: Long, val unlockedAt: String?)
+data class GameAchievementTier(val level: Int, val progress: Long, val target: Long, val unlockedAt: String?)
+
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable
+data class GameAchievement(val id: String, val progress: Long, val target: Long, val unlockedAt: String?,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val tiers: List<GameAchievementTier> = emptyList())
 
 @Serializable
 data class GameAchievements(val ownerPublicId: String, val serverTime: String, val achievements: List<GameAchievement>)

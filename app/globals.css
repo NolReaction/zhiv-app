@@ -2,6 +2,14 @@
 @import "tw-animate-css";
 @import "../vendor/shadcn-tailwind-4.13.0.css";
 
+@font-face {
+  font-family: "Zhiv Residents";
+  src: url("/fonts/pangolin-residents-v1.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
 :root {
   --background: #11140f;
   --foreground: #f7f7f2;
@@ -16,11 +24,20 @@
   box-sizing: border-box;
 }
 
+/* Portals and nested scroll areas need the same browser gesture policy as the
+   page. Native scrolling stays available; browser pinch/double-tap zoom does
+   not. Low specificity preserves the map's explicit touch-action: none. */
+:where(body *) {
+  touch-action: pan-x pan-y;
+}
+
 html {
   min-width: 320px;
   min-height: 100%;
   background: var(--background);
   touch-action: pan-y;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 body {
@@ -86,8 +103,18 @@ button {
   [data-slot="dialog-content"] { padding: var(--dialog-padding, 24px 20px) !important; }
   [data-slot="dialog-title"] { font-size: 20px; }
   [data-slot="dialog-description"] { font-size: 15px; }
-  [data-slot="dialog-content"] input,
-  [data-slot="dialog-content"] textarea { font-size: 16px; }
+}
+
+/* Safari can magnify small editable fields on focus, independently of pinch.
+   Portal CSS modules must not shrink these below a readable mobile size. */
+@media (max-width: 700px), (hover: none) and (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]):not([type="reset"]),
+  textarea,
+  select,
+  [contenteditable="true"],
+  [contenteditable="plaintext-only"] {
+    font-size: max(16px, 1em) !important;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

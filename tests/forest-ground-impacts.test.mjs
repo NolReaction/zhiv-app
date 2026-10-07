@@ -10,6 +10,8 @@ after(() => vite.close());
 const { TILED_WORLD: scene } = await vite.ssrLoadModule("/features/world/presentation.ts");
 const { forestGroundImpactFrame, isForestRainGround, drawForestGroundImpact, drawForestGroundImpacts }
   = await vite.ssrLoadModule("/features/world/forest-ground-impacts.ts");
+const { forestGroundWeatherFrame, drawForestGroundWeather }
+  = await vite.ssrLoadModule("/features/world/forest-ground-weather.ts");
 const { previewPointInPolygon } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
 const options = { elapsed: 12, rain: 1, dusk: 0, reducedMotion: false };
 const rectangle = bounds => [
@@ -72,6 +74,8 @@ test("rain stops immediately, reduced motion removes impacts, changed terrain ca
   assert.deepEqual(forestGroundImpactFrame({ ...scene, terrain: [] }, options), []);
   const changed = { ...scene, terrain: scene.terrain.map(item => ({ ...item, image: `${item.image}new` })) };
   assert.deepEqual(forestGroundImpactFrame(changed, options), []);
+  const previous = { ...scene, terrain: scene.terrain.map(item => ({ ...item, image: "/world/prototype/forest-ground.webp?v=fedcfbd622df" })) };
+  assert.deepEqual(forestGroundImpactFrame(previous, options), []);
   assert.deepEqual(forestGroundImpactFrame(scene, { ...options, elapsed: Infinity }),
     forestGroundImpactFrame(scene, { ...options, elapsed: 0 }));
 });
@@ -87,6 +91,19 @@ function context() {
   return { ctx, calls, state, stack };
 }
 
+test("dry ground receives splashes before puddles form and without running the puddle painter", () => {
+  const input = { elapsed: options.elapsed, timestamp: 0, weather: "downpour", wetness: 0 };
+  assert.deepEqual(forestGroundWeatherFrame(scene, input).puddles, []);
+  const combined = context(), independent = context();
+  for (const drawing of [combined, independent]) drawing.ctx.canvas = { width: scene.width, height: scene.height };
+  drawForestGroundWeather(combined.ctx, scene, input);
+  assert.equal(combined.calls.length, 0, "dry soil does not receive standing-water rings");
+  drawForestGroundImpacts(combined.ctx, scene, options);
+  drawForestGroundImpacts(independent.ctx, scene, options);
+  assert.ok(combined.calls.some(call => call[0] === "fill"), "actual ground splash painter remains active");
+  assert.deepEqual(combined.calls, independent.calls, "turning off puddles cannot turn off ground splashes");
+});
+
 test("ground hit has a short splash and filled fleck, restores context, and culls out-of-view patches", () => {
   const initial = context(), late = context(), before = initial.state();
   const hit = { x: 30, y: 40, size: 1, phase: .1, opacity: .6, variant: 2, seed: 501 };
@@ -101,4 +118,14 @@ test("ground hit has a short splash and filled fleck, restores context, and cull
   offscreen.ctx.getTransform = () => ({ a: 2, b: 0, c: 0, d: 2, e: 10000, f: 10000 });
   drawForestGroundImpacts(offscreen.ctx, scene, options);
   assert.equal(offscreen.calls.length, 0);
+});
+
+test("placed shrubs exclude ground splashes while pending image references leave the grass available", () => {
+  const point = forestGroundImpactFrame(scene, options)[0];
+  const bounds = { x: point.x - 12, y: point.y - 12, width: 24, height: 24 };
+  const bush = { id: "new-shrub", imageId: "new-shrub-image", points: rectangle(bounds), entry: point, hide: point };
+  const pending = { ...scene, bushes: [bush] };
+  assert.equal(isForestRainGround(pending, point), true);
+  const placed = { ...pending, terrain: [...pending.terrain, { id: bush.imageId, image: "/new-shrub.png", bounds }] };
+  assert.equal(isForestRainGround(placed, point), false);
 });

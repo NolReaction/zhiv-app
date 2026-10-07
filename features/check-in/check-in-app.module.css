@@ -286,6 +286,7 @@
 .buttonStage {
   position: relative;
   display: grid;
+  width: 100%;
   place-items: center;
   isolation: isolate;
   transition: transform 90ms cubic-bezier(0.2, 0.9, 0.3, 1);
@@ -440,50 +441,73 @@
   animation: story-button-champion 1.35s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
+/* The counter floats at the upper-right edge and never adds a layout row. */
 .tapCounter {
   --series-remaining: 1;
-  position: absolute;
-  z-index: 3;
-  top: calc(50% + clamp(34px, 7vw, 54px));
-  left: 50%;
-  transform: translateX(-50%);
-  display: inline-flex;
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   width: max-content;
-  min-width: 68px;
-  min-height: 30px;
-  max-width: 75%;
+  min-width: 0;
+  max-width: 100%;
   align-items: center;
-  justify-content: center;
-  gap: 7px;
+  gap: 4px 8px;
   overflow: hidden;
   isolation: isolate;
-  color: rgba(255, 255, 255, 0.88);
-  padding: 0 0 6px;
+  border: 1px solid #b8ce964d;
+  border-radius: 15px;
+  background: linear-gradient(145deg, #2b3929f5, #142019f5);
+  box-shadow: 0 5px 18px #030d0970, inset 0 1px 0 #e3efd412;
+  color: #e2ecd8;
+  padding: 8px 11px 10px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  line-height: 1;
   pointer-events: none;
   contain: layout paint;
 }
 
 .tapCounter strong,
-.tapCounter small {
+.tapCounter small,
+.tapCounterLabel {
   position: relative;
   z-index: 1;
 }
 
+.tapCounterLabel {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #b4c6a4;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.tapCounterLabel svg { flex: 0 0 auto; }
 
 .tapCounter strong {
+  min-width: 0;
   overflow: hidden;
-  font-size: clamp(16px, 3.8vw, 20px);
-  font-weight: 650;
+  font-size: clamp(13px, 3.4vw, 18px);
+  font-weight: 750;
   text-overflow: ellipsis;
 }
 
 .tapCounter small {
-  color: rgba(255, 255, 255, 0.72);
-  font-size: 14px;
+  color: #c2d2b5;
+  font-size: 11px;
   font-weight: 500;
 }
+
+.tapCounter[data-record="true"] {
+  border-color: #dcc37c80;
+  background: linear-gradient(145deg, #3e3d24f5, #20291cf5);
+  color: #f5e5b4;
+}
+
+.tapCounter[data-record="true"] .tapCounterLabel { color: #dfc887; }
 
 .tapCounterProgress {
   position: absolute;
@@ -1262,7 +1286,7 @@
     gap: 20px;
   }
 
-  .buttonOrbit {
+  .buttonGroup {
     width: min(64vh, 68vw);
   }
 }
@@ -1324,24 +1348,34 @@
     align-self: stretch;
     grid-template-rows: auto minmax(0, 1fr);
   }
-  .shell[data-active-view="check-in"] .buttonStage {
+  .shell[data-active-view="check-in"] .buttonLayout {
     min-height: 0;
     align-self: stretch;
     justify-self: stretch;
     container-type: size;
   }
-  .shell[data-active-view="check-in"] .buttonOrbit {
+  .shell[data-active-view="check-in"] .buttonGroup {
     width: min(82vw, 100cqh, 380px);
   }
   .shell[data-active-view="check-in"] .statusBlock { position: relative; z-index: 3; }
 }
 
 /* All circular effects share the button's square geometry, not the flexible stage. */
+.buttonLayout { display: grid; place-items: center; min-height: 0; }
+.buttonGroup { position: relative; container: check-in-button / inline-size; display: grid; justify-items: center; width: clamp(248px, min(78vw, 58vh), 430px); }
+.seriesPanel { position: absolute; z-index: 6; top: 24%; right: -3%; display: flex; justify-content: flex-end; max-width: 36%; pointer-events: none; }
+@container check-in-button (max-width: 290px) {
+  .seriesPanel { top: 31%; max-width: 40%; }
+  .tapCounter { gap: 3px 5px; padding: 6px 8px 8px; border-radius: 12px; }
+  .tapCounter strong { font-size: 13px; }
+  .tapCounterLabel { font-size: 9px; }
+  .tapCounter small { font-size: 10px; }
+}
 .buttonOrbit {
   position: relative;
   display: grid;
   place-items: center;
-  width: clamp(248px, min(78vw, 58vh), 430px);
+  width: 100%;
   aspect-ratio: 1;
   min-height: 0;
   isolation: isolate;
@@ -1364,7 +1398,7 @@
   from { opacity: .35; transform: translateX(calc(var(--view-direction, 1) * 10px)); }
   to { opacity: 1; transform: none; }
 }
-@media (max-height: 640px) { .buttonOrbit { width: min(64vh, 68vw); } }
+@media (max-height: 640px) { .buttonGroup { width: min(64vh, 68vw); } }
 
 
 /* Only the alternate button appearance differs from the master interface. */
@@ -1374,7 +1408,6 @@
 .mochlikButton:active { transform: none; }
 .mochlikButton::before { --check-in-color: inherit; z-index: 4; inset: 0; border: 1px solid color-mix(in srgb, var(--check-in-color), transparent 50%); pointer-events: none; background: none !important; }
 .mochlikButton .checkInTitle { position: absolute; z-index: 3; top: 14%; left: 50%; transform: translateX(-50%); padding: 10px 17px; border-radius: 20px; background: #0e1c12a8; border: 1px solid #e4ecd429; font-size: clamp(18px, 4.5vw, 28px); font-weight: 750; letter-spacing: -.035em; line-height: 1; text-shadow: 0 2px 12px #07130b; backdrop-filter: blur(6px); transition: background 110ms ease, border-color 110ms ease; }
-.mochlikButton .tapCounter { top: auto; bottom: 9%; padding: 3px 10px 8px; border-radius: 12px; background: #07140a8c; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
 .buttonStageActive .mochlikButton .checkInTitle { background: #30482bdf; border-color: #e8f5c77a; }
 .mochlikButton[data-pulse='odd'] .checkInTitle { animation: mochlik-press-a 260ms ease-out; }
 .mochlikButton[data-pulse='even'] .checkInTitle { animation: mochlik-press-b 260ms ease-out; }

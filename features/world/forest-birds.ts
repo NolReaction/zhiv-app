@@ -1,13 +1,16 @@
 import type { FixedWorldScene, WorldPoint } from "./tiled/types";
 import type { ForestBird, ForestBirdSpecies, ForestBirdState } from "./forest-wildlife";
+import { createWorldNavigation, canTraverse } from "./navigation";
+import { isForestRainGround } from "./forest-ground-impacts";
+import groundLayout from "./forest-ground-layout.json";
 
 export const FOREST_BIRD_FLIGHT_DURATION = 34;
 export const FOREST_BIRD_LIMIT = 5;
 const BIRD_PERIOD = 158;
 const TAU = Math.PI * 2;
-const VERIFIED_TERRAIN = "/world/prototype/forest-ground.webp?v=fedcfbd622df";
 
 export type ForestBirdPerch = WorldPoint & { id: string; facing: -1 | 1 };
+const groundCache = new WeakMap<FixedWorldScene, readonly ForestBirdPerch[]>();
 export type ForestBirdOptions = {
   /** Active shared world time; the caller pauses this clock for both cameras. */
   elapsed: number;
@@ -27,7 +30,7 @@ const PERCHES: readonly ForestBirdPerch[] = [
   { id: "clearing-west-tree", x: 491, y: 657, facing: 1 },
   { id: "clearing-south-tree", x: 544, y: 697, facing: 1 },
   { id: "northwest-tree", x: 266, y: 107, facing: 1 },
-  { id: "northeast-tree", x: 1093, y: 268, facing: -1 },
+  { id: "northeast-tree", x: 1091, y: 278, facing: -1 },
   { id: "west-tree", x: 156, y: 396, facing: 1 },
   { id: "east-tree", x: 1008, y: 406, facing: -1 },
   { id: "southwest-tree", x: 130, y: 955, facing: 1 },
@@ -53,16 +56,61 @@ function noise(seed: number, index: number) {
   return ((value ^ value >>> 15) >>> 0) / 4294967296;
 }
 
-/** A changed image or geometry must never leave birds sitting on imaginary trees. */
+/** Ground cells and canopy perches share one reviewed artwork revision. A changed
+ * image or geometry must never leave birds sitting on imaginary trees. */
 export function forestBirdPerches(scene: FixedWorldScene): readonly ForestBirdPerch[] {
   const terrain = scene.terrain.find(layer => layer.id === "forest-ground");
   if (scene.id !== "forest" || scene.width !== 1254 || scene.height !== 1254
-    || !terrain || terrain.image !== VERIFIED_TERRAIN
+    || !terrain || terrain.image !== groundLayout.image
     || terrain.bounds.x !== 0 || terrain.bounds.y !== 0
     || terrain.bounds.width !== 1254 || terrain.bounds.height !== 1254) return [];
   return PERCHES.filter(perch => !scene.sites.some(({ bounds }) =>
     perch.x >= bounds.x - 12 && perch.x <= bounds.x + bounds.width + 12
     && perch.y >= bounds.y - 12 && perch.y <= bounds.y + bounds.height + 12));
+}
+
+/** Reviewed soil AND authored walk geometry are required. A changed house or map
+ * creates a fresh immutable scene/cache; missing geometry only disables ground visits. */
+export function forestBirdGroundPatches(scene: FixedWorldScene): readonly ForestBirdPerch[] {
+  const cached = groundCache.get(scene); if (cached) return cached;
+  const nav = createWorldNavigation(scene, 7), result: ForestBirdPerch[] = [];
+  if (nav) {
+    const focus = scene.focus, center = { x: focus.x + focus.width * .5, y: focus.y + focus.height * .7 };
+    const candidates: ForestBirdPerch[] = [];
+    for (let row = 0; row < 32; row++) for (let column = 0; column < 32; column++) {
+      const point = { x: focus.x + (column + .5) * focus.width / 32, y: focus.y + (row + .5) * focus.height / 32 };
+      const perimeter = Array.from({ length: 8 }, (_, i) => ({ x: point.x + Math.cos(i * Math.PI / 4) * 10,
+        y: point.y + Math.sin(i * Math.PI / 4) * 10 }));
+      if (!isForestRainGround(scene, point) || !perimeter.every(p => isForestRainGround(scene, p) && canTraverse(nav, point, p))
+        || (scene.mushrooms ?? []).some(mushroom => Math.hypot(point.x - mushroom.position.x, point.y - mushroom.position.y) < 28)
+        || (scene.campfires ?? []).some(fire => Math.hypot(point.x - fire.position.x, point.y - fire.position.y) < fire.radius + 34)) continue;
+      candidates.push({ ...point, id: `ground-${row}-${column}`, facing: column % 2 ? 1 : -1 });
+    }
+    candidates.sort((a, b) => Math.hypot(a.x - center.x, a.y - center.y) - Math.hypot(b.x - center.x, b.y - center.y));
+    for (const patch of candidates) {
+      if (result.every(other => Math.hypot(other.x - patch.x, other.y - patch.y) >= 44)) result.push(patch);
+      if (result.length >= 8) break;
+    }
+  }
+  groundCache.set(scene, result); return result;
+}
+
+/** Reserve both ends before anyone flies: two birds cannot swap onto each other
+ * or wrap around onto the sole remaining perch after an editor moves a building. */
+function reservedPerches(perches: readonly ForestBirdPerch[], count: number, start: number, transfer: boolean) {
+  const reserved: ForestBirdPerch[] = [];
+  const free = (p: ForestBirdPerch) => reserved.every(other => Math.hypot(other.x - p.x, other.y - p.y) >= 24);
+  const primary: ForestBirdPerch[] = [];
+  for (let offset = 0; offset < perches.length && primary.length < count; offset++) {
+    const perch = perches[modulo(start + offset, perches.length)];
+    if (free(perch)) { primary.push(perch); reserved.push(perch); }
+  }
+  return primary.map(perch => {
+    const second = transfer ? perches.filter(free).sort((a, b) =>
+      Math.hypot(a.x - perch.x, a.y - perch.y) - Math.hypot(b.x - perch.x, b.y - perch.y))[0] : undefined;
+    if (second) reserved.push(second);
+    return { perch, second };
+  });
 }
 
 function geometry(scene: FixedWorldScene) {
@@ -105,7 +153,7 @@ function perchVisit(perch: ForestBirdPerch, from: WorldPoint, to: WorldPoint,
   let seat = { x: perch.x, y: perch.y - size * 3.3 };
   const approachDirection = seat.x >= from.x ? 1 : -1;
   const outgoingDirection = to.x >= seat.x ? 1 : -1;
-  const base = { size, opacity: .92, species, ...flightPose(seconds, index, species), perchId: perch.id };
+  const base = { size, opacity: .92, species, ...flightPose(seconds, index, species), perchId: perch.id, surface: "tree" as const };
   if (seconds < arrival) {
     const t = clamp(seconds / arrival), eased = 1 - Math.pow(1 - t, 1.8);
     const pose = curve(from, { x: from.x + approachDirection * 46, y: from.y - 45 },
@@ -160,7 +208,44 @@ function perchVisit(perch: ForestBirdPerch, from: WorldPoint, to: WorldPoint,
     bank: smooth(local / .7) * clamp(Math.atan2(Math.sin(pose.angle), Math.abs(Math.cos(pose.angle))), -.7, .7) };
 }
 
-type BirdScenario = "perch-pair" | "swallow-flock" | "solo-visit" | "chase" | "loose-flock" | "branch-transfer";
+function groundVisit(patch: ForestBirdPerch, from: WorldPoint, to: WorldPoint,
+  seconds: number, size: number, index: number, species: ForestBirdSpecies): ForestBird {
+  const base = perchVisit(patch, from, to, seconds, size, index, species);
+  if (seconds < 7 || seconds >= 19.5) {
+    const height = Math.max(0, patch.y - (base.y + size * 3.3));
+    return { ...base, surface: "ground", groundY: height < size * 6 && Math.abs(base.x - patch.x) < 12 ? patch.y : undefined,
+      hopHeight: height };
+  }
+  const t = seconds - 7, direction = patch.facing, pace = 1 + index * .07;
+  const local = t / pace;
+  const hops = [
+    { at: 1.3, duration: .52, x: 6 * direction, y: 1.8 },
+    { at: 4.7, duration: .58, x: -11 * direction, y: -3.2 },
+    { at: 9.6, duration: .56, x: 5 * direction, y: 1.4 },
+  ];
+  let x = patch.x, groundY = patch.y, lift = 0;
+  for (const hop of hops) {
+    const progress = clamp((local - hop.at) / hop.duration), moved = smooth(progress);
+    x += moved * hop.x; groundY += moved * hop.y;
+    lift += Math.sin(progress * Math.PI) * size * 2.7;
+  }
+  // Short, separated pecks are interrupted by looking around; no continuous bobbing.
+  let peck = 0;
+  for (const at of [2.15, 2.64, 6.05, 6.5, 7.1]) {
+    const progress = (local - at) / .38;
+    if (progress > 0 && progress < 1) peck = Math.sin(progress * Math.PI) ** 2;
+  }
+  const preen = smooth((local - 8.05) / .25) * (1 - smooth((local - 8.65) / .3));
+  const looking = Math.sin(smooth((local - 3.3) / 1) * TAU) * .78
+    + Math.sin(smooth((local - 10.8) / 1) * TAU) * .72;
+  return { ...base, x, y: groundY - size * 3.3 - lift, groundY, surface: "ground", hopHeight: lift,
+    state: lift > .01 ? "hop" : peck > .03 ? "peck" : preen > .05 ? "preen" : "lookout",
+    facing: direction, angle: direction === 1 ? 0 : Math.PI, bank: 0, wingFold: 1,
+    legReach: 1 - Math.min(1, lift / (size * 2.7)) * .22, peck, preen, headTurn: looking,
+    tailFlick: Math.sin(local * 2.1 + index) * .12 };
+}
+
+type BirdScenario = "perch-pair" | "swallow-flock" | "solo-visit" | "chase" | "loose-flock" | "branch-transfer" | "ground-pair" | "ground-forage";
 const SCENARIOS: readonly { kind: BirdScenario; species: ForestBirdSpecies; count: number; duration: number }[] = [
   { kind: "perch-pair", species: "robin", count: 2, duration: 31.5 },
   { kind: "swallow-flock", species: "swallow", count: 5, duration: 16 },
@@ -168,6 +253,8 @@ const SCENARIOS: readonly { kind: BirdScenario; species: ForestBirdSpecies; coun
   { kind: "chase", species: "swallow", count: 2, duration: 18 },
   { kind: "loose-flock", species: "finch", count: 3, duration: 19 },
   { kind: "branch-transfer", species: "blue-tit", count: 2, duration: 31.5 },
+  { kind: "ground-pair", species: "robin", count: 2, duration: 31.5 },
+  { kind: "ground-forage", species: "finch", count: 1, duration: 31.5 },
 ];
 
 /** Pure world-coordinate birds: camera changes, replays and render order cannot consume state. */
@@ -190,6 +277,10 @@ export function forestBirdFrame(scene: FixedWorldScene, options: ForestBirdOptio
   const center = { x: focus.x + focus.width * .5, y: focus.y + focus.height * .6 };
   const nearest = [...perches].sort((a, b) => Math.hypot(a.x - center.x, a.y - center.y) - Math.hypot(b.x - center.x, b.y - center.y));
   const usePerches = perches.length > 0 && ["perch-pair", "solo-visit", "branch-transfer"].includes(scenario.kind);
+  const useGround = scenario.kind === "ground-pair" || scenario.kind === "ground-forage";
+  const ordered = useGround ? forestBirdGroundPatches(scene) : forced ? nearest : perches;
+  const reserved = usePerches || useGround ? reservedPerches(ordered, scenario.count,
+    forced ? 0 : Math.floor(cycle / 2) * 3, scenario.kind === "branch-transfer") : [];
   const reverse = noise(seed, cycle + 211) > .5;
   const lane = .14 + noise(seed, cycle + 410) * .72;
   // Consecutive transit scenarios cover all three corridors, regardless of flock kind.
@@ -215,14 +306,10 @@ export function forestBirdFrame(scene: FixedWorldScene, options: ForestBirdOptio
     }
     if (reverse) [from, to] = [to, from];
     let bird: ForestBird;
-    if (usePerches) {
-      const ordered = forced ? nearest : perches;
-      const perchIndex = forced ? i : modulo(Math.floor(cycle / 2) * 3 + i, ordered.length);
-      const perch = ordered[perchIndex % ordered.length];
-      const second = scenario.kind === "branch-transfer" && ordered.length > 1
-        ? [...ordered].filter(p => p.id !== perch.id).sort((a, b) =>
-          Math.hypot(a.x - perch.x, a.y - perch.y) - Math.hypot(b.x - perch.x, b.y - perch.y))[0] : undefined;
-      bird = perchVisit(perch, from, to, age, size, i, scenario.species, second);
+    if (reserved[i]) {
+      const { perch, second } = reserved[i];
+      bird = useGround ? groundVisit(perch, from, to, age, size, i, scenario.species)
+        : perchVisit(perch, from, to, age, size, i, scenario.species, second);
     } else {
       const progress = age / scenario.duration;
       const bend = forced ? 0 : Math.min(width, height) * .035;

@@ -9,7 +9,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
 after(() => vite.close());
 const { sampleForestRain, drawForestRain, drawForestWaterImpact, FOREST_RAIN_LIMIT }
   = await vite.ssrLoadModule("/features/world/forest-rain.ts");
-const { forestGroundWeatherFrame, isForestGroundClear }
+const { forestGroundWeatherFrame }
   = await vite.ssrLoadModule("/features/world/forest-ground-weather.ts");
 const scene = { schemaVersion: 1, id: "rain-surfaces", width: 960, height: 720,
   focus: { x: 170, y: 210, width: 240, height: 240 }, terrain: [], sites: [], paths: [],
@@ -98,23 +98,6 @@ test("rain painter clips and restores state; water impact evolves from crown to 
   assert.equal(finished.calls.length, 0);
 });
 
-test("rain hits dry ground immediately and all transient footprints honor exclusions", () => {
-  let total = 0;
-  for (let elapsed = 0; elapsed < 12; elapsed += .2) {
-    const input = { elapsed, timestamp: 0, weather: "downpour", wetness: 0 };
-    const frame = forestGroundWeatherFrame(scene, input);
-    assert.equal(frame.puddles.length, 0);
-    assert.ok(frame.impacts.length <= 12);
-    total += frame.impacts.length;
-    for (const impact of frame.impacts) assert.ok(isForestGroundClear(scene, impact, impact.radiusX));
-    const excluded = forestGroundWeatherFrame(scene, { ...input, groundExclusions: [{ ...scene.actor.spawn, radius: 80 }] });
-    assert.equal(excluded.impacts.length, 0);
-  }
-  assert.ok(total > 0);
-  const noSpawn = forestGroundWeatherFrame({ ...scene, actor: undefined }, { elapsed: 5, timestamp: 0, weather: "downpour" });
-  assert.equal(noSpawn.impacts.length, 0);
-});
-
 test("standing water uses stable distinct organic outlines and moving impact locations, freezing in reduced motion", () => {
   const input = { elapsed: 12, timestamp: 0, weather: "downpour", wetness: .9 };
   const first = forestGroundWeatherFrame(scene, input);
@@ -130,10 +113,8 @@ test("standing water uses stable distinct organic outlines and moving impact loc
   }
   const still = forestGroundWeatherFrame(scene, { ...input, reducedMotion: true });
   assert.equal(still.rings.length, 0);
-  assert.equal(still.impacts.length, 0);
   assert.deepEqual(still, forestGroundWeatherFrame(scene, { ...input, elapsed: 9999, reducedMotion: true }));
   const stopped = forestGroundWeatherFrame(scene, { ...input, weather: "clear" });
   assert.deepEqual(stopped.puddles, first.puddles);
   assert.equal(stopped.rings.length, 0);
-  assert.equal(stopped.impacts.length, 0);
 });

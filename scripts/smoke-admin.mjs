@@ -20,6 +20,14 @@ assert.equal(process.env.METRICS_TOKEN_FILE, "/run/monitoring-secrets/token");
 assert.ok((process.env.COMPOSE_PROFILES ?? "").split(",").includes("monitoring"));
 
 const origin = "https://localhost";
+const presenceByCookie = new Map();
+async function resumePresence(cookie) {
+  const presenceId = randomUUID();
+  const result = await api("POST", "/api/v1/presence", { cookie, body: { kind: "resume", presenceId, sequence: 0, active: true } });
+  assert.equal(result.data.status, "active");
+  presenceByCookie.set(cookie, presenceId);
+  return presenceId;
+}
 const adminIds = process.env.ADMIN_PUBLIC_IDS.split(",");
 const composeArgs = ["compose", "-f", "deploy/compose.yml"];
 function docker(args, { input, expected = 0 } = {}) {
@@ -39,6 +47,7 @@ async function api(method, path, { cookie, body, expected = 200, source = origin
     const headers = { "Idempotency-Key": randomUUID(), ...extraHeaders };
     if (source !== null) headers.Origin = source;
     if (cookie) headers.Cookie = cookie;
+    if (presenceByCookie.has(cookie)) headers["X-Game-Presence"] = presenceByCookie.get(cookie);
     if (payload !== undefined) {
       headers["Content-Type"] = "application/json";
       headers["Content-Length"] = Buffer.byteLength(payload);
@@ -91,7 +100,9 @@ const peer = seedAdmin(adminIds[1], "CI admin peer", "admin-peer@example.invalid
 const ordinary = await profile("CI admin ordinary");
 const target = await profile("CI admin target");
 const targetSecondCookie = addSession(target.publicId);
-const adminPaths = ["access", "overview?days=7", "users", "audit", "monitoring"].map((path) => "/api/v1/admin/" + path);
+await resumePresence(target.cookie);
+await resumePresence(targetSecondCookie);
+const adminPaths = ["access", "overview?days=7", "users", "economy", "analytics", "analytics/events", "audit", "monitoring"].map((path) => "/api/v1/admin/" + path);
 for (const path of adminPaths) {
   const anonymous = await api("GET", path, { expected: 401, headers: { "X-Admin-Public-Id": admin.publicId, "X-Role": "admin" } });
   assert.equal(anonymous.headers["cache-control"], "no-store");
@@ -104,6 +115,19 @@ assert.deepEqual(Object.keys(access.data).sort(), ["displayName", "publicId", "s
 assert.equal(access.headers["cache-control"], "no-store");
 assert.equal(access.headers["x-robots-tag"], "noindex, nofollow");
 assert.equal((await api("GET", "/admin")).headers["cache-control"], "no-store");
+
+const analytics = await api("GET", `/api/v1/admin/analytics?q=${target.publicId}`, { cookie: admin.cookie });
+assert.equal(analytics.data.q, target.publicId);
+assert.equal(analytics.data.scope, "players");
+assert.equal(analytics.data.coverage.matchingPlayers, 1);
+assert.equal(analytics.data.summary.events, 0);
+assert.equal(analytics.headers["cache-control"], "no-store");
+assert.equal(analytics.headers["x-robots-tag"], "noindex, nofollow");
+const operations = await api("GET", `/api/v1/admin/analytics/events?q=${target.publicId}&limit=25`, { cookie: admin.cookie });
+assert.equal(operations.data.total, 0);
+assert.deepEqual(operations.data.events, []);
+await api("GET", "/api/v1/admin/analytics?scope=players&scope=all", { cookie: admin.cookie, expected: 400 });
+await api("GET", "/api/v1/admin/analytics/events?limit=101", { cookie: admin.cookie, expected: 400 });
 
 // The edge never forwards scrape routes, even if the correct token is supplied.
 const scrapeToken = readFileSync(resolve(root, "deploy/.secrets/monitoring/token"), "utf8").trim();
@@ -223,11 +247,11 @@ const management = (action, extra = {}) => ({ requestId: randomUUID(), confirmat
 const resourceGrant = management("grant_resource", { target: "wood", amount: 25 });
 await api("POST", managePath, { cookie: ordinary.cookie, body: resourceGrant, expected: 403 });
 await api("POST", managePath, { cookie: admin.cookie, body: resourceGrant, source: "https://untrusted.invalid", expected: 403 });
-const resourceReceipt = await api("POST", managePath, { cookie: admin.cookie, body: resourceGrant });
-assert.equal(resourceReceipt.data.changed, true);
-assert.deepEqual((await api("POST", managePath, { cookie: admin.cookie, body: resourceGrant })).data, resourceReceipt.data);
+const resourceDenied = await api("POST", managePath, { cookie: admin.cookie, body: resourceGrant, expected: 409 });
+assert.equal(resourceDenied.data.code, "ADMIN_RESOURCE_RETIRED");
+assert.equal((await api("GET", "/api/v1/admin/audit", { cookie: admin.cookie })).data.total, 3, "Rejected legacy grants must not create a successful audit action");
 assert.equal((await api("GET", "/api/v1/world", { cookie: freshCookie })).data.state.resources.wood,
-  beforeManagement.data.world.resources.wood + 25);
+  beforeManagement.data.world.resources.wood);
 const tag = { text: "Tester", color: "blue" };
 await api("POST", managePath, { cookie: admin.cookie, body: management("set_tag", { tag }) });
 assert.deepEqual((await api("GET", "/api/v1/me", { cookie: freshCookie })).data.user.tag, tag);
@@ -256,7 +280,7 @@ await api("GET", "/api/v1/me", { cookie: freshCookie, expected: 401 });
 const unbannedCookie = addSession(target.publicId);
 assert.deepEqual((await api("GET", "/api/v1/me", { cookie: unbannedCookie })).data.user.tag, tag);
 assert.equal((await api("GET", "/api/v1/game/progress", { cookie: unbannedCookie })).data.lifetimeTaps, 9);
-assert.equal((await api("GET", "/api/v1/admin/audit", { cookie: admin.cookie })).data.total, 7);
+assert.equal((await api("GET", "/api/v1/admin/audit", { cookie: admin.cookie })).data.total, 6);
 await api("POST", managePath, { cookie: admin.cookie, body: management("watch") });
 assert.equal((await api("GET", playerPath, { cookie: admin.cookie })).data.watchlisted, true);
 await api("POST", managePath, { cookie: admin.cookie, body: management("unwatch") });

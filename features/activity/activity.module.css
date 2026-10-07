@@ -1,0 +1,9 @@
+.screen { display: grid; min-height: 100dvh; place-items: center; padding: max(24px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom)); background: #f4f5e9; color: #26382d; }
+.card { max-width: 460px; width: 100%; padding: 28px 24px; border: 1px solid #d7dfce; border-radius: 24px; background: #fffef8; box-shadow: 0 12px 40px #26382d0d; }
+.brand { font-size: 12px; font-weight: 800; letter-spacing: .16em; color: #64785b; }
+.card h1 { margin: 18px 0; font-size: clamp(24px, 6vw, 32px); line-height: 1.15; outline: none; }
+.card p { line-height: 1.55; margin: 14px 0; }
+.card button { display: block; width: 100%; min-height: 48px; margin-top: 24px; padding: 12px 18px; border: 0; border-radius: 14px; background: #3c613d; color: white; font-weight: 700; cursor: pointer; }
+.card button:disabled { opacity: .6; cursor: default; }
+.card button:focus-visible { outline: 3px solid #829d58; outline-offset: 4px; }
+.error { color: #8b3e27; }

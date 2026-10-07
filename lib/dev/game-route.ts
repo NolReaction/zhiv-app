@@ -1,3 +1,4 @@
+import { isDevPresenceActive } from "./activity-store";
 import { NextResponse } from "next/server";
 import { guardDevApi } from "@/lib/dev/api-guard";
 import { devSessionToken, NO_STORE_HEADERS } from "@/lib/dev/api-route";
@@ -9,6 +10,7 @@ export async function devGameContext(request: Request, write = false) {
   if (rejected) return { response: rejected };
   const token = await devSessionToken();
   if (!getDevIdentity(token)) return { response: gameRequestError("UNAUTHORIZED", 401) };
+  if (write && !isDevPresenceActive(getDevIdentity(token)!.user.publicId, request.headers.get("X-Game-Presence"), Date.now(), token)) return { response: gameRequestError("GAME_SESSION_INACTIVE", 409) };
   return { token };
 }
 

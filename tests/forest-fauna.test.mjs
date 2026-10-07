@@ -15,7 +15,8 @@ const scene = { schemaVersion:1,id:'fauna-test',width:300,height:300,focus:{x:40
     {id:'flowers',species:'butterfly',capacity:6,points:rectangle(100,100,100,90),anchors:[
       {id:'leaf',kind:'rest',position:{x:130,y:140}}, {id:'bush',kind:'shelter',position:{x:115,y:115}}]},
     {id:'grass',species:'firefly',capacity:12,points:rectangle(90,100,120,100),anchors:[
-      {id:'grass-tip',kind:'rest',position:{x:190,y:180}}, {id:'grass-base',kind:'shelter',position:{x:195,y:190}}]},
+      {id:'grass-tip',kind:'rest',position:{x:190,y:180}}, {id:'grass-base',kind:'shelter',position:{x:195,y:190}},
+      {id:'grass-north-base',kind:'shelter',position:{x:190,y:120}}]},
   ]};
 const conditions = {actor,dusk:0,rain:0};
 const advance = (state,seconds,options=conditions,inspect) => {
@@ -23,6 +24,7 @@ const advance = (state,seconds,options=conditions,inspect) => {
 };
 const getPartner = state => state.entities.find(e=>e.id===state.encounter?.entityId);
 const speed = e=>Math.hypot(e.vx,e.vy);
+const distanceBetween=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
 
 test('fallback population begins on the existing atmosphere orbit with stable appearance and identity',()=>{
   const legacy = {...scene};delete legacy.habitats;
@@ -121,7 +123,7 @@ test('weather preserves the population and moves it to authored refuges; night a
   assert.deepEqual(state.entities.map(e=>e.id),ids);assert.equal(faunaRenderFrame(state).butterflies.length,6);
   const sheltered=state.entities.filter(e=>e.mode==='refuge');assert.equal(sheltered.length,18);
   for(const e of sheltered){const h=scene.habitats.find(h=>h.id===e.habitatId),a=h.anchors.find(a=>a.id===e.anchorId);
-    assert.ok(Math.hypot(e.x-a.position.x,e.y-a.position.y)<4,'resting bodies are drawn on the real shelter foliage');
+    assert.ok(Math.hypot(e.x-a.position.x,e.y-a.position.y)<10.7,'resting bodies stay within the small authored foliage patch');
     assert.ok(Math.hypot(e.x-a.position.x-e.anchorOffset.x,e.y-a.position.y-e.anchorOffset.y)<1)}
   advance(state,16,{...conditions,dusk:1});
   assert.ok(state.entities.filter(e=>e.species==='firefly').every(e=>e.mode!=='refuge'));
@@ -260,4 +262,185 @@ test('firefly emission uses current dusk on static night frames and cannot be fo
   assert.equal(night.fireflies.length,12);assert.ok(night.fireflies.every(e=>e.glow===1));assert.deepEqual(state,frozen);
   assert.ok(faunaRenderFrame(state,{dusk:.7}).fireflies.every(e=>e.glow===.7));
   assert.equal(faunaRenderFrame(state,{dusk:0,fireflies:'on'}).fireflies.length,0);
+});
+
+test('a long trip to a leaf does not consume the rest before the animal has landed',()=>{
+  const distant={...scene,width:900,habitats:[{id:'wide',species:'butterfly',capacity:1,
+    points:rectangle(0,0,900,300),anchors:[{id:'distant-leaf',kind:'rest',position:{x:800,y:150}}]}]};
+  const state=createForestFauna(distant),e=state.entities[0];
+  Object.assign(e,{x:80,y:150,vx:0,vy:0,nextRestAt:0});
+  advance(state,25);assert.equal(e.mode,'rest-seek');
+  let arrival=null;
+  advance(state,20,conditions,()=>{if(arrival===null&&e.mode==='rest')arrival=state.elapsed});
+  assert.ok(arrival>30,'flight lasts longer than the normal rest itself');
+  assert.equal(e.mode,'rest','distant leaf still provides a real pause after arrival');
+  assert.ok(e.restUntil-arrival>=12);
+  advance(state,10);assert.notEqual(e.mode,'rest','the individual eventually resumes its life');
+});
+
+test('completed rests alternate nearby free leaves without inventing a landing or sharing a seat',()=>{
+  const leaves={...scene,habitats:[{id:'nearby',species:'butterfly',capacity:1,
+    points:rectangle(100,100,100,100),anchors:[
+      {id:'left',kind:'rest',position:{x:145,y:145}},
+      {id:'right',kind:'rest',position:{x:155,y:145}},
+    ]}]};
+  const state=createForestFauna(leaves),e=state.entities[0],landings=[];
+  e.nextRestAt=0;let previousMode=e.mode;
+  advance(state,170,conditions,()=>{
+    if(e.mode==='rest'&&previousMode!=='rest')landings.push(e.anchorId);
+    previousMode=e.mode;
+  });
+  assert.ok(landings.length>=3);
+  for(let i=1;i<landings.length;i++)assert.notEqual(landings[i],landings[i-1]);
+});
+
+test('familiar footsteps cause a smaller startle, a sudden rustle still matters and calm returns',()=>{
+  const state=createForestFauna(scene);state.entities=state.entities.slice(0,1);
+  const e=state.entities[0],origin={x:150,y:145},event={x:145,y:145,kind:'movement',radius:30};
+  const response=kind=>{
+    Object.assign(e,{...origin,vx:0,vy:0,mode:'fly',nextRestAt:Infinity});
+    assert.equal(emitFaunaStimulus(state,{...event,kind}),1);
+    return Math.hypot(e.departure.x-origin.x,e.departure.y-origin.y);
+  };
+  const first=response('movement');let familiar;
+  for(let i=0;i<6;i++){advance(state,8);familiar=response('movement')}
+  assert.ok(familiar<first*.9,'the same local harmless event loses some urgency');
+  const alert=e.alertness;advance(state,8);const rustle=response('rustle');
+  assert.ok(rustle>familiar*1.1,'habituation to steps does not blunt an abrupt bush rustle');
+  advance(state,30);assert.ok(e.alertness<alert*.2,'alertness naturally recovers in active quiet time');
+  assert.ok(canRequestFaunaInteraction(state,'butterfly',actor,conditions,true),'a startled individual can meet the hero again');
+});
+
+test('silent, invalid and sheltered disturbances are ignored; affected neighbours do not depend on array order',()=>{
+  const state=createForestFauna(scene);
+  for(const event of [{strength:0},{strength:NaN},{radius:Infinity},{x:NaN},{x:-1}]){
+    const before=structuredClone(state);
+    assert.equal(emitFaunaStimulus(state,{x:150,y:145,kind:'rustle',...event}),0);
+    assert.deepEqual(state,before);
+  }
+  const reverse=structuredClone(state);reverse.entities.reverse();
+  for(const population of [state,reverse])emitFaunaStimulus(population,{x:150,y:145,kind:'rustle',radius:90});
+  assert.deepEqual(state.entities.filter(e=>e.mode==='depart').map(e=>e.id).sort(),
+    reverse.entities.filter(e=>e.mode==='depart').map(e=>e.id).sort());
+  advance(state,30,{...conditions,rain:1});
+  const before=structuredClone(state.entities);
+  assert.equal(emitFaunaStimulus(state,{x:115,y:115,kind:'rustle',radius:90}),0);
+  assert.deepEqual(state.entities,before,'sheltering from rain takes priority over nearby sounds');
+});
+
+test('rain redirects a returning individual to real nearby shelter instead of its distant orbit',()=>{
+  const wide={...scene,width:900,habitats:[{id:'wide',species:'butterfly',capacity:1,
+    points:rectangle(0,0,900,300),anchors:[{id:'near-shelter',kind:'shelter',position:{x:140,y:145}}]}]};
+  const state=createForestFauna(wide),e=state.entities[0];
+  Object.assign(e,{x:150,y:140,vx:0,vy:0,mode:'return',interactionToken:71});
+  Object.assign(e.orbit,{x:800,y:150,rx:5,ry:5});
+  const before={x:e.x,y:e.y};
+  advance(state,.025,{...conditions,rain:1});
+  assert.equal(e.mode,'refuge');assert.equal(e.anchorId,'near-shelter');
+  assert.equal(e.interactionToken,71,'return reservation survives until physical landing');
+  assert.ok(distanceBetween(e,before)<23*.025,'weather redirects steering without teleporting');
+  let previous={x:e.x,y:e.y,vx:e.vx,vy:e.vy};
+  advance(state,5,{...conditions,rain:1},()=>{
+    assert.ok(e.x<180,'does not head back across the world before sheltering');
+    assert.ok(distanceBetween(e,previous)<=23*.025+1e-6);
+    assert.ok(Math.hypot(e.vx-previous.vx,e.vy-previous.vy)<=45*.025+1e-6);
+    previous={x:e.x,y:e.y,vx:e.vx,vy:e.vy};
+  });
+  assert.equal(e.interactionToken,null,'landing safely releases the existing reservation');
+  assert.ok(distanceBetween(e,wide.habitats[0].anchors[0].position)<10.7);
+  assert.ok(e.cooldownUntil>state.elapsed);
+});
+
+test('a weather-interrupted encounter releases the hero and shelters the same insect without an orbit detour',()=>{
+  const wide={...scene,width:900,height:900,habitats:[{...scene.habitats[0],capacity:1,points:rectangle(0,0,900,900)}]};
+  const state=createForestFauna(wide);
+  const e=state.entities[0];
+  Object.assign(e,{x:150,y:140,vx:0,vy:0});
+  assert.equal(requestFaunaInteraction(state,'butterfly',actor,conditions),true);
+  advance(state,2);const id=e.id;
+  Object.assign(e.orbit,{x:850,y:800,rx:1,ry:1});
+  advance(state,.025,{...conditions,rain:1});
+  assert.equal(state.encounter.phase,'interrupt');
+  advance(state,.6,{...conditions,rain:1});
+  assert.equal(state.encounter,null,'hero keeps the existing 600 ms interruption contract');
+  assert.equal(e.mode,'depart','individual first clears the hero before seeking refuge');
+  advance(state,12,{...conditions,rain:1});
+  assert.equal(e.mode,'refuge');assert.equal(e.anchorId,'bush');assert.equal(e.interactionToken,null);
+  assert.equal(state.entities.length,1);assert.equal(state.entities[0].id,id);
+  assert.ok(distanceBetween(e,{x:115,y:115})<10.7);
+});
+
+test('borderline showers and brief dry gaps do not repeatedly launch sheltered fauna',()=>{
+  const state=createForestFauna(scene);advance(state,16,{...conditions,rain:1});
+  const anchors=state.entities.map(e=>e.anchorId);
+  for(let i=0;i<30;i++)advance(state,.1,{...conditions,rain:i%2?.34:.36});
+  assert.ok(state.entities.every(e=>e.mode==='refuge'));
+  assert.deepEqual(state.entities.map(e=>e.anchorId),anchors);
+  advance(state,.5,conditions);
+  assert.ok(state.entities.every(e=>e.mode==='refuge'),'a single short clearing is insufficient');
+  advance(state,2,{...conditions,rain:.3});
+  assert.ok(state.entities.every(e=>e.mode==='refuge'),'light rain retains a sheltered population');
+  advance(state,.5,conditions);
+  assert.ok(state.entities.every(e=>e.mode==='refuge'),'resumed drizzle resets the dry interval');
+  advance(state,6,conditions);
+  assert.ok(state.entities.filter(e=>e.species==='butterfly').every(e=>e.mode!=='refuge'));
+  assert.ok(state.entities.filter(e=>e.species==='firefly').every(e=>e.mode==='refuge'),'daytime still keeps fireflies resting');
+});
+
+test('after rain the same residents leave at individual times and the recovery clock respects pause and cameras',()=>{
+  const state=createForestFauna(scene);advance(state,16,{...conditions,rain:1});
+  const ids=state.entities.map(e=>e.id),butterflies=state.entities.filter(e=>e.species==='butterfly');
+  assert.equal(canRequestFaunaInteraction(state,'butterfly',actor,conditions,true),false,
+    'an explicit meeting cannot bypass the sheltered recovery');
+  advance(state,.4,conditions);
+  const frozen=structuredClone(state),frame=faunaRenderFrame(state);
+  for(const options of [{paused:true},{reducedMotion:true}])advance(state,10,{...conditions,...options});
+  for(let camera=0;camera<4;camera++)assert.deepEqual(faunaRenderFrame(state),frame);
+  assert.deepEqual(state,frozen);
+  const departures=new Map(),start=state.elapsed;
+  advance(state,6,conditions,()=>{
+    for(const e of butterflies)if(e.mode!=='refuge'&&!departures.has(e.id))departures.set(e.id,state.elapsed-start);
+  });
+  assert.equal(departures.size,butterflies.length);
+  assert.ok(new Set(departures.values()).size>=4,'the clearing does not empty in one synchronized frame');
+  assert.ok(Math.max(...departures.values())-Math.min(...departures.values())>1);
+  assert.deepEqual(state.entities.map(e=>e.id),ids);
+});
+
+test('a resident shares the real population, reaches her paw and releases it without owning Mochlik',()=>{
+  for (const dusk of [0,1]) {
+    const state=createForestFauna(scene),kind=dusk?'firefly':'butterfly';
+    const visitor={id:'plesk',x:160,y:165,size:50,direction:'front',hand:{x:172,y:145},available:true};
+    state.nextVisitorAt=0;
+    const options={...conditions,dusk,visitors:[visitor],blocked:true};
+    advance(state,.025,options);
+    assert.equal(state.visitorEncounters.length,1);
+    const encounter=state.visitorEncounters[0],e=state.entities.find(e=>e.id===encounter.entityId);
+    assert.equal(encounter.kind,kind);assert.equal(state.encounter,null);
+    assert.equal(requestFaunaInteraction(state,kind,actor,{...conditions,dusk},true),true);
+    assert.notEqual(state.encounter.entityId,e.id,'one animal cannot be on two paws');
+    let touched=false;
+    advance(state,18,options,()=>{
+      if(encounter.phase==='perch'){touched=true;assert.ok(distanceBetween(e,visitor.hand)<.7)}
+      assert.equal(faunaRenderFrame(state)[dusk?'fireflies':'butterflies'].filter(p=>p.id===e.id).length,1);
+    });
+    assert.ok(touched);assert.equal(state.visitorEncounters.length,0);
+    assert.equal(state.entities.length,18);
+  }
+});
+
+test('resident encounters respect pauses, weather, busy hands and movement without teleporting an animal',()=>{
+  for (const change of [v=>({...v,available:false}),v=>({...v,x:v.x+4}),v=>v]) {
+    const state=createForestFauna(scene);state.nextVisitorAt=0;
+    const visitor={id:'plesk',x:160,y:165,size:50,hand:{x:172,y:145},available:true};
+    const options={...conditions,visitors:[visitor]};advance(state,1,options);
+    assert.equal(state.visitorEncounters.length,1);
+    const frozen=structuredClone(state);
+    advance(state,1,{...options,paused:true});assert.deepEqual(state,frozen);
+    advance(state,1,{...options,reducedMotion:true});assert.deepEqual(state,frozen);
+    const e=state.entities.find(e=>e.id===state.visitorEncounters[0].entityId),before={x:e.x,y:e.y};
+    const changed=change(visitor);const next={...options,visitors:[changed],rain:changed===visitor?1:0};
+    advance(state,.025,next);assert.equal(state.visitorEncounters[0].phase,'interrupt');
+    assert.ok(distanceBetween(e,before)<1);advance(state,.7,next);assert.equal(state.visitorEncounters.length,0);
+  }
 });

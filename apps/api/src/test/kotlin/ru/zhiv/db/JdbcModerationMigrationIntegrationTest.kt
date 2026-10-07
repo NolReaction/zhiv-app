@@ -9,6 +9,7 @@ import org.testcontainers.junit.jupiter.Testcontainers
 import ru.zhiv.admin.AdminConfig
 import ru.zhiv.admin.AdminPlayerCommand
 import ru.zhiv.config.AppConfig
+import ru.zhiv.auth.AuthFailure
 import java.util.UUID
 import kotlin.test.*
 
@@ -39,8 +40,12 @@ class JdbcModerationMigrationIntegrationTest {
             val old=repo.audit(key,0,25).events.single()
             assertEquals(auditId.toString(),old.requestId); assertEquals("flower",old.rewardId)
             val request=AdminPlayerCommand(UUID.randomUUID().toString(),"0000-0000-0002","Upgrade validation grant","grant_resource","wood",12)
-            assertTrue(repo.managePlayer(key,"0000-0000-0002",UUID.fromString(request.requestId),request).changed)
-            assertEquals(12L,repo.player(key,"0000-0000-0002").world.resources.wood)
+            assertEquals("ADMIN_RESOURCE_RETIRED",assertFailsWith<AuthFailure> { repo.managePlayer(key,"0000-0000-0002",UUID.fromString(request.requestId),request) }.code)
+            assertEquals(0L,repo.player(key,"0000-0000-0002").world.resources.wood)
+            assertEquals(1L,repo.audit(key,0,25).total)
+            val cosmetic=request.copy(requestId=UUID.randomUUID().toString(),action="grant_world_item",target="explorer_cap",amount=0)
+            assertTrue(repo.managePlayer(key,"0000-0000-0002",UUID.fromString(cosmetic.requestId),cosmetic).changed)
+            assertTrue("explorer_cap" in repo.player(key,"0000-0000-0002").world.inventory)
             assertEquals(2L,repo.audit(key,0,25).total)
         }
     }

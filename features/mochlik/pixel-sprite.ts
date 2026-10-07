@@ -1,24 +1,45 @@
+import { mossPalette } from "./appearance-palette";
+import { drawMiningPickaxe } from "./mining-pickaxe";
+
 /** Editable pixel rig. All shapes are rasterized on a fixed 48 × 48 grid. */
 export type PixelPose = "idle" | "walk" | "blink" | "sleep" | "drowsy" | "stretch" | "crouch" | "jump" | "groom" | "greet" | "sniff" | "reach" | "hold" | "chew" | "swallow"
   | "scratch" | "yawn" | "shake" | "sneeze" | "wonder" | "carry" | "toss" | "present" | "fish" | "fishing-walk";
 export type PixelDirection = "front" | "back" | "left" | "right";
+/** Interaction painters own continuous arms outside the cached body sprite. */
+export type PixelRigOptions = { gardening?: boolean; crouch?: number; lean?: number; fishingStance?: boolean; mining?: boolean };
 const colors = {
   outline: "#514d32", cream: "#f4e4ae", light: "#fff1c9", shade: "#d8bf83",
   moss: "#7c8845", mossLight: "#a5ad58", mossDark: "#58683b", eye: "#30291d",
 };
 const cache = new Map<string, HTMLCanvasElement>();
 const CACHE_LIMIT = 384;
+export type PixelSpriteContact = { bottom: number; left: number; right: number };
+const contacts = new WeakMap<HTMLCanvasElement, PixelSpriteContact>();
 
-export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: number, appearance?: { palette: string; head: string | null; neck: string | null }): HTMLCanvasElement {
+/** The rig paints opaque integer rectangles, so its sole can be recorded while
+ * drawing. Reading the finished GPU canvas would stall every new pose/frame. */
+export const pixelSpriteContact = (sprite: HTMLCanvasElement) => contacts.get(sprite);
+
+export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: number, appearance?: { palette: string; head: string | null; neck: string | null }, rig?: PixelRigOptions): HTMLCanvasElement {
   frame = Number.isFinite(frame) ? ((Math.trunc(frame) % 4) + 4) % 4 : 0;
-  const key = `${pose}:${direction}:${frame % 4}:${appearance?.palette ?? "moss"}:${appearance?.head ?? ""}:${appearance?.neck ?? ""}`;
+  const rigCrouch = Number.isFinite(rig?.crouch) ? Math.max(0, Math.min(6, Math.round(rig!.crouch!))) : undefined;
+  const rigLean = Number.isFinite(rig?.lean) ? Math.max(-3, Math.min(3, Math.round(rig!.lean!))) : 0;
+  const key = `${pose}:${direction}:${frame % 4}:${appearance?.palette ?? "moss"}:${appearance?.head ?? ""}:${appearance?.neck ?? ""}:${Boolean(rig?.gardening)}:${rigCrouch ?? "pose"}:${rigLean}:${Boolean(rig?.fishingStance)}:${Boolean(rig?.mining)}`;
   const existing = cache.get(key);
   if (existing) { cache.delete(key); cache.set(key, existing); return existing; }
   const canvas = document.createElement("canvas"); canvas.width = 48; canvas.height = 48;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("2D canvas unavailable");
+  const rowLeft = new Int16Array(48).fill(48), rowRight = new Int16Array(48);
+  let leanOffset = rigLean;
   const rect = (x: number, y: number, w: number, h: number, color: string) => {
-    ctx.fillStyle = color; ctx.fillRect(Math.round(x), Math.round(y), w, h);
+    const left = Math.round(x + leanOffset), top = Math.round(y);
+    ctx.fillStyle = color; ctx.fillRect(left, top, w, h);
+    const clippedLeft = Math.max(0, left), clippedRight = Math.min(48, left + w);
+    if (clippedRight <= clippedLeft) return;
+    for (let row = Math.max(0, top); row < Math.min(48, top + h); row++) {
+      rowLeft[row] = Math.min(rowLeft[row], clippedLeft); rowRight[row] = Math.max(rowRight[row], clippedRight);
+    }
   };
   const oval = (x: number, y: number, rx: number, ry: number, color: string) => {
     for (let row = -ry; row <= ry; row++) {
@@ -27,10 +48,16 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
     }
   };
   const walking = pose === "walk" || pose === "carry" || pose === "fishing-walk";
-  const c = appearance?.palette === "fern" ? { ...colors, moss: "#49816b", mossLight: "#7fb99a", mossDark: "#345649" }
-    : appearance?.palette === "autumn" ? { ...colors, moss: "#b27b42", mossLight: "#d8ae63", mossDark: "#7a5637" } : colors;
+  const c = { ...colors, ...mossPalette(appearance?.palette) };
   const step = walking ? [0, -1, 0, 1][frame % 4] : 0;
   const bob = walking && frame % 2 === 1 ? -1 : pose === "chew" ? [0, 1, 0, 1][frame % 4] : 0;
+  const mining = Boolean(rig?.mining) && (pose === "idle" || pose === "walk");
+  const drawMiningTool = () => {
+    const left = direction === "left";
+    drawMiningPickaxe(ctx, left ? 14 : 34, 34 + bob + (left ? -step : step), 48 * .36, left ? -.5 : .5);
+  };
+  // A tool held in front of the miner belongs behind the back-facing body.
+  if (mining && direction === "back") drawMiningTool();
   let headOffset = bob;
   if (pose === "sleep" || pose === "drowsy") {
     const breath = frame === 1 ? -1 : 0;
@@ -50,7 +77,7 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
     oval(21, 41, 7, 3, c.shade); oval(20, 40, 6, 2, c.cream); rect(17, 39, 5, 1, c.light);
     oval(33, 38, 7, 6, c.mossDark); oval(33, 37, 6, 5, c.moss); rect(32, 34, 4, 2, c.mossLight);
   } else {
-    const crouch = pose === "crouch" ? 4 : pose === "sniff" || pose === "fish" ? 2 : pose === "reach" ? [1, 3, 5, 6][frame % 4] : pose === "hold" ? [6, 4, 2, 0][frame % 4] : 0;
+    const crouch = rigCrouch ?? (pose === "crouch" ? 4 : pose === "sniff" || pose === "fish" ? 2 : pose === "reach" ? [1, 3, 5, 6][frame % 4] : pose === "hold" ? [6, 4, 2, 0][frame % 4] : 0);
     const stretch = pose === "stretch" ? -3 : pose === "yawn" ? [0, -2, -3, 0][frame % 4]
       : pose === "sneeze" ? [-2, -1, 4, 1][frame % 4] : pose === "wonder" ? -2 : 0;
     const faceY = 20 + bob + crouch + stretch;
@@ -68,10 +95,12 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
     oval(24, 32 + bob, 13, 11, c.outline); oval(24, 31 + bob, 12, 11, c.shade);
     oval(direction === "back" ? 24 : side > 0 ? 21 : 28, 29 + bob, 10, 9, c.moss);
     if (direction !== "back") oval(side > 0 ? 26 : side < 0 ? 20 : 22, 32 + bob, 9, 9, c.cream);
+    leanOffset = 0;
     for (const [x, offset] of [[17, step], [31, -step]]) {
       oval(x, 42 + offset, 5, 2, c.outline); oval(x, 41 + offset, 4, 2, c.shade);
       rect(x - 2, 40 + offset, 5, 1, c.light);
     }
+    leanOffset = rigLean;
     const earOffset = walking ? (frame % 2 ? 1 : 0) : pose === "greet" ? (frame % 2 ? -1 : 0)
       : pose === "shake" ? [-3, 2, 3, -2][frame % 4] : pose === "scratch" ? [0, 1, 2, 1][frame % 4] : 0;
     oval(9, faceY + 1 + earOffset, 7, 10, c.shade); oval(9, faceY + earOffset, 6, 9, c.cream);
@@ -85,10 +114,18 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
       oval(22 + side * 2, faceY - 1, 9, 8, c.light);
       rect(19, faceY - 12, 9, 5, c.moss); rect(17, faceY - 10, 12, 3, c.moss);
       rect(21, faceY - 13, 3, 2, c.mossLight); rect(24, faceY - 8, 3, 2, c.moss);
-      const look = direction === "left" ? -3 : direction === "right" ? 3 : pose === "wonder" ? [-1, 0, 1, 0][frame % 4] : 0;
+      const look = direction === "left" ? rig?.fishingStance ? -2 : -3 : direction === "right" ? rig?.fishingStance ? 2 : 3 : pose === "wonder" ? [-1, 0, 1, 0][frame % 4] : 0;
       for (const x of [19 + look, 29 + look]) {
         if (["blink", "groom", "yawn", "sneeze", "shake"].includes(pose) || (pose === "chew" && frame % 2 === 1 || pose === "swallow")) rect(x - 1, faceY, 3, 1, c.eye);
-        else { oval(x, faceY, 2, pose === "wonder" ? 4 : 3, c.eye); rect(x, faceY - 2, 1, 1, "#fff8e8"); }
+        else if (rig?.fishingStance) {
+          // A compact rounded glyph retains two-pixel caps. Rasterizing a
+          // narrow ellipse creates isolated tips which read as a cross at zoom.
+          const top = pose === "wonder" ? faceY - 3 : faceY - 2;
+          const height = pose === "wonder" ? 6 : 5;
+          rect(x - 1, top + 1, 3, height - 2, c.eye);
+          rect(x - 1, top, 2, 1, c.eye); rect(x - 1, top + height - 1, 2, 1, c.eye);
+          rect(x - 1, top + 1, 1, 1, "#fff8e8");
+        } else { oval(x, faceY, 2, pose === "wonder" ? 4 : 3, c.eye); rect(x, faceY - 2, 1, 1, "#fff8e8"); }
       }
       rect(23 + look, faceY + 3, 3, 2, c.outline); rect(24 + look, faceY + 5, 1, 2, c.outline);
       if (pose === "yawn") {
@@ -119,25 +156,69 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
     const swing = pose === "walk" ? step : 0;
     const armShade = direction === "back" ? c.mossDark : c.shade;
     const armLight = direction === "back" ? c.moss : c.cream;
-    oval(leftHand, armY - swing, 3, 5, armShade); oval(leftHand, armY - 1 - swing, 2, 4, armLight);
+    // The pickaxe hangs from the lower paw, below the eyes. Paint the existing
+    // paw over its shaft instead of adding an arm across the torso.
+    if (mining && direction !== "back") drawMiningTool();
+    if (!rig?.gardening) { oval(leftHand, armY - swing, 3, 5, armShade); oval(leftHand, armY - 1 - swing, 2, 4, armLight); }
     const wave = pose === "greet" ? -5 + (frame % 2) * 2 : pose === "scratch" ? -17 + (frame % 2) * 3 : 0;
-    oval(rightHand, armY + wave + swing, 3, 5, armShade); oval(rightHand, armY - 1 + wave + swing, 2, 4, armLight);
+    if (!rig?.gardening) { oval(rightHand, armY + wave + swing, 3, 5, armShade); oval(rightHand, armY - 1 + wave + swing, 2, 4, armLight); }
   }
   // Wearables share the rig's pose anchors and depth rules in every direction.
   if (appearance && pose !== "sleep" && pose !== "drowsy") {
     if (appearance.neck) {
-      const scarf = appearance.neck === "berry_scarf" ? "#b96374" : "#e2a44d";
+      const scarf = appearance.neck === "berry_scarf" ? "#b96374" : appearance.neck === "river_scarf" ? "#6299b1"
+        : appearance.neck === "forest_bandana" ? "#77905f" : appearance.neck === "moon_scarf" ? "#b7afd7" : "#e2a44d";
       const neckY = 31 + bob + Math.round((headOffset - bob) / 3);
+      const knotX = direction === "left" ? 18 : 28;
       rect(14, neckY, 21, 3, "#65492f"); rect(15, neckY, 19, 2, scarf);
-      if (direction !== "back") { rect(direction === "left" ? 18 : 28, neckY + 2, 4, 6 + (walking ? frame % 2 : 0), scarf); }
+      if (appearance.neck === "forest_bandana") {
+        if (direction === "back") { rect(28, neckY + 2, 4, 2, "#aaba80"); rect(30, neckY + 3, 2, 2, scarf); }
+        else { rect(19, neckY + 2, 11, 2, scarf); rect(21, neckY + 4, 7, 2, scarf); rect(23, neckY + 6, 3, 1, "#aaba80"); }
+      } else if (direction !== "back") {
+        rect(knotX, neckY + 2, 4, 6 + (walking ? frame % 2 : 0), scarf);
+        if (appearance.neck === "river_scarf") rect(knotX, neckY + 5, 4, 1, "#c1e0dd");
+        if (appearance.neck === "moon_scarf") { rect(knotX + 1, neckY + 4, 2, 2, "#f2e5ba"); rect(17, neckY, 4, 1, "#ddd4ee"); }
+      }
     }
     if (appearance.head) {
-      const cap = appearance.head === "leaf_cap" ? "#9cb764" : "#c29a61";
-      // Keep the cap attached while bending down, yawning and stretching.
-      const capTop = Math.max(0, 1 + headOffset);
-      rect(14, 7 + headOffset, 22, 3, "#514d32"); rect(16, 5 + headOffset, 18, 4, cap);
-      rect(20, capTop, 11, 5 + headOffset - capTop + 1, cap); rect(20, 5 + headOffset, 11, 1, "#78613b");
+      const hatY = headOffset;
+      if (appearance.head === "acorn_cap") {
+        // Low rounded acorn cup; the stem follows the crown while bending.
+        rect(14, 7 + hatY, 22, 3, "#654b36"); rect(16, 4 + hatY, 18, 4, "#996743");
+        rect(20, 2 + hatY, 10, 3, "#bb8652"); rect(24, Math.max(0, hatY), 3, 3, "#654b36");
+        rect(16, 7 + hatY, 18, 2, "#c5955e");
+        for (const x of [18, 23, 28, 32]) rect(x, 7 + hatY, 2, 1, "#795336");
+      } else if (appearance.head === "knitted_cap") {
+        rect(16, 4 + hatY, 18, 6, "#536384"); rect(19, 2 + hatY, 12, 5, "#697caa");
+        rect(23, Math.max(0, hatY), 5, 3, "#c6ccdf");
+        rect(14, 8 + hatY, 22, 3, "#697caa"); rect(16, 8 + hatY, 18, 1, "#a6b4d1");
+        for (const x of [20, 24, 28]) rect(x, 4 + hatY, 1, 3, "#8b9bbd");
+      } else if (appearance.head === "moon_crown") {
+        // A fine silver wreath, not a tall crown: the face and ears stay clear.
+        rect(13, 8 + hatY, 24, 2, "#766987"); rect(15, 8 + hatY, 20, 1, "#c3c1e4");
+        for (const x of [15, 20, 28, 33]) { rect(x, 6 + hatY, 2, 2, "#c3c1e4"); rect(x + 1, 5 + hatY, 1, 1, "#e2ddef"); }
+        if (direction !== "back") { rect(24, 3 + hatY, 2, 5, "#eee0ad"); rect(26, 3 + hatY, 2, 1, "#eee0ad"); rect(26, 7 + hatY, 2, 1, "#eee0ad"); }
+      } else {
+        const cap = appearance.head === "mining_helmet" ? "#d6b456" : appearance.head === "leaf_cap" ? "#9cb764" : "#c29a61";
+        // Keep the cap attached while bending down, yawning and stretching.
+        const capTop = Math.max(0, 1 + headOffset);
+        rect(14, 7 + headOffset, 22, 3, "#514d32"); rect(16, 5 + headOffset, 18, 4, cap);
+        rect(20, capTop, 11, 5 + headOffset - capTop + 1, cap); rect(20, 5 + headOffset, 11, 1, "#78613b");
+        if (appearance.head === "mining_helmet") {
+          rect(17, 5 + headOffset, 16, 1, "#f2d789");
+          if (direction !== "back") { rect(24, 4 + headOffset, 4, 4, "#6a674f"); rect(25, 5 + headOffset, 2, 2, "#fff0ae"); }
+        }
+      }
     }
+  }
+  let bottom = 48;
+  while (bottom > 0 && rowRight[bottom - 1] === 0) bottom--;
+  if (bottom > 0) {
+    let left = 48, right = 0;
+    for (let row = Math.max(0, bottom - 3); row < bottom; row++) {
+      left = Math.min(left, rowLeft[row]); right = Math.max(right, rowRight[row]);
+    }
+    contacts.set(canvas, { bottom, left, right });
   }
   if (cache.size >= CACHE_LIMIT) cache.delete(cache.keys().next().value!);
   cache.set(key, canvas);

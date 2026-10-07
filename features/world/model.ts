@@ -10,7 +10,7 @@ export const journeySchema = z.object({
 });
 export const worldStateSchema = z.object({
   schemaVersion: z.literal(1), resources: resourcesSchema, houseLevel: z.number().int().min(1).max(5),
-  workshop: z.boolean(), workshopLevel: z.number().int().min(0).max(3).optional(), inventory: z.array(z.string()).max(100),
+  workshop: z.boolean(), workshopLevel: z.number().int().min(0).max(5).optional(), inventory: z.array(z.string()).max(100),
   equipment: z.object({ palette: z.string(), head: z.string().nullable(), neck: z.string().nullable(), rod: z.string().nullable().optional() }),
   collection: z.array(z.string()).max(100), journeys: z.array(journeySchema).max(32),
   hiddenGifts: z.array(z.enum(["flower", "leaf_bed", "keepsakes", "leaf_garland"])).max(4).optional(),
@@ -40,7 +40,7 @@ export function canAfford(resources: WorldResources, cost: WorldResources) {
 }
 
 export function workshopLevel(state: Pick<WorldState, "workshop" | "workshopLevel">) {
-  return state.workshop ? Math.max(1, Math.min(3, state.workshopLevel ?? 1)) : 0;
+  return state.workshop ? Math.max(1, Math.min(5, state.workshopLevel ?? 1)) : 0;
 }
 
 export function collectionRewards(collection: readonly string[]): string[] {

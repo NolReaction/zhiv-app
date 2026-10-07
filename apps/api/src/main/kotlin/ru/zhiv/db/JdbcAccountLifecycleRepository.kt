@@ -146,6 +146,7 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
             "new-email" -> {
                 if (flow.action != "email" || flow.provider != "email") proofRequired()
                 if (owner != null) fail("ACCOUNT_EMAIL_IN_USE", "Эта почта уже связана с профилем. Для двух профилей используйте объединение.")
+                assertMergedIdentityAllocation(c, flow.provider, subject, id)
             }
             else -> proofRequired()
         }
@@ -171,6 +172,7 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         c.update("UPDATE account_login_flows SET consumed_at=COALESCE(consumed_at,clock_timestamp()),account_proved_at=COALESCE(account_proved_at,clock_timestamp()),subject=NULL,display_name=NULL,verifier=NULL,nonce=NULL,code_hash=NULL WHERE provider=? AND subject=?",provider,subject)
     }
     private fun clearCapabilities(c: Connection, id: UUID, keepSession: ByteArray? = null) {
+        c.update("UPDATE game_presence_clients SET status='suspended' WHERE user_id=?", id)
         c.update("DELETE FROM game_sessions WHERE user_id=?", id)
         // Before removing identity strings, invalidate verified tickets and in-flight callbacks.
         c.rows("SELECT provider,subject FROM account_login_identities WHERE user_id=?",id) { it.getString(1) to it.getString(2) }.forEach { retireIdentity(c,it.first,it.second) }
@@ -192,9 +194,13 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         proof(c,id,sessionHash,browserHash,"email","current") ?: proofRequired()
         val newEmail=proof(c,id,sessionHash,browserHash,"email","new-email") ?: proofRequired()
         if (c.one("SELECT 1 FROM account_login_identities WHERE provider='email' AND subject=?",newEmail.subject) { true } == true) fail("ACCOUNT_EMAIL_IN_USE","Эта почта уже связана с профилем")
+        assertMergedIdentityAllocation(c, "email", newEmail.subject, id)
         clearCapabilities(c,id,sessionHash)
         c.update("DELETE FROM account_login_identities WHERE user_id=? AND provider='email'",id)
         c.update("INSERT INTO account_login_identities(provider,subject,user_id) VALUES ('email',?,?)",newEmail.subject,id)
+        // A unique-key wait can finish after another profile's merge; an earlier
+        // preview/check is insufficient. Roll back the entire replacement then.
+        assertMergedIdentityAllocation(c, "email", newEmail.subject, id)
         recordSecurityAchievements(c,id)
         saveReceipt(c,"email",requestHash,id,sessionHash,browserHash)
         Unit
@@ -221,14 +227,16 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         val worldJourneys=worlds.flatMap { it.journeys }.distinctBy { it.id }
         val conflicts=buildList {
             if(worldJourneys.size>32) add("Сначала завершите часть путешествий: после объединения их будет больше 32.")
+            addAll(economyMergeConflicts(c, s.current, s.other))
             providers.filter { it.provider !in choices.providerChoices }.forEach { add("Выберите сохраняемый способ входа: ${it.provider}") }
 
         }
         val direct=c.one("SELECT count(*) FROM circles WHERE kind='DIRECT' AND archived_at IS NULL AND ? IN (direct_user_low_id,direct_user_high_id)",s.other) { it.getInt(1) } ?: 0
         val groups=c.one("SELECT count(*) FROM circle_memberships m JOIN circles c ON c.id=m.circle_id WHERE m.user_id=? AND m.left_at IS NULL AND c.archived_at IS NULL",s.other) { it.getInt(1) } ?: 0
         return MergePreview("",a,b,if(choices.displayNameSource=="current")a.displayName else b.displayName,if(choices.statusSource=="current")a.status else b.status,
-            listOf("Ресурсы мира сложатся; сохранятся лучшие улучшения построек, вещи и находки обоих профилей. Одежда останется как в открытом мире; если его ещё нет, перенесётся одежда второго профиля. Путешествия сохранятся: ${worldJourneys.size}. Дневной лимит искр не обновится.",
+            listOf("Монеты, жемчужины и предметы сложатся; лучшие уровни построек, одежда и находки сохранятся. Выставленные товары вернутся на склад. Старые запасы пересчитаются один раз по новым правилам; повторного стартового подарка нет. Одежда останется как в открытом мире; если его ещё нет, перенесётся одежда второго профиля. Старые путешествия сохранятся: ${worldJourneys.size}.",
                 "Сохранится открытый профиль ${a.publicId}; прежний ID ${b.publicId} перестанет работать.",
+                "Способы входа обоих профилей нельзя будет использовать для создания или привязки другого профиля, пока сохранённый профиль существует. Невыбранный способ можно вернуть в его настройках после подтверждения.",
                 "Личная история, число отметок, время последней отметки и серия объединятся. Совпадающие по времени отметки сохранятся; в серии они считаются одним моментом. Исторические аудитории других людей не расширятся.",
                 "Связей второго профиля: $direct; участий в группах: $groups. Новые связи и новые участия начнутся без показа отметок в обе стороны; совпадающие связи сохранят существующие настройки, запрет любой стороны сохранится.",
                 "Ваши группы сохранятся, права владельца второго профиля перейдут сохраняемому профилю. Новые участия начнутся с текущего момента: чужие отметки за время до нового вступления не откроются.",
@@ -260,8 +268,21 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
             "SELECT jsonb_build_array(user_id,lifetime_taps,best_series,leaderboard_opt_in,visibility_version)::text FROM game_profiles WHERE user_id IN (?,?) ORDER BY user_id",
             "SELECT to_jsonb(t)::text FROM game_monthly_scores t WHERE user_id IN (?,?) ORDER BY user_id,month",
             "SELECT to_jsonb(t)::text FROM world_profiles t WHERE user_id IN (?,?) ORDER BY user_id",
+            "SELECT to_jsonb(t)::text FROM economy_profiles t WHERE user_id IN (?,?) ORDER BY user_id",
+            "SELECT to_jsonb(t)::text FROM economy_conversion_audit t WHERE user_id IN (?,?) ORDER BY user_id",
+            "SELECT to_jsonb(t)::text FROM economy_commands t WHERE user_id IN (?,?) ORDER BY user_id,request_id",
+            "SELECT to_jsonb(t)::text FROM economy_ledger t WHERE user_id IN (?,?) ORDER BY user_id,source_key",
+            "SELECT to_jsonb(t)::text FROM economy_market_listings t WHERE seller_id IN (?,?) OR buyer_id IN (?,?) ORDER BY id",
+            "SELECT to_jsonb(t)::text FROM economy_market_daily_turnover t WHERE user_id IN (?,?) ORDER BY user_id,trade_day",
+            "SELECT to_jsonb(t)::text FROM economy_market_receipts t WHERE user_id IN (?,?) ORDER BY user_id,request_id",
+            "SELECT to_jsonb(t)::text FROM economy_barter_offers t WHERE seller_id IN (?,?) OR buyer_id IN (?,?) ORDER BY id",
+            "SELECT to_jsonb(t)::text FROM economy_barter_receipts t WHERE user_id IN (?,?) ORDER BY user_id,request_id",
             "SELECT to_jsonb(t)::text FROM game_items t WHERE user_id IN (?,?) ORDER BY user_id,item_id",
             "SELECT to_jsonb(t)::text FROM game_achievements t WHERE user_id IN (?,?) ORDER BY user_id,achievement_id",
+            "SELECT to_jsonb(t)::text FROM game_achievement_tiers t WHERE user_id IN (?,?) ORDER BY user_id,achievement_id,level",
+            "SELECT to_jsonb(t)::text FROM game_daily_rewards t WHERE user_id IN (?,?) ORDER BY user_id",
+            "SELECT to_jsonb(t)::text FROM game_reward_claims t WHERE user_id IN (?,?) ORDER BY user_id,request_id",
+            "SELECT to_jsonb(t)::text FROM game_achievement_reward_claims t WHERE user_id IN (?,?) ORDER BY user_id,achievement_id,level",
             "SELECT to_jsonb(t)::text FROM account_merge_sources t WHERE target_user_id IN (?,?) ORDER BY source_user_id"
         )
         val digest=MessageDigest.getInstance("SHA-256")
@@ -319,10 +340,22 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         """.trimIndent(),target)
     }
     private fun tombstone(c: Connection,id: UUID) {
+        c.update("DELETE FROM game_reward_claims WHERE user_id=?",id)
+        c.update("DELETE FROM game_daily_rewards WHERE user_id=?",id)
+        c.update("DELETE FROM game_achievement_reward_claims WHERE user_id=?",id)
+        removeEconomyProfile(c, id)
+        c.update("DELETE FROM economy_market_daily_turnover WHERE user_id=?", id)
+        c.update("DELETE FROM economy_market_receipts WHERE user_id=?", id)
+        c.update("DELETE FROM economy_barter_receipts WHERE user_id=?", id)
+        c.update("DELETE FROM forest_memory_receipts WHERE user_id=?",id)
+        c.update("DELETE FROM forest_memory WHERE user_id=?",id)
         c.update("DELETE FROM user_incidents WHERE user_id=?",id)
         c.update("DELETE FROM world_commands WHERE user_id=?",id)
         c.update("DELETE FROM world_ledger WHERE user_id=?",id)
         c.update("DELETE FROM world_profiles WHERE user_id=?",id)
+        c.update("DELETE FROM game_presence_clients WHERE user_id=?",id)
+        c.update("DELETE FROM game_presence_daily WHERE user_id=?",id)
+        c.update("DELETE FROM game_presence_accounts WHERE user_id=?",id)
         c.update("DELETE FROM game_tap_activity_minutes WHERE user_id=?",id)
         c.update("DELETE FROM game_tap_activity_seconds WHERE user_id=?",id)
         c.update("DELETE FROM game_items WHERE user_id=?",id)
@@ -380,6 +413,15 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
                 c.update("INSERT INTO account_login_identities(provider,subject,user_id) VALUES (?,?,?)",provider,subject,id)
             }
         }
+        // Keep historical allocation fences attached to the final survivor, not
+        // the source UUID about to be tombstoned. No balance or login is created.
+        c.update("UPDATE account_identity_retirements SET merged_into_user_id=? WHERE merged_into_user_id=?",id,s.other)
+        // Bind kept methods too: otherwise swapping a kept and a discarded
+        // email could free the kept identity for another reward-bearing profile.
+        (ai.entries+bi.entries).forEach { (provider,subject) ->
+            c.update("""UPDATE account_identity_retirements SET merged_into_user_id=?
+                WHERE provider=? AND subject_hash=sha256(convert_to(?, 'UTF8'))""",id,provider,subject)
+        }
         // Both fields must share a timestamp: assignment evaluation order is not guaranteed.
         if(saved.choices.displayNameSource=="other") c.update("UPDATE app_users SET display_name=?,display_name_changed_at=statement_timestamp(),display_name_change_key=uuidv7(),updated_at=statement_timestamp() WHERE id=?",preview.displayName,id)
         if(saved.choices.statusSource=="other") {
@@ -394,20 +436,42 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         c.update("DELETE FROM game_tap_activity_seconds WHERE user_id IN (?,?)",id,s.other)
         c.update("UPDATE app_users SET tap_signal_at=GREATEST(tap_signal_at,(SELECT tap_signal_at FROM app_users WHERE id=?)) WHERE id=?",s.other,id)
         c.update("UPDATE player_feedback SET user_id=? WHERE user_id=?",id,s.other)
+        // Convert separately before merging old worlds, otherwise conversion caps could drop wealth.
+        ensureEconomyProfile(c, id)
+        ensureEconomyProfile(c, s.other)
+        cancelEconomyMarketListings(c, id)
+        cancelEconomyMarketListings(c, s.other)
+        cancelEconomyBarterOffers(c, id)
+        cancelEconomyBarterOffers(c, s.other)
+        mergeEconomyProfiles(c, id, s.other)
+        mergeEconomyTradeUsage(c, id, s.other)
+        mergeEconomyMarketReceipts(c, id, s.other)
+        mergeEconomyBarterReceipts(c, id, s.other)
         mergeWorldProfiles(c,id,s.other)
+        mergeForestMemory(c,id,s.other)
         mergeGameProgress(c,id,s.other)
+        mergeGamePresence(c,id,s.other)
         c.update("""
-            INSERT INTO game_achievements(user_id,achievement_id,unlocked_at)
-            SELECT ?,achievement_id,unlocked_at FROM game_achievements WHERE user_id=?
+            INSERT INTO game_achievements(user_id,achievement_id,unlocked_at,reward_eligible)
+            SELECT ?,achievement_id,unlocked_at,reward_eligible FROM game_achievements WHERE user_id=?
             ON CONFLICT(user_id,achievement_id) DO UPDATE
-                SET unlocked_at=LEAST(game_achievements.unlocked_at,EXCLUDED.unlocked_at)
+                SET unlocked_at=LEAST(game_achievements.unlocked_at,EXCLUDED.unlocked_at),
+                    reward_eligible=game_achievements.reward_eligible OR EXCLUDED.reward_eligible
         """.trimIndent(),id,s.other)
         val awardTime=c.one("SELECT clock_timestamp()") { it.getObject(1,OffsetDateTime::class.java) }!!
+        c.update("""
+            INSERT INTO game_achievement_tiers(user_id,achievement_id,level,unlocked_at,reward_eligible)
+            SELECT ?,achievement_id,level,unlocked_at,reward_eligible FROM game_achievement_tiers WHERE user_id=?
+            ON CONFLICT(user_id,achievement_id,level) DO UPDATE
+                SET unlocked_at=LEAST(game_achievement_tiers.unlocked_at,EXCLUDED.unlocked_at),
+                    reward_eligible=game_achievement_tiers.reward_eligible OR EXCLUDED.reward_eligible
+        """.trimIndent(),id,s.other)
         c.update("""
             INSERT INTO game_items(user_id,item_id,unlocked_at)
             SELECT ?,item_id,unlocked_at FROM game_items WHERE user_id=?
             ON CONFLICT(user_id,item_id) DO UPDATE SET unlocked_at=LEAST(game_items.unlocked_at,EXCLUDED.unlocked_at)
         """,id,s.other)
+        mergeProgressionRewards(c,id,s.other)
         recordMergedAchievements(c,id,awardTime)
         tombstone(c,s.other)
         saveReceipt(c,"merge",previewHash,id,sessionHash,browserHash)
@@ -417,7 +481,9 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         if (receipt(c,"delete",requestHash,sessionHash,browserHash)) return@tx
         val id=lockAccountGraph(c,sessionHash)
         proof(c,id,sessionHash,browserHash,"delete","current") ?: proofRequired()
+        cancelEconomyMarketListings(c, id)
         c.update("DELETE FROM player_feedback WHERE user_id=?",id)
+        cancelEconomyBarterOffers(c, id)
         clearCapabilities(c,id);closeSocial(c,id,true);tombstone(c,id)
         saveReceipt(c,"delete",requestHash,id,sessionHash,browserHash)
         Unit

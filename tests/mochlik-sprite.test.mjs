@@ -5,7 +5,7 @@ import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, server: { middlewareMode: true, hmr: false } });
-const { pixelSprite } = await vite.ssrLoadModule("/features/mochlik/pixel-sprite.ts");
+const { pixelSprite, pixelSpriteContact } = await vite.ssrLoadModule("/features/mochlik/pixel-sprite.ts");
 const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
 globalThis.document = {
   createElement(tag) {
@@ -64,6 +64,39 @@ test("headwear follows bending and stretching, and every pose stays a finite ras
   }
 });
 
+test("new outfits preserve the face, planted feet and individual front/back details", () => {
+  const outfits = [
+    { palette: "ember", head: "acorn_cap", neck: "forest_bandana" },
+    { palette: "heather", head: "knitted_cap", neck: "river_scarf" },
+    { palette: "frost", head: "moon_crown", neck: "moon_scarf" },
+  ];
+  for (const outfit of outfits) for (const direction of ["front", "back", "left", "right"]) {
+    for (const pose of ["idle", "walk", "stretch", "reach", "hold", "chew", "fish", "sleep"]) for (let frame = 0; frame < 4; frame++) {
+      const plain = pixelSprite(pose, direction, frame, { palette: outfit.palette, head: null, neck: null });
+      const dressed = pixelSprite(pose, direction, frame, outfit);
+      assert.deepEqual(pixelSpriteContact(dressed), pixelSpriteContact(plain), "clothing cannot move the contact shadow or planted feet");
+      const eyes = sprite => [...sprite.pixels].filter(([, color]) => color === "#30291d");
+      assert.deepEqual(eyes(dressed), eyes(plain), "headwear cannot cover either eye in a bend or turn");
+      if (pose === "sleep") assert.deepEqual(dressed.pixels, plain.pixels, "rest keeps the existing folded, uncluttered silhouette");
+      else assert.notDeepEqual(dressed.pixels, plain.pixels);
+    }
+  }
+  const moon = { palette: "frost", head: "moon_crown", neck: null };
+  const front = pixelSprite("idle", "front", 0, moon), back = pixelSprite("idle", "back", 0, moon);
+  assert.ok([...front.pixels.values()].includes("#eee0ad"));
+  assert.ok(![...back.pixels.values()].includes("#eee0ad"), "the front crescent does not show through the rear wreath");
+});
+
+test("body and interaction painters share a safe palette for every new moss colour", async () => {
+  const { mossPalette } = await vite.ssrLoadModule("/features/mochlik/appearance-palette.ts");
+  for (const id of ["moss", "fern", "autumn", "heather", "frost", "ember"]) {
+    const palette = mossPalette(id);
+    const sprite = pixelSprite("idle", "back", 0, { palette: id, head: null, neck: null });
+    for (const color of Object.values(palette)) assert.ok([...sprite.pixels.values()].includes(color));
+  }
+  for (const id of [undefined, "unknown", "constructor", "__proto__"]) assert.equal(mossPalette(id), mossPalette("moss"));
+});
+
 test("sprite cache is bounded, reuses hot frames and normalizes frame input", () => {
   const first = pixelSprite("idle", "front", 0);
   assert.equal(first, pixelSprite("idle", "front", 4));
@@ -93,4 +126,50 @@ test("sleep stays rounded and breathing keeps the face and paws grounded", () =>
     assert.equal(sleeping.get("15:31"), "#30291d", "closed eye stays on the cheek through a breath");
   }
   assert.notDeepEqual(pixelSprite("sleep", "front", 1).pixels, base, "only the curled back expands");
+});
+
+test('the garden rig keeps a calm cached body and fixed feet while external arms own the action', () => {
+  const normal = pixelSprite('idle', 'left', 0), garden = pixelSprite('idle', 'left', 0, undefined, { gardening: true });
+  assert.notEqual(normal, garden);
+  assert.equal(pixelSprite('idle', 'left', 0, undefined, { gardening: true }), garden);
+  assert.equal(pixelSprite('idle', 'left', 0), normal, 'garden overrides cannot poison the ordinary pose cache');
+  const feet = sprite => [...sprite.pixels].filter(([point]) => Number(point.split(':')[1]) >= 40);
+  assert.deepEqual(feet(garden), feet(normal));
+  const eyes = sprite => [...sprite.pixels].filter(([point, color]) => color === '#30291d'
+    && Number(point.split(':')[1]) <= 24);
+  assert.deepEqual(eyes(garden), eyes(normal), 'external garden arms preserve the normal eye shape and gaze');
+  assert.equal(normal.pixels.get('11:32'), '#d8bf83');
+  assert.equal(garden.pixels.get('11:32'), '#f4e4ae', 'external arm replaces the cached arm, exposing the original cream torso');
+});
+
+test("a fishing lean turns the gaze and torso while both planted paws retain their exact contact", () => {
+  for (const direction of ["left", "right", "front", "back"]) for (const crouch of [0, 1, 3]) {
+    const ordinary = pixelSprite("fish", direction, 0, undefined, { gardening: true, crouch });
+    const sole = sprite => [...sprite.pixels].filter(([point]) => Number(point.split(":")[1]) >= 44)
+      .sort(([a], [b]) => a.localeCompare(b));
+    for (const lean of [-3, -2, 0, 2, 3]) {
+      const fishing = pixelSprite("fish", direction, 0, undefined, { gardening: true, crouch, lean, fishingStance: true });
+      assert.deepEqual(sole(fishing), sole(ordinary), "casting cannot translate the toes across the shore");
+      assert.deepEqual(pixelSpriteContact(fishing), pixelSpriteContact(ordinary), "the shadow shares the same opaque sole");
+      assert.notEqual(fishing, ordinary, "the fishing pose must not reuse or poison the ordinary sprite");
+      assert.equal(fishing, pixelSprite("fish", direction, 0, undefined, { gardening: true, crouch, lean, fishingStance: true }));
+    }
+    assert.equal(pixelSprite("fish", direction, 0, undefined, { gardening: true, crouch }), ordinary);
+  }
+});
+
+test("shore fishing eyes use equal compact rounded glyphs with two-pixel caps instead of isolated cross tips", () => {
+  for (const direction of ["front", "left", "right"]) for (const pose of ["fish", "wonder", "present"]) {
+    const sprite = pixelSprite(pose, direction, 0, undefined, { gardening: true, crouch: 1, fishingStance: true });
+    const eyes = [...sprite.pixels].filter(([, color]) => color === "#30291d").map(([key]) => key.split(":").map(Number));
+    const columns = [...new Set(eyes.map(([x]) => x))].sort((a, b) => a - b);
+    const groups = [columns.filter(x => x < columns[0] + 4), columns.filter(x => x >= columns[0] + 4)];
+    for (const group of groups) {
+      assert.equal(group.length, 3, "each open eye remains three source pixels wide");
+      const rows = new Map();
+      for (const [, y] of eyes.filter(([x]) => group.includes(x))) rows.set(y, (rows.get(y) ?? 0) + 1);
+      assert.equal(rows.size, pose === "wonder" ? 6 : 5);
+      assert.ok([...rows.values()].every(count => count >= 2), "neither cap nor a highlighted interior row has a lone protruding pixel");
+    }
+  }
 });

@@ -1,0 +1,357 @@
+{
+  "catalogVersion": 3,
+  "combinations": 180,
+  "currency": "coins as displayed in the UI; currencyScale is a legacy denomination marker, not a display divisor",
+  "assumptions": [
+    "Each special attempt is one draw; the six-attempt estimate is 1-(1-p)^6, not 6p",
+    "Guaranteed river fish are included in sale revenue; legendary tackle and named hook gates still apply",
+    "Sale revenue uses Pleska's full fish buyback price, excluding orders, meals and player-market demand",
+    "Shop waits assume every six-hour supply is viewed and the offered model can be afforded; no finite guarantee",
+    "Existing paid fishing jobs retain their saved rewards"
+  ],
+  "targets": [
+    {
+      "rarity": "common",
+      "rodId": "reed_rod",
+      "hookId": "bare_hook",
+      "baitId": "crumb_bait",
+      "probabilityPerSpecialAttempt": 0.947490729,
+      "probabilityAtLeastOneInSix": 0.999999979,
+      "expectedAttemptsPerCatch": 1.055419298,
+      "expectedCatchesInSix": 5.684944376
+    },
+    {
+      "rarity": "uncommon",
+      "rodId": "river_rod",
+      "hookId": "barbed_hook",
+      "baitId": "worm_bait",
+      "probabilityPerSpecialAttempt": 0.512773443,
+      "probabilityAtLeastOneInSix": 0.986622169,
+      "expectedAttemptsPerCatch": 1.950178998,
+      "expectedCatchesInSix": 3.076640661
+    },
+    {
+      "rarity": "rare",
+      "rodId": "willow_rod",
+      "hookId": "silver_hook",
+      "baitId": "glow_bait",
+      "probabilityPerSpecialAttempt": 0.389924481,
+      "probabilityAtLeastOneInSix": 0.948441344,
+      "expectedAttemptsPerCatch": 2.564599166,
+      "expectedCatchesInSix": 2.339546888
+    },
+    {
+      "rarity": "epic",
+      "rodId": "tide_rod",
+      "hookId": "tide_hook",
+      "baitId": "firefly_bait",
+      "probabilityPerSpecialAttempt": 0.243855206,
+      "probabilityAtLeastOneInSix": 0.813091179,
+      "expectedAttemptsPerCatch": 4.100794136,
+      "expectedCatchesInSix": 1.463131238
+    },
+    {
+      "rarity": "legendary",
+      "rodId": "starfall_rod",
+      "hookId": "leviathan_hook",
+      "baitId": "firefly_bait",
+      "probabilityPerSpecialAttempt": 0.099861304,
+      "probabilityAtLeastOneInSix": 0.468067418,
+      "expectedAttemptsPerCatch": 10.013888889,
+      "expectedCatchesInSix": 0.599167822
+    }
+  ],
+  "starterRarityProbabilities": {
+    "common": 0.914985498,
+    "uncommon": 0.067998711,
+    "rare": 0.014502095,
+    "epic": 0.002513696,
+    "legendary": 0
+  },
+  "saleEconomics": [
+    {
+      "rodId": "reed_rod",
+      "hookId": "bare_hook",
+      "baitId": null,
+      "routes": [
+        {
+          "routeId": "shore",
+          "specialAttempts": 1,
+          "fishCount": 4,
+          "expectedSaleCoins": 352.345472124,
+          "baitCoins": 0,
+          "netSaleCoins": 352.345472124,
+          "netSaleCoinsPerHour": 469.793962832,
+          "incrementalSaleProfitFromBait": 0
+        },
+        {
+          "routeId": "shore_camp",
+          "specialAttempts": 6,
+          "fishCount": 24,
+          "expectedSaleCoins": 2114.072832743,
+          "baitCoins": 0,
+          "netSaleCoins": 2114.072832743,
+          "netSaleCoinsPerHour": 264.259104093,
+          "incrementalSaleProfitFromBait": 0
+        }
+      ]
+    },
+    {
+      "rodId": "reed_rod",
+      "hookId": "bare_hook",
+      "baitId": "crumb_bait",
+      "routes": [
+        {
+          "routeId": "shore",
+          "specialAttempts": 1,
+          "fishCount": 4,
+          "expectedSaleCoins": 346.981458591,
+          "baitCoins": 30,
+          "netSaleCoins": 316.981458591,
+          "netSaleCoinsPerHour": 422.641944788,
+          "incrementalSaleProfitFromBait": -35.364013533
+        },
+        {
+          "routeId": "shore_camp",
+          "specialAttempts": 6,
+          "fishCount": 24,
+          "expectedSaleCoins": 2081.888751545,
+          "baitCoins": 30,
+          "netSaleCoins": 2051.888751545,
+          "netSaleCoinsPerHour": 256.486093943,
+          "incrementalSaleProfitFromBait": -62.184081197
+        }
+      ]
+    },
+    {
+      "rodId": "river_rod",
+      "hookId": "barbed_hook",
+      "baitId": "worm_bait",
+      "routes": [
+        {
+          "routeId": "shore",
+          "specialAttempts": 1,
+          "fishCount": 4,
+          "expectedSaleCoins": 398.670644026,
+          "baitCoins": 70,
+          "netSaleCoins": 328.670644026,
+          "netSaleCoinsPerHour": 438.227525368,
+          "incrementalSaleProfitFromBait": -61.145497536
+        },
+        {
+          "routeId": "shore_camp",
+          "specialAttempts": 6,
+          "fishCount": 24,
+          "expectedSaleCoins": 2392.023864158,
+          "baitCoins": 70,
+          "netSaleCoins": 2322.023864158,
+          "netSaleCoinsPerHour": 290.25298302,
+          "incrementalSaleProfitFromBait": -16.872985216
+        }
+      ]
+    },
+    {
+      "rodId": "willow_rod",
+      "hookId": "silver_hook",
+      "baitId": "glow_bait",
+      "routes": [
+        {
+          "routeId": "shore",
+          "specialAttempts": 1,
+          "fishCount": 4,
+          "expectedSaleCoins": 465.945894274,
+          "baitCoins": 140,
+          "netSaleCoins": 325.945894274,
+          "netSaleCoinsPerHour": 434.594525699,
+          "incrementalSaleProfitFromBait": -103.087415291
+        },
+        {
+          "routeId": "shore_camp",
+          "specialAttempts": 6,
+          "fishCount": 24,
+          "expectedSaleCoins": 2795.675365644,
+          "baitCoins": 140,
+          "netSaleCoins": 2655.675365644,
+          "netSaleCoinsPerHour": 331.959420705,
+          "incrementalSaleProfitFromBait": 81.475508254
+        }
+      ]
+    },
+    {
+      "rodId": "tide_rod",
+      "hookId": "tide_hook",
+      "baitId": "firefly_bait",
+      "routes": [
+        {
+          "routeId": "shore",
+          "specialAttempts": 1,
+          "fishCount": 4,
+          "expectedSaleCoins": 532.673916282,
+          "baitCoins": 260,
+          "netSaleCoins": 272.673916282,
+          "netSaleCoinsPerHour": 363.565221709,
+          "incrementalSaleProfitFromBait": -195.279024895
+        },
+        {
+          "routeId": "shore_camp",
+          "specialAttempts": 6,
+          "fishCount": 24,
+          "expectedSaleCoins": 3196.043497691,
+          "baitCoins": 260,
+          "netSaleCoins": 2936.043497691,
+          "netSaleCoinsPerHour": 367.005437211,
+          "incrementalSaleProfitFromBait": 128.325850632
+        }
+      ]
+    },
+    {
+      "rodId": "starfall_rod",
+      "hookId": "leviathan_hook",
+      "baitId": "firefly_bait",
+      "routes": [
+        {
+          "routeId": "shore",
+          "specialAttempts": 1,
+          "fishCount": 4,
+          "expectedSaleCoins": 550.374479889,
+          "baitCoins": 260,
+          "netSaleCoins": 290.374479889,
+          "netSaleCoinsPerHour": 387.165973185,
+          "incrementalSaleProfitFromBait": -178.978086364
+        },
+        {
+          "routeId": "shore_camp",
+          "specialAttempts": 6,
+          "fishCount": 24,
+          "expectedSaleCoins": 3302.246879334,
+          "baitCoins": 260,
+          "netSaleCoins": 3042.246879334,
+          "netSaleCoinsPerHour": 380.280859917,
+          "incrementalSaleProfitFromBait": 226.131481817
+        }
+      ]
+    }
+  ],
+  "baitMargins": [
+    {
+      "baitId": "crumb_bait",
+      "priceCoins": 30,
+      "maximum": {
+        "rodId": "reed_rod",
+        "hookId": "bare_hook",
+        "routeId": "shore",
+        "incrementalSaleProfit": -35.364013533,
+        "incrementalSaleProfitPerHour": -47.152018044
+      }
+    },
+    {
+      "baitId": "worm_bait",
+      "priceCoins": 70,
+      "maximum": {
+        "rodId": "river_rod",
+        "hookId": "round_hook",
+        "routeId": "shore_camp",
+        "incrementalSaleProfit": -14.12870784,
+        "incrementalSaleProfitPerHour": -1.76608848
+      }
+    },
+    {
+      "baitId": "glow_bait",
+      "priceCoins": 140,
+      "maximum": {
+        "rodId": "willow_rod",
+        "hookId": "silver_hook",
+        "routeId": "shore_camp",
+        "incrementalSaleProfit": 81.475508254,
+        "incrementalSaleProfitPerHour": 10.184438532
+      }
+    },
+    {
+      "baitId": "firefly_bait",
+      "priceCoins": 260,
+      "maximum": {
+        "rodId": "starfall_rod",
+        "hookId": "leviathan_hook",
+        "routeId": "shore_camp",
+        "incrementalSaleProfit": 226.131481817,
+        "incrementalSaleProfitPerHour": 28.266435227
+      }
+    }
+  ],
+  "incomeRanges": [
+    {
+      "routeId": "shore",
+      "minimumNetSaleCoinsPerHour": 122.841315323,
+      "maximumNetSaleCoinsPerHour": 625.803421671,
+      "starterNetSaleCoinsPerHour": 469.793962832
+    },
+    {
+      "routeId": "shore_camp",
+      "minimumNetSaleCoinsPerHour": 231.598239869,
+      "maximumNetSaleCoinsPerHour": 380.280859917,
+      "starterNetSaleCoinsPerHour": 264.259104093
+    }
+  ],
+  "shop": [
+    {
+      "homeLevel": 1,
+      "rarityProbabilities": {
+        "common": 0,
+        "uncommon": 1,
+        "rare": 0,
+        "epic": 0,
+        "legendary": 0
+      },
+      "expectedDaysPerLegendaryModel": null,
+      "expectedDaysForBothLegendaryModels": null
+    },
+    {
+      "homeLevel": 2,
+      "rarityProbabilities": {
+        "common": 0,
+        "uncommon": 0.8,
+        "rare": 0.2,
+        "epic": 0,
+        "legendary": 0
+      },
+      "expectedDaysPerLegendaryModel": null,
+      "expectedDaysForBothLegendaryModels": null
+    },
+    {
+      "homeLevel": 3,
+      "rarityProbabilities": {
+        "common": 0,
+        "uncommon": 0.65,
+        "rare": 0.25,
+        "epic": 0.1,
+        "legendary": 0
+      },
+      "expectedDaysPerLegendaryModel": null,
+      "expectedDaysForBothLegendaryModels": null
+    },
+    {
+      "homeLevel": 4,
+      "rarityProbabilities": {
+        "common": 0,
+        "uncommon": 0.5,
+        "rare": 0.3,
+        "epic": 0.16,
+        "legendary": 0.04
+      },
+      "expectedDaysPerLegendaryModel": 6.25,
+      "expectedDaysForBothLegendaryModels": 9.31122449
+    },
+    {
+      "homeLevel": 5,
+      "rarityProbabilities": {
+        "common": 0,
+        "uncommon": 0.42,
+        "rare": 0.3,
+        "epic": 0.2,
+        "legendary": 0.08
+      },
+      "expectedDaysPerLegendaryModel": 3.125,
+      "expectedDaysForBothLegendaryModels": 4.622395833
+    }
+  ]
+}

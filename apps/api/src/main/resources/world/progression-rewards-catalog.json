@@ -1,0 +1,356 @@
+{
+  "version": 1,
+  "dailyMinimumHours": 20,
+  "daily": [
+    {
+      "coins": 600,
+      "pearls": 0,
+      "items": {
+        "wood": 12,
+        "stone": 8
+      }
+    },
+    {
+      "coins": 600,
+      "pearls": 0,
+      "items": {
+        "fiber": 10,
+        "berries": 10
+      }
+    },
+    {
+      "coins": 500,
+      "pearls": 50,
+      "items": {
+        "planks": 3,
+        "rope": 2
+      }
+    },
+    {
+      "coins": 800,
+      "pearls": 0,
+      "items": {
+        "stone": 12,
+        "fish": 6
+      }
+    },
+    {
+      "coins": 800,
+      "pearls": 0,
+      "items": {
+        "wood": 16,
+        "fiber": 12
+      }
+    },
+    {
+      "coins": 700,
+      "pearls": 100,
+      "items": {
+        "planks": 5,
+        "rope": 3
+      }
+    },
+    {
+      "coins": 1500,
+      "pearls": 300,
+      "items": {
+        "ancient_core": 1,
+        "planks": 4,
+        "rope": 2
+      }
+    }
+  ],
+  "achievementPearls": {
+    "seven_day_streak": [
+      100
+    ],
+    "thousand_taps": [
+      50
+    ],
+    "five_friends": [
+      50
+    ],
+    "ten_thousand_series": [
+      150
+    ],
+    "linked_email": [
+      50
+    ],
+    "saved_recovery_code": [
+      50
+    ],
+    "full_collection": [
+      0
+    ],
+    "first_path": [
+      50
+    ],
+    "familiar_trails": [
+      100
+    ],
+    "explorer": [
+      50,
+      100,
+      200
+    ],
+    "master_recipes": [
+      100,
+      150
+    ],
+    "home_builder": [
+      50,
+      100,
+      200,
+      300
+    ],
+    "river_atlas": [
+      150
+    ],
+    "first_sale": [
+      50
+    ],
+    "lucky_find": [
+      100
+    ]
+  },
+  "currencyScale": 10,
+  "pearlScale": 50,
+  "dailyByHomeLevel": {
+    "2": [
+      {
+        "coins": 1200,
+        "pearls": 0,
+        "items": {
+          "wood": 16,
+          "stone": 12
+        }
+      },
+      {
+        "coins": 1200,
+        "pearls": 0,
+        "items": {
+          "fiber": 16,
+          "berries": 16
+        }
+      },
+      {
+        "coins": 1000,
+        "pearls": 50,
+        "items": {
+          "planks": 4,
+          "rope": 3
+        }
+      },
+      {
+        "coins": 1600,
+        "pearls": 0,
+        "items": {
+          "bricks": 8,
+          "iron_ingot": 2
+        }
+      },
+      {
+        "coins": 1600,
+        "pearls": 0,
+        "items": {
+          "wood": 20,
+          "fiber": 20
+        }
+      },
+      {
+        "coins": 1400,
+        "pearls": 100,
+        "items": {
+          "cloth": 2,
+          "metal_parts": 2
+        }
+      },
+      {
+        "coins": 3000,
+        "pearls": 300,
+        "items": {
+          "ancient_core": 1,
+          "planks": 4,
+          "rope": 2
+        }
+      }
+    ],
+    "3": [
+      {
+        "coins": 2400,
+        "pearls": 0,
+        "items": {
+          "hardwood": 8,
+          "stone": 12
+        }
+      },
+      {
+        "coins": 2400,
+        "pearls": 0,
+        "items": {
+          "fiber": 20,
+          "berries": 20
+        }
+      },
+      {
+        "coins": 2000,
+        "pearls": 50,
+        "items": {
+          "planks": 6,
+          "rope": 6
+        }
+      },
+      {
+        "coins": 3200,
+        "pearls": 0,
+        "items": {
+          "bricks": 8,
+          "iron_ingot": 4
+        }
+      },
+      {
+        "coins": 3200,
+        "pearls": 0,
+        "items": {
+          "glass": 2,
+          "cloth": 2
+        }
+      },
+      {
+        "coins": 2800,
+        "pearls": 100,
+        "items": {
+          "beams": 2,
+          "cut_stone": 2
+        }
+      },
+      {
+        "coins": 6000,
+        "pearls": 300,
+        "items": {
+          "ancient_core": 1,
+          "rope": 4,
+          "planks": 2
+        }
+      }
+    ],
+    "4": [
+      {
+        "coins": 4800,
+        "pearls": 0,
+        "items": {
+          "hardwood": 12,
+          "resin": 6
+        }
+      },
+      {
+        "coins": 4800,
+        "pearls": 0,
+        "items": {
+          "fiber": 24,
+          "berries": 24
+        }
+      },
+      {
+        "coins": 4000,
+        "pearls": 50,
+        "items": {
+          "beams": 3,
+          "cut_stone": 4
+        }
+      },
+      {
+        "coins": 6400,
+        "pearls": 0,
+        "items": {
+          "bricks": 8,
+          "iron_ingot": 4
+        }
+      },
+      {
+        "coins": 6400,
+        "pearls": 0,
+        "items": {
+          "glass": 4,
+          "cloth": 3
+        }
+      },
+      {
+        "coins": 5600,
+        "pearls": 100,
+        "items": {
+          "tools": 1,
+          "rope": 6
+        }
+      },
+      {
+        "coins": 12000,
+        "pearls": 300,
+        "items": {
+          "ancient_core": 1,
+          "tools": 1,
+          "reinforced_parts": 1
+        }
+      }
+    ],
+    "5": [
+      {
+        "coins": 7200,
+        "pearls": 0,
+        "items": {
+          "hardwood": 16,
+          "resin": 8
+        }
+      },
+      {
+        "coins": 7200,
+        "pearls": 0,
+        "items": {
+          "fiber": 28,
+          "berries": 28
+        }
+      },
+      {
+        "coins": 6000,
+        "pearls": 50,
+        "items": {
+          "beams": 4,
+          "cut_stone": 4
+        }
+      },
+      {
+        "coins": 9600,
+        "pearls": 0,
+        "items": {
+          "bricks": 12,
+          "iron_ingot": 6
+        }
+      },
+      {
+        "coins": 9600,
+        "pearls": 0,
+        "items": {
+          "glass": 4,
+          "cloth": 3
+        }
+      },
+      {
+        "coins": 8400,
+        "pearls": 100,
+        "items": {
+          "tools": 2,
+          "rope": 8
+        }
+      },
+      {
+        "coins": 18000,
+        "pearls": 300,
+        "items": {
+          "ancient_core": 1,
+          "reinforced_parts": 1,
+          "beams": 1
+        }
+      }
+    ]
+  }
+}

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ApiError } from "@/lib/check-in-api";
+import { hasUserTextControls } from "@/lib/user-text";
 
 export const FEEDBACK_MIN_LENGTH = 10;
 export const FEEDBACK_MAX_LENGTH = 3000;
@@ -14,7 +15,7 @@ export const feedbackRequestSchema = z.object({
   category: feedbackCategorySchema,
   message: z.string().transform(value => value.replace(/\r\n?/g, "\n").trim())
     .refine(value => feedbackMessageLength(value) >= FEEDBACK_MIN_LENGTH && feedbackMessageLength(value) <= FEEDBACK_MAX_LENGTH)
-    .refine(value => !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(value), "Удалите управляющие символы"),
+    .refine(value => !hasUserTextControls(value, true), "Удалите управляющие символы"),
 }).strict();
 const instant = z.string().datetime();
 export const feedbackAvailabilitySchema = z.object({ serverTime: instant, canSubmit: z.boolean(), nextAllowedAt: instant.nullable() });

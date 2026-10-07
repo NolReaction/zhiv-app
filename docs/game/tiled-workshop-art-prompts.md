@@ -1,8 +1,10 @@
 # Workshop forest patch artwork
 
+> Historical artwork record. These workshop patches are not placed in the current forest and their former files are no longer in the working tree. Recover them from Git history only if intentionally reusing this concept. For a new building, use the current [building workbench](building-workbench.md) and [artwork guide](../../art/README.md).
+
 This document records the original generation of two workshop stages. The original map was not modified. Dimensions, hashes, and prompts below describe the historical full-resolution source plates.
 
-## Current editable files
+## Editable files at the time of the prototype
 
 Edit `art/world/prototype/workshop-empty.png`, `workshop-level-1.png`, or `workshop-level-2.png`. Each is a ready 664 × 600 patch with its final border. Export the entire PNG to the same-named WebP in `public/world/prototype/`, then run `npm run world:export` and `npm run world:check`. These commands update/check Tiled metadata and image URLs without modifying image bytes. Proportional resolution changes preserve the world footprint; preserve the doorway and matching outer edge. See the [artwork guide](../../art/README.md).
 
@@ -40,4 +42,4 @@ Use case: precise-object-edit. Asset type: in-game environment patch, workshop l
 
 ## Historical visual review and integration limits
 
-Both stages have a compact readable silhouette, a consistent moss-and-timber palette, a stable front entrance, and a visibly larger second stage with sheltered workbench, saw, logs, and second lit window. Neither contains text, characters, labels, or UI. The building remains comfortably inside the crop. The generated source preserves recognizable framing but re-synthesizes ground and foliage pixels, especially in level 2; it must not be assumed to be pixel-identical to the source map along the border. The previous preparation recipe preserved the original outer pixels and blended them into the interior. Those prepared borders are already included in the current editable PNGs; the Tiled exporter no longer performs image processing. After manual edits, check the whole patch against `forest-ground.png` at native world scale.
+Both stages have a compact readable silhouette, a consistent moss-and-timber palette, a stable front entrance, and a visibly larger second stage with sheltered workbench, saw, logs, and second lit window. Neither contains text, characters, labels, or UI. The building remains comfortably inside the crop. The generated source preserves recognizable framing but re-synthesizes ground and foliage pixels, especially in level 2; it must not be assumed to be pixel-identical to the source map along the border. The previous preparation recipe preserved the original outer pixels and blended them into the interior. Those prepared borders are already included in the current editable PNGs; the Tiled exporter no longer performs image processing. After manual edits, check the whole patch against `forest-ground.jpg` at native world scale.

@@ -37,7 +37,10 @@ internal val worldJson = Json { encodeDefaults = true; ignoreUnknownKeys = true 
 )
 @Serializable data class WorldResult(val snapshot: WorldSnapshot, val message: String, val replayed: Boolean = false)
 @Serializable data class WorldCost(val sparks: Long, val wood: Long = 0, val stone: Long = 0, val level: Int = 0)
-@Serializable data class WorldItem(val id: String, val name: String, val slot: String, val color: String, val sparks: Long, val starter: Boolean)
+@Serializable data class WorldPurchase(val currency: String, val amount: Long) {
+    init { require(currency in setOf("coins", "pearls") && amount > 0 && amount % (if (currency == "pearls") 50 else 10) == 0L) }
+}
+@Serializable data class WorldItem(val id: String, val name: String, val slot: String, val color: String, val sparks: Long, val starter: Boolean, val purchase: WorldPurchase? = null)
 @Serializable data class WorldFind(val id: String, val name: String, val description: String, val symbol: String, val group: String = "forest")
 @Serializable data class WorldRoute(val id: String, val name: String, val description: String, val seconds: Long, val houseLevel: Int,
     val once: Boolean, val sparks: Long, val wood: Long, val stone: Long, val finds: List<String>)

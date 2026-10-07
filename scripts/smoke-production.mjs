@@ -1,15 +1,26 @@
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
 import { request } from "node:https";
+import { readFileSync } from "node:fs";
 
 // Creates disposable profiles ONLY in the CI Compose stack, never a live deployment.
 assert.equal(process.env.CI, "true", "Run only against the isolated CI stack");
 const origin = "https://localhost";
+const presenceByCookie = new Map();
+async function resumePresence(cookie) {
+  const presenceId = randomUUID();
+  const result = await api("POST", "/api/v1/presence", { cookie, body: { kind: "resume", presenceId, sequence: 0, active: true } });
+  assert.equal(result.data.status, "active");
+  presenceByCookie.set(cookie, presenceId);
+  return presenceId;
+}
+const economyCatalog = JSON.parse(readFileSync(new URL("../apps/api/src/main/resources/world/economy-catalog.json", import.meta.url), "utf8"));
 async function api(method, path, { cookie, body, expected = 200, key = randomUUID(), source = origin } = {}) {
   const payload = body === undefined ? undefined : JSON.stringify(body);
   const result = await new Promise((resolve, reject) => {
     const headers = { Origin: source, "Idempotency-Key": key };
     if (cookie) headers.Cookie = cookie;
+    if (presenceByCookie.has(cookie)) headers["X-Game-Presence"] = presenceByCookie.get(cookie);
     if (payload !== undefined) {
       headers["Content-Type"] = "application/json";
       headers["Content-Length"] = Buffer.byteLength(payload);
@@ -90,6 +101,12 @@ await api("DELETE", "/api/v1/people/" + guestOne.data.person.circleId, { cookie:
 await api("POST", "/api/v1/direct-invite-links/redeem", { cookie: guestA.cookie, key: receiptKey, body: { token: multiToken }, expected: 409 });
 await api("DELETE", "/api/v1/people/" + guestTwo.data.person.circleId, { cookie: owner.cookie, expected: 204 });
 
+// An authenticated account alone is not an active gameplay session.
+const inactive = await api("POST", "/api/v1/game/sessions", { cookie: owner.cookie, expected: 409,
+  body: { ownerPublicId: owner.data.user.publicId, requestId: randomUUID() } });
+assert.equal(inactive.data.code, "GAME_SESSION_INACTIVE");
+const ownerPresence = await resumePresence(owner.cookie);
+await resumePresence(friend.cookie);
 // World enrollment, commands and ledger writes use the restricted runtime role.
 await api("GET", "/api/v1/world", { expected: 401 });
 const worldBefore = await api("GET", "/api/v1/world", { cookie: owner.cookie });
@@ -108,6 +125,106 @@ assert.equal(equipped.data.snapshot.state.equipment.neck, "amber_scarf");
 assert.equal((await api("POST", "/api/v1/world/commands", { cookie: owner.cookie, body: outfit })).data.replayed, true);
 await api("POST", "/api/v1/world/commands", { cookie: friend.cookie, body: outfit, expected: 409 });
 await api("POST", "/api/v1/world/commands", { cookie: owner.cookie, body: { ...outfit, requestId: randomUUID() }, source: "https://untrusted.example", expected: 403 });
+
+// Cosmetic memory has independent revisions and requires grants on both V31 tables.
+const forestPath = "/api/v1/world/forest-memory";
+const forestOwner = owner.data.user.publicId;
+const forestClientA = randomUUID(), forestClientB = randomUUID();
+const forestReadPath = (clientId, publicId = forestOwner) => forestPath + "?" + new URLSearchParams({
+  expectedOwnerPublicId: publicId, clientId,
+});
+const forestCommand = (clientId, expectedRevision, action, fields = {}) => ({
+  ownerPublicId: forestOwner, clientId, requestId: randomUUID(), expectedRevision, action, ...fields,
+});
+const forestWrite = (body, options = {}) => api("POST", forestPath + "/commands", { cookie: owner.cookie, body, ...options });
+const forestSnapshot = {
+  version: 1, sceneId: "ci-forest", fingerprint: "ci-geometry-v1",
+  mind: { elapsed: 20, needs: { energy: 0.7, curiosity: 0.6, comfort: 0.8, attention: 0.4 },
+    recent: [{ key: "grass-1-1", action: "look", outcome: "completed", at: 15, duration: 2 }], attentionUntil: 30 },
+  hero: { position: { x: 100, y: 120 }, sleepingHome: false, awakeFor: 10, restFor: 0,
+    recent: [{ id: "grass-1-1", activity: "look", age: 5 }] },
+  // Exercise a supported snapshot beyond the ordinary 16 KB edge budget. This
+  // passes through real Caddy, so a missing/overlapping memory exception fails CI.
+  mushrooms: Array.from({ length: 128 }, (_, index) => ({ id: `ci-mushroom:${index}`,
+    position: { x: 130.1234567890123 + index, y: 140.1234567890123 + index },
+    growth: .123456789012345, regrowIn: 8.123456789012345 })),
+};
+assert.ok(Buffer.byteLength(JSON.stringify(forestSnapshot)) <= 32_768, "Forest snapshot must fit its own API cap");
+await api("GET", forestReadPath(forestClientA), { expected: 401 });
+const forestBefore = await api("GET", forestReadPath(forestClientA), { cookie: owner.cookie });
+assert.equal(forestBefore.headers["cache-control"], "no-store");
+assert.equal(forestBefore.data.ownerPublicId, forestOwner);
+assert.equal(forestBefore.data.revision, 0);
+assert.equal(forestBefore.data.snapshot, null);
+assert.deepEqual(forestBefore.data.lease, { owned: false, expiresAt: null, token: null });
+assert.equal((await api("GET", forestReadPath(forestClientA), { cookie: friend.cookie, expected: 409 })).data.code,
+  "FOREST_MEMORY_ACCOUNT_CHANGED");
+const forestAcquireA = forestCommand(forestClientA, 0, "acquire");
+await forestWrite(forestAcquireA, { cookie: undefined, expected: 401 });
+await forestWrite(forestAcquireA, { source: "https://untrusted.invalid", expected: 403 });
+assert.equal((await forestWrite(forestAcquireA, { cookie: friend.cookie, expected: 409 })).data.code,
+  "FOREST_MEMORY_ACCOUNT_CHANGED");
+const forestLeaseA = (await forestWrite(forestAcquireA)).data;
+assert.equal(forestLeaseA.acceptedRevision, 1);
+assert.equal(forestLeaseA.state.lease.owned, true);
+assert.ok(forestLeaseA.state.lease.token);
+const forestSaveA = forestCommand(forestClientA, 1, "save", {
+  leaseToken: forestLeaseA.state.lease.token, snapshot: forestSnapshot,
+});
+assert.ok(Buffer.byteLength(JSON.stringify(forestSaveA)) > 16_384, "Save must exceed the former generic edge budget");
+assert.ok(Buffer.byteLength(JSON.stringify(forestSaveA)) <= 65_536, "Save must fit the memory command budget");
+const forestSavedA = await forestWrite(forestSaveA);
+assert.equal(forestSavedA.headers["cache-control"], "no-store");
+assert.equal(forestSavedA.data.acceptedRevision, 2);
+assert.deepEqual(forestSavedA.data.state.snapshot, forestSnapshot);
+const forestReplayA = (await forestWrite(forestSaveA)).data;
+assert.equal(forestReplayA.replayed, true);
+assert.equal(forestReplayA.acceptedRevision, 2);
+assert.equal(forestReplayA.state.revision, 2);
+assert.equal(forestReplayA.state.lease.expiresAt, forestSavedA.data.state.lease.expiresAt);
+assert.equal((await forestWrite({ ...forestSaveA, snapshot: { ...forestSnapshot, fingerprint: "changed" } }, { expected: 409 })).data.code,
+  "FOREST_MEMORY_REQUEST_CONFLICT");
+assert.equal((await forestWrite({ ...forestSaveA, requestId: randomUUID() }, { expected: 409 })).data.code,
+  "FOREST_MEMORY_REVISION_CONFLICT");
+await forestWrite({ ...forestSaveA, requestId: randomUUID(), expectedRevision: 2,
+  snapshot: { ...forestSnapshot, resources: { sparks: 999999 } } }, { expected: 400 });
+const forestAcquireB = forestCommand(forestClientB, 2, "acquire");
+assert.equal((await forestWrite(forestAcquireB, { expected: 409 })).data.code, "FOREST_MEMORY_ACTIVE_ELSEWHERE");
+const forestLeaseB = (await forestWrite({ ...forestAcquireB, requestId: randomUUID(), takeover: true })).data;
+assert.equal(forestLeaseB.state.revision, 3);
+assert.equal(forestLeaseB.state.lease.owned, true);
+assert.notEqual(forestLeaseB.state.lease.token, forestLeaseA.state.lease.token);
+assert.deepEqual(forestLeaseB.state.snapshot, forestSnapshot);
+const forestOldReader = (await api("GET", forestReadPath(forestClientA), { cookie: owner.cookie })).data;
+assert.equal(forestOldReader.lease.owned, false);
+assert.equal(forestOldReader.lease.token, null);
+assert.deepEqual(forestOldReader.snapshot, forestSnapshot);
+assert.equal((await forestWrite({ ...forestSaveA, requestId: randomUUID(), expectedRevision: 3 }, { expected: 409 })).data.code,
+  "FOREST_MEMORY_LEASE_LOST");
+const forestDelayedReplay = (await forestWrite(forestSaveA)).data;
+assert.equal(forestDelayedReplay.replayed, true);
+assert.equal(forestDelayedReplay.acceptedRevision, 2);
+assert.equal(forestDelayedReplay.state.revision, 3);
+assert.equal(forestDelayedReplay.state.lease.owned, false);
+assert.equal(forestDelayedReplay.state.lease.token, null);
+const forestSnapshotB = { ...forestSnapshot, mind: { ...forestSnapshot.mind,
+  needs: { ...forestSnapshot.mind.needs, energy: 0.9 } } };
+const forestSavedB = (await forestWrite(forestCommand(forestClientB, 3, "save", {
+  leaseToken: forestLeaseB.state.lease.token, snapshot: forestSnapshotB,
+}))).data;
+assert.equal(forestSavedB.state.revision, 4);
+const forestReleased = (await forestWrite(forestCommand(forestClientB, 4, "release", {
+  leaseToken: forestLeaseB.state.lease.token,
+}))).data;
+assert.equal(forestReleased.state.revision, 5);
+assert.deepEqual(forestReleased.state.lease, { owned: false, expiresAt: null, token: null });
+assert.deepEqual(forestReleased.state.snapshot, forestSnapshotB);
+assert.equal((await forestWrite(forestCommand(forestClientB, 5, "save", {
+  leaseToken: forestLeaseB.state.lease.token, snapshot: forestSnapshot,
+}), { expected: 409 })).data.code, "FOREST_MEMORY_LEASE_LOST");
+const worldAfterForest = (await api("GET", "/api/v1/world", { cookie: owner.cookie })).data;
+assert.equal(worldAfterForest.revision, equipped.data.snapshot.revision);
+assert.deepEqual(worldAfterForest.state, equipped.data.snapshot.state);
 
 // The online game has a separate score and must work under the runtime DB role.
 await api("GET", "/api/v1/game/progress", { expected: 401 });
@@ -128,11 +245,40 @@ const gameReplay = await api("POST", "/api/v1/game/batches", { cookie: owner.coo
 assert.equal(gameReplay.data.replayed, true);
 assert.equal(gameReplay.data.runTaps, 7);
 const worldEarned = await api("GET", "/api/v1/world", { cookie: owner.cookie });
-assert.equal(worldEarned.data.state.resources.sparks, 1);
+assert.equal(worldEarned.data.state.resources.sparks, 0);
 const travel = { requestId: randomUUID(), ownerPublicId: owner.data.user.publicId, expectedRevision: worldEarned.data.revision, action: "start_journey", target: "first_path" };
-const travelling = await api("POST", "/api/v1/world/commands", { cookie: owner.cookie, body: travel });
-assert.equal(travelling.data.snapshot.state.journeys.length, 1);
-assert.equal((await api("POST", "/api/v1/world/commands", { cookie: owner.cookie, body: travel })).data.replayed, true);
+await api("POST", "/api/v1/world/commands", { cookie: owner.cookie, body: travel, expected: 409 });
+// The current economy must work under the restricted runtime role, including immutable command receipts.
+await api("GET", "/api/v1/economy", { expected: 401 });
+const economyBefore = await api("GET", "/api/v1/economy", { cookie: owner.cookie });
+assert.equal(economyBefore.headers["cache-control"], "no-store");
+assert.deepEqual(economyBefore.data.wallet, { coins: 0, pearls: 0 });
+assert.equal(economyBefore.data.buildings.garden, 1);
+assert.equal(economyBefore.data.buildings.warehouse, 1);
+assert.equal(economyBefore.data.buildings.kiln, 0);
+assert.equal(economyBefore.data.catalog.version, economyCatalog.version, "The running API must serve the checked-in economy catalog version");
+const warehouse = economyBefore.data.catalog.buildings.find(building => building.id === "warehouse");
+assert.deepEqual(economyBefore.data.storage, { capacity: warehouse.levels[0].warehouseCapacity, used: 0, reserved: 0, available: warehouse.levels[0].warehouseCapacity, overflow: 0 });
+const expedition = { requestId: randomUUID(), ownerPublicId: owner.data.user.publicId,
+  expectedRevision: economyBefore.data.revision, action: "start_exploration", targetId: "forest", quantity: 1, totalPrice: 0 };
+const exploring = await api("POST", "/api/v1/economy/commands", { cookie: owner.cookie, body: expedition });
+assert.equal(exploring.data.state.jobs.length, 1);
+assert.equal(exploring.data.state.jobs[0].kind, "exploration");
+assert.equal((await api("POST", "/api/v1/economy/commands", { cookie: owner.cookie, body: expedition })).data.replayed, true);
+await api("POST", "/api/v1/economy/commands", { cookie: friend.cookie, body: expedition, expected: 409 });
+await api("POST", "/api/v1/economy/commands", { cookie: owner.cookie, body: { ...expedition, requestId: randomUUID() }, source: "https://untrusted.example", expected: 403 });
+// Suspension fences even a replayed successful game command; login and timers survive.
+assert.equal((await api("POST", "/api/v1/presence", { cookie: owner.cookie,
+  body: { kind: "suspend", presenceId: ownerPresence, sequence: 1, active: false } })).data.status, "suspended");
+assert.equal((await api("POST", "/api/v1/economy/commands", { cookie: owner.cookie, body: expedition, expected: 409 })).data.code, "GAME_SESSION_INACTIVE");
+assert.notEqual((await api("POST", "/api/v1/presence", { cookie: owner.cookie,
+  body: { kind: "resume", presenceId: ownerPresence, sequence: 0, active: true } })).data.status, "active");
+await api("GET", "/api/v1/me", { cookie: owner.cookie });
+await resumePresence(owner.cookie);
+assert.equal((await api("POST", "/api/v1/economy/commands", { cookie: owner.cookie, body: expedition })).data.replayed, true);
+const market = await api("GET", "/api/v1/economy/market", { cookie: owner.cookie });
+assert.equal(market.headers["cache-control"], "no-store");
+assert.deepEqual(market.data.listings, []);
 assert.equal(gameReplay.data.progress.lifetimeTaps, 7);
 await api("POST", "/api/v1/game/batches", { cookie: owner.cookie, body: { ...gameBatch, tapCount: 8 }, expected: 409 });
 await api("POST", "/api/v1/game/batches", { cookie: owner.cookie, body: { ...gameBatch, sequence: 2, lifetimeTaps: 999999 }, expected: 400 });
@@ -237,6 +383,11 @@ const restored = await api("POST", "/api/v1/recovery-code/redeem", { body: { cod
 assert.equal(restored.data.user.publicId, owner.data.user.publicId);
 assert.ok(restored.cookie, "Restored session missing");
 await api("GET", "/api/v1/me", { cookie: owner.cookie, expected: 401 });
+await api("GET", forestReadPath(forestClientA), { cookie: owner.cookie, expected: 401 });
+const recoveredForest = (await api("GET", forestReadPath(randomUUID()), { cookie: restored.cookie })).data;
+assert.deepEqual(recoveredForest.snapshot, forestSnapshotB, "Account recovery must preserve the last forest snapshot");
+assert.equal(recoveredForest.lease.owned, false);
+assert.equal(recoveredForest.lease.token, null);
 const replay = await api("POST", "/api/v1/recovery-code/redeem", { body: { code, retrySecret } });
 assert.ok(replay.cookie === restored.cookie, "Lost response must return the same session");
 await api("POST", "/api/v1/recovery-code/redeem", {
@@ -248,4 +399,4 @@ await api("PUT", "/api/v1/recovery-code", { cookie: restored.cookie, body: { cod
 await api("DELETE", "/api/v1/people/" + circle, { cookie: restored.cookie, expected: 204 });
 await api("DELETE", "/api/v1/groups/" + group, { cookie: restored.cookie, expected: 204 });
 await api("POST", "/api/v1/account-recovery/attempts", { expected: 404 });
-console.log("Production smoke passed: secure cookies, relations/groups, privacy/status/nicknames, code recovery, revocation, retirement.");
+console.log("Production smoke passed: secure cookies, relations/groups, privacy/status/nicknames, forest memory/leases/replays, code recovery, revocation, retirement.");

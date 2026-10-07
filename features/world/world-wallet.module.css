@@ -1,0 +1,12 @@
+.wallet { position: relative; display: grid; gap: 4px; margin: 0; padding: 7px 11px; min-width: 88px; border: 1px solid #d8e6b62e; border-radius: 13px; background: #18291df2; pointer-events: auto; box-shadow: 0 3px 14px #07140b40; }
+.currency { display: flex; justify-content: space-between; align-items: center; gap: 9px; }
+.currency dt { display: flex; color: #e0c787; }
+.currency[data-currency="pearls"] dt { color: #aad3cf; }
+.currency dd { margin: 0; color: #eef1dc; font-size: 12px; font-weight: 550; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.change { position: absolute; top: calc(100% + 6px); right: 0; display: inline-flex; align-items: center; gap: 5px; padding: 5px 8px; white-space: nowrap; border: 1px solid #d8c38455; border-radius: 20px; background: #243824f5; box-shadow: 0 3px 12px #06130b60; color: #eed18a; font-size: 12px; font-weight: 650; pointer-events: none; }
+.currency[data-currency="pearls"] .change { top: calc(100% + 37px); color: #b2e0dc; border-color: #b2e0dc55; }
+.change[data-direction="spend"] { color: #e8b78c; background: #352d23f5; }
+.change[hidden] { display: none; }
+.sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+@media (max-width: 380px) { .wallet { padding-inline: 8px; } .currency dd { font-size: 11px; } }
+@media (prefers-reduced-motion: reduce) { .change { display: none; } }

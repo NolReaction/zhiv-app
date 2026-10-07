@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { withPlacedBushArtwork } from "./helpers/forest-bush-fixture.mjs";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
@@ -104,7 +105,7 @@ test("curved travel freezes, retargets from real feet and cancels on a tap witho
 
 test("steering keeps the real Tiled porch corridor and bush launch and landing markers exact without Routes", () => {
   for (const dusk of [0, 1]) for (const kind of ["home", "bush"]) {
-    const source = structuredClone(TILED_WORLD); source.paths = [];
+    const source = withPlacedBushArtwork(TILED_WORLD); source.paths = [];
     const state = createClearingActivity(source, 31), options = { ...conditions, dusk };
     const origin = point(665, 701);
     assert.equal(requestClearingPoint(state, origin), true);

@@ -1,0 +1,80 @@
+.chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  max-width: min(360px, calc(100vw - 40px));
+  min-width: 0;
+  min-height: 44px;
+  padding: 9px 13px;
+  border: 1px solid rgb(195 220 167 / 23%);
+  border-radius: 16px;
+  background: #172318ed;
+  color: #dce8cf;
+  font: inherit;
+  font-size: .8125rem;
+  line-height: 1.35;
+  cursor: pointer;
+  box-shadow: inset 0 1px rgb(229 244 208 / 5%);
+  touch-action: manipulation;
+}
+.chip > svg { flex-shrink: 0; color: #adc992; }
+.chip > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip:hover { background: #273725; border-color: rgb(195 220 167 / 50%); }
+.chip:focus-visible, .close:focus-visible { outline: 2px solid #cee5b8; outline-offset: 3px; }
+.scrim { z-index: 105; }
+.dialog[data-slot="dialog-content"] {
+  position: fixed;
+  z-index: 110;
+  left: 50%;
+  translate: -50% -50%;
+  display: grid;
+  gap: 14px;
+  outline: none;
+  color: var(--forest-ink, #394d3e);
+  border-color: #9aab7b;
+  background: var(--forest-paper, #e6d9b7);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.dialog, .dialog * { box-sizing: border-box; }
+.header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: calc(-1 * var(--dialog-padding)) calc(-1 * var(--dialog-padding)) 0; padding: 15px var(--dialog-padding); border-bottom: 1px solid #9caf7760; background: linear-gradient(125deg, #2d4632, #213629); color: #f0e6ca; }
+.header h2 { margin: 0; font-size: 1.125rem; color: #f0e6ca; }
+.header h2 > svg { color: #d9c591; }
+.dialog .header .close:focus-visible { outline: 2px solid #e1eeb6; outline-offset: 3px; }
+.dialog .takeOver:focus-visible { outline-color: var(--forest-focus, #355e48); }
+.close {
+  display: grid;
+  place-items: center;
+  flex: 0 0 44px;
+  width: 44px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: #e5eaca0b;
+  color: #f0e6ca;
+  cursor: pointer;
+}
+.close:hover { background: rgb(226 244 207 / 8%); }
+.dialog .description[data-slot="dialog-description"] { margin: 0; color: var(--forest-muted, #59624d); font-size: .875rem; line-height: 1.5; }
+.current { padding: 14px; border: 1px solid #a4b18b; border-radius: 16px; color: var(--forest-ink, #394d3e); background: #dfe4c7; }
+.eyebrow { color: var(--forest-muted, #59624d); font-size: .75rem; }
+.current h3 { margin: 5px 0 0; font-size: 1.125rem; line-height: 1.35; font-weight: 650; }
+.feelings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin: 0; }
+.feelings > div { min-width: 0; padding: 11px; border: 1px solid var(--forest-border, #c8bd98); border-radius: 13px; background: var(--forest-paper-light, #f0e6ca); }
+.feelings dt { display: flex; align-items: center; gap: 6px; color: var(--forest-muted, #59624d); font-size: .75rem; }
+.feelings dt svg { flex-shrink: 0; }
+.feelings dd { margin: 7px 0 0; color: var(--forest-ink, #394d3e); font-size: .8125rem; line-height: 1.4; overflow-wrap: anywhere; }
+.note, .memory, .waiting { margin: 0; color: var(--forest-muted, #59624d); font-size: .8125rem; line-height: 1.6; }
+.memory { padding-top: 12px; border-top: 1px solid var(--forest-border, #c8bd98); color: var(--forest-muted, #59624d); font-size: .75rem; }
+.memory p { margin: 0; }
+.takeOver { min-height: 44px; margin-top: 10px; padding: 10px 15px; border: 1px solid var(--forest-primary, #466347); border-radius: 12px; background: var(--forest-primary, #466347); color: #f6eed7; font: inherit; font-size: .8125rem; cursor: pointer; }
+.takeOver:hover { background: #39573d; }
+.takeOver:focus-visible { outline: 2px solid var(--forest-focus, #355e48); outline-offset: 3px; }
+.waiting { padding: 10px 0; }
+@media (max-width: 360px) { .feelings { gap: 7px; } .feelings > div { padding: 10px; } }
+@media (prefers-reduced-transparency: reduce) { .dialog[data-slot="dialog-content"] { background: var(--forest-paper, #e6d9b7); } .chip { background: #172318; } }
+
+@media (prefers-reduced-motion: reduce) { .dialog[data-state] { animation: none; } }

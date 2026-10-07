@@ -1,0 +1,524 @@
+{
+  "title": "Small deterministic review after sharing Mochlik between quarry and expeditions",
+  "reviewDate": "2026-10-06",
+  "catalogVersion": 3,
+  "currentMapCommit": "63e4689",
+  "currentEconomyCommit": "ae3dd1ed0af1ba55d772eeea4ffee876353f48d6",
+  "baselineCommit": "8cadc68",
+  "method": {
+    "rules": "Shipped applyEconomyCommand via Vite SSR, real costs, jobs, storage and claims; no relaxed or mocked economy rules",
+    "baseline": "Detached read-only Git worktree at 8cadc68, original committed joint planner and original TS rules",
+    "current": "Current committed joint planner and TS rules, same visit schedules and default seed for before/after pairs",
+    "policy": "prepareNextConstruction, preserveFutureCraftedStock, jointBatchPlanning; ore/clay/sand construction demand first; free income orders when idle; current planner chooses quarry or route for one actor and prioritizes relic exploration when a visible upgrade lacks a relic",
+    "visits3": "07:00,15:00,23:00 UTC; at most 10-minute sessions",
+    "visits2": "07:00,19:00 UTC; at most 10-minute sessions",
+    "active16h": "07:00–23:00 UTC; returns at each next ready event during presence; jobs continue through absence",
+    "excludedIncome": [
+      "daily_rewards",
+      "achievement_rewards",
+      "pearl_speedups",
+      "taps",
+      "player_market",
+      "legacy_grants"
+    ],
+    "rareRandom": "Research-only xorshift32-rejection-v1; production server uses secure randomness",
+    "sample": "3 deterministic seeds at visits3 and 1default seed at visits2/active16h; not a random population sample or quantile estimate"
+  },
+  "beforeAfterDefaultSeed": [
+    {
+      "mode": "visits3",
+      "rareSeed": 6758438,
+      "beforeHome5Days": 331.667,
+      "afterHome5Days": 331.333,
+      "home5DaysDelta": -0.334,
+      "beforeAllBuildings5Days": 658,
+      "afterAllBuildings5Days": 657.673,
+      "beforeEligibleExplorationHours": 15040,
+      "afterEligibleExplorationHours": 920,
+      "beforeRelicCount": 160,
+      "afterRelicCount": 10
+    },
+    {
+      "mode": "visits2",
+      "rareSeed": 6758438,
+      "beforeHome5Days": 492,
+      "afterHome5Days": 493,
+      "home5DaysDelta": 1,
+      "beforeAllBuildings5Days": 979.5,
+      "afterAllBuildings5Days": 980,
+      "beforeEligibleExplorationHours": 15160,
+      "afterEligibleExplorationHours": 856,
+      "beforeRelicCount": 162,
+      "afterRelicCount": 9
+    },
+    {
+      "mode": "active16h",
+      "rareSeed": 6758438,
+      "beforeHome5Days": 141.271,
+      "afterHome5Days": 148.354,
+      "home5DaysDelta": 7.083,
+      "beforeAllBuildings5Days": 259.438,
+      "afterAllBuildings5Days": 267.125,
+      "beforeEligibleExplorationHours": 4162.5,
+      "afterEligibleExplorationHours": 3376.5,
+      "beforeRelicCount": 46,
+      "afterRelicCount": 38
+    }
+  ],
+  "currentSample": [
+    {
+      "mode": "visits3",
+      "rareSeed": 6758438,
+      "complete": true,
+      "homeDays": {
+        "2": 2,
+        "3": 23,
+        "4": 100.333,
+        "5": 331.333
+      },
+      "allBuildings5Days": 657.673,
+      "warehouse3Days": 32.3338,
+      "commands": 32659,
+      "failures": {
+        "ECONOMY_STORAGE_FULL": 156
+      },
+      "actorWorkHours": {
+        "quarry": 13901.25,
+        "exploration": 1177,
+        "collection": 4.0844
+      },
+      "eligibleExplorationHours": 920,
+      "relicsReceived": {
+        "ancient_core": 3,
+        "moon_crystal": 5,
+        "living_resin": 2
+      },
+      "relicsSpentOnConstruction": {
+        "ancient_core": 2,
+        "moon_crystal": 2,
+        "living_resin": 2
+      },
+      "firstLivingResinDay": 31.3338,
+      "findsBeforeHome5": 8
+    },
+    {
+      "mode": "visits3",
+      "rareSeed": 74565,
+      "complete": true,
+      "homeDays": {
+        "2": 2,
+        "3": 23,
+        "4": 106.667,
+        "5": 338.667
+      },
+      "allBuildings5Days": 665.006,
+      "warehouse3Days": 38.6689,
+      "commands": 33021,
+      "failures": {
+        "ECONOMY_STORAGE_FULL": 159
+      },
+      "actorWorkHours": {
+        "quarry": 14237.25,
+        "exploration": 1017,
+        "collection": 4.1267
+      },
+      "eligibleExplorationHours": 760,
+      "relicsReceived": {
+        "ancient_core": 3,
+        "moon_crystal": 2,
+        "living_resin": 2
+      },
+      "relicsSpentOnConstruction": {
+        "ancient_core": 2,
+        "moon_crystal": 2,
+        "living_resin": 2
+      },
+      "firstLivingResinDay": 37.6689,
+      "findsBeforeHome5": 5
+    },
+    {
+      "mode": "visits3",
+      "rareSeed": 124076833,
+      "complete": true,
+      "homeDays": {
+        "2": 2,
+        "3": 23,
+        "4": 113,
+        "5": 344.333
+      },
+      "allBuildings5Days": 670.339,
+      "warehouse3Days": 45.004,
+      "commands": 33211,
+      "failures": {
+        "ECONOMY_STORAGE_FULL": 165
+      },
+      "actorWorkHours": {
+        "quarry": 14205.25,
+        "exploration": 1177,
+        "collection": 4.1533
+      },
+      "eligibleExplorationHours": 920,
+      "relicsReceived": {
+        "ancient_core": 6,
+        "moon_crystal": 2,
+        "living_resin": 2
+      },
+      "relicsSpentOnConstruction": {
+        "ancient_core": 2,
+        "moon_crystal": 2,
+        "living_resin": 2
+      },
+      "firstLivingResinDay": 44.004,
+      "findsBeforeHome5": 8
+    },
+    {
+      "mode": "visits2",
+      "rareSeed": 6758438,
+      "complete": true,
+      "homeDays": {
+        "2": 3,
+        "3": 33.5,
+        "4": 147.5,
+        "5": 493
+      },
+      "allBuildings5Days": 980,
+      "warehouse3Days": 47.5,
+      "commands": 32351,
+      "failures": {
+        "ECONOMY_STORAGE_FULL": 202
+      },
+      "actorWorkHours": {
+        "quarry": 14053.25,
+        "exploration": 1105,
+        "collection": 4.06
+      },
+      "eligibleExplorationHours": 856,
+      "relicsReceived": {
+        "ancient_core": 2,
+        "moon_crystal": 5,
+        "living_resin": 2
+      },
+      "relicsSpentOnConstruction": {
+        "ancient_core": 2,
+        "moon_crystal": 2,
+        "living_resin": 2
+      },
+      "firstLivingResinDay": 46.5,
+      "findsBeforeHome5": 8
+    },
+    {
+      "mode": "active16h",
+      "rareSeed": 6758438,
+      "complete": true,
+      "homeDays": {
+        "2": 0.271,
+        "3": 7.208,
+        "4": 61.501,
+        "5": 148.354
+      },
+      "allBuildings5Days": 267.125,
+      "warehouse3Days": 12.2821,
+      "commands": 79114,
+      "failures": {
+        "ECONOMY_STORAGE_FULL": 19
+      },
+      "actorWorkHours": {
+        "quarry": 928.5,
+        "exploration": 3464.5,
+        "collection": 13.1556
+      },
+      "eligibleExplorationHours": 3376.5,
+      "relicsReceived": {
+        "ancient_core": 13,
+        "moon_crystal": 16,
+        "living_resin": 9
+      },
+      "relicsSpentOnConstruction": {
+        "ancient_core": 2,
+        "moon_crystal": 2,
+        "living_resin": 2
+      },
+      "firstLivingResinDay": 11.2821,
+      "findsBeforeHome5": 19
+    }
+  ],
+  "completedMaterialFlowEvidence": [
+    {
+      "mode": "visits3",
+      "rareSeed": 6758438,
+      "flow": {
+        "stone": {
+          "received": 55688,
+          "spent": 2583,
+          "sold": 53105
+        },
+        "ore": {
+          "received": 18391,
+          "spent": 4098,
+          "sold": 14293
+        },
+        "clay": {
+          "received": 21038,
+          "spent": 2916,
+          "sold": 18122
+        },
+        "sand": {
+          "received": 20782,
+          "spent": 1500,
+          "sold": 19282
+        },
+        "fish": {
+          "received": 1286,
+          "spent": 0,
+          "sold": 1286
+        },
+        "dried_berries": {
+          "received": 0,
+          "spent": 0,
+          "sold": 0
+        },
+        "smoked_fish": {
+          "received": 0,
+          "spent": 0,
+          "sold": 0
+        }
+      },
+      "scope": "Successful claims, paid command debits, and actual NPCsales over the entire completed base; inventory conservation holds; initial inventory empty"
+    },
+    {
+      "mode": "active16h",
+      "rareSeed": 6758438,
+      "flow": {
+        "stone": {
+          "received": 4100,
+          "spent": 2583,
+          "sold": 1517
+        },
+        "ore": {
+          "received": 2814,
+          "spent": 2772,
+          "sold": 42
+        },
+        "clay": {
+          "received": 1488,
+          "spent": 1452,
+          "sold": 36
+        },
+        "sand": {
+          "received": 1520,
+          "spent": 1500,
+          "sold": 20
+        },
+        "fish": {
+          "received": 16380,
+          "spent": 0,
+          "sold": 16380
+        },
+        "dried_berries": {
+          "received": 0,
+          "spent": 0,
+          "sold": 0
+        },
+        "smoked_fish": {
+          "received": 0,
+          "spent": 0,
+          "sold": 0
+        }
+      },
+      "scope": "Successful claims, paid command debits, and actual NPCsales over the entire completed base; inventory conservation holds; initial inventory empty"
+    }
+  ],
+  "paidRouteAnalyticalEvidence": {
+    "scope": "Recursive elementary short-recipe reference and expected starter fishing yield, not a calendar simulation or an optimized policy. Preparatory stations may run concurrently, hero minutes are sequential shared work. This planner never starts paid food routes, so their natural player journeys are not validated here.",
+    "routes": [
+      {
+        "routeId": "deep_cave",
+        "directTravelMinutes": 240,
+        "requiredItems": {
+          "dried_berries": 1,
+          "smoked_fish": 1
+        },
+        "preparationStationMinutes": {
+          "dryer": 75,
+          "garden": 18.080000000000002,
+          "mochlik": 25.431719863650446,
+          "woodlot": 4
+        },
+        "totalSharedActorMinutes": 265.43171986365047,
+        "output": {
+          "stone": 20,
+          "ore": 10
+        },
+        "ordinaryOutputReferenceActorMinutes": 165,
+        "ordinaryOutputReferenceQuarryMinutes": 165
+      },
+      {
+        "routeId": "old_woodland",
+        "directTravelMinutes": 480,
+        "requiredItems": {
+          "dried_berries": 3,
+          "rope": 2
+        },
+        "preparationStationMinutes": {
+          "dryer": 135,
+          "garden": 54.24000000000001,
+          "mochlik": 0.24,
+          "workshop": 20,
+          "woodlot": 15
+        },
+        "totalSharedActorMinutes": 480.24,
+        "output": {
+          "hardwood": 18,
+          "resin": 6,
+          "wood": 18
+        },
+        "ordinaryOutputReferenceActorMinutes": 0,
+        "ordinaryOutputReferenceQuarryMinutes": 0
+      },
+      {
+        "routeId": "coastal_deposits",
+        "directTravelMinutes": 600,
+        "requiredItems": {
+          "smoked_fish": 3,
+          "dried_berries": 3
+        },
+        "preparationStationMinutes": {
+          "dryer": 225,
+          "mochlik": 76.29515959095134,
+          "woodlot": 12,
+          "garden": 54.24000000000001
+        },
+        "totalSharedActorMinutes": 676.2951595909514,
+        "output": {
+          "clay": 36,
+          "sand": 40,
+          "ore": 20
+        },
+        "ordinaryOutputReferenceActorMinutes": 562.5,
+        "ordinaryOutputReferenceQuarryMinutes": 562.5
+      },
+      {
+        "routeId": "uplands",
+        "directTravelMinutes": 720,
+        "requiredItems": {
+          "tools": 2,
+          "dried_berries": 4,
+          "smoked_fish": 4
+        },
+        "preparationStationMinutes": {
+          "workshop": 320,
+          "kiln": 120,
+          "quarry": 54,
+          "mochlik": 155.7268794546018,
+          "woodlot": 87,
+          "dryer": 300,
+          "garden": 72.32000000000001
+        },
+        "totalSharedActorMinutes": 875.7268794546018,
+        "output": {
+          "hardwood": 40,
+          "ore": 30,
+          "resin": 18,
+          "stone": 30
+        },
+        "ordinaryOutputReferenceActorMinutes": 382.5,
+        "ordinaryOutputReferenceQuarryMinutes": 382.5
+      },
+      {
+        "routeId": "abandoned_quarry",
+        "directTravelMinutes": 960,
+        "requiredItems": {
+          "tools": 2,
+          "rope": 4,
+          "dried_berries": 4,
+          "smoked_fish": 4
+        },
+        "preparationStationMinutes": {
+          "workshop": 360,
+          "kiln": 120,
+          "quarry": 54,
+          "mochlik": 155.7268794546018,
+          "woodlot": 117,
+          "dryer": 300,
+          "garden": 72.32000000000001
+        },
+        "totalSharedActorMinutes": 1115.7268794546019,
+        "output": {
+          "stone": 96,
+          "ore": 60,
+          "sand": 48,
+          "clay": 40
+        },
+        "ordinaryOutputReferenceActorMinutes": 1341,
+        "ordinaryOutputReferenceQuarryMinutes": 1341
+      }
+    ],
+    "interpretation": "Deep cave and coastal deposits trade more hero/preparation time for credited exploration time and mixed output; abandoned quarry yields its mineral bundle with about 1115.73 reference actor minutes including inputs versus 1341 ordinary actor minutes. This comparison excludes unlocking capital, claim waits and integer batch rounding. Free fishing, berries, quarry and passive stations supply all inputs without requiring the paid route itself."
+  },
+  "parallelCapacityChangeExamples": [
+    {
+      "example": "quarry_stone_overnight + shore_camp",
+      "before": "Two concurrent 8-hour jobs yieldstone 40, fish 10 including a species draw, wood 3",
+      "after": "Same two jobs require 16 authored hero hours plus claim waits; one 8-hour slot chooses one reward set",
+      "note": "This is a lost concurrent portfolio, not a price increase or a duplicated timer on one job"
+    },
+    {
+      "example": "quarry_ore + shore",
+      "before": "Two concurrent 45-minute jobs",
+      "after": "90 authored hero minutes for both jobs; per-recipe yield and cost unchanged",
+      "note": "At sparse visits the extra separate claim/start can have larger calendar cost"
+    }
+  ],
+  "relicRisk": {
+    "meanAnyExplorationHours": 96,
+    "meanSpecificExplorationHours": 288,
+    "meanFirstCompleteSetExplorationHours": 528,
+    "finiteSpecificGuarantee": false,
+    "currentRequiredConstructionTotals": {
+      "living_resin": 2,
+      "ancient_core": 2,
+      "moon_crystal": 2
+    },
+    "visits3FirstLivingResinDays": [
+      {
+        "rareSeed": 6758438,
+        "firstLivingResinDay": 31.3338,
+        "home3Day": 23,
+        "warehouse3Day": 32.3338
+      },
+      {
+        "rareSeed": 74565,
+        "firstLivingResinDay": 37.6689,
+        "home3Day": 23,
+        "warehouse3Day": 38.6689
+      },
+      {
+        "rareSeed": 124076833,
+        "firstLivingResinDay": 44.004,
+        "home3Day": 23,
+        "warehouse3Day": 45.004
+      }
+    ],
+    "observation": "All sampled full bases received and consumed required relic types, but no finite guarantee exists for a specific type. Sparse-visit scenario relic supply falls strongly when quarry income takes most actor slots.",
+    "dailyRewardCaveat": "Every 7th claimed daily reward yields ancient_core;365 claims from step 1 yield 52 cores. These gifts were excluded. They do not guarantee living_resin/moon_crystal or market liquidity; 1:1 barter transfers existing types and cannot create missing supply."
+  },
+  "conclusion": {
+    "progression": "All 5 current scenarios completed the full base. No actor-busy command failures or progression stalls occurred; storage-full failures recovered through real NPCsales. This does not prove every possible inventory state or strategy is safe.",
+    "timing": "The default 3-visit house5 path stays about 331 days;2 visits adds 1 day in the paired scenarios; active16h adds 7.083 days. Three seeded 3-visit results range 331.333–344.333days, a sample range rather than a prediction interval.",
+    "balanceDecision": "No price/time/drop-rate retuning is justified by this small review, and simultaneous actor assignments should not be restored to compensate.",
+    "remainingRisks": [
+      "Specific relic type can gatewarehouse3/home4 for longer than these seeds; no pity or finite guarantee currently exists",
+      "Weekly cores and reduced naturally-found resin/crystal supply can skew barter; observe by type/source",
+      "Paid-route incentives and actual food provisioning merit a separate dedicated player policy; current planner never uses them",
+      "UI waiting/claim behavior, market, free daily/achievement support and paid speedups alter calendar timing"
+    ],
+    "monitor": [
+      "Late-upgrade time blocked only by a missing relic type",
+      "Relic claims by source, type and home level",
+      "Quarry/exploration actor share and waiting after ready",
+      "Ore/clay/sand input shortages and NPCsales by level",
+      "Food route usage and preparation cost",
+      "Relic barter completion times and type surplus"
+    ]
+  }
+}

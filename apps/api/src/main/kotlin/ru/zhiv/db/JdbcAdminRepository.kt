@@ -29,8 +29,12 @@ class JdbcAdminRepository(private val source: DataSource, private val config: Ad
     private fun <T> Connection.one(sql: String, vararg values: Any?, map: (ResultSet) -> T): T? = rows(sql, *values, map = map).firstOrNull()
     private fun Connection.count(sql: String, vararg values: Any?): Long = one(sql, *values) { it.getLong(1) } ?: 0L
     private fun ResultSet.time(column: String): String? = getObject(column, OffsetDateTime::class.java)?.toInstant()?.toString()
-    private suspend fun <T> tx(block: (Connection) -> T): T = withContext(Dispatchers.IO) {
+    private suspend fun <T> tx(readOnlySnapshot: Boolean = false, block: (Connection) -> T): T = withContext(Dispatchers.IO) {
         source.connection.use { c ->
+            if (readOnlySnapshot) {
+                c.transactionIsolation = Connection.TRANSACTION_REPEATABLE_READ
+                c.isReadOnly = true
+            }
             c.autoCommit = false
             try {
                 c.update("SET LOCAL statement_timeout = '8s'")
@@ -57,6 +61,32 @@ class JdbcAdminRepository(private val source: DataSource, private val config: Ad
     override suspend fun access(sessionHash: ByteArray): AdminAccess = tx { c ->
         val actor = actor(c, sessionHash)
         AdminAccess(actor.publicId, actor.displayName, now(c).toInstant().toString())
+    }
+
+    override suspend fun analytics(sessionHash: ByteArray, query: AdminAnalyticsQuery): AdminAnalytics = tx(readOnlySnapshot = true) { c ->
+        actor(c, sessionHash)
+        val time = now(c).toInstant()
+        readAdminAnalytics(c, query.resolve(time), config.allowedPublicIds, time)
+    }
+
+    override suspend fun analyticsEvents(sessionHash: ByteArray, query: AdminAnalyticsEventsQuery): AdminAnalyticsEvents = tx(readOnlySnapshot = true) { c ->
+        actor(c, sessionHash)
+        val time = now(c).toInstant()
+        readAdminAnalyticsEvents(c, query.resolve(time), query, config.allowedPublicIds, time)
+    }
+
+    override suspend fun economy(sessionHash: ByteArray, query: String, sort: String, offset: Int, limit: Int): AdminEconomy = tx(readOnlySnapshot = true) { c ->
+        actor(c, sessionHash)
+        pagination(offset, limit)
+        if (query.length > 100 || query.any(Char::isISOControl)) invalid()
+        if (sort !in setOf("updated", "coins", "progress", "ready")) invalid()
+        readAdminEconomy(c, query.trim(), sort, offset, limit, now(c))
+    }
+
+    override suspend fun economyPlayer(sessionHash: ByteArray, targetPublicId: String): AdminEconomyDetail = tx(readOnlySnapshot = true) { c ->
+        actor(c, sessionHash)
+        readAdminEconomyPlayer(c, targetPublicId, now(c))
+            ?: fail("ADMIN_USER_NOT_FOUND", "Профиль не найден", 404)
     }
 
     override suspend fun overview(sessionHash: ByteArray, days: Int): AdminOverview = tx { c ->
@@ -167,7 +197,7 @@ class JdbcAdminRepository(private val source: DataSource, private val config: Ad
 
     override suspend fun revokeSessions(sessionHash: ByteArray, targetPublicId: String, requestId: UUID, confirmationPublicId: String, reason: String): AdminRevokeReceipt = tx { c ->
         val initial = actor(c, sessionHash)
-        if (confirmationPublicId != targetPublicId || reason.length !in 8..240 || reason != reason.trim() || reason.any(Char::isISOControl) || requestId.version() != 4 || requestId.variant() != 2) invalid()
+        if (confirmationPublicId != targetPublicId || !validAdminReason(reason) || requestId.version() != 4 || requestId.variant() != 2) invalid()
         if (targetPublicId in config.allowedPublicIds) fail("ADMIN_PROTECTED_ACCOUNT", "Сеансы администраторов нельзя завершать из панели", 409)
         // A request ID is global and immutable. Serialize unknown receipts before
         // locking users, so duplicate delivery can never revoke a later login.
@@ -221,7 +251,7 @@ class JdbcAdminRepository(private val source: DataSource, private val config: Ad
         val (confirmation,kind,rewardId,reason) = listOf(request.confirmationPublicId,request.kind,request.rewardId,request.reason)
         val catalog = when (kind) { "item" -> ru.zhiv.game.GameRewards.items; "achievement" -> ru.zhiv.game.GameRewards.achievements; else -> invalid() }
         if (confirmation != targetPublicId || request.requestId != requestId.toString()
-            || reason.length !in 8..240 || reason != reason.trim() || reason.any(Char::isISOControl)
+            || !validAdminReason(reason)
             || requestId.version() != 4 || requestId.variant() != 2) invalid()
         val action = "grant_$kind"
         c.one("SELECT pg_advisory_xact_lock(?)", requestId.mostSignificantBits xor requestId.leastSignificantBits) { true }
@@ -250,7 +280,10 @@ class JdbcAdminRepository(private val source: DataSource, private val config: Ad
         // Only the validated catalog selects the table. Counters and ranking consent stay authoritative.
         val table = if (kind == "item") "game_items" else "game_achievements"
         val column = if (kind == "item") "item_id" else "achievement_id"
-        val granted = c.update("INSERT INTO $table(user_id,$column,unlocked_at) VALUES (?,?,?) ON CONFLICT DO NOTHING",target,rewardId,instant)>0
+        val granted = if (kind == "achievement" && rewardId in ru.zhiv.game.GameRewards.achievements.keys.drop(7))
+            recordAchievementTiers(c,target,rewardId,ru.zhiv.game.GameRewards.achievements.getValue(rewardId),instant,rewardEligible=false)
+        else if (kind == "achievement") c.update("INSERT INTO game_achievements(user_id,achievement_id,unlocked_at,reward_eligible) VALUES (?,?,?,false) ON CONFLICT DO NOTHING",target,rewardId,instant)>0
+        else c.update("INSERT INTO $table(user_id,$column,unlocked_at) VALUES (?,?,?) ON CONFLICT DO NOTHING",target,rewardId,instant)>0
         c.one("""
             INSERT INTO admin_actions(request_id,actor_user_id,target_user_id,actor_public_id,target_public_id,action,reason,affected_sessions,reward_id,granted)
             VALUES (?,?,?,?,?,?,?,0,?,?) RETURNING created_at
@@ -327,18 +360,7 @@ class JdbcAdminRepository(private val source: DataSource, private val config: Ad
                 c.update("INSERT INTO world_profiles(user_id,state) VALUES (?,?::jsonb) ON CONFLICT DO NOTHING",target,worldJson.encodeToString(WorldState()))
                 val before = c.one("SELECT state FROM world_profiles WHERE user_id=?",target) { worldJson.decodeFromString<WorldState>(it.getString(1)) }!!
                 val after = when(request.action) {
-                    "grant_resource" -> {
-                        val r=before.resources
-                        fun add(value: Long): Long {
-                            if(value > 9_007_199_254_740_991L - request.amount) fail("ADMIN_RESOURCE_LIMIT","Достигнут предел ресурсов",409)
-                            return value + request.amount
-                        }
-                        before.copy(resources=when(request.target) {
-                            "sparks" -> r.copy(sparks=add(r.sparks))
-                            "wood" -> r.copy(wood=add(r.wood))
-                            else -> r.copy(stone=add(r.stone))
-                        })
-                    }
+                    "grant_resource" -> fail("ADMIN_RESOURCE_RETIRED", "Искры, старое дерево и камень больше не выдаются. Используйте новую экономику; старый запрос отменён.", 409)
                     "grant_world_item" -> if(request.target in before.inventory) before else before.copy(inventory=(before.inventory+request.target).sorted())
                     "grant_find" -> {
                         val collection=if(request.target in before.collection) before.collection else (before.collection+request.target).sorted()

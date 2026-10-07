@@ -1,0 +1,54 @@
+.wardrobe { color: var(--forest-ink, #394d3e); min-width: 0; }
+.wardrobe button, .wardrobe input, .wardrobe select { font: inherit; }
+.wardrobe button { touch-action: manipulation; }
+.tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; padding: 4px; border-radius: 16px; background: #d6cbaa; }
+.wardrobe .tabs button { border: 0; background: transparent; padding: 10px 7px; gap: 7px; }
+.wardrobe .tabs button[aria-selected='true'] { background: #f4ecd5; color: #324d37; box-shadow: 0 2px 6px #66553119; font-weight: 650; }
+.wallet { display: flex; justify-content: flex-end; gap: 18px; margin: 10px 3px; font-size: .8rem; }
+.price { display: inline-flex; align-items: center; justify-content: center; gap: 5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.content { display: grid; gap: 12px; }
+.fitting { display: grid; grid-template-columns: 114px minmax(0, 1fr); align-items: center; gap: 13px; background: linear-gradient(145deg, #f1e7ca, #ded5b4); border: 1px solid #b8b68c; border-radius: 19px; padding: 13px; overflow: hidden; }
+.mirror { align-self: stretch; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 141px; border: 1px solid #b8b995; border-radius: 60px 60px 15px 15px; background: radial-gradient(ellipse at 50% 65%, #a6b88766, #ccd6b145 60%, #e1e5ca70); box-shadow: inset 0 1px 5px #48503514; }
+.mirror > span { padding-bottom: 8px; font-size: .67rem; color: #627056; }
+.previewCanvas { display: block; height: 108px; width: 108px; max-width: 100%; object-fit: contain; image-rendering: pixelated; }
+.selection { min-width: 0; }
+.eyebrow { font-size: .68rem; text-transform: uppercase; letter-spacing: .055em; color: #696e50; }
+.selection h3 { margin: 4px 0 7px; font-size: 1.04rem; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
+.selection p { font-size: .75rem; color: #627056; margin: 6px 0 10px; }
+.wardrobe .primary { background: #426347; color: #fff3d4; border-color: #426347; font-weight: 650; font-size: .78rem; padding: 9px 11px; gap: 8px; }
+.wardrobe .primary:hover:not(:disabled) { background: #345138; border-color: #345138; }
+.selection .primary { width: 100%; flex-wrap: wrap; }
+.missing { display: block; margin-top: 7px; font-size: .68rem; line-height: 1.4; color: #795331; }
+.confirmation { grid-column: 1 / -1; border-top: 1px solid #b8b68c; padding-top: 12px; }
+.confirmation p { font-size: .86rem; margin: 0 0 10px; line-height: 1.5; }
+.confirmation > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.confirmation:focus { outline: none; }
+.wardrobe .filters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-bottom: 1px solid #c6bc99; gap: 3px; }
+.wardrobe .filters button { border: 0; border-bottom: 3px solid transparent; border-radius: 8px 8px 0 0; background: transparent; min-height: 42px; padding: 8px 2px; font-size: .8rem; }
+.wardrobe .filters button[aria-pressed='true'] { color: #344f37; border-bottom-color: #53774d; font-weight: 700; background: #e3ddbf; }
+.searchRow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.search { min-width: 130px; flex: 1; display: flex; align-items: center; gap: 7px; min-height: 44px; padding: 0 10px; background: #f2e9ce; border: 1px solid #c3b897; border-radius: 12px; }
+.search > svg { flex: 0 0 auto; color: #737a5f; }
+.search input { min-width: 0; width: 100%; height: 42px; font-size: .8rem; background: transparent; border: 0; outline: 0; color: #394d3e; }
+.search input::placeholder { color: #73765f; }
+.search:focus-within { outline: 2px solid #466b47; outline-offset: 2px; }
+.currency { flex: 0 1 132px; min-width: 0; }
+.currency select { width: 100%; min-height: 44px; font-size: .74rem; color: #394d3e; background: #f2e9ce; border: 1px solid #c3b897; border-radius: 12px; padding: 7px; }
+.currency select:focus-visible { outline: 2px solid #466b47; outline-offset: 2px; }
+.items { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.wardrobe .item { display: flex; flex-direction: column; justify-content: flex-start; align-items: center; position: relative; gap: 5px; min-width: 0; padding: 10px 8px; border: 1px solid #c6bd9d; border-radius: 15px; background: #f0e8d0; }
+.wardrobe .item[aria-pressed='true'] { background: #e2e6c9; border-color: #708866; box-shadow: inset 0 0 0 1px #708866; }
+.art { display: grid; place-items: center; position: relative; width: 66px; height: 62px; border-radius: 19px; background: color-mix(in srgb, var(--item-color) 16%, transparent); }
+.equipped { position: absolute; bottom: 2px; right: 0; padding: 2px; width: 20px; height: 20px; border-radius: 50%; background: #53714c; color: #fff6da; }
+.item strong { min-width: 0; font-size: .82rem; line-height: 1.35; text-align: center; overflow-wrap: anywhere; }
+.itemMeta { margin-top: auto; min-height: 21px; font-size: .69rem; color: #647052; }
+.itemMeta .price { color: #485740; font-size: .78rem; font-weight: 600; }
+.recovery { border: 1px solid #c9ad7b; background: #f0e1bc; border-radius: 13px; padding: 12px; font-size: .8rem; }
+.recovery p { margin: 0 0 8px; line-height: 1.5; }
+.recovery p:last-child { margin-bottom: 0; }
+.wardrobe .recovery button { font-size: .8rem; }
+.empty { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 25px 12px; gap: 10px; color: #647052; }
+.empty strong { color: #455840; }
+.empty p { max-width: 220px; margin: 0; font-size: .85rem; line-height: 1.5; }
+.sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+@media (max-width: 360px) { .fitting { grid-template-columns: 92px minmax(0, 1fr); padding: 10px; gap: 10px; } .previewCanvas { width: 88px; height: 88px; } .mirror { min-height: 126px; } .selection h3 { font-size: .94rem; } .currency { flex-basis: 118px; } }

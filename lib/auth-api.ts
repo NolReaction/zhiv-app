@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ApiError, getMe } from "./check-in-api";
 import { deviceTimeZone } from "./time-zone";
+import { retryAfterMs, withRequestDeadline } from "./request-deadline";
 
 export const authOptionsSchema = z.object({ telegram: z.boolean().default(false), email: z.boolean(), vk: z.boolean().default(false), legacy: z.boolean().default(false) });
 const accountAccessSchema = z.object({
@@ -12,18 +13,22 @@ export type AccountAccess = z.infer<typeof accountAccessSchema>;
 export type AuthIntent = "login" | "link";
 
 export async function authRequest<T extends z.ZodTypeAny>(path: string, schema: T, body?: unknown, method?: string): Promise<z.output<T>> {
-  const response = await fetch(`/api/v1/auth/${path}`, {
-    method: method ?? (body === undefined ? "GET" : "POST"),
-    credentials: "same-origin", cache: "no-store", signal: AbortSignal.timeout(30_000),
-    headers: { Accept: "application/json", ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
-    body: body === undefined ? undefined : JSON.stringify(body),
+  return withRequestDeadline(30_000, undefined, async signal => {
+    const response = await fetch(`/api/v1/auth/${path}`, {
+      method: method ?? (body === undefined ? "GET" : "POST"),
+      credentials: "same-origin", cache: "no-store", signal,
+      headers: { Accept: "application/json", ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const value: unknown = await response.json().catch(() => null);
+    if (!response.ok) {
+      const error = z.object({ code: z.string(), message: z.string(), requestId: z.string().uuid().nullish() }).safeParse(value);
+      throw new ApiError(error.success ? error.data.message : response.status === 429 ? "Слишком много попыток. Подождите и попробуйте позже." : "Не удалось связаться с сервером", response.status, error.success ? error.data : undefined, response.headers.get("X-Request-ID"), retryAfterMs(response.headers.get("Retry-After")));
+    }
+    const parsed = schema.safeParse(value);
+    if (!parsed.success) throw new ApiError("Сервер вернул некорректный ответ", 502, undefined, response.headers.get("X-Request-ID"));
+    return parsed.data;
   });
-  const value: unknown = await response.json().catch(() => null);
-  if (!response.ok) {
-    const error = z.object({ code: z.string(), message: z.string(), requestId: z.string().uuid().nullish() }).safeParse(value);
-    throw new ApiError(error.success ? error.data.message : response.status === 429 ? "Слишком много попыток. Подождите и попробуйте позже." : "Не удалось связаться с сервером", response.status, error.success ? error.data : undefined, response.headers.get("X-Request-ID"));
-  }
-  return schema.parse(value);
 }
 export const getAuthOptions = () => authRequest("options", authOptionsSchema);
 export const getAccountAccess = () => authRequest("account", accountAccessSchema);
@@ -69,6 +74,7 @@ export function authReturnMessage(code: string): string {
     "account-proof": "Доступ подтверждён. Продолжите действие в профиле.",
     auth_not_linked: "Этот способ входа ещё не привязан. Откройте прежний профиль и привяжите его в разделе «Способы входа».",
     auth_already_linked: "Этот способ входа уже связан с другим профилем. Аккаунты не были объединены.",
+    auth_identity_merged: "Этот способ входа уже участвовал в объединении. Его можно вернуть только в сохранённом профиле через «Способы входа».",
     unauthorized: "Сеанс закончился. Войдите снова и повторите привязку.",
     auth_session_limit: "Закройте ненужные сеансы в разделе «Устройства» и повторите вход.",
     auth_expired: "Время подтверждения истекло или вход открыт в другом браузере. Начните вход ещё раз в этом окне.",

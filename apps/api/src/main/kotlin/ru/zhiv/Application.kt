@@ -30,6 +30,7 @@ import ru.zhiv.checkins.CheckInRepository
 import ru.zhiv.checkins.checkInRoutes
 import ru.zhiv.config.AppConfig
 import ru.zhiv.db.DatabaseFactory
+import ru.zhiv.db.JdbcGuestProfileRepository
 import ru.zhiv.db.JdbcRelationshipRepository
 import ru.zhiv.db.JdbcGroupRepository
 import ru.zhiv.db.JdbcDirectInviteRepository
@@ -52,14 +53,33 @@ import ru.zhiv.game.gameEventRoutes
 import ru.zhiv.world.WorldRepository
 import ru.zhiv.world.worldRoutes
 import ru.zhiv.db.JdbcWorldRepository
+import ru.zhiv.db.JdbcProgressionRewardsRepository
+import ru.zhiv.game.ProgressionRewardsRepository
+import ru.zhiv.game.progressionRewardsRoutes
+import ru.zhiv.db.JdbcEconomyRepository
+import ru.zhiv.db.JdbcEconomyMarketRepository
+import ru.zhiv.db.JdbcEconomyBarterRepository
+import ru.zhiv.economy.EconomyBarterRepository
+import ru.zhiv.economy.economyBarterRoutes
+import ru.zhiv.economy.EconomyRepository
+import ru.zhiv.economy.EconomyMarketRepository
+import ru.zhiv.economy.economyRoutes
+import ru.zhiv.economy.economyMarketRoutes
+import ru.zhiv.db.JdbcForestMemoryRepository
+import ru.zhiv.forest.ForestMemoryRepository
+import ru.zhiv.forest.forestMemoryRoutes
 import ru.zhiv.game.gameRoutes
 import ru.zhiv.game.GameRepository
+import ru.zhiv.db.JdbcPresenceRepository
+import ru.zhiv.presence.*
 import ru.zhiv.db.JdbcGameRepository
 import ru.zhiv.observability.GameEventSink
 import ru.zhiv.observability.Slf4jGameEventSink
 import ru.zhiv.observability.RequestDiagnostics
 import ru.zhiv.observability.recordApiFailure
 import ru.zhiv.observability.recordAuthFailure
+import ru.zhiv.relationships.GuestProfileRepository
+import ru.zhiv.relationships.guestProfileRoutes
 import ru.zhiv.relationships.RelationshipRepository
 import ru.zhiv.relationships.relationshipRoutes
 import ru.zhiv.security.TokenCodec
@@ -107,6 +127,7 @@ fun Application.module() {
         repository,
         config,
         relationships = relationships,
+        guestProfiles = JdbcGuestProfileRepository(dataSource),
         groups = groups,
         directInvites = directInvites,
         recovery = recovery,
@@ -117,7 +138,13 @@ fun Application.module() {
         mailer = mailer,
         vk = vk,
         games = JdbcGameRepository(dataSource),
+        presence = JdbcPresenceRepository(dataSource),
         worlds = JdbcWorldRepository(dataSource),
+        economy = JdbcEconomyRepository(dataSource),
+        progressionRewards = JdbcProgressionRewardsRepository(dataSource),
+        economyMarket = JdbcEconomyMarketRepository(dataSource),
+        economyBarter = JdbcEconomyBarterRepository(dataSource),
+        forestMemory = JdbcForestMemoryRepository(dataSource),
         admin = JdbcAdminRepository(dataSource, AdminConfig(config.adminPublicIds)),
         incidents = UserIncidentRepository(dataSource),
         feedback = JdbcFeedbackRepository(dataSource, AdminConfig(config.adminPublicIds)),
@@ -145,6 +172,13 @@ fun Application.installZhivApi(
     admin: AdminRepository? = null,
     incidents: UserIncidentRepository? = null,
     feedback: FeedbackRepository? = null,
+    forestMemory: ForestMemoryRepository? = null,
+    economy: EconomyRepository? = null,
+    economyMarket: EconomyMarketRepository? = null,
+    progressionRewards: ProgressionRewardsRepository? = null,
+    economyBarter: EconomyBarterRepository? = null,
+    guestProfiles: GuestProfileRepository? = null,
+    presence: PresenceRepository? = null,
 ) {
     val metrics = RuntimeMetrics.shared
     val monitoring = MonitoringService(config.monitoringUrl)
@@ -174,7 +208,10 @@ fun Application.installZhivApi(
             "game-read" to 1_200,
             "world-read" to 60,
             "world-write" to 120,
+            "forest-memory-read" to 30,
+            "forest-memory-write" to 30,
             "game-session" to 120,
+            "presence-write" to 1_200,
             "game-write" to 90,
             "client-incidents" to 120,
             "feedback-read" to 120,
@@ -185,7 +222,7 @@ fun Application.installZhivApi(
             "account-recovery-read" to 600,
         )) {
             register(RateLimitName(name)) {
-                rateLimiter(limit = limit, refillPeriod = if (name in setOf("game-write", "world-read")) kotlin.time.Duration.parse("1m") else 1.hours)
+                rateLimiter(limit = limit, refillPeriod = if (name in setOf("game-write", "world-read", "forest-memory-read", "forest-memory-write")) kotlin.time.Duration.parse("1m") else 1.hours)
                 requestKey { call ->
                     val userId = call.sessionCookie(config)?.let { raw ->
                         identities.findSessionUserId(tokenCodec.hash(raw))
@@ -290,9 +327,15 @@ fun Application.installZhivApi(
         auth?.let { authRoutes(it, identities, tokenCodec, config, authConfig, telegram, mailer, vk) }
         rateLimit(RateLimitName("check-in-attempt")) { checkInRoutes(checkIns, tokenCodec, config) }
         gameEventRoutes(identities, tokenCodec, config, gameEvents)
-        games?.let { gameRoutes(it, tokenCodec, config) }
+        games?.let { gameRoutes(it, tokenCodec, config, presence) }
+        presence?.let { presenceRoutes(it, tokenCodec, config) }
         incidents?.let { userIncidentRoutes(it, admin, config, tokenCodec) }
-        worlds?.let { worldRoutes(it, tokenCodec, config) }
+        worlds?.let { worldRoutes(it, tokenCodec, config, presence) }
+        progressionRewards?.let { progressionRewardsRoutes(it, tokenCodec, config, presence) }
+        economy?.let { economyRoutes(it, tokenCodec, config, presence) }
+        economyMarket?.let { economyMarketRoutes(it, tokenCodec, config, presence) }
+        economyBarter?.let { economyBarterRoutes(it, tokenCodec, config, presence) }
+        forestMemory?.let { forestMemoryRoutes(it, tokenCodec, config, presence) }
         feedback?.let { feedbackRoutes(it, tokenCodec, config) }
         admin?.let { repository ->
             adminRoutes(repository, tokenCodec, config)
@@ -309,6 +352,7 @@ fun Application.installZhivApi(
             }
         }
         relationships?.let { relationshipRoutes(it, tokenCodec, config) }
+        guestProfiles?.let { guestProfileRoutes(it, tokenCodec, config) }
         groups?.let { groupRoutes(it, tokenCodec, config) }
         directInvites?.let { directInviteRoutes(it, tokenCodec, config) }
         recovery?.let { codeRecoveryRoutes(it, identities, tokenCodec, config) }

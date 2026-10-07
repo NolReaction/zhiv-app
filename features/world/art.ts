@@ -9,6 +9,6 @@ export const WORLD_ART = {
   homeDetail: FOREST_MAP.homeDetail.image,
   boatWreck: runtimeArt.boatWreck,
   routes: {
-    trail: "/world/routes/trail.webp",
+    trail: FOREST_MAP.image,
   },
 } as const;

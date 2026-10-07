@@ -1,0 +1,1242 @@
+[
+  {
+    "catalogVersion": 3,
+    "currencyScale": 10,
+    "mode": "visits3",
+    "complete": true,
+    "elapsedDays": 658,
+    "homeDays": {
+      "2": 2,
+      "3": 22.667,
+      "4": 99.333,
+      "5": 331.667
+    },
+    "commands": 40943,
+    "saleRevenue": 9619720,
+    "storageRecovery": 102,
+    "failures": {
+      "ECONOMY_STORAGE_FULL": 130
+    },
+    "actions": {
+      "start_exploration": 10,
+      "start_production": 8535,
+      "claim_job": 10519,
+      "start_collection": 1907,
+      "sell": 15263,
+      "start_construction": 37,
+      "start_fishing": 1939,
+      "sell_fish": 2733
+    },
+    "stoppedAt": null,
+    "milestones": [
+      {
+        "day": 0.3368,
+        "building": "woodlot:1",
+        "coins": 700
+      },
+      {
+        "day": 1,
+        "building": "workshop:1",
+        "coins": 250
+      },
+      {
+        "day": 2,
+        "building": "home:2",
+        "coins": 4290
+      },
+      {
+        "day": 2.3403,
+        "building": "quarry:1",
+        "coins": 6710
+      },
+      {
+        "day": 3,
+        "building": "kiln:1",
+        "coins": 8510
+      },
+      {
+        "day": 4,
+        "building": "garden:2",
+        "coins": 14150
+      },
+      {
+        "day": 5.6667,
+        "building": "warehouse:2",
+        "coins": 23970
+      },
+      {
+        "day": 7.3333,
+        "building": "woodlot:2",
+        "coins": 35740
+      },
+      {
+        "day": 9.0069,
+        "building": "quarry:2",
+        "coins": 47960
+      },
+      {
+        "day": 10.3333,
+        "building": "kiln:2",
+        "coins": 52500
+      },
+      {
+        "day": 10.3403,
+        "building": "dryer:1",
+        "coins": 54150
+      },
+      {
+        "day": 12,
+        "building": "dryer:2",
+        "coins": 64160
+      },
+      {
+        "day": 15.6667,
+        "building": "workshop:2",
+        "coins": 84750
+      },
+      {
+        "day": 22.6667,
+        "building": "home:3",
+        "coins": 111460
+      },
+      {
+        "day": 24.3333,
+        "building": "garden:3",
+        "coins": 115920
+      },
+      {
+        "day": 31.3333,
+        "building": "warehouse:3",
+        "coins": 145510
+      },
+      {
+        "day": 34.3333,
+        "building": "woodlot:3",
+        "coins": 156930
+      },
+      {
+        "day": 41.6667,
+        "building": "quarry:3",
+        "coins": 203420
+      },
+      {
+        "day": 48.6667,
+        "building": "kiln:3",
+        "coins": 263110
+      },
+      {
+        "day": 58.3333,
+        "building": "workshop:3",
+        "coins": 339180
+      },
+      {
+        "day": 65.3333,
+        "building": "dryer:3",
+        "coins": 409480
+      },
+      {
+        "day": 99.3333,
+        "building": "home:4",
+        "coins": 696460
+      },
+      {
+        "day": 116.6667,
+        "building": "woodlot:4",
+        "coins": 844280
+      },
+      {
+        "day": 141,
+        "building": "quarry:4",
+        "coins": 1084890
+      },
+      {
+        "day": 167,
+        "building": "kiln:4",
+        "coins": 1366200
+      },
+      {
+        "day": 195.3333,
+        "building": "workshop:4",
+        "coins": 1638990
+      },
+      {
+        "day": 219.6667,
+        "building": "warehouse:4",
+        "coins": 1911300
+      },
+      {
+        "day": 229.3388,
+        "building": "garden:4",
+        "coins": 2011260
+      },
+      {
+        "day": 240.6667,
+        "building": "dryer:4",
+        "coins": 2121620
+      },
+      {
+        "day": 331.6667,
+        "building": "home:5",
+        "coins": 2987560
+      },
+      {
+        "day": 359.0037,
+        "building": "garden:5",
+        "coins": 3282110
+      },
+      {
+        "day": 411,
+        "building": "warehouse:5",
+        "coins": 3854900
+      },
+      {
+        "day": 459.3333,
+        "building": "woodlot:5",
+        "coins": 4469460
+      },
+      {
+        "day": 521,
+        "building": "quarry:5",
+        "coins": 5288310
+      },
+      {
+        "day": 559.3333,
+        "building": "kiln:5",
+        "coins": 5708640
+      },
+      {
+        "day": 629.6667,
+        "building": "workshop:5",
+        "coins": 6704280
+      },
+      {
+        "day": 658,
+        "building": "dryer:5",
+        "coins": 7098570
+      }
+    ],
+    "productionRecipes": {
+      "grow_berries_overnight": 69,
+      "gather_wood_overnight": 45,
+      "make_planks": 683,
+      "make_rope": 1666,
+      "quarry_stone_overnight": 87,
+      "woodlot_shift": 109,
+      "quarry_ore": 39,
+      "make_charcoal": 434,
+      "quarry_clay": 32,
+      "fire_bricks": 95,
+      "smelt_iron": 104,
+      "workshop_overnight": 27,
+      "garden_season": 604,
+      "hardwood_shift": 216,
+      "quarry_shift": 282,
+      "weave_cloth": 168,
+      "make_glass": 250,
+      "make_metal_parts": 336,
+      "cut_stone": 450,
+      "make_beams": 890,
+      "woodland_shift": 992,
+      "quarry_deep_face": 1088,
+      "charcoal_supply": 241,
+      "kiln_shift": 193,
+      "workshop_structures": 180,
+      "make_tools": 216,
+      "garden_supply": 361,
+      "make_reinforced_parts": 230,
+      "garden_abundance": 874,
+      "woodland_supply": 589,
+      "quarry_supply": 411
+    },
+    "excludedIncome": [
+      "daily_rewards",
+      "achievement_rewards",
+      "taps",
+      "player_market",
+      "legacy_grants"
+    ],
+    "rareMaterials": {
+      "seed": 6758438,
+      "generator": "xorshift32-rejection-v1",
+      "draws": 322,
+      "eligibleExplorationHours": 15040,
+      "received": {
+        "ancient_core": 59,
+        "moon_crystal": 48,
+        "living_resin": 53
+      },
+      "spentOnConstruction": {
+        "ancient_core": 2,
+        "moon_crystal": 2,
+        "living_resin": 2
+      },
+      "inventory": {
+        "ancient_core": 57,
+        "moon_crystal": 46,
+        "living_resin": 51
+      },
+      "finds": [
+        {
+          "day": 25.0059,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 56
+        },
+        {
+          "day": 31.3339,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 200
+        },
+        {
+          "day": 35.0016,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 288
+        },
+        {
+          "day": 38.0024,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 360
+        },
+        {
+          "day": 41.6701,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 448
+        },
+        {
+          "day": 46.0046,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 552
+        },
+        {
+          "day": 50.6726,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 664
+        },
+        {
+          "day": 53.34,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 728
+        },
+        {
+          "day": 58.0008,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 832
+        },
+        {
+          "day": 61.3351,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 912
+        },
+        {
+          "day": 66.6699,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 1040
+        },
+        {
+          "day": 70.3376,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 1128
+        },
+        {
+          "day": 72.3381,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 1176
+        },
+        {
+          "day": 74.6721,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 1232
+        },
+        {
+          "day": 77.3395,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 1296
+        },
+        {
+          "day": 82.0004,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 1400
+        },
+        {
+          "day": 87.3352,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 1528
+        },
+        {
+          "day": 90.0026,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 1592
+        },
+        {
+          "day": 94.3371,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 1696
+        },
+        {
+          "day": 98.6717,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 1800
+        },
+        {
+          "day": 101.0056,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 1856
+        },
+        {
+          "day": 104.6733,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 1944
+        },
+        {
+          "day": 108.3339,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 2024
+        },
+        {
+          "day": 111.6681,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 2104
+        },
+        {
+          "day": 116.3361,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 2216
+        },
+        {
+          "day": 118.6701,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 2272
+        },
+        {
+          "day": 122.0044,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 2352
+        },
+        {
+          "day": 126.0055,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 2448
+        },
+        {
+          "day": 128.3394,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 2504
+        },
+        {
+          "day": 132.3334,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 2592
+        },
+        {
+          "day": 137.0014,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 2704
+        },
+        {
+          "day": 140.6691,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 2792
+        },
+        {
+          "day": 144.3368,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 2880
+        },
+        {
+          "day": 147.3376,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 2952
+        },
+        {
+          "day": 152.339,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 3072
+        },
+        {
+          "day": 156.3401,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 3168
+        },
+        {
+          "day": 160.3341,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 3256
+        },
+        {
+          "day": 162.3346,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 3304
+        },
+        {
+          "day": 167.0026,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 3416
+        },
+        {
+          "day": 170.3369,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 3496
+        },
+        {
+          "day": 175.3382,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 3616
+        },
+        {
+          "day": 178.3391,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 3688
+        },
+        {
+          "day": 181.3399,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 3760
+        },
+        {
+          "day": 187.3344,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 3896
+        },
+        {
+          "day": 192.0024,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 4008
+        },
+        {
+          "day": 197.0038,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 4128
+        },
+        {
+          "day": 201.0049,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 4224
+        },
+        {
+          "day": 206.6731,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 4360
+        },
+        {
+          "day": 213.0011,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 4504
+        },
+        {
+          "day": 218.3359,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 4632
+        },
+        {
+          "day": 224.0042,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 4768
+        },
+        {
+          "day": 229.6721,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 4904
+        },
+        {
+          "day": 232.673,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 4976
+        },
+        {
+          "day": 235.6667,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 5040
+        },
+        {
+          "day": 239.6678,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 5136
+        },
+        {
+          "day": 242.6686,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 5208
+        },
+        {
+          "day": 245.6694,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 5280
+        },
+        {
+          "day": 249.6706,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 5376
+        },
+        {
+          "day": 254.3384,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 5488
+        },
+        {
+          "day": 259.6731,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 5616
+        },
+        {
+          "day": 265.0006,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 5736
+        },
+        {
+          "day": 267.3344,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 5792
+        },
+        {
+          "day": 272.0023,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 5904
+        },
+        {
+          "day": 275.3366,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 5984
+        },
+        {
+          "day": 277.337,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 6032
+        },
+        {
+          "day": 280.0043,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 6096
+        },
+        {
+          "day": 282.6717,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 6160
+        },
+        {
+          "day": 287.006,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 6264
+        },
+        {
+          "day": 290.6736,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 6352
+        },
+        {
+          "day": 293.3337,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 6408
+        },
+        {
+          "day": 295.6676,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 6464
+        },
+        {
+          "day": 298.0015,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 6520
+        },
+        {
+          "day": 300.6689,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 6584
+        },
+        {
+          "day": 304.3366,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 6672
+        },
+        {
+          "day": 306.6706,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 6728
+        },
+        {
+          "day": 310.3382,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 6816
+        },
+        {
+          "day": 315.6731,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 6944
+        },
+        {
+          "day": 321.6676,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 7080
+        },
+        {
+          "day": 326.3356,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 7192
+        },
+        {
+          "day": 329.6698,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 7272
+        },
+        {
+          "day": 334.3378,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 7384
+        },
+        {
+          "day": 338.0055,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 7472
+        },
+        {
+          "day": 340.3394,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 7528
+        },
+        {
+          "day": 343.0069,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 7592
+        },
+        {
+          "day": 346.0006,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 7656
+        },
+        {
+          "day": 349.0014,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 7728
+        },
+        {
+          "day": 352.6691,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 7816
+        },
+        {
+          "day": 358.0037,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 7944
+        },
+        {
+          "day": 361.0042,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 8016
+        },
+        {
+          "day": 366.6722,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 8152
+        },
+        {
+          "day": 371.6734,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 8272
+        },
+        {
+          "day": 375.0004,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 8344
+        },
+        {
+          "day": 379.6682,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 8456
+        },
+        {
+          "day": 383.0023,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 8536
+        },
+        {
+          "day": 387.3367,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 8640
+        },
+        {
+          "day": 393.0049,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 8776
+        },
+        {
+          "day": 397.006,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 8872
+        },
+        {
+          "day": 401.6669,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 8976
+        },
+        {
+          "day": 404.3343,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 9040
+        },
+        {
+          "day": 406.6682,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 9096
+        },
+        {
+          "day": 409.3356,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 9160
+        },
+        {
+          "day": 413.3368,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 9256
+        },
+        {
+          "day": 415.6707,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 9312
+        },
+        {
+          "day": 420.0053,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 9416
+        },
+        {
+          "day": 425.3401,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 9544
+        },
+        {
+          "day": 429.6675,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 9640
+        },
+        {
+          "day": 435.3357,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 9776
+        },
+        {
+          "day": 441.3374,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 9920
+        },
+        {
+          "day": 446.0054,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 10032
+        },
+        {
+          "day": 451.0068,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 10152
+        },
+        {
+          "day": 453.3336,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 10200
+        },
+        {
+          "day": 455.6676,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 10256
+        },
+        {
+          "day": 458.6684,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 10328
+        },
+        {
+          "day": 463.6698,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 10448
+        },
+        {
+          "day": 467.0041,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 10528
+        },
+        {
+          "day": 471.0052,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 10624
+        },
+        {
+          "day": 475.6731,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 10736
+        },
+        {
+          "day": 480.6674,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 10848
+        },
+        {
+          "day": 486.3356,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 10984
+        },
+        {
+          "day": 489.0031,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 11048
+        },
+        {
+          "day": 491.0036,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 11096
+        },
+        {
+          "day": 493.671,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 11160
+        },
+        {
+          "day": 496.005,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 11216
+        },
+        {
+          "day": 501.0064,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 11336
+        },
+        {
+          "day": 506.0006,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 11448
+        },
+        {
+          "day": 509.3349,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 11528
+        },
+        {
+          "day": 514.0029,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 11640
+        },
+        {
+          "day": 518.6708,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 11752
+        },
+        {
+          "day": 524.0056,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 11880
+        },
+        {
+          "day": 530.3336,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 12024
+        },
+        {
+          "day": 533.3344,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 12096
+        },
+        {
+          "day": 539.0027,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 12232
+        },
+        {
+          "day": 543.3372,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 12336
+        },
+        {
+          "day": 545.6712,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 12392
+        },
+        {
+          "day": 550.0057,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 12496
+        },
+        {
+          "day": 554.3403,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 12600
+        },
+        {
+          "day": 557.6674,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 12672
+        },
+        {
+          "day": 561.6685,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 12768
+        },
+        {
+          "day": 566.0031,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 12872
+        },
+        {
+          "day": 571.3379,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 13000
+        },
+        {
+          "day": 576.0058,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 13112
+        },
+        {
+          "day": 579.3401,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 13192
+        },
+        {
+          "day": 583.3341,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 13280
+        },
+        {
+          "day": 589.0023,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 13416
+        },
+        {
+          "day": 591.0029,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 13464
+        },
+        {
+          "day": 595.6708,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 13576
+        },
+        {
+          "day": 600.0054,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 13680
+        },
+        {
+          "day": 605.0068,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 13800
+        },
+        {
+          "day": 610.3344,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 13920
+        },
+        {
+          "day": 614.3356,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 14016
+        },
+        {
+          "day": 618.0032,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 14104
+        },
+        {
+          "day": 622.6712,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 14216
+        },
+        {
+          "day": 626.6723,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 14312
+        },
+        {
+          "day": 631.0069,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 14416
+        },
+        {
+          "day": 633.6671,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 14472
+        },
+        {
+          "day": 639.3354,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 14608
+        },
+        {
+          "day": 642.6696,
+          "route": "shore_camp",
+          "itemId": "living_resin",
+          "eligibleExplorationHours": 14688
+        },
+        {
+          "day": 644.6702,
+          "route": "shore_camp",
+          "itemId": "ancient_core",
+          "eligibleExplorationHours": 14736
+        },
+        {
+          "day": 649.6716,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 14856
+        },
+        {
+          "day": 655.6732,
+          "route": "shore_camp",
+          "itemId": "moon_crystal",
+          "eligibleExplorationHours": 15000
+        }
+      ]
+    }
+  }
+]

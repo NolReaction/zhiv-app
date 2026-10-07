@@ -1,0 +1,201 @@
+/** Geometry shared by the equipped world prop and its shop/collection icon.
+ * Prices and fishing bonuses belong to the economy catalog. Coordinates use
+ * the gripping palm as origin, +x toward the tip, and one unit per actor size. */
+export const FISHING_ROD_IDS = ["reed_rod", "brook_rod", "river_rod", "willow_rod", "tide_rod", "starfall_rod"] as const;
+export type FishingRodId = typeof FISHING_ROD_IDS[number];
+export type FishingRodAppearance = Readonly<{
+  shaft: string; highlight: string; handle: string; reel: string; metal: string; wrap: string | null;
+}>;
+type RodColor = keyof Omit<FishingRodAppearance, "wrap"> | "wrap";
+export type RodPathCommand = readonly ["M" | "L", number, number] | readonly ["Q", number, number, number, number] | readonly ["Z"];
+export type FishingRodShape = { fill?: RodColor; stroke?: RodColor; width?: number } & (
+  | { kind: "path"; commands: readonly RodPathCommand[] }
+  | { kind: "ellipse"; x: number; y: number; rx: number; ry: number }
+);
+const reedRod: FishingRodAppearance = Object.freeze({ shaft: "#62472d", highlight: "#d1b27c", handle: "#765639",
+  reel: "#586861", metal: "#d4bf8c", wrap: null });
+const brookRod: FishingRodAppearance = Object.freeze({ shaft: "#795438", highlight: "#d6af73", handle: "#ac7849",
+  reel: "#88633e", metal: "#ddc08b", wrap: "#718755" });
+const riverRod: FishingRodAppearance = Object.freeze({ shaft: "#674133", highlight: "#b98d60", handle: "#c5965e",
+  reel: "#79563b", metal: "#e1c28d", wrap: "#5a493a" });
+const willowRod: FishingRodAppearance = Object.freeze({ shaft: "#886240", highlight: "#c3a169", handle: "#786044",
+  reel: "#bc7f4f", metal: "#e5bf88", wrap: "#75905a" });
+
+const tideRod: FishingRodAppearance = Object.freeze({ shaft: "#28616a", highlight: "#9cd5cd", handle: "#334c59",
+  reel: "#549197", metal: "#cae6df", wrap: "#78c7c5" });
+const starfallRod: FishingRodAppearance = Object.freeze({ shaft: "#554775", highlight: "#b8a6d2", handle: "#443d5c",
+  reel: "#c69f54", metal: "#f5df9e", wrap: "#8e74aa" });
+
+export function fishingRodId(value: unknown): FishingRodId {
+  return FISHING_ROD_IDS.find(id => id === value) ?? "reed_rod";
+}
+export function fishingRodAppearance(rodId?: string): FishingRodAppearance {
+  return rodId === "starfall_rod" ? starfallRod : rodId === "tide_rod" ? tideRod : rodId === "brook_rod" ? brookRod : rodId === "river_rod" ? riverRod : rodId === "willow_rod" ? willowRod : reedRod;
+}
+
+export type FishingRodGeometryOptions = {
+  length?: number; tension?: number; crank?: number; side?: number;
+  reel?: { x: number; y: number };
+  detailScale?: number;
+};
+const finite = (value: number | undefined, fallback: number) => Number.isFinite(value) ? value! : fallback;
+
+/** Reed: knotted bamboo + little winding spool. Brook: short plain wood,
+ * green lashings, a paddle grip and low wooden spool. River: three slim sections,
+ * continuous cork grip and a compact rounded reel. Tide: heavier sections,
+ * split grip and a deep hanging reel. Willow: bowed wood, leaf-shaped fittings
+ * and a large round copper reel. The tip and gripping palm stay fixed. */
+export function fishingRodShapes(rodId?: string, options: FishingRodGeometryOptions = {}): readonly FishingRodShape[] {
+  const id = fishingRodId(rodId), requestedLength = finite(options.length, id === "brook_rod" ? .82 : 1), length = requestedLength > 0 ? requestedLength : 1;
+  const side = finite(options.side, 1) < 0 ? -1 : 1;
+  const bend = Math.max(0, Math.min(1.5, finite(options.tension, 0))) * .11 * side;
+  const crank = finite(options.crank, .5), reel = options.reel ?? { x: -.025, y: .09 * side };
+  const rx = finite(reel.x, -.025), ry = finite(reel.y, .09 * side);
+  const detail = Math.max(.2, Math.min(1, finite(options.detailScale, 1)));
+  let reelStart = 0;
+  const shapes: FishingRodShape[] = [];
+  const line = (commands: readonly RodPathCommand[], stroke: RodColor, width: number) => shapes.push({ kind: "path", commands, stroke, width });
+  const body = (commands: readonly RodPathCommand[], fill: RodColor, stroke?: RodColor, width = .012) => shapes.push({ kind: "path", commands, fill, stroke, width });
+  const ellipse = (x: number, y: number, radiusX: number, radiusY: number, fill?: RodColor, stroke?: RodColor, width = .012) =>
+    shapes.push({ kind: "ellipse", x, y, rx: radiusX, ry: radiusY, fill, stroke, width });
+  const band = (at: number, halfWidth: number, color: RodColor, thickness = .026) =>
+    line([["M", at - thickness / 2, -halfWidth], ["L", at - thickness / 2, halfWidth]], color, thickness);
+  const curveAt = (t: number) => ((id === "willow_rod" || id === "starfall_rod") ? .055 * side : 0) * 4 * t * (1 - t) + bend * 2 * t * (1 - t);
+  const shaft = (from: number, to: number, startWidth: number, endWidth: number) => {
+    const top: RodPathCommand[] = [], bottom: RodPathCommand[] = [];
+    for (let step = 0; step <= 6; step++) {
+      const part = step / 6, t = from + (to - from) * part, width = startWidth + (endWidth - startWidth) * part;
+      top.push([step ? "L" : "M", length * t, curveAt(t) - width]);
+      bottom.unshift(["L", length * t, curveAt(t) + width]);
+    }
+    body([...top, ...bottom, ["Z"]], "shaft");
+  };
+
+  if (id === "reed_rod") {
+    // Natural thick base and a slim flexible last segment.
+    shaft(0, .59, .026, .017); shaft(.59, 1, .017, .005);
+    line([["M", 0, -.006], ["Q", length * .5, bend - .006, length, 0]], "highlight", .018);
+    for (const at of [.2, .39, .57, .76]) {
+      const x = length * at, y = curveAt(at);
+      line([["M", x, y - .032], ["L", x, y + .032]], "handle", .022);
+    }
+    line([["M", -.065, 0], ["L", .08, 0]], "handle", .071);
+    for (const at of [-.04, -.014, .012, .038]) band(at, .03, "metal", .009);
+    line([["M", 0, .005 * side], ["L", rx, ry]], "shaft", .021);
+    reelStart = shapes.length;
+    ellipse(rx, ry, .047, .034, "handle", "shaft");
+    for (const at of [-.02, 0, .02]) line([["M", rx + at, ry - .024], ["L", rx + at, ry + .024]], "metal", .011);
+  } else if (id === "brook_rod") {
+    // A plain single-piece pole with a carved paddle grip, no metal sections or
+    // deep hanging reel. Explicit rig length still preserves the line anchor.
+    shaft(0, 1, .023, .006);
+    line([["M", 0, -.007], ["Q", length * .5, bend - .007, length, 0]], "highlight", .012);
+    body([["M", -.10, -.022], ["Q", -.115, 0, -.10, .022], ["L", .055, .04],
+      ["Q", .09, .028, .075, -.025], ["L", -.10, -.022], ["Z"]], "handle", "shaft", .009);
+    for (const at of [-.065, .065]) {
+      band(at, .029, "wrap", .035);
+      line([["M", at - .01, -.027], ["L", at + .011, .028]], "metal", .006);
+    }
+    for (const at of [.34, .76]) {
+      const x = at * length, y = curveAt(at);
+      line([["M", x, y - .025], ["L", x, y + .025]], "wrap", .024);
+      ellipse(x + .006, y + .03 * side, .018, .015, undefined, "metal", .009);
+    }
+    line([["M", 0, .005 * side], ["L", rx, ry]], "wrap", .026);
+    reelStart = shapes.length;
+    ellipse(rx, ry, .048, .031, "reel", "shaft", .009);
+    for (const at of [-.036, .036]) ellipse(rx + at, ry, .01, .038, "handle", "shaft", .008);
+    for (const at of [-.014, .008]) line([["M", rx + at, ry - .024], ["L", rx + at, ry + .024]], "metal", .009);
+    line([["M", rx, ry], ["L", rx + Math.cos(crank) * .035, ry + Math.sin(crank) * .025]], "metal", .012);
+    ellipse(rx + Math.cos(crank) * .035, ry + Math.sin(crank) * .025, .016, .012, "handle");
+  } else if (id === "river_rod" || id === "tide_rod") {
+    const river = id === "river_rod";
+    // River is a light cork-handled pole; Tide keeps the heavier stepped blank.
+    for (const [from, to, width] of [[0, .35, .028], [.35, .68, .021], [.68, 1, .013]])
+      shaft(from, to, width * (river ? .72 : 1), width * (river ? .45 : .65));
+    line([["M", 0, -.011], ["Q", length * .5, bend - .009, length, 0]], "highlight", .013);
+    for (const at of [.35, .68]) {
+      const half = river ? .026 : .038;
+      line([["M", length * at, curveAt(at) - half], ["L", length * at, curveAt(at) + half]], "metal", river ? .02 : .036);
+    }
+    if (river) {
+      line([["M", -.135, 0], ["L", .105, 0]], "handle", .069);
+      band(-.13, .032, "wrap", .018); band(.108, .029, "metal", .024);
+      for (const at of [-.083, -.022, .044]) band(at, .024, "reel", .008);
+    } else {
+      line([["M", -.105, 0], ["L", -.026, 0]], "handle", .085);
+      line([["M", .035, 0], ["L", .115, 0]], "handle", .075);
+      band(-.1, .041, "metal", .016); band(.118, .035, "wrap", .037);
+    }
+    for (const at of river ? [.24, .57, .9] : [.19, .47, .77, .98]) {
+      const x = at * length, y = curveAt(at) + .029 * side;
+      line([["M", x - .012, curveAt(at)], ["L", x, y]], "shaft", .012);
+      ellipse(x, y, river ? .018 : .024, .018, undefined, "metal", .013);
+    }
+    if (id === "tide_rod") {
+      for (const at of [.1, .27, .47]) { const x = at * length, y = curveAt(at);
+        line([["M", x - .025, y - .023], ["Q", x, y + .025, x + .025, y - .015]], "wrap", .021);
+      }
+    }
+    line([["M", rx + .035, 0], ["L", rx + .035, ry], ["L", rx + .006, ry + .022 * side]], "metal", .023);
+    reelStart = shapes.length;
+    if (river) {
+      // Shallow, rounded spool; it reads differently from Tide's deep basket.
+      ellipse(rx - .014, ry + .025 * side, .062, .041, "reel", "shaft");
+      ellipse(rx + .017, ry + .025 * side, .024, .043, "metal", "shaft", .009);
+      line([["M", rx - .032, ry + .006 * side], ["L", rx - .032, ry + .043 * side]], "metal", .013);
+    } else {
+      body([["M", rx - .065, ry], ["L", rx + .027, ry], ["L", rx + .038, ry + .077 * side],
+        ["L", rx - .068, ry + .077 * side], ["Z"]], "reel", "shaft");
+      ellipse(rx - .022, ry + .077 * side, .058, .018, "metal", "shaft", .01);
+      line([["M", rx - .081, ry + .025 * side], ["Q", rx - .09, ry + .112 * side, rx + .055, ry + .087 * side]], "metal", .011);
+    }
+    line([["M", rx + .014, ry + .035 * side], ["L", rx + .043 + Math.cos(crank) * .05, ry + (.02 + Math.sin(crank) * .04) * side]], "metal", .018);
+    ellipse(rx + .043 + Math.cos(crank) * .05, ry + (.02 + Math.sin(crank) * .04) * side, .025, .016, "handle");
+  } else {
+    shaft(0, 1, .031, .005);
+    line([["M", 0, -.005], ["Q", length * .5, .11 * side + bend - .005, length, 0]], "highlight", .016);
+    line([["M", -.11, 0], ["L", .095, .014 * side]], "handle", .083);
+    ellipse(-.11, 0, .019, .043, "metal");
+    for (const at of [-.069, -.03, .009, .048]) line([["M", at - .012, -.028], ["L", at + .012, .032]], "wrap", .019);
+    for (const at of [.24, .55, .81]) {
+      const x = length * at, y = curveAt(at);
+      body([["M", x - .024, y], ["Q", x + .005, y - .065 * side, x + .045, y],
+        ["Q", x + .005, y + .027 * side, x - .024, y], ["Z"]], "wrap", "metal", .01);
+    }
+    if (id === "starfall_rod") {
+      for (const at of [.24, .55]) { const x = at * length, y = curveAt(at);
+        body([["M", x, y - .065], ["L", x + .015, y - .015], ["L", x + .051, y], ["L", x + .015, y + .016], ["L", x, y + .051], ["L", x - .015, y + .016], ["L", x - .051, y], ["L", x - .015, y - .015], ["Z"]], "metal", "shaft", .008);
+      }
+    }
+    line([["M", 0, .02 * side], ["L", rx, ry]], "metal", .023);
+    reelStart = shapes.length;
+    ellipse(rx, ry, .079, .079, "reel", "metal", .013);
+    ellipse(rx, ry, .059, .059, "handle", "metal", .008);
+    for (let index = 0; index < 4; index++) {
+      const angle = crank + index * Math.PI / 2;
+      ellipse(rx + Math.cos(angle) * .034, ry + Math.sin(angle) * .034, .012, .012, "reel");
+    }
+    ellipse(rx, ry, .015, .015, "metal");
+    line([["M", rx, ry], ["L", rx + Math.cos(crank) * .09, ry + Math.sin(crank) * .09]], "metal", .015);
+    ellipse(rx + Math.cos(crank) * .09, ry + Math.sin(crank) * .09, .023, .016, "handle");
+  }
+  if (detail === 1) return shapes;
+  return shapes.map((shape, index) => {
+    if (index < reelStart) return shape;
+    const width = (shape.width ?? .012) * detail;
+    if (shape.kind === "ellipse") return { ...shape, width, x: rx + (shape.x - rx) * detail,
+      y: ry + (shape.y - ry) * detail, rx: shape.rx * detail, ry: shape.ry * detail };
+    const commands = shape.commands.map(command => command[0] === "Z" ? command : command[0] === "Q"
+      ? ["Q", rx + (command[1] - rx) * detail, ry + (command[2] - ry) * detail,
+        rx + (command[3] - rx) * detail, ry + (command[4] - ry) * detail] as const
+      : [command[0], rx + (command[1] - rx) * detail, ry + (command[2] - ry) * detail] as const);
+    return { ...shape, width, commands };
+  });
+}
+
+/** Static icon framing uses the same shape builder and proportions as a world rod. */
+export const FISHING_ROD_ICON = { viewBox: "0 0 64 64", origin: { x: 15, y: 50 }, angle: -49, scale: 53 } as const;
+export function fishingRodPath(commands: readonly RodPathCommand[]): string {
+  return commands.map(command => command.join(" ")).join(" ");
+}

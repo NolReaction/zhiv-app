@@ -29,6 +29,10 @@ private fun ApplicationCall.page(): Pair<Int, Int> {
     val limit = parameter("limit", "25").toIntOrNull()?.takeIf { it in 1..100 } ?: badQuery()
     return offset to limit
 }
+private fun ApplicationCall.optionalParameter(name: String): String? = request.queryParameters.getAll(name)?.let { it.singleOrNull() ?: badQuery() }
+private fun ApplicationCall.analyticsQuery(): AdminAnalyticsQuery = AdminAnalyticsQuery(
+    optionalParameter("from"), optionalParameter("to"), parameter("q", ""), parameter("scope", "players"),
+)
 private fun ApplicationCall.adminSessionHash(config: AppConfig, codec: TokenCodec, writing: Boolean = false): ByteArray {
     response.header(HttpHeaders.CacheControl, "no-store")
     response.header("X-Robots-Tag", "noindex, nofollow")
@@ -47,12 +51,35 @@ fun Route.adminRoutes(repository: AdminRepository, codec: TokenCodec, config: Ap
                 val days = call.parameter("days", "30").toIntOrNull()?.takeIf { it in setOf(7, 30, 90) } ?: badQuery()
                 call.respond(repository.overview(hash, days))
             }
+            get("/analytics") {
+                val hash = call.adminSessionHash(config, codec)
+                call.respond(repository.analytics(hash, call.analyticsQuery()))
+            }
+            get("/analytics/events") {
+                val hash = call.adminSessionHash(config, codec)
+                val (offset, limit) = call.page()
+                call.respond(repository.analyticsEvents(hash, AdminAnalyticsEventsQuery(call.analyticsQuery(),
+                    call.parameter("kind", ""), call.parameter("resource", ""), call.parameter("direction", "all"),
+                    offset, limit, call.optionalParameter("at"))))
+            }
             get("/users") {
                 val hash = call.adminSessionHash(config, codec)
                 val (offset, limit) = call.page()
                 val query = call.parameter("q", "").trim().takeIf { it.length <= 100 && it.none(Char::isISOControl) } ?: badQuery()
                 val sort = call.parameter("sort", "created").takeIf { it in setOf("created", "activity", "taps", "review") } ?: badQuery()
                 call.respond(repository.users(hash, query, sort, offset, limit))
+            }
+            get("/economy") {
+                val hash = call.adminSessionHash(config, codec)
+                val (offset, limit) = call.page()
+                val query = call.parameter("q", "").trim().takeIf { it.length <= 100 && it.none(Char::isISOControl) } ?: badQuery()
+                val sort = call.parameter("sort", "updated").takeIf { it in setOf("updated", "coins", "progress", "ready") } ?: badQuery()
+                call.respond(repository.economy(hash, query, sort, offset, limit))
+            }
+            get("/users/{publicId}/economy") {
+                val hash = call.adminSessionHash(config, codec)
+                val target = parsePublicId(call.parameters["publicId"]) ?: badQuery()
+                call.respond(repository.economyPlayer(hash, target))
             }
             get("/users/{publicId}/rewards") {
                 val hash = call.adminSessionHash(config, codec)

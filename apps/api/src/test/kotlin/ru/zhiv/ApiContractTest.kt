@@ -36,6 +36,35 @@ import kotlin.test.assertNull
 
 class ApiContractTest {
     @Test
+    fun `profile creation and rename reject hidden direction overrides without changing identity`() = testApplication {
+        val repository = FakeRepository()
+        application { installZhivApi(repository, repository, testConfig()) }
+        val rejected = client.post("/api/v1/bootstrap") {
+            contentType(ContentType.Application.Json)
+            header("Idempotency-Key", UUID.randomUUID().toString())
+            setBody("""{"displayName":"Имя\u202eАдмин"}""")
+        }
+        assertEquals(HttpStatusCode.BadRequest, rejected.status)
+        assertNull(rejected.headers[HttpHeaders.SetCookie])
+        val accepted = client.post("/api/v1/bootstrap") {
+            contentType(ContentType.Application.Json)
+            header("Idempotency-Key", UUID.randomUUID().toString())
+            setBody("""{"displayName":"Игрок"}""")
+        }
+        assertEquals(HttpStatusCode.Created, accepted.status)
+        val cookie = assertNotNull(accepted.headers[HttpHeaders.SetCookie]).substringBefore(';')
+        val renamed = client.patch("/api/v1/me") {
+            contentType(ContentType.Application.Json)
+            header(HttpHeaders.Cookie, cookie)
+            header("Idempotency-Key", UUID.randomUUID().toString())
+            setBody("""{"displayName":"Имя\u202eАдмин"}""")
+        }
+        assertEquals(HttpStatusCode.BadRequest, renamed.status)
+        val unchanged = client.get("/api/v1/me") { header(HttpHeaders.Cookie, cookie) }
+        assertContains(unchanged.bodyAsText(), "\"displayName\":\"Игрок\"")
+    }
+
+    @Test
     fun `verified login providers disable legacy profile creation without issuing a session`() {
         val providers = listOf(
             AuthConfig(vkClientId = "123"),

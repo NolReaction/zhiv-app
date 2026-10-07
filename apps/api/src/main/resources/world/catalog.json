@@ -44,7 +44,11 @@
       "slot": "palette",
       "color": "#49816b",
       "sparks": 12,
-      "starter": false
+      "starter": false,
+      "purchase": {
+        "currency": "coins",
+        "amount": 1200
+      }
     },
     {
       "id": "autumn",
@@ -52,7 +56,11 @@
       "slot": "palette",
       "color": "#b27b42",
       "sparks": 12,
-      "starter": false
+      "starter": false,
+      "purchase": {
+        "currency": "coins",
+        "amount": 1800
+      }
     },
     {
       "id": "amber_scarf",
@@ -68,7 +76,11 @@
       "slot": "neck",
       "color": "#b96374",
       "sparks": 10,
-      "starter": false
+      "starter": false,
+      "purchase": {
+        "currency": "coins",
+        "amount": 800
+      }
     },
     {
       "id": "leaf_cap",
@@ -76,7 +88,11 @@
       "slot": "head",
       "color": "#9cb764",
       "sparks": 16,
-      "starter": false
+      "starter": false,
+      "purchase": {
+        "currency": "coins",
+        "amount": 1600
+      }
     },
     {
       "id": "explorer_cap",
@@ -93,6 +109,114 @@
       "color": "#a7bd77",
       "sparks": 0,
       "starter": false
+    },
+    {
+      "id": "heather",
+      "name": "Вересковый мох",
+      "slot": "palette",
+      "color": "#8a739b",
+      "sparks": 0,
+      "starter": false,
+      "purchase": {
+        "currency": "pearls",
+        "amount": 150
+      }
+    },
+    {
+      "id": "frost",
+      "name": "Иней",
+      "slot": "palette",
+      "color": "#8ba9a3",
+      "sparks": 0,
+      "starter": false,
+      "purchase": {
+        "currency": "pearls",
+        "amount": 250
+      }
+    },
+    {
+      "id": "ember",
+      "name": "Медный мох",
+      "slot": "palette",
+      "color": "#a96750",
+      "sparks": 0,
+      "starter": false,
+      "purchase": {
+        "currency": "coins",
+        "amount": 2400
+      }
+    },
+    {
+      "id": "acorn_cap",
+      "name": "Жёлудевая шапочка",
+      "slot": "head",
+      "color": "#996743",
+      "sparks": 0,
+      "starter": false,
+      "purchase": {
+        "currency": "coins",
+        "amount": 1800
+      }
+    },
+    {
+      "id": "knitted_cap",
+      "name": "Вязаная шапочка",
+      "slot": "head",
+      "color": "#697caa",
+      "sparks": 0,
+      "starter": false,
+      "purchase": {
+        "currency": "coins",
+        "amount": 3200
+      }
+    },
+    {
+      "id": "moon_crown",
+      "name": "Лунный венок",
+      "slot": "head",
+      "color": "#c3c1e4",
+      "sparks": 0,
+      "starter": false,
+      "purchase": {
+        "currency": "pearls",
+        "amount": 600
+      }
+    },
+    {
+      "id": "river_scarf",
+      "name": "Речной шарф",
+      "slot": "neck",
+      "color": "#6299b1",
+      "sparks": 0,
+      "starter": false,
+      "purchase": {
+        "currency": "coins",
+        "amount": 1200
+      }
+    },
+    {
+      "id": "forest_bandana",
+      "name": "Лесной платок",
+      "slot": "neck",
+      "color": "#77905f",
+      "sparks": 0,
+      "starter": false,
+      "purchase": {
+        "currency": "coins",
+        "amount": 2200
+      }
+    },
+    {
+      "id": "moon_scarf",
+      "name": "Лунный шарф",
+      "slot": "neck",
+      "color": "#b7afd7",
+      "sparks": 0,
+      "starter": false,
+      "purchase": {
+        "currency": "pearls",
+        "amount": 350
+      }
     }
   ],
   "finds": [

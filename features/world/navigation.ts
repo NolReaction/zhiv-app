@@ -1,3 +1,4 @@
+import { campfireFootprint } from "./forest-campfire";
 import type { FixedWorldScene, WorldBounds, WorldPoint } from "./tiled/types";
 
 type Edge = { a: WorldPoint; b: WorldPoint; bounds: WorldBounds };
@@ -14,7 +15,7 @@ export type WorldNavigation = {
     lastSearch: { reason: NavigationSearchReason; visited: number; checks: number; pathPoints: number } | null };
 };
 type Geometry = { areas: Polygon[]; blockers: Polygon[]; boundary: SpatialIndex; blocked: SpatialIndex;
-  rowStep: number; rowOrigin: number; edgeKnown: Uint8Array; edgePass: Uint8Array };
+  rowStep: number; rowOrigin: number; edgeKnown: Uint8Array; edgePass: Uint8Array; temporary?: Polygon };
 
 /** Limits also apply to malformed editor previews; no grid or search can grow without bound. */
 export const WORLD_NAVIGATION_LIMITS = {
@@ -190,6 +191,40 @@ export function createWorldNavigation(scene: FixedWorldScene, radius = (scene.ac
   if (profiles.has(radius)) return profiles.get(radius)!;
   const result = buildNavigation(scene, radius); profiles.set(radius, result); return result;
 }
+
+/** A parked prop belongs to one live session. Never edit the scene-cached grid,
+ * diagnostics or edge caches shared by another account or camera. */
+export function withWorldNavigationObstacle(base: WorldNavigation, points: readonly WorldPoint[]): WorldNavigation | null {
+  const data = geometry.get(base);
+  if (!data || points.length < 3 || points.length > 64) return null;
+  const obstacle = preparePolygon([...points], data.rowOrigin, data.rowStep,
+    Math.max(1, Math.ceil(base.bounds.height / data.rowStep) + 1), { remaining: 10_000 });
+  if (!obstacle) return null;
+  const blockers = [...data.blockers, obstacle], edges = blockers.flatMap(polygon => polygon.edges);
+  const blocked = buildIndex(edges, data.blocked.bounds, data.blocked.step);
+  if (!blocked) return null;
+  const nav: WorldNavigation = { ...base,
+    grid: { ...base.grid, walkable: base.grid.walkable.slice() },
+    debug: { boundary: base.debug.boundary, blockers: [...base.debug.blockers, obstacle.points] },
+    stats: { ...base.stats, blockerEdges: edges.length, walkableCells: 0, lastSearch: null } };
+  geometry.set(nav, { ...data, blockers, blocked, temporary: obstacle,
+    edgeKnown: new Uint8Array(nav.grid.walkable.length), edgePass: new Uint8Array(nav.grid.walkable.length) });
+  for (let id = 0; id < nav.grid.walkable.length; id++) {
+    if (nav.grid.walkable[id] && !isWalkable(nav, gridPoint(nav, id))) nav.grid.walkable[id] = 0;
+    nav.stats.walkableCells += nav.grid.walkable[id];
+  }
+  return nav;
+}
+
+/** Legacy authored corridors may bypass static walls, but never a live prop. */
+export function canTraverseWorldObstacle(nav: WorldNavigation, a: WorldPoint, b: WorldPoint): boolean {
+  const data = geometry.get(nav), obstacle = data?.temporary;
+  if (!obstacle) return true;
+  if (!finite(a) || !finite(b) || classify(a, obstacle, data.rowOrigin, data.rowStep) >= 0
+    || classify(b, obstacle, data.rowOrigin, data.rowStep) >= 0) return false;
+  const clearanceSquared = (nav.radius + EPS) ** 2;
+  return obstacle.edges.every(edge => segmentSquared(a, b, edge.a, edge.b) > clearanceSquared);
+}
 function buildNavigation(scene: FixedWorldScene, radius: number): WorldNavigation | null {
   const source = scene.navigation;
   if (!source || source.version !== 1 || !Number.isFinite(radius) || radius < 0 || !Number.isFinite(source.cellSize)
@@ -198,13 +233,18 @@ function buildNavigation(scene: FixedWorldScene, radius: number): WorldNavigatio
   const areaPoints = source.areas.flatMap(area => area.points);
   if (areaPoints.length > WORLD_NAVIGATION_LIMITS.areaEdges) return null;
   const box = bounds(areaPoints), cellSize = source.cellSize;
-  const columns = Math.max(1, Math.ceil(box.width / cellSize)), rows = Math.max(1, Math.ceil(box.height / cellSize));
+  // Keep world-space cell centres fixed when an unrelated WalkArea extends the
+  // bounds. Otherwise a narrow existing passage can lose its sampled cells.
+  const firstColumn = Math.floor(box.x / cellSize), firstRow = Math.floor(box.y / cellSize);
+  const columns = Math.max(1, Math.ceil((box.x + box.width) / cellSize) - firstColumn);
+  const rows = Math.max(1, Math.ceil((box.y + box.height) / cellSize) - firstRow);
   if (!Number.isFinite(columns * rows) || columns * rows > WORLD_NAVIGATION_LIMITS.cells) return null;
   const rowStep = Math.max(24, cellSize * 4), rowOrigin = box.y;
   const rowCount = Math.max(1, Math.ceil(box.height / rowStep) + 1);
   const budget = { remaining: WORLD_NAVIGATION_LIMITS.preparationChecks as number };
   const rawBlockers = [...source.obstacles.map(item => item.points), ...scene.sites.map(site => site.collision),
-    ...(scene.water?.surfaces.map(surface => surface.points) ?? [])];
+    ...(scene.water?.surfaces.map(surface => surface.points) ?? []),
+    ...(scene.campfires ?? []).map(campfireFootprint)];
   if (rawBlockers.some(points => !Array.isArray(points))
     || rawBlockers.reduce((sum, points) => sum + points.length, areaPoints.length) > WORLD_NAVIGATION_LIMITS.geometryEdges) return null;
   if (source.obstacles.some(item => item.points.length < 3)
@@ -220,7 +260,8 @@ function buildNavigation(scene: FixedWorldScene, radius: number): WorldNavigatio
   const boundary = buildIndex(boundaryEdges, indexBounds, rowStep), blocked = buildIndex(blockerEdges, indexBounds, rowStep);
   if (!boundary || !blocked) return null;
   const nav: WorldNavigation = { radius, cellSize, bounds: box,
-    grid: { origin: { x: box.x + cellSize / 2, y: box.y + cellSize / 2 }, columns, rows, walkable: new Uint8Array(columns * rows) },
+    grid: { origin: { x: firstColumn * cellSize + cellSize / 2, y: firstRow * cellSize + cellSize / 2 },
+      columns, rows, walkable: new Uint8Array(columns * rows) },
     debug: { boundary: boundaryEdges.map(({ a, b }) => ({ a: { ...a }, b: { ...b } })), blockers: validBlockers.map(polygon => polygon.points) },
     stats: { cells: columns * rows, walkableCells: 0, boundaryEdges: boundaryEdges.length, blockerEdges: blockerEdges.length, lastSearch: null } };
   geometry.set(nav, { areas: validAreas, blockers: validBlockers, boundary, blocked, rowOrigin, rowStep,
@@ -323,8 +364,8 @@ export function findWorldPath(nav: WorldNavigation, start: WorldPoint, end: Worl
       if (nx < 0 || ny < 0 || nx >= columns || ny >= rows) continue;
       const next = ny * columns + nx;
       if (!walkable[next] || closed[next]) continue;
-      // Both cardinal neighbours must be clear; the swept diagonal is checked as well.
-      if (dx && dy && (!walkable[y * columns + nx] || !walkable[ny * columns + x])) continue;
+      // Side cells can be blocked beside a valid narrow diagonal passage. The
+      // swept disk below checks the actual edge and still rejects corner cuts.
       const target = gridPoint(nav, next), bit = 1 << direction;
       if (!(data.edgeKnown[id] & bit)) {
         const reverse = 1 << opposite[direction];

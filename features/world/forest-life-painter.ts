@@ -47,7 +47,37 @@ export function drawForestMushrooms(ctx: CanvasRenderingContext2D, life: ForestL
   }
   ctx.restore();
 }
+function drawPropArms(ctx: CanvasRenderingContext2D, frame: ForestLifeFrame, fingertips = false) {
+  const unit = frame.unit;
+  if (!unit || !frame.arms) return;
+  ctx.save();
+  for (const arm of frame.arms) {
+    if (!fingertips) {
+      for (const [color, width] of [["#d8bf83", 4], ["#f4e4ae", 2.5]] as const) {
+        ctx.fillStyle = color;
+        for (const [from, to] of [[arm.shoulder, arm.elbow], [arm.elbow, arm.hand]]) {
+          const steps = Math.max(1, Math.ceil(Math.hypot(to.x - from.x, to.y - from.y) / unit));
+          for (let step = 0; step <= steps; step++) {
+            const x = from.x + (to.x - from.x) * step / steps;
+            const y = from.y + (to.y - from.y) * step / steps;
+            ctx.fillRect(x - width * unit / 2, y - width * unit / 2, width * unit, width * unit);
+          }
+        }
+      }
+      ctx.fillStyle = "#d8bf83";
+      ctx.fillRect(arm.hand.x - unit * 2, arm.hand.y - unit * 1.5, unit * 4, unit * 3);
+      ctx.fillStyle = "#f4e4ae";
+      ctx.fillRect(arm.hand.x - unit * 1.5, arm.hand.y - unit * 1.5, unit * 3, unit * 2);
+    } else {
+      // A tiny finger edge remains in front of the stem; the cap/leaf stays readable.
+      ctx.fillStyle = "#f4e4ae";
+      ctx.fillRect(arm.hand.x - unit, arm.hand.y + unit * .6, unit * 2, unit);
+    }
+  }
+  ctx.restore();
+}
 export function drawForestLifePartner(ctx: CanvasRenderingContext2D, frame: ForestLifeFrame, elapsed: number) {
+  drawPropArms(ctx, frame);
   if (frame.heldMushroom) {
     const food = frame.heldMushroom;
     drawMushroom(ctx, food.x, food.y + food.size * .38, food.size, food.bite);
@@ -56,6 +86,7 @@ export function drawForestLifePartner(ctx: CanvasRenderingContext2D, frame: Fore
     const leaf = frame.heldLeaf;
     drawLeaf(ctx, leaf.x, leaf.y, leaf.size, leaf.angle);
   }
+  if (frame.heldMushroom || frame.heldLeaf) drawPropArms(ctx, frame, true);
   if (frame.insect) {
     if (frame.insect.kind === "butterfly") drawForestButterfly(ctx, frame.insect, elapsed);
     else drawForestFirefly(ctx, { ...frame.insect, resting: frame.stage === "perch" }, elapsed);

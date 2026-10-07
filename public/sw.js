@@ -11,8 +11,12 @@ const ACTIVE_CACHE_KEY = new URL(
 const STATIC_SHELL = [
   "/manifest.webmanifest",
   "/icon.svg",
+  "/icon-32.png",
   "/icon-192.png",
   "/icon-512.png",
+  "/icon-maskable-512.png",
+  "/apple-touch-icon.png",
+  "/favicon.ico",
 ];
 const DOCUMENT_REVISION_HEADERS = [
   "content-type",
@@ -26,22 +30,41 @@ const DOCUMENT_REVISION_HEADERS = [
 function isVersionedAsset(url) {
   const { pathname, search } = url;
   return pathname.startsWith("/_next/static/") || pathname.startsWith("/assets/")
+    || (/^\/brand\/[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)*\.webp$/.test(pathname)
+      || /^\/(?:icon-(?:32|192|512|maskable-512)\.png|apple-touch-icon\.png|favicon\.ico)$/.test(pathname)) && /^\?v=[a-f0-9]{12}$/.test(search)
     || /^\/world\/runtime\/[a-zA-Z]+(?:-[a-zA-Z]+)*-[a-f0-9]{12}\.webp$/.test(pathname)
     || (/^\/world\/prototype\/[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)*\.webp$/.test(pathname)
       || pathname === "/world/runtime/boat-wreck-lowquality.webp") && /^\?v=[a-f0-9]{12}$/.test(search);
 }
 
+function canCacheAsset(url, response) {
+  const cacheControl = response.headers.get("cache-control") ?? "";
+  return response.ok && !/(?:^|,)\s*(?:no-store|private|no-cache|must-revalidate)\b/i.test(cacheControl)
+    && !response.headers.get("content-type")?.includes("text/html")
+    // Next dev URLs are mutable; their names alone do not identify a build.
+    && (!url.pathname.startsWith("/_next/static/") || /(?:^|,)\s*immutable\b/i.test(cacheControl));
+}
+
+async function readCachedAsset(cache, request) {
+  const cached = await cache?.match(request).catch(() => null);
+  if (!cached) return null;
+  const url = new URL(typeof request === "string" ? request : request.url, self.location.origin);
+  if (canCacheAsset(url, cached)) return cached;
+  // Older workers may have saved mutable chunks. Do not replay those entries.
+  await cache?.delete(request).catch(() => undefined);
+  return null;
+}
+
 async function cachedAsset(request) {
   // Storage eviction, private browsing and full disks must not block the network.
   const cache = await caches.open(ASSET_CACHE_NAME).catch(() => null);
-  const cached = await cache?.match(request).catch(() => null);
+  const cached = await readCachedAsset(cache, request);
   if (cached) return cached;
   const key = request.url;
   if (!assetRequests.has(key)) {
     const operation = (async () => {
       const response = await fetch(request);
-      if (response.ok && !/no-store|private/i.test(response.headers.get("cache-control") ?? "")
-        && !response.headers.get("content-type")?.includes("text/html")) {
+      if (canCacheAsset(new URL(request.url), response)) {
         try {
           await cache?.put(request, response.clone());
           const keys = await cache?.keys() ?? [];
@@ -96,7 +119,7 @@ async function fetchShellResources(urls) {
   return Promise.all(
     urls.map(async (url) => {
       const response = await fetch(url, { cache: "reload" });
-      if (!response.ok) throw new Error(`Could not precache ${url}`);
+      if (!canCacheAsset(new URL(url), response)) throw new Error(`Could not precache ${url}`);
       return { url, response };
     }),
   );
@@ -163,7 +186,11 @@ async function stageShell(documentResponse, removeOldCaches = false) {
   const cacheName = `${CACHE_PREFIX}${revision}`;
   const currentName = await activeCacheName();
 
-  if (cacheName === currentName) return cacheName;
+  if (cacheName === currentName) {
+    const currentCache = await caches.open(cacheName);
+    const currentAssets = await Promise.all(assetUrls.map((url) => readCachedAsset(currentCache, url)));
+    if (currentAssets.every(Boolean)) return cacheName;
+  }
 
   const assetResources = await fetchShellResources(assetUrls);
   const resources = [...staticResources, ...assetResources];
@@ -239,7 +266,7 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(
     (async () => {
       const cache = await openActiveCache().catch(() => null);
-      const cached = await cache?.match(request).catch(() => null);
+      const cached = await readCachedAsset(cache, request);
       return cached ?? (isVersionedAsset(url) ? cachedAsset(request) : fetch(request));
     })(),
   );

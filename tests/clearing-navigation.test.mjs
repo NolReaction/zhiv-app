@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { withPlacedBushArtwork } from "./helpers/forest-bush-fixture.mjs";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
@@ -296,6 +297,7 @@ test("behavior memory reduces recent repeats and refuses rest in rain, after wak
   const interests = [{ id: "soft-grass", position: point(180, 210), activity: "rest" },
     { id: "flowers", position: point(200, 230), activity: "look" }];
   const memory = createForestBehavior();
+  memory.mind.needs.energy = .15;
   assert.equal(chooseForestGoal(state.navigation, interests, memory, context).id, "soft-grass");
   assert.ok(memory.restUntil > context.elapsed);
   assert.equal(chooseForestGoal(state.navigation, interests, memory, { ...context, elapsed: 11 }).id, "flowers");
@@ -386,4 +388,27 @@ test("a renewed bush request supersedes queued sleep without restarting the curr
     returned ||= exited && state.stage === "bush-hidden";
   }
   assert.ok(returned, "the last request starts a fresh visit only after the previous jump and exit finish");
+});
+
+test("all five authored homes support sleep and exit with both 50 and 56 unit actors", async () => {
+  const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
+  const { previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
+  for (const size of [50, 56]) for (const level of [1, 2, 3, 4, 5]) {
+    const map = withPlacedBushArtwork(previewWorldScene(TILED_WORLD, { home: level })); map.actor.size = size;
+    const state = createClearingActivity(map, 57);
+    const destination = map.navigation.interests.find(interest => interest.activity === "groom").position;
+    assert.ok(requestClearingPoint(state, destination));
+    until(state, current => isClearingAtPoint(current, destination), homeConditions);
+    assert.equal(requestClearingSleep(state), true, `size ${size}, level ${level}`);
+    untilInteraction(state, current => current.stage === "home-sleep");
+    assert.deepEqual(state.position, map.sites.find(site => site.id === "home").doorway);
+    noticeClearingActivity(state);
+    untilInteraction(state, current => current.stage === "clearing" && !current.activeInteraction);
+    assert.ok(isWalkable(state.navigation, state.position));
+    assert.equal(requestClearingBush(state), true, `size ${size}, level ${level}: the authored bush remains usable too`);
+    untilInteraction(state, current => current.stage === "bush-hidden");
+    noticeClearingActivity(state);
+    untilInteraction(state, current => current.stage === "clearing" && !current.activeInteraction);
+    assert.ok(isWalkable(state.navigation, state.position));
+  }
 });

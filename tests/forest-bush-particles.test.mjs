@@ -78,3 +78,14 @@ test('future or invalid events are silent and manual event lists cannot create u
   assert.deepEqual(forestBushParticles(bush, 1, [{ at: NaN, strength: 1, seed: 3 }, { at: .5, strength: NaN, seed: 1 }]), []);
   assert.ok(forestBushParticles(bush, 1, Array.from({ length: 100 }, (_, seed) => ({ at: .5, strength: 1, seed }))).length <= 16);
 });
+
+test('unripe and harvested bushes shed leaves instead of inventing mature berries', () => {
+  for (const strength of [.4, .8, 1]) {
+    const events = [{ at: 0, strength, seed: 17 }];
+    const leaves = forestBushParticles(bush, .7, events, false);
+    assert.ok(leaves.length > 0);
+    assert.ok(leaves.every(particle => particle.kind === 'leaf'));
+    assert.ok(forestBushParticles(bush, .7, events, true).some(particle => particle.kind === 'berry'));
+    assert.deepEqual(forestBushParticles(bush, .7, events, false), leaves);
+  }
+});

@@ -110,3 +110,53 @@ test('berries settle after departure without masking the actor and disappear whe
   drawForestBush(expired.ctx, scene, images, { ...frame, elapsed: 3 });
   assert.deepEqual(expired.calls, []);
 });
+
+test('an explicitly unplaced shrub does not cover the hero with plain ground or emit leaves', () => {
+  const { scene, bush, images } = fixture(); bush.imageId = 'independent-shrub';
+  const frame = { id: bush.id, rustle: 1, occlude: true, elapsed: .72, bursts: [{ at: .2, strength: .9, seed: 183 }] };
+  const pending = context(); drawForestBush(pending.ctx, scene, images, frame);
+  assert.deepEqual(pending.calls, []);
+  scene.terrain.push({ id: bush.imageId, image: '/shrub.png', bounds: { x: 0, y: 0, width: 100, height: 100 } });
+  images.set('/shrub.png', { naturalWidth: 100, naturalHeight: 100 });
+  const placed = context(); drawForestBush(placed.ctx, scene, images, frame);
+  assert.equal(placed.calls.filter(call => call.method === 'drawImage').length, 16);
+  assert.ok(placed.calls.filter(call => call.method === 'drawImage').every(call => call.args[0] === images.get('/shrub.png')));
+  assert.equal(placed.calls.slice(0, placed.calls.findLastIndex(call => call.method === 'drawImage')).filter(call => ['moveTo', 'lineTo'].includes(call.method)).length, 0, 'navigation polygon never becomes a visible cutout edge');
+  assert.ok(placed.calls.some(call => call.method === 'clip'));
+});
+
+
+test('separate cutout preserves transparent gaps and soil without copying ground or clipping to the collision', () => {
+  const { scene, bush, images } = fixture();
+  bush.imageId = 'shrub';
+  scene.terrain.push({ id: bush.imageId, image: '/shrub.png', bounds: { x: 0, y: 0, width: 100, height: 100 } });
+  const shrub = { naturalWidth: 400, naturalHeight: 400 }; images.set('/shrub.png', shrub);
+  const stationary = context();
+  drawForestBush(stationary.ctx, scene, images, { id: bush.id, rustle: 0, occlude: true });
+  assert.deepEqual(stationary.calls.filter(call => call.method === 'drawImage').map(call => call.args),
+    [[shrub, 0, 0, 400, 400, 0, 0, 100, 100]]);
+  assert.equal(stationary.calls.filter(call => ['clip', 'moveTo', 'lineTo'].includes(call.method)).length, 0);
+  for (const elapsed of [.1, .42, .9]) {
+    const moving = context();
+    drawForestBush(moving.ctx, scene, images, { id: bush.id, rustle: .8, occlude: true, elapsed });
+    const draws = moving.calls.filter(call => call.method === 'drawImage');
+    const bands = moving.calls.filter(call => call.method === 'rect');
+    const transforms = moving.calls.filter(call => call.method === 'transform');
+    assert.equal(draws.length, 16, 'one warped copy, no unchanged silhouette beneath it');
+    assert.ok(draws.every(call => call.args[0] === shrub));
+    assert.equal(bands.length, 16);
+    assert.ok(bands.every((call, index) => {
+      if (!index) return true;
+      const overlap = bands[index - 1].args[1] + bands[index - 1].args[3] - call.args[1];
+      return overlap > 0 && overlap <= .2;
+    }), 'adjacent clips close antialiased seams with a tiny overlap, without duplicating a full leaf row');
+    assert.deepEqual(transforms.at(-1).args.map(value => value || 0), [1, 0, 0, 1, 0, 0], 'base stays attached during rustle');
+  }
+  const still = context();
+  drawForestBush(still.ctx, scene, images, { id: bush.id, rustle: .8, occlude: true }, 10, true);
+  assert.equal(still.calls.filter(call => call.method === 'drawImage').length, 1);
+  images.delete('/ground.webp');
+  const independent = context();
+  drawForestBush(independent.ctx, scene, images, { id: bush.id, rustle: 0, occlude: true });
+  assert.equal(independent.calls.filter(call => call.method === 'drawImage').length, 1, 'cutout alpha does not need a background crop');
+});

@@ -293,7 +293,14 @@ class JdbcGameRepository(private val source: DataSource) : GameRepository {
                 award.copy(unlockedAt = unlockedAt)
             }
         }
-        GameAchievements(actor.publicId, instant.toInstant().toString(), reconciled)
+        val economic = readEconomyAchievementProgress(c, actor.id)
+        economic.forEach { (id, progress) -> recordAchievementTiers(c,actor.id,id,progress,instant) }
+        val tierDates = c.rows("SELECT achievement_id,level,unlocked_at FROM game_achievement_tiers WHERE user_id=?",actor.id) {
+            Triple(it.getString(1),it.getInt(2),it.getObject(3,OffsetDateTime::class.java).toInstant().toString())
+        }.groupBy { it.first }.mapValues { (_, rows) -> rows.associate { it.second to it.third } }
+        val expanded = reconciled.map { ru.zhiv.game.achievementWithTiers(it.id,it.progress,if(it.unlockedAt != null) mapOf(1 to it.unlockedAt) else emptyMap()) } +
+            economic.map { (id, progress) -> ru.zhiv.game.achievementWithTiers(id,progress,tierDates[id].orEmpty()) }
+        GameAchievements(actor.publicId, instant.toInstant().toString(), expanded)
     }
 }
 

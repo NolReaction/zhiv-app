@@ -155,7 +155,7 @@ fun Route.identityRoutes(
                 }
 
                 val request = call.receive<BootstrapRequest>()
-                val displayName = validDisplayName(request.displayName)
+                val displayName = normalizedDisplayName(request.displayName)
                 if (displayName == null) {
                     call.respond(
                         HttpStatusCode.BadRequest,
@@ -256,7 +256,7 @@ fun Route.identityRoutes(
                 }
 
                 val request = call.receive<UpdateDisplayNameRequest>()
-                val displayName = validDisplayName(request.displayName)
+                val displayName = normalizedDisplayName(request.displayName)
                 if (displayName == null) {
                     call.respond(
                         HttpStatusCode.BadRequest,
@@ -338,14 +338,3 @@ internal fun UserSnapshot.toResponse() = MeResponse(
     ),
     serverTime = serverTime.toInstant().toString(),
 )
-
-private fun validDisplayName(raw: String): String? {
-    if (raw.any(Char::isISOControl)) return null
-    val normalized = raw
-        .trim { it.isWhitespace() || Character.isSpaceChar(it) }
-        .replace(Regex("[\\s\\p{Z}]+"), " ")
-    val codePoints = normalized.codePointCount(0, normalized.length)
-    return normalized.takeIf {
-        codePoints in 1..50
-    }
-}

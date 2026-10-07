@@ -36,7 +36,7 @@
 .tabs { gap: 0; }
 .toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; padding-block: 16px; border-block: 1px solid var(--admin-border); }
 .tabList { height: auto !important; min-height: 46px; padding: 4px; background: #242c22; border: 1px solid #344030; border-radius: 13px; max-width: 100%; flex-wrap: wrap; gap: 3px; }
-.tab { min-height: 40px; padding: 8px 15px; border-radius: 9px; color: var(--admin-muted); font-size: 15px; font-weight: 600; }
+.tab { height: auto; min-height: 44px; padding: 8px 15px; border-radius: 9px; color: var(--admin-muted); font-size: 15px; font-weight: 600; }
 .tab[data-state="active"] { color: #172012; background: var(--admin-green); box-shadow: 0 1px 3px #0003; }
 .tab:hover { color: var(--admin-text); }
 .tab[data-state="active"]:hover { color: #172012; }

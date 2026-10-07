@@ -6,17 +6,37 @@ import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import test from "node:test";
+import test, { after } from "node:test";
 import sharp from "sharp";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const script = path.join(root, "scripts/tiled-world.mjs");
 const run = promisify(execFile);
 const properties = values => Object.entries(values).map(([name, value]) => ({ name, type: "string", value }));
+const fixtureWatchers = new WeakMap();
+const fixtureDirectories = new Set();
+
+after(async () => {
+  // A final sweep runs after every watcher and test hook has finished.
+  for (const directory of fixtureDirectories) {
+    await rm(directory, { recursive: true, force: true });
+    await assert.rejects(stat(directory), { code: "ENOENT" });
+  }
+});
 
 async function fixture(t) {
   const directory = await mkdtemp(path.join(root, "public", "tiled-watch-"));
-  t.after(() => rm(directory, { recursive: true, force: true }));
+  fixtureDirectories.add(directory);
+  const stopWatchers = [];
+  fixtureWatchers.set(t, stopWatchers);
+  t.after(async () => {
+    // Deleting inputs while a watcher is alive can recreate its output directory.
+    // One ordered teardown also runs when a test assertion fails before the end.
+    const stopped = await Promise.allSettled(stopWatchers.map(stop => stop()));
+    await rm(directory, { recursive: true, force: true });
+    const failures = stopped.filter(result => result.status === "rejected");
+    if (failures.length) throw new AggregateError(failures.map(result => result.reason), "Watcher teardown failed");
+  });
   const input = path.join(directory, "fixture.tmj");
   const output = path.join(directory, "fixture.generated.json");
   await sharp({ create: { width: 20, height: 20, channels: 4, background: "#284533" } }).webp().toFile(path.join(directory, "ground.webp"));
@@ -49,8 +69,8 @@ function startWatcher(t, input, output, cli = script) {
   let stdout = "", stderr = "";
   child.stdout.on("data", chunk => { stdout += chunk; });
   child.stderr.on("data", chunk => { stderr += chunk; });
-  const stopped = once(child, "exit");
-  t.after(async () => {
+  const stopped = once(child, "close");
+  fixtureWatchers.get(t).push(async () => {
     if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
     await stopped;
   });
@@ -168,11 +188,6 @@ test("watch updates nested water masks and retains the last valid mask while a p
   await atomicSave(input, saved);
   await waitFor(async () => (await scene()).water.exclusions[0].points[0].x === 18.25, watcher.logs);
   assert.equal(await readFile(input, "utf8"), saved, "watch never rewrites hand-authored vertices");
-  // Stop before fixture cleanup so its pending filesystem events cannot recreate
-  // the generated output while the fixture directory is being removed.
-  const stopped = once(watcher.child, "exit");
-  watcher.child.kill("SIGTERM");
-  await stopped;
 });
 
 test("watch moves and tunes Tiled light markers while preserving the last valid lighting on malformed edits", { timeout: 10000 }, async t => {
@@ -204,9 +219,6 @@ test("watch moves and tunes Tiled light markers while preserving the last valid 
   await atomicSave(input, saved);
   await waitFor(async () => (await scene()).lights.length === 0, watcher.logs);
   assert.equal(await readFile(input, "utf8"), saved);
-  const stopped = once(watcher.child, "exit");
-  watcher.child.kill("SIGTERM");
-  await stopped;
 });
 
 test("export avoids unchanged writes; check rejects stale, invalid and incompatible watch mode without writing", async t => {
@@ -233,9 +245,11 @@ test("the application output requires spawn before any export write and watch pr
   // The repository's live map and generated output are never changed by this test.
   const cli = path.join(directory, "scripts/tiled-world.mjs");
   await mkdir(path.join(directory, "scripts/lib"), { recursive: true });
+  await mkdir(path.join(directory, "features/world"), { recursive: true });
   await mkdir(path.join(directory, "public"));
   await copyFile(script, cli);
   await copyFile(path.join(root, "scripts/lib/tiled-world.mjs"), path.join(directory, "scripts/lib/tiled-world.mjs"));
+  await copyFile(path.join(root, "features/world/interaction-limits.json"), path.join(directory, "features/world/interaction-limits.json"));
   await rename(path.join(directory, "ground.webp"), path.join(directory, "public/ground.webp"));
   map.tilesets[0].tiles[0].image = "public/ground.webp";
   const spawnPoint = { id: 3, name: "mochlik-spawn", x: 40, y: 50, width: 0, height: 0, point: true, properties: [

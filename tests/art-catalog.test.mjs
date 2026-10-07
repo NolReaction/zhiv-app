@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFile, readdir } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test, { after } from "node:test";
 import { createServer } from "vite";
 import sharp from "sharp";
+import { encodeTerrainMaster, findTerrainMaster } from "../scripts/lib/world-assets.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ configFile: false, appType: "custom", root,
@@ -37,7 +40,7 @@ test("every achievement has one readable asset and a catalog description", async
   }
 });
 
-test("all registered maps and both journey cards exist", async () => {
+test("all registered world and journey artwork exists", async () => {
   const paths = [WORLD_ART.map, WORLD_ART.home, WORLD_ART.homeDetail, ...Object.values(WORLD_ART.routes)];
   for (const path of paths) {
     const bytes = await readFile(`${root}/public${path.split("?")[0]}`);
@@ -48,20 +51,57 @@ test("all registered maps and both journey cards exist", async () => {
 
 test("both terrain views share one full-resolution lossless export of the editable master", async () => {
   const assets = JSON.parse(await readFile(`${root}/features/world/runtime-art.json`, "utf8"));
-  const source = await readFile(`${root}/art/world/prototype/forest-ground.png`);
+  const source = await readFile(await findTerrainMaster(`${root}/art/world/prototype`));
   const bytes = await readFile(`${root}/public${assets.map.split("?")[0]}`);
   const version = createHash("sha256").update(bytes).digest("hex").slice(0, 12);
   assert.equal(assets.map, `/world/prototype/forest-ground.webp?v=${version}`);
   for (const name of ["mapPreview", "homePreview", "homeDetail"]) assert.equal(assets[name], assets.map);
   const [master, exported] = await Promise.all([
-    sharp(source).ensureAlpha().raw().toBuffer({ resolveWithObject: true }),
+    sharp(source).autoOrient().ensureAlpha().raw().toBuffer({ resolveWithObject: true }),
     sharp(bytes).ensureAlpha().raw().toBuffer({ resolveWithObject: true }),
   ]);
   assert.equal(master.info.width, 2560);
   assert.equal(master.info.height, 2560);
   assert.deepEqual(exported.info, master.info);
-  assert.ok(exported.data.equals(master.data), "the WebP must preserve every PNG pixel");
-  assert.deepEqual((await readdir(`${root}/public/world/prototype`)).filter(name => name.endsWith(".webp")), ["forest-ground.webp"]);
+  assert.ok(exported.data.equals(master.data), "the WebP must preserve every decoded, oriented master pixel");
+  assert.deepEqual((await readdir(`${root}/public/world/prototype`)).filter(name => /^forest-ground.*\.webp$/.test(name)), ["forest-ground.webp"]);
+});
+
+test("terrain master selection accepts PNG and JPEG and rejects stale competing sources", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "zhiv-terrain-master-"));
+  try {
+    await writeFile(path.join(directory, "bushv1.png"), "unrelated artwork");
+    await assert.rejects(findTerrainMaster(directory), /Terrain master missing/);
+    for (const extension of ["png", "jpg", "jpeg", "JPG"]) {
+      const name = `forest-ground.${extension}`;
+      await writeFile(path.join(directory, name), "source");
+      assert.equal(await findTerrainMaster(directory), path.join(directory, name));
+      await rm(path.join(directory, name));
+    }
+    await writeFile(path.join(directory, "forest-ground.png"), "old source");
+    await writeFile(path.join(directory, "forest-ground.jpg"), "new source");
+    await assert.rejects(findTerrainMaster(directory), /Ambiguous terrain masters: forest-ground.jpg, forest-ground.png/);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test("lossless terrain conversion preserves decoded JPEG pixels with EXIF orientation and PNG alpha", async () => {
+  const pixels = Buffer.from([
+    255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255,
+    255, 255, 0, 128, 0, 255, 255, 64, 255, 0, 255, 255,
+  ]);
+  const input = () => sharp(pixels, { raw: { width: 3, height: 2, channels: 4 } });
+  const sources = [await input().png().toBuffer(), await input().jpeg().withMetadata({ orientation: 6 }).toBuffer()];
+  for (const source of sources) {
+    const bytes = await encodeTerrainMaster(source);
+    const expected = await sharp(source).autoOrient().ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    const actual = await sharp(bytes).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    assert.deepEqual(actual, expected);
+    const metadata = await sharp(bytes).metadata();
+    assert.equal(metadata.format, "webp");
+    assert.equal(metadata.orientation, undefined, "orientation is baked into exported pixels");
+  }
+  const oriented = await sharp(await encodeTerrainMaster(sources[1])).metadata();
+  assert.equal(oriented.width, 2); assert.equal(oriented.height, 3);
 });
 
 test("building markers target their hit areas and the pet enters the visible doorway", () => {

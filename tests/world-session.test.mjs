@@ -144,3 +144,32 @@ test("drag, pinch, cancellation and lost capture do not become map taps", () => 
   assert.equal(camera.isMapTap(0, true, false), false);
   assert.equal(camera.isMapTap(0, false, true), false);
 });
+
+test("world timeout and inactive presence keep the receipt across browser session recreation", async () => {
+  const { ApiError } = await vite.ssrLoadModule("/lib/check-in-api.ts");
+  for (const error of [new ApiError("Timeout", 408), new ApiError("Wait", 425), new ApiError("Return", 409, { code: "GAME_SESSION_INACTIVE", message: "Return" })]) {
+    const data = new Map(), sent = [];
+    const cache = { getItem: key => data.get(key) ?? null, setItem: (key, value) => data.set(key, value), removeItem: key => data.delete(key) };
+    const transport = { get: async () => snapshot(), send: async command => { sent.push({ ...command }); if (sent.length === 1) throw error; return { snapshot: snapshot("OWNER", 2), message: "Done" }; } };
+    const first = createWorldSession("OWNER", transport, () => assert.fail(), cache), stop = first.activate();
+    await first.refresh(); first.act("equip", "moss"); await flush(); assert.equal(first.getSnapshot().uncertain, true); stop();
+    const next = createWorldSession("OWNER", transport, () => assert.fail(), cache); next.activate();
+    assert.equal(await next.reconcile(), true); assert.deepEqual(sent[0], sent[1]); assert.equal(data.size, 0);
+  }
+});
+
+test("world reconnect ignores a late aborted read and refreshes after rapid reactivation", async () => {
+  const stale = deferred(); let gets = 0;
+  const session = createWorldSession("OWNER", { get: async () => ++gets === 1 ? stale.promise : snapshot("OWNER", 5), send: async () => { throw Error(); } }, () => assert.fail());
+  const stop = session.activate(), first = session.refreshSoft(); stop(); session.activate();
+  await session.refreshSoft(); assert.equal(gets, 2); assert.equal(session.getSnapshot().snapshot.revision, 5);
+  stale.resolve(snapshot("OWNER", 1)); await first; assert.equal(session.getSnapshot().snapshot.revision, 5);
+});
+
+test("world 429 retry cannot bypass the server cooldown through pause and reconnect", async () => {
+  const { ApiError } = await vite.ssrLoadModule("/lib/check-in-api.ts"); let sent = 0;
+  const session = createWorldSession("OWNER", { get: async () => snapshot(), send: async () => { sent++; throw new ApiError("Wait", 429, undefined, undefined, 60_000); } }, () => assert.fail());
+  session.activate(); await session.refresh(); session.act("equip", "moss"); await flush();
+  session.setAvailable(false); assert.equal(await session.reconcile(), false);
+  await session.retry(); assert.equal(sent, 1); assert.equal(session.getSnapshot().uncertain, true);
+});

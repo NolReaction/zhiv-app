@@ -1,6 +1,7 @@
 package ru.zhiv.auth
 
 import kotlinx.serialization.Serializable
+import ru.zhiv.identity.normalizedDisplayName
 import java.util.UUID
 
 open class AuthFailure(val code: String, override val message: String, val status: Int = 400, cause: Throwable? = null) : RuntimeException(message, cause)
@@ -35,9 +36,7 @@ fun normalizedEmail(raw: String): String? {
     return value.takeIf { it.length <= 254 && Regex("^[a-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\\.[a-z]{2,63}$").matches(it) }
 }
 
-fun loginDisplayName(raw: String?): String? = raw?.trim()?.replace(Regex("[\\s\\p{Z}]+"), " ")?.takeIf {
-    it.codePointCount(0, it.length) in 1..50 && it.none { c -> c.isISOControl() || c in '\u202a'..'\u202e' || c in '\u2066'..'\u2069' }
-}
+fun loginDisplayName(raw: String?): String? = raw?.let(::normalizedDisplayName)
 
 fun deviceLabel(userAgent: String): String {
     val browser = when { "Telegram" in userAgent -> "Telegram"; "Edg" in userAgent -> "Edge"; "Firefox" in userAgent || "FxiOS" in userAgent -> "Firefox"; "Chrome" in userAgent || "CriOS" in userAgent -> "Chrome"; "Safari" in userAgent -> "Safari"; else -> "Браузер" }

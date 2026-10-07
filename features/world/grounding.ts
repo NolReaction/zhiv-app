@@ -1,5 +1,7 @@
-import { pixelSprite, type PixelDirection, type PixelPose } from "@/features/mochlik/pixel-sprite";
+import { pixelSprite, pixelSpriteContact, type PixelDirection, type PixelPose, type PixelRigOptions } from "@/features/mochlik/pixel-sprite";
 import type { FixedSite, WorldBounds } from "./tiled/types";
+import { drawSiteImage } from "./tiled/site-image";
+import { worldArtworkMipCache } from "./artwork-mip-cache";
 
 export const HERO_SOURCE_SIZE = 48;
 export const HERO_SOURCE_FEET_Y = 45;
@@ -8,6 +10,8 @@ const spriteContacts = new WeakMap<HTMLCanvasElement, SpriteContact | null>();
 
 /** Source-space contact follows the opaque paws, including alternating walk frames. */
 export function heroSpriteContact(sprite: HTMLCanvasElement, pose: PixelPose, frame: number): SpriteContact {
+  const generated = pixelSpriteContact(sprite);
+  if (generated) return generated;
   if (!spriteContacts.has(sprite)) {
     let contact: SpriteContact | null = null;
     try {
@@ -42,9 +46,10 @@ export function heroSpriteContact(sprite: HTMLCanvasElement, pose: PixelPose, fr
 export function drawGroundedHero(ctx: CanvasRenderingContext2D, actor: {
   x: number; y: number; size: number; pose: PixelPose; direction: PixelDirection; frame: number;
   appearance?: { palette: string; head: string | null; neck: string | null }; breathe?: number; shadow?: boolean; lift?: number; compression?: number;
+  rig?: PixelRigOptions;
 }) {
   if (![actor.x, actor.y, actor.size].every(Number.isFinite) || actor.size <= 0) return;
-  const sprite = pixelSprite(actor.pose, actor.direction, actor.frame, actor.appearance);
+  const sprite = pixelSprite(actor.pose, actor.direction, actor.frame, actor.appearance, actor.rig);
   const compression = Number.isFinite(actor.compression) ? Math.max(0, Math.min(1, actor.compression!)) : 0;
   const width = actor.size * (1 - .14 * compression);
   const contact = heroSpriteContact(sprite, actor.pose, actor.frame), scale = width / HERO_SOURCE_SIZE;
@@ -86,21 +91,22 @@ function collisionBounds(site: FixedSite): WorldBounds | null {
 export function siteContactArea(site: FixedSite): WorldBounds | null {
   if (!Object.values(site.bounds).every(Number.isFinite) || site.bounds.width <= 0 || site.bounds.height <= 0) return null;
   const footprint = collisionBounds(site);
-  if (footprint) return { ...footprint, y: footprint.y + footprint.height * .58, height: footprint.height * .42 };
+  if (footprint) return { ...footprint, y: footprint.y + footprint.height * .28, height: footprint.height * .72 };
   const { bounds, anchor } = site, width = bounds.width * .44, height = bounds.height * .08;
   const x = Math.max(bounds.x, Math.min(bounds.x + bounds.width, Number.isFinite(anchor.x) ? anchor.x : bounds.x + bounds.width / 2));
   const y = Math.max(bounds.y, Math.min(bounds.y + bounds.height, Number.isFinite(anchor.y) ? anchor.y : bounds.y + bounds.height * .92));
   return intersect(bounds, { x: x - width / 2, y: y - height / 2, width, height });
 }
 
-const siteMasks = new WeakMap<HTMLImageElement, WeakMap<FixedSite, HTMLCanvasElement | null>>();
+type SiteShadow = { contact: HTMLCanvasElement; diffuse: HTMLCanvasElement; bounds: WorldBounds };
+const siteShadows = new WeakMap<HTMLImageElement, WeakMap<FixedSite, SiteShadow | null>>();
 
-function siteContactMask(site: FixedSite, image: HTMLImageElement): HTMLCanvasElement | null {
-  let bySite = siteMasks.get(image);
-  if (!bySite) { bySite = new WeakMap(); siteMasks.set(image, bySite); }
+function siteShadow(site: FixedSite, image: HTMLImageElement): SiteShadow | null {
+  let bySite = siteShadows.get(image);
+  if (!bySite) { bySite = new WeakMap(); siteShadows.set(image, bySite); }
   if (bySite.has(site)) return bySite.get(site) ?? null;
   const area = siteContactArea(site), { bounds } = site;
-  let mask: HTMLCanvasElement | null = null;
+  let shadow: SiteShadow | null = null;
   if (area && bounds.width > 0 && bounds.height > 0 && typeof document !== "undefined") {
     const canvas = document.createElement("canvas");
     const scale = Math.min(2, 512 / Math.max(bounds.width, bounds.height));
@@ -108,6 +114,7 @@ function siteContactMask(site: FixedSite, image: HTMLImageElement): HTMLCanvasEl
     canvas.height = Math.max(1, Math.ceil(bounds.height * scale));
     const ctx = canvas.getContext("2d");
     if (ctx) {
+      ctx.save();
       ctx.scale(canvas.width / bounds.width, canvas.height / bounds.height);
       ctx.translate(-bounds.x, -bounds.y);
       if (collisionBounds(site)) {
@@ -120,25 +127,64 @@ function siteContactMask(site: FixedSite, image: HTMLImageElement): HTMLCanvasEl
         ctx.clip();
       }
       ctx.beginPath(); ctx.rect(area.x, area.y, area.width, area.height); ctx.clip();
-      ctx.drawImage(image, bounds.x, bounds.y, bounds.width, bounds.height);
-      // Source-in keeps all holes and soft alpha edges of the current level artwork.
+      drawSiteImage(ctx, site, image);
+      ctx.restore();
+      // Geometry is already encoded in the painted alpha. Tint the complete
+      // bitmap in identity space, without carrying world-space clips/transforms
+      // into compositing (which differs between Canvas implementations).
       ctx.globalCompositeOperation = "source-in";
-      ctx.fillStyle = "rgba(24,38,25,.12)";
-      ctx.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
-      mask = canvas;
+      ctx.fillStyle = "#22231e";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      // Bake blur once per artwork/geometry. Padding prevents a rectangular blur cutoff.
+      const padding = Math.min(16, Math.max(bounds.width, bounds.height) * .09);
+      const shadowBounds = { x: bounds.x - padding, y: bounds.y - padding,
+        width: bounds.width + padding * 2, height: bounds.height + padding * 2 };
+      const shadowScale = Math.min(2, 512 / Math.max(shadowBounds.width, shadowBounds.height));
+      const contact = document.createElement("canvas"), diffuse = document.createElement("canvas");
+      for (const layer of [contact, diffuse]) {
+        layer.width = Math.max(1, Math.ceil(shadowBounds.width * shadowScale));
+        layer.height = Math.max(1, Math.ceil(shadowBounds.height * shadowScale));
+      }
+      const contactCtx = contact.getContext("2d"), diffuseCtx = diffuse.getContext("2d");
+      if (contactCtx && diffuseCtx) {
+        const paint = (target: CanvasRenderingContext2D, alpha: number, blur: number,
+          dx: number, dy: number, widthScale = 1, heightScale = 1) => {
+          target.globalAlpha = alpha;
+          target.filter = `blur(${blur * shadowScale}px)`;
+          // Compress toward the foundation, never project a standing duplicate of the house.
+          const bottom = area.y + area.height - bounds.y;
+          target.drawImage(canvas,
+            (padding + dx + bounds.width * (1 - widthScale) / 2) * shadowScale,
+            (padding + dy + bottom * (1 - heightScale)) * shadowScale,
+            bounds.width * widthScale * shadowScale, bounds.height * heightScale * shadowScale);
+        };
+        const size = Math.min(bounds.width, bounds.height);
+        const bridge = site.id === "bridge";
+        paint(contactCtx, bridge ? .24 : .32, Math.min(1.2, size * (bridge ? .003 : .006)), 0, size * .008);
+        // A broken bridge keeps two separate short shadows. Do not stretch its
+        // planks into a dark platform across the river or fill the central gap.
+        paint(diffuseCtx, bridge ? .07 : .14, Math.min(5, size * (bridge ? .008 : .026)), 0, size * .012, bridge ? 1 : 1.025);
+        paint(diffuseCtx, bridge ? .1 : .23, Math.min(4, size * (bridge ? .005 : .022)),
+          size * (bridge ? .016 : .045), size * (bridge ? .018 : .029), 1, bridge ? .98 : .85);
+        shadow = { contact, diffuse, bounds: shadowBounds };
+      }
     }
   }
-  bySite.set(site, mask);
-  return mask;
+  bySite.set(site, shadow);
+  return shadow;
 }
 
 /** Draw immediately under the original image; no colored rectangle or art mutation. */
-export function drawSiteGrounding(ctx: CanvasRenderingContext2D, site: FixedSite, image: HTMLImageElement) {
-  const mask = siteContactMask(site, image);
-  if (!mask) return;
-  const { bounds } = site, softness = Math.min(1, bounds.width * .004);
+export function drawSiteGrounding(ctx: CanvasRenderingContext2D, site: FixedSite, image: HTMLImageElement, night = 0) {
+  const shadow = siteShadow(site, image);
+  if (!shadow) return;
+  const { bounds } = shadow;
+  const darkness = Number.isFinite(night) ? Math.max(0, Math.min(1, night)) : 0;
   ctx.save();
-  ctx.filter = `blur(${softness}px)`;
-  ctx.drawImage(mask, bounds.x, bounds.y + Math.min(1, bounds.height * .005), bounds.width, bounds.height);
+  const opacity = ctx.globalAlpha;
+  ctx.globalAlpha = opacity * (1 - darkness * .58);
+  ctx.drawImage(worldArtworkMipCache.image(ctx, shadow, shadow.diffuse), bounds.x, bounds.y, bounds.width, bounds.height);
+  ctx.globalAlpha = opacity * (1 - darkness * .15);
+  ctx.drawImage(worldArtworkMipCache.image(ctx, shadow, shadow.contact), bounds.x, bounds.y, bounds.width, bounds.height);
   ctx.restore();
 }

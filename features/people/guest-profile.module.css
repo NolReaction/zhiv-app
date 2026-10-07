@@ -1,0 +1,25 @@
+ .profile { min-width: 0; border-bottom: 1px solid #ffffff1c; padding-bottom: 16px; }
+.profile header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.profile h3 { margin: 0; font-size: 16px; }
+.profile header button { display: grid; place-items: center; width: 44px; height: 44px; flex-shrink: 0; border: 1px solid #cfe8ba35; border-radius: 12px; background: #ffffff08; color: #e5eddb; cursor: pointer; }
+.profile header button:disabled { opacity: .5; cursor: default; }
+.profile button:focus-visible, .chapter summary:focus-visible { outline: 2px solid #cce4a8; outline-offset: 3px; }
+.profile p, .hint { margin: 8px 0 0; color: #c1c8b8; font-size: 13px; line-height: 1.5; }
+.contents { display: grid; gap: 18px; }
+.contents h4 { margin: 0 0 9px; font-size: 14px; font-weight: 650; }
+.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin: 10px 0 0; }
+.stats div { display: flex; flex-direction: column-reverse; justify-content: flex-end; gap: 5px; padding: 12px 7px; border: 1px solid #cfe8ba24; border-radius: 12px; background: #10170c3b; text-align: center; }
+.stats dt { color: #c1c8b8; font-size: 11px; line-height: 1.35; }
+.stats dd { margin: 0; color: #e5eddb; font-size: 22px; font-weight: 650; overflow-wrap: anywhere; }
+.awards, .finds { margin: 0; padding: 0; list-style: none; }
+.awards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.awards li { display: flex; align-items: center; gap: 7px; min-width: 0; font-size: 12px; }
+.awards span, .finds span { overflow-wrap: anywhere; }
+.awards small { display: block; margin-top: 3px; color: #bac7b0; font-size: 10px; }
+.medal { width: 38px; height: 38px; object-fit: contain; flex-shrink: 0; }
+.chapter { padding: 2px 0; border-bottom: 1px solid #ffffff12; }
+.chapter summary { min-height: 44px; padding: 11px 3px; cursor: pointer; font-size: 13px; }
+.chapter summary span { float: right; font-variant-numeric: tabular-nums; color: #c5d6b5; }
+.finds { display: grid; gap: 8px; padding: 5px 0 12px; }
+.finds li { display: flex; align-items: center; gap: 9px; min-width: 0; font-size: 13px; }
+@media (max-width: 340px) { .awards { grid-template-columns: 1fr; } .stats dd { font-size: 19px; } }

@@ -24,7 +24,39 @@ const waterPolygon = (id, name = "", x = 30.125, y = 50.375) => ({
   polygon: [{ x: -10.0625, y: -20.125 }, { x: 15.25, y: -20.125 }, { x: 15.25, y: 5.5 }, { x: -10.0625, y: 5.5 }],
 });
 const waterLayer = (id, name, objects) => ({ id, name, type: "objectgroup", draworder: "topdown", objects });
-const layerObjects = layers => layers.flatMap(layer => layer.layers ? layerObjects(layer.layers) : layer.objects);
+const groupLayer = (id, name, layers = []) => ({ id, name, type: "group", layers });
+const objectLayer = (id, name, objects) => ({ ...waterLayer(id, name, objects), draworder: "index" });
+const layerObjects = (layers, offset = { x: 0, y: 0 }) => layers.flatMap(layer => {
+  const shift = { x: offset.x + (layer.offsetx ?? 0), y: offset.y + (layer.offsety ?? 0) };
+  return layer.layers ? layerObjects(layer.layers, shift) : layer.objects.map(object => ({ ...object, x: object.x + shift.x, y: object.y + shift.y }));
+});
+const assertRectClose = (actual, expected) => {
+  for (const key of ["x", "y", "width", "height"]) assert.ok(Math.abs(actual[key] - expected[key]) < 1e-9,
+    `${key}: expected ${expected[key]}, received ${actual[key]}`);
+};
+const assertPointsClose = (actual, expected) => {
+  assert.equal(actual.length, expected.length);
+  actual.forEach((point, index) => {
+    for (const axis of ["x", "y"]) assert.ok(Math.abs(point[axis] - expected[index][axis]) < 1e-9,
+      `vertex ${index}.${axis}: expected ${expected[index][axis]}, received ${point[axis]}`);
+  });
+};
+const authoredVertices = (object, kind) => {
+  const angle = (object.rotation ?? 0) % 360 * Math.PI / 180;
+  return object[kind].map(({ x, y }) => ({
+    x: object.x + x * Math.cos(angle) - y * Math.sin(angle),
+    y: object.y + x * Math.sin(angle) + y * Math.cos(angle),
+  }));
+};
+const imageEnvelope = ({ x, y, width, height, rotation = 0 }) => {
+  if (rotation === 0) return { x, y, width, height };
+  const angle = rotation * Math.PI / 180;
+  const vertices = [[0, 0], [width, 0], [width, height], [0, height]].map(([dx, dy]) => ({
+    x: x + dx * Math.cos(angle) - dy * Math.sin(angle), y: y + dx * Math.sin(angle) + dy * Math.cos(angle),
+  }));
+  const minX = Math.min(...vertices.map(p => p.x)), minY = Math.min(...vertices.map(p => p.y));
+  return { x: minX, y: minY, width: Math.max(...vertices.map(p => p.x)) - minX, height: Math.max(...vertices.map(p => p.y)) - minY };
+};
 
 async function fixture(t, { directoryRoot = tmpdir() } = {}) {
   const directory = await mkdtemp(path.join(directoryRoot, "tiled-world-"));
@@ -73,6 +105,7 @@ test("Tiled source compiles physical image scale, top-left objects and local geo
   assert.equal(Object.hasOwn(scene, "lights"), false, "legacy maps keep their site light markers without inventing new lights");
   assert.equal(Object.hasOwn(scene, "navigation"), false, "legacy maps retain their authored routes without inventing walk areas");
   assert.equal(Object.hasOwn(scene, "habitats"), false, "legacy maps do not invent habitats");
+  assert.equal(Object.hasOwn(scene, "basket"), false, "legacy maps retain automatic basket placement");
   assert.deepEqual(scene.terrain[0].bounds, { x: 0, y: 0, width: 100, height: 100 });
   assert.deepEqual(scene.sites[0], {
     id: "kiln", label: "Pottery kiln", bounds: { x: 20, y: 30, width: 20, height: 30 },
@@ -111,6 +144,257 @@ test("moving authoring geometry and replacing image bytes changes only the gener
   assert.notEqual(updated.sites[0].states[1].image, moved.sites[0].states[1].image);
   assert.equal(updated.sites[0].states[0].image, moved.sites[0].states[0].image);
   assert.deepEqual(updated.sites[0].bounds, moved.sites[0].bounds);
+});
+
+test("nested group offsets move geometry together and terrain decals retain stretch, rotation and topdown order", async t => {
+  const { map, compile } = await fixture(t);
+  const before = await compile(), [ground, ...objects] = map.layers[0].objects;
+  const decals = [
+    { id: 22, name: "", gid: 1, x: 15, y: 30, width: 18, height: 9, rotation: 15 },
+    { id: 23, name: "", gid: 1, x: 15, y: 14, width: 18, height: 9, rotation: 0 },
+  ];
+  map.layers = [objectLayer(1, "Terrain", [ground]),
+    { ...groupLayer(2, "Buildings", [{ ...groupLayer(3, "Moved", [objectLayer(4, "Markers", objects),
+      waterLayer(5, "Ground", decals)]), offsetx: -2, offsety: 4 }]), offsetx: 5, offsety: -2 }];
+  const authored = clone(map), moved = await compile();
+  const shift = point => ({ x: point.x + 3, y: point.y + 2 });
+  for (const role of ["anchor", "entry", "light"]) assert.deepEqual(moved.sites[0][role], shift(before.sites[0][role]));
+  for (const role of ["collision", "hitArea"]) assert.deepEqual(moved.sites[0][role], before.sites[0][role].map(shift));
+  assert.deepEqual(moved.paths[0].points, before.paths[0].points.map(shift));
+  assert.deepEqual(moved.sites[0].bounds, { ...before.sites[0].bounds, ...shift(before.sites[0].bounds) });
+  assert.deepEqual(moved.terrain.map(image => image.id), ["ground", "terrain-23", "terrain-22"]);
+  assert.deepEqual(moved.terrain[2].imagePlacement, { x: 18, y: 32, width: 18, height: 9, rotation: 15 });
+  assertRectClose(moved.terrain[2].bounds, imageEnvelope(moved.terrain[2].imagePlacement));
+  assert.deepEqual(map, authored);
+});
+
+test("terrain and navigation conditions resolve later sites and catalog-only visual levels without mutating Tiled", async t => {
+  const { map, compile } = await fixture(t);
+  const terrain = { id: 30, name: "kiln-debris", gid: 1, x: 60, y: 20, width: 12, height: 6,
+    properties: props({ role: "terrain", siteId: "kiln", level: 0 }) };
+  const polygon = (id, name, role, level) => ({ id, name, x: 65, y: 65, width: 0, height: 0,
+    polygon: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }],
+    properties: props({ role, siteId: "kiln", level }) });
+  map.layers.unshift(objectLayer(2, "Terrain", [terrain]),
+    objectLayer(3, "WalkAreas", [polygon(31, "restored-walk", "walk-area", 1)]),
+    objectLayer(4, "Obstacles", [polygon(32, "ruin-blocker", "nav-obstacle", 0)]));
+  const source = clone(map), scene = await compile();
+  assert.deepEqual(scene.terrain.find(image => image.id === "kiln-debris").when, { siteId: "kiln", level: 0 });
+  assert.deepEqual(scene.navigation.areas[0].when, { siteId: "kiln", level: 1 });
+  assert.deepEqual(scene.navigation.obstacles[0].when, { siteId: "kiln", level: 0 });
+  assert.equal(Object.hasOwn(scene.terrain.find(image => image.id === "ground"), "when"), false);
+  assert.equal(scene.sites[0].states[0].geometry, undefined, "conditions can use a catalog state without separate placed geometry");
+  assert.deepEqual(map, source);
+  assert.equal(serializeTiledWorld(scene), serializeTiledWorld(await compile()));
+  const inheritedRole = clone(map);
+  inheritedRole.layers[0].objects[0].properties = props({ siteId: "kiln", level: 0 });
+  assert.deepEqual((await compile(inheritedRole)).terrain.find(image => image.id === "kiln-debris").when,
+    { siteId: "kiln", level: 0 }, "Tiled may omit the role inherited from its terrain tile");
+});
+
+test("conditional terrain and navigation reject partial conditions, unknown sites and missing visual levels", async t => {
+  const { map, compile } = await fixture(t);
+  const targets = [
+    ["terrain", value => value.layers[0].objects.push({ id: 30, name: "debris", gid: 1, x: 60, y: 20, width: 12, height: 6, properties: [] })],
+    ["walk-area", value => value.layers.push(objectLayer(2, "WalkAreas", [{ id: 31, name: "conditional-walk", x: 65, y: 65,
+      polygon: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 0, y: 10 }], properties: [] }]))],
+    ["nav-obstacle", value => value.layers.push(objectLayer(2, "Obstacles", [{ id: 32, name: "conditional-blocker", x: 65, y: 65,
+      polygon: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 0, y: 10 }], properties: [] }]))],
+  ];
+  for (const [role, add] of targets) for (const [condition, expected] of [
+    [{ siteId: "kiln" }, /conditional visibility requires siteId and level together/],
+    [{ level: 0 }, /conditional visibility requires siteId and level together/],
+    [{ siteId: "unknown-site", level: 0 }, /conditional visibility references unknown site unknown-site/],
+    [{ siteId: "kiln", level: 2 }, /conditional visibility references unknown visual level 2 for site kiln/],
+    [{ siteId: "Kiln", level: 0 }, /expected a lowercase identifier/],
+    [{ siteId: "kiln", level: 0.5 }, /expected a safe integer/],
+  ]) {
+    await t.test(`${role}: ${JSON.stringify(condition)}`, async () => {
+      const value = clone(map);
+      add(value);
+      const object = role === "terrain" ? value.layers[0].objects.at(-1) : value.layers.at(-1).objects[0];
+      object.properties = props({ role, ...condition });
+      await assert.rejects(compile(value), expected);
+    });
+  }
+  const tileCondition = clone(map);
+  tileCondition.tilesets[0].tiles[0].properties.push(...props({ siteId: "kiln", level: 0 }));
+  await assert.rejects(compile(tileCondition), /terrain tiles only accept the role property/,
+    "conditions belong to placed terrain objects, not the reusable tile");
+});
+
+test("permanent spawn and interests cannot rely on a walk area hidden by another site level", async t => {
+  const { map, compile } = await fixture(t);
+  setProp(map.layers[0].objects[1], "initialLevel", 0);
+  const walk = (id, name, x, y, condition = {}) => ({ id, name, x, y,
+    polygon: [{ x: 0, y: 0 }, { x: 15, y: 0 }, { x: 15, y: 15 }, { x: 0, y: 15 }],
+    properties: props({ role: "walk-area", ...condition }) });
+  map.layers.push(objectLayer(2, "WalkAreas", [walk(30, "permanent-ground", 5, 5),
+    walk(31, "restored-only-ground", 70, 70, { siteId: "kiln", level: 1 })]));
+  const actor = { ...spawn(), x: 75, y: 75 };
+  const withSpawn = clone(map);
+  withSpawn.layers[0].objects.push(actor);
+  await assert.rejects(compile(withSpawn), /navigation spawn: position must be inside a walk area that is unconditional/);
+  const withInterest = clone(map);
+  withInterest.layers.push(objectLayer(3, "PointsOfInterest", [{ id: 32, name: "future-interest", x: 75, y: 75,
+    point: true, properties: props({ role: "interest", activity: "look" }) }]));
+  await assert.rejects(compile(withInterest), /navigation interest future-interest: position must be inside a walk area that is unconditional/);
+  setProp(withSpawn.layers[1].objects[1], "level", 0);
+  await assert.rejects(compile(withSpawn), /walk area that is unconditional/, "even initially visible conditional areas can disappear after upgrading");
+  withSpawn.layers[1].objects[1].properties = props({ role: "walk-area" });
+  assert.deepEqual((await compile(withSpawn)).actor.spawn, { x: 75, y: 75 }, "a permanent area makes the same spawn safe in every visual state");
+});
+
+test("rotated site images preserve Tiled placement and world-authored markers without stretching catalog-only variants", async t => {
+  const { map, compile } = await fixture(t);
+  const before = (await compile()).sites[0];
+  map.layers[0].objects[1].rotation = 346.507;
+  const authored = clone(map);
+  const site = (await compile()).sites[0];
+  assert.deepEqual(site.imagePlacement, { x: 20, y: 30, width: 20, height: 30, rotation: 346.507 });
+  assertRectClose(site.bounds, { x: 20, y: 25.33346870565279, width: 26.447765618965718, height: 33.83848431051457 });
+  for (const role of ["anchor", "entry", "hitArea", "collision", "light"]) assert.deepEqual(site[role], before[role], `${role} is already in world coordinates`);
+  assert.deepEqual(site.states, before.states, "catalog-only images share the authored rectangle, not the rotated envelope aspect");
+  assert.deepEqual(map, authored, "rotation and authoring coordinates are never rewritten");
+  map.layers[0].objects[1].rotation = -13.493;
+  const negative = (await compile()).sites[0];
+  assert.equal(negative.imagePlacement.rotation, -13.493, "negative angles remain exactly as authored");
+  assertRectClose(negative.bounds, site.bounds);
+});
+
+test("rotated image world bounds validate actual corners including quarter turns and reject non-finite angles", async t => {
+  const { map, compile } = await fixture(t);
+  const image = map.layers[0].objects[1];
+  Object.assign(image, { x: 95, y: 20, rotation: 90 });
+  assert.deepEqual((await compile()).sites[0].bounds, { x: 65, y: 20, width: 30, height: 20 },
+    "unrotated rectangle may extend outside the map when all rotated corners are inside");
+  Object.assign(image, { x: 30, y: 0 });
+  assert.deepEqual((await compile()).sites[0].bounds, { x: 0, y: 0, width: 30, height: 20 }, "corners may touch map boundaries");
+  for (const placement of [{ x: 2, y: 20, rotation: 90 }, { x: 20, y: 2, rotation: 346.507 }, { x: 90, y: 80, rotation: 45 }]) {
+    Object.assign(image, placement);
+    await assert.rejects(compile(), /objects\[1\]: rotated image is outside world bounds/);
+  }
+  for (const rotation of [NaN, Infinity, "90", null]) {
+    image.rotation = rotation;
+    await assert.rejects(compile(), /objects\[1\]\.rotation: expected a finite number/);
+  }
+});
+
+test("polygon and polyline vertices rotate clockwise about their own Tiled origins", async t => {
+  const { map, compile } = await fixture(t);
+  const triangle = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 0, y: 8 }];
+  const positive = [{ x: 50, y: 50 }, { x: 50 + 5 * Math.sqrt(3), y: 55 }, { x: 46, y: 50 + 4 * Math.sqrt(3) }];
+  const negative = [{ x: 50, y: 50 }, { x: 50 + 5 * Math.sqrt(3), y: 45 }, { x: 54, y: 50 + 4 * Math.sqrt(3) }];
+  const quarter = [{ x: 50, y: 50 }, { x: 50, y: 60 }, { x: 42, y: 50 }];
+  for (const [rotation, expected] of [[30, positive], [-30, negative], [390, positive], [-330, positive], [90, quarter], [450, quarter], [-270, quarter]]) {
+    await t.test(`rotation ${rotation}`, async () => {
+      const value = clone(map);
+      for (const index of [5, 6]) Object.assign(value.layers[0].objects[index], { x: 50, y: 50, rotation, polygon: clone(triangle) });
+      Object.assign(value.layers[0].objects[8], { x: 50, y: 50, rotation, polyline: clone(triangle) });
+      const source = clone(value), scene = await compile(value);
+      assertPointsClose(scene.sites[0].hitArea, expected);
+      assertPointsClose(scene.sites[0].collision, expected);
+      assertPointsClose(scene.paths[0].points, expected);
+      assert.deepEqual(value, source, "export must preserve the authored rotation and local vertices");
+      assert.equal(serializeTiledWorld(scene), serializeTiledWorld(await compile(value)));
+    });
+  }
+});
+
+test("nested offsets translate rotated contours and routes once without rotating point origins", async t => {
+  const { map, compile } = await fixture(t);
+  const [ground, ...objects] = map.layers[0].objects;
+  for (const index of [4, 5]) objects[index].rotation = 90;
+  objects[7].rotation = -90;
+  for (const index of [1, 2, 3]) objects[index].rotation = 450;
+  map.layers = [objectLayer(1, "Terrain", [ground]),
+    { ...groupLayer(2, "Buildings", [{ ...groupLayer(3, "Moved", [objectLayer(4, "Markers", objects)]), offsetx: -2, offsety: 4 }]), offsetx: 5, offsety: -2 }];
+  const source = clone(map), scene = await compile();
+  assert.deepEqual(scene.sites[0].anchor, { x: 33, y: 52 });
+  assert.deepEqual(scene.sites[0].entry, { x: 33, y: 62 });
+  assert.deepEqual(scene.sites[0].light, { x: 35, y: 42 });
+  for (const role of ["hitArea", "collision"]) assert.deepEqual(scene.sites[0][role], [
+    { x: 33, y: 32 }, { x: 33, y: 47 }, { x: 8, y: 47 }, { x: 8, y: 32 },
+  ]);
+  assert.deepEqual(scene.paths[0].points, [{ x: 33, y: 62 }, { x: 43, y: 52 }, { x: 43, y: 42 }]);
+  assert.deepEqual(map, source);
+});
+
+test("image rotation does not rotate world points or apply twice to a window contour", async t => {
+  const { map, compile } = await fixture(t);
+  const objects = map.layers[0].objects;
+  Object.assign(objects[1], { x: 30, y: 30, rotation: 90 });
+  objects[2].rotation = -30;
+  objects[3].rotation = 450;
+  objects.push(
+    { id: 10, x: 20, y: 40, point: true, rotation: 450, properties: props({ role: "doorway", siteId: "kiln" }) },
+    { id: 11, x: 10, y: 40, point: true, rotation: -30, properties: props({ role: "chimney", siteId: "kiln" }) },
+    { id: 12, x: 22, y: 34, rotation: 90, polygon: [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 0, y: 2 }], properties: props({ role: "window", siteId: "kiln" }) },
+  );
+  const scene = await compile(), site = scene.sites[0];
+  assert.deepEqual(site.anchor, { x: 30, y: 50 });
+  assert.deepEqual(site.entry, { x: 30, y: 60 });
+  assert.deepEqual(site.doorway, { x: 20, y: 40 });
+  assert.deepEqual(site.chimney, { x: 10, y: 40 });
+  assert.deepEqual(site.window, [{ x: 22, y: 34 }, { x: 22, y: 38 }, { x: 20, y: 34 }]);
+  assert.deepEqual(site.hitArea, [{ x: 20, y: 30 }, { x: 35, y: 30 }, { x: 35, y: 55 }, { x: 20, y: 55 }]);
+});
+
+test("rotated geometry validates transformed world bounds and keeps exact quarter-turn boundaries", async t => {
+  const { map, compile } = await fixture(t);
+  Object.assign(map.layers[0].objects[5], { x: 100, y: 0, rotation: 90,
+    polygon: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 100 }, { x: 0, y: 100 }] });
+  Object.assign(map.layers[0].objects[8], { x: 100, y: 0, rotation: 90, polyline: [{ x: 0, y: 0 }, { x: 100, y: 100 }] });
+  const scene = await compile();
+  assert.deepEqual(scene.sites[0].hitArea, [{ x: 100, y: 0 }, { x: 100, y: 10 }, { x: 0, y: 10 }, { x: 0, y: 0 }]);
+  assert.deepEqual(scene.paths[0].points, [{ x: 100, y: 0 }, { x: 0, y: 100 }]);
+  const polygonOutside = clone(map);
+  polygonOutside.layers[0].objects[5].x = 99;
+  await assert.rejects(compile(polygonOutside), /objects\[5\]\.polygon\[2\]\.x: expected a finite number >= 0/);
+  const routeOutside = clone(map);
+  routeOutside.layers[0].objects[8].rotation = -90;
+  await assert.rejects(compile(routeOutside), /objects\[8\]\.polyline\[1\]\.y: expected a finite number >= 0/);
+});
+
+test("rotation retains polygon topology checks and rejects non-finite angles on every geometry shape", async t => {
+  const { map, compile } = await fixture(t);
+  const cases = [
+    ["adjacent vertices", [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 0 }, { x: 0, y: 10 }], /adjacent vertices must differ/],
+    ["repeated closure", [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 0, y: 10 }, { x: 0, y: 0 }], /polygon vertices must be unique/],
+    ["zero area", [{ x: 0, y: 0 }, { x: 1, y: 1 }, { x: 2, y: 2 }], /polygon must enclose a nonzero area/],
+    ["self intersection", [{ x: 0, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }, { x: 10, y: 0 }, { x: 15, y: 5 }], /polygon must not self-intersect/],
+    ["overlapping edges", [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 5, y: 0 }, { x: 5, y: 10 }], /polygon edges must not overlap/],
+  ];
+  for (const [name, polygon, pattern] of cases) await t.test(name, async () => {
+    const value = clone(map);
+    Object.assign(value.layers[0].objects[5], { rotation: 3.77904083202368, polygon });
+    await assert.rejects(compile(value), pattern);
+  });
+  for (const index of [2, 5, 8]) for (const rotation of [NaN, Infinity, -Infinity, "30", null]) {
+    const value = clone(map);
+    value.layers[0].objects[index].rotation = rotation;
+    await assert.rejects(compile(value), new RegExp(`objects\\[${index}\\]\\.rotation: expected a finite number`));
+  }
+});
+
+test("doorway, chimney and window markers must lie inside the rotated image rather than its enclosing rectangle", async t => {
+  const { map, compile } = await fixture(t);
+  map.layers[0].objects[1].rotation = 346.507;
+  const objects = map.layers[0].objects;
+  objects.push(
+    { id: 10, x: 33, y: 42, point: true, properties: props({ role: "doorway", siteId: "kiln" }) },
+    { id: 11, x: 32, y: 32, point: true, properties: props({ role: "chimney", siteId: "kiln" }) },
+    { id: 12, x: 33, y: 40, polygon: [{ x: 0, y: 0 }, { x: 2, y: 0 }, { x: 2, y: 2 }, { x: 0, y: 2 }], properties: props({ role: "window", siteId: "kiln" }) },
+  );
+  const site = (await compile()).sites[0];
+  assert.deepEqual(site.doorway, { x: 33, y: 42 });
+  assert.deepEqual(site.chimney, { x: 32, y: 32 });
+  assert.deepEqual(site.window, [{ x: 33, y: 40 }, { x: 35, y: 40 }, { x: 35, y: 42 }, { x: 33, y: 42 }]);
+  for (const [index, role] of [[9, "doorway"], [10, "chimney"], [11, "window"]]) {
+    const invalid = clone(map);
+    Object.assign(invalid.layers[0].objects[index], { x: 20.1, y: 25.5 });
+    await assert.rejects(compile(invalid), new RegExp(`${role} must be inside its image bounds`));
+  }
 });
 
 test("terrain and focus form a valid scene before any sites or routes are placed", async t => {
@@ -224,6 +508,23 @@ test("authored mushrooms and bush contours retain exact positions and route link
   assert.deepEqual(emptied.bushes, [], "an intentionally empty layer removes all interactive bushes");
 });
 
+test("changing actor size preserves a valid authored bush jump, while excessive world distances remain invalid", async t => {
+  const { map, compile } = await fixture(t);
+  addClearingProps(map);
+  const actor = map.layers[1].objects[0], entry = map.layers[3].objects[1];
+  entry.x = 1; entry.y = 65; // The hiding point is 44 world units away.
+  let geometry;
+  for (const size of [24, 50, 56, 80]) {
+    setProp(actor, "size", size);
+    const scene = await compile();
+    geometry ??= scene.bushes;
+    assert.deepEqual(scene.bushes, geometry, `size ${size} must not move the authored markers`);
+    assert.equal(scene.actor.size, size);
+  }
+  entry.x = 0;
+  await assert.rejects(compile(), /entry and hide must be within 44\.8 world units/);
+});
+
 test("mushroom and bush authoring rejects broken markers, geometry and links", async t => {
   const { map, compile } = await fixture(t);
   addClearingProps(map);
@@ -249,7 +550,7 @@ test("mushroom and bush authoring rejects broken markers, geometry and links", a
     ["entry shape required", value => { delete entry(value).point; }, /shape: expected "point"/],
     ["point dimensions rejected", value => { hide(value).width = 5; }, /width: expected 0/],
     ["hide outside leaves", value => { hide(value).x = 55; }, /hide must be inside its leaf contour/],
-    ["entry too far from hide", value => { entry(value).x = 90; }, /entry and hide must be within one actor size/],
+    ["entry too far from hide", value => { entry(value).x = 90; }, /entry and hide must be within 44\.8 world units/],
     ["bush extra property", value => { bush(value).properties.push(...props({ siteId: "kiln" })); }, /bush objects only accept role and bushId/],
     ["route missing bushId", value => { route(value).properties = route(value).properties.filter(property => property.name !== "bushId"); }, /properties.bushId: expected a non-empty string/],
     ["route unknown bush", value => { setProp(route(value), "bushId", "missing"); }, /path references unknown bush missing/],
@@ -367,6 +668,288 @@ test("an explicit Tiled 1.12 normal layer blend mode keeps the same scene", asyn
   assert.deepEqual(await compile(), before);
 });
 
+test("building folders split images, anchors and contours without changing the exported scene", async t => {
+  const { map, compile } = await fixture(t);
+  const before = await compile();
+  const [ground, image, anchor, entry, light, hitArea, collision, focus, route] = map.layers[0].objects;
+  map.layers = [
+    objectLayer(1, "Terrain", [ground]),
+    groupLayer(2, "Buildings", [
+      groupLayer(3, "Kiln-lvl-1", [
+        objectLayer(4, "Kiln-anchors", [anchor, entry, light]),
+        objectLayer(5, "Kiln-image", [image]),
+        objectLayer(6, "Kiln-tracing", [hitArea, collision]),
+      ]),
+      groupLayer(7, "Kiln-lvl-2"), groupLayer(8, "Kiln-lvl-3"),
+    ]),
+    objectLayer(9, "Camera and routes", [focus, route]),
+  ];
+  const authored = clone(map);
+  assert.deepEqual(await compile(), before, "folder names do not introduce levels or change siteId ownership");
+  assert.deepEqual(map, authored, "grouping never rewrites coordinates or source objects");
+  map.layers[1].layers[1].layers.push(objectLayer(10, "Another level image", [{ ...clone(image), id: 20 }]));
+  await assert.rejects(compile(), /site kiln has more than one preview object for level 0/, "a level still has exactly one placed image");
+});
+
+function separateBuildingLevels(map) {
+  const [ground, image, anchor, entry, light, hitArea, collision, focus, route] = map.layers[0].objects;
+  const baseMarkers = [anchor, entry, light, hitArea, collision];
+  const nextImage = { ...clone(image), id: 20, gid: 3, x: image.x + 25,
+    properties: props({ role: "site", initialLevel: 1 }) };
+  const nextMarkers = baseMarkers.map(object => ({ ...clone(object), id: object.id + 20, x: object.x + 25 }));
+  map.layers = [
+    objectLayer(1, "Terrain", [ground]),
+    groupLayer(2, "Buildings", [
+      groupLayer(3, "Any base folder name", [
+        objectLayer(4, "Anchors", baseMarkers),
+        groupLayer(5, "Artwork", [objectLayer(6, "Image", [image])]),
+      ]),
+      groupLayer(7, "Any next folder name", [
+        groupLayer(8, "Geometry", [objectLayer(9, "Markers", nextMarkers)]),
+        objectLayer(10, "Image", [nextImage]),
+      ]),
+    ]),
+    objectLayer(11, "Camera and routes", [focus, route]),
+  ];
+  return { image, nextImage, baseMarkers, nextMarkers };
+}
+
+test("editor visibility never deletes building levels or metadata and hidden geometry is still validated", async t => {
+  const { map, compile } = await fixture(t);
+  const { nextMarkers } = separateBuildingLevels(map);
+  const life = livingLayers().map(layer => ({ ...layer, id: layer.id + 100,
+    objects: layer.objects.map(object => ({ ...object, id: object.id + 100 })) }));
+  map.layers.push(...life, groupLayer(200, "WaterExclusions", [waterLayer(201, "Leaves", [waterPolygon(200, "leaf")])]));
+  const before = await compile();
+  const hide = layers => layers.forEach(layer => {
+    layer.visible = false;
+    if (layer.layers) hide(layer.layers);
+    else layer.objects.forEach(object => { object.visible = false; });
+  });
+  hide(map.layers);
+  const authored = clone(map);
+  assert.deepEqual(await compile(), before, "editor eyes cannot remove collisions, habitats, water masks or inactive upgrades");
+  assert.deepEqual(map, authored, "export does not re-enable the editor eyes");
+  assert.equal(before.sites[0].states.length, 2);
+  nextMarkers.find(object => object.properties.some(property => property.value === "collision")).polygon = [
+    { x: 0, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }, { x: 10, y: 0 }, { x: 15, y: 5 },
+  ];
+  await assert.rejects(compile(), /polygon must not self-intersect/, "hidden unfinished geometry cannot bypass validation");
+});
+
+test("grouped levels inherit tile identity and switch their own bounds and marker geometry", async t => {
+  const { map, compile } = await fixture(t);
+  const { image, nextImage, nextMarkers } = separateBuildingLevels(map);
+  const authored = clone(map);
+  const site = (await compile()).sites[0];
+  assert.equal(site.label, "Pottery kiln", "the lowest placed level owns the building label");
+  assert.equal(site.initialLevel, 1);
+  assert.deepEqual(site.bounds, { x: 45, y: 30, width: 20, height: 30 });
+  assert.deepEqual(site.anchor, { x: 55, y: 50 });
+  assert.deepEqual(site.entry, { x: 55, y: 60 });
+  assert.deepEqual(site.states[0].geometry.bounds, { x: 20, y: 30, width: 20, height: 30 });
+  assert.deepEqual(site.states[0].geometry.anchor, { x: 30, y: 50 });
+  assert.deepEqual(site.states[1].geometry.collision, nextMarkers[4].polygon.map(point => ({ x: nextMarkers[4].x + point.x, y: nextMarkers[4].y + point.y })));
+  assert.deepEqual(site.states[1].geometry.light, { x: 57, y: 40 });
+  assert.deepEqual(map, authored, "inherited properties are never copied back into authoring data");
+  setProp(image, "initialLevel", 0);
+  setProp(nextImage, "initialLevel", 1);
+  map.layers[1].layers.reverse();
+  const reordered = (await compile()).sites[0];
+  assert.equal(reordered.initialLevel, 0, "the lowest placed level controls startup regardless of folder order");
+  assert.deepEqual(reordered.bounds, site.states[0].geometry.bounds);
+});
+
+test("level geometries independently preserve rotations and clear the transform on an unrotated initial level", async t => {
+  const { map, compile } = await fixture(t);
+  const { image, nextImage } = separateBuildingLevels(map);
+  image.rotation = 346.507;
+  let site = (await compile()).sites[0];
+  assert.deepEqual(site.states[0].geometry.imagePlacement, { x: 20, y: 30, width: 20, height: 30, rotation: 346.507 });
+  assert.equal(Object.hasOwn(site.states[1].geometry, "imagePlacement"), false);
+  assert.equal(Object.hasOwn(site, "imagePlacement"), false, "initial level 1 has no inherited rotation from level 0");
+  nextImage.rotation = 90;
+  site = (await compile()).sites[0];
+  assert.deepEqual(site.imagePlacement, { x: 45, y: 30, width: 20, height: 30, rotation: 90 });
+  assert.deepEqual(site.bounds, { x: 15, y: 30, width: 30, height: 20 });
+  assert.deepEqual(site.states[1].geometry.imagePlacement, site.imagePlacement);
+  assert.deepEqual(site.states[1].geometry.anchor, { x: 55, y: 50 }, "state markers remain world-authored");
+  setProp(image, "initialLevel", 0);
+  site = (await compile()).sites[0];
+  assert.deepEqual(site.imagePlacement, site.states[0].geometry.imagePlacement);
+  assert.deepEqual(site.bounds, site.states[0].geometry.bounds);
+});
+
+test("each placed level may have its own image aspect and scale while unplaced variants retain legacy checks", async t => {
+  const { map, compile, writeImage } = await fixture(t);
+  const { nextImage } = separateBuildingLevels(map);
+  await writeImage("kiln-1.webp", 80, 80, "#a8693b");
+  map.tilesets[0].tiles[2].imageheight = 80;
+  nextImage.width = 30;
+  const site = (await compile()).sites[0];
+  assert.deepEqual(site.states[1].geometry.bounds, { x: 45, y: 30, width: 30, height: 30 });
+  map.layers[1].layers.splice(1, 1);
+  await assert.rejects(compile(), /object aspect ratio must match its image/, "a catalog-only image must fit the shared placement");
+});
+
+test("unfinished level folders fall back to the base geometry and explicit levels work outside folders", async t => {
+  const { map, compile } = await fixture(t);
+  const { nextMarkers } = separateBuildingLevels(map);
+  map.layers[1].layers[1].layers[0].layers[0].objects = [];
+  let site = (await compile()).sites[0];
+  assert.deepEqual(site.states[1].geometry.anchor, site.states[0].geometry.anchor);
+  assert.deepEqual(site.states[1].geometry.collision, site.states[0].geometry.collision);
+  assert.equal(site.states[1].geometry.bounds.x, 45, "the new image retains its authored bounds during gradual tracing");
+  const entry = nextMarkers[1];
+  entry.properties.push(...props({ level: 1 }));
+  map.layers[2].objects.push(entry);
+  site = (await compile()).sites[0];
+  assert.deepEqual(site.states[1].geometry.entry, { x: 55, y: 60 });
+  assert.deepEqual(site.states[0].geometry.entry, { x: 30, y: 60 });
+});
+
+test("explicit per-level markers can specialize a legacy single-placement catalog", async t => {
+  const { map, compile } = await fixture(t);
+  const entry = { ...clone(map.layers[0].objects[3]), id: 20, x: 34, properties: props({ role: "entry", siteId: "kiln", level: 1 }) };
+  map.layers[0].objects.push(entry);
+  const site = (await compile()).sites[0];
+  assert.deepEqual(site.states[0].geometry.entry, { x: 30, y: 60 });
+  assert.deepEqual(site.states[1].geometry.entry, { x: 34, y: 60 });
+  assert.deepEqual(site.entry, { x: 34, y: 60 });
+});
+
+test("building windows and chimneys follow their level folder without appearing on earlier levels", async t => {
+  const { map, compile } = await fixture(t);
+  const { nextMarkers } = separateBuildingLevels(map);
+  nextMarkers.push({ id: 50, x: 50, y: 32, point: true, properties: props({ role: "chimney", siteId: "kiln" }) },
+    { id: 51, x: 55, y: 45, polygon: [{ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 5, y: 8 }, { x: 0, y: 8 }],
+      properties: props({ role: "window", siteId: "kiln" }) });
+  const site = (await compile()).sites[0];
+  assert.equal(site.states[0].geometry.chimney, undefined);
+  assert.equal(site.states[0].geometry.window, undefined);
+  assert.deepEqual(site.states[1].geometry.chimney, { x: 50, y: 32 });
+  assert.deepEqual(site.states[1].geometry.window, [{ x: 55, y: 45 }, { x: 60, y: 45 }, { x: 60, y: 53 }, { x: 55, y: 53 }]);
+  assert.deepEqual(site.chimney, site.states[1].geometry.chimney);
+  assert.deepEqual(site.window, site.states[1].geometry.window);
+});
+
+test("shared building details remain compatible with a single-placement catalog", async t => {
+  const { map, compile } = await fixture(t);
+  map.layers[0].objects.push({ id: 50, x: 25, y: 32, point: true, properties: props({ role: "chimney", siteId: "kiln" }) },
+    { id: 51, x: 25, y: 40, polygon: [{ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 5, y: 8 }, { x: 0, y: 8 }],
+      properties: props({ role: "window", siteId: "kiln" }) });
+  const site = (await compile()).sites[0];
+  assert.deepEqual(site.chimney, { x: 25, y: 32 });
+  assert.equal(site.window.length, 4);
+  assert.equal(site.states[0].geometry, undefined, "legacy scenes need no geometry duplication");
+});
+
+test("building details reject wrong shapes and positions outside the selected image", async t => {
+  const { map, compile } = await fixture(t);
+  const { nextMarkers } = separateBuildingLevels(map);
+  nextMarkers.push({ id: 50, x: 50, y: 32, point: true, properties: props({ role: "chimney", siteId: "kiln" }) },
+    { id: 51, x: 55, y: 45, polygon: [{ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 5, y: 8 }, { x: 0, y: 8 }],
+      properties: props({ role: "window", siteId: "kiln" }) });
+  for (const [name, change, error] of [
+    ["chimney outside", objects => { objects.at(-2).x = 44; }, /chimney must be inside its image bounds for level 1/],
+    ["window outside", objects => { objects.at(-1).polygon[1].x = 11; }, /window must be inside its image bounds for level 1/],
+    ["window requires contour", objects => { delete objects.at(-1).polygon; objects.at(-1).point = true; }, /shape: expected "polygon"/],
+    ["chimney requires point", objects => { delete objects.at(-2).point; }, /shape: expected "point"/],
+  ]) {
+    const invalid = clone(map); change(invalid.layers[1].layers[1].layers[0].layers[0].objects);
+    await assert.rejects(compile(invalid), error, name);
+  }
+});
+
+test("per-level geometry rejects duplicate markers, mismatched tiles, unknown levels and displaced doorways", async t => {
+  const { map, compile } = await fixture(t);
+  separateBuildingLevels(map);
+  const nextLayer = value => value.layers[1].layers[1].layers[0].layers[0];
+  const nextImage = value => value.layers[1].layers[1].layers[1].objects[0];
+  const cases = [
+    ["duplicate level image", value => { nextLayer(value).objects.push({ ...clone(nextImage(value)), id: 50 }); }, /more than one preview object for level 1/],
+    ["duplicate marker within level", value => { nextLayer(value).objects.push({ ...clone(nextLayer(value).objects[0]), id: 50 }); }, /duplicate anchor for site kiln, level 1/],
+    ["explicit unknown level", value => { nextLayer(value).objects[0].properties.push(...props({ level: 7 })); }, /marker references unknown level 7 for site kiln/],
+    ["explicit mismatched tile level", value => { nextImage(value).properties.push(...props({ level: 0 })); }, /properties.level: expected 1/],
+    ["explicit mismatched tile site", value => { nextImage(value).properties.push(...props({ siteId: "home" })); }, /gid siteId: expected "home"/],
+    ["doorway outside its level bounds", value => { nextLayer(value).objects.push({ id: 50, x: 32, y: 52, point: true, properties: props({ role: "doorway", siteId: "kiln" }) }); }, /doorway must be inside its image bounds for level 1/],
+  ];
+  for (const [name, mutate, pattern] of cases) {
+    await t.test(name, async () => {
+      const value = clone(map);
+      mutate(value);
+      await assert.rejects(compile(value), pattern);
+    });
+  }
+});
+
+test("navigation spawn and interests must remain clear of every building level", async t => {
+  const { map, compile } = await fixture(t);
+  const { image } = separateBuildingLevels(map);
+  setProp(image, "initialLevel", 0);
+  const actor = { ...spawn(), id: 50, x: 50, y: 50 };
+  map.layers.push(objectLayer(12, "Actors", [actor]), objectLayer(13, "WalkAreas", [{ id: 51, name: "clearing", x: 0, y: 0,
+    polygon: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }], properties: props({ role: "walk-area" }) }]));
+  await assert.rejects(compile(), /navigation spawn: position must not overlap/, "inactive upgrades must not cover the fallback spawn");
+  actor.y = 65;
+  await compile();
+  map.layers.push(objectLayer(14, "PointsOfInterest", [{ id: 52, name: "look-here", x: 50, y: 50, point: true,
+    properties: props({ role: "interest", activity: "look" }) }]));
+  await assert.rejects(compile(), /navigation interest look-here: position must not overlap/);
+});
+
+test("nested folders retain terrain order independently of interleaved site placements", async t => {
+  const { map, compile } = await fixture(t);
+  const [ground, ...rest] = map.layers[0].objects;
+  const topGround = { ...clone(ground), id: 20, name: "ground-overlay" };
+  map.layers[0].objects = [ground, topGround, ...rest];
+  const before = await compile();
+  map.layers = [
+    groupLayer(2, "Terrain", [
+      objectLayer(3, "Base", [ground]),
+      groupLayer(4, "Details", [objectLayer(5, "Overlay", [topGround])]),
+    ]),
+    groupLayer(6, "Buildings", [objectLayer(1, "World", rest)]),
+  ];
+  assert.deepEqual(await compile(), before);
+  assert.deepEqual((await compile()).terrain.map(item => item.id), ["ground", "ground-overlay"]);
+  map.layers[0].layers.reverse();
+  assert.deepEqual((await compile()).terrain.map(item => item.id), ["ground-overlay", "ground"], "sibling groups are not sorted by name or ID");
+  map.layers.reverse();
+  assert.deepEqual((await compile()).terrain.map(item => item.id), ["ground-overlay", "ground"]);
+});
+
+test("ordinary folders retain strict transforms, unique IDs and leaf layer validation", async t => {
+  const { map, compile } = await fixture(t);
+  map.layers = [groupLayer(2, "Buildings", [groupLayer(3, "Kiln", map.layers)])];
+  const nested = value => value.layers[0].layers[0];
+  const leaf = value => nested(value).layers[0];
+  const cases = [
+    ["invalid outer visibility", value => { value.layers[0].visible = "false"; }, /map\.layers\[0\]\.visible: expected a boolean/],
+    ["nested opacity", value => { nested(value).opacity = 0.5; }, /layers\[0\]\.layers\[0\]\.opacity: expected 1/],
+    ["invalid nested offset", value => { nested(value).offsetx = "2"; }, /offsetx: expected a finite number/],
+    ["nested position", value => { nested(value).y = 2; }, /\.y: expected 0/],
+    ["nested parallax", value => { nested(value).parallaxx = 0.5; }, /parallaxx: expected 1/],
+    ["nested blend mode", value => { nested(value).mode = "multiply"; }, /mode: expected "normal"/],
+    ["nested tint", value => { nested(value).tintcolor = "#ffffff"; }, /tintcolor: not supported/],
+    ["folder custom properties", value => { nested(value).properties = props({ siteId: "kiln" }); }, /unknown property "siteId"/],
+    ["missing children", value => { delete nested(value).layers; }, /\.layers: expected an array/],
+    ["objects on folder", value => { nested(value).objects = []; }, /\.objects: not supported/],
+    ["draw order on folder", value => { nested(value).draworder = "index"; }, /\.draworder: not supported/],
+    ["duplicate nested layer ID", value => { leaf(value).id = 2; }, /duplicate layer ID/],
+    ["duplicate object across folders", value => { value.layers.push(groupLayer(4, "More", [objectLayer(5, "Copy", [clone(leaf(value).objects[7])])])); }, /duplicate object ID/],
+    ["top-down scene layer", value => { leaf(value).draworder = "topdown"; }, /draworder: expected "index"/],
+    ["invalid nested image visibility", value => { leaf(value).objects[1].visible = 0; }, /objects\[1\]\.visible: expected a boolean/],
+  ];
+  for (const [name, mutate, pattern] of cases) {
+    await t.test(name, async () => {
+      const value = clone(map);
+      mutate(value);
+      await assert.rejects(compile(value), pattern);
+    });
+  }
+});
+
 test("unsupported or ambiguous authoring fails with the exact map location", async t => {
   const { map, compile } = await fixture(t);
   const cases = [
@@ -374,13 +957,14 @@ test("unsupported or ambiguous authoring fails with the exact map location", asy
     ["implicit bottom alignment", value => { delete value.tilesets[0].objectalignment; }, /objectalignment: expected "topleft"/],
     ["tile offset", value => { value.tilesets[0].tileoffset = { x: 1, y: 0 }; }, /tileoffset: not supported/],
     ["template", value => { value.layers[0].objects[1].template = "site.tx"; }, /objects\[1\]\.template: not supported/],
-    ["rotation", value => { value.layers[0].objects[1].rotation = 15; }, /objects\[1\]\.rotation: expected 0/],
+    ["out-of-bounds terrain rotation", value => { value.layers[0].objects[0].rotation = 15; }, /rotated image is outside world bounds/],
+    ["focus rectangle rotation", value => { value.layers[0].objects[7].rotation = 15; }, /objects\[7\]\.rotation: expected 0/],
     ["flip bits", value => { value.layers[0].objects[1].gid = 0x80000002; }, /objects\[1\]\.gid: tile flip\/rotation bits/],
     ["hex rotation bit", value => { value.layers[0].objects[1].gid = 0x10000002; }, /tile flip\/rotation bits/],
     ["layer offset", value => { value.layers[0].offsetx = 3; }, /layers\[0\]\.offsetx: expected 0/],
     ["layer blend mode", value => { value.layers[0].mode = "multiply"; }, /layers\[0\]\.mode: expected "normal"/],
-    ["group layer", value => { value.layers[0].type = "group"; }, /layers\[0\]\.type: expected "objectgroup"/],
-    ["hidden layer", value => { value.layers[0].visible = false; }, /layers\[0\]\.visible: expected true/],
+    ["tile layer", value => { value.layers[0].type = "tilelayer"; }, /layers\[0\]\.type: expected "objectgroup"/],
+    ["invalid layer visibility", value => { value.layers[0].visible = null; }, /layers\[0\]\.visible: expected a boolean/],
     ["distorted sprite", value => { value.layers[0].objects[1].width = 19; }, /objects\[1\]: object aspect ratio/],
     ["missing entry", value => { value.layers[0].objects.splice(3, 1); }, /site kiln is missing entry/],
     ["unplaced catalog", value => { value.layers[0].objects.splice(1, 1); }, /state catalog kiln has no placed site/],
@@ -480,6 +1064,21 @@ test("Water also supports nested groups and WaterExclusions supports a plain obj
   assert.deepEqual((await compile()).water, { surfaces: [], exclusions: [] }, "an emptied authoring mask stays empty");
 });
 
+test("water surfaces and nested exclusions use their own rotations", async t => {
+  const { map, compile } = await fixture(t);
+  const polygon = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 8 }, { x: 0, y: 8 }];
+  map.layers.push(waterLayer(2, "Water", [{ ...waterPolygon(20, "river-main", 50, 50), polygon, rotation: 90 }]));
+  map.layers.push(groupLayer(3, "WaterExclusions", [waterLayer(4, "Leaves", [
+    { ...waterPolygon(21, "leaf-1", 50, 50), polygon, rotation: -90 },
+  ])]));
+  const source = clone(map), scene = await compile();
+  assert.deepEqual(scene.water, {
+    surfaces: [{ id: "river-main", points: [{ x: 50, y: 50 }, { x: 50, y: 60 }, { x: 42, y: 60 }, { x: 42, y: 50 }] }],
+    exclusions: [{ id: "leaf-1", points: [{ x: 50, y: 50 }, { x: 50, y: 40 }, { x: 58, y: 40 }, { x: 58, y: 50 }] }],
+  });
+  assert.deepEqual(map, source);
+});
+
 test("invalid water geometry and unsupported nested transforms fail with the object location", async t => {
   const { map, compile } = await fixture(t);
   map.layers.push(waterLayer(2, "Water", [waterPolygon(20, "river-main")]));
@@ -491,11 +1090,11 @@ test("invalid water geometry and unsupported nested transforms fail with the obj
     ["explicit repeated closure", value => { const p = value.layers[1].objects[0].polygon; p.push(clone(p[0])); }, /polygon vertices must be unique/],
     ["zero area", value => { value.layers[1].objects[0].polygon = [{ x: 0, y: 0 }, { x: 1, y: 1 }, { x: 2, y: 2 }]; }, /polygon must enclose a nonzero area/],
     ["self intersection", value => { value.layers[1].objects[0].polygon = [{ x: 0, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }, { x: 10, y: 0 }, { x: 15, y: 5 }]; }, /\(river-main\): polygon must not self-intersect/],
-    ["exclusion rotation", value => { value.layers[2].layers[0].objects[0].rotation = 30; }, /layers\[2\]\.layers\[0\]\.objects\[0\]\.rotation: expected 0/],
+    ["invalid exclusion rotation", value => { value.layers[2].layers[0].objects[0].rotation = "30"; }, /layers\[2\]\.layers\[0\]\.objects\[0\]\.rotation: expected a finite number/],
     ["group offset", value => { value.layers[2].offsetx = 5; }, /layers\[2\]\.offsetx: expected 0/],
     ["nested layer offset", value => { value.layers[2].layers[0].y = 3; }, /layers\[2\]\.layers\[0\]\.y: expected 0/],
     ["nested layer parallax", value => { value.layers[2].layers[0].parallaxx = 0.5; }, /parallaxx: expected 1/],
-    ["hidden group", value => { value.layers[2].visible = false; }, /visible: expected true/],
+    ["invalid group visibility", value => { value.layers[2].visible = "false"; }, /visible: expected a boolean/],
     ["conflicting group roles", value => { value.layers[2].layers[0].name = "Water"; }, /must not be nested inside each other/],
     ["duplicate nested layer ID", value => { value.layers[2].layers[0].id = 1; }, /duplicate layer ID/],
     ["duplicate nested object ID", value => { value.layers[2].layers[0].objects[0].id = 20; }, /duplicate object ID/],
@@ -589,7 +1188,7 @@ test("malformed Lights authoring fails at the exact marker rather than silently 
     ["accidental role property", value => { light(value).properties.push(...props({ role: "light" })); }, /unknown property "role"/],
     ["duplicate property", value => { light(value).properties.push(...props({ intensity: 1 })); }, /duplicate property "intensity"/],
     ["light group offset", value => { value.layers[1].offsetx = 1; }, /offsetx: expected 0/],
-    ["hidden nested group", value => { value.layers[1].layers[0].visible = false; }, /visible: expected true/],
+    ["invalid nested group visibility", value => { value.layers[1].layers[0].visible = 0; }, /visible: expected a boolean/],
     ["Water nested in Lights", value => { value.layers[1].layers[0].name = "Water"; }, /must not be nested inside each other/],
     ["Lights nested in WaterExclusions", value => { value.layers[1].name = "WaterExclusions"; value.layers[1].layers[0].name = "Lights"; }, /must not be nested inside each other/],
   ];
@@ -662,6 +1261,29 @@ test("empty living metadata is deliberate and named groups preserve roles throug
   const empty = await compile();
   assert.deepEqual(empty.navigation, { version: 1, cellSize: 6, areas: [], obstacles: [], interests: [] });
   assert.deepEqual(empty.habitats, []);
+});
+
+test("ordinary wrappers preserve named metadata inheritance and reject mixed metadata nesting", async t => {
+  const { map, compile } = await fixture(t);
+  map.layers.push(...livingLayers(),
+    waterLayer(7, "Water", [waterPolygon(30, "river", 80, 30)]),
+    waterLayer(8, "WaterExclusions", [waterPolygon(31, "leaf", 80, 30)]),
+    waterLayer(9, "Lights", [{ id: 32, name: "lamp", x: 50, y: 50, point: true }]),
+  );
+  const before = await compile();
+  map.layers = [groupLayer(100, "World folders", map.layers.map(layer =>
+    layer.name === "World" ? layer : groupLayer(layer.id + 100, layer.name, [
+      groupLayer(layer.id + 200, "Local", [{ ...layer, name: "Geometry" }]),
+    ]),
+  ))];
+  assert.deepEqual(await compile(), before, "Water, Lights, navigation and habitat semantics survive arbitrary wrappers");
+  for (const [parentName, childName] of [["Water", "Lights"], ["Lights", "WaterExclusions"], ["Habitats", "WalkAreas"]]) {
+    await t.test(`${childName} nested inside ${parentName}`, async () => {
+      const value = clone(map);
+      value.layers.push(groupLayer(400, "Metadata", [groupLayer(401, parentName, [groupLayer(402, "Local", [groupLayer(403, childName)])])]));
+      await assert.rejects(compile(value), /different metadata layers must not be nested inside each other/);
+    });
+  }
 });
 
 test("habitat exclusions follow the referenced contour regardless of authoring order without rewriting polygons", async t => {
@@ -755,7 +1377,7 @@ test("malformed living geometry, stable IDs, references and activity values fail
     ["zero cell size", value => { value.properties.push(...props({ navigationCellSize: 0 })); }, /expected a cell size > 0 and <= 64/],
     ["nonfinite cell size", value => { value.properties.push({ name: "navigationCellSize", type: "float", value: Infinity }); }, /expected a finite number/],
     ["excess cell size", value => { value.properties.push(...props({ navigationCellSize: 65 })); }, /expected a cell size > 0 and <= 64/],
-    ["hidden layer", value => { value.layers[1].visible = false; }, /visible: expected true/],
+    ["invalid layer visibility", value => { value.layers[1].visible = "false"; }, /visible: expected a boolean/],
     ["transformed layer", value => { value.layers[1].offsetx = 1; }, /offsetx: expected 0/],
     ["spawn outside walk area", value => { value.layers[0].objects.push({ ...spawn(), x: 95, y: 95 }); }, /navigation spawn: position must be inside a walk area/],
     ["spawn inside site collision", value => { value.layers[0].objects.push({ ...spawn(), x: 25, y: 35 }); }, /navigation spawn: position must not overlap/],
@@ -798,19 +1420,63 @@ test("committed authoring exports identically and --check refuses stale output w
   const rect = ({ x, y, width, height }) => ({ x, y, width, height });
   assert.equal(scene.width, source.width);
   assert.equal(scene.height, source.height);
-  assert.deepEqual(scene.terrain.map(({ id, bounds }) => ({ id, bounds })),
-    withRole("terrain").map(object => ({ id: object.name, bounds: rect(object) })));
-  assert.deepEqual(scene.sites.map(({ id, label, bounds, initialLevel }) => ({ id, label, bounds, initialLevel })),
-    withRole("site").map(object => ({ id: property(object, "siteId"), label: property(object, "label"),
-      bounds: rect(object), initialLevel: property(object, "initialLevel") })));
+  assert.deepEqual(scene.sites.find(site => site.id === "home").states.map(state => state.level), [1, 2, 3, 4, 5]);
+  const quarry = scene.sites.find(site => site.id === "quarry");
+  assert.ok(quarry, "the placed quarry must be exported as a site, not an untyped image");
+  assert.equal(quarry.initialLevel, 0);
+  assert.deepEqual(quarry.states.map(state => state.level), [0, 1]);
+  const quarryEntry = withRole("entry").find(object => property(object, "siteId") === "quarry" && property(object, "level") === 0)
+    ?? withRole("entry").find(object => property(object, "siteId") === "quarry");
+  assert.deepEqual(quarry.entry, { x: quarryEntry.x, y: quarryEntry.y });
+
+  const bridge = scene.sites.find(site => site.id === "bridge");
+  assert.ok(bridge, "the bridge retains its authored interaction and collision contours");
+  for (const role of ["hitArea", "collision"]) {
+    const authored = withRole(role).find(object => property(object, "siteId") === "bridge");
+    assert.ok(authored);
+    assertPointsClose(bridge[role], authoredVertices(authored, "polygon"));
+  }
+
+  const tileFor = object => source.tilesets.flatMap(tileset => tileset.tiles.map(tile => ({ gid: tileset.firstgid + tile.id, tile }))).find(entry => entry.gid === object.gid)?.tile;
+  const terrainObjects = objects.filter(object => (property(object, "role") ?? property(tileFor(object) ?? {}, "role")) === "terrain");
+  assert.equal(scene.terrain.length, terrainObjects.length);
+  for (const object of terrainObjects) {
+    const terrain = scene.terrain.find(item => item.id === (object.name || `terrain-${object.id}`));
+    assert.ok(terrain);
+    assertRectClose(terrain.bounds, imageEnvelope(object));
+    if (object.rotation) assert.deepEqual(terrain.imagePlacement, { ...rect(object), rotation: object.rotation });
+  }
+  const placedSites = withRole("site");
+  for (const site of scene.sites) {
+    const placements = placedSites.filter(object => (property(object, "siteId") ?? property(tileFor(object), "siteId")) === site.id)
+      .sort((a, b) => property(tileFor(a), "level") - property(tileFor(b), "level"));
+    const base = placements[0], selected = placements.find(object => property(tileFor(object), "level") === site.initialLevel) ?? base;
+    assert.ok(base);
+    assert.equal(site.label, property(base, "label") ?? property(tileFor(base), "label"));
+    assert.equal(site.initialLevel, property(base, "initialLevel") ?? property(tileFor(base), "level"));
+    assertRectClose(site.bounds, imageEnvelope(selected));
+    if (selected.rotation) assert.deepEqual(site.imagePlacement, { ...rect(selected), rotation: selected.rotation });
+    else assert.equal(Object.hasOwn(site, "imagePlacement"), false);
+    if (placements.length > 1) for (const placed of placements) {
+      const geometry = site.states.find(state => state.level === property(tileFor(placed), "level")).geometry;
+      assertRectClose(geometry.bounds, imageEnvelope(placed));
+      if (placed.rotation) assert.deepEqual(geometry.imagePlacement, { ...rect(placed), rotation: placed.rotation });
+      else assert.equal(Object.hasOwn(geometry, "imagePlacement"), false);
+    }
+  }
+  assert.equal(scene.sites.length, new Set(placedSites.map(object => property(object, "siteId") ?? property(tileFor(object), "siteId"))).size);
   assert.deepEqual(scene.paths, withRole("path").map(object => ({ id: object.name,
-    points: object.polyline.map(point => ({ x: object.x + point.x, y: object.y + point.y })),
+    points: authoredVertices(object, "polyline"),
     ...Object.fromEntries(["siteId", "behavior", "activity", "pauseSeconds", "bushId"].filter(key => property(object, key) !== undefined).map(key => [key, property(object, key)])) })));
   assert.deepEqual(scene.mushrooms, withRole("mushroom").map(object => ({ id: object.name, position: { x: object.x, y: object.y } })));
+  assert.equal(withRole("basket").length, 1, "the live forest has one movable basket marker");
+  const basket = withRole("basket")[0];
+  assert.deepEqual(scene.basket, { id: basket.name, position: { x: basket.x, y: basket.y } });
   assert.deepEqual(scene.bushes, withRole("bush").map(object => {
     const id = property(object, "bushId");
     const marker = role => withRole(role).find(candidate => property(candidate, "bushId") === id);
-    return { id, points: object.polygon.map(point => ({ x: object.x + point.x, y: object.y + point.y })),
+    return { id, points: authoredVertices(object, "polygon"),
+      ...(property(object, "imageId") !== undefined ? { imageId: property(object, "imageId") } : {}),
       entry: { x: marker("bush-entry").x, y: marker("bush-entry").y },
       hide: { x: marker("bush-hide").x, y: marker("bush-hide").y } };
   }));
@@ -822,7 +1488,7 @@ test("committed authoring exports identically and --check refuses stale output w
   const authoredWater = source.layers.find(layer => layer.name === "Water");
   const authoredExclusions = source.layers.find(layer => layer.name === "WaterExclusions");
   const waterGeometry = layers => layerObjects(layers).map(object => ({ id: object.name,
-    points: object.polygon.map(point => ({ x: object.x + point.x, y: object.y + point.y })) }));
+    points: authoredVertices(object, "polygon") }));
   assert.deepEqual(scene.water, { surfaces: waterGeometry([authoredWater]), exclusions: waterGeometry([authoredExclusions]) });
   assert.equal(await readFile(path.join(root, "features/world/tiled/forest.generated.json"), "utf8"), expected);
   const command = [path.join(root, "scripts/tiled-world.mjs"), input, output];
@@ -895,4 +1561,176 @@ test("CLI export validates the complete refreshed scene before writing either fi
   await assert.rejects(run(process.execPath, command), error => error.code === 1 && /only PNG, WebP and JPEG/.test(error.stderr));
   assert.deepEqual(await readFile(options.mapPath), originalMap);
   assert.deepEqual(await readFile(output), originalOutput);
+});
+
+test("terrain placements inherit tile roles and give unnamed copies stable object IDs", async t => {
+  const { map, compile } = await fixture(t);
+  const expected = await compile();
+  delete map.layers[0].objects[0].properties;
+  const authored = clone(map);
+  assert.deepEqual(await compile(), expected);
+  assert.deepEqual(map, authored, "inherited roles must not mutate Tiled source");
+  map.layers[0].objects[0].properties = props({ role: "" });
+  await assert.rejects(compile(), /properties\[0\].value: expected a non-empty string/);
+  delete map.layers[0].objects[0].properties;
+  map.layers[0].objects[0].name = "";
+  assert.equal((await compile()).terrain[0].id, "terrain-1");
+  map.layers[0].objects[0].name = "ground";
+  map.layers[0].objects[1].properties = props({ siteId: "kiln", initialLevel: 1 });
+  await assert.rejects(compile(), /properties.role: expected a non-empty string/, "siteState tiles still need a site placement role");
+});
+
+test("bush imageId can reference artwork placed later, and only the polygon accepts the reference", async t => {
+  const { map, compile } = await fixture(t); addClearingProps(map);
+  const bush = map.layers[3].objects[0];
+  bush.properties.push(...props({ imageId: "independent-shrub" }));
+  const pending = await compile();
+  assert.equal(pending.bushes[0].imageId, "independent-shrub");
+  assert.equal(pending.terrain.some(image => image.id === "independent-shrub"), false, "pending authoring does not fabricate placement");
+  map.layers[0].objects.splice(1, 0, { ...clone(map.layers[0].objects[0]), id: 40, name: "independent-shrub" });
+  const placed = await compile();
+  assert.equal(placed.terrain[1].id, "independent-shrub");
+  assert.deepEqual(placed.bushes, pending.bushes, "placement does not move interactive markers");
+  for (const value of ["", "name with spaces"]) {
+    const invalid = clone(map); setProp(invalid.layers[3].objects[0], "imageId", value);
+    await assert.rejects(compile(invalid), value ? /imageId/ : /expected a non-empty string/);
+  }
+  for (const index of [1, 2]) {
+    const invalid = clone(map); invalid.layers[3].objects[index].properties.push(...props({ imageId: "independent-shrub" }));
+    await assert.rejects(compile(invalid), /bush objects only accept/);
+  }
+});
+
+test("a single basket marker exports exact ground contact and accepts normal Garden draw orders", async t => {
+  const { map, compile } = await fixture(t);
+  const basket = { id: 90, name: "berry-basket", point: true, x: 62.125, y: 68.75, width: 0, height: 0,
+    properties: props({ role: "basket" }) };
+  const layer = objectLayer(2, "Garden", [basket]); map.layers.push(layer);
+  const before = await compile();
+  assert.deepEqual(before.basket, { id: "berry-basket", position: { x: 62.125, y: 68.75 } });
+  layer.draworder = "topdown";
+  assert.deepEqual(await compile(), before);
+  Object.assign(basket, { x: 78.625, y: 74.25 });
+  const moved = await compile();
+  assert.deepEqual(moved.basket, { id: "berry-basket", position: { x: 78.625, y: 74.25 } });
+  assert.deepEqual({ ...moved, basket: before.basket }, before, "dragging the marker changes no other geometry");
+  map.layers.pop();
+  assert.equal((await compile()).basket, undefined, "removing the optional marker restores legacy placement");
+});
+
+test("basket authoring rejects ambiguous, malformed or out-of-bounds markers", async t => {
+  const { map, compile } = await fixture(t);
+  const basket = { id: 90, name: "berry-basket", point: true, x: 62, y: 68, width: 0, height: 0,
+    properties: props({ role: "basket" }) };
+  map.layers.push(objectLayer(2, "Garden", [basket]));
+  for (const [label, mutate, expected] of [
+    ["second marker", value => value.layers.push(objectLayer(3, "Extra", [{ ...clone(basket), id: 91, name: "other-basket" }])), /only one basket point/],
+    ["empty name", value => { value.layers[1].objects[0].name = ""; }, /non-empty string/],
+    ["invalid identifier", value => { value.layers[1].objects[0].name = "Berry Basket"; }, /lowercase identifier/],
+    ["empty role", value => setProp(value.layers[1].objects[0], "role", ""), /non-empty string/],
+    ["missing role", value => { value.layers[1].objects[0].properties = []; }, /non-empty string/],
+    ["unsupported property", value => value.layers[1].objects[0].properties.push(...props({ siteId: "kiln" })), /basket only accepts/],
+    ["rectangle", value => { delete value.layers[1].objects[0].point; }, /expected "point"/],
+    ["false point", value => { value.layers[1].objects[0].point = false; }, /expected true/],
+    ["nonzero dimensions", value => { value.layers[1].objects[0].width = 7; }, /expected 0/],
+    ["outside map", value => { value.layers[1].objects[0].x = 101; }, /outside world bounds/],
+    ["negative position", value => { value.layers[1].objects[0].y = -1; }, /finite number >= 0/],
+    ["nonfinite position", value => { value.layers[1].objects[0].y = Infinity; }, /finite number/],
+  ]) await t.test(label, async () => {
+    const broken = clone(map); mutate(broken); await assert.rejects(compile(broken), expected);
+  });
+});
+
+test("campfires compile paired ground/seat markers and reject unsafe or orphan authoring", async t => {
+  const { map, compile } = await fixture(t);
+  const fire = { id: 90, name: "evening-fire", point: true, x: 70, y: 60, width: 0, height: 0,
+    properties: props({ role: "campfire", campfireId: "evening-fire" }) };
+  const seat = { id: 91, name: "evening-seat", point: true, x: 45, y: 65, width: 0, height: 0,
+    properties: props({ role: "campfire-seat", campfireId: "evening-fire" }) };
+  const good = clone(map); good.layers[0].objects.push(fire, seat);
+  assert.deepEqual((await compile(good)).campfires, [{ id: "evening-fire", position: { x: 70, y: 60 }, seat: { x: 45, y: 65 }, radius: 10 }]);
+  for (const [label, mutate, expected] of [
+    ["missing seat", objects => objects.pop(), /missing seat/],
+    ["orphan seat", objects => objects.splice(-2, 1), /unknown campfire/],
+    ["seat inside fire", objects => { objects.at(-1).x = 70; objects.at(-1).y = 60; }, /outside its footprint/],
+    ["footprint outside map", objects => { objects.at(-2).x = 3; }, /outside world bounds/],
+    ["duplicate fire", objects => objects.push({ ...clone(fire), id: 92 }), /duplicate campfire/],
+    ["wrong shape", objects => { delete objects.at(-1).point; }, /expected "point"/],
+    ["invalid radius", objects => objects.at(-2).properties.push({ name: "radius", type: "float", value: -4 }), /radius must be/],
+  ]) await t.test(label, async () => { const broken = clone(good); mutate(broken.layers[0].objects); await assert.rejects(compile(broken), expected); });
+});
+
+test("destination targets and occlusion silhouettes compile independently from home interests and collision", async t => {
+  const { map, compile } = await fixture(t);
+  const legacy = await compile();
+  assert.equal(legacy.destinations, undefined);
+  assert.equal(legacy.occluders, undefined);
+  map.layers.push(...livingLayers(),
+    objectLayer(30, "Destinations", [livingPoint(300, "kiln", 70, 70, { role: "destination", siteId: "kiln", pauseSeconds: 12 })]),
+    objectLayer(31, "Occluders", [{ ...livingPolygon(301, "tree-crown", "occluder", { frontY: 25 }), x: 40, y: 45,
+      polygon: [{ x: 0, y: 0 }, { x: 20, y: 0 }, { x: 20, y: 20 }, { x: 0, y: 20 }] }]));
+  const before = structuredClone(map), world = await compile();
+  assert.deepEqual(world.destinations, [{ id: "kiln", position: { x: 70, y: 70 }, siteId: "kiln", pauseSeconds: 12 }]);
+  assert.equal(world.occluders[0].frontY, 70);
+  assert.equal(world.navigation.interests.length, 1, "world visits must not expand home wandering interests");
+  assert.equal(world.navigation.obstacles.length, 1, "visual masks do not block a route");
+  assert.deepEqual(map, before);
+  map.layers.at(-2).objects = [];
+  map.layers.at(-1).objects = [];
+  const empty = await compile();
+  assert.deepEqual(empty.destinations, []);
+  assert.deepEqual(empty.occluders, []);
+});
+
+test("occluder depth follows ordinary group offsets and optional level visibility", async t => {
+  const { map, compile } = await fixture(t);
+  const mask = { ...livingPolygon(300, "kiln-roof", "occluder", { frontY: 18, siteId: "kiln", level: 1 }), x: 35, y: 40,
+    polygon: [{ x: 0, y: 0 }, { x: 15, y: 0 }, { x: 15, y: 15 }, { x: 0, y: 15 }] };
+  map.layers.push({ id: 30, name: "Trees", type: "group", offsetx: 5, offsety: 10,
+    layers: [objectLayer(31, "Occluders", [mask])] });
+  const world = await compile();
+  assert.deepEqual(world.occluders[0], { id: "kiln-roof", points: [{ x: 40, y: 50 }, { x: 55, y: 50 }, { x: 55, y: 65 }, { x: 40, y: 65 }],
+    frontY: 68, when: { siteId: "kiln", level: 1 } });
+  mask.properties = props({ role: "occluder" });
+  assert.equal((await compile()).occluders[0].frontY, 65, "omitted frontY follows lowest transformed contour vertex");
+});
+
+test("destination validation rejects unknown owners, unsafe placement, duplicates and unbounded waiting/network size", async t => {
+  const { map, compile } = await fixture(t);
+  map.layers.push(...livingLayers(), objectLayer(30, "Destinations", [livingPoint(300, "kiln", 70, 70, { role: "destination", siteId: "kiln" })]));
+  assert.equal((await compile()).destinations[0].pauseSeconds, 8);
+  for (const [change, error] of [
+    [o => { o.properties = props({ role: "destination", siteId: "missing" }); }, /unknown site missing/],
+    [o => { o.x = 65; o.y = 25; }, /position must not overlap/],
+    [o => { o.x = 99; }, /position must be inside a walk area/],
+    [o => { o.properties = props({ role: "destination", pauseSeconds: 61 }); }, /pauseSeconds must be from 2 to 60/],
+  ]) {
+    const changed = structuredClone(map); change(changed.layers.at(-1).objects[0]);
+    await assert.rejects(compile(changed), error);
+  }
+  const duplicate = structuredClone(map), targets = duplicate.layers.at(-1).objects;
+  targets.push({ ...targets[0], id: 301 });
+  await assert.rejects(compile(duplicate), /duplicate destination ID/);
+  const overflow = structuredClone(map);
+  overflow.layers.at(-1).objects = Array.from({ length: 17 }, (_, i) => livingPoint(300 + i, `visit-${i}`, 70, 70, { role: "destination" }));
+  await assert.rejects(compile(overflow), /at most 16 destinations/);
+  const noAreas = structuredClone(map);
+  noAreas.layers = noAreas.layers.filter(l => l.name !== "WalkAreas" && l.name !== "PointsOfInterest");
+  await assert.rejects(compile(noAreas), /destinations require WalkAreas/);
+});
+
+test("occluder validation rejects bad depth, duplicate IDs and unknown building levels", async t => {
+  const { map, compile } = await fixture(t);
+  map.layers.push(objectLayer(30, "Occluders", [{ ...livingPolygon(300, "tree", "occluder"), x: 10, y: 10 }]));
+  for (const [values, error] of [
+    [{ frontY: 95 }, /frontY must resolve inside world height/],
+    [{ siteId: "kiln" }, /siteId and level together/],
+    [{ siteId: "kiln", level: 9 }, /unknown visual level 9/],
+  ]) {
+    const changed = structuredClone(map);
+    changed.layers.at(-1).objects[0].properties = props({ role: "occluder", ...values });
+    await assert.rejects(compile(changed), error);
+  }
+  map.layers.at(-1).objects.push({ ...map.layers.at(-1).objects[0], id: 301 });
+  await assert.rejects(compile(), /duplicate occluder ID/);
 });

@@ -13,6 +13,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  secrets:
+    name: Repository secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Check tracked files and reachable history
+        run: |
+          node scripts/check-secrets.mjs
+          node scripts/check-secrets.mjs --history
+
   web:
     name: Web checks
     runs-on: ubuntu-latest
@@ -30,8 +50,14 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
       - name: Lint
         run: npm run lint
+
+      - name: Check committed Tiled export
+        run: npm run world:check
 
       - name: Type-check
         run: npx tsc --noEmit --incremental false
@@ -81,7 +107,7 @@ jobs:
             echo "Authentication integration tests must run with PostgreSQL." >&2
             exit 1
           fi
-          for suite in JdbcAccountLifecycleIntegrationTest JdbcMergedHistoryIntegrationTest JdbcDirectInviteRepositoryIntegrationTest JdbcTimeZoneIntegrationTest JdbcGameRepositoryIntegrationTest JdbcWorldRepositoryIntegrationTest JdbcAdminRepositoryIntegrationTest JdbcModerationMigrationIntegrationTest JdbcTapHistoryIntegrationTest JdbcTapHistoryMigrationIntegrationTest JdbcFeedbackRepositoryIntegrationTest JdbcReleaseUpgradeIntegrationTest; do
+          for suite in JdbcAccountLifecycleIntegrationTest JdbcMergedIdentityMigrationIntegrationTest JdbcMergedHistoryIntegrationTest JdbcDirectInviteRepositoryIntegrationTest JdbcTimeZoneIntegrationTest JdbcGameRepositoryIntegrationTest JdbcWorldRepositoryIntegrationTest JdbcEconomyRepositoryIntegrationTest JdbcEconomyMarketRepositoryIntegrationTest JdbcForestMemoryRepositoryIntegrationTest JdbcAdminRepositoryIntegrationTest JdbcModerationMigrationIntegrationTest JdbcTapHistoryIntegrationTest JdbcTapHistoryMigrationIntegrationTest JdbcFeedbackRepositoryIntegrationTest JdbcCurrencyDenominationIntegrationTest JdbcPearlDenominationIntegrationTest JdbcEconomyBarterRepositoryIntegrationTest JdbcProgressionRewardsIntegrationTest JdbcGuestProfileRepositoryIntegrationTest JdbcReleaseUpgradeIntegrationTest JdbcPresenceRepositoryIntegrationTest; do
             lifecycle_report="apps/api/build/test-results/test/TEST-ru.zhiv.db.${suite}.xml"
             test -s "${lifecycle_report}"
             if grep --quiet '<skipped' "${lifecycle_report}"; then
@@ -90,9 +116,20 @@ jobs:
             fi
           done
 
+      - name: Upload backend test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-reports-${{ github.run_attempt }}
+          path: |
+            apps/api/build/test-results/test/
+            apps/api/build/reports/tests/test/
+          retention-days: 7
+          if-no-files-found: warn
+
   compose:
     name: Production Compose smoke test
-    needs: [web, backend]
+    needs: [secrets, web, backend]
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -222,8 +259,9 @@ jobs:
           docker compose -f deploy/compose.yml exec -T db psql -X -U zhiv -d zhiv -v ON_ERROR_STOP=1 <<'SQL'
           DO $$ BEGIN
             IF EXISTS (SELECT 1 FROM app_users) OR EXISTS (SELECT 1 FROM player_feedback)
-                OR EXISTS (SELECT 1 FROM player_feedback_actions) THEN
-              RAISE EXCEPTION 'User or feedback data survived the confirmed reset.';
+                OR EXISTS (SELECT 1 FROM player_feedback_actions)
+                OR EXISTS (SELECT 1 FROM forest_memory) OR EXISTS (SELECT 1 FROM forest_memory_receipts) THEN
+              RAISE EXCEPTION 'User, feedback or forest memory data survived the confirmed reset.';
             END IF;
           END $$;
           SQL

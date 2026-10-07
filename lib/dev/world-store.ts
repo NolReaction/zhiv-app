@@ -1,7 +1,8 @@
+import { initializeDevEconomy, creditDevLegacyJourney, getDevEconomyBuildingLevels, getDevEconomyWardrobe } from "@/lib/dev/economy-store";
 import { naturalItems } from "@/features/game/game-rewards";
 // Development adapter only. Production requests are handled by Ktor/PostgreSQL.
 import { getDevIdentity, getDevItemStreak } from "@/lib/dev/api-store";
-import { canAfford, collectionRewards, collectionCount, newWorldState, workshopLevel, worldCatalog as catalog, type WorldCommand, type WorldResources, type WorldSnapshot, type WorldState } from "@/features/world/model";
+import { collectionRewards, collectionCount, newWorldState, workshopLevel, worldCatalog as catalog, type WorldCommand, type WorldSnapshot, type WorldState } from "@/features/world/model";
 
 type Profile = { state: WorldState; revision: number; day: string; earned: number; remainder: number;
   receipts: Map<string, { signature: string; message: string }>; tapKeys: Set<string> };
@@ -12,7 +13,7 @@ export class DevWorldError extends Error {
   constructor(public code: string, message: string, public status = 409) { super(message); }
 }
 const fail = (code: string, message: string): never => { throw new DevWorldError(code, message); };
-function profile(token: string | undefined, now: number) {
+function profile(token: string | undefined, now: number): { owner: string; value: Profile } {
   const identity = getDevIdentity(token);
   if (!identity) throw new DevWorldError("UNAUTHORIZED", "Войдите в аккаунт", 401);
   const owner = identity.user.publicId;
@@ -20,18 +21,34 @@ function profile(token: string | undefined, now: number) {
     earned: 0, remainder: 0, receipts: new Map(), tapKeys: new Set() });
   return { owner, value: store().get(owner)! };
 }
+export function hasDevLegacyJourney(token: string | undefined, now = Date.now()): boolean {
+  return profile(token, now).value.state.journeys.length > 0;
+}
+export function consumeDevLegacyEconomy(token: string | undefined, now = Date.now()): { resources: WorldState["resources"]; houseLevel: number; workshopLevel: number } {
+  const { value } = profile(token, now);
+  const legacy = { resources: { ...value.state.resources }, houseLevel: value.state.houseLevel, workshopLevel: workshopLevel(value.state) };
+  if (Object.values(value.state.resources).some(amount => amount !== 0)) value.revision++;
+  value.state.resources = { sparks: 0, wood: 0, stone: 0 };
+  value.earned = 0; value.remainder = 0;
+  return legacy;
+}
 export function getDevWorld(token: string | undefined, now = Date.now()): WorldSnapshot {
+  initializeDevEconomy(token, now);
   const { owner, value } = profile(token, now);
+  const buildings = getDevEconomyBuildingLevels(token, now);
+  syncDevWorldWardrobe(token, getDevEconomyWardrobe(token, now), now);
+  if (value.state.houseLevel !== buildings.home || workshopLevel(value.state) !== buildings.workshop) {
+    value.state.houseLevel = buildings.home;
+    value.state.workshop = buildings.workshop > 0;
+    value.state.workshopLevel = buildings.workshop;
+    value.revision++;
+  }
   return { ownerPublicId: owner, revision: value.revision, serverTime: new Date(now).toISOString(),
     devTools: process.env.NODE_ENV === "development",
     state: structuredClone(value.state), gifts: naturalItems(getDevItemStreak(owner, now)), catalogVersion: catalog.version as WorldSnapshot["catalogVersion"],
     dailySparksEarned: value.day === new Date(now).toISOString().slice(0, 10) ? value.earned : 0 };
 }
 function apply(state: WorldState, command: WorldCommand, now: number, gifts: readonly string[]): string {
-  const spend = (cost: WorldResources) => {
-    if (!canAfford(state.resources, cost)) fail("WORLD_RESOURCES", "Пока не хватает материалов. Их можно принести из путешествия.");
-    for (const key of ["sparks", "wood", "stone"] as const) state.resources[key] -= cost[key];
-  };
   switch (command.action) {
     case "set_decoration": {
       const match = /^(show|hide)_(flower|leaf_bed|keepsakes|leaf_garland)$/.exec(command.target);
@@ -42,31 +59,6 @@ function apply(state: WorldState, command: WorldCommand, now: number, gifts: rea
         : [...new Set([...(state.hiddenGifts ?? []), item])].sort();
       return match[1] === "show" ? "Украшение включено" : "Украшение убрано";
     }
-    case "dev_grant_resources":
-      for (const key of ["sparks", "wood", "stone"] as const) state.resources[key] += 50;
-      return "+50 искр, дерева и камня";
-    case "upgrade_house": {
-      const cost = catalog.houseUpgrades.find(c => c.level === state.houseLevel + 1);
-      if (!cost) return fail("WORLD_MAX_LEVEL", "Игра в разработке. Новые улучшения появятся позже");
-      spend(cost); state.houseLevel++; return "Домик стал уютнее. Открыты новые возможности!";
-    }
-    case "build_workshop":
-      if (state.workshop) return fail("WORLD_ALREADY_BUILT", "Мастерская уже построена");
-      spend(catalog.workshop); state.workshop = true; state.workshopLevel = 1; return "Мастерская готова. Теперь можно делать одежду!";
-    case "upgrade_workshop": {
-      if (!state.workshop) return fail("WORLD_WORKSHOP_REQUIRED", "Сначала постройте мастерскую");
-      const cost = catalog.workshopUpgrades.find(c => c.level === workshopLevel(state) + 1);
-      if (!cost) return fail("WORLD_MAX_LEVEL", "Мастерская уже полностью улучшена");
-      spend(cost); state.workshopLevel = cost.level; return "Мастерская стала уютнее и просторнее";
-    }
-    case "craft": {
-      const item = catalog.items.find(i => i.id === command.target && !i.starter && i.sparks > 0);
-      if (!item) return fail("WORLD_ITEM", "Этот предмет нельзя изготовить");
-      if (!state.workshop) return fail("WORLD_WORKSHOP_REQUIRED", "Сначала постройте мастерскую");
-      if (state.inventory.includes(item.id)) return fail("WORLD_ITEM_OWNED", "Предмет уже в рюкзаке");
-      spend({ sparks: item.sparks, wood: 0, stone: 0 }); state.inventory.push(item.id); state.inventory.sort();
-      return `${item.name} теперь в рюкзаке`;
-    }
     case "equip": {
       if (command.target === "remove_head") { state.equipment.head = null; return "Головной убор снят"; }
       if (command.target === "remove_rod") { state.equipment.rod = null; return "Удочка убрана"; }
@@ -75,17 +67,6 @@ function apply(state: WorldState, command: WorldCommand, now: number, gifts: rea
       if (!item || !state.inventory.includes(item.id)) return fail("WORLD_ITEM_NOT_OWNED", "Сначала получите этот предмет");
       state.equipment[item.slot as keyof WorldState["equipment"]] = item.id;
       return `Мохлик примерил: ${item.name.toLowerCase()}`;
-    }
-    case "start_journey": {
-      const route = catalog.routes.find(r => r.id === command.target);
-      if (!route) return fail("WORLD_ROUTE", "Маршрут не найден");
-      if (state.journeys.length) return fail("WORLD_JOURNEY_ACTIVE", "Мохлик уже в пути");
-      if (route.houseLevel > state.houseLevel) return fail("WORLD_HOUSE_REQUIRED", "Сначала улучшите домик");
-      if (route.once && state.firstJourneyCompleted) return fail("WORLD_ROUTE_COMPLETED", "Первая прогулка уже состоялась");
-      state.journeys = [{ id: crypto.randomUUID(), routeId: route.id, startedAt: new Date(now).toISOString(),
-        finishesAt: new Date(now + route.seconds * 1000).toISOString(), rewards: { sparks: route.sparks, wood: route.wood, stone: route.stone },
-        finds: [...route.finds], introductory: route.once, catalogVersion: catalog.version }];
-      return "Мохлик отправился в путь";
     }
     case "recall_journey":
     case "claim_journey": {
@@ -102,12 +83,14 @@ function apply(state: WorldState, command: WorldCommand, now: number, gifts: rea
       state.journeys = state.journeys.filter(j => j.id !== journey.id);
       return command.action === "recall_journey" ? "Мохлик вернулся домой без находок" : "Мохлик принёс находку и материалы!";
     }
+    default: return fail("WORLD_ECONOMY_MOVED", "Это действие перенесено в хозяйство.");
   }
 }
 export function commandDevWorld(token: string | undefined, command: WorldCommand, now = Date.now()) {
   if (command.action === "dev_grant_resources" && (process.env.NODE_ENV !== "development" || command.target !== "")) {
     throw new DevWorldError("DEV_TOOLS_DISABLED", "Тестовая выдача недоступна", 404);
   }
+  getDevWorld(token, now);
   const { owner, value } = profile(token, now);
   if (owner !== command.ownerPublicId) return fail("WORLD_OWNER_CHANGED", "Аккаунт изменился. Обновите мир.");
   const signature = JSON.stringify([command.ownerPublicId, command.expectedRevision, command.action, command.target]);
@@ -116,23 +99,35 @@ export function commandDevWorld(token: string | undefined, command: WorldCommand
     if (receipt.signature !== signature) return fail("WORLD_COMMAND_CONFLICT", "Этот запрос уже использован");
     return { snapshot: getDevWorld(token, now), message: receipt.message, replayed: true };
   }
+  if (!["equip", "set_decoration", "claim_journey", "recall_journey"].includes(command.action))
+    return fail("WORLD_ECONOMY_MOVED", "Это действие перенесено в хозяйство. Обновите приложение и откройте раздел хозяйства.");
   if (command.expectedRevision !== value.revision) return fail("WORLD_REVISION_CONFLICT", "Мир изменился на другом устройстве. Обновите его и повторите действие.");
-  const next = structuredClone(value.state);
-  const message = apply(next, command, now, naturalItems(getDevItemStreak(owner, now)));
+  const next: WorldState = structuredClone(value.state);
+  const journey = command.action === "claim_journey" ? next.journeys.find(item => item.id === command.target) : undefined;
+  const originalMessage = apply(next, command, now, naturalItems(getDevItemStreak(owner, now)));
+  next.resources = { sparks: 0, wood: 0, stone: 0 };
+  if (journey) creditDevLegacyJourney(token, journey, now);
+  const message = journey ? "Путешествие завершено: находки сохранены, награда пересчитана в новую экономику." : originalMessage;
   value.state = next; value.revision++;
   value.receipts.set(command.requestId, { signature, message });
   return { snapshot: getDevWorld(token, now), message, replayed: false };
 }
+// Taps continue to count in the game store; retired world currencies are never credited.
 export function creditDevWorldTaps(owner: string, sourceKey: string, taps: number, now: number) {
-  const value = store().get(owner);
-  if (!value || taps <= 0 || value.tapKeys.has(sourceKey)) return;
-  value.tapKeys.add(sourceKey);
-  const day = new Date(now).toISOString().slice(0, 10);
-  if (value.day !== day) { value.day = day; value.earned = 0; value.remainder = 0; }
-  const total = value.remainder + taps;
-  const reward = Math.min(catalog.dailySparkLimit - value.earned, Math.floor(total / catalog.tapsPerSpark));
-  value.remainder = total % catalog.tapsPerSpark; value.earned += reward;
-  if (reward > 0) { value.state.resources.sparks += reward; value.revision++; }
+  void owner; void sourceKey; void taps; void now;
 }
 
 export function getDevCollectionCount(owner: string): number { return collectionCount(store().get(owner)?.state.collection ?? []); }
+
+/** Read-only legacy ownership for the unified book; does not create a world profile. */
+export function getDevCollectionFinds(owner: string): readonly string[] { return store().get(owner)?.state.collection ?? []; }
+
+/** Legacy ownership projection has no initialization or currency side effect. */
+export function getDevLegacyWardrobe(owner: string): readonly string[] { return store().get(owner)?.state.inventory ?? []; }
+export function syncDevWorldWardrobe(token: string | undefined, owned: readonly string[], now = Date.now()): void {
+  const { value } = profile(token, now);
+  const inventory = [...new Set([...value.state.inventory, ...owned])];
+  if (inventory.length !== value.state.inventory.length || inventory.some((id, index) => id !== value.state.inventory[index])) {
+    value.state.inventory = inventory; value.revision++;
+  }
+}

@@ -1,0 +1,3678 @@
+{
+  "version": 3,
+  "maxBatch": 10,
+  "productionSlots": {
+    "upgrades": [
+      {
+        "slots": 2,
+        "requiredHomeLevel": 2,
+        "pricePearls": 1500
+      },
+      {
+        "slots": 3,
+        "requiredHomeLevel": 4,
+        "pricePearls": 5000
+      }
+    ]
+  },
+  "constructionSpeedup": {
+    "secondsPerPearl": 300,
+    "priceStepPearls": 2
+  },
+  "items": [
+    {
+      "id": "berries",
+      "name": "Лесные ягоды",
+      "category": "produce",
+      "baseSellPrice": 30,
+      "tradable": true
+    },
+    {
+      "id": "wood",
+      "name": "Древесина",
+      "category": "material",
+      "baseSellPrice": 40,
+      "tradable": true
+    },
+    {
+      "id": "stone",
+      "name": "Камень",
+      "category": "material",
+      "baseSellPrice": 30,
+      "tradable": true
+    },
+    {
+      "id": "ore",
+      "name": "Железная руда",
+      "category": "material",
+      "baseSellPrice": 60,
+      "tradable": true
+    },
+    {
+      "id": "fiber",
+      "name": "Растительное волокно",
+      "category": "material",
+      "baseSellPrice": 20,
+      "tradable": true
+    },
+    {
+      "id": "fish",
+      "name": "Речная рыба",
+      "category": "produce",
+      "baseSellPrice": 80,
+      "tradable": true
+    },
+    {
+      "id": "planks",
+      "name": "Доски",
+      "category": "crafted",
+      "baseSellPrice": 120,
+      "tradable": true
+    },
+    {
+      "id": "rope",
+      "name": "Верёвка",
+      "category": "crafted",
+      "baseSellPrice": 80,
+      "tradable": true
+    },
+    {
+      "id": "metal_parts",
+      "name": "Металлические детали",
+      "category": "crafted",
+      "baseSellPrice": 460,
+      "tradable": true
+    },
+    {
+      "id": "dried_berries",
+      "name": "Сушёные ягоды",
+      "category": "provisions",
+      "baseSellPrice": 260,
+      "tradable": true
+    },
+    {
+      "id": "smoked_fish",
+      "name": "Копчёная рыба",
+      "category": "provisions",
+      "baseSellPrice": 540,
+      "tradable": true
+    },
+    {
+      "id": "clay",
+      "name": "Глина",
+      "category": "material",
+      "baseSellPrice": 40,
+      "tradable": true
+    },
+    {
+      "id": "sand",
+      "name": "Песок",
+      "category": "material",
+      "baseSellPrice": 30,
+      "tradable": true
+    },
+    {
+      "id": "charcoal",
+      "name": "Древесный уголь",
+      "category": "crafted",
+      "baseSellPrice": 100,
+      "tradable": true
+    },
+    {
+      "id": "iron_ingot",
+      "name": "Железный слиток",
+      "category": "crafted",
+      "baseSellPrice": 340,
+      "tradable": true
+    },
+    {
+      "id": "bricks",
+      "name": "Кирпичи",
+      "category": "crafted",
+      "baseSellPrice": 140,
+      "tradable": true
+    },
+    {
+      "id": "glass",
+      "name": "Стекло",
+      "category": "crafted",
+      "baseSellPrice": 240,
+      "tradable": true
+    },
+    {
+      "id": "hardwood",
+      "name": "Твёрдая древесина",
+      "category": "material",
+      "baseSellPrice": 100,
+      "tradable": true
+    },
+    {
+      "id": "resin",
+      "name": "Смола",
+      "category": "material",
+      "baseSellPrice": 60,
+      "tradable": true
+    },
+    {
+      "id": "cloth",
+      "name": "Полотно",
+      "category": "crafted",
+      "baseSellPrice": 240,
+      "tradable": true
+    },
+    {
+      "id": "beams",
+      "name": "Балки",
+      "category": "crafted",
+      "baseSellPrice": 600,
+      "tradable": true
+    },
+    {
+      "id": "tools",
+      "name": "Инструменты",
+      "category": "crafted",
+      "baseSellPrice": 1000,
+      "tradable": true
+    },
+    {
+      "id": "reinforced_parts",
+      "name": "Усиленные узлы",
+      "category": "crafted",
+      "baseSellPrice": 1800,
+      "tradable": true
+    },
+    {
+      "id": "cut_stone",
+      "name": "Тёсаный камень",
+      "category": "crafted",
+      "baseSellPrice": 120,
+      "tradable": true
+    },
+    {
+      "id": "fish_silverfin",
+      "name": "Серебринка",
+      "category": "produce",
+      "baseSellPrice": 120,
+      "tradable": true
+    },
+    {
+      "id": "fish_reedperch",
+      "name": "Камышовый окунёк",
+      "category": "produce",
+      "baseSellPrice": 180,
+      "tradable": true
+    },
+    {
+      "id": "fish_mooncarp",
+      "name": "Лунный карасик",
+      "category": "produce",
+      "baseSellPrice": 320,
+      "tradable": true
+    },
+    {
+      "id": "crumb_bait",
+      "name": "Хлебная наживка",
+      "category": "fishing",
+      "baseSellPrice": 10,
+      "tradable": true
+    },
+    {
+      "id": "worm_bait",
+      "name": "Лесной червячок",
+      "category": "fishing",
+      "baseSellPrice": 20,
+      "tradable": true
+    },
+    {
+      "id": "glow_bait",
+      "name": "Светлячковая наживка",
+      "category": "fishing",
+      "baseSellPrice": 40,
+      "tradable": true
+    },
+    {
+      "id": "firefly_bait",
+      "name": "Искристая мушка",
+      "category": "fishing",
+      "baseSellPrice": 70,
+      "tradable": true
+    },
+    {
+      "id": "ancient_core",
+      "name": "Древнее ядро",
+      "category": "special",
+      "baseSellPrice": 0,
+      "tradable": false
+    },
+    {
+      "id": "moon_crystal",
+      "name": "Лунный кристалл",
+      "category": "special",
+      "baseSellPrice": 0,
+      "tradable": false
+    },
+    {
+      "id": "living_resin",
+      "name": "Живая смола",
+      "category": "special",
+      "baseSellPrice": 0,
+      "tradable": false
+    },
+    {
+      "id": "fish_rudd",
+      "name": "Краснопёрка",
+      "category": "produce",
+      "baseSellPrice": 140,
+      "tradable": true
+    },
+    {
+      "id": "fish_dace",
+      "name": "Лесной елец",
+      "category": "produce",
+      "baseSellPrice": 200,
+      "tradable": true
+    },
+    {
+      "id": "fish_bream",
+      "name": "Бронзовый лещ",
+      "category": "produce",
+      "baseSellPrice": 240,
+      "tradable": true
+    },
+    {
+      "id": "fish_pike",
+      "name": "Изумрудная щука",
+      "category": "produce",
+      "baseSellPrice": 400,
+      "tradable": true
+    },
+    {
+      "id": "fish_eel",
+      "name": "Тёмный угорь",
+      "category": "produce",
+      "baseSellPrice": 480,
+      "tradable": true
+    },
+    {
+      "id": "fish_sturgeon",
+      "name": "Золотой осётр",
+      "category": "produce",
+      "baseSellPrice": 720,
+      "tradable": true
+    },
+    {
+      "id": "fish_mirror_koi",
+      "name": "Зеркальный кои",
+      "category": "produce",
+      "baseSellPrice": 960,
+      "tradable": true
+    },
+    {
+      "id": "fish_shark",
+      "name": "Теневая акула",
+      "category": "produce",
+      "baseSellPrice": 1600,
+      "tradable": true
+    },
+    {
+      "id": "grilled_fish",
+      "name": "Жареная рыба",
+      "category": "provisions",
+      "baseSellPrice": 300,
+      "tradable": true
+    },
+    {
+      "id": "fish_soup",
+      "name": "Рыбная уха",
+      "category": "provisions",
+      "baseSellPrice": 850,
+      "tradable": true
+    },
+    {
+      "id": "berry_fish",
+      "name": "Рыба с ягодным соусом",
+      "category": "provisions",
+      "baseSellPrice": 700,
+      "tradable": true
+    },
+    {
+      "id": "hearty_fish",
+      "name": "Сытный рыбный ужин",
+      "category": "provisions",
+      "baseSellPrice": 1900,
+      "tradable": true
+    },
+    {
+      "id": "epic_fish",
+      "name": "Праздничная рыба",
+      "category": "provisions",
+      "baseSellPrice": 2400,
+      "tradable": true
+    },
+    {
+      "id": "legendary_fish",
+      "name": "Акулье жаркое",
+      "category": "provisions",
+      "baseSellPrice": 4000,
+      "tradable": true
+    }
+  ],
+  "buildings": [
+    {
+      "id": "home",
+      "name": "Дом Мохлика",
+      "description": "Новый уровень открывает следующую ступень хозяйства. Для расширения нужны действующие производства предыдущей ступени.",
+      "levels": [
+        {
+          "level": 1,
+          "seconds": 0,
+          "cost": {
+            "coins": 0,
+            "items": {}
+          },
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {}
+        },
+        {
+          "level": 2,
+          "seconds": 1800,
+          "cost": {
+            "coins": 1500,
+            "items": {
+              "wood": 20,
+              "stone": 15,
+              "planks": 6,
+              "rope": 2
+            }
+          },
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {
+            "workshop": 1,
+            "warehouse": 1
+          }
+        },
+        {
+          "level": 3,
+          "seconds": 86400,
+          "cost": {
+            "coins": 18000,
+            "items": {
+              "planks": 45,
+              "bricks": 50,
+              "rope": 18,
+              "iron_ingot": 12
+            }
+          },
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "workshop": 2,
+            "quarry": 2,
+            "warehouse": 2,
+            "kiln": 2
+          }
+        },
+        {
+          "level": 4,
+          "seconds": 259200,
+          "cost": {
+            "coins": 90000,
+            "items": {
+              "beams": 60,
+              "cut_stone": 90,
+              "bricks": 100,
+              "cloth": 25,
+              "metal_parts": 30,
+              "living_resin": 1
+            }
+          },
+          "requiredHomeLevel": 3,
+          "requiredBuildings": {
+            "workshop": 3,
+            "quarry": 3,
+            "warehouse": 3,
+            "kiln": 3,
+            "dryer": 2
+          }
+        },
+        {
+          "level": 5,
+          "seconds": 604800,
+          "cost": {
+            "coins": 420000,
+            "items": {
+              "beams": 160,
+              "cut_stone": 240,
+              "bricks": 220,
+              "glass": 90,
+              "reinforced_parts": 45,
+              "cloth": 60,
+              "ancient_core": 1,
+              "moon_crystal": 1
+            }
+          },
+          "requiredHomeLevel": 4,
+          "requiredBuildings": {
+            "workshop": 4,
+            "quarry": 4,
+            "warehouse": 4,
+            "kiln": 4,
+            "dryer": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "garden",
+      "name": "Ягодный куст",
+      "description": "Ягоды и растительное волокно на домашней полянке. Длинные заказы подходят для ночи и занятых дней; готовый урожай не портится.",
+      "levels": [
+        {
+          "level": 1,
+          "seconds": 0,
+          "cost": {
+            "coins": 0,
+            "items": {}
+          },
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {}
+        },
+        {
+          "level": 2,
+          "seconds": 10800,
+          "cost": {
+            "coins": 1200,
+            "items": {
+              "wood": 12,
+              "stone": 8,
+              "rope": 4
+            }
+          },
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "warehouse": 1,
+            "workshop": 1
+          }
+        },
+        {
+          "level": 3,
+          "seconds": 43200,
+          "cost": {
+            "coins": 8000,
+            "items": {
+              "planks": 25,
+              "clay": 30,
+              "rope": 15,
+              "cloth": 8
+            }
+          },
+          "requiredHomeLevel": 3,
+          "requiredBuildings": {
+            "warehouse": 2,
+            "workshop": 2
+          }
+        },
+        {
+          "level": 4,
+          "seconds": 86400,
+          "cost": {
+            "coins": 35000,
+            "items": {
+              "beams": 30,
+              "bricks": 40,
+              "glass": 15,
+              "tools": 8
+            }
+          },
+          "requiredHomeLevel": 4,
+          "requiredBuildings": {
+            "warehouse": 3,
+            "workshop": 3
+          }
+        },
+        {
+          "level": 5,
+          "seconds": 172800,
+          "cost": {
+            "coins": 120000,
+            "items": {
+              "beams": 60,
+              "bricks": 100,
+              "glass": 50,
+              "tools": 25,
+              "reinforced_parts": 10
+            }
+          },
+          "requiredHomeLevel": 5,
+          "requiredBuildings": {
+            "warehouse": 4,
+            "workshop": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "woodlot",
+      "name": "Лесной участок",
+      "description": "Древесина, волокно, затем твёрдая древесина и смола. Улучшения открывают более крупные лесные заготовки.",
+      "levels": [
+        {
+          "level": 1,
+          "seconds": 300,
+          "cost": {
+            "coins": 300,
+            "items": {
+              "wood": 4,
+              "stone": 2
+            }
+          },
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {}
+        },
+        {
+          "level": 2,
+          "seconds": 21600,
+          "cost": {
+            "coins": 1800,
+            "items": {
+              "planks": 12,
+              "stone": 15,
+              "rope": 6
+            }
+          },
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "warehouse": 1,
+            "workshop": 1
+          }
+        },
+        {
+          "level": 3,
+          "seconds": 64800,
+          "cost": {
+            "coins": 10000,
+            "items": {
+              "planks": 35,
+              "iron_ingot": 12,
+              "rope": 18
+            }
+          },
+          "requiredHomeLevel": 3,
+          "requiredBuildings": {
+            "warehouse": 2,
+            "workshop": 2
+          }
+        },
+        {
+          "level": 4,
+          "seconds": 172800,
+          "cost": {
+            "coins": 48000,
+            "items": {
+              "beams": 40,
+              "cut_stone": 50,
+              "metal_parts": 18
+            }
+          },
+          "requiredHomeLevel": 4,
+          "requiredBuildings": {
+            "warehouse": 3,
+            "workshop": 3
+          }
+        },
+        {
+          "level": 5,
+          "seconds": 345600,
+          "cost": {
+            "coins": 160000,
+            "items": {
+              "beams": 80,
+              "tools": 30,
+              "reinforced_parts": 20,
+              "rope": 50
+            }
+          },
+          "requiredHomeLevel": 5,
+          "requiredBuildings": {
+            "warehouse": 4,
+            "workshop": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "quarry",
+      "name": "Каменоломня",
+      "description": "Участки для вылазок Мохлика: камень, глина, песок и руда. Улучшения открывают новые жилы и долгие смены.",
+      "levels": [
+        {
+          "level": 1,
+          "seconds": 600,
+          "cost": {
+            "coins": 600,
+            "items": {
+              "wood": 6,
+              "stone": 4
+            }
+          },
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {}
+        },
+        {
+          "level": 2,
+          "seconds": 28800,
+          "cost": {
+            "coins": 2600,
+            "items": {
+              "planks": 15,
+              "stone": 20,
+              "rope": 8
+            }
+          },
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "warehouse": 1,
+            "workshop": 1
+          }
+        },
+        {
+          "level": 3,
+          "seconds": 86400,
+          "cost": {
+            "coins": 14000,
+            "items": {
+              "planks": 40,
+              "iron_ingot": 18,
+              "bricks": 35
+            }
+          },
+          "requiredHomeLevel": 3,
+          "requiredBuildings": {
+            "warehouse": 2,
+            "workshop": 2
+          }
+        },
+        {
+          "level": 4,
+          "seconds": 259200,
+          "cost": {
+            "coins": 60000,
+            "items": {
+              "beams": 45,
+              "cut_stone": 70,
+              "metal_parts": 22
+            }
+          },
+          "requiredHomeLevel": 4,
+          "requiredBuildings": {
+            "warehouse": 3,
+            "workshop": 3
+          }
+        },
+        {
+          "level": 5,
+          "seconds": 432000,
+          "cost": {
+            "coins": 200000,
+            "items": {
+              "beams": 90,
+              "reinforced_parts": 30,
+              "tools": 45,
+              "glass": 20
+            }
+          },
+          "requiredHomeLevel": 5,
+          "requiredBuildings": {
+            "warehouse": 4,
+            "workshop": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "workshop",
+      "name": "Мастерская",
+      "description": "Доски и верёвки становятся полотном, балками, инструментами и усиленными узлами для больших построек.",
+      "levels": [
+        {
+          "level": 1,
+          "seconds": 1200,
+          "cost": {
+            "coins": 1200,
+            "items": {
+              "wood": 10,
+              "stone": 8
+            }
+          },
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {}
+        },
+        {
+          "level": 2,
+          "seconds": 43200,
+          "cost": {
+            "coins": 4500,
+            "items": {
+              "planks": 20,
+              "bricks": 18,
+              "iron_ingot": 6
+            }
+          },
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "warehouse": 1,
+            "woodlot": 2,
+            "kiln": 2
+          }
+        },
+        {
+          "level": 3,
+          "seconds": 129600,
+          "cost": {
+            "coins": 25000,
+            "items": {
+              "planks": 50,
+              "bricks": 45,
+              "iron_ingot": 24,
+              "cloth": 12
+            }
+          },
+          "requiredHomeLevel": 3,
+          "requiredBuildings": {
+            "warehouse": 2,
+            "woodlot": 3,
+            "kiln": 3
+          }
+        },
+        {
+          "level": 4,
+          "seconds": 259200,
+          "cost": {
+            "coins": 110000,
+            "items": {
+              "beams": 65,
+              "cut_stone": 70,
+              "metal_parts": 35,
+              "glass": 20
+            }
+          },
+          "requiredHomeLevel": 4,
+          "requiredBuildings": {
+            "warehouse": 3,
+            "woodlot": 4,
+            "kiln": 4
+          }
+        },
+        {
+          "level": 5,
+          "seconds": 432000,
+          "cost": {
+            "coins": 360000,
+            "items": {
+              "reinforced_parts": 40,
+              "tools": 50,
+              "beams": 100,
+              "glass": 50
+            }
+          },
+          "requiredHomeLevel": 5,
+          "requiredBuildings": {
+            "warehouse": 4,
+            "woodlot": 5,
+            "kiln": 5
+          }
+        }
+      ]
+    },
+    {
+      "id": "dryer",
+      "name": "Костёр",
+      "description": "Готовьте рыбу для Мохлика и строителя, выполняйте заказы жителей и запасайте провизию для дальних вылазок. Улучшения открывают новые блюда и крупные заготовки.",
+      "levels": [
+        {
+          "level": 1,
+          "seconds": 600,
+          "cost": {
+            "coins": 450,
+            "items": {
+              "wood": 6,
+              "stone": 2
+            }
+          },
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {}
+        },
+        {
+          "level": 2,
+          "seconds": 21600,
+          "cost": {
+            "coins": 1800,
+            "items": {
+              "planks": 12,
+              "stone": 15,
+              "rope": 5
+            }
+          },
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "warehouse": 1,
+            "kiln": 1
+          }
+        },
+        {
+          "level": 3,
+          "seconds": 64800,
+          "cost": {
+            "coins": 11000,
+            "items": {
+              "planks": 30,
+              "bricks": 40,
+              "iron_ingot": 8,
+              "glass": 10
+            }
+          },
+          "requiredHomeLevel": 3,
+          "requiredBuildings": {
+            "warehouse": 2,
+            "kiln": 2
+          }
+        },
+        {
+          "level": 4,
+          "seconds": 172800,
+          "cost": {
+            "coins": 42000,
+            "items": {
+              "beams": 25,
+              "bricks": 60,
+              "glass": 25,
+              "tools": 8
+            }
+          },
+          "requiredHomeLevel": 4,
+          "requiredBuildings": {
+            "warehouse": 3,
+            "kiln": 3
+          }
+        },
+        {
+          "level": 5,
+          "seconds": 259200,
+          "cost": {
+            "coins": 140000,
+            "items": {
+              "reinforced_parts": 15,
+              "beams": 60,
+              "glass": 40,
+              "cloth": 35
+            }
+          },
+          "requiredHomeLevel": 5,
+          "requiredBuildings": {
+            "warehouse": 4,
+            "kiln": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "kiln",
+      "name": "Печь",
+      "description": "Оборудование внутри мастерской: древесный уголь, кирпичи, железо и стекло. Для обустройства нужны дом второго уровня, мастерская и каменоломня.",
+      "levels": [
+        {
+          "level": 1,
+          "seconds": 1800,
+          "cost": {
+            "coins": 900,
+            "items": {
+              "wood": 8,
+              "stone": 14
+            }
+          },
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "quarry": 1,
+            "workshop": 1
+          }
+        },
+        {
+          "level": 2,
+          "seconds": 28800,
+          "cost": {
+            "coins": 3800,
+            "items": {
+              "planks": 15,
+              "stone": 30,
+              "rope": 6
+            }
+          },
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "warehouse": 1,
+            "quarry": 2,
+            "workshop": 1
+          }
+        },
+        {
+          "level": 3,
+          "seconds": 86400,
+          "cost": {
+            "coins": 16000,
+            "items": {
+              "planks": 40,
+              "bricks": 45,
+              "iron_ingot": 15
+            }
+          },
+          "requiredHomeLevel": 3,
+          "requiredBuildings": {
+            "warehouse": 2,
+            "quarry": 3,
+            "workshop": 2
+          }
+        },
+        {
+          "level": 4,
+          "seconds": 259200,
+          "cost": {
+            "coins": 65000,
+            "items": {
+              "beams": 45,
+              "cut_stone": 80,
+              "glass": 25,
+              "metal_parts": 30
+            }
+          },
+          "requiredHomeLevel": 4,
+          "requiredBuildings": {
+            "warehouse": 3,
+            "quarry": 4,
+            "workshop": 3
+          }
+        },
+        {
+          "level": 5,
+          "seconds": 432000,
+          "cost": {
+            "coins": 240000,
+            "items": {
+              "reinforced_parts": 35,
+              "bricks": 150,
+              "glass": 70,
+              "tools": 35
+            }
+          },
+          "requiredHomeLevel": 5,
+          "requiredBuildings": {
+            "warehouse": 4,
+            "quarry": 5,
+            "workshop": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "warehouse",
+      "name": "Кладовая",
+      "description": "Запасы дома: общее место для всех товаров, включая выставленные на рынке. Расширяйте заранее: готовые заказы дождутся свободного места.",
+      "levels": [
+        {
+          "level": 1,
+          "seconds": 0,
+          "cost": {
+            "coins": 0,
+            "items": {}
+          },
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
+          "warehouseCapacity": 200
+        },
+        {
+          "level": 2,
+          "seconds": 28800,
+          "cost": {
+            "coins": 2500,
+            "items": {
+              "planks": 18,
+              "stone": 20,
+              "rope": 8
+            }
+          },
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
+          "warehouseCapacity": 500
+        },
+        {
+          "level": 3,
+          "seconds": 86400,
+          "cost": {
+            "coins": 16000,
+            "items": {
+              "planks": 50,
+              "bricks": 45,
+              "iron_ingot": 12,
+              "cloth": 10
+            }
+          },
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
+          "warehouseCapacity": 1000
+        },
+        {
+          "level": 4,
+          "seconds": 172800,
+          "cost": {
+            "coins": 0,
+            "items": {
+              "ancient_core": 2,
+              "moon_crystal": 1,
+              "living_resin": 1
+            }
+          },
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
+          "warehouseCapacity": 1800
+        },
+        {
+          "level": 5,
+          "seconds": 259200,
+          "cost": {
+            "coins": 0,
+            "items": {
+              "ancient_core": 3,
+              "moon_crystal": 1,
+              "living_resin": 1
+            }
+          },
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
+          "warehouseCapacity": 3000
+        },
+        {
+          "level": 6,
+          "seconds": 345600,
+          "cost": {
+            "coins": 0,
+            "items": {
+              "ancient_core": 4,
+              "moon_crystal": 1,
+              "living_resin": 1
+            }
+          },
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
+          "warehouseCapacity": 4000
+        },
+        {
+          "level": 7,
+          "seconds": 432000,
+          "cost": {
+            "coins": 0,
+            "items": {
+              "ancient_core": 5,
+              "moon_crystal": 2,
+              "living_resin": 2
+            }
+          },
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
+          "warehouseCapacity": 5200
+        },
+        {
+          "level": 8,
+          "seconds": 518400,
+          "cost": {
+            "coins": 0,
+            "items": {
+              "ancient_core": 6,
+              "moon_crystal": 2,
+              "living_resin": 2
+            }
+          },
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
+          "warehouseCapacity": 6600
+        },
+        {
+          "level": 9,
+          "seconds": 604800,
+          "cost": {
+            "coins": 0,
+            "items": {
+              "ancient_core": 8,
+              "moon_crystal": 2,
+              "living_resin": 2
+            }
+          },
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
+          "warehouseCapacity": 8200
+        },
+        {
+          "level": 10,
+          "seconds": 691200,
+          "cost": {
+            "coins": 0,
+            "items": {
+              "ancient_core": 10,
+              "moon_crystal": 3,
+              "living_resin": 3
+            }
+          },
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
+          "warehouseCapacity": 10000
+        }
+      ]
+    }
+  ],
+  "recipes": [
+    {
+      "id": "grow_berries",
+      "name": "Вырастить ягоды",
+      "buildingId": "garden",
+      "buildingLevel": 1,
+      "requiredHomeLevel": 1,
+      "requiredBuildings": {},
+      "seconds": 900,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "berries": 4
+      },
+      "collection": {
+        "kind": "berry_harvest",
+        "seconds": 8
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "grow_berries_overnight",
+      "name": "Ягоды к утру · 8 ч",
+      "buildingId": "garden",
+      "buildingLevel": 1,
+      "requiredHomeLevel": 1,
+      "requiredBuildings": {},
+      "seconds": 28800,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "berries": 32
+      },
+      "collection": {
+        "kind": "berry_harvest",
+        "seconds": 8
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "grow_berries_large",
+      "name": "Большой урожай",
+      "buildingId": "garden",
+      "buildingLevel": 2,
+      "requiredHomeLevel": 2,
+      "requiredBuildings": {},
+      "seconds": 1800,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "berries": 10
+      },
+      "collection": {
+        "kind": "berry_harvest",
+        "seconds": 8
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "garden_fiber",
+      "name": "Собрать садовое волокно",
+      "buildingId": "garden",
+      "buildingLevel": 2,
+      "requiredHomeLevel": 2,
+      "requiredBuildings": {},
+      "seconds": 1800,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "fiber": 8
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "garden_season",
+      "name": "Уход за садом · 6 ч",
+      "buildingId": "garden",
+      "buildingLevel": 3,
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {},
+      "seconds": 21600,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "berries": 40,
+        "fiber": 8
+      },
+      "collection": {
+        "kind": "berry_harvest",
+        "seconds": 8
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "garden_supply",
+      "name": "Садовые заготовки · 8 ч",
+      "buildingId": "garden",
+      "buildingLevel": 4,
+      "requiredHomeLevel": 4,
+      "requiredBuildings": {},
+      "seconds": 28800,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "berries": 60,
+        "fiber": 12
+      },
+      "collection": {
+        "kind": "berry_harvest",
+        "seconds": 8
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "garden_abundance",
+      "name": "Богатый урожай · 8 ч",
+      "buildingId": "garden",
+      "buildingLevel": 5,
+      "requiredHomeLevel": 5,
+      "requiredBuildings": {},
+      "seconds": 28800,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "berries": 80,
+        "fiber": 16
+      },
+      "collection": {
+        "kind": "berry_harvest",
+        "seconds": 8
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "gather_wood",
+      "name": "Заготовить древесину",
+      "buildingId": "woodlot",
+      "buildingLevel": 1,
+      "requiredHomeLevel": 1,
+      "requiredBuildings": {},
+      "seconds": 1200,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "wood": 5
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "gather_wood_overnight",
+      "name": "Лесная заготовка · 8 ч",
+      "buildingId": "woodlot",
+      "buildingLevel": 1,
+      "requiredHomeLevel": 1,
+      "requiredBuildings": {},
+      "seconds": 28800,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "wood": 32
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "gather_fiber",
+      "name": "Собрать волокно",
+      "buildingId": "woodlot",
+      "buildingLevel": 2,
+      "requiredHomeLevel": 2,
+      "requiredBuildings": {},
+      "seconds": 1200,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "fiber": 8
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "woodlot_shift",
+      "name": "Смена лесников · 6 ч",
+      "buildingId": "woodlot",
+      "buildingLevel": 2,
+      "requiredHomeLevel": 2,
+      "requiredBuildings": {},
+      "seconds": 21600,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "wood": 24,
+        "fiber": 24
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "gather_hardwood",
+      "name": "Заготовить твёрдую древесину",
+      "buildingId": "woodlot",
+      "buildingLevel": 3,
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {},
+      "seconds": 3600,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "hardwood": 6
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "hardwood_shift",
+      "name": "Заготовка крепкой древесины · 8 ч",
+      "buildingId": "woodlot",
+      "buildingLevel": 3,
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {},
+      "seconds": 28800,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "wood": 24,
+        "hardwood": 12
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "gather_resin",
+      "name": "Собрать смолу",
+      "buildingId": "woodlot",
+      "buildingLevel": 4,
+      "requiredHomeLevel": 4,
+      "requiredBuildings": {},
+      "seconds": 3600,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "resin": 8
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "woodland_shift",
+      "name": "Дальний лесной участок · 8 ч",
+      "buildingId": "woodlot",
+      "buildingLevel": 4,
+      "requiredHomeLevel": 4,
+      "requiredBuildings": {},
+      "seconds": 28800,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "wood": 30,
+        "hardwood": 14,
+        "resin": 8
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "woodland_supply",
+      "name": "Большая лесная заготовка · 8 ч",
+      "buildingId": "woodlot",
+      "buildingLevel": 5,
+      "requiredHomeLevel": 5,
+      "requiredBuildings": {},
+      "seconds": 28800,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "wood": 36,
+        "hardwood": 16,
+        "resin": 10
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "make_planks",
+      "name": "Распилить доски",
+      "buildingId": "workshop",
+      "buildingLevel": 1,
+      "requiredHomeLevel": 1,
+      "requiredBuildings": {},
+      "seconds": 900,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "wood": 2
+        }
+      },
+      "rewards": {
+        "planks": 1
+      },
+      "maxBatch": 8
+    },
+    {
+      "id": "make_rope",
+      "name": "Сплести верёвку",
+      "buildingId": "workshop",
+      "buildingLevel": 1,
+      "requiredHomeLevel": 1,
+      "requiredBuildings": {},
+      "seconds": 600,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "fiber": 3
+        }
+      },
+      "rewards": {
+        "rope": 1
+      },
+      "maxBatch": 10
+    },
+    {
+      "id": "make_metal_parts",
+      "name": "Сделать металлические детали",
+      "buildingId": "workshop",
+      "buildingLevel": 2,
+      "requiredHomeLevel": 2,
+      "requiredBuildings": {
+        "kiln": 2
+      },
+      "seconds": 1800,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "iron_ingot": 1,
+          "wood": 1
+        }
+      },
+      "rewards": {
+        "metal_parts": 1
+      },
+      "maxBatch": 4
+    },
+    {
+      "id": "weave_cloth",
+      "name": "Соткать полотно",
+      "buildingId": "workshop",
+      "buildingLevel": 2,
+      "requiredHomeLevel": 2,
+      "requiredBuildings": {},
+      "seconds": 2400,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "fiber": 5,
+          "rope": 1
+        }
+      },
+      "rewards": {
+        "cloth": 1
+      },
+      "maxBatch": 3
+    },
+    {
+      "id": "make_beams",
+      "name": "Подготовить крепкие балки",
+      "buildingId": "workshop",
+      "buildingLevel": 3,
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {
+        "woodlot": 3
+      },
+      "seconds": 3600,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "hardwood": 4,
+          "rope": 1
+        }
+      },
+      "rewards": {
+        "beams": 1
+      },
+      "maxBatch": 2
+    },
+    {
+      "id": "cut_stone",
+      "name": "Обтесать камень",
+      "buildingId": "workshop",
+      "buildingLevel": 3,
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {},
+      "seconds": 2700,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "stone": 3
+        }
+      },
+      "rewards": {
+        "cut_stone": 1
+      },
+      "maxBatch": 2
+    },
+    {
+      "id": "make_tools",
+      "name": "Собрать инструменты",
+      "buildingId": "workshop",
+      "buildingLevel": 4,
+      "requiredHomeLevel": 4,
+      "requiredBuildings": {},
+      "seconds": 5400,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "metal_parts": 1,
+          "planks": 2,
+          "rope": 1
+        }
+      },
+      "rewards": {
+        "tools": 1
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "make_reinforced_parts",
+      "name": "Собрать усиленные узлы",
+      "buildingId": "workshop",
+      "buildingLevel": 4,
+      "requiredHomeLevel": 4,
+      "requiredBuildings": {
+        "woodlot": 4
+      },
+      "seconds": 7200,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "iron_ingot": 2,
+          "beams": 1,
+          "resin": 3
+        }
+      },
+      "rewards": {
+        "reinforced_parts": 1
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "workshop_assembly",
+      "name": "Сборочная смена · 8 ч",
+      "buildingId": "workshop",
+      "buildingLevel": 5,
+      "requiredHomeLevel": 5,
+      "requiredBuildings": {},
+      "seconds": 28800,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "metal_parts": 2,
+          "planks": 4,
+          "rope": 2,
+          "iron_ingot": 2,
+          "beams": 1,
+          "resin": 3
+        }
+      },
+      "rewards": {
+        "tools": 2,
+        "reinforced_parts": 1
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "cook_grilled_fish",
+      "name": "Пожарить рыбу",
+      "buildingId": "dryer",
+      "buildingLevel": 1,
+      "requiredHomeLevel": 1,
+      "requiredBuildings": {},
+      "seconds": 900,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "fish": 1,
+          "wood": 1
+        }
+      },
+      "rewards": {
+        "grilled_fish": 1
+      },
+      "maxBatch": 8,
+      "fishInput": {
+        "itemIds": [
+          "fish",
+          "fish_silverfin",
+          "fish_rudd"
+        ]
+      }
+    },
+    {
+      "id": "cook_fish_soup",
+      "name": "Сварить уху",
+      "buildingId": "dryer",
+      "buildingLevel": 2,
+      "requiredHomeLevel": 2,
+      "requiredBuildings": {},
+      "seconds": 2700,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "fish": 3,
+          "wood": 1
+        }
+      },
+      "rewards": {
+        "fish_soup": 1
+      },
+      "maxBatch": 2,
+      "fishInput": {
+        "itemIds": [
+          "fish",
+          "fish_silverfin",
+          "fish_rudd"
+        ]
+      }
+    },
+    {
+      "id": "cook_berry_fish",
+      "name": "Рыба с ягодным соусом",
+      "buildingId": "dryer",
+      "buildingLevel": 2,
+      "requiredHomeLevel": 2,
+      "requiredBuildings": {},
+      "seconds": 1800,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "fish_reedperch": 1,
+          "berries": 4,
+          "wood": 1
+        }
+      },
+      "rewards": {
+        "berry_fish": 1
+      },
+      "maxBatch": 4,
+      "fishInput": {
+        "itemIds": [
+          "fish_reedperch",
+          "fish_dace",
+          "fish_bream"
+        ]
+      }
+    },
+    {
+      "id": "cook_hearty_fish",
+      "name": "Приготовить сытный ужин",
+      "buildingId": "dryer",
+      "buildingLevel": 3,
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {},
+      "seconds": 3600,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "fish_mooncarp": 1,
+          "berries": 4,
+          "wood": 2
+        }
+      },
+      "rewards": {
+        "hearty_fish": 1
+      },
+      "maxBatch": 2,
+      "fishInput": {
+        "itemIds": [
+          "fish_mooncarp",
+          "fish_pike",
+          "fish_eel",
+          "fish_sturgeon",
+          "fish_mirror_koi"
+        ]
+      }
+    },
+    {
+      "id": "cook_epic_fish",
+      "name": "Приготовить праздничную рыбу",
+      "buildingId": "dryer",
+      "buildingLevel": 4,
+      "requiredHomeLevel": 4,
+      "requiredBuildings": {
+        "woodlot": 3,
+        "kiln": 1
+      },
+      "seconds": 5400,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "fish_sturgeon": 1,
+          "berries": 6,
+          "hardwood": 1,
+          "charcoal": 2
+        }
+      },
+      "rewards": {
+        "epic_fish": 1
+      },
+      "maxBatch": 1,
+      "fishInput": {
+        "itemIds": [
+          "fish_sturgeon",
+          "fish_mirror_koi"
+        ]
+      }
+    },
+    {
+      "id": "cook_legendary_fish",
+      "name": "Приготовить акулье жаркое",
+      "buildingId": "dryer",
+      "buildingLevel": 5,
+      "requiredHomeLevel": 5,
+      "requiredBuildings": {
+        "woodlot": 3,
+        "kiln": 1
+      },
+      "seconds": 7200,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "fish_shark": 1,
+          "berries": 8,
+          "hardwood": 2,
+          "charcoal": 2
+        }
+      },
+      "rewards": {
+        "legendary_fish": 1
+      },
+      "maxBatch": 1,
+      "fishInput": {
+        "itemIds": [
+          "fish_shark"
+        ]
+      }
+    },
+    {
+      "id": "dry_berries",
+      "name": "Высушить ягоды",
+      "buildingId": "dryer",
+      "buildingLevel": 1,
+      "requiredHomeLevel": 1,
+      "requiredBuildings": {},
+      "seconds": 2700,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "berries": 6
+        }
+      },
+      "rewards": {
+        "dried_berries": 1
+      },
+      "maxBatch": 2
+    },
+    {
+      "id": "smoke_fish",
+      "name": "Закоптить рыбу",
+      "buildingId": "dryer",
+      "buildingLevel": 2,
+      "requiredHomeLevel": 2,
+      "requiredBuildings": {},
+      "seconds": 1800,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "fish": 2,
+          "wood": 1
+        }
+      },
+      "rewards": {
+        "smoked_fish": 1
+      },
+      "maxBatch": 4,
+      "fishInput": {
+        "itemIds": [
+          "fish",
+          "fish_silverfin",
+          "fish_rudd"
+        ]
+      }
+    },
+    {
+      "id": "prepare_provisions",
+      "name": "Запас провизии · 6 ч",
+      "buildingId": "dryer",
+      "buildingLevel": 3,
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {},
+      "seconds": 21600,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "berries": 18,
+          "fish": 4,
+          "wood": 2
+        }
+      },
+      "rewards": {
+        "dried_berries": 3,
+        "smoked_fish": 2
+      },
+      "maxBatch": 1,
+      "fishInput": {
+        "itemIds": [
+          "fish",
+          "fish_silverfin",
+          "fish_rudd"
+        ]
+      }
+    },
+    {
+      "id": "prepare_expedition_provisions",
+      "name": "Припасы для экспедиции · 8 ч",
+      "buildingId": "dryer",
+      "buildingLevel": 4,
+      "requiredHomeLevel": 4,
+      "requiredBuildings": {},
+      "seconds": 28800,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "berries": 24,
+          "fish": 8,
+          "wood": 4
+        }
+      },
+      "rewards": {
+        "dried_berries": 4,
+        "smoked_fish": 4
+      },
+      "maxBatch": 1,
+      "fishInput": {
+        "itemIds": [
+          "fish",
+          "fish_silverfin",
+          "fish_rudd"
+        ]
+      }
+    },
+    {
+      "id": "provisions_supply",
+      "name": "Большой запас провизии · 8 ч",
+      "buildingId": "dryer",
+      "buildingLevel": 5,
+      "requiredHomeLevel": 5,
+      "requiredBuildings": {},
+      "seconds": 28800,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "berries": 36,
+          "fish": 8,
+          "wood": 4
+        }
+      },
+      "rewards": {
+        "dried_berries": 6,
+        "smoked_fish": 4
+      },
+      "maxBatch": 1,
+      "fishInput": {
+        "itemIds": [
+          "fish",
+          "fish_silverfin",
+          "fish_rudd"
+        ]
+      }
+    },
+    {
+      "id": "make_charcoal",
+      "name": "Выжечь древесный уголь",
+      "buildingId": "kiln",
+      "buildingLevel": 1,
+      "requiredHomeLevel": 1,
+      "requiredBuildings": {},
+      "seconds": 1800,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "wood": 2
+        }
+      },
+      "rewards": {
+        "charcoal": 1
+      },
+      "maxBatch": 4
+    },
+    {
+      "id": "fire_bricks",
+      "name": "Обжечь кирпичи",
+      "buildingId": "kiln",
+      "buildingLevel": 2,
+      "requiredHomeLevel": 2,
+      "requiredBuildings": {},
+      "seconds": 3600,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "clay": 6,
+          "charcoal": 2
+        }
+      },
+      "rewards": {
+        "bricks": 4
+      },
+      "maxBatch": 2
+    },
+    {
+      "id": "smelt_iron",
+      "name": "Выплавить железо",
+      "buildingId": "kiln",
+      "buildingLevel": 2,
+      "requiredHomeLevel": 2,
+      "requiredBuildings": {},
+      "seconds": 3600,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "ore": 6,
+          "charcoal": 2
+        }
+      },
+      "rewards": {
+        "iron_ingot": 2
+      },
+      "maxBatch": 2
+    },
+    {
+      "id": "make_glass",
+      "name": "Выплавить стекло",
+      "buildingId": "kiln",
+      "buildingLevel": 3,
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {},
+      "seconds": 5400,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "sand": 6,
+          "charcoal": 2
+        }
+      },
+      "rewards": {
+        "glass": 2
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "kiln_shift",
+      "name": "Плавка и обжиг · 8 ч",
+      "buildingId": "kiln",
+      "buildingLevel": 4,
+      "requiredHomeLevel": 4,
+      "requiredBuildings": {},
+      "seconds": 28800,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "ore": 18,
+          "charcoal": 10,
+          "clay": 12
+        }
+      },
+      "rewards": {
+        "iron_ingot": 6,
+        "bricks": 8
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "kiln_supply",
+      "name": "Большая печная смена · 12 ч",
+      "buildingId": "kiln",
+      "buildingLevel": 5,
+      "requiredHomeLevel": 5,
+      "requiredBuildings": {},
+      "seconds": 43200,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "ore": 24,
+          "charcoal": 18,
+          "clay": 18,
+          "sand": 12
+        }
+      },
+      "rewards": {
+        "iron_ingot": 8,
+        "bricks": 12,
+        "glass": 4
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "workshop_overnight",
+      "name": "Материалы к утру · 8 ч",
+      "buildingId": "workshop",
+      "buildingLevel": 2,
+      "requiredHomeLevel": 2,
+      "requiredBuildings": {},
+      "seconds": 28800,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "wood": 12,
+          "fiber": 20
+        }
+      },
+      "rewards": {
+        "planks": 6,
+        "rope": 4,
+        "cloth": 1
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "workshop_materials",
+      "name": "Заготовительная смена · 6 ч",
+      "buildingId": "workshop",
+      "buildingLevel": 3,
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {},
+      "seconds": 21600,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "wood": 16,
+          "fiber": 20
+        }
+      },
+      "rewards": {
+        "planks": 8,
+        "rope": 4,
+        "cloth": 1
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "workshop_structures",
+      "name": "Строительная смена · 8 ч",
+      "buildingId": "workshop",
+      "buildingLevel": 4,
+      "requiredHomeLevel": 4,
+      "requiredBuildings": {},
+      "seconds": 28800,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "hardwood": 8,
+          "rope": 2,
+          "stone": 6,
+          "iron_ingot": 2,
+          "wood": 2
+        }
+      },
+      "rewards": {
+        "beams": 2,
+        "cut_stone": 2,
+        "metal_parts": 2
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "charcoal_batch",
+      "name": "Угольная партия · 4 ч",
+      "buildingId": "kiln",
+      "buildingLevel": 3,
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {},
+      "seconds": 14400,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "wood": 8
+        }
+      },
+      "rewards": {
+        "charcoal": 4
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "charcoal_supply",
+      "name": "Большая угольная партия · 8 ч",
+      "buildingId": "kiln",
+      "buildingLevel": 4,
+      "requiredHomeLevel": 4,
+      "requiredBuildings": {},
+      "seconds": 28800,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "wood": 20
+        }
+      },
+      "rewards": {
+        "charcoal": 10
+      },
+      "maxBatch": 1
+    }
+  ],
+  "explorations": [
+    {
+      "id": "forest",
+      "name": "Лесная разведка",
+      "description": "Бесплатная вылазка: древесина, камни и волокно всегда помогут начать снова.",
+      "requiredHomeLevel": 1,
+      "seconds": 1800,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "wood": 5,
+        "stone": 3,
+        "fiber": 4
+      },
+      "requiredBuildings": {}
+    },
+    {
+      "id": "shore",
+      "name": "Рыбалка на берегу",
+      "description": "Короткая рыбалка: 4 рыбы, одна может оказаться особым видом. Частые возвращения приносят больше улова за час.",
+      "requiredHomeLevel": 1,
+      "seconds": 2700,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "fish": 4
+      },
+      "requiredBuildings": {}
+    },
+    {
+      "id": "cave",
+      "name": "Вход в пещеру",
+      "description": "Разведанный участок с камнем и железной рудой.",
+      "requiredHomeLevel": 2,
+      "seconds": 3600,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "stone": 8,
+        "ore": 4
+      },
+      "requiredBuildings": {
+        "quarry": 1
+      },
+      "activity": "mining"
+    },
+    {
+      "id": "deep_cave",
+      "name": "Глубокий проход",
+      "description": "Четыре часа в богатой жиле: больше камня и руды за один поход. Для работы нужны припасы.",
+      "requiredHomeLevel": 3,
+      "seconds": 14400,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "dried_berries": 1,
+          "smoked_fish": 1
+        }
+      },
+      "rewards": {
+        "stone": 32,
+        "ore": 16
+      },
+      "requiredBuildings": {
+        "quarry": 1
+      },
+      "activity": "mining"
+    },
+    {
+      "id": "forest_camp",
+      "name": "Лесной обход · 8 ч",
+      "description": "Бесплатный долгий маршрут для занятого дня: материалы остаются у Мохлика до получения.",
+      "requiredHomeLevel": 1,
+      "requiredBuildings": {},
+      "seconds": 28800,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "wood": 12,
+        "stone": 8,
+        "fiber": 12
+      }
+    },
+    {
+      "id": "shore_camp",
+      "name": "Стоянка на берегу · 8 ч",
+      "description": "Долгая рыбалка: 24 рыбы, шесть отдельных шансов на особые виды. Удобно оставить Мохлика на ночь.",
+      "requiredHomeLevel": 1,
+      "requiredBuildings": {},
+      "seconds": 28800,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "fish": 24
+      }
+    },
+    {
+      "id": "old_woodland",
+      "name": "Старый лес · 8 ч",
+      "description": "Крепкая древесина и смола для мастерской. На дорогу понадобятся верёвки и сухие припасы.",
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {
+        "dryer": 1,
+        "workshop": 2
+      },
+      "seconds": 28800,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "dried_berries": 3,
+          "rope": 2
+        }
+      },
+      "rewards": {
+        "hardwood": 18,
+        "resin": 6,
+        "wood": 18
+      }
+    },
+    {
+      "id": "coastal_deposits",
+      "name": "Прибрежные отложения · 10 ч",
+      "description": "Песок, глина и руда для печи. Мохлик приносит гарантированный набор материалов.",
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {
+        "dryer": 2,
+        "kiln": 2
+      },
+      "seconds": 36000,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "smoked_fish": 3,
+          "dried_berries": 3
+        }
+      },
+      "rewards": {
+        "clay": 36,
+        "sand": 40,
+        "ore": 20
+      }
+    },
+    {
+      "id": "uplands",
+      "name": "Лесное нагорье · 12 ч",
+      "description": "Крепкая древесина и богатые жилы. Для дальнего похода нужны готовые инструменты.",
+      "requiredHomeLevel": 4,
+      "requiredBuildings": {
+        "workshop": 4,
+        "warehouse": 3
+      },
+      "seconds": 43200,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "tools": 2,
+          "dried_berries": 4,
+          "smoked_fish": 4
+        }
+      },
+      "rewards": {
+        "hardwood": 40,
+        "ore": 30,
+        "resin": 18,
+        "stone": 30
+      }
+    },
+    {
+      "id": "abandoned_quarry",
+      "name": "Заброшенный карьер · 16 ч",
+      "description": "Длительная экспедиция снабжает поздние стройки сырьём. Инструменты и провизия расходуются при отправлении.",
+      "requiredHomeLevel": 5,
+      "requiredBuildings": {
+        "workshop": 4,
+        "quarry": 4,
+        "warehouse": 4
+      },
+      "seconds": 57600,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "tools": 2,
+          "rope": 4,
+          "dried_berries": 4,
+          "smoked_fish": 4
+        }
+      },
+      "rewards": {
+        "stone": 96,
+        "ore": 60,
+        "sand": 48,
+        "clay": 40
+      },
+      "activity": "mining"
+    },
+    {
+      "id": "quarry_stone",
+      "name": "Добыть камень",
+      "description": "Мохлик отправится на выбранный участок шахты. Добыча дождётся возвращения.",
+      "activity": "mining",
+      "requiredHomeLevel": 2,
+      "requiredBuildings": {
+        "quarry": 1
+      },
+      "seconds": 1800,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "stone": 8
+      }
+    },
+    {
+      "id": "quarry_stone_overnight",
+      "name": "Камень к утру · 8 ч",
+      "description": "Мохлик отправится на выбранный участок шахты. Добыча дождётся возвращения.",
+      "activity": "mining",
+      "requiredHomeLevel": 2,
+      "requiredBuildings": {
+        "quarry": 1
+      },
+      "seconds": 28800,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "stone": 40
+      }
+    },
+    {
+      "id": "quarry_ore",
+      "name": "Добыть руду",
+      "description": "Мохлик отправится на выбранный участок шахты. Добыча дождётся возвращения.",
+      "activity": "mining",
+      "requiredHomeLevel": 2,
+      "requiredBuildings": {
+        "quarry": 2
+      },
+      "seconds": 2700,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "ore": 5
+      }
+    },
+    {
+      "id": "quarry_clay",
+      "name": "Добыть глину",
+      "description": "Мохлик отправится на выбранный участок шахты. Добыча дождётся возвращения.",
+      "activity": "mining",
+      "requiredHomeLevel": 2,
+      "requiredBuildings": {
+        "quarry": 2
+      },
+      "seconds": 2700,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "clay": 8
+      }
+    },
+    {
+      "id": "quarry_sand",
+      "name": "Просеять песок",
+      "description": "Мохлик отправится на выбранный участок шахты. Добыча дождётся возвращения.",
+      "activity": "mining",
+      "requiredHomeLevel": 2,
+      "requiredBuildings": {
+        "quarry": 2
+      },
+      "seconds": 2700,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "sand": 10
+      }
+    },
+    {
+      "id": "quarry_shift",
+      "name": "Рабочая смена карьера · 8 ч",
+      "description": "Мохлик отправится на выбранный участок шахты. Добыча дождётся возвращения.",
+      "activity": "mining",
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {
+        "quarry": 3
+      },
+      "seconds": 28800,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "stone": 24,
+        "ore": 8,
+        "clay": 10,
+        "sand": 10
+      }
+    },
+    {
+      "id": "quarry_deep_face",
+      "name": "Глубокий забой · 8 ч",
+      "description": "Мохлик отправится на выбранный участок шахты. Добыча дождётся возвращения.",
+      "activity": "mining",
+      "requiredHomeLevel": 4,
+      "requiredBuildings": {
+        "quarry": 4
+      },
+      "seconds": 28800,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "stone": 32,
+        "ore": 10,
+        "clay": 12,
+        "sand": 12
+      }
+    },
+    {
+      "id": "quarry_supply",
+      "name": "Большая смена карьера · 8 ч",
+      "description": "Мохлик отправится на выбранный участок шахты. Добыча дождётся возвращения.",
+      "activity": "mining",
+      "requiredHomeLevel": 5,
+      "requiredBuildings": {
+        "quarry": 5
+      },
+      "seconds": 28800,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "stone": 36,
+        "ore": 14,
+        "clay": 14,
+        "sand": 14
+      }
+    }
+  ],
+  "market": {
+    "requiredHomeLevel": 2,
+    "requiredExplorations": 1,
+    "maxListings": 10,
+    "maxLotQuantity": 99,
+    "maxPriceMultiplier": 2,
+    "feeBps": 500,
+    "dailyTradeValueByHome": [
+      0,
+      2400,
+      4800,
+      9600,
+      14400
+    ],
+    "showcaseSlots": 12,
+    "showcasePerSeller": 2,
+    "showcaseRefreshSeconds": 1800
+  },
+  "fishing": {
+    "routeIds": [
+      "shore",
+      "shore_camp"
+    ],
+    "fish": [
+      {
+        "itemId": "fish",
+        "description": "Знакомая речная рыба. Подходит для рецептов копчения.",
+        "rarity": "common",
+        "weight": 4400,
+        "affinity": 0,
+        "buyPrice": 160
+      },
+      {
+        "itemId": "fish_silverfin",
+        "description": "Быстрая стайная рыбка с серебристой спинкой и голубыми плавниками.",
+        "rarity": "common",
+        "weight": 2400,
+        "affinity": 10,
+        "buyPrice": 240
+      },
+      {
+        "itemId": "fish_rudd",
+        "description": "Золотистая речная рыбка с яркими красными плавниками.",
+        "rarity": "common",
+        "weight": 1000,
+        "affinity": 8,
+        "buyPrice": 280
+      },
+      {
+        "itemId": "fish_reedperch",
+        "description": "Полосатый лесной окунёк прячется у камышей.",
+        "rarity": "uncommon",
+        "weight": 800,
+        "affinity": 10,
+        "buyPrice": 360
+      },
+      {
+        "itemId": "fish_dace",
+        "description": "Стремительная стройная рыбка, любящая прохладные ручьи.",
+        "rarity": "uncommon",
+        "weight": 450,
+        "affinity": 8,
+        "buyPrice": 400
+      },
+      {
+        "itemId": "fish_bream",
+        "description": "Широкая спокойная рыба с тёплой бронзовой чешуёй.",
+        "rarity": "uncommon",
+        "weight": 302,
+        "affinity": 7,
+        "buyPrice": 480
+      },
+      {
+        "itemId": "fish_mooncarp",
+        "description": "Округлый карасик с лунным пятнышком. Осторожно касается наживки.",
+        "rarity": "rare",
+        "weight": 250,
+        "affinity": 8,
+        "buyPrice": 640
+      },
+      {
+        "itemId": "fish_pike",
+        "description": "Длинная пятнистая хищница с изумрудной спинкой.",
+        "rarity": "rare",
+        "weight": 160,
+        "affinity": 6,
+        "buyPrice": 800
+      },
+      {
+        "itemId": "fish_eel",
+        "description": "Извилистый ночной житель глубоких заводей.",
+        "rarity": "rare",
+        "weight": 90,
+        "affinity": 4,
+        "buyPrice": 960
+      },
+      {
+        "itemId": "fish_sturgeon",
+        "description": "Крупная древняя рыба с золотистыми костяными щитками.",
+        "rarity": "epic",
+        "weight": 82,
+        "affinity": 3,
+        "buyPrice": 1440
+      },
+      {
+        "itemId": "fish_mirror_koi",
+        "description": "Яркий пятнистый кои с длинными плавниками и зеркальным блеском.",
+        "rarity": "epic",
+        "weight": 38,
+        "affinity": 2,
+        "buyPrice": 1920
+      },
+      {
+        "itemId": "fish_shark",
+        "description": "Легендарная гостья глубоких вод. Треугольный плавник выдаёт её силуэт.",
+        "rarity": "legendary",
+        "weight": 28,
+        "affinity": 2,
+        "buyPrice": 3200,
+        "requiredHookId": "leviathan_hook"
+      }
+    ],
+    "rods": [
+      {
+        "id": "reed_rod",
+        "name": "Камышовая удочка",
+        "description": "Для обычной речной рыбы. Реже замечает необычных обитателей и глубоководные виды.",
+        "price": 0,
+        "rareBonus": 0,
+        "rarity": "common",
+        "requiredHomeLevel": 1,
+        "rarityWeights": {
+          "common": 140,
+          "uncommon": 80,
+          "rare": 65,
+          "epic": 55,
+          "legendary": 50
+        }
+      },
+      {
+        "id": "river_rod",
+        "name": "Речная удочка",
+        "description": "Для необычной рыбы у камышей. Хуже подходит для обычной рыбы и обитателей глубин.",
+        "price": 18000,
+        "rareBonus": 2,
+        "rarity": "uncommon",
+        "requiredHomeLevel": 1,
+        "rarityWeights": {
+          "common": 90,
+          "uncommon": 180,
+          "rare": 85,
+          "epic": 60,
+          "legendary": 50
+        }
+      },
+      {
+        "id": "brook_rod",
+        "name": "Ручьевая удочка",
+        "description": "Для смешанного улова обычной и необычной рыбы. Не заменяет снасти для редких обитателей глубин.",
+        "price": 12000,
+        "rareBonus": 1,
+        "rarity": "uncommon",
+        "requiredHomeLevel": 1,
+        "rarityWeights": {
+          "common": 120,
+          "uncommon": 135,
+          "rare": 60,
+          "epic": 50,
+          "legendary": 40
+        }
+      },
+      {
+        "id": "willow_rod",
+        "name": "Ивовая удочка",
+        "description": "Для редких осторожных рыб. Уступает речной удочке по необычным видам и приливной — по эпическим.",
+        "price": 72000,
+        "rareBonus": 5,
+        "rarity": "rare",
+        "requiredHomeLevel": 2,
+        "rarityWeights": {
+          "common": 85,
+          "uncommon": 90,
+          "rare": 240,
+          "epic": 110,
+          "legendary": 65
+        }
+      },
+      {
+        "id": "tide_rod",
+        "name": "Приливная удочка",
+        "description": "Для эпических глубоководных рыб. Необычные виды попадаются реже; для акулы лучше звёздная.",
+        "price": 160000,
+        "rareBonus": 8,
+        "rarity": "epic",
+        "requiredHomeLevel": 3,
+        "rarityWeights": {
+          "common": 80,
+          "uncommon": 65,
+          "rare": 100,
+          "epic": 350,
+          "legendary": 120
+        }
+      },
+      {
+        "id": "starfall_rod",
+        "name": "Звёздная удочка",
+        "description": "Для охоты за акулой с крючком Левиафана. Уступает другим удочкам по необычным, редким и эпическим видам.",
+        "price": 360000,
+        "rareBonus": 12,
+        "rarity": "legendary",
+        "requiredHomeLevel": 4,
+        "rarityWeights": {
+          "common": 75,
+          "uncommon": 55,
+          "rare": 70,
+          "epic": 150,
+          "legendary": 400
+        }
+      }
+    ],
+    "baits": [
+      {
+        "itemId": "crumb_bait",
+        "description": "Привлекает обычную рыбу для кухни, отвлекая особые виды. Одна порция на всю рыбалку.",
+        "price": 30,
+        "rareBonus": 1,
+        "rarity": "common",
+        "requiredHomeLevel": 1,
+        "rarityWeights": {
+          "common": 135,
+          "uncommon": 85,
+          "rare": 65,
+          "epic": 55,
+          "legendary": 50
+        }
+      },
+      {
+        "itemId": "worm_bait",
+        "description": "Привлекает необычную рыбу; эпические и легендарные виды клюют реже. Одна порция на рыбалку.",
+        "price": 70,
+        "rareBonus": 3,
+        "rarity": "uncommon",
+        "requiredHomeLevel": 1,
+        "rarityWeights": {
+          "common": 90,
+          "uncommon": 150,
+          "rare": 85,
+          "epic": 65,
+          "legendary": 55
+        }
+      },
+      {
+        "itemId": "glow_bait",
+        "description": "Привлекает редкую рыбу, но не заменяет наживку для эпических и легендарных видов. Одна порция на рыбалку.",
+        "price": 140,
+        "rareBonus": 5,
+        "rarity": "rare",
+        "requiredHomeLevel": 2,
+        "rarityWeights": {
+          "common": 85,
+          "uncommon": 90,
+          "rare": 170,
+          "epic": 95,
+          "legendary": 65
+        }
+      },
+      {
+        "itemId": "firefly_bait",
+        "description": "Привлекает эпическую рыбу и акулу; обычные, необычные и редкие виды клюют реже. Одна порция на рыбалку.",
+        "price": 260,
+        "rareBonus": 8,
+        "rarity": "epic",
+        "requiredHomeLevel": 3,
+        "rarityWeights": {
+          "common": 80,
+          "uncommon": 60,
+          "rare": 75,
+          "epic": 150,
+          "legendary": 150
+        }
+      }
+    ],
+    "hooks": [
+      {
+        "id": "bare_hook",
+        "name": "Простой крючок",
+        "description": "Простая снасть для обычной рыбы. Особые виды цепляются реже.",
+        "price": 0,
+        "rareBonus": 0,
+        "rarity": "common",
+        "requiredHomeLevel": 1,
+        "rarityWeights": {
+          "common": 130,
+          "uncommon": 85,
+          "rare": 70,
+          "epic": 60,
+          "legendary": 50
+        }
+      },
+      {
+        "id": "barbed_hook",
+        "name": "Бородатый крючок",
+        "description": "Для необычных рыб. Менее удобен для обычной рыбы и глубоководных видов.",
+        "price": 12000,
+        "rareBonus": 2,
+        "rarity": "uncommon",
+        "requiredHomeLevel": 1,
+        "rarityWeights": {
+          "common": 95,
+          "uncommon": 160,
+          "rare": 95,
+          "epic": 65,
+          "legendary": 55
+        }
+      },
+      {
+        "id": "round_hook",
+        "name": "Круглый крючок",
+        "description": "Для смешанного улова обычной и необычной рыбы. Для редких и глубоководных видов нужны другие снасти.",
+        "price": 8000,
+        "rareBonus": 1,
+        "rarity": "uncommon",
+        "requiredHomeLevel": 1,
+        "rarityWeights": {
+          "common": 115,
+          "uncommon": 125,
+          "rare": 60,
+          "epic": 50,
+          "legendary": 40
+        }
+      },
+      {
+        "id": "silver_hook",
+        "name": "Серебряный крючок",
+        "description": "Тонкое жало для редкой рыбы. Уступает бородатому по необычным видам и приливному — по эпическим.",
+        "price": 42000,
+        "rareBonus": 4,
+        "rarity": "rare",
+        "requiredHomeLevel": 2,
+        "rarityWeights": {
+          "common": 90,
+          "uncommon": 95,
+          "rare": 200,
+          "epic": 95,
+          "legendary": 70
+        }
+      },
+      {
+        "id": "tide_hook",
+        "name": "Приливный крючок",
+        "description": "Для эпической рыбы. Хуже удерживает небольших необычных рыб; для акулы не подходит.",
+        "price": 110000,
+        "rareBonus": 7,
+        "rarity": "epic",
+        "requiredHomeLevel": 3,
+        "rarityWeights": {
+          "common": 85,
+          "uncommon": 70,
+          "rare": 110,
+          "epic": 260,
+          "legendary": 100
+        }
+      },
+      {
+        "id": "leviathan_hook",
+        "name": "Крючок Левиафана",
+        "description": "Единственный крючок, способный удержать акулу. Необычная, редкая и эпическая рыба лучше ловится другими крючками.",
+        "price": 260000,
+        "rareBonus": 10,
+        "rarity": "legendary",
+        "requiredHomeLevel": 4,
+        "rarityWeights": {
+          "common": 80,
+          "uncommon": 55,
+          "rare": 75,
+          "epic": 120,
+          "legendary": 300
+        }
+      }
+    ],
+    "shop": {
+      "refreshSeconds": 21600,
+      "refreshPricePearls": 100,
+      "refreshPriceStepPearls": 2,
+      "slots": 4,
+      "baitStock": 5,
+      "fishStock": 6,
+      "fishPriceBps": 6000,
+      "gearRarityBpsByHome": [
+        {
+          "common": 0,
+          "uncommon": 10000,
+          "rare": 0,
+          "epic": 0,
+          "legendary": 0
+        },
+        {
+          "common": 0,
+          "uncommon": 8000,
+          "rare": 2000,
+          "epic": 0,
+          "legendary": 0
+        },
+        {
+          "common": 0,
+          "uncommon": 6500,
+          "rare": 2500,
+          "epic": 1000,
+          "legendary": 0
+        },
+        {
+          "common": 0,
+          "uncommon": 5000,
+          "rare": 3000,
+          "epic": 1600,
+          "legendary": 400
+        },
+        {
+          "common": 0,
+          "uncommon": 4200,
+          "rare": 3000,
+          "epic": 2000,
+          "legendary": 800
+        }
+      ]
+    },
+    "collectionDrawsByRoute": {
+      "shore": 1,
+      "shore_camp": 6
+    }
+  },
+  "localBuyer": {
+    "payoutBps": 6000
+  },
+  "rareDrops": {
+    "version": 1,
+    "requiredHomeLevel": 3,
+    "minSeconds": 172800,
+    "maxSeconds": 518400,
+    "itemIds": [
+      "ancient_core",
+      "moon_crystal",
+      "living_resin"
+    ]
+  },
+  "currencyScale": 10,
+  "pearlScale": 50,
+  "food": {
+    "meals": [
+      {
+        "itemId": "grilled_fish",
+        "heroSpeedBps": 1000,
+        "builderSpeedBps": 1000
+      },
+      {
+        "itemId": "fish_soup",
+        "heroSpeedBps": 2500,
+        "builderSpeedBps": 2000
+      },
+      {
+        "itemId": "berry_fish",
+        "heroSpeedBps": 4000,
+        "builderSpeedBps": 3500
+      },
+      {
+        "itemId": "hearty_fish",
+        "heroSpeedBps": 6000,
+        "builderSpeedBps": 5000
+      },
+      {
+        "itemId": "epic_fish",
+        "heroSpeedBps": 8000,
+        "builderSpeedBps": 7000
+      },
+      {
+        "itemId": "legendary_fish",
+        "heroSpeedBps": 10000,
+        "builderSpeedBps": 9000
+      }
+    ],
+    "orders": {
+      "slots": 3,
+      "refreshSeconds": 43200,
+      "replacementSeconds": 0,
+      "completionSeconds": 0,
+      "freeReplacements": 3,
+      "replacementWindowSeconds": 43200,
+      "replacementPricePearls": 10,
+      "recentLimit": 6,
+      "templates": [
+        {
+          "id": "plesk_river_catch",
+          "residentId": "plesk",
+          "name": "Пополнить речной прилавок",
+          "description": "Сегодня речную рыбу разбирают особенно охотно. Принесёшь ещё немного?",
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
+          "items": {
+            "fish": 3
+          },
+          "coins": 330
+        },
+        {
+          "id": "plesk_silver_catch",
+          "residentId": "plesk",
+          "name": "Серебристая стайка",
+          "description": "Серебринки украсят свежий привоз. Приберегу им место на прилавке.",
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
+          "items": {
+            "fish_silverfin": 2
+          },
+          "coins": 330
+        },
+        {
+          "id": "plesk_rudd_catch",
+          "residentId": "plesk",
+          "name": "Краснопёрые гости",
+          "description": "Рыбаки спрашивали краснопёрку. Поможешь собрать небольшой запас?",
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
+          "items": {
+            "fish_rudd": 2
+          },
+          "coins": 380
+        },
+        {
+          "id": "plesk_morning_assortment",
+          "residentId": "plesk",
+          "name": "Утренний ассортимент",
+          "description": "Хочу предложить соседям разный улов — речную рыбу и серебринку.",
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
+          "items": {
+            "fish": 2,
+            "fish_silverfin": 1
+          },
+          "coins": 380
+        },
+        {
+          "id": "plesk_bright_assortment",
+          "residentId": "plesk",
+          "name": "Яркий улов",
+          "description": "Поставлю рядом серебринку и краснопёрку: пусть каждый выберет по вкусу.",
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
+          "items": {
+            "fish_silverfin": 1,
+            "fish_rudd": 1
+          },
+          "coins": 360
+        },
+        {
+          "id": "plesk_net_patch",
+          "residentId": "plesk",
+          "name": "Подлатать рыбацкую сеть",
+          "description": "Сеть зацепилась за корягу. Нужны крепкие волокна и деревянные распорки.",
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
+          "items": {
+            "fiber": 6,
+            "wood": 2
+          },
+          "coins": 250
+        },
+        {
+          "id": "builder_wood_supply",
+          "residentId": "builder",
+          "name": "Дрова для строительной площадки",
+          "description": "Подберу крепкие кусочки для подпорок и разметки.",
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
+          "items": {
+            "wood": 8
+          },
+          "coins": 400
+        },
+        {
+          "id": "builder_stone_foundation",
+          "residentId": "builder",
+          "name": "Камень для основания",
+          "description": "Хорошая работа начинается с ровного и крепкого основания.",
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
+          "items": {
+            "stone": 8
+          },
+          "coins": 300
+        },
+        {
+          "id": "builder_foundation_mix",
+          "residentId": "builder",
+          "name": "Подготовить основание",
+          "description": "Нужны дерево для опалубки и камень, чтобы укрепить края.",
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
+          "items": {
+            "wood": 6,
+            "stone": 4
+          },
+          "coins": 450
+        },
+        {
+          "id": "builder_binding_fiber",
+          "residentId": "builder",
+          "name": "Волокно для связок",
+          "description": "Свяжу лёгкие подпорки, прежде чем браться за тяжёлые балки.",
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
+          "items": {
+            "fiber": 8
+          },
+          "coins": 200
+        },
+        {
+          "id": "builder_light_supports",
+          "residentId": "builder",
+          "name": "Лёгкие подпорки",
+          "description": "Сделаю временные подпорки из древесины и крепких связок.",
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
+          "items": {
+            "wood": 4,
+            "fiber": 4
+          },
+          "coins": 300
+        },
+        {
+          "id": "builder_plank_brace",
+          "residentId": "builder",
+          "name": "Скрепить леса",
+          "description": "Для рабочих лесов нужны ровные доски и несколько верёвок.",
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {
+            "workshop": 1
+          },
+          "items": {
+            "planks": 4,
+            "rope": 2
+          },
+          "coins": 800
+        },
+        {
+          "id": "builder_grilled_lunch",
+          "residentId": "builder",
+          "name": "Горячий обед на площадку",
+          "description": "Закажу горячую рыбу для обеденного перерыва. Это обычная доставка за монеты.",
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {
+            "dryer": 1
+          },
+          "items": {
+            "grilled_fish": 2
+          },
+          "coins": 750
+        },
+        {
+          "id": "plesk_grilled_dinner",
+          "residentId": "plesk",
+          "name": "Ужин после рыбалки",
+          "description": "Хочется горячей рыбы и немного свежих ягод после дня у воды.",
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {
+            "dryer": 1
+          },
+          "items": {
+            "grilled_fish": 1,
+            "berries": 2
+          },
+          "coins": 450
+        },
+        {
+          "id": "plesk_reed_catch",
+          "residentId": "plesk",
+          "name": "Камышовый улов",
+          "description": "Камышовые окуньки пригодятся тем, кто любит рыбу с ягодным соусом.",
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {},
+          "items": {
+            "fish_reedperch": 2
+          },
+          "coins": 490
+        },
+        {
+          "id": "plesk_dace_catch",
+          "residentId": "plesk",
+          "name": "Рыба из прохладного ручья",
+          "description": "Сегодня на прилавке не хватает лесных ельцов.",
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {},
+          "items": {
+            "fish_dace": 2
+          },
+          "coins": 540
+        },
+        {
+          "id": "plesk_bream_catch",
+          "residentId": "plesk",
+          "name": "Бронзовые бока",
+          "description": "Свежие лещи разнообразят привоз. Их любят готовить к ужину.",
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {},
+          "items": {
+            "fish_bream": 2
+          },
+          "coins": 650
+        },
+        {
+          "id": "plesk_camp_provisions",
+          "residentId": "plesk",
+          "name": "Припасы для ночной рыбалки",
+          "description": "Возьму копчёную рыбу и сушёные ягоды: у воды могу задержаться надолго.",
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "dryer": 2
+          },
+          "items": {
+            "smoked_fish": 1,
+            "dried_berries": 2
+          },
+          "coins": 1330
+        },
+        {
+          "id": "plesk_warm_lunch",
+          "residentId": "plesk",
+          "name": "Тёплый обед на берегу",
+          "description": "Уха согреет после прохладного утра, а рыбу с ягодным соусом оставлю на потом.",
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "dryer": 2
+          },
+          "items": {
+            "fish_soup": 1,
+            "berry_fish": 1
+          },
+          "coins": 1940
+        },
+        {
+          "id": "builder_fasteners",
+          "residentId": "builder",
+          "name": "Крепёж для мастерской",
+          "description": "Металлические детали и ровные доски пригодятся для точной работы.",
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "workshop": 2,
+            "kiln": 2,
+            "quarry": 1
+          },
+          "items": {
+            "metal_parts": 2,
+            "planks": 2
+          },
+          "coins": 1450
+        },
+        {
+          "id": "builder_brick_stack",
+          "residentId": "builder",
+          "name": "Кирпичи для кладки",
+          "description": "Собираю запас для кладки. Верёвки помогут разметить ровные ряды.",
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "kiln": 2,
+            "workshop": 1,
+            "quarry": 2
+          },
+          "items": {
+            "bricks": 8,
+            "rope": 2
+          },
+          "coins": 1600
+        },
+        {
+          "id": "builder_iron_fittings",
+          "residentId": "builder",
+          "name": "Железо для креплений",
+          "description": "Подготовлю крепления из слитков, пока есть свободное место у верстака.",
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "kiln": 2,
+            "quarry": 1
+          },
+          "items": {
+            "iron_ingot": 3
+          },
+          "coins": 1280
+        },
+        {
+          "id": "plesk_mooncatch",
+          "residentId": "plesk",
+          "name": "Лунный улов",
+          "description": "Лунные карасики редко задерживаются на прилавке. Принесёшь немного?",
+          "requiredHomeLevel": 3,
+          "requiredBuildings": {},
+          "items": {
+            "fish_mooncarp": 2
+          },
+          "coins": 870
+        },
+        {
+          "id": "plesk_pike_catch",
+          "residentId": "plesk",
+          "name": "Изумрудная гостья",
+          "description": "Нашёлся любитель речных хищниц. Для него отложу изумрудную щуку.",
+          "requiredHomeLevel": 3,
+          "requiredBuildings": {},
+          "items": {
+            "fish_pike": 1
+          },
+          "coins": 540
+        },
+        {
+          "id": "plesk_eel_catch",
+          "residentId": "plesk",
+          "name": "Тёмный житель заводи",
+          "description": "Угорь пригодится для сытного ужина. Пополню запас для соседей.",
+          "requiredHomeLevel": 3,
+          "requiredBuildings": {},
+          "items": {
+            "fish_eel": 1
+          },
+          "coins": 650
+        },
+        {
+          "id": "plesk_hearty_table",
+          "residentId": "plesk",
+          "name": "Сытный вечер у воды",
+          "description": "После долгой рыбалки хочется готового сытного ужина.",
+          "requiredHomeLevel": 3,
+          "requiredBuildings": {
+            "dryer": 3
+          },
+          "items": {
+            "hearty_fish": 1
+          },
+          "coins": 2380
+        },
+        {
+          "id": "builder_stone_cut",
+          "residentId": "builder",
+          "name": "Камень и балки",
+          "description": "Собираю прочный набор для следующей серьёзной стройки.",
+          "requiredHomeLevel": 3,
+          "requiredBuildings": {
+            "workshop": 3,
+            "woodlot": 3
+          },
+          "items": {
+            "cut_stone": 6,
+            "beams": 2
+          },
+          "coins": 2400
+        },
+        {
+          "id": "builder_window_materials",
+          "residentId": "builder",
+          "name": "Окна и занавески",
+          "description": "Когда стены готовы, хочется впустить свет и сделать внутри уютнее.",
+          "requiredHomeLevel": 3,
+          "requiredBuildings": {
+            "workshop": 2,
+            "kiln": 3,
+            "quarry": 2
+          },
+          "items": {
+            "cloth": 4,
+            "glass": 2
+          },
+          "coins": 1800
+        },
+        {
+          "id": "plesk_golden_sturgeon",
+          "residentId": "plesk",
+          "name": "Золотой гость",
+          "description": "Золотой осётр станет главным уловом сегодняшнего привоза.",
+          "requiredHomeLevel": 4,
+          "requiredBuildings": {},
+          "items": {
+            "fish_sturgeon": 1
+          },
+          "coins": 1010
+        },
+        {
+          "id": "plesk_mirror_catch",
+          "residentId": "plesk",
+          "name": "Зеркальный улов",
+          "description": "Для зеркального кои приготовлено особое место на прилавке.",
+          "requiredHomeLevel": 4,
+          "requiredBuildings": {},
+          "items": {
+            "fish_mirror_koi": 1
+          },
+          "coins": 1350
+        },
+        {
+          "id": "plesk_epic_dinner",
+          "residentId": "plesk",
+          "name": "Праздник хорошего улова",
+          "description": "Хочу устроить маленький праздник у воды. Принесёшь праздничную рыбу?",
+          "requiredHomeLevel": 4,
+          "requiredBuildings": {
+            "dryer": 4,
+            "woodlot": 3,
+            "kiln": 1
+          },
+          "items": {
+            "epic_fish": 1
+          },
+          "coins": 3000
+        },
+        {
+          "id": "builder_tools",
+          "residentId": "builder",
+          "name": "Инструменты для большой работы",
+          "description": "С крепкими балками и готовыми инструментами можно браться за сложный участок.",
+          "requiredHomeLevel": 4,
+          "requiredBuildings": {
+            "workshop": 4,
+            "woodlot": 3,
+            "kiln": 2,
+            "quarry": 1
+          },
+          "items": {
+            "tools": 2,
+            "beams": 2
+          },
+          "coins": 4000
+        },
+        {
+          "id": "builder_reinforced",
+          "residentId": "builder",
+          "name": "Усилить конструкцию",
+          "description": "Понадобятся усиленные узлы и ещё один набор инструментов.",
+          "requiredHomeLevel": 4,
+          "requiredBuildings": {
+            "workshop": 4,
+            "woodlot": 4,
+            "kiln": 2,
+            "quarry": 1
+          },
+          "items": {
+            "reinforced_parts": 2,
+            "tools": 1
+          },
+          "coins": 5750
+        },
+        {
+          "id": "plesk_shadow_catch",
+          "residentId": "plesk",
+          "name": "Легенда речной глубины",
+          "description": "Теневую акулу захочет увидеть каждый рыбак. Готова заплатить за такой улов.",
+          "requiredHomeLevel": 4,
+          "requiredBuildings": {},
+          "items": {
+            "fish_shark": 1
+          },
+          "coins": 2240
+        },
+        {
+          "id": "plesk_legendary_dinner",
+          "residentId": "plesk",
+          "name": "Акулье жаркое к празднику",
+          "description": "Для особого вечера закажу блюдо из легендарного улова.",
+          "requiredHomeLevel": 5,
+          "requiredBuildings": {
+            "dryer": 5,
+            "woodlot": 3,
+            "kiln": 1
+          },
+          "items": {
+            "legendary_fish": 1
+          },
+          "coins": 5000
+        },
+        {
+          "id": "builder_final_fittings",
+          "residentId": "builder",
+          "name": "Последние крепления",
+          "description": "Прочные узлы и стекло нужны для завершающей части большой постройки.",
+          "requiredHomeLevel": 5,
+          "requiredBuildings": {
+            "workshop": 4,
+            "woodlot": 4,
+            "kiln": 3,
+            "quarry": 2
+          },
+          "items": {
+            "reinforced_parts": 4,
+            "glass": 6
+          },
+          "coins": 10800
+        },
+        {
+          "id": "builder_ore_delivery",
+          "residentId": "builder",
+          "name": "Руда для новых креплений",
+          "description": "Подготовлю запас руды для прочных металлических креплений.",
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "quarry": 1
+          },
+          "items": {
+            "ore": 8
+          },
+          "coins": 620
+        },
+        {
+          "id": "builder_clay_delivery",
+          "residentId": "builder",
+          "name": "Глина для кладки",
+          "description": "Хорошая глина пригодится для аккуратной кладки.",
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "quarry": 2
+          },
+          "items": {
+            "clay": 10
+          },
+          "coins": 520
+        },
+        {
+          "id": "builder_sand_delivery",
+          "residentId": "builder",
+          "name": "Песок для ровной площадки",
+          "description": "Разровняю песчаную подушку под будущую постройку.",
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "quarry": 2
+          },
+          "items": {
+            "sand": 12
+          },
+          "coins": 470
+        },
+        {
+          "id": "builder_charcoal_delivery",
+          "residentId": "builder",
+          "name": "Топливо для печи",
+          "description": "Запас угля поможет не прерывать работу у печи.",
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "kiln": 1
+          },
+          "items": {
+            "charcoal": 4
+          },
+          "coins": 520
+        },
+        {
+          "id": "builder_hardwood_delivery",
+          "residentId": "builder",
+          "name": "Крепкое дерево для опор",
+          "description": "Для тяжёлых опор нужна древесина покрепче.",
+          "requiredHomeLevel": 3,
+          "requiredBuildings": {
+            "woodlot": 3
+          },
+          "items": {
+            "hardwood": 8
+          },
+          "coins": 1040
+        },
+        {
+          "id": "builder_resin_delivery",
+          "residentId": "builder",
+          "name": "Смола для защиты дерева",
+          "description": "Обработаю деревянные соединения, чтобы не боялись сырости.",
+          "requiredHomeLevel": 4,
+          "requiredBuildings": {
+            "woodlot": 4
+          },
+          "items": {
+            "resin": 8
+          },
+          "coins": 630
+        },
+        {
+          "id": "plesk_berry_basket",
+          "residentId": "plesk",
+          "name": "Ягоды к береговому столу",
+          "description": "Соберу свежие ягоды для тех, кто вернулся с рыбалки.",
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "garden": 1
+          },
+          "items": {
+            "berries": 10
+          },
+          "coins": 390
+        }
+      ],
+      "progression": {
+        "rawBpsByHome": [
+          10000,
+          16000,
+          24000,
+          36000,
+          50000
+        ],
+        "fishBpsByHome": [
+          10000,
+          12500,
+          15000,
+          17500,
+          20000
+        ],
+        "craftedBpsByHome": [
+          10000,
+          11000,
+          12000,
+          13500,
+          15000
+        ]
+      }
+    }
+  }
+}

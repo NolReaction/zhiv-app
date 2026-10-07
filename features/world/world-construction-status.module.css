@@ -1,0 +1,40 @@
+.marker.marker {
+  position: absolute;
+  z-index: 3;
+  width: 124px;
+  height: 44px;
+  min-height: 44px;
+  padding: 7px 11px 10px;
+  gap: 7px;
+  border: 1px solid #e5ca8980;
+  border-radius: 11px;
+  background: linear-gradient(180deg, #354230fa, #1b291cf5);
+  box-shadow: 0 3px 0 #0b170e80, 0 5px 14px #07130780;
+  color: #f4e4b1;
+  transform: translate(-50%, -100%);
+  pointer-events: auto;
+  font-variant-numeric: tabular-nums;
+  isolation: isolate;
+}
+.marker.marker:hover { background: #3c4c31; border-color: #f4db9d; }
+.marker::after {
+  content: "";
+  position: absolute;
+  top: calc(100% - 3px);
+  left: clamp(8px, calc(50% + var(--pointer-offset, 0px)), calc(100% - 8px));
+  width: 7px;
+  height: 7px;
+  border-right: 1px solid #e5ca8980;
+  border-bottom: 1px solid #e5ca8980;
+  background: #1b291c;
+  transform: translateX(-50%) rotate(45deg);
+  z-index: -1;
+}
+.marker > svg { flex: 0 0 auto; }
+.marker > strong { font-size: .83rem; line-height: 1; white-space: nowrap; }
+.track { position: absolute; inset: auto 9px 5px; height: 3px; overflow: hidden; background: #080e0966; border-radius: 3px; }
+.track > span { display: block; height: 100%; background: linear-gradient(90deg, #a8c473, #ecda93); border-radius: inherit; transition: width .5s linear; }
+.marker[data-ready="true"] { border-color: #d4efa5; color: #e5f6c4; background: #31432bf5; }
+.marker[data-ready="true"]::after { border-color: #d4efa5; background: #31432b; }
+.marker[data-ready="true"] .track > span { background: #d4efa5; }
+@media (prefers-reduced-motion: reduce) { .marker.marker, .track > span { transition: none; } }

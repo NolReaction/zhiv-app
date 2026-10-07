@@ -3,6 +3,7 @@ import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 import sharp from "sharp";
+import { findTerrainMaster } from "../scripts/lib/world-assets.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
@@ -14,7 +15,7 @@ const { drawLanternGlass } = await vite.ssrLoadModule("/features/mochlik/lantern
 test("circle uses the same full-resolution map without a separate home image", async () => {
   const { WORLD_ART } = await vite.ssrLoadModule("/features/world/art.ts");
   const { NEW_MAP_FOCUS, NEW_MAP_BOUNDS, NEW_MAP_SPAWN } = await vite.ssrLoadModule("/features/world/presentation.ts");
-  const source = await sharp(`${root}/art/world/prototype/forest-ground.png`).metadata();
+  const source = (await sharp(await findTerrainMaster(`${root}/art/world/prototype`)).autoOrient().raw().toBuffer({ resolveWithObject: true })).info;
   const runtime = await sharp(`${root}/public${WORLD_ART.map.split("?")[0]}`).metadata();
   assert.equal(runtime.width, source.width); assert.equal(runtime.height, source.height);
   assert.equal(WORLD_ART.map, WORLD_ART.homeDetail);

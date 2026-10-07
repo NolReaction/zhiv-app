@@ -20,7 +20,6 @@ export type ForestGroundWeatherFrame = ForestAtmosphereState & {
   wetness: number;
   puddles: GroundPuddle[];
   rings: Array<ForestWaterImpact & { puddleIndex: number }>;
-  impacts: ForestWaterImpact[];
 };
 
 /** Rain gathers in seconds and dries much more slowly; dt is active scene time only. */
@@ -77,6 +76,7 @@ export function isForestGroundClear(scene: FixedWorldScene, point: WorldPoint, r
   for (const site of scene.sites) {
     if (touchesBounds(point, radius, site.bounds) || touchesPolygon(point, radius, site.collision)) return false;
   }
+  if (scene.campfires?.some(fire => Math.hypot(point.x - fire.position.x, point.y - fire.position.y) <= radius + fire.radius)) return false;
   const routeMargin = Math.max(1, (scene.actor?.size ?? 0) * .06);
   for (const path of scene.paths) {
     if (path.points.some(p => !Number.isFinite(p.x) || !Number.isFinite(p.y))) return false;
@@ -103,7 +103,7 @@ function noise(seed: number, index: number) {
 /** Stable puddle locations, changing only in size/opacity as retained moisture changes. */
 export function forestGroundWeatherFrame(scene: FixedWorldScene, options: ForestGroundWeatherOptions): ForestGroundWeatherFrame {
   const state = forestAtmosphereState(scene, options), wetness = clamp(finite(options.wetness ?? 0));
-  const frame: ForestGroundWeatherFrame = { ...state, wetness, puddles: [], rings: [], impacts: [] };
+  const frame: ForestGroundWeatherFrame = { ...state, wetness, puddles: [], rings: [] };
   const area = clearing(scene);
   if (!area) return frame;
   const seed = sceneSeed(scene.id), scale = clamp(scene.focus.width / 256, .35, 2);
@@ -138,22 +138,6 @@ export function forestGroundWeatherFrame(scene: FixedWorldScene, options: Forest
         radiusX: puddle.radiusX * .45, radiusY: puddle.radiusY * .45,
         phase, opacity: (.35 + state.rain * .5) * growth, dusk: state.dusk, puddleIndex });
     }
-  }
-  // Small irregular impacts appear as soon as rain begins, before standing water gathers.
-  // Every transient footprint uses the same conservative ground/exclusion checks as puddles.
-  if (!options.reducedMotion && state.rain > .01) for (let slot = 0; slot < 12; slot++) {
-    const clock = state.elapsed * (.34 + state.rain * .68) + noise(seed, slot + 2501) * 8;
-    const cycle = Math.floor(clock), phase = (clock % 1) / .48;
-    if (phase >= 1 || slot >= Math.ceil(12 * state.rain)) continue;
-    const angle = noise(seed, cycle * 43 + slot * 11 + 2601) * TAU;
-    const distance = Math.sqrt(noise(seed, cycle * 41 + slot * 13 + 2701)) * .78;
-    const point = { x: area.x + Math.cos(angle) * area.radiusX * distance,
-      y: area.y + Math.sin(angle) * area.radiusY * distance };
-    const radius = scale * (1.25 + noise(seed, slot + 2801) * .75);
-    if (!isForestGroundClear(scene, point, radius) || excluded(point, radius)
-      || accepted.some(other => Math.hypot(point.x - other.x, point.y - other.y) < radius + other.radius)) continue;
-    frame.impacts.push({ ...point, radiusX: radius, radiusY: radius * .5, phase,
-      opacity: (.18 + state.rain * .3) * (1 - state.dusk * .2), dusk: state.dusk });
   }
   return frame;
 }

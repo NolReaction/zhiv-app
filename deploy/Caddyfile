@@ -11,7 +11,22 @@
 }
 
 {$DOMAIN:localhost} {
-    request_body {
+    # Cosmetic forest snapshots can be 32 KiB; their command envelope is capped
+    # at 64 KiB by both APIs. Keep every other request on the smaller edge budget.
+    @forestMemoryWrite {
+        method POST
+        path /api/v1/world/forest-memory/commands
+    }
+    @standardBody {
+        not {
+            method POST
+            path /api/v1/world/forest-memory/commands
+        }
+    }
+    request_body @forestMemoryWrite {
+        max_size 65536
+    }
+    request_body @standardBody {
         max_size 16KB
     }
     encode zstd gzip

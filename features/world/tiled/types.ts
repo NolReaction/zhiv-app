@@ -1,12 +1,15 @@
 /** Runtime contract compiled from the deliberately small Tiled authoring subset. */
 export type WorldPoint = { x: number; y: number };
 export type WorldBounds = WorldPoint & { width: number; height: number };
-export type WorldImage = { id: string; image: string; bounds: WorldBounds };
-export type SiteVisual = { level: number; label: string; image: string };
-export type FixedSite = {
-  id: string;
-  label: string;
+/** Visible only while this authored site visual level is selected. */
+export type WorldVisibilityCondition = { siteId: string; level: number };
+export type WorldImage = { id: string; image: string; bounds: WorldBounds; imagePlacement?: SiteImagePlacement; when?: WorldVisibilityCondition };
+/** Tiled image rectangle, rotated clockwise around its original top-left corner. */
+export type SiteImagePlacement = WorldBounds & { rotation: number };
+export type SiteGeometry = {
+  /** World-axis-aligned envelope, including any image rotation. */
   bounds: WorldBounds;
+  imagePlacement?: SiteImagePlacement;
   anchor: WorldPoint;
   entry: WorldPoint;
   /** Optional foot position on the visible threshold, beyond the outside entry. */
@@ -14,6 +17,14 @@ export type FixedSite = {
   hitArea: WorldPoint[];
   collision: WorldPoint[];
   light?: WorldPoint;
+  /** Chimney mouth and window glass contour, authored separately for each visual level. */
+  chimney?: WorldPoint;
+  window?: WorldPoint[];
+};
+export type SiteVisual = { level: number; label: string; image: string; geometry?: SiteGeometry };
+export type FixedSite = SiteGeometry & {
+  id: string;
+  label: string;
   initialLevel: number;
   states: SiteVisual[];
 };
@@ -31,7 +42,12 @@ export type WorldPath = {
   pauseSeconds?: number;
 };
 export type WorldWaterPolygon = { id: string; points: WorldPoint[] };
-export type WorldNavigationPolygon = { id: string; points: WorldPoint[] };
+export type WorldNavigationPolygon = { id: string; points: WorldPoint[]; when?: WorldVisibilityCondition };
+/** A visual silhouette, independent of ground collision. Characters behind frontY
+ * are clipped by this polygon; those in front keep their complete sprite. */
+export type WorldOccluder = WorldNavigationPolygon & { frontY: number };
+/** World travel targets deliberately do not enlarge the hero's home interests. */
+export type WorldDestination = { id: string; position: WorldPoint; siteId?: string; pauseSeconds: number };
 export type WorldInterest = {
   id: string;
   position: WorldPoint;
@@ -57,7 +73,10 @@ export type WorldHabitat = {
 export type WorldMushroom = { id: string; position: WorldPoint };
 export type WorldBush = {
   id: string;
-  /** Contour of the existing bush artwork used for foreground leaves. */
+  /** Optional terrain-object ID; absent means foliage baked into the background. */
+  imageId?: string;
+  /** Foliage region for interactions and fruit placement. Baked artwork uses it
+   * as a foreground mask; a separate image uses its own transparent pixels. */
   points: WorldPoint[];
   /** Foot positions outside the leaves and while hiding inside them. */
   entry: WorldPoint;
@@ -78,6 +97,9 @@ export type WorldLight = {
   color: string;
   flicker: number;
 };
+export type WorldCampfire = { id: string; position: WorldPoint; seat: WorldPoint; radius: number };
+/** Ground contact at the bottom center of the parked berry basket. */
+export type WorldBasket = { id: string; position: WorldPoint };
 export type FixedWorldScene = {
   schemaVersion: 1;
   id: string;
@@ -89,11 +111,17 @@ export type FixedWorldScene = {
   sites: FixedSite[];
   paths: WorldPath[];
   mushrooms?: WorldMushroom[];
+  campfires?: WorldCampfire[];
+  /** Absent retains automatic placement for older maps. */
+  basket?: WorldBasket;
   bushes?: WorldBush[];
   water?: WorldWater;
   lights?: WorldLight[];
   /** Absent means legacy routes; an explicitly empty area list permits no free walking. */
   navigation?: WorldNavigation;
+  /** Absent keeps legacy Paths; an empty list explicitly disables destination travel. */
+  destinations?: WorldDestination[];
+  occluders?: WorldOccluder[];
   /** Absent retains legacy fauna; [] deliberately contains no inhabitants. */
   habitats?: WorldHabitat[];
 };

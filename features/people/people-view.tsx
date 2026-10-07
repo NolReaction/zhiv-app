@@ -71,10 +71,12 @@ import { UserStatusDisplay } from "@/components/user-status-display";
 import { matchesPersonSearch } from "@/lib/people-search";
 import { normalizePersonNickname, personDisplayName } from "@/lib/person-nickname";
 import styles from "./people-view.module.css";
+import { GuestProfileSection } from "./guest-profile";
 import { createUuidV4 } from "@/lib/browser-uuid";
 import { GroupsSection } from "./groups-section";
 
 type PeopleViewProps = {
+  ownerPublicId: string | null;
   data: PeopleResponse | null;
   groups: GroupsResponse | null;
   error: string | null;
@@ -139,6 +141,7 @@ function unavailableInviteMessage(reason: ShareOriginUnavailableReason | null): 
 }
 
 export function PeopleView({
+  ownerPublicId,
   data,
   groups,
   error,
@@ -595,7 +598,7 @@ export function PeopleView({
                     <article className={styles.personCard} key={person.circleId}>
                       <div className={styles.personTop}>
                         <button type="button" className={styles.personIdentity}
-                          aria-label={`Открыть ${displayName}`}
+                          aria-label={`Открыть профиль ${displayName}`}
                           aria-describedby={`person-status-${person.circleId} person-checkin-${person.circleId}`} onClick={() => openPerson(person)}>
                         <span
                           className={styles.avatar}
@@ -624,15 +627,15 @@ export function PeopleView({
                             <strong>{isSharing ? "Видны" : "Скрыты"}</strong>
                             <small id={sharingHintId} className={styles.srOnly}>
                               {isSharing
-                                ? "Этому человеку, включая общие группы"
-                                : "Скрыты от этого человека, включая группы"}
+                                ? "Отметки, статус и игровой профиль видны этому человеку; настройки отметок действуют и в общих группах"
+                                : "Отметки, статус и игровой профиль скрыты от этого человека, включая группы"}
                             </small>
                           </span>
                           <Switch
                             checked={isSharing}
                             disabled={Boolean(pending)}
                             onCheckedChange={(checked) => void handleSharing(person, checked)}
-                            aria-label={`Показывать мои отметки пользователю ${person.user.displayName}`}
+                            aria-label={`Показывать мои отметки и игровой профиль пользователю ${person.user.displayName}`}
                             aria-describedby={sharingHintId}
                           />
                         </label>
@@ -736,6 +739,9 @@ export function PeopleView({
               {selectedPerson?.user.displayName} · {selectedPerson?.user.publicId}
             </DialogDescription>
           </DialogHeader>
+          {selectedPerson && ownerPublicId && <GuestProfileSection ownerPublicId={ownerPublicId}
+            circleId={selectedPerson.circleId} targetPublicId={selectedPerson.user.publicId}
+            sharingAllowed={selectedPerson.theirSharingMode !== "OFF"} isOnline={isOnline} onSessionLost={onSessionLost} />}
           <form className={styles.nicknameForm} onSubmit={saveNickname}>
             <label htmlFor="person-nickname">Личная подпись</label>
             <input id="person-nickname" value={nicknameDraft} autoComplete="off" maxLength={100}

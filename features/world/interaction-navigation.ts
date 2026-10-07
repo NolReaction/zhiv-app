@@ -1,5 +1,9 @@
+import { campfireFootprint } from "./forest-campfire";
 import type { FixedWorldScene, WorldPoint } from "./tiled/types";
 import { createWorldNavigation, findWorldPath, isWalkable, type WorldNavigation } from "./navigation";
+import interactionLimits from "./interaction-limits.json";
+import { forestBushArtworkAvailable } from "./forest-bush-artwork";
+import { bushConcealStart } from "./forest-bush-conceal";
 
 type InteractionAccess = {
   id: string; entry: WorldPoint;
@@ -8,12 +12,16 @@ type InteractionAccess = {
   departure: WorldPoint[];
 };
 export type WorldHomeInteraction = InteractionAccess & { kind: "home"; doorway: WorldPoint };
-export type WorldBushInteraction = InteractionAccess & { kind: "bush"; hide: WorldPoint; pauseSeconds?: number };
+export type WorldBushInteraction = InteractionAccess & { kind: "bush"; hide: WorldPoint; concealStart: number; pauseSeconds?: number };
 export type WorldInteraction = WorldHomeInteraction | WorldBushInteraction;
 export type WorldInteractions = {
   home: WorldHomeInteraction | null; bushes: WorldBushInteraction[];
   diagnostics: { id: string; valid: boolean; reason: string | null }[];
 };
+/** Authored doors/porches and jumps are lengths on the map, not proportions of a
+ * sprite. Keep the established world-space bounds when its visual size changes;
+ * clearance and the visible footprint still use the current actor's real size. */
+export const WORLD_INTERACTION_LIMITS = Object.freeze(interactionLimits);
 const cache = new WeakMap<FixedWorldScene, WorldInteractions>();
 const EPS = 1e-7;
 const finite = (point: WorldPoint | undefined): point is WorldPoint => !!point && Number.isFinite(point.x) && Number.isFinite(point.y);
@@ -62,11 +70,12 @@ function visibleFoot(scene: FixedWorldScene, point: WorldPoint, size: number, li
 function corridorClear(scene: FixedWorldScene, a: WorldPoint, b: WorldPoint, radius: number, ownHome?: string) {
   return !scene.sites.some(site => site.id !== ownHome && touches(a, b, site.collision, radius))
     && !scene.water?.surfaces.some(surface => touches(a, b, surface.points, radius))
-    && !scene.navigation?.obstacles.some(obstacle => touches(a, b, obstacle.points, radius));
+    && !scene.navigation?.obstacles.some(obstacle => touches(a, b, obstacle.points, radius))
+    && !scene.campfires?.some(fire => touches(a, b, campfireFootprint(fire), radius));
 }
 
 /** Compile only local animation corridors. All travel to them still uses normal A*.
- * A home may bridge at most .24 actor sizes along its outward doorway axis. This
+ * A home may bridge a short bounded interval along its outward doorway axis. This
  * permission belongs to that interaction, never to the shared navigation field. */
 export function compileWorldInteractions(scene: FixedWorldScene): WorldInteractions {
   const cached = cache.get(scene); if (cached) return cached;
@@ -79,7 +88,7 @@ export function compileWorldInteractions(scene: FixedWorldScene): WorldInteracti
   if (home) {
     const entry = home.entry, doorway = home.doorway ?? entry;
     let reason: string | null = null, dock: WorldPoint | null = null;
-    if (!finite(entry) || !finite(doorway) || distance(entry, doorway) > size * .6) reason = "invalid-doorway";
+    if (!finite(entry) || !finite(doorway) || distance(entry, doorway) > WORLD_INTERACTION_LIMITS.homeThreshold) reason = "invalid-doorway";
     else if (!visibleFoot(scene, entry, size) || !visibleFoot(scene, doorway, size)) reason = "outside-focus";
     else if (!corridorClear(scene, entry, doorway, nav.radius, home.id)) reason = "blocked-doorway";
     else if (isWalkable(nav, entry)) dock = { ...entry };
@@ -88,7 +97,7 @@ export function compileWorldInteractions(scene: FixedWorldScene): WorldInteracti
       // Search a bounded one-dimensional docking interval, never a nearest cell
       // on the opposite side of a wall. The final point keeps the full foot radius.
       for (let step = 1; length > EPS && step <= 32 && !dock; step++) {
-        const offset = size * .24 * step / 32;
+        const offset = WORLD_INTERACTION_LIMITS.homeDock * step / 32;
         const candidate = { x: entry.x + (entry.x - doorway.x) * offset / length,
           y: entry.y + (entry.y - doorway.y) * offset / length };
         if (isWalkable(nav, candidate) && visibleFoot(scene, candidate, size)
@@ -104,7 +113,9 @@ export function compileWorldInteractions(scene: FixedWorldScene): WorldInteracti
     let reason: string | null = null;
     if (!finite(bush.entry) || !finite(bush.hide) || bush.points.length < 3 || !bush.points.every(finite)
       || !inside(bush.hide, bush.points)) reason = "invalid-bush";
-    else if (distance(bush.entry, bush.hide) < size * .1 || distance(bush.entry, bush.hide) > size * .8) reason = "invalid-bush-corridor";
+    else if (distance(bush.entry, bush.hide) < size * .1 || distance(bush.entry, bush.hide) > WORLD_INTERACTION_LIMITS.bushJump
+      || bushConcealStart(bush) >= 1 - 1e-8) reason = "invalid-bush-corridor";
+    else if (!forestBushArtworkAvailable(scene, bush)) reason = "missing-bush-artwork";
     else if (!isWalkable(nav, bush.entry)) reason = "unreachable-bush-entry";
     else if (!corridorClear(scene, bush.entry, bush.hide, nav.radius)) reason = "blocked-bush-corridor";
     else for (let sample = 0; sample <= 16; sample++) {
@@ -113,7 +124,7 @@ export function compileWorldInteractions(scene: FixedWorldScene): WorldInteracti
       if (!visibleFoot(scene, point, size, Math.sin(t * Math.PI) * size * .28)) { reason = "outside-focus"; break; }
     }
     record(bush.id, reason);
-    if (!reason) result.bushes.push({ kind: "bush", id: bush.id, entry: { ...bush.entry }, hide: { ...bush.hide },
+    if (!reason) result.bushes.push({ kind: "bush", id: bush.id, entry: { ...bush.entry }, hide: { ...bush.hide }, concealStart: bushConcealStart(bush),
       dock: { ...bush.entry }, departure: copy([bush.entry]) });
   }
   return result;

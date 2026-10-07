@@ -1,0 +1,54 @@
+.hud { position: absolute; inset: 0 0 auto; z-index: 6; display: flex; flex-direction: column; align-items: flex-start; gap: 7px; padding: calc(12px + env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 10px max(12px, env(safe-area-inset-left)); pointer-events: none; }
+.headerRow { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; width: 100%; }
+.leftControls, .rightControls { display: flex; align-items: flex-start; gap: 7px; min-width: 0; }
+.hud button { pointer-events: auto; box-shadow: 0 3px 14px #07140b40; }
+.hud .iconButton { flex: 0 0 40px; width: 40px; height: 44px; min-height: 44px; padding: 8px; border-radius: 13px; }
+.hud .helpButton { height: auto; align-self: stretch; border-color: #d8e6b62e; background: #18291df2; }
+.hud .level { min-height: 44px; gap: 8px; padding: 6px 11px; border-radius: 13px; }
+.level > span { display: flex; flex-direction: column; gap: 1px; text-align: left; line-height: 1.1; }
+.level small { font-size: 9px; color: #b4c5a0; }
+.level strong { font-size: 16px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.hud .loadingWallet { max-width: 108px; padding: 7px; font-size: 10px; }
+.bottomHud { position: absolute; inset: auto 0 0; z-index: 7; padding: 8px max(12px, env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); pointer-events: none; display: flex; justify-content: center; }
+.dock { display: flex; gap: 7px; min-width: 0; max-width: 100%; }
+.dock button { pointer-events: auto; min-width: 0; min-height: 44px; padding: 9px 13px; gap: 7px; border-radius: 13px; font-size: 12px; background: #1b2c20f5; box-shadow: 0 3px 14px #06100755; }
+.dock svg { flex: 0 0 auto; color: #d4e0b5; }
+.dock button[aria-expanded="true"], .level[aria-expanded="true"] { border-color: #c0d595; background: #3a5130; }
+.dock button[data-full="true"] { border-color: #c49b66; }
+.journeyDot { width: 6px; height: 6px; border-radius: 50%; background: #c1d094; flex: 0 0 auto; }
+.dock button[data-expedition-ready="true"] { border-color: #ebcd84a6; background: #354127f5; box-shadow: 0 0 0 2px #e3c97814, 0 3px 14px #06100755; }
+.expeditionIcon { position: relative; display: flex; flex: 0 0 auto; }
+.expeditionCheck { position: absolute; right: -5px; bottom: -4px; display: grid; place-items: center; width: 13px; height: 13px; border-radius: 50%; background: #efd28b; border: 1px solid #39472a; }
+.dock .expeditionCheck svg { color: #26331a; }
+.expeditionLabel { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.15; gap: 3px; }
+.expeditionLabel small { color: #efd99f; font-size: 8px; white-space: nowrap; }
+.quickMenu { position: absolute; z-index: 15; bottom: var(--quick-bottom, 70px); left: 50%; transform: translateX(-50%); width: min(390px, calc(100% - 24px)); max-height: min(520px, calc(100% - var(--quick-top, 80px) - var(--quick-bottom, 70px) - 8px)); display: flex; flex-direction: column; overflow: hidden; color: #e7eed7; background: linear-gradient(145deg, #203124fc, #12231afb); border: 1px solid #adbf8559; border-radius: 17px; box-shadow: 0 12px 35px #05130980; outline: none; }
+.quickMenu:focus-visible { outline: 2px solid #c6dba0; outline-offset: 2px; }
+.quickMenu[data-kind="profile"] { top: var(--quick-top, 80px); bottom: auto; left: max(12px, env(safe-area-inset-left)); transform: none; width: min(350px, calc(100% - 24px)); }
+.quickMenu[data-kind="more"] { width: min(245px, calc(100% - 24px)); }
+.quickHeader { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex: 0 0 auto; padding: 9px 11px 8px 14px; border-bottom: 1px solid #a8c08624; }
+.quickHeader h2 { margin: 0; display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; line-height: 1.3; }
+.quickHeader h2 svg { color: #c0d699; }
+.quickMenu .quickHeader button { width: 32px; min-height: 32px; padding: 6px; border: 0; border-radius: 9px; background: transparent; color: #b8c9a7; }
+.quickBody { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #688354 transparent; padding: 12px; font-size: 12px; }
+.moreActions { display: grid; gap: 3px; }
+.quickMenu .moreActions > button { width: 100%; justify-content: flex-start; min-height: 44px; padding: 9px 10px; border: 0; border-radius: 10px; background: transparent; font-size: 13px; text-align: left; }
+.moreActions svg { flex: 0 0 auto; color: #c2d7a2; }
+.moreLabel { display: flex; flex-direction: column; gap: 3px; min-width: 0; line-height: 1.3; }
+.moreLabel small { color: #b8c9a7; font-size: 10px; }
+@media (max-width: 380px) {
+  .hud { padding-top: calc(8px + env(safe-area-inset-top)); }
+  .headerRow { gap: 8px; }
+  .leftControls, .rightControls { gap: 5px; }
+  .hud .level { padding-inline: 8px; gap: 6px; }
+  .hud .iconButton { width: 36px; flex-basis: 36px; }
+  .dock { gap: 6px; }
+  .dock button { padding-inline: 10px; font-size: 11px; gap: 6px; }
+  .quickBody { padding: 10px; }
+}
+@media (max-height: 500px) {
+  .hud { padding-top: max(6px, env(safe-area-inset-top)); padding-bottom: 6px; gap: 4px; }
+  .headerRow { align-items: flex-start; }
+  .quickMenu { max-height: calc(100% - var(--quick-top, 65px) - var(--quick-bottom, 65px) - 2px); }
+  .bottomHud { padding-top: 5px; padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+}

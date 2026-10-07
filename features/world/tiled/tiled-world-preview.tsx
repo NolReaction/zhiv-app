@@ -7,6 +7,7 @@ import sceneData from "./forest.generated.json";
 import type { FixedWorldScene } from "./types";
 import type { FixedWorldRenderOptions } from "./renderer";
 import { createPreviewRoute, type PreviewRouteStatus } from "./preview-route";
+import { initialPreviewLevels, previewSiteVisual, setPreviewLevel } from "./preview-state";
 import styles from "./tiled-world-preview.module.css";
 
 const scene = sceneData as FixedWorldScene;
@@ -18,12 +19,16 @@ export function TiledWorldPreview() {
   const circleCanvas = useRef<HTMLCanvasElement>(null);
   const renderer = useRef<Renderer | null>(null);
   const [debug, setDebug] = useState(false);
+  const [levels, setLevels] = useState(() => initialPreviewLevels(scene));
+  const [selectedSiteId, setSelectedSiteId] = useState<string | null>(scene.sites[0]?.id ?? null);
+  const selectedSite = scene.sites.find(site => site.id === selectedSiteId) ?? scene.sites[0];
+  const activeSiteId = selectedSite?.id ?? null;
   const [ready, setReady] = useState(false);
   const [status, setStatus] = useState<{ loading: boolean; error: string | null }>({ loading: true, error: null });
   const [retryKey, setRetryKey] = useState(0);
   const [reducedMotion, setReducedMotion] = useState(true);
   const [routeStatus, setRouteStatus] = useState<PreviewRouteStatus>({ pathId: null, moving: false, error: null });
-  const latestOptions = useRef<FixedWorldRenderOptions>({ levels: {}, night: false, debug, selectedSiteId: null, reducedMotion: true });
+  const latestOptions = useRef<FixedWorldRenderOptions>({ levels, night: false, debug, selectedSiteId: activeSiteId, reducedMotion: true });
 
   useEffect(() => {
     const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -33,9 +38,9 @@ export function TiledWorldPreview() {
   }, []);
 
   useEffect(() => {
-    latestOptions.current = { levels: {}, night: false, debug, selectedSiteId: null, reducedMotion };
+    latestOptions.current = { levels, night: false, debug, selectedSiteId: activeSiteId, reducedMotion };
     renderer.current?.update(latestOptions.current);
-  }, [debug, reducedMotion]);
+  }, [levels, activeSiteId, debug, reducedMotion]);
 
   useEffect(() => {
     const world = worldCanvas.current, circle = circleCanvas.current;
@@ -46,7 +51,7 @@ export function TiledWorldPreview() {
     void import("./renderer").then(async ({ createFixedWorldRenderer }) => {
       if (controller.signal.aborted) return;
       const handle = await createFixedWorldRenderer(world, circle, scene, latestOptions.current, {
-        onSelect: () => {},
+        onSelect: id => { if (!controller.signal.aborted) setSelectedSiteId(id); },
         onStatus: next => { if (!controller.signal.aborted) setStatus(next); },
         onRouteChange: next => { if (!controller.signal.aborted) setRouteStatus(next); },
       }, controller.signal);
@@ -66,6 +71,8 @@ export function TiledWorldPreview() {
 
   function reset() {
     setDebug(false);
+    setLevels(initialPreviewLevels(scene));
+    setSelectedSiteId(scene.sites[0]?.id ?? null);
     renderer.current?.reset();
   }
 
@@ -119,6 +126,31 @@ export function TiledWorldPreview() {
 
           {ready && status.error && <div className={styles.error} role="alert"><span>{status.error}</span><button type="button" onClick={() => renderer.current?.retry()}>Повторить загрузку</button></div>}
 
+          <section className={styles.routePanel} aria-labelledby="building-preview-title">
+            <h2 id="building-preview-title">Постройки и уровни</h2>
+            {selectedSite ? <>
+              <div className={styles.buildingFields}>
+                <div>
+                  <label htmlFor="preview-building">Постройка</label>
+                  <select id="preview-building" value={selectedSite.id} onChange={event => setSelectedSiteId(event.target.value)}>
+                    {scene.sites.map(site => <option key={site.id} value={site.id}>{site.label} · {site.id}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="preview-building-level">Вариант постройки</label>
+                  <select id="preview-building-level" value={previewSiteVisual(selectedSite, levels).level}
+                    onChange={event => setLevels(current => setPreviewLevel(scene, current, selectedSite.id, Number(event.target.value)))}>
+                    {selectedSite.states.map(state => <option key={state.level} value={state.level}>Уровень {state.level} · {state.label}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className={styles.routeTools}>
+                <button type="button" disabled={!ready} onClick={() => renderer.current?.focus(selectedSite.id)}><Compass aria-hidden size={16} />{selectedSite.id === "home" ? "Показать поляну" : "Показать на карте"}</button>
+              </div>
+              <p>Постройку можно выбрать нажатием на карте. Варианты меняются только в этом предпросмотре; сброс возвращает начальные уровни из Tiled.</p>
+            </> : <p>Постройки пока не размещены. Добавьте здание и его разметку в Tiled, затем экспортируйте карту.</p>}
+          </section>
+
           <section className={styles.routePanel} aria-labelledby="route-preview-title">
             <h2 id="route-preview-title">Проверка маршрута</h2>
             {paths.length ? <>
@@ -149,7 +181,8 @@ export function TiledWorldPreview() {
         <summary>Как устроен этот пример</summary>
         <p>Карта Tiled задаёт фон, квадратную область focus, точку spawn и размер Мохлика. Запустите npm run world:watch и сохраняйте карту в Tiled, чтобы обновлять оба вида и основную карту.</p>
         <p>«Разметка» показывает границы кружка, маршруты и коллизии построек. Каждый маршрут проверяется отдельно; Мохлик проходит только его точки.</p>
-        <a href="https://github.com/NolReaction/zhiv-app/blob/feature/mochlik-tiled-world/docs/game/tiled-editor.md" target="_blank" rel="noreferrer">Как открыть карту в Tiled и изменить её</a>
+        <a href="https://github.com/NolReaction/zhiv-app/blob/work/0.6.7/docs/game/tiled-editor.md" target="_blank" rel="noreferrer">Как открыть карту в Tiled и изменить её</a>
+        <p><a href="https://github.com/NolReaction/zhiv-app/blob/work/0.6.7/docs/game/building-workbench.md" target="_blank" rel="noreferrer">Как добавить домик и рисунки улучшений</a></p>
       </details>
     </main>
   );

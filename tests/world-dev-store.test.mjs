@@ -4,9 +4,9 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
+const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { createWorldDevStore, WORLD_DEV_DEFAULTS, WORLD_DEV_POSES, WORLD_DEV_ENABLED, worldDevStore } = await vite.ssrLoadModule("/features/world/dev/world-dev-store.ts");
+const { createWorldDevStore, WORLD_DEV_DEFAULTS, WORLD_DEV_POSES, WORLD_DEV_RESIDENT_ACTIONS, WORLD_DEV_BUILDER_ACTIONS, WORLD_DEV_ENABLED, worldDevStore } = await vite.ssrLoadModule("/features/world/dev/world-dev-store.ts");
 const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
 const { initialPreviewLevels } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
 
@@ -17,6 +17,11 @@ test("development store starts from authored scene defaults with stable server s
   assert.equal(store.getSnapshot(), WORLD_DEV_DEFAULTS);
   assert.equal(store.getSnapshot().autoLife, true);
   assert.equal(store.getSnapshot().puddles, true);
+  assert.equal(store.getSnapshot().waterBreeze, true);
+  assert.equal(store.getSnapshot().waterSurface, true);
+  assert.equal(store.getSnapshot().waterWind, "auto");
+  assert.equal(store.getSnapshot().waterFish, "auto");
+  assert.equal(store.getSnapshot().cookingPreview, null);
   assert.equal(store.getSnapshot().lifeEvent, null);
   assert.deepEqual(store.getSnapshot().levels, initialPreviewLevels(TILED_WORLD));
   assert.equal(store.getServerSnapshot(), WORLD_DEV_DEFAULTS);
@@ -31,7 +36,10 @@ test("disabled store ignores every mutation and does not register subscribers", 
   store.patch({ weather: "downpour", heroScale: 2, levels: { unknown: 1 }, autoLife: false, puddles: false,
     debugWater: true, debugNavigation: true, debugFauna: true, navigationMode: "routes" });
   store.triggerPose("greet"); store.triggerLife("butterfly"); store.triggerLife("bush"); store.triggerLife("idle");
+  for (const kind of ["water-bush", "harvest-berries", "grow-berries"]) store.triggerLife(kind);
   store.triggerBirds(); store.triggerCamera("pet"); store.reportArtError("broken image"); store.reset();
+  store.triggerResident("cast", true); store.triggerScenario("plesk"); store.triggerScenario("fishing");
+  store.triggerCooking("sequence", true); store.triggerBuilder("work", true);
   assert.equal(store.getSnapshot(), WORLD_DEV_DEFAULTS);
   assert.equal(store.getServerSnapshot(), WORLD_DEV_DEFAULTS);
   unsubscribe(); unsubscribe();
@@ -65,14 +73,14 @@ test("snapshots are immutable and only real changes notify subscribed listeners"
 
 test("visual controls accept valid options and ignore malformed values", () => {
   const store = createWorldDevStore(true);
-  const controls = { weather: "downpour", timeOfDay: "night", butterflies: "off", fireflies: "on", birds: "off",
+  const controls = { weather: "downpour", timeOfDay: "night", butterflies: "off", fireflies: "on", birds: "off", waterFish: "on", waterBreeze: false, waterSurface: false, waterWind: "windy",
     paused: true, autoLife: false, puddles: false, reducedMotion: "on", pose: "fishing-walk", direction: "back", showHero: false, showBuildings: false,
     heroShadow: false, buildingShadow: false, debug: true, debugWater: true,
     debugNavigation: true, debugFauna: true, navigationMode: "routes" };
   store.patch(controls);
   for (const [key, value] of Object.entries(controls)) assert.equal(store.getSnapshot()[key], value);
   const before = store.getSnapshot();
-  store.patch({ weather: "storm", timeOfDay: "noon", butterflies: true, fireflies: 0, birds: null, paused: "yes",
+  store.patch({ weather: "storm", timeOfDay: "noon", butterflies: true, fireflies: 0, birds: null, waterFish: true, waterBreeze: "yes", waterSurface: 1, waterWind: "storm", paused: "yes",
     reducedMotion: false, autoLife: "yes", puddles: 1, pose: "dance", direction: "north", showHero: 0, showBuildings: null, heroShadow: "off",
     buildingShadow: 1, debug: undefined, debugWater: "true", debugNavigation: 1, debugFauna: "on", navigationMode: "free",
     equipment: { palette: "fern", head: 0, neck: null }, unknown: true });
@@ -202,7 +210,7 @@ test("every supported pixel pose can be held and triggered", () => {
 test("life events are immutable, validated and repeat with new IDs across resets", () => {
   const store = createWorldDevStore(true);
   let previousId = 0;
-  for (const kind of ["butterfly", "firefly", "mushroom", "leaf", "bush", "home-sleep", "wake", "grow-mushrooms", "idle", "idle"]) {
+  for (const kind of ["butterfly", "firefly", "mushroom", "leaf", "bush", "home-sleep", "wake", "grow-mushrooms", "water-bush", "harvest-berries", "grow-berries", "watch-birds", "idle", "idle"]) {
     const before = store.getSnapshot();
     store.triggerLife(kind);
     const after = store.getSnapshot();
@@ -296,7 +304,7 @@ test("selecting a held pose cancels a manual gesture without reusing its event I
 test("camera events validate actions and keep increasing IDs across reset", () => {
   const store = createWorldDevStore(true);
   let previousId = 0;
-  for (const action of ["in", "out", "overview", "pet", "pet"]) {
+  for (const action of ["in", "out", "overview", "pet", "plesk", "builder", "fishing", "pet"]) {
     store.triggerCamera(action);
     const event = store.getSnapshot().cameraEvent;
     assert.equal(event.action, action);
@@ -324,4 +332,124 @@ test("art error reporting is transient and reset restores every default", () => 
   store.reset(); assert.equal(store.getSnapshot(), WORLD_DEV_DEFAULTS);
   store.patch({ equipment: { palette: "moss", head: null, neck: null } });
   store.patch({ equipment: null }); assert.equal(store.getSnapshot().equipment, null);
+});
+
+test("Plesk actions use isolated immutable previews, independent direction and replay IDs", () => {
+  const store = createWorldDevStore(true);
+  store.patch({ direction: "back", residentDirection: "right", pose: "sleep", paused: true, reducedMotion: "on" });
+  let previousId = 0;
+  for (const action of [...WORLD_DEV_RESIDENT_ACTIONS, "routine"]) {
+    let updates = 0; const unsubscribe = store.subscribe(() => updates++);
+    store.triggerResident(action, true);
+    const state = store.getSnapshot();
+    assert.equal(updates, 1, "preview and camera update together"); unsubscribe();
+    assert.equal(state.residentPreview.action, action);
+    assert.equal(state.residentPreview.direction, "right");
+    assert.equal(state.residentPreview.repeat, true);
+    assert.ok(state.residentPreview.id > previousId); previousId = state.residentPreview.id;
+    assert.equal(state.cameraEvent.action, "plesk");
+    assert.equal(state.pose, "sleep"); assert.equal(state.direction, "back");
+    assert.equal(state.paused, true); assert.equal(state.reducedMotion, "on");
+    assert.ok(Object.isFrozen(state.residentPreview));
+  }
+  const active = store.getSnapshot().residentPreview;
+  store.patch({ residentDirection: "left" });
+  assert.equal(store.getSnapshot().residentPreview.id, active.id, "turning never restarts animation time");
+  assert.equal(store.getSnapshot().residentPreview.direction, "left");
+  assert.equal(active.direction, "right", "old snapshots remain unchanged");
+  store.triggerResident("catch");
+  assert.equal(store.getSnapshot().residentPreview.repeat, false);
+  assert.ok(store.getSnapshot().residentPreview.id > previousId);
+  previousId = store.getSnapshot().residentPreview.id;
+  store.patch({ residentPreview: null }); assert.equal(store.getSnapshot().residentPreview, null);
+  store.reset(); store.triggerResident("catch");
+  assert.ok(store.getSnapshot().residentPreview.id > previousId);
+  const beforeInvalid = store.getSnapshot();
+  for (const action of ["dance", "auto", null, undefined, {}, 1]) store.triggerResident(action);
+  store.triggerResident("walk", "yes");
+  store.patch({ residentDirection: "north", residentPreview: { id: 999, action: "cast", direction: "back", repeat: true } });
+  assert.equal(store.getSnapshot(), beforeInvalid, "patching cannot forge an event or unsupported direction");
+});
+
+test("cooking previews replace competing hero actions atomically and validate replay events", () => {
+  const store = createWorldDevStore(true);
+  store.patch({ paused: true, reducedMotion: "on", pose: "sleep", autoLife: false });
+  store.triggerScenario("fishing");
+  store.triggerPose("greet");
+  let previousId = 0;
+  for (const action of ["sequence", "prepare", "stir", "taste", "serve"]) {
+    let updates = 0;
+    const unsubscribe = store.subscribe(() => updates++);
+    store.triggerCooking(action, true);
+    const state = store.getSnapshot();
+    unsubscribe(); assert.equal(updates, 1, "the preview and camera change in one publish");
+    assert.deepEqual(state.cookingPreview, { id: state.cookingPreview.id, action, repeat: true });
+    assert.ok(state.cookingPreview.id > previousId); previousId = state.cookingPreview.id;
+    assert.ok(Object.isFrozen(state.cookingPreview));
+    assert.equal(state.pose, "auto"); assert.equal(state.animation, null);
+    assert.equal(state.lifeEvent, null); assert.equal(state.scenarioEvent, null);
+    assert.equal(state.cameraEvent.action, "pet");
+  }
+  const valid = store.getSnapshot();
+  for (const action of ["fish", "auto", "", null, undefined, {}, 1]) store.triggerCooking(action);
+  store.triggerCooking("prepare", "yes");
+  store.patch({ cookingPreview: { id: 999, action: "stir", repeat: true } });
+  assert.equal(store.getSnapshot(), valid, "patches cannot forge a clock or invalid cooking action");
+  store.patch({ cookingPreview: null }); assert.equal(store.getSnapshot().cookingPreview, null);
+  store.triggerCooking("serve"); assert.equal(store.getSnapshot().cookingPreview.repeat, false);
+  for (const replace of [() => store.triggerPose("greet"), () => store.triggerLife("idle"),
+    () => store.patch({ pose: "sleep" }), () => store.triggerScenario("fishing")]) {
+    store.triggerCooking("sequence"); replace();
+    assert.equal(store.getSnapshot().cookingPreview, null, "another explicit hero action cancels cooking");
+  }
+  store.reset(); store.triggerCooking("stir");
+  assert.ok(store.getSnapshot().cookingPreview.id > previousId, "reset cannot reuse an already consumed event ID");
+});
+
+test("water fish and breeze controls are independent validated visual preferences", () => {
+  const store = createWorldDevStore(true);
+  for (const waterFish of ["off", "on", "auto"]) {
+    store.patch({ waterFish, waterBreeze: false });
+    assert.equal(store.getSnapshot().waterFish, waterFish);
+    assert.equal(store.getSnapshot().waterBreeze, false);
+    assert.equal(store.getSnapshot().birds, "auto");
+    assert.equal(store.getSnapshot().weather, "auto");
+  }
+  const valid = store.getSnapshot();
+  for (const waterFish of [true, false, "many", null, 3]) store.patch({ waterFish });
+  for (const waterBreeze of ["off", null, 1]) store.patch({ waterBreeze });
+  assert.equal(store.getSnapshot(), valid);
+  store.reset(); assert.equal(store.getSnapshot().waterFish, "auto"); assert.equal(store.getSnapshot().waterBreeze, true);
+});
+
+
+test("builder previews validate inputs, retain the playback clock on turns, and reset without touching other heroes", () => {
+  const store = createWorldDevStore(true);
+  store.triggerResident("fish", true); store.triggerPose("greet");
+  const other = store.getSnapshot();
+  let previous = 0;
+  for (const action of WORLD_DEV_BUILDER_ACTIONS) {
+    store.triggerBuilder(action, true);
+    const state = store.getSnapshot();
+    assert.equal(state.builderPreview.action, action);
+    assert.equal(state.cameraEvent.action, "builder");
+    assert.equal(state.residentPreview, other.residentPreview);
+    assert.equal(state.animation, other.animation);
+    assert.ok(state.builderPreview.id > previous); previous = state.builderPreview.id;
+    assert.ok(Object.isFrozen(state.builderPreview));
+  }
+  store.patch({ builderDirection: "back" });
+  assert.equal(store.getSnapshot().builderPreview.id, previous);
+  assert.equal(store.getSnapshot().builderPreview.direction, "back");
+  const valid = store.getSnapshot();
+  store.triggerBuilder("teleport"); store.triggerBuilder("work", "yes");
+  store.patch({ builderDirection: "up", builderPreview: { id: 999, action: "work", repeat: true } });
+  assert.equal(store.getSnapshot(), valid, "only validated triggers can create previews");
+  store.patch({ builderPreview: null });
+  assert.equal(store.getSnapshot().builderPreview, null);
+  assert.equal(store.getSnapshot().residentPreview, other.residentPreview);
+  store.reset(); assert.equal(store.getSnapshot(), WORLD_DEV_DEFAULTS);
+  store.triggerBuilder("finish");
+  assert.ok(store.getSnapshot().builderPreview.id > previous);
+  assert.equal(store.getSnapshot().builderPreview.repeat, false);
 });

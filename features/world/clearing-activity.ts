@@ -1,12 +1,18 @@
+import { campfireFootprint } from "./forest-campfire";
 import type { PixelDirection, PixelPose } from "@/features/mochlik/pixel-sprite";
-import type { FixedWorldScene, WorldPath, WorldPoint } from "./tiled/types";
-import { canTraverse, createWorldNavigation, findWorldPath, isWalkable, type WorldNavigation } from "./navigation";
+import { forestBushArtworkAvailable } from "./forest-bush-artwork";
+import { bushConcealStart } from "./forest-bush-conceal";
+import type { FixedWorldScene, WorldBush, WorldPath, WorldPoint } from "./tiled/types";
+import { canTraverse, canTraverseWorldObstacle, createWorldNavigation, findWorldPath, isWalkable,
+  withWorldNavigationObstacle, type WorldNavigation } from "./navigation";
 import { prepareSteeringPath, desiredSteeringSpeed, type SteeringPath } from "./steering";
-import { compileWorldInteractions, findInteractionApproach, type WorldInteraction } from "./interaction-navigation";
+import { compileWorldInteractions, findInteractionApproach, WORLD_INTERACTION_LIMITS, type WorldInteraction } from "./interaction-navigation";
 import { chooseForestGoal, createForestBehavior, type ForestBehaviorMemory, type ForestInterest } from "./forest-behavior";
+import { beginForestIntention, finishForestIntention, noticeForestMind, recordForestCandidates, scoreForestAction } from "./forest-mind";
+import { canTraverseResidents, residentTrafficDetour, type ResidentOccupant } from "./resident-traffic";
 
 type ClearingAction = "look" | "sniff" | "groom" | "rest" | "bush";
-type ClearingBush = { id: string; entry: WorldPoint; hide: WorldPoint };
+type ClearingBush = { id: string; entry: WorldPoint; hide: WorldPoint; concealStart: number };
 type BushBurst = { at: number; strength: number; seed: number };
 type BushEffect = { id: string; elapsed: number; seed: number; emitted: number; bursts: BushBurst[] };
 type ActionStep = { pose: PixelPose; seconds: number; direction?: PixelDirection };
@@ -46,6 +52,9 @@ export type ClearingActivityOptions = {
   idleEligible?: boolean;
   /** DEV comparison changes controller only after the current safe return to spawn. */
   navigationMode?: "auto" | "routes";
+  /** Visible residents occupy temporary ground space, never the saved navigation map. */
+  occupants?: readonly ResidentOccupant[];
+  residentSize?: number;
 };
 export type ClearingActivityFrame = WorldPoint & {
   direction: PixelDirection; pose: PixelPose; frame: number;
@@ -54,10 +63,35 @@ export type ClearingActivityFrame = WorldPoint & {
   lift?: number; compression?: number;
   bush?: { id: string; rustle: number; occlude: boolean; occupied: boolean; elapsed: number; bursts: BushBurst[] };
 };
+const temporaryNavigation = new WeakMap<ClearingActivityState, { base: WorldNavigation; key: string; current: WorldNavigation }>();
+const parkedPropWait = new WeakMap<ClearingActivityState, { navigation: WorldNavigation; route: ClearingRoute; stage: ClearingStage }>();
+
+export function baseClearingNavigation(state: ClearingActivityState): WorldNavigation | null {
+  const previous = temporaryNavigation.get(state);
+  return previous?.current === state.navigation ? previous.base : state.navigation;
+}
+
+/** Sync only when the prop moves or is lifted; repeated simulation ticks reuse
+ * one variant. Removing it restores the original shared immutable profile. */
+export function setClearingNavigationObstacle(state: ClearingActivityState, points: readonly WorldPoint[] | null): boolean {
+  if (!state.navigation) return points === null;
+  const previous = temporaryNavigation.get(state);
+  const base = baseClearingNavigation(state)!;
+  if (!points) {
+    state.navigation = base; temporaryNavigation.delete(state); return true;
+  }
+  const key = points.map(point => `${point.x},${point.y}`).join(";");
+  if (previous?.current === state.navigation && previous.key === key) return true;
+  const current = withWorldNavigationObstacle(base, points);
+  if (!current) return false;
+  state.navigation = current; temporaryNavigation.set(state, { base, key, current });
+  return true;
+}
 export const CLEARING_HOME_IDLE_SECONDS = 180;
 export const CLEARING_AWAKE_GRACE_SECONDS = 30;
 const DOOR_FADE_SECONDS = .8;
 const BUSH_PREPARE_SECONDS = 1.15, BUSH_ENTER_SECONDS = 1.25, BUSH_EXIT_SECONDS = 1.35, BUSH_LAND_SECONDS = 1.05;
+const BUSH_EXIT_ANTICIPATION_SECONDS = .18, BUSH_MAX_SPEED_RATIO = 1.1;
 const BUSH_PARTICLE_SECONDS = 3.2;
 const BUSH_TUCK_LIFT = .12;
 const bushStage = (stage: ClearingStage) => stage.startsWith("bush-");
@@ -78,6 +112,9 @@ function inside(point: WorldPoint, polygon: WorldPoint[]) {
     if ((a.y > point.y) !== (b.y > point.y) && point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x) result = !result;
   }
   return result;
+}
+function clearingBush(bush: WorldBush): ClearingBush {
+  return { id: bush.id, entry: { ...bush.entry }, hide: { ...bush.hide }, concealStart: bushConcealStart(bush) };
 }
 function intersects(a: WorldPoint, b: WorldPoint, c: WorldPoint, d: WorldPoint) {
   const cross = (p: WorldPoint, q: WorldPoint, r: WorldPoint) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
@@ -109,16 +146,21 @@ function validateRoute(scene: FixedWorldScene, path: WorldPath): string | null {
   if (homeSite && distance(path.points.at(-1)!, homeSite.entry) > .001) return "home-end-away-from-entry";
   const bush = path.activity === "bush" ? scene.bushes?.find(item => item.id === path.bushId) : undefined;
   if (path.activity === "bush" && (path.behavior !== "clearing" || !bush)) return "missing-bush";
+  if (bush && !forestBushArtworkAvailable(scene, bush)) return "missing-bush-artwork";
   if (bush && (!finitePoint(bush.entry) || !finitePoint(bush.hide) || bush.points.length < 3
     || bush.points.some(point => !finitePoint(point)) || !inside(bush.hide, bush.points))) return "invalid-bush";
   if (bush && distance(path.points.at(-1)!, bush.entry) > .001) return "bush-end-away-from-entry";
-  if (bush && (distance(bush.entry, bush.hide) < actor.size * .1 || distance(bush.entry, bush.hide) > actor.size * .8)) return "invalid-bush-corridor";
-  const radius = Math.min(focus.width * .3, actor.size * 1.6), clearance = actor.size * .1;
+  if (bush && (distance(bush.entry, bush.hide) < actor.size * .1 || distance(bush.entry, bush.hide) > WORLD_INTERACTION_LIMITS.bushJump
+    || bushConcealStart(bush) >= 1 - 1e-8)) return "invalid-bush-corridor";
+  const radius = Math.min(focus.width * .3, WORLD_INTERACTION_LIMITS.localRouteRadius), clearance = actor.size * .1;
   const points = [{ ...actor.spawn }, ...path.points.slice(1)];
   let length = 0;
   for (let i = 0; i < points.length; i++) {
     const point = points[i], previous = points[Math.max(0, i - 1)];
-    if (distance(point, actor.spawn) > radius) return "outside-clearing-radius";
+    // Only the final authored bush entry may extend the local walk. Intermediate
+    // points and ordinary routes keep their radius; visibility and blockers still apply.
+    const pointRadius = bush && i === points.length - 1 ? radius + WORLD_INTERACTION_LIMITS.bushJump : radius;
+    if (distance(point, actor.spawn) > pointRadius) return "outside-clearing-radius";
     // A convex ellipse also contains every intermediate point of these straight segments.
     for (const dx of [-actor.size * .5, actor.size * .5]) for (const dy of [-actor.size, actor.size * .08]) {
       const x = point.x + dx, y = point.y + dy;
@@ -130,7 +172,7 @@ function validateRoute(scene: FixedWorldScene, path: WorldPath): string | null {
       let end = point;
       if (site === homeSite && i === points.length - 1) {
         // Feet may brush the doorway edge on the last small approach, not cross the house.
-        const segmentLength = distance(previous, point), threshold = actor.size * .24;
+        const segmentLength = distance(previous, point), threshold = WORLD_INTERACTION_LIMITS.homeDock;
         if (segmentLength <= threshold) continue;
         const t = (segmentLength - threshold) / segmentLength;
         end = { x: previous.x + (point.x - previous.x) * t, y: previous.y + (point.y - previous.y) * t };
@@ -139,29 +181,33 @@ function validateRoute(scene: FixedWorldScene, path: WorldPath): string | null {
     }
     // Floating leaves / exclusions never give permission to walk on the river.
     if (scene.water?.surfaces.some(surface => touchesPolygon(previous, point, surface.points, clearance))) return "water-collision";
+    if (scene.campfires?.some(fire => touchesPolygon(previous, point, campfireFootprint(fire), clearance))) return "campfire-collision";
     if (i) length += distance(previous, point);
   }
   if (homeSite?.doorway) {
     const doorway = homeSite.doorway, entry = homeSite.entry;
-    if (!finitePoint(doorway) || distance(entry, doorway) > actor.size * .6) return "invalid-doorway";
+    if (!finitePoint(doorway) || distance(entry, doorway) > WORLD_INTERACTION_LIMITS.homeThreshold) return "invalid-doorway";
     for (const dx of [-actor.size * .5, actor.size * .5]) for (const dy of [-actor.size, actor.size * .08]) {
       const x = doorway.x + dx, y = doorway.y + dy;
       if (x < 0 || y < 0 || x > scene.width || y > scene.height) return "outside-map";
       if (((x - focus.x - focus.width / 2) / (focus.width / 2)) ** 2
         + ((y - focus.y - focus.height / 2) / (focus.height / 2)) ** 2 > 1) return "outside-focus";
     }
+    if (scene.campfires?.some(fire => touchesPolygon(entry, doorway, campfireFootprint(fire), clearance))) return "campfire-collision";
     // Only this authored threshold corridor can enter the resident's own house.
     if (scene.sites.some(site => site !== homeSite && touchesPolygon(entry, doorway, site.collision, clearance))) return "building-collision";
     if (scene.water?.surfaces.some(surface => touchesPolygon(entry, doorway, surface.points, clearance))) return "water-collision";
   }
   if (bush) {
+    if (scene.campfires?.some(fire => touchesPolygon(bush.entry, bush.hide, campfireFootprint(fire), clearance))) return "campfire-collision";
     // The jump is a short explicit corridor, never permission to cut through water or a building.
     for (const site of scene.sites) if (touchesPolygon(bush.entry, bush.hide, site.collision, clearance)) return "building-collision";
     if (scene.water?.surfaces.some(surface => touchesPolygon(bush.entry, bush.hide, surface.points, clearance))) return "water-collision";
     for (let sample = 0; sample <= 16; sample++) {
       const t = sample / 16, point = { x: bush.entry.x + (bush.hide.x - bush.entry.x) * t,
         y: bush.entry.y + (bush.hide.y - bush.entry.y) * t }, lift = Math.sin(t * Math.PI) * actor.size * .28;
-      if (distance(point, actor.spawn) > radius) return "outside-clearing-radius";
+      // The local route ends at entry; the bounded jump can extend beyond it.
+      if (distance(point, actor.spawn) > radius + WORLD_INTERACTION_LIMITS.bushJump) return "outside-clearing-radius";
       for (const dx of [-actor.size * .5, actor.size * .5]) for (const dy of [-actor.size - lift, actor.size * .08]) {
         const x = point.x + dx, y = point.y + dy;
         if (x < 0 || y < 0 || x > scene.width || y > scene.height) return "outside-map";
@@ -186,7 +232,7 @@ function compileRoute(path: WorldPath, home: WorldPoint, scene: FixedWorldScene)
   for (let i = 1; i < points.length; i++) distances.push(distances[i - 1] + distance(points[i - 1], points[i]));
   const bush = path.bushId ? scene.bushes?.find(item => item.id === path.bushId) : undefined;
   return { id: path.id, points, distances, length: distances.at(-1)!, activity: path.activity ?? "look", pauseSeconds: path.pauseSeconds,
-    ...(bush ? { bush: { id: bush.id, entry: { ...bush.entry }, hide: { ...bush.hide } } } : {}) };
+    ...(bush ? { bush: clearingBush(bush) } : {}) };
 }
 export function createClearingActivity(scene: FixedWorldScene, seed = Math.random() * 0x100000000): ClearingActivityState {
   const diagnostics = clearingRouteDiagnostics(scene), home = { ...scene.actor?.spawn ?? { x: scene.focus.x + scene.focus.width / 2, y: scene.focus.y + scene.focus.height / 2 } };
@@ -222,13 +268,27 @@ function startActivity(state: ClearingActivityState, options: ClearingActivityOp
     state.direction = bushDirection(route.bush.entry, route.bush.hide);
     state.bushEffect = { id: route.bush.id, elapsed: 0, seed: Math.trunc(random(state) * 0x100000000), emitted: 0, bursts: [] };
     state.lastActivity = "bush";
+    if (state.behavior.mind.intention?.action !== "bush")
+      beginForestIntention(state.behavior.mind, "bush", route.bush.id, "Исследует шуршащий куст", "clearing");
     return;
   }
   const night = clamp(options.dusk), wet = clamp(options.rain), choice = random(state);
-  let activity = route?.activity ?? (wet > .45 ? "sniff" : night > .5 ? "rest" : choice < .35 ? "groom" : "look");
+  let activity = route?.activity;
+  if (!activity) {
+    const candidates = (["look", "sniff", "groom", "rest"] as const).map(action =>
+      scoreForestAction(state.behavior.mind, action, `nearby-${action}`, { rain: wet, dusk: night, noise: random(state) * .6 }));
+    for (const candidate of candidates) if (candidate.action === "rest" && (wet > .35 || state.elapsed < state.awakeUntil)) {
+      candidate.available = false; candidate.score = null; candidate.reasons = ["Сейчас лучше оставаться бодрым"];
+    }
+    const selected = candidates.filter(item => item.available).sort((a, b) => b.score! - a.score!)[0];
+    activity = (selected?.action ?? "look") as ClearingAction;
+    recordForestCandidates(state.behavior.mind, candidates, selected?.key ?? null);
+  }
   if (activity === "rest" && state.elapsed < state.awakeUntil) activity = "look";
   if (activity === "rest" && wet > .35) activity = "groom";
-  if (!route && activity === state.lastActivity) activity = activity === "groom" ? "look" : "groom";
+  if (!state.behavior.mind.intention || state.behavior.mind.intention.action !== activity)
+    beginForestIntention(state.behavior.mind, activity, route?.id ?? `nearby-${activity}`,
+      activity === "rest" ? "Восстанавливает силы на полянке" : "Выбрал спокойное занятие рядом", "clearing");
   const variant = state.lastVariant < 0 ? Math.floor(random(state) * 3) : (state.lastVariant + 1 + Math.floor(random(state) * 2)) % 3;
   state.lastActivity = activity; state.lastVariant = variant;
   let steps: ActionStep[];
@@ -313,6 +373,16 @@ function settleClearing(state: ClearingActivityState) {
   state.freeRoute = null; state.freePurpose = null; state.routeIndex = -1; state.steps = [];
   state.waitSeconds = 2.8 + random(state) * 3;
 }
+/** Optional grass exploration owns no reserved workplace. Release only that
+ * intention and choose again after the ordinary pause, from the current feet. */
+function releaseOccupiedRoamingGoal(state: ClearingActivityState, id: string) {
+  const intention = state.behavior.mind.intention;
+  if (intention?.source === "clearing" && intention.key === id)
+    finishForestIntention(state.behavior.mind, "interrupted", "Место занято соседом — выберет другое занятие");
+  state.behavior.target = null;
+  settleClearing(state);
+  state.behavior.reason = "roaming-place-occupied";
+}
 /** Holds the destination until releaseClearingPoint so a queued routine cannot lose its turn. */
 export function requestClearingPoint(state: ClearingActivityState, point: WorldPoint): boolean {
   if (!finitePoint(point) || !state.navigation || !state.navigationEnabled || state.activeInteraction || state.retiring || state.bushRequested
@@ -358,11 +428,15 @@ export function canVisitClearingBush(state: ClearingActivityState) {
 }
 function startDynamicInteraction(state: ClearingActivityState, interaction: WorldInteraction): boolean {
   if (!state.navigation) return false;
+  const corridor = [...interaction.departure.slice().reverse(), interaction.kind === "home" ? interaction.doorway : interaction.hide];
+  if (corridor.some((point, index) => index > 0 && !canTraverseWorldObstacle(state.navigation!, corridor[index - 1], point))) {
+    state.behavior.reason = `${interaction.kind}-blocked-by-prop`; return false;
+  }
   const approach = findInteractionApproach(state.navigation, state.position, interaction);
   if (!approach) { state.behavior.reason = `${interaction.kind}-unreachable`; return false; }
   const route: ClearingRoute = { ...navigatedRoute(state, approach.points, interaction.id,
     interaction.kind === "bush" ? "bush" : "look", interaction.kind === "home" && approach.departure.length > 1),
-    ...(interaction.kind === "bush" ? { bush: { id: interaction.id, entry: { ...interaction.entry }, hide: { ...interaction.hide } },
+    ...(interaction.kind === "bush" ? { bush: { id: interaction.id, entry: { ...interaction.entry }, hide: { ...interaction.hide }, concealStart: interaction.concealStart },
       pauseSeconds: interaction.pauseSeconds } : {}) };
   state.activeInteraction = { kind: interaction.kind, route, departure: approach.departure.map(point => ({ ...point })) };
   state.freeRoute = null; state.freePurpose = null; state.routeIndex = -1;
@@ -373,6 +447,7 @@ function startDynamicInteraction(state: ClearingActivityState, interaction: Worl
   state.behavior.reason = `path-to-${interaction.kind}`;
   state.behavior.target = { id: interaction.id, position: { ...interaction.entry }, activity: "look" };
   if (interaction.kind === "home") {
+    beginForestIntention(state.behavior.mind, "home-sleep", "home-sleep", "Хочет отдохнуть в домике", "clearing");
     state.doorway = { ...interaction.doorway }; state.doorProgress = 0;
     state.doorSeconds = Math.max(DOOR_FADE_SECONDS, distance(interaction.entry, interaction.doorway) / (state.size * .24));
   }
@@ -429,6 +504,13 @@ function updateBushPosition(state: ClearingActivityState) {
   if (!bush) return;
   state.position = { x: bush.entry.x + (bush.hide.x - bush.entry.x) * state.bushProgress,
     y: bush.entry.y + (bush.hide.y - bush.entry.y) * state.bushProgress };
+}
+function bushJumpTiming(bush: ClearingBush, size: number) {
+  // Smoothstep's maximum derivative is 1.5. A smaller actor takes longer to
+  // cross the same authored jump, preserving the physical speed and pose timing.
+  const travelSeconds = distance(bush.entry, bush.hide) * 1.5 / (size * BUSH_MAX_SPEED_RATIO);
+  return { enter: Math.max(BUSH_ENTER_SECONDS, travelSeconds),
+    exit: BUSH_EXIT_ANTICIPATION_SECONDS + Math.max(BUSH_EXIT_SECONDS - BUSH_EXIT_ANTICIPATION_SECONDS, travelSeconds) };
 }
 function leaveBush(state: ClearingActivityState, wake = false, still = false) {
   state.bushWake ||= wake; state.bushLeaving = true; state.steps = []; state.speed = 0;
@@ -551,7 +633,8 @@ function beginAttention(state: ClearingActivityState, sleepy: boolean, resume: C
     : [{ pose: "blink", seconds: .2 }, { pose: random(state) < .5 ? "greet" : "wonder", seconds: .9 }, { pose: "idle", seconds: .25 }];
 }
 /** A meaningful touch cancels a nap, rather than painting a greeting over paused sleep. */
-export function noticeClearingActivity(state: ClearingActivityState, options: { still?: boolean } = {}): boolean {
+export function noticeClearingActivity(state: ClearingActivityState, options: { still?: boolean; mindNoticed?: boolean } = {}): boolean {
+  if (!options.mindNoticed) noticeForestMind(state.behavior.mind, { rested: state.stage === "home-sleep" && state.stageElapsed >= 5 });
   state.idleSeconds = 0; state.retiring = false; state.awakeUntil = state.elapsed + CLEARING_AWAKE_GRACE_SECONDS;
   state.pendingBush = null; state.pendingInteractionBush = null; state.bushRequested = false;
   state.returnToSpawn = false; state.requestedPoint = null;
@@ -604,11 +687,47 @@ export function noticeClearingActivity(state: ClearingActivityState, options: { 
   beginAttention(state, sleepy, resume);
   return true;
 }
+/** Replan only ordinary ground. The final home threshold and the departure
+ * corridor keep their authored geometry; held goals and action clocks survive. */
+function detourResidents(state: ClearingActivityState, route: ClearingRoute, options: ClearingActivityOptions) {
+  if (!state.navigation || !state.navigationEnabled || options.navigationMode === "routes") return false;
+  const free = state.stage === "free-walk" && state.freePurpose !== "interaction-exit";
+  const approach = Boolean(state.activeInteraction && ["homebound", "outbound"].includes(state.stage));
+  const groundEnd = route.navigationLength;
+  if ((!free && !approach) || groundEnd === undefined || state.distance >= groundEnd - .001) return false;
+  const target = sampleWalk(route, groundEnd).position;
+  const points = residentTrafficDetour({ owner: state, navigation: state.navigation, from: state.position,
+    target, size: options.residentSize ?? state.size, occupants: options.occupants, selfId: "mochlik", time: state.elapsed });
+  if (!points) return false;
+  // Steering against the static map could round a safe detour through a
+  // resident. Keep these short chords exact and check them on every step.
+  const tail = route.points.filter((_, index) => route.distances[index] > groundEnd + .001);
+  const replacement = navigatedRoute(state, [...points, ...tail], route.id, route.activity, false, false);
+  replacement.navigationLength = replacement.length - tail.reduce((sum, point, index) =>
+    sum + distance(index ? tail[index - 1] : target, point), 0);
+  replacement.bush = route.bush; replacement.pauseSeconds = route.pauseSeconds;
+  if (free) state.freeRoute = replacement;
+  else state.activeInteraction!.route = replacement;
+  state.distance = 0; state.speed = 0; state.behavior.reason = "walk-around-resident";
+  return true;
+}
+
 function advanceWalk(state: ClearingActivityState, dt: number, options: ClearingActivityOptions) {
   const free = state.stage === "free-walk";
   const route = free ? state.freeRoute : state.activeInteraction?.route ?? (state.routeKind === "home" ? state.homeRoute : state.routes[state.routeIndex]);
   if (free && !route) { settleClearing(state); return; }
   if (!route) { arriveHome(state, options.dusk); return; }
+  if (free && state.freePurpose === "roam" && route.activity !== "bush" && !state.requestedPoint && !state.activeInteraction) {
+    const target = route.points.at(-1)!;
+    if (!canTraverseResidents(target, target, options.residentSize ?? state.size, options.occupants, "mochlik")) {
+      releaseOccupiedRoamingGoal(state, route.id); return;
+    }
+  }
+  const waiting = parkedPropWait.get(state);
+  if (waiting?.navigation === state.navigation && waiting.route === route && waiting.stage === state.stage) {
+    state.speed = 0; return;
+  }
+  parkedPropWait.delete(state);
   const returning = state.stage === "return" || state.stage === "home-return";
   const remaining = returning ? state.distance : route.length - state.distance;
   const maxSpeed = state.size * .36 * (1 - clamp(options.dusk) * .25) * (1 - clamp(options.rain) * .12);
@@ -623,6 +742,18 @@ function advanceWalk(state: ClearingActivityState, dt: number, options: Clearing
   if (!returning && navigationLength !== undefined && state.distance < navigationLength && nextDistance > navigationLength)
     nextDistance = navigationLength;
   let sample = sampleWalk(route, nextDistance);
+  if (state.navigation && !canTraverseWorldObstacle(state.navigation, state.position, sample.position)) {
+    // A basket can be put down after this walk was planned. Replan from the real
+    // feet, including rounded steering, rather than advancing through its body.
+    if (free && state.freePurpose && state.freePurpose !== "interaction-exit" && route.activity !== "bush") {
+      const path = findWorldPath(state.navigation, state.position, route.points.at(-1)!);
+      if (path) { beginFreeWalk(state, path, state.freePurpose, route.activity, route.id); return; }
+    }
+    // Old authored paths and doorway exceptions retain their exact geometry.
+    // They wait safely if a prop blocks them instead of bypassing its collision.
+    state.speed = 0; state.behavior.reason = "parked-prop-blocked";
+    parkedPropWait.set(state, { navigation: state.navigation, route, stage: state.stage }); return;
+  }
   if (!returning && state.navigation && navigationLength !== undefined && nextDistance <= navigationLength
     && !canTraverse(state.navigation, state.position, sample.position)) {
     // A long frame can span several rounded chords. Even then the rendered
@@ -634,6 +765,11 @@ function advanceWalk(state: ClearingActivityState, dt: number, options: Clearing
     if (!canTraverse(state.navigation, state.position, sample.position)) {
       state.speed = 0; state.behavior.reason = "steering-blocked"; return;
     }
+  }
+  if (!canTraverseResidents(state.position, sample.position, options.residentSize ?? state.size, options.occupants, "mochlik")) {
+    state.speed = 0;
+    if (!detourResidents(state, route, options)) state.behavior.reason = "waiting-for-resident";
+    return;
   }
   const step = Math.abs(nextDistance - state.distance);
   state.distance = nextDistance; state.walked += step; state.position = sample.position;
@@ -696,6 +832,7 @@ export function advanceClearingActivity(state: ClearingActivityState, delta: num
     else { retrace(state); state.behavior.reason = "return-before-mode-change"; }
   }
   if (!state.homeEnabled && state.routeKind === "home" && state.stage !== "home-return" && state.stage !== "exiting") {
+    if (state.behavior.mind.intention?.action === "home-sleep") finishForestIntention(state.behavior.mind, "interrupted", "Домик недоступен — выходит на полянку");
     state.retiring = false; retrace(state);
   }
   if (state.homeEnabled && !state.retiring && state.idleSeconds >= CLEARING_HOME_IDLE_SECONDS
@@ -741,6 +878,7 @@ export function advanceClearingActivity(state: ClearingActivityState, delta: num
   if (state.stage === "home" || state.stage === "clearing") {
     if (state.stage === "clearing" && (state.retiring || state.pendingBush !== null)) { retrace(state); return; }
     if (state.retiring && state.homeEnabled) {
+      beginForestIntention(state.behavior.mind, "home-sleep", "home-sleep", "Отправляется отдохнуть в домике", "clearing");
       state.stage = "homebound"; state.routeKind = "home"; state.stageElapsed = 0; state.distance = 0; state.speed = 0; return;
     }
     if (state.pendingBush !== null) {
@@ -754,7 +892,9 @@ export function advanceClearingActivity(state: ClearingActivityState, delta: num
         position: state.position, size: state.size, elapsed: state.elapsed, awakeUntil: state.awakeUntil,
         dusk: options.dusk, rain: options.rain, random: () => random(state),
       });
-      if (goal) beginFreeWalk(state, goal.path, "roam", goal.activity, goal.id);
+      if (goal && !canTraverseResidents(goal.position, goal.position, options.residentSize ?? state.size, options.occupants, "mochlik"))
+        releaseOccupiedRoamingGoal(state, goal.id);
+      else if (goal) beginFreeWalk(state, goal.path, "roam", goal.activity, goal.id);
       else startActivity(state, options);
       return;
     }
@@ -770,6 +910,7 @@ export function advanceClearingActivity(state: ClearingActivityState, delta: num
   }
   if (state.stage === "activity") {
     if (state.stageElapsed < state.steps.reduce((sum, step) => sum + step.seconds, 0)) return;
+    finishForestIntention(state.behavior.mind, "completed", "Закончил занятие на полянке");
     if (state.navigationEnabled && state.routeIndex < 0) settleClearing(state);
     else if (state.routeIndex >= 0) { state.stage = "return"; state.stageElapsed = 0; state.steps = []; }
     else arriveHome(state, options.dusk);
@@ -793,12 +934,13 @@ function burst(state: ClearingActivityState, slot: number, strength: number) {
 function advanceBush(state: ClearingActivityState) {
   const route = bushRoute(state), bush = route?.bush;
   if (!bush) { retrace(state); return; }
+  const timing = bushJumpTiming(bush, state.size);
   if (state.stage === "bush-prepare") {
     if (state.stageElapsed >= BUSH_PREPARE_SECONDS) { state.stage = "bush-enter"; state.stageElapsed = 0; }
   } else if (state.stage === "bush-enter") {
-    state.bushProgress = smooth(state.stageElapsed / BUSH_ENTER_SECONDS); updateBushPosition(state);
+    state.bushProgress = smooth(state.stageElapsed / timing.enter); updateBushPosition(state);
     if (state.bushProgress >= .5) burst(state, 0, .85);
-    if (state.stageElapsed >= BUSH_ENTER_SECONDS) {
+    if (state.stageElapsed >= timing.enter) {
       state.bushProgress = 1; updateBushPosition(state);
       state.stage = state.bushLeaving ? "bush-exit" : "bush-hidden"; state.stageElapsed = 0;
     }
@@ -808,14 +950,15 @@ function advanceBush(state: ClearingActivityState) {
     if (state.stageElapsed >= Math.max(1.25, duration * .58)) burst(state, 2, 1);
     if (state.stageElapsed >= duration) { state.stage = "bush-exit"; state.stageElapsed = 0; }
   } else if (state.stage === "bush-exit") {
-    const travel = clamp((state.stageElapsed - .18) / (BUSH_EXIT_SECONDS - .18));
+    const travel = clamp((state.stageElapsed - BUSH_EXIT_ANTICIPATION_SECONDS) / (timing.exit - BUSH_EXIT_ANTICIPATION_SECONDS));
     state.bushProgress = 1 - smooth(travel); updateBushPosition(state);
     state.direction = bushDirection(bush.hide, bush.entry);
     if (travel >= .07) burst(state, 3, .65);
-    if (state.stageElapsed >= BUSH_EXIT_SECONDS) {
+    if (state.stageElapsed >= timing.exit) {
       state.bushProgress = 0; updateBushPosition(state); state.stage = "bush-land"; state.stageElapsed = 0;
     }
   } else if (state.stageElapsed >= BUSH_LAND_SECONDS) {
+    if (state.behavior.mind.intention?.action === "bush") finishForestIntention(state.behavior.mind, "completed", "Выбрался из куста и закончил исследование");
     if (state.activeInteraction) { finishDynamicInteraction(state, state.bushWake ? "awake" : null); return; }
     if (state.bushWake) beginAttention(state, false, "return");
     else { state.stage = "return"; state.stageElapsed = 0; }
@@ -834,16 +977,23 @@ function bushFrame(state: ClearingActivityState): Partial<ClearingActivityFrame>
     return age < 0 || age > 1.3 ? sum : sum + item.strength * smooth(age / .08) * Math.exp(-age * 3.5)
       * (.8 + .2 * Math.cos(age * 20));
   }, 0);
-  const foliage = { id, rustle: clamp(rustle), occlude: Boolean(routeBush), occupied: bushStage(state.stage),
+  // A live HMR session can still own a route compiled before this depth field
+  // existed. Only its airborne phases use the safe temporal fallback.
+  const start = routeBush && Number.isFinite(routeBush.concealStart) && routeBush.concealStart >= 0 && routeBush.concealStart < 1 - 1e-8
+    ? routeBush.concealStart : 0;
+  const conceal = routeBush && ["bush-enter", "bush-hidden", "bush-exit"].includes(state.stage)
+    ? state.stage === "bush-hidden" ? 1 : smooth((state.bushProgress - start) / (1 - start)) : 0;
+  const foliage = { id, rustle: clamp(rustle), occlude: conceal >= 1, occupied: bushStage(state.stage),
     elapsed: matchingEffect?.elapsed ?? 0, bursts: matchingEffect?.bursts ?? [] };
   if (!routeBush || !bushStage(state.stage)) return { bush: foliage };
+  const timing = bushJumpTiming(routeBush, state.size);
   const t = state.stageElapsed;
   let lift = 0, compression = 0, pose: PixelPose = "idle", frame = 0;
   if (state.stage === "bush-prepare") {
     compression = .28 * smooth((t - .45) / (BUSH_PREPARE_SECONDS - .45));
     pose = t < .45 ? "wonder" : "idle";
   } else if (state.stage === "bush-enter") {
-    const travel = clamp(t / BUSH_ENTER_SECONDS);
+    const travel = clamp(t / timing.enter);
     compression = .28 * (1 - smooth(travel / .22)) + smooth((travel - .25) / .75);
     lift = state.size * (.2 * Math.sin(travel * Math.PI) + BUSH_TUCK_LIFT * smooth((travel - .35) / .65));
     pose = "jump"; frame = Math.min(3, Math.floor(travel * 4));
@@ -851,7 +1001,7 @@ function bushFrame(state: ClearingActivityState): Partial<ClearingActivityFrame>
     compression = 1; lift = state.size * BUSH_TUCK_LIFT;
     pose = "jump"; frame = 3;
   } else if (state.stage === "bush-exit") {
-    const travel = clamp((t - .18) / (BUSH_EXIT_SECONDS - .18));
+    const travel = clamp((t - BUSH_EXIT_ANTICIPATION_SECONDS) / (timing.exit - BUSH_EXIT_ANTICIPATION_SECONDS));
     compression = 1 - smooth(travel);
     lift = state.size * (BUSH_TUCK_LIFT * (1 - smooth(travel)) + .18 * Math.sin(travel * Math.PI));
     pose = "jump"; frame = Math.min(3, Math.floor(travel * 4));
@@ -860,7 +1010,7 @@ function bushFrame(state: ClearingActivityState): Partial<ClearingActivityFrame>
     pose = t < .3 ? "jump" : t < .85 ? "shake" : "blink";
     frame = Math.floor(t * 5) % 4;
   }
-  return { bush: foliage, lift, compression: clamp(compression), pose, frame };
+  return { bush: foliage, opacity: 1 - conceal, lift, compression: clamp(compression), pose, frame };
 }
 
 export function clearingActivityFrame(state: ClearingActivityState, options: { still?: boolean } = {}): ClearingActivityFrame {

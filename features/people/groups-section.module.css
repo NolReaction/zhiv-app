@@ -516,7 +516,10 @@
   color: white !important;
 }
 
-button:disabled {
+.section button:disabled,
+.createDialog button:disabled,
+.dialog button:disabled,
+.confirmDialog button:disabled {
   cursor: wait;
   opacity: 0.5;
 }

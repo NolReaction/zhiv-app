@@ -1,8 +1,11 @@
 "use client";
 
+import { useActivity } from "@/features/activity/use-activity";
+import { ActivityGate } from "@/features/activity/activity-gate";
 import { PlayerName } from "@/components/player-name";
 import dynamic from "next/dynamic";
-import { reportIncident, incidentCode } from "@/lib/client-incidents";
+import { WorldDevEntry } from "@/features/world/dev/world-dev-entry";
+import { reportIncident, incidentCode, reportStartupIncident, resolveStartupIncidents } from "@/lib/client-incidents";
 import { AppNavigation, appViews, type AppView } from "@/features/app/navigation";
 
 import { GameLevelsButton } from "@/features/game/game-levels-button";
@@ -78,6 +81,10 @@ import { CheckInReceipt } from "./check-in-receipt";
 import { useSimpleView } from "@/features/check-in/use-simple-view";
 import { useWorldPortal } from "@/features/world/use-world-portal";
 import { useWorld } from "@/features/world/use-world";
+import { useEconomy } from "@/features/economy/use-economy";
+import { GardenCollectionContext, useGardenCollectionController } from "@/features/economy/garden-collection-context";
+import { economySceneActivity, economySceneJourney, economySceneProduction, economySceneConstruction, economyWorldState } from "@/features/economy/world-adapter";
+import { worldActivity } from "@/features/world/world-activity";
 import { WORLD_DEV_ENABLED, worldDevStore } from "@/features/world/dev/world-dev-store";
 import { MochlikTerrarium } from "@/features/mochlik/mochlik-terrarium";
 import styles from "./check-in-app.module.css";
@@ -85,12 +92,17 @@ import glass from "@/components/glass-action.module.css";
 import { notify, TransientNotice } from "@/components/app-notifications";
 import { createUuidV4 } from "@/lib/browser-uuid";
 import { copyText } from "@/lib/identity-sharing";
+import { createIdentityRecovery, type IdentityRecovery } from "./identity-recovery";
+import { AppStartup, useAppStartup } from "@/features/startup/app-startup";
+import { startupPresentation } from "@/features/startup/startup-model";
+import { useStartupModules } from "@/features/startup/use-startup-modules";
+import type { SceneLoadState } from "@/features/startup/scene-load-state";
 
 type Screen = "loading" | "load-error" | "onboarding" | "home" | "session-lost";
 type ActiveView = AppView;
 const WorldPortal = dynamic(() => import("@/features/world/world-portal"), { ssr: false });
 const WorldDevPanel = process.env.NODE_ENV === "development"
-  ? dynamic(() => import("@/features/world/dev/world-dev-panel"), { ssr: false }) : null;
+  ? WorldDevEntry : null;
 
 type PendingBootstrap = {
   version: 1;
@@ -317,18 +329,39 @@ function TapCounter({ progress, result, count, isRecord }: {
       className={styles.tapCounter}
       data-urgency={urgency}
       data-state={active ? "active" : "finished"}
+      data-record={!active && isRecord ? "true" : undefined}
       style={timerStyle}
       aria-hidden="true"
     >
-      <strong>{!active && isRecord ? "Рекорд " : ""}×{count.toLocaleString("ru-RU")}</strong>
+      <span className={styles.tapCounterLabel}>
+        {!active && isRecord ? <Trophy size={12} /> : null}
+        {active ? "Серия" : isRecord ? "Рекорд" : "Результат"}
+      </span>
+      <strong>×{count.toLocaleString("ru-RU")}</strong>
       {active ? <small>{seconds}с</small> : null}
       {active ? <i className={styles.tapCounterProgress} /> : null}
     </span>
   );
 }
 
+// Load the world module only when an existing account is actually left. This
+// also invalidates a parked scene whose canvas cleanup has not run yet.
+function forgetAccountForest(owner: string | null) {
+  if (owner) void import("@/features/world/forest-session")
+    .then(({ forgetForestSession }) => forgetForestSession(`zhiv:mochlik:presence:${owner}`))
+    .catch(() => undefined);
+}
+
 export function CheckInApp() {
+  return <AppStartup><CheckInContent /></AppStartup>;
+}
+
+function CheckInContent() {
+  const { active: startupActive, report: reportStartup } = useAppStartup();
+  const [startupRetry, setStartupRetry] = useState(0);
+  const [sceneLoad, setSceneLoad] = useState<{ owner: string | undefined; state: SceneLoadState }>({ owner: undefined, state: "loading" });
   const [screen, setScreen] = useState<Screen>("loading");
+  const [identityError, setIdentityError] = useState<string | null>(null);
   const [me, setMe] = useState<MeResponse | null>(null);
   const [name, setName] = useState("");
   const [nameError, setNameError] = useState<string | null>(null);
@@ -362,17 +395,10 @@ export function CheckInApp() {
   const { simpleView, appearanceReady, setSimpleView } = useSimpleView();
   const mochlikVisible = appearanceReady && !simpleView;
   const worldPortal = useWorldPortal(screen === "home" ? me?.user.publicId ?? null : null);
+  const worldPeopleReturn = useRef(false);
+  const appNavigationRef = useRef<HTMLElement | null>(null);
   const [worldMounted, setWorldMounted] = useState(false);
-  useEffect(() => {
-    if (screen !== "home" || !mochlikVisible) return;
-    // Warm lazy modules after the initial screen. The service worker retains
-    // their hashed responses, so entering the world also works after reconnects.
-    const timer = setTimeout(() => {
-      void import("@/features/world/world-portal").catch(() => undefined);
-      void import("@/features/world/map-engine").catch(() => undefined);
-    }, 1200);
-    return () => clearTimeout(timer);
-  }, [screen, mochlikVisible]);
+  const startupModules = useStartupModules(screen === "home" && mochlikVisible, startupRetry);
   const closeWorld = worldPortal.close;
   const [mochlikWakeSignal, setMochlikWakeSignal] = useState(0);
   const gameTrigger = useRef<HTMLElement | null>(null);
@@ -400,6 +426,7 @@ export function CheckInApp() {
   const [groupsError, setGroupsError] = useState<string | null>(null);
   const [groupsUpdatedAt, setGroupsUpdatedAt] = useState<number | null>(null);
   const identityEpoch = useRef(0);
+  const identityRecovery = useRef<IdentityRecovery | null>(null);
   const accountReturn = useRef(false);
   const peopleRequest = useRef(0);
   const groupsRequest = useRef(0);
@@ -549,6 +576,9 @@ export function CheckInApp() {
   ]);
 
   const loseSession = useCallback(() => {
+    forgetAccountForest(clickerOwnerPublicId.current);
+    identityRecovery.current?.dispose();
+    void resolveStartupIncidents(null);
     closeWorld();
     setCalendarOpen(false);
     setGameOpen(false);
@@ -577,9 +607,72 @@ export function CheckInApp() {
     resetTransientCheckIn,
   ]);
 
-  const game = useGameProgress({ ownerPublicId: screen === "home" ? me?.user.publicId ?? null : null, isOnline, onSessionLost: loseSession });
-  const recordGameTap = game.recordTap;
   const world = useWorld(screen === "home" ? me?.user.publicId ?? null : null, loseSession);
+  const economy = useEconomy(screen === "home" ? me?.user.publicId ?? null : null, loseSession);
+  const { reconcile: reconcileWorld, setAvailable: setWorldAvailable } = world;
+  const { reconcile: reconcileEconomy, setAvailable: setEconomyAvailable } = economy;
+  const reconcileGameplay = useCallback(async () => {
+    const results = await Promise.all([reconcileWorld(), reconcileEconomy()]);
+    return results.every(Boolean);
+  }, [reconcileWorld, reconcileEconomy]);
+  const pauseGameplay = useCallback(() => {
+    setWorldAvailable(false); setEconomyAvailable(false);
+  }, [setWorldAvailable, setEconomyAvailable]);
+  const activity = useActivity(screen === "home" ? me?.user.publicId ?? null : null, reconcileGameplay, loseSession, pauseGameplay);
+  const game = useGameProgress({ ownerPublicId: screen === "home" ? me?.user.publicId ?? null : null, isOnline: isOnline && activity.active, enabled: activity.active, onSessionLost: loseSession });
+  const recordGameTap = game.recordTap;
+  const gardenCollection = useGardenCollectionController(economy, screen === "home" ? me?.user.publicId ?? null : null,
+    activity.active && (worldPortal.open || (activeView === "check-in" && mochlikVisible && !calendarOpen && !gameOpen && !statusOpen)));
+  const renderedWorldState = useMemo(() => economyWorldState(world.snapshot?.state, economy.snapshot), [world.snapshot?.state, economy.snapshot]);
+  const economicJourney = useMemo(() => economySceneJourney(economy.snapshot), [economy.snapshot]);
+  const economicProduction = useMemo(() => economySceneProduction(economy.snapshot), [economy.snapshot]);
+  const economicConstruction = useMemo(() => economySceneConstruction(economy.snapshot), [economy.snapshot]);
+  const economicActivity = useMemo(() => economySceneActivity(economy.snapshot), [economy.snapshot]);
+  const currentActivity = worldActivity(economicActivity, renderedWorldState, economy.snapshot ? economy.now : world.now);
+  const gameStartupReady = Boolean(game.progress) || game.errorCode === "STORAGE_FAILED" || game.status === "blocked";
+  const sceneCanMount = Boolean(world.snapshot && economy.snapshot && gameStartupReady);
+  const handleSceneLoadState = useCallback((state: SceneLoadState) => {
+    setSceneLoad(previous => previous.owner === me?.user.publicId && previous.state === state ? previous : { owner: me?.user.publicId, state });
+  }, [me?.user.publicId]);
+  const { active: activityActive, mode: activityMode, retryAt: activityRetryAt, retry: retryActivity } = activity;
+  const { snapshot: startupWorld, refreshNow: refreshStartupWorld } = world;
+  const { snapshot: startupEconomy, refresh: refreshStartupEconomy } = economy;
+  const refreshStartupGame = game.refresh;
+  const retryStartup = useCallback(() => {
+    if (screen === "loading" || screen === "load-error") identityRecovery.current?.retry();
+    else if (screen === "home") {
+      // retry() preserves AFK/input time and reconciles existing receipts.
+      if (!activityActive) void retryActivity();
+      else {
+        if (!startupWorld) void refreshStartupWorld();
+        if (!startupEconomy) void refreshStartupEconomy();
+        if (!gameStartupReady) void refreshStartupGame();
+      }
+    }
+    setStartupRetry(value => value + 1);
+  }, [screen, activityActive, retryActivity, startupWorld, refreshStartupWorld, startupEconomy, refreshStartupEconomy, gameStartupReady, refreshStartupGame]);
+  useEffect(() => {
+    if (!startupActive) return;
+    reportStartup(startupPresentation({ screen, online: isOnline, identityError, appearanceReady, simpleView, sceneRequired: activeView === "check-in",
+      activityMode: activity.mode, activityError: activity.error, worldReady: Boolean(world.snapshot), economyReady: Boolean(economy.snapshot),
+      gameReady: gameStartupReady, gameFailed: game.status === "error" || game.status === "offline",
+      scene: sceneLoad.owner === me?.user.publicId ? sceneLoad.state : "loading", modules: startupModules,
+    }), retryStartup);
+  }, [startupActive, reportStartup, retryStartup, screen, isOnline, identityError, appearanceReady, simpleView, activity.mode, activity.error,
+    world.snapshot, economy.snapshot, gameStartupReady, game.status, sceneLoad, me?.user.publicId, startupModules, activeView]);
+  useEffect(() => {
+    if (!startupActive || screen !== "home" || activityMode !== "error") return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const schedule = () => {
+      clearTimeout(timer);
+      if (document.hidden || !navigator.onLine) return;
+      timer = setTimeout(() => { if (!document.hidden && navigator.onLine) void retryActivity(); }, Math.max(3_000, activityRetryAt - Date.now()));
+    };
+    schedule();
+    window.addEventListener("online", schedule);
+    document.addEventListener("visibilitychange", schedule);
+    return () => { clearTimeout(timer); window.removeEventListener("online", schedule); document.removeEventListener("visibilitychange", schedule); };
+  }, [startupActive, screen, activityMode, activityRetryAt, retryActivity]);
   const worldDevOwner = screen === "home" ? me?.user.publicId ?? null : null;
   const worldEntryButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -650,6 +743,8 @@ export function CheckInApp() {
   }, [loseSession]);
 
   const adoptMe = useCallback((identity: MeResponse) => {
+    identityRecovery.current?.dispose();
+    void resolveStartupIncidents(identity.user.publicId);
     identityEpoch.current += 1;
     setPeopleUpdatedAt(null);
     setGroupsUpdatedAt(null);
@@ -672,7 +767,10 @@ export function CheckInApp() {
     ) {
       clearPendingCheckIn();
     }
-    if (isAccountSwitch) closeWorld();
+    if (isAccountSwitch) {
+      forgetAccountForest(clickerOwnerPublicId.current);
+      closeWorld();
+    }
     clearPendingBootstrap();
     resetTransientCheckIn();
     setCheckInUnconfirmed(Boolean(pendingCheckIn.current));
@@ -721,8 +819,6 @@ export function CheckInApp() {
   }, [loseSession, syncMeSnapshot]);
 
   useEffect(() => {
-    let active = true;
-
     accountReturn.current = new URL(window.location.href).searchParams.get("auth") === "account-proof";
     try {
       accountReturn.current ||= ["email", "merge", "delete"].includes(window.sessionStorage.getItem("zhiv:account-action") ?? "");
@@ -739,40 +835,70 @@ export function CheckInApp() {
     pendingBootstrap.current = restoredBootstrap;
     pendingCheckIn.current = restoredCheckIn;
 
-    void getMe()
-      .then((identity) => {
-        if (!active) return;
+    const recovery = createIdentityRecovery({
+      load: getMe,
+      isOnline: () => navigator.onLine,
+      isVisible: () => !document.hidden,
+      onLoading: () => {
+        setIdentityError(null);
+        setScreen("loading");
+      },
+      onIdentity: (identity) => {
         if (identity) adoptMe(identity);
         else {
-          if (restoredBootstrap) setName(restoredBootstrap.displayName);
+          void resolveStartupIncidents(null);
+          if (pendingBootstrap.current) setName(pendingBootstrap.current.displayName);
           clearPendingCheckIn();
           resetTransientCheckIn();
           setScreen("onboarding");
         }
-      })
-      .catch(() => {
-        if (!active) return;
+      },
+      onFailure: (error, attempted) => {
+        if (attempted) reportStartupIncident(error);
+        setIdentityError(error instanceof ApiError ? error.message : null);
         setScreen("load-error");
-      });
+      },
+    });
+    identityRecovery.current = recovery;
+    recovery.retry();
 
-    const markOnline = () => setIsOnline(true);
-    const markOffline = () => setIsOnline(false);
+    const resumeIdentity = () => {
+      setIsOnline(navigator.onLine);
+      recovery.resume();
+    };
+    const markOffline = () => {
+      setIsOnline(false);
+      recovery.pause();
+      recovery.resume();
+    };
     const flushClickerProgress = () => persistClickerRun(clickerRunRef.current);
     const flushHiddenClickerProgress = () => {
-      if (document.hidden) flushClickerProgress();
+      if (document.hidden) {
+        flushClickerProgress();
+        recovery.pause();
+      } else resumeIdentity();
     };
-    window.addEventListener("online", markOnline);
+    const pauseIdentity = () => {
+      flushClickerProgress();
+      recovery.pause();
+    };
+    window.addEventListener("online", resumeIdentity);
     window.addEventListener("offline", markOffline);
-    window.addEventListener("pagehide", flushClickerProgress);
+    window.addEventListener("pageshow", resumeIdentity);
+    window.addEventListener("focus", resumeIdentity);
+    window.addEventListener("pagehide", pauseIdentity);
     document.addEventListener("visibilitychange", flushHiddenClickerProgress);
 
     const clock = window.setInterval(() => setClientNowMs(Date.now()), 15_000);
 
     return () => {
-      active = false;
-      window.removeEventListener("online", markOnline);
+      recovery.dispose();
+      if (identityRecovery.current === recovery) identityRecovery.current = null;
+      window.removeEventListener("online", resumeIdentity);
       window.removeEventListener("offline", markOffline);
-      window.removeEventListener("pagehide", flushClickerProgress);
+      window.removeEventListener("pageshow", resumeIdentity);
+      window.removeEventListener("focus", resumeIdentity);
+      window.removeEventListener("pagehide", pauseIdentity);
       document.removeEventListener("visibilitychange", flushHiddenClickerProgress);
       window.clearInterval(clock);
       if (burstTimer.current) clearTimeout(burstTimer.current);
@@ -785,8 +911,8 @@ export function CheckInApp() {
   }, [adoptMe, clearPendingCheckIn, persistClickerRun, resetTransientCheckIn]);
 
   useEffect(() => {
-    if (screen === "home" && activeView === "check-in") homeHeading.current?.focus();
-  }, [activeView, screen]);
+    if (!startupActive && screen === "home" && activeView === "check-in") homeHeading.current?.focus();
+  }, [activeView, screen, startupActive]);
 
   useEffect(() => {
     if (screen !== "home") return;
@@ -838,22 +964,8 @@ export function CheckInApp() {
     return () => window.clearTimeout(timer);
   }, [clockOffsetMs, me?.profile.displayNameChangeAvailableAt, screen]);
 
-  async function retryIdentity() {
-    setScreen("loading");
-    try {
-      const identity = await getMe();
-      if (identity) adoptMe(identity);
-      else {
-        if (pendingBootstrap.current) {
-          setName(pendingBootstrap.current.displayName);
-        }
-        clearPendingCheckIn();
-        resetTransientCheckIn();
-        setScreen("onboarding");
-      }
-    } catch {
-      setScreen("load-error");
-    }
+  function retryIdentity() {
+    identityRecovery.current?.retry();
   }
 
   const triggerStoryEffect = useCallback((type: ClickerEffect) => {
@@ -1214,7 +1326,7 @@ export function CheckInApp() {
     : game.errorCode === "GAME_SESSION_EXPIRED" && !isOnline ? "Разрешение на игру без связи истекло. Уже сделанные нажатия остаются в очереди; подключитесь, чтобы продолжить."
     : game.errorCode === "GAME_PERMIT_CLOSED" ? "Игра была передана другому устройству или разрешение закончилось. Допустимые нажатия сохранены; поздние не входят в рейтинг."
     : game.status === "error" ? "Не удалось получить подтверждение. Очередь остаётся на этом устройстве; повторим отправку автоматически."
-    : !isOnline ? "Офлайн. Нажатия сохраняются на этом устройстве. После подключения отправим очередь; при заполнении хранилища покажем предупреждение."
+    : !isOnline ? "Нет подключения. Игра приостановлена; ранее сохранённые нажатия отправим после восстановления связи."
     : game.status === "loading" ? "Загружаем игровой прогресс…"
     : game.pendingTaps ? `Ожидают подтверждения: ${game.pendingTaps.toLocaleString("ru-RU")} тапов. Можно продолжать играть.`
     : game.archivedTaps ? `Не удалось проверить ${game.archivedTaps.toLocaleString("ru-RU")} прежних нажатий. Запись сохранена на этом устройстве для разбора; можно продолжать играть. Подтверждённый прогресс остаётся в аккаунте.`
@@ -1276,13 +1388,7 @@ export function CheckInApp() {
   }
 
   if (screen === "loading") {
-    return (
-      <main className={styles.centered} aria-busy="true">
-        <div className={styles.loadingMark} role="status" aria-label="Загрузка приложения">
-          Я
-        </div>
-      </main>
-    );
+    return <main className={styles.centered} aria-busy="true" />;
   }
 
   if (screen === "load-error") {
@@ -1290,10 +1396,11 @@ export function CheckInApp() {
       <main className={styles.centered}>
         <section className={styles.onboarding} aria-labelledby="load-error-title">
           <p className={styles.eyebrow}>Я ЖИВОЙ</p>
-          <h1 id="load-error-title">Сервер молчит</h1>
+          <h1 id="load-error-title">{isOnline ? "Не удалось загрузить профиль" : "Нет подключения"}</h1>
           <p className={styles.intro}>
-            Профиль не изменён. Проверим связь ещё раз — без создания нового пользователя.
+            Профиль не изменён. Повторная проверка не создаёт нового пользователя.
           </p>
+          {identityError ? <p className={styles.intro} role="status">{identityError}</p> : null}
           <button className={styles.retryButton} type="button" onClick={retryIdentity}>
             Повторить
           </button>
@@ -1320,10 +1427,10 @@ export function CheckInApp() {
             onRecovered={adoptMe}
           />
         </section>
-        <CapabilityLanding
+        {!startupActive && <CapabilityLanding
           authenticated={false}
           onInviteAccepted={() => undefined}
-        />
+        />}
       </main>
     );
   }
@@ -1360,17 +1467,20 @@ export function CheckInApp() {
           </AccountEntry>
           <RecoveryStarter context="onboarding" isOnline={isOnline} onRecovered={adoptMe} />
         </section>
-        <CapabilityLanding
+        {!startupActive && <CapabilityLanding
           authenticated={false}
           onInviteAccepted={() => undefined}
-        />
+        />}
       </main>
     );
   }
 
+  if (screen === "home" && !activity.active) return <ActivityGate activity={activity} />;
+
   return (
+    <GardenCollectionContext.Provider value={gardenCollection}>
     <main className={styles.shell} data-active-view={activeView}>
-      <AuthReturnNotice />
+      {!startupActive && <AuthReturnNotice />}
       <TransientNotice message={notice} />
       <header className={styles.header}>
         <span className={styles.wordmark}>Я ЖИВОЙ</span>
@@ -1430,6 +1540,8 @@ export function CheckInApp() {
               <Trophy size={18} aria-hidden="true" /><strong>Рейтинг</strong>
             </button>
             </div>
+            <div className={styles.buttonLayout}>
+            <div className={styles.buttonGroup}>
             <div
               className={`${styles.buttonStage} ${mochlikVisible ? styles.habitatStage : ""} ${tapActive ? styles.buttonStageActive : ""} ${
                 seriesBreakBurst !== null && !mochlikVisible ? styles.seriesBreaking : ""
@@ -1438,9 +1550,10 @@ export function CheckInApp() {
             >
             <div className={styles.buttonOrbit} ref={buttonOrbit}>
             {mochlikVisible && <div className={styles.habitatSurface} style={buttonStyle} hidden={!mochlikVisible}>
-              <MochlikTerrarium key={me?.user.publicId} suspended={!mochlikVisible || worldPortal.open || calendarOpen || gameOpen || statusOpen}
-                wakeSignal={mochlikWakeSignal} nowMs={world.now} timeZone={me?.profile.timeZone ?? "UTC"} userId={me?.user.publicId}
-                bestStreakDays={me?.streak.longestDays ?? 0} items={game.progress?.items} worldState={world.snapshot?.state} worldGifts={world.snapshot?.gifts} />
+              {sceneCanMount && <MochlikTerrarium key={me?.user.publicId} suspended={!mochlikVisible || worldPortal.open || calendarOpen || gameOpen || statusOpen}
+                onLoadState={handleSceneLoadState} retrySignal={startupRetry}
+                wakeSignal={mochlikWakeSignal} nowMs={economy.snapshot ? economy.now : world.now} timeZone={me?.profile.timeZone ?? "UTC"} userId={me?.user.publicId}
+                bestStreakDays={me?.streak.longestDays ?? 0} items={game.progress?.items} worldState={renderedWorldState} worldGifts={world.snapshot?.gifts} economyJourney={economicJourney} cancelledExplorations={economy.cancelledExplorations} economyBuildings={economy.snapshot?.buildings} economyProduction={economicProduction} economyConstruction={economicConstruction} activity={currentActivity} />}
             </div>}
             <button
               type="button"
@@ -1452,11 +1565,9 @@ export function CheckInApp() {
               onClick={handleGameClick}
               aria-busy={isSending}
               aria-label="Я живой — отметиться и поиграть"
-              aria-describedby={visualTapCount >= 1 ? "clicker-total" : undefined}
+              aria-describedby={[visualTapCount >= 1 ? "clicker-total" : null, mochlikVisible && currentActivity ? "mochlik-activity-status" : null].filter(Boolean).join(" ") || undefined}
             >
               <span className={styles.checkInTitle}>Я ЖИВОЙ</span>
-              <TapCounter progress={clickerRun} result={seriesSummary} count={visualTapCount}
-                isRecord={isConfirmedRecord} />
             </button>
             {visualTapCount >= 1 ? (
               <span id="clicker-total" className={styles.srOnly}>
@@ -1568,6 +1679,12 @@ export function CheckInApp() {
             ) : null}
             </div>
             </div>
+            <div className={styles.seriesPanel}>
+              <TapCounter progress={clickerRun} result={seriesSummary} count={visualTapCount}
+                isRecord={isConfirmedRecord} />
+            </div>
+            </div>
+            </div>
           </div>
 
           <div className={styles.statusBlock}>
@@ -1592,6 +1709,7 @@ export function CheckInApp() {
 
       ) : activeView === "people" ? (
         <PeopleView
+          ownerPublicId={me?.user.publicId ?? null}
           data={people}
           groups={groups}
           error={peopleError}
@@ -1618,6 +1736,7 @@ export function CheckInApp() {
           gamePendingTaps={game.pendingTaps}
           legacyGame={legacyGame}
           onRefreshGame={() => { void game.refresh(); }}
+          onRewardsClaimed={() => { void economy.refresh(); }}
           nowMs={adjustedNow}
           isOnline={isOnline}
           clickerStats={{
@@ -1647,28 +1766,38 @@ export function CheckInApp() {
         ownerPublicId={me.user.publicId} progress={game.progress} onProgress={game.adoptProgress} onSessionLost={loseSession} isOnline={isOnline}
         returnFocus={() => { if (gameTrigger.current?.isConnected) gameTrigger.current.focus(); }} /> : null}
 
-      {WorldDevPanel && me && <WorldDevPanel key={`dev:${me.user.publicId}`} world={world}
+      {WorldDevPanel && me && <WorldDevPanel key={`dev:${me.user.publicId}`} world={world} economy={economy}
+        presenceKey={`zhiv:mochlik:presence:${me.user.publicId}`}
         active={activeView === "check-in" && !worldPortal.open && !calendarOpen && !gameOpen && !statusOpen}
         onOpenWorld={() => worldEntryButton.current?.click()}
         onOpenCalendar={streak ? () => setCalendarOpen(true) : undefined}
         onOpenGame={() => setGameOpen(true)} />}
       {worldMounted && me && <WorldPortal key={`world:${me.user.publicId}`} open={worldPortal.open} onClose={worldPortal.close}
-        origin={worldPortal.origin} returnFocus={worldPortal.returnFocus} world={world}
+        origin={worldPortal.origin} returnFocus={() => {
+          if (worldPeopleReturn.current) {
+            worldPeopleReturn.current = false;
+            appNavigationRef.current?.querySelector<HTMLElement>('[aria-current="page"]')?.focus({ preventScroll: true });
+          } else worldPortal.returnFocus();
+        }} world={world} economy={economy}
         ownerPublicId={me.user.publicId} timeZone={me.profile.timeZone} displayName={me.user.displayName}
+        isOnline={isOnline} onSessionLost={loseSession}
+        friends={{ data: people, loading: peopleLoading, error: peopleError, updatedAt: peopleUpdatedAt, isOnline, onRefresh: () => refreshPeople() }}
+        onOpenPeople={() => { worldPeopleReturn.current = true; worldPortal.close(); selectView("people"); }}
         level={clickerLevel.level} wakeSignal={mochlikWakeSignal}
         bestStreakDays={me.streak.longestDays} items={game.progress?.items} />}
-      <footer className={styles.footer}>
+      <footer ref={appNavigationRef} className={styles.footer}>
         <AppNavigation active={activeView} onSelect={selectView}
           invitations={(people?.incomingRequests.length ?? 0) + (groups?.incomingInvites.length ?? 0)} />
       </footer>
-      <CapabilityLanding
+      {!startupActive && <CapabilityLanding
         authenticated={true}
         onInviteAccepted={() => {
           setActiveView("people");
           void refreshPeople();
           void refreshGroups();
         }}
-      />
+      />}
     </main>
+    </GardenCollectionContext.Provider>
   );
 }

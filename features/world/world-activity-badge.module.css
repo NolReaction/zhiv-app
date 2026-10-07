@@ -1,0 +1,28 @@
+.badge { --activity-color: #cae59b; --activity-dial-size: 44px; display: inline-flex; align-items: center; gap: 6px; min-width: 0; width: max-content; max-width: 100%; padding: 3px 10px 3px 3px; border: 1px solid #b8ce9645; border-radius: 28px; background: #14271bf2; box-shadow: 0 4px 14px #05110770; color: #e8f2db; text-align: left; }
+.badge[data-world-activity='fishing'] { --activity-color: #9cdae1; }
+.badge[data-world-activity='cave'] { --activity-color: #d5c5a8; }
+.badge[data-world-activity='production'] { --activity-color: #e2c893; }
+.badge[data-ready='true'] { --activity-color: #f3d991; border-color: #ddc37885; background: #28351bf5; }
+.badge[data-collection-phase='harvesting'] .fill { stroke-dasharray: 3 4; }
+.dial { position: relative; flex: 0 0 var(--activity-dial-size); width: var(--activity-dial-size); height: var(--activity-dial-size); border-radius: 50%; background: #243a2a; }
+.ring { position: absolute; inset: 0; width: 100%; height: 100%; fill: none; stroke-width: 3; transform: rotate(-90deg); }
+.track { stroke: #c0d69a26; }
+.fill { stroke: var(--activity-color); stroke-linecap: round; transition: stroke-dashoffset .5s linear; }
+.icon { position: absolute; inset: 7px; display: grid; place-items: center; color: var(--activity-color); }
+.icon > svg { width: 22px; height: 22px; }
+.check { position: absolute; bottom: -1px; right: -1px; display: grid; place-items: center; width: 17px; height: 17px; border: 2px solid #25351c; border-radius: 50%; color: #273517; background: #f3d991; }
+.text { display: flex; flex-direction: column; gap: 3px; min-width: 0; line-height: 1.15; }
+.text > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: clamp(9px, 2.1vw, 11px); color: #bccdaf; }
+.text > strong { overflow: hidden; text-overflow: ellipsis; font-size: clamp(11px, 2.6vw, 13px); color: var(--activity-color); font-weight: 650; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.compactStatus { display: none; }
+.sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+@container (max-width: 230px) {
+  .badge { --activity-dial-size: 34px; gap: 5px; padding: 3px 9px 3px 3px; }
+  .icon { inset: 6px; }
+  .icon > svg { width: 20px; height: 20px; }
+  .check { width: 14px; height: 14px; border-width: 1px; }
+  .text > span, .fullStatus { display: none; }
+  .compactStatus { display: inline; }
+  .text > strong { font-size: 11px; }
+}
+@media (prefers-reduced-motion: reduce) { .fill { transition: none; } }

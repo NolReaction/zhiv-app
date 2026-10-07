@@ -1,0 +1,12 @@
+.summary { min-width: 0; color: var(--forest-ink, #394d3e); }
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin: 0; }
+.stat { display: flex; min-width: 0; flex-direction: column; justify-content: space-between; gap: 5px; padding: 9px 10px; border: 1px solid var(--forest-border, #c8bd98); border-radius: 10px; background: color-mix(in srgb, var(--forest-primary, #466347) 5%, var(--forest-paper-light, #f0e6ca)); }
+.stat dt { display: flex; align-items: flex-start; gap: 5px; margin: 0; color: var(--forest-muted, #59624d); font-size: 11px; line-height: 1.35; overflow-wrap: anywhere; }
+.stat dt svg { width: 13px; height: 13px; flex: 0 0 13px; margin-top: 1px; color: var(--forest-primary, #466347); }
+.stat dd { margin: 0; color: var(--forest-ink, #394d3e); font-size: 20px; font-weight: 750; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.stat dd span { font-size: 11px; font-weight: 500; color: var(--forest-muted, #59624d); }
+.stat dd .withoutBait { font-size: 15px; font-weight: 650; color: var(--forest-ink, #394d3e); }
+.summary .note { margin: 6px 0 0; color: var(--forest-muted, #59624d); font-size: 11px; line-height: 1.4; }
+@media (max-width: 360px) {
+  .stat { padding: 8px; }
+}

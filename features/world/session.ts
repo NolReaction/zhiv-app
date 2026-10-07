@@ -1,7 +1,7 @@
 import { reportIncident, incidentCode } from "@/lib/client-incidents";
 import { ApiError } from "@/lib/check-in-api";
 import { createUuidV4 } from "@/lib/browser-uuid";
-import type { WorldCommand, WorldSnapshot } from "./model";
+import { worldCommandSchema, type WorldCommand, type WorldSnapshot } from "./model";
 
 type Transport = {
   get: (signal: AbortSignal) => Promise<WorldSnapshot>;
@@ -10,12 +10,28 @@ type Transport = {
 type View = { snapshot: WorldSnapshot | null; error: string | null; notice: string; busy: boolean; uncertain: boolean; feedbackAt: number };
 
 /** One account session survives opening/closing the map; receipts never belong to a renderer. */
-export function createWorldSession(owner: string | null, transport: Transport, onSessionLost: () => void) {
+export function createWorldSession(owner: string | null, transport: Transport, onSessionLost: () => void, storage?: Pick<Storage, "getItem" | "setItem" | "removeItem">) {
   let view: View = { snapshot: null, error: null, notice: "", busy: false, uncertain: false, feedbackAt: 0 };
   let pending: WorldCommand | null = null;
-  let active = false, epoch = 0, readSequence = 0;
+  let active = false, available = true, epoch = 0, readSequence = 0;
+  let rateLimitedUntil = 0;
   let reading: Promise<void> | null = null, lastReadAt = -Infinity, blockedUntil = 0, failures = 0;
   let serverClock = Date.now(), localClock = performance.now();
+  const storageKey = `zhiv:world:pending:v1:${owner}`;
+  function remember(value: WorldCommand | null) {
+    pending = value;
+    try { if (value) storage?.setItem(storageKey, JSON.stringify(value)); else storage?.removeItem(storageKey); } catch { /* Memory remains available. */ }
+  }
+  function restore() {
+    if (!owner || pending) return;
+    try {
+      const raw = storage?.getItem(storageKey); if (!raw) return;
+      const parsed = worldCommandSchema.safeParse(JSON.parse(raw));
+      if (parsed.success && parsed.data.ownerPublicId === owner) {
+        pending = parsed.data; publish({ uncertain: true, error: "Остался неподтверждённый запрос. Проверим его перед продолжением." });
+      } else storage?.removeItem(storageKey);
+    } catch { /* Invalid cache is never executed. */ }
+  }
   const listeners = new Set<() => void>(), requests = new Set<AbortController>();
   const publish = (patch: Partial<View>) => {
     if (patch.notice || patch.error && patch.error !== view.error) patch.feedbackAt = Date.now();
@@ -30,7 +46,7 @@ export function createWorldSession(owner: string | null, transport: Transport, o
   }
   const controller = () => { const request = new AbortController(); requests.add(request); return request; };
   function refresh(force = true): Promise<void> {
-    if (!active || !owner || view.busy || performance.now() < blockedUntil) return Promise.resolve();
+    if (!active || !available || !owner || view.busy || performance.now() < blockedUntil) return Promise.resolve();
     if (reading) return reading;
     if (!force && performance.now() - lastReadAt < 15_000) return Promise.resolve();
     lastReadAt = performance.now();
@@ -51,25 +67,29 @@ export function createWorldSession(owner: string | null, transport: Transport, o
       failures++;
       blockedUntil = performance.now() + (error instanceof ApiError && error.status === 429
         ? Math.max(1000, error.retryAfterMs ?? 60_000) : Math.min(60_000, 2000 * 2 ** Math.min(failures - 1, 5)));
+      if (error instanceof ApiError && error.status === 429) rateLimitedUntil = blockedUntil;
       if (owner) reportIncident(owner, "world", incidentCode(error), 0, error);
       if (error instanceof ApiError && error.status === 401) onSessionLost();
       else if (!pending) publish({ error: error instanceof ApiError ? error.message : "Нет связи. Сохранённый мир появится после подключения." });
     } finally { requests.delete(request); }
   }
   async function execute(command: WorldCommand) {
-    if (!active || view.busy || command.ownerPublicId !== owner) return;
+    if (!active || !available || view.busy || performance.now() < blockedUntil || command.ownerPublicId !== owner) return;
     const generation = epoch, request = controller();
     ++readSequence;
-    pending = command; publish({ busy: true, error: null, notice: "" });
+    reading = null; remember(command); publish({ busy: true, error: null, notice: "" });
     try {
       const result = await transport.send(command, request.signal);
       if (!valid(generation)) return;
-      if (adopt(result.snapshot)) { pending = null; publish({ notice: result.message, uncertain: false }); }
+      if (adopt(result.snapshot)) { remember(null); publish({ notice: result.message, uncertain: false }); }
     } catch (error) {
       if (!valid(generation)) return;
       if (owner) reportIncident(owner, "world", incidentCode(error), 0, error);
-      const definitive = error instanceof ApiError && error.status < 500;
-      if (definitive) pending = null;
+      const throttled = error instanceof ApiError && error.status === 429;
+      const definitive = error instanceof ApiError && error.status >= 400 && error.status < 500
+        && ![401, 408, 425, 429].includes(error.status) && error.body?.code !== "GAME_SESSION_INACTIVE";
+      if (throttled) blockedUntil = rateLimitedUntil = performance.now() + Math.max(1000, error.retryAfterMs ?? 60_000);
+      if (definitive) remember(null);
       publish({ uncertain: !definitive, error: error instanceof ApiError ? error.message : "Ответ не пришёл. Проверьте результат тем же запросом." });
       if (error instanceof ApiError && error.status === 401) onSessionLost();
       else if (definitive) {
@@ -81,13 +101,31 @@ export function createWorldSession(owner: string | null, transport: Transport, o
       if (valid(generation)) publish({ busy: false });
     }
   }
+  function setAvailable(value: boolean) {
+    if (available === value) return;
+    available = value;
+    if (!value) {
+      epoch++; readSequence++; reading = null;
+      requests.forEach(request => request.abort()); requests.clear();
+      publish({ busy: false, uncertain: Boolean(pending) });
+    } else { lastReadAt = -Infinity; blockedUntil = Math.max(0, rateLimitedUntil); }
+  }
+  async function reconcile() {
+    setAvailable(true);
+    if (!active || !owner || performance.now() < blockedUntil) return false;
+    if (pending) await execute(pending);
+    if (pending || !active || !available) return false;
+    await refresh();
+    return Boolean(view.snapshot && !view.error && !view.busy && !pending && available);
+  }
   return {
+    setAvailable, reconcile,
     setSessionLost(callback: () => void) { onSessionLost = callback; },
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     getSnapshot: () => view,
     now: () => serverClock + performance.now() - localClock,
     activate() {
-      active = true;
+      active = true; lastReadAt = -Infinity; restore();
       return () => {
         active = false; epoch++; readSequence++;
         reading = null;
@@ -98,7 +136,7 @@ export function createWorldSession(owner: string | null, transport: Transport, o
     refresh,
     refreshSoft: () => refresh(false),
     act(action: WorldCommand["action"], target = "") {
-      if (!owner || !view.snapshot || pending || !active) return;
+      if (!owner || !view.snapshot || pending || !active || !available) return;
       void execute({ requestId: createUuidV4(), ownerPublicId: owner, expectedRevision: view.snapshot.revision, action, target });
     },
     retry: () => pending ? execute(pending) : refresh(),

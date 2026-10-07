@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 import sharp from "sharp";
+import { findTerrainMaster } from "../scripts/lib/world-assets.mjs";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
@@ -16,8 +17,8 @@ const { createHabitat, HOME, DOORSTEP, BUSH, BUSH_EDGE } = await vite.ssrLoadMod
 
 test("new source resolution is independent of logical map coordinates", async () => {
   const { NEW_MAP_BOUNDS, TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
-  const master = await readFile(`${root}/art/world/prototype/forest-ground.png`);
-  const source = await sharp(master).metadata();
+  const master = await readFile(await findTerrainMaster(`${root}/art/world/prototype`));
+  const source = (await sharp(master).autoOrient().raw().toBuffer({ resolveWithObject: true })).info;
   const bytes = await readFile(`${root}/public${FOREST_MAP.image.split("?")[0]}`), runtime = await sharp(bytes).metadata();
   assert.ok(source.width > 0 && source.height > 0);
   assert.equal(runtime.width, source.width); assert.equal(runtime.height, source.height);

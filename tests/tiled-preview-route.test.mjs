@@ -129,7 +129,7 @@ function canvasEnvironment(t) {
   const frames = new Map(); let nextFrame = 0;
   const context = () => {
     const calls = [];
-    return new Proxy({ calls, drawImage() {}, createRadialGradient: () => ({ addColorStop() {} }),
+    return new Proxy({ calls, drawImage: (...args) => calls.push({ method: "drawImage", args }), createRadialGradient: () => ({ addColorStop() {} }),
       bezierCurveTo: (...args) => calls.push({ method: "bezierCurveTo", args }),
     }, { get: (target, key) => key in target ? target[key] : () => {} });
   };
@@ -157,6 +157,89 @@ function canvasEnvironment(t) {
   } };
 }
 const options = { levels: {}, night: false, debug: false, selectedSiteId: null, reducedMotion: false };
+
+test("loaded level atomically changes image bounds and revalidates routes in both preview views", async t => {
+  const env = canvasEnvironment(t);
+  let release;
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "Image");
+  Object.defineProperty(globalThis, "Image", { configurable: true, writable: true, value: class {
+    naturalWidth = 1; naturalHeight = 1;
+    set src(value) {
+      if (value === "/home-2.png") release = () => this.onload?.();
+      else queueMicrotask(() => this.onload?.());
+    }
+    removeAttribute() {}
+  } });
+  t.after(() => descriptor ? Object.defineProperty(globalThis, "Image", descriptor) : delete globalThis.Image);
+  const base = { bounds: { x: 300, y: 300, width: 40, height: 40 }, anchor: { x: 320, y: 330 },
+    entry: { x: 320, y: 345 }, hitArea: [], collision: [] };
+  const changed = { ...base, bounds: { x: 80, y: 0, width: 60, height: 60 }, entry: { x: 70, y: 20 },
+    collision: [{ x: 80, y: 10 }, { x: 100, y: 10 }, { x: 100, y: 30 }, { x: 80, y: 30 }] };
+  const authored = { ...scene, sites: [{ id: "home", label: "Home", ...base, initialLevel: 1,
+    states: [{ level: 1, label: "1", image: "/home-1.png", geometry: base },
+      { level: 2, label: "2", image: "/home-2.png", geometry: changed }] }] };
+  const renderer = await createFixedWorldRenderer(env.world, env.circle, authored, options);
+  t.after(() => renderer.dispose());
+  assert.equal(renderer.selectPath("river-bank"), true);
+  renderer.update({ ...options, levels: { home: 2 } });
+  assert.equal(renderer.selectPath("river-bank"), true, "pending art preserves old navigation");
+  assert.equal(env.world.dataset.renderedLevels, '{"home":1}');
+  release();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(renderer.selectPath("river-bank"), false, "new collision invalidates old route");
+  for (const canvas of [env.world, env.circle]) {
+    assert.equal(canvas.dataset.renderedLevels, '{"home":2}');
+    const image = canvas.context.calls.filter(call => call.method === "drawImage" && call.args[0] instanceof Image).at(-1);
+    assert.deepEqual(image.args.slice(-4), [80, 0, 60, 60]);
+    assert.equal(canvas.dataset.actorMoving, "false");
+  }
+  renderer.dispose();
+});
+
+test("switching back to a broken bridge loads its debris before replacing either complete view", async t => {
+  const env = canvasEnvironment(t), requests = [];
+  let releaseDebris;
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "Image");
+  Object.defineProperty(globalThis, "Image", { configurable: true, writable: true, value: class {
+    naturalWidth = 1; naturalHeight = 1;
+    set src(value) {
+      this.url = value;
+      requests.push(value);
+      if (value === "/beams.png") releaseDebris = () => this.onload?.();
+      else queueMicrotask(() => this.onload?.());
+    }
+    removeAttribute() {}
+  } });
+  t.after(() => descriptor ? Object.defineProperty(globalThis, "Image", descriptor) : delete globalThis.Image);
+  const base = { bounds: { x: 300, y: 300, width: 40, height: 40 }, anchor: { x: 320, y: 330 },
+    entry: { x: 320, y: 345 }, hitArea: [], collision: [] };
+  const authored = { ...scene, terrain: [{ id: "bridge-debris", image: "/beams.png", bounds: base.bounds,
+    when: { siteId: "bridge", level: 0 } }], sites: [{ id: "bridge", label: "Bridge", ...base, initialLevel: 1,
+    states: [0, 1].map(level => ({ level, label: String(level), image: "/bridge.png" })) }] };
+  const renderer = await createFixedWorldRenderer(env.world, env.circle, authored, options);
+  t.after(() => renderer.dispose());
+  assert.deepEqual(requests, ["/bridge.png"], "intact bridge does not request hidden debris");
+  renderer.update({ ...options, levels: { bridge: 0 } });
+  assert.ok(releaseDebris, "the requested scene, not the previous scene, supplies new terrain assets");
+  for (const canvas of [env.world, env.circle]) assert.equal(canvas.dataset.renderedLevels, '{"bridge":1}');
+  releaseDebris();
+  await new Promise(resolve => setImmediate(resolve));
+  for (const canvas of [env.world, env.circle]) {
+    assert.equal(canvas.dataset.renderedLevels, '{"bridge":0}');
+    assert.ok(canvas.context.calls.some(call => call.method === "drawImage" && call.args[0]?.url === "/beams.png"));
+    canvas.context.calls.length = 0;
+  }
+  renderer.update({ ...options, levels: { bridge: 1 } });
+  await new Promise(resolve => setImmediate(resolve));
+  for (const canvas of [env.world, env.circle]) canvas.context.calls.length = 0;
+  renderer.update({ ...options, levels: { bridge: 1 } });
+  for (const canvas of [env.world, env.circle]) {
+    assert.equal(canvas.dataset.renderedLevels, '{"bridge":1}');
+    assert.equal(canvas.context.calls.some(call => call.method === "drawImage" && call.args[0]?.url === "/beams.png"), false);
+  }
+  assert.equal(authored.terrain.length, 1, "switching leaves source artwork intact");
+  renderer.dispose();
+});
 
 test("renderer stays idle by default, settles on reduced motion, and cancels pending animation on reset/dispose", async t => {
   const env = canvasEnvironment(t), statuses = [];
@@ -240,4 +323,74 @@ test("night torches animate while the actor stands still and stop on pause, redu
   assert.equal(env.frames.size, 0);
   lateCallback(1000);
   assert.equal(env.world.dataset.frame, finalFrame, "a queued light tick cannot repaint a disposed preview");
+});
+
+test("daytime chimneys share one clock across both views and stop when paused, hidden, reduced, downgraded or disposed", async t => {
+  const env = canvasEnvironment(t);
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "Image");
+  Object.defineProperty(globalThis, "Image", { configurable: true, writable: true, value: class {
+    naturalWidth = 1; naturalHeight = 1;
+    set src(value) { queueMicrotask(() => this.onload?.()); }
+    removeAttribute() {}
+  } });
+  t.after(() => descriptor ? Object.defineProperty(globalThis, "Image", descriptor) : delete globalThis.Image);
+  const base = { bounds: { x: 205, y: 205, width: 145, height: 145 }, anchor: { x: 275, y: 335 },
+    entry: { x: 250, y: 355 }, hitArea: [], collision: [] };
+  const upgraded = { ...base, chimney: { x: 230, y: 225 } };
+  const authored = { ...scene, sites: [{ id: "home", label: "Home", ...upgraded, initialLevel: 5,
+    states: [{ level: 1, label: "1", image: "/chimney-test-home-1.png", geometry: base },
+      { level: 5, label: "5", image: "/chimney-test-home-5.png", geometry: upgraded }] }] };
+  const renderer = await createFixedWorldRenderer(env.world, env.circle, authored, options);
+  t.after(() => renderer.dispose());
+  assert.equal(env.world.dataset.night, "false");
+  assert.equal(env.frames.size, 1, "authored chimney starts the daytime clock without walking or flickering lights");
+  const firstPuffs = env.world.context.calls.filter(call => call.method === "drawImage").slice(-6);
+  assert.equal(firstPuffs.length, 6);
+  const texture = firstPuffs[0].args[0];
+  assert.equal(texture.width, 64); assert.equal(texture.height, 64);
+  const puffs = canvas => canvas.context.calls.filter(call => call.method === "drawImage" && call.args[0] === texture)
+    .slice(-6).map(call => call.args.slice(1));
+  const initialPuffs = puffs(env.world), initialFrame = env.world.dataset.frame;
+  env.tick(100); env.tick(180);
+  assert.notEqual(env.world.dataset.frame, initialFrame);
+  assert.notDeepEqual(puffs(env.world), initialPuffs, "the clock advances actual smoke geometry");
+  assert.deepEqual(puffs(env.circle), puffs(env.world), "world and circle consume identical elapsed time");
+  assert.equal(env.world.dataset.actorMoving, "false");
+  assert.equal(env.world.dataset.actorX, "250");
+  assert.equal(env.world.dataset.actorY, "300");
+
+  for (const stopped of [{ ...options, paused: true }, { ...options, reducedMotion: true }, { ...options, showBuildings: false }]) {
+    env.world.context.calls.length = 0;
+    renderer.update(stopped);
+    const frame = env.world.dataset.frame, stillPuffs = puffs(env.world);
+    assert.equal(env.frames.size, 0);
+    if (stopped.reducedMotion || stopped.showBuildings === false) assert.deepEqual(stillPuffs, [], "disabled smoke is not drawn");
+    env.tick(500);
+    assert.equal(env.world.dataset.frame, frame);
+    assert.deepEqual(puffs(env.world), stillPuffs);
+    renderer.update(options);
+    assert.equal(env.frames.size, 1, "resuming smoke creates exactly one animation loop");
+  }
+
+  document.hidden = true; document.dispatchEvent(new Event("visibilitychange"));
+  const hiddenFrame = env.world.dataset.frame;
+  assert.equal(env.frames.size, 0);
+  env.tick(600); assert.equal(env.world.dataset.frame, hiddenFrame);
+  document.hidden = false; document.dispatchEvent(new Event("visibilitychange"));
+  assert.equal(env.frames.size, 1);
+
+  renderer.update({ ...options, levels: { home: 1 } });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(env.world.dataset.renderedLevels, '{"home":1}');
+  assert.equal(env.frames.size, 0, "downgrading to geometry without a chimney releases the animation loop");
+  const lowerFrame = env.world.dataset.frame;
+  env.tick(700); assert.equal(env.world.dataset.frame, lowerFrame);
+  renderer.update({ ...options, levels: { home: 5 } });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(env.frames.size, 1);
+  const lateCallback = [...env.frames.values()][0], finalFrame = env.world.dataset.frame;
+  renderer.dispose();
+  assert.equal(env.frames.size, 0);
+  lateCallback(1000);
+  assert.equal(env.world.dataset.frame, finalFrame, "a queued smoke tick cannot repaint a disposed preview");
 });

@@ -1,4 +1,5 @@
 import layout from "./forest-ground-layout.json";
+import { forestBushArtworkAvailable } from "./forest-bush-artwork";
 import type { ForestGroundExclusion } from "./forest-ground-weather";
 import { previewPointInPolygon } from "./tiled/preview-state";
 import type { FixedWorldScene, WorldBounds, WorldPoint } from "./tiled/types";
@@ -63,7 +64,8 @@ function groundLayout(scene: FixedWorldScene): GroundLayout | null {
   // The entire authored water surface is forbidden, including lilies/rocks inside
   // its exclusions. Dry objects in water do not become open ground automatically.
   const forbidden = [...(scene.water?.surfaces ?? []), ...(scene.water?.exclusions ?? []),
-    ...scene.sites.map(site => ({ points: site.collision }))]
+    ...scene.sites.map(site => ({ points: site.collision })),
+    ...(scene.bushes ?? []).filter(bush => forestBushArtworkAvailable(scene, bush))]
     .filter(polygon => polygon.points.length >= 3)
     .map(polygon => ({ ...polygon, bounds: polygonBounds(polygon.points) }));
   const accepted = new Set<number>(), patches = new Map<number, GroundPatch>();

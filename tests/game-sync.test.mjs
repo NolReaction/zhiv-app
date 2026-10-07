@@ -473,7 +473,7 @@ test("new client reads old monthly responses and explicitly asks for the expande
       entries: [{ rank: 1, displayName: "Owner", taps: 5, isMe: true }], myRank: 1, monthlyTaps: 5, leaderboardOptIn: true });
     assert.equal((await gameApi.getGameLeaderboard()).entries[0].score, 5);
     globalThis.fetch = async url => {
-      assert.equal(url, "/api/v1/game/achievements?catalog=4");
+      assert.equal(url, "/api/v1/game/achievements?catalog=5");
       return Response.json({ ownerPublicId: owner, serverTime: "2026-09-07T10:00:00Z",
         achievements: [["seven_day_streak",7],["thousand_taps",1000],["five_friends",5]].map(([id,target]) => ({ id, target, progress: 0, unlockedAt: null })) });
     };

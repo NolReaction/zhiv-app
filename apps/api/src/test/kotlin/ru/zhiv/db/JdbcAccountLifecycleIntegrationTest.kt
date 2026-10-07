@@ -8,6 +8,9 @@ import io.ktor.http.*
 import kotlinx.serialization.json.*
 import kotlinx.serialization.encodeToString
 import ru.zhiv.world.*
+import ru.zhiv.economy.*
+import ru.zhiv.forest.*
+import ru.zhiv.game.ProgressionRewardClaim
 import ru.zhiv.installZhivApi
 import kotlinx.coroutines.*
 import org.junit.jupiter.api.Test
@@ -90,6 +93,67 @@ class JdbcAccountLifecycleIntegrationTest {
         execute("INSERT INTO recipient_sharing_preferences(actor_user_id,recipient_user_id,sharing_mode) VALUES (?,?,?) ON CONFLICT(actor_user_id,recipient_user_id) DO UPDATE SET sharing_mode=EXCLUDED.sharing_mode",a.id,b.id,mode)
     }
 
+    @Test fun `merge preserves farther rare clock with its type and never initializes a new draw`(): Unit=runBlocking {
+        val a=account(); val b=account(); val c=account(); val browser=tokens.issue().hash
+        val economy=JdbcEconomyRepository(source)
+        listOf(a,b,c).forEach { economy.snapshot(it.session) }
+        val near=EconomyRareDropClock(remainingSeconds=500,itemId="living_resin")
+        val far=EconomyRareDropClock(remainingSeconds=400000,itemId="moon_crystal")
+        for ((account,clock) in listOf(a to near,b to far)) {
+            val state=source.connection.use { readEconomyProfile(it,account.id).state }
+            execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(state.copy(
+                buildings=state.buildings+("home" to 3),rareDropState=clock,inventory=mapOf("ancient_core" to 1),
+                fishing=state.fishing.copy(ownedHooks=listOf("bare_hook",if(account==a) "barbed_hook" else "silver_hook"),
+                    equippedHookId=if(account==a) "barbed_hook" else "silver_hook"))),account.id)
+        }
+        val first=readyMerge(a,b,browser)
+        auth.confirmMerge(a.session,browser,first)
+        assertEquals(far,source.connection.use { readEconomyProfile(it,a.id).state.rareDropState })
+        assertEquals(2L,economy.snapshot(a.session).inventory["ancient_core"])
+        assertEquals(setOf("bare_hook","barbed_hook","silver_hook"),economy.snapshot(a.session).fishing.ownedHooks.toSet())
+        assertEquals("barbed_hook",economy.snapshot(a.session).fishing.equippedHookId)
+        auth.confirmMerge(a.session,browser,first)
+        assertEquals(far,source.connection.use { readEconomyProfile(it,a.id).state.rareDropState })
+        auth.confirmMerge(c.session,browser,readyMerge(c,a,browser))
+        assertEquals(far,source.connection.use { readEconomyProfile(it,c.id).state.rareDropState })
+        assertFalse(economyJson.encodeToString(economy.snapshot(c.session)).contains("rareDropState"))
+    }
+
+    @Test fun `paid rewards invalidate preview then merge unions daily receipts and keeps duplicate tier payments without reopening`(): Unit=runBlocking {
+        val a=account(); val b=account(); val browser=tokens.issue().hash
+        val rewards=JdbcProgressionRewardsRepository(source); val economy=JdbcEconomyRepository(source)
+        fun publicId(account: Account)=checkNotNull(scalar("SELECT public_id FROM app_users WHERE id=?",account.id))
+        fun request(account: Account,achievement: String?=null)=ProgressionRewardClaim(UUID.randomUUID().toString(),publicId(account),
+            if(achievement==null) "daily" else "achievement",achievement,if(achievement==null) null else 1)
+        listOf(a,b).forEach { current ->
+            economy.snapshot(current.session)
+            execute("INSERT INTO game_achievements(user_id,achievement_id,unlocked_at) VALUES (?,'thousand_taps','2020-01-01T00:00:00Z')",current.id)
+        }
+        val preview=readyMerge(a,b,browser)
+        val paidA=rewards.claim(a.session,request(a,"thousand_taps")); val paidB=rewards.claim(b.session,request(b,"thousand_taps"))
+        assertEquals("ACCOUNT_PREVIEW_STALE",assertFailsWith<AuthFailure> { auth.confirmMerge(a.session,browser,preview) }.code)
+        val dayA=rewards.claim(a.session,request(a)); val dayB=rewards.claim(b.session,request(b))
+        val walletA=economy.snapshot(a.session).wallet; val walletB=economy.snapshot(b.session).wallet
+        val final=readyMerge(a,b,browser); auth.confirmMerge(a.session,browser,final)
+        val merged=economy.snapshot(a.session); val view=rewards.snapshot(a.session)
+        assertEquals(walletA.coins+walletB.coins,merged.wallet.coins)
+        assertEquals(walletA.pearls+walletB.pearls,merged.wallet.pearls,"past legitimate payments are not clawed back")
+        assertEquals("1",scalar("SELECT count(*) FROM game_achievement_reward_claims WHERE user_id=? AND achievement_id='thousand_taps'",a.id))
+        assertEquals(minOf(paidA.claim.claimedAt,paidB.claim.claimedAt),view.achievementRewards.single { it.achievementId=="thousand_taps" }.claimedAt)
+        assertEquals(dayB.rewards.daily.lastClaimAt,view.daily.lastClaimAt); assertFalse(view.daily.claimable); assertEquals(2,view.daily.step)
+        assertEquals("4",scalar("SELECT count(*) FROM game_reward_claims WHERE user_id=?",a.id))
+        assertEquals("0",scalar("SELECT count(*) FROM game_reward_claims WHERE user_id=?",b.id))
+        assertEquals("0",scalar("SELECT count(*) FROM game_daily_rewards WHERE user_id=?",b.id))
+        assertEquals("0",scalar("SELECT count(*) FROM game_achievement_reward_claims WHERE user_id=?",b.id))
+        assertEquals("ACHIEVEMENT_REWARD_CLAIMED",assertFailsWith<AuthFailure> { rewards.claim(a.session,request(a,"thousand_taps")) }.code)
+        val replay=rewards.claim(a.session,ProgressionRewardClaim(dayA.requestId,publicId(a),"daily"))
+        assertTrue(replay.replayed); assertEquals(dayA.claim,replay.claim); assertEquals(merged.wallet,replay.economy.wallet)
+        assertEquals("REWARD_REQUEST_CONFLICT",assertFailsWith<AuthFailure> {
+            rewards.claim(a.session,ProgressionRewardClaim(dayB.requestId,publicId(a),"daily")) }.code)
+        auth.confirmMerge(a.session,browser,final)
+        assertEquals(merged.wallet,economy.snapshot(a.session).wallet)
+    }
+
     @Test fun `proof requires matching owner session browser and action and cannot be replayed`(): Unit=runBlocking {
         val a=account();val b=account();val browser=tokens.issue().hash
         assertFailsWith<AuthFailure>{prove(a,browser,"delete",owner=b)}
@@ -104,6 +168,136 @@ class JdbcAccountLifecycleIntegrationTest {
         execute("UPDATE account_action_proofs SET expires_at=clock_timestamp()-interval '1 second' WHERE user_id=?",a.id)
         assertFalse(auth.lifecycle(a.session,browser).currentDelete)
         assertFailsWith<AuthFailure>{auth.deleteAccount(a.session,browser,tokens.issue().hash)}
+    }
+
+    @Test fun `merged identities cannot allocate another rewarded profile through signup link or email replacement`(): Unit=runBlocking {
+        val a=account();val b=account();val stranger=account();val browser=tokens.issue().hash
+        val emailA="merge-a-${UUID.randomUUID()}@example.com";val emailB="merge-b-${UUID.randomUUID()}@example.com"
+        fun emailFlow(intent: String,subject: String,session: ByteArray?=null)=LoginFlow(
+            tokens.issue().hash,browser,"email",intent,session,"Новый профиль",subject,null,null,tokens.hash("code"))
+        for((owner,email) in listOf(a to emailA,b to emailB))
+            auth.finish(emailFlow("link",email,owner.session),email,tokens.issue().hash,365,"Unused")
+        val rewards=JdbcProgressionRewardsRepository(source);val economy=JdbcEconomyRepository(source)
+        for(owner in listOf(a,b)) {
+            val publicId=checkNotNull(scalar("SELECT public_id FROM app_users WHERE id=?",owner.id))
+            rewards.claim(owner.session,ProgressionRewardClaim(UUID.randomUUID().toString(),publicId,"daily"))
+            rewards.claim(owner.session,ProgressionRewardClaim(UUID.randomUUID().toString(),publicId,"achievement","linked_email",1))
+        }
+        val walletA=economy.snapshot(a.session).wallet;val walletB=economy.snapshot(b.session).wallet
+        auth.confirmMerge(a.session,browser,readyMerge(a,b,browser,MergeChoices(providerChoices=mapOf("vk" to "current","email" to "current"))))
+        val merged=economy.snapshot(a.session)
+        assertEquals(walletA.coins+walletB.coins,merged.wallet.coins)
+        assertEquals(walletA.pearls+walletB.pearls,merged.wallet.pearls,"ordinary merge never confiscates earned rewards")
+        val users=scalar("SELECT count(*) FROM app_users");val sessions=scalar("SELECT count(*) FROM app_sessions")
+        assertEquals("AUTH_IDENTITY_MERGED",assertFailsWith<AuthFailure> {
+            auth.finish(emailFlow("register",emailB),emailB,tokens.issue().hash,365,"Fresh")
+        }.code)
+        assertEquals("AUTH_NOT_LINKED",assertFailsWith<AuthFailure> {
+            auth.finish(emailFlow("login",emailB),emailB,tokens.issue().hash,365,"No alias")
+        }.code,"a discarded identity does not authenticate the survivor")
+        val login=emailFlow("login",emailB);auth.create(login)
+        val verified=auth.verifyEmail(login.tokenHash,browser,checkNotNull(login.codeHash))
+        assertEquals("AUTH_IDENTITY_MERGED",assertFailsWith<AuthFailure> {
+            auth.prepareRegistration(verified,emailB,tokens.issue().hash)
+        }.code)
+        assertEquals("AUTH_IDENTITY_MERGED",assertFailsWith<AuthFailure> {
+            auth.finish(emailFlow("link",emailB,stranger.session),emailB,tokens.issue().hash,365,"Foreign link")
+        }.code)
+        execute("UPDATE account_login_flows SET created_at=clock_timestamp()-interval '2 minutes' WHERE provider='email' AND subject=?",emailB)
+        prove(stranger,browser,"email")
+        assertEquals("AUTH_IDENTITY_MERGED",assertFailsWith<AuthFailure> { proveNewEmail(stranger,browser,emailB) }.code)
+        assertEquals(users,scalar("SELECT count(*) FROM app_users"))
+        assertEquals(sessions,scalar("SELECT count(*) FROM app_sessions"))
+        assertEquals(merged.wallet,economy.snapshot(a.session).wallet)
+
+        // Restoring the method is permitted only after proving the survivor.
+        execute("UPDATE account_login_flows SET created_at=clock_timestamp()-interval '2 minutes' WHERE provider='email' AND subject=?",emailB)
+        prove(a,browser,"email");proveNewEmail(a,browser,emailB)
+        auth.changeEmail(a.session,browser,tokens.issue().hash)
+        assertEquals(emailB,scalar("SELECT subject FROM account_login_identities WHERE user_id=? AND provider='email'",a.id))
+        assertEquals("AUTH_IDENTITY_MERGED",assertFailsWith<AuthFailure> {
+            auth.finish(emailFlow("register",emailA),emailA,tokens.issue().hash,365,"Kept method rotation")
+        }.code,"the formerly kept email cannot restart farming after swapping methods")
+        val restoredSession=tokens.issue().hash
+        assertEquals(a.id,auth.finish(emailFlow("login",emailB),emailB,restoredSession,365,"Restored"))
+        assertEquals(a.id,people.findSessionUserId(restoredSession))
+    }
+
+    @Test fun `registration completion and a previously verified email change recheck a newly merged identity`(): Unit=runBlocking {
+        val owner=account();val stranger=account();val browser=tokens.issue().hash
+        val email="pending-${UUID.randomUUID()}@example.com"
+        prove(stranger,browser,"email");proveNewEmail(stranger,browser,email)
+        val ticket=tokens.issue().hash
+        // A verified proof and a ticket issued by an older API cannot bypass
+        // the allocation check at the final transaction boundary.
+        execute("INSERT INTO account_identity_retirements(provider,subject_hash,merged_into_user_id) VALUES ('email',sha256(convert_to(?, 'UTF8')),?)",email,owner.id)
+        execute("INSERT INTO account_registration_tickets(token_hash,browser_hash,provider,subject) VALUES (?,?,'email',?)",ticket,browser,email)
+        val users=scalar("SELECT count(*) FROM app_users")
+        assertEquals("AUTH_IDENTITY_MERGED",assertFailsWith<AuthFailure> {
+            auth.completeRegistration(ticket,browser,"Новый профиль",tokens.issue().hash,365,"Fresh")
+        }.code)
+        assertEquals("AUTH_IDENTITY_MERGED",assertFailsWith<AuthFailure> {
+            auth.changeEmail(stranger.session,browser,tokens.issue().hash)
+        }.code)
+        assertEquals(users,scalar("SELECT count(*) FROM app_users"))
+        assertNull(scalar("SELECT user_id FROM account_login_identities WHERE provider='email' AND subject=?",email))
+        assertTrue(auth.lifecycle(stranger.session,browser).currentEmail,"rejection leaves the confirmed operation unconsumed")
+    }
+
+    @Test fun `merged identity fences follow the final survivor keep bans closed and permit a real deleted profile to rejoin`(): Unit=runBlocking {
+        val a=account();val b=account();val c=account();val browser=tokens.issue().hash
+        auth.confirmMerge(a.session,browser,readyMerge(a,b,browser))
+        auth.confirmMerge(c.session,browser,readyMerge(c,a,browser))
+        for(subject in listOf(a.subject,b.subject,c.subject))
+            assertEquals(c.id.toString(),scalar("SELECT merged_into_user_id FROM account_identity_retirements WHERE provider='vk' AND subject_hash=sha256(convert_to(?, 'UTF8'))",subject))
+        fun register()=LoginFlow(tokens.issue().hash,browser,"vk","register",null,"Новый профиль",null,"pkce",null,null)
+        assertEquals("AUTH_IDENTITY_MERGED",assertFailsWith<AuthFailure> {
+            auth.finish(register(),b.subject,tokens.issue().hash,365,"Chain")
+        }.code)
+        execute("UPDATE app_users SET banned_at=clock_timestamp(),ban_reason='security regression' WHERE id=?",c.id)
+        assertEquals("AUTH_IDENTITY_MERGED",assertFailsWith<AuthFailure> {
+            auth.finish(register(),b.subject,tokens.issue().hash,365,"Banned")
+        }.code)
+        execute("UPDATE app_users SET banned_at=NULL,ban_reason=NULL WHERE id=?",c.id)
+        prove(c,browser,"delete");auth.deleteAccount(c.session,browser,tokens.issue().hash)
+        val freshSession=tokens.issue().hash
+        val fresh=auth.finish(register(),b.subject,freshSession,365,"After real deletion")
+        assertTrue(fresh !in setOf(a.id,b.id,c.id))
+        assertEquals(fresh,people.findSessionUserId(freshSession))
+        assertEquals(EconomyWallet(0),JdbcEconomyRepository(source).snapshot(freshSession).wallet,"rejoin never restores deleted assets")
+    }
+
+    @Test fun `a fence committed while identity insertion waits rolls back the entire signup`(): Unit=runBlocking {
+        val survivor=account();val email="waiting-${UUID.randomUUID()}@example.com";val session=tokens.issue().hash
+        val users=scalar("SELECT count(*) FROM app_users");val lockKey=73429811L
+        // Pause at the insert boundary after prechecks, as a unique-key wait can.
+        // Commit the competing merge fence from another connection before release.
+        execute("""CREATE FUNCTION test_pause_identity_allocation() RETURNS trigger LANGUAGE plpgsql AS ${'$'}${'$'}
+            BEGIN IF NEW.provider='email' AND NEW.subject='$email' THEN PERFORM pg_advisory_xact_lock($lockKey); END IF;
+            RETURN NEW; END; ${'$'}${'$'}""")
+        execute("CREATE TRIGGER test_pause_identity_allocation BEFORE INSERT ON account_login_identities FOR EACH ROW EXECUTE FUNCTION test_pause_identity_allocation()")
+        source.connection.use { blocker ->
+            blocker.economyRows("SELECT pg_advisory_lock(?)",lockKey) { true }
+            try {
+                val attempt=async(Dispatchers.IO) { runCatching {
+                    auth.finish(LoginFlow(tokens.issue().hash,tokens.issue().hash,"email","register",null,"Fresh",email,null,null,null),email,session,365,"Race")
+                } }
+                withTimeout(3000) {
+                    while(!flag("SELECT EXISTS(SELECT 1 FROM pg_locks WHERE locktype='advisory' AND objid=?::oid AND NOT granted)",lockKey)) delay(10)
+                }
+                execute("INSERT INTO account_identity_retirements(provider,subject_hash,merged_into_user_id) VALUES ('email',sha256(convert_to(?, 'UTF8')),?)",email,survivor.id)
+                blocker.economyRows("SELECT pg_advisory_unlock(?)",lockKey) { true }
+                val failure=assertIs<AuthFailure>(attempt.await().exceptionOrNull())
+                assertEquals("AUTH_IDENTITY_MERGED",failure.code)
+                assertEquals(users,scalar("SELECT count(*) FROM app_users"))
+                assertNull(scalar("SELECT user_id FROM account_login_identities WHERE provider='email' AND subject=?",email))
+                assertNull(people.findSessionUserId(session))
+            } finally {
+                blocker.economyRows("SELECT pg_advisory_unlock(?)",lockKey) { true }
+                execute("DROP TRIGGER test_pause_identity_allocation ON account_login_identities")
+                execute("DROP FUNCTION test_pause_identity_allocation()")
+            }
+        }
     }
 
     @Test fun `email change requires two proofs and replay cannot consume a later action`(): Unit=runBlocking {
@@ -383,10 +577,30 @@ class JdbcAccountLifecycleIntegrationTest {
         assertEquals(b.id,people.findSessionUserId(b.session))
     }
 
+    @Test fun `merge does not award personal find from source inherited ownership before world union`() = runBlocking<Unit> {
+        val a=account(); val b=account(); val browser=tokens.issue().hash
+        val inherited=listOf("acorn","feather","fern_leaf","moon_moth","river_stone","winged_seed")
+        execute("INSERT INTO world_profiles(user_id,state) VALUES (?,?::jsonb),(?,?::jsonb)",
+            a.id,worldJson.encodeToString(WorldState(collection=listOf("acorn"))),b.id,worldJson.encodeToString(WorldState(collection=inherited)))
+        val economy=JdbcEconomyRepository(source)
+        economy.snapshot(a.session); economy.snapshot(b.session)
+        for (owner in listOf(a,b)) {
+            val current=source.connection.use { readEconomyProfile(it,owner.id).state }
+            val half=current.copy(progression=current.progression.copy(collections=current.progression.collections.copy(travelSeconds=3600)))
+            execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(half),owner.id)
+        }
+        val preview=readyMerge(a,b,browser); auth.confirmMerge(a.session,browser,preview)
+        assertEquals(7200L,economy.snapshot(a.session).progression.collections.travelSeconds)
+        assertEquals("0",scalar("SELECT count(*) FROM game_achievement_tiers WHERE user_id=? AND achievement_id='lucky_find'",a.id))
+        assertNull(JdbcGameRepository(source).achievements(a.session).achievements.single { it.id=="lucky_find" }.unlockedAt)
+    }
+
     @Test fun `merge unions achievements at earliest award time and deletion clears them`() = runBlocking<Unit> {
         val a=account(); val b=account(); val browser=tokens.issue().hash
         execute("INSERT INTO game_profiles(user_id,lifetime_taps) VALUES (?,700),(?,400)",a.id,b.id)
         execute("INSERT INTO game_achievements(user_id,achievement_id,unlocked_at) VALUES (?,'five_friends','2026-01-02T00:00:00Z'),(?,'five_friends','2026-01-01T00:00:00Z'),(?,'seven_day_streak','2026-01-03T00:00:00Z')",a.id,b.id,b.id)
+        execute("INSERT INTO game_achievements(user_id,achievement_id,unlocked_at) VALUES (?,'explorer','2026-01-02T00:00:00Z'),(?,'explorer','2026-01-01T00:00:00Z')",a.id,b.id)
+        execute("INSERT INTO game_achievement_tiers(user_id,achievement_id,level,unlocked_at) VALUES (?,'explorer',1,'2026-01-02T00:00:00Z'),(?,'explorer',1,'2026-01-01T00:00:00Z'),(?,'explorer',2,'2026-01-03T00:00:00Z')",a.id,b.id,b.id)
         execute("INSERT INTO account_recovery_codes(user_id,code_hash,revoked_at) VALUES (?,?,clock_timestamp())",b.id,tokens.issue().hash)
         val preview=readyMerge(a,b,browser)
         auth.confirmMerge(a.session,browser,preview)
@@ -398,8 +612,11 @@ class JdbcAccountLifecycleIntegrationTest {
         assertEquals("2026-01-03T00:00:00Z",awards.single { it.id=="seven_day_streak" }.unlockedAt)
         assertEquals(1000L,awards.single { it.id=="thousand_taps" }.progress,"merged verified lifetime totals may cross a new threshold")
         assertEquals("0",scalar("SELECT count(*) FROM game_achievements WHERE user_id=?",b.id))
+        assertEquals(listOf("2026-01-01T00:00:00Z","2026-01-03T00:00:00Z",null),awards.single { it.id=="explorer" }.tiers.map { it.unlockedAt })
+        assertEquals("0",scalar("SELECT count(*) FROM game_achievement_tiers WHERE user_id=?",b.id))
         prove(a,browser,"delete"); auth.deleteAccount(a.session,browser,tokens.issue().hash)
         assertEquals("0",scalar("SELECT count(*) FROM game_achievements WHERE user_id IN (?,?)",a.id,b.id))
+        assertEquals("0",scalar("SELECT count(*) FROM game_achievement_tiers WHERE user_id IN (?,?)",a.id,b.id))
         assertEquals("UNAUTHORIZED",assertFailsWith<AuthFailure> { game.achievements(a.session) }.code)
     }
 
@@ -417,41 +634,243 @@ class JdbcAccountLifecycleIntegrationTest {
         assertEquals("0",scalar("SELECT count(*) FROM game_items WHERE user_id IN (?,?)",a.id,b.id))
     }
 
-    @Test fun `world merge retains trips possessions and colliding ledger keys then deletion clears data`() = runBlocking<Unit> {
+    @Test fun `world and economy merge preserve assets trips receipts and clear deleted profiles`() = runBlocking<Unit> {
         val a=account();val b=account();val browser=tokens.issue().hash;val world=JdbcWorldRepository(source)
-        world.snapshot(a.session);world.snapshot(b.session)
         val finds=WorldRules.catalog.finds.map { it.id }
-        execute("UPDATE world_profiles SET state=?::jsonb,tap_sparks=20 WHERE user_id=?",
-            worldJson.encodeToString(WorldState(resources=WorldResources(20,8,4),collection=finds.take(3),equipment=WorldEquipment(neck="amber_scarf"))),a.id)
-        execute("UPDATE world_profiles SET state=?::jsonb,tap_sparks=50 WHERE user_id=?",
-            worldJson.encodeToString(WorldState(resources=WorldResources(50,20,10),workshop=true,collection=finds.drop(3))),b.id)
-        val sharedKey=UUID.randomUUID().toString()
-        suspend fun upgrade(account: Account) {
-            val snapshot=world.snapshot(account.session)
-            world.command(account.session,WorldCommand(sharedKey,snapshot.ownerPublicId,snapshot.revision,"upgrade_house"))
-        }
-        suspend fun travel(account: Account): WorldJourney {
-            val snapshot=world.snapshot(account.session)
-            return world.command(account.session,WorldCommand(UUID.randomUUID().toString(),snapshot.ownerPublicId,snapshot.revision,"start_journey","first_path")).snapshot.state.journeys.single()
-        }
-        upgrade(a);upgrade(b)
-        // Existing level-three homes survive the new beta cap; do not buy a disabled upgrade.
-        execute("UPDATE world_profiles SET state=jsonb_set(state,'{houseLevel}','3'::jsonb) WHERE user_id=?",b.id)
-        val tripA=travel(a)
-        val stale=readyMerge(a,b,browser);val tripB=travel(b)
+        fun legacyTrip()=WorldJourney(UUID.randomUUID().toString(),"first_path","2000-01-01T00:00:00Z","2000-01-01T00:01:00Z",WorldResources(12,8,4),listOf("acorn"),true,3)
+        val tripA=legacyTrip();val tripB=legacyTrip()
+        execute("INSERT INTO world_profiles(user_id,state) VALUES (?,?::jsonb)",a.id,
+            worldJson.encodeToString(WorldState(resources=WorldResources(20,8,4),collection=finds.take(3),journeys=listOf(tripA),equipment=WorldEquipment(neck="amber_scarf"))))
+        execute("INSERT INTO world_profiles(user_id,state) VALUES (?,?::jsonb)",b.id,
+            worldJson.encodeToString(WorldState(resources=WorldResources(50,20,10),houseLevel=3,workshop=true,collection=finds.drop(3),journeys=listOf(tripB))))
+        val initialA=world.snapshot(a.session);world.snapshot(b.session)
+        val shared=UUID.randomUUID()
+        for(owner in listOf(a,b)) execute("INSERT INTO world_ledger(user_id,source_key,kind,sparks) VALUES (?,?,'old_upgrade',-10)",owner.id,"command:$shared")
+        val sourceCommand=WorldCommand(UUID.randomUUID().toString(),people.findBySession(b.session)!!.publicId,world.snapshot(b.session).revision,"equip","moss")
+        world.command(b.session,sourceCommand)
+        val stale=readyMerge(a,b,browser)
+        execute("UPDATE economy_profiles SET state=jsonb_set(state,'{wallet,coins}',to_jsonb((state->'wallet'->>'coins')::bigint+1)),revision=revision+1 WHERE user_id=?",b.id)
         assertEquals("ACCOUNT_PREVIEW_STALE",assertFailsWith<AuthFailure> { auth.confirmMerge(a.session,browser,stale) }.code)
+        val beforeA=JdbcEconomyRepository(source).snapshot(a.session);val beforeB=JdbcEconomyRepository(source).snapshot(b.session)
         val key=readyMerge(a,b,browser);auth.confirmMerge(a.session,browser,key)
-        val merged=JdbcWorldRepository(source).snapshot(a.session)
-        assertEquals(WorldResources(50,16,10),merged.state.resources);assertEquals(3,merged.state.houseLevel);assertTrue(merged.state.workshop)
+        val merged=world.snapshot(a.session);val economy=JdbcEconomyRepository(source).snapshot(a.session)
+        assertEquals(WorldResources(),merged.state.resources);assertEquals(3,merged.state.houseLevel);assertTrue(merged.state.workshop)
+        assertEquals(beforeA.wallet.coins+beforeB.wallet.coins,economy.wallet.coins)
+        assertEquals((beforeA.inventory["wood"] ?: 0)+(beforeB.inventory["wood"] ?: 0),economy.inventory["wood"])
         assertEquals("amber_scarf",merged.state.equipment.neck);assertEquals(finds.toSet(),merged.state.collection.toSet())
         assertTrue("explorer_cap" in merged.state.inventory)
-        assertEquals(setOf(tripA.id,tripB.id),merged.state.journeys.map { it.id }.toSet());assertEquals(60,merged.dailySparksEarned)
-        assertEquals("2",scalar("SELECT count(*) FROM world_ledger WHERE user_id=? AND kind='upgrade_house'",a.id))
-        auth.confirmMerge(a.session,browser,key);assertEquals(merged.state,world.snapshot(a.session).state)
-        for(table in listOf("world_profiles","world_commands","world_ledger")) assertEquals("0",scalar("SELECT count(*) FROM $table WHERE user_id=?",b.id))
+        assertEquals(setOf(tripA.id,tripB.id),merged.state.journeys.map { it.id }.toSet());assertEquals(0,merged.dailySparksEarned)
+        assertEquals("2",scalar("SELECT count(*) FROM world_ledger WHERE user_id=? AND kind='old_upgrade'",a.id))
+        assertEquals("WORLD_COMMAND_CONFLICT",assertFailsWith<AuthFailure> { world.command(a.session,sourceCommand.copy(ownerPublicId=initialA.ownerPublicId,expectedRevision=merged.revision)) }.code)
+        auth.confirmMerge(a.session,browser,key)
+        assertEquals(economy.wallet,JdbcEconomyRepository(source).snapshot(a.session).wallet)
+        for(table in listOf("world_profiles","world_commands","world_ledger","economy_profiles","economy_commands","economy_ledger"))
+            assertEquals("0",scalar("SELECT count(*) FROM $table WHERE user_id=?",b.id))
         prove(a,browser,"delete");auth.deleteAccount(a.session,browser,tokens.issue().hash)
-        for(table in listOf("world_profiles","world_commands","world_ledger")) assertEquals("0",scalar("SELECT count(*) FROM $table WHERE user_id IN (?,?)",a.id,b.id))
+        for(table in listOf("world_profiles","world_commands","world_ledger","economy_profiles","economy_commands","economy_ledger"))
+            assertEquals("0",scalar("SELECT count(*) FROM $table WHERE user_id IN (?,?)",a.id,b.id))
+        assertEquals("2",scalar("SELECT count(*) FROM economy_conversion_audit WHERE user_id IN (?,?)",a.id,b.id))
         assertEquals("UNAUTHORIZED",assertFailsWith<AuthFailure> { world.snapshot(a.session) }.code)
     }
 
+    @Test fun `merge unions fishing tackle and caught records while preserving target loadout and a pending draw`() = runBlocking<Unit> {
+        val a=account(); val b=account(); val browser=tokens.issue().hash
+        val repo=JdbcEconomyRepository(source)
+        repo.snapshot(a.session); repo.snapshot(b.session)
+        val seed=UUID.randomUUID().toString()
+        for ((owner, fishing) in listOf(
+            a to EconomyFishing(ownedRods=listOf("reed_rod","river_rod"), equippedRodId="river_rod", catches=mapOf("fish" to 4L)),
+            b to EconomyFishing(ownedRods=listOf("reed_rod","willow_rod"), equippedRodId="willow_rod", catches=mapOf("fish" to 6L,"fish_mooncarp" to 2L)))) {
+            val persisted=source.connection.use { readEconomyProfile(it,owner.id).state }
+            execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(persisted.copy(
+                fishing=fishing, fishingCastSeed=if(owner.id==b.id) seed else null)),owner.id)
+        }
+        val key=readyMerge(a,b,browser); auth.confirmMerge(a.session,browser,key)
+        val merged=repo.snapshot(a.session)
+        assertEquals(setOf("reed_rod","river_rod","willow_rod"),merged.fishing.ownedRods.toSet())
+        assertEquals("river_rod",merged.fishing.equippedRodId)
+        assertEquals(mapOf("fish" to 10L,"fish_mooncarp" to 2L),merged.fishing.catches)
+        assertEquals(seed,source.connection.use { readEconomyProfile(it,a.id).state.fishingCastSeed })
+        assertFalse(economyJson.encodeToString(merged).contains("fishingCastSeed"))
+        auth.confirmMerge(a.session,browser,key)
+        assertEquals(merged.fishing,repo.snapshot(a.session).fishing,"merge receipt cannot award records twice")
+    }
+
+    @Test fun `merge review blocks pending economy work and never consumes its materials`() = runBlocking<Unit> {
+        val a=account();val b=account();val browser=tokens.issue().hash
+        val repo=JdbcEconomyRepository(source);val state=repo.snapshot(a.session)
+        val production=EconomyCommand(UUID.randomUUID().toString(),state.ownerPublicId,state.revision,"start_production","berries")
+        // Seed a real in-flight job through the public production command.
+        val recipe=EconomyRules.catalog.recipes.first { it.buildingId=="garden" && it.buildingLevel==1 }
+        repo.command(a.session,production.copy(targetId=recipe.id))
+        prove(a,browser,"merge");prove(a,browser,"merge","other",b)
+        val before=repo.snapshot(a.session)
+        val preview=auth.previewMerge(a.session,browser,MergeChoices(providerChoices=mapOf("vk" to "current")),tokens.issue().hash)
+        assertTrue(preview.conflicts.any { it.contains("производства") })
+        assertEquals(before.jobs,repo.snapshot(a.session).jobs)
+        assertEquals(before.inventory,repo.snapshot(a.session).inventory)
+    }
+
+    @Test fun `merge cancels escrow once and consumed source market requests cannot replay`() = runBlocking<Unit> {
+        val a=account();val b=account();val browser=tokens.issue().hash
+        val economy=JdbcEconomyRepository(source);val market=JdbcEconomyMarketRepository(source)
+        fun prepare(owner: Account, amount: Long) {
+            val state=EconomyRules.initial(homeLevel=2).copy(inventory=mapOf("berries" to amount),completedExplorations=1)
+            execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(state),owner.id)
+        }
+        economy.snapshot(a.session);economy.snapshot(b.session);prepare(a,5);prepare(b,8)
+        val before=economy.snapshot(b.session)
+        val listing=EconomyCommand(UUID.randomUUID().toString(),before.ownerPublicId,before.revision,"create_listing","berries",3,90)
+        market.command(b.session,listing)
+        val listingId=UUID.fromString(market.market(b.session).mine.single().id)
+        assertEquals(5L,economy.snapshot(b.session).inventory["berries"])
+        val targetShowcase=market.market(a.session).showcase
+        assertEquals("1",scalar("SELECT count(*) FROM economy_market_showcases WHERE user_id=?",b.id))
+        execute("INSERT INTO economy_market_daily_turnover(user_id,trade_day,buys_value,sales_value,barter_used) VALUES (?,(clock_timestamp() AT TIME ZONE 'UTC')::date,2000,1000,1),(?,(clock_timestamp() AT TIME ZONE 'UTC')::date,1000,2000,1)",a.id,b.id)
+        val key=readyMerge(a,b,browser);auth.confirmMerge(a.session,browser,key)
+        val merged=economy.snapshot(a.session)
+        assertEquals(13L,merged.inventory["berries"])
+        assertEquals("3000:3000:2",scalar("SELECT buys_value || ':' || sales_value || ':' || barter_used FROM economy_market_daily_turnover WHERE user_id=?",a.id))
+        assertEquals("0",scalar("SELECT count(*) FROM economy_market_daily_turnover WHERE user_id=?",b.id))
+        assertEquals("0",scalar("SELECT count(*) FROM economy_market_showcases WHERE user_id=?",b.id))
+        assertEquals(targetShowcase,market.market(a.session).showcase,"merging does not refill the surviving player's window")
+        assertEquals("cancelled",scalar("SELECT status FROM economy_market_listings WHERE id=?",listingId))
+        assertEquals("1",scalar("SELECT count(*) FROM economy_market_receipts WHERE user_id=? AND request_id=?",a.id,UUID.fromString(listing.requestId)))
+        assertFailsWith<AuthFailure> { market.command(a.session,listing.copy(ownerPublicId=merged.ownerPublicId,expectedRevision=merged.revision)) }
+        auth.confirmMerge(a.session,browser,key)
+        assertEquals(13L,economy.snapshot(a.session).inventory["berries"])
+        val active=EconomyCommand(UUID.randomUUID().toString(),merged.ownerPublicId,merged.revision,"create_listing","berries",2,60)
+        market.command(a.session,active)
+        prove(a,browser,"delete");auth.deleteAccount(a.session,browser,tokens.issue().hash)
+        assertEquals("0",scalar("SELECT count(*) FROM economy_market_listings WHERE seller_id=? AND status='active'",a.id))
+        assertEquals("0",scalar("SELECT count(*) FROM economy_profiles WHERE user_id=?",a.id))
+        assertEquals("0",scalar("SELECT count(*) FROM economy_market_showcases WHERE user_id=?",a.id))
+        assertEquals("0",scalar("SELECT count(*) FROM economy_market_daily_turnover WHERE user_id=?",a.id))
+    }
+
+    @Test fun `merge capacity review includes stock held in active listings`() = runBlocking<Unit> {
+        val a=account();val b=account();val browser=tokens.issue().hash
+        val economy=JdbcEconomyRepository(source);val market=JdbcEconomyMarketRepository(source)
+        economy.snapshot(a.session);economy.snapshot(b.session)
+        for(owner in listOf(a,b)) {
+            val state=EconomyRules.initial(homeLevel=2).copy(inventory=mapOf("berries" to 500_000_001L),completedExplorations=1)
+            execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(state),owner.id)
+        }
+        val before=economy.snapshot(b.session)
+        val listing=EconomyCommand(UUID.randomUUID().toString(),before.ownerPublicId,before.revision,"create_listing","berries",3,90)
+        market.command(b.session,listing)
+        val listingId=UUID.fromString(market.market(b.session).mine.single().id)
+        prove(a,browser,"merge");prove(a,browser,"merge","other",b)
+        val preview=auth.previewMerge(a.session,browser,MergeChoices(providerChoices=mapOf("vk" to "current")),tokens.issue().hash)
+        assertTrue(preview.conflicts.any { it.contains("вместимость") })
+        assertEquals("active",scalar("SELECT status FROM economy_market_listings WHERE id=?",listingId))
+        assertEquals(499_999_998L,economy.snapshot(b.session).inventory["berries"])
+    }
+
+
+    @Test fun `merge uses the larger warehouse and returns escrow without losing mixed stock`() = runBlocking<Unit> {
+        val a=account();val b=account();val browser=tokens.issue().hash
+        val economy=JdbcEconomyRepository(source);val market=JdbcEconomyMarketRepository(source)
+        economy.snapshot(a.session);economy.snapshot(b.session)
+        val target=EconomyRules.initial(homeLevel=2).copy(inventory=mapOf("wood" to 180L),completedExplorations=1)
+        val sourceState=EconomyRules.initial(homeLevel=2).copy(inventory=mapOf("berries" to 280L,"stone" to 40L),
+            buildings=EconomyRules.initial(homeLevel=2).buildings + ("warehouse" to 2),completedExplorations=1)
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(target),a.id)
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(sourceState),b.id)
+        val before=economy.snapshot(b.session)
+        val listing=EconomyCommand(UUID.randomUUID().toString(),before.ownerPublicId,before.revision,"create_listing","berries",20,600)
+        market.command(b.session,listing)
+        val listingId=UUID.fromString(market.market(b.session).mine.single().id)
+        val key=readyMerge(a,b,browser);auth.confirmMerge(a.session,browser,key)
+        val merged=economy.snapshot(a.session)
+        assertEquals(2,merged.buildings["warehouse"])
+        assertEquals(500L,merged.storage.capacity)
+        assertEquals(500L,merged.storage.used)
+        assertEquals(0L,merged.storage.reserved)
+        assertEquals(mapOf("wood" to 180L,"berries" to 280L,"stone" to 40L),merged.inventory)
+        assertEquals("cancelled",scalar("SELECT status FROM economy_market_listings WHERE id=?",listingId))
+        auth.confirmMerge(a.session,browser,key)
+        assertEquals(merged.inventory,economy.snapshot(a.session).inventory)
+    }
+
+    @Test fun `merge blocks aggregate mixed stock and escrow above warehouse capacity without mutations`() = runBlocking<Unit> {
+        val a=account();val b=account();val browser=tokens.issue().hash
+        val economy=JdbcEconomyRepository(source);val market=JdbcEconomyMarketRepository(source)
+        economy.snapshot(a.session);economy.snapshot(b.session)
+        val target=EconomyRules.initial(homeLevel=2).copy(inventory=mapOf("wood" to 120L),completedExplorations=1)
+        val other=EconomyRules.initial(homeLevel=2).copy(inventory=mapOf("berries" to 50L,"stone" to 50L),completedExplorations=1)
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(target),a.id)
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(other),b.id)
+        val snapshot=economy.snapshot(b.session)
+        market.command(b.session,EconomyCommand(UUID.randomUUID().toString(),snapshot.ownerPublicId,snapshot.revision,"create_listing","berries",20,600))
+        val beforeA=economy.snapshot(a.session);val beforeB=economy.snapshot(b.session)
+        prove(a,browser,"merge");prove(a,browser,"merge","other",b)
+        val key=tokens.issue().hash
+        val preview=auth.previewMerge(a.session,browser,MergeChoices(providerChoices=mapOf("vk" to "current")),key)
+        assertTrue(preview.conflicts.any { it.contains("вместимость склада") })
+        assertFailsWith<AuthFailure> { auth.confirmMerge(a.session,browser,key) }
+        assertEquals(beforeA.inventory,economy.snapshot(a.session).inventory)
+        assertEquals(beforeB.inventory,economy.snapshot(b.session).inventory)
+        assertEquals(beforeA.revision,economy.snapshot(a.session).revision)
+        assertEquals(beforeB.revision,economy.snapshot(b.session).revision)
+        assertEquals(1,market.market(b.session).mine.size)
+        assertEquals("0",scalar("SELECT count(*) FROM account_merge_sources WHERE source_user_id=?",b.id))
+    }
+
+    @Test fun `forest memory merge keeps target or adopts source and invalidates leases then deletion erases snapshots`() = runBlocking<Unit> {
+        val memory = JdbcForestMemoryRepository(source)
+        suspend fun saved(account: Account, energy: Double): Pair<ForestMemoryCommand, ForestMemoryView> {
+            val publicId = people.findBySession(account.session)!!.publicId
+            val acquire = ForestMemoryCommand(publicId, UUID.randomUUID().toString(), UUID.randomUUID().toString(), 0, "acquire")
+            val leased = memory.command(account.session, acquire).state
+            val write = acquire.copy(requestId = UUID.randomUUID().toString(), expectedRevision = leased.revision, action = "save",
+                leaseToken = leased.lease.token, snapshot = memoryFixture(energy))
+            return write to memory.command(account.session, write).state
+        }
+        for (targetHasMemory in listOf(false, true)) {
+            val target = account(); val other = account(); val browser = tokens.issue().hash
+            val existing = if (targetHasMemory) saved(target, 0.3) else null
+            val previous = saved(other, 0.9)
+            val targetPublicId = people.findBySession(target.session)!!.publicId
+            val client = existing?.first?.clientId?.let(UUID::fromString) ?: UUID.randomUUID()
+            val preview = readyMerge(target, other, browser)
+            auth.confirmMerge(target.session, browser, preview)
+            val merged = memory.read(target.session, targetPublicId, client)
+            assertEquals(memoryFixture(if (targetHasMemory) 0.3 else 0.9), merged.snapshot)
+            assertEquals(3L, merged.revision)
+            assertFalse(merged.lease.owned); assertNull(merged.lease.token); assertNull(merged.lease.expiresAt)
+            if (existing != null) {
+                val replay = memory.command(target.session, existing.first)
+                assertTrue(replay.replayed); assertFalse(replay.state.lease.owned)
+                assertEquals("FOREST_MEMORY_LEASE_LOST", assertFailsWith<AuthFailure> {
+                    memory.command(target.session, existing.first.copy(requestId = UUID.randomUUID().toString(), expectedRevision = merged.revision))
+                }.code)
+            }
+            assertEquals("UNAUTHORIZED", assertFailsWith<AuthFailure> { memory.command(other.session, previous.first) }.code)
+            for (table in listOf("forest_memory", "forest_memory_receipts")) assertEquals("0", scalar("SELECT count(*) FROM $table WHERE user_id=?", other.id))
+            prove(target, browser, "delete"); auth.deleteAccount(target.session, browser, tokens.issue().hash)
+            for (table in listOf("forest_memory", "forest_memory_receipts")) assertEquals("0", scalar("SELECT count(*) FROM $table WHERE user_id=?", target.id))
+            assertEquals("UNAUTHORIZED", assertFailsWith<AuthFailure> { memory.read(target.session, targetPublicId, client) }.code)
+        }
+    }
+    @Test fun `merge combines collection remainders once and preserves confirmed counters`() = runBlocking<Unit> {
+        val a = account(); val b = account(); val browser = tokens.issue().hash
+        val repo = JdbcEconomyRepository(source)
+        repo.snapshot(a.session); repo.snapshot(b.session)
+        for (owner in listOf(a, b)) {
+            val stored = source.connection.use { readEconomyProfile(it, owner.id).state }
+            val progress = ru.zhiv.economy.EconomyProgression(routes = mapOf("forest" to 2L), recipes = mapOf("cut_planks" to 1L),
+                collections = ru.zhiv.economy.EconomyBookCollection(travelSeconds = 3600))
+            execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(stored.copy(progression = progress)), owner.id)
+        }
+        val key = readyMerge(a, b, browser)
+        auth.confirmMerge(a.session, browser, key)
+        val merged = repo.snapshot(a.session)
+        assertEquals(mapOf("forest" to 4L), merged.progression.routes)
+        assertEquals(mapOf("cut_planks" to 2L), merged.progression.recipes)
+        assertEquals(7200L, merged.progression.collections.travelSeconds)
+        assertEquals(listOf("acorn"), merged.progression.collections.finds)
+        auth.confirmMerge(a.session, browser, key)
+        assertEquals(merged.progression, repo.snapshot(a.session).progression)
+    }
 }

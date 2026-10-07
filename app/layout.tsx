@@ -1,7 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import { ServiceWorkerRegistration } from "@/components/service-worker-registration";
 import { AppNotifications } from "@/components/app-notifications";
+import { MobileGestureGuard } from "@/components/mobile-gesture-guard";
 import { AppLifecycle } from "@/features/updates/app-lifecycle-view";
+import { BRAND_APPLE_ICON_SRC, BRAND_FAVICON_SRC, BRAND_ICON_32_SRC, BRAND_ICON_192_SRC, BRAND_LOGO_SRC } from "@/lib/brand-assets";
 import runtimeArt from "@/features/world/runtime-art.json";
 import "./globals.css";
 
@@ -14,9 +16,12 @@ export const metadata: Metadata = {
     "mobile-web-app-capable": "yes",
   },
   icons: {
-    icon: "/icon.svg",
-    shortcut: "/icon.svg",
-    apple: "/apple-touch-icon.png",
+    icon: [
+      { url: BRAND_ICON_32_SRC, sizes: "32x32", type: "image/png" },
+      { url: BRAND_ICON_192_SRC, sizes: "192x192", type: "image/png" },
+    ],
+    shortcut: BRAND_FAVICON_SRC,
+    apple: { url: BRAND_APPLE_ICON_SRC, sizes: "180x180", type: "image/png" },
   },
   appleWebApp: {
     capable: true,
@@ -45,8 +50,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ru" suppressHydrationWarning>
-      <head><link rel="preload" as="image" href={runtimeArt.homePreview} fetchPriority="high" /></head>
+      <head>
+        <link rel="preload" as="image" href={BRAND_LOGO_SRC} fetchPriority="high" />
+        <link rel="preload" as="image" href={runtimeArt.homePreview} fetchPriority="high" />
+      </head>
       <body>
+        <MobileGestureGuard />
         {children}
         <AppNotifications />
         <ServiceWorkerRegistration />

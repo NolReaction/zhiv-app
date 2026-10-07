@@ -1,6 +1,13 @@
 import { drawGroundedHero, drawSiteGrounding } from "../grounding";
-import { drawForestLightFixtures, drawForestLighting, drawForestLightEmitters, forestLightSources } from "../forest-lighting";
-import { previewSiteAt, previewSiteVisual } from "./preview-state";
+import { forestObjectArtwork, forestSiteMaterial } from "../forest-object-appearance";
+import { drawForestBushGrounding, drawForestBushLeafShade } from "../forest-bush-grounding";
+import { buildingDetailsAnimated, drawBuildingDetails } from "../building-details";
+import { drawForestLightFixtures, drawForestLighting, drawForestLightEmitters, drawForestLighthouseBeams, forestLightSources } from "../forest-lighting";
+import { previewSiteVisual, previewWorldScene } from "./preview-state";
+import { forestVisibleSiteAt, withForestImageOcclusion, withForestSiteOcclusion } from "../forest-occlusion";
+import { drawSiteImage } from "./site-image";
+import { boundsInCanvas, canvasWorldViewport } from "../canvas-viewport";
+import { worldArtworkMipCache } from "../artwork-mip-cache";
 import type { FixedWorldScene, PreviewLevels, SiteVisual, WorldBounds, WorldPoint } from "./types";
 import { createPreviewRoute, type PreviewActor, type PreviewRouteStatus } from "./preview-route";
 
@@ -32,6 +39,12 @@ export type PaintFrame = {
   options: FixedWorldRenderOptions;
   actor: PreviewActor | null;
   elapsed?: number;
+  /** Ambient night amount when the main scene applies lighting in a later pass. */
+  dusk?: number;
+  /** Existing crop moisture darkens only the matching cutout's root bed. */
+  bushMoisture?: readonly { id: string; moisture: number }[];
+  /** Cutouts drawn in a later foreground pass retain their soil and grounding here. */
+  hiddenTerrainIds?: readonly string[];
   /** Ground effects belong above terrain and below all buildings and actors. */
   paintGround?: (context: CanvasRenderingContext2D) => void;
 };
@@ -56,20 +69,43 @@ function debugLabel(ctx: CanvasRenderingContext2D, point: WorldPoint, color: str
 
 /** Both cameras call this exact compositor in world pixels, including its light pass. */
 export function paintFixedWorld(ctx: CanvasRenderingContext2D, scene: FixedWorldScene, frame: PaintFrame) {
+  const viewport = canvasWorldViewport(ctx);
   ctx.save();
   ctx.beginPath(); ctx.rect(0, 0, scene.width, scene.height); ctx.clip();
-  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "low";
   for (const terrain of scene.terrain) {
+    // Cull before creating artwork/shadow surfaces. The bush's contact bed may
+    // extend beyond the PNG, so retain a generous world-space border.
+    if (!boundsInCanvas(viewport, terrain.bounds, Math.max(16, Math.max(terrain.bounds.width, terrain.bounds.height) * .3))) continue;
     const image = frame.images.get(terrain.image), bounds = terrain.bounds;
-    if (image) ctx.drawImage(image, 0, 0, image.naturalWidth, image.naturalHeight, bounds.x, bounds.y, bounds.width, bounds.height);
+    if (image) {
+      const bushId = scene.bushes?.find(bush => bush.imageId === terrain.id)?.id;
+      // Soil and contact shadows share the cutout's foreground masking. Their
+      // cached surfaces extend at most .22 of the crown around its PNG bounds.
+      const padding = Math.max(bounds.width, bounds.height) * .3;
+      withForestImageOcclusion(ctx, scene, terrain, target => {
+        drawForestBushGrounding(target, scene, terrain, image, frame.dusk ?? Number(frame.options.night),
+          frame.bushMoisture?.find(bush => bush.id === bushId)?.moisture);
+        if (!frame.hiddenTerrainIds?.includes(terrain.id)) {
+          if (bushId) {
+            target.drawImage(worldArtworkMipCache.image(ctx, terrain, forestObjectArtwork(image, "foliage")), bounds.x, bounds.y, bounds.width, bounds.height);
+            drawForestBushLeafShade(target, scene, terrain, image);
+          } else drawSiteImage(target, terrain, worldArtworkMipCache.image(ctx, terrain, image));
+        }
+      }, { x: bounds.x - padding, y: bounds.y - padding, width: bounds.width + padding * 2, height: bounds.height + padding * 2 });
+    }
   }
   // Tiled object layers use draworder=index; preserve the compiled authoring order.
   if (frame.paintGround) { ctx.save(); frame.paintGround(ctx); ctx.restore(); }
   for (const site of frame.options.showBuildings === false ? [] : scene.sites) {
+    if (!boundsInCanvas(viewport, site.bounds, 16)) continue;
     const visual = frame.visuals[site.id], image = visual && frame.images.get(visual.image);
     if (image) {
-      if (frame.options.buildingShadow !== false) drawSiteGrounding(ctx, site, image);
-      ctx.drawImage(image, site.bounds.x, site.bounds.y, site.bounds.width, site.bounds.height);
+      const artwork = worldArtworkMipCache.image(ctx, site, forestObjectArtwork(image, forestSiteMaterial(site)));
+      withForestSiteOcclusion(ctx, scene, site, target => {
+        if (frame.options.buildingShadow !== false) drawSiteGrounding(target, site, image, frame.dusk ?? Number(frame.options.night));
+        drawSiteImage(target, site, artwork);
+      }, { x: site.bounds.x - 16, y: site.bounds.y - 16, width: site.bounds.width + 32, height: site.bounds.height + 32 });
     }
   }
   drawForestLightFixtures(ctx, scene, frame.options.showBuildings);
@@ -83,7 +119,7 @@ export function paintFixedWorld(ctx: CanvasRenderingContext2D, scene: FixedWorld
   if (frame.options.night) {
     const lighting = { night: 1, elapsed: frame.elapsed ?? 0, reducedMotion: frame.options.reducedMotion,
       showBuildings: frame.options.showBuildings, levels: frame.options.levels };
-    drawForestLighting(ctx, scene, lighting); drawForestLightEmitters(ctx, scene, lighting);
+    drawForestLighting(ctx, scene, lighting); drawForestLighthouseBeams(ctx, scene, lighting); drawForestLightEmitters(ctx, scene, lighting);
   }
   const selected = scene.sites.find(site => site.id === frame.options.selectedSiteId);
   if (selected) {
@@ -106,6 +142,7 @@ export function paintFixedWorld(ctx: CanvasRenderingContext2D, scene: FixedWorld
       ctx.beginPath(); path.points.forEach((point, i) => i ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y)); ctx.stroke();
     }
     for (const mushroom of scene.mushrooms ?? []) debugPoint(ctx, mushroom.position, "#ffd995", mushroom.id);
+    if (scene.basket) debugPoint(ctx, scene.basket.position, "#e8c180", scene.basket.id);
     for (const bush of scene.bushes ?? []) {
       ctx.strokeStyle = "#c7ed82"; polygon(ctx, bush.points); ctx.stroke();
       if (bush.points[0]) debugLabel(ctx, { x: bush.points[0].x, y: bush.points[0].y - 6 }, "#c7ed82", bush.id);
@@ -123,7 +160,7 @@ export function paintFixedWorld(ctx: CanvasRenderingContext2D, scene: FixedWorld
 export async function createFixedWorldRenderer(
   worldCanvas: HTMLCanvasElement,
   circleCanvas: HTMLCanvasElement,
-  scene: FixedWorldScene,
+  sourceScene: FixedWorldScene,
   initial: FixedWorldRenderOptions,
   callbacks: FixedWorldRenderCallbacks = {},
   signal?: AbortSignal,
@@ -134,6 +171,7 @@ export async function createFixedWorldRenderer(
   if (!worldContext || !circleContext) throw new Error("Canvas 2D недоступен");
   const worldCtx = worldContext, circleCtx = circleContext;
   let options = { ...initial, levels: { ...initial.levels } }, disposed = false, ready = false;
+  let scene = previewWorldScene(sourceScene, options.levels);
   let worldView: Viewport = { width: 1, height: 1 }, circleView: Viewport = { width: 1, height: 1 };
   let camera: Camera = { x: scene.width / 2, y: scene.height / 2, zoom: 1 };
   let framing = "world", elapsed = 0, raf = 0, previous = 0, lastPaint = 0, frameNumber = 0;
@@ -144,7 +182,7 @@ export async function createFixedWorldRenderer(
   const imagePromises = new Map<string, Promise<HTMLImageElement>>(), images = new Map<string, HTMLImageElement>();
   const cancelImages = new Set<() => void>();
   let visuals: Record<string, SiteVisual> = {}, requestVersion = 0, requestedKey: string | null = null;
-  const route = createPreviewRoute(scene);
+  let route = createPreviewRoute(scene);
   let routeStatusKey = "";
   const reportStatus = (status: FixedWorldRenderStatus) => {
     for (const canvas of [worldCanvas, circleCanvas]) {
@@ -209,8 +247,9 @@ export async function createFixedWorldRenderer(
     return promise;
   }
   async function prepareImages(force = false) {
-    const next = Object.fromEntries(scene.sites.map(site => [site.id, previewSiteVisual(site, options.levels)]));
-    const urls = [...new Set([...scene.terrain.map(image => image.image), ...Object.values(next).map(visual => visual.image)])];
+    const nextScene = previewWorldScene(sourceScene, options.levels);
+    const next = Object.fromEntries(nextScene.sites.map(site => [site.id, previewSiteVisual(site, options.levels)]));
+    const urls = [...new Set([...nextScene.terrain.map(image => image.image), ...Object.values(next).map(visual => visual.image)])];
     const key = JSON.stringify(Object.entries(next).map(([id, visual]) => [id, visual.level, visual.image]));
     if (!force && key === requestedKey) return;
     requestedKey = key;
@@ -220,6 +259,13 @@ export async function createFixedWorldRenderer(
       await Promise.all(urls.map(loadImage));
       if (disposed || version !== requestVersion) return;
       // A complete requested state replaces the previous complete frame atomically.
+      if (scene !== nextScene) {
+        const pathId = route.status().pathId;
+        scene = nextScene;
+        route = createPreviewRoute(scene);
+        route.select(pathId);
+        frameCamera();
+      }
       visuals = next; ready = true;
       reportStatus({ loading: false, error: null }); draw(); animate();
     } catch (error) {
@@ -237,7 +283,12 @@ export async function createFixedWorldRenderer(
     worldCtx.fillStyle = "#12231b"; worldCtx.fillRect(0, 0, worldView.width, worldView.height);
     worldCtx.save(); worldCtx.translate(worldView.width / 2, worldView.height / 2);
     worldCtx.scale(camera.zoom, camera.zoom); worldCtx.translate(-camera.x, -camera.y);
-    if (ready) paintFixedWorld(worldCtx, scene, paintFrame); worldCtx.restore();
+    if (ready) {
+      paintFixedWorld(worldCtx, scene, paintFrame);
+      drawBuildingDetails(worldCtx, scene, { night: Number(options.night), elapsed,
+        reducedMotion: options.reducedMotion, showBuildings: options.showBuildings });
+    }
+    worldCtx.restore();
     circleCtx.setTransform(circleCanvas.width / circleView.width, 0, 0, circleCanvas.height / circleView.height, 0, 0);
     circleCtx.clearRect(0, 0, circleView.width, circleView.height);
     circleCtx.save(); circleCtx.beginPath();
@@ -246,7 +297,12 @@ export async function createFixedWorldRenderer(
     const circleZoom = Math.min(circleView.width / scene.focus.width, circleView.height / scene.focus.height);
     circleCtx.translate(circleView.width / 2, circleView.height / 2); circleCtx.scale(circleZoom, circleZoom);
     circleCtx.translate(-scene.focus.x - scene.focus.width / 2, -scene.focus.y - scene.focus.height / 2);
-    if (ready) paintFixedWorld(circleCtx, scene, paintFrame); circleCtx.restore();
+    if (ready) {
+      paintFixedWorld(circleCtx, scene, paintFrame);
+      drawBuildingDetails(circleCtx, scene, { night: Number(options.night), elapsed,
+        reducedMotion: options.reducedMotion, showBuildings: options.showBuildings });
+    }
+    circleCtx.restore();
     const levels = JSON.stringify(Object.fromEntries(Object.entries(visuals).map(([id, visual]) => [id, visual.level])));
     frameNumber++;
     for (const canvas of [worldCanvas, circleCanvas]) {
@@ -261,7 +317,9 @@ export async function createFixedWorldRenderer(
     if (routeStatusKey !== nextRouteStatusKey) { routeStatusKey = nextRouteStatusKey; callbacks.onRouteChange?.(routeStatus); }
     worldCanvas.dataset.cameraX = String(camera.x); worldCanvas.dataset.cameraY = String(camera.y); worldCanvas.dataset.cameraZoom = String(camera.zoom);
   }
-  const moving = () => route.moving() || options.night && forestLightSources(scene, options).some(light => light.intensity > 0 && light.flicker > 0);
+  const moving = () => route.moving()
+    || options.showBuildings !== false && buildingDetailsAnimated(scene)
+    || options.night && forestLightSources(scene, options).some(light => light.intensity > 0 && (light.flicker > 0 || light.beamLength));
   function animate() {
     cancelAnimationFrame(raf); raf = 0; previous = 0; lastPaint = 0;
     if (!disposed && ready && !options.paused && !options.reducedMotion && moving() && canPaint()) raf = requestAnimationFrame(tick);
@@ -319,7 +377,7 @@ export async function createFixedWorldRenderer(
     travelled = Math.max(travelled, Math.hypot(point.x - pointer.initial.x, point.y - pointer.initial.y));
     cancelled ||= event.type !== "pointerup"; pointers.delete(event.pointerId);
     if (!pointers.size && !cancelled && !multitouch && travelled < 8) {
-      const site = previewSiteAt(scene, toWorld(point)); if (site) callbacks.onSelect?.(site.id);
+      const site = forestVisibleSiteAt(scene, toWorld(point)); if (site) callbacks.onSelect?.(site.id);
     }
     if (worldCanvas.hasPointerCapture(event.pointerId)) worldCanvas.releasePointerCapture(event.pointerId);
   }

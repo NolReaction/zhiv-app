@@ -1,6 +1,8 @@
 # Fixed-site home art edits
 
-## Current editable files
+> Historical artwork record for the first Tiled prototype. The patches and commands below belong to that prototype and are not the current five houses. Current images are `public/world/prototype/home-level-1.png` through `home-level-5.png`, with separate geometry in Tiled. Use the [building workbench](building-workbench.md) and [artwork guide](../../art/README.md) for new edits; old source plates remain in Git history.
+
+## Editable files at the time of the prototype
 
 Edit `art/world/prototype/home-level-1.png`, `home-level-2.png`, or `home-level-3.png`. Each is a ready 568 × 536 home patch. Export the entire image to the same-named WebP in `public/world/prototype/`, then run `npm run world:export` and `npm run world:check`. These commands update/check scene metadata and image URLs without modifying image bytes. Proportional resolution changes are supported; preserve the doorway, ground anchor, and patch border. See the [artwork guide](../../art/README.md).
 
@@ -32,7 +34,7 @@ The historical full home image mapped to world rectangle `x=486,y=514,width=256,
 
 Visual inspection found the same camera and scene composition, aligned entrance and three doorstep stones, and house changes within the designated patch. The clean plate removes the stump, roots, lantern, attached mushrooms, sprout, and house shadow and continues the grass/forest texture. Level 2 has doorway reinforcement, a wooden awning, and one warm round window. Level 3 adds a shallow porch structure, two windows, shingles, and a small leaf motif while keeping the stump silhouette and footprint.
 
-Generative editing preserves composition but does not guarantee identical pixels outside the requested edit. The outputs show slight image-wide texture differences, especially in the grass. The old plates were unsuitable as full-scene replacements; the previous recipe used a bounded crop and adjusted its borders. Current PNGs already contain that prepared patch. When editing them, visually check their borders against `forest-ground.png`. The source plates preserve the original approximate entrance anchor `(877,494)` and route reference `(877,642)`; these are visual anchors rather than machine-measured guarantees.
+Generative editing preserves composition but does not guarantee identical pixels outside the requested edit. The outputs show slight image-wide texture differences, especially in the grass. The old plates were unsuitable as full-scene replacements; the previous recipe used a bounded crop and adjusted its borders. Current PNGs already contain that prepared patch. When editing them, visually check their borders against `forest-ground.jpg`. The source plates preserve the original approximate entrance anchor `(877,494)` and route reference `(877,642)`; these are visual anchors rather than machine-measured guarantees.
 
 ## Exact historical prompts
 

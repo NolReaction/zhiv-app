@@ -1,0 +1,1414 @@
+{
+  "reviewDate": "2026-10-06",
+  "catalogVersion": 3,
+  "method": {
+    "units": "Coins and catalog item quantities; pearl amounts only where explicitly labeled. All queue time is occupied resource time, not elapsed completion time.",
+    "production": "Each home tier assumes all required buildings completed and uninterrupted input supply. One slot is the reference; simultaneous identical slots multiply supply up to the house gate. Individual station maxima cannot be added as self-sufficient total output.",
+    "marketBudget": "Chosen release limits are catalog baseSellPrice × quantity per participant and direction per UTC day; price cap 2× and fee5%. Four wood slot-hours per2400 is only a calibration, not a universal production-minute limit.",
+    "limitations": [
+      "No user telemetry, demand curve, bots, collusive account network or market-clearing price simulation.",
+      "Quarry and Mochlik minutes overlap when mining; never add them as elapsed labour. Recipe reference profiles can use later unlocked efficient sources; their referenceHome is exposed separately by economicMath.",
+      "No premium transactions exist. Gift income is evaluated by the separate daily-gift progression report.",
+      "Market groups and quotas bound flow but do not prove complete resistance to account farms or all inflation."
+    ]
+  },
+  "production": [
+    {
+      "homeLevel": 1,
+      "maximumSlots": 1,
+      "stations": [
+        {
+          "station": "garden",
+          "shortActive": {
+            "recipeId": "grow_berries",
+            "output": {
+              "berries": 4
+            },
+            "inputs": {},
+            "minutes": 15,
+            "grossBaseValue": 120,
+            "netBaseValue": 120,
+            "grossBaseValuePerSlotHour": 480,
+            "netBaseValuePerSlotHour": 475.771,
+            "npcNetCoinsPerSlotHour": 277.533
+          },
+          "convenientLong": {
+            "recipeId": "grow_berries_overnight",
+            "output": {
+              "berries": 32
+            },
+            "inputs": {},
+            "minutes": 480,
+            "grossBaseValue": 960,
+            "netBaseValue": 960,
+            "grossBaseValuePerSlotHour": 120,
+            "netBaseValuePerSlotHour": 119.967,
+            "npcNetCoinsPerSlotHour": 71.23
+          }
+        },
+        {
+          "station": "woodlot",
+          "shortActive": {
+            "recipeId": "gather_wood",
+            "output": {
+              "wood": 5
+            },
+            "inputs": {},
+            "minutes": 20,
+            "grossBaseValue": 200,
+            "netBaseValue": 200,
+            "grossBaseValuePerSlotHour": 600,
+            "netBaseValuePerSlotHour": 600,
+            "npcNetCoinsPerSlotHour": 360
+          },
+          "convenientLong": {
+            "recipeId": "gather_wood_overnight",
+            "output": {
+              "wood": 32
+            },
+            "inputs": {},
+            "minutes": 480,
+            "grossBaseValue": 1280,
+            "netBaseValue": 1280,
+            "grossBaseValuePerSlotHour": 160,
+            "netBaseValuePerSlotHour": 160,
+            "npcNetCoinsPerSlotHour": 95
+          }
+        },
+        {
+          "station": "workshop",
+          "shortActive": {
+            "recipeId": "make_planks",
+            "output": {
+              "planks": 1
+            },
+            "inputs": {
+              "wood": 2
+            },
+            "minutes": 15,
+            "grossBaseValue": 120,
+            "netBaseValue": 40,
+            "grossBaseValuePerSlotHour": 480,
+            "netBaseValuePerSlotHour": 160,
+            "npcNetCoinsPerSlotHour": 120
+          },
+          "convenientLong": null
+        },
+        {
+          "station": "dryer",
+          "shortActive": {
+            "recipeId": "dry_berries",
+            "output": {
+              "dried_berries": 1
+            },
+            "inputs": {
+              "berries": 6
+            },
+            "minutes": 45,
+            "grossBaseValue": 260,
+            "netBaseValue": 80,
+            "grossBaseValuePerSlotHour": 346.667,
+            "netBaseValuePerSlotHour": 106.667,
+            "npcNetCoinsPerSlotHour": 66.667
+          },
+          "convenientLong": null
+        },
+        {
+          "station": "kiln",
+          "shortActive": null,
+          "convenientLong": null
+        }
+      ]
+    },
+    {
+      "homeLevel": 2,
+      "maximumSlots": 2,
+      "stations": [
+        {
+          "station": "garden",
+          "shortActive": {
+            "recipeId": "grow_berries_large",
+            "output": {
+              "berries": 10
+            },
+            "inputs": {},
+            "minutes": 30,
+            "grossBaseValue": 300,
+            "netBaseValue": 300,
+            "grossBaseValuePerSlotHour": 600,
+            "netBaseValuePerSlotHour": 597.345,
+            "npcNetCoinsPerSlotHour": 358.407
+          },
+          "convenientLong": {
+            "recipeId": "grow_berries_overnight",
+            "output": {
+              "berries": 32
+            },
+            "inputs": {},
+            "minutes": 480,
+            "grossBaseValue": 960,
+            "netBaseValue": 960,
+            "grossBaseValuePerSlotHour": 120,
+            "netBaseValuePerSlotHour": 119.967,
+            "npcNetCoinsPerSlotHour": 71.23
+          }
+        },
+        {
+          "station": "woodlot",
+          "shortActive": {
+            "recipeId": "gather_wood",
+            "output": {
+              "wood": 5
+            },
+            "inputs": {},
+            "minutes": 20,
+            "grossBaseValue": 200,
+            "netBaseValue": 200,
+            "grossBaseValuePerSlotHour": 600,
+            "netBaseValuePerSlotHour": 600,
+            "npcNetCoinsPerSlotHour": 360
+          },
+          "convenientLong": {
+            "recipeId": "woodlot_shift",
+            "output": {
+              "wood": 24,
+              "fiber": 24
+            },
+            "inputs": {},
+            "minutes": 360,
+            "grossBaseValue": 1440,
+            "netBaseValue": 1440,
+            "grossBaseValuePerSlotHour": 240,
+            "netBaseValuePerSlotHour": 240,
+            "npcNetCoinsPerSlotHour": 141.667
+          }
+        },
+        {
+          "station": "workshop",
+          "shortActive": {
+            "recipeId": "make_planks",
+            "output": {
+              "planks": 1
+            },
+            "inputs": {
+              "wood": 2
+            },
+            "minutes": 15,
+            "grossBaseValue": 120,
+            "netBaseValue": 40,
+            "grossBaseValuePerSlotHour": 480,
+            "netBaseValuePerSlotHour": 160,
+            "npcNetCoinsPerSlotHour": 120
+          },
+          "convenientLong": {
+            "recipeId": "workshop_overnight",
+            "output": {
+              "planks": 6,
+              "rope": 4,
+              "cloth": 1
+            },
+            "inputs": {
+              "wood": 12,
+              "fiber": 20
+            },
+            "minutes": 480,
+            "grossBaseValue": 1280,
+            "netBaseValue": 400,
+            "grossBaseValuePerSlotHour": 160,
+            "netBaseValuePerSlotHour": 50,
+            "npcNetCoinsPerSlotHour": 30
+          }
+        },
+        {
+          "station": "dryer",
+          "shortActive": {
+            "recipeId": "smoke_fish",
+            "output": {
+              "smoked_fish": 1
+            },
+            "inputs": {
+              "fish": 2,
+              "wood": 1
+            },
+            "minutes": 30,
+            "grossBaseValue": 340,
+            "netBaseValue": 140,
+            "grossBaseValuePerSlotHour": 680,
+            "netBaseValuePerSlotHour": 280,
+            "npcNetCoinsPerSlotHour": 40
+          },
+          "convenientLong": null
+        },
+        {
+          "station": "kiln",
+          "shortActive": {
+            "recipeId": "fire_bricks",
+            "output": {
+              "bricks": 4
+            },
+            "inputs": {
+              "clay": 6,
+              "charcoal": 2
+            },
+            "minutes": 60,
+            "grossBaseValue": 560,
+            "netBaseValue": 120,
+            "grossBaseValuePerSlotHour": 560,
+            "netBaseValuePerSlotHour": 120,
+            "npcNetCoinsPerSlotHour": 70
+          },
+          "convenientLong": null
+        }
+      ]
+    },
+    {
+      "homeLevel": 3,
+      "maximumSlots": 2,
+      "stations": [
+        {
+          "station": "garden",
+          "shortActive": {
+            "recipeId": "grow_berries_large",
+            "output": {
+              "berries": 10
+            },
+            "inputs": {},
+            "minutes": 30,
+            "grossBaseValue": 300,
+            "netBaseValue": 300,
+            "grossBaseValuePerSlotHour": 600,
+            "netBaseValuePerSlotHour": 597.345,
+            "npcNetCoinsPerSlotHour": 358.407
+          },
+          "convenientLong": {
+            "recipeId": "garden_season",
+            "output": {
+              "berries": 40,
+              "fiber": 8
+            },
+            "inputs": {},
+            "minutes": 360,
+            "grossBaseValue": 1360,
+            "netBaseValue": 1360,
+            "grossBaseValuePerSlotHour": 226.667,
+            "netBaseValuePerSlotHour": 226.583,
+            "npcNetCoinsPerSlotHour": 134.95
+          }
+        },
+        {
+          "station": "woodlot",
+          "shortActive": {
+            "recipeId": "gather_wood",
+            "output": {
+              "wood": 5
+            },
+            "inputs": {},
+            "minutes": 20,
+            "grossBaseValue": 200,
+            "netBaseValue": 200,
+            "grossBaseValuePerSlotHour": 600,
+            "netBaseValuePerSlotHour": 600,
+            "npcNetCoinsPerSlotHour": 360
+          },
+          "convenientLong": {
+            "recipeId": "hardwood_shift",
+            "output": {
+              "wood": 24,
+              "hardwood": 12
+            },
+            "inputs": {},
+            "minutes": 480,
+            "grossBaseValue": 2160,
+            "netBaseValue": 2160,
+            "grossBaseValuePerSlotHour": 270,
+            "netBaseValuePerSlotHour": 270,
+            "npcNetCoinsPerSlotHour": 161.25
+          }
+        },
+        {
+          "station": "workshop",
+          "shortActive": {
+            "recipeId": "make_planks",
+            "output": {
+              "planks": 1
+            },
+            "inputs": {
+              "wood": 2
+            },
+            "minutes": 15,
+            "grossBaseValue": 120,
+            "netBaseValue": 40,
+            "grossBaseValuePerSlotHour": 480,
+            "netBaseValuePerSlotHour": 160,
+            "npcNetCoinsPerSlotHour": 120
+          },
+          "convenientLong": {
+            "recipeId": "workshop_materials",
+            "output": {
+              "planks": 8,
+              "rope": 4,
+              "cloth": 1
+            },
+            "inputs": {
+              "wood": 16,
+              "fiber": 20
+            },
+            "minutes": 360,
+            "grossBaseValue": 1520,
+            "netBaseValue": 480,
+            "grossBaseValuePerSlotHour": 253.333,
+            "netBaseValuePerSlotHour": 80,
+            "npcNetCoinsPerSlotHour": 46.667
+          }
+        },
+        {
+          "station": "dryer",
+          "shortActive": {
+            "recipeId": "smoke_fish",
+            "output": {
+              "smoked_fish": 1
+            },
+            "inputs": {
+              "fish": 2,
+              "wood": 1
+            },
+            "minutes": 30,
+            "grossBaseValue": 340,
+            "netBaseValue": 140,
+            "grossBaseValuePerSlotHour": 680,
+            "netBaseValuePerSlotHour": 280,
+            "npcNetCoinsPerSlotHour": 40
+          },
+          "convenientLong": {
+            "recipeId": "prepare_provisions",
+            "output": {
+              "dried_berries": 3,
+              "smoked_fish": 2
+            },
+            "inputs": {
+              "berries": 18,
+              "fish": 4,
+              "wood": 2
+            },
+            "minutes": 360,
+            "grossBaseValue": 1460,
+            "netBaseValue": 520,
+            "grossBaseValuePerSlotHour": 243.333,
+            "netBaseValuePerSlotHour": 86.667,
+            "npcNetCoinsPerSlotHour": 30
+          }
+        },
+        {
+          "station": "kiln",
+          "shortActive": {
+            "recipeId": "fire_bricks",
+            "output": {
+              "bricks": 4
+            },
+            "inputs": {
+              "clay": 6,
+              "charcoal": 2
+            },
+            "minutes": 60,
+            "grossBaseValue": 560,
+            "netBaseValue": 120,
+            "grossBaseValuePerSlotHour": 560,
+            "netBaseValuePerSlotHour": 120,
+            "npcNetCoinsPerSlotHour": 70
+          },
+          "convenientLong": {
+            "recipeId": "charcoal_batch",
+            "output": {
+              "charcoal": 4
+            },
+            "inputs": {
+              "wood": 8
+            },
+            "minutes": 240,
+            "grossBaseValue": 400,
+            "netBaseValue": 80,
+            "grossBaseValuePerSlotHour": 100,
+            "netBaseValuePerSlotHour": 20,
+            "npcNetCoinsPerSlotHour": 12.5
+          }
+        }
+      ]
+    },
+    {
+      "homeLevel": 4,
+      "maximumSlots": 3,
+      "stations": [
+        {
+          "station": "garden",
+          "shortActive": {
+            "recipeId": "grow_berries_large",
+            "output": {
+              "berries": 10
+            },
+            "inputs": {},
+            "minutes": 30,
+            "grossBaseValue": 300,
+            "netBaseValue": 300,
+            "grossBaseValuePerSlotHour": 600,
+            "netBaseValuePerSlotHour": 597.345,
+            "npcNetCoinsPerSlotHour": 358.407
+          },
+          "convenientLong": {
+            "recipeId": "garden_supply",
+            "output": {
+              "berries": 60,
+              "fiber": 12
+            },
+            "inputs": {},
+            "minutes": 480,
+            "grossBaseValue": 2040,
+            "netBaseValue": 2040,
+            "grossBaseValuePerSlotHour": 255,
+            "netBaseValuePerSlotHour": 254.929,
+            "npcNetCoinsPerSlotHour": 152.458
+          }
+        },
+        {
+          "station": "woodlot",
+          "shortActive": {
+            "recipeId": "gather_wood",
+            "output": {
+              "wood": 5
+            },
+            "inputs": {},
+            "minutes": 20,
+            "grossBaseValue": 200,
+            "netBaseValue": 200,
+            "grossBaseValuePerSlotHour": 600,
+            "netBaseValuePerSlotHour": 600,
+            "npcNetCoinsPerSlotHour": 360
+          },
+          "convenientLong": {
+            "recipeId": "woodland_shift",
+            "output": {
+              "wood": 30,
+              "hardwood": 14,
+              "resin": 8
+            },
+            "inputs": {},
+            "minutes": 480,
+            "grossBaseValue": 3080,
+            "netBaseValue": 3080,
+            "grossBaseValuePerSlotHour": 385,
+            "netBaseValuePerSlotHour": 385,
+            "npcNetCoinsPerSlotHour": 230
+          }
+        },
+        {
+          "station": "workshop",
+          "shortActive": {
+            "recipeId": "make_reinforced_parts",
+            "output": {
+              "reinforced_parts": 1
+            },
+            "inputs": {
+              "iron_ingot": 2,
+              "beams": 1,
+              "resin": 3
+            },
+            "minutes": 120,
+            "grossBaseValue": 1800,
+            "netBaseValue": 340,
+            "grossBaseValuePerSlotHour": 900,
+            "netBaseValuePerSlotHour": 170,
+            "npcNetCoinsPerSlotHour": 110
+          },
+          "convenientLong": {
+            "recipeId": "workshop_materials",
+            "output": {
+              "planks": 8,
+              "rope": 4,
+              "cloth": 1
+            },
+            "inputs": {
+              "wood": 16,
+              "fiber": 20
+            },
+            "minutes": 360,
+            "grossBaseValue": 1520,
+            "netBaseValue": 480,
+            "grossBaseValuePerSlotHour": 253.333,
+            "netBaseValuePerSlotHour": 80,
+            "npcNetCoinsPerSlotHour": 46.667
+          }
+        },
+        {
+          "station": "dryer",
+          "shortActive": {
+            "recipeId": "smoke_fish",
+            "output": {
+              "smoked_fish": 1
+            },
+            "inputs": {
+              "fish": 2,
+              "wood": 1
+            },
+            "minutes": 30,
+            "grossBaseValue": 340,
+            "netBaseValue": 140,
+            "grossBaseValuePerSlotHour": 680,
+            "netBaseValuePerSlotHour": 280,
+            "npcNetCoinsPerSlotHour": 40
+          },
+          "convenientLong": {
+            "recipeId": "prepare_expedition_provisions",
+            "output": {
+              "dried_berries": 4,
+              "smoked_fish": 4
+            },
+            "inputs": {
+              "berries": 24,
+              "fish": 8,
+              "wood": 4
+            },
+            "minutes": 480,
+            "grossBaseValue": 2400,
+            "netBaseValue": 880,
+            "grossBaseValuePerSlotHour": 300,
+            "netBaseValuePerSlotHour": 110,
+            "npcNetCoinsPerSlotHour": 33.75
+          }
+        },
+        {
+          "station": "kiln",
+          "shortActive": {
+            "recipeId": "fire_bricks",
+            "output": {
+              "bricks": 4
+            },
+            "inputs": {
+              "clay": 6,
+              "charcoal": 2
+            },
+            "minutes": 60,
+            "grossBaseValue": 560,
+            "netBaseValue": 120,
+            "grossBaseValuePerSlotHour": 560,
+            "netBaseValuePerSlotHour": 120,
+            "npcNetCoinsPerSlotHour": 70
+          },
+          "convenientLong": {
+            "recipeId": "kiln_shift",
+            "output": {
+              "iron_ingot": 6,
+              "bricks": 8
+            },
+            "inputs": {
+              "ore": 18,
+              "charcoal": 10,
+              "clay": 12
+            },
+            "minutes": 480,
+            "grossBaseValue": 3160,
+            "netBaseValue": 600,
+            "grossBaseValuePerSlotHour": 395,
+            "netBaseValuePerSlotHour": 75,
+            "npcNetCoinsPerSlotHour": 46.25
+          }
+        }
+      ]
+    },
+    {
+      "homeLevel": 5,
+      "maximumSlots": 3,
+      "stations": [
+        {
+          "station": "garden",
+          "shortActive": {
+            "recipeId": "grow_berries_large",
+            "output": {
+              "berries": 10
+            },
+            "inputs": {},
+            "minutes": 30,
+            "grossBaseValue": 300,
+            "netBaseValue": 300,
+            "grossBaseValuePerSlotHour": 600,
+            "netBaseValuePerSlotHour": 597.345,
+            "npcNetCoinsPerSlotHour": 358.407
+          },
+          "convenientLong": {
+            "recipeId": "garden_abundance",
+            "output": {
+              "berries": 80,
+              "fiber": 16
+            },
+            "inputs": {},
+            "minutes": 480,
+            "grossBaseValue": 2720,
+            "netBaseValue": 2720,
+            "grossBaseValuePerSlotHour": 340,
+            "netBaseValuePerSlotHour": 339.906,
+            "npcNetCoinsPerSlotHour": 203.693
+          }
+        },
+        {
+          "station": "woodlot",
+          "shortActive": {
+            "recipeId": "gather_wood",
+            "output": {
+              "wood": 5
+            },
+            "inputs": {},
+            "minutes": 20,
+            "grossBaseValue": 200,
+            "netBaseValue": 200,
+            "grossBaseValuePerSlotHour": 600,
+            "netBaseValuePerSlotHour": 600,
+            "npcNetCoinsPerSlotHour": 360
+          },
+          "convenientLong": {
+            "recipeId": "woodland_supply",
+            "output": {
+              "wood": 36,
+              "hardwood": 16,
+              "resin": 10
+            },
+            "inputs": {},
+            "minutes": 480,
+            "grossBaseValue": 3640,
+            "netBaseValue": 3640,
+            "grossBaseValuePerSlotHour": 455,
+            "netBaseValuePerSlotHour": 455,
+            "npcNetCoinsPerSlotHour": 272.5
+          }
+        },
+        {
+          "station": "workshop",
+          "shortActive": {
+            "recipeId": "make_reinforced_parts",
+            "output": {
+              "reinforced_parts": 1
+            },
+            "inputs": {
+              "iron_ingot": 2,
+              "beams": 1,
+              "resin": 3
+            },
+            "minutes": 120,
+            "grossBaseValue": 1800,
+            "netBaseValue": 340,
+            "grossBaseValuePerSlotHour": 900,
+            "netBaseValuePerSlotHour": 170,
+            "npcNetCoinsPerSlotHour": 110
+          },
+          "convenientLong": {
+            "recipeId": "workshop_assembly",
+            "output": {
+              "tools": 2,
+              "reinforced_parts": 1
+            },
+            "inputs": {
+              "metal_parts": 2,
+              "planks": 4,
+              "rope": 2,
+              "iron_ingot": 2,
+              "beams": 1,
+              "resin": 3
+            },
+            "minutes": 480,
+            "grossBaseValue": 3800,
+            "netBaseValue": 780,
+            "grossBaseValuePerSlotHour": 475,
+            "netBaseValuePerSlotHour": 97.5,
+            "npcNetCoinsPerSlotHour": 62.5
+          }
+        },
+        {
+          "station": "dryer",
+          "shortActive": {
+            "recipeId": "smoke_fish",
+            "output": {
+              "smoked_fish": 1
+            },
+            "inputs": {
+              "fish": 2,
+              "wood": 1
+            },
+            "minutes": 30,
+            "grossBaseValue": 340,
+            "netBaseValue": 140,
+            "grossBaseValuePerSlotHour": 680,
+            "netBaseValuePerSlotHour": 280,
+            "npcNetCoinsPerSlotHour": 40
+          },
+          "convenientLong": {
+            "recipeId": "provisions_supply",
+            "output": {
+              "dried_berries": 6,
+              "smoked_fish": 4
+            },
+            "inputs": {
+              "berries": 36,
+              "fish": 8,
+              "wood": 4
+            },
+            "minutes": 480,
+            "grossBaseValue": 2920,
+            "netBaseValue": 1040,
+            "grossBaseValuePerSlotHour": 365,
+            "netBaseValuePerSlotHour": 130,
+            "npcNetCoinsPerSlotHour": 46.25
+          }
+        },
+        {
+          "station": "kiln",
+          "shortActive": {
+            "recipeId": "fire_bricks",
+            "output": {
+              "bricks": 4
+            },
+            "inputs": {
+              "clay": 6,
+              "charcoal": 2
+            },
+            "minutes": 60,
+            "grossBaseValue": 560,
+            "netBaseValue": 120,
+            "grossBaseValuePerSlotHour": 560,
+            "netBaseValuePerSlotHour": 120,
+            "npcNetCoinsPerSlotHour": 70
+          },
+          "convenientLong": {
+            "recipeId": "kiln_supply",
+            "output": {
+              "iron_ingot": 8,
+              "bricks": 12,
+              "glass": 4
+            },
+            "inputs": {
+              "ore": 24,
+              "charcoal": 18,
+              "clay": 18,
+              "sand": 12
+            },
+            "minutes": 720,
+            "grossBaseValue": 5360,
+            "netBaseValue": 1040,
+            "grossBaseValuePerSlotHour": 446.667,
+            "netBaseValuePerSlotHour": 86.667,
+            "npcNetCoinsPerSlotHour": 51.667
+          }
+        }
+      ]
+    }
+  ],
+  "tradeBudget": [
+    {
+      "homeLevel": 2,
+      "baseValueBudget": 2400,
+      "woodReferenceSlotHours": 4,
+      "maximumCoinsTransferredToSeller": 4560,
+      "replacedProductionExamples": [
+        {
+          "itemId": "wood",
+          "quantity": 60,
+          "baseValue": 2400,
+          "occupiedMinutesByResource": {
+            "woodlot": 240
+          }
+        },
+        {
+          "itemId": "planks",
+          "quantity": 20,
+          "baseValue": 2400,
+          "occupiedMinutesByResource": {
+            "workshop": 300,
+            "woodlot": 160
+          }
+        },
+        {
+          "itemId": "rope",
+          "quantity": 30,
+          "baseValue": 2400,
+          "occupiedMinutesByResource": {
+            "workshop": 300,
+            "woodlot": 225
+          }
+        },
+        {
+          "itemId": "iron_ingot",
+          "quantity": 7,
+          "baseValue": 2380,
+          "occupiedMinutesByResource": {
+            "kiln": 420,
+            "quarry": 189,
+            "mochlik": 189,
+            "woodlot": 56
+          }
+        }
+      ]
+    },
+    {
+      "homeLevel": 3,
+      "baseValueBudget": 4800,
+      "woodReferenceSlotHours": 8,
+      "maximumCoinsTransferredToSeller": 9120,
+      "replacedProductionExamples": [
+        {
+          "itemId": "wood",
+          "quantity": 120,
+          "baseValue": 4800,
+          "occupiedMinutesByResource": {
+            "woodlot": 480
+          }
+        },
+        {
+          "itemId": "planks",
+          "quantity": 40,
+          "baseValue": 4800,
+          "occupiedMinutesByResource": {
+            "workshop": 600,
+            "woodlot": 320
+          }
+        },
+        {
+          "itemId": "rope",
+          "quantity": 60,
+          "baseValue": 4800,
+          "occupiedMinutesByResource": {
+            "workshop": 600,
+            "woodlot": 450
+          }
+        },
+        {
+          "itemId": "cut_stone",
+          "quantity": 40,
+          "baseValue": 4800,
+          "occupiedMinutesByResource": {
+            "workshop": 1800,
+            "quarry": 450,
+            "mochlik": 450
+          }
+        },
+        {
+          "itemId": "iron_ingot",
+          "quantity": 14,
+          "baseValue": 4760,
+          "occupiedMinutesByResource": {
+            "kiln": 840,
+            "quarry": 378,
+            "mochlik": 378,
+            "woodlot": 112
+          }
+        }
+      ]
+    },
+    {
+      "homeLevel": 4,
+      "baseValueBudget": 9600,
+      "woodReferenceSlotHours": 16,
+      "maximumCoinsTransferredToSeller": 18240,
+      "replacedProductionExamples": [
+        {
+          "itemId": "wood",
+          "quantity": 240,
+          "baseValue": 9600,
+          "occupiedMinutesByResource": {
+            "woodlot": 960
+          }
+        },
+        {
+          "itemId": "planks",
+          "quantity": 80,
+          "baseValue": 9600,
+          "occupiedMinutesByResource": {
+            "workshop": 1200,
+            "woodlot": 640
+          }
+        },
+        {
+          "itemId": "rope",
+          "quantity": 120,
+          "baseValue": 9600,
+          "occupiedMinutesByResource": {
+            "workshop": 1200,
+            "woodlot": 900
+          }
+        },
+        {
+          "itemId": "cut_stone",
+          "quantity": 80,
+          "baseValue": 9600,
+          "occupiedMinutesByResource": {
+            "workshop": 3600,
+            "quarry": 900,
+            "mochlik": 900
+          }
+        },
+        {
+          "itemId": "iron_ingot",
+          "quantity": 28,
+          "baseValue": 9520,
+          "occupiedMinutesByResource": {
+            "kiln": 1680,
+            "quarry": 756,
+            "mochlik": 756,
+            "woodlot": 224
+          }
+        },
+        {
+          "itemId": "tools",
+          "quantity": 9,
+          "baseValue": 9000,
+          "occupiedMinutesByResource": {
+            "workshop": 1440,
+            "kiln": 540,
+            "quarry": 243,
+            "mochlik": 243,
+            "woodlot": 319.5
+          }
+        },
+        {
+          "itemId": "reinforced_parts",
+          "quantity": 5,
+          "baseValue": 9000,
+          "occupiedMinutesByResource": {
+            "workshop": 950,
+            "kiln": 600,
+            "quarry": 270,
+            "mochlik": 270,
+            "woodlot": 430
+          }
+        }
+      ]
+    },
+    {
+      "homeLevel": 5,
+      "baseValueBudget": 14400,
+      "woodReferenceSlotHours": 24,
+      "maximumCoinsTransferredToSeller": 27360,
+      "replacedProductionExamples": [
+        {
+          "itemId": "wood",
+          "quantity": 360,
+          "baseValue": 14400,
+          "occupiedMinutesByResource": {
+            "woodlot": 1440
+          }
+        },
+        {
+          "itemId": "planks",
+          "quantity": 120,
+          "baseValue": 14400,
+          "occupiedMinutesByResource": {
+            "workshop": 1800,
+            "woodlot": 960
+          }
+        },
+        {
+          "itemId": "rope",
+          "quantity": 180,
+          "baseValue": 14400,
+          "occupiedMinutesByResource": {
+            "workshop": 1800,
+            "woodlot": 1350
+          }
+        },
+        {
+          "itemId": "cut_stone",
+          "quantity": 120,
+          "baseValue": 14400,
+          "occupiedMinutesByResource": {
+            "workshop": 5400,
+            "quarry": 1350,
+            "mochlik": 1350
+          }
+        },
+        {
+          "itemId": "iron_ingot",
+          "quantity": 42,
+          "baseValue": 14280,
+          "occupiedMinutesByResource": {
+            "kiln": 2520,
+            "quarry": 1134,
+            "mochlik": 1134,
+            "woodlot": 336
+          }
+        },
+        {
+          "itemId": "tools",
+          "quantity": 14,
+          "baseValue": 14000,
+          "occupiedMinutesByResource": {
+            "workshop": 2240,
+            "kiln": 840,
+            "quarry": 378,
+            "mochlik": 378,
+            "woodlot": 497
+          }
+        },
+        {
+          "itemId": "reinforced_parts",
+          "quantity": 8,
+          "baseValue": 14400,
+          "occupiedMinutesByResource": {
+            "workshop": 1520,
+            "kiln": 960,
+            "quarry": 432,
+            "mochlik": 432,
+            "woodlot": 688
+          }
+        }
+      ]
+    }
+  ],
+  "fish": [
+    {
+      "itemId": "fish",
+      "rarity": "common",
+      "npcSalePrice": 80,
+      "merchantBuyPrice": 128,
+      "immediateNpcResaleProfit": -48,
+      "conditionalPlayerResaleProfit": 24,
+      "consumedByRecipes": [
+        "smoke_fish",
+        "prepare_provisions",
+        "prepare_expedition_provisions",
+        "provisions_supply"
+      ],
+      "consumedByExplorations": []
+    },
+    {
+      "itemId": "fish_silverfin",
+      "rarity": "common",
+      "npcSalePrice": 120,
+      "merchantBuyPrice": 192,
+      "immediateNpcResaleProfit": -72,
+      "conditionalPlayerResaleProfit": 36,
+      "consumedByRecipes": [],
+      "consumedByExplorations": []
+    },
+    {
+      "itemId": "fish_rudd",
+      "rarity": "common",
+      "npcSalePrice": 140,
+      "merchantBuyPrice": 224,
+      "immediateNpcResaleProfit": -84,
+      "conditionalPlayerResaleProfit": 42,
+      "consumedByRecipes": [],
+      "consumedByExplorations": []
+    },
+    {
+      "itemId": "fish_reedperch",
+      "rarity": "uncommon",
+      "npcSalePrice": 180,
+      "merchantBuyPrice": null,
+      "immediateNpcResaleProfit": null,
+      "conditionalPlayerResaleProfit": null,
+      "consumedByRecipes": [],
+      "consumedByExplorations": []
+    },
+    {
+      "itemId": "fish_dace",
+      "rarity": "uncommon",
+      "npcSalePrice": 200,
+      "merchantBuyPrice": null,
+      "immediateNpcResaleProfit": null,
+      "conditionalPlayerResaleProfit": null,
+      "consumedByRecipes": [],
+      "consumedByExplorations": []
+    },
+    {
+      "itemId": "fish_bream",
+      "rarity": "uncommon",
+      "npcSalePrice": 240,
+      "merchantBuyPrice": null,
+      "immediateNpcResaleProfit": null,
+      "conditionalPlayerResaleProfit": null,
+      "consumedByRecipes": [],
+      "consumedByExplorations": []
+    },
+    {
+      "itemId": "fish_mooncarp",
+      "rarity": "rare",
+      "npcSalePrice": 320,
+      "merchantBuyPrice": null,
+      "immediateNpcResaleProfit": null,
+      "conditionalPlayerResaleProfit": null,
+      "consumedByRecipes": [],
+      "consumedByExplorations": []
+    },
+    {
+      "itemId": "fish_pike",
+      "rarity": "rare",
+      "npcSalePrice": 400,
+      "merchantBuyPrice": null,
+      "immediateNpcResaleProfit": null,
+      "conditionalPlayerResaleProfit": null,
+      "consumedByRecipes": [],
+      "consumedByExplorations": []
+    },
+    {
+      "itemId": "fish_eel",
+      "rarity": "rare",
+      "npcSalePrice": 480,
+      "merchantBuyPrice": null,
+      "immediateNpcResaleProfit": null,
+      "conditionalPlayerResaleProfit": null,
+      "consumedByRecipes": [],
+      "consumedByExplorations": []
+    },
+    {
+      "itemId": "fish_sturgeon",
+      "rarity": "epic",
+      "npcSalePrice": 720,
+      "merchantBuyPrice": null,
+      "immediateNpcResaleProfit": null,
+      "conditionalPlayerResaleProfit": null,
+      "consumedByRecipes": [],
+      "consumedByExplorations": []
+    },
+    {
+      "itemId": "fish_mirror_koi",
+      "rarity": "epic",
+      "npcSalePrice": 960,
+      "merchantBuyPrice": null,
+      "immediateNpcResaleProfit": null,
+      "conditionalPlayerResaleProfit": null,
+      "consumedByRecipes": [],
+      "consumedByExplorations": []
+    },
+    {
+      "itemId": "fish_shark",
+      "rarity": "legendary",
+      "npcSalePrice": 1600,
+      "merchantBuyPrice": null,
+      "immediateNpcResaleProfit": null,
+      "conditionalPlayerResaleProfit": null,
+      "consumedByRecipes": [],
+      "consumedByExplorations": []
+    }
+  ],
+  "food": [
+    {
+      "itemId": "dried_berries",
+      "consumedBy": [
+        {
+          "routeId": "deep_cave",
+          "required": 1,
+          "hours": 4
+        },
+        {
+          "routeId": "old_woodland",
+          "required": 3,
+          "hours": 8
+        },
+        {
+          "routeId": "coastal_deposits",
+          "required": 3,
+          "hours": 10
+        },
+        {
+          "routeId": "uplands",
+          "required": 4,
+          "hours": 12
+        },
+        {
+          "routeId": "abandoned_quarry",
+          "required": 4,
+          "hours": 16
+        }
+      ],
+      "recipeInputs": [],
+      "constructionUses": []
+    },
+    {
+      "itemId": "smoked_fish",
+      "consumedBy": [
+        {
+          "routeId": "deep_cave",
+          "required": 1,
+          "hours": 4
+        },
+        {
+          "routeId": "coastal_deposits",
+          "required": 3,
+          "hours": 10
+        },
+        {
+          "routeId": "uplands",
+          "required": 4,
+          "hours": 12
+        },
+        {
+          "routeId": "abandoned_quarry",
+          "required": 4,
+          "hours": 16
+        }
+      ],
+      "recipeInputs": [],
+      "constructionUses": []
+    }
+  ],
+  "totalRemainingBuildingCoinCostFromStarter": 2521150,
+  "rareMaterialDemand": [
+    {
+      "itemId": "ancient_core",
+      "totalAcrossAllCurrentBuildingLevels": 2,
+      "expectedExplorationHoursPerSpecificDrop": 288
+    },
+    {
+      "itemId": "moon_crystal",
+      "totalAcrossAllCurrentBuildingLevels": 2,
+      "expectedExplorationHoursPerSpecificDrop": 288
+    },
+    {
+      "itemId": "living_resin",
+      "totalAcrossAllCurrentBuildingLevels": 2,
+      "expectedExplorationHoursPerSpecificDrop": 288
+    }
+  ],
+  "preparedExpeditions": [
+    {
+      "routeId": "deep_cave",
+      "routeMinutes": 240,
+      "consumes": {
+        "dried_berries": 1,
+        "smoked_fish": 1
+      },
+      "gives": {
+        "stone": 32,
+        "ore": 16
+      },
+      "inputProductionMinutesByResource": {
+        "mochlik": 25.147,
+        "dryer": 75,
+        "garden": 18.08,
+        "woodlot": 4
+      },
+      "sameOutputElementaryMinutesByResource": {
+        "quarry": 264,
+        "mochlik": 264
+      },
+      "npcRevenueLessIngredientOpportunity": 790
+    },
+    {
+      "routeId": "old_woodland",
+      "routeMinutes": 480,
+      "consumes": {
+        "dried_berries": 3,
+        "rope": 2
+      },
+      "gives": {
+        "hardwood": 18,
+        "resin": 6,
+        "wood": 18
+      },
+      "inputProductionMinutesByResource": {
+        "mochlik": 0.24,
+        "dryer": 135,
+        "garden": 54.24,
+        "workshop": 20,
+        "woodlot": 15
+      },
+      "sameOutputElementaryMinutesByResource": {
+        "woodlot": 297
+      },
+      "npcRevenueLessIngredientOpportunity": 1170
+    },
+    {
+      "routeId": "coastal_deposits",
+      "routeMinutes": 600,
+      "consumes": {
+        "smoked_fish": 3,
+        "dried_berries": 3
+      },
+      "gives": {
+        "clay": 36,
+        "sand": 40,
+        "ore": 20
+      },
+      "inputProductionMinutesByResource": {
+        "mochlik": 75.441,
+        "dryer": 225,
+        "woodlot": 12,
+        "garden": 54.24
+      },
+      "sameOutputElementaryMinutesByResource": {
+        "quarry": 562.5,
+        "mochlik": 562.5
+      },
+      "npcRevenueLessIngredientOpportunity": 1230
+    },
+    {
+      "routeId": "uplands",
+      "routeMinutes": 720,
+      "consumes": {
+        "tools": 2,
+        "dried_berries": 4,
+        "smoked_fish": 4
+      },
+      "gives": {
+        "hardwood": 40,
+        "ore": 30,
+        "resin": 18,
+        "stone": 30
+      },
+      "inputProductionMinutesByResource": {
+        "mochlik": 154.588,
+        "workshop": 320,
+        "kiln": 120,
+        "quarry": 54,
+        "woodlot": 87,
+        "dryer": 300,
+        "garden": 72.32
+      },
+      "sameOutputElementaryMinutesByResource": {
+        "woodlot": 535,
+        "quarry": 382.5,
+        "mochlik": 382.5
+      },
+      "npcRevenueLessIngredientOpportunity": 2030
+    },
+    {
+      "routeId": "abandoned_quarry",
+      "routeMinutes": 960,
+      "consumes": {
+        "tools": 2,
+        "rope": 4,
+        "dried_berries": 4,
+        "smoked_fish": 4
+      },
+      "gives": {
+        "stone": 96,
+        "ore": 60,
+        "sand": 48,
+        "clay": 40
+      },
+      "inputProductionMinutesByResource": {
+        "quarry": 54,
+        "mochlik": 154.588,
+        "workshop": 360,
+        "kiln": 120,
+        "woodlot": 117,
+        "dryer": 300,
+        "garden": 72.32
+      },
+      "sameOutputElementaryMinutesByResource": {
+        "quarry": 1341,
+        "mochlik": 1341
+      },
+      "npcRevenueLessIngredientOpportunity": 2880
+    }
+  ],
+  "observations": [
+    "At home5 three garden slots can yield720 berries+144 fiber across three8h jobs/day versus96 berries from home1 one slot. At home5 three woodlot slots yield324wood+144hardwood+90resin/day versus72wood+72fiber at home2 one slot's three6h jobs. These are separate stationary envelopes without construction interruptions.",
+    "A low-level player cannot compete on volume against such unlocked capacity. Small showcase size does not limit turnover once a seller relists sold goods.",
+    "Common merchant fish cannot be immediately sold profitably to the NPC. Reselling at the market ceiling can have a small positive margin but requires another player, uses fixed merchant stock and consumes both market participants' daily quotas; it is not coin minting.",
+    "deep_cave yields exactly four cave trips but charges one dried_berries+one smoked_fish: its current premium is fewer visits, not better yield. coastal_deposits takes600 route minutes plus food inputs for output requiring562.5 focused quarry/actor minutes without food.",
+    "Food is currently consumed only by five expedition definitions; no building or recipe consumes either cooked item. Valuable collection fish have no recipe sink. Future ponds and limited personal collection commissions can create use without an unlimited coin faucet.",
+    "Current buildings consume only two units of each relic in total. A guaranteed ancient_core every seventh daily gift meets its entire construction demand after14claims and creates an enduring excess; its weekly schedule predates this update. The other types still depend on shared expedition time or barter.",
+    "Price caps, group boundaries and per-account limits bound damage. They do not prove resistance to organised account farms, price inflation or the indirect release of ordinary coins when premium currency pays construction."
+  ],
+  "sourceHashes": {
+    "../apps/api/src/main/resources/world/economy-catalog.json": "89ef1212f0ee6c6f1817b6e231c777f45b21b311d4323544c7b7a167a086ba9e",
+    "./lib/economy-math.mjs": "0fa53d161466fa3c0b9d8bc91accfae24ba503b06c7a0137d1db71fe9e84db5e",
+    "./review-market-pressure.mjs": "bf6b90d9ebdb736d133ea5cf8298c2127669d9a07bb329443d1bce469c7a6f39"
+  }
+}

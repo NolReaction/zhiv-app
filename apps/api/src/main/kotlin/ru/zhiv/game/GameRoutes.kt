@@ -14,6 +14,8 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.patch
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
+import ru.zhiv.presence.PresenceRepository
+import ru.zhiv.presence.requireGameplayPresence
 import ru.zhiv.auth.AuthFailure
 import ru.zhiv.config.AppConfig
 import ru.zhiv.http.isTrustedWrite
@@ -30,7 +32,7 @@ private fun ApplicationCall.gameSessionHash(config: AppConfig, codec: TokenCodec
     return codec.hash(raw)
 }
 
-fun Route.gameRoutes(repository: GameRepository, codec: TokenCodec, config: AppConfig) {
+fun Route.gameRoutes(repository: GameRepository, codec: TokenCodec, config: AppConfig, presence: PresenceRepository? = null) {
     route("/api/v1/game") {
         install(RequestBodyLimit) { bodyLimit { 2_048 } }
         rateLimit(RateLimitName("game-read")) {
@@ -49,18 +51,19 @@ fun Route.gameRoutes(repository: GameRepository, codec: TokenCodec, config: AppC
                 val hash = call.gameSessionHash(config, codec)
                 val versions = call.request.queryParameters.getAll("catalog")
                 val version = versions?.singleOrNull() ?: if (versions == null) "1" else null
-                if (version !in setOf("1", "2", "3", "4")) throw AuthFailure("INVALID_GAME_CATALOG", "Неизвестный каталог достижений", 400)
+                if (version !in setOf("1", "2", "3", "4", "5")) throw AuthFailure("INVALID_GAME_CATALOG", "Неизвестный каталог достижений", 400)
                 val result = repository.achievements(hash)
                 call.respond(when (version) {
-                    "4" -> result
-                    "3" -> result.copy(achievements = result.achievements.take(6))
-                    else -> result.copy(achievements = result.achievements.take(3))
+                    "5" -> result
+                    else -> result.copy(achievements = result.achievements.take(when (version) { "4" -> 7; "3" -> 6; else -> 3 })
+                        .map { it.copy(tiers = emptyList()) })
                 })
             }
         }
         rateLimit(RateLimitName("game-session")) {
             post("/sessions") {
                 val hash = call.gameSessionHash(config, codec, writing = true)
+                call.requireGameplayPresence(presence, hash)
                 val request = call.receive<GameSessionRequest>()
                 val requestId = parseCanonicalUuidV4(request.requestId)
                     ?: throw AuthFailure("INVALID_GAME_SESSION", "Некорректный запрос игровой сессии", 400)
@@ -70,6 +73,7 @@ fun Route.gameRoutes(repository: GameRepository, codec: TokenCodec, config: AppC
         rateLimit(RateLimitName("game-write")) {
             post("/batches") {
                 val hash = call.gameSessionHash(config, codec, writing = true)
+                call.requireGameplayPresence(presence, hash)
                 val request = call.receive<GameBatchRequest>()
                 val sessionId = parseCanonicalUuid(request.sessionId)
                 val runId = parseCanonicalUuidV4(request.runId)
@@ -82,6 +86,7 @@ fun Route.gameRoutes(repository: GameRepository, codec: TokenCodec, config: AppC
             }
             patch("/visibility") {
                 val hash = call.gameSessionHash(config, codec, writing = true)
+                call.requireGameplayPresence(presence, hash)
                 val request = call.receive<GameVisibilityRequest>()
                 call.respond(repository.setVisibility(hash, request.leaderboardOptIn, request.expectedVersion, request.ownerPublicId))
             }

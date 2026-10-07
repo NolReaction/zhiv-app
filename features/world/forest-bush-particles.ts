@@ -68,7 +68,7 @@ function berryPosition(origin: WorldPoint, floor: number, vx: number, vy: number
 }
 
 /** No emitters/timers: both cameras sample the same finite, deterministic encounter events. */
-export function forestBushParticles(bush: WorldBush, elapsed: number, bursts: readonly ForestBushBurst[]): ForestBushParticle[] {
+export function forestBushParticles(bush: WorldBush, elapsed: number, bursts: readonly ForestBushBurst[], ripe = true): ForestBushParticle[] {
   if (!Number.isFinite(elapsed)) return [];
   const shape = geometryFor(bush);
   if (!shape?.anchors.length) return [];
@@ -81,7 +81,9 @@ export function forestBushParticles(bush: WorldBush, elapsed: number, bursts: re
     const strength = clamp(burst.strength), rng = random(burst.seed);
     const berries = strength > .78 ? 3 : 2, leaves = strength > .86 ? 1 : 0;
     for (let index = 0; index < berries + leaves; index++) {
-      const leaf = index >= berries, origin = anchors[Math.floor(rng() * anchors.length)];
+      // A harvested/immature bush still sheds leaves, never a fresh ripe crop.
+      // Finite event seeds keep sampling deterministic in both cameras.
+      const leaf = index >= berries || !ripe, origin = anchors[Math.floor(rng() * anchors.length)];
       const delay = index * .045 + rng() * .04, time = age - delay;
       const floor = bounds.y + bounds.height + unit * (.025 + rng() * .085);
       const side = origin.x < bounds.x + bounds.width / 2 ? -1 : 1;

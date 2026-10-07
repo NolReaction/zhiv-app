@@ -47,6 +47,7 @@ type ProfileViewProps = {
   onOpenCalendar: (trigger: HTMLButtonElement) => void;
   onOpenGame: (trigger: HTMLButtonElement) => void;
   onRefreshGame: () => void;
+  onRewardsClaimed?: () => void;
   gameNotice: string;
   gameLoaded: boolean;
   gamePendingTaps: number;
@@ -90,6 +91,7 @@ export function ProfileView({
   onOpenCalendar,
   onOpenGame,
   onRefreshGame,
+  onRewardsClaimed,
   gameNotice,
   gameLoaded,
   gamePendingTaps,
@@ -186,7 +188,7 @@ export function ProfileView({
             <div className={styles.identity}>
               <div className={styles.identityTitle}>
                 <strong><PlayerName name={me.user.displayName} tag={me.user.tag} /></strong>
-                <GameAchievementsButton key={me.user.publicId} ownerPublicId={me.user.publicId} isOnline={isOnline} onSessionLost={onSessionLost} />
+                <GameAchievementsButton key={me.user.publicId} ownerPublicId={me.user.publicId} isOnline={isOnline} onSessionLost={onSessionLost} onRewardsClaimed={onRewardsClaimed} />
               </div>
               <span>{me.user.publicId}</span>
               <button type="button" className={styles.editLink} onClick={() => setPanel(panel === "name" ? "" : "name")}>Изменить имя</button>

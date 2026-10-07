@@ -1,0 +1,46 @@
+.board { display: grid; gap: 8px; min-width: 0; }
+.board p, .board h3, .order h3, .confirmation h4 { margin: 0; }
+.boardSummary { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 3px 9px; font-size: 10px; color: #59624d; }
+.boardSummary p { display: flex; align-items: center; gap: 4px; }
+.boardSummary strong { color: #394d3e; font-variant-numeric: tabular-nums; }
+.filters { display: grid; grid-template-columns: .8fr 1fr 1.15fr; gap: 4px; }
+.filters button { border-color: #c8bd98; font-size: 11px; padding-inline: 5px; }
+.filters button[aria-pressed="true"] { border-color: #819464; background: #dce4be; font-weight: 650; }
+.filters button span { color: #64724c; font-size: 10px; }
+.lore, .footnote { color: #626a50; font-size: 10px; line-height: 1.45; }
+.orders { display: grid; gap: 8px; min-width: 0; }
+.order { display: grid; gap: 6px; min-width: 0; padding: 9px; border: 1px solid #c8bd98; border-radius: 12px; background: #f4ead0; box-shadow: 0 1px 2px #4e3e1910; }
+.heading { display: grid; grid-template-columns: 37px minmax(0, 1fr) auto; align-items: center; gap: 6px; min-width: 0; }
+.portrait { width: 37px; height: 37px; object-fit: contain; image-rendering: pixelated; border-radius: 10px; background: #dce2c688; }
+.title { min-width: 0; }
+.title > span { color: #64724c; font-size: 10px; }
+.title h3 { font-size: 12px; font-weight: 650; line-height: 1.3; overflow-wrap: anywhere; }
+.payout { display: inline-flex; align-items: center; gap: 3px; color: #785926; font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.description { color: #687154; font-size: 10px; line-height: 1.4; }
+.ingredients { display: grid; gap: 1px; padding: 0; margin: 0; list-style: none; min-width: 0; }
+.ingredients li > div, .ingredients li > button { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 29px; padding: 3px 0; text-align: left; font-size: 11px; }
+.ingredients li > button { min-height: 44px; padding-inline: 4px; margin-inline: -4px; width: calc(100% + 8px); }
+.ingredients li span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.ingredients li strong { font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ingredients li[data-missing="true"] { color: #a34435; }
+.ingredients li > button:hover { text-decoration: underline; }
+.premium { color: #537144; font-size: 10px; }
+.actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 5px; }
+.order .primary { border-color: #506e44; background: #466347; color: #fff3d6; font-size: 11px; font-weight: 650; }
+.order .primary:hover:not(:disabled) { background: #36553b; }
+.order .replace { border-color: #b0b789; background: #e9e6c9; font-size: 11px; }
+.price { display: inline-flex; align-items: center; gap: 2px; white-space: nowrap; }
+.warning { color: #925633; font-size: 10px; }
+.confirmation { display: grid; gap: 7px; padding: 9px; border: 1px solid #aeb68b; border-radius: 9px; background: #e3e8cc; }
+.confirmation h4 { color: #394d3e; font-size: 12px; line-height: 1.35; outline: none; }
+.confirmation p { color: #59624d; font-size: 10px; }
+.confirmation .warning { color: #925633; }
+.balance { font-variant-numeric: tabular-nums; }
+.success { display: flex; align-items: center; gap: 5px; padding: 4px 4px 4px 8px; border-radius: 9px; background: #dce4be; color: #3f613e; font-size: 10px; }
+.success > span { flex: 1; min-width: 0; }
+.success button { flex: 0 0 44px; }
+.empty { display: grid; justify-items: center; gap: 7px; padding: 12px; text-align: center; font-size: 11px; color: #626a50; border: 1px dashed #c8bd98; border-radius: 11px; }
+.empty button { border-color: #b0b789; }
+.srOnly { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+@media (max-width: 360px) { .order { padding: 8px; } .heading { grid-template-columns: 32px minmax(0, 1fr) auto; gap: 5px; } .portrait { width: 32px; height: 32px; } .title h3 { font-size: 11px; } .payout { font-size: 12px; } .actions button { padding-inline: 5px; } }
+@media (forced-colors: active) { .order, .filters button, .confirmation, .empty { border-color: ButtonText; } }

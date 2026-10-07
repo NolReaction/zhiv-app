@@ -1,0 +1,44 @@
+{
+  "scaling": [
+    { "templateId": "builder_wood_supply", "home": 1, "items": { "wood": 8 }, "coins": 400 },
+    { "templateId": "builder_wood_supply", "home": 2, "items": { "wood": 12 }, "coins": 600 },
+    { "templateId": "builder_wood_supply", "home": 3, "items": { "wood": 19 }, "coins": 950 },
+    { "templateId": "builder_wood_supply", "home": 4, "items": { "wood": 28 }, "coins": 1400 },
+    { "templateId": "builder_wood_supply", "home": 5, "items": { "wood": 40 }, "coins": 2000 },
+    { "templateId": "builder_plank_brace", "home": 5, "items": { "planks": 6, "rope": 3 }, "coins": 1200 },
+    { "templateId": "builder_final_fittings", "home": 5, "items": { "reinforced_parts": 6, "glass": 9 }, "coins": 16200 },
+    { "templateId": "plesk_river_catch", "home": 5, "items": { "fish": 6 }, "coins": 660 },
+    { "templateId": "plesk_grilled_dinner", "home": 5, "items": { "grilled_fish": 1, "berries": 10 }, "coins": 750 },
+    { "templateId": "plesk_legendary_dinner", "home": 5, "items": { "legendary_fish": 1 }, "coins": 5000 }
+  ],
+  "availability": [
+    {
+      "label": "finished-workshop-without-upstream-smelter",
+      "buildings": { "home": 5, "garden": 1, "warehouse": 1, "workshop": 4, "woodlot": 4, "dryer": 5 },
+      "ownedRods": ["reed_rod"], "ownedHooks": ["bare_hook"],
+      "present": ["wood", "hardwood", "resin", "beams", "cloth", "hearty_fish"],
+      "missing": ["ore", "clay", "sand", "iron_ingot", "metal_parts", "tools", "reinforced_parts", "fish_shark", "epic_fish", "legendary_fish"]
+    },
+    {
+      "label": "leviathan-hook-without-legendary-rod",
+      "buildings": { "home": 5, "garden": 1, "warehouse": 1, "workshop": 4, "woodlot": 4, "dryer": 5, "kiln": 3, "quarry": 2 },
+      "ownedRods": ["reed_rod"], "ownedHooks": ["bare_hook", "leviathan_hook"],
+      "present": ["iron_ingot", "metal_parts", "tools", "reinforced_parts", "epic_fish"],
+      "missing": ["fish_shark", "legendary_fish"]
+    },
+    {
+      "label": "legendary-rod-without-leviathan-hook",
+      "buildings": { "home": 5, "garden": 1, "warehouse": 1, "workshop": 4, "woodlot": 4, "dryer": 5, "kiln": 3, "quarry": 2 },
+      "ownedRods": ["reed_rod", "starfall_rod"], "ownedHooks": ["bare_hook"],
+      "present": ["fish_mirror_koi", "epic_fish"],
+      "missing": ["fish_shark", "legendary_fish"]
+    },
+    {
+      "label": "complete-chain-and-owned-but-not-equipped-tackle",
+      "buildings": { "home": 5, "garden": 1, "warehouse": 1, "workshop": 4, "woodlot": 4, "dryer": 5, "kiln": 3, "quarry": 2 },
+      "ownedRods": ["reed_rod", "starfall_rod"], "ownedHooks": ["bare_hook", "leviathan_hook"],
+      "present": ["ore", "clay", "sand", "iron_ingot", "metal_parts", "tools", "reinforced_parts", "fish_shark", "epic_fish", "legendary_fish"],
+      "missing": ["ancient_plank", "ancient_stone", "ancient_rope"]
+    }
+  ]
+}

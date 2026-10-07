@@ -62,6 +62,13 @@ test("merge commits the server preview, with no client-supplied target profile o
   assert.deepEqual(JSON.parse(request.body), { preview: "server-preview-token", confirm: true });
 });
 
+test("email replacement preserves the server merged-identity refusal", async t => {
+  t.mock.method(globalThis, "fetch", async () => Response.json({ code: "AUTH_IDENTITY_MERGED",
+    message: "Способ входа принадлежит сохранённому профилю" }, { status: 409 }));
+  await assert.rejects(() => api.changeAccountEmail("fb77266e-996a-4c0b-99d4-6e9e72a6d6ad"),
+    error => error.status === 409 && error.body?.code === "AUTH_IDENTITY_MERGED");
+});
+
 test("confirmation of one action does not authorize a different action", () => {
   const state = { ...api.emptyLifecycle, currentEmail: true };
   assert.equal(api.currentAccountProved(state, "email"), true);

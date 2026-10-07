@@ -23,6 +23,7 @@ import ru.zhiv.relationships.RequestAction
 import ru.zhiv.relationships.DirectRequestMutationSnapshot
 import ru.zhiv.relationships.DirectRequestActionSnapshot
 import ru.zhiv.config.AppConfig
+import ru.zhiv.game.GameRewards
 import ru.zhiv.installZhivApi
 import ru.zhiv.security.TokenCodec
 import java.time.OffsetDateTime
@@ -477,12 +478,23 @@ class JdbcGameRepositoryIntegrationTest {
         assertEquals(3,json.getValue("achievements").jsonArray.size)
         val legacy=client.get("/api/v1/game/achievements?catalog=2") { header(HttpHeaders.Cookie,cookie) }
         assertEquals(3,Json.parseToJsonElement(legacy.bodyAsText()).jsonObject.getValue("achievements").jsonArray.size)
-        for (query in listOf("catalog=5","catalog=3&catalog=3"))
+        for (query in listOf("catalog=6","catalog=3&catalog=3"))
             assertEquals(HttpStatusCode.BadRequest,client.get("/api/v1/game/achievements?$query") { header(HttpHeaders.Cookie,cookie) }.status)
         val expanded=client.get("/api/v1/game/achievements?catalog=3") { header(HttpHeaders.Cookie,cookie) }
         assertEquals(6,Json.parseToJsonElement(expanded.bodyAsText()).jsonObject.getValue("achievements").jsonArray.size)
         val current=client.get("/api/v1/game/achievements?catalog=4") { header(HttpHeaders.Cookie,cookie) }
         assertEquals(7,Json.parseToJsonElement(current.bodyAsText()).jsonObject.getValue("achievements").jsonArray.size)
+        for (version in listOf(1,2,3,4)) {
+            val old=client.get("/api/v1/game/achievements?catalog=$version") { header(HttpHeaders.Cookie,cookie) }
+            val cards=Json.parseToJsonElement(old.bodyAsText()).jsonObject.getValue("achievements").jsonArray
+            assertTrue(cards.all { "tiers" !in it.jsonObject }, "old catalogue must not gain new fields")
+        }
+        val stages=client.get("/api/v1/game/achievements?catalog=5") { header(HttpHeaders.Cookie,cookie) }
+        assertEquals(HttpStatusCode.OK,stages.status)
+        val cards=Json.parseToJsonElement(stages.bodyAsText()).jsonObject.getValue("achievements").jsonArray
+        assertEquals(15,cards.size)
+        assertTrue(cards.all { it.jsonObject.getValue("tiers").jsonArray.isNotEmpty() })
+        assertEquals(4,cards.single { it.jsonObject.getValue("id").jsonPrimitive.content=="home_builder" }.jsonObject.getValue("tiers").jsonArray.size)
         for (query in listOf("metric=unknown","metric=best_series&metric=best_series"))
             assertEquals(HttpStatusCode.BadRequest,client.get("/api/v1/game/leaderboard?$query") { header(HttpHeaders.Cookie,cookie) }.status)
 
@@ -517,15 +529,25 @@ class JdbcGameRepositoryIntegrationTest {
                     c.commit()
                 }
                 DatabaseFactory.migrate(db)
-                db.connection.use { c ->
+                val migratedAwards = db.connection.use { c ->
                     c.prepareStatement("SELECT count(*) FROM game_achievements WHERE user_id=?").use {
                         it.setObject(1,owner.id)
                         it.executeQuery().use { rows -> assertTrue(rows.next());assertEquals(3,rows.getInt(1),"migration must award before the first achievements read") }
                     }
+                    c.economyRows("SELECT achievement_id,unlocked_at FROM game_achievements WHERE user_id=?",owner.id) {
+                        it.getString(1) to it.getObject(2,OffsetDateTime::class.java).toInstant().toString()
+                    }.toMap()
                 }
                 val first=JdbcGameRepository(db).achievements(owner.hash).achievements
-                assertEquals(listOf(7L,1000L,5L,0L,0L,0L,0L),first.map { it.progress })
-                assertTrue(first.take(3).all { it.unlockedAt!=null }); assertTrue(first.drop(3).all { it.unlockedAt==null })
+                val earned = mapOf("seven_day_streak" to 7L,"thousand_taps" to 1000L,"five_friends" to 5L)
+                // The expanded catalog also reports the starter house at level one;
+                // it has not earned the first home-builder tier (level two).
+                val expectedProgress = GameRewards.tiers.keys.associateWith { if(it=="home_builder") 1L else 0L } + earned
+                assertEquals(GameRewards.tiers.keys.toList(),first.map { it.id })
+                assertEquals(expectedProgress,first.associate { it.id to it.progress })
+                assertEquals(earned.keys,migratedAwards.keys)
+                assertEquals(migratedAwards,first.filter { it.unlockedAt!=null }.associate { it.id to it.unlockedAt })
+                assertTrue(first.filter { it.id !in earned }.all { it.tiers.all { tier -> tier.unlockedAt==null } })
                 db.connection.use { c ->
                     c.prepareStatement("UPDATE circles SET archived_at=clock_timestamp() WHERE kind='DIRECT' AND ? IN (direct_user_low_id,direct_user_high_id)").use { it.setObject(1,owner.id);it.executeUpdate() };c.commit()
                 }
@@ -593,7 +615,12 @@ class JdbcGameRepositoryIntegrationTest {
         val fresh=player()
         identities.updateTimeZone(fresh.hash,"Pacific/Kiritimati",UUID.randomUUID())
         val unearned=games.achievements(fresh.hash).achievements
-        assertTrue(unearned.all { it.progress==0L && it.unlockedAt==null },"reconciliation never imports device-local counters or dates")
+        val expectedProgress=GameRewards.tiers.keys.associateWith { if(it=="home_builder") 1L else 0L }
+        assertEquals(GameRewards.tiers.keys.toList(),unearned.map { it.id })
+        assertEquals(expectedProgress,unearned.associate { it.id to it.progress },"only the server's starter house has initial progress")
+        assertTrue(unearned.all { award -> award.unlockedAt==null && award.tiers.all { tier ->
+            tier.progress==expectedProgress.getValue(award.id) && tier.unlockedAt==null
+        } },"reconciliation never imports device-local counters or dates")
         assertEquals("0",scalar("SELECT count(*) FROM game_achievements WHERE user_id=?",fresh.id))
     }
 

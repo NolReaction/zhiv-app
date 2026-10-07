@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { withPlacedBushArtwork } from "./helpers/forest-bush-fixture.mjs";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
@@ -10,7 +11,7 @@ after(() => vite.close());
 const { advanceForestDirector, requestForestDirective, noticeForestDirector, cancelForestDirector } =
   await vite.ssrLoadModule("/features/world/forest-director.ts");
 const { connectForestSession } = await vite.ssrLoadModule("/features/world/forest-session.ts");
-const { clearingActivityFrame, requestClearingPoint } = await vite.ssrLoadModule("/features/world/clearing-activity.ts");
+const { clearingActivityFrame, requestClearingPoint, isClearingAtPoint } = await vite.ssrLoadModule("/features/world/clearing-activity.ts");
 const { faunaRenderFrame } = await vite.ssrLoadModule("/features/world/forest-fauna.ts");
 const { isWalkable } = await vite.ssrLoadModule("/features/world/navigation.ts");
 const rectangle = (x, y, width, height) => [{ x, y }, { x: x + width, y }, { x: x + width, y: y + height }, { x, y: y + height }];
@@ -31,9 +32,11 @@ const fixture = {
   ],
 };
 const calm = { autoLife: false, blocked: false, dusk: 0, rain: 0, homeAvailable: false };
+const seatedBird = { id: "bird-visit", perchId: "nearby-tree", x: 120, y: 110, size: 1.3,
+  angle: 0, opacity: 1, phase: 0, state: "perched" };
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 function create(override) {
-  const session = connectForestSession(undefined, { ...structuredClone(fixture), ...override }, "circle", 0, 0, () => {});
+  const session = connectForestSession(undefined, withPlacedBushArtwork({ ...structuredClone(fixture), ...override }), "circle", 0, 0, () => {});
   session.release(); return session.state;
 }
 function advance(state, seconds, options = calm, inspect) {
@@ -45,6 +48,59 @@ function until(state, predicate, seconds = 20, options = calm) {
   for (let elapsed = 0; elapsed < seconds && !predicate(state); elapsed += .025) advanceForestDirector(state, .025, options);
   assert.ok(predicate(state), `condition not reached: ${state.director.reason}, ${state.clearing.stage}`);
 }
+
+test("birdwatching observes one actual bird without moving feet, then records a compatible look outcome", () => {
+  const state = create(), options = { ...calm, birds: [seatedBird] }, origin = { ...state.clearing.position };
+  requestForestDirective(state, "watch-birds", options); advance(state, .025, options);
+  assert.equal(state.director.birdwatch?.birdId, seatedBird.id);
+  assert.equal(state.clearing.behavior.mind.intention.action, "look");
+  advance(state, 2, options, () => assert.deepEqual(state.clearing.position, origin));
+  advance(state, 1, { ...options, birds: [{ ...seatedBird, state: "takeoff" }] });
+  assert.equal(state.director.birdwatch, null); assert.equal(state.director.activeKey, null);
+  assert.equal(state.clearing.requestedPoint, null); assert.deepEqual(state.clearing.position, origin);
+  assert.ok(state.clearing.behavior.mind.recent.some(item => item.key === "watch-birds"
+    && item.action === "look" && item.outcome === "completed"));
+  assert.equal(state.fauna.encounter, null); assert.equal(state.life.routine, null);
+});
+
+test("watching never invents a bird and respects manual blocking, reduced motion, weather, and taps", () => {
+  for (const birds of [[], [{ ...seatedBird, state: "glide" }], [{ ...seatedBird, x: 1000 }]]) {
+    const state = create(); requestForestDirective(state, "watch-birds", { ...calm, birds });
+    advance(state, .1, { ...calm, birds });
+    assert.equal(state.director.birdwatch, null); assert.equal(state.pendingLife, null);
+    assert.match(state.director.reason, /нет сидящей птицы/);
+  }
+  const options = { ...calm, birds: [seatedBird] }, state = create();
+  requestForestDirective(state, "watch-birds", options); advance(state, .1, options);
+  const elapsed = state.director.birdwatch.elapsed, origin = { ...state.clearing.position };
+  advance(state, 2, { ...options, blocked: true });
+  advance(state, 2, { ...options, reducedMotion: true });
+  assert.equal(state.director.birdwatch.elapsed, elapsed); assert.deepEqual(state.clearing.position, origin);
+  noticeForestDirector(state); advance(state, .1, options);
+  assert.equal(state.director.birdwatch, null); assert.equal(state.clearing.stage, "attention");
+  assert.ok(state.clearing.behavior.mind.recent.some(item => item.key === "watch-birds" && item.outcome === "interrupted"));
+  for (const change of [{ rain: .8 }, { dusk: 1 }]) {
+    const fresh = create(); requestForestDirective(fresh, "watch-birds", options); advance(fresh, .1, options);
+    advance(fresh, .1, { ...options, ...change });
+    assert.equal(fresh.director.birdwatch, null); assert.equal(fresh.clearing.requestedPoint, null);
+    assert.equal(fresh.clearing.behavior.mind.recent.at(-1).outcome, "interrupted");
+  }
+});
+
+test("a new explicit task releases birdwatch ownership, while autonomous watching waits for a free intention", () => {
+  const options = { ...calm, birds: [seatedBird] }, state = create();
+  requestForestDirective(state, "watch-birds", options); advance(state, .1, options);
+  requestForestDirective(state, "leaf", options);
+  assert.equal(state.director.birdwatch, null); assert.equal(state.director.activeKey, null);
+  assert.equal(state.pendingLife, "leaf");
+  const idle = create({ mushrooms: [], habitats: [] }); idle.life.leaf = null; idle.clearing.waitSeconds = 30;
+  advance(idle, 4.05, { ...options, autoLife: true });
+  assert.equal(idle.director.birdwatch?.birdId, seatedBird.id);
+  const busy = create();
+  busy.clearing.behavior.mind.intention = { key: "look-at-grass", action: "look", reason: "Busy", source: "clearing", startedAt: 0 };
+  advance(busy, 4.05, { ...options, autoLife: true });
+  assert.equal(busy.director.birdwatch, null);
+});
 
 test("explicit butterfly and firefly requests reserve existing bodies and never create a legacy insect routine", () => {
   for (const species of ["butterfly", "firefly"]) {
@@ -86,7 +142,8 @@ test("a distant grown mushroom is approached through safe ground and held only a
   requestForestDirective(state, "mushroom", calm); advance(state, .025);
   assert.equal(state.pendingLife, "mushroom"); assert.equal(state.life.routine, null);
   const target = { ...state.director.target };
-  assert.ok(distance(target, mushroom) < state.clearing.size * .2);
+  assert.ok(distance(target, mushroom) < state.clearing.size * .36);
+  assert.ok(target.y > mushroom.y, "feet stop below the item, within the crouching paw reach");
   let previous = { ...state.clearing.position }, walking = false;
   advance(state, 15, calm, () => {
     const foot = state.clearing.position;
@@ -298,5 +355,106 @@ test("an indoor butterfly request exits once without repeated attention or repla
   } else {
     assert.ok(state.fauna.lastReason, "without a suitable participant the request explains why it ended");
     assert.equal(state.director.reason, state.fauna.lastReason);
+  }
+});
+
+test("a successful clearing intention replaces a previous approach warning but preserves its history", () => {
+  const state = create(), options = { ...calm, autoLife: true, homeAvailable: true };
+  requestForestDirective(state, "home-sleep", options);
+  advance(state, .025, options);
+  assert.equal(state.director.reason, "У этого уровня дома нет доступного входа");
+  const failure = state.clearing.behavior.mind.events.find(item => item.type === "failed");
+  assert.equal(failure?.action, "home-sleep");
+  state.director.nextDecisionAt = Infinity;
+  state.clearing.waitSeconds = 0;
+  advance(state, .025, options);
+  const intention = state.clearing.behavior.mind.intention;
+  assert.equal(intention?.source, "clearing");
+  assert.equal(state.director.reason, intention.reason);
+  assert.notEqual(state.director.reason, failure.reason);
+  assert.ok(state.clearing.behavior.mind.events.includes(failure), "the actual failure remains in diagnostics history");
+});
+
+test("a disconnected home reports a path problem separately from an invalid entrance", async () => {
+  const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
+  const { previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
+  const map = structuredClone(previewWorldScene(TILED_WORLD, { home: 5 }));
+  const entry = map.sites.find(site => site.id === "home").entry;
+  const barrierY = (map.actor.spawn.y + entry.y) / 2;
+  map.navigation.obstacles.push({ id: "closed-clearing", points: rectangle(0, barrierY - 4, map.width, 8) });
+  const state = create(map), options = { ...calm, homeAvailable: true };
+  assert.ok(state.clearing.interactions.home, "the entrance itself is valid");
+  requestForestDirective(state, "home-sleep", options);
+  advance(state, .025, options);
+  assert.equal(state.director.reason, "Из текущего места нет безопасного пути к дому");
+  assert.equal(state.clearing.activeInteraction, null);
+  assert.deepEqual(state.clearing.position, map.actor.spawn);
+});
+
+test("the fifth home supports repeated approaches, interrupted journeys, sleep and safe exit near the right rock", async () => {
+  const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
+  const { previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
+  const map = previewWorldScene(TILED_WORLD, { home: 5 }), state = create(map);
+  state.clearing.seed = 57;
+  state.director.nextDecisionAt = Infinity;
+  const options = { ...calm, autoLife: true, homeAvailable: true };
+  for (const interest of map.navigation.interests) {
+    assert.ok(requestClearingPoint(state.clearing, interest.position));
+    until(state, current => isClearingAtPoint(current.clearing, interest.position), 40, options);
+    requestForestDirective(state, "home-sleep", options);
+    advance(state, .5, options);
+    assert.equal(state.clearing.activeInteraction?.kind, "home");
+    noticeForestDirector(state);
+    until(state, current => !current.clearing.activeInteraction && current.clearing.stage === "clearing", 15, options);
+    assert.ok(isWalkable(state.clearing.navigation, state.clearing.position));
+    requestForestDirective(state, "home-sleep", options);
+    until(state, current => current.clearing.stage === "home-sleep", 40, options);
+    assert.deepEqual(state.clearing.position, map.sites.find(site => site.id === "home").doorway);
+    requestForestDirective(state, "wake", options);
+    until(state, current => !current.clearing.activeInteraction && current.clearing.stage === "clearing", 15, options);
+    assert.ok(isWalkable(state.clearing.navigation, state.clearing.position));
+    assert.equal(state.clearing.behavior.mind.events.some(item => item.type === "failed" && item.action === "home-sleep"), false);
+    state.director.nextDecisionAt = Infinity;
+  }
+});
+
+
+test("all five authored homes permit mushroom and leaf pickup from a short contact approach at sizes 50 and 56", async () => {
+  const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
+  const { previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
+  const { forestLifeFrame } = await vite.ssrLoadModule("/features/world/forest-life.ts");
+  for (const level of [1, 2, 3, 4, 5]) for (const size of [50, 56]) for (const kind of ["mushroom", "leaf"]) {
+    const map = previewWorldScene(TILED_WORLD, { home: level });
+    const state = create({ ...map, actor: { ...map.actor, size } });
+    requestForestDirective(state, kind, calm);
+    until(state, current => current.life.routine?.kind === kind, 40);
+    const item = kind === "mushroom" ? state.life.mushrooms.find(prop => prop.id === state.life.routine.mushroomId) : state.life.leaf;
+    const feet = { ...state.clearing.position, size };
+    assert.ok(feet.y > item.y, `level ${level}, size ${size}: above-ground contact cannot reach past the feet`);
+    assert.ok(isWalkable(state.clearing.navigation, feet));
+    until(state, current => current.life.routine?.picked === true, 5);
+    const frame = forestLifeFrame(state.life, feet, state.elapsed), held = frame.heldMushroom ?? frame.heldLeaf;
+    assert.ok(frame.arms.some(arm => arm.hand.x === held.x && arm.hand.y === held.y));
+    assert.deepEqual(state.clearing.position, { x: feet.x, y: feet.y }, "pickup does not teleport the feet");
+  }
+});
+
+
+test("DEV hero scale uses the same reach for approach and arrival without resizing the ground prop", async () => {
+  const { forestLifeFrame } = await vite.ssrLoadModule("/features/world/forest-life.ts");
+  for (const heroScale of [.5, 1, 2]) for (const kind of ["mushroom", "leaf"]) {
+    const state = create(), options = { ...calm, heroScale }, originalSize = state.clearing.size;
+    const original = kind === "mushroom" ? { ...state.life.mushrooms[0] } : { ...state.life.leaf };
+    requestForestDirective(state, kind, options);
+    until(state, current => current.life.routine?.kind === kind, 40, options);
+    const feet = { ...state.clearing.position, size: originalSize * heroScale, propSize: originalSize };
+    assert.ok(distance(feet, original) < feet.size * .4, `actual rendered reach at scale ${heroScale}`);
+    assert.ok(isWalkable(state.clearing.navigation, feet));
+    until(state, current => current.life.routine?.picked === true, 5, options);
+    const frame = forestLifeFrame(state.life, feet, state.elapsed), held = frame.heldMushroom ?? frame.heldLeaf;
+    assert.equal(held.size, originalSize * (kind === "mushroom" ? .19 : .18));
+    assert.ok(frame.arms.some(arm => arm.hand.x === held.x && arm.hand.y === held.y));
+    const source = kind === "mushroom" ? state.life.mushrooms[0] : state.life.leaf;
+    assert.equal(source.x, original.x); assert.equal(source.y, original.y);
   }
 });

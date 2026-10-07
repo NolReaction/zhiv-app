@@ -1,0 +1,89 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test, { after } from "node:test";
+import { fileURLToPath } from "node:url";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { createServer } from "vite";
+import ts from "typescript";
+
+const root = fileURLToPath(new URL("..", import.meta.url));
+const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
+after(() => vite.close());
+const { MochlikState, MochlikStateDetails } = await vite.ssrLoadModule("/features/world/mochlik-state.tsx");
+
+const observation = {
+  activity: "Исследует полянку", detail: "Заметил интересное место и идёт посмотреть поближе.", mood: "Любопытничает",
+  needs: { energy: .8, curiosity: .7, comfort: .9, attention: 0 }, sleeping: false, paused: false,
+  memory: { status: "saved", savedAt: 1_000 },
+  diagnostics: { reason: "debug-private-reason", candidates: [{ id: "hidden-id", label: "Hidden action", score: 4.9763, available: true, reason: "internal-choice" }], events: [] },
+};
+const render = value => renderToStaticMarkup(createElement(MochlikStateDetails, { observation: value }));
+
+test("character details show mood and feelings without a stream of animation phases or AI scoring", () => {
+  const markup = render(observation);
+  for (const text of [observation.mood, "Полон сил", "Хочется открытий", "Чувствует себя уютно", "Занят своими делами"]) assert.ok(markup.includes(text));
+  assert.equal(markup, render({ ...observation, activity: "Провожает бабочку", detail: "Начал другое действие", sleeping: true }));
+  assert.ok(!markup.includes(observation.activity)); assert.ok(!markup.includes(observation.detail));
+  assert.doesNotMatch(markup, /debug-private-reason|hidden-id|Hidden action|4\.9763|internal-choice|Utility|progressbar|aria-live/);
+  assert.match(markup, /Самочувствие Мохлика/);
+  assert.match(markup, /не требует расписания/);
+});
+
+test("attention describes a recent player interaction and low energy describes rest", () => {
+  const markup = render({ ...observation, activity: "Отдыхает", sleeping: true,
+    needs: { energy: .1, curiosity: .1, comfort: .2, attention: 1 } });
+  for (const text of ["Пора передохнуть", "Уже нагулялся", "Ищет место поуютнее", "Рад тебя видеть"]) assert.ok(markup.includes(text));
+  assert.doesNotMatch(markup, /Занят своими делами|Полон сил/);
+});
+
+test("missing state and local fallback never promise an account save", () => {
+  assert.match(render(null), /Состояние появится, когда полянка загрузится/);
+  assert.doesNotMatch(render(null), /Полон сил|Исследует|сохраня/);
+  for (const status of ["saved", "restored"]) {
+    const markup = render({ ...observation, memory: { status, savedAt: 1_000 } });
+    assert.match(markup, /пока сохранена только на этом устройстве/);
+    assert.doesNotMatch(markup, /сохранена в аккаунте/);
+  }
+  assert.match(render({ ...observation, memory: { status: "session", savedAt: null } }), /только на время этой сессии/);
+  assert.match(render({ ...observation, memory: { status: "unavailable", savedAt: null } }), /не получается сохранить память/);
+  assert.match(render({ ...observation, memory: { status: "unavailable", savedAt: null } }), /жизнь полянки продолжается/);
+});
+
+test("account memory reports confirmation, pending save, offline loss and explicit takeover truthfully", () => {
+  const sync = { mode: "synced", revision: 2, serverSavedAt: 1234, canTakeOver: false };
+  const markup = mode => render({ ...observation, memory: { ...observation.memory, sync: { ...sync, mode } } });
+  assert.match(markup("synced"), /сохранена в аккаунте/);
+  assert.match(markup("saving"), /Сохраняем память/);
+  assert.match(markup("offline"), /последнее подтверждённое сохранение/);
+  assert.doesNotMatch(markup("offline"), /сохранена в аккаунте/);
+  assert.match(render({ ...observation, memory: { ...observation.memory, sync: { ...sync, serverSavedAt: null } } }), /первое сохранение/);
+  const elsewhere = { ...observation, memory: { ...observation.memory, sync: { ...sync, mode: "other-device", canTakeOver: true } } };
+  const withAction = renderToStaticMarkup(createElement(MochlikStateDetails, { observation: elsewhere, onTakeOver: () => {} }));
+  assert.match(withAction, /полянка на паузе/); assert.match(withAction, /Продолжить здесь/);
+  assert.doesNotMatch(markup("synced"), /Продолжить здесь/);
+});
+
+test("switching accounts remounts the dialog and initial trigger has an accessible target", () => {
+  const first = MochlikState({ presenceKey: "zhiv:mochlik:presence:first" });
+  const second = MochlikState({ presenceKey: "zhiv:mochlik:presence:second" });
+  assert.notEqual(first.key, second.key);
+  const markup = renderToStaticMarkup(createElement(MochlikState, { presenceKey: "zhiv:mochlik:presence:first" }));
+  assert.match(markup, /aria-haspopup="dialog"/);
+  assert.match(markup, /Как Мохлик\?/);
+  assert.doesNotMatch(markup, /aria-live/);
+});
+
+test("home and map omit the separate character-state trigger", async () => {
+  for (const path of ["features/check-in/check-in-app.tsx", "features/world/world-view.tsx"]) {
+    const source = await readFile(new URL(`../${path}`, import.meta.url), "utf8");
+    const tree = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    const visit = node => {
+      if (ts.isJsxSelfClosingElement(node)) {
+        assert.notEqual(node.tagName.getText(tree), "MochlikState", "state belongs in the profile, without another map button");
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(tree);
+  }
+});

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { validAdminReason } from "./admin-input";
 import { Gift, LoaderCircle } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ApiError } from "@/lib/check-in-api";
@@ -29,7 +30,8 @@ export function AdminRewardsDialog({ target, actorPublicId, onClose, onGranted, 
   const write = useRef<AbortController | null>(null);
   const pending = useRef(false);
   const reward = REWARDS.find(item => item.id === rewardId)!;
-  const hasReward = owned && (reward.kind === "item" ? owned.items : owned.achievements).some(id => id === rewardId);
+  const multipleTiers = reward.kind === "achievement" && reward.tiers.length > 1;
+  const hasReward = !multipleTiers && owned && (reward.kind === "item" ? owned.items : owned.achievements).some(id => id === rewardId);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -48,7 +50,7 @@ export function AdminRewardsDialog({ target, actorPublicId, onClose, onGranted, 
 
   async function submit() {
     if (pending.current || !owned || (!attempt && hasReward) || confirmation.trim() !== target.publicId
-      || reason.trim().length < 8 || reason.trim().length > 240 || /[\u0000-\u001f\u007f]/.test(reason)) return;
+      || !validAdminReason(reason)) return;
     const body = attempt ?? { requestId: createUuidV4(), confirmationPublicId: confirmation.trim(),
       kind: reward.kind, rewardId: reward.id, reason: reason.trim() };
     setAttempt(body); pending.current = true; setBusy(true); setError("");
@@ -71,15 +73,14 @@ export function AdminRewardsDialog({ target, actorPublicId, onClose, onGranted, 
       }
     } finally { pending.current = false; if (!controller.signal.aborted) setBusy(false); }
   }
-  const valid = confirmation.trim() === target.publicId && reason.trim().length >= 8 && reason.trim().length <= 240
-    && !/[\u0000-\u001f\u007f]/.test(reason);
+  const valid = confirmation.trim() === target.publicId && validAdminReason(reason);
   return <Dialog open onOpenChange={open => { if (!open && !pending.current) onClose(); }}>
     <DialogContent onCloseAutoFocus={event => { event.preventDefault(); returnFocus(); }} className={styles.confirmDialog} onEscapeKeyDown={event => { if (busy) event.preventDefault(); }} onPointerDownOutside={event => { if (busy) event.preventDefault(); }}>
-      <DialogHeader><DialogTitle>Выдать награду</DialogTitle><DialogDescription>{target.displayName} · {target.publicId}. Предмет появится у Мохлика, достижение — в профиле. Тапы, уровень и рейтинг от выдачи не меняются.</DialogDescription></DialogHeader>
+      <DialogHeader><DialogTitle>Выдать награду</DialogTitle><DialogDescription>{target.displayName} · {target.publicId}. Предмет появится у Мохлика. Выдача достижения добавляет все недостающие ступени. Игровые счётчики, уровень и рейтинг не меняются.</DialogDescription></DialogHeader>
       {owned ? <>
         <label className={styles.field}>Награда<select className={styles.select} value={rewardId} disabled={busy || !!attempt} onChange={event => { setRewardId(event.target.value); setError(""); }}>
           <optgroup label="Предметы">{REWARDS.filter(item => item.kind === "item").map(item => <option value={item.id} key={item.id}>{item.title}{owned.items.some(id => id === item.id) ? " · получено" : ""}</option>)}</optgroup>
-          <optgroup label="Достижения">{REWARDS.filter(item => item.kind === "achievement").map(item => <option value={item.id} key={item.id}>{item.title}{owned.achievements.some(id => id === item.id) ? " · получено" : ""}</option>)}</optgroup>
+          <optgroup label="Достижения">{REWARDS.filter(item => item.kind === "achievement").map(item => <option value={item.id} key={item.id}>{item.title}{owned.achievements.some(id => id === item.id) ? item.tiers.length > 1 ? " · есть полученные ступени" : " · получено" : ""}</option>)}</optgroup>
         </select><small>{hasReward ? "Эта награда уже есть у игрока." : "Будет выдана только выбранная награда."}</small></label>
         <label className={styles.field}>Причина выдачи<input type="text" value={reason} maxLength={240} disabled={busy || !!attempt} onChange={event => setReason(event.target.value)} placeholder="Например: награда за помощь в тестировании" /><small>8–240 символов. Причина попадёт в журнал.</small></label>
         <label className={styles.field}>Подтвердите ID получателя<code>{target.publicId}</code><input value={confirmation} disabled={busy || !!attempt} onChange={event => setConfirmation(event.target.value)} autoComplete="off" spellCheck={false} /></label>

@@ -1,0 +1,21 @@
+.layer { position: fixed; top: calc(78px + env(safe-area-inset-top)); left: max(12px, env(safe-area-inset-left)); width: min(240px, calc(100vw - 28px)); pointer-events: none; z-index: 120; }
+.effect { position: absolute; inset: 0 auto auto 0; width: 100%; padding: 8px 10px 9px; border: 1px solid #b8d99b70; border-radius: 15px; background: linear-gradient(145deg, #304b32f5, #192e23f7); box-shadow: 0 5px 20px #0a1b1360, inset 0 1px #d9ecc61c; color: #e3edce; animation: gain 2.6s ease-out both; }
+.effect[hidden] { display: none; }
+.heading { display: flex; align-items: center; gap: 5px; margin-bottom: 5px; color: #bdcfad; font-size: 10px; font-weight: 600; letter-spacing: .03em; }
+.items { display: grid; gap: 3px; }
+.item { display: flex; align-items: center; gap: 7px; min-width: 0; font-size: 12px; line-height: 1.25; animation: item-in .45s ease-out var(--gain-delay) both; }
+.icon { display: inline-flex; flex: 0 0 29px; width: 29px; height: 29px; align-items: center; justify-content: center; border-radius: 9px; background: #b7d58b15; }
+.name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item strong { margin-left: auto; padding-left: 6px; color: #d9efaa; font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.more { display: block; margin-top: 5px; color: #b9cca7; font-size: 10px; }
+.glints { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; }
+.glints i { position: absolute; width: 3px; height: 3px; border-radius: 50%; background: #e3efb5; box-shadow: 0 0 5px #d6edb0; animation: glint 1s ease-out both; }
+.glints i:nth-child(1) { left: 9px; top: 45%; }
+.glints i:nth-child(2) { right: 12px; top: 70%; animation-delay: .13s; }
+.glints i:nth-child(3) { right: 27px; top: 48%; animation-delay: .27s; }
+.sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+@keyframes gain { 0% { opacity: 0; transform: translateY(9px) scale(.96); } 12%, 82% { opacity: 1; transform: translateY(0) scale(1); } 100% { opacity: 0; transform: translateY(-10px) scale(.97); } }
+@keyframes item-in { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes glint { 0% { opacity: 0; transform: translateY(5px) scale(.4); } 28% { opacity: .8; transform: translateY(0) scale(1); } 100% { opacity: 0; transform: translateY(-20px) scale(.4); } }
+@media (prefers-reduced-motion: reduce) { .effect, .item { animation: none; } .glints { display: none; } }
+@media (max-width: 380px) { .layer { left: 9px; width: min(214px, calc(100vw - 24px)); } }
