@@ -31,10 +31,11 @@ function Metric({ label, value, note, pearls = false }: { label: string; value: 
   return <div className={styles.metric}><span>{label}</span><strong>{pearls ? economyPearls(value) : economyCount(value)}</strong>{note && <small>{note}</small>}</div>;
 }
 
-export function AdminEconomyList({ data, loading, query, sort, offset, onQuery, onSort, onPage, onOpen }: {
+export function AdminEconomyList({ data, loading, query, sort, offset, onQuery, onSort, onPage, onOpen, onHistory }: {
   data: AdminEconomy | null; loading: boolean; query: string; sort: AdminEconomySort; offset: number;
   onQuery: (value: string) => void; onSort: (value: AdminEconomySort) => void;
   onPage: (offset: number) => void; onOpen: (target: AdminEconomyTarget) => void;
+  onHistory?: (target: AdminEconomyTarget) => void;
 }) {
   const summary = data?.summary;
   return <>
@@ -82,7 +83,7 @@ export function AdminEconomyList({ data, loading, query, sort, offset, onQuery, 
               </TableCell>
               <TableCell><time dateTime={player.updatedAt ?? undefined}>{economyTime(player.updatedAt)}</time></TableCell>
             </>}
-            <TableCell><button type="button" className={styles.button} onClick={() => onOpen(player)} aria-label={`Открыть хозяйство игрока ${player.displayName}`}>Подробнее</button></TableCell>
+            <TableCell><button type="button" className={styles.button} onClick={() => onOpen(player)} aria-label={`Открыть хозяйство игрока ${player.displayName}`}>Подробнее</button>{onHistory && <button type="button" className={styles.button} onClick={() => onHistory(player)} aria-label={`Открыть операции игрока ${player.displayName}`}>Операции</button>}</TableCell>
           </TableRow>)}</TableBody>
         </Table></div>}
       <div className={styles.pagination}>
@@ -94,8 +95,9 @@ export function AdminEconomyList({ data, loading, query, sort, offset, onQuery, 
   </>;
 }
 
-export function AdminEconomyPanel({ actorPublicId, refreshVersion = 0, onAccessLost, onOpen }: {
+export function AdminEconomyPanel({ actorPublicId, refreshVersion = 0, onAccessLost, onOpen, onHistory }: {
   actorPublicId: string; refreshVersion?: number; onAccessLost: (error: ApiError) => void; onOpen: (target: AdminEconomyTarget) => void;
+  onHistory?: (target: AdminEconomyTarget) => void;
 }) {
   const [queryInput, setQueryInput] = useState("");
   const [query, setQuery] = useState("");
@@ -145,6 +147,6 @@ export function AdminEconomyPanel({ actorPublicId, refreshVersion = 0, onAccessL
       <button type="button" className={styles.button} disabled={loading} onClick={() => setVersion(value => value + 1)}><RefreshCw size={17} aria-hidden="true" />Обновить хозяйства</button></div>
     {error && <div className={styles.error} role="alert"><CircleAlert size={18} aria-hidden="true" /><span>{error}{data ? " Показан последний успешный снимок; состояние могло измениться." : ""}</span></div>}
     <AdminEconomyList data={data} loading={loading} query={queryInput} sort={sort} offset={offset}
-      onQuery={setQueryInput} onSort={value => { setSort(value); setOffset(0); }} onPage={setOffset} onOpen={onOpen} />
+      onQuery={setQueryInput} onSort={value => { setSort(value); setOffset(0); }} onPage={setOffset} onOpen={onOpen} onHistory={onHistory} />
   </div>;
 }

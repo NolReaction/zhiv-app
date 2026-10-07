@@ -17,6 +17,8 @@ import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import ru.zhiv.admin.AdminConfig
+import ru.zhiv.admin.AdminAnalyticsQuery
+import ru.zhiv.admin.AdminAnalyticsEventsQuery
 import ru.zhiv.admin.AdminPlayerCommand
 import ru.zhiv.economy.*
 import ru.zhiv.identity.PlayerTag
@@ -79,6 +81,237 @@ class JdbcAdminRepositoryIntegrationTest {
             SELECT user_id,id,?, ?, ? + interval '30 seconds',?, (? AT TIME ZONE ?)::date
             FROM app_sessions WHERE token_hash=?
         """.trimIndent(), UUID.randomUUID(), at, at, timeZone, at, timeZone, user.hash)
+    }
+
+    private fun analyticsEntry(
+        player: User, kind: String, at: String, coins: Long = 0, pearls: Long = 0,
+        items: Map<String, Long> = emptyMap(), target: String? = null, quantity: Long = 1,
+        currencyScale: Int = 10, pearlScale: Int = 50, requestId: UUID = UUID.randomUUID(),
+    ): UUID {
+        if (target != null) {
+            val command = EconomyCommand(requestId.toString(), player.publicId, 0, kind, target, quantity)
+            execute("""INSERT INTO economy_commands(user_id,request_id,signature,message,accepted_revision,created_at)
+                VALUES (?,?,?,'Private command receipt',1,?::timestamptz)""",
+                player.id, requestId, economyJson.encodeToString(command), at)
+        }
+        execute("""INSERT INTO economy_ledger(user_id,source_key,kind,coins,pearls,items,currency_scale,pearl_scale,created_at)
+            VALUES (?,?,?,?,?,?::jsonb,?,?,?::timestamptz)""",
+            player.id, "command:$requestId", kind, coins, pearls, economyJson.encodeToString(items), currencyScale, pearlScale, at)
+        return requestId
+    }
+
+    @Test fun `analytics separate escrow and passive receipts while normalizing every historic currency leg`() = runBlocking<Unit> {
+        val admin = user("Администратор"); val peerAdmin = user("Второй администратор")
+        val active = user("Покупатель"); val passive = user("Продавец"); val retired = user("Удалённый")
+        val repo = repository(admin, peerAdmin)
+        val at = "2020-01-02T12:00:00Z"
+        analyticsEntry(active,"sell",at,coins=3,pearls=2,items=mapOf("wood" to -2L),target="wood",currencyScale=1,pearlScale=1)
+        analyticsEntry(active,"buy_fishing_item",at,coins=-20,pearls=-7,items=mapOf("bait" to 1L),target="bait")
+        analyticsEntry(active,"market_create",at,items=mapOf("wood" to -5L))
+        analyticsEntry(active,"market_cancel",at,items=mapOf("wood" to 3L))
+        analyticsEntry(active,"barter_create",at,items=mapOf("living_resin" to -1L))
+        analyticsEntry(active,"barter_cancel",at,items=mapOf("living_resin" to 1L))
+        analyticsEntry(passive,"market_sell",at,coins=40)
+        analyticsEntry(passive,"barter_exchange",at,items=mapOf("moon_crystal" to 1L))
+        // A V40-era pearl receipt must use its own denomination, independently of coins.
+        analyticsEntry(passive,"market_sell",at,coins=10,pearls=3,currencyScale=10,pearlScale=10)
+        for (kind in listOf("legacy_conversion","account_merge","merged_receipt",
+            "dev_grant_currency","dev_grant_item","dev_set_building_level")) {
+            analyticsEntry(active,kind,"2019-01-01T00:00:00Z",coins=999_999)
+            analyticsEntry(active,kind,at,coins=999_999)
+        }
+        analyticsEntry(admin,"sell",at,coins=900,target="wood")
+        analyticsEntry(peerAdmin,"sell",at,coins=800,target="wood")
+        analyticsEntry(retired,"sell",at,coins=700,target="wood")
+        execute("UPDATE app_users SET deleted_at=clock_timestamp() WHERE id=?",retired.id)
+        val query = AdminAnalyticsQuery(from="2020-01-02",to="2020-01-04")
+        val ledgerBefore = scalar("SELECT jsonb_agg(to_jsonb(e) ORDER BY user_id,source_key)::text FROM economy_ledger e")
+        val report = repo.analytics(admin.hash,query)
+        assertEquals(1L,report.summary.activePlayers)
+        assertEquals(9L,report.summary.events)
+        assertEquals(1L,report.summary.spendingPlayers)
+        val resources = report.resources.associateBy { it.resourceId }
+        assertEquals(80L,resources.getValue("coins").received)
+        assertEquals(20L,resources.getValue("coins").spent)
+        assertEquals(60L,resources.getValue("coins").net)
+        assertEquals(115L,resources.getValue("pearls").received)
+        assertEquals(7L,resources.getValue("pearls").spent)
+        assertEquals(108L,resources.getValue("pearls").net)
+        val wood = resources.getValue("wood")
+        assertEquals(0L,wood.received); assertEquals(2L,wood.spent)
+        assertEquals(5L,wood.reserved); assertEquals(3L,wood.returned); assertEquals(-4L,wood.net)
+        val resin = resources.getValue("living_resin")
+        assertEquals(0L,resin.received); assertEquals(0L,resin.spent); assertEquals(0L,resin.net)
+        assertEquals(1L,resin.reserved); assertEquals(1L,resin.returned)
+        assertEquals("escrow",report.flows.single { it.kind=="market_create" }.category)
+        assertEquals(5L,report.flows.single { it.kind=="market_create" }.spent)
+        assertEquals("trade",report.flows.first { it.kind=="market_sell" }.category)
+        assertEquals(listOf(1L,0L,0L),report.daily.map { it.players })
+        assertEquals(listOf(9L,0L,0L),report.daily.map { it.events })
+        assertEquals(2L,report.coverage.matchingPlayers)
+        assertEquals("2020-01-02T12:00:00Z",report.coverage.firstRecordedAt)
+        val everyone = repo.analytics(admin.hash,query.copy(scope="all"))
+        assertEquals(3L,everyone.summary.activePlayers); assertEquals(11L,everyone.summary.events)
+        assertEquals(1780L,everyone.resources.single { it.resourceId=="coins" }.received)
+        assertEquals(ledgerBefore,scalar("SELECT jsonb_agg(to_jsonb(e) ORDER BY user_id,source_key)::text FROM economy_ledger e"))
+        for (table in listOf("economy_profiles","world_profiles","economy_conversion_audit"))
+            assertEquals("0",scalar("SELECT count(*) FROM $table"),"Observation must not initialize $table")
+    }
+
+    @Test fun `analytics reconstruct job targets and first observed construction before filtering the period`() = runBlocking<Unit> {
+        val admin = user(); val established = user("Первый"); val newcomer = user("Второй")
+        val unknown = user("Без старого чека"); val producer = user("Производитель"); val inactive = user("Без событий")
+        val repo = repository(admin)
+        analyticsEntry(established,"start_construction","2020-01-01T10:00:00Z",target="home")
+        val workshop = analyticsEntry(established,"start_construction","2020-01-02T10:00:00Z",items=mapOf("wood" to -10L),target="workshop")
+        analyticsEntry(established,"claim_job","2020-01-02T11:00:00Z",target=workshop.toString())
+        val quarry = analyticsEntry(newcomer,"start_construction","2020-01-03T10:00:00Z",target="quarry")
+        analyticsEntry(newcomer,"speedup_construction","2020-01-03T11:00:00Z",pearls=-5,target=quarry.toString())
+        val missingContext = analyticsEntry(unknown,"start_construction","2020-01-03T12:00:00Z")
+        execute("""INSERT INTO economy_commands(user_id,request_id,signature,message,accepted_revision)
+            VALUES (?,?,'retired non-JSON receipt','Old private receipt',1)""",unknown.id,missingContext)
+        // Different players may reuse a request UUID: job attribution must include its owner.
+        val production = analyticsEntry(producer,"start_production","2020-01-02T08:00:00Z",target="grow_berries",quantity=3,requestId=quarry)
+        analyticsEntry(producer,"start_collection","2020-01-03T08:00:00Z",target=production.toString())
+        analyticsEntry(producer,"claim_job","2020-01-03T09:00:00Z",items=mapOf("berries" to 12L),target=production.toString())
+        // Surviving historical context may contain a missing or non-UUID job reference.
+        analyticsEntry(producer,"cancel_exploration","2020-01-03T13:00:00Z",target="missing-job-context")
+        for ((player,buildings) in listOf(established to mapOf("home" to 5,"workshop" to 2),
+            newcomer to mapOf("home" to 2,"quarry" to 1),inactive to mapOf("home" to 4))) {
+            val state = EconomyRules.initial().copy(buildings=buildings,fishingCastSeed="never-expose-this-seed")
+            execute("INSERT INTO economy_profiles(user_id,state) VALUES (?,?::jsonb)",player.id,economyJson.encodeToString(state))
+        }
+        val before = scalar("SELECT jsonb_agg(to_jsonb(e) ORDER BY user_id)::text FROM economy_profiles e")
+        val query = AdminAnalyticsQuery(from="2020-01-02",to="2020-01-03")
+        val report = repo.analytics(admin.hash,query)
+        assertEquals(3L,report.summary.constructionStarts); assertEquals(2L,report.summary.constructionClaims)
+        assertEquals(3L,report.summary.constructionPlayers)
+        assertEquals(1L,report.construction.single { it.buildingId=="workshop" }.claims)
+        assertEquals(1L,report.construction.single { it.buildingId=="quarry" }.claims)
+        assertEquals(mapOf<String?,Long>("quarry" to 1L,null to 1L),report.firstConstructions.associate { it.buildingId to it.players })
+        assertEquals(2L,report.coverage.unattributedEvents)
+        assertEquals("2020-01-01T10:00:00Z",report.coverage.firstRecordedAt)
+        assertEquals(5L,report.coverage.matchingPlayers); assertEquals(3L,report.coverage.initializedPlayers)
+        assertEquals(setOf(2,4,5),report.buildingLevels.filter { it.buildingId=="home" }.map { it.level }.toSet())
+        val quiet = repo.analytics(admin.hash,query.copy(from="2020-01-04",to="2020-01-04"))
+        assertEquals(report.buildingLevels.toSet(),quiet.buildingLevels.toSet())
+        assertTrue(quiet.firstConstructions.isEmpty()); assertEquals(0L,quiet.summary.events)
+        val events = repo.analyticsEvents(admin.hash,AdminAnalyticsEventsQuery(query=query,limit=100)).events
+        assertEquals("workshop",events.single { it.publicId==established.publicId && it.kind=="claim_job" }.targetId)
+        assertEquals("quarry",events.single { it.kind=="speedup_construction" }.targetId)
+        assertEquals("grow_berries",events.single { it.kind=="start_collection" }.targetId)
+        assertEquals("grow_berries",events.single { it.publicId==producer.publicId && it.kind=="claim_job" }.targetId)
+        assertEquals(3L,events.single { it.kind=="start_production" }.quantity)
+        assertNull(events.single { it.publicId==unknown.publicId }.targetId)
+        assertFalse(events.single { it.publicId==unknown.publicId }.contextKnown)
+        assertNull(events.single { it.kind=="cancel_exploration" }.targetId)
+        val serialized = Json.encodeToString(report) + Json.encodeToString(events)
+        for (privateValue in listOf("never-expose-this-seed","Private command receipt","signature","expectedRevision"))
+            assertFalse(serialized.contains(privateValue))
+        assertEquals(before,scalar("SELECT jsonb_agg(to_jsonb(e) ORDER BY user_id)::text FROM economy_profiles e"))
+    }
+
+    @Test fun `analytics journal filters the selected resource leg and keeps anchored pages stable`() = runBlocking<Unit> {
+        val admin = user(); val player = user("100%_торговец"); val other = user("Другой торговец")
+        val lookalike = user(player.publicId)
+        val repo = repository(admin)
+        val today = LocalDate.parse(scalar("SELECT (clock_timestamp() AT TIME ZONE 'UTC')::date")!!)
+        val at = today.minusDays(1).atTime(12,0).atOffset(ZoneOffset.UTC).toString()
+        val repeatedId = analyticsEntry(player,"sell",at,coins=100,items=mapOf("wood" to -5L),target="wood")
+        analyticsEntry(player,"buy_fishing_item",at,coins=-40,items=mapOf("wood" to 2L),target="wood")
+        analyticsEntry(player,"buy_fishing_item",at,pearls=-3,items=mapOf("bait" to 1L),target="bait")
+        analyticsEntry(other,"sell",at,coins=20,items=mapOf("wood" to -1L),target="wood",requestId=repeatedId)
+        analyticsEntry(lookalike,"sell",at,coins=500,target="stone")
+        val query = AdminAnalyticsQuery(from=today.minusDays(1).toString(),to=today.toString(),q="%_")
+        suspend fun filtered(resource: String="",direction: String="all") =
+            repo.analyticsEvents(admin.hash,AdminAnalyticsEventsQuery(query=query,resource=resource,direction=direction,limit=100))
+        assertEquals(3L,filtered().total)
+        for (publicId in listOf(player.publicId,player.publicId.lowercase())) {
+            val personal = repo.analyticsEvents(admin.hash,AdminAnalyticsEventsQuery(query=query.copy(q=publicId),limit=100))
+            assertEquals(3L,personal.total)
+            assertTrue(personal.events.all { it.publicId==player.publicId },"A public ID drilldown must ignore another player's display name")
+            assertEquals(1L,repo.analytics(admin.hash,query.copy(q=publicId)).coverage.matchingPlayers)
+        }
+        val woodIn = filtered("wood","in")
+        assertEquals(1L,woodIn.total); assertEquals(-40L,woodIn.events.single().coins)
+        assertEquals(2L,woodIn.events.single().items["wood"])
+        assertEquals("sell",filtered("wood","out").events.single().kind)
+        assertEquals(-40L,filtered("coins","out").events.single().coins)
+        assertEquals(0L,filtered("pearls","in").total)
+        assertEquals(3L,filtered(direction="in").total); assertEquals(3L,filtered(direction="out").total)
+        val journal = AdminAnalyticsEventsQuery(query=query.copy(q="торговец"),limit=2)
+        val first = repo.analyticsEvents(admin.hash,journal)
+        val original = repo.analyticsEvents(admin.hash,journal.copy(limit=100,at=first.endAt))
+        assertEquals(4L,first.total); assertEquals(4,original.events.map { it.id }.toSet().size)
+        // A committed event after the snapshot anchor must not move the second page.
+        analyticsEntry(other,"sell",first.endAt,coins=30,target="stone")
+        val second = repo.analyticsEvents(admin.hash,journal.copy(offset=2,at=first.endAt))
+        assertEquals(4L,second.total); assertEquals(first.endAt,second.endAt)
+        assertEquals(original.events.map { it.id },(first.events+second.events).map { it.id })
+        assertEquals(5L,repo.analyticsEvents(admin.hash,journal).total)
+        assertTrue(repo.analyticsEvents(admin.hash,journal.copy(offset=4,at=first.endAt)).events.isEmpty())
+        assertEquals(0L,repo.analyticsEvents(admin.hash,journal.copy(query=query.copy(q="' OR true --"))).total)
+    }
+
+    @Test fun `analytics use inclusive UTC dates with empty days and never initialize a new player`() = runBlocking<Unit> {
+        val admin = user(); val player = user("Новый игрок"); val repo = repository(admin)
+        analyticsEntry(player,"sell","2020-01-01T23:59:59.999999Z",coins=100,target="wood")
+        analyticsEntry(player,"sell","2020-01-02T00:00:00Z",coins=10,target="wood")
+        analyticsEntry(player,"sell","2020-01-04T23:59:59.999999Z",coins=20,target="wood")
+        analyticsEntry(player,"sell","2020-01-05T00:00:00Z",coins=200,target="wood")
+        val query = AdminAnalyticsQuery(from="2020-01-02",to="2020-01-04",q=player.publicId)
+        val report = repo.analytics(admin.hash,query)
+        assertEquals("2020-01-02T00:00:00Z",report.startAt); assertEquals("2020-01-05T00:00:00Z",report.endAt)
+        assertEquals(listOf("2020-01-02","2020-01-03","2020-01-04"),report.daily.map { it.date })
+        assertEquals(listOf(1L,0L,1L),report.daily.map { it.events })
+        assertEquals(30L,report.resources.single { it.resourceId=="coins" }.received)
+        assertEquals(0L,report.coverage.initializedPlayers); assertTrue(report.buildingLevels.isEmpty())
+        val empty = repo.analytics(admin.hash,query.copy(q="Несуществующий игрок"))
+        assertEquals(0L,empty.summary.events); assertEquals(0L,empty.coverage.matchingPlayers)
+        assertNull(empty.coverage.firstRecordedAt); assertEquals(3,empty.daily.size)
+        assertTrue(empty.daily.all { it.players==0L && it.events==0L && it.constructionStarts==0L })
+        assertTrue(empty.resources.isEmpty()); assertTrue(empty.actions.isEmpty()); assertTrue(empty.flows.isEmpty())
+        assertEquals("0",scalar("SELECT count(*) FROM economy_profiles"))
+        assertEquals("0",scalar("SELECT count(*) FROM economy_conversion_audit"))
+    }
+
+    @Test fun `HTTP analytics authorize before reads and reject duplicate invalid or oversized filters`() = testApplication {
+        val admin = user(); val visitor = user(); val repo = repository(admin)
+        application { installZhivApi(identities,identities,config,admin=repo) }
+        val cookie = "${config.cookieName}=${admin.raw}"
+        for (path in listOf("/api/v1/admin/analytics","/api/v1/admin/analytics/events")) {
+            assertEquals(HttpStatusCode.Unauthorized,client.get(path) { header("X-Role","admin") }.status)
+            assertEquals(HttpStatusCode.Forbidden,client.get(path) {
+                header(HttpHeaders.Cookie,"${config.cookieName}=${visitor.raw}"); header("X-Admin-Public-Id",admin.publicId)
+            }.status)
+            val accepted = client.get(path) { header(HttpHeaders.Cookie,cookie) }
+            assertEquals(HttpStatusCode.OK,accepted.status)
+            assertEquals("no-store",accepted.headers[HttpHeaders.CacheControl])
+            assertEquals("noindex, nofollow",accepted.headers["X-Robots-Tag"])
+            for (filter in listOf("from=2020-01-01&from=2020-01-02", "to=2020-01-01&to=2020-01-02",
+                "q=a&q=b", "scope=players&scope=all", "from=2020-01-01", "to=2020-01-01",
+                "from=2020-02-30&to=2020-03-01", "from=2020-01-03&to=2020-01-02", "from=0000-01-01&to=0000-01-02",
+                "from=2020-01-01&to=2021-01-01", "from=2999-01-01&to=2999-01-02", "scope=unknown", "q=${"x".repeat(101)}")) {
+                assertEquals(HttpStatusCode.BadRequest,client.get("$path?$filter") { header(HttpHeaders.Cookie,cookie) }.status,filter)
+            }
+        }
+        for (filter in listOf("kind=sell&kind=claim_job", "resource=wood&resource=coins", "direction=in&direction=out",
+            "offset=0&offset=1", "limit=1&limit=2", "at=2020-01-01T00:00:00Z&at=2020-01-02T00:00:00Z",
+            "limit=101", "limit=0", "offset=-1", "offset=100001", "direction=unknown", "at=not-an-instant",
+            "at=2999-01-01T00:00:00Z", "from=2020-01-02&to=2020-01-03&at=2020-01-01T00:00:00Z",
+            "kind=bad%20kind", "resource=bad%20resource")) {
+            assertEquals(HttpStatusCode.BadRequest,client.get("/api/v1/admin/analytics/events?$filter") {
+                header(HttpHeaders.Cookie,cookie)
+            }.status,filter)
+        }
+        assertEquals("0",scalar("SELECT count(*) FROM economy_profiles"))
+        execute("UPDATE app_sessions SET revoked_at=clock_timestamp() WHERE token_hash=?",admin.hash)
+        for (path in listOf("/api/v1/admin/analytics","/api/v1/admin/analytics/events"))
+            assertEquals(HttpStatusCode.Unauthorized,client.get(path) { header(HttpHeaders.Cookie,cookie) }.status)
+        assertEquals(403,assertFailsWith<AuthFailure> { repository().analytics(visitor.hash,AdminAnalyticsQuery()) }.status)
+        assertEquals(401,assertFailsWith<AuthFailure> { repo.analyticsEvents(tokens.issue().hash,AdminAnalyticsEventsQuery()) }.status)
+        assertEquals(403,assertFailsWith<AuthFailure> { repo.analytics(visitor.hash,AdminAnalyticsQuery(from="invalid")) }.status)
+        assertEquals(401,assertFailsWith<AuthFailure> { repo.analyticsEvents(tokens.issue().hash,AdminAnalyticsEventsQuery(limit=0)) }.status)
     }
 
     @Test fun `all operations deny absent sessions ordinary accounts and an empty administrator allowlist`() = runBlocking<Unit> {

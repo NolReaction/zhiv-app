@@ -29,6 +29,10 @@ private fun ApplicationCall.page(): Pair<Int, Int> {
     val limit = parameter("limit", "25").toIntOrNull()?.takeIf { it in 1..100 } ?: badQuery()
     return offset to limit
 }
+private fun ApplicationCall.optionalParameter(name: String): String? = request.queryParameters.getAll(name)?.let { it.singleOrNull() ?: badQuery() }
+private fun ApplicationCall.analyticsQuery(): AdminAnalyticsQuery = AdminAnalyticsQuery(
+    optionalParameter("from"), optionalParameter("to"), parameter("q", ""), parameter("scope", "players"),
+)
 private fun ApplicationCall.adminSessionHash(config: AppConfig, codec: TokenCodec, writing: Boolean = false): ByteArray {
     response.header(HttpHeaders.CacheControl, "no-store")
     response.header("X-Robots-Tag", "noindex, nofollow")
@@ -46,6 +50,17 @@ fun Route.adminRoutes(repository: AdminRepository, codec: TokenCodec, config: Ap
                 val hash = call.adminSessionHash(config, codec)
                 val days = call.parameter("days", "30").toIntOrNull()?.takeIf { it in setOf(7, 30, 90) } ?: badQuery()
                 call.respond(repository.overview(hash, days))
+            }
+            get("/analytics") {
+                val hash = call.adminSessionHash(config, codec)
+                call.respond(repository.analytics(hash, call.analyticsQuery()))
+            }
+            get("/analytics/events") {
+                val hash = call.adminSessionHash(config, codec)
+                val (offset, limit) = call.page()
+                call.respond(repository.analyticsEvents(hash, AdminAnalyticsEventsQuery(call.analyticsQuery(),
+                    call.parameter("kind", ""), call.parameter("resource", ""), call.parameter("direction", "all"),
+                    offset, limit, call.optionalParameter("at"))))
             }
             get("/users") {
                 val hash = call.adminSessionHash(config, codec)

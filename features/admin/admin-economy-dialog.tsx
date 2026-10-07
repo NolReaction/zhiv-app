@@ -133,8 +133,9 @@ export function AdminEconomyDetailContent({ detail }: { detail: AdminEconomyDeta
   </div>;
 }
 
-export function AdminEconomyDialog({ target, actorPublicId, onAccessLost, onClose }: {
+export function AdminEconomyDialog({ target, actorPublicId, onAccessLost, onClose, onHistory }: {
   target: AdminEconomyTarget; actorPublicId: string; onAccessLost: (error: ApiError) => void; onClose: () => void;
+  onHistory?: (target: AdminEconomyTarget) => void;
 }) {
   const [snapshot, setSnapshot] = useState<{ owner: string; value: AdminEconomyDetail } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -167,6 +168,7 @@ export function AdminEconomyDialog({ target, actorPublicId, onAccessLost, onClos
   return <Dialog open onOpenChange={open => { if (!open) onClose(); }}><DialogContent className={styles.dialog}>
     <DialogHeader><DialogTitle>Хозяйство игрока</DialogTitle><DialogDescription>{detail?.displayName ?? target.displayName} · {target.publicId}</DialogDescription></DialogHeader>
     <div className={styles.refresh}><span className={styles.hint}>Обновляется раз в 30 секунд, пока окно видно</span><button type="button" className={styles.button} disabled={loading} onClick={() => setVersion(value => value + 1)}><RefreshCw size={17} aria-hidden="true" />Обновить</button></div>
+    {onHistory && <button type="button" className={styles.button} onClick={() => onHistory(target)}>Открыть журнал операций этого игрока</button>}
     {error && <div className={styles.error} role="alert"><CircleAlert size={18} aria-hidden="true" /><span>{error}{detail ? " Показан последний успешный снимок; состояние могло измениться." : ""}</span></div>}
     <div aria-busy={loading}>{detail ? <AdminEconomyDetailContent detail={detail} /> : <p className={styles.empty} role="status">{loading ? "Загружаем хозяйство…" : "Хозяйство пока не загружено."}</p>}</div>
   </DialogContent></Dialog>;

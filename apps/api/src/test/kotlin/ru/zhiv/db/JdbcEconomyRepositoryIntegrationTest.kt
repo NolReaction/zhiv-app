@@ -15,6 +15,9 @@ import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import ru.zhiv.auth.AuthFailure
+import ru.zhiv.admin.AdminAnalyticsEventsQuery
+import ru.zhiv.admin.AdminAnalyticsQuery
+import ru.zhiv.admin.AdminConfig
 import ru.zhiv.config.AppConfig
 import ru.zhiv.economy.*
 import ru.zhiv.installZhivApi
@@ -348,6 +351,29 @@ class JdbcEconomyRepositoryIntegrationTest {
         assertEquals(persisted.jobs.single().rewards, delivered.fishing.catches)
         assertNull(source.connection.use { readEconomyProfile(it, p.id).state.fishingCastSeed })
         assertEquals("1", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='claim_job'", p.id))
+        // Fishing job IDs are private random IDs, so the receipt UUID join cannot recover this route.
+        // Capture only safe catalog context while the accepted command can still see the job.
+        val startContext = economyJson.decodeFromString<Map<String,String>>(scalar(
+            "SELECT context::text FROM economy_ledger WHERE user_id=? AND source_key=?",p.id,"command:${start.requestId}"))
+        assertEquals(mapOf("targetId" to "shore"),startContext)
+        for (request in listOf(cancel,claim)) {
+            assertEquals("0",scalar("SELECT count(*) FROM economy_commands WHERE user_id=? AND request_id::text=?",p.id,request.targetId))
+            val storedContext = scalar("SELECT context::text FROM economy_ledger WHERE user_id=? AND source_key=?",p.id,"command:${request.requestId}")
+            assertEquals(mapOf("targetId" to "shore","originAction" to "start_fishing"),
+                economyJson.decodeFromString<Map<String,String>>(storedContext))
+            assertFalse(storedContext.contains(checkNotNull(persisted.fishingCastSeed)))
+            assertFalse(storedContext.contains(request.targetId))
+            assertTrue(economy.command(p.hash,request).replayed)
+            assertEquals(storedContext,scalar("SELECT context::text FROM economy_ledger WHERE user_id=? AND source_key=?",p.id,"command:${request.requestId}"))
+        }
+        val admin = JdbcAdminRepository(source,AdminConfig(setOf(p.publicId)))
+        val query = AdminAnalyticsQuery(q=p.publicId,scope="all")
+        val observed = admin.analyticsEvents(p.hash,AdminAnalyticsEventsQuery(query=query,limit=100))
+        val completions = observed.events.filter { it.kind in setOf("claim_job","cancel_exploration") }
+        assertEquals(2,completions.size)
+        assertTrue(completions.all { it.targetId=="shore" && it.contextKnown })
+        assertEquals(0L,admin.analytics(p.hash,query).coverage.unattributedEvents)
+        assertFalse(economyJson.encodeToString(observed).contains(checkNotNull(persisted.fishingCastSeed)))
         assertEquals("ECONOMY_REVISION_CONFLICT", assertFailsWith<AuthFailure> {
             economy.command(p.hash, claim.copy(requestId = UUID.randomUUID().toString()))
         }.code)

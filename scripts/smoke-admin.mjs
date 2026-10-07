@@ -91,7 +91,7 @@ const peer = seedAdmin(adminIds[1], "CI admin peer", "admin-peer@example.invalid
 const ordinary = await profile("CI admin ordinary");
 const target = await profile("CI admin target");
 const targetSecondCookie = addSession(target.publicId);
-const adminPaths = ["access", "overview?days=7", "users", "audit", "monitoring"].map((path) => "/api/v1/admin/" + path);
+const adminPaths = ["access", "overview?days=7", "users", "economy", "analytics", "analytics/events", "audit", "monitoring"].map((path) => "/api/v1/admin/" + path);
 for (const path of adminPaths) {
   const anonymous = await api("GET", path, { expected: 401, headers: { "X-Admin-Public-Id": admin.publicId, "X-Role": "admin" } });
   assert.equal(anonymous.headers["cache-control"], "no-store");
@@ -104,6 +104,19 @@ assert.deepEqual(Object.keys(access.data).sort(), ["displayName", "publicId", "s
 assert.equal(access.headers["cache-control"], "no-store");
 assert.equal(access.headers["x-robots-tag"], "noindex, nofollow");
 assert.equal((await api("GET", "/admin")).headers["cache-control"], "no-store");
+
+const analytics = await api("GET", `/api/v1/admin/analytics?q=${target.publicId}`, { cookie: admin.cookie });
+assert.equal(analytics.data.q, target.publicId);
+assert.equal(analytics.data.scope, "players");
+assert.equal(analytics.data.coverage.matchingPlayers, 1);
+assert.equal(analytics.data.summary.events, 0);
+assert.equal(analytics.headers["cache-control"], "no-store");
+assert.equal(analytics.headers["x-robots-tag"], "noindex, nofollow");
+const operations = await api("GET", `/api/v1/admin/analytics/events?q=${target.publicId}&limit=25`, { cookie: admin.cookie });
+assert.equal(operations.data.total, 0);
+assert.deepEqual(operations.data.events, []);
+await api("GET", "/api/v1/admin/analytics?scope=players&scope=all", { cookie: admin.cookie, expected: 400 });
+await api("GET", "/api/v1/admin/analytics/events?limit=101", { cookie: admin.cookie, expected: 400 });
 
 // The edge never forwards scrape routes, even if the correct token is supplied.
 const scrapeToken = readFileSync(resolve(root, "deploy/.secrets/monitoring/token"), "utf8").trim();

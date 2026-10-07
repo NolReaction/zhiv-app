@@ -53,7 +53,7 @@ export type AdminAudit = z.infer<typeof auditSchema>;
 export type AdminMonitoring = z.infer<typeof monitoringSchema>;
 export type AdminRevokeRequest = { requestId: string; confirmationPublicId: string; reason: string };
 
-async function adminRequest<T>(path: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>, signal?: AbortSignal, body?: AdminRevokeRequest | AdminGrantRequest | AdminPlayerCommand): Promise<T> {
+export async function adminRequest<T>(path: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>, signal?: AbortSignal, body?: AdminRevokeRequest | AdminGrantRequest | AdminPlayerCommand): Promise<T> {
   const controller = new AbortController();
   const abort = () => controller.abort(signal?.reason);
   if (signal?.aborted) abort();

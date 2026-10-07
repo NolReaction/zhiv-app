@@ -3,7 +3,8 @@
 import { PlayerName } from "@/components/player-name";
 import { AdminPlayerDialog } from "./admin-player-dialog";
 import { AdminTapActivityPanel } from "./admin-tap-activity-panel";
-import { AdminEconomyPanel, type AdminEconomyTarget } from "./admin-economy-panel";
+import { type AdminEconomyTarget } from "./admin-economy-panel";
+import { AdminEconomyWorkspace, type AdminHistoryRequest } from "./admin-analytics-panel";
 import { AdminEconomyDialog } from "./admin-economy-dialog";
 import { worldCatalog } from "@/features/world/model";
 import { AdminFeedbackPanel } from "./admin-feedback-panel";
@@ -323,6 +324,7 @@ export function AdminDashboard() {
   const [audit, setAudit] = useState<Snapshot<AdminAudit> | null>(null);
   const [playerTarget, setPlayerTarget] = useState<AdminUser | null>(null);
   const [economyTarget, setEconomyTarget] = useState<AdminEconomyTarget | null>(null);
+  const [historyRequest, setHistoryRequest] = useState<AdminHistoryRequest | null>(null);
   const [clickTarget, setClickTarget] = useState<AdminUser | null>(null);
   const [rewardTarget, setRewardTarget] = useState<AdminUser | null>(null);
   const [revocation, setRevocation] = useState<Revocation | null>(null);
@@ -339,6 +341,7 @@ export function AdminDashboard() {
     setOverview(null); setUsers(null); setMonitoring(null); setAudit(null);
     setQueryInput(""); setQuery(""); setUsersOffset(0); setAuditOffset(0);
     setRevocation(null); setRewardTarget(null); setPlayerTarget(null); setEconomyTarget(null); setClickTarget(null); setActionError(null); setActionReceipt(null);
+    setHistoryRequest(null);
     actionControllerRef.current?.abort();
     actionBusyRef.current = false;
     setActionBusy(false);
@@ -482,7 +485,7 @@ export function AdminDashboard() {
             <TabsList className={styles.tabList} aria-label="Разделы управления">
               <TabsTrigger className={styles.tab} value="overview"><LayoutDashboard size={18} />Обзор</TabsTrigger>
               <TabsTrigger className={styles.tab} value="users"><Users size={18} />Пользователи</TabsTrigger>
-              <TabsTrigger className={styles.tab} value="economy"><Warehouse size={18} />Хозяйство</TabsTrigger>
+              <TabsTrigger className={styles.tab} value="economy"><Warehouse size={18} />Экономика</TabsTrigger>
               <TabsTrigger className={styles.tab} value="clicks"><Activity size={18} />Клики</TabsTrigger>
               <TabsTrigger className={styles.tab} value="monitoring"><Server size={18} />Сервер</TabsTrigger>
               <TabsTrigger className={styles.tab} value="incidents"><CircleAlert size={18} />Сбои у пользователей</TabsTrigger>
@@ -491,7 +494,7 @@ export function AdminDashboard() {
             </TabsList>
             {tab !== "economy" && <div className={styles.refreshGroup}>{tab !== "clicks" && tab !== "incidents" && tab !== "feedback" && <span className={styles.updated}>{currentTime ? `Снимок ${time(currentTime)} UTC` : "Ожидаем данные"}</span>}<button type="button" className={styles.iconButton} onClick={requestRefresh} disabled={loading} aria-label="Обновить данные" title="Обновить данные">{loading ? <LoaderCircle size={19} className={styles.spin} /> : <RefreshCw size={19} />}</button></div>}
           </div>
-          <div className={styles.viewHeading}><div><h1>{tab === "feedback" ? "Обратная связь" : tab === "overview" ? "Состояние приложения" : tab === "users" ? "Пользователи" : tab === "economy" ? "Хозяйства игроков" : tab === "clicks" ? "Нажатия игроков" : tab === "monitoring" ? "Нагрузка и доступность" : tab === "incidents" ? "Сбои у пользователей" : "Действия администраторов"}</h1><p>{tab === "feedback" ? "Обращения игроков: ошибки, идеи и вопросы" : tab === "overview" ? "Рост, отметки и возвращаемость" : tab === "users" ? "Награды, вещи, теги и модерация" : tab === "economy" ? "Развитие, валюты, склад и текущие задания" : tab === "clicks" ? "Частота нажатий и признаки для ручной проверки" : tab === "monitoring" ? "Измерения сервера и API" : tab === "incidents" ? "Сообщения браузера, ответы API и восстановление связи" : "История изменений аккаунтов и выдачи наград"}</p></div>
+          <div className={styles.viewHeading}><div><h1>{tab === "feedback" ? "Обратная связь" : tab === "overview" ? "Состояние приложения" : tab === "users" ? "Пользователи" : tab === "economy" ? "Экономика и развитие игроков" : tab === "clicks" ? "Нажатия игроков" : tab === "monitoring" ? "Нагрузка и доступность" : tab === "incidents" ? "Сбои у пользователей" : "Действия администраторов"}</h1><p>{tab === "feedback" ? "Обращения игроков: ошибки, идеи и вопросы" : tab === "overview" ? "Рост, отметки и возвращаемость" : tab === "users" ? "Награды, вещи, теги и модерация" : tab === "economy" ? "Действия игроков, расходы ресурсов, строительство и история хозяйства" : tab === "clicks" ? "Частота нажатий и признаки для ручной проверки" : tab === "monitoring" ? "Измерения сервера и API" : tab === "incidents" ? "Сообщения браузера, ответы API и восстановление связи" : "История изменений аккаунтов и выдачи наград"}</p></div>
             {tab === "monitoring" && <label className={styles.selectLabel}><span>История</span><select className={styles.select} value={rangeMinutes} onChange={event => setRangeMinutes(Number(event.target.value))}><option value={60}>1 час</option><option value={360}>6 часов</option><option value={1440}>24 часа</option><option value={10080}>7 дней</option></select></label>}
             {tab === "overview" && <label className={styles.selectLabel}><span>Период</span><select value={days} onChange={event => setDays(Number(event.target.value) as 7 | 30 | 90)} className={styles.select}><option value={7}>7 дней</option><option value={30}>30 дней</option><option value={90}>90 дней</option></select></label>}
           </div>
@@ -502,17 +505,17 @@ export function AdminDashboard() {
             <div className={styles.searchToolbar}><label className={styles.search}><Search size={19} /><span className={styles.srOnly}>Поиск пользователя по имени или ID</span><input type="search" value={queryInput} onChange={event => setQueryInput(event.target.value)} placeholder="Имя или ID пользователя" maxLength={100} autoComplete="off" /></label><label className={styles.selectLabel}><span>Сортировка</span><select className={styles.select} value={sort} onChange={event => { setSort(event.target.value as UserSort); setUsersOffset(0); }}><option value="created">Сначала новые</option><option value="activity">По последней отметке</option><option value="taps">По числу тапов</option><option value="review">Сначала на проверку</option></select></label></div>
             {usersData ? <UsersTable data={usersData} access={access} busy={loading || actionBusy} onPage={setUsersOffset} onRevoke={startRevocation} onManage={setPlayerTarget} onEconomy={setEconomyTarget} onClicks={target => { setClickTarget(target); setTab("clicks"); }} onRewards={target => { rewardTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setRewardTarget(target); }} /> : <Empty>{loading ? "Ищем пользователей…" : "Список пока не загружен."}</Empty>}
           </TabsContent>
-          <TabsContent value="economy" className={styles.tabContent}>{tab === "economy" && <AdminEconomyPanel key={access.publicId} actorPublicId={access.publicId} refreshVersion={refreshVersion} onAccessLost={closeAccess} onOpen={setEconomyTarget} />}</TabsContent>
+          <TabsContent value="economy" className={styles.tabContent}>{tab === "economy" && <AdminEconomyWorkspace key={access.publicId} actorPublicId={access.publicId} refreshVersion={refreshVersion} onAccessLost={closeAccess} onOpen={setEconomyTarget} historyRequest={historyRequest} />}</TabsContent>
           <TabsContent value="clicks" className={styles.tabContent}>{tab === "clicks" && <AdminTapActivityPanel key={access.publicId} initialTarget={clickTarget} refreshVersion={refreshVersion} onManage={setPlayerTarget} onAccessError={closeAccess} />}</TabsContent>
           <TabsContent value="monitoring" className={styles.tabContent}>{monitoring?.key === String(rangeMinutes) ? <Monitoring data={monitoring.value} /> : <Empty>{loading ? "Получаем метрики сервера…" : "Метрики пока не загружены."}</Empty>}</TabsContent>
           <TabsContent value="incidents" className={styles.tabContent}>{tab === "incidents" && <AdminIncidentsPanel onAccessError={closeAccess} />}</TabsContent>
           <TabsContent value="feedback" className={styles.tabContent}>{tab === "feedback" && <AdminFeedbackPanel key={access.publicId} actorPublicId={access.publicId} onAccessError={closeAccess} refreshVersion={refreshVersion} />}</TabsContent>
           <TabsContent value="audit" className={styles.tabContent}>{auditData ? <Audit data={auditData} busy={loading} onPage={setAuditOffset} /> : <Empty>{loading ? "Загружаем журнал…" : "Журнал пока не загружен."}</Empty>}</TabsContent>
-          <footer className={styles.footer}><span><span className={styles.liveDot} />Обновление: клики — 10 с, остальные разделы — 30 с, пока вкладка видна</span><span>Время и периоды — UTC</span></footer>
+          <footer className={styles.footer}><span><span className={styles.liveDot} />Обновление видимых разделов: клики — 10 с, аналитика — 60 с, операции — вручную, остальные — 30 с</span><span>Время и периоды — UTC</span></footer>
         </Tabs>
       </div>
       {playerTarget && <AdminPlayerDialog key={playerTarget.publicId} target={playerTarget} actorPublicId={access.publicId} onAccessLost={closeAccess} onClose={() => setPlayerTarget(null)} onChanged={requestRefresh} />}
-      {economyTarget && <AdminEconomyDialog key={`${access.publicId}:${economyTarget.publicId}`} target={economyTarget} actorPublicId={access.publicId} onAccessLost={closeAccess} onClose={() => setEconomyTarget(null)} />}
+      {economyTarget && <AdminEconomyDialog key={`${access.publicId}:${economyTarget.publicId}`} target={economyTarget} actorPublicId={access.publicId} onAccessLost={closeAccess} onClose={() => setEconomyTarget(null)} onHistory={target => { setEconomyTarget(null); setHistoryRequest(current => ({ target, version: (current?.version ?? 0) + 1 })); setTab("economy"); }} />}
       {rewardTarget && <AdminRewardsDialog key={rewardTarget.publicId} target={rewardTarget} actorPublicId={access.publicId}
         onClose={() => setRewardTarget(null)} onAccessLost={closeAccess}
         returnFocus={() => { if (rewardTrigger.current?.isConnected) rewardTrigger.current.focus(); }}

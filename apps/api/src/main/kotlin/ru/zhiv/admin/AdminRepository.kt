@@ -62,6 +62,8 @@ data class AdminGrantRequest(val requestId: String, val confirmationPublicId: St
 data class AdminGrantReceipt(val requestId: String, val kind: String, val rewardId: String, val granted: Boolean, val createdAt: String)
 
 interface AdminRepository {
+    suspend fun analytics(sessionHash: ByteArray, query: AdminAnalyticsQuery = AdminAnalyticsQuery()): AdminAnalytics = throw UnsupportedOperationException()
+    suspend fun analyticsEvents(sessionHash: ByteArray, query: AdminAnalyticsEventsQuery = AdminAnalyticsEventsQuery()): AdminAnalyticsEvents = throw UnsupportedOperationException()
     suspend fun economy(sessionHash: ByteArray, query: String, sort: String, offset: Int, limit: Int): AdminEconomy = throw UnsupportedOperationException()
     suspend fun economyPlayer(sessionHash: ByteArray, targetPublicId: String): AdminEconomyDetail = throw UnsupportedOperationException()
     suspend fun player(sessionHash: ByteArray, targetPublicId: String): AdminPlayer = throw UnsupportedOperationException()

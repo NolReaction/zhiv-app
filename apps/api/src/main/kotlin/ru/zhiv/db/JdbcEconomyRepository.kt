@@ -81,6 +81,26 @@ internal fun economyView(c: Connection, user: UUID, publicId: String, now: Insta
         EconomyRules.catalog, EconomyRules.storage(s, reservedEconomyMarketItems(c, user)), s.completedExplorations, s.fishing, s.progression, wardrobe = s.wardrobe, fishingShop = s.fishingShop, productionSlots = s.productionSlots)
 }
 
+/** Save only public action context before a consumed job disappears. In
+ * particular, fishing IDs do not equal command IDs. Private rolls and future
+ * rewards must never become analytics metadata. */
+internal fun economyLedgerContext(before: EconomyState, command: EconomyCommand): Map<String, String> {
+    if (command.action !in setOf("claim_job", "speedup_construction", "start_collection", "cancel_exploration"))
+        return mapOf("targetId" to command.targetId)
+    val job = before.jobs.find { it.id == command.targetId } ?: return emptyMap()
+    val action = when (job.kind) {
+        "construction" -> "start_construction"
+        "production" -> "start_production"
+        "exploration" -> if (EconomyRules.catalog.fishing?.routeIds?.contains(job.targetId) == true) "start_fishing" else "start_exploration"
+        else -> return emptyMap()
+    }
+    val target = if (job.kind == "production") job.recipeId else job.targetId
+    return buildMap {
+        put("originAction", action)
+        if (!target.isNullOrEmpty()) put("targetId", target)
+    }
+}
+
 class JdbcEconomyRepository(private val source: DataSource) : EconomyRepository {
     private data class Actor(val id: UUID, val publicId: String)
     private data class Receipt(val signature: String, val message: String, val revision: Long)
@@ -154,9 +174,10 @@ class JdbcEconomyRepository(private val source: DataSource) : EconomyRepository 
                     next.buildings["home"] ?: 1, (next.buildings["workshop"] ?: 0) > 0, next.buildings["workshop"] ?: 0, actor.id)
             }
             val delta = (before.state.inventory.keys + next.inventory.keys).associateWith { (next.inventory[it] ?: 0) - (before.state.inventory[it] ?: 0) }.filterValues { it != 0L }
-            c.economyUpdate("INSERT INTO economy_ledger(user_id,source_key,kind,coins,pearls,items) VALUES (?,?,?,?,?,?::jsonb)",
+            c.economyUpdate("INSERT INTO economy_ledger(user_id,source_key,kind,coins,pearls,items,context) VALUES (?,?,?,?,?,?::jsonb,?::jsonb)",
                 actor.id, "command:$requestId", command.action, next.wallet.coins - before.state.wallet.coins,
-                next.wallet.pearls - before.state.wallet.pearls, economyJson.encodeToString(delta))
+                next.wallet.pearls - before.state.wallet.pearls, economyJson.encodeToString(delta),
+                economyJson.encodeToString(economyLedgerContext(before.state, command)))
             c.economyUpdate("INSERT INTO economy_commands(user_id,request_id,signature,message,accepted_revision) VALUES (?,?,?,?,?)",
                 actor.id, requestId, signature, message, before.revision + 1)
             EconomyResult(economyView(c, actor.id, actor.publicId, now), message, before.revision + 1)
