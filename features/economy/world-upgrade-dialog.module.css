@@ -149,3 +149,25 @@
   .footer { padding-top: 9px; padding-bottom: 10px; gap: 5px; }
 }
 @media (forced-colors: active) { .dialog.dialog, .capacity, .homeResult, .dialog.dialog .recipeTile, .costGrid > li, .conditions > ul > li, .dialog.dialog .confirm { border-color: ButtonText; } }
+
+.contextHelp {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 7px;
+  min-height: 44px;
+  max-width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #d4dccd;
+  border-radius: 10px;
+  background: #f7f9f1;
+  color: #3d5d40;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  text-align: left;
+  cursor: pointer;
+}
+.contextHelp svg { flex-shrink: 0; }
+.contextHelp:hover { background: #edf3e5; }
+.contextHelp:focus-visible { outline: 2px solid #55774c; outline-offset: 2px; }

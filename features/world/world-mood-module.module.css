@@ -1,0 +1,30 @@
+.module, .module * { box-sizing: border-box; }
+.module { display: grid; gap: 12px; min-width: 0; }
+.current { display: flex; align-items: center; gap: 11px; padding: 12px; border: 1px solid #b8c09e; border-radius: 13px; background: #dce2c6; }
+.current > div { min-width: 0; }
+.moodIcon { display: grid; place-items: center; flex: 0 0 39px; width: 39px; height: 39px; border-radius: 12px; background: #f6f2d9a6; color: #526941; }
+.current p { margin: 0 0 4px; color: var(--forest-muted, #59624d); font-size: .6875rem; line-height: 1.4; overflow-wrap: anywhere; }
+.current h3 { margin: 0; font-size: .875rem; font-weight: 650; line-height: 1.35; overflow-wrap: anywhere; }
+.feelings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.feelings > div { min-width: 0; padding: 10px; border: 1px solid var(--forest-border, #c8bd98); border-radius: 11px; background: #fff7df55; }
+.feelings dt { display: flex; align-items: center; gap: 6px; color: var(--forest-muted, #59624d); font-size: .6875rem; }
+.feelings dt svg { flex-shrink: 0; color: var(--forest-primary, #466347); }
+.feelings dd { margin: 5px 0 0; font-size: .75rem; line-height: 1.4; overflow-wrap: anywhere; }
+.note, .waiting { margin: 0; color: var(--forest-muted, #59624d); font-size: .6875rem; line-height: 1.5; }
+.food { display: flex; align-items: center; gap: 9px; padding: 11px; border: 1px solid #cbbd96; border-radius: 12px; background: #f5e8c2; }
+.food > svg { flex-shrink: 0; color: #80663d; }
+.food > div { min-width: 0; }
+.food h3 { margin: 0 0 3px; font-size: .75rem; line-height: 1.4; font-weight: 650; }
+.food p { margin: 0; color: #6d654a; font-size: .6875rem; line-height: 1.4; }
+.foodAction { flex-shrink: 0; min-height: 44px; min-width: 44px; margin-left: auto; padding: 8px; border: 1px solid #b8aa83; border-radius: 10px; background: #fff5d9; color: var(--forest-ink, #394d3e); font: inherit; font-size: .75rem; cursor: pointer; touch-action: manipulation; }
+.actions { display: grid; gap: 4px; min-width: 0; }
+.action, .help { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; padding: 10px 12px; border: 1px solid #355339; border-radius: 12px; background: var(--forest-primary, #466347); color: #fff4d8; font: inherit; font-size: .75rem; line-height: 1.4; cursor: pointer; touch-action: manipulation; }
+.help { border-color: transparent; background: transparent; color: var(--forest-muted, #59624d); }
+.action:hover:enabled { background: #38543c; }
+.help:hover, .foodAction:hover { background: #ded9b9; }
+.action:disabled { opacity: .55; cursor: default; }
+.action:focus-visible, .help:focus-visible, .foodAction:focus-visible { outline: 2px solid var(--forest-focus, #355e48); outline-offset: 3px; }
+.action[data-called] { background: #60784b; border-color: #425d39; }
+.action[data-called] > svg { fill: #e4db9a; color: #e4db9a; }
+@media (max-width: 360px) { .feelings > div { padding: 9px; } }
+@media (forced-colors: active) { .current, .feelings > div, .food, .action, .help, .foodAction { border-color: ButtonText; } }

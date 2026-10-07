@@ -6,12 +6,14 @@ import type { GameItemId } from "@/features/game/game-rewards";
 import type { EconomyController } from "@/features/economy/use-economy";
 import type { WorldController } from "./use-world";
 import WorldView from "./world-view";
+import type { WorldFriendsState } from "./world-profile-friends";
 import styles from "./world.module.css";
 
 export type WorldPortalProps = {
   open: boolean; onClose: () => void; origin: CSSProperties; returnFocus: () => void;
   world: WorldController; economy: EconomyController; ownerPublicId: string; timeZone: string; displayName: string; level: number;
   wakeSignal: number;
+  friends?: WorldFriendsState; onOpenPeople?: () => void;
   isOnline?: boolean; onSessionLost?: () => void;
   bestStreakDays: number; items?: readonly GameItemId[];
 };

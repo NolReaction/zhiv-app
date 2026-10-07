@@ -382,6 +382,8 @@ export function CheckInApp() {
   const { simpleView, appearanceReady, setSimpleView } = useSimpleView();
   const mochlikVisible = appearanceReady && !simpleView;
   const worldPortal = useWorldPortal(screen === "home" ? me?.user.publicId ?? null : null);
+  const worldPeopleReturn = useRef(false);
+  const appNavigationRef = useRef<HTMLElement | null>(null);
   const [worldMounted, setWorldMounted] = useState(false);
   useEffect(() => {
     if (screen !== "home" || !mochlikVisible) return;
@@ -1716,12 +1718,19 @@ export function CheckInApp() {
         onOpenCalendar={streak ? () => setCalendarOpen(true) : undefined}
         onOpenGame={() => setGameOpen(true)} />}
       {worldMounted && me && <WorldPortal key={`world:${me.user.publicId}`} open={worldPortal.open} onClose={worldPortal.close}
-        origin={worldPortal.origin} returnFocus={worldPortal.returnFocus} world={world} economy={economy}
+        origin={worldPortal.origin} returnFocus={() => {
+          if (worldPeopleReturn.current) {
+            worldPeopleReturn.current = false;
+            appNavigationRef.current?.querySelector<HTMLElement>('[aria-current="page"]')?.focus({ preventScroll: true });
+          } else worldPortal.returnFocus();
+        }} world={world} economy={economy}
         ownerPublicId={me.user.publicId} timeZone={me.profile.timeZone} displayName={me.user.displayName}
         isOnline={isOnline} onSessionLost={loseSession}
+        friends={{ data: people, loading: peopleLoading, error: peopleError, updatedAt: peopleUpdatedAt, isOnline, onRefresh: () => refreshPeople() }}
+        onOpenPeople={() => { worldPeopleReturn.current = true; worldPortal.close(); selectView("people"); }}
         level={clickerLevel.level} wakeSignal={mochlikWakeSignal}
         bestStreakDays={me.streak.longestDays} items={game.progress?.items} />}
-      <footer className={styles.footer}>
+      <footer ref={appNavigationRef} className={styles.footer}>
         <AppNavigation active={activeView} onSelect={selectView}
           invitations={(people?.incomingRequests.length ?? 0) + (groups?.incomingInvites.length ?? 0)} />
       </footer>
