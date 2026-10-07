@@ -258,6 +258,7 @@
 
 .identityTitle { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; min-width: 0; }
 .identityTitle > strong { min-width: 0; }
+.identityTitle > strong span { white-space: normal; }
 
 .identity strong {
   overflow-wrap: anywhere;

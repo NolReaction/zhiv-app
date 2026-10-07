@@ -138,6 +138,8 @@
   height: 100vh;
   height: 100dvh;
   min-height: 0;
+  /* A long player name must not widen the column shared by every screen. */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr) auto;
   overflow: hidden;
   width: min(100%, 760px);
@@ -161,6 +163,8 @@
 
 .identity {
   display: flex;
+  min-width: 0;
+  width: 100%;
   align-items: center;
   justify-content: flex-end;
   max-width: 100%;
@@ -180,6 +184,7 @@
 
 .identityText {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   justify-items: end;
   gap: 3px;
   min-width: 0;
