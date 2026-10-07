@@ -114,7 +114,7 @@ function navigation() {
   const savedDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
   const savedElement = Object.getOwnPropertyDescriptor(globalThis, "HTMLElement");
   const focused = [];
-  class Element { constructor(name) { this.name = name; this.isConnected = true; } focus() { focused.push(this.name); } }
+  class Element { constructor(name) { this.name = name; this.isConnected = true; this.dataset = {}; } focus() { focused.push(this.name); } }
   const trigger = new Element("more"), characterTrigger = new Element("characters"), card = new Element("plesk"), map = new Element("map");
   Object.defineProperty(globalThis, "HTMLElement", { value: Element, configurable: true });
   Object.defineProperty(globalThis, "document", { value: { activeElement: map }, configurable: true });
@@ -329,5 +329,89 @@ test("a pantry material opens its exact recipe and a later map visit does not in
     assert.equal(garden.props.initialRecipeId, undefined);
     assert.equal(garden.props.initialStationId, undefined);
     assert.equal(nav.refreshes, 0, "opening a recipe does not issue an economy action or refresh");
+  } finally { nav.restore(); }
+});
+
+test("map mine and legacy cave entries open cave travel without an anchored object menu", () => {
+  for (const place of ["quarry", "cave"]) for (const anchored of [false, true]) {
+    const nav = navigation();
+    try {
+      const object = anchored ? { place, objectId: `${place}.position`, x: 195, y: 380, viewportWidth: 390, viewportHeight: 844 } : undefined;
+      nav.component("WorldScene").props.onPlace(place, object);
+      assert.equal(nav.component("WorldExpeditionsMenu").props.initialSector, "caves");
+      assert.equal(nav.find(element => element.props.id === "world-quick-menu").props["data-kind"], "expeditions");
+      assert.equal(nav.component("WorldObjectMenu"), undefined);
+      assert.equal(nav.component("WorldScene").props.selectedObjectId, null);
+      assert.equal(nav.component("WorldScene").props.openObjectRequest, undefined, "travel does not request a second map click");
+      assert.equal(nav.component("WorldUpgradeDialog").props.stationId, null, "visiting the mine does not open its upgrade");
+      assert.equal(nav.refreshes, 0);
+    } finally { nav.restore(); }
+  }
+});
+
+test("mine production markers, pantry links and upgrade requirements all lead directly to cave travel", () => {
+  for (const source of ["production", "pantry", "requirement", "object"]) {
+    const nav = navigation();
+    try {
+      if (source === "production") nav.component("WorldScene").props.onOpenProduction("quarry");
+      else if (source === "pantry") {
+        nav.find(element => element.props["data-world-quick"] === "pantry").props.onClick();
+        nav.component("WorldPantryMenu").props.navigation.open("quarry");
+      } else if (source === "requirement") {
+        nav.component("WorldScene").props.onOpenConstruction("home");
+        nav.component("WorldUpgradeDialog").props.navigation.open("quarry");
+      } else {
+        nav.component("WorldScene").props.onPlace("workshop", { place: "workshop", objectId: "workshop.position", x: 195, y: 380, viewportWidth: 390, viewportHeight: 844 });
+        nav.component("WorldObjectMenu").props.onNavigate("quarry", "quarry");
+      }
+      assert.equal(nav.component("WorldExpeditionsMenu").props.initialSector, "caves", source);
+      assert.equal(nav.component("WorldPantryMenu"), undefined);
+      assert.equal(nav.component("WorldObjectMenu"), undefined);
+      assert.equal(nav.component("WorldUpgradeDialog").props.stationId, null);
+      assert.equal(nav.component("WorldScene").props.openObjectRequest, undefined);
+      assert.equal(nav.refreshes, 0);
+    } finally { nav.restore(); }
+  }
+});
+
+test("the separate mine upgrade returns to the same travel panel and its upgrade trigger", () => {
+  const nav = navigation();
+  try {
+    nav.component("WorldScene").props.onPlace("quarry");
+    const travel = nav.component("WorldExpeditionsMenu");
+    document.activeElement = new HTMLElement("mine-upgrade");
+    travel.props.onUpgradeQuarry();
+    let upgrade = nav.component("WorldUpgradeDialog");
+    assert.equal(upgrade.props.stationId, "quarry");
+    assert.equal(nav.component("WorldExpeditionsMenu").key, travel.key, "opening the upgrade preserves the chosen route below it");
+    assert.equal(nav.component("WorldObjectMenu"), undefined);
+    upgrade.props.onClose();
+    upgrade = nav.component("WorldUpgradeDialog");
+    assert.equal(upgrade.props.stationId, null);
+    const returned = nav.component("WorldExpeditionsMenu");
+    assert.equal(returned.type, travel.type);
+    assert.equal(returned.key, travel.key);
+    assert.equal(returned.props.initialSector, "caves");
+    upgrade.props.onCloseAutoFocus({ preventDefault() {} });
+    assert.deepEqual(nav.focused, ["mine-upgrade"]);
+    assert.equal(nav.refreshes, 0);
+  } finally { nav.restore(); }
+});
+
+test("a repeated mine entry remounts travel in caves even when its previous initial sector was already caves", () => {
+  const nav = navigation();
+  try {
+    nav.component("WorldScene").props.onPlace("quarry");
+    const first = nav.component("WorldExpeditionsMenu");
+    assert.equal(nav.component("WorldExpeditionsMenu").key, first.key, "ordinary rerenders preserve the panel's local sector and route");
+    nav.component("WorldScene").props.onPlace("quarry");
+    const reopened = nav.component("WorldExpeditionsMenu");
+    assert.equal(reopened.props.initialSector, "caves");
+    assert.notEqual(reopened.key, first.key, "a new mine entry resets any sector selected inside the previous panel");
+    nav.component("WorldScene").props.onOpenProduction("quarry");
+    const fromMarker = nav.component("WorldExpeditionsMenu");
+    assert.equal(fromMarker.props.initialSector, "caves");
+    assert.notEqual(fromMarker.key, reopened.key);
+    assert.equal(nav.component("WorldObjectMenu"), undefined);
   } finally { nav.restore(); }
 });

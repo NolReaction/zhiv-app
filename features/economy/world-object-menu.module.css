@@ -30,6 +30,7 @@
 .menu[data-side="below"]::after { top: -6px; left: calc(var(--menu-anchor-x) - 5px); transform: rotate(225deg); }
 .menu[data-side="left"]::after { right: -6px; top: calc(var(--menu-anchor-y) - 5px); transform: rotate(-45deg); }
 .menu[data-side="right"]::after { left: -6px; top: calc(var(--menu-anchor-y) - 5px); transform: rotate(135deg); }
+.menu[data-side="sheet"]::after { display: none; }
 .menu:focus { outline: none; }
 .menu:focus-visible { outline: 2px solid var(--forest-focus, #355e48); outline-offset: 3px; }
 .menu h2, .menu h3, .menu p, .menu ul { margin: 0; }
@@ -63,21 +64,29 @@
   align-items: center;
   gap: 9px;
   flex: 0 0 auto;
-  min-height: 56px;
-  padding: 10px 9px 9px 12px;
+  min-height: 58px;
+  padding: 6px 8px 6px 12px;
+  box-sizing: border-box;
 }
 .header > div { min-width: 0; flex: 1; }
 .header > div > span { color: #5d6c50; font-size: 10px; }
 .header h2 { font-size: 16px; font-weight: 650; letter-spacing: -.02em; line-height: 1.2; }
 .placeIcon { display: grid; place-items: center; flex: 0 0 34px; width: 34px; height: 34px; color: #d3dfab; background: #d8dfb822; border-radius: 10px; }
 .coins { display: inline-flex; align-items: center; gap: 3px; max-width: 78px; overflow-wrap: anywhere; color: #785021; font-size: 10px; }
-.menu .close { min-width: 34px; min-height: 34px; padding: 7px; color: #3e5843; }
-.stations { display: flex; flex: 0 0 auto; gap: 3px; margin: 0 12px 8px; padding: 3px; background: #d6ccaa; border: 1px solid #bfb695; border-radius: 10px; }
-.menu .stations button { flex: 1; padding: 5px 4px; min-height: 30px; color: #5d6c50; font-size: 11px; }
-.menu .stations button[aria-pressed="true"] { color: #f4ecd5; background: #466347; box-shadow: 0 1px 3px #091b1259; }
+.menu .close { flex: 0 0 44px; min-width: 44px; min-height: 44px; padding: 10px; color: #3e5843; }
+.tabbedHeader { gap: 6px; padding: 6px; }
+.stations { display: flex; flex: 1; min-width: 0; gap: 4px; }
+.menu .stations button { flex: 1; min-width: 0; min-height: 44px; gap: 6px; padding: 5px 7px; color: #dbe2c8; font-size: 12px; text-align: left; }
+.stations button > span { min-width: 0; font-weight: 600; }
+.stations small { display: block; margin-top: 2px; font-size: 9px; font-weight: 400; opacity: .8; }
+.menu .stations button[aria-selected="true"] { color: #304e36; background: #e8dfc1; box-shadow: inset 0 1px #fff5d8, 0 1px 3px #091b1259; }
+.menu .stations button:hover:not([aria-selected="true"]) { background: #d8dfb825; }
 
-.body { display: flex; flex: 1; flex-direction: column; gap: 9px; min-height: 0; padding: 0 12px 12px; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #8a9370 transparent; }
+.body { display: flex; flex: 1; flex-direction: column; gap: 8px; min-height: 0; padding: 0 10px 10px; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #8a9370 transparent; }
 .body > * { flex-shrink: 0; }
+.body[data-recipe-selected="true"] { overflow: hidden; padding-bottom: 0; gap: 6px; }
+.body[data-recipe-selected="true"] > .recipeDetail { flex: 1; min-height: 0; }
+.body[data-recipe-selected="true"] > .error { flex-shrink: 1; max-height: 25%; overflow: auto; }
 .runningOrders { border: 1px solid #b3bb8c; border-radius: 9px; background: #e5e3c3; }
 .runningOrders summary { display: flex; align-items: center; gap: 6px; box-sizing: border-box; min-height: 40px; padding: 6px 8px; list-style: none; color: #466347; cursor: pointer; touch-action: manipulation; border-radius: inherit; }
 .runningOrders summary::-webkit-details-marker { display: none; }
@@ -146,7 +155,7 @@
 .sale label { color: #59624d; font-size: 11px; }
 .menu .sale input { box-sizing: border-box; width: 100%; min-height: 32px; padding: 5px 7px; border: 1px solid #a7ab7f; border-radius: 6px; background: #f5edd6; color: #394d3e; font: inherit; }
 .sale .primary { grid-column: 1 / -1; }
-.footer { flex: 0 0 auto; padding: 7px 12px 9px; border-top: 1px solid #c8bd98; }
+.footer { flex: 0 0 auto; padding: 6px 10px; border-top: 1px solid #c8bd98; }
 .maximum { display: inline-flex; align-items: center; gap: 5px; color: #59624d; font-size: 10px; }
 @media (max-width: 380px) { .header { gap: 6px; padding-left: 10px; } .body { padding-left: 10px; padding-right: 10px; } .coins { max-width: 63px; } .menu .product { min-height: 77px; } }
 @media (max-height: 500px) {
@@ -155,19 +164,17 @@
   .header h2 { font-size: 14px; }
   .placeIcon { width: 28px; height: 28px; flex-basis: 28px; }
   .placeIcon svg { width: 20px; height: 20px; }
-  .stations { margin-bottom: 5px; padding: 2px; }
-  .menu .stations button { min-height: 25px; padding: 4px; font-size: 10px; }
   .body { gap: 6px; padding-bottom: 7px; }
   .footer { padding-top: 3px; padding-bottom: 5px; }
   .menu .product { min-height: 70px; gap: 4px; padding-top: 6px; }
 }
 
 .menu .upgradeAction { justify-content: flex-start; width: 100%; min-height: 44px; padding: 7px 9px; border: 1px solid #a7ad7b; background: #d9dfb6; color: #405b3c; text-align: left; }
-.upgradeAction > span { flex: 1; font-weight: 600; }
-.upgradeAction small { display: block; margin-top: 2px; color: #59624d; font-size: 10px; font-weight: 400; }
+.upgradeAction > span { display: flex; flex: 1; align-items: center; justify-content: space-between; gap: 6px; font-weight: 600; }
+.upgradeAction small { color: #59624d; font-size: 10px; font-weight: 400; }
 @media (max-height: 500px) { .menu .upgradeAction { min-height: 34px; padding: 4px 7px; } .upgradeAction > span { display: flex; align-items: center; justify-content: space-between; gap: 6px; } .upgradeAction small { margin: 0; } }
 
-.recipeCatalog { display: grid; gap: 12px; }
+.recipeCatalog { display: grid; gap: 10px; }
 .recipeCatalog[hidden] { display: none; }
 .recipeGroup { min-width: 0; }
 .recipeGroup .products { grid-template-columns: repeat(auto-fit, minmax(74px, 1fr)); }
@@ -175,8 +182,8 @@
 .recipeGroup .recipeCard:only-child .recipeOutputs { justify-content: center; }
 .recipeGroup h3 { display: flex; align-items: center; gap: 6px; margin-bottom: 7px; color: #526345; font-size: 10px; font-weight: 550; }
 .recipeGroup h3 > span { color: #667052; font-size: 9px; font-weight: 400; }
-.menu .recipeCard { justify-content: flex-start; gap: 6px; padding: 10px 5px 8px; min-height: 104px; }
-.recipeCard > .recipeOutputs { display: flex; flex-wrap: wrap; justify-content: center; align-content: center; gap: 5px; min-height: 36px; color: #526844; }
+.menu .recipeCard { justify-content: flex-start; gap: 5px; padding: 8px 5px 7px; min-height: 90px; }
+.recipeCard > .recipeOutputs { display: flex; flex-wrap: wrap; justify-content: center; align-content: center; gap: 5px; min-height: 30px; color: #526844; }
 .recipeOutputs > span { display: flex; align-items: center; gap: 3px; }
 .recipeOutputs b { font-size: 10px; font-weight: 650; font-variant-numeric: tabular-nums; }
 .recipeCard > strong { flex: 1; font-size: 11px; font-weight: 550; line-height: 1.2; }
@@ -191,8 +198,16 @@
 .laterRecipes summary:focus-visible { outline: 2px solid var(--forest-focus, #355e48); outline-offset: 2px; border-radius: 5px; }
 .laterRecipes[open] summary > svg:last-child { transform: rotate(180deg); }
 .laterRecipes .products { padding-top: 3px; }
-.recipeDetail { display: flex; flex-direction: column; gap: 11px; }
-.menu .recipeBack { justify-content: flex-start; align-self: flex-start; min-height: 30px; margin-top: -3px; padding: 4px 0; color: #466347; font-size: 11px; }
+.recipeDetail { display: flex; flex-direction: column; min-height: 0; gap: 0; }
+.menu .recipeBack { flex: 0 0 auto; justify-content: flex-start; align-self: flex-start; min-height: 44px; margin-bottom: -6px; padding: 6px 2px; color: #466347; font-size: 12px; }
+.recipeScroll { display: flex; flex: 1; flex-direction: column; gap: 10px; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #8a9370 transparent; padding: 0 2px 10px; }
+.recipeScroll > * { flex-shrink: 0; }
+.recipeOrder { display: flex; flex: 0 0 auto; align-items: flex-end; gap: 10px; padding: 9px 0 12px; border-top: 1px solid #c8bd98; background: var(--forest-paper, #e6d9b7); }
+.batchControl { display: grid; gap: 4px; flex: 0 0 auto; }
+.batchControl > label { color: #59624d; font-size: 10px; }
+.menu .recipeOrder .stepper button { min-width: 36px; min-height: 42px; }
+.recipeOrder .stepper output { min-width: 26px; font-size: 12px; }
+.menu .recipeOrder .primary { flex: 1; min-height: 44px; padding: 7px 8px; font-size: 12px; }
 .resultCards { display: grid; gap: 5px; }
 .resultCards > div { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 6px 9px; border: 1px solid #acb581; border-radius: 9px; background: #e0e4bc; }
 .resultCards > div > span { display: grid; place-items: center; width: 30px; color: #526c43; }
@@ -203,7 +218,7 @@
 @media (max-height: 500px) {
   .recipeCatalog { gap: 9px; }
   .menu .recipeCard { min-height: 90px; padding-top: 6px; gap: 5px; }
-  .recipeDetail { gap: 8px; }
+  .recipeScroll { gap: 8px; }
   .resultCards > div { min-height: 34px; padding-top: 4px; padding-bottom: 4px; }
 }
 
@@ -216,8 +231,11 @@
 .menu .product { box-shadow: inset 0 1px #fff6e0, 0 2px 0 #b9a47b30; }
 .menu .product:hover:not(:disabled) { background: #fff0cc; border-color: #92966a; }
 .menu .product[data-locked='true'] { border-style: dashed; box-shadow: none; }
-.recipeCard > .recipeOutputs { min-height: 36px; }
+.recipeCard > .recipeOutputs { min-height: 30px; }
 .recipeIngredients { padding: 9px; border: 1px solid #c7ba9566; border-radius: 8px; background: #f4ead080; }
+.recipeIngredients .cost li { font-size: 12px; }
+.recipeIngredients .cost li > strong { font-size: 11px; }
+.recipeScroll .hint { margin-top: 0 !important; font-size: 11px; }
 .cost li { min-width: 0; flex-wrap: wrap; }
 .cost li > span { min-width: 0; overflow-wrap: anywhere; }
 .cost li > strong { margin-left: auto; max-width: 100%; overflow-wrap: anywhere; }
@@ -232,7 +250,7 @@
 .menu .primary, .menu .claim:not(:disabled) { box-shadow: inset 0 1px #8da07970, 0 2px 0 #30472e; }
 .menu .primary:disabled { box-shadow: none; }
 .menu .order .primary { flex: 1 1 140px; }
-.menu .recipeBack, .menu .close, .menu .stepper button { min-height: 36px; }
+.menu .stepper button { min-height: 36px; }
 .menu .stepper button { min-width: 32px; }
 .menu .sale input { min-height: 36px; }
 @media (prefers-reduced-motion: reduce) { .menu * { animation: none !important; transition: none !important; } }

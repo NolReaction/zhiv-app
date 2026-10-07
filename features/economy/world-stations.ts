@@ -21,7 +21,8 @@ export type WorldMenuBounds = { top?: number; right?: number; bottom?: number; l
 export function worldMenuDimensions(viewport: Pick<MapObjectSelection, "viewportWidth" | "viewportHeight">, bounds: WorldMenuBounds = {}) {
   const availableWidth = Math.max(1, viewport.viewportWidth - Math.max(8, bounds.left ?? 8) - Math.max(8, bounds.right ?? 8));
   const availableHeight = Math.max(1, viewport.viewportHeight - Math.max(8, bounds.top ?? 8) - Math.max(8, bounds.bottom ?? 8));
-  return { width: Math.min(320, availableWidth), maxHeight: Math.min(380, Math.max(Math.min(280, availableHeight), availableHeight * .48)) };
+  const phone = viewport.viewportWidth <= 600;
+  return { width: Math.min(phone ? 400 : 360, availableWidth), maxHeight: Math.min(phone ? 520 : 480, availableHeight) };
 }
 export function worldMenuPosition(selection: Pick<MapObjectSelection, "x" | "y" | "viewportWidth" | "viewportHeight">, size: { width: number; height: number }, bounds: WorldMenuBounds = {}) {
   const left = Math.max(8, bounds.left ?? 8), top = Math.max(8, bounds.top ?? 8);
@@ -45,10 +46,17 @@ export function worldMenuPosition(selection: Pick<MapObjectSelection, "x" | "y" 
   }).sort((a, b) => a.score - b.score);
   return { ...options[0], width, height, anchorX: clamp(anchor.x - options[0].x, 20, Math.max(20, width - 20)), anchorY: clamp(anchor.y - options[0].y, 20, Math.max(20, height - 20)) };
 }
-// Production menus keep this frame while recipes, work and inventory change inside
-// their scroll area. Content measurements must not choose a new side of the object.
+// Keep a stable frame across catalogue and preparation. On phones it sits above
+// the dock, using the available height instead of following a cramped map anchor.
 export function worldStableMenuPosition(selection: Pick<MapObjectSelection, "x" | "y" | "viewportWidth" | "viewportHeight">, bounds: WorldMenuBounds = {}) {
   const { width, maxHeight } = worldMenuDimensions(selection, bounds);
+  if (selection.viewportWidth <= 600) {
+    const left = Math.max(8, bounds.left ?? 8), right = Math.max(8, bounds.right ?? 8);
+    const bottom = Math.max(8, bounds.bottom ?? 8);
+    return { side: "sheet", x: left + Math.max(0, selection.viewportWidth - left - right - width) / 2,
+      y: Math.max(Math.max(8, bounds.top ?? 8), selection.viewportHeight - bottom - maxHeight),
+      width, height: maxHeight, anchorX: width / 2, anchorY: 0 };
+  }
   return worldMenuPosition(selection, { width, height: maxHeight }, bounds);
 }
 export type WorldRecipe = EconomyCatalog["recipes"][number];

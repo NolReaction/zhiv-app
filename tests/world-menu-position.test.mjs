@@ -16,7 +16,7 @@ function assertInside(position, viewport, bounds) {
   assert.ok(position.width > 0 && position.height > 0);
 }
 
-test("production menu reserves its expanded frame before a detail can make it switch sides", () => {
+test("phone production uses a stable sheet with space for preparation above the dock", () => {
   const selection = { x: 195, y: 380, viewportWidth: 390, viewportHeight: 844 };
   const bounds = { top: 120, right: 8, bottom: 110, left: 8 };
   const compact = worldMenuPosition(selection, { width: 320, height: 214 }, bounds);
@@ -25,13 +25,14 @@ test("production menu reserves its expanded frame before a detail can make it sw
   assert.equal(expanded.side, "below");
 
   const reserved = worldStableMenuPosition(selection, bounds);
-  assert.equal(reserved.side, "below");
-  assert.equal(reserved.y, selection.y + 18);
-  assert.equal(reserved.width, 320);
-  assert.ok(reserved.height > 294 && reserved.height < 295);
+  assert.equal(reserved.side, "sheet");
+  assert.equal(reserved.y + reserved.height, selection.viewportHeight - bounds.bottom);
+  assert.equal(reserved.width, 374);
+  assert.ok(reserved.height >= 480, "recipe ingredients and the order action need a useful viewport");
   assertInside(reserved, selection, bounds);
   // Recipe and stock updates have no geometry input; the same anchor keeps its frame.
   assert.deepEqual(worldStableMenuPosition({ ...selection }, { ...bounds }), reserved);
+  assert.deepEqual(worldStableMenuPosition({ ...selection, x: 50, y: 150 }, bounds), reserved, "panning or selecting another object cannot shift the phone sheet");
 });
 
 test("stable frames stay inside HUD insets at phone, narrow, desktop and landscape edges", () => {
@@ -63,9 +64,9 @@ test("landscape production frame uses available height beside the selected objec
 
 test("stable frame follows camera movement and recomputes only the viewport-dependent size", () => {
   const bounds = { top: 120, right: 8, bottom: 110, left: 8 };
-  const selection = { x: 600, y: 600, viewportWidth: 1440, viewportHeight: 1000 };
+  const selection = { x: 600, y: 650, viewportWidth: 1440, viewportHeight: 1000 };
   const before = worldStableMenuPosition(selection, bounds);
-  const panned = worldStableMenuPosition({ ...selection, x: 630, y: 625 }, bounds);
+  const panned = worldStableMenuPosition({ ...selection, x: 630, y: 675 }, bounds);
   assert.equal(panned.side, before.side);
   assert.equal(panned.x - before.x, 30);
   assert.equal(panned.y - before.y, 25);

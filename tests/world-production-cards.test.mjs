@@ -97,6 +97,26 @@ test("unlocking an external station moves its recipe into ordinary orders", () =
   assert.doesNotMatch(later.content, /data-recipe="make_metal_parts"/);
 });
 
+test("workshop equipment tabs share the header and expose the selected station and its own level", () => {
+  const economy = controller({ buildings: { home: 3, workshop: 2, kiln: 1, warehouse: 1 } });
+  for (const stationId of ["workshop", "kiln"]) {
+    const html = renderMenu("workshop", economy, { initialStationId: stationId });
+    const header = html.match(/<header\b[^>]*>([\s\S]*?)<\/header>/)?.[1];
+    assert.ok(header);
+    assert.match(header, /role="tablist" aria-label="Оборудование: Мастерская"/);
+    assert.doesNotMatch(header, /<h2|Верстак/);
+    const tabs = [...header.matchAll(/<button\b([^>]*role="tab"[^>]*)>([\s\S]*?)<\/button>/g)];
+    assert.equal(tabs.length, 2);
+    for (const [index, [, attributes, content]] of tabs.entries()) {
+      const selected = (index === 0 ? "workshop" : "kiln") === stationId;
+      assert.match(attributes, new RegExp(`aria-selected="${selected}"`));
+      assert.match(attributes, new RegExp(`tabindex="${selected ? 0 : -1}"`));
+      assert.match(content, index === 0 ? /Мастерская<small>ур. 2<\/small>/ : /Печь<small>ур. 1<\/small>/);
+    }
+    assert.match(html, /role="tabpanel" aria-labelledby=/);
+  }
+});
+
 test("harvest cards distinguish quantity and time while keeping the result name short", () => {
   const html = renderMenu("garden", controller({ buildings: { home: 1, garden: 1, warehouse: 1 } }));
   const ordinary = section(html, "Обычные заказы");
@@ -158,6 +178,21 @@ test("direct material navigation opens recipe preparation even before the worksh
   }
 });
 
+test("recipe preparation replaces goal, slots, running jobs and upgrade controls with its own order screen", () => {
+  const economy = controller({ inventory: { wood: 8 }, jobs: [{ id: "existing-planks", kind: "production", targetId: "workshop", recipeId: "make_planks", startedAt: new Date(now - 1_000).toISOString(), finishesAt: new Date(now + 30_000).toISOString(), rewards: { plank: 1 }, cost: { coins: 0, items: { wood: 2 } } }] });
+  const goal = { goal: { buildingId: "home", targetLevel: 3 }, details: { goal: { buildingId: "home", targetLevel: 3 }, name: "Дом", cost: { coins: 100, items: { plank: 8 } }, missing: { coins: 0, items: { plank: 8 } }, keepItems: { wood: 8 }, excessItems: {}, reservesComplete: true }, pin() {}, clear() {} };
+  const catalogue = renderMenu("workshop", economy, { constructionGoal: goal, onOpenGoal() {} });
+  assert.match(catalogue, /data-running-orders="workshop"/);
+  assert.match(catalogue, /aria-haspopup="dialog"/);
+  const html = renderMenu("workshop", economy, { initialRecipeId: "make_planks", constructionGoal: goal, onOpenGoal() {} });
+  assert.match(html, /data-recipe-preparation="make_planks"/);
+  assert.match(html, /data-recipe-scroll="true"/);
+  assert.match(html, /data-recipe-order="true"/);
+  assert.doesNotMatch(html, /data-running-orders=|data-job-id=|aria-haspopup="dialog"|data-construction-goal-open/);
+  assert.match(html, /Все рецепты/);
+  assert.equal(startDisabled(html), true, "the occupied slot still blocks production even though its card is hidden");
+});
+
 test("a direct recipe from another station or an unknown recipe leaves the ordinary catalog visible", () => {
   const economy = controller({}, { act() { assert.fail("an invalid recipe cannot start production"); } });
   for (const initialRecipeId of ["grow_berries", "missing_recipe"]) {
@@ -171,6 +206,71 @@ test("storage warning appears only when the selected result will not currently f
   const available = { capacity: 200, used: 198, reserved: 0, available: 2, overflow: 0 };
   assert.match(renderRecipe("grow_berries", controller({ storage: available })), /Для получения понадобится 4 мест · свободно 2/);
   assert.doesNotMatch(renderRecipe("grow_berries", controller()), /Для получения понадобится|Место понадобится/);
+});
+
+test("recipe returns to its catalogue only after its own confirmed order, retaining failed or uncertain preparations", async () => {
+  const hookModule = "virtual:production-preparation-hooks";
+  const runtime = await createServer({ appType: "custom", configFile: false, root,
+    resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false },
+    plugins: [{ name: "production-preparation-hooks", enforce: "pre",
+      resolveId(id) { if (id === hookModule) return `\0${id}`; },
+      load(id) { if (id === `\0${hookModule}`) return `
+        let slots = [], cursor = 0, effects = [];
+        export function reset() { slots = []; cursor = 0; effects = []; }
+        export function render() { cursor = 0; effects = []; }
+        export function flush() { for (const effect of effects) effect(); }
+        export function useRef(initial) { const index = cursor++; return slots[index] ??= { current: initial }; }
+        export function useId() { return useRef('preparation-quantity').current; }
+        export function useState(initial) { const slot = useRef(typeof initial === 'function' ? initial() : initial); return [slot.current, value => { slot.current = typeof value === 'function' ? value(slot.current) : value; }]; }
+        export function useEffect(effect, dependencies) {
+          const previous = useRef(null);
+          if (!previous.current || dependencies.some((value, index) => !Object.is(value, previous.current[index]))) { previous.current = dependencies; effects.push(effect); }
+        }
+      `; },
+      transform(source, id) { if (id.endsWith("/features/economy/world-object-menu.tsx")) return source.replace('from "react";', `from "${hookModule}";`); },
+    }],
+  });
+  try {
+    const hooks = await runtime.ssrLoadModule(hookModule);
+    const { WorldRecipeDetail: Preparation } = await runtime.ssrLoadModule("/features/economy/world-object-menu.tsx");
+    const recipeId = "make_planks";
+    const newJob = id => ({ id, kind: "production", targetId: "workshop", recipeId, startedAt: new Date(now).toISOString(), finishesAt: new Date(now + 30_000).toISOString(), rewards: { plank: 1 }, cost: { coins: 0, items: { wood: 2 } } });
+    for (const outcome of ["confirmed", "failed", "uncertain", "background"]) {
+      hooks.reset(); let collapsed = 0;
+      const calls = [];
+      const economy = controller({ inventory: { wood: 8 } }, { act(...args) { calls.push(args); } });
+      const props = { economy, recipe: economy.snapshot.catalog.recipes.find(recipe => recipe.id === recipeId), onCollapse() { collapsed++; } };
+      const render = () => { hooks.render(); const tree = Preparation(props); hooks.flush(); return tree; };
+      const elements = [];
+      const walk = element => { if (isValidElement(element)) { elements.push(element); Children.forEach(element.props.children, walk); } };
+      walk(render());
+      assert.equal(collapsed, 0);
+      if (outcome !== "background") {
+        const action = elements.find(element => element.type === "button" && element.props.children?.[0] === "Начать · ");
+        assert.ok(action); assert.equal(action.props.disabled, false);
+        action.props.onClick();
+        assert.deepEqual(calls, [["start_production", recipeId, 1]]);
+        assert.equal(collapsed, 0, "sending alone must not leave the preparation");
+        economy.busy = true; render();
+        economy.busy = false;
+      }
+      economy.snapshot = { ...economy.snapshot, revision: 2, jobs: [newJob("confirmed-job")] };
+      if (outcome === "failed") economy.error = "Заказ не создан";
+      if (outcome === "uncertain") { economy.error = "Нет подтверждения"; economy.uncertain = true; }
+      render();
+      assert.equal(collapsed, outcome === "confirmed" ? 1 : 0, outcome);
+      if (outcome === "uncertain") {
+        economy.error = null; economy.uncertain = false; render();
+        assert.equal(collapsed, 1, "a confirmed retry may safely return to the catalogue");
+      }
+      if (outcome === "failed") {
+        economy.error = null; render();
+        assert.equal(collapsed, 0, "later snapshots cannot revive an order intent after a definitive failure");
+      }
+      render();
+      assert.ok(collapsed <= 1, "a consumed confirmation cannot keep moving focus");
+    }
+  } finally { await runtime.close(); }
 });
 
 test("mine exposes actor routes instead of production and passive crafting remains available while the hero is busy", () => {

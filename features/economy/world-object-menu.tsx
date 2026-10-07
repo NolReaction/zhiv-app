@@ -71,21 +71,40 @@ function RecipeCatalog({ state, recipes, onChoose }: { state: EconomyView; recip
 export function WorldRecipeDetail({ economy, recipe, navigation, onCollapse }: { economy: ReadyEconomy; recipe: WorldRecipe; navigation?: StationNavigation; onCollapse: () => void }) {
   const [requestedQuantity, setQuantity] = useState(1);
   const backButton = useRef<HTMLButtonElement>(null);
+  const pendingOrder = useRef<{ owner: string; jobIds: Set<string>; started: boolean } | null>(null);
   const maximum = worldBatchLimit(economy.snapshot, recipe);
   const quantity = Math.max(1, Math.min(requestedQuantity, maximum));
   const reason = worldProductionReason(economy.snapshot, recipe, quantity);
   const missingRequirements = worldMissingRequirements(economy.snapshot, worldRequirements(recipe, recipe));
   const output = Object.values(recipe.rewards).reduce((sum, amount) => sum + amount, 0) * quantity;
   const quantityId = useId();
-  useEffect(() => { backButton.current?.focus({ preventScroll: true }); backButton.current?.scrollIntoView({ block: "start" }); }, []);
-  return <section className={styles.recipeDetail} aria-label={recipe.name}>
-    <button ref={backButton} type="button" className={styles.recipeBack} onClick={onCollapse}><ArrowLeft size={14} aria-hidden="true" />Все рецепты</button>
-    <div className={styles.resultCards} aria-label="Результат">{Object.entries(recipe.rewards).map(([id, amount]) => <div key={id}><span><ProductIcon state={economy.snapshot} itemId={id} size={24} /></span><strong>{itemName(economy.snapshot, id)}</strong><b>×{number(amount * quantity)}</b></div>)}</div>
-    <div className={styles.recipeIngredients}><h3>Понадобится</h3><Cost state={economy.snapshot} cost={recipe.cost} quantity={quantity} navigation={navigation} /></div>
-    <Requirements state={economy.snapshot} required={worldRequirements(recipe, recipe)} navigation={navigation} />
-    <div className={styles.order}><label htmlFor={quantityId}>Партий</label><div className={styles.stepper}><button type="button" disabled={quantity <= 1 || locked(economy)} onClick={() => setQuantity(quantity - 1)} aria-label="Уменьшить партию"><Minus size={14} aria-hidden="true" /></button><output id={quantityId} aria-live="polite">{quantity}</output><button type="button" disabled={quantity >= maximum || locked(economy)} onClick={() => setQuantity(quantity + 1)} aria-label="Увеличить партию"><Plus size={14} aria-hidden="true" /></button></div><button type="button" className={styles.primary} disabled={Boolean(reason) || locked(economy)} onClick={() => { if (!reason && !locked(economy)) void economy.act("start_production", recipe.id, quantity); }}>Начать · {worldDuration(recipe.seconds * quantity)}</button></div>
-    {reason && !missingRequirements.length && <p className={styles.hint}>{reason}</p>}
-    {output > economy.snapshot.storage.available && !missingRequirements.length && <p className={styles.hint}>Для получения понадобится {number(output)} мест · свободно {number(economy.snapshot.storage.available)}.</p>}
+  useEffect(() => { backButton.current?.focus({ preventScroll: true }); }, []);
+  useEffect(() => {
+    const pending = pendingOrder.current;
+    if (!pending) return;
+    if (pending.owner !== economy.snapshot.ownerPublicId || (economy.error && !economy.uncertain)) { pendingOrder.current = null; return; }
+    if (economy.busy) { pending.started = true; return; }
+    if (!pending.started || economy.uncertain) return;
+    const confirmed = economy.snapshot.jobs.some(job => job.kind === "production" && job.recipeId === recipe.id && !pending.jobIds.has(job.id));
+    if (confirmed) { pendingOrder.current = null; onCollapse(); }
+  }, [economy.busy, economy.error, economy.uncertain, economy.snapshot, recipe.id, onCollapse]);
+  return <section className={styles.recipeDetail} aria-label={recipe.name} data-recipe-preparation={recipe.id}>
+    <div className={styles.recipeScroll} data-recipe-scroll>
+      <button ref={backButton} type="button" className={styles.recipeBack} onClick={onCollapse}><ArrowLeft size={14} aria-hidden="true" />Все рецепты</button>
+      <div className={styles.resultCards} aria-label="Результат">{Object.entries(recipe.rewards).map(([id, amount]) => <div key={id}><span><ProductIcon state={economy.snapshot} itemId={id} size={24} /></span><strong>{itemName(economy.snapshot, id)}</strong><b>×{number(amount * quantity)}</b></div>)}</div>
+      <div className={styles.recipeIngredients}><h3>Понадобится</h3><Cost state={economy.snapshot} cost={recipe.cost} quantity={quantity} navigation={navigation} /></div>
+      <Requirements state={economy.snapshot} required={worldRequirements(recipe, recipe)} navigation={navigation} />
+      {reason && !missingRequirements.length && <p className={styles.hint}>{reason}</p>}
+      {output > economy.snapshot.storage.available && !missingRequirements.length && <p className={styles.hint}>Для получения понадобится {number(output)} мест · свободно {number(economy.snapshot.storage.available)}.</p>}
+    </div>
+    <div className={styles.recipeOrder} data-recipe-order>
+      <div className={styles.batchControl}><label htmlFor={quantityId}>Партий</label><div className={styles.stepper}><button type="button" disabled={quantity <= 1 || locked(economy)} onClick={() => setQuantity(quantity - 1)} aria-label="Уменьшить партию"><Minus size={14} aria-hidden="true" /></button><output id={quantityId} aria-live="polite">{quantity}</output><button type="button" disabled={quantity >= maximum || locked(economy)} onClick={() => setQuantity(quantity + 1)} aria-label="Увеличить партию"><Plus size={14} aria-hidden="true" /></button></div></div>
+      <button type="button" className={styles.primary} disabled={Boolean(reason) || locked(economy)} onClick={() => {
+        if (reason || locked(economy)) return;
+        pendingOrder.current = { owner: economy.snapshot.ownerPublicId, jobIds: new Set(economy.snapshot.jobs.map(job => job.id)), started: false };
+        void economy.act("start_production", recipe.id, quantity);
+      }}>Начать · {worldDuration(recipe.seconds * quantity)}</button>
+    </div>
   </section>;
 }
 
@@ -141,6 +160,7 @@ function ObjectMenuBody({ selection, economy, onClose, onReturnFocus, bounds, on
     ? worldMenuPosition(selection, { width, height: Math.min(size.height, maxHeight) }, bounds)
     : worldStableMenuPosition(selection, bounds);
   const showMenu = stationId !== "home";
+  const hasStationTabs = definition.stationIds.length > 1;
   const current = state?.buildings[stationId] ?? 0;
   const building = state?.catalog.buildings.find(entry => entry.id === stationId);
   const target = building?.levels.find(level => level.level === current + 1);
@@ -167,7 +187,8 @@ function ObjectMenuBody({ selection, economy, onClose, onReturnFocus, bounds, on
     const element = panel.current;
     if (!element || !showMenu) return;
     const previous = document.activeElement;
-    element.focus({ preventScroll: true });
+    const preparationBack = element.querySelector<HTMLButtonElement>(`[data-recipe-preparation] .${styles.recipeBack}`);
+    (preparationBack ?? element).focus({ preventScroll: true });
     const observer = new ResizeObserver(() => {
       const next = { width: element.offsetWidth, height: element.offsetHeight };
       setSize(value => value.width === next.width && value.height === next.height ? value : next);
@@ -176,13 +197,15 @@ function ObjectMenuBody({ selection, economy, onClose, onReturnFocus, bounds, on
     return () => { observer.disconnect(); if (previous instanceof HTMLElement && previous.isConnected && element.contains(document.activeElement)) previous.focus({ preventScroll: true }); };
   }, [showMenu, definition.future]);
 
-  function chooseStation(id: string) { setStationId(id); setRecipeId(null); setSaleItem(null); setUpgradeStation(id === "home" ? "home" : null); }
+  function chooseStation(id: string) { setStationId(id); setRecipeId(null); setSaleItem(null); setUpgradeStation(id === "home" ? "home" : null); if (menuBody.current) menuBody.current.scrollTop = 0; }
   function openUpgrade() { upgradeTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setUpgradeStation(stationId); }
   function closeUpgrade() { if (stationId === "home") onClose(); else setUpgradeStation(null); }
   function openStation(id: string, targetRecipeId?: string) {
     if (id === stationId && targetRecipeId && targetRecipeId === recipeId) {
       const back = menuBody.current?.querySelector<HTMLButtonElement>(`.${styles.recipeBack}`);
-      back?.focus({ preventScroll: true }); back?.scrollIntoView({ block: "start" });
+      back?.focus({ preventScroll: true });
+      const details = menuBody.current?.querySelector<HTMLElement>("[data-recipe-scroll]");
+      if (details) details.scrollTop = 0;
       return;
     }
     if (id === "warehouse" && onOpenPantry) { navigating.current = true; setUpgradeStation(null); onOpenPantry(); }
@@ -204,17 +227,33 @@ function ObjectMenuBody({ selection, economy, onClose, onReturnFocus, bounds, on
   const openPantry = onOpenPantry ?? (() => openStation("warehouse"));
   const openJobPantry = onOpenPantry ?? (selection.place === "house" ? () => chooseStation("warehouse") : onNavigate ? () => onNavigate("house", "warehouse") : undefined);
 
-  return <>{showMenu && <section ref={panel} className={styles.menu} role="dialog" aria-modal="false" aria-labelledby={headingId} tabIndex={-1} data-place={selection.place} data-side={position.side} style={{ left: position.x, top: position.y, width, height: definition.future ? undefined : position.height, maxHeight, "--menu-anchor-x": `${position.anchorX}px`, "--menu-anchor-y": `${position.anchorY}px` } as CSSProperties} onPointerDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()} onWheel={event => event.stopPropagation()} onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); } }}>
-    <header className={styles.header}><span className={styles.placeIcon}><Icon size={23} strokeWidth={1.8} aria-hidden="true" /></span><div><span>{definition.future ? "Будущая ветка" : stationId === "warehouse" ? "Запасы дома" : current ? `Уровень ${current}` : "Пока не обустроено"}</span><h2 id={headingId}>{stationId === "warehouse" ? "Кладовая" : definition.label}</h2></div><button type="button" className={styles.close} aria-label="Закрыть меню объекта" onClick={onClose}><X size={17} aria-hidden="true" /></button></header>
-    {definition.stationIds.length > 1 && <nav className={styles.stations} aria-label={`Оборудование: ${definition.label}`}>{definition.stationIds.map(id => { const StationIcon = stationIcons[id] ?? Package; return <button key={id} type="button" aria-pressed={stationId === id} onClick={() => chooseStation(id)}><StationIcon size={15} aria-hidden="true" />{id === "workshop" ? "Верстак" : state ? stationName(state, id) : id === "warehouse" ? "Кладовая" : id === "kiln" ? "Печь" : definition.label}</button>; })}</nav>}
-    <div ref={menuBody} className={styles.body}>
-      {state && constructionGoal && onOpenGoal && <ConstructionGoalSummary state={state} constructionGoal={constructionGoal} onOpenGoal={onOpenGoal} navigation={navigation} compact />}
+  return <>{showMenu && <section ref={panel} className={styles.menu} role="dialog" aria-modal="false" aria-labelledby={hasStationTabs ? `${headingId}-${stationId}` : headingId} tabIndex={-1} data-place={selection.place} data-side={position.side} style={{ left: position.x, top: position.y, width, height: definition.future ? undefined : position.height, maxHeight, "--menu-anchor-x": `${position.anchorX}px`, "--menu-anchor-y": `${position.anchorY}px` } as CSSProperties} onPointerDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()} onWheel={event => event.stopPropagation()} onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); } }}>
+    <header className={`${styles.header} ${hasStationTabs ? styles.tabbedHeader : ""}`}>
+      {hasStationTabs ? <nav className={styles.stations} role="tablist" aria-label={`Оборудование: ${definition.label}`}>
+        {definition.stationIds.map((id, index) => {
+          const StationIcon = stationIcons[id] ?? Package;
+          const level = state?.buildings[id] ?? 0;
+          const title = id === "workshop" ? "Мастерская" : id === "kiln" ? "Печь" : id === "warehouse" ? "Кладовая" : state ? stationName(state, id) : definition.label;
+          return <button key={id} id={`${headingId}-${id}`} type="button" role="tab" aria-selected={stationId === id} aria-controls={`${headingId}-content`} tabIndex={stationId === id ? 0 : -1} onClick={() => chooseStation(id)} onKeyDown={event => {
+            const nextIndex = event.key === "ArrowRight" ? (index + 1) % definition.stationIds.length : event.key === "ArrowLeft" ? (index + definition.stationIds.length - 1) % definition.stationIds.length : event.key === "Home" ? 0 : event.key === "End" ? definition.stationIds.length - 1 : null;
+            if (nextIndex === null) return;
+            event.preventDefault();
+            event.stopPropagation();
+            chooseStation(definition.stationIds[nextIndex]);
+            event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>("[role=tab]")[nextIndex]?.focus({ preventScroll: true });
+          }}><StationIcon size={15} aria-hidden="true" /><span>{title}<small>{level ? `ур. ${level}` : "закрыто"}</small></span></button>;
+        })}
+      </nav> : <><span className={styles.placeIcon}><Icon size={23} strokeWidth={1.8} aria-hidden="true" /></span><div><span>{definition.future ? "Будущая ветка" : stationId === "warehouse" ? "Запасы дома" : current ? `Уровень ${current}` : "Пока не обустроено"}</span><h2 id={headingId}>{stationId === "warehouse" ? "Кладовая" : definition.label}</h2></div></>}
+      <button type="button" className={styles.close} aria-label="Закрыть меню объекта" onClick={onClose}><X size={17} aria-hidden="true" /></button>
+    </header>
+    <div ref={menuBody} className={styles.body} data-recipe-selected={Boolean(selectedRecipe) || undefined} id={hasStationTabs ? `${headingId}-content` : undefined} role={hasStationTabs ? "tabpanel" : undefined} aria-labelledby={hasStationTabs ? `${headingId}-${stationId}` : undefined}>
+      {!selectedRecipe && state && constructionGoal && onOpenGoal && <ConstructionGoalSummary state={state} constructionGoal={constructionGoal} onOpenGoal={onOpenGoal} navigation={navigation} compact />}
       {definition.future ? <div className={styles.future}><LockKeyhole size={22} aria-hidden="true" /><p>{definition.future}</p></div> : !state ? <div className={styles.loading}><RefreshCw size={17} aria-hidden="true" /><p>{economy.error ?? "Открываем ваше хозяйство…"}</p>{economy.error && <button type="button" className={styles.textButton} disabled={economy.busy || cooldown > 0} onClick={() => void economy.retry()}>{cooldown ? `Повторить через ${cooldown} с` : "Попробовать ещё раз"}</button>}</div> : <>
         {(economy.error || economy.uncertain) && <div className={styles.error} role="alert"><p>{economy.uncertain ? "Проверяем последнее действие. Новые заказы доступны после подтверждения." : economy.error}</p><button type="button" className={styles.textButton} disabled={economy.busy || cooldown > 0} onClick={() => void economy.retry()}><RefreshCw size={12} aria-hidden="true" />{cooldown ? `Повторить через ${cooldown} с` : economy.uncertain ? "Проверить результат" : "Повторить"}</button></div>}
-        {readyEconomy && <WorldProductionSlots economy={readyEconomy} stationId={stationId} />}
-        {readyEconomy && jobs.filter(job => job.kind === "construction").map(job => <Work key={job.id} economy={readyEconomy} job={job} openPantry={openJobPantry} />)}
-        {readyEconomy && readyJobs.map(job => <Work key={job.id} economy={readyEconomy} job={job} openPantry={openJobPantry} />)}
-        {readyEconomy && runningJobs.length > 0 && <details key={stationId} className={styles.runningOrders} data-running-orders={stationId}>
+        {!selectedRecipe && readyEconomy && <WorldProductionSlots economy={readyEconomy} stationId={stationId} />}
+        {!selectedRecipe && readyEconomy && jobs.filter(job => job.kind === "construction").map(job => <Work key={job.id} economy={readyEconomy} job={job} openPantry={openJobPantry} />)}
+        {!selectedRecipe && readyEconomy && readyJobs.map(job => <Work key={job.id} economy={readyEconomy} job={job} openPantry={openJobPantry} />)}
+        {!selectedRecipe && readyEconomy && runningJobs.length > 0 && <details key={stationId} className={styles.runningOrders} data-running-orders={stationId}>
           <summary><Clock3 size={13} aria-hidden="true" /><strong>В работе · {runningJobs.length}</strong><span>Ещё {nextOrderSeconds < 60 ? `${nextOrderSeconds} с` : worldDuration(nextOrderSeconds)}</span><ChevronDown size={13} aria-hidden="true" /></summary>
           <div>{runningJobs.map(job => <Work key={job.id} economy={readyEconomy} job={job} openPantry={openJobPantry} />)}</div>
         </details>}
@@ -225,8 +264,8 @@ function ObjectMenuBody({ selection, economy, onClose, onReturnFocus, bounds, on
         </> : null}
       </>}
     </div>
-    {state && !definition.future && target && <footer className={styles.footer}><button type="button" className={styles.upgradeAction} aria-haspopup="dialog" onClick={openUpgrade}><Hammer size={15} aria-hidden="true" /><span>{construction ? "Ход улучшения" : current ? stationId === "warehouse" ? "Расширить кладовую" : "Улучшить" : "Обустроить"}<small>{current ? `${current} → ${target.level} уровень` : "Первый уровень"}</small></span><ArrowRight size={16} aria-hidden="true" /></button></footer>}
-    {state && !definition.future && !target && !jobs.length && !recipes.length && <footer className={styles.footer}><span className={styles.maximum}><Check size={12} aria-hidden="true" />Все уровни оборудования открыты</span></footer>}
+    {!selectedRecipe && state && !definition.future && target && <footer className={styles.footer}><button type="button" className={styles.upgradeAction} aria-haspopup="dialog" onClick={openUpgrade}><Hammer size={15} aria-hidden="true" /><span>{construction ? "Ход улучшения" : current ? stationId === "warehouse" ? "Расширить кладовую" : "Улучшить" : "Обустроить"}<small>{current ? `${current} → ${target.level} уровень` : "Первый уровень"}</small></span><ArrowRight size={16} aria-hidden="true" /></button></footer>}
+    {!selectedRecipe && state && !definition.future && !target && !jobs.length && !recipes.length && <footer className={styles.footer}><span className={styles.maximum}><Check size={12} aria-hidden="true" />Все уровни оборудования открыты</span></footer>}
   </section>}
     <WorldUpgradeDialog stationId={upgradeStation} economy={economy} constructionGoal={constructionGoal} onClose={closeUpgrade} onCompleted={() => { completedUpgrade.current = true; onClose(); }} navigation={navigation}
       onOpenPantry={onOpenPantry ? () => { navigating.current = true; setUpgradeStation(null); onOpenPantry(); } : selection.place === "house" ? () => chooseStation("warehouse") : onNavigate ? () => { navigating.current = true; setUpgradeStation(null); onNavigate("house", "warehouse"); } : undefined}

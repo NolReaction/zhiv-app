@@ -168,16 +168,17 @@ test("map objects group equipment by place, with campfire food and pantry at the
   assert.equal(helpers.worldPlaceForStation("unknown"), null);
 });
 
-test("portrait popover respects HUD bounds and leaves its selected object visible", () => {
+test("portrait production sheet uses the useful map height and stays between the HUD and dock", () => {
   const selection = { x: 195, y: 405, viewportWidth: 390, viewportHeight: 844 };
   const bounds = { top: 120, right: 8, bottom: 110, left: 8 };
   const dimensions = helpers.worldMenuDimensions(selection, bounds);
-  assert.equal(dimensions.width, 320);
-  assert.ok(dimensions.maxHeight < (844 - 230) / 2);
-  const placed = helpers.worldMenuPosition(selection, { width: dimensions.width, height: 225 }, bounds);
+  assert.equal(dimensions.width, 374);
+  assert.ok(dimensions.maxHeight >= 480 && dimensions.maxHeight <= 844 - 230);
+  const placed = helpers.worldStableMenuPosition(selection, bounds);
+  assert.equal(placed.side, "sheet");
   assert.ok(placed.x >= 8 && placed.x + placed.width <= 382);
   assert.ok(placed.y >= 120 && placed.y + placed.height <= 734);
-  assert.ok(selection.y < placed.y || selection.y > placed.y + placed.height);
+  assert.ok(placed.height >= 480, "recipe materials and the fixed order action must have useful space");
 });
 
 test("landscape uses available map height and anchors beside the object instead of a zero-height body", () => {
@@ -281,7 +282,7 @@ test("map menu is compact and nonmodal with place-specific production rather tha
   assert.match(html, /Ягодный куст/);
   assert.match(html, /aria-label="Вырастить ягоды/);
   assert.doesNotMatch(html, /aria-label="[^\"]*(Выплавить|Доски|Рыбу)/);
-  assert.equal(disabled(button(render("workshop"), "Верстак")), false);
+  assert.equal(disabled(button(render("workshop"), "Мастерская")), false);
   assert.doesNotMatch(renderUpgrade("home"), /<button[^>]*>[^<]*Кладовая/);
   assert.doesNotMatch(html, /Начать ·/);
 });
