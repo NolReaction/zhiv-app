@@ -9,7 +9,7 @@ import { prepareRareDrop, settleRareDrop, secureRareInteger, type RareRandomInte
 import { economyLocalSellPrice } from "./local-sale";
 import { economyActorConflict } from "./actor-availability";
 import { remainingTimePearlPrice } from "./time-price";
-import { foodState, mealDuration, normalizedResidentOrders, pendingMeal, recipeWithFish, residentOrderBoard } from "./food";
+import { advanceResidentOrder, foodState, initialResidentOrders, mealDuration, normalizedResidentOrders, pendingMeal, recipeWithFish, residentOrderBoard } from "./food";
 export { economyLocalSellPrice, economyLocalSaleMinimumQuantity, economyLocalSaleLimit } from "./local-sale";
 
 export class EconomyRuleError extends Error {
@@ -65,7 +65,7 @@ export function newEconomyState(legacy: { resources: { sparks: number; wood: num
     buildings: Object.fromEntries(economyCatalog.buildings.map(building => [building.id, building.id === "home" ? Math.max(1, Math.min(5, legacy.houseLevel))
       : ["garden", "warehouse"].includes(building.id) ? 1 : building.id === "workshop" ? Math.max(0, Math.min(3, legacy.workshopLevel)) : 0])),
     jobs: [], wardrobe: wardrobeOwned(), migration, completedExplorations: 0, fishing: fishingState({}), progression: newEconomyProgression(),
-    food: foodState({}), residentOrders: { cycle: -1, slots: [], completed: 0, earnedCoins: 0 } };
+    food: foodState({}), residentOrders: initialResidentOrders() };
 }
 function debit(state: EconomyState, cost: EconomyCost) {
   if (!canAffordEconomy(state, cost)) fail("ECONOMY_RESOURCES", "Не хватает монет или материалов");
@@ -97,7 +97,17 @@ function requireActorAvailable(state: EconomyState, intent: "departure" | "colle
 }
 /** Pure domain transition. The caller owns the clone, authentication, receipt and atomic commit. */
 export function applyEconomyCommand(state: EconomyState, command: EconomyCommand, now: number, jobId: () => string, reservedItems: Record<string, number> = {}, rareRandom: RareRandomInteger = secureRareInteger): string {
-  if (!["speedup_construction", "buy_fishing_item", "buy_wardrobe_item", "refresh_fishing_shop", "sell"].includes(command.action) && command.totalPrice !== 0) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Цена не используется в этом действии", 400);
+  const previousOrders = state.residentOrders;
+  const boardBefore = economyCatalog.food ? normalizedResidentOrders(state, now) : undefined;
+  const message = applyEconomyTransition(state, command, now, jobId, reservedItems, rareRandom);
+  // Pin the board before this command unlocks a new building. Failed commands
+  // never migrate it, and an order command already supplied its next board.
+  if (boardBefore && state.residentOrders === previousOrders) state.residentOrders = boardBefore;
+  return message;
+}
+
+function applyEconomyTransition(state: EconomyState, command: EconomyCommand, now: number, jobId: () => string, reservedItems: Record<string, number>, rareRandom: RareRandomInteger): string {
+  if (!["speedup_construction", "buy_fishing_item", "buy_wardrobe_item", "refresh_fishing_shop", "sell", "replace_resident_order"].includes(command.action) && command.totalPrice !== 0) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Цена не используется в этом действии", 400);
   const createJob = (job: Pick<EconomyJob, "kind" | "targetId" | "recipeId" | "targetLevel" | "rewards" | "collection" | "fishing" | "rareDrop" | "meal">, seconds: number, cost: EconomyCost, id = jobId()) => {
     if (Object.values(job.rewards).reduce((total, quantity) => total + quantity, 0) > economyStorage(state).capacity)
       fail("ECONOMY_STORAGE_FULL", "Вся партия не поместится на складе. Уменьшите её или расширьте склад");
@@ -258,30 +268,39 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
         construction.finishesAt = new Date(now + mealDuration(remaining, meal.builderSpeedBps)).toISOString();
         construction.meal = { itemId: meal.itemId, consumer: "builder", speedBps: meal.builderSpeedBps };
       } else state.food = { ...food, builderMeal: meal.itemId };
-      return construction ? "Шишколап поел и строит на 10% быстрее" : "Шишколап поел. Следующая стройка будет быстрее";
+      return construction ? `Шишколап поел и строит на ${meal.builderSpeedBps / 100}% быстрее` : "Шишколап поел. Следующая стройка будет быстрее";
     }
     case "complete_resident_order":
     case "replace_resident_order": {
       const config = economyCatalog.food?.orders;
-      const offer = residentOrderBoard(state, now).offers.find(item => item.id === command.targetId);
+      const board = residentOrderBoard(state, now);
+      const offer = board.offers.find(item => item.id === command.targetId);
       if (!config || !offer) return fail("ECONOMY_ORDER_CHANGED", "Заказы обновились. Выберите актуальную просьбу жителя");
-      if (now < Date.parse(offer.availableAt)) return fail("ECONOMY_ORDER_WAIT", "Житель готовит новый заказ. Немного подождите");
-      const orders = normalizedResidentOrders(state, now);
-      const slot = orders.slots[offer.slot];
-      if (slot.sequence >= Number.MAX_SAFE_INTEGER) return fail("ECONOMY_CAPACITY", "Заказы требуют обслуживания");
+      const current = normalizedResidentOrders(state, now);
+      if (current.slots[offer.slot].sequence >= Number.MAX_SAFE_INTEGER) return fail("ECONOMY_CAPACITY", "Заказы требуют обслуживания");
       const complete = command.action === "complete_resident_order";
+      const price = complete ? 0 : board.replacementPricePearls;
+      if (!complete && price > command.totalPrice) return fail("ECONOMY_ORDER_PRICE_CHANGED", "Цена замены изменилась. Проверьте стоимость и подтвердите снова");
+      if (!complete && state.wallet.pearls < price) return fail("ECONOMY_PEARLS", "Не хватает жемчуга для замены заказа");
+      if (complete && (state.wallet.coins + offer.coins > ECONOMY_MAX_BALANCE || !Number.isSafeInteger(current.earnedCoins + offer.coins)
+        || current.completed >= Number.MAX_SAFE_INTEGER)) return fail("ECONOMY_CAPACITY", "Кошелёк заполнен");
+      const orders = advanceResidentOrder(state, offer.slot, now);
+      const nextTemplate = config.templates.find(template => template.id === orders.slots[offer.slot].templateId);
+      if (!complete && (!nextTemplate || nextTemplate.id === offer.templateId
+        || Object.keys(nextTemplate.items).length === Object.keys(offer.items).length
+          && Object.entries(nextTemplate.items).every(([id, quantity]) => offer.items[id] === quantity)))
+        return fail("ECONOMY_ORDER_NO_ALTERNATIVE", "Других подходящих заказов пока нет. Замена не потрачена");
       if (complete) {
-        if (state.wallet.coins + offer.coins > ECONOMY_MAX_BALANCE || !Number.isSafeInteger(orders.earnedCoins + offer.coins)
-          || orders.completed >= Number.MAX_SAFE_INTEGER) return fail("ECONOMY_CAPACITY", "Кошелёк заполнен");
         debit(state, { coins: 0, items: offer.items });
         state.wallet.coins += offer.coins;
         orders.completed++;
         orders.earnedCoins += offer.coins;
+      } else {
+        state.wallet.pearls -= price;
+        if (board.freeReplacementsRemaining > 0) orders.freeReplacementsUsed++;
       }
-      slot.sequence++;
-      slot.readyAt = new Date(now + (complete ? config.completionSeconds : config.replacementSeconds) * 1000).toISOString();
       state.residentOrders = orders;
-      return complete ? "Заказ выполнен. Монеты получены" : "Заказ заменён. Новая просьба скоро станет доступна";
+      return complete ? "Заказ выполнен. Монеты получены, новая просьба уже доступна" : "Заказ заменён. Новая просьба уже доступна";
     }
     case "speedup_construction": {
       const job = state.jobs.find(item => item.id === command.targetId);

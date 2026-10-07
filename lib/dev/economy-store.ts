@@ -5,7 +5,7 @@ import { ECONOMY_CURRENCY_SCALE, ECONOMY_PEARL_SCALE, ECONOMY_MAX_PEARLS, format
 import { marketBudgetReset, marketDailyLimit, marketDay, marketHomeBand, marketItemUnlocked, marketListingEligible, marketMinimumPrice, marketSaleFee, marketSameHomeBand } from "@/features/economy/market-rules";
 import { awardDevEconomyAchievements, awardDevMarketSale, getDevIdentity, lookupDevUser } from "@/lib/dev/api-store";
 import { consumeDevLegacyEconomy, getDevCollectionFinds, hasDevLegacyJourney, getDevLegacyWardrobe, syncDevWorldWardrobe } from "@/lib/dev/world-store";
-import { ECONOMY_MAX_BALANCE, ECONOMY_MAX_ITEMS, economyCatalog, economyCommandSchema, marketCommandSchema, type EconomyCommand,
+import { ECONOMY_MAX_BALANCE, ECONOMY_MAX_ITEMS, economyCatalog, economyCommandSchema, economyResidentOrdersSchema, marketCommandSchema, type EconomyCommand,
   type EconomyMarketListing, type EconomyResult, type EconomyState, type EconomyView, type MarketCommand, type MarketView } from "@/features/economy/model";
 import { applyEconomyCommand, assertEconomyStorageTransition, convertLegacyEconomy, creditEconomyItems, economyStorage, EconomyRuleError, marketUnlocked, newEconomyState } from "@/features/economy/rules";
 import { inheritEconomyCollection } from "@/features/economy/collection-progress";
@@ -75,7 +75,7 @@ function view(owner: string, value: Profile, now: number): EconomyView {
   delete state.rareDropState;
   state.jobs = state.jobs.map(publicEconomyJob);
   return { ownerPublicId: owner, revision: value.revision, serverTime: new Date(now).toISOString(), ...state, currencyScale: ECONOMY_CURRENCY_SCALE, pearlScale: ECONOMY_PEARL_SCALE,
-    food: foodState(state), residentOrders: state.residentOrders ?? { cycle: -1, slots: [], completed: 0, earnedCoins: 0 },
+    food: foodState(state), residentOrders: economyResidentOrdersSchema.parse(state.residentOrders),
     productionSlots: state.productionSlots ?? {}, wardrobe: wardrobeOwned(state.wardrobe), fishingShop: state.fishingShop ?? null, storage: economyStorage(value.state, escrowItems(owner)), catalog: structuredClone(economyCatalog) };
 }
 function bump(value: Profile) {

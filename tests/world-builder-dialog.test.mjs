@@ -13,7 +13,7 @@ const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts"
 const now = Date.parse("2026-10-06T12:00:00Z");
 const job = { id: "paid-home-upgrade", kind: "construction", targetId: "home", targetLevel: 2, startedAt: new Date(now - 60_000).toISOString(), finishesAt: new Date(now + 90_000).toISOString() };
 function economy(jobs = [], overrides = {}) {
-  return { snapshot: { ownerPublicId: "BUILDER-PLAYER", revision: 1, wallet: { coins: 0, pearls: 1000 }, jobs, catalog: economyCatalog }, now, busy: false, uncertain: false, error: null, retryAt: 0,
+  return { snapshot: { ownerPublicId: "BUILDER-PLAYER", revision: 1, wallet: { coins: 0, pearls: 1000 }, inventory: {}, buildings: { home: 1, warehouse: 1 }, jobs, catalog: economyCatalog }, now, busy: false, uncertain: false, error: null, retryAt: 0,
     act() { assert.fail("opening a builder conversation cannot issue economy commands"); }, retry() {}, ...overrides };
 }
 function elements(tree) {
@@ -35,7 +35,9 @@ test("a free builder is distinct from an unavailable account snapshot and ignore
     assert.match(html, /data-builder-status="free"/);
     assert.match(html, /Свободен/);
     assert.match(html, /Выберите здание для улучшения/);
-    assert.doesNotMatch(html, /<button|Завершить улучшение|Нанять|Жемчуг/);
+    assert.doesNotMatch(html, /Завершить улучшение|Нанять|Жемчуг/);
+    assert.match(html, /data-meal-boost="builder"/);
+    assert.equal([...html.matchAll(/<button\b/g)].length, 1, "a free builder offers only optional food, not a paid build or hire action");
   }
   const { html } = conversation(economy([], { snapshot: null }));
   assert.match(html, /role="status"/);

@@ -12,8 +12,8 @@ import styles from "./world-resident-dialog.module.css";
 type ResidentActions = { economy: EconomyController; onFishing: () => void; onOpenPantry: () => void; onOpenOrders?: () => void };
 
 /** All stock, gear and discoveries come from the player's confirmed account. */
-export function PleskConversation({ economy, onFishing, onOpenPantry }: ResidentActions) {
-  return <PleskFishingShop key={economy.snapshot?.ownerPublicId ?? "loading"} economy={economy} onFishing={onFishing} onOpenPantry={onOpenPantry} />;
+export function PleskConversation({ economy, onFishing, onOpenPantry, onOpenOrders }: ResidentActions) {
+  return <PleskFishingShop key={economy.snapshot?.ownerPublicId ?? "loading"} economy={economy} onFishing={onFishing} onOpenPantry={onOpenPantry} onOpenOrders={onOpenOrders} />;
 }
 
 export function WorldResidentDialog({ open, onClose, onBack, onCloseAutoFocus, ...actions }: ResidentActions & {

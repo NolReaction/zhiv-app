@@ -16,6 +16,7 @@ import { WorldExpeditionsMenu } from "./world-expeditions-menu";
 import { WorldProductionSlots } from "./world-production-slots";
 import type { ConstructionGoalController } from "./use-construction-goal";
 import { recipeFishOptions, recipeWithFish } from "./food";
+import { recipeFishGroupLabel } from "./food-recipe-labels";
 import { ConstructionGoalSummary } from "./construction-goal-summary";
 import styles from "./world-object-menu.module.css";
 
@@ -35,6 +36,7 @@ export type WorldObjectMenuProps = {
   onOpenGoal?: () => void;
   onOpenFood?: () => void;
   onOpenHelp?: (context: WorldHelpContext) => void;
+  isOnline?: boolean;
   onHelpContextChange?: (context: WorldHelpContext) => void;
 };
 const placeIcons: Partial<Record<WorldPlace, LucideIcon>> = { house: House, garden: Sprout, campfire: Flame, workshop: Hammer, quarry: Pickaxe, woodlot: Trees, bridge: Fence, lighthouse: TowerControl };
@@ -83,6 +85,7 @@ export function WorldRecipeDetail({ economy, recipe, navigation, onCollapse, onO
   const resolvedRecipe = recipeWithFish(recipe, selectedFish);
   const fishId = selectedFish ?? fishOptions.find(option => (recipe.cost.items[option.itemId] ?? 0) > 0)?.itemId;
   const selectedRarity = fishOptions.find(option => option.itemId === fishId)?.rarity;
+  const meal = economy.snapshot.catalog.food?.meals.find(entry => (recipe.rewards[entry.itemId] ?? 0) > 0);
   const fishIdLabel = useId();
   const backButton = useRef<HTMLButtonElement>(null);
   const pendingOrder = useRef<{ owner: string; jobIds: Set<string>; started: boolean } | null>(null);
@@ -110,9 +113,11 @@ export function WorldRecipeDetail({ economy, recipe, navigation, onCollapse, onO
     <div className={styles.recipeScroll} data-recipe-scroll>
       <button ref={backButton} type="button" className={styles.recipeBack} onClick={onCollapse}><ArrowLeft size={14} aria-hidden="true" />Все рецепты</button>
       <div className={styles.resultCards} aria-label="Результат">{Object.entries(recipe.rewards).map(([id, amount]) => <div key={id}><span><ProductIcon state={economy.snapshot} itemId={id} size={24} /></span><strong>{itemName(economy.snapshot, id)}</strong><b>×{number(amount * quantity)}</b></div>)}</div>
+      {meal && <p className={styles.mealBenefits}>Вылазка +{number(meal.heroSpeedBps / 100)}% · стройка +{number(meal.builderSpeedBps / 100)}% к скорости</p>}
       {fishOptions.length > 0 && <div className={styles.fishIngredient}>
         <label htmlFor={fishIdLabel}>Рыба для блюда</label>
-        <select id={fishIdLabel} value={fishId} disabled={locked(economy)} onChange={event => { if (!locked(economy) && fishOptions.some(option => option.itemId === event.target.value)) setFish(event.target.value); }}>
+        <p id={`${fishIdLabel}-group`} className={styles.fishGroup}>{recipeFishGroupLabel(recipe, economy.snapshot.catalog)} · ×{number((resolvedRecipe.cost.items[fishId ?? ""] ?? 0) * quantity)}</p>
+        <select id={fishIdLabel} aria-describedby={`${fishIdLabel}-group`} value={fishId} disabled={locked(economy)} onChange={event => { if (!locked(economy) && fishOptions.some(option => option.itemId === event.target.value)) setFish(event.target.value); }}>
           {fishOptions.map(option => <option key={option.itemId} value={option.itemId}>{option.name} · в запасе {number(option.quantity)}</option>)}
         </select>
         {selectedRarity && ["rare", "epic", "legendary"].includes(selectedRarity) && <p className={styles.hint}>Выбрана ценная рыба. Она будет потрачена на приготовление.</p>}
@@ -156,7 +161,7 @@ export function WorldObjectSale({ economy, itemId, onCollapse }: { economy: Read
   </section>;
 }
 
-function ObjectMenuBody({ selection, economy, onClose, onReturnFocus, bounds, onNavigate, onExplore, onOpenPantry, initialStationId, initialRecipeId, constructionGoal, onOpenGoal, onOpenFood, onOpenHelp, onHelpContextChange }: WorldObjectMenuProps) {
+function ObjectMenuBody({ selection, economy, isOnline, onClose, onReturnFocus, bounds, onNavigate, onExplore, onOpenPantry, initialStationId, initialRecipeId, constructionGoal, onOpenGoal, onOpenFood, onOpenHelp, onHelpContextChange }: WorldObjectMenuProps) {
   const collection = useGardenCollection();
   const seenHarvest = useRef(collection?.request?.requestId);
   useEffect(() => {
@@ -291,7 +296,7 @@ function ObjectMenuBody({ selection, economy, onClose, onReturnFocus, bounds, on
           <summary><Clock3 size={13} aria-hidden="true" /><strong>В работе · {runningJobs.length}</strong><span>Ещё {nextOrderSeconds < 60 ? `${nextOrderSeconds} с` : worldDuration(nextOrderSeconds)}</span><ChevronDown size={13} aria-hidden="true" /></summary>
           <div>{runningJobs.map(job => <Work key={job.id} economy={readyEconomy} job={job} openPantry={openJobPantry} />)}</div>
         </details>}
-        {stationId === "quarry" && <WorldExpeditionsMenu economy={economy} embeddedCaves onOpenHelp={openHelp} onOpenPantry={openPantry} onNavigateStation={id => id === "quarry" ? openUpgrade() : openStation(id)} onCancellationComplete={() => panel.current?.focus({ preventScroll: true })} />}
+        {stationId === "quarry" && <WorldExpeditionsMenu economy={economy} isOnline={isOnline} embeddedCaves onOpenHelp={openHelp} onOpenPantry={openPantry} onNavigateStation={(id, targetRecipeId) => id === "quarry" ? openUpgrade() : openStation(id, targetRecipeId)} onCancellationComplete={() => panel.current?.focus({ preventScroll: true })} />}
         {stationId === "warehouse" ? <><div className={styles.inventoryHeading}><span>Кладовая</span><strong>{number(state.storage.used + state.storage.reserved)} / {number(state.storage.capacity)}</strong></div>{ownedItems.length ? <div className={styles.products} aria-label="Предметы в кладовой">{ownedItems.map(item => <button key={item.id} type="button" className={styles.product} aria-pressed={saleItem === item.id} onClick={() => { setSaleItem(value => value === item.id ? null : item.id); setUpgradeStation(null); }}><ProductIcon state={state} itemId={item.id} /><strong>{item.name}</strong><span>×{number(state.inventory[item.id])}</span></button>)}</div> : <p className={styles.empty}>Пока пусто. Урожай и находки появятся здесь после получения.</p>}{readyEconomy && saleItem && <WorldObjectSale key={saleItem} economy={readyEconomy} itemId={saleItem} onCollapse={() => setSaleItem(null)} />}{state.storage.reserved > 0 && <p className={styles.small}>На рынке зарезервировано {number(state.storage.reserved)} мест.</p>}</> : stationId !== "quarry" ? <>
           <div className={styles.recipeCatalog} hidden={Boolean(selectedRecipe)} aria-label={`Продукция: ${building?.name ?? definition.label}`}><RecipeCatalog state={state} recipes={recipes} onChoose={chooseRecipe} /></div>
           {readyEconomy && selectedRecipe && <WorldRecipeDetail key={selectedRecipe.id} economy={readyEconomy} recipe={selectedRecipe} navigation={navigation} onCollapse={closeRecipe} onOpenHelp={openHelp} onHelpContextChange={onHelpContextChange} />}
@@ -301,7 +306,7 @@ function ObjectMenuBody({ selection, economy, onClose, onReturnFocus, bounds, on
     {!selectedRecipe && state && !definition.future && target && <footer className={styles.footer}><button type="button" className={styles.upgradeAction} aria-haspopup="dialog" onClick={openUpgrade}><Hammer size={15} aria-hidden="true" /><span>{construction ? "Ход улучшения" : current ? stationId === "warehouse" ? "Расширить кладовую" : "Улучшить" : "Обустроить"}<small>{current ? `${current} → ${target.level} уровень` : "Первый уровень"}</small></span><ArrowRight size={16} aria-hidden="true" /></button></footer>}
     {!selectedRecipe && state && !definition.future && !target && !jobs.length && !recipes.length && <footer className={styles.footer}><span className={styles.maximum}><Check size={12} aria-hidden="true" />Все уровни оборудования открыты</span></footer>}
   </section>}
-    <WorldUpgradeDialog stationId={upgradeStation} economy={economy} onOpenHelp={openHelp} constructionGoal={constructionGoal} onClose={closeUpgrade} onCompleted={() => { completedUpgrade.current = true; onClose(); }} navigation={navigation}
+    <WorldUpgradeDialog stationId={upgradeStation} economy={economy} isOnline={isOnline} onOpenHelp={openHelp} constructionGoal={constructionGoal} onClose={closeUpgrade} onCompleted={() => { completedUpgrade.current = true; onClose(); }} navigation={navigation}
       onOpenPantry={onOpenPantry ? () => { navigating.current = true; setUpgradeStation(null); onOpenPantry(); } : selection.place === "house" ? () => chooseStation("warehouse") : onNavigate ? () => { navigating.current = true; setUpgradeStation(null); onNavigate("house", "warehouse"); } : undefined}
       onCloseAutoFocus={event => {
         event.preventDefault();

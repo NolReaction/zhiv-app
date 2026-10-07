@@ -94,6 +94,77 @@ class JdbcEconomyRepositoryIntegrationTest {
         assertEquals(completed.residentOrders, source.connection.use { readEconomyProfile(it, p.id).state.residentOrders })
     }
 
+    @Test fun `resident replacement quotas and pearl charges survive replay concurrency and restart`() = runBlocking<Unit> {
+        val p = player(); economy.snapshot(p.hash)
+        val original = source.connection.use { readEconomyProfile(it, p.id).state }
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",
+            economyJson.encodeToString(original.copy(wallet = original.wallet.copy(pearls = 100))), p.id)
+        repeat(3) { index ->
+            val before = economy.snapshot(p.hash)
+            val saved = source.connection.use { readEconomyProfile(it, p.id).state }
+            val board = EconomyFood.residentOrderBoard(saved, Instant.parse(before.serverTime))
+            assertEquals(3 - index, board.freeReplacementsRemaining)
+            val request = command(p, before, "replace_resident_order", board.offers[index].id)
+            val result = economy.command(p.hash, request)
+            assertEquals(100L, result.state.wallet.pearls)
+            assertTrue(economy.command(p.hash, request).replayed)
+            assertEquals(index + 1, economy.snapshot(p.hash).residentOrders.freeReplacementsUsed)
+        }
+        val before = economy.snapshot(p.hash)
+        val saved = source.connection.use { readEconomyProfile(it, p.id).state }
+        val board = EconomyFood.residentOrderBoard(saved, Instant.parse(before.serverTime))
+        assertEquals(0, board.freeReplacementsRemaining)
+        assertEquals(10L, board.replacementPricePearls)
+        val unapproved = command(p, before, "replace_resident_order", board.offers.first().id)
+        assertEquals("ECONOMY_ORDER_PRICE_CHANGED", assertFailsWith<AuthFailure> { economy.command(p.hash, unapproved) }.code)
+        assertEquals(before.revision, economy.snapshot(p.hash).revision)
+        assertEquals(before.wallet, economy.snapshot(p.hash).wallet)
+        val paid = unapproved.copy(requestId = UUID.randomUUID().toString(), totalPrice = 10)
+        val results = coroutineScope { List(2) { async(Dispatchers.IO) { JdbcEconomyRepository(source).command(p.hash, paid) } }.awaitAll() }
+        assertEquals(1, results.count { it.replayed })
+        val after = JdbcEconomyRepository(source).snapshot(p.hash)
+        assertEquals(90L, after.wallet.pearls)
+        assertEquals(before.revision + 1, after.revision)
+        assertEquals(3, after.residentOrders.freeReplacementsUsed)
+        assertEquals("4", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='replace_resident_order'", p.id))
+        assertEquals("-10", scalar("SELECT sum(pearls) FROM economy_ledger WHERE user_id=? AND kind='replace_resident_order'", p.id))
+        assertEquals("4", scalar("SELECT count(*) FROM economy_commands WHERE user_id=?", p.id))
+        assertEquals("ECONOMY_REQUEST_CONFLICT", assertFailsWith<AuthFailure> { economy.command(p.hash, paid.copy(totalPrice = 9)) }.code)
+        assertEquals("ECONOMY_ORDER_CHANGED", assertFailsWith<AuthFailure> {
+            economy.command(p.hash, command(p, after, "replace_resident_order", board.offers.first().id).copy(totalPrice = 10))
+        }.code)
+    }
+
+    @Test fun `account merge preserves target resident cards and cannot refill replacement allowance`() = runBlocking<Unit> {
+        val target = player(); val origin = player()
+        for (p in listOf(target, origin)) repeat(2) { slot ->
+            val before = economy.snapshot(p.hash)
+            val saved = source.connection.use { readEconomyProfile(it, p.id).state }
+            val offer = EconomyFood.residentOrderBoard(saved, Instant.parse(before.serverTime)).offers[slot]
+            economy.command(p.hash, command(p, before, "replace_resident_order", offer.id))
+        }
+        val before = economy.snapshot(target.hash)
+        val beforeState = source.connection.use { readEconomyProfile(it, target.id).state }
+        val cards = EconomyFood.residentOrderBoard(beforeState, Instant.parse(before.serverTime)).offers
+        source.connection.use { c ->
+            c.economyRows("SELECT id FROM app_users WHERE id IN (?,?) ORDER BY id FOR NO KEY UPDATE", target.id, origin.id) { true }
+            mergeEconomyProfiles(c, target.id, origin.id)
+            c.commit()
+        }
+        val after = economy.snapshot(target.hash)
+        val saved = source.connection.use { readEconomyProfile(it, target.id).state }
+        val merged = EconomyFood.residentOrderBoard(saved, Instant.parse(after.serverTime))
+        assertEquals(cards, merged.offers)
+        assertEquals(3, after.residentOrders.freeReplacementsUsed)
+        assertEquals(0, merged.freeReplacementsRemaining)
+        assertEquals(10L, merged.replacementPricePearls)
+        assertTrue(after.residentOrders.recentTemplateIds.size <= 6)
+        assertEquals("ECONOMY_ORDER_PRICE_CHANGED", assertFailsWith<AuthFailure> {
+            economy.command(target.hash, command(target, after, "replace_resident_order", merged.offers.first().id))
+        }.code)
+        assertEquals(after.revision, economy.snapshot(target.hash).revision)
+    }
+
     @Test fun `meal retries and builder feeding races spend a dish once while running journeys prevent eating`() = runBlocking<Unit> {
         val p = player(); economy.snapshot(p.hash)
         val original = source.connection.use { readEconomyProfile(it, p.id).state }
@@ -494,7 +565,7 @@ class JdbcEconomyRepositoryIntegrationTest {
         val after = economy.snapshot(p.hash)
         assertEquals(before.wallet.coins - offer.unitPrice * 2, after.wallet.coins)
         assertEquals((before.inventory[offer.itemId] ?: 0) + 2, after.inventory[offer.itemId])
-        assertEquals(1L, checkNotNull(after.fishingShop).offers.single { it.id == offer.id }.remaining)
+        assertEquals(offer.remaining - 2, checkNotNull(after.fishingShop).offers.single { it.id == offer.id }.remaining)
         assertEquals(before.fishing, after.fishing)
         assertEquals(before.progression, after.progression)
         assertEquals("1", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='buy_fishing_item'", p.id))

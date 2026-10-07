@@ -12,6 +12,7 @@ const { PleskFishingBookPage, fishingBookEntries, fishingBookPage, FISHING_BOOK_
 const { economyCatalog, economyFishingSchema, ECONOMY_MAX_BALANCE } = await vite.ssrLoadModule("/features/economy/model.ts");
 const { economyStorage } = await vite.ssrLoadModule("/features/economy/rules.ts");
 const { fishingOdds, fishingState } = await vite.ssrLoadModule("/features/economy/fishing.ts");
+const { normalizedResidentOrders } = await vite.ssrLoadModule("/features/economy/food.ts");
 after(() => vite.close());
 const merchantHookModule = "virtual:merchant-selection-hooks";
 const merchantVite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } },
@@ -225,6 +226,20 @@ test("book chapter tabs have keyboard navigation and bounded accessible paginati
   assert.equal(view.control("Предыдущая страница").props.disabled, true);
   assert.equal(view.control("Следующая страница").props.disabled, false);
   assert.match(view.html, /Страница 1 из 2/); assert.match(view.html, /aria-live="polite"/); assert.match(view.html, /<progress/);
+});
+
+test("fish of the day links to a matching resident request without buying or completing it", () => {
+  const state = snapshot(), calls = [];
+  state.residentOrders = normalizedResidentOrders(state, now);
+  state.residentOrders.slots[0].templateId = "plesk_river_catch";
+  const original = structuredClone(state), economy = controller(state, { act(...args) { calls.push(args); } });
+  let opened = 0;
+  const view = inspect(PleskFishOffer, { economy, state, fish: state.catalog.fishing.fish.find(fish => fish.itemId === "fish"), onOpenOrders() { opened++; } });
+  assert.match(view.html, /Плёске нужно ×3/);
+  view.control("К заказам").props.onClick();
+  assert.equal(opened, 1);
+  assert.deepEqual(calls, []);
+  assert.deepEqual(state, original);
 });
 
 test("discount fish is purchased through its live offer with server price and an honest preview", () => {

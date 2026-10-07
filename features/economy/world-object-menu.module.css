@@ -284,3 +284,6 @@
 .contextHelp svg { flex-shrink: 0; }
 .contextHelp:hover { background: #edf3e5; }
 .contextHelp:focus-visible { outline: 2px solid #55774c; outline-offset: 2px; }
+
+.fishGroup { margin: 0 0 3px; color: #47663f; font-size: 11px; line-height: 1.4; font-weight: 650; }
+.mealBenefits { margin: 5px 0 8px; color: #47663f; font-size: 11px; line-height: 1.4; }

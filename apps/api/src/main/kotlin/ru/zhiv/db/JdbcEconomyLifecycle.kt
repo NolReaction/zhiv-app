@@ -15,6 +15,7 @@ import ru.zhiv.world.WorldState
 import ru.zhiv.world.worldJson
 import ru.zhiv.economy.economyJson
 import java.sql.Connection
+import java.time.OffsetDateTime
 import java.util.UUID
 
 private fun Connection.lifecycleEconomyUpdate(sql: String, vararg values: Any?): Int = prepareStatement(sql).use { statement ->
@@ -82,6 +83,7 @@ internal fun mergeEconomyProfiles(c: Connection, target: UUID, source: UUID) {
     }
     val inventory = (a.inventory.keys + b.inventory.keys).associateWith { add(a.inventory[it] ?: 0, b.inventory[it] ?: 0,ECONOMY_MAX_ITEMS) }
     val buildings = (a.buildings.keys + b.buildings.keys).associateWith { maxOf(a.buildings[it] ?: 0, b.buildings[it] ?: 0) }
+    val now = c.economyRows("SELECT clock_timestamp()") { it.getObject(1, OffsetDateTime::class.java).toInstant() }.single()
     saveEconomyProfile(c, target, a.copy(wallet=a.wallet.copy(coins=add(a.wallet.coins,b.wallet.coins), pearls=add(a.wallet.pearls,b.wallet.pearls,ECONOMY_MAX_PEARLS)),
         wardrobe=(a.wardrobe+b.wardrobe).distinct().sorted(), inventory=inventory, buildings=buildings, completedExplorations=add(a.completedExplorations,b.completedExplorations,ECONOMY_MAX_ITEMS),
         fishing=a.fishing.copy(ownedRods=(a.fishing.ownedRods+b.fishing.ownedRods).distinct(),
@@ -94,7 +96,7 @@ internal fun mergeEconomyProfiles(c: Connection, target: UUID, source: UUID) {
             maxOf(EconomyRules.productionSlotCount(a,it),EconomyRules.productionSlotCount(b,it)) },
         progression=EconomyCollectionProgress.merge(a.progression,b.progression),
         food=EconomyFoodState(a.food.heroMeal ?: b.food.heroMeal, a.food.builderMeal ?: b.food.builderMeal),
-        residentOrders=EconomyFood.mergeOrders(a.residentOrders,b.residentOrders),
+        residentOrders=EconomyFood.mergeOrders(a.copy(buildings=buildings),b.copy(buildings=buildings),now),
         rareDropState=EconomyRareDrops.merge(a.rareDropState,b.rareDropState)), recordAwards=false)
     // Preserve original signatures: an old source browser cannot reuse a consumed request ID.
     c.lifecycleEconomyUpdate("""INSERT INTO economy_commands(user_id,request_id,signature,message,accepted_revision)

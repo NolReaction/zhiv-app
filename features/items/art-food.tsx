@@ -49,4 +49,27 @@ export const foodItemArt: Record<string, ReactNode> = {
     <path d="M24 25c-6-1-7 3-3 5 4 0 6-2 7-5-1-5-5-6-7-3" fill="#83a568" strokeWidth="1.3" />
     <path d="M15 7c-2-2 2-3 0-5m15 7c-2-2 2-3 0-5" stroke="#a6b2a0" strokeWidth="1.6" />
   </>,
+  epic_fish: <>
+    <path d="M8 23c-8-5-7 7 0 6m32-6c8-5 7 7 0 6" stroke="#7d6985" strokeWidth="3" />
+    <path d="M7 22h34l-4 16c-6 7-20 7-26 0Z" fill="#82718f" />
+    <path d="M12 34c6 4 18 4 24 0" stroke="#cdb5cb" strokeWidth="2" />
+    <ellipse cx="24" cy="22" rx="17" ry="9" fill="#dfb66f" />
+    <path d="m13 19 5-8 12 3-3 11-10 3Z" fill="#f0d7a2" />
+    <path d="m20 14 5 3m-8 1 7 3m-8 1 7 3" stroke="#b2824a" strokeWidth="1.7" />
+    <path d="m27 23 5-6 7 3-3 8-9 1Z" fill="#d69f67" />
+    <path d="m28 25 6-2m-17 5 3 1" stroke="#8c633b" strokeWidth="1.5" />
+    <path d="M10 22c-1-7 5-8 7-3-1 4-4 5-7 3m23-8c1-6 6-7 8-3-2 4-5 5-8 3" fill="#8aa165" strokeWidth="1.3" />
+    <path d="M16 7c-3-3 3-4 0-6m13 8c-3-3 3-4 0-6" stroke="#a6b2a0" strokeWidth="1.6" />
+  </>,
+  legendary_fish: <>
+    <ellipse cx="24" cy="33" rx="21" ry="11" fill="#c39743" />
+    <ellipse cx="24" cy="31" rx="18" ry="8" fill="#f0d38a" stroke="#8b783f" strokeWidth="1.5" />
+    <path d="m13 23-7-5 2 10-2 7 8-5c7 6 20 3 27-5-9-8-21-10-28-2Z" fill="#83948c" />
+    <path d="m22 21 7-12 1 13" fill="#637e7b" />
+    <path d="M16 27c8 3 16 0 21-2" stroke="#e6c58e" strokeWidth="3" />
+    <path d="m18 22 3 7m3-8 3 7m3-7 3 6" stroke="#715639" strokeWidth="2" />
+    <circle cx="36" cy="24" r="1.3" fill="#344236" stroke="none" />
+    <path d="M14 37c0-7 6-8 8-3-2 5-5 6-8 3m14 1c-1-6 5-8 8-4-1 4-5 6-8 4" fill="#88a467" strokeWidth="1.4" />
+    <path d="m9 7 1-4 2 4 4 2-4 1-2 4-1-4-4-1Zm29 4 1-3 1 3 3 1-3 1-1 3-1-3-3-1Z" fill="#efd991" stroke="#ab8845" strokeWidth="1.1" />
+  </>,
 };

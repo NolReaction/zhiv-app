@@ -93,7 +93,7 @@ test("node and edge ids are unique and actual world remains connected without pr
   assert.equal(all.size, ids.size);
   const actual = reachableIds(graph, edge => edge.kind !== "plan" && edge.kind !== "cost");
   for (const value of graph.nodes.filter(value => value.status === "active")) assert(actual.has(value.id), `Disconnected active node ${value.id}`);
-  assert.equal(graph.nodes.length, 162);
+  assert.equal(graph.nodes.length, 164);
   assert.equal(node("pearls").status, "active");
   assert.ok(!graph.edges.some(edge => edge.source === "pearls" && ["requirement", "unlock"].includes(edge.kind)), "optional acceleration never gates progression");
   assert.equal(graph.nodes.filter(value => value.status === "plan").length, 16);
@@ -128,9 +128,11 @@ test("fish ingredients resolve to a real chance source without inventing guarant
 test("food and resident orders are active optional uses rather than future progression gates", () => {
   assert.equal(node("orders").status, "active");
   assert.equal(node("meals").status, "active");
-  assert.match(node("orders").description, /платят только монеты/);
-  assert.match(node("orders").description, /не включают сытость/);
-  assert.match(node("meals").description, /\+10–25%/);
+  assert.match(node("orders").description, /Награда — монеты с надбавкой/);
+  assert.match(node("orders").description, /сытость отдельно/);
+  assert.match(node("orders").description, /3 бесплатные замены/);
+  assert.match(node("meals").description, /\+10–100%/);
+  assert.match(node("meals").description, /\+10–90%/);
   assert(hasEdge("start", "orders", "available"));
   assert(hasEdge("orders", "coins", "flow"));
   assert(hasEdge("r:cook_grilled_fish", "meals", "flow"));

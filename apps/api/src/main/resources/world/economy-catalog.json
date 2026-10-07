@@ -339,7 +339,21 @@
       "id": "hearty_fish",
       "name": "Сытный рыбный ужин",
       "category": "provisions",
-      "baseSellPrice": 1300,
+      "baseSellPrice": 1900,
+      "tradable": true
+    },
+    {
+      "id": "epic_fish",
+      "name": "Праздничная рыба",
+      "category": "provisions",
+      "baseSellPrice": 2400,
+      "tradable": true
+    },
+    {
+      "id": "legendary_fish",
+      "name": "Акулье жаркое",
+      "category": "provisions",
+      "baseSellPrice": 4000,
       "tradable": true
     }
   ],
@@ -1754,7 +1768,70 @@
         "itemIds": [
           "fish_mooncarp",
           "fish_pike",
-          "fish_eel"
+          "fish_eel",
+          "fish_sturgeon",
+          "fish_mirror_koi"
+        ]
+      }
+    },
+    {
+      "id": "cook_epic_fish",
+      "name": "Приготовить праздничную рыбу",
+      "buildingId": "dryer",
+      "buildingLevel": 4,
+      "requiredHomeLevel": 4,
+      "requiredBuildings": {
+        "woodlot": 3,
+        "kiln": 1
+      },
+      "seconds": 5400,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "fish_sturgeon": 1,
+          "berries": 6,
+          "hardwood": 1,
+          "charcoal": 2
+        }
+      },
+      "rewards": {
+        "epic_fish": 1
+      },
+      "maxBatch": 1,
+      "fishInput": {
+        "itemIds": [
+          "fish_sturgeon",
+          "fish_mirror_koi"
+        ]
+      }
+    },
+    {
+      "id": "cook_legendary_fish",
+      "name": "Приготовить акулье жаркое",
+      "buildingId": "dryer",
+      "buildingLevel": 5,
+      "requiredHomeLevel": 5,
+      "requiredBuildings": {
+        "woodlot": 3,
+        "kiln": 1
+      },
+      "seconds": 7200,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "fish_shark": 1,
+          "berries": 8,
+          "hardwood": 2,
+          "charcoal": 2
+        }
+      },
+      "rewards": {
+        "legendary_fish": 1
+      },
+      "maxBatch": 1,
+      "fishInput": {
+        "itemIds": [
+          "fish_shark"
         ]
       }
     },
@@ -2869,8 +2946,8 @@
       "refreshPriceStepPearls": 2,
       "slots": 4,
       "baitStock": 5,
-      "fishStock": 3,
-      "fishPriceBps": 8000,
+      "fishStock": 6,
+      "fishPriceBps": 6000,
       "gearRarityBpsByHome": [
         {
           "common": 0,
@@ -2939,30 +3016,45 @@
       },
       {
         "itemId": "fish_soup",
-        "heroSpeedBps": 1500,
-        "builderSpeedBps": 1000
+        "heroSpeedBps": 2500,
+        "builderSpeedBps": 2000
       },
       {
         "itemId": "berry_fish",
-        "heroSpeedBps": 2000,
-        "builderSpeedBps": 1000
+        "heroSpeedBps": 4000,
+        "builderSpeedBps": 3500
       },
       {
         "itemId": "hearty_fish",
-        "heroSpeedBps": 2500,
-        "builderSpeedBps": 1000
+        "heroSpeedBps": 6000,
+        "builderSpeedBps": 5000
+      },
+      {
+        "itemId": "epic_fish",
+        "heroSpeedBps": 8000,
+        "builderSpeedBps": 7000
+      },
+      {
+        "itemId": "legendary_fish",
+        "heroSpeedBps": 10000,
+        "builderSpeedBps": 9000
       }
     ],
     "orders": {
       "slots": 3,
-      "refreshSeconds": 21600,
-      "replacementSeconds": 1800,
-      "completionSeconds": 3600,
+      "refreshSeconds": 43200,
+      "replacementSeconds": 0,
+      "completionSeconds": 0,
+      "freeReplacements": 3,
+      "replacementWindowSeconds": 43200,
+      "replacementPricePearls": 10,
+      "recentLimit": 6,
       "templates": [
         {
           "id": "plesk_river_catch",
           "residentId": "plesk",
-          "name": "Речной улов для прилавка",
+          "name": "Пополнить речной прилавок",
+          "description": "Сегодня речную рыбу разбирают особенно охотно. Принесёшь ещё немного?",
           "requiredHomeLevel": 1,
           "requiredBuildings": {},
           "items": {
@@ -2974,39 +3066,147 @@
           "id": "plesk_silver_catch",
           "residentId": "plesk",
           "name": "Серебристая стайка",
+          "description": "Серебринки украсят свежий привоз. Приберегу им место на прилавке.",
           "requiredHomeLevel": 1,
           "requiredBuildings": {},
           "items": {
             "fish_silverfin": 2
           },
-          "coins": 320
+          "coins": 330
         },
         {
           "id": "plesk_rudd_catch",
           "residentId": "plesk",
           "name": "Краснопёрые гости",
+          "description": "Рыбаки спрашивали краснопёрку. Поможешь собрать небольшой запас?",
           "requiredHomeLevel": 1,
           "requiredBuildings": {},
           "items": {
             "fish_rudd": 2
           },
-          "coins": 370
+          "coins": 380
         },
         {
-          "id": "builder_berry_break",
-          "residentId": "builder",
-          "name": "Ягодный перерыв",
+          "id": "plesk_morning_assortment",
+          "residentId": "plesk",
+          "name": "Утренний ассортимент",
+          "description": "Хочу предложить соседям разный улов — речную рыбу и серебринку.",
           "requiredHomeLevel": 1,
           "requiredBuildings": {},
           "items": {
-            "berries": 6
+            "fish": 2,
+            "fish_silverfin": 1
           },
-          "coins": 240
+          "coins": 380
+        },
+        {
+          "id": "plesk_bright_assortment",
+          "residentId": "plesk",
+          "name": "Яркий улов",
+          "description": "Поставлю рядом серебринку и краснопёрку: пусть каждый выберет по вкусу.",
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
+          "items": {
+            "fish_silverfin": 1,
+            "fish_rudd": 1
+          },
+          "coins": 360
+        },
+        {
+          "id": "plesk_net_patch",
+          "residentId": "plesk",
+          "name": "Подлатать рыбацкую сеть",
+          "description": "Сеть зацепилась за корягу. Нужны крепкие волокна и пара деревянных распорок.",
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
+          "items": {
+            "fiber": 6,
+            "wood": 2
+          },
+          "coins": 250
+        },
+        {
+          "id": "builder_wood_supply",
+          "residentId": "builder",
+          "name": "Дрова для строительной площадки",
+          "description": "Подберу крепкие кусочки для подпорок и разметки.",
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
+          "items": {
+            "wood": 8
+          },
+          "coins": 400
+        },
+        {
+          "id": "builder_stone_foundation",
+          "residentId": "builder",
+          "name": "Камень для основания",
+          "description": "Хорошая работа начинается с ровного и крепкого основания.",
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
+          "items": {
+            "stone": 8
+          },
+          "coins": 300
+        },
+        {
+          "id": "builder_foundation_mix",
+          "residentId": "builder",
+          "name": "Подготовить основание",
+          "description": "Нужны дерево для опалубки и камень, чтобы укрепить края.",
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
+          "items": {
+            "wood": 6,
+            "stone": 4
+          },
+          "coins": 450
+        },
+        {
+          "id": "builder_binding_fiber",
+          "residentId": "builder",
+          "name": "Волокно для связок",
+          "description": "Свяжу лёгкие подпорки, прежде чем браться за тяжёлые балки.",
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
+          "items": {
+            "fiber": 8
+          },
+          "coins": 200
+        },
+        {
+          "id": "builder_light_supports",
+          "residentId": "builder",
+          "name": "Лёгкие подпорки",
+          "description": "Сделаю временные подпорки из древесины и крепких связок.",
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
+          "items": {
+            "wood": 4,
+            "fiber": 4
+          },
+          "coins": 300
+        },
+        {
+          "id": "builder_plank_brace",
+          "residentId": "builder",
+          "name": "Скрепить леса",
+          "description": "Для рабочих лесов нужны ровные доски и несколько верёвок.",
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {
+            "workshop": 1
+          },
+          "items": {
+            "planks": 4,
+            "rope": 2
+          },
+          "coins": 800
         },
         {
           "id": "builder_grilled_lunch",
           "residentId": "builder",
-          "name": "Горячий обед на стройку",
+          "name": "Горячий обед на площадку",
+          "description": "Закажу пару порций для обеденного перерыва. Это обычная доставка за монеты.",
           "requiredHomeLevel": 1,
           "requiredBuildings": {
             "dryer": 1
@@ -3020,6 +3220,7 @@
           "id": "plesk_grilled_dinner",
           "residentId": "plesk",
           "name": "Ужин после рыбалки",
+          "description": "Хочется горячей рыбы и немного свежих ягод после дня у воды.",
           "requiredHomeLevel": 1,
           "requiredBuildings": {
             "dryer": 1
@@ -3031,89 +3232,158 @@
           "coins": 450
         },
         {
-          "id": "builder_trail_snack",
-          "residentId": "builder",
-          "name": "Перекус в дорогу",
-          "requiredHomeLevel": 1,
-          "requiredBuildings": {
-            "dryer": 1
-          },
-          "items": {
-            "grilled_fish": 1,
-            "dried_berries": 1
-          },
-          "coins": 700
-        },
-        {
-          "id": "builder_soup_pot",
-          "residentId": "builder",
-          "name": "Котелок для помощников",
-          "requiredHomeLevel": 2,
-          "requiredBuildings": {
-            "dryer": 2
-          },
-          "items": {
-            "fish_soup": 2
-          },
-          "coins": 2100
-        },
-        {
-          "id": "plesk_warm_soup",
+          "id": "plesk_reed_catch",
           "residentId": "plesk",
-          "name": "Согревающая уха",
+          "name": "Камышовый улов",
+          "description": "Камышовые окуньки пригодятся тем, кто любит рыбу с ягодным соусом.",
           "requiredHomeLevel": 2,
-          "requiredBuildings": {
-            "dryer": 2
-          },
+          "requiredBuildings": {},
           "items": {
-            "fish_soup": 1
+            "fish_reedperch": 2
           },
-          "coins": 1050
+          "coins": 490
         },
         {
-          "id": "plesk_berry_sauce",
+          "id": "plesk_dace_catch",
           "residentId": "plesk",
-          "name": "Любимый ягодный соус",
+          "name": "Рыба из прохладного ручья",
+          "description": "Сегодня на прилавке не хватает лесных ельцов.",
           "requiredHomeLevel": 2,
-          "requiredBuildings": {
-            "dryer": 2
-          },
+          "requiredBuildings": {},
           "items": {
-            "berry_fish": 2
+            "fish_dace": 2
           },
-          "coins": 1750
+          "coins": 540
         },
         {
-          "id": "builder_smoked_supply",
-          "residentId": "builder",
-          "name": "Запас для дальней работы",
-          "requiredHomeLevel": 2,
-          "requiredBuildings": {
-            "dryer": 2
-          },
-          "items": {
-            "smoked_fish": 3
-          },
-          "coins": 2000
-        },
-        {
-          "id": "plesk_picnic",
+          "id": "plesk_bream_catch",
           "residentId": "plesk",
-          "name": "Угощение на берегу",
+          "name": "Бронзовые бока",
+          "description": "Пара лещей разнообразит привоз. Их любят готовить к ужину.",
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {},
+          "items": {
+            "fish_bream": 2
+          },
+          "coins": 650
+        },
+        {
+          "id": "plesk_camp_provisions",
+          "residentId": "plesk",
+          "name": "Припасы для ночной рыбалки",
+          "description": "Возьму копчёную рыбу и сушёные ягоды: у воды могу задержаться надолго.",
           "requiredHomeLevel": 2,
           "requiredBuildings": {
             "dryer": 2
           },
           "items": {
-            "grilled_fish": 2,
+            "smoked_fish": 1,
+            "dried_berries": 2
+          },
+          "coins": 1330
+        },
+        {
+          "id": "plesk_warm_lunch",
+          "residentId": "plesk",
+          "name": "Тёплый обед на берегу",
+          "description": "Уха согреет после прохладного утра, а рыбу с ягодным соусом оставлю на потом.",
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "dryer": 2
+          },
+          "items": {
+            "fish_soup": 1,
             "berry_fish": 1
           },
-          "coins": 1650
+          "coins": 1940
         },
         {
-          "id": "builder_hearty_dinner",
+          "id": "builder_fasteners",
           "residentId": "builder",
-          "name": "Сытный вечер после стройки",
+          "name": "Крепёж для мастерской",
+          "description": "Металлические детали и ровные доски пригодятся для точной работы.",
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "workshop": 2,
+            "kiln": 2
+          },
+          "items": {
+            "metal_parts": 2,
+            "planks": 2
+          },
+          "coins": 1450
+        },
+        {
+          "id": "builder_brick_stack",
+          "residentId": "builder",
+          "name": "Кирпичи для кладки",
+          "description": "Собираю запас для кладки. Верёвки помогут разметить ровные ряды.",
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "kiln": 2,
+            "workshop": 1
+          },
+          "items": {
+            "bricks": 8,
+            "rope": 2
+          },
+          "coins": 1600
+        },
+        {
+          "id": "builder_iron_fittings",
+          "residentId": "builder",
+          "name": "Железо для креплений",
+          "description": "Подготовлю крепления из слитков, пока есть свободное место у верстака.",
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "kiln": 2
+          },
+          "items": {
+            "iron_ingot": 3
+          },
+          "coins": 1280
+        },
+        {
+          "id": "plesk_mooncatch",
+          "residentId": "plesk",
+          "name": "Лунный улов",
+          "description": "Лунные карасики редко задерживаются на прилавке. Принесёшь пару?",
+          "requiredHomeLevel": 3,
+          "requiredBuildings": {},
+          "items": {
+            "fish_mooncarp": 2
+          },
+          "coins": 870
+        },
+        {
+          "id": "plesk_pike_catch",
+          "residentId": "plesk",
+          "name": "Изумрудная гостья",
+          "description": "Нашёлся любитель речных хищниц. Для него отложу изумрудную щуку.",
+          "requiredHomeLevel": 3,
+          "requiredBuildings": {},
+          "items": {
+            "fish_pike": 1
+          },
+          "coins": 540
+        },
+        {
+          "id": "plesk_eel_catch",
+          "residentId": "plesk",
+          "name": "Тёмный житель заводи",
+          "description": "Угорь пригодится для сытного ужина. Прикуплю один экземпляр.",
+          "requiredHomeLevel": 3,
+          "requiredBuildings": {},
+          "items": {
+            "fish_eel": 1
+          },
+          "coins": 650
+        },
+        {
+          "id": "plesk_hearty_table",
+          "residentId": "plesk",
+          "name": "Сытный вечер у воды",
+          "description": "После долгой рыбалки хочется готового сытного ужина.",
           "requiredHomeLevel": 3,
           "requiredBuildings": {
             "dryer": 3
@@ -3121,77 +3391,156 @@
           "items": {
             "hearty_fish": 1
           },
-          "coins": 1650
+          "coins": 2380
         },
         {
-          "id": "plesk_evening_table",
-          "residentId": "plesk",
-          "name": "Вечер у костра",
+          "id": "builder_stone_cut",
+          "residentId": "builder",
+          "name": "Камень и балки",
+          "description": "Собираю прочный набор для следующей серьёзной стройки.",
           "requiredHomeLevel": 3,
           "requiredBuildings": {
-            "dryer": 3
+            "workshop": 3,
+            "woodlot": 3
           },
           "items": {
-            "hearty_fish": 1,
-            "fish_soup": 1
+            "cut_stone": 6,
+            "beams": 2
           },
-          "coins": 2700
+          "coins": 2400
         },
         {
-          "id": "plesk_mooncatch",
-          "residentId": "plesk",
-          "name": "Лунный улов",
-          "requiredHomeLevel": 3,
-          "requiredBuildings": {},
-          "items": {
-            "fish_mooncarp": 2
-          },
-          "coins": 840
-        },
-        {
-          "id": "builder_pike_catch",
+          "id": "builder_window_materials",
           "residentId": "builder",
-          "name": "Щука к праздничному столу",
+          "name": "Окна и занавески",
+          "description": "Когда стены готовы, хочется впустить свет и сделать внутри уютнее.",
           "requiredHomeLevel": 3,
-          "requiredBuildings": {},
-          "items": {
-            "fish_pike": 1,
-            "fish_eel": 1
+          "requiredBuildings": {
+            "workshop": 2,
+            "kiln": 3
           },
-          "coins": 1150
+          "items": {
+            "cloth": 4,
+            "glass": 2
+          },
+          "coins": 1800
         },
         {
           "id": "plesk_golden_sturgeon",
           "residentId": "plesk",
           "name": "Золотой гость",
+          "description": "Золотой осётр станет главным уловом сегодняшнего привоза.",
           "requiredHomeLevel": 4,
           "requiredBuildings": {},
           "items": {
             "fish_sturgeon": 1
           },
-          "coins": 950
+          "coins": 1010
         },
         {
           "id": "plesk_mirror_catch",
           "residentId": "plesk",
           "name": "Зеркальный улов",
+          "description": "Для зеркального кои приготовлено особое место на прилавке.",
           "requiredHomeLevel": 4,
           "requiredBuildings": {},
           "items": {
             "fish_mirror_koi": 1
           },
-          "coins": 1250
+          "coins": 1350
+        },
+        {
+          "id": "plesk_epic_dinner",
+          "residentId": "plesk",
+          "name": "Праздник хорошего улова",
+          "description": "Хочу устроить маленький праздник у воды. Принесёшь праздничную рыбу?",
+          "requiredHomeLevel": 4,
+          "requiredBuildings": {
+            "dryer": 4,
+            "woodlot": 3,
+            "kiln": 1
+          },
+          "items": {
+            "epic_fish": 1
+          },
+          "coins": 3000
+        },
+        {
+          "id": "builder_tools",
+          "residentId": "builder",
+          "name": "Инструменты для большой работы",
+          "description": "С крепкими балками и готовыми инструментами можно браться за сложный участок.",
+          "requiredHomeLevel": 4,
+          "requiredBuildings": {
+            "workshop": 4,
+            "woodlot": 3
+          },
+          "items": {
+            "tools": 2,
+            "beams": 2
+          },
+          "coins": 4000
+        },
+        {
+          "id": "builder_reinforced",
+          "residentId": "builder",
+          "name": "Усилить конструкцию",
+          "description": "Понадобятся усиленные узлы и ещё один набор инструментов.",
+          "requiredHomeLevel": 4,
+          "requiredBuildings": {
+            "workshop": 4,
+            "woodlot": 4
+          },
+          "items": {
+            "reinforced_parts": 2,
+            "tools": 1
+          },
+          "coins": 5750
         },
         {
           "id": "plesk_shadow_catch",
           "residentId": "plesk",
           "name": "Легенда речной глубины",
-          "requiredHomeLevel": 5,
+          "description": "Теневую акулу захочет увидеть каждый рыбак. Готова заплатить за такой улов.",
+          "requiredHomeLevel": 4,
           "requiredBuildings": {},
           "items": {
             "fish_shark": 1
           },
-          "coins": 2100
+          "coins": 2240
+        },
+        {
+          "id": "plesk_legendary_dinner",
+          "residentId": "plesk",
+          "name": "Акулье жаркое к празднику",
+          "description": "Для особого вечера закажу блюдо из легендарного улова.",
+          "requiredHomeLevel": 5,
+          "requiredBuildings": {
+            "dryer": 5,
+            "woodlot": 3,
+            "kiln": 1
+          },
+          "items": {
+            "legendary_fish": 1
+          },
+          "coins": 5000
+        },
+        {
+          "id": "builder_final_fittings",
+          "residentId": "builder",
+          "name": "Последние крепления",
+          "description": "Прочные узлы и стекло нужны для завершающей части большой постройки.",
+          "requiredHomeLevel": 5,
+          "requiredBuildings": {
+            "workshop": 4,
+            "woodlot": 4,
+            "kiln": 3
+          },
+          "items": {
+            "reinforced_parts": 4,
+            "glass": 6
+          },
+          "coins": 10800
         }
       ]
     }

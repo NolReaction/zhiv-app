@@ -171,3 +171,8 @@
 .contextHelp svg { flex-shrink: 0; }
 .contextHelp:hover { background: #edf3e5; }
 .contextHelp:focus-visible { outline: 2px solid #55774c; outline-offset: 2px; }
+
+.durationWithMeal { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.activeWorkTop { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.activeWorkTop > :first-child { flex: 1; min-width: 0; }
+@media (max-width: 380px) { .confirmRow { flex-wrap: wrap; } .confirmRow > .confirm { margin-left: auto; } .durationWithMeal .duration > svg { display: none; } }

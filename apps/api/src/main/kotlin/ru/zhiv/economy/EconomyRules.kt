@@ -223,14 +223,19 @@ object EconomyRules {
     fun productionSlotOffer(state: EconomyState, stationId: String): EconomyProductionSlotUpgrade? =
         if (productionStationSupported(stationId)) catalog.productionSlots.upgrades.find { it.slots == productionSlotCount(state, stationId) + 1 } else null
 
-    fun apply(state: EconomyState, command: EconomyCommand, now: Instant, reservedItems: Map<String, Long> = emptyMap()): Pair<EconomyState, String> {
+    /** Materialize the board from pre-command unlocks only on a successful mutation.
+     * In particular, claiming a new building must not reroll previously displayed cards. */
+    fun apply(state: EconomyState, command: EconomyCommand, now: Instant, reservedItems: Map<String, Long> = emptyMap()): Pair<EconomyState, String> =
+        applyCurrent(state.copy(residentOrders = EconomyFood.normalizedOrders(state, now)), command, now, reservedItems)
+
+    private fun applyCurrent(state: EconomyState, command: EconomyCommand, now: Instant, reservedItems: Map<String, Long>): Pair<EconomyState, String> {
         validateEconomyCommand(command)
-        if (command.action !in setOf("speedup_construction", "buy_fishing_item", "buy_wardrobe_item", "refresh_fishing_shop", "sell") && command.totalPrice != 0L) invalidEconomy()
+        if (command.action !in setOf("speedup_construction", "buy_fishing_item", "buy_wardrobe_item", "refresh_fishing_shop", "replace_resident_order", "sell") && command.totalPrice != 0L) invalidEconomy()
         if (command.action !in setOf("start_production", "sell", "sell_fish", "buy_fishing_item") && command.quantity != 1L) invalidEconomy()
         return when (command.action) {
             "eat_food", "feed_builder" -> EconomyFood.eat(state, command.targetId, command.action == "feed_builder", now)
             "complete_resident_order", "replace_resident_order" -> EconomyFood.order(state, command.targetId,
-                command.action == "replace_resident_order", now)
+                command.action == "replace_resident_order", now, command.totalPrice)
             "start_production" -> {
                 if (command.targetId.startsWith("quarry_")) economyFailure("ECONOMY_MINING_ACTIVITY", "В шахте работает Мохлик. Выберите участок для вылазки")
                 if (command.quantity > catalog.maxBatch) invalidEconomy()

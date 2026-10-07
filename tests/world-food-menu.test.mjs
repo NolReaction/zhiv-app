@@ -38,8 +38,9 @@ test("food and coin orders are separate panels with no implicit meal debit", () 
   assert.doesNotMatch(meals, /data-order-id=|Отдать заказ/);
   const orders = render(WorldFoodMenu, { economy, initialTab: "orders" });
   assert.equal((orders.match(/data-order-id=/g) ?? []).length, 3);
-  assert.match(orders, /18:00 UTC/);
-  assert.match(orders, /Замена бесплатна/);
+  assert.match(orders, /Обновление через/);
+  assert.match(orders, /Бесплатных замен: <strong>3 \/ 3/);
+  assert.match(orders, /новый заказ появится сразу/);
   assert.doesNotMatch(orders, /data-meal=|Съесть:|Угостить Шишколапа:/);
 });
 
@@ -88,7 +89,7 @@ test("orders show reward and red shortages and open the missing dish recipe", ()
   assert.match(html, /data-missing="true"/);
   assert.match(html, /0 \/ 2/);
   const actions = buttons(ResidentOrderCard(props));
-  actions.find(button => button.props["aria-label"] === "Приготовить для заказа: Жареная рыба").props.onClick();
+  actions.find(button => button.props["aria-label"] === "Где получить для заказа: Жареная рыба").props.onClick();
   assert.deepEqual(navigation, [["dryer", "cook_grilled_fish"]]);
   assert.equal(actions.find(button => button.props.children === "Отдать заказ").props.disabled, true);
 });
@@ -106,14 +107,14 @@ test("complete and replace send the exact current offer and do not touch satiety
   }
 });
 
-test("cooldowns, expired cards and a full wallet guard order handlers", () => {
+test("legacy cooldowns no longer block ready orders, while expired cards and a full wallet remain guarded", () => {
   const economy = controller({}, { act() { assert.fail("blocked order handler sent a command"); } });
   economy.snapshot.residentOrders = normalizedResidentOrders(economy.snapshot, now);
   economy.snapshot.residentOrders.slots[0].readyAt = new Date(now + 60_000).toISOString();
   const offer = residentOrderBoard(economy.snapshot, now).offers[0];
   economy.snapshot.inventory = { ...offer.items };
   const actions = buttons(ResidentOrderCard({ economy, offer }));
-  for (const button of actions) { assert.equal(button.props.disabled, true); button.props.onClick(); }
+  for (const button of actions) assert.equal(button.props.disabled, false);
   const expired = { ...offer, id: "expired", availableAt: new Date(now).toISOString() };
   for (const button of buttons(ResidentOrderCard({ economy, offer: expired }))) button.props.onClick();
   economy.snapshot.residentOrders.slots[0].readyAt = new Date(now).toISOString();

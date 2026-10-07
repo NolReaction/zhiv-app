@@ -23,10 +23,13 @@
 .dialog button:focus-visible { outline: 2px solid var(--forest-focus, #355e48); outline-offset: 3px; }
 .dialog .close:focus-visible { outline-color: #f1d89b; }
 .dialog button:disabled { opacity: .5; cursor: default; }
-@media (max-width: 359px) { .dialog[data-slot="dialog-content"] { padding: 13px; }.header { gap: 7px; padding: 10px; }.emblem { flex-basis: 48px; width: 48px; height: 48px; }.name { font-size: 1.125rem; }.role { font-size: .75rem; } }
+@media (max-width: 430px) { .dialog[data-slot="dialog-content"] { padding: 13px; }.header { gap: 7px; padding: 10px; }.emblem { flex-basis: 48px; width: 48px; height: 48px; }.name { font-size: 1.125rem; }.role { font-size: .75rem; } }
 @media (prefers-reduced-motion: reduce) { .scrim[data-state] { animation: none; } }
 @media (forced-colors: active) { .dialog[data-slot="dialog-content"], .header, .close, .action, .badge { border-color: ButtonText; } }
 
 .foodActions { display: flex; gap: 8px; margin-top: 15px; }
 .foodActions button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; flex: 1; min-height: 44px; padding: 8px; border: 1px solid #a7ad7b; border-radius: 10px; background: #e2e3bf; color: inherit; font: inherit; font-size: .8125rem; cursor: pointer; }
 .foodActions button:hover { background: #d8deb5; }
+
+.timerRow { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 8px; }
+.timerRow .timer { flex: 1; min-width: 0; font-size: 12px; }

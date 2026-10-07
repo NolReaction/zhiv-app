@@ -9,6 +9,7 @@ import type { EconomyController } from "./use-economy";
 import { fishingIneligibility, fishingOdds, fishingState } from "./fishing";
 import { canRefreshFishingShop, fishingShopRefreshPrice } from "./fishing-shop";
 import { formatPearls } from "./money";
+import { residentOrderBoard } from "./food";
 import { fishDiscovered, PlayerItemIcon } from "./fish-discovery";
 import { FishRarityBadge, FISH_RARITY_LEVELS } from "./fish-rarity";
 import { PantrySale } from "./world-pantry-menu";
@@ -136,20 +137,22 @@ export function PleskBaitOffer({ economy, state, bait }: ReadyProps & { bait: Fi
   </article>;
 }
 
-export function PleskFishOffer({ economy, state, fish }: ReadyProps & { fish: FishingCatalog["fish"][number] }) {
+export function PleskFishOffer({ economy, state, fish, onOpenOrders }: ReadyProps & { fish: FishingCatalog["fish"][number]; onOpenOrders?: () => void }) {
   const { blocked, send } = useFishingCommand({ economy, state }), [quantityText, setQuantityText] = useState("1"), id = useId();
   const offer = offerFor(state, fish.itemId), live = offerLive(state, economy.now, offer), price = offer?.unitPrice ?? fish.buyPrice;
   const maximum = live ? Math.max(0, Math.min(offer!.remaining, state.catalog.maxBatch, state.storage.available, Math.floor(state.wallet.coins / price))) : 0;
   const quantity = Number(quantityText), valid = /^\d+$/.test(quantityText) && Number.isSafeInteger(quantity) && quantity >= 1 && quantity <= maximum;
   const name = itemName(state, fish.itemId);
+  const order = residentOrderBoard(state, economy.now, state.catalog).offers.find(entry => entry.residentId === "plesk" && (entry.items[fish.itemId] ?? 0) > 0);
   return <article className={styles.gearCard} data-gear-rarity={fish.rarity}>
     <div className={styles.gearHeading}><ItemIcon itemId={fish.itemId} size={48} /><div><h3>{name}</h3><FishRarityBadge rarity={fish.rarity} /><p>В запасе {number(state.inventory[fish.itemId] ?? 0)}</p></div></div>
-    <p className={styles.description}>{fish.itemId === "fish" ? "Для кухни и запаса." : "Из сегодняшнего привоза."} В книгу попадёт только ваш собственный улов.</p>
+    <p className={styles.description}>Для готовки и заказов. В книгу попадёт только ваш собственный улов.</p>
     <div className={styles.discountPrice}>{price < fish.buyPrice && <del aria-label={`Обычная цена: ${number(fish.buyPrice)} монет`}><Price value={fish.buyPrice} /></del>}<Price value={price} /><span>за штуку</span></div>
     {live ? <><div className={styles.quantity}><label htmlFor={id}>Купить штук</label><input id={id} type="number" inputMode="numeric" min={1} max={Math.max(1, maximum)} step={1} value={quantityText} disabled={blocked} onChange={event => setQuantityText(event.target.value)} /><small>На прилавке {offer!.remaining}</small></div>
       <button type="button" className={styles.primary} disabled={blocked || !valid} onClick={() => send("buy_fishing_item", offer!.id, quantity, quantity * price, valid)} aria-label={`Купить рыбу: ${name}`}><span>Купить рыбу</span>{Number.isSafeInteger(quantity) && quantity > 0 ? <Price value={quantity * price} /> : <span>—</span>}</button></>
       : <p className={styles.hint}>Сегодня на прилавке закончилась.</p>}
     {live && maximum === 0 && <p className={styles.hint}>{state.storage.available === 0 ? "Кладовая заполнена." : "Для покупки не хватает монет."}</p>}
+    {order && <div className={styles.fishOrder}><p>Плёске нужно ×{number(order.items[fish.itemId])}: «{order.name}»</p>{onOpenOrders && <button type="button" className={styles.secondary} onClick={onOpenOrders}>К заказам<ArrowRight size={14} aria-hidden="true" /></button>}</div>}
   </article>;
 }
 
@@ -207,13 +210,13 @@ export function PleskMerchantHeader({ economy, state }: ReadyProps) {
   </section>;
 }
 
-function GearDetail({ economy, state, catalog, itemId }: ReadyProps & { catalog: FishingCatalog; itemId: string }) {
+function GearDetail({ economy, state, catalog, itemId, onOpenOrders }: ReadyProps & { catalog: FishingCatalog; itemId: string; onOpenOrders?: () => void }) {
   const rod = catalog.rods.find(entry => entry.id === itemId), hook = catalog.hooks.find(entry => entry.id === itemId), bait = catalog.baits.find(entry => entry.itemId === itemId), fish = catalog.fish.find(entry => entry.itemId === itemId);
-  return rod ? <PleskRodOffer economy={economy} state={state} rod={rod} /> : hook ? <PleskHookOffer economy={economy} state={state} hook={hook} /> : bait ? <PleskBaitOffer economy={economy} state={state} bait={bait} /> : fish ? <PleskFishOffer economy={economy} state={state} fish={fish} /> : null;
+  return rod ? <PleskRodOffer economy={economy} state={state} rod={rod} /> : hook ? <PleskHookOffer economy={economy} state={state} hook={hook} /> : bait ? <PleskBaitOffer economy={economy} state={state} bait={bait} /> : fish ? <PleskFishOffer economy={economy} state={state} fish={fish} onOpenOrders={onOpenOrders} /> : null;
 }
 
 const merchantSlots = [{ kind: "rod", name: "Удочки", icon: FishingRod }, { kind: "hook", name: "Крючки", icon: Anchor }, { kind: "bait", name: "Наживки", icon: Bug }, { kind: "fish", name: "Рыба дня", icon: Fish }] as const;
-export function PleskTackleCounter({ economy, state, catalog }: ReadyProps & { catalog: FishingCatalog }) {
+export function PleskTackleCounter({ economy, state, catalog, onOpenOrders }: ReadyProps & { catalog: FishingCatalog; onOpenOrders?: () => void }) {
   const offers = state.fishingShop?.offers ?? [];
   const previousStock = offers.filter(offer => offers.find(entry => entry.kind === offer.kind)?.id !== offer.id);
   const [selectedId, setSelectedId] = useState(() => offers[0]?.id);
@@ -251,13 +254,13 @@ export function PleskTackleCounter({ economy, state, catalog }: ReadyProps & { c
       <span>{catalog.rods.find(rod => rod.id === offer.itemId)?.name ?? catalog.hooks.find(hook => hook.id === offer.itemId)?.name ?? itemName(state, offer.itemId)}</span>
       {offer.remaining > 0 ? <Price value={offer.unitPrice} /> : <span>Раскуплено</span>}
     </button>)}</div></details>}
-    {selected && <GearDetail key={selected.id} economy={economy} state={state} catalog={catalog} itemId={selected.itemId} />}
+    {selected && <GearDetail key={selected.id} economy={economy} state={state} catalog={catalog} itemId={selected.itemId} onOpenOrders={onOpenOrders} />}
 
   </>;
 }
 
-export type PleskFishingShopProps = { economy: EconomyController; onFishing: () => void; onOpenPantry: () => void };
-export function PleskFishingShop({ economy, onFishing, onOpenPantry }: PleskFishingShopProps) {
+export type PleskFishingShopProps = { economy: EconomyController; onFishing: () => void; onOpenPantry: () => void; onOpenOrders?: () => void };
+export function PleskFishingShop({ economy, onFishing, onOpenPantry, onOpenOrders }: PleskFishingShopProps) {
   const [tab, setTab] = useState<ShopTab>("tackle"), id = useId(), tabButtons = useRef<Array<HTMLButtonElement | null>>([]);
   const state = economy.snapshot, catalog = state?.catalog.fishing, cooldown = Math.max(0, Math.ceil((economy.retryAt - economy.now) / 1000));
   const recovery = (economy.error || economy.uncertain) && <div className={styles.recovery} role="alert"><p>{economy.uncertain ? "Проверяем последнее действие. Дождитесь подтверждения, прежде чем торговать снова." : economy.error}</p><button type="button" disabled={economy.busy || cooldown > 0} onClick={() => { if (!economy.busy && !cooldown) void economy.retry(); }}><RefreshCw size={14} aria-hidden="true" />{cooldown ? `Повторить через ${cooldown} с` : economy.uncertain ? "Проверить результат" : "Попробовать ещё раз"}</button></div>;
@@ -275,7 +278,7 @@ export function PleskFishingShop({ economy, onFishing, onOpenPantry }: PleskFish
         event.preventDefault(); setTab(tabs[next].id); tabButtons.current[next]?.focus();
       }}><entry.icon size={17} aria-hidden="true" />{entry.name}</button>)}</div>
       <div key={state.ownerPublicId} className={styles.panel} role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-${tab}`} tabIndex={0}>
-        {tab === "fish" ? <FishCounter economy={economy} state={state} catalog={catalog} /> : tab === "tackle" ? <PleskTackleCounter economy={economy} state={state} catalog={catalog} /> : <PleskFishingCollection state={state} catalog={catalog} />}
+        {tab === "fish" ? <FishCounter economy={economy} state={state} catalog={catalog} /> : tab === "tackle" ? <PleskTackleCounter economy={economy} state={state} catalog={catalog} onOpenOrders={onOpenOrders} /> : <PleskFishingCollection state={state} catalog={catalog} />}
       </div>
     </>}
     <div className={styles.departure}><button type="button" className={styles.fishingButton} onClick={onFishing}><FishingRod size={22} aria-hidden="true" /><span><strong>На рыбалку</strong><small>Выбрать маршрут и снасти</small></span><ArrowRight size={18} aria-hidden="true" /></button><button type="button" className={styles.pantryLink} onClick={onOpenPantry}><Package size={15} aria-hidden="true" />Другие запасы<ArrowRight size={13} aria-hidden="true" /></button></div>

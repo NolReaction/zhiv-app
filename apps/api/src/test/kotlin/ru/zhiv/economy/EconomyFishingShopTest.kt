@@ -33,7 +33,7 @@ class EconomyFishingShopTest {
                     ?: spec.hooks.find { it.id == offer.itemId }?.requiredHomeLevel
                     ?: spec.baits.find { it.itemId == offer.itemId }?.requiredHomeLevel ?: 1
                 assertTrue(level <= home)
-                assertEquals(when (offer.kind) { "bait" -> 5L; "fish" -> 3L; else -> 1L }, offer.remaining)
+                assertEquals(when (offer.kind) { "bait" -> 5L; "fish" -> 6L; else -> 1L }, offer.remaining)
             }
         }
         val owned = state.copy(fishing = state.fishing.copy(ownedRods = spec.rods.map { it.id }, ownedHooks = spec.hooks.map { it.id }))
@@ -90,22 +90,22 @@ class EconomyFishingShopTest {
     @Test fun `discounted fish stays bounded pays server quote and never unlocks catch collection`() {
         val state = ready()
         val offer = checkNotNull(state.fishingShop).offers.single { it.kind == "fish" }
-        assertEquals(128L, offer.unitPrice)
+        assertEquals(96L, offer.unitPrice)
         val bought = EconomyRules.apply(state, command("buy_fishing_item", offer.id, 2, 300), now).first
-        assertEquals(state.wallet.coins - 256, bought.wallet.coins)
+        assertEquals(state.wallet.coins - 192, bought.wallet.coins)
         assertEquals((state.inventory[offer.itemId] ?: 0) + 2, bought.inventory[offer.itemId])
         assertEquals(state.fishing, bought.fishing)
         assertEquals(state.progression, bought.progression)
-        assertEquals(1L, checkNotNull(bought.fishingShop).offers.single { it.id == offer.id }.remaining)
+        assertEquals(4L, checkNotNull(bought.fishingShop).offers.single { it.id == offer.id }.remaining)
         assertEquals("ECONOMY_FISHING_PRICE_CHANGED", assertFailsWith<AuthFailure> {
-            EconomyRules.apply(state, command("buy_fishing_item", offer.id, price = 127), now)
+            EconomyRules.apply(state, command("buy_fishing_item", offer.id, price = 95), now)
         }.code)
         assertEquals("ECONOMY_FISHING_STOCK", assertFailsWith<AuthFailure> {
-            EconomyRules.apply(state, command("buy_fishing_item", offer.id, 4, 512), now)
+            EconomyRules.apply(state, command("buy_fishing_item", offer.id, 7, 672), now)
         }.code)
         assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> {
             EconomyRules.apply(state.copy(inventory = mapOf("wood" to 190L)),
-                command("buy_fishing_item", offer.id, price = 128), now, mapOf("stone" to 10L))
+                command("buy_fishing_item", offer.id, price = 96), now, mapOf("stone" to 10L))
         }.code)
         val forged = state.copy(fishingShop = checkNotNull(state.fishingShop).copy(offers = listOf(
             offer.copy(itemId = "fish_shark"))))

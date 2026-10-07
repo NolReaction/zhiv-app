@@ -1,0 +1,390 @@
+{
+  "now": "2026-10-07T12:00:00.000Z",
+  "config": {
+    "slots": 3,
+    "refreshSeconds": 43200,
+    "replacementSeconds": 0,
+    "completionSeconds": 0,
+    "freeReplacements": 3,
+    "replacementWindowSeconds": 43200,
+    "replacementPricePearls": 10,
+    "recentLimit": 6,
+    "templates": [
+      {
+        "id": "plesk_0",
+        "residentId": "plesk",
+        "name": "plesk 0",
+        "requiredHomeLevel": 1,
+        "requiredBuildings": {},
+        "items": {
+          "fish": 1
+        },
+        "coins": 100
+      },
+      {
+        "id": "plesk_1",
+        "residentId": "plesk",
+        "name": "plesk 1",
+        "requiredHomeLevel": 1,
+        "requiredBuildings": {},
+        "items": {
+          "fish": 2
+        },
+        "coins": 200
+      },
+      {
+        "id": "plesk_2",
+        "residentId": "plesk",
+        "name": "plesk 2",
+        "requiredHomeLevel": 1,
+        "requiredBuildings": {},
+        "items": {
+          "fish": 3
+        },
+        "coins": 300
+      },
+      {
+        "id": "plesk_3",
+        "residentId": "plesk",
+        "name": "plesk 3",
+        "requiredHomeLevel": 1,
+        "requiredBuildings": {},
+        "items": {
+          "wood": 1,
+          "fish": 4
+        },
+        "coins": 400
+      },
+      {
+        "id": "plesk_4",
+        "residentId": "plesk",
+        "name": "plesk 4",
+        "requiredHomeLevel": 1,
+        "requiredBuildings": {},
+        "items": {
+          "fish": 5
+        },
+        "coins": 500
+      },
+      {
+        "id": "plesk_5",
+        "residentId": "plesk",
+        "name": "plesk 5",
+        "requiredHomeLevel": 1,
+        "requiredBuildings": {},
+        "items": {
+          "fish": 6
+        },
+        "coins": 600
+      },
+      {
+        "id": "plesk_6",
+        "residentId": "plesk",
+        "name": "plesk 6",
+        "requiredHomeLevel": 1,
+        "requiredBuildings": {},
+        "items": {
+          "fish": 7
+        },
+        "coins": 700
+      },
+      {
+        "id": "plesk_7",
+        "residentId": "plesk",
+        "name": "plesk 7",
+        "requiredHomeLevel": 1,
+        "requiredBuildings": {},
+        "items": {
+          "fish": 8
+        },
+        "coins": 800
+      },
+      {
+        "id": "builder_0",
+        "residentId": "builder",
+        "name": "builder 0",
+        "requiredHomeLevel": 1,
+        "requiredBuildings": {},
+        "items": {
+          "wood": 1
+        },
+        "coins": 100
+      },
+      {
+        "id": "builder_1",
+        "residentId": "builder",
+        "name": "builder 1",
+        "requiredHomeLevel": 1,
+        "requiredBuildings": {},
+        "items": {
+          "wood": 2
+        },
+        "coins": 200
+      },
+      {
+        "id": "builder_2",
+        "residentId": "builder",
+        "name": "builder 2",
+        "requiredHomeLevel": 1,
+        "requiredBuildings": {},
+        "items": {
+          "wood": 3
+        },
+        "coins": 300
+      },
+      {
+        "id": "builder_3",
+        "residentId": "builder",
+        "name": "builder 3",
+        "requiredHomeLevel": 1,
+        "requiredBuildings": {},
+        "items": {
+          "wood": 4
+        },
+        "coins": 400
+      },
+      {
+        "id": "builder_4",
+        "residentId": "builder",
+        "name": "builder 4",
+        "requiredHomeLevel": 1,
+        "requiredBuildings": {},
+        "items": {
+          "wood": 5
+        },
+        "coins": 500
+      },
+      {
+        "id": "builder_5",
+        "residentId": "builder",
+        "name": "builder 5",
+        "requiredHomeLevel": 1,
+        "requiredBuildings": {},
+        "items": {
+          "wood": 6
+        },
+        "coins": 600
+      },
+      {
+        "id": "builder_6",
+        "residentId": "builder",
+        "name": "builder 6",
+        "requiredHomeLevel": 1,
+        "requiredBuildings": {},
+        "items": {
+          "wood": 7
+        },
+        "coins": 700
+      },
+      {
+        "id": "builder_7",
+        "residentId": "builder",
+        "name": "builder 7",
+        "requiredHomeLevel": 1,
+        "requiredBuildings": {},
+        "items": {
+          "wood": 8
+        },
+        "coins": 800
+      }
+    ]
+  },
+  "stages": [
+    {
+      "label": "initial",
+      "ids": [
+        "order2_41467_0_0_1327887599",
+        "order2_41467_1_0_3302792249",
+        "order2_41467_2_0_1151633770"
+      ],
+      "templates": [
+        "plesk_3",
+        "builder_4",
+        "builder_3"
+      ],
+      "history": [],
+      "quota": 3
+    },
+    {
+      "label": "advance-0",
+      "ids": [
+        "order2_41467_0_1_2925810560",
+        "order2_41467_1_0_3302792249",
+        "order2_41467_2_0_1151633770"
+      ],
+      "templates": [
+        "plesk_6",
+        "builder_4",
+        "builder_3"
+      ],
+      "history": [
+        "plesk_3"
+      ],
+      "quota": 3
+    },
+    {
+      "label": "advance-1",
+      "ids": [
+        "order2_41467_0_1_2925810560",
+        "order2_41467_1_1_1819464620",
+        "order2_41467_2_0_1151633770"
+      ],
+      "templates": [
+        "plesk_6",
+        "builder_1",
+        "builder_3"
+      ],
+      "history": [
+        "plesk_3",
+        "builder_4"
+      ],
+      "quota": 3
+    },
+    {
+      "label": "advance-2",
+      "ids": [
+        "order2_41467_0_1_2925810560",
+        "order2_41467_1_1_1819464620",
+        "order2_41467_2_1_2463192616"
+      ],
+      "templates": [
+        "plesk_6",
+        "builder_1",
+        "builder_5"
+      ],
+      "history": [
+        "plesk_3",
+        "builder_4",
+        "builder_3"
+      ],
+      "quota": 3
+    },
+    {
+      "label": "advance-0",
+      "ids": [
+        "order2_41467_0_2_2032336429",
+        "order2_41467_1_1_1819464620",
+        "order2_41467_2_1_2463192616"
+      ],
+      "templates": [
+        "plesk_7",
+        "builder_1",
+        "builder_5"
+      ],
+      "history": [
+        "plesk_3",
+        "builder_4",
+        "builder_3",
+        "plesk_6"
+      ],
+      "quota": 3
+    },
+    {
+      "label": "advance-0",
+      "ids": [
+        "order2_41467_0_3_3731082010",
+        "order2_41467_1_1_1819464620",
+        "order2_41467_2_1_2463192616"
+      ],
+      "templates": [
+        "plesk_4",
+        "builder_1",
+        "builder_5"
+      ],
+      "history": [
+        "plesk_3",
+        "builder_4",
+        "builder_3",
+        "plesk_6",
+        "plesk_7"
+      ],
+      "quota": 3
+    },
+    {
+      "label": "advance-0",
+      "ids": [
+        "order2_41467_0_4_3161287231",
+        "order2_41467_1_1_1819464620",
+        "order2_41467_2_1_2463192616"
+      ],
+      "templates": [
+        "plesk_5",
+        "builder_1",
+        "builder_5"
+      ],
+      "history": [
+        "plesk_3",
+        "builder_4",
+        "builder_3",
+        "plesk_6",
+        "plesk_7",
+        "plesk_4"
+      ],
+      "quota": 3
+    },
+    {
+      "label": "advance-1",
+      "ids": [
+        "order2_41467_0_4_3161287231",
+        "order2_41467_1_2_2252585183",
+        "order2_41467_2_1_2463192616"
+      ],
+      "templates": [
+        "plesk_5",
+        "builder_6",
+        "builder_5"
+      ],
+      "history": [
+        "builder_4",
+        "builder_3",
+        "plesk_6",
+        "plesk_7",
+        "plesk_4",
+        "builder_1"
+      ],
+      "quota": 3
+    },
+    {
+      "label": "advance-2",
+      "ids": [
+        "order2_41467_0_4_3161287231",
+        "order2_41467_1_2_2252585183",
+        "order2_41467_2_2_4142777222"
+      ],
+      "templates": [
+        "plesk_5",
+        "builder_6",
+        "builder_7"
+      ],
+      "history": [
+        "builder_3",
+        "plesk_6",
+        "plesk_7",
+        "plesk_4",
+        "builder_1",
+        "builder_5"
+      ],
+      "quota": 3
+    }
+  ],
+  "refresh": {
+    "ids": [
+      "order2_41468_0_0_2255331636",
+      "order2_41468_1_0_2168365659",
+      "order2_41468_2_0_1224507003"
+    ],
+    "templates": [
+      "plesk_2",
+      "builder_2",
+      "plesk_1"
+    ],
+    "history": [
+      "plesk_4",
+      "builder_1",
+      "builder_5",
+      "plesk_5",
+      "builder_6",
+      "builder_7"
+    ]
+  }
+}

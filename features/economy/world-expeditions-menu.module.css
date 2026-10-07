@@ -146,3 +146,6 @@
 .contextHelp svg { flex-shrink: 0; }
 .contextHelp:hover { background: #edf3e5; }
 .contextHelp:focus-visible { outline: 2px solid #55774c; outline-offset: 2px; }
+
+.preparationTime { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 5px; flex: 0 0 auto; max-width: 48%; }
+.preparationTime .routeDuration { padding-top: 0; }

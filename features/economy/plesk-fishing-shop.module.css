@@ -118,3 +118,7 @@
 .rarityOdds > div { display: grid; gap: 2px; }
 .rarityOdds dt { font-size: .625rem; }
 .rarityOdds dd { margin: 0; font-size: .75rem; font-variant-numeric: tabular-nums; }
+
+.fishOrder { display: flex; align-items: center; gap: 8px; padding-top: 9px; border-top: 1px solid #bfc3a066; }
+.fishOrder p { flex: 1; margin: 0; font-size: 12px; line-height: 1.4; }
+.fishOrder button { flex-shrink: 0; }

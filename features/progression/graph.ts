@@ -297,10 +297,11 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
   for (const [id, label, icon, description, kind] of worldDefinitions) fixed(id, label, icon, 6, description, kind);
   if (catalog.food) {
     const orders = catalog.food.orders;
-    fixed("orders", "Заказы жителей", "📜", 6,
-      `${orders.slots} места с просьбами Плёски и Шишколапа. Доска обновляется каждые ${orders.refreshSeconds / 3600} часов; бесплатная замена ждёт ${orders.replacementSeconds / 60} минут, следующий заказ после выполнения — ${orders.completionSeconds / 60} минут. Доступность учитывает дом и производства. Заказы списывают указанные товары и платят только монеты; они не включают сытость. Редкий заказ можно заменить.`);
+    const heroSpeeds = catalog.food.meals.map(meal => meal.heroSpeedBps / 100), builderSpeeds = catalog.food.meals.map(meal => meal.builderSpeedBps / 100);
+    fixed("orders", "Доска заказов", "📜", 6,
+      `${orders.slots} просьбы с именами заказчиков: Плёске нужен улов, Шишколапу — материалы. После сдачи новый заказ появляется сразу. Текущие заказы различаются, недавно снятые откладываются. Каждые ${orders.replacementWindowSeconds / 3600} часов доступны ${orders.freeReplacements} бесплатные замены; следующие — по ${formatPearls(orders.replacementPricePearls)} жемчужин с подтверждением. Доска обновляется через ${orders.refreshSeconds / 3600} часов. Награда — монеты с надбавкой; сытость отдельно.`);
     fixed("meals", "Еда и сытость", "🍲", 6,
-      "Готовую порцию можно отдельно съесть или отдать строителю. Мохлик получает +10–25% скорости следующей вылазки, Шишколап — +10% скорости одной стройки. В идущей стройке ускоряется только остаток. Эффекты не складываются, не убывают офлайн и не меняют шанс редкой рыбы. Кормление и оплаченные заказы — разные действия.");
+      `Порцию можно съесть рядом с таймером вылазки или отдать строителю. Сила зависит от блюда: Мохлик +${Math.min(...heroSpeeds)}–${Math.max(...heroSpeeds)}%, строитель +${Math.min(...builderSpeeds)}–${Math.max(...builderSpeeds)}% скорости. Есть блюда из обычной, необычной, редкой, эпической и легендарной рыбы. В идущей стройке ускоряется только остаток. Эффекты не складываются, не убывают офлайн и не меняют шанс рыбы. Заказ жителя не кормит персонажа.`);
     edge("start", "orders", "available"); edge("campfire", "meals", "flow");
     edge("orders", "coins", "flow");
     for (const recipe of catalog.recipes.filter(recipe => catalog.food!.meals.some(meal => recipe.rewards[meal.itemId]))) {

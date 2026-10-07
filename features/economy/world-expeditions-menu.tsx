@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Check, ChevronDown, CircleHelp, Clock3, Compass, Fish, Hammer, LockKeyhole, Mountain, Package, RefreshCw, Trees, type LucideIcon } from "lucide-react";
 import type { WorldHelpContext } from "@/features/world/world-help-types";
+import { WorldMealBoost } from "./world-meal-boost";
 import { mealDuration, pendingMeal } from "./food";
 import { ItemIcon } from "@/features/items/item-icon";
 import { FishingRodIcon } from "@/features/world/fishing-rod-icon";
@@ -20,7 +21,9 @@ import styles from "./world-expeditions-menu.module.css";
 export type WorldExpeditionsMenuProps = {
   economy: EconomyController;
   onOpenPantry: () => void;
-  onNavigateStation?: (stationId: string) => void;
+  onNavigateStation?: (stationId: string, recipeId?: string) => void;
+  isOnline?: boolean;
+  onOpenMeals?: () => void;
   onOpenFishingShop?: () => void;
   initialSector?: SectorId;
   onUpgradeQuarry?: () => void;
@@ -186,7 +189,7 @@ export function ExpeditionRouteDetails({ route, state, economy, exploring, onOpe
   </div>;
 }
 
-export function WorldExpeditionSector({ sectorId, selectedRoute, onSelectRoute, economy, state, exploring, onOpenPantry, onNavigateStation, onOpenFishingShop, onUpgradeQuarry, onOpenHelp }: WorldExpeditionsMenuProps & { sectorId: SectorId; selectedRoute: string | null; onSelectRoute: (id: string | null) => void; state: EconomyView; exploring: boolean }) {
+export function WorldExpeditionSector({ sectorId, selectedRoute, onSelectRoute, economy, state, exploring, onOpenPantry, onNavigateStation, onOpenFishingShop, onUpgradeQuarry, onOpenHelp, onOpenMeals, isOnline }: WorldExpeditionsMenuProps & { sectorId: SectorId; selectedRoute: string | null; onSelectRoute: (id: string | null) => void; state: EconomyView; exploring: boolean }) {
   const descriptionPrefix = useId();
   const routes = sectorRoutes(state, sectorId);
   const readyRoutes = routes.filter(route => canPrepare(state, route));
@@ -195,7 +198,7 @@ export function WorldExpeditionSector({ sectorId, selectedRoute, onSelectRoute, 
   const selected = routes.find(route => route.id === selectedRoute);
   if (selected) return <section className={styles.preparation} aria-label={`Подготовка: ${routeName(selected.name)}`} data-sector={sectorId} data-route={selected.id} data-route-preparation="true">
     <button type="button" className={styles.back} onClick={() => onSelectRoute(null)}><ArrowLeft size={15} aria-hidden="true" />Все маршруты<span>{sector.name}</span></button>
-    <header className={styles.preparationHeading}><h3 tabIndex={-1} data-route-heading>{routeName(selected.name)}</h3><span className={styles.routeDuration}><Clock3 size={13} aria-hidden="true" />{worldDuration(mealDuration(selected.seconds, pendingMeal(state, "hero")?.heroSpeedBps ?? 0))}</span></header>
+    <header className={styles.preparationHeading}><h3 tabIndex={-1} data-route-heading>{routeName(selected.name)}</h3><div className={styles.preparationTime}><span className={styles.routeDuration}><Clock3 size={13} aria-hidden="true" />{worldDuration(mealDuration(selected.seconds, pendingMeal(state, "hero")?.heroSpeedBps ?? 0))}</span><WorldMealBoost key={selected.id} economy={economy} consumer="hero" seconds={selected.seconds} isOnline={isOnline} onNavigateStation={onNavigateStation} onOpenMeals={onOpenMeals} /></div></header>
     <ExpeditionRouteDetails key={selected.id} route={selected} state={state} economy={economy} exploring={exploring} onOpenPantry={onOpenPantry} onNavigateStation={onNavigateStation} onOpenFishingShop={onOpenFishingShop} onUpgradeQuarry={onUpgradeQuarry} onOpenHelp={onOpenHelp} />
   </section>;
   return <section className={styles.routes} aria-label={`Маршруты: ${sector.name}`} data-sector={sectorId}>
@@ -218,7 +221,7 @@ export function WorldExpeditionSector({ sectorId, selectedRoute, onSelectRoute, 
   </section>;
 }
 
-export function WorldExpeditionsMenu({ economy, onOpenPantry, onNavigateStation, onOpenFishingShop, onUpgradeQuarry, onOpenHelp, initialSector = "forest", embeddedCaves = false, activeOnly = false, onCancellationComplete }: WorldExpeditionsMenuProps) {
+export function WorldExpeditionsMenu({ economy, onOpenPantry, onNavigateStation, onOpenFishingShop, onUpgradeQuarry, onOpenHelp, onOpenMeals, isOnline, initialSector = "forest", embeddedCaves = false, activeOnly = false, onCancellationComplete }: WorldExpeditionsMenuProps) {
   const [selectedSector, setSelectedSector] = useState<SectorId>(initialSector);
   const [selectedRoute, setSelectedRoute] = useState<string | null>(null);
   const [confirmationKey, setConfirmationKey] = useState<string | null>(null);
@@ -282,7 +285,7 @@ export function WorldExpeditionsMenu({ economy, onOpenPantry, onNavigateStation,
         </div>
         {mineJobs.length > 0 && <div className={styles.mineWork}>{mineJobs.map(job => <Work key={job.id} economy={{ ...economy, snapshot: state }} job={job} openPantry={onOpenPantry} />)}</div>}
       </section>}
-      {!activeOnly && <WorldExpeditionSector sectorId={currentSector} selectedRoute={visibleRoute} onSelectRoute={setSelectedRoute} state={state} economy={economy} exploring={jobs.length > 0} onOpenPantry={onOpenPantry} onNavigateStation={onNavigateStation} onOpenFishingShop={onOpenFishingShop} onUpgradeQuarry={onUpgradeQuarry} onOpenHelp={onOpenHelp} />}
+      {!activeOnly && <WorldExpeditionSector isOnline={isOnline} onOpenMeals={onOpenMeals} sectorId={currentSector} selectedRoute={visibleRoute} onSelectRoute={setSelectedRoute} state={state} economy={economy} exploring={jobs.length > 0} onOpenPantry={onOpenPantry} onNavigateStation={onNavigateStation} onOpenFishingShop={onOpenFishingShop} onUpgradeQuarry={onUpgradeQuarry} onOpenHelp={onOpenHelp} />}
     </>}
   </div>;
 }

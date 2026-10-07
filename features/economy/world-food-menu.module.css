@@ -13,33 +13,18 @@
 .consumers button { border-color: #bfc3a0; font-size: 11px; }
 .consumers button[aria-pressed="true"] { border-color: #7a915c; background: #dce4be; }
 .summary { padding: 8px 9px; border-radius: 9px; background: #e2e7c7; font-size: 11px; }
-.meals, .orders { display: grid; gap: 7px; min-width: 0; }
+.meals { display: grid; gap: 7px; min-width: 0; }
 .meal { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; gap: 7px; padding: 9px 7px; border: 1px solid #c8bd98; border-radius: 11px; background: #f0e6ca; }
 .mealIcon { display: flex; justify-content: center; }
 .mealDescription { min-width: 0; }
-.meal h3, .order h3 { font-size: 12px; font-weight: 650; overflow-wrap: anywhere; }
+.meal h3 { font-size: 12px; font-weight: 650; overflow-wrap: anywhere; }
 .mealDescription p { color: #4b6841; font-size: 10px; }
 .mealDescription small { color: #626a50; font-size: 10px; }
 .food .primary { border-color: #506e44; background: #466347; color: #fff3d6; font-size: 11px; font-weight: 650; }
 .food .primary:hover:not(:disabled) { background: #36553b; }
 .food .secondary { border-color: #b0b789; background: #e9e6c9; font-size: 11px; }
-.order { display: grid; gap: 7px; min-width: 0; padding: 10px; border: 1px solid #c8bd98; border-radius: 11px; background: #f0e6ca; }
-.orderHeading { display: flex; align-items: center; justify-content: space-between; gap: 7px; min-width: 0; }
-.orderHeading > div { min-width: 0; }
-.orderHeading > div > span { color: #64724c; font-size: 10px; }
-.payout { display: inline-flex; align-items: center; gap: 3px; color: #785926; font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.ingredients { display: grid; gap: 3px; padding: 0; margin: 0; list-style: none; }
-.ingredients li > div, .ingredients li > button { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 32px; padding: 3px 0; text-align: left; font-size: 11px; }
-.ingredients li > button { min-height: 44px; }
-.ingredients li span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.ingredients li strong { font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.ingredients li[data-missing="true"] { color: #a34435; }
-.ingredients li > button:hover { text-decoration: underline; }
-.orderActions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; }
 .muted { display: flex; align-items: center; gap: 4px; color: #626a50; font-size: 10px; }
 .warning { color: #925633; font-size: 11px; }
-.boardSummary { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 5px; font-size: 11px; }
-.boardSummary small { color: #626a50; font-size: 10px; }
 .error { display: grid; gap: 4px; padding: 9px; border: 1px solid #caa17c; border-radius: 9px; color: #834731; background: #edd3b7; font-size: 11px; }
 .error button { justify-self: start; padding-left: 0; }
-@media (max-width: 360px) { .meal { grid-template-columns: 27px minmax(0, 1fr) auto; gap: 5px; padding-inline: 6px; } .mealIcon svg { width: 26px; } .meal h3 { font-size: 11px; } .meal button { padding-inline: 7px; } .order { padding: 8px; } }
+@media (max-width: 360px) { .meal { grid-template-columns: 27px minmax(0, 1fr) auto; gap: 5px; padding-inline: 6px; } .mealIcon svg { width: 26px; } .meal h3 { font-size: 11px; } .meal button { padding-inline: 7px; } }

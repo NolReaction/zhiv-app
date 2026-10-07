@@ -47,7 +47,7 @@ test('stock is private to each player, gated by home, weighted by rarity and exc
         const item = (offer.kind === 'rod' ? spec.rods : offer.kind === 'hook' ? spec.hooks : offer.kind === 'fish' ? spec.fish : spec.baits)
           .find(item => (item.id ?? item.itemId) === offer.itemId);
         assert.ok((item.requiredHomeLevel ?? 1) <= home);
-        assert.equal(offer.remaining, offer.kind === 'bait' ? 5 : offer.kind === 'fish' ? 3 : 1);
+        assert.equal(offer.remaining, offer.kind === 'bait' ? 5 : offer.kind === 'fish' ? 6 : 1);
       }
     }
   }
@@ -232,14 +232,16 @@ test('discount fish purchase has bounded stock, no collection unlock, no NPC arb
   const p = player(), before = fund(p), offer = before.fishingShop.offers.find(item => item.kind === 'fish');
   const fish = economyCatalog.fishing.fish.find(item => item.itemId === offer.itemId);
   assert.equal(fish.rarity, 'common');
-  assert.equal(offer.unitPrice, Math.ceil(fish.buyPrice * 0.8));
+  assert.equal(offer.unitPrice, Math.ceil(fish.buyPrice * 0.6));
+  assert.equal(offer.remaining, 6);
   for (const entry of economyCatalog.fishing.fish.filter(item => item.rarity === 'common')) {
     const item = economyCatalog.items.find(item => item.id === entry.itemId);
-    assert.ok(Math.ceil(entry.buyPrice * 0.8) > item.baseSellPrice);
+    assert.ok(Math.ceil(entry.buyPrice * 0.6) > item.baseSellPrice);
   }
-  const request = buy(p, before, offer, 3);
+  const request = buy(p, before, offer, 6);
   const next = economy.commandDevEconomy(p.token, request, now).state;
-  assert.equal(next.inventory[offer.itemId], (before.inventory[offer.itemId] ?? 0) + 3);
+  assert.equal(next.inventory[offer.itemId], (before.inventory[offer.itemId] ?? 0) + 6);
+  assert.equal(next.wallet.coins, before.wallet.coins - 6 * offer.unitPrice);
   assert.deepEqual(next.fishing.catches, before.fishing.catches);
   assert.deepEqual(next.progression, before.progression);
   assert.equal(next.fishingShop.offers.find(item => item.id === offer.id).remaining, 0);

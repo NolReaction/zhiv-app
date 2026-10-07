@@ -48,6 +48,8 @@ test("search understands normal Russian questions, endings, ё and one-letter mi
     ["  пЛЁсКа  ", "plesk"],
     ["плеска", "plesk"],
     ["как приготовить уху", "campfire"],
+    ["приготовить акулу", "campfire"],
+    ["рыба дня скидка", "fish-day"],
     ["не хватает дерева", "resources"],
     ["не хватает досок", "production"],
     ["где взять камень", "resources"],
@@ -130,16 +132,35 @@ test("food, building speed and orders are distinct and use current catalog numbe
   assert.match(answer("food"), /не заменяет обязательные припасы/);
   assert.match(answer("food"), /Голодать.*не нужно/);
   assert.match(answer("food"), /офлайн/);
-  assert.ok(topic("builder-food").summary.includes(`+${food.meals[0].builderSpeedBps / 100}%`));
+  for (const meal of food.meals) {
+    const name = economyCatalog.items.find(item => item.id === meal.itemId).name;
+    assert.ok(answer("builder-food").includes(`${name} +${meal.builderSpeedBps / 100}%`));
+  }
   assert.match(answer("builder-food"), /оставшуюся часть/);
   assert.match(answer("builder-food"), /только один раз/);
   assert.match(answer("resident-orders"), /только монеты, не сытость/);
   assert.match(answer("resident-orders"), /не резервируются/);
   assert.ok(answer("resident-orders").includes(`${food.orders.slots} заказа`));
   assert.ok(answer("resident-orders").includes(`${food.orders.refreshSeconds / 3600} ч`));
-  assert.ok(answer("resident-orders").includes(`${food.orders.replacementSeconds / 60} мин`));
-  assert.ok(answer("resident-orders").includes(`${food.orders.completionSeconds / 60} мин`));
+  assert.ok(answer("resident-orders").includes(`${food.orders.freeReplacements} замены`));
+  assert.ok(answer("resident-orders").includes(`${food.orders.replacementWindowSeconds / 3600} ч`));
+  assert.ok(answer("resident-orders").includes(`${formatPearls(food.orders.replacementPricePearls)} жемчужин`));
+  assert.match(answer("resident-orders"), /без ожидания/);
+  assert.match(answer("resident-orders"), /с подтверждением/);
+  assert.match(answer("resident-orders"), /Одновременных повторов нет/);
+  assert.doesNotMatch(answer("resident-orders"), /через 30|ждёт 60/);
   assert.match(answer("campfire"), /редкий улов автоматически не подставляется/);
+  assert.match(answer("campfire"), /редкую или эпическую/);
+});
+
+test("fish-of-the-day guidance explains the actual discount and separates delivery profit from resale", () => {
+  const shop = economyCatalog.fishing.shop;
+  assert.ok(answer("fish-day").includes(`${shop.fishStock} рыб`));
+  assert.ok(answer("fish-day").includes(`${100 - shop.fishPriceBps / 100}%`));
+  assert.ok(answer("fish-day").includes(`${shop.refreshSeconds / 3600} ч`));
+  assert.match(answer("fish-day"), /перепродажа Плёске убыточна/);
+  assert.match(answer("fish-day"), /заказ может принести прибыль/);
+  assert.match(answer("fish-day"), /Покупка не открывает вид/);
 });
 
 test("fishing help quotes the real probability per special attempt without promising a rare catch", () => {
