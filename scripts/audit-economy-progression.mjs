@@ -157,7 +157,15 @@ export function auditEconomyProgression(catalog) {
       assert(fishing.routeIds.includes(routeId) && Number.isSafeInteger(draws) && draws > 0 && draws <= route.rewards.fish, "Invalid route collection draw budget");
     }
   }
-  assert.deepEqual([...items.keys()].filter(item => !itemUses.has(item)), [], "Every item must serve crafting, construction, exploration or fishing");
+  for (const meal of catalog.food?.meals ?? []) {
+    assert(items.has(meal.itemId), `Food: unknown meal ${meal.itemId}`);
+    itemUses.add(meal.itemId);
+  }
+  for (const order of catalog.food?.orders.templates ?? []) {
+    validateRequirements(order, order.id);
+    validateQuantities(order.items, order.id, true);
+  }
+  assert.deepEqual([...items.keys()].filter(item => !itemUses.has(item)), [], "Every item must serve crafting, construction, exploration, fishing, meals or resident orders");
   auditProductionBalance(catalog);
 
   const closure = (target, visiting = new Set(), result = new Set()) => {

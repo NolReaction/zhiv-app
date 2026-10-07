@@ -21,6 +21,8 @@ export type ProgressionNode = {
   rewards?: Record<string, number>;
   /** Possible items share one clock; these are not guaranteed per-trip rewards. */
   rareDrops?: NonNullable<EconomyCatalog["rareDrops"]>;
+  /** Possible species from fishing attempts, never a guaranteed reward list. */
+  fishingSource?: { itemIds: string[]; routeIds: string[] };
   /** Building ids map to minimum levels; completedExplorations is a cumulative counter. */
   requirements: Record<string, number>;
   children: string[];
@@ -38,7 +40,7 @@ export type ProgressionEdge = {
 export type ProgressionGraph = { nodes: ProgressionNode[]; edges: ProgressionEdge[] };
 
 export const buildingLabels: Record<string, string> = {
-  home: "Дом", garden: "Ягодный куст", woodlot: "Лесозаготовки", quarry: "Шахта", kiln: "Печь", workshop: "Верстак", dryer: "Заготовки у костра", warehouse: "Кладовая",
+  home: "Дом", garden: "Ягодный куст", woodlot: "Лесозаготовки", quarry: "Шахта", kiln: "Печь", workshop: "Верстак", dryer: "Костёр", warehouse: "Кладовая",
 };
 export const progressionLocations = [
   { id: "place:home", title: "Дом", icon: "🏠", buildingIds: ["home", "warehouse"], description: "Дом на полянке. Уровень дома открывает новые возможности хозяйства; кладовая расширяется отдельно внутри дома." },
@@ -105,7 +107,6 @@ const projectDefinitions: WorldDefinition[] = [
   ["lighthouse", "Восстановить маяк", "🔦", "Маяк есть в карте; рисунок уровня 1 доступен для примерки. Экономического восстановления и кораблей ещё нет."],
   ["ships", "Прибывающие корабли", "⛵", "Предлагаемая связь маяка и порта с прибытием кораблей."],
   ["sea_trips", "Морские экспедиции", "🌊", "Будущее направление экспедиций и маяка. Конкретные маршруты и награды ещё не утверждены."],
-  ["orders", "Заказы жителей", "📜", "Будущие заказы жителей и торговца: применение продукции хозяйства."],
   ["new_fruits", "Новые плоды", "🍎", "Будущее расширение сада новыми плодами. Уровень сада для открытия ещё не выбран."],
   ["tackle", "Изготовление снастей", "🪝", "Будущее изготовление снастей в мастерской. Уровень верстака ещё не выбран; сейчас новые удочки, крючки и наживки появляются в лавке Плёски."],
   ["friend_glade", "Полянки друзей", "🌿", "Будущий просмотр обустройства полянки друга. Сейчас можно смотреть разрешённые игровые сведения профиля; его мир ещё не открывается."],
@@ -190,7 +191,7 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
           icon: single ? itemIcons[itemId] || "📦" : "📦", kind: "recipe", status: "active", phase: level,
           buildingId: recipe.buildingId, locationId: locationByBuilding.get(recipe.buildingId)?.id, level: recipe.buildingLevel, cost: cloneCost(recipe.cost), seconds: recipe.seconds,
           rewards: { ...recipe.rewards }, requirements, children: [],
-          description: `${recipe.collection ? "После созревания нажмите «Собрать»: Мохлик принесёт урожай. Во время активной вылазки он занят — сбор ждёт возвращения. " : ""}Таймер идёт и после закрытия приложения; готовый результат нужно забрать. Каждый заказ занимает отдельное место до получения. Изначально место одно; второе открывается за ${formatPearls(catalog.productionSlots.upgrades[0].pricePearls)} жемчужин с дома 2, третье за ${formatPearls(catalog.productionSlots.upgrades[1].pricePearls)} с дома 4. Партия: до ${recipe.maxBatch ?? catalog.maxBatch}; короткая переработка допускает очередь до двух часов, бесплатный сбор и длинные заказы — одну партию. Перед получением проверьте место в кладовой.`,
+          description: `${recipe.fishInput ? `Рыбный ингредиент выбирается перед запуском: ${recipe.fishInput.itemIds.map(id => items.get(id)?.name ?? id).join(", ")}. Вся партия использует один выбранный вид; редкая рыба автоматически не подставляется. ` : ""}${recipe.collection ? "После созревания нажмите «Собрать»: Мохлик принесёт урожай. Во время активной вылазки он занят — сбор ждёт возвращения. " : ""}Таймер идёт и после закрытия приложения; готовый результат нужно забрать. Каждый заказ занимает отдельное место до получения. Изначально место одно; второе открывается за ${formatPearls(catalog.productionSlots.upgrades[0].pricePearls)} жемчужин с дома 2, третье за ${formatPearls(catalog.productionSlots.upgrades[1].pricePearls)} с дома 4. Партия: до ${recipe.maxBatch ?? catalog.maxBatch}; короткая переработка допускает очередь до двух часов, бесплатный сбор и длинные заказы — одну партию. Перед получением проверьте место в кладовой.`,
         });
         node.children.push(child.id);
         edge(node.id, child.id, "unlock");
@@ -272,6 +273,18 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
     for (const route of catalog.explorations) edge(`e:${route.id}`, source.id, "any");
   }
 
+  if (catalog.fishing) {
+    const fishing = catalog.fishing;
+    const routes = catalog.explorations.filter(route => fishing.routeIds.includes(route.id));
+    const home = Math.min(...routes.map(route => route.requiredHomeLevel));
+    const source = fixed("fishing_species", "Виды рыбы из улова", "🐟", home,
+      "В каждом рыболовном маршруте есть отдельные попытки особого улова. Вид определяется снастями и случайным результатом; конкретная рыба не гарантирована. Обычные виды также встречаются в прилавке Плёски, но покупка не открывает коллекцию. Для легендарного улова нужны легендарная удочка и подходящий легендарный крючок. Выбранную рыбу можно приготовить или передать по заказу; открытая коллекция сохраняется.", "acquisition");
+    source.requirements = { home };
+    source.fishingSource = { itemIds: fishing.fish.map(fish => fish.itemId), routeIds: routes.map(route => route.id) };
+    edge(buildingNodeId("home", home), source.id);
+    for (const route of routes) edge(`e:${route.id}`, source.id, "any");
+  }
+
   for (const node of nodes) {
     for (const itemId of Object.keys(node.cost?.items || {})) {
       const source = getProgressionResourceSource({ nodes, edges }, itemId);
@@ -282,6 +295,18 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
   }
 
   for (const [id, label, icon, description, kind] of worldDefinitions) fixed(id, label, icon, 6, description, kind);
+  if (catalog.food) {
+    const orders = catalog.food.orders;
+    fixed("orders", "Заказы жителей", "📜", 6,
+      `${orders.slots} места с просьбами Плёски и Шишколапа. Доска обновляется каждые ${orders.refreshSeconds / 3600} часов; бесплатная замена ждёт ${orders.replacementSeconds / 60} минут, следующий заказ после выполнения — ${orders.completionSeconds / 60} минут. Доступность учитывает дом и производства. Заказы списывают указанные товары и платят только монеты; они не включают сытость. Редкий заказ можно заменить.`);
+    fixed("meals", "Еда и сытость", "🍲", 6,
+      "Готовую порцию можно отдельно съесть или отдать строителю. Мохлик получает +10–25% скорости следующей вылазки, Шишколап — +10% скорости одной стройки. В идущей стройке ускоряется только остаток. Эффекты не складываются, не убывают офлайн и не меняют шанс редкой рыбы. Кормление и оплаченные заказы — разные действия.");
+    edge("start", "orders", "available"); edge("campfire", "meals", "flow");
+    edge("orders", "coins", "flow");
+    for (const recipe of catalog.recipes.filter(recipe => catalog.food!.meals.some(meal => recipe.rewards[meal.itemId]))) {
+      edge(`r:${recipe.id}`, "meals", "flow"); edge(`r:${recipe.id}`, "orders", "flow");
+    }
+  }
   byId.get("achievements")!.description += ` За самостоятельно полученные ступени можно вручную забрать до ${formatPearls(achievementPearls)} жемчужин суммарно, каждую награду только один раз. Администраторская выдача достижения не создаёт валютную награду.`;
   edge("achievements", "pearls", "flow");
   edge("start", "pleska", "available");
@@ -315,7 +340,7 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
     ["far_bank", "regional_trips"], ["regional_trips", "new_finds"], ["new_finds", "album"], ["r:make_beams", "shore_site"],
     ["shore_site", "boat"], ["boat", "port"], ["r:make_beams", "lighthouse"], ["r:make_glass", "lighthouse"],
     ["r:make_metal_parts", "lighthouse"], ["lighthouse", "ships"], ["port", "ships"], ["ships", "sea_trips"],
-    ["sea_trips", "new_finds"], ["market", "orders"], ["ships", "orders"], ["r:grow_berries", "new_fruits"],
+    ["sea_trips", "new_finds"], ["r:grow_berries", "new_fruits"],
     ["r:make_rope", "tackle"], ["tackle", "sea_trips"],
   ]) edge(source, target, "plan");
 
@@ -329,7 +354,7 @@ export const progressionGraph = buildProgressionGraph();
 
 /** Shared by graph costs and UI source links; chance sources never become recipes. */
 export function getProgressionResourceSource(graph: ProgressionGraph, itemId: string): ProgressionNode | undefined {
-  return graph.nodes.filter(node => node.rewards?.[itemId] || node.rareDrops?.itemIds.includes(itemId))
+  return graph.nodes.filter(node => node.rewards?.[itemId] || node.rareDrops?.itemIds.includes(itemId) || node.fishingSource?.itemIds.includes(itemId))
     .sort((a, b) => (a.requirements.home ?? 0) - (b.requirements.home ?? 0) || (a.level ?? 0) - (b.level ?? 0))[0];
 }
 

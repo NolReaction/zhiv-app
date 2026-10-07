@@ -195,7 +195,7 @@ class EconomyFishingTest {
                 ownedHooks = listOf("bare_hook", "barbed_hook"), equippedHookId = "barbed_hook"))
         val active = apply(initial, "start_fishing", "shore_camp")
         val job = active.jobs.single()
-        assertEquals(mapOf("fish" to 20L, "fish_reedperch" to 2L, "fish_bream" to 2L), job.rewards)
+        assertEquals(mapOf("fish" to 19L, "fish_dace" to 1L, "fish_reedperch" to 1L, "fish_silverfin" to 1L, "fish_bream" to 1L, "fish_pike" to 1L), job.rewards)
         assertEquals(1L, active.inventory["worm_bait"])
         val changed = apply(active, "equip_fishing_rod", "reed_rod")
         assertEquals(job, changed.jobs.single())

@@ -1,7 +1,7 @@
 "use client";
 
 import { PleskPortrait } from "./plesk-portrait";
-import { ArrowLeft, X } from "lucide-react";
+import { ArrowLeft, ClipboardList, X } from "lucide-react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { Dialog, DialogPortal, DialogOverlay, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import type { EconomyController } from "@/features/economy/use-economy";
@@ -9,7 +9,7 @@ import { PleskFishingShop } from "@/features/economy/plesk-fishing-shop";
 import { ResidentSpeech } from "./forest-speech";
 import styles from "./world-resident-dialog.module.css";
 
-type ResidentActions = { economy: EconomyController; onFishing: () => void; onOpenPantry: () => void };
+type ResidentActions = { economy: EconomyController; onFishing: () => void; onOpenPantry: () => void; onOpenOrders?: () => void };
 
 /** All stock, gear and discoveries come from the player's confirmed account. */
 export function PleskConversation({ economy, onFishing, onOpenPantry }: ResidentActions) {
@@ -30,6 +30,7 @@ export function WorldResidentDialog({ open, onClose, onBack, onCloseAutoFocus, .
           <button type="button" onClick={onClose} aria-label="Попрощаться с Плёской"><X size={20} aria-hidden="true" /></button>
         </header>
         <ResidentSpeech owner={actions.economy.snapshot?.ownerPublicId} speaker="plesk" />
+        {actions.onOpenOrders && <button type="button" className={styles.orders} onClick={actions.onOpenOrders}><ClipboardList size={17} aria-hidden="true" />Заказы Плёски<span>Обменять припасы на монеты</span></button>}
         <PleskConversation {...actions} />
       </DialogPrimitive.Content>
     </DialogPortal>

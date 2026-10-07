@@ -102,7 +102,7 @@ internal fun readAdminEconomyPlayer(c: Connection, target: String, now: OffsetDa
     val view = state?.let {
         EconomyView(target,profile.revision,time.toString(),it.wallet,it.inventory,it.buildings,it.jobs.map(EconomyPublicJobs::project),it.migration,
             EconomyRules.catalog,EconomyRules.storage(it,reservedEconomyMarketItems(c,profile.id)),it.completedExplorations,it.fishing,
-            wardrobe=it.wardrobe, productionSlots=it.productionSlots)
+            wardrobe=it.wardrobe, productionSlots=it.productionSlots, food=it.food, residentOrders=it.residentOrders)
     }
     val ledger = c.economyRows("""SELECT kind,coins,pearls,currency_scale,pearl_scale,items,created_at FROM economy_ledger
         WHERE user_id=? ORDER BY created_at DESC,source_key DESC LIMIT 30""", profile.id) { r ->

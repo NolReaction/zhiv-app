@@ -23,7 +23,7 @@ function candidates(state: ShopState): Candidate[] {
     ...catalog.baits.filter(item => item.requiredHomeLevel <= home)
       .map(item => ({ kind: "bait" as const, itemId: item.itemId, unitPrice: item.price, remaining: catalog.shop.baitStock,
         rarity: item.rarity, weight: rarityWeight[item.rarity] })),
-    // Only common species are sold here. Recipes consume the river fish ID;
+    // Only common species are sold here. Kitchen recipes accept their ingredient groups;
     // purchases of any species never unlock personal catches in the book.
     ...catalog.fish.filter(item => item.rarity === "common")
       .map(item => ({ kind: "fish" as const, itemId: item.itemId,
@@ -53,7 +53,7 @@ function takeGear(pool: Candidate[], state: ShopState, random: RareRandomInteger
     if (draw < 0) break;
   }
   // Missing, owned and excluded models may downgrade the roll, NEVER upgrade it.
-  // A sole remaining legendary still needs its own 20/50 tickets out of 10000.
+  // A sole remaining legendary still needs its own catalog tickets out of 10000.
   for (; tier >= 0; tier--) {
     const choices = pool.filter(item => item.rarity === rarities[tier]);
     if (choices.length) return take(choices, random);

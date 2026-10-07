@@ -9,6 +9,7 @@ import { prepareRareDrop, settleRareDrop, secureRareInteger, type RareRandomInte
 import { economyLocalSellPrice } from "./local-sale";
 import { economyActorConflict } from "./actor-availability";
 import { remainingTimePearlPrice } from "./time-price";
+import { foodState, mealDuration, normalizedResidentOrders, pendingMeal, recipeWithFish, residentOrderBoard } from "./food";
 export { economyLocalSellPrice, economyLocalSaleMinimumQuantity, economyLocalSaleLimit } from "./local-sale";
 
 export class EconomyRuleError extends Error {
@@ -63,7 +64,8 @@ export function newEconomyState(legacy: { resources: { sparks: number; wood: num
     inventory: { ...(migration.woodGranted ? { wood: migration.woodGranted } : {}), ...(migration.stoneGranted ? { stone: migration.stoneGranted } : {}) },
     buildings: Object.fromEntries(economyCatalog.buildings.map(building => [building.id, building.id === "home" ? Math.max(1, Math.min(5, legacy.houseLevel))
       : ["garden", "warehouse"].includes(building.id) ? 1 : building.id === "workshop" ? Math.max(0, Math.min(3, legacy.workshopLevel)) : 0])),
-    jobs: [], wardrobe: wardrobeOwned(), migration, completedExplorations: 0, fishing: fishingState({}), progression: newEconomyProgression() };
+    jobs: [], wardrobe: wardrobeOwned(), migration, completedExplorations: 0, fishing: fishingState({}), progression: newEconomyProgression(),
+    food: foodState({}), residentOrders: { cycle: -1, slots: [], completed: 0, earnedCoins: 0 } };
 }
 function debit(state: EconomyState, cost: EconomyCost) {
   if (!canAffordEconomy(state, cost)) fail("ECONOMY_RESOURCES", "Не хватает монет или материалов");
@@ -96,7 +98,7 @@ function requireActorAvailable(state: EconomyState, intent: "departure" | "colle
 /** Pure domain transition. The caller owns the clone, authentication, receipt and atomic commit. */
 export function applyEconomyCommand(state: EconomyState, command: EconomyCommand, now: number, jobId: () => string, reservedItems: Record<string, number> = {}, rareRandom: RareRandomInteger = secureRareInteger): string {
   if (!["speedup_construction", "buy_fishing_item", "buy_wardrobe_item", "refresh_fishing_shop", "sell"].includes(command.action) && command.totalPrice !== 0) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Цена не используется в этом действии", 400);
-  const createJob = (job: Pick<EconomyJob, "kind" | "targetId" | "recipeId" | "targetLevel" | "rewards" | "collection" | "fishing" | "rareDrop">, seconds: number, cost: EconomyCost, id = jobId()) => {
+  const createJob = (job: Pick<EconomyJob, "kind" | "targetId" | "recipeId" | "targetLevel" | "rewards" | "collection" | "fishing" | "rareDrop" | "meal">, seconds: number, cost: EconomyCost, id = jobId()) => {
     if (Object.values(job.rewards).reduce((total, quantity) => total + quantity, 0) > economyStorage(state).capacity)
       fail("ECONOMY_STORAGE_FULL", "Вся партия не поместится на складе. Уменьшите её или расширьте склад");
     debit(state, cost);
@@ -107,8 +109,13 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
     case "start_production": {
       if (command.targetId.startsWith("quarry_")) return fail("ECONOMY_MINING_ACTIVITY", "В шахте работает Мохлик. Выберите участок для вылазки");
       if (command.quantity > economyCatalog.maxBatch) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Слишком большая партия", 400);
-      const recipe = economyCatalog.recipes.find(item => item.id === command.targetId);
-      if (!recipe) return fail("ECONOMY_RECIPE", "Рецепт не найден");
+      const [recipeId, fishItemId, extra] = command.targetId.split("@");
+      const source = economyCatalog.recipes.find(item => item.id === recipeId);
+      if (!source) return fail("ECONOMY_RECIPE", "Рецепт не найден");
+      if (extra !== undefined || command.targetId.includes("@") && (!fishItemId || !source.fishInput?.itemIds.includes(fishItemId)
+        || !economyCatalog.fishing?.fish.some(fish => fish.itemId === fishItemId)))
+        return fail("ECONOMY_RECIPE_FISH", "Эта рыба не подходит для рецепта");
+      const recipe = recipeWithFish(source, fishItemId);
       if (command.quantity > (recipe.maxBatch ?? economyCatalog.maxBatch))
         throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Для этого заказа превышено число партий", 400);
       if ((state.buildings[recipe.buildingId] ?? 0) < recipe.buildingLevel) fail("ECONOMY_BUILDING_REQUIRED", "Сначала постройте или улучшите нужное здание");
@@ -162,8 +169,11 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
       if (route.requiredBuildings.quarry && state.jobs.some(job => job.kind === "construction" && job.targetId === "quarry"))
         return fail("ECONOMY_BUILDING_BUSY", "Дождитесь улучшения шахты и заберите результат");
       requireActorAvailable(state, "departure", now);
+      const meal = pendingMeal(state, "hero");
+      const seconds = meal ? mealDuration(route.seconds, meal.heroSpeedBps) : route.seconds;
+      const mealAnnotation = meal ? { meal: { itemId: meal.itemId, consumer: "hero" as const, speedBps: meal.heroSpeedBps } } : {};
       const rare = economyCatalog.rareDrops && (state.buildings.home ?? 1) >= economyCatalog.rareDrops.requiredHomeLevel
-        ? prepareRareDrop(state.rareDropState, route.seconds, economyCatalog.rareDrops, rareRandom) : null;
+        ? prepareRareDrop(state.rareDropState, seconds, economyCatalog.rareDrops, rareRandom) : null;
       // Older clients used the general exploration command for fishing routes.
       // Normalize it here so command choice cannot bypass tackle or bait costs.
       if (command.action === "start_fishing" || economyCatalog.fishing?.routeIds.includes(route.id)) {
@@ -184,14 +194,17 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
         for (const caught of catches) rewards[caught] = (rewards[caught] ?? 0) + 1;
         if (!rewards.fish) delete rewards.fish;
         createJob({ kind: "exploration", targetId: route.id, recipeId: null, targetLevel: null, rewards,
+          ...mealAnnotation,
           ...(rare ? { rareDrop: rare.delivery } : {}),
-          fishing: { rodId: tackle.equippedRodId, hookId: tackle.equippedHookId, baitId: tackle.equippedBaitId, fishId } }, route.seconds, fishingTripCost(route.cost, state), id);
+          fishing: { rodId: tackle.equippedRodId, hookId: tackle.equippedHookId, baitId: tackle.equippedBaitId, fishId } }, seconds, fishingTripCost(route.cost, state), id);
+        if (meal) state.food = { ...foodState(state), heroMeal: null };
         state.fishingCastSeed = seed;
         if (rare) state.rareDropState = rare.clock;
         return "Мохлик отправился рыбачить. Снасти и наживка подготовлены";
       }
       createJob({ kind: "exploration", targetId: route.id, recipeId: null, targetLevel: null, rewards: { ...route.rewards, ...rare?.rewards },
-        ...(rare ? { rareDrop: rare.delivery } : {}) }, route.seconds, route.cost);
+        ...mealAnnotation, ...(rare ? { rareDrop: rare.delivery } : {}) }, seconds, route.cost);
+      if (meal) state.food = { ...foodState(state), heroMeal: null };
       if (rare) state.rareDropState = rare.clock;
       return "Мохлик отправился исследовать мир";
     }
@@ -215,8 +228,60 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
       if (building.id === "quarry" && state.jobs.some(job => job.kind === "exploration" && economyCatalog.explorations.some(route => route.id === job.targetId && route.requiredBuildings.quarry)))
         return fail("ECONOMY_BUILDING_BUSY", "Перед улучшением дождитесь Мохлика и заберите добычу");
       if (state.jobs.some(job => job.kind === "production" && job.targetId === building.id)) fail("ECONOMY_BUILDING_BUSY", "Перед улучшением заберите результат производства");
-      createJob({ kind: "construction", targetId: building.id, recipeId: null, targetLevel: target.level, rewards: {} }, target.seconds, target.cost);
+      const meal = pendingMeal(state, "builder");
+      createJob({ kind: "construction", targetId: building.id, recipeId: null, targetLevel: target.level, rewards: {},
+        ...(meal ? { meal: { itemId: meal.itemId, consumer: "builder", speedBps: meal.builderSpeedBps } } : {}) },
+      meal ? mealDuration(target.seconds, meal.builderSpeedBps) : target.seconds, target.cost);
+      if (meal) state.food = { ...foodState(state), builderMeal: null };
       return "Строительство началось";
+    }
+    case "eat_food":
+    case "feed_builder": {
+      const meal = economyCatalog.food?.meals.find(item => item.itemId === command.targetId);
+      if (!meal) return fail("ECONOMY_FOOD", "Это блюдо нельзя съесть");
+      const food = foodState(state);
+      if (command.action === "eat_food") {
+        if (food.heroMeal) return fail("ECONOMY_ALREADY_FED", "Мохлик уже сыт: бонус ждёт следующей вылазки");
+        requireActorAvailable(state, "departure", now);
+        debit(state, { coins: 0, items: { [meal.itemId]: 1 } });
+        state.food = { ...food, heroMeal: meal.itemId };
+        return "Мохлик поел. Следующая вылазка будет быстрее";
+      }
+      if (food.builderMeal) return fail("ECONOMY_ALREADY_FED", "Шишколап уже сыт: бонус ждёт следующей стройки");
+      const construction = state.jobs.find(job => job.kind === "construction");
+      if (construction && now >= Date.parse(construction.finishesAt))
+        return fail("ECONOMY_JOB_READY", "Стройка уже завершена. Сначала заберите результат");
+      if (construction?.meal) return fail("ECONOMY_ALREADY_FED", "Шишколап уже поел для этой стройки");
+      debit(state, { coins: 0, items: { [meal.itemId]: 1 } });
+      if (construction) {
+        const remaining = Date.parse(construction.finishesAt) - now;
+        construction.finishesAt = new Date(now + mealDuration(remaining, meal.builderSpeedBps)).toISOString();
+        construction.meal = { itemId: meal.itemId, consumer: "builder", speedBps: meal.builderSpeedBps };
+      } else state.food = { ...food, builderMeal: meal.itemId };
+      return construction ? "Шишколап поел и строит на 10% быстрее" : "Шишколап поел. Следующая стройка будет быстрее";
+    }
+    case "complete_resident_order":
+    case "replace_resident_order": {
+      const config = economyCatalog.food?.orders;
+      const offer = residentOrderBoard(state, now).offers.find(item => item.id === command.targetId);
+      if (!config || !offer) return fail("ECONOMY_ORDER_CHANGED", "Заказы обновились. Выберите актуальную просьбу жителя");
+      if (now < Date.parse(offer.availableAt)) return fail("ECONOMY_ORDER_WAIT", "Житель готовит новый заказ. Немного подождите");
+      const orders = normalizedResidentOrders(state, now);
+      const slot = orders.slots[offer.slot];
+      if (slot.sequence >= Number.MAX_SAFE_INTEGER) return fail("ECONOMY_CAPACITY", "Заказы требуют обслуживания");
+      const complete = command.action === "complete_resident_order";
+      if (complete) {
+        if (state.wallet.coins + offer.coins > ECONOMY_MAX_BALANCE || !Number.isSafeInteger(orders.earnedCoins + offer.coins)
+          || orders.completed >= Number.MAX_SAFE_INTEGER) return fail("ECONOMY_CAPACITY", "Кошелёк заполнен");
+        debit(state, { coins: 0, items: offer.items });
+        state.wallet.coins += offer.coins;
+        orders.completed++;
+        orders.earnedCoins += offer.coins;
+      }
+      slot.sequence++;
+      slot.readyAt = new Date(now + (complete ? config.completionSeconds : config.replacementSeconds) * 1000).toISOString();
+      state.residentOrders = orders;
+      return complete ? "Заказ выполнен. Монеты получены" : "Заказ заменён. Новая просьба скоро станет доступна";
     }
     case "speedup_construction": {
       const job = state.jobs.find(item => item.id === command.targetId);

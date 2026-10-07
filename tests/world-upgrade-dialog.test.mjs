@@ -9,6 +9,8 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
 const { worldUpgradeUnlocks, WorldUpgradeContent } = await vite.ssrLoadModule("/features/economy/world-upgrade-dialog.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
 const { economyBuilderStatus } = await vite.ssrLoadModule("/features/economy/builder-status.ts");
+const { mealDuration } = await vite.ssrLoadModule("/features/economy/food.ts");
+const { worldDuration } = await vite.ssrLoadModule("/features/economy/world-stations.ts");
 after(() => vite.close());
 
 function unlocks(stationId, level, catalog = economyCatalog) {
@@ -73,6 +75,31 @@ function content(controller, navigation) {
   return elements(WorldUpgradeContent({ stationId: "warehouse", economy: controller, navigation, onClose() {} }));
 }
 const startButton = nodes => nodes.find(element => element.type === "button" && element.props.className?.includes("confirm"));
+
+test("pending builder food quotes the server speed formula without spending or applying it twice", () => {
+  const controller = economy(), catalog = structuredClone(economyCatalog);
+  const target = catalog.buildings.find(building => building.id === "warehouse").levels.find(level => level.level === 2);
+  // A duration where dividing by 1.1 and subtracting 10% visibly differ.
+  target.seconds = 6600;
+  controller.snapshot.catalog = catalog;
+  controller.snapshot.food = { heroMeal: "hearty_fish", builderMeal: null };
+  let nodes = content(controller);
+  const quote = nodes => nodes.find(element => element.type === "span" && element.props.className?.includes("duration"));
+  const value = nodes => elements(quote(nodes)).find(element => element.type === "strong").props.children;
+  assert.equal(value(nodes), "1 ч 50 мин", "the hero's pending food cannot accelerate construction");
+  controller.snapshot.food.builderMeal = "grilled_fish";
+  const before = structuredClone(controller.snapshot);
+  const expected = worldDuration(mealDuration(target.seconds, 1000));
+  assert.equal(expected, "1 ч 40 мин");
+  assert.notEqual(expected, worldDuration(Math.ceil(target.seconds * 0.9)));
+  for (let render = 0; render < 2; render++) {
+    nodes = content(controller);
+    assert.equal(value(nodes), expected);
+    assert.equal(elements(quote(nodes)).find(element => element.type === "small").props.children, "Сыт · скорость +10%");
+    assert.equal(startButton(nodes).props.disabled, false);
+  }
+  assert.deepEqual(controller.snapshot, before, "previewing food never consumes it or mutates the base duration");
+});
 
 test("builder status counts unclaimed construction only, including a finished timer", () => {
   const state = economy().snapshot;

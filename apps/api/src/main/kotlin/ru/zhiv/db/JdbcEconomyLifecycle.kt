@@ -9,6 +9,8 @@ import ru.zhiv.economy.EconomyState
 import ru.zhiv.economy.EconomyRules
 import ru.zhiv.economy.EconomyCollectionProgress
 import ru.zhiv.economy.EconomyRareDrops
+import ru.zhiv.economy.EconomyFood
+import ru.zhiv.economy.EconomyFoodState
 import ru.zhiv.world.WorldState
 import ru.zhiv.world.worldJson
 import ru.zhiv.economy.economyJson
@@ -58,6 +60,8 @@ internal fun economyMergeConflicts(c: Connection, target: UUID, source: UUID): L
     val mergedStorage = EconomyRules.storage(states.first().copy(inventory=combinedInventory, buildings=combinedBuildings))
     return buildList {
         if (states.any { it.jobs.isNotEmpty() }) add("Сначала получите результаты производства, строительства и исследований в обоих профилях. Затем повторите объединение.")
+        if (states.all { it.food.heroMeal != null } || states.all { it.food.builderMeal != null })
+            add("В обоих профилях есть сытый Мохлик или строитель. Сначала используйте бонус еды в одном профиле, чтобы сохранить второе угощение.")
         if (states.sumOf { it.wallet.coins } > ECONOMY_MAX_BALANCE || states.sumOf { it.wallet.pearls } > ECONOMY_MAX_PEARLS ||
             combinedInventory.values.any { it > ECONOMY_MAX_ITEMS } || mergedStorage.overflow > 0)
             add("Общий запас превышает вместимость склада. Расширьте склад или уменьшите запасы перед объединением; предметы не будут потеряны.")
@@ -89,6 +93,8 @@ internal fun mergeEconomyProfiles(c: Connection, target: UUID, source: UUID) {
         productionSlots=(a.productionSlots.keys+b.productionSlots.keys).associateWith {
             maxOf(EconomyRules.productionSlotCount(a,it),EconomyRules.productionSlotCount(b,it)) },
         progression=EconomyCollectionProgress.merge(a.progression,b.progression),
+        food=EconomyFoodState(a.food.heroMeal ?: b.food.heroMeal, a.food.builderMeal ?: b.food.builderMeal),
+        residentOrders=EconomyFood.mergeOrders(a.residentOrders,b.residentOrders),
         rareDropState=EconomyRareDrops.merge(a.rareDropState,b.rareDropState)), recordAwards=false)
     // Preserve original signatures: an old source browser cannot reuse a consumed request ID.
     c.lifecycleEconomyUpdate("""INSERT INTO economy_commands(user_id,request_id,signature,message,accepted_revision)

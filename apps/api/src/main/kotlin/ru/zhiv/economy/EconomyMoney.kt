@@ -19,6 +19,7 @@ object EconomyMoney {
         return state.copy(currencyScale = ECONOMY_CURRENCY_SCALE.toInt(), pearlScale = ECONOMY_PEARL_SCALE.toInt(),
             wallet = EconomyWallet(nominal(state.wallet.coins, state.currencyScale), pearls(state.wallet.pearls, pearlScale)),
             migration = state.migration.copy(coinsGranted = nominal(state.migration.coinsGranted, state.currencyScale)),
+            residentOrders = state.residentOrders.copy(earnedCoins = nominal(state.residentOrders.earnedCoins, state.currencyScale)),
             jobs = state.jobs.map { it.copy(cost = it.cost.copy(coins = nominal(it.cost.coins, state.currencyScale))) })
     }
 }

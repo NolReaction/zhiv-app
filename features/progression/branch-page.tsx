@@ -16,7 +16,7 @@ type Gesture = { start: Point; camera: Camera; distance?: number; moved: boolean
 
 const MIN_SCALE = 0.04;
 const MAX_SCALE = 1.8;
-const kindNames: Record<string, string> = { location: "Место на карте", building: "Улучшение хозяйства", recipe: "Производство", exploration: "Вылазка", acquisition: "Реликвии", world: "Мир", collection: "Коллекция", equipment: "Снаряжение", milestone: "Прогресс", market: "Торговля", project: "Будущее мира" };
+const kindNames: Record<string, string> = { location: "Место на карте", building: "Улучшение хозяйства", recipe: "Производство", exploration: "Вылазка", acquisition: "Получение ресурсов", world: "Мир", collection: "Коллекция", equipment: "Снаряжение", milestone: "Прогресс", market: "Торговля", project: "Будущее мира" };
 const buildingIcons: Record<string, LucideIcon> = { home: Home, garden: Sprout, woodlot: Trees, quarry: Pickaxe, workshop: Hammer, dryer: CookingPot, kiln: Flame, warehouse: Warehouse };
 const worldIcons: Record<string, LucideIcon> = {
   daily_rewards: Gift, pearl_trader: Store,
@@ -25,6 +25,7 @@ const worldIcons: Record<string, LucideIcon> = {
 const explorationIcons: Record<string, LucideIcon> = { forest: TreePine, shore: Fish, forest_camp: Trees, shore_camp: FishingRod, cave: Pickaxe, deep_cave: Mountain, old_woodland: Trees, coastal_deposits: Waves, uplands: Mountain, abandoned_quarry: Pickaxe };
 
 function NodeIcon({ node, size = 32 }: { node: ProgressionNode; size?: number }) {
+  if (node.fishingSource) return <PlayerItemIcon itemId="fish" size={size} />;
   if (node.rareDrops) return <PlayerItemIcon itemId={node.rareDrops.itemIds[0]} size={size} />;
   if (node.id === "coins" || node.id === "pearls" || node.id === "explorer_cap" || node.id === "willow_rod") return <PlayerItemIcon itemId={node.id} size={size} />;
   if (node.id === "forest_set" || node.id === "river_set") return <CollectionIcon findId={node.id === "forest_set" ? "acorn" : "river_shell"} size={size} />;
@@ -88,7 +89,7 @@ export function BranchPage() {
   const markerId = useId().replace(/:/g, "");
   const selected = nodeById.get(selectedId) ?? progressionGraph.nodes[0];
   const prerequisites = useMemo(() => getPrerequisiteIds(progressionGraph, selected.id), [selected.id]);
-  const searchResults = useMemo(() => query.trim() ? progressionGraph.nodes.filter(node => `${node.title} ${node.label} ${kindNames[node.kind] ?? ""} ${node.locationId ? nodeById.get(node.locationId)?.title ?? "" : ""} ${node.buildingId === "quarry" ? "каменоломня" : ""} ${node.rareDrops?.itemIds.map(id => progressionItemNames[id] ?? id).join(" ") ?? ""}`.toLocaleLowerCase("ru-RU").includes(query.trim().toLocaleLowerCase("ru-RU"))).slice(0, 18) : [], [query]);
+  const searchResults = useMemo(() => query.trim() ? progressionGraph.nodes.filter(node => `${node.title} ${node.label} ${kindNames[node.kind] ?? ""} ${node.locationId ? nodeById.get(node.locationId)?.title ?? "" : ""} ${node.buildingId === "quarry" ? "каменоломня" : ""} ${[...(node.rareDrops?.itemIds ?? []), ...(node.fishingSource?.itemIds ?? [])].map(id => progressionItemNames[id] ?? id).join(" ")}`.toLocaleLowerCase("ru-RU").includes(query.trim().toLocaleLowerCase("ru-RU"))).slice(0, 18) : [], [query]);
   const activeCount = progressionGraph.nodes.filter(node => node.status === "active").length;
   const outgoing = progressionGraph.edges.filter(edge => edge.source === selected.id && edge.kind !== "cost" && edge.kind !== "contains").map(edge => nodeById.get(edge.target)).filter((node): node is ProgressionNode => !!node);
   const containedNodes = selected.kind === "location" ? selected.children.map(id => nodeById.get(id)).filter((node): node is ProgressionNode => !!node) : [];
@@ -302,9 +303,10 @@ export function BranchPage() {
           {selected.seconds !== undefined && <p className={styles.duration}><Clock3 size={16} aria-hidden="true" /><span>{selected.kind === "building" ? "Обустройство" : "Один цикл"}</span><strong>{duration(selected.seconds)}</strong></p>}
           {selected.warehouseCapacity && <section><h3>Вместимость кладовой</h3><p className={styles.capacity}>{number(selected.warehouseCapacity)} <span>предметов</span></p></section>}
           {selected.rewards && Object.keys(selected.rewards).length > 0 && <section><h3>Получишь</h3><ul className={styles.itemList}>{Object.entries(selected.rewards).map(([id, count]) => <li key={id}><span><PlayerItemIcon itemId={id} size={18} />{progressionItemNames[id] ?? id}</span><strong>×{id === "pearls" ? formatPearls(count) : number(count)}</strong></li>)}</ul></section>}
+          {selected.fishingSource && <><section><h3>Возможные виды улова</h3><ul className={styles.itemList}>{selected.fishingSource.itemIds.map(id => <li key={id}><span><PlayerItemIcon itemId={id} size={18} />{progressionItemNames[id] ?? id}</span></li>)}</ul><p className={styles.sectionHint}>Конкретный вид не гарантирован. Шансы зависят от выбранных снастей; легендарная рыба требует легендарных удочки и крючка.</p></section><section><h3>Где рыбачить</h3><ul className={styles.relatedList}>{selected.fishingSource.routeIds.map(id => nodeById.get(`e:${id}`)).filter((node): node is ProgressionNode => !!node).map(node => <li key={node.id}>{relatedButton(node)}</li>)}</ul></section></>}
           {selected.rareDrops && <><section><h3>Может выпасть один из типов</h3><ul className={styles.itemList}>{selected.rareDrops.itemIds.map(id => <li key={id}><span><PlayerItemIcon itemId={id} size={18} />{progressionItemNames[id] ?? id}</span><strong>1/{selected.rareDrops!.itemIds.length}</strong></li>)}</ul><p className={styles.sectionHint}>Доли относятся к типу очередной находки, а не к шансу каждой поездки. Отдельного производственного таймера нет.</p></section><section><h3>Подходит любой маршрут</h3><ul className={styles.relatedList}>{incoming.filter(node => node.kind === "exploration").map(node => <li key={node.id}>{relatedButton(node)}</li>)}</ul></section></>}
           {openedNodes.length > 0 && <section><h3>{selected.kind === "building" ? "Открывает и помогает открыть" : "Продолжение ветки"}</h3>{selected.kind === "building" && <p className={styles.sectionHint}>Для связанных улучшений могут понадобиться другие уровни хозяйства. Рецепты прошлых уровней остаются доступны.</p>}<ul className={styles.relatedList}>{openedNodes.map(node => <li key={node.id}>{relatedButton(node)}</li>)}</ul></section>}
-          {(selected.rewards || selected.rareDrops) && <section><h3>Где нужны эти ресурсы</h3><ul className={styles.relatedList}>{progressionGraph.nodes.filter(node => node.id !== selected.id && Object.keys(node.cost?.items ?? {}).some(id => selected.rewards?.[id] || selected.rareDrops?.itemIds.includes(id))).map(node => <li key={node.id}>{relatedButton(node)}</li>)}</ul></section>}
+          {(selected.rewards || selected.rareDrops || selected.fishingSource) && <section><h3>Где нужны эти ресурсы</h3><ul className={styles.relatedList}>{progressionGraph.nodes.filter(node => node.id !== selected.id && Object.keys(node.cost?.items ?? {}).some(id => selected.rewards?.[id] || selected.rareDrops?.itemIds.includes(id) || selected.fishingSource?.itemIds.includes(id))).map(node => <li key={node.id}>{relatedButton(node)}</li>)}</ul></section>}
           <button type="button" className={styles.centerButton} onClick={() => { centerNode(selected.id, 1); setDetailOpen(false); canvasRef.current?.focus(); }}><Expand size={16} aria-hidden="true" />Показать этот узел на схеме</button>
         </div>
       </aside>

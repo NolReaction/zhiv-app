@@ -13,6 +13,7 @@ import { economyCommandUsesActor } from "@/features/economy/actor-availability";
 import { createFishingShop, fishingShopExpired } from "@/features/economy/fishing-shop";
 import { fishingState } from "@/features/economy/fishing";
 import { publicEconomyJob } from "@/features/economy/public-jobs";
+import { foodState } from "@/features/economy/food";
 import { economyDevCommandSchema, type EconomyDevCommand } from "@/features/economy/dev-model";
 import { economyDevSettlement } from "@/features/economy/dev-presets";
 import { BARTER_DAILY_LIMIT, barterCommandSchema, type BarterCommand, type BarterOffer, type BarterView, type BarterResult } from "@/features/economy/barter-model";
@@ -74,6 +75,7 @@ function view(owner: string, value: Profile, now: number): EconomyView {
   delete state.rareDropState;
   state.jobs = state.jobs.map(publicEconomyJob);
   return { ownerPublicId: owner, revision: value.revision, serverTime: new Date(now).toISOString(), ...state, currencyScale: ECONOMY_CURRENCY_SCALE, pearlScale: ECONOMY_PEARL_SCALE,
+    food: foodState(state), residentOrders: state.residentOrders ?? { cycle: -1, slots: [], completed: 0, earnedCoins: 0 },
     productionSlots: state.productionSlots ?? {}, wardrobe: wardrobeOwned(state.wardrobe), fishingShop: state.fishingShop ?? null, storage: economyStorage(value.state, escrowItems(owner)), catalog: structuredClone(economyCatalog) };
 }
 function bump(value: Profile) {

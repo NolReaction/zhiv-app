@@ -375,7 +375,7 @@ test("odds previews use authoritative loadout weights and show every rarity targ
   for (const odd of expected) assert.ok(html.includes(`<dd>${percent(odd.probability)}</dd>`));
   const baseShark = fishingOdds(state, catalog).find(odd => odd.itemId === "fish_shark").probability;
   const betterShark = expected.find(odd => odd.itemId === "fish_shark").probability;
-  assert.equal(baseShark, 0); assert(betterShark > baseShark && betterShark < .01);
+  assert.equal(baseShark, 0); assert(betterShark >= .099 && betterShark <= .10);
   assert.doesNotMatch(html, /Теневая акула/); assert.match(html, /data-fish-rarity="legendary"/);
   assert.deepEqual(state, before, "Previewing gear cannot buy, equip or rewrite current odds");
 });

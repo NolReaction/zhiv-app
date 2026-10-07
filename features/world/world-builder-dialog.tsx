@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, Check, Clock3, Hammer, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Clock3, Hammer, Soup, ClipboardList, X } from "lucide-react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { Dialog, DialogPortal, DialogOverlay, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { economyBuilderStatus } from "@/features/economy/builder-status";
@@ -12,7 +12,7 @@ import { BuilderPortrait } from "./builder-portrait";
 import { ResidentSpeech } from "./forest-speech";
 import styles from "./world-builder-dialog.module.css";
 
-type BuilderActions = { economy: EconomyController; onOpenConstruction: (stationId: string) => void };
+type BuilderActions = { economy: EconomyController; onOpenConstruction: (stationId: string) => void; onOpenMeals?: () => void; onOpenOrders?: () => void };
 
 /** The resident shows confirmed work; completing early uses the building's quoted action. */
 export function BuilderConversation({ economy, onOpenConstruction }: BuilderActions) {
@@ -32,6 +32,7 @@ export function BuilderConversation({ economy, onOpenConstruction }: BuilderActi
     {feedback}
     <span className={styles.badge}><Hammer size={15} aria-hidden="true" />Свободен</span>
     <p>Готов помочь с постройками. Выберите здание для улучшения.</p>
+    {state.food?.builderMeal && <span className={styles.badge}><Soup size={15} aria-hidden="true" />Сыт · скорость следующей стройки +10%</span>}
   </section>;
   const remaining = status.seconds < 60 ? `${status.seconds} с` : worldDuration(status.seconds);
   return <section className={styles.status} aria-label="Работа строителя" data-builder-status={status.ready ? "ready" : "working"}>
@@ -39,6 +40,7 @@ export function BuilderConversation({ economy, onOpenConstruction }: BuilderActi
     <span className={styles.badge}>{status.ready ? <Check size={15} aria-hidden="true" /> : <Hammer size={15} aria-hidden="true" />}{status.ready ? "Готово" : "Занят улучшением"}</span>
     <div className={styles.building}><strong>{status.stationName}</strong>{status.job.targetLevel !== null && <span>Уровень {status.job.targetLevel}</span>}</div>
     {status.ready ? <p>Работа закончена — завершите улучшение.</p> : <p className={styles.timer}><Clock3 size={16} aria-hidden="true" />Осталось {remaining}</p>}
+    {status.job.meal?.consumer === "builder" && <span className={styles.badge}><Soup size={15} aria-hidden="true" />Сыт · скорость стройки +10%</span>}
     {!status.ready && <ConstructionSpeedup key={status.job.id} economy={{ ...economy, snapshot: state }} job={status.job} />}
     <button type="button" className={styles.action} onClick={() => onOpenConstruction(status.stationId)}>{status.ready ? "Завершить улучшение" : "К постройке"}<ArrowRight size={16} aria-hidden="true" /></button>
   </section>;
@@ -59,6 +61,10 @@ export function WorldBuilderDialog({ open, onClose, onBack, onCloseAutoFocus, ..
         </header>
         <ResidentSpeech owner={actions.economy.snapshot?.ownerPublicId} speaker="builder" />
         <BuilderConversation {...actions} />
+        {(actions.onOpenMeals || actions.onOpenOrders) && <nav className={styles.foodActions} aria-label="Еда и заказы Шишколапа">
+          {actions.onOpenMeals && <button type="button" onClick={actions.onOpenMeals}><Soup size={17} aria-hidden="true" />Угостить</button>}
+          {actions.onOpenOrders && <button type="button" onClick={actions.onOpenOrders}><ClipboardList size={17} aria-hidden="true" />Заказы</button>}
+        </nav>}
       </DialogPrimitive.Content>
     </DialogPortal>
   </Dialog>;

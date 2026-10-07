@@ -162,7 +162,7 @@ test('new supplies always keep distinct categories and paid changes exclude even
 test('shared Kotlin vectors keep category slots and fixed rare tickets with downward fallback', () => {
   const p = player(); fund(p); const state = persisted(p); state.buildings.home = 5;
   // Rare, rather than cheapest gear leaves guaranteed lower-tier replacements.
-  state.fishingShop = createFishingShop(state, now, max => max === 10000 ? 8000 : 0);
+  state.fishingShop = createFishingShop(state, now, max => max === 10000 ? 6000 : 0);
   assert.deepEqual(state.fishingShop.offers.map(item => item.itemId), ['willow_rod', 'silver_hook', 'crumb_bait', 'fish']);
   assert.equal(canRefreshFishingShop(state), true);
   assert.deepEqual(refreshFishingShop(state, now, () => 0).offers.map(item => item.itemId),
@@ -175,7 +175,7 @@ test('shared Kotlin vectors keep category slots and fixed rare tickets with down
 
 test('all 10000 tickets per home keep exact legendary odds even after collecting every lesser model', () => {
   const p = player(); fund(p); const state = persisted(p), spec = economyCatalog.fishing;
-  const expected = [0, 0, 0, 20, 50];
+  const expected = [0, 0, 0, 400, 800];
   for (let home = 1; home <= 5; home++) {
     state.buildings.home = home;
     for (const exhausted of [false, true]) {
@@ -196,13 +196,13 @@ test('all 10000 tickets per home keep exact legendary odds even after collecting
 
 test('excluding prior rare offers cannot redistribute tickets into epic or legendary gear', () => {
   const p = player(); fund(p); const state = persisted(p); state.buildings.home = 5;
-  state.fishingShop = createFishingShop(state, now, max => max === 10000 ? 8000 : 0);
+  state.fishingShop = createFishingShop(state, now, max => max === 10000 ? 6000 : 0);
   const counts = { river_rod: 0, tide_rod: 0, starfall_rod: 0 };
   for (let ticket = 0; ticket < 10000; ticket++) {
     const next = refreshFishingShop(state, now, max => max === 10000 ? ticket : 0);
     counts[next.offers.find(item => item.kind === 'rod').itemId]++;
   }
-  assert.deepEqual(counts, { river_rod: 9250, tide_rod: 700, starfall_rod: 50 });
+  assert.deepEqual(counts, { river_rod: 7200, tide_rod: 2000, starfall_rod: 800 });
 });
 
 test('missing baseline replacement disables payment before draws and leaves natural replenishment free', () => {

@@ -26,3 +26,7 @@
 @media (max-width: 359px) { .dialog[data-slot="dialog-content"] { padding: 13px; }.header { gap: 7px; padding: 10px; }.emblem { flex-basis: 48px; width: 48px; height: 48px; }.name { font-size: 1.125rem; }.role { font-size: .75rem; } }
 @media (prefers-reduced-motion: reduce) { .scrim[data-state] { animation: none; } }
 @media (forced-colors: active) { .dialog[data-slot="dialog-content"], .header, .close, .action, .badge { border-color: ButtonText; } }
+
+.foodActions { display: flex; gap: 8px; margin-top: 15px; }
+.foodActions button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; flex: 1; min-height: 44px; padding: 8px; border: 1px solid #a7ad7b; border-radius: 10px; background: #e2e3bf; color: inherit; font: inherit; font-size: .8125rem; cursor: pointer; }
+.foodActions button:hover { background: #d8deb5; }

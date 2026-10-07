@@ -79,9 +79,12 @@ test("zero-proceeds and wallet-overflow failures are atomic and rounded headroom
 
 test("discount preserves smoking margin against specialist raw-fish value and merchant recovery remains free", () => {
   const smoked = economyCatalog.items.find(item => item.id === "smoked_fish");
-  assert.equal(smoked.baseSellPrice, 340);
-  assert.equal(quote(smoked.baseSellPrice, 1, config), 200);
-  assert.ok(200 > 2 * 80 + quote(40, 1, config));
+  const recipe = economyCatalog.recipes.find(item => item.id === "smoke_fish");
+  const commonFishValue = Math.max(...recipe.fishInput.itemIds.map(id => economyCatalog.items.find(item => item.id === id).baseSellPrice));
+  const wood = economyCatalog.items.find(item => item.id === "wood");
+  const proceeds = quote(smoked.baseSellPrice, recipe.rewards.smoked_fish, config);
+  assert.ok(proceeds > recipe.cost.items.fish * commonFishValue + quote(wood.baseSellPrice, recipe.cost.items.wood, config),
+    "cooking even the highest-value allowed common fish retains a sale margin after the buyer discount");
   for (const recipeId of ["grow_berries", "grow_berries_overnight"]) {
     const recipe = economyCatalog.recipes.find(item => item.id === recipeId);
     assert.deepEqual(recipe.cost, { coins: 0, items: {} });

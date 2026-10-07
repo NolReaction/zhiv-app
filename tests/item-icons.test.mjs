@@ -70,3 +70,12 @@ test("round hook has its own smooth curling silhouette instead of the barbed hoo
     assert.notEqual(geometry(plain), geometry(render(ItemIcon, { itemId })), "shape differs even without color");
   }
 });
+
+test("prepared meals have distinct silhouettes from raw fish, provisions and the fallback", () => {
+  const geometry = itemId => render(ItemIcon, { itemId })
+    .replace(/data-item-icon="[^"]+"/, "")
+    .replace(/(?:fill|stroke)="[^"]+"/g, "");
+  const mealIds = economyCatalog.food.meals.map(meal => meal.itemId);
+  const silhouettes = [...mealIds, "fish", "smoked_fish", "unknown"].map(geometry);
+  assert.equal(new Set(silhouettes).size, silhouettes.length, "food remains distinguishable without relying on color");
+});

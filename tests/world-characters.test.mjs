@@ -415,3 +415,62 @@ test("a repeated mine entry remounts travel in caves even when its previous init
     assert.equal(nav.component("WorldObjectMenu"), undefined);
   } finally { nav.restore(); }
 });
+
+test("More, pantry and campfire open food without adding another permanent HUD button", () => {
+  const text = element => Children.toArray(element.props.children).map(child => typeof child === "string" ? child : isValidElement(child) ? text(child) : "").join("");
+  for (const source of ["more", "pantry", "campfire"]) {
+    const nav = navigation();
+    try {
+      assert.equal(nav.find(element => element.props["data-world-quick"] === "food"), undefined);
+      if (source === "more") {
+        nav.find(element => element.props["data-world-quick"] === "more").props.onClick();
+        nav.find(element => element.type === "button" && text(element).includes("Еда и заказы")).props.onClick();
+      } else if (source === "pantry") {
+        nav.find(element => element.props["data-world-quick"] === "pantry").props.onClick();
+        nav.component("WorldPantryMenu").props.onOpenFood();
+      } else {
+        nav.component("WorldScene").props.onPlace("campfire", { place: "campfire", objectId: "campfire.position", x: 195, y: 380, viewportWidth: 390, viewportHeight: 844 });
+        nav.component("WorldObjectMenu").props.onOpenFood();
+      }
+      const food = nav.component("WorldFoodMenu");
+      assert.ok(food); assert.equal(food.props.initialTab, "meals"); assert.equal(food.props.residentId, undefined);
+      assert.equal(nav.component("WorldObjectMenu"), undefined);
+      assert.equal(nav.component("WorldPantryMenu"), undefined);
+      assert.equal(nav.find(element => element.props.id === "world-quick-menu").props["data-kind"], "food");
+      nav.find(element => element.props["aria-label"] === "Закрыть: Еда и заказы").props.onClick();
+      assert.equal(nav.component("WorldFoodMenu"), undefined);
+      assert.deepEqual(nav.focused, ["more"]);
+      assert.equal(nav.refreshes, 0);
+    } finally { nav.restore(); }
+  }
+});
+
+test("resident food actions select the intended tab and person, then recipes open on the campfire", () => {
+  for (const [resident, action, tab] of [["plesk", "onOpenOrders", "orders"], ["builder", "onOpenOrders", "orders"], ["builder", "onOpenMeals", "meals"]]) {
+    const nav = navigation();
+    try {
+      nav.component("WorldScene").props.onResident(resident);
+      const dialogName = resident === "builder" ? "WorldBuilderDialog" : "WorldResidentDialog";
+      nav.component(dialogName).props[action]();
+      const food = nav.component("WorldFoodMenu");
+      assert.equal(food.props.initialTab, tab); assert.equal(food.props.residentId, resident);
+      assert.equal(nav.component(dialogName).props.open, false);
+      assert.equal(nav.component("WorldCharacters").props.open, false);
+      const beforeKey = food.key;
+      assert.equal(nav.component("WorldFoodMenu").key, beforeKey, "ordinary snapshots preserve food selection");
+      food.props.onNavigateStation("dryer", "cook_fish_soup");
+      assert.equal(nav.component("WorldFoodMenu"), undefined);
+      const scene = nav.component("WorldScene");
+      assert.equal(scene.props.openObjectRequest.place, "campfire");
+      scene.props.onPlace("campfire", { place: "campfire", objectId: "campfire.position", x: 195, y: 380, viewportWidth: 390, viewportHeight: 844 });
+      const campfire = nav.component("WorldObjectMenu");
+      assert.equal(campfire.props.initialStationId, "dryer");
+      assert.equal(campfire.props.initialRecipeId, "cook_fish_soup");
+      campfire.props.onOpenFood();
+      const reopened = nav.component("WorldFoodMenu");
+      assert.notEqual(reopened.key, beforeKey, "explicit entry clears a previously selected resident/tab");
+      assert.equal(reopened.props.initialTab, "meals"); assert.equal(reopened.props.residentId, undefined);
+      assert.equal(nav.refreshes, 0, "these entries navigate without spending meals or redeeming orders");
+    } finally { nav.restore(); }
+  }
+});

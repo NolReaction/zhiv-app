@@ -3,8 +3,16 @@
   "maxBatch": 10,
   "productionSlots": {
     "upgrades": [
-      { "slots": 2, "requiredHomeLevel": 2, "pricePearls": 1500 },
-      { "slots": 3, "requiredHomeLevel": 4, "pricePearls": 5000 }
+      {
+        "slots": 2,
+        "requiredHomeLevel": 2,
+        "pricePearls": 1500
+      },
+      {
+        "slots": 3,
+        "requiredHomeLevel": 4,
+        "pricePearls": 5000
+      }
     ]
   },
   "constructionSpeedup": {
@@ -86,7 +94,7 @@
       "id": "smoked_fish",
       "name": "Копчёная рыба",
       "category": "provisions",
-      "baseSellPrice": 340,
+      "baseSellPrice": 540,
       "tradable": true
     },
     {
@@ -304,6 +312,34 @@
       "name": "Теневая акула",
       "category": "produce",
       "baseSellPrice": 1600,
+      "tradable": true
+    },
+    {
+      "id": "grilled_fish",
+      "name": "Жареная рыба",
+      "category": "provisions",
+      "baseSellPrice": 300,
+      "tradable": true
+    },
+    {
+      "id": "fish_soup",
+      "name": "Рыбная уха",
+      "category": "provisions",
+      "baseSellPrice": 850,
+      "tradable": true
+    },
+    {
+      "id": "berry_fish",
+      "name": "Рыба с ягодным соусом",
+      "category": "provisions",
+      "baseSellPrice": 700,
+      "tradable": true
+    },
+    {
+      "id": "hearty_fish",
+      "name": "Сытный рыбный ужин",
+      "category": "provisions",
+      "baseSellPrice": 1300,
       "tradable": true
     }
   ],
@@ -775,8 +811,8 @@
     },
     {
       "id": "dryer",
-      "name": "Заготовки у костра",
-      "description": "У костра можно сушить ягоды и коптить рыбу для продажи и дальних исследований. Новые уровни открывают крупные заготовки.",
+      "name": "Костёр",
+      "description": "Готовьте рыбу для Мохлика и строителя, выполняйте заказы жителей и запасайте провизию для дальних вылазок. Улучшения открывают новые блюда и крупные заготовки.",
       "levels": [
         {
           "level": 1,
@@ -1613,6 +1649,116 @@
       "maxBatch": 1
     },
     {
+      "id": "cook_grilled_fish",
+      "name": "Пожарить рыбу",
+      "buildingId": "dryer",
+      "buildingLevel": 1,
+      "requiredHomeLevel": 1,
+      "requiredBuildings": {},
+      "seconds": 900,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "fish": 1,
+          "wood": 1
+        }
+      },
+      "rewards": {
+        "grilled_fish": 1
+      },
+      "maxBatch": 8,
+      "fishInput": {
+        "itemIds": [
+          "fish",
+          "fish_silverfin",
+          "fish_rudd"
+        ]
+      }
+    },
+    {
+      "id": "cook_fish_soup",
+      "name": "Сварить уху",
+      "buildingId": "dryer",
+      "buildingLevel": 2,
+      "requiredHomeLevel": 2,
+      "requiredBuildings": {},
+      "seconds": 2700,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "fish": 3,
+          "wood": 1
+        }
+      },
+      "rewards": {
+        "fish_soup": 1
+      },
+      "maxBatch": 2,
+      "fishInput": {
+        "itemIds": [
+          "fish",
+          "fish_silverfin",
+          "fish_rudd"
+        ]
+      }
+    },
+    {
+      "id": "cook_berry_fish",
+      "name": "Рыба с ягодным соусом",
+      "buildingId": "dryer",
+      "buildingLevel": 2,
+      "requiredHomeLevel": 2,
+      "requiredBuildings": {},
+      "seconds": 1800,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "fish_reedperch": 1,
+          "berries": 4,
+          "wood": 1
+        }
+      },
+      "rewards": {
+        "berry_fish": 1
+      },
+      "maxBatch": 4,
+      "fishInput": {
+        "itemIds": [
+          "fish_reedperch",
+          "fish_dace",
+          "fish_bream"
+        ]
+      }
+    },
+    {
+      "id": "cook_hearty_fish",
+      "name": "Приготовить сытный ужин",
+      "buildingId": "dryer",
+      "buildingLevel": 3,
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {},
+      "seconds": 3600,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "fish_mooncarp": 1,
+          "berries": 4,
+          "wood": 2
+        }
+      },
+      "rewards": {
+        "hearty_fish": 1
+      },
+      "maxBatch": 2,
+      "fishInput": {
+        "itemIds": [
+          "fish_mooncarp",
+          "fish_pike",
+          "fish_eel"
+        ]
+      }
+    },
+    {
       "id": "dry_berries",
       "name": "Высушить ягоды",
       "buildingId": "dryer",
@@ -1649,7 +1795,14 @@
       "rewards": {
         "smoked_fish": 1
       },
-      "maxBatch": 4
+      "maxBatch": 4,
+      "fishInput": {
+        "itemIds": [
+          "fish",
+          "fish_silverfin",
+          "fish_rudd"
+        ]
+      }
     },
     {
       "id": "prepare_provisions",
@@ -1671,7 +1824,14 @@
         "dried_berries": 3,
         "smoked_fish": 2
       },
-      "maxBatch": 1
+      "maxBatch": 1,
+      "fishInput": {
+        "itemIds": [
+          "fish",
+          "fish_silverfin",
+          "fish_rudd"
+        ]
+      }
     },
     {
       "id": "prepare_expedition_provisions",
@@ -1693,7 +1853,14 @@
         "dried_berries": 4,
         "smoked_fish": 4
       },
-      "maxBatch": 1
+      "maxBatch": 1,
+      "fishInput": {
+        "itemIds": [
+          "fish",
+          "fish_silverfin",
+          "fish_rudd"
+        ]
+      }
     },
     {
       "id": "provisions_supply",
@@ -1715,7 +1882,14 @@
         "dried_berries": 6,
         "smoked_fish": 4
       },
-      "maxBatch": 1
+      "maxBatch": 1,
+      "fishInput": {
+        "itemIds": [
+          "fish",
+          "fish_silverfin",
+          "fish_rudd"
+        ]
+      }
     },
     {
       "id": "make_charcoal",
@@ -2316,7 +2490,13 @@
     "maxLotQuantity": 99,
     "maxPriceMultiplier": 2,
     "feeBps": 500,
-    "dailyTradeValueByHome": [0, 2400, 4800, 9600, 14400],
+    "dailyTradeValueByHome": [
+      0,
+      2400,
+      4800,
+      9600,
+      14400
+    ],
     "showcaseSlots": 12,
     "showcasePerSeller": 2,
     "showcaseRefreshSeconds": 1800
@@ -2331,7 +2511,7 @@
         "itemId": "fish",
         "description": "Знакомая речная рыба. Подходит для рецептов копчения.",
         "rarity": "common",
-        "weight": 5500,
+        "weight": 4400,
         "affinity": 0,
         "buyPrice": 160
       },
@@ -2339,7 +2519,7 @@
         "itemId": "fish_silverfin",
         "description": "Быстрая стайная рыбка с серебристой спинкой и голубыми плавниками.",
         "rarity": "common",
-        "weight": 2600,
+        "weight": 2400,
         "affinity": 10,
         "buyPrice": 240
       },
@@ -2347,7 +2527,7 @@
         "itemId": "fish_rudd",
         "description": "Золотистая речная рыбка с яркими красными плавниками.",
         "rarity": "common",
-        "weight": 850,
+        "weight": 1000,
         "affinity": 8,
         "buyPrice": 280
       },
@@ -2355,7 +2535,7 @@
         "itemId": "fish_reedperch",
         "description": "Полосатый лесной окунёк прячется у камышей.",
         "rarity": "uncommon",
-        "weight": 500,
+        "weight": 800,
         "affinity": 10,
         "buyPrice": 360
       },
@@ -2363,7 +2543,7 @@
         "itemId": "fish_dace",
         "description": "Стремительная стройная рыбка, любящая прохладные ручьи.",
         "rarity": "uncommon",
-        "weight": 220,
+        "weight": 450,
         "affinity": 8,
         "buyPrice": 400
       },
@@ -2371,7 +2551,7 @@
         "itemId": "fish_bream",
         "description": "Широкая спокойная рыба с тёплой бронзовой чешуёй.",
         "rarity": "uncommon",
-        "weight": 140,
+        "weight": 302,
         "affinity": 7,
         "buyPrice": 480
       },
@@ -2379,7 +2559,7 @@
         "itemId": "fish_mooncarp",
         "description": "Округлый карасик с лунным пятнышком. Осторожно касается наживки.",
         "rarity": "rare",
-        "weight": 100,
+        "weight": 250,
         "affinity": 8,
         "buyPrice": 640
       },
@@ -2387,7 +2567,7 @@
         "itemId": "fish_pike",
         "description": "Длинная пятнистая хищница с изумрудной спинкой.",
         "rarity": "rare",
-        "weight": 50,
+        "weight": 160,
         "affinity": 6,
         "buyPrice": 800
       },
@@ -2395,7 +2575,7 @@
         "itemId": "fish_eel",
         "description": "Извилистый ночной житель глубоких заводей.",
         "rarity": "rare",
-        "weight": 25,
+        "weight": 90,
         "affinity": 4,
         "buyPrice": 960
       },
@@ -2403,7 +2583,7 @@
         "itemId": "fish_sturgeon",
         "description": "Крупная древняя рыба с золотистыми костяными щитками.",
         "rarity": "epic",
-        "weight": 10,
+        "weight": 82,
         "affinity": 3,
         "buyPrice": 1440
       },
@@ -2411,7 +2591,7 @@
         "itemId": "fish_mirror_koi",
         "description": "Яркий пятнистый кои с длинными плавниками и зеркальным блеском.",
         "rarity": "epic",
-        "weight": 4,
+        "weight": 38,
         "affinity": 2,
         "buyPrice": 1920
       },
@@ -2419,7 +2599,7 @@
         "itemId": "fish_shark",
         "description": "Легендарная гостья глубоких вод. Треугольный плавник выдаёт её силуэт.",
         "rarity": "legendary",
-        "weight": 1,
+        "weight": 28,
         "affinity": 2,
         "buyPrice": 3200,
         "requiredHookId": "leviathan_hook"
@@ -2701,31 +2881,31 @@
         },
         {
           "common": 0,
-          "uncommon": 9000,
-          "rare": 1000,
+          "uncommon": 8000,
+          "rare": 2000,
           "epic": 0,
           "legendary": 0
         },
         {
           "common": 0,
-          "uncommon": 8350,
-          "rare": 1400,
-          "epic": 250,
+          "uncommon": 6500,
+          "rare": 2500,
+          "epic": 1000,
           "legendary": 0
         },
         {
           "common": 0,
-          "uncommon": 7800,
-          "rare": 1700,
-          "epic": 480,
-          "legendary": 20
+          "uncommon": 5000,
+          "rare": 3000,
+          "epic": 1600,
+          "legendary": 400
         },
         {
           "common": 0,
-          "uncommon": 7000,
-          "rare": 2250,
-          "epic": 700,
-          "legendary": 50
+          "uncommon": 4200,
+          "rare": 3000,
+          "epic": 2000,
+          "legendary": 800
         }
       ]
     },
@@ -2749,5 +2929,271 @@
     ]
   },
   "currencyScale": 10,
-  "pearlScale": 50
+  "pearlScale": 50,
+  "food": {
+    "meals": [
+      {
+        "itemId": "grilled_fish",
+        "heroSpeedBps": 1000,
+        "builderSpeedBps": 1000
+      },
+      {
+        "itemId": "fish_soup",
+        "heroSpeedBps": 1500,
+        "builderSpeedBps": 1000
+      },
+      {
+        "itemId": "berry_fish",
+        "heroSpeedBps": 2000,
+        "builderSpeedBps": 1000
+      },
+      {
+        "itemId": "hearty_fish",
+        "heroSpeedBps": 2500,
+        "builderSpeedBps": 1000
+      }
+    ],
+    "orders": {
+      "slots": 3,
+      "refreshSeconds": 21600,
+      "replacementSeconds": 1800,
+      "completionSeconds": 3600,
+      "templates": [
+        {
+          "id": "plesk_river_catch",
+          "residentId": "plesk",
+          "name": "Речной улов для прилавка",
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
+          "items": {
+            "fish": 3
+          },
+          "coins": 330
+        },
+        {
+          "id": "plesk_silver_catch",
+          "residentId": "plesk",
+          "name": "Серебристая стайка",
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
+          "items": {
+            "fish_silverfin": 2
+          },
+          "coins": 320
+        },
+        {
+          "id": "plesk_rudd_catch",
+          "residentId": "plesk",
+          "name": "Краснопёрые гости",
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
+          "items": {
+            "fish_rudd": 2
+          },
+          "coins": 370
+        },
+        {
+          "id": "builder_berry_break",
+          "residentId": "builder",
+          "name": "Ягодный перерыв",
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
+          "items": {
+            "berries": 6
+          },
+          "coins": 240
+        },
+        {
+          "id": "builder_grilled_lunch",
+          "residentId": "builder",
+          "name": "Горячий обед на стройку",
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {
+            "dryer": 1
+          },
+          "items": {
+            "grilled_fish": 2
+          },
+          "coins": 750
+        },
+        {
+          "id": "plesk_grilled_dinner",
+          "residentId": "plesk",
+          "name": "Ужин после рыбалки",
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {
+            "dryer": 1
+          },
+          "items": {
+            "grilled_fish": 1,
+            "berries": 2
+          },
+          "coins": 450
+        },
+        {
+          "id": "builder_trail_snack",
+          "residentId": "builder",
+          "name": "Перекус в дорогу",
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {
+            "dryer": 1
+          },
+          "items": {
+            "grilled_fish": 1,
+            "dried_berries": 1
+          },
+          "coins": 700
+        },
+        {
+          "id": "builder_soup_pot",
+          "residentId": "builder",
+          "name": "Котелок для помощников",
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "dryer": 2
+          },
+          "items": {
+            "fish_soup": 2
+          },
+          "coins": 2100
+        },
+        {
+          "id": "plesk_warm_soup",
+          "residentId": "plesk",
+          "name": "Согревающая уха",
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "dryer": 2
+          },
+          "items": {
+            "fish_soup": 1
+          },
+          "coins": 1050
+        },
+        {
+          "id": "plesk_berry_sauce",
+          "residentId": "plesk",
+          "name": "Любимый ягодный соус",
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "dryer": 2
+          },
+          "items": {
+            "berry_fish": 2
+          },
+          "coins": 1750
+        },
+        {
+          "id": "builder_smoked_supply",
+          "residentId": "builder",
+          "name": "Запас для дальней работы",
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "dryer": 2
+          },
+          "items": {
+            "smoked_fish": 3
+          },
+          "coins": 2000
+        },
+        {
+          "id": "plesk_picnic",
+          "residentId": "plesk",
+          "name": "Угощение на берегу",
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "dryer": 2
+          },
+          "items": {
+            "grilled_fish": 2,
+            "berry_fish": 1
+          },
+          "coins": 1650
+        },
+        {
+          "id": "builder_hearty_dinner",
+          "residentId": "builder",
+          "name": "Сытный вечер после стройки",
+          "requiredHomeLevel": 3,
+          "requiredBuildings": {
+            "dryer": 3
+          },
+          "items": {
+            "hearty_fish": 1
+          },
+          "coins": 1650
+        },
+        {
+          "id": "plesk_evening_table",
+          "residentId": "plesk",
+          "name": "Вечер у костра",
+          "requiredHomeLevel": 3,
+          "requiredBuildings": {
+            "dryer": 3
+          },
+          "items": {
+            "hearty_fish": 1,
+            "fish_soup": 1
+          },
+          "coins": 2700
+        },
+        {
+          "id": "plesk_mooncatch",
+          "residentId": "plesk",
+          "name": "Лунный улов",
+          "requiredHomeLevel": 3,
+          "requiredBuildings": {},
+          "items": {
+            "fish_mooncarp": 2
+          },
+          "coins": 840
+        },
+        {
+          "id": "builder_pike_catch",
+          "residentId": "builder",
+          "name": "Щука к праздничному столу",
+          "requiredHomeLevel": 3,
+          "requiredBuildings": {},
+          "items": {
+            "fish_pike": 1,
+            "fish_eel": 1
+          },
+          "coins": 1150
+        },
+        {
+          "id": "plesk_golden_sturgeon",
+          "residentId": "plesk",
+          "name": "Золотой гость",
+          "requiredHomeLevel": 4,
+          "requiredBuildings": {},
+          "items": {
+            "fish_sturgeon": 1
+          },
+          "coins": 950
+        },
+        {
+          "id": "plesk_mirror_catch",
+          "residentId": "plesk",
+          "name": "Зеркальный улов",
+          "requiredHomeLevel": 4,
+          "requiredBuildings": {},
+          "items": {
+            "fish_mirror_koi": 1
+          },
+          "coins": 1250
+        },
+        {
+          "id": "plesk_shadow_catch",
+          "residentId": "plesk",
+          "name": "Легенда речной глубины",
+          "requiredHomeLevel": 5,
+          "requiredBuildings": {},
+          "items": {
+            "fish_shark": 1
+          },
+          "coins": 2100
+        }
+      ]
+    }
+  }
 }

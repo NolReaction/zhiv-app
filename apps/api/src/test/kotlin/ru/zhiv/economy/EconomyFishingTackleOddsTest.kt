@@ -2,6 +2,7 @@ package ru.zhiv.economy
 
 import org.junit.jupiter.api.Test
 import kotlin.test.*
+import kotlin.math.pow
 
 class EconomyFishingTackleOddsTest {
     @Test fun `shared UUID vectors exercise legendary tackle gate and match TypeScript`() {
@@ -28,8 +29,8 @@ class EconomyFishingTackleOddsTest {
             assertNotEquals("fish_shark", EconomyRules.selectFishingCatch(seed, "reed_rod", "firefly_bait", "leviathan_hook"))
         }
         val weights = EconomyRules.fishingWeights("starfall_rod", "firefly_bait", "leviathan_hook")
-        assertEquals(18, weights.single { it.first.itemId == "fish_shark" }.second)
-        assertEquals(4572, weights.sumOf { it.second })
+        assertEquals(504, weights.single { it.first.itemId == "fish_shark" }.second)
+        assertEquals(5047, weights.sumOf { it.second })
     }
 
     @Test fun `every lower hook excludes the shark even with the strongest rod and bait`() {
@@ -47,6 +48,22 @@ class EconomyFishingTackleOddsTest {
     private fun chance(rod: String, hook: String, bait: String?, rarity: String): Double {
         val weights = EconomyRules.fishingWeights(rod, bait, hook)
         return weights.filter { it.first.rarity == rarity }.sumOf { it.second }.toDouble() / weights.sumOf { it.second }
+    }
+
+    @Test fun `targeted fish are attainable and every loadout stays below ten percent legendary per attempt`() {
+        val catalog = checkNotNull(EconomyRules.catalog.fishing)
+        val rare = chance("willow_rod", "silver_hook", "glow_bait", "rare")
+        val epic = chance("tide_rod", "tide_hook", "firefly_bait", "epic")
+        val legendary = chance("starfall_rod", "leviathan_hook", "firefly_bait", "legendary")
+        assertTrue(rare in 0.38..0.40)
+        assertTrue(epic in 0.24..0.25)
+        assertTrue(legendary in 0.099..0.10)
+        assertTrue(1 - (1 - legendary).pow(6) in 0.46..0.47)
+        for (rod in catalog.rods) for (hook in catalog.hooks) for (bait in listOf<String?>(null) + catalog.baits.map { it.itemId }) {
+            assertTrue(chance(rod.id, hook.id, bait, "legendary") <= legendary)
+            assertTrue(chance(rod.id, hook.id, bait, "rare") <= rare)
+            assertTrue(chance(rod.id, hook.id, bait, "epic") <= epic)
+        }
     }
 
     @Test fun `every rod and hook has its own strongest rarity target`() {
@@ -69,7 +86,7 @@ class EconomyFishingTackleOddsTest {
     }
 
     @Test fun `camp draw sequence matches TypeScript and is not six correlated adjacent hashes`() {
-        assertEquals(listOf("fish", "fish_reedperch", "fish_reedperch", "fish", "fish_bream", "fish_bream"),
+        assertEquals(listOf("fish", "fish_dace", "fish_reedperch", "fish_silverfin", "fish_bream", "fish_pike"),
             (0 until 6).map { EconomyRules.selectFishingCatch("00000000-0000-4000-8000-000000000001", "river_rod", "worm_bait", "barbed_hook", it) })
         assertEquals(6, checkNotNull(EconomyRules.catalog.fishing).collectionDrawsByRoute["shore_camp"])
     }

@@ -13,6 +13,7 @@ const { worldHelpTopics, searchWorldHelp } = await vite.ssrLoadModule("/features
 const { worldCatalog, newWorldState } = await vite.ssrLoadModule("/features/world/model.ts");
 const { CLICKER_IDLE_RESET_MS, CLICKER_LEVELS } = await vite.ssrLoadModule("/features/game/clicker-story.ts");
 const { economyCatalog, economyViewSchema } = await vite.ssrLoadModule("/features/economy/model.ts");
+const { fishingOdds } = await vite.ssrLoadModule("/features/economy/fishing.ts");
 
 test("help search handles Russian spelling, word order, whitespace and missing results", () => {
   const topics = worldHelpTopics();
@@ -135,4 +136,39 @@ test("released gift, relic and fish-rarity rules are searchable and match the av
   assert.match(get("plesk").paragraphs.join(" "), /Можно поймать и эпические виды, и легендарную акулу/);
   assert.ok(searchWorldHelp(topics, "подарки жемчуг").some(topic => topic.id === "rewards"));
   assert.ok(searchWorldHelp(topics, "смола обмен").some(topic => topic.id === "relics"));
+});
+
+test("food guide separates optional satiety from paid resident orders and required trip provisions", () => {
+  const topics = worldHelpTopics(), get = id => topics.find(topic => topic.id === id);
+  const meals = get("food").paragraphs.join(" "), orders = get("resident-orders").paragraphs.join(" ");
+  for (const meal of economyCatalog.food.meals) {
+    const name = economyCatalog.items.find(item => item.id === meal.itemId).name;
+    assert.ok(meals.includes(`${name} — +${meal.heroSpeedBps / 100}%`));
+  }
+  assert.match(meals, /одну порцию.*Мохлик получает бонус скорости на следующую вылазку или рыбалку/);
+  assert.match(meals, /Шишколапу \+10%.*сокращает только оставшееся время.*повторно нельзя/);
+  assert.match(meals, /не пропадают за время отсутствия.*Обязательного голода нет/);
+  assert.match(meals, /Количество добычи и шансы редкой рыбы от еды не меняются/);
+  assert.match(meals, /отмена похода обед не возвращает.*не заменяет обязательные припасы/);
+  assert.match(orders, /приносят только монеты.*не кормит.*обед выбирается отдельно/);
+  const board = economyCatalog.food.orders;
+  assert.ok(orders.includes(`На доске ${board.slots} заказа`));
+  assert.ok(orders.includes(`каждые ${board.refreshSeconds / 3600} часов`));
+  assert.ok(orders.includes(`через ${board.replacementSeconds / 60} минут`));
+  assert.ok(orders.includes(`через ${board.completionSeconds / 60} минут`));
+  assert.match(orders, /не резервируются.*бесплатно заменить.*ожидание.*раньше/);
+  assert.match(get("campfire").paragraphs.join(" "), /редкий улов не подставляется автоматически.*остаётся открытым/);
+  assert.ok(searchWorldHelp(topics, "сытость").some(topic => topic.id === "food"));
+  assert.ok(searchWorldHelp(topics, "заменить заказ").some(topic => topic.id === "resident-orders"));
+});
+
+test("guide explains the actual top legendary chance per special attempt without promising a full catch", () => {
+  const fishing = economyCatalog.fishing;
+  const probability = fishingOdds({}, fishing, { rodId: "starfall_rod", hookId: "leviathan_hook", baitId: "firefly_bait" })
+    .filter(odds => fishing.fish.some(fish => fish.itemId === odds.itemId && fish.rarity === "legendary"))
+    .reduce((sum, odds) => sum + odds.probability, 0);
+  const guide = worldHelpTopics().find(topic => topic.id === "plesk").paragraphs.join(" ");
+  assert.ok(guide.includes(`${(probability * 100).toFixed(2).replace(".", ",")}% на легендарную рыбу за одну особую попытку`));
+  assert.match(guide, /Звёздная удочка, Крючок Левиафана и Искристая мушка/);
+  assert.match(guide, /гарантированная речная рыба.*не превращается в дополнительные броски/);
 });

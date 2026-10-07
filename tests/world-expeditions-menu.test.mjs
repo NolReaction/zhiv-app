@@ -11,6 +11,8 @@ const { WorldExpeditionsMenu, WorldExpeditionSector, ExpeditionRouteDetails, Act
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
 const { economyStorage } = await vite.ssrLoadModule("/features/economy/rules.ts");
 const { Work } = await vite.ssrLoadModule("/features/economy/world-economy-parts.tsx");
+const { mealDuration } = await vite.ssrLoadModule("/features/economy/food.ts");
+const { worldDuration } = await vite.ssrLoadModule("/features/economy/world-stations.ts");
 after(() => vite.close());
 
 const now = Date.parse("2026-10-03T12:00:00Z");
@@ -51,6 +53,29 @@ function button(html, label) {
   return found;
 }
 const disabled = value => /\bdisabled=/.test(value.attributes);
+
+test("pending hero food quotes the same speed-adjusted time in route list, preparation and departure", () => {
+  for (const id of ["forest", "shore"]) {
+    const state = snapshot({ inventory: { wood: 20, dried_berries: 20 }, food: { heroMeal: null, builderMeal: "grilled_fish" } });
+    const selected = state.catalog.explorations.find(entry => entry.id === id);
+    selected.seconds = 7200;
+    const economy = controller({ snapshot: state });
+    assert.ok(button(renderPreparation(id, economy), `Отправиться: ${selected.name}`).text.includes("2 ч"), "builder food does not alter the hero's trip");
+    state.food.heroMeal = "hearty_fish";
+    const before = structuredClone(state), expected = worldDuration(mealDuration(selected.seconds, 2500));
+    assert.equal(expected, "1 ч 36 мин");
+    assert.notEqual(expected, worldDuration(Math.ceil(selected.seconds * 0.75)), "+25% speed is not a 25% duration reduction");
+    const list = route(renderSector(expeditionSector(id), economy), id);
+    assert.ok(list.includes(expected));
+    const preparation = renderPreparation(id, economy);
+    assert.ok(button(preparation, `Отправиться: ${selected.name}`).text.includes(expected));
+    const heading = preparation.match(/<header\b[^>]*>([\s\S]*?)<\/header>/)?.[1];
+    assert.ok(heading?.includes(expected), "preparation heading and departure action agree");
+    assert.match(preparation, /скорость следующей вылазки \+25%/);
+    assert.ok(button(renderPreparation(id, economy), `Отправиться: ${selected.name}`).text.includes(expected));
+    assert.deepEqual(state, before, "repeated previews must preserve the pending meal and original route time");
+  }
+});
 
 test("expeditions open one sector with accessible controls instead of all ten routes", () => {
   const html = render();

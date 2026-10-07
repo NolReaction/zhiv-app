@@ -93,10 +93,49 @@ test("node and edge ids are unique and actual world remains connected without pr
   assert.equal(all.size, ids.size);
   const actual = reachableIds(graph, edge => edge.kind !== "plan" && edge.kind !== "cost");
   for (const value of graph.nodes.filter(value => value.status === "active")) assert(actual.has(value.id), `Disconnected active node ${value.id}`);
-  assert.equal(graph.nodes.length, 156);
+  assert.equal(graph.nodes.length, 162);
   assert.equal(node("pearls").status, "active");
   assert.ok(!graph.edges.some(edge => edge.source === "pearls" && ["requirement", "unlock"].includes(edge.kind)), "optional acceleration never gates progression");
-  assert.equal(graph.nodes.filter(value => value.status === "plan").length, 17);
+  assert.equal(graph.nodes.filter(value => value.status === "plan").length, 16);
+});
+
+test("fish ingredients resolve to a real chance source without inventing guaranteed species rewards", () => {
+  const source = node("fishing_species");
+  assert.equal(source.kind, "acquisition");
+  assert.equal(source.status, "active");
+  assert.equal(source.rewards, undefined);
+  assert.equal(source.seconds, undefined);
+  assert.equal(source.cost, undefined);
+  assert.deepEqual(plain(source.fishingSource.itemIds), catalog.fishing.fish.map(fish => fish.itemId));
+  assert.deepEqual(plain(source.fishingSource.routeIds), catalog.fishing.routeIds);
+  assert.match(source.description, /конкретная рыба не гарантирована/);
+  assert.match(source.description, /легендарная удочка/);
+  assert(hasEdge("b:home:1", source.id, "requirement"));
+  for (const route of catalog.fishing.routeIds) assert(hasEdge(`e:${route}`, source.id, "any"));
+  for (const recipe of catalog.recipes.filter(recipe => recipe.fishInput)) {
+    for (const id of recipe.fishInput.itemIds) {
+      assert(getProgressionResourceSource(graph, id), `${recipe.id}: no ingredient source for ${id}`);
+      assert(node(`r:${recipe.id}`).description.includes(catalog.items.find(item => item.id === id).name));
+      if (id !== "fish") assert.equal(getProgressionResourceSource(graph, id).id, source.id);
+    }
+  }
+  for (const recipe of ["cook_berry_fish", "cook_hearty_fish"]) assert(hasEdge(source.id, `r:${recipe}`, "cost"));
+  assert(!graph.nodes.some(value => value.rewards?.fish_reedperch || value.rewards?.fish_mooncarp));
+  const prerequisites = getPrerequisiteIds(graph, source.id, false);
+  assert(!graph.nodes.some(value => value.kind === "exploration" && prerequisites.has(value.id)), "alternative fishing trips never all become mandatory");
+});
+
+test("food and resident orders are active optional uses rather than future progression gates", () => {
+  assert.equal(node("orders").status, "active");
+  assert.equal(node("meals").status, "active");
+  assert.match(node("orders").description, /платят только монеты/);
+  assert.match(node("orders").description, /не включают сытость/);
+  assert.match(node("meals").description, /\+10–25%/);
+  assert(hasEdge("start", "orders", "available"));
+  assert(hasEdge("orders", "coins", "flow"));
+  assert(hasEdge("r:cook_grilled_fish", "meals", "flow"));
+  assert(!getPrerequisiteIds(graph, "b:home:5").has("orders"));
+  assert(!getPrerequisiteIds(graph, "b:home:5").has("meals"));
 });
 
 test("daily and earned achievements explain current pearl sources while the future merchant cannot gate upgrades", () => {

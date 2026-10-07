@@ -78,13 +78,19 @@ internal fun economyView(c: Connection, user: UUID, publicId: String, now: Insta
     val row = readEconomyProfile(c, user)
     val s = row.state
     return EconomyView(publicId, row.revision, now.toString(), s.wallet, s.inventory, s.buildings, s.jobs.map(EconomyPublicJobs::project), s.migration,
-        EconomyRules.catalog, EconomyRules.storage(s, reservedEconomyMarketItems(c, user)), s.completedExplorations, s.fishing, s.progression, wardrobe = s.wardrobe, fishingShop = s.fishingShop, productionSlots = s.productionSlots)
+        EconomyRules.catalog, EconomyRules.storage(s, reservedEconomyMarketItems(c, user)), s.completedExplorations, s.fishing, s.progression, wardrobe = s.wardrobe, fishingShop = s.fishingShop,
+        productionSlots = s.productionSlots, food = s.food, residentOrders = s.residentOrders)
 }
 
 /** Save only public action context before a consumed job disappears. In
  * particular, fishing IDs do not equal command IDs. Private rolls and future
  * rewards must never become analytics metadata. */
-internal fun economyLedgerContext(before: EconomyState, command: EconomyCommand): Map<String, String> {
+internal fun economyLedgerContext(before: EconomyState, command: EconomyCommand, now: Instant? = null): Map<String, String> {
+    if (command.action == "start_production") return mapOf("targetId" to command.targetId.substringBefore('@'))
+    if (command.action in setOf("complete_resident_order", "replace_resident_order") && now != null) {
+        val offer = EconomyFood.residentOrderBoard(before, now).offers.find { it.id == command.targetId }
+        if (offer != null) return mapOf("targetId" to offer.templateId)
+    }
     if (command.action !in setOf("claim_job", "speedup_construction", "start_collection", "cancel_exploration"))
         return mapOf("targetId" to command.targetId)
     val job = before.jobs.find { it.id == command.targetId } ?: return emptyMap()
@@ -177,7 +183,7 @@ class JdbcEconomyRepository(private val source: DataSource) : EconomyRepository 
             c.economyUpdate("INSERT INTO economy_ledger(user_id,source_key,kind,coins,pearls,items,context) VALUES (?,?,?,?,?,?::jsonb,?::jsonb)",
                 actor.id, "command:$requestId", command.action, next.wallet.coins - before.state.wallet.coins,
                 next.wallet.pearls - before.state.wallet.pearls, economyJson.encodeToString(delta),
-                economyJson.encodeToString(economyLedgerContext(before.state, command)))
+                economyJson.encodeToString(economyLedgerContext(before.state, command, now)))
             c.economyUpdate("INSERT INTO economy_commands(user_id,request_id,signature,message,accepted_revision) VALUES (?,?,?,?,?)",
                 actor.id, requestId, signature, message, before.revision + 1)
             EconomyResult(economyView(c, actor.id, actor.publicId, now), message, before.revision + 1)

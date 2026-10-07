@@ -80,10 +80,12 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     val targetLevel: Int? = null, val startedAt: String, val finishesAt: String,
     val rewards: Map<String, Long> = emptyMap(), val cost: EconomyCost = EconomyCost(), val catalogVersion: Int = 1,
     val collection: EconomyCollection? = null, val fishing: EconomyFishingCatch? = null, val rareDrop: EconomyRareDropDelivery? = null,
+    val meal: EconomyJobMeal? = null,
 ) {
     init {
         require(collection == null || kind == "production" && targetId == "garden" && (rewards["berries"] ?: 0L) > 0L)
         require(rareDrop == null || kind == "exploration" && (rareDrop.itemId == null || rewards[rareDrop.itemId] == 1L))
+        require(meal == null || (meal.consumer == "hero" && kind == "exploration" || meal.consumer == "builder" && kind == "construction"))
     }
 }
 @Serializable data class EconomyBookCollection(
@@ -101,6 +103,7 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     val wardrobe: List<String> = listOf("moss", "amber_scarf"),
     val rareDropState: EconomyRareDropClock? = null, val fishingShop: EconomyFishingShop? = null, val currencyScale: Int = 1, val pearlScale: Int? = null,
     val productionSlots: Map<String, Int> = emptyMap(),
+    val food: EconomyFoodState = EconomyFoodState(), val residentOrders: EconomyResidentOrders = EconomyResidentOrders(),
 )
 @Serializable data class EconomyItem(val id: String, val name: String, val category: String, val baseSellPrice: Long, val tradable: Boolean = true)
 @Serializable data class EconomyBuildingLevel(
@@ -112,7 +115,7 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     val id: String, val name: String, val buildingId: String, val buildingLevel: Int = 1,
     val requiredHomeLevel: Int = 1, val seconds: Long, val cost: EconomyCost = EconomyCost(), val rewards: Map<String, Long>,
     val requiredBuildings: Map<String, Int> = emptyMap(), val collection: EconomyCollectionSpec? = null,
-    val maxBatch: Int? = null,
+    val maxBatch: Int? = null, val fishInput: EconomyRecipeFishInput? = null,
 ) {
     init { require(collection == null || buildingId == "garden" && (rewards["berries"] ?: 0L) > 0L) }
 }
@@ -144,6 +147,7 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     val localBuyer: EconomyLocalBuyer = EconomyLocalBuyer(),
     val rareDrops: EconomyRareDropSpec? = null, val currencyScale: Int = 10, val pearlScale: Int = 50,
     val productionSlots: EconomyProductionSlots = EconomyProductionSlots(),
+    val food: EconomyFoodCatalog? = null,
 )
 @Serializable data class EconomyStorage(
     val capacity: Long, val used: Long, val reserved: Long, val available: Long, val overflow: Long,
@@ -155,6 +159,7 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     val storage: EconomyStorage, val completedExplorations: Long = 0, val fishing: EconomyFishing = EconomyFishing(),
     val progression: EconomyProgression = EconomyProgression(), val wardrobe: List<String> = listOf("moss", "amber_scarf"), val fishingShop: EconomyFishingShop? = null, val currencyScale: Int = 10, val pearlScale: Int = 50,
     val productionSlots: Map<String, Int> = emptyMap(),
+    val food: EconomyFoodState = EconomyFoodState(), val residentOrders: EconomyResidentOrders = EconomyResidentOrders(),
 )
 @Serializable data class EconomyCommand(
     val requestId: String, val ownerPublicId: String, val expectedRevision: Long,

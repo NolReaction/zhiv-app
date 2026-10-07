@@ -56,3 +56,15 @@ test("branch renders the rare acquisition node as a selectable active source rat
   assert.match(rareButton, /Реликвии исследований/);
   assert.doesNotMatch(rareButton, /data-kind="(?:recipe|market)"/);
 });
+
+test("branch prerenders cooking's fish source and current food uses as active accessible nodes", () => {
+  const sourceButton = html.match(/<button\b[^>]*data-node-id="fishing_species"[\s\S]*?<\/button>/)?.[0];
+  assert(sourceButton);
+  assert.match(sourceButton, /data-kind="acquisition"/);
+  assert.match(sourceButton, /data-status="active"/);
+  assert.match(sourceButton, /aria-label="Виды рыбы из улова"/);
+  assert.match(html, /data-node-id="orders"[^>]*data-status="active"/);
+  assert.match(html, /data-node-id="meals"[^>]*data-status="active"/);
+  assert.match(html, /data-node-id="r:cook_berry_fish"/);
+  assert.match(html, /data-node-id="r:cook_hearty_fish"/);
+});

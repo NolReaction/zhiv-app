@@ -63,7 +63,7 @@ test("refrigerator separates all fish from materials while sharing the exact war
   assert.match(supplies, /aria-label="Лесной червячок: 2"/);
   assert.doesNotMatch(supplies, /aria-label="(?:Речная рыба|Серебринка|Теневая акула):/);
   const fridge = render(economy, { initialTab: "fridge" });
-  assert.match(fridge, /aria-label="Рыба в холодильнике"/);
+  assert.match(fridge, /aria-label="Рыба и еда в холодильнике"/);
   assert.match(fridge, /<small>87<\/small><span>Холодильник<\/span>/);
   for (const [name, quantity, id] of [["Речная рыба", 84, "fish"], ["Серебринка", 1, "fish_silverfin"], ["Теневая акула", 2, "fish_shark"]]) {
     assert.ok(fridge.includes(`aria-label="${name}: ${quantity}"`));
@@ -97,7 +97,7 @@ test("three pantry tabs wrap keyboard navigation and focus the matching section"
 
 test("empty refrigerator invites a shoreline trip without suggesting a new storage purchase", () => {
   const html = render(controller(), { initialTab: "fridge" });
-  assert.match(html, /Здесь будет рыба с берега и из лавки Плёски/);
+  assert.match(html, /Здесь будут рыба и готовые блюда/);
   assert.equal(disabled(button(html, "Выбрать вылазку")), false);
   assert.doesNotMatch(html, /Купить холодильник|Улучшить холодильник|Древесина: 20/);
 });
@@ -258,5 +258,30 @@ test("old catalogs keep full sale prices and zero quote, while blocked handlers 
   for (const flags of [{ busy: true }, { uncertain: true }, { retryAt: now + 5000 }]) {
     const blocked = inspectSale(state, {}, flags); assert.equal(blocked.control("Продать торговцу").props.disabled, true);
     blocked.control("Продать торговцу").props.onClick(); assert.deepEqual(blocked.calls, []);
+  }
+});
+
+test("prepared meals share refrigerator capacity and cannot leak into the material section", () => {
+  const inventory = { fish: 3, grilled_fish: 4, fish_soup: 2, wood: 5 };
+  const state = snapshot({ inventory }), before = structuredClone(state), economy = controller({ snapshot: state });
+  const fridge = render(economy, { initialTab: "fridge" });
+  for (const [name, quantity] of [["Речная рыба", 3], ["Жареная рыба", 4], ["Рыбная уха", 2]]) assert.ok(fridge.includes(`aria-label="${name}: ${quantity}"`));
+  assert.match(fridge, /<small>9<\/small><span>Холодильник<\/span>/);
+  assert.doesNotMatch(fridge, /aria-label="Древесина:/);
+  assert.doesNotMatch(render(economy), /aria-label="(?:Жареная рыба|Рыбная уха):/);
+  assert.ok(fridge.includes(`aria-label="Кладовая: занято ${state.storage.used} из ${state.storage.capacity} мест"`));
+  assert.deepEqual(state, before, "opening the refrigerator never moves food or creates a second capacity");
+});
+
+test("pantry meal action only opens food selection; raw fish and materials cannot be eaten there", () => {
+  const state = snapshot({ inventory: { grilled_fish: 3, fish: 2, wood: 5 } });
+  let opened = 0;
+  const view = inspectSale(state, { itemId: "grilled_fish", onOpenFood() { opened++; } });
+  assert.ok(view.control("Подать еду"));
+  view.control("Подать еду").props.onClick();
+  assert.equal(opened, 1); assert.deepEqual(view.calls, []); assert.equal(state.inventory.grilled_fish, 3);
+  for (const itemId of ["fish", "wood"]) {
+    const other = inspectSale(state, { itemId, onOpenFood() { assert.fail("non-meals cannot feed a resident"); } });
+    assert.equal(other.control("Подать еду"), undefined);
   }
 });

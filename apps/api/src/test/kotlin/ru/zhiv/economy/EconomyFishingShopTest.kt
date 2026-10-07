@@ -64,7 +64,7 @@ class EconomyFishingShopTest {
                 if (shop.offers.any { it.kind == "rod" }) legendary++
                 assertEquals(shop.offers.any { it.kind == "rod" }, shop.offers.any { it.kind == "hook" })
             }
-            assertEquals(if (home == 4) 20 else 50, legendary)
+            assertEquals(if (home == 4) 400 else 800, legendary)
         }
     }
 
@@ -120,7 +120,7 @@ class EconomyFishingShopTest {
     }
 
     @Test fun `refresh debits pearls once per accepted state and rejects stale cheap expired and poor requests`() {
-        val state = ready(5, 8000)
+        val state = ready(5, 6000)
         val shop = checkNotNull(state.fishingShop)
         val refresh = command("refresh_fishing_shop", shop.id, price = 100)
         assertEquals("ECONOMY_FISHING_PRICE_CHANGED", assertFailsWith<AuthFailure> {
@@ -144,7 +144,7 @@ class EconomyFishingShopTest {
     }
 
     @Test fun `paid replacements preserve category slots exclude even sold-out IDs and never raise legendary odds`() {
-        val state = ready(5, 8000).let { it.copy(fishingShop = checkNotNull(it.fishingShop).let { shop ->
+        val state = ready(5, 6000).let { it.copy(fishingShop = checkNotNull(it.fishingShop).let { shop ->
             shop.copy(offers = shop.offers.map { offer -> offer.copy(remaining = 0) }) }) }
         assertTrue(EconomyFishingShops.canRefresh(state))
         assertEquals(listOf("river_rod", "barbed_hook", "worm_bait", "fish_silverfin"),
@@ -160,7 +160,7 @@ class EconomyFishingShopTest {
             assertTrue(shop.offers.none { offer -> checkNotNull(state.fishingShop).offers.any { it.itemId == offer.itemId } })
             if (shop.offers.any { it.itemId == "starfall_rod" }) legendary++
         }
-        assertEquals(50, legendary)
+        assertEquals(800, legendary)
     }
 
     @Test fun `starter counter has a different ordinary rod and hook on paid replacement`() {
@@ -186,14 +186,14 @@ class EconomyFishingShopTest {
             assertEquals(1000L, initial.wallet.pearls)
             assertEquals(4, EconomyFishingShops.create(initial, now.plusSeconds(21600), { 0 }).offers.size)
         }
-        val depleted = ready(5, 8000).let { it.copy(fishing = it.fishing.copy(
+        val depleted = ready(5, 6000).let { it.copy(fishing = it.fishing.copy(
             ownedRods = it.fishing.ownedRods + listOf("river_rod", "brook_rod"))) }
         assertFalse(EconomyFishingShops.canRefresh(depleted))
         assertNull(EconomyFishingShops.refresh(depleted, now, { error("must not draw") }))
     }
 
     @Test fun `refresh price decreases by remaining time with exact subsecond steps and saved cap`() {
-        val shop = checkNotNull(ready(5, 8000).fishingShop)
+        val shop = checkNotNull(ready(5, 6000).fishingShop)
         val end = Instant.parse(shop.refreshAt)
         for ((remaining, price) in listOf(21_600_001L to 100L, 21_600_000L to 100L, 10_800_001L to 52L,
             10_800_000L to 50L, 3_600_000L to 18L, 432_001L to 4L, 432_000L to 2L, 1L to 2L, 0L to 0L, -1L to 0L))
@@ -210,7 +210,7 @@ class EconomyFishingShopTest {
     }
 
     @Test fun `delayed refresh debits only the cheaper server time price and never trusts a cheap client quote`() {
-        val state = ready(5, 8000)
+        val state = ready(5, 6000)
         val shop = checkNotNull(state.fishingShop)
         val at = now.plusSeconds(10800)
         val request = command("refresh_fishing_shop", shop.id, price = 100)

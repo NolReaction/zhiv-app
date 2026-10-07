@@ -55,16 +55,16 @@ test("a joint long order is costed once and exposes its output portfolio rather 
 test("catch expectation changes exactly one fish and keeps bait spending distinct from its fractional species portfolio", () => {
   const math = economicMath(readEconomyCatalog()), initial = math.catchPortfolio();
   near(Object.values(initial.output).reduce((a, b) => a + b, 0), 4);
-  near(initial.output.fish, (3 + 10010 / 16955)); near(initial.expectedFishRevenue, 342.0713653789443);
-  near(math.catchPortfolio("river_rod").expectedFishRevenue, 350.62731247897744);
+  near(initial.output.fish, (3 + 8008 / 15515)); near(initial.expectedFishRevenue, 352.3454721237511);
+  near(math.catchPortfolio("river_rod").expectedFishRevenue, 368.8697415103902);
   const bait = math.catchPortfolio("reed_rod", "crumb_bait");
   assert(bait.expectedFishRevenue - initial.expectedFishRevenue < bait.baitPurchaseCoins);
   assert.equal(math.sourceHome("charcoal"), 2); assert.equal(math.sourceHome("resin"), 3); assert.equal(math.sourceHome("tools"), 4);
-  assert.equal(auditEconomicMath(readEconomyCatalog()).profiles.length, 42);
+  assert.equal(auditEconomicMath(readEconomyCatalog()).profiles.length, readEconomyCatalog().items.length);
   const chargedRoute = readEconomyCatalog();
   chargedRoute.explorations.find(r => r.id === "shore").cost = { coins: 7, items: { wood: 2 } };
   const charged = economicMath(chargedRoute).profile("fish");
-  near(charged.coins, 7 / (3 + 10010 / 16955)); near(charged.slotMinutes.woodlot, 8 / (3 + 10010 / 16955));
+  near(charged.coins, 7 / (3 + 8008 / 15515)); near(charged.slotMinutes.woodlot, 8 / (3 + 8008 / 15515));
 });
 
 test("overnight catch has six species draws within a fixed catch volume and consumes one bait", () => {
@@ -72,8 +72,8 @@ test("overnight catch has six species draws within a fixed catch volume and cons
   const best = math.catchPortfolio('starfall_rod', 'firefly_bait', 'shore', 'leviathan_hook');
   const camp = math.catchPortfolio('starfall_rod', 'firefly_bait', 'shore_camp', 'leviathan_hook');
   assert.equal(best.speciesDrawsPerJob, 1); assert.equal(camp.speciesDrawsPerJob, 6);
-  near(best.probabilities.fish_shark, 18 / 4572);
-  near(best.expectedFishRevenue, 355.99300087489064);
+  near(best.probabilities.fish_shark, 504 / 5047);
+  near(best.expectedFishRevenue, 550.374479889043);
   near(camp.expectedFishRevenue, 6 * best.expectedFishRevenue);
   near(Object.values(camp.output).reduce((a, b) => a + b, 0), 24);
   assert.equal(camp.output.wood, undefined);
@@ -107,8 +107,8 @@ test("fish references disclose both legendary tackle startup costs and use the e
   assert.equal(shark.sourceHome, 4); assert.equal(shark.referenceHome, 4);
   assert.equal(shark.catchReference.hookId, "leviathan_hook");
   assert.equal(shark.catchReference.rodId, "starfall_rod");
-  near(shark.catchReference.probability, 8 / 3838);
-  near(shark.slotMinutes.mochlik, 45 * 3838 / 8);
+  near(shark.catchReference.probability, 336 / 5962);
+  near(shark.slotMinutes.mochlik, 45 * 5962 / 336);
   assert.equal(shark.coins, 0, "the permanent hook startup price is disclosed separately from every catch");
   assert.equal(shark.catchReference.hookPurchaseCoins, 260000);
   assert.equal(shark.catchReference.rodPurchaseCoins, 360000);

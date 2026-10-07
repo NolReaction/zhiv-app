@@ -6,7 +6,7 @@ export function isQuarryProduction(job: Pick<EconomyJob, "kind" | "targetId">) {
 
 /** Mining uses exploration commands; retired production is rejected by the domain. */
 export function economyCommandUsesActor(command: Pick<EconomyCommand, "action" | "targetId">) {
-  return ["start_exploration", "start_fishing", "start_collection"].includes(command.action);
+  return ["start_exploration", "start_fishing", "start_collection", "eat_food"].includes(command.action);
 }
 
 type ActorConflict = { code: "ECONOMY_EXPLORER_BUSY" | "ECONOMY_COLLECTOR_BUSY" | "ECONOMY_QUARRY_BUSY"; message: string; job: EconomyJob };

@@ -34,9 +34,9 @@ test("trip chances use six separate camp draws and include guaranteed ordinary f
   const report = fishingDiagnostics(select({ rodId: "starfall_rod", hookId: "leviathan_hook", baitId: "firefly_bait", routeId: "shore_camp" }));
   const shark = report.rows.find(row => row.itemId === "fish_shark"), ordinary = report.rows.find(row => row.itemId === "fish");
   assert.equal(report.draws, 6); assert.equal(report.totalFish, 24);
-  assert.equal(shark.weight, 18); assert.equal(shark.totalWeight, 4572);
-  near(shark.atLeastOne, 1 - (1 - 18 / 4572) ** 6);
-  near(shark.expectedCount, 6 * 18 / 4572);
+  assert.equal(shark.weight, 504); assert.equal(shark.totalWeight, 5047);
+  near(shark.atLeastOne, 1 - (1 - 504 / 5047) ** 6);
+  near(shark.expectedCount, 6 * 504 / 5047);
   assert.equal(ordinary.guaranteed, 18); assert.equal(ordinary.atLeastOne, 1);
   near(ordinary.expectedCount, 18 + ordinary.probability * 6);
   assert.deepEqual([shark.rodFactor, shark.hookFactor, shark.baitFactor], [400, 300, 150]);

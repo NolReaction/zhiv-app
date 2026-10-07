@@ -14,6 +14,7 @@ import { useGardenCollection } from "./garden-collection-context";
 import { WorldExpeditionsMenu } from "./world-expeditions-menu";
 import { WorldProductionSlots } from "./world-production-slots";
 import type { ConstructionGoalController } from "./use-construction-goal";
+import { recipeFishOptions, recipeWithFish } from "./food";
 import { ConstructionGoalSummary } from "./construction-goal-summary";
 import styles from "./world-object-menu.module.css";
 
@@ -31,6 +32,7 @@ export type WorldObjectMenuProps = {
   onOpenPantry?: () => void;
   constructionGoal?: ConstructionGoalController;
   onOpenGoal?: () => void;
+  onOpenFood?: () => void;
 };
 const placeIcons: Partial<Record<WorldPlace, LucideIcon>> = { house: House, garden: Sprout, campfire: Flame, workshop: Hammer, quarry: Pickaxe, woodlot: Trees, bridge: Fence, lighthouse: TowerControl };
 
@@ -70,11 +72,20 @@ function RecipeCatalog({ state, recipes, onChoose }: { state: EconomyView; recip
 
 export function WorldRecipeDetail({ economy, recipe, navigation, onCollapse }: { economy: ReadyEconomy; recipe: WorldRecipe; navigation?: StationNavigation; onCollapse: () => void }) {
   const [requestedQuantity, setQuantity] = useState(1);
+  // The original ingredient is the safe default. Never spend a valuable fish
+  // just because it is the first available one in the player's inventory.
+  const [requestedFish, setFish] = useState<string | undefined>(undefined);
+  const fishOptions = recipeFishOptions(economy.snapshot, recipe, economy.snapshot.catalog);
+  const selectedFish = requestedFish && fishOptions.some(option => option.itemId === requestedFish) ? requestedFish : undefined;
+  const resolvedRecipe = recipeWithFish(recipe, selectedFish);
+  const fishId = selectedFish ?? fishOptions.find(option => (recipe.cost.items[option.itemId] ?? 0) > 0)?.itemId;
+  const selectedRarity = fishOptions.find(option => option.itemId === fishId)?.rarity;
+  const fishIdLabel = useId();
   const backButton = useRef<HTMLButtonElement>(null);
   const pendingOrder = useRef<{ owner: string; jobIds: Set<string>; started: boolean } | null>(null);
-  const maximum = worldBatchLimit(economy.snapshot, recipe);
+  const maximum = worldBatchLimit(economy.snapshot, resolvedRecipe);
   const quantity = Math.max(1, Math.min(requestedQuantity, maximum));
-  const reason = worldProductionReason(economy.snapshot, recipe, quantity);
+  const reason = worldProductionReason(economy.snapshot, resolvedRecipe, quantity);
   const missingRequirements = worldMissingRequirements(economy.snapshot, worldRequirements(recipe, recipe));
   const output = Object.values(recipe.rewards).reduce((sum, amount) => sum + amount, 0) * quantity;
   const quantityId = useId();
@@ -92,7 +103,14 @@ export function WorldRecipeDetail({ economy, recipe, navigation, onCollapse }: {
     <div className={styles.recipeScroll} data-recipe-scroll>
       <button ref={backButton} type="button" className={styles.recipeBack} onClick={onCollapse}><ArrowLeft size={14} aria-hidden="true" />Все рецепты</button>
       <div className={styles.resultCards} aria-label="Результат">{Object.entries(recipe.rewards).map(([id, amount]) => <div key={id}><span><ProductIcon state={economy.snapshot} itemId={id} size={24} /></span><strong>{itemName(economy.snapshot, id)}</strong><b>×{number(amount * quantity)}</b></div>)}</div>
-      <div className={styles.recipeIngredients}><h3>Понадобится</h3><Cost state={economy.snapshot} cost={recipe.cost} quantity={quantity} navigation={navigation} /></div>
+      {fishOptions.length > 0 && <div className={styles.fishIngredient}>
+        <label htmlFor={fishIdLabel}>Рыба для блюда</label>
+        <select id={fishIdLabel} value={fishId} disabled={locked(economy)} onChange={event => { if (!locked(economy) && fishOptions.some(option => option.itemId === event.target.value)) setFish(event.target.value); }}>
+          {fishOptions.map(option => <option key={option.itemId} value={option.itemId}>{option.name} · в запасе {number(option.quantity)}</option>)}
+        </select>
+        {selectedRarity && ["rare", "epic", "legendary"].includes(selectedRarity) && <p className={styles.hint}>Выбрана ценная рыба. Она будет потрачена на приготовление.</p>}
+      </div>}
+      <div className={styles.recipeIngredients}><h3>Понадобится</h3><Cost state={economy.snapshot} cost={resolvedRecipe.cost} quantity={quantity} navigation={navigation} /></div>
       <Requirements state={economy.snapshot} required={worldRequirements(recipe, recipe)} navigation={navigation} />
       {reason && !missingRequirements.length && <p className={styles.hint}>{reason}</p>}
       {output > economy.snapshot.storage.available && !missingRequirements.length && <p className={styles.hint}>Для получения понадобится {number(output)} мест · свободно {number(economy.snapshot.storage.available)}.</p>}
@@ -102,7 +120,7 @@ export function WorldRecipeDetail({ economy, recipe, navigation, onCollapse }: {
       <button type="button" className={styles.primary} disabled={Boolean(reason) || locked(economy)} onClick={() => {
         if (reason || locked(economy)) return;
         pendingOrder.current = { owner: economy.snapshot.ownerPublicId, jobIds: new Set(economy.snapshot.jobs.map(job => job.id)), started: false };
-        void economy.act("start_production", recipe.id, quantity);
+        void economy.act("start_production", selectedFish ? `${recipe.id}@${selectedFish}` : recipe.id, quantity);
       }}>Начать · {worldDuration(recipe.seconds * quantity)}</button>
     </div>
   </section>;
@@ -130,7 +148,7 @@ export function WorldObjectSale({ economy, itemId, onCollapse }: { economy: Read
   </section>;
 }
 
-function ObjectMenuBody({ selection, economy, onClose, onReturnFocus, bounds, onNavigate, onExplore, onOpenPantry, initialStationId, initialRecipeId, constructionGoal, onOpenGoal }: WorldObjectMenuProps) {
+function ObjectMenuBody({ selection, economy, onClose, onReturnFocus, bounds, onNavigate, onExplore, onOpenPantry, initialStationId, initialRecipeId, constructionGoal, onOpenGoal, onOpenFood }: WorldObjectMenuProps) {
   const collection = useGardenCollection();
   const seenHarvest = useRef(collection?.request?.requestId);
   useEffect(() => {
@@ -250,6 +268,7 @@ function ObjectMenuBody({ selection, economy, onClose, onReturnFocus, bounds, on
       {!selectedRecipe && state && constructionGoal && onOpenGoal && <ConstructionGoalSummary state={state} constructionGoal={constructionGoal} onOpenGoal={onOpenGoal} navigation={navigation} compact />}
       {definition.future ? <div className={styles.future}><LockKeyhole size={22} aria-hidden="true" /><p>{definition.future}</p></div> : !state ? <div className={styles.loading}><RefreshCw size={17} aria-hidden="true" /><p>{economy.error ?? "Открываем ваше хозяйство…"}</p>{economy.error && <button type="button" className={styles.textButton} disabled={economy.busy || cooldown > 0} onClick={() => void economy.retry()}>{cooldown ? `Повторить через ${cooldown} с` : "Попробовать ещё раз"}</button>}</div> : <>
         {(economy.error || economy.uncertain) && <div className={styles.error} role="alert"><p>{economy.uncertain ? "Проверяем последнее действие. Новые заказы доступны после подтверждения." : economy.error}</p><button type="button" className={styles.textButton} disabled={economy.busy || cooldown > 0} onClick={() => void economy.retry()}><RefreshCw size={12} aria-hidden="true" />{cooldown ? `Повторить через ${cooldown} с` : economy.uncertain ? "Проверить результат" : "Повторить"}</button></div>}
+        {!selectedRecipe && stationId === "dryer" && onOpenFood && <button type="button" className={styles.foodEntry} onClick={() => { navigating.current = true; onOpenFood(); }}><Flame size={16} aria-hidden="true" /><strong>Еда и заказы</strong><span>Угостить · заработать</span></button>}
         {!selectedRecipe && readyEconomy && <WorldProductionSlots economy={readyEconomy} stationId={stationId} />}
         {!selectedRecipe && readyEconomy && jobs.filter(job => job.kind === "construction").map(job => <Work key={job.id} economy={readyEconomy} job={job} openPantry={openJobPantry} />)}
         {!selectedRecipe && readyEconomy && readyJobs.map(job => <Work key={job.id} economy={readyEconomy} job={job} openPantry={openJobPantry} />)}

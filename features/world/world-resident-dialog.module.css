@@ -15,3 +15,7 @@
 @media (max-width: 359px) { .dialog[data-slot='dialog-content'] { padding: 13px; }.header { gap: 9px; padding: 11px; }.emblem { flex-basis: 44px; height: 44px; }.role { font-size: .75rem; }}
 @media (prefers-reduced-motion: reduce) { .scrim[data-state] { animation: none; } }
 @media (forced-colors: active) { .dialog[data-slot="dialog-content"], .header, .header > button { border-color: ButtonText; } }
+
+.orders { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; width: 100%; min-height: 44px; padding: 9px; margin-top: 12px; border: 1px solid #a7ad7b; border-radius: 10px; background: #e2e3bf; color: inherit; font: inherit; font-size: .8125rem; cursor: pointer; }
+.orders span { margin-left: auto; color: #59624d; font-size: .6875rem; }
+.orders:hover { background: #d8deb5; }

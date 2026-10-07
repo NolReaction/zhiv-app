@@ -8,6 +8,7 @@ import { economyCatalog, type EconomyCost, type EconomyView } from "./model";
 import type { EconomyController } from "./use-economy";
 import type { ConstructionGoalController } from "./use-construction-goal";
 import { ConstructionSpeedup } from "./construction-speedup";
+import { mealDuration, pendingMeal } from "./food";
 import { economyBuilderStatus } from "./builder-status";
 import { Requirements, Work, ProductIcon, itemName, stationIcons, stationName, locked, number, type ReadyEconomy, type StationNavigation } from "./world-economy-parts";
 import { worldConstructionReason, worldDuration, worldMaterialSource, worldMissingRequirements, worldRequirements, type WorldBuildingLevel } from "./world-stations";
@@ -106,6 +107,7 @@ export function WorldUpgradeContent({ stationId, economy, onClose, navigation, o
   const production = state?.jobs.filter(entry => entry.targetId === stationId && entry.kind === "production") ?? [];
   const construction = state?.jobs.find(entry => entry.targetId === stationId && entry.kind === "construction");
   const builder = state ? economyBuilderStatus(state, economy.now) : null;
+  const meal = state ? pendingMeal(state, "builder") : null;
   const builderElsewhere = !construction && target && builder;
   const readyEconomy: ReadyEconomy | null = state ? { ...economy, snapshot: state } : null;
   const reason = state && target ? worldConstructionReason(state, stationId, target) : null;
@@ -155,7 +157,7 @@ export function WorldUpgradeContent({ stationId, economy, onClose, navigation, o
     {!construction && <footer className={styles.footer}>
       {state && target ? <>
         {visibleReason && <p className={styles.reason} role="status"><LockKeyhole size={14} aria-hidden="true" />{visibleReason}</p>}
-        <div className={styles.confirmRow}><span className={styles.duration}><Clock3 size={16} aria-hidden="true" /><span>Время улучшения<strong>{worldDuration(target.seconds)}</strong></span></span><button type="button" className={styles.confirm} disabled={Boolean(reason) || locked(economy)} onClick={startConstruction}><Hammer size={17} aria-hidden="true" />{current ? `Улучшить до ур. ${target.level}` : "Начать обустройство"}</button></div>
+        <div className={styles.confirmRow}><span className={styles.duration}><Clock3 size={16} aria-hidden="true" /><span>Время улучшения<strong>{worldDuration(mealDuration(target.seconds, meal?.builderSpeedBps ?? 0))}</strong>{meal && <small>Сыт · скорость +10%</small>}</span></span><button type="button" className={styles.confirm} disabled={Boolean(reason) || locked(economy)} onClick={startConstruction}><Hammer size={17} aria-hidden="true" />{current ? `Улучшить до ур. ${target.level}` : "Начать обустройство"}</button></div>
       </> : <button type="button" className={styles.done} onClick={onClose}>{state ? "Готово" : "Вернуться на карту"}</button>}
     </footer>}
   </>;

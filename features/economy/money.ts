@@ -34,6 +34,7 @@ export function redenominateEconomyState(state: EconomyState): EconomyState {
   next.wallet.coins = nominalEconomyMoney(next.wallet.coins, coinScale);
   next.wallet.pearls = nominalEconomyPearls(next.wallet.pearls, pearlScale);
   next.migration.coinsGranted = nominalEconomyMoney(next.migration.coinsGranted, coinScale);
+  if (next.residentOrders) next.residentOrders.earnedCoins = nominalEconomyMoney(next.residentOrders.earnedCoins, coinScale);
   for (const job of next.jobs) job.cost.coins = nominalEconomyMoney(job.cost.coins, coinScale);
   next.currencyScale = ECONOMY_CURRENCY_SCALE;
   next.pearlScale = ECONOMY_PEARL_SCALE;

@@ -60,12 +60,31 @@ export const economyRareDropsSchema = z.object({ version: z.literal(1), required
 }).refine(value => value.maxSeconds >= value.minSeconds && new Set(value.itemIds).size === value.itemIds.length);
 export const economyRareDropDeliverySchema = z.object({ version: z.literal(1), seconds: count.positive(), itemId: id.nullable() });
 export type EconomyRareDropClock = { version: 1; remainingSeconds: number; itemId: string };
+export const economyFoodSchema = z.object({ heroMeal: id.nullable().default(null), builderMeal: id.nullable().default(null) })
+  .default({ heroMeal: null, builderMeal: null });
+export const economyResidentOrdersSchema = z.object({
+  cycle: z.number().int().min(-1).safe().default(-1),
+  slots: z.array(z.object({ sequence: count, readyAt: z.string().datetime() })).max(3).default([]),
+  completed: count.default(0), earnedCoins: count.default(0),
+}).default({ cycle: -1, slots: [], completed: 0, earnedCoins: 0 });
+export const economyFoodCatalogSchema = z.object({
+  meals: z.array(z.object({ itemId: id, heroSpeedBps: count.max(2500), builderSpeedBps: z.literal(1000) })).min(1).max(100),
+  orders: z.object({ slots: z.literal(3), refreshSeconds: count.min(3600).max(86400),
+    replacementSeconds: count.positive().max(86400), completionSeconds: count.positive().max(86400),
+    templates: z.array(z.object({ id: z.string().regex(/^[a-z0-9_]{1,40}$/), residentId: z.enum(["plesk", "builder"]), name: z.string().min(1),
+      requiredHomeLevel: count.positive().max(5), requiredBuildings,
+      items: z.record(id, count.positive().max(100)).refine(items => Object.keys(items).length > 0),
+      coins: balance.positive(),
+    })).min(1).max(1000),
+  }).refine(orders => orders.replacementSeconds <= orders.refreshSeconds && orders.completionSeconds <= orders.refreshSeconds),
+});
 export const economyCatalogSchema = z.object({
   productionSlots: z.object({ upgrades: z.array(z.object({
     slots: z.number().int().min(2).max(3), requiredHomeLevel: z.number().int().min(1).max(5), pricePearls: count.positive().max(ECONOMY_MAX_PEARLS),
   })).max(2).refine(upgrades => upgrades.every((upgrade, index) => upgrade.slots === index + 2)) }).default({ upgrades: [] }),
   rareDrops: economyRareDropsSchema.optional(),
   fishing: economyFishingCatalogSchema.optional(),
+  food: economyFoodCatalogSchema.nullish(),
   localBuyer: z.object({ payoutBps: count.positive().max(10_000) }).optional(),
   version: z.literal(3), currencyScale: z.literal(10), pearlScale: z.literal(50), maxBatch: z.number().int().min(1).max(100),
   constructionSpeedup: z.object({ secondsPerPearl: count.positive().max(86400), priceStepPearls: balance.positive().max(ECONOMY_PEARL_SCALE).default(2) }),
@@ -79,11 +98,31 @@ export const economyCatalogSchema = z.object({
   })).max(100) })).max(100),
   recipes: z.array(z.object({ id, name: z.string(), buildingId: id, buildingLevel: count.positive(), requiredHomeLevel: count.positive(),
     maxBatch: count.positive().max(100).nullish(),
+    fishInput: z.object({ itemIds: z.array(id).min(1).max(100).refine(ids => new Set(ids).size === ids.length) }).nullish(),
     requiredBuildings, seconds: count.positive(), cost: economyCostSchema, rewards: quantities, collection: economyCollectionSpecSchema.nullish() })
     .refine(recipe => !recipe.collection || recipe.buildingId === "garden" && (recipe.rewards.berries ?? 0) > 0,
-      "Berry collection requires a garden recipe with berries")).max(1000),
+      "Berry collection requires a garden recipe with berries")
+    .refine(recipe => !recipe.fishInput || recipe.fishInput.itemIds.filter(itemId => (recipe.cost.items[itemId] ?? 0) > 0).length === 1,
+      "Fish recipes require exactly one replaceable fish ingredient")).max(1000),
   explorations: z.array(z.object({ id, name: z.string(), description: z.string(), requiredHomeLevel: count.positive(), activity: z.literal("mining").nullish(),
     requiredBuildings, seconds: count.positive(), cost: economyCostSchema, rewards: quantities })).max(1000),
+}).superRefine((catalog, context) => {
+  const itemIds = new Set(catalog.items.map(item => item.id));
+  const fishIds = new Set(catalog.fishing?.fish.map(fish => fish.itemId) ?? []);
+  const buildingIds = new Set(catalog.buildings.map(building => building.id));
+  const invalid = (message: string) => context.addIssue({ code: z.ZodIssueCode.custom, message });
+  const meals = catalog.food?.meals ?? [], orders = catalog.food?.orders.templates ?? [];
+  if (new Set(meals.map(meal => meal.itemId)).size !== meals.length || meals.some(meal => !itemIds.has(meal.itemId)))
+    invalid("Meals require unique known inventory items");
+  if (new Set(orders.map(order => order.id)).size !== orders.length || orders.some(order =>
+    Object.keys(order.items).some(itemId => !itemIds.has(itemId)) || Object.entries(order.requiredBuildings).some(([buildingId, level]) =>
+      !buildingIds.has(buildingId) || !catalog.buildings.find(building => building.id === buildingId)?.levels.some(spec => spec.level === level))))
+    invalid("Orders require unique ids, known goods and known building requirements");
+  if (catalog.food && !orders.some(order => order.requiredHomeLevel === 1 && Object.keys(order.requiredBuildings).length === 0))
+    invalid("New players need at least one eligible order");
+  if (catalog.recipes.some(recipe => recipe.fishInput && (recipe.fishInput.itemIds.some(itemId => !itemIds.has(itemId) || !fishIds.has(itemId))
+    || Object.keys(recipe.cost.items).filter(itemId => fishIds.has(itemId)).length !== 1)))
+    invalid("Fish recipe choices must reference catalog fish");
 });
 export const economyCatalog = economyCatalogSchema.parse(catalogJson);
 export const economyBookCollectionSchema = z.object({
@@ -100,10 +139,14 @@ export const economyJobSchema = z.object({
   collection: economyCollectionSchema.nullish(),
   fishing: z.object({ rodId: id, hookId: id.default("bare_hook"), baitId: id.nullable(), fishId: id }).nullish(),
   rareDrop: economyRareDropDeliverySchema.nullish(),
+  meal: z.object({ itemId: id, consumer: z.enum(["hero", "builder"]), speedBps: count.max(2500) }).nullish(),
 }).refine(job => !job.collection || job.kind === "production" && job.targetId === "garden" && (job.rewards.berries ?? 0) > 0,
   "Berry collection requires a garden production order")
   .refine(job => !job.rareDrop || job.kind === "exploration" && (!job.rareDrop.itemId || job.rewards[job.rareDrop.itemId] === 1),
-    "Rare materials belong to a saved exploration delivery");
+    "Rare materials belong to a saved exploration delivery")
+  .refine(job => !job.meal || job.meal.consumer === "hero" && job.kind === "exploration"
+    || job.meal.consumer === "builder" && job.kind === "construction" && job.meal.speedBps === 1000,
+    "Meal bonuses belong to their consumer's saved work");
 export const economyStorageSchema = z.object({ capacity: count, used: count, reserved: count, available: count, overflow: count });
 export const economyViewSchema = z.object({
   ownerPublicId: z.string().min(1).max(40), revision: count, serverTime: z.string().datetime(),
@@ -114,13 +157,14 @@ export const economyViewSchema = z.object({
   fishingShop: economyFishingShopSchema.nullable().default(null),
   wardrobe: z.array(id).max(100).default(["moss", "amber_scarf"]),
   completedExplorations: count, storage: economyStorageSchema, fishing: economyFishingSchema, progression: economyProgressionSchema,
+  food: economyFoodSchema, residentOrders: economyResidentOrdersSchema,
 });
 const commandBase = {
   requestId: uuid, ownerPublicId: z.string().regex(/^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$/), expectedRevision: count.max(Number.MAX_SAFE_INTEGER - 1), targetId: id,
   quantity: z.number().int().min(1).max(10_000).default(1), totalPrice: balance.default(0),
 };
 export const economyCommandSchema = z.object({ ...commandBase,
-  action: z.enum(["start_production", "buy_production_slot", "start_collection", "start_exploration", "cancel_exploration", "start_construction", "speedup_construction", "claim_job", "sell", "buy_fishing_item", "buy_wardrobe_item", "refresh_fishing_shop", "sell_fish", "equip_fishing_rod", "equip_fishing_hook", "equip_fishing_bait", "start_fishing"]),
+  action: z.enum(["start_production", "buy_production_slot", "start_collection", "start_exploration", "cancel_exploration", "start_construction", "speedup_construction", "claim_job", "sell", "buy_fishing_item", "buy_wardrobe_item", "refresh_fishing_shop", "sell_fish", "equip_fishing_rod", "equip_fishing_hook", "equip_fishing_bait", "start_fishing", "eat_food", "feed_builder", "complete_resident_order", "replace_resident_order"]),
 }).strict();
 export const marketCommandSchema = z.object({ ...commandBase,
   action: z.enum(["create_listing", "buy_listing", "cancel_listing"]),
@@ -151,7 +195,9 @@ export type EconomyResult = z.infer<typeof economyResultSchema>;
 export type EconomyMarketListing = z.infer<typeof economyMarketListingSchema>;
 export type MarketView = z.infer<typeof marketViewSchema>;
 export type EconomyProgression = z.infer<typeof economyProgressionSchema>;
-export type EconomyState = Pick<EconomyView, "wallet" | "inventory" | "buildings" | "jobs" | "migration" | "completedExplorations" | "fishing" | "progression"> & { productionSlots?: Record<string, number>; wardrobe?: string[]; currencyScale?: 1 | 10; pearlScale?: 1 | 10 | 50; fishingShop?: EconomyFishingShop | null; fishingCastSeed?: string | null; rareDropState?: EconomyRareDropClock | null };
+export type EconomyFood = z.infer<typeof economyFoodSchema>;
+export type EconomyResidentOrders = z.infer<typeof economyResidentOrdersSchema>;
+export type EconomyState = Pick<EconomyView, "wallet" | "inventory" | "buildings" | "jobs" | "migration" | "completedExplorations" | "fishing" | "progression"> & { productionSlots?: Record<string, number>; wardrobe?: string[]; currencyScale?: 1 | 10; pearlScale?: 1 | 10 | 50; fishingShop?: EconomyFishingShop | null; fishingCastSeed?: string | null; rareDropState?: EconomyRareDropClock | null; food?: EconomyFood; residentOrders?: EconomyResidentOrders };
 
 export type EconomyFishing = z.infer<typeof economyFishingSchema>;
 export type EconomyFishingCatalog = z.infer<typeof economyFishingCatalogSchema>;

@@ -25,6 +25,9 @@ const fund = p => { read(p); stored(p).wallet.coins = 100_000;
 test("old snapshots and profiles receive a free starter rod, never retroactive catch records", () => {
   const p = player(), snapshot = read(p);
   const old = structuredClone(snapshot); delete old.fishing; delete old.catalog.fishing;
+  // Before fishing existed, catalogs had neither selectable fish ingredients nor the food extension.
+  delete old.food; delete old.residentOrders; delete old.catalog.food;
+  for (const recipe of old.catalog.recipes) delete recipe.fishInput;
   const parsed = model.economyViewSchema.parse(old);
   assert.deepEqual(parsed.fishing, { ownedRods: ["reed_rod"], equippedRodId: "reed_rod", ownedHooks: ["bare_hook"], equippedHookId: "bare_hook", equippedBaitId: null, catches: {} });
   assert.equal(parsed.catalog.fishing, undefined);
@@ -39,7 +42,7 @@ test("Pleska catalog has no buy-sell arbitrage and upgrades visibly improve unco
   const base = fishingWeights("reed_rod", null), upgraded = fishingWeights("willow_rod", "worm_bait");
   const chance = weights => weights.find(fish => fish.itemId === "fish_mooncarp").weight / weights.reduce((total, fish) => total + fish.weight, 0);
   assert.ok(chance(upgraded) > chance(base));
-  assert.equal(base.reduce((sum, fish) => sum + fish.weight, 0), 16955);
+  assert.equal(base.reduce((sum, fish) => sum + fish.weight, 0), 15515);
   // Same UUID vectors are asserted in Kotlin to keep weighted drawing identical.
   assert.deepEqual(["00000000-0000-4000-8000-000000000001", "a2f6bce4-1d99-4c0f-a910-656320724833", "ffffffff-ffff-4fff-bfff-ffffffffffff"]
     .map(id => selectFishingCatch(id, "willow_rod", "worm_bait")), ["fish", "fish", "fish_silverfin"]);
@@ -165,9 +168,9 @@ test("twelve species cover five rarities, with the shark available to the legend
   const base = fishingOdds({}, config);
   assert.equal(base.find(fish => fish.itemId === 'fish_shark').probability, 0);
   const strongest = fishingOdds({}, config, { rodId: 'starfall_rod', hookId: 'leviathan_hook', baitId: 'firefly_bait' });
-  assert.equal(strongest.find(fish => fish.itemId === 'fish_shark').probability, 18 / 4572);
+  assert.equal(strongest.find(fish => fish.itemId === 'fish_shark').probability, 504 / 5047);
   const value = odds => odds.reduce((sum, fish) => sum + fish.probability * model.economyCatalog.items.find(item => item.id === fish.itemId).baseSellPrice, 0);
-  assert.ok(value(base) > 100 && value(base) < 110);
+  assert.ok(value(base) > 110 && value(base) < 115);
   for (const rod of config.rods) for (const hook of config.hooks) for (const bait of config.baits) {
     const noBait = value(fishingOdds({}, config, { rodId: rod.id, hookId: hook.id, baitId: null }));
     const withBait = value(fishingOdds({}, config, { rodId: rod.id, hookId: hook.id, baitId: bait.itemId }));
@@ -242,7 +245,7 @@ test("overnight fishing snapshots six actual species and claims all24 fish exact
   initial.fishingCastSeed = "00000000-0000-4000-8000-000000000001";
   const publicJob = issue(p, "start_fishing", "shore_camp").jobs[0];
   const saved = structuredClone(stored(p).jobs[0]);
-  assert.deepEqual(saved.rewards, { fish: 20, fish_reedperch: 2, fish_bream: 2 });
+  assert.deepEqual(saved.rewards, { fish: 19, fish_dace: 1, fish_reedperch: 1, fish_silverfin: 1, fish_bream: 1, fish_pike: 1 });
   assert.equal(stored(p).inventory.worm_bait, 1);
   issue(p, "equip_fishing_rod", "reed_rod");
   assert.deepEqual(stored(p).jobs[0], saved);
@@ -252,7 +255,7 @@ test("overnight fishing snapshots six actual species and claims all24 fish exact
   assert.deepEqual(stored(p).jobs[0].rewards, saved.rewards);
   const completed = issue(p, "claim_job", retry.id, {}, Date.parse(retry.finishesAt));
   assert.deepEqual(completed.fishing.catches, saved.rewards);
-  assert.equal(completed.inventory.fish_bream, 2);
+  assert.equal(completed.inventory.fish_bream, 1);
   assert.equal(completed.inventory.worm_bait, undefined);
   assert.equal(completed.completedExplorations, 1);
 });
