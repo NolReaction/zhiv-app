@@ -14,6 +14,8 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.patch
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
+import ru.zhiv.presence.PresenceRepository
+import ru.zhiv.presence.requireGameplayPresence
 import ru.zhiv.auth.AuthFailure
 import ru.zhiv.config.AppConfig
 import ru.zhiv.http.isTrustedWrite
@@ -30,7 +32,7 @@ private fun ApplicationCall.gameSessionHash(config: AppConfig, codec: TokenCodec
     return codec.hash(raw)
 }
 
-fun Route.gameRoutes(repository: GameRepository, codec: TokenCodec, config: AppConfig) {
+fun Route.gameRoutes(repository: GameRepository, codec: TokenCodec, config: AppConfig, presence: PresenceRepository? = null) {
     route("/api/v1/game") {
         install(RequestBodyLimit) { bodyLimit { 2_048 } }
         rateLimit(RateLimitName("game-read")) {
@@ -61,6 +63,7 @@ fun Route.gameRoutes(repository: GameRepository, codec: TokenCodec, config: AppC
         rateLimit(RateLimitName("game-session")) {
             post("/sessions") {
                 val hash = call.gameSessionHash(config, codec, writing = true)
+                call.requireGameplayPresence(presence, hash)
                 val request = call.receive<GameSessionRequest>()
                 val requestId = parseCanonicalUuidV4(request.requestId)
                     ?: throw AuthFailure("INVALID_GAME_SESSION", "Некорректный запрос игровой сессии", 400)
@@ -70,6 +73,7 @@ fun Route.gameRoutes(repository: GameRepository, codec: TokenCodec, config: AppC
         rateLimit(RateLimitName("game-write")) {
             post("/batches") {
                 val hash = call.gameSessionHash(config, codec, writing = true)
+                call.requireGameplayPresence(presence, hash)
                 val request = call.receive<GameBatchRequest>()
                 val sessionId = parseCanonicalUuid(request.sessionId)
                 val runId = parseCanonicalUuidV4(request.runId)
@@ -82,6 +86,7 @@ fun Route.gameRoutes(repository: GameRepository, codec: TokenCodec, config: AppC
             }
             patch("/visibility") {
                 val hash = call.gameSessionHash(config, codec, writing = true)
+                call.requireGameplayPresence(presence, hash)
                 val request = call.receive<GameVisibilityRequest>()
                 call.respond(repository.setVisibility(hash, request.leaderboardOptIn, request.expectedVersion, request.ownerPublicId))
             }

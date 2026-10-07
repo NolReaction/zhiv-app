@@ -228,3 +228,37 @@ test("cancellation notifications deduplicate acknowledgements and retain at most
   session.act("cancel_exploration", ids.at(-1)); await flush();
   assert.deepEqual(session.getSnapshot().cancelledExplorations, ids.slice(-8));
 });
+
+test("offline suspension aborts pending work and resumes the original receipt before a fresh snapshot", async () => {
+  const cache = storage(), delayed = deferred(), sent = []; let latest = state(), gets = 0;
+  const session = createEconomySession(owner, transport({ get: async () => { gets++; return latest; }, send: async command => {
+    sent.push(structuredClone(command)); latest = state(3); latest.wallet.coins = 600;
+    return sent.length === 1 ? delayed.promise : { ...result(latest), replayed: true };
+  } }), () => assert.fail(), cache);
+  session.activate(); await session.refresh(); session.act("start_exploration", "forest");
+  session.setAvailable(false); session.act("start_production", "grow_berries"); await session.refresh();
+  assert.equal(session.getSnapshot().busy, false); assert.equal(sent.length, 1); assert.equal(gets, 1);
+  assert.equal(await session.reconcile(), true);
+  assert.deepEqual(sent[0], sent[1]); assert.equal(gets, 2); assert.equal(cache.data.size, 0);
+  delayed.resolve(result(state(1))); await flush();
+  assert.equal(session.getSnapshot().snapshot.revision, 3); assert.equal(session.getSnapshot().snapshot.wallet.coins, 600);
+});
+
+test("request timeout, too-early and inactive presence responses retain the exact pending command", async () => {
+  for (const error of [new ApiError("Wait", 408), new ApiError("Wait", 425), new ApiError("Resume", 409, { code: "GAME_SESSION_INACTIVE", message: "Resume" })]) {
+    const sent = [], cache = storage();
+    const session = createEconomySession(owner, transport({ send: async command => { sent.push({ ...command }); if (sent.length === 1) throw error; return result(state(1)); } }), () => assert.fail(), cache);
+    session.activate(); await session.refresh(); session.act("start_exploration", "forest"); await flush();
+    assert.equal(session.getSnapshot().uncertain, true); assert.equal(cache.data.size, 1);
+    await session.retry(); assert.deepEqual(sent[0], sent[1]); assert.equal(cache.data.size, 0);
+  }
+});
+
+test("failed reconciliation returns false and remount retries without stale coalescing promises", async () => {
+  let gets = 0;
+  const session = createEconomySession(owner, transport({ get: async () => { gets++; if (gets === 1) throw Error("offline"); return state(2); } }), () => assert.fail());
+  const stop = session.activate();
+  assert.equal(await session.reconcile(), false); stop();
+  session.setAvailable(false); session.activate();
+  assert.equal(await session.reconcile(), true); assert.equal(gets, 2);
+});

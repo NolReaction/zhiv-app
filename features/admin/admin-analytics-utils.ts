@@ -3,6 +3,8 @@ import { formatPearls } from "@/features/economy/money";
 import { worldCatalog } from "@/features/world/model";
 
 export const analyticsActions: Record<string, string> = {
+  eat_food: "Еда для Мохлика", feed_builder: "Еда для строителя",
+  complete_resident_order: "Сдача заказа жителя", replace_resident_order: "Замена заказа жителя",
   start_production: "Начало производства", buy_production_slot: "Место производства", start_collection: "Начало сбора",
   start_exploration: "Начало вылазки", cancel_exploration: "Отмена вылазки", start_construction: "Начало стройки",
   speedup_construction: "Ускорение стройки", claim_job: "Получение результата", sell: "Продажа припасов",
@@ -22,12 +24,18 @@ export function analyticsResource(id: string) { return analyticsResources.find(i
 export function analyticsTarget(id: string | null) {
   if (!id) return "Объект не записан";
   if (id === "fishing_shop") return "Лавка Плёски";
+  const order = economyCatalog.food?.orders.templates.find(order => order.id === id);
+  if (order) return `${order.name} · ${order.residentId === "plesk" ? "Плёска" : "Шишколап"}`;
   return [...economyCatalog.buildings, ...economyCatalog.recipes, ...economyCatalog.explorations, ...economyCatalog.items,
-    ...(economyCatalog.fishing?.rods ?? []), ...(economyCatalog.fishing?.hooks ?? []), ...worldCatalog.items].find(item => item.id === id)?.name ?? id;
+    ...(economyCatalog.fishing?.rods ?? []), ...(economyCatalog.fishing?.hooks ?? []), ...worldCatalog.items].find(item => item.id === id.split("@")[0])?.name ?? id;
 }
 export function analyticsAmount(resourceId: string, value: number, signed = false) {
   return resourceId === "pearls" ? formatPearls(value, { signDisplay: signed ? "exceptZero" : "auto" })
     : `${signed && value > 0 ? "+" : ""}${analyticsCount(value)}`;
+}
+export function analyticsDuration(seconds: number) {
+  const minutes = Math.floor(seconds / 60);
+  return minutes ? `${analyticsCount(Math.floor(minutes / 60))} ч ${minutes % 60} мин` : `${analyticsCount(seconds)} с`;
 }
 export function analyticsDate(value: string) {
   return new Intl.DateTimeFormat("ru-RU", { timeZone: "UTC", day: "numeric", month: "short" }).format(new Date(`${value}T00:00:00Z`));

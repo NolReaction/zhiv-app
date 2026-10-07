@@ -59,6 +59,7 @@
 .bars strong { font-size: 14px; font-variant-numeric: tabular-nums; }
 .barTrack { grid-column: 1 / -1; height: 6px; border-radius: 5px; background: #30382d; overflow: hidden; }
 .barTrack > span { display: block; height: 100%; border-radius: inherit; background: #b4d495; }
+.twoColumns > * { min-width: 0; }
 .twoColumns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
 .levels { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin: 0; padding: 0; list-style: none; }
 .levels li { display: flex; flex-direction: column; gap: 5px; padding: 14px; border: 1px solid #354032; border-radius: 10px; }

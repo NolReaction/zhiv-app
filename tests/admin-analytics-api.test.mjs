@@ -25,7 +25,7 @@ const snapshot = {
   construction: [{ buildingId: "warehouse", starts: 1, claims: 0, players: 1 }],
   firstConstructions: [{ buildingId: null, players: 1 }],
   buildingLevels: [{ buildingId: "home", level: 1, players: 1 }],
-  coverage: { firstRecordedAt: "2026-09-01T12:00:00Z", unattributedEvents: 1, matchingPlayers: 2, initializedPlayers: 1, flowsTruncated: false, actionsTruncated: false },
+  gameplay: { mealsConsumed: 0, foodPlayers: 0, ordersCompleted: 0, orderPlayers: 0, orderCoinsEarned: 0, orderReplacements: 0, paidOrderReplacements: 0, orderPearlsSpent: 0 }, meals: [], orders: [], presence: { coverageFrom: null, players: 0, onlineSeconds: 0, flaggedPlayers: 0, daily: [], reviewDays: [], reviewDaysTruncated: false }, coverage: { firstRecordedAt: "2026-09-01T12:00:00Z", unattributedEvents: 1, matchingPlayers: 2, initializedPlayers: 1, flowsTruncated: false, actionsTruncated: false, ordersTruncated: false },
 };
 const eventFilters = { ...filters, kind: "start_construction", resource: "wood", direction: "out", offset: 0, limit: 25, at: null };
 const event = { id: `${target}:command:fixture`, publicId: target, displayName: "<Игрок>", createdAt: "2026-10-01T12:00:00Z",
@@ -55,6 +55,9 @@ test("analytics rejects mismatched selections, unsafe numeric values and inconsi
   for (const body of [
     { ...snapshot, q: "different player" }, { ...snapshot, scope: "all" },
     { ...snapshot, from: "2026-09-01" }, { ...snapshot, to: "2026-10-06" },
+    { ...snapshot, gameplay: { ...snapshot.gameplay, orderReplacements: 1, paidOrderReplacements: 2 } },
+    { ...snapshot, presence: { ...snapshot.presence, onlineSeconds: -1 } },
+    { ...snapshot, presence: { ...snapshot.presence, reviewDays: [{ publicId: target, displayName: "Игрок", date: "2026-10-02", onlineSeconds: 86401, flaggedAt: serverTime, watchlisted: true }] } },
     { ...snapshot, endAt: "2026-10-08T00:00:00Z" },
     { ...snapshot, summary: { ...snapshot.summary, activePlayers: -1 } },
     { ...snapshot, resources: [{ ...snapshot.resources[0], received: Number.MAX_SAFE_INTEGER + 1 }] },

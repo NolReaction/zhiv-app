@@ -6,12 +6,21 @@ import { readFileSync } from "node:fs";
 // Creates disposable profiles ONLY in the CI Compose stack, never a live deployment.
 assert.equal(process.env.CI, "true", "Run only against the isolated CI stack");
 const origin = "https://localhost";
+const presenceByCookie = new Map();
+async function resumePresence(cookie) {
+  const presenceId = randomUUID();
+  const result = await api("POST", "/api/v1/presence", { cookie, body: { kind: "resume", presenceId, sequence: 0, active: true } });
+  assert.equal(result.data.status, "active");
+  presenceByCookie.set(cookie, presenceId);
+  return presenceId;
+}
 const economyCatalog = JSON.parse(readFileSync(new URL("../apps/api/src/main/resources/world/economy-catalog.json", import.meta.url), "utf8"));
 async function api(method, path, { cookie, body, expected = 200, key = randomUUID(), source = origin } = {}) {
   const payload = body === undefined ? undefined : JSON.stringify(body);
   const result = await new Promise((resolve, reject) => {
     const headers = { Origin: source, "Idempotency-Key": key };
     if (cookie) headers.Cookie = cookie;
+    if (presenceByCookie.has(cookie)) headers["X-Game-Presence"] = presenceByCookie.get(cookie);
     if (payload !== undefined) {
       headers["Content-Type"] = "application/json";
       headers["Content-Length"] = Buffer.byteLength(payload);
@@ -92,6 +101,12 @@ await api("DELETE", "/api/v1/people/" + guestOne.data.person.circleId, { cookie:
 await api("POST", "/api/v1/direct-invite-links/redeem", { cookie: guestA.cookie, key: receiptKey, body: { token: multiToken }, expected: 409 });
 await api("DELETE", "/api/v1/people/" + guestTwo.data.person.circleId, { cookie: owner.cookie, expected: 204 });
 
+// An authenticated account alone is not an active gameplay session.
+const inactive = await api("POST", "/api/v1/game/sessions", { cookie: owner.cookie, expected: 409,
+  body: { ownerPublicId: owner.data.user.publicId, requestId: randomUUID() } });
+assert.equal(inactive.data.code, "GAME_SESSION_INACTIVE");
+const ownerPresence = await resumePresence(owner.cookie);
+await resumePresence(friend.cookie);
 // World enrollment, commands and ledger writes use the restricted runtime role.
 await api("GET", "/api/v1/world", { expected: 401 });
 const worldBefore = await api("GET", "/api/v1/world", { cookie: owner.cookie });
@@ -252,6 +267,15 @@ assert.equal(exploring.data.state.jobs[0].kind, "exploration");
 assert.equal((await api("POST", "/api/v1/economy/commands", { cookie: owner.cookie, body: expedition })).data.replayed, true);
 await api("POST", "/api/v1/economy/commands", { cookie: friend.cookie, body: expedition, expected: 409 });
 await api("POST", "/api/v1/economy/commands", { cookie: owner.cookie, body: { ...expedition, requestId: randomUUID() }, source: "https://untrusted.example", expected: 403 });
+// Suspension fences even a replayed successful game command; login and timers survive.
+assert.equal((await api("POST", "/api/v1/presence", { cookie: owner.cookie,
+  body: { kind: "suspend", presenceId: ownerPresence, sequence: 1, active: false } })).data.status, "suspended");
+assert.equal((await api("POST", "/api/v1/economy/commands", { cookie: owner.cookie, body: expedition, expected: 409 })).data.code, "GAME_SESSION_INACTIVE");
+assert.notEqual((await api("POST", "/api/v1/presence", { cookie: owner.cookie,
+  body: { kind: "resume", presenceId: ownerPresence, sequence: 0, active: true } })).data.status, "active");
+await api("GET", "/api/v1/me", { cookie: owner.cookie });
+await resumePresence(owner.cookie);
+assert.equal((await api("POST", "/api/v1/economy/commands", { cookie: owner.cookie, body: expedition })).data.replayed, true);
 const market = await api("GET", "/api/v1/economy/market", { cookie: owner.cookie });
 assert.equal(market.headers["cache-control"], "no-store");
 assert.deepEqual(market.data.listings, []);

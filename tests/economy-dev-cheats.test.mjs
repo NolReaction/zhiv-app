@@ -11,19 +11,23 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
     load(id) { if (id === cookieModule) return "export async function cookies() { return { get() { return { value: globalThis.__economyCheatsTestToken }; } }; }"; } }],
 });
 const identities = await vite.ssrLoadModule("/lib/dev/api-store.ts");
+const { commandDevPresence } = await vite.ssrLoadModule("/lib/dev/activity-store.ts");
+const activePresence = new Map();
 const economy = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
 const model = await vite.ssrLoadModule("/features/economy/model.ts");
 const { economyDevCommandSchema } = await vite.ssrLoadModule("/features/economy/dev-model.ts");
 const { POST } = await vite.ssrLoadModule("/app/api/v1/economy/dev/route.ts");
 const { POST: ordinaryPOST } = await vite.ssrLoadModule("/app/api/v1/economy/commands/route.ts");
 const now = Date.now();
-beforeEach(() => { identities.resetDevStoreForTests(); process.env.NODE_ENV = "development"; delete globalThis.__economyCheatsTestToken; });
+beforeEach(() => { identities.resetDevStoreForTests(); activePresence.clear(); process.env.NODE_ENV = "development"; delete globalThis.__economyCheatsTestToken; });
 after(async () => {
   delete globalThis.__economyCheatsTestToken;
   if (initialMode == null) delete process.env.NODE_ENV; else process.env.NODE_ENV = initialMode;
   await vite.close();
 });
-function player() { const p = identities.createDevIdentity("Тестовый житель", crypto.randomUUID()); globalThis.__economyCheatsTestToken = p.token; return p; }
+function player() { const p = identities.createDevIdentity("Тестовый житель", crypto.randomUUID()); globalThis.__economyCheatsTestToken = p.token;
+  const id = crypto.randomUUID(); commandDevPresence(p.me.user.publicId, { kind: "resume", presenceId: id, sequence: 0, active: true }, Date.now(), p.token);
+  activePresence.set(p.token, id); return p; }
 const read = p => economy.getDevEconomy(p.token, now);
 const command = (p, action = "grant_currency", targetId = "coins", quantity = 100) => ({
   requestId: crypto.randomUUID(), ownerPublicId: p.me.user.publicId, expectedRevision: read(p).revision, action, targetId, quantity: action === "grant_currency" ? quantity * (targetId === "pearls" ? 50 : 10) : quantity, totalPrice: 0,
@@ -32,7 +36,7 @@ const cheat = (p, action, targetId, quantity = 1) => economy.commandDevEconomyCh
 const normal = (p, action, targetId, quantity = 1, at = now) => economy.commandDevEconomy(p.token, command(p, action, targetId, quantity), at);
 function post(body, headers = {}) {
   return new Request("http://localhost:3000/api/v1/economy/dev", { method: "POST",
-    headers: { "Content-Type": "application/json", Origin: "http://localhost:3000", ...headers }, body: typeof body === "string" ? body : JSON.stringify(body) });
+    headers: { "Content-Type": "application/json", Origin: "http://localhost:3000", ...(activePresence.has(globalThis.__economyCheatsTestToken) ? { "X-Game-Presence": activePresence.get(globalThis.__economyCheatsTestToken) } : {}), ...headers }, body: typeof body === "string" ? body : JSON.stringify(body) });
 }
 function fixture(p) { read(p); return globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId); }
 

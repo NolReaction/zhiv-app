@@ -11,6 +11,8 @@ import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.routing.*
 import kotlinx.serialization.json.JsonElement
+import ru.zhiv.presence.PresenceRepository
+import ru.zhiv.presence.requireGameplayPresence
 import ru.zhiv.auth.AuthFailure
 import ru.zhiv.config.AppConfig
 import ru.zhiv.http.isTrustedWrite
@@ -24,7 +26,7 @@ private fun ApplicationCall.marketSession(config: AppConfig, codec: TokenCodec, 
     return codec.hash(token)
 }
 
-fun Route.economyMarketRoutes(repository: EconomyMarketRepository, codec: TokenCodec, config: AppConfig) {
+fun Route.economyMarketRoutes(repository: EconomyMarketRepository, codec: TokenCodec, config: AppConfig, presence: PresenceRepository? = null) {
     route("/api/v1/economy/market") {
         install(RequestBodyLimit) { bodyLimit { 2_048 } }
         rateLimit(RateLimitName("world-read")) {
@@ -41,6 +43,7 @@ fun Route.economyMarketRoutes(repository: EconomyMarketRepository, codec: TokenC
         rateLimit(RateLimitName("world-write")) {
             post("/commands") {
                 val hash = call.marketSession(config, codec, write = true)
+                call.requireGameplayPresence(presence, hash)
                 val command = decodeEconomyCommand(call.receive<JsonElement>())
                 EconomyMarketRules.validate(command)
                 call.respond(repository.command(hash, command))

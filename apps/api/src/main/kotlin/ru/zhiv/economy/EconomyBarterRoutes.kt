@@ -11,6 +11,8 @@ import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.routing.*
 import kotlinx.serialization.json.JsonElement
+import ru.zhiv.presence.PresenceRepository
+import ru.zhiv.presence.requireGameplayPresence
 import ru.zhiv.auth.AuthFailure
 import ru.zhiv.config.AppConfig
 import ru.zhiv.http.isTrustedWrite
@@ -24,7 +26,7 @@ private fun ApplicationCall.barterSession(config: AppConfig, codec: TokenCodec, 
     return codec.hash(token)
 }
 
-fun Route.economyBarterRoutes(repository: EconomyBarterRepository, codec: TokenCodec, config: AppConfig) {
+fun Route.economyBarterRoutes(repository: EconomyBarterRepository, codec: TokenCodec, config: AppConfig, presence: PresenceRepository? = null) {
     route("/api/v1/economy/barter") {
         install(RequestBodyLimit) { bodyLimit { 2_048 } }
         rateLimit(RateLimitName("world-read")) {
@@ -38,6 +40,7 @@ fun Route.economyBarterRoutes(repository: EconomyBarterRepository, codec: TokenC
         rateLimit(RateLimitName("world-write")) {
             post("/commands") {
                 val hash = call.barterSession(config, codec, true)
+                call.requireGameplayPresence(presence, hash)
                 call.respond(repository.command(hash, decodeEconomyBarterCommand(call.receive<JsonElement>())))
             }
         }

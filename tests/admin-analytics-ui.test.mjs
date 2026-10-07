@@ -10,6 +10,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { AdminAnalyticsContent, AdminAnalyticsEventList } = await vite.ssrLoadModule("/features/admin/admin-analytics-panel.tsx");
+const { AdminGameplayAnalytics, AdminPresenceAnalytics } = await vite.ssrLoadModule("/features/admin/admin-gameplay-analytics.tsx");
 const { analyticsCsv, analyticsAmount, analyticsPeriod, analyticsPeriodError } = await vite.ssrLoadModule("/features/admin/admin-analytics-utils.ts");
 
 const serverTime = "2026-10-07T12:00:00Z", publicId = "7K3P-2Q9M-W8ZR";
@@ -23,7 +24,7 @@ const analytics = () => ({ serverTime, from: "2026-10-01", to: "2026-10-07", sta
   construction: [{ buildingId: "home", starts: 4, claims: 2, players: 2 }],
   firstConstructions: [{ buildingId: "home", players: 1 }, { buildingId: null, players: 1 }],
   buildingLevels: [{ buildingId: "home", level: 0, players: 1 }, { buildingId: "home", level: 2, players: 3 }],
-  coverage: { firstRecordedAt: "2026-09-01T12:00:00Z", unattributedEvents: 2, matchingPlayers: 5, initializedPlayers: 4, flowsTruncated: false, actionsTruncated: false },
+  gameplay: { mealsConsumed: 0, foodPlayers: 0, ordersCompleted: 0, orderPlayers: 0, orderCoinsEarned: 0, orderReplacements: 0, paidOrderReplacements: 0, orderPearlsSpent: 0 }, meals: [], orders: [], presence: { coverageFrom: null, players: 0, onlineSeconds: 0, flaggedPlayers: 0, daily: [], reviewDays: [], reviewDaysTruncated: false }, coverage: { firstRecordedAt: "2026-09-01T12:00:00Z", unattributedEvents: 2, matchingPlayers: 5, initializedPlayers: 4, flowsTruncated: false, actionsTruncated: false, ordersTruncated: false },
 });
 function inspect(element) {
   const elements = [];
@@ -102,4 +103,29 @@ test("CSV protects formula cells while preserving actual numeric deltas, quotes,
   assert.ok(csv.includes('"\' \t+SUM(A1)"'));
   assert.ok(csv.includes('"Тестер; ""да""\nнет"'));
   assert.ok(csv.includes('"\'@test";"\'-1+1";"\'\r=1"'));
+});
+
+test("food and orders use actual ledger totals, distinguish free replacements and link to the relevant history", () => {
+  const data = analytics();
+  data.gameplay = { mealsConsumed: 3, foodPlayers: 2, ordersCompleted: 4, orderPlayers: 2, orderCoinsEarned: 750, orderReplacements: 3, paidOrderReplacements: 1, orderPearlsSpent: 5 };
+  data.meals = [{ itemId: "fish_soup", heroPortions: 2, builderPortions: 1, players: 2 }];
+  data.orders = [{ templateId: "builder_wood_supply", completed: 4, replacements: 3, paidReplacements: 1, coinsEarned: 750, pearlsSpent: 5, players: 2 }];
+  const calls = [], view = inspect(AdminGameplayAnalytics({ data, onEvents: value => calls.push(value) }));
+  for (const text of ["Съедено порций", "750 монет выдано", "2,5 жемчуга списано", "это не число ускоренных заданий", "Шишколап", "Бесплатные замены", "Эффект может сохраняться"]) assert.ok(view.markup.includes(text), text);
+  view.elements.find(node => node.type === "button" && node.props.children === "Сданные заказы").props.onClick();
+  view.elements.find(node => node.type === "button" && node.props.children === "Замены заказов").props.onClick();
+  view.elements.find(node => node.type === "button" && node.props.children === "Кормление строителя").props.onClick();
+  assert.deepEqual(calls, [{ kind: "complete_resident_order" }, { kind: "replace_resident_order" }, { kind: "feed_builder" }]);
+});
+
+test("presence distinguishes historic daily signals from current observation and unmapped earlier days", () => {
+  const data = analytics(), calls = [];
+  data.presence = { coverageFrom: "2026-10-02T00:00:00Z", players: 2, onlineSeconds: 75000, flaggedPlayers: 1,
+    daily: [{ date: "2026-10-01", players: 0, onlineSeconds: 0, flaggedPlayers: 0 }],
+    reviewDays: [{ publicId, displayName: "<Игрок>", date: "2026-10-02", onlineSeconds: 72123, flaggedAt: "2026-10-02T23:50:00Z", watchlisted: false }], reviewDaysTruncated: true };
+  const view = inspect(AdminPresenceAnalytics({ data, onOpen: value => calls.push(value.publicId) }));
+  for (const text of ["20 ч 2 мин", "Наблюдение снято", "Нет измерений", "100 последних дней", "без блокировки", "прошлое время не восстанавливается"]) assert.ok(view.markup.includes(text), text);
+  assert.match(view.markup, /&lt;Игрок&gt;/);
+  view.elements.find(node => node.type === "button" && node.props.children === "<Игрок>").props.onClick();
+  assert.deepEqual(calls, [publicId]);
 });

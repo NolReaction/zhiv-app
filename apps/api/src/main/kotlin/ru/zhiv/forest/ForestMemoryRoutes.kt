@@ -11,6 +11,8 @@ import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.routing.*
 import kotlinx.serialization.json.JsonElement
+import ru.zhiv.presence.PresenceRepository
+import ru.zhiv.presence.requireGameplayPresence
 import ru.zhiv.auth.AuthFailure
 import ru.zhiv.config.AppConfig
 import ru.zhiv.http.isTrustedWrite
@@ -25,7 +27,7 @@ private fun ApplicationCall.forestSession(config: AppConfig, codec: TokenCodec, 
     return codec.hash(raw)
 }
 
-fun Route.forestMemoryRoutes(repository: ForestMemoryRepository, codec: TokenCodec, config: AppConfig) {
+fun Route.forestMemoryRoutes(repository: ForestMemoryRepository, codec: TokenCodec, config: AppConfig, presence: PresenceRepository? = null) {
     route("/api/v1/world/forest-memory") {
         install(RequestBodyLimit) { bodyLimit { 65_536 } }
         rateLimit(RateLimitName("forest-memory-read")) {
@@ -42,6 +44,7 @@ fun Route.forestMemoryRoutes(repository: ForestMemoryRepository, codec: TokenCod
         rateLimit(RateLimitName("forest-memory-write")) {
             post("/commands") {
                 val hash = call.forestSession(config, codec, write = true)
+                call.requireGameplayPresence(presence, hash)
                 val command = decodeForestMemoryCommand(call.receive<JsonElement>())
                 call.respond(repository.command(hash, command))
             }

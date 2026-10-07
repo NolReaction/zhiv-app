@@ -10,17 +10,26 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
     load(id) { if (id === cookieModule) return "export async function cookies() { return { get() { return { value: globalThis.__rewardTestToken }; } }; }"; } }],
 });
 const identities = await vite.ssrLoadModule("/lib/dev/api-store.ts");
+const { commandDevPresence } = await vite.ssrLoadModule("/lib/dev/activity-store.ts");
+const activePresence = new Map();
+function enterGame(p) {
+  const id = crypto.randomUUID();
+  commandDevPresence(p.me.user.publicId, { kind: "resume", presenceId: id, sequence: 0, active: true }, Date.now(), p.token);
+  activePresence.set(p.token, id);
+  return p;
+}
+
 const economy = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
 const api = await vite.ssrLoadModule("/features/game/game-rewards-api.ts");
 const { GET } = await vite.ssrLoadModule("/app/api/v1/game/rewards/route.ts");
 const { POST } = await vite.ssrLoadModule("/app/api/v1/game/rewards/claims/route.ts");
-beforeEach(() => { identities.resetDevStoreForTests(); process.env.NODE_ENV = "test"; delete globalThis.__rewardTestToken; });
+beforeEach(() => { identities.resetDevStoreForTests(); activePresence.clear(); process.env.NODE_ENV = "test"; delete globalThis.__rewardTestToken; });
 after(async () => { delete globalThis.__rewardTestToken; if (initialMode == null) delete process.env.NODE_ENV; else process.env.NODE_ENV = initialMode; await vite.close(); });
 const read = (suffix = "") => new Request(`http://localhost:3000/api/v1/game/rewards${suffix}`);
-const player = () => { const p = identities.createDevIdentity("Мохлик", crypto.randomUUID()); globalThis.__rewardTestToken = p.token; return p; };
+const player = () => { const p = enterGame(identities.createDevIdentity("Мохлик", crypto.randomUUID())); globalThis.__rewardTestToken = p.token; return p; };
 const command = p => ({ requestId: crypto.randomUUID(), ownerPublicId: p.me.user.publicId, kind: "daily" });
 const post = (body, headers = {}) => new Request("http://localhost:3000/api/v1/game/rewards/claims", { method: "POST",
-  headers: { "Content-Type": "application/json", Origin: "http://localhost:3000", ...headers }, body: typeof body === "string" ? body : JSON.stringify(body) });
+  headers: { "Content-Type": "application/json", Origin: "http://localhost:3000", ...(activePresence.has(globalThis.__rewardTestToken) ? { "X-Game-Presence": activePresence.get(globalThis.__rewardTestToken) } : {}), ...headers }, body: typeof body === "string" ? body : JSON.stringify(body) });
 
 test("rewards require session and expose no-store private state without issuing a gift", async () => {
   assert.equal((await GET(read())).status, 401); assert.equal((await POST(post({}))).status, 401);

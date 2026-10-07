@@ -20,6 +20,14 @@ assert.equal(process.env.METRICS_TOKEN_FILE, "/run/monitoring-secrets/token");
 assert.ok((process.env.COMPOSE_PROFILES ?? "").split(",").includes("monitoring"));
 
 const origin = "https://localhost";
+const presenceByCookie = new Map();
+async function resumePresence(cookie) {
+  const presenceId = randomUUID();
+  const result = await api("POST", "/api/v1/presence", { cookie, body: { kind: "resume", presenceId, sequence: 0, active: true } });
+  assert.equal(result.data.status, "active");
+  presenceByCookie.set(cookie, presenceId);
+  return presenceId;
+}
 const adminIds = process.env.ADMIN_PUBLIC_IDS.split(",");
 const composeArgs = ["compose", "-f", "deploy/compose.yml"];
 function docker(args, { input, expected = 0 } = {}) {
@@ -39,6 +47,7 @@ async function api(method, path, { cookie, body, expected = 200, source = origin
     const headers = { "Idempotency-Key": randomUUID(), ...extraHeaders };
     if (source !== null) headers.Origin = source;
     if (cookie) headers.Cookie = cookie;
+    if (presenceByCookie.has(cookie)) headers["X-Game-Presence"] = presenceByCookie.get(cookie);
     if (payload !== undefined) {
       headers["Content-Type"] = "application/json";
       headers["Content-Length"] = Buffer.byteLength(payload);
@@ -91,6 +100,8 @@ const peer = seedAdmin(adminIds[1], "CI admin peer", "admin-peer@example.invalid
 const ordinary = await profile("CI admin ordinary");
 const target = await profile("CI admin target");
 const targetSecondCookie = addSession(target.publicId);
+await resumePresence(target.cookie);
+await resumePresence(targetSecondCookie);
 const adminPaths = ["access", "overview?days=7", "users", "economy", "analytics", "analytics/events", "audit", "monitoring"].map((path) => "/api/v1/admin/" + path);
 for (const path of adminPaths) {
   const anonymous = await api("GET", path, { expected: 401, headers: { "X-Admin-Public-Id": admin.publicId, "X-Role": "admin" } });

@@ -59,6 +59,35 @@ class JdbcReleaseUpgradeIntegrationTest {
         c.commit()
     }
 
+    @Test fun `upgrade from populated V44 adds presence without changing accounts balances or receipts`() = runBlocking<Unit> {
+        val config = AppConfig(postgres.jdbcUrl, postgres.username, postgres.password, false, setOf("http://localhost"))
+        DatabaseFactory.create(config).use { source ->
+            Flyway.configure().dataSource(source).locations("classpath:db/migration").target("44").cleanDisabled(true).load().migrate()
+            val token = TokenCodec().issue()
+            val identity = JdbcZhivRepository(source)
+            val player = identity.bootstrap("До активности", TokenCodec().issue().hash, token.hash, 365)
+            JdbcEconomyRepository(source).snapshot(token.hash)
+            seedLegacyCheckIn(source, player.id, token.hash)
+            val tables = source.connection.use { c -> c.economyRows(
+                "SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename<>'flyway_schema_history' ORDER BY tablename") { it.getString(1) } }
+            val before = legacyData(source, tables)
+            val historySql = "SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank)::text FROM flyway_schema_history h WHERE version::int<=44"
+            val history = scalar(source, historySql)
+            DatabaseFactory.migrate(source)
+            assertEquals(before, legacyData(source, tables))
+            assertEquals(history, scalar(source, historySql))
+            assertEquals("45", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
+            for (table in listOf("game_presence_clients", "game_presence_accounts", "game_presence_daily"))
+                assertEquals("0", scalar(source, "SELECT count(*) FROM $table"))
+            val presence = JdbcPresenceRepository(source)
+            val resumed = presence.update(token.hash, ru.zhiv.presence.PresenceRequest("resume", UUID.randomUUID().toString(), 0, true))
+            assertEquals("active", resumed.status)
+            assertEquals(0L, resumed.onlineTodaySeconds, "historical online time must never be invented")
+            DatabaseFactory.migrate(source)
+            assertEquals(player.publicId, identity.findBySession(token.hash)?.publicId)
+        }
+    }
+
     @Test fun `upgrade from populated V30 preserves accounts and feedback while initializing the new economy`() = runBlocking<Unit> {
         val config = AppConfig(postgres.jdbcUrl, postgres.username, postgres.password, false, setOf("http://localhost"))
         DatabaseFactory.create(config).use { source ->
@@ -91,7 +120,7 @@ class JdbcReleaseUpgradeIntegrationTest {
             DatabaseFactory.migrate(source)
             assertEquals(before, legacyData(source, unchangedTables))
             assertEquals(beforeHistory, scalar(source, historySql))
-            assertEquals("44", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
+            assertEquals("45", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM forest_memory"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM forest_memory_receipts"))
             DatabaseFactory.migrate(source)
@@ -153,7 +182,7 @@ class JdbcReleaseUpgradeIntegrationTest {
             assertEquals(before, legacyData(source, unchangedTables), "Only the explicitly converted world profile may change")
             assertEquals("true", scalar(source, "SELECT bool_and(reward_eligible)::text FROM game_achievements"), "Existing ownership keeps its finite reward eligibility")
             assertEquals(oldHistory, scalar(source, historySql), "Existing migration records/checksums must stay intact")
-            assertEquals("44", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
+            assertEquals("45", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM player_feedback"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM player_feedback_actions"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM forest_memory"))

@@ -17,6 +17,15 @@ const vite = await createServer({
   }],
 });
 const identities = await vite.ssrLoadModule("/lib/dev/api-store.ts");
+const { commandDevPresence } = await vite.ssrLoadModule("/lib/dev/activity-store.ts");
+const activePresence = new Map();
+function enterGame(p) {
+  const id = crypto.randomUUID();
+  commandDevPresence(p.me.user.publicId, { kind: "resume", presenceId: id, sequence: 0, active: true }, Date.now(), p.token);
+  activePresence.set(p.token, id);
+  return p;
+}
+
 const memory = await vite.ssrLoadModule("/lib/dev/forest-memory-store.ts");
 const model = await vite.ssrLoadModule("/features/world/forest-memory-model.ts");
 const { GET } = await vite.ssrLoadModule("/app/api/v1/world/forest-memory/route.ts");
@@ -24,7 +33,7 @@ const { POST } = await vite.ssrLoadModule("/app/api/v1/world/forest-memory/comma
 const { readDevForestMemoryBody } = await vite.ssrLoadModule("/lib/dev/forest-memory-route.ts");
 const { getDevWorld } = await vite.ssrLoadModule("/lib/dev/world-store.ts");
 const now = Date.now();
-beforeEach(() => { identities.resetDevStoreForTests(); process.env.NODE_ENV = "test"; delete globalThis.__forestMemoryTestToken; });
+beforeEach(() => { identities.resetDevStoreForTests(); activePresence.clear(); process.env.NODE_ENV = "test"; delete globalThis.__forestMemoryTestToken; });
 after(async () => {
   delete globalThis.__forestMemoryTestToken;
   if (initialMode === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = initialMode;
@@ -32,7 +41,7 @@ after(async () => {
 });
 
 function player(key = crypto.randomUUID()) {
-  return { ...identities.createDevIdentity("Explorer", key), clientId: crypto.randomUUID(), key };
+  return { ...enterGame(identities.createDevIdentity("Explorer", key)), clientId: crypto.randomUUID(), key };
 }
 function payload(energy = 0.7) {
   return {
@@ -66,7 +75,7 @@ function getRequest(p, suffix = "") {
 }
 function postRequest(body, headers = {}) {
   return new Request("http://localhost:3000/api/v1/world/forest-memory/commands", {
-    method: "POST", headers: { "Content-Type": "application/json", Origin: "http://localhost:3000", ...headers },
+    method: "POST", headers: { "Content-Type": "application/json", Origin: "http://localhost:3000", ...(activePresence.has(globalThis.__forestMemoryTestToken) ? { "X-Game-Presence": activePresence.get(globalThis.__forestMemoryTestToken) } : {}), ...headers },
     body: typeof body === "string" ? body : JSON.stringify(body),
   });
 }

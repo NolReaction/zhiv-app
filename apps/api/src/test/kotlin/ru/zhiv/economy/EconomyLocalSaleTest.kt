@@ -66,9 +66,18 @@ class EconomyLocalSaleTest {
     }
 
     @Test fun `smoking retains a positive sale margin without nerfing specialist raw fish`() {
-        val smoked=EconomyRules.catalog.items.single { it.id=="smoked_fish" }
-        assertEquals(340L,smoked.baseSellPrice)
-        assertEquals(200L,EconomyRules.localSellPrice(smoked.baseSellPrice))
-        assertTrue(EconomyRules.localSellPrice(smoked.baseSellPrice)>160+EconomyRules.localSellPrice(40))
+        val items=EconomyRules.catalog.items.associateBy { it.id }
+        val recipe=EconomyRules.catalog.recipes.single { it.id=="smoke_fish" }
+        val fishInput=assertNotNull(recipe.fishInput)
+        val specialistValue=fishInput.itemIds.maxOf { items.getValue(it).baseSellPrice }
+        val inputValue=recipe.cost.coins + recipe.cost.items.entries.sumOf { (id, quantity) ->
+            if (id == "fish") specialistValue * quantity
+            else EconomyRules.localSellPrice(items.getValue(id).baseSellPrice, quantity)
+        }
+        val outputValue=recipe.rewards.entries.sumOf { (id, quantity) ->
+            EconomyRules.localSellPrice(items.getValue(id).baseSellPrice, quantity)
+        }
+        assertTrue(outputValue > inputValue,
+            "Smoking even the highest-value allowed fish must retain a margin after the local buyer discount")
     }
 }

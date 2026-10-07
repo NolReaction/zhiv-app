@@ -218,3 +218,15 @@ test("unmount cancellation between authentication and data prevents the second r
   await assert.rejects(loadAdminEconomy(owner, options, controller.signal), error => error.name === "AbortError");
   assert.deepEqual(requests, ["/api/v1/admin/access"]);
 });
+
+test("detail preserves issued order prices, shows pending meals and records applied job boosts without generating cards", () => {
+  const value = detail();
+  value.economy.food = { heroMeal: "fish_soup", builderMeal: null };
+  value.economy.residentOrders = { version: 2, cycle: -1, completed: 7, earnedCoins: 999, replacementCycle: -1, freeReplacementsUsed: 2,
+    slots: [{ sequence: 4, readyAt: serverTime, templateId: "builder_wood_supply", terms: { id: "builder_wood_supply", residentId: "builder", name: "Прежний заказ", items: { wood: 17 }, coins: 777 } }] };
+  value.economy.jobs[3].meal = { itemId: "fish_soup", consumer: "builder", speedBps: 2000 };
+  value.ledger = ["eat_food", "feed_builder", "complete_resident_order", "replace_resident_order"].map(kind => ({ ...value.ledger[0], kind }));
+  const before = structuredClone(value), { markup } = inspect(AdminEconomyDetailContent({ detail: value }));
+  for (const text of ["Еда и доска заказов", "Прежний заказ", "Сохранённая награда: 777 монет", "не пересчитываются по нынешнему уровню", "Сохранённая доска устарела", "Окно истекло", "скорость +20%", "Бонус уже учтён в сроке", "Сдача заказа жителя", "Еда для строителя"]) assert.ok(markup.includes(text), text);
+  assert.deepEqual(value, before);
+});

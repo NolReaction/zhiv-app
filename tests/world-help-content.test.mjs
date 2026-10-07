@@ -6,7 +6,7 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { worldHelpTopics, worldHelpGroups, searchWorldHelp } = await vite.ssrLoadModule("/features/world/world-help-content.ts");
+const { worldHelpTopics, worldHelpGroups, searchWorldHelp, searchWorldHelpWithStatus } = await vite.ssrLoadModule("/features/world/world-help-content.ts");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
 const { fishingOdds } = await vite.ssrLoadModule("/features/economy/fishing.ts");
 const { formatPearls } = await vite.ssrLoadModule("/features/economy/money.ts");
@@ -64,14 +64,60 @@ test("search understands normal Russian questions, endings, ё and one-letter mi
     ["мастеркая", "production"],
     ["клдаовая", "storage"],
     ["магазин удочек", "plesk"],
+    ["как варить уху", "campfire"],
+    ["расскажи про заказы", "resident-orders"],
   ]) {
     const results = searchWorldHelp(topics, query);
     assert.equal(results[0]?.id, expected, `${query}: ${results.map(entry => entry.id).join(", ")}`);
   }
   assert.ok(searchWorldHelp(topics, "найти мохлика").some(entry => entry.id === "controls"));
-  for (const query of ["несуществующая-тема-12345", "авыпролд", "++++", "как", "рыба 99999999"]) {
+  for (const query of ["несуществующая-тема-12345", "авыпролд", "++++", "рыба 99999999", "constructor", "toString", "__proto__"]) {
     assert.deepEqual(searchWorldHelp(topics, query), [], query);
   }
+});
+
+test("search responds while typing prefixes, preserving endings that resemble unfinished words", () => {
+  for (const [query, expected] of [
+    ["моне", "resources"], ["моне нужжж", null], ["масте", "production"], ["клад", "storage"],
+    ["плё", "plesk"], ["рыб", "fishing"], ["зак", "resident-orders"], ["строи", "construction"],
+    ["строител занят", "construction"], ["как улуч дом", "construction"],
+  ]) {
+    const results = searchWorldHelp(topics, query);
+    assert.equal(results[0]?.id ?? null, expected, `${query}: ${results.map(entry => entry.id).join(", ")}`);
+  }
+  for (const query of ["мо", "мон", "моне", "монет", "монеты"]) {
+    assert.ok(searchWorldHelp(topics, query).some(entry => entry.id === "resources"), query);
+  }
+  assert.equal(searchWorldHelp(topics, "пле\u0308ска")[0].id, "plesk", "decomposed ё also normalizes");
+});
+
+test("general and single-letter questions offer clearly labelled, bounded frequent topics", () => {
+  const expected = ["start", "resources", "production", "construction", "resident-orders", "saving"];
+  for (const query of ["как", "Как мне?", "что", "где", "почему", "как пожалуйста"]) {
+    const result = searchWorldHelpWithStatus(topics, query);
+    assert.equal(result.status, "frequent", query);
+    assert.deepEqual(result.results.map(entry => entry.id), expected, query);
+  }
+  const short = searchWorldHelpWithStatus(topics, "м");
+  assert.equal(short.status, "short");
+  assert.deepEqual(short.results.map(entry => entry.id), expected);
+  assert.equal(searchWorldHelpWithStatus(topics, "!!!!").status, "empty");
+  assert.equal(searchWorldHelpWithStatus(topics, "  ").status, "all");
+  assert.equal(searchWorldHelpWithStatus(topics, "несуществующая тема").status, "empty");
+});
+
+test("a single typo tolerates missing, extra, substituted and transposed letters without fuzzy numbers", () => {
+  for (const query of ["моннты", "монтеы", "монетыы", "мнеты"]) {
+    assert.equal(searchWorldHelp(topics, query)[0]?.id, "resources", query);
+  }
+  const numeric = [{ id: "timer", group: "start", title: "Таймер 25", keywords: "", summary: "" }];
+  assert.equal(searchWorldHelp(numeric, "тайм 25").length, 1);
+  for (const query of ["тайм 2", "тайм 26", "тайм 250", "ймер 25"]) assert.deepEqual(searchWorldHelp(numeric, query), [], query);
+  const entries = [
+    { id: "approximate", title: "Кладовая", keywords: "", summary: "", group: "economy" },
+    { id: "exact", title: "Кладовщик", keywords: "кладоваяя", summary: "", group: "economy" },
+  ];
+  assert.equal(searchWorldHelp(entries, "кладоваяя")[0].id, "exact", "a deliberate exact keyword outranks a fuzzy title");
 });
 
 test("search prioritizes the question over a passing mention and requires every useful term", () => {
@@ -116,7 +162,9 @@ test("beginner answers explain costs, receipt of results, blocked work and recov
   assert.match(answer("storage"), /Отмена лота не освобождает место/);
   assert.match(answer("storage"), /не пропадут/);
   assert.match(answer("saving"), /не очищайте данные браузера и не выходите из аккаунта/);
-  assert.match(answer("saving"), /проверит прежнее действие/);
+  assert.match(answer("saving"), /сверит прежнее действие с сервером/);
+  assert.match(answer("saving"), /5 минут.*Вернуться в игру/);
+  assert.match(answer("saving"), /таймеры уже начатых работ продолжаются/);
   assert.match(answer("saving"), /Продолжить здесь/);
   assert.match(answer("currency-shop"), /Покупка за реальные деньги.*недоступны/);
 });

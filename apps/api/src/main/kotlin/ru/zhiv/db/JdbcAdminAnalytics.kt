@@ -61,6 +61,8 @@ private fun periodEvents(materialize: Boolean = false) = """
         SELECT user_id,public_id,display_name,source_key,kind,created_at,items,category,construction_claim,active,needs_context,
           coins*(10/currency_scale) AS coins,pearls*(50/pearl_scale) AS pearls,
           CASE WHEN kind IN ('buy_fishing_item','buy_wardrobe_item') THEN regexp_replace(raw_target,'^.*:','')
+               WHEN kind='start_production' THEN split_part(raw_target,'@',1)
+               WHEN kind IN ('complete_resident_order','replace_resident_order') AND raw_target ~ '^order[0-9]*_' THEN NULL
                WHEN kind='refresh_fishing_shop' AND raw_target IS NOT NULL THEN 'fishing_shop' ELSE raw_target END AS target_id,
           CASE WHEN (command->>'quantity') ~ '^[0-9]{1,9}$' THEN (command->>'quantity')::bigint END AS quantity
         FROM attributed
@@ -89,7 +91,8 @@ private class AnalyticsReads(private val c: Connection, val window: AdminAnalyti
 @Serializable private data class AnalyticsPeriod(
     val summary: AdminAnalyticsSummary, val daily: List<AdminAnalyticsDaily>, val resources: List<AdminAnalyticsResource>,
     val flows: List<AdminAnalyticsFlow>, val actions: List<AdminAnalyticsAction>, val construction: List<AdminAnalyticsConstruction>,
-    val unattributedEvents: Long,
+    val unattributedEvents: Long, val gameplay: AdminAnalyticsGameplay, val meals: List<AdminAnalyticsMeal>,
+    val orders: List<AdminAnalyticsOrder>,
 )
 
 internal fun readAdminAnalytics(c: Connection, window: AdminAnalyticsWindow, admins: Set<String>, now: Instant): AdminAnalytics =
@@ -123,6 +126,18 @@ internal fun readAdminAnalytics(c: Connection, window: AdminAnalyticsWindow, adm
             ), action_totals AS (
                 SELECT kind,target_id AS "targetId",count(*) AS events,count(DISTINCT user_id) AS players FROM events
                 GROUP BY kind,target_id ORDER BY count(*) DESC,kind,target_id NULLS LAST LIMIT ?
+            ), meal_totals AS (
+                SELECT resource_id AS "itemId",coalesce(sum(-amount) FILTER (WHERE kind='eat_food'),0) AS "heroPortions",
+                  coalesce(sum(-amount) FILTER (WHERE kind='feed_builder'),0) AS "builderPortions",count(DISTINCT user_id) AS players
+                FROM legs WHERE kind IN ('eat_food','feed_builder') AND amount<0 AND resource_id NOT IN ('coins','pearls') GROUP BY resource_id
+            ), order_totals AS (
+                SELECT target_id AS "templateId",count(*) FILTER (WHERE kind='complete_resident_order') AS completed,
+                  count(*) FILTER (WHERE kind='replace_resident_order') AS replacements,
+                  count(*) FILTER (WHERE kind='replace_resident_order' AND pearls<0) AS "paidReplacements",
+                  coalesce(sum(coins) FILTER (WHERE kind='complete_resident_order' AND coins>0),0) AS "coinsEarned",
+                  coalesce(sum(-pearls) FILTER (WHERE kind='replace_resident_order' AND pearls<0),0) AS "pearlsSpent",
+                  count(DISTINCT user_id) AS players FROM events WHERE kind IN ('complete_resident_order','replace_resident_order') GROUP BY target_id
+                ORDER BY count(*) FILTER (WHERE kind='complete_resident_order') DESC,target_id NULLS LAST LIMIT 1001
             ), construction_totals AS (
                 SELECT target_id AS "buildingId",count(*) FILTER (WHERE kind='start_construction') AS starts,
                   count(*) FILTER (WHERE construction_claim) AS claims,count(DISTINCT user_id) AS players
@@ -138,6 +153,18 @@ internal fun readAdminAnalytics(c: Connection, window: AdminAnalyticsWindow, adm
                       count(DISTINCT user_id) FILTER (WHERE kind='start_construction' OR construction_claim) AS "constructionPlayers"
                     FROM events
                 ) s),
+                'gameplay',(SELECT to_jsonb(g) FROM (
+                    SELECT (SELECT coalesce(sum(-amount),0) FROM legs WHERE kind IN ('eat_food','feed_builder') AND amount<0 AND resource_id NOT IN ('coins','pearls')) AS "mealsConsumed",
+                      count(DISTINCT user_id) FILTER (WHERE kind IN ('eat_food','feed_builder')) AS "foodPlayers",
+                      count(*) FILTER (WHERE kind='complete_resident_order') AS "ordersCompleted",
+                      count(DISTINCT user_id) FILTER (WHERE kind='complete_resident_order') AS "orderPlayers",
+                      coalesce(sum(coins) FILTER (WHERE kind='complete_resident_order' AND coins>0),0) AS "orderCoinsEarned",
+                      count(*) FILTER (WHERE kind='replace_resident_order') AS "orderReplacements",
+                      count(*) FILTER (WHERE kind='replace_resident_order' AND pearls<0) AS "paidOrderReplacements",
+                      coalesce(sum(-pearls) FILTER (WHERE kind='replace_resident_order' AND pearls<0),0) AS "orderPearlsSpent" FROM events
+                ) g),
+                'meals',coalesce((SELECT jsonb_agg(to_jsonb(m) ORDER BY m."heroPortions"+m."builderPortions" DESC,m."itemId") FROM meal_totals m),'[]'::jsonb),
+                'orders',coalesce((SELECT jsonb_agg(to_jsonb(o) ORDER BY o.completed DESC,o.replacements DESC,o."templateId" NULLS LAST) FROM order_totals o),'[]'::jsonb),
                 'daily',coalesce((SELECT jsonb_agg(to_jsonb(d) ORDER BY d.date) FROM daily_totals d),'[]'::jsonb),
                 'resources',coalesce((SELECT jsonb_agg(to_jsonb(r) ORDER BY r."resourceId") FROM resource_totals r),'[]'::jsonb),
                 'flows',coalesce((SELECT jsonb_agg(to_jsonb(f) ORDER BY f.events DESC,f.kind,f."targetId" NULLS LAST,f."resourceId",f.category) FROM flow_totals f),'[]'::jsonb),
@@ -179,7 +206,7 @@ internal fun readAdminAnalytics(c: Connection, window: AdminAnalyticsWindow, adm
         AdminAnalytics(now.toString(),window.from.toString(),window.to.toString(),window.startAt.toString(),window.endAt.toString(),window.q,window.scope,
             period.summary,period.daily,period.resources,period.flows.take(maxAnalyticsGroups),period.actions.take(maxAnalyticsGroups),period.construction,firstConstructions,buildingLevels,
             AdminAnalyticsCoverage(counts.first,period.unattributedEvents,counts.matching,counts.initialized,
-                period.flows.size>maxAnalyticsGroups,period.actions.size>maxAnalyticsGroups))
+                period.flows.size>maxAnalyticsGroups,period.actions.size>maxAnalyticsGroups,period.orders.size>maxAnalyticsGroups), period.gameplay,period.meals,period.orders.take(maxAnalyticsGroups),readPresence(reads,window))
     }
 
 internal fun readAdminAnalyticsEvents(c: Connection, window: AdminAnalyticsWindow, query: AdminAnalyticsEventsQuery,
@@ -208,4 +235,42 @@ internal fun readAdminAnalyticsEvents(c: Connection, window: AdminAnalyticsWindo
     }
     AdminAnalyticsEvents(now.toString(),window.from.toString(),window.to.toString(),window.startAt.toString(),window.endAt.toString(),window.q,window.scope,
         query.kind,query.resource,query.direction,query.at,query.offset,query.limit,total,events)
+}
+
+@Serializable private data class PresenceSummary(val players: Long, val onlineSeconds: Long, val flaggedPlayers: Long,
+    val daily: List<AdminAnalyticsPresenceDay>, val reviewDays: List<AdminAnalyticsPresenceReview>)
+
+private fun readPresence(reads: AnalyticsReads, window: AdminAnalyticsWindow): AdminAnalyticsPresence {
+    val summary = reads.scoped("""
+        , period AS MATERIALIZED (
+            SELECT d.*,u.public_id,u.display_name,a.tap_watchlisted FROM game_presence_daily d
+            JOIN scoped_users u ON u.id=d.user_id JOIN app_users a ON a.id=u.id WHERE d.day>=? AND d.day<=?
+        ), days AS (SELECT ?::date+i AS day FROM generate_series(0,?::integer) i),
+        totals AS (
+            SELECT day,count(*) FILTER (WHERE online_millis>0) AS players,floor(coalesce(sum(online_millis),0)/1000)::bigint AS seconds,
+              count(*) FILTER (WHERE flagged_at IS NOT NULL) AS flagged FROM period GROUP BY day
+        ), daily AS (
+            SELECT d.day::text AS date,coalesce(t.players,0) AS players,coalesce(t.seconds,0) AS "onlineSeconds",
+              coalesce(t.flagged,0) AS "flaggedPlayers" FROM days d LEFT JOIN totals t USING(day)
+        ), reviews AS (
+            SELECT public_id AS "publicId",display_name AS "displayName",day::text AS date,online_millis/1000 AS "onlineSeconds",
+              to_char(flagged_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "flaggedAt",tap_watchlisted AS watchlisted
+            FROM period WHERE flagged_at IS NOT NULL ORDER BY day DESC,online_millis DESC,public_id LIMIT 101
+        ) SELECT jsonb_build_object(
+            'players',(SELECT count(DISTINCT user_id) FROM period WHERE online_millis>0),
+            'onlineSeconds',(SELECT floor(coalesce(sum(online_millis),0)/1000)::bigint FROM period),
+            'flaggedPlayers',(SELECT count(DISTINCT user_id) FROM period WHERE flagged_at IS NOT NULL),
+            'daily',coalesce((SELECT jsonb_agg(to_jsonb(d) ORDER BY d.date) FROM daily d),'[]'::jsonb),
+            'reviewDays',coalesce((SELECT jsonb_agg(to_jsonb(r) ORDER BY r.date DESC,r."onlineSeconds" DESC,r."publicId") FROM reviews r),'[]'::jsonb)
+        )
+    """,window.from,window.to,window.from,java.time.temporal.ChronoUnit.DAYS.between(window.from,window.to).toInt()) {
+        economyJson.decodeFromString<PresenceSummary>(it.getString(1))
+    }.single()
+    // Runtime cannot read Flyway history. Report the first surviving measured day of this audience.
+    val coverage = reads.scoped("""
+        SELECT to_char(min(d.day)::timestamp,'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+        FROM game_presence_daily d JOIN scoped_users u ON u.id=d.user_id
+    """) { it.getString(1) }.firstOrNull()
+    return AdminAnalyticsPresence(coverage,summary.players,summary.onlineSeconds,summary.flaggedPlayers,
+        summary.daily,summary.reviewDays.take(100),summary.reviewDays.size>100)
 }

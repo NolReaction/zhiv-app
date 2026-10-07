@@ -6,6 +6,7 @@ import { progressionRewardsCatalog } from "@/features/game/progression-rewards";
 import { BARTER_HOME_LEVEL } from "@/features/economy/barter-model";
 import { TRAVEL_COLLECTION_SECONDS, QUARRY_COLLECTION_SECONDS } from "./collection-book";
 import type { WorldHelpTarget } from "./world-help-types";
+export { searchWorldHelp, searchWorldHelpWithStatus } from "./world-help-search";
 
 export const worldHelpGroups = [
   { id: "start", title: "Первые шаги", description: "Начало игры и управление" },
@@ -328,6 +329,7 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
         steps: [
           "Откройте «Еда и заказы» → «Заказы». Карточка показывает жителя, его просьбу, ваши запасы и награду. Фильтр оставит нужного заказчика.",
           "Нажмите «Выполнить»: товары спишутся, монеты придут, а карточка сразу сменится новой — без ожидания. До выполнения товары не резервируются.",
+          "После улучшения дома новые просьбы становятся крупнее и выгоднее. Появляются товары, всю цепочку получения которых вы уже открыли; условия выданных карточек не меняются до их смены.",
           `Не подходит? Первые ${food.orders.freeReplacements} замены за ${food.orders.replacementWindowSeconds / 3600} ч бесплатны, затем каждая стоит ${formatPearls(food.orders.replacementPricePearls)} жемчужин с подтверждением. Новый заказ доступен сразу.`,
         ],
         note: `На доске ${food.orders.slots} заказа, обновление каждые ${food.orders.refreshSeconds / 3600} ч. Одновременных повторов нет, недавние просьбы откладываются. Заказы дают только монеты, не сытость. Пропуск без штрафов.`,
@@ -403,13 +405,14 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
     },
     {
       id: "saving", group: "account", title: "Действие зависло или пропала связь", summary: "Как проверить результат и сохранить прогресс",
-      keywords: "сохранение сеть интернет офлайн ошибка синхронизация аккаунт вход восстановление телефон устройство зависло не работает пропали не пришли монеты награда",
+      keywords: "сохранение сеть интернет офлайн афк afk бездействие отошли пауза отключение ошибка синхронизация аккаунт вход восстановление телефон устройство зависло не работает пропали не пришли монеты награда",
       steps: [
-        "Восстановите интернет. Если показана кнопка проверки или повтора, нажмите её и дождитесь ответа: игра проверит прежнее действие.",
+        "Восстановите интернет и дождитесь проверки. Если есть кнопка повтора, нажмите её: игра сверит прежнее действие с сервером перед продолжением.",
+        "Через 5 минут без ваших действий игра приостанавливается. На экране «Вы отошли» нажмите «Вернуться в игру», чтобы продолжить.",
         "Если мир открыт в другой вкладке или на другом устройстве, нажмите уровень → «Продолжить здесь». Общую память полянки обновляет одно окно.",
         "Для другого телефона войдите в тот же аккаунт. Заранее проверьте «Вход и безопасность» и сохраните резервный код восстановления.",
       ],
-      note: "До подтверждения не очищайте данные браузера и не выходите из аккаунта. Прогулки без сети могут не сохраниться; статус сохранения виден в профиле. Таймеры уже начатых работ продолжаются.",
+      note: "До подтверждения не очищайте данные браузера и не выходите из аккаунта. Без сети новые игровые действия приостановлены. Аккаунт сохраняется, таймеры уже начатых работ продолжаются; повторная проверка использует прежний запрос.",
       action: { label: "Проверить профиль", target: { kind: "profile", tab: "profile" } },
       relatedIds: ["feedback", "rewards"],
     },
@@ -425,77 +428,4 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
       relatedIds: ["saving"],
     },
   ];
-}
-
-function normalizeSearch(value: string) {
-  return value.toLocaleLowerCase("ru-RU").replaceAll("ё", "е");
-}
-
-const stopWords = new Set(["а", "в", "во", "где", "и", "или", "из", "к", "как", "ли", "мне", "могу", "мой", "моя", "мы", "на", "не", "но", "о", "от", "по", "под", "почему", "получается", "с", "со", "у", "что", "это", "я"]);
-
-/** A small Russian ending normalizer, deliberately narrower than fuzzy substring search. */
-function stemWord(word: string): string {
-  if (word.length < 4 || /\d/.test(word)) return word;
-  return word.replace(/(?:иями|ями|ами|ого|ему|ому|ыми|ими|ией|ий|ый|ой|ей|ая|яя|ое|ее|ые|ие|ов|ев|ах|ях|ам|ям|ом|ем|ую|юю|ию|ия|ья|ть|ться|ешь|ете|ют|ут|ет|ит|ы|и|а|я|у|ю|е|о|ь)$/u, "").replace(/ь$/u, "");
-}
-
-const aliases: Record<string, string> = {
-  дерев: "древесин", дерево: "древесин", уху: "уха", досок: "доск", камен: "камн", крафт: "производств", изготов: "производств",
-  готовк: "готов", приготов: "готов", приготовлен: "готов", приготовление: "готов",
-  бабк: "монет", денеж: "монет", деньг: "монет", заработат: "заработ",
-  склад: "кладов", кладовая: "кладов", кладов: "кладов",
-  корм: "накорм", кормлен: "накорм", накорм: "накорм", покорм: "накорм",
-  кушат: "еда", куш: "еда", поест: "еда", ест: "еда",
-  хват: "нехват", хвата: "нехват", хватает: "нехват", нехватк: "нехват", нехват: "нехват",
-  удочек: "удочк", крючк: "крючок", рыбк: "рыб",
-  завис: "зависл", зависл: "зависл", залагал: "зависл",
-};
-
-function searchWord(word: string): string {
-  const stem = stemWord(word);
-  return aliases[stem] ?? stem;
-}
-
-function words(value: string): string[] {
-  return (normalizeSearch(value).match(/[\p{L}\p{N}]+/gu) ?? [])
-    .filter(word => !stopWords.has(word)).map(searchWord).filter(Boolean);
-}
-
-/** One missed/extra/wrong letter or adjacent transposition, only for sufficiently long words. */
-function isNearWord(a: string, b: string): boolean {
-  if (a.length < 5 || b.length < 5 || /\d/.test(a + b) || Math.abs(a.length - b.length) > 1) return false;
-  let i = 0;
-  while (i < Math.min(a.length, b.length) && a[i] === b[i]) i += 1;
-  if (a.length === b.length) {
-    return a.slice(i + 1) === b.slice(i + 1)
-      || (a[i] === b[i + 1] && a[i + 1] === b[i] && a.slice(i + 2) === b.slice(i + 2));
-  }
-  return a.length > b.length ? a.slice(i + 1) === b.slice(i) : a.slice(i) === b.slice(i + 1);
-}
-
-function matchWeight(term: string, candidate: string): number {
-  if (term === candidate) return 3;
-  // A long root handles endings the compact normalizer does not list; short tokens stay exact.
-  if (Math.min(term.length, candidate.length) >= 5 && Math.abs(term.length - candidate.length) <= 3
-    && !/\d/.test(term + candidate) && (term.startsWith(candidate) || candidate.startsWith(term))) return 2;
-  return isNearWord(term, candidate) ? 1 : 0;
-}
-
-export function searchWorldHelp(topics: readonly WorldHelpTopic[], query: string): readonly WorldHelpTopic[] {
-  if (!normalizeSearch(query).trim()) return topics;
-  const terms = [...new Set(words(query))];
-  if (!terms.length) return [];
-  return topics.map((topic, index) => {
-    const fields = [
-      { tokens: words(topic.title), weight: 8 },
-      { tokens: words(topic.keywords), weight: 6 },
-      { tokens: words(topic.summary), weight: 4 },
-      { tokens: words([...(topic.paragraphs ?? []), ...(topic.steps ?? []), topic.note ?? ""].join(" ")), weight: 1 },
-    ];
-    const scores = terms.map(term => Math.max(0, ...fields.map(field =>
-      field.weight * Math.max(0, ...field.tokens.map(candidate => matchWeight(term, candidate))))));
-    return { topic, index, score: scores.every(Boolean) ? scores.reduce((sum, score) => sum + score, 0) : 0 };
-  }).filter(result => result.score > 0)
-    .sort((a, b) => b.score - a.score || a.index - b.index)
-    .map(result => result.topic);
 }

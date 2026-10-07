@@ -11,6 +11,8 @@ import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.routing.*
 import kotlinx.serialization.json.JsonElement
+import ru.zhiv.presence.PresenceRepository
+import ru.zhiv.presence.requireGameplayPresence
 import ru.zhiv.auth.AuthFailure
 import ru.zhiv.config.AppConfig
 import ru.zhiv.http.isTrustedWrite
@@ -23,7 +25,7 @@ private fun ApplicationCall.economySession(config: AppConfig, codec: TokenCodec,
     val token = sessionCookie(config) ?: throw AuthFailure("UNAUTHORIZED", "Войдите в профиль ещё раз", 401)
     return codec.hash(token)
 }
-fun Route.economyRoutes(repository: EconomyRepository, codec: TokenCodec, config: AppConfig) {
+fun Route.economyRoutes(repository: EconomyRepository, codec: TokenCodec, config: AppConfig, presence: PresenceRepository? = null) {
     route("/api/v1/economy") {
         install(RequestBodyLimit) { bodyLimit { 4_096 } }
         rateLimit(RateLimitName("world-read")) {
@@ -36,6 +38,7 @@ fun Route.economyRoutes(repository: EconomyRepository, codec: TokenCodec, config
         rateLimit(RateLimitName("world-write")) {
             post("/commands") {
                 val hash = call.economySession(config, codec, true)
+                call.requireGameplayPresence(presence, hash)
                 call.respond(repository.command(hash, decodeEconomyCommand(call.receive<JsonElement>())))
             }
         }

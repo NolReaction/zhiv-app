@@ -14,6 +14,8 @@ import { economyCount, economyTime, type AdminEconomyTarget } from "./admin-econ
 import styles from "./admin-economy.module.css";
 
 const ledgerLabels: Record<string, string> = {
+  eat_food: "Еда для Мохлика", feed_builder: "Еда для строителя",
+  complete_resident_order: "Сдача заказа жителя", replace_resident_order: "Замена заказа жителя",
   legacy_conversion: "Перенос прежних ресурсов", legacy_journey: "Прежнее путешествие", start_production: "Начало производства",
   buy_production_slot: "Открытие места производства", start_collection: "Начало сбора", start_exploration: "Начало вылазки", cancel_exploration: "Отмена вылазки",
   start_construction: "Начало стройки", speedup_construction: "Ускорение стройки", claim_job: "Получение результата",
@@ -83,6 +85,21 @@ export function AdminEconomyDetailContent({ detail }: { detail: AdminEconomyDeta
           </article>
         </div>
       </section>
+      <section className={styles.panel}><div className={styles.heading}><h3>Еда и доска заказов</h3><p>Сохранённое состояние на момент снимка. Просмотр не выдаёт новые карточки и не расходует бесплатные замены.</p></div>
+        <dl className={styles.facts}>
+          <div><dt>Еда Мохлика для следующего задания</dt><dd>{state.food?.heroMeal ? itemName(state.food.heroMeal, catalog) : "Нет запаса бонуса"}</dd></div>
+          <div><dt>Еда строителя для следующей стройки</dt><dd>{state.food?.builderMeal ? itemName(state.food.builderMeal, catalog) : "Нет запаса бонуса"}</dd></div>
+          <div><dt>Заказов сдано в сохранении</dt><dd>{economyCount(state.residentOrders?.completed ?? 0)}</dd></div>
+          <div><dt>Монет за заказы в сохранении</dt><dd>{economyCount(state.residentOrders?.earnedCoins ?? 0)}</dd></div>
+        </dl>
+        {state.residentOrders && catalog.food && <p className={styles.hint}>Бесплатных замен потрачено в сохранённом окне: {economyCount(state.residentOrders.freeReplacementsUsed)} из {economyCount(catalog.food.orders.freeReplacements)}. {state.residentOrders.replacementCycle !== Math.floor(snapshotTime / (catalog.food.orders.replacementWindowSeconds * 1000)) ? "Окно истекло; при следующем действии сервер обновит лимит." : "Окно ещё действует."}</p>}
+        {state.residentOrders && catalog.food && state.residentOrders.cycle !== Math.floor(snapshotTime / (catalog.food.orders.refreshSeconds * 1000)) && <p className={styles.hint}>Сохранённая доска устарела. При следующем запросе игрока сервер обновит доступные карточки.</p>}
+        {!state.residentOrders?.slots.some(slot => slot.terms) ? <p className={styles.hint}>Карточек с сохранёнными условиями пока нет.</p> : <div className={styles.jobs}>{state.residentOrders.slots.map((slot, index) => slot.terms && <article className={styles.job} key={index}>
+          <div className={styles.jobHeading}><strong>{slot.terms.name}</strong><span className={styles.badge}>{slot.terms.residentId === "plesk" ? "Плёска" : "Шишколап"}</span></div>
+          <p className={styles.hint}>Сохранённая награда: {economyCount(slot.terms.coins)} монет. Эти условия не пересчитываются по нынешнему уровню.</p>
+          <Quantities items={slot.terms.items} catalog={catalog} />
+        </article>)}</div>}
+      </section>
       <section className={styles.panel}><div className={styles.heading}><h3>Склад</h3><p>Припасы в хозяйстве и места, занятые товарами на рынке.</p></div>
         <dl className={styles.facts}>
           <div><dt>Вместимость</dt><dd>{economyCount(state.storage.capacity)}</dd></div><div><dt>В хозяйстве</dt><dd>{economyCount(state.storage.used)}</dd></div>
@@ -106,6 +123,7 @@ export function AdminEconomyDetailContent({ detail }: { detail: AdminEconomyDeta
             {(status.status === "running" || status.status === "collecting") && <p>До завершения: <strong>{economyRemaining(deadline, detail.serverTime)}</strong> · {economyTime(deadline)}</p>}
             {status.status === "awaiting_collection" && <p>Урожай созрел; игроку нужно начать сбор.</p>}
             {status.storageBlocked && <p className={styles.warning}><CircleAlert size={16} aria-hidden="true" />Для получения награды не хватает места на складе.</p>}
+            {job.meal && <p className={styles.hint}>Еда в этом задании: {itemName(job.meal.itemId, catalog)} · скорость +{economyCount(job.meal.speedBps / 100)}% ({job.meal.consumer === "builder" ? "строитель" : "Мохлик"}). Бонус уже учтён в сроке.</p>}
             <p className={styles.hint}>Сохранённая стоимость: {economyCount(job.cost.coins)} монет</p>
             {Object.keys(job.cost.items).length > 0 && <Quantities items={job.cost.items} catalog={catalog} />}
             {job.kind !== "construction" && <><span className={styles.hint}>Награда после получения</span><Quantities items={job.rewards} catalog={catalog} /></>}

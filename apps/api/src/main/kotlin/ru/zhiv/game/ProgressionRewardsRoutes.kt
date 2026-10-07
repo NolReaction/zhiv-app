@@ -10,13 +10,15 @@ import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.routing.*
 import kotlinx.serialization.json.JsonElement
+import ru.zhiv.presence.PresenceRepository
+import ru.zhiv.presence.requireGameplayPresence
 import ru.zhiv.auth.AuthFailure
 import ru.zhiv.config.AppConfig
 import ru.zhiv.http.isTrustedWrite
 import ru.zhiv.http.sessionCookie
 import ru.zhiv.security.TokenCodec
 
-fun Route.progressionRewardsRoutes(repository: ProgressionRewardsRepository,codec: TokenCodec,config: AppConfig) {
+fun Route.progressionRewardsRoutes(repository: ProgressionRewardsRepository,codec: TokenCodec,config: AppConfig, presence: PresenceRepository? = null) {
     route("/api/v1/game/rewards") {
         install(RequestBodyLimit) { bodyLimit { 2_048 } }
         rateLimit(RateLimitName("world-read")) {
@@ -32,6 +34,7 @@ fun Route.progressionRewardsRoutes(repository: ProgressionRewardsRepository,code
                 call.response.header(HttpHeaders.CacheControl,"no-store")
                 if(!call.isTrustedWrite(config)) throw AuthFailure("UNTRUSTED_ORIGIN","Источник запроса не разрешён",403)
                 val hash=codec.hash(call.sessionCookie(config) ?: throw AuthFailure("UNAUTHORIZED","Войдите в профиль ещё раз",401))
+                call.requireGameplayPresence(presence, hash)
                 call.respond(repository.claim(hash,decodeRewardClaim(call.receive<JsonElement>())))
             }
         }

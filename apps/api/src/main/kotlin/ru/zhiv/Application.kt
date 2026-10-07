@@ -70,6 +70,8 @@ import ru.zhiv.forest.ForestMemoryRepository
 import ru.zhiv.forest.forestMemoryRoutes
 import ru.zhiv.game.gameRoutes
 import ru.zhiv.game.GameRepository
+import ru.zhiv.db.JdbcPresenceRepository
+import ru.zhiv.presence.*
 import ru.zhiv.db.JdbcGameRepository
 import ru.zhiv.observability.GameEventSink
 import ru.zhiv.observability.Slf4jGameEventSink
@@ -136,6 +138,7 @@ fun Application.module() {
         mailer = mailer,
         vk = vk,
         games = JdbcGameRepository(dataSource),
+        presence = JdbcPresenceRepository(dataSource),
         worlds = JdbcWorldRepository(dataSource),
         economy = JdbcEconomyRepository(dataSource),
         progressionRewards = JdbcProgressionRewardsRepository(dataSource),
@@ -175,6 +178,7 @@ fun Application.installZhivApi(
     progressionRewards: ProgressionRewardsRepository? = null,
     economyBarter: EconomyBarterRepository? = null,
     guestProfiles: GuestProfileRepository? = null,
+    presence: PresenceRepository? = null,
 ) {
     val metrics = RuntimeMetrics.shared
     val monitoring = MonitoringService(config.monitoringUrl)
@@ -207,6 +211,7 @@ fun Application.installZhivApi(
             "forest-memory-read" to 30,
             "forest-memory-write" to 30,
             "game-session" to 120,
+            "presence-write" to 1_200,
             "game-write" to 90,
             "client-incidents" to 120,
             "feedback-read" to 120,
@@ -322,14 +327,15 @@ fun Application.installZhivApi(
         auth?.let { authRoutes(it, identities, tokenCodec, config, authConfig, telegram, mailer, vk) }
         rateLimit(RateLimitName("check-in-attempt")) { checkInRoutes(checkIns, tokenCodec, config) }
         gameEventRoutes(identities, tokenCodec, config, gameEvents)
-        games?.let { gameRoutes(it, tokenCodec, config) }
+        games?.let { gameRoutes(it, tokenCodec, config, presence) }
+        presence?.let { presenceRoutes(it, tokenCodec, config) }
         incidents?.let { userIncidentRoutes(it, admin, config, tokenCodec) }
-        worlds?.let { worldRoutes(it, tokenCodec, config) }
-        progressionRewards?.let { progressionRewardsRoutes(it, tokenCodec, config) }
-        economy?.let { economyRoutes(it, tokenCodec, config) }
-        economyMarket?.let { economyMarketRoutes(it, tokenCodec, config) }
-        economyBarter?.let { economyBarterRoutes(it, tokenCodec, config) }
-        forestMemory?.let { forestMemoryRoutes(it, tokenCodec, config) }
+        worlds?.let { worldRoutes(it, tokenCodec, config, presence) }
+        progressionRewards?.let { progressionRewardsRoutes(it, tokenCodec, config, presence) }
+        economy?.let { economyRoutes(it, tokenCodec, config, presence) }
+        economyMarket?.let { economyMarketRoutes(it, tokenCodec, config, presence) }
+        economyBarter?.let { economyBarterRoutes(it, tokenCodec, config, presence) }
+        forestMemory?.let { forestMemoryRoutes(it, tokenCodec, config, presence) }
         feedback?.let { feedbackRoutes(it, tokenCodec, config) }
         admin?.let { repository ->
             adminRoutes(repository, tokenCodec, config)

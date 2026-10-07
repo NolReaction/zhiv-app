@@ -1,3 +1,4 @@
+import { isDevPresenceActive } from "./activity-store";
 import { NextResponse } from "next/server";
 import { FOREST_MEMORY_BODY_BYTES } from "@/features/world/forest-memory-model";
 import { guardDevApi } from "@/lib/dev/api-guard";
@@ -14,6 +15,7 @@ export async function devForestMemoryContext(request: Request, write = false) {
   if (rejected) return { response: rejected };
   const token = await devSessionToken();
   if (!getDevIdentity(token)) return { response: forestMemoryError("UNAUTHORIZED", 401) };
+  if (write && !isDevPresenceActive(getDevIdentity(token)!.user.publicId, request.headers.get("X-Game-Presence"), Date.now(), token)) return { response: forestMemoryError("GAME_SESSION_INACTIVE", 409, "Вернитесь в игру для продолжения") };
   return { token };
 }
 

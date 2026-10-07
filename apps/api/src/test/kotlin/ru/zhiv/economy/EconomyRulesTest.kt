@@ -495,9 +495,18 @@ class EconomyRulesTest {
             assertTrue(bait.price > item.baseSellPrice, "${bait.itemId}: bait buy-sell arbitrage")
             assertTrue(bait.rareBonus >= 0)
         }
-        for ((previous, fish) in fishing.fish.zipWithNext())
-            assertTrue(fish.affinity * previous.weight >= previous.affinity * fish.weight,
-                "Stronger tackle must not favour cheaper fish over rarer fish")
+        val rarities = setOf("common", "uncommon", "rare", "epic", "legendary")
+        val weights = fishing.rods.map { it.rarityWeights } + fishing.hooks.map { it.rarityWeights } + fishing.baits.map { it.rarityWeights }
+        for (entry in weights) {
+            val specialization = assertNotNull(entry, "Current fishing gear must define its rarity specialization")
+            assertEquals(rarities, specialization.keys)
+            assertTrue(specialization.values.all { it in 1..1000 }, "Specialization factors must be finite and positive")
+        }
+        for (durable in listOf(fishing.rods.map { it.rarityWeights }, fishing.hooks.map { it.rarityWeights })) {
+            assertEquals(durable.size, durable.toSet().size, "Durable tackle must have distinct specializations")
+            assertTrue(durable.all { entry -> entry!!.values.any { it > 100 } && entry.values.any { it < 100 } },
+                "Each durable specialization must have both an advantage and a tradeoff")
+        }
         return fishing.baits.map { it.itemId }.toSet()
     }
 

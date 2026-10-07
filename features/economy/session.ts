@@ -31,9 +31,9 @@ type ReceiptStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 /** Account-scoped session, independent of map/panel lifetime. An uncertain command keeps its exact receipt. */
 export function createEconomySession(owner: string | null, transport: Transport, onSessionLost: () => void, storage?: ReceiptStorage) {
   let view: View = { snapshot: null, market: null, marketError: null, barter: null, barterError: null, error: null, notice: "", busy: false, uncertain: false, retryAt: 0, completedConstructions: [], inventoryGains: [] };
-  let pending: Pending | null = null, active = false, epoch = 0, readSequence = 0, marketSequence = 0, barterSequence = 0;
+  let pending: Pending | null = null, active = false, available = true, epoch = 0, readSequence = 0, marketSequence = 0, barterSequence = 0;
   let reading: Promise<void> | null = null, marketReading: Promise<void> | null = null, barterReading: Promise<void> | null = null;
-  let barterBlockedUntil = 0;
+  let barterBlockedUntil = 0, rateLimitedUntil = 0;
   let lastReadAt = -Infinity, blockedUntil = 0, marketBlockedUntil = 0, failures = 0;
   let serverClock = Date.now(), localClock = performance.now();
   const storageKey = `zhiv:economy:pending:v1:${owner}`;
@@ -69,7 +69,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
     publish({ snapshot: value }); return true;
   }
   function refresh(force = true): Promise<void> {
-    if (!active || !owner || view.busy || performance.now() < blockedUntil) return Promise.resolve();
+    if (!active || !available || !owner || view.busy || performance.now() < blockedUntil) return Promise.resolve();
     if (reading) return reading;
     if (!force && performance.now() - lastReadAt < 15_000) return Promise.resolve();
     lastReadAt = performance.now();
@@ -90,12 +90,13 @@ export function createEconomySession(owner: string | null, transport: Transport,
       const delay = error instanceof ApiError && error.status === 429 ? Math.max(1000, error.retryAfterMs ?? 60_000)
         : Math.min(60_000, 2000 * 2 ** Math.min(failures++, 5));
       blockedUntil = performance.now() + delay;
+      if (error instanceof ApiError && error.status === 429) rateLimitedUntil = blockedUntil;
       if (error instanceof ApiError && error.status === 401) onSessionLost();
       else if (!pending) publish({ error: error instanceof ApiError ? error.message : "Нет связи с хозяйством. Изменения появятся после подключения.", retryAt: now() + delay });
     } finally { requests.delete(request); }
   }
   function refreshMarket(): Promise<void> {
-    if (!active || !owner || view.busy || performance.now() < marketBlockedUntil) return Promise.resolve();
+    if (!active || !available || !owner || view.busy || performance.now() < marketBlockedUntil) return Promise.resolve();
     if (marketReading) return marketReading;
     const task = readMarket(); marketReading = task;
     void task.finally(() => { if (marketReading === task) marketReading = null; });
@@ -117,7 +118,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
     } finally { requests.delete(request); }
   }
   function refreshBarter(): Promise<void> {
-    if (!active || !owner || !transport.barter || view.busy || performance.now() < barterBlockedUntil) return Promise.resolve();
+    if (!active || !available || !owner || !transport.barter || view.busy || performance.now() < barterBlockedUntil) return Promise.resolve();
     if (barterReading) return barterReading;
     const task = readBarter(); barterReading = task;
     void task.finally(() => { if (barterReading === task) barterReading = null; });
@@ -141,7 +142,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
     } finally { requests.delete(request); }
   }
   async function execute(value: Pending) {
-    if (!active || view.busy || value.command.ownerPublicId !== owner || performance.now() < blockedUntil || (value.kind === "dev" && !transport.dev) || (value.kind === "barter" && !transport.barterTrade)) return;
+    if (!active || !available || view.busy || value.command.ownerPublicId !== owner || performance.now() < blockedUntil || (value.kind === "dev" && !transport.dev) || (value.kind === "barter" && !transport.barterTrade)) return;
     const generation = epoch, request = controller(), before = view.snapshot;
     ++readSequence; ++marketSequence; ++barterSequence; reading = null; marketReading = null; barterReading = null; remember(value);
     publish({ busy: true, error: null, notice: "", retryAt: 0 });
@@ -177,11 +178,13 @@ export function createEconomySession(owner: string | null, transport: Transport,
     } catch (error) {
       if (!valid(generation)) return;
       const throttled = error instanceof ApiError && error.status === 429;
-      const definitive = error instanceof ApiError && error.status < 500 && error.status !== 408 && !throttled;
+      const definitive = error instanceof ApiError && error.status >= 400 && error.status < 500
+        && ![401, 408, 425, 429].includes(error.status) && error.body?.code !== "GAME_SESSION_INACTIVE";
       if (definitive) remember(null);
       if (throttled) {
         const delay = Math.max(1000, error.retryAfterMs ?? 60_000);
         blockedUntil = performance.now() + delay;
+      if (error instanceof ApiError && error.status === 429) rateLimitedUntil = blockedUntil;
         publish({ retryAt: now() + delay });
       }
       publish({ uncertain: !definitive, error: error instanceof ApiError ? error.message : "Ответ не пришёл. Повторная проверка использует тот же запрос и не спишет ресурсы дважды." });
@@ -201,12 +204,30 @@ export function createEconomySession(owner: string | null, transport: Transport,
       }
     }
   }
+  function setAvailable(value: boolean) {
+    if (available === value) return;
+    available = value;
+    if (!value) {
+      epoch++; readSequence++; marketSequence++; barterSequence++; reading = null; marketReading = null; barterReading = null;
+      requests.forEach(request => request.abort()); requests.clear();
+      publish({ busy: false, uncertain: Boolean(pending) });
+    } else { lastReadAt = -Infinity; blockedUntil = Math.max(0, rateLimitedUntil); }
+  }
+  async function reconcile() {
+    setAvailable(true);
+    if (!active || !owner || performance.now() < blockedUntil) return false;
+    if (pending) await execute(pending);
+    if (pending || !active || !available) return false;
+    await refresh();
+    return Boolean(view.snapshot && !view.error && !view.busy && !pending && available);
+  }
   return {
+    setAvailable, reconcile,
     setSessionLost(callback: () => void) { onSessionLost = callback; },
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     getSnapshot: () => view, now, devAvailable: Boolean(transport.dev),
     activate() {
-      active = true; restore();
+      active = true; lastReadAt = -Infinity; restore();
       return () => {
         active = false; epoch++; readSequence++; marketSequence++; barterSequence++; reading = null; marketReading = null; barterReading = null;
         requests.forEach(request => request.abort()); requests.clear();
@@ -215,20 +236,20 @@ export function createEconomySession(owner: string | null, transport: Transport,
     },
     refresh, refreshSoft: () => refresh(false), refreshMarket, refreshBarter,
     act(action: EconomyCommand["action"], targetId: string, quantity = 1, totalPrice = 0) {
-      if (!owner || !view.snapshot || pending || !active) return;
+      if (!owner || !view.snapshot || pending || !active || !available) return;
       void execute({ kind: "economy", command: { requestId: createUuidV4(), ownerPublicId: owner, expectedRevision: view.snapshot.revision, action, targetId, quantity, totalPrice } });
     },
     actMarket(action: MarketCommand["action"], targetId: string, quantity = 1, totalPrice = 0) {
-      if (!owner || !view.snapshot || pending || !active) return;
+      if (!owner || !view.snapshot || pending || !active || !available) return;
       void execute({ kind: "market", command: { requestId: createUuidV4(), ownerPublicId: owner, expectedRevision: view.snapshot.revision, action, targetId, quantity, totalPrice } });
     },
     actBarter(intent: BarterIntent) {
-      if (!owner || !view.snapshot || pending || !active || !transport.barterTrade) return;
+      if (!owner || !view.snapshot || pending || !active || !available || !transport.barterTrade) return;
       const parsed = barterCommandSchema.safeParse({ ...intent, requestId: createUuidV4(), ownerPublicId: owner, expectedRevision: view.snapshot.revision });
       if (parsed.success) void execute({ kind: "barter", command: parsed.data });
     },
     actDev(action: EconomyDevCommand["action"], targetId: string, quantity = 1) {
-      if (!transport.dev || !owner || !view.snapshot || pending || !active) return;
+      if (!transport.dev || !owner || !view.snapshot || pending || !active || !available) return;
       const command = economyDevCommandSchema.safeParse({ requestId: createUuidV4(), ownerPublicId: owner, expectedRevision: view.snapshot.revision, action, targetId, quantity, totalPrice: 0 });
       if (command.success) void execute({ kind: "dev", command: command.data });
     },

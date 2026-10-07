@@ -158,6 +158,70 @@ class JdbcAdminRepositoryIntegrationTest {
             assertEquals("0",scalar("SELECT count(*) FROM $table"),"Observation must not initialize $table")
     }
 
+    @Test fun `analytics report actual meal portions and order payments without summing player counts or guessing old cards`() = runBlocking<Unit> {
+        val admin = user("Администратор"); val player = user("Повар"); val other = user("Заказчик")
+        val at = "2020-01-02T12:00:00Z"
+        analyticsEntry(player,"eat_food",at,items=mapOf("fish_soup" to -1L),target="fish_soup")
+        analyticsEntry(player,"feed_builder",at,items=mapOf("fish_soup" to -1L),target="fish_soup")
+        analyticsEntry(other,"eat_food",at,items=mapOf("hearty_fish" to -1L),target="hearty_fish")
+        val completed = analyticsEntry(player,"complete_resident_order",at,coins=750,items=mapOf("wood" to -15L),target="order2_1_0_0_123")
+        execute("UPDATE economy_ledger SET context=?::jsonb WHERE user_id=? AND source_key=?", """{"targetId":"builder_wood_supply"}""",player.id,"command:$completed")
+        analyticsEntry(player,"complete_resident_order",at,coins=90,target="order_1_2_3")
+        analyticsEntry(player,"replace_resident_order",at,target="builder_wood_supply")
+        analyticsEntry(other,"replace_resident_order",at,pearls=-10,target="builder_wood_supply")
+        analyticsEntry(other,"replace_resident_order",at,pearls=-1,target="plesk_river_catch",pearlScale=10)
+        analyticsEntry(admin,"complete_resident_order",at,coins=99_999,target="builder_wood_supply")
+        analyticsEntry(player,"eat_food","2020-01-01T00:00:00Z",items=mapOf("fish_soup" to -1L),target="fish_soup")
+        val repo = repository(admin)
+        val query = AdminAnalyticsQuery(from="2020-01-02",to="2020-01-02")
+        val report = repo.analytics(admin.hash,query)
+        with(report.gameplay) {
+            assertEquals(3L,mealsConsumed); assertEquals(2L,foodPlayers)
+            assertEquals(2L,ordersCompleted); assertEquals(1L,orderPlayers); assertEquals(840L,orderCoinsEarned)
+            assertEquals(3L,orderReplacements); assertEquals(2L,paidOrderReplacements); assertEquals(15L,orderPearlsSpent)
+        }
+        with(report.meals.single { it.itemId=="fish_soup" }) {
+            assertEquals(1L,heroPortions); assertEquals(1L,builderPortions); assertEquals(1L,players)
+        }
+        with(report.orders.single { it.templateId=="builder_wood_supply" }) {
+            assertEquals(1L,this.completed); assertEquals(2L,replacements); assertEquals(1L,paidReplacements)
+            assertEquals(750L,coinsEarned); assertEquals(10L,pearlsSpent); assertEquals(2L,players)
+        }
+        assertEquals(90L,report.orders.single { it.templateId==null }.coinsEarned)
+        assertEquals(1L,report.coverage.unattributedEvents)
+        val unknown = repo.analyticsEvents(admin.hash,AdminAnalyticsEventsQuery(query=query,kind="complete_resident_order"))
+            .events.single { it.coins==90L }
+        assertNull(unknown.targetId); assertFalse(unknown.contextKnown)
+    }
+
+    @Test fun `presence analytics keeps UTC days historical signals current watchlist and scope separate`() = runBlocking<Unit> {
+        val admin = user("Администратор"); val player = user("Наблюдаемый"); val quiet = user("Спокойный"); val deleted = user("Удалённый")
+        fun day(who: User, date: String, millis: Long, flagged: Boolean = false) {
+            execute("INSERT INTO game_presence_daily(user_id,day,online_millis,flagged_at) VALUES (?,?::date,?,?::timestamptz)",
+                who.id,date,millis,if (flagged) date+"T23:00:00Z" else null)
+        }
+        day(player,"2020-01-01",1000); day(player,"2020-01-02",72_060_500,true); day(player,"2020-01-03",72_100_500,true)
+        day(quiet,"2020-01-02",60_500); day(admin,"2020-01-02",80_000_000,true); day(deleted,"2020-01-02",80_000_000,true)
+        execute("UPDATE app_users SET deleted_at=clock_timestamp() WHERE id=?",deleted.id)
+        // A moderator removed observation after the flagged days; history must remain visible.
+        execute("UPDATE app_users SET tap_watchlisted=false WHERE id=?",player.id)
+        val repo = repository(admin)
+        val query = AdminAnalyticsQuery(from="2020-01-02",to="2020-01-04")
+        val p = repo.analytics(admin.hash,query).presence
+        assertEquals("2020-01-01T00:00:00.000Z",p.coverageFrom)
+        assertEquals(2L,p.players); assertEquals(144_221L,p.onlineSeconds); assertEquals(1L,p.flaggedPlayers)
+        assertEquals(listOf("2020-01-02","2020-01-03","2020-01-04"),p.daily.map { it.date })
+        assertEquals(listOf(72_121L,72_100L,0L),p.daily.map { it.onlineSeconds })
+        assertEquals(2,p.reviewDays.size); assertTrue(p.reviewDays.all { !it.watchlisted && it.publicId==player.publicId })
+        assertFalse(p.reviewDaysTruncated)
+        assertEquals(3L,repo.analytics(admin.hash,query.copy(scope="all")).presence.players)
+        val exact = repo.analytics(admin.hash,query.copy(q=quiet.publicId)).presence
+        assertEquals(1L,exact.players); assertEquals(60L,exact.onlineSeconds); assertTrue(exact.reviewDays.isEmpty())
+        val empty = repo.analytics(admin.hash,query.copy(q="Несуществующий")).presence
+        assertEquals(0L,empty.players); assertNull(empty.coverageFrom)
+        assertEquals("0",scalar("SELECT count(*) FROM economy_profiles"))
+    }
+
     @Test fun `analytics reconstruct job targets and first observed construction before filtering the period`() = runBlocking<Unit> {
         val admin = user(); val established = user("Первый"); val newcomer = user("Второй")
         val unknown = user("Без старого чека"); val producer = user("Производитель"); val inactive = user("Без событий")

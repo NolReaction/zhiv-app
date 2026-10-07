@@ -77,7 +77,8 @@ export function createGameRewardsSession(owner: string | null, transport: Transp
       adopt(result.rewards); remember(null); publish({ uncertain: false, result, retryAt: 0 }); return result;
     } catch (cause) {
       if (!valid(generation)) return;
-      const definitive = cause instanceof ApiError && cause.status < 500 && ![408, 429].includes(cause.status);
+      const definitive = cause instanceof ApiError && cause.status >= 400 && cause.status < 500
+        && ![401, 408, 425, 429].includes(cause.status) && cause.body?.code !== "GAME_SESSION_INACTIVE";
       if (definitive) remember(null);
       publish({ uncertain: !definitive, error: cause instanceof ApiError ? cause.message : "Ответ не пришёл. Проверка повторит тот же запрос без повторной выдачи.",
         ...(cause instanceof ApiError && cause.status === 429 ? { retryAt: now() + Math.max(1000, cause.retryAfterMs ?? 60_000) } : {}) });

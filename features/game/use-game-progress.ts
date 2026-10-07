@@ -8,22 +8,23 @@ import { flushIncidents, reportIncident } from "@/lib/client-incidents";
 import type { GameProgress } from "@/features/game/game-api";
 import { GameSyncClient, type GameSyncSnapshot } from "@/features/game/game-sync";
 
-type GameProgressOptions = { ownerPublicId: string | null; isOnline: boolean; onSessionLost: () => void };
+type GameProgressOptions = { ownerPublicId: string | null; isOnline: boolean; enabled?: boolean; onSessionLost: () => void };
 const initialSnapshot: GameSyncSnapshot = { progress: null, status: "loading", pendingTaps: 0, rejectedTaps: 0, run: null };
 
-export function useGameProgress({ ownerPublicId, isOnline, onSessionLost }: GameProgressOptions) {
+export function useGameProgress({ ownerPublicId, isOnline, enabled = true, onSessionLost }: GameProgressOptions) {
   const [state, setState] = useState<GameSyncSnapshot & { ownerPublicId: string | null }>({ ...initialSnapshot, ownerPublicId: null });
   const client = useRef<GameSyncClient | null>(null);
   const inputWriter = useRef<(steps: number, runId: string) => number>(() => 0);
   const owner = useRef(ownerPublicId);
   const sessionLost = useRef(onSessionLost);
   const online = useRef(isOnline);
+  const permitted = useRef(enabled);
   useEffect(() => { sessionLost.current = onSessionLost; }, [onSessionLost]);
-  useEffect(() => { online.current = isOnline; }, [isOnline]);
+  useEffect(() => { permitted.current = enabled; online.current = isOnline; }, [isOnline, enabled]);
 
   useEffect(() => {
     owner.current = ownerPublicId;
-    if (!ownerPublicId) { client.current = null; inputWriter.current = () => 0; return; }
+    if (!ownerPublicId || !enabled) { client.current = null; inputWriter.current = () => 0; return; }
     let current: GameSyncClient | null = null;
     let stopped = false, claiming = false, selectedRun: string | undefined;
     let unlock: (() => void) | undefined;
@@ -130,7 +131,7 @@ export function useGameProgress({ ownerPublicId, isOnline, onSessionLost }: Game
         return recorded;
       } catch { storageFailure(); return 0; }
     };
-    const resume = () => { online.current = navigator.onLine; heartbeat(); };
+    const resume = () => { online.current = permitted.current && navigator.onLine; heartbeat(); };
     const visibility = () => { if (document.hidden) release(); else resume(); };
     const offline = () => { online.current = false; current?.setOnline(false); display(); };
     const storage = (event: StorageEvent) => {
@@ -169,16 +170,16 @@ export function useGameProgress({ ownerPublicId, isOnline, onSessionLost }: Game
       window.removeEventListener("zhiv:before-app-reload", beforeAppReload);
       document.removeEventListener("visibilitychange", visibility);
     };
-  }, [ownerPublicId]);
+  }, [ownerPublicId, enabled]);
 
   useEffect(() => {
     client.current?.setOnline(isOnline);
     if (isOnline) { void client.current?.flush(); void client.current?.refresh(); }
   }, [isOnline]);
   const recordTap = useCallback((steps: number, runId: string) => {
-    if (owner.current !== ownerPublicId) return 0;
+    if (!enabled || owner.current !== ownerPublicId) return 0;
     return inputWriter.current(steps, runId);
-  }, [ownerPublicId]);
+  }, [ownerPublicId, enabled]);
   const flush = useCallback(async () => { await client.current?.flush(); }, []);
   const refresh = useCallback(async () => { await client.current?.flush(); await client.current?.refresh(); }, []);
   const adoptProgress = useCallback((progress: GameProgress) => {

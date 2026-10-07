@@ -1,5 +1,7 @@
 "use client";
 
+import { useActivity } from "@/features/activity/use-activity";
+import { ActivityGate } from "@/features/activity/activity-gate";
 import { PlayerName } from "@/components/player-name";
 import dynamic from "next/dynamic";
 import { WorldDevEntry } from "@/features/world/dev/world-dev-entry";
@@ -603,12 +605,22 @@ export function CheckInApp() {
     resetTransientCheckIn,
   ]);
 
-  const game = useGameProgress({ ownerPublicId: screen === "home" ? me?.user.publicId ?? null : null, isOnline, onSessionLost: loseSession });
-  const recordGameTap = game.recordTap;
   const world = useWorld(screen === "home" ? me?.user.publicId ?? null : null, loseSession);
   const economy = useEconomy(screen === "home" ? me?.user.publicId ?? null : null, loseSession);
+  const { reconcile: reconcileWorld, setAvailable: setWorldAvailable } = world;
+  const { reconcile: reconcileEconomy, setAvailable: setEconomyAvailable } = economy;
+  const reconcileGameplay = useCallback(async () => {
+    const results = await Promise.all([reconcileWorld(), reconcileEconomy()]);
+    return results.every(Boolean);
+  }, [reconcileWorld, reconcileEconomy]);
+  const pauseGameplay = useCallback(() => {
+    setWorldAvailable(false); setEconomyAvailable(false);
+  }, [setWorldAvailable, setEconomyAvailable]);
+  const activity = useActivity(screen === "home" ? me?.user.publicId ?? null : null, reconcileGameplay, loseSession, pauseGameplay);
+  const game = useGameProgress({ ownerPublicId: screen === "home" ? me?.user.publicId ?? null : null, isOnline: isOnline && activity.active, enabled: activity.active, onSessionLost: loseSession });
+  const recordGameTap = game.recordTap;
   const gardenCollection = useGardenCollectionController(economy, screen === "home" ? me?.user.publicId ?? null : null,
-    worldPortal.open || (activeView === "check-in" && mochlikVisible && !calendarOpen && !gameOpen && !statusOpen));
+    activity.active && (worldPortal.open || (activeView === "check-in" && mochlikVisible && !calendarOpen && !gameOpen && !statusOpen)));
   const renderedWorldState = useMemo(() => economyWorldState(world.snapshot?.state, economy.snapshot), [world.snapshot?.state, economy.snapshot]);
   const economicJourney = useMemo(() => economySceneJourney(economy.snapshot), [economy.snapshot]);
   const economicProduction = useMemo(() => economySceneProduction(economy.snapshot), [economy.snapshot]);
@@ -1268,7 +1280,7 @@ export function CheckInApp() {
     : game.errorCode === "GAME_SESSION_EXPIRED" && !isOnline ? "Разрешение на игру без связи истекло. Уже сделанные нажатия остаются в очереди; подключитесь, чтобы продолжить."
     : game.errorCode === "GAME_PERMIT_CLOSED" ? "Игра была передана другому устройству или разрешение закончилось. Допустимые нажатия сохранены; поздние не входят в рейтинг."
     : game.status === "error" ? "Не удалось получить подтверждение. Очередь остаётся на этом устройстве; повторим отправку автоматически."
-    : !isOnline ? "Офлайн. Нажатия сохраняются на этом устройстве. После подключения отправим очередь; при заполнении хранилища покажем предупреждение."
+    : !isOnline ? "Нет подключения. Игра приостановлена; ранее сохранённые нажатия отправим после восстановления связи."
     : game.status === "loading" ? "Загружаем игровой прогресс…"
     : game.pendingTaps ? `Ожидают подтверждения: ${game.pendingTaps.toLocaleString("ru-RU")} тапов. Можно продолжать играть.`
     : game.archivedTaps ? `Не удалось проверить ${game.archivedTaps.toLocaleString("ru-RU")} прежних нажатий. Запись сохранена на этом устройстве для разбора; можно продолжать играть. Подтверждённый прогресс остаётся в аккаунте.`
@@ -1422,6 +1434,8 @@ export function CheckInApp() {
       </main>
     );
   }
+
+  if (screen === "home" && !activity.active) return <ActivityGate activity={activity} />;
 
   return (
     <GardenCollectionContext.Provider value={gardenCollection}>

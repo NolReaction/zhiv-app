@@ -11,24 +11,33 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
     load(id) { if (id === cookieModule) return "export async function cookies() { return { get() { return { value: globalThis.__economyTestToken }; } }; }"; } }],
 });
 const identities = await vite.ssrLoadModule("/lib/dev/api-store.ts");
+const { commandDevPresence } = await vite.ssrLoadModule("/lib/dev/activity-store.ts");
+const activePresence = new Map();
+function enterGame(p) {
+  const id = crypto.randomUUID();
+  commandDevPresence(p.me.user.publicId, { kind: "resume", presenceId: id, sequence: 0, active: true }, Date.now(), p.token);
+  activePresence.set(p.token, id);
+  return p;
+}
+
 const economy = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
 const model = await vite.ssrLoadModule("/features/economy/model.ts");
 const { GET } = await vite.ssrLoadModule("/app/api/v1/economy/route.ts");
 const { POST } = await vite.ssrLoadModule("/app/api/v1/economy/commands/route.ts");
 const { GET: marketGET } = await vite.ssrLoadModule("/app/api/v1/economy/market/route.ts");
 const { POST: marketPOST } = await vite.ssrLoadModule("/app/api/v1/economy/market/commands/route.ts");
-beforeEach(() => { identities.resetDevStoreForTests(); process.env.NODE_ENV = "test"; delete globalThis.__economyTestToken; });
+beforeEach(() => { identities.resetDevStoreForTests(); activePresence.clear(); process.env.NODE_ENV = "test"; delete globalThis.__economyTestToken; });
 after(async () => {
   delete globalThis.__economyTestToken;
   if (initialMode == null) delete process.env.NODE_ENV; else process.env.NODE_ENV = initialMode;
   await vite.close();
 });
-function player() { const p = identities.createDevIdentity("Explorer", crypto.randomUUID()); globalThis.__economyTestToken = p.token; return p; }
+function player() { const p = enterGame(identities.createDevIdentity("Explorer", crypto.randomUUID())); globalThis.__economyTestToken = p.token; return p; }
 function command(p) { const s = economy.getDevEconomy(p.token); return { requestId: crypto.randomUUID(), ownerPublicId: s.ownerPublicId, expectedRevision: s.revision, action: "start_production", targetId: "grow_berries", quantity: 1, totalPrice: 0 }; }
 const read = (path = "") => new Request(`http://localhost:3000/api/v1/economy${path}`);
 function post(body, headers = {}, suffix = "/commands") {
   return new Request(`http://localhost:3000/api/v1/economy${suffix}`, { method: "POST",
-    headers: { "Content-Type": "application/json", Origin: "http://localhost:3000", ...headers }, body: typeof body === "string" ? body : JSON.stringify(body) });
+    headers: { "Content-Type": "application/json", Origin: "http://localhost:3000", ...(activePresence.has(globalThis.__economyTestToken) ? { "X-Game-Presence": activePresence.get(globalThis.__economyTestToken) } : {}), ...headers }, body: typeof body === "string" ? body : JSON.stringify(body) });
 }
 
 test("local economy routes require account cookies and never cache private state", async () => {
@@ -45,6 +54,27 @@ test("POST validates payload then atomically replays its original receipt", asyn
   const result = await response.json(); assert.equal(model.economyResultSchema.safeParse(result).success, true); assert.equal(result.replayed, false);
   const repeated = await (await POST(post(cmd))).json(); assert.equal(repeated.replayed, true); assert.equal(repeated.state.jobs.length, 1);
   const conflict = await POST(post({ ...cmd, quantity: 2 })); assert.equal(conflict.status, 409); assert.equal((await conflict.json()).code, "ECONOMY_REQUEST_CONFLICT");
+});
+
+test("gameplay requires a live session even for receipt replay and explicit return preserves the original command", async () => {
+  const p = player(), cmd = command(p), before = economy.getDevEconomy(p.token);
+  for (const id of ["", crypto.randomUUID()]) {
+    const response = await POST(post(cmd, { "X-Game-Presence": id }));
+    assert.equal(response.status, 409);
+    assert.equal((await response.json()).code, "GAME_SESSION_INACTIVE");
+  }
+  assert.equal(economy.getDevEconomy(p.token).revision, before.revision);
+  const first = await (await POST(post(cmd))).json();
+  commandDevPresence(p.me.user.publicId, { kind: "suspend", presenceId: activePresence.get(p.token), sequence: 1, active: false }, Date.now(), p.token);
+  const denied = await POST(post(cmd));
+  assert.equal(denied.status, 409);
+  assert.equal((await denied.json()).code, "GAME_SESSION_INACTIVE");
+  enterGame(p);
+  const recovered = await (await POST(post(cmd))).json();
+  assert.equal(recovered.replayed, true);
+  assert.equal(recovered.acceptedRevision, first.acceptedRevision);
+  assert.deepEqual(recovered.state.wallet, first.state.wallet);
+  assert.deepEqual(recovered.state.jobs, first.state.jobs);
 });
 
 test("HTTP rejects every mining route at an unbuilt quarry without spending or issuing a receipt", async () => {

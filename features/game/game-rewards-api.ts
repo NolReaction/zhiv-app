@@ -1,3 +1,4 @@
+import { gamePresenceHeaders, reportInactivePresence } from "@/features/activity/transport-state";
 import { z } from "zod";
 import { ApiError } from "@/lib/check-in-api";
 import { economyViewSchema } from "@/features/economy/model";
@@ -45,14 +46,16 @@ async function request<T>(path: string, schema: z.ZodType<T, z.ZodTypeDef, unkno
   if (signal?.aborted) abort(); else signal?.addEventListener("abort", abort, { once: true });
   const timer = setTimeout(abort, 8000);
   try {
+    const presence = gamePresenceHeaders();
     const response = await fetch(path, { method: command ? "POST" : "GET", credentials: "same-origin", cache: "no-store", signal: controller.signal,
-      headers: { Accept: "application/json", ...(command ? { "Content-Type": "application/json" } : {}) },
+      headers: { ...presence, Accept: "application/json", ...(command ? { "Content-Type": "application/json" } : {}) },
       ...(command ? { body: JSON.stringify(command) } : {}) });
     const body: unknown = await response.json().catch(() => null);
     if (!response.ok) {
       const problem = z.object({ code: z.string(), message: z.string() }).safeParse(body);
       const retry = response.headers.get("Retry-After");
       const delay = retry && /^\d+$/.test(retry) ? Number(retry) * 1000 : undefined;
+      reportInactivePresence(problem.success ? problem.data.code : undefined, presence);
       throw new ApiError(problem.success ? problem.data.message : "Не удалось получить награды", response.status,
         problem.success ? problem.data : undefined, response.headers.get("X-Request-ID"), delay);
     }

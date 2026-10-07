@@ -1,3 +1,4 @@
+import { gamePresenceHeaders, reportInactivePresence } from "@/features/activity/transport-state";
 import { playerTagSchema } from "@/lib/player-tag";
 import { z } from "zod";
 import { ApiError } from "@/lib/check-in-api";
@@ -114,19 +115,21 @@ async function gameRequest<T>(
   else externalSignal?.addEventListener("abort", abort, { once: true });
   const timer = setTimeout(() => controller.abort(), 8_000);
   try {
+    const presence = gamePresenceHeaders();
     const response = await fetch(path, {
       method,
       credentials: "same-origin",
       cache: "no-store",
       signal: controller.signal,
       keepalive: method !== "GET",
-      headers: { Accept: "application/json", ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
+      headers: { ...presence, Accept: "application/json", ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     const value: unknown = (response.headers.get("content-type") ?? "").includes("application/json")
       ? await response.json().catch(() => undefined) : undefined;
     if (!response.ok) {
       const error = z.object({ code: z.string(), message: z.string() }).safeParse(value);
+      reportInactivePresence(error.success ? error.data.code : undefined, presence);
       throw new ApiError(error.success ? error.data.message : "Не удалось загрузить игровой прогресс", response.status,
         error.success ? error.data : undefined, response.headers.get("X-Request-ID"), parseRetryAfter(response.headers.get("Retry-After")));
     }

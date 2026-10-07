@@ -1,3 +1,4 @@
+import { gamePresenceHeaders, reportInactivePresence } from "@/features/activity/transport-state";
 import { z } from "zod";
 import { ApiError } from "@/lib/check-in-api";
 import { retryAfterMs, withRequestDeadline } from "@/lib/request-deadline";
@@ -5,14 +6,16 @@ import { barterResultSchema, barterViewSchema, type BarterCommand } from "./bart
 
 async function request<T>(path: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>, command?: BarterCommand, signal?: AbortSignal): Promise<T> {
   return withRequestDeadline(10_000, signal, async requestSignal => {
+    const presence = gamePresenceHeaders();
     const response = await fetch(path, {
       method: command ? "POST" : "GET", credentials: "same-origin", cache: "no-store", signal: requestSignal,
-      headers: { Accept: "application/json", ...(command ? { "Content-Type": "application/json" } : {}) },
+      headers: { ...presence, Accept: "application/json", ...(command ? { "Content-Type": "application/json" } : {}) },
       ...(command ? { body: JSON.stringify(command) } : {}),
     });
     const body: unknown = await response.json().catch(() => null);
     if (!response.ok) {
       const error = z.object({ code: z.string(), message: z.string() }).safeParse(body);
+      reportInactivePresence(error.success ? error.data.code : undefined, presence);
       throw new ApiError(error.success ? error.data.message : "Не удалось открыть обмен", response.status,
         error.success ? error.data : undefined, response.headers.get("X-Request-ID"), retryAfterMs(response.headers.get("Retry-After")));
     }

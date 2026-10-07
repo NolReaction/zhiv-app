@@ -1,3 +1,4 @@
+import { gamePresenceHeaders, reportInactivePresence } from "@/features/activity/transport-state";
 import { ApiError } from "@/lib/check-in-api";
 import { forestMemoryResultSchema, forestMemoryViewSchema,
   type ForestMemoryCommand, type ForestMemoryPayload, type ForestMemoryResult, type ForestMemoryView } from "./forest-memory-model";
@@ -48,13 +49,15 @@ function retryAfter(value: string | null): number | undefined {
 }
 
 async function request(path: string, signal: AbortSignal, command?: ForestMemoryCommand, keepalive = false) {
+  const presence = gamePresenceHeaders();
   const response = await fetch(path, { method: command ? "POST" : "GET", credentials: "same-origin", cache: "no-store", signal,
-    headers: { Accept: "application/json", ...(command ? { "Content-Type": "application/json" } : {}) },
+    headers: { ...presence, Accept: "application/json", ...(command ? { "Content-Type": "application/json" } : {}) },
     ...(command ? { body: JSON.stringify(command), keepalive } : {}) });
   const body: unknown = await response.json().catch(() => null);
   if (!response.ok) {
     const value = body && typeof body === "object" ? body as { code?: unknown; message?: unknown; error?: { code?: unknown; message?: unknown } } : null;
     const error = value?.error ?? value;
+    reportInactivePresence(error?.code, presence);
     throw new ApiError(typeof error?.message === "string" ? error.message : "Не удалось сохранить память Мохлика", response.status,
       typeof error?.code === "string" ? { code: error.code, message: typeof error.message === "string" ? error.message : "" } : undefined,
       response.headers.get("X-Request-ID"), retryAfter(response.headers.get("Retry-After")));
@@ -145,6 +148,11 @@ export function createForestMemorySync(options: ForestMemorySyncOptions) {
     const code = api?.body && "code" in api.body ? api.body.code : undefined;
     if (api?.status === 401 || api?.status === 403 || code === "FOREST_MEMORY_ACCOUNT_CHANGED") { stopWithError(); return; }
     if (api?.status === 400 || code === "FOREST_MEMORY_REQUEST_CONFLICT") { stopWithError(); return; }
+    if (code === "GAME_SESSION_INACTIVE") {
+      // Keep the exact save receipt through AFK/network suspension; the scene
+      // remount resumes synchronization only after the app reacquires presence.
+      publish("offline"); retiring = false; clearTimer(); return;
+    }
     if (api?.status === 409) {
       pending = null; needsRead = true; finalSnapshot = null;
       // A new authoritative read precedes every attempt after CAS/lease failure.

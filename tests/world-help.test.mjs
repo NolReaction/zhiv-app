@@ -93,7 +93,7 @@ test("search renders results, handles an unknown question and returns to groups 
   view.nodes.find(node => node.type === "input").props.onChange({ target: { value: "не хватает монет" } });
   view = help();
   assert.match(view.html, /aria-label="Результаты поиска"/);
-  assert.match(view.html, /role="status">Найдено ответов: [1-9]/);
+  assert.match(view.html, /role="status"[^>]*>Найдено ответов: [1-9]/);
   assert.doesNotMatch(view.html, /data-help-group=|data-help-topic=|<ol/);
   const firstResult = buttons(view.nodes).find(node => elements(node).some(child => child.type === "strong"));
   assert.ok(firstResult); firstResult.props.onClick();
@@ -109,6 +109,37 @@ test("search renders results, handles an unknown question and returns to groups 
   view = help();
   assert.equal(view.nodes.find(node => node.type === "input").props.value, "");
   assert.equal(view.nodes.filter(node => node.props["data-help-group"]).length, 6);
+});
+
+test("generic queries show frequent questions; typing a prefix immediately replaces them with matches", () => {
+  hooks.reset(); let view = help();
+  const input = view.nodes.find(node => node.type === "input");
+  assert.ok(view.nodes.some(node => node.props.id === input.props["aria-describedby"]));
+  input.props.onChange({ target: { value: "как" } });
+  view = help();
+  assert.match(view.html, /role="status"[^>]*>Частые вопросы/);
+  assert.match(view.html, /Уточните, что хотите сделать/);
+  assert.doesNotMatch(view.html, /Не нашли ответ|Найдено ответов: 0/);
+  assert.equal(view.nodes.filter(node => node.type === "li").length, 6);
+  view.nodes.find(node => node.type === "input").props.onChange({ target: { value: "кла" } });
+  view = help();
+  assert.match(view.html, /Найдено ответов: [1-9]/);
+  assert.doesNotMatch(view.html, /Частые вопросы|Уточните, что хотите сделать/);
+  view.nodes.find(node => node.type === "input").props.onChange({ target: { value: "м" } });
+  view = help();
+  assert.match(view.html, /Введите ещё пару букв/);
+});
+
+test("empty search examples perform a real search and leave the player in control of navigation", () => {
+  hooks.reset(); let view = help({ onNavigate() { assert.fail("Search must not navigate or spend resources"); } });
+  view.nodes.find(node => node.type === "input").props.onChange({ target: { value: "абракадабра" } });
+  view = help();
+  assert.match(view.html, /Не нашли ответ/);
+  button(view.nodes, "нет места").props.onClick();
+  view = help();
+  assert.equal(view.nodes.find(node => node.type === "input").props.value, "нет места");
+  assert.match(view.html, /Найдено ответов: [1-9]/);
+  assert.doesNotMatch(view.html, /Не нашли ответ|data-help-topic=/);
 });
 
 test("a direct topic opens exactly one answer and its related questions without triggering navigation", () => {

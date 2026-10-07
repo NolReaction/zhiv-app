@@ -23,6 +23,7 @@
 | `GET /economy`, `POST /economy/commands`, `GET /economy/market`, `POST /economy/market/commands` | [economy/EconomyRoutes.kt](../../apps/api/src/main/kotlin/ru/zhiv/economy/EconomyRoutes.kt), [EconomyMarketRoutes.kt](../../apps/api/src/main/kotlin/ru/zhiv/economy/EconomyMarketRoutes.kt), `EconomyRules.kt` | [db/JdbcEconomyRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcEconomyRepository.kt), [JdbcEconomyMarketRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcEconomyMarketRepository.kt), [JdbcEconomyLifecycle.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcEconomyLifecycle.kt) | [features/economy/model.ts](../../features/economy/model.ts), [api.ts](../../features/economy/api.ts) |
 | `GET /world/forest-memory`, `POST /world/forest-memory/commands` | [forest/ForestMemoryRoutes.kt](../../apps/api/src/main/kotlin/ru/zhiv/forest/ForestMemoryRoutes.kt), [ForestMemory.kt](../../apps/api/src/main/kotlin/ru/zhiv/forest/ForestMemory.kt) | [db/JdbcForestMemoryRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcForestMemoryRepository.kt) | [forest-memory-model.ts](../../features/world/forest-memory-model.ts), [forest-memory-sync.ts](../../features/world/forest-memory-sync.ts) |
 | `GET/POST /feedback`, `/admin/feedback` | [feedback/FeedbackRoutes.kt](../../apps/api/src/main/kotlin/ru/zhiv/feedback/FeedbackRoutes.kt), [FeedbackRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/feedback/FeedbackRepository.kt) | [db/JdbcFeedbackRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcFeedbackRepository.kt) | [features/feedback/feedback-api.ts](../../features/feedback/feedback-api.ts) |
+| `POST /presence` | [presence/PresenceRoutes.kt](../../apps/api/src/main/kotlin/ru/zhiv/presence/PresenceRoutes.kt), [Presence.kt](../../apps/api/src/main/kotlin/ru/zhiv/presence/Presence.kt) | [db/JdbcPresenceRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcPresenceRepository.kt) | [features/activity/](../../features/activity/), [правила сеансов](../game/activity-and-offline.md) |
 | `/admin/*` | [admin/AdminRoutes.kt](../../apps/api/src/main/kotlin/ru/zhiv/admin/AdminRoutes.kt), [AdminRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/admin/AdminRepository.kt) | [db/JdbcAdminRepository.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcAdminRepository.kt) | [features/admin/admin-api.ts](../../features/admin/admin-api.ts) |
 | `/game-events`, клиентские инциденты, метрики | [game/GameEventRoutes.kt](../../apps/api/src/main/kotlin/ru/zhiv/game/GameEventRoutes.kt), `observability/*` | [UserIncidents.kt](../../apps/api/src/main/kotlin/ru/zhiv/observability/UserIncidents.kt), [db/TapActivityRecorder.kt](../../apps/api/src/main/kotlin/ru/zhiv/db/TapActivityRecorder.kt) | [features/game/game-events.ts](../../features/game/game-events.ts), [lib/client-incidents.ts](../../lib/client-incidents.ts) |
 
@@ -44,7 +45,7 @@
 
 ## PostgreSQL и миграции
 
-Источник схемы: `apps/api/src/main/resources/db/migration/`. Текущая последовательность — **V1–V44**.
+Источник схемы: `apps/api/src/main/resources/db/migration/`. Текущая последовательность — **V1–V45**.
 
 | Область | Миграции-ориентиры |
 |---|---|
@@ -72,6 +73,7 @@
 | Защита идентичностей объединённых аккаунтов от повторной регистрации | V42 |
 | Дневной торговый оборот и комиссия объявления | V43 |
 | Контекст подтверждённых операций и индексы административной аналитики | V44 |
+| Активные игровые сеансы, время по UTC и автоматическое наблюдение | V45 |
 
 Для изменения схемы добавьте следующую `V<N>__description.sql`; применённые файлы не редактируются. Учитывайте существующие строки, constraints, индексы и роли доступа. Проверяйте обновление старой схемы, а не только создание пустой БД.
 

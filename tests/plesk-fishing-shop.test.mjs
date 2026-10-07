@@ -231,7 +231,8 @@ test("book chapter tabs have keyboard navigation and bounded accessible paginati
 test("fish of the day links to a matching resident request without buying or completing it", () => {
   const state = snapshot(), calls = [];
   state.residentOrders = normalizedResidentOrders(state, now);
-  state.residentOrders.slots[0].templateId = "plesk_river_catch";
+  const request = state.catalog.food.orders.templates.find(template => template.id === "plesk_river_catch");
+  state.residentOrders.slots[0] = { ...state.residentOrders.slots[0], templateId: request.id, terms: structuredClone(request) };
   const original = structuredClone(state), economy = controller(state, { act(...args) { calls.push(args); } });
   let opened = 0;
   const view = inspect(PleskFishOffer, { economy, state, fish: state.catalog.fishing.fish.find(fish => fish.itemId === "fish"), onOpenOrders() { opened++; } });

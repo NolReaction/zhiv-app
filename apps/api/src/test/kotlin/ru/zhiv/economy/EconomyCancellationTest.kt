@@ -20,7 +20,8 @@ class EconomyCancellationTest {
             val job = started.jobs.single()
             val at = if (ready) Instant.parse(job.finishesAt).plusSeconds(60) else now.plusSeconds(10)
             val cancelled = apply(started, "cancel_exploration", job.id, at)
-            assertEquals(started.copy(jobs = emptyList()), cancelled)
+            // A long trip can cross the independent twelve-hour order refresh.
+            assertEquals(started.copy(jobs = emptyList(), residentOrders = EconomyFood.normalizedOrders(started, at)), cancelled)
             assertEquals("ECONOMY_JOB_GONE", assertFailsWith<AuthFailure> {
                 apply(cancelled, "claim_job", job.id, at = Instant.parse(job.finishesAt))
             }.code)

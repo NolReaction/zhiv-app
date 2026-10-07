@@ -172,6 +172,7 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         c.update("UPDATE account_login_flows SET consumed_at=COALESCE(consumed_at,clock_timestamp()),account_proved_at=COALESCE(account_proved_at,clock_timestamp()),subject=NULL,display_name=NULL,verifier=NULL,nonce=NULL,code_hash=NULL WHERE provider=? AND subject=?",provider,subject)
     }
     private fun clearCapabilities(c: Connection, id: UUID, keepSession: ByteArray? = null) {
+        c.update("UPDATE game_presence_clients SET status='suspended' WHERE user_id=?", id)
         c.update("DELETE FROM game_sessions WHERE user_id=?", id)
         // Before removing identity strings, invalidate verified tickets and in-flight callbacks.
         c.rows("SELECT provider,subject FROM account_login_identities WHERE user_id=?",id) { it.getString(1) to it.getString(2) }.forEach { retireIdentity(c,it.first,it.second) }
@@ -352,6 +353,9 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         c.update("DELETE FROM world_commands WHERE user_id=?",id)
         c.update("DELETE FROM world_ledger WHERE user_id=?",id)
         c.update("DELETE FROM world_profiles WHERE user_id=?",id)
+        c.update("DELETE FROM game_presence_clients WHERE user_id=?",id)
+        c.update("DELETE FROM game_presence_daily WHERE user_id=?",id)
+        c.update("DELETE FROM game_presence_accounts WHERE user_id=?",id)
         c.update("DELETE FROM game_tap_activity_minutes WHERE user_id=?",id)
         c.update("DELETE FROM game_tap_activity_seconds WHERE user_id=?",id)
         c.update("DELETE FROM game_items WHERE user_id=?",id)
@@ -446,6 +450,7 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         mergeWorldProfiles(c,id,s.other)
         mergeForestMemory(c,id,s.other)
         mergeGameProgress(c,id,s.other)
+        mergeGamePresence(c,id,s.other)
         c.update("""
             INSERT INTO game_achievements(user_id,achievement_id,unlocked_at,reward_eligible)
             SELECT ?,achievement_id,unlocked_at,reward_eligible FROM game_achievements WHERE user_id=?

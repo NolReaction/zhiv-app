@@ -1,3 +1,4 @@
+import { isDevPresenceActive } from "./activity-store";
 import { NextResponse } from "next/server";
 import { guardDevApi } from "./api-guard";
 import { devSessionToken, NO_STORE_HEADERS } from "./api-route";
@@ -11,6 +12,7 @@ export async function devEconomyContext(request: Request, write = false, limit =
   if (rejected) return { response: rejected };
   const token = await devSessionToken();
   if (!getDevIdentity(token)) return { response: economyErrorResponse("UNAUTHORIZED", "Войдите в аккаунт", 401) };
+  if (write && !isDevPresenceActive(getDevIdentity(token)!.user.publicId, request.headers.get("X-Game-Presence"), Date.now(), token)) return { response: economyErrorResponse("GAME_SESSION_INACTIVE", "Вернитесь в игру для продолжения", 409) };
   return { token };
 }
 export async function readDevEconomyBody(request: Request, limit = 4096) {

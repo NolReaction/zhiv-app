@@ -11,6 +11,7 @@
 .searchField input::placeholder { color: #6c715e; font-size: 13px; }
 .searchField input::-webkit-search-cancel-button { -webkit-appearance: none; }
 .searchField button { flex-shrink: 0; width: 44px; padding: 0; border: 0; background: transparent; }
+.searchHint { margin: 7px 0 0; color: #626a50; font-size: 11px; line-height: 1.4; }
 .body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 14px 16px 20px; scrollbar-width: thin; scrollbar-color: #788260 transparent; }
 .body h3 { display: flex; align-items: center; gap: 7px; margin: 0 0 10px; font-size: 15px; font-weight: 650; line-height: 1.35; }
 .body h3:focus { outline: none; }
@@ -52,6 +53,8 @@
 .help .explain, .help .moreAdvice { border: 0; background: transparent; padding: 5px 2px; font-size: 12px; }
 .help .moreAdvice { min-height: 44px; color: #586d42; }
 .resultCount { margin: 0 0 12px; color: #626a50; font-size: 12px; }
+.searchPrompt { margin: 0 0 12px; color: #626a50; font-size: 12px; line-height: 1.5; }
+.searchExamples { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
 .empty { display: grid; justify-items: center; gap: 10px; padding: 28px 6px; text-align: center; }
 .empty h3, .empty p { margin: 0; }
 .empty p { color: #626a50; font-size: 13px; }
