@@ -119,3 +119,8 @@
 .relicGuard h3 { font-size:12px; margin-bottom:3px; }
 .relicGuard p { font-size:10px; color:#687455; line-height:1.5; }
 .pantry .item .itemRarity { flex:0 0 auto; font-size:9px; padding:2px 3px; }
+.goalNote { margin: 0; padding: 8px 10px; border-radius: 9px; background: #d7dfb93d; color: var(--forest-ink); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
+.goalItem { grid-column: 2 / -1; color: var(--forest-muted); font-size: 10px; text-align: left; }
+.pantry .excessButton, .pantry .giftReturn { min-height: 44px; padding: 8px 10px; font-size: 12px; border-radius: 10px; gap: 6px; }
+.pantry .excessButton[aria-pressed="true"] { border-color: var(--forest-primary); background: #d7dfb9; color: var(--forest-ink); }
+.pantry .giftReturn { width: 100%; justify-content: flex-start; background: var(--forest-paper-light); color: var(--forest-ink); border-color: var(--forest-border); }

@@ -2,10 +2,11 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { Dialog } from "radix-ui";
-import { ArrowRight, Check, ChevronDown, Clock3, Compass, Hammer, House, LockKeyhole, Package, RefreshCw, Sparkles, Store, X } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, Clock3, Compass, Hammer, House, LockKeyhole, Package, Pin, RefreshCw, Sparkles, Store, X } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
 import { economyCatalog, type EconomyCost, type EconomyView } from "./model";
 import type { EconomyController } from "./use-economy";
+import type { ConstructionGoalController } from "./use-construction-goal";
 import { ConstructionSpeedup } from "./construction-speedup";
 import { economyBuilderStatus } from "./builder-status";
 import { Requirements, Work, ProductIcon, itemName, stationIcons, stationName, locked, number, type ReadyEconomy, type StationNavigation } from "./world-economy-parts";
@@ -19,6 +20,7 @@ export type WorldUpgradeDialogProps = {
   onClose: () => void;
   onCompleted?: () => void;
   navigation?: StationNavigation;
+  constructionGoal?: ConstructionGoalController;
   onOpenPantry?: () => void;
   onCloseAutoFocus?: (event: Event) => void;
 };
@@ -94,12 +96,13 @@ function UpgradeUnlocks({ state, stationId, target, navigation }: { state: Econo
 }
 
 /** Kept separate from the portal so loading, locks and paid jobs can be rendered in tests. */
-export function WorldUpgradeContent({ stationId, economy, onClose, navigation, onOpenPantry }: Omit<WorldUpgradeDialogProps, "stationId" | "onCloseAutoFocus"> & { stationId: string }) {
+export function WorldUpgradeContent({ stationId, economy, onClose, navigation, onOpenPantry, constructionGoal }: Omit<WorldUpgradeDialogProps, "stationId" | "onCloseAutoFocus"> & { stationId: string }) {
   const state = economy.snapshot;
   const building = (state?.catalog ?? economyCatalog).buildings.find(entry => entry.id === stationId);
   const name = state ? stationName(state, stationId) : building?.name ?? "Улучшение";
   const current = state?.buildings[stationId] ?? 0;
   const target = building?.levels.find(level => level.level === current + 1);
+  const goalPinned = constructionGoal?.goal?.buildingId === stationId && constructionGoal.goal.targetLevel === target?.level;
   const production = state?.jobs.filter(entry => entry.targetId === stationId && entry.kind === "production") ?? [];
   const construction = state?.jobs.find(entry => entry.targetId === stationId && entry.kind === "construction");
   const builder = state ? economyBuilderStatus(state, economy.now) : null;
@@ -143,6 +146,7 @@ export function WorldUpgradeContent({ stationId, economy, onClose, navigation, o
           {!construction && <section className={`${styles.section} ${styles.costCard}`} aria-label="Подготовка к улучшению">
             <div className={styles.sectionHeading}><h3>Потребуется</h3><span>Есть / нужно</span></div>
             <UpgradeCost state={state} cost={target.cost} navigation={navigation} />
+            {constructionGoal && <button type="button" className={styles.pinGoal} aria-pressed={goalPinned} aria-label={`${goalPinned ? "Цель закреплена" : "Закрепить цель"}: ${name} · ур. ${target.level}${goalPinned ? ". Снять цель" : ""}`} onClick={() => { if (goalPinned) constructionGoal.clear(); else constructionGoal.pin(stationId); }}><Pin size={15} aria-hidden="true" />{goalPinned ? "Цель закреплена" : "Закрепить цель"}{goalPinned && <Check size={14} aria-hidden="true" />}</button>}
             {!!missing.length && <div className={styles.conditions}><h4><LockKeyhole size={13} aria-hidden="true" />Нужны улучшения</h4><Requirements state={state} required={required} navigation={navigation} /></div>}
           </section>}
         </> : <section className={`${styles.section} ${styles.complete}`}><span className={styles.completeIcon}><Check size={22} aria-hidden="true" /></span><h3>Все улучшения получены</h3><p>{building?.description ?? "Эта постройка достигла максимального уровня."}</p>{stationId === "warehouse" && <p>Вместимость кладовой — {number(state.storage.capacity)} предметов.</p>}</section>}

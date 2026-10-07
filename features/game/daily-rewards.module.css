@@ -34,6 +34,7 @@
 .cycle > li[data-current] .stepStatus { color: #394d3e; font-weight: 650; }
 .claimArea { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; padding: 13px; border: 1px solid #a4b18b; border-radius: 15px; background: #e1e5c8; }
 .claimArea > div { display: grid; gap: 6px; }
+.claimArea .claimActions { display: flex; flex-wrap: wrap; gap: 8px; }
 .eyebrow { color: #59624d; font-size: .625rem; letter-spacing: .08em; }
 .claim, .recovery button, .empty button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; padding: 10px 13px; border: 1px solid #466347; border-radius: 12px; background: #466347; color: #f6eed7; font: inherit; font-size: .8125rem; font-weight: 600; cursor: pointer; }
 .claim { flex: 0 0 auto; }

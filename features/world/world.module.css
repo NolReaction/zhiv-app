@@ -200,3 +200,4 @@
 .sheet:not([data-book='true']) .notice { color: var(--forest-ink); border-color: #b8bd97; background: #e4e4c9; }
 .sheet:not([data-book='true']) .notice i { background: var(--forest-primary); }
 @media (max-width: 359px) { .sheetHeader { padding: 10px 12px; gap: 8px; }.sheetHeader h2 { font-size: 1rem; gap: 7px; }.sheetBody { padding-left: 12px; padding-right: 12px; }.item { padding: 11px; }.decoration { grid-template-columns: 54px minmax(0, 1fr) 44px; gap: 8px; }.decorationPreview { width: 54px; height: 54px; } }
+.goalHud { position: absolute; z-index: 6; top: var(--quick-top, 80px); left: max(12px, env(safe-area-inset-left)); width: min(330px, calc(100% - 24px)); max-height: calc(100% - var(--quick-top, 80px) - var(--quick-bottom, 70px) - 8px); overflow-y: auto; overscroll-behavior: contain; }

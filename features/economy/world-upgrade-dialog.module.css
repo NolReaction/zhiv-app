@@ -79,6 +79,8 @@
 .costCard { padding-top: 14px; border-top: 1px solid #c8bd98; }
 .sectionHeading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .sectionHeading > span { flex: 0 0 auto; color: var(--forest-muted, #59624d); font-size: 11px; }
+.dialog.dialog .pinGoal { align-self: flex-start; min-height: 44px; padding: 7px 10px; border: 1px solid #b6aa83; border-radius: 8px; color: var(--forest-ink, #394d3e); background: #f6ecd2; font-size: 11px; }
+.dialog.dialog .pinGoal[aria-pressed="true"] { border-color: #91a279; background: #dce3c4; }
 .costGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 .costGrid > li { min-width: 0; border: 1px solid #c8bd98; border-radius: 9px; overflow: hidden; background: #f6ecd2; }
 .costGrid > li[data-missing="true"] { border-color: #bf9e6a; background: #efdfbd; }

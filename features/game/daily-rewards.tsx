@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, type RefObject } from "react";
-import { CalendarDays, Check, Clock3, Gift, RefreshCw, X } from "lucide-react";
+import { CalendarDays, Check, Clock3, Gift, PackageOpen, RefreshCw, X } from "lucide-react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { Dialog, DialogDescription, DialogOverlay, DialogPortal, DialogTitle } from "@/components/ui/dialog";
 import { formatPearls } from "@/features/economy/money";
@@ -32,7 +32,9 @@ export function RewardRecovery({ controller, isOnline }: { controller: GameRewar
       <RefreshCw size={16} aria-hidden="true" />{controller.busy ? "Проверяем…" : "Проверить получение"}
     </button></aside>;
 }
-export function DailyRewardsPanel({ controller, isOnline, names = {}, storageAvailable }: { controller: GameRewardsController; isOnline: boolean; names?: Record<string, string>; storageAvailable?: number }) {
+export function DailyRewardsPanel({ controller, isOnline, names = {}, storageAvailable, onOpenPantry }: {
+  controller: GameRewardsController; isOnline: boolean; names?: Record<string, string>; storageAvailable?: number; onOpenPantry?: () => void;
+}) {
   const daily = controller.data?.daily, receipt = controller.result?.claim.kind === "daily" ? controller.result.claim : null;
   const requiredSpace = daily ? Object.values(daily.reward.items).reduce((sum, quantity) => sum + quantity, 0) : 0;
   const shortfall = storageAvailable === undefined ? 0 : Math.max(0, requiredSpace - storageAvailable);
@@ -47,7 +49,10 @@ export function DailyRewardsPanel({ controller, isOnline, names = {}, storageAva
         <div className={styles.claimArea}>
           {daily.claimable ? <><div><span className={styles.eyebrow}>ПОДАРОК ДНЯ {daily.step}</span><RewardContents reward={daily.reward} names={names} large /></div>
             {shortfall > 0 && <p className={styles.spaceHint} role="status">Освободите {shortfall.toLocaleString("ru-RU")} мест в кладовой, чтобы забрать весь подарок.</p>}
-            <button type="button" className={styles.claim} disabled={locked} onClick={() => void controller.claimDaily()}><Gift size={18} aria-hidden="true" />{controller.busy && controller.pending?.kind === "daily" ? "Получаем…" : "Забрать подарок"}</button></>
+            <div className={styles.claimActions}>
+              {shortfall > 0 && onOpenPantry && <button type="button" className={styles.claim} onClick={onOpenPantry}><PackageOpen size={18} aria-hidden="true" />Освободить место</button>}
+              <button type="button" className={styles.claim} disabled={locked || shortfall > 0} onClick={() => void controller.claimDaily()}><Gift size={18} aria-hidden="true" />{controller.busy && controller.pending?.kind === "daily" ? "Получаем…" : "Забрать подарок"}</button>
+            </div></>
             : <p className={styles.wait} role="status"><Clock3 size={17} aria-hidden="true" />{dailyRewardWait(daily.nextClaimAt, controller.now)}</p>}
         </div>
         <ol className={styles.cycle} aria-label="Семь подарков за вход">
@@ -78,9 +83,9 @@ export function DailyRewardsButton({ ownerPublicId, isOnline = true, onSessionLo
 }
 
 /** Keep this mounted while the profile or dialog closes: an in-flight claim still confirms the wallet. */
-export function DailyRewardsDialog({ ownerPublicId, economy, isOnline = true, onSessionLost, open, onOpenChange, onReturnFocus }: {
+export function DailyRewardsDialog({ ownerPublicId, economy, isOnline = true, onSessionLost, open, onOpenChange, onReturnFocus, onOpenPantry }: {
   ownerPublicId: string; economy: EconomyController; isOnline?: boolean; onSessionLost?: () => void;
-  open: boolean; onOpenChange: (value: boolean) => void; onReturnFocus: () => void;
+  open: boolean; onOpenChange: (value: boolean) => void; onReturnFocus: () => void; onOpenPantry?: () => void;
 }) {
   const controller = useGameRewards(ownerPublicId, isOnline, onSessionLost, () => { void economy.refresh(); });
   const entryPrompt = useRef<ReturnType<typeof createDailyRewardEntryPrompt> | null>(null);
@@ -94,7 +99,7 @@ export function DailyRewardsDialog({ ownerPublicId, economy, isOnline = true, on
       <DialogPrimitive.Content data-slot="dialog-content" className={styles.dialog} onCloseAutoFocus={event => { event.preventDefault(); onReturnFocus(); }}>
         <header className={styles.header}><DialogTitle><CalendarDays size={22} aria-hidden="true" />Подарки за вход</DialogTitle><DialogPrimitive.Close aria-label="Закрыть подарки"><X size={20} aria-hidden="true" /></DialogPrimitive.Close></header>
         <DialogDescription className={styles.sr}>Семь подарков за возвращение в лес. Каждый подарок нужно забрать вручную.</DialogDescription>
-        <DailyRewardsPanel controller={controller} isOnline={isOnline} names={names} storageAvailable={economy.snapshot?.storage.available} />
+        <DailyRewardsPanel controller={controller} isOnline={isOnline} names={names} storageAvailable={economy.snapshot?.storage.available} onOpenPantry={onOpenPantry} />
       </DialogPrimitive.Content>
     </DialogPortal></Dialog>;
 }

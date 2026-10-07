@@ -27,12 +27,21 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
         if (!(index in slots)) slots[index] = { current: initial };
         return slots[index];
       }
-      export function useMemo(callback) { return callback(); }
+      export function useMemo(callback, dependencies) {
+        const index = cursor++, previous = slots[index];
+        if (!previous || !dependencies || dependencies.some((value, position) => !Object.is(value, previous.dependencies?.[position]))) {
+          slots[index] = { value: callback(), dependencies };
+        }
+        return slots[index].value;
+      }
       export function useCallback(callback) { return callback; }
       export function useEffect() {}
+      export function useSyncExternalStore(_subscribe, getSnapshot) { return getSnapshot(); }
     `; },
     transform(source, id) {
-      if (id.endsWith("/features/world/world-view.tsx")) return source.replace('from "react";', `from "${hookModule}";`);
+      if (id.endsWith("/features/world/world-view.tsx") || id.endsWith("/features/economy/use-construction-goal.ts")) {
+        return source.replace('from "react";', `from "${hookModule}";`);
+      }
     },
   }],
 });
@@ -112,14 +121,17 @@ function navigation() {
   const state = { resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1,
     workshop: false, journeys: [], collection: [], inventory: [], equipment: {}, completedJourneys: 0 };
   const world = { snapshot: { state, gifts: [] }, now: Date.parse("2026-10-05T12:00:00Z"), act() { assert.fail("navigation cannot mutate world"); } };
+  let refreshes = 0;
   const economy = { snapshot: null, now: world.now, busy: false, uncertain: false, retryAt: 0,
-    act() { assert.fail("navigation cannot issue economy commands"); }, retry() {} };
+    act() { assert.fail("navigation cannot issue economy commands"); }, retry() {}, refresh() { refreshes++; return Promise.resolve(); } };
   const props = { world, economy, ownerPublicId: "characters-test", timeZone: "UTC", onClose() {}, displayName: "Мохлик", level: 1, wakeSignal: 0, bestStreakDays: 1 };
   let view;
   const render = () => {
     hooks.render(); view = WorldView(props);
     view.props.ref.current = { querySelector(selector) { return selector.includes("data-world-characters-trigger") ? characterTrigger : selector.includes("data-world-character=") ? card : trigger; } };
-    return elements(view);
+    const nodes = elements(view), quickFrame = nodes.find(element => element.props.id === "world-quick-menu");
+    if (quickFrame) quickFrame.props.ref.current = new Element(`quick-${quickFrame.props["data-kind"]}`);
+    return nodes;
   };
   const find = callback => render().find(callback);
   const component = name => find(element => typeof element.type === "function" && element.type.name === name);
@@ -127,7 +139,7 @@ function navigation() {
     if (savedDocument) Object.defineProperty(globalThis, "document", savedDocument); else delete globalThis.document;
     if (savedElement) Object.defineProperty(globalThis, "HTMLElement", savedElement); else delete globalThis.HTMLElement;
   };
-  return { find, component, render, focused, restore };
+  return { find, component, render, focused, restore, props, get refreshes() { return refreshes; } };
 }
 
 test("More opens a separate gallery; conversation Back/close return there and gallery close restores its menu trigger", () => {
@@ -230,5 +242,69 @@ test("gifts open manually from My Mochlik while call and reward closing preserve
     nav.find(element => element.props["aria-label"] === "Закрыть: Мой Мохлик").props.onClick();
     assert.equal(nav.component("WorldProfileMenu"), undefined);
     assert.equal(nav.component("DailyRewardsDialog").key, original.key, "closing the profile keeps receipt resolution mounted");
+  } finally { nav.restore(); }
+});
+
+test("a gift opens the pantry and returns to the same mounted reward dialog after refreshing capacity", () => {
+  const nav = navigation();
+  try {
+    const original = nav.component("DailyRewardsDialog");
+    nav.find(element => element.props["data-world-quick"] === "pantry").props.onClick();
+    assert.equal(nav.component("WorldPantryMenu").props.onReturnToGift, undefined, "ordinary pantry visits have no gift return");
+    nav.find(element => element.props["data-world-quick"] === "profile").props.onClick();
+    const profile = nav.component("WorldProfileMenu");
+    profile.props.rewards.props.triggerRef.current = { isConnected: true, focus() { nav.focused.push("hidden-gift-trigger"); } };
+    profile.props.rewards.props.onRequestOpen();
+    nav.component("DailyRewardsDialog").props.onOpenPantry();
+    const closedGift = nav.component("DailyRewardsDialog"), pantry = nav.component("WorldPantryMenu");
+    assert.equal(closedGift.props.open, false);
+    assert.equal(closedGift.type, original.type); assert.equal(closedGift.key, original.key, "receipt resolution stays mounted");
+    assert.equal(nav.component("WorldProfileMenu"), undefined);
+    assert.equal(typeof pantry.props.onReturnToGift, "function");
+    closedGift.props.onReturnFocus();
+    assert.deepEqual(nav.focused, ["quick-pantry"], "focus follows the pantry instead of returning behind it");
+    assert.equal(nav.refreshes, 0);
+    pantry.props.onReturnToGift();
+    const returnedGift = nav.component("DailyRewardsDialog");
+    assert.equal(returnedGift.props.open, true);
+    assert.equal(returnedGift.type, original.type); assert.equal(returnedGift.key, original.key);
+    assert.equal(nav.component("WorldPantryMenu"), undefined);
+    assert.equal(nav.refreshes, 1, "the claim uses refreshed economy capacity after selling or crafting");
+    returnedGift.props.onOpenChange(false);
+    nav.find(element => element.props["data-world-quick"] === "pantry").props.onClick();
+    assert.equal(nav.component("WorldPantryMenu").props.onReturnToGift, undefined, "return is consumed when the gift is reopened");
+  } finally { nav.restore(); }
+});
+
+test("another account never inherits a pantry return to the previous account's gift", () => {
+  const nav = navigation();
+  try {
+    const gift = nav.component("DailyRewardsDialog");
+    gift.props.onOpenChange(true);
+    nav.component("DailyRewardsDialog").props.onOpenPantry();
+    assert.equal(typeof nav.component("WorldPantryMenu").props.onReturnToGift, "function");
+    nav.props.ownerPublicId = "another-player";
+    assert.equal(nav.component("WorldPantryMenu").props.onReturnToGift, undefined);
+    const otherGift = nav.component("DailyRewardsDialog");
+    assert.equal(otherGift.key, "another-player"); assert.equal(otherGift.props.open, false);
+    assert.equal(nav.refreshes, 0);
+  } finally { nav.restore(); }
+});
+
+test("opening gifts from the profile clears an abandoned pantry return", () => {
+  const nav = navigation();
+  try {
+    nav.component("DailyRewardsDialog").props.onOpenChange(true);
+    nav.component("DailyRewardsDialog").props.onOpenPantry();
+    assert.equal(typeof nav.component("WorldPantryMenu").props.onReturnToGift, "function");
+    nav.find(element => element.props["aria-label"] === "Закрыть: Кладовая").props.onClick();
+    assert.equal(nav.component("WorldPantryMenu"), undefined);
+    nav.find(element => element.props["data-world-quick"] === "profile").props.onClick();
+    nav.component("WorldProfileMenu").props.rewards.props.onRequestOpen();
+    const gift = nav.component("DailyRewardsDialog"); assert.equal(gift.props.open, true);
+    gift.props.onOpenChange(false);
+    nav.find(element => element.props["data-world-quick"] === "pantry").props.onClick();
+    assert.equal(nav.component("WorldPantryMenu").props.onReturnToGift, undefined);
+    assert.equal(nav.refreshes, 0, "reopening from the profile does not follow the old pantry return");
   } finally { nav.restore(); }
 });

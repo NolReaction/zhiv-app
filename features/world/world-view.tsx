@@ -35,12 +35,15 @@ import type { WorldResidentId } from "./world-characters-model";
 import { WorldCharacters } from "./world-characters";
 import { DailyRewardsButton, DailyRewardsDialog } from "@/features/game/daily-rewards";
 import { CurrencyShopPanel } from "@/features/economy/currency-shop-panel";
+import { useConstructionGoal } from "@/features/economy/use-construction-goal";
+import { ConstructionGoalSummary } from "@/features/economy/construction-goal-summary";
 
 type Panel = "journeys" | "economy" | "customize" | "wardrobe" | "collection" | "help" | "shop";
 type QuickMenu = "profile" | "pantry" | "expeditions" | "more";
 const WorldDevPanel = process.env.NODE_ENV === "development"
   ? WorldDevEntry : null;
 export default function WorldView({ world, economy, ownerPublicId, timeZone, onClose, displayName, level, wakeSignal, bestStreakDays, items, isOnline, onSessionLost, escapeHandlerRef }: WorldPortalProps & { escapeHandlerRef?: RefObject<(() => boolean) | null> }) {
+  const constructionGoal = useConstructionGoal(ownerPublicId, economy.snapshot);
   const [panel, setPanel] = useState<Panel | null>(null);
   const [economyTab, setEconomyTab] = useState<EconomyTab>("overview");
   const [economyFocusId, setEconomyFocusId] = useState<string | undefined>();
@@ -54,6 +57,8 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
   const [quickMenu, setQuickMenu] = useState<QuickMenu | null>(null);
   const [charactersOpen, setCharactersOpen] = useState(false);
   const [dailyOpen, setDailyOpen] = useState(false);
+  const [giftPantryOwner, setGiftPantryOwner] = useState<string | null>(null);
+  const leavingDaily = useRef(false);
   const dailyTrigger = useRef<HTMLButtonElement | null>(null);
   const leavingCharacters = useRef(false);
   const [expeditionSector, setExpeditionSector] = useState<SectorId>("forest");
@@ -68,6 +73,7 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
   const quickReturn = useRef<HTMLElement | null>(null);
   const upgradeReturn = useRef<HTMLElement | null>(null);
   const navigatingUpgrade = useRef(false);
+  const openingPinnedGoal = useRef(false);
   const completedQuickUpgrade = useRef(false);
   const [localNotice, setLocalNotice] = useState(0);
   const [menuBounds, setMenuBounds] = useState({ top: 144, bottom: 88, left: 12, right: 12 });
@@ -95,6 +101,8 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
   }, [hasWorld]);
   const clearObject = useCallback(() => { selectedId.current = null; setSelection(null); }, []);
   const openDailyRewards = useCallback(() => {
+    leavingDaily.current = false;
+    setGiftPantryOwner(null);
     setDailyOpen(true);
   }, []);
   const closeQuick = useCallback(() => {
@@ -221,12 +229,29 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
     if (place) openObject(place, stationId);
   };
   const openUpgrade = (stationId: string) => {
+    openingPinnedGoal.current = false;
     upgradeReturn.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     navigatingUpgrade.current = false;
     setQuickUpgrade(stationId);
   };
   const leaveUpgrade = (next: () => void) => {
     navigatingUpgrade.current = true; setQuickUpgrade(null); next();
+  };
+  const openPinnedGoal = () => {
+    if (!constructionGoal.goal) return;
+    clearObject(); setPanel(null); setQuickMenu(null);
+    openUpgrade(constructionGoal.goal.buildingId);
+    openingPinnedGoal.current = true;
+  };
+  const openGiftPantry = () => {
+    leavingDaily.current = true;
+    setGiftPantryOwner(ownerPublicId); setDailyOpen(false);
+    setQuickUpgrade(null); setResidentOpen(false);
+    openQuick("pantry");
+  };
+  const returnToGift = () => {
+    setGiftPantryOwner(null); setQuickMenu(null);
+    openDailyRewards(); void economy.refresh();
   };
   const { snapshot, busy, uncertain, act } = world;
   if (!snapshot) return <section className={styles.loading} aria-live="polite"><button id="world-exit" onClick={onClose}><ArrowLeft size={18} />Назад</button><Compass size={32} /><h1>Лес Мохлика</h1>
@@ -264,8 +289,9 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
       </div>
       <WorldInventoryGains key={ownerPublicId} economy={economy} hud={topHud} />
     </header>
+    {economy.snapshot && constructionGoal.details && panel === null && !selection && !quickMenu && !quickUpgrade && !dailyOpen && !residentOpen && !charactersOpen && <div className={styles.goalHud}><ConstructionGoalSummary state={economy.snapshot} constructionGoal={constructionGoal} onOpenGoal={openPinnedGoal} compact /></div>}
     {panel === null && quickMenu === null && <WorldFeedback world={world} />}
-    {panel === null && selection && <div className={styles.objectLayer}><WorldObjectMenu key={`${selection.objectId}:${objectStation ?? ""}`} initialStationId={objectStation} selection={selection} economy={economy} bounds={menuBounds} onClose={closeObject} onReturnFocus={restoreObjectFocus} onNavigate={openObject} onOpenPantry={() => openQuick("pantry")} onExplore={() => openQuick("expeditions")} /></div>}
+    {panel === null && selection && <div className={styles.objectLayer}><WorldObjectMenu key={`${selection.objectId}:${objectStation ?? ""}`} initialStationId={objectStation} selection={selection} economy={economy} constructionGoal={constructionGoal} onOpenGoal={openPinnedGoal} bounds={menuBounds} onClose={closeObject} onReturnFocus={restoreObjectFocus} onNavigate={openObject} onOpenPantry={() => openQuick("pantry")} onExplore={() => openQuick("expeditions")} /></div>}
     <div ref={bottomHud} className={hudStyles.bottomHud}>
       <nav className={hudStyles.dock} aria-label="Действия в игре">
         <button data-world-quick="pantry" aria-haspopup="dialog" aria-expanded={quickMenu === "pantry"} aria-controls={quickMenu === "pantry" ? "world-quick-menu" : undefined}
@@ -285,9 +311,10 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
       onPointerDown={event => event.stopPropagation()} onWheel={event => event.stopPropagation()} onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeQuick(); } }}>
       <header className={`${hudStyles.quickHeader} ${styles.quickHeader}`}><h2 id="world-quick-title"><QuickIcon size={17} aria-hidden="true" />{quickTitle}</h2><button type="button" aria-label={`Закрыть: ${quickTitle}`} onClick={closeQuick}><X size={18} aria-hidden="true" /></button></header>
       <div className={`${hudStyles.quickBody} ${styles.quickBody}`}>
+        {quickMenu === "expeditions" && economy.snapshot && <ConstructionGoalSummary state={economy.snapshot} constructionGoal={constructionGoal} onOpenGoal={openPinnedGoal} compact />}
         {quickMenu === "profile" && <WorldProfileMenu world={world} economy={economy} presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`} displayName={displayName} level={level} bestStreakDays={bestStreakDays} onCall={() => setLocalNotice(value => value + 1)}
           rewards={<DailyRewardsButton ownerPublicId={ownerPublicId} isOnline={isOnline} onSessionLost={onSessionLost} open={dailyOpen} onRequestOpen={openDailyRewards} triggerRef={dailyTrigger} />} />}
-        {quickMenu === "pantry" && <WorldPantryMenu economy={economy} onUpgrade={() => openUpgrade("warehouse")} onExplore={() => openQuick("expeditions")} onOpenMarket={() => openEconomy("market")} onOpenFishingShop={() => openResident("plesk")} />}
+        {quickMenu === "pantry" && <WorldPantryMenu economy={economy} constructionGoal={constructionGoal} onOpenGoal={openPinnedGoal} navigation={{ canOpen: id => Boolean(worldPlaceForStation(id)), open: openStation, explore: () => openQuick("expeditions") }} onReturnToGift={giftPantryOwner === ownerPublicId ? returnToGift : undefined} onUpgrade={() => openUpgrade("warehouse")} onExplore={() => openQuick("expeditions")} onOpenMarket={() => openEconomy("market")} onOpenFishingShop={() => openResident("plesk")} />}
         {quickMenu === "expeditions" && <WorldExpeditionsMenu key={expeditionSector} initialSector={expeditionSector} economy={economy} onOpenPantry={() => openQuick("pantry")} onNavigateStation={openStation} onOpenQuarry={() => openObject("quarry", "quarry")} onOpenFishingShop={() => openResident("plesk")} />}
         {quickMenu === "more" && <div className={`${hudStyles.moreActions} ${styles.moreActions}`}>
           <button type="button" data-world-characters-trigger aria-haspopup="dialog" onClick={openCharacters}><PawPrint size={18} aria-hidden="true" /><span className={styles.moreLabel}>Персонажи<small>Жители леса</small></span></button>
@@ -300,7 +327,8 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
       </div>
     </section>}
     <DailyRewardsDialog key={ownerPublicId} ownerPublicId={ownerPublicId} economy={economy} isOnline={isOnline} onSessionLost={onSessionLost}
-      open={dailyOpen} onOpenChange={setDailyOpen} onReturnFocus={() => {
+      open={dailyOpen} onOpenChange={setDailyOpen} onOpenPantry={openGiftPantry} onReturnFocus={() => {
+        if (leavingDaily.current) { leavingDaily.current = false; quickFrame.current?.focus({ preventScroll: true }); return; }
         if (dailyTrigger.current?.isConnected) dailyTrigger.current.focus({ preventScroll: true });
         else worldElement.current?.querySelector<HTMLElement>('[data-world-quick="profile"]')?.focus({ preventScroll: true });
       }} />
@@ -334,12 +362,14 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
         if (residentReturn.current?.isConnected) residentReturn.current.focus({ preventScroll: true });
         else worldElement.current?.querySelector<HTMLElement>('[data-world-quick="more"]')?.focus({ preventScroll: true });
       }} />
-    <WorldUpgradeDialog stationId={quickUpgrade} economy={economy} onClose={() => setQuickUpgrade(null)}
+    <WorldUpgradeDialog stationId={quickUpgrade} economy={economy} constructionGoal={constructionGoal} onClose={() => setQuickUpgrade(null)}
       onCompleted={() => { completedQuickUpgrade.current = true; setQuickUpgrade(null); closeQuick(); }}
       navigation={{ canOpen: id => Boolean(worldPlaceForStation(id)), open: id => leaveUpgrade(() => openStation(id)), explore: () => leaveUpgrade(() => openQuick("expeditions")) }}
       onOpenPantry={() => leaveUpgrade(() => openQuick("pantry"))}
       onCloseAutoFocus={event => {
         event.preventDefault();
+        const wasPinnedGoal = openingPinnedGoal.current;
+        openingPinnedGoal.current = false;
         if (completedQuickUpgrade.current) {
           completedQuickUpgrade.current = false;
           if (quickReturn.current?.isConnected) quickReturn.current.focus({ preventScroll: true });
@@ -347,6 +377,10 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
           return;
         }
         if (navigatingUpgrade.current) { navigatingUpgrade.current = false; return; }
+        if (wasPinnedGoal) {
+          const goalButton = worldElement.current?.querySelector<HTMLElement>('[data-construction-goal-open]');
+          if (goalButton) { goalButton.focus({ preventScroll: true }); return; }
+        }
         const target = upgradeReturn.current?.dataset.constructionTarget;
         const trigger = target ? worldElement.current?.querySelector<HTMLElement>(`[data-construction-target="${target}"]`) : upgradeReturn.current;
         if (trigger?.isConnected) trigger.focus({ preventScroll: true });

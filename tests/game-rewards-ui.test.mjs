@@ -63,7 +63,32 @@ test("daily gift appears before its calendar and reports space without inventing
   assert.ok(html.indexOf("Забрать подарок") < html.indexOf("Семь подарков за вход"));
   assert.doesNotMatch(html, /data-item-icon="reinforced_parts"/, "completed steps must not claim newer-tier preview items were already paid");
   assert.match(html, />25<\/strong>/, "visible pearl denomination remains half of the server amount");
-  assert.doesNotMatch(html, /class="[^"]*claim[^\"]*" disabled/, "stale client storage does not prevent a server recheck");
+  assert.match(html, /<button[^>]*disabled=""[^>]*>.*?Забрать подарок/, "a known shortage blocks a claim until capacity changes");
+});
+test("a full pantry offers navigation without claiming; refreshed capacity enables manual receipt", () => {
+  const data = view(); data.daily.reward = { ...reward, items: { wood: 12, stone: 8 } };
+  let opened = 0, claims = 0;
+  const props = { controller: controller(data, { claimDaily() { claims++; } }), isOnline: true,
+    storageAvailable: 7, onOpenPantry() { opened++; } };
+  const buttons = node => {
+    if (!node || typeof node !== "object") return [];
+    if (Array.isArray(node)) return node.flatMap(buttons);
+    return [...(node.type === "button" ? [node] : []), ...buttons(node.props?.children)];
+  };
+  const hasLabel = (button, label) => button.props.children.includes(label);
+  let actions = buttons(DailyRewardsPanel(props));
+  const openPantry = actions.find(button => hasLabel(button, "Освободить место"));
+  assert.ok(openPantry); assert.ok(!openPantry.props.disabled);
+  assert.equal(actions.find(button => hasLabel(button, "Забрать подарок")).props.disabled, true);
+  openPantry.props.onClick(); assert.equal(opened, 1); assert.equal(claims, 0);
+  actions = buttons(DailyRewardsPanel({ ...props, storageAvailable: 20 }));
+  assert.equal(actions.some(button => hasLabel(button, "Освободить место")), false);
+  const claim = actions.find(button => hasLabel(button, "Забрать подарок"));
+  assert.equal(claim.props.disabled, false); assert.equal(claims, 0, "free space does not collect a gift automatically");
+  claim.props.onClick(); assert.equal(claims, 1);
+  const offline = buttons(DailyRewardsPanel({ ...props, isOnline: false }));
+  assert.ok(!offline.find(button => hasLabel(button, "Освободить место")).props.disabled, "navigation remains available offline");
+  assert.equal(offline.find(button => hasLabel(button, "Забрать подарок")).props.disabled, true);
 });
 test("lost response remains the same exact receipt after remount and read; other claims stay blocked", async () => {
   const storage = cache(), sent = []; let data = view();
