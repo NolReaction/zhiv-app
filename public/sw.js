@@ -11,8 +11,12 @@ const ACTIVE_CACHE_KEY = new URL(
 const STATIC_SHELL = [
   "/manifest.webmanifest",
   "/icon.svg",
+  "/icon-32.png",
   "/icon-192.png",
   "/icon-512.png",
+  "/icon-maskable-512.png",
+  "/apple-touch-icon.png",
+  "/favicon.ico",
 ];
 const DOCUMENT_REVISION_HEADERS = [
   "content-type",
@@ -26,6 +30,8 @@ const DOCUMENT_REVISION_HEADERS = [
 function isVersionedAsset(url) {
   const { pathname, search } = url;
   return pathname.startsWith("/_next/static/") || pathname.startsWith("/assets/")
+    || (/^\/brand\/[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)*\.webp$/.test(pathname)
+      || /^\/(?:icon-(?:32|192|512|maskable-512)\.png|apple-touch-icon\.png|favicon\.ico)$/.test(pathname)) && /^\?v=[a-f0-9]{12}$/.test(search)
     || /^\/world\/runtime\/[a-zA-Z]+(?:-[a-zA-Z]+)*-[a-f0-9]{12}\.webp$/.test(pathname)
     || (/^\/world\/prototype\/[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)*\.webp$/.test(pathname)
       || pathname === "/world/runtime/boat-wreck-lowquality.webp") && /^\?v=[a-f0-9]{12}$/.test(search);

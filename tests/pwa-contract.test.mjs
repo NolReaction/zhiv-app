@@ -8,8 +8,12 @@ const activeCacheKey = `${origin}/__zhiv_active_shell__`;
 const staticShellUrls = [
   "/manifest.webmanifest",
   "/icon.svg",
+  "/icon-32.png",
   "/icon-192.png",
   "/icon-512.png",
+  "/icon-maskable-512.png",
+  "/apple-touch-icon.png",
+  "/favicon.ico",
 ];
 
 function absoluteUrl(request) {
@@ -165,10 +169,10 @@ function setShellResponses(harness, label) {
       headers: { "Content-Type": "image/svg+xml" },
     }),
   );
-  for (const size of [192, 512]) {
+  for (const pathname of staticShellUrls.filter(path => path.endsWith(".png") || path.endsWith(".ico"))) {
     harness.responses.set(
-      `${origin}/icon-${size}.png`,
-      new Response(`png-${size}-${label}`, { headers: { "Content-Type": "image/png" } }),
+      `${origin}${pathname}`,
+      new Response(`icon-${pathname}-${label}`, { headers: { "Content-Type": pathname.endsWith(".ico") ? "image/x-icon" : "image/png" } }),
     );
   }
   return { assetPath, html };
@@ -227,6 +231,36 @@ test("downloaded world artwork and lazy modules survive offline navigation and s
   const newer = "/world/runtime/map-abcdef012345.webp";
   harness.responses.set(origin + newer, new Response("new-artwork", { headers: { "content-type": "image/webp" } }));
   assert.equal(await (await harness.dispatchFetch(newer, "cors")).text(), "new-artwork");
+});
+
+test("precaches the versioned launch logo from document preload for an offline launch", async () => {
+  const harness = await createServiceWorkerHarness();
+  const shell = setShellResponses(harness, "brand");
+  const logo = "/brand/zhiv-logo.webp?v=0123456789ab";
+  harness.responses.set(origin + "/", new Response(shell.html.replace("</head>",
+    `<link rel="preload" as="image" href="${logo}"></head>`), { headers: { "content-type": "text/html" } }));
+  harness.responses.set(origin + logo, new Response("logo-pixels", { headers: { "content-type": "image/webp" } }));
+  await harness.dispatchExtendable("install");
+  harness.responses.set(origin + logo, new Error("Offline"));
+  assert.equal(await (await harness.dispatchFetch(logo, "cors")).text(), "logo-pixels");
+  assert.equal(await harness.dispatchFetch("/brand/zhiv-logo.webp", "cors"), null,
+    "mutable unversioned artwork must not enter the persistent asset cache");
+});
+
+test("keeps versioned branding across shell changes without replaying a prior icon revision", async () => {
+  const harness = await createServiceWorkerHarness();
+  setShellResponses(harness, "brand-a");
+  await harness.dispatchExtendable("install");
+  const icon = "/icon-192.png?v=0123456789ab";
+  harness.responses.set(origin + icon, new Response("new-icon", { headers: { "content-type": "image/png" } }));
+  assert.equal(await (await harness.dispatchFetch(icon, "cors")).text(), "new-icon");
+  harness.responses.set(origin + icon, new Error("Offline"));
+  setShellResponses(harness, "brand-b");
+  await harness.dispatchFetch("/");
+  assert.equal(await (await harness.dispatchFetch(icon, "cors")).text(), "new-icon");
+  const next = "/icon-192.png?v=abcdef012345";
+  harness.responses.set(origin + next, new Response("next-icon", { headers: { "content-type": "image/png" } }));
+  assert.equal(await (await harness.dispatchFetch(next, "cors")).text(), "next-icon");
 });
 
 test("mutable Next chunks and asset responses requiring revalidation always reach the network", async () => {
@@ -479,10 +513,15 @@ test("does not replace the root shell after a non-root navigation", async () => 
 test("ships installable PNG icons for iOS and Android", async () => {
   const manifest = await readFile(new URL("../app/manifest.ts", import.meta.url), "utf8");
   const layout = await readFile(new URL("../app/layout.tsx", import.meta.url), "utf8");
+  const brand = await readFile(new URL("../lib/brand-assets.ts", import.meta.url), "utf8");
 
-  assert.match(manifest, /icon-192\.png/);
-  assert.match(manifest, /icon-512\.png/);
-  assert.match(layout, /apple-touch-icon\.png/);
+  assert.match(manifest, /src: BRAND_ICON_192_SRC/);
+  assert.match(manifest, /src: BRAND_ICON_512_SRC/);
+  assert.match(manifest, /src: BRAND_MASKABLE_ICON_SRC/);
+  assert.match(layout, /apple: \{ url: BRAND_APPLE_ICON_SRC/);
+  assert.match(brand, /icon-192\.png\?v=[a-f0-9]{12}/);
+  assert.match(brand, /icon-512\.png\?v=[a-f0-9]{12}/);
+  assert.match(brand, /apple-touch-icon\.png\?v=[a-f0-9]{12}/);
   assert.match(manifest, /name:\s*["']Я живой["']/);
   assert.match(layout, /title:\s*["']Я живой["']/);
 });

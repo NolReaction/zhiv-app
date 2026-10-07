@@ -95,7 +95,7 @@ PNG содержит зелёный куст без ягод. Рост плод�
 | `art/world/main/boat-wreck.png` | Исходник лодки, сохранён для дальнейшей работы |
 | `public/world/runtime/boat-wreck-lowquality.webp` | Прежний уменьшенный экспорт лодки; чистая сцена карты его не рисует |
 | `public/achievements/` | Семь медалей, выбираемых по ID достижения |
-| `public/icon.svg`, `icon-192.png`, `icon-512.png`, `apple-touch-icon.png` | Иконки сайта и PWA |
+| `art/brand/`, `public/icon*`, `public/apple-touch-icon.png`, `public/favicon.ico`, `public/brand/` | Мастера Мохлика, иконки сайта/PWA и прозрачный загрузочный логотип. [Подготовка и версии](brand/README.md) |
 | `docs/game/concepts/`, `docs/game/images/` | Концепты и снимки прежнего прототипа для документации |
 
 Лодка не перекодируется при подготовке карты. Прежние изображения домов и мастерских доступны в истории Git; не восстанавливайте их поверх нового рисунка.

@@ -93,6 +93,10 @@ import { notify, TransientNotice } from "@/components/app-notifications";
 import { createUuidV4 } from "@/lib/browser-uuid";
 import { copyText } from "@/lib/identity-sharing";
 import { createIdentityRecovery, type IdentityRecovery } from "./identity-recovery";
+import { AppStartup, useAppStartup } from "@/features/startup/app-startup";
+import { startupPresentation } from "@/features/startup/startup-model";
+import { useStartupModules } from "@/features/startup/use-startup-modules";
+import type { SceneLoadState } from "@/features/startup/scene-load-state";
 
 type Screen = "loading" | "load-error" | "onboarding" | "home" | "session-lost";
 type ActiveView = AppView;
@@ -349,6 +353,13 @@ function forgetAccountForest(owner: string | null) {
 }
 
 export function CheckInApp() {
+  return <AppStartup><CheckInContent /></AppStartup>;
+}
+
+function CheckInContent() {
+  const { active: startupActive, report: reportStartup } = useAppStartup();
+  const [startupRetry, setStartupRetry] = useState(0);
+  const [sceneLoad, setSceneLoad] = useState<{ owner: string | undefined; state: SceneLoadState }>({ owner: undefined, state: "loading" });
   const [screen, setScreen] = useState<Screen>("loading");
   const [identityError, setIdentityError] = useState<string | null>(null);
   const [me, setMe] = useState<MeResponse | null>(null);
@@ -387,16 +398,7 @@ export function CheckInApp() {
   const worldPeopleReturn = useRef(false);
   const appNavigationRef = useRef<HTMLElement | null>(null);
   const [worldMounted, setWorldMounted] = useState(false);
-  useEffect(() => {
-    if (screen !== "home" || !mochlikVisible) return;
-    // Warm lazy modules after the initial screen. The service worker retains
-    // their hashed responses, so entering the world also works after reconnects.
-    const timer = setTimeout(() => {
-      void import("@/features/world/world-portal").catch(() => undefined);
-      void import("@/features/world/map-engine").catch(() => undefined);
-    }, 1200);
-    return () => clearTimeout(timer);
-  }, [screen, mochlikVisible]);
+  const startupModules = useStartupModules(screen === "home" && mochlikVisible, startupRetry);
   const closeWorld = worldPortal.close;
   const [mochlikWakeSignal, setMochlikWakeSignal] = useState(0);
   const gameTrigger = useRef<HTMLElement | null>(null);
@@ -627,6 +629,50 @@ export function CheckInApp() {
   const economicConstruction = useMemo(() => economySceneConstruction(economy.snapshot), [economy.snapshot]);
   const economicActivity = useMemo(() => economySceneActivity(economy.snapshot), [economy.snapshot]);
   const currentActivity = worldActivity(economicActivity, renderedWorldState, economy.snapshot ? economy.now : world.now);
+  const gameStartupReady = Boolean(game.progress) || game.errorCode === "STORAGE_FAILED" || game.status === "blocked";
+  const sceneCanMount = Boolean(world.snapshot && economy.snapshot && gameStartupReady);
+  const handleSceneLoadState = useCallback((state: SceneLoadState) => {
+    setSceneLoad(previous => previous.owner === me?.user.publicId && previous.state === state ? previous : { owner: me?.user.publicId, state });
+  }, [me?.user.publicId]);
+  const { active: activityActive, mode: activityMode, retryAt: activityRetryAt, retry: retryActivity } = activity;
+  const { snapshot: startupWorld, refreshNow: refreshStartupWorld } = world;
+  const { snapshot: startupEconomy, refresh: refreshStartupEconomy } = economy;
+  const refreshStartupGame = game.refresh;
+  const retryStartup = useCallback(() => {
+    if (screen === "loading" || screen === "load-error") identityRecovery.current?.retry();
+    else if (screen === "home") {
+      // retry() preserves AFK/input time and reconciles existing receipts.
+      if (!activityActive) void retryActivity();
+      else {
+        if (!startupWorld) void refreshStartupWorld();
+        if (!startupEconomy) void refreshStartupEconomy();
+        if (!gameStartupReady) void refreshStartupGame();
+      }
+    }
+    setStartupRetry(value => value + 1);
+  }, [screen, activityActive, retryActivity, startupWorld, refreshStartupWorld, startupEconomy, refreshStartupEconomy, gameStartupReady, refreshStartupGame]);
+  useEffect(() => {
+    if (!startupActive) return;
+    reportStartup(startupPresentation({ screen, online: isOnline, identityError, appearanceReady, simpleView, sceneRequired: activeView === "check-in",
+      activityMode: activity.mode, activityError: activity.error, worldReady: Boolean(world.snapshot), economyReady: Boolean(economy.snapshot),
+      gameReady: gameStartupReady, gameFailed: game.status === "error" || game.status === "offline",
+      scene: sceneLoad.owner === me?.user.publicId ? sceneLoad.state : "loading", modules: startupModules,
+    }), retryStartup);
+  }, [startupActive, reportStartup, retryStartup, screen, isOnline, identityError, appearanceReady, simpleView, activity.mode, activity.error,
+    world.snapshot, economy.snapshot, gameStartupReady, game.status, sceneLoad, me?.user.publicId, startupModules, activeView]);
+  useEffect(() => {
+    if (!startupActive || screen !== "home" || activityMode !== "error") return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const schedule = () => {
+      clearTimeout(timer);
+      if (document.hidden || !navigator.onLine) return;
+      timer = setTimeout(() => { if (!document.hidden && navigator.onLine) void retryActivity(); }, Math.max(3_000, activityRetryAt - Date.now()));
+    };
+    schedule();
+    window.addEventListener("online", schedule);
+    document.addEventListener("visibilitychange", schedule);
+    return () => { clearTimeout(timer); window.removeEventListener("online", schedule); document.removeEventListener("visibilitychange", schedule); };
+  }, [startupActive, screen, activityMode, activityRetryAt, retryActivity]);
   const worldDevOwner = screen === "home" ? me?.user.publicId ?? null : null;
   const worldEntryButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -865,8 +911,8 @@ export function CheckInApp() {
   }, [adoptMe, clearPendingCheckIn, persistClickerRun, resetTransientCheckIn]);
 
   useEffect(() => {
-    if (screen === "home" && activeView === "check-in") homeHeading.current?.focus();
-  }, [activeView, screen]);
+    if (!startupActive && screen === "home" && activeView === "check-in") homeHeading.current?.focus();
+  }, [activeView, screen, startupActive]);
 
   useEffect(() => {
     if (screen !== "home") return;
@@ -1342,13 +1388,7 @@ export function CheckInApp() {
   }
 
   if (screen === "loading") {
-    return (
-      <main className={styles.centered} aria-busy="true">
-        <div className={styles.loadingMark} role="status" aria-label="Загрузка приложения">
-          Я
-        </div>
-      </main>
-    );
+    return <main className={styles.centered} aria-busy="true" />;
   }
 
   if (screen === "load-error") {
@@ -1387,10 +1427,10 @@ export function CheckInApp() {
             onRecovered={adoptMe}
           />
         </section>
-        <CapabilityLanding
+        {!startupActive && <CapabilityLanding
           authenticated={false}
           onInviteAccepted={() => undefined}
-        />
+        />}
       </main>
     );
   }
@@ -1427,10 +1467,10 @@ export function CheckInApp() {
           </AccountEntry>
           <RecoveryStarter context="onboarding" isOnline={isOnline} onRecovered={adoptMe} />
         </section>
-        <CapabilityLanding
+        {!startupActive && <CapabilityLanding
           authenticated={false}
           onInviteAccepted={() => undefined}
-        />
+        />}
       </main>
     );
   }
@@ -1440,7 +1480,7 @@ export function CheckInApp() {
   return (
     <GardenCollectionContext.Provider value={gardenCollection}>
     <main className={styles.shell} data-active-view={activeView}>
-      <AuthReturnNotice />
+      {!startupActive && <AuthReturnNotice />}
       <TransientNotice message={notice} />
       <header className={styles.header}>
         <span className={styles.wordmark}>Я ЖИВОЙ</span>
@@ -1510,9 +1550,10 @@ export function CheckInApp() {
             >
             <div className={styles.buttonOrbit} ref={buttonOrbit}>
             {mochlikVisible && <div className={styles.habitatSurface} style={buttonStyle} hidden={!mochlikVisible}>
-              <MochlikTerrarium key={me?.user.publicId} suspended={!mochlikVisible || worldPortal.open || calendarOpen || gameOpen || statusOpen}
+              {sceneCanMount && <MochlikTerrarium key={me?.user.publicId} suspended={!mochlikVisible || worldPortal.open || calendarOpen || gameOpen || statusOpen}
+                onLoadState={handleSceneLoadState} retrySignal={startupRetry}
                 wakeSignal={mochlikWakeSignal} nowMs={economy.snapshot ? economy.now : world.now} timeZone={me?.profile.timeZone ?? "UTC"} userId={me?.user.publicId}
-                bestStreakDays={me?.streak.longestDays ?? 0} items={game.progress?.items} worldState={renderedWorldState} worldGifts={world.snapshot?.gifts} economyJourney={economicJourney} cancelledExplorations={economy.cancelledExplorations} economyBuildings={economy.snapshot?.buildings} economyProduction={economicProduction} economyConstruction={economicConstruction} activity={currentActivity} />
+                bestStreakDays={me?.streak.longestDays ?? 0} items={game.progress?.items} worldState={renderedWorldState} worldGifts={world.snapshot?.gifts} economyJourney={economicJourney} cancelledExplorations={economy.cancelledExplorations} economyBuildings={economy.snapshot?.buildings} economyProduction={economicProduction} economyConstruction={economicConstruction} activity={currentActivity} />}
             </div>}
             <button
               type="button"
@@ -1748,14 +1789,14 @@ export function CheckInApp() {
         <AppNavigation active={activeView} onSelect={selectView}
           invitations={(people?.incomingRequests.length ?? 0) + (groups?.incomingInvites.length ?? 0)} />
       </footer>
-      <CapabilityLanding
+      {!startupActive && <CapabilityLanding
         authenticated={true}
         onInviteAccepted={() => {
           setActiveView("people");
           void refreshPeople();
           void refreshGroups();
         }}
-      />
+      />}
     </main>
     </GardenCollectionContext.Provider>
   );

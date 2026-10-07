@@ -6,6 +6,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExter
 import { LoaderCircle } from "lucide-react";
 import { reportIncident } from "@/lib/client-incidents";
 import { HabitatAssetError } from "@/features/mochlik/assets";
+import { bindSceneLoaderEnvironment, createSceneLoader } from "@/features/startup/scene-loader";
 import { habitatLighting } from "@/features/mochlik/lighting";
 import { sceneJourney } from "./journey-timeline";
 import { JourneyProgress } from "./journey-progress";
@@ -78,7 +79,7 @@ export function WorldScene({ hideJourneyStatus = false, constructionEconomy, onO
     const timer = setTimeout(() => { tracker.enabled = false; engine.current?.setObjectAnchorsEnabled(false); }, Math.max(0, tracker.until - performance.now()));
     return () => clearTimeout(timer);
   }, [constructionActive, productionActive, completions, gains]);
-  const [reload, setReload] = useState(0);
+  const loader = useRef<ReturnType<typeof createSceneLoader<Awaited<ReturnType<typeof createMapEngine>>>> | null>(null);
   useEffect(() => {
     latest.current = { state, gifts, items, owner, bestStreakDays, lampOn, dusk, onPlace, onResident, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, garden };
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -89,37 +90,47 @@ export function WorldScene({ hideJourneyStatus = false, constructionEconomy, onO
   useEffect(() => { objectRequest.current = openObjectRequest; applyObjectRequest(); }, [openObjectRequest, applyObjectRequest]);
   useEffect(() => {
     let disposed = false;
-    const abort = new AbortController();
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
     const options = (): SceneOptions => ({ serverNow: time.current, lampOn: latest.current.lampOn, dusk: latest.current.dusk, paused: false, view: "world", reducedMotion: media.matches,
       worldState: latest.current.state, economyJourney: latest.current.economyJourney, cancelledExplorations: latest.current.cancelledExplorations, economyBuildings: latest.current.economyBuildings, economyProduction: latest.current.economyProduction, economyConstruction: latest.current.economyConstruction, economyGarden: latest.current.garden?.crop, gardenHarvestRequest: latest.current.garden?.request, onGardenHarvestEvent: latest.current.garden?.sceneEvent, worldGifts: latest.current.gifts, items: latest.current.items,
       bestStreakDays: latest.current.bestStreakDays, presenceKey: `zhiv:mochlik:presence:${latest.current.owner}` });
-    void import("./map-engine").then(module => {
-      if (disposed) return null;
-      return module.createMapEngine(canvas.current!, options(), (place, selection) => latest.current.onPlace(place, selection), Array.from(root.current!.querySelectorAll<HTMLElement>("[data-map-anchor]")), abort.signal,
-        { top: topHud.current, bottom: bottomHud.current }, {
-          onSelectionChange: value => selection.current.onObjectSelection?.(value),
-          onResident: id => latest.current.onResident?.(id),
-          objectAnchorsEnabled: anchorTracking.current.enabled,
-          onObjectAnchorsChange: values => { if (!disposed) anchorStore.publish(values); },
-        }, speechCanvas.current);
-    }).then(value => {
-      if (!value) return;
-      if (disposed) { value.dispose(); return; }
-      engine.current = value; value.setObjectAnchorsEnabled(anchorTracking.current.enabled); value.update(options()); value.setTime(time.current); value.setSelectedObject(selection.current.selectedObjectId ?? null);
-      applyObjectRequest();
-      for (let i = 0; i < pendingWake.current; i++) value.notice(); pendingWake.current = 0;
-      setReady(true); setError(null);
-    }).catch((error: unknown) => {
-      if (disposed) return;
-      const detail = error as { stage?: string; cause?: unknown };
-      const timeout = detail.cause instanceof HabitatAssetError && detail.cause.timedOut;
-      reportIncident(latest.current.owner, "world", `WORLD_${detail.stage === "character" ? "CHARACTER" : "MAP"}_${timeout ? "TIMEOUT" : "FAILED"}`);
-      setError("Не удалось загрузить лес. Попробуйте ещё раз — ваш прогресс сохранён.");
+    const loading = createSceneLoader<Awaited<ReturnType<typeof createMapEngine>>>({
+      async load(signal) {
+        const mapModule = await import("./map-engine");
+        signal.throwIfAborted();
+        return mapModule.createMapEngine(canvas.current!, options(), (place, selection) => latest.current.onPlace(place, selection), Array.from(root.current!.querySelectorAll<HTMLElement>("[data-map-anchor]")), signal,
+          { top: topHud.current, bottom: bottomHud.current }, {
+            onSelectionChange: value => selection.current.onObjectSelection?.(value),
+            onResident: id => latest.current.onResident?.(id),
+            objectAnchorsEnabled: anchorTracking.current.enabled,
+            onObjectAnchorsChange: values => { if (!disposed) anchorStore.publish(values); },
+          }, speechCanvas.current);
+      },
+      release(value) { value.dispose(); if (engine.current === value) engine.current = null; },
+      onReady(value) {
+        engine.current = value; value.setObjectAnchorsEnabled(anchorTracking.current.enabled); value.update(options()); value.setTime(time.current); value.setSelectedObject(selection.current.selectedObjectId ?? null);
+        applyObjectRequest();
+        for (let i = 0; i < pendingWake.current; i++) value.notice(); pendingWake.current = 0;
+      },
+      onState(state, error) {
+        setReady(state === "ready");
+        if (state !== "error") { setError(null); return; }
+        const detail = error as { stage?: string; cause?: unknown } | null;
+        const timeout = detail?.cause instanceof HabitatAssetError && detail.cause.timedOut;
+        reportIncident(latest.current.owner, "world", `WORLD_${detail?.stage === "character" ? "CHARACTER" : "MAP"}_${timeout ? "TIMEOUT" : "FAILED"}`);
+        setError("Восстанавливаем связь с лесом… Загрузка повторится автоматически, ваш прогресс сохранён.");
+      },
     });
+    loader.current = loading;
+    const unbind = bindSceneLoaderEnvironment(loading);
+    loading.retry();
     const change = () => engine.current?.update(options()); media.addEventListener("change", change);
-    return () => { disposed = true; abort.abort(); media.removeEventListener("change", change); engine.current?.dispose(); engine.current = null; };
-  }, [reload, topHud, bottomHud, applyObjectRequest, anchorStore]);
+    return () => {
+      disposed = true; unbind(); loading.dispose(); media.removeEventListener("change", change);
+      if (loader.current === loading) loader.current = null;
+    };
+  }, [owner, topHud, bottomHud, applyObjectRequest, anchorStore]);
+
   useEffect(() => {
     const taps = Math.max(0, wakeSignal - previousWake.current); previousWake.current = wakeSignal;
     if (engine.current) { for (let i = 0; i < taps; i++) engine.current.notice(); }
@@ -131,7 +142,7 @@ export function WorldScene({ hideJourneyStatus = false, constructionEconomy, onO
     <canvas ref={canvas} tabIndex={0} role="img" aria-label="Лес Мохлика. Перетаскивайте карту, меняйте масштаб двумя пальцами или колёсиком. Стрелки двигают карту, плюс и минус меняют масштаб, Home находит Мохлика." />
     <canvas ref={speechCanvas} className={styles.speechCanvas} aria-hidden="true" />
     <ForestSpeechAnnouncements key={`speech:${owner}`} owner={owner} />
-    {!ready && <div className={styles.sceneLoading} role="status"><p>{!error && <LoaderCircle className={styles.loadingSpinner} size={23} />}{error ?? "Загружаем лес и Мохлика…"}</p>{error && <button onClick={() => { setReady(false); setError(null); setReload(value => value + 1); }}>Повторить загрузку</button>}</div>}
+    {!ready && <div className={styles.sceneLoading} role="status"><p>{!error && <LoaderCircle className={styles.loadingSpinner} size={23} />}{error ?? "Загружаем лес и Мохлика…"}</p>{error && <button onClick={() => loader.current?.retry()}>Повторить загрузку</button>}</div>}
     {WORLD_PRESENTATION.rebuilding ? <div className={styles.mapAnchors} hidden={!ready} role="group" aria-label="Объекты на карте">
       {objects.map(({ id, place, label }) => <button key={id} data-map-anchor data-object-id={id} data-kind={place}
         onClick={event => { if (event.detail === 0) engine.current?.activateObject(id); }} aria-label={`Открыть: ${label}`} aria-expanded={selectedObjectId === id} title={label} />)}

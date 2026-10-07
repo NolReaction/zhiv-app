@@ -1,7 +1,7 @@
 import { ApiError } from "@/lib/check-in-api";
 import type { MeResponse } from "@/lib/check-in-contract";
 
-const RETRY_DELAYS_MS = [1_000, 3_000] as const;
+const RETRY_DELAYS_MS = [1_000, 3_000, 8_000, 15_000] as const;
 
 export function isTransientIdentityFailure(error: unknown): boolean {
   if (error instanceof ApiError) {
@@ -73,8 +73,12 @@ export function createIdentityRecovery(options: IdentityRecoveryOptions) {
         cooldownUntil = Date.now() + error.retryAfterMs;
       }
       options.onFailure(error, true);
-      if (!disposed && transient && retries < RETRY_DELAYS_MS.length) {
-        schedule(Math.max(RETRY_DELAYS_MS[retries++], cooldownUntil - Date.now()));
+      if (!disposed && requestGeneration === generation && transient && options.isOnline() && options.isVisible()) {
+        // Keep recovering during an outage without increasing request frequency.
+        // Foreground/online events resume a paused startup through the same guard.
+        const delay = RETRY_DELAYS_MS[retries];
+        retries = Math.min(retries + 1, RETRY_DELAYS_MS.length - 1);
+        schedule(Math.max(delay, cooldownUntil - Date.now()));
       }
     });
   }

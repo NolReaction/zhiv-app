@@ -1154,6 +1154,25 @@ test("manual pose events restart, finish, preserve loop choice and use finite re
   } finally { scene?.dispose(); worldDevStore.reset(); env.restore(); }
 });
 
+test("initial readiness waits for the latest confirmed building artwork when account data changes mid-load", async () => {
+  const site = { id: "home", label: "Дом", bounds: { x: 600, y: 820, width: 120, height: 120 },
+    anchor: { x: 660, y: 940 }, entry: { x: 660, y: 950 }, hitArea: [], collision: [], initialLevel: 1,
+    states: [1, 2].map(level => ({ level, label: `Level ${level}`, image: `/startup-home-${level}.webp` })) };
+  const { mountHabitat } = await modules({ sites: [site] });
+  const env = browser(); let scene;
+  try {
+    let ready = 0;
+    scene = mountHabitat(env.surface(), { ...options, economyBuildings: { home: 1 } }, {
+      activity() {}, ready: () => ready++, failure: assert.fail,
+    });
+    scene.configure({ ...options, economyBuildings: { home: 2 } });
+    env.finishPath("/test-ground.webp"); env.finishPath("/startup-home-1.webp"); await flush();
+    assert.equal(ready, 0, "the old successful response cannot reveal an incomplete current scene");
+    env.finishPath("/startup-home-2.webp"); await flush();
+    assert.equal(ready, 1, "ready is emitted once, after the current home art arrives");
+  } finally { scene?.dispose(); env.restore(); }
+});
+
 test("development building levels load only selected artwork and reject stale and failed replacements", async () => {
   const site = { id: "home", label: "Дом", bounds: { x: 600, y: 820, width: 120, height: 120 },
     anchor: { x: 660, y: 940 }, entry: { x: 660, y: 950 }, hitArea: [], collision: [], initialLevel: 1,

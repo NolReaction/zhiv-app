@@ -1,0 +1,114 @@
+.splash {
+  --leaf-vein: #133728;
+  position: fixed;
+  z-index: 100050;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  isolation: isolate;
+  padding: max(22px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(22px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
+  overflow: hidden;
+  color: #edf0d9;
+  color-scheme: dark;
+  overscroll-behavior: contain;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.backdrop {
+  position: absolute;
+  z-index: -2;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 44%, #213322 0%, #101e17 32%, #080f0e 66%, #060b0b 100%);
+}
+
+.atmosphere { position: absolute; z-index: -1; inset: 0; overflow: hidden; pointer-events: none; }
+.foliage { position: absolute; left: -92px; bottom: 8%; width: 220px; height: 270px; opacity: .24; transform: rotate(19deg); }
+.foliage i { position: absolute; display: block; width: 150px; height: 53px; border-radius: 4% 100% 2% 100%; background: linear-gradient(35deg, #10211a, #2e4630); transform: rotate(-42deg); }
+.foliage i:nth-child(1) { left: 38px; top: 32px; }
+.foliage i:nth-child(2) { left: 14px; top: 111px; transform: rotate(-9deg); }
+.foliage i:nth-child(3) { left: 45px; top: 191px; transform: rotate(12deg); }
+.foliageOpposite { left: auto; right: -90px; bottom: auto; top: 4%; transform: rotate(198deg); opacity: .16; }
+.firefly { position: absolute; display: block; width: 3px; height: 3px; border-radius: 50%; background: #d6e696; box-shadow: 0 0 7px 2px #a3c97142; opacity: 0; animation: firefly-drift 6s ease-in-out infinite; }
+.firefly:nth-of-type(2n) { width: 2px; height: 2px; background: #b4c891; }
+
+.content { display: flex; width: 100%; min-width: 0; flex-direction: column; align-items: center; gap: clamp(16px, 3vh, 27px); transform: translateY(-1.5vh); }
+.stage { position: relative; display: grid; place-items: center; width: min(440px, 82vw, calc(100svh - 232px)); min-width: 148px; aspect-ratio: 1; flex-shrink: 0; }
+.logo { position: relative; z-index: 2; width: 100%; height: 100%; transform-origin: 50% 53%; opacity: 0; }
+.logo[data-ready="true"] { animation: logo-arrive var(--splash-enter-ms) both; }
+.logo img { display: block; width: 100%; height: 100%; object-fit: contain; user-select: none; }
+.seed { position: absolute; top: 53%; left: 50%; width: 9px; height: 9px; margin: -4.5px; border-radius: 50%; background: #eff4c6; box-shadow: 0 0 14px 4px #dfed9670, 0 0 48px 16px #c1df7530; opacity: .6; animation: seed-breathe 1.6s ease-in-out infinite alternate; }
+.splash[data-logo-ready="true"] .seed { animation: seed-open .7s ease-out both; }
+.ripple { position: absolute; top: 53%; left: 50%; width: 80%; aspect-ratio: 1; margin: -40%; border: 1px solid #c8d99b; border-radius: 50%; opacity: 0; }
+.splash[data-logo-ready="true"] .ripple { animation: ripple-open .8s .06s ease-out both; }
+.logoFallback { display: flex; height: 100%; flex-direction: column; align-items: center; justify-content: center; gap: 16px; color: #e8edcf; }
+.logoFallback > span { display: block; width: 58px; height: 58px; color: #a9c978; }
+.logoFallback h1 { margin: 0; font-size: clamp(36px, 9vw, 56px); font-weight: 750; letter-spacing: -.05em; }
+
+.loading { display: flex; width: min(100%, 350px); min-height: 96px; flex-direction: column; align-items: center; opacity: 0; animation: loading-arrive .55s .24s ease-out both; }
+.progress { position: relative; width: min(252px, 100%); height: 34px; margin-bottom: 15px; }
+.vine { position: absolute; top: 17px; right: 9px; left: 9px; height: 1px; background: #91a77530; }
+.vine > span { display: block; width: 100%; height: 100%; background: #b0cd79; transform-origin: left; transition: transform .35s ease-out; }
+.leaves { position: absolute; inset: 0; display: flex; align-items: center; justify-content: space-between; }
+.leaf { position: relative; display: block; width: 19px; height: 19px; color: #364b36; transform: translateY(-4px) rotate(-20deg); }
+.leaf:nth-child(even) { transform: translateY(5px) rotate(159deg); }
+.leaf > svg, .litLeaf, .litLeaf > svg { display: block; width: 100%; height: 100%; }
+.litLeaf { position: absolute; inset: 0; color: #b9d384; transition: opacity .3s ease-out; }
+.status { width: 100%; text-align: center; }
+.message { margin: 0; font-size: 13px; font-weight: 500; line-height: 1.55; letter-spacing: .02em; color: #d4dfc1; }
+.detail { margin: 7px 0 0; font-size: 12px; line-height: 1.55; color: #96a88d; text-wrap: pretty; overflow-wrap: anywhere; }
+.retry { display: inline-flex; min-height: 44px; align-items: center; justify-content: center; gap: 7px; margin-top: 10px; padding: 8px 14px; border: 1px solid #c1d4952b; border-radius: 999px; background: #acc58209; color: #c4d4b2; font: inherit; font-size: 12px; line-height: 1.4; cursor: pointer; transition: background .2s ease, border-color .2s ease; }
+.retry:hover { background: #acc58216; border-color: #c1d49555; }
+.retry:focus-visible { outline: 2px solid #d1e4a6; outline-offset: 4px; }
+
+.splash[data-phase="leaving"] .logo { animation: logo-retreat var(--splash-exit-ms) cubic-bezier(.5, 0, .7, .35) both; }
+.splash[data-phase="leaving"] .seed { animation: seed-close var(--splash-exit-ms) ease-out both; }
+.splash[data-phase="leaving"] .ripple { animation: none; opacity: 0; }
+.splash[data-phase="leaving"] .loading,
+.splash[data-phase="leaving"] .atmosphere { animation: loading-leave .23s ease-in both; }
+.splash[data-phase="leaving"] .backdrop { animation: backdrop-leave var(--splash-exit-ms) ease-in-out both; }
+
+@keyframes logo-arrive {
+  0% { opacity: 0; transform: translate3d(0, 12px, 0) scale(.025) rotate(-13deg); }
+  13% { opacity: 1; }
+  51% { opacity: 1; transform: translate3d(0, -5px, 0) scale(1.065) rotate(2.4deg); }
+  70% { transform: translate3d(0, 2px, 0) scale(.977) rotate(-1.6deg); }
+  85% { transform: translate3d(0, -1px, 0) scale(1.012) rotate(.65deg); }
+  100% { opacity: 1; transform: translate3d(0, 0, 0) scale(1) rotate(0); }
+}
+@keyframes logo-retreat {
+  0% { opacity: 1; transform: translate3d(0, 0, 0) scale(1) rotate(0); }
+  17% { opacity: 1; transform: translate3d(0, -3px, 0) scale(1.025) rotate(-.8deg); }
+  80% { opacity: .85; transform: translate3d(0, 0, 0) scale(.06) rotate(8deg); }
+  100% { opacity: 0; transform: translate3d(0, 0, 0) scale(.008) rotate(10deg); }
+}
+@keyframes seed-breathe { from { opacity: .4; transform: scale(.8); } to { opacity: .85; transform: scale(1.1); } }
+@keyframes seed-open { 0%, 12% { opacity: 1; transform: scale(1); } 48% { opacity: .2; transform: scale(5); } 100% { opacity: 0; transform: scale(8); } }
+@keyframes seed-close { 0%, 45% { opacity: 0; transform: scale(.8); } 79% { opacity: .8; transform: scale(1.3); } 100% { opacity: 0; transform: scale(.3); } }
+@keyframes ripple-open { 0% { opacity: 0; transform: scale(.08); } 25% { opacity: .16; } 100% { opacity: 0; transform: scale(1.25); } }
+@keyframes loading-arrive { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes loading-leave { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(4px); } }
+@keyframes backdrop-leave { 0%, 32% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes firefly-drift { 0%, 100% { opacity: 0; transform: translate3d(0, 9px, 0); } 25% { opacity: .55; } 60% { opacity: .2; } 80% { opacity: .6; } 95% { transform: translate3d(10px, -15px, 0); } }
+@keyframes reduced-enter { from { opacity: 0; } to { opacity: 1; } }
+@keyframes reduced-leave { from { opacity: 1; } to { opacity: 0; } }
+
+@media (max-height: 520px) {
+  .content { gap: 9px; transform: none; }
+  .stage { width: min(250px, 48vw, calc(100svh - 184px)); min-width: 112px; }
+  .loading { min-height: 75px; }
+  .progress { height: 30px; margin-bottom: 8px; }
+  .detail { margin-top: 4px; }
+  .retry { margin-top: 6px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .firefly, .seed, .ripple { display: none; animation: none !important; }
+  .content { transform: none; }
+  .logo[data-ready="true"] { animation: reduced-enter .15s ease-out both; }
+  .loading { animation: reduced-enter .15s ease-out both; }
+  .vine > span, .litLeaf, .retry { transition: none; }
+  .splash[data-phase="leaving"] .logo,
+  .splash[data-phase="leaving"] .loading,
+  .splash[data-phase="leaving"] .atmosphere,
+  .splash[data-phase="leaving"] .backdrop { animation: reduced-leave .15s ease-out both; }
+}

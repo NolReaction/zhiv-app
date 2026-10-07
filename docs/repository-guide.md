@@ -129,6 +129,7 @@
 | Люди, группы, приглашения, прозвища и приватность | [`features/people/`](../features/people/), [`check-in-contract.ts`](../lib/check-in-contract.ts) | [Разделы приложения](development/app-features.md) |
 | Вход, профиль, сеансы, резервный код | [`features/account/`](../features/account/), [`auth-api.ts`](../lib/auth-api.ts), [`auth/`](../apps/api/src/main/kotlin/ru/zhiv/auth/) | [Разделы приложения](development/app-features.md) |
 | Страницы, глобальные стили, установка PWA | [`app/`](../app/), [`components/`](../components/) | [Разделы приложения](development/app-features.md) |
+| Логотип, иконки и анимация запуска | [`features/startup/`](../features/startup/), [`art/brand/`](../art/brand/), [`prepare-brand-assets.mjs`](../scripts/prepare-brand-assets.mjs) | [Готовность, повтор загрузки и экспорт графики](development/startup-and-brand.md) |
 | Контракты, эндпоинт, транзакция или миграция | [`apps/api/src/main/kotlin/ru/zhiv/`](../apps/api/src/main/kotlin/ru/zhiv/), [`migration/`](../apps/api/src/main/resources/db/migration/) | [Backend и данные](development/backend-and-data.md) |
 | Поведение API при локальной разработке | [`lib/dev/`](../lib/dev/), [`app/api/`](../app/api/) | [Локальный запуск](development/local-development.md) |
 | Админские действия, выдачи, аудит и доступ | [`features/admin/`](../features/admin/), [`admin/`](../apps/api/src/main/kotlin/ru/zhiv/admin/) | [Админка](operations/admin-panel.md), [модерация](operations/player-moderation.md) |

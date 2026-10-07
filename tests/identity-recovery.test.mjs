@@ -45,17 +45,56 @@ test("startup recovers from network failure and timeout with bounded backoff", a
   assert.equal(state.calls.length, 3, "successful identity stops all startup retries");
 });
 
-test("a prolonged outage stops after three reads, then retries on a genuine resume", async t => {
+test("a prolonged outage keeps retrying with capped backoff until identity loads", async t => {
   let available = false;
   const { state, recovery, tick } = fixture(t, async () => {
     if (!available) throw new ApiError("Unavailable", 503);
     return identity;
   });
-  recovery.retry(); await drain(); await tick(1_000); await tick(3_000); await tick(60_000);
-  assert.equal(state.calls.length, 3);
+  recovery.retry(); await drain();
+  for (const [index, delay] of [1_000, 3_000, 8_000, 15_000, 15_000].entries()) {
+    recovery.resume(); recovery.resume();
+    await tick(delay - 1);
+    assert.equal(state.calls.length, index + 1, "foreground events cannot bypass the pending retry");
+    await tick(1);
+    assert.equal(state.calls.length, index + 2);
+  }
   available = true;
+  await tick(15_000);
+  assert.equal(state.calls.length, 7);
+  assert.deepEqual(state.identities, [identity]);
+  await tick(60_000);
+  assert.equal(state.calls.length, 7, "successful identity ends recurring recovery");
+});
+
+test("a queued retry stops on offline state and resumes with one read after reconnect", async t => {
+  const { state, recovery, tick } = fixture(t, async (_signal, attempt) => {
+    if (attempt === 1) throw new TypeError("Failed to fetch");
+    return identity;
+  });
+  recovery.retry(); await drain();
+  state.online = false;
+  await tick(1_000); await tick(60_000);
+  assert.equal(state.calls.length, 1, "no network read is attempted while offline");
+  assert.equal(state.failures.at(-1).attempted, false);
+  state.online = true;
   recovery.resume(); recovery.resume(); recovery.retry(); await drain();
-  assert.equal(state.calls.length, 4);
+  assert.equal(state.calls.length, 2);
+  assert.deepEqual(state.identities, [identity]);
+});
+
+test("hidden page pauses recurring retry timers until a visible resume", async t => {
+  const { state, recovery, tick } = fixture(t, async (_signal, attempt) => {
+    if (attempt === 1) throw new ApiError("Unavailable", 503);
+    return identity;
+  });
+  recovery.retry(); await drain();
+  state.visible = false; recovery.pause();
+  await tick(60_000); recovery.resume(); await drain();
+  assert.equal(state.calls.length, 1);
+  state.visible = true;
+  recovery.resume(); recovery.resume(); await drain();
+  assert.equal(state.calls.length, 2);
   assert.deepEqual(state.identities, [identity]);
 });
 
@@ -89,6 +128,17 @@ test("permanent account failures do not auto-retry on timers or foreground event
   assert.equal(state.failures[0].error, error);
   recovery.retry(); await drain();
   assert.equal(state.calls.length, 2, "explicit user retry remains available");
+});
+
+test("a permanent failure after a transient outage stops recurring retries", async t => {
+  const { state, recovery, tick } = fixture(t, async (_signal, attempt) => {
+    if (attempt < 3) throw new ApiError("Unavailable", 503);
+    throw new ApiError("Account banned", 403, { code: "ACCOUNT_BANNED", message: "Account banned" });
+  });
+  recovery.retry(); await drain(); await tick(1_000); await tick(3_000);
+  recovery.resume(); await tick(60_000);
+  assert.equal(state.calls.length, 3);
+  assert.equal(state.failures.at(-1).error.status, 403);
 });
 
 test("Retry-After is respected even across manual retry and suspension", async t => {

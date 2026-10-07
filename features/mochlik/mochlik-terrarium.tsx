@@ -12,15 +12,17 @@ import { WorldActivityBadge, WorldActivityDescription } from "@/features/world/w
 import type { GameItemId } from "@/features/game/game-rewards";
 import { reportIncident } from "@/lib/client-incidents";
 import { HabitatAssetError } from "@/features/mochlik/assets";
+import { bindSceneLoaderEnvironment, createSceneLoader } from "@/features/startup/scene-loader";
+import type { SceneLoadState } from "@/features/startup/scene-load-state";
 import { habitatLighting } from "@/features/mochlik/lighting";
 import type { HabitatScene, SceneOptions } from "@/features/mochlik/scene";
 import styles from "./mochlik-terrarium.module.css";
 import { useGardenCollection } from "@/features/economy/garden-collection-context";
 
-type Props = { wakeSignal: number; suspended?: boolean; nowMs: number; timeZone: string; userId?: string; bestStreakDays?: number; items?: readonly GameItemId[]; worldState?: WorldState; worldGifts?: readonly string[]; economyJourney?: EconomySceneJourney | null; cancelledExplorations?: readonly string[]; economyBuildings?: EconomySceneBuildings | null; economyProduction?: EconomySceneProduction | null; economyConstruction?: EconomySceneConstruction | null; activity?: WorldActivity | null };
+type Props = { wakeSignal: number; suspended?: boolean; nowMs: number; timeZone: string; userId?: string; bestStreakDays?: number; items?: readonly GameItemId[]; worldState?: WorldState; worldGifts?: readonly string[]; economyJourney?: EconomySceneJourney | null; cancelledExplorations?: readonly string[]; economyBuildings?: EconomySceneBuildings | null; economyProduction?: EconomySceneProduction | null; economyConstruction?: EconomySceneConstruction | null; activity?: WorldActivity | null; onLoadState?: (state: SceneLoadState) => void; retrySignal?: number };
 
 // Decorative content of the same native check-in button; it never records taps.
-export function MochlikTerrarium({ wakeSignal, suspended = false, nowMs, timeZone, userId, bestStreakDays = 0, items, worldState, worldGifts, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, activity }: Props) {
+export function MochlikTerrarium({ wakeSignal, suspended = false, nowMs, timeZone, userId, bestStreakDays = 0, items, worldState, worldGifts, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, activity, onLoadState, retrySignal = 0 }: Props) {
   const garden = useGardenCollection();
   const canvas = useRef<HTMLCanvasElement>(null);
   const time = useRef(nowMs);
@@ -31,9 +33,13 @@ export function MochlikTerrarium({ wakeSignal, suspended = false, nowMs, timeZon
   const { lampOn, dusk } = habitatLighting(nowMs, timeZone);
   const presenceKey = userId ? `zhiv:mochlik:presence:${userId}` : undefined;
   const options = useRef<SceneOptions>({ lampOn, dusk, paused: false, backgrounded: suspended, reducedMotion: false, presenceKey, bestStreakDays, items, worldState, worldGifts, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, economyGarden: garden?.crop, gardenHarvestRequest: garden?.request, onGardenHarvestEvent: garden?.sceneEvent });
-  const [ready, setReady] = useState(false);
-  const [failed, setFailed] = useState(false);
-  const [attempt, setAttempt] = useState(0);
+  const [loadState, setLoadState] = useState<SceneLoadState>("loading");
+  const ready = loadState === "ready", failed = loadState === "error";
+  const loader = useRef<ReturnType<typeof createSceneLoader<HabitatScene>> | null>(null);
+  const loadCallback = useRef(onLoadState);
+  useEffect(() => { loadCallback.current = onLoadState; }, [onLoadState]);
+  useEffect(() => { loadCallback.current?.(loadState); }, [loadState]);
+  const previousRetry = useRef(retrySignal);
   const inView = useRef(true);
 
   useEffect(() => {
@@ -59,40 +65,70 @@ export function MochlikTerrarium({ wakeSignal, suspended = false, nowMs, timeZon
     const taps = Math.max(0, wakeSignal - previousWake.current);
     previousWake.current = wakeSignal;
     if (failed) {
-      const retry = setTimeout(() => { setFailed(false); setReady(false); setAttempt(value => value + 1); }, 0);
-      return () => clearTimeout(retry);
+      loader.current?.retry();
+      return;
     }
     if (scene.current) { for (let i = 0; i < taps; i++) scene.current.notice(); }
     else pendingWake.current += taps;
   }, [wakeSignal, failed]);
 
   useEffect(() => {
-    let active = true;
     const element = canvas.current;
     if (!element) return;
-    const failure = (error?: unknown) => {
-      if (!active) return;
-      setReady(false); setFailed(true);
-      if (userId) reportIncident(userId, "world", error instanceof HabitatAssetError && error.timedOut ? "WORLD_CHARACTER_TIMEOUT" : "WORLD_CHARACTER_FAILED");
+    const release = (value: HabitatScene) => {
+      value.dispose();
+      if (scene.current === value) scene.current = null;
     };
-    void import("@/features/mochlik/scene").then(({ mountHabitat }) => {
-      if (!active) return;
-      scene.current = mountHabitat(element, { ...options.current, serverNow: time.current }, {
-        activity() {},
-        ready: () => { if (active) setReady(true); },
-        failure,
-      });
-      const taps = pendingWake.current; pendingWake.current = 0;
-      for (let i = 0; i < taps; i++) scene.current.notice();
-    }).catch(failure);
-    return () => { active = false; scene.current?.dispose(); scene.current = null; };
-  }, [attempt, userId]);
+    const loading = createSceneLoader<HabitatScene>({
+      async load(signal) {
+        const { mountHabitat } = await import("@/features/mochlik/scene");
+        signal.throwIfAborted();
+        return new Promise<HabitatScene>((resolve, reject) => {
+          let value: HabitatScene | undefined;
+          const cleanup = () => signal.removeEventListener("abort", abort);
+          const failure = (error?: unknown) => { cleanup(); if (value) release(value); reject(error); };
+          const abort = () => failure(signal.reason);
+          signal.addEventListener("abort", abort, { once: true });
+          try {
+            value = mountHabitat(element, { ...options.current, serverNow: time.current }, {
+              activity() {},
+              ready: () => queueMicrotask(() => {
+                cleanup();
+                if (signal.aborted) { if (value) release(value); reject(signal.reason); }
+                else resolve(value!);
+              }),
+              failure,
+            });
+            scene.current = value;
+            const taps = pendingWake.current; pendingWake.current = 0;
+            for (let i = 0; i < taps; i++) value.notice();
+          } catch (error) { failure(error); }
+        });
+      },
+      release,
+      onReady() {},
+      onState(state, error) {
+        setLoadState(state);
+        if (state === "error" && userId) reportIncident(userId, "world", error instanceof HabitatAssetError && error.timedOut ? "WORLD_CHARACTER_TIMEOUT" : "WORLD_CHARACTER_FAILED");
+      },
+    });
+    loader.current = loading;
+    const unbind = bindSceneLoaderEnvironment(loading);
+    loading.retry();
+    return () => { unbind(); loading.dispose(); if (loader.current === loading) loader.current = null; };
+  }, [userId]);
+
+  useEffect(() => {
+    if (retrySignal === previousRetry.current) return;
+    previousRetry.current = retrySignal;
+    loader.current?.retry();
+  }, [retrySignal]);
 
   return <><div className={styles.scene} data-pet-interaction data-ready={ready} data-light={dusk ? "dusk" : "day"} aria-hidden="true">
     <div className={styles.fallback} style={WORLD_PRESENTATION.rebuilding ? undefined : HOME_BACKGROUND_STYLE} />
     <canvas ref={canvas} className={styles.canvas} />
     <div className={styles.glass} />
-    {!ready && <span className={styles.loadState}>{failed ? "Лес не загрузился. Нажми, чтобы повторить" : "Загружаем Мохлика…"}</span>}
+    {!ready && <span className={styles.loadState}>{failed ? "Восстанавливаем лес… Нажми, чтобы повторить сейчас" : "Загружаем Мохлика…"}</span>}
     {activity && <span className={styles.activity}><WorldActivityBadge activity={activity} /></span>}
   </div>{activity && <WorldActivityDescription id="mochlik-activity-status" activity={activity} />}</>;
 }
