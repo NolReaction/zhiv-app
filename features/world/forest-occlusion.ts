@@ -1,4 +1,4 @@
-import type { FixedSite, FixedWorldScene, WorldBounds, WorldPoint } from "./tiled/types";
+import type { FixedSite, FixedWorldScene, WorldBounds, WorldImage, WorldPoint } from "./tiled/types";
 import { previewPointInPolygon } from "./tiled/preview-state";
 import { forestOcclusionTexture, type ForestOcclusionContour } from "./forest-occlusion-mask";
 
@@ -150,12 +150,27 @@ export function withForestOcclusion(ctx: CanvasRenderingContext2D, scene: FixedW
 /** Paint one building using its effective level geometry. The authored anchor
  * determines depth; bounds already include the image's Tiled rotation. A mask
  * owned by this site's visual state must never erase the artwork it represents.
- * Grounding and unrelated objects belong outside the callback. */
+ * Include the building's grounding with a padded render envelope. */
 export function withForestSiteOcclusion(ctx: CanvasRenderingContext2D, scene: FixedWorldScene, site: FixedSite,
   draw: (target: CanvasRenderingContext2D) => void, renderBounds?: WorldBounds): void {
   const bounds = validBounds(renderBounds) ? renderBounds : site.bounds;
   if (!scene.occluders?.length || !Number.isFinite(site.anchor.y) || !validBounds(bounds)) { draw(ctx); return; }
   withOcclusion(ctx, scene, site.anchor.y, bounds, draw, site.id);
+}
+
+/** Placed terrain artwork belongs below every foreground silhouette, even when
+ * a wide ground patch extends beyond frontY. The first full-world backdrop is
+ * the source of the baked trees; keeping it intact reveals their original pixels.
+ * A state-owned detail ignores the silhouette of the object it depicts. */
+export function withForestImageOcclusion(ctx: CanvasRenderingContext2D, scene: FixedWorldScene, image: WorldImage,
+  draw: (target: CanvasRenderingContext2D) => void, renderBounds?: WorldBounds): void {
+  const bounds = validBounds(renderBounds) ? renderBounds : image.bounds;
+  const backdrop = scene.terrain[0]?.id === image.id && !image.when
+    && (!image.imagePlacement || image.imagePlacement.rotation % 360 === 0)
+    && image.bounds.x <= 0 && image.bounds.y <= 0
+    && image.bounds.x + image.bounds.width >= scene.width && image.bounds.y + image.bounds.height >= scene.height;
+  if (backdrop || !scene.occluders?.length || !validBounds(bounds)) { draw(ctx); return; }
+  withOcclusion(ctx, scene, -Infinity, bounds, draw, image.when?.siteId);
 }
 
 function withOcclusion(ctx: CanvasRenderingContext2D, scene: FixedWorldScene, feetY: number, bounds: WorldBounds,

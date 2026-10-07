@@ -1,7 +1,8 @@
-import type { FixedWorldScene, WorldBounds, WorldBush, WorldPoint } from "./tiled/types";
+import type { FixedWorldScene, WorldBounds, WorldBush, WorldImage, WorldPoint } from "./tiled/types";
 import { forestBushArtworkAvailable } from "./forest-bush-artwork";
 import { drawForestBushLeafShade } from "./forest-bush-grounding";
 import { forestObjectArtwork } from "./forest-object-appearance";
+import { withForestImageOcclusion } from "./forest-occlusion";
 import { forestBushBounds, forestBushParticles, type ForestBushBurst, type ForestBushParticle } from "./forest-bush-particles";
 
 export type ForestBushFrame = {
@@ -11,7 +12,7 @@ export type ForestBushFrame = {
   bursts?: readonly ForestBushBurst[];
   ripe?: boolean;
 };
-type TerrainSource = { image: HTMLImageElement; bounds: WorldBounds; artwork?: HTMLImageElement | HTMLCanvasElement };
+type TerrainSource = { image: HTMLImageElement; bounds: WorldBounds; artwork?: HTMLImageElement | HTMLCanvasElement; terrain?: WorldImage };
 type BushTexture = { leaves: HTMLCanvasElement | null; bounds: WorldBounds; sources: TerrainSource[] };
 const textures = new WeakMap<FixedWorldScene, WeakMap<WorldBush, BushTexture>>();
 const clamp = (value: number) => Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
@@ -31,10 +32,14 @@ function overlaps(a: WorldBounds, b: WorldBounds) {
   return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
 }
 
-function paintTerrain(ctx: CanvasRenderingContext2D, sources: readonly TerrainSource[]) {
-  for (const { image, bounds, artwork } of sources) {
-    if (artwork && artwork !== image) ctx.drawImage(artwork, bounds.x, bounds.y, bounds.width, bounds.height);
-    else ctx.drawImage(image, 0, 0, image.naturalWidth, image.naturalHeight, bounds.x, bounds.y, bounds.width, bounds.height);
+function paintTerrain(ctx: CanvasRenderingContext2D, sources: readonly TerrainSource[], scene?: FixedWorldScene) {
+  for (const { image, bounds, artwork, terrain } of sources) {
+    const paint = (target: CanvasRenderingContext2D) => {
+      if (artwork && artwork !== image) target.drawImage(artwork, bounds.x, bounds.y, bounds.width, bounds.height);
+      else target.drawImage(image, 0, 0, image.naturalWidth, image.naturalHeight, bounds.x, bounds.y, bounds.width, bounds.height);
+    };
+    if (scene && terrain) withForestImageOcclusion(ctx, scene, terrain, paint);
+    else paint(ctx);
   }
 }
 
@@ -59,7 +64,7 @@ function textureFor(scene: FixedWorldScene, bush: WorldBush, bounds: WorldBounds
   const crop = { x, y, width: canvas.width / scale, height: canvas.height / scale };
   ctx.setTransform(scale, 0, 0, scale, -x * scale, -y * scale);
   ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
-  paintTerrain(ctx, sources);
+  paintTerrain(ctx, sources, scene);
   const leaves = document.createElement("canvas"); leaves.width = canvas.width; leaves.height = canvas.height;
   const leafCtx = leaves.getContext("2d");
   if (leafCtx) {
@@ -173,8 +178,12 @@ export function drawForestBush(
     const image = terrain && images.get(terrain.image);
     if (!terrain || !image?.naturalWidth || !image.naturalHeight) return;
     if (forestBushForegroundActive(frame, still)) {
-      drawCutout(ctx, { image, artwork: forestObjectArtwork(image, "foliage"), bounds: terrain.bounds }, bounds, rustle, time);
-      drawForestBushLeafShade(ctx, scene, terrain, image);
+      const padding = Math.max(terrain.bounds.width, terrain.bounds.height) * .3;
+      withForestImageOcclusion(ctx, scene, terrain, target => {
+        drawCutout(target, { image, artwork: forestObjectArtwork(image, "foliage"), bounds: terrain.bounds }, bounds, rustle, time);
+        drawForestBushLeafShade(target, scene, terrain, image);
+      }, { x: terrain.bounds.x - padding, y: terrain.bounds.y - padding,
+        width: terrain.bounds.width + padding * 2, height: terrain.bounds.height + padding * 2 });
     }
     drawParticles(ctx, particles);
     return;
@@ -186,7 +195,7 @@ export function drawForestBush(
     const image = images.get(terrain.image);
     // Do not retain an incomplete foreground while artwork is still loading.
     if (!image || !image.naturalWidth || !image.naturalHeight) return;
-    sources.push({ image, bounds: terrain.bounds });
+    sources.push({ image, bounds: terrain.bounds, terrain });
   }
   if (!sources.length) return;
   // Residual berries can settle while the actor is already leaving. They must not
@@ -198,7 +207,7 @@ export function drawForestBush(
   ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
   // Redraw native terrain through the exact clip so entering a bush does not
   // change its sharpness. This also works without offscreen canvas or Path2D.
-  paintTerrain(ctx, sources);
+  paintTerrain(ctx, sources, scene);
   if (texture && rustle > .001 && texture.leaves) {
     const area = texture.bounds;
     const amplitude = rustle * Math.min(2.1, bounds.width * .028, bounds.height * .034);
