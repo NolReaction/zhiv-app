@@ -79,7 +79,8 @@ internal fun economyView(c: Connection, user: UUID, publicId: String, now: Insta
     val s = row.state
     return EconomyView(publicId, row.revision, now.toString(), s.wallet, s.inventory, s.buildings, s.jobs.map(EconomyPublicJobs::project), s.migration,
         EconomyRules.catalog, EconomyRules.storage(s, reservedEconomyMarketItems(c, user)), s.completedExplorations, s.fishing, s.progression, wardrobe = s.wardrobe, fishingShop = s.fishingShop,
-        productionSlots = s.productionSlots, food = s.food, residentOrders = s.residentOrders)
+        productionSlots = s.productionSlots, food = s.food, residentOrders = s.residentOrders,
+        workshopStarterClaimed = s.workshopStarterClaimed)
 }
 
 /** Save only public action context before a consumed job disappears. In

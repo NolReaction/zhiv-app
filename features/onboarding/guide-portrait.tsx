@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { pixelSprite, type PixelPose } from "@/features/mochlik/pixel-sprite";
-import { guidePortraitFrame } from "./guide-portrait-animation";
+import { guidePortraitFrame, guidePortraitGestureDuration } from "./guide-portrait-animation";
 
 export function GuidePortrait({ pose, stepId, className }: { pose: PixelPose; stepId: string; className?: string }) {
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -28,14 +28,14 @@ export function GuidePortrait({ pose, stepId, className }: { pose: PixelPose; st
       elapsed += now - previousTime;
       previousTime = now;
       paint();
-      timer = setTimeout(tick, 100);
+      if (elapsed < guidePortraitGestureDuration(pose)) timer = setTimeout(tick, 100);
     };
     const resume = () => {
       clearTimeout(timer);
       timer = undefined;
       previousTime = performance.now();
       paint();
-      if (document.visibilityState !== "hidden" && !motion.matches) timer = setTimeout(tick, 100);
+      if (document.visibilityState !== "hidden" && !motion.matches && elapsed < guidePortraitGestureDuration(pose)) timer = setTimeout(tick, 100);
     };
     resume();
     document.addEventListener("visibilitychange", resume);

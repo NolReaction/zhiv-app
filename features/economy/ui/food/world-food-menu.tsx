@@ -59,7 +59,7 @@ export function WorldFoodMenu({ economy, initialTab = "meals", residentId, onNav
   const sections = [{ id: "meals", name: "Еда", icon: Utensils }, { id: "orders", name: "Заказы", icon: ClipboardList }] as const;
   return <div className={styles.food} aria-busy={economy.busy || undefined}>
     {recovery}
-    <nav className={styles.tabs} role="tablist" aria-label="Еда и заказы">{sections.map((section, index) => <button key={section.id} ref={element => { tabs.current[index] = element; }} type="button" role="tab" id={`${tabId}-${section.id}`} aria-controls={`${tabId}-content`} aria-selected={tab === section.id} tabIndex={tab === section.id ? 0 : -1} onClick={() => setTab(section.id)} onKeyDown={event => {
+    <nav className={styles.tabs} role="tablist" aria-label="Еда и заказы">{sections.map((section, index) => <button key={section.id} data-world-food-tab={section.id} ref={element => { tabs.current[index] = element; }} type="button" role="tab" id={`${tabId}-${section.id}`} aria-controls={`${tabId}-content`} aria-selected={tab === section.id} tabIndex={tab === section.id ? 0 : -1} onClick={() => setTab(section.id)} onKeyDown={event => {
       const next = event.key === "ArrowRight" ? (index + 1) % sections.length : event.key === "ArrowLeft" ? (index + sections.length - 1) % sections.length : event.key === "Home" ? 0 : event.key === "End" ? sections.length - 1 : null;
       if (next === null) return;
       event.preventDefault(); setTab(sections[next].id); tabs.current[next]?.focus({ preventScroll: true });

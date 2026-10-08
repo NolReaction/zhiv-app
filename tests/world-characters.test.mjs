@@ -60,11 +60,13 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
         return { open: false, loaded: true, isPaused: false, progress: { version: 2, status: "skipped" },
           start() {}, step() {}, setCrop() {}, skip() {}, complete() {}, pause() {}, resume() {}, replay() {} };
       }
+      export function useWorldRewardPromptGate() { return false; }
     `; },
     transform(source, id) {
       if (id.endsWith("/features/world/world-view.tsx") || id.endsWith("/features/economy/ui/construction/use-construction-goal.ts")) {
         return source.replace('from "react";', `from "${hookModule}";`)
-          .replace('from "@/features/world/state/use-world-onboarding";', `from "${hookModule}";`);
+          .replace('from "@/features/world/state/use-world-onboarding";', `from "${hookModule}";`)
+          .replace('from "@/features/world/state/onboarding-reward-gate";', `from "${hookModule}";`);
       }
     },
   }],

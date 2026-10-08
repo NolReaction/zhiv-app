@@ -14,6 +14,7 @@ import { economyCount, economyTime, type AdminEconomyTarget } from "./admin-econ
 import styles from "./admin-economy.module.css";
 
 const ledgerLabels: Record<string, string> = {
+  claim_workshop_starter: "Подарок для первой мастерской",
   eat_food: "Еда для Мохлика", feed_builder: "Еда для строителя",
   complete_resident_order: "Сдача заказа жителя", replace_resident_order: "Замена заказа жителя",
   legacy_conversion: "Перенос прежних ресурсов", legacy_journey: "Прежнее путешествие", start_production: "Начало производства",

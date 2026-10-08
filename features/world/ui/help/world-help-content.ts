@@ -37,23 +37,24 @@ const itemName = (id: string) => economyCatalog.items.find(item => item.id === i
 export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelpTopic[] {
   void _legacyRebuilding;
   const food = economyCatalog.food;
+  const firstWorkshop = economyCatalog.buildings.find(building => building.id === "workshop")?.levels.find(level => level.level === 1);
   const legendaryChance = economyCatalog.fishing ? fishingOdds({}, economyCatalog.fishing,
     { rodId: "starfall_rod", hookId: "leviathan_hook", baitId: "firefly_bait" })
     .filter(odds => economyCatalog.fishing!.fish.some(fish => fish.itemId === odds.itemId && fish.rarity === "legendary"))
     .reduce((sum, odds) => sum + odds.probability, 0) : 0;
   return [
     {
-      id: "start", group: "start", title: "С чего начать играть?", summary: "Первый урожай и первая вылазка",
+      id: "start", group: "start", title: "С чего начать играть?", summary: "Ягоды, соседи и первая мастерская",
       keywords: "новичок начало впервые ничего не понимаю непонятно что делать дальше обучение",
       steps: [
+        "Откройте «Ещё» → «Обучение»: Мохлик проведёт короткую прогулку. Кнопки работают прямо во время подсказок, любой шаг можно отложить.",
         "Нажмите ягодный куст → выберите урожай → «Начать». Первый урожай бесплатный.",
-        "Пока ягоды растут, откройте «В путь» → «Лес» и отправьте Мохлика на доступную разведку.",
-        "Заберите находки после таймера. Когда Мохлик вернётся, соберите ягоды с куста.",
-        "Откройте дом: окно улучшения покажет, что собрать дальше. Красный материал можно нажать, чтобы узнать, где его получить.",
+        "Пока ягоды растут, познакомьтесь с Плёской и Шишколапом, посмотрите заказы и план мастерской. Разговаривать, покупать и начинать стройку сейчас необязательно.",
+        "Когда урожай созреет и Мохлик будет свободен, нажмите «Собрать» у ягод. После сбора они окажутся в кладовой.",
       ],
-      note: "Работы идут и в закрытой игре. Готовые запасы ждут вас и не портятся.",
+      note: "Прогулка рассчитана примерно на 3–5 минут без ожидания таймеров. Работы идут и в закрытой игре; готовые запасы ждут вас и не портятся.",
       action: { label: "К ягодному кусту", target: { kind: "station", stationId: "garden" } },
-      relatedIds: ["controls", "production", "construction"],
+      relatedIds: ["controls", "production", "construction", ...(firstWorkshop ? ["workshop-starter"] : [])],
     },
     {
       id: "controls", group: "start", title: "Как управлять картой?", summary: "Передвинуть, приблизить и найти Мохлика",
@@ -156,6 +157,19 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
       action: { label: "К улучшению дома", target: { kind: "upgrade", stationId: "home" } },
       relatedIds: ["construction-goal", "builder-food", "pearls", "future-world"],
     },
+    ...(firstWorkshop ? [{
+      id: "workshop-starter", group: "start", title: "Как получить набор для первой мастерской?", summary: "Один подарок на аккаунт, стройка по вашему нажатию",
+      keywords: "обучение новичок стартовый набор первая мастерская подарок бонус дерево древесина камень монеты построить шишколап",
+      paragraphs: [`Набор равен полной стоимости первой мастерской: ${firstWorkshop.cost.coins.toLocaleString("ru-RU")} монет; ${Object.entries(firstWorkshop.cost.items).map(([id, amount]) => `${itemName(id)} — ${amount}`).join(", ")}. Уже накопленные запасы остаются у вас.`],
+      steps: [
+        "Откройте «Ещё» → «Обучение» и дойдите до мастерской. Нажмите «Получить набор» и дождитесь подтверждения. Для материалов нужно свободное место в кладовой.",
+        "Набор доступен один раз на аккаунт до первой стройки мастерской. Если она уже построена или строится, получить его нельзя; повтор обучения подарок не повторяет.",
+        `После получения откройте план постройки и запустите её обычной кнопкой. Шишколап строит ${firstWorkshop.seconds / 60} минут в фоне; ждать в обучении не нужно.`,
+      ],
+      note: "Получение набора само не запускает стройку. Если связь прервалась, проверьте результат запроса перед продолжением.",
+      action: { label: "К плану мастерской", target: { kind: "upgrade", stationId: "workshop" } },
+      relatedIds: ["construction", "storage", "saving"],
+    }] satisfies WorldHelpTopic[] : []),
     {
       id: "construction-goal", group: "economy", title: "Как не продать нужные материалы?", summary: "Закрепить цель улучшения",
       keywords: "закрепить закреп булавка цель не хватает материалов сырье излишек сохранить ресурсы",
@@ -399,6 +413,7 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
         `Следующий подарок доступен в новые сутки UTC и не раньше ${progressionRewardsCatalog.dailyMinimumHours} часов после прошлого. Шагов семь; пропуск не сбрасывает шаг. В седьмом есть древнее ядро.`,
         "Жемчуг за достижения забирайте в профиле аккаунта на главном экране. Каждая выполненная ступень оплачивается один раз.",
       ],
+      paragraphs: ["Во время обучения на карте подарок сам не открывается. После завершения или пропуска автоматическое предложение может появиться через минуту, когда экран свободен. Вручную открыть подарки в профиле можно в любой момент."],
       note: "Если ответ потерялся, нажмите «Проверить получение». При нехватке места освободите кладовую и вернитесь к подарку — повторно награда не начислится.",
       action: { label: "К профилю и подаркам", target: { kind: "profile", tab: "profile" } },
       relatedIds: ["storage", "saving", "relics"],

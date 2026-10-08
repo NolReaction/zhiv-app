@@ -131,3 +131,20 @@ test("long explanations settle a reaching/holding gesture instead of continuousl
     assert.deepEqual(guidePortraitFrame(pose, Number.NaN), guidePortraitFrame(pose, 0));
   }
 });
+
+test("a greeting is finite and does not restart while the player reads", () => {
+  const env = environment();
+  let stop;
+  try {
+    stop = env.start("greet", "hello");
+    env.advance(1200);
+    assert.equal(env.timers.size, 0, "the gesture releases its frame timer after settling");
+    const painted = env.draws.length;
+    env.advance(6000);
+    env.visibility("hidden");
+    env.visibility("visible");
+    assert.equal(env.timers.size, 0, "tab visibility cannot restart a completed gesture");
+    assert.equal(env.draws.length, painted);
+    assert.deepEqual(guidePortraitFrame("greet", 5800), guidePortraitFrame("greet", 2000));
+  } finally { stop?.(); env.restore(); }
+});

@@ -233,6 +233,7 @@ object EconomyRules {
         if (command.action !in setOf("speedup_construction", "buy_fishing_item", "buy_wardrobe_item", "refresh_fishing_shop", "replace_resident_order", "sell") && command.totalPrice != 0L) invalidEconomy()
         if (command.action !in setOf("start_production", "sell", "sell_fish", "buy_fishing_item") && command.quantity != 1L) invalidEconomy()
         return when (command.action) {
+            "claim_workshop_starter" -> EconomyWorkshopStarter.claim(state, command, reservedItems)
             "eat_food", "feed_builder" -> EconomyFood.eat(state, command.targetId, command.action == "feed_builder", now)
             "complete_resident_order", "replace_resident_order" -> EconomyFood.order(state, command.targetId,
                 command.action == "replace_resident_order", now, command.totalPrice)

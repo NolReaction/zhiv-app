@@ -42,6 +42,7 @@ import { CurrencyShopPanel } from "@/features/economy/ui/market/currency-shop-pa
 import { useConstructionGoal } from "@/features/economy/ui/construction/use-construction-goal";
 import { ConstructionGoalSummary } from "@/features/economy/ui/construction/construction-goal-summary";
 import { useWorldOnboarding } from "@/features/world/state/use-world-onboarding";
+import { useWorldRewardPromptGate } from "@/features/world/state/onboarding-reward-gate";
 import { WorldOnboardingSession } from "@/features/world/ui/onboarding/world-onboarding";
 
 type Panel = "journeys" | "economy" | "customize" | "wardrobe" | "collection" | "help" | "shop";
@@ -94,6 +95,9 @@ export default function WorldView({ open, world, economy, ownerPublicId, timeZon
   const [localNotice, setLocalNotice] = useState(0);
   const [menuBounds, setMenuBounds] = useState({ top: 144, bottom: 88, left: 12, right: 12 });
   const worldElement = useRef<HTMLElement>(null);
+  const dailyAutoPromptAllowed = useWorldRewardPromptGate(ownerPublicId, onboarding,
+    Boolean(!open || panel || quickMenu || selection || quickUpgrade || residentOpen || charactersOpen
+      || economy.busy || economy.uncertain || world.busy || world.uncertain), worldElement);
   const replayOnboarding = () => {
     navigatingHelp.current = panel === "help";
     setPanel(null); setQuickMenu(null); clearObject();
@@ -401,6 +405,7 @@ export default function WorldView({ open, world, economy, ownerPublicId, timeZon
       </div>
     </section>}
     <DailyRewardsDialog key={ownerPublicId} ownerPublicId={ownerPublicId} economy={economy} isOnline={isOnline} onSessionLost={onSessionLost}
+      autoPromptAllowed={dailyAutoPromptAllowed}
       open={dailyOpen} onOpenChange={setDailyOpen} onOpenPantry={openGiftPantry} onReturnFocus={() => {
         if (leavingDaily.current) { leavingDaily.current = false; quickFrame.current?.focus({ preventScroll: true }); return; }
         if (dailyTrigger.current?.isConnected) dailyTrigger.current.focus({ preventScroll: true });
@@ -506,6 +511,9 @@ export default function WorldView({ open, world, economy, ownerPublicId, timeZon
       onStart={onboarding.start} onStep={onboarding.step} onCrop={onboarding.setCrop}
       onSkip={onboarding.skip} onComplete={onboarding.complete} onPause={onboarding.pause}
       onOpenQuick={openQuick} onOpenGarden={recipe => openObject("garden", "garden", recipe)} onOpenHelp={() => openContextHelp()}
+      onOpenResident={openResident} residentOpen={residentOpen ? residentId : null}
+      onOpenOrders={() => openFood("orders")} ordersOpen={quickMenu === "food" && foodEntry.tab === "orders"}
+      onOpenWorkshop={view => view === "recipes" ? openObject("workshop", "workshop") : openUpgrade("workshop")} workshopOpen={quickUpgrade === "workshop" || selection?.place === "workshop"}
       onCloseSurface={() => { setPanel(null); setQuickMenu(null); clearObject(); }} />
   </section>;
 }

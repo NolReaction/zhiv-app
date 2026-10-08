@@ -97,6 +97,7 @@ internal fun mergeEconomyProfiles(c: Connection, target: UUID, source: UUID) {
         progression=EconomyCollectionProgress.merge(a.progression,b.progression),
         food=EconomyFoodState(a.food.heroMeal ?: b.food.heroMeal, a.food.builderMeal ?: b.food.builderMeal),
         residentOrders=EconomyFood.mergeOrders(a.copy(buildings=buildings),b.copy(buildings=buildings),now),
+        workshopStarterClaimed=a.workshopStarterClaimed || b.workshopStarterClaimed,
         rareDropState=EconomyRareDrops.merge(a.rareDropState,b.rareDropState)), recordAwards=false)
     // Preserve original signatures: an old source browser cannot reuse a consumed request ID.
     c.lifecycleEconomyUpdate("""INSERT INTO economy_commands(user_id,request_id,signature,message,accepted_revision)

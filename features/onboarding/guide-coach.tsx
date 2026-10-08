@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type CSSProperties, type RefObject } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { ArrowLeft, ArrowRight, Leaf, Minus, MousePointer2 } from "lucide-react";
 import type { PixelPose } from "@/features/mochlik/pixel-sprite";
-import { GuidePortrait } from "./guide-portrait";
+import { GuideCharacter } from "./guide-character";
 import styles from "./guide-coach.module.css";
 
 export type GuideCoachProps = {
@@ -25,6 +25,7 @@ export type GuideCoachProps = {
   onPause: () => void;
   onSkip: () => void;
   onBack?: () => void;
+  children?: ReactNode;
 };
 type Bounds = { left: number; top: number; width: number; height: number };
 type CoachLayout = { key: string; left: number; top: number; highlight: (Bounds & { borderRadius: string }) | null };
@@ -34,7 +35,7 @@ const overlapArea = (a: Bounds, b: Bounds) => Math.max(0, Math.min(a.left + a.wi
 /** An ordinary region, deliberately inside the parent's DOM/focus scope.
  * Only the speech bubble receives pointer events; the real UI stays usable. */
 export function GuideCoach(props: GuideCoachProps) {
-  const { open, flow, stepId, target, targetRoot, compact, title, text, hint, pose, progress, welcome, status, primary, secondary, onPause, onSkip, onBack } = props;
+  const { open, flow, stepId, target, targetRoot, compact, title, text, hint, pose, progress, welcome, status, primary, secondary, onPause, onSkip, onBack, children } = props;
   const headingId = useId(), textId = useId();
   const card = useRef<HTMLElement>(null), copy = useRef<HTMLDivElement>(null);
   const [layout, setLayout] = useState<CoachLayout | null>(null);
@@ -131,10 +132,11 @@ export function GuideCoach(props: GuideCoachProps) {
       {progress && <div className={styles.progress} aria-hidden="true"><span style={{ width: `${progress.total > 0 ? current / progress.total * 100 : 0}%` }} /></div>}
       <div ref={copy} className={styles.copy}>
         <div className={styles.intro}>
-          <div className={styles.character}><GuidePortrait pose={pose} stepId={stepId} className={styles.portrait} /></div>
+          <GuideCharacter key={stepId} pose={pose} stepId={stepId} />
           <h2 id={headingId} className={styles.title}>{title}</h2>
         </div>
         <p id={textId} className={styles.text}>{text}</p>
+        {children}
         {hint && <p className={styles.hint}><MousePointer2 size={15} aria-hidden="true" /><span>{hint}</span></p>}
         {status && <p className={styles.status} role="status">{status}</p>}
       </div>

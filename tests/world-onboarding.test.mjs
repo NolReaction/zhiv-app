@@ -24,9 +24,11 @@ const {
   writeWorldOnboarding,
 } = await vite.ssrLoadModule("/features/world/state/world-onboarding-storage.ts");
 
-const stepIds = ["profile", "pantry", "garden", "grow", "expeditions", "help"];
+const stepIds = ["profile", "pantry", "garden", "grow", "neighbors", "orders", "workshop", "expeditions", "help"];
 const started = stepId => ({ version: WORLD_ONBOARDING_VERSION, status: "started", stepId });
 const terminal = status => ({ version: WORLD_ONBOARDING_VERSION, status });
+const now = Date.UTC(2026, 9, 8, 12);
+const finished = status => ({ ...terminal(status), finishedAt: now });
 const cropJobId = "8be0c480-246c-4d4b-97f6-18eccf1bdf04";
 
 function memoryStorage() {
@@ -44,7 +46,7 @@ function advance(store, event) {
   if (progress) store.save(progress);
 }
 
-test("the second introduction includes berry practice and changes the hero's pose", () => {
+test("the introduction includes berry practice, neighbors, orders and workshop with changing poses", () => {
   assert.equal(WORLD_ONBOARDING_VERSION, 2);
   assert.deepEqual(WORLD_ONBOARDING_STEPS.map(step => step.id), stepIds);
   assert.equal(new Set(WORLD_ONBOARDING_STEPS.map(step => step.id)).size, stepIds.length);
@@ -66,6 +68,37 @@ test("skip and completion retain a crop reference without retaining an obsolete 
     const progress = { ...terminal(status), cropJobId };
     assert.deepEqual(parse(progress), progress);
     assert.deepEqual(parse({ ...progress, stepId: "pantry", futureField: true }), progress);
+  }
+});
+
+test("terminal progress retains a valid finish time, including the epoch boundary", () => {
+  for (const status of ["skipped", "completed"]) {
+    for (const finishedAt of [0, 1, now, 8_640_000_000_000_000]) {
+      const progress = { ...terminal(status), cropJobId, finishedAt };
+      assert.deepEqual(parse(progress), progress);
+    }
+  }
+  assert.deepEqual(parse({ ...started("orders"), finishedAt: now }), started("orders"),
+    "an active tutorial cannot inherit a previous run's reward delay");
+});
+
+test("invalid finish times are discarded without losing the decision or crop reference", () => {
+  for (const finishedAt of [-1, 0.5, "1781000000000", null, true, {}, [], NaN, Infinity, -Infinity, 8_640_000_000_000_001, Number.MAX_SAFE_INTEGER]) {
+    for (const status of ["skipped", "completed"]) {
+      const progress = { ...terminal(status), cropJobId };
+      assert.deepEqual(parse({ ...progress, finishedAt }), progress);
+    }
+  }
+  assert.deepEqual(parseWorldOnboarding('{"version":2,"status":"completed","finishedAt":1e309}'), terminal("completed"));
+});
+
+test("legacy terminal records do not acquire a retrospective finish time", () => {
+  for (const status of ["skipped", "completed"]) {
+    assert.deepEqual(parse({ version: 1, status, finishedAt: now }), terminal(status));
+    const progress = parse(terminal(status));
+    assert.deepEqual(progress, terminal(status));
+    assert.deepEqual(transitionWorldOnboarding(progress, { type: "crop", jobId: cropJobId }), { ...terminal(status), cropJobId });
+    assert.deepEqual(transitionWorldOnboarding(progress, { type: status === "skipped" ? "skip" : "complete", now }), terminal(status));
   }
 });
 
@@ -117,7 +150,7 @@ test("an invalid optional crop reference is discarded without reopening a dismis
 test("real crop observation alone does not opt a new player into the tutorial", () => {
   assert.equal(transitionWorldOnboarding(null, { type: "crop", jobId: cropJobId }), null);
   assert.deepEqual(transitionWorldOnboarding(null, { type: "start" }), started("profile"));
-  assert.deepEqual(transitionWorldOnboarding(null, { type: "skip" }), terminal("skipped"));
+  assert.deepEqual(transitionWorldOnboarding(null, { type: "skip", now }), finished("skipped"));
 });
 
 test("forward and backward navigation preserve the crop after the player starts growing", () => {
@@ -131,12 +164,26 @@ test("forward and backward navigation preserve the crop after the player starts 
 
 test("finishing or skipping can leave a real crop available for a later harvest reminder", () => {
   const progress = { ...started("help"), cropJobId };
-  assert.deepEqual(transitionWorldOnboarding(progress, { type: "complete" }), { ...terminal("completed"), cropJobId });
-  assert.deepEqual(transitionWorldOnboarding(progress, { type: "skip" }), { ...terminal("skipped"), cropJobId });
+  assert.deepEqual(transitionWorldOnboarding(progress, { type: "complete", now }), { ...finished("completed"), cropJobId });
+  assert.deepEqual(transitionWorldOnboarding(progress, { type: "skip", now }), { ...finished("skipped"), cropJobId });
+});
+
+test("the first terminal decision stamps once and later callbacks cannot restart the delay", () => {
+  for (const firstType of ["skip", "complete"]) {
+    for (const secondType of ["skip", "complete"]) {
+      for (const firstTime of [0, now]) {
+        const first = transitionWorldOnboarding(started("help"), { type: firstType, now: firstTime });
+        assert.equal(first.finishedAt, firstTime);
+        const repeated = transitionWorldOnboarding(first, { type: secondType, now: now + 60_000 });
+        assert.equal(repeated.finishedAt, firstTime);
+        assert.equal(repeated.status, secondType === "skip" ? "skipped" : "completed");
+      }
+    }
+  }
 });
 
 test("clearing an acknowledged or stale crop preserves the player's tutorial decision", () => {
-  for (const progress of [started("grow"), terminal("skipped"), terminal("completed")]) {
+  for (const progress of [started("grow"), terminal("skipped"), terminal("completed"), finished("skipped"), finished("completed")]) {
     const withCrop = { ...progress, cropJobId };
     assert.deepEqual(transitionWorldOnboarding(withCrop, { type: "crop" }), progress);
     assert.deepEqual(transitionWorldOnboarding(withCrop, { type: "crop", jobId: undefined }), progress);
@@ -144,10 +191,20 @@ test("clearing an acknowledged or stale crop preserves the player's tutorial dec
   }
 });
 
-test("explicit replay starts fresh and clears the previous crop reference", () => {
-  for (const progress of [null, started("grow"), terminal("skipped"), { ...terminal("completed"), cropJobId }]) {
+test("explicit replay starts fresh and clears the previous crop reference and finish time", () => {
+  for (const progress of [null, started("grow"), terminal("skipped"), { ...terminal("completed"), cropJobId }, { ...finished("completed"), cropJobId }]) {
     assert.deepEqual(transitionWorldOnboarding(progress, { type: "replay" }), started("profile"));
+    assert.deepEqual(transitionWorldOnboarding(progress, { type: "start" }), started("profile"));
   }
+});
+
+test("a fresh replay can finish at a new time while returning to a step clears the old finish time", () => {
+  const previous = { ...finished("completed"), cropJobId };
+  const active = transitionWorldOnboarding(previous, { type: "step", stepId: "neighbors" });
+  assert.deepEqual(active, { ...started("neighbors"), cropJobId });
+  const restarted = transitionWorldOnboarding(previous, { type: "replay" });
+  const nextTime = now + 300_000;
+  assert.deepEqual(transitionWorldOnboarding(restarted, { type: "complete", now: nextTime }), { ...terminal("completed"), finishedAt: nextTime });
 });
 
 test("the stable account key reads legacy data without requiring a second key or eager rewrite", () => {
@@ -179,8 +236,8 @@ test("saved crop progress survives reopening and can become completed without lo
   const store = createWorldOnboardingStore("REOPEN-PLAYER", storage);
   store.restore();
   assert.deepEqual(store.getSnapshot().progress, progress);
-  advance(store, { type: "complete" });
-  assert.deepEqual(readWorldOnboarding("REOPEN-PLAYER", storage), { ...terminal("completed"), cropJobId });
+  advance(store, { type: "complete", now });
+  assert.deepEqual(readWorldOnboarding("REOPEN-PLAYER", storage), { ...finished("completed"), cropJobId });
 });
 
 test("unreadable and future local progress is treated as absent without rewriting storage", () => {
@@ -235,8 +292,8 @@ test("observing a crop and advancing in the same turn preserves the newest store
   advance(store, { type: "step", stepId: "grow" });
   advance(store, { type: "crop", jobId: cropJobId });
   advance(store, { type: "step", stepId: "expeditions" });
-  advance(store, { type: "complete" });
-  assert.deepEqual(store.getSnapshot().progress, { ...terminal("completed"), cropJobId });
+  advance(store, { type: "complete", now });
+  assert.deepEqual(store.getSnapshot().progress, { ...finished("completed"), cropJobId });
 });
 
 test("temporary storage failure keeps progress in memory and isolates accounts", () => {
@@ -252,10 +309,10 @@ test("temporary storage failure keeps progress in memory and isolates accounts",
   const other = createWorldOnboardingStore("IN-MEMORY-SECOND", denied);
   other.restore();
   assert.deepEqual(other.getSnapshot(), { loaded: true, progress: null });
-  advance(reopened, { type: "skip" });
+  advance(reopened, { type: "skip", now });
   const afterSkip = createWorldOnboardingStore("IN-MEMORY-FIRST", denied);
   afterSkip.restore();
-  assert.deepEqual(afterSkip.getSnapshot(), { loaded: true, progress: { ...terminal("skipped"), cropJobId } });
+  assert.deepEqual(afterSkip.getSnapshot(), { loaded: true, progress: { ...finished("skipped"), cropJobId } });
   assert.deepEqual(other.getSnapshot(), { loaded: true, progress: null });
 });
 

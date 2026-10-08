@@ -10,6 +10,7 @@ import { economyLocalSellPrice } from "./local-sale";
 import { economyActorConflict } from "./actor-availability";
 import { remainingTimePearlPrice } from "./time-price";
 import { advanceResidentOrder, foodState, initialResidentOrders, mealDuration, normalizedResidentOrders, pendingMeal, recipeWithFish, residentOrderBoard } from "./food";
+import { canClaimWorkshopStarter, workshopStarterCost } from "./workshop-starter";
 export { economyLocalSellPrice, economyLocalSaleMinimumQuantity, economyLocalSaleLimit } from "./local-sale";
 
 export class EconomyRuleError extends Error {
@@ -64,7 +65,7 @@ export function newEconomyState(legacy: { resources: { sparks: number; wood: num
     inventory: { ...(migration.woodGranted ? { wood: migration.woodGranted } : {}), ...(migration.stoneGranted ? { stone: migration.stoneGranted } : {}) },
     buildings: Object.fromEntries(economyCatalog.buildings.map(building => [building.id, building.id === "home" ? Math.max(1, Math.min(5, legacy.houseLevel))
       : ["garden", "warehouse"].includes(building.id) ? 1 : building.id === "workshop" ? Math.max(0, Math.min(3, legacy.workshopLevel)) : 0])),
-    jobs: [], wardrobe: wardrobeOwned(), migration, completedExplorations: 0, fishing: fishingState({}), progression: newEconomyProgression(),
+    jobs: [], workshopStarterClaimed: false, wardrobe: wardrobeOwned(), migration, completedExplorations: 0, fishing: fishingState({}), progression: newEconomyProgression(),
     food: foodState({}), residentOrders: initialResidentOrders() };
 }
 function debit(state: EconomyState, cost: EconomyCost) {
@@ -116,6 +117,23 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
   };
   if (!["start_production", "sell", "sell_fish", "buy_fishing_item"].includes(command.action) && command.quantity !== 1) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Для этого действия количество должно быть равно одному", 400);
   switch (command.action) {
+    case "claim_workshop_starter": {
+      if (command.targetId !== "workshop") throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Этот подарок предназначен для первой мастерской", 400);
+      if (state.workshopStarterClaimed) return fail("ECONOMY_WORKSHOP_STARTER_CLAIMED", "Подарок для мастерской уже получен");
+      if (!canClaimWorkshopStarter(state)) return fail("ECONOMY_WORKSHOP_STARTER_UNAVAILABLE", "Первая мастерская уже построена или строится");
+      const cost = workshopStarterCost();
+      if (cost.coins > ECONOMY_MAX_BALANCE - state.wallet.coins) return fail("ECONOMY_CAPACITY", "Кошелёк заполнен");
+      const inventory = { ...state.inventory };
+      for (const [item, amount] of Object.entries(cost.items)) {
+        if (amount > ECONOMY_MAX_ITEMS - (inventory[item] ?? 0)) return fail("ECONOMY_CAPACITY", "Сначала освободите место для этого материала");
+        inventory[item] = (inventory[item] ?? 0) + amount;
+      }
+      assertEconomyStorageTransition(state, { ...state, inventory }, reservedItems);
+      state.inventory = inventory;
+      state.wallet.coins += cost.coins;
+      state.workshopStarterClaimed = true;
+      return "Получены монеты и материалы для первой мастерской";
+    }
     case "start_production": {
       if (command.targetId.startsWith("quarry_")) return fail("ECONOMY_MINING_ACTIVITY", "В шахте работает Мохлик. Выберите участок для вылазки");
       if (command.quantity > economyCatalog.maxBatch) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Слишком большая партия", 400);

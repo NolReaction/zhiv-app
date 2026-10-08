@@ -93,6 +93,42 @@ class JdbcAccountLifecycleIntegrationTest {
         execute("INSERT INTO recipient_sharing_preferences(actor_user_id,recipient_user_id,sharing_mode) VALUES (?,?,?) ON CONFLICT(actor_user_id,recipient_user_id) DO UPDATE SET sharing_mode=EXCLUDED.sharing_mode",a.id,b.id,mode)
     }
 
+    @Test fun `workshop gift consumed in either account survives real merge without another award`(): Unit=runBlocking {
+        for (targetClaims in listOf(false, true)) {
+            val a=account(); val b=account(); val browser=tokens.issue().hash
+            val economy=JdbcEconomyRepository(source)
+            economy.snapshot(a.session); economy.snapshot(b.session)
+            val recipient=if(targetClaims) a else b
+            val before=economy.snapshot(recipient.session)
+            val request=EconomyCommand(UUID.randomUUID().toString(),before.ownerPublicId,before.revision,"claim_workshop_starter","workshop")
+            economy.command(recipient.session,request)
+            val targetBefore=economy.snapshot(a.session); val sourceBefore=economy.snapshot(b.session)
+            assertEquals(targetClaims,targetBefore.workshopStarterClaimed)
+            assertEquals(!targetClaims,sourceBefore.workshopStarterClaimed)
+            val preview=readyMerge(a,b,browser)
+            auth.confirmMerge(a.session,browser,preview)
+            val merged=economy.snapshot(a.session)
+            assertTrue(merged.workshopStarterClaimed)
+            assertTrue(source.connection.use { readEconomyProfile(it,a.id).state.workshopStarterClaimed })
+            assertEquals(targetBefore.wallet.coins+sourceBefore.wallet.coins,merged.wallet.coins)
+            assertEquals(EconomyWorkshopStarter.cost().items,merged.inventory)
+            assertEquals(0,merged.buildings["workshop"])
+            assertEquals("ECONOMY_WORKSHOP_STARTER_CLAIMED",assertFailsWith<AuthFailure> {
+                economy.command(a.session,EconomyCommand(UUID.randomUUID().toString(),merged.ownerPublicId,merged.revision,"claim_workshop_starter","workshop"))
+            }.code)
+            if(!targetClaims) {
+                assertEquals("ECONOMY_REQUEST_CONFLICT",assertFailsWith<AuthFailure> {
+                    economy.command(a.session,request.copy(ownerPublicId=merged.ownerPublicId,expectedRevision=merged.revision))
+                }.code)
+                assertEquals("1",scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND source_key=? AND kind='merged_receipt'",a.id,"command:${request.requestId}"))
+                assertEquals("0",scalar("SELECT coins FROM economy_ledger WHERE user_id=? AND source_key=?",a.id,"command:${request.requestId}"))
+            }
+            auth.confirmMerge(a.session,browser,preview)
+            assertEquals(merged,economy.snapshot(a.session).copy(serverTime=merged.serverTime))
+            assertEquals("0",scalar("SELECT count(*) FROM economy_profiles WHERE user_id=?",b.id))
+        }
+    }
+
     @Test fun `merge preserves farther rare clock with its type and never initializes a new draw`(): Unit=runBlocking {
         val a=account(); val b=account(); val c=account(); val browser=tokens.issue().hash
         val economy=JdbcEconomyRepository(source)

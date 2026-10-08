@@ -3,6 +3,7 @@ import { formatPearls } from "@/features/economy/domain/money";
 import { worldCatalog } from "@/features/world/domain/model";
 
 export const analyticsActions: Record<string, string> = {
+  claim_workshop_starter: "Подарок для первой мастерской",
   eat_food: "Еда для Мохлика", feed_builder: "Еда для строителя",
   complete_resident_order: "Сдача заказа жителя", replace_resident_order: "Замена заказа жителя",
   start_production: "Начало производства", buy_production_slot: "Место производства", start_collection: "Начало сбора",
