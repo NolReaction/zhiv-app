@@ -14,9 +14,19 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   plugins: [{ name: "character-navigation-hooks", enforce: "pre",
     resolveId(id) { if (id === hookModule) return `\0${id}`; },
     load(id) { if (id === `\0${hookModule}`) return `
-      let slots = [], cursor = 0;
-      export function reset() { slots = []; cursor = 0; }
+      let slots = [], cursor = 0, effectsEnabled = false, pending = new Map();
+      export function reset() {
+        for (const slot of slots) slot?.cleanup?.();
+        slots = []; cursor = 0; effectsEnabled = false; pending.clear();
+      }
       export function render() { cursor = 0; }
+      export function captureEffects() { effectsEnabled = true; }
+      export function flushEffects() {
+        const effects = [...pending]; pending.clear();
+        for (const [index, effect] of effects) {
+          slots[index]?.cleanup?.(); slots[index].cleanup = effect();
+        }
+      }
       export function useState(initial) {
         const index = cursor++;
         if (!(index in slots)) slots[index] = typeof initial === 'function' ? initial() : initial;
@@ -35,11 +45,20 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
         return slots[index].value;
       }
       export function useCallback(callback) { return callback; }
-      export function useEffect() {}
+      export function useEffect(effect, dependencies) {
+        const index = cursor++;
+        if (!effectsEnabled) return;
+        const previous = slots[index];
+        if (!previous || dependencies.some((value, position) => !Object.is(value, previous.dependencies?.[position]))) {
+          slots[index] = { dependencies, cleanup: previous?.cleanup };
+          pending.set(index, effect);
+        }
+      }
       export function useSyncExternalStore(_subscribe, getSnapshot) { return getSnapshot(); }
       // Character navigation tests keep the first-visit tutorial dismissed.
       export function useWorldOnboarding() {
-        return { open: false, progress: null, start() {}, step() {}, skip() {}, complete() {}, pause() {}, replay() {} };
+        return { open: false, loaded: true, isPaused: false, progress: { version: 2, status: "skipped" },
+          start() {}, step() {}, setCrop() {}, skip() {}, complete() {}, pause() {}, resume() {}, replay() {} };
       }
     `; },
     transform(source, id) {
@@ -174,6 +193,55 @@ test("More opens a separate gallery; conversation Back/close return there and ga
       assert.ok(nav.find(element => element.props.id === "world-quick-menu"));
       assert.ok(nav.find(element => element.props["data-world-characters-trigger"] !== undefined));
     } finally { nav.restore(); }
+  }
+});
+
+test("pointerdown on a guide control preserves the live quick menu while a map click still dismisses it", () => {
+  for (const menu of ["profile", "pantry", "expeditions"]) {
+    const nav = navigation();
+    const names = ["Element", "window", "ResizeObserver", "requestAnimationFrame", "cancelAnimationFrame"];
+    const saved = new Map(names.map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
+    const listeners = new Map();
+    try {
+      Object.defineProperty(globalThis, "Element", { value: HTMLElement, configurable: true });
+      Object.defineProperty(globalThis, "window", { value: { addEventListener() {}, removeEventListener() {} }, configurable: true });
+      Object.defineProperty(globalThis, "ResizeObserver", { value: class { observe() {} disconnect() {} }, configurable: true });
+      Object.defineProperty(globalThis, "requestAnimationFrame", { value: callback => { callback(); return 1; }, configurable: true });
+      Object.defineProperty(globalThis, "cancelAnimationFrame", { value() {}, configurable: true });
+      document.addEventListener = (type, callback) => {
+        if (!listeners.has(type)) listeners.set(type, new Set());
+        listeners.get(type).add(callback);
+      };
+      document.removeEventListener = (type, callback) => listeners.get(type)?.delete(callback);
+      hooks.captureEffects();
+      const render = () => {
+        const nodes = nav.render();
+        const frame = nodes.find(element => element.props.id === "world-quick-menu");
+        if (frame) frame.props.ref.current.contains = target => target === frame.props.ref.current;
+        hooks.flushEffects();
+        return nodes;
+      };
+      nav.find(element => element.props["data-world-quick"] === menu).props.onClick();
+      assert.equal(render().find(element => element.props.id === "world-quick-menu").props["data-kind"], menu);
+      const guideButton = new HTMLElement("guide-next"), outsideMap = new HTMLElement("outside-map");
+      guideButton.closest = selector => selector.split(",").map(part => part.trim()).includes('[data-guide-coach="world"]') ? {} : null;
+      outsideMap.closest = () => null;
+      const pointerDown = target => { for (const listener of [...(listeners.get("pointerdown") ?? [])]) listener({ target }); };
+      assert.equal(listeners.get("pointerdown")?.size, 1, "the actual WorldView effect registers the outside-click handler");
+      pointerDown(guideButton);
+      assert.equal(render().find(element => element.props.id === "world-quick-menu").props["data-kind"], menu,
+        "a phone's pointerdown must not dismiss the live section before its coach control receives click");
+      pointerDown(outsideMap);
+      assert.equal(render().find(element => element.props.id === "world-quick-menu"), undefined,
+        "the guide exemption must preserve ordinary outside-click dismissal");
+    } finally {
+      hooks.reset();
+      nav.restore();
+      for (const [name, descriptor] of saved) {
+        if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+        else delete globalThis[name];
+      }
+    }
   }
 });
 

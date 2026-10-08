@@ -1,0 +1,1118 @@
+{
+  "version": 1,
+  "assets": [
+    {
+      "id": "music.day.01",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "music.night.01",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "forest.day.01",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "forest.night.01",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "weather.rain.01",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "river.01",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "campfire.01",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "workshop.woodworking.01",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "workshop.kiln.01",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "quarry.working.01",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "construction.working.01",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "ui.click.01",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "ui.click.02",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "ui.click.03",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "ui.open.01",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "ui.open.02",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "ui.close.01",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "ui.close.02",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "ui.confirm.01",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "ui.confirm.02",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "ui.error.01",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "ui.error.02",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "ui.reward.01",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "ui.reward.02",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "actor.mochlik.greeting.01",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "actor.mochlik.greeting.02",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "actor.mochlik.greeting.03",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "actor.mochlik.joy.01",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "actor.mochlik.joy.02",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "actor.mochlik.joy.03",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "actor.mochlik.effort.01",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "actor.mochlik.effort.02",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "actor.mochlik.effort.03",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "actor.mochlik.sleep.01",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "actor.mochlik.sleep.02",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "actor.mochlik.sleep.03",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "actor.plesk.greeting.01",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "actor.plesk.greeting.02",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "actor.plesk.greeting.03",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "actor.plesk.joy.01",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "actor.plesk.joy.02",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "actor.plesk.joy.03",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "actor.plesk.effort.01",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "actor.plesk.effort.02",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "actor.plesk.effort.03",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "actor.plesk.sleep.01",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "actor.plesk.sleep.02",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "actor.plesk.sleep.03",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "actor.builder.greeting.01",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "actor.builder.greeting.02",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "actor.builder.greeting.03",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "actor.builder.joy.01",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "actor.builder.joy.02",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "actor.builder.joy.03",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "actor.builder.effort.01",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "actor.builder.effort.02",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "actor.builder.effort.03",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "actor.builder.sleep.01",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "actor.builder.sleep.02",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "actor.builder.sleep.03",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "action.step.grass.01",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "action.step.grass.02",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "action.step.grass.03",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "action.step.grass.04",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "action.step.wood.01",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "action.step.wood.02",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "action.step.wood.03",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "action.step.wood.04",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "action.hammer.01",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "action.hammer.02",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "action.hammer.03",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "action.hammer.04",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "action.water.pour.01",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "action.water.pour.02",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "action.water.pour.03",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "action.water.pour.04",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "action.fish.splash.01",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "action.fish.splash.02",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "action.fish.splash.03",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "action.fish.splash.04",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "action.berry.pick.01",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "action.berry.pick.02",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "action.berry.pick.03",
+      "src": null,
+      "status": "pending",
+      "license": null
+    },
+    {
+      "id": "action.berry.pick.04",
+      "src": null,
+      "status": "pending",
+      "license": null
+    }
+  ],
+  "cues": [
+    {
+      "id": "music.day",
+      "bus": "music",
+      "mode": "music",
+      "assets": [
+        "music.day.01"
+      ],
+      "gainDb": -8,
+      "priority": 80,
+      "maxInstances": 1,
+      "cooldownMs": 0,
+      "pitchVariation": 0,
+      "fadeMs": 3000
+    },
+    {
+      "id": "music.night",
+      "bus": "music",
+      "mode": "music",
+      "assets": [
+        "music.night.01"
+      ],
+      "gainDb": -8,
+      "priority": 80,
+      "maxInstances": 1,
+      "cooldownMs": 0,
+      "pitchVariation": 0,
+      "fadeMs": 3000
+    },
+    {
+      "id": "forest.day",
+      "bus": "ambience",
+      "mode": "loop",
+      "assets": [
+        "forest.day.01"
+      ],
+      "gainDb": -12,
+      "priority": 20,
+      "maxInstances": 1,
+      "cooldownMs": 0,
+      "pitchVariation": 0,
+      "fadeMs": 1800
+    },
+    {
+      "id": "forest.night",
+      "bus": "ambience",
+      "mode": "loop",
+      "assets": [
+        "forest.night.01"
+      ],
+      "gainDb": -12,
+      "priority": 20,
+      "maxInstances": 1,
+      "cooldownMs": 0,
+      "pitchVariation": 0,
+      "fadeMs": 1800
+    },
+    {
+      "id": "weather.rain",
+      "bus": "ambience",
+      "mode": "loop",
+      "assets": [
+        "weather.rain.01"
+      ],
+      "gainDb": -12,
+      "priority": 20,
+      "maxInstances": 1,
+      "cooldownMs": 0,
+      "pitchVariation": 0,
+      "fadeMs": 1800
+    },
+    {
+      "id": "river",
+      "bus": "world",
+      "mode": "loop",
+      "assets": [
+        "river.01"
+      ],
+      "gainDb": -10,
+      "priority": 35,
+      "maxInstances": 1,
+      "cooldownMs": 0,
+      "pitchVariation": 0,
+      "fadeMs": 1100
+    },
+    {
+      "id": "campfire",
+      "bus": "world",
+      "mode": "loop",
+      "assets": [
+        "campfire.01"
+      ],
+      "gainDb": -10,
+      "priority": 35,
+      "maxInstances": 1,
+      "cooldownMs": 0,
+      "pitchVariation": 0,
+      "fadeMs": 1100
+    },
+    {
+      "id": "workshop.woodworking",
+      "bus": "world",
+      "mode": "loop",
+      "assets": [
+        "workshop.woodworking.01"
+      ],
+      "gainDb": -10,
+      "priority": 35,
+      "maxInstances": 1,
+      "cooldownMs": 0,
+      "pitchVariation": 0,
+      "fadeMs": 1100
+    },
+    {
+      "id": "workshop.kiln",
+      "bus": "world",
+      "mode": "loop",
+      "assets": [
+        "workshop.kiln.01"
+      ],
+      "gainDb": -10,
+      "priority": 35,
+      "maxInstances": 1,
+      "cooldownMs": 0,
+      "pitchVariation": 0,
+      "fadeMs": 1100
+    },
+    {
+      "id": "quarry.working",
+      "bus": "world",
+      "mode": "loop",
+      "assets": [
+        "quarry.working.01"
+      ],
+      "gainDb": -10,
+      "priority": 35,
+      "maxInstances": 1,
+      "cooldownMs": 0,
+      "pitchVariation": 0,
+      "fadeMs": 1100
+    },
+    {
+      "id": "construction.working",
+      "bus": "world",
+      "mode": "loop",
+      "assets": [
+        "construction.working.01"
+      ],
+      "gainDb": -10,
+      "priority": 35,
+      "maxInstances": 1,
+      "cooldownMs": 0,
+      "pitchVariation": 0,
+      "fadeMs": 1100
+    },
+    {
+      "id": "ui.click",
+      "bus": "ui",
+      "mode": "one-shot",
+      "assets": [
+        "ui.click.01",
+        "ui.click.02",
+        "ui.click.03"
+      ],
+      "gainDb": -12,
+      "priority": 100,
+      "maxInstances": 2,
+      "cooldownMs": 80,
+      "pitchVariation": 0.015,
+      "fadeMs": 15
+    },
+    {
+      "id": "ui.open",
+      "bus": "ui",
+      "mode": "one-shot",
+      "assets": [
+        "ui.open.01",
+        "ui.open.02"
+      ],
+      "gainDb": -8,
+      "priority": 100,
+      "maxInstances": 2,
+      "cooldownMs": 350,
+      "pitchVariation": 0.015,
+      "fadeMs": 15
+    },
+    {
+      "id": "ui.close",
+      "bus": "ui",
+      "mode": "one-shot",
+      "assets": [
+        "ui.close.01",
+        "ui.close.02"
+      ],
+      "gainDb": -8,
+      "priority": 100,
+      "maxInstances": 2,
+      "cooldownMs": 350,
+      "pitchVariation": 0.015,
+      "fadeMs": 15
+    },
+    {
+      "id": "ui.confirm",
+      "bus": "ui",
+      "mode": "one-shot",
+      "assets": [
+        "ui.confirm.01",
+        "ui.confirm.02"
+      ],
+      "gainDb": -8,
+      "priority": 100,
+      "maxInstances": 2,
+      "cooldownMs": 350,
+      "pitchVariation": 0.015,
+      "fadeMs": 15
+    },
+    {
+      "id": "ui.error",
+      "bus": "ui",
+      "mode": "one-shot",
+      "assets": [
+        "ui.error.01",
+        "ui.error.02"
+      ],
+      "gainDb": -8,
+      "priority": 100,
+      "maxInstances": 2,
+      "cooldownMs": 350,
+      "pitchVariation": 0.015,
+      "fadeMs": 15
+    },
+    {
+      "id": "ui.reward",
+      "bus": "ui",
+      "mode": "one-shot",
+      "assets": [
+        "ui.reward.01",
+        "ui.reward.02"
+      ],
+      "gainDb": -8,
+      "priority": 100,
+      "maxInstances": 2,
+      "cooldownMs": 350,
+      "pitchVariation": 0.015,
+      "fadeMs": 15
+    },
+    {
+      "id": "actor.mochlik.greeting",
+      "bus": "characters",
+      "mode": "one-shot",
+      "assets": [
+        "actor.mochlik.greeting.01",
+        "actor.mochlik.greeting.02",
+        "actor.mochlik.greeting.03"
+      ],
+      "gainDb": -8,
+      "priority": 70,
+      "maxInstances": 2,
+      "cooldownMs": 2500,
+      "pitchVariation": 0.025,
+      "fadeMs": 30
+    },
+    {
+      "id": "actor.mochlik.joy",
+      "bus": "characters",
+      "mode": "one-shot",
+      "assets": [
+        "actor.mochlik.joy.01",
+        "actor.mochlik.joy.02",
+        "actor.mochlik.joy.03"
+      ],
+      "gainDb": -8,
+      "priority": 70,
+      "maxInstances": 2,
+      "cooldownMs": 2500,
+      "pitchVariation": 0.025,
+      "fadeMs": 30
+    },
+    {
+      "id": "actor.mochlik.effort",
+      "bus": "characters",
+      "mode": "one-shot",
+      "assets": [
+        "actor.mochlik.effort.01",
+        "actor.mochlik.effort.02",
+        "actor.mochlik.effort.03"
+      ],
+      "gainDb": -8,
+      "priority": 70,
+      "maxInstances": 2,
+      "cooldownMs": 2500,
+      "pitchVariation": 0.025,
+      "fadeMs": 30
+    },
+    {
+      "id": "actor.mochlik.sleep",
+      "bus": "characters",
+      "mode": "one-shot",
+      "assets": [
+        "actor.mochlik.sleep.01",
+        "actor.mochlik.sleep.02",
+        "actor.mochlik.sleep.03"
+      ],
+      "gainDb": -8,
+      "priority": 70,
+      "maxInstances": 2,
+      "cooldownMs": 2500,
+      "pitchVariation": 0.025,
+      "fadeMs": 30
+    },
+    {
+      "id": "actor.plesk.greeting",
+      "bus": "characters",
+      "mode": "one-shot",
+      "assets": [
+        "actor.plesk.greeting.01",
+        "actor.plesk.greeting.02",
+        "actor.plesk.greeting.03"
+      ],
+      "gainDb": -8,
+      "priority": 70,
+      "maxInstances": 2,
+      "cooldownMs": 2500,
+      "pitchVariation": 0.025,
+      "fadeMs": 30
+    },
+    {
+      "id": "actor.plesk.joy",
+      "bus": "characters",
+      "mode": "one-shot",
+      "assets": [
+        "actor.plesk.joy.01",
+        "actor.plesk.joy.02",
+        "actor.plesk.joy.03"
+      ],
+      "gainDb": -8,
+      "priority": 70,
+      "maxInstances": 2,
+      "cooldownMs": 2500,
+      "pitchVariation": 0.025,
+      "fadeMs": 30
+    },
+    {
+      "id": "actor.plesk.effort",
+      "bus": "characters",
+      "mode": "one-shot",
+      "assets": [
+        "actor.plesk.effort.01",
+        "actor.plesk.effort.02",
+        "actor.plesk.effort.03"
+      ],
+      "gainDb": -8,
+      "priority": 70,
+      "maxInstances": 2,
+      "cooldownMs": 2500,
+      "pitchVariation": 0.025,
+      "fadeMs": 30
+    },
+    {
+      "id": "actor.plesk.sleep",
+      "bus": "characters",
+      "mode": "one-shot",
+      "assets": [
+        "actor.plesk.sleep.01",
+        "actor.plesk.sleep.02",
+        "actor.plesk.sleep.03"
+      ],
+      "gainDb": -8,
+      "priority": 70,
+      "maxInstances": 2,
+      "cooldownMs": 2500,
+      "pitchVariation": 0.025,
+      "fadeMs": 30
+    },
+    {
+      "id": "actor.builder.greeting",
+      "bus": "characters",
+      "mode": "one-shot",
+      "assets": [
+        "actor.builder.greeting.01",
+        "actor.builder.greeting.02",
+        "actor.builder.greeting.03"
+      ],
+      "gainDb": -8,
+      "priority": 70,
+      "maxInstances": 2,
+      "cooldownMs": 2500,
+      "pitchVariation": 0.025,
+      "fadeMs": 30
+    },
+    {
+      "id": "actor.builder.joy",
+      "bus": "characters",
+      "mode": "one-shot",
+      "assets": [
+        "actor.builder.joy.01",
+        "actor.builder.joy.02",
+        "actor.builder.joy.03"
+      ],
+      "gainDb": -8,
+      "priority": 70,
+      "maxInstances": 2,
+      "cooldownMs": 2500,
+      "pitchVariation": 0.025,
+      "fadeMs": 30
+    },
+    {
+      "id": "actor.builder.effort",
+      "bus": "characters",
+      "mode": "one-shot",
+      "assets": [
+        "actor.builder.effort.01",
+        "actor.builder.effort.02",
+        "actor.builder.effort.03"
+      ],
+      "gainDb": -8,
+      "priority": 70,
+      "maxInstances": 2,
+      "cooldownMs": 2500,
+      "pitchVariation": 0.025,
+      "fadeMs": 30
+    },
+    {
+      "id": "actor.builder.sleep",
+      "bus": "characters",
+      "mode": "one-shot",
+      "assets": [
+        "actor.builder.sleep.01",
+        "actor.builder.sleep.02",
+        "actor.builder.sleep.03"
+      ],
+      "gainDb": -8,
+      "priority": 70,
+      "maxInstances": 2,
+      "cooldownMs": 2500,
+      "pitchVariation": 0.025,
+      "fadeMs": 30
+    },
+    {
+      "id": "action.step.grass",
+      "bus": "world",
+      "mode": "one-shot",
+      "assets": [
+        "action.step.grass.01",
+        "action.step.grass.02",
+        "action.step.grass.03",
+        "action.step.grass.04"
+      ],
+      "gainDb": -14,
+      "priority": 50,
+      "maxInstances": 2,
+      "cooldownMs": 120,
+      "pitchVariation": 0.035,
+      "fadeMs": 20
+    },
+    {
+      "id": "action.step.wood",
+      "bus": "world",
+      "mode": "one-shot",
+      "assets": [
+        "action.step.wood.01",
+        "action.step.wood.02",
+        "action.step.wood.03",
+        "action.step.wood.04"
+      ],
+      "gainDb": -14,
+      "priority": 50,
+      "maxInstances": 2,
+      "cooldownMs": 120,
+      "pitchVariation": 0.035,
+      "fadeMs": 20
+    },
+    {
+      "id": "action.hammer",
+      "bus": "world",
+      "mode": "one-shot",
+      "assets": [
+        "action.hammer.01",
+        "action.hammer.02",
+        "action.hammer.03",
+        "action.hammer.04"
+      ],
+      "gainDb": -10,
+      "priority": 50,
+      "maxInstances": 2,
+      "cooldownMs": 200,
+      "pitchVariation": 0.035,
+      "fadeMs": 20
+    },
+    {
+      "id": "action.water.pour",
+      "bus": "world",
+      "mode": "one-shot",
+      "assets": [
+        "action.water.pour.01",
+        "action.water.pour.02",
+        "action.water.pour.03",
+        "action.water.pour.04"
+      ],
+      "gainDb": -10,
+      "priority": 50,
+      "maxInstances": 2,
+      "cooldownMs": 200,
+      "pitchVariation": 0.035,
+      "fadeMs": 20
+    },
+    {
+      "id": "action.fish.splash",
+      "bus": "world",
+      "mode": "one-shot",
+      "assets": [
+        "action.fish.splash.01",
+        "action.fish.splash.02",
+        "action.fish.splash.03",
+        "action.fish.splash.04"
+      ],
+      "gainDb": -10,
+      "priority": 50,
+      "maxInstances": 2,
+      "cooldownMs": 200,
+      "pitchVariation": 0.035,
+      "fadeMs": 20
+    },
+    {
+      "id": "action.berry.pick",
+      "bus": "world",
+      "mode": "one-shot",
+      "assets": [
+        "action.berry.pick.01",
+        "action.berry.pick.02",
+        "action.berry.pick.03",
+        "action.berry.pick.04"
+      ],
+      "gainDb": -10,
+      "priority": 50,
+      "maxInstances": 2,
+      "cooldownMs": 200,
+      "pitchVariation": 0.035,
+      "fadeMs": 20
+    }
+  ],
+  "profiles": [
+    {
+      "id": "music.day",
+      "cues": [
+        "music.day"
+      ]
+    },
+    {
+      "id": "music.night",
+      "cues": [
+        "music.night"
+      ]
+    },
+    {
+      "id": "forest.day",
+      "cues": [
+        "forest.day"
+      ]
+    },
+    {
+      "id": "forest.night",
+      "cues": [
+        "forest.night"
+      ]
+    },
+    {
+      "id": "weather.rain",
+      "cues": [
+        "weather.rain"
+      ]
+    },
+    {
+      "id": "river",
+      "cues": [
+        "river"
+      ]
+    },
+    {
+      "id": "campfire",
+      "cues": [
+        "campfire"
+      ]
+    },
+    {
+      "id": "workshop.woodworking",
+      "cues": [
+        "workshop.woodworking"
+      ]
+    },
+    {
+      "id": "workshop.kiln",
+      "cues": [
+        "workshop.kiln"
+      ]
+    },
+    {
+      "id": "quarry.working",
+      "cues": [
+        "quarry.working"
+      ]
+    },
+    {
+      "id": "construction.working",
+      "cues": [
+        "construction.working"
+      ]
+    }
+  ]
+}

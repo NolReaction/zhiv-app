@@ -2,7 +2,7 @@ import path from "node:path";
 import ts from "typescript";
 
 const sourceExtension = /\.[cm]?[jt]sx?$/;
-const domainPath = /^features\/(?:economy|world)\/domain\//;
+const domainPath = /^features\/(?:economy|world|audio)\/domain\//;
 const sourceSuffixes = [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".d.ts", ".json", ".css"];
 
 /** Parse actual module references, keeping erased type imports out of runtime boundaries. */
@@ -82,13 +82,18 @@ export function inspectArchitecture(sources, { hasFile = file => sources.has(fil
       if (domainPath.test(file)) {
         const uiPackage = /^(?:react|react-dom|next|lucide-react)(?:\/|$)/.test(reference.specifier);
         const clientLayer = target && (isUi(target) || target.endsWith(".tsx")
-          || /^features\/(?:economy|world)\/(?:sync|state)\//.test(target));
+          || /^features\/(?:economy|world)\/(?:sync|state)\//.test(target)
+          || /^features\/audio\/(?:runtime|dev)\//.test(target));
         if (uiPackage || clientLayer) {
           report(file, reference, "domain-dependency", `Domain code cannot load ${reference.specifier}. Keep rules independent of UI and client sessions; compose them in sync/integration/UI.`);
         }
       }
       if (file.startsWith("features/economy/sync/") && target && isUi(target)) {
         report(file, reference, "sync-ui-dependency", `Economy sync cannot load ${reference.specifier}. Move shared controller helpers out of UI.`);
+      }
+      if (file.startsWith("features/audio/") && target
+        && /^features\/(?:world|economy|app)\//.test(target)) {
+        report(file, reference, "audio-dependency", "Audio modules cannot import world, economy or app state. Pass audio frames and semantic events through an integration adapter.");
       }
       if (target?.startsWith("app/") && !file.startsWith("app/")) {
         report(file, reference, "route-orchestration", `Only route composition may load ${reference.specifier}. Reusable modules belong outside app/.`);

@@ -42,6 +42,7 @@
 | Сохранять жизнь полянки в аккаунте, разбирать конфликты устройств | [Синхронизация памяти Мохлика](game/forest-memory-sync.md) |
 | Добавить фонарь, факел; изменить ночь, яркость или мерцание | [Освещение](game/world-lighting.md) |
 | Изменить дождь, попадания, воду, птиц, насекомых, занятия героя | [Атмосфера и анимации](game/world-atmosphere.md) |
+| Добавить музыку, голоса, UI-сигналы и пространственный звук через Tiled | [Звуковая система](game/audio-system.md) · [подбор материалов](game/sound-search.md) · [монтаж и экспорт](../art/audio/README.md) |
 | Понять, какой слой Tiled за что отвечает и что двигать | [Практическая памятка Tiled](game/tiled-quickstart.md) |
 | Добавлять домики и примерять рисунки улучшений без правок кода | [Мастерская зданий](game/building-workbench.md) |
 | Разобраться с доступностью входов и обходом препятствий | [Навигация](game/world-navigation.md) |
@@ -84,7 +85,7 @@
 - [Выпуск 0.6.6](releases/release-0.6.6.md), [выпуск 0.6.5](releases/release-0.6.5.md), [выпуск 0.6.3](releases/release-0.6.3.md), [мир v2](game/world-v2.md), [аудит прежних анимаций](game/world-animation-audit.md), [план ассетов](game/map-assets-plan.md).
 - [Выбор Tiled](game/tiled-world-decision.md), [отчёт о проверке прототипа](game/tiled-world-validation.md), [прежняя загрузка мира](game/world-loading.md).
 - [Разбор экономики 2026-10-06](game/economy-intervention-2026-10-06.md), [ранний путь игрока 0.6.7](releases/player-journey-0.6.7.md) — результаты конкретных этапов, с ограничениями для нынешнего каталога.
-- [Художественные концепты](game/concepts/), [подбор звуков](game/sound-search.md) — звуки пока не подключены.
+- [Художественные концепты](game/concepts/). Подбор записей для уже подготовленного движка — в [списке звуков](game/sound-search.md).
 - [Восстановление старой истории VPS](history/vps-history-repair-0.5.1.md) — только для checkout до изменения истории 0.5.1.
 - [Архив прежних документов в Git](https://github.com/NolReaction/zhiv-app/tree/5a117b2c233874a0362cdad11fef6a0308e622ff/docs).
 

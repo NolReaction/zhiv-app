@@ -9,6 +9,26 @@ import { inspectArchitecture, moduleReferences } from "../scripts/lib/architectu
 
 const inspect = entries => inspectArchitecture(new Map(Object.entries(entries)));
 
+test("audio core stays independent from world state and browser-free rules stay pure", () => {
+  for (const target of ["features/world/state/forest.ts", "features/economy/sync/session.ts", "features/app/composition.ts"]) {
+    const findings = inspect({
+      "features/audio/runtime/mixer.ts": 'import "@/' + target.slice(0, -3) + '";',
+      [target]: "export {};",
+    });
+    assert.equal(findings[0].rule, "audio-dependency");
+  }
+  const findings = inspect({
+    "features/audio/domain/mix.ts": 'import "../runtime/mixer";',
+    "features/audio/runtime/mixer.ts": "export {};",
+  });
+  assert.equal(findings[0].rule, "domain-dependency");
+  assert.deepEqual(inspect({
+    "features/world/audio/adapter.ts": 'import "@/features/audio/runtime/mixer";',
+    "features/audio/runtime/mixer.ts": 'import "../domain/mix";',
+    "features/audio/domain/mix.ts": "export {};",
+  }), []);
+});
+
 test("application composition and erased cross-layer types preserve valid dependency direction", () => {
   const files = {
     "app/page.tsx": 'export { AppShell as default } from "@/features/app/app-shell";',

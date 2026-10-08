@@ -2,6 +2,7 @@ import { parseWorldOnboarding, type WorldOnboardingProgress } from "@/features/w
 
 type OnboardingStorage = Pick<Storage, "getItem" | "setItem">;
 const memory = new Map<string, WorldOnboardingProgress>();
+// Keep the original key so v1 skips/completions remain deliberate choices after an update.
 export const onboardingStorageKey = (owner: string) => `zhiv.world-onboarding.v1:${owner}`;
 
 export function readWorldOnboarding(owner: string, storage: Pick<Storage, "getItem">): WorldOnboardingProgress | null {

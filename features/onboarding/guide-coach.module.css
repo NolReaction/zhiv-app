@@ -1,0 +1,68 @@
+.coach { position: fixed; z-index: 115; right: 16px; bottom: max(88px, calc(72px + env(safe-area-inset-bottom))); display: flex; flex-direction: column; width: min(360px, calc(100vw - 24px)); max-height: min(540px, calc(100dvh - 112px)); overflow: hidden; border: 1px solid #a7ad84; border-radius: 22px; background: linear-gradient(150deg, #fff6df, #eee3c6); color: #394d3e; box-shadow: 0 10px 32px #07190e36, inset 0 0 0 4px #fff5; isolation: isolate; font-family: Inter, ui-rounded, system-ui, sans-serif; text-align: left; pointer-events: auto; }
+.spotlight { position: fixed; z-index: 114; border: 2px solid #c6e794; border-radius: 15px; box-shadow: 0 0 0 3px #183721a6, 0 0 0 6px #e9f5ca50, 0 0 22px #cbea7d69; pointer-events: none; }
+.header { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 0 10px 0 18px; background: #48663b0b; }
+.signature { display: flex; align-items: center; gap: 6px; margin-right: auto; color: #4a6742; font-size: 11px; font-weight: 750; letter-spacing: .025em; }
+.counter { color: #475c3c; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.counter > span { margin-left: 3px; color: #7d896e; font-weight: 400; }
+.coach button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 44px; min-height: 44px; border-radius: 11px; font: inherit; font-size: 13px; text-align: center; cursor: pointer; transition: background 120ms ease, box-shadow 120ms ease; }
+.coach button:focus-visible { outline: 3px solid #497c45; outline-offset: -3px; }
+.coach button:disabled { cursor: default; opacity: .58; }
+.coach .pause { flex: 0 0 auto; border: 0; padding: 0 5px; background: transparent; color: #67775d; font-size: 11px; }
+.coach .pause:hover { background: #556e3920; }
+.progress { flex: 0 0 auto; height: 3px; background: #82956324; }
+.progress > span { display: block; height: 100%; border-radius: 0 3px 3px 0; background: #7f9b55; transition: width 180ms ease; }
+.copy { min-height: 0; flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; padding: 0 18px 4px; scrollbar-width: thin; scrollbar-color: #94a475 transparent; }
+.intro { display: flex; align-items: center; gap: 11px; margin: 6px 0 4px; }
+.character { flex: 0 0 84px; display: grid; place-items: center; width: 84px; height: 88px; background: radial-gradient(ellipse at 50% 62%, #a9be6c54, transparent 69%); pointer-events: none; }
+.portrait { width: 88px; height: 88px; image-rendering: pixelated; filter: drop-shadow(0 4px 2px #5a673020); }
+.title { margin: 0; font-family: 'Zhiv Residents', ui-rounded, sans-serif; font-size: 26px; font-weight: 400; line-height: 1.08; color: #355137; text-wrap: balance; }
+.text { margin: 0 0 10px; font-size: 14px; line-height: 1.5; color: #46543e; }
+.hint { display: flex; align-items: flex-start; gap: 8px; padding: 9px 10px; margin: 0 0 10px; border: 1px solid #9aaa7335; border-radius: 11px; background: #c5d3a342; font-size: 12px; line-height: 1.45; color: #536442; }
+.hint > svg { flex: 0 0 auto; margin-top: 1px; }
+.status { margin: 0 0 10px; padding-left: 10px; border-left: 2px solid #88a469; color: #597448; font-size: 12px; line-height: 1.45; }
+.footer { flex: 0 0 auto; padding: 3px 14px 6px; }
+.actions { display: flex; gap: 7px; }
+.coach .primary { flex: 1 1 0; border: 1px solid #365439; padding: 8px 12px; background: linear-gradient(#68864e, #48653e); color: #fff8e5; box-shadow: 0 2px 0 #2c492c; font-weight: 650; }
+.coach .primary:hover:not(:disabled) { background: #3e603d; }
+.primary > svg { flex: 0 0 auto; }
+.coach .secondary { flex: 1 1 0; border: 1px solid #b4bd96; padding: 8px 10px; background: #e8e8ce; color: #4d6243; }
+.coach .secondary:hover, .coach .back:hover { background: #dae2bb; }
+.coach .back { flex: 0 0 44px; border: 1px solid #b4bd96; background: #e8e8ce; color: #4d6243; }
+.coach .skip { width: 100%; border: 0; background: transparent; color: #69775b; font-size: 11px; text-decoration: underline; text-underline-offset: 3px; }
+.coach .skip:hover { color: #334f37; }
+.footer[data-simple='true'] { display: flex; align-items: center; gap: 8px; padding-bottom: 12px; }
+.footer[data-simple='true'] .actions { flex: 1 1 auto; min-width: 0; }
+.footer[data-simple='true'] .skip { flex: 0 0 80px; width: 80px; }
+.live { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.coach[data-welcome='true'] .character { flex-basis: 104px; width: 104px; height: 104px; }
+.coach[data-welcome='true'] .portrait { width: 108px; height: 108px; }
+.coach[data-compact='true'] { width: min(340px, calc(100vw - 24px)); }
+.coach[data-compact='true'] .character { flex-basis: 62px; width: 62px; height: 66px; }
+.coach[data-compact='true'] .portrait { width: 66px; height: 66px; }
+.coach[data-compact='true'] .title { font-size: 23px; }
+.coach[data-compact='true'] .text { font-size: 13px; }
+@media (max-width: 640px) {
+  .coach { right: 12px; width: calc(100vw - 24px); max-height: min(440px, calc(100dvh - 112px)); border-radius: 19px; }
+  .coach[data-welcome='false'] { max-height: min(390px, 53dvh); }
+  .header { min-height: 44px; padding-left: 14px; }
+  .copy { padding: 0 14px 2px; }
+  .intro { gap: 8px; margin-top: 3px; }
+  .character { flex-basis: 64px; width: 64px; height: 68px; }
+  .portrait { width: 68px; height: 68px; }
+  .title { font-size: 24px; }
+  .text { font-size: 13px; line-height: 1.45; margin-bottom: 8px; }
+  .hint { padding: 7px 8px; margin-bottom: 8px; font-size: 11px; }
+  .footer { padding: 3px 11px 2px; }
+  .coach[data-compact='true'] { width: calc(100vw - 24px); max-height: min(320px, 45dvh); }
+  .coach[data-compact='true'] .character { flex-basis: 48px; width: 48px; height: 52px; }
+  .coach[data-compact='true'] .portrait { width: 52px; height: 52px; }
+  .coach[data-compact='true'] .title { font-size: 21px; }
+}
+@media (max-height: 500px) {
+  .coach { width: min(350px, calc(100vw - 24px)); max-height: calc(100dvh - 112px); }
+  .coach[data-compact='true'], .coach[data-welcome='false'] { max-height: calc(100dvh - 112px); }
+  .character, .coach[data-welcome='true'] .character { flex-basis: 48px; width: 48px; height: 52px; }
+  .portrait, .coach[data-welcome='true'] .portrait { width: 52px; height: 52px; }
+  .title { font-size: 21px; }
+}
+@media (prefers-reduced-motion: reduce) { .coach button, .progress > span { transition: none; } }

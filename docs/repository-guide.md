@@ -16,6 +16,8 @@
 | Стоимость, длительность, награда и требования | [`economy-catalog.json`](../apps/api/src/main/resources/world/economy-catalog.json), [`economy/domain/`](../features/economy/domain/), [`Ktor economy/`](../apps/api/src/main/kotlin/ru/zhiv/economy/) |
 | Потеря ответа экономической команды, повтор, revision | [`features/economy/sync/`](../features/economy/sync/) |
 | Жесты камеры, порядок рисования, перекрытие объектов | [`features/world/scene/`](../features/world/scene/) |
+| Музыка, громкость, UI-звуки, загрузка записей | [`features/audio/`](../features/audio/README.md), [устройство системы](game/audio-system.md) |
+| Слышимость зданий, Tiled-зоны, звук шагов и занятий | [`features/world/audio/`](../features/world/audio/), [разметка звука](game/audio-system.md#разметка-в-tiled) |
 | Выбор действия Мохлика / конкретное занятие | [`world/simulation/`](../features/world/simulation/) / [`world/activities/`](../features/world/activities/) |
 | Сохранение полянки, чужое устройство, аренда | [`world/state/memory/`](../features/world/state/memory/), [`forest-session.ts`](../features/world/state/forest-session.ts) |
 
@@ -102,7 +104,9 @@
 | Значки полученных предметов «В кладовую» | [`inventory-gain.ts`](../features/economy/domain/inventory-gain.ts), [`session.ts`](../features/economy/sync/session.ts), [`inventory-gain-playback.ts`](../features/world/ui/feedback/inventory-gain-playback.ts), [`world-inventory-gains.tsx`](../features/world/ui/feedback/world-inventory-gains.tsx) | Только подтверждённая локальная выдача/покупка, положительная разница запасов; очередь ограничена, открытие карты и фоновые снимки не повторяют эффект |
 | Короткие ответы, группы и поиск справки | [`world-help-content.ts`](../features/world/ui/help/world-help-content.ts) | [Структура темы и поиск](game/help-and-profile.md#справка) |
 | Навигация и оформление справки | [`world-help.tsx`](../features/world/ui/help/world-help.tsx), [`world-help.module.css`](../features/world/ui/help/world-help.module.css), [`world-view.tsx`](../features/world/world-view.tsx) | [Проверка на телефоне и клавиатурой](game/help-and-profile.md#проверка-изменений) |
-| Первое знакомство с лесом, инструкция Мохлика и её повтор | `features/world/ui/onboarding/`, [`world-view.tsx`](../features/world/world-view.tsx), [`world-help.tsx`](../features/world/ui/help/world-help.tsx) | [Пять экранов, локальный прогресс и отдельная ветка](game/onboarding.md) |
+| Знакомство с приложением: отметка, календарь, люди, профиль и вход в мир | `features/app/onboarding/`, [`app-shell.tsx`](../features/app/app-shell.tsx), [`navigation.tsx`](../features/app/navigation.tsx) | [Действия, локальный прогресс и повтор](game/onboarding.md#знакомство-с-приложением) |
+| Обучение на карте: меню, выращивание ягод, сбор и повтор | `features/world/ui/onboarding/`, [`world-onboarding.ts`](../features/world/domain/world-onboarding.ts), [`world-view.tsx`](../features/world/world-view.tsx) | [Практика, миграция прогресса и отдельная ветка](game/onboarding.md) |
+| Общая подсказка Мохлика: доступные кнопки, подсветка и позы | `features/onboarding/` | [Немодальный интерфейс и reduced motion](game/onboarding.md#подсказка-и-мохлик) |
 | Помощь при недоступном действии | [`world-help-advice.ts`](../features/world/ui/help/world-help-advice.ts), [`world-help-types.ts`](../features/world/ui/help/world-help-types.ts) | [Контекст, приоритеты и безопасные переходы](game/help-and-profile.md#подсказки-по-состоянию) |
 | Включить перенесённые возможности новой карты | [`presentation.ts`](../features/world/scene/presentation.ts) | [Текущие ограничения мира](game/world-foundation.md); смена флага не переносит старую геометрию |
 | Переход между главным экраном и миром | [`world-portal.tsx`](../features/world/world-portal.tsx), [`use-world-portal.ts`](../features/world/use-world-portal.ts) | [Устройство мира](game/world-foundation.md) |
