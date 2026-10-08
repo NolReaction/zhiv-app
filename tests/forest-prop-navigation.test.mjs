@@ -9,9 +9,9 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { createWorldNavigation, canTraverse, canTraverseWorldObstacle, findWorldPath, isWalkable,
-  withWorldNavigationObstacle } = await vite.ssrLoadModule("/features/world/navigation.ts");
+  withWorldNavigationObstacle } = await vite.ssrLoadModule("/features/world/navigation/navigation.ts");
 const { createClearingActivity, setClearingNavigationObstacle, requestClearingPoint,
-  advanceClearingActivity, isClearingAtPoint, requestClearingBush, requestClearingSleep } = await vite.ssrLoadModule("/features/world/clearing-activity.ts");
+  advanceClearingActivity, isClearingAtPoint, requestClearingBush, requestClearingSleep } = await vite.ssrLoadModule("/features/world/simulation/clearing-activity.ts");
 const point = (x, y) => ({ x, y });
 const rect = (x, y, width, height) => [point(x, y), point(x + width, y), point(x + width, y + height), point(x, y + height)];
 const scene = () => ({ schemaVersion: 1, id: "prop-navigation", width: 400, height: 400,
@@ -101,9 +101,9 @@ test("temporary footprints reject malformed geometry and never replace the stati
 });
 
 test("session hydration rejects an old saved position inside the parked basket", async () => {
-  const { connectForestSession } = await vite.ssrLoadModule("/features/world/forest-session.ts");
-  const { forestMemoryKey } = await vite.ssrLoadModule("/features/world/forest-memory.ts");
-  const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
+  const { connectForestSession } = await vite.ssrLoadModule("/features/world/state/forest-session.ts");
+  const { forestMemoryKey } = await vite.ssrLoadModule("/features/world/state/memory/forest-memory.ts");
+  const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
   const map = withPlacedBushArtwork(TILED_WORLD), records = new Map();
   const environment = { now: () => 1000, storage: {
     getItem: key => records.get(key) ?? null, setItem: (key, value) => records.set(key, value),
@@ -125,7 +125,7 @@ test("session hydration rejects an old saved position inside the parked basket",
 });
 
 test("a parked prop cannot be bypassed by a scripted doorway or bush jump", async () => {
-  const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
+  const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
   const map = withPlacedBushArtwork(TILED_WORLD);
   for (const kind of ["home", "bush"]) {
     const state = createClearingActivity(map, 1);

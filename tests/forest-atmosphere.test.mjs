@@ -8,11 +8,11 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { FOREST_ATMOSPHERE_LIMITS, FOREST_BIRD_FLIGHT_DURATION, forestAtmosphereState, forestAtmosphereFrame, drawForestAtmosphere }
-  = await vite.ssrLoadModule("/features/world/forest-atmosphere.ts");
+  = await vite.ssrLoadModule("/features/world/environment/weather/forest-atmosphere.ts");
 const { drawForestBird, drawForestButterfly, drawForestFirefly, forestFireflyPose }
-  = await vite.ssrLoadModule("/features/world/forest-wildlife.ts");
+  = await vite.ssrLoadModule("/features/world/environment/wildlife/forest-wildlife.ts");
 const { updateForestWetness, isForestGroundClear, forestGroundWeatherFrame, drawForestGroundWeather }
-  = await vite.ssrLoadModule("/features/world/forest-ground-weather.ts");
+  = await vite.ssrLoadModule("/features/world/environment/weather/forest-ground-weather.ts");
 
 const scene = { schemaVersion: 1, id: "test-forest", width: 960, height: 720,
   focus: { x: 170, y: 210, width: 240, height: 240 }, terrain: [], sites: [], paths: [] };

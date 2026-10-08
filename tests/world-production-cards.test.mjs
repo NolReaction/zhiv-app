@@ -7,10 +7,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
-const { WorldObjectMenu, WorldRecipeDetail } = await vite.ssrLoadModule("/features/economy/world-object-menu.tsx");
-const { WorldExpeditionSector, ExpeditionRouteDetails } = await vite.ssrLoadModule("/features/economy/world-expeditions-menu.tsx");
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
-const { economyStorage } = await vite.ssrLoadModule("/features/economy/rules.ts");
+const { WorldObjectMenu, WorldRecipeDetail } = await vite.ssrLoadModule("/features/economy/ui/stations/world-object-menu.tsx");
+const { WorldExpeditionSector, ExpeditionRouteDetails } = await vite.ssrLoadModule("/features/economy/ui/expeditions/world-expeditions-menu.tsx");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 after(() => vite.close());
 
 const now = Date.parse("2026-10-03T12:00:00Z");
@@ -227,12 +227,12 @@ test("recipe returns to its catalogue only after its own confirmed order, retain
           if (!previous.current || dependencies.some((value, index) => !Object.is(value, previous.current[index]))) { previous.current = dependencies; effects.push(effect); }
         }
       `; },
-      transform(source, id) { if (id.endsWith("/features/economy/world-object-menu.tsx")) return source.replace('from "react";', `from "${hookModule}";`); },
+      transform(source, id) { if (id.endsWith("/features/economy/ui/stations/world-object-menu.tsx")) return source.replace('from "react";', `from "${hookModule}";`); },
     }],
   });
   try {
     const hooks = await runtime.ssrLoadModule(hookModule);
-    const { WorldRecipeDetail: Preparation } = await runtime.ssrLoadModule("/features/economy/world-object-menu.tsx");
+    const { WorldRecipeDetail: Preparation } = await runtime.ssrLoadModule("/features/economy/ui/stations/world-object-menu.tsx");
     const recipeId = "make_planks";
     const newJob = id => ({ id, kind: "production", targetId: "workshop", recipeId, startedAt: new Date(now).toISOString(), finishesAt: new Date(now + 30_000).toISOString(), rewards: { plank: 1 }, cost: { coins: 0, items: { wood: 2 } } });
     for (const outcome of ["confirmed", "failed", "uncertain", "background"]) {

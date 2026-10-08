@@ -6,7 +6,7 @@ import { AdminTapActivityPanel } from "./admin-tap-activity-panel";
 import { type AdminEconomyTarget } from "./admin-economy-panel";
 import { AdminEconomyWorkspace, type AdminHistoryRequest } from "./admin-analytics-panel";
 import { AdminEconomyDialog } from "./admin-economy-dialog";
-import { worldCatalog } from "@/features/world/model";
+import { worldCatalog } from "@/features/world/domain/model";
 import { AdminFeedbackPanel } from "./admin-feedback-panel";
 import { validAdminReason } from "./admin-input";
 import { AdminIncidentsPanel } from "./admin-incidents-panel";

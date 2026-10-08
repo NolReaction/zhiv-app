@@ -8,11 +8,11 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { forestBushArtworkAvailable } = await vite.ssrLoadModule("/features/world/forest-bush-artwork.ts");
-const { createForestGarden, gardenActionAvailable, growForestBerries } = await vite.ssrLoadModule("/features/world/forest-garden.ts");
-const { createClearingActivity, requestClearingBush } = await vite.ssrLoadModule("/features/world/clearing-activity.ts");
-const { compileWorldInteractions } = await vite.ssrLoadModule("/features/world/interaction-navigation.ts");
-const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
+const { forestBushArtworkAvailable } = await vite.ssrLoadModule("/features/world/activities/garden/forest-bush-artwork.ts");
+const { createForestGarden, gardenActionAvailable, growForestBerries } = await vite.ssrLoadModule("/features/world/activities/garden/forest-garden.ts");
+const { createClearingActivity, requestClearingBush } = await vite.ssrLoadModule("/features/world/simulation/clearing-activity.ts");
+const { compileWorldInteractions } = await vite.ssrLoadModule("/features/world/navigation/interaction-navigation.ts");
+const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
 function pendingScene() {
   const scene = structuredClone(TILED_WORLD); scene.bushes[0].imageId = "future-independent-shrub"; return scene;
 }

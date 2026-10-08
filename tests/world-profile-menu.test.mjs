@@ -8,12 +8,12 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { WorldProfileContent, WorldProfileMenu } = await vite.ssrLoadModule("/features/world/world-profile-menu.tsx");
-const { WorldMoodModule } = await vite.ssrLoadModule("/features/world/world-mood-module.tsx");
-const { BOOK_COLLECTION_COUNT } = await vite.ssrLoadModule("/features/world/collection-book.ts");
-const { newWorldState, worldCatalog } = await vite.ssrLoadModule("/features/world/model.ts");
-const { newEconomyState } = await vite.ssrLoadModule("/features/economy/rules.ts");
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
+const { WorldProfileContent, WorldProfileMenu } = await vite.ssrLoadModule("/features/world/ui/profile/world-profile-menu.tsx");
+const { WorldMoodModule } = await vite.ssrLoadModule("/features/world/ui/profile/world-mood-module.tsx");
+const { BOOK_COLLECTION_COUNT } = await vite.ssrLoadModule("/features/world/domain/collection-book.ts");
+const { newWorldState, worldCatalog } = await vite.ssrLoadModule("/features/world/domain/model.ts");
+const { newEconomyState } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const freshEconomy = () => ({ ...newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 3, workshopLevel: 0 }), catalog: economyCatalog, completedExplorations: 7 });
 
 const observation = {

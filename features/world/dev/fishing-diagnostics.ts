@@ -1,5 +1,5 @@
-import { fishingCollectionDraws, fishingIneligibility, fishingWeights } from "@/features/economy/fishing";
-import { economyCatalog, type EconomyView } from "@/features/economy/model";
+import { fishingCollectionDraws, fishingIneligibility, fishingWeights } from "@/features/economy/domain/fishing";
+import { economyCatalog, type EconomyView } from "@/features/economy/domain/model";
 
 export type FishingDiagnosticSelection = { rodId: string; hookId: string; baitId: string | null; routeId: string };
 

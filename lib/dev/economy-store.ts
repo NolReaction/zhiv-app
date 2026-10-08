@@ -1,22 +1,22 @@
-import { wardrobeItems, wardrobeOwned } from "@/features/world/wardrobe";
+import { wardrobeItems, wardrobeOwned } from "@/features/world/domain/wardrobe";
 // Development adapter only. Production mutations are atomic Ktor/PostgreSQL transactions.
 import { createHash, randomInt } from "node:crypto";
-import { ECONOMY_CURRENCY_SCALE, ECONOMY_PEARL_SCALE, ECONOMY_MAX_PEARLS, formatPearls, nominalEconomyMoney, redenominateEconomyState } from "@/features/economy/money";
-import { marketBudgetReset, marketDailyLimit, marketDay, marketHomeBand, marketItemUnlocked, marketListingEligible, marketMinimumPrice, marketSaleFee, marketSameHomeBand } from "@/features/economy/market-rules";
+import { ECONOMY_CURRENCY_SCALE, ECONOMY_PEARL_SCALE, ECONOMY_MAX_PEARLS, formatPearls, nominalEconomyMoney, redenominateEconomyState } from "@/features/economy/domain/money";
+import { marketBudgetReset, marketDailyLimit, marketDay, marketHomeBand, marketItemUnlocked, marketListingEligible, marketMinimumPrice, marketSaleFee, marketSameHomeBand } from "@/features/economy/domain/market-rules";
 import { awardDevEconomyAchievements, awardDevMarketSale, getDevIdentity, lookupDevUser } from "@/lib/dev/api-store";
 import { consumeDevLegacyEconomy, getDevCollectionFinds, hasDevLegacyJourney, getDevLegacyWardrobe, syncDevWorldWardrobe } from "@/lib/dev/world-store";
 import { ECONOMY_MAX_BALANCE, ECONOMY_MAX_ITEMS, economyCatalog, economyCommandSchema, economyResidentOrdersSchema, marketCommandSchema, type EconomyCommand,
-  type EconomyMarketListing, type EconomyResult, type EconomyState, type EconomyView, type MarketCommand, type MarketView } from "@/features/economy/model";
-import { applyEconomyCommand, assertEconomyStorageTransition, convertLegacyEconomy, creditEconomyItems, economyStorage, EconomyRuleError, marketUnlocked, newEconomyState } from "@/features/economy/rules";
-import { inheritEconomyCollection } from "@/features/economy/collection-progress";
-import { economyCommandUsesActor } from "@/features/economy/actor-availability";
-import { createFishingShop, fishingShopExpired } from "@/features/economy/fishing-shop";
-import { fishingState } from "@/features/economy/fishing";
-import { publicEconomyJob } from "@/features/economy/public-jobs";
-import { foodState } from "@/features/economy/food";
-import { economyDevCommandSchema, type EconomyDevCommand } from "@/features/economy/dev-model";
-import { economyDevSettlement } from "@/features/economy/dev-presets";
-import { BARTER_DAILY_LIMIT, barterCommandSchema, type BarterCommand, type BarterOffer, type BarterView, type BarterResult } from "@/features/economy/barter-model";
+  type EconomyMarketListing, type EconomyResult, type EconomyState, type EconomyView, type MarketCommand, type MarketView } from "@/features/economy/domain/model";
+import { applyEconomyCommand, assertEconomyStorageTransition, convertLegacyEconomy, creditEconomyItems, economyStorage, EconomyRuleError, marketUnlocked, newEconomyState } from "@/features/economy/domain/rules";
+import { inheritEconomyCollection } from "@/features/economy/domain/collection-progress";
+import { economyCommandUsesActor } from "@/features/economy/domain/actor-availability";
+import { createFishingShop, fishingShopExpired } from "@/features/economy/domain/fishing-shop";
+import { fishingState } from "@/features/economy/domain/fishing";
+import { publicEconomyJob } from "@/features/economy/domain/public-jobs";
+import { foodState } from "@/features/economy/domain/food";
+import { economyDevCommandSchema, type EconomyDevCommand } from "@/features/economy/dev/dev-model";
+import { economyDevSettlement } from "@/features/economy/dev/dev-presets";
+import { BARTER_DAILY_LIMIT, barterCommandSchema, type BarterCommand, type BarterOffer, type BarterView, type BarterResult } from "@/features/economy/domain/barter-model";
 
 type Receipt = { signature: string; message: string; acceptedRevision: number };
 type ReceiptCommand = EconomyCommand | MarketCommand | EconomyDevCommand;

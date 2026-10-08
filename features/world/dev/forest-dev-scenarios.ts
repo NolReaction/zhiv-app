@@ -1,7 +1,7 @@
-import type { ForestSessionState } from "../forest-session";
-import type { ForestDirectorOptions } from "../forest-director";
-import { cancelForestDirector, requestForestDirective } from "../forest-director";
-import { createBirdReactions } from "../forest-bird-reactions";
+import type { ForestSessionState } from "@/features/world/state/forest-session";
+import type { ForestDirectorOptions } from "@/features/world/simulation/forest-director";
+import { cancelForestDirector, requestForestDirective } from "@/features/world/simulation/forest-director";
+import { createBirdReactions } from "@/features/world/environment/wildlife/forest-bird-reactions";
 import type { WorldDevScenario } from "./world-dev-store";
 
 /** Caller must suspend account persistence before applying any DEV event. */

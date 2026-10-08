@@ -9,7 +9,7 @@ import { economicMath } from "../scripts/lib/economy-math.mjs";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { economyCatalog, economyFishingSchema } = await vite.ssrLoadModule("/features/economy/model.ts");
+const { economyCatalog, economyFishingSchema } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { fishingDiagnostics } = await vite.ssrLoadModule("/features/world/dev/fishing-diagnostics.ts");
 const { WorldDevFishing, FishingDiagnosticReport } = await vite.ssrLoadModule("/features/world/dev/world-dev-fishing.tsx");
 const spec = economyCatalog.fishing, math = economicMath(economyCatalog);

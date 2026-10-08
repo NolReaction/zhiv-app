@@ -7,8 +7,8 @@ test("2D lifecycle freezes while hidden/paused, settles reduced motion, and disp
   const root = fileURLToPath(new URL("..", import.meta.url));
   const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
   const { mountHabitat } = await vite.ssrLoadModule("/features/mochlik/scene.ts");
-  const { WORLD_ART } = await vite.ssrLoadModule("/features/world/art.ts");
-  const { WORLD_PRESENTATION } = await vite.ssrLoadModule("/features/world/presentation.ts");
+  const { WORLD_ART } = await vite.ssrLoadModule("/features/world/scene/art.ts");
+  const { WORLD_PRESENTATION } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
   await vite.close(); // Close Vite timers before installing the scene clock.
   // Retain coverage of the dormant habitat. Active replacement-map behavior has its own suite.
   const rebuilding = WORLD_PRESENTATION.rebuilding, originalArt = { ...WORLD_ART };

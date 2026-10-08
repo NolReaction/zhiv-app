@@ -7,8 +7,8 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { syncForestConstruction, forestConstructionJob } = await vite.ssrLoadModule("/features/world/economy-construction-state.ts");
-const { economySceneConstruction } = await vite.ssrLoadModule("/features/economy/world-adapter.ts");
+const { syncForestConstruction, forestConstructionJob } = await vite.ssrLoadModule("/features/world/state/economy/economy-construction-state.ts");
+const { economySceneConstruction } = await vite.ssrLoadModule("/features/economy/integration/world-adapter.ts");
 const start = Date.parse("2026-10-06T12:00:00Z"), owner = "builder-owner";
 const job = (id = "home") => ({ id, stationId: "home", targetLevel: 2,
   startedAt: new Date(start).toISOString(), finishesAt: new Date(start + 3600_000).toISOString() });

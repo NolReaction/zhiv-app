@@ -7,9 +7,9 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { fishingActionFrame, fishingWaterTarget, fishingCastTarget, fishingCleanupEnd, FOREST_FISHING_CYCLE_SECONDS, FOREST_FISHING_FIRST_CATCH_SECONDS, forestFishingCatchState, FISHING_WATER_LIMITS } = await vite.ssrLoadModule("/features/world/forest-fishing.ts");
-const { isForestWater } = await vite.ssrLoadModule("/features/world/forest-water.ts");
-const { FISHING_PACK_RELEASE, FISHING_REEL_HOOK } = await vite.ssrLoadModule("/features/world/fishing-props.ts");
+const { fishingActionFrame, fishingWaterTarget, fishingCastTarget, fishingCleanupEnd, FOREST_FISHING_CYCLE_SECONDS, FOREST_FISHING_FIRST_CATCH_SECONDS, forestFishingCatchState, FISHING_WATER_LIMITS } = await vite.ssrLoadModule("/features/world/activities/fishing/forest-fishing.ts");
+const { isForestWater } = await vite.ssrLoadModule("/features/world/environment/water/forest-water.ts");
+const { FISHING_PACK_RELEASE, FISHING_REEL_HOOK } = await vite.ssrLoadModule("/features/world/activities/fishing/fishing-props.ts");
 const polygon = (x, y, width, height) => ({ points: [{ x, y }, { x: x + width, y }, { x: x + width, y: y + height }, { x, y: y + height }] });
 const scene = () => ({ width: 300, height: 300, water: { surfaces: [polygon(120, 0, 180, 300)], exclusions: [] } });
 

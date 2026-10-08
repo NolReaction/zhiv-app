@@ -6,13 +6,13 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ configFile: false, appType: "custom", root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { createForestCampfires, advanceForestCampfires, campfireReady, campfireVisitFrame } = await vite.ssrLoadModule("/features/world/forest-campfire.ts");
-const { connectForestSession } = await vite.ssrLoadModule("/features/world/forest-session.ts");
-const { requestForestDirective, advanceForestDirector, noticeForestDirector, cancelForestDirector } = await vite.ssrLoadModule("/features/world/forest-director.ts");
+const { createForestCampfires, advanceForestCampfires, campfireReady, campfireVisitFrame } = await vite.ssrLoadModule("/features/world/activities/campfire/forest-campfire.ts");
+const { connectForestSession } = await vite.ssrLoadModule("/features/world/state/forest-session.ts");
+const { requestForestDirective, advanceForestDirector, noticeForestDirector, cancelForestDirector } = await vite.ssrLoadModule("/features/world/simulation/forest-director.ts");
 const { previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
-const { createWorldNavigation, isWalkable, findWorldPath } = await vite.ssrLoadModule("/features/world/navigation.ts");
-const { forestObservationFrame } = await vite.ssrLoadModule("/features/world/forest-observer.ts");
-const { captureForestMemory } = await vite.ssrLoadModule("/features/world/forest-memory.ts");
+const { createWorldNavigation, isWalkable, findWorldPath } = await vite.ssrLoadModule("/features/world/navigation/navigation.ts");
+const { forestObservationFrame } = await vite.ssrLoadModule("/features/world/state/forest-observer.ts");
+const { captureForestMemory } = await vite.ssrLoadModule("/features/world/state/memory/forest-memory.ts");
 const source = JSON.parse(await readFile(new URL("../features/world/tiled/forest.generated.json", import.meta.url)));
 const night = { autoLife: false, blocked: false, dusk: 1, rain: 0, homeAvailable: true };
 function session(level = 1, size = 50) {
@@ -87,9 +87,9 @@ test("missing/unreachable campfires fail clearly and unfinished visits are not p
 });
 
 test("the hearth excludes puddles, authored walks and protected doorway transitions", async () => {
-  const { isForestGroundClear } = await vite.ssrLoadModule("/features/world/forest-ground-weather.ts");
-  const { compileWorldInteractions } = await vite.ssrLoadModule("/features/world/interaction-navigation.ts");
-  const { clearingRouteDiagnostics } = await vite.ssrLoadModule("/features/world/clearing-activity.ts");
+  const { isForestGroundClear } = await vite.ssrLoadModule("/features/world/environment/weather/forest-ground-weather.ts");
+  const { compileWorldInteractions } = await vite.ssrLoadModule("/features/world/navigation/interaction-navigation.ts");
+  const { clearingRouteDiagnostics } = await vite.ssrLoadModule("/features/world/simulation/clearing-activity.ts");
   const { scene } = session(), fire = scene.campfires[0];
   assert.equal(isForestGroundClear(scene, fire.position, 2), false);
   const home = scene.sites.find(site => site.id === "home");

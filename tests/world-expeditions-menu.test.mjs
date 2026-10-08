@@ -7,12 +7,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
-const { WorldExpeditionsMenu, WorldExpeditionSector, ExpeditionRouteDetails, ActiveExpedition, expeditionCancellationKey, expeditionSector, expeditionSectors } = await vite.ssrLoadModule("/features/economy/world-expeditions-menu.tsx");
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
-const { economyStorage } = await vite.ssrLoadModule("/features/economy/rules.ts");
-const { Work } = await vite.ssrLoadModule("/features/economy/world-economy-parts.tsx");
-const { mealDuration } = await vite.ssrLoadModule("/features/economy/food.ts");
-const { worldDuration } = await vite.ssrLoadModule("/features/economy/world-stations.ts");
+const { WorldExpeditionsMenu, WorldExpeditionSector, ExpeditionRouteDetails, ActiveExpedition, expeditionCancellationKey, expeditionSector, expeditionSectors } = await vite.ssrLoadModule("/features/economy/ui/expeditions/world-expeditions-menu.tsx");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
+const { Work } = await vite.ssrLoadModule("/features/economy/ui/shared/world-economy-parts.tsx");
+const { mealDuration } = await vite.ssrLoadModule("/features/economy/domain/food.ts");
+const { worldDuration } = await vite.ssrLoadModule("/features/economy/ui/shared/world-stations.ts");
 after(() => vite.close());
 
 const now = Date.parse("2026-10-03T12:00:00Z");

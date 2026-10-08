@@ -1,6 +1,6 @@
 # Архитектура приложения
 
-Текущее устройство приложения и Tiled-мира в опубликованной версии **0.6.7**. Web/API используют одну версию, PostgreSQL — миграции **V1–V45**, каталог экономики — **v3**. Текущий этап и выполненные проверки — [WORK_STATE.md](../WORK_STATE.md), поиск файла — [путеводитель](repository-guide.md), запуск — [локальная разработка](development/local-development.md). Публикация в `master` и развёртывание на сервере выполняются отдельно.
+Текущее устройство приложения и Tiled-мира в рабочей ветке **0.6.8**, основанной на опубликованной 0.6.7. Перегруппировка исходников сохраняет игровые правила и данные. Web/API используют одну версию, PostgreSQL — миграции **V1–V45**, каталог экономики — **v3**. Текущий этап и выполненные проверки — [WORK_STATE.md](../WORK_STATE.md), поиск файла — [путеводитель](repository-guide.md), запуск — [локальная разработка](development/local-development.md). Публикация в `master` и развёртывание на сервере выполняются отдельно.
 
 ## Контуры запуска
 
@@ -14,22 +14,32 @@
 
 ## Границы модулей
 
+Организация — **feature-based**: аккаунт, отметки, экономика и мир имеют собственные модули. В крупных модулях отдельно расположены интерфейс, состояние/синхронизация и предметные правила. Это не строгое MVVM: React hooks и сессии готовят состояние для компонентов, но часть представления пока вычисляется внутри экранов. Структура папок и обязательные направления зависимостей описаны в [правилах организации кода](development/code-organization.md).
+
+
 | Модуль | Ответственность | Подробнее |
 |---|---|---|
 | `app/` | Страницы, layout, manifest, локальные API-маршруты | [Запуск](development/local-development.md) |
-| `features/check-in/` | Главный экран, отметка, календарь, статус | [Функции приложения](development/app-features.md) |
+| `features/app/` | Сборка приложения, общая навигация, соединение feature-контроллеров | [Точка сборки](../features/app/README.md) |
+| `features/check-in/` | Отметка, календарь, статус и связанные элементы главного экрана | [Функции приложения](development/app-features.md) |
 | `features/account/`, `features/people/` | Вход, профиль, восстановление, связи, группы | [Функции приложения](development/app-features.md) |
 | `features/game/` | Тапы, журнал отправки, уровни, рейтинг, достижения | [Синхронизация](game/game-sync-reliability.md) |
 | `features/activity/` | Активный сеанс, подтверждённое время, AFK и восстановление сети | [Активность и offline](game/activity-and-offline.md) |
 | `features/economy/` | Серверное хозяйство, склад, стройка, исследования, рынок и клиентский протокол | [Экономика](game/economy-foundation.md) |
 | `features/world/` | Tiled-сцена, камера, свет, погода, живность, UI и серверное состояние мира | [Редактор карты](game/tiled-editor.md), [освещение](game/world-lighting.md) |
-| `features/mochlik/` | Рисование Мохлика и сохранённые модули прежней сцены | Текущий лес собирается в [features/world/new-map-scene.ts](../features/world/new-map-scene.ts) |
+| `features/mochlik/` | Рисование Мохлика и сохранённые модули прежней сцены | Текущий лес собирается в [features/world/scene/new-map-scene.ts](../features/world/scene/new-map-scene.ts) |
 | `features/admin/` | Закрытые инструменты поддержки и модерации | [Админка](operations/admin-panel.md) |
 | `features/startup/` | Заставка, этапы готовности данных и сцены, повтор загрузки | [Запуск и фирменная графика](development/startup-and-brand.md) |
 | `components/`, `lib/` | Общий UI, API-клиенты, контракты и чистые функции | [Функции приложения](development/app-features.md) |
 | `apps/api/` | Серверные правила, авторизация, транзакции, миграции | [Сервер и данные](development/backend-and-data.md) |
 
-[app/page.tsx](../app/page.tsx) открывает `CheckInApp`. Он соединяет аккаунт, отметки, людей и игровое состояние. CSS-компонента лежит рядом в `.module.css`; общие токены и базовые стили — [app/globals.css](../app/globals.css).
+[app/page.tsx](../app/page.tsx) открывает [AppShell](../features/app/app-shell.tsx). Он соединяет аккаунт, отметки, людей и игровое состояние. CSS-компонента лежит рядом в `.module.css`; общие токены и базовые стили — [app/globals.css](../app/globals.css).
+
+Внутри `world/`: `ui/` — окна по темам; `scene/` — Canvas, камера и сборка кадра; `simulation/` — выбор и исполнение поведения; `activities/` — занятия; `characters/` — жители; `navigation/` — маршруты; `environment/` — погода, свет, вода и живность; `state/` — общая сессия и сохранение. `tiled/` сохраняет контракт разметки и экспорта; прежние реализации собраны в `legacy/`. [Карта модуля](../features/world/README.md).
+
+Внутри `economy/`: `domain/` — модели и правила; `sync/` — HTTP, очередь и контроллер; `integration/` — связь со сценой; `ui/` — панели по темам; `dev/` — локальные пресеты. [Карта экономики](../features/economy/README.md). Правила выдачи подтверждает Ktor, даже если клиент уже умеет рассчитать предварительный результат.
+
+Профиль аккаунта (`features/account/profile-view.tsx`) и игровой профиль «Мой Мохлик» (`features/world/ui/profile/`) имеют разные задачи. Для оформления игрового профиля начните с его компонента и соседнего CSS; общий каркас окна и открытие принадлежат `world-view.tsx`.
 
 ## Кто владеет состоянием
 
@@ -37,15 +47,15 @@
 |---|---|---|
 | Аккаунт, отметки, приватность, статус | Ktor/PostgreSQL; локально — имитация | [lib/check-in-api.ts](../lib/check-in-api.ts), [lib/auth-api.ts](../lib/auth-api.ts) |
 | Подтверждённые тапы, рекорды, достижения | Серверные квитанции | [game-sync.ts](../features/game/game-sync.ts) повторяет неподтверждённые пакеты из журнала |
-| Монеты, товары, здания, заказы и рынок | Серверная экономика с `revision` | [economy/session.ts](../features/economy/session.ts): `requestId`, `expectedRevision`, точный повтор после потери ответа |
-| Гардероб и находки прежних походов | World snapshot; купленная одежда также хранится в экономике | [world/session.ts](../features/world/session.ts), новые старты прежних поездок запрещены сервером; текущая книга читает также подтверждённые находки и улов экономики |
+| Монеты, товары, здания, заказы и рынок | Серверная экономика с `revision` | [economy/sync/session.ts](../features/economy/sync/session.ts): `requestId`, `expectedRevision`, точный повтор после потери ответа |
+| Гардероб и находки прежних походов | World snapshot; купленная одежда также хранится в экономике | [world/state/session.ts](../features/world/state/session.ts), новые старты прежних поездок запрещены сервером; текущая книга читает также подтверждённые находки и улов экономики |
 | Геометрия карты, водная маска, свет | `world/tiled/forest.tmj` | Экспорт [forest.generated.json](../features/world/tiled/forest.generated.json), общий `TILED_WORLD` |
 | Потребности, краткая память, безопасная позиция/сон, грибы и сад | Подтверждённый снимок `forest_memory` с отдельной revision и арендой записи | `forest-memory.ts` формирует снимок v2; `forest-memory-sync.ts` согласует его с API; localStorage — кэш |
 | Активные сеансы и время игры | Серверный presence, интервалы UTC и квитанции V45 | [activity/session.ts](../features/activity/session.ts): пять минут без ввода приостанавливают игру; явный возврат сначала сверяет сохранения |
-| Активное время, пути, текущие сценки, реплики и животные | [forest-session.ts](../features/world/forest-session.ts) для аккаунта и геометрии сцены | Один владелец обновляет состояние; круг и большая карта читают его; промежуточные анимации не сохраняются |
+| Активное время, пути, текущие сценки, реплики и животные | [forest-session.ts](../features/world/state/forest-session.ts) для аккаунта и геометрии сцены | Один владелец обновляет состояние; круг и большая карта читают его; промежуточные анимации не сохраняются |
 | Вид интерфейса и анимационные эффекты | React и локальные настройки | Не начисляют серверные награды |
 
-Не смешивайте [features/world/session.ts](../features/world/session.ts) (гардероб/прежние походы/HTTP) и [forest-session.ts](../features/world/forest-session.ts) (отрисовка/поведение). Старый [features/mochlik/session.ts](../features/mochlik/session.ts) не является владельцем текущего Tiled-леса.
+Не смешивайте [features/world/state/session.ts](../features/world/state/session.ts) (гардероб/прежние походы/HTTP) и [forest-session.ts](../features/world/state/forest-session.ts) (отрисовка/поведение). Старый [features/mochlik/session.ts](../features/mochlik/session.ts) не является владельцем текущего Tiled-леса.
 
 Тап по кнопке и серверная отметка — разные события. Отметка имеет ограничение частоты и влияет на календарь/серию дней; игровые тапы идут пакетами и имеют отдельные подтверждения. Offline-оболочка PWA не означает успешную отправку отметки.
 
@@ -53,7 +63,7 @@
 
 1. Редактируемая сцена — `world/tiled/forest.tmj`; PNG/JPEG-мастера — `art/world/prototype/`; основной фон — `forest-ground.png`.
 2. `world:export` проверяет Tiled и формирует [features/world/tiled/forest.generated.json](../features/world/tiled/forest.generated.json). WebP экспортируются отдельно: [арт-процесс](../art/README.md).
-3. [presentation.ts](../features/world/presentation.ts) выдаёт единый `TILED_WORLD`. Круг и большая карта используют [new-map-scene.ts](../features/world/new-map-scene.ts), Tiled preview — общий renderer и те же данные.
+3. [presentation.ts](../features/world/scene/presentation.ts) выдаёт единый `TILED_WORLD`. Круг и большая карта используют [new-map-scene.ts](../features/world/scene/new-map-scene.ts), Tiled preview — общий renderer и те же данные.
 4. Геометрия, свет и анимации работают в координатах мира; камера переводит их в координаты canvas. Основной новый лес рисуется Canvas 2D.
 
 `WORLD_PRESENTATION.rebuilding = true` выбирает Tiled-лес и отключает прежние старты путешествий/крафт гардероба; название флага не означает, что вся игра закрыта до будущего выпуска. Серверная экономика работает отдельно: строительство, улучшения, производство, исследования и рынок доступны через `EconomyPanel`. Коллекция, гардероб и старые поездки сохраняются; последние можно завершить. `streakDecor = false` скрывает прежнюю кастомизацию подарками. DEV-панель и `/prototype/tiled-world` доступны только в development; production закрывает прототип ответом 404 и локальную имитацию API ответом 503, независимо от `ENABLE_DEV_API`.

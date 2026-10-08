@@ -8,9 +8,9 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { sampleForestRain, drawForestRain, drawForestWaterImpact, FOREST_RAIN_LIMIT }
-  = await vite.ssrLoadModule("/features/world/forest-rain.ts");
+  = await vite.ssrLoadModule("/features/world/environment/weather/forest-rain.ts");
 const { forestGroundWeatherFrame }
-  = await vite.ssrLoadModule("/features/world/forest-ground-weather.ts");
+  = await vite.ssrLoadModule("/features/world/environment/weather/forest-ground-weather.ts");
 const scene = { schemaVersion: 1, id: "rain-surfaces", width: 960, height: 720,
   focus: { x: 170, y: 210, width: 240, height: 240 }, terrain: [], sites: [], paths: [],
   actor: { spawn: { x: 290, y: 330 }, size: 48 } };

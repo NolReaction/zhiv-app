@@ -2,7 +2,7 @@
 
 Источник ингредиентов, цен, бонусов и сроков — [`economy-catalog.json`](../../apps/api/src/main/resources/world/economy-catalog.json): `items`, `recipes`, `food`, `fishing.shop`. Видимые монеты совпадают с целыми суммами каталога; `currencyScale: 10` — исторический маркер деноминации. Жемчуг отображается через `formatPearls`: две сохранённые единицы равны одной видимой жемчужине.
 
-Правила зеркально исполняются в TypeScript (`features/economy/model.ts`, `food.ts`, `rules.ts`, локальный API) и Kotlin (`apps/api/src/main/kotlin/ru/zhiv/economy/`). Кухня находится в `world-object-menu.tsx`, питание и доска — в `world-food-menu.tsx`. Справка описывает эти же правила в `world-help-content.ts`.
+Правила зеркально исполняются в TypeScript (`features/economy/domain/model.ts`, `food.ts`, `rules.ts`, локальный API) и Kotlin (`apps/api/src/main/kotlin/ru/zhiv/economy/`). Кухня находится в `world-object-menu.tsx`, питание и доска — в `world-food-menu.tsx`. Справка описывает эти же правила в `world-help-content.ts`.
 
 ## Два применения готового блюда
 

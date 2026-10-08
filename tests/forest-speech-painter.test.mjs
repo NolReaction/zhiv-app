@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { layoutForestSpeech, drawForestSpeech, FOREST_SPEECH_FONT } = await vite.ssrLoadModule("/features/world/forest-speech-painter.ts");
+const { layoutForestSpeech, drawForestSpeech, FOREST_SPEECH_FONT } = await vite.ssrLoadModule("/features/world/characters/social/forest-speech-painter.ts");
 const measure = text => Array.from(text).reduce((width, char) => width + (char === " " ? 3.5 : 7), 0);
 const base = { id: "greeting", speaker: "builder", text: "Доски ровные. Можно и о жизни поговорить!",
   elapsed: 1, duration: 5, anchor: { x: 160, y: 150 } };

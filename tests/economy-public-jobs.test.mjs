@@ -6,8 +6,8 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } },
   server: { middlewareMode: true, hmr: false } });
-const { publicEconomyJob } = await vite.ssrLoadModule("/features/economy/public-jobs.ts");
-const { economyJobSchema, economyViewSchema } = await vite.ssrLoadModule("/features/economy/model.ts");
+const { publicEconomyJob } = await vite.ssrLoadModule("/features/economy/domain/public-jobs.ts");
+const { economyJobSchema, economyViewSchema } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const identities = await vite.ssrLoadModule("/lib/dev/api-store.ts");
 const economy = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
 const now = Date.parse("2026-10-06T00:00:00Z");

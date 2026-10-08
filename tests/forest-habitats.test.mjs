@@ -1,10 +1,12 @@
 import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'vite';
-const vite = await createServer({ configFile: false, server: { middlewareMode: true, hmr: false } });
+import { fileURLToPath } from 'node:url';
+const root = fileURLToPath(new URL('..', import.meta.url));
+const vite = await createServer({ root, configFile: false, resolve: { alias: { '@': root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { habitatContains, habitatFlightTarget, habitatCanTraverse } = await vite.ssrLoadModule('/features/world/forest-habitats.ts');
-const { createForestFauna, advanceForestFauna, requestFaunaInteraction } = await vite.ssrLoadModule('/features/world/forest-fauna.ts');
+const { habitatContains, habitatFlightTarget, habitatCanTraverse } = await vite.ssrLoadModule('/features/world/environment/wildlife/forest-habitats.ts');
+const { createForestFauna, advanceForestFauna, requestFaunaInteraction } = await vite.ssrLoadModule('/features/world/environment/wildlife/forest-fauna.ts');
 const rectangle = (x, y, w, h) => [{ x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }];
 const clearing = { id: 'clearing-butterflies', points: rectangle(95, 90, 110, 120) };
 const forest = { id: 'forest-butterflies', species: 'butterfly', capacity: 3, points: rectangle(0, 0, 300, 300),

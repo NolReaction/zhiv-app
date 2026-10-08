@@ -1,6 +1,6 @@
-import type { ForestObservation } from "../use-forest-observation";
-import type { ForestMemorySyncStatus } from "../forest-memory-sync";
-import type { ForestGardenObservation } from "../forest-observer";
+import type { ForestObservation } from "@/features/world/state/use-forest-observation";
+import type { ForestMemorySyncStatus } from "@/features/world/state/memory/forest-memory-sync";
+import type { ForestGardenObservation } from "@/features/world/state/forest-observer";
 import styles from "./world-dev-panel.module.css";
 
 const NEEDS = [

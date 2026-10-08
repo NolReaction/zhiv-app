@@ -8,7 +8,7 @@ const vite = await createServer({ appType: 'custom', configFile: false, root,
   resolve: { alias: { '@': root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { chooseForestBirdwatchTarget, createForestBirdwatch, advanceForestBirdwatch,
-  forestBirdwatchFrame } = await vite.ssrLoadModule('/features/world/forest-birdwatching.ts');
+  forestBirdwatchFrame } = await vite.ssrLoadModule('/features/world/activities/forest-birdwatching.ts');
 const actor = { x: 300, y: 400, size: 50, direction: 'front' };
 const bird = (id = 'robin-visit-1', patch = {}) => ({ id, x: 330, y: 370, size: 3,
   opacity: 1, phase: .2, angle: 0, state: 'perched', perchId: 'clearing-branch', ...patch });

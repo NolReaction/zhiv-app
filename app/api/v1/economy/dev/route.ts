@@ -1,4 +1,4 @@
-import { economyDevCommandSchema } from "@/features/economy/dev-model";
+import { economyDevCommandSchema } from "@/features/economy/dev/dev-model";
 import { commandDevEconomyCheat } from "@/lib/dev/economy-store";
 import { devEconomyContext, readDevEconomyBody, economyErrorResponse, respondDevEconomy } from "@/lib/dev/economy-route";
 

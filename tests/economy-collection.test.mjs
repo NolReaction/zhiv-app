@@ -8,7 +8,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
 after(() => vite.close());
 const identities = await vite.ssrLoadModule("/lib/dev/api-store.ts");
 const economy = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
-const model = await vite.ssrLoadModule("/features/economy/model.ts");
+const model = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const now = Date.UTC(2026, 9, 4, 10);
 beforeEach(() => identities.resetDevStoreForTests());
 const player = () => identities.createDevIdentity("Сборщик", crypto.randomUUID());

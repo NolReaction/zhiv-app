@@ -7,9 +7,9 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { inventoryGainFromReceipt, INVENTORY_GAIN_HISTORY_LIMIT } = await vite.ssrLoadModule("/features/economy/inventory-gain.ts");
-const { createEconomySession } = await vite.ssrLoadModule("/features/economy/session.ts");
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
+const { inventoryGainFromReceipt, INVENTORY_GAIN_HISTORY_LIMIT } = await vite.ssrLoadModule("/features/economy/domain/inventory-gain.ts");
+const { createEconomySession } = await vite.ssrLoadModule("/features/economy/sync/session.ts");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const owner = "AAAA-0000-0001", other = "AAAA-0000-0002";
 const job = (kind = "exploration", rewards = { fish: 3, stone: 2 }) => ({ id: crypto.randomUUID(), kind,
   targetId: kind === "production" ? "garden" : "shore", recipeId: null, targetLevel: null,

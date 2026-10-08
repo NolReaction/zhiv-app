@@ -8,9 +8,9 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { forestWaterFrame, drawForestWater, isForestWater, FOREST_WATER_LIMITS } = await vite.ssrLoadModule("/features/world/forest-water.ts");
-const { drawWaterCurrent, drawWaterGlint, forestWaterWind } = await vite.ssrLoadModule("/features/world/forest-water-surface.ts");
-const { drawWaterBreeze, drawWaterSplash } = await vite.ssrLoadModule("/features/world/forest-water-life.ts");
+const { forestWaterFrame, drawForestWater, isForestWater, FOREST_WATER_LIMITS } = await vite.ssrLoadModule("/features/world/environment/water/forest-water.ts");
+const { drawWaterCurrent, drawWaterGlint, forestWaterWind } = await vite.ssrLoadModule("/features/world/environment/water/forest-water-surface.ts");
+const { drawWaterBreeze, drawWaterSplash } = await vite.ssrLoadModule("/features/world/environment/water/forest-water-life.ts");
 const scene = JSON.parse(await readFile(new URL("../features/world/tiled/forest.generated.json", import.meta.url)));
 const options = { elapsed: 10, rain: 0, dusk: 0, reducedMotion: false };
 const rectangle = (id, x, y, width, height) => ({ id, points: [

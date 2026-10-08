@@ -8,10 +8,10 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { createForestMind, advanceForestMind, scoreForestAction, beginForestIntention, finishForestIntention,
-  noticeForestMind, restoreForestMind, forestMindFrame, forestMindMotives, recordForestCandidates } = await vite.ssrLoadModule("/features/world/forest-mind.ts");
-const { connectForestSession } = await vite.ssrLoadModule("/features/world/forest-session.ts");
-const { advanceForestDirector, noticeForestDirector, requestForestDirective } = await vite.ssrLoadModule("/features/world/forest-director.ts");
-const { chooseForestGoal, createForestBehavior } = await vite.ssrLoadModule("/features/world/forest-behavior.ts");
+  noticeForestMind, restoreForestMind, forestMindFrame, forestMindMotives, recordForestCandidates } = await vite.ssrLoadModule("/features/world/simulation/forest-mind.ts");
+const { connectForestSession } = await vite.ssrLoadModule("/features/world/state/forest-session.ts");
+const { advanceForestDirector, noticeForestDirector, requestForestDirective } = await vite.ssrLoadModule("/features/world/simulation/forest-director.ts");
+const { chooseForestGoal, createForestBehavior } = await vite.ssrLoadModule("/features/world/simulation/forest-behavior.ts");
 const calm = { moving: false, resting: false, sleeping: false, sheltered: false, rain: 0, dusk: 0, engaged: false, grooming: false };
 const conditions = { autoLife: true, blocked: false, rain: 0, dusk: 0, homeAvailable: false };
 const rectangle = (x, y, w, h) => [{ x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }];

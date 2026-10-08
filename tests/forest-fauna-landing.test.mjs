@@ -8,7 +8,7 @@ const vite = await createServer({ configFile: false, root, resolve: { alias: { '
   server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { createForestFauna, advanceForestFauna, requestFaunaInteraction, cancelFaunaInteraction, faunaRenderFrame } =
-  await vite.ssrLoadModule('/features/world/forest-fauna.ts');
+  await vite.ssrLoadModule('/features/world/environment/wildlife/forest-fauna.ts');
 const rectangle = (x, y, w, h) => [{ x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }];
 const conditions = { dusk: 0, rain: 0 };
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -126,9 +126,9 @@ test('unreachable landing reservations expire without moving a body across an ex
 });
 
 test('the authored shared session keeps both populations spaced across weather, night and camera changes', async () => {
-  const { TILED_WORLD } = await vite.ssrLoadModule('/features/world/presentation.ts');
-  const { connectForestSession } = await vite.ssrLoadModule('/features/world/forest-session.ts');
-  const { advanceForestDirector } = await vite.ssrLoadModule('/features/world/forest-director.ts');
+  const { TILED_WORLD } = await vite.ssrLoadModule('/features/world/scene/presentation.ts');
+  const { connectForestSession } = await vite.ssrLoadModule('/features/world/state/forest-session.ts');
+  const { advanceForestDirector } = await vite.ssrLoadModule('/features/world/simulation/forest-director.ts');
   const key = 'fauna-landing-climate-test';
   const circle = connectForestSession(key, TILED_WORLD, 'circle', 0, 0, () => {}, { persistence: false });
   const world = connectForestSession(key, TILED_WORLD, 'world', 0, 0, () => {}, { persistence: false });

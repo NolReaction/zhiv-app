@@ -8,9 +8,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
-const { WorldUpgradeContent } = await vite.ssrLoadModule("/features/economy/world-upgrade-dialog.tsx");
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
-const { economyStorage } = await vite.ssrLoadModule("/features/economy/rules.ts");
+const { WorldUpgradeContent } = await vite.ssrLoadModule("/features/economy/ui/construction/world-upgrade-dialog.tsx");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 after(() => vite.close());
 
 const now = Date.parse("2026-10-03T12:00:00Z");

@@ -9,10 +9,10 @@ const vite = await createServer({ appType: 'custom', configFile: false, root,
   resolve: { alias: { '@': root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { forestGardenBerries, forestGardenVisualFrame, drawForestGardenPlants, drawForestGardenGround,
-  drawForestGardenProps } = await vite.ssrLoadModule('/features/world/forest-garden-painter.ts');
+  drawForestGardenProps } = await vite.ssrLoadModule('/features/world/activities/garden/forest-garden-painter.ts');
 const { previewPointInPolygon } = await vite.ssrLoadModule('/features/world/tiled/preview-state.ts');
-const { createForestGarden, cancelForestGarden, gardenWorkReachable } = await vite.ssrLoadModule('/features/world/forest-garden.ts');
-const { forestFruitVisual, FOREST_FRUIT_APPEARANCES } = await vite.ssrLoadModule('/features/world/forest-fruit-appearance.ts');
+const { createForestGarden, cancelForestGarden, gardenWorkReachable } = await vite.ssrLoadModule('/features/world/activities/garden/forest-garden.ts');
+const { forestFruitVisual, FOREST_FRUIT_APPEARANCES } = await vite.ssrLoadModule('/features/world/activities/garden/forest-fruit-appearance.ts');
 const { default: sourceScene } = await vite.ssrLoadModule('/features/world/tiled/forest.generated.json');
 const scene = withPlacedBushArtwork(sourceScene);
 const motion = { pose: 'walk', frame: 1, direction: 'right' };

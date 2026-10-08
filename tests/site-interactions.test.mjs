@@ -7,11 +7,11 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { sitePlace, interactiveSites, interactiveMapObjects, mapObjectAt } = await vite.ssrLoadModule("/features/world/site-interactions.ts");
-const { economyBuildingDestination } = await vite.ssrLoadModule("/features/economy/world-adapter.ts");
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
-const { newEconomyState, applyEconomyCommand } = await vite.ssrLoadModule("/features/economy/rules.ts");
-const { accountSceneLevels } = await vite.ssrLoadModule("/features/world/economy-scene-state.ts");
+const { sitePlace, interactiveSites, interactiveMapObjects, mapObjectAt } = await vite.ssrLoadModule("/features/world/scene/site-interactions.ts");
+const { economyBuildingDestination } = await vite.ssrLoadModule("/features/economy/integration/world-adapter.ts");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { newEconomyState, applyEconomyCommand } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
+const { accountSceneLevels } = await vite.ssrLoadModule("/features/world/state/economy/economy-scene-state.ts");
 const { initialPreviewLevels, previewSiteVisual, previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
 const { default: authoredWorld } = await vite.ssrLoadModule("/features/world/tiled/forest.generated.json");
 

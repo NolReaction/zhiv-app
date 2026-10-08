@@ -8,8 +8,8 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { economyCatalog, economyFishingSchema } = await vite.ssrLoadModule("/features/economy/model.ts");
-const { ExpeditionFishingSummary } = await vite.ssrLoadModule("/features/economy/expedition-fishing-summary.tsx");
+const { economyCatalog, economyFishingSchema } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { ExpeditionFishingSummary } = await vite.ssrLoadModule("/features/economy/ui/fishing/expedition-fishing-summary.tsx");
 const render = (routeId, { catalog = economyCatalog, fishing = economyFishingSchema.parse(undefined) } = {}) => renderToStaticMarkup(createElement(ExpeditionFishingSummary, {
   state: { catalog, fishing }, route: catalog.explorations.find(route => route.id === routeId),
 }));

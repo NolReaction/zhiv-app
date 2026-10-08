@@ -9,8 +9,8 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { WorldScene } = await vite.ssrLoadModule("/features/world/world-scene.tsx");
-const { newWorldState } = await vite.ssrLoadModule("/features/world/model.ts");
+const { WorldScene } = await vite.ssrLoadModule("/features/world/scene/world-scene.tsx");
+const { newWorldState } = await vite.ssrLoadModule("/features/world/domain/model.ts");
 
 function scene(owner) {
   let tree;

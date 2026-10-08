@@ -2,12 +2,12 @@
 
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
-import { economyCatalog, type EconomyView } from "@/features/economy/model";
-import { economySceneConstruction } from "@/features/economy/world-adapter";
-import { builderWorkMarkerChecks, builderWorkStops, BUILDER_NAVIGATION_LIMITS, type BuilderWorkMarkerIssue } from "../builder-navigation";
-import { constructionMapPlace } from "../construction-map-anchor";
-import { forestConstructionJob, type SceneConstructionJob } from "../economy-construction-state";
-import { accountSceneLevels } from "../economy-scene-state";
+import { economyCatalog, type EconomyView } from "@/features/economy/domain/model";
+import { economySceneConstruction } from "@/features/economy/integration/world-adapter";
+import { builderWorkMarkerChecks, builderWorkStops, BUILDER_NAVIGATION_LIMITS, type BuilderWorkMarkerIssue } from "@/features/world/characters/builder/builder-navigation";
+import { constructionMapPlace } from "@/features/world/scene/construction-map-anchor";
+import { forestConstructionJob, type SceneConstructionJob } from "@/features/world/state/economy/economy-construction-state";
+import { accountSceneLevels } from "@/features/world/state/economy/economy-scene-state";
 import { initialPreviewLevels, previewWorldScene } from "../tiled/preview-state";
 import type { FixedWorldScene, WorldPoint } from "../tiled/types";
 import type { WorldDevState } from "./world-dev-store";

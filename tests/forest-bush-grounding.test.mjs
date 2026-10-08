@@ -8,7 +8,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { attachForestBushContact, drawForestBushGrounding, drawForestBushLeafShade } =
-  await vite.ssrLoadModule("/features/world/forest-bush-grounding.ts");
+  await vite.ssrLoadModule("/features/world/activities/garden/forest-bush-grounding.ts");
 
 test("tight contact meets the opaque lower leaf row without filling transparent gaps or high side leaves", () => {
   const width = 12, height = 18, source = new Uint8ClampedArray(width * height * 4);

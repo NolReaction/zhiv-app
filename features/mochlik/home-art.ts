@@ -1,6 +1,6 @@
-import { FOREST_MAP } from "@/features/world/map-manifest";
-import { HOME_AREA } from "@/features/world/map-layout";
-import { WORLD_ART } from "@/features/world/art";
+import { FOREST_MAP } from "@/features/world/legacy/map-manifest";
+import { HOME_AREA } from "@/features/world/legacy/map-layout";
+import { WORLD_ART } from "@/features/world/scene/art";
 import { loadHabitatImage } from "./assets";
 
 // Texture pixels are independent of the unchanged 256-unit animation space.

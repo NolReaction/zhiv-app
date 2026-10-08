@@ -2,8 +2,8 @@ import { naturalItems, type GameItemId } from "@/features/game/game-rewards";
 import { CONSUMED_PROGRESS, EAT_DURATION } from "./feeding";
 
 import { HOUSE_ANCHORS } from "./home-layout";
-import { FOREST_MAP } from "@/features/world/map-manifest";
-import { homeToWorld, worldToHome, pointInPolygon } from "@/features/world/map-layout";
+import { FOREST_MAP } from "@/features/world/legacy/map-manifest";
+import { homeToWorld, worldToHome, pointInPolygon } from "@/features/world/legacy/map-layout";
 
 /** Screen-space choreography for a pixel 2D habitat. No account or game state. */
 export type Point = { x: number; y: number };

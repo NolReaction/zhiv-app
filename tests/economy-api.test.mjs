@@ -21,7 +21,7 @@ function enterGame(p) {
 }
 
 const economy = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
-const model = await vite.ssrLoadModule("/features/economy/model.ts");
+const model = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { GET } = await vite.ssrLoadModule("/app/api/v1/economy/route.ts");
 const { POST } = await vite.ssrLoadModule("/app/api/v1/economy/commands/route.ts");
 const { GET: marketGET } = await vite.ssrLoadModule("/app/api/v1/economy/market/route.ts");

@@ -3,8 +3,8 @@ import { GAME_ITEMS, GAME_ACHIEVEMENTS, type GameItemId } from "@/features/game/
 import type { GameAchievementId } from "@/features/game/game-api";
 import { ApiError } from "@/lib/check-in-api";
 import { playerTagSchema } from "@/lib/player-tag";
-import { worldStateSchema } from "@/features/world/model";
-import { economyStorageSchema, economyViewSchema } from "@/features/economy/model";
+import { worldStateSchema } from "@/features/world/domain/model";
+import { economyStorageSchema, economyViewSchema } from "@/features/economy/domain/model";
 
 const count = z.number().int().nonnegative().safe();
 const publicId = z.string().regex(/^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$/);

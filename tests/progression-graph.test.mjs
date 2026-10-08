@@ -8,12 +8,12 @@ const catalog = JSON.parse(readFileSync(new URL("../apps/api/src/main/resources/
 const source = readFileSync(new URL("../features/progression/graph.ts", import.meta.url), "utf8");
 const code = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
 const moneyContext = { exports: {}, structuredClone };
-vm.runInNewContext(ts.transpileModule(readFileSync(new URL("../features/economy/money.ts", import.meta.url), "utf8"),
+vm.runInNewContext(ts.transpileModule(readFileSync(new URL("../features/economy/domain/money.ts", import.meta.url), "utf8"),
   { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText, moneyContext);
 const context = { exports: {}, require: specifier => {
-  if (specifier === "@/features/economy/money") return moneyContext.exports;
+  if (specifier === "@/features/economy/domain/money") return moneyContext.exports;
   if (specifier === "@/apps/api/src/main/resources/world/progression-rewards-catalog.json") return { default: JSON.parse(readFileSync(new URL("../apps/api/src/main/resources/world/progression-rewards-catalog.json", import.meta.url), "utf8")) };
-  assert.equal(specifier, "@/features/economy/model");
+  assert.equal(specifier, "@/features/economy/domain/model");
   return { economyCatalog: catalog };
 } };
 vm.runInNewContext(code, context);

@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { forestPersistenceOverridden } = await vite.ssrLoadModule("/features/world/forest-dev-memory.ts");
+const { forestPersistenceOverridden } = await vite.ssrLoadModule("/features/world/dev/forest-dev-memory.ts");
 const { WORLD_DEV_DEFAULTS } = await vite.ssrLoadModule("/features/world/dev/world-dev-store.ts");
 
 test("cooking rehearsal suspends account memory without changing the saved scene or default controls", () => {

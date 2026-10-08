@@ -8,8 +8,8 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { WorldBuilderDialog, BuilderConversation } = await vite.ssrLoadModule("/features/world/world-builder-dialog.tsx");
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
+const { WorldBuilderDialog, BuilderConversation } = await vite.ssrLoadModule("/features/world/ui/characters/world-builder-dialog.tsx");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const now = Date.parse("2026-10-06T12:00:00Z");
 const job = { id: "paid-home-upgrade", kind: "construction", targetId: "home", targetLevel: 2, startedAt: new Date(now - 60_000).toISOString(), finishesAt: new Date(now + 90_000).toISOString() };
 function economy(jobs = [], overrides = {}) {

@@ -25,6 +25,7 @@
     "world:watch": "node scripts/tiled-world.mjs --watch",
     "world:check": "node scripts/tiled-world.mjs --check",
     "economy:check": "node scripts/audit-economy-progression.mjs",
+    "architecture:check": "node scripts/check-architecture.mjs",
     "security:check": "node scripts/check-secrets.mjs",
     "security:history": "node scripts/check-secrets.mjs --history"
   },

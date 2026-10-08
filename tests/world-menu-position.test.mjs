@@ -5,7 +5,7 @@ import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
-const { worldMenuPosition, worldStableMenuPosition } = await vite.ssrLoadModule("/features/economy/world-stations.ts");
+const { worldMenuPosition, worldStableMenuPosition } = await vite.ssrLoadModule("/features/economy/ui/shared/world-stations.ts");
 after(() => vite.close());
 
 function assertInside(position, viewport, bounds) {

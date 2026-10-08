@@ -9,10 +9,10 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { FISH_SPECIES_IDS, FISH_SPECIES, fishShapes, fishSpeciesId } = await vite.ssrLoadModule("/features/world/fish-species.ts");
-const { drawFishSprite } = await vite.ssrLoadModule("/features/world/fish-sprite.ts");
-const { FishIcon } = await vite.ssrLoadModule("/features/world/fish-icon.tsx");
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
+const { FISH_SPECIES_IDS, FISH_SPECIES, fishShapes, fishSpeciesId } = await vite.ssrLoadModule("/features/world/activities/fishing/fish-species.ts");
+const { drawFishSprite } = await vite.ssrLoadModule("/features/world/activities/fishing/fish-sprite.ts");
+const { FishIcon } = await vite.ssrLoadModule("/features/world/activities/fishing/fish-icon.tsx");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 
 test("every catalog species has a distinct silhouette and bounded full-tail geometry for water clearance", () => {
   assert.deepEqual([...FISH_SPECIES_IDS].sort(), economyCatalog.fishing.fish.map(fish => fish.itemId).sort());

@@ -108,7 +108,7 @@ test("real late input renews presence before the idle boundary instead of a fals
 
 test("an inactive response from an older lease cannot invalidate a replacement connection", async t => {
   const { setGamePresence, gamePresenceHeaders } = await vite.ssrLoadModule("/features/activity/transport-state.ts");
-  const { sendEconomyCommand } = await vite.ssrLoadModule("/features/economy/api.ts");
+  const { sendEconomyCommand } = await vite.ssrLoadModule("/features/economy/sync/api.ts");
   const previousWindow = globalThis.window, browser = new EventTarget(); let expired = 0, answer, seen;
   globalThis.window = browser; browser.addEventListener("zhiv:presence-expired", () => expired++);
   t.after(() => { setGamePresence(null); if (previousWindow === undefined) delete globalThis.window; else globalThis.window = previousWindow; });

@@ -7,8 +7,8 @@ const vite = await createServer({ appType: 'custom', configFile: false, root, re
 after(() => vite.close());
 const identities = await vite.ssrLoadModule('/lib/dev/api-store.ts');
 const economy = await vite.ssrLoadModule('/lib/dev/economy-store.ts');
-const { economyCatalog, economyViewSchema } = await vite.ssrLoadModule('/features/economy/model.ts');
-const { createFishingShop, refreshFishingShop, canRefreshFishingShop, fishingShopRefreshPrice } = await vite.ssrLoadModule('/features/economy/fishing-shop.ts');
+const { economyCatalog, economyViewSchema } = await vite.ssrLoadModule('/features/economy/domain/model.ts');
+const { createFishingShop, refreshFishingShop, canRefreshFishingShop, fishingShopRefreshPrice } = await vite.ssrLoadModule('/features/economy/domain/fishing-shop.ts');
 const now = Date.parse('2026-10-05T20:00:00Z');
 beforeEach(() => { identities.resetDevStoreForTests(); economy.resetDevEconomyStoreForTests(); });
 const player = () => identities.createDevIdentity('Shopper', crypto.randomUUID());

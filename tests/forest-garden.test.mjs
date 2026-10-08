@@ -9,16 +9,16 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { createForestGarden, advanceForestGarden, gardenActionAvailable, growForestBerries, cancelForestGarden, gardenBasketFootprint } =
-  await vite.ssrLoadModule("/features/world/forest-garden.ts");
+  await vite.ssrLoadModule("/features/world/activities/garden/forest-garden.ts");
 const { requestForestDirective, advanceForestDirector, noticeForestDirector, cancelForestDirector } =
-  await vite.ssrLoadModule("/features/world/forest-director.ts");
-const { connectForestSession } = await vite.ssrLoadModule("/features/world/forest-session.ts");
-const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
+  await vite.ssrLoadModule("/features/world/simulation/forest-director.ts");
+const { connectForestSession } = await vite.ssrLoadModule("/features/world/state/forest-session.ts");
+const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
 const { previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
-const { isWalkable, createWorldNavigation } = await vite.ssrLoadModule("/features/world/navigation.ts");
-const { baseClearingNavigation } = await vite.ssrLoadModule("/features/world/clearing-activity.ts");
-const { forestGardenVisualFrame } = await vite.ssrLoadModule("/features/world/forest-garden-painter.ts");
-const { isForestGroundClear } = await vite.ssrLoadModule("/features/world/forest-ground-weather.ts");
+const { isWalkable, createWorldNavigation } = await vite.ssrLoadModule("/features/world/navigation/navigation.ts");
+const { baseClearingNavigation } = await vite.ssrLoadModule("/features/world/simulation/clearing-activity.ts");
+const { forestGardenVisualFrame } = await vite.ssrLoadModule("/features/world/activities/garden/forest-garden-painter.ts");
+const { isForestGroundClear } = await vite.ssrLoadModule("/features/world/environment/weather/forest-ground-weather.ts");
 const calm = { autoLife: false, blocked: false, dusk: 0, rain: 0, homeAvailable: true };
 function scene(level = 1, size = 50) {
   const map = withPlacedBushArtwork(previewWorldScene(TILED_WORLD, { home: level })); map.actor.size = size; return map;

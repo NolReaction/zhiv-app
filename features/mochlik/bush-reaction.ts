@@ -1,6 +1,6 @@
 import type { HabitatState } from "./habitat";
 import { BUSH_FOLIAGE, HOME_CANVAS_SIZE, homePixel } from "./home-layout";
-import { FOREST_MAP } from "@/features/world/map-manifest";
+import { FOREST_MAP } from "@/features/world/legacy/map-manifest";
 
 const bounds = {
   x: Math.min(...BUSH_FOLIAGE.map(point => point.x)),

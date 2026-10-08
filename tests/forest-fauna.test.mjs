@@ -1,13 +1,15 @@
 import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'vite';
-const vite = await createServer({ configFile:false, server:{ middlewareMode:true, hmr:false } });
+import { fileURLToPath } from 'node:url';
+const root = fileURLToPath(new URL('..', import.meta.url));
+const vite = await createServer({ root, configFile:false, resolve:{ alias:{ '@':root } }, server:{ middlewareMode:true, hmr:false } });
 after(() => vite.close());
 const { createForestFauna, advanceForestFauna, requestFaunaInteraction, canRequestFaunaInteraction,
   interruptFaunaInteraction, cancelFaunaInteraction, faunaInteractionFrame, faunaRenderFrame, emitFaunaStimulus } =
-  await vite.ssrLoadModule('/features/world/forest-fauna.ts');
-const { heroHandAnchor, heroSourceAnchor } = await vite.ssrLoadModule('/features/world/hero-anchors.ts');
-const { forestAtmosphereFrame } = await vite.ssrLoadModule('/features/world/forest-atmosphere.ts');
+  await vite.ssrLoadModule('/features/world/environment/wildlife/forest-fauna.ts');
+const { heroHandAnchor, heroSourceAnchor } = await vite.ssrLoadModule('/features/world/scene/hero-anchors.ts');
+const { forestAtmosphereFrame } = await vite.ssrLoadModule('/features/world/environment/weather/forest-atmosphere.ts');
 const rectangle = (x,y,w,h) => [{x,y},{x:x+w,y},{x:x+w,y:y+h},{x,y:y+h}];
 const actor = {x:150,y:165,size:56};
 const scene = { schemaVersion:1,id:'fauna-test',width:300,height:300,focus:{x:40,y:40,width:220,height:220},
@@ -188,7 +190,7 @@ test('freezing a manual actor never freezes independent ambient life or restarts
 });
 
 test('real authored clearing supports both species without moving or conjuring a partner',async()=>{
-  const {TILED_WORLD:authored}=await vite.ssrLoadModule('/features/world/presentation.ts');
+  const {TILED_WORLD:authored}=await vite.ssrLoadModule('/features/world/scene/presentation.ts');
   const hero={...authored.actor.spawn,size:authored.actor.size};
   for(const kind of ['butterfly','firefly']){
     const state=createForestFauna(authored),options={actor:hero,dusk:kind==='firefly'?1:0,rain:0};

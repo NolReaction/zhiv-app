@@ -9,12 +9,12 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { requestForestTradeVisit, advanceForestDirector, forestTradeVisitFrame, noticeForestDirector, cancelForestDirector } =
-  await vite.ssrLoadModule("/features/world/forest-director.ts");
-const { connectForestSession } = await vite.ssrLoadModule("/features/world/forest-session.ts");
-const { requestClearingPoint } = await vite.ssrLoadModule("/features/world/clearing-activity.ts");
-const { isWalkable, canTraverse } = await vite.ssrLoadModule("/features/world/navigation.ts");
-const { requestPleskTrade, advancePleskMind } = await vite.ssrLoadModule("/features/world/plesk-mind.ts");
-const { syncForestJourneyTravel } = await vite.ssrLoadModule("/features/world/forest-journey-travel.ts");
+  await vite.ssrLoadModule("/features/world/simulation/forest-director.ts");
+const { connectForestSession } = await vite.ssrLoadModule("/features/world/state/forest-session.ts");
+const { requestClearingPoint } = await vite.ssrLoadModule("/features/world/simulation/clearing-activity.ts");
+const { isWalkable, canTraverse } = await vite.ssrLoadModule("/features/world/navigation/navigation.ts");
+const { requestPleskTrade, advancePleskMind } = await vite.ssrLoadModule("/features/world/characters/plesk/plesk-mind.ts");
+const { syncForestJourneyTravel } = await vite.ssrLoadModule("/features/world/activities/journeys/forest-journey-travel.ts");
 const rectangle = (x, y, width, height) => [{ x, y }, { x: x + width, y }, { x: x + width, y: y + height }, { x, y: y + height }];
 const point = { x: 240, y: 220 }, vendor = { x: 240, y: 145 };
 const fixture = {

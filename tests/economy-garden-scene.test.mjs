@@ -8,12 +8,12 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { economyGardenGrowth } = await vite.ssrLoadModule("/features/world/economy-garden-state.ts");
-const { syncForestGardenProduction, advanceForestGarden, gardenActionAvailable } = await vite.ssrLoadModule("/features/world/forest-garden.ts");
-const { requestForestGardenHarvest, advanceForestDirector, noticeForestDirector } = await vite.ssrLoadModule("/features/world/forest-director.ts");
-const { connectForestSession } = await vite.ssrLoadModule("/features/world/forest-session.ts");
-const { forestGardenBerries } = await vite.ssrLoadModule("/features/world/forest-garden-painter.ts");
-const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
+const { economyGardenGrowth } = await vite.ssrLoadModule("/features/world/state/economy/economy-garden-state.ts");
+const { syncForestGardenProduction, advanceForestGarden, gardenActionAvailable } = await vite.ssrLoadModule("/features/world/activities/garden/forest-garden.ts");
+const { requestForestGardenHarvest, advanceForestDirector, noticeForestDirector } = await vite.ssrLoadModule("/features/world/simulation/forest-director.ts");
+const { connectForestSession } = await vite.ssrLoadModule("/features/world/state/forest-session.ts");
+const { forestGardenBerries } = await vite.ssrLoadModule("/features/world/activities/garden/forest-garden-painter.ts");
+const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
 const { previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
 const calm = { autoLife: false, blocked: false, dusk: 0, rain: 0, homeAvailable: true };
 const start = Date.parse("2026-10-04T10:00:00Z"), finish = start + 600_000;

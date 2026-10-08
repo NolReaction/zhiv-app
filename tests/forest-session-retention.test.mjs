@@ -7,11 +7,11 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { connectForestSession, forgetForestSession } = await vite.ssrLoadModule("/features/world/forest-session.ts");
-const { advanceBuilderMind } = await vite.ssrLoadModule("/features/world/builder-mind.ts");
-const { advancePleskMind } = await vite.ssrLoadModule("/features/world/plesk-mind.ts");
-const { forestMemoryKey } = await vite.ssrLoadModule("/features/world/forest-memory.ts");
-const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
+const { connectForestSession, forgetForestSession } = await vite.ssrLoadModule("/features/world/state/forest-session.ts");
+const { advanceBuilderMind } = await vite.ssrLoadModule("/features/world/characters/builder/builder-mind.ts");
+const { advancePleskMind } = await vite.ssrLoadModule("/features/world/characters/plesk/plesk-mind.ts");
+const { forestMemoryKey } = await vite.ssrLoadModule("/features/world/state/memory/forest-memory.ts");
+const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
 const handles = [], accounts = new Set();
 afterEach(() => {
   for (const handle of handles.splice(0)) handle.release();

@@ -5,10 +5,10 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } },
   server: { middlewareMode: true, hmr: false, ws: false } });
-const money = await vite.ssrLoadModule("/features/economy/money.ts");
-const model = await vite.ssrLoadModule("/features/economy/model.ts");
-const rules = await vite.ssrLoadModule("/features/economy/rules.ts");
-const sale = await vite.ssrLoadModule("/features/economy/local-sale.ts");
+const money = await vite.ssrLoadModule("/features/economy/domain/money.ts");
+const model = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const rules = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
+const sale = await vite.ssrLoadModule("/features/economy/domain/local-sale.ts");
 const ids = await vite.ssrLoadModule("/lib/dev/api-store.ts");
 const economy = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
 const rewards = await vite.ssrLoadModule("/lib/dev/progression-rewards-store.ts");

@@ -8,12 +8,12 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
-const { accountSceneLevels } = await vite.ssrLoadModule("/features/world/economy-scene-state.ts");
+const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
+const { accountSceneLevels } = await vite.ssrLoadModule("/features/world/state/economy/economy-scene-state.ts");
 const { initialPreviewLevels, previewWorldScene, previewPointInPolygon } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
-const { createWorldNavigation, isWalkable, canTraverse, findWorldPath } = await vite.ssrLoadModule("/features/world/navigation.ts");
-const { builderLocalPlaces } = await vite.ssrLoadModule("/features/world/builder-navigation.ts");
-const { forestPointOccluded, forestVisibleSiteAt } = await vite.ssrLoadModule("/features/world/forest-occlusion.ts");
+const { createWorldNavigation, isWalkable, canTraverse, findWorldPath } = await vite.ssrLoadModule("/features/world/navigation/navigation.ts");
+const { builderLocalPlaces } = await vite.ssrLoadModule("/features/world/characters/builder/builder-navigation.ts");
+const { forestPointOccluded, forestVisibleSiteAt } = await vite.ssrLoadModule("/features/world/scene/forest-occlusion.ts");
 const map = JSON.parse(await readFile(new URL("../world/tiled/forest.tmj", import.meta.url), "utf8"));
 const catalog = JSON.parse(await readFile(new URL("../apps/api/src/main/resources/world/economy-catalog.json", import.meta.url), "utf8"));
 const home = TILED_WORLD.sites.find(site => site.id === "builder-home");

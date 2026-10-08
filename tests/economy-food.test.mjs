@@ -5,12 +5,12 @@ import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
-const model = await vite.ssrLoadModule("/features/economy/model.ts");
-const food = await vite.ssrLoadModule("/features/economy/food.ts");
-const rules = await vite.ssrLoadModule("/features/economy/rules.ts");
+const model = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const food = await vite.ssrLoadModule("/features/economy/domain/food.ts");
+const rules = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const identities = await vite.ssrLoadModule("/lib/dev/api-store.ts");
 const api = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
-const { economyCommandUsesActor } = await vite.ssrLoadModule("/features/economy/actor-availability.ts");
+const { economyCommandUsesActor } = await vite.ssrLoadModule("/features/economy/domain/actor-availability.ts");
 const now = Date.parse("2026-10-07T12:00:00.000Z");
 const catalog = model.economyCatalog;
 const fresh = () => rules.newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 });

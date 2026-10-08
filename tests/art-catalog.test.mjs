@@ -13,10 +13,10 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ configFile: false, appType: "custom", root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { WORLD_ART } = await vite.ssrLoadModule("/features/world/art.ts");
+const { WORLD_ART } = await vite.ssrLoadModule("/features/world/scene/art.ts");
 const { GAME_ACHIEVEMENTS } = await vite.ssrLoadModule("/features/game/game-rewards.ts");
 const { AchievementMedal } = await vite.ssrLoadModule("/features/game/achievement-medal.tsx");
-const { MAP_PLACES, worldToHome, homeToWorld, pointInPolygon, mapPlaceAt } = await vite.ssrLoadModule("/features/world/map-layout.ts");
+const { MAP_PLACES, worldToHome, homeToWorld, pointInPolygon, mapPlaceAt } = await vite.ssrLoadModule("/features/world/legacy/map-layout.ts");
 const { HOUSE_ANCHORS, HOME_CANVAS_SIZE } = await vite.ssrLoadModule("/features/mochlik/home-layout.ts");
 
 test("every achievement has one readable asset and a catalog description", async () => {

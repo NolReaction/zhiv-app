@@ -7,11 +7,11 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { TILED_WORLD: scene } = await vite.ssrLoadModule("/features/world/presentation.ts");
-const { createClearingActivity } = await vite.ssrLoadModule("/features/world/clearing-activity.ts");
-const { createBuilderMind, advanceBuilderMind } = await vite.ssrLoadModule("/features/world/builder-mind.ts");
-const { createPleskMind } = await vite.ssrLoadModule("/features/world/plesk-mind.ts");
-const { forestResidentOccupants } = await vite.ssrLoadModule("/features/world/forest-resident-occupancy.ts");
+const { TILED_WORLD: scene } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
+const { createClearingActivity } = await vite.ssrLoadModule("/features/world/simulation/clearing-activity.ts");
+const { createBuilderMind, advanceBuilderMind } = await vite.ssrLoadModule("/features/world/characters/builder/builder-mind.ts");
+const { createPleskMind } = await vite.ssrLoadModule("/features/world/characters/plesk/plesk-mind.ts");
+const { forestResidentOccupants } = await vite.ssrLoadModule("/features/world/characters/forest-resident-occupancy.ts");
 function state() {
   return { clearing: createClearingActivity(scene), builderMind: createBuilderMind(scene, { awaitConstruction: true }),
     pleskMind: createPleskMind(scene) };

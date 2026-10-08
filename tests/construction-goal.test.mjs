@@ -5,8 +5,8 @@ import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
-const { constructionGoalDetails, constructionGoalStorageKey, createConstructionGoalStore } = await vite.ssrLoadModule("/features/economy/construction-goal.ts");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { constructionGoalDetails, constructionGoalStorageKey, createConstructionGoalStore } = await vite.ssrLoadModule("/features/economy/ui/construction/construction-goal.ts");
 after(() => vite.close());
 
 const owner = "TEST-GOAL-0001";

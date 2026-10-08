@@ -9,9 +9,9 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
 const identities = await vite.ssrLoadModule("/lib/dev/api-store.ts");
 const economy = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
 const world = await vite.ssrLoadModule("/lib/dev/world-store.ts");
-const { economyResultSchema, economyCommandSchema } = await vite.ssrLoadModule("/features/economy/model.ts");
-const { wardrobeItems, wardrobePurchaseTarget } = await vite.ssrLoadModule("/features/world/wardrobe.ts");
-const { economyDevCommandSchema } = await vite.ssrLoadModule("/features/economy/dev-model.ts");
+const { economyResultSchema, economyCommandSchema } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { wardrobeItems, wardrobePurchaseTarget } = await vite.ssrLoadModule("/features/world/domain/wardrobe.ts");
+const { economyDevCommandSchema } = await vite.ssrLoadModule("/features/economy/dev/dev-model.ts");
 const now = Date.parse("2026-10-05T20:00:00Z"), originalMode = process.env.NODE_ENV;
 beforeEach(() => { identities.resetDevStoreForTests(); economy.resetDevEconomyStoreForTests(); world.resetDevWorldStoreForTests(); });
 after(async () => { if (originalMode == null) delete process.env.NODE_ENV; else process.env.NODE_ENV = originalMode; await vite.close(); });

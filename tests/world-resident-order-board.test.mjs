@@ -8,10 +8,10 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const options = { appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } };
 const vite = await createServer(options);
-const { ResidentOrderBoard, ResidentOrderCard, ResidentOrderReplacement, residentOrderQuoteReason, residentOrderSaleValue } = await vite.ssrLoadModule("/features/economy/world-resident-order-board.tsx");
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
-const { residentOrderBoard, normalizedResidentOrders, advanceResidentOrder } = await vite.ssrLoadModule("/features/economy/food.ts");
-const { economyLocalSellPrice } = await vite.ssrLoadModule("/features/economy/local-sale.ts");
+const { ResidentOrderBoard, ResidentOrderCard, ResidentOrderReplacement, residentOrderQuoteReason, residentOrderSaleValue } = await vite.ssrLoadModule("/features/economy/ui/food/world-resident-order-board.tsx");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { residentOrderBoard, normalizedResidentOrders, advanceResidentOrder } = await vite.ssrLoadModule("/features/economy/domain/food.ts");
+const { economyLocalSellPrice } = await vite.ssrLoadModule("/features/economy/domain/local-sale.ts");
 after(() => vite.close());
 const now = Date.parse("2026-10-07T14:00:00Z");
 function controller(overrides = {}, flags = {}) {
@@ -109,11 +109,11 @@ test("paid replacement needs deliberate confirmation, checks fresh state and rej
       export function useEffect() {}
       export function useLayoutEffect(effect) { effect(); }
     `; },
-    transform(source, id) { if (id.endsWith("/features/economy/world-resident-order-board.tsx")) return source.replace('from "react";', `from "${hooksId}";`); },
+    transform(source, id) { if (id.endsWith("/features/economy/ui/food/world-resident-order-board.tsx")) return source.replace('from "react";', `from "${hooksId}";`); },
   }] });
   try {
     const hooks = await runtime.ssrLoadModule(hooksId);
-    const { ResidentOrderBoard: Board, ResidentOrderCard: Card } = await runtime.ssrLoadModule("/features/economy/world-resident-order-board.tsx");
+    const { ResidentOrderBoard: Board, ResidentOrderCard: Card } = await runtime.ssrLoadModule("/features/economy/ui/food/world-resident-order-board.tsx");
     const calls = [], economy = paid(controller({}, { act: (...args) => calls.push(args) }));
     const board = () => { hooks.render(); return Board({ economy }); };
     const cards = tree => elements(tree).filter(element => element.type === Card);

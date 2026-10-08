@@ -16,32 +16,32 @@
 | --- | --- |
 | Фон, дом, вход, коллизию, фокус круга, размер героя | `world/tiled/forest.tmj`; [инструкция Tiled](tiled-editor.md) |
 | Подготовить изображение | [art/README.md](../../art/README.md), `scripts/prepare-world-assets.mjs` |
-| Ночь, фонари, факелы | [Освещение](world-lighting.md), `features/world/forest-lighting.ts` |
+| Ночь, фонари, факелы | [Освещение](world-lighting.md), `features/world/environment/lighting/forest-lighting.ts` |
 | Дождь, воду, птиц, насекомых, сценки | [Атмосфера](world-atmosphere.md), `features/world/forest-*.ts` |
-| Внешность и позы Мохлика | `features/mochlik/pixel-sprite.ts`; тень/опора — `features/world/grounding.ts` |
-| Камеру, зум, перетаскивание | `features/world/map-engine.ts`, `camera.ts` |
-| Проходимость полянки и путь к цели | `features/world/navigation.ts`, `WalkAreas`, `Obstacles`, `PointsOfInterest` в Tiled; [разметка](tiled-editor.md#свободная-полянка-и-места-занятий) |
-| Плавность поворота и торможение перед целью | `features/world/steering.ts`, исполнение — `clearing-activity.ts`; [математика движения](world-navigation.md#плавные-повороты-и-прибытие) |
-| Выбор занятия, подход к предмету, прерывания | `features/world/forest-director.ts`, `forest-behavior.ts`; движение, куст и дом — `clearing-activity.ts` |
-| Потребности, память после перезагрузки и состояние для игрока | `features/world/forest-mind.ts`, `forest-memory.ts`, `mochlik-state.tsx`; [Utility AI и DEV](world-mind.md) |
-| Постоянных бабочек/светлячков и встречу на лапе | `features/world/forest-fauna.ts`, `hero-anchors.ts`, `Habitats` и `WildlifeAnchors` в Tiled |
-| Порядок рисования объектов и эффектов | `features/world/new-map-scene.ts`, `tiled/renderer.ts` |
-| Стоимость отрисовки при движении камеры | `features/world/canvas-viewport.ts`, `artwork-mip-cache.ts`, `map-engine.ts`; контакт героя — `features/mochlik/pixel-sprite.ts`, `features/world/grounding.ts` |
+| Внешность и позы Мохлика | `features/mochlik/pixel-sprite.ts`; тень/опора — `features/world/scene/grounding.ts` |
+| Камеру, зум, перетаскивание | `features/world/scene/map-engine.ts`, `camera.ts` |
+| Проходимость полянки и путь к цели | `features/world/navigation/navigation.ts`, `WalkAreas`, `Obstacles`, `PointsOfInterest` в Tiled; [разметка](tiled-editor.md#свободная-полянка-и-места-занятий) |
+| Плавность поворота и торможение перед целью | `features/world/navigation/steering.ts`, исполнение — `clearing-activity.ts`; [математика движения](world-navigation.md#плавные-повороты-и-прибытие) |
+| Выбор занятия, подход к предмету, прерывания | `features/world/simulation/forest-director.ts`, `forest-behavior.ts`; движение, куст и дом — `clearing-activity.ts` |
+| Потребности, память после перезагрузки и состояние для игрока | `features/world/simulation/forest-mind.ts`, `forest-memory.ts`, `mochlik-state.tsx`; [Utility AI и DEV](world-mind.md) |
+| Постоянных бабочек/светлячков и встречу на лапе | `features/world/environment/wildlife/forest-fauna.ts`, `hero-anchors.ts`, `Habitats` и `WildlifeAnchors` в Tiled |
+| Порядок рисования объектов и эффектов | `features/world/scene/new-map-scene.ts`, `tiled/renderer.ts` |
+| Стоимость отрисовки при движении камеры | `features/world/scene/canvas-viewport.ts`, `artwork-mip-cache.ts`, `map-engine.ts`; контакт героя — `features/mochlik/pixel-sprite.ts`, `features/world/scene/grounding.ts` |
 | HUD, профиль, гардероб, коллекции, панели | `features/world/world-view.tsx`, `world-map-hud.module.css`, `world-profile-menu.tsx`, `world.module.css` |
 | Иллюстрации предметов, гардероба, находок и валют | `features/items/item-icon.tsx`, `art-natural.tsx`, `art-crafted.tsx`, `art-collection.tsx`, `art-equipment.tsx`; [мастера рисунков](../../art/README.md#иконки-предметов-и-находок) |
 | Открытие/закрытие мира и загрузку | `features/world/world-portal.tsx`, `use-world-portal.ts`, `world-scene.tsx` |
 | DEV и ручные сценарии | `features/world/dev/world-dev-store.ts`, `world-dev-panel.tsx` |
 | Экономику, цены, товары и здания | `apps/api/src/main/resources/world/economy-catalog.json`, `features/economy/`; [экономика](economy-foundation.md) |
-| Таймер стройки над зданием | `features/world/world-construction-status.tsx`, `construction-map-anchor.ts`; проекция объекта текущей сцены через `map-engine.ts`, время из серверного снимка экономики |
-| Начисление и расход валюты в HUD | `features/world/world-wallet.tsx`, `wallet-animation.ts`, `world-wallet.module.css` |
-| Меню выбранного объекта и привязку к камере | `features/world/site-interactions.ts`, `map-engine.ts`, `features/economy/world-stations.ts` и меню объектов в `features/economy/` |
-| Экипировку, коллекции и прежние поездки | `apps/api/src/main/resources/world/catalog.json`, `features/world/model.ts`; [архитектура приложения](../repository-guide.md) |
-| Команды, повтор после обрыва сети, актуальность снимка | `features/world/api.ts`, `use-world.ts`, `session.ts`; [надёжность синхронизации](game-sync-reliability.md) |
-| Таймеры и завершение старых путешествий | `features/world/world-journeys.tsx`, `journey-timeline.ts`; [рыбалка](fishing.md) |
+| Таймер стройки над зданием | `features/world/ui/hud/world-construction-status.tsx`, `construction-map-anchor.ts`; проекция объекта текущей сцены через `map-engine.ts`, время из серверного снимка экономики |
+| Начисление и расход валюты в HUD | `features/world/ui/hud/world-wallet.tsx`, `wallet-animation.ts`, `world-wallet.module.css` |
+| Меню выбранного объекта и привязку к камере | `features/world/scene/site-interactions.ts`, `map-engine.ts`, `features/economy/ui/shared/world-stations.ts` и меню объектов в `features/economy/` |
+| Экипировку, коллекции и прежние поездки | `apps/api/src/main/resources/world/catalog.json`, `features/world/domain/model.ts`; [архитектура приложения](../repository-guide.md) |
+| Команды, повтор после обрыва сети, актуальность снимка | `features/world/state/api.ts`, `use-world.ts`, `session.ts`; [надёжность синхронизации](game-sync-reliability.md) |
+| Таймеры и завершение старых путешествий | `features/world/ui/journeys/world-journeys.tsx`, `journey-timeline.ts`; [рыбалка](fishing.md) |
 
 ## Что работает сейчас
 
-`features/world/presentation.ts` включает `WORLD_PRESENTATION.rebuilding: true` и `streakDecor: false`. Это этап новой карты, а не сброс прогресса аккаунта.
+`features/world/scene/presentation.ts` включает `WORLD_PRESENTATION.rebuilding: true` и `streakDecor: false`. Это этап новой карты, а не сброс прогресса аккаунта.
 
 | Возможность | Текущее поведение |
 | --- | --- |
@@ -117,8 +117,8 @@
 
 | Сессия | Что хранит | Кто изменяет |
 | --- | --- | --- |
-| `features/world/session.ts` | Серверный снимок, revision, незавершённую команду и квитанцию повтора | `use-world.ts`, API, подтверждения сервера |
-| `features/world/forest-session.ts` | Время, влажность, положение и занятие героя, предметы, реестр насекомых/контакт, память выбора, реакции птиц и DEV-события | Один активный владелец сцены |
+| `features/world/state/session.ts` | Серверный снимок, revision, незавершённую команду и квитанцию повтора | `use-world.ts`, API, подтверждения сервера |
+| `features/world/state/forest-session.ts` | Время, влажность, положение и занятие героя, предметы, реестр насекомых/контакт, память выбора, реакции птиц и DEV-события | Один активный владелец сцены |
 
 Большая карта получает приоритет над кругом как владелец декоративных часов. Ключ общей сессии включает аккаунт и fingerprint геометрии. Переключение вида не начинает дождь, птиц и сценки заново, сохраняет ID и положение партнёра встречи. Общие события DEV потребляются один раз. `forest-memory.ts` создаёт безопасный снимок v2, `forest-memory-sync.ts` сохраняет его в аккаунте, localStorage остаётся кэшем. Передача аренды запрещает старому устройству перезаписывать новое состояние; загрузка, отсутствие связи и чужая аренда приостанавливают обычную симуляцию. Сохраняются потребности, краткая память, безопасное положение/сон, грибы и сад. Промежуточные сценки, популяция животных и офлайн-симуляция не сохраняются. [Контракт и выпуск памяти](forest-memory-sync.md), [защита от DEV](world-mind.md#что-переживает-перезагрузку).
 

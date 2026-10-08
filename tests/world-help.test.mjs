@@ -24,16 +24,16 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
         if (!previous.current || dependencies.some((value, index) => !Object.is(value, previous.current[index]))) { previous.current = dependencies; effects.push(effect); }
       }
     `; },
-    transform(source, id) { if (id.endsWith("/features/world/world-help.tsx")) return source.replace('from "react";', `from "${hookModule}";`); },
+    transform(source, id) { if (id.endsWith("/features/world/ui/help/world-help.tsx")) return source.replace('from "react";', `from "${hookModule}";`); },
   }],
 });
 after(() => vite.close());
 const hooks = await vite.ssrLoadModule(hookModule);
-const { WorldHelp } = await vite.ssrLoadModule("/features/world/world-help.tsx");
-const { worldHelpTopics, worldHelpGroups } = await vite.ssrLoadModule("/features/world/world-help-content.ts");
-const { newWorldState } = await vite.ssrLoadModule("/features/world/model.ts");
-const { economyCatalog, economyViewSchema } = await vite.ssrLoadModule("/features/economy/model.ts");
-const { economyStorage } = await vite.ssrLoadModule("/features/economy/rules.ts");
+const { WorldHelp } = await vite.ssrLoadModule("/features/world/ui/help/world-help.tsx");
+const { worldHelpTopics, worldHelpGroups } = await vite.ssrLoadModule("/features/world/ui/help/world-help-content.ts");
+const { newWorldState } = await vite.ssrLoadModule("/features/world/domain/model.ts");
+const { economyCatalog, economyViewSchema } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 
 function elements(tree) {
   const result = [];

@@ -8,13 +8,13 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
-const helpers = await vite.ssrLoadModule("/features/economy/world-stations.ts");
-const { WorldObjectMenu, WorldObjectSale } = await vite.ssrLoadModule("/features/economy/world-object-menu.tsx");
-const { WorldExpeditionSector } = await vite.ssrLoadModule("/features/economy/world-expeditions-menu.tsx");
-const { WorldUpgradeContent } = await vite.ssrLoadModule("/features/economy/world-upgrade-dialog.tsx");
-const { ProductionActivity } = await vite.ssrLoadModule("/features/economy/production-activity.tsx");
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
-const { economyStorage } = await vite.ssrLoadModule("/features/economy/rules.ts");
+const helpers = await vite.ssrLoadModule("/features/economy/ui/shared/world-stations.ts");
+const { WorldObjectMenu, WorldObjectSale } = await vite.ssrLoadModule("/features/economy/ui/stations/world-object-menu.tsx");
+const { WorldExpeditionSector } = await vite.ssrLoadModule("/features/economy/ui/expeditions/world-expeditions-menu.tsx");
+const { WorldUpgradeContent } = await vite.ssrLoadModule("/features/economy/ui/construction/world-upgrade-dialog.tsx");
+const { ProductionActivity } = await vite.ssrLoadModule("/features/economy/ui/production/production-activity.tsx");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 after(() => vite.close());
 
 const now = Date.parse("2026-10-03T12:00:00Z");

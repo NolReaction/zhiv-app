@@ -6,9 +6,9 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { worldHelpAdvice } = await vite.ssrLoadModule("/features/world/world-help-advice.ts");
-const { economyCatalog, economyViewSchema } = await vite.ssrLoadModule("/features/economy/model.ts");
-const { economyStorage } = await vite.ssrLoadModule("/features/economy/rules.ts");
+const { worldHelpAdvice } = await vite.ssrLoadModule("/features/world/ui/help/world-help-advice.ts");
+const { economyCatalog, economyViewSchema } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const now = Date.parse("2026-10-07T12:00:00Z");
 const snapshot = (patch = {}) => {
   const value = { ownerPublicId: "0000-0000-0001", revision: 0, serverTime: new Date(now).toISOString(), catalog: economyCatalog,
@@ -170,7 +170,7 @@ test("no supplies offers genuinely free starting actions and never diagnoses hun
 });
 
 test("advice stays deterministic, bounded, mutation-free and only uses valid help topics", async () => {
-  const { worldHelpTopics } = await vite.ssrLoadModule("/features/world/world-help-content.ts");
+  const { worldHelpTopics } = await vite.ssrLoadModule("/features/world/ui/help/world-help-content.ts");
   const economy = deepFreeze(controller({ snapshot: snapshot({ inventory: {}, jobs: [
     job({ finishesAt: new Date(now).toISOString() }),
     job({ targetId: "dryer", finishesAt: new Date(now).toISOString(), rewards: { grilled_fish: 1 } }),

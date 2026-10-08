@@ -37,8 +37,8 @@
 
 ## Файлы
 
-- Состояние огня и поза отдыха: `features/world/forest-campfire.ts`.
-- Рисунок и свет: `features/world/forest-campfire-painter.ts`, подключение — `new-map-scene.ts`.
+- Состояние огня и поза отдыха: `features/world/activities/campfire/forest-campfire.ts`.
+- Рисунок и свет: `features/world/activities/campfire/forest-campfire-painter.ts`, подключение — `new-map-scene.ts`.
 - Выбор занятия, путь и прерывания: `forest-director.ts`; коллизия — `navigation.ts`.
 - Разметка: `scripts/lib/tiled-world.mjs`, `tiled/types.ts`.
 - DEV: `dev/world-dev-store.ts`, `dev/forest-dev-scenarios.ts`, `dev/world-dev-panel.tsx`.

@@ -1,7 +1,7 @@
 import { gamePresenceHeaders, reportInactivePresence } from "@/features/activity/transport-state";
 import { z } from "zod";
 import { ApiError } from "@/lib/check-in-api";
-import { economyViewSchema } from "@/features/economy/model";
+import { economyViewSchema } from "@/features/economy/domain/model";
 import { GAME_ACHIEVEMENT_TARGETS } from "./achievement-progress";
 import type { GameAchievementId } from "./game-api";
 

@@ -5,8 +5,8 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { ROUTE_TORCHES, ROUTE_SEGMENTS, TORCH_RADIUS, drawRouteLights } = await vite.ssrLoadModule("/features/world/route-props.ts");
-const { HOME_AREA, MAP_SIZE, mapPlaceAt } = await vite.ssrLoadModule("/features/world/map-layout.ts");
+const { ROUTE_TORCHES, ROUTE_SEGMENTS, TORCH_RADIUS, drawRouteLights } = await vite.ssrLoadModule("/features/world/legacy/route-props.ts");
+const { HOME_AREA, MAP_SIZE, mapPlaceAt } = await vite.ssrLoadModule("/features/world/legacy/map-layout.ts");
 
 test("route markers stay on land and torch light does not clip at the home tile", () => {
   for (const at of ROUTE_SEGMENTS.flat()) {

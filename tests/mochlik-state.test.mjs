@@ -10,7 +10,7 @@ import ts from "typescript";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { MochlikState, MochlikStateDetails } = await vite.ssrLoadModule("/features/world/mochlik-state.tsx");
+const { MochlikState, MochlikStateDetails } = await vite.ssrLoadModule("/features/world/ui/profile/mochlik-state.tsx");
 
 const observation = {
   activity: "Исследует полянку", detail: "Заметил интересное место и идёт посмотреть поближе.", mood: "Любопытничает",
@@ -75,7 +75,7 @@ test("switching accounts remounts the dialog and initial trigger has an accessib
 });
 
 test("home and map omit the separate character-state trigger", async () => {
-  for (const path of ["features/check-in/check-in-app.tsx", "features/world/world-view.tsx"]) {
+  for (const path of ["features/app/app-shell.tsx", "features/world/world-view.tsx"]) {
     const source = await readFile(new URL(`../${path}`, import.meta.url), "utf8");
     const tree = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
     const visit = node => {

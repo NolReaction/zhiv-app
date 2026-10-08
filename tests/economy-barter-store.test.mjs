@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 const identities = await vite.ssrLoadModule("/lib/dev/api-store.ts");
 const economy = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
-const { barterViewSchema, barterResultSchema } = await vite.ssrLoadModule("/features/economy/barter-model.ts");
+const { barterViewSchema, barterResultSchema } = await vite.ssrLoadModule("/features/economy/domain/barter-model.ts");
 const now = Date.parse("2026-10-05T12:00:00Z"), windowMs = 1800_000;
 const core = "ancient_core", resin = "living_resin", crystal = "moon_crystal";
 beforeEach(() => { identities.resetDevStoreForTests(); economy.resetDevEconomyStoreForTests(); });

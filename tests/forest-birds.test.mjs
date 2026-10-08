@@ -9,8 +9,8 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { forestBirdFrame, forestBirdPerches, forestBirdGroundPatches, FOREST_BIRD_FLIGHT_DURATION, FOREST_BIRD_LIMIT }
-  = await vite.ssrLoadModule("/features/world/forest-birds.ts");
-const { drawForestBird } = await vite.ssrLoadModule("/features/world/forest-wildlife.ts");
+  = await vite.ssrLoadModule("/features/world/environment/wildlife/forest-birds.ts");
+const { drawForestBird } = await vite.ssrLoadModule("/features/world/environment/wildlife/forest-wildlife.ts");
 const scene = JSON.parse(await readFile(new URL("../features/world/tiled/forest.generated.json", import.meta.url)));
 const options = { elapsed: 0, dusk: 0, rain: 0, reducedMotion: false };
 const sample = (time, changed = scene, birdSeed = 0) => forestBirdFrame(changed, { ...options, birdElapsed: time, birdSeed });
@@ -214,8 +214,8 @@ test("tree arrivals reserve both ends of transfers and never share scarce or ove
 
 test("ground feeding keeps feet and every hop on inspected soil and current geometry at all house levels", async () => {
   const { previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
-  const { createWorldNavigation, isWalkable } = await vite.ssrLoadModule("/features/world/navigation.ts");
-  const { isForestRainGround } = await vite.ssrLoadModule("/features/world/forest-ground-impacts.ts");
+  const { createWorldNavigation, isWalkable } = await vite.ssrLoadModule("/features/world/navigation/navigation.ts");
+  const { isForestRainGround } = await vite.ssrLoadModule("/features/world/environment/weather/forest-ground-impacts.ts");
   for (const home of [1, 2, 3, 4, 5]) for (const size of [50, 56]) {
     const levelScene = previewWorldScene(scene, { home });
     const changed = { ...levelScene, actor: { ...levelScene.actor, size } };

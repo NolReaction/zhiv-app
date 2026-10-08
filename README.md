@@ -28,6 +28,12 @@
 
 Точные зависимости — в [package.json](package.json) и [сборке API](apps/api/build.gradle.kts). Основная схема PostgreSQL задаётся [миграциями Ktor V1–V45](apps/api/src/main/resources/db/migration/). У двух контуров сборки общие игровые компоненты; их границы описаны в [архитектуре](docs/architecture.md).
 
+## Где искать код
+
+Проект разделён по функциям (`features/`), крупные модули — по ответственности. Общая сборка приложения находится в [`features/app/app-shell.tsx`](features/app/app-shell.tsx). Игровые окна — в [`features/world/ui/`](features/world/ui/), сцена — в `features/world/scene/`, поведение — в `features/world/simulation/`. Экономика отделяет [`domain/`](features/economy/domain/) (правила), `sync/` (команды и состояние) и `ui/` (экраны по темам).
+
+Для профиля «Мой Мохлик» откройте [`features/world/ui/profile/`](features/world/ui/profile/); профиль аккаунта находится в `features/account/`. [Правила размещения кода](docs/development/code-organization.md) · [Задача → конкретный файл](docs/repository-guide.md) · [Владельцы состояния и API](docs/architecture.md).
+
 ## Локальный запуск
 
 Рекомендуется **Node.js 24**, как в CI; минимум — **22.13.0**. Из корня репозитория:
@@ -47,6 +53,7 @@ npm run dev:local
 
 ```bash
 npm run typecheck
+npm run architecture:check
 npm run lint
 npm run world:check
 npm run security:check

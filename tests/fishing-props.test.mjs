@@ -7,11 +7,11 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { fishingTackleFrame, fishingLineFrame, fishingPropsBounds, drawFishingProps, fishingRodAppearance, fishingCatchFrame, fishingBasketFishCenter, fishingReelHand, FISHING_PACK_RELEASE, FISHING_REEL_HANDOFF } = await vite.ssrLoadModule("/features/world/fishing-props.ts");
-const { forestFishingHeroRig, drawForestFishingHero } = await vite.ssrLoadModule("/features/world/forest-fishing-painter.ts");
-const { fishingShoreRig } = await vite.ssrLoadModule("/features/world/fishing-shore-rig.ts");
-const { drawPleskResident } = await vite.ssrLoadModule("/features/world/plesk-painter.ts");
-const { fishingWaterTarget, fishingDirection } = await vite.ssrLoadModule("/features/world/forest-fishing.ts");
+const { fishingTackleFrame, fishingLineFrame, fishingPropsBounds, drawFishingProps, fishingRodAppearance, fishingCatchFrame, fishingBasketFishCenter, fishingReelHand, FISHING_PACK_RELEASE, FISHING_REEL_HANDOFF } = await vite.ssrLoadModule("/features/world/activities/fishing/fishing-props.ts");
+const { forestFishingHeroRig, drawForestFishingHero } = await vite.ssrLoadModule("/features/world/activities/fishing/forest-fishing-painter.ts");
+const { fishingShoreRig } = await vite.ssrLoadModule("/features/world/activities/fishing/fishing-shore-rig.ts");
+const { drawPleskResident } = await vite.ssrLoadModule("/features/world/characters/plesk/plesk-painter.ts");
+const { fishingWaterTarget, fishingDirection } = await vite.ssrLoadModule("/features/world/activities/fishing/forest-fishing.ts");
 const { default: actualWorld } = await vite.ssrLoadModule("/features/world/tiled/forest.generated.json");
 const base = { x: 200, y: 200, size: 50, direction: "front", action: "fish", phase: .5, frame: 0,
   waterTarget: { x: 204, y: 247 }, carryingFish: false };

@@ -1,5 +1,5 @@
 import { HOUSE_ANCHORS, HOME_CANVAS_SIZE } from "./home-layout";
-import { pointInPolygon } from "@/features/world/map-layout";
+import { pointInPolygon } from "@/features/world/legacy/map-layout";
 
 const lamp = HOUSE_ANCHORS.lamp;
 const point = (x: number, y: number) => ({ x: lamp.x + x, y: lamp.y + y });

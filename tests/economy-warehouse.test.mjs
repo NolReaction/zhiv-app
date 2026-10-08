@@ -8,9 +8,9 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
   server: { middlewareMode: true, hmr: false, ws: false } });
 const identities = await vite.ssrLoadModule("/lib/dev/api-store.ts");
 const economy = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
-const model = await vite.ssrLoadModule("/features/economy/model.ts");
-const rules = await vite.ssrLoadModule("/features/economy/rules.ts");
-const dev = await vite.ssrLoadModule("/features/economy/dev-model.ts");
+const model = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const rules = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
+const dev = await vite.ssrLoadModule("/features/economy/dev/dev-model.ts");
 after(() => vite.close());
 beforeEach(() => identities.resetDevStoreForTests());
 

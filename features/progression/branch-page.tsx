@@ -4,8 +4,8 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, type Keyboard
 import { Anchor, Apple, ArrowLeft, ArrowRight, Binoculars, Bird, BookOpen, Box, CalendarDays, Check, CircleCheck, Clock3, Compass, CookingPot, Droplets, Expand, Fence, Fish, FishingHook, FishingRod, Flame, Gift, Hammer, Hand, Heart, Home, Info, Leaf, MapPinned, Medal, Minus, Mountain, Package, Pickaxe, Plus, Sailboat, ScrollText, Search, Ship, Shirt, Sprout, Star, Store, TentTree, TowerControl, TreePine, Trees, Trophy, Warehouse, Waves, X, Zap, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { CollectionIcon } from "@/features/items/item-icon";
-import { formatPearls } from "@/features/economy/money";
-import { PlayerItemIcon } from "@/features/economy/fish-discovery";
+import { formatPearls } from "@/features/economy/domain/money";
+import { PlayerItemIcon } from "@/features/economy/ui/fishing/fish-discovery";
 import { getPrerequisiteIds, getProgressionResourceSource, progressionGraph, progressionItemNames, type ProgressionNode } from "./graph";
 import { buildProgressionLayout, COLUMN_WIDTH, NODE_HEIGHT, NODE_WIDTH, phaseTitles } from "./layout";
 import styles from "./branch-page.module.css";

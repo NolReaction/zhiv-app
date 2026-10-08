@@ -11,9 +11,9 @@ after(() => vite.close());
 const { createClearingActivity, advanceClearingActivity, clearingActivityFrame, clearingNavigationFrame,
   canStartClearingLife, canStartClearingInteraction, isClearingAtHome, returnClearingHome,
   requestClearingPoint, releaseClearingPoint, isClearingAtPoint, requestClearingSleep,
-  requestClearingBush, requestClearingOutside, noticeClearingActivity } = await vite.ssrLoadModule("/features/world/clearing-activity.ts");
-const { canTraverse, isWalkable } = await vite.ssrLoadModule("/features/world/navigation.ts");
-const { chooseForestGoal, createForestBehavior } = await vite.ssrLoadModule("/features/world/forest-behavior.ts");
+  requestClearingBush, requestClearingOutside, noticeClearingActivity } = await vite.ssrLoadModule("/features/world/simulation/clearing-activity.ts");
+const { canTraverse, isWalkable } = await vite.ssrLoadModule("/features/world/navigation/navigation.ts");
+const { chooseForestGoal, createForestBehavior } = await vite.ssrLoadModule("/features/world/simulation/forest-behavior.ts");
 const point = (x, y) => ({ x, y });
 const rect = (x, y, width, height) => [point(x, y), point(x + width, y), point(x + width, y + height), point(x, y + height)];
 const conditions = { enabled: true, blocked: false, dusk: 0, rain: 0 };
@@ -391,7 +391,7 @@ test("a renewed bush request supersedes queued sleep without restarting the curr
 });
 
 test("all five authored homes support sleep and exit with both 50 and 56 unit actors", async () => {
-  const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
+  const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
   const { previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
   for (const size of [50, 56]) for (const level of [1, 2, 3, 4, 5]) {
     const map = withPlacedBushArtwork(previewWorldScene(TILED_WORLD, { home: level })); map.actor.size = size;

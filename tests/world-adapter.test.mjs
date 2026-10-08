@@ -7,8 +7,8 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { economySceneJourney, economySceneActivity } = await vite.ssrLoadModule("/features/economy/world-adapter.ts");
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
+const { economySceneJourney, economySceneActivity } = await vite.ssrLoadModule("/features/economy/integration/world-adapter.ts");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 
 const trip = (overrides = {}) => ({ id: "saved-fishing", kind: "exploration", targetId: "shore",
   startedAt: "2026-10-04T12:00:00.000Z", finishesAt: "2026-10-04T12:45:00.000Z", rewards: { fish: 3, fish_mooncarp: 1 },

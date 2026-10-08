@@ -14,8 +14,8 @@ const identities = await vite.ssrLoadModule("/lib/dev/api-store.ts");
 const { commandDevPresence } = await vite.ssrLoadModule("/lib/dev/activity-store.ts");
 const activePresence = new Map();
 const economy = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
-const model = await vite.ssrLoadModule("/features/economy/model.ts");
-const { economyDevCommandSchema } = await vite.ssrLoadModule("/features/economy/dev-model.ts");
+const model = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { economyDevCommandSchema } = await vite.ssrLoadModule("/features/economy/dev/dev-model.ts");
 const { POST } = await vite.ssrLoadModule("/app/api/v1/economy/dev/route.ts");
 const { POST: ordinaryPOST } = await vite.ssrLoadModule("/app/api/v1/economy/commands/route.ts");
 const now = Date.now();
@@ -248,7 +248,7 @@ test("DEV command defaults still produce a strict, ordinary result-compatible re
 });
 
 test("settlement scenarios fill a home tier, cap independent storage at that tier and preserve owned assets", async () => {
-  const { economyDevSettlement } = await vite.ssrLoadModule("/features/economy/dev-presets.ts");
+  const { economyDevSettlement } = await vite.ssrLoadModule("/features/economy/dev/dev-presets.ts");
   const p = player(), row = fixture(p);
   row.state.inventory = { ancient_core: 2, wood: 37 };
   row.state.wallet = { coins: 7000, pearls: 500 };

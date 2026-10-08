@@ -6,8 +6,8 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
-const { builderSprite, builderSpriteRig, BUILDER_SPRITE_CACHE_LIMIT } = await vite.ssrLoadModule("/features/world/builder-sprite.ts");
-const { drawBuilderResident, builderRenderBounds, builderHitBounds } = await vite.ssrLoadModule("/features/world/builder-painter.ts");
+const { builderSprite, builderSpriteRig, BUILDER_SPRITE_CACHE_LIMIT } = await vite.ssrLoadModule("/features/world/characters/builder/builder-sprite.ts");
+const { drawBuilderResident, builderRenderBounds, builderHitBounds } = await vite.ssrLoadModule("/features/world/characters/builder/builder-painter.ts");
 const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
 globalThis.document = { createElement(tag) {
   assert.equal(tag, "canvas");

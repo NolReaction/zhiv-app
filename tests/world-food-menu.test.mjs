@@ -7,10 +7,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
-const { WorldFoodMenu, FoodMealCard, ResidentOrderCard, mealBlockedReason } = await vite.ssrLoadModule("/features/economy/world-food-menu.tsx");
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
-const { residentOrderBoard, normalizedResidentOrders } = await vite.ssrLoadModule("/features/economy/food.ts");
-const { ECONOMY_MAX_BALANCE } = await vite.ssrLoadModule("/features/economy/money.ts");
+const { WorldFoodMenu, FoodMealCard, ResidentOrderCard, mealBlockedReason } = await vite.ssrLoadModule("/features/economy/ui/food/world-food-menu.tsx");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { residentOrderBoard, normalizedResidentOrders } = await vite.ssrLoadModule("/features/economy/domain/food.ts");
+const { ECONOMY_MAX_BALANCE } = await vite.ssrLoadModule("/features/economy/domain/money.ts");
 after(() => vite.close());
 const now = Date.parse("2026-10-07T14:00:00Z");
 const meal = economyCatalog.food.meals[0];
@@ -159,13 +159,13 @@ test("fish selection changes the visible cost and dispatched ingredient without 
         export function useState(initial) { const slot = useRef(typeof initial === 'function' ? initial() : initial); return [slot.current, value => { slot.current = typeof value === 'function' ? value(slot.current) : value; }]; }
         export function useEffect() {}
       `; },
-      transform(source, id) { if (/\/features\/economy\/world-(object|food)-menu\.tsx$/.test(id)) return source.replace('from "react";', `from "${hookModule}";`); },
+      transform(source, id) { if (/\/features\/economy\/ui\/(?:stations|food)\/world-(object|food)-menu\.tsx$/.test(id)) return source.replace('from "react";', `from "${hookModule}";`); },
     }],
   });
   try {
     const hooks = await runtime.ssrLoadModule(hookModule);
-    const { WorldRecipeDetail } = await runtime.ssrLoadModule("/features/economy/world-object-menu.tsx");
-    const { WorldFoodMenu: Menu } = await runtime.ssrLoadModule("/features/economy/world-food-menu.tsx");
+    const { WorldRecipeDetail } = await runtime.ssrLoadModule("/features/economy/ui/stations/world-object-menu.tsx");
+    const { WorldFoodMenu: Menu } = await runtime.ssrLoadModule("/features/economy/ui/food/world-food-menu.tsx");
     const calls = [], economy = controller({ inventory: { wood: 20, fish_silverfin: 5, fish_shark: 1 } }, { act(...args) { calls.push(args); } });
     const recipe = economy.snapshot.catalog.recipes.find(recipe => recipe.id === "cook_grilled_fish");
     const prepare = () => { hooks.render(); return WorldRecipeDetail({ economy, recipe, onCollapse() {} }); };

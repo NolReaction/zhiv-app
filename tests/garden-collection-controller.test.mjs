@@ -6,7 +6,7 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { createGardenCollectionController, economyGardenCrop, berryCollectionStatus } = await vite.ssrLoadModule("/features/economy/garden-collection.ts");
+const { createGardenCollectionController, economyGardenCrop, berryCollectionStatus } = await vite.ssrLoadModule("/features/economy/integration/garden-collection.ts");
 const now = Date.UTC(2026, 9, 4), owner = "ABCD-EFGH-JKMP";
 const job = (id = "crop") => ({ id, kind: "production", targetId: "garden", recipeId: "grow_berries",
   startedAt: new Date(now - 600000).toISOString(), finishesAt: new Date(now).toISOString(), rewards: { berries: 6 },

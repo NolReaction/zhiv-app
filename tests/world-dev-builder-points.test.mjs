@@ -11,9 +11,9 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
 after(() => vite.close());
 const { WorldDevBuilderPoints, BuilderWorkPointReport, builderWorkDiagnosticContext } = await vite.ssrLoadModule("/features/world/dev/world-dev-builder-points.tsx");
 const { WORLD_DEV_DEFAULTS, worldDevStore } = await vite.ssrLoadModule("/features/world/dev/world-dev-store.ts");
-const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
-const { builderWorkMarkerChecks } = await vite.ssrLoadModule("/features/world/builder-navigation.ts");
+const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { builderWorkMarkerChecks } = await vite.ssrLoadModule("/features/world/characters/builder/builder-navigation.ts");
 const now = Date.parse("2026-10-06T12:00:00Z");
 const economy = (buildings = {}, jobs = []) => ({ ownerPublicId: "builder-diagnostic", revision: 1, catalog: economyCatalog, buildings, jobs });
 const context = (state, preview = WORLD_DEV_DEFAULTS, source = TILED_WORLD) => builderWorkDiagnosticContext(source, preview, 1, state, now);

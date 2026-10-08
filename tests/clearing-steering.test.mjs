@@ -10,10 +10,10 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
 after(() => vite.close());
 const { createClearingActivity, advanceClearingActivity, clearingActivityFrame, requestClearingPoint,
   releaseClearingPoint, isClearingAtPoint, requestClearingSleep, requestClearingBush,
-  noticeClearingActivity, canStartClearingInteraction } = await vite.ssrLoadModule("/features/world/clearing-activity.ts");
-const { canTraverse, isWalkable, findWorldPath } = await vite.ssrLoadModule("/features/world/navigation.ts");
-const { connectForestSession } = await vite.ssrLoadModule("/features/world/forest-session.ts");
-const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
+  noticeClearingActivity, canStartClearingInteraction } = await vite.ssrLoadModule("/features/world/simulation/clearing-activity.ts");
+const { canTraverse, isWalkable, findWorldPath } = await vite.ssrLoadModule("/features/world/navigation/navigation.ts");
+const { connectForestSession } = await vite.ssrLoadModule("/features/world/state/forest-session.ts");
+const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
 const point = (x, y) => ({ x, y });
 const rect = (x, y, width, height) => [point(x, y), point(x + width, y), point(x + width, y + height), point(x, y + height)];
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);

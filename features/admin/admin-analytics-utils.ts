@@ -1,6 +1,6 @@
-import { economyCatalog } from "@/features/economy/model";
-import { formatPearls } from "@/features/economy/money";
-import { worldCatalog } from "@/features/world/model";
+import { economyCatalog } from "@/features/economy/domain/model";
+import { formatPearls } from "@/features/economy/domain/money";
+import { worldCatalog } from "@/features/world/domain/model";
 
 export const analyticsActions: Record<string, string> = {
   eat_food: "Еда для Мохлика", feed_builder: "Еда для строителя",

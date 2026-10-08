@@ -36,7 +36,7 @@ V45 добавляет `game_presence_clients`, `game_presence_accounts` и `gam
 
 Мохлик, Плёска и Шишколап используют общую активную сцену. Пауза прекращает их локальные шаги и встречи, а не проигрывает часы отсутствия одним большим шагом. При продолжении подтверждённые задания и сроки поступают из экономики; лесная память проходит свой протокол владельца и сверки. Внешний LLM не участвует, AI не выдаёт ресурсы.
 
-Основные файлы: [`features/activity/`](../../features/activity/), [`features/economy/session.ts`](../../features/economy/session.ts), [`features/world/session.ts`](../../features/world/session.ts), [`forest-memory-sync.ts`](../../features/world/forest-memory-sync.ts), [`Presence.kt`](../../apps/api/src/main/kotlin/ru/zhiv/presence/Presence.kt), [`JdbcPresenceRepository.kt`](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcPresenceRepository.kt).
+Основные файлы: [`features/activity/`](../../features/activity/), [`features/economy/sync/session.ts`](../../features/economy/sync/session.ts), [`features/world/state/session.ts`](../../features/world/state/session.ts), [`forest-memory-sync.ts`](../../features/world/state/memory/forest-memory-sync.ts), [`Presence.kt`](../../apps/api/src/main/kotlin/ru/zhiv/presence/Presence.kt), [`JdbcPresenceRepository.kt`](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcPresenceRepository.kt).
 
 ## Проверка изменения
 

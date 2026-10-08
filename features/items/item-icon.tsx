@@ -6,8 +6,8 @@ import { collectionArt } from "./art-collection";
 import { equipmentArt } from "./art-equipment";
 import { hookArt } from "./art-hooks";
 import { foodItemArt } from "./art-food";
-import { FishArt } from "@/features/world/fish-icon";
-import { FISH_SPECIES_IDS } from "@/features/world/fish-species";
+import { FishArt } from "@/features/world/activities/fishing/fish-icon";
+import { FISH_SPECIES_IDS } from "@/features/world/activities/fishing/fish-species";
 
 const fishingArt: Record<string, ReactNode> = {
   glow_bait: <>

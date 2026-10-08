@@ -6,8 +6,8 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { createEconomySession } = await vite.ssrLoadModule("/features/economy/session.ts");
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
+const { createEconomySession } = await vite.ssrLoadModule("/features/economy/sync/session.ts");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { ApiError } = await vite.ssrLoadModule("/lib/check-in-api.ts");
 const owner = "AAAA-0000-0001", other = "AAAA-0000-0002", now = Date.now();
 const state = (revision = 0, ownerPublicId = owner) => ({ ownerPublicId, revision, serverTime: new Date(now).toISOString(), wallet: { coins: 100, pearls: 0 }, inventory: {},

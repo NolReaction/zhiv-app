@@ -8,10 +8,10 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { builderLocalPlaces, builderWorkStops, builderWorkMarkerChecks, builderWorkClearance, builderRoute, BUILDER_NAVIGATION_LIMITS } =
-  await vite.ssrLoadModule("/features/world/builder-navigation.ts");
-const { isWalkable, canTraverse, createWorldNavigation, findWorldPath } = await vite.ssrLoadModule("/features/world/navigation.ts");
-const { residentClearance, canTraverseResidents } = await vite.ssrLoadModule("/features/world/resident-traffic.ts");
-const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
+  await vite.ssrLoadModule("/features/world/characters/builder/builder-navigation.ts");
+const { isWalkable, canTraverse, createWorldNavigation, findWorldPath } = await vite.ssrLoadModule("/features/world/navigation/navigation.ts");
+const { residentClearance, canTraverseResidents } = await vite.ssrLoadModule("/features/world/navigation/resident-traffic.ts");
+const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
 const { previewWorldScene, initialPreviewLevels } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
 const rect = (x, y, width, height) => [{ x, y }, { x: x + width, y }, { x: x + width, y: y + height }, { x, y: y + height }];
 const job = (stationId, targetLevel = 2) => ({ id: `${stationId}-${targetLevel}`, stationId, targetLevel,

@@ -13,10 +13,10 @@ const options = { mapPath, publicDir: path.join(root, "public") };
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
-const { createWorldNavigation, isWalkable, canTraverse, findWorldPath } = await vite.ssrLoadModule("/features/world/navigation.ts");
+const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
+const { createWorldNavigation, isWalkable, canTraverse, findWorldPath } = await vite.ssrLoadModule("/features/world/navigation/navigation.ts");
 const { previewWorldScene, initialPreviewLevels, previewSiteAt } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
-const { forestPointOccluded } = await vite.ssrLoadModule("/features/world/forest-occlusion.ts");
+const { forestPointOccluded } = await vite.ssrLoadModule("/features/world/scene/forest-occlusion.ts");
 const layers = items => items.flatMap(layer => [layer, ...layers(layer.layers ?? [])]);
 const shopLayer = layers(map.layers).find(layer => layer.name === "Shop");
 const shop = TILED_WORLD.sites.find(site => site.id === "plesk-shop");

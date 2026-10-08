@@ -1,5 +1,5 @@
-import { CheckInApp } from "@/features/check-in/check-in-app";
+import { AppShell } from "@/features/app/app-shell";
 
 export default function Home() {
-  return <CheckInApp />;
+  return <AppShell />;
 }

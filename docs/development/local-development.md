@@ -103,7 +103,7 @@ npm run world:check
 
 Изменения переживают перезагрузку страницы и не отменяются «Сбросом вида». Перезапуск локального API может удалить тестовый профиль: это память процесса, как и остальной DEV API. Повтор после потери ответа использует прежний идентификатор команды и не выдаёт ресурсы повторно.
 
-Команды идут через отдельный `/api/v1/economy/dev` с проверками режима development, сеанса, origin, владельца, ревизии и идентификатора запроса. Production API и обычные игровые команды читы не принимают. Контракт — `features/economy/dev-model.ts`, исполнение — `lib/dev/economy-store.ts`; проверки — `tests/economy-dev-cheats.test.mjs`, `tests/economy-dev-session.test.mjs` и `tests/world-dev-panel.test.mjs`.
+Команды идут через отдельный `/api/v1/economy/dev` с проверками режима development, сеанса, origin, владельца, ревизии и идентификатора запроса. Production API и обычные игровые команды читы не принимают. Контракт — `features/economy/dev/dev-model.ts`, исполнение — `lib/dev/economy-store.ts`; проверки — `tests/economy-dev-cheats.test.mjs`, `tests/economy-dev-session.test.mjs` и `tests/world-dev-panel.test.mjs`.
 
 ### Проверить жизнь полянки
 

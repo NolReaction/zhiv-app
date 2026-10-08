@@ -537,8 +537,8 @@ test("applies clickjacking protection to the root page and nested routes", async
 
 test("keeps the iPhone glass navigation compact and hides mobile scrollbar chrome", async () => {
   const [app, appStyles, peopleStyles, profileStyles, navigation] = await Promise.all([
-    readFile(new URL("../features/check-in/check-in-app.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../features/check-in/check-in-app.module.css", import.meta.url), "utf8"),
+    readFile(new URL("../features/app/app-shell.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../features/app/app-shell.module.css", import.meta.url), "utf8"),
     readFile(new URL("../features/people/people-view.module.css", import.meta.url), "utf8"),
     readFile(new URL("../features/account/profile-view.module.css", import.meta.url), "utf8"),
     readFile(new URL("../features/app/navigation.tsx", import.meta.url), "utf8"),
@@ -641,8 +641,8 @@ test("keeps the iPhone glass navigation compact and hides mobile scrollbar chrom
 
 test("keeps the ten-second clicker lightweight and motion-safe", async () => {
   const [app, appStyles, clicker] = await Promise.all([
-    readFile(new URL("../features/check-in/check-in-app.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../features/check-in/check-in-app.module.css", import.meta.url), "utf8"),
+    readFile(new URL("../features/app/app-shell.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../features/app/app-shell.module.css", import.meta.url), "utf8"),
     readFile(new URL("../features/game/clicker-story.ts", import.meta.url), "utf8"),
   ]);
 
@@ -705,8 +705,8 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
       readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
       readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
       readFile(new URL("../next.config.ts", import.meta.url), "utf8"),
-      readFile(new URL("../features/check-in/check-in-app.tsx", import.meta.url), "utf8"),
-      readFile(new URL("../features/check-in/check-in-app.module.css", import.meta.url), "utf8"),
+      readFile(new URL("../features/app/app-shell.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../features/app/app-shell.module.css", import.meta.url), "utf8"),
       readFile(new URL("../features/people/people-view.tsx", import.meta.url), "utf8"),
       readFile(new URL("../features/people/people-view.module.css", import.meta.url), "utf8"),
       readFile(new URL("../features/people/groups-section.tsx", import.meta.url), "utf8"),
@@ -815,7 +815,7 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
 
 test("uses a wide desktop dashboard without changing the mobile navigation contract", async () => {
   const [appStyles, peopleStyles, profileStyles] = await Promise.all([
-    readFile(new URL("../features/check-in/check-in-app.module.css", import.meta.url), "utf8"),
+    readFile(new URL("../features/app/app-shell.module.css", import.meta.url), "utf8"),
     readFile(new URL("../features/people/people-view.module.css", import.meta.url), "utf8"),
     readFile(new URL("../features/account/profile-view.module.css", import.meta.url), "utf8"),
   ]);

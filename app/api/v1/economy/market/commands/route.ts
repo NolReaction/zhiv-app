@@ -1,4 +1,4 @@
-import { marketCommandSchema } from "@/features/economy/model";
+import { marketCommandSchema } from "@/features/economy/domain/model";
 import { commandDevEconomyMarket } from "@/lib/dev/economy-store";
 import { devEconomyContext, readDevEconomyBody, economyErrorResponse, respondDevEconomy } from "@/lib/dev/economy-route";
 

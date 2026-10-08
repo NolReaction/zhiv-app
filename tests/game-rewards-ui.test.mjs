@@ -15,7 +15,7 @@ const { DailyRewardsPanel, dailyRewardWait, RewardContents } = await vite.ssrLoa
 const { AchievementCard } = await vite.ssrLoadModule("/features/game/game-achievements.tsx");
 const { GAME_ACHIEVEMENTS } = await vite.ssrLoadModule("/features/game/game-rewards.ts");
 const { GAME_ACHIEVEMENT_TARGETS } = await vite.ssrLoadModule("/features/game/achievement-progress.ts");
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { ApiError } = await vite.ssrLoadModule("/lib/check-in-api.ts");
 const fetchOriginal = globalThis.fetch;
 afterEach(() => { globalThis.fetch = fetchOriginal; });

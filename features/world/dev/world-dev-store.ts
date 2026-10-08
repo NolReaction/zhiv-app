@@ -1,8 +1,8 @@
 import type { PixelDirection, PixelPose } from "@/features/mochlik/pixel-sprite";
-import type { PleskAction } from "../plesk-resident";
-import type { BuilderAction } from "../builder-types";
-import type { CookingAction } from "../forest-cooking";
-import { TILED_WORLD } from "../presentation";
+import type { PleskAction } from "@/features/world/characters/plesk/plesk-resident";
+import type { BuilderAction } from "@/features/world/characters/builder/builder-types";
+import type { CookingAction } from "@/features/world/activities/cooking/forest-cooking";
+import { TILED_WORLD } from "@/features/world/scene/presentation";
 import { initialPreviewLevels } from "../tiled/preview-state";
 
 export const WORLD_DEV_ENABLED = process.env.NODE_ENV === "development";

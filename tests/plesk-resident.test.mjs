@@ -7,11 +7,11 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { PLESK, pleskResidentFrame, pleskRoutineDuration, pleskLocalPlaces } = await vite.ssrLoadModule("/features/world/plesk-resident.ts");
-const { createWorldNavigation, isWalkable, canTraverse } = await vite.ssrLoadModule("/features/world/navigation.ts");
-const { fishingWaterTarget } = await vite.ssrLoadModule("/features/world/forest-fishing.ts");
-const { isForestWater } = await vite.ssrLoadModule("/features/world/forest-water.ts");
-const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
+const { PLESK, pleskResidentFrame, pleskRoutineDuration, pleskLocalPlaces } = await vite.ssrLoadModule("/features/world/characters/plesk/plesk-resident.ts");
+const { createWorldNavigation, isWalkable, canTraverse } = await vite.ssrLoadModule("/features/world/navigation/navigation.ts");
+const { fishingWaterTarget } = await vite.ssrLoadModule("/features/world/activities/fishing/forest-fishing.ts");
+const { isForestWater } = await vite.ssrLoadModule("/features/world/environment/water/forest-water.ts");
+const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
 const { previewWorldScene, initialPreviewLevels } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
 const rectangle = (id, x, y, width, height) => ({ id, points: [
   { x, y }, { x: x + width, y }, { x: x + width, y: y + height }, { x, y: y + height },

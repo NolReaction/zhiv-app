@@ -7,10 +7,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
-const { EconomyPanel, EconomyBalances, economyDuration } = await vite.ssrLoadModule("/features/economy/economy-panel.tsx");
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
-const { economyStorage } = await vite.ssrLoadModule("/features/economy/rules.ts");
-const { economyBuildingDestination } = await vite.ssrLoadModule("/features/economy/world-adapter.ts");
+const { EconomyPanel, EconomyBalances, economyDuration } = await vite.ssrLoadModule("/features/economy/ui/economy-panel.tsx");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
+const { economyBuildingDestination } = await vite.ssrLoadModule("/features/economy/integration/world-adapter.ts");
 after(() => vite.close());
 
 const now = Date.parse("2026-09-30T21:00:00Z");

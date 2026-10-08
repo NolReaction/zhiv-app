@@ -9,11 +9,11 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { advanceForestDirector, requestForestDirective, noticeForestDirector, cancelForestDirector } =
-  await vite.ssrLoadModule("/features/world/forest-director.ts");
-const { connectForestSession } = await vite.ssrLoadModule("/features/world/forest-session.ts");
-const { clearingActivityFrame, requestClearingPoint, isClearingAtPoint } = await vite.ssrLoadModule("/features/world/clearing-activity.ts");
-const { faunaRenderFrame } = await vite.ssrLoadModule("/features/world/forest-fauna.ts");
-const { isWalkable } = await vite.ssrLoadModule("/features/world/navigation.ts");
+  await vite.ssrLoadModule("/features/world/simulation/forest-director.ts");
+const { connectForestSession } = await vite.ssrLoadModule("/features/world/state/forest-session.ts");
+const { clearingActivityFrame, requestClearingPoint, isClearingAtPoint } = await vite.ssrLoadModule("/features/world/simulation/clearing-activity.ts");
+const { faunaRenderFrame } = await vite.ssrLoadModule("/features/world/environment/wildlife/forest-fauna.ts");
+const { isWalkable } = await vite.ssrLoadModule("/features/world/navigation/navigation.ts");
 const rectangle = (x, y, width, height) => [{ x, y }, { x: x + width, y }, { x: x + width, y: y + height }, { x, y: y + height }];
 const fixture = {
   schemaVersion: 1, id: "director-fixture", width: 300, height: 300, terrain: [],
@@ -316,7 +316,7 @@ test("a prop requested indoors waits for the physical exit before any pickup", (
 });
 
 test("the exported living clearing can settle into home sleep after five active minutes", async () => {
-  const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
+  const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
   const state = create(TILED_WORLD); state.clearing.seed = 41;
   const options = { ...calm, autoLife: true, homeAvailable: true };
   until(state, current => clearingActivityFrame(current.clearing).homeSleeping, 300, options);
@@ -324,7 +324,7 @@ test("the exported living clearing can settle into home sleep after five active 
 });
 
 test("an indoor butterfly request exits once without repeated attention or replacement participants", async () => {
-  const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
+  const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
   const state = create(TILED_WORLD), options = { ...calm, homeAvailable: true };
   requestForestDirective(state, "home-sleep", options);
   until(state, current => clearingActivityFrame(current.clearing).homeSleeping, 30, options);
@@ -376,7 +376,7 @@ test("a successful clearing intention replaces a previous approach warning but p
 });
 
 test("a disconnected home reports a path problem separately from an invalid entrance", async () => {
-  const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
+  const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
   const { previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
   const map = structuredClone(previewWorldScene(TILED_WORLD, { home: 5 }));
   const entry = map.sites.find(site => site.id === "home").entry;
@@ -392,7 +392,7 @@ test("a disconnected home reports a path problem separately from an invalid entr
 });
 
 test("the fifth home supports repeated approaches, interrupted journeys, sleep and safe exit near the right rock", async () => {
-  const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
+  const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
   const { previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
   const map = previewWorldScene(TILED_WORLD, { home: 5 }), state = create(map);
   state.clearing.seed = 57;
@@ -420,9 +420,9 @@ test("the fifth home supports repeated approaches, interrupted journeys, sleep a
 
 
 test("all five authored homes permit mushroom and leaf pickup from a short contact approach at sizes 50 and 56", async () => {
-  const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
+  const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
   const { previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
-  const { forestLifeFrame } = await vite.ssrLoadModule("/features/world/forest-life.ts");
+  const { forestLifeFrame } = await vite.ssrLoadModule("/features/world/simulation/forest-life.ts");
   for (const level of [1, 2, 3, 4, 5]) for (const size of [50, 56]) for (const kind of ["mushroom", "leaf"]) {
     const map = previewWorldScene(TILED_WORLD, { home: level });
     const state = create({ ...map, actor: { ...map.actor, size } });
@@ -441,7 +441,7 @@ test("all five authored homes permit mushroom and leaf pickup from a short conta
 
 
 test("DEV hero scale uses the same reach for approach and arrival without resizing the ground prop", async () => {
-  const { forestLifeFrame } = await vite.ssrLoadModule("/features/world/forest-life.ts");
+  const { forestLifeFrame } = await vite.ssrLoadModule("/features/world/simulation/forest-life.ts");
   for (const heroScale of [.5, 1, 2]) for (const kind of ["mushroom", "leaf"]) {
     const state = create(), options = { ...calm, heroScale }, originalSize = state.clearing.size;
     const original = kind === "mushroom" ? { ...state.life.mushrooms[0] } : { ...state.life.leaf };

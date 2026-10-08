@@ -6,11 +6,11 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
-const { pleskSprite, pleskSpriteRig, PLESK_SPRITE_CACHE_LIMIT } = await vite.ssrLoadModule("/features/world/plesk-sprite.ts");
-const { drawPleskResident, pleskFishingAnchors } = await vite.ssrLoadModule("/features/world/plesk-painter.ts");
-const { pleskLocalPlaces } = await vite.ssrLoadModule("/features/world/plesk-resident.ts");
+const { pleskSprite, pleskSpriteRig, PLESK_SPRITE_CACHE_LIMIT } = await vite.ssrLoadModule("/features/world/characters/plesk/plesk-sprite.ts");
+const { drawPleskResident, pleskFishingAnchors } = await vite.ssrLoadModule("/features/world/characters/plesk/plesk-painter.ts");
+const { pleskLocalPlaces } = await vite.ssrLoadModule("/features/world/characters/plesk/plesk-resident.ts");
 const { default: actualWorld } = await vite.ssrLoadModule("/features/world/tiled/forest.generated.json");
-const { fishingTackleFrame, fishingPropsBounds, fishingCatchFrame, fishingBasketFishCenter, fishingReelHand, FISHING_PACK_RELEASE, FISHING_REEL_HANDOFF } = await vite.ssrLoadModule("/features/world/fishing-props.ts");
+const { fishingTackleFrame, fishingPropsBounds, fishingCatchFrame, fishingBasketFishCenter, fishingReelHand, FISHING_PACK_RELEASE, FISHING_REEL_HANDOFF } = await vite.ssrLoadModule("/features/world/activities/fishing/fishing-props.ts");
 const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
 function canvas() {
   const result = { width: 0, height: 0, pixels: new Map() }; let offset = 0, scale = 1;
@@ -580,10 +580,10 @@ test("the actual Pleska painter moves smoothly into the exact basket center at e
 });
 
 test("the live map gives Pleska real daytime and nighttime visitors with exact palm contacts", async () => {
-  const {TILED_WORLD:world}=await vite.ssrLoadModule('/features/world/presentation.ts');
-  const {createForestFauna,advanceForestFauna,residentFaunaEncounter}=await vite.ssrLoadModule('/features/world/forest-fauna.ts');
-  const {createPleskMind,advancePleskMind,pleskMindFrame}=await vite.ssrLoadModule('/features/world/plesk-mind.ts');
-  const {pleskWildlifeHand}=await vite.ssrLoadModule('/features/world/plesk-painter.ts');
+  const {TILED_WORLD:world}=await vite.ssrLoadModule('/features/world/scene/presentation.ts');
+  const {createForestFauna,advanceForestFauna,residentFaunaEncounter}=await vite.ssrLoadModule('/features/world/environment/wildlife/forest-fauna.ts');
+  const {createPleskMind,advancePleskMind,pleskMindFrame}=await vite.ssrLoadModule('/features/world/characters/plesk/plesk-mind.ts');
+  const {pleskWildlifeHand}=await vite.ssrLoadModule('/features/world/characters/plesk/plesk-painter.ts');
   for(const dusk of [0,1]){
     const fauna=createForestFauna(world),mind=createPleskMind(world),ids=fauna.entities.map(e=>e.id),contacts=new Set();
     for(let t=0;t<900;t+=.1){

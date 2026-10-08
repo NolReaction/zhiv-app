@@ -30,15 +30,15 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
       export function useEffect() {}
     `; },
     transform(source, id) {
-      if (id.endsWith("/features/economy/world-pantry-menu.tsx")) return source.replace('from "react";', `from "${hookModule}";`);
+      if (id.endsWith("/features/economy/ui/inventory/world-pantry-menu.tsx")) return source.replace('from "react";', `from "${hookModule}";`);
     },
   }],
 });
 after(() => vite.close());
-const { PantrySale, WorldPantryMenu } = await vite.ssrLoadModule("/features/economy/world-pantry-menu.tsx");
-const { constructionGoalDetails } = await vite.ssrLoadModule("/features/economy/construction-goal.ts");
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
-const { economyStorage } = await vite.ssrLoadModule("/features/economy/rules.ts");
+const { PantrySale, WorldPantryMenu } = await vite.ssrLoadModule("/features/economy/ui/inventory/world-pantry-menu.tsx");
+const { constructionGoalDetails } = await vite.ssrLoadModule("/features/economy/ui/construction/construction-goal.ts");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const hooks = await vite.ssrLoadModule(hookModule);
 const now = Date.parse("2026-10-07T12:00:00Z");
 

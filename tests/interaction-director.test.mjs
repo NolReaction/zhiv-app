@@ -8,13 +8,13 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
-const { connectForestSession } = await vite.ssrLoadModule("/features/world/forest-session.ts");
-const { advanceForestDirector, requestForestDirective, noticeForestDirector } = await vite.ssrLoadModule("/features/world/forest-director.ts");
+const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
+const { connectForestSession } = await vite.ssrLoadModule("/features/world/state/forest-session.ts");
+const { advanceForestDirector, requestForestDirective, noticeForestDirector } = await vite.ssrLoadModule("/features/world/simulation/forest-director.ts");
 const { requestClearingPoint, releaseClearingPoint, advanceClearingActivity, isClearingAtPoint,
-  clearingActivityFrame } = await vite.ssrLoadModule("/features/world/clearing-activity.ts");
-const { compileWorldInteractions } = await vite.ssrLoadModule("/features/world/interaction-navigation.ts");
-const { canTraverse, isWalkable } = await vite.ssrLoadModule("/features/world/navigation.ts");
+  clearingActivityFrame } = await vite.ssrLoadModule("/features/world/simulation/clearing-activity.ts");
+const { compileWorldInteractions } = await vite.ssrLoadModule("/features/world/navigation/interaction-navigation.ts");
+const { canTraverse, isWalkable } = await vite.ssrLoadModule("/features/world/navigation/navigation.ts");
 const quiet = { autoLife: false, blocked: false, homeAvailable: true, dusk: 0, rain: 0 };
 const dt = .025;
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);

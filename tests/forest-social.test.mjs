@@ -8,12 +8,12 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { createForestSocial, noticeForestSocial, advanceForestSocial, forestSocialFrames,
-  forestSocialHolding, cancelForestSocial, FOREST_SOCIAL_LIMITS } = await vite.ssrLoadModule("/features/world/forest-social.ts");
-const { createBuilderMind, advanceBuilderMind, requestBuilderVisit, cancelBuilderVisit } = await vite.ssrLoadModule("/features/world/builder-mind.ts");
-const { builderLocalPlaces } = await vite.ssrLoadModule("/features/world/builder-navigation.ts");
-const { canTraverse } = await vite.ssrLoadModule("/features/world/navigation.ts");
-const { residentClearance } = await vite.ssrLoadModule("/features/world/resident-traffic.ts");
-const { FOREST_CHAT_TOPICS, FOREST_ANIMAL_LINES, forestClickLines } = await vite.ssrLoadModule("/features/world/forest-social-dialogue.ts");
+  forestSocialHolding, cancelForestSocial, FOREST_SOCIAL_LIMITS } = await vite.ssrLoadModule("/features/world/characters/social/forest-social.ts");
+const { createBuilderMind, advanceBuilderMind, requestBuilderVisit, cancelBuilderVisit } = await vite.ssrLoadModule("/features/world/characters/builder/builder-mind.ts");
+const { builderLocalPlaces } = await vite.ssrLoadModule("/features/world/characters/builder/builder-navigation.ts");
+const { canTraverse } = await vite.ssrLoadModule("/features/world/navigation/navigation.ts");
+const { residentClearance } = await vite.ssrLoadModule("/features/world/navigation/resident-traffic.ts");
+const { FOREST_CHAT_TOPICS, FOREST_ANIMAL_LINES, forestClickLines } = await vite.ssrLoadModule("/features/world/characters/social/forest-social-dialogue.ts");
 const now = Date.parse("2026-10-06T18:00:00Z");
 const rect = (x, y, width, height) => [{ x, y }, { x: x + width, y }, { x: x + width, y: y + height }, { x, y: y + height }];
 function fixture(seed = "social-test") {

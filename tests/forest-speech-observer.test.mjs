@@ -9,12 +9,12 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { connectForestSession } = await vite.ssrLoadModule("/features/world/forest-session.ts");
-const { createForestSocial } = await vite.ssrLoadModule("/features/world/forest-social.ts");
+const { connectForestSession } = await vite.ssrLoadModule("/features/world/state/forest-session.ts");
+const { createForestSocial } = await vite.ssrLoadModule("/features/world/characters/social/forest-social.ts");
 const { forestObservationFrame, getForestObservation, publishForestObservation, subscribeForestObservation } =
-  await vite.ssrLoadModule("/features/world/forest-observer.ts");
-const { ForestSpeechBubble, ResidentSpeech, ForestSpeechAnnouncements } = await vite.ssrLoadModule("/features/world/forest-speech.tsx");
-const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
+  await vite.ssrLoadModule("/features/world/state/forest-observer.ts");
+const { ForestSpeechBubble, ResidentSpeech, ForestSpeechAnnouncements } = await vite.ssrLoadModule("/features/world/characters/social/forest-speech.tsx");
+const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
 const connect = key => connectForestSession(key, TILED_WORLD, "circle", 0, 0, () => {}, { persistence: false });
 
 test("speech publications are detached semantic events rather than an animation clock", async () => {

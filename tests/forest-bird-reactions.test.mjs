@@ -9,8 +9,8 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { createBirdReactions, advanceBirdReactions, applyBirdReactions }
-  = await vite.ssrLoadModule("/features/world/forest-bird-reactions.ts");
-const { forestBirdFrame } = await vite.ssrLoadModule("/features/world/forest-birds.ts");
+  = await vite.ssrLoadModule("/features/world/environment/wildlife/forest-bird-reactions.ts");
+const { forestBirdFrame } = await vite.ssrLoadModule("/features/world/environment/wildlife/forest-birds.ts");
 const scene = JSON.parse(await readFile(new URL("../features/world/tiled/forest.generated.json", import.meta.url)));
 const bounds = { width: scene.width, height: scene.height };
 const sample = (birdElapsed, birdSeed = 0) => forestBirdFrame(scene,

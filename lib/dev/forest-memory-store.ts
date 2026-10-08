@@ -5,7 +5,7 @@ import { devForestMemoryStates, type DevForestMemoryState } from "@/lib/dev/fore
 import {
   FOREST_MEMORY_LEASE_MS, forestMemoryCommandSchema, forestMemoryReadSchema,
   type ForestMemoryResult, type ForestMemoryView,
-} from "@/features/world/forest-memory-model";
+} from "@/features/world/state/memory/forest-memory-model";
 
 export class DevForestMemoryError extends Error {
   constructor(public code: string, message: string, public status = 409) { super(message); }

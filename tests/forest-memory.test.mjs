@@ -8,15 +8,15 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { connectForestSession } = await vite.ssrLoadModule("/features/world/forest-session.ts");
-const { forestMemoryKey, forestSceneFingerprint } = await vite.ssrLoadModule("/features/world/forest-memory.ts");
-const { forestMindMotives } = await vite.ssrLoadModule("/features/world/forest-mind.ts");
-const { forestMemoryPayloadSchema } = await vite.ssrLoadModule("/features/world/forest-memory-model.ts");
-const { advanceForestDirector, requestForestDirective } = await vite.ssrLoadModule("/features/world/forest-director.ts");
-const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
+const { connectForestSession } = await vite.ssrLoadModule("/features/world/state/forest-session.ts");
+const { forestMemoryKey, forestSceneFingerprint } = await vite.ssrLoadModule("/features/world/state/memory/forest-memory.ts");
+const { forestMindMotives } = await vite.ssrLoadModule("/features/world/simulation/forest-mind.ts");
+const { forestMemoryPayloadSchema } = await vite.ssrLoadModule("/features/world/state/memory/forest-memory-model.ts");
+const { advanceForestDirector, requestForestDirective } = await vite.ssrLoadModule("/features/world/simulation/forest-director.ts");
+const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
 const { requestClearingSleep, requestClearingBush, advanceClearingActivity, noticeClearingActivity, clearingActivityFrame } =
-  await vite.ssrLoadModule("/features/world/clearing-activity.ts");
-const { isWalkable } = await vite.ssrLoadModule("/features/world/navigation.ts");
+  await vite.ssrLoadModule("/features/world/simulation/clearing-activity.ts");
+const { isWalkable } = await vite.ssrLoadModule("/features/world/navigation/navigation.ts");
 const conditions = { enabled: true, blocked: false, homeAvailable: true, dusk: 0, rain: 0 };
 const scene = () => ({ ...withPlacedBushArtwork(TILED_WORLD), paths: [] });
 

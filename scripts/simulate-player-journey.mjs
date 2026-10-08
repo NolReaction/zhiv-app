@@ -53,9 +53,9 @@ export function createJourneyRareRandom(seed) {
 export async function loadJourneyRules() {
   const vite = await createServer({ appType: "custom", configFile: false, root, logLevel: "silent",
     resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
-  const rules = await vite.ssrLoadModule("/features/economy/rules.ts");
-  const model = await vite.ssrLoadModule("/features/economy/model.ts");
-  const actorAvailability = await vite.ssrLoadModule("/features/economy/actor-availability.ts");
+  const rules = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
+  const model = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+  const actorAvailability = await vite.ssrLoadModule("/features/economy/domain/actor-availability.ts");
   const progressionRewards = await vite.ssrLoadModule("/features/game/progression-rewards.ts");
   return { rules, actorAvailability, progressionRewards, catalog: model.economyCatalog,
     walletLimits: { coins: model.ECONOMY_MAX_BALANCE, pearls: model.ECONOMY_MAX_PEARLS }, close: () => vite.close() };

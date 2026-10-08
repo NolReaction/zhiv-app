@@ -1,4 +1,4 @@
-import { FOREST_MAP } from "@/features/world/map-manifest";
+import { FOREST_MAP } from "@/features/world/legacy/map-manifest";
 /** Future variants fit the source-pixel slot and preserve doorway/lamp geometry.
  * A replacement patch must cover the baked house; a smaller transparent sprite cannot erase it. */
 export type HouseVariant = {

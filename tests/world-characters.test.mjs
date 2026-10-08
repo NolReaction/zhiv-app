@@ -39,15 +39,15 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
       export function useSyncExternalStore(_subscribe, getSnapshot) { return getSnapshot(); }
     `; },
     transform(source, id) {
-      if (id.endsWith("/features/world/world-view.tsx") || id.endsWith("/features/economy/use-construction-goal.ts")) {
+      if (id.endsWith("/features/world/world-view.tsx") || id.endsWith("/features/economy/ui/construction/use-construction-goal.ts")) {
         return source.replace('from "react";', `from "${hookModule}";`);
       }
     },
   }],
 });
 after(() => vite.close());
-const { WORLD_CHARACTERS, worldCharacterResident } = await vite.ssrLoadModule("/features/world/world-characters-model.ts");
-const { WorldCharacters } = await vite.ssrLoadModule("/features/world/world-characters.tsx");
+const { WORLD_CHARACTERS, worldCharacterResident } = await vite.ssrLoadModule("/features/world/characters/world-characters-model.ts");
+const { WorldCharacters } = await vite.ssrLoadModule("/features/world/ui/characters/world-characters.tsx");
 const { default: WorldView } = await vite.ssrLoadModule("/features/world/world-view.tsx");
 const hooks = await vite.ssrLoadModule(hookModule);
 

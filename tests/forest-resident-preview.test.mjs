@@ -8,8 +8,8 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { previewForestResidents, RESIDENT_PREVIEW_SECONDS } = await vite.ssrLoadModule("/features/world/dev/forest-resident-preview.ts");
-const { pleskResidentFrame, pleskRoutineDuration } = await vite.ssrLoadModule("/features/world/plesk-resident.ts");
-const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
+const { pleskResidentFrame, pleskRoutineDuration } = await vite.ssrLoadModule("/features/world/characters/plesk/plesk-resident.ts");
+const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
 const preview = (action, repeat = false, direction = "front") => ({ id: 17, action, repeat, direction });
 const ordinary = (elapsed, still = false) => [pleskResidentFrame(TILED_WORLD, elapsed, still)];
 

@@ -8,7 +8,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { loadForestSpeechFont } = await vite.ssrLoadModule("/features/world/forest-speech-font.ts");
+const { loadForestSpeechFont } = await vite.ssrLoadModule("/features/world/characters/social/forest-speech-font.ts");
 
 test("both cameras share one Cyrillic font request and its readiness", async () => {
   let resolve, calls = 0;

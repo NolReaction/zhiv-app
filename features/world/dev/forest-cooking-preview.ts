@@ -1,8 +1,8 @@
-import { canStartClearingInteraction, clearingActivityFrame, requestClearingOutside } from "../clearing-activity";
+import { canStartClearingInteraction, clearingActivityFrame, requestClearingOutside } from "@/features/world/simulation/clearing-activity";
 import { FOREST_COOKING_ACTION_SECONDS, FOREST_COOKING_CYCLE_SECONDS, forestCookingFrame,
-  type CookingAction, type ForestCookingFrame } from "../forest-cooking";
-import { cancelForestDirector, noticeForestDirector } from "../forest-director";
-import type { ForestSessionState } from "../forest-session";
+  type CookingAction, type ForestCookingFrame } from "@/features/world/activities/cooking/forest-cooking";
+import { cancelForestDirector, noticeForestDirector } from "@/features/world/simulation/forest-director";
+import type { ForestSessionState } from "@/features/world/state/forest-session";
 
 export type CookingPreviewSelection = { id: number; action: "sequence" | CookingAction; repeat: boolean };
 export type CookingPreviewClock = { id: number; startedAt: number | null; requestedAt: number; attentionAt?: number };

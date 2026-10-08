@@ -8,7 +8,7 @@ import { TAG_COLORS, playerTagSchema, type PlayerTag } from "@/lib/player-tag";
 import { createUuidV4 } from "@/lib/browser-uuid";
 import { validAdminReason } from "./admin-input";
 import { ApiError } from "@/lib/check-in-api";
-import { worldCatalog } from "@/features/world/model";
+import { worldCatalog } from "@/features/world/domain/model";
 import { getAdminAccess, getAdminPlayer, manageAdminPlayer, type AdminPlayer, type AdminPlayerCommand, type AdminUser } from "./admin-api";
 import styles from "./admin-management.module.css";
 

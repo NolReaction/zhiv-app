@@ -27,7 +27,7 @@ function enterGame(p) {
 }
 
 const memory = await vite.ssrLoadModule("/lib/dev/forest-memory-store.ts");
-const model = await vite.ssrLoadModule("/features/world/forest-memory-model.ts");
+const model = await vite.ssrLoadModule("/features/world/state/memory/forest-memory-model.ts");
 const { GET } = await vite.ssrLoadModule("/app/api/v1/world/forest-memory/route.ts");
 const { POST } = await vite.ssrLoadModule("/app/api/v1/world/forest-memory/commands/route.ts");
 const { readDevForestMemoryBody } = await vite.ssrLoadModule("/lib/dev/forest-memory-route.ts");

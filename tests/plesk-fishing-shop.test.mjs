@@ -7,12 +7,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
-const { PleskFishingShop, PleskFishTrade, PleskRodOffer, PleskHookOffer, PleskBaitOffer, PleskFishOffer, PleskTackleCounter, PleskFishingCollection, PleskCatchOdds, PleskMerchantHeader, FishCounter, fishingTradeLimits } = await vite.ssrLoadModule("/features/economy/plesk-fishing-shop.tsx");
-const { PleskFishingBookPage, fishingBookEntries, fishingBookPage, FISHING_BOOK_PAGE_SIZE } = await vite.ssrLoadModule("/features/economy/plesk-fishing-book.tsx");
-const { economyCatalog, economyFishingSchema, ECONOMY_MAX_BALANCE } = await vite.ssrLoadModule("/features/economy/model.ts");
-const { economyStorage } = await vite.ssrLoadModule("/features/economy/rules.ts");
-const { fishingOdds, fishingState } = await vite.ssrLoadModule("/features/economy/fishing.ts");
-const { normalizedResidentOrders } = await vite.ssrLoadModule("/features/economy/food.ts");
+const { PleskFishingShop, PleskFishTrade, PleskRodOffer, PleskHookOffer, PleskBaitOffer, PleskFishOffer, PleskTackleCounter, PleskFishingCollection, PleskCatchOdds, PleskMerchantHeader, FishCounter, fishingTradeLimits } = await vite.ssrLoadModule("/features/economy/ui/fishing/plesk-fishing-shop.tsx");
+const { PleskFishingBookPage, fishingBookEntries, fishingBookPage, FISHING_BOOK_PAGE_SIZE } = await vite.ssrLoadModule("/features/economy/ui/fishing/plesk-fishing-book.tsx");
+const { economyCatalog, economyFishingSchema, ECONOMY_MAX_BALANCE } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
+const { fishingOdds, fishingState } = await vite.ssrLoadModule("/features/economy/domain/fishing.ts");
+const { normalizedResidentOrders } = await vite.ssrLoadModule("/features/economy/domain/food.ts");
 after(() => vite.close());
 const merchantHookModule = "virtual:merchant-selection-hooks";
 const merchantVite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } },
@@ -33,11 +33,11 @@ const merchantVite = await createServer({ appType: "custom", configFile: false, 
       }
       export function flushEffects() { const pending = effects; effects = []; pending.forEach(callback => callback()); }
     `; },
-    transform(source, id) { if (id.endsWith("/features/economy/plesk-fishing-shop.tsx")) return source.replace('from "react";', `from "${merchantHookModule}";`); },
+    transform(source, id) { if (id.endsWith("/features/economy/ui/fishing/plesk-fishing-shop.tsx")) return source.replace('from "react";', `from "${merchantHookModule}";`); },
   }],
 });
 after(() => merchantVite.close());
-const { PleskTackleCounter: MerchantCounter } = await merchantVite.ssrLoadModule("/features/economy/plesk-fishing-shop.tsx");
+const { PleskTackleCounter: MerchantCounter } = await merchantVite.ssrLoadModule("/features/economy/ui/fishing/plesk-fishing-shop.tsx");
 const merchantHooks = await merchantVite.ssrLoadModule(merchantHookModule);
 const now = Date.parse("2026-10-04T20:00:00Z");
 function merchant() {
@@ -447,7 +447,7 @@ test("the fish book opens art only after a personal catch, never after a purchas
 
 
 test("owned fish remain visible goods without falsely opening the catch book", async () => {
-  const { PlayerItemIcon, fishDiscovered } = await vite.ssrLoadModule("/features/economy/fish-discovery.tsx");
+  const { PlayerItemIcon, fishDiscovered } = await vite.ssrLoadModule("/features/economy/ui/fishing/fish-discovery.tsx");
   const state = snapshot({ inventory: { fish: 4, fish_shark: 2 }, fishing: economyFishingSchema.parse(undefined) });
   assert.match(renderToStaticMarkup(createElement(PlayerItemIcon, { state, itemId: "fish" })), /data-item-icon="fish"/);
   assert.match(renderToStaticMarkup(createElement(PlayerItemIcon, { state, itemId: "fish_shark" })), /data-item-icon="fish_shark"/);

@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { createWorldDevStore, WORLD_DEV_DEFAULTS, WORLD_DEV_POSES, WORLD_DEV_RESIDENT_ACTIONS, WORLD_DEV_BUILDER_ACTIONS, WORLD_DEV_ENABLED, worldDevStore } = await vite.ssrLoadModule("/features/world/dev/world-dev-store.ts");
-const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
+const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
 const { initialPreviewLevels } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
 
 test("development store starts from authored scene defaults with stable server snapshots", () => {

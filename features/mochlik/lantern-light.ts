@@ -1,5 +1,5 @@
 import { HOUSE_ANCHORS } from "./home-layout";
-import type { MapPoint } from "@/features/world/map-manifest";
+import type { MapPoint } from "@/features/world/legacy/map-manifest";
 
 export const NIGHT_SHADE = .56;
 const bounded = (value: number) => Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;

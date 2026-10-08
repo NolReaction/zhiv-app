@@ -8,7 +8,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
 after(() => vite.close());
 const { paintFixedWorld } = await vite.ssrLoadModule("/features/world/tiled/renderer.ts");
 const { previewWorldScene, previewSiteAt } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
-const { drawSiteGrounding } = await vite.ssrLoadModule("/features/world/grounding.ts");
+const { drawSiteGrounding } = await vite.ssrLoadModule("/features/world/scene/grounding.ts");
 const { drawSiteImage } = await vite.ssrLoadModule("/features/world/tiled/site-image.ts");
 
 const placement = { x: 584.278092108405, y: 1025.10331433066, width: 96.2645550234738, height: 48.1322775117369, rotation: 346.507 };

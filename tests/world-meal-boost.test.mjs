@@ -24,17 +24,17 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
       }
       export const useLayoutEffect = useEffect;
     `; },
-    transform(source, id) { if (id.endsWith("/features/economy/world-meal-boost.tsx")) return source.replace('from "react";', `from "${hookModule}";`); },
+    transform(source, id) { if (id.endsWith("/features/economy/ui/food/world-meal-boost.tsx")) return source.replace('from "react";', `from "${hookModule}";`); },
   }],
 });
 after(() => vite.close());
 const hooks = await vite.ssrLoadModule(hookModule);
-const { WorldMealBoost, mealBoostReason, mealBoostSeconds } = await vite.ssrLoadModule("/features/economy/world-meal-boost.tsx");
-const { WorldExpeditionSector } = await vite.ssrLoadModule("/features/economy/world-expeditions-menu.tsx");
-const { WorldUpgradeContent } = await vite.ssrLoadModule("/features/economy/world-upgrade-dialog.tsx");
-const { BuilderConversation } = await vite.ssrLoadModule("/features/world/world-builder-dialog.tsx");
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
-const { economyStorage } = await vite.ssrLoadModule("/features/economy/rules.ts");
+const { WorldMealBoost, mealBoostReason, mealBoostSeconds } = await vite.ssrLoadModule("/features/economy/ui/food/world-meal-boost.tsx");
+const { WorldExpeditionSector } = await vite.ssrLoadModule("/features/economy/ui/expeditions/world-expeditions-menu.tsx");
+const { WorldUpgradeContent } = await vite.ssrLoadModule("/features/economy/ui/construction/world-upgrade-dialog.tsx");
+const { BuilderConversation } = await vite.ssrLoadModule("/features/world/ui/characters/world-builder-dialog.tsx");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const now = Date.parse("2026-10-07T18:00:00Z");
 function controller(overrides = {}, flags = {}) {
   const state = { ownerPublicId: "boost-owner", revision: 1, serverTime: new Date(now).toISOString(), catalog: structuredClone(economyCatalog), wallet: { coins: 1000, pearls: 0 },

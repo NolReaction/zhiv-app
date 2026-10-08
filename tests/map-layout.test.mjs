@@ -9,14 +9,14 @@ import { findTerrainMaster } from "../scripts/lib/world-assets.mjs";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { FOREST_MAP } = await vite.ssrLoadModule("/features/world/map-manifest.ts");
-const { homeToWorld, worldToHome, mapPlaceAt, pointInPolygon } = await vite.ssrLoadModule("/features/world/map-layout.ts");
-const { worldToScreen, screenToWorld, viewportPoint } = await vite.ssrLoadModule("/features/world/camera.ts");
+const { FOREST_MAP } = await vite.ssrLoadModule("/features/world/legacy/map-manifest.ts");
+const { homeToWorld, worldToHome, mapPlaceAt, pointInPolygon } = await vite.ssrLoadModule("/features/world/legacy/map-layout.ts");
+const { worldToScreen, screenToWorld, viewportPoint } = await vite.ssrLoadModule("/features/world/scene/camera.ts");
 const { houseVariantFor } = await vite.ssrLoadModule("/features/mochlik/house-variants.ts");
 const { createHabitat, HOME, DOORSTEP, BUSH, BUSH_EDGE } = await vite.ssrLoadModule("/features/mochlik/habitat.ts");
 
 test("new source resolution is independent of logical map coordinates", async () => {
-  const { NEW_MAP_BOUNDS, TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
+  const { NEW_MAP_BOUNDS, TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
   const master = await readFile(await findTerrainMaster(`${root}/art/world/prototype`));
   const source = (await sharp(master).autoOrient().raw().toBuffer({ resolveWithObject: true })).info;
   const bytes = await readFile(`${root}/public${FOREST_MAP.image.split("?")[0]}`), runtime = await sharp(bytes).metadata();

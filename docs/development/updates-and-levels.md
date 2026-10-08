@@ -7,11 +7,11 @@
 | Задача | Файл |
 |---|---|
 | Опубликовать запись об обновлении | [public/updates.json](../../public/updates.json) |
-| Текст о сотрудничестве, окно и кнопка beta-test | [beta-info.tsx](../../features/check-in/beta-info.tsx), [beta-info.module.css](../../features/check-in/beta-info.module.css) |
+| Текст о сотрудничестве, окно и кнопка beta-test | [beta-info.tsx](../../features/updates/beta-info.tsx), [beta-info.module.css](../../features/updates/beta-info.module.css) |
 | Формат записей и ключ хранилища прочитанного | [release-notes.ts](../../features/updates/release-notes.ts) |
 | Проверка сервера, таймеры, прочитанное и обмен между вкладками | [release-notes-store.ts](../../features/updates/release-notes-store.ts) |
 | Связь состояния с React | [use-release-notes.ts](../../features/updates/use-release-notes.ts) |
-| Подключение к текущему аккаунту | [check-in-app.tsx](../../features/check-in/check-in-app.tsx), компонент `BetaInfo` |
+| Подключение к текущему аккаунту | [app-shell.tsx](../../features/app/app-shell.tsx), компонент `BetaInfo` |
 | Группы уровней, прогресс и этапы значков | [game-levels-button.tsx](../../features/game/game-levels-button.tsx), [game-levels.module.css](../../features/game/game-levels.module.css) |
 | Пороги уровней и смены значка | [clicker-story.ts](../../features/game/clicker-story.ts), `CLICKER_LEVELS`, `CLICKER_ICON_LEVELS` |
 | Рисунок и цвет значка | [game-level-icon.tsx](../../features/game/game-level-icon.tsx) |

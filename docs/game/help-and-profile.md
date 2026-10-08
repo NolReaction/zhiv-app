@@ -6,15 +6,15 @@
 
 | Область | Файлы |
 |---|---|
-| Короткие ответы и группы | [`world-help-content.ts`](../../features/world/world-help-content.ts) |
-| Нормализация, ранжирование и состояния поиска | [`world-help-search.ts`](../../features/world/world-help-search.ts) |
-| Справка: поиск, разделы, вопрос, переходы | [`world-help.tsx`](../../features/world/world-help.tsx), соседний CSS |
-| Подсказки по текущему состоянию | [`world-help-advice.ts`](../../features/world/world-help-advice.ts), [`world-help-types.ts`](../../features/world/world-help-types.ts) |
+| Короткие ответы и группы | [`world-help-content.ts`](../../features/world/ui/help/world-help-content.ts) |
+| Нормализация, ранжирование и состояния поиска | [`world-help-search.ts`](../../features/world/ui/help/world-help-search.ts) |
+| Справка: поиск, разделы, вопрос, переходы | [`world-help.tsx`](../../features/world/ui/help/world-help.tsx), соседний CSS |
+| Подсказки по текущему состоянию | [`world-help-advice.ts`](../../features/world/ui/help/world-help-advice.ts), [`world-help-types.ts`](../../features/world/ui/help/world-help-types.ts) |
 | Переходы из справки и контекст открытого действия | [`world-view.tsx`](../../features/world/world-view.tsx), `world-object-menu.tsx`, `world-upgrade-dialog.tsx`, `world-expeditions-menu.tsx` в `features/economy/` |
-| Профиль и статус сохранения | [`world-profile-menu.tsx`](../../features/world/world-profile-menu.tsx) |
-| Отдельный модуль настроения | [`world-mood-module.tsx`](../../features/world/world-mood-module.tsx), [`use-forest-observation.ts`](../../features/world/use-forest-observation.ts) |
-| Друзья в игровом профиле | [`world-profile-friends.tsx`](../../features/world/world-profile-friends.tsx) |
-| Общие данные друзей | [`check-in-app.tsx`](../../features/check-in/check-in-app.tsx) → [`world-portal.tsx`](../../features/world/world-portal.tsx) → `WorldView` |
+| Профиль и статус сохранения | [`world-profile-menu.tsx`](../../features/world/ui/profile/world-profile-menu.tsx) |
+| Отдельный модуль настроения | [`world-mood-module.tsx`](../../features/world/ui/profile/world-mood-module.tsx), [`use-forest-observation.ts`](../../features/world/state/use-forest-observation.ts) |
+| Друзья в игровом профиле | [`world-profile-friends.tsx`](../../features/world/ui/profile/world-profile-friends.tsx) |
+| Общие данные друзей | [`app-shell.tsx`](../../features/app/app-shell.tsx) → [`world-portal.tsx`](../../features/world/world-portal.tsx) → `WorldView` |
 
 ## Справка
 
@@ -66,7 +66,7 @@
 
 ## Друзья
 
-`WorldFriendsState` передаёт уже загруженный `PeopleResponse`, признаки загрузки/ошибки/сети, время обновления и `onRefresh`. Источник — существующий контроллер людей в `CheckInApp`: вкладка не делает свой `fetch`, не запускает ещё один опрос и не принимает заявки автоматически.
+`WorldFriendsState` передаёт уже загруженный `PeopleResponse`, признаки загрузки/ошибки/сети, время обновления и `onRefresh`. Источник — существующий контроллер людей в `AppShell`: вкладка не делает свой `fetch`, не запускает ещё один опрос и не принимает заявки автоматически.
 
 Карточки показывают имя с тегом, свою подпись и избранное. Вместо внешнего аватара используется безопасная буква имени. Поиск использует существующий `matchesPersonSearch`; избранные идут первыми. Количество друзей считается по `people`; входящие и исходящие заявки показываются отдельно. При ошибке или отсутствии сети сохранённый список остаётся виден с пояснением, а обновление запускает игрок.
 

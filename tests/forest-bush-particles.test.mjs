@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const vite = await createServer({ appType: 'custom', configFile: false, root,
   resolve: { alias: { '@': root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { forestBushParticles, FOREST_BUSH_PARTICLE_SECONDS } = await vite.ssrLoadModule('/features/world/forest-bush-particles.ts');
+const { forestBushParticles, FOREST_BUSH_PARTICLE_SECONDS } = await vite.ssrLoadModule('/features/world/activities/garden/forest-bush-particles.ts');
 const bush = { id: 'authored', points: [{ x: 10, y: 20 }, { x: 80, y: 20 }, { x: 80, y: 80 },
   { x: 58, y: 80 }, { x: 58, y: 37 }, { x: 34, y: 37 }, { x: 34, y: 80 }, { x: 10, y: 80 }],
 entry: { x: 85, y: 90 }, hide: { x: 70, y: 60 } };

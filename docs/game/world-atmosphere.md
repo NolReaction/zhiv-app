@@ -8,24 +8,24 @@
 
 | Задача | Файл и точка изменения |
 | --- | --- |
-| Погода и интенсивность дождя | `features/world/forest-atmosphere.ts`: `WEATHER_PRESETS`, `forestAtmosphereState` |
-| Длина, наклон, скорость, прозрачность падающих капель | `features/world/forest-rain.ts`: `sampleForestRain`, `drawForestRain` |
+| Погода и интенсивность дождя | `features/world/environment/weather/forest-atmosphere.ts`: `WEATHER_PRESETS`, `forestAtmosphereState` |
+| Длина, наклон, скорость, прозрачность падающих капель | `features/world/environment/weather/forest-rain.ts`: `sampleForestRain`, `drawForestRain` |
 | Форма кругов, всплеска и отскока на воде | Там же: `drawForestWaterImpact` |
 | Границы реки и исключения | `world/tiled/forest.tmj`: `Water`, `WaterExclusions` |
-| Плотность/распределение попаданий на реке и безопасные следы эффектов | `features/world/forest-water.ts`: `layout`, `forestWaterFrame`, `drawForestWater` |
-| Мягкое течение, солнечные/лунные блики и ветер | `features/world/forest-water-surface.ts`: `createWaterSurfaceLayout`, `waterSurfaceFrame`, `forestWaterWind` |
-| Бриз, подводные стаи и редкие всплески | `features/world/forest-water-life.ts`; общий рисунок видов — `fish-sprite.ts`, `fish-species.ts` |
-| Брызги на земле | `features/world/forest-ground-impacts.ts`: `forestGroundImpactFrame`, `drawForestGroundImpacts` |
-| Участки земли для брызг | `features/world/forest-ground-layout.json`; проверка совместимости в `groundLayout` |
-| Существующие лужи и высыхание | `features/world/forest-ground-weather.ts`: `updateForestWetness`, `forestGroundWeatherFrame` |
-| Виды, группы, маршруты, посадки птиц | `features/world/forest-birds.ts`: `SCENARIOS`, `PERCHES`, `forestBirdFrame` |
-| Реакция сидящих птиц на шаги и куст | `features/world/forest-bird-reactions.ts`; события — `forest-director.ts` |
-| Рисунок птиц, бабочек и светлячков | `features/world/forest-wildlife.ts` |
-| Насекомые, территории, посадки и контакт | `features/world/forest-fauna.ts`, `hero-anchors.ts`; Tiled: `Habitats`, `WildlifeAnchors` |
-| Выбор занятия, подход и согласование прерываний | `features/world/forest-director.ts`; выбор мест прогулки — `forest-behavior.ts` |
-| Грибы, листик и фазы предметной сценки | `features/world/forest-life.ts`; рисунок — `forest-life-painter.ts` |
-| Ягоды, лейка и корзинка | `features/world/forest-garden-painter.ts`; рост и влажность — `forest-garden.ts`; [цикл ухода](clearing-garden.md) |
-| Общие часы и ручные события двух видов | `features/world/forest-session.ts`; подключение в `new-map-scene.ts` |
+| Плотность/распределение попаданий на реке и безопасные следы эффектов | `features/world/environment/water/forest-water.ts`: `layout`, `forestWaterFrame`, `drawForestWater` |
+| Мягкое течение, солнечные/лунные блики и ветер | `features/world/environment/water/forest-water-surface.ts`: `createWaterSurfaceLayout`, `waterSurfaceFrame`, `forestWaterWind` |
+| Бриз, подводные стаи и редкие всплески | `features/world/environment/water/forest-water-life.ts`; общий рисунок видов — `fish-sprite.ts`, `fish-species.ts` |
+| Брызги на земле | `features/world/environment/weather/forest-ground-impacts.ts`: `forestGroundImpactFrame`, `drawForestGroundImpacts` |
+| Участки земли для брызг | `features/world/environment/weather/forest-ground-layout.json`; проверка совместимости в `groundLayout` |
+| Существующие лужи и высыхание | `features/world/environment/weather/forest-ground-weather.ts`: `updateForestWetness`, `forestGroundWeatherFrame` |
+| Виды, группы, маршруты, посадки птиц | `features/world/environment/wildlife/forest-birds.ts`: `SCENARIOS`, `PERCHES`, `forestBirdFrame` |
+| Реакция сидящих птиц на шаги и куст | `features/world/environment/wildlife/forest-bird-reactions.ts`; события — `forest-director.ts` |
+| Рисунок птиц, бабочек и светлячков | `features/world/environment/wildlife/forest-wildlife.ts` |
+| Насекомые, территории, посадки и контакт | `features/world/environment/wildlife/forest-fauna.ts`, `hero-anchors.ts`; Tiled: `Habitats`, `WildlifeAnchors` |
+| Выбор занятия, подход и согласование прерываний | `features/world/simulation/forest-director.ts`; выбор мест прогулки — `forest-behavior.ts` |
+| Грибы, листик и фазы предметной сценки | `features/world/simulation/forest-life.ts`; рисунок — `forest-life-painter.ts` |
+| Ягоды, лейка и корзинка | `features/world/activities/garden/forest-garden-painter.ts`; рост и влажность — `forest-garden.ts`; [цикл ухода](clearing-garden.md) |
+| Общие часы и ручные события двух видов | `features/world/state/forest-session.ts`; подключение в `new-map-scene.ts` |
 | Переключатели и кнопки DEV | `features/world/dev/world-dev-store.ts`, `world-dev-panel.tsx` |
 
 Старые `water-ambience.ts`, `bird-ambience.ts`, `weather-visitors.ts` и `features/mochlik/insects.ts` относятся к прежней сцене. Для текущей карты начинайте с таблицы выше.

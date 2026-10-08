@@ -6,11 +6,11 @@ import { Children, isValidElement } from "react";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
-const { worldUpgradeUnlocks, WorldUpgradeContent } = await vite.ssrLoadModule("/features/economy/world-upgrade-dialog.tsx");
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
-const { economyBuilderStatus } = await vite.ssrLoadModule("/features/economy/builder-status.ts");
-const { mealDuration } = await vite.ssrLoadModule("/features/economy/food.ts");
-const { worldDuration } = await vite.ssrLoadModule("/features/economy/world-stations.ts");
+const { worldUpgradeUnlocks, WorldUpgradeContent } = await vite.ssrLoadModule("/features/economy/ui/construction/world-upgrade-dialog.tsx");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { economyBuilderStatus } = await vite.ssrLoadModule("/features/economy/domain/builder-status.ts");
+const { mealDuration } = await vite.ssrLoadModule("/features/economy/domain/food.ts");
+const { worldDuration } = await vite.ssrLoadModule("/features/economy/ui/shared/world-stations.ts");
 after(() => vite.close());
 
 function unlocks(stationId, level, catalog = economyCatalog) {

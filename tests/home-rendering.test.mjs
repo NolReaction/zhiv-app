@@ -13,8 +13,8 @@ const { drawLanternLight, drawSceneShade, NIGHT_SHADE } = await vite.ssrLoadModu
 const { drawLanternGlass } = await vite.ssrLoadModule("/features/mochlik/lantern-glass.ts");
 
 test("circle uses the same full-resolution map without a separate home image", async () => {
-  const { WORLD_ART } = await vite.ssrLoadModule("/features/world/art.ts");
-  const { NEW_MAP_FOCUS, NEW_MAP_BOUNDS, NEW_MAP_SPAWN } = await vite.ssrLoadModule("/features/world/presentation.ts");
+  const { WORLD_ART } = await vite.ssrLoadModule("/features/world/scene/art.ts");
+  const { NEW_MAP_FOCUS, NEW_MAP_BOUNDS, NEW_MAP_SPAWN } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
   const source = (await sharp(await findTerrainMaster(`${root}/art/world/prototype`)).autoOrient().raw().toBuffer({ resolveWithObject: true })).info;
   const runtime = await sharp(`${root}/public${WORLD_ART.map.split("?")[0]}`).metadata();
   assert.equal(runtime.width, source.width); assert.equal(runtime.height, source.height);

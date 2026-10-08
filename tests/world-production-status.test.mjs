@@ -9,12 +9,12 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { mapProductionGroups, layoutProductionMarkers } = await vite.ssrLoadModule("/features/world/world-production-state.ts");
-const { WorldProductionStatus } = await vite.ssrLoadModule("/features/world/world-production-status.tsx");
-const { WorldProductionEffects } = await vite.ssrLoadModule("/features/world/world-production-effects.tsx");
-const { economyCatalog: catalog } = await vite.ssrLoadModule("/features/economy/model.ts");
-const { constructionMapPlace, projectConstructionAnchor } = await vite.ssrLoadModule("/features/world/construction-map-anchor.ts");
-const { createInventoryGainPlayback } = await vite.ssrLoadModule("/features/world/inventory-gain-playback.ts");
+const { mapProductionGroups, layoutProductionMarkers } = await vite.ssrLoadModule("/features/world/ui/hud/world-production-state.ts");
+const { WorldProductionStatus } = await vite.ssrLoadModule("/features/world/ui/hud/world-production-status.tsx");
+const { WorldProductionEffects } = await vite.ssrLoadModule("/features/world/ui/feedback/world-production-effects.tsx");
+const { economyCatalog: catalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { constructionMapPlace, projectConstructionAnchor } = await vite.ssrLoadModule("/features/world/scene/construction-map-anchor.ts");
+const { createInventoryGainPlayback } = await vite.ssrLoadModule("/features/world/ui/feedback/inventory-gain-playback.ts");
 const start = Date.parse("2026-10-05T12:00:00Z"), finish = start + 3600_000, owner = "AAAA-0000-0001";
 const iso = value => new Date(value).toISOString();
 function job(stationId, extra = {}) {
@@ -171,7 +171,7 @@ test("shared receipt playback does not replay production effects after mount, hi
 });
 
 test("map-local feedback stays under object menus and disables decorative motion", async () => {
-  const files = await Promise.all(["world-production-status.module.css", "world-production-effects.module.css", "world-scene.tsx"].map(name => readFile(`${root}features/world/${name}`, "utf8")));
+  const files = await Promise.all(["ui/hud/world-production-status.module.css", "ui/feedback/world-production-effects.module.css", "scene/world-scene.tsx"].map(name => readFile(`${root}features/world/${name}`, "utf8")));
   assert.match(files[0], /width: 124px; height: 44px; min-height: 44px/);
   assert.match(files[0], /prefers-reduced-motion: reduce/);
   assert.match(files[1], /z-index: 3; pointer-events: none/);

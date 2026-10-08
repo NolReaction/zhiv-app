@@ -10,7 +10,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
 after(() => vite.close());
 const { forestLightSources, forestLightPulse, drawForestLighting, drawForestLightFixtures, drawForestLightEmitters,
   drawForestLighthouseBeams, forestLighthouseAngle }
-  = await vite.ssrLoadModule("/features/world/forest-lighting.ts");
+  = await vite.ssrLoadModule("/features/world/environment/lighting/forest-lighting.ts");
 const source = (id, kind = "lantern", x = 30) => ({ id, kind, position: { x, y: 40 },
   radius: 70, intensity: 1, color: "#ffd28a", flicker: .12 });
 const scene = () => ({ schemaVersion: 1, id: "lights-test", width: 1254, height: 1254,

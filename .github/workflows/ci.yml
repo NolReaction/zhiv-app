@@ -56,6 +56,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Check architecture boundaries
+        run: npm run architecture:check
+
       - name: Check committed Tiled export
         run: npm run world:check
 
