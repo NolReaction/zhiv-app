@@ -1,0 +1,58 @@
+.scrim { position: fixed; inset: 0; z-index: 110; background: #07140cc9; }
+.scrim[data-spotlight='true'] { background: transparent; overflow: hidden; }
+.spotlight { position: fixed; border: 2px solid #f5d98e; border-radius: 18px; box-shadow: 0 0 0 150vmax #07140cc9, 0 0 20px #e8d58c70; pointer-events: none; }
+.guide { position: fixed; z-index: 111; inset: auto auto max(100px, calc(30px + env(safe-area-inset-bottom))) max(24px, calc((100vw - 1100px) / 2)); width: min(780px, calc(100vw - 48px)); max-height: calc(100dvh - 150px); display: flex; align-items: flex-end; gap: 26px; outline: none; color: #394d3e; }
+.character { position: relative; flex: 0 0 230px; display: grid; justify-items: center; padding-bottom: 12px; }
+.halo { position: absolute; inset: 5% -5% 4%; border-radius: 50%; background: radial-gradient(ellipse, #c7d99138, transparent 70%); }
+.portrait { position: relative; width: 230px; height: 230px; image-rendering: pixelated; filter: drop-shadow(0 12px 8px #0006); animation: guide-breathe 4s ease-in-out infinite; }
+.name { position: relative; display: inline-flex; align-items: center; gap: 5px; border: 1px solid #bece9366; border-radius: 30px; background: #263c26; padding: 5px 13px; color: #ecedcb; font-family: 'Zhiv Residents', sans-serif; font-size: 19px; }
+.bubble { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; max-height: inherit; padding: 24px 28px 18px; border: 2px solid #b5b58c; border-radius: 24px; background: linear-gradient(145deg, #f8efd7, #e9dcb7); box-shadow: 0 20px 70px #0006, inset 0 0 0 5px #fff5; }
+.bubble::before { content: ''; position: absolute; left: -13px; bottom: 95px; width: 22px; height: 22px; transform: rotate(45deg); background: #f0e5c8; border-bottom: 2px solid #b5b58c; border-left: 2px solid #b5b58c; }
+.copy { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #829b63 transparent; padding-right: 3px; }
+.header { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex: 0 0 auto; margin-bottom: 17px; }
+.eyebrow { display: flex; gap: 6px; align-items: center; font-size: 10px; letter-spacing: .1em; font-weight: 700; color: #60754c; }
+.guide button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; font: inherit; font-size: 14px; cursor: pointer; border-radius: 12px; }
+.guide button:focus-visible { outline: 3px solid #466347; outline-offset: 3px; }
+.guide .close { flex: 0 0 44px; border: 0; background: transparent; color: #627057; padding: 0; margin: -10px -14px -10px 0; }
+.guide .close:hover { background: #d5dab97d; }
+.stepIcon { display: grid; place-items: center; width: 46px; height: 46px; margin-bottom: 12px; border: 1px solid #b6c197; border-radius: 15px; color: #4d6947; background: #e2e7c7; }
+.title { margin: 0 0 12px; color: #354d39; font-family: 'Zhiv Residents', sans-serif; font-size: 30px; line-height: 1.15; font-weight: 400; outline: none; }
+.text { margin: 0; color: #43513b; font-size: 16px; line-height: 1.55; }
+.hint { padding: 11px 13px; margin: 16px 0 20px; border-left: 3px solid #8eaa65; border-radius: 0 10px 10px 0; background: #c4ce9c40; color: #5c664c; font-size: 13px; line-height: 1.5; }
+.actions { display: flex; gap: 8px; flex: 0 0 auto; }
+.guide .primary { flex: 1; border: 1px solid #344f35; padding: 12px 18px; color: #fbf4dc; background: linear-gradient(#5f7e4d, #466347); box-shadow: 0 3px 0 #30492f; font-weight: 650; }
+.guide .primary:hover { background: #3d5b3f; }
+.guide .back { width: 48px; border: 1px solid #b3ba96; background: #e4e4c4; color: #496046; }
+.guide .skip { display: flex; flex: 0 0 auto; width: 100%; border: 0; background: transparent; color: #647052; margin-top: 9px; text-decoration: underline; text-underline-offset: 3px; }
+.later { flex: 0 0 auto; margin: 5px 0 0; color: #768064; font-size: 11px; line-height: 1.4; text-align: center; }
+.progress { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #6a7959; font-size: 12px; margin: -4px 0 16px; }
+.progress > div { display: flex; gap: 5px; }
+.progress i { width: 21px; height: 5px; border-radius: 5px; background: #c8cfad; }
+.progress i[data-current='true'], .progress i[data-done='true'] { background: #6d894f; }
+@keyframes guide-breathe { 50% { transform: translateY(-4px); } }
+@media (max-width: 640px) {
+  .guide { left: 12px; bottom: max(100px, calc(20px + env(safe-area-inset-bottom))); width: calc(100vw - 24px); max-height: calc(100dvh - 185px); gap: 0; }
+  .character { position: absolute; left: 14px; top: -85px; width: 96px; padding: 0; }
+  .portrait { width: 96px; height: 96px; }
+  .name { display: none; }
+  .bubble { padding: 20px 20px 12px; border-radius: 21px; }
+  .bubble::before { display: none; }
+  .header { margin-bottom: 14px; }
+  .title { font-size: 27px; }
+  .text { font-size: 15px; line-height: 1.45; }
+  .hint { margin: 13px 0 17px; padding: 9px 10px; }
+  .stepIcon { width: 38px; height: 38px; margin-bottom: 10px; }
+  .guide[data-target-position='bottom'] { bottom: max(100px, calc(30px + env(safe-area-inset-bottom))); }
+}
+@media (max-height: 560px) {
+  .guide { top: 70px; bottom: auto; left: 12px; width: calc(100vw - 24px); max-height: calc(100dvh - 150px); justify-content: center; }
+  .character { display: none; }
+  .bubble { flex: 0 1 580px; padding: 14px 20px 10px; }
+  .bubble::before, .stepIcon { display: none; }
+  .header { margin-bottom: 8px; }
+  .title { font-size: 24px; margin-bottom: 8px; }
+  .text { font-size: 14px; }
+  .hint { margin: 10px 0; padding: 6px 10px; }
+}
+@media (max-width: 640px) and (max-height: 700px) { .stepIcon { display: none; } }
+@media (prefers-reduced-motion: reduce) { .portrait { animation: none; } }

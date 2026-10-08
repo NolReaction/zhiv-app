@@ -37,10 +37,15 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
       export function useCallback(callback) { return callback; }
       export function useEffect() {}
       export function useSyncExternalStore(_subscribe, getSnapshot) { return getSnapshot(); }
+      // Character navigation tests keep the first-visit tutorial dismissed.
+      export function useWorldOnboarding() {
+        return { open: false, progress: null, start() {}, step() {}, skip() {}, complete() {}, pause() {}, replay() {} };
+      }
     `; },
     transform(source, id) {
       if (id.endsWith("/features/world/world-view.tsx") || id.endsWith("/features/economy/ui/construction/use-construction-goal.ts")) {
-        return source.replace('from "react";', `from "${hookModule}";`);
+        return source.replace('from "react";', `from "${hookModule}";`)
+          .replace('from "@/features/world/state/use-world-onboarding";', `from "${hookModule}";`);
       }
     },
   }],

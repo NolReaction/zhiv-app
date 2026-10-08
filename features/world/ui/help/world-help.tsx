@@ -21,6 +21,7 @@ export type WorldHelpProps = {
   context?: WorldHelpContext;
   initialTopicId?: string;
   onNavigate?: (target: WorldHelpTarget) => void;
+  onReplayTutorial?: () => void;
 };
 
 function retryWait(target: WorldHelpTarget, props: WorldHelpProps) {
@@ -85,6 +86,7 @@ export function WorldHelp(props: WorldHelpProps) {
         </section>;
 
   return <div className={styles.help}>
+    {props.onReplayTutorial && <button type="button" className={styles.replayTutorial} onClick={props.onReplayTutorial}><Leaf size={18} aria-hidden="true" /><span>Пройти обучение с Мохликом</span><ArrowRight size={16} aria-hidden="true" /></button>}
     <div className={styles.search} role="search" aria-label="Поиск по справке">
       <label htmlFor={searchId}>Что не получается?</label>
       <div className={styles.searchField}><Search size={18} aria-hidden="true" />
