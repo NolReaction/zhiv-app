@@ -5,5 +5,37 @@
   "folders": [
     "."
   ],
-  "propertyTypes": []
+  "propertyTypes": [
+    {
+      "id": 1,
+      "name": "WorldAudioProfile",
+      "storageType": "string",
+      "type": "enum",
+      "values": [
+        "forest.day",
+        "forest.night",
+        "weather.rain",
+        "river",
+        "campfire",
+        "workshop.woodworking",
+        "workshop.kiln",
+        "quarry.working",
+        "construction.working"
+      ],
+      "valuesAsFlags": false
+    },
+    {
+      "id": 2,
+      "name": "WorldAudioActivation",
+      "storageType": "string",
+      "type": "enum",
+      "values": [
+        "always",
+        "production-working",
+        "construction-working",
+        "campfire-lit"
+      ],
+      "valuesAsFlags": false
+    }
+  ]
 }

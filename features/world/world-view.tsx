@@ -1,5 +1,6 @@
 "use client";
 import { WorldDevEntry } from "./dev/world-dev-entry";
+import { AudioSettingsButton } from "@/features/audio/ui/audio-settings";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { ArrowLeft, BookOpen, Check, Compass, X, Info, Leaf, MoreHorizontal, Package, PawPrint, Pin, Shirt, ShoppingBag, Soup, Store } from "lucide-react";
 import { GAME_ITEMS, naturalItems } from "@/features/game/game-rewards";
@@ -157,7 +158,7 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
     if (!quickMenu) return;
     const outside = (event: PointerEvent) => {
       if (quickUpgrade || dailyOpen || !(event.target instanceof Element) || quickFrame.current?.contains(event.target)
-        || event.target.closest("[data-world-quick], [data-meal-picker]")) return;
+        || event.target.closest("[data-world-quick], [data-meal-picker], [data-audio-settings], [data-audio-settings-overlay]")) return;
       setQuickMenu(null);
     };
     document.addEventListener("pointerdown", outside);
@@ -176,6 +177,8 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
     if (!escapeHandlerRef) return;
     // Radix handles Escape in document capture, before a popover's own key handler.
     escapeHandlerRef.current = () => {
+      const audioClose = document.querySelector<HTMLButtonElement>("[data-audio-settings-close]");
+      if (audioClose) { audioClose.click(); return true; }
       const mealClose = document.querySelector<HTMLButtonElement>("[data-meal-picker] [data-meal-picker-close]");
       if (mealClose) { mealClose.click(); return true; }
       if (dailyOpen) { setDailyOpen(false); return true; }
@@ -333,15 +336,15 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
     <header ref={topHud} className={hudStyles.hud}>
       <div className={hudStyles.headerRow}>
         <div className={hudStyles.leftControls}>
-          <button id="world-exit" className={hudStyles.iconButton} onClick={onClose} aria-label="Вернуться к отметке Я живой"><ArrowLeft size={19} /></button>
-          <button className={hudStyles.level} data-world-quick="profile" aria-haspopup="dialog" aria-expanded={quickMenu === "profile"} aria-controls={quickMenu === "profile" ? "world-quick-menu" : undefined}
+          <button id="world-exit" className={hudStyles.iconButton} onClick={onClose} aria-label="Вернуться к отметке Я живой" data-audio-cue="ui.close"><ArrowLeft size={19} /></button>
+          <button className={hudStyles.level} data-audio-cue={quickMenu === "profile" ? "ui.close" : "ui.open"} data-world-quick="profile" aria-haspopup="dialog" aria-expanded={quickMenu === "profile"} aria-controls={quickMenu === "profile" ? "world-quick-menu" : undefined}
             onClick={() => toggleQuick("profile")} aria-label={`Профиль Мохлика. ${displayName}, уровень ${level}`}>
             <GameLevelIcon level={level} size={21} /><span><small>Уровень</small><strong>{level}</strong></span>
           </button>
         </div>
         <div className={hudStyles.rightControls}>
           {economy.snapshot ? <WorldWallet key={ownerPublicId} {...economy.snapshot.wallet} /> : <button className={hudStyles.loadingWallet} onClick={() => void economy.retry()} disabled={economy.busy || economy.retryAt > economy.now}>{economy.error ? "Повторить загрузку" : "Загрузка…"}</button>}
-          <button className={`${hudStyles.iconButton} ${hudStyles.helpButton}`} onClick={() => openContextHelp(quickUpgrade ? { stationId: quickUpgrade, intent: "construction" } : selection ? lastHelpContext.current : undefined)} aria-label="Справка по игре" title="Справка по игре"><Info size={20} aria-hidden="true" /></button>
+          <button className={`${hudStyles.iconButton} ${hudStyles.helpButton}`} data-audio-cue="ui.open" onClick={() => openContextHelp(quickUpgrade ? { stationId: quickUpgrade, intent: "construction" } : selection ? lastHelpContext.current : undefined)} aria-label="Справка по игре" title="Справка по игре"><Info size={20} aria-hidden="true" /></button>
         </div>
       </div>
       <WorldInventoryGains key={ownerPublicId} economy={economy} hud={topHud} />
@@ -351,22 +354,22 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
     {panel === null && selection && <div className={styles.objectLayer}><WorldObjectMenu key={`${selection.objectId}:${objectStation ?? ""}:${objectRecipe ?? ""}`} initialStationId={objectStation} initialRecipeId={objectRecipe} isOnline={isOnline} onOpenHelp={openContextHelp} onHelpContextChange={rememberHelpContext} selection={selection} economy={economy} constructionGoal={constructionGoal} onOpenGoal={openPinnedGoal} bounds={menuBounds} onClose={closeObject} onReturnFocus={restoreObjectFocus} onOpenFood={() => openFood()} onNavigate={openObject} onOpenPantry={() => openQuick("pantry")} onExplore={() => openQuick("expeditions")} /></div>}
     <div ref={bottomHud} className={hudStyles.bottomHud}>
       <nav className={hudStyles.dock} aria-label="Действия в игре">
-        <button data-world-quick="pantry" aria-haspopup="dialog" aria-expanded={quickMenu === "pantry"} aria-controls={quickMenu === "pantry" ? "world-quick-menu" : undefined}
+        <button data-audio-cue={quickMenu === "pantry" ? "ui.close" : "ui.open"} data-world-quick="pantry" aria-haspopup="dialog" aria-expanded={quickMenu === "pantry"} aria-controls={quickMenu === "pantry" ? "world-quick-menu" : undefined}
           aria-label={economy.snapshot ? `Кладовая: занято ${economy.snapshot.storage.used + economy.snapshot.storage.reserved} из ${economy.snapshot.storage.capacity} мест` : "Открыть кладовую"}
           data-full={economy.snapshot && economy.snapshot.storage.available <= 0 || undefined} onClick={() => toggleQuick("pantry")}>
           <Package size={18} aria-hidden="true" /><span>Кладовая</span>
         </button>
-        <button data-world-quick="expeditions" data-expedition-ready={expeditionReady || undefined} aria-haspopup="dialog" aria-expanded={quickMenu === "expeditions"} aria-controls={quickMenu === "expeditions" ? "world-quick-menu" : undefined} onClick={() => toggleQuick("expeditions")}
+        <button data-audio-cue={quickMenu === "expeditions" ? "ui.close" : "ui.open"} data-world-quick="expeditions" data-expedition-ready={expeditionReady || undefined} aria-haspopup="dialog" aria-expanded={quickMenu === "expeditions"} aria-controls={quickMenu === "expeditions" ? "world-quick-menu" : undefined} onClick={() => toggleQuick("expeditions")}
           aria-label={expeditionReady ? "В путь. Вылазка завершена — забрать находки" : economicJourney ? "В путь. Мохлик в пути" : "В путь"}>
           <span className={hudStyles.expeditionIcon}><Compass size={18} aria-hidden="true" />{expeditionReady && <span className={hudStyles.expeditionCheck}><Check size={9} aria-hidden="true" /></span>}</span>
           <span className={hudStyles.expeditionLabel}>В путь{expeditionReady && <small>Находки ждут</small>}</span>{economicJourney && !expeditionReady && <span className={hudStyles.journeyDot} aria-hidden="true" />}
         </button>
-        <button data-world-quick="more" aria-haspopup="dialog" aria-expanded={quickMenu === "more"} aria-controls={quickMenu === "more" ? "world-quick-menu" : undefined} onClick={() => toggleQuick("more")}><MoreHorizontal size={19} aria-hidden="true" /><span>Ещё</span></button>
+        <button data-audio-cue={quickMenu === "more" ? "ui.close" : "ui.open"} data-world-quick="more" aria-haspopup="dialog" aria-expanded={quickMenu === "more"} aria-controls={quickMenu === "more" ? "world-quick-menu" : undefined} onClick={() => toggleQuick("more")}><MoreHorizontal size={19} aria-hidden="true" /><span>Ещё</span></button>
       </nav>
     </div>
     {quickMenu && <section ref={quickFrame} id="world-quick-menu" className={`${hudStyles.quickMenu} ${styles.quickMenu}`} data-kind={quickMenu} role="dialog" aria-modal="false" aria-labelledby="world-quick-title" tabIndex={-1}
       onPointerDown={event => event.stopPropagation()} onWheel={event => event.stopPropagation()} onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeQuick(); } }}>
-      <header className={`${hudStyles.quickHeader} ${styles.quickHeader}`}><h2 id="world-quick-title"><QuickIcon size={17} aria-hidden="true" />{quickTitle}</h2><button type="button" aria-label={`Закрыть: ${quickTitle}`} onClick={closeQuick}><X size={18} aria-hidden="true" /></button></header>
+      <header className={`${hudStyles.quickHeader} ${styles.quickHeader}`}><h2 id="world-quick-title"><QuickIcon size={17} aria-hidden="true" />{quickTitle}</h2><button type="button" aria-label={`Закрыть: ${quickTitle}`} onClick={closeQuick} data-audio-cue="ui.close"><X size={18} aria-hidden="true" /></button></header>
       <div className={`${hudStyles.quickBody} ${styles.quickBody}`}>
         {quickMenu === "expeditions" && economy.snapshot && <ConstructionGoalSummary state={economy.snapshot} constructionGoal={constructionGoal} onOpenGoal={openPinnedGoal} compact />}
         {quickMenu === "profile" && <WorldProfileMenu key={`${ownerPublicId}:${profileEntry.request}`} initialTab={profileEntry.tab} friends={friends} onOpenPeople={onOpenPeople} onOpenHelp={() => openContextHelp(undefined, "mochlik-life")} onOpenFood={() => openFood()} world={world} economy={economy} presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`} displayName={displayName} level={level} bestStreakDays={bestStreakDays} onCall={() => setLocalNotice(value => value + 1)}
@@ -375,6 +378,7 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
         {quickMenu === "expeditions" && <WorldExpeditionsMenu key={`${expeditionSector}:${expeditionOpenRequest}`} initialSector={expeditionSector} isOnline={isOnline} onOpenHelp={openContextHelp} economy={economy} onOpenPantry={() => openQuick("pantry")} onNavigateStation={openStation} onUpgradeQuarry={() => openUpgrade("quarry")} onOpenFishingShop={() => openResident("plesk")} />}
         {quickMenu === "food" && <WorldFoodMenu key={`${ownerPublicId}:${foodEntry.request}`} economy={economy} initialTab={foodEntry.tab} residentId={foodEntry.residentId} onNavigateExpeditions={sector => openQuick("expeditions", sector)} onNavigateStation={openStation} />}
         {quickMenu === "more" && <div className={`${hudStyles.moreActions} ${styles.moreActions}`}>
+          <AudioSettingsButton label />
           <button type="button" aria-haspopup="dialog" onClick={() => openFood()}><Soup size={18} aria-hidden="true" /><span className={styles.moreLabel}>Еда и заказы<small>Накормить героев · заработать монеты</small></span></button>
           <button type="button" data-world-characters-trigger aria-haspopup="dialog" onClick={openCharacters}><PawPrint size={18} aria-hidden="true" /><span className={styles.moreLabel}>Персонажи<small>Жители леса</small></span></button>
           <button type="button" aria-haspopup="dialog" onClick={() => openEconomy("market")}><Store size={18} aria-hidden="true" /><span className={styles.moreLabel}>Рынок<small>Покупки и свой прилавок</small></span></button>

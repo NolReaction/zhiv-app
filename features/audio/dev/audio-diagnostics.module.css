@@ -1,0 +1,27 @@
+.panel { display: grid; gap: 12px; min-width: 0; }
+.panel h3 { margin: 0; font-size: 16px; }
+.metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin: 0; }
+.metrics > div { border: 1px solid #b5c89125; border-radius: 9px; padding: 8px; min-width: 0; }
+.metrics dt { color: #b8c4a8; font-size: 10px; }
+.metrics dd { margin: 4px 0 0; font-size: 12px; overflow-wrap: anywhere; }
+.actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.panel button { min-height: 44px; }
+.hint, .feedback { margin: 0; font-size: 11px; line-height: 1.5; color: #c2cfae; overflow-wrap: anywhere; }
+.feedback:empty { display: none; }
+.error { font-size: 11px; color: #ffd1a8; overflow-wrap: anywhere; }
+.toggle { display: flex; align-items: center; gap: 8px; min-height: 44px; font-size: 12px; }
+.toggle input { width: 18px; height: 18px; accent-color: #c1d893; }
+.panel summary { cursor: pointer; min-height: 32px; padding-top: 7px; font-size: 12px; }
+.filter { display: grid; gap: 6px; font-size: 11px; margin: 10px 0; }
+.filter input { width: 100%; min-width: 0; min-height: 40px; border: 1px solid #728261; border-radius: 8px; background: #0b1b13; color: #e8efdb; padding: 8px 10px; }
+.catalog { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.catalog li { display: flex; gap: 8px; justify-content: space-between; align-items: center; padding: 7px 0; border-top: 1px solid #b3c58e22; }
+.catalog li > div { min-width: 0; }
+.catalog code, .tableWrap code { font-size: 10px; overflow-wrap: anywhere; }
+.catalog small, .tableWrap small { display: block; font-size: 10px; line-height: 1.4; color: #b5c4a3; overflow-wrap: anywhere; }
+.catalog button { flex: 0 0 auto; }
+.tableWrap { max-width: 100%; overflow-x: auto; }
+.tableWrap table { width: 100%; border-collapse: collapse; font-size: 10px; }
+.tableWrap td, .tableWrap th { border-bottom: 1px solid #b3c58e22; text-align: left; vertical-align: top; padding: 7px 5px; }
+.tableWrap th { font-weight: 500; }
+.panel :is(button, input, summary):focus-visible { outline: 2px solid #d3e6ac; outline-offset: 2px; }

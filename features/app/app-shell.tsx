@@ -2,6 +2,10 @@
 
 import { useActivity } from "@/features/activity/use-activity";
 import { ActivityGate } from "@/features/activity/activity-gate";
+import { AudioProvider } from "@/features/audio/ui/audio-provider";
+import { AudioSettingsButton } from "@/features/audio/ui/audio-settings";
+import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
+import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { PlayerName } from "@/components/player-name";
 import dynamic from "next/dynamic";
 import { WorldDevEntry } from "@/features/world/dev/world-dev-entry";
@@ -83,6 +87,7 @@ import { useWorldPortal } from "@/features/world/use-world-portal";
 import { ForestSessionNotice } from "@/features/world/ui/feedback/forest-session-notice";
 import { useWorld } from "@/features/world/state/use-world";
 import { useEconomy } from "@/features/economy/sync/use-economy";
+import { useEconomyAudioFeedback } from "@/features/economy/integration/use-economy-audio-feedback";
 import { GardenCollectionContext, useGardenCollectionController } from "@/features/economy/integration/garden-collection-context";
 import { economySceneActivity, economySceneJourney, economySceneProduction, economySceneConstruction, economyWorldState } from "@/features/economy/integration/world-adapter";
 import { worldActivity } from "@/features/world/ui/hud/world-activity";
@@ -354,7 +359,7 @@ function forgetAccountForest(owner: string | null) {
 }
 
 export function AppShell() {
-  return <AppStartup><CheckInContent /></AppStartup>;
+  return <AudioProvider><AppStartup><CheckInContent /></AppStartup></AudioProvider>;
 }
 
 function CheckInContent() {
@@ -413,6 +418,7 @@ function CheckInContent() {
     setCalendarOpen(true);
   }, []);
   const selectView = (next: ActiveView) => {
+    if (next !== activeView) playUiCue(getAudioRuntime(), "ui.click");
     const order = appViews;
     setViewDirection(order.indexOf(next) >= order.indexOf(activeView) ? 1 : -1);
     setActiveView(next);
@@ -620,6 +626,7 @@ function CheckInContent() {
     setWorldAvailable(false); setEconomyAvailable(false);
   }, [setWorldAvailable, setEconomyAvailable]);
   const activity = useActivity(screen === "home" ? me?.user.publicId ?? null : null, reconcileGameplay, loseSession, pauseGameplay);
+  useEconomyAudioFeedback(economy, screen === "home" && activity.active);
   const game = useGameProgress({ ownerPublicId: screen === "home" ? me?.user.publicId ?? null : null, isOnline: isOnline && activity.active, enabled: activity.active, onSessionLost: loseSession });
   const recordGameTap = game.recordTap;
   const gardenCollection = useGardenCollectionController(economy, screen === "home" ? me?.user.publicId ?? null : null,
@@ -1492,10 +1499,11 @@ function CheckInContent() {
               <div className={styles.identityBadges}>
                 {me && <BetaInfo key={me.user.publicId} ownerPublicId={me.user.publicId} />}
                 {game.progress && <GameLevelsButton lifetimeTaps={game.progress.lifetimeTaps} className={styles.levelBadge} />}
+                <AudioSettingsButton />
               </div>
               <span className={styles.publicId} data-copyable>{me?.user.publicId}</span>
             </div>
-            <button type="button" className={styles.copyIdentity} aria-label="Скопировать ID"
+            <button type="button" className={styles.copyIdentity} aria-label="Скопировать ID" data-audio-cue="ui.click"
               aria-busy={isIdentityActionPending} disabled={isIdentityActionPending} onClick={handleIdentityAction}>
               <Copy size={18} aria-hidden="true" />
             </button>
@@ -1692,7 +1700,7 @@ function CheckInContent() {
             <CheckInReceipt lastCheckInAt={lastCheckInAt} lastCheckInLabel={serverStatus} timeZone={me?.profile.timeZone ?? "UTC"}
               isSending={isSending} unconfirmed={checkInUnconfirmed} isOnline={isOnline} onRetry={() => void sendCheckIn(true)}
               gameStatus={game.status} gameNotice={gameNotice} gamePending={game.pendingTaps} gameArchived={game.archivedTaps} gameRequestId={game.requestId} onRetryGame={() => void game.refresh()}>
-              <button ref={worldEntryButton} type="button" className={`${glass.button} ${styles.mapEntry}`}
+              <button ref={worldEntryButton} type="button" className={`${glass.button} ${styles.mapEntry}`} data-audio-cue="ui.open"
                 aria-label="Войти в мир Мохлика" aria-haspopup="dialog"
                 onPointerDown={event => event.stopPropagation()} onClick={event => {
                   setWorldMounted(true); worldPortal.enter(event.currentTarget, buttonOrbit.current); void world.refresh();

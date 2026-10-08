@@ -62,6 +62,9 @@ jobs:
       - name: Check committed Tiled export
         run: npm run world:check
 
+      - name: Check audio catalog and asset licenses
+        run: npm run audio:check
+
       - name: Type-check
         run: npx tsc --noEmit --incremental false
 

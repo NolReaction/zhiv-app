@@ -3,6 +3,16 @@ import { createHash } from "node:crypto";
 import { readFile, realpath } from "node:fs/promises";
 import sharp from "sharp";
 import interactionLimits from "../../features/world/interaction-limits.json" with { type: "json" };
+import audioCatalog from "../../features/audio/catalog/audio-catalog.json" with { type: "json" };
+import economyCatalog from "../../apps/api/src/main/resources/world/economy-catalog.json" with { type: "json" };
+
+const audioProfiles = new Set(audioCatalog.profiles.map(profile => profile.id));
+const spatialAudioProfiles = new Set(audioCatalog.profiles.filter(profile => profile.cues.length > 0
+  && profile.cues.every(id => audioCatalog.cues.some(cue => cue.id === id && cue.mode === "loop"))).map(profile => profile.id));
+const audioStations = new Set(economyCatalog.buildings.map(building => building.id));
+// Interior equipment uses its real Tiled host, matching construction-map-anchor.
+const audioStationSites = { kiln: "workshop", warehouse: "home", dryer: "campfire" };
+const audioActivations = ["always", "production-working", "construction-working", "campfire-lit"];
 
 const own = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
 const fail = (at, message) => { throw new Error(`${at}: ${message}`); };
@@ -58,7 +68,7 @@ function properties(object, at, allowed) {
     if (allowed[name] === "float") requireThat(["float", "int"].includes(type), `${where}.type`, "expected float or int");
     else if (allowed[name] === "color") requireThat(["color", "string"].includes(type), `${where}.type`, "expected color or string");
     else exact(type, allowed[name], `${where}.type`);
-    if (type === "int") integer(value.value, `${where}.value`);
+    if (type === "int") integer(value.value, `${where}.value`, allowed[name] === "float" ? -Infinity : 0);
     else if (type === "float") number(value.value, `${where}.value`);
     else string(value.value, `${where}.value`);
     result[name] = value.value;
@@ -353,6 +363,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
   const mushroomIds = new Set(), bushes = new Map(), bushMarkers = new Map(), bushRoutes = [];
   const navigationIds = new Set(), habitats = new Map(), habitatExclusions = [], habitatAnchors = [], anchorIds = new Set();
   const destinationIds = new Set(), occluderIds = new Set();
+  const audioIds = new Set(), audioReferences = [];
   const livingKinds = { WalkAreas: "walk-area", Obstacles: "nav-obstacle", PointsOfInterest: "interest", Destinations: "destination", Occluders: "occluder", Habitats: "wildlife-habitat", WildlifeAnchors: "wildlife-anchor" };
   const navigation = () => world.navigation ??= { version: 1, cellSize, areas: [], obstacles: [], interests: [] };
   if (own(mapProperties, "navigationCellSize")) navigation();
@@ -363,12 +374,15 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
     for (const [layerIndex, layer] of array(entries, at).entries()) {
       const layerAt = `${at}[${layerIndex}]`;
       record(layer, layerAt);
-      const namedKind = layer.name === "Water" ? "surfaces" : layer.name === "WaterExclusions" ? "exclusions" : layer.name === "Lights" ? "lights" : own(livingKinds, layer.name) ? livingKinds[layer.name] : undefined;
+      const namedKind = layer.name === "Water" ? "surfaces" : layer.name === "WaterExclusions" ? "exclusions" : layer.name === "Lights" ? "lights"
+        : layer.name === "AudioEmitters" ? "audio-emitter" : layer.name === "AudioZones" ? "audio-zone"
+          : own(livingKinds, layer.name) ? livingKinds[layer.name] : undefined;
       requireThat(!namedKind || !inheritedKind || namedKind === inheritedKind, layerAt, "different metadata layers must not be nested inside each other");
       const metadataKind = namedKind ?? inheritedKind;
       const isLifeLayer = !metadataKind && ["Mushrooms", "Bushes", "Garden"].includes(layer.name);
       const waterKind = ["surfaces", "exclusions"].includes(metadataKind) ? metadataKind : undefined;
       const livingKind = Object.values(livingKinds).includes(metadataKind) ? metadataKind : undefined;
+      const audioKind = ["audio-emitter", "audio-zone"].includes(metadataKind) ? metadataKind : undefined;
       const isGroup = layer.type === "group";
       if (!isGroup) exact(layer.type, "objectgroup", `${layerAt}.type`);
       transforms(layer, layerAt, isGroup && !metadataKind);
@@ -380,6 +394,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
       layers.add(layerId);
       if (waterKind) world.water ??= { surfaces: [], exclusions: [] };
       if (metadataKind === "lights") world.lights ??= [];
+      if (audioKind) world.audio ??= { emitters: [], zones: [] };
       if (["walk-area", "nav-obstacle", "interest"].includes(livingKind)) navigation();
       if (livingKind === "destination") world.destinations ??= [];
       if (livingKind === "occluder") world.occluders ??= [];
@@ -392,7 +407,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
         const terrainOnly = Array.isArray(layer.objects) && layer.objects.every(object => tiles.get(object.gid)?.role === "terrain");
         if (metadataKind || isLifeLayer || terrainOnly) requireThat(["index", "topdown"].includes(layer.draworder), `${layerAt}.draworder`, "expected index or topdown for metadata/terrain");
         else exact(layer.draworder, "index", `${layerAt}.draworder`);
-        yield { layer, layerAt, waterKind, isLightLayer: metadataKind === "lights", livingKind, groups, offset: layerOffset };
+        yield { layer, layerAt, waterKind, isLightLayer: metadataKind === "lights", livingKind, audioKind, groups, offset: layerOffset };
       }
     }
   }
@@ -411,9 +426,9 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
     }
   }
   const routeOwners = [], visibilityReferences = [];
-  for (const { layer, layerAt, waterKind, isLightLayer, livingKind, groups, offset } of leaves) {
+  for (const { layer, layerAt, waterKind, isLightLayer, livingKind, audioKind, groups, offset } of leaves) {
     const entries = [...array(layer.objects, `${layerAt}.objects`).entries()];
-    if (layer.draworder === "topdown" && !waterKind && !isLightLayer && !livingKind) entries.sort((a, b) => a[1].y - b[1].y);
+    if (layer.draworder === "topdown" && !waterKind && !isLightLayer && !livingKind && !audioKind) entries.sort((a, b) => a[1].y - b[1].y);
     for (const [objectIndex, authoredObject] of entries) {
       const at = `${layerAt}.objects[${objectIndex}]`;
       record(authoredObject, at);
@@ -422,7 +437,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
         y: number(authoredObject.y, `${at}.y`) + offset.y } : authoredObject;
       absent(object, ["template", "text", "ellipse", "capsule", "offsetx", "offsety"], at);
       const rotation = own(object, "rotation") ? number(object.rotation, `${at}.rotation`) : 0;
-      const isImage = !waterKind && !isLightLayer && !livingKind && own(object, "gid");
+      const isImage = !waterKind && !isLightLayer && !livingKind && !audioKind && own(object, "gid");
       defaultValue(object, "opacity", 1, at);
       editorVisibility(object, at);
       const objectId = integer(object.id, `${at}.id`, 1);
@@ -450,6 +465,61 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
         continue;
       }
       const authoredRole = Array.isArray(object.properties) ? object.properties.find(property => property?.name === "role")?.value : undefined;
+      if (audioKind || ["audio-emitter", "audio-zone"].includes(authoredRole)) {
+        const audioAt = `${at} (${object.name || `object ${objectId}`})`;
+        const role = audioKind ?? authoredRole;
+        const props = properties(object, audioAt, { role: "string", profileId: "string", siteId: "string", level: "int", gainDb: "float",
+          ...(role === "audio-emitter" ? { stationId: "string", campfireId: "string", activation: "string", innerRadius: "float", outerRadius: "float" } : { fadeDistance: "float" }) });
+        if (own(props, "role")) exact(props.role, role, `${audioAt}.properties.role`);
+        const id = identifier(object.name, `${audioAt}.name`);
+        requireThat(!audioIds.has(id), audioAt, `duplicate audio ID ${id}`);
+        audioIds.add(id);
+        const profileId = string(props.profileId, `${audioAt}.properties.profileId`);
+        requireThat(audioProfiles.has(profileId), audioAt, `unknown audio profile ${profileId}`);
+        requireThat(spatialAudioProfiles.has(profileId), audioAt, `audio profile ${profileId} must contain only loop cues for spatial sources`);
+        const gainDb = number(props.gainDb ?? 0, `${audioAt}.properties.gainDb`, -60);
+        requireThat(gainDb <= 6, audioAt, "gainDb must be from -60 to 6 dB");
+        const siteId = own(props, "siteId") ? identifier(props.siteId, `${audioAt}.properties.siteId`) : undefined;
+        const when = own(props, "level") ? siteLevelCondition(props, audioAt) : undefined;
+        if (when) visibilityReferences.push({ when, at: audioAt });
+        if (siteId) audioReferences.push({ siteId, at: audioAt });
+        defaultValue(object, "width", 0, audioAt);
+        defaultValue(object, "height", 0, audioAt);
+        world.audio ??= { emitters: [], zones: [] };
+        requireThat(audioIds.size <= 128, audioAt, "at most 128 audio sources are supported");
+        const common = { id, profileId, gainDb, ...(when ? { when } : {}) };
+        if (role === "audio-zone") {
+          exact(shape, "polygon", `${audioAt} shape`);
+          requireThat(!siteId || when, audioAt, "audio-zone siteId requires level for conditional visibility");
+          const fadeDistance = number(props.fadeDistance ?? 100, `${audioAt}.properties.fadeDistance`, Number.EPSILON);
+          const points = vertices(object, "polygon", audioAt, world);
+          requireThat(points.length <= 256, audioAt, "at most 256 vertices per audio zone are supported");
+          world.audio.zones.push({ ...common, points, fadeDistance });
+        } else {
+          exact(shape, "point", `${audioAt} shape`);
+          exact(object.point, true, `${audioAt}.point`);
+          const innerRadius = number(props.innerRadius ?? 25, `${audioAt}.properties.innerRadius`, 0);
+          const outerRadius = number(props.outerRadius ?? 180, `${audioAt}.properties.outerRadius`, Number.EPSILON);
+          requireThat(outerRadius > innerRadius, audioAt, "outerRadius must be greater than innerRadius");
+          const activation = props.activation ?? "always";
+          requireThat(audioActivations.includes(activation), audioAt, `unknown audio activation ${activation}`);
+          const stationId = own(props, "stationId") ? identifier(props.stationId, `${audioAt}.properties.stationId`) : undefined;
+          const campfireId = own(props, "campfireId") ? identifier(props.campfireId, `${audioAt}.properties.campfireId`) : undefined;
+          if (stationId) {
+            requireThat(audioStations.has(stationId), audioAt, `unknown audio station ${stationId}`);
+            requireThat(!siteId || (audioStationSites[stationId] ?? stationId) === siteId, audioAt,
+              `audio station ${stationId} does not belong to site ${siteId}`);
+          }
+          requireThat(activation !== "production-working" || stationId, audioAt, "production-working requires stationId");
+          requireThat(activation !== "construction-working" || siteId || stationId, audioAt, "construction-working requires siteId or stationId");
+          requireThat(activation !== "campfire-lit" || campfireId, audioAt, "campfire-lit requires campfireId");
+          requireThat(!campfireId || activation === "campfire-lit", audioAt, "campfireId requires activation campfire-lit");
+          if (campfireId) audioReferences.push({ campfireId, at: audioAt });
+          world.audio.emitters.push({ ...common, position: point(object, audioAt, world), activation, innerRadius, outerRadius,
+            ...(siteId ? { siteId } : {}), ...(stationId ? { stationId } : {}), ...(campfireId ? { campfireId } : {}) });
+        }
+        continue;
+      }
       if (livingKind || Object.values(livingKinds).includes(authoredRole)) {
         const livingAt = `${at} (${object.name || `object ${objectId}`})`;
         const role = livingKind ?? authoredRole;
@@ -696,6 +766,10 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
   for (const id of markers.keys()) requireThat(sites.has(id), "map", `markers reference unknown site ${id}`);
   for (const owner of routeOwners) requireThat(sites.has(owner.id), owner.at, `path references unknown site ${owner.id}`);
   for (const id of fireSeats.keys()) requireThat(campfires.has(id), "map", `seat references unknown campfire ${id}`);
+  for (const reference of audioReferences) {
+    if (reference.siteId) requireThat(sites.has(reference.siteId), reference.at, `audio references unknown site ${reference.siteId}`);
+    if (reference.campfireId) requireThat(campfires.has(reference.campfireId), reference.at, `audio references unknown campfire ${reference.campfireId}`);
+  }
   if (campfires.size) world.campfires = [...campfires.values()].map(fire => {
     const seat = fireSeats.get(fire.id);
     requireThat(seat, "map", `campfire ${fire.id} is missing seat`);

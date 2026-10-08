@@ -250,6 +250,11 @@ test("the application output requires spawn before any export write and watch pr
   await copyFile(script, cli);
   await copyFile(path.join(root, "scripts/lib/tiled-world.mjs"), path.join(directory, "scripts/lib/tiled-world.mjs"));
   await copyFile(path.join(root, "features/world/interaction-limits.json"), path.join(directory, "features/world/interaction-limits.json"));
+  for (const relative of ["features/audio/catalog/audio-catalog.json", "apps/api/src/main/resources/world/economy-catalog.json"]) {
+    const target = path.join(directory, relative);
+    await mkdir(path.dirname(target), { recursive: true });
+    await copyFile(path.join(root, relative), target);
+  }
   await rename(path.join(directory, "ground.webp"), path.join(directory, "public/ground.webp"));
   map.tilesets[0].tiles[0].image = "public/ground.webp";
   const spawnPoint = { id: 3, name: "mochlik-spawn", x: 40, y: 50, width: 0, height: 0, point: true, properties: [

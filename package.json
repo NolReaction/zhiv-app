@@ -24,6 +24,8 @@
     "world:export": "node scripts/tiled-world.mjs",
     "world:watch": "node scripts/tiled-world.mjs --watch",
     "world:check": "node scripts/tiled-world.mjs --check",
+    "audio:check": "node scripts/check-audio.mjs",
+    "audio:prepare": "node scripts/prepare-audio.mjs",
     "economy:check": "node scripts/audit-economy-progression.mjs",
     "architecture:check": "node scripts/check-architecture.mjs",
     "security:check": "node scripts/check-secrets.mjs",

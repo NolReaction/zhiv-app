@@ -64,6 +64,11 @@ import { drawForestSpeech, type ForestSpeechCanvasFrame } from "@/features/world
 import { loadForestSpeechFont } from "@/features/world/characters/social/forest-speech-font";
 import { builderDirection } from "@/features/world/characters/builder/builder-navigation";
 import { forestResidentOccupants } from "@/features/world/characters/forest-resident-occupancy";
+import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
+import { audioDevStore } from "@/features/audio/dev/audio-dev-store";
+import { createWorldAudioController } from "@/features/world/audio/world-audio-controller";
+import { quarryAudioWorking, type WorldAudioCamera } from "@/features/world/audio/world-audio-frame";
+import { drawWorldAudioDebug } from "@/features/world/audio/world-audio-debug";
 
 const REACTION_SECONDS = .9;
 const levels = initialPreviewLevels(TILED_WORLD);
@@ -318,10 +323,28 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   let reactionTimer: ReturnType<typeof setTimeout> | null = null;
   let speechTimer: ReturnType<typeof setTimeout> | null = null, staticSpeechAt: number | null = null;
   let lastActivity: "idle" | "greet" | null = null;
+  const audio = createWorldAudioController(getAudioRuntime());
+  let audioCamera: WorldAudioCamera | undefined;
   let session = connect();
   let state = session.state;
 
   const explorationNow = () => economicTimestamp + Math.max(0, performance.now() - economicReceivedAt);
+  function updateAudio(emitEvents = false) {
+    const now = explorationNow();
+    const dusk = reducedMotion(options, dev) || !session.isSimulationAllowed() ? Number(options.dusk) : state.dusk;
+    const environment = forestAtmosphereState(world, atmosphereOptions(options, now, dusk, { state: dev }));
+    audio.update(world, state, {
+      sceneId: `${options.presenceKey ?? "guest"}:${world.id}`, now,
+      ownerPublicId: options.presenceKey?.replace(/^zhiv:mochlik:presence:/, ""),
+      dusk: environment.dusk, rain: environment.rain,
+      camera: options.view === "world" ? audioCamera : undefined,
+      levels: Object.fromEntries(Object.entries(visuals).map(([id, visual]) => [id, visual.level])),
+      production: state.economyProduction, construction: state.economyConstruction,
+      quarryWorking: quarryAudioWorking(world, state, options.economyJourney, now),
+      fires: state.life.campfires, showBuildings: dev?.showBuildings,
+    }, { visible: active(), observationOwner: session.isObservationOwner(), emitEvents,
+      showHero: dev?.showHero !== false, actorAway: actorAway(), reducedMotion: reducedMotion(options, dev) });
+  }
   function setEconomicTime(now: number) { economicTimestamp = now; economicReceivedAt = performance.now(); }
   function syncProduction() {
     const owner = options.presenceKey?.startsWith("zhiv:mochlik:presence:") ? options.presenceKey.slice("zhiv:mochlik:presence:".length) : undefined;
@@ -455,6 +478,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     // extend an existing line, nor do they queue a backlog of greetings.
     if (state.social.meeting) cancelForestSocial(state.social, socialEnvironment());
     noticeForestSocial(state.social, speaker, socialEnvironment());
+    updateAudio(true);
   }
   function stopFishingPreview() {
     if (!state.fishingPreview) return false;
@@ -529,6 +553,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       timestamp, Number(options.dusk), ownerChanged => {
         if (disposed) return;
         if (ownerChanged) stop();
+        updateAudio();
         if (visible()) draw();
         if (ownerChanged) resume();
       }, { persistence: allowPersistence && !forestPersistenceOverridden(dev, levels),
@@ -592,6 +617,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     if (!disposed && art) {
       syncGarden();
       paintNewMap(target, art, options, state.elapsed, state.reaction > 0, state.timestamp, state.dusk, preview());
+      if (WORLD_DEV_ENABLED && audioDevStore.getSnapshot().showSources) drawWorldAudioDebug(target, world, audio.getFrame());
     }
   }
   function draw() {
@@ -650,6 +676,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     syncExploration(); syncGarden(); syncCooking(); syncProduction(); syncConstruction();
     if (session.isOwner()) advanceForestSocial(state.social, 0, socialEnvironment());
     updateObservation(true);
+    updateAudio();
   }
   function cancelReactionTimer() {
     if (reactionTimer !== null) { clearTimeout(reactionTimer); reactionTimer = null; }
@@ -698,6 +725,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
         : undefined, world, birdVisitors,
         { rain: environment.rain, dusk: environment.dusk, forced: state.birdStarted !== null || dev?.birds === "on" });
       if (stimulus) state.lastBirdStimulus = stimulus.id;
+      updateAudio(true);
       previous = now; session.publish();
     }
     if (active() && session.isOwner()) frame = requestAnimationFrame(tick);
@@ -743,11 +771,12 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     if (canvas.width !== next || canvas.height !== next) { canvas.width = next; canvas.height = next; draw(); }
   }
   const observer = new ResizeObserver(resize); observer.observe(canvas); resize();
+  const unsubscribeAudioDebug = WORLD_DEV_ENABLED ? audioDevStore.subscribe(() => { if (visible()) draw(); }) : () => {};
   function visibilityChanged() { stop(); syncOwner(); if (visible()) draw(); resume(); }
   document.addEventListener("visibilitychange", visibilityChanged);
   function dispose() {
     if (disposed) return;
-    disposed = true; artworkVersion++; stop(); unsubscribe(); observer.disconnect(); art = null;
+    disposed = true; artworkVersion++; stop(); unsubscribe(); unsubscribeAudioDebug(); audio.dispose(); observer.disconnect(); art = null;
     document.removeEventListener("visibilitychange", visibilityChanged); session.release({ retain: true });
   }
   function prepareArtwork() {
@@ -909,6 +938,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       && point.y > feetY - size && point.y < feetY;
   }
   return {
+    setAudioCamera(camera) { audioCamera = camera; if (!disposed) updateAudio(); },
     position: () => {
       const actor = clearingActivityFrame(state.clearing);
       return { x: actor.x, y: actor.y - PET_SIZE * (dev?.heroScale ?? 1) / 2 };
@@ -997,6 +1027,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       setEconomicTime(now);
       pendingTimestamp = now; if (active()) applyPendingTime();
       syncExploration();
+      updateAudio();
       if (wasExploring !== exploring() && visible()) draw();
     },
     invite() {}, moveTo() {},
