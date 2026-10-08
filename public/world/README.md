@@ -12,7 +12,7 @@
 
 ## Обновление карты
 
-Редактировать `art/world/prototype/forest-ground.jpg`, затем выполнить:
+Редактировать текущий мастер `art/world/prototype/forest-ground.png`, затем выполнить:
 
 ```bash
 node scripts/prepare-world-assets.mjs

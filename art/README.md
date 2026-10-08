@@ -47,7 +47,7 @@ npm run dev:local
 | Лавка Плёски (`plesk-shop`) | `Pleska_FishingShop.png`, 1254 × 1254, прозрачный фон; единственный визуальный уровень 1 |
 | Дом Шишколапа (`builder-home`) | `Shishkolap_House.png`, прозрачный фон; постоянный визуальный уровень 1, без экономического улучшения |
 
-Рисунки имеют прозрачный фон и связаны с `siteId` в Tiled. У маяка и моста ещё нет экономического восстановления; в игре остаётся начальное состояние 0. Оба состояния можно примерить в DEV и `/prototype/tiled-world`. Открытая шахта не включает интерьер, а целый мост не открывает путь через реку. Поворот задаётся объектом карты, исходный PNG не поворачивается и не переписывается.
+Рисунки имеют прозрачный фон и связаны с `siteId` в Tiled. У маяка и моста ещё нет экономического восстановления; в игре остаётся начальное состояние 0. Оба состояния можно примерить в DEV и `/prototype/tiled-world` только при development-запуске; в production панель и страница закрыты. Открытая шахта не включает интерьер, а целый мост не открывает путь через реку. Поворот задаётся объектом карты, исходный PNG не поворачивается и не переписывается.
 
 Земля под зданиями хранится отдельно в terrain: `house-ground-1.png`, `house-ground-2.png`, `workshop-ground.png`, `quarry-ground.png`, `lighthouse-ground.png`. Площадка может состоять из нескольких копий изображения со своими размерами и поворотами. Общая земля сохраняется при переключении уровня. Для детали одного состояния задайте на её размещённом объекте пару `siteId` (**string**) + `level` (**int**): например, `bridge-debris` с `beams.png` показывается только при `bridge: 0`. На плитке terrain в наборе остаётся только `role: terrain`; условие относится к конкретному размещению. [Как переместить комплект моста](../docs/game/building-workbench.md#переставить-шахту-лесной-участок-или-мост).
 
@@ -75,6 +75,9 @@ PNG содержит зелёный куст без ягод. Рост плод�
 | --- | --- |
 | Сырьё и урожай | [`art-natural.tsx`](../features/items/art-natural.tsx) |
 | Изделия, стройматериалы и припасы | [`art-crafted.tsx`](../features/items/art-crafted.tsx) |
+| Готовые блюда | [`art-food.tsx`](../features/items/art-food.tsx) |
+| Реликвии | [`art-relics.tsx`](../features/items/art-relics.tsx) |
+| Крючки | [`art-hooks.tsx`](../features/items/art-hooks.tsx) |
 | Коллекционные находки | [`art-collection.tsx`](../features/items/art-collection.tsx) |
 | Одежда и снаряжение | [`art-equipment.tsx`](../features/items/art-equipment.tsx) |
 | Рыба: общие силуэты и палитры | [`fish-species.ts`](../features/world/fish-species.ts), SVG — [`fish-icon.tsx`](../features/world/fish-icon.tsx), Canvas — [`fish-sprite.ts`](../features/world/fish-sprite.ts) |
@@ -94,7 +97,7 @@ PNG содержит зелёный куст без ягод. Рост плод�
 | --- | --- |
 | `art/world/main/boat-wreck.png` | Исходник лодки, сохранён для дальнейшей работы |
 | `public/world/runtime/boat-wreck-lowquality.webp` | Прежний уменьшенный экспорт лодки; чистая сцена карты его не рисует |
-| `public/achievements/` | Семь медалей, выбираемых по ID достижения |
+| `public/achievements/` | 14 SVG-медалей текущего меню и совместимый PNG «Хранитель находок», выбираемые по ID достижения. [Каталог](../public/achievements/README.md) |
 | `art/brand/`, `public/icon*`, `public/apple-touch-icon.png`, `public/favicon.ico`, `public/brand/` | Мастера Мохлика, иконки сайта/PWA и прозрачный загрузочный логотип. [Подготовка и версии](brand/README.md) |
 | `docs/game/concepts/`, `docs/game/images/` | Концепты и снимки прежнего прототипа для документации |
 

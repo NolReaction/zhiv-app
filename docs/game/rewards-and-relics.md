@@ -1,6 +1,6 @@
 # Дневные награды, жемчуг и реликвии
 
-Рабочая ветка 0.6.7. Данные наград общие для web, DEV и Ktor: [progression-rewards-catalog.json](../../apps/api/src/main/resources/world/progression-rewards-catalog.json). Материалы и правила находок — в [economy-catalog.json](../../apps/api/src/main/resources/world/economy-catalog.json). Реальные платежи и торговец за жемчуг пока не подключены. Ниже указаны видимые количества жемчуга: половина внутренних целых сумм каталога. Это изменение отображения сохраняет ценность каждой награды и не меняет сохранения; см. [денежные единицы](currency-units.md).
+Выпущено в 0.6.7. Данные наград общие для web, DEV и Ktor: [progression-rewards-catalog.json](../../apps/api/src/main/resources/world/progression-rewards-catalog.json). Материалы и правила находок — в [economy-catalog.json](../../apps/api/src/main/resources/world/economy-catalog.json). Реальные платежи и торговец за жемчуг пока не подключены. Ниже указаны видимые количества жемчуга: половина внутренних целых сумм каталога. Это изменение отображения сохраняет ценность каждой награды и не меняет сохранения; см. [денежные единицы](currency-units.md).
 
 ## Подарки за вход
 
