@@ -41,7 +41,7 @@ function main() {
   const projectRoot = process.cwd();
   const { nextBin } = checkNextDevDependencies(projectRoot);
   const child = spawn(process.execPath, [nextBin, ...nextDevArguments(process.argv.slice(2))], {
-    cwd: projectRoot, env: process.env, stdio: "inherit",
+    cwd: projectRoot, env: { ...process.env, NODE_ENV: "development" }, stdio: "inherit",
   });
   const forwardInterrupt = () => child.kill("SIGINT");
   const forwardTermination = () => child.kill("SIGTERM");
