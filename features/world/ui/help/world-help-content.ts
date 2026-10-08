@@ -158,7 +158,7 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
       relatedIds: ["construction-goal", "builder-food", "pearls", "future-world"],
     },
     ...(firstWorkshop ? [{
-      id: "workshop-starter", group: "start", title: "Как получить набор для первой мастерской?", summary: "Один подарок на аккаунт, стройка по вашему нажатию",
+      id: "workshop-starter", group: "start", title: "Как получить стартовый набор?", summary: "Для первой мастерской; один подарок на аккаунт",
       keywords: "обучение новичок стартовый набор первая мастерская подарок бонус дерево древесина камень монеты построить шишколап",
       paragraphs: [`Набор равен полной стоимости первой мастерской: ${firstWorkshop.cost.coins.toLocaleString("ru-RU")} монет; ${Object.entries(firstWorkshop.cost.items).map(([id, amount]) => `${itemName(id)} — ${amount}`).join(", ")}. Уже накопленные запасы остаются у вас.`],
       steps: [
