@@ -67,10 +67,12 @@ namespace Zhiv.UnityPrototype.Editor
                 if (pipeline == null) PrototypePipelineSetup.Configure(folder + "/Rendering");
                 else if (!(pipeline is UniversalRenderPipelineAsset))
                     throw new InvalidOperationException("Большой лес требует URP. Настройки рендера не изменены.");
-                PrototypeArtSet art = PrototypeArtFactory.Create(folder + "/Art");
-                GroundRecipe recipe = ExpandedForestDefinition.Create(folder + "/Ground");
-                GroundMaterialSet materials = GroundMaterialFactory.Create(folder + "/Ground/Materials");
+                // Scene changes can unload ScriptableObjects referenced only by local variables.
+                // Finish the scene switch and texture imports before creating the ground recipe.
                 Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+                PrototypeArtSet art = PrototypeArtFactory.Create(folder + "/Art");
+                GroundMaterialSet materials = GroundMaterialFactory.Create(folder + "/Ground/Materials");
+                GroundRecipe recipe = ExpandedForestDefinition.Create(folder + "/Ground");
                 EditorUtility.DisplayProgressBar("Большой лес", "Рельеф, берег и дорожки", .2f);
                 Terrain terrain = GroundTerrainBaker.Create(recipe, folder + "/Ground", materials.Layers, materials.Material, 513, 1024);
                 terrain.name = "Ground Surface — 280 m";

@@ -63,6 +63,10 @@ namespace Zhiv.UnityPrototype.Editor
             try
             {
                 GroundMaterialSet materials = GroundMaterialFactory.Create(folder + "/Materials");
+                // Texture imports may unload a ScriptableObject held only by this local variable.
+                recipe = AssetDatabase.LoadAssetAtPath<GroundRecipe>(folder + "/GroundRecipe.asset");
+                if (recipe == null)
+                    throw new InvalidOperationException("Не удалось загрузить сохранённый рецепт земли: " + folder + "/GroundRecipe.asset");
                 surface = GroundTerrainBaker.Create(recipe, folder, materials.Layers, materials.Material);
                 Undo.RegisterCreatedObjectUndo(surface.gameObject, "Create terrain");
                 surface.transform.SetParent(terrainGroup, true);

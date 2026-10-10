@@ -50,10 +50,11 @@ namespace Zhiv.UnityPrototype.Editor
                 if (pipeline == null) PrototypePipelineSetup.Configure(generated + "/Rendering");
                 else if (!(pipeline is UniversalRenderPipelineAsset))
                     throw new InvalidOperationException("ForestLayout требует URP. Текущий Render Pipeline оставлен без изменений.");
-                PrototypeArtSet art = PrototypeArtFactory.Create(generated + "/Art");
-                GroundRecipe recipe = ForestLayoutRecipe.Create(generated + "/Ground");
-                GroundMaterialSet materials = GroundMaterialFactory.Create(generated + "/Ground/Materials");
+                // Create ScriptableObject recipes only after scene switching and texture imports.
                 Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+                PrototypeArtSet art = PrototypeArtFactory.Create(generated + "/Art");
+                GroundMaterialSet materials = GroundMaterialFactory.Create(generated + "/Ground/Materials");
+                GroundRecipe recipe = ForestLayoutRecipe.Create(generated + "/Ground");
                 var groundRoot = new GameObject("Terrain").transform;
                 Terrain terrain = GroundTerrainBaker.Create(recipe, generated + "/Ground", materials.Layers, materials.Material);
                 terrain.transform.SetParent(groundRoot, true);

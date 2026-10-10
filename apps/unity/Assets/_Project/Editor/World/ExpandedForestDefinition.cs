@@ -91,8 +91,15 @@ namespace Zhiv.UnityPrototype.Editor
             if (string.IsNullOrWhiteSpace(assetFolder) || !AssetDatabase.IsValidFolder(assetFolder))
                 throw new ArgumentException("Create an Assets folder for the expanded forest first.", nameof(assetFolder));
             GroundRecipe recipe = CreateTransient();
-            AssetDatabase.CreateAsset(recipe, AssetDatabase.GenerateUniqueAssetPath(assetFolder + "/ExpandedForestGroundRecipe.asset"));
-            return recipe;
+            string path = AssetDatabase.GenerateUniqueAssetPath(assetFolder + "/ExpandedForestGroundRecipe.asset");
+            AssetDatabase.CreateAsset(recipe, path);
+            AssetDatabase.SaveAssets();
+            // Return the persistent asset, never rely on a pre-import ScriptableObject wrapper.
+            GroundRecipe saved = AssetDatabase.LoadAssetAtPath<GroundRecipe>(path);
+            if (saved == null)
+                throw new InvalidOperationException("Не удалось загрузить сохранённый рецепт большой карты: " + path);
+            GroundPathMath.ValidateRecipe(saved);
+            return saved;
         }
 
         public static GroundRecipe CreateTransient()

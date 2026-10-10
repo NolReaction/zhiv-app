@@ -89,8 +89,14 @@ namespace Zhiv.UnityPrototype.Editor
             AddPad(recipe, "Lake basin", LakeCenter, new Vector2(6, 8), -.8f, 3f);
 
             GroundPathMath.ValidateRecipe(recipe);
-            AssetDatabase.CreateAsset(recipe, AssetDatabase.GenerateUniqueAssetPath(assetFolder + "/ForestGroundRecipe.asset"));
-            return recipe;
+            string path = AssetDatabase.GenerateUniqueAssetPath(assetFolder + "/ForestGroundRecipe.asset");
+            AssetDatabase.CreateAsset(recipe, path);
+            AssetDatabase.SaveAssets();
+            GroundRecipe saved = AssetDatabase.LoadAssetAtPath<GroundRecipe>(path);
+            if (saved == null)
+                throw new InvalidOperationException("Не удалось загрузить сохранённый рецепт леса: " + path);
+            GroundPathMath.ValidateRecipe(saved);
+            return saved;
         }
 
         public static bool InLakeReserve(Vector2 point, float margin = 0)
