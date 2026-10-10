@@ -23,6 +23,11 @@ namespace Zhiv.UnityPrototype.Editor
         private const string PreviewName = "Home Level 1 — Blender preview";
         private const string ActionName = "Try Level 1 Home";
         private const string LitShader = "Universal Render Pipeline/Lit";
+        // Export contract: one mesh, submesh 0 = opaque home, submesh 1 = lantern glass.
+        // Imported material names/remaps are user settings and are not stable identifiers.
+        private const int SurfaceSlot = 0;
+        private const int GlowSlot = 1;
+        private const int MaterialSlotCount = 2;
 
         [MenuItem("Zhiv/Try Level 1 Home", priority = 12)]
         public static void TryInOpenScene()
@@ -313,14 +318,15 @@ namespace Zhiv.UnityPrototype.Editor
                 Mathf.Abs(bounds.center.x) <= .2f && Mathf.Abs(bounds.center.z) <= .2f,
                 "Импортированные габариты не соответствуют дому: " + bounds + ". Проверь метры, оси и ground pivot экспорта.");
             Renderer[] renderers = asset.GetComponentsInChildren<Renderer>(true);
-            Require(renderers.Length > 0, "В FBX нет Renderer.");
+            Require(renderers.Length == 1, "Ожидается один MeshRenderer экспортированного дома; импортировано " + renderers.Length + ".");
             foreach (Renderer renderer in renderers)
             {
                 Require(renderer is MeshRenderer, "Для этого дома поддерживается только статический MeshRenderer.");
-                Require(renderer.sharedMaterials.Length > 0, "В FBX нет material slots.");
-                foreach (Material material in renderer.sharedMaterials)
-                    Require(material != null && (material.name == "HomeSurface" || material.name == "HomeGlow"),
-                        "Material slot FBX должен называться HomeSurface или HomeGlow: " + renderer.name);
+                MeshFilter filter = renderer.GetComponent<MeshFilter>();
+                int slots = filter != null && filter.sharedMesh != null ? filter.sharedMesh.subMeshCount : 0;
+                Require(slots == MaterialSlotCount,
+                    "В FBX должны быть два submesh: дом (0) и стекло фонаря (1); импортировано " + slots +
+                    ". Обнови экспорт HomeLevel1.fbx.");
             }
             ValidateExistingMaterials(false);
             return new ModelData { Asset = asset, Atlas = atlas, Shader = shader, Orientation = orientation, ViewBounds = viewBounds };
@@ -449,10 +455,10 @@ namespace Zhiv.UnityPrototype.Editor
                     part.gameObject.layer = parent != null ? parent.gameObject.layer : 0;
                 foreach (Renderer renderer in instance.GetComponentsInChildren<Renderer>(true))
                 {
-                    Material[] imported = renderer.sharedMaterials;
-                    for (int slot = 0; slot < imported.Length; slot++)
-                        imported[slot] = imported[slot].name == "HomeGlow" ? materials.Glow : materials.Surface;
-                    renderer.sharedMaterials = imported;
+                    var assigned = new Material[MaterialSlotCount];
+                    assigned[SurfaceSlot] = materials.Surface;
+                    assigned[GlowSlot] = materials.Glow;
+                    renderer.sharedMaterials = assigned;
                     PrefabUtility.RecordPrefabInstancePropertyModifications(renderer);
                 }
                 PrefabUtility.RecordPrefabInstancePropertyModifications(instance.transform);
