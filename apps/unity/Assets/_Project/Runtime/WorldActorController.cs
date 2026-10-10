@@ -28,6 +28,7 @@ namespace Zhiv.WorldPrototype
         private void Awake()
         {
             if (visual != null) visualRestPosition = visual.localPosition;
+            if (navigator != null) transform.position = navigator.ProjectToGround(transform.position);
         }
 
         public bool MoveTo(Vector3 point)
@@ -50,7 +51,9 @@ namespace Zhiv.WorldPrototype
                 {
                     transform.rotation = Quaternion.RotateTowards(transform.rotation,
                         Quaternion.LookRotation(movement, Vector3.up), 540 * Time.deltaTime);
-                    Vector3 next = Vector3.MoveTowards(transform.position, target, speed * Time.deltaTime);
+                    Vector3 horizontalTarget = new Vector3(target.x, transform.position.y, target.z);
+                    Vector3 next = navigator.ProjectToGround(
+                        Vector3.MoveTowards(transform.position, horizontalTarget, speed * Time.deltaTime));
                     // Keep a safe stop if an obstacle is edited or moved during Play Mode.
                     if (navigator.SegmentClear(transform.position, next)) transform.position = next;
                     else path.Clear();

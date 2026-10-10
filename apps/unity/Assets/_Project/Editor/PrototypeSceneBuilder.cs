@@ -150,6 +150,7 @@ namespace Zhiv.UnityPrototype.Editor
                     throw new IOException("Не удалось сохранить сцену " + ScenePath);
                 EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
                 AssetDatabase.SaveAssets();
+                GroundSceneUpgrade.UpgradeOpenClearing();
                 Selection.activeGameObject = workshop;
                 SceneView.lastActiveSceneView?.LookAt(new Vector3(-1, 0, 1), Quaternion.Euler(45, 45, 0), 18);
                 Debug.Log("Поляна создана. Открой Game, поставь 9:16 и нажми Play. Объекты и материалы можно редактировать и сохранять.");

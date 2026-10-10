@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace Zhiv.WorldPrototype
 {
-    /// <summary>Ground-plane A* with body clearance. Rebuild after moving obstacle colliders.</summary>
+    /// <summary>A* on a flat plane or Terrain, with body clearance. Rebuild after editing the ground or obstacles.</summary>
     [DisallowMultipleComponent]
     public sealed class GridNavigator : MonoBehaviour
     {
@@ -12,6 +12,8 @@ namespace Zhiv.WorldPrototype
         [SerializeField] private LayerMask obstacleMask = 1 << 9;
         [SerializeField, Min(0.1f)] private float clearance = 0.35f;
         [SerializeField, Min(0.8f)] private float actorHeight = 1.2f;
+        [SerializeField] private Terrain groundTerrain;
+        [SerializeField, Range(0, 45)] private float maximumSlope = 45;
 
         private int width;
         private int depth;
@@ -27,6 +29,27 @@ namespace Zhiv.WorldPrototype
             walkable = null;
         }
 
+        public void ConfigureTerrain(Terrain terrain)
+        {
+            groundTerrain = terrain;
+            walkable = null;
+        }
+
+        public Vector3 ProjectToGround(Vector3 point)
+        {
+            if (!HasTerrain) point.y = bounds.center.y;
+            else if (TerrainCoordinates(point, out _))
+            {
+                // SampleHeight takes world XZ, but returns height relative to the Terrain origin.
+                point.y = groundTerrain.SampleHeight(point) + groundTerrain.transform.position.y;
+            }
+            // Outside a configured Terrain, preserve the point instead of sampling a clamped edge.
+            // Navigation rejects these positions through InsideWithClearance.
+            return point;
+        }
+
+        private bool HasTerrain => groundTerrain != null && groundTerrain.terrainData != null;
+
         public void Rebuild()
         {
             Physics.SyncTransforms();
@@ -36,7 +59,7 @@ namespace Zhiv.WorldPrototype
             for (int index = 0; index < walkable.Length; index++)
             {
                 Vector3 point = CellPoint(index);
-                walkable[index] = InsideWithClearance(point) && IsBodyFree(point);
+                walkable[index] = InsideWithClearance(point) && GroundWalkable(point) && IsBodyFree(point);
             }
         }
 
@@ -44,8 +67,10 @@ namespace Zhiv.WorldPrototype
         {
             result.Clear();
             if (walkable == null) Rebuild();
-            from.y = to.y = bounds.center.y;
-            if (!InsideWithClearance(from) || !InsideWithClearance(to) || !IsBodyFree(from) || !IsBodyFree(to))
+            from = ProjectToGround(from);
+            to = ProjectToGround(to);
+            if (!InsideWithClearance(from) || !InsideWithClearance(to)
+                || !GroundWalkable(from) || !GroundWalkable(to) || !IsBodyFree(from) || !IsBodyFree(to))
                 return false;
             if (SegmentClear(from, to))
             {
@@ -116,14 +141,59 @@ namespace Zhiv.WorldPrototype
 
         public bool SegmentClear(Vector3 from, Vector3 to)
         {
-            from.y = to.y = bounds.center.y;
-            Vector3 delta = to - from;
-            float distance = delta.magnitude;
-            if (!IsBodyFree(from) || !IsBodyFree(to)) return false;
-            if (distance < 0.001f) return true;
-            BodyCapsule(from, out Vector3 bottom, out Vector3 top);
-            return !Physics.CapsuleCast(bottom, top, clearance, delta / distance, distance,
-                obstacleMask, QueryTriggerInteraction.Ignore);
+            if (!InsideWithClearance(from) || !InsideWithClearance(to)) return false;
+            from = ProjectToGround(from);
+            to = ProjectToGround(to);
+            if (!GroundWalkable(from) || !GroundWalkable(to) || !IsBodyFree(from)) return false;
+
+            Vector2 horizontal = new Vector2(to.x - from.x, to.z - from.z);
+            float distance = horizontal.magnitude;
+            if (distance < 0.0001f) return IsBodyFree(to);
+
+            // A flat map needs one sweep. On Terrain follow short ground-projected segments,
+            // never the straight chord between distant hilltops or either side of a cliff.
+            float spacing = 0.25f;
+            if (HasTerrain)
+            {
+                Vector3 heightmapScale = groundTerrain.terrainData.heightmapScale;
+                spacing = Mathf.Min(spacing, Mathf.Max(0.025f,
+                    Mathf.Min(heightmapScale.x, heightmapScale.z) * 0.5f));
+            }
+            int steps = HasTerrain ? Mathf.Max(1, Mathf.CeilToInt(distance / spacing)) : 1;
+            float maximumRisePerMeter = Mathf.Tan(maximumSlope * Mathf.Deg2Rad);
+            Vector3 previous = from;
+            for (int step = 1; step <= steps; step++)
+            {
+                Vector3 next = ProjectToGround(Vector3.Lerp(from, to, step / (float)steps));
+                if (!GroundWalkable(next) || !IsBodyFree(next)) return false;
+                Vector3 delta = next - previous;
+                float horizontalStep = new Vector2(delta.x, delta.z).magnitude;
+                if (Mathf.Abs(delta.y) > horizontalStep * maximumRisePerMeter + 0.0001f) return false;
+                float stepDistance = delta.magnitude;
+                if (stepDistance > 0.0001f)
+                {
+                    BodyCapsule(previous, out Vector3 bottom, out Vector3 top);
+                    if (Physics.CapsuleCast(bottom, top, clearance, delta / stepDistance, stepDistance,
+                        obstacleMask, QueryTriggerInteraction.Ignore)) return false;
+                }
+                previous = next;
+            }
+            return true;
+        }
+
+        private bool TerrainCoordinates(Vector3 point, out Vector2 normalized)
+        {
+            Vector3 local = point - groundTerrain.transform.position;
+            Vector3 size = groundTerrain.terrainData.size;
+            normalized = new Vector2(local.x / size.x, local.z / size.z);
+            return normalized.x >= 0 && normalized.x <= 1 && normalized.y >= 0 && normalized.y <= 1;
+        }
+
+        private bool GroundWalkable(Vector3 point)
+        {
+            if (!HasTerrain) return true;
+            if (!TerrainCoordinates(point, out Vector2 normalized)) return false;
+            return groundTerrain.terrainData.GetSteepness(normalized.x, normalized.y) <= maximumSlope;
         }
 
         private bool IsBodyFree(Vector3 position)
@@ -140,8 +210,14 @@ namespace Zhiv.WorldPrototype
 
         private bool InsideWithClearance(Vector3 point)
         {
-            return point.x >= bounds.min.x + clearance && point.x <= bounds.max.x - clearance
-                && point.z >= bounds.min.z + clearance && point.z <= bounds.max.z - clearance;
+            if (point.x < bounds.min.x + clearance || point.x > bounds.max.x - clearance
+                || point.z < bounds.min.z + clearance || point.z > bounds.max.z - clearance)
+                return false;
+            if (!HasTerrain) return true;
+            Vector3 origin = groundTerrain.transform.position;
+            Vector3 size = groundTerrain.terrainData.size;
+            return point.x >= origin.x + clearance && point.x <= origin.x + size.x - clearance
+                && point.z >= origin.z + clearance && point.z <= origin.z + size.z - clearance;
         }
 
         private int CellIndex(Vector3 point)
@@ -153,8 +229,8 @@ namespace Zhiv.WorldPrototype
 
         private Vector3 CellPoint(int index)
         {
-            return new Vector3(bounds.min.x + (index % width + 0.5f) * cellSize,
-                bounds.center.y, bounds.min.z + (index / width + 0.5f) * cellSize);
+            return ProjectToGround(new Vector3(bounds.min.x + (index % width + 0.5f) * cellSize,
+                bounds.center.y, bounds.min.z + (index / width + 0.5f) * cellSize));
         }
 
         private int Heuristic(int a, int b)
