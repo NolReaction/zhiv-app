@@ -42,6 +42,7 @@ namespace Zhiv.UnityPrototype.Editor
                     map.ForestPatchCount == 0, "Sparse blockout trees are individually editable");
                 Require(recipe.ForestRegions != null && recipe.ForestRegions.Count >= 6 &&
                     map.ForestRegionCount == recipe.ForestRegions.Count, "Saved forest contours match the blockout");
+                ForestBlockoutDefinition.ValidateTrailFootprints(recipe);
             }
             else
                 Require(map.TreeCount > 1000 && map.ForestPatchCount > 0 && map.EditableTreeCount > 0,

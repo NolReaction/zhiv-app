@@ -129,6 +129,7 @@ namespace Zhiv.UnityPrototype.Editor
             if (recipe.ForestRegions == null)
                 throw new ArgumentException("Forest Regions не должен быть null; используй пустой список для удаления всех контуров.");
             var sampler = new GroundPathMath(recipe);
+            ForestBlockoutDefinition.ValidateTrailFootprints(recipe);
             // Validate all new geometry before changing a scene object or creating replacement assets.
             foreach (GroundForestRegion region in recipe.ForestRegions)
                 ExpandedForestEnvironment.Triangulate(ExpandedForestEnvironment.CleanPolygon(region.Points));
@@ -294,7 +295,7 @@ namespace Zhiv.UnityPrototype.Editor
                     if (Contains(region.Points, corner))
                         throw new ArgumentException("Контур леса перекрывает площадку «" + pad.Name + "». Отодвинь его от основания.");
                 for (int i = 0; i < region.Points.Count; i++)
-                    if (SegmentTouchesRectangle(region.Points[i], region.Points[(i + 1) % region.Points.Count], min, max))
+                    if (GroundPathMath.SegmentTouchesRectangle(region.Points[i], region.Points[(i + 1) % region.Points.Count], min, max))
                         throw new ArgumentException("Контур леса пересекает площадку «" + pad.Name + "». Отодвинь его от основания.");
             }
             if (map.Places != null)
@@ -307,26 +308,6 @@ namespace Zhiv.UnityPrototype.Editor
                 if (actor.gameObject.scene == map.gameObject.scene && sampler.IsForest(
                     new Vector2(actor.transform.position.x, actor.transform.position.z), .4f))
                     throw new ArgumentException("Контур леса перекрывает позицию героя. Отодвинь контур или перемести героя на открытую землю.");
-        }
-
-        private static bool SegmentTouchesRectangle(Vector2 a, Vector2 b, Vector2 min, Vector2 max)
-        {
-            float entry = 0, exit = 1;
-            Vector2 delta = b - a;
-            for (int axis = 0; axis < 2; axis++)
-            {
-                if (Mathf.Abs(delta[axis]) < .000001f)
-                {
-                    if (a[axis] < min[axis] || a[axis] > max[axis]) return false;
-                    continue;
-                }
-                float first = (min[axis] - a[axis]) / delta[axis];
-                float last = (max[axis] - a[axis]) / delta[axis];
-                entry = Mathf.Max(entry, Mathf.Min(first, last));
-                exit = Mathf.Min(exit, Mathf.Max(first, last));
-                if (entry > exit) return false;
-            }
-            return true;
         }
 
         private static void RebuildOpenNavigation()

@@ -59,27 +59,27 @@ namespace Zhiv.UnityPrototype.Editor
             Trail(recipe, "Дом — мастерская", 3.2f, Home, Workshop,
                 P(-4, -8), P(-19, -12), P(-35, -9), P(-43, -2));
             Trail(recipe, "Мастерская — северо-западная поляна", 2.6f, Workshop, UpperPass,
-                P(-49, 16), P(-53, 28), P(-50, 38));
+                P(-44, 2), P(-50, 8), P(-49, 16), P(-53, 28), P(-50, 38));
             Trail(recipe, "Мастерская — шахта", 3f, Workshop, Quarry,
                 P(-32, 21), P(-26, 26), P(-18, 35), P(-8, 37));
             Trail(recipe, "Шахта — лесной участок", 2.8f, Quarry, Woodlot,
-                P(12, 45), P(19, 51), P(27, 53), P(35, 49));
+                P(12, 45), P(19, 51), P(27, 53), P(34, 55), P(41, 49), P(39, 43));
             Trail(recipe, "Лесной участок — лавка", 2.8f, Woodlot, Shop,
                 P(43, 37), P(52, 31), P(55, 23), P(52, 16));
             Trail(recipe, "Лавка — рыбацкий берег", 2.5f, Shop, Fishing,
-                P(48, 3), P(45, -3), P(46, -10), P(51, -14), P(55, -13));
+                P(49, 4), P(55, 1), P(58, -4), P(58, -8), P(56, -12));
             Trail(recipe, "Дом — лавка", 3.2f, Home, Shop,
                 P(18, 4), P(30, 6), P(38, 3), P(44, 4));
             Trail(recipe, "Дом — ягодный куст", 2f, Home, Garden,
-                P(3, -6), P(-3, -3));
+                P(3, -8), P(-3, -4));
             Trail(recipe, "Дом — костёр", 2.4f, Home, Camp,
                 P(15, -8), P(16, -14));
             Trail(recipe, "Дом — кладовая", 2.6f, Home, Warehouse,
                 P(1, -9), P(-5, -12), P(-5, -17));
             Trail(recipe, "Кладовая — место рынка", 2.8f, Warehouse, Market,
-                P(-17, -23), P(-27, -31), P(-35, -40), P(-39, -50), P(-33, -60));
+                P(-17, -23), P(-27, -31), P(-35, -40), P(-39, -50), P(-39, -56), P(-34, -61), P(-30, -65));
             Trail(recipe, "Костёр — дом Шишколапа", 2.8f, Camp, BuilderHome,
-                P(13, -21), P(17, -27), P(15, -34), P(16, -42), P(22, -44));
+                P(13, -21), P(17, -27), P(12, -33), P(11, -38), P(16, -42), P(22, -44));
             Trail(recipe, "Дом Шишколапа — маяк", 2.6f, BuilderHome, Lighthouse,
                 P(20, -47), P(27, -54), P(33, -61), P(38, -67), P(47, -68));
 
@@ -110,8 +110,32 @@ namespace Zhiv.UnityPrototype.Editor
             Forest(recipe, "Лес перед речным рукавом", P(-18, -38), P(-9, -35), P(-6, -41),
                 P(-9, -50), P(-12, -61), P(-19, -65), P(-23, -57), P(-21, -48));
 
-            GroundPathMath.ValidateRecipe(recipe);
+            ValidateTrailFootprints(recipe);
             return recipe;
+        }
+
+        /// <summary>
+        /// Check the whole curve against every reserved foundation, including its own endpoints.
+        /// This runs before Terrain/assets are generated and complements live Physics validation.
+        /// </summary>
+        public static void ValidateTrailFootprints(GroundRecipe recipe)
+        {
+            var curves = new GroundPathMath(recipe);
+            const float bodyMargin = .4f;
+            for (int trail = 0; trail < recipe.Trails.Count; trail++)
+            {
+                IReadOnlyList<Vector2> points = curves.GetTrailPoints(trail);
+                foreach (GroundPad pad in recipe.Pads)
+                {
+                    Vector2 half = pad.Size * .5f + Vector2.one * bodyMargin;
+                    for (int i = 1; i < points.Count; i++)
+                        if (GroundPathMath.SegmentTouchesRectangle(points[i - 1], points[i],
+                            pad.Center - half, pad.Center + half))
+                            throw new ArgumentException("Тропа «" + recipe.Trails[trail].Name +
+                                "» задевает основание «" + pad.Name + "» у " + points[i] +
+                                ". Отведи подход вокруг площадки; проверяется и собственное основание тропы.");
+                }
+            }
         }
 
         private static ExpandedForestZone Zone(string id, string name, float u, float v,

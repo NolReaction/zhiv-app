@@ -347,6 +347,26 @@ namespace Zhiv.UnityPrototype.Editor
                 point.y >= min.y - margin && point.y <= max.y + margin;
         }
 
+        internal static bool SegmentTouchesRectangle(Vector2 a, Vector2 b, Vector2 min, Vector2 max)
+        {
+            float entry = 0, exit = 1;
+            Vector2 delta = b - a;
+            for (int axis = 0; axis < 2; axis++)
+            {
+                if (Mathf.Abs(delta[axis]) < .000001f)
+                {
+                    if (a[axis] < min[axis] || a[axis] > max[axis]) return false;
+                    continue;
+                }
+                float first = (min[axis] - a[axis]) / delta[axis];
+                float last = (max[axis] - a[axis]) / delta[axis];
+                entry = Mathf.Max(entry, Mathf.Min(first, last));
+                exit = Mathf.Min(exit, Mathf.Max(first, last));
+                if (entry > exit) return false;
+            }
+            return true;
+        }
+
         private static float SignedPolygonDistance(Vector2 point, List<Vector2> polygon)
         {
             bool inside = false;
