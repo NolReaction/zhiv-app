@@ -1,7 +1,7 @@
 {
   "name": "Zhiv.WorldPrototype",
   "rootNamespace": "Zhiv.WorldPrototype",
-  "references": [],
+  "references": ["UnityEngine.UI"],
   "includePlatforms": [],
   "excludePlatforms": [],
   "allowUnsafeCode": false,

@@ -3,6 +3,7 @@
   "rootNamespace": "Zhiv.UnityPrototype.Editor",
   "references": [
     "Zhiv.WorldPrototype",
+    "UnityEngine.UI",
     "Unity.RenderPipelines.Universal.Runtime",
     "Unity.RenderPipelines.Core.Runtime",
     "Unity.RenderPipelines.Core.Editor"

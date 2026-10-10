@@ -12,7 +12,7 @@ namespace Zhiv.WorldPrototype
         [SerializeField] private Bounds worldBounds = new Bounds(Vector3.zero, new Vector3(28, 2, 34));
         [SerializeField] private float initialSize = 11;
         [SerializeField] private float minimumSize = 4;
-        [SerializeField] private float maximumSize = 18;
+        [SerializeField] private float maximumSize = 15;
         [SerializeField] private Vector3 initialFocus;
 
         public event Action<Ray> Tapped;
@@ -29,37 +29,81 @@ namespace Zhiv.WorldPrototype
         private float previousPinchDistance;
         private Vector2 previousPinchCenter;
         private float suppressMouseUntil;
+        private float requestedSize = -1;
+        private float lastAspect = -1;
 
         public void Configure(Vector3 initialPoint, Bounds bounds, float size)
         {
+            if (!IsFinite(initialPoint) || !IsFinite(bounds.center) || !IsFinite(bounds.size)
+                || bounds.size.x <= 0 || bounds.size.z <= 0 || !IsFinite(size) || size <= 0)
+                throw new ArgumentException("Camera view requires a finite focus, positive size and X/Z bounds.");
             worldBounds = bounds;
             initialFocus = initialPoint;
             initialSize = Mathf.Clamp(size, minimumSize, maximumSize);
             ResetView();
         }
 
+        public void ConfigureViewLimits(float min, float max)
+        {
+            if (!IsFinite(min) || !IsFinite(max) || min <= 0 || max < min)
+                throw new ArgumentException("Camera zoom limits must be finite, positive and ordered.");
+            minimumSize = min;
+            maximumSize = max;
+            initialSize = Mathf.Clamp(initialSize, min, max);
+            EnsureCamera();
+            requestedSize = Mathf.Clamp(requestedSize, min, max);
+            ApplyPose();
+        }
+
+        /// <summary>Focuses a ground location at the current zoom, respecting visible terrain bounds.</summary>
+        public void FocusOn(Vector3 point)
+        {
+            if (!IsFinite(point)) throw new ArgumentException("Camera focus must be finite.", nameof(point));
+            CancelGesture();
+            focus = point;
+            ApplyPose();
+        }
+
+        /// <summary>Uses the widest permitted view centred on the terrain, with no exposed ground edge.</summary>
+        public void ShowOverview()
+        {
+            CancelGesture();
+            EnsureCamera();
+            focus = worldBounds.center;
+            requestedSize = maximumSize;
+            ApplyPose();
+        }
+
         public void ResetView()
         {
+            CancelGesture();
             EnsureCamera();
             focus = initialFocus;
-            worldCamera.orthographicSize = initialSize;
+            requestedSize = initialSize;
             ApplyPose();
         }
 
         private void Awake()
         {
-            EnsureCamera();
-            ApplyPose();
+            // Start from the authored view, not the aspect-dependent size saved by the Editor.
+            ResetView();
         }
 
         private void EnsureCamera()
         {
             if (worldCamera == null) worldCamera = GetComponent<Camera>();
             worldCamera.orthographic = true;
+            if (requestedSize <= 0 || !IsFinite(requestedSize))
+                requestedSize = worldCamera.orthographicSize;
+            // A newly added camera can have no valid render target yet in an Editor menu command.
+            // Leave a valid aspect untouched so Unity continues to follow Game view/device resizing.
+            if (!IsFinite(worldCamera.aspect) || worldCamera.aspect <= 0)
+                worldCamera.ResetAspect();
         }
 
         private void Update()
         {
+            if (!Mathf.Approximately(lastAspect, worldCamera.aspect)) ApplyPose();
             if (Input.touchCount > 0)
             {
                 suppressMouseUntil = Time.unscaledTime + 0.25f;
@@ -171,7 +215,8 @@ namespace Zhiv.WorldPrototype
         private void ZoomAt(Vector2 point, float size)
         {
             bool hasBefore = GroundPoint(point, out Vector3 before);
-            worldCamera.orthographicSize = Mathf.Clamp(size, minimumSize, maximumSize);
+            requestedSize = Mathf.Clamp(size, minimumSize, maximumSize);
+            ApplyPose();
             if (hasBefore && GroundPoint(point, out Vector3 after)) focus += before - after;
             ApplyPose();
         }
@@ -191,12 +236,58 @@ namespace Zhiv.WorldPrototype
 
         private void ApplyPose()
         {
-            focus.x = Mathf.Clamp(focus.x, worldBounds.min.x + 2, worldBounds.max.x - 2);
-            focus.z = Mathf.Clamp(focus.z, worldBounds.min.z + 2, worldBounds.max.z - 2);
+            EnsureCamera();
             focus.y = worldBounds.center.y;
             transform.rotation = Quaternion.Euler(45, 45, 0);
             transform.position = focus - transform.forward * 45;
+            worldCamera.orthographicSize = Mathf.Clamp(requestedSize, minimumSize, maximumSize);
+
+            if (GroundFootprint(out Vector2 minimum, out Vector2 maximum))
+            {
+                Vector2 span = maximum - minimum;
+                float fit = Mathf.Min(worldBounds.size.x / span.x, worldBounds.size.z / span.y);
+                if (fit < 1)
+                {
+                    // Containing the full viewport wins over the zoom-in limit on very wide screens.
+                    // Keep requestedSize so rotating back restores the user's chosen zoom.
+                    worldCamera.orthographicSize *= fit * 0.9999f;
+                    GroundFootprint(out minimum, out maximum);
+                }
+
+                float minimumX = worldBounds.min.x - (minimum.x - focus.x);
+                float maximumX = worldBounds.max.x - (maximum.x - focus.x);
+                float minimumZ = worldBounds.min.z - (minimum.y - focus.z);
+                float maximumZ = worldBounds.max.z - (maximum.y - focus.z);
+                focus.x = ClampOrCenter(focus.x, minimumX, maximumX);
+                focus.z = ClampOrCenter(focus.z, minimumZ, maximumZ);
+                transform.position = focus - transform.forward * 45;
+            }
+            lastAspect = worldCamera.aspect;
         }
+
+        private bool GroundFootprint(out Vector2 minimum, out Vector2 maximum)
+        {
+            minimum = new Vector2(float.PositiveInfinity, float.PositiveInfinity);
+            maximum = new Vector2(float.NegativeInfinity, float.NegativeInfinity);
+            Plane ground = new Plane(Vector3.up, new Vector3(0, worldBounds.center.y, 0));
+            // Use all four viewport corners: a safe-area-only bound would still expose void
+            // behind the transparent HUD or phone cutout. The UI delegate only blocks input.
+            for (int corner = 0; corner < 4; corner++)
+            {
+                Ray ray = worldCamera.ViewportPointToRay(new Vector3(corner & 1, corner >> 1, 0));
+                if (!ground.Raycast(ray, out float distance)) return false;
+                Vector3 hit = ray.GetPoint(distance);
+                minimum = Vector2.Min(minimum, new Vector2(hit.x, hit.z));
+                maximum = Vector2.Max(maximum, new Vector2(hit.x, hit.z));
+            }
+            return true;
+        }
+
+        private static float ClampOrCenter(float value, float minimum, float maximum)
+            => minimum <= maximum ? Mathf.Clamp(value, minimum, maximum) : (minimum + maximum) * 0.5f;
+
+        private static bool IsFinite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
+        private static bool IsFinite(Vector3 value) => IsFinite(value.x) && IsFinite(value.y) && IsFinite(value.z);
 
         private void CancelGesture()
         {

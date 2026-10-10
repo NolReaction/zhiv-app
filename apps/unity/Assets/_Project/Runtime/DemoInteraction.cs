@@ -15,7 +15,13 @@ namespace Zhiv.WorldPrototype
         [SerializeField] private bool workshopActive = true;
 
         public bool WorkshopActive => workshopActive;
+        public bool WorkshopSelected => workshopSelected;
+        public bool IsEvening => evening;
+        public string Message => message;
         public event Action<bool> WorkshopActivityChanged;
+        public event Action PresentationChanged;
+
+        private Func<Vector2, bool> nativePointerBlocker;
 
         private bool workshopSelected;
         private bool evening;
@@ -48,6 +54,38 @@ namespace Zhiv.WorldPrototype
         {
             activityTarget = target;
             if (target != null) activityRestRotation = target.localRotation;
+        }
+
+        public void SetPointerBlocker(Func<Vector2, bool> blocker) => nativePointerBlocker = blocker;
+
+        public void ClearPointerBlocker(Func<Vector2, bool> blocker)
+        {
+            if (nativePointerBlocker == blocker) nativePointerBlocker = null;
+        }
+
+        public void SelectWorkshop()
+        {
+            workshopSelected = true;
+            SetMessage("Мастерская. Здесь можно запустить или остановить работу.");
+        }
+
+        public void ClearSelection()
+        {
+            workshopSelected = false;
+            PresentationChanged?.Invoke();
+        }
+
+        public void ToggleWorkshopActivity()
+        {
+            workshopActive = !workshopActive;
+            WorkshopActivityChanged?.Invoke(workshopActive);
+            SetMessage(workshopActive ? "В мастерской снова стучит молоток." : "Мастерская отдыхает.");
+        }
+
+        private void SetMessage(string value)
+        {
+            message = value;
+            PresentationChanged?.Invoke();
         }
 
         private void Awake()
@@ -92,19 +130,18 @@ namespace Zhiv.WorldPrototype
                 return;
             if (workshop != null && (hit.transform == workshop || hit.transform.IsChildOf(workshop)))
             {
-                workshopSelected = true;
-                message = "Мастерская. Здесь можно запустить или остановить работу.";
+                SelectWorkshop();
                 return;
             }
             if (hit.collider.gameObject.layer != 8)
             {
-                message = "Здесь препятствие. Нажми на свободную землю рядом.";
+                SetMessage("Здесь препятствие. Нажми на свободную землю рядом.");
                 return;
             }
             workshopSelected = false;
-            message = actor != null && actor.MoveTo(hit.point)
+            SetMessage(actor != null && actor.MoveTo(hit.point)
                 ? "Идём! Здания и деревья нужно обходить."
-                : "До этой точки пока нет свободного прохода.";
+                : "До этой точки пока нет свободного прохода.");
         }
 
         private void Update()
@@ -133,6 +170,7 @@ namespace Zhiv.WorldPrototype
 
         private bool PointerBlocked(Vector2 point)
         {
+            if (nativePointerBlocker != null) return nativePointerBlocker(point);
             Layout(out Rect header, out Rect footer);
             Vector2 guiPoint = new Vector2(point.x, Screen.height - point.y) / UiScale;
             return header.Contains(guiPoint) || footer.Contains(guiPoint);
@@ -159,6 +197,7 @@ namespace Zhiv.WorldPrototype
 
         private void OnGUI()
         {
+            if (nativePointerBlocker != null) return;
             EnsureStyles();
             Layout(out Rect header, out Rect footer);
             Matrix4x4 previousMatrix = GUI.matrix;
@@ -178,9 +217,7 @@ namespace Zhiv.WorldPrototype
                 if (GUI.Button(new Rect(footer.x + 12, buttonY, footer.width - 24, 43),
                     workshopActive ? "Остановить работу мастерской" : "Запустить мастерскую", buttonStyle))
                 {
-                    workshopActive = !workshopActive;
-                    WorkshopActivityChanged?.Invoke(workshopActive);
-                    message = workshopActive ? "Мастерская работает. Это пробная анимация." : "Мастерская отдыхает.";
+                    ToggleWorkshopActivity();
                 }
                 buttonY += 58;
             }
@@ -202,7 +239,7 @@ namespace Zhiv.WorldPrototype
             GUI.color = previous;
         }
 
-        private void ToggleLighting()
+        public void ToggleLighting()
         {
             evening = !evening;
             if (sun != null)
@@ -216,6 +253,7 @@ namespace Zhiv.WorldPrototype
             RenderSettings.ambientEquatorColor = evening ? new Color(0.12f, 0.2f, 0.25f) : daylightEquator;
             RenderSettings.ambientGroundColor = evening ? new Color(0.08f, 0.11f, 0.08f) : daylightGround;
             RenderSettings.fogColor = evening ? new Color(0.12f, 0.2f, 0.25f) : daylightFog;
+            PresentationChanged?.Invoke();
         }
     }
 }
