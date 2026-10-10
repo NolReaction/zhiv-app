@@ -179,6 +179,7 @@ jobs:
         shell: bash
         run: |
           test "$(curl --silent --show-error --insecure --output /dev/null --write-out '%{http_code}' https://localhost/prototype/tiled-world)" = 404
+          test "$(curl --silent --show-error --insecure --output /dev/null --write-out '%{http_code}' https://localhost/prototype/phaser-world)" = 404
           docker compose -f deploy/compose.yml exec -T web node -e '
             fetch("http://127.0.0.1:3000/api/v1/me").then(async response => {
               if (response.status !== 503 || (await response.json()).code !== "DEV_API_DISABLED")

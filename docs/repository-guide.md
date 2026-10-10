@@ -83,6 +83,7 @@
 | Изменить программный спрайт Мохлика и его контактную тень | [`pixel-sprite.ts`](../features/mochlik/pixel-sprite.ts), [`grounding.ts`](../features/world/scene/grounding.ts) | [Устройство мира](game/world-foundation.md) |
 | Изменить экспорт Tiled и валидацию свойств | [`scripts/lib/tiled-world.mjs`](../scripts/lib/tiled-world.mjs), [`types.ts`](../features/world/tiled/types.ts), [`scripts/tiled-world.mjs`](../scripts/tiled-world.mjs) | [Разметка Tiled](game/tiled-editor.md) |
 | Доработать страницу проверки без аккаунта | [`tiled-world-preview.tsx`](../features/world/tiled/tiled-world-preview.tsx), [`renderer.ts`](../features/world/tiled/renderer.ts) | [Разметка Tiled](game/tiled-editor.md) |
+| Работать с экспериментальной Phaser-сценой, камерой и примеркой зданий | [`features/world/phaser/`](../features/world/phaser/), `/prototype/phaser-world` | [Запуск, проверка и границы переноса](game/phaser-lab.md) |
 | Добавить управление эффектом или диагностику в DEV | [`world-dev-panel.tsx`](../features/world/dev/world-dev-panel.tsx), [`world-dev-store.ts`](../features/world/dev/world-dev-store.ts), [`forest-resident-preview.ts`](../features/world/dev/forest-resident-preview.ts), [`living-world-debug.ts`](../features/world/dev/living-world-debug.ts) | [Атмосфера](game/world-atmosphere.md) · [Потребности и проверки Плёски](game/forest-residents.md#проверка-через-dev) |
 
 `features/world/tiled/forest.generated.json` — результат `npm run world:export`, его не редактируют вручную. Проверка соответствия: `npm run world:check`.
