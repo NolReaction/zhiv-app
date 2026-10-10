@@ -12,9 +12,14 @@ namespace Zhiv.UnityPrototype.Editor
         public const int PaintResolution = 512;
         public const int LayerCount = 4;
 
-        public static Terrain Create(GroundRecipe recipe, string assetFolder, TerrainLayer[] layers, Material material)
+        public static Terrain Create(GroundRecipe recipe, string assetFolder, TerrainLayer[] layers, Material material,
+            int heightResolution = HeightResolution, int paintResolution = PaintResolution)
         {
             GroundPathMath.ValidateRecipe(recipe);
+            if (heightResolution < 33 || heightResolution > 4097 || !Mathf.IsPowerOfTwo(heightResolution - 1))
+                throw new ArgumentException("Height resolution must be a power of two plus one, from 33 to 4097.", nameof(heightResolution));
+            if (paintResolution < 16 || paintResolution > 2048 || !Mathf.IsPowerOfTwo(paintResolution))
+                throw new ArgumentException("Paint resolution must be a power of two, from 16 to 2048.", nameof(paintResolution));
             if (string.IsNullOrWhiteSpace(assetFolder) || !AssetDatabase.IsValidFolder(assetFolder))
                 throw new ArgumentException("Create a valid Assets folder before baking the ground.", nameof(assetFolder));
             if (material == null || material.shader == null)
@@ -22,14 +27,14 @@ namespace Zhiv.UnityPrototype.Editor
             ValidateLayers(layers);
 
             var sampler = new GroundPathMath(recipe);
-            float[,] heightmap = Heights(recipe, sampler, HeightResolution);
-            float[,,] paintmap = Paint(recipe, sampler, PaintResolution);
+            float[,] heightmap = Heights(recipe, sampler, heightResolution);
+            float[,,] paintmap = Paint(recipe, sampler, paintResolution);
             var data = new TerrainData
             {
                 name = "Clearing Ground",
-                heightmapResolution = HeightResolution,
-                alphamapResolution = PaintResolution,
-                baseMapResolution = 512,
+                heightmapResolution = heightResolution,
+                alphamapResolution = paintResolution,
+                baseMapResolution = Mathf.Min(1024, paintResolution),
                 size = recipe.Size,
                 terrainLayers = layers
             };

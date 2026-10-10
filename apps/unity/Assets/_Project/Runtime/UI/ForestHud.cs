@@ -84,6 +84,17 @@ namespace Zhiv.WorldPrototype.UI
             return false;
         }
 
+        public void RegisterPointerPanel(RectTransform panel)
+        {
+            if (panel == null) return;
+            if (pointerPanels != null)
+                foreach (RectTransform existing in pointerPanels)
+                    if (existing == panel) return;
+            int count = pointerPanels != null ? pointerPanels.Length : 0;
+            System.Array.Resize(ref pointerPanels, count + 1);
+            pointerPanels[count] = panel;
+        }
+
         private void Refresh()
         {
             if (interaction == null) return;

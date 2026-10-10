@@ -26,12 +26,12 @@ namespace Zhiv.UnityPrototype.Editor
             }
             if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
             if (File.Exists(ScenePath)) EditorSceneManager.OpenScene(ScenePath);
-            else CreateScene();
+            else ExpandedForestSceneBuilder.CreateForBatch();
         }
 
         public static void CreateForBatch()
         {
-            if (!File.Exists(ScenePath)) CreateScene();
+            ExpandedForestSceneBuilder.CreateForBatch();
         }
 
         private static void CreateScene()

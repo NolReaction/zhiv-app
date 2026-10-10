@@ -19,6 +19,8 @@ namespace Zhiv.WorldPrototype
         [Min(0f)] public float PathDepression = .025f;
         public List<GroundTrail> Trails = new List<GroundTrail>();
         public List<GroundPad> Pads = new List<GroundPad>();
+        [Tooltip("Optional connected sea/river polygons. Empty preserves the original clearing terrain.")]
+        public List<GroundWaterRegion> WaterRegions = new List<GroundWaterRegion>();
     }
 
     [Serializable]
@@ -43,5 +45,17 @@ namespace Zhiv.WorldPrototype
         [Tooltip("World-space Y under the object.")]
         public float Height;
         [Min(.05f)] public float Feather = .8f;
+    }
+
+    [Serializable]
+    public sealed class GroundWaterRegion
+    {
+        public string Name = "Coast";
+        [Tooltip("Simple polygon in world X/Z. Do not repeat the first vertex at the end.")]
+        public List<Vector2> Points = new List<Vector2>();
+        public float WaterHeight = -.25f;
+        public float BedHeight = -1.5f;
+        [Tooltip("Bank transition width on each side of the shoreline, in metres.")]
+        [Min(.1f)] public float BankFeather = 2.5f;
     }
 }

@@ -14,6 +14,11 @@ namespace Zhiv.WorldPrototype
         [SerializeField] private float minimumSize = 4;
         [SerializeField] private float maximumSize = 15;
         [SerializeField] private Vector3 initialFocus;
+        [SerializeField] private bool useTravelBounds;
+        [SerializeField] private Bounds travelBounds;
+        [SerializeField] private bool useCustomOverview;
+        [SerializeField] private Vector3 overviewFocus;
+        [SerializeField] private float overviewSize;
 
         public event Action<Ray> Tapped;
         public Func<Vector2, bool> IsPointerBlocked { get; set; }
@@ -31,6 +36,7 @@ namespace Zhiv.WorldPrototype
         private float suppressMouseUntil;
         private float requestedSize = -1;
         private float lastAspect = -1;
+        private bool overviewActive;
 
         public void Configure(Vector3 initialPoint, Bounds bounds, float size)
         {
@@ -55,12 +61,37 @@ namespace Zhiv.WorldPrototype
             ApplyPose();
         }
 
-        /// <summary>Focuses a ground location at the current zoom, respecting visible terrain bounds.</summary>
+        /// <summary>Limits the camera centre independently of the terrain reserved behind the view.</summary>
+        public void ConfigureTravelBounds(Bounds bounds)
+        {
+            if (!IsFinite(bounds.center) || !IsFinite(bounds.size) || bounds.size.x <= 0 || bounds.size.z <= 0)
+                throw new ArgumentException("Camera travel bounds require finite, positive X/Z dimensions.", nameof(bounds));
+            travelBounds = bounds;
+            useTravelBounds = true;
+            ApplyPose();
+        }
+
+        /// <summary>Enables an explicit wide overview. Selecting a place returns to the authored close view.</summary>
+        public void ConfigureOverview(Vector3 center, float size)
+        {
+            if (!IsFinite(center) || !IsFinite(size) || size <= 0)
+                throw new ArgumentException("Overview requires a finite centre and a positive size.");
+            overviewFocus = center;
+            overviewSize = Mathf.Max(minimumSize, size);
+            useCustomOverview = true;
+        }
+
+        /// <summary>Focuses a place; large worlds return from overview to their authored close zoom.</summary>
         public void FocusOn(Vector3 point)
         {
             if (!IsFinite(point)) throw new ArgumentException("Camera focus must be finite.", nameof(point));
             CancelGesture();
             focus = point;
+            if (useCustomOverview)
+            {
+                overviewActive = false;
+                requestedSize = initialSize;
+            }
             ApplyPose();
         }
 
@@ -69,8 +100,9 @@ namespace Zhiv.WorldPrototype
         {
             CancelGesture();
             EnsureCamera();
-            focus = worldBounds.center;
-            requestedSize = maximumSize;
+            overviewActive = useCustomOverview;
+            focus = useCustomOverview ? overviewFocus : worldBounds.center;
+            requestedSize = useCustomOverview ? overviewSize : maximumSize;
             ApplyPose();
         }
 
@@ -79,6 +111,7 @@ namespace Zhiv.WorldPrototype
             CancelGesture();
             EnsureCamera();
             focus = initialFocus;
+            overviewActive = false;
             requestedSize = initialSize;
             ApplyPose();
         }
@@ -215,7 +248,9 @@ namespace Zhiv.WorldPrototype
         private void ZoomAt(Vector2 point, float size)
         {
             bool hasBefore = GroundPoint(point, out Vector3 before);
-            requestedSize = Mathf.Clamp(size, minimumSize, maximumSize);
+            float limit = overviewActive ? Mathf.Max(maximumSize, overviewSize) : maximumSize;
+            requestedSize = Mathf.Clamp(size, minimumSize, limit);
+            if (requestedSize <= maximumSize) overviewActive = false;
             ApplyPose();
             if (hasBefore && GroundPoint(point, out Vector3 after)) focus += before - after;
             ApplyPose();
@@ -239,8 +274,12 @@ namespace Zhiv.WorldPrototype
             EnsureCamera();
             focus.y = worldBounds.center.y;
             transform.rotation = Quaternion.Euler(45, 45, 0);
-            transform.position = focus - transform.forward * 45;
-            worldCamera.orthographicSize = Mathf.Clamp(requestedSize, minimumSize, maximumSize);
+            float zoomLimit = overviewActive ? Mathf.Max(maximumSize, overviewSize) : maximumSize;
+            worldCamera.orthographicSize = Mathf.Clamp(requestedSize, minimumSize, zoomLimit);
+            // At overview scale a fixed distance would put the bottom orthographic rays below ground.
+            float distance = Mathf.Max(45, worldCamera.orthographicSize * 2 + 30);
+            worldCamera.farClipPlane = Mathf.Max(worldCamera.farClipPlane, distance * 2 + worldBounds.size.y + 20);
+            transform.position = focus - transform.forward * distance;
 
             if (GroundFootprint(out Vector2 minimum, out Vector2 maximum))
             {
@@ -258,9 +297,15 @@ namespace Zhiv.WorldPrototype
                 float maximumX = worldBounds.max.x - (maximum.x - focus.x);
                 float minimumZ = worldBounds.min.z - (minimum.y - focus.z);
                 float maximumZ = worldBounds.max.z - (maximum.y - focus.z);
+                if (useTravelBounds)
+                {
+                    focus.x = Mathf.Clamp(focus.x, travelBounds.min.x, travelBounds.max.x);
+                    focus.z = Mathf.Clamp(focus.z, travelBounds.min.z, travelBounds.max.z);
+                }
+                // Physical containment wins if an authored travel bound lies beyond the terrain.
                 focus.x = ClampOrCenter(focus.x, minimumX, maximumX);
                 focus.z = ClampOrCenter(focus.z, minimumZ, maximumZ);
-                transform.position = focus - transform.forward * 45;
+                transform.position = focus - transform.forward * distance;
             }
             lastAspect = worldCamera.aspect;
         }

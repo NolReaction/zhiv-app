@@ -21,6 +21,12 @@ namespace Zhiv.UnityPrototype.Editor
                 throw new InvalidOperationException("Останови Play перед проверкой сохранённой планировки.");
             Require(EditorSceneManager.GetActiveScene().path == ForestLayoutSceneBuilder.ScenePath,
                 "Open ForestLayout.unity before validating");
+            var expanded = Object.FindFirstObjectByType<ForestWorldMap>();
+            if (expanded != null)
+            {
+                ExpandedForestValidation.ValidateMap(expanded, true);
+                return;
+            }
             GroundValidation.ValidateOpenGround();
             var actor = Object.FindFirstObjectByType<WorldActorController>();
             var navigation = Object.FindFirstObjectByType<GridNavigator>();
