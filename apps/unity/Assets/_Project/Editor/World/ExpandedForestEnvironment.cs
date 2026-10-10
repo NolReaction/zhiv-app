@@ -143,7 +143,7 @@ namespace Zhiv.UnityPrototype.Editor
             return false;
         }
 
-        private static void CreateCoast(Terrain terrain, GroundRecipe recipe, Material material,
+        internal static void CreateCoast(Terrain terrain, GroundRecipe recipe, Material material,
             ExpandedForestEnvironmentResult result, string folder)
         {
             result.Coast = Group("Coast - open water beyond the southern shore", result.Root);
@@ -260,7 +260,7 @@ namespace Zhiv.UnityPrototype.Editor
             }
         }
 
-        private static List<Vector2> CleanPolygon(IReadOnlyList<Vector2> source)
+        internal static List<Vector2> CleanPolygon(IReadOnlyList<Vector2> source)
         {
             var result = new List<Vector2>();
             for (int i = 0; i < source.Count; i++)
@@ -291,7 +291,7 @@ namespace Zhiv.UnityPrototype.Editor
             return result;
         }
 
-        private static List<int> Triangulate(List<Vector2> points)
+        internal static List<int> Triangulate(List<Vector2> points)
         {
             var remaining = new List<int>();
             var result = new List<int>();
@@ -326,7 +326,7 @@ namespace Zhiv.UnityPrototype.Editor
             return result;
         }
 
-        private static Mesh TrianglePrism(Vector2 a, Vector2 b, Vector2 c, float bottom, float top)
+        internal static Mesh TrianglePrism(Vector2 a, Vector2 b, Vector2 c, float bottom, float top)
         {
             var mesh = new Mesh
             {
@@ -342,7 +342,7 @@ namespace Zhiv.UnityPrototype.Editor
             return mesh;
         }
 
-        private static void SaveMesh(Mesh mesh, string folder, string name)
+        internal static void SaveMesh(Mesh mesh, string folder, string name)
         {
             AssetDatabase.CreateAsset(mesh, AssetDatabase.GenerateUniqueAssetPath(folder + "/" + name + ".asset"));
         }

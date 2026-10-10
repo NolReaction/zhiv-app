@@ -20,6 +20,12 @@ namespace Zhiv.UnityPrototype.Editor
             Build(ForestLayoutSceneBuilder.ScenePath, "Builds/ForestWeb");
         }
 
+        [MenuItem("Zhiv/Build Forest Blockout Web", priority = 22)]
+        public static void ForestBlockoutWeb()
+        {
+            Build(ExpandedForestSceneBuilder.BlockoutScenePath, "Builds/ForestBlockoutWeb");
+        }
+
         private static void Build(string scenePath, string outputPath)
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode)

@@ -36,8 +36,16 @@ namespace Zhiv.UnityPrototype.Editor
                 "Native scalable Canvas");
             Require(hud.GetComponentInChildren<ForestMapPanel>(true) != null, "Map panel with place links");
             Require(map.Places != null && map.Places.Length >= 13, "Thirteen saved places");
-            Require(map.TreeCount > 1000 && map.ForestPatchCount > 0 && map.EditableTreeCount > 0,
-                "Both editable forest edges and combined background forest exist");
+            if (map.IsBlockout)
+            {
+                Require(map.TreeCount >= 0 && map.TreeCount <= 96 && map.EditableTreeCount == map.TreeCount &&
+                    map.ForestPatchCount == 0, "Sparse blockout trees are individually editable");
+                Require(recipe.ForestRegions != null && recipe.ForestRegions.Count >= 6 &&
+                    map.ForestRegionCount == recipe.ForestRegions.Count, "Saved forest contours match the blockout");
+            }
+            else
+                Require(map.TreeCount > 1000 && map.ForestPatchCount > 0 && map.EditableTreeCount > 0,
+                    "Both editable forest edges and combined background forest exist");
             ValidateAssets(map);
 
             var curves = new GroundPathMath(recipe);
@@ -97,14 +105,66 @@ namespace Zhiv.UnityPrototype.Editor
                 checkedWater++;
             }
             Require(checkedWater > 0, "Water check samples exist inside the playable boundary");
+            if (map.IsBlockout) ValidateForestInteriors(map, curves, navigation, actor, path);
             Require(!navigation.TryFindPath(actor.transform.position,
                 ExpandedForestDefinition.ToWorld(new Vector2(-80, 0)), path), "Decorative forest is outside walking bounds");
             Require(!navigation.TryFindPath(actor.transform.position, new Vector3(1000, 0, 1000), path),
                 "Outside terrain is unreachable");
-            Debug.Log("ZHIV EXPANDED FOREST VALIDATION PASSED: 280 m terrain, " + map.Places.Length +
+            Debug.Log((map.IsBlockout ? "ZHIV FOREST BLOCKOUT VALIDATION PASSED: " :
+                "ZHIV EXPANDED FOREST VALIDATION PASSED: ") + "280 m terrain, " + map.Places.Length +
                 " places, dry footprints, clear trails, connected arrivals, blocked water/buffer, saved meshes and Canvas. " +
                 "Longest arrival search: " + longestSearch.ToString("F1") + " ms; most expanded cells: " + mostCells +
                 ". Check rendering, camera gestures and frame time in Play and on the target phone.");
+        }
+
+        private static void ValidateForestInteriors(ForestWorldMap map, GroundPathMath curves,
+            GridNavigator navigation, WorldActorController actor, List<Vector3> path)
+        {
+            int checkedRegions = 0;
+            foreach (GroundForestRegion region in map.Ground.Recipe.ForestRegions)
+            {
+                Vector2 min = region.Points[0], max = min;
+                foreach (Vector2 vertex in region.Points)
+                {
+                    min = Vector2.Min(min, vertex);
+                    max = Vector2.Max(max, vertex);
+                }
+                bool sampled = false;
+                // Concave polygons need an actual interior sample, not an average of their vertices.
+                // Keep the point well inside the playable boundary so rejection proves the forest
+                // collision, rather than the already-tested decorative world boundary.
+                for (float z = min.y + 1.5f; z < max.y && !sampled; z += 2f)
+                for (float x = min.x + 1.5f; x < max.x && !sampled; x += 2f)
+                {
+                    var point = new Vector2(x, z);
+                    Vector2 logical = ExpandedForestDefinition.ToMapXZ(point);
+                    Rect playable = ExpandedForestDefinition.PlayableMapBounds;
+                    if (logical.x <= playable.xMin + 2 || logical.x >= playable.xMax - 2 ||
+                        logical.y <= playable.yMin + 2 || logical.y >= playable.yMax - 2 ||
+                        PolygonDistance(point, region.Points) < 1 || !curves.IsForest(point, -1) ||
+                        curves.IsWater(point, 1) || curves.SamplePathWeight(point) > .01f) continue;
+                    Require(!navigation.TryFindPath(actor.transform.position, new Vector3(x, 0, z), path),
+                        "Forest contour interior is blocked: " + region.Name);
+                    sampled = true;
+                    checkedRegions++;
+                }
+            }
+            Require(checkedRegions > 0, "Forest collision samples exist inside the playable boundary");
+        }
+
+        private static float PolygonDistance(Vector2 point, List<Vector2> polygon)
+        {
+            bool inside = false;
+            float minimumSquared = float.MaxValue;
+            for (int i = 0, j = polygon.Count - 1; i < polygon.Count; j = i++)
+            {
+                Vector2 a = polygon[j], b = polygon[i], delta = b - a;
+                float t = Mathf.Clamp01(Vector2.Dot(point - a, delta) / delta.sqrMagnitude);
+                minimumSquared = Mathf.Min(minimumSquared, (point - a - delta * t).sqrMagnitude);
+                if ((a.y > point.y) != (b.y > point.y) &&
+                    point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x) inside = !inside;
+            }
+            return inside ? Mathf.Sqrt(minimumSquared) : -Mathf.Sqrt(minimumSquared);
         }
 
         private static void ValidateAssets(ForestWorldMap map)

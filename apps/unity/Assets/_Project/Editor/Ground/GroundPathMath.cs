@@ -15,11 +15,19 @@ namespace Zhiv.UnityPrototype.Editor
         private readonly List<List<Vector2>> trailCurves = new List<List<Vector2>>();
         private readonly Dictionary<Vector2Int, List<int>> bins = new Dictionary<Vector2Int, List<int>>();
         private readonly List<WaterArea> waterAreas = new List<WaterArea>();
+        private readonly List<ForestArea> forestAreas = new List<ForestArea>();
         private readonly Vector2 noiseOffset;
 
         private sealed class WaterArea
         {
             public GroundWaterRegion Region;
+            public Vector2 Min;
+            public Vector2 Max;
+        }
+
+        private sealed class ForestArea
+        {
+            public GroundForestRegion Region;
             public Vector2 Min;
             public Vector2 Max;
         }
@@ -52,6 +60,18 @@ namespace Zhiv.UnityPrototype.Editor
                         max = Vector2.Max(max, point);
                     }
                     waterAreas.Add(new WaterArea { Region = region, Min = min, Max = max });
+                }
+            if (recipe.ForestRegions != null)
+                foreach (GroundForestRegion region in recipe.ForestRegions)
+                {
+                    Vector2 min = region.Points[0];
+                    Vector2 max = min;
+                    foreach (Vector2 point in region.Points)
+                    {
+                        min = Vector2.Min(min, point);
+                        max = Vector2.Max(max, point);
+                    }
+                    forestAreas.Add(new ForestArea { Region = region, Min = min, Max = max });
                 }
         }
 
@@ -113,42 +133,71 @@ namespace Zhiv.UnityPrototype.Editor
                 if (pad.Height < bottom || pad.Height > top)
                     throw new ArgumentException("Pad height must fit inside the Terrain Y range.");
             }
-            // Missing lists from older serialized recipes are treated as no water.
-            if (recipe.WaterRegions == null) return;
-            if (recipe.WaterRegions.Count > 32)
-                throw new ArgumentException("Ground supports up to 32 water regions.");
-            foreach (GroundWaterRegion region in recipe.WaterRegions)
+            // Optional lists may be missing from older serialized recipes.
+            if (recipe.ForestRegions != null)
             {
-                if (region == null || region.Points == null || region.Points.Count < 3 || region.Points.Count > 256)
-                    throw new ArgumentException("A water region needs a simple polygon with 3..256 vertices.");
-                RequireFinite(region.WaterHeight, "Water height");
-                RequireFinite(region.BedHeight, "Water bed height");
-                RequireFinite(region.BankFeather, "Water bank feather");
-                if (region.BedHeight < bottom || region.BedHeight >= region.WaterHeight ||
-                    region.WaterHeight + .04f > top || region.BankFeather < .1f || region.BankFeather > 32f)
-                    throw new ArgumentException("Water bed must be below its surface within the Terrain height range; bank feather must be .1..32 metres.");
-                double twiceArea = 0;
-                for (int i = 0; i < region.Points.Count; i++)
+                if (recipe.ForestRegions.Count > 32)
+                    throw new ArgumentException("Ground supports up to 32 forest regions.");
+                foreach (GroundForestRegion region in recipe.ForestRegions)
                 {
-                    Vector2 a = region.Points[i];
-                    Vector2 b = region.Points[(i + 1) % region.Points.Count];
-                    RequireFinite(a, "Water polygon point");
-                    RequireNearby(a, recipe, "Water polygon point");
-                    if ((a - b).sqrMagnitude < .0001f)
-                        throw new ArgumentException("Water polygon vertices must be distinct; do not repeat the first vertex.");
-                    twiceArea += (double)a.x * b.y - (double)b.x * a.y;
-                    for (int j = i + 2; j < region.Points.Count; j++)
-                    {
-                        if (i == 0 && j == region.Points.Count - 1) continue;
-                        Vector2 c = region.Points[j];
-                        Vector2 d = region.Points[(j + 1) % region.Points.Count];
-                        if (SegmentsIntersect(a, b, c, d))
-                            throw new ArgumentException("Water polygon edges must not cross or touch themselves.");
-                    }
+                    if (region == null) throw new ArgumentException("A forest region is null.");
+                    RequireFinite(region.Feather, "Forest feather");
+                    if (region.Feather < .1f || region.Feather > 32f)
+                        throw new ArgumentException("Forest feather must be .1..32 metres.");
+                    ValidatePolygon(region.Points, recipe, "Forest");
                 }
-                if (Math.Abs(twiceArea) < .01)
-                    throw new ArgumentException("Water polygon must have a non-zero area.");
             }
+            if (recipe.WaterRegions != null)
+            {
+                if (recipe.WaterRegions.Count > 32)
+                    throw new ArgumentException("Ground supports up to 32 water regions.");
+                foreach (GroundWaterRegion region in recipe.WaterRegions)
+                {
+                    if (region == null) throw new ArgumentException("A water region is null.");
+                    RequireFinite(region.WaterHeight, "Water height");
+                    RequireFinite(region.BedHeight, "Water bed height");
+                    RequireFinite(region.BankFeather, "Water bank feather");
+                    if (region.BedHeight < bottom || region.BedHeight >= region.WaterHeight ||
+                        region.WaterHeight + .04f > top || region.BankFeather < .1f || region.BankFeather > 32f)
+                        throw new ArgumentException("Water bed must be below its surface within the Terrain height range; bank feather must be .1..32 metres.");
+                    ValidatePolygon(region.Points, recipe, "Water");
+                }
+            }
+        }
+
+        private static void ValidatePolygon(List<Vector2> points, GroundRecipe recipe, string name)
+        {
+            if (points == null || points.Count < 3 || points.Count > 256)
+                throw new ArgumentException(name + " region needs a simple polygon with 3..256 vertices.");
+            foreach (Vector2 point in points)
+            {
+                RequireFinite(point, name + " polygon point");
+                RequireNearby(point, recipe, name + " polygon point");
+            }
+            double twiceArea = 0;
+            for (int i = 0; i < points.Count; i++)
+            {
+                Vector2 a = points[i];
+                Vector2 b = points[(i + 1) % points.Count];
+                Vector2 previous = points[(i + points.Count - 1) % points.Count];
+                if ((a - b).sqrMagnitude < .0001f)
+                    throw new ArgumentException(name + " polygon vertices must be distinct; do not repeat the first vertex.");
+                // Adjacent edges may be straight, but cannot double back over one another.
+                if (Mathf.Abs(Cross(previous - a, b - a)) < .0001f &&
+                    Vector2.Dot(previous - a, b - a) > 0f)
+                    throw new ArgumentException(name + " polygon edges must not overlap.");
+                twiceArea += (double)a.x * b.y - (double)b.x * a.y;
+                for (int j = i + 2; j < points.Count; j++)
+                {
+                    if (i == 0 && j == points.Count - 1) continue;
+                    Vector2 c = points[j];
+                    Vector2 d = points[(j + 1) % points.Count];
+                    if (SegmentsIntersect(a, b, c, d))
+                        throw new ArgumentException(name + " polygon edges must not cross or touch themselves.");
+                }
+            }
+            if (Math.Abs(twiceArea) < .01)
+                throw new ArgumentException(name + " polygon must have a non-zero area.");
         }
 
         public float SamplePathWeight(Vector2 point)
@@ -188,7 +237,7 @@ namespace Zhiv.UnityPrototype.Editor
             {
                 float feather = area.Region.BankFeather;
                 if (!NearWaterBounds(point, area, feather)) continue;
-                float distance = SignedWaterDistance(point, area.Region.Points);
+                float distance = SignedPolygonDistance(point, area.Region.Points);
                 if (distance < -feather) continue;
                 float shore = area.Region.WaterHeight + .04f;
                 float carved = distance >= 0f
@@ -205,7 +254,7 @@ namespace Zhiv.UnityPrototype.Editor
         {
             foreach (WaterArea area in waterAreas)
                 if (NearWaterBounds(point, area, Mathf.Max(0f, margin)) &&
-                    SignedWaterDistance(point, area.Region.Points) >= -margin) return true;
+                    SignedPolygonDistance(point, area.Region.Points) >= -margin) return true;
             return false;
         }
 
@@ -217,7 +266,30 @@ namespace Zhiv.UnityPrototype.Editor
             {
                 float feather = area.Region.BankFeather;
                 if (!NearWaterBounds(point, area, feather)) continue;
-                float distance = SignedWaterDistance(point, area.Region.Points);
+                float distance = SignedPolygonDistance(point, area.Region.Points);
+                weight = Mathf.Max(weight, Smooth01((distance + feather) / (2f * feather)));
+            }
+            return weight;
+        }
+
+        /// <summary>Geometric forest footprint. Positive margins expand it; negative margins keep planting inside.</summary>
+        public bool IsForest(Vector2 point, float margin = 0f)
+        {
+            foreach (ForestArea area in forestAreas)
+                if (NearBounds(point, area.Min, area.Max, Mathf.Max(0f, margin)) &&
+                    SignedPolygonDistance(point, area.Region.Points) >= -margin) return true;
+            return false;
+        }
+
+        /// <summary>Paint influence: zero outside the feather, half on the outline, one inside.</summary>
+        public float SampleForestWeight(Vector2 point)
+        {
+            float weight = 0f;
+            foreach (ForestArea area in forestAreas)
+            {
+                float feather = area.Region.Feather;
+                if (!NearBounds(point, area.Min, area.Max, feather)) continue;
+                float distance = SignedPolygonDistance(point, area.Region.Points);
                 weight = Mathf.Max(weight, Smooth01((distance + feather) / (2f * feather)));
             }
             return weight;
@@ -241,6 +313,17 @@ namespace Zhiv.UnityPrototype.Editor
             leafLitter = forestEdge * (.22f + smallNoise * .35f) + padEdge * .15f;
             soil = .025f + Smooth01((smallNoise - .68f) / .3f) * .12f;
             float total = meadow + moss + soil + leafLitter;
+            if (forestAreas.Count > 0)
+            {
+                // Explicit masses replace the old noise-led clearing paint. Keep the open
+                // corridors light and foundations clear even if an outline crosses a pad.
+                float forest = SampleForestWeight(point) * (1f - padWeight);
+                meadow = Mathf.Lerp(.88f, .025f, forest);
+                moss = Mathf.Lerp(.065f, .60f + broadNoise * .08f, forest);
+                soil = Mathf.Lerp(.035f, .045f, forest);
+                leafLitter = Mathf.Lerp(.02f, .33f - broadNoise * .08f, forest);
+                total = meadow + moss + soil + leafLitter;
+            }
             float offTrail = 1f - path;
             meadow = meadow / total * offTrail;
             moss = moss / total * offTrail;
@@ -255,11 +338,16 @@ namespace Zhiv.UnityPrototype.Editor
 
         private static bool NearWaterBounds(Vector2 point, WaterArea area, float margin)
         {
-            return point.x >= area.Min.x - margin && point.x <= area.Max.x + margin &&
-                point.y >= area.Min.y - margin && point.y <= area.Max.y + margin;
+            return NearBounds(point, area.Min, area.Max, margin);
         }
 
-        private static float SignedWaterDistance(Vector2 point, List<Vector2> polygon)
+        private static bool NearBounds(Vector2 point, Vector2 min, Vector2 max, float margin)
+        {
+            return point.x >= min.x - margin && point.x <= max.x + margin &&
+                point.y >= min.y - margin && point.y <= max.y + margin;
+        }
+
+        private static float SignedPolygonDistance(Vector2 point, List<Vector2> polygon)
         {
             bool inside = false;
             float minimumSquared = float.MaxValue;

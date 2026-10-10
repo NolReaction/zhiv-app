@@ -43,7 +43,7 @@ namespace Zhiv.UnityPrototype.Editor
             Place((RectTransform)close.transform, Vector2.one, Vector2.one,
                 new Vector2(-46, -54), new Vector2(-2, -10));
             Text description = Label("Map Description", mapColumn,
-                "Выбери место, чтобы осмотреть его ближе", font, 14, Muted);
+                "Выбери номер на схеме или место в списке ниже", font, 14, Muted);
             Place(description.rectTransform, new Vector2(0, 1), Vector2.one,
                 new Vector2(10, -88), new Vector2(-10, -56));
 
@@ -68,10 +68,12 @@ namespace Zhiv.UnityPrototype.Editor
 
             RectTransform[] markers = new RectTransform[landmarks.Length];
             Text[] labels = new Text[landmarks.Length];
+            Sprite circle = UnityEditor.AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/Knob.psd");
             for (int i = 0; i < landmarks.Length; i++)
             {
                 string name = landmarks[i] != null ? landmarks[i].DisplayName : "Место";
                 Button marker = Button($"Place {i + 1:00}", content, name, font, null);
+                if (circle != null) marker.GetComponent<Image>().sprite = circle;
                 markers[i] = (RectTransform)marker.transform;
                 labels[i] = marker.GetComponentInChildren<Text>();
                 labels[i].fontSize = 12;

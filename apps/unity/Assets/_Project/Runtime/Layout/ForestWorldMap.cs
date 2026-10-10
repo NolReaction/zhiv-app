@@ -8,12 +8,14 @@ namespace Zhiv.WorldPrototype
     {
         public const int CurrentRevision = 2;
         public int Revision = CurrentRevision;
+        public bool IsBlockout;
         public GroundAuthoring Ground;
         public ForestLandmark[] Places;
         public Vector2[] WalkBoundary;
         public int TreeCount;
         public int EditableTreeCount;
         public int ForestPatchCount;
+        public int ForestRegionCount;
 
         private void OnDrawGizmosSelected()
         {

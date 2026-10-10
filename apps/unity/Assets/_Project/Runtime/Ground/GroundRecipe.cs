@@ -21,6 +21,8 @@ namespace Zhiv.WorldPrototype
         public List<GroundPad> Pads = new List<GroundPad>();
         [Tooltip("Optional connected sea/river polygons. Empty preserves the original clearing terrain.")]
         public List<GroundWaterRegion> WaterRegions = new List<GroundWaterRegion>();
+        [Tooltip("Editable forest masses in world X/Z. Empty preserves the original clearing paint.")]
+        public List<GroundForestRegion> ForestRegions = new List<GroundForestRegion>();
     }
 
     [Serializable]
@@ -45,6 +47,16 @@ namespace Zhiv.WorldPrototype
         [Tooltip("World-space Y under the object.")]
         public float Height;
         [Min(.05f)] public float Feather = .8f;
+    }
+
+    [Serializable]
+    public sealed class GroundForestRegion
+    {
+        public string Name = "Forest mass";
+        [Tooltip("Simple polygon in world X/Z. Do not repeat the first vertex at the end.")]
+        public List<Vector2> Points = new List<Vector2>();
+        [Tooltip("Ground-colour transition width on each side of the forest edge, in metres.")]
+        [Min(.1f)] public float Feather = 1.5f;
     }
 
     [Serializable]

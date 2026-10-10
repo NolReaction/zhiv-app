@@ -19,8 +19,10 @@ namespace Zhiv.UnityPrototype.Editor
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode)
                 throw new InvalidOperationException("Останови Play перед проверкой сохранённой планировки.");
-            Require(EditorSceneManager.GetActiveScene().path == ForestLayoutSceneBuilder.ScenePath,
-                "Open ForestLayout.unity before validating");
+            string scenePath = EditorSceneManager.GetActiveScene().path;
+            Require(scenePath == ForestLayoutSceneBuilder.ScenePath ||
+                scenePath == ExpandedForestSceneBuilder.BlockoutScenePath,
+                "Open ForestLayout.unity or ForestBlockout.unity before validating");
             var expanded = Object.FindFirstObjectByType<ForestWorldMap>();
             if (expanded != null)
             {
@@ -98,6 +100,14 @@ namespace Zhiv.UnityPrototype.Editor
         {
             if (!File.Exists(ForestLayoutSceneBuilder.ScenePath)) ForestLayoutSceneBuilder.CreateForBatch();
             EditorSceneManager.OpenScene(ForestLayoutSceneBuilder.ScenePath);
+            ValidateOpenScene();
+        }
+
+        public static void ValidateBlockoutFromBatch()
+        {
+            if (!File.Exists(ExpandedForestSceneBuilder.BlockoutScenePath))
+                ExpandedForestSceneBuilder.CreateBlockoutForBatch();
+            EditorSceneManager.OpenScene(ExpandedForestSceneBuilder.BlockoutScenePath);
             ValidateOpenScene();
         }
 

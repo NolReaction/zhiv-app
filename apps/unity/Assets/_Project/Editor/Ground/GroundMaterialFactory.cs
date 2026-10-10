@@ -24,7 +24,7 @@ namespace Zhiv.UnityPrototype.Editor
         private const float TileMetres = 4f;
         private const string TerrainShaderName = "Universal Render Pipeline/Terrain/Lit";
 
-        public static GroundMaterialSet Create(string assetFolder)
+        public static GroundMaterialSet Create(string assetFolder, bool blockoutPalette = false)
         {
             string folder = ValidateEmptyFolder(assetFolder);
             Shader shader = Shader.Find(TerrainShaderName);
@@ -32,7 +32,19 @@ namespace Zhiv.UnityPrototype.Editor
                 throw new InvalidOperationException("URP Terrain/Lit is unavailable. Wait for URP to finish importing.");
 
             // A shared palette keeps transitions quiet instead of exposing four unrelated tiles.
-            var surfaces = new[]
+            // The contour layout uses deliberate value separation: pale clearings and
+            // paths against dark forest ground. Existing scenes keep their original palette.
+            var surfaces = blockoutPalette ? new[]
+            {
+                new Surface("Meadow", new Color32(141, 158, 102, 255),
+                    new Color32(151, 170, 113, 255), new Color32(124, 144, 90, 255), 17, 0.10f),
+                new Surface("Moss", new Color32(57, 86, 64, 255),
+                    new Color32(73, 101, 71, 255), new Color32(45, 69, 54, 255), 53, 0.12f),
+                new Surface("Soil", new Color32(173, 149, 111, 255),
+                    new Color32(190, 166, 127, 255), new Color32(149, 126, 95, 255), 97, 0.06f),
+                new Surface("LeafLitter", new Color32(65, 82, 56, 255),
+                    new Color32(80, 97, 65, 255), new Color32(48, 65, 44, 255), 151, 0.08f)
+            } : new[]
             {
                 new Surface("Meadow", new Color32(107, 137, 88, 255),
                     new Color32(139, 160, 105, 255), new Color32(75, 110, 69, 255), 17, 0.10f),

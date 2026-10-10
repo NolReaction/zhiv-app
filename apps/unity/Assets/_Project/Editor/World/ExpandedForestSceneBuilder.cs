@@ -16,6 +16,26 @@ namespace Zhiv.UnityPrototype.Editor
     /// <summary>Explicit upgrade with an independent scene backup and entirely new generated assets.</summary>
     public static class ExpandedForestSceneBuilder
     {
+        public const string BlockoutScenePath = "Assets/_Project/Scenes/ForestBlockout.unity";
+
+        [MenuItem("Zhiv/Create or Open Forest Blockout", priority = 3)]
+        public static void CreateOrOpenBlockout()
+        {
+            if (EditorApplication.isPlayingOrWillChangePlaymode)
+            {
+                Debug.LogWarning("Сначала останови Play Mode.");
+                return;
+            }
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+            if (File.Exists(BlockoutScenePath))
+            {
+                EditorSceneManager.OpenScene(BlockoutScenePath);
+                Debug.Log("Открыта ForestBlockout. Повторный вызов сохраняет ручную расстановку и контуры.");
+                return;
+            }
+            CreateScene(null, true, BlockoutScenePath);
+        }
+
         [MenuItem("Zhiv/Expand Forest Layout", priority = 2)]
         public static void Expand()
         {
@@ -52,10 +72,19 @@ namespace Zhiv.UnityPrototype.Editor
             if (!File.Exists(ForestLayoutSceneBuilder.ScenePath)) CreateScene(null);
         }
 
-        private static void CreateScene(string backup)
+        public static void CreateBlockoutForBatch()
+        {
+            if (!File.Exists(BlockoutScenePath)) CreateScene(null, true, BlockoutScenePath);
+        }
+
+        private static void CreateScene(string backup, bool blockout = false,
+            string scenePath = ForestLayoutSceneBuilder.ScenePath)
         {
             string previousPath = SceneManager.GetActiveScene().path;
-            string folder = AssetDatabase.GenerateUniqueAssetPath("Assets/_Project/ExpandedForest");
+            if (blockout && File.Exists(scenePath))
+                throw new InvalidOperationException("Готовая ForestBlockout не заменяется генератором. Открой её через меню Zhiv.");
+            string folder = AssetDatabase.GenerateUniqueAssetPath(blockout
+                ? "Assets/_Project/ForestBlockout" : "Assets/_Project/ExpandedForest");
             EnsureFolder("Assets/_Project/Scenes");
             EnsureFolder(folder);
             foreach (string child in new[] { "Rendering", "Art", "Ground", "Ground/Materials", "Environment" })
@@ -71,13 +100,18 @@ namespace Zhiv.UnityPrototype.Editor
                 // Finish the scene switch and texture imports before creating the ground recipe.
                 Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
                 PrototypeArtSet art = PrototypeArtFactory.Create(folder + "/Art");
-                GroundMaterialSet materials = GroundMaterialFactory.Create(folder + "/Ground/Materials");
-                GroundRecipe recipe = ExpandedForestDefinition.Create(folder + "/Ground");
+                GroundMaterialSet materials = blockout
+                    ? GroundMaterialFactory.Create(folder + "/Ground/Materials", true)
+                    : GroundMaterialFactory.Create(folder + "/Ground/Materials");
+                GroundRecipe recipe = blockout
+                    ? ForestBlockoutDefinition.Create(folder + "/Ground")
+                    : ExpandedForestDefinition.Create(folder + "/Ground");
                 EditorUtility.DisplayProgressBar("Большой лес", "Рельеф, берег и дорожки", .2f);
                 Terrain terrain = GroundTerrainBaker.Create(recipe, folder + "/Ground", materials.Layers, materials.Material, 513, 1024);
                 terrain.name = "Ground Surface — 280 m";
                 var systems = new GameObject("World Systems");
                 var map = systems.AddComponent<ForestWorldMap>();
+                map.IsBlockout = blockout;
                 map.Ground = terrain.GetComponent<GroundAuthoring>();
                 map.WalkBoundary = new[] {
                     ExpandedForestDefinition.ToWorldXZ(new Vector2(-64, -72)),
@@ -88,7 +122,9 @@ namespace Zhiv.UnityPrototype.Editor
                 Transform places = new GameObject("Places — build sites").transform;
                 var landmarks = new List<ForestLandmark>();
                 Transform home = null, workshop = null, shore = null;
-                foreach (ExpandedForestZone zone in ExpandedForestDefinition.Zones)
+                IReadOnlyList<ExpandedForestZone> zones = blockout
+                    ? ForestBlockoutDefinition.Zones : ExpandedForestDefinition.Zones;
+                foreach (ExpandedForestZone zone in zones)
                 {
                     GameObject item = zone.Id == "home" ? Place(art.Home, places) :
                         zone.Id == "workshop" ? Place(art.Workshop, places) : new GameObject(zone.DisplayName);
@@ -116,10 +152,13 @@ namespace Zhiv.UnityPrototype.Editor
                 map.Places = landmarks.ToArray();
                 EditorUtility.DisplayProgressBar("Большой лес", "Лесные массивы и речные рукава", .45f);
                 Transform environment = new GameObject("Environment — forest and coast").transform;
-                ExpandedForestEnvironmentResult result = ExpandedForestEnvironment.Build(terrain, recipe, art, environment, folder + "/Environment");
+                ExpandedForestEnvironmentResult result = blockout
+                    ? ForestBlockoutEnvironment.Build(terrain, recipe, art, environment, folder + "/Environment")
+                    : ExpandedForestEnvironment.Build(terrain, recipe, art, environment, folder + "/Environment");
                 map.TreeCount = result.TreeCount;
                 map.EditableTreeCount = result.EditableTreeCount;
                 map.ForestPatchCount = result.ForestPatchCount;
+                map.ForestRegionCount = recipe.ForestRegions?.Count ?? 0;
 
                 Light sun = CreateLight();
                 var cameraObject = new GameObject("Main Camera");
@@ -155,17 +194,18 @@ namespace Zhiv.UnityPrototype.Editor
                 AssetDatabase.SaveAssets();
                 EditorUtility.DisplayProgressBar("Большой лес", "Проверка мест и проходов перед сохранением", .88f);
                 ExpandedForestValidation.ValidateMap(map, true);
-                if (!EditorSceneManager.SaveScene(scene, ForestLayoutSceneBuilder.ScenePath))
-                    throw new IOException("Не удалось сохранить большую ForestLayout.");
+                if (!EditorSceneManager.SaveScene(scene, scenePath))
+                    throw new IOException("Не удалось сохранить сцену: " + scenePath);
                 var builds = new List<EditorBuildSettingsScene>(EditorBuildSettings.scenes);
-                if (!builds.Exists(entry => entry.path == ForestLayoutSceneBuilder.ScenePath))
+                if (!builds.Exists(entry => entry.path == scenePath))
                 {
-                    builds.Add(new EditorBuildSettingsScene(ForestLayoutSceneBuilder.ScenePath, true));
+                    builds.Add(new EditorBuildSettingsScene(scenePath, true));
                     EditorBuildSettings.scenes = builds.ToArray();
                 }
                 Selection.activeGameObject = systems;
                 SceneView.lastActiveSceneView?.LookAt(home.position, Quaternion.Euler(45, 45, 0), 32);
-                Debug.Log("Большая карта сохранена: игровая область 128×144 м, окружение 280×280 м, 13 мест. " +
+                Debug.Log((blockout ? "Планировка с контурами сохранена в ForestBlockout: " : "Большая карта сохранена: ") +
+                    "игровая область 128×144 м, окружение 280×280 м, " + map.Places.Length + " мест. " +
                     "Нажми Play: свободно тяни карту; кнопка Карта показывает все места. " +
                     (backup == null ? "" : "Прежняя сцена: " + backup));
             }
@@ -175,6 +215,7 @@ namespace Zhiv.UnityPrototype.Editor
                     "Новые ассеты оставлены для диагностики в " + folder);
                 string restore = backup ?? previousPath;
                 if (!string.IsNullOrEmpty(restore) && File.Exists(restore)) EditorSceneManager.OpenScene(restore);
+                else if (blockout) EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
                 throw;
             }
             finally { EditorUtility.ClearProgressBar(); }
@@ -216,6 +257,9 @@ namespace Zhiv.UnityPrototype.Editor
                 case "workshop": return "Мастерская и рабочий двор.";
                 case "quarry": return "Каменоломня и будущий вход в подземелье.";
                 case "garden": return "Сад, кусты и сбор урожая.";
+                case "woodlot": return "Лесной участок: древесина, работа среди деревьев и будущее развитие.";
+                case "shop": return "Лавка Плёски у дороги к рыбацкому берегу.";
+                case "builder-home": return "Дом Шишколапа рядом с дорогой к маяку.";
                 case "upper-pass": return "Верхний проход и будущая зона исследования.";
                 case "east-clearing": return "Восточная поляна под новую постройку.";
                 case "camp": return "Костёр и место встречи персонажей.";

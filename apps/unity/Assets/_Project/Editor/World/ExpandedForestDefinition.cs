@@ -20,16 +20,17 @@ namespace Zhiv.UnityPrototype.Editor
         public readonly bool Reachable;
 
         public ExpandedForestZone(string id, string displayName, Vector2 mapCenter,
-            float clearanceRadius, bool future = false)
+            float clearanceRadius, bool future = false, Vector2? footprint = null)
         {
             Id = id;
             DisplayName = displayName;
             MapCenter = mapCenter;
             Center = ExpandedForestDefinition.ToWorldXZ(mapCenter);
-            // Existing prototype buildings face world -Z. Leave room for future 8 m foundations.
-            Entrance = Center + new Vector2(0, -5.5f);
+            // Existing prototype buildings face world -Z. Compact utility sites need
+            // proportionate approaches rather than an eight-metre building reservation.
+            Footprint = footprint ?? new Vector2(8, 8);
+            Entrance = Center + new Vector2(0, -(Footprint.y * .5f + 1.5f));
             MapEntrance = ExpandedForestDefinition.ToMapXZ(Entrance);
-            Footprint = new Vector2(8, 8);
             ClearanceRadius = clearanceRadius;
             Future = future;
             Reachable = true;
