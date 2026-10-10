@@ -1,0 +1,19 @@
+{
+  "name": "Zhiv.WorldPrototype.Editor",
+  "rootNamespace": "Zhiv.UnityPrototype.Editor",
+  "references": [
+    "Zhiv.WorldPrototype",
+    "Unity.RenderPipelines.Universal.Runtime",
+    "Unity.RenderPipelines.Core.Runtime",
+    "Unity.RenderPipelines.Core.Editor"
+  ],
+  "includePlatforms": ["Editor"],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

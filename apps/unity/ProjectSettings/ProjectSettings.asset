@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!129 &1
+PlayerSettings:
+  m_ObjectHideFlags: 0
+  serializedVersion: 20
+  companyName: Zhiv
+  productName: Zhiv World Prototype
+  defaultScreenOrientation: 0
+  defaultScreenWidth: 900
+  defaultScreenHeight: 1200
+  defaultScreenWidthWeb: 450
+  defaultScreenHeightWeb: 800
+  m_ActiveColorSpace: 1
+  m_MTRendering: 1
+  allowedAutorotateToPortrait: 1
+  allowedAutorotateToPortraitUpsideDown: 0
+  allowedAutorotateToLandscapeRight: 0
+  allowedAutorotateToLandscapeLeft: 0
+  use32BitDisplayBuffer: 1
+  runInBackground: 0
+  resizableWindow: 1
+  macRetinaSupport: 1
+  usePlayerLog: 1
+  activeInputHandler: 0
+  bundleVersion: 0.6.8

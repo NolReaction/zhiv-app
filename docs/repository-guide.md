@@ -16,6 +16,7 @@
 | Стоимость, длительность, награда и требования | [`economy-catalog.json`](../apps/api/src/main/resources/world/economy-catalog.json), [`economy/domain/`](../features/economy/domain/), [`Ktor economy/`](../apps/api/src/main/kotlin/ru/zhiv/economy/) |
 | Потеря ответа экономической команды, повтор, revision | [`features/economy/sync/`](../features/economy/sync/) |
 | Жесты камеры, порядок рисования, перекрытие объектов | [`features/world/scene/`](../features/world/scene/) |
+| Эксперимент с объёмным миром Unity, фиксированной камерой и URP | [`apps/unity/README.md`](../apps/unity/README.md), отдельная ветка `work/0.6.8-unity` |
 | Музыка, громкость, UI-звуки, загрузка записей | [`features/audio/`](../features/audio/README.md), [устройство системы](game/audio-system.md) |
 | Слышимость зданий, Tiled-зоны, звук шагов и занятий | [`features/world/audio/`](../features/world/audio/), [разметка звука](game/audio-system.md#разметка-в-tiled) |
 | Выбор действия Мохлика / конкретное занятие | [`world/simulation/`](../features/world/simulation/) / [`world/activities/`](../features/world/activities/) |

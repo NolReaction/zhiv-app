@@ -1,0 +1,22 @@
+# Unity recreates these caches locally. Keep Assets and their .meta files.
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/[Mm]emoryCaptures/
+/[Rr]ecordings/
+/.vs/
+/.idea/
+/*.csproj
+/*.sln
+/*.slnx
+/*.user
+/*.pidb
+/*.booproj
+/*.suo
+/*.userprefs
+/sysinfo.txt
+/crashlytics-build.properties

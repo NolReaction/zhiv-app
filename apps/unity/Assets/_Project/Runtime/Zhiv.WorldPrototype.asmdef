@@ -1,0 +1,14 @@
+{
+  "name": "Zhiv.WorldPrototype",
+  "rootNamespace": "Zhiv.WorldPrototype",
+  "references": [],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}
