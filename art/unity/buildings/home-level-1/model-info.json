@@ -1,0 +1,22 @@
+{
+  "blender": "4.5.3 LTS",
+  "triangles": 10476,
+  "vertices": 6607,
+  "materials": [
+    "HomeSurface",
+    "HomeGlow"
+  ],
+  "blender_bounds_min": [
+    -1.5121511220932007,
+    -1.7000000476837158,
+    -0.01000000536441803
+  ],
+  "blender_bounds_max": [
+    1.6453735828399658,
+    1.6157325506210327,
+    3.6216049194335938
+  ],
+  "entrance": "Blender -Y; Unity preview aligns DoorAnchor to -Z",
+  "atlas": "1024x1024 sRGB; one opaque atlas; HomeGlow emissive slot",
+  "external_assets": false
+}

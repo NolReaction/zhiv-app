@@ -1,0 +1,23 @@
+fileFormatVersion: 2
+guid: 625d8d72d5ce4ff6ae7acc450f7edc9e
+ModelImporter:
+  externalObjects: {}
+  materials:
+    materialImportMode: 1
+    materialName: 1
+    materialSearch: 1
+    materialLocation: 0
+  animations:
+    importAnimation: 0
+  meshes:
+    globalScale: 1
+    addColliders: 0
+    importCameras: 0
+    importLights: 0
+    bakeAxisConversion: 1
+    useFileScale: 1
+    generateSecondaryUV: 0
+  animationType: 0
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
