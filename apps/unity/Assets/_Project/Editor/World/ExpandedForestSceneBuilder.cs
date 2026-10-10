@@ -21,18 +21,30 @@ namespace Zhiv.UnityPrototype.Editor
         [MenuItem("Zhiv/Create or Open Forest Blockout", priority = 3)]
         public static void CreateOrOpenBlockout()
         {
-            if (EditorApplication.isPlayingOrWillChangePlaymode)
+            Debug.Log("[ForestBlockout] Запущено открытие планировки с контурами. Текущая сцена: " +
+                SceneManager.GetActiveScene().name + ". Цель: " + BlockoutScenePath);
+            if (EditorApplication.isCompiling)
             {
-                Debug.LogWarning("Сначала останови Play Mode.");
+                Debug.LogWarning("[ForestBlockout] Дождись окончания компиляции Unity и повтори открытие.");
                 return;
             }
-            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+            if (EditorApplication.isPlayingOrWillChangePlaymode)
+            {
+                Debug.LogWarning("[ForestBlockout] Сначала останови Play Mode.");
+                return;
+            }
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                Debug.LogWarning("[ForestBlockout] Открытие отменено в диалоге сохранения текущей сцены. Сохрани её и повтори открытие планировки.");
+                return;
+            }
             if (File.Exists(BlockoutScenePath))
             {
                 EditorSceneManager.OpenScene(BlockoutScenePath);
-                Debug.Log("Открыта ForestBlockout. Повторный вызов сохраняет ручную расстановку и контуры.");
+                Debug.Log("[ForestBlockout] Открыта сохранённая планировка с контурами: " + BlockoutScenePath);
                 return;
             }
+            Debug.Log("[ForestBlockout] Сохранённой сцены ещё нет. Начинается создание новой планировки; дождись окончания генерации.");
             CreateScene(null, true, BlockoutScenePath);
         }
 
@@ -52,7 +64,7 @@ namespace Zhiv.UnityPrototype.Editor
                 && existing.gameObject.scene.path == ForestLayoutSceneBuilder.ScenePath)
             {
                 Selection.activeGameObject = existing.gameObject;
-                Debug.Log("Большая карта уже создана. Редактируй эту сцену: повторное Expand не заменяет ручную расстановку.");
+                Debug.Log("Открыта прежняя ForestLayout с плотным лесом. Новую планировку с контурами открой кнопкой в Inspector у World Systems или через Zhiv → Create or Open Forest Blockout. Повторное Expand сохраняет ручную расстановку.");
                 return;
             }
             string backup = null;
@@ -211,7 +223,8 @@ namespace Zhiv.UnityPrototype.Editor
             }
             catch
             {
-                Debug.LogError("Расширение не завершилось. Исправь первую ошибку Console; исходная сцена и её ассеты сохранены. " +
+                Debug.LogError((blockout ? "[ForestBlockout] Создание планировки не завершилось. " : "Расширение не завершилось. ") +
+                    "Исправь первую ошибку Console; исходная сцена и её ассеты сохранены. " +
                     "Новые ассеты оставлены для диагностики в " + folder);
                 string restore = backup ?? previousPath;
                 if (!string.IsNullOrEmpty(restore) && File.Exists(restore)) EditorSceneManager.OpenScene(restore);
