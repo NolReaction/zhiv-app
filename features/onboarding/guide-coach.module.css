@@ -1,5 +1,5 @@
 .coach { position: fixed; z-index: 115; right: 16px; bottom: max(88px, calc(72px + env(safe-area-inset-bottom))); display: flex; flex-direction: column; width: min(360px, calc(100vw - 24px)); max-height: min(540px, calc(100dvh - 112px)); overflow: hidden; border: 1px solid #a7ad84; border-radius: 22px; background: linear-gradient(150deg, #fff6df, #eee3c6); color: #394d3e; box-shadow: 0 10px 32px #07190e36, inset 0 0 0 4px #fff5; isolation: isolate; font-family: Inter, ui-rounded, system-ui, sans-serif; text-align: left; pointer-events: auto; }
-.spotlight { position: fixed; z-index: 114; border: 2px solid #c6e794; border-radius: 15px; box-shadow: 0 0 0 3px #183721a6, 0 0 0 6px #e9f5ca50, 0 0 22px #cbea7d69; pointer-events: none; }
+.spotlight { position: fixed; z-index: 114; box-sizing: border-box; border: 2px solid #c6e794; border-radius: 15px; box-shadow: 0 0 0 3px #183721a6, 0 0 0 6px #e9f5ca50, 0 0 22px #cbea7d69; pointer-events: none; }
 .header { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 0 10px 0 18px; background: #48663b0b; }
 .signature { display: flex; align-items: center; gap: 6px; margin-right: auto; color: #4a6742; font-size: 11px; font-weight: 750; letter-spacing: .025em; }
 .counter { color: #475c3c; font-size: 12px; font-weight: 700; white-space: nowrap; }

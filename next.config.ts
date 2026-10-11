@@ -14,12 +14,16 @@ const securityHeaders = [
   },
 ];
 
-const allowedDevOrigins = (
-    process.env.NEXT_ALLOWED_DEV_ORIGINS ?? ""
-)
+// LAN hosts extend loopback access: dev:lan binds 0.0.0.0, so Next cannot
+// infer 127.0.0.1 from the listening hostname when a local tab uses that URL.
+const allowedDevOrigins = [...new Set([
+  "localhost",
+  "127.0.0.1",
+  ...(process.env.NEXT_ALLOWED_DEV_ORIGINS ?? "")
     .split(",")
     .map((origin) => origin.trim())
-    .filter(Boolean);
+    .filter(Boolean),
+])];
 
 const nextConfig: NextConfig = {
   output: "standalone",

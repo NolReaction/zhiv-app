@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode,
 import { ArrowLeft, ArrowRight, Leaf, Minus, MousePointer2 } from "lucide-react";
 import type { PixelPose } from "@/features/mochlik/pixel-sprite";
 import { GuideCharacter } from "./guide-character";
+import { measureGuideSpotlight, type GuideSpotlight } from "./guide-spotlight";
 import styles from "./guide-coach.module.css";
 
 export type GuideCoachProps = {
@@ -28,7 +29,7 @@ export type GuideCoachProps = {
   children?: ReactNode;
 };
 type Bounds = { left: number; top: number; width: number; height: number };
-type CoachLayout = { key: string; left: number; top: number; highlight: (Bounds & { borderRadius: string }) | null };
+type CoachLayout = { key: string; left: number; top: number; highlight: GuideSpotlight | null };
 const overlapArea = (a: Bounds, b: Bounds) => Math.max(0, Math.min(a.left + a.width, b.left + b.width) - Math.max(a.left, b.left))
   * Math.max(0, Math.min(a.top + a.height, b.top + b.height) - Math.max(a.top, b.top));
 
@@ -59,15 +60,7 @@ export function GuideCoach(props: GuideCoachProps) {
         if (element) resize.observe(element);
         observedTarget = element;
       }
-      const rect = element?.getBoundingClientRect();
-      const visible = rect && rect.width > 0 && rect.height > 0 && rect.bottom > viewportTop && rect.top < viewportTop + height
-        && rect.right > viewportLeft && rect.left < viewportLeft + width;
-      const highlight = visible ? {
-        left: Math.max(viewportLeft + 3, rect.left - 5), top: Math.max(viewportTop + 3, rect.top - 5),
-        width: Math.min(viewportLeft + width - 3, rect.right + 5) - Math.max(viewportLeft + 3, rect.left - 5),
-        height: Math.min(viewportTop + height - 3, rect.bottom + 5) - Math.max(viewportTop + 3, rect.top - 5),
-        borderRadius: element ? window.getComputedStyle(element).borderRadius : "15px",
-      } : null;
+      const highlight = measureGuideSpotlight(element, { left: viewportLeft, top: viewportTop, width, height });
       const bubbleRect = bubble.getBoundingClientRect();
       const left = viewportLeft + 12, right = Math.max(left, viewportLeft + width - bubbleRect.width - 16);
       const top = viewportTop + 12, bottom = Math.max(top, viewportTop + height - bubbleRect.height - 88);
