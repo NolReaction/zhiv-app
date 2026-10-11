@@ -37,13 +37,14 @@ internal fun readEconomyProfile(c: Connection, user: UUID): EconomyProfileRow = 
  * conversion fence even if an administrative gameplay reset removes a profile. */
 internal fun ensureEconomyProfile(c: Connection, user: UUID) {
     if (c.economyRows("SELECT 1 FROM economy_profiles WHERE user_id=?", user) { true }.isNotEmpty()) return
+    val converted = c.economyRows("SELECT 1 FROM economy_conversion_audit WHERE user_id=?", user) { true }.isNotEmpty()
     val inserted = c.economyUpdate("""
         INSERT INTO economy_profiles(user_id,state)
-        SELECT ?,economy_v3_initial_state(CASE WHEN EXISTS(SELECT 1 FROM economy_conversion_audit WHERE user_id=?)
+        SELECT ?,economy_v4_initial_state(CASE WHEN EXISTS(SELECT 1 FROM economy_conversion_audit WHERE user_id=?)
             THEN jsonb_set(coalesce((SELECT state FROM world_profiles WHERE user_id=?),'{}'::jsonb),'{resources}','{"sparks":0,"wood":0,"stone":0}'::jsonb)
-            ELSE coalesce((SELECT state FROM world_profiles WHERE user_id=?),'{}'::jsonb) END)
+            ELSE coalesce((SELECT state FROM world_profiles WHERE user_id=?),'{}'::jsonb) END,?)
         ON CONFLICT DO NOTHING
-    """.trimIndent(), user, user, user, user)
+    """.trimIndent(), user, user, user, user, !converted)
     if (inserted == 1 && EconomyRules.catalog.fishing != null) {
         val state = readEconomyProfile(c, user).state
         val now = c.economyRows("SELECT clock_timestamp()") { it.getObject(1, OffsetDateTime::class.java).toInstant() }.single()
@@ -60,9 +61,15 @@ internal fun ensureEconomyProfile(c: Connection, user: UUID) {
     """.trimIndent(), user, user)
     c.economyUpdate("""
         INSERT INTO economy_ledger(user_id,source_key,kind,coins,items)
-        SELECT user_id,'conversion:v1','legacy_conversion',(state->'wallet'->>'coins')::bigint,state->'inventory'
+        SELECT user_id,'conversion:v1','legacy_conversion',(state->'migration'->>'coinsGranted')::bigint,
+            jsonb_build_object('wood',(state->'migration'->>'woodGranted')::bigint,'stone',(state->'migration'->>'stoneGranted')::bigint)
         FROM economy_profiles WHERE user_id=? ON CONFLICT DO NOTHING
     """.trimIndent(), user)
+    if (inserted == 1 && !converted) EconomyRules.catalog.onboarding?.let { pack ->
+        c.economyUpdate("""INSERT INTO economy_ledger(user_id,source_key,kind,coins,pearls,items)
+            VALUES (?,'starting-pack:v1','starting_pack',?,?,?::jsonb) ON CONFLICT DO NOTHING""",
+            user, pack.startingWallet.coins, pack.startingWallet.pearls, economyJson.encodeToString(pack.startingItems))
+    }
     c.economyUpdate("""UPDATE world_profiles SET state=jsonb_set(state,'{resources}','{"sparks":0,"wood":0,"stone":0}'::jsonb),
         revision=least(9007199254740991,revision+1),updated_at=clock_timestamp()
         WHERE user_id=? AND state->'resources'<>'{"sparks":0,"wood":0,"stone":0}'::jsonb""", user)
@@ -80,7 +87,7 @@ internal fun economyView(c: Connection, user: UUID, publicId: String, now: Insta
     return EconomyView(publicId, row.revision, now.toString(), s.wallet, s.inventory, s.buildings, s.jobs.map(EconomyPublicJobs::project), s.migration,
         EconomyRules.catalog, EconomyRules.storage(s, reservedEconomyMarketItems(c, user)), s.completedExplorations, s.fishing, s.progression, wardrobe = s.wardrobe, fishingShop = s.fishingShop,
         productionSlots = s.productionSlots, food = s.food, residentOrders = s.residentOrders,
-        workshopStarterClaimed = s.workshopStarterClaimed)
+        workshopStarterClaimed = s.workshopStarterClaimed, tutorialOrder = s.tutorialOrder)
 }
 
 /** Save only public action context before a consumed job disappears. In

@@ -6,6 +6,7 @@ import ru.zhiv.economy.ECONOMY_MAX_PEARLS
 import ru.zhiv.economy.ECONOMY_MAX_BALANCE
 import ru.zhiv.economy.ECONOMY_MAX_ITEMS
 import ru.zhiv.economy.EconomyState
+import ru.zhiv.economy.EconomyTutorialOrders
 import ru.zhiv.economy.EconomyRules
 import ru.zhiv.economy.EconomyCollectionProgress
 import ru.zhiv.economy.EconomyRareDrops
@@ -38,7 +39,7 @@ private fun economyStateForReview(c: Connection, user: UUID): EconomyState {
         statement.executeQuery().use { it.next() }
     }
     return EconomyRules.initial(if (converted) 0 else old.resources.sparks, if (converted) 0 else old.resources.wood,
-        if (converted) 0 else old.resources.stone, old.houseLevel, if (old.workshop) maxOf(1,old.workshopLevel) else 0)
+        if (converted) 0 else old.resources.stone, old.houseLevel, if (old.workshop) maxOf(1,old.workshopLevel) else 0, includeStartingPack = !converted)
 }
 
 /** Review is read-only: in particular, it cannot mint a migration grant. */
@@ -98,6 +99,7 @@ internal fun mergeEconomyProfiles(c: Connection, target: UUID, source: UUID) {
         food=EconomyFoodState(a.food.heroMeal ?: b.food.heroMeal, a.food.builderMeal ?: b.food.builderMeal),
         residentOrders=EconomyFood.mergeOrders(a.copy(buildings=buildings),b.copy(buildings=buildings),now),
         workshopStarterClaimed=a.workshopStarterClaimed || b.workshopStarterClaimed,
+        tutorialOrder=EconomyTutorialOrders.merge(a.tutorialOrder,b.tutorialOrder),
         rareDropState=EconomyRareDrops.merge(a.rareDropState,b.rareDropState)), recordAwards=false)
     // Preserve original signatures: an old source browser cannot reuse a consumed request ID.
     c.lifecycleEconomyUpdate("""INSERT INTO economy_commands(user_id,request_id,signature,message,accepted_revision)

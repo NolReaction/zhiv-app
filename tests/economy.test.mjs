@@ -20,33 +20,33 @@ const command = (p, action, targetId, quantity = 1, totalPrice = 0, time = now) 
 const issue = (p, action, targetId, quantity = 1, time = now) => economy.commandDevEconomy(p.token, command(p, action, targetId, quantity, 0, time), time);
 const trade = (p, action, targetId, quantity = 1, totalPrice = 0, time = now) => economy.commandDevEconomyMarket(p.token, command(p, action, targetId, quantity, totalPrice, time), time);
 // Test fixture only: production routes deliberately have no balance or item grant command.
-function fixture(p, { coins = 5000, items = { wood: 30, stone: 30, berries: 30 }, home = 2, completedExplorations = 1, buildings = {} } = {}) {
+function fixture(p, { coins = 5000, pearls = 0, items = { wood: 30, stone: 30, berries: 30 }, home = 2, completedExplorations = 1, buildings = {} } = {}) {
   read(p);
   const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
-  row.state.wallet.coins = coins; row.state.inventory = { ...items }; row.state.buildings.home = home; row.state.completedExplorations = completedExplorations;
+  row.state.wallet = { coins, pearls }; row.state.inventory = { ...items }; row.state.buildings.home = home; row.state.completedExplorations = completedExplorations;
   Object.assign(row.state.buildings, buildings);
   return row;
 }
 
-test("fresh account starts empty with free garden and exploration, cosmetic memory cannot mint goods", () => {
+test("fresh account starts with a fixed supply and keeps garden and exploration free", () => {
   const p = player(), state = read(p);
   assert.equal(model.economyViewSchema.safeParse(state).success, true);
-  assert.deepEqual(state.wallet, { coins: 0, pearls: 0 }); assert.deepEqual(state.inventory, {});
+  assert.deepEqual(state.wallet, { coins: 2500, pearls: 1000 }); assert.deepEqual(state.inventory, { fish: 10, wood: 10, stone: 10 });
   assert.equal(state.buildings.home, 1); assert.equal(state.buildings.garden, 1);
   assert.equal(state.buildings.warehouse, 1); assert.equal(state.buildings.kiln, 0);
-  assert.deepEqual(state.storage, { capacity: 200, used: 0, reserved: 0, available: 200, overflow: 0 });
+  assert.deepEqual(state.storage, { capacity: 200, used: 30, reserved: 0, available: 170, overflow: 0 });
   const grown = issue(p, "start_production", "grow_berries").state.jobs[0];
   const walking = issue(p, "start_exploration", "forest").state.jobs.find(job => job.kind === "exploration");
-  assert.deepEqual(read(p).inventory, {});
+  assert.deepEqual(read(p).inventory, state.inventory);
   const returnedAt = Date.parse(walking.finishesAt);
   issue(p, "claim_job", walking.id, 1, returnedAt);
   const collecting = issue(p, "start_collection", grown.id, 1, returnedAt).state.jobs[0];
   const collected = issue(p, "claim_job", grown.id, 1, Date.parse(collecting.collection.finishesAt)).state;
-  const expected = { ...grown.rewards };
+  const expected = { ...state.inventory, ...grown.rewards };
   for (const [item, amount] of Object.entries(walking.rewards)) expected[item] = (expected[item] ?? 0) + amount;
   assert.deepEqual(collected.inventory, expected);
   assert.equal(collected.completedExplorations, 1);
-  assert.deepEqual(issue(p, "sell", "berries", expected.berries).state.wallet, { coins: rules.economyLocalSellPrice(model.economyCatalog.items.find(item => item.id === "berries").baseSellPrice, expected.berries, model.economyCatalog.localBuyer), pearls: 0 });
+  assert.deepEqual(issue(p, "sell", "berries", expected.berries).state.wallet, { coins: state.wallet.coins + rules.economyLocalSellPrice(model.economyCatalog.items.find(item => item.id === "berries").baseSellPrice, expected.berries, model.economyCatalog.localBuyer), pearls: state.wallet.pearls });
 });
 
 test("new quarry and workshop furnace need home two before spending, while starter gathering stays free", () => {
@@ -59,7 +59,7 @@ test("new quarry and workshop furnace need home two before spending, while start
   }
   const p = player(), fresh = read(p);
   assert.equal(fresh.buildings.quarry, 0); assert.equal(fresh.buildings.kiln, 0);
-  assert.equal(issue(p, "start_production", "grow_berries").state.wallet.coins, 0);
+  assert.deepEqual(issue(p, "start_production", "grow_berries").state.wallet, fresh.wallet);
   const forest = issue(p, "start_exploration", "forest").state.jobs.find(job => job.kind === "exploration");
   assert.ok(forest.rewards.stone > 0, "free starter exploration remains an early source of building stone");
   assert.deepEqual(forest.cost, { coins: 0, items: {} });
@@ -67,6 +67,7 @@ test("new quarry and workshop furnace need home two before spending, while start
 
 test("an empty account reaches home two with bush and forest goods before opening the quarry and furnace", () => {
   const p = player();
+  fixture(p, { coins: 0, items: {}, home: 1, completedExplorations: 0 });
   let clock = now;
   const complete = (action, targetId, quantity = 1) => {
     const started = issue(p, action, targetId, quantity, clock).state;
@@ -161,7 +162,8 @@ test("legacy conversion is modest, monotonic and capped for safe-integer beta ba
     { version: 1, coinsGranted: 5000, woodGranted: 30, stoneGranted: 30 });
   const initial = rules.newEconomyState({ resources: { sparks: 100, wood: 25, stone: 9 }, houseLevel: 5, workshopLevel: 3 });
   assert.equal(initial.buildings.home, 5); assert.equal(initial.buildings.workshop, 3);
-  assert.equal(initial.wallet.pearls, 0);
+  assert.deepEqual(initial.wallet, { coins: 2780, pearls: 1000 });
+  assert.deepEqual(initial.inventory, { fish: 10, wood: 15, stone: 13 });
 });
 
 test("the browser accepts explicit nullable Kotlin catalog fields and validates warehouse capacity", () => {
@@ -264,12 +266,12 @@ test("one explorer, receipts, stale revisions and foreign owners cannot duplicat
 });
 
 test("commands reject public minting, untrusted counts and unknown fields", () => {
-  const p = player(), base = command(p, "sell", "berries");
+  const p = player(), base = command(p, "sell", "berries"), before = read(p);
   for (const quantity of [0, -1, 1.5, "2", 10001, NaN, Infinity])
     assert.throws(() => economy.commandDevEconomy(p.token, { ...base, quantity }, now), { code: "INVALID_ECONOMY_COMMAND" });
   for (const patch of [{ action: "grant_pearls" }, { coins: 1000 }, { rewards: { berries: 999 } }, { totalPrice: -1 }, { action: "claim_job", quantity: 2 }])
     assert.throws(() => economy.commandDevEconomy(p.token, { ...base, ...patch }, now), { code: "INVALID_ECONOMY_COMMAND" });
-  assert.deepEqual(read(p).wallet, { coins: 0, pearls: 0 });
+  assert.deepEqual(read(p), before);
   assert.throws(() => economy.getDevEconomy(undefined, now), { code: "UNAUTHORIZED" });
 });
 

@@ -5,6 +5,7 @@ import { CircleHelp } from "lucide-react";
 import { GuideCoach } from "./guide-coach";
 import { sectionGuideCanOpen, sectionGuideLessons, transitionSectionGuide, type SectionGuideEvent, type SectionGuideId } from "./section-guide-model";
 import { createSectionGuideStore } from "./section-guide-storage";
+import { requestSectionGuideNavigation } from "./section-guide-navigation";
 import styles from "./section-guide.module.css";
 
 export type SectionGuideProps = {
@@ -92,6 +93,7 @@ export function SectionGuide({ owner, section, enabled, targetRoot, inline = tru
   };
   const showTarget = () => {
     const root = targetRoot?.current ?? host.current?.parentElement;
+    if (root && step.navigation && requestSectionGuideNavigation(root, step.navigation, step.id)) return;
     const target = currentTarget && root?.querySelector<HTMLElement>(currentTarget);
     if (target) target.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "auto" });
   };
@@ -101,7 +103,7 @@ export function SectionGuide({ owner, section, enabled, targetRoot, inline = tru
       progress={{ current: index + 1, total: steps.length }} onPause={() => apply("pause")} onSkip={() => apply("skip")}
       onBack={index > 0 ? () => apply("back") : undefined}
       primary={{ label: index === steps.length - 1 ? "Понятно" : "Дальше", onClick: () => apply("next") }}
-      secondary={currentTarget ? { label: "Показать", onClick: showTarget } : undefined} />
+      secondary={currentTarget || step.navigation ? { label: step.showLabel ?? "Показать", onClick: showTarget } : undefined} />
       : <button ref={launcher} type="button" className={styles.launcher} onClick={() => apply(state.progress?.status === "paused" ? "resume" : "replay")}><CircleHelp size={15} aria-hidden="true" />{state.progress?.status === "paused" ? "Продолжить подсказку" : "Что здесь делать?"}</button>)}
   </div>;
 }

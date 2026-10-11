@@ -1,11 +1,14 @@
 import type { PixelPose } from "@/features/mochlik/pixel-sprite";
+import type { NavigableGuideSection } from "./section-guide-navigation";
 
-export const sectionGuideIds = ["pantry", "market", "plesk", "orders", "expeditions", "workshop", "builder"] as const;
+export const sectionGuideIds = ["pantry", "market", "plesk", "orders", "meals", "expeditions", "workshop", "builder"] as const;
 export type SectionGuideId = typeof sectionGuideIds[number];
 export type SectionGuideStep = {
   id: string; title: string; summary: string; text: string; pose: PixelPose;
   /** First mounted, visible candidate wins; later candidates are navigation controls. */
   targets: readonly string[];
+  navigation?: NavigableGuideSection;
+  showLabel?: string;
 };
 export type SectionGuideProgress = {
   version: 1;
@@ -39,15 +42,26 @@ export const sectionGuideLessons: Record<SectionGuideId, readonly SectionGuideSt
       text: "Продажа другим игрокам может занять время. Новые предложения появляются у соседей при смене витрины. Если передумал, открой «Мои лоты» и верни товар. Обмен особыми материалами находится в отдельном разделе: там одну находку меняют на другую." },
   ],
   plesk: [
-    { id: "rods", title: "Снасти для рыбалки", pose: "fish", targets: ['[data-guide-plesk-offer="rod"]', '[data-guide-plesk-tab="tackle"]'],
-      summary: "В «Лавке» выбери удочку: карточка покажет, как она меняет шансы улова.",
+    { id: "rods", title: "Снасти меняют улов", pose: "fish", navigation: "plesk", showLabel: "Показать шансы", targets: ['[data-guide-plesk-detail="rod"] [data-guide-plesk-odds]', '[data-guide-plesk-offer="rod"]', '[data-guide-plesk-tab="tackle"]'],
+      summary: "Удочки и крючки остаются навсегда. Сравни проценты в «Шансах»: дорогая снасть не лучше для каждой рыбы.",
       text: "Удочки и крючки остаются навсегда. Они влияют на шансы особой рыбы; у некоторых видов есть требования к снастям. Покупка добавляет снасть в коллекцию. Выбрать её для вылазки можно перед отправлением на рыбалку." },
-    { id: "bait", title: "Наживка на одну вылазку", pose: "hold", targets: ['[data-guide-plesk-offer="bait"]', '[data-guide-plesk-tab="tackle"]'],
-      summary: "Наживка меняет шансы улова и расходуется: одна на рыболовную вылазку.",
+    { id: "bait", title: "Что даёт наживка?", pose: "hold", navigation: "plesk", showLabel: "Показать наживку", targets: ['[data-guide-plesk-detail="bait"] [data-guide-plesk-odds]', '[data-guide-plesk-offer="bait"]', '[data-guide-plesk-tab="tackle"]'],
+      summary: "Наживка меняет шансы рыбы. Выбери её перед походом: уйдёт 1 штука на всю вылазку. Без неё тоже можно ловить.",
       text: "Открой наживку на прилавке и сравни шансы в её карточке. Запас наживок хранится в кладовой. Перед отправлением выбери наживку в снастях; можно рыбачить и без неё. Для знакомства покупать ничего не нужно." },
-    { id: "catch", title: "Плёска покупает улов", pose: "present", targets: ["[data-guide-plesk-sale]", '[data-guide-plesk-panel="fish"]', '[data-guide-plesk-tab="fish"]'],
+    { id: "catch", title: "Плёска покупает улов", pose: "present", navigation: "plesk", showLabel: "Показать улов", targets: ["[data-guide-plesk-sale]", '[data-guide-plesk-panel="fish"]', '[data-guide-plesk-tab="fish"]'],
       summary: "Открой «Улов»: выбери пойманную рыбу, количество и продай её Плёске.",
       text: "После получения рыболовной вылазки рыба появится в кладовой и на вкладке «Улов». Здесь видно цену продажи. Рыба также нужна для еды и заказов — перед продажей реши, сколько оставить. Кнопка «На рыбалку» открывает маршруты и выбор снастей." },
+  ],
+  meals: [
+    { id: "hero", title: "Обед — это бонус скорости", pose: "hold", navigation: "meals", showLabel: "Еда для Мохлика", targets: ['[data-guide-meal-list="hero"] [data-meal]', '[data-guide-meal-consumer="hero"]'],
+      summary: "Накорми Мохлика перед вылазкой или рыбалкой — он вернётся быстрее. Процент бонуса указан у каждого блюда.",
+      text: "Это бафф: готовая еда временно ускоряет действие. Нажми «Съесть», когда решишь потратить одну порцию. Бонус дождётся следующей вылазки и не исчезнет вне игры. Во время похода накормить Мохлика уже нельзя; улов и шансы рыбы от обеда не меняются." },
+    { id: "builder", title: "Шишколап тоже любит поесть", pose: "present", navigation: "meals", showLabel: "Еда для строителя", targets: ['[data-guide-meal-list="builder"] [data-meal]', '[data-guide-meal-consumer="builder"]'],
+      summary: "Переключись на Шишколапа: его обед ускоряет следующую стройку или остаток уже начатой.",
+      text: "У каждого блюда свой бонус для строителя — смотри процент в карточке. «Угостить» расходует одну порцию. Повторный обед не складывает бонусы, а готовую стройку ускорять уже не нужно." },
+    { id: "portion", title: "Одна порция — один бонус", pose: "wonder", navigation: "meals", showLabel: "Показать блюда", targets: ["[data-guide-meal-action]", "[data-guide-meal-note]"],
+      summary: "«Съесть» или «Угостить» тратит 1 блюдо. Нет готовой еды? «Готовить» откроет нужный рецепт.",
+      text: "Сначала приготовь блюдо и забери его в кладовую, затем выбери получателя. Один подготовленный обед сохраняется до использования, два бонуса одновременно не складываются. Кнопка «Еда» рядом с таймером вылазки или стройки также покажет бонус и новое время до кормления." },
   ],
   orders: [
     { id: "requirements", title: "Разберём один заказ", pose: "wonder", targets: ["[data-guide-order-requirements]", "[data-order-id]"],

@@ -24,10 +24,11 @@ test("the book has three chapters with permanent finds and every current fish sp
 
 test("legacy forest ownership and new finds combine without duplicate progress or new resources", () => {
   const economy = fresh(); economy.progression.collections.finds = ["acorn", "feather", "quartz_cluster"];
+  const inventory = structuredClone(economy.inventory);
   const travel = book.collectionBookEntries("travel", ["acorn", "winged_seed", "river_pearl", "unknown"], economy);
   assert.deepEqual(travel.filter(entry => entry.owned).map(entry => entry.id), ["acorn", "feather", "winged_seed"]);
   assert.deepEqual(book.collectionBookEntries("quarry", [], economy).filter(entry => entry.owned).map(entry => entry.id), ["quartz_cluster"]);
-  assert.deepEqual(economy.inventory, {});
+  assert.deepEqual(economy.inventory, inventory);
 });
 
 test("fish ownership in inventory never fills a chapter but verified catches survive sale", () => {

@@ -37,6 +37,7 @@ const itemName = (id: string) => economyCatalog.items.find(item => item.id === i
 export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelpTopic[] {
   void _legacyRebuilding;
   const food = economyCatalog.food;
+  const onboarding = economyCatalog.onboarding;
   const firstWorkshop = economyCatalog.buildings.find(building => building.id === "workshop")?.levels.find(level => level.level === 1);
   const legendaryChance = economyCatalog.fishing ? fishingOdds({}, economyCatalog.fishing,
     { rodId: "starfall_rod", hookId: "leviathan_hook", baitId: "firefly_bait" })
@@ -49,13 +50,32 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
       steps: [
         "Откройте «Ещё» → «Обучение»: Мохлик проведёт короткую прогулку. В разделах есть отдельные знакомства; повторить их можно через «Что здесь делать?».",
         "Нажмите ягодный куст → выберите урожай → «Начать». Первый урожай бесплатный.",
-        "Пока ягоды растут, познакомьтесь с Плёской и Шишколапом, посмотрите заказы и план мастерской. Разговаривать, покупать и начинать стройку сейчас необязательно.",
+        "Пока ягоды растут, получите ингредиенты для учебного заказа и отдайте его Шишколапу. Затем посмотрите план мастерской; набор для неё выдаётся отдельно.",
         "Когда урожай созреет и Мохлик будет свободен, нажмите «Собрать» у ягод. После сбора они окажутся в кладовой.",
       ],
       note: "Прогулка рассчитана примерно на 3–5 минут без ожидания таймеров. Работы идут и в закрытой игре; готовые запасы ждут вас и не портятся.",
       action: { label: "К ягодному кусту", target: { kind: "station", stationId: "garden" } },
       relatedIds: ["controls", "production", "construction", ...(firstWorkshop ? ["workshop-starter"] : [])],
     },
+    ...(onboarding ? [{
+      id: "starting-pack", group: "start", title: "Что есть в начале игры?", summary: "Первые припасы и деньги уже на полянке",
+      keywords: "начало старт новичок подарок набор рыба камень дерево древесина монеты жемчуг",
+      paragraphs: [`Новое хозяйство получает ${onboarding.startingWallet.coins} монет, ${formatPearls(onboarding.startingWallet.pearls)} жемчужин и припасы: ${Object.entries(onboarding.startingItems).map(([id, count]) => `${itemName(id)} × ${count}`).join(", ")}. Откройте кладовую, чтобы их посмотреть.`],
+      note: "Это старт нового хозяйства. Повтор обучения не пополняет запасы. Ингредиенты учебного заказа и набор первой мастерской можно получить отдельно в обучении.",
+      action: { label: "Открыть кладовую", target: { kind: "pantry" } },
+      relatedIds: ["start", "tutorial-order", "workshop-starter"],
+    }, {
+      id: "tutorial-order", group: "start", title: "Где взять ингредиенты для практики?", summary: "Ингредиенты → заказ Шишколапа → монеты",
+      keywords: "учебный обучение практика ингредиенты бесплатно шишколап получить ягоды древесина",
+      steps: [
+        "Откройте «Ещё» → «Обучение» и дойдите до заказов. Нажмите «Получить ингредиенты»; в кладовой должно быть место.",
+        `В учебном заказе нужны ${Object.entries(onboarding.residentOrder.items).map(([id, count]) => `${itemName(id)} × ${count}`).join(", ")}. Подсказка выдаёт их один раз; затем нажмите «Показать учебный заказ».`,
+        `Проверьте карточку и нажмите «Отдать заказ»: ингредиенты спишутся, а ${onboarding.residentOrder.coins} монет поступят в кошелёк. Заказ можно оставить на потом — срока нет.`,
+      ],
+      note: "Повтор обучения не выдаёт ингредиенты или награду заново. Если вы уже потратили припасы, для сдачи нужно собрать недостающее. Обычные заказы продолжают работать отдельно.",
+      action: { label: "Посмотреть заказы", target: { kind: "food", tab: "orders" } },
+      relatedIds: ["resident-orders", "resources", "workshop-starter"],
+    }] satisfies WorldHelpTopic[] : []),
     {
       id: "controls", group: "start", title: "Как управлять картой?", summary: "Передвинуть, приблизить и найти Мохлика",
       keywords: "карта телефон мышь клавиатура масштаб зум увеличить уменьшить потерялся найти мохлика выйти назад",
@@ -277,7 +297,8 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
       steps: [
         "Нажмите Плёску или её прилавок на карте. Ещё один вход: «Ещё» → «Персонажи» → «Плёска».",
         "В «Лавке» купите снасти, наживку или рыбу. Удочки и крючки остаются навсегда и не занимают кладовую; одна наживка расходуется на весь поход.",
-        "В «Улове» продайте рыбу по полной базовой цене. В «Книге» смотрите свои пойманные виды и собранные снасти.",
+        "В подсказке «Что здесь делать?» нажмите «Показать шансы»: откроется снасть и таблица вероятностей. Наживка необязательна; сравните её влияние до покупки.",
+        "В «Улове» продайте рыбу по полной базовой цене. В «Книге» смотрите пойманные виды и снасти.",
       ],
       note: `Поставка меняется каждые ${(economyCatalog.fishing?.shop.refreshSeconds ?? 21600) / 3600} часов; досрочное обновление тратит жемчуг. Редкие снасти чаще появляются с ростом дома, легендарные — начиная с дома 4. Рыбалка самой Плёски не приносит вам добычу.`,
       action: { label: "Поговорить с Плёской", target: { kind: "resident", residentId: "plesk" } },
@@ -354,13 +375,13 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
         keywords: "заказ заказы доска заказчик плёска шишколап монеты награда сменить заменить обновить повторы жемчуг",
         steps: [
           "Откройте «Еда и заказы» → «Заказы». Карточка показывает жителя, его просьбу, ваши запасы и награду. Фильтр оставит нужного заказчика.",
-          "Нажмите «Выполнить»: товары спишутся, монеты придут, а карточка сразу сменится новой — без ожидания. До выполнения товары не резервируются.",
+          "Нажмите «Отдать заказ»: товары спишутся, монеты придут, а обычная карточка сразу сменится новой — без ожидания. До выполнения товары не резервируются.",
           "После улучшения дома новые просьбы становятся крупнее и выгоднее. Появляются товары, всю цепочку получения которых вы уже открыли; условия выданных карточек не меняются до их смены.",
           `Не подходит? Первые ${food.orders.freeReplacements} замены за ${food.orders.replacementWindowSeconds / 3600} ч бесплатны, затем каждая стоит ${formatPearls(food.orders.replacementPricePearls)} жемчужин с подтверждением. Новый заказ доступен сразу.`,
         ],
         note: `На доске ${food.orders.slots} заказа, обновление каждые ${food.orders.refreshSeconds / 3600} ч. Одновременных повторов нет, недавние просьбы откладываются. Заказы дают только монеты, не сытость. Пропуск без штрафов.`,
         action: { label: "Посмотреть заказы", target: { kind: "food", tab: "orders" } },
-        relatedIds: ["campfire", "food", "resources"],
+        relatedIds: ["tutorial-order", "campfire", "food", "resources"],
       },
     ] satisfies WorldHelpTopic[] : []),
     {

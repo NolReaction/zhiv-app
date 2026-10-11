@@ -3,6 +3,7 @@ import { PleskPortrait } from "@/features/world/characters/plesk/plesk-portrait"
 import { BuilderPortrait } from "@/features/world/characters/builder/builder-portrait";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import { workshopStarterCost } from "@/features/economy/domain/workshop-starter";
+import { tutorialResidentOrder } from "@/features/economy/domain/tutorial-order";
 import styles from "./world-onboarding.module.css";
 
 export function WorldNeighborCards({ onOpenResident }: { onOpenResident: (id: "plesk" | "builder") => void }) {
@@ -30,6 +31,20 @@ export function WorkshopStarterContents({ economy, onOpenPantry }: { economy: Ec
         ` · ${snapshot.catalog.items.find(item => item.id === id)?.name ?? id}: ${amount}`).join("")}</small>
     </span>
   </div>{onOpenPantry && <button type="button" className={styles.retry} onClick={onOpenPantry}>Открыть кладовую</button>}</>;
+}
+
+/** The lesson shows the exact grant; only the server confirms it was received. */
+export function TutorialOrderContents({ economy, onOpenPantry }: { economy: EconomyController; onOpenPantry?: () => void }) {
+  const snapshot = economy.snapshot;
+  if (!snapshot) return null;
+  const order = tutorialResidentOrder(snapshot);
+  if (!order) return null;
+  return <><div className={styles.starter} data-guide-order-starter>
+    <Gift size={18} aria-hidden="true" />
+    <span><strong>Ингредиенты для учебного заказа</strong>
+      <small>{Object.entries(order.items).map(([id, amount]) => `${snapshot.catalog.items.find(item => item.id === id)?.name ?? id}: ${amount}`).join(" · ")}</small>
+    </span>
+  </div>{onOpenPantry && <button type="button" className={styles.retry} onClick={onOpenPantry}>Освободить место в кладовой</button>}</>;
 }
 
 export function WorkshopRetry({ economy, isOnline }: { economy: EconomyController; isOnline?: boolean }) {

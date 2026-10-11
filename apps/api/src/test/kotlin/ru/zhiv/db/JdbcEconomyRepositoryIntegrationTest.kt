@@ -504,7 +504,7 @@ class JdbcEconomyRepositoryIntegrationTest {
         val results = coroutineScope { List(2) { async(Dispatchers.IO) { JdbcEconomyRepository(source).command(p.hash, sale) } }.awaitAll() }
         assertEquals(1, results.count { it.replayed })
         val sold = economy.snapshot(p.hash)
-        assertEquals(50L, sold.wallet.coins)
+        assertEquals(before.wallet.coins + 50L, sold.wallet.coins)
         assertEquals(6L, sold.inventory["berries"])
         assertEquals("1", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='sell'", p.id))
         assertEquals("50", scalar("SELECT coins FROM economy_ledger WHERE user_id=? AND kind='sell'", p.id))
@@ -512,7 +512,7 @@ class JdbcEconomyRepositoryIntegrationTest {
             economy.command(p.hash, sale.copy(totalPrice = 40))
         }.code)
         val specialist = economy.command(p.hash, command(p, sold, "sell_fish", "fish", 2)).state
-        assertEquals(210L, specialist.wallet.coins)
+        assertEquals(before.wallet.coins + 210L, specialist.wallet.coins)
         assertTrue(specialist.fishing.catches.isEmpty())
     }
 
@@ -703,7 +703,7 @@ class JdbcEconomyRepositoryIntegrationTest {
         assertTrue(acknowledged.replayed)
         assertEquals(1L, acknowledged.acceptedRevision)
         assertEquals(sold.revision, acknowledged.state.revision)
-        assertEquals(EconomyRules.localSellPrice(EconomyRules.catalog.items.single { it.id == "berries" }.baseSellPrice, berryCount), acknowledged.state.wallet.coins)
+        assertEquals(initial.wallet.coins + EconomyRules.localSellPrice(EconomyRules.catalog.items.single { it.id == "berries" }.baseSellPrice, berryCount), acknowledged.state.wallet.coins)
         assertEquals("4", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND source_key LIKE 'command:%'", p.id))
     }
 
@@ -735,7 +735,7 @@ class JdbcEconomyRepositoryIntegrationTest {
         val claimed = coroutineScope { List(2) { async(Dispatchers.IO) { JdbcEconomyRepository(source).command(p.hash, claim) } }.awaitAll() }
         assertEquals(1, claimed.count { it.replayed })
         val delivered = economy.snapshot(p.hash)
-        assertEquals(job.rewards, delivered.inventory)
+        assertEquals(collecting.inventory + job.rewards, delivered.inventory)
         assertTrue(delivered.jobs.isEmpty())
         assertEquals(collecting.revision + 1, delivered.revision)
         val replayedStart = economy.command(p.hash, start)
@@ -857,22 +857,22 @@ class JdbcEconomyRepositoryIntegrationTest {
         assertEquals(0L, after.wallet.pearls)
         assertEquals(2, after.buildings["home"])
         assertTrue(after.jobs.isEmpty())
-        assertEquals("0", scalar("SELECT sum(pearls) FROM economy_ledger WHERE user_id=?", p.id))
+        assertEquals("0", scalar("SELECT sum(pearls) FROM economy_ledger WHERE user_id=? AND source_key LIKE 'command:%'", p.id))
     }
 
-    @Test fun `new legacy account lazy conversion matches immutable SQL and never repeats after reopening`() = runBlocking<Unit> {
+    @Test fun `new legacy account receives starting supplies plus conversion and neither repeats after reopening`() = runBlocking<Unit> {
         val p = player()
         val legacy = WorldState(resources = WorldResources(900, 81, 49), houseLevel = 4, workshop = true, workshopLevel = 2,
             inventory = listOf("moss", "amber_scarf", "explorer_cap"), collection = listOf("acorn"))
         execute("INSERT INTO world_profiles(user_id,state) VALUES (?,?::jsonb)", p.id, worldJson.encodeToString(legacy))
         val result = economy.snapshot(p.hash)
-        assertEquals(760L, result.wallet.coins)
-        assertEquals(mapOf("wood" to 9L, "stone" to 7L), result.inventory)
+        assertEquals(EconomyWallet(3260, 1000), result.wallet)
+        assertEquals(mapOf("fish" to 10L, "wood" to 19L, "stone" to 17L), result.inventory)
         assertEquals(4, result.buildings["home"])
         assertEquals(2, result.buildings["workshop"])
         assertEquals(1, result.buildings["warehouse"])
         assertEquals(0, result.buildings["kiln"])
-        assertEquals(EconomyStorage(200, 16, 0, 184, 0), result.storage)
+        assertEquals(EconomyStorage(200, 46, 0, 154, 0), result.storage)
         assertEquals("900", scalar("SELECT legacy_sparks FROM economy_conversion_audit WHERE user_id=?", p.id))
         assertEquals("0", scalar("SELECT state->'resources'->>'sparks' FROM world_profiles WHERE user_id=?", p.id))
         assertEquals(legacy.inventory, JdbcWorldRepository(source).snapshot(p.hash).state.inventory)
@@ -1097,7 +1097,10 @@ class JdbcEconomyRepositoryIntegrationTest {
         assertTrue(after.jobs.isEmpty())
         assertEquals(before.revision + 1, after.revision)
         assertEquals(before.wallet, after.wallet)
-        assertEquals(if (winner.action == "claim_job") savedRewards else before.inventory, after.inventory)
+        val expectedInventory = if (winner.action == "claim_job")
+            before.inventory + savedRewards.mapValues { (id, amount) -> (before.inventory[id] ?: 0L) + amount }
+            else before.inventory
+        assertEquals(expectedInventory, after.inventory)
         assertEquals(if (winner.action == "claim_job") 1L else 0L, after.completedExplorations)
         assertEquals("1", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind IN ('claim_job','cancel_exploration')", p.id))
         assertEquals("0", scalar("SELECT count(*) FROM economy_commands WHERE user_id=? AND request_id=?", p.id, UUID.fromString(loser.first.requestId)))

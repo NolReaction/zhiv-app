@@ -230,14 +230,15 @@ test("another device owning the forest suppresses quick and modal section introd
   } finally { nav.restore(); }
 });
 
-test("switching the live food tab updates orders teaching without remounting its menu", () => {
+test("switching the live food tab selects the relevant meals or orders guide without remounting its menu", () => {
   const nav = guideNavigation();
   try {
     nav.find(element => element.props["data-world-quick"] === "pantry").props.onClick();
     nav.component("WorldPantryMenu").props.onOpenFood();
     const food = nav.component("WorldFoodMenu"), key = food.key;
     assert.equal(food.props.initialTab, "meals");
-    assert.equal(nav.component("SectionGuide"), undefined);
+    assert.equal(nav.component("SectionGuide").props.section, "meals");
+    assert.equal(nav.component("SectionGuide").props.enabled, true);
     assert.equal(nav.component("WorldOnboardingSession").props.ordersOpen, false);
     food.props.onTabChange("orders");
     assert.equal(nav.component("WorldFoodMenu").key, key);
@@ -248,7 +249,8 @@ test("switching the live food tab updates orders teaching without remounting its
     nav.component("WorldFoodMenu").props.onTabChange("meals");
     assert.equal(nav.component("WorldFoodMenu").key, key);
     assert.equal(nav.component("WorldOnboardingSession").props.ordersOpen, false);
-    assert.equal(nav.component("SectionGuide"), undefined);
+    assert.equal(nav.component("SectionGuide").props.section, "meals");
+    assert.equal(nav.component("SectionGuide").props.enabled, true);
   } finally { nav.restore(); }
 });
 

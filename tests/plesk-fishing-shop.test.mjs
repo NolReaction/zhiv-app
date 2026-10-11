@@ -174,6 +174,19 @@ test("bait purchases quote stock and price without equipment controls", () => {
   assert.match(view.html, /В запасе 0/);
 });
 
+test("guide previews the requested rod or bait and its real odds without purchasing or equipping", () => {
+  for (const guideKind of ["rod", "bait"]) {
+    const state = snapshot(), before = structuredClone(state), calls = [];
+    const html = renderToStaticMarkup(createElement(PleskTackleCounter, { economy: controller(state, { act(...args) { calls.push(args); } }), state, catalog: state.catalog.fishing, guideKind }));
+    assert.match(html, new RegExp(`data-guide-plesk-detail="${guideKind}"`));
+    assert.match(html, /data-guide-plesk-odds=/);
+    const expected = guideKind === "rod" ? "Речная удочка" : "Лесной червячок";
+    assert.ok(html.includes(`<h3>${expected}</h3>`));
+    assert.deepEqual(calls, []);
+    assert.deepEqual(state, before);
+  }
+});
+
 test("collection counts confirmed catches independently of purchased, sold or ambient fish", () => {
   const state = snapshot({ inventory: { fish_mooncarp: 90 }, fishing: { ownedRods: ["reed_rod", "river_rod"], equippedRodId: "reed_rod", equippedBaitId: null, catches: { fish_silverfin: 8 } } });
   const html = renderToStaticMarkup(createElement(PleskFishingCollection, { state, catalog: state.catalog.fishing }));

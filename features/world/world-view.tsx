@@ -342,7 +342,7 @@ export default function WorldView({ open, world, economy, ownerPublicId, timeZon
   const expeditionReady = Boolean(economicJourney && economy.now >= Date.parse(economicJourney.finishesAt));
   const locked = busy || uncertain;
   const ownedGifts = new Set([...snapshot.gifts, ...(items ?? []), ...naturalItems(bestStreakDays)]);
-  const quickSection = quickMenu === "pantry" || quickMenu === "expeditions" ? quickMenu : quickMenu === "food" && foodEntry.tab === "orders" ? "orders" : null;
+  const quickSection = quickMenu === "pantry" || quickMenu === "expeditions" ? quickMenu : quickMenu === "food" ? foodEntry.tab : null;
   const quickGuideEnabled = sectionsReady && !mainCourseActive && !panel && !quickUpgrade && !residentOpen && !charactersOpen && !dailyOpen;
   const quickTitle = quickMenu === "profile" ? "Мой Мохлик" : quickMenu === "pantry" ? "Кладовая" : quickMenu === "expeditions" ? "Вылазки" : quickMenu === "food" ? "Еда и заказы" : "Ещё";
   const QuickIcon = quickMenu === "profile" ? Leaf : quickMenu === "pantry" ? Package : quickMenu === "expeditions" ? Compass : quickMenu === "food" ? Soup : MoreHorizontal;

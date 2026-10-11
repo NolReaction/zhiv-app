@@ -91,7 +91,7 @@ test("price, quantity, funds, owner and racing revisions fail before any debit o
 
 test("clothes cannot be sold or listed and full storage does not prevent a cosmetic purchase", () => {
   const p = player();
-  globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId).state.inventory.wood = 1000;
+  globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId).state.inventory = { wood: 1000 };
   const bought = issue(p, command(p, "fern"));
   assert.equal(bought.state.storage.overflow, 800); assert.equal(bought.state.inventory.fern, undefined);
   assert.throws(() => issue(p, command(p, "heather", { action: "sell", targetId: "fern", totalPrice: 0 })), { code: "ECONOMY_ITEM" });

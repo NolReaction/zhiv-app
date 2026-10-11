@@ -1,11 +1,12 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { ClipboardList, Hammer, RefreshCw, Utensils } from "lucide-react";
 import type { EconomyView } from "@/features/economy/domain/model";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import { foodState } from "@/features/economy/domain/food";
 import { mealBlockedReason } from "./meal-availability";
+import { listenForSectionGuideNavigation } from "@/features/onboarding/section-guide-navigation";
 import { ResidentOrderBoard, type OrderNavigation } from "./world-resident-order-board";
 export { mealBlockedReason } from "./meal-availability";
 export { ResidentOrderCard } from "./world-resident-order-board";
@@ -36,10 +37,10 @@ export function FoodMealCard({ economy, meal, consumer, onNavigateStation }: Pic
   return <article className={styles.meal} data-meal={meal.itemId}>
     <span className={styles.mealIcon}><ProductIcon state={state} itemId={meal.itemId} size={30} /></span>
     <div className={styles.mealDescription}><h3>{itemName(state, meal.itemId)}</h3><p>{consumer === "hero" ? "Скорость вылазки" : "Скорость стройки"} +{number(speed)}%</p><small>В кладовой: {number(stock)}</small></div>
-    {stock > 0 ? <button type="button" className={styles.primary} disabled={locked(economy) || !!reason} aria-label={`${consumer === "hero" ? "Съесть" : "Угостить Шишколапа"}: ${itemName(state, meal.itemId)}, 1 порция`} onClick={() => {
+    {stock > 0 ? <button type="button" data-guide-meal-action className={styles.primary} disabled={locked(economy) || !!reason} aria-label={`${consumer === "hero" ? "Съесть" : "Угостить Шишколапа"}: ${itemName(state, meal.itemId)}, 1 порция`} onClick={() => {
       if (locked(economy) || reason || (economy.snapshot.inventory[meal.itemId] ?? 0) < 1) return;
       void economy.act(action, meal.itemId, 1, 0);
-    }}>{consumer === "hero" ? "Съесть" : "Угостить"}</button> : recipe && onNavigateStation ? <button type="button" className={styles.secondary} aria-label={`Приготовить: ${itemName(state, meal.itemId)}`} onClick={() => onNavigateStation(recipe.buildingId, recipe.id)}>Готовить</button> : <span className={styles.muted}>Нет запаса</span>}
+    }}>{consumer === "hero" ? "Съесть 1" : "Угостить 1"}</button> : recipe && onNavigateStation ? <button type="button" data-guide-meal-action className={styles.secondary} aria-label={`Приготовить: ${itemName(state, meal.itemId)}`} onClick={() => onNavigateStation(recipe.buildingId, recipe.id)}>Готовить</button> : <span className={styles.muted}>Нет запаса</span>}
   </article>;
 }
 
@@ -48,6 +49,25 @@ export function WorldFoodMenu({ economy, initialTab = "meals", onTabChange, resi
   const [tab, setTab] = useState(initialTab);
   const [consumer, setConsumer] = useState<Consumer>(residentId === "builder" ? "builder" : "hero");
   const tabId = useId(), tabs = useRef<(HTMLButtonElement | null)[]>([]);
+  const menu = useRef<HTMLDivElement>(null);
+  const [guideRequest, setGuideRequest] = useState<{ stepId: string } | null>(null);
+  useEffect(() => {
+    if (!menu.current) return;
+    return listenForSectionGuideNavigation(menu.current, "meals", stepId => {
+      if (stepId !== "hero" && stepId !== "builder" && stepId !== "portion") return false;
+      if (stepId !== "portion") setConsumer(stepId);
+      setTab("meals");
+      onTabChange?.("meals");
+      setGuideRequest({ stepId });
+      return true;
+    });
+  }, [onTabChange, economy.snapshot?.catalog.food]);
+  useEffect(() => {
+    if (!guideRequest || tab !== "meals") return;
+    const selector = guideRequest.stepId === "portion" ? "[data-guide-meal-action]" : "[data-meal]";
+    const target = menu.current?.querySelector<HTMLElement>(selector) ?? menu.current?.querySelector<HTMLElement>("[data-guide-meal-note]");
+    target?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "auto" });
+  }, [guideRequest, tab]);
   const state = economy.snapshot, retrySeconds = Math.max(0, Math.ceil((economy.retryAt - economy.now) / 1000));
   const recovery = (economy.error || economy.uncertain) && <div className={styles.error} role="alert"><p>{economy.uncertain ? "Проверяем последнее действие. Новые действия станут доступны после подтверждения." : economy.error}</p><button type="button" disabled={economy.busy || retrySeconds > 0} onClick={() => { if (!economy.busy && retrySeconds <= 0) void economy.retry(); }}><RefreshCw size={14} aria-hidden="true" />{retrySeconds ? `Повторить через ${retrySeconds} с` : economy.uncertain ? "Проверить результат" : "Попробовать ещё раз"}</button></div>;
   if (!state) return <div className={styles.food}>{recovery || <p role="status">Открываем кухню…</p>}</div>;
@@ -58,7 +78,7 @@ export function WorldFoodMenu({ economy, initialTab = "meals", onTabChange, resi
   const pending = consumer === "hero" ? food.heroMeal : food.builderMeal;
   const active = state.jobs.find(job => job.meal?.consumer === consumer);
   const sections = [{ id: "meals", name: "Еда", icon: Utensils }, { id: "orders", name: "Заказы", icon: ClipboardList }] as const;
-  return <div className={styles.food} aria-busy={economy.busy || undefined}>
+  return <div ref={menu} className={styles.food} data-section-guide-content="meals" aria-busy={economy.busy || undefined}>
     {recovery}
     <nav className={styles.tabs} role="tablist" aria-label="Еда и заказы">{sections.map((section, index) => <button key={section.id} data-world-food-tab={section.id} ref={element => { tabs.current[index] = element; }} type="button" role="tab" id={`${tabId}-${section.id}`} aria-controls={`${tabId}-content`} aria-selected={tab === section.id} tabIndex={tab === section.id ? 0 : -1} onClick={() => { setTab(section.id); onTabChange?.(section.id); }} onKeyDown={event => {
       const next = event.key === "ArrowRight" ? (index + 1) % sections.length : event.key === "ArrowLeft" ? (index + sections.length - 1) % sections.length : event.key === "Home" ? 0 : event.key === "End" ? sections.length - 1 : null;
@@ -67,11 +87,11 @@ export function WorldFoodMenu({ economy, initialTab = "meals", onTabChange, resi
     }}><section.icon size={16} aria-hidden="true" />{section.name}</button>)}</nav>
     <section className={styles.content} id={`${tabId}-content`} role="tabpanel" aria-labelledby={`${tabId}-${tab}`}>
       {tab === "meals" ? <>
-        <div className={styles.consumers} role="group" aria-label="Кого угостить"><button type="button" aria-pressed={consumer === "hero"} onClick={() => setConsumer("hero")}><Utensils size={14} aria-hidden="true" />Мохлик</button><button type="button" aria-pressed={consumer === "builder"} onClick={() => setConsumer("builder")}><Hammer size={14} aria-hidden="true" />Шишколап</button></div>
+        <div className={styles.consumers} role="group" aria-label="Кого угостить"><button type="button" data-guide-meal-consumer="hero" aria-pressed={consumer === "hero"} onClick={() => setConsumer("hero")}><Utensils size={14} aria-hidden="true" />Мохлик</button><button type="button" data-guide-meal-consumer="builder" aria-pressed={consumer === "builder"} onClick={() => setConsumer("builder")}><Hammer size={14} aria-hidden="true" />Шишколап</button></div>
         <p className={styles.summary}>{pending ? `${itemName(state, pending)}: бонус сохранён для следующей ${consumer === "hero" ? "вылазки" : "стройки"}.` : active ? `${itemName(state, active.meal!.itemId)}: скорость ${consumer === "hero" ? "вылазки" : "стройки"} +${number(active.meal!.speedBps / 100)}%.` : consumer === "hero" ? "Один обед ускорит следующую вылазку или рыбалку." : "Обед ускорит текущую или следующую стройку. Бонус зависит от блюда."}</p>
         {reason && !pending && (!active || Date.parse(active.finishesAt) <= economy.now) && <p className={styles.warning}>{reason}</p>}
-        <div className={styles.meals}>{config.meals.map(meal => <FoodMealCard key={meal.itemId} economy={readyEconomy} meal={meal} consumer={consumer} onNavigateStation={onNavigateStation} />)}</div>
-        <p className={styles.muted}>Угощение расходует 1 порцию. Сытость не складывается и не убывает, пока вы не играете.</p>
+        <div className={styles.meals} data-guide-meal-list={consumer}>{config.meals.map(meal => <FoodMealCard key={meal.itemId} economy={readyEconomy} meal={meal} consumer={consumer} onNavigateStation={onNavigateStation} />)}</div>
+        <p className={styles.muted} data-guide-meal-note>Угощение расходует 1 готовое блюдо. Этот бонус скорости называют баффом: он не складывается с другим обедом и не исчезает вне игры.</p>
       </> : <ResidentOrderBoard economy={readyEconomy} residentId={residentId} onNavigateStation={onNavigateStation} onNavigateExpeditions={onNavigateExpeditions} />}
     </section>
   </div>;

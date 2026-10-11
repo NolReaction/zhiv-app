@@ -30,8 +30,10 @@ test("complete daily projection uses completed home tiers, the claim calendar an
     assert.deepEqual(gifts.itemsReceived, earnedItems);
     assert.equal(gifts.coinsReceived, gifts.claimRows.reduce((sum, row) => sum + row.reward.coins, 0));
     assert.equal(gifts.pearlsReceived, report.pearlsRemaining + report.pearlsSpent);
+    assert.deepEqual(Object.fromEntries(Object.entries(report.itemFlow).filter(([, flow]) => flow.initial > 0)
+      .map(([id, flow]) => [id, flow.initial])), { fish: 10, wood: 10, stone: 10 });
     for (const [id, flow] of Object.entries(report.itemFlow))
-      assert.equal(flow.received, flow.sold + flow.productionInputs + flow.expeditionInputs + flow.constructionInputs + flow.remaining, id);
+      assert.equal(flow.initial + flow.received, flow.sold + flow.productionInputs + flow.expeditionInputs + flow.constructionInputs + flow.remaining, id);
     for (const [id, amount] of Object.entries(report.rareMaterials.inventory))
       assert.equal(amount, report.rareMaterials.received[id] + (gifts.itemsReceived[id] ?? 0) - report.rareMaterials.spentOnConstruction[id]);
   } finally { await loaded.close(); }

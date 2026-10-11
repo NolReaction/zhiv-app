@@ -22,3 +22,11 @@
 
 .dialog > .header, .dialog > .back { flex-shrink: 0; }
 .body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #9f9775 transparent; padding: 4px; margin: 0 -4px; }
+@media (max-height: 520px) {
+  .dialog[data-slot='dialog-content'] { max-height: calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); padding: 10px; border-radius: 16px; }
+  .header { gap: 8px; padding: 6px 9px; border-radius: 12px; }
+  .emblem { flex-basis: 42px; height: 42px; border-radius: 12px; }
+  .name { margin-bottom: 2px; font-size: 1.125rem; }
+  .role { font-size: .75rem; line-height: 1.2; }
+  .back { margin: 0 0 4px; }
+}

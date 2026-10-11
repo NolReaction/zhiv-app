@@ -77,6 +77,24 @@
   .coach, .coach[data-welcome='false'] { width: min(384px, calc(100vw - 24px)); max-height: calc(100dvh - 112px); }
   .coach[data-inline='true'] { width: 100%; max-height: 48dvh; }
 }
+/* Landscape dialogs need room for their actual controls. Keep every sentence
+   and action visible, but put the two footer rows beside one another. */
+@media (min-width: 641px) and (max-height: 520px) {
+  .coach[data-inline='true'] { max-height: min(216px, 44dvh); border-radius: 14px 14px 14px 6px; }
+  .coach[data-inline='true'] .copy { padding: 0 8px; }
+  .coach[data-inline='true'] .header { min-height: 44px; }
+  .coach[data-inline='true'] .title { font-size: 19px; }
+  .coach[data-inline='true'] .pause { flex-basis: 44px; min-width: 44px; min-height: 44px; margin-right: -4px; }
+  .coach[data-inline='true'] .character { flex-basis: 44px; width: 44px; height: 52px; margin-top: 3px; }
+  .coach[data-inline='true'] .portrait { width: 52px; height: 52px; }
+  .coach[data-inline='true'] .text { margin-bottom: 2px; }
+  .coach[data-inline='true'] .footer { display: flex; align-items: center; gap: 6px; padding: 3px 8px 7px; }
+  .coach[data-inline='true'] .tools { flex: 0 0 auto; gap: 3px; min-height: 44px; padding: 0; }
+  .coach[data-inline='true'] .progress { display: none; }
+  .coach[data-inline='true'] .more { min-height: 44px; padding: 0 4px; }
+  .coach[data-inline='true'] .actions { flex: 1; min-width: 0; }
+  .coach[data-inline='true'] .back { flex-basis: 44px; min-width: 44px; }
+}
 @media (prefers-reduced-motion: reduce) {
   .coach button, .progress > span { transition: none; }
   .characterGesture, .characterGesture[data-jump='true'], .sparkles i { animation: none; }

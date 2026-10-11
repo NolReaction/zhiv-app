@@ -5,7 +5,7 @@ import { readEconomyCatalog } from "../scripts/audit-economy-progression.mjs";
 import { lookaheadPolicy } from "../scripts/simulate-player-lookahead.mjs";
 import { jointPlanningPolicy } from "../scripts/simulate-player-joint.mjs";
 
-test("a simulated empty player reaches home two using actual commands without grants or a quarry", async () => {
+test("a simulated new player reaches home two from starting supplies using actual commands without extra grants or a quarry", async () => {
   const loaded = await loadJourneyRules();
   try {
     const report = simulateJourney(loaded, "active16h", 1);
@@ -220,7 +220,7 @@ test("the scenario conserves crafted inputs and exposes sales separately from pr
     assert(Object.entries(report.explorationRoutes).some(([id, count]) => id.startsWith("quarry_") && count > 0));
     assert.equal(report.productionRecipes.quarry_stone, undefined);
     for (const [id, flow] of Object.entries(report.itemFlow))
-      assert.equal(flow.received, flow.sold + flow.productionInputs + flow.expeditionInputs + flow.constructionInputs + flow.remaining, id);
+      assert.equal(flow.initial + flow.received, flow.sold + flow.productionInputs + flow.expeditionInputs + flow.constructionInputs + flow.remaining, id);
     assert(report.itemFlow.fiber.productionInputs > 0, "Fiber serves actual crafting demand");
     assert(report.itemFlow.rope.constructionInputs > 0, "Rope serves actual construction demand");
     assert(report.itemFlow.berries.sold > 0, "Passive surplus pays progression coin costs");

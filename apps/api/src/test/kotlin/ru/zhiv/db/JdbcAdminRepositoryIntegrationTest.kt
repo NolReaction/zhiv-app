@@ -116,7 +116,7 @@ class JdbcAdminRepositoryIntegrationTest {
         analyticsEntry(passive,"barter_exchange",at,items=mapOf("moon_crystal" to 1L))
         // A V40-era pearl receipt must use its own denomination, independently of coins.
         analyticsEntry(passive,"market_sell",at,coins=10,pearls=3,currencyScale=10,pearlScale=10)
-        for (kind in listOf("legacy_conversion","account_merge","merged_receipt",
+        for (kind in listOf("legacy_conversion","starting_pack","account_merge","merged_receipt",
             "dev_grant_currency","dev_grant_item","dev_set_building_level")) {
             analyticsEntry(active,kind,"2019-01-01T00:00:00Z",coins=999_999)
             analyticsEntry(active,kind,at,coins=999_999)

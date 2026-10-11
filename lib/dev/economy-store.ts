@@ -13,6 +13,7 @@ import { economyCommandUsesActor } from "@/features/economy/domain/actor-availab
 import { createFishingShop, fishingShopExpired } from "@/features/economy/domain/fishing-shop";
 import { fishingState } from "@/features/economy/domain/fishing";
 import { publicEconomyJob } from "@/features/economy/domain/public-jobs";
+import { tutorialOrderProgress } from "@/features/economy/domain/tutorial-order";
 import { foodState } from "@/features/economy/domain/food";
 import { economyDevCommandSchema, type EconomyDevCommand } from "@/features/economy/dev/dev-model";
 import { economyDevSettlement } from "@/features/economy/dev/dev-presets";
@@ -75,7 +76,7 @@ function view(owner: string, value: Profile, now: number): EconomyView {
   delete state.rareDropState;
   state.jobs = state.jobs.map(publicEconomyJob);
   return { ownerPublicId: owner, revision: value.revision, serverTime: new Date(now).toISOString(), ...state, currencyScale: ECONOMY_CURRENCY_SCALE, pearlScale: ECONOMY_PEARL_SCALE,
-    food: foodState(state), residentOrders: economyResidentOrdersSchema.parse(state.residentOrders),
+    tutorialOrder: tutorialOrderProgress(state), food: foodState(state), residentOrders: economyResidentOrdersSchema.parse(state.residentOrders),
     productionSlots: state.productionSlots ?? {}, workshopStarterClaimed: state.workshopStarterClaimed ?? false, wardrobe: wardrobeOwned(state.wardrobe), fishingShop: state.fishingShop ?? null, storage: economyStorage(value.state, escrowItems(owner)), catalog: structuredClone(economyCatalog) };
 }
 function bump(value: Profile) {

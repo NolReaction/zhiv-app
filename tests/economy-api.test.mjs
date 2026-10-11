@@ -68,8 +68,8 @@ test("HTTP starter gift is owner-bound server state and receipt retries never mi
   assert.equal(response.status, 200);
   const accepted = await response.json();
   assert.equal(accepted.state.workshopStarterClaimed, true);
-  assert.deepEqual(accepted.state.wallet, { coins: 1200, pearls: 0 });
-  assert.deepEqual(accepted.state.inventory, { wood: 10, stone: 8 });
+  assert.deepEqual(accepted.state.wallet, { coins: before.wallet.coins + 1200, pearls: before.wallet.pearls });
+  assert.deepEqual(accepted.state.inventory, { ...before.inventory, wood: before.inventory.wood + 10, stone: before.inventory.stone + 8 });
   assert.deepEqual(accepted.state.jobs, []);
   const retried = await (await POST(post(cmd))).json();
   assert.equal(retried.replayed, true);

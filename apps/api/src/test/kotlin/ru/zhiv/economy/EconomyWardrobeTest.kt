@@ -35,7 +35,7 @@ class EconomyWardrobeTest {
         for (price in listOf(0L, 149L, 151L))
             assertEquals("ECONOMY_WARDROBE_PRICE_CHANGED", assertFailsWith<AuthFailure> { EconomyRules.apply(initial, command("pearls:heather", price), now) }.code)
         assertEquals("INVALID_ECONOMY_COMMAND", assertFailsWith<AuthFailure> { EconomyRules.apply(initial, command("pearls:heather", 150, 2), now) }.code)
-        assertEquals("ECONOMY_RESOURCES", assertFailsWith<AuthFailure> { EconomyRules.apply(EconomyRules.initial(), command("pearls:heather", 150), now) }.code)
+        assertEquals("ECONOMY_RESOURCES", assertFailsWith<AuthFailure> { EconomyRules.apply(EconomyRules.initial().copy(wallet = EconomyWallet()), command("pearls:heather", 150), now) }.code)
         assertEquals(listOf("moss", "amber_scarf"), initial.wardrobe)
     }
 }

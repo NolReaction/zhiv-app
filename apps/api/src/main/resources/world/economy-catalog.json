@@ -3674,5 +3674,27 @@
         ]
       }
     }
+  },
+  "onboarding": {
+    "startingWallet": {
+      "coins": 2500,
+      "pearls": 1000
+    },
+    "startingItems": {
+      "fish": 10,
+      "wood": 10,
+      "stone": 10
+    },
+    "residentOrder": {
+      "id": "tutorial_first_order",
+      "residentId": "builder",
+      "name": "Первый заказ Шишколапа",
+      "description": "Помоги собрать небольшой запас: отдай материалы и получи монеты. Это учебная просьба без срока.",
+      "items": {
+        "berries": 3,
+        "wood": 2
+      },
+      "coins": 100
+    }
   }
 }

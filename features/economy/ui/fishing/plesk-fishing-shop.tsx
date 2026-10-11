@@ -14,6 +14,7 @@ import { fishDiscovered, PlayerItemIcon } from "./fish-discovery";
 import { FishRarityBadge, FISH_RARITY_LEVELS } from "./fish-rarity";
 import { PantrySale } from "@/features/economy/ui/inventory/world-pantry-menu";
 import { locked } from "@/features/economy/sync/controller-state";
+import { listenForSectionGuideNavigation } from "@/features/onboarding/section-guide-navigation";
 import { itemName, number } from "@/features/economy/ui/shared/world-economy-parts";
 import { useFishingCommand } from "./use-fishing-command";
 import { PleskFishingCollection } from "./plesk-fishing-book";
@@ -43,7 +44,7 @@ export function PleskCatchOdds({ state, catalog, override, preview = false }: { 
   const gear = fishingState(state);
   const byRarity = FISH_RARITY_LEVELS.map(rarity => ({ rarity, probability: odds.filter(odd => catalog.fish.find(fish => fish.itemId === odd.itemId)!.rarity === rarity)
     .reduce((sum, odd) => sum + odd.probability, 0) }));
-  return <section className={styles.odds} aria-label={preview ? "Шансы с выбранной снастью" : "Шансы текущих снастей"}>
+  return <section className={styles.odds} data-guide-plesk-odds aria-label={preview ? "Шансы с выбранной снастью" : "Шансы текущих снастей"}>
     <p><span>{preview ? "С этой снастью" : "Шансы выбранных снастей"}</span><small>на один особый улов</small></p>
     <dl className={styles.rarityOdds} aria-label="Шансы по разрядам">{byRarity.map(({ rarity, probability }) => <div key={rarity}><dt><FishRarityBadge rarity={rarity} /></dt><dd>{percent(probability)}</dd></div>)}</dl>
     <details><summary>Шансы всех видов</summary><p className={styles.hint}>Каждый особый улов проверяется отдельно. Их количество зависит от длительности рыбалки; остальная партия — обычная рыба.</p>
@@ -217,11 +218,27 @@ function GearDetail({ economy, state, catalog, itemId, onOpenOrders }: ReadyProp
 }
 
 const merchantSlots = [{ kind: "rod", name: "Удочки", icon: FishingRod }, { kind: "hook", name: "Крючки", icon: Anchor }, { kind: "bait", name: "Наживки", icon: Bug }, { kind: "fish", name: "Рыба дня", icon: Fish }] as const;
-export function PleskTackleCounter({ economy, state, catalog, onOpenOrders }: ReadyProps & { catalog: FishingCatalog; onOpenOrders?: () => void }) {
+export function PleskTackleCounter({ economy, state, catalog, onOpenOrders, guideKind }: ReadyProps & { catalog: FishingCatalog; onOpenOrders?: () => void; guideKind?: "rod" | "bait" }) {
   const offers = state.fishingShop?.offers ?? [];
   const previousStock = offers.filter(offer => offers.find(entry => entry.kind === offer.kind)?.id !== offer.id);
-  const [selectedId, setSelectedId] = useState(() => offers[0]?.id);
+  const [selectedId, setSelectedId] = useState(() => offers.find(offer => offer.kind === guideKind)?.id ?? offers[0]?.id);
   const selected = offers.find(offer => offer.id === selectedId) ?? offers[0];
+  const detail = useRef<HTMLDivElement>(null);
+  const guideShown = useRef(false);
+  useLayoutEffect(() => {
+    if (!guideKind || guideShown.current) return;
+    guideShown.current = true;
+    if (selected?.kind !== guideKind) {
+      detail.current?.parentElement?.querySelector<HTMLElement>(`[data-guide-plesk-offer="${guideKind}"]`)?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "auto" });
+      return;
+    }
+    const odds = detail.current?.querySelector<HTMLElement>("[data-guide-plesk-odds]");
+    // The actual odds are lower than the offer grid. Reveal them without buying
+    // or equipping the preview, and keep the guide outside the scroll area.
+    const allSpecies = odds?.querySelector("details");
+    if (allSpecies) allSpecies.open = true;
+    odds?.scrollIntoView({ block: "start", inline: "nearest", behavior: "auto" });
+  }, [guideKind, selected?.kind]);
   const scrollPosition = useRef<{ body: HTMLElement; top: number } | null>(null);
   useLayoutEffect(() => {
     // Keyed descriptions replace their scroll anchors; keep the reader's position.
@@ -239,7 +256,7 @@ export function PleskTackleCounter({ economy, state, catalog, onOpenOrders }: Re
     <PleskMerchantHeader economy={economy} state={state} />
     <div className={styles.offerGrid} aria-label="Предложения Плёски">{merchantSlots.map(slot => {
       const offer = offers.find(entry => entry.kind === slot.kind);
-      if (!offer) return <div key={slot.kind} className={styles.emptyOffer}><slot.icon size={26} aria-hidden="true" /><strong>{slot.name}</strong><span>Ждём поставку</span></div>;
+      if (!offer) return <div key={slot.kind} className={styles.emptyOffer} data-guide-plesk-offer={slot.kind}><slot.icon size={26} aria-hidden="true" /><strong>{slot.name}</strong><span>Ждём поставку</span></div>;
       const entry = offer.kind === "rod" ? catalog.rods.find(rod => rod.id === offer.itemId) : offer.kind === "hook" ? catalog.hooks.find(hook => hook.id === offer.itemId) : offer.kind === "fish" ? catalog.fish.find(fish => fish.itemId === offer.itemId) : catalog.baits.find(bait => bait.itemId === offer.itemId);
       if (!entry) return null;
       const name = "name" in entry ? entry.name : itemName(state, offer.itemId);
@@ -255,7 +272,7 @@ export function PleskTackleCounter({ economy, state, catalog, onOpenOrders }: Re
       <span>{catalog.rods.find(rod => rod.id === offer.itemId)?.name ?? catalog.hooks.find(hook => hook.id === offer.itemId)?.name ?? itemName(state, offer.itemId)}</span>
       {offer.remaining > 0 ? <Price value={offer.unitPrice} /> : <span>Раскуплено</span>}
     </button>)}</div></details>}
-    {selected && <GearDetail key={selected.id} economy={economy} state={state} catalog={catalog} itemId={selected.itemId} onOpenOrders={onOpenOrders} />}
+    {selected && <div ref={detail} data-guide-plesk-detail={selected.kind}><GearDetail key={selected.id} economy={economy} state={state} catalog={catalog} itemId={selected.itemId} onOpenOrders={onOpenOrders} /></div>}
 
   </>;
 }
@@ -263,23 +280,42 @@ export function PleskTackleCounter({ economy, state, catalog, onOpenOrders }: Re
 export type PleskFishingShopProps = { economy: EconomyController; onFishing: () => void; onOpenPantry: () => void; onOpenOrders?: () => void };
 export function PleskFishingShop({ economy, onFishing, onOpenPantry, onOpenOrders }: PleskFishingShopProps) {
   const [tab, setTab] = useState<ShopTab>("tackle"), id = useId(), tabButtons = useRef<Array<HTMLButtonElement | null>>([]);
+  const shop = useRef<HTMLDivElement>(null);
+  const [guideRequest, setGuideRequest] = useState<{ stepId: "rods" | "bait" | "catch"; sequence: number } | null>(null);
   const state = economy.snapshot, catalog = state?.catalog.fishing, cooldown = Math.max(0, Math.ceil((economy.retryAt - economy.now) / 1000));
+  useEffect(() => {
+    if (!shop.current || !catalog) return;
+    return listenForSectionGuideNavigation(shop.current, "plesk", stepId => {
+      if (stepId !== "rods" && stepId !== "bait" && stepId !== "catch") return false;
+      // Navigation only. The ordinary purchase, equip and sale handlers remain
+      // the only places that send economic commands.
+      setTab(stepId === "catch" ? "fish" : "tackle");
+      setGuideRequest(previous => ({ stepId, sequence: (previous?.sequence ?? 0) + 1 }));
+      return true;
+    });
+  }, [catalog]);
+  useLayoutEffect(() => {
+    if (guideRequest?.stepId !== "catch" || tab !== "fish") return;
+    const target = shop.current?.querySelector<HTMLElement>("[data-guide-plesk-sale]")
+      ?? shop.current?.querySelector<HTMLElement>('[data-guide-plesk-panel="fish"]');
+    target?.scrollIntoView({ block: "start", inline: "nearest", behavior: "auto" });
+  }, [guideRequest, tab]);
   const recovery = (economy.error || economy.uncertain) && <div className={styles.recovery} role="alert"><p>{economy.uncertain ? "Проверяем последнее действие. Дождитесь подтверждения, прежде чем торговать снова." : economy.error}</p><button type="button" disabled={economy.busy || cooldown > 0} onClick={() => { if (!economy.busy && !cooldown) void economy.retry(); }}><RefreshCw size={14} aria-hidden="true" />{cooldown ? `Повторить через ${cooldown} с` : economy.uncertain ? "Проверить результат" : "Попробовать ещё раз"}</button></div>;
-  return <div className={styles.shop} aria-busy={economy.busy || undefined}>
+  return <div ref={shop} className={styles.shop} data-section-guide-content="plesk" aria-busy={economy.busy || undefined}>
     {state && <div className={styles.wallet}><span>Лавка у пирса</span><span aria-label={`Монеты: ${number(state.wallet.coins)}. Жемчуг: ${formatPearls(state.wallet.pearls)}`}><Price value={state.wallet.coins} /><Price value={state.wallet.pearls} pearls /></span></div>}
     {recovery}
     {!state ? <p className={styles.hint} role="status">Проверяем ваши запасы…</p> : !catalog ? <><p className={styles.intro}>«Принесёшь речную рыбу — куплю!»</p>{(state.inventory.fish ?? 0) > 0 ? <PantrySale economy={{ ...economy, snapshot: state }} itemId="fish" /> : <p className={styles.hint}>В вашей кладовой пока нет речной рыбы.</p>}</> : <>
-      <div className={styles.tabs} role="tablist" aria-label="Лавка Плёски">{tabs.map((entry, index) => <button key={entry.id} ref={node => { tabButtons.current[index] = node; }} type="button" role="tab" data-guide-plesk-tab={entry.id} id={`${id}-${entry.id}`} aria-selected={tab === entry.id} aria-controls={`${id}-panel`} tabIndex={tab === entry.id ? 0 : -1} onClick={() => setTab(entry.id)} onKeyDown={event => {
+      <div className={styles.tabs} role="tablist" aria-label="Лавка Плёски">{tabs.map((entry, index) => <button key={entry.id} ref={node => { tabButtons.current[index] = node; }} type="button" role="tab" data-guide-plesk-tab={entry.id} id={`${id}-${entry.id}`} aria-selected={tab === entry.id} aria-controls={`${id}-panel`} tabIndex={tab === entry.id ? 0 : -1} onClick={() => { setTab(entry.id); if (tab !== entry.id) setGuideRequest(null); }} onKeyDown={event => {
         let next = index;
         if (event.key === "ArrowRight") next = (index + 1) % tabs.length;
         else if (event.key === "ArrowLeft") next = (index + tabs.length - 1) % tabs.length;
         else if (event.key === "Home") next = 0;
         else if (event.key === "End") next = tabs.length - 1;
         else return;
-        event.preventDefault(); setTab(tabs[next].id); tabButtons.current[next]?.focus();
+        event.preventDefault(); setTab(tabs[next].id); if (tab !== tabs[next].id) setGuideRequest(null); tabButtons.current[next]?.focus();
       }}><entry.icon size={17} aria-hidden="true" />{entry.name}</button>)}</div>
       <div key={state.ownerPublicId} className={styles.panel} data-guide-plesk-panel={tab} role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-${tab}`} tabIndex={0}>
-        {tab === "fish" ? <FishCounter economy={economy} state={state} catalog={catalog} /> : tab === "tackle" ? <PleskTackleCounter economy={economy} state={state} catalog={catalog} onOpenOrders={onOpenOrders} /> : <PleskFishingCollection state={state} catalog={catalog} />}
+        {tab === "fish" ? <FishCounter economy={economy} state={state} catalog={catalog} /> : tab === "tackle" ? <PleskTackleCounter key={guideRequest?.sequence ?? 0} economy={economy} state={state} catalog={catalog} onOpenOrders={onOpenOrders} guideKind={guideRequest?.stepId === "rods" ? "rod" : guideRequest?.stepId === "bait" ? "bait" : undefined} /> : <PleskFishingCollection state={state} catalog={catalog} />}
       </div>
     </>}
     <div className={styles.departure}><button type="button" className={styles.fishingButton} onClick={onFishing}><FishingRod size={22} aria-hidden="true" /><span><strong>На рыбалку</strong><small>Выбрать маршрут и снасти</small></span><ArrowRight size={18} aria-hidden="true" /></button><button type="button" className={styles.pantryLink} onClick={onOpenPantry}><Package size={15} aria-hidden="true" />Другие запасы<ArrowRight size={13} aria-hidden="true" /></button></div>

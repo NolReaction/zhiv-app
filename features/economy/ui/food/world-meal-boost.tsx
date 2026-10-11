@@ -104,7 +104,7 @@ export function WorldMealBoost(props: WorldMealBoostProps) {
       onEscapeKeyDown={event => event.stopPropagation()} onCloseAutoFocus={event => {
         event.preventDefault(); if (navigating.current) return; const target = trigger.current?.isConnected ? trigger.current : savedBadge.current; target?.focus({ preventScroll: true });
       }} onPointerDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()} onWheel={event => event.stopPropagation()}>
-      <header className={styles.heading}><div><h3 ref={heading} tabIndex={-1} id={headingId}>{consumer === "hero" ? "Обед перед вылазкой" : jobId ? "Обед для строителя" : "Обед перед стройкой"}</h3><p>Расходуется 1 готовое блюдо</p></div><Popover.Close asChild><button type="button" data-meal-picker-close aria-label="Закрыть выбор еды"><X size={17} aria-hidden="true" /></button></Popover.Close></header>
+      <header className={styles.heading}><div><h3 ref={heading} tabIndex={-1} id={headingId}>{consumer === "hero" ? "Обед перед вылазкой" : jobId ? "Обед для строителя" : "Обед перед стройкой"}</h3><p>Бафф скорости за 1 готовое блюдо</p></div><Popover.Close asChild><button type="button" data-meal-picker-close aria-label="Закрыть выбор еды"><X size={17} aria-hidden="true" /></button></Popover.Close></header>
       {reason && <p className={styles.reason} role="status">{reason}</p>}
       <div className={styles.meals} aria-label="Готовые блюда">{meals.map(meal => {
         const stock = state.inventory[meal.itemId] ?? 0;

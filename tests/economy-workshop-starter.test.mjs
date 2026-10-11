@@ -63,12 +63,12 @@ test("receipt retry preserves the original payout while a new request cannot cla
 });
 
 test("the gift pays for a separate ordinary timed construction and survives its delivery", () => {
-  const p = player(); issue(p);
+  const p = player(), before = read(p); issue(p);
   const building = issue(p, { action: "start_construction" });
   assert.equal(building.state.buildings.workshop, 0);
   assert.equal(building.state.workshopStarterClaimed, true);
-  assert.deepEqual(building.state.wallet, { coins: 0, pearls: 0 });
-  assert.deepEqual(building.state.inventory, {});
+  assert.deepEqual(building.state.wallet, before.wallet);
+  assert.deepEqual(building.state.inventory, before.inventory);
   const job = building.state.jobs.find(job => job.kind === "construction" && job.targetId === "workshop");
   assert.equal(Date.parse(job.finishesAt) - Date.parse(job.startedAt), 1200 * 1000);
   assert.deepEqual(job.cost, starter.workshopStarterCost());

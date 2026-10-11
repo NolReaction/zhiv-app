@@ -8,6 +8,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, se
 after(() => vite.close());
 const { sectionGuideIds, sectionGuideLessons, sectionGuideCanOpen, parseSectionGuideProgress, transitionSectionGuide: move } = await vite.ssrLoadModule("/features/onboarding/section-guide-model.ts");
 const { sectionGuideStorageKey, createSectionGuideStore } = await vite.ssrLoadModule("/features/onboarding/section-guide-storage.ts");
+const { requestSectionGuideNavigation, listenForSectionGuideNavigation } = await vite.ssrLoadModule("/features/onboarding/section-guide-navigation.ts");
 function storage() {
   const values = new Map();
   return { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
@@ -115,4 +116,21 @@ test("malformed values fail safely and copy updates preserve deliberate skips", 
   const started = parseSectionGuideProgress('{"version":1,"status":"started","stepId":"unknown"}', "pantry");
   assert.equal(started.stepId, "items");
   assert.equal(move("pantry", started, "back").stepId, "items");
+});
+
+test("show navigation is confined to its own open section and detached handlers cannot intercept it", () => {
+  const plesk = new EventTarget(), meals = new EventTarget(), visited = [];
+  const root = { querySelector(selector) { return selector.includes('"plesk"') ? plesk : selector.includes('"meals"') ? meals : null; } };
+  const off = listenForSectionGuideNavigation(plesk, "plesk", stepId => {
+    if (!["rods", "bait", "catch"].includes(stepId)) return false;
+    visited.push(stepId); return true;
+  });
+  listenForSectionGuideNavigation(meals, "meals", () => { assert.fail("fishing guidance must not affect another section"); });
+  assert.equal(requestSectionGuideNavigation(root, "plesk", "bait"), true);
+  assert.deepEqual(visited, ["bait"]);
+  assert.equal(requestSectionGuideNavigation(root, "plesk", "purchase"), false, "unknown actions are not handled");
+  off();
+  assert.equal(requestSectionGuideNavigation(root, "plesk", "rods"), false);
+  assert.equal(requestSectionGuideNavigation({ querySelector() { return null; } }, "plesk", "rods"), false);
+  assert.deepEqual(visited, ["bait"]);
 });
