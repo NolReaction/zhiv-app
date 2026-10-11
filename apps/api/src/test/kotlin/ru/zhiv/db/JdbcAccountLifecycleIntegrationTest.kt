@@ -111,7 +111,9 @@ class JdbcAccountLifecycleIntegrationTest {
             assertTrue(merged.workshopStarterClaimed)
             assertTrue(source.connection.use { readEconomyProfile(it,a.id).state.workshopStarterClaimed })
             assertEquals(targetBefore.wallet.coins+sourceBefore.wallet.coins,merged.wallet.coins)
-            assertEquals(EconomyWorkshopStarter.cost().items,merged.inventory)
+            val expectedInventory=(targetBefore.inventory.keys+sourceBefore.inventory.keys).associateWith {
+                (targetBefore.inventory[it] ?: 0L)+(sourceBefore.inventory[it] ?: 0L) }
+            assertEquals(expectedInventory,merged.inventory)
             assertEquals(0,merged.buildings["workshop"])
             assertEquals("ECONOMY_WORKSHOP_STARTER_CLAIMED",assertFailsWith<AuthFailure> {
                 economy.command(a.session,EconomyCommand(UUID.randomUUID().toString(),merged.ownerPublicId,merged.revision,"claim_workshop_starter","workshop"))
@@ -300,7 +302,9 @@ class JdbcAccountLifecycleIntegrationTest {
         val fresh=auth.finish(register(),b.subject,freshSession,365,"After real deletion")
         assertTrue(fresh !in setOf(a.id,b.id,c.id))
         assertEquals(fresh,people.findSessionUserId(freshSession))
-        assertEquals(EconomyWallet(0),JdbcEconomyRepository(source).snapshot(freshSession).wallet,"rejoin never restores deleted assets")
+        val rejoinedEconomy=JdbcEconomyRepository(source).snapshot(freshSession)
+        assertEquals(EconomyRules.initial().wallet,rejoinedEconomy.wallet,"rejoin starts fresh without restoring deleted assets")
+        assertEquals(EconomyRules.initial().inventory,rejoinedEconomy.inventory)
     }
 
     @Test fun `a fence committed while identity insertion waits rolls back the entire signup`(): Unit=runBlocking {

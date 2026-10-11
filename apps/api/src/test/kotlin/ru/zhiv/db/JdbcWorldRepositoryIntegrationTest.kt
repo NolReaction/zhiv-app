@@ -93,9 +93,9 @@ class JdbcWorldRepositoryIntegrationTest {
         assertTrue(rewarded.state.journeys.isEmpty())
         val converted=EconomyRules.legacyConversion(12,8,4)
         val economy=JdbcEconomyRepository(source).snapshot(other)
-        assertEquals(converted.coinsGranted,economy.wallet.coins)
-        assertEquals(converted.woodGranted,economy.inventory["wood"])
-        assertEquals(converted.stoneGranted,economy.inventory["stone"])
+        assertEquals(EconomyRules.initial().wallet.coins+converted.coinsGranted,economy.wallet.coins)
+        assertEquals(EconomyRules.initial().inventory.getValue("wood")+converted.woodGranted,economy.inventory["wood"])
+        assertEquals(EconomyRules.initial().inventory.getValue("stone")+converted.stoneGranted,economy.inventory["stone"])
         assertEquals("1",scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND source_key=?",p.id,"legacy-journey:${journey.id}"))
         assertEquals(0L,identities.findBySession(p.hash)!!.checkInCount)
     }
@@ -238,7 +238,7 @@ class JdbcWorldRepositoryIntegrationTest {
         val claim = WorldCommand(UUID.randomUUID().toString(), p.publicId, restored.revision, "claim_journey", legacy.id)
         val paid = world.command(p.hash, claim)
         assertEquals(WorldResources(), paid.snapshot.state.resources)
-        assertEquals(EconomyRules.legacyConversion(3,4,5).coinsGranted + EconomyRules.legacyConversion(14,8,8).coinsGranted,
+        assertEquals(EconomyRules.initial().wallet.coins + EconomyRules.legacyConversion(3,4,5).coinsGranted + EconomyRules.legacyConversion(14,8,8).coinsGranted,
             JdbcEconomyRepository(source).snapshot(p.hash).wallet.coins)
         assertEquals(listOf("moon_moth", "river_stone"), paid.snapshot.state.collection)
         assertEquals(8L, paid.snapshot.state.completedJourneys)

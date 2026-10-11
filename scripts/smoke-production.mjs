@@ -252,13 +252,15 @@ await api("POST", "/api/v1/world/commands", { cookie: owner.cookie, body: travel
 await api("GET", "/api/v1/economy", { expected: 401 });
 const economyBefore = await api("GET", "/api/v1/economy", { cookie: owner.cookie });
 assert.equal(economyBefore.headers["cache-control"], "no-store");
-assert.deepEqual(economyBefore.data.wallet, { coins: 0, pearls: 0 });
+assert.deepEqual(economyBefore.data.wallet, economyCatalog.onboarding.startingWallet);
+assert.deepEqual(economyBefore.data.inventory, economyCatalog.onboarding.startingItems);
 assert.equal(economyBefore.data.buildings.garden, 1);
 assert.equal(economyBefore.data.buildings.warehouse, 1);
 assert.equal(economyBefore.data.buildings.kiln, 0);
 assert.equal(economyBefore.data.catalog.version, economyCatalog.version, "The running API must serve the checked-in economy catalog version");
 const warehouse = economyBefore.data.catalog.buildings.find(building => building.id === "warehouse");
-assert.deepEqual(economyBefore.data.storage, { capacity: warehouse.levels[0].warehouseCapacity, used: 0, reserved: 0, available: warehouse.levels[0].warehouseCapacity, overflow: 0 });
+const startingStorageUsed = Object.values(economyCatalog.onboarding.startingItems).reduce((sum, amount) => sum + amount, 0);
+assert.deepEqual(economyBefore.data.storage, { capacity: warehouse.levels[0].warehouseCapacity, used: startingStorageUsed, reserved: 0, available: warehouse.levels[0].warehouseCapacity - startingStorageUsed, overflow: 0 });
 const expedition = { requestId: randomUUID(), ownerPublicId: owner.data.user.publicId,
   expectedRevision: economyBefore.data.revision, action: "start_exploration", targetId: "forest", quantity: 1, totalPrice: 0 };
 const exploring = await api("POST", "/api/v1/economy/commands", { cookie: owner.cookie, body: expedition });

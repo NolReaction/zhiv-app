@@ -60,7 +60,7 @@ class ProgressionRewardsTest {
         val initial=EconomyRules.initial(0,0,0)
         val credited=ProgressionRewardRules.credit(initial,ProgressionReward(200,10,mapOf("wood" to 2)))
         assertEquals(initial.wallet.coins+200,credited.wallet.coins); assertEquals(initial.wallet.pearls+10,credited.wallet.pearls)
-        assertEquals(2L,credited.inventory["wood"]); assertEquals(initial.progression,credited.progression)
+        assertEquals(initial.inventory.getValue("wood")+2L,credited.inventory["wood"]); assertEquals(initial.progression,credited.progression)
         assertEquals(initial.completedExplorations,credited.completedExplorations)
         assertEquals("ECONOMY_CAPACITY",assertFailsWith<AuthFailure> { ProgressionRewardRules.credit(initial.copy(
             wallet=EconomyWallet(ECONOMY_MAX_BALANCE,0)),ProgressionReward(coins=10)) }.code)
