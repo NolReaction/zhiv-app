@@ -102,7 +102,7 @@ export function SectionGuide({ owner, section, enabled, targetRoot, inline = tru
       title={step.title} summary={step.summary} text={step.text} pose={step.pose} target={currentTarget} targetRoot={targetRoot ?? scope}
       progress={{ current: index + 1, total: steps.length }} onPause={() => apply("pause")} onSkip={() => apply("skip")}
       onBack={index > 0 ? () => apply("back") : undefined}
-      primary={{ label: index === steps.length - 1 ? "Понятно" : "Дальше", onClick: () => apply("next") }}
+      primary={{ advance: true, label: index === steps.length - 1 ? "Понятно" : "Дальше", onClick: () => apply("next") }}
       secondary={currentTarget || step.navigation ? { label: step.showLabel ?? "Показать", onClick: showTarget } : undefined} />
       : <button ref={launcher} type="button" className={styles.launcher} onClick={() => apply(state.progress?.status === "paused" ? "resume" : "replay")}><CircleHelp size={15} aria-hidden="true" />{state.progress?.status === "paused" ? "Продолжить подсказку" : "Что здесь делать?"}</button>)}
   </div>;

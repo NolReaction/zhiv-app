@@ -22,7 +22,7 @@ function controls(settings = DEFAULT_AUDIO_SETTINGS, state = "locked") {
 }
 
 test("sound settings expose labelled master and six category sliders without playing on render", () => {
-  const view = controls();
+  const view = controls({ ...DEFAULT_AUDIO_SETTINGS, enabled: false });
   assert.equal(view.calls.enables, 0);
   assert.deepEqual(view.calls.changes, []);
   assert.deepEqual(view.calls.sliderFeedback, []);
@@ -51,7 +51,7 @@ test("enabled switch mutes immediately and interrupted playback offers explicit 
 });
 
 test("volume reset is available while muted and never unlocks playback", () => {
-  const view = controls();
+  const view = controls({ ...DEFAULT_AUDIO_SETTINGS, enabled: false });
   const reset = view.nodes.find(node => node.type === "button" && node.props["aria-describedby"] === "audio-test-reset-hint");
   assert.ok(reset);
   assert.equal(reset.props.disabled, false);

@@ -260,3 +260,21 @@ test("profile selection emits exactly one soft tab cue for a change, including k
     else globalThis.window = previousWindow;
   }
 });
+
+
+test("tutorial is a named button beside settings, outside tab semantics and without changing profile tabs", () => {
+  const calls = [];
+  const view = profile({ onOpenOnboarding: () => calls.push("guide") });
+  const button = namedButton(view, "Обучение с Мохликом");
+  assert.ok(button);
+  assert.equal(button.props.role, undefined);
+  assert.equal(buttonText(button), "");
+  assert.equal(button.props.title, "Обучение с Мохликом");
+  const tablist = view.elements.find(element => element.props.role === "tablist");
+  assert.equal(Children.toArray(tablist.props.children).length, 3);
+  assert.ok(!Children.toArray(tablist.props.children).includes(button));
+  button.props.onClick();
+  assert.deepEqual(calls, ["guide"]);
+  assert.deepEqual(view.calls, []);
+  assert.equal(namedButton(profile(), "Обучение с Мохликом"), undefined);
+});

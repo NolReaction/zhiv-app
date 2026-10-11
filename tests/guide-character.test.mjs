@@ -63,7 +63,7 @@ function environment() {
   hooks.reset();
   return {
     timers, listeners,
-    render() { hooks.render(); const result = GuideCharacter({ pose: "present", stepId: "explore" }); hooks.flush(); return result; },
+    render(props = {}) { hooks.render(); const result = GuideCharacter({ pose: "present", stepId: "explore", ...props }); hooks.flush(); return result; },
     advance(ms) { now += ms; for (const [id, timer] of [...timers]) if (timer.at <= now) { timers.delete(id); timer.fn(); } },
     visibility(value) { doc.visibilityState = value; for (const fn of listeners) fn(); },
     restore() { hooks.dispose(); for (const name of names) { const value = originals.get(name); if (value) Object.defineProperty(globalThis, name, value); else delete globalThis[name]; } },
@@ -129,5 +129,35 @@ test("the guide renders the optional neighbor content between the explanation an
     assert.ok(html.indexOf("NEIGHBOR CARD") < html.indexOf("ACTION HINT"));
     assert.match(html, /data-neighbor="shishkolap"/);
     assert.doesNotMatch(html, /aria-modal|role="dialog"/);
+  } finally { env.restore(); }
+});
+
+
+test("portrait advances only with an explicit safe continuation callback", () => {
+  const env = environment();
+  try {
+    let advances = 0;
+    const tree = env.render({ onAdvance: () => advances++, advanceLabel: "К следующей подсказке" });
+    assert.equal(tree.props["aria-label"], "К следующей подсказке");
+    tree.props.onClick({ stopPropagation() {} });
+    assert.equal(advances, 1);
+    assert.equal(env.timers.size, 0, "advancing never queues petting reactions on a removed step");
+  } finally { env.restore(); }
+});
+
+test("only ready navigation makes the speech a continuation button; economic actions remain separate", () => {
+  const env = environment();
+  try {
+    const props = { open: true, flow: "world", stepId: "profile", pose: "present", title: "Профиль", text: "Осмотрись и продолжим.",
+      onPause() {}, onSkip() {}, primary: { label: "Посмотрел, дальше", advance: true, onClick() {} } };
+    const ready = renderToStaticMarkup(createElement(GuideCoach, props));
+    assert.match(ready, /<button[^>]+data-guide-advance="true"/);
+    assert.match(ready, /Дальше/);
+    const action = renderToStaticMarkup(createElement(GuideCoach, { ...props, primary: { label: "Получить набор", onClick() {} } }));
+    assert.doesNotMatch(action, /data-guide-advance/);
+    assert.match(action, /aria-label="Погладить Мохлика"/);
+    assert.match(action, /Получить набор/);
+    const disabled = renderToStaticMarkup(createElement(GuideCoach, { ...props, primary: { ...props.primary, disabled: true } }));
+    assert.doesNotMatch(disabled, /data-guide-advance/);
   } finally { env.restore(); }
 });

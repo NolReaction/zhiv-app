@@ -11,7 +11,7 @@ import dynamic from "next/dynamic";
 import { WorldDevEntry } from "@/features/world/dev/world-dev-entry";
 import { reportIncident, incidentCode, reportStartupIncident, resolveStartupIncidents } from "@/lib/client-incidents";
 import { AppNavigation, appViews, type AppView } from "@/features/app/navigation";
-import { AppOnboarding } from "./onboarding/app-onboarding";
+import { AppOnboarding, type AppOnboardingEntry } from "./onboarding/app-onboarding";
 
 import { GameLevelsButton } from "@/features/game/game-levels-button";
 import { BetaInfo } from "@/features/updates/beta-info";
@@ -397,6 +397,7 @@ function CheckInContent() {
   const [activeView, setActiveView] = useState<ActiveView>("check-in");
   const [viewDirection, setViewDirection] = useState(1);
   const [calendarOpen, setCalendarOpen] = useState(false);
+  const appOnboardingEntry = useRef<AppOnboardingEntry>(null);
   const [gameOpen, setGameOpen] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
   const { simpleView, appearanceReady, setSimpleView } = useSimpleView();
@@ -1509,14 +1510,6 @@ function CheckInContent() {
               <div className={styles.identityBadges}>
                 {me && <BetaInfo key={me.user.publicId} ownerPublicId={me.user.publicId} />}
                 {game.progress && <GameLevelsButton lifetimeTaps={game.progress.lifetimeTaps} className={styles.levelBadge} />}
-                {me && <AppOnboarding key={`app-guide:${me.user.publicId}`} owner={me.user.publicId}
-                  ready={!startupActive && screen === "home"} suspended={gameOpen || statusOpen}
-                  activeView={activeView} lastCheckInAt={lastCheckInAt} nextAllowedAt={nextAllowedAt}
-                  nowMs={adjustedNow} unconfirmed={checkInUnconfirmed} isSending={isSending} isOnline={isOnline}
-                  calendarOpen={calendarOpen} calendarAvailable={Boolean(streak)} worldOpen={worldPortal.open}
-                  simpleView={simpleView} onSelect={selectView}
-                  onOpenCalendar={() => calendarEntryButton.current?.click()}
-                  onEnterWorld={() => worldEntryButton.current?.click()} />}
               </div>
               <span className={styles.publicId} data-copyable>{me?.user.publicId}</span>
             </div>
@@ -1527,6 +1520,15 @@ function CheckInContent() {
           </div>
         </div>
       </header>
+
+      {me && <AppOnboarding key={`app-guide:${me.user.publicId}`} owner={me.user.publicId} entryRef={appOnboardingEntry}
+        ready={!startupActive && screen === "home"} suspended={gameOpen || statusOpen}
+        activeView={activeView} lastCheckInAt={lastCheckInAt} nextAllowedAt={nextAllowedAt}
+        nowMs={adjustedNow} unconfirmed={checkInUnconfirmed} isSending={isSending} isOnline={isOnline}
+        calendarOpen={calendarOpen} calendarAvailable={Boolean(streak)} worldOpen={worldPortal.open}
+        simpleView={simpleView} onSelect={selectView}
+        onOpenCalendar={() => calendarEntryButton.current?.click()}
+        onEnterWorld={() => worldEntryButton.current?.click()} />}
 
       <div key={activeView} className={styles.viewTransition} style={{ "--view-direction": viewDirection } as CSSProperties}>
       {activeView === "check-in" ? (
@@ -1757,6 +1759,7 @@ function CheckInContent() {
       ) : me ? (
         <ProfileView
           simpleView={simpleView} onSimpleViewChange={setSimpleView}
+          onOpenOnboarding={() => appOnboardingEntry.current?.open()}
           me={me}
           onOpenCalendar={openCalendar}
           onOpenGame={openGame}

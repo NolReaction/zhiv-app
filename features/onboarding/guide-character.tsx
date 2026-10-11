@@ -13,9 +13,9 @@ const subscribeVisibility = (listener: () => void) => {
 const documentVisible = () => document.visibilityState !== "hidden";
 const serverVisible = () => true;
 
-/** This little greeting owns no progression callbacks and never sends a game
- * command. Native button activation also makes it available from the keyboard. */
-export function GuideCharacter({ pose, stepId }: { pose: PixelPose; stepId: string }) {
+/** Only an explicitly supplied navigation callback can advance a lesson.
+ * Economic actions are never passed here. Native button activation also makes it available from the keyboard. */
+export function GuideCharacter({ pose, stepId, onAdvance, advanceLabel }: { pose: PixelPose; stepId: string; onAdvance?: () => void; advanceLabel?: string }) {
   const [reaction, setReaction] = useState<{ id: number; pose: PixelPose; text: string } | null>(null);
   const taps = useRef(0);
   const visible = useSyncExternalStore(subscribeVisibility, documentVisible, serverVisible);
@@ -39,11 +39,12 @@ export function GuideCharacter({ pose, stepId }: { pose: PixelPose; stepId: stri
   }, [reaction]);
   const reacting = reaction !== null;
   const celebration = reacting ? reaction.pose === "jump" : pose === "jump";
-  return <button type="button" className={styles.character} aria-label="Погладить Мохлика" title="Погладить Мохлика"
+  return <button type="button" className={styles.character} aria-label={onAdvance ? advanceLabel ?? "Продолжить подсказку" : "Погладить Мохлика"} title={onAdvance ? "Нажми на Мохлика, чтобы продолжить" : "Погладить Мохлика"}
     data-guide-character data-reaction={reaction?.id ?? "arrival"} data-paused={!visible}
     onKeyDown={event => { if (event.key === "Enter" || event.key === " ") event.stopPropagation(); }}
     onClick={event => {
       event.stopPropagation();
+      if (onAdvance) { onAdvance(); return; }
       const index = taps.current++;
       setReaction({ id: index, ...guidePortraitReaction(index) });
     }}>

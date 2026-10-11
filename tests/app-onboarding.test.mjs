@@ -18,11 +18,13 @@ const vite = await createServer({
       export function setDialogOpen(value) { dialogOpen = value; }
       export function useAppOnboarding() { return guide; }
       export function useAppDialogOpen() { return dialogOpen; }
+      export function useImperativeHandle(ref, create) { if (ref) ref.current = create(); }
     `; },
     transform(source, id) {
       if (id.endsWith("/features/app/onboarding/app-onboarding.tsx")) return source
         .replace('from "./use-app-onboarding";', `from "${hookModule}";`)
-        .replace('from "./use-app-dialog-open";', `from "${hookModule}";`);
+        .replace('from "./use-app-dialog-open";', `from "${hookModule}";`)
+        .replace('import { useImperativeHandle, type Ref } from "react";', `import { useImperativeHandle } from "${hookModule}";`);
     },
   }],
 });
@@ -217,4 +219,25 @@ test("opened app sections highlight their own content and every task has a conci
   for (const step of APP_ONBOARDING_STEPS) {
     assert.ok(view(step).props.summary.length > 0 && view(step).props.summary.length < 160);
   }
+});
+
+
+test("profile question entry resumes the saved app step and replays only a finished course", () => {
+  const entryRef = { current: null };
+  const progress = view("people", { entryRef });
+  entryRef.current.open();
+  assert.deepEqual(progress.calls, ["resume"]);
+  const fresh = view(null, { entryRef });
+  entryRef.current.open();
+  assert.deepEqual(fresh.calls, ["replay"]);
+});
+
+test("only completed-step advancement can run from the small speech and character", () => {
+  for (const step of ["check-in", "calendar", "people", "profile"]) {
+    const currentView = ["people", "profile"].includes(step) ? step : "check-in";
+    assert.equal(view(step, { activeView: currentView }, [step]).props.primary.advance, true);
+    assert.notEqual(view(step).props.primary?.advance, true);
+  }
+  assert.notEqual(view("world").props.primary.advance, true);
+  assert.notEqual(view(null).props.primary.advance, true);
 });

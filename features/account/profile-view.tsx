@@ -10,7 +10,7 @@ import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { Switch } from "@/components/ui/switch";
 import { GameLevelsButton } from "@/features/game/game-levels-button";
 import { GameLevelIcon } from "@/features/game/game-level-icon";
-import { Check, Clock3, Flame, Settings, Settings2, ShieldCheck, Trophy, UserRound } from "lucide-react";
+import { Check, CircleHelp, Clock3, Flame, Settings, Settings2, ShieldCheck, Trophy, UserRound } from "lucide-react";
 import type { MeResponse } from "@/lib/check-in-contract";
 import type { ClickerLevel, ClickerLevelProgress } from "@/features/game/clicker-story";
 import {
@@ -48,6 +48,7 @@ type ProfileViewProps = {
   onUpdated: (response: MeResponse) => void;
   onRecovered: (response: MeResponse) => void;
   onSessionLost: () => void;
+  onOpenOnboarding?: () => void;
   onOpenCalendar: (trigger: HTMLButtonElement) => void;
   onOpenGame: (trigger: HTMLButtonElement) => void;
   onRefreshGame: () => void;
@@ -92,6 +93,7 @@ export function ProfileView({
   onUpdated,
   onRecovered,
   onSessionLost,
+  onOpenOnboarding,
   onOpenCalendar,
   onOpenGame,
   onRefreshGame,
@@ -182,10 +184,16 @@ export function ProfileView({
       <TransientNotice message={error} kind="error" />
       <TransientNotice message={success} kind="success" />
       <TabsPrimitive.Root value={activeTab} onValueChange={value => { if (value !== activeTab) { playUiCue(getAudioRuntime(), "ui.tab"); setActiveTab(value); } }} className={styles.tabsRoot}>
+        <div className={styles.navigation}>
         <TabsPrimitive.List className={styles.tabs} aria-label="Разделы профиля">
           <TabsPrimitive.Trigger value="profile"><UserRound size={17} aria-hidden="true" />Профиль</TabsPrimitive.Trigger>
           <TabsPrimitive.Trigger value="settings" className={styles.settingsTab} aria-label="Настройки" title="Настройки"><Settings size={19} aria-hidden="true" /></TabsPrimitive.Trigger>
         </TabsPrimitive.List>
+        {onOpenOnboarding && <button type="button" className={styles.guideEntry} data-app-onboarding-entry
+          aria-label="Обучение с Мохликом" title="Обучение с Мохликом" onClick={onOpenOnboarding} data-audio-cue="ui.open">
+          <CircleHelp size={20} aria-hidden="true" />
+        </button>}
+        </div>
         <TabsPrimitive.Content value="profile" forceMount className={styles.tabPanel}>
       <div className={styles.columns}>
         <div className={styles.overviewColumn}>

@@ -139,7 +139,7 @@ test("centred explicit hero replies still honour the character bus, global mute 
 // Every fixture is disposed so timers/voices cannot leak between otherwise independent cases.
 test("SSR and disabled runtime allocate no context, fetches or singleton account state", async () => {
   assert.notEqual(getAudioRuntime(), getAudioRuntime());
-  const f = fixture(undefined, { initialSettings: DEFAULT_AUDIO_SETTINGS });
+  const f = fixture(undefined, { initialSettings: { ...DEFAULT_AUDIO_SETTINGS, enabled: false } });
   assert.equal(await f.runtime.unlock(), false);
   f.runtime.updateFrame(frame([target("water")])); f.runtime.play({ id: "tap-1", cueId: "tap" });
   await flush(); assert.equal(f.contextCount, 0); assert.equal(f.requests.length, 0);
@@ -1023,4 +1023,209 @@ test("rejected preload responses cannot poison a later music or muted UI prepara
       } else assert.equal(f.contextCount, 0);
     } finally { f.runtime.dispose(); }
   }
+});
+
+test("a transient menu music failure recovers without another frame, gesture or navigation", async t => {
+  let attempts = 0;
+  const f = fixture([cue("theme", "music")], { createMediaElement: () => {
+    const player = new Media();
+    player.play = async () => { player.plays++; if (++attempts === 1) throw new Error("Temporary stream failure"); };
+    return player;
+  } });
+  try {
+    await f.runtime.unlock();
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    f.runtime.updateFrame(frame([target("song", "theme")], { soundscape: false, ownerId: "menu" }));
+    await flush();
+    assert.equal(f.runtime.getDiagnostics().activeVoices, 0);
+    f.advance(1000); t.mock.timers.tick(1000); await flush();
+    assert.equal(attempts, 2, "the still-current menu owns one bounded retry even without frame updates");
+    assert.equal(f.runtime.getDiagnostics().activeVoices, 1);
+    assert.deepEqual(f.runtime.getDiagnostics().failedAssets, []);
+  } finally { f.runtime.dispose(); }
+});
+
+test("an unexpected native music pause resumes the same menu deck and playhead once", async t => {
+  const f = fixture([cue("theme", "music")]);
+  try {
+    await f.runtime.unlock();
+    f.runtime.updateFrame(frame([target("song", "theme")], { soundscape: false, ownerId: "menu" })); await flush();
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const player = f.media[0]; player.currentTime = 28; player.paused = true;
+    player.play = async () => { player.plays++; player.paused = false; };
+    for (let event = 0; event < 10; event++) player.onpause?.();
+    t.mock.timers.tick(250); await flush();
+    assert.equal(player.plays, 2, "native pause events coalesce into one recovery of the existing deck");
+    assert.equal(player.currentTime, 28);
+    assert.equal(f.media.length, 1);
+    assert.equal(f.runtime.getDiagnostics().playback.musicStarts, 1);
+  } finally { f.runtime.dispose(); }
+});
+
+test("a media error after playback preserves the menu playhead when retrying", async t => {
+  const f = fixture([cue("theme", "music")]);
+  try {
+    await f.runtime.unlock();
+    f.runtime.updateFrame(frame([target("song", "theme")], { soundscape: false })); await flush();
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const original = f.media[0]; original.currentTime = 31; original.onerror();
+    f.advance(1000); t.mock.timers.tick(1000); await flush();
+    assert.equal(f.media.length, 2);
+    assert.equal(f.media[1].currentTime, 31);
+    assert.equal(f.runtime.getDiagnostics().activeVoices, 1);
+    assert.equal(original.onpause, null, "cleaning an old deck must remove its recovery handler before pause()");
+  } finally { f.runtime.dispose(); }
+});
+
+test("stream recovery backs off despite frequent frames and never auto-retries denied autoplay", async t => {
+  for (const blocked of [false, true]) {
+    let attempts = 0;
+    const f = fixture([cue("theme", "music")], { createMediaElement: () => {
+      const player = new Media();
+      player.play = async () => { attempts++; throw blocked ? new DOMException("Gesture required", "NotAllowedError") : new Error("Offline"); };
+      return player;
+    } });
+    try {
+      await f.runtime.unlock(); t.mock.timers.enable({ apis: ["setTimeout"] });
+      const current = frame([target("song", "theme")], { soundscape: false }); f.runtime.updateFrame(current); await flush();
+      for (const delay of [1000, 2000, 4000, 8000, 16000, 30000]) {
+        const before = attempts;
+        for (let tick = 0; tick < 300; tick++) f.runtime.updateFrame(current);
+        assert.equal(attempts, before, "unchanged render frames never retry early");
+        f.advance(delay); t.mock.timers.tick(delay); await flush();
+        assert.equal(attempts, before + Number(!blocked));
+      }
+      assert.equal(attempts, blocked ? 1 : 7);
+      assert.equal(f.runtime.getDiagnostics().activeVoices, 0);
+    } finally { f.runtime.dispose(); t.mock.timers.reset(); }
+  }
+});
+
+test("pending failed-stream and native-pause recovery cannot outlive its current menu", async t => {
+  for (const recovery of ["failure", "pause"]) for (const action of ["mute", "music-zero", "hidden", "clear", "account", "dispose"]) {
+    const f = fixture([cue("theme", "music")]);
+    try {
+      await f.runtime.unlock(); f.runtime.updateFrame(frame([target("song", "theme")], { soundscape: false })); await flush();
+      t.mock.timers.enable({ apis: ["setTimeout"] });
+      const original = f.media[0];
+      if (recovery === "failure") original.onerror();
+      else { original.paused = true; original.onpause(); }
+      if (action === "mute") f.runtime.setSettings({ enabled: false });
+      if (action === "music-zero") f.runtime.setSettings({ buses: { music: 0 } });
+      if (action === "hidden") f.runtime.setVisible(false);
+      if (action === "clear") f.runtime.clearFrame("user-a");
+      if (action === "account") f.runtime.updateFrame(frame([], { sceneId: "another-account", soundscape: false }));
+      if (action === "dispose") f.runtime.dispose();
+      f.advance(60_000); t.mock.timers.tick(60_000); await flush();
+      assert.equal(f.media.length, 1, `${recovery}/${action}: must not create a replacement stream`);
+      assert.equal(original.plays, 1, `${recovery}/${action}: must not resume a released stream`);
+    } finally { f.runtime.dispose(); t.mock.timers.reset(); }
+  }
+});
+
+test("autoplay denial during native pause recovery waits for a gesture; old tracks do not block a new song", async t => {
+  const f = fixture([cue("day", "music"), cue("night", "music")]);
+  try {
+    await f.runtime.unlock(); f.runtime.updateFrame(frame([target("day", "day")], { soundscape: false })); await flush();
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const day = f.media[0]; day.currentTime = 14; day.paused = true;
+    day.play = async () => { day.plays++; throw new DOMException("Gesture required", "NotAllowedError"); };
+    day.onpause(); t.mock.timers.tick(250); await flush();
+    assert.equal(f.runtime.getDiagnostics().state, "suspended");
+    f.advance(60_000); t.mock.timers.tick(60_000); await flush();
+    assert.equal(day.plays, 2, "denied native resume is never hammered by a timer");
+    f.runtime.updateFrame(frame([target("night", "night")], { soundscape: false })); await flush();
+    assert.equal(f.runtime.getDiagnostics().state, "running", "a blocked obsolete day theme must not suspend healthy night music");
+    assert.equal(f.media.length, 2);
+    assert.equal(f.media[1].plays, 1);
+  } finally { f.runtime.dispose(); }
+});
+
+test("a native codec error can fall back while an earlier play promise is still pending", async () => {
+  const music = cue("theme", "music"); const player = new Media(); const first = deferred();
+  player.play = () => { player.plays++; return player.plays === 1 ? first.promise : Promise.resolve(); };
+  const f = fixture([music], { createMediaElement: () => player, catalog: { version: 1, cues: [music], profiles: [],
+    assets: [{ ...asset("theme-a"), src: "/audio/theme.opus", fallbackSrc: "/audio/theme.m4a" }] } });
+  try {
+    await f.runtime.unlock(); f.runtime.updateFrame(frame([target("song", "theme")]));
+    player.onerror(); await flush();
+    assert.equal(player.plays, 2); assert.equal(player.src, "/audio/theme.m4a");
+    first.reject(new DOMException("Old source replaced", "AbortError")); await flush();
+    assert.equal(f.runtime.getDiagnostics().activeVoices, 1);
+    assert.deepEqual(f.runtime.getDiagnostics().failedAssets, []);
+  } finally { f.runtime.dispose(); }
+});
+
+test("a retired pending music denial cannot block the next account or a newly reopened menu", async () => {
+  for (const nextScene of ["account-a", "account-b"]) {
+    const pending = deferred(); const players = [];
+    const f = fixture([cue("theme", "music")], { createMediaElement: () => {
+      const player = new Media(); const first = players.length === 0; players.push(player);
+      player.play = () => { player.plays++; return first ? pending.promise : Promise.resolve(); };
+      return player;
+    } });
+    try {
+      await f.runtime.unlock();
+      f.runtime.updateFrame(frame([target("song", "theme")], { sceneId: "account-a", soundscape: false }));
+      f.runtime.updateFrame(frame([], { sceneId: nextScene, soundscape: false }));
+      pending.reject(new DOMException("Retired player denied", "NotAllowedError")); await flush();
+      f.runtime.updateFrame(frame([target("song", "theme")], { sceneId: nextScene, soundscape: false })); await flush();
+      assert.equal(players.length, 2, "the retired promise cannot poison the shared autoplay state");
+      assert.equal(f.runtime.getDiagnostics().activeVoices, 1);
+      assert.equal(f.runtime.getDiagnostics().state, "running");
+      assert.deepEqual(f.runtime.getDiagnostics().failedAssets, []);
+    } finally { f.runtime.dispose(); }
+  }
+});
+
+test("a retired music success cannot erase the current account's retry or autoplay denial", async t => {
+  for (const blocked of [false, true]) {
+    const oldPlay = deferred(); const players = [];
+    const f = fixture([cue("theme", "music")], { createMediaElement: () => {
+      const player = new Media(); const index = players.length; players.push(player);
+      player.play = () => {
+        player.plays++;
+        if (index === 0) return oldPlay.promise;
+        if (index === 1) return Promise.reject(blocked ? new DOMException("Current player denied", "NotAllowedError") : new Error("Temporary current stream failure"));
+        return Promise.resolve();
+      };
+      return player;
+    } });
+    try {
+      await f.runtime.unlock(); t.mock.timers.enable({ apis: ["setTimeout"] });
+      f.runtime.updateFrame(frame([target("song", "theme")], { sceneId: "account-a", soundscape: false }));
+      f.runtime.updateFrame(frame([target("song", "theme")], { sceneId: "account-b", soundscape: false })); await flush();
+      oldPlay.resolve(); await flush();
+      assert.deepEqual(f.runtime.getDiagnostics().failedAssets, ["theme-a"], "stale success must not clear the current player's failure");
+      if (blocked) {
+        assert.equal(f.runtime.getDiagnostics().state, "suspended");
+        f.advance(60_000); t.mock.timers.tick(60_000); await flush();
+        assert.equal(players.length, 2, "a stale success must not unlock the newly denied account");
+        await f.runtime.unlock(); await flush();
+      } else { f.advance(1000); t.mock.timers.tick(1000); await flush(); }
+      assert.equal(players.length, 3);
+      assert.equal(f.runtime.getDiagnostics().activeVoices, 1);
+    } finally { f.runtime.dispose(); t.mock.timers.reset(); }
+  }
+});
+
+test("retiring a music deck detaches native callbacks and rejects a queued stale codec failure", async () => {
+  const music = cue("theme", "music"); const pending = deferred(); const players = [];
+  const f = fixture([music], { createMediaElement: () => {
+    const player = new Media(); const first = players.length === 0; players.push(player);
+    player.play = () => { player.plays++; return first ? pending.promise : Promise.resolve(); };
+    return player;
+  }, catalog: { version: 1, cues: [music], profiles: [],
+    assets: [{ ...asset("theme-a"), src: "/audio/theme.opus", fallbackSrc: "/audio/theme.m4a" }] } });
+  try {
+    await f.runtime.unlock(); f.runtime.updateFrame(frame([target("song", "theme")], { sceneId: "account-a" }));
+    const original = players[0]; const oldError = original.onerror;
+    f.runtime.updateFrame(frame([], { sceneId: "account-b" }));
+    assert.equal(original.onerror, null); assert.equal(original.onpause, null); assert.equal(original.onloadedmetadata, null);
+    oldError(); pending.reject(new DOMException("Old source replaced", "AbortError")); await flush();
+    assert.equal(original.plays, 1, "a queued old callback cannot start its fallback codec");
+    assert.deepEqual(f.runtime.getDiagnostics().failedAssets, []);
+    f.runtime.updateFrame(frame([target("song", "theme")], { sceneId: "account-b" })); await flush();
+    assert.equal(players.length, 2); assert.equal(f.runtime.getDiagnostics().activeVoices, 1);
+  } finally { f.runtime.dispose(); }
 });

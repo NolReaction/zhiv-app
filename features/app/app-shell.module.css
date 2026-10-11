@@ -1387,6 +1387,7 @@
 }
 .viewTransition {
   display: grid;
+  padding-bottom: var(--app-guide-clearance, 0px);
   min-width: 0;
   min-height: 0;
   animation: view-enter 220ms cubic-bezier(.2,.8,.2,1);

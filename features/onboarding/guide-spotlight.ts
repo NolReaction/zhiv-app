@@ -1,5 +1,5 @@
 export type GuideBounds = { left: number; top: number; width: number; height: number };
-type GuideStyle = Pick<CSSStyleDeclaration, "overflowX" | "overflowY" | "visibility">;
+type GuideStyle = Pick<CSSStyleDeclaration, "overflowX" | "overflowY" | "visibility" | "display" | "opacity">;
 const clips = (overflow: string) => /^(auto|scroll|hidden|clip)$/.test(overflow);
 
 /** Visible target bounds for placing the coach without covering its control.
@@ -9,13 +9,14 @@ export function measureGuideSpotlight(
   viewport: GuideBounds,
   getStyle: (element: HTMLElement) => GuideStyle = element => window.getComputedStyle(element),
 ): GuideBounds | null {
-  if (!target) return null;
+  if (!target || target.closest?.('[hidden], [inert], [aria-hidden="true"]')) return null;
   const rect = target.getBoundingClientRect(), style = getStyle(target);
-  if (rect.width <= 0 || rect.height <= 0 || style.visibility === "hidden" || style.visibility === "collapse") return null;
+  if (rect.width <= 0 || rect.height <= 0 || style.visibility === "hidden" || style.visibility === "collapse" || style.display === "none" || style.opacity === "0") return null;
   let left = viewport.left + 3, top = viewport.top + 3;
   let right = viewport.left + viewport.width - 3, bottom = viewport.top + viewport.height - 3;
   for (let parent = target.parentElement; parent; parent = parent.parentElement) {
     const parentStyle = getStyle(parent);
+    if (parentStyle.visibility === "hidden" || parentStyle.visibility === "collapse" || parentStyle.display === "none" || parentStyle.opacity === "0") return null;
     const clipX = clips(parentStyle.overflowX), clipY = clips(parentStyle.overflowY);
     if (!clipX && !clipY) continue;
     const parentRect = parent.getBoundingClientRect();

@@ -148,9 +148,10 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
     open: props.open && !props.modalBlocked, flow: "world", stepId: current ?? (reminder ? "harvest" : "welcome"),
     title: "Привет! Это наш лес", text: "Я Мохлик. За 3–5 минут посадим ягоды, познакомимся с соседями и заглянем в мастерскую. Всё можно открывать и пробовать.",
     summary: "Посадим ягоды и познакомимся с лесом за несколько минут.",
-    hint: "Ждать урожай и стройку не придётся. Любой шаг можно отложить, а меня — погладить!",
+    hint: "Ждать урожай и стройку не придётся. Любой шаг можно отложить. Когда объяснение закончено, нажми на меня или на реплику.",
     pose: "greet", welcome: !progress, targetRoot: worldElement,
     compact: Boolean(props.quickMenu || surface.garden || props.workshopOpen),
+    dock: props.quickMenu ? "#world-quick-menu [data-guide-coach-slot]" : surface.garden || props.workshopOpen ? "[data-place] [data-guide-coach-slot]" : undefined,
     onPause: props.onPause, onSkip: props.onSkip,
     primary: { label: "Давай попробуем", onClick: props.onStart },
   };
@@ -170,13 +171,13 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
         : surface.pantryItem ? '[data-guide-pantry-item]' : '[data-guide-pantry-capacity]',
       expeditions: '[data-route]' };
     base.target = opened ? contentTarget[current] : `[data-world-quick="${current}"]`;
-    base.primary = seen ? { label: current === "pantry" ? "Попробуем вырастить ягоды" : "Посмотрел, дальше", onClick: () => advance(next[current]) }
+    base.primary = seen ? { advance: true, label: current === "pantry" ? "Попробуем вырастить ягоды" : "Посмотрел, дальше", onClick: () => advance(next[current]) }
       : { label: labels[current], onClick: () => props.onOpenQuick(current) };
     if (opened) {
       base.hint = undefined;
       if (current === "profile") {
-        base.summary = "«Профиль» — достижения, «Друзья» — твои люди. Кнопка «Как Мохлик?» покажет моё состояние.";
-        base.text = "Переключай «Профиль» и «Друзья». Моё состояние открывается отдельно кнопкой «Как Мохлик?», а настройки — шестерёнкой. Осмотрись и продолжим.";
+        base.summary = "«Профиль» — достижения, «Друзья» — твои люди. «Как Мохлик?» покажет моё состояние.";
+        base.text = "Переключай вкладки: в профиле видны уровень и достижения, в друзьях — люди, которых ты добавил в приложении. «Как Мохлик?» открывает моё состояние, шестерёнка — настройки. Осмотрись и продолжим.";
       } else if (current === "pantry") {
         base.summary = surface.pantryRelics ? "Реликвии нужны для улучшений и обмена. Быстро продать их нельзя."
           : surface.pantrySale ? "Если предмет можно продать, выбери количество и проверь итог перед «Продать торговцу»."
@@ -223,7 +224,7 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
     if (harvested) {
       base.primary = { label: "Посмотреть ягоды", onClick: () => { if (reminder) setHarvested(false); else advance("neighbors"); props.onOpenQuick("pantry"); } };
     } else if (crop && berry?.growing) {
-      base.primary = { label: "Продолжить знакомство", onClick: () => advance("neighbors") };
+      base.primary = { advance: true, label: "Продолжить знакомство", onClick: () => advance("neighbors") };
     } else if (crop) {
       base.primary = surface.garden ? undefined
         : { label: "Открыть урожай", onClick: () => props.onOpenGarden() };
@@ -243,7 +244,7 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
     base.text = "Плёска знает всё о рыбалке, а ёжик Шишколап берётся за стройку. Нажми на соседа, если хочешь поговорить.";
     base.hint = "Покупать ничего не нужно. Соседи всегда доступны на карте и в списке персонажей.";
     base.children = <WorldNeighborCards onOpenResident={props.onOpenResident} />;
-    base.primary = { label: "Дальше, к заказам", onClick: () => advance("orders") };
+    base.primary = { advance: true, label: "Дальше, к заказам", onClick: () => advance("orders") };
     base.secondary = undefined;
     // A resident conversation owns its own controls and focus until it closes.
     base.open = props.open && !props.modalBlocked && !props.residentOpen;
@@ -276,7 +277,7 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
       base.text = confirmed ? "Ты передал ингредиенты Шишколапу и получил награду. У обычных заказов так же: сравни «есть / нужно», проверь монеты и нажми «Отдать заказ». Недостающий ресурс можно нажать, чтобы узнать, где его взять."
         : "Запрос ещё проверяется. Ингредиенты и награду повторно выдавать не будем.";
       base.hint = "В следующий раз выбирай обычные просьбы на этой же доске. Учебный набор повторно не выдаётся.";
-      base.primary = { label: "К мастерской", onClick: () => advance("workshop") };
+      base.primary = { advance: true, label: "К мастерской", onClick: () => advance("workshop") };
       base.secondary = undefined;
     } else if (!practice.ingredientsClaimed) {
       base.summary = `Соседи платят за припасы. Дарю всё для пробного заказа с наградой ${order!.coins} монет.`;
@@ -325,7 +326,7 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
       base.pose = "jump";
       base.text = remaining ? `Заказ принят. До готовности ещё ${worldDuration(remaining)}; можно уйти с карты и заняться своими делами.`
         : "Время стройки закончилось. Открой постройку, чтобы проверить результат. А мы можем продолжить прогулку.";
-      base.primary = { label: "Продолжить знакомство", onClick: () => advance("expeditions") };
+      base.primary = { advance: true, label: "Продолжить знакомство", onClick: () => advance("expeditions") };
       base.secondary = { label: "Посмотреть стройку", onClick: props.onOpenWorkshop };
     } else if (level > 0) {
       base.title = "Мастерская уже есть";
@@ -361,11 +362,11 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
       : workshopLevel > 0 ? `Мастерская работает: уровень ${workshopLevel}.`
       : snapshot?.workshopStarterClaimed ? "Набор для мастерской получен, стройка ещё не запущена." : "Набор для первой мастерской можно получить, вернувшись к её шагу.";
     base.target = '[data-world-onboarding-help]';
-    base.summary = "Кнопка i вверху открывает справку: выбери тему или воспользуйся поиском. Повторить обучение можно через «Ещё» → «Обучение».";
-    base.text = `${cropResult} ${workshopResult} Кнопка i открывает темы и поиск по справке, а «Ещё» → «Обучение» возвращает знакомство с лесом.`;
+    base.summary = "Кнопка i вверху открывает справку: выбери тему или воспользуйся поиском. Повторить обучение можно по «?» рядом с шестерёнкой в моём профиле.";
+    base.text = `${cropResult} ${workshopResult} Кнопка i открывает темы и поиск по справке, а «?» рядом с шестерёнкой в моём профиле возвращает знакомство с лесом.`;
     base.hint = "В новых разделах я коротко объясню местные действия. Выращивание и стройка продолжаются в фоне.";
     base.pose = "greet";
-    base.primary = { label: "Готово, буду играть", onClick: finish };
+    base.primary = { advance: true, label: "Готово, буду играть", onClick: finish };
     base.secondary = { label: "Открыть справку", onClick: props.onOpenHelp };
     if (tracked && cropReady) base.secondary = { label: "Закончить и собрать ягоды", onClick: () => { finish(); props.onOpenGarden(); } };
     else if (snapshot?.workshopStarterClaimed && !workshopLevel && !construction) {

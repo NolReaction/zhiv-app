@@ -80,3 +80,16 @@ test("visual viewport offsets, absent targets and hidden targets keep their prio
   target.bounds = rect(20, 30, 0, 44);
   assert.equal(measure(target), null);
 });
+
+
+test("hidden or transparent ancestor removes a spotlight despite a retained layout rectangle", () => {
+  const parent = element(rect(0, 0, 300, 300));
+  const target = element(rect(50, 100, 120, 44), { parentElement: parent });
+  for (const [property, value] of [["opacity", "0"], ["display", "none"], ["visibility", "hidden"]]) {
+    parent.style[property] = value;
+    assert.equal(measure(target), null, property);
+    delete parent.style[property];
+  }
+  target.closest = () => parent;
+  assert.equal(measure(target), null, "inert and aria-hidden modal ancestors suppress the highlight");
+});

@@ -41,10 +41,10 @@ test("stereo uses listener location and viewport, stays subtle and tolerates una
   assert.equal(stereoPan({ x: 1000, y: 0 }, { ...listener, viewportWidth: 0 }), 0);
 });
 
-test("malformed or partial persisted settings never enable sound or produce invalid gains", () => {
+test("malformed or partial persisted settings use the recommended defaults without invalid gains", () => {
   assert.deepEqual(sanitizeAudioSettings(null), DEFAULT_AUDIO_SETTINGS);
   const settings = sanitizeAudioSettings({ enabled: "yes", master: NaN, buses: { music: -1, world: 99, ui: "loud", characters: Infinity } });
-  assert.equal(settings.enabled, false);
+  assert.equal(settings.enabled, DEFAULT_AUDIO_SETTINGS.enabled);
   assert.equal(settings.master, DEFAULT_AUDIO_SETTINGS.master);
   assert.equal(settings.buses.music, 0); assert.equal(settings.buses.world, 1);
   assert.equal(settings.buses.ui, DEFAULT_AUDIO_SETTINGS.buses.ui);
@@ -54,14 +54,17 @@ test("malformed or partial persisted settings never enable sound or produce inva
 });
 
 test("recommended mix never replaces existing valid device preferences", () => {
-  assert.equal(DEFAULT_AUDIO_SETTINGS.buses.music, .4);
-  assert.equal(getDefaultAudioVolumePatch().buses.music, .4);
+  assert.equal(DEFAULT_AUDIO_SETTINGS.enabled, true);
+  assert.equal(DEFAULT_AUDIO_SETTINGS.buses.music, .1);
+  assert.equal(getDefaultAudioVolumePatch().buses.music, .1);
   const saved = { enabled: true, master: .92, buses: { music: 0, ambience: .21, weather: .13, world: .81, characters: .19, ui: .76 } };
   assert.deepEqual(sanitizeAudioSettings(saved), saved);
   const partial = sanitizeAudioSettings({ enabled: true, buses: { music: 0 } });
   assert.equal(partial.enabled, true);
   assert.equal(partial.buses.music, 0);
   assert.equal(partial.buses.ambience, DEFAULT_AUDIO_SETTINGS.buses.ambience);
+  assert.equal(sanitizeAudioSettings({ enabled: false }).enabled, false, "a saved mute is an explicit device preference");
+  assert.equal(sanitizeAudioSettings({ enabled: false, buses: { music: .4 } }).buses.music, .4, "an old saved volume is not silently rewritten");
 });
 
 test("splitting saved environmental volume keeps muted and quiet weather quiet", () => {

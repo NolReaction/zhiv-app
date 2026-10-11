@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { createStartupAudioEntry, getStartupAudioEntry, STARTUP_AUDIO_BUDGET_MS, STARTUP_LOGO_AUDIO_WINDOW_MS }
+const { createStartupAudioEntry, getStartupAudioEntry, STARTUP_AUDIO_BUDGET_MS, STARTUP_LOGO_AUDIO_WINDOW_MS, STARTUP_LOGO_PREPARE_MS }
   = await vite.ssrLoadModule("/features/startup/startup-audio.ts");
 const { DEFAULT_AUDIO_SETTINGS } = await vite.ssrLoadModule("/features/audio/domain/settings.ts");
 const flush = () => new Promise(resolve => setImmediate(resolve));
@@ -43,6 +43,93 @@ test("warm entry prepares only critical UI and plays the logo once at its actual
   f.entry.reveal(); f.entry.reveal();
   assert.deepEqual(f.events, [{ id: "startup:logo", cueId: "ui.startup", occurredAt: 1_000, maxAgeMs: STARTUP_LOGO_AUDIO_WINDOW_MS }]);
   f.entry.close();
+});
+
+test("a 400ms cold logo is prepared before the actual entrance instead of missing a 180ms download window", async () => {
+  const pending = deferred();
+  const f = fixture({ runtime: { prepare: () => pending.promise } });
+  f.entry.start(); await flush();
+  assert.equal(f.entry.getPresentation().revealReady, false);
+  f.advance(400); pending.resolve(); await flush();
+  assert.equal(f.entry.getPresentation().revealReady, true);
+  assert.equal(f.events.length, 0, "sound waits for the actual visible entrance");
+  f.entry.reveal();
+  assert.equal(f.events.length, 1);
+  assert.equal(f.events[0].occurredAt, 1_400);
+  f.entry.close();
+});
+
+test("slow logo preparation releases the image after 600ms independently from the optional sound budget", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const pending = deferred();
+  const f = fixture({ runtime: { prepare: () => pending.promise } });
+  f.entry.start(); await flush();
+  t.mock.timers.tick(STARTUP_LOGO_PREPARE_MS - 1);
+  assert.equal(f.entry.getPresentation().revealReady, false);
+  f.advance(STARTUP_LOGO_PREPARE_MS); t.mock.timers.tick(1);
+  assert.equal(f.entry.getPresentation().revealReady, true);
+  assert.equal(f.entry.getPresentation().settled, false);
+  f.entry.reveal();
+  f.advance(STARTUP_LOGO_AUDIO_WINDOW_MS + 1); pending.resolve(); await flush();
+  assert.equal(f.events.length, 0);
+  f.entry.close();
+});
+
+test("the visible splash offers a gesture for browser-blocked fresh defaults and plays its current logo once", async () => {
+  let unlocks = 0;
+  const f = fixture({ runtime: { unlock: async () => { unlocks++; f.setState("running"); return true; } } });
+  f.setState("locked"); f.entry.start(); await flush(); f.entry.reveal();
+  assert.equal(f.entry.getPresentation().offerSound, true);
+  f.advance(500);
+  f.entry.requestSound(); await flush();
+  assert.equal(unlocks, 1);
+  assert.equal(f.events.length, 1);
+  assert.equal(f.events[0].occurredAt, 1_500, "the explicit visible-logo gesture has its own current timestamp");
+  assert.equal(f.entry.getPresentation().offerSound, false);
+  f.entry.requestSound(); f.entry.refresh();
+  assert.equal(unlocks, 1); assert.equal(f.events.length, 1);
+  f.entry.close();
+});
+
+test("native pointerdown permission cannot make the offered button disappear before its click", async () => {
+  const f = fixture({ runtime: { unlock: async () => true } });
+  f.setState("locked"); f.entry.start(); await flush(); f.entry.reveal(); f.advance(500);
+  f.setState("running"); f.entry.refresh();
+  assert.equal(f.entry.getPresentation().offerSound, true);
+  assert.equal(f.events.length, 0, "generic input does not replay an expired entrance");
+  f.entry.requestSound(); await flush();
+  assert.equal(f.events.length, 1);
+  f.entry.close();
+});
+
+test("the splash gesture never survives closing, hiding, mute or a slow permission result", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  for (const invalidation of ["close", "hide", "mute", "late"]) {
+    const permission = deferred();
+    const f = fixture({ runtime: { unlock: () => permission.promise } });
+    f.setState("locked"); f.entry.start(); await flush(); f.entry.reveal(); f.advance(500);
+    f.entry.requestSound();
+    if (invalidation === "close") f.entry.close();
+    if (invalidation === "hide") { f.setVisible(false); f.entry.hide(); }
+    if (invalidation === "mute") { f.settings.enabled = false; f.entry.refresh(); }
+    if (invalidation === "late") { f.advance(STARTUP_LOGO_AUDIO_WINDOW_MS + 1); t.mock.timers.tick(STARTUP_LOGO_AUDIO_WINDOW_MS + 1); }
+    f.setState("running"); permission.resolve(true); await flush();
+    assert.equal(f.events.length, 0, invalidation);
+    f.entry.close(); f.entry.requestSound();
+    assert.equal(f.entry.getPresentation().offerSound, false);
+  }
+});
+
+test("saved mute and zero channels never offer a sound button or change the saved settings", async () => {
+  for (const settings of [{ enabled: false }, { master: 0 }, { buses: { ...DEFAULT_AUDIO_SETTINGS.buses, ui: 0 } }]) {
+    const f = fixture({ settings }); const before = structuredClone(f.settings);
+    f.setState("locked"); f.entry.start(); await flush(); f.entry.reveal(); f.entry.requestSound();
+    assert.equal(f.entry.getPresentation().offerSound, false);
+    assert.equal(f.entry.getPresentation().revealReady, true);
+    assert.equal(f.events.length, 0);
+    assert.deepEqual(f.settings, before);
+    f.entry.close();
+  }
 });
 
 test("cold logo can join the current entrance promptly, without waiting for other menu effects", async () => {

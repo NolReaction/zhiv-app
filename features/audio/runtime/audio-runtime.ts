@@ -10,7 +10,9 @@ const MAX_MUSIC_DECKS = 2;
 const EVENT_TTL_MS = 2_000;
 const MAX_EVENT_IDS = 512;
 const DEDUP_TTL_MS = 60_000;
-const STREAM_RETRY_MS = 30_000;
+const STREAM_RETRY_MS = 1_000;
+const MAX_STREAM_RETRY_MS = 30_000;
+const MEDIA_PAUSE_RECOVERY_MS = 250;
 const MAX_LOOP_TIMELINES = 128;
 const MAX_PREPARED_MUSIC_BYTES = 8 * 1024 * 1024;
 const SOUNDSCAPE_BUSES = new Set<AudioBus>(["ambience", "weather", "world", "characters"]);
@@ -21,10 +23,12 @@ type Voice = {
   media: HTMLAudioElement | null; createdAt: number; timer: ReturnType<typeof setTimeout> | null;
   stopped: boolean; reclaimable: boolean; sceneId: string | null;
   feedbackBus?: AudioEvent["feedbackBus"];
+  cancelMediaRecovery?: () => void;
 };
 type PendingLoop = { cueId: string; generation: number };
 type ParameterRamp = { from: number; target: number; start: number; end: number };
 type LoopTimeline = { assetId: string; startedAt: number; playbackRate: number };
+type StreamFailure = { retryAt: number; attempts: number };
 export type AudioRuntimeOptions = {
   catalog?: AudioCatalog;
   initialSettings?: AudioSettings;
@@ -60,6 +64,8 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
   let frame: AudioFrame | null = null;
   let lastSceneId: string | null = null;
   let frameClearTimer: ReturnType<typeof setTimeout> | null = null;
+  let streamRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  let streamRetryAt = Infinity;
   let visible = true;
   let disposed = false;
   let unavailable = false;
@@ -83,7 +89,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
   const cooldowns = new Map<string, number>();
   const playbackCooldowns = new Map<string, number>();
   const lastVariants = new Map<string, string>();
-  const failedStreams = new Map<string, number>();
+  const failedStreams = new Map<string, StreamFailure>();
   const blockedStreams = new Set<string>();
   const musicPositions = new Map<string, number>();
   const loopTimelines = new Map<string, LoopTimeline>();
@@ -105,7 +111,8 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
     if (disposed) return "disposed";
     if (unavailable) return "unavailable";
     if (!context || !everUnlocked) return "locked";
-    return visible && settings.enabled && context.state === "running" && blockedStreams.size === 0 ? "running" : "suspended";
+    const blockedMusic = frame?.loops.some(loop => loop.gain > .001 && cues.get(loop.cueId)?.assets.some(id => blockedStreams.has(id)));
+    return visible && settings.enabled && context.state === "running" && !(settings.buses.music > 0 && blockedMusic) ? "running" : "suspended";
   }
   function publish() {
     const sources: AudioSourceDebug[] = (frame?.sources ?? []).slice(0, 64).map(source => ({ ...source,
@@ -166,6 +173,11 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
     clearTimeout(borrowedPreview.timer);
     borrowedPreview = null;
   }
+  function detachMediaCallbacks(voice: Voice) {
+    if (!voice.media) return;
+    voice.cancelMediaRecovery?.();
+    voice.media.onerror = null; voice.media.onloadedmetadata = null; voice.media.onpause = null; voice.media.onended = null;
+  }
   function cleanup(voice: Voice) {
     if (voice.stopped) return;
     if (borrowedPreview?.voice === voice) releaseBorrowedPreview();
@@ -175,7 +187,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
     retiring.delete(voice.serial);
     if (voice.media) {
       if (voice.key.startsWith("loop:") && voice.sceneId === lastSceneId && Number.isFinite(voice.media.currentTime) && voice.media.currentTime > 0) musicPositions.set(voice.assetId, voice.media.currentTime);
-      voice.media.onerror = null; voice.media.onloadedmetadata = null;
+      detachMediaCallbacks(voice);
       voice.media.pause();
       voice.media.removeAttribute("src");
       voice.media.load();
@@ -191,6 +203,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
     if (voice.stopped) return;
     if (voice.timer) { clearTimeout(voice.timer); voice.timer = null; }
     voice.reclaimable = false;
+    detachMediaCallbacks(voice);
     if (borrowedPreview?.voice === voice) releaseBorrowedPreview();
     if (voices.get(voice.key) === voice) voices.delete(voice.key);
     if (immediate || !context || context.state !== "running") { cleanup(voice); return; }
@@ -226,6 +239,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
     return voice;
   }
   function invalidate(immediate = false) {
+    cancelStreamRetry();
     releaseBorrowedPreview();
     generation++;
     pendingLoops.clear(); pendingEvents.clear();
@@ -234,6 +248,35 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
     // unmute or account change must never revive them through the reclaim path.
     for (const voice of retiring.values()) voice.reclaimable = false;
     if (immediate) for (const voice of [...retiring.values()]) cleanup(voice);
+  }
+  function cancelStreamRetry() {
+    if (streamRetryTimer !== null) clearTimeout(streamRetryTimer);
+    streamRetryTimer = null; streamRetryAt = Infinity;
+  }
+  function scheduleStreamRetry() {
+    let nextAt = Infinity;
+    if (audible("music")) for (const target of frame?.loops ?? []) {
+      const cue = cues.get(target.cueId);
+      if (!cue || cue.mode !== "music" || target.gain <= .001 || voices.has(`loop:${target.id}`)) continue;
+      for (const id of cue.assets) {
+        const failure = failedStreams.get(id);
+        if (failure && !blockedStreams.has(id)) nextAt = Math.min(nextAt, failure.retryAt);
+      }
+    }
+    if (nextAt === streamRetryAt) return;
+    cancelStreamRetry();
+    if (!Number.isFinite(nextAt)) return;
+    streamRetryAt = nextAt;
+    streamRetryTimer = setTimeout(() => {
+      streamRetryTimer = null; streamRetryAt = Infinity;
+      // Static menus publish on view changes, so recovery must not depend on a
+      // canvas tick or a navigation. Reconcile only the frame still owned now.
+      if (!disposed) reconcile();
+    }, Math.max(STREAM_RETRY_MS, nextAt - now()));
+  }
+  function failStream(assetId: string) {
+    const attempts = Math.min(6, (failedStreams.get(assetId)?.attempts ?? 0) + 1);
+    failedStreams.set(assetId, { attempts, retryAt: now() + Math.min(MAX_STREAM_RETRY_MS, STREAM_RETRY_MS * 2 ** (attempts - 1)) });
   }
   function loadBuffer(asset: AudioAsset, consume: (buffer: AudioBuffer | null) => void, priority = 60) {
     // Reserve through the consumer callback: another simultaneous decode must not evict
@@ -326,8 +369,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
   }
   function startMusic(key: string, cue: AudioCue, asset: AudioAsset, gain: number, pan: number, priority: number) {
     if (!audible(cue.bus) || !roomFor(cue, priority)) return;
-    const failedAt = failedStreams.get(asset.id);
-    if (failedAt !== undefined && now() - failedAt < STREAM_RETRY_MS) return;
+    if (blockedStreams.has(asset.id) || (failedStreams.get(asset.id)?.retryAt ?? -Infinity) > now()) return;
     let voice: Voice | null = null;
     let media: HTMLAudioElement | null = null;
     try {
@@ -338,45 +380,75 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
       musicStarts++;
       const liveVoice = voice;
       const player = media;
+      const ownsPlayback = () => !disposed && !liveVoice.stopped && voices.get(key) === liveVoice && liveVoice.sceneId === lastSceneId;
       const urls = [...new Set([asset.src, asset.fallbackSrc].filter((url): url is string => Boolean(url)))];
       // Preparation chooses a supported codec; consume its ready Blob first.
       urls.sort((a, b) => Number(preparedMusic.has(b)) - Number(preparedMusic.has(a)));
       let attempt = 0;
+      const acceptsCallback = (request: number) => {
+        // A fading deck can settle its play promise after an account change,
+        // mute or replacement. It no longer owns shared retry/autoplay state.
+        // Its bounded retirement timer still owns the existing fade/cleanup.
+        return request === attempt && ownsPlayback();
+      };
+      let pauseRecovery: ReturnType<typeof setTimeout> | null = null;
+      liveVoice.cancelMediaRecovery = () => { if (pauseRecovery !== null) clearTimeout(pauseRecovery); pauseRecovery = null; };
       const savedPosition = key.startsWith("loop:") ? musicPositions.get(asset.id) ?? 0 : 0;
       const restorePosition = () => {
-        if (savedPosition <= 0 || liveVoice.stopped) return;
+        if (savedPosition <= 0 || !ownsPlayback()) return;
         try { player.currentTime = Number.isFinite(player.duration) && player.duration > 0 ? savedPosition % player.duration : savedPosition; } catch { /* Metadata callback retries seeking when the stream is ready. */ }
       };
       const tryUrl = (index: number) => {
         const request = ++attempt;
+        let playPending = false;
+        liveVoice.cancelMediaRecovery?.();
         const onFailure = (allowFallback: boolean) => {
-          if (liveVoice.stopped || disposed || request !== attempt) return;
+          if (!acceptsCallback(request)) return;
           if (allowFallback && urls[index + 1]) { tryUrl(index + 1); return; }
-          failedStreams.set(asset.id, now()); cleanup(liveVoice); publish();
+          failStream(asset.id); cleanup(liveVoice); scheduleStreamRetry(); publish();
         };
         player.onerror = () => onFailure(true);
         player.onloadedmetadata = restorePosition;
         player.src = preparedMusic.get(urls[index])?.url ?? urls[index]; restorePosition();
-        // A failed codec may use the fallback; autoplay denial needs a new gesture instead.
-        void player.play().then(() => {
-          if (liveVoice.stopped) { player.pause(); return; }
-          if (request !== attempt) return;
-          failedStreams.delete(asset.id); blockedStreams.delete(asset.id); publish();
-        }).catch((error: unknown) => {
-          const name = error instanceof Error ? error.name : "";
-          if (name === "NotAllowedError" && !liveVoice.stopped && request === attempt) blockedStreams.add(asset.id);
-          onFailure(name !== "NotAllowedError" && name !== "AbortError");
-        });
+        const playCurrent = () => {
+          if (playPending || !ownsPlayback() || request !== attempt) return;
+          playPending = true;
+          // A failed codec may use the fallback; autoplay denial needs a new gesture instead.
+          void player.play().then(() => {
+            playPending = false;
+            if (!acceptsCallback(request)) return;
+            failedStreams.delete(asset.id); blockedStreams.delete(asset.id); scheduleStreamRetry(); publish();
+          }).catch((error: unknown) => {
+            playPending = false;
+            if (!acceptsCallback(request)) return;
+            const name = error instanceof Error ? error.name : "";
+            if (name === "NotAllowedError") blockedStreams.add(asset.id);
+            onFailure(name !== "NotAllowedError" && name !== "AbortError");
+          });
+        };
+        player.onpause = player.onended = () => {
+          if (pauseRecovery !== null || playPending || liveVoice.stopped || request !== attempt || voices.get(key) !== liveVoice
+            || !key.startsWith("loop:") || !audible(cue.bus) || !(player.paused || player.ended)) return;
+          pauseRecovery = setTimeout(() => {
+            pauseRecovery = null;
+            if (liveVoice.stopped || voices.get(key) !== liveVoice || !audible(cue.bus)
+              || !targets().some(target => `loop:${target.id}` === key && target.cueId === cue.id) || !(player.paused || player.ended)) return;
+            // Native media can pause while AudioContext remains running. Reuse
+            // this deck and its currentTime; never restart it on every frame.
+            playCurrent();
+          }, MEDIA_PAUSE_RECOVERY_MS);
+        };
+        playCurrent();
       };
       tune(liveVoice, gain, pan);
       // HTMLMediaElement keeps long songs out of the decoded effect cache.
       tryUrl(0);
       publish();
     } catch {
-      failedStreams.set(asset.id, now());
+      failStream(asset.id);
       if (voice) cleanup(voice);
       else if (media) { media.pause(); media.removeAttribute("src"); media.load(); }
-      publish();
+      scheduleStreamRetry(); publish();
     }
   }
   function targets(): AudioLoopTarget[] {
@@ -402,7 +474,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
     return selected;
   }
   function reconcile() {
-    if (!audible()) return;
+    if (!audible()) { cancelStreamRetry(); return; }
     const wanted = new Map(targets().map(target => [`loop:${target.id}`, target]));
     for (const [key, pending] of pendingLoops) if (wanted.get(key)?.cueId !== pending.cueId) pendingLoops.delete(key);
     for (const [key, voice] of voices) if (key.startsWith("loop:") && borrowedPreview?.voice !== voice && wanted.get(key)?.cueId !== voice.cue.id) {
@@ -432,7 +504,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
         if (buffer && current && token.generation === generation) startBuffer(key, cue, asset, buffer, current.gain, current.pan, current.priority ?? cue.priority);
       }, 20);
     }
-    publish();
+    scheduleStreamRetry(); publish();
   }
 
   function ensureContext(): boolean {
@@ -613,6 +685,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
     clearFrame(ownerId) {
       if (!frame || frame.ownerId !== ownerId || disposed) return;
       frame = null;
+      cancelStreamRetry();
       if (![...voices.values()].some(voice => voice.key.startsWith("loop:"))) {
         invalidate(); updateMix(); publish(); return;
       }

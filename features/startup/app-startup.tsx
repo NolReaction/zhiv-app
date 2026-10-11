@@ -23,8 +23,9 @@ export function AppStartup({ children }: { children: ReactNode }) {
   const content = useRef<HTMLDivElement>(null);
   const retry = useRef<() => void>(() => {});
   const active = phase !== "done";
-  const audioSettled = useStartupAudio(logoReady, active);
-  const ready = state.ready && audioSettled;
+  const audio = useStartupAudio(logoReady, phase === "entering" || phase === "loading");
+  const entranceStarted = logoReady && audio.revealReady;
+  const ready = state.ready && audio.settled;
   const report = useCallback((next: StartupPresentation, onRetry: () => void) => {
     retry.current = onRetry;
     setState(previous => Object.keys(next).every(key => previous[key as keyof StartupPresentation] === next[key as keyof StartupPresentation]) ? previous : next);
@@ -42,10 +43,10 @@ export function AppStartup({ children }: { children: ReactNode }) {
     return () => { media.removeEventListener("change", updateMotion); document.removeEventListener("visibilitychange", updateVisibility); };
   }, []);
   useEffect(() => {
-    if (!logoReady) return;
+    if (!entranceStarted) return;
     const timer = setTimeout(() => setEntranceDone(true), reducedMotion ? 150 : SPLASH_ENTER_MS);
     return () => clearTimeout(timer);
-  }, [logoReady, reducedMotion]);
+  }, [entranceStarted, reducedMotion]);
   useEffect(() => {
     if (!entranceDone || phase === "done") return;
     // Reconnection can be lost during the exit. Keep the gate until it is ready again.
@@ -81,8 +82,9 @@ export function AppStartup({ children }: { children: ReactNode }) {
 
   return <StartupContext.Provider value={context}>
     <div ref={content} data-app-content inert={active} aria-hidden={active || undefined}>{children}</div>
-    {active && <StartupSplash phase={phase} progress={state.ready && !audioSettled ? 98 : state.progress}
-      message={state.ready && !audioSettled ? "Готовим звуки" : state.message} detail={state.detail}
+    {active && <StartupSplash phase={phase} progress={state.ready && !audio.settled ? 98 : state.progress}
+      message={state.ready && !audio.settled ? "Готовим звуки" : state.message} detail={state.detail}
+      revealReady={audio.revealReady} offerSound={audio.offerSound && phase !== "leaving"} soundBusy={audio.busy} onSound={audio.requestSound}
       retryAvailable={state.retryAvailable} onRetry={() => retry.current()} onLogoReady={onLogoReady} />}
   </StartupContext.Provider>;
 }
