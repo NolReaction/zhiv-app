@@ -2047,6 +2047,39 @@ test("a separate bush cutout moves to the foreground once without repainting the
   } finally { worldDevStore.reset(); env.restore(); }
 });
 
+test("foliage insects stay behind an entering hero once in both cameras, while hand and air insects retain their pass", async () => {
+  const { paintNewMap, worldDevStore } = await modules();
+  const env=browser();
+  try {
+    const map={...fixture,bushes:[clearingBush]};
+    for(const species of ["butterfly","firefly"]) for(const still of [false,true]) for(const view of ["circle","world"]) {
+      const night=species==="firefly", support={x:600,y:622};
+      const entity={id:"leaf",species,habitatId:"foliage",anchorId:"leaf",mode:"rest",x:600,y:622,size:1.5,
+        phase:0,opacity:1,angle:0,vx:0,vy:0};
+      const fauna={elapsed:20,dusk:Number(night),visibility:{butterflies:true,fireflies:true},encounter:null,
+        habitats:[{id:"foliage",anchors:[{id:"leaf",position:support}]}],
+        entities:[entity,{...entity,id:"air",anchorId:null,mode:"fly",x:603},
+          {...entity,id:"hand",anchorId:null,mode:"perch",x:605}]};
+      for(const occlude of [false,true]) {
+        const surface=env.surface();
+        paintNewMap(surface.context,new Map(),{...options,view,reducedMotion:still},20,false,0,Number(night),{
+          scene:map,fauna,state:{...worldDevStore.getSnapshot(),weather:"clear",timeOfDay:night?"night":"day",
+            butterflies:"on",fireflies:"on",birds:"off",reducedMotion:still?"on":"off"},
+          clearing:{x:600,y:660,pose:"idle",frame:0,direction:"back",opacity:1,lift:5,
+            bush:{id:clearingBush.id,occlude,rustle:0,occupied:true,elapsed:0,bursts:[]}},
+        });
+        const calls=surface.calls, body=calls.findIndex(call=>call.method==="drawImage"&&call.args[0]?.width===48&&call.args[0]?.height===48);
+        assert.ok(body>=0);
+        for(const x of [600,603,605]) {
+          const draws=calls.map((call,i)=>call.method==="translate"&&call.args[0]===x&&call.args[1]===622?i:-1).filter(i=>i>=0);
+          assert.equal(draws.length,1,`${species}/${view}/${still}: each actual insect paints once`);
+          assert.equal(draws[0]<body,x===600&&!occlude,`${species}/${view}/${still}: only leaf-supported insects share rear foliage depth`);
+        }
+      }
+    }
+  } finally { worldDevStore.reset(); env.restore(); }
+});
+
 test("an interrupted basket stays in the paws during attention and a held DEV pose", async () => {
   const { paintNewMap, worldDevStore } = await modules();
   const env = browser();

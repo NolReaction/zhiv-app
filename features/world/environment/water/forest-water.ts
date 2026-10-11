@@ -118,17 +118,9 @@ function layout(water: WaterGeometry) {
   water.layout = { cells: bounded, surface, life }; return water.layout;
 }
 
-/** Shared active time makes rain reproducible across cameras and pauses. Only a
- * completed ripple chooses another point; weather controls birth density. */
-export function forestWaterFrame(scene: FixedWorldScene, options: WaterOptions) {
-  const water = geometry(scene), rain = clamp(options.rain), dusk = clamp(options.dusk);
-  const elapsed = options.reducedMotion || !Number.isFinite(options.elapsed) ? 0 : Math.max(0, options.elapsed);
-  if (!water) return { currents: [], glints: [], impacts: [], fish: [], splashes: [], breeze: [] };
-  const samples = layout(water);
-  const surface = options.waterSurface === false ? { currents: [], glints: [] }
-    : waterSurfaceFrame(samples.surface, { ...options, elapsed, rain, dusk });
+function waterImpactFrame(water: WaterGeometry, cells: WaterCell[], elapsed: number, rain: number, dusk: number, reducedMotion: boolean) {
   const impacts: Array<ForestWaterImpact & { eventId: string }> = [];
-  if (!options.reducedMotion && rain > .01) for (const cell of samples.cells) for (let slot = 0; slot < 2; slot++) {
+  if (!reducedMotion && rain > .01) for (const cell of cells) for (let slot = 0; slot < 2; slot++) {
     const stream = cell.key * 7 + slot * 571;
     const lifetime = 1.05 + noise(stream + 301) * .9, period = lifetime + .35 + noise(stream + 311) * .65;
     const clock = elapsed / period + noise(stream + 131), cycle = Math.floor(clock), age = phase(clock) * period / lifetime;
@@ -140,6 +132,30 @@ export function forestWaterFrame(scene: FixedWorldScene, options: WaterOptions) 
       radiusY: (2.6 + noise(stream + cycle * 97 + 191) * 1.7) * scale,
       opacity: (.5 + rain * .32) * (1 - dusk * .5), dusk });
   }
+  return impacts;
+}
+
+/** Audio reads the same deterministic contacts as the painter, without generating
+ * surface currents/glints or causing playback from a draw call. */
+export function forestWaterContactsFrame(scene: FixedWorldScene, options: WaterOptions) {
+  const water = geometry(scene);
+  if (!water || options.reducedMotion) return { impacts: [], splashes: [] };
+  const elapsed = Number.isFinite(options.elapsed) ? Math.max(0, options.elapsed) : 0;
+  const rain = clamp(options.rain), dusk = clamp(options.dusk), samples = layout(water);
+  return { impacts: waterImpactFrame(water, samples.cells, elapsed, rain, dusk, false),
+    splashes: waterLifeFrame(samples.life, { ...options, elapsed, rain, dusk, waterBreeze: false }).splashes };
+}
+
+/** Shared active time makes rain reproducible across cameras and pauses. Only a
+ * completed ripple chooses another point; weather controls birth density. */
+export function forestWaterFrame(scene: FixedWorldScene, options: WaterOptions) {
+  const water = geometry(scene), rain = clamp(options.rain), dusk = clamp(options.dusk);
+  const elapsed = options.reducedMotion || !Number.isFinite(options.elapsed) ? 0 : Math.max(0, options.elapsed);
+  if (!water) return { currents: [], glints: [], impacts: [], fish: [], splashes: [], breeze: [] };
+  const samples = layout(water);
+  const surface = options.waterSurface === false ? { currents: [], glints: [] }
+    : waterSurfaceFrame(samples.surface, { ...options, elapsed, rain, dusk });
+  const impacts = waterImpactFrame(water, samples.cells, elapsed, rain, dusk, options.reducedMotion);
   return { ...surface, impacts, ...waterLifeFrame(samples.life, { ...options, elapsed, rain, dusk }) };
 }
 

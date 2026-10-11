@@ -19,6 +19,8 @@ export type AudioListenerFrame = { position: AudioPoint; viewportWidth: number; 
 export type AudioLoopTarget = { id: string; cueId: string; gain: number; pan: number; priority?: number };
 export type AudioEvent = {
   id: string; cueId: string; gain?: number; pan?: number; occurredAt?: number;
+  /** Short animation contacts may expire before the runtime's normal event TTL. */
+  maxAgeMs?: number;
   playbackRate?: number; feedbackBus?: AudioBus | "master";
 };
 export type AudioSourceDebug = { id: string; cueId: string; gain: number; pan: number; reason: string };

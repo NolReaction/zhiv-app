@@ -38,6 +38,8 @@ const clamp = (value: number) => Math.max(0, Math.min(1, value));
 const mix = (a: number, b: number, t: number) => a + (b - a) * clamp(t);
 const smooth = (t: number) => { t = clamp(t); return t * t * (3 - 2 * t); };
 const INTERRUPT_SECONDS = .6;
+/** Shared mouth-cycle timing for the sprite and semantic bite contacts. */
+export const FOREST_MUSHROOM_CHEW = { start: 4.1, end: 6.5, frameRate: 5, frameCount: 4 } as const;
 
 function mushroomWithinReach(scene: FixedWorldScene, point: WorldPoint): boolean {
   const actor = scene.actor;
@@ -180,8 +182,9 @@ function routineFrame(state: ForestLifeState, actor: ForestLifeActor, elapsed: n
     if (t < 1) { result.stage = "notice"; result.pose = "sniff"; result.frame = Math.min(3, Math.floor(t * 4)); }
     else if (t < 2.2) { result.stage = "reach"; result.pose = "reach"; result.frame = Math.min(3, Math.floor((t - 1) / 1.2 * 4)); }
     else if (t < 3.4) { result.stage = "lift"; result.pose = "hold"; result.frame = Math.min(3, Math.floor((t - 2.2) / 1.2 * 4)); }
-    else if (t < 4.1) { result.stage = "hold"; result.pose = "hold"; result.frame = 3; }
-    else if (t < 6.5) { result.stage = "chew"; result.pose = "chew"; result.frame = Math.floor((t - 4.1) * 5) % 4; }
+    else if (t < FOREST_MUSHROOM_CHEW.start) { result.stage = "hold"; result.pose = "hold"; result.frame = 3; }
+    else if (t < FOREST_MUSHROOM_CHEW.end) { result.stage = "chew"; result.pose = "chew";
+      result.frame = Math.floor((t - FOREST_MUSHROOM_CHEW.start) * FOREST_MUSHROOM_CHEW.frameRate) % FOREST_MUSHROOM_CHEW.frameCount; }
     else if (t < 7.4) { result.stage = "swallow"; result.pose = "swallow"; result.frame = Math.min(3, Math.floor((t - 6.5) / .9 * 4)); }
     else { result.stage = "settle"; result.pose = "groom"; }
     if (t >= 2.2 && t < 6.5) {

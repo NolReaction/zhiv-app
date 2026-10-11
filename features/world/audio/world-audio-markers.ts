@@ -2,6 +2,7 @@ import type { AudioEvent, AudioListenerFrame, AudioPoint } from "@/features/audi
 import type { FixedWorldScene } from "@/features/world/tiled/types";
 import type { ForestSessionState } from "@/features/world/state/forest-session";
 import { clearingActivityFrame } from "@/features/world/simulation/clearing-activity";
+import { FOREST_MUSHROOM_CHEW } from "@/features/world/simulation/forest-life";
 import { builderMindFrame, BUILDER_MIND_LIMITS } from "@/features/world/characters/builder/builder-mind";
 import { pleskMindFrame } from "@/features/world/characters/plesk/plesk-mind";
 import { forestJourneyFishingFrame } from "@/features/world/activities/journeys/forest-journey-travel";
@@ -29,6 +30,18 @@ export function worldAudioMarkers(scene: FixedWorldScene, state: ForestSessionSt
       add("speech", speech.id, `actor.${speaker}.greeting`, position, true, speech.origin === "interaction");
     }
   } else add("speech", null, "actor.mochlik.greeting", actor.position);
+  // Keep these contact tokens sampled even when motion/hero visibility is off:
+  // returning to the map or to animated presentation must not replay old work.
+  const actionVisible = heroVisible && !options.reducedMotion && !state.animation && state.reaction <= 0;
+  const bush = actor.bushEffect, entry = bush && (bush.emitted & 1) ? bush.bursts[0] : undefined;
+  const foliage = bush ? scene.bushes?.find(item => item.id === bush.id) : undefined;
+  add("mochlik-bush-enter", entry ? `${bush!.id}:${entry.seed}:${entry.at}` : null,
+    "action.bush.rustle", foliage?.hide ?? actor.position, actionVisible);
+  const routine = state.life.routine, chew = FOREST_MUSHROOM_CHEW;
+  const bite = routine?.kind === "mushroom" && routine.picked && routine.elapsed >= chew.start && routine.elapsed < chew.end
+    ? Math.floor((routine.elapsed - chew.start) * chew.frameRate / chew.frameCount) : null;
+  add("mochlik-mushroom-bite", bite === null ? null : `${state.life.sequence}:${routine!.mushroomId}:${bite}`,
+    "action.mushroom.eat", actor.position, actionVisible && body.opacity > .3 && !state.journeyTravel?.mining && !routine?.interrupting);
   if (!options.reducedMotion) {
     const outside = heroVisible && body.opacity > .3 && !state.journeyTravel?.mining && !state.animation && state.reaction <= 0;
     add("mochlik-step", Math.floor(actor.walked / (actor.size * .15)), "action.step.grass", actor.position, outside && body.pose === "walk");

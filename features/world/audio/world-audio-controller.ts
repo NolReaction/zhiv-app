@@ -4,13 +4,16 @@ import type { ForestSessionState } from "@/features/world/state/forest-session";
 import { menuAudioFrame } from "@/features/audio/ui/menu-audio";
 import { buildWorldAudioFrame, worldAudioListener, type WorldAudioEnvironment } from "./world-audio-frame";
 import { createWorldAudioMarkerTracker, worldAudioMarkers } from "./world-audio-markers";
+import { createWorldWaterAudioTracker } from "./world-water-audio";
 
 let nextOwner = 0;
 const trackers = new WeakMap<ForestSessionState, ReturnType<typeof createWorldAudioMarkerTracker>>();
+const waterTrackers = new WeakMap<ForestSessionState, ReturnType<typeof createWorldWaterAudioTracker>>();
 export type WorldAudioControl = {
   scope: "music" | "world";
   visible: boolean; observationOwner: boolean; emitEvents?: boolean;
   showHero: boolean; actorAway: boolean; reducedMotion: boolean;
+  waterFish?: "auto" | "on" | "off";
 };
 
 function sameAudioFrame(previous: AudioFrame | null, next: AudioFrame): boolean {
@@ -48,6 +51,7 @@ export function createWorldAudioController(runtime: AudioRuntime) {
         hadFrame = false; current = null;
         // Do not let a secondary camera consume the active camera's markers.
         if (control.observationOwner) {
+          waterTrackers.get(state)?.reset();
           const tracker = trackers.get(state);
           tracker?.sample(worldAudioMarkers(scene, state, { ...control, showBuildings: input.showBuildings !== false }),
             worldAudioListener(scene, input.camera), input.sceneId, Date.now(), false);
@@ -72,8 +76,15 @@ export function createWorldAudioController(runtime: AudioRuntime) {
       let tracker = trackers.get(state);
       if (!tracker) { tracker = createWorldAudioMarkerTracker(); trackers.set(state, tracker); }
       const markers = worldAudioMarkers(scene, state, { ...control, showBuildings: input.showBuildings !== false });
-      const events = tracker.sample(markers, frame.listener, input.sceneId, timestamp,
-        Boolean(control.scope === "world" && lastScope === "world" && control.emitEvents && hadFrame && lastState === state));
+      const emit = Boolean(control.scope === "world" && lastScope === "world" && control.emitEvents && hadFrame && lastState === state);
+      const events = tracker.sample(markers, frame.listener, input.sceneId, timestamp, emit);
+      if (control.scope === "world") {
+        let water = waterTrackers.get(state);
+        if (!water) { water = createWorldWaterAudioTracker(); waterTrackers.set(state, water); }
+        events.push(...water.sample({ epoch: state.clearing, scene, options: { elapsed: state.elapsed,
+          rain: input.rain, dusk: input.dusk, reducedMotion: control.reducedMotion, waterFish: control.waterFish } },
+        frame.listener, input.camera, input.sceneId, timestamp, emit));
+      } else waterTrackers.get(state)?.reset();
       hadFrame = true; lastState = state; lastScope = control.scope;
       for (const event of events) runtime.play(event);
     },

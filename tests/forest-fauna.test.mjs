@@ -155,6 +155,57 @@ test('local rustle affects only nearby unreserved fauna with a bounded cooldown'
   assert.equal(emitFaunaStimulus(state,{x:1000,y:1000,kind:'rustle'}),0);
 });
 
+test('physical bush contact releases day and night foliage residents even in rain, without teleporting or repeating',()=>{
+  for(const species of ['butterfly','firefly']) {
+    const state=createForestFauna(scene), options={...conditions,dusk:species==='firefly'?1:0,rain:1};
+    advance(state,30,options);
+    const residents=state.entities.filter(e=>e.species===species), selected=residents[0];
+    const center={x:selected.x,y:selected.y}, foliage=rectangle(center.x-12,center.y-12,24,24);
+    const original=structuredClone(state.entities), stimulus={...center,kind:'rustle',radius:65,strength:.85,foliage};
+    assert.equal(selected.mode,'refuge');
+    assert.ok(emitFaunaStimulus(state,stimulus)>0);
+    assert.equal(selected.mode,'depart');
+    assert.equal(selected.anchorId,null);
+    assert.ok(faunaRenderFrame(state)[species==='firefly'?'fireflies':'butterflies'].find(p=>p.id===selected.id).support,
+      'takeoff retains leaf depth until the animal has cleared the foliage');
+    state.entities.forEach((e,i)=>assert.deepEqual([e.x,e.y,e.vx,e.vy],[original[i].x,original[i].y,original[i].vx,original[i].vy]));
+    const departure=structuredClone(selected.departure), identity=selected.id;
+    emitFaunaStimulus(state,stimulus);
+    assert.deepEqual(selected.departure,departure,'same contact cannot restart an escape');
+    advance(state,.7,options);
+    assert.ok(Math.hypot(selected.x-center.x,selected.y-center.y)>1,'continuous takeoff leaves the actual perch');
+    assert.ok(Math.hypot(selected.x-center.x,selected.y-center.y)<17,'no instant launch across the map');
+    advance(state,1.2,options);
+    assert.notEqual(selected.mode,'refuge','rain does not immediately stick it back onto the disturbed leaves');
+    assert.equal(selected.id,identity);
+    assert.deepEqual(state.entities.map(e=>e.id),original.map(e=>e.id));
+    state.entities.filter(e=>e.species!==species).forEach(e=>assert.notEqual(e.mode,'depart','inactive species stays asleep'));
+  }
+});
+
+test('a later hand visit cannot inherit depth from an old foliage escape',()=>{
+  const state=createForestFauna(scene);
+  state.entities=state.entities.filter(e=>e.species==='butterfly').slice(0,1);
+  const e=state.entities[0];
+  e.x=145;e.y=145;e.departureSupport={x:145,y:145};
+  assert.equal(requestFaunaInteraction(state,'butterfly',actor,conditions,true),true);
+  assert.equal(e.departureSupport,undefined);
+  advance(state,10);
+  if(state.encounter)interruptFaunaInteraction(state);
+  assert.equal(faunaRenderFrame(state).butterflies[0].support,undefined,
+    'release stays in the hand/air layer near the same old bush');
+});
+
+test('a sheltered insect at a leaf edge keeps its authored support when scattered',()=>{
+  const state=createForestFauna(scene), e=state.entities.find(e=>e.species==='butterfly');
+  e.x=109;e.y=115;e.mode='refuge';e.vx=0;e.vy=0;e.anchorId='bush';
+  const foliage=rectangle(112,111,8,8);
+  emitFaunaStimulus(state,{x:116,y:115,kind:'rustle',radius:35,foliage});
+  assert.equal(e.mode,'depart','small refuge offsets outside the jagged contour are still on the disturbed leaf');
+  assert.deepEqual(e.departureSupport,{x:115,y:115});
+  assert.deepEqual(faunaRenderFrame(state).butterflies.find(p=>p.id===e.id).support,{x:115,y:115});
+});
+
 test('hand anchor uses the same rig scale, sole, lift and compression as the grounded hero',()=>{
   const pose={pose:'greet',frame:0,direction:'front'};
   assert.deepEqual(heroHandAnchor({x:100,y:200,size:48},pose),{x:110,y:177});

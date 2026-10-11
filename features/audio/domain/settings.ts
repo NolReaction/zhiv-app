@@ -2,7 +2,7 @@ import { AUDIO_BUSES, type AudioSettings, type AudioSettingsPatch } from "./type
 
 export const DEFAULT_AUDIO_SETTINGS: AudioSettings = {
   enabled: false, master: 0.65,
-  buses: { music: 0.45, ambience: 0.4, weather: 0.3, world: 0.55, characters: 0.5, ui: 0.35 },
+  buses: { music: 0.4, ambience: 0.4, weather: 0.3, world: 0.55, characters: 0.5, ui: 0.35 },
 };
 
 /** Restore the mix without changing the player's explicit sound permission. */

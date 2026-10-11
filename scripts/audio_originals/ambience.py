@@ -15,12 +15,13 @@ from scipy import signal
 
 
 _SPECS = {
-    "forest.day.01": (10.0, "Birds in the Sun", "Five original low-register bird phrases, isolated from the independently controlled wind.", -42.0),
-    "forest.night.01": (10.0, "The Forest Settles", "Sparse softened insect conversations, isolated from the independently controlled wind.", -43.0),
+    "forest.day.01": (20.0, "Birds in the Sun", "Two quiet distant bird phrases with long pauses; mono keeps the longer arrangement within the mobile buffer budget.", -51.0),
+    "forest.night.01": (20.0, "The Forest Settles", "One short distant insect phrase in twenty seconds, leaving the night mostly quiet.", -55.0),
     "weather.wind.01": (12.0, "Air between the Leaves", "A restrained low tree breeze with slow, shallow swells and soft leaf movement.", -32.0),
     "weather.rain.01": (8.0, "Rain through the Canopy", "A sheltered rain bed with scattered, rounded leaf droplets.", -22.0),
     "river.01": (8.0, "Water around Roots", "Flowing water, low ripples and irregular resonant bubbles.", -21.5),
-    "campfire.01": (8.0, "Small Evening Fire", "A warm rolling fire with restrained little twig crackles.", -23.0),
+    "campfire.01": (8.0, "Small Evening Fire", "A soft continuous flame and six padded ember movements, without rapid sharp crackle bursts.", -27.0),
+    "cooking.simmer.01": (6.0, "Soup above the Embers", "Quiet simmering liquid with rounded irregular bubbles; a separate loop for active cooking, without baked-in fire.", -25.0),
     "workshop.woodworking.01": (10.0, "The Carpenter's Afternoon", "Uneven wooden mallet taps, short hand-saw strokes and a quiet room bed.", -22.0),
     "workshop.kiln.01": (8.0, "Warm Kiln", "Enclosed low fire, two soft bellows breaths and light fuel movement.", -23.0),
     "quarry.working.01": (10.0, "Stone by Stone", "Low mineral knocks, small falling fragments and short gravel scrapes.", -22.0),
@@ -149,6 +150,30 @@ def _fire(count: int, rate: int, rng: np.random.Generator, enclosed: bool) -> np
     return output
 
 
+def _hearth(count: int, rate: int, rng: np.random.Generator) -> np.ndarray:
+    """An unpitched flame bed and slow ember movements, not a train of clicks."""
+    flame = _noise(count, rate, rng, 100, 820, -0.3)
+    output = flame * _swell(count, 1, 0.5, 0.85) * 0.14
+    output += _noise(count, rate, rng, 550, 1650, -0.45) * 0.018
+    for index, start in enumerate((0.7, 1.9, 3.4, 4.85, 6.1, 7.45)):
+        length = 0.09 + (index % 3) * 0.022
+        ember = _scrape(rate, rng, length, 170, 1700)
+        # Smooth whole-event envelopes and small gain prevent digital-sounding
+        # spikes; the continuous flame remains present under every ember.
+        _add(output, ember, start, rate, 0.03 + 0.012 * (index % 2))
+    return output
+
+
+def _simmer(count: int, rate: int, rng: np.random.Generator) -> np.ndarray:
+    """Low pot movement under irregular small bubble releases; no flame layer."""
+    output = _noise(count, rate, rng, 220, 1100, -0.25) * 0.034
+    output *= _swell(count, 1, 1.2, 0.85)
+    for _ in range(52):
+        drop = _bubble(rate, rng, rng.uniform(260, 650), rng.uniform(0.07, 0.16))
+        _add(output, drop, rng.uniform(0, count / rate), rate, rng.uniform(0.015, 0.048))
+    return output
+
+
 def render(asset_id: str, sample_rate: int) -> tuple[np.ndarray, dict]:
     """Render one catalog ID at the requested sample rate with provenance labels.
 
@@ -165,26 +190,21 @@ def render(asset_id: str, sample_rate: int) -> tuple[np.ndarray, dict]:
     count = int(round(duration * sample_rate))
 
     if asset_id == "forest.day.01":
-        # Consume the original deterministic air draws so the authored wildlife
-        # phrases keep their exact timbre and timing, but do not bake in wind.
-        output = np.zeros_like(_air(count, sample_rate, rng, stereo=True, amount=0.13))
-        for index, start in enumerate((0.6, 2.35, 4.9, 7.6, 9.65)):
-            pitch = (1050, 770, 1240, 920, 1080)[index]
-            pan = (-0.55, 0.40, -0.20, 0.65, -0.45)[index]
-            for syllable in range(2 if index % 2 else 3):
-                event = _bird(sample_rate, rng, pitch * (1.0 + syllable * 0.06), 0.13 + syllable * 0.025, bool(index % 2))
-                _add(output, event, start + syllable * 0.24, sample_rate, 0.034, pan)
+        output = np.zeros(count)
+        for index, start in enumerate((2.6, 13.6)):
+            for syllable in range(2):
+                event = _bird(sample_rate, rng, (940, 790)[index] * (1.0 + syllable * 0.035),
+                              0.15 + syllable * 0.025, bool(index))
+                _add(output, event, start + syllable * 0.24, sample_rate, 0.034)
 
     elif asset_id == "forest.night.01":
-        output = np.zeros_like(_air(count, sample_rate, rng, stereo=True, amount=0.085))
-        for index, start in enumerate((0.9, 3.4, 6.9, 9.55)):
-            length = 0.75 + index * 0.09
-            event_count = int(length * sample_rate)
-            time = np.arange(event_count) / sample_rate
-            insect = _noise(event_count, sample_rate, rng, 1550, 2700)
-            pulses = (0.5 + 0.5 * np.sin(2.0 * np.pi * (11 + index) * time)) ** 4
-            insect *= pulses * _window(event_count, 0.20)
-            _add(output, insect, start, sample_rate, 0.019, (-1) ** index * 0.65)
+        output = np.zeros(count)
+        event_count = int(0.66 * sample_rate)
+        time = np.arange(event_count) / sample_rate
+        insect = _noise(event_count, sample_rate, rng, 1400, 2350)
+        pulses = (0.5 + 0.5 * np.sin(2.0 * np.pi * 9 * time)) ** 3
+        insect *= pulses * _window(event_count, 0.25)
+        _add(output, insect, 7.2, sample_rate, 0.019)
 
     elif asset_id == "weather.wind.01":
         shared = _noise(count, sample_rate, rng, 90, 480, -0.35)
@@ -212,15 +232,19 @@ def render(asset_id: str, sample_rate: int) -> tuple[np.ndarray, dict]:
             splash = _scrape(sample_rate, rng, rng.uniform(0.2, 0.55), 500, 1850)
             _add(output, splash, rng.uniform(0, duration), sample_rate, 0.021)
 
-    elif asset_id in ("campfire.01", "workshop.kiln.01"):
-        enclosed = asset_id == "workshop.kiln.01"
-        output = _fire(count, sample_rate, rng, enclosed)
-        if enclosed:
-            for start in (3.3, 6.5):
-                breath = _scrape(sample_rate, rng, 1.25, 90, 750)
-                _add(output, breath, start, sample_rate, 0.065)
-            for start in (0.8, 5.6):
-                _add(output, _impact(sample_rate, rng, "wood", 145, 0.25), start, sample_rate, 0.045)
+    elif asset_id == "campfire.01":
+        output = _hearth(count, sample_rate, rng)
+
+    elif asset_id == "cooking.simmer.01":
+        output = _simmer(count, sample_rate, rng)
+
+    elif asset_id == "workshop.kiln.01":
+        output = _fire(count, sample_rate, rng, True)
+        for start in (3.3, 6.5):
+            breath = _scrape(sample_rate, rng, 1.25, 90, 750)
+            _add(output, breath, start, sample_rate, 0.065)
+        for start in (0.8, 5.6):
+            _add(output, _impact(sample_rate, rng, "wood", 145, 0.25), start, sample_rate, 0.045)
 
     elif asset_id == "workshop.woodworking.01":
         output = _air(count, sample_rate, rng, amount=0.027)
@@ -263,4 +287,11 @@ def render(asset_id: str, sample_rate: int) -> tuple[np.ndarray, dict]:
         "targetRmsDb": rms_db,
         "peakDb": -3.0,
     }
+    if asset_id.startswith("forest."):
+        # A sparse file must not become louder when long silences lower its RMS.
+        # Keep the individual phrase peaks below the previous, denser revision.
+        metadata["peakDb"] = -29.0 if asset_id == "forest.day.01" else -21.0
+        metadata["phraseStartsSeconds"] = [2.6, 13.6] if asset_id == "forest.day.01" else [7.2]
+    if asset_id == "campfire.01":
+        metadata["peakDb"] = -13.0
     return output.astype(np.float32), metadata

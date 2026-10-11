@@ -1,7 +1,11 @@
 import type { WorldPoint } from "@/features/world/tiled/types";
 
 const TAU = Math.PI * 2;
-export type ForestAirParticle = WorldPoint & { size: number; opacity: number; phase: number; resting?: boolean };
+export type ForestAirParticle = WorldPoint & {
+  size: number; opacity: number; phase: number; resting?: boolean;
+  /** Leaf support while resting or beginning takeoff; never set for a hand partner. */
+  support?: WorldPoint;
+};
 export type ForestFirefly = ForestAirParticle & {
   /** Rotation from an upward-facing body; omitted for a hovering scene partner. */
   angle?: number;

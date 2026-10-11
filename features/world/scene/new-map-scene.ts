@@ -28,7 +28,8 @@ import { drawForestCampfires, drawForestCampfireGlow } from "@/features/world/ac
 import { forestBirdFrame } from "@/features/world/environment/wildlife/forest-birds";
 import { forestBirdwatchFrame, type ForestBirdwatch } from "@/features/world/activities/forest-birdwatching";
 import { advanceBirdReactions, applyBirdReactions } from "@/features/world/environment/wildlife/forest-bird-reactions";
-import { drawForestBird, type ForestBird } from "@/features/world/environment/wildlife/forest-wildlife";
+import { drawForestBird, drawForestButterfly, drawForestFirefly, type ForestBird } from "@/features/world/environment/wildlife/forest-wildlife";
+import { faunaBehindHero } from "@/features/world/environment/wildlife/forest-fauna-depth";
 import { drawForestResidents, forestResidentAt, forestResidentFrames } from "@/features/world/characters/forest-residents";
 import { forestPointOccluded, forestVisibleSiteAt, withForestOcclusion } from "./forest-occlusion";
 import { drawLivingWorldDebug, type LivingWorldDebugSnapshot } from "@/features/world/dev/living-world-debug";
@@ -177,6 +178,13 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   const groundBirds = birds.filter(bird => bird.groundY !== undefined).sort((a, b) => a.groundY! - b.groundY!);
   const life = preview?.life;
   const heroVisible = dev?.showHero !== false && !(preview?.actorAway ?? economyJourneyAway(options.economyJourney, timestamp));
+  const fauna = atmosphere.fauna;
+  const behindButterflies = heroVisible ? fauna?.butterflies.filter(p => faunaBehindHero(p, world, actor.y, walking?.bush)) ?? [] : [];
+  const behindFireflies = heroVisible ? fauna?.fireflies.filter(p => faunaBehindHero(p, world, actor.y, walking?.bush)) ?? [] : [];
+  if (fauna) atmosphere.fauna = { ...fauna,
+    butterflies: fauna.butterflies.filter(p => !behindButterflies.includes(p)),
+    fireflies: fauna.fireflies.filter(p => !behindFireflies.includes(p)),
+  };
   const automatic = heroVisible && !fishing && !mining && !cooking && !reacting && !preview?.animation && (!dev?.pose || dev.pose === "auto");
   const motion = automatic && walking ? walking : null;
   // A cancelled carry may wait for clear ground; attention cannot hide its basket.
@@ -235,6 +243,10 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   // A moving cutout may own the artwork while its actor is still in front.
   // Rustling never promotes leaves over an approaching or emerging body.
   if (!walking?.bush?.occlude) paintBush();
+  // Resting wildlife belongs to the foliage, not an always-on-top air overlay.
+  // Paint once before the solid body; takeoff keeps this depth until it clears.
+  for (const particle of behindButterflies) drawForestButterfly(context, particle, fauna!.elapsed);
+  for (const particle of behindFireflies) drawForestFirefly(context, particle, fauna!.elapsed);
   drawForestResidents(context, world, elapsed, still, actor.y, "behind", preview?.residents);
   for (const bird of groundBirds) if (bird.groundY! < actor.y) drawForestBird(context, bird);
   if (heroVisible && (walking?.opacity ?? 1) > 0) {
@@ -332,7 +344,9 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   function updateAudio(emitEvents = false) {
     const now = explorationNow();
     const dusk = reducedMotion(options, dev) || !session.isSimulationAllowed() ? Number(options.dusk) : state.dusk;
-    const environment = forestAtmosphereState(world, atmosphereOptions(options, now, dusk, { state: dev }));
+    // Weather follows the painted simulation clock; economy deadlines still
+    // use explorationNow() below. Slow frames must not create invisible drops.
+    const environment = forestAtmosphereState(world, atmosphereOptions(options, state.timestamp, dusk, { state: dev }));
     audio.update(world, state, {
       sceneId: `${options.presenceKey ?? "guest"}:${world.id}`, now,
       ownerPublicId: options.presenceKey?.replace(/^zhiv:mochlik:presence:/, ""),
@@ -341,9 +355,11 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       levels: Object.fromEntries(Object.entries(visuals).map(([id, visual]) => [id, visual.level])),
       production: state.economyProduction, construction: state.economyConstruction,
       quarryWorking: quarryAudioWorking(world, state, options.economyJourney, now),
+      cookingPreview: dev?.showHero !== false && !actorAway() && !forestJourneyFishingFrame(state, world)
+        ? cookingPreviewFrame(state, dev?.cookingPreview, reducedMotion(options, dev)) : null,
       fires: state.life.campfires, showBuildings: dev?.showBuildings,
     }, { scope: options.view === "world" ? "world" : "music", visible: active(), observationOwner: session.isObservationOwner(), emitEvents,
-      showHero: dev?.showHero !== false, actorAway: actorAway(), reducedMotion: reducedMotion(options, dev) });
+      showHero: dev?.showHero !== false, actorAway: actorAway(), reducedMotion: reducedMotion(options, dev), waterFish: dev?.waterFish });
   }
   function setEconomicTime(now: number) { economicTimestamp = now; economicReceivedAt = performance.now(); }
   function syncProduction() {
@@ -721,7 +737,8 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
         ...(resident ? [{ x: resident.x, y: resident.y, size: resident.size, moving: resident.action === "walk" }] : []),
       ];
       advanceBirdReactions(state.birdReactions, birdBase(), step, stimulus && stimulus.id !== state.lastBirdStimulus
-        ? { kind: stimulus.kind === "rustle" ? "bush-rustle" : "footstep", position: stimulus, intensity: stimulus.strength }
+        ? { kind: stimulus.kind === "rustle" ? "bush-rustle" : "footstep", position: stimulus, intensity: stimulus.strength,
+          foliage: stimulus.foliage }
         : undefined, world, birdVisitors,
         { rain: environment.rain, dusk: environment.dusk, forced: state.birdStarted !== null || dev?.birds === "on" });
       if (stimulus) state.lastBirdStimulus = stimulus.id;
@@ -940,7 +957,8 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   return {
     setAudioCamera(camera) {
       if (disposed || audioCamera && audioCamera.x === camera.x && audioCamera.y === camera.y
-        && audioCamera.zoom === camera.zoom && audioCamera.viewportWidth === camera.viewportWidth) return;
+        && audioCamera.zoom === camera.zoom && audioCamera.viewportWidth === camera.viewportWidth
+        && audioCamera.viewportHeight === camera.viewportHeight) return;
       audioCamera = { ...camera };
       updateAudio();
     },

@@ -2,18 +2,20 @@ import type { AudioFrame, AudioListenerFrame, AudioLoopTarget, AudioPoint, Audio
 import { clamp01, dbToGain, distanceGain, stereoPan, zoneGain } from "@/features/audio/domain/spatial";
 import { profileCues } from "@/features/audio/catalog/catalog";
 import type { FixedWorldScene, WorldAudioEmitter, WorldPoint } from "@/features/world/tiled/types";
-import type { EconomySceneProduction } from "@/features/world/state/economy/economy-production-state";
+import { forestProductionFrames, type EconomySceneProduction } from "@/features/world/state/economy/economy-production-state";
+import type { ForestCookingFrame } from "@/features/world/activities/cooking/forest-cooking";
 import type { EconomySceneConstruction } from "@/features/world/state/economy/economy-construction-state";
 import { constructionMapPlace } from "@/features/world/scene/construction-map-anchor";
 import type { EconomySceneJourney } from "@/features/world/state/economy/economy-scene-state";
 import type { ForestSessionState } from "@/features/world/state/forest-session";
 
-export type WorldAudioCamera = { x: number; y: number; zoom: number; viewportWidth: number };
+export type WorldAudioCamera = { x: number; y: number; zoom: number; viewportWidth: number; viewportHeight?: number };
 export type WorldAudioEnvironment = {
   ownerId: string; sceneId: string; ownerPublicId?: string; now: number; dusk: number; rain: number;
   camera?: WorldAudioCamera; levels: Readonly<Record<string, number>>;
   production?: EconomySceneProduction | null; construction?: EconomySceneConstruction | null;
   quarryWorking?: boolean;
+  cookingPreview?: ForestCookingFrame | null;
   fires: readonly { id: string; position: WorldPoint; lit: boolean; flame: number }[];
   showBuildings?: boolean;
 };
@@ -69,6 +71,11 @@ export function buildWorldAudioFrame(scene: FixedWorldScene, input: WorldAudioEn
   const listener = worldAudioListener(scene, input.camera), loops = new Map<string, AudioLoopTarget>();
   const sources: AudioSourceDebug[] = [];
   const working = workingAudioStations(input.production, input.now, input.ownerPublicId);
+  // Read the same confirmed job/geometry as the visible pot. Weather owns the
+  // decorative flame, but only an active recipe owns its simmering sound.
+  const cooking = (!input.ownerPublicId || input.production?.ownerPublicId === input.ownerPublicId)
+    ? forestProductionFrames(input.production, scene, {}, input.now, 0, input.showBuildings)
+      .find(frame => frame.stationId === "dryer" && frame.phase === "working") : undefined;
   if (input.quarryWorking) working.add("quarry");
   const constructing = activeAudioConstructions(input.construction, input.now, input.ownerPublicId);
   const night = clamp01(input.dusk), rain = clamp01(input.rain);
@@ -90,7 +97,9 @@ export function buildWorldAudioFrame(scene: FixedWorldScene, input: WorldAudioEn
   add("forest-day", "forest.day", Math.sqrt(1 - night) * (1 - rain * .55));
   add("forest-night", "forest.night", Math.sqrt(night) * (1 - rain * .55));
   // One independent wind layer across day/night; camera motion never restarts it.
-  add("weather-wind", "weather.wind", 1 - rain * .35);
+  // Even drizzle leaves room for rain; the short smooth knee avoids a jump
+  // when precipitation fades in or out, followed by a gentle strength ramp.
+  add("weather-wind", "weather.wind", 1 - .18 * rain / (rain + .025) - .17 * rain);
   add("weather-rain", "weather.rain", rain);
   const audibleWhen = (when: { siteId: string; level: number } | undefined) => !when || input.levels[when.siteId] === when.level;
   const emitters = [...(scene.audio?.emitters ?? [])];
@@ -118,8 +127,7 @@ export function buildWorldAudioFrame(scene: FixedWorldScene, input: WorldAudioEn
       ? { gain: 1, reason: "audible" } : { gain: 0, reason: "construction-idle-or-ready" };
     if (source.activation === "campfire-lit") {
       const fire = input.fires.find(item => item.id === source.campfireId);
-      const cooking = working.has("dryer") && (scene.campfires?.find(item => item.id === "clearing-campfire") ?? scene.campfires?.[0])?.id === source.campfireId;
-      return cooking ? { gain: 1, reason: "cooking-fire" } : fire?.lit && fire.flame > .02
+      return cooking && cooking.fireId === source.campfireId ? { gain: 1, reason: "cooking-fire" } : fire?.lit && fire.flame > .02
         ? { gain: clamp01(fire.flame), reason: "audible" } : { gain: 0, reason: "fire-unlit" };
     }
     return { gain: 1, reason: "audible" };
@@ -132,6 +140,21 @@ export function buildWorldAudioFrame(scene: FixedWorldScene, input: WorldAudioEn
       ? `${source.activation}:${source.stationId ?? source.siteId}:${source.profileId}` : source.id;
     add(source.id, source.profileId, gain, stereoPan(source.position, listener), condition.reason, group);
     if (source.activation === "production-working" || source.activation === "construction-working") closeWork = Math.max(closeWork, gain);
+  }
+  const addCooking = (id: string, position: WorldPoint) => {
+    const gain = .8 * listener.detail * distanceGain(Math.hypot(listener.position.x - position.x,
+      listener.position.y - position.y), 40, 310);
+    // A station has one audible pot even with several cooking slots or a DEV
+    // rehearsal alongside it. Stable source identity survives camera movement.
+    add(id, "cooking.simmer", gain, stereoPan(position, listener), "audible", "cooking-pot");
+    closeWork = Math.max(closeWork, gain);
+  };
+  if (cooking) addCooking("cooking-production", { x: cooking.x, y: cooking.y - cooking.size * .13 });
+  const preview = input.cookingPreview;
+  if (preview && preview.action !== "prepare" && preview.steam > 0
+    && [preview.x, preview.y, preview.size].every(Number.isFinite) && preview.size > 0) {
+    const side = preview.direction === "left" ? -1 : 1;
+    addCooking("cooking-preview", { x: preview.x + side * preview.size * .42, y: preview.y - preview.size * .07 });
   }
   for (const zone of scene.audio?.zones ?? []) {
     const enabled = audibleWhen(zone.when);

@@ -121,7 +121,9 @@ test('one global wind layer keeps its key through day/night, rain and camera cha
     windId ??= wind[0].id;
     assert.equal(wind[0].id, windId);
     assert.equal(wind[0].pan, 0);
-    assert.equal(wind[0].gain, 1 - rain * .35);
+    assert.ok(wind[0].gain >= .65 && wind[0].gain <= 1);
+    if (rain) assert.ok(wind[0].gain < .9, 'even light rain lowers the wind');
+    else assert.equal(wind[0].gain, 1);
   }
 });
 

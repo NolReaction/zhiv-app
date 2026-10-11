@@ -49,6 +49,28 @@ function until(state, predicate, seconds = 20, options = calm) {
   assert.ok(predicate(state), `condition not reached: ${state.director.reason}, ${state.clearing.stage}`);
 }
 
+test("bush contact emits one shared crown disturbance, not a new scare per draw or frame",()=>{
+  const bush={id:"shelter",imageId:"shelter-art",entry:{x:125,y:163},hide:{x:120,y:137},points:rectangle(104,105,34,45)};
+  const state=create({bushes:[bush],paths:[{id:"visit-bush",behavior:"clearing",activity:"bush",bushId:bush.id,
+    points:[fixture.actor.spawn,bush.entry]}]});
+  requestForestDirective(state,"bush",calm);
+  until(state,()=>Boolean(state.clearing.bushEffect?.emitted&1),30);
+  const { stimulus }=state.director;
+  assert.equal(stimulus.kind,"rustle");
+  assert.deepEqual({x:stimulus.x,y:stimulus.y},{x:121,y:127.5});
+  assert.deepEqual(stimulus.foliage,bush.points);
+  assert.ok(stimulus.radius>=Math.hypot(17,22.5));
+  const snapshot=structuredClone(state);
+  for(let view=0;view<4;view++) {
+    clearingActivityFrame(state.clearing);faunaRenderFrame(state.fauna);
+    advanceForestDirector(state,0,calm);
+    advanceForestDirector(state,.1,{...calm,reducedMotion:true});
+  }
+  assert.deepEqual(state,snapshot,"pause and both camera samples leave the session event unchanged");
+  advance(state,.15);
+  assert.equal(state.director.stimulus.id,stimulus.id,"one contact token survives subsequent animation frames");
+});
+
 test("birdwatching observes one actual bird without moving feet, then records a compatible look outcome", () => {
   const state = create(), options = { ...calm, birds: [seatedBird] }, origin = { ...state.clearing.position };
   requestForestDirective(state, "watch-birds", options); advance(state, .025, options);

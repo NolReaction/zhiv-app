@@ -54,6 +54,8 @@ test("malformed or partial persisted settings never enable sound or produce inva
 });
 
 test("recommended mix never replaces existing valid device preferences", () => {
+  assert.equal(DEFAULT_AUDIO_SETTINGS.buses.music, .4);
+  assert.equal(getDefaultAudioVolumePatch().buses.music, .4);
   const saved = { enabled: true, master: .92, buses: { music: 0, ambience: .21, weather: .13, world: .81, characters: .19, ui: .76 } };
   assert.deepEqual(sanitizeAudioSettings(saved), saved);
   const partial = sanitizeAudioSettings({ enabled: true, buses: { music: 0 } });

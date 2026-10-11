@@ -44,7 +44,8 @@ export type ForestDirectorState = {
   /** Cosmetic shop visit; never persisted or used by the economy. */
   tradeVisit: ForestTradeVisit | null;
   lastFootstep: WorldPoint | null; lastFootstepAt: number; lastBurst: string | null;
-  stimulus: { id: number; kind: "movement" | "rustle"; x: number; y: number; strength: number } | null;
+  stimulus: { id: number; kind: "movement" | "rustle"; x: number; y: number; strength: number;
+    radius?: number; foliage?: readonly WorldPoint[] } | null;
 };
 export function createForestDirector(seed = 8128): ForestDirectorState {
   return { elapsed: 0, nextDecisionAt: 4, seed, reason: "Осматривает полянку", pendingSince: 0, waitingForExit: false,
@@ -529,10 +530,17 @@ function stimuli(state: ForestSessionState) {
   const burst = frame.bush?.bursts.at(-1), key = burst ? `${frame.bush!.id}:${burst.seed}:${burst.at}` : null;
   if (key && key !== director.lastBurst) {
     director.lastBurst = key; stimulus = { kind: "rustle", ...clearing.position, strength: burst!.strength };
+    const foliage = state.life.garden.bushes.find(bush => bush.id === frame.bush!.id)?.points;
+    if (foliage?.length && foliage.every(p => Number.isFinite(p.x) && Number.isFinite(p.y))) {
+      const xs = foliage.map(p => p.x), ys = foliage.map(p => p.y);
+      const left = Math.min(...xs), top = Math.min(...ys), width = Math.max(...xs) - left, height = Math.max(...ys) - top;
+      stimulus = { ...stimulus, x: left + width / 2, y: top + height / 2,
+        radius: Math.min(90, Math.hypot(width, height) / 2 + clearing.size * .35), foliage };
+    }
   }
   if (stimulus) {
     director.stimulus = { ...stimulus, id: (director.stimulus?.id ?? 0) + 1 };
-    emitFaunaStimulus(state.fauna, { ...stimulus, radius: clearing.size * 1.5 });
+    emitFaunaStimulus(state.fauna, { ...stimulus, radius: stimulus.radius ?? clearing.size * 1.5 });
   }
 }
 

@@ -526,11 +526,12 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
       const cue = cues.get(event.cueId);
       const time = now();
       const occurredAt = event.occurredAt ?? time;
+      const eventTtl = Number.isFinite(event.maxAgeMs) ? Math.max(0, Math.min(EVENT_TTL_MS, event.maxAgeMs!)) : EVENT_TTL_MS;
       const sliderRequest = cue?.id === "ui.slider" ? ++latestSliderRequest : null;
       const feedbackBus = sliderRequest !== null ? event.feedbackBus : undefined;
       for (const [id, seenAt] of eventIds) if (time - seenAt > DEDUP_TTL_MS) eventIds.delete(id);
       if (!cue || cue.mode !== "one-shot" || !event.id || eventIds.has(event.id) || !Number.isFinite(occurredAt)
-        || time - occurredAt > EVENT_TTL_MS || occurredAt - time > 1000) { droppedEvents++; publish(); return; }
+        || time - occurredAt > eventTtl || occurredAt - time > 1000) { droppedEvents++; publish(); return; }
       eventIds.set(event.id, time);
       while (eventIds.size > MAX_EVENT_IDS) eventIds.delete(eventIds.keys().next().value!);
       // Events while muted, backgrounded or locked are consumed, never queued for replay.
@@ -549,7 +550,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
         pendingEvents.delete(request);
         if (buffer && token === generation && (!SOUNDSCAPE_BUSES.has(cue.bus) || soundscapeToken === soundscapeGeneration)
           && feedbackAudible(feedbackBus) && (sliderRequest === null || sliderRequest === latestSliderRequest)
-          && now() - occurredAt <= (sliderRequest === null ? EVENT_TTL_MS : 180)) {
+          && now() - occurredAt <= Math.min(eventTtl, sliderRequest === null ? EVENT_TTL_MS : 180)) {
           // Several contacts can await the same cold download/decode. Their
           // request-time cooldowns do not prevent every callback from playing
           // at once when it finishes; enforce spacing at actual playback too.

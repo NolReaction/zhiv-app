@@ -78,6 +78,27 @@ test("forest and river share environmental volume while wind and rain have indep
   }
 });
 
+test("cooking has its own continuous cue and visible action Foley is bounded on the correct buses", () => {
+  const catalog = JSON.parse(readFileSync(new URL("../features/audio/catalog/audio-catalog.json", import.meta.url), "utf8"));
+  const cue = id => catalog.cues.find(item => item.id === id);
+  const cooking = cue("cooking.simmer");
+  assert.equal(cooking.mode, "loop");
+  assert.equal(cooking.bus, "world");
+  assert.equal(cooking.maxInstances, 1);
+  assert.equal(cooking.pitchVariation, 0);
+  assert.ok(cooking.assets.every(id => !cue("campfire").assets.includes(id)), "pot and flame must not be the same recording");
+  assert.deepEqual(catalog.profiles.find(item => item.id === "cooking.simmer").cues, ["cooking.simmer"]);
+  for (const id of ["action.bush.rustle", "action.mushroom.eat", "water.drop"]) {
+    const entry = cue(id);
+    assert.equal(entry.bus, id === "water.drop" ? "ambience" : "world");
+    assert.equal(entry.mode, "one-shot");
+    assert.equal(entry.assets.length, 2);
+    assert.equal(entry.maxInstances, 1);
+    assert.equal(entry.pitchVariation, 0);
+    assert.ok(entry.cooldownMs >= 450, `${id}: frame events cannot become a burst`);
+  }
+});
+
 test("malformed arrays and IDs report errors without crashing", () => {
   for (const catalog of [null, [], {}, { ...fixture(), assets: [null, { id: "../escape" }] }, { ...fixture(), cues: null }, { ...fixture(), profiles: [false] }])
     assert.ok(inspectAudioCatalog(catalog).errors.length);

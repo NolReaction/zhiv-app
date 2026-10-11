@@ -21,6 +21,7 @@ export type ForestFaunaEntity = WorldPoint & {
   /** Short-lived individual memory; it advances only with the shared world clock. */
   alertness: number; familiarity: number; lastMovementAt: number; lastRestAnchorId: string | null;
   orbit: Orbit; opacity: number; departure: WorldPoint | null;
+  departureSupport?: WorldPoint;
 };
 export type FaunaEncounterPhase = "notice" | "raise" | "approach" | "perch" | "release" | "interrupt";
 export type FaunaEncounter = {
@@ -51,7 +52,11 @@ export type FaunaRenderParticle = ForestFirefly & { id: string; species: FaunaSp
 export type FaunaInteractionFrame = HeroAnchorPose & {
   stage: FaunaEncounterPhase; entityId: string; token: number;
 };
-export type FaunaStimulus = WorldPoint & { kind: "movement" | "rustle"; radius?: number; strength?: number };
+export type FaunaStimulus = WorldPoint & {
+  kind: "movement" | "rustle"; radius?: number; strength?: number;
+  /** Actual disturbed leaves, not merely a nearby sound. */
+  foliage?: readonly WorldPoint[];
+};
 
 const TAU = Math.PI * 2;
 const LIMITS = { butterfly: 6, firefly: 12 };
@@ -74,7 +79,7 @@ function bounds(points: WorldPoint[]): WorldBounds {
   const x = Math.min(...xs), y = Math.min(...ys);
   return { x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y };
 }
-function inPolygon(p: WorldPoint, points: WorldPoint[]) {
+function inPolygon(p: WorldPoint, points: readonly WorldPoint[]) {
   let inside = false;
   for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
     const a = points[i], b = points[j];
@@ -256,10 +261,12 @@ export function requestFaunaInteraction(state: ForestFaunaState, kind: FaunaSpec
 function setMode(e: ForestFaunaEntity, mode: FaunaMode) {
   if (e.mode === mode) return;
   e.mode = mode; e.modeElapsed = 0;
+  if (mode !== "depart" && mode !== "return") delete e.departureSupport;
   if (!["rest-seek", "rest", "refuge"].includes(mode)) e.landingExpiresAt = 0;
 }
 function depart(state: ForestFaunaState, e: ForestFaunaEntity) {
   if (e.mode === "depart" || e.mode === "return") return;
+  delete e.departureSupport;
   setMode(e, "depart"); e.anchorId = null;
   const side = e.orbit.x >= e.x ? 1 : -1;
   e.departure = { x: clamp(e.x + side * 24, 1, state.width - 1), y: clamp(e.y - 20, 1, state.height - 1) };
@@ -369,7 +376,12 @@ export function emitFaunaStimulus(state: ForestFaunaState, stimulus: FaunaStimul
     .filter(({ d }) => d < radius).sort((a, b) => a.d - b.d || a.e.id.localeCompare(b.e.id));
   for (const { e, d } of nearby) {
     if (!isFaunaActiveAtTime(e.species, state.dusk)) continue;
-    if (e.interactionToken !== null || ["approach", "perch", "refuge"].includes(e.mode)) continue;
+    const anchor = e.anchorId ? state.habitats.find(h => h.id === e.habitatId)?.anchors.find(a => a.id === e.anchorId) : undefined;
+    const supported = anchor && distance(e, anchor.position) < 16;
+    const displaced = stimulus.kind === "rustle" && stimulus.foliage
+      && (inPolygon(e, stimulus.foliage) || supported && inPolygon(anchor.position, stimulus.foliage))
+      && ["rest", "rest-seek", "refuge"].includes(e.mode);
+    if (e.interactionToken !== null || ["approach", "perch"].includes(e.mode) || e.mode === "refuge" && !displaced) continue;
     const amount = (1 - d / radius) * strength;
     const familiarity = e.familiarity;
     // Repeated ordinary footsteps become familiar, sampled at most once per 1.5 s.
@@ -378,15 +390,21 @@ export function emitFaunaStimulus(state: ForestFaunaState, stimulus: FaunaStimul
       e.familiarity = clamp(e.familiarity + .18 * (.5 + strength * .5) * (1 - d / radius));
       e.lastMovementAt = state.elapsed;
     }
-    if (affected >= 4 || e.stimulusCooldownUntil > state.elapsed || ["depart", "return"].includes(e.mode)) continue;
-    const response = amount * (stimulus.kind === "movement" ? 1 - familiarity * .7 : 1);
+    if (affected >= (stimulus.foliage ? 12 : 4) || !displaced && e.stimulusCooldownUntil > state.elapsed || ["depart", "return"].includes(e.mode)) continue;
+    const response = displaced ? Math.max(.65, amount) : amount * (stimulus.kind === "movement" ? 1 - familiarity * .7 : 1);
     const threshold = .1 + noise(hash(e.id), 7) * .08;
     if (response < threshold) continue;
     const dx = e.x - stimulus.x || Math.cos(e.phase), dy = e.y - stimulus.y || -1;
     const length = Math.hypot(dx, dy);
     e.departure = { x: clamp(e.x + dx / length * (10 + response * 22), 1, state.width - 1),
       y: clamp(e.y + dy / length * (8 + response * 15) - 6, 1, state.height - 1) };
+    e.departureSupport = supported ? point(anchor.position) : undefined;
     setMode(e, "depart"); e.anchorId = null;
+    if (displaced) {
+      // Even in rain, finish the short escape before seeking shelter again.
+      e.landingRetryAt = Math.max(e.landingRetryAt, state.elapsed + 4);
+      e.nextRestAt = Math.max(e.nextRestAt, state.elapsed + 12);
+    }
     e.alertness = clamp(e.alertness + response * .75);
     e.stimulusCooldownUntil = state.elapsed + 7; e.cooldownUntil = Math.max(e.cooldownUntil, state.elapsed + 4);
     affected++;
@@ -607,8 +625,14 @@ export function faunaRenderFrame(state: ForestFaunaState,
       : mode !== "off";
     if (!enabled) continue;
     const resting = e.mode === "perch" || e.mode === "rest" || e.mode === "refuge" && Math.hypot(e.vx, e.vy) < 1;
+    const anchor = e.anchorId && ["rest", "rest-seek", "refuge"].includes(e.mode)
+      ? state.habitats.find(h => h.id === e.habitatId)?.anchors.find(a => a.id === e.anchorId) : undefined;
+    const takingOff = ["depart", "return"].includes(e.mode) && e.departureSupport
+      && distance(e, e.departureSupport) < 24;
+    const support = anchor && distance(e, anchor.position) < 16 ? anchor.position : takingOff ? e.departureSupport : undefined;
     const particle: FaunaRenderParticle = { id: e.id, species: e.species, mode: e.mode, x: e.x, y: e.y,
       size: e.size, phase: e.phase, opacity: e.opacity, angle: e.angle, resting,
+      ...(support ? { support: point(support) } : {}),
       ...(e.species === "firefly" ? { glow } : {}) };
     (e.species === "butterfly" ? butterflies : fireflies).push(particle);
   }

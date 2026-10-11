@@ -33,7 +33,7 @@
     },
     {
       "id": "forest.day.01",
-      "src": "/audio/originals-v1/loop/forest.day.01.nature-v2.wav",
+      "src": "/audio/originals-v1/loop/forest.day.01.sparse-v3.wav",
       "status": "ready",
       "license": {
         "name": "Project-original procedural audio; provenance recorded",
@@ -41,13 +41,13 @@
         "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
         "sourceUrl": "art/audio/originals-v1/manifest.json",
         "acquiredAt": "2026-10-11",
-        "changes": "Nature-v2 revision: wildlife isolated from the wind; unchanged deterministic phrases, restrained RMS mastering, seamless circular event tails and TPDF PCM16. New cache-safe filename.",
+        "changes": "Sparse-v3 revision: two daytime phrases or one night phrase per 20 seconds, mono, lower individual peak ceilings and quiet RMS, seamless silence between calls, deterministic TPDF PCM16. New cache-safe filename.",
         "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
       }
     },
     {
       "id": "forest.night.01",
-      "src": "/audio/originals-v1/loop/forest.night.01.nature-v2.wav",
+      "src": "/audio/originals-v1/loop/forest.night.01.sparse-v3.wav",
       "status": "ready",
       "license": {
         "name": "Project-original procedural audio; provenance recorded",
@@ -55,7 +55,7 @@
         "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
         "sourceUrl": "art/audio/originals-v1/manifest.json",
         "acquiredAt": "2026-10-11",
-        "changes": "Nature-v2 revision: wildlife isolated from the wind; unchanged deterministic phrases, restrained RMS mastering, seamless circular event tails and TPDF PCM16. New cache-safe filename.",
+        "changes": "Sparse-v3 revision: two daytime phrases or one night phrase per 20 seconds, mono, lower individual peak ceilings and quiet RMS, seamless silence between calls, deterministic TPDF PCM16. New cache-safe filename.",
         "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
       }
     },
@@ -103,7 +103,7 @@
     },
     {
       "id": "campfire.01",
-      "src": "/audio/originals-v1/loop/campfire.01.wav",
+      "src": "/audio/originals-v1/loop/campfire.01.embers-v2.wav",
       "status": "ready",
       "license": {
         "name": "Project-original procedural audio; provenance recorded",
@@ -111,7 +111,7 @@
         "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
         "sourceUrl": "art/audio/originals-v1/manifest.json",
         "acquiredAt": "2026-10-11",
-        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "changes": "Embers-v2 revision: continuous soft flame with six small smooth ember movements, no rapid click train, reduced RMS and peak level, seamless mono loop and TPDF PCM16. New cache-safe filename.",
         "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
       }
     },
@@ -1234,6 +1234,104 @@
         "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
         "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
       }
+    },
+    {
+      "id": "cooking.simmer.01",
+      "src": "/audio/originals-v1/loop/cooking.simmer.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Original deterministic DSP Foley, DC removal, gentle edges, restrained peak-safe level and TPDF PCM16; no external samples.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
+    },
+    {
+      "id": "action.bush.rustle.01",
+      "src": "/audio/originals-v1/effect/action.bush.rustle.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Original deterministic DSP Foley, DC removal, gentle edges, restrained peak-safe level and TPDF PCM16; no external samples.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
+    },
+    {
+      "id": "action.bush.rustle.02",
+      "src": "/audio/originals-v1/effect/action.bush.rustle.02.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Original deterministic DSP Foley, DC removal, gentle edges, restrained peak-safe level and TPDF PCM16; no external samples.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
+    },
+    {
+      "id": "action.mushroom.eat.01",
+      "src": "/audio/originals-v1/effect/action.mushroom.eat.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Original deterministic DSP Foley, DC removal, gentle edges, restrained peak-safe level and TPDF PCM16; no external samples.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
+    },
+    {
+      "id": "action.mushroom.eat.02",
+      "src": "/audio/originals-v1/effect/action.mushroom.eat.02.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Original deterministic DSP Foley, DC removal, gentle edges, restrained peak-safe level and TPDF PCM16; no external samples.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
+    },
+    {
+      "id": "water.drop.01",
+      "src": "/audio/originals-v1/effect/water.drop.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Original deterministic DSP Foley, DC removal, gentle edges, restrained peak-safe level and TPDF PCM16; no external samples.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
+    },
+    {
+      "id": "water.drop.02",
+      "src": "/audio/originals-v1/effect/water.drop.02.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Original deterministic DSP Foley, DC removal, gentle edges, restrained peak-safe level and TPDF PCM16; no external samples.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     }
   ],
   "cues": [
@@ -1818,6 +1916,65 @@
       "cooldownMs": 200,
       "pitchVariation": 0.035,
       "fadeMs": 20
+    },
+    {
+      "id": "cooking.simmer",
+      "bus": "world",
+      "mode": "loop",
+      "assets": [
+        "cooking.simmer.01"
+      ],
+      "gainDb": -2,
+      "priority": 45,
+      "maxInstances": 1,
+      "cooldownMs": 0,
+      "pitchVariation": 0,
+      "fadeMs": 1100
+    },
+    {
+      "id": "action.bush.rustle",
+      "bus": "world",
+      "mode": "one-shot",
+      "assets": [
+        "action.bush.rustle.01",
+        "action.bush.rustle.02"
+      ],
+      "gainDb": -2,
+      "priority": 52,
+      "maxInstances": 1,
+      "cooldownMs": 600,
+      "pitchVariation": 0,
+      "fadeMs": 30
+    },
+    {
+      "id": "action.mushroom.eat",
+      "bus": "world",
+      "mode": "one-shot",
+      "assets": [
+        "action.mushroom.eat.01",
+        "action.mushroom.eat.02"
+      ],
+      "gainDb": -2,
+      "priority": 52,
+      "maxInstances": 1,
+      "cooldownMs": 450,
+      "pitchVariation": 0,
+      "fadeMs": 25
+    },
+    {
+      "id": "water.drop",
+      "bus": "ambience",
+      "mode": "one-shot",
+      "assets": [
+        "water.drop.01",
+        "water.drop.02"
+      ],
+      "gainDb": -2,
+      "priority": 25,
+      "maxInstances": 1,
+      "cooldownMs": 1200,
+      "pitchVariation": 0,
+      "fadeMs": 25
     }
   ],
   "profiles": [
@@ -1891,6 +2048,12 @@
       "id": "construction.working",
       "cues": [
         "construction.working"
+      ]
+    },
+    {
+      "id": "cooking.simmer",
+      "cues": [
+        "cooking.simmer"
       ]
     }
   ]

@@ -34,7 +34,7 @@ function pcmWave(bytes) {
 
 test("original pack fills the catalog, documents source and verifies every shipped byte", () => {
   assert.deepEqual(inspectAudioCatalog(catalog, { root, requireReady: true }).errors, []);
-  assert.equal(manifest.assets.length, 88);
+  assert.equal(manifest.assets.length, 95);
   assert.deepEqual(new Set(manifest.assets.map(item => item.id)), new Set(catalog.assets.map(item => item.id)));
   const hashes = new Set();
   for (const source of manifest.sources) assert.equal(sha(readFileSync(path.join(root, source.path))), source.sha256, source.path);
@@ -66,7 +66,8 @@ test("decoded WAV effects are non-silent, unclipped and match their declared dur
     }
     const rms = Math.sqrt(squares / count);
     assert.ok(peak <= .795, `${item.id} peak headroom`);
-    assert.ok(rms > .002 && rms < .3, `${item.id} audible source with restrained level`);
+    const minimumRms = item.id.startsWith("forest.") ? .0005 : .002;
+    assert.ok(rms > minimumRms && rms < .3, `${item.id} audible source with restrained level (wildlife includes long silences)`);
     assert.ok(Math.abs(sum / count) < .0001, `${item.id} negligible DC`);
     assert.ok(Math.abs(20 * Math.log10(rms) - item.measurements.rmsDb) < .015, `${item.id} measured RMS`);
     for (let channel = 0; channel < wav.channels; channel++) {
@@ -83,13 +84,74 @@ test("decoded WAV effects are non-silent, unclipped and match their declared dur
 
 test("ambient bank leaves mobile buffer headroom and music has a Safari fallback", () => {
   const loops = manifest.assets.filter(item => item.kind === "loop");
-  assert.equal(loops.length, 10);
+  assert.equal(loops.length, 11);
   assert.ok(loops.reduce((sum, item) => sum + item.decodedBytes, 0) < 24 * 1024 * 1024);
   for (const item of manifest.assets.filter(asset => asset.kind === "music")) {
     assert.equal(item.channels, 2);
     assert.ok(item.durationSeconds >= 90 && item.durationSeconds <= 150);
     assert.match(item.files[0].src, /\.opus$/);
     assert.match(item.files[1].src, /\.m4a$/);
+  }
+});
+
+test("wildlife phrases are sparse and individual peaks remain quieter than the previous dense loops", () => {
+  for (const [id, phrases, maximumPeakDb, minimumGap] of [
+    ["forest.day.01", 2, -29, 8],
+    ["forest.night.01", 1, -21, 18],
+  ]) {
+    const item = manifest.assets.find(entry => entry.id === id);
+    const wav = pcmWave(readFileSync(path.join(root, "public", item.files[0].src)));
+    assert.equal(item.durationSeconds, 20);
+    assert.equal(wav.channels, 1, "long pauses do not double the decoded mobile footprint");
+    assert.ok(item.measurements.peakDb <= maximumPeakDb + .01, `${id}: silence must not boost individual calls`);
+    const active = [];
+    const window = wav.rate / 10;
+    for (let start = 0; start < item.frames; start += window) {
+      let squares = 0;
+      for (let index = start; index < start + window; index++) {
+        squares += (wav.samples.readInt16LE(index * 2) / 32768) ** 2;
+      }
+      if (Math.sqrt(squares / window) > .00015) active.push(start / wav.rate);
+    }
+    const groups = [];
+    for (const start of active) {
+      const last = groups.at(-1);
+      if (!last || start - last.end > .5) groups.push({ start, end: start + .1 });
+      else last.end = start + .1;
+    }
+    assert.equal(groups.length, phrases, `${id}: actual PCM phrase count`);
+    for (let index = 0; index < groups.length; index++) {
+      const next = groups[(index + 1) % groups.length].start + (index === groups.length - 1 ? 20 : 0);
+      assert.ok(next - groups[index].end >= minimumGap, `${id}: long quiet pauses including the loop join`);
+    }
+    assert.ok(active.length / 200 < .09, `${id}: mostly quiet, without hidden wind`);
+  }
+});
+
+test("campfire stays continuous and added action sounds have bounded, restrained tails", () => {
+  const fire = manifest.assets.find(item => item.id === "campfire.01");
+  assert.match(fire.files[0].src, /embers-v2/);
+  assert.ok(fire.measurements.peakDb <= -13 && fire.measurements.rmsDb <= -27);
+  const wav = pcmWave(readFileSync(path.join(root, "public", fire.files[0].src)));
+  const window = wav.rate / 20;
+  for (let start = 0; start < fire.frames; start += window) {
+    let squares = 0;
+    for (let index = start; index < start + window; index++) squares += (wav.samples.readInt16LE(index * 2) / 32768) ** 2;
+    assert.ok(Math.sqrt(squares / window) > .01, "no chopped or silent flame segments");
+  }
+  for (const [prefix, count, duration, rmsDb] of [
+    ["cooking.simmer.", 1, 6, -25],
+    ["action.bush.rustle.", 2, .65, -25],
+    ["action.mushroom.eat.", 2, .25, -26],
+    ["water.drop.", 2, .31, -28],
+  ]) {
+    const entries = manifest.assets.filter(item => item.id.startsWith(prefix));
+    assert.equal(entries.length, count);
+    for (const item of entries) {
+      assert.equal(item.channels, 1);
+      assert.ok(item.durationSeconds <= duration, item.id);
+      assert.ok(item.measurements.rmsDb <= rmsDb + .01, item.id);
+    }
   }
 });
 

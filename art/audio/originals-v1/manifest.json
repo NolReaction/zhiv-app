@@ -12,11 +12,11 @@
   "sources": [
     {
       "path": "scripts/audio_originals/ambience.py",
-      "sha256": "0d81faedb426e6c0d3a7f4bb17130191c04250d2f78b8b577134342d4ec4899d"
+      "sha256": "874db773d1e10c21559c81633cd6b93369517b07087cdee2e3227173e8c0289e"
     },
     {
       "path": "scripts/audio_originals/effects.py",
-      "sha256": "89909034d49deff49a7f9df71975b343612ad1033e59fe88626bb7deeecbea21"
+      "sha256": "383430728077e343c1097fc3bcc63f469242a9e6ed9ffe8fbc9b6765eaa4e809"
     },
     {
       "path": "scripts/audio_originals/music.py",
@@ -24,7 +24,7 @@
     },
     {
       "path": "scripts/audio_originals/render.py",
-      "sha256": "8f9446c2cc69a9bbdabdd9c5916a411695660d56f9b900cf781811266a3001cf"
+      "sha256": "c8c6df95c879ad79d32a215c265b4e9d77d7232cae66866502e01acb56a9ad9c"
     }
   ],
   "assets": [
@@ -110,55 +110,64 @@
       "id": "forest.day.01",
       "kind": "loop",
       "title": "Birds in the Sun",
-      "description": "Five original low-register bird phrases, isolated from the independently controlled wind.",
+      "description": "Two quiet distant bird phrases with long pauses; mono keeps the longer arrangement within the mobile buffer budget.",
       "sampleRate": 48000,
-      "channels": 2,
-      "frames": 480000,
-      "durationSeconds": 10.0,
+      "channels": 1,
+      "frames": 960000,
+      "durationSeconds": 20.0,
       "decodedBytes": 3840000,
-      "masterSha256": "ea54515b2eccc71fe5fff989b005a37c6dcc6b4a1867fc1155730b9f481da86d",
+      "masterSha256": "919f61716fe8c6a36c73760144f1ece1f61817fe9e40f684d336786a0c21434d",
       "measurements": {
-        "peakDb": -24.5156,
-        "rmsDb": -42.0,
+        "peakDb": -29.0,
+        "rmsDb": -51.7195,
         "dc": 0.0,
-        "seamDelta": 0.003155459,
-        "maxAdjacentDelta": 0.010309434
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.005252924
       },
       "files": [
         {
-          "src": "/audio/originals-v1/loop/forest.day.01.nature-v2.wav",
+          "src": "/audio/originals-v1/loop/forest.day.01.sparse-v3.wav",
           "bytes": 1920044,
-          "sha256": "ea54515b2eccc71fe5fff989b005a37c6dcc6b4a1867fc1155730b9f481da86d"
+          "sha256": "919f61716fe8c6a36c73760144f1ece1f61817fe9e40f684d336786a0c21434d"
         }
       ],
-      "composition": {}
+      "composition": {
+        "phraseStartsSeconds": [
+          2.6,
+          13.6
+        ]
+      }
     },
     {
       "id": "forest.night.01",
       "kind": "loop",
       "title": "The Forest Settles",
-      "description": "Sparse softened insect conversations, isolated from the independently controlled wind.",
+      "description": "One short distant insect phrase in twenty seconds, leaving the night mostly quiet.",
       "sampleRate": 48000,
-      "channels": 2,
-      "frames": 480000,
-      "durationSeconds": 10.0,
+      "channels": 1,
+      "frames": 960000,
+      "durationSeconds": 20.0,
       "decodedBytes": 3840000,
-      "masterSha256": "55cbe141786eb9c99b09469d3978c5302dd85c21b0ed3290abff2da486a1a702",
+      "masterSha256": "7ffcb18bc48b8bd9a3f3ba09d4903e1c073d958a1bdc33ef83d5543aa2298351",
       "measurements": {
-        "peakDb": -16.1858,
-        "rmsDb": -43.0,
+        "peakDb": -22.2171,
+        "rmsDb": -55.0,
         "dc": 0.0,
-        "seamDelta": 0.003552511,
-        "maxAdjacentDelta": 0.05161491
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.020044897
       },
       "files": [
         {
-          "src": "/audio/originals-v1/loop/forest.night.01.nature-v2.wav",
+          "src": "/audio/originals-v1/loop/forest.night.01.sparse-v3.wav",
           "bytes": 1920044,
-          "sha256": "55cbe141786eb9c99b09469d3978c5302dd85c21b0ed3290abff2da486a1a702"
+          "sha256": "7ffcb18bc48b8bd9a3f3ba09d4903e1c073d958a1bdc33ef83d5543aa2298351"
         }
       ],
-      "composition": {}
+      "composition": {
+        "phraseStartsSeconds": [
+          7.2
+        ]
+      }
     },
     {
       "id": "weather.rain.01",
@@ -218,25 +227,25 @@
       "id": "campfire.01",
       "kind": "loop",
       "title": "Small Evening Fire",
-      "description": "A warm rolling fire with restrained little twig crackles.",
+      "description": "A soft continuous flame and six padded ember movements, without rapid sharp crackle bursts.",
       "sampleRate": 48000,
       "channels": 1,
       "frames": 384000,
       "durationSeconds": 8.0,
       "decodedBytes": 1536000,
-      "masterSha256": "a252bc31a0fded0e00314fb6024c6c36fe20dc0ed108bb736ecaf748d8a3ca41",
+      "masterSha256": "0ac32f94e7ddb3364fcb1a2ba79bc0fd475981e08e7b49286fd678197a33c1de",
       "measurements": {
-        "peakDb": -8.1383,
-        "rmsDb": -23.0,
+        "peakDb": -14.0244,
+        "rmsDb": -27.0,
         "dc": 0.0,
-        "seamDelta": 0.00086375,
-        "maxAdjacentDelta": 0.03511066
+        "seamDelta": 0.001189112,
+        "maxAdjacentDelta": 0.014072526
       },
       "files": [
         {
-          "src": "/audio/originals-v1/loop/campfire.01.wav",
+          "src": "/audio/originals-v1/loop/campfire.01.embers-v2.wav",
           "bytes": 768044,
-          "sha256": "a252bc31a0fded0e00314fb6024c6c36fe20dc0ed108bb736ecaf748d8a3ca41"
+          "sha256": "0ac32f94e7ddb3364fcb1a2ba79bc0fd475981e08e7b49286fd678197a33c1de"
         }
       ],
       "composition": {}
@@ -2424,6 +2433,195 @@
           "src": "/audio/originals-v1/loop/weather.wind.01.wav",
           "bytes": 1152044,
           "sha256": "2a8b83e943aee56dcd967400f371795ddeceba106407f5e2729dd843571c74fb"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "cooking.simmer.01",
+      "kind": "loop",
+      "title": "Soup above the Embers",
+      "description": "Quiet simmering liquid with rounded irregular bubbles; a separate loop for active cooking, without baked-in fire.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 288000,
+      "durationSeconds": 6.0,
+      "decodedBytes": 1152000,
+      "masterSha256": "95d71b2d1a8f58905f57e7e9e32536898c17c25a60279355fc50fa2e2ff91135",
+      "measurements": {
+        "peakDb": -12.2789,
+        "rmsDb": -25.0,
+        "dc": 0.0,
+        "seamDelta": 0.00408785,
+        "maxAdjacentDelta": 0.024095375
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/loop/cooking.simmer.01.wav",
+          "bytes": 576044,
+          "sha256": "95d71b2d1a8f58905f57e7e9e32536898c17c25a60279355fc50fa2e2ff91135"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "action.bush.rustle.01",
+      "kind": "effect",
+      "title": "Into the berry leaves 1",
+      "description": "A soft leaf brush, padded moss contact and a short settling rustle.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 27600,
+      "durationSeconds": 0.575,
+      "decodedBytes": 110400,
+      "masterSha256": "6099a5606423f53cb71a5d8a43724ba6cdecadba91b47f3332efd6b0bb289e84",
+      "measurements": {
+        "peakDb": -7.5801,
+        "rmsDb": -25.0,
+        "dc": 1e-09,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.063059688
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/action.bush.rustle.01.wav",
+          "bytes": 55244,
+          "sha256": "6099a5606423f53cb71a5d8a43724ba6cdecadba91b47f3332efd6b0bb289e84"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "action.bush.rustle.02",
+      "kind": "effect",
+      "title": "Into the berry leaves 2",
+      "description": "A soft leaf brush, padded moss contact and a short settling rustle.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 29280,
+      "durationSeconds": 0.61,
+      "decodedBytes": 117120,
+      "masterSha256": "ad1f3745a1bef91954e9882320eae037fdb672830eb7b0deedef7ab38c9f777c",
+      "measurements": {
+        "peakDb": -8.7563,
+        "rmsDb": -25.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.057255328
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/action.bush.rustle.02.wav",
+          "bytes": 58604,
+          "sha256": "ad1f3745a1bef91954e9882320eae037fdb672830eb7b0deedef7ab38c9f777c"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "action.mushroom.eat.01",
+      "kind": "effect",
+      "title": "A mushroom snack 1",
+      "description": "One small muted bite with a soft earthy texture; no wet mouth or sharp chewing noise.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 10320,
+      "durationSeconds": 0.215,
+      "decodedBytes": 41280,
+      "masterSha256": "d665bf29fefb3115114b6e2b2a652489cdd09d376fb33cad46469024c04541dc",
+      "measurements": {
+        "peakDb": -11.8629,
+        "rmsDb": -26.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.055928826
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/action.mushroom.eat.01.wav",
+          "bytes": 20684,
+          "sha256": "d665bf29fefb3115114b6e2b2a652489cdd09d376fb33cad46469024c04541dc"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "action.mushroom.eat.02",
+      "kind": "effect",
+      "title": "A mushroom snack 2",
+      "description": "One small muted bite with a soft earthy texture; no wet mouth or sharp chewing noise.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 11520,
+      "durationSeconds": 0.24,
+      "decodedBytes": 46080,
+      "masterSha256": "e6e2561ccfcc9d5912a77539fc41f33c60b440fc7d86bae1b647f610e7d3ae0a",
+      "measurements": {
+        "peakDb": -11.0272,
+        "rmsDb": -26.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.059946928
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/action.mushroom.eat.02.wav",
+          "bytes": 23084,
+          "sha256": "e6e2561ccfcc9d5912a77539fc41f33c60b440fc7d86bae1b647f610e7d3ae0a"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "water.drop.01",
+      "kind": "effect",
+      "title": "A drop in the river 1",
+      "description": "One rounded falling droplet and a tiny soft ripple, for the visible water-drop animation.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 12720,
+      "durationSeconds": 0.265,
+      "decodedBytes": 50880,
+      "masterSha256": "15d1cb94317dfd02ca902e02b1e6a0d85c251aa70829c33ae60a1602fd9e5696",
+      "measurements": {
+        "peakDb": -13.5202,
+        "rmsDb": -28.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.02025649
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/water.drop.01.wav",
+          "bytes": 25484,
+          "sha256": "15d1cb94317dfd02ca902e02b1e6a0d85c251aa70829c33ae60a1602fd9e5696"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "water.drop.02",
+      "kind": "effect",
+      "title": "A drop in the river 2",
+      "description": "One rounded falling droplet and a tiny soft ripple, for the visible water-drop animation.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 13920,
+      "durationSeconds": 0.29,
+      "decodedBytes": 55680,
+      "masterSha256": "e8a7226bad7326f393e229b273ffec4a432bf14a4f33d12f1c3b3cdaea5384c2",
+      "measurements": {
+        "peakDb": -12.5427,
+        "rmsDb": -28.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.025520045
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/water.drop.02.wav",
+          "bytes": 27884,
+          "sha256": "e8a7226bad7326f393e229b273ffec4a432bf14a4f33d12f1c3b3cdaea5384c2"
         }
       ],
       "composition": {}

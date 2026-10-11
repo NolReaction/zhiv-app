@@ -149,7 +149,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   function draw() {
     if (disposed || !ctx) return;
     redrawPending = false;
-    habitat.setAudioCamera?.({ x: camera.x, y: camera.y, zoom: camera.zoom, viewportWidth: view.width });
+    habitat.setAudioCamera?.({ x: camera.x, y: camera.y, zoom: camera.zoom, viewportWidth: view.width, viewportHeight: view.height });
     if (!pointers.size) viewportRect = null;
     const ratio = canvas.width / view.width;
     ctx.setTransform(ratio, 0, 0, canvas.height / view.height, 0, 0);

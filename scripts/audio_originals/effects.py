@@ -362,6 +362,33 @@ def _action(kind: str, variant: int, sample_rate: int,
         basket = _modal(.22, [272, 249, 293, 262][variant - 1], sample_rate, rng)
         _add(audio, basket, .19 + variant * .011, sample_rate, .31)
         title, description, target = "Berry into basket", "A delicate stem pop and leaf movement followed by a small woven-basket tap.", -21
+    elif kind == "bush.rustle":
+        length = .54 + variant * .035
+        audio = np.zeros(round(length * sample_rate))
+        # A broad leaf brush followed by a softer settling movement, with a
+        # padded moss landing rather than the bright snap of a UI sound.
+        _add(audio, _air_swish(.29 + variant * .02, sample_rate, rng), 0, sample_rate, .7)
+        _add(audio, _air_swish(.24, sample_rate, rng, False), .25, sample_rate, .36)
+        _add(audio, _modal(.17, 108 + variant * 8, sample_rate, rng, "earth"), .07, sample_rate, .1)
+        title, description, target = "Into the berry leaves", "A soft leaf brush, padded moss contact and a short settling rustle.", -25
+    elif kind == "mushroom.eat":
+        length = .19 + variant * .025
+        audio = np.zeros(round(length * sample_rate))
+        bite_length = .11 + .015 * variant
+        t = _time(bite_length, sample_rate)
+        texture = _noise(len(t), rng, sample_rate, 210, 1500)
+        envelope = np.sin(math.pi * t / bite_length) ** 2
+        _add(audio, texture * envelope, .01, sample_rate, .14)
+        _add(audio, _modal(.12, 190 + variant * 15, sample_rate, rng, "earth"), .01, sample_rate, .09)
+        title, description, target = "A mushroom snack", "One small muted bite with a soft earthy texture; no wet mouth or sharp chewing noise.", -26
+    elif kind == "water.drop":
+        length = .24 + variant * .025
+        audio = np.zeros(round(length * sample_rate))
+        _add(audio, _bubble(.16, 520 + variant * 85, sample_rate, rng), .008, sample_rate, .45)
+        _add(audio, _bubble(.12, 330 + variant * 30, sample_rate, rng), .045, sample_rate, .11)
+        ripple = _air_swish(.14, sample_rate, rng)
+        _add(audio, ripple, .055, sample_rate, .055)
+        title, description, target = "A drop in the river", "One rounded falling droplet and a tiny soft ripple, for the visible water-drop animation.", -28
     else:
         raise ValueError(f"Unknown action sound: {kind}")
     return _finish(audio, sample_rate, f"{title} {variant}", description, target)
@@ -387,5 +414,9 @@ def render(asset_id: str, sample_rate: int) -> tuple[np.ndarray, dict]:
     if parts[0] == "actor" and len(parts) == 4 and variant <= 3:
         return _actor(parts[1], parts[2], variant, sample_rate, rng)
     if parts[0] == "action" and len(parts) in (3, 4):
+        if ".".join(parts[1:-1]) in ("bush.rustle", "mushroom.eat") and variant > 2:
+            raise ValueError(f"Unknown action variation: {asset_id}")
         return _action(".".join(parts[1:-1]), variant, sample_rate, rng)
+    if parts[:2] == ["water", "drop"] and len(parts) == 3 and variant <= 2:
+        return _action("water.drop", variant, sample_rate, rng)
     raise ValueError(f"Not a supported one-shot asset ID: {asset_id}")

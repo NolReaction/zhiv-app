@@ -787,3 +787,91 @@ test("weather fades on map exit and cannot start above the menu", async () => {
   assert.equal(playingWind.connected[0].gain.value, 0);
   f.runtime.dispose();
 });
+
+test("actual cooking loop obeys world mute and keeps one playing source through rain and camera movement", async () => {
+  const { buildWorldAudioFrame } = await vite.ssrLoadModule("/features/world/audio/world-audio-frame.ts");
+  const cooking = AUDIO_CATALOG.cues.find(item => item.id === "cooking.simmer");
+  assert.ok(cooking, "the working pot resolves to an authored ready loop");
+  const f = fixture([], { catalog: { ...AUDIO_CATALOG, cues: [cooking] },
+    initialSettings: { ...DEFAULT_AUDIO_SETTINGS, enabled: true, buses: { ...DEFAULT_AUDIO_SETTINGS.buses, world: 0 } } });
+  const now = Date.parse("2026-10-11T12:00:00Z"), point = { x: 100, y: 100 };
+  const scene = { id: "cooking", focus: { x: -75, y: -75, width: 350, height: 350 }, sites: [],
+    campfires: [{ id: "clearing-campfire", position: point, radius: 12 }] };
+  const production = { ownerPublicId: "player", revision: 1, jobs: [{ id: "soup", stationId: "dryer", stationLevel: 1,
+    startedAt: new Date(now - 1000).toISOString(), finishesAt: new Date(now + 60000).toISOString() }] };
+  const environment = { ownerId: "map", sceneId: "player:forest", ownerPublicId: "player", now, dusk: 0, rain: 0,
+    levels: {}, fires: [{ id: "clearing-campfire", position: point, lit: false, flame: 0 }], production };
+  const update = (index, extra = {}) => f.runtime.updateFrame(buildWorldAudioFrame(scene, { ...environment,
+    rain: (index % 100) / 100, camera: { x: 100 + Math.sin(index / 20) * 120, y: 100, zoom: 2, viewportWidth: 700 }, ...extra }));
+  try {
+    await f.runtime.unlock();
+    for (let index = 0; index < 120; index++) update(index);
+    await flush();
+    assert.equal(f.requests.length, 0, "world=0 prevents even a simmer asset request");
+    f.runtime.setSettings({ buses: { world: .55 } }); await flush();
+    assert.equal(f.context.started.length, 1);
+    const source = f.context.started[0];
+    assert.equal(source.loop, true);
+    for (let index = 0; index < 600; index++) update(index);
+    await flush();
+    assert.equal(f.context.started.length, 1, "camera and rain only change parameters, never the playing source");
+    assert.equal(f.requests.length, 1);
+    assert.deepEqual(source.stops, []);
+    update(0, { now: now + 60000 });
+    assert.equal(source.connected[0].gain.value, 0, "ready food fades the simmer immediately");
+    f.runtime.setSettings({ buses: { world: 0 } });
+    update(1); await flush();
+    assert.equal(f.context.started.length, 1, "later map updates cannot resurrect a muted pot");
+  } finally { f.runtime.dispose(); }
+});
+
+test("water contact expires after a cold decode; the next real hit can use the warmed asset", async () => {
+  const f = fixture([], { catalog: AUDIO_CATALOG });
+  const gate = deferred(); f.context.decode = () => gate.promise;
+  try {
+    await f.runtime.unlock(); f.runtime.updateFrame(frame());
+    f.runtime.play({ id: "water-cold", cueId: "water.drop", maxAgeMs: 250 });
+    await flush(); f.advance(251);
+    gate.resolve({ length: 44100, numberOfChannels: 1, duration: 1 });
+    await flush(); assert.equal(f.context.started.length, 0, "a late drop cannot play after the visible hit");
+    f.advance(1300);
+    f.runtime.play({ id: "water-warm", cueId: "water.drop", maxAgeMs: 250 });
+    await flush(); assert.equal(f.context.started.length, 1, "the following new contact remains audible");
+  } finally { f.runtime.dispose(); }
+});
+
+test("event max age only shortens the normal TTL and rejects stale contacts before loading", async () => {
+  for (const { maxAgeMs, age, expected } of [
+    { maxAgeMs: undefined, age: 500, expected: 1 },
+    { maxAgeMs: 9000, age: 2001, expected: 0 },
+    { maxAgeMs: NaN, age: 500, expected: 1 },
+    { maxAgeMs: 250, age: 251, expected: 0 },
+  ]) {
+    const f = fixture([cue("contact")]);
+    try {
+      await f.runtime.unlock();
+      f.runtime.play({ id: "contact-age", cueId: "contact", occurredAt: 100_000 - age, maxAgeMs });
+      await flush(); assert.equal(f.context.started.length, expected, `age ${age}, max ${maxAgeMs}`);
+      assert.equal(f.requests.length, expected, "stale contacts do not initiate a download");
+    } finally { f.runtime.dispose(); }
+  }
+});
+
+test("water contacts obey forest/water zero and cannot arrive after a menu return", async () => {
+  for (const condition of ["zero", "menu", "zero-pending", "menu-pending"]) {
+    const f = fixture([], { catalog: AUDIO_CATALOG });
+    const gate = deferred(); f.context.decode = () => gate.promise;
+    try {
+      await f.runtime.unlock(); f.runtime.updateFrame(frame());
+      if (condition === "zero") f.runtime.setSettings({ buses: { ambience: 0 } });
+      if (condition === "menu") f.runtime.updateFrame(frame([], { soundscape: false }));
+      f.runtime.play({ id: `water-${condition}`, cueId: "water.drop", maxAgeMs: 250 });
+      await flush();
+      if (condition === "zero-pending") f.runtime.setSettings({ buses: { ambience: 0 } });
+      if (condition === "menu-pending") f.runtime.updateFrame(frame([], { soundscape: false }));
+      gate.resolve({ length: 44100, numberOfChannels: 1, duration: 1 });
+      await flush(); assert.equal(f.context.started.length, 0, condition);
+      if (!condition.endsWith("pending")) assert.equal(f.requests.length, 0, condition);
+    } finally { f.runtime.dispose(); }
+  }
+});

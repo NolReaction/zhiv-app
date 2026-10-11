@@ -25,7 +25,8 @@ MODULES = {"music": "music.py", "loop": "ambience.py", "one-shot": "effects.py"}
 ASSET_REVISIONS = {
     **{f"ui.click.{variant:02}": "soft-v2" for variant in range(1, 4)},
     **{f"ui.{kind}.{variant:02}": "felt-v3" for kind in ("open", "close") for variant in range(1, 3)},
-    **{f"forest.{time}.01": "nature-v2" for time in ("day", "night")},
+    **{f"forest.{time}.01": "sparse-v3" for time in ("day", "night")},
+    "campfire.01": "embers-v2",
 }
 
 

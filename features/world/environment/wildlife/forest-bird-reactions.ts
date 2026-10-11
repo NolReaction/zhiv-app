@@ -1,11 +1,14 @@
 import type { ForestBird } from "./forest-wildlife";
 import type { WorldPoint } from "@/features/world/tiled/types";
+import { previewPointInPolygon } from "@/features/world/tiled/preview-state";
 
 export type BirdReactionStimulus = {
   kind: "footstep" | "bush-rustle";
   position: WorldPoint;
   /** Zero is silent; omitted intensity is a normal audible event. */
   intensity?: number;
+  /** Physical foliage contact can displace its resting birds. */
+  foliage?: readonly WorldPoint[];
 };
 
 export type BirdReactionBounds = { width: number; height: number };
@@ -163,6 +166,20 @@ export function advanceBirdReactions(state: BirdReactionState, baseBirds: readon
   const intensity = stimulus.intensity ?? 1;
   if (!Number.isFinite(intensity) || intensity <= 0) return;
   const strength = clamp(intensity);
+  if (stimulus.kind === "bush-rustle" && stimulus.foliage && bounds) {
+    const reach = Math.hypot(bounds.width, bounds.height) + 80;
+    let delay = 0;
+    for (const bird of [...baseBirds].sort((a, b) => (a.id ?? "").localeCompare(b.id ?? ""))) {
+      if (!bird.id || !resting(bird) || state.escapes.has(bird.id) || state.escapes.size >= 16
+        || bird.opacity <= .05 || !finitePoint(bird) || !previewPointInPolygon(bird, stimulus.foliage)) continue;
+      const dx = bird.x - stimulus.position.x || (bird.facing ?? 1), dy = Math.min(-.35, bird.y - stimulus.position.y);
+      const length = Math.hypot(dx, dy);
+      state.escapes.set(bird.id, { bird: { ...bird }, startedAt: state.elapsed + delay, lastSeenAt: state.elapsed,
+        end: { x: bird.x + dx / length * reach, y: bird.y + dy / length * reach }, duration: Math.max(6, reach / 155) });
+      state.attention.delete(bird.id); delay += .16;
+    }
+    if (delay) state.nextEscapeAt = Math.max(state.nextEscapeAt, state.elapsed + delay + .5);
+  }
   const radius = (stimulus.kind === "bush-rustle" ? 112 : 64) * (.5 + strength * .5);
   // A visit keeps a small memory of harmless passing steps. Learning does not
   // restart an active look, and a new individual never inherits the old one's calm.
@@ -186,7 +203,7 @@ export function advanceBirdReactions(state: BirdReactionState, baseBirds: readon
   let selected: ForestBird | undefined, nearest = radius;
   for (const bird of baseBirds) {
     if (!bird.id || !bird.perchId || !resting(bird) || !finitePoint(bird) || bird.opacity <= .05
-      || state.attention.has(bird.id)) continue;
+      || state.attention.has(bird.id) || state.escapes.has(bird.id)) continue;
     const distance = Math.hypot(bird.x - stimulus.position.x, bird.y - stimulus.position.y);
     if (distance < nearest || distance === nearest && (!selected || bird.id < selected.id!)) {
       selected = bird; nearest = distance;
