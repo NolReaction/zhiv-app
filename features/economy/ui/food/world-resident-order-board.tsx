@@ -73,10 +73,10 @@ export function ResidentOrderCard({ economy, offer, onComplete, onReplace, confi
     <header className={styles.heading}>
       <resident.Portrait className={styles.portrait} />
       <div className={styles.title}><span>{resident.name}</span><h3>{offer.name}</h3></div>
-      <strong className={styles.payout} aria-label={`Награда: ${number(offer.coins)} монет`}><ItemIcon itemId="coins" size={19} />{number(offer.coins)}</strong>
+      <strong className={styles.payout} data-guide-order-reward aria-label={`Награда: ${number(offer.coins)} монет`}><ItemIcon itemId="coins" size={19} />{number(offer.coins)}</strong>
     </header>
     {offer.description && <p className={styles.description}>{offer.description}</p>}
-    <ul className={styles.ingredients} aria-label="Для заказа">{Object.entries(offer.items).map(([id, quantity]) => {
+    <ul className={styles.ingredients} data-guide-order-requirements aria-label="Для заказа">{Object.entries(offer.items).map(([id, quantity]) => {
       const owned = state.inventory[id] ?? 0, short = owned < quantity;
       const source = short ? materialAction(economy, id, navigation) : null;
       const label = <><ProductIcon state={state} itemId={id} size={23} /><span>{itemName(state, id)}</span><strong>{number(owned)} / {number(quantity)}</strong></>;

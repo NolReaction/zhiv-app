@@ -205,3 +205,16 @@ test("simple view is respected while the existing independent map button remains
   result.props.primary.onClick();
   assert.deepEqual(result.calls, ["enter-world"]);
 });
+
+test("opened app sections highlight their own content and every task has a concise actionable summary", () => {
+  for (const step of ["people", "profile"]) {
+    assert.equal(view(step).props.target, `[data-app-onboarding="nav-${step}"]`);
+    const result = view(step, { activeView: step }, [step]);
+    assert.equal(result.props.target, `[data-app-onboarding="${step}-content"]`);
+    assert.ok(result.props.summary.length > 0 && result.props.summary.length < 160);
+    assert.deepEqual(result.calls, []);
+  }
+  for (const step of APP_ONBOARDING_STEPS) {
+    assert.ok(view(step).props.summary.length > 0 && view(step).props.summary.length < 160);
+  }
+});

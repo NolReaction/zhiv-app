@@ -36,7 +36,8 @@
 .menu h2, .menu h3, .menu p, .menu ul { margin: 0; }
 .menu ul { list-style: none; padding: 0; }
 .menu svg { flex: 0 0 auto; }
-.menu.menu :where(button) {
+/* An embedded lesson owns its controls; keep this reset on station buttons. */
+.menu.menu :where(button):not(:where([data-guide-coach] *, [data-section-guide] *)) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -56,9 +57,9 @@
   cursor: pointer;
   touch-action: manipulation;
 }
-.menu button:hover:not(:disabled) { background: #dce1b5; }
-.menu button:focus-visible, .menu input:focus-visible { outline: 2px solid var(--forest-focus, #355e48); outline-offset: 2px; }
-.menu button:disabled { opacity: .5; cursor: default; }
+.menu button:not(:where([data-guide-coach] *, [data-section-guide] *)):hover:not(:disabled) { background: #dce1b5; }
+.menu button:not(:where([data-guide-coach] *, [data-section-guide] *)):focus-visible, .menu input:focus-visible { outline: 2px solid var(--forest-focus, #355e48); outline-offset: 2px; }
+.menu button:not(:where([data-guide-coach] *, [data-section-guide] *)):disabled { opacity: .5; cursor: default; }
 .header {
   display: flex;
   align-items: center;

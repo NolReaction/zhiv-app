@@ -81,7 +81,7 @@ function merchantSelection(state = snapshot()) {
   merchantHooks.reset();
   const calls = [], focus = [], body = { scrollTop: 380, isConnected: true };
   const economy = controller(state, { act(...args) { calls.push(args); } });
-  const target = { closest(selector) { assert.equal(selector, "[data-slot='dialog-content']"); return body; }, focus(options) { focus.push(options); } };
+  const target = { closest(selector) { assert.equal(selector, "[data-resident-scroll]"); return body; }, focus(options) { focus.push(options); } };
   function render() {
     merchantHooks.render(); const tree = MerchantCounter({ state, economy, catalog: state.catalog.fishing }), nodes = [];
     function visit(element) { if (!isValidElement(element)) return; nodes.push(element); Children.forEach(element.props.children, visit); }

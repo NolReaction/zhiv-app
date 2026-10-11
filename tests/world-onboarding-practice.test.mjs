@@ -81,7 +81,7 @@ const gain = (patch = {}) => ({ id: "claim-receipt", ownerPublicId: owner, revis
 
 function harness(progress = started("grow"), jobs = []) {
   hooks.reset();
-  const calls = [], surface = { garden: false, recipe: false };
+  const calls = [], surface = { garden: false, recipe: false, pantryItem: false, pantrySale: false, pantryRelics: false, routePreparation: false };
   const notifySurface = () => { for (const observer of observers) observer.callback([]); };
   const snapshot = { ownerPublicId: owner, revision: 1, catalog: structuredClone(economyCatalog),
     wallet: { coins: 1000, pearls: 0 }, inventory: {}, buildings: { home: 3, warehouse: 1, garden: 1 }, jobs, workshopStarterClaimed: false,
@@ -99,6 +99,9 @@ function harness(progress = started("grow"), jobs = []) {
     worldElement: { current: { querySelector(selector) {
       if (selector === '[data-place="garden"]') return surface.garden ? {} : null;
       if (selector === '[data-recipe-preparation="grow_berries"]') return surface.recipe ? {} : null;
+      const content = { '[data-guide-pantry-item]': "pantryItem", '[data-guide-pantry-sale]': "pantrySale",
+        '[data-guide-pantry-relics]': "pantryRelics", '[data-route-preparation]': "routePreparation" }[selector];
+      if (content) return surface[content] ? {} : null;
       if (selector === '[data-recipe="grow_berries"]') return surface.garden ? { click() {
         calls.push(["choose-recipe"]); surface.recipe = true; notifySurface();
       } } : null;
@@ -134,6 +137,7 @@ function harness(progress = started("grow"), jobs = []) {
   const patchSnapshot = patch => { economy.snapshot = { ...economy.snapshot, ...patch }; };
   return { props, economy, surface, calls, render, patchEconomy, patchSnapshot,
     revealSurface(garden, recipe) { surface.garden = garden; surface.recipe = recipe; notifySurface(); },
+    revealContent(patch) { Object.assign(surface, patch); notifySurface(); },
     setCollection(value) { hooks.setCollection(value); },
   };
 }
@@ -276,7 +280,9 @@ test("orders let players inspect the actual board and continue without producing
   assert.equal(h.props.ordersOpen, true);
   assert.deepEqual(h.calls, [["orders"]]);
   coach = h.render();
-  assert.equal(coach.target, '[data-world-food-tab="orders"]');
+  assert.equal(coach.target, '[data-order-id]');
+  assert.match(coach.summary, /есть \/ нужно/);
+  assert.match(coach.text, /недостающий ресурс/);
   assert.equal(coach.primary.label, "К мастерской");
   coach.primary.onClick();
   assert.equal(h.props.progress.stepId, "workshop");
@@ -393,4 +399,64 @@ test("the final lesson can finish immediately without another modal detour", () 
   h.render().primary.onClick();
   assert.equal(h.props.progress.status, "completed");
   assert.ok(!h.calls.some(call => call[0] === "help"));
+});
+
+test("opened sections highlight their contents, and pantry guidance follows the actual sale or relic surface", () => {
+  const profile = harness(started("profile"));
+  assert.equal(profile.render().target, '[data-world-quick="profile"]');
+  profile.render().primary.onClick();
+  assert.equal(profile.render().target, '[data-guide-profile-tabs]');
+
+  const pantry = harness(started("pantry"));
+  pantry.render().primary.onClick();
+  assert.equal(pantry.render().target, '[data-guide-pantry-capacity]');
+  pantry.revealContent({ pantryItem: true });
+  let coach = pantry.render();
+  assert.equal(coach.target, '[data-guide-pantry-item]');
+  assert.match(coach.summary, /продажи/);
+  assert.match(coach.text, /«Рынок».*игроками/);
+  pantry.revealContent({ pantrySale: true });
+  coach = pantry.render();
+  assert.equal(coach.target, '[data-guide-pantry-sale]');
+  assert.match(coach.summary, /количество.*итог.*Продать торговцу/);
+  pantry.revealContent({ pantryItem: false, pantrySale: false, pantryRelics: true });
+  coach = pantry.render();
+  assert.equal(coach.target, '[data-guide-pantry-relics]');
+  assert.match(coach.summary, /продать их нельзя/);
+  assert.deepEqual(pantry.calls, [["quick", "pantry"]], "explaining a sale must not trigger any transaction");
+});
+
+test("expedition guidance changes after opening route details and never starts the route", () => {
+  const h = harness(started("expeditions"));
+  h.render().primary.onClick();
+  let coach = h.render();
+  assert.equal(coach.target, '[data-route]');
+  assert.match(coach.summary, /Нажми на маршрут/);
+  h.revealContent({ routePreparation: true });
+  coach = h.render();
+  assert.match(coach.summary, /только по кнопке «Отправиться»/);
+  assert.deepEqual(h.calls, [["quick", "expeditions"]]);
+});
+
+test("completion reports only actual crop and workshop progress and keeps optional destinations open", () => {
+  const untouched = harness(started("help"));
+  assert.match(untouched.render().summary, /Ягоды можно посадить/);
+  assert.doesNotMatch(untouched.render().summary, /Ягоды растут|Набор.*получен|Мастерская работает/);
+  const growing = harness(started("help", "crop-1"), [crop("crop-1", now + 1000)]);
+  assert.match(growing.render().summary, /Ягоды растут/);
+  growing.patchEconomy({ now: now + 1000 });
+  let coach = growing.render();
+  assert.match(coach.summary, /Ягоды готовы/);
+  coach.secondary.onClick();
+  assert.equal(growing.props.progress.status, "completed");
+  assert.deepEqual(growing.calls.slice(-3), [["close-surface"], ["complete"], ["garden", undefined]]);
+
+  const starter = harness(started("help"));
+  starter.patchSnapshot({ workshopStarterClaimed: true });
+  coach = starter.render();
+  assert.match(coach.summary, /Набор.*получен, стройка ещё не запущена/);
+  coach.secondary.onClick();
+  assert.equal(starter.props.progress.status, "completed");
+  assert.deepEqual(starter.calls.slice(-3), [["close-surface"], ["complete"], ["workshop"]]);
+  assert.deepEqual(starter.economy.snapshot.jobs, []);
 });

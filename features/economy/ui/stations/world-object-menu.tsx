@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { ArrowLeft, ArrowRight, Check, ChevronDown, ChevronUp, CircleHelp, Clock3, Fence, Flame, Hammer, House, LockKeyhole, Minus, Package, Pickaxe, Plus, RefreshCw, Sprout, TowerControl, Trees, X, type LucideIcon } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
 import type { MapObjectSelection, WorldPlace } from "@/features/world/scene/map-engine";
@@ -22,6 +22,8 @@ import { ConstructionGoalSummary } from "@/features/economy/ui/construction/cons
 import styles from "./world-object-menu.module.css";
 
 export type WorldObjectMenuProps = {
+  guide?: ReactNode;
+  guideRoot?: RefObject<HTMLElement | null>;
   selection: MapObjectSelection;
   economy: EconomyController;
   onClose: () => void;
@@ -162,7 +164,7 @@ export function WorldObjectSale({ economy, itemId, onCollapse }: { economy: Read
   </section>;
 }
 
-function ObjectMenuBody({ selection, economy, isOnline, onClose, onReturnFocus, bounds, onNavigate, onExplore, onOpenPantry, initialStationId, initialRecipeId, constructionGoal, onOpenGoal, onOpenFood, onOpenHelp, onHelpContextChange }: WorldObjectMenuProps) {
+function ObjectMenuBody({ guide, guideRoot: guideRootRef, selection, economy, isOnline, onClose, onReturnFocus, bounds, onNavigate, onExplore, onOpenPantry, initialStationId, initialRecipeId, constructionGoal, onOpenGoal, onOpenFood, onOpenHelp, onHelpContextChange }: WorldObjectMenuProps) {
   const collection = useGardenCollection();
   const seenHarvest = useRef(collection?.request?.requestId);
   useEffect(() => {
@@ -266,7 +268,7 @@ function ObjectMenuBody({ selection, economy, isOnline, onClose, onReturnFocus, 
   const openPantry = onOpenPantry ?? (() => openStation("warehouse"));
   const openJobPantry = onOpenPantry ?? (selection.place === "house" ? () => chooseStation("warehouse") : onNavigate ? () => onNavigate("house", "warehouse") : undefined);
 
-  return <>{showMenu && <section ref={panel} className={styles.menu} role="dialog" aria-modal="false" aria-labelledby={hasStationTabs ? `${headingId}-${stationId}` : headingId} tabIndex={-1} data-place={selection.place} data-side={position.side} style={{ left: position.x, top: position.y, width, height: definition.future ? undefined : position.height, maxHeight, "--menu-anchor-x": `${position.anchorX}px`, "--menu-anchor-y": `${position.anchorY}px` } as CSSProperties} onPointerDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()} onWheel={event => event.stopPropagation()} onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); } }}>
+  return <>{showMenu && <section ref={element => { panel.current = element; if (guideRootRef) guideRootRef.current = element; }} className={styles.menu} role="dialog" aria-modal="false" aria-labelledby={hasStationTabs ? `${headingId}-${stationId}` : headingId} tabIndex={-1} data-place={selection.place} data-side={position.side} style={{ left: position.x, top: position.y, width, height: definition.future ? undefined : position.height, maxHeight, "--menu-anchor-x": `${position.anchorX}px`, "--menu-anchor-y": `${position.anchorY}px` } as CSSProperties} onPointerDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()} onWheel={event => event.stopPropagation()} onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); } }}>
     <header className={`${styles.header} ${hasStationTabs ? styles.tabbedHeader : ""}`}>
       {hasStationTabs ? <nav className={styles.stations} role="tablist" aria-label={`Оборудование: ${definition.label}`}>
         {definition.stationIds.map((id, index) => {
@@ -285,6 +287,7 @@ function ObjectMenuBody({ selection, economy, isOnline, onClose, onReturnFocus, 
       </nav> : <><span className={styles.placeIcon}><Icon size={23} strokeWidth={1.8} aria-hidden="true" /></span><div><span>{definition.future ? "Будущая ветка" : stationId === "warehouse" ? "Запасы дома" : current ? `Уровень ${current}` : "Пока не обустроено"}</span><h2 id={headingId}>{stationId === "warehouse" ? "Кладовая" : definition.label}</h2></div></>}
       <button type="button" className={styles.close} aria-label="Закрыть меню объекта" onClick={onClose}><X size={17} aria-hidden="true" /></button>
     </header>
+    {guide}
     <div ref={menuBody} className={styles.body} data-recipe-selected={Boolean(selectedRecipe) || undefined} id={hasStationTabs ? `${headingId}-content` : undefined} role={hasStationTabs ? "tabpanel" : undefined} aria-labelledby={hasStationTabs ? `${headingId}-${stationId}` : undefined}>
       {!selectedRecipe && state && constructionGoal && onOpenGoal && <ConstructionGoalSummary state={state} constructionGoal={constructionGoal} onOpenGoal={onOpenGoal} navigation={navigation} compact />}
       {definition.future ? <div className={styles.future}><LockKeyhole size={22} aria-hidden="true" /><p>{definition.future}</p></div> : !state ? <div className={styles.loading}><RefreshCw size={17} aria-hidden="true" /><p>{economy.error ?? "Открываем ваше хозяйство…"}</p>{economy.error && <button type="button" className={styles.textButton} disabled={economy.busy || cooldown > 0} onClick={() => void economy.retry()}>{cooldown ? `Повторить через ${cooldown} с` : "Попробовать ещё раз"}</button>}</div> : <>
@@ -299,7 +302,7 @@ function ObjectMenuBody({ selection, economy, isOnline, onClose, onReturnFocus, 
         </details>}
         {stationId === "quarry" && <WorldExpeditionsMenu economy={economy} isOnline={isOnline} embeddedCaves onOpenHelp={openHelp} onOpenPantry={openPantry} onNavigateStation={(id, targetRecipeId) => id === "quarry" ? openUpgrade() : openStation(id, targetRecipeId)} onCancellationComplete={() => panel.current?.focus({ preventScroll: true })} />}
         {stationId === "warehouse" ? <><div className={styles.inventoryHeading}><span>Кладовая</span><strong>{number(state.storage.used + state.storage.reserved)} / {number(state.storage.capacity)}</strong></div>{ownedItems.length ? <div className={styles.products} aria-label="Предметы в кладовой">{ownedItems.map(item => <button key={item.id} type="button" className={styles.product} aria-pressed={saleItem === item.id} onClick={() => { setSaleItem(value => value === item.id ? null : item.id); setUpgradeStation(null); }}><ProductIcon state={state} itemId={item.id} /><strong>{item.name}</strong><span>×{number(state.inventory[item.id])}</span></button>)}</div> : <p className={styles.empty}>Пока пусто. Урожай и находки появятся здесь после получения.</p>}{readyEconomy && saleItem && <WorldObjectSale key={saleItem} economy={readyEconomy} itemId={saleItem} onCollapse={() => setSaleItem(null)} />}{state.storage.reserved > 0 && <p className={styles.small}>На рынке зарезервировано {number(state.storage.reserved)} мест.</p>}</> : stationId !== "quarry" ? <>
-          <div className={styles.recipeCatalog} hidden={Boolean(selectedRecipe)} aria-label={`Продукция: ${building?.name ?? definition.label}`}><RecipeCatalog state={state} recipes={recipes} onChoose={chooseRecipe} /></div>
+          <div className={styles.recipeCatalog} data-section-guide-target="workshop-recipes" hidden={Boolean(selectedRecipe)} aria-label={`Продукция: ${building?.name ?? definition.label}`}><RecipeCatalog state={state} recipes={recipes} onChoose={chooseRecipe} /></div>
           {readyEconomy && selectedRecipe && <WorldRecipeDetail key={selectedRecipe.id} economy={readyEconomy} recipe={selectedRecipe} navigation={navigation} onCollapse={closeRecipe} onOpenHelp={openHelp} onHelpContextChange={onHelpContextChange} />}
         </> : null}
       </>}

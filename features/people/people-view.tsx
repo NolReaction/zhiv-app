@@ -439,7 +439,7 @@ export function PeopleView({
         <h1 id="people-title">Личные связи</h1>
       </div>
 
-      <div className={styles.sectionTabs} role="tablist" aria-label="Люди и группы">
+      <div className={styles.sectionTabs} data-app-onboarding="people-content" role="tablist" aria-label="Люди и группы">
         <button
           id="people-section-tab-people"
           type="button"

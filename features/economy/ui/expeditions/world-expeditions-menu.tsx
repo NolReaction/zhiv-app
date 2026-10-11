@@ -197,12 +197,12 @@ export function WorldExpeditionSector({ sectorId, selectedRoute, onSelectRoute, 
   const laterRoutes = routes.filter(route => !canPrepare(state, route));
   const sector = expeditionSectors.find(entry => entry.id === sectorId)!;
   const selected = routes.find(route => route.id === selectedRoute);
-  if (selected) return <section className={styles.preparation} aria-label={`Подготовка: ${routeName(selected.name)}`} data-sector={sectorId} data-route={selected.id} data-route-preparation="true">
+  if (selected) return <section className={styles.preparation} data-section-guide-target="expedition-preparation" aria-label={`Подготовка: ${routeName(selected.name)}`} data-sector={sectorId} data-route={selected.id} data-route-preparation="true">
     <button type="button" className={styles.back} onClick={() => onSelectRoute(null)}><ArrowLeft size={15} aria-hidden="true" />Все маршруты<span>{sector.name}</span></button>
     <header className={styles.preparationHeading}><h3 tabIndex={-1} data-route-heading>{routeName(selected.name)}</h3><div className={styles.preparationTime}><span className={styles.routeDuration}><Clock3 size={13} aria-hidden="true" />{worldDuration(mealDuration(selected.seconds, pendingMeal(state, "hero")?.heroSpeedBps ?? 0))}</span><WorldMealBoost key={selected.id} economy={economy} consumer="hero" seconds={selected.seconds} isOnline={isOnline} onNavigateStation={onNavigateStation} onOpenMeals={onOpenMeals} /></div></header>
     <ExpeditionRouteDetails key={selected.id} route={selected} state={state} economy={economy} exploring={exploring} onOpenPantry={onOpenPantry} onNavigateStation={onNavigateStation} onOpenFishingShop={onOpenFishingShop} onUpgradeQuarry={onUpgradeQuarry} onOpenHelp={onOpenHelp} />
   </section>;
-  return <section className={styles.routes} aria-label={`Маршруты: ${sector.name}`} data-sector={sectorId}>
+  return <section className={styles.routes} data-section-guide-target="expedition-routes" aria-label={`Маршруты: ${sector.name}`} data-sector={sectorId}>
     {[{ key: "ready", label: "Доступные маршруты", routes: readyRoutes }, { key: "later", label: "Нужно подготовиться", routes: laterRoutes }].filter(group => group.routes.length > 0).map(group => <div className={styles.routeGroup} key={group.key}>
       <p className={styles.groupTitle}>{group.label}<span>{group.routes.length}</span></p>
       {group.routes.map(route => {

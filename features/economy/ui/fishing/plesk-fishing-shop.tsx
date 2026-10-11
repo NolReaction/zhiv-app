@@ -70,7 +70,7 @@ export function PleskFishTrade({ economy, state, itemId }: ReadyProps & { itemId
   const { blocked, send } = useFishingCommand({ economy, state });
   const limits = fishingTradeLimits(state, itemId), quantity = Number(quantityText), stock = state.inventory[itemId] ?? 0;
   const valid = /^\d+$/.test(quantityText) && Number.isSafeInteger(quantity) && quantity > 0, canSell = valid && quantity <= limits.sell;
-  return <section className={styles.trade} aria-label={`Продажа: ${itemName(state, itemId)}`}>
+  return <section className={styles.trade} data-guide-plesk-sale aria-label={`Продажа: ${itemName(state, itemId)}`}>
     <div className={styles.tradeHeading}><span>В запасе <strong>{number(stock)}</strong></span><span>За штуку <Price value={limits.sellPrice} /></span></div>
     <div className={styles.quantity}><label htmlFor={id}>Количество</label><input id={id} type="number" inputMode="numeric" min={1} max={Math.max(1, limits.sell)} step={1} value={quantityText} disabled={blocked} onChange={event => setQuantityText(event.target.value)} /><button type="button" disabled={blocked || limits.sell === 0} onClick={() => setQuantityText(String(limits.sell))}>{limits.sell < stock ? `До ${number(limits.sell)}` : "Весь улов"}</button></div>
     <button type="button" className={styles.primary} disabled={blocked || !canSell} onClick={() => send("sell_fish", itemId, quantity, 0, canSell)} aria-label={`Продать ${itemName(state, itemId)}: ${valid ? quantity : 0}`}><span>Продать</span>{canSell ? <Price value={quantity * limits.sellPrice} /> : <span>—</span>}</button>
@@ -230,7 +230,7 @@ export function PleskTackleCounter({ economy, state, catalog, onOpenOrders }: Re
     if (position?.body.isConnected) position.body.scrollTop = position.top;
   }, [selected?.id]);
   const selectOffer = (offerId: string, button: HTMLButtonElement) => {
-    const body = button.closest<HTMLElement>("[data-slot='dialog-content']");
+    const body = button.closest<HTMLElement>("[data-resident-scroll]") ?? button.closest<HTMLElement>("[data-slot='dialog-content']");
     scrollPosition.current = body && offerId !== selected?.id ? { body, top: body.scrollTop } : null;
     button.focus({ preventScroll: true });
     setSelectedId(offerId);
@@ -244,7 +244,7 @@ export function PleskTackleCounter({ economy, state, catalog, onOpenOrders }: Re
       if (!entry) return null;
       const name = "name" in entry ? entry.name : itemName(state, offer.itemId);
       const discount = "buyPrice" in entry ? Math.max(0, Math.round((1 - offer.unitPrice / entry.buyPrice) * 100)) : 0;
-      return <button type="button" key={offer.id} className={styles.offerTile} data-gear-rarity={entry.rarity} aria-pressed={selected?.id === offer.id} onPointerDown={event => { if (event.button === 0) event.currentTarget.focus({ preventScroll: true }); }} onClick={event => selectOffer(offer.id, event.currentTarget)}>
+      return <button type="button" key={offer.id} className={styles.offerTile} data-guide-plesk-offer={offer.kind} data-gear-rarity={entry.rarity} aria-pressed={selected?.id === offer.id} onPointerDown={event => { if (event.button === 0) event.currentTarget.focus({ preventScroll: true }); }} onClick={event => selectOffer(offer.id, event.currentTarget)}>
         <small className={styles.offerKind}>{slot.name}{discount > 0 && <span>−{discount}%</span>}</small>
         <span className={styles.offerArt}>{offer.kind === "rod" ? <FishingRodIcon rodId={offer.itemId} size={44} /> : <ItemIcon itemId={offer.itemId} size={36} />}</span>
         <strong>{name}</strong><FishRarityBadge rarity={entry.rarity} />
@@ -269,7 +269,7 @@ export function PleskFishingShop({ economy, onFishing, onOpenPantry, onOpenOrder
     {state && <div className={styles.wallet}><span>Лавка у пирса</span><span aria-label={`Монеты: ${number(state.wallet.coins)}. Жемчуг: ${formatPearls(state.wallet.pearls)}`}><Price value={state.wallet.coins} /><Price value={state.wallet.pearls} pearls /></span></div>}
     {recovery}
     {!state ? <p className={styles.hint} role="status">Проверяем ваши запасы…</p> : !catalog ? <><p className={styles.intro}>«Принесёшь речную рыбу — куплю!»</p>{(state.inventory.fish ?? 0) > 0 ? <PantrySale economy={{ ...economy, snapshot: state }} itemId="fish" /> : <p className={styles.hint}>В вашей кладовой пока нет речной рыбы.</p>}</> : <>
-      <div className={styles.tabs} role="tablist" aria-label="Лавка Плёски">{tabs.map((entry, index) => <button key={entry.id} ref={node => { tabButtons.current[index] = node; }} type="button" role="tab" id={`${id}-${entry.id}`} aria-selected={tab === entry.id} aria-controls={`${id}-panel`} tabIndex={tab === entry.id ? 0 : -1} onClick={() => setTab(entry.id)} onKeyDown={event => {
+      <div className={styles.tabs} role="tablist" aria-label="Лавка Плёски">{tabs.map((entry, index) => <button key={entry.id} ref={node => { tabButtons.current[index] = node; }} type="button" role="tab" data-guide-plesk-tab={entry.id} id={`${id}-${entry.id}`} aria-selected={tab === entry.id} aria-controls={`${id}-panel`} tabIndex={tab === entry.id ? 0 : -1} onClick={() => setTab(entry.id)} onKeyDown={event => {
         let next = index;
         if (event.key === "ArrowRight") next = (index + 1) % tabs.length;
         else if (event.key === "ArrowLeft") next = (index + tabs.length - 1) % tabs.length;
@@ -278,7 +278,7 @@ export function PleskFishingShop({ economy, onFishing, onOpenPantry, onOpenOrder
         else return;
         event.preventDefault(); setTab(tabs[next].id); tabButtons.current[next]?.focus();
       }}><entry.icon size={17} aria-hidden="true" />{entry.name}</button>)}</div>
-      <div key={state.ownerPublicId} className={styles.panel} role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-${tab}`} tabIndex={0}>
+      <div key={state.ownerPublicId} className={styles.panel} data-guide-plesk-panel={tab} role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-${tab}`} tabIndex={0}>
         {tab === "fish" ? <FishCounter economy={economy} state={state} catalog={catalog} /> : tab === "tackle" ? <PleskTackleCounter economy={economy} state={state} catalog={catalog} onOpenOrders={onOpenOrders} /> : <PleskFishingCollection state={state} catalog={catalog} />}
       </div>
     </>}

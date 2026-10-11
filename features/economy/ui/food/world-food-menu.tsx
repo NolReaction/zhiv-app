@@ -17,6 +17,7 @@ import styles from "./world-food-menu.module.css";
 export type WorldFoodMenuProps = OrderNavigation & {
   economy: EconomyController;
   initialTab?: "meals" | "orders";
+  onTabChange?: (tab: "meals" | "orders") => void;
   residentId?: "plesk" | "builder";
 };
 type Consumer = "hero" | "builder";
@@ -43,7 +44,7 @@ export function FoodMealCard({ economy, meal, consumer, onNavigateStation }: Pic
 }
 
 /** Content only; WorldView supplies the compact dialog frame and scroll area. */
-export function WorldFoodMenu({ economy, initialTab = "meals", residentId, onNavigateStation, onNavigateExpeditions }: WorldFoodMenuProps) {
+export function WorldFoodMenu({ economy, initialTab = "meals", onTabChange, residentId, onNavigateStation, onNavigateExpeditions }: WorldFoodMenuProps) {
   const [tab, setTab] = useState(initialTab);
   const [consumer, setConsumer] = useState<Consumer>(residentId === "builder" ? "builder" : "hero");
   const tabId = useId(), tabs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -59,10 +60,10 @@ export function WorldFoodMenu({ economy, initialTab = "meals", residentId, onNav
   const sections = [{ id: "meals", name: "Еда", icon: Utensils }, { id: "orders", name: "Заказы", icon: ClipboardList }] as const;
   return <div className={styles.food} aria-busy={economy.busy || undefined}>
     {recovery}
-    <nav className={styles.tabs} role="tablist" aria-label="Еда и заказы">{sections.map((section, index) => <button key={section.id} data-world-food-tab={section.id} ref={element => { tabs.current[index] = element; }} type="button" role="tab" id={`${tabId}-${section.id}`} aria-controls={`${tabId}-content`} aria-selected={tab === section.id} tabIndex={tab === section.id ? 0 : -1} onClick={() => setTab(section.id)} onKeyDown={event => {
+    <nav className={styles.tabs} role="tablist" aria-label="Еда и заказы">{sections.map((section, index) => <button key={section.id} data-world-food-tab={section.id} ref={element => { tabs.current[index] = element; }} type="button" role="tab" id={`${tabId}-${section.id}`} aria-controls={`${tabId}-content`} aria-selected={tab === section.id} tabIndex={tab === section.id ? 0 : -1} onClick={() => { setTab(section.id); onTabChange?.(section.id); }} onKeyDown={event => {
       const next = event.key === "ArrowRight" ? (index + 1) % sections.length : event.key === "ArrowLeft" ? (index + sections.length - 1) % sections.length : event.key === "Home" ? 0 : event.key === "End" ? sections.length - 1 : null;
       if (next === null) return;
-      event.preventDefault(); setTab(sections[next].id); tabs.current[next]?.focus({ preventScroll: true });
+      event.preventDefault(); setTab(sections[next].id); onTabChange?.(sections[next].id); tabs.current[next]?.focus({ preventScroll: true });
     }}><section.icon size={16} aria-hidden="true" />{section.name}</button>)}</nav>
     <section className={styles.content} id={`${tabId}-content`} role="tabpanel" aria-labelledby={`${tabId}-${tab}`}>
       {tab === "meals" ? <>
