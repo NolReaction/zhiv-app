@@ -3,507 +3,1181 @@
   "assets": [
     {
       "id": "music.day.01",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/music/music.day.01.opus",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      },
+      "fallbackSrc": "/audio/originals-v1/music/music.day.01.m4a"
     },
     {
       "id": "music.night.01",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/music/music.night.01.opus",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      },
+      "fallbackSrc": "/audio/originals-v1/music/music.night.01.m4a"
     },
     {
       "id": "forest.day.01",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/loop/forest.day.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "forest.night.01",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/loop/forest.night.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "weather.rain.01",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/loop/weather.rain.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "river.01",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/loop/river.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "campfire.01",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/loop/campfire.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "workshop.woodworking.01",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/loop/workshop.woodworking.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "workshop.kiln.01",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/loop/workshop.kiln.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "quarry.working.01",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/loop/quarry.working.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "construction.working.01",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/loop/construction.working.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "ui.click.01",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/ui.click.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "ui.click.02",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/ui.click.02.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "ui.click.03",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/ui.click.03.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "ui.open.01",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/ui.open.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "ui.open.02",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/ui.open.02.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "ui.close.01",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/ui.close.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "ui.close.02",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/ui.close.02.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "ui.confirm.01",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/ui.confirm.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "ui.confirm.02",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/ui.confirm.02.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "ui.error.01",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/ui.error.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "ui.error.02",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/ui.error.02.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "ui.reward.01",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/ui.reward.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "ui.reward.02",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/ui.reward.02.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "actor.mochlik.greeting.01",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/actor.mochlik.greeting.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "actor.mochlik.greeting.02",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/actor.mochlik.greeting.02.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "actor.mochlik.greeting.03",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/actor.mochlik.greeting.03.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "actor.mochlik.joy.01",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/actor.mochlik.joy.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "actor.mochlik.joy.02",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/actor.mochlik.joy.02.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "actor.mochlik.joy.03",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/actor.mochlik.joy.03.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "actor.mochlik.effort.01",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/actor.mochlik.effort.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "actor.mochlik.effort.02",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/actor.mochlik.effort.02.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "actor.mochlik.effort.03",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/actor.mochlik.effort.03.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "actor.mochlik.sleep.01",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/actor.mochlik.sleep.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "actor.mochlik.sleep.02",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/actor.mochlik.sleep.02.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "actor.mochlik.sleep.03",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/actor.mochlik.sleep.03.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "actor.plesk.greeting.01",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/actor.plesk.greeting.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "actor.plesk.greeting.02",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/actor.plesk.greeting.02.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "actor.plesk.greeting.03",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/actor.plesk.greeting.03.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "actor.plesk.joy.01",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/actor.plesk.joy.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "actor.plesk.joy.02",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/actor.plesk.joy.02.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "actor.plesk.joy.03",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/actor.plesk.joy.03.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "actor.plesk.effort.01",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/actor.plesk.effort.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "actor.plesk.effort.02",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/actor.plesk.effort.02.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "actor.plesk.effort.03",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/actor.plesk.effort.03.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "actor.plesk.sleep.01",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/actor.plesk.sleep.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "actor.plesk.sleep.02",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/actor.plesk.sleep.02.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "actor.plesk.sleep.03",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/actor.plesk.sleep.03.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "actor.builder.greeting.01",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/actor.builder.greeting.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "actor.builder.greeting.02",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/actor.builder.greeting.02.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "actor.builder.greeting.03",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/actor.builder.greeting.03.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "actor.builder.joy.01",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/actor.builder.joy.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "actor.builder.joy.02",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/actor.builder.joy.02.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "actor.builder.joy.03",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/actor.builder.joy.03.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "actor.builder.effort.01",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/actor.builder.effort.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "actor.builder.effort.02",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/actor.builder.effort.02.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "actor.builder.effort.03",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/actor.builder.effort.03.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "actor.builder.sleep.01",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/actor.builder.sleep.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "actor.builder.sleep.02",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/actor.builder.sleep.02.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "actor.builder.sleep.03",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/actor.builder.sleep.03.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "action.step.grass.01",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/action.step.grass.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "action.step.grass.02",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/action.step.grass.02.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "action.step.grass.03",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/action.step.grass.03.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "action.step.grass.04",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/action.step.grass.04.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "action.step.wood.01",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/action.step.wood.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "action.step.wood.02",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/action.step.wood.02.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "action.step.wood.03",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/action.step.wood.03.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "action.step.wood.04",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/action.step.wood.04.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "action.hammer.01",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/action.hammer.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "action.hammer.02",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/action.hammer.02.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "action.hammer.03",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/action.hammer.03.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "action.hammer.04",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/action.hammer.04.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "action.water.pour.01",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/action.water.pour.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "action.water.pour.02",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/action.water.pour.02.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "action.water.pour.03",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/action.water.pour.03.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "action.water.pour.04",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/action.water.pour.04.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "action.fish.splash.01",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/action.fish.splash.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "action.fish.splash.02",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/action.fish.splash.02.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "action.fish.splash.03",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/action.fish.splash.03.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "action.fish.splash.04",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/action.fish.splash.04.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "action.berry.pick.01",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/action.berry.pick.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "action.berry.pick.02",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/action.berry.pick.02.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "action.berry.pick.03",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/action.berry.pick.03.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     },
     {
       "id": "action.berry.pick.04",
-      "src": null,
-      "status": "pending",
-      "license": null
+      "src": "/audio/originals-v1/effect/action.berry.pick.04.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     }
   ],
   "cues": [
@@ -514,7 +1188,7 @@
       "assets": [
         "music.day.01"
       ],
-      "gainDb": -8,
+      "gainDb": 0,
       "priority": 80,
       "maxInstances": 1,
       "cooldownMs": 0,
@@ -528,7 +1202,7 @@
       "assets": [
         "music.night.01"
       ],
-      "gainDb": -8,
+      "gainDb": 0,
       "priority": 80,
       "maxInstances": 1,
       "cooldownMs": 0,
@@ -542,7 +1216,7 @@
       "assets": [
         "forest.day.01"
       ],
-      "gainDb": -12,
+      "gainDb": -2,
       "priority": 20,
       "maxInstances": 1,
       "cooldownMs": 0,
@@ -556,7 +1230,7 @@
       "assets": [
         "forest.night.01"
       ],
-      "gainDb": -12,
+      "gainDb": -2,
       "priority": 20,
       "maxInstances": 1,
       "cooldownMs": 0,
@@ -570,7 +1244,7 @@
       "assets": [
         "weather.rain.01"
       ],
-      "gainDb": -12,
+      "gainDb": -2,
       "priority": 20,
       "maxInstances": 1,
       "cooldownMs": 0,
@@ -584,7 +1258,7 @@
       "assets": [
         "river.01"
       ],
-      "gainDb": -10,
+      "gainDb": -2,
       "priority": 35,
       "maxInstances": 1,
       "cooldownMs": 0,
@@ -598,7 +1272,7 @@
       "assets": [
         "campfire.01"
       ],
-      "gainDb": -10,
+      "gainDb": -2,
       "priority": 35,
       "maxInstances": 1,
       "cooldownMs": 0,
@@ -612,7 +1286,7 @@
       "assets": [
         "workshop.woodworking.01"
       ],
-      "gainDb": -10,
+      "gainDb": -2,
       "priority": 35,
       "maxInstances": 1,
       "cooldownMs": 0,
@@ -626,7 +1300,7 @@
       "assets": [
         "workshop.kiln.01"
       ],
-      "gainDb": -10,
+      "gainDb": -2,
       "priority": 35,
       "maxInstances": 1,
       "cooldownMs": 0,
@@ -640,7 +1314,7 @@
       "assets": [
         "quarry.working.01"
       ],
-      "gainDb": -10,
+      "gainDb": -2,
       "priority": 35,
       "maxInstances": 1,
       "cooldownMs": 0,
@@ -654,7 +1328,7 @@
       "assets": [
         "construction.working.01"
       ],
-      "gainDb": -10,
+      "gainDb": -2,
       "priority": 35,
       "maxInstances": 1,
       "cooldownMs": 0,
@@ -670,7 +1344,7 @@
         "ui.click.02",
         "ui.click.03"
       ],
-      "gainDb": -12,
+      "gainDb": -2,
       "priority": 100,
       "maxInstances": 2,
       "cooldownMs": 80,
@@ -685,7 +1359,7 @@
         "ui.open.01",
         "ui.open.02"
       ],
-      "gainDb": -8,
+      "gainDb": -2,
       "priority": 100,
       "maxInstances": 2,
       "cooldownMs": 350,
@@ -700,7 +1374,7 @@
         "ui.close.01",
         "ui.close.02"
       ],
-      "gainDb": -8,
+      "gainDb": -2,
       "priority": 100,
       "maxInstances": 2,
       "cooldownMs": 350,
@@ -715,7 +1389,7 @@
         "ui.confirm.01",
         "ui.confirm.02"
       ],
-      "gainDb": -8,
+      "gainDb": -2,
       "priority": 100,
       "maxInstances": 2,
       "cooldownMs": 350,
@@ -730,7 +1404,7 @@
         "ui.error.01",
         "ui.error.02"
       ],
-      "gainDb": -8,
+      "gainDb": -2,
       "priority": 100,
       "maxInstances": 2,
       "cooldownMs": 350,
@@ -745,7 +1419,7 @@
         "ui.reward.01",
         "ui.reward.02"
       ],
-      "gainDb": -8,
+      "gainDb": -2,
       "priority": 100,
       "maxInstances": 2,
       "cooldownMs": 350,
@@ -761,7 +1435,7 @@
         "actor.mochlik.greeting.02",
         "actor.mochlik.greeting.03"
       ],
-      "gainDb": -8,
+      "gainDb": -3,
       "priority": 70,
       "maxInstances": 2,
       "cooldownMs": 2500,
@@ -777,7 +1451,7 @@
         "actor.mochlik.joy.02",
         "actor.mochlik.joy.03"
       ],
-      "gainDb": -8,
+      "gainDb": -3,
       "priority": 70,
       "maxInstances": 2,
       "cooldownMs": 2500,
@@ -793,7 +1467,7 @@
         "actor.mochlik.effort.02",
         "actor.mochlik.effort.03"
       ],
-      "gainDb": -8,
+      "gainDb": -3,
       "priority": 70,
       "maxInstances": 2,
       "cooldownMs": 2500,
@@ -809,7 +1483,7 @@
         "actor.mochlik.sleep.02",
         "actor.mochlik.sleep.03"
       ],
-      "gainDb": -8,
+      "gainDb": -3,
       "priority": 70,
       "maxInstances": 2,
       "cooldownMs": 2500,
@@ -825,7 +1499,7 @@
         "actor.plesk.greeting.02",
         "actor.plesk.greeting.03"
       ],
-      "gainDb": -8,
+      "gainDb": -3,
       "priority": 70,
       "maxInstances": 2,
       "cooldownMs": 2500,
@@ -841,7 +1515,7 @@
         "actor.plesk.joy.02",
         "actor.plesk.joy.03"
       ],
-      "gainDb": -8,
+      "gainDb": -3,
       "priority": 70,
       "maxInstances": 2,
       "cooldownMs": 2500,
@@ -857,7 +1531,7 @@
         "actor.plesk.effort.02",
         "actor.plesk.effort.03"
       ],
-      "gainDb": -8,
+      "gainDb": -3,
       "priority": 70,
       "maxInstances": 2,
       "cooldownMs": 2500,
@@ -873,7 +1547,7 @@
         "actor.plesk.sleep.02",
         "actor.plesk.sleep.03"
       ],
-      "gainDb": -8,
+      "gainDb": -3,
       "priority": 70,
       "maxInstances": 2,
       "cooldownMs": 2500,
@@ -889,7 +1563,7 @@
         "actor.builder.greeting.02",
         "actor.builder.greeting.03"
       ],
-      "gainDb": -8,
+      "gainDb": -3,
       "priority": 70,
       "maxInstances": 2,
       "cooldownMs": 2500,
@@ -905,7 +1579,7 @@
         "actor.builder.joy.02",
         "actor.builder.joy.03"
       ],
-      "gainDb": -8,
+      "gainDb": -3,
       "priority": 70,
       "maxInstances": 2,
       "cooldownMs": 2500,
@@ -921,7 +1595,7 @@
         "actor.builder.effort.02",
         "actor.builder.effort.03"
       ],
-      "gainDb": -8,
+      "gainDb": -3,
       "priority": 70,
       "maxInstances": 2,
       "cooldownMs": 2500,
@@ -937,7 +1611,7 @@
         "actor.builder.sleep.02",
         "actor.builder.sleep.03"
       ],
-      "gainDb": -8,
+      "gainDb": -3,
       "priority": 70,
       "maxInstances": 2,
       "cooldownMs": 2500,
@@ -954,7 +1628,7 @@
         "action.step.grass.03",
         "action.step.grass.04"
       ],
-      "gainDb": -14,
+      "gainDb": -6,
       "priority": 50,
       "maxInstances": 2,
       "cooldownMs": 120,
@@ -971,7 +1645,7 @@
         "action.step.wood.03",
         "action.step.wood.04"
       ],
-      "gainDb": -14,
+      "gainDb": -6,
       "priority": 50,
       "maxInstances": 2,
       "cooldownMs": 120,
@@ -988,7 +1662,7 @@
         "action.hammer.03",
         "action.hammer.04"
       ],
-      "gainDb": -10,
+      "gainDb": -2,
       "priority": 50,
       "maxInstances": 2,
       "cooldownMs": 200,
@@ -1005,7 +1679,7 @@
         "action.water.pour.03",
         "action.water.pour.04"
       ],
-      "gainDb": -10,
+      "gainDb": -2,
       "priority": 50,
       "maxInstances": 2,
       "cooldownMs": 200,
@@ -1022,7 +1696,7 @@
         "action.fish.splash.03",
         "action.fish.splash.04"
       ],
-      "gainDb": -10,
+      "gainDb": -2,
       "priority": 50,
       "maxInstances": 2,
       "cooldownMs": 200,
@@ -1039,7 +1713,7 @@
         "action.berry.pick.03",
         "action.berry.pick.04"
       ],
-      "gainDb": -10,
+      "gainDb": -2,
       "priority": 50,
       "maxInstances": 2,
       "cooldownMs": 200,

@@ -39,7 +39,7 @@ test("pending catalog is read-only, usable without files and distinguishable fro
   assert.deepEqual(catalog, before);
 });
 
-test("real application catalog and CLI accept intentional silent slots", () => {
+test("real application catalog and CLI validate the current assets", () => {
   const root = fileURLToPath(new URL("..", import.meta.url));
   const catalog = JSON.parse(readFileSync(path.join(root, "features/audio/catalog/audio-catalog.json"), "utf8"));
   assert.deepEqual(inspectAudioCatalog(catalog, { root }).errors, []);

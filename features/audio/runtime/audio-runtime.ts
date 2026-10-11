@@ -59,6 +59,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
   let generation = 0;
   let sequence = 0;
   let audition = 0;
+  let borrowedPreview: { voice: Voice; timer: ReturnType<typeof setTimeout> } | null = null;
   let lastEvent: string | null = null;
   let droppedEvents = 0;
   let snapshot: AudioDiagnostics;
@@ -117,8 +118,14 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
     ramp(master.gain, settings.enabled && visible ? settings.master : 0, .12);
     for (const [bus, node] of buses) ramp(node.gain, settings.buses[bus] * (bus === "music" ? finiteClamp(frame?.musicDuck ?? 1, 0, 1) : 1), bus === "music" ? .8 : .12);
   }
+  function releaseBorrowedPreview() {
+    if (!borrowedPreview) return;
+    clearTimeout(borrowedPreview.timer);
+    borrowedPreview = null;
+  }
   function cleanup(voice: Voice) {
     if (voice.stopped) return;
+    if (borrowedPreview?.voice === voice) releaseBorrowedPreview();
     voice.stopped = true;
     if (voice.timer) clearTimeout(voice.timer);
     if (voices.get(voice.key) === voice) voices.delete(voice.key);
@@ -139,6 +146,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
   }
   function stopVoice(voice: Voice, immediate = false) {
     if (voice.stopped) return;
+    if (borrowedPreview?.voice === voice) releaseBorrowedPreview();
     if (voices.get(voice.key) === voice) voices.delete(voice.key);
     if (immediate || !context || context.state !== "running") { cleanup(voice); return; }
     retiring.set(voice.serial, voice);
@@ -152,6 +160,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
     if (retiring.size > MAX_VOICES) cleanup(retiring.values().next().value!);
   }
   function invalidate(immediate = false) {
+    releaseBorrowedPreview();
     generation++;
     pendingLoops.clear(); pendingEvents.clear();
     for (const voice of [...voices.values()]) stopVoice(voice, immediate);
@@ -205,6 +214,15 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
   function tune(voice: Voice, gain: number, pan: number) {
     ramp(voice.gain.gain, dbGain(voice.cue.gainDb) * finiteClamp(gain, 0, 4), Math.max(.025, Math.min(1.5, voice.cue.fadeMs / 1000)));
     if (voice.panner) ramp(voice.panner.pan, finiteClamp(pan, -1, 1), .1);
+  }
+  function borrowSceneVoice(cueId: string) {
+    const existing = [...voices.values()].find(voice => voice.key.startsWith("loop:") && voice.cue.id === cueId);
+    if (!existing) return false;
+    tune(existing, 1, 0);
+    borrowedPreview = { voice: existing, timer: setTimeout(() => {
+      releaseBorrowedPreview(); reconcile();
+    }, 4000) };
+    return true;
   }
   function startBuffer(key: string, cue: AudioCue, asset: AudioAsset, buffer: AudioBuffer, gain: number, pan: number, priority: number) {
     if (!audible(cue.bus) || !roomFor(cue, priority)) return false;
@@ -286,11 +304,11 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
     if (!audible()) return;
     const wanted = new Map(targets().map(target => [`loop:${target.id}`, target]));
     for (const [key, pending] of pendingLoops) if (wanted.get(key)?.cueId !== pending.cueId) pendingLoops.delete(key);
-    for (const [key, voice] of voices) if (key.startsWith("loop:") && wanted.get(key)?.cueId !== voice.cue.id) stopVoice(voice);
+    for (const [key, voice] of voices) if (key.startsWith("loop:") && borrowedPreview?.voice !== voice && wanted.get(key)?.cueId !== voice.cue.id) stopVoice(voice);
     for (const [key, target] of wanted) {
       const cue = cues.get(target.cueId)!;
       const active = voices.get(key);
-      if (active) { tune(active, target.gain, target.pan); continue; }
+      if (active) { if (borrowedPreview?.voice !== active) tune(active, target.gain, target.pan); continue; }
       if (pendingLoops.has(key)) continue;
       const asset = chooseAsset(cue);
       if (!asset) continue;
@@ -427,8 +445,14 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
       const cue = cues.get(cueId);
       if (!cue || !audible(cue.bus)) return;
       const auditionToken = ++audition;
+      releaseBorrowedPreview();
       for (const voice of [...voices.values()]) if (voice.key.startsWith("preview:")) stopVoice(voice);
+      reconcile();
       if (cue.mode === "one-shot") { runtime.play({ id: `preview:${++sequence}`, cueId }); return; }
+      // Scene beds have maxInstances=1. Audition their existing voice without
+      // creating a second deck or restarting the song; restore the latest scene
+      // target after four seconds, including camera changes during the preview.
+      if (borrowSceneVoice(cueId)) return;
       // A bounded audition has no scene ownership and cannot outlive mute/dispose.
       const asset = chooseAsset(cue);
       if (!asset) return;
@@ -440,7 +464,9 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
       };
       if (cue.mode === "music") { startMusic(key, cue, asset, 1, 0, cue.priority); scheduleStop(); }
       else loadBuffer(asset, buffer => {
-        if (token === generation && auditionToken === audition && buffer && startBuffer(key, cue, asset, buffer, 1, 0, cue.priority)) scheduleStop();
+        if (token !== generation || auditionToken !== audition || !buffer) return;
+        // A scene request can finish the same shared decode before this callback.
+        if (!borrowSceneVoice(cueId) && startBuffer(key, cue, asset, buffer, 1, 0, cue.priority)) scheduleStop();
       });
     },
     previewTone(bus = "ui") {

@@ -304,3 +304,62 @@ test("clearing a silent scene allocates no handoff timer or browser audio resour
   assert.equal(timer.mock.callCount(), 0); assert.equal(f.contextCount, 0);
   f.runtime.dispose();
 });
+
+test("DEV auditions a live loop once and restores its latest spatial target after four seconds", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const f = fixture([cue("river", "loop", { maxInstances: 1 })]);
+  await f.runtime.unlock(); f.runtime.updateFrame(frame([target("water", "river", .2)])); await flush();
+  const gain = f.context.started[0].connected[0], panner = gain.connected[0];
+  const level = 10 ** (-10 / 20);
+  f.runtime.preview("river");
+  assert.equal(f.context.started.length, 1, "a maxInstances=1 scene voice must be reused");
+  assert.equal(gain.gain.value, level); assert.equal(panner.pan.value, 0);
+  f.runtime.updateFrame(frame([{ ...target("water", "river", .35), pan: -.6 }]));
+  assert.equal(gain.gain.value, level, "frame updates must not cancel the audition");
+  t.mock.timers.tick(4000);
+  assert.equal(gain.gain.value, level * .35); assert.equal(panner.pan.value, -.6);
+  assert.equal(f.context.started.length, 1); assert.equal(f.requests.length, 1);
+  f.runtime.dispose();
+});
+
+test("DEV auditions active music without a new stream or a playhead reset", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const f = fixture([cue("day", "music", { maxInstances: 1 }), cue("night", "music", { maxInstances: 1 })]);
+  await f.runtime.unlock();
+  f.runtime.updateFrame(frame([target("day", "day", .4), target("night", "night", .6)])); await flush();
+  f.media[0].currentTime = 37;
+  const gain = f.context.mediaSources[0].connected[0];
+  f.runtime.preview("day");
+  assert.equal(gain.gain.value, 10 ** (-10 / 20));
+  assert.equal(f.media.length, 2, "audition must also work when both music decks are occupied");
+  assert.equal(f.media[0].plays, 1); assert.equal(f.media[0].currentTime, 37);
+  t.mock.timers.tick(4000);
+  assert.equal(gain.gain.value, 10 ** (-10 / 20) * .4);
+  assert.equal(f.runtime.getDiagnostics().activeVoices, 2); f.runtime.dispose();
+});
+
+test("DEV audition shares a pending scene decode and never leaks after hiding", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const f = fixture([cue("river", "loop", { maxInstances: 1 })]);
+  const gate = deferred(); f.context.decode = () => gate.promise;
+  await f.runtime.unlock(); f.runtime.updateFrame(frame([target("water", "river", .2)]));
+  f.runtime.preview("river"); await flush();
+  gate.resolve({ length: 44100, numberOfChannels: 1, duration: 1 }); await flush();
+  assert.equal(f.requests.length, 1); assert.equal(f.context.started.length, 1);
+  assert.equal(f.context.started[0].connected[0].gain.value, 10 ** (-10 / 20));
+  f.runtime.setVisible(false); t.mock.timers.tick(5000); await flush();
+  assert.equal(f.runtime.getDiagnostics().activeVoices, 0);
+  f.runtime.setVisible(true); await flush();
+  assert.equal(f.context.started[1].connected[0].gain.value, 10 ** (-10 / 20) * .2);
+  f.runtime.dispose();
+});
+
+test("DEV audition releases a loop no longer requested by the scene at the deadline", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const f = fixture([cue("river", "loop", { maxInstances: 1 })]);
+  await f.runtime.unlock(); f.runtime.updateFrame(frame([target("water")])); await flush();
+  f.runtime.preview("river"); f.runtime.updateFrame(frame());
+  assert.equal(f.runtime.getDiagnostics().activeVoices, 1);
+  t.mock.timers.tick(4000);
+  assert.equal(f.runtime.getDiagnostics().activeVoices, 0); f.runtime.dispose();
+});
