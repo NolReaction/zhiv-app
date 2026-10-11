@@ -159,7 +159,7 @@
     },
     {
       "id": "ui.click.01",
-      "src": "/audio/originals-v1/effect/ui.click.01.wav",
+      "src": "/audio/originals-v1/effect/ui.click.01.soft-v2.wav",
       "status": "ready",
       "license": {
         "name": "Project-original procedural audio; provenance recorded",
@@ -167,13 +167,13 @@
         "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
         "sourceUrl": "art/audio/originals-v1/manifest.json",
         "acquiredAt": "2026-10-11",
-        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "changes": "Soft-v2 button revision: short padded wooden/bubble pluck, 8 ms attack, restrained upper partials, low-pass filter, peak-safe level adjustment and TPDF PCM16; new cache-safe filename.",
         "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
       }
     },
     {
       "id": "ui.click.02",
-      "src": "/audio/originals-v1/effect/ui.click.02.wav",
+      "src": "/audio/originals-v1/effect/ui.click.02.soft-v2.wav",
       "status": "ready",
       "license": {
         "name": "Project-original procedural audio; provenance recorded",
@@ -181,13 +181,13 @@
         "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
         "sourceUrl": "art/audio/originals-v1/manifest.json",
         "acquiredAt": "2026-10-11",
-        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "changes": "Soft-v2 button revision: short padded wooden/bubble pluck, 8 ms attack, restrained upper partials, low-pass filter, peak-safe level adjustment and TPDF PCM16; new cache-safe filename.",
         "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
       }
     },
     {
       "id": "ui.click.03",
-      "src": "/audio/originals-v1/effect/ui.click.03.wav",
+      "src": "/audio/originals-v1/effect/ui.click.03.soft-v2.wav",
       "status": "ready",
       "license": {
         "name": "Project-original procedural audio; provenance recorded",
@@ -195,7 +195,7 @@
         "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
         "sourceUrl": "art/audio/originals-v1/manifest.json",
         "acquiredAt": "2026-10-11",
-        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "changes": "Soft-v2 button revision: short padded wooden/bubble pluck, 8 ms attack, restrained upper partials, low-pass filter, peak-safe level adjustment and TPDF PCM16; new cache-safe filename.",
         "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
       }
     },
@@ -1253,7 +1253,7 @@
     },
     {
       "id": "river",
-      "bus": "world",
+      "bus": "ambience",
       "mode": "loop",
       "assets": [
         "river.01"

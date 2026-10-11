@@ -24,10 +24,15 @@
 .buses { display: grid; gap: 10px; margin: 0; padding: 14px 0 0; min-width: 0; border: 0; border-top: 1px solid var(--audio-border, #c0d19830); }
 .buses legend { padding-right: 9px; color: var(--audio-accent, #bdd39e); font-size: 12px; }
 .resume { min-height: 44px; border-radius: 12px; border: 1px solid #a8c184; background: #3b5534; color: #f3f7e9; padding: 10px 12px; cursor: pointer; font-size: 13px; }
+.resetGroup { display: grid; gap: 7px; }
+.reset { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 10px 12px; border: 1px solid var(--audio-border, #c0d19855); border-radius: 12px; background: transparent; color: inherit; cursor: pointer; font-size: 13px; }
+.reset svg { flex-shrink: 0; }
+.reset:disabled { cursor: wait; opacity: .55; }
+.resetHint { margin: 0; color: var(--audio-muted, #bec9b0); font-size: 12px; line-height: 1.5; }
 .feedback { min-height: 18px; font-size: 12px; line-height: 1.5; color: var(--audio-accent, #c5d9a7); margin: -6px 0 0; }
 @media (max-height: 600px) { .controls { gap: 12px; } .buses { gap: 4px; } .header { padding-top: 14px; } }
 @media (prefers-reduced-motion: reduce) { .switch span { transition: none; } }
-@media (forced-colors: active) { .dialog, .trigger, .switch, .close, .resume { border-color: ButtonText; } .switch span { background: ButtonText; } }
+@media (forced-colors: active) { .dialog, .trigger, .switch, .close, .resume, .reset { border-color: ButtonText; } .switch span { background: ButtonText; } }
 
 .panel { min-width: 0; overflow: hidden; border: 1px solid #8ea27542; border-radius: 20px; color: #e8efda; background: #1c2a20; }
 .panelHeader { display: flex; align-items: center; gap: 11px; padding: 18px 22px 12px; }

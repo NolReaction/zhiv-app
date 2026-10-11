@@ -13,8 +13,8 @@ const { AudioSettingsControls } = await vite.ssrLoadModule("/features/audio/ui/a
 const { DEFAULT_AUDIO_SETTINGS } = await vite.ssrLoadModule("/features/audio/domain/settings.ts");
 
 function controls(settings = DEFAULT_AUDIO_SETTINGS, state = "locked") {
-  const calls = { changes: [], enables: 0, resumes: 0 };
-  const tree = AudioSettingsControls({ id: "audio-test", diagnostics: { state, settings }, busy: false, feedback: "", onChange: patch => calls.changes.push(patch), onEnable: () => calls.enables++, onResume: () => calls.resumes++ });
+  const calls = { changes: [], enables: 0, resumes: 0, resets: 0 };
+  const tree = AudioSettingsControls({ id: "audio-test", diagnostics: { state, settings }, busy: false, feedback: "", onChange: patch => calls.changes.push(patch), onEnable: () => calls.enables++, onResume: () => calls.resumes++, onReset: () => calls.resets++ });
   const nodes = [];
   function walk(element) { if (!isValidElement(element)) return; nodes.push(element); Children.forEach(element.props.children, walk); }
   walk(tree);
@@ -44,6 +44,20 @@ test("enabled switch mutes immediately and interrupted playback offers explicit 
   resume.props.onClick();
   assert.equal(view.calls.resumes, 1);
   assert.equal(view.calls.enables, 0);
+});
+
+test("volume reset is available while muted and never unlocks playback", () => {
+  const view = controls();
+  const reset = view.nodes.find(node => node.type === "button" && node.props["aria-describedby"] === "audio-test-reset-hint");
+  assert.ok(reset);
+  assert.equal(reset.props.disabled, false);
+  assert.match(view.markup, /Сбросить громкость/);
+  assert.match(view.markup, /id="audio-test-reset-hint"/);
+  reset.props.onClick();
+  assert.equal(view.calls.resets, 1);
+  assert.equal(view.calls.enables, 0);
+  assert.equal(view.calls.resumes, 0);
+  assert.deepEqual(view.calls.changes, []);
 });
 
 function eventSurface() {

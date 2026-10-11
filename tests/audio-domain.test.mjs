@@ -5,7 +5,7 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 const { distanceGain, stereoPan, polygonDistance, zoneGain } = await vite.ssrLoadModule("/features/audio/domain/spatial.ts");
-const { DEFAULT_AUDIO_SETTINGS, sanitizeAudioSettings, mergeAudioSettings } = await vite.ssrLoadModule("/features/audio/domain/settings.ts");
+const { DEFAULT_AUDIO_SETTINGS, sanitizeAudioSettings, mergeAudioSettings, getDefaultAudioVolumePatch } = await vite.ssrLoadModule("/features/audio/domain/settings.ts");
 after(() => vite.close());
 
 test("local sound is continuous, monotonic, full near source and silent beyond range", () => {
@@ -51,4 +51,26 @@ test("malformed or partial persisted settings never enable sound or produce inva
   const changed = mergeAudioSettings(settings, { buses: { music: .3 } });
   assert.equal(changed.buses.music, .3); assert.equal(changed.buses.world, 1);
   assert.equal(settings.buses.music, 0);
+});
+
+test("recommended mix never replaces existing valid device preferences", () => {
+  const saved = { enabled: true, master: .92, buses: { music: 0, ambience: .21, world: .81, characters: .19, ui: .76 } };
+  assert.deepEqual(sanitizeAudioSettings(saved), saved);
+  const partial = sanitizeAudioSettings({ enabled: true, buses: { music: 0 } });
+  assert.equal(partial.enabled, true);
+  assert.equal(partial.buses.music, 0);
+  assert.equal(partial.buses.ambience, DEFAULT_AUDIO_SETTINGS.buses.ambience);
+});
+
+test("reset restores every volume without enabling or disabling sound", () => {
+  const patch = getDefaultAudioVolumePatch();
+  assert.equal(Object.hasOwn(patch, "enabled"), false);
+  for (const enabled of [true, false]) {
+    const current = { enabled, master: 0, buses: { music: 1, ambience: 1, world: 0, characters: 0, ui: 1 } };
+    const reset = mergeAudioSettings(current, patch);
+    assert.deepEqual(reset, { ...DEFAULT_AUDIO_SETTINGS, enabled });
+    assert.equal(current.master, 0);
+  }
+  patch.buses.music = 0;
+  assert.equal(getDefaultAudioVolumePatch().buses.music, DEFAULT_AUDIO_SETTINGS.buses.music, "each reset owns its bus values");
 });

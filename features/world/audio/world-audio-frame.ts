@@ -136,7 +136,7 @@ export function buildWorldAudioFrame(scene: FixedWorldScene, input: WorldAudioEn
     add(zone.id, zone.profileId, enabled ? dbToGain(zone.gainDb) * zoneGain(listener.position, zone.points, zone.fadeDistance) : 0,
       0, enabled ? "audible" : "building-level", `zone:${zone.profileId}`);
   }
-  return { ownerId: input.ownerId, sceneId: input.sceneId, listener, loops: [...loops.values()],
+  return { ownerId: input.ownerId, sceneId: input.sceneId, soundscape: true, listener, loops: [...loops.values()],
     musicDuck: 1 - clamp01(closeWork) * .32, sources };
 }
 

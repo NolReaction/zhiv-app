@@ -342,7 +342,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       production: state.economyProduction, construction: state.economyConstruction,
       quarryWorking: quarryAudioWorking(world, state, options.economyJourney, now),
       fires: state.life.campfires, showBuildings: dev?.showBuildings,
-    }, { visible: active(), observationOwner: session.isObservationOwner(), emitEvents,
+    }, { scope: options.view === "world" ? "world" : "music", visible: active(), observationOwner: session.isObservationOwner(), emitEvents,
       showHero: dev?.showHero !== false, actorAway: actorAway(), reducedMotion: reducedMotion(options, dev) });
   }
   function setEconomicTime(now: number) { economicTimestamp = now; economicReceivedAt = performance.now(); }

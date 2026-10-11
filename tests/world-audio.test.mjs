@@ -145,7 +145,7 @@ test('controller elects only visible observation owner and retains ambient in re
   const runtime = { updateFrame: frame => active.set(frame.ownerId, frame), clearFrame: owner => active.delete(owner), play: event => events.push(event) };
   const session = connectForestSession(undefined, { ...scene, sites: [] }, 'circle', now, 0, () => {}, { persistence: false, sync: false });
   const circle = createWorldAudioController(runtime), world = createWorldAudioController(runtime);
-  const control = { visible: true, observationOwner: true, reducedMotion: true, showHero: true, actorAway: false, emitEvents: true };
+  const control = { scope: 'world', visible: true, observationOwner: true, reducedMotion: true, showHero: true, actorAway: false, emitEvents: true };
   circle.update(scene, session.state, input(), control);
   assert.equal(active.size, 1);
   assert.equal(cue([...active.values()][0], 'music.day').length, 1);
@@ -165,7 +165,7 @@ test('repeated simulation and paint observations publish one unchanged mix witho
   const runtime = { updateFrame: frame => frames.push(frame), clearFrame() {}, play: event => events.push(event) };
   const session = connectForestSession(undefined, { ...scene, sites: [] }, 'circle', now, 0, () => {}, { persistence: false, sync: false });
   const controller = createWorldAudioController(runtime);
-  const control = { visible: true, observationOwner: true, reducedMotion: true, showHero: true, actorAway: false, emitEvents: true };
+  const control = { scope: 'world', visible: true, observationOwner: true, reducedMotion: true, showHero: true, actorAway: false, emitEvents: true };
   try {
     controller.update(scene, session.state, input(), control);
     for (let index = 0; index < 1200; index++) {
@@ -194,8 +194,8 @@ test('real shared circle and map sessions keep one audio observer during camera 
   const circleSession = connectForestSession(key, scene, 'circle', now, 0, () => {}, { persistence: false, sync: false });
   const worldSession = connectForestSession(key, scene, 'world', now, 0, () => {}, { persistence: false, sync: false });
   const circle = createWorldAudioController(runtime), world = createWorldAudioController(runtime);
-  const control = { visible: true, reducedMotion: true, showHero: true, actorAway: false, emitEvents: true };
-  const updateCircle = () => circle.update(scene, circleSession.state, input(), { ...control, observationOwner: circleSession.isObservationOwner() });
+  const control = { scope: 'world', visible: true, reducedMotion: true, showHero: true, actorAway: false, emitEvents: true };
+  const updateCircle = () => circle.update(scene, circleSession.state, input(), { ...control, scope: 'music', observationOwner: circleSession.isObservationOwner() });
   const updateWorld = camera => world.update(scene, worldSession.state, input({ camera }),
     { ...control, observationOwner: worldSession.isObservationOwner() });
   try {
@@ -203,9 +203,15 @@ test('real shared circle and map sessions keep one audio observer during camera 
     circleSession.configure('circle', true);
     updateCircle();
     const circleOwner = active.ownerId;
+    assert.deepEqual(active.loops.map(loop => loop.cueId), ['music.day']);
+    assert.equal(active.soundscape, false);
+    const circleMusicKey = active.loops[0].id;
     worldSession.configure('world', true);
     updateCircle(); updateWorld({ x: 100, y: 100, zoom: 1, viewportWidth: 350 });
     const worldOwner = active.ownerId;
+    assert.equal(active.soundscape, true);
+    assert.equal(cue(active, 'music.day')[0].id, circleMusicKey);
+    assert.equal(cue(active, 'forest.day').length, 1);
     assert.notEqual(worldOwner, circleOwner);
     const loopIds = active.loops.map(loop => loop.id);
     for (let index = 0; index < 600; index++) {
@@ -217,6 +223,8 @@ test('real shared circle and map sessions keep one audio observer during camera 
     worldSession.configure('world', false);
     updateWorld({ x: 100, y: 100, zoom: 1, viewportWidth: 350 }); updateCircle();
     assert.equal(active.ownerId, circleOwner, 'the previous circle must republish even though its own mix is unchanged');
+    assert.deepEqual(active.loops.map(loop => loop.cueId), ['music.day']);
+    assert.equal(active.soundscape, false, 'returning to the circle requests a smooth scene-sound fade');
     assert.equal(events.length, 0, 'camera movement and handoff never synthesize action events');
   } finally { circle.dispose(); world.dispose(); circleSession.release(); worldSession.release(); }
 });
@@ -227,7 +235,7 @@ test('stationary audio keeps a one-second reconciliation heartbeat for retries a
   const runtime = { updateFrame: frame => frames.push(frame), clearFrame() {}, play() {} };
   const session = connectForestSession(undefined, { ...scene, sites: [] }, 'circle', now, 0, () => {}, { persistence: false, sync: false });
   const controller = createWorldAudioController(runtime);
-  const control = { visible: true, observationOwner: true, reducedMotion: true, showHero: true, actorAway: false };
+  const control = { scope: 'world', visible: true, observationOwner: true, reducedMotion: true, showHero: true, actorAway: false };
   try {
     controller.update(scene, session.state, input(), control);
     for (let index = 0; index < 3000; index++) {
@@ -239,12 +247,46 @@ test('stationary audio keeps a one-second reconciliation heartbeat for retries a
   } finally { controller.dispose(); session.release(); }
 });
 
+test('circle stays music-only during rain, production and character actions; entering the map starts no action backlog', () => {
+  let active = null;
+  const events = [];
+  const runtime = { updateFrame: frame => { active = frame; }, clearFrame() {}, play: event => events.push(event) };
+  const session = connectForestSession(undefined, { ...scene, sites: [] }, 'circle', now, 0, () => {}, { persistence: false, sync: false });
+  const controller = createWorldAudioController(runtime);
+  const control = { scope: 'music', visible: true, observationOwner: true, showHero: true, actorAway: false, reducedMotion: false, emitEvents: true };
+  const environment = input({ rain: 1, production: snapshot([job('working')]), fires: [{ id: 'clearing-campfire', position: point, lit: true, flame: 1 }] });
+  const observeSpeech = (id, scope = 'music') => {
+    session.state.elapsed += .05;
+    session.state.social.current = { id, speaker: 'mochlik', text: 'Hello', elapsed: 0, duration: 3 };
+    controller.update(scene, session.state, environment, { ...control, scope });
+  };
+  try {
+    controller.update(scene, session.state, environment, control);
+    observeSpeech('menu-greeting');
+    assert.deepEqual(active.loops.map(loop => loop.cueId), ['music.day']);
+    assert.equal(active.soundscape, false);
+    assert.equal(active.musicDuck, 1, 'nearby production cannot duck the menu song');
+    assert.deepEqual(events, [], 'visible character animation does not produce menu audio');
+    observeSpeech('map-entry-greeting', 'world');
+    assert.equal(active.soundscape, true);
+    assert.equal(cue(active, 'weather.rain').length, 1);
+    assert.equal(cue(active, 'workshop.woodworking').length, 1);
+    assert.deepEqual(events, [], 'entering the map only establishes the current action baseline');
+    observeSpeech('new-map-greeting', 'world');
+    assert.equal(events.length, 1, 'new map actions remain audible');
+    observeSpeech('menu-return-greeting');
+    assert.deepEqual(active.loops.map(loop => loop.cueId), ['music.day']);
+    assert.equal(active.soundscape, false);
+    assert.equal(events.length, 1, 'returning to the circle suppresses character sounds immediately');
+  } finally { controller.dispose(); session.release(); }
+});
+
 test('replaced simulation state republishes an identical mix after releasing its old frame', () => {
   const frames = [], cleared = [];
   const runtime = { updateFrame: frame => frames.push(frame), clearFrame: owner => cleared.push(owner), play() {} };
   const makeSession = () => connectForestSession(undefined, { ...scene, sites: [] }, 'circle', now, 0, () => {}, { persistence: false, sync: false });
   const first = makeSession(), second = makeSession(), controller = createWorldAudioController(runtime);
-  const control = { visible: true, observationOwner: true, reducedMotion: true, showHero: true, actorAway: false };
+  const control = { scope: 'world', visible: true, observationOwner: true, reducedMotion: true, showHero: true, actorAway: false };
   try {
     controller.update(scene, first.state, input(), control);
     controller.update(scene, second.state, input(), control);
@@ -299,7 +341,7 @@ test('same simulation session shares marker baseline across views and teardown c
   const runtime = { updateFrame: frame => frames.set(frame.ownerId, frame), clearFrame: owner => frames.delete(owner), play: event => events.push(event) };
   const session = connectForestSession(undefined, { ...scene, sites: [] }, 'circle', now, 0, () => {}, { persistence: false, sync: false });
   const circle = createWorldAudioController(runtime), world = createWorldAudioController(runtime);
-  const control = { visible: true, observationOwner: true, reducedMotion: true, showHero: true, actorAway: false, emitEvents: true };
+  const control = { scope: 'world', visible: true, observationOwner: true, reducedMotion: true, showHero: true, actorAway: false, emitEvents: true };
   circle.update(scene, session.state, input(), control);
   session.state.social.current = { id: 'speech1', speaker: 'mochlik', text: 'Hello', elapsed: 0, duration: 3 };
   circle.update(scene, session.state, input(), control);

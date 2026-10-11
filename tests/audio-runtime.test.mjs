@@ -9,6 +9,7 @@ after(() => vite.close());
 const { createAudioRuntime } = await vite.ssrLoadModule("/features/audio/runtime/audio-runtime.ts");
 const { getAudioRuntime } = await vite.ssrLoadModule("/features/audio/runtime/audio-service.ts");
 const { DEFAULT_AUDIO_SETTINGS } = await vite.ssrLoadModule("/features/audio/domain/settings.ts");
+const { AUDIO_CATALOG } = await vite.ssrLoadModule("/features/audio/catalog/catalog.ts");
 
 class Param {
   value = 0; ramps = [];
@@ -216,6 +217,56 @@ test("a faded loop cannot be reclaimed after mute, scene change or disposal", as
   assert.ok(f.context.started.every(source => source.disconnected));
 });
 
+test("muted environment keeps the catalog river silent when entering the map and moving near water", async () => {
+  const river = AUDIO_CATALOG.cues.find(item => item.id === "river");
+  const f = fixture([river], { initialSettings: { ...DEFAULT_AUDIO_SETTINGS, enabled: true,
+    buses: { ...DEFAULT_AUDIO_SETTINGS.buses, ambience: 0, world: .9 } } });
+  await f.runtime.unlock(); f.runtime.updateFrame(frame([], { ownerId: "menu", soundscape: false }));
+  for (let index = 0; index < 120; index++) {
+    f.runtime.updateFrame(frame([{ ...target("river-zone", "river", (index + 1) / 120), pan: index / 100 - .6 }],
+      { ownerId: "map", soundscape: true }));
+  }
+  await flush();
+  assert.equal(f.requests.length, 0, "river belongs to the muted environment even while action sounds remain enabled");
+  assert.equal(f.context.started.length, 0);
+  assert.equal(f.runtime.getSettings().buses.ambience, 0);
+  f.runtime.dispose();
+});
+
+test("muting environment during a catalog river decode prevents its delayed start and camera retries", async () => {
+  const river = AUDIO_CATALOG.cues.find(item => item.id === "river");
+  const f = fixture([river]); const gate = deferred(); f.context.decode = () => gate.promise;
+  await f.runtime.unlock();
+  f.runtime.updateFrame(frame([target("river-zone", "river")], { soundscape: true })); await flush();
+  assert.equal(f.requests.length, 1);
+  f.runtime.setSettings({ buses: { ambience: 0 } });
+  gate.resolve({ length: 441000, numberOfChannels: 1, duration: 10 }); await flush();
+  f.runtime.updateFrame(frame([], { ownerId: "menu", soundscape: false }));
+  for (let index = 0; index < 20; index++) {
+    f.runtime.updateFrame(frame([target("river-zone", "river", .9)], { ownerId: "map", soundscape: true }));
+    await flush();
+  }
+  assert.equal(f.context.started.length, 0, "neither a late decode nor the next camera frame may bypass bus mute");
+  assert.equal(f.requests.length, 1);
+  f.runtime.dispose();
+});
+
+test("a fading catalog river cannot be reclaimed near water until environment is explicitly unmuted", async () => {
+  const river = AUDIO_CATALOG.cues.find(item => item.id === "river");
+  const f = fixture([river]); await f.runtime.unlock();
+  f.runtime.updateFrame(frame([target("river-zone", "river")], { soundscape: true })); await flush();
+  const source = f.context.started[0];
+  f.runtime.updateFrame(frame([], { soundscape: true }));
+  f.runtime.setSettings({ buses: { ambience: 0 } });
+  f.runtime.updateFrame(frame([target("river-zone", "river")], { soundscape: true })); await flush();
+  assert.equal(source.disconnected, true, "muting releases any already-retiring environment voice");
+  assert.equal(f.context.started.length, 1);
+  assert.equal(f.runtime.getDiagnostics().activeVoices, 0);
+  f.runtime.setSettings({ buses: { ambience: .4 } }); await flush();
+  assert.equal(f.context.started.length, 2, "only an explicit volume change can restore the river");
+  f.runtime.dispose();
+});
+
 test("legacy AudioParam retargeting closes the interrupted ramp without resetting its held value", async () => {
   const f = fixture([cue("river", "loop")]);
   const createGain = f.context.createGain.bind(f.context);
@@ -309,6 +360,84 @@ test("loading a short effect too slowly does not play a late action", async () =
   await f.runtime.unlock(); f.runtime.play({ id: "late", cueId: "tap" }); await flush();
   f.advance(3000); gate.resolve({ length: 1, numberOfChannels: 1, duration: 1 }); await flush();
   assert.equal(f.context.started.length, 0); f.runtime.dispose();
+});
+
+test("cold decode cannot collapse spaced world contacts into a burst of simultaneous sounds", async () => {
+  const f = fixture([cue("step", "one-shot", { cooldownMs: 120, maxInstances: 3 })]);
+  const gate = deferred(); f.context.decode = () => gate.promise;
+  await f.runtime.unlock();
+  for (let index = 0; index < 5; index++) {
+    f.runtime.play({ id: `step-${index}`, cueId: "step" });
+    f.advance(150);
+  }
+  await flush(); assert.equal(f.requests.length, 1);
+  gate.resolve({ length: 22050, numberOfChannels: 1, duration: .5 }); await flush();
+  assert.equal(f.context.started.length, 1, "loading must not replay the preceding contacts together at decode completion");
+  f.advance(150); f.runtime.play({ id: "fresh-contact", cueId: "step" }); await flush();
+  assert.equal(f.context.started.length, 2, "new contacts resume with their authored spacing once cached");
+  f.runtime.dispose();
+});
+
+test("playback cooldown also spaces independently decoded variants that finish together", async () => {
+  const f = fixture([cue("step", "one-shot", { assets: ["left", "right"], cooldownMs: 120, maxInstances: 3 })]);
+  const gate = deferred(); f.context.decode = () => gate.promise;
+  await f.runtime.unlock();
+  f.runtime.play({ id: "left-contact", cueId: "step" });
+  f.advance(150); f.runtime.play({ id: "right-contact", cueId: "step" });
+  await flush(); assert.equal(f.requests.length, 2);
+  gate.resolve({ length: 22050, numberOfChannels: 1, duration: .5 }); await flush();
+  assert.equal(f.context.started.length, 1);
+  f.runtime.dispose();
+});
+
+test("music-only menu fades world sounds while preserving the song and interface taps", async t => {
+  const f = fixture([cue("theme", "music"), cue("wind", "loop", { bus: "ambience", fadeMs: 800 }),
+    cue("voice", "one-shot", { bus: "characters", fadeMs: 200 }), cue("tap", "one-shot", { bus: "ui" })]);
+  await f.runtime.unlock();
+  const loops = [target("theme", "theme"), target("wind", "wind")];
+  f.runtime.updateFrame(frame(loops, { soundscape: true }));
+  f.runtime.play({ id: "map-voice", cueId: "voice" }); await flush();
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const wind = f.context.started.find(source => source.loop), voice = f.context.started.find(source => !source.loop);
+  f.media[0].currentTime = 19;
+  // Even an erroneously retained ambient target is silenced by the frame scope.
+  f.runtime.updateFrame(frame(loops, { soundscape: false, ownerId: "menu" }));
+  assert.equal(wind.connected[0].gain.value, 0); assert.equal(voice.connected[0].gain.value, 0);
+  assert.equal(wind.disconnected, false, "ambience must fade smoothly instead of cutting at menu entry");
+  assert.equal(voice.disconnected, false, "character tails must fade on return to the menu too");
+  f.runtime.play({ id: "menu-voice", cueId: "voice" });
+  f.runtime.play({ id: "menu-click", cueId: "tap" }); await flush();
+  assert.equal(f.context.started.length, 3, "only the interface tap can start while the soundscape is closed");
+  assert.equal(f.media[0].plays, 1); assert.equal(f.media[0].currentTime, 19);
+  t.mock.timers.tick(1000);
+  assert.equal(wind.disconnected, true); assert.equal(voice.disconnected, true);
+  f.runtime.dispose();
+});
+
+test("world decodes from a prior visit cannot catch up after menu then map, while UI decodes survive", async () => {
+  const f = fixture([cue("step"), cue("tap", "one-shot", { bus: "ui" })]);
+  const gate = deferred(); f.context.decode = () => gate.promise;
+  await f.runtime.unlock(); f.runtime.updateFrame(frame([], { soundscape: true }));
+  f.runtime.play({ id: "old-step", cueId: "step" }); f.runtime.play({ id: "ui-tap", cueId: "tap" });
+  await flush();
+  f.runtime.updateFrame(frame([], { soundscape: false, ownerId: "menu" }));
+  f.runtime.updateFrame(frame([], { soundscape: true, ownerId: "map-again" }));
+  gate.resolve({ length: 22050, numberOfChannels: 1, duration: .5 }); await flush();
+  assert.equal(f.context.started.length, 1, "only the cross-surface UI event remains valid");
+  assert.equal(f.runtime.getDiagnostics().activeVoices, 1);
+  f.runtime.play({ id: "new-step", cueId: "step" }); await flush();
+  assert.equal(f.context.started.length, 2, "the new visit can play its own contacts");
+  f.runtime.dispose();
+});
+
+test("returning to the music-only menu releases a DEV audition of the forest bed", async () => {
+  const f = fixture([cue("wind", "loop", { bus: "ambience", maxInstances: 1 })]);
+  await f.runtime.unlock(); f.runtime.updateFrame(frame([target("bed", "wind")], { soundscape: true })); await flush();
+  f.runtime.preview("wind");
+  f.runtime.updateFrame(frame([], { soundscape: false }));
+  assert.equal(f.context.started[0].connected[0].gain.value, 0);
+  assert.equal(f.runtime.getDiagnostics().activeVoices, 0, "audition must not keep map ambience active above the menu");
+  f.runtime.dispose();
 });
 
 test("variants do not immediately repeat, pitch stays subtle and cooldown limits chatter", async () => {

@@ -11,6 +11,7 @@ const MAX_EVENT_IDS = 512;
 const DEDUP_TTL_MS = 60_000;
 const STREAM_RETRY_MS = 30_000;
 const MAX_LOOP_TIMELINES = 128;
+const SOUNDSCAPE_BUSES = new Set<AudioBus>(["ambience", "world", "characters"]);
 
 type Voice = {
   key: string; serial: number; cue: AudioCue; assetId: string; priority: number;
@@ -60,6 +61,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
   let unavailable = false;
   let everUnlocked = false;
   let generation = 0;
+  let soundscapeGeneration = 0;
   let sequence = 0;
   let audition = 0;
   let borrowedPreview: { voice: Voice; timer: ReturnType<typeof setTimeout> } | null = null;
@@ -74,6 +76,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
   const pendingLoops = new Map<string, PendingLoop>();
   const eventIds = new Map<string, number>();
   const cooldowns = new Map<string, number>();
+  const playbackCooldowns = new Map<string, number>();
   const lastVariants = new Map<string, string>();
   const failedStreams = new Map<string, number>();
   const blockedStreams = new Set<string>();
@@ -114,7 +117,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
   function contextIsRunning() { return context?.state === "running"; }
   function audible(bus?: AudioBus) {
     return !disposed && visible && settings.enabled && settings.master > 0 && context?.state === "running"
-      && (!bus || settings.buses[bus] > 0);
+      && (!bus || settings.buses[bus] > 0 && (frame?.soundscape !== false || !SOUNDSCAPE_BUSES.has(bus)));
   }
   function ramp(param: AudioParam, target: number, seconds: number) {
     if (!context) return;
@@ -172,6 +175,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
   }
   function stopVoice(voice: Voice, immediate = false) {
     if (voice.stopped) return;
+    if (voice.timer) { clearTimeout(voice.timer); voice.timer = null; }
     voice.reclaimable = false;
     if (borrowedPreview?.voice === voice) releaseBorrowedPreview();
     if (voices.get(voice.key) === voice) voices.delete(voice.key);
@@ -480,7 +484,15 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
       if (disposed) return;
       if (frameClearTimer) { clearTimeout(frameClearTimer); frameClearTimer = null; }
       if (lastSceneId !== null && lastSceneId !== next.sceneId) {
-        invalidate(); eventIds.clear(); cooldowns.clear(); musicPositions.clear(); loopTimelines.clear(); blockedStreams.clear();
+        invalidate(); eventIds.clear(); cooldowns.clear(); playbackCooldowns.clear(); musicPositions.clear(); loopTimelines.clear(); blockedStreams.clear();
+      }
+      if (next.soundscape === false && frame?.soundscape !== false) {
+        soundscapeGeneration++;
+        if (borrowedPreview && SOUNDSCAPE_BUSES.has(borrowedPreview.voice.cue.bus)) releaseBorrowedPreview();
+        // Leaving the map also fades ongoing footsteps/voices. An ambient loop
+        // may still be reclaimed if the map is reopened during its fade, but old
+        // asynchronous action decodes must never catch up in the new visit.
+        for (const voice of [...voices.values()]) if (SOUNDSCAPE_BUSES.has(voice.cue.bus) && !voice.key.startsWith("loop:")) stopVoice(voice);
       }
       lastSceneId = next.sceneId;
       frame = next;
@@ -519,13 +531,21 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
       if (!asset) { droppedEvents++; publish(); return; }
       cooldowns.set(cue.id, time);
       const token = generation;
+      const soundscapeToken = soundscapeGeneration;
       const request = ++sequence;
       pendingEvents.add(request);
       lastEvent = cue.id; publish();
       loadBuffer(asset, buffer => {
         pendingEvents.delete(request);
-        if (buffer && token === generation && now() - occurredAt <= EVENT_TTL_MS) {
-          if (!startBuffer(`event:${++sequence}`, cue, asset, buffer, event.gain ?? 1, event.pan ?? 0, cue.priority)) { droppedEvents++; publish(); }
+        if (buffer && token === generation && (!SOUNDSCAPE_BUSES.has(cue.bus) || soundscapeToken === soundscapeGeneration)
+          && now() - occurredAt <= EVENT_TTL_MS) {
+          // Several contacts can await the same cold download/decode. Their
+          // request-time cooldowns do not prevent every callback from playing
+          // at once when it finishes; enforce spacing at actual playback too.
+          const startedAt = now();
+          if (startedAt - (playbackCooldowns.get(cue.id) ?? -Infinity) < cue.cooldownMs
+            || !startBuffer(`event:${++sequence}`, cue, asset, buffer, event.gain ?? 1, event.pan ?? 0, cue.priority)) { droppedEvents++; publish(); }
+          else playbackCooldowns.set(cue.id, startedAt);
         }
       });
     },
@@ -591,7 +611,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
       disposed = true; frame = null;
       if (frameClearTimer) { clearTimeout(frameClearTimer); frameClearTimer = null; }
       invalidate(true); cache.dispose();
-      eventIds.clear(); cooldowns.clear(); lastVariants.clear(); failedStreams.clear(); blockedStreams.clear(); musicPositions.clear(); loopTimelines.clear();
+      eventIds.clear(); cooldowns.clear(); playbackCooldowns.clear(); lastVariants.clear(); failedStreams.clear(); blockedStreams.clear(); musicPositions.clear(); loopTimelines.clear();
       if (context) {
         context.onstatechange = null;
         for (const gain of buses.values()) gain.disconnect();

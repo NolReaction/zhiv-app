@@ -24,6 +24,8 @@ export type AudioSourceDebug = { id: string; cueId: string; gain: number; pan: n
 export type AudioFrame = {
   ownerId: string; sceneId: string; listener: AudioListenerFrame;
   loops: AudioLoopTarget[]; musicDuck: number; sources?: AudioSourceDebug[];
+  /** False outside the full map: keep music/UI, fade and suppress scene sounds. */
+  soundscape?: boolean;
 };
 export type AudioRuntimeState = "locked" | "running" | "suspended" | "unavailable" | "disposed";
 export type AudioDiagnostics = {

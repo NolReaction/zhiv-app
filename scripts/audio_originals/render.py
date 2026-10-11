@@ -20,6 +20,14 @@ ROOT = Path(__file__).resolve().parents[2]
 SAMPLE_RATE = 48000
 PACK = "originals-v1"
 MODULES = {"music": "music.py", "loop": "ambience.py", "one-shot": "effects.py"}
+# Stable event IDs may point to revised exports. A new filename prevents a
+# browser or service-worker cache from keeping the previous button timbre.
+ASSET_REVISIONS = {f"ui.click.{variant:02}": "soft-v2" for variant in range(1, 4)}
+
+
+def export_name(asset_id):
+    revision = ASSET_REVISIONS.get(asset_id)
+    return f"{asset_id}.{revision}" if revision else asset_id
 
 
 def digest(path):
@@ -101,7 +109,7 @@ def render_all(args):
         kind = "effect" if mode_by_id[asset_id] == "one-shot" else mode_by_id[asset_id]
         destinations.append(out / "masters" / (asset_id + ".wav"))
         for extension in (["opus", "m4a"] if kind == "music" else ["wav"]):
-            destinations.append(out / "public/audio" / PACK / kind / (asset_id + "." + extension))
+            destinations.append(out / "public/audio" / PACK / kind / (export_name(asset_id) + "." + extension))
     if any(path.exists() for path in destinations):
         raise ValueError("Output already exists; use a new --output-dir to compare a revision")
 
@@ -122,7 +130,7 @@ def render_all(args):
         write_wav(source, signal, seed)
         files = []
         for extension in (["opus", "m4a"] if mode == "music" else ["wav"]):
-            url = f"/audio/{PACK}/{kind}/{asset_id}.{extension}"
+            url = f"/audio/{PACK}/{kind}/{export_name(asset_id)}.{extension}"
             output = out / "public" / url.lstrip("/")
             if extension == "wav":
                 output.parent.mkdir(parents=True, exist_ok=True)

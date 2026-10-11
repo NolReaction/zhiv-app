@@ -1,16 +1,21 @@
 import type { AudioFrame, AudioRuntime } from "@/features/audio/domain/types";
+import { clamp01 } from "@/features/audio/domain/spatial";
 
 export type MenuAudioState = { active: boolean; handoff?: boolean; sceneId: string | null; night: boolean };
 
 /** Share the forest's deck keys: opening a menu changes the mix, not the song's position. */
-export function menuAudioFrame(ownerId: string, sceneId: string, night: boolean): AudioFrame {
-  const cueId = night ? "music.night" : "music.day";
+export function menuAudioFrame(ownerId: string, sceneId: string, dusk: boolean | number): AudioFrame {
+  const night = clamp01(Number(dusk));
+  const loops = [
+    { id: "music-day:music.day", cueId: "music.day", gain: Math.sqrt(1 - night) * .65, pan: 0 },
+    { id: "music-night:music.night", cueId: "music.night", gain: Math.sqrt(night) * .65, pan: 0 },
+  ].filter(loop => loop.gain > .0001);
   return {
-    ownerId, sceneId,
+    ownerId, sceneId, soundscape: false,
     listener: { position: { x: 0, y: 0 }, viewportWidth: 1, zoom: 1, detail: 0 },
-    loops: [{ id: night ? "music-night:music.night" : "music-day:music.day", cueId, gain: .65, pan: 0 }],
+    loops,
     musicDuck: 1,
-    sources: [{ id: "menu-music", cueId, gain: .65, pan: 0, reason: "menu" }],
+    sources: loops.map(loop => ({ ...loop, reason: "menu" })),
   };
 }
 

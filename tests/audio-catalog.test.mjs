@@ -50,6 +50,21 @@ test("real application catalog and CLI validate the current assets", () => {
   assert.equal(unknown.status, 1);
 });
 
+test("natural map beds share the environmental volume while water actions remain gameplay sounds", () => {
+  const catalog = JSON.parse(readFileSync(new URL("../features/audio/catalog/audio-catalog.json", import.meta.url), "utf8"));
+  const cue = id => catalog.cues.find(item => item.id === id);
+  for (const id of ["forest.day", "forest.night", "weather.rain", "river"]) {
+    assert.equal(cue(id)?.bus, "ambience", `${id} must obey the forest/weather slider even near a spatial source`);
+    assert.equal(cue(id)?.mode, "loop");
+    assert.equal(cue(id)?.maxInstances, 1, "continuous environmental beds cannot layer detuned copies");
+    assert.equal(cue(id)?.pitchVariation, 0);
+  }
+  for (const id of ["action.fish.splash", "action.water.pour"]) {
+    assert.equal(cue(id)?.bus, "world", `${id} is a visible action, independent of the continuous water bed`);
+    assert.equal(cue(id)?.mode, "one-shot");
+  }
+});
+
 test("malformed arrays and IDs report errors without crashing", () => {
   for (const catalog of [null, [], {}, { ...fixture(), assets: [null, { id: "../escape" }] }, { ...fixture(), cues: null }, { ...fixture(), profiles: [false] }])
     assert.ok(inspectAudioCatalog(catalog).errors.length);

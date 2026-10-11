@@ -16,7 +16,7 @@
     },
     {
       "path": "scripts/audio_originals/effects.py",
-      "sha256": "309cd9edc72fdaacc197e1594688ede5fd06c8597a66e31a6a800c65ccdf8d1f"
+      "sha256": "ecb0385c3ad858f7fbffefbd191728fa8bbb2e6a294c453b476b3eb9d88114a9"
     },
     {
       "path": "scripts/audio_originals/music.py",
@@ -24,7 +24,7 @@
     },
     {
       "path": "scripts/audio_originals/render.py",
-      "sha256": "64251cf95bc5caa0f0af7b2bed20d833d214dfbb57ca837fc7425ce463fd50f7"
+      "sha256": "7d03ae409f9c967a38c4fd554bf199cfaf4d187960f6ccfe44111432f04df109"
     }
   ],
   "assets": [
@@ -352,26 +352,26 @@
     {
       "id": "ui.click.01",
       "kind": "effect",
-      "title": "Acorn button 1",
-      "description": "A soft hollow wooden tap with a tiny fingertip texture.",
+      "title": "Moss bubble 1",
+      "description": "A short padded wooden pluck with a rounded falling pitch, soft attack and closely matched variants.",
       "sampleRate": 48000,
       "channels": 1,
-      "frames": 12480,
-      "durationSeconds": 0.26,
-      "decodedBytes": 49920,
-      "masterSha256": "7a977633d219f9010ef0b1c92a0e54507cef4d83c26529f610881f4258bf2894",
+      "frames": 6960,
+      "durationSeconds": 0.145,
+      "decodedBytes": 27840,
+      "masterSha256": "bde0acd814231e5fe5f5e7c601e30674ad46f69bcc3d7143c2c6d6bd7dc96293",
       "measurements": {
-        "peakDb": -8.8118,
-        "rmsDb": -22.0,
+        "peakDb": -11.3595,
+        "rmsDb": -23.5,
         "dc": 0.0,
         "seamDelta": 0.0,
-        "maxAdjacentDelta": 0.033943459
+        "maxAdjacentDelta": 0.019176545
       },
       "files": [
         {
-          "src": "/audio/originals-v1/effect/ui.click.01.wav",
-          "bytes": 25004,
-          "sha256": "7a977633d219f9010ef0b1c92a0e54507cef4d83c26529f610881f4258bf2894"
+          "src": "/audio/originals-v1/effect/ui.click.01.soft-v2.wav",
+          "bytes": 13964,
+          "sha256": "bde0acd814231e5fe5f5e7c601e30674ad46f69bcc3d7143c2c6d6bd7dc96293"
         }
       ],
       "composition": {}
@@ -379,26 +379,26 @@
     {
       "id": "ui.click.02",
       "kind": "effect",
-      "title": "Acorn button 2",
-      "description": "A soft hollow wooden tap with a tiny fingertip texture.",
+      "title": "Moss bubble 2",
+      "description": "A short padded wooden pluck with a rounded falling pitch, soft attack and closely matched variants.",
       "sampleRate": 48000,
       "channels": 1,
-      "frames": 13920,
-      "durationSeconds": 0.29,
-      "decodedBytes": 55680,
-      "masterSha256": "8da38e21fe143b6bc6ca82d9300d012e073ddcfa1c279244d0894619ba472501",
+      "frames": 7200,
+      "durationSeconds": 0.15,
+      "decodedBytes": 28800,
+      "masterSha256": "a55abb9fd849747f46918ad7b60061ae1366470900d1c61a036d28a7eb273384",
       "measurements": {
-        "peakDb": -7.8617,
-        "rmsDb": -22.0,
+        "peakDb": -11.2334,
+        "rmsDb": -23.5,
         "dc": 0.0,
         "seamDelta": 0.0,
-        "maxAdjacentDelta": 0.033142388
+        "maxAdjacentDelta": 0.019718179
       },
       "files": [
         {
-          "src": "/audio/originals-v1/effect/ui.click.02.wav",
-          "bytes": 27884,
-          "sha256": "8da38e21fe143b6bc6ca82d9300d012e073ddcfa1c279244d0894619ba472501"
+          "src": "/audio/originals-v1/effect/ui.click.02.soft-v2.wav",
+          "bytes": 14444,
+          "sha256": "a55abb9fd849747f46918ad7b60061ae1366470900d1c61a036d28a7eb273384"
         }
       ],
       "composition": {}
@@ -406,26 +406,26 @@
     {
       "id": "ui.click.03",
       "kind": "effect",
-      "title": "Acorn button 3",
-      "description": "A soft hollow wooden tap with a tiny fingertip texture.",
+      "title": "Moss bubble 3",
+      "description": "A short padded wooden pluck with a rounded falling pitch, soft attack and closely matched variants.",
       "sampleRate": 48000,
       "channels": 1,
-      "frames": 12960,
-      "durationSeconds": 0.27,
-      "decodedBytes": 51840,
-      "masterSha256": "588b66cd099433c1716e99e9a4af017b930a4d0321426f14b627b66179b739ca",
+      "frames": 7440,
+      "durationSeconds": 0.155,
+      "decodedBytes": 29760,
+      "masterSha256": "842d67e2ffb22c09f1e383d3775440215bcac9f1d7758d90bcecfdb142b73a17",
       "measurements": {
-        "peakDb": -8.0686,
-        "rmsDb": -22.0,
-        "dc": 1e-09,
+        "peakDb": -11.1221,
+        "rmsDb": -23.5,
+        "dc": 0.0,
         "seamDelta": 0.0,
-        "maxAdjacentDelta": 0.034747958
+        "maxAdjacentDelta": 0.018769363
       },
       "files": [
         {
-          "src": "/audio/originals-v1/effect/ui.click.03.wav",
-          "bytes": 25964,
-          "sha256": "588b66cd099433c1716e99e9a4af017b930a4d0321426f14b627b66179b739ca"
+          "src": "/audio/originals-v1/effect/ui.click.03.soft-v2.wav",
+          "bytes": 14924,
+          "sha256": "842d67e2ffb22c09f1e383d3775440215bcac9f1d7758d90bcecfdb142b73a17"
         }
       ],
       "composition": {}

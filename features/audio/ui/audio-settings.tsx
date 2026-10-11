@@ -1,17 +1,18 @@
 "use client";
 
 import { useId, useState } from "react";
-import { Volume2, VolumeX, X } from "lucide-react";
+import { RotateCcw, Volume2, VolumeX, X } from "lucide-react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import type { AudioBus, AudioDiagnostics, AudioSettingsPatch } from "@/features/audio/domain/types";
 import { AUDIO_BUSES } from "@/features/audio/domain/types";
+import { getDefaultAudioVolumePatch } from "@/features/audio/domain/settings";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { playUiCue } from "./audio-lifecycle";
 import { useAudioDiagnostics } from "./use-audio-diagnostics";
 import styles from "./audio-settings.module.css";
 
 export const AUDIO_BUS_LABELS: Record<AudioBus, string> = {
-  music: "Музыка", ambience: "Лес и погода", world: "Постройки и действия", characters: "Голоса героев", ui: "Интерфейс",
+  music: "Музыка", ambience: "Лес, вода и погода", world: "Постройки и действия", characters: "Голоса героев", ui: "Интерфейс",
 };
 
 function VolumeSlider({ id, label, value, onChange }: {
@@ -26,9 +27,9 @@ function VolumeSlider({ id, label, value, onChange }: {
 }
 
 /** Kept separate from the dialog so settings can be verified without a browser audio device. */
-export function AudioSettingsControls({ id, diagnostics, busy, feedback, onChange, onEnable, onResume }: {
+export function AudioSettingsControls({ id, diagnostics, busy, feedback, onChange, onEnable, onResume, onReset }: {
   id: string; diagnostics: AudioDiagnostics; busy: boolean; feedback: string;
-  onChange: (patch: AudioSettingsPatch) => void; onEnable: () => void; onResume: () => void;
+  onChange: (patch: AudioSettingsPatch) => void; onEnable: () => void; onResume: () => void; onReset: () => void;
 }) {
   const { settings, state } = diagnostics;
   const needsResume = settings.enabled && (state === "suspended" || state === "locked");
@@ -48,6 +49,13 @@ export function AudioSettingsControls({ id, diagnostics, busy, feedback, onChang
       {AUDIO_BUSES.map(bus => <VolumeSlider key={bus} id={`${id}-${bus}`} label={AUDIO_BUS_LABELS[bus]}
         value={settings.buses[bus]} onChange={volume => onChange({ buses: { [bus]: volume } })} />)}
     </fieldset>
+    <div className={styles.resetGroup}>
+      <button type="button" className={styles.reset} data-audio-cue="ui.click" onClick={onReset} disabled={busy}
+        aria-describedby={`${id}-reset-hint`}>
+        <RotateCcw size={16} aria-hidden="true" />Сбросить громкость
+      </button>
+      <p id={`${id}-reset-hint`} className={styles.resetHint}>Вернуть рекомендуемый баланс. Включение звука не изменится.</p>
+    </div>
     {needsResume && <button type="button" className={styles.resume} data-audio-cue="ui.click" onClick={onResume} disabled={busy}>Продолжить воспроизведение</button>}
     <p className={styles.feedback} role="status">{state === "unavailable" ? "Этот браузер не поддерживает воспроизведение звуков игры." : feedback}</p>
   </div>;
@@ -77,6 +85,10 @@ function useAudioSettingsControls() {
     },
     onEnable: () => void enable(),
     onResume: () => void enable(),
+    onReset: () => {
+      getAudioRuntime().setSettings(getDefaultAudioVolumePatch());
+      setFeedback("Стандартная громкость восстановлена");
+    },
   };
 }
 

@@ -1,19 +1,21 @@
 import type { AudioFrame, AudioRuntime } from "@/features/audio/domain/types";
 import type { FixedWorldScene } from "@/features/world/tiled/types";
 import type { ForestSessionState } from "@/features/world/state/forest-session";
-import { buildWorldAudioFrame, type WorldAudioEnvironment } from "./world-audio-frame";
+import { menuAudioFrame } from "@/features/audio/ui/menu-audio";
+import { buildWorldAudioFrame, worldAudioListener, type WorldAudioEnvironment } from "./world-audio-frame";
 import { createWorldAudioMarkerTracker, worldAudioMarkers } from "./world-audio-markers";
 
 let nextOwner = 0;
 const trackers = new WeakMap<ForestSessionState, ReturnType<typeof createWorldAudioMarkerTracker>>();
 export type WorldAudioControl = {
+  scope: "music" | "world";
   visible: boolean; observationOwner: boolean; emitEvents?: boolean;
   showHero: boolean; actorAway: boolean; reducedMotion: boolean;
 };
 
 function sameAudioFrame(previous: AudioFrame | null, next: AudioFrame): boolean {
   if (!previous || previous.ownerId !== next.ownerId || previous.sceneId !== next.sceneId
-    || previous.musicDuck !== next.musicDuck || previous.loops.length !== next.loops.length) return false;
+    || previous.soundscape !== next.soundscape || previous.musicDuck !== next.musicDuck || previous.loops.length !== next.loops.length) return false;
   const a = previous.listener, b = next.listener;
   if (a.position.x !== b.position.x || a.position.y !== b.position.y || a.zoom !== b.zoom
     || a.viewportWidth !== b.viewportWidth || a.detail !== b.detail) return false;
@@ -36,6 +38,7 @@ export function createWorldAudioController(runtime: AudioRuntime) {
   const ownerId = `forest-audio-view-${++nextOwner}`;
   let disposed = false, hadFrame = false, lastState: ForestSessionState | undefined;
   let current: AudioFrame | null = null;
+  let lastScope: WorldAudioControl["scope"] | undefined;
   let lastPublishedAt = -Infinity;
   return {
     update(scene: FixedWorldScene, state: ForestSessionState, input: Omit<WorldAudioEnvironment, "ownerId">, control: WorldAudioControl) {
@@ -47,12 +50,15 @@ export function createWorldAudioController(runtime: AudioRuntime) {
         if (control.observationOwner) {
           const tracker = trackers.get(state);
           tracker?.sample(worldAudioMarkers(scene, state, { ...control, showBuildings: input.showBuildings !== false }),
-            buildWorldAudioFrame(scene, { ...input, ownerId }).listener, input.sceneId, Date.now(), false);
+            worldAudioListener(scene, input.camera), input.sceneId, Date.now(), false);
         }
         return;
       }
       if (lastState && lastState !== state) { runtime.clearFrame(ownerId); current = null; }
-      const frame = buildWorldAudioFrame(scene, { ...input, ownerId });
+      // The circle renders the live forest but is still a menu surface. Only
+      // the full map requests spatial layers; both reuse the same music keys.
+      const frame = control.scope === "world" ? buildWorldAudioFrame(scene, { ...input, ownerId })
+        : menuAudioFrame(ownerId, input.sceneId, input.dusk);
       // Simulation, its subscribers and painting may all observe the same tick.
       // Coalesce those copies, retaining a slow heartbeat for failed asset
       // retries and voices awaiting budget. Action contacts still observe every
@@ -66,8 +72,9 @@ export function createWorldAudioController(runtime: AudioRuntime) {
       let tracker = trackers.get(state);
       if (!tracker) { tracker = createWorldAudioMarkerTracker(); trackers.set(state, tracker); }
       const markers = worldAudioMarkers(scene, state, { ...control, showBuildings: input.showBuildings !== false });
-      const events = tracker.sample(markers, frame.listener, input.sceneId, timestamp, Boolean(control.emitEvents && hadFrame && lastState === state));
-      hadFrame = true; lastState = state;
+      const events = tracker.sample(markers, frame.listener, input.sceneId, timestamp,
+        Boolean(control.scope === "world" && lastScope === "world" && control.emitEvents && hadFrame && lastState === state));
+      hadFrame = true; lastState = state; lastScope = control.scope;
       for (const event of events) runtime.play(event);
     },
     getFrame: () => current,

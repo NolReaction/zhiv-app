@@ -120,13 +120,26 @@ def _ui(kind: str, variant: int, sample_rate: int,
         rng: np.random.Generator) -> tuple[np.ndarray, dict]:
     """Quiet tactile interface language, with intentionally consonant rewards."""
     if kind == "click":
-        durations = [.26, .29, .27]
-        pitches = [410, 465, 385]
+        # A padded wooden/bubble pluck. Keep the whole tail shorter than two
+        # 80 ms tap intervals, so rapid tapping never steals an audible voice.
+        durations = [.145, .150, .155]
+        pitches = [390, 402, 382]
         length = durations[variant - 1]
-        audio = _modal(length, pitches[variant - 1], sample_rate, rng)
         t = _time(length, sample_rate)
-        audio += .09 * _noise(len(t), rng, sample_rate, 350, 2300) * np.exp(-t / .011)
-        title, description, target = "Acorn button", "A soft hollow wooden tap with a tiny fingertip texture.", -22
+        # A small falling pitch gives the tap character without a piercing bell
+        # or a sharp noise transient. Integrate frequency to keep phase smooth.
+        frequency = pitches[variant - 1] * (1 + .14 * np.exp(-t / .014))
+        phase = 2 * math.pi * np.cumsum(frequency) / sample_rate
+        audio = np.sin(phase) * np.exp(-t / .030)
+        audio += .16 * np.sin(phase * 2) * np.exp(-t / .019)
+        audio += .025 * np.sin(phase * 3.01) * np.exp(-t / .012)
+        audio += .07 * np.sin(phase * .5) * np.exp(-t / .025)
+        audio += .012 * _noise(len(t), rng, sample_rate, 200, 1300) * np.exp(-t / .013)
+        audio = signal.sosfilt(signal.butter(3, 2200, "lowpass", fs=sample_rate, output="sos"), audio)
+        audio = _fade(audio, sample_rate, .008, .035)
+        title = "Moss bubble"
+        description = "A short padded wooden pluck with a rounded falling pitch, soft attack and closely matched variants."
+        target = -23.5
     elif kind in ("open", "close"):
         length = .43 if kind == "open" else .35
         audio = np.zeros(round(length * sample_rate))

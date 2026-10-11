@@ -56,8 +56,22 @@ test("menu and forest reuse the same music identity at a softer menu level", () 
     assert.ok(music);
     assert.equal(menu.loops[0].id, music.id, "the handoff preserves the existing music deck");
     assert.equal(menu.sceneId, forest.sceneId, "a screen switch is not an account/scene reset");
+    assert.equal(menu.soundscape, false, "the menu also fades any previously playing scene events");
+    assert.equal(forest.soundscape, true);
     assert.ok(menu.loops[0].gain < music.gain);
     assert.equal(menu.loops.length, 1, "menu does not leak forest effects or voices");
+  }
+});
+
+test("circle day/night blends keep both existing forest music deck keys without spatial layers", () => {
+  const menu = menuAudioFrame("circle", sceneId, .4);
+  const forest = buildWorldAudioFrame(TILED_WORLD, { ownerId: "forest", sceneId, now: Date.now(), dusk: .4, rain: 1, levels: {}, fires: [] });
+  assert.equal(menu.loops.length, 2);
+  assert.equal(menu.musicDuck, 1);
+  for (const loop of menu.loops) {
+    const original = forest.loops.find(candidate => candidate.id === loop.id);
+    assert.ok(original, "entering the map reuses the existing deck during a daylight transition");
+    assert.equal(loop.gain, original.gain * .65);
   }
 });
 
