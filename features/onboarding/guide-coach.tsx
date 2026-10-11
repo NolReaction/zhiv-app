@@ -4,7 +4,7 @@ import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode,
 import { ArrowLeft, ArrowRight, Leaf, Minus, MousePointer2 } from "lucide-react";
 import type { PixelPose } from "@/features/mochlik/pixel-sprite";
 import { GuideCharacter } from "./guide-character";
-import { measureGuideSpotlight, type GuideSpotlight } from "./guide-spotlight";
+import { measureGuideSpotlight } from "./guide-spotlight";
 import styles from "./guide-coach.module.css";
 
 export type GuideCoachProps = {
@@ -29,7 +29,7 @@ export type GuideCoachProps = {
   children?: ReactNode;
 };
 type Bounds = { left: number; top: number; width: number; height: number };
-type CoachLayout = { key: string; left: number; top: number; highlight: GuideSpotlight | null };
+type CoachLayout = { key: string; left: number; top: number };
 const overlapArea = (a: Bounds, b: Bounds) => Math.max(0, Math.min(a.left + a.width, b.left + b.width) - Math.max(a.left, b.left))
   * Math.max(0, Math.min(a.top + a.height, b.top + b.height) - Math.max(a.top, b.top));
 
@@ -56,10 +56,17 @@ export function GuideCoach(props: GuideCoachProps) {
       const element = target ? root.querySelector<HTMLElement>(target) : null;
       if (element !== observedTarget) {
         settleUntil = performance.now() + 400;
-        if (observedTarget) resize.unobserve(observedTarget);
+        if (observedTarget) {
+          resize.unobserve(observedTarget);
+          observedTarget.classList.remove(styles.spotlight);
+        }
         if (element) resize.observe(element);
         observedTarget = element;
       }
+      // Paint on the actual control: native scrolling, clipping and transforms
+      // carry the ring with it even between animation frames. React may replace
+      // className, so restore it idempotently when the mutation observer fires.
+      if (element && !element.classList.contains(styles.spotlight)) element.classList.add(styles.spotlight);
       const highlight = measureGuideSpotlight(element, { left: viewportLeft, top: viewportTop, width, height });
       const bubbleRect = bubble.getBoundingClientRect();
       const left = viewportLeft + 12, right = Math.max(left, viewportLeft + width - bubbleRect.width - 16);
@@ -76,7 +83,7 @@ export function GuideCoach(props: GuideCoachProps) {
       })).map(candidate => ({ ...candidate, score: (highlight ? overlapArea({ ...candidate, width: bubbleRect.width, height: bubbleRect.height }, highlight) * 100 : 0)
         + Math.abs(candidate.top - preferred.top) + Math.abs(candidate.left - preferred.left) * .5 }));
       ordered.sort((a, b) => a.score - b.score);
-      const next: CoachLayout = { key: layoutKey, left: ordered[0].left, top: ordered[0].top, highlight };
+      const next: CoachLayout = { key: layoutKey, left: ordered[0].left, top: ordered[0].top };
       setLayout(previous => previous && JSON.stringify(previous) === JSON.stringify(next) ? previous : next);
       // Opening panels can translate their targets without resizing them.
       // Follow that short entrance, then return to event-driven measurement.
@@ -97,6 +104,7 @@ export function GuideCoach(props: GuideCoachProps) {
     return () => {
       cancelAnimationFrame(frame);
       resize.disconnect(); mutation.disconnect();
+      observedTarget?.classList.remove(styles.spotlight);
       window.removeEventListener("resize", schedule);
       window.removeEventListener("scroll", schedule, true);
       window.removeEventListener("transitionend", schedule, true);
@@ -113,7 +121,6 @@ export function GuideCoach(props: GuideCoachProps) {
   const position: CSSProperties | undefined = placement ? { left: placement.left, top: placement.top, right: "auto", bottom: "auto" } : undefined;
   const current = progress ? Math.min(progress.total, Math.max(1, progress.current)) : 0;
   return <>
-    {placement?.highlight && <div className={styles.spotlight} style={placement.highlight} data-guide-spotlight={flow} aria-hidden="true" />}
     <section ref={card} className={styles.coach} style={position} role="region" aria-labelledby={headingId} aria-describedby={textId}
       data-guide-coach={flow} data-guide-step={stepId} data-compact={Boolean(compact)} data-welcome={Boolean(welcome)}
       onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onPause(); } }}>

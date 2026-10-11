@@ -22,7 +22,7 @@ function element(bounds, options = {}) {
 const measure = target => measureGuideSpotlight(target, viewport, getStyle);
 const bounds = value => value && { left: value.left, top: value.top, width: value.width, height: value.height };
 
-test("scrolling a menu item out of its panel hides the outline and scrolling back restores it", () => {
+test("coach placement ignores a menu item scrolled out of its panel and tracks it again on return", () => {
   const panel = element(rect(100, 200, 240, 300), { style: { overflowY: "auto" } });
   const target = element(rect(120, 240, 200, 44), { parentElement: panel });
   assert.deepEqual(bounds(measure(target)), { left: 115, top: 235, width: 210, height: 54 });
@@ -34,13 +34,12 @@ test("scrolling a menu item out of its panel hides the outline and scrolling bac
   assert.deepEqual(bounds(measure(target)), { left: 115, top: 235, width: 210, height: 54 });
 });
 
-test("partly visible items and their 5px outline padding stay within the panel client area", () => {
+test("partly visible target bounds and their coach clearance stay within the panel client area", () => {
   const panel = element(rect(100, 200, 240, 300), { clientLeft: 4, clientTop: 6, clientWidth: 215, clientHeight: 280,
     style: { overflowX: "hidden", overflowY: "scroll" } });
   const target = element(rect(101, 190, 235, 44), { parentElement: panel });
   const partial = measure(target);
   assert.deepEqual(bounds(partial), { left: 104, top: 206, width: 215, height: 33 });
-  assert.equal(partial.clipPath, "inset(0px 0px -247px 0px)", "glow cannot paint above or beside the clipped client box");
   target.bounds = rect(110, 470, 190, 44);
   assert.deepEqual(bounds(measure(target)), { left: 105, top: 465, width: 200, height: 21 });
   target.bounds = rect(110, 162, 190, 44);
@@ -59,9 +58,8 @@ test("nested clipping applies each overflow axis independently", () => {
 
 test("visible overflow is allowed and non-clipping ancestors do not shrink the highlight", () => {
   const parent = element(rect(1, 1, 10, 10));
-  const target = element(rect(100, 150, 80, 44), { parentElement: parent, style: { borderRadius: "50%" } });
+  const target = element(rect(100, 150, 80, 44), { parentElement: parent });
   assert.deepEqual(bounds(measure(target)), { left: 95, top: 145, width: 90, height: 54 });
-  assert.equal(measure(target).borderRadius, "50%");
 });
 
 test("scaled client borders and scrollbars are converted into viewport coordinates", () => {

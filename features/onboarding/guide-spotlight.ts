@@ -1,15 +1,14 @@
 export type GuideBounds = { left: number; top: number; width: number; height: number };
-export type GuideSpotlight = GuideBounds & { borderRadius: string; clipPath: string };
-type GuideStyle = Pick<CSSStyleDeclaration, "overflowX" | "overflowY" | "borderRadius" | "visibility">;
+type GuideStyle = Pick<CSSStyleDeclaration, "overflowX" | "overflowY" | "visibility">;
 const clips = (overflow: string) => /^(auto|scroll|hidden|clip)$/.test(overflow);
 
-/** A fixed outline does not inherit the target's scroll clipping. Intersect the
- * actual client boxes, independently on each overflow axis, before drawing it. */
+/** Visible target bounds for placing the coach without covering its control.
+ * The ring itself is painted on the target and clipped natively by the browser. */
 export function measureGuideSpotlight(
   target: HTMLElement | null,
   viewport: GuideBounds,
   getStyle: (element: HTMLElement) => GuideStyle = element => window.getComputedStyle(element),
-): GuideSpotlight | null {
+): GuideBounds | null {
   if (!target) return null;
   const rect = target.getBoundingClientRect(), style = getStyle(target);
   if (rect.width <= 0 || rect.height <= 0 || style.visibility === "hidden" || style.visibility === "collapse") return null;
@@ -35,17 +34,13 @@ export function measureGuideSpotlight(
       bottom = Math.min(bottom, clientTop + parent.clientHeight * scaleY);
     }
   }
-  // Test the button itself before adding the decorative margin: a hidden
-  // button must not leave a 5px ghost outline at the edge of its scroll panel.
+  // A hidden control is not an obstacle for the coach, even if its decorative
+  // margin would extend into the visible part of the panel.
   if (Math.min(rect.right, right) <= Math.max(rect.left, left)
     || Math.min(rect.bottom, bottom) <= Math.max(rect.top, top)) return null;
   const ringLeft = Math.max(left, rect.left - 5), ringTop = Math.max(top, rect.top - 5);
   const ringRight = Math.min(right, rect.right + 5), ringBottom = Math.min(bottom, rect.bottom + 5);
   return {
     left: ringLeft, top: ringTop, width: ringRight - ringLeft, height: ringBottom - ringTop,
-    borderRadius: style.borderRadius,
-    // Clip the CSS glow as well as the border, allowing its normal spread only
-    // where the visible ancestor/viewport area has room for it.
-    clipPath: `inset(${top - ringTop}px ${ringRight - right}px ${ringBottom - bottom}px ${left - ringLeft}px)`,
   };
 }
