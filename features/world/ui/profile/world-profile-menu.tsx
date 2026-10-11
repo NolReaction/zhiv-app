@@ -1,5 +1,6 @@
 "use client";
 
+import { AudioSettingsPanel } from "@/features/audio/ui/audio-settings";
 import { ChevronRight, Heart, Leaf, ShieldCheck } from "lucide-react";
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { GameLevelIcon } from "@/features/game/game-level-icon";
@@ -13,7 +14,7 @@ import { WorldMoodModule } from "./world-mood-module";
 import { WorldProfileFriends, type WorldFriendsState } from "./world-profile-friends";
 import styles from "./world-profile-menu.module.css";
 
-export type WorldProfileTab = "profile" | "mood" | "friends";
+export type WorldProfileTab = "profile" | "mood" | "friends" | "settings";
 type Props = {
   world: WorldController;
   economy: EconomyController;
@@ -34,6 +35,7 @@ const tabs = [
   { id: "profile", label: "Профиль" },
   { id: "mood", label: "Настроение" },
   { id: "friends", label: "Друзья" },
+  { id: "settings", label: "Настройки" },
 ] as const;
 
 function memoryMessage(observation: ForestObservation) {
@@ -109,7 +111,7 @@ export function WorldProfileContent({ world, economy, displayName, level, bestSt
 
   return <div className={styles.profile}>
     <div className={styles.tabs} role="tablist" aria-label="Разделы профиля">
-      {tabs.map((tab, index) => <button key={tab.id} type="button" role="tab" id={`${idPrefix}-tab-${tab.id}`}
+      {tabs.map((tab, index) => <button key={tab.id} type="button" role="tab" data-audio-cue="ui.click" id={`${idPrefix}-tab-${tab.id}`}
         aria-selected={activeTab === tab.id} aria-controls={`${idPrefix}-panel-${tab.id}`} tabIndex={activeTab === tab.id ? 0 : -1}
         onClick={() => onTabChange?.(tab.id)} onKeyDown={event => changeWithKeyboard(event, index)}>{tab.label}</button>)}
     </div>
@@ -139,6 +141,7 @@ export function WorldProfileContent({ world, economy, displayName, level, bestSt
       </>}
       {activeTab === "mood" && <WorldMoodModule observation={observation} economy={economy} onCall={onCall} callPulse={callPulse} onOpenHelp={onOpenHelp} onOpenFood={onOpenFood} />}
       {activeTab === "friends" && <WorldProfileFriends friends={friends} onOpenPeople={onOpenPeople} />}
+      {activeTab === "settings" && <AudioSettingsPanel tone="forest" />}
     </div>
     {!memoryWarning && memory}
   </div>;

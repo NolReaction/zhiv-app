@@ -3,9 +3,9 @@
 import { useActivity } from "@/features/activity/use-activity";
 import { ActivityGate } from "@/features/activity/activity-gate";
 import { AudioProvider } from "@/features/audio/ui/audio-provider";
-import { AudioSettingsButton } from "@/features/audio/ui/audio-settings";
 import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
+import { useMenuAudio } from "./integration/use-menu-audio";
 import { PlayerName } from "@/components/player-name";
 import dynamic from "next/dynamic";
 import { WorldDevEntry } from "@/features/world/dev/world-dev-entry";
@@ -639,6 +639,12 @@ function CheckInContent() {
   const currentActivity = worldActivity(economicActivity, renderedWorldState, economy.snapshot ? economy.now : world.now);
   const gameStartupReady = Boolean(game.progress) || game.errorCode === "STORAGE_FAILED" || game.status === "blocked";
   const sceneCanMount = Boolean(world.snapshot && economy.snapshot && gameStartupReady);
+  const terrariumAudible = activeView === "check-in" && mochlikVisible && sceneCanMount
+    && !calendarOpen && !gameOpen && !statusOpen;
+  const appAudioActive = screen === "home" && activity.active && appearanceReady && !startupActive;
+  useMenuAudio({ active: appAudioActive && !worldPortal.open && !terrariumAudible,
+    handoff: appAudioActive && (worldPortal.open || terrariumAudible), ownerPublicId: me?.user.publicId ?? null,
+    nowMs: economy.snapshot ? economy.now : world.now, timeZone: me?.profile.timeZone ?? "UTC" });
   const handleSceneLoadState = useCallback((state: SceneLoadState) => {
     setSceneLoad(previous => previous.owner === me?.user.publicId && previous.state === state ? previous : { owner: me?.user.publicId, state });
   }, [me?.user.publicId]);
@@ -1042,6 +1048,8 @@ function CheckInContent() {
       }
       const recorded = runId ? recordGameTap(steps, runId) : 0;
       if (recorded === 0) { setNotice("Не удалось сохранить нажатие на устройстве. Откройте значок сервера для проверки."); return false; }
+      // Both touch and keyboard/mouse pass through the existing tap deduplication first.
+      playUiCue(getAudioRuntime(), "ui.click");
       if (transition.finishedSeries) {
         reportFinishedSeries(transition.finishedSeries, transition.progress);
         triggerSeriesBreakEffect();
@@ -1499,7 +1507,6 @@ function CheckInContent() {
               <div className={styles.identityBadges}>
                 {me && <BetaInfo key={me.user.publicId} ownerPublicId={me.user.publicId} />}
                 {game.progress && <GameLevelsButton lifetimeTaps={game.progress.lifetimeTaps} className={styles.levelBadge} />}
-                <AudioSettingsButton />
               </div>
               <span className={styles.publicId} data-copyable>{me?.user.publicId}</span>
             </div>

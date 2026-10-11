@@ -62,9 +62,9 @@ test("profile keeps authoritative progress compact and leaves the full mood in i
   assert.match(markup, /Любопытничает/);
   assert.doesNotMatch(markup, /Самочувствие Мохлика|Полон сил|Хочется открытий|Кладовая|Гардероб|Обустроить дом|Прежние походы/);
   const tabs = elements.filter(element => element.props.role === "tab");
-  assert.deepEqual(tabs.map(buttonText), ["Профиль", "Настроение", "Друзья"]);
-  assert.deepEqual(tabs.map(tab => tab.props["aria-selected"]), [true, false, false]);
-  assert.deepEqual(tabs.map(tab => tab.props.tabIndex), [0, -1, -1]);
+  assert.deepEqual(tabs.map(buttonText), ["Профиль", "Настроение", "Друзья", "Настройки"]);
+  assert.deepEqual(tabs.map(tab => tab.props["aria-selected"]), [true, false, false, false]);
+  assert.deepEqual(tabs.map(tab => tab.props.tabIndex), [0, -1, -1, -1]);
   assert.equal(elements.filter(element => element.props.role === "tabpanel").length, 1);
 });
 
@@ -87,9 +87,9 @@ test("tabs activate with arrows, Home and End, move focus and do not consume unr
     return tabs.map((_, index) => ({ focus: () => focused.push(index) }));
   } };
   const key = (index, key) => tabs[index].props.onKeyDown({ key, preventDefault: () => prevented++, currentTarget: { parentElement } });
-  key(0, "ArrowLeft"); key(2, "ArrowRight"); key(0, "End"); key(2, "Home"); key(1, "Tab");
-  assert.deepEqual(view.calls, ["friends", "profile", "friends", "profile"]);
-  assert.deepEqual(focused, [2, 0, 2, 0]);
+  key(0, "ArrowLeft"); key(3, "ArrowRight"); key(0, "End"); key(2, "Home"); key(1, "Tab");
+  assert.deepEqual(view.calls, ["settings", "profile", "settings", "profile"]);
+  assert.deepEqual(focused, [3, 0, 3, 0]);
   assert.equal(prevented, 4);
   tabs[1].props.onClick();
   assert.equal(view.calls.at(-1), "mood");
@@ -215,4 +215,17 @@ test("friends tab receives parent data and navigation without claiming friend pr
   assert.equal(component.props.onOpenPeople, onOpenPeople);
   assert.match(view.markup, /Загружаем/);
   assert.doesNotMatch(view.markup, /Достижения Мохлика|Бонус от еды/);
+});
+
+test("settings are available inline in their own profile tab without a nested audio dialog", () => {
+  const view = profile({ activeTab: "settings", idPrefix: "settings-test" });
+  const panel = view.elements.find(element => element.props.role === "tabpanel");
+  assert.equal(panel.props.id, "settings-test-panel-settings");
+  assert.equal(panel.props["aria-labelledby"], "settings-test-tab-settings");
+  assert.match(view.markup, /Звуки игры/);
+  assert.equal((view.markup.match(/type="range"/g) ?? []).length, 6);
+  assert.doesNotMatch(view.markup, /role="dialog"|Достижения Мохлика|Самочувствие Мохлика/);
+  const defaultView = profile();
+  namedButton(defaultView, "Настройки").props.onClick();
+  assert.deepEqual(defaultView.calls, ["settings"]);
 });

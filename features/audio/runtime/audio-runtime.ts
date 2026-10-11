@@ -18,6 +18,7 @@ type Voice = {
   stopped: boolean; sceneId: string | null;
 };
 type PendingLoop = { cueId: string; generation: number };
+type ParameterRamp = { from: number; target: number; start: number; end: number };
 export type AudioRuntimeOptions = {
   catalog?: AudioCatalog;
   initialSettings?: AudioSettings;
@@ -75,6 +76,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
   const musicPositions = new Map<string, number>();
   const bufferClaims = new Map<string, number>();
   const pendingEvents = new Set<number>();
+  const parameterRamps = new WeakMap<AudioParam, ParameterRamp>();
   const cache = createAudioAssetCache({ context: () => context, fetchAsset: options.fetchAsset ?? ((...args) => fetch(...args)), now,
     maxDecodedBytes: options.maxDecodedBytes, changed: publish,
     isInUse: id => (bufferClaims.get(id) ?? 0) > 0 || [...voices.values(), ...retiring.values()].some(voice => voice.assetId === id),
@@ -108,10 +110,26 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
   }
   function ramp(param: AudioParam, target: number, seconds: number) {
     if (!context) return;
-    const time = context.currentTime;
+    // Scene frames can arrive at display refresh rate. Holding and restarting an
+    // unchanged ramp on each frame postpones its endpoint indefinitely and floods
+    // the audio thread with redundant automation. Only retarget a changed value.
+    const previous = parameterRamps.get(param);
+    if (previous && Math.abs(previous.target - target) < 0.00001) return;
+    const time = context.currentTime, end = time + Math.max(.01, seconds);
+    // Evaluate our linear envelope before cancellation. AudioParam.value can lag
+    // by a render quantum, and cancelling can discard the ongoing ramp endpoint.
+    const held = previous ? previous.from + (previous.target - previous.from)
+      * finiteClamp((time - previous.start) / (previous.end - previous.start), 0, 1) : param.value;
     if (typeof param.cancelAndHoldAtTime === "function") param.cancelAndHoldAtTime(time);
-    else { param.cancelScheduledValues(time); param.setValueAtTime(param.value, time); }
-    param.linearRampToValueAtTime(target, time + Math.max(.01, seconds));
+    else {
+      param.cancelScheduledValues(time);
+      // Recreate the truncated ramp up to the hold point. A setValue alone
+      // leaves its former start value in the render quantum and causes clicks.
+      param.linearRampToValueAtTime(held, time);
+      param.setValueAtTime(held, time);
+    }
+    param.linearRampToValueAtTime(target, end);
+    parameterRamps.set(param, { from: held, target, start: time, end });
   }
   function updateMix() {
     if (!master) return;
@@ -478,6 +496,9 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
       tune(voice, 1, 0); source.start();
       voice.gain.gain.setValueAtTime(dbGain(-24), context!.currentTime + .15);
       voice.gain.gain.linearRampToValueAtTime(0, context!.currentTime + .23);
+      // This bounded test tone has its own attack/hold/release envelope. A later
+      // mute must sample it, rather than reuse the initial attack-only segment.
+      parameterRamps.delete(voice.gain.gain);
       source.stop(context!.currentTime + .25); publish();
     },
     setVisible(nextVisible) {

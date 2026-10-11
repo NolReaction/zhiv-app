@@ -1,6 +1,5 @@
 "use client";
 import { WorldDevEntry } from "./dev/world-dev-entry";
-import { AudioSettingsButton } from "@/features/audio/ui/audio-settings";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { ArrowLeft, BookOpen, Check, Compass, X, Info, Leaf, MoreHorizontal, Package, PawPrint, Pin, Shirt, ShoppingBag, Soup, Store } from "lucide-react";
 import { GAME_ITEMS, naturalItems } from "@/features/game/game-rewards";
@@ -22,7 +21,7 @@ import { economyBuildingDestination, economySceneJourney, economySceneProduction
 import { WORLD_PRESENTATION } from "@/features/world/scene/presentation";
 import { WorldHelp } from "@/features/world/ui/help/world-help";
 import type { WorldHelpContext, WorldHelpTarget } from "@/features/world/ui/help/world-help-types";
-import { WorldProfileMenu } from "@/features/world/ui/profile/world-profile-menu";
+import { WorldProfileMenu, type WorldProfileTab } from "@/features/world/ui/profile/world-profile-menu";
 import { ForestSessionNotice } from "@/features/world/ui/feedback/forest-session-notice";
 import { WorldFoodMenu } from "@/features/economy/ui/food/world-food-menu";
 import { WorldPantryMenu } from "@/features/economy/ui/inventory/world-pantry-menu";
@@ -46,7 +45,7 @@ type Panel = "journeys" | "economy" | "customize" | "wardrobe" | "collection" | 
 type QuickMenu = "profile" | "pantry" | "expeditions" | "food" | "more";
 const WorldDevPanel = process.env.NODE_ENV === "development"
   ? WorldDevEntry : null;
-export default function WorldView({ world, economy, ownerPublicId, timeZone, onClose, displayName, level, wakeSignal, bestStreakDays, items, isOnline, onSessionLost, friends, onOpenPeople, escapeHandlerRef }: WorldPortalProps & { escapeHandlerRef?: RefObject<(() => boolean) | null> }) {
+export default function WorldView({ open, world, economy, ownerPublicId, timeZone, onClose, displayName, level, wakeSignal, bestStreakDays, items, isOnline, onSessionLost, friends, onOpenPeople, escapeHandlerRef }: WorldPortalProps & { escapeHandlerRef?: RefObject<(() => boolean) | null> }) {
   const constructionGoal = useConstructionGoal(ownerPublicId, economy.snapshot);
   const [panel, setPanel] = useState<Panel | null>(null);
   const [economyTab, setEconomyTab] = useState<EconomyTab>("overview");
@@ -63,7 +62,7 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
   const [quickMenu, setQuickMenu] = useState<QuickMenu | null>(null);
   const [foodEntry, setFoodEntry] = useState<{ tab: "meals" | "orders"; residentId?: "plesk" | "builder"; request: number }>({ tab: "meals", request: 0 });
   const [helpEntry, setHelpEntry] = useState<{ context?: WorldHelpContext; topicId?: string; request: number }>({ request: 0 });
-  const [profileEntry, setProfileEntry] = useState<{ tab: "profile" | "mood" | "friends"; request: number }>({ tab: "profile", request: 0 });
+  const [profileEntry, setProfileEntry] = useState<{ tab: WorldProfileTab; request: number }>({ tab: "profile", request: 0 });
   const lastHelpContext = useRef<WorldHelpContext | undefined>(undefined);
   const rememberHelpContext = useCallback((context: WorldHelpContext) => { lastHelpContext.current = context; }, []);
   const navigatingHelp = useRef(false);
@@ -122,7 +121,7 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
     setQuickMenu(null); setCharactersOpen(false);
     if (quickReturn.current?.isConnected) quickReturn.current.focus({ preventScroll: true });
   }, []);
-  const openQuick = useCallback((next: QuickMenu, sector: SectorId = "forest", profileTab: "profile" | "mood" | "friends" = "profile") => {
+  const openQuick = useCallback((next: QuickMenu, sector: SectorId = "forest", profileTab: WorldProfileTab = "profile") => {
     quickReturn.current = worldElement.current?.querySelector<HTMLElement>(`[data-world-quick="${next === "food" ? "more" : next}"]`) ?? null;
     if (next === "profile") setProfileEntry(value => ({ tab: profileTab, request: value.request + 1 }));
     if (next === "expeditions") { setExpeditionSector(sector); setExpeditionOpenRequest(value => value + 1); }
@@ -324,7 +323,7 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
   const QuickIcon = quickMenu === "profile" ? Leaf : quickMenu === "pantry" ? Package : quickMenu === "expeditions" ? Compass : quickMenu === "food" ? Soup : MoreHorizontal;
   const SheetIcon = panel === "help" ? Info : panel === "economy" ? Store : panel === "shop" ? ShoppingBag : panel === "wardrobe" ? Shirt : panel === "collection" ? BookOpen : panel === "customize" ? Leaf : Compass;
   return <section ref={worldElement} className={styles.world} aria-label="Лес Мохлика" data-quick-open={quickMenu ?? undefined} style={{ "--quick-top": `${menuBounds.top + 6}px`, "--quick-bottom": `${menuBounds.bottom + 6}px` } as CSSProperties}>
-    <WorldScene economyJourney={economicJourney} cancelledExplorations={economy.cancelledExplorations} economyBuildings={economy.snapshot?.buildings} economyProduction={economicProduction} economyConstruction={economicConstruction} state={state} gifts={snapshot.gifts} items={items} owner={ownerPublicId} now={economy.snapshot ? economy.now : world.now} timeZone={timeZone}
+    <WorldScene suspended={!open} economyJourney={economicJourney} cancelledExplorations={economy.cancelledExplorations} economyBuildings={economy.snapshot?.buildings} economyProduction={economicProduction} economyConstruction={economicConstruction} state={state} gifts={snapshot.gifts} items={items} owner={ownerPublicId} now={economy.snapshot ? economy.now : world.now} timeZone={timeZone}
       hideJourneyStatus onPlace={onPlace} onResident={openResident} selectedObjectId={selection?.objectId ?? null} onObjectSelection={onObjectSelection} openObjectRequest={openObjectRequest}
       constructionEconomy={economy} hideConstructionStatus={quickMenu !== null || panel !== null || selection !== null || quickUpgrade !== null || residentOpen || charactersOpen || dailyOpen}
       onOpenConstruction={stationId => { clearObject(); setPanel(null); setQuickMenu(null); openUpgrade(stationId); }}
@@ -378,7 +377,6 @@ export default function WorldView({ world, economy, ownerPublicId, timeZone, onC
         {quickMenu === "expeditions" && <WorldExpeditionsMenu key={`${expeditionSector}:${expeditionOpenRequest}`} initialSector={expeditionSector} isOnline={isOnline} onOpenHelp={openContextHelp} economy={economy} onOpenPantry={() => openQuick("pantry")} onNavigateStation={openStation} onUpgradeQuarry={() => openUpgrade("quarry")} onOpenFishingShop={() => openResident("plesk")} />}
         {quickMenu === "food" && <WorldFoodMenu key={`${ownerPublicId}:${foodEntry.request}`} economy={economy} initialTab={foodEntry.tab} residentId={foodEntry.residentId} onNavigateExpeditions={sector => openQuick("expeditions", sector)} onNavigateStation={openStation} />}
         {quickMenu === "more" && <div className={`${hudStyles.moreActions} ${styles.moreActions}`}>
-          <AudioSettingsButton label />
           <button type="button" aria-haspopup="dialog" onClick={() => openFood()}><Soup size={18} aria-hidden="true" /><span className={styles.moreLabel}>Еда и заказы<small>Накормить героев · заработать монеты</small></span></button>
           <button type="button" data-world-characters-trigger aria-haspopup="dialog" onClick={openCharacters}><PawPrint size={18} aria-hidden="true" /><span className={styles.moreLabel}>Персонажи<small>Жители леса</small></span></button>
           <button type="button" aria-haspopup="dialog" onClick={() => openEconomy("market")}><Store size={18} aria-hidden="true" /><span className={styles.moreLabel}>Рынок<small>Покупки и свой прилавок</small></span></button>

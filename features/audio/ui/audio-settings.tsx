@@ -36,7 +36,7 @@ export function AudioSettingsControls({ id, diagnostics, busy, feedback, onChang
     <div className={styles.masterSwitch}>
       <span><strong>Звуки игры</strong><small>{settings.enabled ? "Включены" : "Выключены"}</small></span>
       <button type="button" role="switch" aria-checked={settings.enabled} aria-label="Звуки игры"
-        className={styles.switch} disabled={busy || state === "unavailable"}
+        className={styles.switch} disabled={busy || state === "unavailable"} data-audio-cue="ui.click"
         onClick={() => settings.enabled ? onChange({ enabled: false }) : onEnable()}>
         <span aria-hidden="true" />
       </button>
@@ -48,22 +48,16 @@ export function AudioSettingsControls({ id, diagnostics, busy, feedback, onChang
       {AUDIO_BUSES.map(bus => <VolumeSlider key={bus} id={`${id}-${bus}`} label={AUDIO_BUS_LABELS[bus]}
         value={settings.buses[bus]} onChange={volume => onChange({ buses: { [bus]: volume } })} />)}
     </fieldset>
-    {needsResume && <button type="button" className={styles.resume} onClick={onResume} disabled={busy}>Продолжить воспроизведение</button>}
+    {needsResume && <button type="button" className={styles.resume} data-audio-cue="ui.click" onClick={onResume} disabled={busy}>Продолжить воспроизведение</button>}
     <p className={styles.feedback} role="status">{state === "unavailable" ? "Этот браузер не поддерживает воспроизведение звуков игры." : feedback}</p>
   </div>;
 }
 
-export function AudioSettingsButton({ label = false, className }: { label?: boolean; className?: string }) {
+function useAudioSettingsControls() {
   const diagnostics = useAudioDiagnostics();
-  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState("");
   const id = useId();
-  const Icon = diagnostics.settings.enabled ? Volume2 : VolumeX;
-  function changeOpen(next: boolean) {
-    if (next !== open) playUiCue(getAudioRuntime(), next ? "ui.open" : "ui.close");
-    setOpen(next);
-  }
   async function enable() {
     const runtime = getAudioRuntime();
     setBusy(true);
@@ -74,6 +68,38 @@ export function AudioSettingsButton({ label = false, className }: { label?: bool
     } catch {
       setFeedback("Не удалось включить звук. Попробуйте ещё раз.");
     } finally { setBusy(false); }
+  }
+  return {
+    id, diagnostics, busy, feedback,
+    onChange: (patch: AudioSettingsPatch) => {
+      getAudioRuntime().setSettings(patch);
+      setFeedback(patch.enabled === false ? "Звуки выключены" : "");
+    },
+    onEnable: () => void enable(),
+    onResume: () => void enable(),
+  };
+}
+
+/** Shared inline settings for the account and forest profile tabs. */
+export function AudioSettingsPanel({ tone = "dark" }: { tone?: "dark" | "forest" }) {
+  const controls = useAudioSettingsControls();
+  return <section className={styles.panel} data-tone={tone} aria-labelledby={`${controls.id}-title`}>
+    <header className={styles.panelHeader}>
+      <Volume2 size={20} aria-hidden="true" />
+      <div><h2 id={`${controls.id}-title`}>Звук</h2><p>Музыка, окружение и отклик кнопок</p></div>
+    </header>
+    <AudioSettingsControls {...controls} />
+  </section>;
+}
+
+/** The standalone dialog remains available to the DEV sound inspector. */
+export function AudioSettingsButton({ label = false, className }: { label?: boolean; className?: string }) {
+  const controls = useAudioSettingsControls();
+  const [open, setOpen] = useState(false);
+  const Icon = controls.diagnostics.settings.enabled ? Volume2 : VolumeX;
+  function changeOpen(next: boolean) {
+    if (next !== open) playUiCue(getAudioRuntime(), next ? "ui.open" : "ui.close");
+    setOpen(next);
   }
   return <DialogPrimitive.Root open={open} onOpenChange={changeOpen}>
     <DialogPrimitive.Trigger asChild>
@@ -91,9 +117,7 @@ export function AudioSettingsButton({ label = false, className }: { label?: bool
             <DialogPrimitive.Description>Настройте музыку, окружение и голоса героев.</DialogPrimitive.Description></div>
           <DialogPrimitive.Close asChild><button type="button" className={styles.close} aria-label="Закрыть настройки звука" data-audio-settings-close><X size={20} aria-hidden="true" /></button></DialogPrimitive.Close>
         </header>
-        <AudioSettingsControls id={id} diagnostics={diagnostics} busy={busy} feedback={feedback}
-          onChange={patch => { getAudioRuntime().setSettings(patch); setFeedback(patch.enabled === false ? "Звуки выключены" : ""); }}
-          onEnable={() => void enable()} onResume={() => void enable()} />
+        <AudioSettingsControls {...controls} />
       </DialogPrimitive.Content>
     </DialogPrimitive.Portal>
   </DialogPrimitive.Root>;

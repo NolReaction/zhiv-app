@@ -98,6 +98,104 @@ test("overlapping frame updates share one decode and retain a single loop voice"
   f.runtime.dispose();
 });
 
+test("idle render frames preserve music, loop voices and in-flight volume ramps", async () => {
+  const f = fixture([cue("theme", "music"), cue("river", "loop")]);
+  await f.runtime.unlock();
+  const current = frame([target("theme", "theme"), target("water")]);
+  f.runtime.updateFrame(current); await flush();
+  const gains = f.context.gains.map(node => ({ param: node.gain, count: node.gain.ramps.length }));
+  const panners = [...f.context.started, ...f.context.mediaSources].map(source => source.connected[0].connected[0].pan);
+  const panCounts = panners.map(param => param.ramps.length);
+  f.media[0].currentTime = 28;
+  // Reproduce a stationary 120 Hz renderer sending equivalent audio frames.
+  for (let index = 0; index < 1200; index++) {
+    f.context.currentTime = index / 120;
+    f.runtime.updateFrame({ ...current, loops: current.loops.map(item => ({ ...item })) });
+  }
+  assert.equal(f.context.started.length, 1);
+  assert.equal(f.media.length, 1); assert.equal(f.media[0].plays, 1); assert.equal(f.media[0].currentTime, 28);
+  for (const { param, count } of gains) assert.equal(param.ramps.length, count, "an unchanged gain must complete its original ramp");
+  panners.forEach((param, index) => assert.equal(param.ramps.length, panCounts[index], "stationary pan must not reschedule automation"));
+  f.runtime.dispose();
+});
+
+test("camera and duck changes retarget only affected gains while keeping the same streams", async () => {
+  const f = fixture([cue("theme", "music"), cue("river", "loop")]);
+  await f.runtime.unlock();
+  f.runtime.updateFrame(frame([target("theme", "theme"), target("water")])); await flush();
+  const master = f.context.gains[0].gain;
+  const musicBus = f.context.mediaSources[0].connected[0].connected[0].connected[0].gain;
+  const riverGain = f.context.started[0].connected[0].gain;
+  const riverPan = f.context.started[0].connected[0].connected[0].pan;
+  const counts = [master, musicBus, riverGain, riverPan].map(param => param.ramps.length);
+  f.context.currentTime = 4;
+  const next = frame([target("theme", "theme"), { ...target("water", "river", .25), pan: -.7 }], { musicDuck: .68 });
+  f.runtime.updateFrame(next);
+  assert.equal(master.ramps.length, counts[0]);
+  assert.equal(musicBus.ramps.length, counts[1] + 1);
+  assert.equal(riverGain.ramps.length, counts[2] + 1);
+  assert.equal(riverPan.ramps.length, counts[3] + 1);
+  for (let index = 0; index < 120; index++) { f.context.currentTime += 1 / 120; f.runtime.updateFrame(next); }
+  assert.equal(riverGain.ramps.length, counts[2] + 1);
+  assert.equal(riverPan.ramps.length, counts[3] + 1);
+  assert.equal(f.context.started.length, 1); assert.equal(f.media[0].plays, 1);
+  assert.equal(riverGain.value, 10 ** (-10 / 20) * .25);
+  assert.equal(riverPan.value, -.7);
+  f.runtime.dispose();
+});
+
+test("legacy AudioParam retargeting closes the interrupted ramp without resetting its held value", async () => {
+  const f = fixture([cue("river", "loop")]);
+  const createGain = f.context.createGain.bind(f.context);
+  f.context.createGain = () => {
+    const node = createGain();
+    node.gain.cancelAndHoldAtTime = undefined;
+    // Model a browser whose exposed value changes when the future endpoint goes.
+    node.gain.cancelScheduledValues = () => { node.gain.value = -999; };
+    return node;
+  };
+  await f.runtime.unlock();
+  f.runtime.updateFrame(frame([target("water", "river", .8)])); await flush();
+  const param = f.context.started[0].connected[0].gain, level = 10 ** (-10 / 20);
+  f.context.currentTime = .04;
+  f.runtime.updateFrame(frame([target("water", "river", .3)]));
+  let [hold, destination] = param.ramps.slice(-2);
+  assert.ok(Math.abs(hold.value - level * .4) < 1e-10, "the interrupted 80 ms fade must hold its halfway level");
+  assert.equal(hold.time, .04, "a ramp endpoint at the hold point preserves the rendered prefix");
+  assert.equal(destination.value, level * .3); assert.equal(destination.time, .12);
+  f.context.currentTime = .06;
+  f.runtime.updateFrame(frame([target("water", "river", .9)]));
+  [hold, destination] = param.ramps.slice(-2);
+  assert.ok(Math.abs(hold.value - level * .375) < 1e-10, "another retarget must continue from the preceding linear segment");
+  assert.equal(hold.time, .06); assert.equal(destination.value, level * .9);
+  const count = param.ramps.length;
+  for (let index = 0; index < 120; index++) f.runtime.updateFrame(frame([target("water", "river", .9)]));
+  assert.equal(param.ramps.length, count, "legacy browsers also avoid redundant cancellation");
+  assert.equal(f.context.started.length, 1);
+  f.runtime.dispose();
+});
+
+test("muting a DEV tone samples its release envelope instead of restoring its attack level", async () => {
+  const f = fixture();
+  const createGain = f.context.createGain.bind(f.context);
+  f.context.createGain = () => {
+    const node = createGain(); node.gain.cancelAndHoldAtTime = undefined;
+    node.gain.cancelScheduledValues = () => { node.gain.value = -999; };
+    return node;
+  };
+  await f.runtime.unlock(); f.runtime.previewTone();
+  const param = f.context.started[0].connected[0].gain;
+  f.context.currentTime = .19;
+  // The real browser exposes the tone's running, independently scheduled decay.
+  const releasingLevel = 10 ** (-24 / 20) / 2;
+  param.value = releasingLevel;
+  f.runtime.setSettings({ enabled: false });
+  const [hold, destination] = param.ramps.slice(-2);
+  assert.equal(hold.value, releasingLevel); assert.equal(hold.time, .19);
+  assert.equal(destination.value, 0);
+  f.runtime.dispose();
+});
+
 test("clearing frame or switching account during decode cannot resurrect old world or event", async () => {
   for (const action of [runtime => runtime.clearFrame("user-a"), runtime => runtime.updateFrame(frame([], { ownerId: "user-b", sceneId: "account-b:forest" }))]) {
     const f = fixture(); const gate = deferred(); f.context.decode = () => gate.promise;
@@ -306,9 +404,11 @@ test("clearing a silent scene allocates no handoff timer or browser audio resour
 });
 
 test("DEV auditions a live loop once and restores its latest spatial target after four seconds", async t => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
   const f = fixture([cue("river", "loop", { maxInstances: 1 })]);
   await f.runtime.unlock(); f.runtime.updateFrame(frame([target("water", "river", .2)])); await flush();
+  // Asset I/O and its deadline finish on real timers; the mock owns only the
+  // audition interval, without unrelated asynchronous server/cache callbacks.
+  t.mock.timers.enable({ apis: ["setTimeout"] });
   const gain = f.context.started[0].connected[0], panner = gain.connected[0];
   const level = 10 ** (-10 / 20);
   f.runtime.preview("river");
@@ -323,10 +423,10 @@ test("DEV auditions a live loop once and restores its latest spatial target afte
 });
 
 test("DEV auditions active music without a new stream or a playhead reset", async t => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
   const f = fixture([cue("day", "music", { maxInstances: 1 }), cue("night", "music", { maxInstances: 1 })]);
   await f.runtime.unlock();
   f.runtime.updateFrame(frame([target("day", "day", .4), target("night", "night", .6)])); await flush();
+  t.mock.timers.enable({ apis: ["setTimeout"] });
   f.media[0].currentTime = 37;
   const gain = f.context.mediaSources[0].connected[0];
   f.runtime.preview("day");
@@ -355,9 +455,9 @@ test("DEV audition shares a pending scene decode and never leaks after hiding", 
 });
 
 test("DEV audition releases a loop no longer requested by the scene at the deadline", async t => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
   const f = fixture([cue("river", "loop", { maxInstances: 1 })]);
   await f.runtime.unlock(); f.runtime.updateFrame(frame([target("water")])); await flush();
+  t.mock.timers.enable({ apis: ["setTimeout"] });
   f.runtime.preview("river"); f.runtime.updateFrame(frame());
   assert.equal(f.runtime.getDiagnostics().activeVoices, 1);
   t.mock.timers.tick(4000);

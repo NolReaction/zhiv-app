@@ -5,7 +5,7 @@ export type WorldHelpTarget =
   | { kind: "upgrade"; stationId: string }
   | { kind: "food"; tab?: "meals" | "orders"; residentId?: "plesk" | "builder" }
   | { kind: "resident"; residentId: "plesk" | "builder" }
-  | { kind: "profile"; tab?: "profile" | "mood" | "friends" }
+  | { kind: "profile"; tab?: "profile" | "mood" | "friends" | "settings" }
   | { kind: "collection" }
   | { kind: "wardrobe" }
   | { kind: "people" }

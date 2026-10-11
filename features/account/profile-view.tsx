@@ -3,6 +3,8 @@
 import { PlayerName } from "@/components/player-name";
 import type { FormEvent } from "react";
 import { useRef, useState } from "react";
+import { Tabs as TabsPrimitive } from "radix-ui";
+import { AudioSettingsPanel } from "@/features/audio/ui/audio-settings";
 import { Switch } from "@/components/ui/switch";
 import { GameLevelsButton } from "@/features/game/game-levels-button";
 import { GameLevelIcon } from "@/features/game/game-level-icon";
@@ -97,6 +99,7 @@ export function ProfileView({
   gamePendingTaps,
   legacyGame,
 }: ProfileViewProps) {
+  const [activeTab, setActiveTab] = useState("profile");
   const [draftState, setDraftState] = useState({
     sourceName: me.user.displayName,
     value: me.user.displayName,
@@ -176,6 +179,12 @@ export function ProfileView({
       <div className={styles.heading}><h1 id="profile-title">Профиль</h1></div>
       <TransientNotice message={error} kind="error" />
       <TransientNotice message={success} kind="success" />
+      <TabsPrimitive.Root value={activeTab} onValueChange={setActiveTab} className={styles.tabsRoot}>
+        <TabsPrimitive.List className={styles.tabs} aria-label="Разделы профиля">
+          <TabsPrimitive.Trigger value="profile" data-audio-cue="ui.click"><UserRound size={17} aria-hidden="true" />Профиль</TabsPrimitive.Trigger>
+          <TabsPrimitive.Trigger value="settings" data-audio-cue="ui.click"><Settings2 size={17} aria-hidden="true" />Настройки</TabsPrimitive.Trigger>
+        </TabsPrimitive.List>
+        <TabsPrimitive.Content value="profile" forceMount className={styles.tabPanel}>
       <div className={styles.columns}>
         <div className={styles.overviewColumn}>
           <div className={styles.profileCard}>
@@ -253,20 +262,10 @@ export function ProfileView({
               <TimeZoneSetting me={me} isOnline={isOnline} onUpdated={onUpdated} onSessionLost={onSessionLost} />
             </AccordionContent>
           </AccordionItem>
-          <AccordionItem value="appearance" className={styles.settingsItem}>
-            <AccordionTrigger className={styles.settingsTrigger}><span><Settings2 size={20} aria-hidden="true" /><span>Внешний вид<small>{simpleView ? "Простая кнопка" : "Живая полянка Мохлика"}</small></span></span></AccordionTrigger>
-            <AccordionContent className={styles.settingsContent}>
-              <div className={styles.appearanceSetting}>
-                <label htmlFor="simple-view"><strong>Простой вид</strong><span>Знакомая кнопка без полянки. Вход в игру остаётся доступным.</span></label>
-                <Switch id="simple-view" checked={simpleView} onCheckedChange={onSimpleViewChange} />
-              </div>
-              <p className={styles.hint}>Настройка сохраняется на этом устройстве.</p>
-            </AccordionContent>
-          </AccordionItem>
           <AccordionItem value="security" className={styles.settingsItem}>
             <AccordionTrigger className={styles.settingsTrigger}><span><ShieldCheck size={20} aria-hidden="true" /><span>Вход и безопасность<small>Способы входа, устройства, восстановление</small></span></span></AccordionTrigger>
             <AccordionContent forceMount hidden={panel !== "security"} className={styles.settingsContent}>
-              <AccountAccess mode="access" active={panel === "security"} isOnline={isOnline} onSessionLost={onSessionLost} onUpdated={onUpdated} />
+              <AccountAccess mode="access" active={activeTab === "profile" && panel === "security"} isOnline={isOnline} onSessionLost={onSessionLost} onUpdated={onUpdated} />
               <RecoveryCodeCard isOnline={isOnline} onSessionLost={onSessionLost} />
               <RecoveryStarter context="profile" isOnline={isOnline} onRecovered={onRecovered} />
             </AccordionContent>
@@ -321,7 +320,7 @@ export function ProfileView({
           <AccordionItem value="management" className={styles.settingsItem}>
             <AccordionTrigger className={styles.settingsTrigger}><span><Settings2 size={20} aria-hidden="true" /><span>Управление профилем<small>Смена почты, объединение, удаление</small></span></span></AccordionTrigger>
             <AccordionContent forceMount hidden={panel !== "management"} className={styles.settingsContent}>
-              <AccountAccess mode="manage" active={panel === "management"} isOnline={isOnline} onSessionLost={onSessionLost} onUpdated={onUpdated} />
+              <AccountAccess mode="manage" active={activeTab === "profile" && panel === "management"} isOnline={isOnline} onSessionLost={onSessionLost} onUpdated={onUpdated} />
             </AccordionContent>
           </AccordionItem>
         </Accordion>
@@ -333,6 +332,21 @@ export function ProfileView({
           <p>Загрузка фотографии появится позже — с безопасным хранением и отдельной настройкой видимости.</p>
         </div>
       </div>
+        </TabsPrimitive.Content>
+        <TabsPrimitive.Content value="settings" className={styles.tabPanel}>
+          <div className={styles.preferences}>
+            <AudioSettingsPanel />
+            <section className={styles.appearanceCard} aria-labelledby="appearance-title">
+              <h2 id="appearance-title"><Settings2 size={19} aria-hidden="true" />Внешний вид</h2>
+              <div className={styles.appearanceSetting}>
+                <label htmlFor="simple-view"><strong>Простой вид</strong><span>Знакомая кнопка без полянки. Вход в игру остаётся доступным.</span></label>
+                <Switch id="simple-view" checked={simpleView} onCheckedChange={onSimpleViewChange} data-audio-cue="ui.click" />
+              </div>
+              <p className={styles.hint}>Настройка сохраняется на этом устройстве.</p>
+            </section>
+          </div>
+        </TabsPrimitive.Content>
+      </TabsPrimitive.Root>
     </section>
   );
 }

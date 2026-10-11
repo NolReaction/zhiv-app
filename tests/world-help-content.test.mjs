@@ -141,7 +141,7 @@ test("topic navigation points to existing buildings and valid destinations", () 
       assert.ok(economyCatalog.buildings.some(building => building.id === target.stationId), entry.id);
       if (target.recipeId) assert.ok(economyCatalog.recipes.some(recipe => recipe.id === target.recipeId && recipe.buildingId === target.stationId));
     }
-    if (target.kind === "profile") assert.ok(["profile", "mood", "friends"].includes(target.tab));
+    if (target.kind === "profile") assert.ok(["profile", "mood", "friends", "settings"].includes(target.tab));
     if (target.kind === "expeditions" && target.sector) assert.ok(["forest", "coast", "caves"].includes(target.sector));
   }
   assert.deepEqual(topic("start").action.target, { kind: "station", stationId: "garden" });
