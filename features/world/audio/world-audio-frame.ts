@@ -89,6 +89,8 @@ export function buildWorldAudioFrame(scene: FixedWorldScene, input: WorldAudioEn
   add("music-night", "music.night", Math.sqrt(night));
   add("forest-day", "forest.day", Math.sqrt(1 - night) * (1 - rain * .55));
   add("forest-night", "forest.night", Math.sqrt(night) * (1 - rain * .55));
+  // One independent wind layer across day/night; camera motion never restarts it.
+  add("weather-wind", "weather.wind", 1 - rain * .35);
   add("weather-rain", "weather.rain", rain);
   const audibleWhen = (when: { siteId: string; level: number } | undefined) => !when || input.levels[when.siteId] === when.level;
   const emitters = [...(scene.audio?.emitters ?? [])];

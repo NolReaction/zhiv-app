@@ -1,5 +1,7 @@
 "use client";
 
+import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
+import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { useRef, useState, type KeyboardEvent } from "react";
 import { BookOpen, Check, ChevronLeft, ChevronRight, Fish, Mountain, Trees } from "lucide-react";
 import { CollectionIcon, ItemIcon } from "@/features/items/item-icon";
@@ -23,12 +25,16 @@ export function WorldCollections({ state, economy, gifts }: { state: WorldState;
   const active = COLLECTION_CHAPTERS[index];
   const total = COLLECTION_CHAPTERS.reduce((sum, entry) => sum + collectionBookEntries(entry.id, state.collection, economy).filter(find => find.owned).length, 0);
   const legacyRiverFinds = worldCatalog.finds.filter(find => find.group === "fishing" && state.collection.includes(find.id));
+  const changeChapter = (next: CollectionChapter) => {
+    if (next !== chapter) playUiCue(getAudioRuntime(), "ui.tab");
+    setChapter(next);
+  };
   const onChapterKey = (event: KeyboardEvent<HTMLButtonElement>, position: number) => {
     const next = event.key === "ArrowRight" ? (position + 1) % COLLECTION_CHAPTERS.length
       : event.key === "ArrowLeft" ? (position + COLLECTION_CHAPTERS.length - 1) % COLLECTION_CHAPTERS.length
         : event.key === "Home" ? 0 : event.key === "End" ? COLLECTION_CHAPTERS.length - 1 : null;
     if (next == null) return;
-    event.preventDefault(); setChapter(COLLECTION_CHAPTERS[next].id); buttons.current[next]?.focus();
+    event.preventDefault(); changeChapter(COLLECTION_CHAPTERS[next].id); buttons.current[next]?.focus();
   };
   return <section className={styles.library} aria-label="Книга коллекций">
     <header className={styles.heading}><BookOpen size={22} aria-hidden="true" /><div><span>НАХОДКИ И ЗНАКОМСТВА</span><h2>Книга коллекций</h2></div><strong>{total}/{BOOK_COLLECTION_COUNT}</strong></header>
@@ -37,7 +43,7 @@ export function WorldCollections({ state, economy, gifts }: { state: WorldState;
       const Icon = chapterIcons[entry.id];
       return <button key={entry.id} type="button" ref={button => { buttons.current[position] = button; }} role="tab"
         id={`collection-tab-${entry.id}`} aria-controls={`collection-page-${entry.id}`} aria-selected={chapter === entry.id}
-        tabIndex={chapter === entry.id ? 0 : -1} onClick={() => setChapter(entry.id)} onKeyDown={event => onChapterKey(event, position)}>
+        tabIndex={chapter === entry.id ? 0 : -1} onClick={() => changeChapter(entry.id)} onKeyDown={event => onChapterKey(event, position)}>
         <Icon size={17} aria-hidden="true" />{entry.title}
       </button>;
     })}</div>
@@ -55,7 +61,7 @@ export function WorldCollections({ state, economy, gifts }: { state: WorldState;
           <h4>{entry.illustration === "item" && !entry.owned ? "Неизвестная рыба" : entry.name}</h4>{entry.rarity && <FishRarityBadge rarity={entry.rarity} />}<p>{entry.owned ? entry.description : entry.source}</p><small>{entry.owned ? "Записано в книге" : "Ещё не найдено"}</small>
         </article>)}</div>
         {chapter === "fishing" && legacyRiverFinds.length > 0 && <details className={styles.archive}><summary>Прежние речные находки · {legacyRiverFinds.length}/6</summary><p>Ваши находки из прежних путешествий сохранены.</p><div>{legacyRiverFinds.map(find => <span key={find.id}><CollectionIcon findId={find.id} size={30} />{find.name}</span>)}</div></details>}
-        <footer className={styles.footer}><button type="button" disabled={index === 0} onClick={() => setChapter(COLLECTION_CHAPTERS[index - 1].id)} aria-label="Предыдущая глава"><ChevronLeft size={16} />Назад</button><span>{index + 1} / {COLLECTION_CHAPTERS.length}</span><button type="button" disabled={index === COLLECTION_CHAPTERS.length - 1} onClick={() => setChapter(COLLECTION_CHAPTERS[index + 1].id)} aria-label="Следующая глава">Далее<ChevronRight size={16} /></button></footer>
+        <footer className={styles.footer}><button type="button" disabled={index === 0} onClick={() => changeChapter(COLLECTION_CHAPTERS[index - 1].id)} aria-label="Предыдущая глава"><ChevronLeft size={16} />Назад</button><span>{index + 1} / {COLLECTION_CHAPTERS.length}</span><button type="button" disabled={index === COLLECTION_CHAPTERS.length - 1} onClick={() => changeChapter(COLLECTION_CHAPTERS[index + 1].id)} aria-label="Следующая глава">Далее<ChevronRight size={16} /></button></footer>
       </div>
     </div>
     {(state.inventory.includes("explorer_cap") || state.inventory.includes("willow_rod") || gifts.length > 0) && <p className={styles.kept}>Полученную раньше одежду можно надеть в гардеробе. Ваши прежние удочки и подарки сохранены.</p>}

@@ -21,7 +21,7 @@ import { economyBuildingDestination, economySceneJourney, economySceneProduction
 import { WORLD_PRESENTATION } from "@/features/world/scene/presentation";
 import { WorldHelp } from "@/features/world/ui/help/world-help";
 import type { WorldHelpContext, WorldHelpTarget } from "@/features/world/ui/help/world-help-types";
-import { WorldProfileMenu, type WorldProfileTab } from "@/features/world/ui/profile/world-profile-menu";
+import { WorldProfileMenu, type WorldProfileDestination } from "@/features/world/ui/profile/world-profile-menu";
 import { ForestSessionNotice } from "@/features/world/ui/feedback/forest-session-notice";
 import { WorldFoodMenu } from "@/features/economy/ui/food/world-food-menu";
 import { WorldPantryMenu } from "@/features/economy/ui/inventory/world-pantry-menu";
@@ -62,7 +62,7 @@ export default function WorldView({ open, world, economy, ownerPublicId, timeZon
   const [quickMenu, setQuickMenu] = useState<QuickMenu | null>(null);
   const [foodEntry, setFoodEntry] = useState<{ tab: "meals" | "orders"; residentId?: "plesk" | "builder"; request: number }>({ tab: "meals", request: 0 });
   const [helpEntry, setHelpEntry] = useState<{ context?: WorldHelpContext; topicId?: string; request: number }>({ request: 0 });
-  const [profileEntry, setProfileEntry] = useState<{ tab: WorldProfileTab; request: number }>({ tab: "profile", request: 0 });
+  const [profileEntry, setProfileEntry] = useState<{ tab: WorldProfileDestination; request: number }>({ tab: "profile", request: 0 });
   const lastHelpContext = useRef<WorldHelpContext | undefined>(undefined);
   const rememberHelpContext = useCallback((context: WorldHelpContext) => { lastHelpContext.current = context; }, []);
   const navigatingHelp = useRef(false);
@@ -121,7 +121,7 @@ export default function WorldView({ open, world, economy, ownerPublicId, timeZon
     setQuickMenu(null); setCharactersOpen(false);
     if (quickReturn.current?.isConnected) quickReturn.current.focus({ preventScroll: true });
   }, []);
-  const openQuick = useCallback((next: QuickMenu, sector: SectorId = "forest", profileTab: WorldProfileTab = "profile") => {
+  const openQuick = useCallback((next: QuickMenu, sector: SectorId = "forest", profileTab: WorldProfileDestination = "profile") => {
     quickReturn.current = worldElement.current?.querySelector<HTMLElement>(`[data-world-quick="${next === "food" ? "more" : next}"]`) ?? null;
     if (next === "profile") setProfileEntry(value => ({ tab: profileTab, request: value.request + 1 }));
     if (next === "expeditions") { setExpeditionSector(sector); setExpeditionOpenRequest(value => value + 1); }
@@ -157,7 +157,7 @@ export default function WorldView({ open, world, economy, ownerPublicId, timeZon
     if (!quickMenu) return;
     const outside = (event: PointerEvent) => {
       if (quickUpgrade || dailyOpen || !(event.target instanceof Element) || quickFrame.current?.contains(event.target)
-        || event.target.closest("[data-world-quick], [data-meal-picker], [data-audio-settings], [data-audio-settings-overlay]")) return;
+        || event.target.closest("[data-world-quick], [data-meal-picker], [data-audio-settings], [data-audio-settings-overlay], [data-world-mood], [data-world-mood-overlay]")) return;
       setQuickMenu(null);
     };
     document.addEventListener("pointerdown", outside);
@@ -176,6 +176,8 @@ export default function WorldView({ open, world, economy, ownerPublicId, timeZon
     if (!escapeHandlerRef) return;
     // Radix handles Escape in document capture, before a popover's own key handler.
     escapeHandlerRef.current = () => {
+      const moodClose = document.querySelector<HTMLButtonElement>("[data-world-mood-close]");
+      if (moodClose) { moodClose.click(); return true; }
       const audioClose = document.querySelector<HTMLButtonElement>("[data-audio-settings-close]");
       if (audioClose) { audioClose.click(); return true; }
       const mealClose = document.querySelector<HTMLButtonElement>("[data-meal-picker] [data-meal-picker-close]");

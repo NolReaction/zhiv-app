@@ -13,24 +13,28 @@ const { AudioSettingsControls } = await vite.ssrLoadModule("/features/audio/ui/a
 const { DEFAULT_AUDIO_SETTINGS } = await vite.ssrLoadModule("/features/audio/domain/settings.ts");
 
 function controls(settings = DEFAULT_AUDIO_SETTINGS, state = "locked") {
-  const calls = { changes: [], enables: 0, resumes: 0, resets: 0 };
-  const tree = AudioSettingsControls({ id: "audio-test", diagnostics: { state, settings }, busy: false, feedback: "", onChange: patch => calls.changes.push(patch), onEnable: () => calls.enables++, onResume: () => calls.resumes++, onReset: () => calls.resets++ });
+  const calls = { changes: [], enables: 0, resumes: 0, resets: 0, sliderFeedback: [] };
+  const tree = AudioSettingsControls({ id: "audio-test", diagnostics: { state, settings }, busy: false, feedback: "", onChange: patch => calls.changes.push(patch), onEnable: () => calls.enables++, onResume: () => calls.resumes++, onReset: () => calls.resets++, onSliderFeedback: (bus, volume) => calls.sliderFeedback.push({ bus, volume, latestPatch: calls.changes.at(-1) }) });
   const nodes = [];
   function walk(element) { if (!isValidElement(element)) return; nodes.push(element); Children.forEach(element.props.children, walk); }
   walk(tree);
   return { calls, nodes, markup: renderToStaticMarkup(tree) };
 }
 
-test("sound settings expose labelled master and five category sliders without playing on render", () => {
+test("sound settings expose labelled master and six category sliders without playing on render", () => {
   const view = controls();
   assert.equal(view.calls.enables, 0);
   assert.deepEqual(view.calls.changes, []);
+  assert.deepEqual(view.calls.sliderFeedback, []);
   assert.match(view.markup, /role="switch" aria-checked="false" aria-label="Звуки игры"/);
-  assert.equal((view.markup.match(/type="range"/g) ?? []).length, 6);
-  for (const channel of ["master", "music", "ambience", "world", "characters", "ui"]) {
+  assert.equal((view.markup.match(/type="range"/g) ?? []).length, 7);
+  for (const channel of ["master", "music", "ambience", "weather", "world", "characters", "ui"]) {
     assert.ok(view.markup.includes(`for="audio-test-${channel}"`));
     assert.ok(view.markup.includes(`id="audio-test-${channel}"`));
   }
+  assert.match(view.markup, /Лес и вода/);
+  assert.match(view.markup, /Погода/);
+  assert.doesNotMatch(view.markup, /Лес, вода и погода/);
   assert.doesNotMatch(view.markup, /pending|assets|AudioContext|Продолжить воспроизведение/);
   view.nodes.find(node => node.props.role === "switch").props.onClick();
   assert.equal(view.calls.enables, 1);
@@ -58,6 +62,23 @@ test("volume reset is available while muted and never unlocks playback", () => {
   assert.equal(view.calls.enables, 0);
   assert.equal(view.calls.resumes, 0);
   assert.deepEqual(view.calls.changes, []);
+  assert.deepEqual(view.calls.sliderFeedback, []);
+});
+
+test("slider gestures update the chosen setting before requesting feedback", () => {
+  const view = controls({ ...DEFAULT_AUDIO_SETTINGS, enabled: true }, "running");
+  for (const channel of ["master", "music", "ambience", "weather", "world", "characters", "ui"]) {
+    const slider = view.nodes.find(node => node.props.id === `audio-test-${channel}`);
+    const before = view.calls.changes.length;
+    slider.props.onChange(.71);
+    slider.props.onChange(0);
+    assert.equal(view.calls.changes.length, before + 2);
+    const patch = volume => channel === "master" ? { master: volume } : { buses: { [channel]: volume } };
+    assert.deepEqual(view.calls.sliderFeedback.slice(-2), [
+      { bus: channel, volume: .71, latestPatch: patch(.71) },
+      { bus: channel, volume: 0, latestPatch: patch(0) },
+    ]);
+  }
 });
 
 function eventSurface() {

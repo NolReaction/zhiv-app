@@ -1,6 +1,6 @@
 /** Audio contracts contain no browser, React or world state dependencies. */
-export type AudioBus = "music" | "ambience" | "world" | "characters" | "ui";
-export const AUDIO_BUSES: readonly AudioBus[] = ["music", "ambience", "world", "characters", "ui"];
+export type AudioBus = "music" | "ambience" | "weather" | "world" | "characters" | "ui";
+export const AUDIO_BUSES: readonly AudioBus[] = ["music", "ambience", "weather", "world", "characters", "ui"];
 export type AudioPoint = { x: number; y: number };
 export type AudioSettings = { enabled: boolean; master: number; buses: Record<AudioBus, number> };
 export type AudioLicense = { name: string; url: string; author: string; sourceUrl: string; acquiredAt: string; changes: string; attribution: string };
@@ -19,6 +19,7 @@ export type AudioListenerFrame = { position: AudioPoint; viewportWidth: number; 
 export type AudioLoopTarget = { id: string; cueId: string; gain: number; pan: number; priority?: number };
 export type AudioEvent = {
   id: string; cueId: string; gain?: number; pan?: number; occurredAt?: number;
+  playbackRate?: number; feedbackBus?: AudioBus | "master";
 };
 export type AudioSourceDebug = { id: string; cueId: string; gain: number; pan: number; reason: string };
 export type AudioFrame = {

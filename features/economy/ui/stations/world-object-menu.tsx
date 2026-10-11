@@ -3,6 +3,8 @@
 import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
 import { ArrowLeft, ArrowRight, Check, ChevronDown, ChevronUp, CircleHelp, Clock3, Fence, Flame, Hammer, House, LockKeyhole, Minus, Package, Pickaxe, Plus, RefreshCw, Sprout, TowerControl, Trees, X, type LucideIcon } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
+import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
+import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import type { MapObjectSelection, WorldPlace } from "@/features/world/scene/map-engine";
 import type { WorldHelpContext } from "@/features/world/ui/help/world-help-types";
 import type { EconomyView } from "@/features/economy/domain/model";
@@ -235,7 +237,11 @@ function ObjectMenuBody({ selection, economy, isOnline, onClose, onReturnFocus, 
     return () => { observer.disconnect(); if (previous instanceof HTMLElement && previous.isConnected && element.contains(document.activeElement)) previous.focus({ preventScroll: true }); };
   }, [showMenu, definition.future]);
 
-  function chooseStation(id: string) { setStationId(id); setRecipeId(null); setSaleItem(null); setUpgradeStation(id === "home" ? "home" : null); if (menuBody.current) menuBody.current.scrollTop = 0; }
+  function chooseStation(id: string) {
+    if (id !== stationId) playUiCue(getAudioRuntime(), "ui.tab");
+    setStationId(id); setRecipeId(null); setSaleItem(null); setUpgradeStation(id === "home" ? "home" : null);
+    if (menuBody.current) menuBody.current.scrollTop = 0;
+  }
   const openHelp = onOpenHelp ? (context: WorldHelpContext) => { navigating.current = true; setUpgradeStation(null); onOpenHelp(context); } : undefined;
   function openUpgrade() { upgradeTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setUpgradeStation(stationId); }
   function closeUpgrade() { if (stationId === "home") onClose(); else setUpgradeStation(null); }

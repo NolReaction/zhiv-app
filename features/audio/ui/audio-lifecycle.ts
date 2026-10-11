@@ -1,12 +1,26 @@
-import type { AudioRuntime } from "@/features/audio/domain/types";
+import type { AudioBus, AudioRuntime } from "@/features/audio/domain/types";
 
-const UI_CUES = new Set(["ui.click", "ui.open", "ui.close", "ui.confirm", "ui.error", "ui.reward"]);
+const UI_CUES = new Set(["ui.click", "ui.open", "ui.close", "ui.tab", "ui.confirm", "ui.error", "ui.reward"]);
 let uiEventSequence = 0;
 
 /** A semantic event is emitted once; input, hover and animation frames never trigger it. */
 export function playUiCue(runtime: AudioRuntime, cueId: string) {
   if (!UI_CUES.has(cueId)) return;
   runtime.play({ id: `ui:${++uiEventSequence}`, cueId, occurredAt: Date.now() });
+}
+
+/** User-driven slider feedback shares the UI mixer and its cooldown, never a
+ * separate preview context. Lower levels sound lower; zero remains silent. */
+export function playVolumeFeedback(runtime: AudioRuntime, bus: AudioBus | "master", value: number) {
+  if (!Number.isFinite(value) || value <= 0) return;
+  const level = Math.min(1, value);
+  const settings = runtime.getSettings();
+  if (!settings.enabled || settings.master <= 0 || settings.buses.ui <= 0
+    || (bus !== "master" && settings.buses[bus] <= 0)) return;
+  runtime.play({ id: `ui:${++uiEventSequence}`, cueId: "ui.slider", occurredAt: Date.now(),
+    feedbackBus: bus, playbackRate: .88 + level * .3,
+    // Master and UI already scale this voice in the mixer.
+    gain: bus === "master" || bus === "ui" ? .65 : level * .65 });
 }
 
 /** Only an explicit data attribute opts a button into delegated audio. */

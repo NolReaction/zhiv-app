@@ -70,6 +70,72 @@ function fixture(cueList = [cue("tap"), cue("river", "loop")], options = {}) {
   return { runtime, context, requests, media, advance: amount => { time += amount; }, get contextCount() { return contextCount; } };
 }
 
+test("slider feedback varies pitch and respects the edited channel even in a music-only menu", async () => {
+  const f = fixture([cue("ui.slider", "one-shot", { bus: "ui", cooldownMs: 90, pitchVariation: 0 })]);
+  await f.runtime.unlock(); f.runtime.updateFrame(frame([], { soundscape: false }));
+  f.runtime.play({ id: "slider-low", cueId: "ui.slider", feedbackBus: "weather", playbackRate: .94 });
+  await flush(); assert.equal(f.context.started.length, 1); assert.equal(f.context.started[0].playbackRate.value, .94);
+  f.advance(100);
+  f.runtime.play({ id: "slider-high", cueId: "ui.slider", feedbackBus: "weather", playbackRate: 1.12 });
+  await flush(); assert.equal(f.context.started.length, 2); assert.equal(f.context.started[1].playbackRate.value, 1.12);
+  f.runtime.setSettings({ buses: { weather: 0 } });
+  assert.equal(f.runtime.getDiagnostics().activeVoices, 0, "zero stops an in-flight slider response routed through UI");
+  f.advance(100);
+  f.runtime.play({ id: "slider-muted", cueId: "ui.slider", feedbackBus: "weather" });
+  await flush(); assert.equal(f.context.started.length, 2);
+  f.runtime.dispose();
+});
+
+test("slider feedback never catches up after a cold decode or a muted edited channel", async () => {
+  for (const action of ["mute", "stale", "superseded"]) {
+    const f = fixture([cue("ui.slider", "one-shot", { bus: "ui", cooldownMs: 90, pitchVariation: 0 })]);
+    const gate = deferred(); f.context.decode = () => gate.promise;
+    await f.runtime.unlock();
+    f.runtime.play({ id: "slider-pending", cueId: "ui.slider", feedbackBus: "weather" });
+    await flush();
+    if (action === "mute") f.runtime.setSettings({ buses: { weather: 0 } });
+    if (action === "stale") f.advance(181);
+    if (action === "superseded") {
+      f.advance(10);
+      f.runtime.play({ id: "slider-newer", cueId: "ui.slider", feedbackBus: "weather", playbackRate: 1.1 });
+    }
+    gate.resolve({ length: 44100, numberOfChannels: 1, duration: 1 });
+    await flush(); assert.equal(f.context.started.length, 0, action);
+    f.runtime.dispose();
+  }
+});
+
+test("slider feedback is bounded during rapid dragging and never bypasses UI or master mute", async () => {
+  const f = fixture([cue("ui.slider", "one-shot", { bus: "ui", cooldownMs: 90, pitchVariation: 0 })]);
+  await f.runtime.unlock();
+  for (let index = 0; index < 100; index++) {
+    f.runtime.play({ id: `drag-${index}`, cueId: "ui.slider", feedbackBus: "weather", playbackRate: 99 });
+    await flush(); f.advance(10);
+  }
+  assert.ok(f.context.started.length <= 12);
+  assert.ok(f.context.started.every(source => source.playbackRate.value === 1.18));
+  const count = f.context.started.length;
+  f.runtime.setSettings({ buses: { ui: 0 } }); f.advance(100);
+  f.runtime.play({ id: "ui-muted", cueId: "ui.slider", feedbackBus: "weather" });
+  f.runtime.setSettings({ buses: { ui: .35 }, master: 0 }); f.advance(100);
+  f.runtime.play({ id: "master-muted", cueId: "ui.slider", feedbackBus: "weather" });
+  await flush(); assert.equal(f.context.started.length, count);
+  f.runtime.dispose();
+});
+
+test("centred explicit hero replies still honour the character bus, global mute and map scope", async () => {
+  for (const setting of [{ buses: { characters: 0 } }, { master: 0 }, { enabled: false }, null]) {
+    const f = fixture([], { catalog: AUDIO_CATALOG });
+    await f.runtime.unlock();
+    if (setting) f.runtime.setSettings(setting);
+    else f.runtime.updateFrame(frame([], { soundscape: false }));
+    f.runtime.play({ id: "clicked-hero", cueId: "actor.mochlik.greeting", gain: 1, pan: 0 });
+    await flush(); assert.equal(f.context.started.length, 0);
+    assert.equal(f.requests.length, 0);
+    f.runtime.dispose();
+  }
+});
+
 // Every fixture is disposed so timers/voices cannot leak between otherwise independent cases.
 test("SSR and disabled runtime allocate no context, fetches or singleton account state", async () => {
   assert.notEqual(getAudioRuntime(), getAudioRuntime());
@@ -664,4 +730,60 @@ test("DEV audition releases a loop no longer requested by the scene at the deadl
   assert.equal(f.runtime.getDiagnostics().activeVoices, 1);
   t.mock.timers.tick(4000);
   assert.equal(f.runtime.getDiagnostics().activeVoices, 0); f.runtime.dispose();
+});
+
+test("weather mute leaves river and wildlife audible across camera movement and entry", async () => {
+  const ids = ["weather.wind", "weather.rain", "forest.day", "river"];
+  const cues = ids.map(id => AUDIO_CATALOG.cues.find(item => item.id === id));
+  const f = fixture(cues, { initialSettings: { ...DEFAULT_AUDIO_SETTINGS, enabled: true,
+    buses: { ...DEFAULT_AUDIO_SETTINGS.buses, weather: 0 } } });
+  await f.runtime.unlock();
+  f.runtime.updateFrame(frame([], { soundscape: false }));
+  for (let index = 0; index < 120; index++) {
+    f.runtime.updateFrame(frame(ids.map(id => target(id, id, .2 + index / 150)), { ownerId: "map", soundscape: true }));
+  }
+  await flush();
+  assert.equal(f.context.started.length, 2);
+  assert.deepEqual(f.requests.map(request => request.url).sort(), ["/audio/forest.day.01.wav", "/audio/river.01.wav"]);
+  f.runtime.setSettings({ buses: { ambience: 0, weather: .3 } }); await flush();
+  assert.equal(f.context.started.length, 4, "weather can be enabled independently of forest/water");
+  assert.deepEqual(f.requests.slice(2).map(request => request.url).sort(), ["/audio/weather.rain.01.wav", "/audio/weather.wind.01.wav"]);
+  f.runtime.dispose();
+});
+
+test("muting weather during wind decode prevents delayed sound and later camera retries", async () => {
+  const wind = AUDIO_CATALOG.cues.find(item => item.id === "weather.wind");
+  const f = fixture([wind]); const gate = deferred(); f.context.decode = () => gate.promise;
+  await f.runtime.unlock();
+  f.runtime.updateFrame(frame([target("weather", "weather.wind")], { soundscape: true })); await flush();
+  assert.equal(f.requests.length, 1);
+  f.runtime.setSettings({ buses: { weather: 0 } });
+  gate.resolve({ length: 48000, numberOfChannels: 1, duration: 1 }); await flush();
+  for (let index = 0; index < 120; index++) {
+    f.runtime.updateFrame(frame([target("weather", "weather.wind", .9)], { soundscape: true }));
+  }
+  await flush();
+  assert.equal(f.context.started.length, 0);
+  f.runtime.updateFrame(frame([], { soundscape: false }));
+  f.runtime.updateFrame(frame([target("weather", "weather.wind")], { soundscape: true })); await flush();
+  assert.equal(f.context.started.length, 0, "re-entering the map cannot restore a muted weather bus");
+  f.runtime.dispose();
+});
+
+test("weather fades on map exit and cannot start above the menu", async () => {
+  const wind = AUDIO_CATALOG.cues.find(item => item.id === "weather.wind");
+  const f = fixture([wind]); await f.runtime.unlock();
+  const loops = [target("weather", "weather.wind")];
+  f.runtime.updateFrame(frame(loops, { soundscape: false })); await flush();
+  assert.equal(f.requests.length, 0, "music-only scope guards weather even if a stale target exists");
+  f.runtime.updateFrame(frame(loops, { soundscape: true })); await flush();
+  assert.equal(f.context.started.length, 1);
+  const playingWind = f.context.started[0];
+  f.runtime.updateFrame(frame([], { soundscape: false }));
+  assert.equal(playingWind.connected[0].gain.value, 0);
+  assert.equal(playingWind.disconnected, false, "map exit schedules the authored fade");
+  f.runtime.updateFrame(frame(loops, { soundscape: false })); await flush();
+  assert.equal(f.context.started.length, 1);
+  assert.equal(playingWind.connected[0].gain.value, 0);
+  f.runtime.dispose();
 });

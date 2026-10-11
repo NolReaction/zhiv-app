@@ -50,15 +50,28 @@ test("real application catalog and CLI validate the current assets", () => {
   assert.equal(unknown.status, 1);
 });
 
-test("natural map beds share the environmental volume while water actions remain gameplay sounds", () => {
+test("frequent navigation feedback has independent throttling and no random pitch wobble", () => {
+  const catalog = JSON.parse(readFileSync(new URL("../features/audio/catalog/audio-catalog.json", import.meta.url), "utf8"));
+  for (const id of ["ui.open", "ui.close", "ui.tab", "ui.slider"]) {
+    const cue = catalog.cues.find(item => item.id === id);
+    assert.equal(cue?.bus, "ui", id);
+    assert.equal(cue?.mode, "one-shot", id);
+    assert.equal(cue?.pitchVariation, 0, `${id}: intentional pitch only`);
+    assert.ok(cue.cooldownMs >= 90 && cue.cooldownMs <= 180, `${id}: quiet and responsive`);
+    assert.ok(cue.maxInstances <= 2, `${id}: bounded overlap`);
+  }
+});
+
+test("forest and river share environmental volume while wind and rain have independent weather control", () => {
   const catalog = JSON.parse(readFileSync(new URL("../features/audio/catalog/audio-catalog.json", import.meta.url), "utf8"));
   const cue = id => catalog.cues.find(item => item.id === id);
-  for (const id of ["forest.day", "forest.night", "weather.rain", "river"]) {
-    assert.equal(cue(id)?.bus, "ambience", `${id} must obey the forest/weather slider even near a spatial source`);
+  for (const id of ["forest.day", "forest.night", "river", "weather.wind", "weather.rain"]) {
+    assert.equal(cue(id)?.bus, id.startsWith("weather.") ? "weather" : "ambience", `${id} must obey its own nature/weather slider even near a spatial source`);
     assert.equal(cue(id)?.mode, "loop");
     assert.equal(cue(id)?.maxInstances, 1, "continuous environmental beds cannot layer detuned copies");
     assert.equal(cue(id)?.pitchVariation, 0);
   }
+  assert.ok(cue("weather.wind").gainDb <= -8, "wind stays restrained even with old or raised user volumes");
   for (const id of ["action.fish.splash", "action.water.pour"]) {
     assert.equal(cue(id)?.bus, "world", `${id} is a visible action, independent of the continuous water bed`);
     assert.equal(cue(id)?.mode, "one-shot");

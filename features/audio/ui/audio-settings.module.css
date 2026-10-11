@@ -11,10 +11,10 @@
 .masterSwitch > span { display: grid; gap: 4px; }
 .masterSwitch strong { font-size: 15px; }
 .masterSwitch small { color: var(--audio-muted, #c3ceaf); font-size: 12px; }
-.switch { width: 60px; height: 44px; flex: 0 0 60px; padding: 7px; background: #374738; border: 1px solid #7f9077; border-radius: 24px; cursor: pointer; }
-.switch span { display: block; width: 26px; height: 26px; border-radius: 50%; background: #dfe5d3; transition: transform 130ms ease; }
+.switch { position: relative; display: block; box-sizing: border-box; appearance: none; width: 60px; min-width: 60px; height: 44px; flex: 0 0 60px; padding: 0; background: #374738; border: 1px solid #7f9077; border-radius: 24px; cursor: pointer; }
+.switch span { position: absolute; display: block; left: 7px; top: 8px; width: 26px; height: 26px; margin: 0; border-radius: 50%; background: #dfe5d3; transition: transform 130ms ease; pointer-events: none; }
 .switch[aria-checked="true"] { background: #537448; border-color: #b5d18f; }
-.switch[aria-checked="true"] span { transform: translateX(17px); }
+.switch[aria-checked="true"] span { transform: translateX(18px); }
 .switch:disabled { cursor: wait; opacity: .55; }
 .hint { margin: -6px 0 0; color: var(--audio-muted, #bec9b0); line-height: 1.5; font-size: 12px; }
 .volume { display: grid; gap: 5px; min-width: 0; font-size: 13px; }

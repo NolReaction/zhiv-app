@@ -240,7 +240,9 @@ test("timers, production slots and prices derive from gameplay catalogs", () => 
 });
 
 test("profile guidance distinguishes mood, food, friends and future profile links", () => {
-  assert.match(answer("level"), /«Профиль».*«Настроение».*«Друзья»/);
+  assert.match(answer("level"), /«Профиль».*«Друзья».*шестерёнка настроек/);
+  assert.match(answer("level"), /Как Мохлик\?/);
+  assert.doesNotMatch(answer("level"), /«Настроение»/);
   assert.match(answer("mochlik-life"), /офлайн силы не расходуются/);
   assert.match(answer("mochlik-life"), /Настроение не заменяет сытость/);
   assert.match(answer("friend-profile"), /Карточки новой вкладки пока не открывают чужой профиль/);

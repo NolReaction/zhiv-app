@@ -8,6 +8,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 const { WorldExpeditionsMenu, WorldExpeditionSector, ExpeditionRouteDetails, ActiveExpedition, expeditionCancellationKey, expeditionSector, expeditionSectors } = await vite.ssrLoadModule("/features/economy/ui/expeditions/world-expeditions-menu.tsx");
+const { getAudioRuntime } = await vite.ssrLoadModule("/features/audio/runtime/audio-service.ts");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const { Work } = await vite.ssrLoadModule("/features/economy/ui/shared/world-economy-parts.tsx");
@@ -769,5 +770,36 @@ test("equipment selectors and departure honor receipt recovery, cooldown and sta
     assert.equal(view.rod.props.disabled, true); assert.equal(view.hook.props.disabled, true); assert.equal(view.bait.props.disabled, true); assert.equal(view.start.props.disabled, true);
     view.rod.props.onChange({ target: { value: "river_rod" } }); view.hook.props.onChange({ target: { value: "barbed_hook" } }); view.bait.props.onChange({ target: { value: "worm_bait" } }); view.start.props.onClick();
     assert.deepEqual(view.calls, []);
+  }
+});
+
+
+test("travel sectors only emit a soft tab cue for a changed destination", () => {
+  const previousWindow = globalThis.window;
+  globalThis.window = { navigator: {}, localStorage: { getItem() { return null; }, setItem() {} } };
+  const runtime = getAudioRuntime(), events = [];
+  const originalPlay = runtime.play;
+  runtime.play = event => events.push(event);
+  try {
+    let tree;
+    function Probe() { tree = WorldExpeditionsMenu({ economy: controller(), onOpenPantry() {} }); return tree; }
+    renderToStaticMarkup(createElement(Probe));
+    const sectors = new Map();
+    function walk(element) {
+      if (!isValidElement(element)) return;
+      if (element.props["data-sector-select"]) sectors.set(element.props["data-sector-select"], element);
+      Children.forEach(element.props.children, walk);
+    }
+    walk(tree);
+    sectors.get("forest").props.onClick();
+    assert.deepEqual(events, [], "reselecting the open sector is silent");
+    sectors.get("shore").props.onClick();
+    assert.deepEqual(events.map(event => event.cueId), ["ui.tab"]);
+    assert.ok([...sectors.values()].every(element => element.props["data-audio-cue"] === undefined), "no delegated duplicate");
+  } finally {
+    runtime.play = originalPlay;
+    runtime.dispose();
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
   }
 });

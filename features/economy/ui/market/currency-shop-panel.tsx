@@ -3,6 +3,8 @@
 import { useId, useRef, useState } from "react";
 import { ArrowRight, Coins, Gem, House, Sprout } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
+import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
+import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import type { EconomyView } from "@/features/economy/domain/model";
 import { currencyShopDevelopment, currencyShopGoldOffers, PEARL_SHOP_PACKAGES } from "@/features/economy/domain/currency-shop";
 import { formatPearls } from "@/features/economy/domain/money";
@@ -23,6 +25,11 @@ export function CurrencyShopPanel({ state }: { state: EconomyView | null }) {
   const [page, setPage] = useState<ShopPage>("pearls");
   const id = useId(), tabs = useRef<Array<HTMLButtonElement | null>>([]);
   const development = state ? currencyShopDevelopment(state) : null;
+  function changePage(next: ShopPage) {
+    if (next === page) return;
+    playUiCue(getAudioRuntime(), "ui.tab");
+    setPage(next);
+  }
   return <section className={styles.shop} aria-label="Магазин валют">
     <header className={styles.intro}>
       <span className={styles.seal}><Gem size={27} aria-hidden="true" /></span>
@@ -31,14 +38,14 @@ export function CurrencyShopPanel({ state }: { state: EconomyView | null }) {
     <div className={styles.tabs} role="tablist" aria-label="Разделы магазина">{pages.map((entry, index) => <button
       key={entry.id} type="button" ref={node => { tabs.current[index] = node; }} id={`${id}-${entry.id}`} role="tab"
       aria-selected={page === entry.id} aria-controls={`${id}-page`} tabIndex={page === entry.id ? 0 : -1}
-      onClick={() => setPage(entry.id)} onKeyDown={event => {
+      onClick={() => changePage(entry.id)} onKeyDown={event => {
         let next: number;
         if (event.key === "ArrowRight") next = (index + 1) % pages.length;
         else if (event.key === "ArrowLeft") next = (index + pages.length - 1) % pages.length;
         else if (event.key === "Home") next = 0;
         else if (event.key === "End") next = pages.length - 1;
         else return;
-        event.preventDefault(); setPage(pages[next].id); tabs.current[next]?.focus();
+        event.preventDefault(); changePage(pages[next].id); tabs.current[next]?.focus();
       }}><entry.icon size={18} aria-hidden="true" />{entry.label}</button>)}</div>
     <p className={styles.preview} id={`${id}-preview`}>Витрина готовится к открытию. Покупки и обмен пока недоступны. Пакеты и бонусы ещё уточняются.</p>
     <div className={styles.page} role="tabpanel" id={`${id}-page`} aria-labelledby={`${id}-${page}`} tabIndex={0}>

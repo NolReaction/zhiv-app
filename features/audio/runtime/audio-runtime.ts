@@ -11,13 +11,14 @@ const MAX_EVENT_IDS = 512;
 const DEDUP_TTL_MS = 60_000;
 const STREAM_RETRY_MS = 30_000;
 const MAX_LOOP_TIMELINES = 128;
-const SOUNDSCAPE_BUSES = new Set<AudioBus>(["ambience", "world", "characters"]);
+const SOUNDSCAPE_BUSES = new Set<AudioBus>(["ambience", "weather", "world", "characters"]);
 
 type Voice = {
   key: string; serial: number; cue: AudioCue; assetId: string; priority: number;
   gain: GainNode; panner: StereoPannerNode | null; source: AudioBufferSourceNode | MediaElementAudioSourceNode | OscillatorNode;
   media: HTMLAudioElement | null; createdAt: number; timer: ReturnType<typeof setTimeout> | null;
   stopped: boolean; reclaimable: boolean; sceneId: string | null;
+  feedbackBus?: AudioEvent["feedbackBus"];
 };
 type PendingLoop = { cueId: string; generation: number };
 type ParameterRamp = { from: number; target: number; start: number; end: number };
@@ -66,6 +67,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
   let audition = 0;
   let borrowedPreview: { voice: Voice; timer: ReturnType<typeof setTimeout> } | null = null;
   let lastEvent: string | null = null;
+  let latestSliderRequest = 0;
   let droppedEvents = 0;
   let loopStarts = 0;
   let musicStarts = 0;
@@ -118,6 +120,9 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
   function audible(bus?: AudioBus) {
     return !disposed && visible && settings.enabled && settings.master > 0 && context?.state === "running"
       && (!bus || settings.buses[bus] > 0 && (frame?.soundscape !== false || !SOUNDSCAPE_BUSES.has(bus)));
+  }
+  function feedbackAudible(bus?: AudioEvent["feedbackBus"]) {
+    return bus === undefined || bus === "master" ? settings.master > 0 : settings.buses[bus] > 0;
   }
   function ramp(param: AudioParam, target: number, seconds: number) {
     if (!context) return;
@@ -279,7 +284,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
     }, 4000) };
     return true;
   }
-  function startBuffer(key: string, cue: AudioCue, asset: AudioAsset, buffer: AudioBuffer, gain: number, pan: number, priority: number) {
+  function startBuffer(key: string, cue: AudioCue, asset: AudioAsset, buffer: AudioBuffer, gain: number, pan: number, priority: number, playbackRate = 1, feedbackBus?: AudioEvent["feedbackBus"]) {
     if (!audible(cue.bus) || !roomFor(cue, priority)) return false;
     const source = context!.createBufferSource();
     source.buffer = buffer;
@@ -288,7 +293,8 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
       source.loopStart = finiteClamp(asset.loopStart ?? 0, 0, Math.max(0, buffer.duration - .01));
       source.loopEnd = finiteClamp(asset.loopEnd ?? buffer.duration, source.loopStart + .01, buffer.duration, buffer.duration);
     }
-    source.playbackRate.value = 1 + (finiteClamp(random(), 0, 1) * 2 - 1) * finiteClamp(cue.pitchVariation, 0, .08);
+    source.playbackRate.value = finiteClamp(playbackRate, .88, 1.18, 1)
+      * (1 + (finiteClamp(random(), 0, 1) * 2 - 1) * finiteClamp(cue.pitchVariation, 0, .08));
     let offset = 0;
     if (source.loop && key.startsWith("loop:")) {
       const previous = loopTimelines.get(key);
@@ -302,6 +308,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
       }
     }
     const voice = wireVoice(key, cue, asset.id, source, null, priority);
+    voice.feedbackBus = feedbackBus;
     tune(voice, gain, pan);
     try { source.start(0, offset); } catch { cleanup(voice); return false; }
     if (source.loop) loopStarts++;
@@ -472,7 +479,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
       if (!settings.enabled || settings.master === 0) invalidate();
       else {
         if (AUDIO_BUSES.some(bus => previous.buses[bus] > 0 && settings.buses[bus] === 0)) { generation++; pendingLoops.clear(); pendingEvents.clear(); }
-        for (const voice of [...voices.values(), ...retiring.values()]) if (settings.buses[voice.cue.bus] === 0) {
+        for (const voice of [...voices.values(), ...retiring.values()]) if (settings.buses[voice.cue.bus] === 0 || !feedbackAudible(voice.feedbackBus)) {
           if (voice.reclaimable) cleanup(voice); else if (voices.get(voice.key) === voice) stopVoice(voice);
         }
         reconcile();
@@ -519,13 +526,16 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
       const cue = cues.get(event.cueId);
       const time = now();
       const occurredAt = event.occurredAt ?? time;
+      const sliderRequest = cue?.id === "ui.slider" ? ++latestSliderRequest : null;
+      const feedbackBus = sliderRequest !== null ? event.feedbackBus : undefined;
       for (const [id, seenAt] of eventIds) if (time - seenAt > DEDUP_TTL_MS) eventIds.delete(id);
       if (!cue || cue.mode !== "one-shot" || !event.id || eventIds.has(event.id) || !Number.isFinite(occurredAt)
         || time - occurredAt > EVENT_TTL_MS || occurredAt - time > 1000) { droppedEvents++; publish(); return; }
       eventIds.set(event.id, time);
       while (eventIds.size > MAX_EVENT_IDS) eventIds.delete(eventIds.keys().next().value!);
       // Events while muted, backgrounded or locked are consumed, never queued for replay.
-      if (!audible(cue.bus) || time - (cooldowns.get(cue.id) ?? -Infinity) < cue.cooldownMs) { droppedEvents++; publish(); return; }
+      if (!audible(cue.bus) || !feedbackAudible(feedbackBus) || (event.gain ?? 1) <= 0
+        || time - (cooldowns.get(cue.id) ?? -Infinity) < cue.cooldownMs) { droppedEvents++; publish(); return; }
       if (pendingEvents.size >= MAX_VOICES) { droppedEvents++; publish(); return; }
       const asset = chooseAsset(cue);
       if (!asset) { droppedEvents++; publish(); return; }
@@ -538,13 +548,14 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
       loadBuffer(asset, buffer => {
         pendingEvents.delete(request);
         if (buffer && token === generation && (!SOUNDSCAPE_BUSES.has(cue.bus) || soundscapeToken === soundscapeGeneration)
-          && now() - occurredAt <= EVENT_TTL_MS) {
+          && feedbackAudible(feedbackBus) && (sliderRequest === null || sliderRequest === latestSliderRequest)
+          && now() - occurredAt <= (sliderRequest === null ? EVENT_TTL_MS : 180)) {
           // Several contacts can await the same cold download/decode. Their
           // request-time cooldowns do not prevent every callback from playing
           // at once when it finishes; enforce spacing at actual playback too.
           const startedAt = now();
           if (startedAt - (playbackCooldowns.get(cue.id) ?? -Infinity) < cue.cooldownMs
-            || !startBuffer(`event:${++sequence}`, cue, asset, buffer, event.gain ?? 1, event.pan ?? 0, cue.priority)) { droppedEvents++; publish(); }
+            || !startBuffer(`event:${++sequence}`, cue, asset, buffer, event.gain ?? 1, event.pan ?? 0, cue.priority, event.playbackRate, feedbackBus)) { droppedEvents++; publish(); }
           else playbackCooldowns.set(cue.id, startedAt);
         }
       });

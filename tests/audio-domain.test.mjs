@@ -54,7 +54,7 @@ test("malformed or partial persisted settings never enable sound or produce inva
 });
 
 test("recommended mix never replaces existing valid device preferences", () => {
-  const saved = { enabled: true, master: .92, buses: { music: 0, ambience: .21, world: .81, characters: .19, ui: .76 } };
+  const saved = { enabled: true, master: .92, buses: { music: 0, ambience: .21, weather: .13, world: .81, characters: .19, ui: .76 } };
   assert.deepEqual(sanitizeAudioSettings(saved), saved);
   const partial = sanitizeAudioSettings({ enabled: true, buses: { music: 0 } });
   assert.equal(partial.enabled, true);
@@ -62,11 +62,24 @@ test("recommended mix never replaces existing valid device preferences", () => {
   assert.equal(partial.buses.ambience, DEFAULT_AUDIO_SETTINGS.buses.ambience);
 });
 
+test("splitting saved environmental volume keeps muted and quiet weather quiet", () => {
+  for (const ambience of [0, .08, .2, .4, 1]) {
+    const settings = sanitizeAudioSettings({ enabled: true, buses: { ambience } });
+    assert.equal(settings.buses.ambience, ambience);
+    assert.equal(settings.buses.weather, Math.min(ambience, DEFAULT_AUDIO_SETTINGS.buses.weather));
+    assert.deepEqual(sanitizeAudioSettings(settings), settings, "migration remains stable after persistence");
+  }
+  const independent = sanitizeAudioSettings({ buses: { ambience: .8, weather: 0 } });
+  assert.equal(independent.buses.weather, 0);
+  assert.equal(mergeAudioSettings(independent, { buses: { ambience: 1 } }).buses.weather, 0);
+  assert.equal(sanitizeAudioSettings({ buses: { ambience: 0, weather: .7 } }).buses.weather, .7);
+});
+
 test("reset restores every volume without enabling or disabling sound", () => {
   const patch = getDefaultAudioVolumePatch();
   assert.equal(Object.hasOwn(patch, "enabled"), false);
   for (const enabled of [true, false]) {
-    const current = { enabled, master: 0, buses: { music: 1, ambience: 1, world: 0, characters: 0, ui: 1 } };
+    const current = { enabled, master: 0, buses: { music: 1, ambience: 1, weather: 0, world: 0, characters: 0, ui: 1 } };
     const reset = mergeAudioSettings(current, patch);
     assert.deepEqual(reset, { ...DEFAULT_AUDIO_SETTINGS, enabled });
     assert.equal(current.master, 0);

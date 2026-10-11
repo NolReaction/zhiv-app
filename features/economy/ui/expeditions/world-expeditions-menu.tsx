@@ -1,5 +1,7 @@
 "use client";
 
+import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
+import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { useEffect, useId, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Check, ChevronDown, CircleHelp, Clock3, Compass, Fish, Hammer, LockKeyhole, Mountain, Package, RefreshCw, Trees, type LucideIcon } from "lucide-react";
 import type { WorldHelpContext } from "@/features/world/ui/help/world-help-types";
@@ -266,6 +268,8 @@ export function WorldExpeditionsMenu({ economy, onOpenPantry, onNavigateStation,
   const mineConstruction = mineJobs.find(job => job.kind === "construction");
   const nextMineLevel = mineBuilding?.levels.find(level => level.level === mineLevel + 1);
   function selectSector(id: SectorId) {
+    if (id === currentSector) return;
+    playUiCue(getAudioRuntime(), "ui.tab");
     setSelectedSector(id);
     setSelectedRoute(null);
     setConfirmationKey(null);

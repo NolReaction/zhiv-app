@@ -15,8 +15,9 @@ from scipy import signal
 
 
 _SPECS = {
-    "forest.day.01": (10.0, "Leaves in the Sun", "Soft leaf movement with five original, low-register bird phrases.", -23.0),
-    "forest.night.01": (10.0, "The Forest Settles", "Quiet tree air and sparse, softened insect conversations.", -24.0),
+    "forest.day.01": (10.0, "Birds in the Sun", "Five original low-register bird phrases, isolated from the independently controlled wind.", -42.0),
+    "forest.night.01": (10.0, "The Forest Settles", "Sparse softened insect conversations, isolated from the independently controlled wind.", -43.0),
+    "weather.wind.01": (12.0, "Air between the Leaves", "A restrained low tree breeze with slow, shallow swells and soft leaf movement.", -32.0),
     "weather.rain.01": (8.0, "Rain through the Canopy", "A sheltered rain bed with scattered, rounded leaf droplets.", -22.0),
     "river.01": (8.0, "Water around Roots", "Flowing water, low ripples and irregular resonant bubbles.", -21.5),
     "campfire.01": (8.0, "Small Evening Fire", "A warm rolling fire with restrained little twig crackles.", -23.0),
@@ -164,7 +165,9 @@ def render(asset_id: str, sample_rate: int) -> tuple[np.ndarray, dict]:
     count = int(round(duration * sample_rate))
 
     if asset_id == "forest.day.01":
-        output = _air(count, sample_rate, rng, stereo=True, amount=0.13)
+        # Consume the original deterministic air draws so the authored wildlife
+        # phrases keep their exact timbre and timing, but do not bake in wind.
+        output = np.zeros_like(_air(count, sample_rate, rng, stereo=True, amount=0.13))
         for index, start in enumerate((0.6, 2.35, 4.9, 7.6, 9.65)):
             pitch = (1050, 770, 1240, 920, 1080)[index]
             pan = (-0.55, 0.40, -0.20, 0.65, -0.45)[index]
@@ -173,7 +176,7 @@ def render(asset_id: str, sample_rate: int) -> tuple[np.ndarray, dict]:
                 _add(output, event, start + syllable * 0.24, sample_rate, 0.034, pan)
 
     elif asset_id == "forest.night.01":
-        output = _air(count, sample_rate, rng, stereo=True, amount=0.085)
+        output = np.zeros_like(_air(count, sample_rate, rng, stereo=True, amount=0.085))
         for index, start in enumerate((0.9, 3.4, 6.9, 9.55)):
             length = 0.75 + index * 0.09
             event_count = int(length * sample_rate)
@@ -182,6 +185,12 @@ def render(asset_id: str, sample_rate: int) -> tuple[np.ndarray, dict]:
             pulses = (0.5 + 0.5 * np.sin(2.0 * np.pi * (11 + index) * time)) ** 4
             insect *= pulses * _window(event_count, 0.20)
             _add(output, insect, start, sample_rate, 0.019, (-1) ** index * 0.65)
+
+    elif asset_id == "weather.wind.01":
+        shared = _noise(count, sample_rate, rng, 90, 480, -0.35)
+        leaves = _noise(count, sample_rate, rng, 420, 1300, -0.4)
+        # A global, unpositioned bed needs no duplicate stereo buffer on phones.
+        output = (shared * 0.8 + leaves * 0.12) * _swell(count, 1, 0.4, 0.78)
 
     elif asset_id == "weather.rain.01":
         shared = _noise(count, sample_rate, rng, 120, 900, -0.1)

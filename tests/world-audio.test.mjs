@@ -11,6 +11,7 @@ const { buildWorldAudioFrame, worldAudioListener } = await vite.ssrLoadModule('/
 const { createWorldAudioMarkerTracker } = await vite.ssrLoadModule('/features/world/audio/world-audio-markers.ts');
 const { createWorldAudioController } = await vite.ssrLoadModule('/features/world/audio/world-audio-controller.ts');
 const { connectForestSession } = await vite.ssrLoadModule('/features/world/state/forest-session.ts');
+const { noticeForestSocial } = await vite.ssrLoadModule('/features/world/characters/social/forest-social.ts');
 const point = { x: 100, y: 100 };
 const emitter = (id, activation = 'production-working', extra = {}) => ({
   id, profileId: 'workshop.woodworking', position: point, activation, stationId: 'workshop', siteId: 'workshop',
@@ -111,6 +112,19 @@ test('day/night and rain are independent layers, available without a production 
   assert.equal(cue(frame, 'forest.night').length, 1);
 });
 
+test('one global wind layer keeps its key through day/night, rain and camera changes', () => {
+  let windId;
+  for (const dusk of [0, .5, 1]) for (const rain of [0, .5, 1]) {
+    const frame = buildWorldAudioFrame(scene, input({ dusk, rain, camera: { x: 450, y: 600, zoom: .5, viewportWidth: 700 } }));
+    const wind = cue(frame, 'weather.wind');
+    assert.equal(wind.length, 1);
+    windId ??= wind[0].id;
+    assert.equal(wind[0].id, windId);
+    assert.equal(wind[0].pan, 0);
+    assert.equal(wind[0].gain, 1 - rain * .35);
+  }
+});
+
 const marker = token => ({ key: 'speech', token, cueId: 'actor.mochlik.greeting', position: point, active: true });
 const markerSnapshot = (epoch, elapsed, token) => ({ epoch, elapsed, markers: [marker(token)] });
 
@@ -122,6 +136,71 @@ test('marker observer suppresses initial hydration, repeated snapshots and silen
   assert.equal(tracker.sample(markerSnapshot(epoch, 1.05, 'new'), listener, 'session', now).length, 0);
   assert.equal(tracker.sample(markerSnapshot(epoch, 1.05, 'muted'), listener, 'session', now, false).length, 0);
   assert.equal(tracker.sample(markerSnapshot(epoch, 1.1, 'muted'), listener, 'session', now).length, 0);
+});
+
+test('direct replies use one centred character cue at every camera distance and zoom', () => {
+  for (const speaker of ['mochlik', 'builder', 'plesk']) for (const camera of [
+    { ...point, zoom: 2, viewportWidth: 700 },
+    { x: 900, y: 900, zoom: 2, viewportWidth: 700 },
+    { ...point, zoom: .1, viewportWidth: 700 },
+  ]) {
+    const events = [], runtime = { updateFrame() {}, clearFrame() {}, play: event => events.push(event) };
+    const session = connectForestSession(undefined, { ...scene, sites: [] }, 'world', now, 0, () => {}, { persistence: false, sync: false });
+    const controller = createWorldAudioController(runtime), state = session.state;
+    const control = { scope: 'world', visible: true, observationOwner: true, reducedMotion: true,
+      showHero: true, actorAway: false, emitEvents: true };
+    state.builderMind = { position: point };
+    state.pleskMind = { position: point };
+    const environment = { scene, builder: null, actors: ['mochlik', 'builder', 'plesk'].map(id => ({
+      id, position: point, size: 36, visible: true, available: true, context: 'idle',
+    })) };
+    try {
+      controller.update(scene, state, input({ camera }), control);
+      assert.equal(noticeForestSocial(state.social, speaker, environment), true);
+      // A paused/reduced-motion tap can publish at the same simulation time.
+      controller.update(scene, state, input({ camera }), control);
+      assert.equal(events.length, 1, `${speaker} answers at ${JSON.stringify(camera)}`);
+      assert.equal(events[0].cueId, `actor.${speaker}.greeting`);
+      assert.equal(events[0].gain, 1);
+      assert.equal(events[0].pan, 0);
+      for (let index = 0; index < 10; index++) {
+        assert.equal(noticeForestSocial(state.social, speaker, environment), false);
+        controller.update(scene, state, input({ camera: { ...camera, x: camera.x + index } }), control);
+      }
+      assert.equal(events.length, 1, 'tap spam, camera movement and painting do not replay the reply');
+    } finally { controller.dispose(); session.release(); }
+  }
+});
+
+test('autonomous speech retains distance attenuation and muted map transitions consume direct replies', () => {
+  const events = [], runtime = { updateFrame() {}, clearFrame() {}, play: event => events.push(event) };
+  const session = connectForestSession(undefined, { ...scene, sites: [] }, 'world', now, 0, () => {}, { persistence: false, sync: false });
+  const controller = createWorldAudioController(runtime), state = session.state;
+  const control = { scope: 'world', visible: true, observationOwner: true, reducedMotion: true,
+    showHero: true, actorAway: false, emitEvents: true };
+  const far = { x: 900, y: 900, zoom: 2, viewportWidth: 700 };
+  const speech = (id, origin) => { state.social.current = { id, origin, speaker: 'mochlik', text: 'Hello', elapsed: 0, duration: 3 }; };
+  try {
+    controller.update(scene, state, input({ camera: far }), control);
+    speech('ambient-far', 'ambient');
+    controller.update(scene, state, input({ camera: far }), control);
+    assert.equal(events.length, 0, 'autonomous chatter outside its radius stays silent');
+    speech('ambient-near', 'ambient');
+    controller.update(scene, state, input({ camera: { ...far, x: 160, y: 100 } }), control);
+    assert.equal(events.length, 1);
+    assert.ok(events[0].gain > 0 && events[0].gain < 1);
+    assert.ok(events[0].pan < 0);
+    controller.update(scene, state, input(), { ...control, scope: 'music' });
+    speech('menu-tap', 'interaction');
+    controller.update(scene, state, input(), { ...control, scope: 'music' });
+    controller.update(scene, state, input(), control);
+    assert.equal(events.length, 1, 'menu replies do not play or leak into a later map visit');
+    controller.update(scene, state, input(), { ...control, emitEvents: false });
+    speech('muted-tap', 'interaction');
+    controller.update(scene, state, input(), { ...control, emitEvents: false });
+    controller.update(scene, state, input(), control);
+    assert.equal(events.length, 1, 'disabled emission consumes the marker without a backlog');
+  } finally { controller.dispose(); session.release(); }
 });
 
 test('clock jump and rehydrated simulation identity discard offline action backlog', () => {

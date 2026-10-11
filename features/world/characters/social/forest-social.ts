@@ -5,7 +5,9 @@ import type { FixedWorldScene, WorldPoint } from "@/features/world/tiled/types";
 
 export type ForestSpeaker = "mochlik" | "plesk" | "builder";
 export type ForestSpeechContext = "idle" | "walk" | "build" | "ready" | "fish" | "cook" | "trade" | "sleep" | "busy" | "animal";
-export type ForestSpeechFrame = { id: string; speaker: ForestSpeaker; text: string; elapsed: number; duration: number };
+export type ForestSpeechFrame = { id: string; speaker: ForestSpeaker; text: string; elapsed: number; duration: number;
+  /** A direct reply addresses the player; autonomous chatter stays in the world. */
+  origin: "interaction" | "ambient" };
 export type ForestSocialActor = { id: ForestSpeaker; position: WorldPoint; size: number; visible: boolean;
   /** Available for a conversation; cosmetic click replies do not need this. */
   available: boolean; context: ForestSpeechContext; canSpeak?: boolean };
@@ -63,8 +65,8 @@ export function createForestSocial(seed: string | number = "forest"): ForestSoci
   state.nextEncounterAt = FOREST_SOCIAL_LIMITS.firstEncounter + random(state) * FOREST_SOCIAL_LIMITS.firstEncounterVariation;
   return state;
 }
-function speak(state: ForestSocialState, line: Line): void {
-  state.current = { id: `forest-speech-${++state.sequence}`, ...line, elapsed: 0,
+function speak(state: ForestSocialState, line: Line, origin: ForestSpeechFrame["origin"] = "ambient"): void {
+  state.current = { id: `forest-speech-${++state.sequence}`, ...line, origin, elapsed: 0,
     duration: Math.min(4.4, 2.8 + line.text.length * .027) };
   remember(state.lineHistory, line.text, FOREST_SOCIAL_LIMITS.historyLines);
 }
@@ -86,7 +88,7 @@ export function noticeForestSocial(state: ForestSocialState, speaker: ForestSpea
   const resident = actor(env, speaker);
   if (env.enabled === false || !resident || state.current || state.queue.length || state.meeting
     || state.elapsed < state.nextManualAt || state.elapsed < state.manualAfter[speaker]) return false;
-  speak(state, { speaker, text: choose(state, forestClickLines(speaker, resident.context)) });
+  speak(state, { speaker, text: choose(state, forestClickLines(speaker, resident.context)) }, "interaction");
   state.manualAfter[speaker] = state.elapsed + FOREST_SOCIAL_LIMITS.manualCharacter;
   state.nextManualAt = state.elapsed + FOREST_SOCIAL_LIMITS.manualGlobal;
   // An intentional greeting should have some quiet around it.

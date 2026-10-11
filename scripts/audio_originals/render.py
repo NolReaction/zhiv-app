@@ -22,7 +22,11 @@ PACK = "originals-v1"
 MODULES = {"music": "music.py", "loop": "ambience.py", "one-shot": "effects.py"}
 # Stable event IDs may point to revised exports. A new filename prevents a
 # browser or service-worker cache from keeping the previous button timbre.
-ASSET_REVISIONS = {f"ui.click.{variant:02}": "soft-v2" for variant in range(1, 4)}
+ASSET_REVISIONS = {
+    **{f"ui.click.{variant:02}": "soft-v2" for variant in range(1, 4)},
+    **{f"ui.{kind}.{variant:02}": "felt-v3" for kind in ("open", "close") for variant in range(1, 3)},
+    **{f"forest.{time}.01": "nature-v2" for time in ("day", "night")},
+}
 
 
 def export_name(asset_id):

@@ -12,11 +12,11 @@
   "sources": [
     {
       "path": "scripts/audio_originals/ambience.py",
-      "sha256": "2db30a6f85ea05a3e10eaadc6dbd0e44a6bea549a3a053c72282a01d09180bcc"
+      "sha256": "0d81faedb426e6c0d3a7f4bb17130191c04250d2f78b8b577134342d4ec4899d"
     },
     {
       "path": "scripts/audio_originals/effects.py",
-      "sha256": "ecb0385c3ad858f7fbffefbd191728fa8bbb2e6a294c453b476b3eb9d88114a9"
+      "sha256": "89909034d49deff49a7f9df71975b343612ad1033e59fe88626bb7deeecbea21"
     },
     {
       "path": "scripts/audio_originals/music.py",
@@ -24,7 +24,7 @@
     },
     {
       "path": "scripts/audio_originals/render.py",
-      "sha256": "7d03ae409f9c967a38c4fd554bf199cfaf4d187960f6ccfe44111432f04df109"
+      "sha256": "8f9446c2cc69a9bbdabdd9c5916a411695660d56f9b900cf781811266a3001cf"
     }
   ],
   "assets": [
@@ -109,26 +109,26 @@
     {
       "id": "forest.day.01",
       "kind": "loop",
-      "title": "Leaves in the Sun",
-      "description": "Soft leaf movement with five original, low-register bird phrases.",
+      "title": "Birds in the Sun",
+      "description": "Five original low-register bird phrases, isolated from the independently controlled wind.",
       "sampleRate": 48000,
       "channels": 2,
       "frames": 480000,
       "durationSeconds": 10.0,
       "decodedBytes": 3840000,
-      "masterSha256": "9be1ee1ab71e7c6ad7202114d97c6a963e28430161bef330adfe1b72b4727f36",
+      "masterSha256": "ea54515b2eccc71fe5fff989b005a37c6dcc6b4a1867fc1155730b9f481da86d",
       "measurements": {
-        "peakDb": -8.0719,
-        "rmsDb": -23.0,
+        "peakDb": -24.5156,
+        "rmsDb": -42.0,
         "dc": 0.0,
-        "seamDelta": 0.002993412,
-        "maxAdjacentDelta": 0.020386513
+        "seamDelta": 0.003155459,
+        "maxAdjacentDelta": 0.010309434
       },
       "files": [
         {
-          "src": "/audio/originals-v1/loop/forest.day.01.wav",
+          "src": "/audio/originals-v1/loop/forest.day.01.nature-v2.wav",
           "bytes": 1920044,
-          "sha256": "9be1ee1ab71e7c6ad7202114d97c6a963e28430161bef330adfe1b72b4727f36"
+          "sha256": "ea54515b2eccc71fe5fff989b005a37c6dcc6b4a1867fc1155730b9f481da86d"
         }
       ],
       "composition": {}
@@ -137,25 +137,25 @@
       "id": "forest.night.01",
       "kind": "loop",
       "title": "The Forest Settles",
-      "description": "Quiet tree air and sparse, softened insect conversations.",
+      "description": "Sparse softened insect conversations, isolated from the independently controlled wind.",
       "sampleRate": 48000,
       "channels": 2,
       "frames": 480000,
       "durationSeconds": 10.0,
       "decodedBytes": 3840000,
-      "masterSha256": "97232c1b678995d90a7b1da204c95fea9d3b793d2620793b351ebc37e258856a",
+      "masterSha256": "55cbe141786eb9c99b09469d3978c5302dd85c21b0ed3290abff2da486a1a702",
       "measurements": {
-        "peakDb": -9.2621,
-        "rmsDb": -24.0,
+        "peakDb": -16.1858,
+        "rmsDb": -43.0,
         "dc": 0.0,
-        "seamDelta": 0.007046882,
-        "maxAdjacentDelta": 0.025784977
+        "seamDelta": 0.003552511,
+        "maxAdjacentDelta": 0.05161491
       },
       "files": [
         {
-          "src": "/audio/originals-v1/loop/forest.night.01.wav",
+          "src": "/audio/originals-v1/loop/forest.night.01.nature-v2.wav",
           "bytes": 1920044,
-          "sha256": "97232c1b678995d90a7b1da204c95fea9d3b793d2620793b351ebc37e258856a"
+          "sha256": "55cbe141786eb9c99b09469d3978c5302dd85c21b0ed3290abff2da486a1a702"
         }
       ],
       "composition": {}
@@ -433,26 +433,26 @@
     {
       "id": "ui.open.01",
       "kind": "effect",
-      "title": "Unfolding leaf 1",
-      "description": "A papery breath and two muted woody tones follow the panel motion.",
+      "title": "Felt opening 1",
+      "description": "One clean fixed-pitch felt pluck, softly attacked and damped, without breath, scraping noise or pitch sweep.",
       "sampleRate": 48000,
       "channels": 1,
-      "frames": 20640,
-      "durationSeconds": 0.43,
-      "decodedBytes": 82560,
-      "masterSha256": "6a57026b3f4e3365bcc05564a981d3d2d86dde51e6865cb9ab6832886c76f8ba",
+      "frames": 7920,
+      "durationSeconds": 0.165,
+      "decodedBytes": 31680,
+      "masterSha256": "7093302e873be1530c9ce31af17fccf1b2254efff23d92b9ec9a5a724f2c13ec",
       "measurements": {
-        "peakDb": -6.5012,
-        "rmsDb": -21.0,
+        "peakDb": -12.5094,
+        "rmsDb": -25.0,
         "dc": 0.0,
         "seamDelta": 0.0,
-        "maxAdjacentDelta": 0.104640618
+        "maxAdjacentDelta": 0.023388781
       },
       "files": [
         {
-          "src": "/audio/originals-v1/effect/ui.open.01.wav",
-          "bytes": 41324,
-          "sha256": "6a57026b3f4e3365bcc05564a981d3d2d86dde51e6865cb9ab6832886c76f8ba"
+          "src": "/audio/originals-v1/effect/ui.open.01.felt-v3.wav",
+          "bytes": 15884,
+          "sha256": "7093302e873be1530c9ce31af17fccf1b2254efff23d92b9ec9a5a724f2c13ec"
         }
       ],
       "composition": {}
@@ -460,26 +460,26 @@
     {
       "id": "ui.open.02",
       "kind": "effect",
-      "title": "Unfolding leaf 2",
-      "description": "A papery breath and two muted woody tones follow the panel motion.",
+      "title": "Felt opening 2",
+      "description": "One clean fixed-pitch felt pluck, softly attacked and damped, without breath, scraping noise or pitch sweep.",
       "sampleRate": 48000,
       "channels": 1,
-      "frames": 20640,
-      "durationSeconds": 0.43,
-      "decodedBytes": 82560,
-      "masterSha256": "503a65c6cbb291bb731aff7adcbf41a63468e927ab3a0c413daab84fd1d06a4a",
+      "frames": 7920,
+      "durationSeconds": 0.165,
+      "decodedBytes": 31680,
+      "masterSha256": "38c44f361812971f0bdfaf8be3ca8c748567c853b710b9f3fb40ff56c924d463",
       "measurements": {
-        "peakDb": -6.1854,
-        "rmsDb": -21.0,
-        "dc": 1e-09,
+        "peakDb": -12.554,
+        "rmsDb": -25.0,
+        "dc": 0.0,
         "seamDelta": 0.0,
-        "maxAdjacentDelta": 0.092063427
+        "maxAdjacentDelta": 0.024392661
       },
       "files": [
         {
-          "src": "/audio/originals-v1/effect/ui.open.02.wav",
-          "bytes": 41324,
-          "sha256": "503a65c6cbb291bb731aff7adcbf41a63468e927ab3a0c413daab84fd1d06a4a"
+          "src": "/audio/originals-v1/effect/ui.open.02.felt-v3.wav",
+          "bytes": 15884,
+          "sha256": "38c44f361812971f0bdfaf8be3ca8c748567c853b710b9f3fb40ff56c924d463"
         }
       ],
       "composition": {}
@@ -487,26 +487,26 @@
     {
       "id": "ui.close.01",
       "kind": "effect",
-      "title": "Folding leaf 1",
-      "description": "A papery breath and two muted woody tones follow the panel motion.",
+      "title": "Felt closing 1",
+      "description": "One clean fixed-pitch felt pluck, softly attacked and damped, without breath, scraping noise or pitch sweep.",
       "sampleRate": 48000,
       "channels": 1,
-      "frames": 16800,
-      "durationSeconds": 0.35,
-      "decodedBytes": 67200,
-      "masterSha256": "d321e05d2e4c8afc3587d0317bbc90e85795e90cfb4485bd1d1b6618ae4d5571",
+      "frames": 6960,
+      "durationSeconds": 0.145,
+      "decodedBytes": 27840,
+      "masterSha256": "e4f414e342f6bab6d6c0966c194d7fd9c8560e8dcee4aad2f9741b3fd91f0332",
       "measurements": {
-        "peakDb": -6.0161,
-        "rmsDb": -21.0,
+        "peakDb": -13.0584,
+        "rmsDb": -25.0,
         "dc": 0.0,
         "seamDelta": 0.0,
-        "maxAdjacentDelta": 0.080200151
+        "maxAdjacentDelta": 0.017137012
       },
       "files": [
         {
-          "src": "/audio/originals-v1/effect/ui.close.01.wav",
-          "bytes": 33644,
-          "sha256": "d321e05d2e4c8afc3587d0317bbc90e85795e90cfb4485bd1d1b6618ae4d5571"
+          "src": "/audio/originals-v1/effect/ui.close.01.felt-v3.wav",
+          "bytes": 13964,
+          "sha256": "e4f414e342f6bab6d6c0966c194d7fd9c8560e8dcee4aad2f9741b3fd91f0332"
         }
       ],
       "composition": {}
@@ -514,26 +514,26 @@
     {
       "id": "ui.close.02",
       "kind": "effect",
-      "title": "Folding leaf 2",
-      "description": "A papery breath and two muted woody tones follow the panel motion.",
+      "title": "Felt closing 2",
+      "description": "One clean fixed-pitch felt pluck, softly attacked and damped, without breath, scraping noise or pitch sweep.",
       "sampleRate": 48000,
       "channels": 1,
-      "frames": 16800,
-      "durationSeconds": 0.35,
-      "decodedBytes": 67200,
-      "masterSha256": "a0b87e1ac90332cc7bbb8d1dba5ba5edb785c7743bbcee843ae02ac52ca559d5",
+      "frames": 6960,
+      "durationSeconds": 0.145,
+      "decodedBytes": 27840,
+      "masterSha256": "aa490b3edac833a78f227bd56ce333553974164f2e4ed21e27fd1bb2da4c630c",
       "measurements": {
-        "peakDb": -6.3117,
-        "rmsDb": -21.0,
-        "dc": 1e-09,
+        "peakDb": -13.1895,
+        "rmsDb": -25.0,
+        "dc": 0.0,
         "seamDelta": 0.0,
-        "maxAdjacentDelta": 0.068882912
+        "maxAdjacentDelta": 0.017991086
       },
       "files": [
         {
-          "src": "/audio/originals-v1/effect/ui.close.02.wav",
-          "bytes": 33644,
-          "sha256": "a0b87e1ac90332cc7bbb8d1dba5ba5edb785c7743bbcee843ae02ac52ca559d5"
+          "src": "/audio/originals-v1/effect/ui.close.02.felt-v3.wav",
+          "bytes": 13964,
+          "sha256": "aa490b3edac833a78f227bd56ce333553974164f2e4ed21e27fd1bb2da4c630c"
         }
       ],
       "composition": {}
@@ -2316,6 +2316,114 @@
           "src": "/audio/originals-v1/effect/action.berry.pick.04.wav",
           "bytes": 54764,
           "sha256": "fd42ded6f76600169b157aad4d2d9b359a3cf713d34bdd561a7109419212889f"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "ui.tab.01",
+      "kind": "effect",
+      "title": "Small felt step 1",
+      "description": "A brief, quiet rounded tine for selecting an internal tab, with no swish or pitch movement.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 5280,
+      "durationSeconds": 0.11,
+      "decodedBytes": 21120,
+      "masterSha256": "45bc43cc750ac08db1c682fdd3b34a48bd1a31096df235d0425beefe51c09d5c",
+      "measurements": {
+        "peakDb": -15.102,
+        "rmsDb": -27.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.016463323
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/ui.tab.01.wav",
+          "bytes": 10604,
+          "sha256": "45bc43cc750ac08db1c682fdd3b34a48bd1a31096df235d0425beefe51c09d5c"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "ui.tab.02",
+      "kind": "effect",
+      "title": "Small felt step 2",
+      "description": "A brief, quiet rounded tine for selecting an internal tab, with no swish or pitch movement.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 5280,
+      "durationSeconds": 0.11,
+      "decodedBytes": 21120,
+      "masterSha256": "2d788f17c24063d7cdce311aecd9a7f5bd714b44865a602d7eb62dae92525c2d",
+      "measurements": {
+        "peakDb": -14.9868,
+        "rmsDb": -27.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.01749704
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/ui.tab.02.wav",
+          "bytes": 10604,
+          "sha256": "2d788f17c24063d7cdce311aecd9a7f5bd714b44865a602d7eb62dae92525c2d"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "ui.slider.01",
+      "kind": "effect",
+      "title": "Felt dial 1",
+      "description": "One very short muted tine; the interface gently adjusts its playback pitch with the selected volume.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 3840,
+      "durationSeconds": 0.08,
+      "decodedBytes": 15360,
+      "masterSha256": "6248bd90c3554c2448ee464d369dd942b366fe7d5a76173cc6c351dbd48054d3",
+      "measurements": {
+        "peakDb": -16.3197,
+        "rmsDb": -28.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.013171266
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/ui.slider.01.wav",
+          "bytes": 7724,
+          "sha256": "6248bd90c3554c2448ee464d369dd942b366fe7d5a76173cc6c351dbd48054d3"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "weather.wind.01",
+      "kind": "loop",
+      "title": "Air between the Leaves",
+      "description": "A restrained low tree breeze with slow, shallow swells and soft leaf movement.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 576000,
+      "durationSeconds": 12.0,
+      "decodedBytes": 2304000,
+      "masterSha256": "2a8b83e943aee56dcd967400f371795ddeceba106407f5e2729dd843571c74fb",
+      "measurements": {
+        "peakDb": -19.0587,
+        "rmsDb": -32.0,
+        "dc": 0.0,
+        "seamDelta": 0.000551933,
+        "maxAdjacentDelta": 0.004971789
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/loop/weather.wind.01.wav",
+          "bytes": 1152044,
+          "sha256": "2a8b83e943aee56dcd967400f371795ddeceba106407f5e2729dd843571c74fb"
         }
       ],
       "composition": {}

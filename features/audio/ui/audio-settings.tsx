@@ -1,35 +1,43 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { RotateCcw, Volume2, VolumeX, X } from "lucide-react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import type { AudioBus, AudioDiagnostics, AudioSettingsPatch } from "@/features/audio/domain/types";
 import { AUDIO_BUSES } from "@/features/audio/domain/types";
 import { getDefaultAudioVolumePatch } from "@/features/audio/domain/settings";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
-import { playUiCue } from "./audio-lifecycle";
+import { playUiCue, playVolumeFeedback } from "./audio-lifecycle";
 import { useAudioDiagnostics } from "./use-audio-diagnostics";
 import styles from "./audio-settings.module.css";
 
 export const AUDIO_BUS_LABELS: Record<AudioBus, string> = {
-  music: "Музыка", ambience: "Лес, вода и погода", world: "Постройки и действия", characters: "Голоса героев", ui: "Интерфейс",
+  music: "Музыка", ambience: "Лес и вода", weather: "Погода", world: "Постройки и действия", characters: "Голоса героев", ui: "Интерфейс",
 };
 
 function VolumeSlider({ id, label, value, onChange }: {
   id: string; label: string; value: number; onChange: (volume: number) => void;
 }) {
   const percent = Math.round(value * 100);
+  const lastPercent = useRef(percent);
+  useEffect(() => { lastPercent.current = percent; }, [percent]);
   return <label className={styles.volume} htmlFor={id}>
     <span>{label}<output htmlFor={id} aria-hidden="true">{percent}%</output></span>
     <input id={id} type="range" min={0} max={100} step={1} value={percent} aria-valuetext={`${percent}%`}
-      onChange={event => onChange(Number(event.currentTarget.value) / 100)} />
+      onChange={event => {
+        const nextPercent = Number(event.currentTarget.value);
+        if (nextPercent === lastPercent.current) return;
+        lastPercent.current = nextPercent;
+        onChange(nextPercent / 100);
+      }} />
   </label>;
 }
 
 /** Kept separate from the dialog so settings can be verified without a browser audio device. */
-export function AudioSettingsControls({ id, diagnostics, busy, feedback, onChange, onEnable, onResume, onReset }: {
+export function AudioSettingsControls({ id, diagnostics, busy, feedback, onChange, onEnable, onResume, onReset, onSliderFeedback }: {
   id: string; diagnostics: AudioDiagnostics; busy: boolean; feedback: string;
   onChange: (patch: AudioSettingsPatch) => void; onEnable: () => void; onResume: () => void; onReset: () => void;
+  onSliderFeedback?: (bus: AudioBus | "master", volume: number) => void;
 }) {
   const { settings, state } = diagnostics;
   const needsResume = settings.enabled && (state === "suspended" || state === "locked");
@@ -43,11 +51,17 @@ export function AudioSettingsControls({ id, diagnostics, busy, feedback, onChang
       </button>
     </div>
     <p className={styles.hint}>Громкость сохраняется на этом устройстве. В фоне игра звучать не будет.</p>
-    <VolumeSlider id={`${id}-master`} label="Общая громкость" value={settings.master} onChange={master => onChange({ master })} />
+    <VolumeSlider id={`${id}-master`} label="Общая громкость" value={settings.master} onChange={master => {
+      onChange({ master });
+      onSliderFeedback?.("master", master);
+    }} />
     <fieldset className={styles.buses}>
       <legend>Что слышно в игре</legend>
       {AUDIO_BUSES.map(bus => <VolumeSlider key={bus} id={`${id}-${bus}`} label={AUDIO_BUS_LABELS[bus]}
-        value={settings.buses[bus]} onChange={volume => onChange({ buses: { [bus]: volume } })} />)}
+        value={settings.buses[bus]} onChange={volume => {
+          onChange({ buses: { [bus]: volume } });
+          onSliderFeedback?.(bus, volume);
+        }} />)}
     </fieldset>
     <div className={styles.resetGroup}>
       <button type="button" className={styles.reset} data-audio-cue="ui.click" onClick={onReset} disabled={busy}
@@ -85,6 +99,7 @@ function useAudioSettingsControls() {
     },
     onEnable: () => void enable(),
     onResume: () => void enable(),
+    onSliderFeedback: (bus: AudioBus | "master", volume: number) => playVolumeFeedback(getAudioRuntime(), bus, volume),
     onReset: () => {
       getAudioRuntime().setSettings(getDefaultAudioVolumePatch());
       setFeedback("Стандартная громкость восстановлена");

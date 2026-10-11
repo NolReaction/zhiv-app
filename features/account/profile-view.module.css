@@ -511,6 +511,7 @@
 .tabsRoot { min-width: 0; margin-top: 24px; }
 .tabs { display: flex; width: min(100%, 440px); gap: 4px; padding: 4px; border: 1px solid #ffffff18; border-radius: 15px; background: #ffffff06; }
 .tabs > button { display: flex; flex: 1 1 0; align-items: center; justify-content: center; gap: 8px; min-width: 0; min-height: 46px; padding: 10px 12px; border: 1px solid transparent; border-radius: 11px; background: transparent; color: #aeb8a5; font: inherit; font-size: 14px; cursor: pointer; }
+.tabs > button.settingsTab { flex: 0 0 48px; }
 .tabs > button[data-state="active"] { background: #b7d8a218; border-color: #b7d8a238; color: #e4f2d9; }
 .tabs > button:focus-visible, .tabPanel:focus-visible { outline: 2px solid #cde39e; outline-offset: 3px; }
 .tabPanel { min-width: 0; outline: none; }

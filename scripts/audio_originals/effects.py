@@ -96,6 +96,16 @@ def _air_swish(duration: float, sample_rate: int, rng: np.random.Generator,
     return _fade((.28 * slow + .1 * fine * mix) * envelope, sample_rate)
 
 
+def _felt_pluck(duration: float, frequency: float, sample_rate: int,
+                decay: float = .033) -> np.ndarray:
+    """A fixed-pitch, softly struck tine without a noise scrape or pitch gulp."""
+    t = _time(duration, sample_rate)
+    audio = np.sin(2 * math.pi * frequency * t) * np.exp(-t / decay)
+    audio += .11 * np.sin(2 * math.pi * frequency * 2 * t) * np.exp(-t / (decay * .65))
+    audio += .018 * np.sin(2 * math.pi * frequency * 3 * t) * np.exp(-t / (decay * .45))
+    return _fade(audio, sample_rate, .007, .028)
+
+
 def _finish(audio: np.ndarray, sample_rate: int, title: str, description: str,
             target_db: float = -20) -> tuple[np.ndarray, dict]:
     if not np.isfinite(audio).all() or not len(audio):
@@ -141,16 +151,20 @@ def _ui(kind: str, variant: int, sample_rate: int,
         description = "A short padded wooden pluck with a rounded falling pitch, soft attack and closely matched variants."
         target = -23.5
     elif kind in ("open", "close"):
-        length = .43 if kind == "open" else .35
-        audio = np.zeros(round(length * sample_rate))
-        _add(audio, _air_swish(.21 + variant * .016, sample_rate, rng, kind == "open"), 0, sample_rate, .7)
-        notes = ([523.25, 659.25] if variant == 1 else [587.33, 783.99])
-        if kind == "close":
-            notes = [notes[1] * .75, notes[0] * .75]
-        for index, pitch in enumerate(notes):
-            _add(audio, _modal(.27, pitch, sample_rate, rng), .035 + index * .06, sample_rate, .24)
-        title = "Unfolding leaf" if kind == "open" else "Folding leaf"
-        description, target = "A papery breath and two muted woody tones follow the panel motion.", -21
+        # Navigation must not sound like handling wet paper. A single rounded
+        # tine is shorter and quieter than the former broad-band swish; fixed
+        # pitch also avoids the rubbery/bubble gesture reserved for the circle.
+        pitches = [622.25, 659.25] if kind == "open" else [493.88, 523.25]
+        length = .165 if kind == "open" else .145
+        audio = _felt_pluck(length, pitches[variant - 1], sample_rate)
+        title = "Felt opening" if kind == "open" else "Felt closing"
+        description, target = "One clean fixed-pitch felt pluck, softly attacked and damped, without breath, scraping noise or pitch sweep.", -25
+    elif kind == "tab":
+        audio = _felt_pluck(.110, [587.33, 622.25][variant - 1], sample_rate, .023)
+        title, description, target = "Small felt step", "A brief, quiet rounded tine for selecting an internal tab, with no swish or pitch movement.", -27
+    elif kind == "slider":
+        audio = _felt_pluck(.080, 560, sample_rate, .016)
+        title, description, target = "Felt dial", "One very short muted tine; the interface gently adjusts its playback pitch with the selected volume.", -28
     elif kind == "confirm":
         audio = np.zeros(round(.72 * sample_rate))
         notes = [523.25, 783.99] if variant == 1 else [659.25, 880]
@@ -367,7 +381,7 @@ def render(asset_id: str, sample_rate: int) -> tuple[np.ndarray, dict]:
     variant = int(parts[-1])
     rng = _rng(asset_id)
     if parts[0] == "ui" and len(parts) == 3:
-        if variant > (3 if parts[1] == "click" else 2):
+        if variant > {"click": 3, "slider": 1}.get(parts[1], 2):
             raise ValueError(f"Unknown UI variation: {asset_id}")
         return _ui(parts[1], variant, sample_rate, rng)
     if parts[0] == "actor" and len(parts) == 4 and variant <= 3:

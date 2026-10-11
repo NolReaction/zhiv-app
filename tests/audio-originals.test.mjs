@@ -34,7 +34,7 @@ function pcmWave(bytes) {
 
 test("original pack fills the catalog, documents source and verifies every shipped byte", () => {
   assert.deepEqual(inspectAudioCatalog(catalog, { root, requireReady: true }).errors, []);
-  assert.equal(manifest.assets.length, 84);
+  assert.equal(manifest.assets.length, 88);
   assert.deepEqual(new Set(manifest.assets.map(item => item.id)), new Set(catalog.assets.map(item => item.id)));
   const hashes = new Set();
   for (const source of manifest.sources) assert.equal(sha(readFileSync(path.join(root, source.path))), source.sha256, source.path);
@@ -83,12 +83,36 @@ test("decoded WAV effects are non-silent, unclipped and match their declared dur
 
 test("ambient bank leaves mobile buffer headroom and music has a Safari fallback", () => {
   const loops = manifest.assets.filter(item => item.kind === "loop");
-  assert.equal(loops.length, 9);
+  assert.equal(loops.length, 10);
   assert.ok(loops.reduce((sum, item) => sum + item.decodedBytes, 0) < 24 * 1024 * 1024);
   for (const item of manifest.assets.filter(asset => asset.kind === "music")) {
     assert.equal(item.channels, 2);
     assert.ok(item.durationSeconds >= 90 && item.durationSeconds <= 150);
     assert.match(item.files[0].src, /\.opus$/);
     assert.match(item.files[1].src, /\.m4a$/);
+  }
+});
+
+test("repeated navigation and volume feedback have short, quiet tails", () => {
+  const specifications = [
+    { prefix: "ui.open.", duration: .17, rmsDb: -25 },
+    { prefix: "ui.close.", duration: .15, rmsDb: -25 },
+    { prefix: "ui.tab.", duration: .12, rmsDb: -27 },
+    { prefix: "ui.slider.", duration: .09, rmsDb: -28 },
+  ];
+  for (const spec of specifications) {
+    const entries = manifest.assets.filter(item => item.id.startsWith(spec.prefix));
+    assert.ok(entries.length > 0, spec.prefix);
+    for (const item of entries) {
+      assert.ok(item.durationSeconds <= spec.duration, `${item.id}: no lingering navigation swish`);
+      assert.ok(item.measurements.rmsDb <= spec.rmsDb + .05, `${item.id}: restrained repeated feedback`);
+      const wav = pcmWave(readFileSync(path.join(root, "public", item.files[0].src)));
+      const tailSamples = Math.round(wav.rate * .015);
+      let squares = 0;
+      for (let offset = wav.samples.length - tailSamples * 2; offset < wav.samples.length; offset += 2) {
+        squares += (wav.samples.readInt16LE(offset) / 32768) ** 2;
+      }
+      assert.ok(Math.sqrt(squares / tailSamples) < .0032, `${item.id}: quiet final 15 ms avoids a cut-off tail`);
+    }
   }
 });

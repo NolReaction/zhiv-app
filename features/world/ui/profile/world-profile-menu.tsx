@@ -1,8 +1,10 @@
 "use client";
 
 import { AudioSettingsPanel } from "@/features/audio/ui/audio-settings";
-import { ChevronRight, Heart, Leaf, ShieldCheck } from "lucide-react";
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
+import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
+import { ChevronRight, Heart, Leaf, Settings, ShieldCheck } from "lucide-react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import { GameLevelIcon } from "@/features/game/game-level-icon";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import { formatDayCount } from "@/lib/daily-streak";
@@ -10,11 +12,13 @@ import { BOOK_COLLECTION_COUNT, COLLECTION_CHAPTERS, collectionBookEntries } fro
 import type { WorldController } from "@/features/world/state/use-world";
 import { useForestObservation, type ForestObservation } from "@/features/world/state/use-forest-observation";
 import { takeOverForestSession } from "@/features/world/state/forest-session";
-import { WorldMoodModule } from "./world-mood-module";
+import { WorldMoodDialog } from "./world-mood-dialog";
 import { WorldProfileFriends, type WorldFriendsState } from "./world-profile-friends";
 import styles from "./world-profile-menu.module.css";
 
-export type WorldProfileTab = "profile" | "mood" | "friends" | "settings";
+export type WorldProfileTab = "profile" | "friends" | "settings";
+/** Older help destinations still open the mood dialog, never a fourth tab. */
+export type WorldProfileDestination = WorldProfileTab | "mood";
 type Props = {
   world: WorldController;
   economy: EconomyController;
@@ -24,7 +28,7 @@ type Props = {
   bestStreakDays: number;
   onCall?: () => void;
   rewards?: ReactNode;
-  initialTab?: WorldProfileTab;
+  initialTab?: WorldProfileDestination;
   friends?: WorldFriendsState;
   onOpenPeople?: () => void;
   onOpenHelp?: () => void;
@@ -33,7 +37,6 @@ type Props = {
 
 const tabs = [
   { id: "profile", label: "Профиль" },
-  { id: "mood", label: "Настроение" },
   { id: "friends", label: "Друзья" },
   { id: "settings", label: "Настройки" },
 ] as const;
@@ -61,7 +64,9 @@ export function WorldProfileMenu(props: Props) {
 
 function WorldProfileSession({ presenceKey, ...props }: Props) {
   const observation = useForestObservation(presenceKey);
-  const [activeTab, setActiveTab] = useState<WorldProfileTab>(props.initialTab ?? "profile");
+  const [activeTab, setActiveTab] = useState<WorldProfileTab>(props.initialTab === "mood" ? "profile" : props.initialTab ?? "profile");
+  const [moodOpen, setMoodOpen] = useState(props.initialTab === "mood");
+  const moodTrigger = useRef<HTMLButtonElement>(null);
   const [callPulse, setCallPulse] = useState(0);
   const idPrefix = useId();
   const callTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -73,20 +78,28 @@ function WorldProfileSession({ presenceKey, ...props }: Props) {
     props.onCall?.();
     callTimer.current = setTimeout(() => setCallPulse(0), 1200);
   } : undefined;
-  return <WorldProfileContent {...props} observation={observation} onCall={call} callPulse={callPulse}
-    activeTab={activeTab} onTabChange={setActiveTab} idPrefix={idPrefix} onTakeOver={() => takeOverForestSession(presenceKey)} />;
+  return <>
+    <WorldProfileContent {...props} observation={observation} onCall={call} callPulse={callPulse}
+      activeTab={activeTab} onTabChange={setActiveTab} idPrefix={idPrefix} onTakeOver={() => takeOverForestSession(presenceKey)}
+      onOpenMood={() => setMoodOpen(true)} moodTriggerRef={moodTrigger} />
+    <WorldMoodDialog open={moodOpen} onOpenChange={setMoodOpen} returnFocusRef={moodTrigger}
+      observation={observation} economy={props.economy} onCall={call} callPulse={callPulse}
+      onOpenHelp={props.onOpenHelp} onOpenFood={props.onOpenFood} />
+  </>;
 }
 
 /** Pure contents keep map focus ownership separate from data subscriptions. */
 export function WorldProfileContent({ world, economy, displayName, level, bestStreakDays, observation, onCall, onTakeOver,
-  rewards, callPulse = 0, initialTab = "profile", activeTab = initialTab, onTabChange, idPrefix = "world-profile",
-  friends, onOpenPeople, onOpenHelp, onOpenFood }: Omit<Props, "presenceKey"> & {
+  rewards, callPulse = 0, initialTab = "profile", activeTab = initialTab === "mood" ? "profile" : initialTab, onTabChange, idPrefix = "world-profile",
+  friends, onOpenPeople, onOpenMood, moodTriggerRef }: Omit<Props, "presenceKey"> & {
   observation: ForestObservation | null;
   onTakeOver?: () => void;
   callPulse?: number;
   activeTab?: WorldProfileTab;
   onTabChange?: (tab: WorldProfileTab) => void;
   idPrefix?: string;
+  onOpenMood?: () => void;
+  moodTriggerRef?: RefObject<HTMLButtonElement | null>;
 }) {
   const state = world.snapshot?.state;
   const houseLevel = economy.snapshot?.buildings.home ?? state?.houseLevel;
@@ -94,12 +107,17 @@ export function WorldProfileContent({ world, economy, displayName, level, bestSt
     total + collectionBookEntries(chapter.id, state.collection, economy.snapshot).filter(entry => entry.owned).length, 0) : null;
   const sync = observation?.memory.sync;
   const memoryWarning = sync ? ["offline", "other-device", "error"].includes(sync.mode) : observation?.memory.status === "unavailable";
+  const changeTab = (tab: WorldProfileTab) => {
+    if (tab === activeTab || !onTabChange) return;
+    playUiCue(getAudioRuntime(), "ui.tab");
+    onTabChange(tab);
+  };
   const changeWithKeyboard = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
     const next = event.key === "ArrowRight" ? (index + 1) % tabs.length : event.key === "ArrowLeft" ? (index + tabs.length - 1) % tabs.length
       : event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : null;
     if (next === null) return;
     event.preventDefault();
-    onTabChange?.(tabs[next].id);
+    changeTab(tabs[next].id);
     event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
   };
   const memoryConfirmed = sync ? sync.mode === "synced" && sync.serverSavedAt !== null
@@ -111,9 +129,9 @@ export function WorldProfileContent({ world, economy, displayName, level, bestSt
 
   return <div className={styles.profile}>
     <div className={styles.tabs} role="tablist" aria-label="Разделы профиля">
-      {tabs.map((tab, index) => <button key={tab.id} type="button" role="tab" data-audio-cue="ui.click" id={`${idPrefix}-tab-${tab.id}`}
+      {tabs.map((tab, index) => <button key={tab.id} type="button" role="tab" aria-label={tab.label} title={tab.id === "settings" ? tab.label : undefined} id={`${idPrefix}-tab-${tab.id}`}
         aria-selected={activeTab === tab.id} aria-controls={`${idPrefix}-panel-${tab.id}`} tabIndex={activeTab === tab.id ? 0 : -1}
-        onClick={() => onTabChange?.(tab.id)} onKeyDown={event => changeWithKeyboard(event, index)}>{tab.label}</button>)}
+        onClick={() => changeTab(tab.id)} onKeyDown={event => changeWithKeyboard(event, index)}>{tab.id === "settings" ? <Settings size={19} aria-hidden="true" /> : tab.label}</button>)}
     </div>
     {memoryWarning && memory}
     <div className={styles.panel} role="tabpanel" id={`${idPrefix}-panel-${activeTab}`} aria-labelledby={`${idPrefix}-tab-${activeTab}`} tabIndex={0}>
@@ -122,7 +140,7 @@ export function WorldProfileContent({ world, economy, displayName, level, bestSt
           <span className={styles.levelIcon}><GameLevelIcon level={level} size={27} /></span>
           <div><h2>{displayName}</h2><p>Уровень {level}</p></div>
         </div>
-        <button type="button" className={styles.moodPreview} onClick={() => onTabChange?.("mood")} aria-label="Открыть настроение Мохлика">
+        <button ref={moodTriggerRef} type="button" className={styles.moodPreview} onClick={onOpenMood} aria-label="Как Мохлик?" aria-haspopup="dialog" data-audio-cue="ui.open">
           <Leaf size={18} aria-hidden="true" /><span><small>{observation?.paused ? "Полянка на паузе" : "Как Мохлик?"}</small>
             <strong>{observation?.mood ?? "Полянка загружается"}</strong></span><ChevronRight size={16} aria-hidden="true" />
         </button>
@@ -139,7 +157,6 @@ export function WorldProfileContent({ world, economy, displayName, level, bestSt
           </button>}
         </div>}
       </>}
-      {activeTab === "mood" && <WorldMoodModule observation={observation} economy={economy} onCall={onCall} callPulse={callPulse} onOpenHelp={onOpenHelp} onOpenFood={onOpenFood} />}
       {activeTab === "friends" && <WorldProfileFriends friends={friends} onOpenPeople={onOpenPeople} />}
       {activeTab === "settings" && <AudioSettingsPanel tone="forest" />}
     </div>

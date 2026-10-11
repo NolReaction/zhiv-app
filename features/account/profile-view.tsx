@@ -5,10 +5,12 @@ import type { FormEvent } from "react";
 import { useRef, useState } from "react";
 import { Tabs as TabsPrimitive } from "radix-ui";
 import { AudioSettingsPanel } from "@/features/audio/ui/audio-settings";
+import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
+import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { Switch } from "@/components/ui/switch";
 import { GameLevelsButton } from "@/features/game/game-levels-button";
 import { GameLevelIcon } from "@/features/game/game-level-icon";
-import { Check, Clock3, Flame, Settings2, ShieldCheck, Trophy, UserRound } from "lucide-react";
+import { Check, Clock3, Flame, Settings, Settings2, ShieldCheck, Trophy, UserRound } from "lucide-react";
 import type { MeResponse } from "@/lib/check-in-contract";
 import type { ClickerLevel, ClickerLevelProgress } from "@/features/game/clicker-story";
 import {
@@ -179,10 +181,10 @@ export function ProfileView({
       <div className={styles.heading}><h1 id="profile-title">Профиль</h1></div>
       <TransientNotice message={error} kind="error" />
       <TransientNotice message={success} kind="success" />
-      <TabsPrimitive.Root value={activeTab} onValueChange={setActiveTab} className={styles.tabsRoot}>
+      <TabsPrimitive.Root value={activeTab} onValueChange={value => { if (value !== activeTab) { playUiCue(getAudioRuntime(), "ui.tab"); setActiveTab(value); } }} className={styles.tabsRoot}>
         <TabsPrimitive.List className={styles.tabs} aria-label="Разделы профиля">
-          <TabsPrimitive.Trigger value="profile" data-audio-cue="ui.click"><UserRound size={17} aria-hidden="true" />Профиль</TabsPrimitive.Trigger>
-          <TabsPrimitive.Trigger value="settings" data-audio-cue="ui.click"><Settings2 size={17} aria-hidden="true" />Настройки</TabsPrimitive.Trigger>
+          <TabsPrimitive.Trigger value="profile"><UserRound size={17} aria-hidden="true" />Профиль</TabsPrimitive.Trigger>
+          <TabsPrimitive.Trigger value="settings" className={styles.settingsTab} aria-label="Настройки" title="Настройки"><Settings size={19} aria-hidden="true" /></TabsPrimitive.Trigger>
         </TabsPrimitive.List>
         <TabsPrimitive.Content value="profile" forceMount className={styles.tabPanel}>
       <div className={styles.columns}>

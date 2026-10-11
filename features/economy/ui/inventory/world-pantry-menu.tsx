@@ -1,5 +1,7 @@
 "use client";
 
+import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
+import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { useEffect, useId, useRef, useState } from "react";
 import { Check, ChevronUp, Clock3, Compass, Fish, Gift, Hammer, Package, RefreshCw, Snowflake, Soup, Store, Sparkles } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
@@ -99,6 +101,10 @@ export function WorldPantryMenu({ economy, onUpgrade, onExplore, onOpenMarket, o
   const [tab, setTab] = useState(initialTab);
   const tabId = useId(), tabs = useRef<(HTMLButtonElement | null)[]>([]);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const changeTab = (next: NonNullable<WorldPantryMenuProps["initialTab"]>) => {
+    if (next !== tab) playUiCue(getAudioRuntime(), "ui.tab");
+    setTab(next); setSelectedItemId(null);
+  };
   const state = economy.snapshot;
   const cooldown = Math.max(0, Math.ceil((economy.retryAt - economy.now) / 1000));
   const recovery = (economy.error || economy.uncertain) && <div className={styles.error} role="alert">
@@ -143,10 +149,10 @@ export function WorldPantryMenu({ economy, onUpgrade, onExplore, onOpenMarket, o
 
     <div className={styles.pantryTabs} role="tablist" aria-label="Разделы кладовой">{sections.map((entry, index) => <button key={entry.id} type="button" ref={node => { tabs.current[index] = node; }}
       role="tab" id={`${tabId}-${entry.id}`} aria-selected={tab === entry.id} aria-controls={`${tabId}-panel`} tabIndex={tab === entry.id ? 0 : -1}
-      onClick={() => { setTab(entry.id); setSelectedItemId(null); }} onKeyDown={event => {
+      onClick={() => changeTab(entry.id)} onKeyDown={event => {
         const next = event.key === "Home" ? 0 : event.key === "End" ? sections.length - 1 : event.key === "ArrowLeft" ? (index + sections.length - 1) % sections.length : event.key === "ArrowRight" ? (index + 1) % sections.length : -1;
         if (next < 0) return;
-        event.preventDefault(); setTab(sections[next].id); setSelectedItemId(null); tabs.current[next]?.focus();
+        event.preventDefault(); changeTab(sections[next].id); tabs.current[next]?.focus();
       }}><entry.icon size={14} aria-hidden="true" /><small>{number(entry.count)}</small><span>{entry.name}</span></button>)}</div>
     <div role="tabpanel" className={styles.pantryPanel} id={`${tabId}-panel`} aria-labelledby={`${tabId}-${tab}`}>
       {tab === "relics" ? <RelicPantrySection state={state} onExplore={onExplore} onOpenMarket={marketAvailable ? onOpenMarket : undefined} /> : <>

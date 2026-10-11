@@ -1,5 +1,7 @@
 "use client";
 
+import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
+import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
 import { Check, RotateCcw, Search, Shirt, ShoppingBag } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
@@ -81,7 +83,10 @@ export function WorldWardrobe({ world, economy }: { world: WorldController; econ
     else if (wasConfirming.current) purchaseButton.current?.focus({ preventScroll: true });
     wasConfirming.current = confirming;
   }, [confirming]);
-  function changeSection(next: Section) { setSection(next); setSelection(null); setPurchasePending(null); setConfirmation(null); }
+  function changeSection(next: Section) {
+    if (next !== section) playUiCue(getAudioRuntime(), "ui.tab");
+    setSection(next); setSelection(null); setPurchasePending(null); setConfirmation(null);
+  }
   function buy() {
     if (blocked || sent.current || !selected || !price || !affordable || !confirming || owned.has(selected.id)) return;
     sent.current = true; setPurchasePending(selected.id); setConfirmation(null);

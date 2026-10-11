@@ -33,7 +33,7 @@
     },
     {
       "id": "forest.day.01",
-      "src": "/audio/originals-v1/loop/forest.day.01.wav",
+      "src": "/audio/originals-v1/loop/forest.day.01.nature-v2.wav",
       "status": "ready",
       "license": {
         "name": "Project-original procedural audio; provenance recorded",
@@ -41,13 +41,13 @@
         "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
         "sourceUrl": "art/audio/originals-v1/manifest.json",
         "acquiredAt": "2026-10-11",
-        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "changes": "Nature-v2 revision: wildlife isolated from the wind; unchanged deterministic phrases, restrained RMS mastering, seamless circular event tails and TPDF PCM16. New cache-safe filename.",
         "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
       }
     },
     {
       "id": "forest.night.01",
-      "src": "/audio/originals-v1/loop/forest.night.01.wav",
+      "src": "/audio/originals-v1/loop/forest.night.01.nature-v2.wav",
       "status": "ready",
       "license": {
         "name": "Project-original procedural audio; provenance recorded",
@@ -55,7 +55,21 @@
         "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
         "sourceUrl": "art/audio/originals-v1/manifest.json",
         "acquiredAt": "2026-10-11",
-        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "changes": "Nature-v2 revision: wildlife isolated from the wind; unchanged deterministic phrases, restrained RMS mastering, seamless circular event tails and TPDF PCM16. New cache-safe filename.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
+    },
+    {
+      "id": "weather.wind.01",
+      "src": "/audio/originals-v1/loop/weather.wind.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Original periodic filtered-noise wind with shallow 12-second swells, low RMS mastering, seamless loop and TPDF PCM16; independent weather bus.",
         "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
       }
     },
@@ -201,7 +215,7 @@
     },
     {
       "id": "ui.open.01",
-      "src": "/audio/originals-v1/effect/ui.open.01.wav",
+      "src": "/audio/originals-v1/effect/ui.open.01.felt-v3.wav",
       "status": "ready",
       "license": {
         "name": "Project-original procedural audio; provenance recorded",
@@ -209,13 +223,13 @@
         "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
         "sourceUrl": "art/audio/originals-v1/manifest.json",
         "acquiredAt": "2026-10-11",
-        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "changes": "Felt-v3 panel revision: fixed-pitch damped tine, 7 ms attack, no noise swish or pitch sweep, quieter peak-safe level and TPDF PCM16; new cache-safe filename.",
         "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
       }
     },
     {
       "id": "ui.open.02",
-      "src": "/audio/originals-v1/effect/ui.open.02.wav",
+      "src": "/audio/originals-v1/effect/ui.open.02.felt-v3.wav",
       "status": "ready",
       "license": {
         "name": "Project-original procedural audio; provenance recorded",
@@ -223,13 +237,13 @@
         "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
         "sourceUrl": "art/audio/originals-v1/manifest.json",
         "acquiredAt": "2026-10-11",
-        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "changes": "Felt-v3 panel revision: fixed-pitch damped tine, 7 ms attack, no noise swish or pitch sweep, quieter peak-safe level and TPDF PCM16; new cache-safe filename.",
         "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
       }
     },
     {
       "id": "ui.close.01",
-      "src": "/audio/originals-v1/effect/ui.close.01.wav",
+      "src": "/audio/originals-v1/effect/ui.close.01.felt-v3.wav",
       "status": "ready",
       "license": {
         "name": "Project-original procedural audio; provenance recorded",
@@ -237,13 +251,13 @@
         "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
         "sourceUrl": "art/audio/originals-v1/manifest.json",
         "acquiredAt": "2026-10-11",
-        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "changes": "Felt-v3 panel revision: fixed-pitch damped tine, 7 ms attack, no noise swish or pitch sweep, quieter peak-safe level and TPDF PCM16; new cache-safe filename.",
         "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
       }
     },
     {
       "id": "ui.close.02",
-      "src": "/audio/originals-v1/effect/ui.close.02.wav",
+      "src": "/audio/originals-v1/effect/ui.close.02.felt-v3.wav",
       "status": "ready",
       "license": {
         "name": "Project-original procedural audio; provenance recorded",
@@ -251,7 +265,49 @@
         "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
         "sourceUrl": "art/audio/originals-v1/manifest.json",
         "acquiredAt": "2026-10-11",
-        "changes": "Deterministic score/DSP synthesis, DC removal, peak-safe level adjustment, TPDF PCM16; Opus and AAC delivery for music.",
+        "changes": "Felt-v3 panel revision: fixed-pitch damped tine, 7 ms attack, no noise swish or pitch sweep, quieter peak-safe level and TPDF PCM16; new cache-safe filename.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
+    },
+    {
+      "id": "ui.tab.01",
+      "src": "/audio/originals-v1/effect/ui.tab.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Original fixed-pitch felt tine synthesis, softened attack and damped tail, quiet peak-safe level and TPDF PCM16.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
+    },
+    {
+      "id": "ui.tab.02",
+      "src": "/audio/originals-v1/effect/ui.tab.02.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Original fixed-pitch felt tine synthesis, softened attack and damped tail, quiet peak-safe level and TPDF PCM16.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
+    },
+    {
+      "id": "ui.slider.01",
+      "src": "/audio/originals-v1/effect/ui.slider.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-11",
+        "changes": "Original fixed-pitch felt tine synthesis, softened attack and damped tail, quiet peak-safe level and TPDF PCM16.",
         "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
       }
     },
@@ -1238,8 +1294,22 @@
       "fadeMs": 1800
     },
     {
+      "id": "weather.wind",
+      "bus": "weather",
+      "mode": "loop",
+      "assets": [
+        "weather.wind.01"
+      ],
+      "gainDb": -8,
+      "priority": 20,
+      "maxInstances": 1,
+      "cooldownMs": 0,
+      "pitchVariation": 0,
+      "fadeMs": 1800
+    },
+    {
       "id": "weather.rain",
-      "bus": "ambience",
+      "bus": "weather",
       "mode": "loop",
       "assets": [
         "weather.rain.01"
@@ -1362,8 +1432,8 @@
       "gainDb": -2,
       "priority": 100,
       "maxInstances": 2,
-      "cooldownMs": 350,
-      "pitchVariation": 0.015,
+      "cooldownMs": 180,
+      "pitchVariation": 0,
       "fadeMs": 15
     },
     {
@@ -1377,8 +1447,37 @@
       "gainDb": -2,
       "priority": 100,
       "maxInstances": 2,
-      "cooldownMs": 350,
-      "pitchVariation": 0.015,
+      "cooldownMs": 180,
+      "pitchVariation": 0,
+      "fadeMs": 15
+    },
+    {
+      "id": "ui.tab",
+      "bus": "ui",
+      "mode": "one-shot",
+      "assets": [
+        "ui.tab.01",
+        "ui.tab.02"
+      ],
+      "gainDb": -2,
+      "priority": 100,
+      "maxInstances": 2,
+      "cooldownMs": 100,
+      "pitchVariation": 0,
+      "fadeMs": 15
+    },
+    {
+      "id": "ui.slider",
+      "bus": "ui",
+      "mode": "one-shot",
+      "assets": [
+        "ui.slider.01"
+      ],
+      "gainDb": -2,
+      "priority": 100,
+      "maxInstances": 2,
+      "cooldownMs": 90,
+      "pitchVariation": 0,
       "fadeMs": 15
     },
     {
@@ -1744,6 +1843,12 @@
       "id": "forest.night",
       "cues": [
         "forest.night"
+      ]
+    },
+    {
+      "id": "weather.wind",
+      "cues": [
+        "weather.wind"
       ]
     },
     {

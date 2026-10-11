@@ -7,7 +7,9 @@ import { pleskMindFrame } from "@/features/world/characters/plesk/plesk-mind";
 import { forestJourneyFishingFrame } from "@/features/world/activities/journeys/forest-journey-travel";
 import { worldAudioEventPosition } from "./world-audio-frame";
 
-export type WorldAudioMarker = { key: string; token: string | number | null; cueId: string; position: AudioPoint; active?: boolean };
+export type WorldAudioMarker = { key: string; token: string | number | null; cueId: string; position: AudioPoint; active?: boolean;
+  /** Explicit dialogue replies stay audible at any camera distance or zoom. */
+  listenerRelative?: boolean };
 export type WorldAudioMarkerSnapshot = { epoch: object; elapsed: number; markers: WorldAudioMarker[] };
 let nextMarkerSession = 0;
 
@@ -16,14 +18,16 @@ export function worldAudioMarkers(scene: FixedWorldScene, state: ForestSessionSt
   options: { showHero: boolean; showBuildings: boolean; actorAway: boolean; reducedMotion: boolean }): WorldAudioMarkerSnapshot {
   const markers: WorldAudioMarker[] = [], actor = state.clearing, body = clearingActivityFrame(actor);
   const heroVisible = options.showHero && !options.actorAway;
-  const add = (key: string, token: string | number | null, cueId: string, position: AudioPoint, active = true) => {
-    markers.push({ key, token, cueId, position: { ...position }, active });
+  const add = (key: string, token: string | number | null, cueId: string, position: AudioPoint, active = true, listenerRelative = false) => {
+    markers.push({ key, token, cueId, position: { ...position }, active, listenerRelative });
   };
   const speech = state.social.current;
   if (speech) {
     const speaker = speech.speaker, position = speaker === "builder" ? state.builderMind?.position
       : speaker === "plesk" ? state.pleskMind?.position : heroVisible ? actor.position : undefined;
-    if (position && (speaker === "mochlik" || options.showBuildings)) add("speech", speech.id, `actor.${speaker}.greeting`, position);
+    if (position && (speaker === "mochlik" || options.showBuildings)) {
+      add("speech", speech.id, `actor.${speaker}.greeting`, position, true, speech.origin === "interaction");
+    }
   } else add("speech", null, "actor.mochlik.greeting", actor.position);
   if (!options.reducedMotion) {
     const outside = heroVisible && body.opacity > .3 && !state.journeyTravel?.mining && !state.animation && state.reaction <= 0;
@@ -80,7 +84,9 @@ export function createWorldAudioMarkerTracker() {
         if (!marker.active || marker.token === null || marker.token === prior?.token) return [];
         // Start/resume of walking is not a new ground contact by itself.
         if ((marker.key.endsWith("-step") || marker.key === "builder-hammer") && (!prior?.active || prior.token === null)) return [];
-        const spatial = worldAudioEventPosition(marker.position, listener);
+        // Keep the existing semantic token/dedup path: a tap must not also
+        // trigger a second greeting through an independent UI audio handler.
+        const spatial = marker.listenerRelative ? { gain: 1, pan: 0 } : worldAudioEventPosition(marker.position, listener);
         return spatial.gain > .001 ? [{ id: `${scope}:session-${sessionId}:${marker.key}:${marker.token}:${++sequence}`,
           cueId: marker.cueId, occurredAt: now, ...spatial }] : [];
       });

@@ -3,6 +3,8 @@
 import { useId, useRef, useState } from "react";
 import { Anchor, BookOpen, Bug, Check, ChevronLeft, ChevronRight, Fish, FishingRod } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
+import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
+import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import { FishingRodIcon } from "@/features/world/activities/fishing/fishing-rod-icon";
 import type { EconomyView } from "@/features/economy/domain/model";
 import { fishingState } from "@/features/economy/domain/fishing";
@@ -76,7 +78,10 @@ export function PleskFishingCollection({ state, catalog }: BookProps) {
   const id = useId(), buttons = useRef<Array<HTMLButtonElement | null>>([]);
   const current = chapters.find(entry => entry.id === chapter)!, entries = fishingBookEntries(state, catalog, chapter);
   const known = entries.filter(entry => entry.known).length, { page, pages } = fishingBookPage(entries, requestedPage);
-  function openChapter(next: FishingBookChapter) { setChapter(next); setPage(0); }
+  function openChapter(next: FishingBookChapter) {
+    if (next !== chapter) playUiCue(getAudioRuntime(), "ui.tab");
+    setChapter(next); setPage(0);
+  }
   return <section className={styles.book} aria-label="Рыбацкая книга">
     <header className={styles.cover}><BookOpen size={23} aria-hidden="true" /><div><strong>Рыбацкая книга</strong><span>Улов и мои снасти</span></div></header>
     <div className={styles.chapters} role="tablist" aria-label="Главы рыбацкой книги">{chapters.map((entry, index) => {
