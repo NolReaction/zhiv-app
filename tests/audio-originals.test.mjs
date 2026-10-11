@@ -34,7 +34,7 @@ function pcmWave(bytes) {
 
 test("original pack fills the catalog, documents source and verifies every shipped byte", () => {
   assert.deepEqual(inspectAudioCatalog(catalog, { root, requireReady: true }).errors, []);
-  assert.equal(manifest.assets.length, 95);
+  assert.equal(manifest.assets.length, 97);
   assert.deepEqual(new Set(manifest.assets.map(item => item.id)), new Set(catalog.assets.map(item => item.id)));
   const hashes = new Set();
   for (const source of manifest.sources) assert.equal(sha(readFileSync(path.join(root, source.path))), source.sha256, source.path);
@@ -177,4 +177,30 @@ test("repeated navigation and volume feedback have short, quiet tails", () => {
       assert.ok(Math.sqrt(squares / tailSamples) < .0032, `${item.id}: quiet final 15 ms avoids a cut-off tail`);
     }
   }
+});
+
+test("logo and daily gift signatures stay short, soft and cheap to preload", () => {
+  let deliveryBytes = 0;
+  for (const [id, maximumDuration, maximumRms] of [
+    ["ui.startup.01", .65, -24], ["ui.daily-reward.01", .85, -23],
+  ]) {
+    const item = manifest.assets.find(entry => entry.id === id);
+    assert.equal(item.channels, 1, `${id}: no extra stereo buffer for a centered UI gesture`);
+    assert.ok(item.durationSeconds >= .4 && item.durationSeconds <= maximumDuration, `${id}: compact signature`);
+    assert.ok(item.measurements.rmsDb <= maximumRms && item.measurements.peakDb <= -9, `${id}: restrained level`);
+    const wav = pcmWave(readFileSync(path.join(root, "public", item.files[0].src)));
+    const tailFrames = Math.round(wav.rate * .025);
+    let tailSquares = 0, differenceSquares = 0, squares = 0, previous = 0;
+    for (let frame = 0; frame < item.frames; frame++) {
+      const sample = wav.samples.readInt16LE(frame * 2) / 32768;
+      squares += sample * sample;
+      differenceSquares += (sample - previous) ** 2;
+      if (frame >= item.frames - tailFrames) tailSquares += sample * sample;
+      previous = sample;
+    }
+    assert.ok(Math.sqrt(tailSquares / tailFrames) < .001, `${id}: final tail has no audible cut-off`);
+    assert.ok(differenceSquares / squares < .025, `${id}: no added broadband hiss or sharp upper partials`);
+    deliveryBytes += item.files[0].bytes;
+  }
+  assert.ok(deliveryBytes < 140 * 1024, "preloading the two signatures stays lightweight");
 });

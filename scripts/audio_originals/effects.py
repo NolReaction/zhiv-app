@@ -165,6 +165,31 @@ def _ui(kind: str, variant: int, sample_rate: int,
     elif kind == "slider":
         audio = _felt_pluck(.080, 560, sample_rate, .016)
         title, description, target = "Felt dial", "One very short muted tine; the interface gently adjusts its playback pitch with the selected volume.", -28
+    elif kind == "startup":
+        # Two rounded, consonant notes mirror the logo's pop and small settle.
+        # A soft octave underneath adds body without a broadband whoosh, so
+        # the signature stays compact and unobtrusive on repeated launches.
+        audio = np.zeros(round(.56 * sample_rate))
+        _add(audio, _felt_pluck(.40, 392, sample_rate, .070), 0, sample_rate, .75)
+        _add(audio, _felt_pluck(.34, 196, sample_rate, .055), .004, sample_rate, .14)
+        _add(audio, _felt_pluck(.45, 587.33, sample_rate, .080), .085, sample_rate, .58)
+        title = "A small awakening"
+        description = "A compact two-note felt signature, with a warm padded pop and a gentle rising fifth for the logo reveal. No noise sweep or long fanfare."
+        target = -24.5
+    elif kind == "daily-reward":
+        # The daily gift has its own little ascending gesture, shorter and
+        # more damped than the general treasure chime. Sparse upper harmonics
+        # keep the higher final note rounded rather than metallic.
+        audio = np.zeros(round(.76 * sample_rate))
+        for pitch, when, strength, decay in [
+            (523.25, 0, .72, .072), (659.25, .065, .58, .073),
+            (783.99, .135, .49, .076), (1046.5, .225, .32, .085),
+        ]:
+            _add(audio, _felt_pluck(.50, pitch, sample_rate, decay), when, sample_rate, strength)
+        _add(audio, _felt_pluck(.34, 261.63, sample_rate, .052), .006, sample_rate, .16)
+        title = "A gift gathered"
+        description = "A short original ascending felt arpeggio for collecting the daily gift, with a padded low note and a softly damped high finish."
+        target = -23.5
     elif kind == "confirm":
         audio = np.zeros(round(.72 * sample_rate))
         notes = [523.25, 783.99] if variant == 1 else [659.25, 880]
@@ -408,7 +433,7 @@ def render(asset_id: str, sample_rate: int) -> tuple[np.ndarray, dict]:
     variant = int(parts[-1])
     rng = _rng(asset_id)
     if parts[0] == "ui" and len(parts) == 3:
-        if variant > {"click": 3, "slider": 1}.get(parts[1], 2):
+        if variant > {"click": 3, "slider": 1, "startup": 1, "daily-reward": 1}.get(parts[1], 2):
             raise ValueError(f"Unknown UI variation: {asset_id}")
         return _ui(parts[1], variant, sample_rate, rng)
     if parts[0] == "actor" and len(parts) == 4 and variant <= 3:

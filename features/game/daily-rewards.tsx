@@ -3,6 +3,8 @@ import { useEffect, useRef, type RefObject } from "react";
 import { CalendarDays, Check, Clock3, Gift, PackageOpen, RefreshCw, X } from "lucide-react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { Dialog, DialogDescription, DialogOverlay, DialogPortal, DialogTitle } from "@/components/ui/dialog";
+import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
+import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import { formatPearls } from "@/features/economy/domain/money";
 import { ItemIcon } from "@/features/items/item-icon";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
@@ -88,6 +90,11 @@ export function DailyRewardsDialog({ ownerPublicId, economy, isOnline = true, on
   open: boolean; onOpenChange: (value: boolean) => void; onReturnFocus: () => void; onOpenPantry?: () => void;
 }) {
   const controller = useGameRewards(ownerPublicId, isOnline, onSessionLost, () => { void economy.refresh(); });
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (open && !wasOpen.current) playUiCue(getAudioRuntime(), "ui.open");
+    wasOpen.current = open;
+  }, [open]);
   const entryPrompt = useRef<ReturnType<typeof createDailyRewardEntryPrompt> | null>(null);
   if (entryPrompt.current === null) { entryPrompt.current = createDailyRewardEntryPrompt(ownerPublicId, controller.readVersion); }
   useEffect(() => {

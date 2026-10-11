@@ -28,6 +28,35 @@ test("moving a destination invalidates saved travel geometry while a visual mask
   assert.equal(forestSceneFingerprint({ ...map, occluders: [] }), fingerprint);
 });
 
+test("moving only leaf anchors preserves pet needs, mushrooms and garden results during normal reconciliation", () => {
+  const env = environment(), oldMap = scene();
+  for (const habitat of oldMap.habitats.filter(item => item.id.startsWith("clearing-"))) {
+    for (const anchor of habitat.anchors) { anchor.position.x -= 10; if (anchor.kind === "shelter") anchor.position.y += 6; }
+  }
+  const first = connect("memory-leaf-placement", oldMap, env);
+  first.state.clearing.position = { x: 665, y: 701 };
+  first.state.clearing.behavior.mind.needs.energy = .39;
+  first.state.life.mushrooms[0].growth = .2;
+  first.state.life.mushrooms[0].regrowIn = 12;
+  Object.assign(first.state.life.garden.bushes[0], { growth: .63, moisture: .82, waterIn: 240 });
+  first.state.life.garden.basket.berries = 6;
+  first.release();
+  const map = scene(), next = connect("memory-leaf-placement", map, env);
+  try {
+    assert.notEqual(forestSceneFingerprint(map), forestSceneFingerprint(oldMap));
+    assert.equal(next.state.memory.restored, true); assert.equal(next.state.memory.reconciled, true);
+    assert.deepEqual(next.state.clearing.position, map.actor.spawn);
+    assert.equal(next.state.clearing.behavior.mind.needs.energy, .39);
+    assert.equal(next.state.life.mushrooms[0].growth, .2); assert.equal(next.state.life.mushrooms[0].regrowIn, 12);
+    assert.equal(next.state.life.garden.bushes[0].growth, .63);
+    assert.equal(next.state.life.garden.bushes[0].moisture, .82);
+    assert.equal(next.state.life.garden.bushes[0].waterIn, 240);
+    assert.equal(next.state.life.garden.basket.berries, 6);
+    assert.equal(next.state.life.garden.routine, null);
+    assert.equal(next.state.fauna.encounter, null);
+  } finally { next.release(); }
+});
+
 function environment() {
   const records = new Map(), hooks = new Set();
   let now = 1000, reads = 0, writes = 0, removed = 0;

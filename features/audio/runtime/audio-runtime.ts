@@ -2,6 +2,7 @@ import { AUDIO_CATALOG } from "@/features/audio/catalog/catalog";
 import { mergeAudioSettings, sanitizeAudioSettings } from "@/features/audio/domain/settings";
 import { AUDIO_BUSES, type AudioAsset, type AudioBus, type AudioCatalog, type AudioCue, type AudioDiagnostics, type AudioEvent, type AudioFrame, type AudioLoopTarget, type AudioRuntime, type AudioSettings, type AudioSourceDebug } from "@/features/audio/domain/types";
 import { createAudioAssetCache } from "./audio-asset-cache";
+import { createAudioAssetTransport } from "./audio-asset-transport";
 
 const MAX_VOICES = 24;
 const MAX_LOOPS = 10;
@@ -11,6 +12,7 @@ const MAX_EVENT_IDS = 512;
 const DEDUP_TTL_MS = 60_000;
 const STREAM_RETRY_MS = 30_000;
 const MAX_LOOP_TIMELINES = 128;
+const MAX_PREPARED_MUSIC_BYTES = 8 * 1024 * 1024;
 const SOUNDSCAPE_BUSES = new Set<AudioBus>(["ambience", "weather", "world", "characters"]);
 
 type Voice = {
@@ -32,6 +34,7 @@ export type AudioRuntimeOptions = {
   now?: () => number;
   random?: () => number;
   maxDecodedBytes?: number;
+  cacheStorage?: CacheStorage;
 };
 
 const finiteClamp = (value: number, low: number, high: number, fallback = low) => Number.isFinite(value) ? Math.max(low, Math.min(high, value)) : fallback;
@@ -39,10 +42,10 @@ const dbGain = (db: number) => 10 ** (finiteClamp(db, -60, 0) / 20);
 const defaultContext = () => {
   const Constructor = globalThis.AudioContext ?? (globalThis as typeof globalThis & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!Constructor) throw new Error("Web Audio unavailable");
-  return new Constructor({ latencyHint: "interactive" });
+  return new Constructor({ latencyHint: "balanced", sampleRate: 48_000 });
 };
 
-/** One application-wide mixer. Browser resources are only acquired from unlock(). */
+/** One application-wide mixer. Preparation may decode while playback is locked. */
 export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRuntime {
   const catalog = options.catalog ?? AUDIO_CATALOG;
   const cues = new Map(catalog.cues.map(cue => [cue.id, cue]));
@@ -87,7 +90,13 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
   const bufferClaims = new Map<string, number>();
   const pendingEvents = new Set<number>();
   const parameterRamps = new WeakMap<AudioParam, ParameterRamp>();
-  const cache = createAudioAssetCache({ context: () => context, fetchAsset: options.fetchAsset ?? ((...args) => fetch(...args)), now,
+  const transport = createAudioAssetTransport({ fetchAsset: options.fetchAsset ?? ((...args) => fetch(...args)),
+    cacheStorage: options.cacheStorage });
+  const preparedMusic = new Map<string, { url: string; bytes: number }>();
+  const pendingMusic = new Map<string, Promise<void>>();
+  const preparationControllers = new Set<AbortController>();
+  let preparationAutoplayAttempted = false;
+  const cache = createAudioAssetCache({ context: () => context, fetchAsset: transport.fetch, now,
     maxDecodedBytes: options.maxDecodedBytes, changed: publish,
     isInUse: id => (bufferClaims.get(id) ?? 0) > 0 || [...voices.values(), ...retiring.values()].some(voice => voice.assetId === id),
   });
@@ -226,11 +235,11 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
     for (const voice of retiring.values()) voice.reclaimable = false;
     if (immediate) for (const voice of [...retiring.values()]) cleanup(voice);
   }
-  function loadBuffer(asset: AudioAsset, consume: (buffer: AudioBuffer | null) => void) {
+  function loadBuffer(asset: AudioAsset, consume: (buffer: AudioBuffer | null) => void, priority = 60) {
     // Reserve through the consumer callback: another simultaneous decode must not evict
     // a buffer in the microtask gap between load completion and voice creation.
     bufferClaims.set(asset.id, (bufferClaims.get(asset.id) ?? 0) + 1);
-    void cache.load(asset).then(consume).catch(() => { droppedEvents++; publish(); }).finally(() => {
+    void cache.load(asset, priority).then(consume).catch(() => { droppedEvents++; publish(); }).finally(() => {
       const remaining = (bufferClaims.get(asset.id) ?? 1) - 1;
       if (remaining > 0) bufferClaims.set(asset.id, remaining); else bufferClaims.delete(asset.id);
     });
@@ -330,6 +339,8 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
       const liveVoice = voice;
       const player = media;
       const urls = [...new Set([asset.src, asset.fallbackSrc].filter((url): url is string => Boolean(url)))];
+      // Preparation chooses a supported codec; consume its ready Blob first.
+      urls.sort((a, b) => Number(preparedMusic.has(b)) - Number(preparedMusic.has(a)));
       let attempt = 0;
       const savedPosition = key.startsWith("loop:") ? musicPositions.get(asset.id) ?? 0 : 0;
       const restorePosition = () => {
@@ -345,7 +356,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
         };
         player.onerror = () => onFailure(true);
         player.onloadedmetadata = restorePosition;
-        player.src = urls[index]; restorePosition();
+        player.src = preparedMusic.get(urls[index])?.url ?? urls[index]; restorePosition();
         // A failed codec may use the fallback; autoplay denial needs a new gesture instead.
         void player.play().then(() => {
           if (liveVoice.stopped) { player.pause(); return; }
@@ -419,44 +430,51 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
         pendingLoops.delete(key);
         const current = targets().find(item => `loop:${item.id}` === key && item.cueId === cue.id);
         if (buffer && current && token.generation === generation) startBuffer(key, cue, asset, buffer, current.gain, current.pan, current.priority ?? cue.priority);
-      });
+      }, 20);
     }
     publish();
   }
 
+  function ensureContext(): boolean {
+    if (disposed) return false;
+    if (context) return context.state !== "closed";
+    try {
+      context = (options.createContext ?? defaultContext)();
+      master = context.createGain(); master.gain.value = 0;
+      if (typeof context.createDynamicsCompressor === "function") {
+        compressor = context.createDynamicsCompressor();
+        compressor.threshold.value = -3; compressor.knee.value = 6; compressor.ratio.value = 12;
+        compressor.attack.value = .003; compressor.release.value = .25;
+        master.connect(compressor); compressor.connect(context.destination);
+      } else master.connect(context.destination);
+      for (const bus of AUDIO_BUSES) { const gain = context.createGain(); gain.gain.value = settings.buses[bus]; gain.connect(master); buses.set(bus, gain); }
+      context.onstatechange = () => {
+        if (disposed) return;
+        if (context?.state !== "running") invalidate(true);
+        else if (everUnlocked && visible && settings.enabled) { updateMix(); reconcile(); }
+        publish();
+      };
+      unavailable = false;
+      return true;
+    } catch { unavailable = true; publish(); return false; }
+  }
+
   async function unlock(): Promise<boolean> {
-    if (disposed || !visible || !settings.enabled) return false;
-    if (!context) {
-      try {
-        context = (options.createContext ?? defaultContext)();
-        master = context.createGain(); master.gain.value = 0;
-        if (typeof context.createDynamicsCompressor === "function") {
-          compressor = context.createDynamicsCompressor();
-          compressor.threshold.value = -3; compressor.knee.value = 6; compressor.ratio.value = 12;
-          compressor.attack.value = .003; compressor.release.value = .25;
-          master.connect(compressor); compressor.connect(context.destination);
-        } else master.connect(context.destination);
-        for (const bus of AUDIO_BUSES) { const gain = context.createGain(); gain.gain.value = settings.buses[bus]; gain.connect(master); buses.set(bus, gain); }
-        context.onstatechange = () => {
-          if (context?.state !== "running") invalidate(true);
-          publish();
-        };
-      } catch { unavailable = true; publish(); return false; }
-    }
+    if (disposed || !visible || !settings.enabled || !ensureContext()) return false;
     unavailable = false;
     try {
       // A running context may still have gesture-blocked HTML media. Retry those
       // synchronously in this gesture, without yielding to context.resume().
-      if (context.state === "running") {
+      if (context!.state === "running") {
         everUnlocked = true;
         for (const id of blockedStreams) failedStreams.delete(id);
         blockedStreams.clear();
         updateMix(); reconcile(); publish(); return true;
       }
       // Invoked directly in the user gesture, before any await.
-      await context.resume();
+      await context!.resume();
       if (disposed || !visible || !settings.enabled) {
-        if (!disposed && contextIsRunning()) void context.suspend().catch(() => {});
+        if (!disposed && contextIsRunning()) void context!.suspend().catch(() => {});
         return false;
       }
       everUnlocked = contextIsRunning();
@@ -469,8 +487,95 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
     } catch { publish(); return false; }
   }
 
+  function prepareMusic(asset: AudioAsset): Promise<void> {
+    const urls = [...new Set([asset.src, asset.fallbackSrc].filter((url): url is string => Boolean(url)))];
+    if (!urls.length || typeof URL.createObjectURL !== "function") return Promise.resolve();
+    if (urls.some(url => preparedMusic.has(url))) return Promise.resolve();
+    const alreadyPending = urls.map(url => pendingMusic.get(url)).find(Boolean);
+    if (alreadyPending) return alreadyPending;
+    // Prefer the codec this browser can stream. A full song stays compressed;
+    // its cached Blob is consumed by HTMLAudioElement, not decodeAudioData.
+    const player = options.createMediaElement?.() ?? (typeof Audio === "function" ? new Audio() : null);
+    const mime = (url: string) => /\.m4a(?:\?|$)/.test(url) ? 'audio/mp4; codecs="mp4a.40.2"'
+      : /\.opus(?:\?|$)/.test(url) ? 'audio/ogg; codecs="opus"' : /\.mp3(?:\?|$)/.test(url) ? "audio/mpeg" : "audio/wav";
+    const url = urls.find(candidate => !player?.canPlayType || Boolean(player.canPlayType(mime(candidate)))) ?? urls[0];
+    if (preparedMusic.has(url)) return Promise.resolve();
+    const existing = pendingMusic.get(url);
+    if (existing) return existing;
+    const controller = new AbortController(); preparationControllers.add(controller);
+    const timer = setTimeout(() => controller.abort(), 12_000);
+    const pending = (async () => {
+      try {
+        const response = await transport.fetch(url, { signal: controller.signal, credentials: "same-origin" });
+        if (!response.ok) return;
+        const length = Number(response.headers.get("content-length"));
+        if (length > 12 * 1024 * 1024) return;
+        const blob = await response.blob();
+        if (disposed || controller.signal.aborted || blob.size > MAX_PREPARED_MUSIC_BYTES) return;
+        let bytes = [...preparedMusic.values()].reduce((total, item) => total + item.bytes, 0);
+        for (const [key, cached] of preparedMusic) {
+          if (bytes + blob.size <= MAX_PREPARED_MUSIC_BYTES && preparedMusic.size < MAX_MUSIC_DECKS) break;
+          // A stream already playing its Blob must retain that URL.
+          if ([...voices.values(), ...retiring.values()].some(voice => voice.media?.src === cached.url)) continue;
+          URL.revokeObjectURL(cached.url); preparedMusic.delete(key); bytes -= cached.bytes;
+        }
+        if (bytes + blob.size <= MAX_PREPARED_MUSIC_BYTES && preparedMusic.size < MAX_MUSIC_DECKS)
+          preparedMusic.set(url, { url: URL.createObjectURL(blob), bytes: blob.size });
+      } catch { /* Preparation is optional; normal streaming can retry later. */ }
+      finally { controller.abort(); clearTimeout(timer); preparationControllers.delete(controller); pendingMusic.delete(url); }
+    })();
+    pendingMusic.set(url, pending);
+    return pending;
+  }
+
+  async function prepareEncoded(asset: AudioAsset): Promise<void> {
+    if (!asset.src) return;
+    const controller = new AbortController(); preparationControllers.add(controller);
+    const timer = setTimeout(() => controller.abort(), 12_000);
+    try {
+      const response = await transport.fetch(asset.src, { signal: controller.signal, credentials: "same-origin" });
+      if (response.ok && Number(response.headers.get("content-length")) <= 12 * 1024 * 1024) await response.arrayBuffer();
+    } catch { /* Muted prefetch never blocks app entry or requires audio permission. */ }
+    finally { controller.abort(); clearTimeout(timer); preparationControllers.delete(controller); }
+  }
+
+  async function prepare(cueIds: readonly string[], config?: { signal?: AbortSignal }): Promise<void> {
+    const signal = config?.signal;
+    if (disposed || signal?.aborted) return;
+    // Muted first visits still warm encoded files without acquiring an audio
+    // device or decoding buffers. Enabling sound later uses those cached bytes.
+    const decodingAllowed = settings.enabled && settings.master > 0 && visible && ensureContext();
+    // A returning visitor may already have browser autoplay permission. Never
+    // await resume here: a denied/pending permission must not hold the splash.
+    if (!preparationAutoplayAttempted && decodingAllowed) {
+      preparationAutoplayAttempted = true;
+      void unlock();
+    }
+    for (const id of [...new Set(cueIds)].slice(0, 16)) {
+      if (disposed || signal?.aborted) break;
+      const cue = cues.get(id);
+      if (!cue) continue;
+      const ready = cue.assets.map(assetId => assets.get(assetId))
+        .filter((item): item is AudioAsset => item?.status === "ready" && Boolean(item.src));
+      // Tiny UI variants are all needed: the first real tap is randomized.
+      for (const asset of ready.slice(0, cue.mode === "one-shot" ? 4 : 1)) {
+        if (disposed || signal?.aborted) break;
+        const work = cue.mode === "music" ? prepareMusic(asset)
+          : decodingAllowed ? new Promise<void>(resolve => { loadBuffer(asset, () => resolve(), 0); })
+            : prepareEncoded(asset);
+        if (!signal) await work;
+        else await new Promise<void>(resolve => {
+          const finish = () => { signal.removeEventListener("abort", finish); resolve(); };
+          signal.addEventListener("abort", finish, { once: true });
+          void work.then(finish, finish);
+          if (signal.aborted) finish();
+        });
+      }
+    }
+  }
+
   const runtime: AudioRuntime = {
-    unlock,
+    unlock, prepare,
     setSettings(patch) {
       if (disposed) return;
       const previous = settings;
@@ -559,7 +664,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
             || !startBuffer(`event:${++sequence}`, cue, asset, buffer, event.gain ?? 1, event.pan ?? 0, cue.priority, event.playbackRate, feedbackBus)) { droppedEvents++; publish(); }
           else playbackCooldowns.set(cue.id, startedAt);
         }
-      });
+      }, cue.bus === "ui" ? 100 : 60);
     },
     preview(cueId) {
       if (process.env.NODE_ENV === "production" || disposed) return;
@@ -622,7 +727,11 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
       if (disposed) return;
       disposed = true; frame = null;
       if (frameClearTimer) { clearTimeout(frameClearTimer); frameClearTimer = null; }
-      invalidate(true); cache.dispose();
+      invalidate(true); cache.dispose(); transport.dispose();
+      for (const controller of preparationControllers) controller.abort();
+      preparationControllers.clear(); pendingMusic.clear();
+      for (const cached of preparedMusic.values()) URL.revokeObjectURL(cached.url);
+      preparedMusic.clear();
       eventIds.clear(); cooldowns.clear(); playbackCooldowns.clear(); lastVariants.clear(); failedStreams.clear(); blockedStreams.clear(); musicPositions.clear(); loopTimelines.clear();
       if (context) {
         context.onstatechange = null;

@@ -17,6 +17,7 @@
 | Потеря ответа экономической команды, повтор, revision | [`features/economy/sync/`](../features/economy/sync/) |
 | Жесты камеры, порядок рисования, перекрытие объектов | [`features/world/scene/`](../features/world/scene/) |
 | Музыка, громкость, UI-звуки, загрузка записей | [`features/audio/`](../features/audio/README.md), [устройство системы](game/audio-system.md) |
+| Подготовка звука при запуске, заставка и ежедневный подарок | [`startup-audio.ts`](../features/startup/startup-audio.ts), [`use-menu-audio.ts`](../features/app/integration/use-menu-audio.ts), [`game-rewards-audio.ts`](../features/game/game-rewards-audio.ts) |
 | Слышимость зданий, Tiled-зоны, звук шагов и занятий | [`features/world/audio/`](../features/world/audio/), [разметка звука](game/audio-system.md#разметка-в-tiled) |
 | Выбор действия Мохлика / конкретное занятие | [`world/simulation/`](../features/world/simulation/) / [`world/activities/`](../features/world/activities/) |
 | Сохранение полянки, чужое устройство, аренда | [`world/state/memory/`](../features/world/state/memory/), [`forest-session.ts`](../features/world/state/forest-session.ts) |

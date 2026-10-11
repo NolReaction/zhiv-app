@@ -41,6 +41,8 @@ export type AudioSettingsPatch = Partial<Omit<AudioSettings, "buses">> & { buses
 
 export interface AudioRuntime {
   unlock(): Promise<boolean>;
+  /** Prepare resources without waiting for browser playback permission. */
+  prepare(cueIds: readonly string[], options?: { signal?: AbortSignal }): Promise<void>;
   setSettings(patch: AudioSettingsPatch): void;
   getSettings(): AudioSettings;
   updateFrame(frame: AudioFrame): void;

@@ -14,7 +14,9 @@ export function getAudioRuntime(): AudioRuntime {
   configureAmbientAudioSession(window.navigator);
   let saved: unknown;
   try { saved = JSON.parse(window.localStorage.getItem(AUDIO_SETTINGS_STORAGE_KEY) ?? "null"); } catch { /* Storage is optional in private mode. */ }
-  const runtime = createAudioRuntime({ initialSettings: sanitizeAudioSettings(saved) });
+  let cacheStorage: CacheStorage | undefined;
+  try { cacheStorage = window.caches; } catch { /* Restricted storage does not disable sound. */ }
+  const runtime = createAudioRuntime({ initialSettings: sanitizeAudioSettings(saved), cacheStorage });
   let lastSettings = runtime.getSettings();
   runtime.subscribe(() => {
     const settings = runtime.getSettings();

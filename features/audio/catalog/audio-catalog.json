@@ -1332,6 +1332,34 @@
         "changes": "Original deterministic DSP Foley, DC removal, gentle edges, restrained peak-safe level and TPDF PCM16; no external samples.",
         "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
       }
+    },
+    {
+      "id": "ui.startup.01",
+      "src": "/audio/originals-v1/effect/ui.startup.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-12",
+        "changes": "Original two-note felt logo signature with padded attack, a gentle rising fifth, short damped tail and TPDF PCM16.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
+    },
+    {
+      "id": "ui.daily-reward.01",
+      "src": "/audio/originals-v1/effect/ui.daily-reward.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-12",
+        "changes": "Original compact rising felt arpeggio with a warm low note, restrained upper harmonics, a damped finish and TPDF PCM16.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     }
   ],
   "cues": [
@@ -1975,6 +2003,34 @@
       "cooldownMs": 1200,
       "pitchVariation": 0,
       "fadeMs": 25
+    },
+    {
+      "id": "ui.startup",
+      "bus": "ui",
+      "mode": "one-shot",
+      "assets": [
+        "ui.startup.01"
+      ],
+      "gainDb": -2,
+      "priority": 100,
+      "maxInstances": 1,
+      "cooldownMs": 2000,
+      "pitchVariation": 0,
+      "fadeMs": 15
+    },
+    {
+      "id": "ui.daily-reward",
+      "bus": "ui",
+      "mode": "one-shot",
+      "assets": [
+        "ui.daily-reward.01"
+      ],
+      "gainDb": -2,
+      "priority": 100,
+      "maxInstances": 1,
+      "cooldownMs": 900,
+      "pitchVariation": 0,
+      "fadeMs": 15
     }
   ],
   "profiles": [

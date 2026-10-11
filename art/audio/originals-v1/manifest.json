@@ -16,7 +16,7 @@
     },
     {
       "path": "scripts/audio_originals/effects.py",
-      "sha256": "383430728077e343c1097fc3bcc63f469242a9e6ed9ffe8fbc9b6765eaa4e809"
+      "sha256": "d73a76b5127882a9cc77c38a1f1e40f12aeea70ded8465d359c0e7a33e3d0fe6"
     },
     {
       "path": "scripts/audio_originals/music.py",
@@ -2622,6 +2622,60 @@
           "src": "/audio/originals-v1/effect/water.drop.02.wav",
           "bytes": 27884,
           "sha256": "e8a7226bad7326f393e229b273ffec4a432bf14a4f33d12f1c3b3cdaea5384c2"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "ui.startup.01",
+      "kind": "effect",
+      "title": "A small awakening 1",
+      "description": "A compact two-note felt signature, with a warm padded pop and a gentle rising fifth for the logo reveal. No noise sweep or long fanfare.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 26880,
+      "durationSeconds": 0.56,
+      "decodedBytes": 107520,
+      "masterSha256": "01774aff6707a0fe0e2a71dc0640ab74042b3c0ff5d0738fb0b70709f3137339",
+      "measurements": {
+        "peakDb": -11.2472,
+        "rmsDb": -24.5,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.023028553
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/ui.startup.01.wav",
+          "bytes": 53804,
+          "sha256": "01774aff6707a0fe0e2a71dc0640ab74042b3c0ff5d0738fb0b70709f3137339"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "ui.daily-reward.01",
+      "kind": "effect",
+      "title": "A gift gathered 1",
+      "description": "A short original ascending felt arpeggio for collecting the daily gift, with a padded low note and a softly damped high finish.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 36480,
+      "durationSeconds": 0.76,
+      "decodedBytes": 145920,
+      "masterSha256": "9ac1feeb91a64f7f21c5ed34bc1efa9ed7673435fea2b2e0ea46b7169f6fe9ba",
+      "measurements": {
+        "peakDb": -10.062,
+        "rmsDb": -23.5,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.030984938
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/ui.daily-reward.01.wav",
+          "bytes": 73004,
+          "sha256": "9ac1feeb91a64f7f21c5ed34bc1efa9ed7673435fea2b2e0ea46b7169f6fe9ba"
         }
       ],
       "composition": {}

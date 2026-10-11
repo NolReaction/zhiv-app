@@ -2,6 +2,7 @@ import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
+import sharp from 'sharp';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const vite = await createServer({ configFile: false, root, resolve: { alias: { '@': root } },
@@ -40,6 +41,29 @@ function assertSpaced(state) {
     }
   }
 }
+
+test('clearing rest leaves and the full shelter footprint sit on opaque bush foliage', async () => {
+  const { TILED_WORLD } = await vite.ssrLoadModule('/features/world/scene/presentation.ts');
+  const bush = TILED_WORLD.bushes.find(item => item.id === 'clearing-bush');
+  const image = TILED_WORLD.terrain.find(item => item.id === bush.imageId);
+  const { data, info } = await sharp(`${root}/public${image.image.split('?')[0]}`)
+    .ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const anchors = TILED_WORLD.habitats.filter(item => item.id.startsWith('clearing-')).flatMap(item => item.anchors);
+  assert.equal(anchors.length, 4);
+  for (const anchor of anchors) {
+    // Check the entire authored patch, not just the centre seat. Shelter seats
+    // reach 10 world units; four more leave room for a folded body and arrival.
+    const radius = anchor.kind === 'shelter' ? 14 : 4;
+    for (let r = 0; r <= radius; r += 1) for (let angle = 0; angle < 360; angle += 3) {
+      const x = anchor.position.x + Math.cos(angle * Math.PI / 180) * r;
+      const y = anchor.position.y + Math.sin(angle * Math.PI / 180) * r;
+      const px = Math.round((x - image.bounds.x) / image.bounds.width * info.width);
+      const py = Math.round((y - image.bounds.y) / image.bounds.height * info.height);
+      const alpha = data[(py * info.width + px) * info.channels + 3];
+      assert.ok(alpha >= 230, `${anchor.id}: unsupported leaf at ${x.toFixed(2)}, ${y.toFixed(2)}`);
+    }
+  }
+});
 
 test('different leaf IDs at the same position reserve one seat before either insect lands', () => {
   const state = createForestFauna({ ...scene, habitats: [habitat('west', 'butterfly', 3), habitat('east', 'butterfly', 3)] });

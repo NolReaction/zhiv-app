@@ -62,6 +62,20 @@ test("frequent navigation feedback has independent throttling and no random pitc
   }
 });
 
+test("logo and daily gift use distinct bounded interface gestures", () => {
+  const catalog = JSON.parse(readFileSync(new URL("../features/audio/catalog/audio-catalog.json", import.meta.url), "utf8"));
+  const signatures = ["ui.startup", "ui.daily-reward"].map(id => catalog.cues.find(cue => cue.id === id));
+  for (const cue of signatures) {
+    assert.equal(cue.bus, "ui", "signatures follow interface volume, including mute");
+    assert.equal(cue.mode, "one-shot");
+    assert.equal(cue.maxInstances, 1, "repeated render/claim events cannot stack the signature");
+    assert.equal(cue.pitchVariation, 0, "the recognizable motif stays in tune");
+    assert.ok(cue.cooldownMs >= 900, "no retrigger while a signature is still sounding");
+    assert.equal(cue.assets.length, 1);
+  }
+  assert.notEqual(signatures[0].assets[0], signatures[1].assets[0], "collecting a gift has a dedicated sound");
+});
+
 test("forest and river share environmental volume while wind and rain have independent weather control", () => {
   const catalog = JSON.parse(readFileSync(new URL("../features/audio/catalog/audio-catalog.json", import.meta.url), "utf8"));
   const cue = id => catalog.cues.find(item => item.id === id);

@@ -451,6 +451,7 @@ test("playback cooldown also spaces independently decoded variants that finish t
   f.runtime.play({ id: "left-contact", cueId: "step" });
   f.advance(150); f.runtime.play({ id: "right-contact", cueId: "step" });
   await flush(); assert.equal(f.requests.length, 2);
+  assert.equal(f.context.decoded, 1, "downloads may overlap but the native decoder stays serial");
   gate.resolve({ length: 22050, numberOfChannels: 1, duration: .5 }); await flush();
   assert.equal(f.context.started.length, 1);
   f.runtime.dispose();
@@ -640,15 +641,16 @@ test("foreground music resumes its playhead while account changes discard old po
   assert.equal(f.media[2].currentTime ?? 0, 0); f.runtime.dispose();
 });
 
-test("hung decode releases requests at its deadline and late resolution cannot retain or play the asset", async t => {
+test("hung decode releases callers at its deadline but holds its native decoder claim until completion", async t => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const f = fixture(); const gate = deferred(); f.context.decode = () => gate.promise;
   await f.runtime.unlock(); f.runtime.play({ id: "old", cueId: "tap" }); await flush();
   assert.equal(f.runtime.getDiagnostics().pendingAssets, 1);
   t.mock.timers.tick(12_001); await flush();
-  assert.equal(f.runtime.getDiagnostics().pendingAssets, 0);
+  assert.equal(f.runtime.getDiagnostics().pendingAssets, 1, "an uncancellable native decoder must not overlap its retry");
   assert.deepEqual(f.runtime.getDiagnostics().failedAssets, ["tap-a"]);
   gate.resolve({ length: 44100, numberOfChannels: 1, duration: 1 }); await flush();
+  assert.equal(f.runtime.getDiagnostics().pendingAssets, 0);
   assert.equal(f.runtime.getDiagnostics().loadedAssets, 0); assert.equal(f.context.started.length, 0);
   f.advance(31_000); f.context.decode = null;
   f.runtime.play({ id: "fresh", cueId: "tap" }); await flush();
@@ -872,6 +874,153 @@ test("water contacts obey forest/water zero and cannot arrive after a menu retur
       gate.resolve({ length: 44100, numberOfChannels: 1, duration: 1 });
       await flush(); assert.equal(f.context.started.length, 0, condition);
       if (!condition.endsWith("pending")) assert.equal(f.requests.length, 0, condition);
+    } finally { f.runtime.dispose(); }
+  }
+});
+
+test("native audio interruption restores the current mix without another scene frame or gesture", async () => {
+  const f = fixture([cue("wind", "loop", { bus: "weather", maxInstances: 1 }), cue("song", "music")]);
+  await f.runtime.unlock();
+  f.runtime.updateFrame(frame([target("wind", "wind"), target("song", "song")]));
+  await flush();
+  assert.equal(f.runtime.getDiagnostics().activeVoices, 2);
+  f.context.state = "suspended"; f.context.onstatechange();
+  assert.equal(f.runtime.getDiagnostics().activeVoices, 0);
+  f.context.state = "running"; f.context.onstatechange();
+  await flush();
+  assert.equal(f.runtime.getDiagnostics().activeVoices, 2);
+  assert.equal(f.context.started.length, 2, "wind is recreated once after native interruption");
+  f.context.onstatechange(); await flush();
+  assert.equal(f.context.started.length, 2, "duplicate running notification cannot add a second wind");
+  f.runtime.setSettings({ enabled: false });
+  f.context.state = "suspended"; f.context.onstatechange();
+  f.context.state = "running"; f.context.onstatechange(); await flush();
+  assert.equal(f.runtime.getDiagnostics().activeVoices, 0, "native resume cannot override mute");
+  f.runtime.dispose();
+});
+
+test("preparation warms every small UI variant without waiting for autoplay permission", async () => {
+  const f = fixture([cue("tap", "one-shot", { bus: "ui", assets: ["tap-a", "tap-b", "tap-c"] })]);
+  const permission = deferred(); f.context.resume = () => permission.promise;
+  await f.runtime.prepare(["tap", "tap"]);
+  assert.equal(f.contextCount, 1);
+  assert.equal(f.context.state, "suspended");
+  assert.equal(f.context.decoded, 3);
+  assert.equal(f.context.started.length, 0);
+  assert.equal(f.runtime.getDiagnostics().state, "locked");
+  await f.runtime.prepare(["tap"]);
+  assert.equal(f.requests.length, 3, "warm preparation neither fetches nor decodes again");
+  f.context.state = "running"; permission.resolve(); await flush();
+  assert.equal(f.context.started.length, 0, "preparation never queues a sound for later authorization");
+  f.runtime.play({ id: "next-real-tap", cueId: "tap" }); await flush();
+  assert.equal(f.context.started.length, 1);
+  assert.equal(f.requests.length, 3);
+  f.runtime.dispose();
+});
+
+test("aborting one preparation caller preserves an overlapping live decode", async () => {
+  const f = fixture([cue("tap", "one-shot", { bus: "ui" })]);
+  const decoded = deferred(); f.context.decode = () => decoded.promise;
+  const controller = new AbortController();
+  const first = f.runtime.prepare(["tap"], { signal: controller.signal });
+  const second = f.runtime.prepare(["tap"]);
+  await flush(); controller.abort(); await first;
+  assert.equal(f.requests.length, 1);
+  assert.equal(f.requests[0].config.signal.aborted, false);
+  decoded.resolve({ length: 4800, numberOfChannels: 1, duration: .1 }); await second;
+  f.runtime.play({ id: "ready-tap", cueId: "tap" }); await flush();
+  assert.equal(f.context.started.length, 1);
+  assert.equal(f.context.decoded, 1);
+  f.runtime.dispose();
+});
+
+test("muted preparation downloads encoded files without acquiring an audio device", async () => {
+  const f = fixture([cue("tap", "one-shot", { bus: "ui" }), cue("song", "music")],
+    { initialSettings: { ...DEFAULT_AUDIO_SETTINGS, enabled: false } });
+  await f.runtime.prepare(["tap", "song"]);
+  assert.equal(f.contextCount, 0);
+  assert.equal(f.context.decoded, 0);
+  assert.equal(f.requests.length, 2);
+  assert.ok(f.media.every(player => player.plays === 0));
+  f.runtime.dispose();
+});
+
+test("prepared supported music is consumed as a Blob without decoding a long song", async () => {
+  const chosen = cue("song", "music");
+  const catalog = { version: 1, cues: [chosen], profiles: [], assets: [{ ...asset("song-a"),
+    src: "/audio/song.opus", fallbackSrc: "/audio/song.m4a" }] };
+  const media = [];
+  const f = fixture([chosen], { catalog, createMediaElement: () => {
+    const player = new Media(); player.canPlayType = type => type.includes("mp4") ? "probably" : "";
+    media.push(player); return player;
+  } });
+  await f.runtime.prepare(["song"]);
+  assert.deepEqual(f.requests.map(request => request.url), ["/audio/song.m4a"]);
+  assert.equal(f.context.decoded, 0);
+  assert.ok(media.every(player => player.plays === 0));
+  f.runtime.updateFrame(frame([target("music", "song")])); await flush();
+  const player = media.find(item => item.plays);
+  assert.ok(player.src.startsWith("blob:"), "no initial network attempt for an unsupported codec");
+  const cachedUrl = player.src;
+  await f.runtime.prepare(["song"]); await flush();
+  assert.equal(player.src, cachedUrl);
+  assert.equal(player.plays, 1, "preparing a playing song cannot restart it");
+  assert.equal(f.context.decoded, 0);
+  f.runtime.dispose();
+});
+
+test("default context keeps authored 48 kHz buffers and requests balanced latency", async () => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "AudioContext");
+  let requested;
+  Object.defineProperty(globalThis, "AudioContext", { configurable: true, writable: true,
+    value: class extends Context { constructor(options) { super(); requested = options; } } });
+  const runtime = createAudioRuntime({ initialSettings: { ...DEFAULT_AUDIO_SETTINGS, enabled: true } });
+  try {
+    await runtime.unlock();
+    assert.deepEqual(requested, { latencyHint: "balanced", sampleRate: 48000 });
+  } finally {
+    runtime.dispose();
+    if (descriptor) Object.defineProperty(globalThis, "AudioContext", descriptor); else delete globalThis.AudioContext;
+  }
+});
+
+test("a restricted CacheStorage getter cannot prevent the browser audio service from starting", () => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "window");
+  let runtime;
+  Object.defineProperty(globalThis, "window", { configurable: true, writable: true, value: {
+    navigator: {}, localStorage: { getItem: () => null, setItem() {} },
+    get caches() { throw new DOMException("Storage denied", "SecurityError"); },
+  } });
+  try {
+    assert.doesNotThrow(() => { runtime = getAudioRuntime(); });
+    assert.equal(runtime.getDiagnostics().state, "locked");
+  } finally {
+    runtime?.dispose();
+    if (descriptor) Object.defineProperty(globalThis, "window", descriptor); else delete globalThis.window;
+  }
+});
+
+test("rejected preload responses cannot poison a later music or muted UI preparation", async () => {
+  for (const mode of ["music", "one-shot"]) for (const failure of ["missing", "oversized"]) {
+    let requests = 0;
+    const f = fixture([cue("warm", mode, { bus: mode === "music" ? "music" : "ui" })], {
+      initialSettings: { ...DEFAULT_AUDIO_SETTINGS, enabled: mode === "music" },
+      fetchAsset: async () => {
+        requests++;
+        return requests === 1
+          ? new Response(new Uint8Array([1]), failure === "missing" ? { status: 503 }
+            : { headers: { "content-length": String(13 * 1024 * 1024) } })
+          : new Response(new Uint8Array([1, 2, 3]));
+      },
+    });
+    try {
+      await f.runtime.prepare(["warm"]);
+      await f.runtime.prepare(["warm"]);
+      assert.equal(requests, 2, `${mode}/${failure}: the discarded body must release its shared request`);
+      if (mode === "music") {
+        f.runtime.updateFrame(frame([target("song", "warm")])); await flush();
+        assert.ok(f.media.find(player => player.plays)?.src.startsWith("blob:"));
+      } else assert.equal(f.contextCount, 0);
     } finally { f.runtime.dispose(); }
   }
 });
