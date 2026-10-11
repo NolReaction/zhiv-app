@@ -56,11 +56,12 @@ test("specialized tackle keeps a stable private draw for identical gear", () => 
 
 test("purchases charge authoritative prices once, durable rods are unique and inventory alone never opens collection", () => {
   const p = player(); fund(p);
+  const before = read(p);
   const buy = command(p, "buy_fishing_item", "river_rod", { totalPrice: 18050 });
   const result = economy.commandDevEconomy(p.token, buy, now);
   assert.equal(result.state.wallet.coins, 82000);
   assert.deepEqual(result.state.fishing.ownedRods, ["reed_rod", "river_rod"]);
-  assert.equal(result.state.storage.used, 0, "durable rods are not warehouse stacks");
+  assert.equal(result.state.storage.used, before.storage.used, "durable rods are not warehouse stacks");
   assert.equal(economy.commandDevEconomy(p.token, buy, now).replayed, true);
   assert.throws(() => issue(p, "buy_fishing_item", "river_rod", { totalPrice: 18000 }), { code: "ECONOMY_FISHING_OWNED" });
   assert.throws(() => issue(p, "buy_fishing_item", "fish_mooncarp", { quantity: 2, totalPrice: 1280 }), { code: "ECONOMY_FISHING_SHOP_CHANGED" });
@@ -80,7 +81,7 @@ test("stale quotes, unsupported items, bulk rods, full escrow storage and insuff
     assert.throws(() => issue(p, "buy_fishing_item", target, extra), { code });
     assert.deepEqual(read(p), before);
   }
-  stored(p).inventory.wood = 190;
+  stored(p).inventory = { wood: 190 };
   const owner = p.me.user.publicId, id = crypto.randomUUID();
   globalThis.__zhivDevEconomyStore.listings.set(id, { id, sellerPublicId: owner, itemId: "stone", quantity: 10, totalPrice: 10,
     status: "active", createdAt: new Date(now).toISOString(), closedAt: null });
@@ -182,11 +183,12 @@ test("hooks are unique durable purchases, validated loadout and saved trip metad
   const p = player(); fund(p);
   stored(p).buildings.home = 2;
   stored(p).fishingShop = createFishingShop(stored(p), now, max => max - 1);
+  const before = read(p);
   assert.throws(() => issue(p, 'equip_fishing_hook', 'silver_hook'), { code: 'ECONOMY_FISHING_HOOK' });
   assert.throws(() => issue(p, 'buy_fishing_item', 'silver_hook', { quantity: 2, totalPrice: 84000 }), { code: 'INVALID_ECONOMY_COMMAND' });
   const buy = command(p, 'buy_fishing_item', 'silver_hook', { totalPrice: 42000 });
   const purchased = economy.commandDevEconomy(p.token, buy, now);
-  assert.equal(purchased.state.wallet.coins, 58000); assert.equal(purchased.state.storage.used, 0);
+  assert.equal(purchased.state.wallet.coins, 58000); assert.equal(purchased.state.storage.used, before.storage.used);
   assert.deepEqual(purchased.state.fishing.ownedHooks, ['bare_hook', 'silver_hook']);
   assert.equal(economy.commandDevEconomy(p.token, buy, now).replayed, true);
   assert.throws(() => issue(p, 'buy_fishing_item', 'silver_hook', { totalPrice: 42000 }), { code: 'ECONOMY_FISHING_OWNED' });

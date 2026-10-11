@@ -113,7 +113,7 @@ test('foreign owners, insufficient pearls, changed quotes and full storage canno
   const request = buy(p, before, offer);
   assert.throws(() => economy.commandDevEconomy(q.token, request, now), { code: 'ECONOMY_OWNER_CHANGED' });
   assert.throws(() => economy.commandDevEconomy(p.token, { ...request, fishingShop: before.fishingShop }, now), { code: 'INVALID_ECONOMY_COMMAND' });
-  persisted(p).inventory.wood = 200;
+  persisted(p).inventory = { wood: 200 };
   assert.throws(() => economy.commandDevEconomy(p.token, request, now), { code: 'ECONOMY_STORAGE_FULL' });
   assert.deepEqual(read(p).fishingShop, before.fishingShop); assert.deepEqual(read(p).wallet, before.wallet);
   persisted(p).wallet.pearls = 0;
@@ -250,7 +250,7 @@ test('discount fish purchase has bounded stock, no collection unlock, no NPC arb
 });
 
 test('full storage rejects discounted fish atomically without spending coins or stock', () => {
-  const p = player(); fund(p); persisted(p).inventory.wood = 200;
+  const p = player(); fund(p); persisted(p).inventory = { wood: 200 };
   const before = read(p), offer = before.fishingShop.offers.find(item => item.kind === 'fish');
   assert.throws(() => economy.commandDevEconomy(p.token, buy(p, before, offer), now), { code: 'ECONOMY_STORAGE_FULL' });
   assert.deepEqual(read(p), before);

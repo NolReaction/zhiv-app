@@ -62,3 +62,5 @@
 @media (max-width: 359px) { .search { padding: 10px 12px; } .body { padding: 12px; } .groups { gap: 6px; } .help .groups button { gap: 6px; padding: 10px 8px; } .groups button > svg { width: 17px; } }
 
 @media (max-width: 359px) { .groups small { display: none; } .help .groups button { align-items: center; min-height: 58px; } }
+.help .replayTutorial { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 48px; margin: 12px 14px 0; padding: 10px 12px; border: 1px solid #a6b38b; border-radius: 12px; background: #e2e7c7; color: #3d583e; font-size: 13px; text-align: left; }
+.replayTutorial span { flex: 1; }

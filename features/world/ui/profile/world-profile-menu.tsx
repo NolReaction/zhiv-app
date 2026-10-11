@@ -128,7 +128,7 @@ export function WorldProfileContent({ world, economy, displayName, level, bestSt
   </div>;
 
   return <div className={styles.profile}>
-    <div className={styles.tabs} role="tablist" aria-label="Разделы профиля">
+    <div className={styles.tabs} data-guide-profile-tabs role="tablist" aria-label="Разделы профиля">
       {tabs.map((tab, index) => <button key={tab.id} type="button" role="tab" aria-label={tab.label} title={tab.id === "settings" ? tab.label : undefined} id={`${idPrefix}-tab-${tab.id}`}
         aria-selected={activeTab === tab.id} aria-controls={`${idPrefix}-panel-${tab.id}`} tabIndex={activeTab === tab.id ? 0 : -1}
         onClick={() => changeTab(tab.id)} onKeyDown={event => changeWithKeyboard(event, index)}>{tab.id === "settings" ? <Settings size={19} aria-hidden="true" /> : tab.label}</button>)}

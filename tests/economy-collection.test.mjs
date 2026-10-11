@@ -54,7 +54,7 @@ test("server collection requires ripe fruit and elapsed work, then grants the sa
   assert.throws(() => issue(p, "claim_job", job.id, finish - 1), { code: "ECONOMY_COLLECTION_NOT_READY" });
   const claim = command(p, "claim_job", job.id, finish);
   const result = economy.commandDevEconomy(p.token, claim, finish);
-  assert.deepEqual(result.state.inventory, job.rewards); assert.equal(result.state.jobs.length, 0);
+  assert.deepEqual(result.state.inventory, { ...before.inventory, ...job.rewards }); assert.equal(result.state.jobs.length, 0);
   const replay = economy.commandDevEconomy(p.token, claim, finish + 5000);
   assert.equal(replay.replayed, true); assert.equal(replay.acceptedRevision, result.acceptedRevision);
   assert.deepEqual(replay.state.inventory, result.state.inventory);
@@ -110,10 +110,10 @@ test("market purchases during gathering may fill storage, but a failed delivery 
 });
 
 test("reloading after the server deadline can deliver without trusting any animation token or local inventory", () => {
-  const p = player(), job = grow(p), readyAt = Date.parse(job.finishesAt);
+  const p = player(), before = read(p), job = grow(p), readyAt = Date.parse(job.finishesAt);
   issue(p, "start_collection", job.id, readyAt);
   const restored = read(p, readyAt + 24 * 3600_000);
-  assert.deepEqual(restored.inventory, {}); assert.ok(restored.jobs[0].collection.startedAt);
+  assert.deepEqual(restored.inventory, before.inventory); assert.ok(restored.jobs[0].collection.startedAt);
   const claimed = issue(p, "claim_job", job.id, readyAt + 24 * 3600_000).state;
   assert.equal(claimed.inventory.berries, job.rewards.berries);
   const bad = { ...command(p, "start_collection", job.id), animationComplete: true, rewards: { berries: 1000 } };

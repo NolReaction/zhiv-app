@@ -56,7 +56,7 @@ export function PantrySale({ economy, itemId, onClose, onOpenFishingShop, onOpen
   const quantity = quantityMode === "excess" ? excess : Number(quantityText);
   const valid = (quantityMode === "excess" || /^\d+$/.test(quantityText)) && Number.isSafeInteger(quantity) && quantity >= minimum && quantity <= maximum;
   const total = valid ? economyLocalSellPrice(item.baseSellPrice, quantity, buyer) : 0;
-  return <section ref={sale} className={`${styles.pantry} ${styles.sale}`} aria-label={`Продажа: ${item.name}`}>
+  return <section ref={sale} className={`${styles.pantry} ${styles.sale}`} data-guide-pantry-sale aria-label={`Продажа: ${item.name}`}>
     <div className={styles.saleHeading}>
       <ProductIcon state={state} itemId={item.id} size={18} />
       <h3>{item.name}</h3>
@@ -85,7 +85,7 @@ export function PantrySale({ economy, itemId, onClose, onOpenFishingShop, onOpen
 export function RelicPantrySection({ state, onExplore, onOpenMarket }: { state: EconomyView; onExplore: () => void; onOpenMarket?: () => void }) {
   const items = state.catalog.items.filter(item => item.category === "special");
   const requiredHome = state.catalog.rareDrops?.requiredHomeLevel;
-  return <section className={styles.relics} aria-label="Реликвии в кладовой">
+  return <section className={styles.relics} data-guide-pantry-relics aria-label="Реликвии в кладовой">
     <div className={styles.relicList}>{items.map(item => {
       const stock = state.inventory[item.id] ?? 0;
       return <article className={styles.relicCard} key={item.id} data-relic={item.id} data-owned={stock > 0}>
@@ -139,7 +139,7 @@ export function WorldPantryMenu({ economy, onUpgrade, onExplore, onOpenMarket, o
     {recovery}
     {onReturnToGift && <button type="button" className={styles.giftReturn} onClick={onReturnToGift}><Gift size={17} aria-hidden="true" />Вернуться к подарку</button>}
     {constructionGoal && onOpenGoal && <ConstructionGoalSummary state={state} constructionGoal={constructionGoal} onOpenGoal={onOpenGoal} navigation={navigation} />}
-    <div className={styles.capacity} data-full={available === 0 || undefined}>
+    <div className={styles.capacity} data-guide-pantry-capacity data-full={available === 0 || undefined}>
       <div><span className={styles.capacityLabel}><Package size={14} aria-hidden="true" />Занято <strong>{number(occupied)} <span>/ {number(capacity)}</span></strong></span><span>{available > 0 ? `Свободно ${number(available)}` : "Все места заняты"}</span></div>
       <progress value={Math.min(capacity, occupied)} max={Math.max(1, capacity)} aria-label={`Кладовая: занято ${occupied} из ${capacity} мест`} />
       {reserved > 0 && <p className={styles.muted}>На рынке {number(reserved)}</p>}
@@ -159,10 +159,11 @@ export function WorldPantryMenu({ economy, onUpgrade, onExplore, onOpenMarket, o
     {tab === "fridge" && <div className={styles.fridgeHeading}><span><Snowflake size={16} aria-hidden="true" />Рыба и готовая еда</span><small>Места общие с кладовой</small></div>}
     {selectedItemId && <PantrySale key={selectedItemId} economy={readyEconomy} itemId={selectedItemId} constructionGoal={constructionGoal} onClose={() => setSelectedItemId(null)} onOpenFishingShop={onOpenFishingShop} onOpenFood={onOpenFood} />}
     {visibleItems.length > 0 ? <>
+      {!selectedItemId && <p className={styles.muted}>Чтобы продать запасы за монеты, нажми на предмет и проверь условия.</p>}
       <div className={`${styles.items} ${tab === "fridge" ? styles.fishItems : ""}`} aria-label={tab === "fridge" ? "Рыба и еда в холодильнике" : "Предметы в кладовой"}>
         {visibleItems.map(item => {
           const fish = state.catalog.fishing?.fish.find(entry => entry.itemId === item.id);
-          return <button key={item.id} type="button" className={styles.item} aria-label={`${item.name}: ${number(state.inventory[item.id])}`} aria-pressed={selectedItemId === item.id} onClick={() => setSelectedItemId(current => current === item.id ? null : item.id)}>
+          return <button key={item.id} type="button" className={styles.item} data-guide-pantry-item={item.id} aria-label={`${item.name}: ${number(state.inventory[item.id])}`} aria-pressed={selectedItemId === item.id} onClick={() => setSelectedItemId(current => current === item.id ? null : item.id)}>
           <ProductIcon state={state} itemId={item.id} size={20} />
           <span>{item.name}</span>
           <span className={styles.itemStock}><strong>×{number(state.inventory[item.id])}</strong>
@@ -170,7 +171,6 @@ export function WorldPantryMenu({ economy, onUpgrade, onExplore, onOpenMarket, o
           {fish && <FishRarityBadge className={styles.itemRarity} rarity={fish.rarity} />}
         </button>; })}
       </div>
-      {!selectedItemId && <p className={styles.muted}>Выберите предмет, чтобы использовать или продать.</p>}
     </> : <div className={styles.empty}>{tab === "fridge" ? <Fish size={25} aria-hidden="true" /> : <Package size={23} aria-hidden="true" />}<p>{tab === "fridge" ? "Здесь будут рыба и готовые блюда." : reserved > 0 && !ownedItems.length ? "Все запасы сейчас на рынке." : "Здесь будут урожай, материалы и находки."}</p>{(tab === "fridge" || reserved === 0) && <button type="button" className={styles.textButton} onClick={onExplore}><Compass size={14} aria-hidden="true" />{tab === "fridge" ? "Выбрать вылазку" : "Отправиться за находками"}</button>}</div>}
 
       </>}
@@ -186,7 +186,7 @@ export function WorldPantryMenu({ economy, onUpgrade, onExplore, onOpenMarket, o
           })}</ul>}
         </div>
           : <p className={styles.maximum}><Check size={13} aria-hidden="true" />Ур. {level} · Максимальная вместимость</p>}
-      {marketAvailable && <button type="button" className={styles.market} onClick={onOpenMarket}><Store size={14} aria-hidden="true" />Рынок игроков</button>}
+      {marketAvailable && <button type="button" className={styles.market} data-guide-pantry-market onClick={onOpenMarket}><Store size={14} aria-hidden="true" />Рынок игроков</button>}
     </div>
   </div>;
 }

@@ -11,6 +11,7 @@ import dynamic from "next/dynamic";
 import { WorldDevEntry } from "@/features/world/dev/world-dev-entry";
 import { reportIncident, incidentCode, reportStartupIncident, resolveStartupIncidents } from "@/lib/client-incidents";
 import { AppNavigation, appViews, type AppView } from "@/features/app/navigation";
+import { AppOnboarding } from "./onboarding/app-onboarding";
 
 import { GameLevelsButton } from "@/features/game/game-levels-button";
 import { BetaInfo } from "@/features/updates/beta-info";
@@ -413,6 +414,7 @@ function CheckInContent() {
     setGameOpen(true);
   }, []);
   const calendarTrigger = useRef<HTMLElement | null>(null);
+  const calendarEntryButton = useRef<HTMLButtonElement>(null);
   const openCalendar = useCallback((trigger: HTMLButtonElement) => {
     calendarTrigger.current = trigger;
     setCalendarOpen(true);
@@ -1507,6 +1509,14 @@ function CheckInContent() {
               <div className={styles.identityBadges}>
                 {me && <BetaInfo key={me.user.publicId} ownerPublicId={me.user.publicId} />}
                 {game.progress && <GameLevelsButton lifetimeTaps={game.progress.lifetimeTaps} className={styles.levelBadge} />}
+                {me && <AppOnboarding key={`app-guide:${me.user.publicId}`} owner={me.user.publicId}
+                  ready={!startupActive && screen === "home"} suspended={gameOpen || statusOpen}
+                  activeView={activeView} lastCheckInAt={lastCheckInAt} nextAllowedAt={nextAllowedAt}
+                  nowMs={adjustedNow} unconfirmed={checkInUnconfirmed} isSending={isSending} isOnline={isOnline}
+                  calendarOpen={calendarOpen} calendarAvailable={Boolean(streak)} worldOpen={worldPortal.open}
+                  simpleView={simpleView} onSelect={selectView}
+                  onOpenCalendar={() => calendarEntryButton.current?.click()}
+                  onEnterWorld={() => worldEntryButton.current?.click()} />}
               </div>
               <span className={styles.publicId} data-copyable>{me?.user.publicId}</span>
             </div>
@@ -1538,6 +1548,8 @@ function CheckInContent() {
             {streak ? (
               <button
                 type="button"
+                ref={calendarEntryButton}
+                data-app-onboarding="calendar"
                 onClick={event => openCalendar(event.currentTarget)}
                 onPointerDown={event => event.stopPropagation()}
                 aria-haspopup="dialog"
@@ -1577,6 +1589,7 @@ function CheckInContent() {
               data-pulse={mochlikVisible && tapFeedbackBurst > 0 ? tapFeedbackBurst % 2 ? "odd" : "even" : undefined}
               style={buttonStyle}
               ref={mainButton}
+              data-app-onboarding="check-in"
               onPointerDown={handlePrimaryPointerDown}
               onClick={handleGameClick}
               aria-busy={isSending}
@@ -1707,7 +1720,7 @@ function CheckInContent() {
             <CheckInReceipt lastCheckInAt={lastCheckInAt} lastCheckInLabel={serverStatus} timeZone={me?.profile.timeZone ?? "UTC"}
               isSending={isSending} unconfirmed={checkInUnconfirmed} isOnline={isOnline} onRetry={() => void sendCheckIn(true)}
               gameStatus={game.status} gameNotice={gameNotice} gamePending={game.pendingTaps} gameArchived={game.archivedTaps} gameRequestId={game.requestId} onRetryGame={() => void game.refresh()}>
-              <button ref={worldEntryButton} type="button" className={`${glass.button} ${styles.mapEntry}`} data-audio-cue="ui.open"
+              <button ref={worldEntryButton} type="button" className={`${glass.button} ${styles.mapEntry}`} data-audio-cue="ui.open" data-app-onboarding="world"
                 aria-label="Войти в мир Мохлика" aria-haspopup="dialog"
                 onPointerDown={event => event.stopPropagation()} onClick={event => {
                   setWorldMounted(true); worldPortal.enter(event.currentTarget, buttonOrbit.current); void world.refresh();

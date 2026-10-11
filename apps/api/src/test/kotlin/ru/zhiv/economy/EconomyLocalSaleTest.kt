@@ -37,7 +37,7 @@ class EconomyLocalSaleTest {
     }
 
     @Test fun `sale minimum cannot mint coins and specialist fish offers keep their full value`() {
-        val state=EconomyRules.initial().copy(inventory=mapOf("berries" to 9L,"fish" to 4L))
+        val state=EconomyRules.initial().copy(wallet=EconomyWallet(),inventory=mapOf("berries" to 9L,"fish" to 4L))
         assertEquals("ECONOMY_SALE_PRICE_CHANGED",assertFailsWith<AuthFailure> {
             EconomyRules.apply(state,command("sell","berries",3,60),now)
         }.code)
@@ -53,7 +53,7 @@ class EconomyLocalSaleTest {
     }
 
     @Test fun `zero proceeds cannot discard goods and exact rounded wallet headroom is accepted`() {
-        val state=EconomyRules.initial().copy(inventory=mapOf("crumb_bait" to 2L,"berries" to 4L))
+        val state=EconomyRules.initial().copy(wallet=EconomyWallet(),inventory=mapOf("crumb_bait" to 2L,"berries" to 4L))
         assertEquals("ECONOMY_SALE_QUANTITY",assertFailsWith<AuthFailure> {
             EconomyRules.apply(state,command("sell","crumb_bait"),now)
         }.code)

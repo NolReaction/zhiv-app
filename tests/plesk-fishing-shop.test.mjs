@@ -81,7 +81,7 @@ function merchantSelection(state = snapshot()) {
   merchantHooks.reset();
   const calls = [], focus = [], body = { scrollTop: 380, isConnected: true };
   const economy = controller(state, { act(...args) { calls.push(args); } });
-  const target = { closest(selector) { assert.equal(selector, "[data-slot='dialog-content']"); return body; }, focus(options) { focus.push(options); } };
+  const target = { closest(selector) { assert.equal(selector, "[data-resident-scroll]"); return body; }, focus(options) { focus.push(options); } };
   function render() {
     merchantHooks.render(); const tree = MerchantCounter({ state, economy, catalog: state.catalog.fishing }), nodes = [];
     function visit(element) { if (!isValidElement(element)) return; nodes.push(element); Children.forEach(element.props.children, visit); }
@@ -172,6 +172,19 @@ test("bait purchases quote stock and price without equipment controls", () => {
   state.inventory.worm_bait = 0;
   view = inspect(PleskBaitOffer, props);
   assert.match(view.html, /В запасе 0/);
+});
+
+test("guide previews the requested rod or bait and its real odds without purchasing or equipping", () => {
+  for (const guideKind of ["rod", "bait"]) {
+    const state = snapshot(), before = structuredClone(state), calls = [];
+    const html = renderToStaticMarkup(createElement(PleskTackleCounter, { economy: controller(state, { act(...args) { calls.push(args); } }), state, catalog: state.catalog.fishing, guideKind }));
+    assert.match(html, new RegExp(`data-guide-plesk-detail="${guideKind}"`));
+    assert.match(html, /data-guide-plesk-odds=/);
+    const expected = guideKind === "rod" ? "Речная удочка" : "Лесной червячок";
+    assert.ok(html.includes(`<h3>${expected}</h3>`));
+    assert.deepEqual(calls, []);
+    assert.deepEqual(state, before);
+  }
 });
 
 test("collection counts confirmed catches independently of purchased, sold or ambient fish", () => {

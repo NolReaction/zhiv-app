@@ -91,6 +91,15 @@ test("search responds while typing prefixes, preserving endings that resemble un
   assert.equal(searchWorldHelp(topics, "пле\u0308ска")[0].id, "plesk", "decomposed ё also normalizes");
 });
 
+test("workshop help keeps general production first and finds the gift for specific questions", () => {
+  for (const query of ["мастерская", "мастерской", "мастеркая", "масте"]) {
+    assert.equal(searchWorldHelp(topics, query)[0]?.id, "production", query);
+  }
+  for (const query of ["стартовый набор", "набор для мастерской", "подарок мастерская", "мастеркая подарок"]) {
+    assert.equal(searchWorldHelp(topics, query)[0]?.id, "workshop-starter", query);
+  }
+});
+
 test("general and single-letter questions offer clearly labelled, bounded frequent topics", () => {
   const expected = ["start", "resources", "production", "construction", "resident-orders", "saving"];
   for (const query of ["как", "Как мне?", "что", "где", "почему", "как пожалуйста"]) {

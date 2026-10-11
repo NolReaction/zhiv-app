@@ -55,6 +55,21 @@ test("one explicit meal goes to the chosen consumer with no order reward", () =>
   }
 });
 
+test("meal guidance exposes the selected actor, catalog speed and one-portion cost before feeding", () => {
+  for (const consumer of ["hero", "builder"]) {
+    const economy = controller({}, { act() { assert.fail("reading buff guidance cannot consume food"); } });
+    const html = render(WorldFoodMenu, { economy, residentId: consumer === "builder" ? "builder" : undefined });
+    assert.match(html, new RegExp(`data-guide-meal-list="${consumer}"`));
+    assert.match(html, /data-guide-meal-consumer="hero"/);
+    assert.match(html, /data-guide-meal-consumer="builder"/);
+    assert.match(html, /Угощение расходует 1 готовое блюдо/);
+    assert.match(html, /не складывается с другим обедом/);
+    const speed = (consumer === "hero" ? meal.heroSpeedBps : meal.builderSpeedBps) / 100;
+    assert.match(html, new RegExp(`Скорость ${consumer === "hero" ? "вылазки" : "стройки"} \\+${speed}%`));
+    assert.ok(html.includes(consumer === "hero" ? "Съесть 1" : "Угостить 1"));
+  }
+});
+
 test("pending meals, occupied actors and fed or finished construction prevent another meal", () => {
   const construction = { kind: "construction", targetId: "home", finishesAt: new Date(now + 60_000).toISOString() };
   for (const [consumer, state] of [

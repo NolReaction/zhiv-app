@@ -93,9 +93,9 @@ class JdbcWorldRepositoryIntegrationTest {
         assertTrue(rewarded.state.journeys.isEmpty())
         val converted=EconomyRules.legacyConversion(12,8,4)
         val economy=JdbcEconomyRepository(source).snapshot(other)
-        assertEquals(converted.coinsGranted,economy.wallet.coins)
-        assertEquals(converted.woodGranted,economy.inventory["wood"])
-        assertEquals(converted.stoneGranted,economy.inventory["stone"])
+        assertEquals(EconomyRules.initial().wallet.coins+converted.coinsGranted,economy.wallet.coins)
+        assertEquals(EconomyRules.initial().inventory.getValue("wood")+converted.woodGranted,economy.inventory["wood"])
+        assertEquals(EconomyRules.initial().inventory.getValue("stone")+converted.stoneGranted,economy.inventory["stone"])
         assertEquals("1",scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND source_key=?",p.id,"legacy-journey:${journey.id}"))
         assertEquals(0L,identities.findBySession(p.hash)!!.checkInCount)
     }
@@ -154,8 +154,9 @@ class JdbcWorldRepositoryIntegrationTest {
         val initial=world.snapshot(p.hash)
         assertEquals(saved.copy(resources=WorldResources()),initial.state)
         val economy=JdbcEconomyRepository(source).snapshot(p.hash)
-        assertEquals(5000L,economy.wallet.coins)
-        assertEquals(mapOf("wood" to 30L,"stone" to 30L),economy.inventory)
+        assertEquals(7500L,economy.wallet.coins)
+        assertEquals(1000L,economy.wallet.pearls)
+        assertEquals(mapOf("fish" to 10L,"wood" to 40L,"stone" to 40L),economy.inventory)
         assertEquals(5,economy.buildings["home"])
         assertEquals(3,economy.buildings["workshop"])
         world.snapshot(secondDevice(p))
@@ -166,6 +167,7 @@ class JdbcWorldRepositoryIntegrationTest {
         val p=player(); val id=UUID.fromString(games.openSession(p.hash,UUID.randomUUID(),p.publicId).sessionId)
         games.submitBatch(p.hash,id,1,5,UUID.randomUUID())
         world.snapshot(p.hash)
+        val initialWallet=JdbcEconomyRepository(source).snapshot(p.hash).wallet
         var sequence=2L
         repeat(6) {
             execute("UPDATE game_profiles SET bucket_tokens=60,bucket_updated_at=clock_timestamp()+interval '1 minute' WHERE user_id=?",p.id)
@@ -175,7 +177,7 @@ class JdbcWorldRepositoryIntegrationTest {
         }
         assertEquals(WorldResources(),world.snapshot(secondDevice(p)).state.resources)
         assertEquals(0,world.snapshot(p.hash).dailySparksEarned)
-        assertEquals(0L,JdbcEconomyRepository(source).snapshot(p.hash).wallet.coins)
+        assertEquals(initialWallet,JdbcEconomyRepository(source).snapshot(p.hash).wallet)
         assertEquals("0",scalar("SELECT count(*) FROM world_ledger WHERE user_id=? AND kind='taps'",p.id))
         assertEquals(365L,games.progress(p.hash).lifetimeTaps)
     }
@@ -206,16 +208,17 @@ class JdbcWorldRepositoryIntegrationTest {
             val journey=WorldJourney(UUID.randomUUID().toString(),routeId,start.toString(),start.plusSeconds(seconds).toString(),rewards,listOf("river_stone"),false,3)
             execute("INSERT INTO world_profiles(user_id,state) VALUES (?,?::jsonb)",p.id,worldJson.encodeToString(WorldState(houseLevel=2,journeys=listOf(journey))))
             val initial=world.snapshot(p.hash)
+            val initialWallet=JdbcEconomyRepository(source).snapshot(p.hash).wallet
             assertEquals(Duration.ofSeconds(seconds),Duration.between(Instant.parse(journey.startedAt),Instant.parse(journey.finishesAt)))
             val claim=WorldCommand(UUID.randomUUID().toString(),p.publicId,initial.revision,"claim_journey",journey.id)
             assertEquals("WORLD_JOURNEY_NOT_READY",assertFailsWith<AuthFailure> { world.command(p.hash,claim) }.code)
-            assertEquals(0L,JdbcEconomyRepository(source).snapshot(p.hash).wallet.coins)
+            assertEquals(initialWallet,JdbcEconomyRepository(source).snapshot(p.hash).wallet)
             val completed=journey.copy(startedAt="2000-01-01T00:00:00Z",finishesAt="2000-01-01T01:00:00Z")
             execute("UPDATE world_profiles SET state=?::jsonb WHERE user_id=?",worldJson.encodeToString(initial.state.copy(journeys=listOf(completed))),p.id)
             val paid=world.command(secondDevice(p),claim)
             assertEquals(WorldResources(),paid.snapshot.state.resources)
             assertEquals(listOf("river_stone"),paid.snapshot.state.collection)
-            assertEquals(EconomyRules.legacyConversion(rewards.sparks,rewards.wood,rewards.stone).coinsGranted,JdbcEconomyRepository(source).snapshot(p.hash).wallet.coins)
+            assertEquals(initialWallet.coins+EconomyRules.legacyConversion(rewards.sparks,rewards.wood,rewards.stone).coinsGranted,JdbcEconomyRepository(source).snapshot(p.hash).wallet.coins)
             assertTrue(world.command(p.hash,claim).replayed)
             assertEquals("1",scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND source_key=?",p.id,"legacy-journey:${journey.id}"))
         }
@@ -235,7 +238,7 @@ class JdbcWorldRepositoryIntegrationTest {
         val claim = WorldCommand(UUID.randomUUID().toString(), p.publicId, restored.revision, "claim_journey", legacy.id)
         val paid = world.command(p.hash, claim)
         assertEquals(WorldResources(), paid.snapshot.state.resources)
-        assertEquals(EconomyRules.legacyConversion(3,4,5).coinsGranted + EconomyRules.legacyConversion(14,8,8).coinsGranted,
+        assertEquals(EconomyRules.initial().wallet.coins + EconomyRules.legacyConversion(3,4,5).coinsGranted + EconomyRules.legacyConversion(14,8,8).coinsGranted,
             JdbcEconomyRepository(source).snapshot(p.hash).wallet.coins)
         assertEquals(listOf("moon_moth", "river_stone"), paid.snapshot.state.collection)
         assertEquals(8L, paid.snapshot.state.completedJourneys)

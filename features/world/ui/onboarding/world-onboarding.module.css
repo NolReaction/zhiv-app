@@ -1,0 +1,13 @@
+.neighbors { display: grid; gap: 6px; margin: 10px 0; }
+.neighbor { display: flex; align-items: center; gap: 8px; min-height: 58px; padding: 4px 10px 4px 4px; border: 1px solid #bcc59e; border-radius: 14px; background: #f2f3e4; color: #3d482f; text-align: left; cursor: pointer; transition: background .16s, transform .16s; }
+.neighbor:hover { background: #e5eccf; transform: translateY(-1px); }
+.neighbor:focus-visible, .retry:focus-visible { outline: 3px solid #6c8245; outline-offset: 3px; }
+.neighbor > span { flex: 1; min-width: 0; }
+.neighbor strong, .starter strong { display: block; font-size: 13px; }
+.neighbor small, .starter small { display: block; margin-top: 3px; font-size: 11px; line-height: 1.4; }
+.portrait { width: 48px; height: 48px; flex: 0 0 48px; image-rendering: pixelated; }
+.starter { display: flex; align-items: center; gap: 9px; padding: 10px; margin: 10px 0; border: 1px solid #d2bd7c; border-radius: 13px; color: #5c4d29; background: #f9edc9; }
+.starter > svg { flex: 0 0 auto; }
+.retry { display: inline-flex; align-items: center; gap: 6px; border: 1px solid #bbc79d; border-radius: 10px; padding: 7px 10px; background: #f4f5e7; color: #3d482f; font: inherit; font-size: 12px; cursor: pointer; }
+.retry:disabled { opacity: .55; cursor: default; }
+@media (prefers-reduced-motion: reduce) { .neighbor { transition: none; } .neighbor:hover { transform: none; } }

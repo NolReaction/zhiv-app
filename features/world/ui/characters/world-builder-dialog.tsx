@@ -1,5 +1,7 @@
 "use client";
 
+import type { ReactNode, RefObject } from "react";
+
 import { ArrowLeft, ArrowRight, Check, Clock3, Hammer, Soup, ClipboardList, X } from "lucide-react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { Dialog, DialogPortal, DialogOverlay, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -7,6 +9,7 @@ import { economyBuilderStatus } from "@/features/economy/domain/builder-status";
 import { WorldMealBoost } from "@/features/economy/ui/food/world-meal-boost";
 import { ConstructionSpeedup } from "@/features/economy/ui/construction/construction-speedup";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
+import { pauseFocusedGuide } from "@/features/onboarding/guide-keyboard";
 import { worldDuration } from "@/features/economy/ui/shared/world-stations";
 import { BUILDER } from "@/features/world/characters/builder/builder-types";
 import { BuilderPortrait } from "@/features/world/characters/builder/builder-portrait";
@@ -46,25 +49,30 @@ export function BuilderConversation({ economy, onOpenConstruction, onNavigateSta
   </section>;
 }
 
-export function WorldBuilderDialog({ open, onClose, onBack, onCloseAutoFocus, ...actions }: BuilderActions & {
+export function WorldBuilderDialog({ open, onClose, onBack, onCloseAutoFocus, guide, guideRoot, ...actions }: BuilderActions & {
+  guide?: ReactNode; guideRoot?: RefObject<HTMLDivElement | null>;
   open: boolean; onClose: () => void; onBack?: () => void; onCloseAutoFocus: (event: Event) => void;
 }) {
   return <Dialog open={open} onOpenChange={next => { if (!next) onClose(); }}>
     <DialogPortal>
       <DialogOverlay className={styles.scrim} />
-      <DialogPrimitive.Content data-slot="dialog-content" className={styles.dialog} onCloseAutoFocus={onCloseAutoFocus}>
+      <DialogPrimitive.Content ref={guideRoot} data-slot="dialog-content" className={styles.dialog} onCloseAutoFocus={onCloseAutoFocus}
+        onEscapeKeyDown={event => { if (pauseFocusedGuide()) { event.preventDefault(); event.stopPropagation(); } }}>
         {onBack && <button type="button" className={styles.back} onClick={onBack}><ArrowLeft size={16} aria-hidden="true" />К персонажам</button>}
         <header className={styles.header}>
           <BuilderPortrait animated className={styles.emblem} />
           <div><DialogTitle className={styles.name}>{BUILDER.name}</DialogTitle><DialogDescription className={styles.role}>Ёжик-строитель</DialogDescription></div>
           <button type="button" className={styles.close} onClick={onClose} aria-label="Попрощаться с Шишколапом"><X size={20} aria-hidden="true" /></button>
         </header>
+        {guide}
+        <div className={styles.body} data-resident-scroll>
         <ResidentSpeech owner={actions.economy.snapshot?.ownerPublicId} speaker="builder" />
         <BuilderConversation {...actions} />
-        {(actions.onOpenMeals || actions.onOpenOrders) && <nav className={styles.foodActions} aria-label="Еда и заказы Шишколапа">
+        {(actions.onOpenMeals || actions.onOpenOrders) && <nav className={styles.foodActions} data-guide-builder-actions aria-label="Еда и заказы Шишколапа">
           {actions.onOpenMeals && <button type="button" onClick={actions.onOpenMeals}><Soup size={17} aria-hidden="true" />Угостить</button>}
           {actions.onOpenOrders && <button type="button" onClick={actions.onOpenOrders}><ClipboardList size={17} aria-hidden="true" />Заказы</button>}
         </nav>}
+        </div>
       </DialogPrimitive.Content>
     </DialogPortal>
   </Dialog>;

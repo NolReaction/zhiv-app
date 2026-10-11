@@ -56,12 +56,12 @@ test("generic sale honors accepted minimum and revision receipt once while Plesk
   assert.deepEqual(read(p), before);
   const sale = command(p, "sell", "berries", 3, 5);
   const accepted = economy.commandDevEconomy(p.token, sale, now);
-  assert.equal(accepted.state.wallet.coins, 50); assert.equal(accepted.state.inventory.berries, 6);
+  assert.equal(accepted.state.wallet.coins, before.wallet.coins + 50); assert.equal(accepted.state.inventory.berries, 6);
   assert.equal(economy.commandDevEconomy(p.token, sale, now).replayed, true);
-  assert.equal(read(p).wallet.coins, 50);
+  assert.equal(read(p).wallet.coins, before.wallet.coins + 50);
   assert.throws(() => economy.commandDevEconomy(p.token, { ...sale, requestId: crypto.randomUUID() }, now), { code: "ECONOMY_REVISION_CONFLICT" });
-  assert.equal(issue(p, "sell", "fish", 2).state.wallet.coins, 140, "generic fish payout preserves the old floor 16 * 60% → 9, now 90");
-  assert.equal(issue(p, "sell_fish", "fish", 2).state.wallet.coins, 300, "Pleska pays all 160 nominal coins");
+  assert.equal(issue(p, "sell", "fish", 2).state.wallet.coins, before.wallet.coins + 140, "generic fish payout preserves the old floor 16 * 60% → 9, now 90");
+  assert.equal(issue(p, "sell_fish", "fish", 2).state.wallet.coins, before.wallet.coins + 300, "Pleska pays all 160 nominal coins");
 });
 
 test("zero-proceeds and wallet-overflow failures are atomic and rounded headroom can be filled exactly", () => {
@@ -69,7 +69,7 @@ test("zero-proceeds and wallet-overflow failures are atomic and rounded headroom
   const before = read(p);
   assert.throws(() => issue(p, "sell", "crumb_bait"), { code: "ECONOMY_SALE_QUANTITY" });
   assert.deepEqual(read(p), before);
-  assert.equal(issue(p, "sell", "crumb_bait", 2, 1).state.wallet.coins, 10);
+  assert.equal(issue(p, "sell", "crumb_bait", 2, 1).state.wallet.coins, before.wallet.coins + 10);
   stored(p).wallet.coins = ECONOMY_MAX_BALANCE - 50;
   const full = read(p);
   assert.throws(() => issue(p, "sell", "berries", 4), { code: "ECONOMY_CAPACITY" });

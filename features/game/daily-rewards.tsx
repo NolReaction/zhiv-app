@@ -85,9 +85,10 @@ export function DailyRewardsButton({ ownerPublicId, isOnline = true, onSessionLo
 }
 
 /** Keep this mounted while the profile or dialog closes: an in-flight claim still confirms the wallet. */
-export function DailyRewardsDialog({ ownerPublicId, economy, isOnline = true, onSessionLost, open, onOpenChange, onReturnFocus, onOpenPantry }: {
+export function DailyRewardsDialog({ ownerPublicId, economy, isOnline = true, onSessionLost, open, onOpenChange, onReturnFocus, onOpenPantry, autoPromptAllowed = true }: {
   ownerPublicId: string; economy: EconomyController; isOnline?: boolean; onSessionLost?: () => void;
   open: boolean; onOpenChange: (value: boolean) => void; onReturnFocus: () => void; onOpenPantry?: () => void;
+  autoPromptAllowed?: boolean;
 }) {
   const controller = useGameRewards(ownerPublicId, isOnline, onSessionLost, () => { void economy.refresh(); });
   const wasOpen = useRef(false);
@@ -99,8 +100,8 @@ export function DailyRewardsDialog({ ownerPublicId, economy, isOnline = true, on
   if (entryPrompt.current === null) { entryPrompt.current = createDailyRewardEntryPrompt(ownerPublicId, controller.readVersion); }
   useEffect(() => {
     if (open) entryPrompt.current?.dismiss();
-    if (entryPrompt.current?.shouldOpen(controller, isOnline)) onOpenChange(true);
-  }, [controller, isOnline, open, onOpenChange]);
+    if (entryPrompt.current?.shouldOpen(controller, isOnline, autoPromptAllowed)) onOpenChange(true);
+  }, [controller, isOnline, open, onOpenChange, autoPromptAllowed]);
   const names = Object.fromEntries(economy.snapshot?.catalog.items.map(item => [item.id, item.name]) ?? []);
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogPortal><DialogOverlay className={styles.scrim} />
       <DialogPrimitive.Content data-slot="dialog-content" className={styles.dialog} onCloseAutoFocus={event => { event.preventDefault(); onReturnFocus(); }}>
