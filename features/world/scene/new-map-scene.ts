@@ -938,7 +938,12 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       && point.y > feetY - size && point.y < feetY;
   }
   return {
-    setAudioCamera(camera) { audioCamera = camera; if (!disposed) updateAudio(); },
+    setAudioCamera(camera) {
+      if (disposed || audioCamera && audioCamera.x === camera.x && audioCamera.y === camera.y
+        && audioCamera.zoom === camera.zoom && audioCamera.viewportWidth === camera.viewportWidth) return;
+      audioCamera = { ...camera };
+      updateAudio();
+    },
     position: () => {
       const actor = clearingActivityFrame(state.clearing);
       return { x: actor.x, y: actor.y - PET_SIZE * (dev?.heroScale ?? 1) / 2 };

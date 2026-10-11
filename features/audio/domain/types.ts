@@ -30,6 +30,7 @@ export type AudioDiagnostics = {
   state: AudioRuntimeState; settings: AudioSettings; activeVoices: number;
   loadedAssets: number; pendingAssets: number; failedAssets: string[];
   sources: AudioSourceDebug[]; lastEvent: string | null; droppedEvents: number;
+  playback?: { loopStarts: number; musicStarts: number; activeOwnerId: string | null };
 };
 export type AudioSettingsPatch = Partial<Omit<AudioSettings, "buses">> & { buses?: Partial<Record<AudioBus, number>> };
 

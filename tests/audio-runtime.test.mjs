@@ -27,7 +27,7 @@ class Panner extends Node { pan = new Param(); }
 class Source extends Node {
   playbackRate = new Param(); started = 0; stops = []; onended = null; loop = false;
   constructor(context) { super(); this.context = context; }
-  start() { this.started++; this.context.started.push(this); }
+  start(...args) { this.startArgs = args; this.started++; this.context.started.push(this); }
   stop(time) { this.stops.push(time); }
   end() { this.onended?.(); }
 }
@@ -142,6 +142,78 @@ test("camera and duck changes retarget only affected gains while keeping the sam
   assert.equal(riverGain.value, 10 ** (-10 / 20) * .25);
   assert.equal(riverPan.value, -.7);
   f.runtime.dispose();
+});
+
+test("camera jitter at a source boundary reuses the fading loop instead of layering restarts", async () => {
+  const f = fixture([cue("river", "loop", { maxInstances: 1, fadeMs: 1100 })]);
+  await f.runtime.unlock(); f.runtime.updateFrame(frame([target("water")])); await flush();
+  const source = f.context.started[0];
+  for (let index = 1; index <= 240; index++) {
+    f.context.currentTime = index / 120;
+    f.runtime.updateFrame(frame(index % 2 ? [] : [target("water", "river", .002)]));
+    await flush();
+  }
+  assert.equal(f.context.started.length, 1, "crossing the audibility boundary must not start a fresh sample every other frame");
+  assert.equal(f.runtime.getDiagnostics().playback.loopStarts, 1);
+  assert.equal(source.stops.length, 0, "a proximity release must remain reversible until its silent cleanup");
+  assert.equal(f.runtime.getDiagnostics().activeVoices, 1);
+  f.runtime.dispose();
+});
+
+test("duplicate spatial cues consume their instance quota before the global loop budget", async () => {
+  const f = fixture([cue("work", "loop", { maxInstances: 1, priority: 35 }), cue("forest", "loop", { maxInstances: 1, priority: 20 })]);
+  await f.runtime.unlock();
+  f.runtime.updateFrame(frame([...Array.from({ length: 12 }, (_, index) => target(`site-${index}`, "work", .4 + index / 30)), target("bed", "forest")]));
+  await flush();
+  assert.equal(f.context.started.length, 2, "inaudible duplicate instances must not crowd the forest bed out of ten slots");
+  assert.deepEqual(f.requests.map(item => item.url).sort(), ["/audio/forest-a.wav", "/audio/work-a.wav"]);
+  f.runtime.dispose();
+});
+
+test("same-cue spatial selection changes only when a competing source is clearly louder", async () => {
+  const f = fixture([cue("river", "loop", { maxInstances: 1 })]);
+  await f.runtime.unlock();
+  f.runtime.updateFrame(frame([{ ...target("left", "river", .5), pan: -.7 }, { ...target("right", "river", .45), pan: .7 }]));
+  await flush();
+  for (let index = 0; index < 50; index++) {
+    f.runtime.updateFrame(frame([{ ...target("right", "river", .51), pan: .7 }, { ...target("left", "river", .5), pan: -.7 }]));
+    await flush();
+  }
+  assert.equal(f.context.started.length, 1, "small gain changes or array reorder must not switch the selected emitter");
+  f.runtime.updateFrame(frame([{ ...target("left", "river", .3), pan: -.7 }, { ...target("right", "river", .8), pan: .7 }])); await flush();
+  assert.equal(f.context.started.length, 2);
+  assert.equal(f.context.started[1].connected[0].connected[0].pan.value, .7, "a substantially nearer source should take over");
+  f.runtime.dispose();
+});
+
+test("a source returning after silent cleanup resumes its advancing loop phase", async t => {
+  const f = fixture([cue("river", "loop", { maxInstances: 1, pitchVariation: 0, fadeMs: 1100 })]);
+  f.context.decode = () => ({ length: 441000, numberOfChannels: 1, duration: 10 });
+  await f.runtime.unlock(); f.runtime.updateFrame(frame([target("water")])); await flush();
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  f.context.currentTime = 3; f.runtime.updateFrame(frame());
+  t.mock.timers.tick(2000);
+  assert.equal(f.context.started[0].disconnected, true, "inaudible sources must release browser resources");
+  f.context.currentTime = 14.25; f.runtime.updateFrame(frame([target("water")])); await flush();
+  assert.equal(f.context.started.length, 2);
+  assert.equal(f.context.started[1].startArgs[1], 4.25, "spatial reentry must preserve the world's loop timeline instead of repeating the sample intro");
+  f.runtime.updateFrame(frame([target("water")], { sceneId: "account-b:forest" })); await flush();
+  assert.equal(f.context.started[2].startArgs[1], 0, "a different account/scene must begin its own timeline");
+  f.runtime.dispose();
+});
+
+test("a faded loop cannot be reclaimed after mute, scene change or disposal", async () => {
+  const f = fixture([cue("river", "loop", { maxInstances: 1 })]);
+  await f.runtime.unlock(); f.runtime.updateFrame(frame([target("water")])); await flush();
+  f.runtime.updateFrame(frame());
+  f.runtime.setSettings({ enabled: false }); f.runtime.setSettings({ enabled: true });
+  f.runtime.updateFrame(frame([target("water")])); await flush();
+  assert.equal(f.context.started.length, 2);
+  f.runtime.updateFrame(frame());
+  f.runtime.updateFrame(frame([target("water")], { sceneId: "different-forest" })); await flush();
+  assert.equal(f.context.started.length, 3);
+  f.runtime.updateFrame(frame()); f.runtime.dispose();
+  assert.ok(f.context.started.every(source => source.disconnected));
 });
 
 test("legacy AudioParam retargeting closes the interrupted ramp without resetting its held value", async () => {
@@ -427,12 +499,13 @@ test("DEV auditions active music without a new stream or a playhead reset", asyn
   await f.runtime.unlock();
   f.runtime.updateFrame(frame([target("day", "day", .4), target("night", "night", .6)])); await flush();
   t.mock.timers.enable({ apis: ["setTimeout"] });
-  f.media[0].currentTime = 37;
-  const gain = f.context.mediaSources[0].connected[0];
+  const day = f.media.find(item => item.src === "/audio/day-a.wav");
+  day.currentTime = 37;
+  const gain = f.context.mediaSources.find(source => source.media === day).connected[0];
   f.runtime.preview("day");
   assert.equal(gain.gain.value, 10 ** (-10 / 20));
   assert.equal(f.media.length, 2, "audition must also work when both music decks are occupied");
-  assert.equal(f.media[0].plays, 1); assert.equal(f.media[0].currentTime, 37);
+  assert.equal(day.plays, 1); assert.equal(day.currentTime, 37);
   t.mock.timers.tick(4000);
   assert.equal(gain.gain.value, 10 ** (-10 / 20) * .4);
   assert.equal(f.runtime.getDiagnostics().activeVoices, 2); f.runtime.dispose();

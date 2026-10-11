@@ -11,6 +11,7 @@ import styles from "./world.module.css";
 
 export type WorldPortalProps = {
   open: boolean; onClose: () => void; origin: CSSProperties; returnFocus: () => void;
+  onSceneReady?: () => void;
   world: WorldController; economy: EconomyController; ownerPublicId: string; timeZone: string; displayName: string; level: number;
   wakeSignal: number;
   friends?: WorldFriendsState; onOpenPeople?: () => void;

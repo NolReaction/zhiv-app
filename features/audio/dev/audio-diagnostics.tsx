@@ -45,7 +45,13 @@ function DevelopmentAudioDiagnostics() {
       <div><dt>Файлов в памяти</dt><dd>{diagnostics.loadedAssets}</dd></div>
       <div><dt>Ожидают файлов / загрузки</dt><dd>{diagnostics.pendingAssets}</dd></div>
       <div><dt>Отклонено событий</dt><dd>{diagnostics.droppedEvents}</dd></div>
+      {diagnostics.playback && <>
+        <div><dt>Запусков петель</dt><dd>{diagnostics.playback.loopStarts}</dd></div>
+        <div><dt>Запусков музыки</dt><dd>{diagnostics.playback.musicStarts}</dd></div>
+        <div><dt>Владелец звука</dt><dd>{diagnostics.playback.activeOwnerId ?? "—"}</dd></div>
+      </>}
     </dl>
+    <p className={styles.hint}>Счётчики запусков накопительные с открытия страницы. У неподвижной сцены число запусков фоновых петель должно оставаться постоянным.</p>
     <div className={styles.actions}>
       <AudioSettingsButton label />
       <button type="button" disabled={busy || diagnostics.state === "unavailable"} onClick={() => void preview()}>Включить и проверить тон</button>

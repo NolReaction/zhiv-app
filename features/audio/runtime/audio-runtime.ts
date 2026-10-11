@@ -10,15 +10,17 @@ const EVENT_TTL_MS = 2_000;
 const MAX_EVENT_IDS = 512;
 const DEDUP_TTL_MS = 60_000;
 const STREAM_RETRY_MS = 30_000;
+const MAX_LOOP_TIMELINES = 128;
 
 type Voice = {
   key: string; serial: number; cue: AudioCue; assetId: string; priority: number;
   gain: GainNode; panner: StereoPannerNode | null; source: AudioBufferSourceNode | MediaElementAudioSourceNode | OscillatorNode;
   media: HTMLAudioElement | null; createdAt: number; timer: ReturnType<typeof setTimeout> | null;
-  stopped: boolean; sceneId: string | null;
+  stopped: boolean; reclaimable: boolean; sceneId: string | null;
 };
 type PendingLoop = { cueId: string; generation: number };
 type ParameterRamp = { from: number; target: number; start: number; end: number };
+type LoopTimeline = { assetId: string; startedAt: number; playbackRate: number };
 export type AudioRuntimeOptions = {
   catalog?: AudioCatalog;
   initialSettings?: AudioSettings;
@@ -63,6 +65,8 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
   let borrowedPreview: { voice: Voice; timer: ReturnType<typeof setTimeout> } | null = null;
   let lastEvent: string | null = null;
   let droppedEvents = 0;
+  let loopStarts = 0;
+  let musicStarts = 0;
   let snapshot: AudioDiagnostics;
   const subscribers = new Set<() => void>();
   const voices = new Map<string, Voice>();
@@ -74,6 +78,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
   const failedStreams = new Map<string, number>();
   const blockedStreams = new Set<string>();
   const musicPositions = new Map<string, number>();
+  const loopTimelines = new Map<string, LoopTimeline>();
   const bufferClaims = new Map<string, number>();
   const pendingEvents = new Set<number>();
   const parameterRamps = new WeakMap<AudioParam, ParameterRamp>();
@@ -94,11 +99,14 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
     }));
     const next: AudioDiagnostics = { state: state(), settings, activeVoices: voices.size,
       loadedAssets: cache.loadedCount(), pendingAssets: catalog.assets.filter(asset => asset.status === "pending").length + cache.loadingCount(),
-      failedAssets: [...new Set([...cache.failedIds(), ...failedStreams.keys()])], sources, lastEvent, droppedEvents };
+      failedAssets: [...new Set([...cache.failedIds(), ...failedStreams.keys()])], sources, lastEvent, droppedEvents,
+      playback: { loopStarts, musicStarts, activeOwnerId: frame?.ownerId ?? null } };
     // useSyncExternalStore needs referential stability, including while scene frames keep arriving.
     if (snapshot && snapshot.settings === settings && snapshot.state === next.state && snapshot.activeVoices === next.activeVoices
       && snapshot.loadedAssets === next.loadedAssets && snapshot.pendingAssets === next.pendingAssets && snapshot.lastEvent === next.lastEvent
       && snapshot.droppedEvents === next.droppedEvents && JSON.stringify(snapshot.sources) === JSON.stringify(sources)
+      && snapshot.playback?.loopStarts === loopStarts && snapshot.playback?.musicStarts === musicStarts
+      && snapshot.playback?.activeOwnerId === next.playback?.activeOwnerId
       && JSON.stringify(snapshot.failedAssets) === JSON.stringify(next.failedAssets)) return;
     snapshot = next;
     for (const listener of subscribers) { try { listener(); } catch { /* A subscriber cannot interrupt game audio cleanup. */ } }
@@ -144,7 +152,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
   function cleanup(voice: Voice) {
     if (voice.stopped) return;
     if (borrowedPreview?.voice === voice) releaseBorrowedPreview();
-    voice.stopped = true;
+    voice.stopped = true; voice.reclaimable = false;
     if (voice.timer) clearTimeout(voice.timer);
     if (voices.get(voice.key) === voice) voices.delete(voice.key);
     retiring.delete(voice.serial);
@@ -164,6 +172,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
   }
   function stopVoice(voice: Voice, immediate = false) {
     if (voice.stopped) return;
+    voice.reclaimable = false;
     if (borrowedPreview?.voice === voice) releaseBorrowedPreview();
     if (voices.get(voice.key) === voice) voices.delete(voice.key);
     if (immediate || !context || context.state !== "running") { cleanup(voice); return; }
@@ -177,11 +186,35 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
     voice.timer = setTimeout(() => cleanup(voice), seconds * 1000 + 80);
     if (retiring.size > MAX_VOICES) cleanup(retiring.values().next().value!);
   }
+  function releaseLoop(voice: Voice) {
+    if (voice.stopped || voice.reclaimable) return;
+    if (voices.get(voice.key) === voice) voices.delete(voice.key);
+    retiring.set(voice.serial, voice);
+    voice.reclaimable = true;
+    const seconds = Math.min(1.5, Math.max(.3, voice.cue.fadeMs / 1000));
+    ramp(voice.gain.gain, 0, seconds);
+    // Unlike a final stop, a proximity fade must be reversible. Scheduling
+    // source.stop() here forces a new sample when the next camera frame returns.
+    voice.timer = setTimeout(() => cleanup(voice), seconds * 1000 + 80);
+    if (retiring.size > MAX_VOICES) cleanup(retiring.values().next().value!);
+  }
+  function reclaimLoop(key: string, cue: AudioCue, priority: number): Voice | null {
+    const voice = [...retiring.values()].find(item => item.reclaimable && item.key === key
+      && item.cue.id === cue.id && item.sceneId === frame?.sceneId);
+    if (!voice || !roomFor(cue, priority)) return null;
+    if (voice.timer) clearTimeout(voice.timer);
+    voice.timer = null; voice.reclaimable = false;
+    retiring.delete(voice.serial); voices.set(key, voice);
+    return voice;
+  }
   function invalidate(immediate = false) {
     releaseBorrowedPreview();
     generation++;
     pendingLoops.clear(); pendingEvents.clear();
     for (const voice of [...voices.values()]) stopVoice(voice, immediate);
+    // Retiring proximity voices belong to the previous generation too; an
+    // unmute or account change must never revive them through the reclaim path.
+    for (const voice of retiring.values()) voice.reclaimable = false;
     if (immediate) for (const voice of [...retiring.values()]) cleanup(voice);
   }
   function loadBuffer(asset: AudioAsset, consume: (buffer: AudioBuffer | null) => void) {
@@ -224,7 +257,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
     source.connect(gain);
     if (panner) { gain.connect(panner); panner.connect(buses.get(cue.bus)!); }
     else gain.connect(buses.get(cue.bus)!);
-    const voice: Voice = { key, serial: ++sequence, cue, assetId, priority, gain, panner, source, media, createdAt: now(), timer: null, stopped: false, sceneId: frame?.sceneId ?? lastSceneId };
+    const voice: Voice = { key, serial: ++sequence, cue, assetId, priority, gain, panner, source, media, createdAt: now(), timer: null, stopped: false, reclaimable: false, sceneId: frame?.sceneId ?? lastSceneId };
     voices.set(key, voice);
     if (!media) (source as AudioBufferSourceNode | OscillatorNode).onended = () => cleanup(voice);
     return voice;
@@ -252,9 +285,22 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
       source.loopEnd = finiteClamp(asset.loopEnd ?? buffer.duration, source.loopStart + .01, buffer.duration, buffer.duration);
     }
     source.playbackRate.value = 1 + (finiteClamp(random(), 0, 1) * 2 - 1) * finiteClamp(cue.pitchVariation, 0, .08);
+    let offset = 0;
+    if (source.loop && key.startsWith("loop:")) {
+      const previous = loopTimelines.get(key);
+      if (previous?.assetId === asset.id) {
+        source.playbackRate.value = previous.playbackRate;
+        const elapsed = Math.max(0, context!.currentTime - previous.startedAt) * previous.playbackRate;
+        offset = elapsed < source.loopEnd ? elapsed : source.loopStart + (elapsed - source.loopStart) % (source.loopEnd - source.loopStart);
+      } else {
+        loopTimelines.set(key, { assetId: asset.id, startedAt: context!.currentTime, playbackRate: source.playbackRate.value });
+        while (loopTimelines.size > MAX_LOOP_TIMELINES) loopTimelines.delete(loopTimelines.keys().next().value!);
+      }
+    }
     const voice = wireVoice(key, cue, asset.id, source, null, priority);
     tune(voice, gain, pan);
-    try { source.start(); } catch { cleanup(voice); return false; }
+    try { source.start(0, offset); } catch { cleanup(voice); return false; }
+    if (source.loop) loopStarts++;
     publish();
     return true;
   }
@@ -269,6 +315,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
       media.preload = "none"; media.loop = true; media.crossOrigin = "anonymous";
       const source = context!.createMediaElementSource(media);
       voice = wireVoice(key, cue, asset.id, source, media, priority);
+      musicStarts++;
       const liveVoice = voice;
       const player = media;
       const urls = [...new Set([asset.src, asset.fallbackSrc].filter((url): url is string => Boolean(url)))];
@@ -316,21 +363,43 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
       const cue = cues.get(target.cueId);
       if (cue && cue.mode !== "one-shot" && Number.isFinite(target.gain) && target.gain > .001 && audible(cue.bus)) unique.set(`loop:${target.id}`, target);
     }
-    return [...unique.values()].sort((a, b) => (b.priority ?? cues.get(b.cueId)!.priority) - (a.priority ?? cues.get(a.cueId)!.priority)).slice(0, MAX_LOOPS);
+    // Rank only playable instances: twelve construction sites with a one-voice
+    // cue must not occupy every slot and silently evict the forest ambience.
+    // A modest preference for an active emitter avoids swapping equal-distance
+    // sources on every camera pixel; a clearly closer source still takes over.
+    const score = (target: AudioLoopTarget) => target.gain * (voices.get(`loop:${target.id}`)?.cue.id === target.cueId ? 1.15 : 1);
+    const ranked = [...unique.values()].sort((a, b) => (b.priority ?? cues.get(b.cueId)!.priority)
+      - (a.priority ?? cues.get(a.cueId)!.priority) || score(b) - score(a));
+    const selected: AudioLoopTarget[] = [], instances = new Map<string, number>();
+    for (const target of ranked) {
+      const count = instances.get(target.cueId) ?? 0;
+      if (count >= Math.max(1, cues.get(target.cueId)!.maxInstances)) continue;
+      instances.set(target.cueId, count + 1); selected.push(target);
+      if (selected.length === MAX_LOOPS) break;
+    }
+    return selected;
   }
   function reconcile() {
     if (!audible()) return;
     const wanted = new Map(targets().map(target => [`loop:${target.id}`, target]));
     for (const [key, pending] of pendingLoops) if (wanted.get(key)?.cueId !== pending.cueId) pendingLoops.delete(key);
-    for (const [key, voice] of voices) if (key.startsWith("loop:") && borrowedPreview?.voice !== voice && wanted.get(key)?.cueId !== voice.cue.id) stopVoice(voice);
+    for (const [key, voice] of voices) if (key.startsWith("loop:") && borrowedPreview?.voice !== voice && wanted.get(key)?.cueId !== voice.cue.id) {
+      if (!wanted.has(key) && voice.cue.mode === "loop") releaseLoop(voice);
+      else stopVoice(voice);
+    }
     for (const [key, target] of wanted) {
       const cue = cues.get(target.cueId)!;
-      const active = voices.get(key);
-      if (active) { if (borrowedPreview?.voice !== active) tune(active, target.gain, target.pan); continue; }
-      if (pendingLoops.has(key)) continue;
-      const asset = chooseAsset(cue);
-      if (!asset) continue;
       const priority = target.priority ?? cue.priority;
+      const active = voices.get(key) ?? reclaimLoop(key, cue, priority);
+      if (active) {
+        pendingLoops.delete(key);
+        if (borrowedPreview?.voice !== active) tune(active, target.gain, target.pan);
+        continue;
+      }
+      if (pendingLoops.has(key)) continue;
+      const savedAsset = assets.get(loopTimelines.get(key)?.assetId ?? "");
+      const asset = savedAsset?.status === "ready" && savedAsset.src && cue.assets.includes(savedAsset.id) ? savedAsset : chooseAsset(cue);
+      if (!asset) continue;
       if (cue.mode === "music") { startMusic(key, cue, asset, target.gain, target.pan, priority); continue; }
       const token: PendingLoop = { cueId: cue.id, generation };
       pendingLoops.set(key, token);
@@ -399,7 +468,9 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
       if (!settings.enabled || settings.master === 0) invalidate();
       else {
         if (AUDIO_BUSES.some(bus => previous.buses[bus] > 0 && settings.buses[bus] === 0)) { generation++; pendingLoops.clear(); pendingEvents.clear(); }
-        for (const voice of [...voices.values()]) if (settings.buses[voice.cue.bus] === 0) stopVoice(voice);
+        for (const voice of [...voices.values(), ...retiring.values()]) if (settings.buses[voice.cue.bus] === 0) {
+          if (voice.reclaimable) cleanup(voice); else if (voices.get(voice.key) === voice) stopVoice(voice);
+        }
         reconcile();
       }
       updateMix(); publish();
@@ -409,7 +480,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
       if (disposed) return;
       if (frameClearTimer) { clearTimeout(frameClearTimer); frameClearTimer = null; }
       if (lastSceneId !== null && lastSceneId !== next.sceneId) {
-        invalidate(); eventIds.clear(); cooldowns.clear(); musicPositions.clear(); blockedStreams.clear();
+        invalidate(); eventIds.clear(); cooldowns.clear(); musicPositions.clear(); loopTimelines.clear(); blockedStreams.clear();
       }
       lastSceneId = next.sceneId;
       frame = next;
@@ -520,7 +591,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
       disposed = true; frame = null;
       if (frameClearTimer) { clearTimeout(frameClearTimer); frameClearTimer = null; }
       invalidate(true); cache.dispose();
-      eventIds.clear(); cooldowns.clear(); lastVariants.clear(); failedStreams.clear(); blockedStreams.clear(); musicPositions.clear();
+      eventIds.clear(); cooldowns.clear(); lastVariants.clear(); failedStreams.clear(); blockedStreams.clear(); musicPositions.clear(); loopTimelines.clear();
       if (context) {
         context.onstatechange = null;
         for (const gain of buses.values()) gain.disconnect();

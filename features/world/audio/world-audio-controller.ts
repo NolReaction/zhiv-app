@@ -11,12 +11,32 @@ export type WorldAudioControl = {
   showHero: boolean; actorAway: boolean; reducedMotion: boolean;
 };
 
+function sameAudioFrame(previous: AudioFrame | null, next: AudioFrame): boolean {
+  if (!previous || previous.ownerId !== next.ownerId || previous.sceneId !== next.sceneId
+    || previous.musicDuck !== next.musicDuck || previous.loops.length !== next.loops.length) return false;
+  const a = previous.listener, b = next.listener;
+  if (a.position.x !== b.position.x || a.position.y !== b.position.y || a.zoom !== b.zoom
+    || a.viewportWidth !== b.viewportWidth || a.detail !== b.detail) return false;
+  if (!previous.loops.every((loop, index) => {
+    const other = next.loops[index];
+    return loop.id === other.id && loop.cueId === other.cueId && loop.gain === other.gain
+      && loop.pan === other.pan && loop.priority === other.priority;
+  })) return false;
+  const sources = previous.sources ?? [], nextSources = next.sources ?? [];
+  return sources.length === nextSources.length && sources.every((source, index) => {
+    const other = nextSources[index];
+    return source.id === other.id && source.cueId === other.cueId && source.gain === other.gain
+      && source.pan === other.pan && source.reason === other.reason;
+  });
+}
+
 /** Audio follows the visible observer, never the remote persistence lease.
  * One shared delta observer prevents circle/map handoffs replaying footsteps. */
 export function createWorldAudioController(runtime: AudioRuntime) {
   const ownerId = `forest-audio-view-${++nextOwner}`;
   let disposed = false, hadFrame = false, lastState: ForestSessionState | undefined;
   let current: AudioFrame | null = null;
+  let lastPublishedAt = -Infinity;
   return {
     update(scene: FixedWorldScene, state: ForestSessionState, input: Omit<WorldAudioEnvironment, "ownerId">, control: WorldAudioControl) {
       if (disposed) return;
@@ -31,14 +51,22 @@ export function createWorldAudioController(runtime: AudioRuntime) {
         }
         return;
       }
-      if (lastState && lastState !== state) runtime.clearFrame(ownerId);
+      if (lastState && lastState !== state) { runtime.clearFrame(ownerId); current = null; }
       const frame = buildWorldAudioFrame(scene, { ...input, ownerId });
+      // Simulation, its subscribers and painting may all observe the same tick.
+      // Coalesce those copies, retaining a slow heartbeat for failed asset
+      // retries and voices awaiting budget. Action contacts still observe every
+      // tick even when their ambient mix has not changed.
+      const timestamp = Date.now();
+      if (!sameAudioFrame(current, frame) || timestamp - lastPublishedAt >= 1000 || timestamp < lastPublishedAt) {
+        runtime.updateFrame(frame);
+        lastPublishedAt = timestamp;
+      }
       current = frame;
-      runtime.updateFrame(frame);
       let tracker = trackers.get(state);
       if (!tracker) { tracker = createWorldAudioMarkerTracker(); trackers.set(state, tracker); }
       const markers = worldAudioMarkers(scene, state, { ...control, showBuildings: input.showBuildings !== false });
-      const events = tracker.sample(markers, frame.listener, input.sceneId, Date.now(), Boolean(control.emitEvents && hadFrame && lastState === state));
+      const events = tracker.sample(markers, frame.listener, input.sceneId, timestamp, Boolean(control.emitEvents && hadFrame && lastState === state));
       hadFrame = true; lastState = state;
       for (const event of events) runtime.play(event);
     },

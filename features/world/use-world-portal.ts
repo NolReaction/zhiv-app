@@ -5,6 +5,7 @@ import type { CSSProperties } from "react";
 const HISTORY_KEY = "zhivWorldPortal";
 export function useWorldPortal(owner: string | null) {
   const [openedFor, setOpenedFor] = useState<string | null>(null);
+  const [sceneReady, setSceneReady] = useState(false);
   const [origin, setOrigin] = useState<CSSProperties>({});
   const trigger = useRef<HTMLButtonElement | null>(null);
   const entry = useRef<string | null>(null);
@@ -12,11 +13,13 @@ export function useWorldPortal(owner: string | null) {
   const open = Boolean(owner && openedFor === owner);
   const close = useCallback(() => {
     setOpenedFor(null);
+    setSceneReady(false);
     if (entry.current && window.history.state?.[HISTORY_KEY] === entry.current) { backPending.current = true; window.history.back(); }
     entry.current = null;
   }, []);
   const enter = useCallback((button: HTMLButtonElement, circle: HTMLElement | null) => {
     if (!owner || entry.current || backPending.current) return;
+    setSceneReady(false);
     trigger.current = button;
     const rect = circle?.getBoundingClientRect() ?? button.getBoundingClientRect();
     const x = rect.left + rect.width / 2, y = rect.top + rect.height / 2;
@@ -37,5 +40,7 @@ export function useWorldPortal(owner: string | null) {
       const next = { ...window.history.state }; delete next[HISTORY_KEY]; window.history.replaceState(next, ""); entry.current = null;
     }
   }, [open, owner]);
-  return { open, enter, close, origin, returnFocus: () => { if (trigger.current?.isConnected) trigger.current.focus(); } };
+  const reportSceneReady = useCallback(() => setSceneReady(true), []);
+  return { open, enter, close, origin, sceneReady: open && sceneReady, reportSceneReady,
+    returnFocus: () => { if (trigger.current?.isConnected) trigger.current.focus(); } };
 }
