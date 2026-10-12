@@ -90,6 +90,7 @@ function UpgradeUnlocks({ state, stationId, target, navigation }: { state: Econo
         {unlocks.market && <div><span><Store size={18} aria-hidden="true" /><strong>Рынок между игроками</strong></span>{state.completedExplorations < state.catalog.market.requiredExplorations && <p className={styles.muted}>Нужно завершить вылазок: {state.completedExplorations} / {state.catalog.market.requiredExplorations}</p>}</div>}
       </div></details>}
     </>}
+    {stationId === "quarry" && unlocks.routes.length > 0 && <div className={styles.homeUnlocks} aria-label="Новые маршруты">{unlocks.routes.map(route => <div key={route.id}><span><Compass size={18} aria-hidden="true" /><strong>{route.name}</strong><small>Маршрут</small></span><Requirements state={futureState} required={worldRequirements(route)} navigation={navigation} /></div>)}</div>}
     {!!recipes.length && <>
       <div className={styles.recipeGrid} aria-label="Новые рецепты">{recipes.map(entry => {
         const rewards = Object.entries(entry.rewards);
@@ -98,7 +99,7 @@ function UpgradeUnlocks({ state, stationId, target, navigation }: { state: Econo
       })}</div>
       {recipe && <div id={detailId} className={styles.recipeDetail}><strong>{recipe.name}</strong><ul aria-label="Результат рецепта">{Object.entries(recipe.rewards).map(([id, amount]) => <li key={id}><ProductIcon state={state} itemId={id} size={18} /><span>{itemName(state, id)}</span><b>×{number(amount)}</b></li>)}</ul><p className={styles.recipeInputs}><span>Нужно:</span>{recipe.cost.coins > 0 && <span><ItemIcon itemId="coins" size={16} />{number(recipe.cost.coins)}</span>}{Object.entries(recipe.cost.items).map(([id, amount]) => <span key={id}><ProductIcon state={state} itemId={id} size={16} />{itemName(state, id)} ×{number(amount)}</span>)}{!recipe.cost.coins && !Object.keys(recipe.cost.items).length && <span>без затрат</span>}</p><Requirements state={futureState} required={worldRequirements(recipe, recipe)} navigation={navigation} /></div>}
     </>}
-    {stationId !== "home" && !target.warehouseCapacity && !recipes.length && <p className={styles.muted}>Следующий уровень постройки.</p>}
+    {stationId !== "home" && !target.warehouseCapacity && !recipes.length && !(stationId === "quarry" && unlocks.routes.length) && <p className={styles.muted}>Следующий уровень постройки.</p>}
   </section>;
 }
 

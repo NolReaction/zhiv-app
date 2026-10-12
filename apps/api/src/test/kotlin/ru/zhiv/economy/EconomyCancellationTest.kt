@@ -69,7 +69,7 @@ class EconomyCancellationTest {
     }
 
     @Test fun `full storage cannot block cancellation and quantity price and forged rewards are rejected`() {
-        val started = apply(EconomyRules.initial(), "start_exploration", "shore").copy(inventory = mapOf("wood" to 200L))
+        val started = apply(EconomyRules.initial(), "start_exploration", "shore").copy(inventory = mapOf("wood" to 300L))
         val cancel = command("cancel_exploration", started.jobs.single().id)
         for (invalid in listOf(cancel.copy(quantity = 2), cancel.copy(totalPrice = 1))) assertEquals("INVALID_ECONOMY_COMMAND", assertFailsWith<AuthFailure> {
             EconomyRules.apply(started, invalid, now)

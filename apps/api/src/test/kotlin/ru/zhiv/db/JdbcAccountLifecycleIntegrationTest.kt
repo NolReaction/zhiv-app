@@ -837,7 +837,7 @@ class JdbcAccountLifecycleIntegrationTest {
         val a=account();val b=account();val browser=tokens.issue().hash
         val economy=JdbcEconomyRepository(source);val market=JdbcEconomyMarketRepository(source)
         economy.snapshot(a.session);economy.snapshot(b.session)
-        val target=EconomyRules.initial(homeLevel=2).copy(inventory=mapOf("wood" to 120L),completedExplorations=1)
+        val target=EconomyRules.initial(homeLevel=2).copy(inventory=mapOf("wood" to 220L),completedExplorations=1)
         val other=EconomyRules.initial(homeLevel=2).copy(inventory=mapOf("berries" to 50L,"stone" to 50L),completedExplorations=1)
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(target),a.id)
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(other),b.id)

@@ -79,12 +79,12 @@ class EconomyTutorialOrderTest {
     }
 
     @Test fun `capacity guards include escrow and reject before consuming progress`() {
-        val full = EconomyRules.initial().copy(inventory = mapOf("stone" to 200L))
+        val full = EconomyRules.initial().copy(inventory = mapOf("stone" to 300L))
         fails("ECONOMY_STORAGE_FULL") { claim(full) }
         assertFalse(full.tutorialOrder.ingredientsClaimed)
-        val nearlyFull = full.copy(inventory = mapOf("stone" to 195L))
+        val nearlyFull = full.copy(inventory = mapOf("stone" to 295L))
         fails("ECONOMY_STORAGE_FULL") { EconomyRules.apply(nearlyFull, command(), now, mapOf("wood" to 1L)) }
-        assertEquals(200L, EconomyRules.storage(claim(nearlyFull)).used)
+        assertEquals(300L, EconomyRules.storage(claim(nearlyFull)).used)
         val walletFull = claim().copy(wallet = EconomyWallet(ECONOMY_MAX_BALANCE - 99, 1000))
         fails("ECONOMY_CAPACITY") { complete(walletFull) }
         assertFalse(walletFull.tutorialOrder.completed)

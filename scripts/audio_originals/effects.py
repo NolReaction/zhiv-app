@@ -190,6 +190,21 @@ def _ui(kind: str, variant: int, sample_rate: int,
         title = "A gift gathered"
         description = "A short original ascending felt arpeggio for collecting the daily gift, with a padded low note and a softly damped high finish."
         target = -23.5
+    elif kind == "construction-complete":
+        # The last pair of padded wooden taps settles into a warm major chord.
+        # Keep it distinct from treasure and daily gifts, without a harsh impact
+        # or a long fanfare that would cover the village's ambient sound.
+        audio = np.zeros(round(.92 * sample_rate))
+        _add(audio, _modal(.16, 245, sample_rate, rng), 0, sample_rate, .24)
+        _add(audio, _modal(.17, 294, sample_rate, rng), .09, sample_rate, .20)
+        for pitch, when, strength in [
+            (392, .16, .64), (493.88, .235, .49), (587.33, .315, .40),
+        ]:
+            _add(audio, _felt_pluck(.56, pitch, sample_rate, .105), when, sample_rate, strength)
+        _add(audio, _felt_pluck(.56, 196, sample_rate, .095), .315, sample_rate, .18)
+        title = "A home made ready"
+        description = "Two soft wooden finishing taps resolve into a short warm felt major chord for a confirmed building completion. No external samples."
+        target = -22.5
     elif kind == "confirm":
         audio = np.zeros(round(.72 * sample_rate))
         notes = [523.25, 783.99] if variant == 1 else [659.25, 880]
@@ -433,7 +448,7 @@ def render(asset_id: str, sample_rate: int) -> tuple[np.ndarray, dict]:
     variant = int(parts[-1])
     rng = _rng(asset_id)
     if parts[0] == "ui" and len(parts) == 3:
-        if variant > {"click": 3, "slider": 1, "startup": 1, "daily-reward": 1}.get(parts[1], 2):
+        if variant > {"click": 3, "slider": 1, "startup": 1, "daily-reward": 1, "construction-complete": 1}.get(parts[1], 2):
             raise ValueError(f"Unknown UI variation: {asset_id}")
         return _ui(parts[1], variant, sample_rate, rng)
     if parts[0] == "actor" and len(parts) == 4 and variant <= 3:

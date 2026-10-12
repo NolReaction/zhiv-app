@@ -52,9 +52,9 @@ test("DEV currency and item grants return the real snapshot, preserve normal com
   cheat(p, "grant_currency", "pearls", 25);
   const granted = cheat(p, "grant_item", "berries", 400).state;
   assert.equal(granted.wallet.pearls, before.wallet.pearls + 1250); assert.equal(granted.inventory.berries, 400);
-  assert.equal(granted.storage.overflow, before.storage.used + 200, "DEV grants explicitly permit storage overflow");
+  assert.equal(granted.storage.overflow, before.storage.used + 400 - before.storage.capacity, "DEV grants explicitly permit storage overflow");
   const sold = normal(p, "sell", "berries", 10).state;
-  assert.equal(sold.inventory.berries, 390); assert.equal(sold.storage.overflow, before.storage.used + 190);
+  assert.equal(sold.inventory.berries, 390); assert.equal(sold.storage.overflow, before.storage.used + 390 - before.storage.capacity);
   assert.ok(sold.wallet.coins > granted.wallet.coins);
 });
 

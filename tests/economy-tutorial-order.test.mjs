@@ -122,15 +122,15 @@ test("selling ingredients does not permit another grant and a failed submit leav
 });
 
 test("full and escrow-reserved storage reject the whole gift without consuming its marker", () => {
-  const p = player(), saved = row(p); saved.state.inventory = { stone: 200 };
+  const p = player(), saved = row(p); saved.state.inventory = { stone: 300 };
   const before = read(p);
   assert.throws(() => send(p), { code: "ECONOMY_STORAGE_FULL" }); assert.deepEqual(read(p), before);
-  const state = fresh(); state.inventory = { stone: 195 };
+  const state = fresh(); state.inventory = { stone: 295 };
   const untouched = structuredClone(state);
   assert.throws(() => rules.applyEconomyCommand(state, request(p), now, crypto.randomUUID, { wood: 1 }), { code: "ECONOMY_STORAGE_FULL" });
   assert.deepEqual(state, untouched);
-  saved.state.inventory = { stone: 195 };
-  assert.equal(send(p).state.storage.used, 200);
+  saved.state.inventory = { stone: 295 };
+  assert.equal(send(p).state.storage.used, 300);
 });
 
 test("wallet limits reject completion before consuming goods or completion state", () => {

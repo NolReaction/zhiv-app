@@ -57,6 +57,7 @@ const isFishingRoute = (state: EconomyView, route: Route) => state.catalog.fishi
 const expeditionCost = (state: EconomyView, route: Route) => isFishingRoute(state, route) ? fishingTripCost(route.cost, state) : route.cost;
 const canPrepare = (state: EconomyView, route: Route) => worldMissingRequirements(state, worldRequirements(route)).length === 0 && countRewards(route.rewards) <= state.storage.capacity && worldCostShortfalls(state, expeditionCost(state, route)).length === 0;
 const sectorRoutes = (state: EconomyView, sectorId: SectorId) => state.catalog.explorations.filter(route => (isFishingRoute(state, route) ? "shore" : expeditionSector(route.id)) === sectorId
+  && worldMissingRequirements(state, worldRequirements(route)).length === 0
   && !(route.id === "quarry_shift" && (state.buildings.quarry ?? 0) >= 4)
   && !(route.id === "quarry_deep_face" && (state.buildings.quarry ?? 0) >= 5));
 
@@ -166,7 +167,7 @@ export function ExpeditionRouteDetails({ route, state, economy, exploring, onOpe
         const baitId = event.target.value;
         const owned = baitId === "none" || Boolean(catalog?.baits.some(bait => bait.itemId === baitId) && (state.inventory[baitId] ?? 0) > 0);
         command.send("equip_fishing_bait", baitId, 1, 0, baitId !== (gear.equippedBaitId ?? "none") && owned);
-      }}><option value="none">Без наживки</option>{gear.equippedBaitId && !catalog?.baits.some(bait => bait.itemId === gear.equippedBaitId) && <option value={gear.equippedBaitId} disabled>Недоступная наживка</option>}{catalog?.baits.map(bait => <option key={bait.itemId} value={bait.itemId} disabled={(state.inventory[bait.itemId] ?? 0) <= 0}>{itemName(state, bait.itemId)} · {(state.inventory[bait.itemId] ?? 0) > 0 ? `×${number(state.inventory[bait.itemId])}` : "нет в запасе"}</option>)}</select></label></div>
+      }}><option value="none">Без наживки</option>{gear.equippedBaitId && !catalog?.baits.some(bait => bait.itemId === gear.equippedBaitId) && <option value={gear.equippedBaitId} disabled>Недоступная наживка</option>}{catalog?.baits.filter(bait => bait.requiredHomeLevel <= (state.buildings.home ?? 1) || (state.inventory[bait.itemId] ?? 0) > 0 || bait.itemId === gear.equippedBaitId).map(bait => <option key={bait.itemId} value={bait.itemId} disabled={(state.inventory[bait.itemId] ?? 0) <= 0}>{itemName(state, bait.itemId)} · {(state.inventory[bait.itemId] ?? 0) > 0 ? `×${number(state.inventory[bait.itemId])}` : "нет в запасе"}</option>)}</select></label></div>
       <p>Удочка и крючок не расходуются.</p>
       <details className={styles.gearDescription}><summary>О выбранных снастях</summary>
         <p>{catalog?.rods.find(rod => rod.id === gear.equippedRodId)?.description}</p>

@@ -45,6 +45,7 @@ class NotificationDispatcher(
         user,batch ?: now.notificationSqlTime()
     ) { Event(it.getString(1),it.getString(2),it.getObject(3,OffsetDateTime::class.java).toInstant(),it.getInt(4)) }
     private fun budgetAfter(c: Connection,user: UUID,p: NotificationPreferences,now: Instant,excludeBatch: UUID?=null): Instant {
+        if(!p.rateLimitsEnabled) return nextNotificationWindow(p,now)
         // A rolling 24-hour cap also prevents timezone changes or midnight from
         // causing a burst. The UI's daily limit is an upper bound, not a target.
         val history=c.economyRows("""SELECT reserved_at FROM notification_batches WHERE user_id=?

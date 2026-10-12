@@ -12,6 +12,7 @@ export const notificationPreferencesSchema = z.object({
   quietStart: clock,
   quietEnd: clock,
   timeZone: z.string().refine(isTimeZone),
+  rateLimitsEnabled: z.boolean().default(true),
   maxPerDay: z.number().int().min(1).max(2),
   minIntervalMinutes: z.number().int().min(60).max(1440),
 }).strict().refine(value => value.quietStart !== value.quietEnd, {
@@ -21,7 +22,7 @@ export type NotificationPreferences = z.infer<typeof notificationPreferencesSche
 export function defaultNotificationPreferences(timeZone = "UTC"): NotificationPreferences {
   return { constructionCompleted: true, explorationCompleted: true, productionCompleted: true,
     checkinReminder: false, quietHoursEnabled: true, quietStart: "23:00", quietEnd: "10:00",
-    timeZone: isTimeZone(timeZone) ? timeZone : "UTC", maxPerDay: 2, minIntervalMinutes: 120 };
+    timeZone: isTimeZone(timeZone) ? timeZone : "UTC", rateLimitsEnabled: true, maxPerDay: 2, minIntervalMinutes: 120 };
 }
 export const notificationSnapshotSchema = z.object({
   ownerPublicId: z.string().min(1), preferences: notificationPreferencesSchema,

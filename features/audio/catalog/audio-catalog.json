@@ -1360,6 +1360,20 @@
         "changes": "Original compact rising felt arpeggio with a warm low note, restrained upper harmonics, a damped finish and TPDF PCM16.",
         "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
       }
+    },
+    {
+      "id": "ui.construction-complete.01",
+      "src": "/audio/originals-v1/effect/ui.construction-complete.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8-unified/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-12",
+        "changes": "Original soft wooden finishing taps and a warm felt major chord for building completion; deterministic synthesis, gentle edges, peak-safe level and TPDF PCM16.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     }
   ],
   "cues": [
@@ -2031,6 +2045,20 @@
       "cooldownMs": 900,
       "pitchVariation": 0,
       "fadeMs": 15
+    },
+    {
+      "id": "ui.construction-complete",
+      "bus": "ui",
+      "mode": "one-shot",
+      "assets": [
+        "ui.construction-complete.01"
+      ],
+      "gainDb": -2,
+      "priority": 95,
+      "maxInstances": 1,
+      "cooldownMs": 1000,
+      "pitchVariation": 0,
+      "fadeMs": 20
     }
   ],
   "profiles": [

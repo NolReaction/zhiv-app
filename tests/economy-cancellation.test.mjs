@@ -116,7 +116,7 @@ test("replaying cancellation after a new departure cannot cancel the replacement
 test("cancellation is available with full storage and cannot be forged into a refund or bulk command", () => {
   const p = player(), trip = issue(p, "start_exploration", "shore").state.jobs[0];
   const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
-  row.state.inventory = { wood: 200 };
+  row.state.inventory = { wood: 300 };
   const before = read(p), cancel = command(p, "cancel_exploration", trip.id);
   for (const extra of [{ quantity: 2 }, { totalPrice: 1 }, { rewards: { fish: 99 } }, { refund: true }, { targetId: "" }]) {
     assert.throws(() => economy.commandDevEconomy(p.token, { ...cancel, ...extra }, now), { code: "INVALID_ECONOMY_COMMAND" });

@@ -180,7 +180,7 @@ test("relic cost navigation describes chance finds and respects their actual hom
 
 test("pantry expansion shows only its real capacity gain, without dependent building upgrades", () => {
   const html = render("warehouse", { snapshot: state({ buildings: { home: 2, warehouse: 1, workshop: 1 } }) });
-  assert.match(text(html), /Вместимость кладовой 200 500 \+300 мест/);
+  assert.match(text(html), /Вместимость кладовой 300 500 \+200 мест/);
   assert.doesNotMatch(html, /Развитие хозяйства|Дом Мохлика|Ягодный куст|Можно развивать|Новые рецепты|другие постройки/);
   assert.match(text(html), /Доски 0 \/ 18/);
   assert.match(text(html), /Камень 0 \/ 20/);

@@ -87,7 +87,7 @@ class EconomyWorkshopStarterTest {
         val blocked = listOf(
             initial.copy(wallet = EconomyWallet(ECONOMY_MAX_BALANCE - 1199)) to "ECONOMY_CAPACITY",
             initial.copy(inventory = mapOf("wood" to ECONOMY_MAX_ITEMS - 9)) to "ECONOMY_CAPACITY",
-            initial.copy(inventory = mapOf("berries" to 183L)) to "ECONOMY_STORAGE_FULL",
+            initial.copy(inventory = mapOf("berries" to 283L)) to "ECONOMY_STORAGE_FULL",
         )
         for ((state, code) in blocked) {
             val before = economyJson.encodeToString(state)
@@ -95,15 +95,15 @@ class EconomyWorkshopStarterTest {
             assertEquals(before, economyJson.encodeToString(state))
             assertFalse(state.workshopStarterClaimed)
         }
-        val edge = initial.copy(wallet = EconomyWallet(ECONOMY_MAX_BALANCE - 1200), inventory = mapOf("berries" to 182L))
+        val edge = initial.copy(wallet = EconomyWallet(ECONOMY_MAX_BALANCE - 1200), inventory = mapOf("berries" to 282L))
         val accepted = claim(edge)
         assertEquals(ECONOMY_MAX_BALANCE, accepted.wallet.coins)
-        assertEquals(200L, EconomyRules.storage(accepted).used)
+        assertEquals(300L, EconomyRules.storage(accepted).used)
         assertTrue(accepted.workshopStarterClaimed)
     }
 
     @Test fun `reserved market and barter stock still occupies warehouse space before marking the gift claimed`() {
-        val state = EconomyRules.initial().copy(inventory = mapOf("berries" to 172L))
+        val state = EconomyRules.initial().copy(inventory = mapOf("berries" to 272L))
         val before = economyJson.encodeToString(state)
         assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> { claim(state, mapOf("wood" to 11L)) }.code)
         assertEquals(before, economyJson.encodeToString(state))

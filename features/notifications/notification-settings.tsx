@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useId, useRef, useState } from "react";
 import { Bell, BellOff, Check, Moon, SlidersHorizontal } from "lucide-react";
-import { Switch } from "@/components/ui/switch";
+import { SharingSwitch as Switch } from "@/components/sharing-switch";
 import { timeZoneOptions } from "@/lib/time-zone";
 import { ApiError } from "@/lib/check-in-api";
 import { getNotificationSettings, saveNotificationPreferences } from "./notification-api";
@@ -118,12 +118,16 @@ export function NotificationSettingsPanel({ ownerPublicId, isOnline, onSessionLo
           <label className={styles.timeZone} htmlFor={`${id}-zone`}>Часовой пояс уведомлений<select id={`${id}-zone`} value={draft.timeZone} disabled={busy} onChange={event => update("timeZone", event.target.value)}>{timeZoneOptions(draft.timeZone).map(zone => <option key={zone} value={zone}>{zone.replaceAll("_", " ")}</option>)}</select></label>
         </div>}
         <details className={styles.frequency}><summary><SlidersHorizontal size={16} aria-hidden="true" />Частота сообщений</summary>
-          <div className={styles.selectRow}>
+          <div className={styles.topic}>
+            <label htmlFor={`${id}-limits`}><strong>Ограничивать частоту</strong><span>Лимит за день и пауза между сообщениями. Выключите, чтобы получать готовые события без этих задержек.</span></label>
+            <Switch id={`${id}-limits`} checked={draft.rateLimitsEnabled} disabled={busy} onCheckedChange={value => update("rateLimitsEnabled", value)} />
+          </div>
+          {draft.rateLimitsEnabled ? <div className={styles.selectRow}>
             <label htmlFor={`${id}-daily`}>Не больше за день<select id={`${id}-daily`} value={draft.maxPerDay} disabled={busy} onChange={event => update("maxPerDay", Number(event.target.value))}><option value={1}>1 сообщение</option><option value={2}>2 сообщения</option></select></label>
             <label htmlFor={`${id}-interval`}>Пауза между сообщениями<select id={`${id}-interval`} value={draft.minIntervalMinutes} disabled={busy} onChange={event => update("minIntervalMinutes", Number(event.target.value))}>
               <option value={60}>1 час</option><option value={120}>2 часа</option><option value={240}>4 часа</option><option value={480}>8 часов</option><option value={1440}>24 часа</option>
             </select></label>
-          </div>
+          </div> : <p className={styles.hint}>Готовые события придут при ближайшей отправке. Тихие часы действуют отдельно.</p>}
         </details>
       </div>
       <p className={styles.hint}>Пока вы играете, пуши не приходят. Готовые дела объединяем; собранные награды и отменённые задания не напоминают о себе. Настройки событий общие для аккаунта, подключение отдельное на каждом устройстве.</p>

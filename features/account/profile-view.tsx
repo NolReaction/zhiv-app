@@ -8,7 +8,8 @@ import { NotificationSettingsPanel } from "@/features/notifications/notification
 import { AudioSettingsPanel } from "@/features/audio/ui/audio-settings";
 import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
-import { Switch } from "@/components/ui/switch";
+import { SharingSwitch as Switch } from "@/components/sharing-switch";
+import { useSectionGuideLauncherPreference } from "@/features/onboarding/use-section-guide-preferences";
 import { GameLevelsButton } from "@/features/game/game-levels-button";
 import { GameLevelIcon } from "@/features/game/game-level-icon";
 import { Check, CircleHelp, Clock3, Flame, Settings, Settings2, ShieldCheck, Trophy, UserRound } from "lucide-react";
@@ -106,6 +107,7 @@ export function ProfileView({
   gamePendingTaps,
   legacyGame,
 }: ProfileViewProps) {
+  const { showSectionGuideLauncher, setShowSectionGuideLauncher } = useSectionGuideLauncherPreference(me.user.publicId);
   const [activeTab, setActiveTab] = useState("profile");
   const [guideOpen, setGuideOpen] = useState(false);
   const [guideActionLabel, setGuideActionLabel] = useState("Начать обучение");
@@ -362,6 +364,10 @@ export function ProfileView({
               <div className={styles.appearanceSetting}>
                 <label htmlFor="simple-view"><strong>Простой вид</strong><span>Знакомая кнопка без полянки. Вход в игру остаётся доступным.</span></label>
                 <Switch id="simple-view" checked={simpleView} onCheckedChange={onSimpleViewChange} data-audio-cue="ui.click" />
+              </div>
+              <div className={styles.appearanceSetting}>
+                <label htmlFor="section-guide-launcher"><strong>Кнопка «Что здесь делать?»</strong><span>Повтор коротких подсказок в разделах игры. Новые знакомства и продолжение подсказки останутся доступны.</span></label>
+                <Switch id="section-guide-launcher" checked={showSectionGuideLauncher} onCheckedChange={setShowSectionGuideLauncher} data-audio-cue="ui.click" />
               </div>
               <p className={styles.hint}>Настройка сохраняется на этом устройстве.</p>
             </section>

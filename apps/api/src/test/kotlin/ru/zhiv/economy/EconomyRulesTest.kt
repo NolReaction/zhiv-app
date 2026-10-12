@@ -108,7 +108,7 @@ class EconomyRulesTest {
         val started = apply(EconomyRules.initial(), "start_production", "grow_berries")
         val job = started.jobs.single()
         val readyAt = Instant.parse(job.finishesAt)
-        val nearlyFull = started.copy(inventory = mapOf("wood" to 190L))
+        val nearlyFull = started.copy(inventory = mapOf("wood" to 290L))
         val request = command("start_collection", job.id)
         assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> {
             EconomyRules.apply(nearlyFull, request, readyAt, mapOf("stone" to 10L))
@@ -118,14 +118,14 @@ class EconomyRulesTest {
         }.code)
         assertNull(started.jobs.single().collection?.startedAt)
         val collecting = EconomyRules.apply(started, request, readyAt).first
-        val filled = collecting.copy(inventory = mapOf("wood" to 200L))
+        val filled = collecting.copy(inventory = mapOf("wood" to 300L))
         assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> {
             apply(filled, "claim_job", job.id, at = readyAt.plusSeconds(8))
         }.code)
         assertEquals(collecting.jobs, filled.jobs)
         val freed = apply(filled, "sell", "wood", job.rewards.values.sum(), readyAt.plusSeconds(8))
         val claimed = apply(freed, "claim_job", job.id, at = readyAt.plusSeconds(8))
-        assertEquals(200L, EconomyRules.storage(claimed).used)
+        assertEquals(300L, EconomyRules.storage(claimed).used)
     }
 
     @Test fun `legacy berry jobs without collection remain directly claimable and can opt in without replacing rewards`() {
@@ -551,10 +551,10 @@ class EconomyRulesTest {
         assertEquals(500, EconomyRules.catalog.market.feeBps)
     }
     @Test fun `warehouse counts all goods and market escrow without destroying imported overflow`() {
-        val state = EconomyRules.initial().copy(inventory = mapOf("wood" to 150L, "stone" to 30L))
-        assertEquals(EconomyStorage(200, 180, 15, 5, 0), EconomyRules.storage(state, mapOf("berries" to 15L)))
+        val state = EconomyRules.initial().copy(inventory = mapOf("wood" to 250L, "stone" to 30L))
+        assertEquals(EconomyStorage(300, 280, 15, 5, 0), EconomyRules.storage(state, mapOf("berries" to 15L)))
         val legacy = state.copy(inventory = mapOf("wood" to 400L))
-        assertEquals(EconomyStorage(200, 400, 20, 0, 220), EconomyRules.storage(legacy, mapOf("berries" to 20L)))
+        assertEquals(EconomyStorage(300, 400, 20, 0, 120), EconomyRules.storage(legacy, mapOf("berries" to 20L)))
         EconomyRules.assertStorageTransition(legacy, legacy.copy(inventory = mapOf("wood" to 390L)))
         EconomyRules.assertStorageTransition(legacy, legacy.copy(inventory = mapOf("wood" to 400L, "berries" to 20L)),
             mapOf("berries" to 20L), emptyMap())
@@ -564,7 +564,7 @@ class EconomyRulesTest {
     }
 
     @Test fun `ready harvest remains claimable after freeing warehouse space`() {
-        val started = apply(EconomyRules.initial().copy(inventory = mapOf("wood" to 200L)), "start_production", "grow_berries")
+        val started = apply(EconomyRules.initial().copy(inventory = mapOf("wood" to 300L)), "start_production", "grow_berries")
         val job = started.jobs.single()
         val readyAt = Instant.parse(job.finishesAt)
         assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> { apply(started, "start_collection", job.id, at = readyAt) }.code)
@@ -586,7 +586,7 @@ class EconomyRulesTest {
         assertTrue(state.jobs.isEmpty())
         assertEquals(EconomyRules.initial().wallet, state.wallet)
         // Occupied slots do not prevent starting a feasible order: the player can free them before collection.
-        val started = apply(state.copy(inventory = mapOf("wood" to 200L)), "start_production", recipe.id)
+        val started = apply(state.copy(inventory = mapOf("wood" to 300L)), "start_production", recipe.id)
         assertEquals(recipe.rewards, started.jobs.single().rewards)
     }
 

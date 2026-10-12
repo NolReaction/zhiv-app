@@ -15,11 +15,12 @@ export type EconomyAudioFeedbackView = {
 
 export type EconomyAudioFeedbackEvent = {
   id: string;
-  cueId: "ui.reward" | "ui.confirm" | "ui.error";
+  cueId: "ui.reward" | "ui.construction-complete" | "ui.confirm" | "ui.error";
   occurredAt: number;
 };
 
-type PendingFeedback = { startRevision: number; id: string; suppressed: boolean; rewardId: string | null };
+type RewardFeedback = Pick<EconomyAudioFeedbackEvent, "id"> & { cueId: "ui.reward" | "ui.construction-complete" };
+type PendingFeedback = { startRevision: number; id: string; suppressed: boolean; reward: RewardFeedback | null };
 export const ECONOMY_AUDIO_RECEIPT_LIMIT = 128;
 let trackerSequence = 0;
 
@@ -75,7 +76,7 @@ export function createEconomyAudioFeedbackTracker() {
           startRevision: highestRevision,
           id: `economy:${owner}:${trackerId}:command:${++commandSequence}`,
           suppressed: suppressUntilIdle || view.uncertain,
-          rewardId: null,
+          reward: null,
         };
       }
       if (view.uncertain) {
@@ -86,35 +87,40 @@ export function createEconomyAudioFeedbackTracker() {
       const events: EconomyAudioFeedbackEvent[] = [];
       const revisionFloor = pending?.startRevision ?? highestRevision;
       const allowReward = !view.uncertain && !suppressUntilIdle && !pending?.suppressed;
-      const rewards: string[] = [];
+      const rewards: RewardFeedback[] = [];
       for (const receipt of view.inventoryGains ?? []) {
         const key = `gain:${receipt.id}`;
         if (!seen.has(key) && receipt.ownerPublicId === owner && Number.isSafeInteger(receipt.revision)
-          && receipt.revision > revisionFloor && receipt.revision <= snapshot.revision && allowReward) rewards.push(key);
+          && receipt.revision > revisionFloor && receipt.revision <= snapshot.revision && allowReward) rewards.push({ id: key, cueId: "ui.reward" });
         remember(key);
       }
       for (const receipt of view.completedConstructions) {
         const key = `construction:${receipt.id}`;
-        if (!seen.has(key) && snapshot.revision > revisionFloor && allowReward) rewards.push(key);
+        if (!seen.has(key) && snapshot.revision > revisionFloor && allowReward) rewards.push({ id: key, cueId: "ui.construction-complete" });
         remember(key);
       }
 
       if (pending) {
         // One command can carry several changed objects; it earns one sound.
-        pending.rewardId ??= rewards[0] ?? null;
+        // Completing a building has its own signature, even if the same result
+        // also carries resources. Do not replace it with a generic reward.
+        pending.reward = rewards.find(reward => reward.cueId === "ui.construction-complete") ?? pending.reward ?? rewards[0] ?? null;
         if (!view.busy) {
           if (!pending.suppressed && !view.uncertain && !suppressUntilIdle) {
-            const cueId = view.error ? "ui.error" : pending.rewardId ? "ui.reward"
+            const cueId = view.error ? "ui.error" : pending.reward ? pending.reward.cueId
               : view.notice && snapshot.revision > pending.startRevision ? "ui.confirm" : null;
-            if (cueId) events.push({ id: pending.rewardId && cueId === "ui.reward"
-              ? `economy:${owner}:${pending.rewardId}` : pending.id, cueId, occurredAt });
+            if (cueId) events.push({ id: pending.reward && cueId !== "ui.error"
+              ? `economy:${owner}:${pending.reward.id}` : pending.id, cueId, occurredAt });
           }
           pending = null;
         }
       } else if (!view.busy) {
         // React may coalesce a fast request's busy edge. The session's explicit
         // receipt still proves acceptance; a revision/notice alone does not.
-        for (const key of rewards) events.push({ id: `economy:${owner}:${key}`, cueId: "ui.reward", occurredAt });
+        const construction = rewards.find(reward => reward.cueId === "ui.construction-complete");
+        for (const reward of construction ? [construction] : rewards) {
+          events.push({ id: `economy:${owner}:${reward.id}`, cueId: reward.cueId, occurredAt });
+        }
       }
 
       highestRevision = Math.max(highestRevision, snapshot.revision);

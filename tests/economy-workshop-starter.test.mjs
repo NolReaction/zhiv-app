@@ -122,7 +122,7 @@ test("an occupied builder or travelling hero does not block receiving the resour
 
 test("a full warehouse rejects atomically and leaves the grant available after goods are sold", () => {
   const p = player(), saved = row(p);
-  saved.state.inventory = { berries: 200 };
+  saved.state.inventory = { berries: 300 };
   const before = read(p), rejected = command(p);
   assert.throws(() => economy.commandDevEconomy(p.token, rejected, now), { code: "ECONOMY_STORAGE_FULL" });
   assert.deepEqual(read(p), before);
@@ -130,11 +130,11 @@ test("a full warehouse rejects atomically and leaves the grant available after g
   issue(p, { action: "sell", targetId: "berries", quantity: 18 });
   const accepted = issue(p);
   assert.equal(accepted.state.workshopStarterClaimed, true);
-  assert.equal(accepted.state.storage.used, 200);
+  assert.equal(accepted.state.storage.used, 300);
 });
 
 test("reserved market goods occupy warehouse space and rejection does not mutate direct domain state", () => {
-  const state = fresh(); state.inventory = { berries: 182 };
+  const state = fresh(); state.inventory = { berries: 282 };
   const before = structuredClone(state);
   assert.throws(() => rules.applyEconomyCommand(state, { ...command(player()), expectedRevision: 0 }, now,
     crypto.randomUUID, { wood: 1 }), { code: "ECONOMY_STORAGE_FULL" });

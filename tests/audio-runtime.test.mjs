@@ -70,6 +70,31 @@ function fixture(cueList = [cue("tap"), cue("river", "loop")], options = {}) {
   return { runtime, context, requests, media, advance: amount => { time += amount; }, get contextCount() { return contextCount; } };
 }
 
+test("prepared building completion plays once in the simple view without sharing reward cooldown", async () => {
+  const f = fixture([], { catalog: AUDIO_CATALOG });
+  try {
+    await f.runtime.unlock();
+    f.runtime.updateFrame(frame([], { soundscape: false }));
+    await f.runtime.prepare(["ui.construction-complete"]);
+    assert.equal(f.context.started.length, 0, "preparation never celebrates an unfinished building");
+    const path = "/audio/originals-v1/effect/ui.construction-complete.01.wav";
+    assert.equal(f.requests.filter(request => request.url === path).length, 1);
+    f.runtime.play({ id: "just-collected", cueId: "ui.reward" });
+    await flush();
+    assert.equal(f.context.started.length, 1);
+    const event = { id: "economy:user-a:construction:home-job", cueId: "ui.construction-complete" };
+    f.runtime.play(event);
+    await flush();
+    assert.equal(f.context.started.length, 2, "a recent generic reward cannot swallow the building signature");
+    f.runtime.play(event);
+    f.advance(1200);
+    f.runtime.play(event);
+    await flush();
+    assert.equal(f.context.started.length, 2, "the same receipt is consumed even after cue cooldown");
+    assert.equal(f.requests.filter(request => request.url === path).length, 1, "completion reuses the prepared recording");
+  } finally { f.runtime.dispose(); }
+});
+
 test("slider feedback varies pitch and respects the edited channel even in a music-only menu", async () => {
   const f = fixture([cue("ui.slider", "one-shot", { bus: "ui", cooldownMs: 90, pitchVariation: 0 })]);
   await f.runtime.unlock(); f.runtime.updateFrame(frame([], { soundscape: false }));

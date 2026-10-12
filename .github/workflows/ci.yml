@@ -234,6 +234,25 @@ jobs:
           INSERT INTO player_feedback_actions (request_id, feedback_id, actor_user_id, status)
           SELECT '00000000-0000-4000-8000-000000000073', id, user_id, 'reviewed'
           FROM player_feedback WHERE id = '00000000-0000-4000-8000-000000000071';
+          INSERT INTO app_sessions (id, user_id, token_hash, expires_at)
+          SELECT '00000000-0000-4000-8000-000000000074', user_id, decode(repeat('05', 32), 'hex'),
+                 clock_timestamp() + interval '1 day'
+          FROM player_feedback WHERE id = '00000000-0000-4000-8000-000000000071';
+          INSERT INTO notification_preferences (user_id, preferences)
+          SELECT user_id, '{}'::jsonb FROM player_feedback WHERE id = '00000000-0000-4000-8000-000000000071'
+          ON CONFLICT (user_id) DO UPDATE SET preferences = EXCLUDED.preferences;
+          INSERT INTO notification_subscriptions (endpoint_hash, user_id, session_id, endpoint, p256dh, auth)
+          SELECT decode(repeat('06', 32), 'hex'), user_id, id, 'https://example.invalid/ci-reset', 'ci-key', 'ci-auth'
+          FROM app_sessions WHERE id = '00000000-0000-4000-8000-000000000074';
+          INSERT INTO notification_events (user_id, source_key, category, due_at, next_attempt_at)
+          SELECT user_id, 'ci-reset-event', 'checkin', clock_timestamp() + interval '1 hour', clock_timestamp() + interval '1 hour'
+          FROM player_feedback WHERE id = '00000000-0000-4000-8000-000000000071';
+          INSERT INTO notification_batches (id, user_id, reserved_at, state)
+          SELECT '00000000-0000-4000-8000-000000000075', user_id, clock_timestamp(), 'delivered'
+          FROM player_feedback WHERE id = '00000000-0000-4000-8000-000000000071';
+          INSERT INTO promo_redemptions (user_id, origin_user_id, promo_id, request_id, title, reward, accepted_revision)
+          SELECT user_id, user_id, 'ci-reset-promo', '00000000-0000-4000-8000-000000000076', 'CI reset gift', '{}'::jsonb, 1
+          FROM player_feedback WHERE id = '00000000-0000-4000-8000-000000000071';
           CREATE TABLE public.ci_reset_unreviewed_guard (value text);
           SQL
           if docker compose -f deploy/compose.yml exec -T db psql -X -U zhiv -d zhiv -v ON_ERROR_STOP=1 < scripts/reset-user-data.sql; then
@@ -243,8 +262,13 @@ jobs:
           docker compose -f deploy/compose.yml exec -T db psql -X -U zhiv -d zhiv -v ON_ERROR_STOP=1 <<'SQL'
           DO $$ BEGIN
             IF (SELECT count(*) FROM player_feedback WHERE id = '00000000-0000-4000-8000-000000000071') <> 1
-                OR (SELECT count(*) FROM player_feedback_actions WHERE request_id = '00000000-0000-4000-8000-000000000073') <> 1 THEN
-              RAISE EXCEPTION 'Refused reset changed the seeded feedback.';
+                OR (SELECT count(*) FROM player_feedback_actions WHERE request_id = '00000000-0000-4000-8000-000000000073') <> 1
+                OR (SELECT count(*) FROM notification_preferences WHERE user_id = (SELECT user_id FROM player_feedback WHERE id = '00000000-0000-4000-8000-000000000071')) <> 1
+                OR (SELECT count(*) FROM notification_subscriptions WHERE endpoint_hash = decode(repeat('06', 32), 'hex')) <> 1
+                OR (SELECT count(*) FROM notification_events WHERE source_key = 'ci-reset-event') <> 1
+                OR (SELECT count(*) FROM notification_batches WHERE id = '00000000-0000-4000-8000-000000000075') <> 1
+                OR (SELECT count(*) FROM promo_redemptions WHERE promo_id = 'ci-reset-promo') <> 1 THEN
+              RAISE EXCEPTION 'Refused reset changed seeded feedback, notifications or promo history.';
             END IF;
           END $$;
           DROP TABLE public.ci_reset_unreviewed_guard;
@@ -266,8 +290,11 @@ jobs:
           DO $$ BEGIN
             IF EXISTS (SELECT 1 FROM app_users) OR EXISTS (SELECT 1 FROM player_feedback)
                 OR EXISTS (SELECT 1 FROM player_feedback_actions)
-                OR EXISTS (SELECT 1 FROM forest_memory) OR EXISTS (SELECT 1 FROM forest_memory_receipts) THEN
-              RAISE EXCEPTION 'User, feedback or forest memory data survived the confirmed reset.';
+                OR EXISTS (SELECT 1 FROM forest_memory) OR EXISTS (SELECT 1 FROM forest_memory_receipts)
+                OR EXISTS (SELECT 1 FROM notification_preferences) OR EXISTS (SELECT 1 FROM notification_subscriptions)
+                OR EXISTS (SELECT 1 FROM notification_events) OR EXISTS (SELECT 1 FROM notification_batches)
+                OR EXISTS (SELECT 1 FROM promo_redemptions) THEN
+              RAISE EXCEPTION 'User, feedback, forest memory, notification or promo data survived the confirmed reset.';
             END IF;
           END $$;
           SQL

@@ -6,6 +6,7 @@ import { GuideCoach } from "./guide-coach";
 import { sectionGuideCanOpen, sectionGuideLessons, transitionSectionGuide, type SectionGuideEvent, type SectionGuideId } from "./section-guide-model";
 import { createSectionGuideStore } from "./section-guide-storage";
 import { requestSectionGuideNavigation } from "./section-guide-navigation";
+import { useSectionGuideLauncherPreference } from "./use-section-guide-preferences";
 import styles from "./section-guide.module.css";
 
 export type SectionGuideProps = {
@@ -36,6 +37,7 @@ function coveredByModal(element: HTMLElement) {
 }
 
 export function SectionGuide({ owner, section, enabled, targetRoot, inline = true }: SectionGuideProps) {
+  const { showSectionGuideLauncher } = useSectionGuideLauncherPreference(owner);
   const host = useRef<HTMLDivElement>(null), scope = useRef<HTMLElement | null>(null), launcher = useRef<HTMLButtonElement>(null);
   const store = useMemo(() => createSectionGuideStore(owner, section, browserStorage()), [owner, section]);
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot);
@@ -83,6 +85,18 @@ export function SectionGuide({ owner, section, enabled, targetRoot, inline = tru
   const eligible = Boolean(owner) && enabled && presentation.scope === scopeKey && presentation.visible;
   const open = sectionGuideCanOpen(state.loaded, eligible, state.progress);
   const currentTarget = presentation.key === presentationKey ? presentation.target : undefined;
+  const revealedStep = useRef<string | null>(null);
+  useEffect(() => {
+    if (!open) { revealedStep.current = null; return; }
+    if (!step.revealOnOpen || !step.navigation || revealedStep.current === presentationKey) return;
+    // Wait for the shop listener, then reveal its actual odds. This only changes
+    // tabs, the selected preview and scroll position; no game command is sent.
+    const frame = requestAnimationFrame(() => {
+      const root = targetRoot?.current ?? host.current?.parentElement;
+      if (root && step.navigation && requestSectionGuideNavigation(root, step.navigation, step.id)) revealedStep.current = presentationKey;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [open, step, presentationKey, targetRoot, currentTarget]);
   useEffect(() => {
     if (open && state.progress === null) store.save(transitionSectionGuide(section, null, "start"));
   }, [open, state.progress, section, store]);
@@ -103,7 +117,8 @@ export function SectionGuide({ owner, section, enabled, targetRoot, inline = tru
       progress={{ current: index + 1, total: steps.length }} onPause={() => apply("pause")} onSkip={() => apply("skip")}
       onBack={index > 0 ? () => apply("back") : undefined}
       primary={{ advance: true, label: index === steps.length - 1 ? "Понятно" : "Дальше", onClick: () => apply("next") }}
+      secondaryVisible={section === "plesk"}
       secondary={currentTarget || step.navigation ? { label: step.showLabel ?? "Показать", onClick: showTarget } : undefined} />
-      : <button ref={launcher} type="button" className={styles.launcher} onClick={() => apply(state.progress?.status === "paused" ? "resume" : "replay")}><CircleHelp size={15} aria-hidden="true" />{state.progress?.status === "paused" ? "Продолжить подсказку" : "Что здесь делать?"}</button>)}
+      : (showSectionGuideLauncher || state.progress?.status === "paused") && <button ref={launcher} type="button" className={styles.launcher} onClick={() => apply(state.progress?.status === "paused" ? "resume" : "replay")}><CircleHelp size={15} aria-hidden="true" />{state.progress?.status === "paused" ? "Продолжить подсказку" : "Что здесь делать?"}</button>)}
   </div>;
 }

@@ -2,7 +2,10 @@ package ru.zhiv.notifications
 
 import org.junit.jupiter.api.Test
 import kotlinx.serialization.SerializationException
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
 import ru.zhiv.auth.AuthFailure
 import java.time.Instant
 import java.util.Base64
@@ -24,6 +27,15 @@ class NotificationRulesTest {
     }
     @Test fun `partial preferences do not silently reset omitted fields`() {
         assertFailsWith<SerializationException> { Json.decodeFromString<NotificationPreferences>("{\"constructionCompleted\":false}") }
+    }
+    @Test fun `previous complete preferences retain rate limits and explicit opt out survives serialization`() {
+        val json=Json { encodeDefaults=true }
+        val optedOut=NotificationPreferences(rateLimitsEnabled=false)
+        val serialized=json.encodeToString(optedOut)
+        assertFalse(json.decodeFromString<NotificationPreferences>(serialized).rateLimitsEnabled)
+        val legacy=JsonObject(json.parseToJsonElement(serialized).jsonObject - "rateLimitsEnabled")
+        assertTrue(json.decodeFromString<NotificationPreferences>(legacy.toString()).rateLimitsEnabled)
+        validateNotificationPreferences(optedOut)
     }
     @Test fun `preferences bound spam and reject malformed clocks and zones`() {
         validateNotificationPreferences(NotificationPreferences())

@@ -5,10 +5,10 @@ import { Popover } from "radix-ui";
 import { ArrowRight, Check, Clock3, Soup, X } from "lucide-react";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import { mealDuration, pendingMeal } from "@/features/economy/domain/food";
-import { mealBlockedReason, type MealConsumer } from "./meal-availability";
+import { availableMealRecipe, mealBlockedReason, visibleMeals, type MealConsumer } from "./meal-availability";
 import { locked } from "@/features/economy/sync/controller-state";
 import { itemName, ProductIcon } from "@/features/economy/ui/shared/world-economy-parts";
-import { worldDuration, worldMissingRequirements, worldRequirements } from "@/features/economy/ui/shared/world-stations";
+import { worldDuration } from "@/features/economy/ui/shared/world-stations";
 import styles from "./world-meal-boost.module.css";
 
 export type WorldMealBoostProps = {
@@ -64,12 +64,14 @@ export function WorldMealBoost(props: WorldMealBoostProps) {
   useEffect(() => {
     if (!economy.busy && !economy.uncertain) sent.current = null;
   }, [economy.busy, economy.uncertain, economy.error, economy.snapshot?.ownerPublicId, economy.snapshot?.revision]);
-  const state = economy.snapshot, meals = state?.catalog.food?.meals;
-  if (!state || !meals?.length) return null;
+  const state = economy.snapshot;
+  if (!state || !state.catalog.food?.meals.length) return null;
+  const meals = visibleMeals(state);
   const active = jobId ? state.jobs.find(job => job.kind === "construction" && job.id === jobId) : null;
   const pending = pendingMeal(state, consumer);
   const applied = active?.meal?.consumer === consumer ? active.meal : null;
   const saved = applied ?? (pending ? { itemId: pending.itemId, speedBps: consumer === "hero" ? pending.heroSpeedBps : pending.builderSpeedBps } : null);
+  if (!meals.length && !saved) return null;
   const reason = mealBoostReason(props);
   const open = Boolean(quote && quote.owner === state.ownerPublicId && quote.revision === state.revision && quote.consumer === consumer && quote.jobId === jobId && quote.stationId === stationId);
   const baseSeconds = mealBoostSeconds(props, 0);
@@ -110,8 +112,7 @@ export function WorldMealBoost(props: WorldMealBoostProps) {
         const stock = state.inventory[meal.itemId] ?? 0;
         const speed = consumer === "hero" ? meal.heroSpeedBps : meal.builderSpeedBps;
         const result = mealBoostSeconds(props, speed);
-        const recipes = state.catalog.recipes.filter(recipe => (recipe.rewards[meal.itemId] ?? 0) > 0);
-        const recipe = recipes.find(recipe => !worldMissingRequirements(state, worldRequirements(recipe, recipe)).length) ?? recipes[0];
+        const recipe = availableMealRecipe(state, meal.itemId);
         const cook = recipe && onNavigateStation ? () => onNavigateStation(recipe.buildingId, recipe.id) : onOpenMeals;
         return <article key={meal.itemId} className={styles.meal} data-boost-meal={meal.itemId}>
           <ProductIcon state={state} itemId={meal.itemId} size={28} />

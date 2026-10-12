@@ -33,8 +33,8 @@ class PromoRulesTest {
         assertEquals(before.wallet.coins + 500, after.wallet.coins)
         assertEquals(before.wallet.pearls + 40, after.wallet.pearls)
         assertEquals(before.inventory.getValue("wood") + 5, after.inventory.getValue("wood"))
-        assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> { PromoRules.apply(before.copy(inventory = mapOf("wood" to 200)), reward) }.code)
-        assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> { PromoRules.apply(before, reward, mapOf("stone" to 170)) }.code)
+        assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> { PromoRules.apply(before.copy(inventory = mapOf("wood" to 300)), reward) }.code)
+        assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> { PromoRules.apply(before, reward, mapOf("stone" to 270)) }.code)
         assertEquals("ECONOMY_CAPACITY", assertFailsWith<AuthFailure> { PromoRules.apply(before.copy(wallet = EconomyWallet(ECONOMY_MAX_BALANCE)), reward) }.code)
     }
     @Test fun `time window is inclusive start exclusive end and disabled code is unknown`() {

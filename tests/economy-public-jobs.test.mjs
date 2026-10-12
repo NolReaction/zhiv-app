@@ -65,7 +65,7 @@ test("snapshots, commands and receipt replays conceal draws until an atomic succ
   }
   assert.deepEqual(profile.state.jobs[0], privateJob);
   const inventory = structuredClone(profile.state.inventory);
-  profile.state.inventory = { stone: 199 };
+  profile.state.inventory = { stone: 299 };
   const claim = command("claim_job", saved.id, finishedAt);
   assert.throws(() => economy.commandDevEconomy(player.token, claim, finishedAt), { code: "ECONOMY_STORAGE_FULL" });
   assert.deepEqual(read(finishedAt).jobs[0].rewards, { fish: 4 });

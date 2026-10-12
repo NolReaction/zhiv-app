@@ -7,14 +7,13 @@ import { ClipboardList, Hammer, RefreshCw, Utensils } from "lucide-react";
 import type { EconomyView } from "@/features/economy/domain/model";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import { foodState } from "@/features/economy/domain/food";
-import { mealBlockedReason } from "./meal-availability";
+import { availableMealRecipe, mealBlockedReason, visibleMeals } from "./meal-availability";
 import { listenForSectionGuideNavigation } from "@/features/onboarding/section-guide-navigation";
 import { ResidentOrderBoard, type OrderNavigation } from "./world-resident-order-board";
 export { mealBlockedReason } from "./meal-availability";
 export { ResidentOrderCard } from "./world-resident-order-board";
 import { locked, type ReadyEconomy } from "@/features/economy/sync/controller-state";
 import { itemName, number, ProductIcon } from "@/features/economy/ui/shared/world-economy-parts";
-import { worldMissingRequirements, worldRequirements } from "@/features/economy/ui/shared/world-stations";
 import styles from "./world-food-menu.module.css";
 
 export type WorldFoodMenuProps = OrderNavigation & {
@@ -26,14 +25,9 @@ export type WorldFoodMenuProps = OrderNavigation & {
 type Consumer = "hero" | "builder";
 type Meal = NonNullable<EconomyView["catalog"]["food"]>["meals"][number];
 
-function foodRecipe(state: EconomyView, itemId: string) {
-  const recipes = state.catalog.recipes.filter(recipe => (recipe.rewards[itemId] ?? 0) > 0);
-  return recipes.find(recipe => !worldMissingRequirements(state, worldRequirements(recipe, recipe)).length) ?? recipes[0];
-}
-
 export function FoodMealCard({ economy, meal, consumer, onNavigateStation }: Pick<WorldFoodMenuProps, "onNavigateStation"> & { economy: ReadyEconomy; meal: Meal; consumer: Consumer }) {
   const state = economy.snapshot, stock = state.inventory[meal.itemId] ?? 0;
-  const recipe = foodRecipe(state, meal.itemId), reason = mealBlockedReason(economy, consumer);
+  const recipe = availableMealRecipe(state, meal.itemId), reason = mealBlockedReason(economy, consumer);
   const speed = (consumer === "hero" ? meal.heroSpeedBps : meal.builderSpeedBps) / 100;
   const action = consumer === "hero" ? "eat_food" : "feed_builder";
   return <article className={styles.meal} data-meal={meal.itemId}>
@@ -81,6 +75,7 @@ export function WorldFoodMenu({ economy, initialTab = "meals", onTabChange, resi
   const readyEconomy = { ...economy, snapshot: state }, config = state.catalog.food;
   if (!config) return <div className={styles.food}>{recovery}<p>Кухня пока недоступна.</p></div>;
   const food = foodState(state);
+  const meals = visibleMeals(state);
   const reason = mealBlockedReason(readyEconomy, consumer);
   const pending = consumer === "hero" ? food.heroMeal : food.builderMeal;
   const active = state.jobs.find(job => job.meal?.consumer === consumer);
@@ -97,7 +92,8 @@ export function WorldFoodMenu({ economy, initialTab = "meals", onTabChange, resi
         <div className={styles.consumers} role="group" aria-label="Кого угостить"><button type="button" data-guide-meal-consumer="hero" aria-pressed={consumer === "hero"} onClick={() => setConsumer("hero")}><Utensils size={14} aria-hidden="true" />Мохлик</button><button type="button" data-guide-meal-consumer="builder" aria-pressed={consumer === "builder"} onClick={() => setConsumer("builder")}><Hammer size={14} aria-hidden="true" />Шишколап</button></div>
         <p className={styles.summary}>{pending ? `${itemName(state, pending)}: бонус сохранён для следующей ${consumer === "hero" ? "вылазки" : "стройки"}.` : active ? `${itemName(state, active.meal!.itemId)}: скорость ${consumer === "hero" ? "вылазки" : "стройки"} +${number(active.meal!.speedBps / 100)}%.` : consumer === "hero" ? "Один обед ускорит следующую вылазку или рыбалку." : "Обед ускорит текущую или следующую стройку. Бонус зависит от блюда."}</p>
         {reason && !pending && (!active || Date.parse(active.finishesAt) <= economy.now) && <p className={styles.warning}>{reason}</p>}
-        <div className={styles.meals} data-guide-meal-list={consumer}>{config.meals.map(meal => <FoodMealCard key={meal.itemId} economy={readyEconomy} meal={meal} consumer={consumer} onNavigateStation={onNavigateStation} />)}</div>
+        <div className={styles.meals} data-guide-meal-list={consumer}>{meals.map(meal => <FoodMealCard key={meal.itemId} economy={readyEconomy} meal={meal} consumer={consumer} onNavigateStation={onNavigateStation} />)}</div>
+        {!meals.length && <p className={styles.muted}>Обустрой костёр, чтобы готовить еду.</p>}
         <p className={styles.muted} data-guide-meal-note>Угощение расходует 1 готовое блюдо. Этот бонус скорости называют баффом: он не складывается с другим обедом и не исчезает вне игры.</p>
       </> : <ResidentOrderBoard economy={readyEconomy} residentId={residentId} onNavigateStation={onNavigateStation} onNavigateExpeditions={onNavigateExpeditions} />}
     </section>

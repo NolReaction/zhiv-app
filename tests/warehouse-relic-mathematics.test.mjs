@@ -15,13 +15,13 @@ test("two-type expectation counts wrong types and duplicates rather than adding 
   assert.throws(() => expectedUniformTwoTypeDraws(1, 0, 1), /Invalid relic type count/);
 });
 
-test("current storage consumes 62 varied relics while retaining the first five capacities", () => {
+test("current storage starts at 300 places and consumes 62 varied relics across its later tiers", () => {
   const report = reviewWarehouseRelics(readEconomyCatalog());
   assert.equal(report.warehouseMaximumLevel, 10);
   assert.deepEqual(report.totalWarehouseRelics, { ancient_core: 38, moon_crystal: 12, living_resin: 12 });
   assert.equal(report.totalWarehouseRelicCount, 62);
-  assert.deepEqual(report.levels.map(level => level.capacity), [200, 500, 1000, 1800, 3000, 4000, 5200, 6600, 8200, 10000]);
-  assert.deepEqual(report.levels.map(level => level.capacityGain), [200, 300, 500, 800, 1200, 1000, 1200, 1400, 1600, 1800]);
+  assert.deepEqual(report.levels.map(level => level.capacity), [300, 500, 1000, 1800, 3000, 4000, 5200, 6600, 8200, 10000]);
+  assert.deepEqual(report.levels.map(level => level.capacityGain), [300, 200, 500, 800, 1200, 1000, 1200, 1400, 1600, 1800]);
   assert(report.levels.slice(0, 3).every(level => Object.values(level.relicCost).every(quantity => quantity === 0)));
   assert(report.levels.slice(3).every(level => Object.values(level.relicCost).every(quantity => quantity > 0)
     && level.cost.coins === 0 && level.requiredHomeLevel === 1 && !Object.keys(level.requiredBuildings).length));

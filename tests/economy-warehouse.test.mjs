@@ -16,7 +16,7 @@ beforeEach(() => identities.resetDevStoreForTests());
 
 const now = Date.parse("2026-10-06T23:00:00Z");
 const warehouse = model.economyCatalog.buildings.find(building => building.id === "warehouse");
-const capacity = [200, 500, 1000, 1800, 3000, 4000, 5200, 6600, 8200, 10000];
+const capacity = [300, 500, 1000, 1800, 3000, 4000, 5200, 6600, 8200, 10000];
 const relicCosts = [[2, 1, 1], [3, 1, 1], [4, 1, 1], [5, 2, 2], [6, 2, 2], [8, 2, 2], [10, 3, 3]];
 const relicIds = ["ancient_core", "moon_crystal", "living_resin"];
 const initial = level => {

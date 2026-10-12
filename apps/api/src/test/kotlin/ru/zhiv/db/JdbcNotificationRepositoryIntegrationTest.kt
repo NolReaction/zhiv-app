@@ -172,6 +172,32 @@ class JdbcNotificationRepositoryIntegrationTest {
         jobs(p,job(now)); val sent=CopyOnWriteArrayList<PushPayload>(); val worker=dispatcher({now},sent)
         worker.tick(); assertTrue(sent.isEmpty()); now=now.plusSeconds(300); worker.tick(); assertTrue(sent.isEmpty())
     }
+    @Test fun `disabling frequency releases deferred work bypasses both budgets and survives reload`() = runBlocking<Unit> {
+        val p=player(); connect(p); var now=Instant.now()
+        val sent=CopyOnWriteArrayList<PushPayload>(); val worker=dispatcher({now},sent)
+        jobs(p,job(now)); worker.tick(); assertEquals(1,sent.size)
+        jobs(p,job(now)); worker.tick(); assertEquals(1,sent.size)
+        val allEvents=noQuiet.copy(rateLimitsEnabled=false)
+        assertFalse(repository.preferences(p.hash,p.owner,allEvents).preferences.rateLimitsEnabled)
+        assertEquals(allEvents,JdbcNotificationRepository(source,enabled).snapshot(p.hash,p.owner).preferences)
+        // Saving preferences resets retries to the real DB clock, so the test
+        // clock must also move beyond that save even on a slow CI database.
+        now=maxOf(now.plusSeconds(1),Instant.now().plusSeconds(1)); worker.tick(); assertEquals(2,sent.size)
+        jobs(p,job(now)); worker.tick(); assertEquals(3,sent.size)
+        repository.preferences(p.hash,p.owner,noQuiet)
+        jobs(p,job(now)); worker.tick(); assertEquals(3,sent.size)
+        assertEquals("pending",scalar("SELECT state FROM notification_events WHERE user_id=?",p.id))
+    }
+    @Test fun `disabled frequency still respects independent quiet hours and does not repeat a source`() = runBlocking<Unit> {
+        val p=player(); var now=Instant.parse("2026-10-12T23:30:00Z")
+        connect(p,noQuiet.copy(rateLimitsEnabled=false,quietHoursEnabled=true,timeZone="UTC",quietStart="23:00",quietEnd="10:00"))
+        jobs(p,job(now)); val sent=CopyOnWriteArrayList<PushPayload>(); val worker=dispatcher({now},sent)
+        worker.tick(); assertTrue(sent.isEmpty())
+        now=Instant.parse("2026-10-13T10:00:00Z"); worker.tick(); assertEquals(1,sent.size)
+        worker.tick(); assertEquals(1,sent.size)
+        jobs(p,job(now)); worker.tick(); assertEquals(2,sent.size)
+        jobs(p,job(now)); worker.tick(); assertEquals(3,sent.size)
+    }
     @Test fun `checkin reminder needs real event and strictly more than twenty four hours`() = runBlocking<Unit> {
         val p=player(); var now=Instant.now(); connect(p,noQuiet.copy(checkinReminder=true))
         val sent=CopyOnWriteArrayList<PushPayload>(); val worker=dispatcher({now},sent)

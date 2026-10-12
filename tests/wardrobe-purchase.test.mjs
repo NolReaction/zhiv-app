@@ -93,7 +93,7 @@ test("clothes cannot be sold or listed and full storage does not prevent a cosme
   const p = player();
   globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId).state.inventory = { wood: 1000 };
   const bought = issue(p, command(p, "fern"));
-  assert.equal(bought.state.storage.overflow, 800); assert.equal(bought.state.inventory.fern, undefined);
+  assert.equal(bought.state.storage.overflow, 700); assert.equal(bought.state.inventory.fern, undefined);
   assert.throws(() => issue(p, command(p, "heather", { action: "sell", targetId: "fern", totalPrice: 0 })), { code: "ECONOMY_ITEM" });
   assert.ok(economy.getDevEconomy(p.token, now).wardrobe.includes("fern"));
 });

@@ -223,15 +223,23 @@ const merchantSlots = [{ kind: "rod", name: "Удочки", icon: FishingRod }, 
 export function PleskTackleCounter({ economy, state, catalog, onOpenOrders, guideKind }: ReadyProps & { catalog: FishingCatalog; onOpenOrders?: () => void; guideKind?: "rod" | "bait" }) {
   const offers = state.fishingShop?.offers ?? [];
   const previousStock = offers.filter(offer => offers.find(entry => entry.kind === offer.kind)?.id !== offer.id);
-  const [selectedId, setSelectedId] = useState(() => offers.find(offer => offer.kind === guideKind)?.id ?? offers[0]?.id);
-  const selected = offers.find(offer => offer.id === selectedId) ?? offers[0];
+  const [selectedId, setSelectedId] = useState(() => guideKind ? offers.find(offer => offer.kind === guideKind)?.id : offers[0]?.id);
+  const selected = offers.find(offer => offer.id === selectedId) ?? (guideKind ? offers.find(offer => offer.kind === guideKind) : offers[0]);
+  // A sold-out gear category must not derail the odds lesson. Inspect owned
+  // equipment or an already unlocked bait without offering a phantom purchase.
+  const gear = fishingState(state);
+  const guideRod = !selected && guideKind === "rod" ? catalog.rods.find(rod => rod.id === gear.equippedRodId)
+    ?? catalog.rods.find(rod => gear.ownedRods.includes(rod.id)) : undefined;
+  const guideBait = !selected && guideKind === "bait" ? catalog.baits.find(bait => bait.itemId === gear.equippedBaitId)
+    ?? catalog.baits.find(bait => (state.inventory[bait.itemId] ?? 0) > 0 || bait.requiredHomeLevel <= (state.buildings.home ?? 1)) : undefined;
+  const detailKind = guideRod ? "rod" : guideBait ? "bait" : selected?.kind;
   const detail = useRef<HTMLDivElement>(null);
   const guideShown = useRef(false);
   useLayoutEffect(() => {
     if (!guideKind || guideShown.current) return;
-    guideShown.current = true;
-    if (selected?.kind !== guideKind) {
-      detail.current?.parentElement?.querySelector<HTMLElement>(`[data-guide-plesk-offer="${guideKind}"]`)?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "auto" });
+    if (detailKind !== guideKind) {
+      const offer = detail.current?.parentElement?.querySelector<HTMLElement>(`[data-guide-plesk-offer="${guideKind}"]`);
+      if (offer) { offer.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "auto" }); guideShown.current = true; }
       return;
     }
     const odds = detail.current?.querySelector<HTMLElement>("[data-guide-plesk-odds]");
@@ -239,8 +247,8 @@ export function PleskTackleCounter({ economy, state, catalog, onOpenOrders, guid
     // or equipping the preview, and keep the guide outside the scroll area.
     const allSpecies = odds?.querySelector("details");
     if (allSpecies) allSpecies.open = true;
-    odds?.scrollIntoView({ block: "start", inline: "nearest", behavior: "auto" });
-  }, [guideKind, selected?.kind]);
+    if (odds) { odds.scrollIntoView({ block: "start", inline: "nearest", behavior: "auto" }); guideShown.current = true; }
+  }, [guideKind, detailKind]);
   const scrollPosition = useRef<{ body: HTMLElement; top: number } | null>(null);
   useLayoutEffect(() => {
     // Keyed descriptions replace their scroll anchors; keep the reader's position.
@@ -274,7 +282,12 @@ export function PleskTackleCounter({ economy, state, catalog, onOpenOrders, guid
       <span>{catalog.rods.find(rod => rod.id === offer.itemId)?.name ?? catalog.hooks.find(hook => hook.id === offer.itemId)?.name ?? itemName(state, offer.itemId)}</span>
       {offer.remaining > 0 ? <Price value={offer.unitPrice} /> : <span>Раскуплено</span>}
     </button>)}</div></details>}
-    {selected && <div ref={detail} data-guide-plesk-detail={selected.kind}><GearDetail key={selected.id} economy={economy} state={state} catalog={catalog} itemId={selected.itemId} onOpenOrders={onOpenOrders} /></div>}
+    {selected ? <div ref={detail} data-guide-plesk-detail={selected.kind}><GearDetail key={selected.id} economy={economy} state={state} catalog={catalog} itemId={selected.itemId} onOpenOrders={onOpenOrders} /></div>
+      : (guideRod || guideBait) && <div ref={detail} data-guide-plesk-detail={detailKind}><section className={styles.gearCard} aria-label="Снасть для знакомства">
+        <div className={styles.gearHeading}>{guideRod ? <FishingRodIcon rodId={guideRod.id} size={48} /> : <ItemIcon itemId={guideBait!.itemId} size={40} />}<div><h3>{guideRod?.name ?? itemName(state, guideBait!.itemId)}</h3><p>{guideRod ? "Твоя удочка" : "Знакомство с наживкой"}</p></div></div>
+        <p className={styles.description}>{guideRod ? "Эту удочку можно взять на рыбалку. Сравни её шансы с другими снастями." : "На прилавке сейчас нет наживки. Посмотри, как она меняет шансы; ловить можно и без неё."}</p>
+        <PleskCatchOdds state={state} catalog={catalog} override={guideRod ? { rodId: guideRod.id } : { baitId: guideBait!.itemId }} preview={Boolean(guideBait)} />
+      </section></div>}
 
   </>;
 }

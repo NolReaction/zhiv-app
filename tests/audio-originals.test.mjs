@@ -34,7 +34,7 @@ function pcmWave(bytes) {
 
 test("original pack fills the catalog, documents source and verifies every shipped byte", () => {
   assert.deepEqual(inspectAudioCatalog(catalog, { root, requireReady: true }).errors, []);
-  assert.equal(manifest.assets.length, 97);
+  assert.equal(manifest.assets.length, 98);
   assert.deepEqual(new Set(manifest.assets.map(item => item.id)), new Set(catalog.assets.map(item => item.id)));
   const hashes = new Set();
   for (const source of manifest.sources) assert.equal(sha(readFileSync(path.join(root, source.path))), source.sha256, source.path);
@@ -228,4 +228,21 @@ test("logo and daily gift signatures stay short, soft and cheap to preload", () 
     deliveryBytes += item.files[0].bytes;
   }
   assert.ok(deliveryBytes < 140 * 1024, "preloading the two signatures stays lightweight");
+});
+
+test("construction finish has a compact original signature with a quiet tail", () => {
+  const item = manifest.assets.find(entry => entry.id === "ui.construction-complete.01");
+  assert.equal(item.channels, 1);
+  assert.ok(item.durationSeconds >= .6 && item.durationSeconds <= 1);
+  assert.ok(item.files[0].bytes < 100 * 1024, "small enough to prepare before the first upgrade");
+  assert.ok(item.measurements.peakDb <= -9 && item.measurements.rmsDb <= -22);
+  const wav = pcmWave(readFileSync(path.join(root, "public", item.files[0].src)));
+  const tailFrames = Math.round(wav.rate * .025);
+  let tailSquares = 0;
+  for (let frame = item.frames - tailFrames; frame < item.frames; frame++) {
+    tailSquares += (wav.samples.readInt16LE(frame * 2) / 32768) ** 2;
+  }
+  assert.ok(Math.sqrt(tailSquares / tailFrames) < .001, "finishing chord fades without cutting off");
+  const reward = manifest.assets.find(entry => entry.id === "ui.reward.01");
+  assert.notEqual(item.masterSha256, reward.masterSha256, "a dedicated building sound, not a renamed reward");
 });

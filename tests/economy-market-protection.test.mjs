@@ -146,7 +146,7 @@ test("failed funds or capacity validation does not consume either daily budget",
   const seller = player(), buyer = player(2, {}), lot = offer(seller, 2); shelf(buyer);
   row(buyer).state.wallet.coins = 0;
   assert.throws(() => buy(buyer, lot), { code: "ECONOMY_RESOURCES" });
-  row(buyer).state.wallet.coins = 10000; row(buyer).state.inventory = { wood: 200 };
+  row(buyer).state.wallet.coins = 10000; row(buyer).state.inventory = { wood: 300 };
   assert.throws(() => buy(buyer, lot), { code: "ECONOMY_STORAGE_FULL" });
   assert.equal(shelf(buyer).tradeBudget.buysUsed, 0); assert.equal(shelf(seller).tradeBudget.salesUsed, 0);
   assert.equal(globalThis.__zhivDevEconomyStore.listings.get(lot.id).status, "active");

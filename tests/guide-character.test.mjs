@@ -162,3 +162,17 @@ test("only ready navigation makes the speech a continuation button; economic act
     assert.doesNotMatch(disabled, /data-guide-advance/);
   } finally { env.restore(); }
 });
+
+test("Pleska odds navigation stays outside collapsed guide details", () => {
+  const env = environment();
+  try {
+    const html = renderToStaticMarkup(createElement(GuideCoach, { open: true, flow: "section", stepId: "plesk:rods", inline: true,
+      pose: "fish", title: "Шансы", text: "Сравни снасти", onPause() {}, onSkip() {},
+      secondaryVisible: true, secondary: { label: "Показать шансы", onClick() {} } }));
+    const hiddenDetails = html.match(/<div[^>]*hidden=""[\s\S]*?<\/div>/)?.[0];
+    assert.ok(hiddenDetails);
+    assert.doesNotMatch(hiddenDetails, /Показать шансы/);
+    assert.match(html, /<button[^>]*>Показать шансы<\/button>/);
+    assert.equal((html.match(/Показать шансы/g) ?? []).length, 1);
+  } finally { env.restore(); }
+});

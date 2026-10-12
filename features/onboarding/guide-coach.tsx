@@ -29,6 +29,8 @@ export type GuideCoachProps = {
   status?: string;
   primary?: { label: string; onClick: () => void; disabled?: boolean; advance?: boolean };
   secondary?: { label: string; onClick: () => void };
+  /** Keep essential read-only navigation outside the details disclosure. */
+  secondaryVisible?: boolean;
   onPause: () => void;
   onSkip: () => void;
   onBack?: () => void;
@@ -49,7 +51,7 @@ function shortReply(text: string) {
 /** An ordinary region, deliberately inside the parent's DOM/focus scope.
  * Only the speech bubble receives pointer events; the real UI stays usable. */
 export function GuideCoach(props: GuideCoachProps) {
-  const { open, flow, stepId, target, targetRoot, compact, inline, dock, title, text, summary, hint, pose, progress, welcome, status, primary, secondary, onPause, onSkip, onBack, children } = props;
+  const { open, flow, stepId, target, targetRoot, compact, inline, dock, title, text, summary, hint, pose, progress, welcome, status, primary, secondary, secondaryVisible, onPause, onSkip, onBack, children } = props;
   const headingId = useId(), textId = useId(), detailsId = useId();
   const card = useRef<HTMLElement>(null), copy = useRef<HTMLDivElement>(null);
   const [dockElement, setDockElement] = useState<HTMLElement | null>(null);
@@ -171,12 +173,13 @@ export function GuideCoach(props: GuideCoachProps) {
         {welcome && <button type="button" className={styles.pause} data-guide-pause onClick={onPause} title="Свернуть обучение, сохранив шаг" aria-label="Свернуть обучение, сохранив шаг"><Minus size={18} aria-hidden="true" /></button>}
       </div>
       {children}
+      {secondaryVisible && secondary && <div className={styles.actions}><button type="button" className={styles.secondary} onClick={secondary.onClick}>{secondary.label}</button></div>}
       <div id={detailsId} className={styles.details} hidden={!expanded}>
         {reply !== text && <p className={styles.text}>{text}</p>}
         {hint && <p className={styles.hint}><MousePointer2 size={15} aria-hidden="true" /><span>{hint}</span></p>}
         {!welcome && <div className={styles.actions}>
           {onBack && <button type="button" className={styles.back} onClick={onBack} aria-label="Предыдущая подсказка"><ArrowLeft size={18} aria-hidden="true" /></button>}
-          {secondary && <button type="button" className={styles.secondary} onClick={secondary.onClick}>{secondary.label}</button>}
+          {!secondaryVisible && secondary && <button type="button" className={styles.secondary} onClick={secondary.onClick}>{secondary.label}</button>}
           <button type="button" className={styles.skip} onClick={onSkip}>{flow === "section" ? "Пропустить знакомство" : "Пропустить обучение"}</button>
         </div>}
       </div>

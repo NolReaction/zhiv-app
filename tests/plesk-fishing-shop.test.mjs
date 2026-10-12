@@ -187,6 +187,21 @@ test("guide previews the requested rod or bait and its real odds without purchas
   }
 });
 
+test("guide still reveals correct odds without a rod or bait offer and never offers a phantom purchase", () => {
+  for (const guideKind of ["rod", "bait"]) {
+    const state = snapshot(), calls = [];
+    state.fishingShop.offers = state.fishingShop.offers.filter(offer => offer.kind !== guideKind);
+    const before = structuredClone(state);
+    const html = renderToStaticMarkup(createElement(PleskTackleCounter, { economy: controller(state, { act(...args) { calls.push(args); } }), state, catalog: state.catalog.fishing, guideKind }));
+    assert.match(html, new RegExp(`data-guide-plesk-detail="${guideKind}"`));
+    assert.match(html, /data-guide-plesk-odds=/);
+    assert.match(html, /aria-label="Снасть для знакомства"/);
+    assert.doesNotMatch(html, /Купить удочку|Купить крючок|Купить наживку/);
+    assert.match(html, guideKind === "rod" ? /Твоя удочка/ : /На прилавке сейчас нет наживки/);
+    assert.deepEqual(state, before); assert.deepEqual(calls, []);
+  }
+});
+
 test("collection counts confirmed catches independently of purchased, sold or ambient fish", () => {
   const state = snapshot({ inventory: { fish_mooncarp: 90 }, fishing: { ownedRods: ["reed_rod", "river_rod"], equippedRodId: "reed_rod", equippedBaitId: null, catches: { fish_silverfin: 8 } } });
   const html = renderToStaticMarkup(createElement(PleskFishingCollection, { state, catalog: state.catalog.fishing }));

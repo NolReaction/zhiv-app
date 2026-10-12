@@ -8,6 +8,8 @@ export type SectionGuideStep = {
   /** First mounted, visible candidate wins; later candidates are navigation controls. */
   targets: readonly string[];
   navigation?: NavigableGuideSection;
+  /** Automatically reveal a read-only explanation while its lesson is open. */
+  revealOnOpen?: boolean;
   showLabel?: string;
 };
 export type SectionGuideProgress = {
@@ -42,10 +44,10 @@ export const sectionGuideLessons: Record<SectionGuideId, readonly SectionGuideSt
       text: "Продажа другим игрокам может занять время. Новые предложения появляются у соседей при смене витрины. Если передумал, открой «Мои лоты» и верни товар. Обмен особыми материалами находится в отдельном разделе: там одну находку меняют на другую." },
   ],
   plesk: [
-    { id: "rods", title: "Снасти меняют улов", pose: "fish", navigation: "plesk", showLabel: "Показать шансы", targets: ['[data-guide-plesk-detail="rod"] [data-guide-plesk-odds]', '[data-guide-plesk-offer="rod"]', '[data-guide-plesk-tab="tackle"]'],
-      summary: "Удочки и крючки остаются навсегда. Сравни проценты в «Шансах»: дорогая снасть не лучше для каждой рыбы.",
+    { id: "rods", title: "Снасти меняют улов", pose: "fish", navigation: "plesk", revealOnOpen: true, showLabel: "Показать шансы", targets: ['[data-guide-plesk-detail="rod"] [data-guide-plesk-odds]', '[data-guide-plesk-offer="rod"]', '[data-guide-plesk-tab="tackle"]'],
+      summary: "Вот шансы этой удочки на один особый улов. Сравни проценты: дорогая снасть не лучше для каждой рыбы.",
       text: "Удочки и крючки остаются навсегда. Они влияют на шансы особой рыбы; у некоторых видов есть требования к снастям. Покупка добавляет снасть в коллекцию. Выбрать её для вылазки можно перед отправлением на рыбалку." },
-    { id: "bait", title: "Что даёт наживка?", pose: "hold", navigation: "plesk", showLabel: "Показать наживку", targets: ['[data-guide-plesk-detail="bait"] [data-guide-plesk-odds]', '[data-guide-plesk-offer="bait"]', '[data-guide-plesk-tab="tackle"]'],
+    { id: "bait", title: "Что даёт наживка?", pose: "hold", navigation: "plesk", revealOnOpen: true, showLabel: "Показать наживку", targets: ['[data-guide-plesk-detail="bait"] [data-guide-plesk-odds]', '[data-guide-plesk-offer="bait"]', '[data-guide-plesk-tab="tackle"]'],
       summary: "Наживка меняет шансы рыбы. Выбери её перед походом: уйдёт 1 штука на всю вылазку. Без неё тоже можно ловить.",
       text: "Открой наживку на прилавке и сравни шансы в её карточке. Запас наживок хранится в кладовой. Перед отправлением выбери наживку в снастях; можно рыбачить и без неё. Для знакомства покупать ничего не нужно." },
     { id: "catch", title: "Плёска покупает улов", pose: "present", navigation: "plesk", showLabel: "Показать улов", targets: ["[data-guide-plesk-sale]", '[data-guide-plesk-panel="fish"]', '[data-guide-plesk-tab="fish"]'],
@@ -82,7 +84,7 @@ export const sectionGuideLessons: Record<SectionGuideId, readonly SectionGuideSt
   workshop: [
     { id: "recipes", title: "Материалы превращаются в вещи", pose: "hold", targets: [target("workshop-recipes"), "[data-recipe]"],
       summary: "Выбери рецепт мастерской: увидишь результат, нужные материалы и время работы.",
-      text: "Мастерская делает вещи из запасов кладовой. Нажми на рецепт и проверь состав. Недостающий материал с доступным источником можно нажать, чтобы перейти к его добыче или изготовлению. Закрытые рецепты покажут, чего не хватает для открытия." },
+      text: "Мастерская делает вещи из запасов кладовой. Нажми на рецепт и проверь состав. Недостающий материал с доступным источником можно нажать, чтобы перейти к его добыче или изготовлению. Новые рецепты и условия их открытия показаны в улучшениях здания." },
     { id: "queue", title: "Запусти и забери результат", pose: "present", targets: [target("workshop-queue"), "[data-recipe-order]", "[data-recipe]"],
       summary: "В рецепте кнопка «Начать» тратит материалы и ставит работу в очередь. Готовые вещи нужно забрать.",
       text: "Проверь количество партий перед запуском. Пока работа идёт, можно заниматься другими делами. После завершения забери результат в кладовую; если места мало, сначала используй или продай часть запасов." },

@@ -7,6 +7,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const contract = await vite.ssrLoadModule("/features/notifications/notification-contract.ts");
+const api = await vite.ssrLoadModule("/features/notifications/notification-api.ts");
 const browser = await vite.ssrLoadModule("/features/notifications/notification-browser.ts");
 const store = await vite.ssrLoadModule("/lib/dev/notifications-store.ts");
 const identity = await vite.ssrLoadModule("/lib/dev/api-store.ts");
@@ -44,6 +45,28 @@ test("defaults select useful game events without check-in nagging or device cons
   const prefs = contract.defaultNotificationPreferences("Europe/Moscow");
   assert.equal(prefs.constructionCompleted, true); assert.equal(prefs.explorationCompleted, true); assert.equal(prefs.productionCompleted, true); assert.equal(prefs.checkinReminder, false);
   assert.equal(prefs.maxPerDay, 2); assert.equal(prefs.minIntervalMinutes, 120); assert.equal(prefs.quietStart, "23:00"); assert.equal(prefs.quietEnd, "10:00");
+  assert.equal(prefs.rateLimitsEnabled, true);
+});
+
+test("quiet hours and frequency limits can be disabled independently while old preferences retain limits", () => {
+  const base = contract.defaultNotificationPreferences();
+  const legacy = { ...base };
+  delete legacy.rateLimitsEnabled;
+  assert.equal(contract.notificationPreferencesSchema.parse(legacy).rateLimitsEnabled, true);
+  for (const patch of [{ quietHoursEnabled: false }, { rateLimitsEnabled: false }, { quietHoursEnabled: false, rateLimitsEnabled: false }]) {
+    const parsed = contract.notificationPreferencesSchema.parse({ ...base, ...patch });
+    assert.deepEqual(parsed, { ...base, ...patch });
+  }
+  assert.equal(contract.notificationPreferencesSchema.safeParse({ ...base, rateLimitsEnabled: "false" }).success, false);
+});
+
+test("notification API returns parsed defaults for old server responses and preserves an explicit opt-out", async () => {
+  const legacy = snapshot();
+  delete legacy.preferences.rateLimitsEnabled;
+  globalThis.fetch = async () => Response.json(legacy);
+  assert.equal((await api.getNotificationSettings(owner)).preferences.rateLimitsEnabled, true);
+  globalThis.fetch = async () => Response.json(snapshot({ preferences: { ...contract.defaultNotificationPreferences(), rateLimitsEnabled: false } }));
+  assert.equal((await api.getNotificationSettings(owner)).preferences.rateLimitsEnabled, false);
 });
 
 test("preferences reject dangerous frequency, malformed clock, unknown settings and invalid zones", () => {
@@ -59,13 +82,16 @@ test("DEV preference persistence is authenticated, owner-bound, isolated and hon
   const b = identity.createDevIdentity("Второй", crypto.randomUUID());
   assert.equal(store.getDevNotifications(undefined, a.me.user.publicId).kind, "unauthorized");
   assert.equal(store.getDevNotifications(a.token, b.me.user.publicId).kind, "owner-mismatch");
-  const changed = { ...contract.defaultNotificationPreferences(), productionCompleted: false, checkinReminder: true };
+  const changed = { ...contract.defaultNotificationPreferences(), productionCompleted: false, checkinReminder: true, rateLimitsEnabled: false, quietHoursEnabled: false };
   assert.equal(store.saveDevNotificationPreferences(a.token, b.me.user.publicId, changed).kind, "owner-mismatch");
   const saved = store.saveDevNotificationPreferences(a.token, a.me.user.publicId, changed);
   assert.equal(saved.kind, "ok"); assert.equal(saved.value.delivery.configured, false); assert.equal(saved.value.subscription.subscribed, false);
   changed.maxPerDay = 1;
   assert.equal(store.getDevNotifications(a.token, a.me.user.publicId).value.preferences.maxPerDay, 2);
   assert.equal(store.getDevNotifications(a.token, a.me.user.publicId).value.preferences.productionCompleted, false);
+  assert.equal(store.getDevNotifications(a.token, a.me.user.publicId).value.preferences.rateLimitsEnabled, false);
+  assert.equal(store.getDevNotifications(a.token, a.me.user.publicId).value.preferences.quietHoursEnabled, false);
+  assert.equal(store.getDevNotifications(b.token, b.me.user.publicId).value.preferences.rateLimitsEnabled, true);
   assert.equal(store.getDevNotifications(b.token, b.me.user.publicId).value.preferences.productionCompleted, true);
   assert.equal(store.getDevNotifications(b.token, b.me.user.publicId).value.preferences.checkinReminder, false);
 });

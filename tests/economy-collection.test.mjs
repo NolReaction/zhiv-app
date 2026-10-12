@@ -91,7 +91,7 @@ test("active exploration blocks harvesting; a returned explorer can gather and r
 
 test("market purchases during gathering may fill storage, but a failed delivery keeps the completed batch for retry", () => {
   const p = player(), seller = player();
-  for (const [account, inventory] of [[p, { wood: 190 }], [seller, { wood: 10 }]]) {
+  for (const [account, inventory] of [[p, { wood: 290 }], [seller, { wood: 10 }]]) {
     const row = fixture(account, { inventory, wallet: { coins: 1000, pearls: 0 }, completedExplorations: 1 });
     row.state.buildings.home = 2;
   }
@@ -106,7 +106,7 @@ test("market purchases during gathering may fill storage, but a failed delivery 
   assert.deepEqual(read(p, finish), before);
   economy.commandDevEconomy(p.token, command(p, "sell", "wood", finish, job.rewards.berries), finish);
   const result = issue(p, "claim_job", job.id, finish + 1).state;
-  assert.equal(result.inventory.berries, job.rewards.berries); assert.equal(result.storage.used, 200); assert.equal(result.jobs.length, 0);
+  assert.equal(result.inventory.berries, job.rewards.berries); assert.equal(result.storage.used, 300); assert.equal(result.jobs.length, 0);
 });
 
 test("reloading after the server deadline can deliver without trusting any animation token or local inventory", () => {

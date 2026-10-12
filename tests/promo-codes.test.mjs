@@ -50,7 +50,7 @@ test("unknown disabled future and expired codes never mutate state", () => {
 test("warehouse full and wallet overflow leave code available for a later successful claim", () => {
   const p = player(); snapshot(p);
   const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
-  row.state.inventory = { wood: 200 };
+  row.state.inventory = { wood: 300 };
   const request = command(p), before = snapshot(p);
   assert.throws(() => redeem(p, request), { code: "ECONOMY_STORAGE_FULL" });
   assert.deepEqual(snapshot(p), before);

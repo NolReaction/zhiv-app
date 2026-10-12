@@ -55,7 +55,7 @@ class JdbcPromoRepositoryIntegrationTest {
             val player = JdbcZhivRepository(source).bootstrap("Кладовая", codec.issue().hash, token.hash, 365)
             val economy = JdbcEconomyRepository(source); economy.snapshot(token.hash)
             source.connection.use { c ->
-                val state = readEconomyProfile(c, player.id).state.copy(inventory = mapOf("wood" to 200))
+                val state = readEconomyProfile(c, player.id).state.copy(inventory = mapOf("wood" to 300))
                 c.economyUpdate("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(state), player.id); c.commit()
             }
             val before = economy.snapshot(token.hash); val request = PromoRequest(UUID.randomUUID().toString(), player.publicId, before.revision, "QA-GIFT")

@@ -29,6 +29,23 @@ function elements(tree) {
 function buttons(tree) { return elements(tree).filter(element => element.type === "button"); }
 const render = (component, props) => renderToStaticMarkup(createElement(component, props));
 
+test("meals hide future recipes but retain owned portions and opened recipes without ingredients", () => {
+  const economy = controller({ buildings: { home: 1, dryer: 1, warehouse: 1 }, inventory: {} });
+  const initial = render(WorldFoodMenu, { economy, onNavigateStation() {} });
+  assert.match(initial, /data-meal="grilled_fish"/);
+  assert.doesNotMatch(initial, /data-meal="legendary_feast"|data-meal="hearty_fish"/);
+  const futureMeal = economy.snapshot.catalog.food.meals.find(meal => !initial.includes(`data-meal="${meal.itemId}"`));
+  assert.ok(futureMeal);
+  economy.snapshot.inventory[futureMeal.itemId] = 1;
+  const owned = render(WorldFoodMenu, { economy });
+  assert.ok(owned.includes(`data-meal="${futureMeal.itemId}"`), "a gifted or traded portion remains usable");
+  economy.snapshot.inventory = {};
+  economy.snapshot.buildings.home = 5;
+  economy.snapshot.buildings.dryer = 5;
+  const opened = render(WorldFoodMenu, { economy });
+  assert.ok(opened.includes(`data-meal="${futureMeal.itemId}"`));
+});
+
 test("food and coin orders are separate panels with no implicit meal debit", () => {
   const economy = controller({}, { act() { assert.fail("opening a panel cannot debit food"); } });
   const meals = render(WorldFoodMenu, { economy });

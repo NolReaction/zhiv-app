@@ -64,7 +64,6 @@ function RecipeCard({ state, recipe, onChoose }: { state: EconomyView; recipe: W
 
 function RecipeCatalog({ state, recipes, onChoose }: { state: EconomyView; recipes: WorldRecipe[]; onChoose: (id: string) => void }) {
   const available = recipes.filter(recipe => !worldMissingRequirements(state, worldRequirements(recipe, recipe)).length);
-  const later = recipes.filter(recipe => worldMissingRequirements(state, worldRequirements(recipe, recipe)).length > 0);
   const ordinary = available.filter(recipe => recipe.seconds < 4 * 3600);
   const lengthy = available.filter(recipe => recipe.seconds >= 4 * 3600);
   return <>
@@ -73,10 +72,6 @@ function RecipeCatalog({ state, recipes, onChoose }: { state: EconomyView; recip
       <div className={styles.products}>{group.recipes.map(recipe => <RecipeCard key={recipe.id} state={state} recipe={recipe} onChoose={onChoose} />)}</div>
     </section>)}
     {!available.length && <p className={styles.empty}>Сначала обустройте это место.</p>}
-    {!!later.length && <details className={styles.laterRecipes}>
-      <summary><LockKeyhole size={12} aria-hidden="true" /><span>Позже</span><small>{later.length}</small><ChevronDown size={13} aria-hidden="true" /></summary>
-      <div className={styles.products}>{later.map(recipe => <RecipeCard key={recipe.id} state={state} recipe={recipe} onChoose={onChoose} />)}</div>
-    </details>}
   </>;
 }
 
@@ -201,7 +196,7 @@ function ObjectMenuBody({ guide, guideRoot: guideRootRef, selection, economy, is
   const building = state?.catalog.buildings.find(entry => entry.id === stationId);
   const target = building?.levels.find(level => level.level === current + 1);
   const recipes = state?.catalog.recipes.filter(recipe => recipe.buildingId === stationId) ?? [];
-  const selectedRecipe = state?.catalog.recipes.find(recipe => recipe.id === recipeId && recipe.buildingId === stationId);
+  const selectedRecipe = state && recipes.find(recipe => recipe.id === recipeId && !worldMissingRequirements(state, worldRequirements(recipe, recipe)).length);
   const selectedRecipeId = selectedRecipe?.id;
   const jobs = state?.jobs.filter(entry => ["production", "construction"].includes(entry.kind) && entry.targetId === stationId) ?? [];
   const construction = jobs.find(entry => entry.kind === "construction");

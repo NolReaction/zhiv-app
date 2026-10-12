@@ -75,7 +75,7 @@ class EconomyFishingTest {
         assertEquals("ECONOMY_FISHING_SHOP_CHANGED", assertFailsWith<AuthFailure> { apply(initial, "buy_fishing_item", "wood", price = 1000) }.code)
         assertEquals("INVALID_ECONOMY_COMMAND", assertFailsWith<AuthFailure> { apply(initial, "buy_fishing_item", "river_rod", quantity = 2, price = 27000) }.code)
         assertEquals("INVALID_ECONOMY_COMMAND", assertFailsWith<AuthFailure> { apply(initial, "buy_fishing_item", "crumb_bait", quantity = 11, price = 330) }.code)
-        val full = initial.copy(inventory = mapOf("wood" to 190L))
+        val full = initial.copy(inventory = mapOf("wood" to 290L))
         assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> {
             EconomyRules.apply(full, command("buy_fishing_item", offerId(full, "crumb_bait"), price = 30), now, mapOf("stone" to 10L))
         }.code)

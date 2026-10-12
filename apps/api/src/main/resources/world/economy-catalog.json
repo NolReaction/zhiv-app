@@ -1025,7 +1025,7 @@
           },
           "requiredHomeLevel": 1,
           "requiredBuildings": {},
-          "warehouseCapacity": 200
+          "warehouseCapacity": 300
         },
         {
           "level": 2,

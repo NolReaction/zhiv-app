@@ -105,8 +105,9 @@ test("bounded receipt retention also rejects old revisions after eviction", () =
   assert.deepEqual(tracker.update(view(ECONOMY_AUDIO_RECEIPT_LIMIT + 9, { inventoryGains: [receipt("receipt-1", 1)] })), []);
 });
 
-test("real session claim and construction publish order each produce exactly one reward", async () => {
-  for (const kind of ["exploration", "construction"]) {
+test("real session claim and pearl speedup each produce exactly one matching reward", async () => {
+  for (const [kind, action, cueId] of [["exploration", "claim_job", "ui.reward"],
+    ["construction", "claim_job", "ui.construction-complete"], ["construction", "speedup_construction", "ui.construction-complete"]]) {
     const pending = job(kind); let latest = state(0, [pending]), finish;
     const tracker = createEconomyAudioFeedbackTracker(), events = [];
     const session = createEconomySession(owner, { get: async () => latest,
@@ -114,13 +115,52 @@ test("real session claim and construction publish order each produce exactly one
     const unsubscribe = session.subscribe(() => events.push(...tracker.update(session.getSnapshot())));
     const stop = session.activate();
     try {
-      await session.refresh(); session.act("claim_job", pending.id); assert.deepEqual(events, []);
+      await session.refresh(); session.act(action, pending.id); assert.deepEqual(events, []);
       latest = state(1, [], kind === "exploration" ? { fish: 1 } : {}, kind === "construction" ? { home: 2 } : { home: 1 });
       finish(result(latest)); await flush();
-      assert.deepEqual(events.map(event => event.cueId), ["ui.reward"]);
+      assert.deepEqual(events.map(event => event.cueId), [cueId]);
+      if (kind === "construction") assert.equal(events[0].id, `economy:${owner}:construction:${pending.id}`);
       await session.refresh(); await session.retry();
       assert.equal(events.length, 1);
     } finally { stop(); unsubscribe(); }
+  }
+});
+
+test("coalesced construction completion uses its own sound once and old completions stay silent", () => {
+  const completion = { id: "home-job", stationId: "home", level: 2 };
+  const tracker = createEconomyAudioFeedbackTracker(); tracker.update(view(8));
+  const completed = view(9, { completedConstructions: [completion], notice: "Дом улучшен" });
+  assert.deepEqual(tracker.update(completed, true, 120), [{
+    id: `economy:${owner}:construction:home-job`, cueId: "ui.construction-complete", occurredAt: 120,
+  }]);
+  assert.deepEqual(tracker.update(completed), []);
+  assert.deepEqual(tracker.update(view(10, { completedConstructions: [completion] })), []);
+  const restored = createEconomyAudioFeedbackTracker();
+  assert.deepEqual(restored.update(completed), []);
+  assert.deepEqual(restored.update(view(10, { completedConstructions: [completion] })), []);
+});
+
+test("construction signature wins over resources from the same confirmed command", () => {
+  for (const coalesced of [false, true]) {
+    const tracker = createEconomyAudioFeedbackTracker(); tracker.update(view(1));
+    const inventoryGains = [receipt("construction-bonus", 2)];
+    if (!coalesced) {
+      tracker.update(view(1, { busy: true }));
+      tracker.update(view(2, { busy: true, inventoryGains }));
+    }
+    const events = tracker.update(view(2, { inventoryGains,
+      completedConstructions: [{ id: "workshop-job", stationId: "workshop", level: 1 }] }));
+    assert.deepEqual(events.map(event => event.cueId), ["ui.construction-complete"]);
+  }
+});
+
+test("muted intervals and uncertain pearl speedups cannot replay construction signatures", () => {
+  for (const uncertain of [false, true]) {
+    const tracker = createEconomyAudioFeedbackTracker(); tracker.update(view(1));
+    tracker.update(view(1, { busy: true, uncertain }), uncertain);
+    const completed = view(2, { completedConstructions: [{ id: "speedup", stationId: "home", level: 2 }] });
+    assert.deepEqual(tracker.update(completed), []);
+    assert.deepEqual(tracker.update(completed), []);
   }
 });
 

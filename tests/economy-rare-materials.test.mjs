@@ -97,7 +97,7 @@ test('saved rare delivery is credited once, late collection adds no time, and ov
   assert.equal(job.rewards.ancient_core, 1); assert.equal(job.rareDrop.itemId, 'ancient_core');
   assert.deepEqual(economy.commandDevEconomy(p.token, startRequest, now).state.jobs, started.state.jobs);
   const end = Date.parse(job.finishesAt) + 7 * 86400000;
-  saved(p).inventory = { wood: 200 };
+  saved(p).inventory = { wood: 300 };
   assert.throws(() => issue(p, 'claim_job', job.id, end), { code: 'ECONOMY_STORAGE_FULL' });
   assert.deepEqual(saved(p).rareDropState, clock(900, 'ancient_core'));
   saved(p).inventory = {};

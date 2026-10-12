@@ -81,7 +81,7 @@ test("stale quotes, unsupported items, bulk rods, full escrow storage and insuff
     assert.throws(() => issue(p, "buy_fishing_item", target, extra), { code });
     assert.deepEqual(read(p), before);
   }
-  stored(p).inventory = { wood: 190 };
+  stored(p).inventory = { wood: 290 };
   const owner = p.me.user.publicId, id = crypto.randomUUID();
   globalThis.__zhivDevEconomyStore.listings.set(id, { id, sellerPublicId: owner, itemId: "stone", quantity: 10, totalPrice: 10,
     status: "active", createdAt: new Date(now).toISOString(), closedAt: null });

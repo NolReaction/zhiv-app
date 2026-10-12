@@ -120,7 +120,7 @@ class EconomyFishingShopTest {
             EconomyRules.apply(state, command("buy_fishing_item", offer.id, 7, 672), now)
         }.code)
         assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> {
-            EconomyRules.apply(state.copy(inventory = mapOf("wood" to 190L)),
+            EconomyRules.apply(state.copy(inventory = mapOf("wood" to 290L)),
                 command("buy_fishing_item", offer.id, price = 96), now, mapOf("stone" to 10L))
         }.code)
         val forged = state.copy(fishingShop = checkNotNull(state.fishingShop).copy(offers = listOf(

@@ -67,6 +67,25 @@ function button(html, text) {
   assert.ok(found, `Missing button: ${text}`);
   return found;
 }
+
+test("ordinary workshop menus hide future recipes while upgrade previews keep them discoverable", () => {
+  const state = snapshot({ buildings: { home: 2, workshop: 1, warehouse: 1 } });
+  const economy = controller({ snapshot: state });
+  const next = state.catalog.recipes.find(recipe => recipe.buildingId === "workshop" && recipe.buildingLevel === 2);
+  assert.ok(next);
+  const initial = render("workshop", economy);
+  assert.match(initial, /data-recipe=/);
+  assert.doesNotMatch(initial, /Позже|пока закрыто/);
+  assert.ok(!initial.includes(`data-recipe="${next.id}"`));
+  const stale = render("workshop", economy, { initialRecipeId: next.id });
+  assert.ok(!stale.includes(`data-recipe="${next.id}"`));
+  assert.ok(renderUpgrade("workshop", economy).includes(`data-recipe="${next.id}"`));
+  state.buildings.home = 3;
+  state.buildings.workshop = 2;
+  assert.ok(!render("workshop", economy).includes(`data-recipe="${next.id}"`), "other building prerequisites remain necessary");
+  state.buildings.kiln = 2;
+  assert.ok(render("workshop", economy).includes(`data-recipe="${next.id}"`), "opening the recipe reveals it despite empty materials");
+});
 const disabled = entry => /\bdisabled=/.test(entry.attributes);
 
 test("production slots show house and pearl gates, bought capacity, and keep all orders claimable", () => {
@@ -296,26 +315,15 @@ test("the mine has one actor route picker without production tabs and keeps upgr
   const initial = render("quarry", controller({ snapshot: initialState }));
   assert.match(initial, /data-sector="caves"/);
   assert.doesNotMatch(initial, /data-quarry-tab|data-recipe=|Секторы вылазок/);
-  const lockedCave = button(initial, "Вход в пещеру");
-  assert.match(lockedCave.attributes, /aria-label="Подготовиться: Вход в пещеру"/);
-  assert.match(lockedCave.attributes, /data-route="cave"/);
-  assert.match(lockedCave.attributes, /data-locked="true"/);
-  assert.equal(disabled(lockedCave), false, "locked routes remain inspectable before meeting their conditions");
-  assert.doesNotMatch(initial, /aria-label="Отправиться:|data-route-preparation=/);
-  const lockedPreparation = prepareCave(initialState);
-  assert.match(lockedPreparation, /data-route="cave"[^>]*data-route-preparation="true"/);
-  assert.equal(disabled(button(lockedPreparation, "Отправиться")), true);
+  assert.doesNotMatch(initial, /data-route=|aria-label="Отправиться:|data-route-preparation=/);
+  assert.doesNotMatch(prepareCave(initialState), /data-route=|aria-label="Отправиться:/);
   assert.equal(disabled(button(initial, "Обустроить")), false);
   const unbuiltState = snapshot({ buildings: { home: 2, warehouse: 1, quarry: 0 } });
   const unbuilt = render("quarry", controller({ snapshot: unbuiltState }));
-  const unbuiltCave = button(unbuilt, "Вход в пещеру");
-  assert.equal(disabled(unbuiltCave), false, "an unbuilt mine still allows inspecting a locked cave route");
-  assert.match(unbuiltCave.attributes, /data-locked="true"/);
-  const unbuiltPreparation = prepareCave(unbuiltState);
-  assert.equal(disabled(button(unbuiltPreparation, "Отправиться")), true, "home two alone cannot enter an unbuilt mine");
-  assert.equal(disabled(button(unbuiltPreparation, "Каменоломня · нужен ур. 1")), false, "the missing building links to its upgrade menu");
-  assert.match(unbuilt, /data-route="quarry_clay"[^>]*data-locked="true"/);
-  assert.match(unbuilt, /data-route="abandoned_quarry"[^>]*data-locked="true"/);
+  assert.doesNotMatch(unbuilt, /data-route=|Вход в пещеру|Просеять песок/);
+  assert.doesNotMatch(prepareCave(unbuiltState), /data-route=|aria-label="Отправиться:/);
+  assert.match(renderUpgrade("quarry", controller({ snapshot: unbuiltState })), /Вход в пещеру/,
+    "future routes remain visible in the building upgrade preview");
   const builtState = snapshot({ buildings: { home: 2, warehouse: 1, quarry: 1 } });
   assert.doesNotMatch(button(render("quarry", controller({ snapshot: builtState })), "Вход в пещеру").attributes, /data-locked="true"/);
   assert.equal(disabled(button(prepareCave(builtState), "Отправиться")), false, "a completed quarry opens the cave without changing its free cost");

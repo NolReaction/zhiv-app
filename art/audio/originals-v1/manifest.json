@@ -16,7 +16,7 @@
     },
     {
       "path": "scripts/audio_originals/effects.py",
-      "sha256": "d73a76b5127882a9cc77c38a1f1e40f12aeea70ded8465d359c0e7a33e3d0fe6"
+      "sha256": "9e3493860490bd8292f8441ff144847a46452a21b714f3955f6839a398f8504f"
     },
     {
       "path": "scripts/audio_originals/music.py",
@@ -2676,6 +2676,33 @@
           "src": "/audio/originals-v1/effect/ui.daily-reward.01.wav",
           "bytes": 73004,
           "sha256": "9ac1feeb91a64f7f21c5ed34bc1efa9ed7673435fea2b2e0ea46b7169f6fe9ba"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "ui.construction-complete.01",
+      "kind": "effect",
+      "title": "A home made ready 1",
+      "description": "Two soft wooden finishing taps resolve into a short warm felt major chord for a confirmed building completion. No external samples.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 44160,
+      "durationSeconds": 0.92,
+      "decodedBytes": 176640,
+      "masterSha256": "10a10f1adabf64d318608370594521e0a8aa7c235e1b2cc3a351428bcda4752b",
+      "measurements": {
+        "peakDb": -9.4394,
+        "rmsDb": -22.5,
+        "dc": 1e-09,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.024776705
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/ui.construction-complete.01.wav",
+          "bytes": 88364,
+          "sha256": "10a10f1adabf64d318608370594521e0a8aa7c235e1b2cc3a351428bcda4752b"
         }
       ],
       "composition": {}

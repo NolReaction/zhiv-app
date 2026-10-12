@@ -62,9 +62,9 @@ test("frequent navigation feedback has independent throttling and no random pitc
   }
 });
 
-test("logo and daily gift use distinct bounded interface gestures", () => {
+test("logo, daily gift and building completion use distinct bounded interface gestures", () => {
   const catalog = JSON.parse(readFileSync(new URL("../features/audio/catalog/audio-catalog.json", import.meta.url), "utf8"));
-  const signatures = ["ui.startup", "ui.daily-reward"].map(id => catalog.cues.find(cue => cue.id === id));
+  const signatures = ["ui.startup", "ui.daily-reward", "ui.construction-complete"].map(id => catalog.cues.find(cue => cue.id === id));
   for (const cue of signatures) {
     assert.equal(cue.bus, "ui", "signatures follow interface volume, including mute");
     assert.equal(cue.mode, "one-shot");
@@ -74,6 +74,7 @@ test("logo and daily gift use distinct bounded interface gestures", () => {
     assert.equal(cue.assets.length, 1);
   }
   assert.notEqual(signatures[0].assets[0], signatures[1].assets[0], "collecting a gift has a dedicated sound");
+  assert.equal(new Set(signatures.map(cue => cue.assets[0])).size, signatures.length);
 });
 
 test("forest and river share environmental volume while wind and rain have independent weather control", () => {
