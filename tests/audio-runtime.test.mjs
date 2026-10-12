@@ -136,6 +136,55 @@ test("centred explicit hero replies still honour the character bus, global mute 
   }
 });
 
+test("music, weather and footsteps use the same gain graph when native media volume is read-only", async () => {
+  const players = [];
+  const f = fixture([], { catalog: AUDIO_CATALOG, createMediaElement() {
+    const player = new Media(); player.volumeWrites = 0;
+    // iOS-style HTMLMediaElement volume semantics: reads 1 and ignores writes.
+    Object.defineProperty(player, "volume", { get: () => 1, set() { player.volumeWrites++; } });
+    players.push(player); return player;
+  } });
+  const outputGain = source => {
+    let node = source, gain = 1, visited = new Set();
+    while (node !== f.context.destination) {
+      assert.ok(!visited.has(node), "acyclic signal path"); visited.add(node);
+      if (node.gain) gain *= node.gain.value;
+      assert.equal(node.connected.length, 1, "no branch bypasses the bus or master");
+      node = node.connected[0];
+    }
+    assert.ok(visited.has(f.context.gains[0]), "all streams and effects pass the master");
+    return gain;
+  };
+  try {
+    await f.runtime.unlock();
+    f.runtime.updateFrame(frame([target("music", "music.day", 1), target("wind", "weather.wind", 1),
+      target("rain", "weather.rain", 1)]));
+    f.runtime.play({ id: "close-step", cueId: "action.step.grass", gain: 1 });
+    for (let index = 0; index < 8; index++) await flush();
+    const wind = f.context.started.find(source => source.loop && source.connected[0].gain.value === 10 ** (-12 / 20));
+    const rain = f.context.started.find(source => source.loop && source.connected[0].gain.value === 10 ** (-10 / 20));
+    const step = f.context.started.find(source => !source.loop);
+    const music = f.context.mediaSources[0];
+    assert.ok(wind && rain && step && music);
+    const close = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-10, `${actual} ~= ${expected}`);
+    close(outputGain(wind), 10 ** (-12 / 20) * .3 * .65);
+    close(outputGain(rain), 10 ** (-10 / 20) * .3 * .65);
+    close(outputGain(step), 10 ** (-14 / 20) * .55 * .65);
+    close(outputGain(music), .1 * .65);
+    f.runtime.setSettings({ master: .4, buses: { weather: .15, world: .2, music: .3 } });
+    close(outputGain(wind), 10 ** (-12 / 20) * .15 * .4);
+    close(outputGain(step), 10 ** (-14 / 20) * .2 * .4);
+    close(outputGain(music), .3 * .4);
+    f.runtime.setSettings({ buses: { weather: 0 } });
+    close(outputGain(wind), 0); close(outputGain(rain), 0);
+    assert.ok(outputGain(step) > 0 && outputGain(music) > 0);
+    f.runtime.setSettings({ master: 0 });
+    close(outputGain(step), 0); close(outputGain(music), 0);
+    assert.ok(players.every(player => player.volume === 1 && player.volumeWrites === 0),
+      "balance never depends on the unsupported element volume property");
+  } finally { f.runtime.dispose(); }
+});
+
 // Every fixture is disposed so timers/voices cannot leak between otherwise independent cases.
 test("SSR and disabled runtime allocate no context, fetches or singleton account state", async () => {
   assert.notEqual(getAudioRuntime(), getAudioRuntime());

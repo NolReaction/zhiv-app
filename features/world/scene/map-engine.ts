@@ -12,6 +12,7 @@ import { NEW_MAP_BOUNDS, NEW_MAP_FOCUS, TILED_WORLD, WORLD_PRESENTATION } from "
 import { WORLD_DEV_ENABLED, worldDevStore } from "@/features/world/dev/world-dev-store";
 import { mapObjectAt, type MapObjectPlace, type MapInteractiveObject } from "./site-interactions";
 import { projectConstructionAnchor, type MapObjectScreenAnchor } from "./construction-map-anchor";
+import { drawMapGuideTarget, mapGuideCamera } from "./map-guide-target";
 export class MapLoadError extends Error {
   constructor(public stage: "map" | "character", public cause: unknown) { super("Не удалось загрузить лес"); }
 }
@@ -51,7 +52,9 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
         : Math.min(viewport.width / bounds.width, viewport.height / bounds.height) }, viewport, bounds, cameraInsets)
     : close ? homeCamera(viewport) : worldCamera(viewport);
   let view = { width: 1, height: 1 }, camera = focusCamera(view, false);
-  let framing: "world" | "home" | "overview" | "manual" = "world";
+  let framing: "world" | "home" | "overview" | "manual" | "guide" = "world";
+  let guidePlace: MapObjectPlace | null = null, guideBottomInset = 0;
+  const guideInsets = () => ({ ...cameraInsets, bottom: Math.max(cameraInsets.bottom, guideBottomInset) });
   let inView = true;
   const home = document.createElement("canvas");
   type Touch = { initial: Point; position: Point; objectId?: string; capture: HTMLElement };
@@ -111,6 +114,17 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   function setSelectedObject(objectId: string | null) {
     selectedObjectId = objectId;
     updateSelection();
+  }
+  function setGuidePlace(place: MapObjectPlace | null, bottomInset = 0) {
+    if (disposed || place === guidePlace && bottomInset === guideBottomInset) return;
+    const changed = place !== guidePlace;
+    guidePlace = place; guideBottomInset = bottomInset;
+    const object = place ? habitat.mapObjects?.().find(object => object.place === place) : undefined;
+    if (object && (changed || framing === "guide")) {
+      framing = "guide";
+      camera = mapGuideCamera(object, view, bounds, guideInsets());
+    } else if (!place && framing === "guide") framing = "manual";
+    draw();
   }
   function updateObjectAnchors(objects: readonly MapInteractiveObject[]) {
     if (disposed || !objectAnchorsEnabled || !interactions.onObjectAnchorsChange) return;
@@ -174,12 +188,17 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       habitat.paintVisitors(ctx, "air");
       habitat.paintWeather(ctx);
     }
+    const objects = habitat.mapObjects?.() ?? [];
+    const guideTarget = guidePlace ? objects.find(object => object.place === guidePlace) : undefined;
+    if (guideTarget) {
+      ctx.setTransform(ratio, 0, 0, canvas.height / view.height, 0, 0);
+      drawMapGuideTarget(ctx, guideTarget, camera, view);
+    }
     speechContext.setTransform(ratio, 0, 0, canvas.height / view.height, 0, 0);
     if (speechContext !== ctx) speechContext.clearRect(0, 0, view.width, view.height);
     drawForestSpeech(speechContext, (habitat.speechFrames?.() ?? []).map(frame => ({ ...frame,
       anchor: worldToScreen(frame.anchor, camera, view) })), { ...view, insets: cameraInsets,
       reducedMotion: motionReduced(), night: options.dusk });
-    const objects = habitat.mapObjects?.() ?? [];
     for (const node of anchors) {
       // Keyboard/touch shortcuts follow the geometry committed with the visible artwork.
       const anchor = rebuilding ? node.dataset.objectId
@@ -235,7 +254,8 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     const scale = Math.min(window.devicePixelRatio || 1, 2, 2200 / Math.max(view.width, view.height));
     canvas.width = Math.round(view.width * scale); canvas.height = Math.round(view.height * scale);
     if (speechCanvas) { speechCanvas.width = canvas.width; speechCanvas.height = canvas.height; }
-    camera = framing === "world" ? focusCamera(view, false) : framing === "home" ? focusCamera(view, true) : framing === "overview" ? overviewCamera(view, bounds) : clampCamera(camera, view, bounds, cameraInsets); draw();
+    const guideTarget = framing === "guide" ? habitat.mapObjects?.().find(object => object.place === guidePlace) : undefined;
+    camera = guideTarget ? mapGuideCamera(guideTarget, view, bounds, guideInsets()) : framing === "world" ? focusCamera(view, false) : framing === "home" ? focusCamera(view, true) : framing === "overview" ? overviewCamera(view, bounds) : clampCamera(camera, view, bounds, cameraInsets); draw();
   }
   const resizeObserver = new ResizeObserver(resize); resizeObserver.observe(canvas);
   if (cameraHud.top) resizeObserver.observe(cameraHud.top, { box: "border-box" });
@@ -381,6 +401,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     control,
     activateObject,
     setSelectedObject,
+    setGuidePlace,
     setObjectAnchorsEnabled(enabled: boolean) {
       if (disposed || enabled === objectAnchorsEnabled) return;
       objectAnchorsEnabled = enabled; anchorsKey = "";

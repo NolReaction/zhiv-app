@@ -184,6 +184,57 @@ function guideNavigation(context = {}) {
   return nav;
 }
 
+test("the world course exposes real menu targets without destination-opening callbacks", () => {
+  const nav = guideNavigation({ onboarding: { progress: { version: 2, status: "started", stepId: "orders" } } });
+  try {
+    const guide = nav.component("WorldOnboardingSession").props;
+    for (const key of ["onOpenOrders", "onOpenWorkshop", "onOpenGarden", "onOpenQuick", "onOpenResident", "onOpenHelp"]) {
+      assert.equal(guide[key], undefined, `${key} must not let the coach bypass the real path`);
+    }
+    assert.equal(nav.component("WorldFoodMenu"), undefined);
+    nav.find(element => element.props["data-world-quick"] === "more").props.onClick();
+    const entry = nav.find(element => element.props["data-world-food-entry"] !== undefined);
+    assert.ok(entry, "the course highlights the same food-and-orders action the player normally uses");
+    entry.props.onClick();
+    const food = nav.component("WorldFoodMenu");
+    assert.equal(food.props.initialTab, "meals", "the real menu does not skip directly to Orders");
+    assert.equal(nav.component("WorldOnboardingSession").props.ordersOpen, false);
+    food.props.onTabChange("orders");
+    assert.equal(nav.component("WorldOnboardingSession").props.ordersOpen, true);
+  } finally { nav.restore(); }
+});
+
+test("the workshop lesson requests only camera focus until a real map selection opens its menu", () => {
+  const nav = guideNavigation({ onboarding: { progress: { version: 2, status: "started", stepId: "workshop" } } });
+  try {
+    let scene = nav.component("WorldScene");
+    assert.equal(scene.props.guidePlace, "workshop");
+    assert.equal(scene.props.openObjectRequest, undefined);
+    assert.equal(nav.component("WorldObjectMenu"), undefined);
+    assert.equal(nav.component("WorldOnboardingSession").props.workshopOpen, false);
+    scene.props.onPlace("workshop", { place: "workshop", objectId: "workshop", x: 100, y: 150, viewportWidth: 390, viewportHeight: 700 });
+    assert.equal(nav.component("WorldObjectMenu").props.selection.place, "workshop");
+    assert.equal(nav.component("WorldOnboardingSession").props.workshopOpen, true);
+    assert.equal(nav.component("WorldScene").props.guidePlace, null, "the map outline yields to the manually opened menu");
+  } finally { nav.restore(); }
+});
+
+test("map guide focus respects pause, modal surfaces and the gift boundary", () => {
+  const nav = guideNavigation({ onboarding: { progress: { version: 2, status: "started", stepId: "workshop" } } });
+  try {
+    nav.props.economy.snapshot.buildings.workshop = 0;
+    assert.equal(nav.component("WorldScene").props.guidePlace, null, "first show the explicit starter gift");
+    nav.props.economy.snapshot.workshopStarterClaimed = true;
+    assert.equal(nav.component("WorldScene").props.guidePlace, "workshop");
+    hooks.setGuideContext({ onboarding: { progress: { version: 2, status: "started", stepId: "workshop" }, isPaused: true } });
+    assert.equal(nav.component("WorldScene").props.guidePlace, null);
+    hooks.setGuideContext({ onboarding: { progress: { version: 2, status: "started", stepId: "garden" } } });
+    assert.equal(nav.component("WorldScene").props.guidePlace, "garden");
+    nav.find(element => element.props["data-world-quick"] === "pantry").props.onClick();
+    assert.equal(nav.component("WorldScene").props.guidePlace, null);
+  } finally { nav.restore(); }
+});
+
 test("section introductions wait for loaded state and yield to the active initial course", () => {
   const started = { version: 2, status: "started", stepId: "pantry" };
   const cases = [

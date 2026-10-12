@@ -220,3 +220,33 @@
 .cheatItemPreview > div { display: grid; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
 .cheatItemPreview strong { font-size: 13px; }
 .cheatItemPreview span, .cheatItemPreview small { color: var(--dev-muted); font-size: 11px; }
+
+/* During the app lesson, diagnostics share the navigation row instead of
+   floating over Mochlik's text or a highlighted control. Production has no root. */
+:global(main[data-active-view]:has(> [data-guide-coach="app"])):has(> .root:not([data-world-view="true"])) > :global(footer) {
+  grid-area: 3 / 1;
+  padding-right: 52px;
+}
+:global(main[data-active-view]:has(> [data-guide-coach="app"])) > .root:not([data-world-view="true"]) {
+  position: relative;
+  inset: auto;
+  grid-area: 3 / 1;
+  align-self: center;
+  justify-self: end;
+  z-index: 45;
+  width: 44px;
+  max-width: 44px;
+}
+:global(main[data-active-view]:has(> [data-guide-coach="app"])) > .root:not([data-world-view="true"]) .trigger {
+  width: 44px;
+  min-width: 44px;
+  padding: 0;
+}
+:global(main[data-active-view]:has(> [data-guide-coach="app"])) > .root:not([data-world-view="true"]) :is(.trigger strong, .count, .repeat, .closedFeedback) { display: none; }
+:global(main[data-active-view]:has(> [data-guide-coach="app"])) > .root:not([data-world-view="true"]) :is(.drawer, .recovery) {
+  position: fixed;
+  top: max(12px, env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
+  bottom: max(88px, calc(env(safe-area-inset-bottom) + 80px));
+  height: auto;
+}

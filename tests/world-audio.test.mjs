@@ -121,9 +121,31 @@ test('one global wind layer keeps its key through day/night, rain and camera cha
     windId ??= wind[0].id;
     assert.equal(wind[0].id, windId);
     assert.equal(wind[0].pan, 0);
-    assert.ok(wind[0].gain >= .65 && wind[0].gain <= 1);
+    assert.ok(wind[0].gain >= .24 && wind[0].gain <= 1);
     if (rain) assert.ok(wind[0].gain < .9, 'even light rain lowers the wind');
     else assert.equal(wind[0].gain, 1);
+  }
+});
+
+test('rain steadily gives wind less space without changing source identity or jumping at drizzle', () => {
+  let previous = 1, id;
+  for (let index = 0; index <= 100; index++) {
+    const frame = buildWorldAudioFrame(scene, input({ rain: index / 100 }));
+    const wind = cue(frame, 'weather.wind')[0];
+    id ??= wind.id;
+    assert.equal(wind.id, id);
+    assert.ok(wind.gain <= previous, 'increasing rain never increases the wind bed');
+    assert.ok(previous - wind.gain < .08, 'no sudden gain step at rain onset');
+    previous = wind.gain;
+  }
+  assert.ok(previous < .26, 'a downpour leaves only a quiet separate wind layer');
+  const phone = { ...point, zoom: 1.12, viewportWidth: 392 };
+  const desktop = { ...point, zoom: 4, viewportWidth: 1400 };
+  for (const rain of [0, .02, .5, 1]) {
+    const onPhone = buildWorldAudioFrame(scene, input({ rain, camera: phone }));
+    const onDesktop = buildWorldAudioFrame(scene, input({ rain, camera: desktop }));
+    assert.equal(cue(onPhone, 'weather.wind')[0].gain, cue(onDesktop, 'weather.wind')[0].gain);
+    assert.equal(onPhone.listener.detail, onDesktop.listener.detail);
   }
 });
 

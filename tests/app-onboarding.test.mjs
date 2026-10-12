@@ -159,20 +159,19 @@ function view(stepId, overrides = {}, completed = []) {
   hooks.setGuide({ progress: stepId ? { ...started(stepId), completedSteps: completed } : null, open: true, paused: false,
     ...Object.fromEntries(["start", "next", "back", "skip", "pause", "resume", "replay"].map(name => [name, record(name)])) });
   const tree = AppOnboarding({ ...evidence(), owner: "UI-PLAYER", ready: true, suspended: false,
-    isOnline: true, calendarAvailable: true, simpleView: false,
-    onSelect: next => calls.push(`select:${next}`), onOpenCalendar: record("open-calendar"), onEnterWorld: record("enter-world"), ...overrides });
+    isOnline: true, calendarAvailable: true, simpleView: false, ...overrides });
   return { calls, props: Children.toArray(tree.props.children).find(child => isValidElement(child) && child.type === GuideCoach).props };
 }
 
-test("welcome is opt-in and starting uses application navigation without sending a check-in", () => {
+test("welcome starts only the course and never navigates or sends a check-in", () => {
   const result = view();
   assert.equal(result.props.stepId, "welcome");
   assert.match(result.props.text, /близкие/);
-  assert.ok(result.props.text.length < 130);
+  assert.ok(result.props.text.length < 90);
   assert.equal(result.props.hint, undefined);
   assert.equal(result.props.inline, true);
   result.props.primary.onClick();
-  assert.deepEqual(result.calls, ["select:check-in", "start"]);
+  assert.deepEqual(result.calls, ["start"]);
 });
 
 test("check-in asks for the real button; offline and unavailable states still offer skip", () => {
@@ -185,16 +184,29 @@ test("check-in asks for the real button; offline and unavailable states still of
   }
 });
 
-test("calendar and world buttons use the existing app open handlers", () => {
-  const calendar = view("calendar"); calendar.props.primary.onClick();
-  assert.deepEqual(calendar.calls, ["open-calendar"]);
-  const world = view("world"); world.props.primary.onClick();
-  assert.deepEqual(world.calls, ["enter-world"]);
+test("calendar and world lessons wait for the real highlighted controls", () => {
+  for (const step of ["calendar", "world"]) {
+    const lesson = view(step);
+    assert.equal(lesson.props.primary, undefined);
+    assert.equal(lesson.props.target, `[data-app-onboarding="${step}"]`);
+    assert.deepEqual(lesson.calls, []);
+  }
 });
 
-test("unrelated navigation can return home, and the guide stays out of real app dialogs", () => {
-  const otherView = view("calendar", { activeView: "people" }); otherView.props.primary.onClick();
-  assert.deepEqual(otherView.calls, ["select:check-in"]);
+test("wrong-screen lessons highlight real navigation without switching tabs for the user", () => {
+  for (const step of ["check-in", "calendar", "world"]) {
+    const lesson = view(step, { activeView: "people" });
+    assert.equal(lesson.props.primary, undefined);
+    assert.equal(lesson.props.target, '[data-app-onboarding="nav-check-in"]');
+    assert.match(lesson.props.summary, /«Я живой» внизу/);
+    assert.deepEqual(lesson.calls, []);
+  }
+  for (const step of ["people", "profile"]) {
+    const lesson = view(step);
+    assert.equal(lesson.props.primary, undefined);
+    assert.equal(lesson.props.target, `[data-app-onboarding="nav-${step}"]`);
+    assert.deepEqual(lesson.calls, []);
+  }
   for (const override of [{ ready: false }, { suspended: true }, { calendarOpen: true }, { worldOpen: true }]) {
     assert.equal(view("calendar", override).props.open, false);
   }
@@ -209,8 +221,9 @@ test("different tasks and confirmed success have different Mochlik poses", () =>
 test("simple view is respected while the existing independent map button remains available", () => {
   const result = view("world", { simpleView: true });
   assert.match(result.props.hint, /простая кнопка/);
-  result.props.primary.onClick();
-  assert.deepEqual(result.calls, ["enter-world"]);
+  assert.equal(result.props.primary, undefined);
+  assert.equal(result.props.target, '[data-app-onboarding="world"]');
+  assert.deepEqual(result.calls, []);
 });
 
 test("opened app sections highlight their own content and every task has a concise actionable summary", () => {
@@ -230,9 +243,13 @@ test("opened app sections highlight their own content and every task has a conci
 test("profile question entry resumes the saved app step and replays only a finished course", () => {
   const entryRef = { current: null };
   const progress = view("people", { entryRef });
+  assert.equal(entryRef.current.getActionLabel(), "Продолжить обучение");
+  assert.deepEqual(progress.calls, []);
   entryRef.current.open();
   assert.deepEqual(progress.calls, ["resume"]);
   const fresh = view(null, { entryRef });
+  assert.equal(entryRef.current.getActionLabel(), "Начать обучение");
+  assert.deepEqual(fresh.calls, []);
   entryRef.current.open();
   assert.deepEqual(fresh.calls, ["replay"]);
 });
@@ -243,6 +260,23 @@ test("only completed-step advancement can run from the small speech and characte
     assert.equal(view(step, { activeView: currentView }, [step]).props.primary.advance, true);
     assert.notEqual(view(step).props.primary?.advance, true);
   }
-  assert.notEqual(view("world").props.primary.advance, true);
+  assert.equal(view("world").props.primary, undefined);
   assert.notEqual(view(null).props.primary.advance, true);
+});
+
+
+test("finished app courses expose a replay label without resetting until the explicit action", () => {
+  for (const status of ["completed", "skipped"]) {
+    const calls = [];
+    const entryRef = { current: null };
+    const progress = { version: 2, status };
+    hooks.setGuide({ progress, open: false, replay: () => calls.push("replay"), resume: () => calls.push("resume") });
+    hooks.setDialogOpen(false);
+    AppOnboarding({ ...evidence(), owner: "UI-PLAYER", ready: true, suspended: false,
+      isOnline: true, calendarAvailable: true, simpleView: false, entryRef });
+    assert.equal(entryRef.current.getActionLabel(), "Повторить обучение");
+    assert.deepEqual(calls, []);
+    entryRef.current.open();
+    assert.deepEqual(calls, ["replay"]);
+  }
 });

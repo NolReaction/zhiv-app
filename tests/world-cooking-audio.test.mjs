@@ -94,15 +94,15 @@ test('a visible hot DEV rehearsal pot simmers without needing a server job', () 
     'a rehearsal next to a real recipe cannot stack the simmer');
 });
 
-test('every rain preset gently lowers wind, with a continuous dry-to-drizzle transition', () => {
+test('every rain preset makes room for rain, with a continuous dry-to-drizzle transition', () => {
   const windGain = rain => loops(buildWorldAudioFrame(scene, input({ rain })), 'weather.wind')[0].gain;
   assert.equal(windGain(0), 1);
-  assert.ok(windGain(.1) < .85 && windGain(.1) > .75, 'drizzle has an audible but modest wind reduction');
-  assert.ok(windGain(1) >= .65, 'heavy rain does not silence the independent wind layer');
+  assert.ok(windGain(.1) < .7 && windGain(.1) > .6, 'drizzle makes room for its own airy noise');
+  assert.ok(windGain(1) >= .24 && windGain(1) < .26, 'heavy rain leaves a quiet independent wind layer');
   let previous = 1;
   for (let rain = .001; rain <= 1; rain += .001) {
     const gain = windGain(rain);
-    assert.ok(gain <= previous && previous - gain < .008, 'no dry/rain threshold jump');
+    assert.ok(gain <= previous && previous - gain < .009, 'no dry/rain threshold jump');
     previous = gain;
   }
 });

@@ -1426,7 +1426,7 @@
       "assets": [
         "weather.wind.01"
       ],
-      "gainDb": -8,
+      "gainDb": -12,
       "priority": 20,
       "maxInstances": 1,
       "cooldownMs": 0,
@@ -1440,7 +1440,7 @@
       "assets": [
         "weather.rain.01"
       ],
-      "gainDb": -2,
+      "gainDb": -10,
       "priority": 20,
       "maxInstances": 1,
       "cooldownMs": 0,
@@ -1853,7 +1853,7 @@
         "action.step.grass.03",
         "action.step.grass.04"
       ],
-      "gainDb": -6,
+      "gainDb": -14,
       "priority": 50,
       "maxInstances": 2,
       "cooldownMs": 120,
@@ -1870,7 +1870,7 @@
         "action.step.wood.03",
         "action.step.wood.04"
       ],
-      "gainDb": -6,
+      "gainDb": -14,
       "priority": 50,
       "maxInstances": 2,
       "cooldownMs": 120,

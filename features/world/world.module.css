@@ -1,15 +1,15 @@
 .portal[data-slot='dialog-content'] { --dialog-padding: 0; translate: none; position: fixed; inset: 0; z-index: 80; display: block; width: 100%; height: 100dvh; max-width: none; max-height: none; padding: 0; border: 0; border-radius: 0; transform: none; gap: 0; background: #142218; color: #eef2dc; overflow: hidden; isolation: isolate; }
 .portal[data-state='open'] { animation: forest-open 950ms cubic-bezier(.22,.65,.25,1) backwards; }
 .portal[data-state='closed'] { animation: forest-close 500ms cubic-bezier(.4,0,.6,1) both; }
-/* iOS Safari retains the previous edge tint for viewport-sized fixed surfaces.
-   A thin opaque fixed edge gives it the forest color again after a sheet closes.
-   The browser tab has no bottom safe-area: a 12px edge used to fill the HUD's
-   entire 12px gap and visually cut off its buttons. Keep only a 1px paint edge
-   there; standalone mode still fills the home-indicator safe-area. The HUD
-   retains its own gap above that area, including in short landscape viewports. */
+/* WebKit keeps the previous fixed-edge color for viewport-sized containers.
+   Its sampler ignores background colors of boxes <=10px, so a 1px edge cannot
+   restore the forest after a sheet. Keep a solid background on a 12px box;
+   the mask blends its paint into the map without a hard horizontal strip.
+   It fits entirely in the HUD's existing bottom gap and safe area, including
+   landscape. No delayed color restoration can outlive a reopened sheet. */
 .browserEdge { display: none; }
 @supports (-webkit-touch-callout: none) {
-  .browserEdge { display: block; position: fixed; inset: auto 0 0; height: max(1px, env(safe-area-inset-bottom)); background: #142218; pointer-events: none; z-index: 8; }
+  .browserEdge { display: block; position: fixed; inset: auto 0 0; height: calc(12px + env(safe-area-inset-bottom)); background: #142218; -webkit-mask-image: linear-gradient(to bottom, transparent, #000 12px); mask-image: linear-gradient(to bottom, transparent, #000 12px); pointer-events: none; z-index: 8; }
 }
 @keyframes forest-open { from { clip-path: circle(var(--portal-radius, 20px) at var(--portal-x, 50%) var(--portal-y, 50%)); opacity: .95; } to { clip-path: circle(var(--portal-end-radius, 120vmax) at var(--portal-x, 50%) var(--portal-y, 50%)); opacity: 1; } }
 @keyframes forest-close { from { clip-path: circle(var(--portal-end-radius, 120vmax) at var(--portal-x, 50%) var(--portal-y, 50%)); opacity: 1; } to { clip-path: circle(var(--portal-radius, 20px) at var(--portal-x, 50%) var(--portal-y, 50%)); opacity: 0; } }

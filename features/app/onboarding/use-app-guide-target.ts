@@ -2,8 +2,8 @@
 
 import { useEffect } from "react";
 
-/** Reveal a new lesson's control once, after the guide has reserved its footer
- * space. Manual scrolling and opening details must never keep pulling it back. */
+/** Reveal a new lesson's control once, after the guide has reserved its top
+ * row. Manual scrolling and opening details must never keep pulling it back. */
 export function useAppGuideTarget(open: boolean, target: string | undefined, stepId: string, activeView: string) {
   useEffect(() => {
     if (!open || !target) return;

@@ -522,6 +522,56 @@ test("map object selection tracks projected anchors through camera changes and d
   } finally { engine?.dispose(); worldDevStore.reset(); env.restore(); }
 });
 
+test("onboarding camera outlines the live station without opening it and follows manual touch gestures", async () => {
+  const { createMapEngine, worldDevStore } = await modules({ sites: [clearingHome] });
+  const env = browser(); let engine;
+  try {
+    worldDevStore.patch(quietClearing);
+    const canvas = env.surface(393, 665), places = [], selections = [];
+    const loading = createMapEngine(canvas, options, place => places.push(place), [], undefined,
+      { top: { offsetHeight: 110 }, bottom: { offsetHeight: 75 } },
+      { onSelectionChange: selection => selections.push(selection) });
+    env.finish(); await flush(); env.finishPath("/test-residence.webp"); engine = await loading;
+    engine.setGuidePlace("house", 230);
+    const outline = () => {
+      const stroke = canvas.calls.findLastIndex(call => call.method === "strokeStyle" && call.args[0] === "#183d27");
+      const start = canvas.calls.slice(0, stroke).findLastIndex(call => call.method === "beginPath");
+      return canvas.calls.slice(start, stroke).filter(call => ["moveTo", "lineTo"].includes(call.method)).map(call => call.args);
+    };
+    const projectedContour = () => {
+      const projection = mapProjection(canvas);
+      return clearingHome.hitArea.map(point => [projection.left + point.x * projection.zoom, projection.top + point.y * projection.zoom]);
+    };
+    const assertOutline = () => outline().forEach((point, index) => point.forEach((value, axis) =>
+      approximately(value, projectedContour()[index][axis], "guide tracks the station's actual contour")));
+    assertOutline();
+    assert.ok(outline().every(([x, y]) => x >= 0 && x <= 393 && y > 110 && y < 665 - 230),
+      "the station fits between the top HUD and the measured phone coach");
+    assert.deepEqual(places, []); assert.deepEqual(selections, [], "camera guidance does not select or activate a station");
+    const first = outline();
+    dragMap(canvas, 18, -12);
+    assertOutline(); assert.notDeepEqual(outline(), first);
+    const panned = mapProjection(canvas);
+    engine.setGuidePlace("house", 230);
+    assert.deepEqual(mapProjection(canvas), panned, "repeated guide updates do not undo the player's pan");
+    engine.setGuidePlace("house", 250);
+    assert.deepEqual(mapProjection(canvas), panned, "coach resizing also respects a manually moved camera");
+    canvas.events.get("wheel")({ clientX: 170, clientY: 220, deltaY: 70, preventDefault() {} }); canvas.flushFrame();
+    assertOutline();
+    assert.deepEqual(places, [], "pan and zoom keep the real menu closed");
+    canvas.calls.length = 0;
+    engine.setGuidePlace(null);
+    assert.equal(canvas.calls.some(call => call.method === "strokeStyle" && call.args[0] === "#183d27"), false,
+      "leaving the lesson removes the outline even in reduced motion");
+    engine.setGuidePlace("house", 230);
+    const projection = mapProjection(canvas), event = { pointerId: 1, pointerType: "touch", button: 0,
+      clientX: projection.left + 660 * projection.zoom, clientY: projection.top + 620 * projection.zoom };
+    canvas.events.get("pointerdown")({ ...event, type: "pointerdown" });
+    canvas.events.get("pointerup")({ ...event, type: "pointerup" });
+    assert.deepEqual(places, ["house"], "the actual outlined map area stays manually tappable");
+  } finally { engine?.dispose(); worldDevStore.reset(); env.restore(); }
+});
+
 test("construction anchors follow live map projection without repeated React notifications on idle redraws", async () => {
   const { createMapEngine, worldDevStore } = await modules({ sites: [clearingHome] });
   const env = browser(); let engine;

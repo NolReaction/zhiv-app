@@ -97,9 +97,10 @@ export function buildWorldAudioFrame(scene: FixedWorldScene, input: WorldAudioEn
   add("forest-day", "forest.day", Math.sqrt(1 - night) * (1 - rain * .55));
   add("forest-night", "forest.night", Math.sqrt(night) * (1 - rain * .55));
   // One independent wind layer across day/night; camera motion never restarts it.
-  // Even drizzle leaves room for rain; the short smooth knee avoids a jump
-  // when precipitation fades in or out, followed by a gentle strength ramp.
-  add("weather-wind", "weather.wind", 1 - .18 * rain / (rain + .025) - .17 * rain);
+  // Rain already contains a broadband air bed. Duck the separate wind to a
+  // quarter during a downpour instead of stacking two strong noise layers.
+  // The knee is continuous at zero, so drizzle never switches a loop on/off.
+  add("weather-wind", "weather.wind", 1 - .65 * rain / (rain + .08) - .15 * rain);
   add("weather-rain", "weather.rain", rain);
   const audibleWhen = (when: { siteId: string; level: number } | undefined) => !when || input.levels[when.siteId] === when.level;
   const emitters = [...(scene.audio?.emitters ?? [])];

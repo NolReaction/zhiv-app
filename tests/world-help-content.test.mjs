@@ -238,7 +238,7 @@ test("timers, production slots and prices derive from gameplay catalogs", () => 
   assert.ok(answer("level").includes(`уровней ${CLICKER_LEVELS.length}`));
   assert.ok(answer("resources").includes(`${economyCatalog.localBuyer.payoutBps / 100}%`));
   for (const upgrade of economyCatalog.productionSlots.upgrades) {
-    assert.ok(answer("production-slots").includes(`${upgrade.slots}-е — за ${formatPearls(upgrade.pricePearls)} жемчужин с дома ${upgrade.requiredHomeLevel}`));
+    assert.ok(answer("production-slots").includes(`${upgrade.slots}-е - за ${formatPearls(upgrade.pricePearls)} жемчужин с дома ${upgrade.requiredHomeLevel}`));
   }
   assert.ok(answer("pearls").includes(`${economyCatalog.constructionSpeedup.secondsPerPearl / 60} минут`));
   assert.ok(answer("rewards").includes(`${progressionRewardsCatalog.dailyMinimumHours} часов`));

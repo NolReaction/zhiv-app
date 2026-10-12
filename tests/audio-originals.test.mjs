@@ -52,6 +52,31 @@ test("original pack fills the catalog, documents source and verifies every shipp
   }
 });
 
+test("weather noise and overlapping close footsteps keep headroom even at full player volume", () => {
+  const peak = id => {
+    const item = manifest.assets.find(entry => entry.id === id);
+    const wav = pcmWave(readFileSync(path.join(root, "public", item.files[0].src)));
+    let maximum = 0;
+    for (let offset = 0; offset < wav.samples.length; offset += 2)
+      maximum = Math.max(maximum, Math.abs(wav.samples.readInt16LE(offset) / 32768));
+    return maximum;
+  };
+  const cuePeak = id => {
+    const cue = catalog.cues.find(entry => entry.id === id);
+    return Math.max(...cue.assets.map(peak)) * 10 ** (cue.gainDb / 20);
+  };
+  // Worst-case peaks summed in phase, before user attenuation or the master
+  // compressor. The bus sliders must not be the only protection for old saves.
+  assert.ok(cuePeak("weather.wind") + cuePeak("weather.rain") < .17,
+    "both weather beds leave headroom even without rain's additional wind duck");
+  for (const id of ["action.step.grass", "action.step.wood"]) {
+    const cue = catalog.cues.find(entry => entry.id === id);
+    assert.ok(cuePeak(id) * cue.maxInstances < .28,
+      `${id}: two nearby residents cannot produce a near-full-scale impact`);
+    assert.ok(cuePeak(id) > .03, `${id}: close steps remain audible`);
+  }
+});
+
 test("decoded WAV effects are non-silent, unclipped and match their declared duration", () => {
   for (const item of manifest.assets.filter(asset => asset.kind !== "music")) {
     const wav = pcmWave(readFileSync(path.join(root, "public", item.files[0].src)));

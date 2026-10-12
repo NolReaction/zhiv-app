@@ -68,6 +68,9 @@
 .coach[data-welcome='true'] .copy { padding-bottom: 10px; }
 .coach[data-welcome='true'] .details { border: 0; }
 .coach[data-inline='true'] { position: relative; z-index: 1; flex: 0 0 auto; inset: auto; width: 100%; max-width: 100%; max-height: min(260px, 38dvh); box-shadow: none; }
+/* Keep room to tap the actual map object while reading expanded details.
+   The copy scrolls inside this limit; the action footer stays visible. */
+.coach[data-guide-coach='world'][data-inline='false'] { max-height: min(260px, 45dvh) !important; }
 .dockSlot { flex: 0 0 auto; min-height: 0; padding: 6px 8px; }
 .dockSlot:empty { display: none; }
 @media (max-width: 360px) {

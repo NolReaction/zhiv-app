@@ -262,19 +262,35 @@ test("profile selection emits exactly one soft tab cue for a change, including k
 });
 
 
-test("tutorial is a named button beside settings, outside tab semantics and without changing profile tabs", () => {
+test("profile question opens only local help, outside tab semantics, without starting a course", () => {
   const calls = [];
-  const view = profile({ onOpenOnboarding: () => calls.push("guide") });
-  const button = namedButton(view, "Обучение с Мохликом");
+  const view = profile({ onToggleGuide: () => calls.push("help"), onOpenOnboarding: () => calls.push("guide") });
+  const button = namedButton(view, "О профиле");
   assert.ok(button);
   assert.equal(button.props.role, undefined);
   assert.equal(buttonText(button), "");
-  assert.equal(button.props.title, "Обучение с Мохликом");
+  assert.equal(button.props["aria-expanded"], false);
+  assert.equal(button.props.title, "О профиле");
   const tablist = view.elements.find(element => element.props.role === "tablist");
   assert.equal(Children.toArray(tablist.props.children).length, 3);
   assert.ok(!Children.toArray(tablist.props.children).includes(button));
   button.props.onClick();
-  assert.deepEqual(calls, ["guide"]);
+  assert.deepEqual(calls, ["help"]);
   assert.deepEqual(view.calls, []);
-  assert.equal(namedButton(profile(), "Обучение с Мохликом"), undefined);
+  assert.equal(namedButton(profile(), "О профиле"), undefined);
+});
+
+test("local profile explanation offers the saved course status and only its explicit action starts it", () => {
+  for (const [status, label] of [[null, "Начать обучение"], ["started", "Продолжить обучение"], ["completed", "Повторить обучение"], ["skipped", "Повторить обучение"]]) {
+    const calls = [];
+    const view = profile({ guideOpen: true, onboardingStatus: status,
+      onToggleGuide: () => calls.push("hide-help"), onOpenOnboarding: () => calls.push("guide") });
+    assert.match(view.markup, /Тут общая статистика, друзья и настройки\./);
+    assert.equal(namedButton(view, "О профиле").props["aria-expanded"], true);
+    assert.deepEqual(calls, []);
+    namedButton(view, "О профиле").props.onClick();
+    assert.deepEqual(calls, ["hide-help"]);
+    namedButton(view, label).props.onClick();
+    assert.deepEqual(calls, ["hide-help", "guide"]);
+  }
 });

@@ -49,6 +49,7 @@ type ProfileViewProps = {
   onRecovered: (response: MeResponse) => void;
   onSessionLost: () => void;
   onOpenOnboarding?: () => void;
+  getOnboardingActionLabel?: () => string;
   onOpenCalendar: (trigger: HTMLButtonElement) => void;
   onOpenGame: (trigger: HTMLButtonElement) => void;
   onRefreshGame: () => void;
@@ -94,6 +95,7 @@ export function ProfileView({
   onRecovered,
   onSessionLost,
   onOpenOnboarding,
+  getOnboardingActionLabel,
   onOpenCalendar,
   onOpenGame,
   onRefreshGame,
@@ -104,6 +106,8 @@ export function ProfileView({
   legacyGame,
 }: ProfileViewProps) {
   const [activeTab, setActiveTab] = useState("profile");
+  const [guideOpen, setGuideOpen] = useState(false);
+  const [guideActionLabel, setGuideActionLabel] = useState("Начать обучение");
   const [draftState, setDraftState] = useState({
     sourceName: me.user.displayName,
     value: me.user.displayName,
@@ -190,10 +194,15 @@ export function ProfileView({
           <TabsPrimitive.Trigger value="settings" className={styles.settingsTab} aria-label="Настройки" title="Настройки"><Settings size={19} aria-hidden="true" /></TabsPrimitive.Trigger>
         </TabsPrimitive.List>
         {onOpenOnboarding && <button type="button" className={styles.guideEntry} data-app-onboarding-entry
-          aria-label="Обучение с Мохликом" title="Обучение с Мохликом" onClick={onOpenOnboarding} data-audio-cue="ui.open">
+          aria-label="О профиле" title="О профиле" aria-expanded={guideOpen} aria-controls="app-profile-guide"
+          onClick={() => { setGuideActionLabel(getOnboardingActionLabel?.() ?? "Начать обучение"); setGuideOpen(value => !value); }} data-audio-cue="ui.open">
           <CircleHelp size={20} aria-hidden="true" />
         </button>}
         </div>
+        {guideOpen && <section id="app-profile-guide" className={styles.guideHelp} aria-label="О профиле">
+          <p>Тут твои данные, статистика и настройки. В профиле можно изменить имя и настроить вход, под шестерёнкой - звук и оформление.</p>
+          {onOpenOnboarding && <button type="button" onClick={() => { setGuideOpen(false); onOpenOnboarding(); }}>{guideActionLabel}</button>}
+        </section>}
         <TabsPrimitive.Content value="profile" forceMount className={styles.tabPanel}>
       <div className={styles.columns}>
         <div className={styles.overviewColumn}>

@@ -46,3 +46,7 @@
 .action[data-called] > svg { animation: callPulse 420ms ease-out; fill: #e4db9a; color: #e4db9a; }
 @keyframes callPulse { 0%, 100% { transform: scale(1); } 40% { transform: scale(1.32); } 70% { transform: scale(.95); } }
 @media (prefers-reduced-motion: reduce) { .action { transition: none; } .action:active:enabled { transform: none; } .action[data-called] > svg { animation: none; } }
+
+.guideHelp { display: grid; gap: 10px; min-width: 0; padding: 11px 12px; border: 1px solid var(--forest-border, #c8bd98); border-radius: 12px; background: #e5e8cb; color: var(--forest-ink, #394d3e); font-size: .75rem; line-height: 1.45; }
+.guideHelp p { margin: 0; }
+.guideHelp .action { justify-self: start; }

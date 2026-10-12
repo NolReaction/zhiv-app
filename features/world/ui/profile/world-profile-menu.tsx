@@ -33,6 +33,7 @@ type Props = {
   onOpenPeople?: () => void;
   onOpenHelp?: () => void;
   onOpenOnboarding?: () => void;
+  onboardingStatus?: "started" | "completed" | "skipped" | null;
   onOpenFood?: () => void;
 };
 
@@ -67,6 +68,7 @@ function WorldProfileSession({ presenceKey, ...props }: Props) {
   const observation = useForestObservation(presenceKey);
   const [activeTab, setActiveTab] = useState<WorldProfileTab>(props.initialTab === "mood" ? "profile" : props.initialTab ?? "profile");
   const [moodOpen, setMoodOpen] = useState(props.initialTab === "mood");
+  const [guideOpen, setGuideOpen] = useState(false);
   const moodTrigger = useRef<HTMLButtonElement>(null);
   const [callPulse, setCallPulse] = useState(0);
   const idPrefix = useId();
@@ -82,7 +84,9 @@ function WorldProfileSession({ presenceKey, ...props }: Props) {
   return <>
     <WorldProfileContent {...props} observation={observation} onCall={call} callPulse={callPulse}
       activeTab={activeTab} onTabChange={setActiveTab} idPrefix={idPrefix} onTakeOver={() => takeOverForestSession(presenceKey)}
-      onOpenMood={() => setMoodOpen(true)} moodTriggerRef={moodTrigger} />
+      onOpenMood={() => setMoodOpen(true)} moodTriggerRef={moodTrigger}
+      guideOpen={guideOpen} onToggleGuide={() => setGuideOpen(value => !value)}
+      onOpenOnboarding={props.onOpenOnboarding ? () => { setGuideOpen(false); props.onOpenOnboarding?.(); } : undefined} />
     <WorldMoodDialog open={moodOpen} onOpenChange={setMoodOpen} returnFocusRef={moodTrigger}
       observation={observation} economy={props.economy} onCall={call} callPulse={callPulse}
       onOpenHelp={props.onOpenHelp} onOpenFood={props.onOpenFood} />
@@ -92,8 +96,10 @@ function WorldProfileSession({ presenceKey, ...props }: Props) {
 /** Pure contents keep map focus ownership separate from data subscriptions. */
 export function WorldProfileContent({ world, economy, displayName, level, bestStreakDays, observation, onCall, onTakeOver,
   rewards, callPulse = 0, initialTab = "profile", activeTab = initialTab === "mood" ? "profile" : initialTab, onTabChange, idPrefix = "world-profile",
-  friends, onOpenPeople, onOpenOnboarding, onOpenMood, moodTriggerRef }: Omit<Props, "presenceKey"> & {
+  friends, onOpenPeople, onOpenOnboarding, onboardingStatus, guideOpen = false, onToggleGuide, onOpenMood, moodTriggerRef }: Omit<Props, "presenceKey"> & {
   observation: ForestObservation | null;
+  guideOpen?: boolean;
+  onToggleGuide?: () => void;
   onTakeOver?: () => void;
   callPulse?: number;
   activeTab?: WorldProfileTab;
@@ -135,9 +141,15 @@ export function WorldProfileContent({ world, economy, displayName, level, bestSt
         aria-selected={activeTab === tab.id} aria-controls={`${idPrefix}-panel-${tab.id}`} tabIndex={activeTab === tab.id ? 0 : -1}
         onClick={() => changeTab(tab.id)} onKeyDown={event => changeWithKeyboard(event, index)}>{tab.id === "settings" ? <Settings size={19} aria-hidden="true" /> : tab.label}</button>)}
     </div>
-    {onOpenOnboarding && <button type="button" className={styles.guideEntry} aria-label="Обучение с Мохликом" title="Обучение с Мохликом"
-      onClick={onOpenOnboarding} data-audio-cue="ui.open"><CircleHelp size={20} aria-hidden="true" /></button>}
+    {onOpenOnboarding && <button type="button" className={styles.guideEntry} aria-label="О профиле" title="О профиле" aria-expanded={guideOpen} aria-controls={`${idPrefix}-guide`}
+      onClick={onToggleGuide} data-audio-cue="ui.open"><CircleHelp size={20} aria-hidden="true" /></button>}
     </div>
+    {guideOpen && <section id={`${idPrefix}-guide`} className={styles.guideHelp} aria-label="О профиле">
+      <p>Тут общая статистика, друзья и настройки.</p>
+      {onOpenOnboarding && <button type="button" className={styles.action} onClick={onOpenOnboarding}>
+        {onboardingStatus === "started" ? "Продолжить обучение" : onboardingStatus ? "Повторить обучение" : "Начать обучение"}
+      </button>}
+    </section>}
     {memoryWarning && memory}
     <div className={styles.panel} role="tabpanel" id={`${idPrefix}-panel-${activeTab}`} aria-labelledby={`${idPrefix}-tab-${activeTab}`} tabIndex={0}>
       {activeTab === "profile" && <>

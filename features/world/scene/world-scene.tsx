@@ -17,7 +17,7 @@ import type { WorldState } from "@/features/world/domain/model";
 import type { createMapEngine, MapObjectSelection, WorldPlace } from "./map-engine";
 import { MAP_PLACES } from "@/features/world/legacy/map-layout";
 import { TILED_WORLD, WORLD_PRESENTATION } from "./presentation";
-import { interactiveMapObjects } from "./site-interactions";
+import { interactiveMapObjects, type MapObjectPlace } from "./site-interactions";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import { WorldConstructionStatus } from "@/features/world/ui/hud/world-construction-status";
 import { WorldUpgradeEffects, UPGRADE_CELEBRATION_MS } from "@/features/world/ui/feedback/world-upgrade-effects";
@@ -27,6 +27,7 @@ import { mapProductionGroups } from "@/features/world/ui/hud/world-production-st
 import { constructionMapPlace } from "./construction-map-anchor";
 import { INVENTORY_GAIN_MS, INVENTORY_GAIN_QUEUE_LIMIT } from "@/features/world/ui/feedback/inventory-gain-playback";
 import { createMapAnchorStore } from "./map-anchor-store";
+import { observeMapGuideInset } from "./map-guide-inset";
 import { useGardenCollection } from "@/features/economy/integration/garden-collection-context";
 import { ForestSpeechAnnouncements } from "@/features/world/characters/social/forest-speech";
 import styles from "@/features/world/world.module.css";
@@ -37,8 +38,9 @@ type Props = { suspended?: boolean; hideJourneyStatus?: boolean; economyJourney?
   onResident?: (id: WorldResidentId) => void;
   onReady?: () => void;
   openObjectRequest?: { id: number; place: WorldPlace };
+  guidePlace?: MapObjectPlace | null;
   topHud: RefObject<HTMLElement | null>; bottomHud: RefObject<HTMLElement | null> };
-export function WorldScene({ suspended = false, hideJourneyStatus = false, constructionEconomy, onOpenConstruction, onOpenProduction, hideConstructionStatus = false, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, state, gifts, items, timeZone, now, owner, bestStreakDays, wakeSignal, onPlace, onResident, onReady, selectedObjectId, onObjectSelection, openObjectRequest, topHud, bottomHud }: Props) {
+export function WorldScene({ suspended = false, hideJourneyStatus = false, constructionEconomy, onOpenConstruction, onOpenProduction, hideConstructionStatus = false, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, state, gifts, items, timeZone, now, owner, bestStreakDays, wakeSignal, onPlace, onResident, onReady, selectedObjectId, onObjectSelection, openObjectRequest, guidePlace, topHud, bottomHud }: Props) {
   const garden = useGardenCollection();
   const canvas = useRef<HTMLCanvasElement>(null), speechCanvas = useRef<HTMLCanvasElement>(null), root = useRef<HTMLDivElement>(null);
   const engine = useRef<Awaited<ReturnType<typeof createMapEngine>> | null>(null);
@@ -96,6 +98,12 @@ export function WorldScene({ suspended = false, hideJourneyStatus = false, const
   useEffect(() => { selection.current = { selectedObjectId, onObjectSelection }; }, [selectedObjectId, onObjectSelection]);
   useEffect(() => { engine.current?.setSelectedObject(selectedObjectId ?? null); }, [selectedObjectId]);
   useEffect(() => { objectRequest.current = openObjectRequest; applyObjectRequest(); }, [openObjectRequest, applyObjectRequest]);
+  useEffect(() => {
+    if (!ready || suspended || !guidePlace) { engine.current?.setGuidePlace(null); return; }
+    const world = root.current?.parentElement, surface = canvas.current;
+    if (!world || !surface) return;
+    return observeMapGuideInset(world, surface, bottom => engine.current?.setGuidePlace(guidePlace, bottom));
+  }, [ready, suspended, guidePlace]);
   useEffect(() => {
     let disposed = false;
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");

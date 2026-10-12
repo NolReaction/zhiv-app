@@ -146,20 +146,23 @@ function harness(progress = started("grow"), jobs = []) {
   };
 }
 
-test("practice opens the real berry surface and recipe without starting a job for the player", () => {
+test("practice points at the berry bush and waits for manual map and recipe actions", () => {
   const h = harness(started("garden"));
   let coach = h.render();
-  assert.equal(coach.primary.label, "Показать ягодный куст");
-  coach.primary.onClick();
+  assert.equal(coach.primary, undefined);
+  assert.match(coach.summary, /Нажми на выделенный ягодный куст/);
+  assert.deepEqual(h.calls, []);
+  h.revealSurface(true, false);
   coach = h.render();
   assert.equal(coach.target, '[data-recipe="grow_berries"]');
-  assert.equal(coach.primary.label, "Выбрать ягоды");
-  coach.primary.onClick();
+  assert.equal(coach.primary, undefined);
+  assert.equal(h.props.progress.stepId, "garden", "opening the bush alone does not count as choosing a recipe");
+  h.revealSurface(true, true);
   coach = h.render();
   assert.equal(h.props.progress.stepId, "grow");
   assert.equal(coach.primary, undefined, "the actual recipe button is the only start control");
   assert.deepEqual(h.economy.snapshot.jobs, []);
-  assert.ok(h.calls.some(call => call[0] === "choose-recipe"));
+  assert.deepEqual(h.calls, [["step", "grow"]], "the guide observes the manual choice without clicking any target");
 });
 
 test("a confirmed crop can grow in the background while the guide advances, preserving its exact ID", () => {
@@ -195,7 +198,7 @@ test("receipt celebrations reject purchases, old receipts, other owners and non-
   }
 });
 
-test("a real accepted berry receipt celebrates once and its action leaves the pantry open", () => {
+test("a real accepted berry receipt celebrates once and points to the pantry without opening it", () => {
   const h = harness(started("grow", "crop-1"), [crop("crop-1", now)]);
   h.render();
   h.patchEconomy({ busy: true });
@@ -209,10 +212,11 @@ test("a real accepted berry receipt celebrates once and its action leaves the pa
   assert.equal(coach.title, "Урожай в кладовой!");
   assert.match(coach.text, /Получение подтверждено/);
   assert.equal(h.props.progress.cropJobId, undefined);
+  assert.equal(coach.target, '[data-world-quick="pantry"]');
   const offset = h.calls.length;
   coach.primary.onClick();
-  assert.deepEqual(h.calls.slice(offset), [["close-surface"], ["step", "neighbors"], ["quick", "pantry"]]);
-  assert.equal(h.props.quickMenu, "pantry", "the success action must not close the pantry immediately after opening it");
+  assert.deepEqual(h.calls.slice(offset), [["close-surface"], ["step", "neighbors"]]);
+  assert.equal(h.props.quickMenu, null, "a continuation button must not open the pantry for the player");
 });
 
 test("replaying after a successful harvest cannot reuse the previous crop's success message", () => {
@@ -234,7 +238,8 @@ test("completed introductions retain a ready-crop reminder until harvesting or a
   const coach = h.render();
   assert.equal(coach.stepId, "harvest");
   assert.equal(coach.title, "Пора собрать ягоды");
-  assert.equal(coach.primary.label, "Открыть урожай");
+  assert.equal(coach.primary, undefined);
+  assert.match(coach.summary, /Нажми на выделенный куст.*«Собрать»/);
   coach.onSkip();
   assert.deepEqual(h.props.progress, { version: 2, status: "completed" });
   assert.equal(h.render(), null);
@@ -243,7 +248,9 @@ test("completed introductions retain a ready-crop reminder until harvesting or a
 test("help remains fully interactive while its modal owns focus, then returns the guide's completion action", () => {
   const h = harness(started("help"));
   let coach = h.render();
-  coach.secondary.onClick();
+  assert.equal(coach.secondary, undefined);
+  assert.equal(coach.target, '[data-world-onboarding-help]');
+  h.props.helpOpen = true; h.props.modalBlocked = true;
   coach = h.render();
   assert.equal(coach.open, false, "the ordinary coach yields to the actual help modal");
   h.props.helpOpen = false; h.props.modalBlocked = false;
@@ -253,29 +260,30 @@ test("help remains fully interactive while its modal owns focus, then returns th
   assert.equal(h.props.progress.status, "completed");
 });
 
-test("neighbor cards open real conversations and yield focus, with no mandatory visit or purchase", () => {
+test("neighbors are learned through the real More and Characters path without shortcut cards", () => {
   const h = harness(started("neighbors"));
   let coach = h.render();
   assert.equal(coach.progress.total, 9);
-  for (const [index, id] of [[0, "plesk"], [1, "builder"]]) {
-    const cards = coach.children.type(coach.children.props);
-    cards.props.children[index].props.onClick();
-    assert.deepEqual(h.calls.at(-1), ["resident", id]);
-    assert.equal(h.render().open, false);
-    h.props.residentOpen = null; h.props.modalBlocked = false;
-    coach = h.render();
-    assert.equal(coach.open, true);
-    assert.equal(h.props.progress.stepId, "neighbors");
-  }
+  assert.equal(coach.children, undefined);
+  assert.equal(coach.primary, undefined);
+  assert.equal(coach.target, '[data-world-quick="more"]');
+  h.props.quickMenu = "more";
+  assert.equal(h.render().target, '[data-world-characters-trigger]');
+  h.props.charactersOpen = true; h.props.modalBlocked = true;
+  assert.equal(h.render().open, false);
+  h.props.charactersOpen = false; h.props.modalBlocked = false;
+  coach = h.render();
+  assert.equal(coach.primary.label, "Дальше, к заказам");
+  assert.deepEqual(h.calls, [], "the guide does not open a conversation or buy anything");
   coach.primary.onClick();
   assert.equal(h.props.progress.stepId, "orders");
   const skippedVisits = harness(started("neighbors"));
-  skippedVisits.render().primary.onClick();
+  skippedVisits.render().secondary.onClick();
   assert.equal(skippedVisits.props.progress.stepId, "orders");
   assert.ok(!skippedVisits.calls.some(call => call[0] === "resident"));
 });
 
-test("tutorial order grants only on explicit click, then opens the real board and waits for actual submission", () => {
+test("tutorial order grants on explicit click, then teaches More, food menu, Orders and manual submission", () => {
   const h = harness(started("orders"));
   let coach = h.render();
   assert.equal(coach.primary.label, "Получить ингредиенты");
@@ -294,23 +302,29 @@ test("tutorial order grants only on explicit click, then opens the real board an
   h.patchSnapshot({ revision: 2, tutorialOrder: { ingredientsClaimed: true, completed: false, terms }, inventory: { ...terms.items } });
   h.patchEconomy({ busy: false });
   coach = h.render();
-  assert.equal(coach.primary.label, "Открыть учебный заказ");
-  coach.primary.onClick();
-  assert.equal(h.props.ordersOpen, true);
-  assert.deepEqual(h.calls.at(-1), ["orders"]);
+  assert.equal(coach.primary, undefined);
+  assert.equal(coach.target, '[data-world-quick="more"]');
+  h.props.quickMenu = "more";
+  coach = h.render();
+  assert.equal(coach.target, '[data-world-food-entry]');
+  assert.match(coach.summary, /«Еда и заказы»/);
+  h.props.quickMenu = "food";
+  coach = h.render();
+  assert.equal(coach.target, '[data-world-food-tab="orders"]');
+  assert.match(coach.summary, /нажми вкладку «Заказы»/);
+  h.props.ordersOpen = true; h.revealContent({ tutorialOrder: true });
   coach = h.render();
   assert.equal(coach.target, '[data-order-id="tutorial_first_order"]');
   assert.match(coach.summary, /Есть \/ нужно/);
-  assert.match(coach.text, /недостающий ресурс/);
+  assert.match(coach.text, /«Ещё».*«Еда и заказы».*«Заказы»/);
   assert.equal(coach.primary, undefined, "submission must happen on the real order card");
   assert.doesNotMatch(coach.title, /выполнен/);
   h.revealContent({ tutorialOrder: false });
   coach = h.render();
-  assert.equal(coach.target, undefined, "a filtered-out card must not leave a phantom highlight");
-  assert.equal(coach.primary.label, "Показать учебный заказ");
-  const callsBeforeShow = h.calls.length;
-  coach.primary.onClick();
-  assert.deepEqual(h.calls.slice(callsBeforeShow), [["orders"]], "resetting the filter is an explicit navigation without an economy command");
+  assert.equal(coach.target, '[data-order-filter="all"]', "a filtered-out card points to the actual filter");
+  assert.equal(coach.primary, undefined);
+  assert.deepEqual(h.calls, [["claim-order", "tutorial_first_order"]], "no menu, tab or filter is activated by the guide");
+  h.revealContent({ tutorialOrder: true });
   assert.equal(h.render().target, '[data-order-id="tutorial_first_order"]');
   h.patchSnapshot({ revision: 3, tutorialOrder: { ingredientsClaimed: true, completed: true, terms }, inventory: {}, wallet: { coins: 1100, pearls: 0 } });
   coach = h.render();
@@ -344,7 +358,8 @@ test("order practice respects offline, storage and uncertain states and retains 
   h.patchSnapshot({ tutorialOrder: { ingredientsClaimed: true, completed: false, terms } });
   let coach = h.render();
   assert.match(coach.status, /уже потрачена/);
-  assert.equal(coach.primary.label, "Открыть учебный заказ", "spent gifts cannot be claimed again");
+  assert.equal(coach.primary, undefined, "spent gifts cannot be claimed again");
+  assert.equal(coach.target, '[data-world-quick="more"]');
   h.patchSnapshot({ tutorialOrder: { ingredientsClaimed: true, completed: true, terms } });
   h.patchEconomy({ uncertain: true });
   coach = h.render();
@@ -389,8 +404,15 @@ test("starter gift is explicit and celebrates only the server marker, with const
   assert.equal(coach.title, "Набор для мастерской получен");
   assert.match(coach.text, /20 мин/);
   assert.equal(coach.pose, "jump");
-  coach.primary.onClick();
-  assert.deepEqual(h.calls.at(-1), ["workshop"]);
+  assert.equal(coach.primary, undefined);
+  assert.match(coach.summary, /Нажми на выделенную мастерскую/);
+  h.props.workshopOpen = true;
+  coach = h.render();
+  assert.equal(coach.target, '[data-guide-station-upgrade="workshop"]');
+  assert.match(coach.summary, /«Обустроить».*«Начать обустройство»/);
+  assert.equal(coach.primary, undefined);
+  assert.deepEqual(h.calls, [["claim-starter", "workshop"]], "only the explicit grant is sent, navigation is manual");
+  h.props.modalBlocked = true;
   assert.equal(h.render().open, false, "construction has the screen and focus");
   assert.deepEqual(h.economy.snapshot.jobs, [], "the tutorial never constructs automatically");
   h.props.modalBlocked = false; h.props.workshopOpen = false;
@@ -434,16 +456,21 @@ test("existing workshops offer upgrades and existing construction proceeds witho
   built.patchSnapshot({ buildings: { ...built.economy.snapshot.buildings, workshop: 1 } });
   let coach = built.render();
   assert.equal(coach.title, "Мастерская уже есть");
-  assert.equal(coach.primary.label, "Посмотреть улучшение");
-  coach.primary.onClick();
-  assert.deepEqual(built.calls, [["workshop"]]);
+  assert.equal(coach.primary, undefined);
+  assert.match(coach.summary, /Нажми на выделенную мастерскую/);
+  built.props.workshopOpen = true;
+  coach = built.render();
+  assert.equal(coach.target, '[data-guide-station-upgrade="workshop"]');
+  assert.match(coach.summary, /Нажми «Улучшить»/);
+  assert.deepEqual(built.calls, []);
   built.props.modalBlocked = false; built.props.workshopOpen = false;
   const maxLevel = Math.max(...built.economy.snapshot.catalog.buildings.find(building => building.id === "workshop").levels.map(level => level.level));
   built.patchSnapshot({ buildings: { ...built.economy.snapshot.buildings, workshop: maxLevel } });
   coach = built.render();
-  assert.equal(coach.primary.label, "Открыть мастерскую");
-  coach.primary.onClick();
-  assert.deepEqual(built.calls.at(-1), ["workshop", "recipes"]);
+  built.props.workshopOpen = true;
+  coach = built.render();
+  assert.equal(coach.target, '[data-section-guide-target="workshop-recipes"]');
+  assert.deepEqual(built.calls, []);
   const pending = harness(started("workshop"), [{ id: "build-1", kind: "construction", targetId: "workshop", targetLevel: 1,
     finishesAt: new Date(now + 1200000).toISOString() }]);
   coach = pending.render();
@@ -470,7 +497,8 @@ test("gift quantities and build time follow the current catalog, and replay cann
   h.patchSnapshot({ workshopStarterClaimed: true });
   const coach = h.render();
   assert.match(coach.text, /25 мин/);
-  assert.equal(coach.primary.label, "Построим мастерскую?");
+  assert.equal(coach.primary, undefined);
+  assert.match(coach.summary, /Нажми на выделенную мастерскую/);
   assert.deepEqual(h.calls, []);
 });
 
@@ -484,11 +512,13 @@ test("the final lesson can finish immediately without another modal detour", () 
 test("opened sections highlight their contents, and pantry guidance follows the actual sale or relic surface", () => {
   const profile = harness(started("profile"));
   assert.equal(profile.render().target, '[data-world-quick="profile"]');
-  profile.render().primary.onClick();
+  assert.equal(profile.render().primary, undefined);
+  profile.props.onOpenQuick("profile");
   assert.equal(profile.render().target, '[data-guide-profile-tabs]');
 
   const pantry = harness(started("pantry"));
-  pantry.render().primary.onClick();
+  assert.equal(pantry.render().primary, undefined);
+  pantry.props.onOpenQuick("pantry");
   assert.equal(pantry.render().target, '[data-guide-pantry-capacity]');
   pantry.revealContent({ pantryItem: true });
   let coach = pantry.render();
@@ -508,7 +538,8 @@ test("opened sections highlight their contents, and pantry guidance follows the 
 
 test("expedition guidance changes after opening route details and never starts the route", () => {
   const h = harness(started("expeditions"));
-  h.render().primary.onClick();
+  assert.equal(h.render().primary, undefined);
+  h.props.onOpenQuick("expeditions");
   let coach = h.render();
   assert.equal(coach.target, '[data-route]');
   assert.match(coach.summary, /Нажми на маршрут/);
@@ -522,7 +553,8 @@ const saleReceipt = (patch = {}) => ({ id: "sale-1", ownerPublicId: owner, revis
 
 test("one confirmed pantry sale clearly offers next, survives closing the pantry, and waits for the player's choice", () => {
   const h = harness(started("pantry"));
-  h.render().primary.onClick();
+  assert.equal(h.render().primary, undefined);
+  h.props.onOpenQuick("pantry");
   h.revealContent({ pantryItem: true, pantrySale: true });
   h.render();
   h.patchSnapshot({ revision: 2 });
@@ -552,7 +584,8 @@ test("one confirmed pantry sale clearly offers next, survives closing the pantry
 test("pantry practice never infers success from failed sales, changed wallets, old receipts or another owner", () => {
   const h = harness(started("pantry"));
   h.patchEconomy({ localSale: saleReceipt({ revision: 1 }) });
-  h.render().primary.onClick();
+  assert.equal(h.render().primary, undefined);
+  h.props.onOpenQuick("pantry");
   h.revealContent({ pantrySale: true });
   assert.doesNotMatch(h.render().summary, /Продажа прошла/);
   h.patchSnapshot({ revision: 4, wallet: { coins: 2000, pearls: 0 }, inventory: { wood: 4 } });
@@ -566,7 +599,7 @@ test("pantry practice never infers success from failed sales, changed wallets, o
   assert.doesNotMatch(h.render().summary, /Продажа прошла/, "changing accounts clears the previous owner's practice result");
 });
 
-test("completion reports only actual crop and workshop progress and keeps optional destinations open", () => {
+test("completion reports actual crop and workshop progress without opening their destinations", () => {
   const untouched = harness(started("help"));
   assert.match(untouched.render().text, /Ягоды можно посадить/);
   assert.doesNotMatch(untouched.render().text, /Ягоды растут|Набор.*получен|Мастерская работает/);
@@ -575,17 +608,19 @@ test("completion reports only actual crop and workshop progress and keeps option
   growing.patchEconomy({ now: now + 1000 });
   let coach = growing.render();
   assert.match(coach.text, /Ягоды готовы/);
-  coach.secondary.onClick();
+  assert.equal(coach.secondary, undefined);
+  coach.primary.onClick();
   assert.equal(growing.props.progress.status, "completed");
-  assert.deepEqual(growing.calls.slice(-3), [["close-surface"], ["complete"], ["garden", undefined]]);
+  assert.deepEqual(growing.calls.slice(-2), [["close-surface"], ["complete"]]);
 
   const starter = harness(started("help"));
   starter.patchSnapshot({ workshopStarterClaimed: true });
   coach = starter.render();
   assert.match(coach.text, /Набор.*получен, стройка ещё не запущена/);
-  coach.secondary.onClick();
+  assert.equal(coach.secondary, undefined);
+  coach.primary.onClick();
   assert.equal(starter.props.progress.status, "completed");
-  assert.deepEqual(starter.calls.slice(-3), [["close-surface"], ["complete"], ["workshop"]]);
+  assert.deepEqual(starter.calls.slice(-2), [["close-surface"], ["complete"]]);
   assert.deepEqual(starter.economy.snapshot.jobs, []);
 });
 

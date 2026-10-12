@@ -526,3 +526,8 @@
 .appearanceCard .hint { color: #a0a799; }
 @media (min-width: 800px) { .preferences { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); } }
 @media (forced-colors: active) { .guideEntry, .tabs, .appearanceCard { border-color: ButtonText; } .tabs > button[data-state="active"] { border-color: Highlight; } }
+
+.guideHelp { display: grid; gap: 10px; margin-top: 12px; padding: 12px 14px; border: 1px solid #b7d8a238; border-radius: 14px; background: #b7d8a20d; color: #d7e3cb; font-size: 13px; line-height: 1.45; }
+.guideHelp p { margin: 0; }
+.guideHelp button { justify-self: start; min-height: 44px; padding: 8px 12px; border: 1px solid #b7d8a24d; border-radius: 10px; background: #b7d8a218; color: #e4f2d9; font: inherit; font-weight: 650; cursor: pointer; }
+.guideHelp button:focus-visible { outline: 2px solid #cde39e; outline-offset: 3px; }
