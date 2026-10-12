@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import type { PixelPose } from "@/features/mochlik/pixel-sprite";
 import { GuideCharacter } from "./guide-character";
 import { measureGuideSpotlight } from "./guide-spotlight";
+import { worldCoachLayout } from "./guide-coach-layout";
 import styles from "./guide-coach.module.css";
 
 export type GuideCoachProps = {
@@ -67,6 +68,7 @@ export function GuideCoach(props: GuideCoachProps) {
     if (!open) return;
     const root = targetRoot?.current ?? document;
     let frame = 0, observedTarget: HTMLElement | null = null;
+    let observedHud: HTMLElement[] = [];
     let settleUntil = performance.now() + 400;
     const measure = () => {
       frame = 0;
@@ -96,6 +98,25 @@ export function GuideCoach(props: GuideCoachProps) {
       // applied inside a transformed dialog's fixed-position containing block.
       if (inline || slot) return;
       const bubbleRect = bubble.getBoundingClientRect();
+      if (flow === "world") {
+        const topHud = root.querySelector<HTMLElement>('[data-world-hud="top"]');
+        const bottomHud = root.querySelector<HTMLElement>('[data-world-hud="bottom"]');
+        const hud = [topHud, bottomHud].filter((element): element is HTMLElement => Boolean(element));
+        if (hud.length !== observedHud.length || hud.some((element, index) => element !== observedHud[index])) {
+          for (const element of observedHud) if (element !== observedTarget) resize.unobserve(element);
+          for (const element of hud) resize.observe(element);
+          observedHud = hud;
+        }
+        const padding = topHud ? getComputedStyle(topHud) : null;
+        const next: CoachLayout = { key: layoutKey, ...worldCoachLayout(
+          { left: viewportLeft, top: viewportTop, width, height }, bubbleRect.height,
+          { topHud: topHud?.getBoundingClientRect(), bottomHud: bottomHud?.getBoundingClientRect(),
+            sideInset: Math.max(parseFloat(padding?.paddingLeft ?? "0") || 0, parseFloat(padding?.paddingRight ?? "0") || 0), highlight },
+        ) };
+        setLayout(previous => previous && JSON.stringify(previous) === JSON.stringify(next) ? previous : next);
+        if (performance.now() < settleUntil) frame = requestAnimationFrame(measure);
+        return;
+      }
       const bubbleWidth = Math.min(384, width - 16);
       const left = viewportLeft + 8, right = Math.max(left, viewportLeft + width - bubbleWidth - 8);
       const top = viewportTop + 12, bottom = Math.max(top, viewportTop + height - bubbleRect.height - 88);
@@ -140,7 +161,7 @@ export function GuideCoach(props: GuideCoachProps) {
       window.visualViewport?.removeEventListener("resize", schedule);
       window.visualViewport?.removeEventListener("scroll", schedule);
     };
-  }, [open, target, targetRoot, layoutKey, compact, inline, dock, dockElement]);
+  }, [open, flow, target, targetRoot, layoutKey, compact, inline, dock, dockElement]);
   useEffect(() => {
     if (!open || !dockElement) return;
     dockElement.classList.add(styles.dockSlot);

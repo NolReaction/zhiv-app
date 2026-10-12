@@ -302,12 +302,12 @@ export function PleskFishingShop({ economy, onFishing, onOpenPantry, onOpenOrder
     setGuideRequest(null);
   }
   const shop = useRef<HTMLDivElement>(null);
-  const [guideRequest, setGuideRequest] = useState<{ stepId: "rods" | "bait" | "catch"; sequence: number } | null>(null);
+  const [guideRequest, setGuideRequest] = useState<{ stepId: "rod-intro" | "hook-intro" | "bait-intro" | "rods" | "bait" | "catch"; sequence: number } | null>(null);
   const state = economy.snapshot, catalog = state?.catalog.fishing, cooldown = Math.max(0, Math.ceil((economy.retryAt - economy.now) / 1000));
   useEffect(() => {
     if (!shop.current || !catalog) return;
     return listenForSectionGuideNavigation(shop.current, "plesk", stepId => {
-      if (stepId !== "rods" && stepId !== "bait" && stepId !== "catch") return false;
+      if (stepId !== "rod-intro" && stepId !== "hook-intro" && stepId !== "bait-intro" && stepId !== "rods" && stepId !== "bait" && stepId !== "catch") return false;
       // Navigation only. The ordinary purchase, equip and sale handlers remain
       // the only places that send economic commands.
       setTab(stepId === "catch" ? "fish" : "tackle");
@@ -316,6 +316,11 @@ export function PleskFishingShop({ economy, onFishing, onOpenPantry, onOpenOrder
     });
   }, [catalog]);
   useLayoutEffect(() => {
+    const kind = guideRequest?.stepId === "rod-intro" ? "rod" : guideRequest?.stepId === "hook-intro" ? "hook" : guideRequest?.stepId === "bait-intro" ? "bait" : null;
+    if (kind && tab === "tackle") {
+      shop.current?.querySelector<HTMLElement>(`[data-guide-plesk-offer="${kind}"]`)?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "auto" });
+      return;
+    }
     if (guideRequest?.stepId !== "catch" || tab !== "fish") return;
     const target = shop.current?.querySelector<HTMLElement>("[data-guide-plesk-sale]")
       ?? shop.current?.querySelector<HTMLElement>('[data-guide-plesk-panel="fish"]');

@@ -68,7 +68,7 @@ class JdbcReleaseUpgradeIntegrationTest {
             val identities=JdbcZhivRepository(source)
             val legacy=identities.bootstrap("Прежние настройки",TokenCodec().issue().hash,token.hash,365)
             val explicit=identities.bootstrap("Явные настройки",TokenCodec().issue().hash,otherToken.hash,365)
-            val preferences=NotificationPreferences(constructionCompleted=false,checkinReminder=true,quietStart="22:00",maxPerDay=1,minIntervalMinutes=360)
+            val preferences=NotificationPreferences(constructionCompleted=false,checkinReminder=true,quietStart="22:00",rateLimitsEnabled=true,maxPerDay=1,minIntervalMinutes=360)
             source.connection.use { c ->
                 c.economyUpdate("INSERT INTO notification_preferences(user_id,preferences) VALUES (?,?::jsonb-'rateLimitsEnabled')",
                     legacy.id,notificationJson.encodeToString(preferences))

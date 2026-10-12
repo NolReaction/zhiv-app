@@ -39,7 +39,7 @@ class JdbcNotificationRepositoryIntegrationTest {
     private val createdUsers=mutableListOf<UUID>()
     private val codec=TokenCodec()
     private val enabled=WebPushConfig("test-public","test-private","mailto:test@example.test")
-    private val noQuiet=NotificationPreferences(quietHoursEnabled=false)
+    private val noQuiet=NotificationPreferences(quietHoursEnabled=false,rateLimitsEnabled=true)
     private data class Player(val id: UUID,val owner: String,val hash: ByteArray,val raw: String,val session: UUID)
     @BeforeAll fun setup() {
         val url=System.getenv("TEST_DATABASE_URL")
@@ -97,9 +97,13 @@ class JdbcNotificationRepositoryIntegrationTest {
 
     @Test fun `unconfigured server saves preferences but never pretends to subscribe`() = runBlocking<Unit> {
         val p=player(); val disabled=JdbcNotificationRepository(source)
+        assertEquals("0",scalar("SELECT count(*) FROM notification_preferences WHERE user_id=?",p.id))
         val view=disabled.snapshot(p.hash,p.owner)
         assertFalse(view.delivery.configured); assertFalse(view.subscription.subscribed)
         assertTrue(view.preferences.productionCompleted); assertFalse(view.preferences.checkinReminder)
+        assertFalse(view.preferences.rateLimitsEnabled); assertTrue(view.preferences.quietHoursEnabled)
+        assertEquals("false",scalar("SELECT preferences->>'rateLimitsEnabled' FROM notification_preferences WHERE user_id=?",p.id))
+        assertFalse(JdbcNotificationRepository(source).snapshot(p.hash,p.owner).preferences.rateLimitsEnabled)
         assertEquals("PUSH_NOT_CONFIGURED",assertFailsWith<AuthFailure> { disabled.subscribe(p.hash,p.owner,subscription()) }.code)
     }
     @Test fun `subscription is scoped to exact login session and another owner cannot take endpoint`() = runBlocking<Unit> {

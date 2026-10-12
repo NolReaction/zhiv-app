@@ -32,12 +32,6 @@ function section(html, label) {
   assert.ok(match, `Missing section: ${label}`);
   return match[1];
 }
-function laterRecipes(html) {
-  const sections = [...html.matchAll(/<details\b([^>]*)>([\s\S]*?)<\/details>/g)];
-  const match = sections.find(([, , content]) => /<summary[^>]*>[\s\S]*?<span>Позже<\/span>/.test(content));
-  assert.ok(match, "Missing later recipe disclosure");
-  return { attributes: match[1], content: match[2] };
-}
 function startDisabled(html) {
   const match = html.match(/<button\b([^>]*)>Начать ·/);
   assert.ok(match, "Missing production action");
@@ -76,25 +70,17 @@ function prepareMineRoute(economy, routeId = "quarry_stone") {
     && element.props["aria-label"] === "Отправиться: Добыть камень") };
 }
 
-test("workshop separates ordinary recipes, long batches and unmet unlocks", () => {
+test("workshop presents one catalogue of unlocked recipes regardless of duration", () => {
   const html = renderMenu("workshop");
-  const ordinary = section(html, "Обычные заказы");
-  const long = section(html, "На несколько часов");
-  const later = laterRecipes(html);
-  assert.doesNotMatch(later.attributes, /\bopen/);
-  for (const id of ["make_planks", "make_rope", "weave_cloth"]) assert.ok(ordinary.includes(`data-recipe="${id}"`));
-  assert.match(long, /data-recipe="workshop_overnight"/);
-  assert.doesNotMatch(ordinary + long, /data-recipe="make_metal_parts"|data-recipe="make_tools"/);
-  assert.match(later.content, /data-recipe="make_metal_parts"/);
-  assert.match(later.content, /data-recipe="make_tools"/);
+  const catalogue = section(html, "Доступные рецепты");
+  for (const id of ["make_planks", "make_rope", "weave_cloth", "workshop_overnight"]) assert.ok(catalogue.includes(`data-recipe="${id}"`));
+  assert.doesNotMatch(html, /data-recipe="make_metal_parts"|data-recipe="make_tools"|Обычные заказы|На несколько часов|Позже/);
   assert.doesNotMatch(html, /aria-label="Стоимость"|Недостающие условия|Начать ·/);
 });
 
-test("unlocking an external station moves its recipe into ordinary orders", () => {
+test("unlocking an external station reveals its recipe in the same catalogue", () => {
   const html = renderMenu("workshop", controller({ buildings: { home: 2, workshop: 2, kiln: 2, warehouse: 1 } }));
-  assert.match(section(html, "Обычные заказы"), /data-recipe="make_metal_parts"/);
-  const later = laterRecipes(html);
-  assert.doesNotMatch(later.content, /data-recipe="make_metal_parts"/);
+  assert.match(section(html, "Доступные рецепты"), /data-recipe="make_metal_parts"/);
 });
 
 test("workshop equipment tabs share the header and expose the selected station and its own level", () => {
@@ -119,14 +105,14 @@ test("workshop equipment tabs share the header and expose the selected station a
 
 test("harvest cards distinguish quantity and time while keeping the result name short", () => {
   const html = renderMenu("garden", controller({ buildings: { home: 1, garden: 1, warehouse: 1 } }));
-  const ordinary = section(html, "Обычные заказы");
-  const long = section(html, "На несколько часов");
-  assert.match(ordinary, /<strong>Лесные ягоды<\/strong>/);
-  assert.match(ordinary, /×4<\/b>/);
-  assert.match(ordinary, /15 мин/);
-  assert.match(long, /<strong>Лесные ягоды<\/strong>/);
-  assert.match(long, /×32<\/b>/);
-  assert.match(long, /8 ч/);
+  const catalogue = section(html, "Доступные рецепты");
+  const cards = [...catalogue.matchAll(/<button[^>]*data-recipe="([^"]+)"[^>]*>([\s\S]*?)<\/button>/g)];
+  assert.equal(cards.length, 2);
+  for (const [, , card] of cards) assert.match(card, /<strong>Лесные ягоды<\/strong>/);
+  assert.match(cards[0][2], /×4<\/b>/);
+  assert.match(cards[0][2], /15 мин/);
+  assert.match(cards[1][2], /×32<\/b>/);
+  assert.match(cards[1][2], /8 ч/);
 });
 
 test("selected recipe shows actual multi-item rewards and only its own costs", () => {
@@ -160,21 +146,22 @@ test("locked recipe explains its prerequisites once and remains unavailable", ()
   assert.doesNotMatch(html, /Печь: нужен уровень 2/);
 });
 
-test("direct material navigation opens recipe preparation even before the workshop is unlocked", () => {
+test("direct material navigation opens only unlocked recipe preparations", () => {
   for (const workshopLevel of [0, 1]) {
     const economy = controller({ buildings: { home: 2, workshop: workshopLevel, warehouse: 1 }, inventory: { wood: 2 } },
       { act() { assert.fail("opening recipe preparation cannot start production"); } });
     const recipe = economy.snapshot.catalog.recipes.find(entry => entry.id === "make_planks");
     const html = renderMenu("workshop", economy, { initialStationId: "workshop", initialRecipeId: recipe.id });
+    if (!workshopLevel) {
+      assert.doesNotMatch(html, /data-recipe-preparation=|data-recipe="make_planks"|Начать ·/);
+      assert.match(html, /Сначала обустройте это место/);
+      continue;
+    }
     const preparation = section(html, recipe.name);
     assert.match(preparation, /Все рецепты/);
     assert.match(preparation, /2 \/ 2/);
-    assert.equal(startDisabled(preparation), workshopLevel === 0);
+    assert.equal(startDisabled(preparation), false);
     assert.match(html, /<div[^>]*hidden=""[^>]*aria-label="Продукция: Мастерская"/);
-    if (!workshopLevel) {
-      assert.match(preparation, /aria-label="Недостающие условия"/);
-      assert.match(preparation, /Мастерская <span>0\/1<\/span>/);
-    }
   }
 });
 
@@ -197,7 +184,7 @@ test("a direct recipe from another station or an unknown recipe leaves the ordin
   const economy = controller({}, { act() { assert.fail("an invalid recipe cannot start production"); } });
   for (const initialRecipeId of ["grow_berries", "missing_recipe"]) {
     const html = renderMenu("workshop", economy, { initialStationId: "workshop", initialRecipeId });
-    assert.match(section(html, "Обычные заказы"), /data-recipe="make_planks"/);
+    assert.match(section(html, "Доступные рецепты"), /data-recipe="make_planks"/);
     assert.doesNotMatch(html, /Начать ·|Все рецепты|<div[^>]*hidden=""[^>]*aria-label="Продукция:/);
   }
 });

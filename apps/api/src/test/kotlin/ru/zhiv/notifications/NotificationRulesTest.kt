@@ -28,14 +28,19 @@ class NotificationRulesTest {
     @Test fun `partial preferences do not silently reset omitted fields`() {
         assertFailsWith<SerializationException> { Json.decodeFromString<NotificationPreferences>("{\"constructionCompleted\":false}") }
     }
-    @Test fun `previous complete preferences retain rate limits and explicit opt out survives serialization`() {
+    @Test fun `frequency defaults off for new and missing preferences while explicit choices survive serialization`() {
         val json=Json { encodeDefaults=true }
-        val optedOut=NotificationPreferences(rateLimitsEnabled=false)
-        val serialized=json.encodeToString(optedOut)
-        assertFalse(json.decodeFromString<NotificationPreferences>(serialized).rateLimitsEnabled)
+        val defaults=NotificationPreferences()
+        assertFalse(defaults.rateLimitsEnabled)
+        assertTrue(defaults.quietHoursEnabled)
+        val serialized=json.encodeToString(defaults)
         val legacy=JsonObject(json.parseToJsonElement(serialized).jsonObject - "rateLimitsEnabled")
-        assertTrue(json.decodeFromString<NotificationPreferences>(legacy.toString()).rateLimitsEnabled)
-        validateNotificationPreferences(optedOut)
+        assertFalse(json.decodeFromString<NotificationPreferences>(legacy.toString()).rateLimitsEnabled)
+        listOf(true,false).forEach { enabled ->
+            val explicit=defaults.copy(rateLimitsEnabled=enabled)
+            assertEquals(explicit,json.decodeFromString<NotificationPreferences>(json.encodeToString(explicit)))
+            validateNotificationPreferences(explicit)
+        }
     }
     @Test fun `preferences bound spam and reject malformed clocks and zones`() {
         validateNotificationPreferences(NotificationPreferences())

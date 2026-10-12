@@ -45,28 +45,31 @@ test("defaults select useful game events without check-in nagging or device cons
   const prefs = contract.defaultNotificationPreferences("Europe/Moscow");
   assert.equal(prefs.constructionCompleted, true); assert.equal(prefs.explorationCompleted, true); assert.equal(prefs.productionCompleted, true); assert.equal(prefs.checkinReminder, false);
   assert.equal(prefs.maxPerDay, 2); assert.equal(prefs.minIntervalMinutes, 120); assert.equal(prefs.quietStart, "23:00"); assert.equal(prefs.quietEnd, "10:00");
-  assert.equal(prefs.rateLimitsEnabled, true);
+  assert.equal(prefs.rateLimitsEnabled, false);
+  assert.equal(prefs.quietHoursEnabled, true);
 });
 
-test("quiet hours and frequency limits can be disabled independently while old preferences retain limits", () => {
+test("missing frequency preference defaults off while quiet hours and explicit choices remain independent", () => {
   const base = contract.defaultNotificationPreferences();
   const legacy = { ...base };
   delete legacy.rateLimitsEnabled;
-  assert.equal(contract.notificationPreferencesSchema.parse(legacy).rateLimitsEnabled, true);
-  for (const patch of [{ quietHoursEnabled: false }, { rateLimitsEnabled: false }, { quietHoursEnabled: false, rateLimitsEnabled: false }]) {
+  assert.equal(contract.notificationPreferencesSchema.parse(legacy).rateLimitsEnabled, false);
+  for (const patch of [{ quietHoursEnabled: false }, { rateLimitsEnabled: false }, { rateLimitsEnabled: true }, { quietHoursEnabled: false, rateLimitsEnabled: true }]) {
     const parsed = contract.notificationPreferencesSchema.parse({ ...base, ...patch });
     assert.deepEqual(parsed, { ...base, ...patch });
   }
   assert.equal(contract.notificationPreferencesSchema.safeParse({ ...base, rateLimitsEnabled: "false" }).success, false);
 });
 
-test("notification API returns parsed defaults for old server responses and preserves an explicit opt-out", async () => {
+test("notification API defaults missing frequency preference off and preserves both explicit choices", async () => {
   const legacy = snapshot();
   delete legacy.preferences.rateLimitsEnabled;
   globalThis.fetch = async () => Response.json(legacy);
-  assert.equal((await api.getNotificationSettings(owner)).preferences.rateLimitsEnabled, true);
-  globalThis.fetch = async () => Response.json(snapshot({ preferences: { ...contract.defaultNotificationPreferences(), rateLimitsEnabled: false } }));
   assert.equal((await api.getNotificationSettings(owner)).preferences.rateLimitsEnabled, false);
+  for (const rateLimitsEnabled of [true, false]) {
+    globalThis.fetch = async () => Response.json(snapshot({ preferences: { ...contract.defaultNotificationPreferences(), rateLimitsEnabled } }));
+    assert.equal((await api.getNotificationSettings(owner)).preferences.rateLimitsEnabled, rateLimitsEnabled);
+  }
 });
 
 test("preferences reject dangerous frequency, malformed clock, unknown settings and invalid zones", () => {
@@ -91,9 +94,14 @@ test("DEV preference persistence is authenticated, owner-bound, isolated and hon
   assert.equal(store.getDevNotifications(a.token, a.me.user.publicId).value.preferences.productionCompleted, false);
   assert.equal(store.getDevNotifications(a.token, a.me.user.publicId).value.preferences.rateLimitsEnabled, false);
   assert.equal(store.getDevNotifications(a.token, a.me.user.publicId).value.preferences.quietHoursEnabled, false);
-  assert.equal(store.getDevNotifications(b.token, b.me.user.publicId).value.preferences.rateLimitsEnabled, true);
+  assert.equal(store.getDevNotifications(b.token, b.me.user.publicId).value.preferences.rateLimitsEnabled, false);
   assert.equal(store.getDevNotifications(b.token, b.me.user.publicId).value.preferences.productionCompleted, true);
   assert.equal(store.getDevNotifications(b.token, b.me.user.publicId).value.preferences.checkinReminder, false);
+  for (const rateLimitsEnabled of [true, false]) {
+    store.saveDevNotificationPreferences(a.token, a.me.user.publicId, { ...changed, rateLimitsEnabled });
+    assert.equal(store.getDevNotifications(a.token, a.me.user.publicId).value.preferences.rateLimitsEnabled, rateLimitsEnabled);
+    assert.equal(store.getDevNotifications(b.token, b.me.user.publicId).value.preferences.rateLimitsEnabled, false);
+  }
 });
 
 test("notification links permit only read-only app views and require an owner", () => {

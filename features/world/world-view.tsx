@@ -388,7 +388,7 @@ export default function WorldView({ open, world, economy, ownerPublicId, timeZon
     {WorldDevPanel && <WorldDevPanel world={world} economy={economy} worldView active={panel === null && quickMenu === null && !selection && quickUpgrade === null && !residentOpen && !charactersOpen && !dailyOpen}
       presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`}
       onOpenObject={openObject} onOpenWardrobe={() => openPanel("wardrobe")} onOpenCollection={() => openPanel("collection")} />}
-    <header ref={topHud} className={hudStyles.hud}>
+    <header ref={topHud} className={hudStyles.hud} data-world-hud="top">
       <div className={hudStyles.headerRow}>
         <div className={hudStyles.leftControls}>
           <button id="world-exit" className={hudStyles.iconButton} onClick={onClose} aria-label="Вернуться к отметке Я живой" data-audio-cue="ui.close"><ArrowLeft size={19} /></button>
@@ -407,7 +407,7 @@ export default function WorldView({ open, world, economy, ownerPublicId, timeZon
     {constructionGoal.details && panel === null && !selection && !quickMenu && !quickUpgrade && !dailyOpen && !residentOpen && !charactersOpen && <div className={styles.goalHud}><button type="button" className={styles.goalPin} data-construction-goal-open aria-haspopup="dialog" aria-label={`Открыть цель: ${constructionGoal.details.name} · ур. ${constructionGoal.details.goal.targetLevel}`} title={`${constructionGoal.details.name} · ур. ${constructionGoal.details.goal.targetLevel}`} onClick={openPinnedGoal}><Pin size={20} aria-hidden="true" /></button></div>}
     {panel === null && quickMenu === null && <WorldFeedback world={world} />}
     {panel === null && selection && <div className={styles.objectLayer}><WorldObjectMenu guideRoot={workshopGuideRoot} guide={selection.place === "workshop" && (economy.snapshot?.buildings.workshop ?? 0) > 0 ? <SectionGuide key={`${ownerPublicId}:workshop`} owner={ownerPublicId} section="workshop" enabled={quickGuideEnabled} targetRoot={workshopGuideRoot} /> : undefined} key={`${selection.objectId}:${objectStation ?? ""}:${objectRecipe ?? ""}`} initialStationId={objectStation} initialRecipeId={objectRecipe} isOnline={isOnline} onOpenHelp={openContextHelp} onHelpContextChange={rememberHelpContext} selection={selection} economy={economy} constructionGoal={constructionGoal} onOpenGoal={openPinnedGoal} bounds={menuBounds} onClose={closeObject} onReturnFocus={restoreObjectFocus} onOpenFood={() => openFood()} onNavigate={openObject} onOpenPantry={() => openQuick("pantry")} onExplore={() => openQuick("expeditions")} /></div>}
-    <div ref={bottomHud} className={hudStyles.bottomHud}>
+    <div ref={bottomHud} className={hudStyles.bottomHud} data-world-hud="bottom">
       <nav className={hudStyles.dock} aria-label="Действия в игре">
         <button data-audio-cue={quickMenu === "pantry" ? "ui.close" : "ui.open"} data-world-quick="pantry" aria-haspopup="dialog" aria-expanded={quickMenu === "pantry"} aria-controls={quickMenu === "pantry" ? "world-quick-menu" : undefined}
           aria-label={economy.snapshot ? `Кладовая: занято ${economy.snapshot.storage.used + economy.snapshot.storage.reserved} из ${economy.snapshot.storage.capacity} мест` : "Открыть кладовую"}

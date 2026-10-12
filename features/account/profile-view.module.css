@@ -501,11 +501,6 @@
 .legacyGame summary { min-height: 44px; align-content: center; cursor: pointer; }
 .legacyGame p { margin: 0; }
 
-.appearanceSetting { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 12px 0; }
-.appearanceSetting label { display: grid; gap: 8px; min-width: 0; cursor: pointer; }
-.appearanceSetting label span { color: #aab49f; font-size: 14px; line-height: 1.5; }
-.appearanceSetting button { flex-shrink: 0; }
-
 .levelButton:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
 
 .tabsRoot { min-width: 0; margin-top: 24px; }
@@ -519,13 +514,7 @@
 .guideEntry:focus-visible, .tabs > button:focus-visible, .tabPanel:focus-visible { outline: 2px solid #cde39e; outline-offset: 3px; }
 .tabPanel { min-width: 0; outline: none; }
 .tabPanel[data-state="inactive"] { display: none; }
-.preferences { display: grid; align-items: start; gap: 18px; margin-top: 22px; max-width: 850px; }
-.appearanceCard { display: grid; gap: 16px; min-width: 0; padding: 20px; border: 1px solid #ffffff18; border-radius: 20px; background: #ffffff09; }
-.appearanceCard h2 { display: flex; align-items: center; gap: 9px; margin: 0; color: #e8efda; font-size: 17px; font-weight: 650; }
-.appearanceCard h2 svg { color: #b7d8a2; }
-.appearanceCard .hint { color: #a0a799; }
-@media (min-width: 800px) { .preferences { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); } }
-@media (forced-colors: active) { .guideEntry, .tabs, .appearanceCard { border-color: ButtonText; } .tabs > button[data-state="active"] { border-color: Highlight; } }
+@media (forced-colors: active) { .guideEntry, .tabs { border-color: ButtonText; } .tabs > button[data-state="active"] { border-color: Highlight; } }
 
 .guideHelp { display: grid; gap: 10px; margin-top: 12px; padding: 12px 14px; border: 1px solid #b7d8a238; border-radius: 14px; background: #b7d8a20d; color: #d7e3cb; font-size: 13px; line-height: 1.45; }
 .guideHelp p { margin: 0; }

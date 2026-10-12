@@ -4,12 +4,8 @@ import { PlayerName } from "@/components/player-name";
 import type { FormEvent } from "react";
 import { useRef, useState } from "react";
 import { Tabs as TabsPrimitive } from "radix-ui";
-import { NotificationSettingsPanel } from "@/features/notifications/notification-settings";
-import { AudioSettingsPanel } from "@/features/audio/ui/audio-settings";
 import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
-import { SharingSwitch as Switch } from "@/components/sharing-switch";
-import { useSectionGuideLauncherPreference } from "@/features/onboarding/use-section-guide-preferences";
 import { GameLevelsButton } from "@/features/game/game-levels-button";
 import { GameLevelIcon } from "@/features/game/game-level-icon";
 import { Check, CircleHelp, Clock3, Flame, Settings, Settings2, ShieldCheck, Trophy, UserRound } from "lucide-react";
@@ -31,6 +27,7 @@ import { RecoveryStarter } from "./recovery-starter";
 import { TransientNotice } from "@/components/app-notifications";
 import { AccountAccess } from "./account-access";
 import { TimeZoneSetting } from "./time-zone-setting";
+import { ProfileSettings } from "./profile-settings";
 import { GameAchievementsButton } from "@/features/game/game-achievements";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import styles from "./profile-view.module.css";
@@ -107,7 +104,6 @@ export function ProfileView({
   gamePendingTaps,
   legacyGame,
 }: ProfileViewProps) {
-  const { showSectionGuideLauncher, setShowSectionGuideLauncher } = useSectionGuideLauncherPreference(me.user.publicId);
   const [activeTab, setActiveTab] = useState("profile");
   const [guideOpen, setGuideOpen] = useState(false);
   const [guideActionLabel, setGuideActionLabel] = useState("Начать обучение");
@@ -355,23 +351,9 @@ export function ProfileView({
         </div>
       </div>
         </TabsPrimitive.Content>
-        <TabsPrimitive.Content value="settings" className={styles.tabPanel}>
-          <div className={styles.preferences}>
-            <NotificationSettingsPanel key={me.user.publicId} ownerPublicId={me.user.publicId} isOnline={isOnline} onSessionLost={onSessionLost} />
-            <AudioSettingsPanel />
-            <section className={styles.appearanceCard} aria-labelledby="appearance-title">
-              <h2 id="appearance-title"><Settings2 size={19} aria-hidden="true" />Внешний вид</h2>
-              <div className={styles.appearanceSetting}>
-                <label htmlFor="simple-view"><strong>Простой вид</strong><span>Знакомая кнопка без полянки. Вход в игру остаётся доступным.</span></label>
-                <Switch id="simple-view" checked={simpleView} onCheckedChange={onSimpleViewChange} data-audio-cue="ui.click" />
-              </div>
-              <div className={styles.appearanceSetting}>
-                <label htmlFor="section-guide-launcher"><strong>Кнопка «Что здесь делать?»</strong><span>Повтор коротких подсказок в разделах игры. Новые знакомства и продолжение подсказки останутся доступны.</span></label>
-                <Switch id="section-guide-launcher" checked={showSectionGuideLauncher} onCheckedChange={setShowSectionGuideLauncher} data-audio-cue="ui.click" />
-              </div>
-              <p className={styles.hint}>Настройка сохраняется на этом устройстве.</p>
-            </section>
-          </div>
+        <TabsPrimitive.Content value="settings" forceMount className={styles.tabPanel}>
+          <ProfileSettings key={me.user.publicId} ownerPublicId={me.user.publicId}
+            isOnline={isOnline} onSessionLost={onSessionLost} simpleView={simpleView} onSimpleViewChange={onSimpleViewChange} />
         </TabsPrimitive.Content>
       </TabsPrimitive.Root>
     </section>

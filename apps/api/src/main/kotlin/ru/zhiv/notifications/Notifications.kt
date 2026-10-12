@@ -18,8 +18,8 @@ import java.util.Base64
     @Required val quietStart: String = "23:00",
     @Required val quietEnd: String = "10:00",
     @Required val timeZone: String = "Europe/Moscow",
-    // Older clients and stored preferences keep the existing delivery limits.
-    val rateLimitsEnabled: Boolean = true,
+    // Missing preferences use the current default; explicit saved choices remain unchanged.
+    val rateLimitsEnabled: Boolean = false,
     @Required val maxPerDay: Int = 2,
     @Required val minIntervalMinutes: Int = 120,
 ) {

@@ -22,7 +22,7 @@ function finished(section) {
 test("each first-entry lesson is short and gating does not consume an unopened lesson", () => {
   for (const section of sectionGuideIds) {
     const steps = sectionGuideLessons[section];
-    assert.ok(steps.length >= 2 && steps.length <= 3);
+    assert.ok(steps.length >= 2 && steps.length <= (section === "plesk" ? 6 : 3));
     assert.equal(new Set(steps.map(step => step.id)).size, steps.length);
   }
   assert.equal(sectionGuideCanOpen(false, true, null), false, "storage must be loaded first");
@@ -37,8 +37,27 @@ test("closing and revisiting an unfinished lesson resumes the exact step", () =>
   const reopened = createSectionGuideStore("resume-owner", "plesk", disk);
   assert.equal(reopened.getSnapshot().loaded, false);
   reopened.restore();
-  assert.equal(reopened.getSnapshot().progress.stepId, "bait");
+  assert.equal(reopened.getSnapshot().progress.stepId, "hook-intro");
   assert.equal(sectionGuideCanOpen(true, true, reopened.getSnapshot().progress), true);
+});
+
+test("Plesk explains permanent tackle and consumable bait before automatically revealing odds", () => {
+  let progress = move("plesk", null, "start");
+  for (const expected of ["rod-intro", "hook-intro", "bait-intro"]) {
+    assert.equal(progress.stepId, expected);
+    const lesson = sectionGuideLessons.plesk.find(step => step.id === progress.stepId);
+    assert.notEqual(lesson.revealOnOpen, true, "an introduction must not jump to the probability table");
+    assert.ok(lesson.targets.every(selector => !selector.includes("odds")));
+    progress = move("plesk", progress, "next");
+  }
+  for (const expected of ["rods", "bait"]) {
+    assert.equal(progress.stepId, expected);
+    assert.equal(sectionGuideLessons.plesk.find(step => step.id === expected).revealOnOpen, true);
+    progress = move("plesk", progress, "next");
+  }
+  assert.equal(progress.stepId, "catch");
+  const saved = { version: 1, status: "paused", stepId: "bait" };
+  assert.deepEqual(parseSectionGuideProgress(JSON.stringify(saved), "plesk"), saved, "existing progress remains resumable");
 });
 
 test("explicit pause survives reopening until deliberately resumed", () => {

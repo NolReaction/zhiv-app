@@ -114,7 +114,7 @@ test("production slots show house and pearl gates, bought capacity, and keep all
   state.productionSlots.garden = 3;
   state.jobs = [job({ id: "crop-a", finishesAt: new Date(now).toISOString() }), job({ id: "crop-b" }), job({ id: "crop-c" })];
   html = render("garden", controller({ snapshot: state }));
-  assert.match(html, /3 \/ 3/);
+  assert.match(html, /Свободно <span[^>]*>0 из 3<\/span>/);
   assert.doesNotMatch(html, /Открыть место/);
   for (const id of ["crop-a", "crop-b", "crop-c"]) assert.match(html, new RegExp(`data-job-id="${id}"`));
   assert.match(html, /data-state="ready"/);
@@ -152,31 +152,28 @@ test("idle production opens with a compact slot summary and recipes, leaving slo
   }
 });
 
-test("running orders collapse into one timer and become directly claimable when the server clock reaches completion", () => {
+test("current orders expose each result and timer immediately, then move ready claims first", () => {
   const recipe = economyCatalog.recipes.find(entry => entry.buildingId === "workshop");
-  const jobs = [3, 1, 2].map(index => job({ id: `order-${index}`, targetId: "workshop", recipeId: recipe.id, rewards: recipe.rewards,
+  const jobs = [3, 1, 2].map(index => job({ id: `order-${index}`, targetId: "workshop", recipeId: recipe.id, rewards: { planks: index },
     finishesAt: new Date(now + index * 60000).toISOString() }));
   const state = snapshot({ buildings: { home: 5, workshop: 5, warehouse: 5 }, productionSlots: { workshop: 3 }, jobs });
   const economy = controller({ snapshot: state });
   let html = render("workshop", economy);
-  let disclosure = html.match(/<details\b([^>]*data-running-orders="workshop"[^>]*)>([\s\S]*?)<\/details>/);
-  assert.ok(disclosure);
-  assert.doesNotMatch(disclosure[1], /\bopen(?:=|\s|$)/);
-  assert.match(disclosure[2], /В работе · 3/);
-  assert.match(disclosure[2], /Ещё 1 мин/);
-  for (const entry of jobs) assert.match(disclosure[2], new RegExp(`data-job-id="${entry.id}"`));
-  assert.doesNotMatch(html.replace(disclosure[0], ""), /data-job-id=/);
-  assert.match(html.replace(disclosure[0], ""), /data-recipe=/);
-
+  const current = html.match(/<section[^>]*aria-label="Текущая работа"[^>]*>([\s\S]*?)<\/section>/)?.[1];
+  assert.ok(current);
+  assert.doesNotMatch(current, /<details|<summary|<button/);
+  for (const entry of jobs) {
+    assert.match(current, new RegExp(`data-job-id="${entry.id}"`));
+    assert.match(current, new RegExp(`Доски ×${entry.rewards.planks}`));
+    assert.match(current, new RegExp(`Осталось ${entry.rewards.planks} мин`));
+  }
+  assert.match(html, /data-recipe=/);
   economy.now += 60000;
   html = render("workshop", economy);
-  disclosure = html.match(/<details\b[^>]*data-running-orders="workshop"[^>]*>[\s\S]*?<\/details>/);
-  assert.match(disclosure[0], /В работе · 2/);
-  assert.doesNotMatch(disclosure[0], /data-job-id="order-1"/);
-  const exposed = html.replace(disclosure[0], "");
-  assert.match(exposed, /data-job-id="order-1" data-ready="true"/);
-  assert.equal(disabled(button(exposed, "Забрать")), false);
-  assert.equal(state.jobs.length, 3, "view compaction must not claim or remove an order");
+  assert.match(html, /data-job-id="order-1" data-ready="true"/);
+  assert.ok(html.indexOf('data-job-id="order-1"') < html.indexOf('data-job-id="order-3"'));
+  assert.equal(disabled(button(html, "Забрать")), false);
+  assert.equal(state.jobs.length, 3, "view changes must not claim or remove an order");
 });
 
 test("map objects group equipment by place, with campfire food and pantry at the house", () => {
@@ -198,6 +195,21 @@ test("portrait production sheet uses the useful map height and stays between the
   assert.ok(placed.x >= 8 && placed.x + placed.width <= 382);
   assert.ok(placed.y >= 120 && placed.y + placed.height <= 734);
   assert.ok(placed.height >= 480, "recipe materials and the fixed order action must have useful space");
+});
+
+test("portrait production overview fits its contents above the dock while preparation keeps a fixed height", () => {
+  const bounds = { top: 120, right: 12, bottom: 110, left: 12 };
+  const selectedStyle = html => html.match(/<section[^>]*role="dialog"[^>]*style="([^"]+)"/)?.[1];
+  const overview = selectedStyle(render("garden", controller(), { bounds }));
+  assert.ok(overview);
+  assert.match(overview, /(?:^|;)bottom:110px/);
+  assert.match(overview, /(?:^|;)max-height:[0-9]+px/);
+  assert.doesNotMatch(overview, /(?:^|;)(?:height|top):/);
+  const preparation = selectedStyle(render("garden", controller(), { bounds, initialRecipeId: "grow_berries" }));
+  assert.ok(preparation);
+  assert.match(preparation, /(?:^|;)height:[0-9]+px/);
+  assert.match(preparation, /(?:^|;)top:[0-9]+px/);
+  assert.doesNotMatch(preparation, /(?:^|;)bottom:/);
 });
 
 test("landscape uses available map height and anchors beside the object instead of a zero-height body", () => {
@@ -277,7 +289,9 @@ test("berry collection uses the server clock and pantry space while construction
   const state = snapshot({ storage: { capacity: 200, used: 197, reserved: 0, available: 3, overflow: 0 } });
   const growing = job({ collection: { kind: "berry_harvest", seconds: 8, startedAt: null, finishesAt: null } });
   assert.equal(helpers.worldJobProgress(state, growing, now).ready, false);
-  assert.equal(disabled(button(render("garden", controller({ snapshot: snapshot({ jobs: [growing] }) })), "Растут")), true);
+  const growth = render("garden", controller({ snapshot: snapshot({ jobs: [growing] }) }));
+  assert.match(growth, /Лесные ягоды ×6|Осталось/);
+  assert.doesNotMatch(growth, /aria-label="(?:Растут|Собрать):/);
   const ready = { ...growing, finishesAt: new Date(now).toISOString() };
   assert.deepEqual(helpers.worldJobProgress(state, ready, now), { ready: true, progress: 1, seconds: 0, storageShortfall: 3 });
   let html = render("garden", controller({ snapshot: { ...state, jobs: [ready] } }));
@@ -317,7 +331,7 @@ test("the mine has one actor route picker without production tabs and keeps upgr
   assert.doesNotMatch(initial, /data-quarry-tab|data-recipe=|Секторы вылазок/);
   assert.doesNotMatch(initial, /data-route=|aria-label="Отправиться:|data-route-preparation=/);
   assert.doesNotMatch(prepareCave(initialState), /data-route=|aria-label="Отправиться:/);
-  assert.equal(disabled(button(initial, "Обустроить")), false);
+  assert.equal(disabled(button(initial, "Открыть")), false);
   const unbuiltState = snapshot({ buildings: { home: 2, warehouse: 1, quarry: 0 } });
   const unbuilt = render("quarry", controller({ snapshot: unbuiltState }));
   assert.doesNotMatch(unbuilt, /data-route=|Вход в пещеру|Просеять песок/);
@@ -332,7 +346,7 @@ test("the mine has one actor route picker without production tabs and keeps upgr
     const upgradingPreparation = prepareCave(upgradingState);
     assert.equal(disabled(button(upgradingPreparation, "Отправиться")), true, "the site remains occupied until its construction result is claimed");
     assert.match(upgradingPreparation, /Дождитесь улучшения шахты и заберите результат/);
-    assert.equal(disabled(button(render("quarry", controller({ snapshot: upgradingState })), "Ход улучшения")), false);
+    assert.equal(disabled(button(render("quarry", controller({ snapshot: upgradingState })), "Стройка")), false);
   }
   const fullMine = render("quarry", controller({ snapshot: snapshot({ buildings: { home: 5, warehouse: 5, quarry: 5 } }) }));
   assert.doesNotMatch(fullMine, /data-route="quarry_shift"|data-route="quarry_deep_face"/);
@@ -401,6 +415,8 @@ test("house skips the anchored menu and production upgrades use a separate dialo
   const html = render("garden");
   const upgrade = button(html, "Улучшить");
   assert.match(upgrade.attributes, /aria-haspopup="dialog"/);
+  assert.match(html.match(/<header[^>]*>([\s\S]*?)<\/header>/)?.[1], /data-guide-station-upgrade="garden"/);
+  assert.doesNotMatch(html, /<footer[\s\S]*data-guide-station-upgrade=/);
   assert.doesNotMatch(upgrade.attributes, /aria-expanded/);
   assert.doesNotMatch(html, /Улучшить до ур\.|aria-label="Обустройство:/);
 });
@@ -409,7 +425,7 @@ test("navigation to house storage preserves the requested station instead of ope
   const html = render("house", controller(), { initialStationId: "warehouse" });
   assert.match(html, /aria-modal="false"/);
   assert.match(html, /Пока пусто/);
-  assert.equal(disabled(button(html, "Расширить кладовую")), false);
+  assert.equal(disabled(button(html, "Улучшить")), false);
   assert.doesNotMatch(render("house", controller(), { initialStationId: "kiln" }), /aria-modal="false"/);
 });
 

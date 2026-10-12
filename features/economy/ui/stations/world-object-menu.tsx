@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
-import { ArrowLeft, ArrowRight, Check, ChevronDown, ChevronUp, CircleHelp, Clock3, Fence, Flame, Hammer, House, LockKeyhole, Minus, Package, Pickaxe, Plus, RefreshCw, Sprout, TowerControl, Trees, X, type LucideIcon } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, ChevronUp, CircleHelp, Clock3, Fence, Flame, Hammer, House, LockKeyhole, Minus, Package, Pickaxe, Plus, RefreshCw, Sprout, TowerControl, Trees, X, type LucideIcon } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
@@ -52,27 +52,21 @@ function recipeTitle(state: EconomyView, recipe: WorldRecipe) {
 }
 
 function RecipeCard({ state, recipe, onChoose }: { state: EconomyView; recipe: WorldRecipe; onChoose: (id: string) => void }) {
-  const missing = worldMissingRequirements(state, worldRequirements(recipe, recipe));
   const results = Object.entries(recipe.rewards);
-  return <button type="button" className={`${styles.product} ${styles.recipeCard}`} data-recipe={recipe.id} data-locked={!!missing.length || undefined}
-    aria-label={`${recipe.name}: ${results.map(([id, amount]) => `${itemName(state, id)} ×${number(amount)}`).join(", ")}, ${worldDuration(recipe.seconds)}${missing.length ? ", пока закрыто" : ""}`} onClick={() => onChoose(recipe.id)}>
-    <span className={styles.recipeOutputs} aria-hidden="true">{results.map(([id, amount]) => <span key={id}><ProductIcon state={state} itemId={id} size={results.length > 1 ? 18 : 25} /><b>×{number(amount)}</b></span>)}</span>
+  return <button type="button" className={`${styles.product} ${styles.recipeCard}`} data-recipe={recipe.id}
+    aria-label={`${recipe.name}: ${results.map(([id, amount]) => `${itemName(state, id)} ×${number(amount)}`).join(", ")}, ${worldDuration(recipe.seconds)}`} onClick={() => onChoose(recipe.id)}>
+    <span className={styles.recipeOutputs} aria-hidden="true">{results.map(([id, amount]) => <span key={id}><ProductIcon state={state} itemId={id} size={results.length > 1 ? 22 : 34} /><b>×{number(amount)}</b></span>)}</span>
     <strong>{recipeTitle(state, recipe)}</strong>
-    <span className={styles.recipeTime}>{missing.length ? <LockKeyhole size={10} aria-hidden="true" /> : <Clock3 size={10} aria-hidden="true" />}{worldDuration(recipe.seconds)}</span>
+    <span className={styles.recipeTime}><Clock3 size={12} aria-hidden="true" />{worldDuration(recipe.seconds)}<ArrowRight size={13} aria-hidden="true" /></span>
   </button>;
 }
 
 function RecipeCatalog({ state, recipes, onChoose }: { state: EconomyView; recipes: WorldRecipe[]; onChoose: (id: string) => void }) {
   const available = recipes.filter(recipe => !worldMissingRequirements(state, worldRequirements(recipe, recipe)).length);
-  const ordinary = available.filter(recipe => recipe.seconds < 4 * 3600);
-  const lengthy = available.filter(recipe => recipe.seconds >= 4 * 3600);
-  return <>
-    {[{ id: "ordinary", title: "Обычные заказы", recipes: ordinary }, { id: "lengthy", title: "На несколько часов", recipes: lengthy }].filter(group => group.recipes.length).map(group => <section key={group.id} className={styles.recipeGroup} aria-label={group.title}>
-      <h3>{group.title}<span>{group.recipes.length}</span></h3>
-      <div className={styles.products}>{group.recipes.map(recipe => <RecipeCard key={recipe.id} state={state} recipe={recipe} onChoose={onChoose} />)}</div>
-    </section>)}
-    {!available.length && <p className={styles.empty}>Сначала обустройте это место.</p>}
-  </>;
+  return available.length ? <section className={styles.recipeGroup} aria-label="Доступные рецепты">
+    <h3>Выберите рецепт</h3>
+    <div className={styles.recipeGrid}>{available.map(recipe => <RecipeCard key={recipe.id} state={state} recipe={recipe} onChoose={onChoose} />)}</div>
+  </section> : <p className={styles.empty}>Сначала обустройте это место.</p>;
 }
 
 export function WorldRecipeDetail({ economy, recipe, navigation, onCollapse, onOpenHelp, onHelpContextChange }: { economy: ReadyEconomy; recipe: WorldRecipe; navigation?: StationNavigation; onCollapse: () => void; onOpenHelp?: (context: WorldHelpContext) => void; onHelpContextChange?: (context: WorldHelpContext) => void }) {
@@ -198,11 +192,13 @@ function ObjectMenuBody({ guide, guideRoot: guideRootRef, selection, economy, is
   const recipes = state?.catalog.recipes.filter(recipe => recipe.buildingId === stationId) ?? [];
   const selectedRecipe = state && recipes.find(recipe => recipe.id === recipeId && !worldMissingRequirements(state, worldRequirements(recipe, recipe)).length);
   const selectedRecipeId = selectedRecipe?.id;
+  // A short overview grows upward from the dock; preparation keeps the full
+  // working height for ingredients and its fixed order controls.
+  const fitOverview = position.side === "sheet" && !selectedRecipe && ["garden", "dryer", "woodlot", "workshop", "kiln"].includes(stationId);
   const jobs = state?.jobs.filter(entry => ["production", "construction"].includes(entry.kind) && entry.targetId === stationId) ?? [];
   const construction = jobs.find(entry => entry.kind === "construction");
   const readyJobs = state ? jobs.filter(job => job.kind === "production" && worldJobProgress(state, job, economy.now).ready) : [];
   const runningJobs = state ? jobs.filter(job => job.kind === "production" && !worldJobProgress(state, job, economy.now).ready) : [];
-  const nextOrderSeconds = state && runningJobs.length ? Math.min(...runningJobs.map(job => worldJobProgress(state, job, economy.now).seconds)) : 0;
   const Icon = placeIcons[selection.place] ?? Package;
   const cooldown = Math.max(0, Math.ceil((economy.retryAt - economy.now) / 1000));
 
@@ -269,7 +265,7 @@ function ObjectMenuBody({ guide, guideRoot: guideRootRef, selection, economy, is
   const openPantry = onOpenPantry ?? (() => openStation("warehouse"));
   const openJobPantry = onOpenPantry ?? (selection.place === "house" ? () => chooseStation("warehouse") : onNavigate ? () => onNavigate("house", "warehouse") : undefined);
 
-  return <>{showMenu && <section ref={element => { panel.current = element; if (guideRootRef) guideRootRef.current = element; }} className={styles.menu} role="dialog" aria-modal="false" aria-labelledby={hasStationTabs ? `${headingId}-${stationId}` : headingId} tabIndex={-1} data-place={selection.place} data-side={position.side} style={{ left: position.x, top: position.y, width, height: definition.future ? undefined : position.height, maxHeight, "--menu-anchor-x": `${position.anchorX}px`, "--menu-anchor-y": `${position.anchorY}px` } as CSSProperties} onPointerDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()} onWheel={event => event.stopPropagation()} onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); } }}>
+  return <>{showMenu && <section ref={element => { panel.current = element; if (guideRootRef) guideRootRef.current = element; }} className={styles.menu} role="dialog" aria-modal="false" aria-labelledby={hasStationTabs ? `${headingId}-${stationId}` : headingId} tabIndex={-1} data-place={selection.place} data-side={position.side} style={{ left: position.x, top: fitOverview ? undefined : position.y, bottom: fitOverview ? selection.viewportHeight - position.y - position.height : undefined, width, height: definition.future || fitOverview ? undefined : position.height, maxHeight, "--menu-anchor-x": `${position.anchorX}px`, "--menu-anchor-y": `${position.anchorY}px` } as CSSProperties} onPointerDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()} onWheel={event => event.stopPropagation()} onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); } }}>
     <header className={`${styles.header} ${hasStationTabs ? styles.tabbedHeader : ""}`}>
       {hasStationTabs ? <nav className={styles.stations} role="tablist" aria-label={`Оборудование: ${definition.label}`}>
         {definition.stationIds.map((id, index) => {
@@ -286,6 +282,7 @@ function ObjectMenuBody({ guide, guideRoot: guideRootRef, selection, economy, is
           }}><StationIcon size={15} aria-hidden="true" /><span>{title}<small>{level ? `ур. ${level}` : "закрыто"}</small></span></button>;
         })}
       </nav> : <><span className={styles.placeIcon}><Icon size={23} strokeWidth={1.8} aria-hidden="true" /></span><div><span>{definition.future ? "Будущая ветка" : stationId === "warehouse" ? "Запасы дома" : current ? `Уровень ${current}` : "Пока не обустроено"}</span><h2 id={headingId}>{stationId === "warehouse" ? "Кладовая" : definition.label}</h2></div></>}
+      {!selectedRecipe && state && !definition.future && target && <button type="button" data-guide-station-upgrade={stationId} className={styles.headerUpgrade} aria-haspopup="dialog" aria-label={`${construction ? "Ход улучшения" : current ? stationId === "warehouse" ? "Расширить кладовую" : "Улучшить" : "Обустроить"}: ${current} → ${target.level} уровень`} onClick={openUpgrade}><Hammer size={17} aria-hidden="true" /><span>{construction ? "Стройка" : current ? "Улучшить" : "Открыть"}</span></button>}
       <button type="button" className={styles.close} aria-label="Закрыть меню объекта" onClick={onClose}><X size={17} aria-hidden="true" /></button>
     </header>
     <div data-guide-coach-slot />
@@ -295,13 +292,12 @@ function ObjectMenuBody({ guide, guideRoot: guideRootRef, selection, economy, is
       {definition.future ? <div className={styles.future}><LockKeyhole size={22} aria-hidden="true" /><p>{definition.future}</p></div> : !state ? <div className={styles.loading}><RefreshCw size={17} aria-hidden="true" /><p>{economy.error ?? "Открываем ваше хозяйство…"}</p>{economy.error && <button type="button" className={styles.textButton} disabled={economy.busy || cooldown > 0} onClick={() => void economy.retry()}>{cooldown ? `Повторить через ${cooldown} с` : "Попробовать ещё раз"}</button>}</div> : <>
         {(economy.error || economy.uncertain) && <div className={styles.error} role="alert"><p>{economy.uncertain ? "Проверяем последнее действие. Новые заказы доступны после подтверждения." : economy.error}</p><button type="button" className={styles.textButton} disabled={economy.busy || cooldown > 0} onClick={() => void economy.retry()}><RefreshCw size={12} aria-hidden="true" />{cooldown ? `Повторить через ${cooldown} с` : economy.uncertain ? "Проверить результат" : "Повторить"}</button></div>}
         {!selectedRecipe && stationId === "dryer" && onOpenFood && <button type="button" className={styles.foodEntry} onClick={() => { navigating.current = true; onOpenFood(); }}><Flame size={16} aria-hidden="true" /><strong>Еда и заказы</strong><span>Угостить · заработать</span></button>}
-        {!selectedRecipe && readyEconomy && <WorldProductionSlots economy={readyEconomy} stationId={stationId} />}
-        {!selectedRecipe && readyEconomy && jobs.filter(job => job.kind === "construction").map(job => <Work key={job.id} economy={readyEconomy} job={job} openPantry={openJobPantry} />)}
-        {!selectedRecipe && readyEconomy && readyJobs.map(job => <Work key={job.id} economy={readyEconomy} job={job} openPantry={openJobPantry} />)}
-        {!selectedRecipe && readyEconomy && runningJobs.length > 0 && <details key={stationId} className={styles.runningOrders} data-running-orders={stationId}>
-          <summary><Clock3 size={13} aria-hidden="true" /><strong>В работе · {runningJobs.length}</strong><span>Ещё {nextOrderSeconds < 60 ? `${nextOrderSeconds} с` : worldDuration(nextOrderSeconds)}</span><ChevronDown size={13} aria-hidden="true" /></summary>
-          <div>{runningJobs.map(job => <Work key={job.id} economy={readyEconomy} job={job} openPantry={openJobPantry} />)}</div>
-        </details>}
+        {!selectedRecipe && readyEconomy && construction && <Work economy={readyEconomy} job={construction} openPantry={openJobPantry} compact />}
+        {!selectedRecipe && readyEconomy && (readyJobs.length > 0 || runningJobs.length > 0) && <section className={styles.activeOrders} data-section-guide-target="workshop-queue" data-running-orders={runningJobs.length ? stationId : undefined} aria-label="Текущая работа">
+          <h3>Сейчас <span>{readyJobs.length + runningJobs.length}</span></h3>
+          {[...readyJobs, ...runningJobs].map(job => <Work key={job.id} economy={readyEconomy} job={job} openPantry={openJobPantry} compact />)}
+        </section>}
+        {!selectedRecipe && readyEconomy && <WorldProductionSlots economy={readyEconomy} stationId={stationId} compact />}
         {stationId === "quarry" && <WorldExpeditionsMenu economy={economy} isOnline={isOnline} embeddedCaves onOpenHelp={openHelp} onOpenPantry={openPantry} onNavigateStation={(id, targetRecipeId) => id === "quarry" ? openUpgrade() : openStation(id, targetRecipeId)} onCancellationComplete={() => panel.current?.focus({ preventScroll: true })} />}
         {stationId === "warehouse" ? <><div className={styles.inventoryHeading}><span>Кладовая</span><strong>{number(state.storage.used + state.storage.reserved)} / {number(state.storage.capacity)}</strong></div>{ownedItems.length ? <div className={styles.products} aria-label="Предметы в кладовой">{ownedItems.map(item => <button key={item.id} type="button" className={styles.product} aria-pressed={saleItem === item.id} onClick={() => { setSaleItem(value => value === item.id ? null : item.id); setUpgradeStation(null); }}><ProductIcon state={state} itemId={item.id} /><strong>{item.name}</strong><span>×{number(state.inventory[item.id])}</span></button>)}</div> : <p className={styles.empty}>Пока пусто. Урожай и находки появятся здесь после получения.</p>}{readyEconomy && saleItem && <WorldObjectSale key={saleItem} economy={readyEconomy} itemId={saleItem} onCollapse={() => setSaleItem(null)} />}{state.storage.reserved > 0 && <p className={styles.small}>На рынке зарезервировано {number(state.storage.reserved)} мест.</p>}</> : stationId !== "quarry" ? <>
           <div className={styles.recipeCatalog} data-section-guide-target="workshop-recipes" hidden={Boolean(selectedRecipe)} aria-label={`Продукция: ${building?.name ?? definition.label}`}><RecipeCatalog state={state} recipes={recipes} onChoose={chooseRecipe} /></div>
@@ -309,7 +305,6 @@ function ObjectMenuBody({ guide, guideRoot: guideRootRef, selection, economy, is
         </> : null}
       </>}
     </div>
-    {!selectedRecipe && state && !definition.future && target && <footer className={styles.footer}><button type="button" data-guide-station-upgrade={stationId} className={styles.upgradeAction} aria-haspopup="dialog" onClick={openUpgrade}><Hammer size={15} aria-hidden="true" /><span>{construction ? "Ход улучшения" : current ? stationId === "warehouse" ? "Расширить кладовую" : "Улучшить" : "Обустроить"}<small>{current ? `${current} → ${target.level} уровень` : "Первый уровень"}</small></span><ArrowRight size={16} aria-hidden="true" /></button></footer>}
     {!selectedRecipe && state && !definition.future && !target && !jobs.length && !recipes.length && <footer className={styles.footer}><span className={styles.maximum}><Check size={12} aria-hidden="true" />Все уровни оборудования открыты</span></footer>}
   </section>}
     <WorldUpgradeDialog stationId={upgradeStation} economy={economy} isOnline={isOnline} onOpenHelp={openHelp} constructionGoal={constructionGoal} onClose={closeUpgrade} onCompleted={() => { completedUpgrade.current = true; onClose(); }} navigation={navigation}
