@@ -56,8 +56,9 @@ test("malformed or partial persisted settings use the recommended defaults witho
 test("recommended mix never replaces existing valid device preferences", () => {
   assert.equal(DEFAULT_AUDIO_SETTINGS.enabled, true);
   assert.equal(DEFAULT_AUDIO_SETTINGS.buses.music, .1);
+  assert.equal(DEFAULT_AUDIO_SETTINGS.buses.ui, 1);
   assert.equal(getDefaultAudioVolumePatch().buses.music, .1);
-  const saved = { enabled: true, master: .92, buses: { music: 0, ambience: .21, weather: .13, world: .81, characters: .19, ui: .76 } };
+  const saved = { enabled: true, master: .92, buses: { music: 0, ambience: .21, weather: .13, world: .81, footsteps: .16, characters: .19, ui: .76 } };
   assert.deepEqual(sanitizeAudioSettings(saved), saved);
   const partial = sanitizeAudioSettings({ enabled: true, buses: { music: 0 } });
   assert.equal(partial.enabled, true);
@@ -80,11 +81,30 @@ test("splitting saved environmental volume keeps muted and quiet weather quiet",
   assert.equal(sanitizeAudioSettings({ buses: { ambience: 0, weather: .7 } }).buses.weather, .7);
 });
 
+test("old world volume migrates to quiet independent footsteps without reviving muted steps", () => {
+  for (const world of [0, .08, .2, .55, 1]) {
+    const saved = { enabled: false, master: .65, buses: { world, ui: .35 } };
+    const settings = sanitizeAudioSettings(saved);
+    assert.equal(settings.enabled, false);
+    assert.equal(settings.buses.world, world);
+    assert.equal(settings.buses.footsteps, Math.min(world, .25));
+    assert.equal(settings.buses.ui, .35, "existing interface volume is a device preference");
+    assert.deepEqual(sanitizeAudioSettings(settings), settings, "migration is stable after saving");
+  }
+  const quiet = sanitizeAudioSettings({ buses: { world: 1, footsteps: 0 } });
+  assert.equal(mergeAudioSettings(quiet, { buses: { world: .5 } }).buses.footsteps, 0);
+  assert.equal(sanitizeAudioSettings({ buses: { world: 0, footsteps: .7 } }).buses.footsteps, .7,
+    "the independent slider overrides legacy world volume after migration");
+  const changed = mergeAudioSettings(quiet, { buses: { footsteps: .4 } });
+  assert.equal(changed.buses.world, 1, "changing footsteps leaves building and action volume alone");
+  assert.equal(changed.buses.footsteps, .4);
+});
+
 test("reset restores every volume without enabling or disabling sound", () => {
   const patch = getDefaultAudioVolumePatch();
   assert.equal(Object.hasOwn(patch, "enabled"), false);
   for (const enabled of [true, false]) {
-    const current = { enabled, master: 0, buses: { music: 1, ambience: 1, weather: 0, world: 0, characters: 0, ui: 1 } };
+    const current = { enabled, master: 0, buses: { music: 1, ambience: 1, weather: 0, world: 0, footsteps: 0, characters: 0, ui: 1 } };
     const reset = mergeAudioSettings(current, patch);
     assert.deepEqual(reset, { ...DEFAULT_AUDIO_SETTINGS, enabled });
     assert.equal(current.master, 0);

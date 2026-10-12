@@ -1,7 +1,7 @@
 import { lstatSync, realpathSync } from "node:fs";
 import path from "node:path";
 
-const BUSES = new Set(["music", "ambience", "weather", "world", "characters", "ui"]);
+const BUSES = new Set(["music", "ambience", "weather", "world", "footsteps", "characters", "ui"]);
 const MODES = new Set(["one-shot", "loop", "music"]);
 const AUDIO_EXTENSION = /\.(?:wav|ogg|opus|m4a|mp3|aac|webm)$/;
 const ID = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/;

@@ -21,19 +21,20 @@ function controls(settings = DEFAULT_AUDIO_SETTINGS, state = "locked") {
   return { calls, nodes, markup: renderToStaticMarkup(tree) };
 }
 
-test("sound settings expose labelled master and six category sliders without playing on render", () => {
+test("sound settings expose labelled master and seven category sliders without playing on render", () => {
   const view = controls({ ...DEFAULT_AUDIO_SETTINGS, enabled: false });
   assert.equal(view.calls.enables, 0);
   assert.deepEqual(view.calls.changes, []);
   assert.deepEqual(view.calls.sliderFeedback, []);
   assert.match(view.markup, /role="switch" aria-checked="false" aria-label="Звуки игры"/);
-  assert.equal((view.markup.match(/type="range"/g) ?? []).length, 7);
-  for (const channel of ["master", "music", "ambience", "weather", "world", "characters", "ui"]) {
+  assert.equal((view.markup.match(/type="range"/g) ?? []).length, 8);
+  for (const channel of ["master", "music", "ambience", "weather", "world", "footsteps", "characters", "ui"]) {
     assert.ok(view.markup.includes(`for="audio-test-${channel}"`));
     assert.ok(view.markup.includes(`id="audio-test-${channel}"`));
   }
   assert.match(view.markup, /Лес и вода/);
   assert.match(view.markup, /Погода/);
+  assert.match(view.markup, /Шаги животных/);
   assert.doesNotMatch(view.markup, /Лес, вода и погода/);
   assert.doesNotMatch(view.markup, /pending|assets|AudioContext|Продолжить воспроизведение/);
   view.nodes.find(node => node.props.role === "switch").props.onClick();
@@ -67,7 +68,7 @@ test("volume reset is available while muted and never unlocks playback", () => {
 
 test("slider gestures update the chosen setting before requesting feedback", () => {
   const view = controls({ ...DEFAULT_AUDIO_SETTINGS, enabled: true }, "running");
-  for (const channel of ["master", "music", "ambience", "weather", "world", "characters", "ui"]) {
+  for (const channel of ["master", "music", "ambience", "weather", "world", "footsteps", "characters", "ui"]) {
     const slider = view.nodes.find(node => node.props.id === `audio-test-${channel}`);
     const before = view.calls.changes.length;
     slider.props.onChange(.71);

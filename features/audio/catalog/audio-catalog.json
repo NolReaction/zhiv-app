@@ -1440,7 +1440,7 @@
       "assets": [
         "weather.wind.01"
       ],
-      "gainDb": -12,
+      "gainDb": -36,
       "priority": 20,
       "maxInstances": 1,
       "cooldownMs": 0,
@@ -1859,7 +1859,7 @@
     },
     {
       "id": "action.step.grass",
-      "bus": "world",
+      "bus": "footsteps",
       "mode": "one-shot",
       "assets": [
         "action.step.grass.01",
@@ -1867,7 +1867,7 @@
         "action.step.grass.03",
         "action.step.grass.04"
       ],
-      "gainDb": -14,
+      "gainDb": -22,
       "priority": 50,
       "maxInstances": 2,
       "cooldownMs": 120,
@@ -1876,7 +1876,7 @@
     },
     {
       "id": "action.step.wood",
-      "bus": "world",
+      "bus": "footsteps",
       "mode": "one-shot",
       "assets": [
         "action.step.wood.01",
@@ -1884,7 +1884,7 @@
         "action.step.wood.03",
         "action.step.wood.04"
       ],
-      "gainDb": -14,
+      "gainDb": -22,
       "priority": 50,
       "maxInstances": 2,
       "cooldownMs": 120,

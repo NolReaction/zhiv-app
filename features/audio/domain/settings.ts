@@ -2,7 +2,7 @@ import { AUDIO_BUSES, type AudioSettings, type AudioSettingsPatch } from "./type
 
 export const DEFAULT_AUDIO_SETTINGS: AudioSettings = {
   enabled: true, master: 0.65,
-  buses: { music: 0.1, ambience: 0.4, weather: 0.3, world: 0.55, characters: 0.5, ui: 0.35 },
+  buses: { music: 0.1, ambience: 0.4, weather: 0.3, world: 0.55, footsteps: 0.25, characters: 0.5, ui: 1 },
 };
 
 /** Restore the mix without changing the player's explicit sound permission. */
@@ -18,10 +18,14 @@ export function sanitizeAudioSettings(value: unknown): AudioSettings {
   // Weather previously shared ambience. Splitting it must never restore a
   // silenced forest or increase a player's already quiet environmental mix.
   const weatherFallback = Math.min(volume(buses.ambience, DEFAULT_AUDIO_SETTINGS.buses.weather), DEFAULT_AUDIO_SETTINGS.buses.weather);
+  // Footsteps used to belong to world actions. Preserve an explicit mute or
+  // quieter world mix when introducing their independent device slider.
+  const footstepsFallback = Math.min(volume(buses.world, DEFAULT_AUDIO_SETTINGS.buses.footsteps), DEFAULT_AUDIO_SETTINGS.buses.footsteps);
+  const fallback = { ...DEFAULT_AUDIO_SETTINGS.buses, weather: weatherFallback, footsteps: footstepsFallback };
   return {
     enabled: typeof source.enabled === "boolean" ? source.enabled : DEFAULT_AUDIO_SETTINGS.enabled,
     master: volume(source.master, DEFAULT_AUDIO_SETTINGS.master),
-    buses: Object.fromEntries(AUDIO_BUSES.map(bus => [bus, volume(buses[bus], bus === "weather" ? weatherFallback : DEFAULT_AUDIO_SETTINGS.buses[bus])])) as AudioSettings["buses"],
+    buses: Object.fromEntries(AUDIO_BUSES.map(bus => [bus, volume(buses[bus], fallback[bus])])) as AudioSettings["buses"],
   };
 }
 

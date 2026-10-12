@@ -69,9 +69,11 @@ test("weather noise and overlapping close footsteps keep headroom even at full p
   // compressor. The bus sliders must not be the only protection for old saves.
   assert.ok(cuePeak("weather.wind") + cuePeak("weather.rain") < .17,
     "both weather beds leave headroom even without rain's additional wind duck");
+  assert.ok(cuePeak("weather.wind") < .002,
+    "wind stays barely noticeable even before attenuation by the weather/master sliders");
   for (const id of ["action.step.grass", "action.step.wood"]) {
     const cue = catalog.cues.find(entry => entry.id === id);
-    assert.ok(cuePeak(id) * cue.maxInstances < .28,
+    assert.ok(cuePeak(id) * cue.maxInstances < .12,
       `${id}: two nearby residents cannot produce a near-full-scale impact`);
     assert.ok(cuePeak(id) > .03, `${id}: close steps remain audible`);
   }

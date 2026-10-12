@@ -186,19 +186,19 @@ test("music, weather and footsteps use the same gain graph when native media vol
       target("rain", "weather.rain", 1)]));
     f.runtime.play({ id: "close-step", cueId: "action.step.grass", gain: 1 });
     for (let index = 0; index < 8; index++) await flush();
-    const wind = f.context.started.find(source => source.loop && source.connected[0].gain.value === 10 ** (-12 / 20));
+    const wind = f.context.started.find(source => source.loop && source.connected[0].gain.value === 10 ** (-36 / 20));
     const rain = f.context.started.find(source => source.loop && source.connected[0].gain.value === 10 ** (-10 / 20));
     const step = f.context.started.find(source => !source.loop);
     const music = f.context.mediaSources[0];
     assert.ok(wind && rain && step && music);
     const close = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-10, `${actual} ~= ${expected}`);
-    close(outputGain(wind), 10 ** (-12 / 20) * .3 * .65);
+    close(outputGain(wind), 10 ** (-36 / 20) * .3 * .65);
     close(outputGain(rain), 10 ** (-10 / 20) * .3 * .65);
-    close(outputGain(step), 10 ** (-14 / 20) * .55 * .65);
+    close(outputGain(step), 10 ** (-22 / 20) * .25 * .65);
     close(outputGain(music), .1 * .65);
-    f.runtime.setSettings({ master: .4, buses: { weather: .15, world: .2, music: .3 } });
-    close(outputGain(wind), 10 ** (-12 / 20) * .15 * .4);
-    close(outputGain(step), 10 ** (-14 / 20) * .2 * .4);
+    f.runtime.setSettings({ master: .4, buses: { weather: .15, footsteps: .2, music: .3 } });
+    close(outputGain(wind), 10 ** (-36 / 20) * .15 * .4);
+    close(outputGain(step), 10 ** (-22 / 20) * .2 * .4);
     close(outputGain(music), .3 * .4);
     f.runtime.setSettings({ buses: { weather: 0 } });
     close(outputGain(wind), 0); close(outputGain(rain), 0);
@@ -265,7 +265,7 @@ test("camera and duck changes retarget only affected gains while keeping the sam
   await f.runtime.unlock();
   f.runtime.updateFrame(frame([target("theme", "theme"), target("water")])); await flush();
   const master = f.context.gains[0].gain;
-  const musicBus = f.context.mediaSources[0].connected[0].connected[0].connected[0].gain;
+  const musicBus = f.context.mediaSources[0].connected[0].connected[0].connected[0].connected[0].gain;
   const riverGain = f.context.started[0].connected[0].gain;
   const riverPan = f.context.started[0].connected[0].connected[0].pan;
   const counts = [master, musicBus, riverGain, riverPan].map(param => param.ramps.length);
@@ -555,8 +555,8 @@ test("music-only menu fades world sounds while preserving the song and interface
   f.runtime.dispose();
 });
 
-test("world decodes from a prior visit cannot catch up after menu then map, while UI decodes survive", async () => {
-  const f = fixture([cue("step"), cue("tap", "one-shot", { bus: "ui" })]);
+test("footstep decodes from a prior visit cannot catch up after menu then map, while UI decodes survive", async () => {
+  const f = fixture([cue("step", "one-shot", { bus: "footsteps" }), cue("tap", "one-shot", { bus: "ui" })]);
   const gate = deferred(); f.context.decode = () => gate.promise;
   await f.runtime.unlock(); f.runtime.updateFrame(frame([], { soundscape: true }));
   f.runtime.play({ id: "old-step", cueId: "step" }); f.runtime.play({ id: "ui-tap", cueId: "tap" });
@@ -612,6 +612,59 @@ test("long music streams without fetch/decode and has at most two decks during t
   assert.equal(f.media.filter(item => item.src !== "").length, 2);
   assert.equal(f.runtime.getDiagnostics().activeVoices, 1);
   f.runtime.dispose(); assert.ok(f.media.every(item => item.src === "" && item.pauses > 0));
+});
+
+test("streamed song boundaries fade independently of scene tuning and retain one deck across ownership handoff", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const f = fixture([cue("theme", "music")]);
+  try {
+    await f.runtime.unlock();
+    const loops = [target("song", "theme")];
+    f.runtime.updateFrame(frame(loops, { soundscape: false, ownerId: "menu" })); await flush();
+    const player = f.media[0]; player.duration = 120; player.currentTime = 0;
+    player.onloadedmetadata();
+    const envelope = f.context.mediaSources[0].connected[0].connected[0].connected[0].gain;
+    assert.ok(envelope.ramps.some(point => point.value === 0 && point.time === 120), "silence is scheduled at the exact native loop boundary");
+    assert.ok(envelope.ramps.some(point => point.value === 1 && point.time === 122.5), "the next attack is scheduled before timeupdate can arrive");
+    const count = envelope.ramps.length;
+    for (let index = 0; index < 60; index++) f.runtime.updateFrame(frame(loops, { soundscape: false, ownerId: "menu", musicDuck: .8 }));
+    assert.equal(envelope.ramps.length, count, "frame gain/duck tuning cannot overwrite the loop envelope");
+    f.runtime.clearFrame("menu");
+    f.runtime.updateFrame(frame(loops, { ownerId: "map" }));
+    f.context.currentTime = 120.2; player.currentTime = .2;
+    t.mock.timers.tick(200);
+    assert.ok(envelope.ramps.some(point => point.value === 0 && point.time === 240), "static-menu watchdog schedules the next cycle without a media event");
+    assert.equal(f.media.length, 1); assert.equal(player.plays, 1);
+    assert.equal(f.context.decoded, 0); assert.equal(f.requests.length, 0);
+  } finally { f.runtime.dispose(); }
+});
+
+test("music boundary automation is released on mute, background, account change and disposal", async t => {
+  for (const action of ["mute", "music-zero", "hidden", "account", "dispose"]) {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const f = fixture([cue("theme", "music")]);
+    try {
+      await f.runtime.unlock(); f.runtime.updateFrame(frame([target("song", "theme")], { soundscape: false })); await flush();
+      const player = f.media[0]; player.duration = 120; player.currentTime = 119;
+      player.onloadedmetadata();
+      const envelope = f.context.mediaSources[0].connected[0].connected[0].connected[0];
+      const queuedUpdate = player.ontimeupdate;
+      if (action === "mute") f.runtime.setSettings({ enabled: false });
+      if (action === "music-zero") f.runtime.setSettings({ buses: { music: 0 } });
+      if (action === "hidden") f.runtime.setVisible(false);
+      if (action === "account") f.runtime.updateFrame(frame([], { sceneId: "account-b" }));
+      if (action === "dispose") f.runtime.dispose();
+      assert.equal(player.ontimeupdate, null, action);
+      assert.equal(player.onplaying, null, action);
+      assert.equal(player.onwaiting, null, action);
+      const count = envelope.gain.ramps.length;
+      f.context.currentTime = 200;
+      queuedUpdate(); t.mock.timers.tick(10_000); await flush();
+      assert.equal(envelope.gain.ramps.length, count, `${action}: stale loop callbacks cannot schedule another attack`);
+      assert.equal(envelope.disconnected, true, action);
+      assert.equal(f.media.length, 1); assert.equal(player.plays, 1);
+    } finally { f.runtime.dispose(); t.mock.timers.reset(); }
+  }
 });
 
 test("hide stops voices, foreground restores loops once and never replays earlier one-shots", async () => {

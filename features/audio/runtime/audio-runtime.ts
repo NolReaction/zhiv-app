@@ -3,6 +3,7 @@ import { mergeAudioSettings, sanitizeAudioSettings } from "@/features/audio/doma
 import { AUDIO_BUSES, type AudioAsset, type AudioBus, type AudioCatalog, type AudioCue, type AudioDiagnostics, type AudioEvent, type AudioFrame, type AudioLoopTarget, type AudioRuntime, type AudioSettings, type AudioSourceDebug } from "@/features/audio/domain/types";
 import { createAudioAssetCache } from "./audio-asset-cache";
 import { createAudioAssetTransport } from "./audio-asset-transport";
+import { createMusicLoopEnvelope } from "./music-loop-envelope";
 
 const MAX_VOICES = 24;
 const MAX_LOOPS = 10;
@@ -15,7 +16,7 @@ const MAX_STREAM_RETRY_MS = 30_000;
 const MEDIA_PAUSE_RECOVERY_MS = 250;
 const MAX_LOOP_TIMELINES = 128;
 const MAX_PREPARED_MUSIC_BYTES = 8 * 1024 * 1024;
-const SOUNDSCAPE_BUSES = new Set<AudioBus>(["ambience", "weather", "world", "characters"]);
+const SOUNDSCAPE_BUSES = new Set<AudioBus>(["ambience", "weather", "world", "footsteps", "characters"]);
 
 type Voice = {
   key: string; serial: number; cue: AudioCue; assetId: string; priority: number;
@@ -24,6 +25,8 @@ type Voice = {
   stopped: boolean; reclaimable: boolean; sceneId: string | null;
   feedbackBus?: AudioEvent["feedbackBus"];
   cancelMediaRecovery?: () => void;
+  musicGain?: GainNode;
+  cancelMusicEnvelope?: () => void;
 };
 type PendingLoop = { cueId: string; generation: number };
 type ParameterRamp = { from: number; target: number; start: number; end: number };
@@ -176,7 +179,9 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
   function detachMediaCallbacks(voice: Voice) {
     if (!voice.media) return;
     voice.cancelMediaRecovery?.();
+    voice.cancelMusicEnvelope?.();
     voice.media.onerror = null; voice.media.onloadedmetadata = null; voice.media.onpause = null; voice.media.onended = null;
+    voice.media.ontimeupdate = null; voice.media.onplaying = null; voice.media.onwaiting = null;
   }
   function cleanup(voice: Voice) {
     if (voice.stopped) return;
@@ -196,7 +201,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
       source.onended = null;
       try { source.stop(); } catch { /* An already completed one-shot needs only disconnection. */ }
     }
-    voice.source.disconnect(); voice.gain.disconnect(); voice.panner?.disconnect();
+    voice.source.disconnect(); voice.gain.disconnect(); voice.panner?.disconnect(); voice.musicGain?.disconnect();
     publish();
   }
   function stopVoice(voice: Voice, immediate = false) {
@@ -315,10 +320,12 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
     const ctx = context!;
     const gain = ctx.createGain(); gain.gain.value = 0;
     const panner = typeof ctx.createStereoPanner === "function" ? ctx.createStereoPanner() : null;
+    const musicGain = media && key.startsWith("loop:") ? ctx.createGain() : undefined;
+    if (musicGain) { musicGain.gain.value = 0; musicGain.connect(buses.get(cue.bus)!); }
     source.connect(gain);
-    if (panner) { gain.connect(panner); panner.connect(buses.get(cue.bus)!); }
-    else gain.connect(buses.get(cue.bus)!);
-    const voice: Voice = { key, serial: ++sequence, cue, assetId, priority, gain, panner, source, media, createdAt: now(), timer: null, stopped: false, reclaimable: false, sceneId: frame?.sceneId ?? lastSceneId };
+    if (panner) { gain.connect(panner); panner.connect(musicGain ?? buses.get(cue.bus)!); }
+    else gain.connect(musicGain ?? buses.get(cue.bus)!);
+    const voice: Voice = { key, serial: ++sequence, cue, assetId, priority, gain, panner, source, media, musicGain, createdAt: now(), timer: null, stopped: false, reclaimable: false, sceneId: frame?.sceneId ?? lastSceneId };
     voices.set(key, voice);
     if (!media) (source as AudioBufferSourceNode | OscillatorNode).onended = () => cleanup(voice);
     return voice;
@@ -381,6 +388,10 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
       const liveVoice = voice;
       const player = media;
       const ownsPlayback = () => !disposed && !liveVoice.stopped && voices.get(key) === liveVoice && liveVoice.sceneId === lastSceneId;
+      const envelope = liveVoice.musicGain ? createMusicLoopEnvelope(context!, liveVoice.musicGain.gain, player,
+        () => ownsPlayback() && audible(cue.bus)) : null;
+      liveVoice.cancelMusicEnvelope = () => envelope?.dispose();
+      player.ontimeupdate = player.onplaying = player.onwaiting = () => envelope?.refresh();
       const urls = [...new Set([asset.src, asset.fallbackSrc].filter((url): url is string => Boolean(url)))];
       // Preparation chooses a supported codec; consume its ready Blob first.
       urls.sort((a, b) => Number(preparedMusic.has(b)) - Number(preparedMusic.has(a)));
@@ -408,7 +419,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
           failStream(asset.id); cleanup(liveVoice); scheduleStreamRetry(); publish();
         };
         player.onerror = () => onFailure(true);
-        player.onloadedmetadata = restorePosition;
+        player.onloadedmetadata = () => { restorePosition(); envelope?.refresh(); };
         player.src = preparedMusic.get(urls[index])?.url ?? urls[index]; restorePosition();
         const playCurrent = () => {
           if (playPending || !ownsPlayback() || request !== attempt) return;
@@ -417,6 +428,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
           void player.play().then(() => {
             playPending = false;
             if (!acceptsCallback(request)) return;
+            envelope?.refresh();
             failedStreams.delete(asset.id); blockedStreams.delete(asset.id); scheduleStreamRetry(); publish();
           }).catch((error: unknown) => {
             playPending = false;
@@ -427,6 +439,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
           });
         };
         player.onpause = player.onended = () => {
+          envelope?.refresh();
           if (pauseRecovery !== null || playPending || liveVoice.stopped || request !== attempt || voices.get(key) !== liveVoice
             || !key.startsWith("loop:") || !audible(cue.bus) || !(player.paused || player.ended)) return;
           pauseRecovery = setTimeout(() => {
