@@ -27324,12 +27324,12 @@
                 {
                   "name": "innerRadius",
                   "type": "float",
-                  "value": 20
+                  "value": 12
                 },
                 {
                   "name": "outerRadius",
                   "type": "float",
-                  "value": 135
+                  "value": 75
                 },
                 {
                   "name": "gainDb",

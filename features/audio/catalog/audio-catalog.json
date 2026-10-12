@@ -103,7 +103,7 @@
     },
     {
       "id": "campfire.01",
-      "src": "/audio/originals-v1/loop/campfire.01.wood-v3.wav",
+      "src": "/audio/originals-v1/loop/campfire.01.calm-v4.wav",
       "status": "ready",
       "license": {
         "name": "Project-original procedural audio; provenance recorded",
@@ -111,7 +111,7 @@
         "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
         "sourceUrl": "art/audio/originals-v1/manifest.json",
         "acquiredAt": "2026-10-11",
-        "changes": "Wood-v3 revision: irregular small wood fractures and rounded ember pops replace the continuous wind-like noise bed; faint flame, rounded attacks, bounded peaks, seamless mono loop and TPDF PCM16. New cache-safe filename.",
+        "changes": "Calm-v4 revision: fewer soft wood fractures, lower upper spectrum, 5–9 ms rounded attacks, peak ceiling −25 dBFS; near-silent ember bed, seamless mono PCM16 and a new cache-safe filename.",
         "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
       }
     },
@@ -1237,7 +1237,7 @@
     },
     {
       "id": "cooking.simmer.01",
-      "src": "/audio/originals-v1/loop/cooking.simmer.01.wav",
+      "src": "/audio/originals-v1/loop/cooking.simmer.01.bubbles-v2.wav",
       "status": "ready",
       "license": {
         "name": "Project-original procedural audio; provenance recorded",
@@ -1245,7 +1245,7 @@
         "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
         "sourceUrl": "art/audio/originals-v1/manifest.json",
         "acquiredAt": "2026-10-11",
-        "changes": "Original deterministic DSP Foley, DC removal, gentle edges, restrained peak-safe level and TPDF PCM16; no external samples.",
+        "changes": "Bubbles-v2 revision: rounded low liquid releases with quiet gaps replace the continuous wind-like noise bed; finite damped bubbles, peak ceiling −24 dBFS, seamless mono PCM16 and a new cache-safe filename.",
         "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
       }
     },

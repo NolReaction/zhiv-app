@@ -146,8 +146,9 @@ export function buildWorldAudioFrame(scene: FixedWorldScene, input: WorldAudioEn
     if (source.activation === "production-working" || source.activation === "construction-working") closeWork = Math.max(closeWork, gain);
   }
   const addCooking = (id: string, position: WorldPoint) => {
+    // Gentle bubbles belong to the pot, not the entire clearing.
     const gain = .8 * listener.detail * distanceGain(Math.hypot(listener.position.x - position.x,
-      listener.position.y - position.y), 40, 310);
+      listener.position.y - position.y), 18, 90);
     // A station has one audible pot even with several cooking slots or a DEV
     // rehearsal alongside it. Stable source identity survives camera movement.
     add(id, "cooking.simmer", gain, stereoPan(position, listener), "audible", "cooking-pot");

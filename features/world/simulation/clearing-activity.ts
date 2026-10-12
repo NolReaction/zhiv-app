@@ -2,7 +2,7 @@ import { campfireFootprint } from "@/features/world/activities/campfire/forest-c
 import type { PixelDirection, PixelPose } from "@/features/mochlik/pixel-sprite";
 import { forestBushArtworkAvailable } from "@/features/world/activities/garden/forest-bush-artwork";
 import { bushConcealStart } from "./forest-bush-conceal";
-import type { FixedWorldScene, WorldBush, WorldPath, WorldPoint } from "@/features/world/tiled/types";
+import type { FixedWorldScene, WorldBounds, WorldBush, WorldPath, WorldPoint } from "@/features/world/tiled/types";
 import { canTraverse, canTraverseWorldObstacle, createWorldNavigation, findWorldPath, isWalkable,
   withWorldNavigationObstacle, type WorldNavigation } from "@/features/world/navigation/navigation";
 import { prepareSteeringPath, desiredSteeringSpeed, type SteeringPath } from "@/features/world/navigation/steering";
@@ -27,6 +27,8 @@ export type ClearingRouteDiagnostic = { id: string; valid: boolean; reason: stri
 export type ClearingActivityState = {
   /** Outdoor anchor, not the interior of the house. */
   home: WorldPoint; position: WorldPoint; size: number; direction: PixelDirection;
+  /** Authored home territory, independent of the active camera and its zoom. */
+  homeClearing: { bounds: WorldBounds; polygon: WorldPoint[] | null };
   stage: ClearingStage; elapsed: number; stageElapsed: number; waitSeconds: number; frozen: boolean;
   routes: ClearingRoute[]; diagnostics: ClearingRouteDiagnostic[]; routeIndex: number; previousRoute: number;
   distance: number; speed: number; walked: number; seed: number; steps: ActionStep[];
@@ -243,7 +245,9 @@ export function createClearingActivity(scene: FixedWorldScene, seed = Math.rando
   const doorway = homeSite ? { ...homeSite.doorway ?? homeSite.entry } : null;
   const compiledNavigation = createWorldNavigation(scene, (scene.actor?.size ?? 56) * .1);
   const navigation = compiledNavigation && isWalkable(compiledNavigation, home) ? compiledNavigation : null;
+  const homeArea = scene.navigation?.areas.find(area => area.id === "home-clearing");
   return { home, position: { ...home }, size: scene.actor?.size ?? 56, direction: "front", stage: "home",
+    homeClearing: { bounds: { ...scene.focus }, polygon: homeArea ? homeArea.points.map(point => ({ ...point })) : null },
     elapsed: 0, stageElapsed: 0, waitSeconds: 2.5, frozen: false, routes, diagnostics, routeIndex: -1,
     previousRoute: -1, distance: 0, speed: 0, walked: 0, seed: Math.trunc(seed) >>> 0, steps: [],
     homeRoute: homePath ? compileRoute(homePath, home, scene) : null, doorway, doorProgress: 0,
@@ -256,6 +260,21 @@ export function createClearingActivity(scene: FixedWorldScene, seed = Math.rando
     behavior: createForestBehavior(), freeRoute: null, freePurpose: null, requestedPoint: null, navigationRetryAt: 0,
     interactions: compileWorldInteractions(scene), activeInteraction: null, pendingInteractionBush: null,
     returnToSpawn: false, exitAttention: null };
+}
+
+/** Harvest presentation is local to the clearing; distant walks keep their
+ * actual route and let the already accepted server timer finish the crop. */
+export function isWithinHomeClearing(state: ClearingActivityState): boolean {
+  const point = state.position, { polygon, bounds } = state.homeClearing;
+  if (!finitePoint(point)) return false;
+  if (polygon) {
+    if (polygon.length < 3 || !polygon.every(finitePoint)) return false;
+    return inside(point, polygon) || polygon.some((a, index) => segmentDistance(point, a, polygon[(index + 1) % polygon.length]) <= 1e-6);
+  }
+  // Older/isolated maps without the named walk area retain their authored focus.
+  if (![bounds.x, bounds.y, bounds.width, bounds.height].every(Number.isFinite) || bounds.width <= 0 || bounds.height <= 0) return false;
+  return ((point.x - bounds.x - bounds.width / 2) / (bounds.width / 2)) ** 2
+    + ((point.y - bounds.y - bounds.height / 2) / (bounds.height / 2)) ** 2 <= 1;
 }
 function random(state: ClearingActivityState) {
   state.seed = (Math.imul(state.seed, 1664525) + 1013904223) >>> 0;

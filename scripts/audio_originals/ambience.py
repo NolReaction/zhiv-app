@@ -20,8 +20,8 @@ _SPECS = {
     "weather.wind.01": (12.0, "Air between the Leaves", "A restrained low tree breeze with slow, shallow swells and soft leaf movement.", -32.0),
     "weather.rain.01": (8.0, "Rain through the Canopy", "A sheltered rain bed with scattered, rounded leaf droplets.", -22.0),
     "river.01": (8.0, "Water around Roots", "Flowing water, low ripples and irregular resonant bubbles.", -21.5),
-    "campfire.01": (8.0, "Small Evening Fire", "Irregular small wood crackles and rounded ember pops over a very quiet flame; no wind-like noise bed.", -33.0),
-    "cooking.simmer.01": (6.0, "Soup above the Embers", "Quiet simmering liquid with rounded irregular bubbles; a separate loop for active cooking, without baked-in fire.", -25.0),
+    "campfire.01": (8.0, "Small Evening Fire", "Sparse warm wood crackles with soft attacks over nearly silent embers; restrained upper frequencies and no roaring fire.", -41.0),
+    "cooking.simmer.01": (6.0, "Soup above the Embers", "Separate rounded liquid bubbles and little paired gurgles with quiet gaps; no continuous airflow or baked-in fire.", -36.0),
     "workshop.woodworking.01": (10.0, "The Carpenter's Afternoon", "Uneven wooden mallet taps, short hand-saw strokes and a quiet room bed.", -22.0),
     "workshop.kiln.01": (8.0, "Warm Kiln", "Enclosed low fire, two soft bellows breaths and light fuel movement.", -23.0),
     "quarry.working.01": (10.0, "Stone by Stone", "Low mineral knocks, small falling fragments and short gravel scrapes.", -22.0),
@@ -154,49 +154,70 @@ def _hearth(count: int, rate: int, rng: np.random.Generator) -> np.ndarray:
     """Small dry-wood fractures, not a continuous broadband whoosh.
 
     Fine grains and sparse warmer pops have independent, irregular timing. Each
-    fracture has a rounded 2–4 ms attack and a finite, damped tail: no impulses,
+    fracture has a rounded 5–9 ms attack and a finite, damped tail: no impulses,
     metronomic click train or resonant high whistle. Circular addition also
     carries the last grain through the loop boundary without an empty gap.
     """
     duration = count / rate
-    output = _noise(count, rate, rng, 180, 950, -0.4) * 0.0025
+    output = _noise(count, rate, rng, 180, 700, -0.5) * 0.0012
     output *= _swell(count, 2, 0.5, 0.8)
 
     def fracture(decay: float, body: bool) -> np.ndarray:
         length = int(rate * decay * 7)
         time = np.arange(length) / rate
-        grain = _noise(length, rate, rng, 420 if body else 850,
-                       2900 if body else 3800, -0.35)
+        grain = _noise(length, rate, rng, 250 if body else 500,
+                       1500 if body else 2100, -0.5)
         if body:
             # Brief, heavily damped low wood resonance, with no sustained note.
-            frequency = rng.uniform(390, 720)
-            grain += np.sin(2 * np.pi * frequency * time) * np.exp(-time / .006) * .7
-        attack = rng.uniform(.002, .004)
+            frequency = rng.uniform(220, 420)
+            grain += np.sin(2 * np.pi * frequency * time) * np.exp(-time / .009) * .5
+        attack = rng.uniform(.005, .009)
         envelope = (1 - np.exp(-time / attack)) ** 2 * np.exp(-time / decay)
         # Suppress the already tiny tail with a smooth finite boundary.
         envelope *= _window(length, .025)
         return grain * envelope
 
     # Uneven fine crackling supplies the texture instead of boosting white noise.
-    for _ in range(150):
-        grain = fracture(rng.uniform(.007, .016), False)
-        _add(output, grain, rng.uniform(0, duration), rate, rng.uniform(.06, .12))
+    for _ in range(54):
+        grain = fracture(rng.uniform(.012, .021), False)
+        _add(output, grain, rng.uniform(0, duration), rate, rng.uniform(.035, .065))
     # A few paired wood fractures add recognizable ember pops without loud snaps.
-    for start in (.28, 1.12, 1.81, 2.95, 3.47, 4.63, 5.39, 6.52, 7.29, 7.96):
-        grain = fracture(rng.uniform(.014, .025), True)
-        _add(output, grain, start, rate, rng.uniform(.06, .10))
-        _add(output, fracture(.011, False), start + rng.uniform(.055, .12),
-             rate, rng.uniform(.035, .06))
+    for start in (.72, 2.83, 5.13, 7.86):
+        grain = fracture(rng.uniform(.019, .029), True)
+        _add(output, grain, start, rate, rng.uniform(.045, .07))
+        _add(output, fracture(.015, False), start + rng.uniform(.085, .16),
+             rate, rng.uniform(.018, .03))
     return output
 
 
 def _simmer(count: int, rate: int, rng: np.random.Generator) -> np.ndarray:
-    """Low pot movement under irregular small bubble releases; no flame layer."""
-    output = _noise(count, rate, rng, 220, 1100, -0.25) * 0.034
-    output *= _swell(count, 1, 1.2, 0.85)
-    for _ in range(52):
-        drop = _bubble(rate, rng, rng.uniform(260, 650), rng.uniform(0.07, 0.16))
-        _add(output, drop, rng.uniform(0, count / rate), rate, rng.uniform(0.015, 0.048))
+    """Finite low liquid releases, with real pauses instead of an airy noise bed.
+
+    Two damped, bending resonances give each release a wet rounded body. The
+    little unpitched surface break shares its short envelope, never sustains
+    between bubbles, and has no steam hiss or high ringing/whistling partials.
+    """
+    output = np.zeros(count)
+
+    def release(frequency: float, duration: float) -> np.ndarray:
+        length = int(rate * duration)
+        time = np.arange(length) / rate
+        pitch = frequency * (1 + .35 * np.exp(-time / .016))
+        phase = 2 * np.pi * np.cumsum(pitch) / rate
+        liquid = np.sin(phase) + .30 * np.sin(phase * 1.43 + .2)
+        liquid += _noise(length, rate, rng, 160, 800, -.4) * .14
+        envelope = (1 - np.exp(-time / .006)) ** 2 * np.exp(-time / .025)
+        return liquid * envelope * _window(length, .05)
+
+    # Jittered groups stay recognizable as a small simmer, never a rhythm track.
+    starts = np.arange(.08, count / rate, .31)
+    starts += rng.uniform(-.06, .06, len(starts))
+    for index, start in enumerate(starts):
+        drop = release(rng.uniform(155, 285), rng.uniform(.15, .21))
+        _add(output, drop, start, rate, rng.uniform(.035, .07))
+        if index % 3 == 1:
+            _add(output, release(rng.uniform(200, 330), .15),
+                 start + rng.uniform(.08, .12), rate, rng.uniform(.015, .028))
     return output
 
 
@@ -319,5 +340,7 @@ def render(asset_id: str, sample_rate: int) -> tuple[np.ndarray, dict]:
         metadata["peakDb"] = -29.0 if asset_id == "forest.day.01" else -21.0
         metadata["phraseStartsSeconds"] = [2.6, 13.6] if asset_id == "forest.day.01" else [7.2]
     if asset_id == "campfire.01":
-        metadata["peakDb"] = -14.0
+        metadata["peakDb"] = -25.0
+    if asset_id == "cooking.simmer.01":
+        metadata["peakDb"] = -24.0
     return output.astype(np.float32), metadata

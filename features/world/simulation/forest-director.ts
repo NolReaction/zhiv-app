@@ -10,7 +10,7 @@ import type { ForestBird } from "@/features/world/environment/wildlife/forest-wi
 import { advanceForestBirdwatch, chooseForestBirdwatchTarget, createForestBirdwatch, type ForestBirdwatch } from "@/features/world/activities/forest-birdwatching";
 import { advanceForestLife, cancelForestLife, interruptForestLife, triggerForestLife } from "./forest-life";
 import { advanceClearingActivity, canStartClearingInteraction, canStartClearingLife, canVisitClearingBush, clearingActivityFrame,
-  isClearingAtHome, isClearingAtPoint, noticeClearingActivity, releaseClearingPoint,
+  isClearingAtHome, isClearingAtPoint, isWithinHomeClearing, noticeClearingActivity, releaseClearingPoint,
   requestClearingBush, requestClearingPoint, requestClearingSleep, requestClearingOutside, returnClearingHome,
   setClearingNavigationObstacle, baseClearingNavigation } from "./clearing-activity";
 import { advanceForestFauna, cancelFaunaInteraction, canRequestFaunaInteraction, emitFaunaStimulus,
@@ -147,6 +147,9 @@ export function requestForestGardenHarvest(state: ForestSessionState, request: G
   if (!Number.isSafeInteger(request.requestId) || request.requestId <= 0 || !request.jobId) return;
   if (!garden.production || garden.production.jobId !== request.jobId || !garden.bushes.some(bush => bush.growth >= .98)) {
     unavailable("Этот урожай пока недоступен для сбора"); return;
+  }
+  if (!isWithinHomeClearing(state.clearing)) {
+    unavailable("Мохлик вне поляны — сбор продолжается без анимации"); return;
   }
   if (options.reducedMotion || options.actorAway || !state.clearing.navigationEnabled || options.navigationMode === "routes") {
     unavailable(options.reducedMotion ? "Сбор продолжается без анимации" : "Мохлик сейчас не может подойти к кусту"); return;

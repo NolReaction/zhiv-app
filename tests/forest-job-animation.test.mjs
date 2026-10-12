@@ -161,8 +161,8 @@ test("switching quarry preview to ruins removes only local mining, then resumes 
     assert.equal(forestJourneyActorAway(s,j,start+61_000),true);
     assert.deepEqual(s.clearing.position,feet);
     syncForestJourneyTravel(s,world,j,start+62_000,false,[],true);
-    assert.equal(s.journeyTravel.phase,"leaving","visible preview changes cannot cold-restore an interior");
-    assert.equal(s.journeyTravel.mining.prepared,false,"the tools are collected by walking home first");
+    assert.equal(s.journeyTravel.phase,"entering","the safe quarry marker can enter its restored portal without a trip home");
+    assert.equal(s.journeyTravel.mining.prepared,true,"tools are available at the current location");
     assert.equal(forestJourneyActorAway(s,j,start+62_000),false);
     assert.deepEqual(s.clearing.position,feet);
     for(let n=0;n<4800 && s.journeyTravel?.phase!=="working";n++) step(s,j,start+62_000+n*50);
@@ -267,24 +267,26 @@ test("a fresh mine job on the first camera visibly leaves base instead of being 
   }finally{session.release()}
 });
 
-test("a miner elsewhere on the map walks back to base for tools before taking the safe quarry road",()=>{
+test("a miner elsewhere on the map takes the safe quarry road directly from the current feet",()=>{
   const session=create(),s=session.state,j=job("cave");
   try {
     const elsewhere=world.destinations.find(point=>point.id==="fishing").position;
     s.clearing.position={...elsewhere};
     syncForestJourneyTravel(s,world,null,start,false);syncForestJourneyTravel(s,world,j,start,false);
-    assert.equal(s.journeyTravel.mining.prepared,false);
-    assert.deepEqual(s.clearing.requestedPoint,s.clearing.home);
-    assert.equal(forestJourneyMiningFrame(s,world),null,"tools stay at base until picked up");
-    let n=0;
-    for(;n<2400 && !s.journeyTravel.mining.prepared;n++)step(s,j,start+n*50);
-    assert.equal(s.journeyTravel.mining.prepared,true);assert.deepEqual(s.clearing.position,s.clearing.home);
-    for(;n<4800 && s.journeyTravel.phase!=="working";n++)step(s,j,start+n*50);
+    assert.equal(s.journeyTravel.mining.prepared,true);
+    assert.deepEqual(s.clearing.position,elsewhere,"accepting the job cannot move the feet");
+    assert.deepEqual(s.clearing.requestedPoint,s.journeyTravel.shore);
+    assert.deepEqual(s.clearing.freeRoute.points[0],elsewhere);
+    assert.ok(forestJourneyMiningFrame(s,world),"gear is available without returning to base");
+    for(let n=0;n<2400 && s.journeyTravel.phase!=="working";n++) {
+      step(s,j,start+n*50);
+      assert.notDeepEqual(s.clearing.position,s.clearing.home,"the trip has no mandatory home waypoint");
+    }
     assert.equal(s.journeyTravel.phase,"working");
   }finally{session.release()}
 });
 
-test("an expedition replacing mine production first exits and returns without teleporting or losing its new job",()=>{
+test("fishing after mine production starts at the quarry exit without a home detour",()=>{
   const session=create(),s=session.state,mine=job("quarry_work"),shore=job("shore",3600,{fish:4});
   mine.id="production:quarry-1";
   try {
@@ -293,17 +295,23 @@ test("an expedition replacing mine production first exits and returns without te
     syncForestJourneyTravel(s,world,shore,start+61_000,false);
     assert.equal(s.journeyTravel.phase,"exiting");assert.equal(s.journeyTravel.jobId,mine.id);
     assert.deepEqual(s.clearing.position,feet);assert.equal(forestJourneyActorAway(s,shore,start+61_000),false);
-    let returned=false;
+    let handedOff=false;
     for(let n=0;n<4800 && s.journeyTravel?.phase!=="fishing";n++){
       step(s,shore,start+61_000+n*50);
-      if(!s.journeyTravel) { returned=true;assert.deepEqual(s.clearing.position,s.clearing.home); }
+      if(!handedOff && s.journeyTravel?.jobId===shore.id) {
+        handedOff=true;
+        assert.ok(Math.hypot(s.clearing.position.x-feet.x,s.clearing.position.y-feet.y)<2,
+          "the new fishing route starts at the safe quarry exit");
+        assert.deepEqual(s.clearing.requestedPoint,s.journeyTravel.shore);
+      }
+      assert.notDeepEqual(s.clearing.position,s.clearing.home);
     }
-    assert.equal(returned,true);assert.equal(s.journeyTravel.jobId,shore.id);assert.equal(s.journeyTravel.phase,"fishing");
+    assert.equal(handedOff,true);assert.equal(s.journeyTravel.jobId,shore.id);assert.equal(s.journeyTravel.phase,"fishing");
   }finally{session.release()}
 });
 
 
-test("quarry work cannot cut off a visible fishing catch or hide its return after the expedition is removed",()=>{
+test("quarry work waits for the visible fishing catch and then leaves directly from the shore",()=>{
   const session=create(),s=session.state,shore=job("shore",2700,{fish:4}),mine=job("quarry_work");
   mine.id="production:waiting-quarry";
   try {
@@ -316,15 +324,14 @@ test("quarry work cannot cut off a visible fishing catch or hide its return afte
     assert.equal(s.journeyTravel.jobId,shore.id);assert.ok(s.journeyTravel.ending);
     assert.deepEqual(forestJourneyFishingFrame(s,world),before);assert.deepEqual(s.clearing.position,feet);
     assert.equal(forestJourneyActorAway(s,mine,start+age*1000),false);
-    let returned=false;
     for(let n=0;n<4800 && s.journeyTravel?.jobId!==mine.id;n++) {
       step(s,mine,start+age*1000+n*50);
       if(s.journeyTravel?.phase==="returning") assert.equal(forestJourneyActorAway(s,mine,start+age*1000+n*50),false);
-      if(!s.journeyTravel) { returned=true;assert.deepEqual(s.clearing.position,s.clearing.home); }
+      assert.notDeepEqual(s.clearing.position,s.clearing.home);
     }
-    assert.equal(returned,true);assert.equal(s.journeyTravel.jobId,mine.id);assert.equal(s.journeyTravel.phase,"leaving");
-    assert.ok(Math.hypot(s.clearing.position.x-s.clearing.home.x,s.clearing.position.y-s.clearing.home.y)<1,
-      "the new mine road begins with one bounded step from base");
+    assert.equal(s.journeyTravel.jobId,mine.id);assert.equal(s.journeyTravel.phase,"leaving");
+    assert.ok(Math.hypot(s.clearing.position.x-feet.x,s.clearing.position.y-feet.y)<2,
+      "the new mine road begins at the fishing shore after tackle cleanup");
   }finally{session.release()}
 });
 

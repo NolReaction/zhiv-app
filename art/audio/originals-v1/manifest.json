@@ -12,7 +12,7 @@
   "sources": [
     {
       "path": "scripts/audio_originals/ambience.py",
-      "sha256": "572b2234758fbf0670128eb8702499609854bf2dba2a0781a827308ce920ac24"
+      "sha256": "01538c41b9c33a071393511901128c2180f6c43b4cc0a1ec7b17d139919d4efa"
     },
     {
       "path": "scripts/audio_originals/effects.py",
@@ -24,7 +24,7 @@
     },
     {
       "path": "scripts/audio_originals/render.py",
-      "sha256": "94e0d85ce674d1c58d4b7abe762c1b81928fb64c6f78a13c7dadb67ab4772662"
+      "sha256": "4f65b0e44e6928a958a1b6222ac4a512bafeaef43649f06f7dee457ad6776d92"
     }
   ],
   "assets": [
@@ -227,25 +227,25 @@
       "id": "campfire.01",
       "kind": "loop",
       "title": "Small Evening Fire",
-      "description": "Irregular small wood crackles and rounded ember pops over a very quiet flame; no wind-like noise bed.",
+      "description": "Sparse warm wood crackles with soft attacks over nearly silent embers; restrained upper frequencies and no roaring fire.",
       "sampleRate": 48000,
       "channels": 1,
       "frames": 384000,
       "durationSeconds": 8.0,
       "decodedBytes": 1536000,
-      "masterSha256": "97db39c450462d710f8bb101fbb54bb68c6f1ea78c182939f584f99fed2b838e",
+      "masterSha256": "132d7db2e6a06e395d774137c0ca120fc9bdad3471230fd46a1800d4f411ea03",
       "measurements": {
-        "peakDb": -14.0,
-        "rmsDb": -35.9415,
+        "peakDb": -25.0,
+        "rmsDb": -46.9022,
         "dc": 0.0,
-        "seamDelta": 0.00150146,
-        "maxAdjacentDelta": 0.064394921
+        "seamDelta": 8.4397e-05,
+        "maxAdjacentDelta": 0.008716778
       },
       "files": [
         {
-          "src": "/audio/originals-v1/loop/campfire.01.wood-v3.wav",
+          "src": "/audio/originals-v1/loop/campfire.01.calm-v4.wav",
           "bytes": 768044,
-          "sha256": "97db39c450462d710f8bb101fbb54bb68c6f1ea78c182939f584f99fed2b838e"
+          "sha256": "132d7db2e6a06e395d774137c0ca120fc9bdad3471230fd46a1800d4f411ea03"
         }
       ],
       "composition": {}
@@ -2441,25 +2441,25 @@
       "id": "cooking.simmer.01",
       "kind": "loop",
       "title": "Soup above the Embers",
-      "description": "Quiet simmering liquid with rounded irregular bubbles; a separate loop for active cooking, without baked-in fire.",
+      "description": "Separate rounded liquid bubbles and little paired gurgles with quiet gaps; no continuous airflow or baked-in fire.",
       "sampleRate": 48000,
       "channels": 1,
       "frames": 288000,
       "durationSeconds": 6.0,
       "decodedBytes": 1152000,
-      "masterSha256": "95d71b2d1a8f58905f57e7e9e32536898c17c25a60279355fc50fa2e2ff91135",
+      "masterSha256": "0ade9f1907fbfc69a254c9b7ecbca67d73fbf4db7949b90143ff57563a86adf6",
       "measurements": {
-        "peakDb": -12.2789,
-        "rmsDb": -25.0,
+        "peakDb": -24.0,
+        "rmsDb": -42.0196,
         "dc": 0.0,
-        "seamDelta": 0.00408785,
-        "maxAdjacentDelta": 0.024095375
+        "seamDelta": 3.8488e-05,
+        "maxAdjacentDelta": 0.00310896
       },
       "files": [
         {
-          "src": "/audio/originals-v1/loop/cooking.simmer.01.wav",
+          "src": "/audio/originals-v1/loop/cooking.simmer.01.bubbles-v2.wav",
           "bytes": 576044,
-          "sha256": "95d71b2d1a8f58905f57e7e9e32536898c17c25a60279355fc50fa2e2ff91135"
+          "sha256": "0ade9f1907fbfc69a254c9b7ecbca67d73fbf4db7949b90143ff57563a86adf6"
         }
       ],
       "composition": {}

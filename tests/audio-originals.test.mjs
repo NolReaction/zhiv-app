@@ -155,10 +155,10 @@ test("wildlife phrases are sparse and individual peaks remain quieter than the p
   }
 });
 
-test("campfire has small irregular crackles instead of a constant wind bed", () => {
+test("campfire has calmer, softer crackles instead of a constant wind bed", () => {
   const fire = manifest.assets.find(item => item.id === "campfire.01");
-  assert.match(fire.files[0].src, /wood-v3/);
-  assert.ok(fire.measurements.peakDb <= -14 && fire.measurements.rmsDb <= -33);
+  assert.match(fire.files[0].src, /calm-v4/);
+  assert.ok(fire.measurements.peakDb <= -25 && fire.measurements.rmsDb <= -41);
   const wav = pcmWave(readFileSync(path.join(root, "public", fire.files[0].src)));
   const window = wav.rate / 20;
   const levels = [];
@@ -166,12 +166,56 @@ test("campfire has small irregular crackles instead of a constant wind bed", () 
     let squares = 0;
     for (let index = start; index < start + window; index++) squares += (wav.samples.readInt16LE(index * 2) / 32768) ** 2;
     const rms = Math.sqrt(squares / window);
-    assert.ok(rms > .0008, "a faint flame remains between crackles without silent chopped segments");
+    assert.ok(rms > .0002, "faint embers remain between crackles without silent chopped segments");
     levels.push(rms);
   }
   levels.sort((a, b) => a - b);
   const contrast = levels[Math.floor(levels.length * .9)] / levels[Math.floor(levels.length * .1)];
   assert.ok(contrast > 4 && contrast < 25, "wood events stand above the faint bed; the old constant whoosh had a 1.3 ratio");
+
+  const old = pcmWave(readFileSync(path.join(root, "public/audio/originals-v1/loop/campfire.01.wood-v3.wav")));
+  const energy = audio => {
+    let squares = 0, differences = 0, previous = 0;
+    for (let offset = 0; offset < audio.samples.length; offset += 2) {
+      const sample = audio.samples.readInt16LE(offset) / 32768;
+      squares += sample * sample;
+      differences += (sample - previous) ** 2;
+      previous = sample;
+    }
+    return { squares, differences };
+  };
+  const currentEnergy = energy(wav), oldEnergy = energy(old);
+  assert.ok(currentEnergy.squares < oldEnergy.squares / 4, "same duration at least 6 dB quieter than the reported harsh revision");
+  assert.ok(currentEnergy.differences / currentEnergy.squares < .04,
+    "softer spectrum rather than turning down the same sharp transients");
+});
+
+test("cooking is quiet finite liquid bubbles without a continuous wind-like bed", () => {
+  const cooking = manifest.assets.find(item => item.id === "cooking.simmer.01");
+  assert.match(cooking.files[0].src, /bubbles-v2/);
+  assert.ok(cooking.measurements.peakDb <= -24 && cooking.measurements.rmsDb <= -36);
+  const wav = pcmWave(readFileSync(path.join(root, "public", cooking.files[0].src)));
+  const window = wav.rate / 20;
+  let quietWindows = 0, quietRun = 0, longestQuietRun = 0, squares = 0, differences = 0, previous = 0;
+  for (let start = 0; start < cooking.frames; start += window) {
+    let windowSquares = 0;
+    for (let frame = start; frame < start + window; frame++) {
+      const sample = wav.samples.readInt16LE(frame * 2) / 32768;
+      windowSquares += sample * sample;
+      differences += (sample - previous) ** 2;
+      previous = sample;
+    }
+    squares += windowSquares;
+    if (Math.sqrt(windowSquares / window) < .0002) {
+      quietWindows++;
+      quietRun++;
+      longestQuietRun = Math.max(longestQuietRun, quietRun);
+    } else quietRun = 0;
+  }
+  assert.ok(quietWindows / (cooking.frames / window) > .25,
+    "actual PCM has pauses between bubbles; the reported airy revision had none");
+  assert.ok(longestQuietRun <= 6, "small simmer releases continue without long silent gaps");
+  assert.ok(differences / squares < .005, "rounded low bubbles, without sharp or hissing upper texture");
 });
 
 test("added action sounds have bounded, restrained tails", () => {

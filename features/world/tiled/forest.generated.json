@@ -23180,8 +23180,8 @@
           "y": 670.076391513406
         },
         "activation": "campfire-lit",
-        "innerRadius": 20,
-        "outerRadius": 135,
+        "innerRadius": 12,
+        "outerRadius": 75,
         "campfireId": "clearing-campfire"
       }
     ],

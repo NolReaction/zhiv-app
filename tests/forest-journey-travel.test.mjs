@@ -11,7 +11,7 @@ const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presenta
 const { previewWorldScene, initialPreviewLevels } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
 const { connectForestSession } = await vite.ssrLoadModule("/features/world/state/forest-session.ts");
 const { advanceForestDirector } = await vite.ssrLoadModule("/features/world/simulation/forest-director.ts");
-const { requestClearingSleep, advanceClearingActivity } = await vite.ssrLoadModule("/features/world/simulation/clearing-activity.ts");
+const { requestClearingSleep, requestClearingPoint, advanceClearingActivity } = await vite.ssrLoadModule("/features/world/simulation/clearing-activity.ts");
 const { forestJourneyWalking, forestJourneyEnding, forestJourneyActorAway, forestJourneyFishingFrame, syncForestJourneyTravel } = await vite.ssrLoadModule("/features/world/activities/journeys/forest-journey-travel.ts");
 const { forestFishingHeroRig } = await vite.ssrLoadModule("/features/world/activities/fishing/forest-fishing-painter.ts");
 const { fishingTackleFrame } = await vite.ssrLoadModule("/features/world/activities/fishing/fishing-props.ts");
@@ -99,6 +99,31 @@ test("a restored active coastal job reconstructs one visible shore position with
   finishVisual(state, job, start + 600_000);
   assert.equal(state.journeyTravel.phase, "returning"); assert.deepEqual(state.clearing.position, before);
   session.release();
+});
+
+test("fresh fishing departs from a roaming hero's current feet even on its first camera", () => {
+  for (const observed of [false, true]) for (const route of ["shore", "shore_camp"]) {
+    const session = create(), state = session.state, job = journey(route);
+    try {
+      const destination = scene.destinations.find(point => point.id === "fishing").position;
+      assert.equal(requestClearingPoint(state.clearing, destination), true);
+      for (let n = 0; n < 150; n++) advanceClearingActivity(state.clearing, .05,
+        { enabled: true, blocked: false, homeAvailable: true, dusk: 0, rain: 0 });
+      const feet = { ...state.clearing.position };
+      assert.notDeepEqual(feet, state.clearing.home);
+      if (observed) syncForestJourneyTravel(state, scene, null, start, false);
+      syncForestJourneyTravel(state, scene, job, start + 1000, false);
+      assert.equal(state.journeyTravel.phase, "leaving");
+      assert.deepEqual(state.clearing.position, feet, "neither spawn nor the shore replaces current feet");
+      assert.deepEqual(state.clearing.freeRoute.points[0], feet);
+      assert.deepEqual(state.clearing.requestedPoint, destination);
+      const travel = state.journeyTravel, path = state.clearing.freeRoute;
+      for (let n = 0; n < 5; n++) syncForestJourneyTravel(state, scene, job, start + 1000, false);
+      assert.strictEqual(state.journeyTravel, travel); assert.strictEqual(state.clearing.freeRoute, path);
+      advance(state, job, start + 1000, 110, () => state.journeyTravel.phase === "fishing");
+      assert.equal(state.journeyTravel.phase, "fishing");
+    } finally { session.release(); }
+  }
 });
 
 test("an active trip removed by the server returns from its actual feet with all caught fish forfeited", () => {
@@ -274,15 +299,15 @@ test("without nearby water the coastal hero stays visibly at rest instead of cas
 
 test("non-coastal jobs remain away and a replacement job cannot inherit the old fishing owner", () => {
   const session = create(), state = session.state, shore = journey(), forest = journey("forest");
-  syncForestJourneyTravel(state, scene, shore, start, false);
+  syncForestJourneyTravel(state, scene, shore, start + 60_000, false);
   assert.ok(forestJourneyFishingFrame(state, scene));
   const position = { ...state.clearing.position };
-  syncForestJourneyTravel(state, scene, forest, start + 1000, false);
+  syncForestJourneyTravel(state, scene, forest, start + 61_000, false);
   assert.equal(forestJourneyEnding(state), true);
-  assert.equal(forestJourneyActorAway(state, forest, start + 1000), false, "old tackle is put away before the next job hides its actor");
-  finishVisual(state, forest, start + 1000);
+  assert.equal(forestJourneyActorAway(state, forest, start + 61_000), false, "old tackle is put away before the next job hides its actor");
+  finishVisual(state, forest, start + 61_000);
   assert.equal(state.journeyTravel, undefined); assert.equal(forestJourneyFishingFrame(state, scene), null);
-  assert.equal(forestJourneyActorAway(state, forest, start + 1000), true);
+  assert.equal(forestJourneyActorAway(state, forest, start + 61_000), true);
   assert.deepEqual(state.clearing.position, position);
   session.release();
 });

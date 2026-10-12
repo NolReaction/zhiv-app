@@ -2829,6 +2829,49 @@ test("economic garden uses wall time in both cameras and emits one harvest fallb
   } finally { probe?.release(); views.forEach(view => view.dispose()); env.restore(); }
 });
 
+test("berry collection skips a distant walk and a fishing ending immediately in both cameras", async () => {
+  const bushes = [{ id: "economic-bush", points: [{ x: 602, y: 617 }, { x: 642, y: 617 }, { x: 642, y: 647 }, { x: 602, y: 647 }],
+    entry: { x: 591, y: 650 }, hide: { x: 622, y: 643 } }];
+  const navigation = { ...livingNavigation, areas: [
+    { id: "home-clearing", points: [{ x: 570, y: 610 }, { x: 660, y: 610 }, { x: 660, y: 735 }, { x: 570, y: 735 }] },
+    { id: "far-path", points: [{ x: 650, y: 610 }, { x: 850, y: 610 }, { x: 850, y: 735 }, { x: 650, y: 735 }] },
+  ] };
+  const { mountHabitat, connectForestSession, forestJourneyFishingFrame, TILED_WORLD } = await modules({ bushes, navigation });
+  for (const view of ["circle", "world"]) for (const activity of ["roaming", "returning", "fishing-ending"]) {
+    const env = browser(), events = []; let habitat, probe;
+    try {
+      const end = Date.parse("2026-10-04T12:00:00Z");
+      const crop = { jobId: "crop-away", startedAt: new Date(end - 600000).toISOString(), finishesAt: new Date(end).toISOString() };
+      const initial = { ...options, view, reducedMotion: false, serverNow: end,
+        presenceKey: `garden-away-${view}-${activity}`, economyGarden: crop, onGardenHarvestEvent: event => events.push(event) };
+      habitat = mountHabitat(env.surface(), initial, { activity() {}, ready() {}, failure: assert.fail });
+      if (view === "circle" && activity === "roaming") env.finishPath("/test-ground.webp");
+      await flush();
+      probe = connectForestSession(initial.presenceKey, TILED_WORLD, view, end, 0, () => {});
+      const state = probe.state, garden = state.life.garden;
+      state.clearing.position = { x: 790, y: 700 }; state.clearing.stage = "clearing";
+      const travel = { jobId: "finished-fishing", phase: activity === "returning" ? "returning" : "fishing",
+        shore: { ...state.clearing.position }, home: { ...state.clearing.home }, scene: TILED_WORLD,
+        finishesAt: end - 1, beganAt: state.clearing.elapsed, fishingAt: state.director.elapsed,
+        waterTarget: { x: 830, y: 720 }, requested: false };
+      if (activity !== "roaming") {
+        state.explorationId = null; state.journeyTravel = travel;
+        if (activity === "fishing-ending") travel.ending = { settleAt: state.director.elapsed + 1,
+          endsAt: state.director.elapsed + 4, finishAge: 0, source: forestJourneyFishingFrame(state, TILED_WORLD) };
+      }
+      const position = { ...state.clearing.position }, basket = structuredClone(garden.basket);
+      habitat.configure({ ...initial, gardenHarvestRequest: { requestId: 1, jobId: crop.jobId } });
+      await flush();
+      assert.deepEqual(events.map(event => event.status), ["unavailable"], `${view}/${activity}: no watchdog or tackle wait`);
+      assert.equal(garden.harvest, null); assert.equal(garden.routine, null); assert.equal(state.pendingLife, null);
+      assert.deepEqual(state.clearing.position, position); assert.deepEqual(garden.basket, basket);
+      if (activity !== "roaming") assert.equal(state.journeyTravel, travel, "collection cannot cancel a cosmetic return");
+      habitat.paintWorld(env.surface().context); await flush();
+      assert.equal(events.length, 1, "repaint cannot repeat the fallback");
+    } finally { probe?.release(); habitat?.dispose(); env.restore(); }
+  }
+});
+
 test("background garden snapshots cannot cancel the owner's delivery and a removed job stops pending work", async () => {
   const bushes = [{ id: "economic-bush", points: [{ x: 602, y: 617 }, { x: 642, y: 617 }, { x: 642, y: 647 }, { x: 602, y: 647 }],
     entry: { x: 591, y: 650 }, hide: { x: 622, y: 643 } }];

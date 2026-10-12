@@ -533,8 +533,9 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     const leaseMode = state.memory.sync?.mode;
     const leaseBlocked = active() && !session.isSimulationAllowed() && (leaseMode === "other-device" || leaseMode === "error");
     if (!session.isOwner() && !leaseBlocked) return;
-    // Keep the request unconsumed until the visible catch/tackle is put away.
-    if (request && Number.isSafeInteger(request.requestId) && request.requestId > 0 && (!forestJourneyEnding(state) || leaseBlocked)) {
+    // A returned server job can still have a cosmetic walk/tackle ending. That
+    // must not delay berry collection or replace the journey's physical route.
+    if (request && Number.isSafeInteger(request.requestId) && request.requestId > 0) {
       const fresh = session.consumeEvent("garden-harvest", request.requestId);
       if (fresh || leaseBlocked && garden.harvest?.request.requestId === request.requestId) {
         if (leaseBlocked) {
@@ -542,11 +543,14 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
           garden.harvestEvent = { ...request, status: "unavailable", reason: "Сбор продолжается без анимации на этом устройстве" };
           garden.harvest = null;
         } else {
-          advanceCookingPreview(state, null);
-          state.reaction = 0; state.animation = null;
-          requestForestGardenHarvest(state, request, directorOptions());
-          if (dev?.paused || options.paused || dev?.showHero === false || dev?.pose && dev.pose !== "auto") {
-            cancelForestDirector(state, "Сбор продолжается без анимации");
+          requestForestGardenHarvest(state, request, { ...directorOptions(),
+            actorAway: actorAway() || forestJourneyWalking(state) || forestJourneyEnding(state) });
+          if (garden.harvest?.request.requestId === request.requestId) {
+            advanceCookingPreview(state, null);
+            state.reaction = 0; state.animation = null;
+            if (dev?.paused || options.paused || dev?.showHero === false || dev?.pose && dev.pose !== "auto") {
+              cancelForestDirector(state, "Сбор продолжается без анимации");
+            }
           }
         }
       }
