@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { ArrowLeft, Bell, ChevronRight, Settings2, Volume2 } from "lucide-react";
+import { ArrowLeft, Bell, ChevronRight, Settings2, Smartphone, Volume2 } from "lucide-react";
+import { InstallPanel } from "@/features/pwa/install-panel";
 import { SharingSwitch as Switch } from "@/components/sharing-switch";
 import { AudioSettingsPanel } from "@/features/audio/ui/audio-settings";
 import { NotificationSettingsPanel, type NotificationSettingsExit } from "@/features/notifications/notification-settings";
@@ -9,6 +10,7 @@ import { useSectionGuideLauncherPreference } from "@/features/onboarding/use-sec
 import styles from "./profile-settings.module.css";
 
 const screens = [
+  { id: "installation", title: "Установить приложение", description: "Значок на экране и инструкция для вашего браузера", icon: Smartphone },
   { id: "notifications", title: "Уведомления", description: "События, тихие часы и частота сообщений", icon: Bell },
   { id: "audio", title: "Звук", description: "Музыка, окружение и громкость игры", icon: Volume2 },
   { id: "appearance", title: "Внешний вид", description: "Простой вид и кнопка подсказок", icon: Settings2 },
@@ -76,6 +78,9 @@ export function ProfileSettings({ ownerPublicId, isOnline, onSessionLost, simple
       <span className={styles.currentTitle} aria-hidden="true">{currentTitle}</span>
     </div>}
     {/* Keep visited screens mounted so returning does not discard notification drafts. */}
+    {visited.includes("installation") && <div className={styles.screen} hidden={screen !== "installation"}>
+      <InstallPanel compact />
+    </div>}
     {visited.includes("notifications") && <div className={styles.screen} hidden={screen !== "notifications"}>
       <NotificationSettingsPanel ownerPublicId={ownerPublicId} isOnline={isOnline} onSessionLost={onSessionLost} exitRef={notificationSettingsExit} />
     </div>}

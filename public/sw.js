@@ -303,6 +303,8 @@ self.addEventListener("fetch", (event) => {
 
     event.respondWith(
       networkResponse.catch(async () => {
+        // Public product pages must never turn into the game at the wrong URL.
+        if (url.pathname !== "/") return Response.error();
         const cache = await openActiveCache();
         return (await cache?.match("/")) ?? Response.error();
       }),

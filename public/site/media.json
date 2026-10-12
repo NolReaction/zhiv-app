@@ -1,0 +1,41 @@
+{
+  "title": "Видеопрогулка по полянке",
+  "description": "Иллюстративный пролёт камеры по текущей карте с Мохликом и сменой освещения. Подготовлено игровым рендерером; не запись действий игрока.",
+  "scene": "forest",
+  "levels": {
+    "builder-home": 1,
+    "plesk-shop": 1,
+    "woodlot": 1,
+    "quarry": 1,
+    "bridge": 0,
+    "lighthouse": 0,
+    "workshop": 1,
+    "home": 2
+  },
+  "poster": {
+    "src": "/site/poster.webp",
+    "width": 1440,
+    "height": 900,
+    "alt": "Мохлик у дома-пня и ягодного куста на лесной полянке"
+  },
+  "map": {
+    "src": "/site/map.webp",
+    "width": 1600,
+    "height": 1600,
+    "alt": "Карта лесного мира с полянкой, мастерской, шахтой, рекой и домами жителей"
+  },
+  "nightMap": {
+    "src": "/site/map-night.webp",
+    "width": 1600,
+    "height": 1600,
+    "alt": "Тот же лес вечером: свет в окнах домов и фонари вдоль дорожек"
+  },
+  "video": {
+    "src": "/site/forest-tour.mp4",
+    "width": 854,
+    "height": 480,
+    "duration": 12,
+    "fps": 20,
+    "audio": false
+  }
+}

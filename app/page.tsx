@@ -1,5 +1,5 @@
-import { AppShell } from "@/features/app/app-shell";
+import { GameEntry } from "@/features/app/game-entry";
 
 export default function Home() {
-  return <AppShell />;
+  return <GameEntry />;
 }

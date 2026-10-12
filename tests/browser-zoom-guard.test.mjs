@@ -112,5 +112,8 @@ test("SSR guard renders no layout element and mobile CSS protects nested scroll 
   assert.match(mapCss, /\.scene > canvas\s*\{[^}]*touch-action: none;/);
   assert.match(mapCss, /\.mapAnchors button\s*\{\s*touch-action: none;/);
   const layout = await readFile(new URL("../app/layout.tsx", import.meta.url), "utf8");
-  assert.match(layout, /<body>\s*<MobileGestureGuard\s*\/>/);
+  assert.doesNotMatch(layout, /<MobileGestureGuard\s*\/>/, "public product and installation pages must allow zoom");
+  const entry = await readFile(new URL("../features/app/game-entry.tsx", import.meta.url), "utf8");
+  assert.match(entry, /<MobileGestureGuard\s*\/>/);
+  assert.match(entry, /<InstallationGate><GameRuntime\s*\/><\/InstallationGate>/);
 });

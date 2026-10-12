@@ -299,6 +299,20 @@ test("keeps identity and check-ins out of the offline cache", async () => {
   assert.match(serviceWorker, /key\.startsWith\(CACHE_PREFIX\)/);
 });
 
+test("offline product and other pages never receive the cached game at the wrong URL", async () => {
+  const harness = await createServiceWorkerHarness();
+  const shell = setShellResponses(harness, "public-site");
+  await prepareOfflineShell(harness);
+  harness.responses.set(origin + "/", new Error("Offline"));
+  assert.equal(await (await harness.dispatchFetch("/")).text(), shell.html);
+  for (const path of ["/site", "/site/", "/branch"]) {
+    harness.responses.set(origin + path, new Error("Offline"));
+    const response = await harness.dispatchFetch(path);
+    assert.equal(response.type, "error");
+    assert.equal(await response.text(), "");
+  }
+});
+
 test("release feed bypasses old shell and asset caches after a deployment", async () => {
   const harness = await createServiceWorkerHarness();
   setShellResponses(harness, "updates-a");
@@ -915,8 +929,10 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
     ]);
 
   assert.match(layout, /minimumScale:\s*1/);
-  assert.match(layout, /maximumScale:\s*1/);
-  assert.match(layout, /userScalable:\s*false/);
+  assert.match(layout, /maximumScale:\s*5/, "public installation instructions remain zoomable");
+  assert.match(layout, /userScalable:\s*true/);
+  const entry = await readFile(new URL("../features/app/game-entry.tsx", import.meta.url), "utf8");
+  assert.match(entry, /<MobileGestureGuard\s*\/>/, "the game itself retains the native gesture guard");
   assert.match(layout, /viewportFit:\s*["']cover["']/);
   assert.match(config, /devIndicators:\s*false/);
 

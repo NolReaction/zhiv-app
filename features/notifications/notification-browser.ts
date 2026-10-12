@@ -23,7 +23,7 @@ export function notificationSupport(): { supported: boolean; reason: string | nu
   const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   const standalone = window.matchMedia("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
   if (!window.isSecureContext) return { supported: false, reason: "Уведомления работают при безопасном подключении HTTPS. Настройки уже можно сохранить." };
-  if (ios && !standalone) return { supported: false, reason: "На iPhone и iPad откройте сайт в Safari → «Поделиться» → «На экран „Домой“», затем запустите приложение через его значок. Нужна iOS 16.4 или новее." };
+  if (ios && !standalone) return { supported: false, reason: "На iPhone и iPad откройте сайт в Safari или Chrome → «Поделиться» → «На экран „Домой“», затем запустите приложение со значка. Инструкция есть в настройках → «Установить приложение». Нужна iOS 16.4 или новее." };
   if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
     return { supported: false, reason: "В этом режиме браузера нет Web Push. Откройте сайт в полном обновлённом браузере в обычном режиме. Настройки сохранятся для другого поддерживаемого устройства." };
   }

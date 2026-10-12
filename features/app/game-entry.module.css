@@ -1,0 +1,5 @@
+.loading { min-height: 100svh; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 30px; gap: 15px; text-align: center; color: #d2dfc4; }
+.loading p { margin: 0; max-width: 360px; line-height: 1.65; font-size: 14px; }
+.loading p:first-child { font-size: 20px; font-weight: 600; }
+.loading button { padding: 13px 20px; border: 1px solid #d3e89d; border-radius: 12px; background: #d3e89d; color: #25351e; font: inherit; cursor: pointer; }
+.loading button:focus-visible { outline: 3px solid #effacb; outline-offset: 5px; }
