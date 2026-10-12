@@ -100,13 +100,14 @@ test("ready jobs use the supplied server clock and never claim their result", ()
 });
 
 test("storage shortfalls, including reserved goods, come before collection suggestions", () => {
+  const capacity = snapshot().storage.capacity;
   const current = job({ finishesAt: new Date(now).toISOString(), rewards: { planks: 8 } });
-  const result = advice({ jobs: [current], storage: { capacity: 200, used: 170, reserved: 25, available: 5, overflow: 0 } }, { context });
+  const result = advice({ jobs: [current], storage: { capacity, used: capacity - 30, reserved: 25, available: 5, overflow: 0 } }, { context });
   assert.equal(result[0].id, "storage:space"); assert.match(result[0].message, /ещё 3 мест/);
   assert.equal(result.filter(entry => entry.id === "storage:space").length, 1);
   assert.ok(!result.some(entry => entry.id === `job:${current.id}`));
   const build = job({ kind: "construction", targetId: "home", targetLevel: 2, recipeId: null, rewards: {}, finishesAt: new Date(now).toISOString() });
-  const full = advice({ jobs: [build], inventory: { wood: 200 } });
+  const full = advice({ jobs: [build], inventory: { wood: capacity } });
   assert.equal(full[0].id, "storage:space"); assert.equal(full[1].title, "Стройка готова", "construction needs no item storage");
 });
 

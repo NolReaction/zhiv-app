@@ -21,11 +21,6 @@
   background: radial-gradient(ellipse at 50% 44%, #213322 0%, #101e17 32%, #080f0e 66%, #060b0b 100%);
 }
 
-.sound { position: absolute; top: max(18px, env(safe-area-inset-top)); right: max(18px, env(safe-area-inset-right)); display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 9px 14px; border: 1px solid #c1d49532; border-radius: 999px; color: #d5e2bf; background: #17261dc9; font: inherit; font-size: 12px; cursor: pointer; }
-.sound:hover { background: #243b2bd9; border-color: #c1d49566; }
-.sound:focus-visible { outline: 2px solid #d1e4a6; outline-offset: 4px; }
-.sound:disabled { cursor: default; opacity: .65; }
-
 .atmosphere { position: absolute; z-index: -1; inset: 0; overflow: hidden; pointer-events: none; }
 .foliage { position: absolute; left: -92px; bottom: 8%; width: 220px; height: 270px; opacity: .24; transform: rotate(19deg); }
 .foliage i { position: absolute; display: block; width: 150px; height: 53px; border-radius: 4% 100% 2% 100%; background: linear-gradient(35deg, #10211a, #2e4630); transform: rotate(-42deg); }

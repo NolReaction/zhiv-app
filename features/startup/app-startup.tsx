@@ -84,7 +84,7 @@ export function AppStartup({ children }: { children: ReactNode }) {
     <div ref={content} data-app-content inert={active} aria-hidden={active || undefined}>{children}</div>
     {active && <StartupSplash phase={phase} progress={state.ready && !audio.settled ? 98 : state.progress}
       message={state.ready && !audio.settled ? "Готовим звуки" : state.message} detail={state.detail}
-      revealReady={audio.revealReady} offerSound={audio.offerSound && phase !== "leaving"} soundBusy={audio.busy} onSound={audio.requestSound}
+      revealReady={audio.revealReady}
       retryAvailable={state.retryAvailable} onRetry={() => retry.current()} onLogoReady={onLogoReady} />}
   </StartupContext.Provider>;
 }

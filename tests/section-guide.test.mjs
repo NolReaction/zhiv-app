@@ -30,7 +30,7 @@ test("each first-entry lesson is short and gating does not consume an unopened l
   assert.equal(sectionGuideCanOpen(true, true, null), true, "still eligible when that blocker clears");
 });
 
-test("closing and revisiting an unfinished lesson resumes the exact step", () => {
+test("leaving the section without explicitly pausing its lesson resumes the exact step", () => {
   const disk = storage(), first = createSectionGuideStore("resume-owner", "plesk", disk);
   first.restore();
   first.save(move("plesk", move("plesk", null, "start"), "next"));

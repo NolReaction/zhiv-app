@@ -18,9 +18,6 @@ export type StartupSplashProps = {
   onRetry: () => void;
   onLogoReady: () => void;
   revealReady?: boolean;
-  offerSound?: boolean;
-  soundBusy?: boolean;
-  onSound?: () => void;
 };
 
 const LEAF_COUNT = 12;
@@ -39,7 +36,7 @@ function Leaf() {
 
 /** Presentation only: asset retries and the one-shot app-entry lifecycle live in the startup gate. */
 export function StartupSplash({ phase, progress, message, detail, retryAvailable, onRetry, onLogoReady,
-  revealReady = true, offerSound = false, soundBusy = false, onSound }: StartupSplashProps) {
+  revealReady = true }: StartupSplashProps) {
   const [logoState, setLogoState] = useState<"loading" | "ready" | "failed">("loading");
   const logoSettled = useRef(false);
   const logoDecoding = useRef(false);
@@ -81,13 +78,6 @@ export function StartupSplash({ phase, progress, message, detail, retryAvailable
     style={{ "--splash-enter-ms": `${SPLASH_ENTER_MS}ms`, "--splash-exit-ms": `${SPLASH_EXIT_MS}ms` } as CSSProperties}
   >
     <div className={styles.backdrop} aria-hidden="true" />
-    {offerSound && phase !== "leaving" && <button className={styles.sound} type="button" disabled={soundBusy}
-      aria-label="Включить звук заставки" onClick={onSound}>
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <path d="m11 5-6 4H2v6h3l6 4V5Zm5 3a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-      Со звуком
-    </button>}
     <div className={styles.atmosphere} aria-hidden="true">
       <div className={styles.foliage}><i /><i /><i /></div>
       <div className={`${styles.foliage} ${styles.foliageOpposite}`}><i /><i /><i /></div>

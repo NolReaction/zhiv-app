@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { getStartupAudioEntry, INITIAL_STARTUP_AUDIO } from "./startup-audio";
 
@@ -10,6 +10,7 @@ export function useStartupAudio(logoReady: boolean, active: boolean) {
   useEffect(() => {
     const runtime = getAudioRuntime();
     const current = getStartupAudioEntry(runtime, { visible: () => !document.hidden });
+    const detach = current.attach();
     entry.current = current;
     let attached = true;
     const update = () => { if (attached) setState(current.getPresentation()); };
@@ -24,12 +25,11 @@ export function useStartupAudio(logoReady: boolean, active: boolean) {
       unsubscribe();
       unsubscribeRuntime();
       document.removeEventListener("visibilitychange", visibility);
-      // Do not abort shared preparation on StrictMode's temporary detach.
+      detach();
       if (entry.current === current) entry.current = null;
     };
   }, []);
   useEffect(() => { if (logoReady && state.revealReady) entry.current?.reveal(); }, [logoReady, state.revealReady]);
   useEffect(() => { if (!active) entry.current?.close(); }, [active]);
-  const requestSound = useCallback(() => entry.current?.requestSound(), []);
-  return { ...state, requestSound };
+  return state;
 }

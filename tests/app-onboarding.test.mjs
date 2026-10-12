@@ -130,7 +130,7 @@ test("per-account store preserves resume, skip and restart without changing the 
   restored.restore();
   assert.deepEqual(restored.getSnapshot().progress, started("people"));
   assert.deepEqual(second.getSnapshot().progress, { version: 2, status: "skipped" });
-  assert.deepEqual(restored.getServerSnapshot(), { loaded: false, progress: null });
+  assert.deepEqual(restored.getServerSnapshot(), { loaded: false, progress: null, paused: false });
   restored.save(null);
   assert.equal(parseAppOnboarding(values.get(appOnboardingStorageKey("FIRST"))), null);
 });
@@ -150,6 +150,49 @@ test("failed local storage remains usable in memory and stable snapshots avoid r
   const reopened = createAppOnboardingStore("DENIED", denied);
   reopened.restore();
   assert.deepEqual(reopened.getSnapshot().progress, { version: 2, status: "skipped" });
+});
+
+test("closing the app welcome or a lesson persists across reload until explicit resume", () => {
+  for (const progress of [null, { ...started("profile"), completedSteps: ["check-in", "calendar"] }]) {
+    const values = new Map();
+    const disk = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
+    const owner = `app-pause-${progress?.stepId ?? "welcome"}`;
+    const first = createAppOnboardingStore(owner, disk);
+    first.restore(); first.save(progress); first.setPaused(true);
+    const reopened = createAppOnboardingStore(owner, disk);
+    reopened.restore();
+    assert.deepEqual(reopened.getSnapshot(), { loaded: true, progress, paused: true });
+    const other = createAppOnboardingStore(`${owner}-other`, disk);
+    other.restore();
+    assert.equal(other.getSnapshot().paused, false, "one account cannot silence another account's tutorial");
+    reopened.setPaused(false);
+    const resumed = createAppOnboardingStore(owner, disk);
+    resumed.restore();
+    assert.deepEqual(resumed.getSnapshot(), { loaded: true, progress, paused: false });
+  }
+});
+
+test("app pause survives blocked storage, and restored writes allow cross-tab pause updates", () => {
+  const values = new Map();
+  let writable = false;
+  const disk = { getItem: key => values.get(key) ?? null, setItem(key, value) {
+    if (!writable) throw Error("denied");
+    values.set(key, value);
+  } };
+  const first = createAppOnboardingStore("app-pause-recovery", disk);
+  first.restore(); first.save(started("people")); first.setPaused(true);
+  const reopened = createAppOnboardingStore("app-pause-recovery", disk);
+  reopened.restore();
+  assert.equal(reopened.getSnapshot().paused, true);
+  assert.equal(reopened.getSnapshot().progress.stepId, "people");
+  writable = true;
+  reopened.setPaused(false);
+  disk.setItem(reopened.pauseStorageKey, "true");
+  reopened.restore();
+  assert.equal(reopened.getSnapshot().paused, true);
+  disk.setItem(reopened.pauseStorageKey, "false");
+  reopened.restore();
+  assert.equal(reopened.getSnapshot().paused, false);
 });
 
 function view(stepId, overrides = {}, completed = []) {

@@ -264,14 +264,14 @@ test("the account store hydrates deliberately and only notifies changes to activ
   const storage = memoryStorage();
   writeWorldOnboarding("STORE-PLAYER", started("profile"), storage);
   const store = createWorldOnboardingStore("STORE-PLAYER", storage);
-  assert.deepEqual(store.getServerSnapshot(), { loaded: false, progress: null });
-  assert.deepEqual(store.getSnapshot(), { loaded: false, progress: null });
+  assert.deepEqual(store.getServerSnapshot(), { loaded: false, progress: null, paused: false });
+  assert.deepEqual(store.getSnapshot(), { loaded: false, progress: null, paused: false });
   assert.equal(store.getSnapshot(), store.getSnapshot());
   assert.equal(store.getServerSnapshot(), store.getServerSnapshot());
   let notifications = 0;
   const unsubscribe = store.subscribe(() => notifications++);
   store.restore();
-  assert.deepEqual(store.getSnapshot(), { loaded: true, progress: started("profile") });
+  assert.deepEqual(store.getSnapshot(), { loaded: true, paused: false, progress: started("profile") });
   assert.equal(notifications, 1);
   const restored = store.getSnapshot();
   store.restore();
@@ -282,7 +282,7 @@ test("the account store hydrates deliberately and only notifies changes to activ
   unsubscribe();
   store.save(terminal("completed"));
   assert.equal(notifications, 2, "an unmounted owner no longer receives updates");
-  assert.deepEqual(store.getServerSnapshot(), { loaded: false, progress: null });
+  assert.deepEqual(store.getServerSnapshot(), { loaded: false, progress: null, paused: false });
 });
 
 test("observing a crop and advancing in the same turn preserves the newest store value", () => {
@@ -300,20 +300,20 @@ test("temporary storage failure keeps progress in memory and isolates accounts",
   const denied = { getItem() { throw new Error("Denied"); }, setItem() { throw new Error("Denied"); } };
   const first = createWorldOnboardingStore("IN-MEMORY-FIRST", denied);
   first.restore();
-  assert.deepEqual(first.getSnapshot(), { loaded: true, progress: null });
+  assert.deepEqual(first.getSnapshot(), { loaded: true, paused: false, progress: null });
   const progress = { ...started("expeditions"), cropJobId };
   first.save(progress);
   const reopened = createWorldOnboardingStore("IN-MEMORY-FIRST", denied);
   reopened.restore();
-  assert.deepEqual(reopened.getSnapshot(), { loaded: true, progress });
+  assert.deepEqual(reopened.getSnapshot(), { loaded: true, progress, paused: false });
   const other = createWorldOnboardingStore("IN-MEMORY-SECOND", denied);
   other.restore();
-  assert.deepEqual(other.getSnapshot(), { loaded: true, progress: null });
+  assert.deepEqual(other.getSnapshot(), { loaded: true, paused: false, progress: null });
   advance(reopened, { type: "skip", now });
   const afterSkip = createWorldOnboardingStore("IN-MEMORY-FIRST", denied);
   afterSkip.restore();
-  assert.deepEqual(afterSkip.getSnapshot(), { loaded: true, progress: { ...finished("skipped"), cropJobId } });
-  assert.deepEqual(other.getSnapshot(), { loaded: true, progress: null });
+  assert.deepEqual(afterSkip.getSnapshot(), { loaded: true, paused: false, progress: { ...finished("skipped"), cropJobId } });
+  assert.deepEqual(other.getSnapshot(), { loaded: true, paused: false, progress: null });
 });
 
 test("restored writable storage replaces the fallback so later external changes can be read", () => {
@@ -331,4 +331,70 @@ test("restored writable storage replaces the fallback so later external changes 
   storage.setItem(onboardingStorageKey("RECOVERING-PLAYER"), JSON.stringify(terminal("completed")));
   store.restore();
   assert.deepEqual(store.getSnapshot().progress, terminal("completed"));
+});
+
+test("closing the world invitation or active lesson stays paused after reopening without losing its crop", () => {
+  for (const progress of [null, { ...started("orders"), cropJobId }]) {
+    const storage = memoryStorage();
+    const owner = `world-pause-${progress?.stepId ?? "welcome"}`;
+    const first = createWorldOnboardingStore(owner, storage);
+    first.restore();
+    if (progress) first.save(progress);
+    first.setPaused(true);
+    const reopened = createWorldOnboardingStore(owner, storage);
+    reopened.restore();
+    assert.deepEqual(reopened.getSnapshot(), { loaded: true, progress, paused: true });
+    if (progress) {
+      advance(reopened, { type: "crop", jobId: "new-confirmed-crop" });
+      assert.equal(reopened.getSnapshot().paused, true, "observed game state cannot resume the guide");
+      assert.equal(reopened.getSnapshot().progress.cropJobId, "new-confirmed-crop");
+    }
+    const other = createWorldOnboardingStore(`${owner}-other`, storage);
+    other.restore();
+    assert.equal(other.getSnapshot().paused, false);
+    reopened.setPaused(false);
+    const resumed = createWorldOnboardingStore(owner, storage);
+    resumed.restore();
+    assert.equal(resumed.getSnapshot().paused, false);
+    assert.deepEqual(resumed.getSnapshot().progress, reopened.getSnapshot().progress);
+  }
+});
+
+test("world pause has an account-scoped fallback and recovers external storage updates", () => {
+  const storage = memoryStorage();
+  let writable = false;
+  const disk = { getItem: storage.getItem, setItem(key, value) {
+    if (!writable) throw Error("denied");
+    storage.setItem(key, value);
+  } };
+  const first = createWorldOnboardingStore("world-pause-recovery", disk);
+  first.restore(); first.save({ ...started("grow"), cropJobId }); first.setPaused(true);
+  const reopened = createWorldOnboardingStore("world-pause-recovery", disk);
+  reopened.restore();
+  assert.equal(reopened.getSnapshot().paused, true);
+  assert.equal(reopened.getSnapshot().progress.cropJobId, cropJobId);
+  writable = true;
+  reopened.setPaused(false);
+  storage.setItem(reopened.pauseStorageKey, "true");
+  reopened.restore();
+  assert.equal(reopened.getSnapshot().paused, true);
+  storage.setItem(reopened.pauseStorageKey, "false");
+  reopened.restore();
+  assert.equal(reopened.getSnapshot().paused, false);
+});
+
+test("an update preserves existing players' terminal decisions and does not rewrite their progress", () => {
+  const storage = memoryStorage();
+  for (const version of [1, 2]) {
+    for (const status of ["completed", "skipped"]) {
+      const owner = `existing-${version}-${status}`;
+      const original = JSON.stringify({ version, status });
+      storage.setItem(onboardingStorageKey(owner), original);
+      const store = createWorldOnboardingStore(owner, storage);
+      store.restore();
+      assert.deepEqual(store.getSnapshot().progress, terminal(status));
+      assert.equal(storage.getItem(onboardingStorageKey(owner)), original);
+      assert.equal(storage.getItem(store.pauseStorageKey), null, "restoring does not invent a new preference");
+    }
+  }
 });

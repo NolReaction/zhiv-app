@@ -98,7 +98,7 @@ export function SectionGuide({ owner, section, enabled, targetRoot, inline = tru
     return () => cancelAnimationFrame(frame);
   }, [open, step, presentationKey, targetRoot, currentTarget]);
   useEffect(() => {
-    if (open && state.progress === null) store.save(transitionSectionGuide(section, null, "start"));
+    if (open && store.getSnapshot().progress === null) store.save(transitionSectionGuide(section, null, "start"));
   }, [open, state.progress, section, store]);
   const apply = (event: SectionGuideEvent) => {
     const progress = transitionSectionGuide(section, store.getSnapshot().progress, event);

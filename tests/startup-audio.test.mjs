@@ -75,56 +75,44 @@ test("slow logo preparation releases the image after 600ms independently from th
   f.entry.close();
 });
 
-test("the visible splash offers a gesture for browser-blocked fresh defaults and plays its current logo once", async () => {
-  let unlocks = 0;
-  const f = fixture({ runtime: { unlock: async () => { unlocks++; f.setState("running"); return true; } } });
+test("autoplay permission received during the entrance plays once without a splash action", async () => {
+  const f = fixture();
   f.setState("locked"); f.entry.start(); await flush(); f.entry.reveal();
-  assert.equal(f.entry.getPresentation().offerSound, true);
-  f.advance(500);
-  f.entry.requestSound(); await flush();
-  assert.equal(unlocks, 1);
-  assert.equal(f.events.length, 1);
-  assert.equal(f.events[0].occurredAt, 1_500, "the explicit visible-logo gesture has its own current timestamp");
-  assert.equal(f.entry.getPresentation().offerSound, false);
-  f.entry.requestSound(); f.entry.refresh();
-  assert.equal(unlocks, 1); assert.equal(f.events.length, 1);
-  f.entry.close();
-});
-
-test("native pointerdown permission cannot make the offered button disappear before its click", async () => {
-  const f = fixture({ runtime: { unlock: async () => true } });
-  f.setState("locked"); f.entry.start(); await flush(); f.entry.reveal(); f.advance(500);
-  f.setState("running"); f.entry.refresh();
-  assert.equal(f.entry.getPresentation().offerSound, true);
-  assert.equal(f.events.length, 0, "generic input does not replay an expired entrance");
-  f.entry.requestSound(); await flush();
+  assert.equal(f.events.length, 0);
+  f.advance(80); f.setState("running"); f.entry.refresh();
+  assert.deepEqual(f.events, [{ id: "startup:logo", cueId: "ui.startup", occurredAt: 1_000, maxAgeMs: STARTUP_LOGO_AUDIO_WINDOW_MS }]);
+  f.entry.refresh(); f.entry.reveal();
   assert.equal(f.events.length, 1);
   f.entry.close();
 });
 
-test("the splash gesture never survives closing, hiding, mute or a slow permission result", async t => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
+test("a blocked browser remains silent and future input never replays an expired logo", async () => {
+  const f = fixture();
+  f.setState("locked"); f.entry.start(); await flush(); f.entry.reveal();
+  assert.deepEqual(f.entry.getPresentation(), { settled: true, revealReady: true });
+  f.advance(500); f.setState("running"); f.entry.refresh(); f.entry.reveal();
+  assert.equal(f.events.length, 0);
+  f.entry.close();
+});
+
+test("delayed autoplay permission never survives closing, hiding, mute or the entrance window", async () => {
   for (const invalidation of ["close", "hide", "mute", "late"]) {
-    const permission = deferred();
-    const f = fixture({ runtime: { unlock: () => permission.promise } });
-    f.setState("locked"); f.entry.start(); await flush(); f.entry.reveal(); f.advance(500);
-    f.entry.requestSound();
+    const f = fixture();
+    f.setState("locked"); f.entry.start(); await flush(); f.entry.reveal();
     if (invalidation === "close") f.entry.close();
     if (invalidation === "hide") { f.setVisible(false); f.entry.hide(); }
     if (invalidation === "mute") { f.settings.enabled = false; f.entry.refresh(); }
-    if (invalidation === "late") { f.advance(STARTUP_LOGO_AUDIO_WINDOW_MS + 1); t.mock.timers.tick(STARTUP_LOGO_AUDIO_WINDOW_MS + 1); }
-    f.setState("running"); permission.resolve(true); await flush();
+    if (invalidation === "late") f.advance(STARTUP_LOGO_AUDIO_WINDOW_MS + 1);
+    f.setState("running"); f.entry.refresh();
     assert.equal(f.events.length, 0, invalidation);
-    f.entry.close(); f.entry.requestSound();
-    assert.equal(f.entry.getPresentation().offerSound, false);
+    f.entry.close();
   }
 });
 
-test("saved mute and zero channels never offer a sound button or change the saved settings", async () => {
+test("saved mute and zero channels stay silent without changing saved settings", async () => {
   for (const settings of [{ enabled: false }, { master: 0 }, { buses: { ...DEFAULT_AUDIO_SETTINGS.buses, ui: 0 } }]) {
     const f = fixture({ settings }); const before = structuredClone(f.settings);
-    f.setState("locked"); f.entry.start(); await flush(); f.entry.reveal(); f.entry.requestSound();
-    assert.equal(f.entry.getPresentation().offerSound, false);
+    f.setState("locked"); f.entry.start(); await flush(); f.entry.reveal();
     assert.equal(f.entry.getPresentation().revealReady, true);
     assert.equal(f.events.length, 0);
     assert.deepEqual(f.settings, before);
@@ -218,17 +206,6 @@ test("mute during preparation cancels the logo opportunity, including unmute aft
   f.entry.close();
 });
 
-test("a browser-blocked context never waits for a future gesture to play the logo", async () => {
-  const f = fixture();
-  f.setState("locked");
-  f.entry.start(); await flush();
-  f.entry.reveal();
-  f.setState("running");
-  f.entry.reveal();
-  assert.equal(f.events.length, 0);
-  f.entry.close();
-});
-
 test("hidden boot does not prepare or play, and a foreground return does not replay branding", async () => {
   const f = fixture();
   f.setVisible(false);
@@ -266,10 +243,12 @@ test("StrictMode detach and reattach reuse one preparation and one reveal ledger
   const f = fixture();
   const first = getStartupAudioEntry(f.runtime, f.environment);
   let detachedNotifications = 0, currentNotifications = 0;
+  const release = first.attach();
   const detach = first.subscribe(() => detachedNotifications++);
-  first.start(); detach();
+  first.start(); detach(); release();
   const second = getStartupAudioEntry(f.runtime, f.environment);
   assert.equal(first, second);
+  const releaseAgain = second.attach();
   second.subscribe(() => currentNotifications++);
   second.start(); await flush();
   first.reveal(); second.reveal();
@@ -277,6 +256,17 @@ test("StrictMode detach and reattach reuse one preparation and one reveal ledger
   assert.equal(currentNotifications, 1);
   assert.equal(f.preparations.length, 2, "one logo request and one control request, not another batch");
   assert.equal(f.events.length, 1);
-  second.close();
+  releaseAgain(); await flush();
   assert.equal(getStartupAudioEntry(f.runtime, f.environment), second, "account hydration cannot create another brand opportunity");
+});
+
+test("real splash unmount cancels unfinished preparation and any late startup sound", async () => {
+  const pending = deferred();
+  const f = fixture({ runtime: { prepare: () => pending.promise } });
+  const detach = f.entry.attach();
+  f.entry.start(); f.entry.reveal(); await flush();
+  detach(); detach(); await flush();
+  pending.resolve(); await flush(); f.entry.refresh();
+  assert.equal(f.events.length, 0);
+  assert.deepEqual(f.entry.getPresentation(), { settled: true, revealReady: true });
 });
