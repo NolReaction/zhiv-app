@@ -7,6 +7,11 @@
 .deviceIcon { color: #afc39d; padding-top: 1px; }
 .device strong { font-size: 13px; line-height: 1.4; }
 .connect { grid-column: 2; justify-self: start; }
+.deviceActions { grid-column: 2; display: grid; gap: 8px; min-width: 0; }
+.deviceActions .connect { grid-column: auto; max-width: 100%; white-space: normal; text-align: left; }
+.deviceActions p { margin: 0; overflow-wrap: anywhere; }
+.deviceStatus { color: #bfd3ac; }
+.device .deviceError { color: #ffd0bd; }
 .connect, .save, .loading button { min-height: 44px; padding: 9px 13px; border: 1px solid #b9d99555; border-radius: 11px; background: #b9d9951c; color: #e4f1d6; font: inherit; font-size: 13px; font-weight: 650; cursor: pointer; }
 .card button:disabled { opacity: .46; cursor: default; }
 .topics { display: grid; gap: 0; margin: 0; padding: 0; border: 0; min-width: 0; }
@@ -32,5 +37,5 @@
 .actions > span:empty { display: none; }
 .loading { display: grid; gap: 12px; color: #abb6a3; font-size: 13px; }
 .card button:focus-visible, .card input:focus-visible, .card select:focus-visible, .frequency summary:focus-visible { outline: 2px solid #d1e8a7; outline-offset: 3px; }
-@media (max-width: 359px) { .timeRow { grid-template-columns: minmax(0, 1fr); } .card { padding: 15px; } .device { grid-template-columns: minmax(0, 1fr); } .deviceIcon { display: none; } .connect { grid-column: 1; } }
+@media (max-width: 359px) { .timeRow { grid-template-columns: minmax(0, 1fr); } .card { padding: 15px; } .device { grid-template-columns: minmax(0, 1fr); } .deviceIcon { display: none; } .connect, .deviceActions { grid-column: 1; } }
 @media (forced-colors: active) { .card, .device, .card input, .card select, .connect, .save { border-color: ButtonText; } }
