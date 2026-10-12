@@ -69,6 +69,20 @@ test("the launcher forwards arguments and environment and preserves the child ex
   assert.deepEqual(JSON.parse(result.stdout), { args: ["dev", "--webpack", "--hostname", "0.0.0.0", "--port", "4321"], marker: "inherited" });
 });
 
+test("the development launcher enables DEV even when the shell exports production or test", async t => {
+  const root = await fixture(t, {}, `console.log(process.env.NODE_ENV);`);
+  for (const mode of [undefined, "development", "production", "test"]) {
+    const env = { ...process.env };
+    if (mode === undefined) delete env.NODE_ENV;
+    else env.NODE_ENV = mode;
+    const result = spawnSync(process.execPath, [launcher], { cwd: root, env, encoding: "utf8", timeout: 10_000 });
+    assert.ifError(result.error);
+    assert.equal(result.status, 0, `inherited NODE_ENV=${mode}`);
+    assert.equal(result.stderr, "");
+    assert.equal(result.stdout.trim(), "development", `inherited NODE_ENV=${mode}`);
+  }
+});
+
 test("the launcher rejects mismatched dependencies before starting Next", async t => {
   const root = await fixture(t, { next: "16.3.4" }, `console.log("NEXT_STARTED");`);
   const result = spawnSync(process.execPath, [launcher], { cwd: root, encoding: "utf8", timeout: 10_000 });

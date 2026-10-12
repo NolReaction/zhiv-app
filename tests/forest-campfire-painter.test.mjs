@@ -7,8 +7,8 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const vite = await createServer({ appType: 'custom', configFile: false, root,
   resolve: { alias: { '@': root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { drawForestCampfires, drawForestCampfireGlow } = await vite.ssrLoadModule('/features/world/forest-campfire-painter.ts');
-const { createForestCampfires, advanceForestCampfires } = await vite.ssrLoadModule('/features/world/forest-campfire.ts');
+const { drawForestCampfires, drawForestCampfireGlow } = await vite.ssrLoadModule('/features/world/activities/campfire/forest-campfire-painter.ts');
+const { createForestCampfires, advanceForestCampfires } = await vite.ssrLoadModule('/features/world/activities/campfire/forest-campfire.ts');
 const { default: world } = await vite.ssrLoadModule('/features/world/tiled/forest.generated.json');
 
 function context() {

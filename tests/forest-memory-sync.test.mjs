@@ -7,11 +7,11 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { createForestMemorySync } = await vite.ssrLoadModule("/features/world/forest-memory-sync.ts");
-const { forestMemoryPayloadSchema } = await vite.ssrLoadModule("/features/world/forest-memory-model.ts");
-const { connectForestSession } = await vite.ssrLoadModule("/features/world/forest-session.ts");
-const { captureForestMemory, forestMemoryKey } = await vite.ssrLoadModule("/features/world/forest-memory.ts");
-const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
+const { createForestMemorySync } = await vite.ssrLoadModule("/features/world/state/memory/forest-memory-sync.ts");
+const { forestMemoryPayloadSchema } = await vite.ssrLoadModule("/features/world/state/memory/forest-memory-model.ts");
+const { connectForestSession } = await vite.ssrLoadModule("/features/world/state/forest-session.ts");
+const { captureForestMemory, forestMemoryKey } = await vite.ssrLoadModule("/features/world/state/memory/forest-memory.ts");
+const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
 const { ApiError } = await vite.ssrLoadModule("/lib/check-in-api.ts");
 const OWNER = "1234-ABCD-EFGH";
 let serial = 0;

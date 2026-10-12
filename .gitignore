@@ -43,7 +43,9 @@ next-env.d.ts
 /.sites-runtime/
 /outputs/
 /work/
+/scripts/audio_originals/__pycache__/
 /apps/api/.gradle/
+/apps/api/.kotlin/
 /apps/api/build/
 .idea/
 

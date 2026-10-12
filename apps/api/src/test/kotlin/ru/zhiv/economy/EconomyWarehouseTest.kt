@@ -10,7 +10,7 @@ import kotlin.test.*
 class EconomyWarehouseTest {
     private val now = Instant.parse("2026-10-06T23:00:00Z")
     private val warehouse = EconomyRules.catalog.buildings.single { it.id == "warehouse" }
-    private val capacities = listOf(200L, 500L, 1000L, 1800L, 3000L, 4000L, 5200L, 6600L, 8200L, 10000L)
+    private val capacities = listOf(300L, 500L, 1000L, 1800L, 3000L, 4000L, 5200L, 6600L, 8200L, 10000L)
     private val relicIds = listOf("ancient_core", "moon_crystal", "living_resin")
     private val relicCosts = listOf(listOf(2L, 1L, 1L), listOf(3L, 1L, 1L), listOf(4L, 1L, 1L),
         listOf(5L, 2L, 2L), listOf(6L, 2L, 2L), listOf(8L, 2L, 2L), listOf(10L, 3L, 3L))

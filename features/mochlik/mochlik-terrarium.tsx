@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { HOME_BACKGROUND_STYLE } from "@/features/world/map-layout";
-import { WORLD_PRESENTATION } from "@/features/world/presentation";
-import type { WorldState } from "@/features/world/model";
-import type { EconomySceneBuildings, EconomySceneJourney } from "@/features/world/economy-scene-state";
-import type { EconomySceneProduction } from "@/features/world/economy-production-state";
-import type { EconomySceneConstruction } from "@/features/world/economy-construction-state";
-import type { WorldActivity } from "@/features/world/world-activity";
-import { WorldActivityBadge, WorldActivityDescription } from "@/features/world/world-activity-badge";
+import { HOME_BACKGROUND_STYLE } from "@/features/world/legacy/map-layout";
+import { WORLD_PRESENTATION } from "@/features/world/scene/presentation";
+import type { WorldState } from "@/features/world/domain/model";
+import type { EconomySceneBuildings, EconomySceneJourney } from "@/features/world/state/economy/economy-scene-state";
+import type { EconomySceneProduction } from "@/features/world/state/economy/economy-production-state";
+import type { EconomySceneConstruction } from "@/features/world/state/economy/economy-construction-state";
+import type { WorldActivity } from "@/features/world/ui/hud/world-activity";
+import { WorldActivityBadge, WorldActivityDescription } from "@/features/world/ui/hud/world-activity-badge";
 import type { GameItemId } from "@/features/game/game-rewards";
 import { reportIncident } from "@/lib/client-incidents";
 import { HabitatAssetError } from "@/features/mochlik/assets";
@@ -17,7 +17,7 @@ import type { SceneLoadState } from "@/features/startup/scene-load-state";
 import { habitatLighting } from "@/features/mochlik/lighting";
 import type { HabitatScene, SceneOptions } from "@/features/mochlik/scene";
 import styles from "./mochlik-terrarium.module.css";
-import { useGardenCollection } from "@/features/economy/garden-collection-context";
+import { useGardenCollection } from "@/features/economy/integration/garden-collection-context";
 
 type Props = { wakeSignal: number; suspended?: boolean; nowMs: number; timeZone: string; userId?: string; bestStreakDays?: number; items?: readonly GameItemId[]; worldState?: WorldState; worldGifts?: readonly string[]; economyJourney?: EconomySceneJourney | null; cancelledExplorations?: readonly string[]; economyBuildings?: EconomySceneBuildings | null; economyProduction?: EconomySceneProduction | null; economyConstruction?: EconomySceneConstruction | null; activity?: WorldActivity | null; onLoadState?: (state: SceneLoadState) => void; retrySignal?: number };
 

@@ -1,0 +1,183 @@
+.overlay { position: fixed; inset: 0; z-index: 110; background: rgba(4, 12, 8, .54); backdrop-filter: blur(2px); }
+.dialog.dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 111;
+  width: min(440px, calc(100vw - 24px));
+  height: auto;
+  max-height: min(680px, calc(100dvh - 32px));
+  transform: translate(-50%, -50%);
+  overflow: hidden;
+  border-radius: 20px;
+  color: var(--forest-ink, #394d3e);
+  background: linear-gradient(135deg, #f0e6ca, #e6d9b7);
+  border-color: #ac9f79;
+  font-size: 12px;
+  box-shadow: 0 20px 65px #0007, inset 0 0 0 3px #fff4d433;
+}
+.dialog.dialog::after { display: none; }
+.header { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; padding: 15px 12px 14px 16px; border-bottom: 1px solid #52705d; background: linear-gradient(120deg, #39573f, #2b4537); }
+.buildingIcon { display: grid; place-items: center; flex: 0 0 36px; width: 36px; height: 36px; color: var(--forest-muted, #59624d); background: #e2edc517; border: 1px solid #d5dfb52b; border-radius: 10px; }
+.heading { flex: 1; min-width: 0; }
+.heading h2 { color: var(--forest-ink, #394d3e); font-size: 17px; font-weight: 650; line-height: 1.2; letter-spacing: -.02em; outline: none; }
+.srOnly { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.dialog.dialog .close { flex-shrink: 0; width: 44px; min-height: 44px; padding: 6px; color: var(--forest-muted, #59624d); }
+.levels { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 5px; color: var(--forest-muted, #59624d); font-size: 11px; }
+.levels > strong { display: inline-flex; align-items: center; gap: 4px; color: var(--forest-ink, #394d3e); font-size: inherit; font-weight: 550; }
+.header .heading h2, .header .levels > strong, .header .buildingIcon { color: #fff0c9; }
+.header .levels, .header .heading .muted, .dialog.dialog .header .close { color: #d8dfc5; }
+.dialog.dialog .header .close:focus-visible { outline-color: #f1d89b; }
+.activeWork { display: flex; flex: 0 0 auto; flex-direction: column; gap: 7px; }
+.builderBusy { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 12px; border: 1px solid #baa371; border-radius: 12px; background: #efdfbd; color: var(--forest-accent, #765322); }
+.builderBusy > svg { flex-shrink: 0; }
+.builderBusy > div { flex: 1 1 130px; min-width: 0; }
+.builderBusy strong, .builderBusy span { display: block; line-height: 1.4; }
+.builderBusy strong { color: var(--forest-ink, #394d3e); font-size: 12px; }
+.builderBusy span, .builderBusy p { margin-top: 3px; font-size: 11px; overflow-wrap: anywhere; }
+.dialog.dialog .builderBusy button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-height: 44px; padding: 7px; border: 1px solid #baa371; border-radius: 8px; color: var(--forest-ink, #394d3e); background: #f6ecd2; font-size: 11px; }
+.body { display: flex; flex: 1 1 auto; flex-direction: column; gap: 16px; min-height: 0; padding: 15px 16px; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #638051 transparent; }
+.section { display: flex; flex: 0 0 auto; flex-direction: column; gap: 10px; }
+.section h3 { display: flex; align-items: center; gap: 6px; color: var(--forest-ink, #394d3e); font-size: 13px; line-height: 1.35; font-weight: 600; }
+.benefits { gap: 8px; min-width: 0; }
+.benefitHeading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.benefitHeading h3 { min-width: 0; }
+.benefitNavigation { display: flex; align-items: center; flex: 0 0 auto; gap: 2px; }
+.dialog.dialog .benefitNavigation button { width: 44px; height: 44px; padding: 7px; border: 1px solid #b8b28c; border-radius: 12px; background: #f6edda; color: #456144; }
+.dialog.dialog .benefitNavigation button:disabled { opacity: .38; }
+.benefitCounter { min-width: 30px; color: #627058; font-size: 11px; text-align: center; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.benefitHint { color: #64705a; font-size: 11px; line-height: 1.4; }
+.benefitTrack { display: flex; position: relative; gap: 10px; min-width: 0; margin: 0 -3px; padding: 3px 3px 9px; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding-inline: 3px; overscroll-behavior-x: contain; scrollbar-width: thin; scrollbar-color: #929f77 #c3bb952b; border-radius: 14px; }
+.benefitTrack:focus-visible { outline: 2px solid #355e48; outline-offset: 2px; }
+.benefitSlide { display: flex; flex: 0 0 calc(100% - 30px); min-width: 0; scroll-snap-align: start; scroll-snap-stop: always; }
+.benefitTrack[data-single] .benefitSlide { flex-basis: 100%; }
+.benefitCard, .dialog.dialog .benefitRecipe { display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 7px; width: 100%; min-width: 0; min-height: 225px; padding: 14px; border: 1px solid #c0bc96; border-radius: 14px; background: #f8efd9; color: #394d3e; text-align: left; box-shadow: inset 0 1px #fff9ea; }
+.dialog.dialog .benefitRecipe:hover, .dialog.dialog .benefitRecipe[aria-expanded="true"] { border-color: #85956c; background: #ecedcf; }
+.benefitArt { display: flex; position: relative; align-items: center; justify-content: center; gap: 9px; width: 100%; min-height: 76px; margin-bottom: 3px; border-radius: 9px; background: radial-gradient(ellipse at 50% 100%, #c5d09e99, #e4e9cd55); color: #526d45; }
+.benefitArt[data-kind="route"] { background: radial-gradient(ellipse at 50% 100%, #c6b89599, #eae1c755); }
+.benefitArt[data-kind="fishing"] { background: radial-gradient(ellipse at 50% 100%, #a5c8bc99, #dfebde55); }
+.benefitArt[data-kind="home"] { background: radial-gradient(ellipse at 50% 100%, #dbbd8699, #f0e3be55); }
+.benefitArt > span { position: absolute; right: 8px; bottom: 8px; padding: 3px 7px; border: 1px solid #d5cba8; border-radius: 7px; background: #f9f0d8; font-size: 10px; font-weight: 600; }
+.benefitArtBadge { position: absolute; right: 9px; bottom: 9px; color: #86754a; }
+.benefitKind { color: #6a745d; font-size: 10px; font-weight: 550; line-height: 1.3; }
+.benefitCard h4, .benefitTitle { margin: 0; color: #344d3c; font-size: 15px; font-weight: 650; line-height: 1.25; overflow-wrap: anywhere; }
+.benefitDescription { color: #606953; font-size: 12px; line-height: 1.5; }
+.benefitReady, .benefitLocked, .benefitShopHint { display: flex; align-items: center; gap: 5px; margin-top: auto; padding-top: 6px; color: #537147; font-size: 11px; line-height: 1.4; }
+.benefitLocked { color: #805c32; }
+.benefitShopHint { color: #5c7469; }
+.benefitRequirements { display: grid; gap: 4px; width: 100%; margin-top: auto; padding-top: 8px; border-top: 1px solid #d8ceb0; }
+.benefitRequirements > span { color: #83704a; font-size: 10px; }
+.dialog.dialog .benefitRequirements button { justify-content: flex-start; min-height: 44px; padding: 3px 0; text-align: left; }
+.benefitRequirements li { flex-wrap: wrap; font-size: 11px; line-height: 1.4; }
+.benefitRewards { display: flex; flex-wrap: wrap; gap: 5px 12px; color: #616b53; font-size: 11px; line-height: 1.5; }
+.benefitRewards b { color: #425a3c; font-weight: 600; white-space: nowrap; }
+.benefitDetailLink { display: inline-flex; align-items: center; gap: 6px; margin-top: auto; padding-top: 8px; color: #416643; font-size: 11px; font-weight: 600; }
+.capacityNumbers { display: flex; align-items: center; gap: 12px; font-variant-numeric: tabular-nums; }
+.capacityNumbers strong { color: #35563b; font-size: 24px; font-weight: 650; }
+.capacityNumbers strong:first-child { color: #7c8068; font-size: 19px; font-weight: 500; }
+.benefitGain { color: #46613b; font-size: 13px; font-weight: 600; }
+.recipeDetail { display: grid; gap: 9px; padding: 11px; border: 1px solid #c8bd98; border-radius: 9px; background: #f4ebd1; }
+.recipeDetail > strong { color: var(--forest-ink, #394d3e); font-size: 12px; font-weight: 550; }
+.recipeDetail > ul { display: grid; gap: 6px; }
+.recipeDetail > ul > li { display: flex; align-items: center; gap: 6px; color: var(--forest-muted, #59624d); font-size: 11px; }
+.recipeDetail > ul > li > span { flex: 1; }
+.recipeDetail b { color: var(--forest-ink, #394d3e); font-weight: 500; }
+.recipeInputs { display: flex; align-items: center; flex-wrap: wrap; gap: 5px 10px; color: var(--forest-muted, #59624d); font-size: 11px; line-height: 1.45; }
+.recipeInputs > span { display: inline-flex; align-items: center; gap: 4px; }
+.dialog .muted { color: var(--forest-muted, #59624d); font-size: 11px; line-height: 1.45; }
+.costCard { padding-top: 14px; border-top: 1px solid #c8bd98; }
+.sectionHeading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.sectionHeading > span { flex: 0 0 auto; color: var(--forest-muted, #59624d); font-size: 11px; }
+.dialog.dialog .pinGoal { align-self: flex-start; min-height: 44px; padding: 7px 10px; border: 1px solid #b6aa83; border-radius: 8px; color: var(--forest-ink, #394d3e); background: #f6ecd2; font-size: 11px; }
+.dialog.dialog .pinGoal[aria-pressed="true"] { border-color: #91a279; background: #dce3c4; }
+.costGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.costGrid > li { min-width: 0; border: 1px solid #c8bd98; border-radius: 9px; overflow: hidden; background: #f6ecd2; }
+.costGrid > li[data-missing="true"] { border-color: #bf9e6a; background: #efdfbd; }
+.costTile, .dialog.dialog .costTile { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; min-width: 0; height: 100%; min-height: 92px; padding: 10px 5px 8px; border: 0; border-radius: 8px; color: var(--forest-muted, #59624d); text-align: center; }
+.costIcon { display: inline-flex; position: relative; color: var(--forest-muted, #59624d); }
+.sourceArrow { position: absolute; top: -3px; right: -12px; color: var(--forest-accent, #765322); }
+.costName { min-width: 0; color: var(--forest-muted, #59624d); font-size: 11px; line-height: 1.3; overflow-wrap: anywhere; }
+.costTile strong { display: flex; align-items: baseline; justify-content: center; flex-wrap: wrap; gap: 0 3px; margin-top: auto; color: var(--forest-ink, #394d3e); font-size: 11px; font-weight: 550; font-variant-numeric: tabular-nums; }
+.costTile strong > span { white-space: nowrap; }
+.costTile .costNeeded { color: var(--forest-muted, #59624d); font-size: 11px; font-weight: 450; }
+.costGrid > li[data-missing="true"] .costTile strong > span:first-child { color: var(--forest-accent, #765322); }
+.costGrid > li[data-relic] { background: linear-gradient(145deg, #f5edd4, #e7e5c7); border-color: #acb38a; }
+.costGrid > li[data-relic="moon_crystal"] { background: linear-gradient(145deg, #f6eee0, #e4e0e3); }
+.costGrid > li[data-relic="living_resin"] { background: linear-gradient(145deg, #f1ecd1, #dfe6c5); }
+.costGrid > li[data-relic][data-missing="true"] { border-color: #baa06f; }
+.costGrid > li[data-relic] .costIcon { padding: 3px; border-radius: 50%; background: radial-gradient(ellipse, #c5c78e55, transparent 75%); }
+.costCheck { position: absolute; top: 0; right: -9px; color: #436640; }
+.relicCostGrid .costTile, .dialog.dialog .relicCostGrid .costTile { min-height: 112px; }
+.relicCostGrid .costTile strong { font-size: 15px; font-weight: 650; }
+.relicCostGrid .costTile .costNeeded { font-size: 13px; }
+.conditions { padding-top: 5px; }
+.conditions h4 { display: flex; align-items: center; gap: 5px; margin: 0 0 7px; color: var(--forest-accent, #765322); font-size: 11px; font-weight: 500; }
+.conditions > ul { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.conditions > ul > li { min-width: 0; padding: 5px 7px; border: 1px solid #c4ad80; border-radius: 7px; background: #efdfbd; font-size: 11px; line-height: 1.4; }
+.conditions > ul > li > svg { display: none; }
+.dialog.dialog .conditions button { justify-content: flex-start; flex-wrap: wrap; gap: 4px; min-height: 25px; padding: 0; text-align: left; font-size: 11px; }
+.loading { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 12px; min-height: 100px; padding: 20px; text-align: center; color: var(--forest-muted, #59624d); }
+.complete { align-items: center; justify-content: center; gap: 11px; padding: 14px 8px; text-align: center; }
+.completeIcon { display: grid; place-items: center; width: 42px; height: 42px; border: 1px solid #91a279; border-radius: 50%; background: #dce3c4; color: var(--forest-muted, #59624d); }
+.complete p { max-width: 330px; color: var(--forest-muted, #59624d); font-size: 11px; line-height: 1.6; }
+.footer { display: flex; flex: 0 0 auto; flex-direction: column; gap: 8px; padding: 12px 16px 14px; border-top: 1px solid #c8bd98; background: #e6d9b7; }
+.confirmRow { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.duration { display: inline-flex; align-items: center; gap: 6px; color: var(--forest-muted, #59624d); }
+.duration > span { display: flex; flex-direction: column; gap: 2px; font-size: 11px; }
+.duration strong { color: var(--forest-ink, #394d3e); font-size: 12px; font-weight: 550; }
+.dialog.dialog .confirm { min-height: 44px; padding: 10px 12px; color: #fff4d8; background: #466347; border: 1px solid #355339; border-radius: 9px; font-size: 11px; font-weight: 600; }
+.dialog.dialog .confirm:hover:not(:disabled) { background: #38543c; }
+.dialog.dialog .confirm:disabled { opacity: .55; }
+.reason { display: flex; align-items: flex-start; gap: 6px; color: var(--forest-accent, #765322); font-size: 11px; line-height: 1.45; }
+.reason svg { margin-top: 1px; }
+.dialog.dialog .done { align-self: flex-end; min-width: 90px; min-height: 44px; padding: 8px 12px; border: 1px solid #adba8e; color: var(--forest-muted, #59624d); background: #dce3c4; }
+@media (max-width: 380px) {
+  .dialog.dialog { width: calc(100vw - 16px); max-height: calc(100dvh - 20px); border-radius: 14px; }
+  .header { gap: 8px; padding: 12px 9px 12px 12px; }
+  .heading h2 { font-size: 16px; }
+  .buildingIcon { flex-basis: 32px; width: 32px; height: 32px; }
+  .body { padding: 13px 12px; gap: 14px; }
+  .benefitHeading { gap: 3px; }
+  .benefitHeading h3 { max-width: 135px; }
+  .benefitCard, .dialog.dialog .benefitRecipe { padding: 12px; }
+  .costGrid { gap: 5px; }
+  .footer { padding: 11px 12px 12px; }
+  .confirmRow { gap: 8px; }
+  .duration > span { font-size: 11px; }
+  .confirmRow > .duration > svg { display: none; }
+  .dialog.dialog .confirm { padding: 9px; }
+}
+@media (max-height: 500px) {
+  .dialog.dialog { max-height: calc(100dvh - 16px); }
+  .header { padding-top: 10px; padding-bottom: 10px; }
+  .body { padding-top: 12px; padding-bottom: 12px; }
+  .footer { padding-top: 9px; padding-bottom: 10px; gap: 5px; }
+}
+@media (forced-colors: active) { .dialog.dialog, .benefitCard, .dialog.dialog .benefitRecipe, .dialog.dialog .benefitNavigation button, .costGrid > li, .conditions > ul > li, .dialog.dialog .confirm { border-color: ButtonText; } }
+
+.contextHelp {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 7px;
+  min-height: 44px;
+  max-width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #d4dccd;
+  border-radius: 10px;
+  background: #f7f9f1;
+  color: #3d5d40;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  text-align: left;
+  cursor: pointer;
+}
+.contextHelp svg { flex-shrink: 0; }
+.contextHelp:hover { background: #edf3e5; }
+.contextHelp:focus-visible { outline: 2px solid #55774c; outline-offset: 2px; }
+
+.durationWithMeal { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.activeWorkTop { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.activeWorkTop > :first-child { flex: 1; min-width: 0; }
+@media (max-width: 380px) { .confirmRow { flex-wrap: wrap; } .confirmRow > .confirm { margin-left: auto; } .durationWithMeal .duration > svg { display: none; } }

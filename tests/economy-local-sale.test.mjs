@@ -7,8 +7,8 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 const identities = await vite.ssrLoadModule("/lib/dev/api-store.ts");
 const economy = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
-const { economyCatalog, economyCatalogSchema, ECONOMY_MAX_BALANCE } = await vite.ssrLoadModule("/features/economy/model.ts");
-const { economyLocalSellPrice: quote, economyLocalSaleMinimumQuantity: minimum, economyLocalSaleLimit: limit } = await vite.ssrLoadModule("/features/economy/local-sale.ts");
+const { economyCatalog, economyCatalogSchema, ECONOMY_MAX_BALANCE } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { economyLocalSellPrice: quote, economyLocalSaleMinimumQuantity: minimum, economyLocalSaleLimit: limit } = await vite.ssrLoadModule("/features/economy/domain/local-sale.ts");
 const now = Date.parse("2026-10-05T00:00:00Z"), config = economyCatalog.localBuyer;
 beforeEach(() => { identities.resetDevStoreForTests(); economy.resetDevEconomyStoreForTests(); });
 after(() => vite.close());
@@ -25,7 +25,7 @@ test("sale discount belongs to the server catalog and older snapshots retain ful
   assert.equal(economyCatalogSchema.parse(legacy).localBuyer, undefined);
   assert.equal(quote(30, 9), 270); assert.equal(quote(30, 9, config), 160);
   assert.equal(minimum(10), 1); assert.equal(minimum(10, config), 2);
-  assert.equal(economyCatalog.fishing.rods.find(rod => rod.id === "river_rod").price, 18000);
+  assert.equal(economyCatalog.fishing.rods.find(rod => rod.id === "river_rod").price, 13500);
   assert.equal(economyCatalog.fishing.rods.find(rod => rod.id === "willow_rod").price, 72000);
 });
 
@@ -56,12 +56,12 @@ test("generic sale honors accepted minimum and revision receipt once while Plesk
   assert.deepEqual(read(p), before);
   const sale = command(p, "sell", "berries", 3, 5);
   const accepted = economy.commandDevEconomy(p.token, sale, now);
-  assert.equal(accepted.state.wallet.coins, 50); assert.equal(accepted.state.inventory.berries, 6);
+  assert.equal(accepted.state.wallet.coins, before.wallet.coins + 50); assert.equal(accepted.state.inventory.berries, 6);
   assert.equal(economy.commandDevEconomy(p.token, sale, now).replayed, true);
-  assert.equal(read(p).wallet.coins, 50);
+  assert.equal(read(p).wallet.coins, before.wallet.coins + 50);
   assert.throws(() => economy.commandDevEconomy(p.token, { ...sale, requestId: crypto.randomUUID() }, now), { code: "ECONOMY_REVISION_CONFLICT" });
-  assert.equal(issue(p, "sell", "fish", 2).state.wallet.coins, 140, "generic fish payout preserves the old floor 16 * 60% → 9, now 90");
-  assert.equal(issue(p, "sell_fish", "fish", 2).state.wallet.coins, 300, "Pleska pays all 160 nominal coins");
+  assert.equal(issue(p, "sell", "fish", 2).state.wallet.coins, before.wallet.coins + 140, "generic fish payout preserves the old floor 16 * 60% → 9, now 90");
+  assert.equal(issue(p, "sell_fish", "fish", 2).state.wallet.coins, before.wallet.coins + 300, "Pleska pays all 160 nominal coins");
 });
 
 test("zero-proceeds and wallet-overflow failures are atomic and rounded headroom can be filled exactly", () => {
@@ -69,7 +69,7 @@ test("zero-proceeds and wallet-overflow failures are atomic and rounded headroom
   const before = read(p);
   assert.throws(() => issue(p, "sell", "crumb_bait"), { code: "ECONOMY_SALE_QUANTITY" });
   assert.deepEqual(read(p), before);
-  assert.equal(issue(p, "sell", "crumb_bait", 2, 1).state.wallet.coins, 10);
+  assert.equal(issue(p, "sell", "crumb_bait", 2, 1).state.wallet.coins, before.wallet.coins + 10);
   stored(p).wallet.coins = ECONOMY_MAX_BALANCE - 50;
   const full = read(p);
   assert.throws(() => issue(p, "sell", "berries", 4), { code: "ECONOMY_CAPACITY" });

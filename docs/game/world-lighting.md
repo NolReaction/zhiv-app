@@ -9,23 +9,23 @@
 | Задача | Источник |
 | --- | --- |
 | Поставить дорожный фонарь, изменить цвет, радиус или яркость | `world/tiled/forest.tmj` → `Lights` |
-| Совместить свет с нарисованной лампой здания | `features/world/forest-building-lights.ts` → `artworkLamps`, нормализованные координаты PNG |
-| Изменить мягкость и вращение лучей маяка | `features/world/forest-lighting.ts` → `lighthouseBeamTexture`, `forestLighthouseAngle` |
+| Совместить свет с нарисованной лампой здания | `features/world/environment/lighting/forest-building-lights.ts` → `artworkLamps`, нормализованные координаты PNG |
+| Изменить мягкость и вращение лучей маяка | `features/world/environment/lighting/forest-lighting.ts` → `lighthouseBeamTexture`, `forestLighthouseAngle` |
 | Изменить допустимые свойства и значения по умолчанию | `scripts/lib/tiled-world.mjs` → `compileLight` |
 | Изменить контракт источника | `features/world/tiled/types.ts` → `WorldLight` |
-| Сделать ночь темнее, изменить лунный свет и форму пятен | `features/world/forest-lighting.ts` → `lightTexture` |
+| Сделать ночь темнее, изменить лунный свет и форму пятен | `features/world/environment/lighting/forest-lighting.ts` → `lightTexture` |
 | Изменить мерцание | Там же → `forestLightPulse` |
 | Изменить стойку факела | Там же → `drawForestLightFixtures` |
 | Изменить пламя, яркую сердцевину или ореол | Там же → `drawForestLightEmitters` |
-| Изменить тени под домами | `features/world/grounding.ts` → `drawSiteGrounding` |
+| Изменить тени под домами | `features/world/scene/grounding.ts` → `drawSiteGrounding` |
 | Поставить окно или выход дыма своего уровня | Tiled → папка уровня, маркеры `window` / `chimney`; [инструкция](building-workbench.md#тени-окна-и-дым) |
-| Изменить тепло окна и дым | `features/world/building-details.ts` → `drawBuildingDetails` |
+| Изменить тепло окна и дым | `features/world/scene/building-details.ts` → `drawBuildingDetails` |
 | Изменить часы начала ночи | `features/mochlik/lighting.ts` → `habitatLighting` |
-| Изменить плавность перехода день/ночь | `features/world/new-map-scene.ts` → `tick`, обновление `state.dusk` |
-| Изменить порядок света относительно героя и эффектов | `features/world/new-map-scene.ts` → `paintNewMap`; `features/world/forest-atmosphere.ts` → `drawForestAtmosphere` |
+| Изменить плавность перехода день/ночь | `features/world/scene/new-map-scene.ts` → `tick`, обновление `state.dusk` |
+| Изменить порядок света относительно героя и эффектов | `features/world/scene/new-map-scene.ts` → `paintNewMap`; `features/world/environment/weather/forest-atmosphere.ts` → `drawForestAtmosphere` |
 | Проверить тот же свет отдельно от игры | `features/world/tiled/renderer.ts` → `paintFixedWorld`, страница `/prototype/tiled-world` |
 
-`features/mochlik/lantern-light.ts`, `lantern-glass.ts` и `features/world/route-props.ts` относятся к прежней сцене. Изменения в них **не меняют текущую ночь** при `WORLD_PRESENTATION.rebuilding = true`. Имя `dusk` в текущем коде означает степень ночного освещения 0–1; отдельного режима сумерек нет.
+`features/mochlik/lantern-light.ts`, `lantern-glass.ts` и `features/world/legacy/route-props.ts` относятся к прежней сцене. Изменения в них **не меняют текущую ночь** при `WORLD_PRESENTATION.rebuilding = true`. Имя `dusk` в текущем коде означает степень ночного освещения 0–1; отдельного режима сумерек нет.
 
 ## Добавить источник в Tiled
 

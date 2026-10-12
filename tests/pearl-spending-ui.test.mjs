@@ -7,7 +7,7 @@ import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const hookModule = "virtual:pearl-spending-hooks";
-const mocked = ["plesk-fishing-shop.tsx", "use-fishing-command.ts", "construction-speedup.tsx"];
+const mocked = ["ui/fishing/plesk-fishing-shop.tsx", "ui/fishing/use-fishing-command.ts", "ui/construction/construction-speedup.tsx"];
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } },
   server: { middlewareMode: true, hmr: false, ws: false }, plugins: [{ name: "pearl-spending-handlers", enforce: "pre",
     resolveId(id) { if (id === hookModule) return `\0${id}`; },
@@ -31,11 +31,11 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
   }],
 });
 after(() => vite.close());
-const { economyCatalog, economyFishingSchema } = await vite.ssrLoadModule("/features/economy/model.ts");
-const { PleskMerchantHeader } = await vite.ssrLoadModule("/features/economy/plesk-fishing-shop.tsx");
-const { ConstructionSpeedup } = await vite.ssrLoadModule("/features/economy/construction-speedup.tsx");
-const { BuilderConversation } = await vite.ssrLoadModule("/features/world/world-builder-dialog.tsx");
-const { WorldUpgradeContent } = await vite.ssrLoadModule("/features/economy/world-upgrade-dialog.tsx");
+const { economyCatalog, economyFishingSchema } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { PleskMerchantHeader } = await vite.ssrLoadModule("/features/economy/ui/fishing/plesk-fishing-shop.tsx");
+const { ConstructionSpeedup } = await vite.ssrLoadModule("/features/economy/ui/construction/construction-speedup.tsx");
+const { BuilderConversation } = await vite.ssrLoadModule("/features/world/ui/characters/world-builder-dialog.tsx");
+const { WorldUpgradeContent } = await vite.ssrLoadModule("/features/economy/ui/construction/world-upgrade-dialog.tsx");
 const hooks = await vite.ssrLoadModule(hookModule);
 const now = Date.parse("2026-10-06T12:00:00Z");
 function harness(Component = PleskMerchantHeader) {

@@ -6,7 +6,7 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { clampCamera, overviewCamera, screenToWorld, worldToScreen, zoomAt, zoomLimits } = await vite.ssrLoadModule("/features/world/camera.ts");
+const { clampCamera, overviewCamera, screenToWorld, worldToScreen, zoomAt, zoomLimits } = await vite.ssrLoadModule("/features/world/scene/camera.ts");
 const bounds = { width: 1254, height: 1254 };
 const view = { width: 393, height: 852 };
 const insets = { top: 140, bottom: 100 };

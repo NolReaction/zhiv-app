@@ -7,11 +7,11 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
-const { worldActivity, activityRouteKind, activityStatus, activityTime } = await vite.ssrLoadModule("/features/world/world-activity.ts");
-const { WorldActivityBadge, WorldActivityDescription } = await vite.ssrLoadModule("/features/world/world-activity-badge.tsx");
+const { worldActivity, activityRouteKind, activityStatus, activityTime } = await vite.ssrLoadModule("/features/world/ui/hud/world-activity.ts");
+const { WorldActivityBadge, WorldActivityDescription } = await vite.ssrLoadModule("/features/world/ui/hud/world-activity-badge.tsx");
 const { MochlikTerrarium } = await vite.ssrLoadModule("/features/mochlik/mochlik-terrarium.tsx");
-const { economySceneJourney, economySceneActivity } = await vite.ssrLoadModule("/features/economy/world-adapter.ts");
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
+const { economySceneJourney, economySceneActivity } = await vite.ssrLoadModule("/features/economy/integration/world-adapter.ts");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 after(() => vite.close());
 const now = Date.parse("2026-10-04T12:00:00Z");
 const time = value => new Date(now + value).toISOString();

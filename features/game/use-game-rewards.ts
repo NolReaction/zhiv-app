@@ -1,7 +1,9 @@
 "use client";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { claimGameReward, getGameRewards, type GameRewardResult } from "./game-rewards-api";
 import { createGameRewardsSession } from "./game-rewards-session";
+import { claimDailyWithAudio } from "./game-rewards-audio";
 
 const sessions = new Map<string | null, ReturnType<typeof createGameRewardsSession>>();
 function sessionFor(owner: string | null) {
@@ -32,7 +34,7 @@ export function useGameRewards(owner: string | null, isOnline: boolean, onSessio
   }, [owner, session, isOnline]);
   const confirm = async (action: () => Promise<GameRewardResult | undefined>) => { const result = await action(); if (result) onConfirmed?.(result); };
   return { ...view, now: view.data ? session.now() : now,
-    refresh: session.refresh, claimDaily: () => confirm(session.claimDaily),
+    refresh: session.refresh, claimDaily: () => confirm(() => claimDailyWithAudio(owner, session, event => getAudioRuntime().play(event))),
     claimAchievement: (...args: Parameters<typeof session.claimAchievement>) => confirm(() => session.claimAchievement(...args)),
     retry: () => confirm(session.retry) };
 }

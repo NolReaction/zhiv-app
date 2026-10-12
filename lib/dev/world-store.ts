@@ -2,7 +2,7 @@ import { initializeDevEconomy, creditDevLegacyJourney, getDevEconomyBuildingLeve
 import { naturalItems } from "@/features/game/game-rewards";
 // Development adapter only. Production requests are handled by Ktor/PostgreSQL.
 import { getDevIdentity, getDevItemStreak } from "@/lib/dev/api-store";
-import { collectionRewards, collectionCount, newWorldState, workshopLevel, worldCatalog as catalog, type WorldCommand, type WorldSnapshot, type WorldState } from "@/features/world/model";
+import { collectionRewards, collectionCount, newWorldState, workshopLevel, worldCatalog as catalog, type WorldCommand, type WorldSnapshot, type WorldState } from "@/features/world/domain/model";
 
 type Profile = { state: WorldState; revision: number; day: string; earned: number; remainder: number;
   receipts: Map<string, { signature: string; message: string }>; tapKeys: Set<string> };

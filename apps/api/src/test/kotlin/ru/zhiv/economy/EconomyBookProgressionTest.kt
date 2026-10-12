@@ -70,7 +70,7 @@ class EconomyBookProgressionTest {
 
     @Test fun `failed warehouse delivery leaves the immutable old progress unchanged`() {
         val started = EconomyRules.apply(EconomyRules.initial(), command("start_exploration", "forest_camp"), now).first
-            .copy(inventory = mapOf("wood" to 200L))
+            .copy(inventory = mapOf("wood" to 300L))
         assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> {
             EconomyRules.apply(started, command("claim_job", started.jobs.single().id), now.plusSeconds(28800))
         }.code)

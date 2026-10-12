@@ -47,11 +47,13 @@ export function browserReleaseNotesEnvironment(): ReleaseNotesEnvironment {
       const storage = (event: StorageEvent) => listener({ type: "storage", key: event.key, newValue: event.newValue });
       window.addEventListener("focus", refresh);
       window.addEventListener("online", refresh);
+      window.addEventListener("pageshow", refresh);
       window.addEventListener("storage", storage);
       document.addEventListener("visibilitychange", refresh);
       return () => {
         window.removeEventListener("focus", refresh);
         window.removeEventListener("online", refresh);
+        window.removeEventListener("pageshow", refresh);
         window.removeEventListener("storage", storage);
         document.removeEventListener("visibilitychange", refresh);
       };
@@ -65,8 +67,10 @@ export function createReleaseNotesStore(ownerPublicId: string, environment: Rele
   let readIds = new Set<string>();
   let snapshot: ReleaseNotesSnapshot = {
     releases: BUNDLED_RELEASE_NOTES,
-    unreadIds: unreadReleaseIds(BUNDLED_RELEASE_NOTES, readIds),
-    unreadCount: BUNDLED_RELEASE_NOTES.length,
+    // Until subscription restores this account's browser state, unread is unknown.
+    // Rendering the bundled count here flashes old notifications on every entry.
+    unreadIds: [],
+    unreadCount: 0,
     checking: false,
     refreshError: false,
   };
@@ -90,11 +94,14 @@ export function createReleaseNotesStore(ownerPublicId: string, environment: Rele
   function mergeReadIds(extra?: Set<string>) {
     const merged = new Set([...readIds, ...(memory.get(storageKey) ?? []), ...(extra ?? [])]);
     try { parseReadReleaseIds(environment.storage().getItem(storageKey)).forEach(id => merged.add(id)); } catch { /* Storage can be unavailable in private mode. */ }
+    const changed = merged.size !== readIds.size;
     readIds = merged;
     memory.set(storageKey, merged);
+    return changed;
   }
 
   function persistReadIds() {
+    if (readIds.size === 0) return;
     try {
       const storage = environment.storage();
       const serialized = JSON.stringify({ schemaVersion: 1, ids: [...readIds].sort() });
@@ -110,7 +117,12 @@ export function createReleaseNotesStore(ownerPublicId: string, environment: Rele
   }
 
   async function refresh(force = false) {
-    if (!active || (!force && (!environment.visible() || snapshot.checking || environment.now() - lastAttempt < RELEASE_REFRESH_THROTTLE))) return;
+    if (!active || (!force && !environment.visible())) return;
+    // A suspended tab/PWA can miss storage events. Restore acknowledgements even
+    // when checking the feed is throttled, and retry earlier blocked writes.
+    if (mergeReadIds()) update();
+    persistReadIds();
+    if (!force && (snapshot.checking || environment.now() - lastAttempt < RELEASE_REFRESH_THROTTLE)) return;
     cancelRequest();
     const currentRequest = ++requestId;
     const requestController = new AbortController();

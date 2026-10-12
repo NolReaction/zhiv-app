@@ -4,7 +4,7 @@
 
 ## Книга
 
-Общий каталог — [collections-catalog.json](../../apps/api/src/main/resources/world/collections-catalog.json), представление — [collection-book.ts](../../features/world/collection-book.ts) и [world-collections.tsx](../../features/world/world-collections.tsx).
+Общий каталог — [collections-catalog.json](../../apps/api/src/main/resources/world/collections-catalog.json), представление — [collection-book.ts](../../features/world/domain/collection-book.ts) и [world-collections.tsx](../../features/world/ui/collections/world-collections.tsx).
 
 | Глава | Состав | Получение |
 |---|---|---|

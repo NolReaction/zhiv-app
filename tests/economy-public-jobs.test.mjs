@@ -6,8 +6,8 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } },
   server: { middlewareMode: true, hmr: false } });
-const { publicEconomyJob } = await vite.ssrLoadModule("/features/economy/public-jobs.ts");
-const { economyJobSchema, economyViewSchema } = await vite.ssrLoadModule("/features/economy/model.ts");
+const { publicEconomyJob } = await vite.ssrLoadModule("/features/economy/domain/public-jobs.ts");
+const { economyJobSchema, economyViewSchema } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const identities = await vite.ssrLoadModule("/lib/dev/api-store.ts");
 const economy = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
 const now = Date.parse("2026-10-06T00:00:00Z");
@@ -64,14 +64,17 @@ test("snapshots, commands and receipt replays conceal draws until an atomic succ
     assert.equal(economyViewSchema.safeParse(snapshot).success, true);
   }
   assert.deepEqual(profile.state.jobs[0], privateJob);
-  profile.state.inventory.stone = 199;
+  const inventory = structuredClone(profile.state.inventory);
+  profile.state.inventory = { stone: 299 };
   const claim = command("claim_job", saved.id, finishedAt);
   assert.throws(() => economy.commandDevEconomy(player.token, claim, finishedAt), { code: "ECONOMY_STORAGE_FULL" });
   assert.deepEqual(read(finishedAt).jobs[0].rewards, { fish: 4 });
   assert.deepEqual(profile.state.jobs[0], privateJob);
-  delete profile.state.inventory.stone;
+  profile.state.inventory = inventory;
   const delivered = economy.commandDevEconomy(player.token, claim, finishedAt);
-  assert.deepEqual(delivered.state.inventory, privateJob.rewards);
+  const expected = { ...inventory };
+  for (const [item, amount] of Object.entries(privateJob.rewards)) expected[item] = (expected[item] ?? 0) + amount;
+  assert.deepEqual(delivered.state.inventory, expected);
   assert.deepEqual(delivered.state.fishing.catches, privateJob.rewards);
   assert.deepEqual(delivered.state.jobs, []);
   const replay = economy.commandDevEconomy(player.token, claim, finishedAt);
@@ -113,9 +116,11 @@ test("general exploration commands cannot bypass fishing gear, bait costs, hidde
   assert.throws(() => economy.commandDevEconomy(player.token, command("start_exploration", "shore"), now), { code: "ECONOMY_FISHING_ROD" });
   profile.state.fishing.equippedRodId = "reed_rod";
   const last = economy.commandDevEconomy(player.token, command("start_exploration", "shore"), now).state.jobs[0];
-  const saved = structuredClone(profile.state.jobs[0]);
+  const saved = structuredClone(profile.state.jobs[0]), inventory = structuredClone(profile.state.inventory);
   const claimed = economy.commandDevEconomy(player.token, command("claim_job", last.id, Date.parse(last.finishesAt)), Date.parse(last.finishesAt)).state;
-  assert.deepEqual(claimed.inventory, saved.rewards);
+  const expected = { ...inventory };
+  for (const [item, amount] of Object.entries(saved.rewards)) expected[item] = (expected[item] ?? 0) + amount;
+  assert.deepEqual(claimed.inventory, expected);
   assert.deepEqual(claimed.fishing.catches, saved.rewards);
   assert.equal(profile.state.fishingCastSeed, null);
 });

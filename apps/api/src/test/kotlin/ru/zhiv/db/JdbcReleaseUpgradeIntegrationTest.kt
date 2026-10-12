@@ -11,6 +11,7 @@ import ru.zhiv.config.AppConfig
 import ru.zhiv.security.TokenCodec
 import ru.zhiv.world.*
 import ru.zhiv.economy.*
+import ru.zhiv.notifications.NotificationPreferences
 import java.time.Instant
 import ru.zhiv.forest.*
 import java.util.UUID
@@ -59,6 +60,39 @@ class JdbcReleaseUpgradeIntegrationTest {
         c.commit()
     }
 
+    @Test fun `upgrade from populated V48 preserves notification settings and queue while keeping limits enabled`() = runBlocking<Unit> {
+        val config=AppConfig(postgres.jdbcUrl,postgres.username,postgres.password,false,setOf("http://localhost"))
+        DatabaseFactory.create(config).use { source ->
+            Flyway.configure().dataSource(source).locations("classpath:db/migration").target("48").load().migrate()
+            val token=TokenCodec().issue(); val otherToken=TokenCodec().issue()
+            val identities=JdbcZhivRepository(source)
+            val legacy=identities.bootstrap("Прежние настройки",TokenCodec().issue().hash,token.hash,365)
+            val explicit=identities.bootstrap("Явные настройки",TokenCodec().issue().hash,otherToken.hash,365)
+            val preferences=NotificationPreferences(constructionCompleted=false,checkinReminder=true,quietStart="22:00",rateLimitsEnabled=true,maxPerDay=1,minIntervalMinutes=360)
+            source.connection.use { c ->
+                c.economyUpdate("INSERT INTO notification_preferences(user_id,preferences) VALUES (?,?::jsonb-'rateLimitsEnabled')",
+                    legacy.id,notificationJson.encodeToString(preferences))
+                c.economyUpdate("INSERT INTO notification_preferences(user_id,preferences) VALUES (?,?::jsonb)",
+                    explicit.id,notificationJson.encodeToString(preferences.copy(rateLimitsEnabled=false)))
+                c.economyUpdate("""INSERT INTO notification_events(user_id,source_key,category,due_at,next_attempt_at)
+                    VALUES (?,'job:existing','production',clock_timestamp(),clock_timestamp()+interval '2 hours')""",legacy.id)
+                c.commit()
+            }
+            val preferenceSql="""SELECT jsonb_agg(to_jsonb(p) || jsonb_build_object('preferences',preferences-'rateLimitsEnabled') ORDER BY user_id)::text
+                FROM notification_preferences p"""
+            val beforePreferences=scalar(source,preferenceSql)
+            val beforeQueue=legacyData(source,listOf("notification_events"))
+            DatabaseFactory.migrate(source)
+            assertEquals(beforePreferences,scalar(source,preferenceSql),"Existing choices, presence and timestamps are preserved")
+            assertEquals(beforeQueue,legacyData(source,listOf("notification_events")),"Pending reminders keep their state and retry time")
+            val repository=JdbcNotificationRepository(source)
+            assertEquals(preferences,repository.snapshot(token.hash,legacy.publicId).preferences)
+            assertFalse(repository.snapshot(otherToken.hash,explicit.publicId).preferences.rateLimitsEnabled)
+            DatabaseFactory.migrate(source)
+            assertEquals(preferences,repository.snapshot(token.hash,legacy.publicId).preferences)
+        }
+    }
+
     @Test fun `upgrade from populated V44 adds presence without changing accounts balances or receipts`() = runBlocking<Unit> {
         val config = AppConfig(postgres.jdbcUrl, postgres.username, postgres.password, false, setOf("http://localhost"))
         DatabaseFactory.create(config).use { source ->
@@ -66,7 +100,11 @@ class JdbcReleaseUpgradeIntegrationTest {
             val token = TokenCodec().issue()
             val identity = JdbcZhivRepository(source)
             val player = identity.bootstrap("До активности", TokenCodec().issue().hash, token.hash, 365)
-            JdbcEconomyRepository(source).snapshot(token.hash)
+            // The historical fixture uses its deployed initializer, before V46 adds the new one.
+            source.connection.use { c ->
+                c.economyUpdate("INSERT INTO economy_profiles(user_id,state) VALUES (?,economy_v3_initial_state('{}'::jsonb))", player.id)
+                c.commit()
+            }
             seedLegacyCheckIn(source, player.id, token.hash)
             val tables = source.connection.use { c -> c.economyRows(
                 "SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename<>'flyway_schema_history' ORDER BY tablename") { it.getString(1) } }
@@ -76,7 +114,7 @@ class JdbcReleaseUpgradeIntegrationTest {
             DatabaseFactory.migrate(source)
             assertEquals(before, legacyData(source, tables))
             assertEquals(history, scalar(source, historySql))
-            assertEquals("45", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
+            assertEquals("49", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             for (table in listOf("game_presence_clients", "game_presence_accounts", "game_presence_daily"))
                 assertEquals("0", scalar(source, "SELECT count(*) FROM $table"))
             val presence = JdbcPresenceRepository(source)
@@ -120,7 +158,7 @@ class JdbcReleaseUpgradeIntegrationTest {
             DatabaseFactory.migrate(source)
             assertEquals(before, legacyData(source, unchangedTables))
             assertEquals(beforeHistory, scalar(source, historySql))
-            assertEquals("45", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
+            assertEquals("49", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM forest_memory"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM forest_memory_receipts"))
             DatabaseFactory.migrate(source)
@@ -182,7 +220,7 @@ class JdbcReleaseUpgradeIntegrationTest {
             assertEquals(before, legacyData(source, unchangedTables), "Only the explicitly converted world profile may change")
             assertEquals("true", scalar(source, "SELECT bool_and(reward_eligible)::text FROM game_achievements"), "Existing ownership keeps its finite reward eligibility")
             assertEquals(oldHistory, scalar(source, historySql), "Existing migration records/checksums must stay intact")
-            assertEquals("45", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
+            assertEquals("49", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM player_feedback"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM player_feedback_actions"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM forest_memory"))
@@ -249,7 +287,7 @@ class JdbcReleaseUpgradeIntegrationTest {
             }
             // Isolate V34 with its own rows; the latest repository requires V39 barter tables.
             val preserved = source.connection.use { readEconomyProfile(it, player.id) }
-            assertEquals(EconomyStorage(200, 720, 30, 0, 550), EconomyRules.storage(preserved.state, mapOf("berries" to 30L)))
+            assertEquals(EconomyStorage(300, 720, 30, 0, 450), EconomyRules.storage(preserved.state, mapOf("berries" to 30L)))
             assertEquals(listOf(oldJob), preserved.state.jobs)
             assertEquals(before, legacyData(source, unchangedTables))
             warehouseMigration.migrate()
@@ -261,13 +299,13 @@ class JdbcReleaseUpgradeIntegrationTest {
                 val initialized = c.economyRows("SELECT economy_v2_initial_state(?::jsonb)", worldJson.encodeToString(legacy)) {
                     economyJson.decodeFromString<EconomyState>(it.getString(1))
                 }.single()
-                assertEquals(EconomyRules.initial(100, 81, 49, 4, 2), EconomyMoney.redenominate(initialized))
+                assertEquals(EconomyRules.initial(100, 81, 49, 4, 2, includeStartingPack = false), EconomyMoney.redenominate(initialized))
             }
             DatabaseFactory.migrate(source)
             assertEquals(22L, source.connection.use { readEconomyProfile(it, player.id).revision }, "V40 and V41 each convert once")
             val economy = JdbcEconomyRepository(source)
             val upgraded = economy.snapshot(token.hash)
-            assertEquals(EconomyStorage(200, 720, 30, 0, 550), upgraded.storage)
+            assertEquals(EconomyStorage(300, 720, 30, 0, 450), upgraded.storage)
             assertEquals(listOf(oldJob.copy(cost = oldJob.cost.copy(coins = 30))), upgraded.jobs)
             assertEquals(23L, upgraded.revision, "The first current read initializes the merchant stock once")
             assertEquals(upgraded.revision, economy.snapshot(token.hash).revision)

@@ -8,12 +8,12 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { connectForestSession } = await vite.ssrLoadModule("/features/world/forest-session.ts");
-const { requestForestDirective, advanceForestDirector } = await vite.ssrLoadModule("/features/world/forest-director.ts");
-const { clearingActivityFrame } = await vite.ssrLoadModule("/features/world/clearing-activity.ts");
-const { forestGardenVisualFrame } = await vite.ssrLoadModule("/features/world/forest-garden-painter.ts");
+const { connectForestSession } = await vite.ssrLoadModule("/features/world/state/forest-session.ts");
+const { requestForestDirective, advanceForestDirector } = await vite.ssrLoadModule("/features/world/simulation/forest-director.ts");
+const { clearingActivityFrame } = await vite.ssrLoadModule("/features/world/simulation/clearing-activity.ts");
+const { forestGardenVisualFrame } = await vite.ssrLoadModule("/features/world/activities/garden/forest-garden-painter.ts");
 const { previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
-const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
+const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
 const calm = { autoLife: false, blocked: false, dusk: 0, rain: 0, homeAvailable: true };
 
 test("a real harvest preserves basket position through pickup, walking, collecting and parking", () => {

@@ -20,13 +20,13 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
       export function useEffect(callback) { effects.push(callback); }
       export function useId() { return 'market-' + cursor++; }
     `; },
-    transform(source, id) { if (id.endsWith("/features/world/world-wardrobe.tsx")) return source.replace('from "react";', `from "${hookModule}";`); },
+    transform(source, id) { if (id.endsWith("/features/world/ui/wardrobe/world-wardrobe.tsx")) return source.replace('from "react";', `from "${hookModule}";`); },
   }],
 });
 after(() => vite.close());
 
-const { WorldWardrobe } = await vite.ssrLoadModule("/features/world/world-wardrobe.tsx");
-const { newWorldState } = await vite.ssrLoadModule("/features/world/model.ts");
+const { WorldWardrobe } = await vite.ssrLoadModule("/features/world/ui/wardrobe/world-wardrobe.tsx");
+const { newWorldState } = await vite.ssrLoadModule("/features/world/domain/model.ts");
 const hooks = await vite.ssrLoadModule(hookModule);
 function harness() {
   hooks.reset(); const calls = [], equips = [], focused = []; let refreshes = 0;

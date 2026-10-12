@@ -8,9 +8,9 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { walletTween, walletDeltaLabel, walletAmountLabel } = await vite.ssrLoadModule("/features/world/wallet-animation.ts");
-const { EconomyBalances } = await vite.ssrLoadModule("/features/economy/economy-panel.tsx");
-const { WorldWallet } = await vite.ssrLoadModule("/features/world/world-wallet.tsx");
+const { walletTween, walletDeltaLabel, walletAmountLabel } = await vite.ssrLoadModule("/features/world/ui/hud/wallet-animation.ts");
+const { EconomyBalances } = await vite.ssrLoadModule("/features/economy/ui/economy-panel.tsx");
+const { WorldWallet } = await vite.ssrLoadModule("/features/world/ui/hud/world-wallet.tsx");
 
 test("wallet presentation never overshoots confirmed gains or spending", () => {
   for (const [from, to] of [[10, 110], [200, 0], [1_999_999_000, 2_000_000_000], [13, 13]]) {

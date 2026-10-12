@@ -58,7 +58,7 @@ export function reviewMiningFishing(loaded, onScenario = () => {}) {
     title: "Mining expeditions, fishing specializations and player progression",
     reviewDate: "2026-10-06", catalogVersion: catalog.version,
     sourceHashes: Object.fromEntries([
-      "../apps/api/src/main/resources/world/economy-catalog.json", "../features/economy/rules.ts", "../features/economy/fishing.ts",
+      "../apps/api/src/main/resources/world/economy-catalog.json", "../features/economy/domain/rules.ts", "../features/economy/domain/fishing.ts",
       "./simulate-player-journey.mjs", "./simulate-player-joint.mjs", "./lib/economy-math.mjs",
     ].map(file => [file, hash(file)])),
     method: {

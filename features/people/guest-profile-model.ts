@@ -1,7 +1,7 @@
 import { z } from "zod";
 import policy from "@/apps/api/src/main/resources/world/guest-profile-policy.json";
-import { economyCatalog } from "@/features/economy/model";
-import { collectionCatalog } from "@/features/world/collection-book";
+import { economyCatalog } from "@/features/economy/domain/model";
+import { collectionCatalog } from "@/features/world/domain/collection-book";
 import { GAME_ACHIEVEMENT_TARGETS } from "@/features/game/achievement-progress";
 
 export const GUEST_ACHIEVEMENT_IDS = policy.achievementIds;

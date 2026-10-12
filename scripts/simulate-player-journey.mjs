@@ -53,9 +53,9 @@ export function createJourneyRareRandom(seed) {
 export async function loadJourneyRules() {
   const vite = await createServer({ appType: "custom", configFile: false, root, logLevel: "silent",
     resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
-  const rules = await vite.ssrLoadModule("/features/economy/rules.ts");
-  const model = await vite.ssrLoadModule("/features/economy/model.ts");
-  const actorAvailability = await vite.ssrLoadModule("/features/economy/actor-availability.ts");
+  const rules = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
+  const model = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+  const actorAvailability = await vite.ssrLoadModule("/features/economy/domain/actor-availability.ts");
   const progressionRewards = await vite.ssrLoadModule("/features/game/progression-rewards.ts");
   return { rules, actorAvailability, progressionRewards, catalog: model.economyCatalog,
     walletLimits: { coins: model.ECONOMY_MAX_BALANCE, pearls: model.ECONOMY_MAX_PEARLS }, close: () => vite.close() };
@@ -75,7 +75,9 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
   state.wallet.pearls = pearlBudget; // Hypothetical confirmed initial balance; not an earning or payment API.
   const initialCoins = state.wallet.coins, coinSpending = {};
   let clock = firstVisit, sequence = 0, castSequence = 0, targetIndex = 0, commands = 0, revenue = 0, storageRecovery = 0, lastFailure = null, pearlsSpent = 0;
-  const milestones = {}, events = [], failures = {}, actions = {}, productionRecipes = {}, explorationRoutes = {}, itemFlow = {}, items = new Map(catalog.items.map(item => [item.id, item]));
+  const milestones = {}, events = [], failures = {}, actions = {}, productionRecipes = {}, explorationRoutes = {}, items = new Map(catalog.items.map(item => [item.id, item]));
+  const itemFlow = Object.fromEntries(Object.entries(state.inventory).map(([id, quantity]) => [id,
+    { initial: quantity, received: 0, sold: 0, productionInputs: 0, expeditionInputs: 0, constructionInputs: 0 }]));
   const productionStations = [...new Set(catalog.recipes.map(recipe => recipe.buildingId))].filter(id => id !== "quarry");
   const slotPurchases = [], maximumProductionJobs = {};
   let dailyState = dailyPearlsOnly || dailyRewards ? progressionRewards.initialDailyRewardState() : null, dailyClaims = 0, dailyPearls = 0;
@@ -150,7 +152,7 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
       for (const id of new Set([...Object.keys(state.inventory), ...Object.keys(next.inventory)])) {
         const difference = (next.inventory[id] ?? 0) - (state.inventory[id] ?? 0);
         if (!difference) continue;
-        const flow = itemFlow[id] ??= { received: 0, sold: 0, productionInputs: 0, expeditionInputs: 0, constructionInputs: 0 };
+        const flow = itemFlow[id] ??= { initial: 0, received: 0, sold: 0, productionInputs: 0, expeditionInputs: 0, constructionInputs: 0 };
         if (difference > 0) flow.received += difference;
         else if (action === "sell" || action === "sell_fish") flow.sold -= difference;
         else if (action === "start_production") flow.productionInputs -= difference;
@@ -297,7 +299,7 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
             dailyCoins += gift.reward.coins;
             for (const [id, quantity] of Object.entries(gift.reward.items)) {
               dailyItems[id] = (dailyItems[id] ?? 0) + quantity;
-              (itemFlow[id] ??= { received: 0, sold: 0, productionInputs: 0, expeditionInputs: 0, constructionInputs: 0 }).received += quantity;
+              (itemFlow[id] ??= { initial: 0, received: 0, sold: 0, productionInputs: 0, expeditionInputs: 0, constructionInputs: 0 }).received += quantity;
             }
             dailyClaimRows.push({ day: Number(((clock - firstVisit) / day).toFixed(4)), at: new Date(epoch + clock * 1000).toISOString(),
               homeLevel: state.buildings.home ?? 1, step: gift.step, reward: structuredClone(gift.reward) });
@@ -448,7 +450,7 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
   assert.equal(state.wallet.coins, initialCoins + revenue + dailyCoins - Object.values(coinSpending).reduce((sum, value) => sum + value, 0), "Coins must reconcile across gifts, sales and actual paid commands");
   assert(Object.values(state.inventory).every(q => Number.isSafeInteger(q) && q >= 0));
   for (const [id, flow] of Object.entries(itemFlow))
-    assert.equal(flow.received - flow.sold - flow.productionInputs - flow.expeditionInputs - flow.constructionInputs, state.inventory[id] ?? 0, `${id}: inventory flow must conserve every earned item`);
+    assert.equal(flow.initial + flow.received - flow.sold - flow.productionInputs - flow.expeditionInputs - flow.constructionInputs, state.inventory[id] ?? 0, `${id}: inventory flow must conserve starting and earned items`);
   for (const id of relicIds) assert.equal(relicReceived[id] + (dailyItems[id] ?? 0) - relicSpent[id], state.inventory[id] ?? 0, "Exploration and gifted relics must be conserved through construction");
   return report;
 }

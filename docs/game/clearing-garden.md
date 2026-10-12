@@ -71,13 +71,13 @@ DEV-команды сохраняют последнее обычное сост
 
 | Задача | Файл |
 |---|---|
-| Рост, влажность, вместимость и безопасные рабочие точки | `features/world/forest-garden.ts`; общий рисунок гроздей — `forest-garden-layout.ts` |
-| Серверный прогресс куста, запрос и событие сбора | `features/world/economy-garden-state.ts`, `new-map-scene.ts`; контроллер — `features/economy/garden-collection.ts` |
-| Выбор, фазы, движение, прерывания и фиксация результата | `features/world/forest-director.ts` |
-| Полезность заботы и восстановление после усталости | `features/world/forest-mind.ts` |
-| Палитра, размер плодов и стадии визуального созревания | `features/world/forest-fruit-appearance.ts` |
-| Земля, видимая влажность, контактная и падающая тень отдельного куста | `features/world/forest-bush-soil.ts`, `features/world/forest-bush-grounding.ts`, `features/world/tiled/renderer.ts` |
-| Ягоды, лейка, корзинка и движение рук | `features/world/forest-garden-painter.ts`, `new-map-scene.ts`; основа позы — `features/mochlik/pixel-sprite.ts`, `features/world/grounding.ts` |
+| Рост, влажность, вместимость и безопасные рабочие точки | `features/world/activities/garden/forest-garden.ts`; общий рисунок гроздей — `forest-garden-layout.ts` |
+| Серверный прогресс куста, запрос и событие сбора | `features/world/state/economy/economy-garden-state.ts`, `new-map-scene.ts`; контроллер — `features/economy/integration/garden-collection.ts` |
+| Выбор, фазы, движение, прерывания и фиксация результата | `features/world/simulation/forest-director.ts` |
+| Полезность заботы и восстановление после усталости | `features/world/simulation/forest-mind.ts` |
+| Палитра, размер плодов и стадии визуального созревания | `features/world/activities/garden/forest-fruit-appearance.ts` |
+| Земля, видимая влажность, контактная и падающая тень отдельного куста | `features/world/activities/garden/forest-bush-soil.ts`, `features/world/activities/garden/forest-bush-grounding.ts`, `features/world/tiled/renderer.ts` |
+| Ягоды, лейка, корзинка и движение рук | `features/world/activities/garden/forest-garden-painter.ts`, `new-map-scene.ts`; основа позы — `features/mochlik/pixel-sprite.ts`, `features/world/scene/grounding.ts` |
 | Память и строгий контракт | `forest-memory.ts`, `forest-memory-model.ts`, Ktor `ForestMemory.kt` |
 | Диагностика и ручные сценарии | `forest-observer.ts`, `dev/world-dev-panel.tsx`, `dev/world-dev-store.ts` |
 

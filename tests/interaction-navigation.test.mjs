@@ -8,9 +8,9 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { compileWorldInteractions, findInteractionApproach, WORLD_INTERACTION_LIMITS } = await vite.ssrLoadModule("/features/world/interaction-navigation.ts");
-const { createWorldNavigation, canTraverse, isWalkable, findWorldPath } = await vite.ssrLoadModule("/features/world/navigation.ts");
-const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
+const { compileWorldInteractions, findInteractionApproach, WORLD_INTERACTION_LIMITS } = await vite.ssrLoadModule("/features/world/navigation/interaction-navigation.ts");
+const { createWorldNavigation, canTraverse, isWalkable, findWorldPath } = await vite.ssrLoadModule("/features/world/navigation/navigation.ts");
+const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
 const { previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const rect = (x, y, w, h) => [{ x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }];

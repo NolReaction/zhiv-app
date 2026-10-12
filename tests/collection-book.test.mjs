@@ -8,11 +8,11 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const book = await vite.ssrLoadModule("/features/world/collection-book.ts");
-const { WorldCollections } = await vite.ssrLoadModule("/features/world/world-collections.tsx");
-const { newWorldState } = await vite.ssrLoadModule("/features/world/model.ts");
-const { newEconomyState } = await vite.ssrLoadModule("/features/economy/rules.ts");
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
+const book = await vite.ssrLoadModule("/features/world/domain/collection-book.ts");
+const { WorldCollections } = await vite.ssrLoadModule("/features/world/ui/collections/world-collections.tsx");
+const { newWorldState } = await vite.ssrLoadModule("/features/world/domain/model.ts");
+const { newEconomyState } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const fresh = () => ({ ...newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 }), catalog: economyCatalog });
 
 test("the book has three chapters with permanent finds and every current fish species", () => {
@@ -24,10 +24,11 @@ test("the book has three chapters with permanent finds and every current fish sp
 
 test("legacy forest ownership and new finds combine without duplicate progress or new resources", () => {
   const economy = fresh(); economy.progression.collections.finds = ["acorn", "feather", "quartz_cluster"];
+  const inventory = structuredClone(economy.inventory);
   const travel = book.collectionBookEntries("travel", ["acorn", "winged_seed", "river_pearl", "unknown"], economy);
   assert.deepEqual(travel.filter(entry => entry.owned).map(entry => entry.id), ["acorn", "feather", "winged_seed"]);
   assert.deepEqual(book.collectionBookEntries("quarry", [], economy).filter(entry => entry.owned).map(entry => entry.id), ["quartz_cluster"]);
-  assert.deepEqual(economy.inventory, {});
+  assert.deepEqual(economy.inventory, inventory);
 });
 
 test("fish ownership in inventory never fills a chapter but verified catches survive sale", () => {

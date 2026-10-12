@@ -1,7 +1,7 @@
-import type { EconomyState } from "@/features/economy/model";
-import { economyCatalog } from "@/features/economy/model";
+import type { EconomyState } from "@/features/economy/domain/model";
+import { economyCatalog } from "@/features/economy/domain/model";
 import achievements from "@/apps/api/src/main/resources/world/achievements-catalog.json";
-import { personallyFoundBookCollection } from "@/features/economy/collection-progress";
+import { personallyFoundBookCollection } from "@/features/economy/domain/collection-progress";
 
 export const GAME_ACHIEVEMENT_TARGETS = achievements.targets;
 // Paid production already issued before mining became an activity keeps its

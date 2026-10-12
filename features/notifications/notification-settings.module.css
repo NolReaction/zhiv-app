@@ -1,0 +1,36 @@
+.card { display: grid; gap: 20px; min-width: 0; padding: 20px; border: 1px solid #ffffff18; border-radius: 20px; background: #ffffff09; color: #e8efda; }
+.heading { display: flex; align-items: flex-start; gap: 11px; }
+.heading > svg { margin-top: 2px; color: #bdd99e; }
+.heading h2 { margin: 0; font-size: 17px; font-weight: 650; }
+.heading p, .device p, .hint { margin: 6px 0 0; font-size: 12px; line-height: 1.5; color: #abb6a3; }
+.device { display: grid; grid-template-columns: 28px minmax(0, 1fr); align-items: start; gap: 8px; padding: 13px; border: 1px solid #c6dfa51f; border-radius: 14px; background: #17271ba6; }
+.deviceIcon { color: #afc39d; padding-top: 1px; }
+.device strong { font-size: 13px; line-height: 1.4; }
+.connect { grid-column: 2; justify-self: start; }
+.connect, .save, .loading button { min-height: 44px; padding: 9px 13px; border: 1px solid #b9d99555; border-radius: 11px; background: #b9d9951c; color: #e4f1d6; font: inherit; font-size: 13px; font-weight: 650; cursor: pointer; }
+.card button:disabled { opacity: .46; cursor: default; }
+.topics { display: grid; gap: 0; margin: 0; padding: 0; border: 0; min-width: 0; }
+.topics legend { padding: 0 0 2px; color: #d9e6cc; font-size: 13px; font-weight: 650; }
+.topic { display: flex; gap: 16px; justify-content: space-between; align-items: center; padding: 12px 0; }
+.topics .topic + .topic { border-top: 1px solid #ffffff0a; }
+.topic label { min-width: 0; display: grid; gap: 5px; cursor: pointer; }
+.topic strong { display: flex; gap: 6px; align-items: center; color: #e2ebd7; font-size: 13px; line-height: 1.4; font-weight: 600; }
+.topic label > span { color: #a4b29a; font-size: 12px; line-height: 1.5; }
+.topic > button { flex-shrink: 0; }
+.limits { display: grid; gap: 8px; border-top: 1px solid #ffffff15; }
+.timeRow { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.timeRow label, .selectRow label { display: grid; gap: 6px; min-width: 0; font-size: 12px; color: #bfccb4; }
+.timeZone { grid-column: 1 / -1; }
+.timeRow p { grid-column: 1 / -1; margin: 0 0 8px; color: #95a68d; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.card input, .card select { width: 100%; min-width: 0; min-height: 44px; padding: 8px 10px; border: 1px solid #b4c69c38; border-radius: 9px; color: #e4efda; background: #18271d; color-scheme: dark; font: inherit; font-size: 13px; }
+.frequency summary { display: flex; align-items: center; gap: 7px; width: fit-content; min-height: 44px; cursor: pointer; font-size: 13px; color: #c4d7ae; text-decoration: underline; text-underline-offset: 3px; }
+.selectRow { display: grid; gap: 13px; padding: 8px 0; }
+.hint { margin: 0; }
+.actions { display: grid; gap: 8px; }
+.save { justify-self: start; display: inline-flex; align-items: center; gap: 7px; background: #bdd99e; color: #1b311d; }
+.actions > span { font-size: 12px; color: #bfd3ac; line-height: 1.5; }
+.actions > span:empty { display: none; }
+.loading { display: grid; gap: 12px; color: #abb6a3; font-size: 13px; }
+.card button:focus-visible, .card input:focus-visible, .card select:focus-visible, .frequency summary:focus-visible { outline: 2px solid #d1e8a7; outline-offset: 3px; }
+@media (max-width: 359px) { .timeRow { grid-template-columns: minmax(0, 1fr); } .card { padding: 15px; } .device { grid-template-columns: minmax(0, 1fr); } .deviceIcon { display: none; } .connect { grid-column: 1; } }
+@media (forced-colors: active) { .card, .device, .card input, .card select, .connect, .save { border-color: ButtonText; } }

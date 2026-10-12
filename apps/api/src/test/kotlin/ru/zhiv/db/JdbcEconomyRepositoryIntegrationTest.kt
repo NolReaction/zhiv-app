@@ -66,6 +66,85 @@ class JdbcEconomyRepositoryIntegrationTest {
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(ready), p.id)
     }
 
+    @Test fun `workshop gift retries serialize one permanent grant and receipt with exact ledger deltas`() = runBlocking<Unit> {
+        val p = player()
+        val before = economy.snapshot(p.hash)
+        val request = command(p, before, "claim_workshop_starter", "workshop")
+        val attempts = coroutineScope { List(2) { async(Dispatchers.IO) { JdbcEconomyRepository(source).command(p.hash, request) } }.awaitAll() }
+        assertEquals(1, attempts.count { it.replayed })
+        val after = JdbcEconomyRepository(source).snapshot(p.hash)
+        val cost = EconomyWorkshopStarter.cost()
+        assertEquals(before.revision + 1, after.revision)
+        assertEquals(before.wallet.coins + cost.coins, after.wallet.coins)
+        assertEquals(before.wallet.pearls, after.wallet.pearls)
+        cost.items.forEach { (id, amount) -> assertEquals((before.inventory[id] ?: 0) + amount, after.inventory[id]) }
+        assertTrue(after.workshopStarterClaimed)
+        assertTrue(source.connection.use { readEconomyProfile(it, p.id).state.workshopStarterClaimed })
+        assertEquals(before.buildings, after.buildings)
+        assertEquals(before.jobs, after.jobs)
+        assertEquals("1", scalar("SELECT count(*) FROM economy_commands WHERE user_id=?", p.id))
+        assertEquals("1", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='claim_workshop_starter'", p.id))
+        assertEquals(cost.coins.toString(), scalar("SELECT coins FROM economy_ledger WHERE user_id=? AND kind='claim_workshop_starter'", p.id))
+        assertEquals("0", scalar("SELECT pearls FROM economy_ledger WHERE user_id=? AND kind='claim_workshop_starter'", p.id))
+        assertEquals(cost.items, economyJson.decodeFromString<Map<String, Long>>(scalar(
+            "SELECT items FROM economy_ledger WHERE user_id=? AND kind='claim_workshop_starter'", p.id)))
+        assertEquals("workshop", scalar("SELECT context->>'targetId' FROM economy_ledger WHERE user_id=? AND kind='claim_workshop_starter'", p.id))
+        assertEquals("ECONOMY_WORKSHOP_STARTER_CLAIMED", assertFailsWith<AuthFailure> {
+            economy.command(p.hash, command(p, after, "claim_workshop_starter", "workshop"))
+        }.code)
+        val construction = economy.command(p.hash, command(p, after, "start_construction", "workshop")).state
+        val replay = economy.command(p.hash, request)
+        assertTrue(replay.replayed)
+        assertEquals(before.revision + 1, replay.acceptedRevision)
+        assertEquals(construction.revision, replay.state.revision)
+        assertEquals(construction.wallet, replay.state.wallet)
+        assertEquals(construction.jobs, replay.state.jobs)
+        assertTrue(replay.state.workshopStarterClaimed)
+    }
+
+    @Test fun `distinct concurrent workshop gift requests allow one effect and fresh revisions cannot reopen it`() = runBlocking<Unit> {
+        val p = player()
+        val before = economy.snapshot(p.hash)
+        val attempts = coroutineScope { List(2) { async(Dispatchers.IO) {
+            runCatching { JdbcEconomyRepository(source).command(p.hash, command(p, before, "claim_workshop_starter", "workshop")) }
+        } }.awaitAll() }
+        assertEquals(1, attempts.count { it.isSuccess })
+        assertEquals("ECONOMY_REVISION_CONFLICT", (attempts.single { it.isFailure }.exceptionOrNull() as AuthFailure).code)
+        val after = economy.snapshot(p.hash)
+        assertEquals(before.revision + 1, after.revision)
+        assertTrue(after.workshopStarterClaimed)
+        assertEquals("ECONOMY_WORKSHOP_STARTER_CLAIMED", assertFailsWith<AuthFailure> {
+            economy.command(p.hash, command(p, after, "claim_workshop_starter", "workshop"))
+        }.code)
+        assertEquals("1", scalar("SELECT count(*) FROM economy_commands WHERE user_id=?", p.id))
+        assertEquals("1", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='claim_workshop_starter'", p.id))
+        assertEquals(after, economy.snapshot(p.hash).copy(serverTime = after.serverTime))
+    }
+
+    @Test fun `workshop gift checks escrow capacity and failed claims leave no marker receipt or ledger`() = runBlocking<Unit> {
+        val p = player()
+        economy.snapshot(p.hash)
+        val initial = source.connection.use { readEconomyProfile(it, p.id).state }
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(initial.copy(
+            inventory = mapOf("berries" to 272L))), p.id)
+        val listingId = UUID.randomUUID()
+        execute("INSERT INTO economy_market_listings(id,seller_id,item_id,quantity,total_price) VALUES (?,?,?,?,?)",
+            listingId, p.id, "stone", 11L, 110L)
+        val before = economy.snapshot(p.hash)
+        val request = command(p, before, "claim_workshop_starter", "workshop")
+        assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> { economy.command(p.hash, request) }.code)
+        assertEquals(before, economy.snapshot(p.hash).copy(serverTime = before.serverTime))
+        assertFalse(source.connection.use { readEconomyProfile(it, p.id).state.workshopStarterClaimed })
+        assertEquals("0", scalar("SELECT count(*) FROM economy_commands WHERE user_id=?", p.id))
+        assertEquals("0", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='claim_workshop_starter'", p.id))
+        execute("UPDATE economy_market_listings SET quantity=10 WHERE id=?", listingId)
+        val accepted = economy.command(p.hash, request)
+        assertFalse(accepted.replayed)
+        assertTrue(accepted.state.workshopStarterClaimed)
+        assertEquals(0L, accepted.state.storage.available)
+        assertEquals(0L, accepted.state.storage.overflow)
+    }
+
     @Test fun `resident orders atomically debit goods pay coins and survive replay with one ledger event`() = runBlocking<Unit> {
         val p = player(); economy.snapshot(p.hash)
         val original = source.connection.use { readEconomyProfile(it, p.id).state }
@@ -425,7 +504,7 @@ class JdbcEconomyRepositoryIntegrationTest {
         val results = coroutineScope { List(2) { async(Dispatchers.IO) { JdbcEconomyRepository(source).command(p.hash, sale) } }.awaitAll() }
         assertEquals(1, results.count { it.replayed })
         val sold = economy.snapshot(p.hash)
-        assertEquals(50L, sold.wallet.coins)
+        assertEquals(before.wallet.coins + 50L, sold.wallet.coins)
         assertEquals(6L, sold.inventory["berries"])
         assertEquals("1", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='sell'", p.id))
         assertEquals("50", scalar("SELECT coins FROM economy_ledger WHERE user_id=? AND kind='sell'", p.id))
@@ -433,7 +512,7 @@ class JdbcEconomyRepositoryIntegrationTest {
             economy.command(p.hash, sale.copy(totalPrice = 40))
         }.code)
         val specialist = economy.command(p.hash, command(p, sold, "sell_fish", "fish", 2)).state
-        assertEquals(210L, specialist.wallet.coins)
+        assertEquals(before.wallet.coins + 210L, specialist.wallet.coins)
         assertTrue(specialist.fishing.catches.isEmpty())
     }
 
@@ -445,11 +524,13 @@ class JdbcEconomyRepositoryIntegrationTest {
         val stocked = funded.copy(fishingShop = EconomyFishingShops.create(funded, Instant.now(), { 0 }))
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(stocked), p.id)
         val stock = economy.snapshot(p.hash)
-        val buy = command(p, stock, "buy_fishing_item", checkNotNull(stock.fishingShop).offers.single { it.itemId == "river_rod" }.id).copy(totalPrice = 18050)
+        val rodOffer = checkNotNull(stock.fishingShop).offers.single { it.itemId == "river_rod" }
+        assertEquals(13_500L, rodOffer.unitPrice)
+        val buy = command(p, stock, "buy_fishing_item", rodOffer.id).copy(totalPrice = rodOffer.unitPrice + 50)
         val attempts = coroutineScope { List(2) { async(Dispatchers.IO) { JdbcEconomyRepository(source).command(p.hash, buy) } }.awaitAll() }
         assertEquals(1, attempts.count { it.replayed })
         val bought = economy.snapshot(p.hash)
-        assertEquals(82000L, bought.wallet.coins)
+        assertEquals(stock.wallet.coins - rodOffer.unitPrice, bought.wallet.coins, "Charge the saved offer once, not the higher approved ceiling")
         assertEquals(listOf("reed_rod", "river_rod"), bought.fishing.ownedRods)
         assertEquals("1", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='buy_fishing_item'", p.id))
         val equipped = economy.command(p.hash, command(p, bought, "equip_fishing_rod", "river_rod")).state
@@ -576,7 +657,7 @@ class JdbcEconomyRepositoryIntegrationTest {
         val p = player()
         economy.snapshot(p.hash)
         val state = source.connection.use { readEconomyProfile(it, p.id).state }
-        val fullInventory = state.copy(wallet = EconomyWallet(100_000), inventory = mapOf("wood" to 190L))
+        val fullInventory = state.copy(wallet = EconomyWallet(100_000), inventory = mapOf("wood" to 290L))
         val stocked = fullInventory.copy(fishingShop = EconomyFishingShops.create(fullInventory, Instant.now(), { 0 }))
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(stocked), p.id)
         execute("INSERT INTO economy_market_listings(id,seller_id,item_id,quantity,total_price) VALUES (?,?,?,?,?)",
@@ -585,12 +666,12 @@ class JdbcEconomyRepositoryIntegrationTest {
         val bait = checkNotNull(before.fishingShop).offers.single { it.kind == "bait" }
         val full = command(p, before, "buy_fishing_item", bait.id).copy(totalPrice = bait.unitPrice)
         assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> { economy.command(p.hash, full) }.code)
-        val stale = command(p, before, "buy_fishing_item", checkNotNull(before.fishingShop).offers.single { it.itemId == "river_rod" }.id).copy(totalPrice = 17990)
+        val stale = command(p, before, "buy_fishing_item", checkNotNull(before.fishingShop).offers.single { it.itemId == "river_rod" }.id).copy(totalPrice = 13490)
         assertEquals("ECONOMY_FISHING_PRICE_CHANGED", assertFailsWith<AuthFailure> { economy.command(p.hash, stale) }.code)
         assertEquals(before, economy.snapshot(p.hash).copy(serverTime = before.serverTime))
         assertEquals("0", scalar("SELECT count(*) FROM economy_commands WHERE user_id=?", p.id))
         assertEquals("0", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='buy_fishing_item'", p.id))
-        val rod = economy.command(p.hash, command(p, before, "buy_fishing_item", checkNotNull(before.fishingShop).offers.single { it.itemId == "river_rod" }.id).copy(totalPrice = 18000)).state
+        val rod = economy.command(p.hash, command(p, before, "buy_fishing_item", checkNotNull(before.fishingShop).offers.single { it.itemId == "river_rod" }.id).copy(totalPrice = 13500)).state
         assertEquals(before.inventory, rod.inventory, "durable tackle does not take warehouse space")
         val freed = economy.command(p.hash, command(p, rod, "sell", "wood", 1)).state
         val bought = economy.command(p.hash, command(p, freed, "buy_fishing_item", bait.id).copy(totalPrice = bait.unitPrice)).state
@@ -624,7 +705,7 @@ class JdbcEconomyRepositoryIntegrationTest {
         assertTrue(acknowledged.replayed)
         assertEquals(1L, acknowledged.acceptedRevision)
         assertEquals(sold.revision, acknowledged.state.revision)
-        assertEquals(EconomyRules.localSellPrice(EconomyRules.catalog.items.single { it.id == "berries" }.baseSellPrice, berryCount), acknowledged.state.wallet.coins)
+        assertEquals(initial.wallet.coins + EconomyRules.localSellPrice(EconomyRules.catalog.items.single { it.id == "berries" }.baseSellPrice, berryCount), acknowledged.state.wallet.coins)
         assertEquals("4", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND source_key LIKE 'command:%'", p.id))
     }
 
@@ -656,7 +737,7 @@ class JdbcEconomyRepositoryIntegrationTest {
         val claimed = coroutineScope { List(2) { async(Dispatchers.IO) { JdbcEconomyRepository(source).command(p.hash, claim) } }.awaitAll() }
         assertEquals(1, claimed.count { it.replayed })
         val delivered = economy.snapshot(p.hash)
-        assertEquals(job.rewards, delivered.inventory)
+        assertEquals(collecting.inventory + job.rewards, delivered.inventory)
         assertTrue(delivered.jobs.isEmpty())
         assertEquals(collecting.revision + 1, delivered.revision)
         val replayedStart = economy.command(p.hash, start)
@@ -671,7 +752,7 @@ class JdbcEconomyRepositoryIntegrationTest {
         val growing = economy.command(p.hash, command(p, economy.snapshot(p.hash), "start_production", "grow_berries")).state
         finish(p, growing)
         val persisted = source.connection.use { readEconomyProfile(it, p.id).state }
-        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(persisted.copy(inventory = mapOf("wood" to 190L))), p.id)
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(persisted.copy(inventory = mapOf("wood" to 290L))), p.id)
         execute("INSERT INTO economy_market_listings(id,seller_id,item_id,quantity,total_price) VALUES (?,?,?,?,?)",
             UUID.randomUUID(), p.id, "stone", 10L, 100L)
         val full = economy.snapshot(p.hash)
@@ -778,22 +859,22 @@ class JdbcEconomyRepositoryIntegrationTest {
         assertEquals(0L, after.wallet.pearls)
         assertEquals(2, after.buildings["home"])
         assertTrue(after.jobs.isEmpty())
-        assertEquals("0", scalar("SELECT sum(pearls) FROM economy_ledger WHERE user_id=?", p.id))
+        assertEquals("0", scalar("SELECT sum(pearls) FROM economy_ledger WHERE user_id=? AND source_key LIKE 'command:%'", p.id))
     }
 
-    @Test fun `new legacy account lazy conversion matches immutable SQL and never repeats after reopening`() = runBlocking<Unit> {
+    @Test fun `new legacy account receives starting supplies plus conversion and neither repeats after reopening`() = runBlocking<Unit> {
         val p = player()
         val legacy = WorldState(resources = WorldResources(900, 81, 49), houseLevel = 4, workshop = true, workshopLevel = 2,
             inventory = listOf("moss", "amber_scarf", "explorer_cap"), collection = listOf("acorn"))
         execute("INSERT INTO world_profiles(user_id,state) VALUES (?,?::jsonb)", p.id, worldJson.encodeToString(legacy))
         val result = economy.snapshot(p.hash)
-        assertEquals(760L, result.wallet.coins)
-        assertEquals(mapOf("wood" to 9L, "stone" to 7L), result.inventory)
+        assertEquals(EconomyWallet(3260, 1000), result.wallet)
+        assertEquals(mapOf("fish" to 10L, "wood" to 19L, "stone" to 17L), result.inventory)
         assertEquals(4, result.buildings["home"])
         assertEquals(2, result.buildings["workshop"])
         assertEquals(1, result.buildings["warehouse"])
         assertEquals(0, result.buildings["kiln"])
-        assertEquals(EconomyStorage(200, 16, 0, 184, 0), result.storage)
+        assertEquals(EconomyStorage(300, 46, 0, 254, 0), result.storage)
         assertEquals("900", scalar("SELECT legacy_sparks FROM economy_conversion_audit WHERE user_id=?", p.id))
         assertEquals("0", scalar("SELECT state->'resources'->>'sparks' FROM world_profiles WHERE user_id=?", p.id))
         assertEquals(legacy.inventory, JdbcWorldRepository(source).snapshot(p.hash).state.inventory)
@@ -879,7 +960,7 @@ class JdbcEconomyRepositoryIntegrationTest {
         val collecting = economy.command(p.hash, command(p, started, "start_collection", started.jobs.single().id)).state
         finish(p, collecting)
         val persisted = source.connection.use { readEconomyProfile(it, p.id).state }
-        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(persisted.copy(inventory = mapOf("wood" to 200L))), p.id)
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(persisted.copy(inventory = mapOf("wood" to 300L))), p.id)
         val full = economy.snapshot(p.hash)
         val claim = command(p, full, "claim_job", full.jobs.single().id)
         assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> { economy.command(p.hash, claim) }.code)
@@ -889,7 +970,7 @@ class JdbcEconomyRepositoryIntegrationTest {
         val sold = economy.command(p.hash, command(p, full, "sell", "wood", quantity)).state
         val claimed = economy.command(p.hash, command(p, sold, "claim_job", claim.targetId)).state
         assertTrue(claimed.jobs.isEmpty())
-        assertEquals(EconomyStorage(200, 200, 0, 0, 0), claimed.storage)
+        assertEquals(EconomyStorage(300, 300, 0, 0, 0), claimed.storage)
     }
 
     @Test fun `concurrent quarry and cave departures share one actor and retries never recreate finished jobs`() = runBlocking<Unit> {
@@ -1018,7 +1099,10 @@ class JdbcEconomyRepositoryIntegrationTest {
         assertTrue(after.jobs.isEmpty())
         assertEquals(before.revision + 1, after.revision)
         assertEquals(before.wallet, after.wallet)
-        assertEquals(if (winner.action == "claim_job") savedRewards else before.inventory, after.inventory)
+        val expectedInventory = if (winner.action == "claim_job")
+            before.inventory + savedRewards.mapValues { (id, amount) -> (before.inventory[id] ?: 0L) + amount }
+            else before.inventory
+        assertEquals(expectedInventory, after.inventory)
         assertEquals(if (winner.action == "claim_job") 1L else 0L, after.completedExplorations)
         assertEquals("1", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind IN ('claim_job','cancel_exploration')", p.id))
         assertEquals("0", scalar("SELECT count(*) FROM economy_commands WHERE user_id=? AND request_id=?", p.id, UUID.fromString(loser.first.requestId)))

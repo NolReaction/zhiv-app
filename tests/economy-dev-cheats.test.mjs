@@ -14,8 +14,8 @@ const identities = await vite.ssrLoadModule("/lib/dev/api-store.ts");
 const { commandDevPresence } = await vite.ssrLoadModule("/lib/dev/activity-store.ts");
 const activePresence = new Map();
 const economy = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
-const model = await vite.ssrLoadModule("/features/economy/model.ts");
-const { economyDevCommandSchema } = await vite.ssrLoadModule("/features/economy/dev-model.ts");
+const model = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { economyDevCommandSchema } = await vite.ssrLoadModule("/features/economy/dev/dev-model.ts");
 const { POST } = await vite.ssrLoadModule("/app/api/v1/economy/dev/route.ts");
 const { POST: ordinaryPOST } = await vite.ssrLoadModule("/app/api/v1/economy/commands/route.ts");
 const now = Date.now();
@@ -41,36 +41,36 @@ function post(body, headers = {}) {
 function fixture(p) { read(p); return globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId); }
 
 test("DEV currency and item grants return the real snapshot, preserve normal commands and replay once", async () => {
-  const p = player(), cmd = command(p);
+  const p = player(), cmd = command(p), before = read(p);
   const response = await POST(post(cmd)), result = await response.json();
   assert.equal(response.status, 200); assert.equal(response.headers.get("Cache-Control"), "no-store");
   assert.equal(model.economyResultSchema.safeParse(result).success, true);
-  assert.equal(result.state.wallet.coins, 1000); assert.equal(result.acceptedRevision, cmd.expectedRevision + 1);
+  assert.equal(result.state.wallet.coins, before.wallet.coins + 1000); assert.equal(result.acceptedRevision, cmd.expectedRevision + 1);
   const replay = economy.commandDevEconomyCheat(p.token, { ...cmd, requestId: cmd.requestId.toUpperCase() }, now);
-  assert.equal(replay.replayed, true); assert.equal(replay.state.wallet.coins, 1000); assert.equal(replay.state.revision, cmd.expectedRevision + 1);
+  assert.equal(replay.replayed, true); assert.equal(replay.state.wallet.coins, before.wallet.coins + 1000); assert.equal(replay.state.revision, cmd.expectedRevision + 1);
   assert.throws(() => economy.commandDevEconomyCheat(p.token, { ...cmd, quantity: 200 }, now), { code: "ECONOMY_REQUEST_CONFLICT" });
   cheat(p, "grant_currency", "pearls", 25);
   const granted = cheat(p, "grant_item", "berries", 400).state;
-  assert.equal(granted.wallet.pearls, 1250); assert.equal(granted.inventory.berries, 400);
-  assert.equal(granted.storage.overflow, 200, "DEV grants explicitly permit storage overflow");
+  assert.equal(granted.wallet.pearls, before.wallet.pearls + 1250); assert.equal(granted.inventory.berries, 400);
+  assert.equal(granted.storage.overflow, before.storage.used + 400 - before.storage.capacity, "DEV grants explicitly permit storage overflow");
   const sold = normal(p, "sell", "berries", 10).state;
-  assert.equal(sold.inventory.berries, 390); assert.equal(sold.storage.overflow, 190);
+  assert.equal(sold.inventory.berries, 390); assert.equal(sold.storage.overflow, before.storage.used + 390 - before.storage.capacity);
   assert.ok(sold.wallet.coins > granted.wallet.coins);
 });
 
 test("DEV pearl grant notices use the visible denomination while balances and replay stay in stored units", () => {
-  const p = player(), cmd = command(p, "grant_currency", "pearls", 100);
+  const p = player(), cmd = command(p, "grant_currency", "pearls", 100), before = read(p);
   assert.equal(cmd.quantity, 5000);
   const result = economy.commandDevEconomyCheat(p.token, cmd, now);
   assert.equal(result.message.replace(/\u00a0|\u202f/g, " "), "DEV: выдано 2 500 жемчужин");
-  assert.equal(result.state.wallet.pearls, 5000);
+  assert.equal(result.state.wallet.pearls, before.wallet.pearls + 5000);
   const replay = economy.commandDevEconomyCheat(p.token, cmd, now);
   assert.equal(replay.replayed, true);
   assert.equal(replay.message, result.message);
-  assert.equal(replay.state.wallet.pearls, 5000);
+  assert.equal(replay.state.wallet.pearls, before.wallet.pearls + 5000);
   assert.throws(() => economy.commandDevEconomyCheat(p.token, { ...command(p, "grant_currency", "pearls"), quantity: 51 }, now),
     { code: "INVALID_ECONOMY_COMMAND", message: "Количество валюты должно быть кратно 25" });
-  assert.equal(read(p).wallet.pearls, 5000);
+  assert.equal(read(p).wallet.pearls, before.wallet.pearls + 5000);
 });
 
 test("DEV API requires development, account, trusted origin, JSON and a bounded body", async () => {
@@ -91,14 +91,14 @@ test("DEV API requires development, account, trusted origin, JSON and a bounded 
 });
 
 test("DEV commands cannot enter ordinary gameplay endpoints or reuse an ordinary receipt", async () => {
-  const p = player(), cmd = command(p);
+  const p = player(), cmd = command(p), before = read(p);
   assert.equal(model.economyCommandSchema.safeParse(cmd).success, false);
   assert.equal((await ordinaryPOST(post(cmd))).status, 400);
   assert.throws(() => economy.commandDevEconomy(p.token, cmd, now), { code: "INVALID_ECONOMY_COMMAND" });
   const ordinary = command(p, "start_production", "grow_berries", 1);
   economy.commandDevEconomy(p.token, ordinary, now);
   assert.throws(() => economy.commandDevEconomyCheat(p.token, { ...cmd, requestId: ordinary.requestId }, now), { code: "ECONOMY_REQUEST_CONFLICT" });
-  assert.equal(read(p).wallet.coins, 0); assert.equal(read(p).jobs.length, 1);
+  assert.deepEqual(read(p).wallet, before.wallet); assert.equal(read(p).jobs.length, 1);
 });
 
 test("bad actions, items, quantities, zero-level homes and extra fields cannot mutate the snapshot", async () => {
@@ -127,7 +127,7 @@ test("owner switches and stale revisions fail before any change and do not poiso
   cheat(p, "grant_currency", "coins", 1);
   assert.throws(() => economy.commandDevEconomyCheat(p.token, stale, now), { code: "ECONOMY_REVISION_CONFLICT" });
   const fixed = economy.commandDevEconomyCheat(p.token, { ...stale, expectedRevision: read(p).revision }, now);
-  assert.equal(fixed.state.wallet.coins, 1010); assert.equal(fixed.replayed, false);
+  assert.equal(fixed.state.wallet.coins, before.wallet.coins + 1010); assert.equal(fixed.replayed, false);
 });
 
 test("numeric overflow including market escrow is atomic and records no successful receipt", () => {
@@ -248,7 +248,7 @@ test("DEV command defaults still produce a strict, ordinary result-compatible re
 });
 
 test("settlement scenarios fill a home tier, cap independent storage at that tier and preserve owned assets", async () => {
-  const { economyDevSettlement } = await vite.ssrLoadModule("/features/economy/dev-presets.ts");
+  const { economyDevSettlement } = await vite.ssrLoadModule("/features/economy/dev/dev-presets.ts");
   const p = player(), row = fixture(p);
   row.state.inventory = { ancient_core: 2, wood: 37 };
   row.state.wallet = { coins: 7000, pearls: 500 };
@@ -319,7 +319,7 @@ test("DEV gear grants add permanent ownership atomically without stock, catches,
 });
 
 test("individual DEV gear grants preserve paid trips and fish grants do not fake collection discoveries", () => {
-  const p = player();
+  const p = player(), before = read(p);
   const trip = normal(p, "start_fishing", "shore").state.jobs[0];
   const granted = cheat(p, "grant_fishing_gear", "leviathan_hook").state;
   assert.deepEqual(granted.fishing.ownedHooks, ["bare_hook", "leviathan_hook"]);
@@ -327,7 +327,7 @@ test("individual DEV gear grants preserve paid trips and fish grants do not fake
   assert.deepEqual(granted.jobs[0], trip, "granting better tackle does not rewrite an already paid draw");
   for (const id of ["fish_shark", "fish", "firefly_bait"]) cheat(p, "grant_item", id, 3);
   const state = read(p);
-  assert.equal(state.inventory.fish_shark, 3); assert.equal(state.inventory.fish, 3); assert.equal(state.inventory.firefly_bait, 3);
+  assert.equal(state.inventory.fish_shark, 3); assert.equal(state.inventory.fish, before.inventory.fish + 3); assert.equal(state.inventory.firefly_bait, 3);
   assert.deepEqual(state.fishing.catches, {});
   assert.equal(state.completedExplorations, 0);
 });

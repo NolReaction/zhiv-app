@@ -6,7 +6,7 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { forestObjectArtwork, harmonizeForestPixels, forestSiteMaterial } = await vite.ssrLoadModule("/features/world/forest-object-appearance.ts");
+const { forestObjectArtwork, harmonizeForestPixels, forestSiteMaterial } = await vite.ssrLoadModule("/features/world/scene/forest-object-appearance.ts");
 const { siteImagePoint, drawSiteImage } = await vite.ssrLoadModule("/features/world/tiled/site-image.ts");
 
 function withDocument(document, action) {

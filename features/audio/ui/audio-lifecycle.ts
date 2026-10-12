@@ -1,0 +1,67 @@
+import type { AudioBus, AudioRuntime } from "@/features/audio/domain/types";
+
+const UI_CUES = new Set(["ui.click", "ui.open", "ui.close", "ui.tab", "ui.confirm", "ui.error", "ui.reward"]);
+let uiEventSequence = 0;
+
+/** A semantic event is emitted once; input, hover and animation frames never trigger it. */
+export function playUiCue(runtime: AudioRuntime, cueId: string) {
+  if (!UI_CUES.has(cueId)) return;
+  runtime.play({ id: `ui:${++uiEventSequence}`, cueId, occurredAt: Date.now() });
+}
+
+/** User-driven slider feedback shares the UI mixer and its cooldown, never a
+ * separate preview context. Lower levels sound lower; zero remains silent. */
+export function playVolumeFeedback(runtime: AudioRuntime, bus: AudioBus | "master", value: number) {
+  if (!Number.isFinite(value) || value <= 0) return;
+  const level = Math.min(1, value);
+  const settings = runtime.getSettings();
+  if (!settings.enabled || settings.master <= 0 || settings.buses.ui <= 0
+    || (bus !== "master" && settings.buses[bus] <= 0)) return;
+  runtime.play({ id: `ui:${++uiEventSequence}`, cueId: "ui.slider", occurredAt: Date.now(),
+    feedbackBus: bus, playbackRate: .88 + level * .3,
+    // Master and UI already scale this voice in the mixer.
+    gain: bus === "master" || bus === "ui" ? .65 : level * .65 });
+}
+
+/** Only an explicit data attribute opts a button into delegated audio. */
+export function uiCueFromTarget(target: EventTarget | null): string | null {
+  if (!(target instanceof Element)) return null;
+  const button = target.closest<HTMLElement>("button[data-audio-cue], [role='button'][data-audio-cue]");
+  if (!button || button.matches(":disabled, [aria-disabled='true']") || button.closest("[inert]")) return null;
+  const cue = button.dataset.audioCue;
+  return cue && UI_CUES.has(cue) ? cue : null;
+}
+
+/** Only gestures can unlock the first time; the runtime may resume an already
+ * authorized context when visibility returns. Missed events are never replayed. */
+export function attachAudioLifecycle(runtime: AudioRuntime, page: Document, surface: Window) {
+  const visible = () => runtime.setVisible(!page.hidden);
+  const hide = () => runtime.setVisible(false);
+  const resumeFromGesture = (event: Event) => {
+    if (!event.isTrusted || page.hidden || !runtime.getSettings().enabled) return;
+    if (event instanceof KeyboardEvent && !["Enter", " "].includes(event.key)) return;
+    if (runtime.getDiagnostics().state !== "running") void runtime.unlock();
+  };
+  const click = (event: MouseEvent) => {
+    if (!event.isTrusted || page.hidden) return;
+    const cue = uiCueFromTarget(event.target);
+    if (cue) playUiCue(runtime, cue);
+  };
+  visible();
+  page.addEventListener("visibilitychange", visible);
+  surface.addEventListener("pagehide", hide);
+  surface.addEventListener("pageshow", visible);
+  page.addEventListener("pointerdown", resumeFromGesture, { capture: true, passive: true });
+  page.addEventListener("keydown", resumeFromGesture, true);
+  page.addEventListener("click", click, true);
+  return () => {
+    page.removeEventListener("visibilitychange", visible);
+    surface.removeEventListener("pagehide", hide);
+    surface.removeEventListener("pageshow", visible);
+    page.removeEventListener("pointerdown", resumeFromGesture, true);
+    page.removeEventListener("keydown", resumeFromGesture, true);
+    page.removeEventListener("click", click, true);
+    // StrictMode and hot reload may reattach immediately; the shared engine survives.
+    runtime.setVisible(false);
+  };
+}

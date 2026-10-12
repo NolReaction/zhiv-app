@@ -24,11 +24,11 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
         });
       }
     `; },
-    transform(source, id) { if (id.endsWith("/features/world/world-wallet.tsx")) return source.replace('from "react";', `from "${hookModule}";`).replace("function Currency(", "export function Currency("); },
+    transform(source, id) { if (id.endsWith("/features/world/ui/hud/world-wallet.tsx")) return source.replace('from "react";', `from "${hookModule}";`).replace("function Currency(", "export function Currency("); },
   }],
 });
 after(() => vite.close());
-const { Currency } = await vite.ssrLoadModule("/features/world/world-wallet.tsx");
+const { Currency } = await vite.ssrLoadModule("/features/world/ui/hud/world-wallet.tsx");
 const hooks = await vite.ssrLoadModule(hookModule);
 
 test("wallet animation halves pearl counts and deltas through gains, spending and reduced motion", context => {

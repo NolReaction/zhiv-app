@@ -1,5 +1,5 @@
 import { HOUSE_ANCHORS, HOME_DECOR } from "./home-layout";
-import { pointInPolygon } from "@/features/world/map-layout";
+import { pointInPolygon } from "@/features/world/legacy/map-layout";
 import { depositedPosition, type HabitatState, type PropKind } from "./habitat";
 
 const rect = (ctx: CanvasRenderingContext2D, color: string, x: number, y: number, w: number, h: number) => {

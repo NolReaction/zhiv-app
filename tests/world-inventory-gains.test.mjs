@@ -10,8 +10,8 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { createInventoryGainPlayback, INVENTORY_GAIN_MS, INVENTORY_GAIN_QUEUE_LIMIT } = await vite.ssrLoadModule("/features/world/inventory-gain-playback.ts");
-const { WorldInventoryGains, InventoryGainContents } = await vite.ssrLoadModule("/features/world/world-inventory-gains.tsx");
+const { createInventoryGainPlayback, INVENTORY_GAIN_MS, INVENTORY_GAIN_QUEUE_LIMIT } = await vite.ssrLoadModule("/features/world/ui/feedback/inventory-gain-playback.ts");
+const { WorldInventoryGains, InventoryGainContents } = await vite.ssrLoadModule("/features/world/ui/feedback/world-inventory-gains.tsx");
 const owner = "AAAA-0000-0001", other = "AAAA-0000-0002";
 const gain = (id, ownerPublicId = owner) => ({ id, ownerPublicId, revision: 1, source: "claim", items: [{ itemId: "fish", quantity: 3 }] });
 function playback(initial = [], initialOwner = owner) {
@@ -78,8 +78,8 @@ test("cards use the shared item drawings and exact positive quantities, with bou
 
 test("the fixed upper overlay clears modal stacks, never catches input and removes motion for accessibility", async () => {
   const [css, shop, hud, component, world] = await Promise.all([
-    "../features/world/world-inventory-gains.module.css", "../features/world/world-resident-dialog.module.css",
-    "../features/world/world-map-hud.module.css", "../features/world/world-inventory-gains.tsx", "../features/world/world-view.tsx",
+    "../features/world/ui/feedback/world-inventory-gains.module.css", "../features/world/ui/characters/world-resident-dialog.module.css",
+    "../features/world/world-map-hud.module.css", "../features/world/ui/feedback/world-inventory-gains.tsx", "../features/world/world-view.tsx",
   ].map(path => readFile(new URL(path, import.meta.url), "utf8")));
   const overlayLevel = Number(css.match(/z-index:\s*(\d+)/)[1]);
   const interactiveLayers = [...shop.matchAll(/z-index:\s*(\d+)/g), ...hud.matchAll(/z-index:\s*(\d+)/g)].map(match => Number(match[1]));

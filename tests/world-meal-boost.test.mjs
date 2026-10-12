@@ -24,17 +24,17 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
       }
       export const useLayoutEffect = useEffect;
     `; },
-    transform(source, id) { if (id.endsWith("/features/economy/world-meal-boost.tsx")) return source.replace('from "react";', `from "${hookModule}";`); },
+    transform(source, id) { if (id.endsWith("/features/economy/ui/food/world-meal-boost.tsx")) return source.replace('from "react";', `from "${hookModule}";`); },
   }],
 });
 after(() => vite.close());
 const hooks = await vite.ssrLoadModule(hookModule);
-const { WorldMealBoost, mealBoostReason, mealBoostSeconds } = await vite.ssrLoadModule("/features/economy/world-meal-boost.tsx");
-const { WorldExpeditionSector } = await vite.ssrLoadModule("/features/economy/world-expeditions-menu.tsx");
-const { WorldUpgradeContent } = await vite.ssrLoadModule("/features/economy/world-upgrade-dialog.tsx");
-const { BuilderConversation } = await vite.ssrLoadModule("/features/world/world-builder-dialog.tsx");
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
-const { economyStorage } = await vite.ssrLoadModule("/features/economy/rules.ts");
+const { WorldMealBoost, mealBoostReason, mealBoostSeconds } = await vite.ssrLoadModule("/features/economy/ui/food/world-meal-boost.tsx");
+const { WorldExpeditionSector } = await vite.ssrLoadModule("/features/economy/ui/expeditions/world-expeditions-menu.tsx");
+const { WorldUpgradeContent } = await vite.ssrLoadModule("/features/economy/ui/construction/world-upgrade-dialog.tsx");
+const { BuilderConversation } = await vite.ssrLoadModule("/features/world/ui/characters/world-builder-dialog.tsx");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const now = Date.parse("2026-10-07T18:00:00Z");
 function controller(overrides = {}, flags = {}) {
   const state = { ownerPublicId: "boost-owner", revision: 1, serverTime: new Date(now).toISOString(), catalog: structuredClone(economyCatalog), wallet: { coins: 1000, pearls: 0 },
@@ -55,11 +55,15 @@ const row = (view, id) => view.nodes.find(node => node.props["data-boost-meal"] 
 const action = (view, id) => elements(row(view, id)).find(node => node.type === "button");
 const job = (overrides = {}) => ({ id: "construction-1", kind: "construction", targetId: "home", targetLevel: 4, startedAt: new Date(now - 1000).toISOString(), finishesAt: new Date(now + 66_000).toISOString(), cost: { coins: 0, items: {} }, rewards: {}, ...overrides });
 
-test("meal picker opens without choosing or spending and shows every catalogue meal with actual stock and speed", () => {
+test("meal picker opens without spending and shows only opened or owned meals with actual stock and speed", () => {
   const economy = controller(), before = structuredClone(economy.snapshot), props = { economy, consumer: "hero", seconds: 7200, onNavigateStation() {} };
   const view = open(props);
-  assert.equal(view.nodes.filter(node => node.props["data-boost-meal"]).length, economy.snapshot.catalog.food.meals.length);
-  for (const meal of economy.snapshot.catalog.food.meals) {
+  const visible = economy.snapshot.catalog.food.meals.filter(meal => (economy.snapshot.inventory[meal.itemId] ?? 0) > 0
+    || economy.snapshot.catalog.recipes.some(recipe => recipe.rewards[meal.itemId] > 0 && recipe.buildingLevel <= (economy.snapshot.buildings[recipe.buildingId] ?? 0)
+      && recipe.requiredHomeLevel <= economy.snapshot.buildings.home && Object.entries(recipe.requiredBuildings).every(([id, level]) => (economy.snapshot.buildings[id] ?? 0) >= level)));
+  assert.equal(view.nodes.filter(node => node.props["data-boost-meal"]).length, visible.length);
+  assert.ok(visible.length < economy.snapshot.catalog.food.meals.length, "locked recipes are absent");
+  for (const meal of visible) {
     const markup = renderToStaticMarkup(row(view, meal.itemId));
     assert.ok(markup.includes(`+${meal.heroSpeedBps / 100}%`));
     assert.ok(markup.includes(`есть ${economy.snapshot.inventory[meal.itemId] ?? 0}`));

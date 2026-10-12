@@ -10,11 +10,11 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
 after(() => vite.close());
 const { WorldDevTabs, WorldDevPanelContent, gardenDevActionUnavailable } = await vite.ssrLoadModule("/features/world/dev/world-dev-panel.tsx");
 const { WORLD_DEV_DEFAULTS, WORLD_DEV_POSES, WORLD_DEV_RESIDENT_ACTIONS, WORLD_DEV_BUILDER_ACTIONS, worldDevStore } = await vite.ssrLoadModule("/features/world/dev/world-dev-store.ts");
-const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
-const { interactiveMapObjects } = await vite.ssrLoadModule("/features/world/site-interactions.ts");
+const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
+const { interactiveMapObjects } = await vite.ssrLoadModule("/features/world/scene/site-interactions.ts");
 const { WorldDevCheats } = await vite.ssrLoadModule("/features/world/dev/world-dev-cheats.tsx");
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
-const { economyStorage } = await vite.ssrLoadModule("/features/economy/rules.ts");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 
 function inspect(element) {
   const elements = [];

@@ -8,7 +8,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { ForestSessionNotice, ForestSessionNoticeContent } = await vite.ssrLoadModule("/features/world/forest-session-notice.tsx");
+const { ForestSessionNotice, ForestSessionNoticeContent } = await vite.ssrLoadModule("/features/world/ui/feedback/forest-session-notice.tsx");
 const sync = { mode: "other-device", revision: 7, serverSavedAt: 1000, canTakeOver: true };
 function inspect(props = {}) {
   const calls = [];

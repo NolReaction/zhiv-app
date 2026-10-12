@@ -9,9 +9,9 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
 after(() => vite.close());
 const { createClearingActivity, advanceClearingActivity, requestClearingPoint, isClearingAtPoint,
   setClearingNavigationObstacle, baseClearingNavigation, requestClearingSleep } =
-  await vite.ssrLoadModule("/features/world/clearing-activity.ts");
-const { canTraverse, canTraverseWorldObstacle, isWalkable } = await vite.ssrLoadModule("/features/world/navigation.ts");
-const { canTraverseResidents, residentClearance } = await vite.ssrLoadModule("/features/world/resident-traffic.ts");
+  await vite.ssrLoadModule("/features/world/simulation/clearing-activity.ts");
+const { canTraverse, canTraverseWorldObstacle, isWalkable } = await vite.ssrLoadModule("/features/world/navigation/navigation.ts");
+const { canTraverseResidents, residentClearance } = await vite.ssrLoadModule("/features/world/navigation/resident-traffic.ts");
 const point = (x, y) => ({ x, y });
 const rect = (x, y, width, height) => [point(x, y), point(x + width, y), point(x + width, y + height), point(x, y + height)];
 const scene = () => ({ schemaVersion: 1, id: "resident-clearing", width: 400, height: 400,

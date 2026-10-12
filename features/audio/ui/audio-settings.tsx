@@ -1,0 +1,151 @@
+"use client";
+
+import { useEffect, useId, useRef, useState } from "react";
+import { RotateCcw, Volume2, VolumeX, X } from "lucide-react";
+import { Dialog as DialogPrimitive } from "radix-ui";
+import type { AudioBus, AudioDiagnostics, AudioSettingsPatch } from "@/features/audio/domain/types";
+import { AUDIO_BUSES } from "@/features/audio/domain/types";
+import { getDefaultAudioVolumePatch } from "@/features/audio/domain/settings";
+import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
+import { playUiCue, playVolumeFeedback } from "./audio-lifecycle";
+import { useAudioDiagnostics } from "./use-audio-diagnostics";
+import styles from "./audio-settings.module.css";
+
+export const AUDIO_BUS_LABELS: Record<AudioBus, string> = {
+  music: "Музыка", ambience: "Лес и вода", weather: "Погода", world: "Постройки и действия", characters: "Голоса героев", ui: "Интерфейс",
+};
+
+function VolumeSlider({ id, label, value, onChange }: {
+  id: string; label: string; value: number; onChange: (volume: number) => void;
+}) {
+  const percent = Math.round(value * 100);
+  const lastPercent = useRef(percent);
+  useEffect(() => { lastPercent.current = percent; }, [percent]);
+  return <label className={styles.volume} htmlFor={id}>
+    <span>{label}<output htmlFor={id} aria-hidden="true">{percent}%</output></span>
+    <input id={id} type="range" min={0} max={100} step={1} value={percent} aria-valuetext={`${percent}%`}
+      onChange={event => {
+        const nextPercent = Number(event.currentTarget.value);
+        if (nextPercent === lastPercent.current) return;
+        lastPercent.current = nextPercent;
+        onChange(nextPercent / 100);
+      }} />
+  </label>;
+}
+
+/** Kept separate from the dialog so settings can be verified without a browser audio device. */
+export function AudioSettingsControls({ id, diagnostics, busy, feedback, onChange, onEnable, onResume, onReset, onSliderFeedback }: {
+  id: string; diagnostics: AudioDiagnostics; busy: boolean; feedback: string;
+  onChange: (patch: AudioSettingsPatch) => void; onEnable: () => void; onResume: () => void; onReset: () => void;
+  onSliderFeedback?: (bus: AudioBus | "master", volume: number) => void;
+}) {
+  const { settings, state } = diagnostics;
+  const needsResume = settings.enabled && (state === "suspended" || state === "locked");
+  return <div className={styles.controls}>
+    <div className={styles.masterSwitch}>
+      <span><strong>Звуки игры</strong><small>{settings.enabled ? "Включены" : "Выключены"}</small></span>
+      <button type="button" role="switch" aria-checked={settings.enabled} aria-label="Звуки игры"
+        className={styles.switch} disabled={busy || state === "unavailable"} data-audio-cue="ui.click"
+        onClick={() => settings.enabled ? onChange({ enabled: false }) : onEnable()}>
+        <span aria-hidden="true" />
+      </button>
+    </div>
+    <p className={styles.hint}>Громкость сохраняется на этом устройстве. В фоне игра звучать не будет.</p>
+    <VolumeSlider id={`${id}-master`} label="Общая громкость" value={settings.master} onChange={master => {
+      onChange({ master });
+      onSliderFeedback?.("master", master);
+    }} />
+    <fieldset className={styles.buses}>
+      <legend>Что слышно в игре</legend>
+      {AUDIO_BUSES.map(bus => <VolumeSlider key={bus} id={`${id}-${bus}`} label={AUDIO_BUS_LABELS[bus]}
+        value={settings.buses[bus]} onChange={volume => {
+          onChange({ buses: { [bus]: volume } });
+          onSliderFeedback?.(bus, volume);
+        }} />)}
+    </fieldset>
+    <div className={styles.resetGroup}>
+      <button type="button" className={styles.reset} data-audio-cue="ui.click" onClick={onReset} disabled={busy}
+        aria-describedby={`${id}-reset-hint`}>
+        <RotateCcw size={16} aria-hidden="true" />Сбросить громкость
+      </button>
+      <p id={`${id}-reset-hint`} className={styles.resetHint}>Вернуть рекомендуемый баланс. Включение звука не изменится.</p>
+    </div>
+    {needsResume && <button type="button" className={styles.resume} data-audio-cue="ui.click" onClick={onResume} disabled={busy}>Продолжить воспроизведение</button>}
+    <p className={styles.feedback} role="status">{state === "unavailable" ? "Этот браузер не поддерживает воспроизведение звуков игры." : feedback}</p>
+  </div>;
+}
+
+function useAudioSettingsControls() {
+  const diagnostics = useAudioDiagnostics();
+  const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState("");
+  const id = useId();
+  async function enable() {
+    const runtime = getAudioRuntime();
+    setBusy(true);
+    runtime.setSettings({ enabled: true });
+    try {
+      const ready = await runtime.unlock();
+      setFeedback(ready ? "Звуки включены" : "Нажмите «Продолжить воспроизведение», чтобы разрешить звук.");
+    } catch {
+      setFeedback("Не удалось включить звук. Попробуйте ещё раз.");
+    } finally { setBusy(false); }
+  }
+  return {
+    id, diagnostics, busy, feedback,
+    onChange: (patch: AudioSettingsPatch) => {
+      getAudioRuntime().setSettings(patch);
+      setFeedback(patch.enabled === false ? "Звуки выключены" : "");
+    },
+    onEnable: () => void enable(),
+    onResume: () => void enable(),
+    onSliderFeedback: (bus: AudioBus | "master", volume: number) => playVolumeFeedback(getAudioRuntime(), bus, volume),
+    onReset: () => {
+      getAudioRuntime().setSettings(getDefaultAudioVolumePatch());
+      setFeedback("Стандартная громкость восстановлена");
+    },
+  };
+}
+
+/** Shared inline settings for the account and forest profile tabs. */
+export function AudioSettingsPanel({ tone = "dark" }: { tone?: "dark" | "forest" }) {
+  const controls = useAudioSettingsControls();
+  return <section className={styles.panel} data-tone={tone} aria-labelledby={`${controls.id}-title`}>
+    <header className={styles.panelHeader}>
+      <Volume2 size={20} aria-hidden="true" />
+      <div><h2 id={`${controls.id}-title`}>Звук</h2><p>Музыка, окружение и отклик кнопок</p></div>
+    </header>
+    <AudioSettingsControls {...controls} />
+  </section>;
+}
+
+/** The standalone dialog remains available to the DEV sound inspector. */
+export function AudioSettingsButton({ label = false, className }: { label?: boolean; className?: string }) {
+  const controls = useAudioSettingsControls();
+  const [open, setOpen] = useState(false);
+  const Icon = controls.diagnostics.settings.enabled ? Volume2 : VolumeX;
+  function changeOpen(next: boolean) {
+    if (next !== open) playUiCue(getAudioRuntime(), next ? "ui.open" : "ui.close");
+    setOpen(next);
+  }
+  return <DialogPrimitive.Root open={open} onOpenChange={changeOpen}>
+    <DialogPrimitive.Trigger asChild>
+      <button type="button" className={className ?? styles.trigger} aria-label="Настройки звука" title="Настройки звука">
+        <Icon size={19} aria-hidden="true" />{label && <span>Звук</span>}
+      </button>
+    </DialogPrimitive.Trigger>
+    <DialogPrimitive.Portal>
+      <DialogPrimitive.Overlay className={styles.overlay} data-audio-settings-overlay />
+      <DialogPrimitive.Content className={styles.dialog} data-audio-settings
+        onPointerDown={event => event.stopPropagation()} onWheel={event => event.stopPropagation()}
+        onKeyDown={event => event.stopPropagation()} onEscapeKeyDown={event => event.stopPropagation()}>
+        <header className={styles.header}>
+          <div><DialogPrimitive.Title>Звуки леса</DialogPrimitive.Title>
+            <DialogPrimitive.Description>Настройте музыку, окружение и голоса героев.</DialogPrimitive.Description></div>
+          <DialogPrimitive.Close asChild><button type="button" className={styles.close} aria-label="Закрыть настройки звука" data-audio-settings-close><X size={20} aria-hidden="true" /></button></DialogPrimitive.Close>
+        </header>
+        <AudioSettingsControls {...controls} />
+      </DialogPrimitive.Content>
+    </DialogPrimitive.Portal>
+  </DialogPrimitive.Root>;
+}

@@ -11,7 +11,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
 after(() => vite.close());
 const { AdminEconomyList, loadAdminEconomy } = await vite.ssrLoadModule("/features/admin/admin-economy-panel.tsx");
 const { AdminEconomyDetailContent, loadAdminEconomyDetail, economyRemaining } = await vite.ssrLoadModule("/features/admin/admin-economy-dialog.tsx");
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; });
 const owner = "7K3P-2Q9M-W8ZR", target = "7K3P-2Q9M-W8ZS", otherOwner = "7K3P-2Q9M-W8ZT";

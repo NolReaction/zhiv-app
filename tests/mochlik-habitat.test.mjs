@@ -7,7 +7,7 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 const { createHabitat, HOME, BUSH, FRONT, INACTIVITY_SECONDS } = await vite.ssrLoadModule("/features/mochlik/habitat.ts");
-const mapManifest = await vite.ssrLoadModule("/features/world/map-manifest.ts");
+const mapManifest = await vite.ssrLoadModule("/features/world/legacy/map-manifest.ts");
 after(() => vite.close());
 const advance = (world, seconds) => { for (let i = 0; i < Math.ceil(seconds / .025); i++) world.update(.025); };
 function until(world, predicate, seconds = 150) {
@@ -135,7 +135,7 @@ test("2D rendering and pet controls never write to accounts or record game taps"
     const source = await readFile(new URL(`../${path}`, import.meta.url), "utf8");
     assert.doesNotMatch(source, /registerTap\(|recordGameTap\(|createCheckIn\(|fetch\(|from ["']three["']|WebGLRenderer/);
   }
-  const app = await readFile(new URL("../features/check-in/check-in-app.tsx", import.meta.url), "utf8");
+  const app = await readFile(new URL("../features/app/app-shell.tsx", import.meta.url), "utf8");
   const handler = app.slice(app.indexOf("function handleGameAreaPointerDown"), app.indexOf("function handlePrimaryPointerDown"));
   assert.ok(handler.indexOf("data-pet-interaction") < handler.indexOf("registerTap("));
   assert.match(handler, /data-pet-interaction/);

@@ -7,11 +7,11 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { createBuilderMind, advanceBuilderMind, builderMindFrame, noticeBuilderMind, BUILDER_MIND_LIMITS } = await vite.ssrLoadModule("/features/world/builder-mind.ts");
-const { builderLocalPlaces, builderWorkStops, builderRoute } = await vite.ssrLoadModule("/features/world/builder-navigation.ts");
-const { BUILDER } = await vite.ssrLoadModule("/features/world/builder-types.ts");
-const { isWalkable, canTraverse } = await vite.ssrLoadModule("/features/world/navigation.ts");
-const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
+const { createBuilderMind, advanceBuilderMind, builderMindFrame, noticeBuilderMind, BUILDER_MIND_LIMITS } = await vite.ssrLoadModule("/features/world/characters/builder/builder-mind.ts");
+const { builderLocalPlaces, builderWorkStops, builderRoute } = await vite.ssrLoadModule("/features/world/characters/builder/builder-navigation.ts");
+const { BUILDER } = await vite.ssrLoadModule("/features/world/characters/builder/builder-types.ts");
+const { isWalkable, canTraverse } = await vite.ssrLoadModule("/features/world/navigation/navigation.ts");
+const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
 const { previewWorldScene, initialPreviewLevels } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
 const start = Date.parse("2026-10-06T12:00:00Z"), finish = start + 3600_000;
 const job = (stationId = "home", id = stationId) => ({ id, stationId, targetLevel: 2,

@@ -7,11 +7,11 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { TILED_WORLD: scene } = await vite.ssrLoadModule("/features/world/presentation.ts");
+const { TILED_WORLD: scene } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
 const { forestGroundImpactFrame, isForestRainGround, drawForestGroundImpact, drawForestGroundImpacts }
-  = await vite.ssrLoadModule("/features/world/forest-ground-impacts.ts");
+  = await vite.ssrLoadModule("/features/world/environment/weather/forest-ground-impacts.ts");
 const { forestGroundWeatherFrame, drawForestGroundWeather }
-  = await vite.ssrLoadModule("/features/world/forest-ground-weather.ts");
+  = await vite.ssrLoadModule("/features/world/environment/weather/forest-ground-weather.ts");
 const { previewPointInPolygon } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
 const options = { elapsed: 12, rain: 1, dusk: 0, reducedMotion: false };
 const rectangle = bounds => [

@@ -10,7 +10,7 @@ export function useStartupModules(enabled: boolean, retrySignal: number): SceneL
   useEffect(() => {
     if (!enabled) return;
     const current = createSceneLoader<void>({
-      load: async () => { await Promise.all([import("@/features/world/world-portal"), import("@/features/world/map-engine")]); },
+      load: async () => { await Promise.all([import("@/features/world/world-portal"), import("@/features/world/scene/map-engine")]); },
       release() {}, onReady() {}, onState: setState,
     });
     loader.current = current;

@@ -6,13 +6,13 @@ import {createServer} from 'vite';
 test('map readiness waits for the character, aborted loading releases its scene, failed images retry',async()=>{
  const root=fileURLToPath(new URL('..',import.meta.url));
  const vite=await createServer({appType:'custom',configFile:false,root,resolve:{alias:{'@':root}},server:{middlewareMode:true,hmr:false}});
- const {createMapEngine}=await vite.ssrLoadModule('/features/world/map-engine.ts');
- const {WORLD_ART}=await vite.ssrLoadModule('/features/world/art.ts');
- const {WORLD_PRESENTATION}=await vite.ssrLoadModule('/features/world/presentation.ts');
- const {MAP_PLACES}=await vite.ssrLoadModule('/features/world/map-layout.ts');
+ const {createMapEngine}=await vite.ssrLoadModule('/features/world/scene/map-engine.ts');
+ const {WORLD_ART}=await vite.ssrLoadModule('/features/world/scene/art.ts');
+ const {WORLD_PRESENTATION}=await vite.ssrLoadModule('/features/world/scene/presentation.ts');
+ const {MAP_PLACES}=await vite.ssrLoadModule('/features/world/legacy/map-layout.ts');
  const {connectHabitat}=await vite.ssrLoadModule('/features/mochlik/session.ts');
  const {mountHabitat}=await vite.ssrLoadModule('/features/mochlik/scene.ts');
- const {BIRD_FLIGHTS,birdFlightPose}=await vite.ssrLoadModule('/features/world/bird-ambience.ts');
+ const {BIRD_FLIGHTS,birdFlightPose}=await vite.ssrLoadModule('/features/world/legacy/bird-ambience.ts');
  const {loadHabitatImage,HabitatAssetError}=await vite.ssrLoadModule('/features/mochlik/assets.ts');await vite.close();
  // Exercise the retained legacy loading protocol with distinct mocked art, independently of the active map.
  const rebuilding=WORLD_PRESENTATION.rebuilding,originalArt={...WORLD_ART};WORLD_PRESENTATION.rebuilding=false;

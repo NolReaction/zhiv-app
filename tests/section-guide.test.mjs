@@ -1,0 +1,155 @@
+import assert from "node:assert/strict";
+import test, { after } from "node:test";
+import { fileURLToPath } from "node:url";
+import { createServer } from "vite";
+
+const root = fileURLToPath(new URL("..", import.meta.url));
+const vite = await createServer({ appType: "custom", configFile: false, root, server: { middlewareMode: true, hmr: false, ws: false } });
+after(() => vite.close());
+const { sectionGuideIds, sectionGuideLessons, sectionGuideCanOpen, parseSectionGuideProgress, transitionSectionGuide: move } = await vite.ssrLoadModule("/features/onboarding/section-guide-model.ts");
+const { sectionGuideStorageKey, createSectionGuideStore } = await vite.ssrLoadModule("/features/onboarding/section-guide-storage.ts");
+const { requestSectionGuideNavigation, listenForSectionGuideNavigation } = await vite.ssrLoadModule("/features/onboarding/section-guide-navigation.ts");
+function storage() {
+  const values = new Map();
+  return { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
+}
+function finished(section) {
+  let progress = move(section, null, "start");
+  for (let index = 0; index < sectionGuideLessons[section].length; index++) progress = move(section, progress, "next");
+  return progress;
+}
+
+test("each first-entry lesson is short and gating does not consume an unopened lesson", () => {
+  for (const section of sectionGuideIds) {
+    const steps = sectionGuideLessons[section];
+    assert.ok(steps.length >= 2 && steps.length <= (section === "plesk" ? 6 : 3));
+    assert.equal(new Set(steps.map(step => step.id)).size, steps.length);
+  }
+  assert.equal(sectionGuideCanOpen(false, true, null), false, "storage must be loaded first");
+  assert.equal(sectionGuideCanOpen(true, false, null), false, "initial course, another device or hidden scope blocks auto-open");
+  assert.equal(sectionGuideCanOpen(true, true, null), true, "still eligible when that blocker clears");
+});
+
+test("leaving the section without explicitly pausing its lesson resumes the exact step", () => {
+  const disk = storage(), first = createSectionGuideStore("resume-owner", "plesk", disk);
+  first.restore();
+  first.save(move("plesk", move("plesk", null, "start"), "next"));
+  const reopened = createSectionGuideStore("resume-owner", "plesk", disk);
+  assert.equal(reopened.getSnapshot().loaded, false);
+  reopened.restore();
+  assert.equal(reopened.getSnapshot().progress.stepId, "hook-intro");
+  assert.equal(sectionGuideCanOpen(true, true, reopened.getSnapshot().progress), true);
+});
+
+test("Plesk explains permanent tackle and consumable bait before automatically revealing odds", () => {
+  let progress = move("plesk", null, "start");
+  for (const expected of ["rod-intro", "hook-intro", "bait-intro"]) {
+    assert.equal(progress.stepId, expected);
+    const lesson = sectionGuideLessons.plesk.find(step => step.id === progress.stepId);
+    assert.notEqual(lesson.revealOnOpen, true, "an introduction must not jump to the probability table");
+    assert.ok(lesson.targets.every(selector => !selector.includes("odds")));
+    progress = move("plesk", progress, "next");
+  }
+  for (const expected of ["rods", "bait"]) {
+    assert.equal(progress.stepId, expected);
+    assert.equal(sectionGuideLessons.plesk.find(step => step.id === expected).revealOnOpen, true);
+    progress = move("plesk", progress, "next");
+  }
+  assert.equal(progress.stepId, "catch");
+  const saved = { version: 1, status: "paused", stepId: "bait" };
+  assert.deepEqual(parseSectionGuideProgress(JSON.stringify(saved), "plesk"), saved, "existing progress remains resumable");
+});
+
+test("explicit pause survives reopening until deliberately resumed", () => {
+  const disk = storage(), first = createSectionGuideStore("paused-owner", "market", disk);
+  const second = move("market", move("market", null, "start"), "next");
+  first.save(move("market", second, "pause"));
+  const reopened = createSectionGuideStore("paused-owner", "market", disk);
+  reopened.restore();
+  const paused = reopened.getSnapshot().progress;
+  assert.equal(paused.status, "paused");
+  assert.equal(sectionGuideCanOpen(true, true, paused), false);
+  const resumed = move("market", paused, "resume");
+  assert.equal(resumed.stepId, "sell");
+  assert.equal(sectionGuideCanOpen(true, true, resumed), true);
+});
+
+test("completed and skipped lessons never auto-open and replay starts at first step", () => {
+  for (const section of sectionGuideIds) {
+    const complete = finished(section);
+    assert.equal(complete.status, "completed");
+    for (const progress of [complete, move(section, complete, "skip")]) {
+      const disk = storage(), first = createSectionGuideStore(`complete-${section}`, section, disk);
+      first.save(progress);
+      const reopened = createSectionGuideStore(`complete-${section}`, section, disk);
+      reopened.restore();
+      assert.equal(sectionGuideCanOpen(true, true, reopened.getSnapshot().progress), false);
+      assert.deepEqual(move(section, reopened.getSnapshot().progress, "start"), progress, "ordinary entry must preserve the terminal choice");
+      const replay = move(section, progress, "replay");
+      assert.equal(replay.stepId, sectionGuideLessons[section][0].id);
+      assert.equal(replay.status, "started");
+    }
+  }
+});
+
+test("accounts and sections have independent completion and encoded keys avoid collisions", () => {
+  const disk = storage(), first = createSectionGuideStore("player-a", "pantry", disk);
+  first.save(finished("pantry"));
+  for (const [owner, section] of [["player-b", "pantry"], ["player-a", "market"]]) {
+    const next = createSectionGuideStore(owner, section, disk);
+    next.restore();
+    assert.equal(next.getSnapshot().progress, null);
+  }
+  assert.notEqual(sectionGuideStorageKey("a:market", "pantry"), sectionGuideStorageKey("a", "market"));
+});
+
+test("unavailable or full storage retains current-session choices without throwing", () => {
+  const broken = { getItem() { throw new Error("disabled"); }, setItem() { throw new Error("quota"); } };
+  const first = createSectionGuideStore("blocked-store-owner", "orders", broken);
+  first.restore();
+  assert.equal(first.getSnapshot().progress, null);
+  const skipped = move("orders", null, "skip");
+  first.save(skipped);
+  const reopened = createSectionGuideStore("blocked-store-owner", "orders", broken);
+  reopened.restore();
+  assert.deepEqual(reopened.getSnapshot().progress, skipped);
+  assert.equal(sectionGuideCanOpen(true, true, reopened.getSnapshot().progress), false);
+});
+
+test("external storage updates can restore a completion without changing other sections", () => {
+  const disk = storage(), first = createSectionGuideStore("cross-tab-owner", "builder", disk), second = createSectionGuideStore("cross-tab-owner", "builder", disk);
+  first.restore(); second.restore();
+  first.save(finished("builder"));
+  second.restore();
+  assert.equal(second.getSnapshot().progress.status, "completed");
+  const other = createSectionGuideStore("cross-tab-owner", "plesk", disk);
+  other.restore();
+  assert.equal(other.getSnapshot().progress, null);
+});
+
+test("malformed values fail safely and copy updates preserve deliberate skips", () => {
+  for (const raw of [null, "{", "[]", '"string"', '{"version":2,"status":"started"}', '{"version":1,"status":"unknown"}']) assert.equal(parseSectionGuideProgress(raw, "pantry"), null);
+  const skipped = parseSectionGuideProgress('{"version":1,"status":"skipped","stepId":"old-copy-step"}', "pantry");
+  assert.equal(skipped.status, "skipped");
+  assert.equal(skipped.stepId, "items");
+  const started = parseSectionGuideProgress('{"version":1,"status":"started","stepId":"unknown"}', "pantry");
+  assert.equal(started.stepId, "items");
+  assert.equal(move("pantry", started, "back").stepId, "items");
+});
+
+test("show navigation is confined to its own open section and detached handlers cannot intercept it", () => {
+  const plesk = new EventTarget(), meals = new EventTarget(), visited = [];
+  const root = { querySelector(selector) { return selector.includes('"plesk"') ? plesk : selector.includes('"meals"') ? meals : null; } };
+  const off = listenForSectionGuideNavigation(plesk, "plesk", stepId => {
+    if (!["rods", "bait", "catch"].includes(stepId)) return false;
+    visited.push(stepId); return true;
+  });
+  listenForSectionGuideNavigation(meals, "meals", () => { assert.fail("fishing guidance must not affect another section"); });
+  assert.equal(requestSectionGuideNavigation(root, "plesk", "bait"), true);
+  assert.deepEqual(visited, ["bait"]);
+  assert.equal(requestSectionGuideNavigation(root, "plesk", "purchase"), false, "unknown actions are not handled");
+  off();
+  assert.equal(requestSectionGuideNavigation(root, "plesk", "rods"), false);
+  assert.equal(requestSectionGuideNavigation({ querySelector() { return null; } }, "plesk", "rods"), false);
+  assert.deepEqual(visited, ["bait"]);
+});

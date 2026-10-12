@@ -5,12 +5,12 @@ import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
-const model = await vite.ssrLoadModule("/features/economy/model.ts");
-const food = await vite.ssrLoadModule("/features/economy/food.ts");
-const rules = await vite.ssrLoadModule("/features/economy/rules.ts");
+const model = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const food = await vite.ssrLoadModule("/features/economy/domain/food.ts");
+const rules = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const identities = await vite.ssrLoadModule("/lib/dev/api-store.ts");
 const api = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
-const { economyCommandUsesActor } = await vite.ssrLoadModule("/features/economy/actor-availability.ts");
+const { economyCommandUsesActor } = await vite.ssrLoadModule("/features/economy/domain/actor-availability.ts");
 const now = Date.parse("2026-10-07T12:00:00.000Z");
 const catalog = model.economyCatalog;
 const fresh = () => rules.newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 });
@@ -178,9 +178,9 @@ test("orders pay only coins and lifetime totals without activating or consuming 
   const state = fresh(), offer = food.residentOrderBoard(state, now).offers[0];
   state.inventory = { ...offer.items, grilled_fish: 1 };
   state.food = { heroMeal: "fish_soup", builderMeal: "grilled_fish" };
-  const beforeFood = structuredClone(state.food), beforeFishing = structuredClone(state.fishing);
+  const beforeFood = structuredClone(state.food), beforeFishing = structuredClone(state.fishing), beforeCoins = state.wallet.coins;
   apply(state, "complete_resident_order", offer.id);
-  assert.equal(state.wallet.coins, offer.coins); assert.equal(state.residentOrders.completed, 1);
+  assert.equal(state.wallet.coins, beforeCoins + offer.coins); assert.equal(state.residentOrders.completed, 1);
   assert.equal(state.residentOrders.earnedCoins, offer.coins);
   assert.deepEqual(state.food, beforeFood); assert.deepEqual(state.fishing, beforeFishing);
   assert.equal(state.inventory.grilled_fish, 1);
@@ -229,9 +229,10 @@ test("order counters cannot overflow safe integers or debit goods at their limit
 test("local API receipts make order and eating retries idempotent and reject altered requests", () => {
   const p = player(), saved = row(p), offer = food.residentOrderBoard(read(p), now).offers[0];
   saved.state.inventory = { ...offer.items, grilled_fish: 2 };
+  const beforeCoins = saved.state.wallet.coins;
   const payload = request(p, "complete_resident_order", offer.id), first = api.commandDevEconomy(p.token, payload, now);
   const replay = api.commandDevEconomy(p.token, payload, now);
-  assert.equal(first.state.wallet.coins, offer.coins); assert.equal(replay.replayed, true);
+  assert.equal(first.state.wallet.coins, beforeCoins + offer.coins); assert.equal(replay.replayed, true);
   assert.equal(replay.state.residentOrders.completed, 1); assert.equal(replay.acceptedRevision, first.acceptedRevision);
   assert.throws(() => api.commandDevEconomy(p.token, { ...payload, action: "replace_resident_order" }, now), { code: "ECONOMY_REQUEST_CONFLICT" });
   const eating = request(p, "eat_food", "grilled_fish");

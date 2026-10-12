@@ -1,13 +1,13 @@
-import { drawGroundedHero, drawSiteGrounding } from "../grounding";
-import { forestObjectArtwork, forestSiteMaterial } from "../forest-object-appearance";
-import { drawForestBushGrounding, drawForestBushLeafShade } from "../forest-bush-grounding";
-import { buildingDetailsAnimated, drawBuildingDetails } from "../building-details";
-import { drawForestLightFixtures, drawForestLighting, drawForestLightEmitters, drawForestLighthouseBeams, forestLightSources } from "../forest-lighting";
+import { drawGroundedHero, drawSiteGrounding } from "@/features/world/scene/grounding";
+import { forestObjectArtwork, forestSiteMaterial } from "@/features/world/scene/forest-object-appearance";
+import { drawForestBushGrounding, drawForestBushLeafShade } from "@/features/world/activities/garden/forest-bush-grounding";
+import { buildingDetailsAnimated, drawBuildingDetails } from "@/features/world/scene/building-details";
+import { drawForestLightFixtures, drawForestLighting, drawForestLightEmitters, drawForestLighthouseBeams, forestLightSources } from "@/features/world/environment/lighting/forest-lighting";
 import { previewSiteVisual, previewWorldScene } from "./preview-state";
-import { forestVisibleSiteAt, withForestImageOcclusion, withForestSiteOcclusion } from "../forest-occlusion";
+import { forestVisibleSiteAt, withForestImageOcclusion, withForestSiteOcclusion } from "@/features/world/scene/forest-occlusion";
 import { drawSiteImage } from "./site-image";
-import { boundsInCanvas, canvasWorldViewport } from "../canvas-viewport";
-import { worldArtworkMipCache } from "../artwork-mip-cache";
+import { boundsInCanvas, canvasWorldViewport } from "@/features/world/scene/canvas-viewport";
+import { worldArtworkMipCache } from "@/features/world/scene/artwork-mip-cache";
 import type { FixedWorldScene, PreviewLevels, SiteVisual, WorldBounds, WorldPoint } from "./types";
 import { createPreviewRoute, type PreviewActor, type PreviewRouteStatus } from "./preview-route";
 

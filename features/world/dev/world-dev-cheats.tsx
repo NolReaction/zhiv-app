@@ -1,14 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { economyCatalog, type EconomyJob } from "@/features/economy/model";
-import { formatPearls } from "@/features/economy/money";
-import { economyDevSettlement } from "@/features/economy/dev-presets";
-import type { EconomyController } from "@/features/economy/use-economy";
-import type { WorldController } from "../use-world";
+import { economyCatalog, type EconomyJob } from "@/features/economy/domain/model";
+import { formatPearls } from "@/features/economy/domain/money";
+import { economyDevSettlement } from "@/features/economy/dev/dev-presets";
+import type { EconomyController } from "@/features/economy/sync/use-economy";
+import type { WorldController } from "@/features/world/state/use-world";
 import { ItemIcon } from "@/features/items/item-icon";
-import { FishingRodIcon } from "../fishing-rod-icon";
-import { wardrobeItems } from "../wardrobe";
+import { FishingRodIcon } from "@/features/world/activities/fishing/fishing-rod-icon";
+import { wardrobeItems } from "@/features/world/domain/wardrobe";
 import styles from "./world-dev-panel.module.css";
 
 const format = (value: number) => value.toLocaleString("ru-RU");

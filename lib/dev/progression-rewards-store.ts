@@ -3,7 +3,7 @@ import { getDevIdentity, getDevAchievementRewardEligibility } from "./api-store"
 import { getDevGameAchievements } from "./game-store";
 import { creditDevProgressionReward, getDevEconomy, DevEconomyError } from "./economy-store";
 import { gameRewardClaimSchema, type GameRewardClaim, type GameRewardResult, type GameRewards } from "@/features/game/game-rewards-api";
-import { ECONOMY_CURRENCY_SCALE, ECONOMY_PEARL_SCALE, nominalEconomyMoney, nominalEconomyPearls } from "@/features/economy/money";
+import { ECONOMY_CURRENCY_SCALE, ECONOMY_PEARL_SCALE, nominalEconomyMoney, nominalEconomyPearls } from "@/features/economy/domain/money";
 import { achievementRewardRows, afterDailyClaim, dailyRewardView, initialDailyRewardState, type DailyRewardState } from "@/features/game/progression-rewards";
 
 type Receipt = { signature: string; claim: GameRewardResult["claim"]; acceptedRevision: number; currencyScale?: 1 | 10; pearlScale?: 1 | 10 | 50 };

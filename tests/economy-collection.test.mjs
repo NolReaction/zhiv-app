@@ -8,7 +8,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
 after(() => vite.close());
 const identities = await vite.ssrLoadModule("/lib/dev/api-store.ts");
 const economy = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
-const model = await vite.ssrLoadModule("/features/economy/model.ts");
+const model = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const now = Date.UTC(2026, 9, 4, 10);
 beforeEach(() => identities.resetDevStoreForTests());
 const player = () => identities.createDevIdentity("Сборщик", crypto.randomUUID());
@@ -54,7 +54,7 @@ test("server collection requires ripe fruit and elapsed work, then grants the sa
   assert.throws(() => issue(p, "claim_job", job.id, finish - 1), { code: "ECONOMY_COLLECTION_NOT_READY" });
   const claim = command(p, "claim_job", job.id, finish);
   const result = economy.commandDevEconomy(p.token, claim, finish);
-  assert.deepEqual(result.state.inventory, job.rewards); assert.equal(result.state.jobs.length, 0);
+  assert.deepEqual(result.state.inventory, { ...before.inventory, ...job.rewards }); assert.equal(result.state.jobs.length, 0);
   const replay = economy.commandDevEconomy(p.token, claim, finish + 5000);
   assert.equal(replay.replayed, true); assert.equal(replay.acceptedRevision, result.acceptedRevision);
   assert.deepEqual(replay.state.inventory, result.state.inventory);
@@ -91,7 +91,7 @@ test("active exploration blocks harvesting; a returned explorer can gather and r
 
 test("market purchases during gathering may fill storage, but a failed delivery keeps the completed batch for retry", () => {
   const p = player(), seller = player();
-  for (const [account, inventory] of [[p, { wood: 190 }], [seller, { wood: 10 }]]) {
+  for (const [account, inventory] of [[p, { wood: 290 }], [seller, { wood: 10 }]]) {
     const row = fixture(account, { inventory, wallet: { coins: 1000, pearls: 0 }, completedExplorations: 1 });
     row.state.buildings.home = 2;
   }
@@ -106,14 +106,14 @@ test("market purchases during gathering may fill storage, but a failed delivery 
   assert.deepEqual(read(p, finish), before);
   economy.commandDevEconomy(p.token, command(p, "sell", "wood", finish, job.rewards.berries), finish);
   const result = issue(p, "claim_job", job.id, finish + 1).state;
-  assert.equal(result.inventory.berries, job.rewards.berries); assert.equal(result.storage.used, 200); assert.equal(result.jobs.length, 0);
+  assert.equal(result.inventory.berries, job.rewards.berries); assert.equal(result.storage.used, 300); assert.equal(result.jobs.length, 0);
 });
 
 test("reloading after the server deadline can deliver without trusting any animation token or local inventory", () => {
-  const p = player(), job = grow(p), readyAt = Date.parse(job.finishesAt);
+  const p = player(), before = read(p), job = grow(p), readyAt = Date.parse(job.finishesAt);
   issue(p, "start_collection", job.id, readyAt);
   const restored = read(p, readyAt + 24 * 3600_000);
-  assert.deepEqual(restored.inventory, {}); assert.ok(restored.jobs[0].collection.startedAt);
+  assert.deepEqual(restored.inventory, before.inventory); assert.ok(restored.jobs[0].collection.startedAt);
   const claimed = issue(p, "claim_job", job.id, readyAt + 24 * 3600_000).state;
   assert.equal(claimed.inventory.berries, job.rewards.berries);
   const bad = { ...command(p, "start_collection", job.id), animationComplete: true, rewards: { berries: 1000 } };

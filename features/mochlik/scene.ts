@@ -1,21 +1,21 @@
-import type { ForestSpeechCanvasFrame } from "@/features/world/forest-speech-painter";
-import { drawFishingJourney, fishingFrame } from "@/features/world/fishing-journey";
-import type { WorldResidentId } from "@/features/world/world-characters-model";
-import type { EconomySceneBuildings, EconomySceneJourney } from "@/features/world/economy-scene-state";
-import type { EconomySceneProduction } from "@/features/world/economy-production-state";
-import type { EconomySceneConstruction } from "@/features/world/economy-construction-state";
-import type { EconomySceneGarden, GardenHarvestRequest, GardenHarvestEvent } from "@/features/world/economy-garden-state";
-import { FISHING_PREPARE_MS, isFishingJourney, sceneJourney } from "@/features/world/journey-timeline";
-import { WORLD_ART } from "@/features/world/art";
-import { drawBirdAmbience } from "@/features/world/bird-ambience";
-import { drawWeatherGround, drawWeatherAir, type WeatherVisitorState } from "@/features/world/weather-visitors";
-import { drawRouteLights } from "@/features/world/route-props";
+import type { ForestSpeechCanvasFrame } from "@/features/world/characters/social/forest-speech-painter";
+import { drawFishingJourney, fishingFrame } from "@/features/world/legacy/fishing-journey";
+import type { WorldResidentId } from "@/features/world/characters/world-characters-model";
+import type { EconomySceneBuildings, EconomySceneJourney } from "@/features/world/state/economy/economy-scene-state";
+import type { EconomySceneProduction } from "@/features/world/state/economy/economy-production-state";
+import type { EconomySceneConstruction } from "@/features/world/state/economy/economy-construction-state";
+import type { EconomySceneGarden, GardenHarvestRequest, GardenHarvestEvent } from "@/features/world/state/economy/economy-garden-state";
+import { FISHING_PREPARE_MS, isFishingJourney, sceneJourney } from "@/features/world/activities/journeys/journey-timeline";
+import { WORLD_ART } from "@/features/world/scene/art";
+import { drawBirdAmbience } from "@/features/world/legacy/bird-ambience";
+import { drawWeatherGround, drawWeatherAir, type WeatherVisitorState } from "@/features/world/legacy/weather-visitors";
+import { drawRouteLights } from "@/features/world/legacy/route-props";
 import { isBehindDoorThreshold, HOUSE_ANCHORS, HOME_CANVAS_SIZE, BUSH_FOLIAGE, homePixel } from "./home-layout";
-import type { WorldState } from "@/features/world/model";
+import type { WorldState } from "@/features/world/domain/model";
 import { homeAppearance } from "./home-state";
 import { houseVariantFor, type HouseVariant } from "./house-variants";
-import { FOREST_MAP } from "@/features/world/map-manifest";
-import { HOME_AREA, MAP_SIZE } from "@/features/world/map-layout";
+import { FOREST_MAP } from "@/features/world/legacy/map-manifest";
+import { HOME_AREA, MAP_SIZE } from "@/features/world/legacy/map-layout";
 import type { GameItemId } from "@/features/game/game-rewards";
 import { nextWeatherChange, type Activity, type Destination, type Mushroom, INACTIVITY_SECONDS, LONG_ABSENCE_SECONDS } from "./habitat";
 import { connectHabitat } from "./session";
@@ -30,14 +30,14 @@ import { feedingFrame } from "./feeding";
 import { drawInsects } from "./insects";
 import { readPresence, writePresence } from "./presence";
 import { propBehindBody, drawDecor, drawGarlandLights, drawProp, drawWeather, drawMomentAccents } from "./ambience";
-import { WORLD_PRESENTATION } from "@/features/world/presentation";
-import { mountNewMapScene } from "@/features/world/new-map-scene";
-import type { MapInteractiveObject } from "@/features/world/site-interactions";
+import { WORLD_PRESENTATION } from "@/features/world/scene/presentation";
+import { mountNewMapScene } from "@/features/world/scene/new-map-scene";
+import type { MapInteractiveObject } from "@/features/world/scene/site-interactions";
 
 const WEATHER_BOUNDS = { x: -HOME_AREA.x * HOME_CANVAS_SIZE / HOME_AREA.size, y: -HOME_AREA.y * HOME_CANVAS_SIZE / HOME_AREA.size, width: MAP_SIZE * HOME_CANVAS_SIZE / HOME_AREA.size, height: MAP_SIZE * HOME_CANVAS_SIZE / HOME_AREA.size };
 
 export type SceneOptions = { serverNow?: number; lampOn: boolean; dusk: boolean; paused: boolean; reducedMotion: boolean; view?: "circle" | "world"; backgrounded?: boolean; presenceKey?: string; bestStreakDays?: number; items?: readonly GameItemId[]; worldState?: WorldState; worldGifts?: readonly string[]; economyJourney?: EconomySceneJourney | null; cancelledExplorations?: readonly string[]; economyBuildings?: EconomySceneBuildings | null; economyProduction?: EconomySceneProduction | null; economyConstruction?: EconomySceneConstruction | null; economyGarden?: EconomySceneGarden | null; gardenHarvestRequest?: GardenHarvestRequest | null; onGardenHarvestEvent?: (event: GardenHarvestEvent) => void };
-export type HabitatScene = { position: () => { x: number; y: number }; setTime: (now: number) => void; paintJourney: (context: CanvasRenderingContext2D) => void; configure: (options: SceneOptions) => void; notice: () => void; wakeHomeResident?: () => boolean; invite: (place: Destination, mushroomId?: number) => void; moveTo: (x: number, y: number) => void; hitPet: (x: number, y: number) => boolean; hitVisiblePet?: (x: number, y: number) => boolean; hitResident?: (x: number, y: number) => WorldResidentId | null; noticeResident?: (id: WorldResidentId) => void; visitTradingPlace?: (id: "plesk") => void; inspectPoint?: (target: WorldResidentId | "fishing") => { x: number; y: number } | null; hitSite?: (point: { x: number; y: number }) => string | null; siteAnchor?: (siteId: string) => { x: number; y: number } | null; mapObjects?: () => readonly MapInteractiveObject[]; ambience: () => WeatherVisitorState; paintVisitors: (context: CanvasRenderingContext2D, layer: "ground" | "air") => void; paintLighting: (context: CanvasRenderingContext2D) => void; paintWeather: (context: CanvasRenderingContext2D) => void; paintWorld?: (context: CanvasRenderingContext2D) => void; speechFrames?: () => ForestSpeechCanvasFrame[]; dispose: () => void };
+export type HabitatScene = { setAudioCamera?: (camera: { x: number; y: number; zoom: number; viewportWidth: number; viewportHeight?: number }) => void; position: () => { x: number; y: number }; setTime: (now: number) => void; paintJourney: (context: CanvasRenderingContext2D) => void; configure: (options: SceneOptions) => void; notice: () => void; wakeHomeResident?: () => boolean; invite: (place: Destination, mushroomId?: number) => void; moveTo: (x: number, y: number) => void; hitPet: (x: number, y: number) => boolean; hitVisiblePet?: (x: number, y: number) => boolean; hitResident?: (x: number, y: number) => WorldResidentId | null; noticeResident?: (id: WorldResidentId) => void; visitTradingPlace?: (id: "plesk") => void; inspectPoint?: (target: WorldResidentId | "fishing") => { x: number; y: number } | null; hitSite?: (point: { x: number; y: number }) => string | null; siteAnchor?: (siteId: string) => { x: number; y: number } | null; mapObjects?: () => readonly MapInteractiveObject[]; ambience: () => WeatherVisitorState; paintVisitors: (context: CanvasRenderingContext2D, layer: "ground" | "air") => void; paintLighting: (context: CanvasRenderingContext2D) => void; paintWeather: (context: CanvasRenderingContext2D) => void; paintWorld?: (context: CanvasRenderingContext2D) => void; speechFrames?: () => ForestSpeechCanvasFrame[]; dispose: () => void };
 export type SceneCallbacks = { activity: (activity: Activity) => void; ready: () => void; failure: (error?: unknown) => void; rendered?: () => void };
 function loadArt() { return loadHabitatImage(WORLD_ART.homePreview); }
 

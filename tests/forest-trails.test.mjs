@@ -7,12 +7,12 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
+const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
 const { previewWorldScene, initialPreviewLevels } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
-const { createWorldNavigation, canTraverse, isWalkable, findWorldPath } = await vite.ssrLoadModule("/features/world/navigation.ts");
-const { forestTrails, forestDestinations, forestTrailDestination, findForestTrailPath } = await vite.ssrLoadModule("/features/world/forest-trails.ts");
-const { forestResidentFrames, forestResidentAt, drawForestResidents } = await vite.ssrLoadModule("/features/world/forest-residents.ts");
-const { chooseForestGoal, createForestBehavior } = await vite.ssrLoadModule("/features/world/forest-behavior.ts");
+const { createWorldNavigation, canTraverse, isWalkable, findWorldPath } = await vite.ssrLoadModule("/features/world/navigation/navigation.ts");
+const { forestTrails, forestDestinations, forestTrailDestination, findForestTrailPath } = await vite.ssrLoadModule("/features/world/navigation/forest-trails.ts");
+const { forestResidentFrames, forestResidentAt, drawForestResidents } = await vite.ssrLoadModule("/features/world/characters/forest-residents.ts");
+const { chooseForestGoal, createForestBehavior } = await vite.ssrLoadModule("/features/world/simulation/forest-behavior.ts");
 const world = (level = 1) => previewWorldScene(TILED_WORLD, { ...initialPreviewLevels(TILED_WORLD),
   home: Math.max(1, level), workshop: level, quarry: level });
 

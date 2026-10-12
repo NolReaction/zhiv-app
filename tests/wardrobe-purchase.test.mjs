@@ -9,9 +9,9 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
 const identities = await vite.ssrLoadModule("/lib/dev/api-store.ts");
 const economy = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
 const world = await vite.ssrLoadModule("/lib/dev/world-store.ts");
-const { economyResultSchema, economyCommandSchema } = await vite.ssrLoadModule("/features/economy/model.ts");
-const { wardrobeItems, wardrobePurchaseTarget } = await vite.ssrLoadModule("/features/world/wardrobe.ts");
-const { economyDevCommandSchema } = await vite.ssrLoadModule("/features/economy/dev-model.ts");
+const { economyResultSchema, economyCommandSchema } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { wardrobeItems, wardrobePurchaseTarget } = await vite.ssrLoadModule("/features/world/domain/wardrobe.ts");
+const { economyDevCommandSchema } = await vite.ssrLoadModule("/features/economy/dev/dev-model.ts");
 const now = Date.parse("2026-10-05T20:00:00Z"), originalMode = process.env.NODE_ENV;
 beforeEach(() => { identities.resetDevStoreForTests(); economy.resetDevEconomyStoreForTests(); world.resetDevWorldStoreForTests(); });
 after(async () => { if (originalMode == null) delete process.env.NODE_ENV; else process.env.NODE_ENV = originalMode; await vite.close(); });
@@ -91,9 +91,9 @@ test("price, quantity, funds, owner and racing revisions fail before any debit o
 
 test("clothes cannot be sold or listed and full storage does not prevent a cosmetic purchase", () => {
   const p = player();
-  globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId).state.inventory.wood = 1000;
+  globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId).state.inventory = { wood: 1000 };
   const bought = issue(p, command(p, "fern"));
-  assert.equal(bought.state.storage.overflow, 800); assert.equal(bought.state.inventory.fern, undefined);
+  assert.equal(bought.state.storage.overflow, 700); assert.equal(bought.state.inventory.fern, undefined);
   assert.throws(() => issue(p, command(p, "heather", { action: "sell", targetId: "fern", totalPrice: 0 })), { code: "ECONOMY_ITEM" });
   assert.ok(economy.getDevEconomy(p.token, now).wardrobe.includes("fern"));
 });

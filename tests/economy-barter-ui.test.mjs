@@ -18,11 +18,11 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
     export function useEffect(callback) { effects.push(callback); }
     export function useId() { return 'barter-' + cursor++; }
   `; },
-  transform(source, id) { if (id.endsWith("/features/economy/barter-market.tsx")) return source.replace('from "react";', `from "${hookModule}";`); },
+  transform(source, id) { if (id.endsWith("/features/economy/ui/market/barter-market.tsx")) return source.replace('from "react";', `from "${hookModule}";`); },
 }] });
 after(() => vite.close());
-const { BarterOfferCard, BarterCreateForm, BarterMarket } = await vite.ssrLoadModule("/features/economy/barter-market.tsx");
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
+const { BarterOfferCard, BarterCreateForm, BarterMarket } = await vite.ssrLoadModule("/features/economy/ui/market/barter-market.tsx");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const hooks = await vite.ssrLoadModule(hookModule);
 const now = Date.parse("2026-10-05T16:00:00Z"), owner = "AAAA-0000-0001", other = "AAAA-0000-0002";
 function offer(owned = false) { return { id: "00000000-0000-4000-8000-000000000001", sellerPublicId: owned ? owner : other, sellerName: "Сосед <лес>", offeredItemId: "ancient_core", requestedItemId: "moon_crystal", owned,

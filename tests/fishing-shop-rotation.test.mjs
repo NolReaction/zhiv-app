@@ -7,8 +7,9 @@ const vite = await createServer({ appType: 'custom', configFile: false, root, re
 after(() => vite.close());
 const identities = await vite.ssrLoadModule('/lib/dev/api-store.ts');
 const economy = await vite.ssrLoadModule('/lib/dev/economy-store.ts');
-const { economyCatalog, economyViewSchema } = await vite.ssrLoadModule('/features/economy/model.ts');
-const { createFishingShop, refreshFishingShop, canRefreshFishingShop, fishingShopRefreshPrice } = await vite.ssrLoadModule('/features/economy/fishing-shop.ts');
+const { economyCatalog, economyViewSchema } = await vite.ssrLoadModule('/features/economy/domain/model.ts');
+const { createFishingShop, refreshFishingShop, canRefreshFishingShop, fishingShopRefreshPrice } = await vite.ssrLoadModule('/features/economy/domain/fishing-shop.ts');
+const { normalizedResidentOrders, residentOrderBoard } = await vite.ssrLoadModule('/features/economy/domain/food.ts');
 const now = Date.parse('2026-10-05T20:00:00Z');
 beforeEach(() => { identities.resetDevStoreForTests(); economy.resetDevEconomyStoreForTests(); });
 const player = () => identities.createDevIdentity('Shopper', crypto.randomUUID());
@@ -113,7 +114,7 @@ test('foreign owners, insufficient pearls, changed quotes and full storage canno
   const request = buy(p, before, offer);
   assert.throws(() => economy.commandDevEconomy(q.token, request, now), { code: 'ECONOMY_OWNER_CHANGED' });
   assert.throws(() => economy.commandDevEconomy(p.token, { ...request, fishingShop: before.fishingShop }, now), { code: 'INVALID_ECONOMY_COMMAND' });
-  persisted(p).inventory.wood = 200;
+  persisted(p).inventory = { wood: 300 };
   assert.throws(() => economy.commandDevEconomy(p.token, request, now), { code: 'ECONOMY_STORAGE_FULL' });
   assert.deepEqual(read(p).fishingShop, before.fishingShop); assert.deepEqual(read(p).wallet, before.wallet);
   persisted(p).wallet.pearls = 0;
@@ -249,8 +250,49 @@ test('discount fish purchase has bounded stock, no collection unlock, no NPC arb
   assert.throws(() => economy.commandDevEconomy(p.token, buy(p, next, offer), now), { code: 'ECONOMY_FISHING_STOCK' });
 });
 
+test('higher delivery rewards and free order replacements cannot refill an exhausted fish offer', () => {
+  const p = player(); fund(p);
+  const state = persisted(p);
+  state.inventory = {};
+  state.fishingShop = createFishingShop(state, now, () => 0);
+  state.residentOrders = normalizedResidentOrders(state, now);
+  const template = economyCatalog.food.orders.templates.find(template => template.id === 'plesk_river_catch');
+  state.residentOrders.slots[0] = { sequence: 0, readyAt: new Date(now).toISOString(), templateId: template.id, terms: template };
+  const before = read(p), fish = before.fishingShop.offers.find(offer => offer.kind === 'fish');
+  let view = economy.commandDevEconomy(p.token, buy(p, before, fish, 6), now).state;
+  const delivery = residentOrderBoard(view, now).offers.find(offer => offer.slot === 0);
+  assert.equal(delivery.coins, 470);
+  view = economy.commandDevEconomy(p.token, command(p, view, 'complete_resident_order', delivery.id), now).state;
+  assert.equal(view.wallet.coins, before.wallet.coins - 6 * fish.unitPrice + 470);
+  assert.equal(view.inventory.fish, 3);
+  for (let index = 0; index < 3; index++) {
+    const offer = residentOrderBoard(view, now).offers[index];
+    view = economy.commandDevEconomy(p.token, command(p, view, 'replace_resident_order', offer.id), now).state;
+  }
+  assert.equal(view.fishingShop.id, before.fishingShop.id);
+  assert.equal(view.fishingShop.offers.find(offer => offer.id === fish.id).remaining, 0);
+  assert.equal(view.wallet.pearls, before.wallet.pearls);
+  assert.throws(() => economy.commandDevEconomy(p.token, buy(p, view, fish), now), { code: 'ECONOMY_FISHING_STOCK' });
+  assert.deepEqual(read(p), view, 'the failed restock attempt cannot create inventory or money');
+});
+
+test('starter tackle is cheaper only in new stock while a saved old quote stays exact', () => {
+  const p = player(); fund(p);
+  const state = persisted(p), current = createFishingShop(state, now, () => 0);
+  assert.equal(current.offers.find(offer => offer.itemId === 'river_rod').unitPrice, 13500);
+  assert.equal(current.offers.find(offer => offer.itemId === 'barbed_hook').unitPrice, 9000);
+  const alternate = createFishingShop(state, now, max => max - 1);
+  assert.equal(alternate.offers.find(offer => offer.itemId === 'brook_rod').unitPrice, 9000);
+  assert.equal(alternate.offers.find(offer => offer.itemId === 'round_hook').unitPrice, 6000);
+  state.fishingShop = { ...current, offers: current.offers.map(offer => offer.itemId === 'river_rod' ? { ...offer, unitPrice: 18000 } : offer) };
+  const before = read(p), saved = before.fishingShop.offers.find(offer => offer.itemId === 'river_rod');
+  assert.equal(saved.unitPrice, 18000);
+  const purchased = economy.commandDevEconomy(p.token, buy(p, before, saved), now).state;
+  assert.equal(purchased.wallet.coins, before.wallet.coins - 18000);
+});
+
 test('full storage rejects discounted fish atomically without spending coins or stock', () => {
-  const p = player(); fund(p); persisted(p).inventory.wood = 200;
+  const p = player(); fund(p); persisted(p).inventory = { wood: 300 };
   const before = read(p), offer = before.fishingShop.offers.find(item => item.kind === 'fish');
   assert.throws(() => economy.commandDevEconomy(p.token, buy(p, before, offer), now), { code: 'ECONOMY_STORAGE_FULL' });
   assert.deepEqual(read(p), before);

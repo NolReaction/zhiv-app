@@ -7,8 +7,8 @@ import { auditFishingBalance } from "../scripts/audit-fishing-balance.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
-const { economyCatalog, economyFishingCatalogSchema } = await vite.ssrLoadModule("/features/economy/model.ts");
-const { fishingOdds, fishingWeights, selectFishingCatch } = await vite.ssrLoadModule("/features/economy/fishing.ts");
+const { economyCatalog, economyFishingCatalogSchema } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { fishingOdds, fishingWeights, selectFishingCatch } = await vite.ssrLoadModule("/features/economy/domain/fishing.ts");
 after(() => vite.close());
 const catalog = economyCatalog.fishing;
 const baits = [null, ...catalog.baits.map(bait => bait.itemId)];

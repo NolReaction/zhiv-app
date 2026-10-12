@@ -8,12 +8,14 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { WorldProfileContent, WorldProfileMenu } = await vite.ssrLoadModule("/features/world/world-profile-menu.tsx");
-const { WorldMoodModule } = await vite.ssrLoadModule("/features/world/world-mood-module.tsx");
-const { BOOK_COLLECTION_COUNT } = await vite.ssrLoadModule("/features/world/collection-book.ts");
-const { newWorldState, worldCatalog } = await vite.ssrLoadModule("/features/world/model.ts");
-const { newEconomyState } = await vite.ssrLoadModule("/features/economy/rules.ts");
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
+const { WorldProfileContent, WorldProfileMenu } = await vite.ssrLoadModule("/features/world/ui/profile/world-profile-menu.tsx");
+const { getAudioRuntime } = await vite.ssrLoadModule("/features/audio/runtime/audio-service.ts");
+const { AUDIO_BUSES } = await vite.ssrLoadModule("/features/audio/domain/types.ts");
+const { WorldMoodModule } = await vite.ssrLoadModule("/features/world/ui/profile/world-mood-module.tsx");
+const { BOOK_COLLECTION_COUNT } = await vite.ssrLoadModule("/features/world/domain/collection-book.ts");
+const { newWorldState, worldCatalog } = await vite.ssrLoadModule("/features/world/domain/model.ts");
+const { newEconomyState } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const freshEconomy = () => ({ ...newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 3, workshopLevel: 0 }), catalog: economyCatalog, completedExplorations: 7 });
 
 const observation = {
@@ -38,12 +40,12 @@ function profile(overrides = {}) {
   const props = {
     world: { snapshot: { state: { ...newWorldState(), houseLevel: 1, collection: [worldCatalog.finds[0].id] } } },
     economy: { snapshot: freshEconomy() }, displayName: "Дима", level: 12, bestStreakDays: 21, observation,
-    onCall: () => calls.push("call"), onTakeOver: () => calls.push("takeover"), onTabChange: tab => calls.push(tab), ...overrides,
+    onOpenMood: () => calls.push("open-mood"), onCall: () => calls.push("call"), onTakeOver: () => calls.push("takeover"), onTabChange: tab => calls.push(tab), ...overrides,
   };
   return { ...inspect(WorldProfileContent(props)), calls, props };
 }
 const buttonText = button => Children.toArray(button.props.children).filter(child => typeof child === "string").join("");
-const namedButton = (view, name) => view.elements.find(element => element.type === "button" && buttonText(element) === name);
+const namedButton = (view, name) => view.elements.find(element => element.type === "button" && (buttonText(element) === name || element.props["aria-label"] === name));
 
 function mood(overrides = {}) {
   const calls = [];
@@ -51,7 +53,7 @@ function mood(overrides = {}) {
     onCall: () => calls.push("call"), onOpenHelp: () => calls.push("help"), onOpenFood: () => calls.push("food"), ...overrides })), calls };
 }
 
-test("profile keeps authoritative progress compact and leaves the full mood in its own tab", () => {
+test("profile keeps authoritative progress compact and leaves the full mood outside its three navigation tabs", () => {
   const { markup, elements } = profile();
   assert.match(markup, /Дима/);
   assert.match(markup, /Уровень 12/);
@@ -62,19 +64,23 @@ test("profile keeps authoritative progress compact and leaves the full mood in i
   assert.match(markup, /Любопытничает/);
   assert.doesNotMatch(markup, /Самочувствие Мохлика|Полон сил|Хочется открытий|Кладовая|Гардероб|Обустроить дом|Прежние походы/);
   const tabs = elements.filter(element => element.props.role === "tab");
-  assert.deepEqual(tabs.map(buttonText), ["Профиль", "Настроение", "Друзья"]);
+  assert.deepEqual(tabs.map(buttonText), ["Профиль", "Друзья", ""]);
+  assert.equal(tabs[2].props["aria-label"], "Настройки");
+  assert.equal(tabs[2].props.title, "Настройки");
+  assert.ok(tabs.every(tab => tab.props["data-audio-cue"] === undefined), "explicit handlers own tab audio");
   assert.deepEqual(tabs.map(tab => tab.props["aria-selected"]), [true, false, false]);
   assert.deepEqual(tabs.map(tab => tab.props.tabIndex), [0, -1, -1]);
   assert.equal(elements.filter(element => element.props.role === "tabpanel").length, 1);
 });
 
-test("gifts and call stay in the default profile, and the mood preview opens the dedicated tab", () => {
+test("gifts and call stay in the default profile, and the mood preview opens a dialog without changing tabs", () => {
   const view = profile({ rewards: createElement("button", { type: "button", "aria-haspopup": "dialog" }, "Подарки") });
   assert.equal((view.markup.match(/>Подарки</g) ?? []).length, 1);
   assert.ok(namedButton(view, "Позвать Мохлика"));
-  view.elements.find(element => element.props["aria-label"] === "Открыть настроение Мохлика").props.onClick();
-  assert.deepEqual(view.calls, ["mood"]);
-  assert.doesNotMatch(profile({ initialTab: "mood", rewards: "Подарки" }).markup, />Подарки</);
+  view.elements.find(element => element.props["aria-label"] === "Как Мохлик?").props.onClick();
+  assert.deepEqual(view.calls, ["open-mood"]);
+  assert.equal(namedButton(view, "Как Мохлик?").props["aria-haspopup"], "dialog");
+  assert.match(profile({ initialTab: "mood", rewards: "Подарки" }).markup, />Подарки</);
 });
 
 test("tabs activate with arrows, Home and End, move focus and do not consume unrelated keys", () => {
@@ -87,12 +93,12 @@ test("tabs activate with arrows, Home and End, move focus and do not consume unr
     return tabs.map((_, index) => ({ focus: () => focused.push(index) }));
   } };
   const key = (index, key) => tabs[index].props.onKeyDown({ key, preventDefault: () => prevented++, currentTarget: { parentElement } });
-  key(0, "ArrowLeft"); key(2, "ArrowRight"); key(0, "End"); key(2, "Home"); key(1, "Tab");
-  assert.deepEqual(view.calls, ["friends", "profile", "friends", "profile"]);
+  key(0, "ArrowLeft"); key(2, "ArrowRight"); key(0, "End"); key(1, "Home"); key(1, "Tab");
+  assert.deepEqual(view.calls, ["settings", "settings"], "reselecting the current profile is silent and does not change state");
   assert.deepEqual(focused, [2, 0, 2, 0]);
   assert.equal(prevented, 4);
   tabs[1].props.onClick();
-  assert.equal(view.calls.at(-1), "mood");
+  assert.equal(view.calls.at(-1), "friends");
   const friends = profile({ activeTab: "friends", idPrefix: "profile-test" });
   const panel = friends.elements.find(element => element.props.role === "tabpanel");
   assert.equal(panel.props.id, "profile-test-panel-friends");
@@ -135,7 +141,7 @@ test("unknown state disables calling and does not claim zero progress or an inve
 
 test("memory warnings and takeover remain available from all three tabs", () => {
   const elsewhere = { ...observation, paused: true, memory: { ...observation.memory, sync: { ...observation.memory.sync, mode: "other-device", canTakeOver: true } } };
-  for (const activeTab of ["profile", "mood", "friends"]) {
+  for (const activeTab of ["profile", "friends", "settings"]) {
     const view = profile({ activeTab, observation: elsewhere });
     assert.match(view.markup, /другом устройстве или в другой вкладке/);
     assert.match(view.markup, /полянка на паузе/);
@@ -215,4 +221,76 @@ test("friends tab receives parent data and navigation without claiming friend pr
   assert.equal(component.props.onOpenPeople, onOpenPeople);
   assert.match(view.markup, /Загружаем/);
   assert.doesNotMatch(view.markup, /Достижения Мохлика|Бонус от еды/);
+});
+
+test("settings are available inline in their own profile tab without a nested audio dialog", () => {
+  const view = profile({ activeTab: "settings", idPrefix: "settings-test" });
+  const panel = view.elements.find(element => element.props.role === "tabpanel");
+  assert.equal(panel.props.id, "settings-test-panel-settings");
+  assert.equal(panel.props["aria-labelledby"], "settings-test-tab-settings");
+  assert.match(view.markup, /Звуки игры/);
+  assert.equal((view.markup.match(/type="range"/g) ?? []).length, AUDIO_BUSES.length + 1);
+  assert.doesNotMatch(view.markup, /role="dialog"|Достижения Мохлика|Самочувствие Мохлика/);
+  const defaultView = profile();
+  namedButton(defaultView, "Настройки").props.onClick();
+  assert.deepEqual(defaultView.calls, ["settings"]);
+});
+
+
+test("profile selection emits exactly one soft tab cue for a change, including keyboard selection", () => {
+  const previousWindow = globalThis.window;
+  globalThis.window = { navigator: {}, localStorage: { getItem() { return null; }, setItem() {} } };
+  const runtime = getAudioRuntime(), events = [];
+  const originalPlay = runtime.play;
+  runtime.play = event => events.push(event);
+  try {
+    const view = profile();
+    const tabs = view.elements.filter(element => element.props.role === "tab");
+    tabs[0].props.onClick();
+    tabs[1].props.onClick();
+    tabs[0].props.onKeyDown({ key: "ArrowLeft", preventDefault() {}, currentTarget: { parentElement: null } });
+    tabs[0].props.onKeyDown({ key: "Home", preventDefault() {}, currentTarget: { parentElement: null } });
+    assert.deepEqual(view.calls, ["friends", "settings"]);
+    assert.deepEqual(events.map(event => event.cueId), ["ui.tab", "ui.tab"]);
+    assert.equal(new Set(events.map(event => event.id)).size, 2);
+  } finally {
+    runtime.play = originalPlay;
+    runtime.dispose();
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  }
+});
+
+
+test("profile question opens only local help, outside tab semantics, without starting a course", () => {
+  const calls = [];
+  const view = profile({ onToggleGuide: () => calls.push("help"), onOpenOnboarding: () => calls.push("guide") });
+  const button = namedButton(view, "О профиле");
+  assert.ok(button);
+  assert.equal(button.props.role, undefined);
+  assert.equal(buttonText(button), "");
+  assert.equal(button.props["aria-expanded"], false);
+  assert.equal(button.props.title, "О профиле");
+  const tablist = view.elements.find(element => element.props.role === "tablist");
+  assert.equal(Children.toArray(tablist.props.children).length, 3);
+  assert.ok(!Children.toArray(tablist.props.children).includes(button));
+  button.props.onClick();
+  assert.deepEqual(calls, ["help"]);
+  assert.deepEqual(view.calls, []);
+  assert.equal(namedButton(profile(), "О профиле"), undefined);
+});
+
+test("local profile explanation offers the saved course status and only its explicit action starts it", () => {
+  for (const [status, label] of [[null, "Начать обучение"], ["started", "Продолжить обучение"], ["completed", "Повторить обучение"], ["skipped", "Повторить обучение"]]) {
+    const calls = [];
+    const view = profile({ guideOpen: true, onboardingStatus: status,
+      onToggleGuide: () => calls.push("hide-help"), onOpenOnboarding: () => calls.push("guide") });
+    assert.match(view.markup, /Тут общая статистика, друзья и настройки\./);
+    assert.equal(namedButton(view, "О профиле").props["aria-expanded"], true);
+    assert.deepEqual(calls, []);
+    namedButton(view, "О профиле").props.onClick();
+    assert.deepEqual(calls, ["hide-help"]);
+    namedButton(view, label).props.onClick();
+    assert.deepEqual(calls, ["hide-help", "guide"]);
+  }
 });

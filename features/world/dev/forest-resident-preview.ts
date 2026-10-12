@@ -1,4 +1,4 @@
-import { pleskResidentFrame, pleskRoutineDuration, type PleskAction, type PleskResidentFrame } from "../plesk-resident";
+import { pleskResidentFrame, pleskRoutineDuration, type PleskAction, type PleskResidentFrame } from "@/features/world/characters/plesk/plesk-resident";
 import type { FixedWorldScene } from "../tiled/types";
 import type { WorldDevState } from "./world-dev-store";
 

@@ -9,7 +9,7 @@ import { getGameAchievements, type GameAchievement, type GameAchievements, type 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import boardStyles from "./game-leaderboard.module.css";
 import styles from "./game-achievements.module.css";
-import { formatPearls } from "@/features/economy/money";
+import { formatPearls } from "@/features/economy/domain/money";
 import { ItemIcon } from "@/features/items/item-icon";
 import type { AchievementReward, GameRewards, GameRewardClaim } from "./game-rewards-api";
 import { useGameRewards } from "./use-game-rewards";

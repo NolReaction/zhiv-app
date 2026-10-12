@@ -8,12 +8,12 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { createForestSocial, noticeForestSocial, advanceForestSocial, forestSocialFrames,
-  forestSocialHolding, cancelForestSocial, FOREST_SOCIAL_LIMITS } = await vite.ssrLoadModule("/features/world/forest-social.ts");
-const { createBuilderMind, advanceBuilderMind, requestBuilderVisit, cancelBuilderVisit } = await vite.ssrLoadModule("/features/world/builder-mind.ts");
-const { builderLocalPlaces } = await vite.ssrLoadModule("/features/world/builder-navigation.ts");
-const { canTraverse } = await vite.ssrLoadModule("/features/world/navigation.ts");
-const { residentClearance } = await vite.ssrLoadModule("/features/world/resident-traffic.ts");
-const { FOREST_CHAT_TOPICS, FOREST_ANIMAL_LINES, forestClickLines } = await vite.ssrLoadModule("/features/world/forest-social-dialogue.ts");
+  forestSocialHolding, cancelForestSocial, FOREST_SOCIAL_LIMITS } = await vite.ssrLoadModule("/features/world/characters/social/forest-social.ts");
+const { createBuilderMind, advanceBuilderMind, requestBuilderVisit, cancelBuilderVisit } = await vite.ssrLoadModule("/features/world/characters/builder/builder-mind.ts");
+const { builderLocalPlaces } = await vite.ssrLoadModule("/features/world/characters/builder/builder-navigation.ts");
+const { canTraverse } = await vite.ssrLoadModule("/features/world/navigation/navigation.ts");
+const { residentClearance } = await vite.ssrLoadModule("/features/world/navigation/resident-traffic.ts");
+const { FOREST_CHAT_TOPICS, FOREST_ANIMAL_LINES, forestClickLines } = await vite.ssrLoadModule("/features/world/characters/social/forest-social-dialogue.ts");
 const now = Date.parse("2026-10-06T18:00:00Z");
 const rect = (x, y, width, height) => [{ x, y }, { x: x + width, y }, { x: x + width, y: y + height }, { x, y: y + height }];
 function fixture(seed = "social-test") {
@@ -64,6 +64,7 @@ test("clicks are contextual cosmetic replies with global and character cooldowns
   value.hero.context = "cook"; value.hero.available = false;
   const pose = structuredClone({ position: mind.position, action: mind.action, route: mind.route });
   assert.equal(noticeForestSocial(state, "mochlik", value.env()), true);
+  assert.equal(state.current.origin, "interaction");
   assert.ok(forestClickLines("mochlik", "cook").includes(state.current.text));
   for (let n = 0; n < 100; n++) assert.equal(noticeForestSocial(state, n % 2 ? "plesk" : "mochlik", value.env()), false);
   const frames = forestSocialFrames(state); frames[0].text = "changed"; frames[0].elapsed = 99;
@@ -114,6 +115,7 @@ test("builder walks safely to personal space, trades three coherent lines, then 
     if (value.state.meeting?.phase === "talk") assert.deepEqual(value.mind.position, feet);
   });
   assert.deepEqual(spoken.map(line => line.speaker), ["builder", "mochlik", "builder"]);
+  assert.ok(spoken.every(line => line.origin === "ambient"));
   const topic = FOREST_CHAT_TOPICS.find(item => item.id === value.state.topicHistory[0]);
   assert.ok(topic.open.includes(spoken[0].text)); assert.ok(topic.reply.includes(spoken[1].text)); assert.ok(topic.close.includes(spoken[2].text));
   assert.equal(value.state.current, null); assert.equal(value.state.meeting, null); assert.equal(value.mind.socialVisit, null);

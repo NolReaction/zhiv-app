@@ -7,9 +7,9 @@ import { createServer } from 'vite';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const vite = await createServer({ appType: 'custom', configFile: false, root, resolve: { alias: { '@': root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { economyCatalog } = await vite.ssrLoadModule('/features/economy/model.ts');
-const { recipeFishGroupLabel } = await vite.ssrLoadModule('/features/economy/food-recipe-labels.ts');
-const { WorldRecipeDetail } = await vite.ssrLoadModule('/features/economy/world-object-menu.tsx');
+const { economyCatalog } = await vite.ssrLoadModule('/features/economy/domain/model.ts');
+const { recipeFishGroupLabel } = await vite.ssrLoadModule('/features/economy/ui/food/food-recipe-labels.ts');
+const { WorldRecipeDetail } = await vite.ssrLoadModule('/features/economy/ui/stations/world-object-menu.tsx');
 
 test('kitchen advertises all qualifying rare/epic fish and reserves a distinct legendary recipe', () => {
   const hearty = economyCatalog.recipes.find(recipe => recipe.id === 'cook_hearty_fish');

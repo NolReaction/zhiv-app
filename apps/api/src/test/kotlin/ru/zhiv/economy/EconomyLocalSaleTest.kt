@@ -21,7 +21,7 @@ class EconomyLocalSaleTest {
         val nominalBase = EconomyMoney.nominal(3)
         assertEquals(270L,EconomyRules.localSellPrice(nominalBase,9,legacy.localBuyer))
         assertEquals(160L,EconomyRules.localSellPrice(nominalBase,9))
-        assertEquals(18000L,EconomyRules.catalog.fishing!!.rods.single { it.id=="river_rod" }.price)
+        assertEquals(13500L,EconomyRules.catalog.fishing!!.rods.single { it.id=="river_rod" }.price)
         assertEquals(72000L,EconomyRules.catalog.fishing!!.rods.single { it.id=="willow_rod" }.price)
     }
 
@@ -37,7 +37,7 @@ class EconomyLocalSaleTest {
     }
 
     @Test fun `sale minimum cannot mint coins and specialist fish offers keep their full value`() {
-        val state=EconomyRules.initial().copy(inventory=mapOf("berries" to 9L,"fish" to 4L))
+        val state=EconomyRules.initial().copy(wallet=EconomyWallet(),inventory=mapOf("berries" to 9L,"fish" to 4L))
         assertEquals("ECONOMY_SALE_PRICE_CHANGED",assertFailsWith<AuthFailure> {
             EconomyRules.apply(state,command("sell","berries",3,60),now)
         }.code)
@@ -53,7 +53,7 @@ class EconomyLocalSaleTest {
     }
 
     @Test fun `zero proceeds cannot discard goods and exact rounded wallet headroom is accepted`() {
-        val state=EconomyRules.initial().copy(inventory=mapOf("crumb_bait" to 2L,"berries" to 4L))
+        val state=EconomyRules.initial().copy(wallet=EconomyWallet(),inventory=mapOf("crumb_bait" to 2L,"berries" to 4L))
         assertEquals("ECONOMY_SALE_QUANTITY",assertFailsWith<AuthFailure> {
             EconomyRules.apply(state,command("sell","crumb_bait"),now)
         }.code)

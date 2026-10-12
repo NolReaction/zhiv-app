@@ -8,8 +8,8 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { WorldBuilderDialog, BuilderConversation } = await vite.ssrLoadModule("/features/world/world-builder-dialog.tsx");
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
+const { WorldBuilderDialog, BuilderConversation } = await vite.ssrLoadModule("/features/world/ui/characters/world-builder-dialog.tsx");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const now = Date.parse("2026-10-06T12:00:00Z");
 const job = { id: "paid-home-upgrade", kind: "construction", targetId: "home", targetLevel: 2, startedAt: new Date(now - 60_000).toISOString(), finishesAt: new Date(now + 90_000).toISOString() };
 function economy(jobs = [], overrides = {}) {
@@ -36,12 +36,23 @@ test("a free builder is distinct from an unavailable account snapshot and ignore
     assert.match(html, /Свободен/);
     assert.match(html, /Выберите здание для улучшения/);
     assert.doesNotMatch(html, /Завершить улучшение|Нанять|Жемчуг/);
-    assert.match(html, /data-meal-boost="builder"/);
-    assert.equal([...html.matchAll(/<button\b/g)].length, 1, "a free builder offers only optional food, not a paid build or hire action");
+    assert.doesNotMatch(html, /data-meal-boost="builder"/);
+    assert.equal([...html.matchAll(/<button\b/g)].length, 0, "unavailable food must not add a spoiler or a paid build/hire action");
   }
   const { html } = conversation(economy([], { snapshot: null }));
   assert.match(html, /role="status"/);
   assert.doesNotMatch(html, /Свободен|К постройке/);
+});
+
+test("a free builder still offers food already owned before its recipe unlocks", () => {
+  const controller = economy();
+  controller.snapshot.inventory[economyCatalog.food.meals[0].itemId] = 1;
+  const before = structuredClone(controller.snapshot);
+  const { html } = conversation(controller);
+  assert.match(html, /data-builder-status="free"/);
+  assert.match(html, /data-meal-boost="builder"/);
+  assert.equal([...html.matchAll(/<button\b/g)].length, 1, "the food remains an optional explicit action");
+  assert.deepEqual(controller.snapshot, before);
 });
 
 test("confirmed work shows its building, timer and pearl completion; navigation only opens that upgrade", () => {

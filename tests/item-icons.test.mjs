@@ -9,10 +9,10 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { ItemIcon, CollectionIcon, itemIconIds, collectionIconIds } = await vite.ssrLoadModule("/features/items/item-icon.tsx");
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
-const { worldCatalog } = await vite.ssrLoadModule("/features/world/model.ts");
-const { quarryCollectionFinds } = await vite.ssrLoadModule("/features/world/collection-book.ts");
-const { WorldCollections } = await vite.ssrLoadModule("/features/world/world-collections.tsx");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { worldCatalog } = await vite.ssrLoadModule("/features/world/domain/model.ts");
+const { quarryCollectionFinds } = await vite.ssrLoadModule("/features/world/domain/collection-book.ts");
+const { WorldCollections } = await vite.ssrLoadModule("/features/world/ui/collections/world-collections.tsx");
 const render = (component, props) => renderToStaticMarkup(createElement(component, props));
 
 test("every economic item, currency and wardrobe item has artwork", () => {

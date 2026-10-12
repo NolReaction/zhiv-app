@@ -238,13 +238,13 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
     @Test fun `mixed warehouse stock plus escrow blocks purchase atomically until space is released`() = runBlocking<Unit> {
         val seller = player()
         val buyer = player(berries = 100)
-        editState(buyer) { it.copy(inventory=mapOf("berries" to 100L, "wood" to 100L)) }
+        editState(buyer) { it.copy(inventory=mapOf("berries" to 100L, "wood" to 200L)) }
         val ownLot = offer(buyer, 2, 6)
         val lot = offer(seller, 2, 6)
         expireShowcase(buyer)
         val before = economy.snapshot(buyer.hash)
-        assertEquals(200L, before.storage.capacity)
-        assertEquals(198L, before.storage.used)
+        assertEquals(300L, before.storage.capacity)
+        assertEquals(298L, before.storage.used)
         assertEquals(2L, before.storage.reserved)
         assertEquals(0L, before.storage.available)
         val buy = purchase(buyer, lot)
@@ -257,11 +257,11 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
         assertEquals(1, market.market(seller.hash).mine.size)
         assertEquals(0L, scalar("SELECT count(*) FROM economy_market_receipts WHERE user_id=? AND request_id=?", buyer.id, UUID.fromString(buy.requestId)))
         market.command(buyer.hash, command(buyer, "cancel_listing", ownLot.id))
-        assertEquals(200L, economy.snapshot(buyer.hash).storage.used)
+        assertEquals(300L, economy.snapshot(buyer.hash).storage.used)
         economy.command(buyer.hash, command(buyer, "sell", quantity=2))
         val retry = buy.copy(expectedRevision=economy.snapshot(buyer.hash).revision)
         val purchased = market.command(buyer.hash, retry)
-        assertEquals(200L, purchased.state.storage.used)
+        assertEquals(300L, purchased.state.storage.used)
         assertEquals(0L, purchased.state.storage.overflow)
         assertTrue(market.command(buyer.hash, retry).replayed)
     }
@@ -272,7 +272,7 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
         val buyer = player(berries = 98)
         val job = EconomyJob(UUID.randomUUID().toString(), "production", "garden", "berries",
             startedAt="2000-01-01T00:00:00Z", finishesAt="2000-01-01T00:01:00Z", rewards=mapOf("berries" to 2L))
-        editState(buyer) { it.copy(inventory=mapOf("berries" to 98L, "wood" to 100L), jobs=listOf(job)) }
+        editState(buyer) { it.copy(inventory=mapOf("berries" to 98L, "wood" to 200L), jobs=listOf(job)) }
         val lot = offer(seller, 2, 6)
         val buy = purchase(buyer, lot)
         val claim = command(buyer, "claim_job", job.id)
@@ -283,7 +283,7 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
         assertEquals(1, results.count { it.isSuccess })
         assertEquals("ECONOMY_REVISION_CONFLICT", (results.single { it.isFailure }.exceptionOrNull() as AuthFailure).code)
         val settled = economy.snapshot(buyer.hash)
-        assertEquals(200L, settled.storage.used)
+        assertEquals(300L, settled.storage.used)
         assertEquals(0L, settled.storage.overflow)
         val loser = if (results.first().isFailure) buy else claim
         val retry = loser.copy(expectedRevision=settled.revision)
@@ -296,13 +296,13 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
     }
 
     @Test fun `preserved old overflow allows listing cancellation and selling without discarding goods`() = runBlocking<Unit> {
-        val seller = player(berries = 260)
+        val seller = player(berries = 360)
         editState(seller) { it.copy(inventory=it.inventory + ("stone" to 40L)) }
         val original = economy.snapshot(seller.hash)
         assertEquals(100L, original.storage.overflow)
         val lot = offer(seller, 10, 30)
         val listed = economy.snapshot(seller.hash)
-        assertEquals(290L, listed.storage.used)
+        assertEquals(390L, listed.storage.used)
         assertEquals(10L, listed.storage.reserved)
         assertEquals(100L, listed.storage.overflow)
         market.command(seller.hash, command(seller, "cancel_listing", lot.id))
@@ -344,7 +344,7 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
     }
 
     @Test fun `items in escrow cannot create spare warehouse space for a ready harvest`() = runBlocking<Unit> {
-        val p = player(berries = 200)
+        val p = player(berries = 300)
         offer(p, 40, 120)
         val job = EconomyJob(UUID.randomUUID().toString(), "production", "garden", "berries",
             startedAt="2000-01-01T00:00:00Z", finishesAt="2000-01-01T00:01:00Z", rewards=mapOf("berries" to 1L))
@@ -360,7 +360,7 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
         economy.command(p.hash, command(p, "sell", quantity=1))
         val result = economy.command(p.hash, claim.copy(expectedRevision=economy.snapshot(p.hash).revision))
         assertTrue(result.state.jobs.isEmpty())
-        assertEquals(160L, result.state.storage.used)
+        assertEquals(260L, result.state.storage.used)
         assertEquals(40L, result.state.storage.reserved)
         assertEquals(0L, result.state.storage.available)
     }

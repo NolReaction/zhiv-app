@@ -8,10 +8,11 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const options = { appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } };
 const vite = await createServer(options);
-const { ResidentOrderBoard, ResidentOrderCard, ResidentOrderReplacement, residentOrderQuoteReason, residentOrderSaleValue } = await vite.ssrLoadModule("/features/economy/world-resident-order-board.tsx");
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
-const { residentOrderBoard, normalizedResidentOrders, advanceResidentOrder } = await vite.ssrLoadModule("/features/economy/food.ts");
-const { economyLocalSellPrice } = await vite.ssrLoadModule("/features/economy/local-sale.ts");
+const { ResidentOrderBoard, ResidentOrderCard, ResidentOrderReplacement, residentOrderQuoteReason, residentOrderSaleValue } = await vite.ssrLoadModule("/features/economy/ui/food/world-resident-order-board.tsx");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { residentOrderBoard, normalizedResidentOrders, advanceResidentOrder } = await vite.ssrLoadModule("/features/economy/domain/food.ts");
+const { economyLocalSellPrice } = await vite.ssrLoadModule("/features/economy/domain/local-sale.ts");
+const { TUTORIAL_ORDER_ID, tutorialResidentOrder } = await vite.ssrLoadModule("/features/economy/domain/tutorial-order.ts");
 after(() => vite.close());
 const now = Date.parse("2026-10-07T14:00:00Z");
 function controller(overrides = {}, flags = {}) {
@@ -56,6 +57,27 @@ test("missing raw fish opens the shore and missing crafted materials open the ex
   assert.equal(sources.length, 2);
   sources.forEach(button => button.props.onClick());
   assert.deepEqual(calls, [["shore"], ["workshop", "make_planks"]]);
+});
+
+test("educational order appears only after its grant, respects the resident filter, and cannot be replaced", () => {
+  const economy = controller({}, { act() { assert.fail("inspection or a stale callback cannot issue a command"); } });
+  const terms = tutorialResidentOrder(economy.snapshot);
+  assert.doesNotMatch(render(ResidentOrderBoard, { economy }), /data-tutorial-order/);
+  economy.snapshot.tutorialOrder = { ingredientsClaimed: true, completed: false, terms };
+  economy.snapshot.inventory = { ...terms.items };
+  const markup = render(ResidentOrderBoard, { economy });
+  assert.match(markup, /data-tutorial-order="true"/);
+  assert.equal((markup.match(/data-order-id=/g) ?? []).length, 4);
+  assert.ok(markup.indexOf(`data-order-id="${TUTORIAL_ORDER_ID}"`) < markup.indexOf('aria-label="Заказчик"'), "the practice request is easy to find before normal filters");
+  assert.doesNotMatch(render(ResidentOrderBoard, { economy, residentId: "plesk" }), /data-tutorial-order/);
+  assert.match(render(ResidentOrderBoard, { economy, residentId: "builder" }), /data-tutorial-order/);
+  const card = ResidentOrderCard({ economy, offer: terms });
+  assert.equal(buttons(card).length, 1);
+  assert.equal(buttons(card)[0].props.disabled, false);
+  assert.equal(buttons(card)[0].props.children, "Отдать заказ");
+  economy.snapshot.tutorialOrder.completed = true;
+  assert.doesNotMatch(render(ResidentOrderBoard, { economy }), /data-tutorial-order/);
+  buttons(card)[0].props.onClick(); // Stale callback is rejected by the current confirmed marker.
 });
 
 test("order premium compares real fish and rounded local sale proceeds, not the nominal catalogue base", () => {
@@ -109,11 +131,11 @@ test("paid replacement needs deliberate confirmation, checks fresh state and rej
       export function useEffect() {}
       export function useLayoutEffect(effect) { effect(); }
     `; },
-    transform(source, id) { if (id.endsWith("/features/economy/world-resident-order-board.tsx")) return source.replace('from "react";', `from "${hooksId}";`); },
+    transform(source, id) { if (id.endsWith("/features/economy/ui/food/world-resident-order-board.tsx")) return source.replace('from "react";', `from "${hooksId}";`); },
   }] });
   try {
     const hooks = await runtime.ssrLoadModule(hooksId);
-    const { ResidentOrderBoard: Board, ResidentOrderCard: Card } = await runtime.ssrLoadModule("/features/economy/world-resident-order-board.tsx");
+    const { ResidentOrderBoard: Board, ResidentOrderCard: Card } = await runtime.ssrLoadModule("/features/economy/ui/food/world-resident-order-board.tsx");
     const calls = [], economy = paid(controller({}, { act: (...args) => calls.push(args) }));
     const board = () => { hooks.render(); return Board({ economy }); };
     const cards = tree => elements(tree).filter(element => element.type === Card);
@@ -156,5 +178,24 @@ test("paid replacement needs deliberate confirmation, checks fresh state and rej
     assert.equal(cards(tree).length, 3, "the confirmed replacement appears immediately without an empty slot");
     economy.uncertain = true;
     assert.doesNotMatch(renderToStaticMarkup(board()), /Заказ выполнен ·/);
+
+    hooks.reset(); calls.length = 0; economy.uncertain = false; economy.notice = "";
+    const terms = tutorialResidentOrder(economy.snapshot);
+    economy.snapshot.tutorialOrder = { ingredientsClaimed: true, completed: false, terms };
+    economy.snapshot.inventory = { ...terms.items };
+    tree = board(); first = cards(tree)[0];
+    assert.equal(first.props.offer.id, TUTORIAL_ORDER_ID);
+    first.props.onComplete(first.props.offer);
+    first.props.onComplete(first.props.offer);
+    assert.deepEqual(calls, [["complete_resident_order", TUTORIAL_ORDER_ID, 1, 0]]);
+    assert.doesNotMatch(renderToStaticMarkup(board()), /Учебный заказ выполнен ·/);
+    economy.snapshot = { ...economy.snapshot, revision: economy.snapshot.revision + 1,
+      tutorialOrder: { ...economy.snapshot.tutorialOrder, completed: true }, inventory: {} };
+    economy.notice = "Учебный заказ выполнен";
+    tree = board();
+    assert.equal(cards(tree).length, 3);
+    assert.match(renderToStaticMarkup(tree), /Учебный заказ выполнен · \+100 монет/);
+    economy.uncertain = true;
+    assert.doesNotMatch(renderToStaticMarkup(board()), /Учебный заказ выполнен ·/);
   } finally { await runtime.close(); }
 });

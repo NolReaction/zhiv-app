@@ -8,8 +8,8 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
 after(() => vite.close());
 const identities = await vite.ssrLoadModule("/lib/dev/api-store.ts");
 const economy = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
-const { applyEconomyCommand } = await vite.ssrLoadModule("/features/economy/rules.ts");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { applyEconomyCommand } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const now = Date.UTC(2026, 9, 5, 10);
 beforeEach(() => identities.resetDevStoreForTests());
 const read = (p, at = now) => economy.getDevEconomy(p.token, at);

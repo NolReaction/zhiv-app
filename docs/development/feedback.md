@@ -9,7 +9,7 @@
 | Задача | Источник |
 |---|---|
 | Форма, подсказки, состояние отправки | [feedback-dialog.tsx](../../features/feedback/feedback-dialog.tsx), [CSS](../../features/feedback/feedback-dialog.module.css) |
-| Кнопка в beta-test | [beta-info.tsx](../../features/check-in/beta-info.tsx) |
+| Кнопка в beta-test | [beta-info.tsx](../../features/updates/beta-info.tsx) |
 | Клиентские контракты и HTTP | [feedback-api.ts](../../features/feedback/feedback-api.ts) |
 | Сохранение черновика и повтор запроса | [feedback-draft.ts](../../features/feedback/feedback-draft.ts) |
 | Вкладка администратора | [admin-feedback-panel.tsx](../../features/admin/admin-feedback-panel.tsx) |

@@ -33,7 +33,7 @@ test("real discounted offer prices are used and direct NPC resale loses coins", 
 });
 
 test("matching raw orders allow explicitly bounded profit from a six-fish delivery", () => {
-  assert.deepEqual(report.shopDeliveryBudgets.map(row => row.matchingPureFishOrdersCeiling.netCoins), [84, 126, 132]);
+  assert.deepEqual(report.shopDeliveryBudgets.map(row => row.matchingPureFishOrdersCeiling.netCoins), [364, 546, 612]);
   for (const row of report.shopDeliveryBudgets) {
     assert(row.matchingPureFishOrdersCeiling.purchasedFish <= row.stock);
     assert.equal(row.steadyNaturalDeliveriesPerDay, 4);
@@ -44,16 +44,16 @@ test("matching raw orders allow explicitly bounded profit from a six-fish delive
 });
 
 test("cooking ceilings account for extra inventory, real production and aggregate sale rounding", () => {
-  assert.deepEqual(report.shopDeliveryBudgets.map(row => row.matchingCookedOrdersWithOrdinaryMaterialsCeiling.netCoins), [1774, 1486, 1342]);
+  assert.deepEqual(report.shopDeliveryBudgets.map(row => row.matchingCookedOrdersWithOrdinaryMaterialsCeiling.netCoins), [2854, 2566, 2422]);
   const cooked = report.shopDeliveryBudgets[0].matchingCookedOrdersWithOrdinaryMaterialsCeiling;
   assert.deepEqual(cooked.otherOwnedInputs, { wood: 6, berries: 12 });
   assert.equal(cooked.otherOwnedInputsSaleCoins, 350);
   assert.equal(cooked.productionMinutes, 90);
   const expanded = report.shopDeliveryBudgets[0].matchingOrdersWithAdditionalRawIngredientsCeiling;
-  assert.deepEqual(expanded.otherOwnedInputs, { wood: 4, fish_reedperch: 2, berries: 8 });
-  assert.equal(expanded.otherOwnedInputsSaleCoins, 590);
-  assert.equal(expanded.productionMinutes, 150);
-  assert.equal(expanded.netCoins, 2714);
+  assert.deepEqual(expanded.otherOwnedInputs, { wood: 3, berries: 36 });
+  assert.equal(expanded.otherOwnedInputsSaleCoins, 710);
+  assert.equal(expanded.productionMinutes, 360);
+  assert.equal(expanded.netCoins, 4324);
 });
 
 test("a fresh account has diverse themed orders with unique compositions and no completion delay", () => {

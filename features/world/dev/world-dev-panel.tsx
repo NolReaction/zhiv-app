@@ -3,23 +3,24 @@
 import { useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { ChevronDown, FlaskConical, RotateCcw, X } from "lucide-react";
 import type { PixelPose } from "@/features/mochlik/pixel-sprite";
-import type { PleskAction } from "../plesk-resident";
-import type { BuilderAction } from "../builder-types";
-import type { EconomyController } from "@/features/economy/use-economy";
-import { worldCatalog } from "../model";
-import { TILED_WORLD } from "../presentation";
-import { clearingRouteDiagnostics } from "../clearing-activity";
-import { compileWorldInteractions, WORLD_INTERACTION_LIMITS } from "../interaction-navigation";
+import type { PleskAction } from "@/features/world/characters/plesk/plesk-resident";
+import type { BuilderAction } from "@/features/world/characters/builder/builder-types";
+import type { EconomyController } from "@/features/economy/sync/use-economy";
+import { worldCatalog } from "@/features/world/domain/model";
+import { TILED_WORLD } from "@/features/world/scene/presentation";
+import { clearingRouteDiagnostics } from "@/features/world/simulation/clearing-activity";
+import { compileWorldInteractions, WORLD_INTERACTION_LIMITS } from "@/features/world/navigation/interaction-navigation";
 import { previewWorldScene } from "../tiled/preview-state";
-import { interactiveMapObjects, type MapObjectPlace } from "../site-interactions";
-import type { WorldController } from "../use-world";
+import { interactiveMapObjects, type MapObjectPlace } from "@/features/world/scene/site-interactions";
+import type { WorldController } from "@/features/world/state/use-world";
 import { WorldAiDiagnostics } from "./world-ai-diagnostics";
 import { ForestGardenDiagnostics } from "./forest-ai-diagnostics";
 import { WorldDevCheats } from "./world-dev-cheats";
 import { WorldDevFishing } from "./world-dev-fishing";
+import { AudioDiagnosticsPanel } from "@/features/audio/dev/audio-diagnostics";
 import { WorldDevBuilderPoints } from "./world-dev-builder-points";
-import { useForestObservation } from "../use-forest-observation";
-import type { ForestGardenObservation, ForestObservation } from "../forest-observer";
+import { useForestObservation } from "@/features/world/state/use-forest-observation";
+import type { ForestGardenObservation, ForestObservation } from "@/features/world/state/forest-observer";
 import { WORLD_DEV_DEFAULTS, WORLD_DEV_ENABLED, WORLD_DEV_POSES, WORLD_DEV_RESIDENT_ACTIONS, WORLD_DEV_BUILDER_ACTIONS, WORLD_DEV_COOKING_ACTIONS, WORLD_DEV_SCENARIOS, worldDevStore, type WorldDevLifeAction, type WorldDevState, type WorldDevScenario, type WorldDevCookingPreview } from "./world-dev-store";
 import styles from "./world-dev-panel.module.css";
 
@@ -143,7 +144,7 @@ function Section({ title, children, initiallyOpen = false }: { title: string; ch
 const DEV_TABS = [["cheats", "Читы"], ["mochlik", "Герои"], ["scene", "Сцена"], ["debug", "Отладка"]] as const;
 const MOCHLIK_TABS = [["scenes", "Мохлик"], ["animation", "Анимации"], ["appearance", "Внешность"], ["plesk", "Плёска"], ["builder", "Шишколап"]] as const;
 const SCENE_TABS = [["scenarios", "Сценарии"], ["world", "Погода"], ["activities", "Сад"], ["buildings", "Здания"]] as const;
-const DEBUG_TABS = [["ai", "Мышление"], ["overlays", "Разметка"], ["routes", "Пути"], ["fishing", "Рыбалка"], ["app", "Приложение"]] as const;
+const DEBUG_TABS = [["ai", "Мышление"], ["overlays", "Разметка"], ["routes", "Пути"], ["fishing", "Рыбалка"], ["audio", "Звук"], ["app", "Приложение"]] as const;
 type DevTab = typeof DEV_TABS[number][0];
 type MochlikTab = typeof MOCHLIK_TABS[number][0];
 type SceneTab = typeof SCENE_TABS[number][0];
@@ -362,6 +363,7 @@ export function WorldDevPanelContent({ world, economy, worldView, presenceKey, o
     ? [...new Set(GARDEN_ACTIONS.map(([action]) => unavailable({ kind: "life", action })).filter((reason): reason is string => Boolean(reason)))] : [];
   const cookingReason = page === "animation" ? unavailable({ kind: "cooking", action: "sequence" }) : null;
   return <div className={styles.pageContent}>
+    {page === "audio" && <AudioDiagnosticsPanel />}
     {page === "fishing" && <>
       <h3 className={styles.pageTitle}>Расчёт улова</h3>
       <WorldDevFishing state={economy?.snapshot} />
