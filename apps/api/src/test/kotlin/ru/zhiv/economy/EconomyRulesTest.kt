@@ -22,10 +22,10 @@ class EconomyRulesTest {
         buildings = state.buildings + buildings.mapValues { (id, level) -> maxOf(state.buildings[id] ?: 0, level) } +
             ("home" to maxOf(state.buildings["home"] ?: 1, home)))
 
-    @Test fun `new players have a renewable recovery path without a cash gift or spending`() {
+    @Test fun `new players receive fixed supplies and retain renewable gathering without spending`() {
         val start = EconomyRules.initial()
-        assertEquals(0L, start.wallet.coins)
-        assertTrue(start.inventory.isEmpty())
+        assertEquals(EconomyWallet(2500, 1000), start.wallet)
+        assertEquals(mapOf("fish" to 10L, "wood" to 10L, "stone" to 10L), start.inventory)
         val garden = apply(start, "start_production", "grow_berries")
         val travelling = apply(garden, "start_exploration", "forest")
         assertEquals(2, travelling.jobs.size)
@@ -35,7 +35,7 @@ class EconomyRulesTest {
         val harvest = apply(collecting, "claim_job", gardenJob.id, at = readyAt.plusSeconds(checkNotNull(gardenJob.collection).seconds))
         val berryCount = gardenJob.rewards.getValue("berries")
         val sold = apply(harvest, "sell", "berries", berryCount)
-        assertEquals(EconomyRules.localSellPrice(EconomyRules.catalog.items.single { it.id == "berries" }.baseSellPrice, berryCount), sold.wallet.coins)
+        assertEquals(start.wallet.coins + EconomyRules.localSellPrice(EconomyRules.catalog.items.single { it.id == "berries" }.baseSellPrice, berryCount), sold.wallet.coins)
         assertEquals(0L, sold.inventory["berries"] ?: 0)
         assertEquals(1, sold.jobs.size)
     }
@@ -76,7 +76,7 @@ class EconomyRulesTest {
             apply(collecting, "claim_job", job.id, at = ripeAt.plusSeconds(8).minusNanos(1))
         }.code)
         val claimed = apply(collecting, "claim_job", job.id, at = ripeAt.plusSeconds(8))
-        assertEquals(job.rewards, claimed.inventory)
+        assertEquals(started.inventory + job.rewards, claimed.inventory)
         assertTrue(claimed.jobs.isEmpty())
         assertEquals("ECONOMY_JOB_GONE", assertFailsWith<AuthFailure> {
             apply(claimed, "claim_job", job.id, at = ripeAt.plusSeconds(8))
@@ -108,7 +108,7 @@ class EconomyRulesTest {
         val started = apply(EconomyRules.initial(), "start_production", "grow_berries")
         val job = started.jobs.single()
         val readyAt = Instant.parse(job.finishesAt)
-        val nearlyFull = started.copy(inventory = mapOf("wood" to 190L))
+        val nearlyFull = started.copy(inventory = mapOf("wood" to 290L))
         val request = command("start_collection", job.id)
         assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> {
             EconomyRules.apply(nearlyFull, request, readyAt, mapOf("stone" to 10L))
@@ -118,14 +118,14 @@ class EconomyRulesTest {
         }.code)
         assertNull(started.jobs.single().collection?.startedAt)
         val collecting = EconomyRules.apply(started, request, readyAt).first
-        val filled = collecting.copy(inventory = mapOf("wood" to 200L))
+        val filled = collecting.copy(inventory = mapOf("wood" to 300L))
         assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> {
             apply(filled, "claim_job", job.id, at = readyAt.plusSeconds(8))
         }.code)
         assertEquals(collecting.jobs, filled.jobs)
         val freed = apply(filled, "sell", "wood", job.rewards.values.sum(), readyAt.plusSeconds(8))
         val claimed = apply(freed, "claim_job", job.id, at = readyAt.plusSeconds(8))
-        assertEquals(200L, EconomyRules.storage(claimed).used)
+        assertEquals(300L, EconomyRules.storage(claimed).used)
     }
 
     @Test fun `legacy berry jobs without collection remain directly claimable and can opt in without replacing rewards`() {
@@ -186,8 +186,8 @@ class EconomyRulesTest {
         }
     }
 
-    @Test fun `a fresh account reaches home two before quarry and then builds quarry and kiln`() {
-        var state = EconomyRules.initial()
+    @Test fun `an empty account reaches home two before quarry and then builds quarry and kiln`() {
+        var state = EconomyRules.initial().copy(wallet = EconomyWallet(), inventory = emptyMap())
         var at = now
         fun complete(action: String, target: String, quantity: Long = 1) {
             var started = apply(state, action, target, quantity, at)
@@ -285,17 +285,19 @@ class EconomyRulesTest {
         assertEquals(existing.buildings, claimed.buildings)
     }
 
-    @Test fun `conversion is bounded monotonic preserves buildings and never grants premium currency`() {
+    @Test fun `legacy conversion remains bounded and adds to the fixed supplies while preserving buildings`() {
         assertEquals(EconomyMigration(coinsGranted = 0, woodGranted = 0, stoneGranted = 0), EconomyRules.legacyConversion(0, 0, 0))
+        assertEquals(EconomyMigration(coinsGranted = 360, woodGranted = 9, stoneGranted = 7), EconomyRules.legacyConversion(100, 81, 49))
         val small = EconomyRules.initial(100, 81, 49, 4, 2)
-        assertEquals(360L, small.wallet.coins)
-        assertEquals(mapOf("wood" to 9L, "stone" to 7L), small.inventory)
+        assertEquals(2860L, small.wallet.coins)
+        assertEquals(mapOf("fish" to 10L, "wood" to 19L, "stone" to 17L), small.inventory)
         assertEquals(4, small.buildings["home"])
         assertEquals(2, small.buildings["workshop"])
-        assertEquals(0L, small.wallet.pearls)
+        assertEquals(1000L, small.wallet.pearls)
         val rich = EconomyRules.initial(ECONOMY_MAX_REVISION, ECONOMY_MAX_REVISION, ECONOMY_MAX_REVISION)
-        assertEquals(5000L, rich.wallet.coins)
-        assertEquals(mapOf("wood" to 30L, "stone" to 30L), rich.inventory)
+        assertEquals(7500L, rich.wallet.coins)
+        assertEquals(mapOf("fish" to 10L, "wood" to 40L, "stone" to 40L), rich.inventory)
+        assertEquals(EconomyMigration(coinsGranted = 5000, woodGranted = 30, stoneGranted = 30), rich.migration)
         assertFailsWith<IllegalArgumentException> { EconomyRules.legacyConversion(-1, 0, 0) }
     }
 
@@ -434,7 +436,7 @@ class EconomyRulesTest {
         assertEquals("ECONOMY_HOME_REQUIRED", assertFailsWith<AuthFailure> { apply(stocked(), "start_exploration", "cave") }.code)
         assertEquals("ECONOMY_BUILDING_REQUIRED", assertFailsWith<AuthFailure> { apply(stocked(), "start_production", "make_planks") }.code)
         val upgrade = EconomyRules.catalog.buildings.single { it.id == "home" }.levels.single { it.level == 2 }
-        val poor = requirements(EconomyRules.initial(), upgrade.requiredHomeLevel, upgrade.requiredBuildings)
+        val poor = requirements(EconomyRules.initial().copy(wallet = EconomyWallet(), inventory = emptyMap()), upgrade.requiredHomeLevel, upgrade.requiredBuildings)
         assertEquals("ECONOMY_RESOURCES", assertFailsWith<AuthFailure> { apply(poor, "start_construction", "home") }.code)
         assertTrue(poor.jobs.isEmpty())
         assertEquals(0L, poor.wallet.coins)
@@ -444,9 +446,9 @@ class EconomyRulesTest {
         val started = apply(EconomyRules.initial(), "start_exploration", "forest")
         val job = started.jobs.single()
         val completed = apply(started, "claim_job", job.id, at = now.plusSeconds(365 * 24 * 3600L))
-        assertEquals(job.rewards, completed.inventory)
+        assertEquals(started.inventory + job.rewards.mapValues { (id, amount) -> (started.inventory[id] ?: 0L) + amount }, completed.inventory)
         assertEquals(1L, completed.completedExplorations)
-        assertEquals(0L, completed.wallet.pearls)
+        assertEquals(started.wallet.pearls, completed.wallet.pearls)
     }
 
     @Test fun `inventory and wallet caps fail without losing job or resources`() {
@@ -549,10 +551,10 @@ class EconomyRulesTest {
         assertEquals(500, EconomyRules.catalog.market.feeBps)
     }
     @Test fun `warehouse counts all goods and market escrow without destroying imported overflow`() {
-        val state = EconomyRules.initial().copy(inventory = mapOf("wood" to 150L, "stone" to 30L))
-        assertEquals(EconomyStorage(200, 180, 15, 5, 0), EconomyRules.storage(state, mapOf("berries" to 15L)))
+        val state = EconomyRules.initial().copy(inventory = mapOf("wood" to 250L, "stone" to 30L))
+        assertEquals(EconomyStorage(300, 280, 15, 5, 0), EconomyRules.storage(state, mapOf("berries" to 15L)))
         val legacy = state.copy(inventory = mapOf("wood" to 400L))
-        assertEquals(EconomyStorage(200, 400, 20, 0, 220), EconomyRules.storage(legacy, mapOf("berries" to 20L)))
+        assertEquals(EconomyStorage(300, 400, 20, 0, 120), EconomyRules.storage(legacy, mapOf("berries" to 20L)))
         EconomyRules.assertStorageTransition(legacy, legacy.copy(inventory = mapOf("wood" to 390L)))
         EconomyRules.assertStorageTransition(legacy, legacy.copy(inventory = mapOf("wood" to 400L, "berries" to 20L)),
             mapOf("berries" to 20L), emptyMap())
@@ -562,7 +564,7 @@ class EconomyRulesTest {
     }
 
     @Test fun `ready harvest remains claimable after freeing warehouse space`() {
-        val started = apply(EconomyRules.initial().copy(inventory = mapOf("wood" to 200L)), "start_production", "grow_berries")
+        val started = apply(EconomyRules.initial().copy(inventory = mapOf("wood" to 300L)), "start_production", "grow_berries")
         val job = started.jobs.single()
         val readyAt = Instant.parse(job.finishesAt)
         assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> { apply(started, "start_collection", job.id, at = readyAt) }.code)
@@ -582,9 +584,9 @@ class EconomyRulesTest {
         assertTrue(recipe.rewards.values.sum() * 2 < EconomyRules.storage(state).capacity)
         assertEquals("INVALID_ECONOMY_COMMAND", assertFailsWith<AuthFailure> { apply(state, "start_production", recipe.id, 2) }.code)
         assertTrue(state.jobs.isEmpty())
-        assertEquals(0L, state.wallet.coins)
+        assertEquals(EconomyRules.initial().wallet, state.wallet)
         // Occupied slots do not prevent starting a feasible order: the player can free them before collection.
-        val started = apply(state.copy(inventory = mapOf("wood" to 200L)), "start_production", recipe.id)
+        val started = apply(state.copy(inventory = mapOf("wood" to 300L)), "start_production", recipe.id)
         assertEquals(recipe.rewards, started.jobs.single().rewards)
     }
 

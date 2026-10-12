@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 const { pixelSprite, pixelSpriteContact } = await vite.ssrLoadModule("/features/mochlik/pixel-sprite.ts");
-const { drawForestMiningHero } = await vite.ssrLoadModule("/features/world/forest-mining-painter.ts");
+const { drawForestMiningHero } = await vite.ssrLoadModule("/features/world/activities/mining/forest-mining-painter.ts");
 const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
 
 // Colour raster, including rotated polygons, exposes whether the pickaxe is

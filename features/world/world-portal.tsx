@@ -3,14 +3,18 @@ import { useRef, type CSSProperties } from "react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { Dialog, DialogPortal, DialogOverlay, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import type { GameItemId } from "@/features/game/game-rewards";
-import type { EconomyController } from "@/features/economy/use-economy";
-import type { WorldController } from "./use-world";
+import type { EconomyController } from "@/features/economy/sync/use-economy";
+import type { WorldController } from "@/features/world/state/use-world";
 import WorldView from "./world-view";
-import type { WorldFriendsState } from "./world-profile-friends";
+import type { WorldFriendsState } from "@/features/world/ui/profile/world-profile-friends";
+import type { WorldNotificationEntry } from "./notification-destination";
 import styles from "./world.module.css";
 
 export type WorldPortalProps = {
   open: boolean; onClose: () => void; origin: CSSProperties; returnFocus: () => void;
+  onSceneReady?: () => void;
+  sceneReady?: boolean; notificationEntry?: WorldNotificationEntry;
+  onNotificationHandled?: (request: number) => void;
   world: WorldController; economy: EconomyController; ownerPublicId: string; timeZone: string; displayName: string; level: number;
   wakeSignal: number;
   friends?: WorldFriendsState; onOpenPeople?: () => void;
@@ -29,7 +33,7 @@ export default function WorldPortal(props: WorldPortalProps) {
       onOpenAutoFocus={event => { event.preventDefault(); document.getElementById("world-exit")?.focus(); }}>
       <DialogTitle className={styles.sr}>Лес Мохлика</DialogTitle>
       <DialogDescription className={styles.sr}>Исследуйте карту, улучшайте домик и собирайте лесные находки.</DialogDescription>
-      <div className={styles.browserEdge} aria-hidden="true" />
+      <div className={styles.browserEdge} data-world-browser-edge="true" aria-hidden="true" />
       <WorldView {...props} escapeHandlerRef={escapeHandlerRef} />
     </DialogPrimitive.Content>
     </DialogPortal>

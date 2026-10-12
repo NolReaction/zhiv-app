@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { FishRarityBadge, FISH_RARITY_LEVELS, FISH_RARITY_NAMES } from "@/features/economy/fish-rarity";
-import { fishingState } from "@/features/economy/fishing";
-import { economyCatalog, type EconomyView } from "@/features/economy/model";
+import { FishRarityBadge, FISH_RARITY_LEVELS, FISH_RARITY_NAMES } from "@/features/economy/ui/fishing/fish-rarity";
+import { fishingState } from "@/features/economy/domain/fishing";
+import { economyCatalog, type EconomyView } from "@/features/economy/domain/model";
 import { fishingDiagnostics, type FishingDiagnosticSelection } from "./fishing-diagnostics";
 import styles from "./world-dev-fishing.module.css";
 

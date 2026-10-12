@@ -8,7 +8,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { withForestOcclusion, withForestSiteOcclusion, forestVisibleSiteAt } = await vite.ssrLoadModule("/features/world/forest-occlusion.ts");
+const { withForestOcclusion, withForestSiteOcclusion, forestVisibleSiteAt } = await vite.ssrLoadModule("/features/world/scene/forest-occlusion.ts");
 const { previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
 const { paintFixedWorld } = await vite.ssrLoadModule("/features/world/tiled/renderer.ts");
 

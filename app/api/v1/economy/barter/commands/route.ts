@@ -1,4 +1,4 @@
-import { barterCommandSchema } from "@/features/economy/barter-model";
+import { barterCommandSchema } from "@/features/economy/domain/barter-model";
 import { commandDevEconomyBarter } from "@/lib/dev/economy-store";
 import { devEconomyContext, readDevEconomyBody, economyErrorResponse, respondDevEconomy } from "@/lib/dev/economy-route";
 

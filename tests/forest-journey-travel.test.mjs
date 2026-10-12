@@ -7,16 +7,16 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
+const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
 const { previewWorldScene, initialPreviewLevels } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
-const { connectForestSession } = await vite.ssrLoadModule("/features/world/forest-session.ts");
-const { advanceForestDirector } = await vite.ssrLoadModule("/features/world/forest-director.ts");
-const { requestClearingSleep, advanceClearingActivity } = await vite.ssrLoadModule("/features/world/clearing-activity.ts");
-const { forestJourneyWalking, forestJourneyEnding, forestJourneyActorAway, forestJourneyFishingFrame, syncForestJourneyTravel } = await vite.ssrLoadModule("/features/world/forest-journey-travel.ts");
-const { forestFishingHeroRig } = await vite.ssrLoadModule("/features/world/forest-fishing-painter.ts");
-const { fishingTackleFrame } = await vite.ssrLoadModule("/features/world/fishing-props.ts");
-const { captureForestMemory } = await vite.ssrLoadModule("/features/world/forest-memory.ts");
-const { canTraverse } = await vite.ssrLoadModule("/features/world/navigation.ts");
+const { connectForestSession } = await vite.ssrLoadModule("/features/world/state/forest-session.ts");
+const { advanceForestDirector } = await vite.ssrLoadModule("/features/world/simulation/forest-director.ts");
+const { requestClearingSleep, advanceClearingActivity } = await vite.ssrLoadModule("/features/world/simulation/clearing-activity.ts");
+const { forestJourneyWalking, forestJourneyEnding, forestJourneyActorAway, forestJourneyFishingFrame, syncForestJourneyTravel } = await vite.ssrLoadModule("/features/world/activities/journeys/forest-journey-travel.ts");
+const { forestFishingHeroRig } = await vite.ssrLoadModule("/features/world/activities/fishing/forest-fishing-painter.ts");
+const { fishingTackleFrame } = await vite.ssrLoadModule("/features/world/activities/fishing/fishing-props.ts");
+const { captureForestMemory } = await vite.ssrLoadModule("/features/world/state/memory/forest-memory.ts");
+const { canTraverse } = await vite.ssrLoadModule("/features/world/navigation/navigation.ts");
 const scene = previewWorldScene(TILED_WORLD, initialPreviewLevels(TILED_WORLD));
 const start = 1_000_000;
 const journey = (routeId = "shore") => ({ id: `test-${routeId}`, startedAt: new Date(start).toISOString(),

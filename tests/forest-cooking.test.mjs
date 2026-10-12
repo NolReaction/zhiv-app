@@ -8,9 +8,9 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { forestCookingFrame, forestCookingBounds, FOREST_COOKING_ACTION_SECONDS, FOREST_COOKING_CYCLE_SECONDS } =
-  await vite.ssrLoadModule("/features/world/forest-cooking.ts");
+  await vite.ssrLoadModule("/features/world/activities/cooking/forest-cooking.ts");
 const { forestCookingHeroRig, drawForestCookingHero, drawForestProductionCooking, forestProductionCookingBounds } =
-  await vite.ssrLoadModule("/features/world/forest-cooking-painter.ts");
+  await vite.ssrLoadModule("/features/world/activities/cooking/forest-cooking-painter.ts");
 const actions = ["prepare", "stir", "taste", "serve"], directions = ["front", "left", "right", "back"];
 const frame = (action, phase = .5, direction = "front") => ({ x: 200, y: 200, size: 36, action, phase, direction, frame: 0, steam: .5 });
 

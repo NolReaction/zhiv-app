@@ -1,0 +1,2711 @@
+{
+  "schemaVersion": 1,
+  "pack": "originals-v1",
+  "createdAt": "2026-10-11",
+  "origin": "Original procedural synthesis and scores generated with Codex for Я живой; no external samples or recordings",
+  "toolchain": {
+    "python": "3.12.14",
+    "numpy": "2.3.5",
+    "scipy": "1.17.0",
+    "ffmpeg": "ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023 the FFmpeg developers"
+  },
+  "sources": [
+    {
+      "path": "scripts/audio_originals/ambience.py",
+      "sha256": "874db773d1e10c21559c81633cd6b93369517b07087cdee2e3227173e8c0289e"
+    },
+    {
+      "path": "scripts/audio_originals/effects.py",
+      "sha256": "9e3493860490bd8292f8441ff144847a46452a21b714f3955f6839a398f8504f"
+    },
+    {
+      "path": "scripts/audio_originals/music.py",
+      "sha256": "df840710c18df8ce91492742599e40b3364600bf410328b5b7b01e2281b6dfc3"
+    },
+    {
+      "path": "scripts/audio_originals/render.py",
+      "sha256": "c8c6df95c879ad79d32a215c265b4e9d77d7232cae66866502e01acb56a9ad9c"
+    }
+  ],
+  "assets": [
+    {
+      "id": "music.day.01",
+      "kind": "music",
+      "title": "Тропинка к дому",
+      "description": "Оригинальная дневная тема: деревянная арфа, отвечающая флейта, мягкий бас и редкие деревянные акценты; 32 такта A–A′–B–A″.",
+      "sampleRate": 48000,
+      "channels": 2,
+      "frames": 5120000,
+      "durationSeconds": 106.666667,
+      "decodedBytes": 40960000,
+      "masterSha256": "bb69cc6a6ceb6c465eb0c35b8bdf5918a0847d7d9d87df936143a6b42d7d870f",
+      "measurements": {
+        "peakDb": -4.4607,
+        "rmsDb": -18.0,
+        "dc": 0.0,
+        "seamDelta": 0.000555326,
+        "maxAdjacentDelta": 0.062754706
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/music/music.day.01.opus",
+          "bytes": 1724068,
+          "sha256": "66ed4174e97351d8bc393d460f53d63db12635276b1f7796df752e6515222498"
+        },
+        {
+          "src": "/audio/originals-v1/music/music.day.01.m4a",
+          "bytes": 1973719,
+          "sha256": "c16bda0ebc25c8dd8b90070c005749a903af1d8253460719b208200b6d96fada"
+        }
+      ],
+      "composition": {
+        "musicalKey": "D major",
+        "bpm": 72,
+        "bars": 32,
+        "meter": "4/4",
+        "loop": true,
+        "provenance": "Original coded score and deterministic mathematical synthesis; no external recordings or samples."
+      }
+    },
+    {
+      "id": "music.night.01",
+      "kind": "music",
+      "title": "Фонарь среди листьев",
+      "description": "Оригинальная ночная миниатюра: редкие щипки деревянной арфы, дыхание флейты, тёплая подложка; 32 такта A–A′–B–A″.",
+      "sampleRate": 48000,
+      "channels": 2,
+      "frames": 5945806,
+      "durationSeconds": 123.870958,
+      "decodedBytes": 47566448,
+      "masterSha256": "1e47592c18f27cf15b5824f34569520f05d55fd11c8ae426e0db19a79634727d",
+      "measurements": {
+        "peakDb": -6.1168,
+        "rmsDb": -20.0,
+        "dc": 0.0,
+        "seamDelta": 0.001060617,
+        "maxAdjacentDelta": 0.051208697
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/music/music.night.01.opus",
+          "bytes": 2005052,
+          "sha256": "1b8c8e988f551e5d437c098e25155830c7b9131e55128be59756f6545b023328"
+        },
+        {
+          "src": "/audio/originals-v1/music/music.night.01.m4a",
+          "bytes": 2297244,
+          "sha256": "fda222b0d90e54f4e0b8a809f34e53c3f494799587a9593e35b83c31c3216e4e"
+        }
+      ],
+      "composition": {
+        "musicalKey": "B minor / D major",
+        "bpm": 62,
+        "bars": 32,
+        "meter": "4/4",
+        "loop": true,
+        "provenance": "Original coded score and deterministic mathematical synthesis; no external recordings or samples."
+      }
+    },
+    {
+      "id": "forest.day.01",
+      "kind": "loop",
+      "title": "Birds in the Sun",
+      "description": "Two quiet distant bird phrases with long pauses; mono keeps the longer arrangement within the mobile buffer budget.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 960000,
+      "durationSeconds": 20.0,
+      "decodedBytes": 3840000,
+      "masterSha256": "919f61716fe8c6a36c73760144f1ece1f61817fe9e40f684d336786a0c21434d",
+      "measurements": {
+        "peakDb": -29.0,
+        "rmsDb": -51.7195,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.005252924
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/loop/forest.day.01.sparse-v3.wav",
+          "bytes": 1920044,
+          "sha256": "919f61716fe8c6a36c73760144f1ece1f61817fe9e40f684d336786a0c21434d"
+        }
+      ],
+      "composition": {
+        "phraseStartsSeconds": [
+          2.6,
+          13.6
+        ]
+      }
+    },
+    {
+      "id": "forest.night.01",
+      "kind": "loop",
+      "title": "The Forest Settles",
+      "description": "One short distant insect phrase in twenty seconds, leaving the night mostly quiet.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 960000,
+      "durationSeconds": 20.0,
+      "decodedBytes": 3840000,
+      "masterSha256": "7ffcb18bc48b8bd9a3f3ba09d4903e1c073d958a1bdc33ef83d5543aa2298351",
+      "measurements": {
+        "peakDb": -22.2171,
+        "rmsDb": -55.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.020044897
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/loop/forest.night.01.sparse-v3.wav",
+          "bytes": 1920044,
+          "sha256": "7ffcb18bc48b8bd9a3f3ba09d4903e1c073d958a1bdc33ef83d5543aa2298351"
+        }
+      ],
+      "composition": {
+        "phraseStartsSeconds": [
+          7.2
+        ]
+      }
+    },
+    {
+      "id": "weather.rain.01",
+      "kind": "loop",
+      "title": "Rain through the Canopy",
+      "description": "A sheltered rain bed with scattered, rounded leaf droplets.",
+      "sampleRate": 48000,
+      "channels": 2,
+      "frames": 384000,
+      "durationSeconds": 8.0,
+      "decodedBytes": 3072000,
+      "masterSha256": "8c7f41787a1de8f81603b49e996e0b2096dd603f258d0a8a47e5822c56846358",
+      "measurements": {
+        "peakDb": -7.4228,
+        "rmsDb": -22.0,
+        "dc": 0.0,
+        "seamDelta": 0.014160618,
+        "maxAdjacentDelta": 0.072429731
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/loop/weather.rain.01.wav",
+          "bytes": 1536044,
+          "sha256": "8c7f41787a1de8f81603b49e996e0b2096dd603f258d0a8a47e5822c56846358"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "river.01",
+      "kind": "loop",
+      "title": "Water around Roots",
+      "description": "Flowing water, low ripples and irregular resonant bubbles.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 384000,
+      "durationSeconds": 8.0,
+      "decodedBytes": 1536000,
+      "masterSha256": "8526419c4d5855314010744cf23b0b26b32773b66643bd1bfd26b72f28fd69f1",
+      "measurements": {
+        "peakDb": -7.9165,
+        "rmsDb": -21.5,
+        "dc": 0.0,
+        "seamDelta": 0.003324833,
+        "maxAdjacentDelta": 0.046946671
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/loop/river.01.wav",
+          "bytes": 768044,
+          "sha256": "8526419c4d5855314010744cf23b0b26b32773b66643bd1bfd26b72f28fd69f1"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "campfire.01",
+      "kind": "loop",
+      "title": "Small Evening Fire",
+      "description": "A soft continuous flame and six padded ember movements, without rapid sharp crackle bursts.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 384000,
+      "durationSeconds": 8.0,
+      "decodedBytes": 1536000,
+      "masterSha256": "0ac32f94e7ddb3364fcb1a2ba79bc0fd475981e08e7b49286fd678197a33c1de",
+      "measurements": {
+        "peakDb": -14.0244,
+        "rmsDb": -27.0,
+        "dc": 0.0,
+        "seamDelta": 0.001189112,
+        "maxAdjacentDelta": 0.014072526
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/loop/campfire.01.embers-v2.wav",
+          "bytes": 768044,
+          "sha256": "0ac32f94e7ddb3364fcb1a2ba79bc0fd475981e08e7b49286fd678197a33c1de"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "workshop.woodworking.01",
+      "kind": "loop",
+      "title": "The Carpenter's Afternoon",
+      "description": "Uneven wooden mallet taps, short hand-saw strokes and a quiet room bed.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 480000,
+      "durationSeconds": 10.0,
+      "decodedBytes": 1920000,
+      "masterSha256": "08632393d4699f5bb8b53ab251e673ef94a2dd47d34d0659782f8e8636d37029",
+      "measurements": {
+        "peakDb": -3.0,
+        "rmsDb": -26.1621,
+        "dc": 0.0,
+        "seamDelta": 0.001290742,
+        "maxAdjacentDelta": 0.056073025
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/loop/workshop.woodworking.01.wav",
+          "bytes": 960044,
+          "sha256": "08632393d4699f5bb8b53ab251e673ef94a2dd47d34d0659782f8e8636d37029"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "workshop.kiln.01",
+      "kind": "loop",
+      "title": "Warm Kiln",
+      "description": "Enclosed low fire, two soft bellows breaths and light fuel movement.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 384000,
+      "durationSeconds": 8.0,
+      "decodedBytes": 1536000,
+      "masterSha256": "0889f908f7acd94ff39f3377091af990401ea159689f5469413209d853a8f334",
+      "measurements": {
+        "peakDb": -9.1817,
+        "rmsDb": -23.0,
+        "dc": 0.0,
+        "seamDelta": 0.004603602,
+        "maxAdjacentDelta": 0.022608645
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/loop/workshop.kiln.01.wav",
+          "bytes": 768044,
+          "sha256": "0889f908f7acd94ff39f3377091af990401ea159689f5469413209d853a8f334"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "quarry.working.01",
+      "kind": "loop",
+      "title": "Stone by Stone",
+      "description": "Low mineral knocks, small falling fragments and short gravel scrapes.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 480000,
+      "durationSeconds": 10.0,
+      "decodedBytes": 1920000,
+      "masterSha256": "11409a5f06a853290d8c9da50f2697b05e842633da8d1b080e7849c4817fa40a",
+      "measurements": {
+        "peakDb": -3.0,
+        "rmsDb": -23.9633,
+        "dc": 0.0,
+        "seamDelta": 0.001201689,
+        "maxAdjacentDelta": 0.074259035
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/loop/quarry.working.01.wav",
+          "bytes": 960044,
+          "sha256": "11409a5f06a853290d8c9da50f2697b05e842633da8d1b080e7849c4817fa40a"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "construction.working.01",
+      "kind": "loop",
+      "title": "A Home Taking Shape",
+      "description": "Grouped wooden hammering, a timber scrape and scattered saw strokes.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 480000,
+      "durationSeconds": 10.0,
+      "decodedBytes": 1920000,
+      "masterSha256": "740a016d2917be51e4823aa1e5a0e19fa65f8cccbc51942e99b9c76238d3e745",
+      "measurements": {
+        "peakDb": -3.0,
+        "rmsDb": -26.1397,
+        "dc": 0.0,
+        "seamDelta": 0.004441573,
+        "maxAdjacentDelta": 0.041124403
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/loop/construction.working.01.wav",
+          "bytes": 960044,
+          "sha256": "740a016d2917be51e4823aa1e5a0e19fa65f8cccbc51942e99b9c76238d3e745"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "ui.click.01",
+      "kind": "effect",
+      "title": "Moss bubble 1",
+      "description": "A short padded wooden pluck with a rounded falling pitch, soft attack and closely matched variants.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 6960,
+      "durationSeconds": 0.145,
+      "decodedBytes": 27840,
+      "masterSha256": "bde0acd814231e5fe5f5e7c601e30674ad46f69bcc3d7143c2c6d6bd7dc96293",
+      "measurements": {
+        "peakDb": -11.3595,
+        "rmsDb": -23.5,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.019176545
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/ui.click.01.soft-v2.wav",
+          "bytes": 13964,
+          "sha256": "bde0acd814231e5fe5f5e7c601e30674ad46f69bcc3d7143c2c6d6bd7dc96293"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "ui.click.02",
+      "kind": "effect",
+      "title": "Moss bubble 2",
+      "description": "A short padded wooden pluck with a rounded falling pitch, soft attack and closely matched variants.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 7200,
+      "durationSeconds": 0.15,
+      "decodedBytes": 28800,
+      "masterSha256": "a55abb9fd849747f46918ad7b60061ae1366470900d1c61a036d28a7eb273384",
+      "measurements": {
+        "peakDb": -11.2334,
+        "rmsDb": -23.5,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.019718179
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/ui.click.02.soft-v2.wav",
+          "bytes": 14444,
+          "sha256": "a55abb9fd849747f46918ad7b60061ae1366470900d1c61a036d28a7eb273384"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "ui.click.03",
+      "kind": "effect",
+      "title": "Moss bubble 3",
+      "description": "A short padded wooden pluck with a rounded falling pitch, soft attack and closely matched variants.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 7440,
+      "durationSeconds": 0.155,
+      "decodedBytes": 29760,
+      "masterSha256": "842d67e2ffb22c09f1e383d3775440215bcac9f1d7758d90bcecfdb142b73a17",
+      "measurements": {
+        "peakDb": -11.1221,
+        "rmsDb": -23.5,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.018769363
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/ui.click.03.soft-v2.wav",
+          "bytes": 14924,
+          "sha256": "842d67e2ffb22c09f1e383d3775440215bcac9f1d7758d90bcecfdb142b73a17"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "ui.open.01",
+      "kind": "effect",
+      "title": "Felt opening 1",
+      "description": "One clean fixed-pitch felt pluck, softly attacked and damped, without breath, scraping noise or pitch sweep.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 7920,
+      "durationSeconds": 0.165,
+      "decodedBytes": 31680,
+      "masterSha256": "7093302e873be1530c9ce31af17fccf1b2254efff23d92b9ec9a5a724f2c13ec",
+      "measurements": {
+        "peakDb": -12.5094,
+        "rmsDb": -25.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.023388781
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/ui.open.01.felt-v3.wav",
+          "bytes": 15884,
+          "sha256": "7093302e873be1530c9ce31af17fccf1b2254efff23d92b9ec9a5a724f2c13ec"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "ui.open.02",
+      "kind": "effect",
+      "title": "Felt opening 2",
+      "description": "One clean fixed-pitch felt pluck, softly attacked and damped, without breath, scraping noise or pitch sweep.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 7920,
+      "durationSeconds": 0.165,
+      "decodedBytes": 31680,
+      "masterSha256": "38c44f361812971f0bdfaf8be3ca8c748567c853b710b9f3fb40ff56c924d463",
+      "measurements": {
+        "peakDb": -12.554,
+        "rmsDb": -25.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.024392661
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/ui.open.02.felt-v3.wav",
+          "bytes": 15884,
+          "sha256": "38c44f361812971f0bdfaf8be3ca8c748567c853b710b9f3fb40ff56c924d463"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "ui.close.01",
+      "kind": "effect",
+      "title": "Felt closing 1",
+      "description": "One clean fixed-pitch felt pluck, softly attacked and damped, without breath, scraping noise or pitch sweep.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 6960,
+      "durationSeconds": 0.145,
+      "decodedBytes": 27840,
+      "masterSha256": "e4f414e342f6bab6d6c0966c194d7fd9c8560e8dcee4aad2f9741b3fd91f0332",
+      "measurements": {
+        "peakDb": -13.0584,
+        "rmsDb": -25.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.017137012
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/ui.close.01.felt-v3.wav",
+          "bytes": 13964,
+          "sha256": "e4f414e342f6bab6d6c0966c194d7fd9c8560e8dcee4aad2f9741b3fd91f0332"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "ui.close.02",
+      "kind": "effect",
+      "title": "Felt closing 2",
+      "description": "One clean fixed-pitch felt pluck, softly attacked and damped, without breath, scraping noise or pitch sweep.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 6960,
+      "durationSeconds": 0.145,
+      "decodedBytes": 27840,
+      "masterSha256": "aa490b3edac833a78f227bd56ce333553974164f2e4ed21e27fd1bb2da4c630c",
+      "measurements": {
+        "peakDb": -13.1895,
+        "rmsDb": -25.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.017991086
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/ui.close.02.felt-v3.wav",
+          "bytes": 13964,
+          "sha256": "aa490b3edac833a78f227bd56ce333553974164f2e4ed21e27fd1bb2da4c630c"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "ui.confirm.01",
+      "kind": "effect",
+      "title": "Little agreement 1",
+      "description": "Two rounded ceramic notes make a calm upward confirmation.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 34560,
+      "durationSeconds": 0.72,
+      "decodedBytes": 138240,
+      "masterSha256": "2401e43fdb1168582488f9be5062c0b25a9cc7e003b501b4aa078a4de171a07f",
+      "measurements": {
+        "peakDb": -6.8883,
+        "rmsDb": -20.0,
+        "dc": 1e-09,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.05504648
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/ui.confirm.01.wav",
+          "bytes": 69164,
+          "sha256": "2401e43fdb1168582488f9be5062c0b25a9cc7e003b501b4aa078a4de171a07f"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "ui.confirm.02",
+      "kind": "effect",
+      "title": "Little agreement 2",
+      "description": "Two rounded ceramic notes make a calm upward confirmation.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 34560,
+      "durationSeconds": 0.72,
+      "decodedBytes": 138240,
+      "masterSha256": "63e064059563836c23d410686b2caea9a6b07f8a850590fb8ef77089f00befe2",
+      "measurements": {
+        "peakDb": -7.0375,
+        "rmsDb": -20.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.064286225
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/ui.confirm.02.wav",
+          "bytes": 69164,
+          "sha256": "63e064059563836c23d410686b2caea9a6b07f8a850590fb8ef77089f00befe2"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "ui.error.01",
+      "kind": "effect",
+      "title": "Gentle hesitation 1",
+      "description": "A short descending wooden interval without a harsh alarm.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 27840,
+      "durationSeconds": 0.58,
+      "decodedBytes": 111360,
+      "masterSha256": "928a4c066f926fbbb80388d9c0b0d1ef41b6841f8a8fe1bfcfaf2ce069c6b1c7",
+      "measurements": {
+        "peakDb": -6.6682,
+        "rmsDb": -21.0,
+        "dc": 1e-09,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.030143406
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/ui.error.01.wav",
+          "bytes": 55724,
+          "sha256": "928a4c066f926fbbb80388d9c0b0d1ef41b6841f8a8fe1bfcfaf2ce069c6b1c7"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "ui.error.02",
+      "kind": "effect",
+      "title": "Gentle hesitation 2",
+      "description": "A short descending wooden interval without a harsh alarm.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 27840,
+      "durationSeconds": 0.58,
+      "decodedBytes": 111360,
+      "masterSha256": "12df0b209ccb7e05e9e17a037d646f068df625ad4608a75e05fbc2c1801911db",
+      "measurements": {
+        "peakDb": -6.5026,
+        "rmsDb": -21.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.027115904
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/ui.error.02.wav",
+          "bytes": 55724,
+          "sha256": "12df0b209ccb7e05e9e17a037d646f068df625ad4608a75e05fbc2c1801911db"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "ui.reward.01",
+      "kind": "effect",
+      "title": "Found a little treasure 1",
+      "description": "A small original four-note chime with soft fading reflections.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 64800,
+      "durationSeconds": 1.35,
+      "decodedBytes": 259200,
+      "masterSha256": "9f407c6a4c643dbbe2f068605587fd07262dc9526f9e8446795301d00f074935",
+      "measurements": {
+        "peakDb": -6.6974,
+        "rmsDb": -20.0,
+        "dc": 1e-09,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.056968413
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/ui.reward.01.wav",
+          "bytes": 129644,
+          "sha256": "9f407c6a4c643dbbe2f068605587fd07262dc9526f9e8446795301d00f074935"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "ui.reward.02",
+      "kind": "effect",
+      "title": "Found a little treasure 2",
+      "description": "A small original four-note chime with soft fading reflections.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 64800,
+      "durationSeconds": 1.35,
+      "decodedBytes": 259200,
+      "masterSha256": "8ab70b1c0b1d3e20ab551874b9a58c3303ad2800ba17ce3c822abe9460adab27",
+      "measurements": {
+        "peakDb": -6.6126,
+        "rmsDb": -20.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.073788226
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/ui.reward.02.wav",
+          "bytes": 129644,
+          "sha256": "8ab70b1c0b1d3e20ab551874b9a58c3303ad2800ba17ce3c822abe9460adab27"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "actor.mochlik.greeting.01",
+      "kind": "effect",
+      "title": "Mochlik greeting 1",
+      "description": "An original nonverbal warm hollow forest hum, shaped into a curious rising greeting. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 39360,
+      "durationSeconds": 0.82,
+      "decodedBytes": 157440,
+      "masterSha256": "3a8e495286de98fbf627cc7c1e532923399331716dfe6668284cb33227b6fdfb",
+      "measurements": {
+        "peakDb": -7.608,
+        "rmsDb": -20.0,
+        "dc": 1e-09,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.051665269
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.mochlik.greeting.01.wav",
+          "bytes": 78764,
+          "sha256": "3a8e495286de98fbf627cc7c1e532923399331716dfe6668284cb33227b6fdfb"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "actor.mochlik.greeting.02",
+      "kind": "effect",
+      "title": "Mochlik greeting 2",
+      "description": "An original nonverbal warm hollow forest hum, shaped into a curious rising greeting. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 38400,
+      "durationSeconds": 0.8,
+      "decodedBytes": 153600,
+      "masterSha256": "1055c0eaf81df4cc68c89c865425e2ec6239ba333aec339db0a1a4a7ef33ec48",
+      "measurements": {
+        "peakDb": -7.7221,
+        "rmsDb": -20.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.054177471
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.mochlik.greeting.02.wav",
+          "bytes": 76844,
+          "sha256": "1055c0eaf81df4cc68c89c865425e2ec6239ba333aec339db0a1a4a7ef33ec48"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "actor.mochlik.greeting.03",
+      "kind": "effect",
+      "title": "Mochlik greeting 3",
+      "description": "An original nonverbal warm hollow forest hum, shaped into a curious rising greeting. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 45120,
+      "durationSeconds": 0.94,
+      "decodedBytes": 180480,
+      "masterSha256": "111db498ed608ebcfc0de9e520d935a343e6e20972f61d81f925e63b0ca3f567",
+      "measurements": {
+        "peakDb": -7.8133,
+        "rmsDb": -20.0,
+        "dc": 1e-09,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.049875557
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.mochlik.greeting.03.wav",
+          "bytes": 90284,
+          "sha256": "111db498ed608ebcfc0de9e520d935a343e6e20972f61d81f925e63b0ca3f567"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "actor.mochlik.joy.01",
+      "kind": "effect",
+      "title": "Mochlik joy 1",
+      "description": "An original nonverbal warm hollow forest hum, shaped into a bouncing happy phrase. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 45120,
+      "durationSeconds": 0.94,
+      "decodedBytes": 180480,
+      "masterSha256": "e63e24378014e938742e533759bf3d3d24301738f813d9681be9c378f7700ff6",
+      "measurements": {
+        "peakDb": -7.432,
+        "rmsDb": -20.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.053139858
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.mochlik.joy.01.wav",
+          "bytes": 90284,
+          "sha256": "e63e24378014e938742e533759bf3d3d24301738f813d9681be9c378f7700ff6"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "actor.mochlik.joy.02",
+      "kind": "effect",
+      "title": "Mochlik joy 2",
+      "description": "An original nonverbal warm hollow forest hum, shaped into a bouncing happy phrase. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 42720,
+      "durationSeconds": 0.89,
+      "decodedBytes": 170880,
+      "masterSha256": "f57519eb890e34f3eabc773c6e7176916fdf84d8523bf2610ab38b9e570d017c",
+      "measurements": {
+        "peakDb": -6.9415,
+        "rmsDb": -20.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.060672179
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.mochlik.joy.02.wav",
+          "bytes": 85484,
+          "sha256": "f57519eb890e34f3eabc773c6e7176916fdf84d8523bf2610ab38b9e570d017c"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "actor.mochlik.joy.03",
+      "kind": "effect",
+      "title": "Mochlik joy 3",
+      "description": "An original nonverbal warm hollow forest hum, shaped into a bouncing happy phrase. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 48000,
+      "durationSeconds": 1.0,
+      "decodedBytes": 192000,
+      "masterSha256": "09f096a290387d5565eb5424c6dc6297c518a9ff9e120bc972f4ac1e7c5bb239",
+      "measurements": {
+        "peakDb": -7.4419,
+        "rmsDb": -20.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.051448215
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.mochlik.joy.03.wav",
+          "bytes": 96044,
+          "sha256": "09f096a290387d5565eb5424c6dc6297c518a9ff9e120bc972f4ac1e7c5bb239"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "actor.mochlik.effort.01",
+      "kind": "effect",
+      "title": "Mochlik effort 1",
+      "description": "An original nonverbal warm hollow forest hum, shaped into a brief breathy effort. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 23040,
+      "durationSeconds": 0.48,
+      "decodedBytes": 92160,
+      "masterSha256": "01b487a265e6ba9e4835149be4cb4ebeb9d8793034d9da72039d34d647422454",
+      "measurements": {
+        "peakDb": -6.2763,
+        "rmsDb": -20.0,
+        "dc": 1e-09,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.066984907
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.mochlik.effort.01.wav",
+          "bytes": 46124,
+          "sha256": "01b487a265e6ba9e4835149be4cb4ebeb9d8793034d9da72039d34d647422454"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "actor.mochlik.effort.02",
+      "kind": "effect",
+      "title": "Mochlik effort 2",
+      "description": "An original nonverbal warm hollow forest hum, shaped into a brief breathy effort. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 29760,
+      "durationSeconds": 0.62,
+      "decodedBytes": 119040,
+      "masterSha256": "a981ce91daeb68509ebf71beaf8031a825fb6457b415013b520432ebf97a6501",
+      "measurements": {
+        "peakDb": -5.319,
+        "rmsDb": -20.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.076145507
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.mochlik.effort.02.wav",
+          "bytes": 59564,
+          "sha256": "a981ce91daeb68509ebf71beaf8031a825fb6457b415013b520432ebf97a6501"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "actor.mochlik.effort.03",
+      "kind": "effect",
+      "title": "Mochlik effort 3",
+      "description": "An original nonverbal warm hollow forest hum, shaped into a brief breathy effort. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 26880,
+      "durationSeconds": 0.56,
+      "decodedBytes": 107520,
+      "masterSha256": "c5489d263e0d2a7c1568286c83da44528e2a4bbcf59aac5ad962ddd6042f483d",
+      "measurements": {
+        "peakDb": -5.7739,
+        "rmsDb": -20.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.068541244
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.mochlik.effort.03.wav",
+          "bytes": 53804,
+          "sha256": "c5489d263e0d2a7c1568286c83da44528e2a4bbcf59aac5ad962ddd6042f483d"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "actor.mochlik.sleep.01",
+      "kind": "effect",
+      "title": "Mochlik sleep 1",
+      "description": "An original nonverbal warm hollow forest hum, shaped into a slow sleepy sigh. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 64800,
+      "durationSeconds": 1.35,
+      "decodedBytes": 259200,
+      "masterSha256": "c7c345f75ec0863c8d21f86f5400d769d6f583586ce1b1c0144718cff3a0abbe",
+      "measurements": {
+        "peakDb": -7.6627,
+        "rmsDb": -22.0,
+        "dc": 1e-09,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.055835783
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.mochlik.sleep.01.wav",
+          "bytes": 129644,
+          "sha256": "c7c345f75ec0863c8d21f86f5400d769d6f583586ce1b1c0144718cff3a0abbe"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "actor.mochlik.sleep.02",
+      "kind": "effect",
+      "title": "Mochlik sleep 2",
+      "description": "An original nonverbal warm hollow forest hum, shaped into a slow sleepy sigh. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 48000,
+      "durationSeconds": 1.0,
+      "decodedBytes": 192000,
+      "masterSha256": "6d0c7df52249ee9ea15b432add1b95f9b52ffa69d9c317cab4f027c208c6f953",
+      "measurements": {
+        "peakDb": -8.0012,
+        "rmsDb": -22.0,
+        "dc": 1e-09,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.050487161
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.mochlik.sleep.02.wav",
+          "bytes": 96044,
+          "sha256": "6d0c7df52249ee9ea15b432add1b95f9b52ffa69d9c317cab4f027c208c6f953"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "actor.mochlik.sleep.03",
+      "kind": "effect",
+      "title": "Mochlik sleep 3",
+      "description": "An original nonverbal warm hollow forest hum, shaped into a slow sleepy sigh. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 65760,
+      "durationSeconds": 1.37,
+      "decodedBytes": 263040,
+      "masterSha256": "a511697e7a3b307ce74790672f732bd8b422f3e6a44831282b743b127842ea35",
+      "measurements": {
+        "peakDb": -7.3412,
+        "rmsDb": -22.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.057695471
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.mochlik.sleep.03.wav",
+          "bytes": 131564,
+          "sha256": "a511697e7a3b307ce74790672f732bd8b422f3e6a44831282b743b127842ea35"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "actor.plesk.greeting.01",
+      "kind": "effect",
+      "title": "Plesk greeting 1",
+      "description": "An original nonverbal light rounded watery burble, shaped into a curious rising greeting. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 36096,
+      "durationSeconds": 0.752,
+      "decodedBytes": 144384,
+      "masterSha256": "690fd5633a65f5aaff268430ee2d14f8b255c63b6379891007651158a8f438df",
+      "measurements": {
+        "peakDb": -7.5582,
+        "rmsDb": -20.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.067266159
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.plesk.greeting.01.wav",
+          "bytes": 72236,
+          "sha256": "690fd5633a65f5aaff268430ee2d14f8b255c63b6379891007651158a8f438df"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "actor.plesk.greeting.02",
+      "kind": "effect",
+      "title": "Plesk greeting 2",
+      "description": "An original nonverbal light rounded watery burble, shaped into a curious rising greeting. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 35232,
+      "durationSeconds": 0.734,
+      "decodedBytes": 140928,
+      "masterSha256": "595013e4537b7f3118d0ef353c0e8f347fe045a2de4b85304543e377b5a53167",
+      "measurements": {
+        "peakDb": -7.4648,
+        "rmsDb": -20.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.071749896
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.plesk.greeting.02.wav",
+          "bytes": 70508,
+          "sha256": "595013e4537b7f3118d0ef353c0e8f347fe045a2de4b85304543e377b5a53167"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "actor.plesk.greeting.03",
+      "kind": "effect",
+      "title": "Plesk greeting 3",
+      "description": "An original nonverbal light rounded watery burble, shaped into a curious rising greeting. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 41280,
+      "durationSeconds": 0.86,
+      "decodedBytes": 165120,
+      "masterSha256": "39c81469dbdddbeed8af713f3ee74c0c6d1fbe84312adb84c3956752cbc7c4f5",
+      "measurements": {
+        "peakDb": -7.5593,
+        "rmsDb": -20.0,
+        "dc": 1e-09,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.070927382
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.plesk.greeting.03.wav",
+          "bytes": 82604,
+          "sha256": "39c81469dbdddbeed8af713f3ee74c0c6d1fbe84312adb84c3956752cbc7c4f5"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "actor.plesk.joy.01",
+      "kind": "effect",
+      "title": "Plesk joy 1",
+      "description": "An original nonverbal light rounded watery burble, shaped into a bouncing happy phrase. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 41280,
+      "durationSeconds": 0.86,
+      "decodedBytes": 165120,
+      "masterSha256": "43386d76bec47f738b670b8a8896b05996e57b46db6c9de9492633d4af1e53f0",
+      "measurements": {
+        "peakDb": -7.653,
+        "rmsDb": -20.0,
+        "dc": 1e-09,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.070621848
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.plesk.joy.01.wav",
+          "bytes": 82604,
+          "sha256": "43386d76bec47f738b670b8a8896b05996e57b46db6c9de9492633d4af1e53f0"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "actor.plesk.joy.02",
+      "kind": "effect",
+      "title": "Plesk joy 2",
+      "description": "An original nonverbal light rounded watery burble, shaped into a bouncing happy phrase. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 39120,
+      "durationSeconds": 0.815,
+      "decodedBytes": 156480,
+      "masterSha256": "b1e595c5e3db991a10ef56abacbc90115f6fbe225d1132acdfcda58ae9f4a058",
+      "measurements": {
+        "peakDb": -7.6872,
+        "rmsDb": -20.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.064958945
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.plesk.joy.02.wav",
+          "bytes": 78284,
+          "sha256": "b1e595c5e3db991a10ef56abacbc90115f6fbe225d1132acdfcda58ae9f4a058"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "actor.plesk.joy.03",
+      "kind": "effect",
+      "title": "Plesk joy 3",
+      "description": "An original nonverbal light rounded watery burble, shaped into a bouncing happy phrase. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 43872,
+      "durationSeconds": 0.914,
+      "decodedBytes": 175488,
+      "masterSha256": "3cc852391db6d6a998b4058c2345f9246c3eaac7488fdf9b7aa9260d00d2b707",
+      "measurements": {
+        "peakDb": -7.1163,
+        "rmsDb": -20.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.083996266
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.plesk.joy.03.wav",
+          "bytes": 87788,
+          "sha256": "3cc852391db6d6a998b4058c2345f9246c3eaac7488fdf9b7aa9260d00d2b707"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "actor.plesk.effort.01",
+      "kind": "effect",
+      "title": "Plesk effort 1",
+      "description": "An original nonverbal light rounded watery burble, shaped into a brief breathy effort. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 21408,
+      "durationSeconds": 0.446,
+      "decodedBytes": 85632,
+      "masterSha256": "1e83212cd74e4e83e032d20ae70f34f1b13871f42cdd6a6a8ee104cae1e1eb66",
+      "measurements": {
+        "peakDb": -6.4705,
+        "rmsDb": -20.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.088807717
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.plesk.effort.01.wav",
+          "bytes": 42860,
+          "sha256": "1e83212cd74e4e83e032d20ae70f34f1b13871f42cdd6a6a8ee104cae1e1eb66"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "actor.plesk.effort.02",
+      "kind": "effect",
+      "title": "Plesk effort 2",
+      "description": "An original nonverbal light rounded watery burble, shaped into a brief breathy effort. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 27456,
+      "durationSeconds": 0.572,
+      "decodedBytes": 109824,
+      "masterSha256": "483cfb4d637666801e375e429ce69c7a118ed834e42049c3e22a94b3c8e8038b",
+      "measurements": {
+        "peakDb": -5.1566,
+        "rmsDb": -20.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.104958922
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.plesk.effort.02.wav",
+          "bytes": 54956,
+          "sha256": "483cfb4d637666801e375e429ce69c7a118ed834e42049c3e22a94b3c8e8038b"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "actor.plesk.effort.03",
+      "kind": "effect",
+      "title": "Plesk effort 3",
+      "description": "An original nonverbal light rounded watery burble, shaped into a brief breathy effort. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 24864,
+      "durationSeconds": 0.518,
+      "decodedBytes": 99456,
+      "masterSha256": "e2173452af6ab583adc124c4822283c95ade2d2e90d90da75a3b3ac74da3e499",
+      "measurements": {
+        "peakDb": -6.3497,
+        "rmsDb": -20.0,
+        "dc": 1e-09,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.090026781
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.plesk.effort.03.wav",
+          "bytes": 49772,
+          "sha256": "e2173452af6ab583adc124c4822283c95ade2d2e90d90da75a3b3ac74da3e499"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "actor.plesk.sleep.01",
+      "kind": "effect",
+      "title": "Plesk sleep 1",
+      "description": "An original nonverbal light rounded watery burble, shaped into a slow sleepy sigh. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 58992,
+      "durationSeconds": 1.229,
+      "decodedBytes": 235968,
+      "masterSha256": "0df4cacaa177785d80da52a9a0cf44e1a937a7e897930995bb2fb89a480a644c",
+      "measurements": {
+        "peakDb": -7.3679,
+        "rmsDb": -22.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.069174677
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.plesk.sleep.01.wav",
+          "bytes": 118028,
+          "sha256": "0df4cacaa177785d80da52a9a0cf44e1a937a7e897930995bb2fb89a480a644c"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "actor.plesk.sleep.02",
+      "kind": "effect",
+      "title": "Plesk sleep 2",
+      "description": "An original nonverbal light rounded watery burble, shaped into a slow sleepy sigh. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 43872,
+      "durationSeconds": 0.914,
+      "decodedBytes": 175488,
+      "masterSha256": "2cb2ad06b6cff9b69b04fedced03d1d95a26600f9eaf76139693e2f21474a188",
+      "measurements": {
+        "peakDb": -8.7282,
+        "rmsDb": -22.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.062086694
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.plesk.sleep.02.wav",
+          "bytes": 87788,
+          "sha256": "2cb2ad06b6cff9b69b04fedced03d1d95a26600f9eaf76139693e2f21474a188"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "actor.plesk.sleep.03",
+      "kind": "effect",
+      "title": "Plesk sleep 3",
+      "description": "An original nonverbal light rounded watery burble, shaped into a slow sleepy sigh. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 59856,
+      "durationSeconds": 1.247,
+      "decodedBytes": 239424,
+      "masterSha256": "e744d2c5304aee43b821c87669ec3ef77826da689bc8699e56a5c3b862c914f5",
+      "measurements": {
+        "peakDb": -8.223,
+        "rmsDb": -22.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.062144324
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.plesk.sleep.03.wav",
+          "bytes": 119756,
+          "sha256": "e744d2c5304aee43b821c87669ec3ef77826da689bc8699e56a5c3b862c914f5"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "actor.builder.greeting.01",
+      "kind": "effect",
+      "title": "Builder greeting 1",
+      "description": "An original nonverbal low soft chesty rumble, shaped into a curious rising greeting. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 42950,
+      "durationSeconds": 0.894792,
+      "decodedBytes": 171800,
+      "masterSha256": "7db12ffab8968385fb18492d66a7dbfc603e6f0c2ba900136a854294fa3f0963",
+      "measurements": {
+        "peakDb": -7.7806,
+        "rmsDb": -20.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.043905977
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.builder.greeting.01.wav",
+          "bytes": 85944,
+          "sha256": "7db12ffab8968385fb18492d66a7dbfc603e6f0c2ba900136a854294fa3f0963"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "actor.builder.greeting.02",
+      "kind": "effect",
+      "title": "Builder greeting 2",
+      "description": "An original nonverbal low soft chesty rumble, shaped into a curious rising greeting. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 41885,
+      "durationSeconds": 0.872604,
+      "decodedBytes": 167540,
+      "masterSha256": "5ab79d0d74df0c436f5e853b0f98f55c25662716622a739f15cd0b5f915607f7",
+      "measurements": {
+        "peakDb": -7.8301,
+        "rmsDb": -20.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.047894076
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.builder.greeting.02.wav",
+          "bytes": 83814,
+          "sha256": "5ab79d0d74df0c436f5e853b0f98f55c25662716622a739f15cd0b5f915607f7"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "actor.builder.greeting.03",
+      "kind": "effect",
+      "title": "Builder greeting 3",
+      "description": "An original nonverbal low soft chesty rumble, shaped into a curious rising greeting. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 49344,
+      "durationSeconds": 1.028,
+      "decodedBytes": 197376,
+      "masterSha256": "2b74b3bbed0bf90652a27339387dcbc81242c65bb227139ca6eebe05602c5624",
+      "measurements": {
+        "peakDb": -7.4222,
+        "rmsDb": -20.0,
+        "dc": 1e-09,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.045153379
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.builder.greeting.03.wav",
+          "bytes": 98732,
+          "sha256": "2b74b3bbed0bf90652a27339387dcbc81242c65bb227139ca6eebe05602c5624"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "actor.builder.joy.01",
+      "kind": "effect",
+      "title": "Builder joy 1",
+      "description": "An original nonverbal low soft chesty rumble, shaped into a bouncing happy phrase. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 49344,
+      "durationSeconds": 1.028,
+      "decodedBytes": 197376,
+      "masterSha256": "46858d4021a6fe0f5e1467cd3fc251c489d5edf7bae24423d5d85de3a0d42b9e",
+      "measurements": {
+        "peakDb": -7.0556,
+        "rmsDb": -20.0,
+        "dc": 1e-09,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.059593454
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.builder.joy.01.wav",
+          "bytes": 98732,
+          "sha256": "46858d4021a6fe0f5e1467cd3fc251c489d5edf7bae24423d5d85de3a0d42b9e"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "actor.builder.joy.02",
+      "kind": "effect",
+      "title": "Builder joy 2",
+      "description": "An original nonverbal low soft chesty rumble, shaped into a bouncing happy phrase. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 46680,
+      "durationSeconds": 0.9725,
+      "decodedBytes": 186720,
+      "masterSha256": "2050ec9b84e8d6444f31e72e0b0b9652dc207c9b9bbcf01cee0f3ad5f5ca9154",
+      "measurements": {
+        "peakDb": -7.5358,
+        "rmsDb": -20.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.042248353
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.builder.joy.02.wav",
+          "bytes": 93404,
+          "sha256": "2050ec9b84e8d6444f31e72e0b0b9652dc207c9b9bbcf01cee0f3ad5f5ca9154"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "actor.builder.joy.03",
+      "kind": "effect",
+      "title": "Builder joy 3",
+      "description": "An original nonverbal low soft chesty rumble, shaped into a bouncing happy phrase. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 52541,
+      "durationSeconds": 1.094604,
+      "decodedBytes": 210164,
+      "masterSha256": "48a82d1e62a24e2fd1b07bf2fad8a11d2f4d6107fb6d760a9f64ec123d364b3d",
+      "measurements": {
+        "peakDb": -6.5538,
+        "rmsDb": -20.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.047618538
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.builder.joy.03.wav",
+          "bytes": 105126,
+          "sha256": "48a82d1e62a24e2fd1b07bf2fad8a11d2f4d6107fb6d760a9f64ec123d364b3d"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "actor.builder.effort.01",
+      "kind": "effect",
+      "title": "Builder effort 1",
+      "description": "An original nonverbal low soft chesty rumble, shaped into a brief breathy effort. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 24835,
+      "durationSeconds": 0.517396,
+      "decodedBytes": 99340,
+      "masterSha256": "59a80738a81ac5e2b285a7930d8f5683ffd09823562513d7ac50308a96519e3c",
+      "measurements": {
+        "peakDb": -6.2762,
+        "rmsDb": -20.0,
+        "dc": 1e-09,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.058627054
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.builder.effort.01.wav",
+          "bytes": 49714,
+          "sha256": "59a80738a81ac5e2b285a7930d8f5683ffd09823562513d7ac50308a96519e3c"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "actor.builder.effort.02",
+      "kind": "effect",
+      "title": "Builder effort 2",
+      "description": "An original nonverbal low soft chesty rumble, shaped into a brief breathy effort. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 32294,
+      "durationSeconds": 0.672792,
+      "decodedBytes": 129176,
+      "masterSha256": "c5c34b25c3f3e32a39c9e969e4d2d3ddc964b3661af7ab891395f846f54596f4",
+      "measurements": {
+        "peakDb": -4.2757,
+        "rmsDb": -20.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.070572473
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.builder.effort.02.wav",
+          "bytes": 64632,
+          "sha256": "c5c34b25c3f3e32a39c9e969e4d2d3ddc964b3661af7ab891395f846f54596f4"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "actor.builder.effort.03",
+      "kind": "effect",
+      "title": "Builder effort 3",
+      "description": "An original nonverbal low soft chesty rumble, shaped into a brief breathy effort. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 29098,
+      "durationSeconds": 0.606208,
+      "decodedBytes": 116392,
+      "masterSha256": "ede895b38796fe0693aa08e6558134cd126571ce6c387cc6b058e341c0d31d9a",
+      "measurements": {
+        "peakDb": -5.641,
+        "rmsDb": -20.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.062380515
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.builder.effort.03.wav",
+          "bytes": 58240,
+          "sha256": "ede895b38796fe0693aa08e6558134cd126571ce6c387cc6b058e341c0d31d9a"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "actor.builder.sleep.01",
+      "kind": "effect",
+      "title": "Builder sleep 1",
+      "description": "An original nonverbal low soft chesty rumble, shaped into a slow sleepy sigh. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 71189,
+      "durationSeconds": 1.483104,
+      "decodedBytes": 284756,
+      "masterSha256": "cd927675cdf69c600ac2a48a0e19a2d44969d70dc970237c9e530f3beca837da",
+      "measurements": {
+        "peakDb": -7.3659,
+        "rmsDb": -22.0,
+        "dc": 1e-09,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.053634137
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.builder.sleep.01.wav",
+          "bytes": 142422,
+          "sha256": "cd927675cdf69c600ac2a48a0e19a2d44969d70dc970237c9e530f3beca837da"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "actor.builder.sleep.02",
+      "kind": "effect",
+      "title": "Builder sleep 2",
+      "description": "An original nonverbal low soft chesty rumble, shaped into a slow sleepy sigh. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 52541,
+      "durationSeconds": 1.094604,
+      "decodedBytes": 210164,
+      "masterSha256": "e40e46f0f40f48fb0fc8536b2f226f172ffafd6ba86becde35ecfff40758ce31",
+      "measurements": {
+        "peakDb": -8.8081,
+        "rmsDb": -22.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.049321007
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.builder.sleep.02.wav",
+          "bytes": 105126,
+          "sha256": "e40e46f0f40f48fb0fc8536b2f226f172ffafd6ba86becde35ecfff40758ce31"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "actor.builder.sleep.03",
+      "kind": "effect",
+      "title": "Builder sleep 3",
+      "description": "An original nonverbal low soft chesty rumble, shaped into a slow sleepy sigh. No voice recordings.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 72254,
+      "durationSeconds": 1.505292,
+      "decodedBytes": 289016,
+      "masterSha256": "78ab06b3b9a597eae160458ac18bbaf5b54f49f16074329620f9c898a6c3f546",
+      "measurements": {
+        "peakDb": -7.5724,
+        "rmsDb": -22.0,
+        "dc": 1e-09,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.052103862
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/actor.builder.sleep.03.wav",
+          "bytes": 144552,
+          "sha256": "78ab06b3b9a597eae160458ac18bbaf5b54f49f16074329620f9c898a6c3f546"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "action.step.grass.01",
+      "kind": "effect",
+      "title": "Moss footfall 1",
+      "description": "A low padded footstep and a small brushing grass texture.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 15840,
+      "durationSeconds": 0.33,
+      "decodedBytes": 63360,
+      "masterSha256": "6bf0fec5ece6960a9fd23470137147129e9e143e52e260c733acd5149111a0f4",
+      "measurements": {
+        "peakDb": -3.5,
+        "rmsDb": -22.6769,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.117672503
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/action.step.grass.01.wav",
+          "bytes": 31724,
+          "sha256": "6bf0fec5ece6960a9fd23470137147129e9e143e52e260c733acd5149111a0f4"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "action.step.grass.02",
+      "kind": "effect",
+      "title": "Moss footfall 2",
+      "description": "A low padded footstep and a small brushing grass texture.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 17280,
+      "durationSeconds": 0.36,
+      "decodedBytes": 69120,
+      "masterSha256": "44b5371f21dfead6faa9f0ad2808b8e46d29a5b9c64b9f9564f85b7d27843bda",
+      "measurements": {
+        "peakDb": -3.5,
+        "rmsDb": -21.7662,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.16195029
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/action.step.grass.02.wav",
+          "bytes": 34604,
+          "sha256": "44b5371f21dfead6faa9f0ad2808b8e46d29a5b9c64b9f9564f85b7d27843bda"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "action.step.grass.03",
+      "kind": "effect",
+      "title": "Moss footfall 3",
+      "description": "A low padded footstep and a small brushing grass texture.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 14880,
+      "durationSeconds": 0.31,
+      "decodedBytes": 59520,
+      "masterSha256": "627e9c8294f64a1ac7198c447b77ebcc8aa34c5798ec786c0f7fc5347f135b06",
+      "measurements": {
+        "peakDb": -3.7826,
+        "rmsDb": -21.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.140583694
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/action.step.grass.03.wav",
+          "bytes": 29804,
+          "sha256": "627e9c8294f64a1ac7198c447b77ebcc8aa34c5798ec786c0f7fc5347f135b06"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "action.step.grass.04",
+      "kind": "effect",
+      "title": "Moss footfall 4",
+      "description": "A low padded footstep and a small brushing grass texture.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 18240,
+      "durationSeconds": 0.38,
+      "decodedBytes": 72960,
+      "masterSha256": "65062d94b7e06813b0f7c4ebfe74766284b07ae3e64fb008d4997a3dfd6255aa",
+      "measurements": {
+        "peakDb": -3.5,
+        "rmsDb": -22.1342,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.174165189
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/action.step.grass.04.wav",
+          "bytes": 36524,
+          "sha256": "65062d94b7e06813b0f7c4ebfe74766284b07ae3e64fb008d4997a3dfd6255aa"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "action.step.wood.01",
+      "kind": "effect",
+      "title": "Old board footfall 1",
+      "description": "A small hollow board flex with a softened heel and toe.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 18000,
+      "durationSeconds": 0.375,
+      "decodedBytes": 72000,
+      "masterSha256": "6cc79bf4ca0c3a33fe5c19af1a020b6a7ec8c30f5fb5e78b3f9a6b59aac7e733",
+      "measurements": {
+        "peakDb": -5.9136,
+        "rmsDb": -21.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.018515319
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/action.step.wood.01.wav",
+          "bytes": 36044,
+          "sha256": "6cc79bf4ca0c3a33fe5c19af1a020b6a7ec8c30f5fb5e78b3f9a6b59aac7e733"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "action.step.wood.02",
+      "kind": "effect",
+      "title": "Old board footfall 2",
+      "description": "A small hollow board flex with a softened heel and toe.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 18720,
+      "durationSeconds": 0.39,
+      "decodedBytes": 74880,
+      "masterSha256": "1659ea7293fc0ea23949fdcceedcc324bbd421866956edd324de04da5d6e5649",
+      "measurements": {
+        "peakDb": -5.7898,
+        "rmsDb": -21.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.018377036
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/action.step.wood.02.wav",
+          "bytes": 37484,
+          "sha256": "1659ea7293fc0ea23949fdcceedcc324bbd421866956edd324de04da5d6e5649"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "action.step.wood.03",
+      "kind": "effect",
+      "title": "Old board footfall 3",
+      "description": "A small hollow board flex with a softened heel and toe.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 19440,
+      "durationSeconds": 0.405,
+      "decodedBytes": 77760,
+      "masterSha256": "5eb6a4241cc72189be73b20915c23d2ab50af39d7007b7642ba4f8fccc8a2912",
+      "measurements": {
+        "peakDb": -5.8264,
+        "rmsDb": -21.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.019290827
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/action.step.wood.03.wav",
+          "bytes": 38924,
+          "sha256": "5eb6a4241cc72189be73b20915c23d2ab50af39d7007b7642ba4f8fccc8a2912"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "action.step.wood.04",
+      "kind": "effect",
+      "title": "Old board footfall 4",
+      "description": "A small hollow board flex with a softened heel and toe.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 20160,
+      "durationSeconds": 0.42,
+      "decodedBytes": 80640,
+      "masterSha256": "904be6af1bab55d286c7c855391e4215d90e9552f53b846c1bc27db39938aa82",
+      "measurements": {
+        "peakDb": -5.5214,
+        "rmsDb": -21.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.018114753
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/action.step.wood.04.wav",
+          "bytes": 40364,
+          "sha256": "904be6af1bab55d286c7c855391e4215d90e9552f53b846c1bc27db39938aa82"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "action.hammer.01",
+      "kind": "effect",
+      "title": "Workbench mallet 1",
+      "description": "One rounded wooden mallet strike with a warm bench resonance.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 26784,
+      "durationSeconds": 0.558,
+      "decodedBytes": 107136,
+      "masterSha256": "2ca2a096ac4ba47cf67ad596e818d207399b75bac754836a66df249dbbd5be97",
+      "measurements": {
+        "peakDb": -3.5,
+        "rmsDb": -21.2725,
+        "dc": 1e-09,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.114202738
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/action.hammer.01.wav",
+          "bytes": 53612,
+          "sha256": "2ca2a096ac4ba47cf67ad596e818d207399b75bac754836a66df249dbbd5be97"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "action.hammer.02",
+      "kind": "effect",
+      "title": "Workbench mallet 2",
+      "description": "One rounded wooden mallet strike with a warm bench resonance.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 27648,
+      "durationSeconds": 0.576,
+      "decodedBytes": 110592,
+      "masterSha256": "6c03bb89d879920f878837b2fe2dfbbd4ccf18ccb359b2fb4eb1fd94a887090d",
+      "measurements": {
+        "peakDb": -3.5,
+        "rmsDb": -21.5101,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.090031415
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/action.hammer.02.wav",
+          "bytes": 55340,
+          "sha256": "6c03bb89d879920f878837b2fe2dfbbd4ccf18ccb359b2fb4eb1fd94a887090d"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "action.hammer.03",
+      "kind": "effect",
+      "title": "Workbench mallet 3",
+      "description": "One rounded wooden mallet strike with a warm bench resonance.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 28512,
+      "durationSeconds": 0.594,
+      "decodedBytes": 114048,
+      "masterSha256": "a1fa75f93144a99ed90bccbd4a044ee38fab0e57f6e80ad4c7a58d7ecb0256db",
+      "measurements": {
+        "peakDb": -3.5,
+        "rmsDb": -21.6678,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.095018268
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/action.hammer.03.wav",
+          "bytes": 57068,
+          "sha256": "a1fa75f93144a99ed90bccbd4a044ee38fab0e57f6e80ad4c7a58d7ecb0256db"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "action.hammer.04",
+      "kind": "effect",
+      "title": "Workbench mallet 4",
+      "description": "One rounded wooden mallet strike with a warm bench resonance.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 29376,
+      "durationSeconds": 0.612,
+      "decodedBytes": 117504,
+      "masterSha256": "397352c52f02e33a918dddbbdae59adf1d105fb72f90121fbd242a0b6f7feee9",
+      "measurements": {
+        "peakDb": -3.5,
+        "rmsDb": -21.4665,
+        "dc": 1e-09,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.101767682
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/action.hammer.04.wav",
+          "bytes": 58796,
+          "sha256": "397352c52f02e33a918dddbbdae59adf1d105fb72f90121fbd242a0b6f7feee9"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "action.water.pour.01",
+      "kind": "effect",
+      "title": "Watering the roots 1",
+      "description": "An uneven gentle stream with original resonant droplets and a soft release.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 71040,
+      "durationSeconds": 1.48,
+      "decodedBytes": 284160,
+      "masterSha256": "dc1b1c3e41146df5b34a48fee776f000e35c799851e1367c16426aacf5b8c262",
+      "measurements": {
+        "peakDb": -4.8405,
+        "rmsDb": -21.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.219608456
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/action.water.pour.01.wav",
+          "bytes": 142124,
+          "sha256": "dc1b1c3e41146df5b34a48fee776f000e35c799851e1367c16426aacf5b8c262"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "action.water.pour.02",
+      "kind": "effect",
+      "title": "Watering the roots 2",
+      "description": "An uneven gentle stream with original resonant droplets and a soft release.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 80640,
+      "durationSeconds": 1.68,
+      "decodedBytes": 322560,
+      "masterSha256": "517f1141d40e05ddd7ed6d03b60646d6e30795c894aa797098ee6f1a134c8ad9",
+      "measurements": {
+        "peakDb": -5.4793,
+        "rmsDb": -21.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.216135561
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/action.water.pour.02.wav",
+          "bytes": 161324,
+          "sha256": "517f1141d40e05ddd7ed6d03b60646d6e30795c894aa797098ee6f1a134c8ad9"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "action.water.pour.03",
+      "kind": "effect",
+      "title": "Watering the roots 3",
+      "description": "An uneven gentle stream with original resonant droplets and a soft release.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 75360,
+      "durationSeconds": 1.57,
+      "decodedBytes": 301440,
+      "masterSha256": "49f77dfd20ed2daef0806b4b880818b830cbec4e7773212a5c1ce62095f059e5",
+      "measurements": {
+        "peakDb": -5.1542,
+        "rmsDb": -21.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.212739289
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/action.water.pour.03.wav",
+          "bytes": 150764,
+          "sha256": "49f77dfd20ed2daef0806b4b880818b830cbec4e7773212a5c1ce62095f059e5"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "action.water.pour.04",
+      "kind": "effect",
+      "title": "Watering the roots 4",
+      "description": "An uneven gentle stream with original resonant droplets and a soft release.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 86400,
+      "durationSeconds": 1.8,
+      "decodedBytes": 345600,
+      "masterSha256": "9c36217b585ce2fcbcd07a95498e360a94437fe78444d46e22557ff89528d86e",
+      "measurements": {
+        "peakDb": -4.4473,
+        "rmsDb": -21.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.180592194
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/action.water.pour.04.wav",
+          "bytes": 172844,
+          "sha256": "9c36217b585ce2fcbcd07a95498e360a94437fe78444d46e22557ff89528d86e"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "action.fish.splash.01",
+      "kind": "effect",
+      "title": "Small fish landing 1",
+      "description": "A rounded splash, gentle ripple and scattered droplets, without a sharp slap.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 55200,
+      "durationSeconds": 1.15,
+      "decodedBytes": 220800,
+      "masterSha256": "d1e5937724aea47a2ed782c19eed7e1d63cfda4f91f5286e65704f568bddf5e7",
+      "measurements": {
+        "peakDb": -3.5,
+        "rmsDb": -24.2276,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.12665379
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/action.fish.splash.01.wav",
+          "bytes": 110444,
+          "sha256": "d1e5937724aea47a2ed782c19eed7e1d63cfda4f91f5286e65704f568bddf5e7"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "action.fish.splash.02",
+      "kind": "effect",
+      "title": "Small fish landing 2",
+      "description": "A rounded splash, gentle ripple and scattered droplets, without a sharp slap.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 62880,
+      "durationSeconds": 1.31,
+      "decodedBytes": 251520,
+      "masterSha256": "097c4c5bc0958b29b344ef25ed54d9f15cee07f3ddfdeec0ba17c42d12846c39",
+      "measurements": {
+        "peakDb": -3.5,
+        "rmsDb": -23.0793,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.162203431
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/action.fish.splash.02.wav",
+          "bytes": 125804,
+          "sha256": "097c4c5bc0958b29b344ef25ed54d9f15cee07f3ddfdeec0ba17c42d12846c39"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "action.fish.splash.03",
+      "kind": "effect",
+      "title": "Small fish landing 3",
+      "description": "A rounded splash, gentle ripple and scattered droplets, without a sharp slap.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 58560,
+      "durationSeconds": 1.22,
+      "decodedBytes": 234240,
+      "masterSha256": "aaa1612d571754a7a2ccddf2feca0213b6cc6c41d5eef6ddd5ef8f7fb2010e14",
+      "measurements": {
+        "peakDb": -3.5,
+        "rmsDb": -23.9356,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.165120095
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/action.fish.splash.03.wav",
+          "bytes": 117164,
+          "sha256": "aaa1612d571754a7a2ccddf2feca0213b6cc6c41d5eef6ddd5ef8f7fb2010e14"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "action.fish.splash.04",
+      "kind": "effect",
+      "title": "Small fish landing 4",
+      "description": "A rounded splash, gentle ripple and scattered droplets, without a sharp slap.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 68640,
+      "durationSeconds": 1.43,
+      "decodedBytes": 274560,
+      "masterSha256": "29ee43e88b883d5c787371c5066ce7acac32ccb7dfd30bb8d80badd80d8eb655",
+      "measurements": {
+        "peakDb": -3.5,
+        "rmsDb": -25.3261,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.11211466
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/action.fish.splash.04.wav",
+          "bytes": 137324,
+          "sha256": "29ee43e88b883d5c787371c5066ce7acac32ccb7dfd30bb8d80badd80d8eb655"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "action.berry.pick.01",
+      "kind": "effect",
+      "title": "Berry into basket 1",
+      "description": "A delicate stem pop and leaf movement followed by a small woven-basket tap.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 23040,
+      "durationSeconds": 0.48,
+      "decodedBytes": 92160,
+      "masterSha256": "7afc78733c72708d67fded6d140f58740d2f2948a8adb4c5eb26d18bb97cdd04",
+      "measurements": {
+        "peakDb": -6.9739,
+        "rmsDb": -21.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.056694973
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/action.berry.pick.01.wav",
+          "bytes": 46124,
+          "sha256": "7afc78733c72708d67fded6d140f58740d2f2948a8adb4c5eb26d18bb97cdd04"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "action.berry.pick.02",
+      "kind": "effect",
+      "title": "Berry into basket 2",
+      "description": "A delicate stem pop and leaf movement followed by a small woven-basket tap.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 25920,
+      "durationSeconds": 0.54,
+      "decodedBytes": 103680,
+      "masterSha256": "d39ddcabbab2bf48763e4fdfe95184eac09987c95d6342d83fa735f0e60a72ee",
+      "measurements": {
+        "peakDb": -6.3567,
+        "rmsDb": -21.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.05606002
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/action.berry.pick.02.wav",
+          "bytes": 51884,
+          "sha256": "d39ddcabbab2bf48763e4fdfe95184eac09987c95d6342d83fa735f0e60a72ee"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "action.berry.pick.03",
+      "kind": "effect",
+      "title": "Berry into basket 3",
+      "description": "A delicate stem pop and leaf movement followed by a small woven-basket tap.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 24480,
+      "durationSeconds": 0.51,
+      "decodedBytes": 97920,
+      "masterSha256": "474752bf59e6d87902ceaeffd0ebaf11f3c194f0bb52650602d36de1a6fd12b8",
+      "measurements": {
+        "peakDb": -6.5439,
+        "rmsDb": -21.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.063149512
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/action.berry.pick.03.wav",
+          "bytes": 49004,
+          "sha256": "474752bf59e6d87902ceaeffd0ebaf11f3c194f0bb52650602d36de1a6fd12b8"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "action.berry.pick.04",
+      "kind": "effect",
+      "title": "Berry into basket 4",
+      "description": "A delicate stem pop and leaf movement followed by a small woven-basket tap.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 27360,
+      "durationSeconds": 0.57,
+      "decodedBytes": 109440,
+      "masterSha256": "fd42ded6f76600169b157aad4d2d9b359a3cf713d34bdd561a7109419212889f",
+      "measurements": {
+        "peakDb": -6.2777,
+        "rmsDb": -21.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.058937758
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/action.berry.pick.04.wav",
+          "bytes": 54764,
+          "sha256": "fd42ded6f76600169b157aad4d2d9b359a3cf713d34bdd561a7109419212889f"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "ui.tab.01",
+      "kind": "effect",
+      "title": "Small felt step 1",
+      "description": "A brief, quiet rounded tine for selecting an internal tab, with no swish or pitch movement.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 5280,
+      "durationSeconds": 0.11,
+      "decodedBytes": 21120,
+      "masterSha256": "45bc43cc750ac08db1c682fdd3b34a48bd1a31096df235d0425beefe51c09d5c",
+      "measurements": {
+        "peakDb": -15.102,
+        "rmsDb": -27.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.016463323
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/ui.tab.01.wav",
+          "bytes": 10604,
+          "sha256": "45bc43cc750ac08db1c682fdd3b34a48bd1a31096df235d0425beefe51c09d5c"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "ui.tab.02",
+      "kind": "effect",
+      "title": "Small felt step 2",
+      "description": "A brief, quiet rounded tine for selecting an internal tab, with no swish or pitch movement.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 5280,
+      "durationSeconds": 0.11,
+      "decodedBytes": 21120,
+      "masterSha256": "2d788f17c24063d7cdce311aecd9a7f5bd714b44865a602d7eb62dae92525c2d",
+      "measurements": {
+        "peakDb": -14.9868,
+        "rmsDb": -27.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.01749704
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/ui.tab.02.wav",
+          "bytes": 10604,
+          "sha256": "2d788f17c24063d7cdce311aecd9a7f5bd714b44865a602d7eb62dae92525c2d"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "ui.slider.01",
+      "kind": "effect",
+      "title": "Felt dial 1",
+      "description": "One very short muted tine; the interface gently adjusts its playback pitch with the selected volume.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 3840,
+      "durationSeconds": 0.08,
+      "decodedBytes": 15360,
+      "masterSha256": "6248bd90c3554c2448ee464d369dd942b366fe7d5a76173cc6c351dbd48054d3",
+      "measurements": {
+        "peakDb": -16.3197,
+        "rmsDb": -28.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.013171266
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/ui.slider.01.wav",
+          "bytes": 7724,
+          "sha256": "6248bd90c3554c2448ee464d369dd942b366fe7d5a76173cc6c351dbd48054d3"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "weather.wind.01",
+      "kind": "loop",
+      "title": "Air between the Leaves",
+      "description": "A restrained low tree breeze with slow, shallow swells and soft leaf movement.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 576000,
+      "durationSeconds": 12.0,
+      "decodedBytes": 2304000,
+      "masterSha256": "2a8b83e943aee56dcd967400f371795ddeceba106407f5e2729dd843571c74fb",
+      "measurements": {
+        "peakDb": -19.0587,
+        "rmsDb": -32.0,
+        "dc": 0.0,
+        "seamDelta": 0.000551933,
+        "maxAdjacentDelta": 0.004971789
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/loop/weather.wind.01.wav",
+          "bytes": 1152044,
+          "sha256": "2a8b83e943aee56dcd967400f371795ddeceba106407f5e2729dd843571c74fb"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "cooking.simmer.01",
+      "kind": "loop",
+      "title": "Soup above the Embers",
+      "description": "Quiet simmering liquid with rounded irregular bubbles; a separate loop for active cooking, without baked-in fire.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 288000,
+      "durationSeconds": 6.0,
+      "decodedBytes": 1152000,
+      "masterSha256": "95d71b2d1a8f58905f57e7e9e32536898c17c25a60279355fc50fa2e2ff91135",
+      "measurements": {
+        "peakDb": -12.2789,
+        "rmsDb": -25.0,
+        "dc": 0.0,
+        "seamDelta": 0.00408785,
+        "maxAdjacentDelta": 0.024095375
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/loop/cooking.simmer.01.wav",
+          "bytes": 576044,
+          "sha256": "95d71b2d1a8f58905f57e7e9e32536898c17c25a60279355fc50fa2e2ff91135"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "action.bush.rustle.01",
+      "kind": "effect",
+      "title": "Into the berry leaves 1",
+      "description": "A soft leaf brush, padded moss contact and a short settling rustle.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 27600,
+      "durationSeconds": 0.575,
+      "decodedBytes": 110400,
+      "masterSha256": "6099a5606423f53cb71a5d8a43724ba6cdecadba91b47f3332efd6b0bb289e84",
+      "measurements": {
+        "peakDb": -7.5801,
+        "rmsDb": -25.0,
+        "dc": 1e-09,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.063059688
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/action.bush.rustle.01.wav",
+          "bytes": 55244,
+          "sha256": "6099a5606423f53cb71a5d8a43724ba6cdecadba91b47f3332efd6b0bb289e84"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "action.bush.rustle.02",
+      "kind": "effect",
+      "title": "Into the berry leaves 2",
+      "description": "A soft leaf brush, padded moss contact and a short settling rustle.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 29280,
+      "durationSeconds": 0.61,
+      "decodedBytes": 117120,
+      "masterSha256": "ad1f3745a1bef91954e9882320eae037fdb672830eb7b0deedef7ab38c9f777c",
+      "measurements": {
+        "peakDb": -8.7563,
+        "rmsDb": -25.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.057255328
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/action.bush.rustle.02.wav",
+          "bytes": 58604,
+          "sha256": "ad1f3745a1bef91954e9882320eae037fdb672830eb7b0deedef7ab38c9f777c"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "action.mushroom.eat.01",
+      "kind": "effect",
+      "title": "A mushroom snack 1",
+      "description": "One small muted bite with a soft earthy texture; no wet mouth or sharp chewing noise.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 10320,
+      "durationSeconds": 0.215,
+      "decodedBytes": 41280,
+      "masterSha256": "d665bf29fefb3115114b6e2b2a652489cdd09d376fb33cad46469024c04541dc",
+      "measurements": {
+        "peakDb": -11.8629,
+        "rmsDb": -26.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.055928826
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/action.mushroom.eat.01.wav",
+          "bytes": 20684,
+          "sha256": "d665bf29fefb3115114b6e2b2a652489cdd09d376fb33cad46469024c04541dc"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "action.mushroom.eat.02",
+      "kind": "effect",
+      "title": "A mushroom snack 2",
+      "description": "One small muted bite with a soft earthy texture; no wet mouth or sharp chewing noise.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 11520,
+      "durationSeconds": 0.24,
+      "decodedBytes": 46080,
+      "masterSha256": "e6e2561ccfcc9d5912a77539fc41f33c60b440fc7d86bae1b647f610e7d3ae0a",
+      "measurements": {
+        "peakDb": -11.0272,
+        "rmsDb": -26.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.059946928
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/action.mushroom.eat.02.wav",
+          "bytes": 23084,
+          "sha256": "e6e2561ccfcc9d5912a77539fc41f33c60b440fc7d86bae1b647f610e7d3ae0a"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "water.drop.01",
+      "kind": "effect",
+      "title": "A drop in the river 1",
+      "description": "One rounded falling droplet and a tiny soft ripple, for the visible water-drop animation.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 12720,
+      "durationSeconds": 0.265,
+      "decodedBytes": 50880,
+      "masterSha256": "15d1cb94317dfd02ca902e02b1e6a0d85c251aa70829c33ae60a1602fd9e5696",
+      "measurements": {
+        "peakDb": -13.5202,
+        "rmsDb": -28.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.02025649
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/water.drop.01.wav",
+          "bytes": 25484,
+          "sha256": "15d1cb94317dfd02ca902e02b1e6a0d85c251aa70829c33ae60a1602fd9e5696"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "water.drop.02",
+      "kind": "effect",
+      "title": "A drop in the river 2",
+      "description": "One rounded falling droplet and a tiny soft ripple, for the visible water-drop animation.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 13920,
+      "durationSeconds": 0.29,
+      "decodedBytes": 55680,
+      "masterSha256": "e8a7226bad7326f393e229b273ffec4a432bf14a4f33d12f1c3b3cdaea5384c2",
+      "measurements": {
+        "peakDb": -12.5427,
+        "rmsDb": -28.0,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.025520045
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/water.drop.02.wav",
+          "bytes": 27884,
+          "sha256": "e8a7226bad7326f393e229b273ffec4a432bf14a4f33d12f1c3b3cdaea5384c2"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "ui.startup.01",
+      "kind": "effect",
+      "title": "A small awakening 1",
+      "description": "A compact two-note felt signature, with a warm padded pop and a gentle rising fifth for the logo reveal. No noise sweep or long fanfare.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 26880,
+      "durationSeconds": 0.56,
+      "decodedBytes": 107520,
+      "masterSha256": "01774aff6707a0fe0e2a71dc0640ab74042b3c0ff5d0738fb0b70709f3137339",
+      "measurements": {
+        "peakDb": -11.2472,
+        "rmsDb": -24.5,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.023028553
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/ui.startup.01.wav",
+          "bytes": 53804,
+          "sha256": "01774aff6707a0fe0e2a71dc0640ab74042b3c0ff5d0738fb0b70709f3137339"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "ui.daily-reward.01",
+      "kind": "effect",
+      "title": "A gift gathered 1",
+      "description": "A short original ascending felt arpeggio for collecting the daily gift, with a padded low note and a softly damped high finish.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 36480,
+      "durationSeconds": 0.76,
+      "decodedBytes": 145920,
+      "masterSha256": "9ac1feeb91a64f7f21c5ed34bc1efa9ed7673435fea2b2e0ea46b7169f6fe9ba",
+      "measurements": {
+        "peakDb": -10.062,
+        "rmsDb": -23.5,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.030984938
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/ui.daily-reward.01.wav",
+          "bytes": 73004,
+          "sha256": "9ac1feeb91a64f7f21c5ed34bc1efa9ed7673435fea2b2e0ea46b7169f6fe9ba"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "ui.construction-complete.01",
+      "kind": "effect",
+      "title": "A home made ready 1",
+      "description": "Two soft wooden finishing taps resolve into a short warm felt major chord for a confirmed building completion. No external samples.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 44160,
+      "durationSeconds": 0.92,
+      "decodedBytes": 176640,
+      "masterSha256": "10a10f1adabf64d318608370594521e0a8aa7c235e1b2cc3a351428bcda4752b",
+      "measurements": {
+        "peakDb": -9.4394,
+        "rmsDb": -22.5,
+        "dc": 1e-09,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.024776705
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/ui.construction-complete.01.wav",
+          "bytes": 88364,
+          "sha256": "10a10f1adabf64d318608370594521e0a8aa7c235e1b2cc3a351428bcda4752b"
+        }
+      ],
+      "composition": {}
+    }
+  ]
+}

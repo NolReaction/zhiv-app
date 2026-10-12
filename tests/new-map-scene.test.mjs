@@ -37,26 +37,26 @@ async function modules(override) {
     Object.assign(scene, structuredClone(fixture), override);
     const loaded = {
       ...await vite.ssrLoadModule("/features/mochlik/scene.ts"),
-      ...await vite.ssrLoadModule("/features/world/map-engine.ts"),
-      ...await vite.ssrLoadModule("/features/world/art.ts"),
-      ...await vite.ssrLoadModule("/features/world/presentation.ts"),
+      ...await vite.ssrLoadModule("/features/world/scene/map-engine.ts"),
+      ...await vite.ssrLoadModule("/features/world/scene/art.ts"),
+      ...await vite.ssrLoadModule("/features/world/scene/presentation.ts"),
       ...await vite.ssrLoadModule("/features/world/dev/world-dev-store.ts"),
       ...await vite.ssrLoadModule("/features/mochlik/pixel-sprite.ts"),
-      ...await vite.ssrLoadModule("/features/world/forest-session.ts"),
+      ...await vite.ssrLoadModule("/features/world/state/forest-session.ts"),
       ...await vite.ssrLoadModule("/features/world/tiled/preview-state.ts"),
-      ...await vite.ssrLoadModule("/features/world/navigation.ts"),
-      ...await vite.ssrLoadModule("/features/world/clearing-activity.ts"),
-      ...await vite.ssrLoadModule("/features/world/resident-traffic.ts"),
-      ...await vite.ssrLoadModule("/features/world/new-map-scene.ts"),
-      ...await vite.ssrLoadModule("/features/world/economy-scene-state.ts"),
-      ...await vite.ssrLoadModule("/features/world/economy-production-state.ts"),
-      ...await vite.ssrLoadModule("/features/world/forest-observer.ts"),
-      ...await vite.ssrLoadModule("/features/world/forest-journey-travel.ts"),
-      ...await vite.ssrLoadModule("/features/world/forest-fishing-painter.ts"),
+      ...await vite.ssrLoadModule("/features/world/navigation/navigation.ts"),
+      ...await vite.ssrLoadModule("/features/world/simulation/clearing-activity.ts"),
+      ...await vite.ssrLoadModule("/features/world/navigation/resident-traffic.ts"),
+      ...await vite.ssrLoadModule("/features/world/scene/new-map-scene.ts"),
+      ...await vite.ssrLoadModule("/features/world/state/economy/economy-scene-state.ts"),
+      ...await vite.ssrLoadModule("/features/world/state/economy/economy-production-state.ts"),
+      ...await vite.ssrLoadModule("/features/world/state/forest-observer.ts"),
+      ...await vite.ssrLoadModule("/features/world/activities/journeys/forest-journey-travel.ts"),
+      ...await vite.ssrLoadModule("/features/world/activities/fishing/forest-fishing-painter.ts"),
       ...await vite.ssrLoadModule("/features/world/dev/forest-cooking-preview.ts"),
-      ...await vite.ssrLoadModule("/features/world/builder-sprite.ts"),
-      ...await vite.ssrLoadModule("/features/world/builder-mind.ts"),
-      ...await vite.ssrLoadModule("/features/world/builder-navigation.ts"),
+      ...await vite.ssrLoadModule("/features/world/characters/builder/builder-sprite.ts"),
+      ...await vite.ssrLoadModule("/features/world/characters/builder/builder-mind.ts"),
+      ...await vite.ssrLoadModule("/features/world/characters/builder/builder-navigation.ts"),
       ...await vite.ssrLoadModule("/lib/check-in-api.ts"),
     };
     builderRigForHero.set(loaded.pixelSprite, loaded.builderSpriteRig);
@@ -519,6 +519,56 @@ test("map object selection tracks projected anchors through camera changes and d
     assert.deepEqual(places.at(-1), { place: "house", selection: centered });
     assert.equal(engine.activateObject("missing-object"), false);
     assert.equal(places.length, 2, "unknown object IDs do not fall back to an unrelated place");
+  } finally { engine?.dispose(); worldDevStore.reset(); env.restore(); }
+});
+
+test("onboarding camera outlines the live station without opening it and follows manual touch gestures", async () => {
+  const { createMapEngine, worldDevStore } = await modules({ sites: [clearingHome] });
+  const env = browser(); let engine;
+  try {
+    worldDevStore.patch(quietClearing);
+    const canvas = env.surface(393, 665), places = [], selections = [];
+    const loading = createMapEngine(canvas, options, place => places.push(place), [], undefined,
+      { top: { offsetHeight: 110 }, bottom: { offsetHeight: 75 } },
+      { onSelectionChange: selection => selections.push(selection) });
+    env.finish(); await flush(); env.finishPath("/test-residence.webp"); engine = await loading;
+    engine.setGuidePlace("house", 230);
+    const outline = () => {
+      const stroke = canvas.calls.findLastIndex(call => call.method === "strokeStyle" && call.args[0] === "#183d27");
+      const start = canvas.calls.slice(0, stroke).findLastIndex(call => call.method === "beginPath");
+      return canvas.calls.slice(start, stroke).filter(call => ["moveTo", "lineTo"].includes(call.method)).map(call => call.args);
+    };
+    const projectedContour = () => {
+      const projection = mapProjection(canvas);
+      return clearingHome.hitArea.map(point => [projection.left + point.x * projection.zoom, projection.top + point.y * projection.zoom]);
+    };
+    const assertOutline = () => outline().forEach((point, index) => point.forEach((value, axis) =>
+      approximately(value, projectedContour()[index][axis], "guide tracks the station's actual contour")));
+    assertOutline();
+    assert.ok(outline().every(([x, y]) => x >= 0 && x <= 393 && y > 110 && y < 665 - 230),
+      "the station fits between the top HUD and the measured phone coach");
+    assert.deepEqual(places, []); assert.deepEqual(selections, [], "camera guidance does not select or activate a station");
+    const first = outline();
+    dragMap(canvas, 18, -12);
+    assertOutline(); assert.notDeepEqual(outline(), first);
+    const panned = mapProjection(canvas);
+    engine.setGuidePlace("house", 230);
+    assert.deepEqual(mapProjection(canvas), panned, "repeated guide updates do not undo the player's pan");
+    engine.setGuidePlace("house", 250);
+    assert.deepEqual(mapProjection(canvas), panned, "coach resizing also respects a manually moved camera");
+    canvas.events.get("wheel")({ clientX: 170, clientY: 220, deltaY: 70, preventDefault() {} }); canvas.flushFrame();
+    assertOutline();
+    assert.deepEqual(places, [], "pan and zoom keep the real menu closed");
+    canvas.calls.length = 0;
+    engine.setGuidePlace(null);
+    assert.equal(canvas.calls.some(call => call.method === "strokeStyle" && call.args[0] === "#183d27"), false,
+      "leaving the lesson removes the outline even in reduced motion");
+    engine.setGuidePlace("house", 230);
+    const projection = mapProjection(canvas), event = { pointerId: 1, pointerType: "touch", button: 0,
+      clientX: projection.left + 660 * projection.zoom, clientY: projection.top + 620 * projection.zoom };
+    canvas.events.get("pointerdown")({ ...event, type: "pointerdown" });
+    canvas.events.get("pointerup")({ ...event, type: "pointerup" });
+    assert.deepEqual(places, ["house"], "the actual outlined map area stays manually tappable");
   } finally { engine?.dispose(); worldDevStore.reset(); env.restore(); }
 });
 
@@ -2042,6 +2092,39 @@ test("a separate bush cutout moves to the foreground once without repainting the
       } else {
         if (label !== "rustle") assert.equal(bushDraws.length, 1, `${label}: the idle cutout belongs to the terrain pass`);
         if (showHero) assert.ok(bushDraws.every(call => calls.indexOf(call) < bodyIndex), `${label}: leaves stay behind the visible body`);
+      }
+    }
+  } finally { worldDevStore.reset(); env.restore(); }
+});
+
+test("foliage insects stay behind an entering hero once in both cameras, while hand and air insects retain their pass", async () => {
+  const { paintNewMap, worldDevStore } = await modules();
+  const env=browser();
+  try {
+    const map={...fixture,bushes:[clearingBush]};
+    for(const species of ["butterfly","firefly"]) for(const still of [false,true]) for(const view of ["circle","world"]) {
+      const night=species==="firefly", support={x:600,y:622};
+      const entity={id:"leaf",species,habitatId:"foliage",anchorId:"leaf",mode:"rest",x:600,y:622,size:1.5,
+        phase:0,opacity:1,angle:0,vx:0,vy:0};
+      const fauna={elapsed:20,dusk:Number(night),visibility:{butterflies:true,fireflies:true},encounter:null,
+        habitats:[{id:"foliage",anchors:[{id:"leaf",position:support}]}],
+        entities:[entity,{...entity,id:"air",anchorId:null,mode:"fly",x:603},
+          {...entity,id:"hand",anchorId:null,mode:"perch",x:605}]};
+      for(const occlude of [false,true]) {
+        const surface=env.surface();
+        paintNewMap(surface.context,new Map(),{...options,view,reducedMotion:still},20,false,0,Number(night),{
+          scene:map,fauna,state:{...worldDevStore.getSnapshot(),weather:"clear",timeOfDay:night?"night":"day",
+            butterflies:"on",fireflies:"on",birds:"off",reducedMotion:still?"on":"off"},
+          clearing:{x:600,y:660,pose:"idle",frame:0,direction:"back",opacity:1,lift:5,
+            bush:{id:clearingBush.id,occlude,rustle:0,occupied:true,elapsed:0,bursts:[]}},
+        });
+        const calls=surface.calls, body=calls.findIndex(call=>call.method==="drawImage"&&call.args[0]?.width===48&&call.args[0]?.height===48);
+        assert.ok(body>=0);
+        for(const x of [600,603,605]) {
+          const draws=calls.map((call,i)=>call.method==="translate"&&call.args[0]===x&&call.args[1]===622?i:-1).filter(i=>i>=0);
+          assert.equal(draws.length,1,`${species}/${view}/${still}: each actual insect paints once`);
+          assert.equal(draws[0]<body,x===600&&!occlude,`${species}/${view}/${still}: only leaf-supported insects share rear foliage depth`);
+        }
       }
     }
   } finally { worldDevStore.reset(); env.restore(); }

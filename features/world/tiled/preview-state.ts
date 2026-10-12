@@ -19,7 +19,8 @@ export function previewWorldScene(scene: FixedWorldScene, levels: PreviewLevels)
   const hasGeometry = states.some(state => state?.geometry);
   const hasConditions = scene.terrain.some(image => image.when)
     || scene.navigation?.areas.some(area => area.when) || scene.navigation?.obstacles.some(obstacle => obstacle.when)
-    || scene.occluders?.some(occluder => occluder.when);
+    || scene.occluders?.some(occluder => occluder.when)
+    || scene.audio?.emitters.some(emitter => emitter.when) || scene.audio?.zones.some(zone => zone.when);
   if (!hasGeometry && !hasConditions) return scene;
   let cache = sceneCache.get(scene);
   if (!cache) { cache = new Map(); sceneCache.set(scene, cache); }
@@ -33,6 +34,7 @@ export function previewWorldScene(scene: FixedWorldScene, levels: PreviewLevels)
     const geometry = states[index]?.geometry;
     return geometry ? { ...site, imagePlacement: undefined, doorway: undefined, light: undefined, chimney: undefined, window: undefined, ...geometry } : site;
   }) : scene.sites, terrain: filterVisible(scene.terrain),
+    ...(scene.audio ? { audio: { emitters: filterVisible(scene.audio.emitters), zones: filterVisible(scene.audio.zones) } } : {}),
     ...(scene.occluders ? { occluders: filterVisible(scene.occluders) } : {}),
     ...(scene.navigation ? { navigation: { ...scene.navigation,
       areas: filterVisible(scene.navigation.areas), obstacles: filterVisible(scene.navigation.obstacles) } } : {}) };

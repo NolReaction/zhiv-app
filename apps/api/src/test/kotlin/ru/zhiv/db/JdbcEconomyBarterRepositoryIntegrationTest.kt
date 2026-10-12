@@ -269,7 +269,7 @@ class JdbcEconomyBarterRepositoryIntegrationTest {
     }
 
     @Test fun `full warehouses and preserved old overflow allow neutral swaps without freeing escrow space`() = runBlocking<Unit> {
-        val seller=player(mapOf("ancient_core" to 1L,"wood" to 230L));val buyer=player(mapOf("moon_crystal" to 1L,"stone" to 299L))
+        val seller=player(mapOf("ancient_core" to 1L,"wood" to 330L));val buyer=player(mapOf("moon_crystal" to 1L,"stone" to 299L))
         val sellerBefore=economy.snapshot(seller.hash);val buyerBefore=economy.snapshot(buyer.hash)
         val lot=offer(seller);val listed=economy.snapshot(seller.hash)
         assertEquals(sellerBefore.storage.overflow,listed.storage.overflow)

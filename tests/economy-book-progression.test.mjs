@@ -6,8 +6,8 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const model = await vite.ssrLoadModule("/features/economy/model.ts");
-const progress = await vite.ssrLoadModule("/features/economy/collection-progress.ts");
+const model = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const progress = await vite.ssrLoadModule("/features/economy/domain/collection-progress.ts");
 const identities = await vite.ssrLoadModule("/lib/dev/api-store.ts");
 const economy = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
 const at = Date.UTC(2026, 9, 5, 15);
@@ -77,7 +77,7 @@ test("successful claim records once and waiting after completion cannot inflate 
 test("full warehouse prevents both rewards and collection progress until a successful claim", () => {
   const p = account(), started = issue(p, "start_exploration", "forest_camp").state;
   const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
-  row.state.inventory = { wood: 200 };
+  row.state.inventory = { wood: 300 };
   const finish = Date.parse(started.jobs[0].finishesAt), before = read(p, finish);
   assert.throws(() => issue(p, "claim_job", started.jobs[0].id, finish), { code: "ECONOMY_STORAGE_FULL" });
   assert.deepEqual(read(p, finish).progression, before.progression);

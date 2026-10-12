@@ -29,11 +29,11 @@
 
 ## Источники и границы
 
-- [`economy-production-state.ts`](../../features/world/economy-production-state.ts) вычисляет состояния подтверждённых заказов и защищает общую ревизию. Адаптер — [`world-adapter.ts`](../../features/economy/world-adapter.ts), подключение — `new-map-scene.ts` и общая `forest-session.ts`.
-- [`forest-cooking-pot.ts`](../../features/world/forest-cooking-pot.ts) — единый котелок для настоящей готовки и репетиции; [`forest-production-painter.ts`](../../features/world/forest-production-painter.ts) — эффекты у рабочих построек.
-- [`production-activity.tsx`](../../features/economy/production-activity.tsx) — компактные сценки в карточках работ.
-- [`forest-cooking.ts`](../../features/world/forest-cooking.ts) задаёт четыре стадии, их длительности, чистое вычисление кадра и область перекрытия.
-- [`forest-cooking-painter.ts`](../../features/world/forest-cooking-painter.ts) рисует реквизит и короткие согнутые лапы поверх существующего тела из [`grounding.ts`](../../features/world/grounding.ts). Кисть и инструмент используют одну точку хвата. Во время подачи обе кисти поддерживают края миски.
+- [`economy-production-state.ts`](../../features/world/state/economy/economy-production-state.ts) вычисляет состояния подтверждённых заказов и защищает общую ревизию. Адаптер — [`world-adapter.ts`](../../features/economy/integration/world-adapter.ts), подключение — `new-map-scene.ts` и общая `forest-session.ts`.
+- [`forest-cooking-pot.ts`](../../features/world/activities/cooking/forest-cooking-pot.ts) — единый котелок для настоящей готовки и репетиции; [`forest-production-painter.ts`](../../features/world/scene/forest-production-painter.ts) — эффекты у рабочих построек.
+- [`production-activity.tsx`](../../features/economy/ui/production/production-activity.tsx) — компактные сценки в карточках работ.
+- [`forest-cooking.ts`](../../features/world/activities/cooking/forest-cooking.ts) задаёт четыре стадии, их длительности, чистое вычисление кадра и область перекрытия.
+- [`forest-cooking-painter.ts`](../../features/world/activities/cooking/forest-cooking-painter.ts) рисует реквизит и короткие согнутые лапы поверх существующего тела из [`grounding.ts`](../../features/world/scene/grounding.ts). Кисть и инструмент используют одну точку хвата. Во время подачи обе кисти поддерживают края миски.
 - [`forest-cooking-preview.ts`](../../features/world/dev/forest-cooking-preview.ts) управляет началом, безопасным выходом, остановкой и повтором. Тап по Мохлику запоминает просьбу об ответе и завершает текущий цикл/жест перед приветствием; повторные нажатия не перезапускают часы и не отрывают инструмент от лапы. Время хранится в общей сессии леса, поэтому круг и большая карта не запускают две разные последовательности.
 - Состояние репетиции не сохраняется в памяти леса. Рисование не меняет часы, решения, инвентарь или задания. Реальные заказы поступают только через подтверждённый снимок экономики.
 

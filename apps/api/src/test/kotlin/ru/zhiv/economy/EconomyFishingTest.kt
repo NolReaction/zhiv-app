@@ -52,11 +52,11 @@ class EconomyFishingTest {
 
     @Test fun `shop charges server quote rods stay unique and purchased fish never counts as caught`() {
         val initial = funded()
-        val rod = apply(initial, "buy_fishing_item", "river_rod", price = 18050)
-        assertEquals(82000L, rod.wallet.coins)
+        val rod = apply(initial, "buy_fishing_item", "river_rod", price = 13550)
+        assertEquals(86500L, rod.wallet.coins)
         assertEquals(listOf("reed_rod", "river_rod"), rod.fishing.ownedRods)
         assertEquals(initial.inventory, rod.inventory)
-        assertEquals("ECONOMY_FISHING_OWNED", assertFailsWith<AuthFailure> { apply(rod, "buy_fishing_item", "river_rod", price = 18000) }.code)
+        assertEquals("ECONOMY_FISHING_OWNED", assertFailsWith<AuthFailure> { apply(rod, "buy_fishing_item", "river_rod", price = 13500) }.code)
         assertEquals("ECONOMY_FISHING_SHOP_CHANGED", assertFailsWith<AuthFailure> {
             apply(rod, "buy_fishing_item", "fish_mooncarp", quantity = 2, price = 1280)
         }.code)
@@ -64,24 +64,24 @@ class EconomyFishingTest {
         assertEquals(2L, bought.inventory["fish_mooncarp"])
         assertTrue(bought.fishing.catches.isEmpty())
         val sold = apply(bought, "sell_fish", "fish_mooncarp", quantity = 2)
-        assertEquals(82640L, sold.wallet.coins)
+        assertEquals(87140L, sold.wallet.coins)
         assertTrue(sold.fishing.catches.isEmpty())
         assertEquals("ECONOMY_FISHING_ITEM", assertFailsWith<AuthFailure> { apply(sold, "sell_fish", "wood") }.code)
     }
 
     @Test fun `bad quotes unknown goods unsupported quantities inventory and escrow limits are rejected`() {
         val initial = funded()
-        assertEquals("ECONOMY_FISHING_PRICE_CHANGED", assertFailsWith<AuthFailure> { apply(initial, "buy_fishing_item", "river_rod", price = 17990) }.code)
+        assertEquals("ECONOMY_FISHING_PRICE_CHANGED", assertFailsWith<AuthFailure> { apply(initial, "buy_fishing_item", "river_rod", price = 13490) }.code)
         assertEquals("ECONOMY_FISHING_SHOP_CHANGED", assertFailsWith<AuthFailure> { apply(initial, "buy_fishing_item", "wood", price = 1000) }.code)
-        assertEquals("INVALID_ECONOMY_COMMAND", assertFailsWith<AuthFailure> { apply(initial, "buy_fishing_item", "river_rod", quantity = 2, price = 36000) }.code)
+        assertEquals("INVALID_ECONOMY_COMMAND", assertFailsWith<AuthFailure> { apply(initial, "buy_fishing_item", "river_rod", quantity = 2, price = 27000) }.code)
         assertEquals("INVALID_ECONOMY_COMMAND", assertFailsWith<AuthFailure> { apply(initial, "buy_fishing_item", "crumb_bait", quantity = 11, price = 330) }.code)
-        val full = initial.copy(inventory = mapOf("wood" to 190L))
+        val full = initial.copy(inventory = mapOf("wood" to 290L))
         assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> {
             EconomyRules.apply(full, command("buy_fishing_item", offerId(full, "crumb_bait"), price = 30), now, mapOf("stone" to 10L))
         }.code)
-        val rod = EconomyRules.apply(full, command("buy_fishing_item", offerId(full, "river_rod"), price = 18000), now, mapOf("stone" to 10L)).first
+        val rod = EconomyRules.apply(full, command("buy_fishing_item", offerId(full, "river_rod"), price = 13500), now, mapOf("stone" to 10L)).first
         assertEquals(full.inventory, rod.inventory)
-        assertEquals("ECONOMY_RESOURCES", assertFailsWith<AuthFailure> { apply(funded().copy(wallet = EconomyWallet()), "buy_fishing_item", "river_rod", price = 18000) }.code)
+        assertEquals("ECONOMY_RESOURCES", assertFailsWith<AuthFailure> { apply(funded().copy(wallet = EconomyWallet()), "buy_fishing_item", "river_rod", price = 13500) }.code)
         for (invalid in listOf(command("equip_fishing_rod", "reed_rod", quantity = 2), command("sell_fish", "fish", price = 1)))
             assertEquals("INVALID_ECONOMY_COMMAND", assertFailsWith<AuthFailure> { EconomyRules.apply(initial, invalid, now) }.code)
     }
@@ -90,7 +90,7 @@ class EconomyFishingTest {
         var state = funded("worm_bait")
         assertEquals("ECONOMY_FISHING_ROD", assertFailsWith<AuthFailure> { apply(state, "equip_fishing_rod", "willow_rod") }.code)
         assertEquals("ECONOMY_RESOURCES", assertFailsWith<AuthFailure> { apply(state, "equip_fishing_bait", "worm_bait") }.code)
-        state = apply(state, "buy_fishing_item", "river_rod", price = 18000)
+        state = apply(state, "buy_fishing_item", "river_rod", price = 13500)
         state = apply(state, "equip_fishing_rod", "river_rod")
         state = apply(state, "buy_fishing_item", "worm_bait", quantity = 2, price = 140)
         state = apply(state, "equip_fishing_bait", "worm_bait")

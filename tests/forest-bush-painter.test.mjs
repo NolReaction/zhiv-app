@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const vite = await createServer({ appType: 'custom', configFile: false, root,
   resolve: { alias: { '@': root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { drawForestBush } = await vite.ssrLoadModule('/features/world/forest-bush-painter.ts');
+const { drawForestBush } = await vite.ssrLoadModule('/features/world/activities/garden/forest-bush-painter.ts');
 
 function context() {
   const calls = [];

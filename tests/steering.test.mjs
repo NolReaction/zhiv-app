@@ -7,8 +7,8 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { createWorldNavigation, canTraverse, findWorldPath } = await vite.ssrLoadModule("/features/world/navigation.ts");
-const { prepareSteeringPath, desiredSteeringSpeed, WORLD_STEERING_LIMITS } = await vite.ssrLoadModule("/features/world/steering.ts");
+const { createWorldNavigation, canTraverse, findWorldPath } = await vite.ssrLoadModule("/features/world/navigation/navigation.ts");
+const { prepareSteeringPath, desiredSteeringSpeed, WORLD_STEERING_LIMITS } = await vite.ssrLoadModule("/features/world/navigation/steering.ts");
 const p = (x, y) => ({ x, y });
 const rect = (x, y, width, height) => [p(x, y), p(x + width, y), p(x + width, y + height), p(x, y + height)];
 const polygon = (points, id = "polygon") => ({ id, points });

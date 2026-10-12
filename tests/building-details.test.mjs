@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { drawBuildingDetails, buildingDetailsAnimated } = await vite.ssrLoadModule("/features/world/building-details.ts");
+const { drawBuildingDetails, buildingDetailsAnimated } = await vite.ssrLoadModule("/features/world/scene/building-details.ts");
 const { previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
 const window = [{ x: 120, y: 140 }, { x: 130, y: 139 }, { x: 132, y: 154 }, { x: 121, y: 155 }];
 const scene = () => ({ terrain: [], sites: [{ id: "home", bounds: { x: 100, y: 100, width: 145, height: 145 },

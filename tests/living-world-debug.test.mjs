@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { drawLivingWorldDebug } = await vite.ssrLoadModule("/features/world/living-world-debug.ts");
+const { drawLivingWorldDebug } = await vite.ssrLoadModule("/features/world/dev/living-world-debug.ts");
 const rect = (x, y, width, height) => [{ x, y }, { x: x + width, y }, { x: x + width, y: y + height }, { x, y: y + height }];
 const scene = {
   focus: { x: 0, y: 0, width: 120, height: 100 }, actor: { spawn: { x: 40, y: 55 }, size: 25 },

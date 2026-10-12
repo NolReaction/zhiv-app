@@ -8,7 +8,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { forestWaterFrame, isForestWater, FOREST_WATER_LIMITS } = await vite.ssrLoadModule("/features/world/forest-water.ts");
+const { forestWaterFrame, isForestWater, FOREST_WATER_LIMITS } = await vite.ssrLoadModule("/features/world/environment/water/forest-water.ts");
 const scene = JSON.parse(await readFile(new URL("../features/world/tiled/forest.generated.json", import.meta.url)));
 const options = { elapsed: 12, rain: .7, dusk: 0, reducedMotion: false };
 

@@ -1,0 +1,41 @@
+.settings { display: grid; align-content: start; gap: 16px; min-width: 0; max-width: 680px; margin-top: 22px; }
+.menu { display: grid; gap: 16px; min-width: 0; }
+.heading { display: grid; gap: 6px; }
+.heading h2 { margin: 0; color: #e8efda; font-size: 20px; font-weight: 650; }
+.heading p { margin: 0; color: #aab49f; font-size: 13px; line-height: 1.5; }
+.entries { overflow: hidden; min-width: 0; border: 1px solid #ffffff18; border-radius: 20px; background: #ffffff07; }
+.entry { display: grid; grid-template-columns: 44px minmax(0, 1fr) 19px; align-items: center; gap: 14px; width: 100%; min-height: 88px; padding: 16px; border: 0; color: #e8efda; background: transparent; text-align: left; font: inherit; cursor: pointer; touch-action: manipulation; }
+.entry + .entry { border-top: 1px solid #ffffff12; }
+.entry:hover { background: #b7d8a20a; }
+.icon { display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid #b7d8a226; border-radius: 14px; color: #c2dcad; background: #b7d8a20d; }
+.entryText { display: grid; min-width: 0; gap: 6px; }
+.entryText strong { font-size: 15px; font-weight: 650; line-height: 1.3; }
+.entryText > span { color: #aab49f; font-size: 12px; line-height: 1.45; }
+.chevron { color: #a9be97; }
+.screenNavigation { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; min-width: 0; }
+.back { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px 12px; border: 1px solid #b7d8a232; border-radius: 12px; color: #dfedd2; background: #b7d8a20a; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; touch-action: manipulation; }
+.back:hover { background: #b7d8a21a; }
+.currentTitle { color: #aab49f; font-size: 12px; line-height: 1.5; }
+.screen { min-width: 0; }
+.menu[hidden], .screen[hidden] { display: none; }
+.appearanceCard { display: grid; gap: 8px; min-width: 0; padding: 20px; border: 1px solid #ffffff18; border-radius: 20px; background: #ffffff09; }
+.appearanceCard h2 { display: flex; align-items: center; gap: 9px; margin: 0 0 8px; color: #e8efda; font-size: 17px; font-weight: 650; }
+.appearanceCard h2 svg { flex-shrink: 0; color: #b7d8a2; }
+.appearanceSetting { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; }
+.appearanceSetting + .appearanceSetting { border-top: 1px solid #ffffff12; }
+.appearanceSetting label { display: grid; gap: 7px; min-width: 0; cursor: pointer; }
+.appearanceSetting strong { color: #e2ebd7; font-size: 14px; line-height: 1.4; }
+.appearanceSetting label span { color: #aab49f; font-size: 12px; line-height: 1.5; }
+.appearanceSetting button { flex-shrink: 0; }
+.hint { margin: 4px 0 0; color: #a0a799; font-size: 12px; line-height: 1.5; }
+.settings button:focus-visible { outline: 2px solid #cde39e; outline-offset: 3px; }
+.entry:focus-visible { outline-offset: -4px; }
+@media (max-width: 359px) {
+  .entry { grid-template-columns: 38px minmax(0, 1fr) 16px; gap: 10px; padding: 14px 12px; }
+  .icon { width: 38px; height: 38px; border-radius: 12px; }
+  .appearanceCard { padding: 15px; }
+}
+@media (forced-colors: active) {
+  .entries, .entry, .icon, .back, .appearanceCard, .appearanceSetting { border-color: ButtonText; }
+  .entry:focus-visible, .back:focus-visible { outline-color: Highlight; }
+}

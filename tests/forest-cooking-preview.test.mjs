@@ -7,14 +7,14 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
+const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
 const { previewWorldScene, initialPreviewLevels } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
-const { connectForestSession } = await vite.ssrLoadModule("/features/world/forest-session.ts");
-const { advanceForestDirector } = await vite.ssrLoadModule("/features/world/forest-director.ts");
-const { requestClearingSleep, advanceClearingActivity, clearingActivityFrame } = await vite.ssrLoadModule("/features/world/clearing-activity.ts");
+const { connectForestSession } = await vite.ssrLoadModule("/features/world/state/forest-session.ts");
+const { advanceForestDirector } = await vite.ssrLoadModule("/features/world/simulation/forest-director.ts");
+const { requestClearingSleep, advanceClearingActivity, clearingActivityFrame } = await vite.ssrLoadModule("/features/world/simulation/clearing-activity.ts");
 const { startCookingPreview, advanceCookingPreview, cookingPreviewFrame, cookingPreviewDuration, noticeCookingPreview } =
   await vite.ssrLoadModule("/features/world/dev/forest-cooking-preview.ts");
-const { captureForestMemory } = await vite.ssrLoadModule("/features/world/forest-memory.ts");
+const { captureForestMemory } = await vite.ssrLoadModule("/features/world/state/memory/forest-memory.ts");
 const scene = previewWorldScene(TILED_WORLD, initialPreviewLevels(TILED_WORLD));
 const create = () => connectForestSession(undefined, scene, "world", 1_000_000, 0, () => {}, { persistence: false, sync: false });
 const selection = { id: 1, action: "sequence", repeat: false };

@@ -64,7 +64,7 @@ export function reviewProductionSlots(loaded, onScenario = () => {}) {
     catalogVersion: catalog.version, stations, upgrades, allSlotsPricePearls: totalPearls,
     sourceHashes: Object.fromEntries([
       "../apps/api/src/main/resources/world/economy-catalog.json", "../apps/api/src/main/resources/world/progression-rewards-catalog.json",
-      "../features/economy/rules.ts", "../features/economy/production-slots.ts", "../features/economy/fishing.ts",
+      "../features/economy/domain/rules.ts", "../features/economy/domain/production-slots.ts", "../features/economy/domain/fishing.ts",
       "../features/game/progression-rewards.ts", "./simulate-player-journey.mjs", "./simulate-player-joint.mjs", "./review-production-slots.mjs",
     ].map(file => [file, createHash("sha256").update(readFileSync(new URL(file, import.meta.url))).digest("hex")])),
     method: {

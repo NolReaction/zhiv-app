@@ -7,10 +7,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
-const { WorldFoodMenu, FoodMealCard, ResidentOrderCard, mealBlockedReason } = await vite.ssrLoadModule("/features/economy/world-food-menu.tsx");
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
-const { residentOrderBoard, normalizedResidentOrders } = await vite.ssrLoadModule("/features/economy/food.ts");
-const { ECONOMY_MAX_BALANCE } = await vite.ssrLoadModule("/features/economy/money.ts");
+const { WorldFoodMenu, FoodMealCard, ResidentOrderCard, mealBlockedReason } = await vite.ssrLoadModule("/features/economy/ui/food/world-food-menu.tsx");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { residentOrderBoard, normalizedResidentOrders } = await vite.ssrLoadModule("/features/economy/domain/food.ts");
+const { ECONOMY_MAX_BALANCE } = await vite.ssrLoadModule("/features/economy/domain/money.ts");
 after(() => vite.close());
 const now = Date.parse("2026-10-07T14:00:00Z");
 const meal = economyCatalog.food.meals[0];
@@ -28,6 +28,23 @@ function elements(tree) {
 }
 function buttons(tree) { return elements(tree).filter(element => element.type === "button"); }
 const render = (component, props) => renderToStaticMarkup(createElement(component, props));
+
+test("meals hide future recipes but retain owned portions and opened recipes without ingredients", () => {
+  const economy = controller({ buildings: { home: 1, dryer: 1, warehouse: 1 }, inventory: {} });
+  const initial = render(WorldFoodMenu, { economy, onNavigateStation() {} });
+  assert.match(initial, /data-meal="grilled_fish"/);
+  assert.doesNotMatch(initial, /data-meal="legendary_feast"|data-meal="hearty_fish"/);
+  const futureMeal = economy.snapshot.catalog.food.meals.find(meal => !initial.includes(`data-meal="${meal.itemId}"`));
+  assert.ok(futureMeal);
+  economy.snapshot.inventory[futureMeal.itemId] = 1;
+  const owned = render(WorldFoodMenu, { economy });
+  assert.ok(owned.includes(`data-meal="${futureMeal.itemId}"`), "a gifted or traded portion remains usable");
+  economy.snapshot.inventory = {};
+  economy.snapshot.buildings.home = 5;
+  economy.snapshot.buildings.dryer = 5;
+  const opened = render(WorldFoodMenu, { economy });
+  assert.ok(opened.includes(`data-meal="${futureMeal.itemId}"`));
+});
 
 test("food and coin orders are separate panels with no implicit meal debit", () => {
   const economy = controller({}, { act() { assert.fail("opening a panel cannot debit food"); } });
@@ -52,6 +69,21 @@ test("one explicit meal goes to the chosen consumer with no order reward", () =>
     assert.deepEqual(calls, []);
     action.props.onClick();
     assert.deepEqual(calls, [[consumer === "hero" ? "eat_food" : "feed_builder", meal.itemId, 1, 0]]);
+  }
+});
+
+test("meal guidance exposes the selected actor, catalog speed and one-portion cost before feeding", () => {
+  for (const consumer of ["hero", "builder"]) {
+    const economy = controller({}, { act() { assert.fail("reading buff guidance cannot consume food"); } });
+    const html = render(WorldFoodMenu, { economy, residentId: consumer === "builder" ? "builder" : undefined });
+    assert.match(html, new RegExp(`data-guide-meal-list="${consumer}"`));
+    assert.match(html, /data-guide-meal-consumer="hero"/);
+    assert.match(html, /data-guide-meal-consumer="builder"/);
+    assert.match(html, /Угощение расходует 1 готовое блюдо/);
+    assert.match(html, /не складывается с другим обедом/);
+    const speed = (consumer === "hero" ? meal.heroSpeedBps : meal.builderSpeedBps) / 100;
+    assert.match(html, new RegExp(`Скорость ${consumer === "hero" ? "вылазки" : "стройки"} \\+${speed}%`));
+    assert.ok(html.includes(consumer === "hero" ? "Съесть 1" : "Угостить 1"));
   }
 });
 
@@ -159,13 +191,13 @@ test("fish selection changes the visible cost and dispatched ingredient without 
         export function useState(initial) { const slot = useRef(typeof initial === 'function' ? initial() : initial); return [slot.current, value => { slot.current = typeof value === 'function' ? value(slot.current) : value; }]; }
         export function useEffect() {}
       `; },
-      transform(source, id) { if (/\/features\/economy\/world-(object|food)-menu\.tsx$/.test(id)) return source.replace('from "react";', `from "${hookModule}";`); },
+      transform(source, id) { if (/\/features\/economy\/ui\/(?:stations|food)\/world-(object|food)-menu\.tsx$/.test(id)) return source.replace('from "react";', `from "${hookModule}";`); },
     }],
   });
   try {
     const hooks = await runtime.ssrLoadModule(hookModule);
-    const { WorldRecipeDetail } = await runtime.ssrLoadModule("/features/economy/world-object-menu.tsx");
-    const { WorldFoodMenu: Menu } = await runtime.ssrLoadModule("/features/economy/world-food-menu.tsx");
+    const { WorldRecipeDetail } = await runtime.ssrLoadModule("/features/economy/ui/stations/world-object-menu.tsx");
+    const { WorldFoodMenu: Menu } = await runtime.ssrLoadModule("/features/economy/ui/food/world-food-menu.tsx");
     const calls = [], economy = controller({ inventory: { wood: 20, fish_silverfin: 5, fish_shark: 1 } }, { act(...args) { calls.push(args); } });
     const recipe = economy.snapshot.catalog.recipes.find(recipe => recipe.id === "cook_grilled_fish");
     const prepare = () => { hooks.render(); return WorldRecipeDetail({ economy, recipe, onCollapse() {} }); };

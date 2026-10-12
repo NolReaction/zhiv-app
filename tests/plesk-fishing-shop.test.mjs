@@ -7,12 +7,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
-const { PleskFishingShop, PleskFishTrade, PleskRodOffer, PleskHookOffer, PleskBaitOffer, PleskFishOffer, PleskTackleCounter, PleskFishingCollection, PleskCatchOdds, PleskMerchantHeader, FishCounter, fishingTradeLimits } = await vite.ssrLoadModule("/features/economy/plesk-fishing-shop.tsx");
-const { PleskFishingBookPage, fishingBookEntries, fishingBookPage, FISHING_BOOK_PAGE_SIZE } = await vite.ssrLoadModule("/features/economy/plesk-fishing-book.tsx");
-const { economyCatalog, economyFishingSchema, ECONOMY_MAX_BALANCE } = await vite.ssrLoadModule("/features/economy/model.ts");
-const { economyStorage } = await vite.ssrLoadModule("/features/economy/rules.ts");
-const { fishingOdds, fishingState } = await vite.ssrLoadModule("/features/economy/fishing.ts");
-const { normalizedResidentOrders } = await vite.ssrLoadModule("/features/economy/food.ts");
+const { PleskFishingShop, PleskFishTrade, PleskRodOffer, PleskHookOffer, PleskBaitOffer, PleskFishOffer, PleskTackleCounter, PleskFishingCollection, PleskCatchOdds, PleskMerchantHeader, FishCounter, fishingTradeLimits } = await vite.ssrLoadModule("/features/economy/ui/fishing/plesk-fishing-shop.tsx");
+const { PleskFishingBookPage, fishingBookEntries, fishingBookPage, FISHING_BOOK_PAGE_SIZE } = await vite.ssrLoadModule("/features/economy/ui/fishing/plesk-fishing-book.tsx");
+const { economyCatalog, economyFishingSchema, ECONOMY_MAX_BALANCE } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
+const { fishingOdds, fishingState } = await vite.ssrLoadModule("/features/economy/domain/fishing.ts");
+const { normalizedResidentOrders } = await vite.ssrLoadModule("/features/economy/domain/food.ts");
 after(() => vite.close());
 const merchantHookModule = "virtual:merchant-selection-hooks";
 const merchantVite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } },
@@ -33,11 +33,11 @@ const merchantVite = await createServer({ appType: "custom", configFile: false, 
       }
       export function flushEffects() { const pending = effects; effects = []; pending.forEach(callback => callback()); }
     `; },
-    transform(source, id) { if (id.endsWith("/features/economy/plesk-fishing-shop.tsx")) return source.replace('from "react";', `from "${merchantHookModule}";`); },
+    transform(source, id) { if (id.endsWith("/features/economy/ui/fishing/plesk-fishing-shop.tsx")) return source.replace('from "react";', `from "${merchantHookModule}";`); },
   }],
 });
 after(() => merchantVite.close());
-const { PleskTackleCounter: MerchantCounter } = await merchantVite.ssrLoadModule("/features/economy/plesk-fishing-shop.tsx");
+const { PleskTackleCounter: MerchantCounter } = await merchantVite.ssrLoadModule("/features/economy/ui/fishing/plesk-fishing-shop.tsx");
 const merchantHooks = await merchantVite.ssrLoadModule(merchantHookModule);
 const now = Date.parse("2026-10-04T20:00:00Z");
 function merchant() {
@@ -81,7 +81,7 @@ function merchantSelection(state = snapshot()) {
   merchantHooks.reset();
   const calls = [], focus = [], body = { scrollTop: 380, isConnected: true };
   const economy = controller(state, { act(...args) { calls.push(args); } });
-  const target = { closest(selector) { assert.equal(selector, "[data-slot='dialog-content']"); return body; }, focus(options) { focus.push(options); } };
+  const target = { closest(selector) { assert.equal(selector, "[data-resident-scroll]"); return body; }, focus(options) { focus.push(options); } };
   function render() {
     merchantHooks.render(); const tree = MerchantCounter({ state, economy, catalog: state.catalog.fishing }), nodes = [];
     function visit(element) { if (!isValidElement(element)) return; nodes.push(element); Children.forEach(element.props.children, visit); }
@@ -172,6 +172,34 @@ test("bait purchases quote stock and price without equipment controls", () => {
   state.inventory.worm_bait = 0;
   view = inspect(PleskBaitOffer, props);
   assert.match(view.html, /В запасе 0/);
+});
+
+test("guide previews the requested rod or bait and its real odds without purchasing or equipping", () => {
+  for (const guideKind of ["rod", "bait"]) {
+    const state = snapshot(), before = structuredClone(state), calls = [];
+    const html = renderToStaticMarkup(createElement(PleskTackleCounter, { economy: controller(state, { act(...args) { calls.push(args); } }), state, catalog: state.catalog.fishing, guideKind }));
+    assert.match(html, new RegExp(`data-guide-plesk-detail="${guideKind}"`));
+    assert.match(html, /data-guide-plesk-odds=/);
+    const expected = guideKind === "rod" ? "Речная удочка" : "Лесной червячок";
+    assert.ok(html.includes(`<h3>${expected}</h3>`));
+    assert.deepEqual(calls, []);
+    assert.deepEqual(state, before);
+  }
+});
+
+test("guide still reveals correct odds without a rod or bait offer and never offers a phantom purchase", () => {
+  for (const guideKind of ["rod", "bait"]) {
+    const state = snapshot(), calls = [];
+    state.fishingShop.offers = state.fishingShop.offers.filter(offer => offer.kind !== guideKind);
+    const before = structuredClone(state);
+    const html = renderToStaticMarkup(createElement(PleskTackleCounter, { economy: controller(state, { act(...args) { calls.push(args); } }), state, catalog: state.catalog.fishing, guideKind }));
+    assert.match(html, new RegExp(`data-guide-plesk-detail="${guideKind}"`));
+    assert.match(html, /data-guide-plesk-odds=/);
+    assert.match(html, /aria-label="Снасть для знакомства"/);
+    assert.doesNotMatch(html, /Купить удочку|Купить крючок|Купить наживку/);
+    assert.match(html, guideKind === "rod" ? /Твоя удочка/ : /На прилавке сейчас нет наживки/);
+    assert.deepEqual(state, before); assert.deepEqual(calls, []);
+  }
 });
 
 test("collection counts confirmed catches independently of purchased, sold or ambient fish", () => {
@@ -447,7 +475,7 @@ test("the fish book opens art only after a personal catch, never after a purchas
 
 
 test("owned fish remain visible goods without falsely opening the catch book", async () => {
-  const { PlayerItemIcon, fishDiscovered } = await vite.ssrLoadModule("/features/economy/fish-discovery.tsx");
+  const { PlayerItemIcon, fishDiscovered } = await vite.ssrLoadModule("/features/economy/ui/fishing/fish-discovery.tsx");
   const state = snapshot({ inventory: { fish: 4, fish_shark: 2 }, fishing: economyFishingSchema.parse(undefined) });
   assert.match(renderToStaticMarkup(createElement(PlayerItemIcon, { state, itemId: "fish" })), /data-item-icon="fish"/);
   assert.match(renderToStaticMarkup(createElement(PlayerItemIcon, { state, itemId: "fish_shark" })), /data-item-icon="fish_shark"/);

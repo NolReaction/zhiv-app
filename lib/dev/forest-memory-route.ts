@@ -1,6 +1,6 @@
 import { isDevPresenceActive } from "./activity-store";
 import { NextResponse } from "next/server";
-import { FOREST_MEMORY_BODY_BYTES } from "@/features/world/forest-memory-model";
+import { FOREST_MEMORY_BODY_BYTES } from "@/features/world/state/memory/forest-memory-model";
 import { guardDevApi } from "@/lib/dev/api-guard";
 import { devSessionToken, NO_STORE_HEADERS } from "@/lib/dev/api-route";
 import { getDevIdentity } from "@/lib/dev/api-store";

@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 const identities = await vite.ssrLoadModule("/lib/dev/api-store.ts");
 const economy = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const now = Date.parse("2026-10-04T20:00:00Z");
 beforeEach(() => { identities.resetDevStoreForTests(); economy.resetDevEconomyStoreForTests(); });
 after(() => vite.close());
@@ -91,7 +91,9 @@ test("claim and cancel from the same revision allow exactly one outcome in eithe
     const result = economy.commandDevEconomy(p.token, accepted, at);
     assert.throws(() => economy.commandDevEconomy(p.token, stale, at), { code: "ECONOMY_REVISION_CONFLICT" });
     assert.throws(() => issue(p, loser, trip.id, at), { code: "ECONOMY_JOB_GONE" });
-    assert.deepEqual(result.state.inventory, winner === "claim_job" ? savedRewards : started.inventory);
+    const expected = { ...started.inventory };
+    if (winner === "claim_job") for (const [item, amount] of Object.entries(savedRewards)) expected[item] = (expected[item] ?? 0) + amount;
+    assert.deepEqual(result.state.inventory, expected);
     assert.equal(result.state.completedExplorations, winner === "claim_job" ? 1 : 0);
     assert.deepEqual(read(p, at), result.state);
   }
@@ -114,7 +116,7 @@ test("replaying cancellation after a new departure cannot cancel the replacement
 test("cancellation is available with full storage and cannot be forged into a refund or bulk command", () => {
   const p = player(), trip = issue(p, "start_exploration", "shore").state.jobs[0];
   const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
-  row.state.inventory = { wood: 200 };
+  row.state.inventory = { wood: 300 };
   const before = read(p), cancel = command(p, "cancel_exploration", trip.id);
   for (const extra of [{ quantity: 2 }, { totalPrice: 1 }, { rewards: { fish: 99 } }, { refund: true }, { targetId: "" }]) {
     assert.throws(() => economy.commandDevEconomy(p.token, { ...cancel, ...extra }, now), { code: "INVALID_ECONOMY_COMMAND" });

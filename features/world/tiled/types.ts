@@ -100,6 +100,32 @@ export type WorldLight = {
 export type WorldCampfire = { id: string; position: WorldPoint; seat: WorldPoint; radius: number };
 /** Ground contact at the bottom center of the parked berry basket. */
 export type WorldBasket = { id: string; position: WorldPoint };
+export type WorldAudioActivation = "always" | "production-working" | "construction-working" | "campfire-lit";
+/** Authored spatial sound source. Station IDs reference economy equipment, while
+ * site IDs reference its physical Tiled host (e.g. kiln belongs to workshop). */
+export type WorldAudioEmitter = {
+  id: string;
+  profileId: string;
+  position: WorldPoint;
+  siteId?: string;
+  stationId?: string;
+  campfireId?: string;
+  activation: WorldAudioActivation;
+  innerRadius: number;
+  outerRadius: number;
+  gainDb: number;
+  when?: WorldVisibilityCondition;
+};
+/** Inside the polygon gain is constant; fadeDistance controls the fade outside. */
+export type WorldAudioZone = {
+  id: string;
+  profileId: string;
+  points: WorldPoint[];
+  fadeDistance: number;
+  gainDb: number;
+  when?: WorldVisibilityCondition;
+};
+export type WorldAudio = { emitters: WorldAudioEmitter[]; zones: WorldAudioZone[] };
 export type FixedWorldScene = {
   schemaVersion: 1;
   id: string;
@@ -117,6 +143,8 @@ export type FixedWorldScene = {
   bushes?: WorldBush[];
   water?: WorldWater;
   lights?: WorldLight[];
+  /** Absent retains a valid silent legacy map; empty lists deliberately add no local sound. */
+  audio?: WorldAudio;
   /** Absent means legacy routes; an explicitly empty area list permits no free walking. */
   navigation?: WorldNavigation;
   /** Absent keeps legacy Paths; an empty list explicitly disables destination travel. */

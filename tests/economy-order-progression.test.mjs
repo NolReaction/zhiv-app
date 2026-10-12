@@ -7,9 +7,9 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { economyCatalog: catalog, economyResidentOrdersSchema } = await vite.ssrLoadModule("/features/economy/model.ts");
-const food = await vite.ssrLoadModule("/features/economy/food.ts");
-const rules = await vite.ssrLoadModule("/features/economy/rules.ts");
+const { economyCatalog: catalog, economyResidentOrdersSchema } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const food = await vite.ssrLoadModule("/features/economy/domain/food.ts");
+const rules = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const vectors = JSON.parse(await readFile(new URL("../apps/api/src/test/resources/world/orders-progression-vectors.json", import.meta.url), "utf8"));
 const now = Date.parse("2026-10-07T12:00:00Z");
 const fresh = () => rules.newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 });
@@ -59,6 +59,24 @@ test("saved cards keep IDs goods and payouts through home upgrades catalog edits
   const replaced = food.advanceResidentOrder(state, 1, now, fixture);
   const changed = food.residentOrderBoard({ ...state, residentOrders: replaced }, now, fixture);
   assert.deepEqual(changed.offers.filter(offer => offer.slot !== 1), before.offers.filter(offer => offer.slot !== 1));
+});
+
+test("the income boost keeps a saved 400-coin delivery exact and pays 560 only for a new wood quote", () => {
+  const state = fresh(), template = catalog.food.orders.templates.find(template => template.id === "builder_wood_supply");
+  assert.equal(template.coins, 560);
+  state.residentOrders = food.normalizedResidentOrders(state, now);
+  state.residentOrders.slots[1] = { sequence: 3, readyAt: new Date(now).toISOString(), templateId: template.id,
+    terms: { ...template, items: { wood: 8 }, coins: 400 } };
+  const saved = food.residentOrderBoard(state, now).offers.find(offer => offer.slot === 1);
+  assert.equal(saved.coins, 400); assert.deepEqual(saved.items, { wood: 8 });
+  const initialCoins = state.wallet.coins;
+  state.inventory = { wood: 8 };
+  rules.applyEconomyCommand(state, { requestId: crypto.randomUUID(), ownerPublicId: "0123-4567-89AB", expectedRevision: 0,
+    action: "complete_resident_order", targetId: saved.id, quantity: 1, totalPrice: 0 }, now, () => crypto.randomUUID());
+  assert.equal(state.wallet.coins, initialCoins + 400);
+  assert.equal(state.residentOrders.earnedCoins, 400);
+  const next = food.residentOrderBoard(state, now).offers.find(offer => offer.slot === 1);
+  assert.equal(next.coins, catalog.food.orders.templates.find(template => template.id === next.templateId).coins);
 });
 
 test("legacy v2 terms migrate at their old unscaled quote; next cards use the current level", () => {

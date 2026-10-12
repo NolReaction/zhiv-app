@@ -8,9 +8,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
-const { WorldUpgradeContent } = await vite.ssrLoadModule("/features/economy/world-upgrade-dialog.tsx");
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
-const { economyStorage } = await vite.ssrLoadModule("/features/economy/rules.ts");
+const { WorldUpgradeContent } = await vite.ssrLoadModule("/features/economy/ui/construction/world-upgrade-dialog.tsx");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 after(() => vite.close());
 
 const now = Date.parse("2026-10-03T12:00:00Z");
@@ -180,7 +180,7 @@ test("relic cost navigation describes chance finds and respects their actual hom
 
 test("pantry expansion shows only its real capacity gain, without dependent building upgrades", () => {
   const html = render("warehouse", { snapshot: state({ buildings: { home: 2, warehouse: 1, workshop: 1 } }) });
-  assert.match(text(html), /Вместимость кладовой 200 500 \+300 мест/);
+  assert.match(text(html), /Вместимость кладовой 300 500 \+200 мест/);
   assert.doesNotMatch(html, /Развитие хозяйства|Дом Мохлика|Ягодный куст|Можно развивать|Новые рецепты|другие постройки/);
   assert.match(text(html), /Доски 0 \/ 18/);
   assert.match(text(html), /Камень 0 \/ 20/);
@@ -204,12 +204,36 @@ test("a furnace upgrade does not claim that it manufactures workshop products un
   assert.doesNotMatch(html, /Металлические детали|Сделать металлические детали/);
 });
 
-test("home gives a concise next-stage result and keeps additional opportunities behind an explicit disclosure", () => {
+test("home previews each opportunity in a labelled carousel without hiding the additional requirements", () => {
   const html = render("home");
   assert.match(text(html), /Новый облик дома Можно развивать постройки до ур\. 2/);
-  assert.match(html, /<details [^>]*><summary>/);
-  assert.doesNotMatch(html, /<details[^>]*\sopen(?:=|>)/);
-  assert.match(text(html), /Новые возможности.*Каменоломня.*Печь.*Вход в пещеру.*Рынок между игроками/);
+  assert.match(html, /aria-roledescription="карусель"/);
+  assert.doesNotMatch(html, /<details/);
+  assert.match(text(html), /Каменоломня.*Печь.*Вход в пещеру.*Рынок между игроками/);
+  for (const id of ["home", "building:quarry", "building:kiln", "route:cave", "market"]) assert.ok(html.includes(`data-upgrade-benefit="${id}"`));
+  assert.match(buttons(html).find(button => /aria-label="Предыдущая возможность"/.test(button.attributes)).attributes, /disabled/);
+  assert.doesNotMatch(buttons(html).find(button => /aria-label="Следующая возможность"/.test(button.attributes)).attributes, /disabled/);
   assert.match(text(html), /Нужно завершить вылазок: 0 \/ 1/);
   assert.doesNotMatch(html, /Развитие хозяйства|Новых рецептов|Выплавить железо/);
+});
+
+
+test("mine route cards retain actual yields, times and the additional home requirements", () => {
+  const html = render("quarry", { snapshot: state({ buildings: { home: 1, warehouse: 1 } }) });
+  for (const id of ["cave", "deep_cave", "quarry_stone", "quarry_stone_overnight"]) assert.ok(html.includes(`data-upgrade-benefit="route:${id}"`));
+  assert.match(text(html), /Новый маршрут · 1 ч Вход в пещеру Камень ×8 Железная руда ×4 Ещё потребуется Дом Мохлика 1\/2/);
+  assert.match(text(html), /Новый маршрут · 4 ч Глубокий проход Камень ×32 Железная руда ×16 Ещё потребуется Дом Мохлика 1\/3/);
+  assert.match(html, /data-item-icon="stone"/);
+});
+
+test("fishing cards preview only gear unlocked by this home level and never promise a guaranteed delivery", () => {
+  for (const level of [2, 3, 4, 5]) {
+    const html = render("home", { snapshot: state({ buildings: { home: level - 1, warehouse: 1 } }) });
+    const ids = [...html.matchAll(/data-upgrade-benefit="fishing:([^"]+)"/g)].map(match => match[1]);
+    const expected = [...economyCatalog.fishing.rods, ...economyCatalog.fishing.hooks, ...economyCatalog.fishing.baits]
+      .filter(item => item.requiredHomeLevel === level).map(item => item.id ?? item.itemId);
+    assert.deepEqual(ids, expected);
+    for (const rod of economyCatalog.fishing.rods.filter(item => item.requiredHomeLevel === level)) assert.ok(html.includes(`data-fishing-rod="${rod.id}"`));
+    if (expected.length) assert.match(text(html), /Сможет появиться в новых поставках/);
+  }
 });

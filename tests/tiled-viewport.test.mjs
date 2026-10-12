@@ -6,7 +6,7 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { canvasWorldViewport, boundsInCanvas } = await vite.ssrLoadModule("/features/world/canvas-viewport.ts");
+const { canvasWorldViewport, boundsInCanvas } = await vite.ssrLoadModule("/features/world/scene/canvas-viewport.ts");
 const { paintFixedWorld } = await vite.ssrLoadModule("/features/world/tiled/renderer.ts");
 
 test("viewport follows pan, zoom and DPR instead of retaining the previous camera crop", () => {

@@ -1,6 +1,6 @@
-import { isFishingJourney, journeyPhaseLabel, sceneJourney } from "@/features/world/journey-timeline";
+import { isFishingJourney, journeyPhaseLabel, sceneJourney } from "@/features/world/activities/journeys/journey-timeline";
 import { GAME_ITEMS, type GameItemId } from "@/features/game/game-rewards";
-import type { WorldState } from "@/features/world/model";
+import type { WorldState } from "@/features/world/domain/model";
 
 export function homeAppearance(state?: WorldState, gifts: readonly string[] = [], items: readonly GameItemId[] = []) {
   return {

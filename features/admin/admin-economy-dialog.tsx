@@ -5,15 +5,17 @@ import { CircleAlert, RefreshCw } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ApiError } from "@/lib/check-in-api";
-import { economyCatalog, type EconomyCatalog, type EconomyJob } from "@/features/economy/model";
-import { formatPearls } from "@/features/economy/money";
-import { economyBuilderStatus } from "@/features/economy/builder-status";
-import { constructionSpeedupPrice } from "@/features/economy/rules";
+import { economyCatalog, type EconomyCatalog, type EconomyJob } from "@/features/economy/domain/model";
+import { formatPearls } from "@/features/economy/domain/money";
+import { economyBuilderStatus } from "@/features/economy/domain/builder-status";
+import { constructionSpeedupPrice } from "@/features/economy/domain/rules";
 import { getAdminAccess, getAdminEconomyPlayer, type AdminEconomyDetail } from "./admin-api";
 import { economyCount, economyTime, type AdminEconomyTarget } from "./admin-economy-panel";
 import styles from "./admin-economy.module.css";
 
 const ledgerLabels: Record<string, string> = {
+  starting_pack: "Стартовый набор новичка", claim_tutorial_order: "Ингредиенты учебного заказа",
+  claim_workshop_starter: "Подарок для первой мастерской",
   eat_food: "Еда для Мохлика", feed_builder: "Еда для строителя",
   complete_resident_order: "Сдача заказа жителя", replace_resident_order: "Замена заказа жителя",
   legacy_conversion: "Перенос прежних ресурсов", legacy_journey: "Прежнее путешествие", start_production: "Начало производства",

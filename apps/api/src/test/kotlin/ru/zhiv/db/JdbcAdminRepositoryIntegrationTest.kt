@@ -116,7 +116,7 @@ class JdbcAdminRepositoryIntegrationTest {
         analyticsEntry(passive,"barter_exchange",at,items=mapOf("moon_crystal" to 1L))
         // A V40-era pearl receipt must use its own denomination, independently of coins.
         analyticsEntry(passive,"market_sell",at,coins=10,pearls=3,currencyScale=10,pearlScale=10)
-        for (kind in listOf("legacy_conversion","account_merge","merged_receipt",
+        for (kind in listOf("legacy_conversion","starting_pack","account_merge","merged_receipt",
             "dev_grant_currency","dev_grant_item","dev_set_building_level")) {
             analyticsEntry(active,kind,"2019-01-01T00:00:00Z",coins=999_999)
             analyticsEntry(active,kind,at,coins=999_999)
@@ -565,7 +565,7 @@ class JdbcAdminRepositoryIntegrationTest {
         val collecting = ready.copy(id=UUID.randomUUID().toString(),targetId="garden",recipeId="grow_berries",rewards=mapOf("berries" to 4L),
             collection=EconomyCollection("berry_harvest",8,null,null))
         val future = ready.copy(id=UUID.randomUUID().toString(),finishesAt="2100-01-01T00:00:00Z")
-        val state = EconomyRules.initial().copy(wallet=EconomyWallet(321,7),inventory=mapOf("wood" to 190L),jobs=listOf(ready,collecting,future),completedExplorations=5)
+        val state = EconomyRules.initial().copy(wallet=EconomyWallet(321,7),inventory=mapOf("wood" to 290L),jobs=listOf(ready,collecting,future),completedExplorations=5)
         execute("INSERT INTO economy_profiles(user_id,state) VALUES (?,?::jsonb)",target.id,economyJson.encodeToString(state))
         execute("INSERT INTO economy_profiles(user_id,state) VALUES (?,?::jsonb)",retired.id,economyJson.encodeToString(state))
         execute("UPDATE app_users SET deleted_at=clock_timestamp() WHERE id=?",retired.id)

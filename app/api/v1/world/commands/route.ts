@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { devGameContext, readDevGameBody, gameRequestError } from "@/lib/dev/game-route";
 import { NO_STORE_HEADERS } from "@/lib/dev/api-route";
 import { commandDevWorld, DevWorldError } from "@/lib/dev/world-store";
-import { worldCommandSchema } from "@/features/world/model";
+import { worldCommandSchema } from "@/features/world/domain/model";
 export async function POST(request: Request) {
   const context = await devGameContext(request, true);
   if (context.response) return context.response;

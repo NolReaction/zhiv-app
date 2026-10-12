@@ -40,6 +40,7 @@ object EconomyRules {
         checkNotNull(EconomyRules::class.java.getResourceAsStream("/world/economy-catalog.json")).bufferedReader().use { it.readText() })
 
     init {
+        EconomyTutorialOrders.validateCatalog(catalog)
         require(catalog.version == 3 && catalog.currencyScale == 10 && catalog.pearlScale == 50 && catalog.maxBatch in 1..10)
         require(catalog.localBuyer.payoutBps in 1..10_000)
         require(catalog.constructionSpeedup.secondsPerPearl in 1L..86_400L)
@@ -87,9 +88,14 @@ object EconomyRules {
             woodGranted = minOf(30L, floor(sqrt(wood.toDouble())).toLong()), stoneGranted = minOf(30L, floor(sqrt(stone.toDouble())).toLong()))
     }
 
-    fun initial(sparks: Long = 0, wood: Long = 0, stone: Long = 0, homeLevel: Int = 1, workshopLevel: Int = 0): EconomyState {
+    fun initial(sparks: Long = 0, wood: Long = 0, stone: Long = 0, homeLevel: Int = 1, workshopLevel: Int = 0, includeStartingPack: Boolean = true): EconomyState {
         val grant = legacyConversion(sparks, wood, stone)
-        return EconomyState(currencyScale=10,pearlScale=50,wallet = EconomyWallet(grant.coinsGranted), inventory = mapOf("wood" to grant.woodGranted, "stone" to grant.stoneGranted).filterValues { it > 0 },
+        val starting = if (includeStartingPack) catalog.onboarding else null
+        val inventory = (starting?.startingItems ?: emptyMap()).toMutableMap()
+        if (grant.woodGranted > 0) inventory["wood"] = (inventory["wood"] ?: 0) + grant.woodGranted
+        if (grant.stoneGranted > 0) inventory["stone"] = (inventory["stone"] ?: 0) + grant.stoneGranted
+        return EconomyState(currencyScale=10,pearlScale=50,
+            wallet = EconomyWallet(grant.coinsGranted + (starting?.startingWallet?.coins ?: 0), starting?.startingWallet?.pearls ?: 0), inventory = inventory,
             buildings = mapOf("home" to homeLevel.coerceIn(1, 5), "garden" to 1, "woodlot" to 0, "quarry" to 0,
                 "workshop" to workshopLevel.coerceIn(0, 3), "dryer" to 0, "warehouse" to 1, "kiln" to 0), migration = grant)
     }
@@ -132,7 +138,7 @@ object EconomyRules {
         return result.filterValues { it > 0 }
     }
 
-    private fun spend(state: EconomyState, cost: EconomyCost): EconomyState {
+    internal fun spend(state: EconomyState, cost: EconomyCost): EconomyState {
         if (state.wallet.coins < cost.coins || cost.items.any { (id, quantity) -> (state.inventory[id] ?: 0) < quantity })
             economyFailure("ECONOMY_RESOURCES", "Не хватает монет или материалов. Можно собрать их, произвести или купить на рынке.")
         return state.copy(wallet = state.wallet.copy(coins = state.wallet.coins - cost.coins),
@@ -233,9 +239,12 @@ object EconomyRules {
         if (command.action !in setOf("speedup_construction", "buy_fishing_item", "buy_wardrobe_item", "refresh_fishing_shop", "replace_resident_order", "sell") && command.totalPrice != 0L) invalidEconomy()
         if (command.action !in setOf("start_production", "sell", "sell_fish", "buy_fishing_item") && command.quantity != 1L) invalidEconomy()
         return when (command.action) {
+            "claim_tutorial_order" -> EconomyTutorialOrders.claim(state, command, reservedItems)
+            "claim_workshop_starter" -> EconomyWorkshopStarter.claim(state, command, reservedItems)
             "eat_food", "feed_builder" -> EconomyFood.eat(state, command.targetId, command.action == "feed_builder", now)
-            "complete_resident_order", "replace_resident_order" -> EconomyFood.order(state, command.targetId,
-                command.action == "replace_resident_order", now, command.totalPrice)
+            "complete_resident_order", "replace_resident_order" -> if (command.targetId == EconomyTutorialOrders.ID)
+                EconomyTutorialOrders.complete(state, command) else EconomyFood.order(state, command.targetId,
+                    command.action == "replace_resident_order", now, command.totalPrice)
             "start_production" -> {
                 if (command.targetId.startsWith("quarry_")) economyFailure("ECONOMY_MINING_ACTIVITY", "В шахте работает Мохлик. Выберите участок для вылазки")
                 if (command.quantity > catalog.maxBatch) invalidEconomy()

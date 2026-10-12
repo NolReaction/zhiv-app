@@ -10,4 +10,4 @@ Ktor хранит владение в `EconomyState.wardrobe`, в той же т
 
 Клиент ждёт подтверждённого владения, затем обновляет мир перед экипировкой. Потеря ответа использует штатный повтор команды; при ошибке обновления мира доступна отдельная повторная загрузка. Команда DEV `grant_wardrobe` существует только в локальном development API.
 
-Основные файлы: `features/world/world-wardrobe.tsx`, `wardrobe.ts`, `features/economy/rules.ts`, `EconomyRules.kt`, `JdbcEconomyRepository.kt`, `JdbcWorldRepository.kt`. Проверки: `tests/wardrobe-purchase.test.mjs`, `EconomyWardrobeTest.kt`, `JdbcEconomyRepositoryIntegrationTest.kt`. Kotlin/JDBC требуют Java25, Gradle и тестовую БД; локальные TS-проверки их не заменяют.
+Основные файлы: `features/world/ui/wardrobe/world-wardrobe.tsx`, `wardrobe.ts`, `features/economy/domain/rules.ts`, `EconomyRules.kt`, `JdbcEconomyRepository.kt`, `JdbcWorldRepository.kt`. Проверки: `tests/wardrobe-purchase.test.mjs`, `EconomyWardrobeTest.kt`, `JdbcEconomyRepositoryIntegrationTest.kt`. Kotlin/JDBC требуют Java25, Gradle и тестовую БД; локальные TS-проверки их не заменяют.

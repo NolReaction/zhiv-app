@@ -20,13 +20,13 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
       export function useEffect(callback) { effects.push(callback); }
       export function useId() { return 'market-' + cursor++; }
     `; },
-    transform(source, id) { if (id.endsWith("/features/economy/economy-panel.tsx")) return source.replace('from "react";', `from "${hookModule}";`).replace("function OfferCard(", "export function OfferCard(").replace("function Market(", "export function Market(").replace("function ListingPriceForm(", "export function ListingPriceForm("); },
+    transform(source, id) { if (id.endsWith("/features/economy/ui/economy-panel.tsx")) return source.replace('from "react";', `from "${hookModule}";`).replace("function OfferCard(", "export function OfferCard(").replace("function Market(", "export function Market(").replace("function ListingPriceForm(", "export function ListingPriceForm("); },
   }],
 });
 after(() => vite.close());
-const { OfferCard, Market, ListingPriceForm } = await vite.ssrLoadModule("/features/economy/economy-panel.tsx");
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
-const { fishDiscovered } = await vite.ssrLoadModule("/features/economy/fish-discovery.tsx");
+const { OfferCard, Market, ListingPriceForm } = await vite.ssrLoadModule("/features/economy/ui/economy-panel.tsx");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { fishDiscovered } = await vite.ssrLoadModule("/features/economy/ui/fishing/fish-discovery.tsx");
 const hooks = await vite.ssrLoadModule(hookModule);
 const now = Date.parse("2026-10-05T14:00:00Z");
 function economy() {

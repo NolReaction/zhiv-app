@@ -8,7 +8,7 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { WorldProfileFriendsContent, profileFriends } = await vite.ssrLoadModule("/features/world/world-profile-friends.tsx");
+const { WorldProfileFriendsContent, profileFriends } = await vite.ssrLoadModule("/features/world/ui/profile/world-profile-friends.tsx");
 
 const person = (id, displayName, extra = {}) => ({
   circleId: id, user: { publicId: `PRIVATE-${id}`, displayName },

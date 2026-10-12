@@ -5,7 +5,7 @@ import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
-const { forestBushSoilGeometry, drawForestBushSoil } = await vite.ssrLoadModule("/features/world/forest-bush-soil.ts");
+const { forestBushSoilGeometry, drawForestBushSoil } = await vite.ssrLoadModule("/features/world/activities/garden/forest-bush-soil.ts");
 const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
 after(async () => {
   if (previousDocument) Object.defineProperty(globalThis, "document", previousDocument); else delete globalThis.document;

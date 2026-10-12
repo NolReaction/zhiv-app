@@ -9,8 +9,8 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { createBirdReactions, advanceBirdReactions, applyBirdReactions }
-  = await vite.ssrLoadModule("/features/world/forest-bird-reactions.ts");
-const { forestBirdFrame } = await vite.ssrLoadModule("/features/world/forest-birds.ts");
+  = await vite.ssrLoadModule("/features/world/environment/wildlife/forest-bird-reactions.ts");
+const { forestBirdFrame } = await vite.ssrLoadModule("/features/world/environment/wildlife/forest-birds.ts");
 const scene = JSON.parse(await readFile(new URL("../features/world/tiled/forest.generated.json", import.meta.url)));
 const bounds = { width: scene.width, height: scene.height };
 const sample = (birdElapsed, birdSeed = 0) => forestBirdFrame(scene,
@@ -23,6 +23,26 @@ const poseOnly = frame => frame.map(bird => {
   const rest = { ...bird };
   delete rest.headTurn; delete rest.tailFlick; delete rest.preen;
   return rest;
+});
+
+test("physical bush contact scatters only birds on its leaves with staggered continuous takeoff", () => {
+  const state=createBirdReactions(), birds=[bird("a",100,100),bird("b",115,105),bird("far",150,100),bird("flight",110,100,"flap")];
+  const foliage=[{x:90,y:90},{x:125,y:90},{x:125,y:120},{x:90,y:120}];
+  const stimulus={kind:"bush-rustle",position:{x:108,y:110},intensity:.85,foliage};
+  advanceBirdReactions(state,birds,.025,stimulus,bounds);
+  assert.equal(state.escapes.size,2);
+  const first=applyBirdReactions(state,birds);
+  assert.deepEqual(first.map(b=>[b.x,b.y]),birds.map(b=>[b.x,b.y]),"takeoff begins at the old support, no teleport");
+  const start=state.escapes.get("a").startedAt;
+  assert.ok(state.escapes.get("b").startedAt>start);
+  advanceBirdReactions(state,birds,.2,stimulus,bounds);
+  assert.equal(state.escapes.get("a").startedAt,start,"duplicate delivery cannot restart the same visitor");
+  const moving=applyBirdReactions(state,birds);
+  assert.ok(moving[0].y<birds[0].y);
+  assert.equal(moving[3],birds[3],"a passing bird keeps its authored route");
+  const frozen=structuredClone(state);
+  assert.deepEqual(applyBirdReactions(state,birds),moving);
+  assert.deepEqual(state,frozen,"a second camera only samples");
 });
 
 test("one sound draws only the nearest actual resting bird's attention", () => {

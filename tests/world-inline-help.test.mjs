@@ -25,16 +25,16 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
       }
     `; },
     transform(source, id) {
-      if (id.endsWith("/features/economy/world-object-menu.tsx") || id.endsWith("/features/economy/world-upgrade-dialog.tsx")) return source.replace('from "react";', `from "${hookModule}";`);
+      if (id.endsWith("/features/economy/ui/stations/world-object-menu.tsx") || id.endsWith("/features/economy/ui/construction/world-upgrade-dialog.tsx")) return source.replace('from "react";', `from "${hookModule}";`);
     },
   }],
 });
 const hooks = await vite.ssrLoadModule(hookModule);
-const { WorldRecipeDetail } = await vite.ssrLoadModule("/features/economy/world-object-menu.tsx");
-const { WorldUpgradeContent, WorldUpgradeDialog } = await vite.ssrLoadModule("/features/economy/world-upgrade-dialog.tsx");
-const { ExpeditionRouteDetails, WorldExpeditionSector, ActiveExpedition } = await vite.ssrLoadModule("/features/economy/world-expeditions-menu.tsx");
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
-const { economyStorage } = await vite.ssrLoadModule("/features/economy/rules.ts");
+const { WorldRecipeDetail } = await vite.ssrLoadModule("/features/economy/ui/stations/world-object-menu.tsx");
+const { WorldUpgradeContent, WorldUpgradeDialog } = await vite.ssrLoadModule("/features/economy/ui/construction/world-upgrade-dialog.tsx");
+const { ExpeditionRouteDetails, WorldExpeditionSector, ActiveExpedition } = await vite.ssrLoadModule("/features/economy/ui/expeditions/world-expeditions-menu.tsx");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 after(() => vite.close());
 
 const now = Date.parse("2026-10-07T12:00:00Z");

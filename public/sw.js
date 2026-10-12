@@ -271,3 +271,56 @@ self.addEventListener("fetch", (event) => {
     })(),
   );
 });
+
+// Push data never contains executable commands or arbitrary navigation targets.
+function notificationUrl(value, expectedOwner) {
+  if (typeof value !== "string" || typeof expectedOwner !== "string" || !expectedOwner || expectedOwner.length > 128) return null;
+  try {
+    const url = new URL(value, self.location.origin);
+    if (url.origin !== self.location.origin || url.pathname !== "/" || url.searchParams.get("owner") !== expectedOwner) return null;
+    const notification = url.searchParams.get("notification");
+    const section = url.searchParams.get("section");
+    if (notification !== "checkin" && !(notification === "world" && ["activities", "production", "construction"].includes(section))) return null;
+    const safe = new URL("/", self.location.origin);
+    safe.searchParams.set("notification", notification);
+    safe.searchParams.set("owner", expectedOwner);
+    if (notification === "world") safe.searchParams.set("section", section);
+    return safe.href;
+  } catch { return null; }
+}
+
+self.addEventListener("push", event => {
+  let payload;
+  try { payload = event.data?.json(); } catch { return; }
+  if (!payload || typeof payload !== "object" || typeof payload.title !== "string" || !payload.title.trim()
+    || payload.title.length > 120 || typeof payload.body !== "string" || payload.body.length > 500
+    || typeof payload.tag !== "string" || !payload.tag || payload.tag.length > 128) return;
+  const url = notificationUrl(payload.url, payload.ownerPublicId);
+  if (!url) return;
+  event.waitUntil(self.registration.showNotification(payload.title, {
+    body: payload.body, tag: payload.tag, icon: "/icon-192.png", badge: "/icon-32.png",
+    renotify: false, requireInteraction: false,
+    data: { url, ownerPublicId: payload.ownerPublicId },
+  }));
+});
+
+self.addEventListener("notificationclick", event => {
+  event.notification.close();
+  const url = notificationUrl(event.notification.data?.url, event.notification.data?.ownerPublicId);
+  if (!url) return;
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    const existing = windows.find(client => {
+      try { const candidate = new URL(client.url); return candidate.origin === self.location.origin && candidate.pathname === "/"; }
+      catch { return false; }
+    });
+    if (existing) {
+      try {
+        await existing.focus();
+        existing.postMessage({ type: "zhiv:notification-open", url });
+        return;
+      } catch { /* A closed client can disappear between matchAll and focus. */ }
+    }
+    await self.clients.openWindow(url);
+  })());
+});

@@ -6,8 +6,8 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 const { pixelSprite } = await vite.ssrLoadModule("/features/mochlik/pixel-sprite.ts");
-const { drawGroundedHero, heroSpriteContact, siteContactArea, drawSiteGrounding } = await vite.ssrLoadModule("/features/world/grounding.ts");
-const { drawForestBushGrounding } = await vite.ssrLoadModule("/features/world/forest-bush-grounding.ts");
+const { drawGroundedHero, heroSpriteContact, siteContactArea, drawSiteGrounding } = await vite.ssrLoadModule("/features/world/scene/grounding.ts");
+const { drawForestBushGrounding } = await vite.ssrLoadModule("/features/world/activities/garden/forest-bush-grounding.ts");
 const { paintFixedWorld } = await vite.ssrLoadModule("/features/world/tiled/renderer.ts");
 const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
 

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, CircleAlert, RefreshCw, Search } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ApiError } from "@/lib/check-in-api";
-import { formatPearls } from "@/features/economy/money";
+import { formatPearls } from "@/features/economy/domain/money";
 import { getAdminAccess, getAdminEconomy, type AdminEconomy, type AdminEconomyPlayer, type AdminEconomySort } from "./admin-api";
 import styles from "./admin-economy.module.css";
 

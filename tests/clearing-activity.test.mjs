@@ -10,9 +10,9 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
 after(() => vite.close());
 const { createClearingActivity, advanceClearingActivity, clearingActivityFrame,
   clearingRouteDiagnostics, isClearingAtHome, returnClearingHome, noticeClearingActivity,
-  requestClearingSleep, canStartClearingLife, CLEARING_HOME_IDLE_SECONDS, CLEARING_AWAKE_GRACE_SECONDS } = await vite.ssrLoadModule("/features/world/clearing-activity.ts");
-const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
-const { bushConcealStart } = await vite.ssrLoadModule("/features/world/forest-bush-conceal.ts");
+  requestClearingSleep, canStartClearingLife, CLEARING_HOME_IDLE_SECONDS, CLEARING_AWAKE_GRACE_SECONDS } = await vite.ssrLoadModule("/features/world/simulation/clearing-activity.ts");
+const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
+const { bushConcealStart } = await vite.ssrLoadModule("/features/world/simulation/forest-bush-conceal.ts");
 const conditions = { enabled: true, blocked: false, dusk: 0, rain: 0 };
 const point = (x, y) => ({ x, y });
 const route = (id = "first", activity = "look") => ({ id, behavior: "clearing", activity,
@@ -368,7 +368,7 @@ const bushScene = (withHome = false) => {
   source.paths.unshift({ ...route("bush", "bush"), bushId: "nearby-bush", pauseSeconds: 3 });
   return source;
 };
-const { requestClearingBush } = await vite.ssrLoadModule("/features/world/clearing-activity.ts");
+const { requestClearingBush } = await vite.ssrLoadModule("/features/world/simulation/clearing-activity.ts");
 
 test("bush routes require an authored reachable entry and validate the whole jump corridor", () => {
   const source = bushScene();
@@ -450,7 +450,7 @@ test("only the final authored bush entry may extend the local radius and every s
 
 test("the authored bush approach reaches the current entry safely for all homes and both hero sizes", async () => {
   const { previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
-  const { createWorldNavigation, canTraverse } = await vite.ssrLoadModule("/features/world/navigation.ts");
+  const { createWorldNavigation, canTraverse } = await vite.ssrLoadModule("/features/world/navigation/navigation.ts");
   for (const home of [1, 2, 3, 4, 5]) for (const size of [50, 56]) {
     const source = withPlacedBushArtwork(previewWorldScene(TILED_WORLD, { home })); source.actor.size = size;
     const bush = source.bushes[0], path = source.paths.find(route => route.bushId === bush.id);

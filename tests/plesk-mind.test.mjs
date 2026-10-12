@@ -7,11 +7,11 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { createPleskMind, advancePleskMind, pleskMindFrame, noticePleskMind, requestPleskTrade, PLESK_MIND_LIMITS } = await vite.ssrLoadModule("/features/world/plesk-mind.ts");
-const { pleskLocalPlaces, PLESK } = await vite.ssrLoadModule("/features/world/plesk-resident.ts");
-const { createWorldNavigation, isWalkable, canTraverse } = await vite.ssrLoadModule("/features/world/navigation.ts");
-const { TILED_WORLD: world } = await vite.ssrLoadModule("/features/world/presentation.ts");
-const { FISHING_PACK_RELEASE, fishingCatchFrame } = await vite.ssrLoadModule("/features/world/fishing-props.ts");
+const { createPleskMind, advancePleskMind, pleskMindFrame, noticePleskMind, requestPleskTrade, PLESK_MIND_LIMITS } = await vite.ssrLoadModule("/features/world/characters/plesk/plesk-mind.ts");
+const { pleskLocalPlaces, PLESK } = await vite.ssrLoadModule("/features/world/characters/plesk/plesk-resident.ts");
+const { createWorldNavigation, isWalkable, canTraverse } = await vite.ssrLoadModule("/features/world/navigation/navigation.ts");
+const { TILED_WORLD: world } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
+const { FISHING_PACK_RELEASE, fishingCatchFrame } = await vite.ssrLoadModule("/features/world/activities/fishing/fishing-props.ts");
 const day = { rain: 0, dusk: 0, playerNear: false };
 const advance = (mind, seconds, env = day, step = .1, scene = world) => {
   for (let time = 0; time < seconds - 1e-8; time += step) advancePleskMind(mind, scene, Math.min(step, seconds - time), env);

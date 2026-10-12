@@ -8,10 +8,10 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { withForestImageOcclusion } = await vite.ssrLoadModule("/features/world/forest-occlusion.ts");
+const { withForestImageOcclusion } = await vite.ssrLoadModule("/features/world/scene/forest-occlusion.ts");
 const { paintFixedWorld } = await vite.ssrLoadModule("/features/world/tiled/renderer.ts");
 const { previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
-const { drawForestBush } = await vite.ssrLoadModule("/features/world/forest-bush-painter.ts");
+const { drawForestBush } = await vite.ssrLoadModule("/features/world/activities/garden/forest-bush-painter.ts");
 
 const points = ({ x, y, width, height }) => [
   { x, y }, { x: x + width, y }, { x: x + width, y: y + height }, { x, y: y + height },

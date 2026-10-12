@@ -82,6 +82,9 @@ services:
       ADMIN_PUBLIC_IDS: ${ADMIN_PUBLIC_IDS:-}
       MONITORING_URL: ${MONITORING_URL:-}
       METRICS_TOKEN_FILE: ${METRICS_TOKEN_FILE:-}
+      WEB_PUSH_VAPID_PUBLIC_KEY: ${WEB_PUSH_VAPID_PUBLIC_KEY:-}
+      WEB_PUSH_VAPID_PRIVATE_KEY: ${WEB_PUSH_VAPID_PRIVATE_KEY:-}
+      WEB_PUSH_VAPID_SUBJECT: ${WEB_PUSH_VAPID_SUBJECT:-}
     secrets: [db_app]
     volumes:
       - ./.secrets/auth:/run/auth-secrets:ro

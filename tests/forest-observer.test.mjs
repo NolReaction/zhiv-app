@@ -8,12 +8,12 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { connectForestSession } = await vite.ssrLoadModule("/features/world/forest-session.ts");
+const { connectForestSession } = await vite.ssrLoadModule("/features/world/state/forest-session.ts");
 const { forestObservationFrame, getForestObservation, getServerForestObservation, publishForestObservation, subscribeForestObservation } =
-  await vite.ssrLoadModule("/features/world/forest-observer.ts");
-const { forestPersistenceOverridden } = await vite.ssrLoadModule("/features/world/forest-dev-memory.ts");
+  await vite.ssrLoadModule("/features/world/state/forest-observer.ts");
+const { forestPersistenceOverridden } = await vite.ssrLoadModule("/features/world/dev/forest-dev-memory.ts");
 const { WORLD_DEV_DEFAULTS } = await vite.ssrLoadModule("/features/world/dev/world-dev-store.ts");
-const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
+const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
 const connect = (key, view = "circle", scene = TILED_WORLD) => connectForestSession(key, scene, view, 0, 0, () => {}, { persistence: false });
 
 test("observations are isolated, bounded and detached; last renderer removes an account's snapshot", async () => {

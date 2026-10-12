@@ -1,0 +1,16 @@
+.promo { margin: 0 0 16px; border: 1px solid #b8bea2; border-radius: 14px; background: #f4efd9; overflow: hidden; }
+.promo .toggle { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 48px; padding: 10px 13px; color: #36543e; background: transparent; border: 0; font-size: .84rem; text-align: left; }
+.toggle span { margin-left: auto; font-size: 1.2rem; }
+.form { padding: 0 13px 14px; }
+.form label { display: block; margin: 2px 0 7px; font-size: .75rem; color: #4d6146; }
+.fields { display: flex; gap: 8px; flex-wrap: wrap; }
+.fields input { flex: 1 1 135px; width: 100%; min-width: 0; min-height: 44px; padding: 8px 11px; border: 1px solid #9aa883; border-radius: 9px; background: #fffcf0; color: #293e2d; font-size: 16px; text-transform: uppercase; }
+.fields input::placeholder { text-transform: none; font-size: .75rem; }
+.promo .fields button { flex: 0 1 auto; min-height: 44px; padding: 8px 14px; border: 1px solid #36543e; border-radius: 9px; background: #36543e; color: #fff8dc; font-size: .8rem; font-weight: 650; }
+.fields button:disabled { opacity: .6; }
+.form p { margin: 9px 0 0; font-size: .76rem; line-height: 1.5; }
+.form .error { color: #8e3828; }
+.receipt { margin-top: 12px; padding: 12px; border-radius: 10px; background: #e0e8c9; }
+.receipt strong { display: flex; align-items: center; gap: 7px; font-size: .86rem; }
+.receipt ul { display: flex; gap: 8px 12px; flex-wrap: wrap; list-style: none; padding: 0; margin: 10px 0 0; }
+.receipt li { display: flex; align-items: center; gap: 5px; font-size: .8rem; }

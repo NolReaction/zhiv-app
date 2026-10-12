@@ -11,7 +11,7 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { BetaInfo, ReleaseNotesList, unreadReleaseLabel } = await vite.ssrLoadModule("/features/check-in/beta-info.tsx");
+const { BetaInfo, ReleaseNotesList, unreadReleaseLabel } = await vite.ssrLoadModule("/features/updates/beta-info.tsx");
 const releases = [
   { id: "new", version: "0.6.4", date: "2026-09-24", title: "Новые возможности", changes: ["Первое улучшение", "Второе улучшение"] },
   { id: "old", version: "0.6.3", date: "2026-09-23", title: "Живой лес", changes: ["Предыдущее улучшение"] },
@@ -42,7 +42,7 @@ test("release notification labels keep the exact unread count with Russian endin
 });
 
 test("opening news reads one entry, expanding another reads it, closing never reads the whole feed", async () => {
-  const source = await readFile(new URL("../features/check-in/beta-info.tsx", import.meta.url), "utf8");
+  const source = await readFile(new URL("../features/updates/beta-info.tsx", import.meta.url), "utf8");
   const tree = ts.createSourceFile("beta-info.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const handlers = [];
   function visit(node) {

@@ -70,6 +70,7 @@ export function auditFoodEconomy(catalog) {
     }));
     const baseValue = BigInt(valueOf(items, order.items)), scaledValue = BigInt(valueOf(items, quantities));
     const coins = Number((BigInt(order.coins) * scaledValue + baseValue * 10n - 1n) / (baseValue * 10n) * 10n);
+    assert(coins <= Number(scaledValue) * 2, `${order.id}@${home}: excessive scaled order premium`);
     const slotMinutes = {};
     for (const [id, count] of Object.entries(quantities)) add(slotMinutes, math.profile(id).slotMinutes, count);
     return { homeLevel: home, items: quantities, rewardCoins: coins,
@@ -158,7 +159,7 @@ export function auditFoodEconomy(catalog) {
     }
     const referenceValue = valueOf(items, order.items), saleValue = math.liquidation(order.items);
     assert(order.coins > referenceValue, `${order.id}: orders must reward more than full reference item value`);
-    assert(order.coins <= Math.ceil(referenceValue * 1.4 / 10) * 10, `${order.id}: excessive order premium`);
+    assert(order.coins <= referenceValue * 2, `${order.id}: excessive order premium`);
     const allPurchasable = Object.keys(order.items).every(id => fish.get(id)?.rarity === "common");
     const directBuyCost = allPurchasable ? sum(Object.entries(order.items).map(([id, count]) => shopPrice(id) * count)) : null;
     return { id: order.id, residentId: order.residentId, homeLevel: order.requiredHomeLevel, items: order.items, rewardCoins: order.coins,
@@ -254,6 +255,7 @@ export function auditFoodEconomy(catalog) {
       "Four natural deliveries per steady day is not a strict rolling-day cap; old stock may straddle the interval, and paid merchant refresh buys more stock with pearls",
       "Order template/shop ceilings below are base-quantity comparisons; templates.byHome reports issued scaled quantities and corresponding rewards",
       "Production input-source minutes include independent station occupancy and expected fish acquisition; they are not a wall-clock guarantee",
+      "Order payouts, including home scaling and rounding, remain at or below twice full reference value; low-price player trades remain bounded by existing trade limits",
       "There is no hourly board earnings cap or completed-card cooldown. Every reward consumes actual inventory; order replacements never restock the merchant",
       "Delivery optimizations relax offer availability and repeat-history restrictions; auxiliary goods must already exist and their aggregate sale value is deducted",
       "Food speed bonuses divide duration and do not stack; meal opportunity is its ordinary sale price, not a free ingredient",

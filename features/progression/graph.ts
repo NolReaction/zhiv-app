@@ -1,5 +1,5 @@
-import { economyCatalog, type EconomyCatalog, type EconomyCost } from "@/features/economy/model";
-import { formatPearls } from "@/features/economy/money";
+import { economyCatalog, type EconomyCatalog, type EconomyCost } from "@/features/economy/domain/model";
+import { formatPearls } from "@/features/economy/domain/money";
 import progressionRewards from "@/apps/api/src/main/resources/world/progression-rewards-catalog.json";
 
 export type ProgressionNodeKind = "location" | "building" | "recipe" | "exploration" | "acquisition" | "world" | "collection" | "equipment" | "milestone" | "market" | "project";

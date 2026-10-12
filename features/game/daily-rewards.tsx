@@ -3,9 +3,11 @@ import { useEffect, useRef, type RefObject } from "react";
 import { CalendarDays, Check, Clock3, Gift, PackageOpen, RefreshCw, X } from "lucide-react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { Dialog, DialogDescription, DialogOverlay, DialogPortal, DialogTitle } from "@/components/ui/dialog";
-import { formatPearls } from "@/features/economy/money";
+import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
+import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
+import { formatPearls } from "@/features/economy/domain/money";
 import { ItemIcon } from "@/features/items/item-icon";
-import type { EconomyController } from "@/features/economy/use-economy";
+import type { EconomyController } from "@/features/economy/sync/use-economy";
 import type { GameReward } from "./game-rewards-api";
 import { useGameRewards, type GameRewardsController } from "./use-game-rewards";
 import { createDailyRewardEntryPrompt } from "./daily-reward-entry";
@@ -83,17 +85,23 @@ export function DailyRewardsButton({ ownerPublicId, isOnline = true, onSessionLo
 }
 
 /** Keep this mounted while the profile or dialog closes: an in-flight claim still confirms the wallet. */
-export function DailyRewardsDialog({ ownerPublicId, economy, isOnline = true, onSessionLost, open, onOpenChange, onReturnFocus, onOpenPantry }: {
+export function DailyRewardsDialog({ ownerPublicId, economy, isOnline = true, onSessionLost, open, onOpenChange, onReturnFocus, onOpenPantry, autoPromptAllowed = true }: {
   ownerPublicId: string; economy: EconomyController; isOnline?: boolean; onSessionLost?: () => void;
   open: boolean; onOpenChange: (value: boolean) => void; onReturnFocus: () => void; onOpenPantry?: () => void;
+  autoPromptAllowed?: boolean;
 }) {
   const controller = useGameRewards(ownerPublicId, isOnline, onSessionLost, () => { void economy.refresh(); });
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (open && !wasOpen.current) playUiCue(getAudioRuntime(), "ui.open");
+    wasOpen.current = open;
+  }, [open]);
   const entryPrompt = useRef<ReturnType<typeof createDailyRewardEntryPrompt> | null>(null);
   if (entryPrompt.current === null) { entryPrompt.current = createDailyRewardEntryPrompt(ownerPublicId, controller.readVersion); }
   useEffect(() => {
     if (open) entryPrompt.current?.dismiss();
-    if (entryPrompt.current?.shouldOpen(controller, isOnline)) onOpenChange(true);
-  }, [controller, isOnline, open, onOpenChange]);
+    if (entryPrompt.current?.shouldOpen(controller, isOnline, autoPromptAllowed)) onOpenChange(true);
+  }, [controller, isOnline, open, onOpenChange, autoPromptAllowed]);
   const names = Object.fromEntries(economy.snapshot?.catalog.items.map(item => [item.id, item.name]) ?? []);
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogPortal><DialogOverlay className={styles.scrim} />
       <DialogPrimitive.Content data-slot="dialog-content" className={styles.dialog} onCloseAutoFocus={event => { event.preventDefault(); onReturnFocus(); }}>

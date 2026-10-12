@@ -17,6 +17,7 @@ export type StartupSplashProps = {
   retryAvailable: boolean;
   onRetry: () => void;
   onLogoReady: () => void;
+  revealReady?: boolean;
 };
 
 const LEAF_COUNT = 12;
@@ -34,7 +35,8 @@ function Leaf() {
 }
 
 /** Presentation only: asset retries and the one-shot app-entry lifecycle live in the startup gate. */
-export function StartupSplash({ phase, progress, message, detail, retryAvailable, onRetry, onLogoReady }: StartupSplashProps) {
+export function StartupSplash({ phase, progress, message, detail, retryAvailable, onRetry, onLogoReady,
+  revealReady = true }: StartupSplashProps) {
   const [logoState, setLogoState] = useState<"loading" | "ready" | "failed">("loading");
   const logoSettled = useRef(false);
   const logoDecoding = useRef(false);
@@ -71,7 +73,7 @@ export function StartupSplash({ phase, progress, message, detail, retryAvailable
     className={styles.splash}
     data-startup-splash=""
     data-phase={phase}
-    data-logo-ready={logoState !== "loading"}
+    data-logo-ready={logoState !== "loading" && revealReady}
     aria-label="Запуск приложения Я живой"
     style={{ "--splash-enter-ms": `${SPLASH_ENTER_MS}ms`, "--splash-exit-ms": `${SPLASH_EXIT_MS}ms` } as CSSProperties}
   >
@@ -90,7 +92,7 @@ export function StartupSplash({ phase, progress, message, detail, retryAvailable
       <div className={styles.stage}>
         <span className={styles.seed} aria-hidden="true" />
         <span className={styles.ripple} aria-hidden="true" />
-        <div className={styles.logo} data-ready={logoState !== "loading"}>
+        <div className={styles.logo} data-ready={logoState !== "loading" && revealReady}>
           {logoState === "failed" ? <div className={styles.logoFallback}>
             <span aria-hidden="true"><Leaf /></span>
             <h1>Я живой</h1>

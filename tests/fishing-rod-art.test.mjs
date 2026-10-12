@@ -9,9 +9,9 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { FISHING_ROD_IDS, fishingRodId, fishingRodAppearance, fishingRodShapes } = await vite.ssrLoadModule("/features/world/fishing-rod-art.ts");
-const { FishingRodIcon } = await vite.ssrLoadModule("/features/world/fishing-rod-icon.tsx");
-const { drawFishingRod } = await vite.ssrLoadModule("/features/world/fishing-rod-painter.ts");
+const { FISHING_ROD_IDS, fishingRodId, fishingRodAppearance, fishingRodShapes } = await vite.ssrLoadModule("/features/world/activities/fishing/fishing-rod-art.ts");
+const { FishingRodIcon } = await vite.ssrLoadModule("/features/world/activities/fishing/fishing-rod-icon.tsx");
+const { drawFishingRod } = await vite.ssrLoadModule("/features/world/activities/fishing/fishing-rod-painter.ts");
 
 test("rod identities have different physical sections, grips and reel silhouettes even without color", () => {
   const geometry = new Set(), counts = new Set();

@@ -5,10 +5,10 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { weatherVisitorsAt, drawWeatherGround, drawWeatherAir } = await vite.ssrLoadModule("/features/world/weather-visitors.ts");
+const { weatherVisitorsAt, drawWeatherGround, drawWeatherAir } = await vite.ssrLoadModule("/features/world/legacy/weather-visitors.ts");
 const { RAIN_END_SECONDS, RAIN_PERIOD_SECONDS, rainAt } = await vite.ssrLoadModule("/features/mochlik/habitat.ts");
-const { FOREST_MAP } = await vite.ssrLoadModule("/features/world/map-manifest.ts");
-const { pointInPolygon, homeToWorld, worldToHome } = await vite.ssrLoadModule("/features/world/map-layout.ts");
+const { FOREST_MAP } = await vite.ssrLoadModule("/features/world/legacy/map-manifest.ts");
+const { pointInPolygon, homeToWorld, worldToHome } = await vite.ssrLoadModule("/features/world/legacy/map-layout.ts");
 const stateAt = (ecologyTime, overrides = {}) => ({ elapsed: ecologyTime, ecologyTime, rain: rainAt(ecologyTime), dusk: 0, ...overrides });
 const empty = { snail: null, frog: null, moths: [] };
 

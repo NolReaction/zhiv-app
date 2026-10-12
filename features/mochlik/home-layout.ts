@@ -1,5 +1,5 @@
-import { FOREST_MAP, type MapPoint } from "@/features/world/map-manifest";
-import { HOME_AREA, worldToHome } from "@/features/world/map-layout";
+import { FOREST_MAP, type MapPoint } from "@/features/world/legacy/map-manifest";
+import { HOME_AREA, worldToHome } from "@/features/world/legacy/map-layout";
 /** Animation/effect units stay 256; background retains all source pixels. */
 export const HOME_CANVAS_SIZE = 256;
 export const homePixel = (point: MapPoint) => { const p = worldToHome(point); return { x: p.x * HOME_CANVAS_SIZE, y: p.y * HOME_CANVAS_SIZE }; };

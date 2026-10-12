@@ -7,9 +7,9 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { FISH_PATROLS, WATER_RIPPLES, WIND_RIPPLES, RAIN_IMPACTS, fishPose, fishSurfaceEvent, windRipplePose, drawWaterAmbience } = await vite.ssrLoadModule("/features/world/water-ambience.ts");
-const { BIRD_FLIGHTS, birdFlightPose, drawBirdAmbience } = await vite.ssrLoadModule("/features/world/bird-ambience.ts");
-const { mapPlaceAt } = await vite.ssrLoadModule("/features/world/map-layout.ts");
+const { FISH_PATROLS, WATER_RIPPLES, WIND_RIPPLES, RAIN_IMPACTS, fishPose, fishSurfaceEvent, windRipplePose, drawWaterAmbience } = await vite.ssrLoadModule("/features/world/legacy/water-ambience.ts");
+const { BIRD_FLIGHTS, birdFlightPose, drawBirdAmbience } = await vite.ssrLoadModule("/features/world/legacy/bird-ambience.ts");
+const { mapPlaceAt } = await vite.ssrLoadModule("/features/world/legacy/map-layout.ts");
 
 test("fish bodies and fins stay underwater for their entire patrol", () => {
   for (const patrol of FISH_PATROLS) {

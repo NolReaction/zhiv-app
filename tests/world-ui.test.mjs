@@ -14,18 +14,18 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
 after(() => vite.close());
 const { default: WorldPortal } = await vite.ssrLoadModule("/features/world/world-portal.tsx");
 const { DialogPortal } = await vite.ssrLoadModule("/components/ui/dialog.tsx");
-const { journeyFraction, journeyLeg } = await vite.ssrLoadModule("/features/world/journey-progress.tsx");
+const { journeyFraction, journeyLeg } = await vite.ssrLoadModule("/features/world/ui/journeys/journey-progress.tsx");
 
-const { journeyTimeline, sceneJourney } = await vite.ssrLoadModule("/features/world/journey-timeline.ts");
-const { fishingFrame, fishingPosition, FISHING_PATH, FISHING_BOBBER, FISHING_FOREGROUND } = await vite.ssrLoadModule("/features/world/fishing-journey.ts");
-const { FOREST_MAP } = await vite.ssrLoadModule("/features/world/map-manifest.ts");
-const { pointInPolygon } = await vite.ssrLoadModule("/features/world/map-layout.ts");
-const { resourceCountAt } = await vite.ssrLoadModule("/features/world/world-balances.tsx");
+const { journeyTimeline, sceneJourney } = await vite.ssrLoadModule("/features/world/activities/journeys/journey-timeline.ts");
+const { fishingFrame, fishingPosition, FISHING_PATH, FISHING_BOBBER, FISHING_FOREGROUND } = await vite.ssrLoadModule("/features/world/legacy/fishing-journey.ts");
+const { FOREST_MAP } = await vite.ssrLoadModule("/features/world/legacy/map-manifest.ts");
+const { pointInPolygon } = await vite.ssrLoadModule("/features/world/legacy/map-layout.ts");
+const { resourceCountAt } = await vite.ssrLoadModule("/features/world/ui/hud/world-balances.tsx");
 const { CheckInReceipt } = await vite.ssrLoadModule("/features/check-in/check-in-receipt.tsx");
 
-const { BOAT_WRECK } = await vite.ssrLoadModule("/features/world/boat-wreck.ts");
+const { BOAT_WRECK } = await vite.ssrLoadModule("/features/world/legacy/boat-wreck.ts");
 
-const { fishingTackle } = await vite.ssrLoadModule("/features/world/fishing-tackle.ts");
+const { fishingTackle } = await vite.ssrLoadModule("/features/world/legacy/fishing-tackle.ts");
 
 test("travel progress derives from absolute journey time and remains bounded after return", () => {
   const start = Date.parse("2026-09-08T12:00:00Z"), journey = { startedAt: new Date(start).toISOString(), finishesAt: new Date(start + 60000).toISOString() };
@@ -62,8 +62,8 @@ test("the fullscreen forest mounts raw modal content without centered-dialog geo
 });
 
 test("account-owned sibling dialogs have distinct keys and remount on account changes", async () => {
-  const source = await readFile(new URL("../features/check-in/check-in-app.tsx", import.meta.url), "utf8");
-  const tree = ts.createSourceFile("check-in-app.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const source = await readFile(new URL("../features/app/app-shell.tsx", import.meta.url), "utf8");
+  const tree = ts.createSourceFile("app-shell.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const dialogs = new Set(["CheckInCalendar", "GameLeaderboardDialog", "WorldPortal"]);
   const expressions = new Map();
   function visit(node) {
@@ -190,7 +190,7 @@ test("the rod stays in the leading hand and beside the face on both walking legs
 
 test("map keeps focused actions and retains collection of saved legacy journeys", async () => {
   const { default: WorldView } = await vite.ssrLoadModule("/features/world/world-view.tsx");
-  const { WorldJourneys } = await vite.ssrLoadModule("/features/world/world-journeys.tsx");
+  const { WorldJourneys } = await vite.ssrLoadModule("/features/world/ui/journeys/world-journeys.tsx");
   const state = { resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1,
     workshop: false, journeys: [], collection: [], inventory: [], equipment: {}, completedJourneys: 0 };
   const world = { snapshot: { state, gifts: ["flower", "leaf_garland"] }, now: Date.parse("2026-09-21T12:00:00Z"), act() {} };

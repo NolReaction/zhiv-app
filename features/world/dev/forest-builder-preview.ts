@@ -1,4 +1,4 @@
-import type { BuilderAction, BuilderResidentFrame } from "../builder-types";
+import type { BuilderAction, BuilderResidentFrame } from "@/features/world/characters/builder/builder-types";
 import type { WorldDevBuilderPreview } from "./world-dev-store";
 
 export const BUILDER_PREVIEW_SECONDS: Readonly<Record<BuilderAction, number>> = Object.freeze({

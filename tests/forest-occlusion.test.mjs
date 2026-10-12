@@ -8,7 +8,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { withForestOcclusion, forestPointOccluded } = await vite.ssrLoadModule("/features/world/forest-occlusion.ts");
+const { withForestOcclusion, forestPointOccluded } = await vite.ssrLoadModule("/features/world/scene/forest-occlusion.ts");
 
 const rectangle = (id = "tree", x = 40, y = 30, width = 40, height = 50, frontY = 80) => ({ id, frontY,
   points: [{ x, y }, { x: x + width, y }, { x: x + width, y: y + height }, { x, y: y + height }] });

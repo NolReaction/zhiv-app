@@ -18,13 +18,13 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
       export function useRef(initial) { const index = cursor++; if (!(index in slots)) slots[index] = { current: initial }; return slots[index]; }
       export function useId() { return 'shop-' + cursor++; }
     `; },
-    transform(source, id) { if (id.endsWith("/features/economy/currency-shop-panel.tsx")) return source.replace('from "react";', `from "${hookModule}";`); },
+    transform(source, id) { if (id.endsWith("/features/economy/ui/market/currency-shop-panel.tsx")) return source.replace('from "react";', `from "${hookModule}";`); },
   }],
 });
 after(() => vite.close());
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
-const shop = await vite.ssrLoadModule("/features/economy/currency-shop.ts");
-const { CurrencyShopPanel } = await vite.ssrLoadModule("/features/economy/currency-shop-panel.tsx");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const shop = await vite.ssrLoadModule("/features/economy/domain/currency-shop.ts");
+const { CurrencyShopPanel } = await vite.ssrLoadModule("/features/economy/ui/market/currency-shop-panel.tsx");
 const hooks = await vite.ssrLoadModule(hookModule);
 const state = buildings => ({ catalog: economyCatalog, buildings, jobs: [] });
 const firstQuote = buildings => shop.currencyShopGoldOffers(state(buildings))[0];

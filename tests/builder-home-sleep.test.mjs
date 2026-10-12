@@ -8,11 +8,11 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { createBuilderMind, advanceBuilderMind, builderMindFrame, builderSleepIndicator, rehydrateBuilderMind,
-  requestBuilderVisit, noticeBuilderMind } = await vite.ssrLoadModule("/features/world/builder-mind.ts");
-const { builderLocalPlaces, builderWorkStops } = await vite.ssrLoadModule("/features/world/builder-navigation.ts");
-const { canTraverse, isWalkable } = await vite.ssrLoadModule("/features/world/navigation.ts");
-const { BUILDER } = await vite.ssrLoadModule("/features/world/builder-types.ts");
-const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/presentation.ts");
+  requestBuilderVisit, noticeBuilderMind } = await vite.ssrLoadModule("/features/world/characters/builder/builder-mind.ts");
+const { builderLocalPlaces, builderWorkStops } = await vite.ssrLoadModule("/features/world/characters/builder/builder-navigation.ts");
+const { canTraverse, isWalkable } = await vite.ssrLoadModule("/features/world/navigation/navigation.ts");
+const { BUILDER } = await vite.ssrLoadModule("/features/world/characters/builder/builder-types.ts");
+const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
 const { previewWorldScene, initialPreviewLevels } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
 const rect = (x, y, width, height) => [{ x, y }, { x: x + width, y }, { x: x + width, y: y + height }, { x, y: y + height }];
 const start = Date.parse("2026-10-07T22:00:00Z"), finish = start + 3600_000;

@@ -5,8 +5,8 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { createEconomySession } = await vite.ssrLoadModule("/features/economy/session.ts");
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
+const { createEconomySession } = await vite.ssrLoadModule("/features/economy/sync/session.ts");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { ApiError } = await vite.ssrLoadModule("/lib/check-in-api.ts");
 const owner = "AAAA-0000-0001", other = "AAAA-0000-0002", now = Date.now();
 const state = (revision = 0, ownerPublicId = owner) => ({ ownerPublicId, revision, serverTime: new Date(now).toISOString(), wallet: { coins: 1000, pearls: 0 }, inventory: {},
@@ -261,4 +261,80 @@ test("failed reconciliation returns false and remount retries without stale coal
   assert.equal(await session.reconcile(), false); stop();
   session.setAvailable(false); session.activate();
   assert.equal(await session.reconcile(), true); assert.equal(gets, 2);
+});
+
+const saleState = (revision = 0, sold = false, ownerPublicId = owner) => ({ ...state(revision, ownerPublicId),
+  inventory: { wood: sold ? 9 : 10 }, wallet: { coins: sold ? 1002 : 1000, pearls: 0 } });
+
+test("local sale feedback waits for the exact confirmed command and never comes from polling", async () => {
+  const wait = deferred(), sent = [];
+  let latest = saleState();
+  const session = createEconomySession(owner, transport({ get: async () => latest,
+    send: command => { sent.push(command); return wait.promise; } }), () => assert.fail());
+  session.activate(); await session.refresh();
+  session.act("sell", "wood", 1, 2);
+  assert.equal(session.getSnapshot().localSale, undefined);
+  latest = saleState(1, true); wait.resolve(result(latest)); await flush();
+  const receipt = session.getSnapshot().localSale;
+  assert.deepEqual(receipt, { id: sent[0].requestId, ownerPublicId: owner, revision: 1, itemId: "wood", quantity: 1, coins: 2 });
+  assert.ok(Object.isFrozen(receipt));
+  latest = saleState(2, true); latest.wallet.coins += 100;
+  await session.refresh(); await session.retry();
+  assert.equal(session.getSnapshot().localSale, receipt, "a wallet refresh cannot manufacture another sale receipt");
+  const reopened = createEconomySession(owner, transport({ get: async () => latest }), () => assert.fail());
+  reopened.activate(); await reopened.refresh();
+  assert.equal(reopened.getSnapshot().localSale, undefined);
+});
+
+test("a rejected sale has no success feedback, while a lost response is acknowledged only once after confirmation", async () => {
+  const denied = createEconomySession(owner, transport({ get: async () => saleState(),
+    send: async () => { throw new ApiError("Недостаточно припасов", 409); } }), () => assert.fail());
+  denied.activate(); await denied.refresh(); denied.act("sell", "wood", 1, 2); await flush();
+  assert.equal(denied.getSnapshot().localSale, undefined);
+  assert.equal(denied.getSnapshot().uncertain, false);
+
+  const sent = [];
+  const session = createEconomySession(owner, transport({ get: async () => saleState(), send: async command => {
+    sent.push(command);
+    if (sent.length === 1) throw Error("response lost");
+    return { ...result(saleState(1, true)), replayed: true };
+  } }), () => assert.fail());
+  session.activate(); await session.refresh(); session.act("sell", "wood", 1, 2); await flush();
+  assert.equal(session.getSnapshot().uncertain, true);
+  assert.equal(session.getSnapshot().localSale, undefined);
+  await session.retry();
+  assert.deepEqual(sent[0], sent[1]);
+  const receipt = session.getSnapshot().localSale;
+  assert.equal(receipt.id, sent[0].requestId);
+  await session.retry();
+  assert.equal(session.getSnapshot().localSale, receipt);
+});
+
+test("restoring an already applied sale receipt never replays practice feedback", async () => {
+  const cache = storage(), sent = [];
+  let latest = saleState();
+  const t = transport({ get: async () => latest, send: async command => {
+    sent.push(command); latest = saleState(1, true);
+    if (sent.length === 1) throw Error("response lost");
+    return { ...result(latest), replayed: true };
+  } });
+  const first = createEconomySession(owner, t, () => assert.fail(), cache), stop = first.activate();
+  await first.refresh(); first.act("sell", "wood", 1, 2); await flush(); stop();
+  const restored = createEconomySession(owner, t, () => assert.fail(), cache);
+  restored.activate(); await restored.refresh(); await restored.retry();
+  assert.deepEqual(sent[0], sent[1]);
+  assert.equal(restored.getSnapshot().uncertain, false);
+  assert.equal(restored.getSnapshot().localSale, undefined);
+});
+
+test("unrelated commands, foreign owners, stale revisions and mismatched sale quantities cannot create sale feedback", async () => {
+  const answers = [saleState(1, true), saleState(1, true, other), saleState(0, true),
+    { ...saleState(1, true), inventory: { wood: 8 } }, { ...saleState(1, true), wallet: { coins: 1000, pearls: 0 } }];
+  for (const [index, answer] of answers.entries()) {
+    let lost = 0;
+    const session = createEconomySession(owner, transport({ get: async () => saleState(), send: async () => result(answer) }), () => lost++);
+    session.activate(); await session.refresh(); session.act(index === 0 ? "start_production" : "sell", "wood", 1, 2); await flush();
+    assert.equal(session.getSnapshot().localSale, undefined);
+    assert.equal(lost, answer.ownerPublicId === other ? 1 : 0);
+  }
 });

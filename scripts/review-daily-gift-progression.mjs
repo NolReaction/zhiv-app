@@ -82,7 +82,7 @@ export function reviewDailyGiftProgression(loaded, baselineBytes, onScenario = (
         "Item-full gift failures are retried after ordinary stock management; real players can choose a different time to claim.",
         "The old production-slots report excluded gift coins/items/relics; its numbers are not the before column in this comparison."] },
     sourceHashes: Object.fromEntries(["../apps/api/src/main/resources/world/economy-catalog.json", `../${catalogFile}`,
-      "../features/economy/rules.ts", "../features/game/progression-rewards.ts", "./simulate-player-journey.mjs",
+      "../features/economy/domain/rules.ts", "../features/game/progression-rewards.ts", "./simulate-player-journey.mjs",
       "./simulate-player-joint.mjs", "./review-daily-gift-progression.mjs"].map(file => [file, sha(readFileSync(new URL(file, import.meta.url)))])),
     summary, scenarios: samples };
 }

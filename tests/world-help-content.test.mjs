@@ -6,10 +6,10 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { worldHelpTopics, worldHelpGroups, searchWorldHelp, searchWorldHelpWithStatus } = await vite.ssrLoadModule("/features/world/world-help-content.ts");
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
-const { fishingOdds } = await vite.ssrLoadModule("/features/economy/fishing.ts");
-const { formatPearls } = await vite.ssrLoadModule("/features/economy/money.ts");
+const { worldHelpTopics, worldHelpGroups, searchWorldHelp, searchWorldHelpWithStatus } = await vite.ssrLoadModule("/features/world/ui/help/world-help-content.ts");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { fishingOdds } = await vite.ssrLoadModule("/features/economy/domain/fishing.ts");
+const { formatPearls } = await vite.ssrLoadModule("/features/economy/domain/money.ts");
 const { CLICKER_IDLE_RESET_MS, CLICKER_LEVELS } = await vite.ssrLoadModule("/features/game/clicker-story.ts");
 const { progressionRewardsCatalog } = await vite.ssrLoadModule("/features/game/progression-rewards.ts");
 const topics = worldHelpTopics();
@@ -91,6 +91,15 @@ test("search responds while typing prefixes, preserving endings that resemble un
   assert.equal(searchWorldHelp(topics, "пле\u0308ска")[0].id, "plesk", "decomposed ё also normalizes");
 });
 
+test("workshop help keeps general production first and finds the gift for specific questions", () => {
+  for (const query of ["мастерская", "мастерской", "мастеркая", "масте"]) {
+    assert.equal(searchWorldHelp(topics, query)[0]?.id, "production", query);
+  }
+  for (const query of ["стартовый набор", "набор для мастерской", "подарок мастерская", "мастеркая подарок"]) {
+    assert.equal(searchWorldHelp(topics, query)[0]?.id, "workshop-starter", query);
+  }
+});
+
 test("general and single-letter questions offer clearly labelled, bounded frequent topics", () => {
   const expected = ["start", "resources", "production", "construction", "resident-orders", "saving"];
   for (const query of ["как", "Как мне?", "что", "где", "почему", "как пожалуйста"]) {
@@ -141,7 +150,7 @@ test("topic navigation points to existing buildings and valid destinations", () 
       assert.ok(economyCatalog.buildings.some(building => building.id === target.stationId), entry.id);
       if (target.recipeId) assert.ok(economyCatalog.recipes.some(recipe => recipe.id === target.recipeId && recipe.buildingId === target.stationId));
     }
-    if (target.kind === "profile") assert.ok(["profile", "mood", "friends"].includes(target.tab));
+    if (target.kind === "profile") assert.ok(["profile", "mood", "friends", "settings"].includes(target.tab));
     if (target.kind === "expeditions" && target.sector) assert.ok(["forest", "coast", "caves"].includes(target.sector));
   }
   assert.deepEqual(topic("start").action.target, { kind: "station", stationId: "garden" });
@@ -229,7 +238,7 @@ test("timers, production slots and prices derive from gameplay catalogs", () => 
   assert.ok(answer("level").includes(`уровней ${CLICKER_LEVELS.length}`));
   assert.ok(answer("resources").includes(`${economyCatalog.localBuyer.payoutBps / 100}%`));
   for (const upgrade of economyCatalog.productionSlots.upgrades) {
-    assert.ok(answer("production-slots").includes(`${upgrade.slots}-е — за ${formatPearls(upgrade.pricePearls)} жемчужин с дома ${upgrade.requiredHomeLevel}`));
+    assert.ok(answer("production-slots").includes(`${upgrade.slots}-е - за ${formatPearls(upgrade.pricePearls)} жемчужин с дома ${upgrade.requiredHomeLevel}`));
   }
   assert.ok(answer("pearls").includes(`${economyCatalog.constructionSpeedup.secondsPerPearl / 60} минут`));
   assert.ok(answer("rewards").includes(`${progressionRewardsCatalog.dailyMinimumHours} часов`));
@@ -240,7 +249,9 @@ test("timers, production slots and prices derive from gameplay catalogs", () => 
 });
 
 test("profile guidance distinguishes mood, food, friends and future profile links", () => {
-  assert.match(answer("level"), /«Профиль».*«Настроение».*«Друзья»/);
+  assert.match(answer("level"), /«Профиль».*«Друзья».*шестерёнка настроек/);
+  assert.match(answer("level"), /Как Мохлик\?/);
+  assert.doesNotMatch(answer("level"), /«Настроение»/);
   assert.match(answer("mochlik-life"), /офлайн силы не расходуются/);
   assert.match(answer("mochlik-life"), /Настроение не заменяет сытость/);
   assert.match(answer("friend-profile"), /Карточки новой вкладки пока не открывают чужой профиль/);

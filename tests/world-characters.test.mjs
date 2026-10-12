@@ -14,9 +14,19 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   plugins: [{ name: "character-navigation-hooks", enforce: "pre",
     resolveId(id) { if (id === hookModule) return `\0${id}`; },
     load(id) { if (id === `\0${hookModule}`) return `
-      let slots = [], cursor = 0;
-      export function reset() { slots = []; cursor = 0; }
+      let slots = [], cursor = 0, effectsEnabled = false, pending = new Map(), guideContext = {};
+      export function reset() {
+        for (const slot of slots) slot?.cleanup?.();
+        slots = []; cursor = 0; effectsEnabled = false; pending.clear(); guideContext = {};
+      }
       export function render() { cursor = 0; }
+      export function captureEffects() { effectsEnabled = true; }
+      export function flushEffects() {
+        const effects = [...pending]; pending.clear();
+        for (const [index, effect] of effects) {
+          slots[index]?.cleanup?.(); slots[index].cleanup = effect();
+        }
+      }
       export function useState(initial) {
         const index = cursor++;
         if (!(index in slots)) slots[index] = typeof initial === 'function' ? initial() : initial;
@@ -35,20 +45,40 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
         return slots[index].value;
       }
       export function useCallback(callback) { return callback; }
-      export function useEffect() {}
+      export function useEffect(effect, dependencies) {
+        const index = cursor++;
+        if (!effectsEnabled) return;
+        const previous = slots[index];
+        if (!previous || dependencies.some((value, position) => !Object.is(value, previous.dependencies?.[position]))) {
+          slots[index] = { dependencies, cleanup: previous?.cleanup };
+          pending.set(index, effect);
+        }
+      }
       export function useSyncExternalStore(_subscribe, getSnapshot) { return getSnapshot(); }
+      export function setGuideContext(value) { guideContext = value; }
+      // Character navigation tests keep the first-visit tutorial dismissed.
+      export function useWorldOnboarding() {
+        return { open: false, loaded: true, isPaused: false, progress: { version: 2, status: "skipped" },
+          start() {}, step() {}, setCrop() {}, skip() {}, complete() {}, pause() {}, resume() {}, replay() {}, ...guideContext.onboarding };
+      }
+      export function useWorldRewardPromptGate() { return false; }
+      export function useForestObservation() { return guideContext.observation ?? null; }
     `; },
     transform(source, id) {
-      if (id.endsWith("/features/world/world-view.tsx") || id.endsWith("/features/economy/use-construction-goal.ts")) {
-        return source.replace('from "react";', `from "${hookModule}";`);
+      if (id.endsWith("/features/world/world-view.tsx") || id.endsWith("/features/economy/ui/construction/use-construction-goal.ts")) {
+        return source.replace('from "react";', `from "${hookModule}";`)
+          .replace('from "@/features/world/state/use-world-onboarding";', `from "${hookModule}";`)
+          .replace('from "@/features/world/state/use-forest-observation";', `from "${hookModule}";`)
+          .replace('from "@/features/world/state/onboarding-reward-gate";', `from "${hookModule}";`);
       }
     },
   }],
 });
 after(() => vite.close());
-const { WORLD_CHARACTERS, worldCharacterResident } = await vite.ssrLoadModule("/features/world/world-characters-model.ts");
-const { WorldCharacters } = await vite.ssrLoadModule("/features/world/world-characters.tsx");
+const { WORLD_CHARACTERS, worldCharacterResident } = await vite.ssrLoadModule("/features/world/characters/world-characters-model.ts");
+const { WorldCharacters } = await vite.ssrLoadModule("/features/world/ui/characters/world-characters.tsx");
 const { default: WorldView } = await vite.ssrLoadModule("/features/world/world-view.tsx");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const hooks = await vite.ssrLoadModule(hookModule);
 
 function elements(tree) {
@@ -142,6 +172,162 @@ function navigation() {
   return { find, component, render, focused, restore, props, get refreshes() { return refreshes; } };
 }
 
+function guideNavigation(context = {}) {
+  const nav = navigation();
+  nav.props.open = true;
+  nav.props.economy.snapshot = {
+    ownerPublicId: nav.props.ownerPublicId, revision: 1, catalog: economyCatalog,
+    wallet: { coins: 1000, pearls: 0 }, inventory: {}, buildings: { home: 3, warehouse: 1, garden: 1, workshop: 1 }, jobs: [],
+    storage: { used: 0, reserved: 0, capacity: 200, available: 200 },
+  };
+  hooks.setGuideContext(context);
+  return nav;
+}
+
+test("the world course exposes real menu targets without destination-opening callbacks", () => {
+  const nav = guideNavigation({ onboarding: { progress: { version: 2, status: "started", stepId: "orders" } } });
+  try {
+    const guide = nav.component("WorldOnboardingSession").props;
+    for (const key of ["onOpenOrders", "onOpenWorkshop", "onOpenGarden", "onOpenQuick", "onOpenResident", "onOpenHelp"]) {
+      assert.equal(guide[key], undefined, `${key} must not let the coach bypass the real path`);
+    }
+    assert.equal(nav.component("WorldFoodMenu"), undefined);
+    nav.find(element => element.props["data-world-quick"] === "more").props.onClick();
+    const entry = nav.find(element => element.props["data-world-food-entry"] !== undefined);
+    assert.ok(entry, "the course highlights the same food-and-orders action the player normally uses");
+    entry.props.onClick();
+    const food = nav.component("WorldFoodMenu");
+    assert.equal(food.props.initialTab, "meals", "the real menu does not skip directly to Orders");
+    assert.equal(nav.component("WorldOnboardingSession").props.ordersOpen, false);
+    food.props.onTabChange("orders");
+    assert.equal(nav.component("WorldOnboardingSession").props.ordersOpen, true);
+  } finally { nav.restore(); }
+});
+
+test("the workshop lesson requests only camera focus until a real map selection opens its menu", () => {
+  const nav = guideNavigation({ onboarding: { progress: { version: 2, status: "started", stepId: "workshop" } } });
+  try {
+    let scene = nav.component("WorldScene");
+    assert.equal(scene.props.guidePlace, "workshop");
+    assert.equal(scene.props.openObjectRequest, undefined);
+    assert.equal(nav.component("WorldObjectMenu"), undefined);
+    assert.equal(nav.component("WorldOnboardingSession").props.workshopOpen, false);
+    scene.props.onPlace("workshop", { place: "workshop", objectId: "workshop", x: 100, y: 150, viewportWidth: 390, viewportHeight: 700 });
+    assert.equal(nav.component("WorldObjectMenu").props.selection.place, "workshop");
+    assert.equal(nav.component("WorldOnboardingSession").props.workshopOpen, true);
+    assert.equal(nav.component("WorldScene").props.guidePlace, null, "the map outline yields to the manually opened menu");
+  } finally { nav.restore(); }
+});
+
+test("map guide focus respects pause, modal surfaces and the gift boundary", () => {
+  const nav = guideNavigation({ onboarding: { progress: { version: 2, status: "started", stepId: "workshop" } } });
+  try {
+    nav.props.economy.snapshot.buildings.workshop = 0;
+    assert.equal(nav.component("WorldScene").props.guidePlace, null, "first show the explicit starter gift");
+    nav.props.economy.snapshot.workshopStarterClaimed = true;
+    assert.equal(nav.component("WorldScene").props.guidePlace, "workshop");
+    hooks.setGuideContext({ onboarding: { progress: { version: 2, status: "started", stepId: "workshop" }, isPaused: true } });
+    assert.equal(nav.component("WorldScene").props.guidePlace, null);
+    hooks.setGuideContext({ onboarding: { progress: { version: 2, status: "started", stepId: "garden" } } });
+    assert.equal(nav.component("WorldScene").props.guidePlace, "garden");
+    nav.find(element => element.props["data-world-quick"] === "pantry").props.onClick();
+    assert.equal(nav.component("WorldScene").props.guidePlace, null);
+  } finally { nav.restore(); }
+});
+
+test("section introductions wait for loaded state and yield to the active initial course", () => {
+  const started = { version: 2, status: "started", stepId: "pantry" };
+  const cases = [
+    { onboarding: { progress: { version: 2, status: "completed" } }, expected: true },
+    { onboarding: { progress: { version: 2, status: "skipped" } }, expected: true },
+    { onboarding: { progress: started }, expected: false },
+    { onboarding: { progress: null }, expected: false },
+    { onboarding: { loaded: false }, expected: false },
+    { onboarding: { progress: started, isPaused: true }, expected: true },
+  ];
+  for (const { onboarding, expected } of cases) {
+    const nav = guideNavigation({ onboarding });
+    try {
+      nav.find(element => element.props["data-world-quick"] === "pantry").props.onClick();
+      const guide = nav.component("SectionGuide");
+      assert.equal(guide.props.section, "pantry");
+      assert.equal(guide.props.enabled, expected, JSON.stringify(onboarding));
+      if (expected) assert.equal(nav.component("WorldOnboardingSession").props.modalBlocked, true,
+        "the completed-course harvest reminder must not overlap a section lesson");
+      nav.props.open = false;
+      assert.equal(nav.component("SectionGuide").props.enabled, false, "a closed map cannot consume the first visit");
+      nav.props.open = true;
+      nav.props.economy.snapshot = null;
+      assert.equal(nav.component("SectionGuide").props.enabled, false, "wait for actual economy content");
+    } finally { nav.restore(); }
+  }
+});
+
+test("another device owning the forest suppresses quick and modal section introductions", () => {
+  const nav = guideNavigation({ observation: { memory: { sync: { mode: "other-device" } } } });
+  try {
+    nav.find(element => element.props["data-world-quick"] === "pantry").props.onClick();
+    assert.equal(nav.component("SectionGuide").props.enabled, false);
+    nav.component("WorldPantryMenu").props.onOpenMarket();
+    assert.equal(nav.component("SectionGuide").props.section, "market");
+    assert.equal(nav.component("SectionGuide").props.enabled, false);
+    nav.component("WorldScene").props.onResident("plesk");
+    assert.equal(nav.component("WorldResidentDialog").props.guide.props.enabled, false);
+    nav.component("WorldScene").props.onResident("builder");
+    assert.equal(nav.component("WorldBuilderDialog").props.guide.props.enabled, false);
+    hooks.setGuideContext({});
+    assert.equal(nav.component("WorldBuilderDialog").props.guide.props.enabled, true,
+      "returning ownership restores eligibility without consuming the introduction");
+  } finally { nav.restore(); }
+});
+
+test("switching the live food tab selects the relevant meals or orders guide without remounting its menu", () => {
+  const nav = guideNavigation();
+  try {
+    nav.find(element => element.props["data-world-quick"] === "pantry").props.onClick();
+    nav.component("WorldPantryMenu").props.onOpenFood();
+    const food = nav.component("WorldFoodMenu"), key = food.key;
+    assert.equal(food.props.initialTab, "meals");
+    assert.equal(nav.component("SectionGuide").props.section, "meals");
+    assert.equal(nav.component("SectionGuide").props.enabled, true);
+    assert.equal(nav.component("WorldOnboardingSession").props.ordersOpen, false);
+    food.props.onTabChange("orders");
+    assert.equal(nav.component("WorldFoodMenu").key, key);
+    assert.equal(nav.component("WorldOnboardingSession").props.ordersOpen, true);
+    const guide = nav.component("SectionGuide");
+    assert.equal(guide.props.section, "orders");
+    assert.equal(guide.props.enabled, true);
+    nav.component("WorldFoodMenu").props.onTabChange("meals");
+    assert.equal(nav.component("WorldFoodMenu").key, key);
+    assert.equal(nav.component("WorldOnboardingSession").props.ordersOpen, false);
+    assert.equal(nav.component("SectionGuide").props.section, "meals");
+    assert.equal(nav.component("SectionGuide").props.enabled, true);
+  } finally { nav.restore(); }
+});
+
+test("foreground resident and market lessons temporarily replace an active initial course", () => {
+  const nav = guideNavigation({ onboarding: { progress: { version: 2, status: "started", stepId: "neighbors" } } });
+  try {
+    assert.equal(nav.component("WorldOnboardingSession").props.modalBlocked, false);
+    nav.find(element => element.props["data-world-quick"] === "pantry").props.onClick();
+    assert.equal(nav.component("SectionGuide").props.enabled, false);
+    nav.component("WorldPantryMenu").props.onOpenMarket();
+    assert.equal(nav.component("WorldOnboardingSession").props.modalBlocked, true);
+    assert.equal(nav.component("SectionGuide").props.section, "market");
+    assert.equal(nav.component("SectionGuide").props.enabled, true);
+    assert.equal(nav.component("WorldResidentDialog").props.guide.props.enabled, false);
+    nav.find(element => element.props["aria-label"] === "Закрыть панель").props.onClick();
+    assert.equal(nav.component("WorldOnboardingSession").props.modalBlocked, false);
+    nav.component("WorldScene").props.onResident("plesk");
+    assert.equal(nav.component("SectionGuide"), undefined, "market and quick lessons unmount behind the resident");
+    assert.equal(nav.component("WorldOnboardingSession").props.modalBlocked, true);
+    assert.equal(nav.component("WorldResidentDialog").props.guide.props.enabled, true);
+    assert.equal(nav.component("WorldBuilderDialog").props.guide.props.enabled, false);
+    nav.component("WorldResidentDialog").props.onClose();
+    assert.equal(nav.component("WorldOnboardingSession").props.modalBlocked, false, "closing the section restores the initial course");
+  } finally { nav.restore(); }
+});
+
 test("More opens a separate gallery; conversation Back/close return there and gallery close restores its menu trigger", () => {
   for (const resident of ["plesk", "builder"]) for (const exit of ["onBack", "onClose"]) {
     const nav = navigation();
@@ -169,6 +355,55 @@ test("More opens a separate gallery; conversation Back/close return there and ga
       assert.ok(nav.find(element => element.props.id === "world-quick-menu"));
       assert.ok(nav.find(element => element.props["data-world-characters-trigger"] !== undefined));
     } finally { nav.restore(); }
+  }
+});
+
+test("pointerdown on a guide control preserves the live quick menu while a map click still dismisses it", () => {
+  for (const menu of ["profile", "pantry", "expeditions"]) {
+    const nav = navigation();
+    const names = ["Element", "window", "ResizeObserver", "requestAnimationFrame", "cancelAnimationFrame"];
+    const saved = new Map(names.map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
+    const listeners = new Map();
+    try {
+      Object.defineProperty(globalThis, "Element", { value: HTMLElement, configurable: true });
+      Object.defineProperty(globalThis, "window", { value: { addEventListener() {}, removeEventListener() {} }, configurable: true });
+      Object.defineProperty(globalThis, "ResizeObserver", { value: class { observe() {} disconnect() {} }, configurable: true });
+      Object.defineProperty(globalThis, "requestAnimationFrame", { value: callback => { callback(); return 1; }, configurable: true });
+      Object.defineProperty(globalThis, "cancelAnimationFrame", { value() {}, configurable: true });
+      document.addEventListener = (type, callback) => {
+        if (!listeners.has(type)) listeners.set(type, new Set());
+        listeners.get(type).add(callback);
+      };
+      document.removeEventListener = (type, callback) => listeners.get(type)?.delete(callback);
+      hooks.captureEffects();
+      const render = () => {
+        const nodes = nav.render();
+        const frame = nodes.find(element => element.props.id === "world-quick-menu");
+        if (frame) frame.props.ref.current.contains = target => target === frame.props.ref.current;
+        hooks.flushEffects();
+        return nodes;
+      };
+      nav.find(element => element.props["data-world-quick"] === menu).props.onClick();
+      assert.equal(render().find(element => element.props.id === "world-quick-menu").props["data-kind"], menu);
+      const guideButton = new HTMLElement("guide-next"), outsideMap = new HTMLElement("outside-map");
+      guideButton.closest = selector => selector.split(",").map(part => part.trim()).includes('[data-guide-coach="world"]') ? {} : null;
+      outsideMap.closest = () => null;
+      const pointerDown = target => { for (const listener of [...(listeners.get("pointerdown") ?? [])]) listener({ target }); };
+      assert.equal(listeners.get("pointerdown")?.size, 1, "the actual WorldView effect registers the outside-click handler");
+      pointerDown(guideButton);
+      assert.equal(render().find(element => element.props.id === "world-quick-menu").props["data-kind"], menu,
+        "a phone's pointerdown must not dismiss the live section before its coach control receives click");
+      pointerDown(outsideMap);
+      assert.equal(render().find(element => element.props.id === "world-quick-menu"), undefined,
+        "the guide exemption must preserve ordinary outside-click dismissal");
+    } finally {
+      hooks.reset();
+      nav.restore();
+      for (const [name, descriptor] of saved) {
+        if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+        else delete globalThis[name];
+      }
+    }
   }
 });
 

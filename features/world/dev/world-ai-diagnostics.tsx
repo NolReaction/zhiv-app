@@ -1,7 +1,7 @@
 "use client";
 
 import { useReducer, useState } from "react";
-import { useForestObservation, type ForestObservation } from "../use-forest-observation";
+import { useForestObservation, type ForestObservation } from "@/features/world/state/use-forest-observation";
 import { createForestAiReport, ForestAiDiagnostics, type ForestAiEventFilter } from "./forest-ai-diagnostics";
 import styles from "./world-dev-panel.module.css";
 

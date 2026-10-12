@@ -10,12 +10,13 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
 after(() => vite.close());
 const { createDailyRewardEntryPrompt } = await vite.ssrLoadModule("/features/game/daily-reward-entry.ts");
 const { createGameRewardsSession } = await vite.ssrLoadModule("/features/game/game-rewards-session.ts");
+const { claimDailyWithAudio } = await vite.ssrLoadModule("/features/game/game-rewards-audio.ts");
 const api = await vite.ssrLoadModule("/features/game/game-rewards-api.ts");
 const { DailyRewardsPanel, dailyRewardWait, RewardContents } = await vite.ssrLoadModule("/features/game/daily-rewards.tsx");
 const { AchievementCard } = await vite.ssrLoadModule("/features/game/game-achievements.tsx");
 const { GAME_ACHIEVEMENTS } = await vite.ssrLoadModule("/features/game/game-rewards.ts");
 const { GAME_ACHIEVEMENT_TARGETS } = await vite.ssrLoadModule("/features/game/achievement-progress.ts");
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { ApiError } = await vite.ssrLoadModule("/lib/check-in-api.ts");
 const fetchOriginal = globalThis.fetch;
 afterEach(() => { globalThis.fetch = fetchOriginal; });
@@ -51,6 +52,80 @@ test("opening, reading, and restoring a pending reward never issue money automat
   const session = createGameRewardsSession(owner, transport({ send: async command => { writes++; return receipt(command); } }));
   const stop = session.activate(); await session.refresh(); await session.refresh();
   assert.equal(writes, 0); assert.equal(session.getSnapshot().data.daily.claimable, true); stop();
+});
+
+test("a daily gift sounds exactly once after its matching manual claim confirms, not on reads or repeated clicks", async () => {
+  const wait = deferred(), events = []; let command, writes = 0;
+  const session = createGameRewardsSession(owner, transport({ send: body => { command = body; writes++; return wait.promise; } }));
+  const stop = session.activate(); await session.refresh(); await session.refresh();
+  const collect = () => claimDailyWithAudio(owner, session, event => events.push(event), () => clock);
+  const accepted = collect(); await collect(); await collect();
+  assert.equal(writes, 1); assert.deepEqual(events, [], "a button press is not a reward receipt");
+  const result = receipt(command); wait.resolve(result);
+  assert.equal(await accepted, result);
+  assert.deepEqual(events, [{ id: `daily-reward:${owner}:${command.requestId}`, cueId: "ui.daily-reward", occurredAt: clock }]);
+  await collect(); assert.equal(events.length, 1, "the next unavailable gift cannot sound");
+  await session.refresh(); assert.equal(events.length, 1, "polling and receipt rendering are silent");
+  stop();
+});
+
+test("a lost daily claim and its recovered receipt stay silent across account-session remounts", async () => {
+  const storage = cache(), events = []; let sent = 0;
+  const wire = transport({ send: async command => {
+    if (++sent === 1) throw Error("Lost response after commit");
+    return receipt(command, view(2, false), true);
+  } });
+  const first = createGameRewardsSession(owner, wire, storage), close = first.activate(); await first.refresh();
+  await claimDailyWithAudio(owner, first, event => events.push(event)); close();
+  const next = createGameRewardsSession(owner, wire, storage), stop = next.activate(); await next.refresh();
+  await claimDailyWithAudio(owner, next, event => events.push(event));
+  assert.equal(sent, 1, "uncertain recovery cannot masquerade as a new manual claim");
+  const result = await next.retry(); assert.equal(result.replayed, true);
+  assert.deepEqual(events, []); stop();
+});
+
+test("replayed and already-claimed daily receipts never sound as a new gift", async () => {
+  for (const mode of ["replayed", "conflict"]) {
+    const events = [];
+    const session = createGameRewardsSession(owner, transport({ send: async command => {
+      if (mode === "conflict") throw new ApiError("Уже получено", 409);
+      return receipt(command, view(2, false), true);
+    } }));
+    const stop = session.activate(); await session.refresh();
+    await claimDailyWithAudio(owner, session, event => events.push(event));
+    assert.deepEqual(events, [], mode); stop();
+  }
+});
+
+test("changing accounts or receiving a foreign owner cannot play a late daily fanfare", async () => {
+  for (const mode of ["deactivated", "foreign-owner", "request-mismatch"]) {
+    const wait = deferred(), events = []; let command;
+    const session = createGameRewardsSession(owner, transport({ send: body => { command = body; return wait.promise; } }));
+    const stop = session.activate(); await session.refresh();
+    const accepted = claimDailyWithAudio(owner, session, event => events.push(event));
+    if (mode === "deactivated") stop();
+    wait.resolve(mode === "foreign-owner" ? receipt(command, view(2, false, other))
+      : mode === "request-mismatch" ? { ...receipt(command), requestId: crypto.randomUUID() } : receipt(command));
+    assert.equal(await accepted, undefined); assert.deepEqual(events, [], mode);
+    if (mode !== "deactivated") stop();
+  }
+});
+
+test("closing the profile keeps one daily confirmation sound while the world reward dialog owns the session", async () => {
+  const wait = deferred(), events = []; let command;
+  const session = createGameRewardsSession(owner, transport({ send: body => { command = body; return wait.promise; } }));
+  const closeDialog = session.activate(), closeProfile = session.activate(); await session.refresh();
+  const accepted = claimDailyWithAudio(owner, session, event => events.push(event));
+  closeProfile(); wait.resolve(receipt(command));
+  assert.ok(await accepted); assert.equal(events.length, 1); closeDialog();
+});
+
+test("optional daily audio failures cannot prevent callers from refreshing a confirmed wallet", async () => {
+  const session = createGameRewardsSession(owner, transport());
+  const stop = session.activate(); await session.refresh();
+  const result = await claimDailyWithAudio(owner, session, () => { throw Error("Audio device unavailable"); });
+  assert.ok(result); assert.equal(result.claim.kind, "daily");
+  assert.equal(session.getSnapshot().pending, null); assert.equal(session.getSnapshot().uncertain, false); stop();
 });
 test("daily gift appears before its calendar and reports space without inventing historical tier rewards", () => {
   const data = view(3);

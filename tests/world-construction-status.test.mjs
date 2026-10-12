@@ -7,10 +7,10 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { WorldConstructionStatus, constructionCountdown } = await vite.ssrLoadModule("/features/world/world-construction-status.tsx");
-const { economyCatalog } = await vite.ssrLoadModule("/features/economy/model.ts");
-const { constructionMapPlace, projectConstructionAnchor } = await vite.ssrLoadModule("/features/world/construction-map-anchor.ts");
-const { interactiveMapObjects } = await vite.ssrLoadModule("/features/world/site-interactions.ts");
+const { WorldConstructionStatus, constructionCountdown } = await vite.ssrLoadModule("/features/world/ui/hud/world-construction-status.tsx");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { constructionMapPlace, projectConstructionAnchor } = await vite.ssrLoadModule("/features/world/scene/construction-map-anchor.ts");
+const { interactiveMapObjects } = await vite.ssrLoadModule("/features/world/scene/site-interactions.ts");
 const { initialPreviewLevels, previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
 const { default: authoredWorld } = await vite.ssrLoadModule("/features/world/tiled/forest.generated.json");
 

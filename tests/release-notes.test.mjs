@@ -70,7 +70,8 @@ test("production browser adapter preserves timer receivers through scheduling an
   const store = createReleaseNotesStore("browser-adapter", h.environment, new Map());
   const stop = store.subscribe(() => {});
   assert.deepEqual([...h.timers.values()].map(timer => timer.delay), [RELEASE_REFRESH_INTERVAL, RELEASE_REQUEST_TIMEOUT]);
-  assert.equal(h.events.size, 4);
+  assert.equal(h.events.size, 5);
+  assert.ok(h.events.has("window:pageshow"), "restoring a suspended page also reconciles read state");
   assert.equal(h.requests.length, 1);
   h.requests[0].resolve(response(feed(original)));
   await flush();
@@ -88,7 +89,7 @@ test("production browser adapter preserves timer receivers through scheduling an
 test("production browser adapter can be created for SSR without window or document", () => {
   const h = browserAdapterFixture({ server: true });
   const store = createReleaseNotesStore("server-adapter", h.environment, new Map());
-  assert.equal(store.getServerSnapshot().unreadCount, BUNDLED_RELEASE_NOTES.length);
+  assert.equal(store.getServerSnapshot().unreadCount, 0, "SSR must not guess which notes this account has read");
   assert.deepEqual(h.calls, [], "constructing the adapter must not start browser work");
 });
 
@@ -115,6 +116,7 @@ function harness({ owner = "player-a", memory = new Map(), saved = new Map(), br
   };
   const store = createReleaseNotesStore(owner, env, memory);
   return { store, requests, saved, memory, timers,
+    setStorageBlocked: value => { brokenStorage = value; },
     setTime: value => { clock = value; },
     setVisible: value => { visible = value; },
     event: event => listener?.(event),
@@ -174,16 +176,25 @@ test("an intentionally empty feed removes old announcements and accepts future r
   stop();
 });
 
-test("server hydration snapshot is stable; account read state loads only on subscription", () => {
+test("reload never presents saved notes as unread before account storage is restored", () => {
   const saved = new Map([[releaseReadStorageKey("player-a"), JSON.stringify({ schemaVersion: 1, ids: BUNDLED_RELEASE_NOTES.map(release => release.id) })]]);
   const h = harness({ saved });
   const initial = h.store.getServerSnapshot();
-  assert.equal(initial.unreadCount, BUNDLED_RELEASE_NOTES.length);
+  assert.equal(initial.unreadCount, 0);
+  assert.deepEqual(initial.unreadIds, []);
+  assert.equal(h.store.getSnapshot().unreadCount, 0, "the first client render must not flash the bundled count");
   assert.equal(h.requests.length, 0);
   const stop = h.store.subscribe(() => {});
   assert.equal(h.store.getSnapshot().unreadCount, 0);
   assert.strictEqual(h.store.getServerSnapshot(), initial);
   assert.equal(h.requests.length, 1);
+  stop();
+});
+
+test("a new account still sees genuine unread releases after its read state is restored", () => {
+  const h = harness();
+  const stop = h.store.subscribe(() => {});
+  assert.deepEqual(h.store.getSnapshot().unreadIds, BUNDLED_RELEASE_NOTES.map(release => release.id));
   stop();
 });
 
@@ -256,6 +267,48 @@ test("concurrent tab acknowledgements merge monotonically and repair a stale sto
   assert.equal(remount.store.getSnapshot().unreadCount, 0, "union survives closing every tab and losing its memory");
   stopRemount();
   stop();
+});
+
+test("returning to the app restores missed cross-tab reads even while feed refresh is throttled", async () => {
+  const h = harness();
+  const stop = h.store.subscribe(() => {});
+  h.requests[0].resolve(response(feed(later, original)));
+  await flush();
+  h.store.markRead(original.id);
+  h.setVisible(false);
+  // The frozen page did not receive the storage event from the other tab.
+  const key = releaseReadStorageKey("player-a");
+  h.saved.set(key, JSON.stringify({ schemaVersion: 1, ids: [later.id] }));
+  h.setVisible(true);
+  h.event({ type: "refresh" });
+  assert.equal(h.requests.length, 1, "the feed remains throttled");
+  assert.deepEqual(h.store.getSnapshot().unreadIds, []);
+  assert.deepEqual([...parseReadReleaseIds(h.saved.get(key))].sort(), [later.id, original.id].sort(), "both tabs' reads survive the next cold start");
+  h.setTime(RELEASE_REFRESH_INTERVAL);
+  h.event({ type: "refresh" });
+  h.requests[1].resolve(response(feed({ ...later, id: "genuine-new" }, later, original)));
+  await flush();
+  assert.deepEqual(h.store.getSnapshot().unreadIds, ["genuine-new"]);
+  stop();
+});
+
+test("temporarily blocked persistence is retried on return and survives a cold start", async () => {
+  const h = harness({ brokenStorage: true });
+  const stop = h.store.subscribe(() => {});
+  h.requests[0].resolve(response(feed(original)));
+  await flush();
+  h.store.markRead(original.id);
+  assert.equal(h.saved.size, 0);
+  h.setStorageBlocked(false);
+  h.event({ type: "refresh" });
+  assert.deepEqual([...parseReadReleaseIds(h.saved.get(releaseReadStorageKey("player-a")))], [original.id]);
+  stop();
+  const reload = harness({ saved: h.saved, memory: new Map() });
+  const stopReload = reload.store.subscribe(() => {});
+  reload.requests[0].resolve(response(feed(original)));
+  await flush();
+  assert.equal(reload.store.getSnapshot().unreadCount, 0);
+  stopReload();
 });
 
 test("offline, invalid JSON and HTML responses retain the newest valid feed and its read state", async () => {

@@ -271,6 +271,7 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
             "SELECT to_jsonb(t)::text FROM economy_profiles t WHERE user_id IN (?,?) ORDER BY user_id",
             "SELECT to_jsonb(t)::text FROM economy_conversion_audit t WHERE user_id IN (?,?) ORDER BY user_id",
             "SELECT to_jsonb(t)::text FROM economy_commands t WHERE user_id IN (?,?) ORDER BY user_id,request_id",
+            "SELECT to_jsonb(t)::text FROM promo_redemptions t WHERE user_id IN (?,?) ORDER BY user_id,promo_id",
             "SELECT to_jsonb(t)::text FROM economy_ledger t WHERE user_id IN (?,?) ORDER BY user_id,source_key",
             "SELECT to_jsonb(t)::text FROM economy_market_listings t WHERE seller_id IN (?,?) OR buyer_id IN (?,?) ORDER BY id",
             "SELECT to_jsonb(t)::text FROM economy_market_daily_turnover t WHERE user_id IN (?,?) ORDER BY user_id,trade_day",
@@ -443,6 +444,7 @@ class JdbcAccountLifecycleRepository(private val source: DataSource) : AccountLi
         cancelEconomyMarketListings(c, s.other)
         cancelEconomyBarterOffers(c, id)
         cancelEconomyBarterOffers(c, s.other)
+        mergePromoRedemptions(c, id, s.other)
         mergeEconomyProfiles(c, id, s.other)
         mergeEconomyTradeUsage(c, id, s.other)
         mergeEconomyMarketReceipts(c, id, s.other)

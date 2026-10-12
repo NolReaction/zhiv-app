@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { createIdentityRecovery } = await vite.ssrLoadModule("/features/check-in/identity-recovery.ts");
+const { createIdentityRecovery } = await vite.ssrLoadModule("/features/app/identity-recovery.ts");
 const { ApiError } = await vite.ssrLoadModule("/lib/check-in-api.ts");
 const identity = { user: { publicId: "7K3P-2Q9M-W8ZR" } };
 const drain = async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); };

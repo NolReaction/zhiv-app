@@ -19,16 +19,18 @@ test("parallel progression buys capacity at real gates, reserves pending inputs 
     assert(expanded.homeDays[3] > 0, "Staggered harvesting must drain so garden upgrades do not deadlock");
     assert(expanded.productionSlots.maximumProductionJobs.garden === 2);
     assert(expanded.productionSlots.maximumProductionJobs.workshop === 2, "The second crafting slot must actually run concurrently");
+    const homeTwo = expanded.milestones.find(milestone => milestone.building === "home:2");
+    assert(homeTwo);
     for (const purchase of expanded.productionSlots.purchases) {
       assert(purchase.houseLevel >= 2);
-      assert(purchase.day >= expanded.homeDays[2]);
+      assert(purchase.day >= homeTwo.day, "Compare event times at the same precision, before the summary rounds home days");
       assert.equal(purchase.slots, 2);
       assert.equal(purchase.pricePearls, 1500);
     }
     for (const code of ["ECONOMY_BUILDING_BUSY", "ECONOMY_BUILDING_REQUIRED", "ECONOMY_PEARLS", "ECONOMY_QUARRY_BUSY", "ECONOMY_EXPLORER_BUSY", "ECONOMY_COLLECTOR_BUSY"])
       assert.equal(expanded.failures[code], undefined);
     for (const [id, flow] of Object.entries(expanded.itemFlow))
-      assert.equal(flow.received, flow.sold + flow.productionInputs + flow.expeditionInputs + flow.constructionInputs + flow.remaining, id);
+      assert.equal(flow.initial + flow.received, flow.sold + flow.productionInputs + flow.expeditionInputs + flow.constructionInputs + flow.remaining, id);
     assert.equal(expanded.productionSlots.finalCapacity.quarry, undefined, "Mining must retain its single actor");
   } finally { await loaded.close(); }
 });

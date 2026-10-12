@@ -1,0 +1,5 @@
+.guide { flex: 0 0 auto; min-width: 0; }
+.guide:empty { display: none; }
+.launcher { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 6px 10px; margin: 3px 0 8px; border: 1px solid #7b905750; border-radius: 12px; color: #dbe9bd; background: #243126; font: inherit; font-size: 12px; cursor: pointer; }
+.launcher:hover { background: #334332; }
+.launcher:focus-visible { outline: 2px solid #d3eaaa; outline-offset: 3px; }

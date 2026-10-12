@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { GAME_ITEMS, type GameItemId } from "@/features/game/game-rewards";
-import { WORLD_PRESENTATION } from "@/features/world/presentation";
+import { WORLD_PRESENTATION } from "@/features/world/scene/presentation";
 import { CalendarDays, Check, ChevronDown, Flame, Gift, RefreshCw } from "lucide-react";
 import { ru } from "react-day-picker/locale";
 import { Calendar } from "@/components/ui/calendar";

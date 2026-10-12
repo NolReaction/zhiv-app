@@ -9,7 +9,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { forestMemoryCommandSchema, FOREST_MEMORY_BODY_BYTES, FOREST_MEMORY_SNAPSHOT_BYTES } =
-  await vite.ssrLoadModule("/features/world/forest-memory-model.ts");
+  await vite.ssrLoadModule("/features/world/state/memory/forest-memory-model.ts");
 const caddy = await readFile(new URL("../deploy/Caddyfile", import.meta.url), "utf8");
 const forestRoute = await readFile(new URL("../apps/api/src/main/kotlin/ru/zhiv/forest/ForestMemoryRoutes.kt", import.meta.url), "utf8");
 

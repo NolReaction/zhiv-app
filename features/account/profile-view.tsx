@@ -3,10 +3,12 @@
 import { PlayerName } from "@/components/player-name";
 import type { FormEvent } from "react";
 import { useRef, useState } from "react";
-import { Switch } from "@/components/ui/switch";
+import { Tabs as TabsPrimitive } from "radix-ui";
+import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
+import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { GameLevelsButton } from "@/features/game/game-levels-button";
 import { GameLevelIcon } from "@/features/game/game-level-icon";
-import { Check, Clock3, Flame, Settings2, ShieldCheck, Trophy, UserRound } from "lucide-react";
+import { Check, CircleHelp, Clock3, Flame, Settings, Settings2, ShieldCheck, Trophy, UserRound } from "lucide-react";
 import type { MeResponse } from "@/lib/check-in-contract";
 import type { ClickerLevel, ClickerLevelProgress } from "@/features/game/clicker-story";
 import {
@@ -25,6 +27,7 @@ import { RecoveryStarter } from "./recovery-starter";
 import { TransientNotice } from "@/components/app-notifications";
 import { AccountAccess } from "./account-access";
 import { TimeZoneSetting } from "./time-zone-setting";
+import { ProfileSettings } from "./profile-settings";
 import { GameAchievementsButton } from "@/features/game/game-achievements";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import styles from "./profile-view.module.css";
@@ -44,6 +47,8 @@ type ProfileViewProps = {
   onUpdated: (response: MeResponse) => void;
   onRecovered: (response: MeResponse) => void;
   onSessionLost: () => void;
+  onOpenOnboarding?: () => void;
+  getOnboardingActionLabel?: () => string;
   onOpenCalendar: (trigger: HTMLButtonElement) => void;
   onOpenGame: (trigger: HTMLButtonElement) => void;
   onRefreshGame: () => void;
@@ -88,6 +93,8 @@ export function ProfileView({
   onUpdated,
   onRecovered,
   onSessionLost,
+  onOpenOnboarding,
+  getOnboardingActionLabel,
   onOpenCalendar,
   onOpenGame,
   onRefreshGame,
@@ -97,6 +104,9 @@ export function ProfileView({
   gamePendingTaps,
   legacyGame,
 }: ProfileViewProps) {
+  const [activeTab, setActiveTab] = useState("profile");
+  const [guideOpen, setGuideOpen] = useState(false);
+  const [guideActionLabel, setGuideActionLabel] = useState("Начать обучение");
   const [draftState, setDraftState] = useState({
     sourceName: me.user.displayName,
     value: me.user.displayName,
@@ -176,6 +186,23 @@ export function ProfileView({
       <div className={styles.heading}><h1 id="profile-title">Профиль</h1></div>
       <TransientNotice message={error} kind="error" />
       <TransientNotice message={success} kind="success" />
+      <TabsPrimitive.Root value={activeTab} onValueChange={value => { if (value !== activeTab) { playUiCue(getAudioRuntime(), "ui.tab"); setActiveTab(value); } }} className={styles.tabsRoot}>
+        <div className={styles.navigation}>
+        <TabsPrimitive.List className={styles.tabs} aria-label="Разделы профиля">
+          <TabsPrimitive.Trigger value="profile"><UserRound size={17} aria-hidden="true" />Профиль</TabsPrimitive.Trigger>
+          <TabsPrimitive.Trigger value="settings" className={styles.settingsTab} aria-label="Настройки" title="Настройки"><Settings size={19} aria-hidden="true" /></TabsPrimitive.Trigger>
+        </TabsPrimitive.List>
+        {onOpenOnboarding && <button type="button" className={styles.guideEntry} data-app-onboarding-entry
+          aria-label="О профиле" title="О профиле" aria-expanded={guideOpen} aria-controls="app-profile-guide"
+          onClick={() => { setGuideActionLabel(getOnboardingActionLabel?.() ?? "Начать обучение"); setGuideOpen(value => !value); }} data-audio-cue="ui.open">
+          <CircleHelp size={20} aria-hidden="true" />
+        </button>}
+        </div>
+        {guideOpen && <section id="app-profile-guide" className={styles.guideHelp} aria-label="О профиле">
+          <p>Тут твои данные, статистика и настройки. В профиле можно изменить имя и настроить вход, под шестерёнкой - уведомления, звук и оформление.</p>
+          {onOpenOnboarding && <button type="button" onClick={() => { setGuideOpen(false); onOpenOnboarding(); }}>{guideActionLabel}</button>}
+        </section>}
+        <TabsPrimitive.Content value="profile" forceMount className={styles.tabPanel}>
       <div className={styles.columns}>
         <div className={styles.overviewColumn}>
           <div className={styles.profileCard}>
@@ -206,7 +233,7 @@ export function ProfileView({
         </div>
         <Accordion type="single" collapsible value={panel} onValueChange={setPanel} className={styles.settingsList}>
           <AccordionItem value="name" className={styles.settingsItem}>
-            <AccordionTrigger className={styles.settingsTrigger}><span><UserRound size={20} aria-hidden="true" /><span>Личные данные<small>Имя и часовой пояс</small></span></span></AccordionTrigger>
+            <AccordionTrigger className={styles.settingsTrigger} data-app-onboarding="profile-content"><span><UserRound size={20} aria-hidden="true" /><span>Личные данные<small>Имя и часовой пояс</small></span></span></AccordionTrigger>
             <AccordionContent forceMount hidden={panel !== "name"} className={styles.settingsContent}>
               <form className={styles.formCard} onSubmit={handleSubmit} noValidate>
             <div className={styles.formHeading}>
@@ -253,20 +280,10 @@ export function ProfileView({
               <TimeZoneSetting me={me} isOnline={isOnline} onUpdated={onUpdated} onSessionLost={onSessionLost} />
             </AccordionContent>
           </AccordionItem>
-          <AccordionItem value="appearance" className={styles.settingsItem}>
-            <AccordionTrigger className={styles.settingsTrigger}><span><Settings2 size={20} aria-hidden="true" /><span>Внешний вид<small>{simpleView ? "Простая кнопка" : "Живая полянка Мохлика"}</small></span></span></AccordionTrigger>
-            <AccordionContent className={styles.settingsContent}>
-              <div className={styles.appearanceSetting}>
-                <label htmlFor="simple-view"><strong>Простой вид</strong><span>Знакомая кнопка без полянки. Вход в игру остаётся доступным.</span></label>
-                <Switch id="simple-view" checked={simpleView} onCheckedChange={onSimpleViewChange} />
-              </div>
-              <p className={styles.hint}>Настройка сохраняется на этом устройстве.</p>
-            </AccordionContent>
-          </AccordionItem>
           <AccordionItem value="security" className={styles.settingsItem}>
             <AccordionTrigger className={styles.settingsTrigger}><span><ShieldCheck size={20} aria-hidden="true" /><span>Вход и безопасность<small>Способы входа, устройства, восстановление</small></span></span></AccordionTrigger>
             <AccordionContent forceMount hidden={panel !== "security"} className={styles.settingsContent}>
-              <AccountAccess mode="access" active={panel === "security"} isOnline={isOnline} onSessionLost={onSessionLost} onUpdated={onUpdated} />
+              <AccountAccess mode="access" active={activeTab === "profile" && panel === "security"} isOnline={isOnline} onSessionLost={onSessionLost} onUpdated={onUpdated} />
               <RecoveryCodeCard isOnline={isOnline} onSessionLost={onSessionLost} />
               <RecoveryStarter context="profile" isOnline={isOnline} onRecovered={onRecovered} />
             </AccordionContent>
@@ -321,7 +338,7 @@ export function ProfileView({
           <AccordionItem value="management" className={styles.settingsItem}>
             <AccordionTrigger className={styles.settingsTrigger}><span><Settings2 size={20} aria-hidden="true" /><span>Управление профилем<small>Смена почты, объединение, удаление</small></span></span></AccordionTrigger>
             <AccordionContent forceMount hidden={panel !== "management"} className={styles.settingsContent}>
-              <AccountAccess mode="manage" active={panel === "management"} isOnline={isOnline} onSessionLost={onSessionLost} onUpdated={onUpdated} />
+              <AccountAccess mode="manage" active={activeTab === "profile" && panel === "management"} isOnline={isOnline} onSessionLost={onSessionLost} onUpdated={onUpdated} />
             </AccordionContent>
           </AccordionItem>
         </Accordion>
@@ -330,9 +347,15 @@ export function ProfileView({
         <span aria-hidden="true"><UserRound size={20} /></span>
         <div>
           <strong>Основа для аватарки готова</strong>
-          <p>Загрузка фотографии появится позже — с безопасным хранением и отдельной настройкой видимости.</p>
+          <p>Загрузка фотографии появится позже - с безопасным хранением и отдельной настройкой видимости.</p>
         </div>
       </div>
+        </TabsPrimitive.Content>
+        <TabsPrimitive.Content value="settings" forceMount className={styles.tabPanel}>
+          <ProfileSettings key={me.user.publicId} ownerPublicId={me.user.publicId}
+            isOnline={isOnline} onSessionLost={onSessionLost} simpleView={simpleView} onSimpleViewChange={onSimpleViewChange} />
+        </TabsPrimitive.Content>
+      </TabsPrimitive.Root>
     </section>
   );
 }

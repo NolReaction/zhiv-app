@@ -1,4 +1,4 @@
-import type { ForestMemoryPayload } from "@/features/world/forest-memory-model";
+import type { ForestMemoryPayload } from "@/features/world/state/memory/forest-memory-model";
 
 export type DevForestMemoryState = {
   revision: number;

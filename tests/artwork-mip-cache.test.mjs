@@ -6,7 +6,7 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { createArtworkMipCache } = await vite.ssrLoadModule("/features/world/artwork-mip-cache.ts");
+const { createArtworkMipCache } = await vite.ssrLoadModule("/features/world/scene/artwork-mip-cache.ts");
 
 function fixture(action) {
   const previous = Object.getOwnPropertyDescriptor(globalThis, "document"), draws = [];
