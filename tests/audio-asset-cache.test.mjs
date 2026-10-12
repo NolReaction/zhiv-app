@@ -83,6 +83,26 @@ test("failed download allows the next asset through and observes retry backoff",
   f.cache.dispose();
 });
 
+test("transient ambience failures recover after one second; repeated failures back off and success resets them", async () => {
+  let now = 0, requests = 0, failing = true;
+  const cache = createAudioAssetCache({ context: () => ({ state: "running", decodeAudioData: async () => buffer(100) }),
+    now: () => now, changed() {}, isInUse: () => false, maxDecodedBytes: 400,
+    fetchAsset: async () => { requests++; return new Response(new Uint8Array([1]), { status: failing ? 503 : 200 }); } });
+  for (const delay of [1000, 2000, 4000, 8000, 16000, 30000, 30000]) {
+    const before = requests;
+    assert.equal(await cache.load(asset("river")), null); assert.equal(requests, before + 1);
+    now += delay - 1;
+    assert.equal(await cache.load(asset("river")), null); assert.equal(requests, before + 1, "no network request during backoff");
+    now++;
+  }
+  failing = false; assert.ok(await cache.load(asset("river"))); assert.deepEqual(cache.failedIds(), []);
+  assert.ok(await cache.load(asset("other")), "evict river within the one-buffer budget");
+  failing = true; assert.equal(await cache.load(asset("river")), null);
+  const before = requests; now += 999; await cache.load(asset("river")); assert.equal(requests, before);
+  now++; failing = false; assert.ok(await cache.load(asset("river"))); assert.equal(requests, before + 1, "successful recovery resets to the first retry interval");
+  cache.dispose();
+});
+
 test("fallback decode is serial and pinned buffers preserve the memory budget", async () => {
   const calls = [];
   const cache = createAudioAssetCache({ context: () => ({ state: "running", decodeAudioData: async bytes => {

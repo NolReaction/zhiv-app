@@ -29,7 +29,8 @@ export function useMenuAudio({ active, handoff, ownerPublicId, nowMs, timeZone }
       const settings = runtime.getSettings();
       if (!settings.enabled || settings.master <= 0) return;
       const cues = [settings.buses.weather > 0 ? "weather.wind" : null,
-        settings.buses.ambience > 0 ? (night ? "forest.night" : "forest.day") : null]
+        settings.buses.ambience > 0 ? (night ? "forest.night" : "forest.day") : null,
+        settings.buses.ambience > 0 ? "river" : null]
         .filter((cue): cue is string => cue !== null);
       if (cues.length) void runtime.prepare(cues, { signal: controller.signal }).catch(() => {});
     };
@@ -42,8 +43,8 @@ export function useMenuAudio({ active, handoff, ownerPublicId, nowMs, timeZone }
     prepare();
     const unsubscribe = getStartupAudioEntry(runtime, { visible: () => !document.hidden }).subscribe(() => {
       controlsReady = true;
-      // Only the two global beds are warmed after critical UI; localized
-      // buildings/weather variants keep their ordinary on-demand loading.
+      // Warm the common river too, before the camera reaches the water. Other
+      // localized buildings/weather variants keep on-demand loading.
       prepareForest();
     });
     document.addEventListener("visibilitychange", prepare);

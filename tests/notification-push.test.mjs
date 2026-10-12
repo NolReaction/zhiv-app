@@ -4,7 +4,7 @@ import vm from "node:vm";
 import test from "node:test";
 const source = await readFile(new URL("../public/sw.js", import.meta.url), "utf8");
 const origin = "https://zhiv.example";
-const payload = { title: "Мохлик вернулся", body: "Пора разобрать находки", tag: "ready", url: "/?notification=world&section=activities&owner=AAAA-0000-0001", ownerPublicId: "AAAA-0000-0001" };
+const payload = { title: "Я Живой", body: "Пора разобрать находки", tag: "ready", url: "/?notification=world&section=activities&owner=AAAA-0000-0001", ownerPublicId: "AAAA-0000-0001" };
 function harness(windows = []) {
   const listeners = new Map(), shown = [], opened = [], calls = [];
   const self = { location: new URL(origin), addEventListener: (type, callback) => listeners.set(type, callback),

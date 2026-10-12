@@ -20,7 +20,7 @@ _SPECS = {
     "weather.wind.01": (12.0, "Air between the Leaves", "A restrained low tree breeze with slow, shallow swells and soft leaf movement.", -32.0),
     "weather.rain.01": (8.0, "Rain through the Canopy", "A sheltered rain bed with scattered, rounded leaf droplets.", -22.0),
     "river.01": (8.0, "Water around Roots", "Flowing water, low ripples and irregular resonant bubbles.", -21.5),
-    "campfire.01": (8.0, "Small Evening Fire", "A soft continuous flame and six padded ember movements, without rapid sharp crackle bursts.", -27.0),
+    "campfire.01": (8.0, "Small Evening Fire", "Irregular small wood crackles and rounded ember pops over a very quiet flame; no wind-like noise bed.", -33.0),
     "cooking.simmer.01": (6.0, "Soup above the Embers", "Quiet simmering liquid with rounded irregular bubbles; a separate loop for active cooking, without baked-in fire.", -25.0),
     "workshop.woodworking.01": (10.0, "The Carpenter's Afternoon", "Uneven wooden mallet taps, short hand-saw strokes and a quiet room bed.", -22.0),
     "workshop.kiln.01": (8.0, "Warm Kiln", "Enclosed low fire, two soft bellows breaths and light fuel movement.", -23.0),
@@ -151,16 +151,42 @@ def _fire(count: int, rate: int, rng: np.random.Generator, enclosed: bool) -> np
 
 
 def _hearth(count: int, rate: int, rng: np.random.Generator) -> np.ndarray:
-    """An unpitched flame bed and slow ember movements, not a train of clicks."""
-    flame = _noise(count, rate, rng, 100, 820, -0.3)
-    output = flame * _swell(count, 1, 0.5, 0.85) * 0.14
-    output += _noise(count, rate, rng, 550, 1650, -0.45) * 0.018
-    for index, start in enumerate((0.7, 1.9, 3.4, 4.85, 6.1, 7.45)):
-        length = 0.09 + (index % 3) * 0.022
-        ember = _scrape(rate, rng, length, 170, 1700)
-        # Smooth whole-event envelopes and small gain prevent digital-sounding
-        # spikes; the continuous flame remains present under every ember.
-        _add(output, ember, start, rate, 0.03 + 0.012 * (index % 2))
+    """Small dry-wood fractures, not a continuous broadband whoosh.
+
+    Fine grains and sparse warmer pops have independent, irregular timing. Each
+    fracture has a rounded 2–4 ms attack and a finite, damped tail: no impulses,
+    metronomic click train or resonant high whistle. Circular addition also
+    carries the last grain through the loop boundary without an empty gap.
+    """
+    duration = count / rate
+    output = _noise(count, rate, rng, 180, 950, -0.4) * 0.0025
+    output *= _swell(count, 2, 0.5, 0.8)
+
+    def fracture(decay: float, body: bool) -> np.ndarray:
+        length = int(rate * decay * 7)
+        time = np.arange(length) / rate
+        grain = _noise(length, rate, rng, 420 if body else 850,
+                       2900 if body else 3800, -0.35)
+        if body:
+            # Brief, heavily damped low wood resonance, with no sustained note.
+            frequency = rng.uniform(390, 720)
+            grain += np.sin(2 * np.pi * frequency * time) * np.exp(-time / .006) * .7
+        attack = rng.uniform(.002, .004)
+        envelope = (1 - np.exp(-time / attack)) ** 2 * np.exp(-time / decay)
+        # Suppress the already tiny tail with a smooth finite boundary.
+        envelope *= _window(length, .025)
+        return grain * envelope
+
+    # Uneven fine crackling supplies the texture instead of boosting white noise.
+    for _ in range(150):
+        grain = fracture(rng.uniform(.007, .016), False)
+        _add(output, grain, rng.uniform(0, duration), rate, rng.uniform(.06, .12))
+    # A few paired wood fractures add recognizable ember pops without loud snaps.
+    for start in (.28, 1.12, 1.81, 2.95, 3.47, 4.63, 5.39, 6.52, 7.29, 7.96):
+        grain = fracture(rng.uniform(.014, .025), True)
+        _add(output, grain, start, rate, rng.uniform(.06, .10))
+        _add(output, fracture(.011, False), start + rng.uniform(.055, .12),
+             rate, rng.uniform(.035, .06))
     return output
 
 
@@ -293,5 +319,5 @@ def render(asset_id: str, sample_rate: int) -> tuple[np.ndarray, dict]:
         metadata["peakDb"] = -29.0 if asset_id == "forest.day.01" else -21.0
         metadata["phraseStartsSeconds"] = [2.6, 13.6] if asset_id == "forest.day.01" else [7.2]
     if asset_id == "campfire.01":
-        metadata["peakDb"] = -13.0
+        metadata["peakDb"] = -14.0
     return output.astype(np.float32), metadata

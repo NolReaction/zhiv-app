@@ -34,7 +34,7 @@ function pcmWave(bytes) {
 
 test("original pack fills the catalog, documents source and verifies every shipped byte", () => {
   assert.deepEqual(inspectAudioCatalog(catalog, { root, requireReady: true }).errors, []);
-  assert.equal(manifest.assets.length, 98);
+  assert.equal(manifest.assets.length, 102);
   assert.deepEqual(new Set(manifest.assets.map(item => item.id)), new Set(catalog.assets.map(item => item.id)));
   const hashes = new Set();
   for (const source of manifest.sources) assert.equal(sha(readFileSync(path.join(root, source.path))), source.sha256, source.path);
@@ -155,22 +155,33 @@ test("wildlife phrases are sparse and individual peaks remain quieter than the p
   }
 });
 
-test("campfire stays continuous and added action sounds have bounded, restrained tails", () => {
+test("campfire has small irregular crackles instead of a constant wind bed", () => {
   const fire = manifest.assets.find(item => item.id === "campfire.01");
-  assert.match(fire.files[0].src, /embers-v2/);
-  assert.ok(fire.measurements.peakDb <= -13 && fire.measurements.rmsDb <= -27);
+  assert.match(fire.files[0].src, /wood-v3/);
+  assert.ok(fire.measurements.peakDb <= -14 && fire.measurements.rmsDb <= -33);
   const wav = pcmWave(readFileSync(path.join(root, "public", fire.files[0].src)));
   const window = wav.rate / 20;
+  const levels = [];
   for (let start = 0; start < fire.frames; start += window) {
     let squares = 0;
     for (let index = start; index < start + window; index++) squares += (wav.samples.readInt16LE(index * 2) / 32768) ** 2;
-    assert.ok(Math.sqrt(squares / window) > .01, "no chopped or silent flame segments");
+    const rms = Math.sqrt(squares / window);
+    assert.ok(rms > .0008, "a faint flame remains between crackles without silent chopped segments");
+    levels.push(rms);
   }
+  levels.sort((a, b) => a - b);
+  const contrast = levels[Math.floor(levels.length * .9)] / levels[Math.floor(levels.length * .1)];
+  assert.ok(contrast > 4 && contrast < 25, "wood events stand above the faint bed; the old constant whoosh had a 1.3 ratio");
+});
+
+test("added action sounds have bounded, restrained tails", () => {
   for (const [prefix, count, duration, rmsDb] of [
     ["cooking.simmer.", 1, 6, -25],
     ["action.bush.rustle.", 2, .65, -25],
     ["action.mushroom.eat.", 2, .25, -26],
     ["water.drop.", 2, .31, -28],
+    ["action.mine.strike.", 2, .36, -27],
+    ["action.fish.bobber.", 2, .37, -29],
   ]) {
     const entries = manifest.assets.filter(item => item.id.startsWith(prefix));
     assert.equal(entries.length, count);
@@ -179,6 +190,26 @@ test("campfire stays continuous and added action sounds have bounded, restrained
       assert.ok(item.durationSeconds <= duration, item.id);
       assert.ok(item.measurements.rmsDb <= rmsDb + .01, item.id);
     }
+  }
+});
+
+test("bobber and pick contacts stay quiet even with two actors and end without clicks", () => {
+  for (const id of ["action.mine.strike", "action.fish.bobber"]) {
+    const cue = catalog.cues.find(entry => entry.id === id);
+    let loudest = 0;
+    for (const assetId of cue.assets) {
+      const item = manifest.assets.find(entry => entry.id === assetId);
+      assert.ok(item.measurements.peakDb <= -14, `${assetId}: restrained impact`);
+      const wav = pcmWave(readFileSync(path.join(root, "public", item.files[0].src)));
+      const tailFrames = Math.round(wav.rate * .02);
+      let tailSquares = 0;
+      for (let frame = item.frames - tailFrames; frame < item.frames; frame++)
+        tailSquares += (wav.samples.readInt16LE(frame * 2) / 32768) ** 2;
+      assert.ok(Math.sqrt(tailSquares / tailFrames) < .001, `${assetId}: quiet final 20 ms`);
+      loudest = Math.max(loudest, 10 ** (item.measurements.peakDb / 20));
+    }
+    assert.ok(loudest * 10 ** (cue.gainDb / 20) * cue.maxInstances < .3,
+      `${id}: worst-case overlap leaves headroom before player/master attenuation`);
   }
 });
 

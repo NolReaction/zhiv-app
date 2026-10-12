@@ -2,7 +2,8 @@ import type { AudioAsset } from "@/features/audio/domain/types";
 
 export const DEFAULT_AUDIO_BUFFER_BUDGET = 32 * 1024 * 1024;
 const MAX_COMPRESSED_BYTES = 12 * 1024 * 1024;
-const RETRY_AFTER_MS = 30_000;
+const FIRST_RETRY_MS = 1_000;
+const MAX_RETRY_MS = 30_000;
 
 type CachedBuffer = { buffer: AudioBuffer; bytes: number; touchedAt: number };
 type PendingBuffer = {
@@ -24,13 +25,19 @@ export function createAudioAssetCache(options: {
   const budget = options.maxDecodedBytes ?? DEFAULT_AUDIO_BUFFER_BUDGET;
   const loaded = new Map<string, CachedBuffer>();
   const pending = new Map<string, PendingBuffer>();
-  const failures = new Map<string, number>();
+  const failures = new Map<string, { attempts: number; retryAt: number }>();
   const queue: PendingBuffer[] = [];
   const decodeQueue: DecodeWaiter[] = [];
   let bytes = 0;
   let disposed = false;
   let working = 0;
   let decoding = false;
+
+  function recordFailure(assetId: string) {
+    const attempts = Math.min(6, (failures.get(assetId)?.attempts ?? 0) + 1);
+    failures.set(assetId, { attempts,
+      retryAt: options.now() + Math.min(MAX_RETRY_MS, FIRST_RETRY_MS * 2 ** (attempts - 1)) });
+  }
 
   function makeRoom(required: number) {
     const candidates = [...loaded.entries()].filter(([id]) => !options.isInUse(id))
@@ -46,7 +53,7 @@ export function createAudioAssetCache(options: {
   function startDeadline(entry: PendingBuffer) {
     clearTimeout(entry.timer);
     entry.timer = setTimeout(() => {
-      if (!disposed) failures.set(entry.asset.id, options.now());
+      if (!disposed) recordFailure(entry.asset.id);
       entry.controller.abort();
       entry.resolve(null);
       if (!disposed) options.changed();
@@ -125,7 +132,7 @@ export function createAudioAssetCache(options: {
         if (response && !response.bodyUsed) void response.body?.cancel().catch(() => undefined);
       }
     }
-    if (!disposed) failures.set(asset.id, options.now());
+    if (!disposed) recordFailure(asset.id);
     return null;
   }
 
@@ -154,8 +161,10 @@ export function createAudioAssetCache(options: {
       if (cached) { cached.touchedAt = options.now(); return Promise.resolve(cached.buffer); }
       const existing = pending.get(asset.id);
       if (existing) { existing.priority = Math.max(existing.priority, Number.isFinite(priority) ? priority : 0); return existing.promise; }
-      const failedAt = failures.get(asset.id);
-      if (failedAt !== undefined && options.now() - failedAt < RETRY_AFTER_MS) return Promise.resolve(null);
+      // A single transient failure must not silence a visible river or wind
+      // for half a minute. Persistent failures still back off to protect mobile
+      // bandwidth; the caller only retries assets that remain wanted.
+      if (options.now() < (failures.get(asset.id)?.retryAt ?? -Infinity)) return Promise.resolve(null);
       const controller = new AbortController();
       let resolve!: PendingBuffer["resolve"];
       const promise = new Promise<AudioBuffer | null>(done => { resolve = done; });

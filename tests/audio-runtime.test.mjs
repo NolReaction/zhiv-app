@@ -1016,6 +1016,23 @@ test("weather mute leaves river and wildlife audible across camera movement and 
   f.runtime.dispose();
 });
 
+test("a brief failed river download recovers on the next second's frame instead of a 30-second gap", async () => {
+  let attempts = 0;
+  const f = fixture([cue("river", "loop", { bus: "ambience" })], {
+    fetchAsset: async () => new Response(new Uint8Array([1]), { status: ++attempts === 1 ? 503 : 200 }),
+  });
+  try {
+    await f.runtime.unlock();
+    const scene = frame([target("river", "river")], { soundscape: true });
+    f.runtime.updateFrame(scene); await flush();
+    assert.equal(f.context.started.length, 0); assert.equal(attempts, 1);
+    f.advance(999); f.runtime.updateFrame(scene); await flush(); assert.equal(attempts, 1);
+    f.advance(1); f.runtime.updateFrame(scene); await flush();
+    assert.equal(attempts, 2); assert.equal(f.context.started.length, 1);
+    f.runtime.updateFrame(scene); await flush(); assert.equal(f.context.started.length, 1, "recovery creates one loop");
+  } finally { f.runtime.dispose(); }
+});
+
 test("muting weather during wind decode prevents delayed sound and later camera retries", async () => {
   const wind = AUDIO_CATALOG.cues.find(item => item.id === "weather.wind");
   const f = fixture([wind]); const gate = deferred(); f.context.decode = () => gate.promise;

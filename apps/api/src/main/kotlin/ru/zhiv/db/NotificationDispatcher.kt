@@ -121,7 +121,7 @@ class NotificationDispatcher(
             "production" in categories -> "world&section=production"
             else -> "checkin"
         }
-        val payload=PushPayload("Мохлик",body,"mochlik-updates","/?notification=$target&owner=$owner",owner)
+        val payload=PushPayload("Я Живой",body,"mochlik-updates","/?notification=$target&owner=$owner",owner)
         val result=if(subscription==null) PushResult.EXPIRED else sender.send(subscription,payload)
         val status=when(result) {
             PushResult.DELIVERED -> "delivered"

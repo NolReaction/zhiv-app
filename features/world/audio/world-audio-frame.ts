@@ -76,7 +76,10 @@ export function buildWorldAudioFrame(scene: FixedWorldScene, input: WorldAudioEn
   const cooking = (!input.ownerPublicId || input.production?.ownerPublicId === input.ownerPublicId)
     ? forestProductionFrames(input.production, scene, {}, input.now, 0, input.showBuildings)
       .find(frame => frame.stationId === "dryer" && frame.phase === "working") : undefined;
-  if (input.quarryWorking) working.add("quarry");
+  // The visible miner owns individual, animation-timed pickaxe contacts.
+  // Its old recording has unrelated impacts; retain it only for legacy jobs
+  // without a local miner, never layer both rhythms over the same work.
+  if (input.quarryWorking) working.delete("quarry");
   const constructing = activeAudioConstructions(input.construction, input.now, input.ownerPublicId);
   const night = clamp01(input.dusk), rain = clamp01(input.rain);
   let closeWork = 0;

@@ -481,8 +481,12 @@ test('quarry exploration owns its work sound only after entering its current act
   ]) assert.equal(quarryAudioWorking(scene, { journeyTravel: changedTravel }, changedJourney, time), false);
   const map = { ...scene, sites: [{ ...scene.sites[0], id: 'quarry' }], audio: {
     zones: [], emitters: [emitter('quarry', 'production-working', { profileId: 'quarry.working', stationId: 'quarry', siteId: 'quarry' })] } };
-  assert.equal(cue(buildWorldAudioFrame(map, input({ levels: { quarry: 1 }, quarryWorking: true })), 'quarry.working').length, 1);
+  assert.equal(cue(buildWorldAudioFrame(map, input({ levels: { quarry: 1 }, quarryWorking: true })), 'quarry.working').length, 0,
+    'the visible miner uses timed pickaxe contacts, not the unrelated recorded rhythm');
   assert.equal(cue(buildWorldAudioFrame(map, input({ levels: { quarry: 1 }, quarryWorking: false })), 'quarry.working').length, 0);
+  const production = snapshot([job('legacy-quarry', 'quarry')]);
+  assert.equal(cue(buildWorldAudioFrame(map, input({ levels: { quarry: 1 }, production })), 'quarry.working').length, 1);
+  assert.equal(cue(buildWorldAudioFrame(map, input({ levels: { quarry: 1 }, production, quarryWorking: true })), 'quarry.working').length, 0);
 });
 
 test('authored +12dB survives frame conversion within the fourfold gain limit', () => {

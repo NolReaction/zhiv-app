@@ -4,6 +4,11 @@ import type { ForestSessionState } from "@/features/world/state/forest-session";
 import type { FixedWorldScene, WorldPoint } from "@/features/world/tiled/types";
 
 export const MINING_PORTAL_SECONDS = 1.8;
+/** The displayed pickaxes meet once per cycle. Sound observes this same clock. */
+export function miningWorkRhythm(elapsed: number) {
+  const phase = Math.max(0, Number.isFinite(elapsed) ? elapsed : 0) * 3.4;
+  return { swing: Math.sin(phase), strike: Math.floor((phase + Math.PI / 2) / (Math.PI * 2)) };
+}
 export type ForestMiningFrame = WorldPoint & {
   size: number; direction: PixelDirection; frame: number; pose: "walk" | "idle";
   opacity: number; scale: number; working: boolean; doorway: WorldPoint; workCue: WorldPoint; elapsed: number;

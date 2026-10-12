@@ -366,6 +366,23 @@ def _action(kind: str, variant: int, sample_rate: int,
         _add(audio, knock, .01, sample_rate, .45)
         _add(audio, knock, .073 + variant * .004, sample_rate, .09)
         title, description, target = "Workbench mallet", "One rounded wooden mallet strike with a warm bench resonance.", -19
+    elif kind == "mine.strike":
+        # A single mineral impact, timed by the visible pick stroke in the game.
+        # The short, low tool ring differs from the workbench's wooden resonance.
+        length = .32 + variant * .015
+        t = _time(length, sample_rate)
+        audio = np.zeros(len(t))
+        base = 510 if variant == 1 else 565
+        for ratio, amplitude, decay in ((1, .34, .041), (1.73, .16, .027), (2.61, .055, .017)):
+            audio += amplitude * np.sin(2 * math.pi * base * ratio * t) * np.exp(-t / decay)
+        audio += .27 * _noise(len(t), rng, sample_rate, 240, 2600) * np.exp(-t / .014)
+        _add(audio, _modal(.13, 160 + variant * 16, sample_rate, rng, "earth"), .006, sample_rate, .16)
+        for when, gain in ((.072, .027), (.114, .018)):
+            grit_time = _time(.07, sample_rate)
+            grit = _noise(len(grit_time), rng, sample_rate, 460, 2300) * np.exp(-grit_time / .013)
+            _add(audio, _fade(grit, sample_rate), when, sample_rate, gain)
+        audio = signal.sosfilt(signal.butter(3, 3400, "lowpass", fs=sample_rate, output="sos"), audio)
+        title, description, target = "Pick against stone", "One small rounded mineral knock, a short low tool ring and two tiny falling fragments; no piercing metal clang.", -27
     elif kind == "water.pour":
         length = [1.48, 1.68, 1.57, 1.8][variant - 1]
         t = _time(length, sample_rate)
@@ -393,6 +410,17 @@ def _action(kind: str, variant: int, sample_rate: int,
             bubble = _bubble(.15, rng.uniform(340, 1100), sample_rate, rng)
             _add(audio, bubble, when, sample_rate, .095 * (1 - when / length))
         title, description, target = "Small fish landing", "A rounded splash, gentle ripple and scattered droplets, without a sharp slap.", -20
+    elif kind == "fish.bobber":
+        length = .32 + variant * .02
+        audio = np.zeros(round(length * sample_rate))
+        _add(audio, _bubble(.18, 420 + variant * 55, sample_rate, rng), .004, sample_rate, .44)
+        contact_time = _time(.09, sample_rate)
+        contact = _noise(len(contact_time), rng, sample_rate, 400, 2100)
+        contact *= np.sin(math.pi * contact_time / .09) ** 2 * np.exp(-contact_time / .024)
+        _add(audio, contact, .004, sample_rate, .14)
+        _add(audio, _bubble(.13, 310 + variant * 25, sample_rate, rng), .064, sample_rate, .055)
+        _add(audio, _air_swish(.16, sample_rate, rng), .095, sample_rate, .075)
+        title, description, target = "Bobber meets water", "One small rounded plop with a tiny fading ripple, for the float landing after a cast.", -29
     elif kind == "berry.pick":
         length = [.48, .54, .51, .57][variant - 1]
         audio = np.zeros(round(length * sample_rate))
@@ -431,7 +459,10 @@ def _action(kind: str, variant: int, sample_rate: int,
         title, description, target = "A drop in the river", "One rounded falling droplet and a tiny soft ripple, for the visible water-drop animation.", -28
     else:
         raise ValueError(f"Unknown action sound: {kind}")
-    return _finish(audio, sample_rate, f"{title} {variant}", description, target)
+    output, metadata = _finish(audio, sample_rate, f"{title} {variant}", description, target)
+    if kind in ("mine.strike", "fish.bobber"):
+        metadata["peakDb"] = -14.0
+    return output, metadata
 
 
 def render(asset_id: str, sample_rate: int) -> tuple[np.ndarray, dict]:
@@ -454,7 +485,7 @@ def render(asset_id: str, sample_rate: int) -> tuple[np.ndarray, dict]:
     if parts[0] == "actor" and len(parts) == 4 and variant <= 3:
         return _actor(parts[1], parts[2], variant, sample_rate, rng)
     if parts[0] == "action" and len(parts) in (3, 4):
-        if ".".join(parts[1:-1]) in ("bush.rustle", "mushroom.eat") and variant > 2:
+        if ".".join(parts[1:-1]) in ("bush.rustle", "mushroom.eat", "mine.strike", "fish.bobber") and variant > 2:
             raise ValueError(f"Unknown action variation: {asset_id}")
         return _action(".".join(parts[1:-1]), variant, sample_rate, rng)
     if parts[:2] == ["water", "drop"] and len(parts) == 3 and variant <= 2:
