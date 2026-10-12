@@ -664,12 +664,12 @@ class JdbcEconomyRepositoryIntegrationTest {
         val bait = checkNotNull(before.fishingShop).offers.single { it.kind == "bait" }
         val full = command(p, before, "buy_fishing_item", bait.id).copy(totalPrice = bait.unitPrice)
         assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> { economy.command(p.hash, full) }.code)
-        val stale = command(p, before, "buy_fishing_item", checkNotNull(before.fishingShop).offers.single { it.itemId == "river_rod" }.id).copy(totalPrice = 17990)
+        val stale = command(p, before, "buy_fishing_item", checkNotNull(before.fishingShop).offers.single { it.itemId == "river_rod" }.id).copy(totalPrice = 13490)
         assertEquals("ECONOMY_FISHING_PRICE_CHANGED", assertFailsWith<AuthFailure> { economy.command(p.hash, stale) }.code)
         assertEquals(before, economy.snapshot(p.hash).copy(serverTime = before.serverTime))
         assertEquals("0", scalar("SELECT count(*) FROM economy_commands WHERE user_id=?", p.id))
         assertEquals("0", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='buy_fishing_item'", p.id))
-        val rod = economy.command(p.hash, command(p, before, "buy_fishing_item", checkNotNull(before.fishingShop).offers.single { it.itemId == "river_rod" }.id).copy(totalPrice = 18000)).state
+        val rod = economy.command(p.hash, command(p, before, "buy_fishing_item", checkNotNull(before.fishingShop).offers.single { it.itemId == "river_rod" }.id).copy(totalPrice = 13500)).state
         assertEquals(before.inventory, rod.inventory, "durable tackle does not take warehouse space")
         val freed = economy.command(p.hash, command(p, rod, "sell", "wood", 1)).state
         val bought = economy.command(p.hash, command(p, freed, "buy_fishing_item", bait.id).copy(totalPrice = bait.unitPrice)).state

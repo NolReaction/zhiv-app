@@ -60,6 +60,24 @@ class EconomyOrderProgressionTest {
         assertEquals(before.offers.filter { it.slot != 1 }, EconomyFood.residentOrderBoard(changed, now, changedCatalog).offers.filter { it.slot != 1 })
     }
 
+    @Test fun `income boost preserves and pays an already saved 400 coin delivery`() {
+        val template = catalog.food!!.orders.templates.single { it.id == "builder_wood_supply" }
+        assertEquals(560L, template.coins)
+        val initial = EconomyRules.initial()
+        val board = EconomyFood.normalizedOrders(initial, now)
+        val slots = board.slots.toMutableList()
+        slots[1] = EconomyResidentOrderSlot(3, now.toString(), template.id, template.copy(coins = 400))
+        val saved = initial.copy(residentOrders = board.copy(slots = slots), inventory = mapOf("wood" to 8L))
+        val offer = EconomyFood.residentOrderBoard(saved, now).offers.single { it.slot == 1 }
+        assertEquals(400L, offer.coins); assertEquals(mapOf("wood" to 8L), offer.items)
+        val completed = EconomyRules.apply(saved, EconomyCommand(UUID.randomUUID().toString(), "ABCD-EFGH-JKMP", 0,
+            "complete_resident_order", offer.id, 1, 0), now).first
+        assertEquals(initial.wallet.coins + 400, completed.wallet.coins)
+        assertEquals(400L, completed.residentOrders.earnedCoins)
+        val next = EconomyFood.residentOrderBoard(completed, now).offers.single { it.slot == 1 }
+        assertEquals(catalog.food!!.orders.templates.single { it.id == next.templateId }.coins, next.coins)
+    }
+
     @Test fun `legacy v2 card keeps old quote until completion then advances at developed level`() {
         val source = catalog.food!!.orders.templates.single { it.id == "builder_wood_supply" }
         val cycle = now.epochSecond / catalog.food!!.orders.refreshSeconds

@@ -1,5 +1,6 @@
 "use client";
 
+import { PromoCodeForm } from "@/features/promo/promo-code-form";
 import { useId, useRef, useState } from "react";
 import { ArrowRight, Coins, Gem, House, Sprout } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
@@ -20,8 +21,8 @@ function CurrencyPile({ kind, tier }: { kind: "pearls" | "coins"; tier: number }
   </div>;
 }
 
-/** Deliberately receives a snapshot, never an economy session or a transaction callback. */
-export function CurrencyShopPanel({ state }: { state: EconomyView | null }) {
+/** Purchases remain a preview; the separate promo form redeems a server-confirmed gift. */
+export function CurrencyShopPanel({ state, onRedeemed }: { state: EconomyView | null; onRedeemed?: () => void | Promise<unknown> }) {
   const [page, setPage] = useState<ShopPage>("pearls");
   const id = useId(), tabs = useRef<Array<HTMLButtonElement | null>>([]);
   const development = state ? currencyShopDevelopment(state) : null;
@@ -35,6 +36,7 @@ export function CurrencyShopPanel({ state }: { state: EconomyView | null }) {
       <span className={styles.seal}><Gem size={27} aria-hidden="true" /></span>
       <div><span className={styles.eyebrow}>Скоро в лесу</span><h2>Маленькие сокровища</h2><p>Жемчуг и золото для вашей полянки</p></div>
     </header>
+    <PromoCodeForm key={state?.ownerPublicId ?? "loading"} state={state} onRedeemed={onRedeemed} />
     <div className={styles.tabs} role="tablist" aria-label="Разделы магазина">{pages.map((entry, index) => <button
       key={entry.id} type="button" ref={node => { tabs.current[index] = node; }} id={`${id}-${entry.id}`} role="tab"
       aria-selected={page === entry.id} aria-controls={`${id}-page`} tabIndex={page === entry.id ? 0 : -1}
@@ -63,7 +65,7 @@ export function CurrencyShopPanel({ state }: { state: EconomyView | null }) {
             <strong>Ваш бонус <span>+{development.bonusPercent}%</span></strong>
             <div><span><House size={15} aria-hidden="true" />Дом {development.homeLevel} ур. <b>+{development.homeBonusPercent}%</b></span>
               <span><Sprout size={15} aria-hidden="true" />Постройки <b>+{development.buildingBonusPercent}%</b></span></div>
-            <details><summary>Как растёт бонус</summary><p>За дом: +0 / 50 / 150 / 300 / 600% на уровнях 1–5. За завершённые уровни остальных построек: ещё до +100%. Сейчас {development.completedLevels} из {development.totalLevels}. Бонусы складываются; стройка в процессе пока не учитывается.</p></details>
+            <details><summary>Как растёт бонус</summary><p>За дом: +0 / 50 / 150 / 300 / 600% на уровнях 1-5. За завершённые уровни остальных построек: ещё до +100%. Сейчас {development.completedLevels} из {development.totalLevels}. Бонусы складываются; стройка в процессе пока не учитывается.</p></details>
           </div>
           <div className={styles.packages} data-gold="true">{currencyShopGoldOffers(state).map((pack, index) => <article className={styles.package} key={pack.id} data-shop-offer={`gold-${pack.id}`}>
             <CurrencyPile kind="coins" tier={index + 1} /><h4>{pack.name}</h4>

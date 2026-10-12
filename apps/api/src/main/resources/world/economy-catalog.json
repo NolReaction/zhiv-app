@@ -2703,7 +2703,7 @@
         "id": "river_rod",
         "name": "Речная удочка",
         "description": "Для необычной рыбы у камышей. Хуже подходит для обычной рыбы и обитателей глубин.",
-        "price": 18000,
+        "price": 13500,
         "rareBonus": 2,
         "rarity": "uncommon",
         "requiredHomeLevel": 1,
@@ -2719,7 +2719,7 @@
         "id": "brook_rod",
         "name": "Ручьевая удочка",
         "description": "Для смешанного улова обычной и необычной рыбы. Не заменяет снасти для редких обитателей глубин.",
-        "price": 12000,
+        "price": 9000,
         "rareBonus": 1,
         "rarity": "uncommon",
         "requiredHomeLevel": 1,
@@ -2863,7 +2863,7 @@
         "id": "barbed_hook",
         "name": "Бородатый крючок",
         "description": "Для необычных рыб. Менее удобен для обычной рыбы и глубоководных видов.",
-        "price": 12000,
+        "price": 9000,
         "rareBonus": 2,
         "rarity": "uncommon",
         "requiredHomeLevel": 1,
@@ -2879,7 +2879,7 @@
         "id": "round_hook",
         "name": "Круглый крючок",
         "description": "Для смешанного улова обычной и необычной рыбы. Для редких и глубоководных видов нужны другие снасти.",
-        "price": 8000,
+        "price": 6000,
         "rareBonus": 1,
         "rarity": "uncommon",
         "requiredHomeLevel": 1,
@@ -3060,7 +3060,7 @@
           "items": {
             "fish": 3
           },
-          "coins": 330
+          "coins": 470
         },
         {
           "id": "plesk_silver_catch",
@@ -3072,7 +3072,7 @@
           "items": {
             "fish_silverfin": 2
           },
-          "coins": 330
+          "coins": 470
         },
         {
           "id": "plesk_rudd_catch",
@@ -3084,7 +3084,7 @@
           "items": {
             "fish_rudd": 2
           },
-          "coins": 380
+          "coins": 540
         },
         {
           "id": "plesk_morning_assortment",
@@ -3097,7 +3097,7 @@
             "fish": 2,
             "fish_silverfin": 1
           },
-          "coins": 380
+          "coins": 540
         },
         {
           "id": "plesk_bright_assortment",
@@ -3110,7 +3110,7 @@
             "fish_silverfin": 1,
             "fish_rudd": 1
           },
-          "coins": 360
+          "coins": 510
         },
         {
           "id": "plesk_net_patch",
@@ -3123,7 +3123,7 @@
             "fiber": 6,
             "wood": 2
           },
-          "coins": 250
+          "coins": 350
         },
         {
           "id": "builder_wood_supply",
@@ -3135,7 +3135,7 @@
           "items": {
             "wood": 8
           },
-          "coins": 400
+          "coins": 560
         },
         {
           "id": "builder_stone_foundation",
@@ -3147,7 +3147,7 @@
           "items": {
             "stone": 8
           },
-          "coins": 300
+          "coins": 420
         },
         {
           "id": "builder_foundation_mix",
@@ -3160,7 +3160,7 @@
             "wood": 6,
             "stone": 4
           },
-          "coins": 450
+          "coins": 630
         },
         {
           "id": "builder_binding_fiber",
@@ -3172,7 +3172,7 @@
           "items": {
             "fiber": 8
           },
-          "coins": 200
+          "coins": 280
         },
         {
           "id": "builder_light_supports",
@@ -3185,7 +3185,7 @@
             "wood": 4,
             "fiber": 4
           },
-          "coins": 300
+          "coins": 420
         },
         {
           "id": "builder_plank_brace",
@@ -3200,7 +3200,7 @@
             "planks": 4,
             "rope": 2
           },
-          "coins": 800
+          "coins": 1120
         },
         {
           "id": "builder_grilled_lunch",
@@ -3214,7 +3214,7 @@
           "items": {
             "grilled_fish": 2
           },
-          "coins": 750
+          "coins": 1050
         },
         {
           "id": "plesk_grilled_dinner",
@@ -3229,7 +3229,7 @@
             "grilled_fish": 1,
             "berries": 2
           },
-          "coins": 450
+          "coins": 630
         },
         {
           "id": "plesk_reed_catch",
@@ -3241,7 +3241,7 @@
           "items": {
             "fish_reedperch": 2
           },
-          "coins": 490
+          "coins": 690
         },
         {
           "id": "plesk_dace_catch",
@@ -3253,7 +3253,7 @@
           "items": {
             "fish_dace": 2
           },
-          "coins": 540
+          "coins": 760
         },
         {
           "id": "plesk_bream_catch",
@@ -3265,7 +3265,7 @@
           "items": {
             "fish_bream": 2
           },
-          "coins": 650
+          "coins": 910
         },
         {
           "id": "plesk_camp_provisions",
@@ -3280,7 +3280,7 @@
             "smoked_fish": 1,
             "dried_berries": 2
           },
-          "coins": 1330
+          "coins": 1870
         },
         {
           "id": "plesk_warm_lunch",
@@ -3295,7 +3295,7 @@
             "fish_soup": 1,
             "berry_fish": 1
           },
-          "coins": 1940
+          "coins": 2720
         },
         {
           "id": "builder_fasteners",
@@ -3312,7 +3312,7 @@
             "metal_parts": 2,
             "planks": 2
           },
-          "coins": 1450
+          "coins": 2030
         },
         {
           "id": "builder_brick_stack",
@@ -3329,7 +3329,7 @@
             "bricks": 8,
             "rope": 2
           },
-          "coins": 1600
+          "coins": 2240
         },
         {
           "id": "builder_iron_fittings",
@@ -3344,7 +3344,7 @@
           "items": {
             "iron_ingot": 3
           },
-          "coins": 1280
+          "coins": 1800
         },
         {
           "id": "plesk_mooncatch",
@@ -3356,7 +3356,7 @@
           "items": {
             "fish_mooncarp": 2
           },
-          "coins": 870
+          "coins": 1220
         },
         {
           "id": "plesk_pike_catch",
@@ -3368,7 +3368,7 @@
           "items": {
             "fish_pike": 1
           },
-          "coins": 540
+          "coins": 760
         },
         {
           "id": "plesk_eel_catch",
@@ -3380,7 +3380,7 @@
           "items": {
             "fish_eel": 1
           },
-          "coins": 650
+          "coins": 910
         },
         {
           "id": "plesk_hearty_table",
@@ -3394,7 +3394,7 @@
           "items": {
             "hearty_fish": 1
           },
-          "coins": 2380
+          "coins": 3340
         },
         {
           "id": "builder_stone_cut",
@@ -3410,7 +3410,7 @@
             "cut_stone": 6,
             "beams": 2
           },
-          "coins": 2400
+          "coins": 3360
         },
         {
           "id": "builder_window_materials",
@@ -3427,7 +3427,7 @@
             "cloth": 4,
             "glass": 2
           },
-          "coins": 1800
+          "coins": 2520
         },
         {
           "id": "plesk_golden_sturgeon",
@@ -3439,7 +3439,7 @@
           "items": {
             "fish_sturgeon": 1
           },
-          "coins": 1010
+          "coins": 1420
         },
         {
           "id": "plesk_mirror_catch",
@@ -3451,7 +3451,7 @@
           "items": {
             "fish_mirror_koi": 1
           },
-          "coins": 1350
+          "coins": 1890
         },
         {
           "id": "plesk_epic_dinner",
@@ -3467,7 +3467,7 @@
           "items": {
             "epic_fish": 1
           },
-          "coins": 3000
+          "coins": 4200
         },
         {
           "id": "builder_tools",
@@ -3485,7 +3485,7 @@
             "tools": 2,
             "beams": 2
           },
-          "coins": 4000
+          "coins": 5600
         },
         {
           "id": "builder_reinforced",
@@ -3503,7 +3503,7 @@
             "reinforced_parts": 2,
             "tools": 1
           },
-          "coins": 5750
+          "coins": 8050
         },
         {
           "id": "plesk_shadow_catch",
@@ -3515,7 +3515,7 @@
           "items": {
             "fish_shark": 1
           },
-          "coins": 2240
+          "coins": 3140
         },
         {
           "id": "plesk_legendary_dinner",
@@ -3531,7 +3531,7 @@
           "items": {
             "legendary_fish": 1
           },
-          "coins": 5000
+          "coins": 7000
         },
         {
           "id": "builder_final_fittings",
@@ -3549,7 +3549,7 @@
             "reinforced_parts": 4,
             "glass": 6
           },
-          "coins": 10800
+          "coins": 15120
         },
         {
           "id": "builder_ore_delivery",
@@ -3563,7 +3563,7 @@
           "items": {
             "ore": 8
           },
-          "coins": 620
+          "coins": 870
         },
         {
           "id": "builder_clay_delivery",
@@ -3577,7 +3577,7 @@
           "items": {
             "clay": 10
           },
-          "coins": 520
+          "coins": 730
         },
         {
           "id": "builder_sand_delivery",
@@ -3591,7 +3591,7 @@
           "items": {
             "sand": 12
           },
-          "coins": 470
+          "coins": 660
         },
         {
           "id": "builder_charcoal_delivery",
@@ -3605,7 +3605,7 @@
           "items": {
             "charcoal": 4
           },
-          "coins": 520
+          "coins": 730
         },
         {
           "id": "builder_hardwood_delivery",
@@ -3619,7 +3619,7 @@
           "items": {
             "hardwood": 8
           },
-          "coins": 1040
+          "coins": 1460
         },
         {
           "id": "builder_resin_delivery",
@@ -3633,7 +3633,7 @@
           "items": {
             "resin": 8
           },
-          "coins": 630
+          "coins": 890
         },
         {
           "id": "plesk_berry_basket",
@@ -3647,7 +3647,7 @@
           "items": {
             "berries": 10
           },
-          "coins": 390
+          "coins": 550
         }
       ],
       "progression": {

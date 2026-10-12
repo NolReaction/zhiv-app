@@ -45,6 +45,7 @@ next-env.d.ts
 /work/
 /scripts/audio_originals/__pycache__/
 /apps/api/.gradle/
+/apps/api/.kotlin/
 /apps/api/build/
 .idea/
 

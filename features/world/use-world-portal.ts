@@ -19,11 +19,12 @@ export function useWorldPortal(owner: string | null) {
     if (entry.current && window.history.state?.[HISTORY_KEY] === entry.current) { backPending.current = true; window.history.back(); }
     entry.current = null;
   }, []);
-  const enter = useCallback((button: HTMLButtonElement, circle: HTMLElement | null) => {
+  const enter = useCallback((button: HTMLButtonElement | null, circle: HTMLElement | null) => {
     if (!owner || entry.current || backPending.current) return;
     setSceneReady(false);
     trigger.current = button;
-    const rect = circle?.getBoundingClientRect() ?? button.getBoundingClientRect();
+    const rect = circle?.getBoundingClientRect() ?? button?.getBoundingClientRect()
+      ?? { left: window.innerWidth / 2, top: window.innerHeight / 2, width: 0, height: 0 };
     const x = rect.left + rect.width / 2, y = rect.top + rect.height / 2;
     const endRadius = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y)) + 8;
     setOrigin({ "--portal-end-radius": `${endRadius}px`, "--portal-x": `${rect.left + rect.width / 2}px`, "--portal-y": `${rect.top + rect.height / 2}px`, "--portal-radius": `${rect.width / 2}px` } as CSSProperties);

@@ -19,6 +19,7 @@ import { ExpeditionFishingSummary } from "@/features/economy/ui/fishing/expediti
 import { PleskCatchOdds } from "@/features/economy/ui/fishing/plesk-fishing-shop";
 import { useFishingCommand } from "@/features/economy/ui/fishing/use-fishing-command";
 import { economyActorConflict, isQuarryProduction } from "@/features/economy/domain/actor-availability";
+import { ExpeditionActivityArt } from "./expedition-activity-art";
 import styles from "./world-expeditions-menu.module.css";
 
 export type WorldExpeditionsMenuProps = {
@@ -39,13 +40,13 @@ export type WorldExpeditionsMenuProps = {
 type Route = EconomyView["catalog"]["explorations"][number];
 export type SectorId = "forest" | "shore" | "caves";
 export const expeditionSectors: ReadonlyArray<{ id: SectorId; name: string; icon: LucideIcon }> = [
-  { id: "forest", name: "Лес", icon: Trees },
-  { id: "shore", name: "Побережье", icon: Fish },
-  { id: "caves", name: "Шахта", icon: Mountain },
+  { id: "forest", name: "За припасами", icon: Trees },
+  { id: "shore", name: "На рыбалку", icon: Fish },
+  { id: "caves", name: "В шахту", icon: Mountain },
 ];
 /** Presentation only: progression and rewards always come from the catalog. */
 export function expeditionSector(routeId: string): SectorId {
-  if (routeId.includes("shore") || routeId.includes("coastal")) return "shore";
+  if (routeId.includes("shore")) return "shore";
   if (routeId.includes("cave") || routeId.includes("quarry")) return "caves";
   return "forest";
 }
@@ -55,7 +56,7 @@ const routeIcon = (id: string): LucideIcon => expeditionSectors.find(sector => s
 const isFishingRoute = (state: EconomyView, route: Route) => state.catalog.fishing?.routeIds.includes(route.id) ?? false;
 const expeditionCost = (state: EconomyView, route: Route) => isFishingRoute(state, route) ? fishingTripCost(route.cost, state) : route.cost;
 const canPrepare = (state: EconomyView, route: Route) => worldMissingRequirements(state, worldRequirements(route)).length === 0 && countRewards(route.rewards) <= state.storage.capacity && worldCostShortfalls(state, expeditionCost(state, route)).length === 0;
-const sectorRoutes = (state: EconomyView, sectorId: SectorId) => state.catalog.explorations.filter(route => expeditionSector(route.id) === sectorId
+const sectorRoutes = (state: EconomyView, sectorId: SectorId) => state.catalog.explorations.filter(route => (isFishingRoute(state, route) ? "shore" : expeditionSector(route.id)) === sectorId
   && !(route.id === "quarry_shift" && (state.buildings.quarry ?? 0) >= 4)
   && !(route.id === "quarry_deep_face" && (state.buildings.quarry ?? 0) >= 5));
 
@@ -181,14 +182,14 @@ export function ExpeditionRouteDetails({ route, state, economy, exploring, onOpe
       return <li key={id} data-missing={unmet || undefined}>{unmet ? <LockKeyhole size={12} aria-hidden="true" /> : <Check size={12} aria-hidden="true" />}{unmet && openRequirement ? <button type="button" className={styles.link} onClick={openRequirement}>{stationName(state, id)} · нужен ур. {level}<ArrowRight size={12} aria-hidden="true" /></button> : <span>{stationName(state, id)} · {unmet ? "нужен ур." : "ур."} {level}</span>}</li>;
     })}</ul>
     {cost.coins > 0 || Object.keys(cost.items).length > 0 ? <div className={styles.provisions}><span className={styles.caption}>С собой</span><ul aria-label="Припасы для вылазки">{cost.coins > 0 && <li data-missing={state.wallet.coins < cost.coins || undefined}><ItemIcon itemId="coins" size={16} /><span>Монеты</span><strong>{number(state.wallet.coins)} / {number(cost.coins)}</strong></li>}{Object.entries(cost.items).map(([id, quantity]) => <li key={id} data-missing={(state.inventory[id] ?? 0) < quantity || undefined}><ProductIcon state={state} itemId={id} size={18} /><span>{itemName(state, id)}</span><strong>{number(state.inventory[id] ?? 0)} / {number(quantity)}</strong></li>)}</ul></div> : <p className={styles.free}><Check size={12} aria-hidden="true" />Без затрат</p>}
-    {tooLarge ? <div className={styles.warning}><p>Находки займут {number(findings)} мест, вместимость — {number(state.storage.capacity)}.</p><button type="button" className={styles.link} onClick={onNavigateStation ? () => onNavigateStation("warehouse") : onOpenPantry}>Расширить кладовую<ArrowRight size={12} aria-hidden="true" /></button></div> : state.storage.available < findings && <button type="button" className={styles.storageHint} onClick={onOpenPantry}><Package size={13} aria-hidden="true" /><span>К возвращению нужно {number(findings)} мест · свободно {number(state.storage.available)}</span><ArrowRight size={12} aria-hidden="true" /></button>}
+    {tooLarge ? <div className={styles.warning}><p>Находки займут {number(findings)} мест, вместимость - {number(state.storage.capacity)}.</p><button type="button" className={styles.link} onClick={onNavigateStation ? () => onNavigateStation("warehouse") : onOpenPantry}>Расширить кладовую<ArrowRight size={12} aria-hidden="true" /></button></div> : state.storage.available < findings && <button type="button" className={styles.storageHint} onClick={onOpenPantry}><Package size={13} aria-hidden="true" /><span>К возвращению нужно {number(findings)} мест · свободно {number(state.storage.available)}</span><ArrowRight size={12} aria-hidden="true" /></button>}
     {mineUpgrading && <p className={styles.caption}>Дождитесь улучшения шахты и заберите результат.</p>}
     {actorConflict && !exploring && <p className={styles.caption}>{actorConflict.message}</p>}
     {pendingMeal(state, "hero") && !exploring && <p className={styles.caption}>Сыт · скорость следующей вылазки +{pendingMeal(state, "hero")!.heroSpeedBps / 100}%. Время уже учитывает еду.</p>}
     {invalidGear && <p className={styles.warning}>Выберите доступную удочку и крючок перед отправлением.</p>}
     {(blocked || economy.uncertain || economy.retryAt > economy.now) && onOpenHelp && <button type="button" className={styles.contextHelp} onClick={() => onOpenHelp({ intent: "expedition", routeId: route.id })}><CircleHelp size={15} aria-hidden="true" />Как продолжить?</button>}
+    {fishing && catalog && <section className={styles.catchDetails} aria-label="Шансы улова"><PleskCatchOdds state={state} catalog={catalog} /></section>}
     {exploring ? <p className={styles.caption}>Сначала заберите находки или отмените текущую вылазку.</p> : <div className={styles.actions}>{shortfalls.length > 0 && <span className={styles.warning}>Не хватает припасов</span>}<button type="button" className={styles.primary} disabled={blocked || command.blocked} onClick={() => command.send(fishing ? "start_fishing" : "start_exploration", route.id, 1, 0, !blocked)} aria-label={`Отправиться: ${route.name}`}>Отправиться · {worldDuration(mealDuration(route.seconds, pendingMeal(state, "hero")?.heroSpeedBps ?? 0))}<ArrowRight size={13} aria-hidden="true" /></button></div>}
-    {fishing && catalog && <details className={styles.catchDetails} aria-label="Шансы улова"><summary><Fish size={16} aria-hidden="true" /><span>Шансы и условия улова</span><ChevronDown size={14} className={styles.chevron} aria-hidden="true" /></summary><PleskCatchOdds state={state} catalog={catalog} /></details>}
   </div>;
 }
 
@@ -225,17 +226,22 @@ export function WorldExpeditionSector({ sectorId, selectedRoute, onSelectRoute, 
 }
 
 export function WorldExpeditionsMenu({ economy, onOpenPantry, onNavigateStation, onOpenFishingShop, onUpgradeQuarry, onOpenHelp, onOpenMeals, isOnline, initialSector = "forest", embeddedCaves = false, activeOnly = false, onCancellationComplete }: WorldExpeditionsMenuProps) {
-  const [selectedSector, setSelectedSector] = useState<SectorId>(initialSector);
+  const [selectedSector, setSelectedSector] = useState<SectorId | null>(initialSector === "forest" ? null : initialSector);
   const [selectedRoute, setSelectedRoute] = useState<string | null>(null);
   const [confirmationKey, setConfirmationKey] = useState<string | null>(null);
   const previousRoute = useRef<string | null>(null);
-  const previousSector = useRef(initialSector);
+  const previousSector = useRef<SectorId | null>(initialSector === "forest" ? null : initialSector);
+  const lastSector = useRef<SectorId>(initialSector);
   const cancellationSent = useRef<string | null>(null), selectedSectorButton = useRef<HTMLButtonElement>(null), content = useRef<HTMLDivElement>(null);
   const state = economy.snapshot;
   const currentSector = embeddedCaves ? "caves" : selectedSector;
-  const visibleRoute = state ? sectorRoutes(state, currentSector).find(route => route.id === selectedRoute)?.id ?? null : null;
+  const visibleRoute = state && currentSector ? sectorRoutes(state, currentSector).find(route => route.id === selectedRoute)?.id ?? null : null;
   useEffect(() => {
-    if (currentSector !== previousSector.current) selectedSectorButton.current?.focus({ preventScroll: true });
+    if (currentSector !== previousSector.current) {
+      const target = currentSector ? content.current?.querySelector<HTMLElement>("[data-activity-heading]")
+        : Array.from(content.current?.querySelectorAll<HTMLButtonElement>("[data-sector-select]") ?? []).find(button => button.dataset.sectorSelect === lastSector.current);
+      target?.focus({ preventScroll: true });
+    }
     previousSector.current = currentSector;
   }, [currentSector]);
   useEffect(() => {
@@ -267,8 +273,11 @@ export function WorldExpeditionsMenu({ economy, onOpenPantry, onNavigateStation,
   const mineLevel = state?.buildings.quarry ?? 0;
   const mineConstruction = mineJobs.find(job => job.kind === "construction");
   const nextMineLevel = mineBuilding?.levels.find(level => level.level === mineLevel + 1);
-  function selectSector(id: SectorId) {
+  function selectSector(id: SectorId | null) {
     if (id === currentSector) return;
+    // Opening the mine is a deliberate building action, never a departure.
+    if (id === "caves" && mineLevel === 0 && !mineConstruction && !quarry && onUpgradeQuarry) { onUpgradeQuarry(); return; }
+    if (id) lastSector.current = id;
     playUiCue(getAudioRuntime(), "ui.tab");
     setSelectedSector(id);
     setSelectedRoute(null);
@@ -282,15 +291,32 @@ export function WorldExpeditionsMenu({ economy, onOpenPantry, onNavigateStation,
       {!embeddedCaves && currentSector !== "caves" && quarryConflict && <div className={styles.warning}><p>{quarryConflict.message}</p><button type="button" className={styles.link} onClick={() => selectSector("caves")}><Mountain size={14} aria-hidden="true" />Открыть шахту<ArrowRight size={12} aria-hidden="true" /></button></div>}
       {jobs.map(job => <ActiveExpedition key={job.id} economy={economy} state={state} job={job} onOpenPantry={onOpenPantry} onOpenHelp={onOpenHelp}
         confirmationKey={confirmationKey} onConfirmation={setConfirmationKey} onCancellationSent={jobId => { cancellationSent.current = jobId; }} />)}
-      {!embeddedCaves && !visibleRoute && <div className={styles.sectors} role="group" aria-label="Секторы вылазок">{expeditionSectors.map(({ id, name, icon: Icon }) => <button ref={selectedSector === id ? selectedSectorButton : undefined} type="button" key={id} data-sector-select={id} aria-pressed={selectedSector === id} onClick={() => selectSector(id)}><Icon size={16} aria-hidden="true" /><span>{name}</span></button>)}</div>}
+      {!embeddedCaves && !activeOnly && !currentSector && <>
+        <header className={styles.chooserHeading}><span>Время приключений</span><h3>Чем займёмся?</h3><p>{jobs.length ? "Пока Мохлик в пути, можно выбрать следующий маршрут." : quarryConflict ? "Следующую вылазку начнём после работы в шахте." : "Небольшая прогулка или целое приключение."}</p></header>
+        <div className={styles.activities} role="group" aria-label="Занятия Мохлика" data-section-guide-target="expedition-activities">{expeditionSectors.map(({ id, name }) => {
+          const routes = sectorRoutes(state, id), durations = routes.map(route => mealDuration(route.seconds, pendingMeal(state, "hero")?.heroSpeedBps ?? 0));
+          const closed = id === "caves" && mineLevel === 0 && !mineConstruction && !quarry;
+          const description = id === "forest" ? "Материалы из леса и с берега" : id === "shore" ? "Улов и необычные находки" : closed ? "Обустроим вход и начнём добывать" : "Камень, руда и запасы для стройки";
+          return <button type="button" key={id} className={styles.activity} data-sector-select={id} data-activity={id} aria-haspopup={closed && onUpgradeQuarry ? "dialog" : undefined} onClick={() => selectSector(id)}>
+            <span className={styles.activityArt}><ExpeditionActivityArt sector={id} /></span>
+            <span className={styles.activityText}><strong>{closed ? "Открыть шахту" : name}</strong><span>{description}</span><small>{closed ? <><Hammer size={12} aria-hidden="true" />Показать план постройки</> : <><Clock3 size={12} aria-hidden="true" />{durations.length ? `${worldDuration(Math.min(...durations))} - ${worldDuration(Math.max(...durations))}` : "Скоро"}</>}</small></span>
+            <ArrowRight size={18} className={styles.activityArrow} aria-hidden="true" />
+          </button>;
+        })}</div>
+        <p className={styles.activityNote}><Compass size={14} aria-hidden="true" />Одно занятие за раз. Находки дождутся тебя.</p>
+      </>}
+      {!embeddedCaves && !activeOnly && currentSector && !visibleRoute && <>
+        <button ref={selectedSectorButton} type="button" className={styles.back} onClick={() => selectSector(null)}><ArrowLeft size={15} aria-hidden="true" />Все занятия</button>
+        <header className={styles.activityHeading} data-activity={currentSector}><span className={styles.activityArt}><ExpeditionActivityArt sector={currentSector} /></span><h3 data-activity-heading tabIndex={-1}>{expeditionSectors.find(sector => sector.id === currentSector)!.name}</h3><p>{currentSector === "shore" ? "Выбери время у воды. Снасти настроим перед выходом." : currentSector === "caves" ? "Полезные находки начинаются под землёй." : "Выбери, что пригодится твоей полянке."}</p></header>
+      </>}
       {!embeddedCaves && !activeOnly && currentSector === "caves" && !visibleRoute && <section className={styles.mine} aria-label="Обустройство шахты">
         <div className={styles.mineHeading}><span><Mountain size={17} aria-hidden="true" /><strong>Шахта</strong><small>{mineLevel ? `ур. ${mineLevel}` : "Не открыта"}</small></span>
-          {onUpgradeQuarry && (nextMineLevel || mineConstruction) && <button type="button" className={styles.mineUpgrade} aria-haspopup="dialog" aria-label={mineConstruction ? "Ход улучшения шахты" : undefined} onClick={onUpgradeQuarry}><Hammer size={14} aria-hidden="true" />{mineConstruction ? "Стройка" : mineLevel ? "Улучшить" : "Открыть"}</button>}
+          {onUpgradeQuarry && (nextMineLevel || mineConstruction) && <button type="button" className={styles.mineUpgrade} aria-haspopup="dialog" aria-label={mineConstruction ? "Ход улучшения шахты" : undefined} onClick={onUpgradeQuarry}><Hammer size={14} aria-hidden="true" />{mineConstruction ? "Стройка" : mineLevel ? "Улучшить" : "Открыть шахту"}</button>}
           {!nextMineLevel && <small className={styles.caption}>Макс. уровень</small>}
         </div>
         {mineJobs.length > 0 && <div className={styles.mineWork}>{mineJobs.map(job => <Work key={job.id} economy={{ ...economy, snapshot: state }} job={job} openPantry={onOpenPantry} />)}</div>}
       </section>}
-      {!activeOnly && <WorldExpeditionSector isOnline={isOnline} onOpenMeals={onOpenMeals} sectorId={currentSector} selectedRoute={visibleRoute} onSelectRoute={setSelectedRoute} state={state} economy={economy} exploring={jobs.length > 0} onOpenPantry={onOpenPantry} onNavigateStation={onNavigateStation} onOpenFishingShop={onOpenFishingShop} onUpgradeQuarry={onUpgradeQuarry} onOpenHelp={onOpenHelp} />}
+      {!activeOnly && currentSector && (currentSector !== "caves" || mineLevel > 0 || embeddedCaves) && <WorldExpeditionSector isOnline={isOnline} onOpenMeals={onOpenMeals} sectorId={currentSector} selectedRoute={visibleRoute} onSelectRoute={setSelectedRoute} state={state} economy={economy} exploring={jobs.length > 0} onOpenPantry={onOpenPantry} onNavigateStation={onNavigateStation} onOpenFishingShop={onOpenFishingShop} onUpgradeQuarry={onUpgradeQuarry} onOpenHelp={onOpenHelp} />}
     </>}
   </div>;
 }

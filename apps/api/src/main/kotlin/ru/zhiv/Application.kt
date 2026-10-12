@@ -101,11 +101,23 @@ import ru.zhiv.observability.ClientIncident
 import ru.zhiv.observability.diagnosticOperation
 import ru.zhiv.observability.MonitoringService
 import java.security.MessageDigest
+import ru.zhiv.notifications.NotificationRepository
+import ru.zhiv.notifications.WebPushConfig
+import ru.zhiv.notifications.WebPushSender
+import ru.zhiv.notifications.notificationRoutes
+import ru.zhiv.db.JdbcNotificationRepository
+import ru.zhiv.db.NotificationMaintenance
+import ru.zhiv.promo.PromoRepository
+import ru.zhiv.promo.promoRoutes
+import ru.zhiv.db.JdbcPromoRepository
 
 fun Application.module() {
     val config = AppConfig.fromEnvironment()
     val dataSource = DatabaseFactory.create(config)
     val tapMaintenance = ru.zhiv.db.TapActivityMaintenance(dataSource)
+    val pushConfig = WebPushConfig.fromEnvironment()
+    val pushSender = if (pushConfig.configured) WebPushSender(pushConfig) else null
+    val pushMaintenance = pushSender?.let { NotificationMaintenance(dataSource, it) }
     val repository = JdbcZhivRepository(dataSource)
     val relationships = JdbcRelationshipRepository(dataSource)
     val groups = JdbcGroupRepository(dataSource)
@@ -118,6 +130,8 @@ fun Application.module() {
 
     monitor.subscribe(io.ktor.server.application.ApplicationStopped) {
         tapMaintenance.close()
+        pushMaintenance?.close()
+        pushSender?.close()
         telegram?.close()
         vk?.close()
         dataSource.close()
@@ -148,6 +162,8 @@ fun Application.module() {
         admin = JdbcAdminRepository(dataSource, AdminConfig(config.adminPublicIds)),
         incidents = UserIncidentRepository(dataSource),
         feedback = JdbcFeedbackRepository(dataSource, AdminConfig(config.adminPublicIds)),
+        notifications = JdbcNotificationRepository(dataSource, pushConfig),
+        promo = JdbcPromoRepository(dataSource),
     )
 }
 
@@ -179,6 +195,8 @@ fun Application.installZhivApi(
     economyBarter: EconomyBarterRepository? = null,
     guestProfiles: GuestProfileRepository? = null,
     presence: PresenceRepository? = null,
+    notifications: NotificationRepository? = null,
+    promo: PromoRepository? = null,
 ) {
     val metrics = RuntimeMetrics.shared
     val monitoring = MonitoringService(config.monitoringUrl)
@@ -212,6 +230,10 @@ fun Application.installZhivApi(
             "forest-memory-write" to 30,
             "game-session" to 120,
             "presence-write" to 1_200,
+            "notifications-read" to 120,
+            "notifications-write" to 60,
+            "notifications-presence" to 120,
+            "promo-write" to 6,
             "game-write" to 90,
             "client-incidents" to 120,
             "feedback-read" to 120,
@@ -222,7 +244,7 @@ fun Application.installZhivApi(
             "account-recovery-read" to 600,
         )) {
             register(RateLimitName(name)) {
-                rateLimiter(limit = limit, refillPeriod = if (name in setOf("game-write", "world-read", "forest-memory-read", "forest-memory-write")) kotlin.time.Duration.parse("1m") else 1.hours)
+                rateLimiter(limit = limit, refillPeriod = if (name in setOf("game-write", "world-read", "forest-memory-read", "forest-memory-write", "promo-write")) kotlin.time.Duration.parse("1m") else 1.hours)
                 requestKey { call ->
                     val userId = call.sessionCookie(config)?.let { raw ->
                         identities.findSessionUserId(tokenCodec.hash(raw))
@@ -337,6 +359,8 @@ fun Application.installZhivApi(
         economyBarter?.let { economyBarterRoutes(it, tokenCodec, config, presence) }
         forestMemory?.let { forestMemoryRoutes(it, tokenCodec, config, presence) }
         feedback?.let { feedbackRoutes(it, tokenCodec, config) }
+        notifications?.let { notificationRoutes(it, tokenCodec, config) }
+        promo?.let { promoRoutes(it, tokenCodec, config, presence) }
         admin?.let { repository ->
             adminRoutes(repository, tokenCodec, config)
             rateLimit(RateLimitName("admin-read")) {

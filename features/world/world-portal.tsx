@@ -7,11 +7,14 @@ import type { EconomyController } from "@/features/economy/sync/use-economy";
 import type { WorldController } from "@/features/world/state/use-world";
 import WorldView from "./world-view";
 import type { WorldFriendsState } from "@/features/world/ui/profile/world-profile-friends";
+import type { WorldNotificationEntry } from "./notification-destination";
 import styles from "./world.module.css";
 
 export type WorldPortalProps = {
   open: boolean; onClose: () => void; origin: CSSProperties; returnFocus: () => void;
   onSceneReady?: () => void;
+  sceneReady?: boolean; notificationEntry?: WorldNotificationEntry;
+  onNotificationHandled?: (request: number) => void;
   world: WorldController; economy: EconomyController; ownerPublicId: string; timeZone: string; displayName: string; level: number;
   wakeSignal: number;
   friends?: WorldFriendsState; onOpenPeople?: () => void;

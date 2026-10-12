@@ -15,6 +15,10 @@ val ktorVersion = "3.5.2"
 val flywayVersion = "12.8.0"
 
 dependencies {
+    // Use the audited encoding API, not the library's legacy HTTP clients.
+    implementation("nl.martijndwars:web-push:5.1.2") { isTransitive = false }
+    implementation("org.bouncycastle:bcprov-jdk18on:1.83")
+    implementation("org.bitbucket.b_c:jose4j:0.9.6")
     implementation("com.nimbusds:nimbus-jose-jwt:10.9.1")
     implementation("org.eclipse.angus:jakarta.mail:2.0.5")
     implementation("io.ktor:ktor-server-core:$ktorVersion")

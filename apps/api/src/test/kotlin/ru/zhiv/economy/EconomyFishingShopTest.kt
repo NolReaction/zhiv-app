@@ -40,6 +40,22 @@ class EconomyFishingShopTest {
         assertEquals(listOf("bait", "fish"), EconomyFishingShops.create(owned, now).offers.map { it.kind })
     }
 
+    @Test fun `cheaper starter tackle is applied to new stock without rewriting saved prices`() {
+        val current = ready()
+        val shop = checkNotNull(current.fishingShop)
+        assertEquals(13500L, shop.offers.single { it.itemId == "river_rod" }.unitPrice)
+        assertEquals(9000L, shop.offers.single { it.itemId == "barbed_hook" }.unitPrice)
+        val alternate = EconomyFishingShops.create(current, now, { it - 1 })
+        assertEquals(9000L, alternate.offers.single { it.itemId == "brook_rod" }.unitPrice)
+        assertEquals(6000L, alternate.offers.single { it.itemId == "round_hook" }.unitPrice)
+        val saved = current.copy(fishingShop = shop.copy(offers = shop.offers.map {
+            if (it.itemId == "river_rod") it.copy(unitPrice = 18000) else it
+        }))
+        val offer = checkNotNull(saved.fishingShop).offers.single { it.itemId == "river_rod" }
+        val bought = EconomyRules.apply(saved, command("buy_fishing_item", offer.id, price = 18000), now).first
+        assertEquals(current.wallet.coins - 18000, bought.wallet.coins)
+    }
+
     @Test fun `every integer rarity ticket follows level odds and ownership never upgrades a miss`() {
         val spec = checkNotNull(EconomyRules.catalog.fishing)
         for (home in 1..5) {

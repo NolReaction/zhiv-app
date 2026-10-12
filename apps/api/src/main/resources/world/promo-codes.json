@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "codes": [
+    {
+      "id": "welcome-example-v1",
+      "code": "WELCOME-EXAMPLE",
+      "enabled": false,
+      "title": "Подарок для полянки",
+      "startsAt": null,
+      "endsAt": null,
+      "reward": {
+        "coins": 500,
+        "pearls": 20,
+        "items": { "wood": 5, "stone": 5 }
+      }
+    }
+  ]
+}

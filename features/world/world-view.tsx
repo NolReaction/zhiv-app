@@ -6,6 +6,7 @@ import { GAME_ITEMS, naturalItems } from "@/features/game/game-rewards";
 import { DecorationPreview } from "@/features/world/ui/collections/decoration-preview";
 import { formatDayCount } from "@/lib/daily-streak";
 import type { WorldPortalProps } from "./world-portal";
+import { worldNotificationDestination } from "./notification-destination";
 import { GameLevelIcon } from "@/features/game/game-level-icon";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { Dialog, DialogPortal, DialogOverlay, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -51,7 +52,7 @@ type Panel = "journeys" | "economy" | "customize" | "wardrobe" | "collection" | 
 type QuickMenu = "profile" | "pantry" | "expeditions" | "food" | "more";
 const WorldDevPanel = process.env.NODE_ENV === "development"
   ? WorldDevEntry : null;
-export default function WorldView({ open, world, economy, ownerPublicId, timeZone, onClose, displayName, level, wakeSignal, bestStreakDays, items, isOnline, onSessionLost, friends, onOpenPeople, onSceneReady, escapeHandlerRef }: WorldPortalProps & { escapeHandlerRef?: RefObject<(() => boolean) | null> }) {
+export default function WorldView({ open, world, economy, ownerPublicId, timeZone, onClose, displayName, level, wakeSignal, bestStreakDays, items, isOnline, onSessionLost, friends, onOpenPeople, onSceneReady, sceneReady, notificationEntry, onNotificationHandled, escapeHandlerRef }: WorldPortalProps & { escapeHandlerRef?: RefObject<(() => boolean) | null> }) {
   const constructionGoal = useConstructionGoal(ownerPublicId, economy.snapshot);
   const onboarding = useWorldOnboarding(ownerPublicId);
   const observation = useForestObservation(`zhiv:mochlik:presence:${ownerPublicId}`);
@@ -288,6 +289,26 @@ export default function WorldView({ open, world, economy, ownerPublicId, timeZon
     const place = worldPlaceForStation(stationId);
     if (place) openObject(place, stationId, recipeId);
   };
+  const handledNotification = useRef<number | null>(null);
+  useEffect(() => {
+    if (!open || !sceneReady || !economy.snapshot || !notificationEntry || notificationEntry.ownerPublicId !== ownerPublicId
+      || handledNotification.current === notificationEntry.request || economy.busy || economy.uncertain) return;
+    const destination = worldNotificationDestination(notificationEntry.target, economy.snapshot, economy.now);
+    const timer = window.setTimeout(() => {
+      handledNotification.current = notificationEntry.request;
+      setDailyOpen(false); setCharactersOpen(false); setResidentOpen(false); setQuickUpgrade(null);
+      if (destination.kind === "activities") openQuick("expeditions");
+      else if (destination.kind === "pantry") openQuick("pantry");
+      else if (destination.kind === "builder") openResident("builder");
+      else {
+        const place = worldPlaceForStation(destination.stationId);
+        if (place) openObject(place, destination.stationId, destination.recipeId);
+        else openQuick("pantry");
+      }
+      onNotificationHandled?.(notificationEntry.request);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [open, sceneReady, economy.snapshot, economy.now, economy.busy, economy.uncertain, notificationEntry, onNotificationHandled, ownerPublicId, openQuick, openResident, openObject]);
   const openUpgrade = (stationId: string) => {
     openingPinnedGoal.current = false;
     upgradeReturn.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -417,7 +438,7 @@ export default function WorldView({ open, world, economy, ownerPublicId, timeZon
           <button type="button" data-world-food-entry aria-haspopup="dialog" onClick={() => openFood()}><Soup size={18} aria-hidden="true" /><span className={styles.moreLabel}>Еда и заказы<small>Накормить героев · заработать монеты</small></span></button>
           <button type="button" data-world-characters-trigger aria-haspopup="dialog" onClick={openCharacters}><PawPrint size={18} aria-hidden="true" /><span className={styles.moreLabel}>Персонажи<small>Жители леса</small></span></button>
           <button type="button" aria-haspopup="dialog" onClick={() => openEconomy("market")}><Store size={18} aria-hidden="true" /><span className={styles.moreLabel}>Рынок<small>Покупки и свой прилавок</small></span></button>
-          <button type="button" aria-haspopup="dialog" onClick={() => openPanel("shop")}><ShoppingBag size={18} aria-hidden="true" /><span className={styles.moreLabel}>Магазин<small>Жемчуг и золото · скоро</small></span></button>
+          <button type="button" aria-haspopup="dialog" onClick={() => openPanel("shop")}><ShoppingBag size={18} aria-hidden="true" /><span className={styles.moreLabel}>Магазин<small>Промокоды и витрина</small></span></button>
           <button type="button" aria-haspopup="dialog" onClick={() => openPanel("wardrobe")}><Shirt size={18} aria-hidden="true" /><span className={styles.moreLabel}>Гардероб<small>Одежда и оттенки мха</small></span></button>
           <button type="button" aria-haspopup="dialog" onClick={() => openPanel("collection")}><BookOpen size={18} aria-hidden="true" /><span className={styles.moreLabel}>Коллекции<small>Книга личных находок</small></span></button>
           {state.journeys.length > 0 && <button type="button" aria-haspopup="dialog" onClick={() => openPanel("journeys")}><Compass size={18} aria-hidden="true" /><span className={styles.moreLabel}>Старые походы<small>Забрать прежние награды</small></span></button>}
@@ -503,7 +524,7 @@ export default function WorldView({ open, world, economy, ownerPublicId, timeZon
         {panel === "economy" && economyTab === "market" && <SectionGuide key={`${ownerPublicId}:market`} owner={ownerPublicId} section="market" enabled={sectionsReady} targetRoot={marketGuideRoot} />}
         <div className={styles.sheetBody}>
           {panel === "help" && <WorldHelp key={`${ownerPublicId}:${helpEntry.request}`} economy={economy} world={world} presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`} isOnline={isOnline} context={helpEntry.context} initialTopicId={helpEntry.topicId} onNavigate={navigateHelp} onReplayTutorial={replayOnboarding} />}
-          {panel === "shop" && <CurrencyShopPanel key={ownerPublicId} state={economy.snapshot} />}
+          {panel === "shop" && <CurrencyShopPanel key={ownerPublicId} state={economy.snapshot} onRedeemed={economy.reconcile} />}
           {panel === "economy" && <EconomyPanel key={`${economyTab}:${economyFocusId ?? ""}`} economy={economy} initialTab={economyTab} initialFocusId={economyFocusId} standalone onNavigate={openEconomy} />}
           {WORLD_PRESENTATION.streakDecor && panel === "customize" && <div className={styles.panel}>
             <div className={styles.panelHeading}><span className={styles.eyebrow}>ДОМИК ПО ТВОЕМУ ВКУСУ</span><p>Выбирай, что оставить у дома. Подарки сохраняются, даже когда выключены.</p></div>

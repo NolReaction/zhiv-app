@@ -1,3 +1,5 @@
+import { promoRequestSchema, type PromoRequest, type PromoResult } from "@/features/promo/model";
+import type { PromoCatalog } from "@/lib/server/promo-catalog";
 import { wardrobeItems, wardrobeOwned } from "@/features/world/domain/wardrobe";
 // Development adapter only. Production mutations are atomic Ktor/PostgreSQL transactions.
 import { createHash, randomInt } from "node:crypto";
@@ -26,14 +28,15 @@ type Listing = Omit<EconomyMarketListing, "owned" | "sellerName"> & { currencySc
 type Showcase = { refreshAt: number; ids: string[] };
 type BarterReceipt = { signature: string; message: string; acceptedRevision: number; offer: BarterOffer };
 type TradeTurnover = { day: string; buysUsed: number; salesUsed: number; barterUsed: number };
-type Store = { turnover: Map<string, TradeTurnover>; profiles: Map<string, Profile>; listings: Map<string, Listing>; showcases: Map<string, Showcase>;
+type PromoClaim = { requestId: string; title: string; reward: PromoResult["reward"]; acceptedRevision: number; signature: string };
+type Store = { promoClaims: Map<string, Map<string, PromoClaim>>; turnover: Map<string, TradeTurnover>; profiles: Map<string, Profile>; listings: Map<string, Listing>; showcases: Map<string, Showcase>;
   barterOffers: Map<string, BarterOffer>; barterShowcases: Map<string, Showcase>; barterReceipts: Map<string, Map<string, BarterReceipt>> };
 const globalStore = globalThis as typeof globalThis & { __zhivDevEconomyStore?: Store };
 function store(): Store {
-  const value = globalStore.__zhivDevEconomyStore ??= { turnover: new Map(), profiles: new Map(), listings: new Map(), showcases: new Map(),
+  const value = globalStore.__zhivDevEconomyStore ??= { promoClaims: new Map(), turnover: new Map(), profiles: new Map(), listings: new Map(), showcases: new Map(),
     barterOffers: new Map(), barterShowcases: new Map(), barterReceipts: new Map() };
   // Next HMR may retain the pre-showcase store; preserve its profiles and paid listings.
-  value.showcases ??= new Map(); value.turnover ??= new Map();
+  value.promoClaims ??= new Map(); value.showcases ??= new Map(); value.turnover ??= new Map();
   value.barterOffers ??= new Map(); value.barterShowcases ??= new Map(); value.barterReceipts ??= new Map();
   for (const listing of value.listings.values()) {
     listing.currencyScale ??= 1; listing.feeBps ??= 0;
@@ -525,4 +528,38 @@ export function creditDevProgressionReward(token: string | undefined, ownerPubli
   bump(value); value.state = next;
   value.receipts.set(requestId.toLowerCase(), { signature, message: "Награда получена", acceptedRevision: value.revision });
   return view(owner, value, now);
+}
+
+/** Synchronous DEV equivalent of the PostgreSQL transaction; the catalog never reaches the browser. */
+export function redeemDevPromo(token: string | undefined, input: PromoRequest, catalog: PromoCatalog, now = Date.now()): PromoResult {
+  const parsed = promoRequestSchema.safeParse(input);
+  if (!parsed.success) fail("INVALID_PROMO_CODE", "Проверьте промокод: от 3 до 40 латинских букв, цифр, - или _.", 400);
+  const command = parsed.data, { owner, value } = profile(token, now);
+  if (owner !== command.ownerPublicId) fail("ECONOMY_OWNER_CHANGED", "Открыт другой профиль. Обновите страницу.");
+  const requestId = command.requestId.toLowerCase();
+  const signature = `promo:v1:${createHash("sha256").update(JSON.stringify(command)).digest("hex")}`;
+  const claims = store().promoClaims.get(owner) ?? new Map<string, PromoClaim>();
+  const prior = value.receipts.get(requestId);
+  if (prior) {
+    if (prior.signature !== signature) fail("ECONOMY_REQUEST_CONFLICT", "Этот запрос уже использован для другого действия");
+    const claim = [...claims.values()].find(entry => entry.requestId === requestId);
+    if (!claim) fail("PROMO_ALREADY_USED", "Вы уже получили подарок по этому промокоду.");
+    return { state: view(owner, value, now), message: "Подарок уже получен", acceptedRevision: claim.acceptedRevision,
+      replayed: true, title: claim.title, reward: structuredClone(claim.reward) };
+  }
+  const entry = catalog.codes.find(entry => entry.enabled && entry.code === command.code);
+  if (!entry) fail("PROMO_NOT_FOUND", "Промокод не найден. Проверьте, правильно ли он введён.");
+  if (entry.startsAt && now < Date.parse(entry.startsAt)) fail("PROMO_NOT_STARTED", "Этот промокод начнёт действовать позже.");
+  if (entry.endsAt && now >= Date.parse(entry.endsAt)) fail("PROMO_EXPIRED", "Срок действия промокода закончился.");
+  if (claims.has(entry.id)) fail("PROMO_ALREADY_USED", "Вы уже получили подарок по этому промокоду.");
+  if (value.revision !== command.expectedRevision) fail("ECONOMY_REVISION_CONFLICT", "Хозяйство изменилось. Обновите состояние и повторите ввод промокода.");
+  const reward = { ...entry.reward, pearls: entry.reward.pearls * 2 };
+  let state: EconomyView;
+  try { state = creditDevProgressionReward(token, owner, requestId, reward, signature, now); } catch (error) {
+    if (error instanceof EconomyRuleError && error.code === "ECONOMY_STORAGE_FULL") fail(error.code, "В кладовой недостаточно места для подарка. Освободите место и повторите: промокод не использован.");
+    throw error;
+  }
+  claims.set(entry.id, { requestId, title: entry.title, reward: structuredClone(reward), acceptedRevision: state.revision, signature });
+  store().promoClaims.set(owner, claims);
+  return { state, message: "Подарок получен", acceptedRevision: state.revision, replayed: false, title: entry.title, reward };
 }

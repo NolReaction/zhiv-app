@@ -4,6 +4,7 @@ import { PlayerName } from "@/components/player-name";
 import type { FormEvent } from "react";
 import { useRef, useState } from "react";
 import { Tabs as TabsPrimitive } from "radix-ui";
+import { NotificationSettingsPanel } from "@/features/notifications/notification-settings";
 import { AudioSettingsPanel } from "@/features/audio/ui/audio-settings";
 import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
@@ -200,7 +201,7 @@ export function ProfileView({
         </button>}
         </div>
         {guideOpen && <section id="app-profile-guide" className={styles.guideHelp} aria-label="О профиле">
-          <p>Тут твои данные, статистика и настройки. В профиле можно изменить имя и настроить вход, под шестерёнкой - звук и оформление.</p>
+          <p>Тут твои данные, статистика и настройки. В профиле можно изменить имя и настроить вход, под шестерёнкой - уведомления, звук и оформление.</p>
           {onOpenOnboarding && <button type="button" onClick={() => { setGuideOpen(false); onOpenOnboarding(); }}>{guideActionLabel}</button>}
         </section>}
         <TabsPrimitive.Content value="profile" forceMount className={styles.tabPanel}>
@@ -348,12 +349,13 @@ export function ProfileView({
         <span aria-hidden="true"><UserRound size={20} /></span>
         <div>
           <strong>Основа для аватарки готова</strong>
-          <p>Загрузка фотографии появится позже — с безопасным хранением и отдельной настройкой видимости.</p>
+          <p>Загрузка фотографии появится позже - с безопасным хранением и отдельной настройкой видимости.</p>
         </div>
       </div>
         </TabsPrimitive.Content>
         <TabsPrimitive.Content value="settings" className={styles.tabPanel}>
           <div className={styles.preferences}>
+            <NotificationSettingsPanel key={me.user.publicId} ownerPublicId={me.user.publicId} isOnline={isOnline} onSessionLost={onSessionLost} />
             <AudioSettingsPanel />
             <section className={styles.appearanceCard} aria-labelledby="appearance-title">
               <h2 id="appearance-title"><Settings2 size={19} aria-hidden="true" />Внешний вид</h2>

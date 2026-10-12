@@ -85,6 +85,8 @@ import { StatusEditor } from "@/features/check-in/status-editor";
 import { CheckInReceipt } from "@/features/check-in/check-in-receipt";
 import { useSimpleView } from "@/features/app/use-simple-view";
 import { useWorldPortal } from "@/features/world/use-world-portal";
+import { useNotificationNavigation, useNotificationPresence } from "@/features/notifications/use-notification-presence";
+import type { WorldNotificationEntry } from "@/features/world/notification-destination";
 import { ForestSessionNotice } from "@/features/world/ui/feedback/forest-session-notice";
 import { useWorld } from "@/features/world/state/use-world";
 import { useEconomy } from "@/features/economy/sync/use-economy";
@@ -406,6 +408,9 @@ function CheckInContent() {
   const worldPeopleReturn = useRef(false);
   const appNavigationRef = useRef<HTMLElement | null>(null);
   const [worldMounted, setWorldMounted] = useState(false);
+  const [notificationEntry, setNotificationEntry] = useState<WorldNotificationEntry>();
+  const notificationRequest = useRef(0);
+  const notificationHandled = useCallback((request: number) => setNotificationEntry(previous => previous?.request === request ? undefined : previous), []);
   const startupModules = useStartupModules(screen === "home" && mochlikVisible, startupRetry);
   const closeWorld = worldPortal.close;
   const [mochlikWakeSignal, setMochlikWakeSignal] = useState(0);
@@ -691,6 +696,19 @@ function CheckInContent() {
   }, [startupActive, screen, activityMode, activityRetryAt, retryActivity]);
   const worldDevOwner = screen === "home" ? me?.user.publicId ?? null : null;
   const worldEntryButton = useRef<HTMLButtonElement>(null);
+  useNotificationPresence(worldDevOwner, isOnline);
+  useNotificationNavigation({ ownerPublicId: worldDevOwner,
+    ready: screen === "home" && appearanceReady && !startupActive && activity.active && sceneCanMount,
+    onNavigate: target => {
+      if (!worldDevOwner) return;
+      setCalendarOpen(false); setGameOpen(false); setStatusOpen(false);
+      if (target === "checkin") { worldPortal.close(); setActiveView("check-in"); return; }
+      setNotificationEntry({ ownerPublicId: worldDevOwner, target, request: ++notificationRequest.current });
+      setWorldMounted(true);
+      if (!worldPortal.open) worldPortal.enter(worldEntryButton.current, null);
+      void economy.reconcile();
+    },
+  });
   useEffect(() => {
     if (!WORLD_DEV_ENABLED) return;
     worldDevStore.reset();
@@ -1803,6 +1821,7 @@ function CheckInContent() {
         onOpenCalendar={streak ? () => setCalendarOpen(true) : undefined}
         onOpenGame={() => setGameOpen(true)} />}
       {worldMounted && me && <WorldPortal key={`world:${me.user.publicId}`} open={worldPortal.open} onClose={worldPortal.close} onSceneReady={worldPortal.reportSceneReady}
+        sceneReady={worldPortal.sceneReady} notificationEntry={notificationEntry?.ownerPublicId === me.user.publicId ? notificationEntry : undefined} onNotificationHandled={notificationHandled}
         origin={worldPortal.origin} returnFocus={() => {
           if (worldPeopleReturn.current) {
             worldPeopleReturn.current = false;

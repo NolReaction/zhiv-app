@@ -25,7 +25,7 @@ test("sale discount belongs to the server catalog and older snapshots retain ful
   assert.equal(economyCatalogSchema.parse(legacy).localBuyer, undefined);
   assert.equal(quote(30, 9), 270); assert.equal(quote(30, 9, config), 160);
   assert.equal(minimum(10), 1); assert.equal(minimum(10, config), 2);
-  assert.equal(economyCatalog.fishing.rods.find(rod => rod.id === "river_rod").price, 18000);
+  assert.equal(economyCatalog.fishing.rods.find(rod => rod.id === "river_rod").price, 13500);
   assert.equal(economyCatalog.fishing.rods.find(rod => rod.id === "willow_rod").price, 72000);
 });
 

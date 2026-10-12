@@ -28,6 +28,21 @@ function withWindow(run) {
   }
 }
 
+test("notification can open the world before the map button is mounted", () => withWindow(() => {
+  let entered = false;
+  const observed = [];
+  function Probe() {
+    const portal = useWorldPortal("PLAYER");
+    observed.push({ open: portal.open, origin: portal.origin });
+    if (!entered) { entered = true; portal.enter(null, null); }
+    return null;
+  }
+  renderToStaticMarkup(createElement(Probe));
+  assert.equal(observed.at(-1).open, true);
+  assert.equal(observed.at(-1).origin["--portal-x"], "195px");
+  assert.equal(observed.at(-1).origin["--portal-y"], "422px");
+}));
+
 test("opening a portal keeps the circle until scene readiness and resets readiness on every entry", () => withWindow(() => {
   const observed = [];
   let step = 0;
