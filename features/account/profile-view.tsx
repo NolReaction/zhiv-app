@@ -223,9 +223,9 @@ export function ProfileView({
             <button type="button" onClick={event => onOpenGame(event.currentTarget)} aria-haspopup="dialog" aria-label="Открыть игровой рейтинг"><Trophy size={18} aria-hidden="true" /><strong>{gameLoaded ? `×${clickerStats.bestSeries.toLocaleString("ru-RU")}` : "—"}</strong><span>{gamePendingTaps > 0 ? "сохраняем…" : "рекорд игры"}</span></button>
           </div>
         </div>
-        <Accordion type="single" collapsible value={panel} onValueChange={setPanel} className={styles.settingsList} data-app-onboarding="profile-content">
+        <Accordion type="single" collapsible value={panel} onValueChange={setPanel} className={styles.settingsList}>
           <AccordionItem value="name" className={styles.settingsItem}>
-            <AccordionTrigger className={styles.settingsTrigger}><span><UserRound size={20} aria-hidden="true" /><span>Личные данные<small>Имя и часовой пояс</small></span></span></AccordionTrigger>
+            <AccordionTrigger className={styles.settingsTrigger} data-app-onboarding="profile-content"><span><UserRound size={20} aria-hidden="true" /><span>Личные данные<small>Имя и часовой пояс</small></span></span></AccordionTrigger>
             <AccordionContent forceMount hidden={panel !== "name"} className={styles.settingsContent}>
               <form className={styles.formCard} onSubmit={handleSubmit} noValidate>
             <div className={styles.formHeading}>

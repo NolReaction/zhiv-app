@@ -518,6 +518,54 @@ test("expedition guidance changes after opening route details and never starts t
   assert.deepEqual(h.calls, [["quick", "expeditions"]]);
 });
 
+const saleReceipt = (patch = {}) => ({ id: "sale-1", ownerPublicId: owner, revision: 2, itemId: "wood", quantity: 1, coins: 2, ...patch });
+
+test("one confirmed pantry sale clearly offers next, survives closing the pantry, and waits for the player's choice", () => {
+  const h = harness(started("pantry"));
+  h.render().primary.onClick();
+  h.revealContent({ pantryItem: true, pantrySale: true });
+  h.render();
+  h.patchSnapshot({ revision: 2 });
+  h.patchEconomy({ localSale: saleReceipt(), busy: true });
+  assert.doesNotMatch(h.render().summary, /Продажа прошла/);
+  h.patchEconomy({ busy: false, uncertain: true });
+  assert.doesNotMatch(h.render().summary, /Продажа прошла/);
+  h.patchEconomy({ uncertain: false });
+  let coach = h.render();
+  assert.match(coach.summary, /Продажа прошла.*Одной продажи достаточно.*дальше/);
+  assert.equal(coach.pose, "jump");
+  assert.equal(coach.target, undefined, "do not keep asking the player to use the sale controls");
+  assert.equal(coach.primary.advance, true);
+  assert.equal(coach.primary.label, "Дальше, к ягодам");
+  assert.deepEqual(h.calls, [["quick", "pantry"]], "a sale must not automatically close the menu or advance");
+  h.props.quickMenu = null;
+  assert.match(h.render().summary, /Одной продажи достаточно/);
+  h.props.quickMenu = "pantry";
+  coach = h.render();
+  assert.match(coach.summary, /Одной продажи достаточно/);
+  coach.primary.onClick();
+  assert.equal(h.props.progress.stepId, "garden");
+  h.props.progress = started("pantry");
+  assert.doesNotMatch(h.render().summary, /Продажа прошла/, "replaying the lesson does not replay a stale receipt");
+});
+
+test("pantry practice never infers success from failed sales, changed wallets, old receipts or another owner", () => {
+  const h = harness(started("pantry"));
+  h.patchEconomy({ localSale: saleReceipt({ revision: 1 }) });
+  h.render().primary.onClick();
+  h.revealContent({ pantrySale: true });
+  assert.doesNotMatch(h.render().summary, /Продажа прошла/);
+  h.patchSnapshot({ revision: 4, wallet: { coins: 2000, pearls: 0 }, inventory: { wood: 4 } });
+  h.patchEconomy({ error: "Продажа отклонена" });
+  assert.doesNotMatch(h.render().summary, /Продажа прошла/);
+  h.patchEconomy({ error: null, localSale: saleReceipt({ id: "foreign-sale", ownerPublicId: "another-player", revision: 5 }) });
+  assert.doesNotMatch(h.render().summary, /Продажа прошла/);
+  h.patchEconomy({ localSale: saleReceipt({ id: "fresh-sale", revision: 4 }) });
+  assert.match(h.render().summary, /Продажа прошла/);
+  h.patchSnapshot({ ownerPublicId: "another-player" });
+  assert.doesNotMatch(h.render().summary, /Продажа прошла/, "changing accounts clears the previous owner's practice result");
+});
+
 test("completion reports only actual crop and workshop progress and keeps optional destinations open", () => {
   const untouched = harness(started("help"));
   assert.match(untouched.render().text, /Ягоды можно посадить/);

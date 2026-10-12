@@ -4,6 +4,7 @@ import { economyCommandSchema, marketCommandSchema, type EconomyCommand, type Ec
 import { economyDevCommandSchema, type EconomyDevCommand } from "@/features/economy/dev/dev-model";
 import { constructionCompletions, type ConstructionCompletion } from "@/features/economy/domain/construction-completion";
 import { inventoryGainFromReceipt, INVENTORY_GAIN_HISTORY_LIMIT, type InventoryGain } from "@/features/economy/domain/inventory-gain";
+import { localSaleFromReceipt, type LocalSaleReceipt } from "@/features/economy/domain/local-sale-receipt";
 import { barterCommandSchema, type BarterCommand, type BarterIntent, type BarterResult, type BarterView } from "@/features/economy/domain/barter-model";
 
 type Transport = {
@@ -25,6 +26,8 @@ type View = {
   cancelledExplorations?: readonly string[];
   /** Local accepted inventory additions only; never inferred by polling. */
   inventoryGains?: readonly InventoryGain[];
+  /** Latest confirmed local sale; transient, never reconstructed from a GET. */
+  localSale?: LocalSaleReceipt;
 };
 type ReceiptStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
@@ -164,11 +167,14 @@ export function createEconomySession(owner: string | null, transport: Transport,
           && !view.cancelledExplorations?.includes(value.command.targetId) ? value.command.targetId : null;
         const gain = value.kind !== "dev" && value.kind !== "barter" && view.snapshot?.revision === result.state.revision
           && !inventoryReceipts.has(value.command.requestId) ? inventoryGainFromReceipt(before, result, value.command) : null;
+        const sale = value.kind === "economy" && view.snapshot?.revision === result.state.revision
+          && view.localSale?.id !== value.command.requestId ? localSaleFromReceipt(before, result, value.command) : null;
         if (gain) {
           inventoryReceipts.add(gain.id);
           if (inventoryReceipts.size > 64) inventoryReceipts.delete(inventoryReceipts.values().next().value!);
         }
         remember(null); publish({ notice: result.message, uncertain: false,
+          ...(sale ? { localSale: sale } : {}),
           ...(completed.length ? { completedConstructions: [...view.completedConstructions, ...completed].slice(-8) } : {}),
           ...(cancelled ? { cancelledExplorations: Object.freeze([...(view.cancelledExplorations ?? []), cancelled].slice(-8)) } : {}),
           ...(gain ? { inventoryGains: Object.freeze([...(view.inventoryGains ?? []), gain].slice(-INVENTORY_GAIN_HISTORY_LIMIT)) } : {}) });

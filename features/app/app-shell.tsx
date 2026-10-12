@@ -1521,15 +1521,6 @@ function CheckInContent() {
         </div>
       </header>
 
-      {me && <AppOnboarding key={`app-guide:${me.user.publicId}`} owner={me.user.publicId} entryRef={appOnboardingEntry}
-        ready={!startupActive && screen === "home"} suspended={gameOpen || statusOpen}
-        activeView={activeView} lastCheckInAt={lastCheckInAt} nextAllowedAt={nextAllowedAt}
-        nowMs={adjustedNow} unconfirmed={checkInUnconfirmed} isSending={isSending} isOnline={isOnline}
-        calendarOpen={calendarOpen} calendarAvailable={Boolean(streak)} worldOpen={worldPortal.open}
-        simpleView={simpleView} onSelect={selectView}
-        onOpenCalendar={() => calendarEntryButton.current?.click()}
-        onEnterWorld={() => worldEntryButton.current?.click()} />}
-
       <div key={activeView} className={styles.viewTransition} style={{ "--view-direction": viewDirection } as CSSProperties}>
       {activeView === "check-in" ? (
         <section
@@ -1820,6 +1811,14 @@ function CheckInContent() {
         level={clickerLevel.level} wakeSignal={mochlikWakeSignal}
         bestStreakDays={me.streak.longestDays} items={game.progress?.items} />}
       <footer ref={appNavigationRef} className={styles.footer}>
+        {me && <AppOnboarding key={`app-guide:${me.user.publicId}`} owner={me.user.publicId} entryRef={appOnboardingEntry}
+          ready={!startupActive && screen === "home"} suspended={gameOpen || statusOpen}
+          activeView={activeView} lastCheckInAt={lastCheckInAt} nextAllowedAt={nextAllowedAt}
+          nowMs={adjustedNow} unconfirmed={checkInUnconfirmed} isSending={isSending} isOnline={isOnline}
+          calendarOpen={calendarOpen} calendarAvailable={Boolean(streak)} worldOpen={worldPortal.open}
+          simpleView={simpleView} onSelect={selectView}
+          onOpenCalendar={() => calendarEntryButton.current?.click()}
+          onEnterWorld={() => worldEntryButton.current?.click()} />}
         <AppNavigation active={activeView} onSelect={selectView}
           invitations={(people?.incomingRequests.length ?? 0) + (groups?.incomingInvites.length ?? 0)} />
       </footer>

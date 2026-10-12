@@ -1387,7 +1387,6 @@
 }
 .viewTransition {
   display: grid;
-  padding-bottom: var(--app-guide-clearance, 0px);
   min-width: 0;
   min-height: 0;
   animation: view-enter 220ms cubic-bezier(.2,.8,.2,1);
@@ -1433,3 +1432,44 @@
 .copyIdentity:disabled { opacity: .5; }
 .copyIdentity:focus-visible, .levelBadge:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
 .levelBadge { min-height: 44px; min-width: 44px; cursor: pointer; font-size: 12px; }
+
+/* During the app tour the guide and navigation own one real footer row.
+   A fixed bubble cannot reserve space in the independently scrolling views. */
+.shell:has([data-guide-coach="app"]) {
+  --floating-nav-clearance: 16px;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+.footer:has([data-guide-coach="app"]) {
+  position: relative;
+  inset: auto;
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  gap: 10px;
+  margin: 0;
+  padding-top: 8px;
+  pointer-events: auto;
+}
+.footer > [data-guide-coach="app"] {
+  width: min(100%, 520px);
+  border-radius: 16px;
+}
+@media (max-width: 700px), (hover: none) and (pointer: coarse) {
+  .footer:has([data-guide-coach="app"]) .bottomNav { width: min(100%, 316px); }
+  .shell[data-active-view="check-in"]:has([data-guide-coach="app"]) .action {
+    overflow-y: auto;
+    touch-action: pan-y;
+  }
+  .shell[data-active-view="check-in"]:has([data-guide-coach="app"]) .checkInCluster {
+    min-height: 160px;
+  }
+}
+@media (max-height: 500px) {
+  .shell:has([data-guide-coach="app"]) {
+    grid-template-rows: minmax(0, 1fr) auto;
+    padding-top: 8px;
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
+  .shell:has([data-guide-coach="app"]) > .header { display: none; }
+  .footer:has([data-guide-coach="app"]) { gap: 6px; padding-top: 4px; }
+}

@@ -152,7 +152,8 @@ test("only ready navigation makes the speech a continuation button; economic act
       onPause() {}, onSkip() {}, primary: { label: "Посмотрел, дальше", advance: true, onClick() {} } };
     const ready = renderToStaticMarkup(createElement(GuideCoach, props));
     assert.match(ready, /<button[^>]+data-guide-advance="true"/);
-    assert.match(ready, /Дальше/);
+    assert.match(ready, /<footer[\s\S]*<button[^>]+data-guide-next="true"[^>]+aria-label="Дальше: Посмотрел, дальше"/,
+      "the explicit continuation remains in the footer outside scrolling explanation/details");
     const action = renderToStaticMarkup(createElement(GuideCoach, { ...props, primary: { label: "Получить набор", onClick() {} } }));
     assert.doesNotMatch(action, /data-guide-advance/);
     assert.match(action, /aria-label="Погладить Мохлика"/);

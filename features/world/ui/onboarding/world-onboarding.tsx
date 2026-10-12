@@ -95,6 +95,9 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
   const current = progress?.status === "started" ? progress.stepId : null;
   const [visited, setVisited] = useState<string | null>(null);
   const [harvested, setHarvested] = useState(false);
+  const [saleOwner, setSaleOwner] = useState<string | null>(null);
+  const previousSale = useRef({ owner: economy.snapshot?.ownerPublicId, step: current,
+    id: economy.localSale?.id, revision: economy.snapshot?.revision ?? -1 });
   const previous = useRef<{ jobId?: string; revision: number; gainIds: Set<string> }>({ revision: -1, gainIds: new Set() });
   const orderGiftSent = useRef(false);
   const snapshot = economy.snapshot;
@@ -106,7 +109,7 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
   const reason = recipe && snapshot ? worldProductionReason(snapshot, recipe, 1) : null;
   const cropReady = Boolean(tracked && economy.now >= Date.parse(tracked.finishesAt));
   const reminder = progress?.status === "completed" && (cropReady || harvested);
-  const advance = (next: WorldOnboardingStepId) => { props.onCloseSurface(); setVisited(null); props.onStep(next); };
+  const advance = (next: WorldOnboardingStepId) => { props.onCloseSurface(); setVisited(null); setSaleOwner(null); props.onStep(next); };
   const finish = () => { setHarvested(false); props.onCloseSurface(); props.onComplete(); };
   const sendOrderGift = () => {
     if (orderGiftSent.current) return;
@@ -116,6 +119,21 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
   useEffect(() => {
     if (!economy.busy && !economy.uncertain) orderGiftSent.current = false;
   }, [economy.busy, economy.uncertain, economy.error, snapshot?.ownerPublicId, snapshot?.revision]);
+  useEffect(() => {
+    const before = previousSale.current;
+    const sale = economy.localSale;
+    if (before.owner !== snapshot?.ownerPublicId || before.step !== current) {
+      setSaleOwner(null);
+      previousSale.current = { owner: snapshot?.ownerPublicId, step: current, id: sale?.id, revision: snapshot?.revision ?? -1 };
+      return;
+    }
+    if (economy.busy || economy.uncertain || !sale || sale.id === before.id
+      || sale.ownerPublicId !== snapshot?.ownerPublicId || sale.revision > snapshot.revision) return;
+    if (current === "pantry" && sale.revision > before.revision) {
+      setSaleOwner(sale.ownerPublicId);
+    }
+    previousSale.current = { ...before, id: sale.id, revision: Math.max(before.revision, sale.revision) };
+  }, [current, economy.localSale, economy.busy, economy.uncertain, snapshot?.ownerPublicId, snapshot?.revision]);
   // Remember an actual visit when the surface changes, including a modal help
   // visit whose coach is hidden. This does not move the user to another step.
   if (current && visited !== current && (props.quickMenu === current || current === "help" && props.helpOpen
@@ -193,6 +211,16 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
       }
     } else if (seen) {
       base.summary = "Можно открыть раздел ещё раз или продолжить знакомство.";
+    }
+    if (current === "pantry" && saleOwner === snapshot?.ownerPublicId) {
+      base.title = "С продажей разобрались!";
+      base.pose = "jump";
+      base.summary = "Продажа прошла, монеты получены! Одной продажи достаточно — можно идти дальше.";
+      base.text = "Ты обменял припасы на монеты у торговца. Остальное можно оставить для рецептов и стройки. Теперь посадим ягоды; в кладовую всегда можно вернуться.";
+      base.hint = undefined;
+      base.target = undefined;
+      base.primary = { advance: true, label: "Дальше, к ягодам", onClick: () => advance("garden") };
+      base.secondary = undefined;
     }
   }
   if (current === "garden") {

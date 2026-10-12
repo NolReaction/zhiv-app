@@ -18,12 +18,14 @@ const vite = await createServer({
       export function setDialogOpen(value) { dialogOpen = value; }
       export function useAppOnboarding() { return guide; }
       export function useAppDialogOpen() { return dialogOpen; }
+      export function useAppGuideTarget() {}
       export function useImperativeHandle(ref, create) { if (ref) ref.current = create(); }
     `; },
     transform(source, id) {
       if (id.endsWith("/features/app/onboarding/app-onboarding.tsx")) return source
         .replace('from "./use-app-onboarding";', `from "${hookModule}";`)
         .replace('from "./use-app-dialog-open";', `from "${hookModule}";`)
+        .replace('from "./use-app-guide-target";', `from "${hookModule}";`)
         .replace('import { useImperativeHandle, type Ref } from "react";', `import { useImperativeHandle } from "${hookModule}";`);
     },
   }],
@@ -166,6 +168,9 @@ test("welcome is opt-in and starting uses application navigation without sending
   const result = view();
   assert.equal(result.props.stepId, "welcome");
   assert.match(result.props.text, /близкие/);
+  assert.ok(result.props.text.length < 130);
+  assert.equal(result.props.hint, undefined);
+  assert.equal(result.props.inline, true);
   result.props.primary.onClick();
   assert.deepEqual(result.calls, ["select:check-in", "start"]);
 });

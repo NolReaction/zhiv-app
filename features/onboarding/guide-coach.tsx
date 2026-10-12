@@ -140,15 +140,6 @@ export function GuideCoach(props: GuideCoachProps) {
     };
   }, [open, target, targetRoot, layoutKey, compact, inline, dock, dockElement]);
   useEffect(() => {
-    if (!open || flow !== "app" || !card.current) return;
-    const root = document.documentElement;
-    const previous = root.style.getPropertyValue("--app-guide-clearance");
-    const update = () => root.style.setProperty("--app-guide-clearance", `${Math.ceil(card.current?.getBoundingClientRect().height ?? 0) + 12}px`);
-    const observer = new ResizeObserver(update);
-    observer.observe(card.current); update();
-    return () => { observer.disconnect(); if (previous) root.style.setProperty("--app-guide-clearance", previous); else root.style.removeProperty("--app-guide-clearance"); };
-  }, [open, flow]);
-  useEffect(() => {
     if (!open || !dockElement) return;
     dockElement.classList.add(styles.dockSlot);
     const panel = dockElement.parentElement?.id === "world-quick-menu" ? dockElement.parentElement : null;
@@ -177,12 +168,7 @@ export function GuideCoach(props: GuideCoachProps) {
           {canAdvance ? <button type="button" id={textId} className={styles.message} data-guide-advance onClick={next} aria-label={`${reply} ${primary!.label}`}>{message}</button>
             : <p id={textId} className={styles.messageText}>{message}</p>}
         </div>
-        <div className={styles.controls}>
-          {progress && <span className={styles.counter} aria-label={`Шаг ${current} из ${progress.total}`}>Мохлик · {current}<span>/{progress.total}</span></span>}
-          {canAdvance && <button type="button" className={styles.continue} onClick={next} aria-label={primary!.label}>Дальше<ArrowRight size={14} aria-hidden="true" /></button>}
-          <button type="button" className={styles.pause} data-guide-pause onClick={onPause} title="Свернуть обучение, сохранив шаг" aria-label="Свернуть обучение, сохранив шаг"><Minus size={18} aria-hidden="true" /></button>
-          {!welcome && <button type="button" className={styles.more} aria-label="Подробнее и действия обучения" title="Подробнее и действия" aria-expanded={expanded} aria-controls={detailsId} onClick={() => setExpandedStep(expanded ? null : replyKey)}><Ellipsis size={19} aria-hidden="true" /></button>}
-        </div>
+        {welcome && <button type="button" className={styles.pause} data-guide-pause onClick={onPause} title="Свернуть обучение, сохранив шаг" aria-label="Свернуть обучение, сохранив шаг"><Minus size={18} aria-hidden="true" /></button>}
       </div>
       {children}
       <div id={detailsId} className={styles.details} hidden={!expanded}>
@@ -193,14 +179,21 @@ export function GuideCoach(props: GuideCoachProps) {
           {secondary && <button type="button" className={styles.secondary} onClick={secondary.onClick}>{secondary.label}</button>}
           <button type="button" className={styles.skip} onClick={onSkip}>{flow === "section" ? "Пропустить знакомство" : "Пропустить обучение"}</button>
         </div>}
-        {!welcome && canAdvance && <button type="button" className={styles.expandedNext} onClick={next}>{primary!.label}<ArrowRight size={17} aria-hidden="true" /></button>}
       </div>
       {status && !canAdvance && <p className={styles.status} role="status">{status}</p>}
     </div>
-    {(welcome || primary && !canAdvance) && <footer className={styles.footer}><div className={styles.actions}>
-      {primary && <button type="button" className={styles.primary} onClick={primary.onClick} disabled={primary.disabled}>{primary.label}<ArrowRight size={17} aria-hidden="true" /></button>}
-      {welcome && <button type="button" className={styles.skip} onClick={onSkip}>Пропустить</button>}
-    </div></footer>}
+    <footer className={styles.footer}>
+      {!welcome && <div className={styles.controls}>
+        {progress && <span className={styles.counter} aria-label={`Шаг ${current} из ${progress.total}`}>{current}<span> / {progress.total}</span></span>}
+        <button type="button" className={styles.pause} data-guide-pause onClick={onPause} title="Свернуть обучение, сохранив шаг" aria-label="Свернуть обучение, сохранив шаг"><Minus size={18} aria-hidden="true" /></button>
+        <button type="button" className={styles.more} aria-label="Подробнее и действия обучения" title="Подробнее и действия" aria-expanded={expanded} aria-controls={detailsId} onClick={() => setExpandedStep(expanded ? null : replyKey)}><Ellipsis size={19} aria-hidden="true" /></button>
+        {canAdvance && <button type="button" className={styles.continue} data-guide-next onClick={next} aria-label={primary!.label.startsWith("Дальше") ? primary!.label : `Дальше: ${primary!.label}`} title={primary!.label}>Дальше<ArrowRight size={18} aria-hidden="true" /></button>}
+      </div>}
+      {(welcome || primary && !canAdvance) && <div className={styles.actions}>
+        {primary && <button type="button" className={styles.primary} onClick={primary.onClick} disabled={primary.disabled}>{primary.label}<ArrowRight size={17} aria-hidden="true" /></button>}
+        {welcome && <button type="button" className={styles.skip} onClick={onSkip}>Пропустить</button>}
+      </div>}
+    </footer>
     <span className={styles.live} aria-live="polite" aria-atomic="true">{title}. {reply}{canAdvance ? ` ${primary!.label}` : status ? ` ${status}` : ""}</span>
   </section>;
   return dockElement && open ? createPortal(coach, dockElement) : coach;

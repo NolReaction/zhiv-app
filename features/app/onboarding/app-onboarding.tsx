@@ -5,6 +5,7 @@ import { GuideCoach, type GuideCoachProps } from "@/features/onboarding/guide-co
 import { APP_ONBOARDING_STEPS, type AppOnboardingEvidence } from "./app-onboarding-model";
 import { useAppOnboarding } from "./use-app-onboarding";
 import { useAppDialogOpen } from "./use-app-dialog-open";
+import { useAppGuideTarget } from "./use-app-guide-target";
 
 export type AppOnboardingEntry = { open: () => void };
 
@@ -41,8 +42,7 @@ export function AppOnboarding(props: Props) {
     content = {
       title: "Привет! Я Мохлик",
       summary: "Помогу отметиться, найти близких и заглянуть в мой лес.",
-      text: "«Я живой» помогает отмечаться и видеть, как давно были здесь ваши близкие. А ещё тут есть моя полянка: можно выращивать ягоды, строить и путешествовать.",
-      hint: "Давай попробуем вместе: отметимся, откроем календарь и заглянем в основные разделы. Всё можно нажимать; любой шаг — отложить.",
+      text: "Отмечайся, чтобы близкие видели, что ты здесь. Покажу основные кнопки, а потом заглянем в мой лес.",
       pose: "greet", primary: { label: "Попробовать вместе", onClick: () => { onSelect("check-in"); guide.start(); } },
     };
   } else if (stepId === "check-in") {
@@ -88,7 +88,7 @@ export function AppOnboarding(props: Props) {
   } else if (stepId === "profile") {
     content = {
       title: done ? "Профиль и доступ к аккаунту" : "Посмотрим настройки",
-      summary: activeView === "profile" ? "Здесь имя, оформление и способы входа. Раскрой интересующий раздел."
+      summary: activeView === "profile" ? "Нажми «Личные данные»: здесь имя и часовой пояс. Ниже — вход и безопасность, под шестерёнкой — звук и вид."
         : "Открой «Профиль»: покажу настройки и восстановление доступа.",
       text: done ? "В «Личных данных» — имя и часовой пояс. Во «Входе и безопасности» — способы входа и восстановление доступа. Шестерёнка открывает настройки звука и внешнего вида: простую кнопку или живую полянку."
         : "Нажми «Профиль» внизу. Покажу, где менять настройки и как вернуться к этому аккаунту на другом устройстве.",
@@ -110,8 +110,10 @@ export function AppOnboarding(props: Props) {
       status: "Действие: открой карту или заверши знакомство",
     };
   }
+  const open = ready && guide.open && !suspended && !worldOpen && !calendarOpen && !dialogOpen;
+  useAppGuideTarget(open, content.target, stepId, activeView);
   return <>
-    <GuideCoach {...content} open={ready && guide.open && !suspended && !worldOpen && !calendarOpen && !dialogOpen}
+    <GuideCoach {...content} open={open} inline
       flow="app" stepId={stepId} welcome={stepId === "welcome"} compact={stepId !== "welcome"}
       progress={progress ? { current: APP_ONBOARDING_STEPS.indexOf(progress.stepId) + 1, total: APP_ONBOARDING_STEPS.length } : undefined}
       secondary={stepId === "welcome" ? undefined
