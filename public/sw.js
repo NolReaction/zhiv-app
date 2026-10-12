@@ -202,7 +202,7 @@ async function stageShell(documentResponse, removeOldCaches = false) {
     await stagingCache.put("/", documentResponse);
     await setActiveCacheName(cacheName);
   } catch (error) {
-    await caches.delete(cacheName);
+    if (cacheName !== currentName) await caches.delete(cacheName);
     throw error;
   }
 
@@ -215,18 +215,38 @@ async function precacheShell() {
   await stageShell(documentResponse);
 }
 
+let shellUpdates = Promise.resolve();
+function updateShell(operation) {
+  // Warmup and navigation must not delete each other's incomplete staging cache.
+  const update = shellUpdates.then(operation);
+  shellUpdates = update.catch(() => undefined);
+  return update;
+}
+
 self.addEventListener("install", (event) => {
-  event.waitUntil(precacheShell().then(() => self.skipWaiting()));
+  // Push needs an active worker even when offline storage or a shell resource
+  // is unavailable. Optional precaching must never hold up installation.
+  event.waitUntil(self.skipWaiting());
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    (async () => {
-      await self.clients.claim();
+  event.waitUntil(self.clients.claim());
+});
+
+let shellWarmup = null;
+self.addEventListener("message", (event) => {
+  if (event.data?.type !== "zhiv:cache-shell") return;
+  // The page sends this after ready; a slow fetch/quota failure can affect
+  // offline availability, but not worker activation or notification setup.
+  // Duplicate tabs share this optional warmup instead of staging in parallel.
+  if (!shellWarmup) {
+    shellWarmup = updateShell(async () => {
+      await precacheShell();
       const currentName = await activeCacheName();
       if (currentName) await removeInactiveShellCaches(currentName);
-    })(),
-  );
+    }).catch(() => undefined).finally(() => { shellWarmup = null; });
+  }
+  event.waitUntil(shellWarmup);
 });
 
 self.addEventListener("fetch", (event) => {
@@ -243,9 +263,12 @@ self.addEventListener("fetch", (event) => {
     if (url.pathname === "/") {
       event.waitUntil(
         networkResponse
-          .then((response) =>
-            response.ok ? stageShell(response.clone(), true) : undefined,
-          )
+          .then((response) => {
+            if (!response.ok) return;
+            // Clone before queueing: the page can consume the response meanwhile.
+            const candidate = response.clone();
+            return updateShell(() => stageShell(candidate, true));
+          })
           .catch(() => undefined),
       );
     }

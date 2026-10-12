@@ -16,6 +16,9 @@ const MAX_STREAM_RETRY_MS = 30_000;
 const MEDIA_PAUSE_RECOVERY_MS = 250;
 const MAX_LOOP_TIMELINES = 128;
 const MAX_PREPARED_MUSIC_BYTES = 8 * 1024 * 1024;
+const VISIBILITY_RELEASE_SECONDS = .02;
+const VISIBILITY_CLEANUP_MS = 40;
+const SUSPEND_WAIT_MS = 250;
 const SOUNDSCAPE_BUSES = new Set<AudioBus>(["ambience", "weather", "world", "footsteps", "characters"]);
 
 type Voice = {
@@ -70,6 +73,8 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
   let streamRetryTimer: ReturnType<typeof setTimeout> | null = null;
   let streamRetryAt = Infinity;
   let visible = true;
+  let visibilityDrain: { done: Promise<void>; finish: () => void } | null = null;
+  let visibilitySuspension: { done: Promise<void>; finish: () => void } | null = null;
   let disposed = false;
   let unavailable = false;
   let everUnlocked = false;
@@ -115,7 +120,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
     if (unavailable) return "unavailable";
     if (!context || !everUnlocked) return "locked";
     const blockedMusic = frame?.loops.some(loop => loop.gain > .001 && cues.get(loop.cueId)?.assets.some(id => blockedStreams.has(id)));
-    return visible && settings.enabled && context.state === "running" && !(settings.buses.music > 0 && blockedMusic) ? "running" : "suspended";
+    return visible && !visibilityDrain && !visibilitySuspension && settings.enabled && context.state === "running" && !(settings.buses.music > 0 && blockedMusic) ? "running" : "suspended";
   }
   function publish() {
     const sources: AudioSourceDebug[] = (frame?.sources ?? []).slice(0, 64).map(source => ({ ...source,
@@ -137,19 +142,19 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
   }
   function contextIsRunning() { return context?.state === "running"; }
   function audible(bus?: AudioBus) {
-    return !disposed && visible && settings.enabled && settings.master > 0 && context?.state === "running"
+    return !disposed && visible && !visibilityDrain && !visibilitySuspension && settings.enabled && settings.master > 0 && context?.state === "running"
       && (!bus || settings.buses[bus] > 0 && (frame?.soundscape !== false || !SOUNDSCAPE_BUSES.has(bus)));
   }
   function feedbackAudible(bus?: AudioEvent["feedbackBus"]) {
     return bus === undefined || bus === "master" ? settings.master > 0 : settings.buses[bus] > 0;
   }
-  function ramp(param: AudioParam, target: number, seconds: number) {
+  function ramp(param: AudioParam, target: number, seconds: number, force = false) {
     if (!context) return;
     // Scene frames can arrive at display refresh rate. Holding and restarting an
     // unchanged ramp on each frame postpones its endpoint indefinitely and floods
     // the audio thread with redundant automation. Only retarget a changed value.
     const previous = parameterRamps.get(param);
-    if (previous && Math.abs(previous.target - target) < 0.00001) return;
+    if (!force && previous && Math.abs(previous.target - target) < 0.00001) return;
     const time = context.currentTime, end = time + Math.max(.01, seconds);
     // Evaluate our linear envelope before cancellation. AudioParam.value can lag
     // by a render quantum, and cancelling can discard the ongoing ramp endpoint.
@@ -168,7 +173,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
   }
   function updateMix() {
     if (!master) return;
-    ramp(master.gain, settings.enabled && visible ? settings.master : 0, .12);
+    ramp(master.gain, settings.enabled && visible && !visibilityDrain && !visibilitySuspension ? settings.master : 0, .12);
     for (const [bus, node] of buses) ramp(node.gain, settings.buses[bus] * (bus === "music" ? finiteClamp(frame?.musicDuck ?? 1, 0, 1) : 1), bus === "music" ? .8 : .12);
   }
   function releaseBorrowedPreview() {
@@ -253,6 +258,74 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
     // unmute or account change must never revive them through the reclaim path.
     for (const voice of retiring.values()) voice.reclaimable = false;
     if (immediate) for (const voice of [...retiring.values()]) cleanup(voice);
+  }
+  function resetSilentMaster() {
+    if (!context || !master) return;
+    // Called only after the native release or after audio is already suspended.
+    // Forget the old envelope so foreground always attacks from actual silence.
+    master.gain.cancelScheduledValues(context.currentTime);
+    master.gain.setValueAtTime(0, context.currentTime);
+    parameterRamps.delete(master.gain);
+  }
+  function suspendSilentContext() {
+    if (!context || context.state !== "running" || visibilitySuspension || disposed) return;
+    let resolve!: () => void;
+    const done = new Promise<void>(finish => { resolve = finish; });
+    const suspension = { done, finish: () => {
+      if (visibilitySuspension !== suspension) return;
+      visibilitySuspension = null; resolve();
+      if (visible && settings.enabled && everUnlocked && !disposed) void unlock();
+      publish();
+    } };
+    visibilitySuspension = suspension;
+    // The output is already zero: neither an immediate rejection nor a delayed
+    // native suspension can expose a partly dismantled, still-audible graph.
+    try { void context.suspend().then(suspension.finish, suspension.finish); }
+    catch { suspension.finish(); }
+  }
+  function drainForVisibility() {
+    if (visibilityDrain || visibilitySuspension) return;
+    if (!context || context.state !== "running") { resetSilentMaster(); invalidate(true); return; }
+    cancelStreamRetry(); releaseBorrowedPreview();
+    generation++; pendingLoops.clear(); pendingEvents.clear();
+    // Revoke ownership immediately; late decodes/play promises cannot restart a
+    // hidden voice. Physical stop/pause/load/disconnect waits for native silence.
+    for (const voice of [...voices.values(), ...retiring.values()]) {
+      if (voice.timer) clearTimeout(voice.timer);
+      voice.timer = null; voice.reclaimable = false; detachMediaCallbacks(voice);
+      if (voices.get(voice.key) === voice) voices.delete(voice.key);
+      retiring.set(voice.serial, voice);
+    }
+    let resolve!: () => void;
+    const done = new Promise<void>(finish => { resolve = finish; });
+    const drain = { done, finish: () => {
+      if (visibilityDrain !== drain) return;
+      clearTimeout(timer);
+      resetSilentMaster();
+      for (const voice of [...retiring.values()]) cleanup(voice);
+      visibilityDrain = null;
+      if (!visible) suspendSilentContext();
+      resolve();
+      if (visible && settings.enabled && everUnlocked && !disposed) void unlock();
+      publish();
+    } };
+    visibilityDrain = drain;
+    // Force a shorter release even when a previous mute already targets zero.
+    ramp(master!.gain, 0, VISIBILITY_RELEASE_SECONDS, true);
+    // This timer only tears down an already silent graph. If background JS is
+    // throttled, the audio thread still reaches and holds zero after 20 ms.
+    const timer = setTimeout(drain.finish, VISIBILITY_CLEANUP_MS);
+  }
+  async function awaitVisibilityStop(): Promise<boolean> {
+    if (visibilityDrain) await visibilityDrain.done;
+    if (!visibilitySuspension) return true;
+    let timer: ReturnType<typeof setTimeout>;
+    // A broken native promise must not hang a gesture/UI handler. Keep the
+    // output silent until its statechange or promise eventually confirms stop.
+    const completed = await Promise.race([visibilitySuspension.done.then(() => true),
+      new Promise<false>(resolve => { timer = setTimeout(() => resolve(false), SUSPEND_WAIT_MS); })]);
+    clearTimeout(timer!);
+    return completed;
   }
   function cancelStreamRetry() {
     if (streamRetryTimer !== null) clearTimeout(streamRetryTimer);
@@ -535,8 +608,15 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
       for (const bus of AUDIO_BUSES) { const gain = context.createGain(); gain.gain.value = settings.buses[bus]; gain.connect(master); buses.set(bus, gain); }
       context.onstatechange = () => {
         if (disposed) return;
-        if (context?.state !== "running") invalidate(true);
-        else if (everUnlocked && visible && settings.enabled) { updateMix(); reconcile(); }
+        if (context?.state !== "running") {
+          resetSilentMaster(); invalidate(true);
+          visibilityDrain?.finish();
+          // Safari's interrupted state does not confirm completion of our
+          // outstanding suspend request; releasing that fence can let the old
+          // request cut a newly resumed foreground song a moment later.
+          if (context?.state === "suspended" || context?.state === "closed") visibilitySuspension?.finish();
+        }
+        else if (everUnlocked && visible && settings.enabled && !visibilityDrain && !visibilitySuspension) { updateMix(); reconcile(); }
         publish();
       };
       unavailable = false;
@@ -546,6 +626,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
 
   async function unlock(): Promise<boolean> {
     if (disposed || !visible || !settings.enabled || !ensureContext()) return false;
+    if ((visibilityDrain || visibilitySuspension) && (!await awaitVisibilityStop() || disposed || !visible || !settings.enabled)) return false;
     unavailable = false;
     try {
       // A running context may still have gesture-blocked HTML media. Retry those
@@ -798,13 +879,8 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
     setVisible(nextVisible) {
       if (disposed || visible === nextVisible) return;
       visible = nextVisible;
-      if (!visible) {
-        invalidate(true);
-        if (context && context.state !== "closed") void context.suspend().then(() => {
-          // Repair a hide/show race where an old suspension finishes after foreground resume.
-          if (visible && settings.enabled && everUnlocked && !disposed) void unlock();
-        }).catch(() => {});
-      } else if (everUnlocked && settings.enabled) void unlock();
+      if (!visible) drainForVisibility();
+      else if (everUnlocked && settings.enabled) void unlock();
       updateMix(); publish();
     },
     getDiagnostics: () => snapshot,
@@ -812,6 +888,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
     dispose() {
       if (disposed) return;
       disposed = true; frame = null;
+      visibilityDrain?.finish(); visibilitySuspension?.finish();
       if (frameClearTimer) { clearTimeout(frameClearTimer); frameClearTimer = null; }
       invalidate(true); cache.dispose(); transport.dispose();
       for (const controller of preparationControllers) controller.abort();

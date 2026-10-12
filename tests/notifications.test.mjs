@@ -352,6 +352,60 @@ test("aborted preparation is read-only and cannot become an available connection
   assert.deepEqual(fake.calls, []);
 });
 
+test("preparation repairs a missing or failed worker without asking permission or touching subscriptions", async () => {
+  for (const empty of [undefined, { active: null, installing: null, waiting: null }]) {
+    const fake = fakeBrowser();
+    let current = empty, finish;
+    navigator.serviceWorker.getRegistration = async () => current;
+    navigator.serviceWorker.register = async (url, options) => {
+      fake.calls.push(["register", url, options]);
+      current = { ...fake.registration, active: null, installing: {} };
+      return current;
+    };
+    navigator.serviceWorker.ready = new Promise(resolve => {
+      finish = () => { current.active = {}; current.installing = null; resolve(current); };
+    });
+    const preparing = browser.preparePushConnection(owner);
+    while (!fake.calls.length) await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(fake.calls, [["register", "/sw.js", { scope: "/", updateViaCache: "none" }]]);
+    finish();
+    const prepared = await preparing;
+    assert.equal(prepared.subscription, null);
+    assert.equal(browser.rememberedNotificationOwner(), null);
+    assert.equal(fake.calls.length, 1, "worker recovery never prompts, subscribes or unsubscribes");
+    const connected = await browser.connectPush(owner, snapshot(), prepared);
+    assert.equal(connected.subscription.subscribed, true);
+  }
+});
+
+test("failed worker registration explains retry and a subsequent attempt can recover", async () => {
+  const fake = fakeBrowser();
+  navigator.serviceWorker.getRegistration = async () => undefined;
+  navigator.serviceWorker.register = async () => { throw new TypeError("Worker script fetch failed"); };
+  await assert.rejects(browser.preparePushConnection(owner), /Не удалось подготовить уведомления.*Повторить проверку/);
+  assert.deepEqual(fake.calls, []);
+  navigator.serviceWorker.register = async () => fake.registration;
+  const prepared = await browser.preparePushConnection(owner);
+  assert.equal(prepared.subscription, null);
+  assert.deepEqual(fake.calls, []);
+});
+
+test("worker recovery has a bounded activation wait and cannot bind after a late activation", async t => {
+  const fake = fakeBrowser(); let finish, started = false;
+  navigator.serviceWorker.getRegistration = async () => undefined;
+  navigator.serviceWorker.register = async () => { started = true; return { active: null, installing: {} }; };
+  navigator.serviceWorker.ready = new Promise(resolve => { finish = () => resolve(fake.registration); });
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const preparing = browser.preparePushConnection(owner);
+  const rejected = assert.rejects(preparing, /Подготовка уведомлений затянулась/);
+  while (!started) await new Promise(resolve => setImmediate(resolve));
+  t.mock.timers.tick(10_000);
+  await rejected;
+  finish(); await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(fake.calls, []);
+  assert.equal(browser.rememberedNotificationOwner(), null);
+});
+
 test("Yandex support uses capabilities while denial help follows Android and desktop settings", () => {
   fakeBrowser();
   globalThis.navigator.userAgent = "Mozilla/5.0 (Linux; Android 14) YaBrowser/26.1";

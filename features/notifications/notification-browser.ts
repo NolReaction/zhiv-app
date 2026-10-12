@@ -131,7 +131,7 @@ function assertRememberedOwner(previous: string | null) {
 function sameKey(previous: ArrayBuffer | null | undefined, current: ArrayBuffer) {
   return !previous || previous.byteLength === current.byteLength && new Uint8Array(previous).every((value, index) => value === new Uint8Array(current)[index]);
 }
-/** Read-only preparation; neither permissions nor existing subscriptions change on opening settings. */
+/** Preparation may restore the app worker; permissions and existing subscriptions never change here. */
 export async function preparePushConnection(owner: string, signal?: AbortSignal): Promise<PreparedPushConnection> {
   const assertOwner = ownedOperation(owner);
   return withSubscriptionLock(async () => {
@@ -144,13 +144,20 @@ export async function preparePushConnection(owner: string, signal?: AbortSignal)
     const applicationServerKey = requireConfigured(owner, authenticated);
     let registration = await browserDeadline(navigator.serviceWorker.getRegistration("/"), "Приложение долго готовит уведомления. Закройте его и откройте снова.", signal);
     assertOwner();
-    if (registration && !registration.active && (registration.installing || registration.waiting)) {
-      await browserDeadline(navigator.serviceWorker.ready, "Приложение не успело подготовить уведомления. Закройте его и откройте снова.", signal);
+    // A failed installation can leave no registration (or an empty one).
+    // Retrying settings must repair it instead of waiting for another app launch.
+    if (!registration?.active && !registration?.installing && !registration?.waiting) {
+      registration = await browserDeadline(navigator.serviceWorker.register("/sw.js", { scope: "/", updateViaCache: "none" }),
+        "Не удалось подготовить уведомления. Проверьте интернет и нажмите «Повторить проверку».", signal);
+      assertOwner(); assertRememberedOwner(priorOwner);
+    }
+    if (!registration?.active) {
+      await browserDeadline(navigator.serviceWorker.ready, "Подготовка уведомлений затянулась. Проверьте интернет и нажмите «Повторить проверку».", signal);
       assertOwner(); assertRememberedOwner(priorOwner);
       registration = await browserDeadline(navigator.serviceWorker.getRegistration("/"), "Не удалось проверить готовность уведомлений. Откройте приложение заново.", signal);
       assertOwner();
     }
-    if (!registration?.active) throw new Error("Приложение ещё готовится. Откройте его заново и повторите подключение.");
+    if (!registration?.active) throw new Error("Браузер не смог подготовить уведомления. Нажмите «Повторить проверку».");
     const subscription = await browserDeadline(registration.pushManager.getSubscription(), "Не удалось проверить подписку устройства. Повторите подключение.", signal);
     if (signal?.aborted) throw new DOMException("Подготовка отменена", "AbortError");
     assertOwner();

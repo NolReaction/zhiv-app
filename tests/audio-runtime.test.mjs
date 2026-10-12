@@ -667,12 +667,14 @@ test("music boundary automation is released on mute, background, account change 
   }
 });
 
-test("hide stops voices, foreground restores loops once and never replays earlier one-shots", async () => {
+test("hide stops voices, foreground restores loops once and never replays earlier one-shots", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
   const f = fixture(); await f.runtime.unlock();
   f.runtime.updateFrame(frame([target("water")])); f.runtime.play({ id: "first", cueId: "tap" }); await flush();
   assert.equal(f.runtime.getDiagnostics().activeVoices, 2);
   f.runtime.setVisible(false); assert.equal(f.runtime.getDiagnostics().activeVoices, 0);
-  f.runtime.play({ id: "hidden", cueId: "tap" }); f.runtime.setVisible(true); await flush();
+  f.runtime.play({ id: "hidden", cueId: "tap" }); f.runtime.setVisible(true);
+  f.context.currentTime += .04; t.mock.timers.tick(40); await flush();
   assert.equal(f.runtime.getDiagnostics().activeVoices, 1);
   assert.equal(f.context.started.filter(source => !source.loop).length, 1); assert.equal(f.contextCount, 1); f.runtime.dispose();
 });
@@ -743,6 +745,138 @@ test("concurrent distinct decodes cannot evict buffers still required by pending
   f.runtime.dispose();
 });
 
+test("hiding releases the mixed waveform before pausing media, stopping effects or suspending the device", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const f = fixture([cue("song", "music"), cue("river", "loop"), cue("tap")]);
+  try {
+    await f.runtime.unlock();
+    f.runtime.updateFrame(frame([target("song", "song"), target("river", "river")]));
+    f.runtime.play({ id: "tap-before-hide", cueId: "tap" }); await flush();
+    const player = f.media[0], sources = [...f.context.started, ...f.context.mediaSources];
+    const master = f.context.gains[0].gain;
+    const suspend = f.context.suspend.bind(f.context); let suspensions = 0;
+    f.context.suspend = () => { suspensions++; assert.ok(f.context.currentTime >= 2.02); return suspend(); };
+    f.context.currentTime = 2;
+    f.runtime.setVisible(false);
+    assert.equal(f.runtime.getDiagnostics().activeVoices, 0, "logical playback is revoked synchronously");
+    assert.equal(f.runtime.getDiagnostics().state, "suspended");
+    assert.deepEqual(master.ramps.at(-1), { value: 0, time: 2.02 });
+    assert.equal(player.pauses, 0); assert.equal(player.loads, 0);
+    assert.ok(sources.every(source => !source.disconnected), "a running nonzero signal is never physically severed");
+    assert.ok(f.context.started.every(source => source.stops.length === 0));
+    assert.equal(suspensions, 0);
+    assert.equal(player.onpause, null); assert.equal(player.ontimeupdate, null);
+    f.runtime.play({ id: "hidden-tap", cueId: "tap" });
+    f.context.currentTime = 2.02; t.mock.timers.tick(20);
+    assert.equal(player.pauses, 0, "the native ramp owns the release, not a per-voice pause");
+    f.context.currentTime = 2.04; t.mock.timers.tick(20); await flush();
+    assert.ok(sources.every(source => source.disconnected));
+    assert.equal(player.pauses, 1); assert.equal(player.loads, 1); assert.equal(player.src, "");
+    assert.equal(suspensions, 1); assert.equal(f.context.state, "suspended");
+    assert.equal(f.context.started.length, 2, "hidden UI input is consumed, never queued");
+  } finally { f.runtime.dispose(); }
+});
+
+test("visibility release shortens an existing mute ramp instead of cutting its still-audible tail", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const f = fixture();
+  try {
+    await f.runtime.unlock(); f.runtime.updateFrame(frame([target("river")])); await flush();
+    f.context.currentTime = 2;
+    f.runtime.setSettings({ enabled: false });
+    const master = f.context.gains[0].gain;
+    assert.equal(master.ramps.at(-1).time, 2.12);
+    f.context.currentTime = 2.005;
+    f.runtime.setVisible(false);
+    assert.ok(Math.abs(master.ramps.at(-1).time - 2.025) < 1e-10);
+    assert.equal(master.ramps.at(-1).value, 0);
+    f.context.currentTime = 2.045; t.mock.timers.tick(40); await flush();
+    assert.equal(f.context.started[0].disconnected, true);
+  } finally { f.runtime.dispose(); }
+});
+
+test("foreground during the short release waits for silence and never revives old one-shots", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const f = fixture([cue("song", "music"), cue("tap")]);
+  try {
+    await f.runtime.unlock(); f.runtime.updateFrame(frame([target("song", "song")]));
+    f.runtime.play({ id: "before-hide", cueId: "tap" }); await flush();
+    const oldPlayer = f.media[0], oldEffect = f.context.started[0]; oldPlayer.currentTime = 43;
+    let suspensions = 0; f.context.suspend = async () => { suspensions++; };
+    f.context.currentTime = 1;
+    f.runtime.setVisible(false); f.runtime.setVisible(true); await flush();
+    assert.equal(f.media.length, 1); assert.equal(f.runtime.getDiagnostics().activeVoices, 0);
+    assert.equal(f.context.gains[0].gain.ramps.at(-1).value, 0, "foreground cannot reopen the old mix mid-release");
+    f.context.currentTime = 1.04; t.mock.timers.tick(40); await flush();
+    assert.equal(suspensions, 0, "returning before cleanup does not issue an obsolete suspend request");
+    assert.equal(oldEffect.disconnected, true); assert.equal(oldPlayer.src, "");
+    assert.equal(f.context.started.length, 1, "the old one-shot never starts a second time");
+    assert.equal(f.media.length, 2); assert.equal(f.media[1].currentTime, 43);
+    assert.equal(f.runtime.getDiagnostics().activeVoices, 1);
+    assert.equal(f.context.gains[0].gain.ramps.at(-1).value, DEFAULT_AUDIO_SETTINGS.master);
+  } finally { f.runtime.dispose(); }
+});
+
+test("pending native suspend cannot cut a new foreground song, and a stalled promise never hangs unlock", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const f = fixture([cue("song", "music")]);
+  const pending = deferred();
+  try {
+    await f.runtime.unlock(); f.runtime.updateFrame(frame([target("song", "song")])); await flush();
+    f.media[0].currentTime = 43;
+    f.context.suspend = () => pending.promise;
+    f.context.currentTime = 1;
+    f.runtime.setVisible(false);
+    f.context.currentTime = 1.04; t.mock.timers.tick(40); await flush();
+    f.runtime.setVisible(true);
+    const unlocking = f.runtime.unlock();
+    t.mock.timers.tick(250);
+    assert.equal(await unlocking, false);
+    assert.equal(f.media.length, 1); assert.equal(f.runtime.getDiagnostics().activeVoices, 0);
+    f.context.state = "interrupted"; f.context.onstatechange(); await flush();
+    assert.equal(f.media.length, 1, "Safari interruption cannot release an outstanding native suspend fence");
+    assert.equal(f.runtime.getDiagnostics().activeVoices, 0);
+    // WebKit can emit the stopped state before resolving suspend(). The state
+    // confirmation is enough to allow a fresh graph and preserve the playhead.
+    f.context.state = "suspended"; f.context.onstatechange(); await flush();
+    assert.equal(f.media.length, 2); assert.equal(f.media[1].currentTime, 43);
+    assert.equal(f.runtime.getDiagnostics().state, "running");
+    pending.resolve(); await flush();
+    assert.equal(f.media.length, 2, "late promise settlement cannot restart or suspend the new deck");
+  } finally { pending.resolve(); f.runtime.dispose(); }
+});
+
+test("a rejected native suspension leaves the hidden graph silent and permits a fresh foreground attack", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const f = fixture([cue("song", "music")]);
+  try {
+    await f.runtime.unlock(); f.runtime.updateFrame(frame([target("song", "song")])); await flush();
+    f.context.suspend = async () => { throw new Error("Device interruption"); };
+    f.context.currentTime = 1; f.runtime.setVisible(false);
+    f.context.currentTime = 1.04; t.mock.timers.tick(40); await flush();
+    assert.equal(f.context.gains[0].gain.value, 0);
+    assert.equal(f.media[0].src, ""); assert.equal(f.runtime.getDiagnostics().activeVoices, 0);
+    f.runtime.setVisible(true); await flush();
+    assert.equal(f.media.length, 2); assert.equal(f.runtime.getDiagnostics().activeVoices, 1);
+  } finally { f.runtime.dispose(); }
+});
+
+test("a pending media play result loses ownership as soon as the page hides", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const pending = deferred(), player = new Media(); player.play = () => pending.promise;
+  const f = fixture([cue("song", "music")], { createMediaElement: () => player });
+  try {
+    await f.runtime.unlock(); f.runtime.updateFrame(frame([target("song", "song")]));
+    f.context.currentTime = 1; f.runtime.setVisible(false);
+    pending.reject(new DOMException("Old permission rejected", "NotAllowedError")); await flush();
+    assert.deepEqual(f.runtime.getDiagnostics().failedAssets, []);
+    assert.equal(f.runtime.getDiagnostics().activeVoices, 0);
+    assert.equal(player.onpause, null); assert.equal(player.ontimeupdate, null);
+    f.context.currentTime = 1.04; t.mock.timers.tick(40); await flush();
+    assert.equal(player.src, "");
+  } finally { f.runtime.dispose(); }
+});
+
 test("a blocked music stream exposes suspended state and retries on the next gesture with a running context", async () => {
   const music = cue("theme", "music"); let allowed = false; const players = [];
   const f = fixture([music], { createMediaElement: () => {
@@ -758,11 +892,13 @@ test("a blocked music stream exposes suspended state and retries on the next ges
   assert.equal(f.runtime.getDiagnostics().state, "running"); assert.equal(f.runtime.getDiagnostics().activeVoices, 1); f.runtime.dispose();
 });
 
-test("foreground music resumes its playhead while account changes discard old positions", async () => {
+test("foreground music resumes its playhead while account changes discard old positions", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
   const f = fixture([cue("theme", "music")]); await f.runtime.unlock();
   f.runtime.updateFrame(frame([target("theme", "theme")], { sceneId: "account-a:forest" })); await flush();
   f.media[0].currentTime = 43;
-  f.runtime.setVisible(false); f.runtime.setVisible(true); await flush();
+  f.runtime.setVisible(false); f.runtime.setVisible(true);
+  f.context.currentTime += .04; t.mock.timers.tick(40); await flush();
   assert.equal(f.media[1].currentTime, 43);
   f.runtime.updateFrame(frame([target("theme", "theme")], { sceneId: "account-b:forest" })); await flush();
   assert.equal(f.media[2].currentTime ?? 0, 0); f.runtime.dispose();
