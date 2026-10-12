@@ -524,11 +524,13 @@ class JdbcEconomyRepositoryIntegrationTest {
         val stocked = funded.copy(fishingShop = EconomyFishingShops.create(funded, Instant.now(), { 0 }))
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(stocked), p.id)
         val stock = economy.snapshot(p.hash)
-        val buy = command(p, stock, "buy_fishing_item", checkNotNull(stock.fishingShop).offers.single { it.itemId == "river_rod" }.id).copy(totalPrice = 18050)
+        val rodOffer = checkNotNull(stock.fishingShop).offers.single { it.itemId == "river_rod" }
+        assertEquals(13_500L, rodOffer.unitPrice)
+        val buy = command(p, stock, "buy_fishing_item", rodOffer.id).copy(totalPrice = rodOffer.unitPrice + 50)
         val attempts = coroutineScope { List(2) { async(Dispatchers.IO) { JdbcEconomyRepository(source).command(p.hash, buy) } }.awaitAll() }
         assertEquals(1, attempts.count { it.replayed })
         val bought = economy.snapshot(p.hash)
-        assertEquals(82000L, bought.wallet.coins)
+        assertEquals(stock.wallet.coins - rodOffer.unitPrice, bought.wallet.coins, "Charge the saved offer once, not the higher approved ceiling")
         assertEquals(listOf("reed_rod", "river_rod"), bought.fishing.ownedRods)
         assertEquals("1", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='buy_fishing_item'", p.id))
         val equipped = economy.command(p.hash, command(p, bought, "equip_fishing_rod", "river_rod")).state

@@ -152,14 +152,20 @@ class JdbcNotificationRepositoryIntegrationTest {
         val sent=CopyOnWriteArrayList<PushPayload>(); dispatcher({now},sent).tick(); assertTrue(sent.isEmpty())
     }
     @Test fun `quiet hours and account budget defer rather than multiply device pushes`() = runBlocking<Unit> {
-        val p=player(); var now=Instant.now().atOffset(ZoneOffset.UTC).withHour(23).withMinute(30).withSecond(0).toInstant()
+        // Whole seconds are deliberate: PostgreSQL stores microseconds while
+        // Instant.now() may retain nanos and round a budget boundary upwards.
+        val p=player(); var now=Instant.parse("2026-10-12T23:30:00Z")
         connect(p,noQuiet.copy(quietHoursEnabled=true,timeZone="UTC",quietStart="23:00",quietEnd="10:00"))
         jobs(p,job(now)); val sent=CopyOnWriteArrayList<PushPayload>(); val worker=dispatcher({now},sent)
         worker.tick(); assertTrue(sent.isEmpty())
-        now=now.plusSeconds(11*3600); worker.tick(); assertEquals(1,sent.size)
+        now=Instant.parse("2026-10-13T09:59:59Z"); worker.tick(); assertTrue(sent.isEmpty())
+        now=now.plusSeconds(1); worker.tick(); assertEquals(1,sent.size)
         jobs(p,job(now)); worker.tick(); assertEquals(1,sent.size)
-        now=now.plusSeconds(2*3600); worker.tick(); assertEquals(2,sent.size)
+        now=now.plusSeconds(2*3600-1); worker.tick(); assertEquals(1,sent.size)
+        now=now.plusSeconds(1); worker.tick(); assertEquals(2,sent.size)
         jobs(p,job(now)); now=now.plusSeconds(2*3600); worker.tick(); assertEquals(2,sent.size)
+        now=Instant.parse("2026-10-14T09:59:59Z"); worker.tick(); assertEquals(2,sent.size)
+        now=now.plusSeconds(1); worker.tick(); assertEquals(3,sent.size)
     }
     @Test fun `presence suppresses notifications while playing instead of sending them after leaving`() = runBlocking<Unit> {
         val p=player(); connect(p); var now=Instant.now(); repository.presence(p.hash,p.owner)
