@@ -8,19 +8,19 @@ import { TILED_WORLD } from "@/features/world/scene/presentation";
 import { WORLD_DEV_ENABLED, worldDevStore } from "@/features/world/dev/world-dev-store";
 import { getStartupAudioEntry } from "@/features/startup/startup-audio";
 
-type Options = { active: boolean; handoff: boolean; ownerPublicId: string | null; nowMs: number; timeZone: string };
+type Options = { active: boolean; handoff: boolean; prepareEnabled: boolean; ownerPublicId: string | null; nowMs: number; timeZone: string };
 const serverTimeOfDay = () => "auto" as const;
 const currentTimeOfDay = () => WORLD_DEV_ENABLED ? worldDevStore.getSnapshot().timeOfDay : "auto";
 
 /** The app owns music only while no visible forest surface owns the mix. */
-export function useMenuAudio({ active, handoff, ownerPublicId, nowMs, timeZone }: Options) {
+export function useMenuAudio({ active, handoff, prepareEnabled, ownerPublicId, nowMs, timeZone }: Options) {
   const ownerId = `menu-audio-${useId()}`;
   const controller = useRef<ReturnType<typeof createMenuAudioController> | null>(null);
   const timeOfDay = useSyncExternalStore(worldDevStore.subscribe, currentTimeOfDay, serverTimeOfDay);
   const night = timeOfDay === "auto" ? habitatLighting(nowMs, timeZone).dusk : timeOfDay === "night";
   const sceneId = ownerPublicId ? `zhiv:mochlik:presence:${ownerPublicId}:${TILED_WORLD.id}` : null;
   useEffect(() => {
-    if (!ownerPublicId) return;
+    if (!ownerPublicId || !prepareEnabled) return;
     const controller = new AbortController();
     const runtime = getAudioRuntime();
     let controlsReady = false;
@@ -38,8 +38,8 @@ export function useMenuAudio({ active, handoff, ownerPublicId, nowMs, timeZone }
       if (!document.hidden) void runtime.prepare([night ? "music.night" : "music.day"], { signal: controller.signal }).catch(() => {});
       prepareForest();
     };
-    // Hydration selects the actual profile timezone/DEV track while the splash
-    // still covers the screen. Warming a song never starts its media element.
+    // Large songs and ambience start after the first screen is ready. On a
+    // slow connection they must not compete with the mandatory forest images.
     prepare();
     const unsubscribe = getStartupAudioEntry(runtime, { visible: () => !document.hidden }).subscribe(() => {
       controlsReady = true;
@@ -49,7 +49,7 @@ export function useMenuAudio({ active, handoff, ownerPublicId, nowMs, timeZone }
     });
     document.addEventListener("visibilitychange", prepare);
     return () => { controller.abort(); unsubscribe(); document.removeEventListener("visibilitychange", prepare); };
-  }, [ownerPublicId, night]);
+  }, [ownerPublicId, night, prepareEnabled]);
   useEffect(() => {
     const current = createMenuAudioController(getAudioRuntime(), ownerId);
     controller.current = current;

@@ -656,7 +656,8 @@ function CheckInContent() {
     && !calendarOpen && !gameOpen && !statusOpen;
   const appAudioActive = screen === "home" && activity.active && appearanceReady && !startupActive;
   useMenuAudio({ active: appAudioActive && !worldPortal.open && !terrariumAudible,
-    handoff: appAudioActive && (worldPortal.open || terrariumAudible), ownerPublicId: me?.user.publicId ?? null,
+    handoff: appAudioActive && (worldPortal.open || terrariumAudible), prepareEnabled: appAudioActive,
+    ownerPublicId: me?.user.publicId ?? null,
     nowMs: economy.snapshot ? economy.now : world.now, timeZone: me?.profile.timeZone ?? "UTC" });
   const handleSceneLoadState = useCallback((state: SceneLoadState) => {
     setSceneLoad(previous => previous.owner === me?.user.publicId && previous.state === state ? previous : { owner: me?.user.publicId, state });

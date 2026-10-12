@@ -12,7 +12,7 @@ import { WorldActivityBadge, WorldActivityDescription } from "@/features/world/u
 import type { GameItemId } from "@/features/game/game-rewards";
 import { reportIncident } from "@/lib/client-incidents";
 import { HabitatAssetError } from "@/features/mochlik/assets";
-import { bindSceneLoaderEnvironment, createSceneLoader } from "@/features/startup/scene-loader";
+import { bindSceneLoaderEnvironment, createSceneLoader, WORLD_SCENE_TIMEOUT_MS } from "@/features/startup/scene-loader";
 import type { SceneLoadState } from "@/features/startup/scene-load-state";
 import { habitatLighting } from "@/features/mochlik/lighting";
 import type { HabitatScene, SceneOptions } from "@/features/mochlik/scene";
@@ -80,6 +80,7 @@ export function MochlikTerrarium({ wakeSignal, suspended = false, nowMs, timeZon
       if (scene.current === value) scene.current = null;
     };
     const loading = createSceneLoader<HabitatScene>({
+      timeoutMs: WORLD_SCENE_TIMEOUT_MS,
       async load(signal) {
         const { mountHabitat } = await import("@/features/mochlik/scene");
         signal.throwIfAborted();
@@ -109,7 +110,8 @@ export function MochlikTerrarium({ wakeSignal, suspended = false, nowMs, timeZon
       onReady() {},
       onState(state, error) {
         setLoadState(state);
-        if (state === "error" && userId) reportIncident(userId, "world", error instanceof HabitatAssetError && error.timedOut ? "WORLD_CHARACTER_TIMEOUT" : "WORLD_CHARACTER_FAILED");
+        const timeout = error instanceof HabitatAssetError && error.timedOut || error instanceof Error && error.name === "TimeoutError";
+        if (state === "error" && userId) reportIncident(userId, "world", timeout ? "WORLD_CHARACTER_TIMEOUT" : "WORLD_CHARACTER_FAILED");
       },
     });
     loader.current = loading;

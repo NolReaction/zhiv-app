@@ -2,12 +2,15 @@ import type { SceneLoadState } from "./scene-load-state";
 
 const RETRY_DELAYS_MS = [1_000, 3_000, 8_000, 15_000] as const;
 const ATTEMPT_TIMEOUT_MS = 25_000;
+// World setup includes large shared images with their own one-minute deadline.
+export const WORLD_SCENE_TIMEOUT_MS = 90_000;
 
 type SceneLoaderOptions<T> = {
   load: (signal: AbortSignal) => Promise<T>;
   release: (value: T) => void;
   onReady: (value: T) => void;
   onState: (state: SceneLoadState, error?: unknown) => void;
+  timeoutMs?: number;
   isOnline?: () => boolean;
   isVisible?: () => boolean;
 };
@@ -43,7 +46,7 @@ export function createSceneLoader<T>(options: SceneLoaderOptions<T>) {
     options.onState("loading");
     if (disposed || ticket !== generation) return;
     deadline = setTimeout(() => fail(ticket, controller,
-      new DOMException("Scene loading timed out", "TimeoutError")), ATTEMPT_TIMEOUT_MS);
+      new DOMException("Scene loading timed out", "TimeoutError")), options.timeoutMs ?? ATTEMPT_TIMEOUT_MS);
     void Promise.resolve().then(() => {
       controller.signal.throwIfAborted();
       return options.load(controller.signal);

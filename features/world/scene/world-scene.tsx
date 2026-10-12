@@ -6,7 +6,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExter
 import { LoaderCircle } from "lucide-react";
 import { reportIncident } from "@/lib/client-incidents";
 import { HabitatAssetError } from "@/features/mochlik/assets";
-import { bindSceneLoaderEnvironment, createSceneLoader } from "@/features/startup/scene-loader";
+import { bindSceneLoaderEnvironment, createSceneLoader, WORLD_SCENE_TIMEOUT_MS } from "@/features/startup/scene-loader";
 import { habitatLighting } from "@/features/mochlik/lighting";
 import { sceneJourney } from "@/features/world/activities/journeys/journey-timeline";
 import { JourneyProgress } from "@/features/world/ui/journeys/journey-progress";
@@ -111,6 +111,7 @@ export function WorldScene({ suspended = false, hideJourneyStatus = false, const
       worldState: latest.current.state, economyJourney: latest.current.economyJourney, cancelledExplorations: latest.current.cancelledExplorations, economyBuildings: latest.current.economyBuildings, economyProduction: latest.current.economyProduction, economyConstruction: latest.current.economyConstruction, economyGarden: latest.current.garden?.crop, gardenHarvestRequest: latest.current.garden?.request, onGardenHarvestEvent: latest.current.garden?.sceneEvent, worldGifts: latest.current.gifts, items: latest.current.items,
       bestStreakDays: latest.current.bestStreakDays, presenceKey: `zhiv:mochlik:presence:${latest.current.owner}` });
     const loading = createSceneLoader<Awaited<ReturnType<typeof createMapEngine>>>({
+      timeoutMs: WORLD_SCENE_TIMEOUT_MS,
       async load(signal) {
         const mapModule = await import("./map-engine");
         signal.throwIfAborted();
@@ -132,7 +133,8 @@ export function WorldScene({ suspended = false, hideJourneyStatus = false, const
         setReady(state === "ready");
         if (state !== "error") { setError(null); return; }
         const detail = error as { stage?: string; cause?: unknown } | null;
-        const timeout = detail?.cause instanceof HabitatAssetError && detail.cause.timedOut;
+        const timeout = [error, detail?.cause].some(cause => cause instanceof HabitatAssetError && cause.timedOut
+          || cause instanceof Error && cause.name === "TimeoutError");
         reportIncident(latest.current.owner, "world", `WORLD_${detail?.stage === "character" ? "CHARACTER" : "MAP"}_${timeout ? "TIMEOUT" : "FAILED"}`);
         setError("Восстанавливаем связь с лесом… Загрузка повторится автоматически, ваш прогресс сохранён.");
       },

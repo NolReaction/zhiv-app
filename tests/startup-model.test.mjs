@@ -68,5 +68,12 @@ test("read errors keep progress below completion and expose a manual retry with 
   assert.equal(state.detail, "Слишком много запросов");
   const artwork = startupPresentation({ ...ready, scene: "error" });
   assert.equal(artwork.retryAvailable, true);
-  assert.ok(artwork.progress > 0 && artwork.progress < 100);
+  assert.equal(artwork.progress, 84, "missing artwork is the final sixteen percent, not unfinished API work");
+  assert.match(artwork.detail, /рисунки леса/);
+  const modules = startupPresentation({ ...ready, modules: "error" });
+  assert.equal(modules.progress, 92);
+  assert.equal(modules.retryAvailable, true);
+  assert.match(modules.detail, /подготовить лес/);
+  assert.doesNotMatch(modules.detail, /рисунки/);
+  assert.equal(startupPresentation({ ...ready, scene: "error", modules: "error" }).detail, modules.detail);
 });

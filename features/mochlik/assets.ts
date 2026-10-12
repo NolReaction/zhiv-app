@@ -9,7 +9,7 @@ export function loadHabitatImage(path: string, priority: "high" | "low" = "high"
   const request = new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new Image();
     image.decoding = "async"; image.fetchPriority = priority;
-    const timer = setTimeout(() => finish(new HabitatAssetError(true)), priority === "low" ? 60_000 : 15_000);
+    const timer = setTimeout(() => finish(new HabitatAssetError(true)), 60_000);
     function finish(error?: Error) {
       clearTimeout(timer); image.onload = null; image.onerror = null;
       if (error) { image.src = ""; reject(error); } else resolve(image);

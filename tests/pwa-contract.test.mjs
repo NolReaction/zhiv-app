@@ -34,6 +34,7 @@ class MemoryCache {
   async put(request, response) {
     const key = absoluteUrl(request);
     if (this.storage.failPutForUrl === key) throw new Error(`Failed to cache ${key}`);
+    if (this.storage.beforePut) await this.storage.beforePut(key, response);
     this.entries.set(key, response.clone());
   }
   async keys() { return [...this.entries.keys()].map(url => ({ url })); }
@@ -66,6 +67,9 @@ async function createServiceWorkerHarness() {
   const responses = new Map();
   const caches = new MemoryCacheStorage();
   const calls = { skipWaiting: 0, claim: 0, fetch: [] };
+  const timers = new Map();
+  const background = [];
+  let timerId = 0;
   const self = {
     location: new URL(origin),
     addEventListener(type, listener) {
@@ -75,16 +79,17 @@ async function createServiceWorkerHarness() {
     clients: { async claim() { calls.claim++; } },
   };
 
-  const fetch = async (request) => {
+  const fetch = async (request, options) => {
     calls.fetch.push(absoluteUrl(request));
     const response = responses.get(absoluteUrl(request));
     if (!response) throw new Error(`Unexpected fetch: ${absoluteUrl(request)}`);
     if (response instanceof Error) throw response;
-    return (await response).clone();
+    return (await (typeof response === "function" ? response(options) : response)).clone();
   };
 
   vm.runInNewContext(source, {
     Array,
+    AbortController,
     Error,
     Promise,
     Response,
@@ -95,6 +100,8 @@ async function createServiceWorkerHarness() {
     crypto: globalThis.crypto,
     fetch,
     self,
+    setTimeout(callback, delay) { timers.set(++timerId, { callback, delay }); return timerId; },
+    clearTimeout(id) { timers.delete(id); },
   });
 
   async function dispatchExtendable(type, properties = {}) {
@@ -103,7 +110,7 @@ async function createServiceWorkerHarness() {
     await Promise.all(pending);
   }
 
-  async function dispatchFetch(pathname, mode = "navigate") {
+  async function dispatchFetch(pathname, mode = "navigate", waitForBackground = true) {
     const pending = [];
     let responsePromise;
     listeners.get("fetch")({
@@ -117,11 +124,12 @@ async function createServiceWorkerHarness() {
       },
       waitUntil(promise) {
         pending.push(Promise.resolve(promise));
+        background.push(Promise.resolve(promise));
       },
     });
 
     const response = responsePromise ? await responsePromise : null;
-    await Promise.all(pending);
+    if (waitForBackground) await Promise.all(pending);
     return response;
   }
 
@@ -138,6 +146,8 @@ async function createServiceWorkerHarness() {
     dispatchExtendable,
     dispatchFetch,
     responses,
+    timers,
+    background,
   };
 }
 
@@ -527,10 +537,98 @@ test("named world assets remain available offline across shell updates and isola
     "/world/prototype/forest-ground.webp?v=0123456789a",
     "/world/prototype/forest-ground.webp?v=0123456789ab&v=abcdef012345",
     "/world/prototype/forest-ground.webp?v=0123456789ab&preview=true",
-    "/world/prototype/forest-ground.png?v=0123456789ab",
+    "/world/prototype/forest-ground.gif?v=0123456789ab",
     "/world/runtime/unversioned.webp?v=0123456789ab",
   ]) {
     assert.equal(await harness.dispatchFetch(asset, "cors"), null, `${asset} is outside the versioned artwork contract`);
+  }
+});
+
+test("all content-versioned Tiled PNG and WebP artwork survives an offline revisit", async () => {
+  const harness = await createServiceWorkerHarness();
+  const world = JSON.parse(await readFile(new URL("../features/world/tiled/forest.generated.json", import.meta.url), "utf8"));
+  const assets = [...new Set([
+    ...world.terrain.map(item => item.image),
+    ...world.sites.flatMap(site => site.states.map(state => state.image)),
+  ])];
+  assert.ok(assets.some(asset => /_[^/]+\.png\?/.test(asset)), "the real authored PNG filenames include underscores");
+  for (const asset of assets) {
+    harness.responses.set(origin + asset, new Response(asset, { headers: {
+      "content-type": asset.includes(".png?") ? "image/png" : "image/webp",
+    } }));
+    assert.equal(await (await harness.dispatchFetch(asset, "cors")).text(), asset);
+    harness.responses.set(origin + asset, new Error("Offline"));
+  }
+  for (const asset of assets) assert.equal(await (await harness.dispatchFetch(asset, "cors")).text(), asset);
+  for (const asset of [
+    "/world/prototype/Shishkolap_House.png",
+    "/world/prototype/Shishkolap_House.png?v=latest",
+    "/world/prototype/Shishkolap_House.png?v=0123456789ab&preview=true",
+    "/world/prototype/nested/house.png?v=0123456789ab",
+  ]) assert.equal(await harness.dispatchFetch(asset, "cors"), null);
+});
+
+test("stalled asset headers expire and a retry starts a fresh network request", async () => {
+  const harness = await createServiceWorkerHarness();
+  const asset = "/world/prototype/forest-ground.webp?v=0123456789ab";
+  let signal;
+  harness.responses.set(origin + asset, options => { signal = options.signal; return new Promise(() => {}); });
+  const first = harness.dispatchFetch(asset, "cors");
+  const rejected = assert.rejects(first, /timed out/);
+  const second = harness.dispatchFetch(asset, "cors");
+  const joined = assert.rejects(second, /timed out/);
+  await new Promise(setImmediate);
+  assert.equal(harness.calls.fetch.length, 1, "simultaneous requests share the original download");
+  const deadline = [...harness.timers.values()].find(timer => timer.delay === 60_000);
+  assert.ok(deadline); deadline.callback();
+  await Promise.all([rejected, joined]);
+  assert.equal(signal.aborted, true);
+  assert.equal(harness.timers.size, 0);
+  harness.responses.set(origin + asset, new Response("fresh-image", { headers: { "content-type": "image/webp" } }));
+  assert.equal(await (await harness.dispatchFetch(asset, "cors")).text(), "fresh-image");
+  assert.equal(harness.calls.fetch.length, 2, "a dead worker download cannot poison retries");
+});
+
+test("stalled cache writes never hold the network response and expire their shared download", async () => {
+  const harness = await createServiceWorkerHarness();
+  const asset = "/world/prototype/Shishkolap_House.png?v=0123456789ab";
+  harness.responses.set(origin + asset, new Response("usable-image", { headers: { "content-type": "image/png" } }));
+  harness.caches.beforePut = () => new Promise(() => {});
+  let response;
+  const first = harness.dispatchFetch(asset, "cors", false).then(value => { response = value; });
+  await new Promise(setImmediate);
+  assert.ok(response, "network pixels reach the page before persistent storage finishes");
+  await first;
+  assert.equal(await response.text(), "usable-image");
+  const deadline = [...harness.timers.values()].find(timer => timer.delay === 60_000);
+  assert.ok(deadline); deadline.callback();
+  await Promise.all(harness.background);
+  assert.equal(harness.timers.size, 0);
+  harness.caches.beforePut = null;
+  assert.equal(await (await harness.dispatchFetch(asset, "cors")).text(), "usable-image");
+  assert.equal(harness.calls.fetch.length, 2, "a stuck storage operation cannot retain the in-flight entry forever");
+});
+
+test("a stalled streamed asset body is aborted at the download deadline", async () => {
+  for (const storage of ["available", "full", "unavailable"]) {
+    const harness = await createServiceWorkerHarness();
+    const asset = "/world/prototype/forest-ground.webp?v=0123456789ab";
+    harness.caches.beforePut = (_url, response) => response.arrayBuffer();
+    if (storage === "full") harness.caches.failPutForUrl = origin + asset;
+    if (storage === "unavailable") harness.caches.open = async () => { throw new Error("Storage unavailable"); };
+    harness.responses.set(origin + asset, ({ signal }) => new Response(new ReadableStream({
+      start(controller) { signal.addEventListener("abort", () => controller.error(new Error("Body aborted")), { once: true }); },
+    }), { headers: { "content-type": "image/webp" } }));
+    const response = await harness.dispatchFetch(asset, "cors", false);
+    const body = assert.rejects(response.text(), /Body aborted/);
+    await new Promise(setImmediate);
+    const deadline = [...harness.timers.values()].find(timer => timer.delay === 60_000);
+    assert.ok(deadline, `a streamed body keeps its deadline when storage is ${storage}`); deadline.callback();
+    await body;
+    await Promise.all(harness.background);
+    assert.equal(harness.timers.size, 0);
+    harness.responses.set(origin + asset, new Response("recovered", { headers: { "content-type": "image/webp" } }));
+    assert.equal(await (await harness.dispatchFetch(asset, "cors")).text(), "recovered");
   }
 });
 
