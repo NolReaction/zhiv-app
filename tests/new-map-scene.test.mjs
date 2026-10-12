@@ -28,6 +28,7 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
 const sourceAndDestination = args => args.length === 5
   ? [args[0], 0, 0, args[0].naturalWidth, args[0].naturalHeight, ...args.slice(1)] : args;
 const builderRigForHero = new WeakMap();
+let getSceneAudioRuntime;
 
 async function modules(override) {
   const vite = await createServer({ appType: "custom", configFile: false, root,
@@ -59,6 +60,7 @@ async function modules(override) {
       ...await vite.ssrLoadModule("/features/world/characters/builder/builder-navigation.ts"),
       ...await vite.ssrLoadModule("/lib/check-in-api.ts"),
     };
+    getSceneAudioRuntime = (await vite.ssrLoadModule("/features/audio/runtime/audio-service.ts")).getAudioRuntime;
     builderRigForHero.set(loaded.pixelSprite, loaded.builderSpriteRig);
     return loaded;
   } finally { await vite.close(); }
@@ -114,6 +116,11 @@ function browser() {
     removeEventListener(name, callback) { documentEvents.get(name)?.delete(callback); },
   });
   install("window", { devicePixelRatio: 2, addEventListener() {}, removeEventListener() {} });
+  // These fake timers belong to scene gestures, speech and artwork loading.
+  // Audio preparation has its own transport/deadline tests and must not start
+  // real prefetch work inside this synchronous scene-clock fixture.
+  const audio = getSceneAudioRuntime();
+  audio.prepare = async () => {};
   install("Image", class {
     naturalWidth = 2560; naturalHeight = 2560;
     set src(path) { if (path) { requests.push(path); pending.push({ path, image: this }); } }
@@ -157,6 +164,7 @@ function browser() {
     },
     fireTimer(key) { const timer = timers.get(key); assert.ok(timer); timers.delete(key); timer.callback(); },
     restore() {
+      audio.dispose();
       // Disposed Vite graphs can retain a fake canvas through sprite/session
       // closures. Large frame histories have no meaning after this browser
       // ends; keep only reusable offscreen sprite recordings intact.

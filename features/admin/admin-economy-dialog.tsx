@@ -29,6 +29,7 @@ const ledgerLabels: Record<string, string> = {
   barter_create: "Предложение обмена", barter_accept: "Получение по обмену",
   barter_exchange: "Завершение своего обмена", barter_cancel: "Возврат реликвии",
   account_merge: "Объединение аккаунтов", merged_receipt: "Перенос записи при объединении",
+  grant_economy: "Выдача администратором", promo_code: "Подарок по промокоду",
   dev_grant_currency: "Выдача валюты в DEV", dev_grant_item: "Выдача припасов в DEV", dev_set_building_level: "Уровень здания в DEV",
 };
 const statusLabels = { running: "В работе", awaiting_collection: "Ждёт начала сбора", collecting: "Идёт сбор", ready: "Готово к получению" };
