@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import test, { after } from "node:test";
 import { createServer } from "vite";
 import sharp from "sharp";
-import { encodeTerrainMaster, findTerrainMaster } from "../scripts/lib/world-assets.mjs";
+import { encodeGroundArtwork, encodeTerrainMaster, findTerrainMaster } from "../scripts/lib/world-assets.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ configFile: false, appType: "custom", root,
@@ -82,6 +82,26 @@ test("terrain master selection accepts PNG and JPEG and rejects stale competing 
     await writeFile(path.join(directory, "forest-ground.jpg"), "new source");
     await assert.rejects(findTerrainMaster(directory), /Ambiguous terrain masters: forest-ground.jpg, forest-ground.png/);
   } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test("smaller house ground exports preserve every actual master pixel and transparent RGB", async () => {
+  for (const name of ["house-ground-1", "house-ground-2"]) {
+    const source = await readFile(`${root}/public/world/prototype/${name}.png`);
+    const browser = await readFile(`${root}/public/world/prototype/${name}.webp`);
+    const [a, b] = await Promise.all([
+      sharp(source).ensureAlpha().raw().toBuffer({ resolveWithObject: true }),
+      sharp(browser).ensureAlpha().raw().toBuffer({ resolveWithObject: true }),
+    ]);
+    assert.deepEqual(a.info, b.info);
+    assert.ok(a.data.equals(b.data), `${name}: dimensions, colours and alpha are unchanged`);
+    assert.ok(browser.length < source.length * .75, "real startup files are at least 25% smaller");
+  }
+  const pixels = Buffer.from([19, 53, 87, 0, 120, 80, 40, 128, 22, 44, 66, 255]);
+  const source = await sharp(pixels, { raw: { width: 3, height: 1, channels: 4 } }).png().toBuffer();
+  const browser = await encodeGroundArtwork(source);
+  assert.ok((await sharp(browser).ensureAlpha().raw().toBuffer()).equals(pixels),
+    "even invisible RGB survives a deterministic lossless export");
+  assert.ok(browser.equals(await encodeGroundArtwork(source)));
 });
 
 test("lossless terrain conversion preserves decoded JPEG pixels with EXIF orientation and PNG alpha", async () => {

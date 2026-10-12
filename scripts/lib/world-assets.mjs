@@ -12,13 +12,23 @@ export async function findTerrainMaster(directory) {
 }
 
 /** Lossless refers to the decoded source: JPEG compression already present is not reversed. */
-export async function encodeTerrainMaster(source) {
-  const bytes = await sharp(source).autoOrient().webp({ lossless: true, effort: 6 }).toBuffer();
+async function checkedLosslessWebp(source, options) {
+  const bytes = await sharp(source).autoOrient().webp(options).toBuffer();
   const [master, exported] = await Promise.all([
     sharp(source).autoOrient().ensureAlpha().raw().toBuffer({ resolveWithObject: true }),
     sharp(bytes).ensureAlpha().raw().toBuffer({ resolveWithObject: true }),
   ]);
   if (master.info.width !== exported.info.width || master.info.height !== exported.info.height
-    || !master.data.equals(exported.data)) throw new Error("Terrain export must preserve every oriented source pixel.");
+    || !master.data.equals(exported.data)) throw new Error("Lossless world export must preserve every oriented source pixel.");
   return bytes;
+}
+
+export function encodeTerrainMaster(source) {
+  return checkedLosslessWebp(source, { lossless: true, effort: 6 });
+}
+
+/** Ground artwork retains even RGB under fully transparent pixels. Higher
+ * encoder effort runs offline, never while a player's page is loading. */
+export function encodeGroundArtwork(source) {
+  return checkedLosslessWebp(source, { lossless: true, exact: true, quality: 100, effort: 6 });
 }

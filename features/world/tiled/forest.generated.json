@@ -297,7 +297,7 @@
     },
     {
       "id": "terrain-311",
-      "image": "/world/prototype/house-ground-2.png?v=3cb1fcbec22a",
+      "image": "/world/prototype/house-ground-2.webp?v=fec34df3f0dc",
       "bounds": {
         "x": 607.5448541964641,
         "y": 577.1294043700027,
@@ -307,7 +307,7 @@
     },
     {
       "id": "terrain-314",
-      "image": "/world/prototype/house-ground-1.png?v=a1804e1f4c6b",
+      "image": "/world/prototype/house-ground-1.webp?v=62ebfa67c055",
       "bounds": {
         "x": 602.6704360820122,
         "y": 576.8489332202367,
@@ -317,7 +317,7 @@
     },
     {
       "id": "terrain-315",
-      "image": "/world/prototype/house-ground-1.png?v=a1804e1f4c6b",
+      "image": "/world/prototype/house-ground-1.webp?v=62ebfa67c055",
       "bounds": {
         "x": 663.1598281839692,
         "y": 590.1258714517337,

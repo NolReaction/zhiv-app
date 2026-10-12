@@ -28704,7 +28704,7 @@
                 }, 
                 {
                  "id":18,
-                 "image":"..\/..\/public\/world\/prototype\/house-ground-1.png",
+                 "image":"..\/..\/public\/world\/prototype\/house-ground-1.webp",
                  "imageheight":1254,
                  "imagewidth":1254,
                  "properties":[
@@ -28716,7 +28716,7 @@
                 }, 
                 {
                  "id":19,
-                 "image":"..\/..\/public\/world\/prototype\/house-ground-2.png",
+                 "image":"..\/..\/public\/world\/prototype\/house-ground-2.webp",
                  "imageheight":1254,
                  "imagewidth":1254,
                  "properties":[

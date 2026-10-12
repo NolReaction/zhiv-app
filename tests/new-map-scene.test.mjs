@@ -361,6 +361,101 @@ test("disposing during new artwork loading prevents late callbacks and animation
   } finally { scene?.dispose(); env.restore(); }
 });
 
+test("initial circle becomes ready before optional off-focus artwork starts and still scenes redraw when it arrives", async () => {
+  const home = { id: "home", label: "Дом", bounds: { x: 600, y: 580, width: 80, height: 80 },
+    anchor: { x: 640, y: 660 }, entry: { x: 640, y: 675 }, hitArea: [], collision: [], initialLevel: 1,
+    states: [{ level: 1, label: "Дом", image: "/progressive-home.webp" }] };
+  const shore = { id: "shore", image: "/progressive-shore.webp", bounds: { x: 20, y: 20, width: 80, height: 80 } };
+  const { mountHabitat } = await modules({ terrain: [...fixture.terrain, shore], sites: [home] });
+  const env = browser(); let scene;
+  try {
+    const canvas = env.surface(); let ready = 0, rendered = 0, requestsAtReady;
+    scene = mountHabitat(canvas, { ...options, paused: true }, { activity() {}, failure: assert.fail,
+      ready() { ready++; requestsAtReady = [...env.requests]; }, rendered() { rendered++; } });
+    assert.deepEqual(env.requests, ["/test-ground.webp", "/progressive-home.webp"]);
+    env.finishPath("/test-ground.webp"); await flush(); assert.equal(ready, 0, "the visible home is required");
+    env.finishPath("/progressive-home.webp"); await flush();
+    assert.equal(ready, 1); assert.deepEqual(requestsAtReady, ["/test-ground.webp", "/progressive-home.webp"]);
+    assert.equal(env.pending[0].path, shore.image); assert.equal(env.pending[0].image.fetchPriority, "low");
+    const before = rendered, image = env.finishPath(shore.image); await flush();
+    assert.ok(rendered > before, "a paused reduced-motion view repaints without starting a clock");
+    assert.equal(env.frames.size, 0); assert.equal(ready, 1);
+    const full = env.surface(); scene.paintWorld(full.context);
+    assert.ok(full.calls.some(call => call.method === "drawImage" && call.args[0] === image));
+  } finally { scene?.dispose(); env.restore(); }
+});
+
+test("optional artwork failure keeps the circle usable and full-map entry waits for its fresh retry", async () => {
+  const remote = { id: "remote", image: "/progressive-retry.webp", bounds: { x: 20, y: 20, width: 80, height: 80 } };
+  const { mountHabitat } = await modules({ terrain: [...fixture.terrain, remote] });
+  const env = browser(), scenes = [];
+  try {
+    let circleReady = 0, worldReady = 0;
+    scenes.push(mountHabitat(env.surface(), options, { activity() {}, ready: () => circleReady++, failure: assert.fail }));
+    env.finishPath("/test-ground.webp"); await flush(); assert.equal(circleReady, 1);
+    env.finishPath(remote.image, true); await flush(); assert.equal(circleReady, 1);
+    const world = env.surface();
+    scenes.push(mountHabitat(world, { ...options, view: "world" }, { activity() {}, ready: () => worldReady++, failure: assert.fail }));
+    await flush(); assert.equal(worldReady, 0, "world readiness must not inherit a partial circle");
+    assert.equal(env.requests.filter(path => path === remote.image).length, 2, "failed optional cache entries are retried");
+    assert.equal(env.pending[0].image.fetchPriority, "high");
+    env.finishPath(remote.image); await flush(); assert.equal(worldReady, 1);
+    assert.equal(circleReady, 1);
+  } finally { scenes.forEach(scene => scene.dispose()); env.restore(); }
+});
+
+test("disposing a ready circle prevents optional artwork completions from repainting or reporting failure", async () => {
+  const remote = { id: "remote", image: "/progressive-disposed.webp", bounds: { x: 20, y: 20, width: 80, height: 80 } };
+  const { mountHabitat } = await modules({ terrain: [...fixture.terrain, remote] });
+  const env = browser(); let scene;
+  try {
+    let ready = 0, rendered = 0;
+    scene = mountHabitat(env.surface(), options, { activity() {}, ready: () => ready++, rendered: () => rendered++, failure: assert.fail });
+    env.finishPath("/test-ground.webp"); await flush(); assert.equal(ready, 1);
+    scene.dispose(); const before = rendered;
+    env.finishPath(remote.image); await flush();
+    assert.equal(rendered, before); assert.equal(ready, 1); assert.equal(env.frames.size, 0); assert.equal(env.observed(), 0);
+  } finally { scene?.dispose(); env.restore(); }
+});
+
+test("changing a pending initial circle to world scope requires all artwork before ready", async () => {
+  const remote = { id: "remote", image: "/progressive-world-scope.webp", bounds: { x: 20, y: 20, width: 80, height: 80 } };
+  const { mountHabitat } = await modules({ terrain: [...fixture.terrain, remote] });
+  const env = browser(); let scene;
+  try {
+    let ready = 0;
+    scene = mountHabitat(env.surface(), options, { activity() {}, ready: () => ready++, failure: assert.fail });
+    scene.configure({ ...options, view: "world" });
+    assert.deepEqual(env.requests, ["/test-ground.webp", remote.image]);
+    assert.equal(env.pending.find(request => request.path === remote.image).image.fetchPriority, "high");
+    env.finishPath("/test-ground.webp"); await flush(); assert.equal(ready, 0);
+    env.finishPath(remote.image); await flush(); assert.equal(ready, 1);
+  } finally { scene?.dispose(); env.restore(); }
+});
+
+test("subsequent geometry replacements await complete artwork even while initial background artwork is pending", async () => {
+  const remote = { id: "remote", image: "/progressive-atomic-remote.webp", bounds: { x: 20, y: 20, width: 80, height: 80 } };
+  const geometry = x => ({ bounds: { x, y: 580, width: 80, height: 80 }, anchor: { x: x + 40, y: 660 },
+    entry: { x: x + 40, y: 675 }, hitArea: [], collision: [] });
+  const home = { id: "home", label: "Дом", ...geometry(600), initialLevel: 1,
+    states: [1, 2].map(level => ({ level, label: String(level), image: `/progressive-atomic-home-${level}.webp`, geometry: geometry(600 + (level - 1) * 40) })) };
+  const { mountHabitat } = await modules({ terrain: [...fixture.terrain, remote], sites: [home] });
+  const env = browser(); let scene;
+  try {
+    const canvas = env.surface(); let ready = 0;
+    scene = mountHabitat(canvas, options, { activity() {}, ready: () => ready++, failure: assert.fail });
+    env.finishPath("/test-ground.webp"); const first = env.finishPath(home.states[0].image); await flush();
+    assert.equal(ready, 1);
+    scene.configure({ ...options, economyBuildings: { home: 2 } });
+    const second = env.finishPath(home.states[1].image); await flush();
+    const building = () => canvas.calls.findLast(call => call.method === "drawImage" && call.args.length === 5
+      && [first, second].includes(call.args[0])).args;
+    assert.deepEqual(building(), [first, 600, 580, 80, 80], "pending remote artwork retains the full previous geometry");
+    env.finishPath(remote.image); await flush();
+    assert.deepEqual(building(), [second, 640, 580, 80, 80]); assert.equal(ready, 1);
+  } finally { scene?.dispose(); env.restore(); }
+});
+
 test("new map ignores old place hit areas while camera controls and pet taps remain live", async () => {
   const { createMapEngine, TILED_WORLD, NEW_MAP_SIZE, NEW_MAP_SPAWN, NEW_MAP_PET_SIZE } = await modules();
   const env = browser(); let engine;
@@ -1059,9 +1154,10 @@ test("exported Tiled edits drive both live views, active site art, pet hit area 
     assert.deepEqual(NEW_MAP_FOCUS, focus); assert.deepEqual(NEW_MAP_SPAWN, actor.spawn); assert.equal(NEW_MAP_PET_SIZE, 60);
     const circle = env.surface(); let ready = false;
     scene = mountHabitat(circle, options, { activity() {}, ready() { ready = true; }, failure: assert.fail });
-    assert.deepEqual(env.requests, ["/test-ground.webp", "/test-shore.webp", "/test-home.webp"]);
-    const ground = env.finish(); await flush(); assert.equal(ready, false, "all authored initial art must finish first");
-    const shore = env.finish(), home = env.finish(); await flush(); assert.equal(ready, true);
+    assert.deepEqual(env.requests, ["/test-ground.webp", "/test-home.webp"]);
+    const ground = env.finish(); await flush(); assert.equal(ready, false, "visible initial art must finish first");
+    const home = env.finish(); await flush(); assert.equal(ready, true, "off-focus shore art must not hold the circle");
+    const shore = env.finishPath("/test-shore.webp"); await flush();
     assert.ok(circle.calls.some(call => call.method === "translate" && call.args[0] === -600 && call.args[1] === -800));
     assert.ok(circle.calls.some(call => call.method === "setTransform" && call.args[0] === 640 / 240));
     assert.deepEqual(scene.position(), { x: 710, y: 960 });
@@ -1413,7 +1509,8 @@ test("same-account art-ready world owns one clock and preserves life, moisture a
     const initial = { ...options, reducedMotion: false, serverNow: 100_000, presenceKey: "owner-account" };
     const callbacks = { activity() {}, ready() {}, failure: assert.fail };
     const circle = mountHabitat(env.surface(), initial, callbacks); scenes.push(circle);
-    env.finish(); env.finish(); await flush(); env.tick(100); env.tick(150);
+    env.finishPath("/test-ground.webp"); await flush();
+    env.finishPath("/shared-home-1.webp"); await flush(); env.tick(100); env.tick(150);
     probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 0, 0, () => {});
     worldDevStore.patch({ weather: "rain", levels: { home: 2 } });
     const world = mountHabitat(env.surface(), { ...initial, view: "world" }, callbacks); scenes.push(world);
