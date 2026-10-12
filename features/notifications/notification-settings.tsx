@@ -1,7 +1,9 @@
 "use client";
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useImperativeHandle, useRef, useState, type Ref } from "react";
 import { Bell, Check, Moon, SlidersHorizontal } from "lucide-react";
 import { SharingSwitch as Switch } from "@/components/sharing-switch";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import glass from "@/components/glass-dialog.module.css";
 import { timeZoneOptions } from "@/lib/time-zone";
 import { ApiError } from "@/lib/check-in-api";
 import { saveNotificationPreferences } from "./notification-api";
@@ -17,13 +19,16 @@ const topics = [
   ["checkinReminder", "Напомнить отметиться", "Только если с последней отметки прошло больше 24 часов. Одно напоминание до следующей отметки."],
 ] as const;
 
+export type NotificationSettingsExit = { requestLeave: (leave: () => void) => void };
+
 type NotificationSettingsProps = {
   ownerPublicId: string; isOnline: boolean; onSessionLost: () => void;
+  exitRef?: Ref<NotificationSettingsExit>;
 };
 export function NotificationSettingsPanel(props: NotificationSettingsProps) {
   return <NotificationSettingsForOwner key={props.ownerPublicId} {...props} />;
 }
-function NotificationSettingsForOwner({ ownerPublicId, isOnline, onSessionLost }: NotificationSettingsProps) {
+function NotificationSettingsForOwner({ ownerPublicId, isOnline, onSessionLost, exitRef }: NotificationSettingsProps) {
   const id = useId();
   const lifecycle = useRef({ generation: 0, mounted: true });
   useEffect(() => {
@@ -34,6 +39,10 @@ function NotificationSettingsForOwner({ ownerPublicId, isOnline, onSessionLost }
   const [draft, setDraft] = useState<NotificationPreferences | null>(null);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
+  const [confirmLeave, setConfirmLeave] = useState(false);
+  const pendingLeave = useRef<(() => void) | null>(null);
+  const returnFocus = useRef<HTMLElement | null>(null);
+  const headingRef = useRef<HTMLHeadingElement | null>(null);
   const applySnapshot = useCallback((value: NotificationSnapshot) => {
     setSnapshot(value);
     // Returning from browser settings must not discard an edited preference form.
@@ -42,6 +51,33 @@ function NotificationSettingsForOwner({ ownerPublicId, isOnline, onSessionLost }
   const device = useNotificationDevice(ownerPublicId, isOnline, applySnapshot, onSessionLost);
   const busy = saving || device.busy;
   const dirty = Boolean(draft && snapshot && JSON.stringify(draft) !== JSON.stringify(snapshot.preferences));
+  useImperativeHandle(exitRef, () => ({ requestLeave(leave) {
+    if (!dirty && !saving) { leave(); return; }
+    if (pendingLeave.current) return;
+    pendingLeave.current = leave;
+    returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setConfirmLeave(true);
+  } }), [dirty, saving]);
+  useEffect(() => {
+    if (!dirty && !saving) return;
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [dirty, saving]);
+  function cancelLeave() { pendingLeave.current = null; setConfirmLeave(false); }
+  function finishLeave() {
+    const leave = pendingLeave.current;
+    pendingLeave.current = null;
+    returnFocus.current = null;
+    setConfirmLeave(false);
+    leave?.();
+  }
+  function discardAndLeave() {
+    if (saving) return;
+    setDraft(snapshot?.preferences ?? null);
+    setNotice("");
+    finishLeave();
+  }
   const update = <Key extends keyof NotificationPreferences>(key: Key, value: NotificationPreferences[Key]) => {
     setDraft(previous => previous ? { ...previous, [key]: value } : previous); setNotice("");
   };
@@ -67,10 +103,11 @@ function NotificationSettingsForOwner({ ownerPublicId, isOnline, onSessionLost }
       if (!isCurrent()) return;
       if (value.ownerPublicId !== ownerPublicId) throw new Error("Профиль изменился. Откройте настройки заново.");
       setSnapshot(value); setDraft(value.preferences); setNotice("Настройки сохранены");
+      if (pendingLeave.current) finishLeave();
     });
   }
   return <section className={styles.card} aria-labelledby={`${id}-title`} data-notification-settings>
-    <header className={styles.heading}><Bell size={21} aria-hidden="true" /><div><h2 id={`${id}-title`}>Уведомления</h2><p>Только нужные события, в удобное время</p></div></header>
+    <header className={styles.heading}><Bell size={21} aria-hidden="true" /><div><h2 ref={headingRef} tabIndex={-1} id={`${id}-title`}>Уведомления</h2><p>Только нужные события, в удобное время</p></div></header>
     {!snapshot || snapshot.ownerPublicId !== ownerPublicId || !draft ? <div className={styles.loading} role="status">{device.loadError || "Загружаем настройки…"}{device.loadError && <button type="button" disabled={!isOnline} onClick={() => void device.refresh(true)}>Попробовать снова</button>}</div> : <>
       <NotificationDeviceCard id={id} state={{ ...device.state, disabled: saving }} onToggle={device.toggle} onRetry={() => void device.refresh(true)} />
       <fieldset className={styles.topics} disabled={busy}>
@@ -103,5 +140,25 @@ function NotificationSettingsForOwner({ ownerPublicId, isOnline, onSessionLost }
       <p className={styles.hint}>Пока вы играете, пуши не приходят. Готовые дела объединяем; собранные награды и отменённые задания не напоминают о себе. Настройки событий общие для аккаунта, подключение отдельное на каждом устройстве.</p>
       <div className={styles.actions}><button type="button" className={styles.save} disabled={busy || !isOnline || !dirty} onClick={save}><Check size={17} aria-hidden="true" />{saving ? "Сохраняем…" : "Сохранить настройки"}</button><span role="status" aria-live="polite">{notice || (!isOnline ? "Для сохранения нужно подключение к интернету" : dirty ? "Есть несохранённые изменения" : "")}</span></div>
     </>}
+    <Dialog open={confirmLeave} onOpenChange={open => { if (!open) cancelLeave(); }}>
+      <DialogContent className={glass.dialog} onCloseAutoFocus={event => {
+        event.preventDefault();
+        const trigger = returnFocus.current;
+        if (!trigger) return;
+        // Focusing an inactive Radix tab would immediately request the same exit again.
+        if (trigger.isConnected && !(trigger.getAttribute("role") === "tab" && trigger.getAttribute("aria-selected") !== "true")) trigger.focus();
+        else headingRef.current?.focus();
+      }}>
+        <DialogHeader>
+          <DialogTitle className={glass.title}>Настройки не сохранены</DialogTitle>
+          <DialogDescription>{saving ? "Настройки ещё сохраняются. Подождите завершения." : "Вы изменили настройки уведомлений. Если выйти сейчас, эти изменения не сохранятся."}</DialogDescription>
+        </DialogHeader>
+        {notice && <p className={styles.hint} role="status">{notice}</p>}
+        <div className={styles.leaveActions}>
+          <button type="button" className={styles.save} onClick={cancelLeave}>Вернуться к настройкам</button>
+          <button type="button" className={styles.connect} disabled={saving} onClick={discardAndLeave}>Выйти без сохранения</button>
+        </div>
+      </DialogContent>
+    </Dialog>
   </section>;
 }

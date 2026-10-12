@@ -5,13 +5,14 @@ export const STARTUP_LOGO_PREPARE_MS = 600;
 export const STARTUP_LOGO_AUDIO_WINDOW_MS = 180;
 const STARTUP_UI_CUES = ["ui.click", "ui.open", "ui.daily-reward"] as const;
 
-type StartupAudioRuntime = Pick<AudioRuntime, "prepare" | "play" | "getSettings" | "getDiagnostics">;
+type StartupAudioRuntime = Pick<AudioRuntime, "prepare" | "play" | "unlock" | "getSettings" | "getDiagnostics">;
 type Environment = { visible: () => boolean; now?: () => number };
 export type StartupAudioPresentation = { settled: boolean; revealReady: boolean };
 export const INITIAL_STARTUP_AUDIO: StartupAudioPresentation = { settled: false, revealReady: false };
 
 /** Coordinate the actual logo entrance with its tiny recording. Preparation
- * may obtain browser autoplay permission; a missed entrance is never replayed. */
+ * may obtain browser autoplay permission; a later gesture can sound the still
+ * visible logo, but a missed entrance is never replayed after the splash. */
 export function createStartupAudioEntry(runtime: StartupAudioRuntime, environment: Environment) {
   const now = environment.now ?? Date.now;
   const listeners = new Set<() => void>(), presentationListeners = new Set<() => void>();
@@ -20,6 +21,7 @@ export function createStartupAudioEntry(runtime: StartupAudioRuntime, environmen
   let revealReady = false, automaticConsumed = false;
   let attachments = 0;
   let revealedAt: number | null = null;
+  let gestureAt: number | null = null;
   let deadline: ReturnType<typeof setTimeout> | undefined;
   let revealDeadline: ReturnType<typeof setTimeout> | undefined;
   let presentation = INITIAL_STARTUP_AUDIO;
@@ -48,10 +50,12 @@ export function createStartupAudioEntry(runtime: StartupAudioRuntime, environmen
   }
   function tryLogo() {
     if (logoPlayed || revealedAt === null) return;
-    if (!canSound() || now() - revealedAt > STARTUP_LOGO_AUDIO_WINDOW_MS) { automaticConsumed = true; return; }
-    if (automaticConsumed || !logoPrepared || runtime.getDiagnostics().state !== "running") return;
+    if (!canSound()) { automaticConsumed = true; gestureAt = null; return; }
+    const occurredAt = gestureAt ?? revealedAt;
+    if (now() - occurredAt > STARTUP_LOGO_AUDIO_WINDOW_MS) { automaticConsumed = true; gestureAt = null; return; }
+    if ((automaticConsumed && gestureAt === null) || !logoPrepared || runtime.getDiagnostics().state !== "running") return;
     logoPlayed = true;
-    runtime.play({ id: "startup:logo", cueId: "ui.startup", occurredAt: revealedAt, maxAgeMs: STARTUP_LOGO_AUDIO_WINDOW_MS });
+    runtime.play({ id: "startup:logo", cueId: "ui.startup", occurredAt, maxAgeMs: STARTUP_LOGO_AUDIO_WINDOW_MS });
   }
   function close() {
     closed = true;
@@ -102,6 +106,14 @@ export function createStartupAudioEntry(runtime: StartupAudioRuntime, environmen
     },
     getPresentation: () => presentation,
     refresh: tryLogo,
+    playFromGesture() {
+      if (!started || revealedAt === null || logoPlayed || !canSound()) return;
+      // Record this fresh opportunity before unlock: a running context can
+      // synchronously notify subscribers. Never queue branding for the menu.
+      gestureAt = now();
+      if (runtime.getDiagnostics().state !== "running") void runtime.unlock().then(tryLogo, () => undefined);
+      tryLogo();
+    },
     reveal() {
       if (revealedAt !== null || closed) return;
       revealedAt = now();

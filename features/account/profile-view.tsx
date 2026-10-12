@@ -1,7 +1,7 @@
 "use client";
 
 import { PlayerName } from "@/components/player-name";
-import type { FormEvent } from "react";
+import type { FormEvent, RefObject } from "react";
 import { useRef, useState } from "react";
 import { Tabs as TabsPrimitive } from "radix-ui";
 import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
@@ -28,6 +28,7 @@ import { TransientNotice } from "@/components/app-notifications";
 import { AccountAccess } from "./account-access";
 import { TimeZoneSetting } from "./time-zone-setting";
 import { ProfileSettings } from "./profile-settings";
+import type { NotificationSettingsExit } from "@/features/notifications/notification-settings";
 import { GameAchievementsButton } from "@/features/game/game-achievements";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import styles from "./profile-view.module.css";
@@ -35,6 +36,7 @@ import styles from "./profile-view.module.css";
 type ProfileViewProps = {
   simpleView: boolean;
   onSimpleViewChange: (value: boolean) => void;
+  notificationSettingsExit: RefObject<NotificationSettingsExit | null>;
   me: MeResponse;
   nowMs: number;
   isOnline: boolean;
@@ -86,6 +88,7 @@ function russianNoun(count: number, one: string, few: string, many: string): str
 export function ProfileView({
   simpleView,
   onSimpleViewChange,
+  notificationSettingsExit,
   me,
   nowMs,
   isOnline,
@@ -186,7 +189,12 @@ export function ProfileView({
       <div className={styles.heading}><h1 id="profile-title">Профиль</h1></div>
       <TransientNotice message={error} kind="error" />
       <TransientNotice message={success} kind="success" />
-      <TabsPrimitive.Root value={activeTab} onValueChange={value => { if (value !== activeTab) { playUiCue(getAudioRuntime(), "ui.tab"); setActiveTab(value); } }} className={styles.tabsRoot}>
+      <TabsPrimitive.Root value={activeTab} onValueChange={value => {
+        if (value === activeTab) return;
+        const leave = () => { playUiCue(getAudioRuntime(), "ui.tab"); setActiveTab(value); };
+        if (activeTab === "settings" && notificationSettingsExit.current) notificationSettingsExit.current.requestLeave(leave);
+        else leave();
+      }} className={styles.tabsRoot}>
         <div className={styles.navigation}>
         <TabsPrimitive.List className={styles.tabs} aria-label="Разделы профиля">
           <TabsPrimitive.Trigger value="profile"><UserRound size={17} aria-hidden="true" />Профиль</TabsPrimitive.Trigger>
@@ -353,7 +361,8 @@ export function ProfileView({
         </TabsPrimitive.Content>
         <TabsPrimitive.Content value="settings" forceMount className={styles.tabPanel}>
           <ProfileSettings key={me.user.publicId} ownerPublicId={me.user.publicId}
-            isOnline={isOnline} onSessionLost={onSessionLost} simpleView={simpleView} onSimpleViewChange={onSimpleViewChange} />
+            isOnline={isOnline} onSessionLost={onSessionLost} simpleView={simpleView} onSimpleViewChange={onSimpleViewChange}
+            notificationSettingsExit={notificationSettingsExit} />
         </TabsPrimitive.Content>
       </TabsPrimitive.Root>
     </section>
