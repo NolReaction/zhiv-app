@@ -28,7 +28,7 @@
 | Развёртывание | Docker Compose, Caddy, HTTPS, мониторинг |
 | Совместимый контур Sites | Vite, Vinext, Cloudflare Workers |
 
-Точные зависимости — в [package.json](package.json) и [сборке API](apps/api/build.gradle.kts). Основная схема PostgreSQL задаётся [миграциями Ktor V1–V49](apps/api/src/main/resources/db/migration/). У двух контуров сборки общие игровые компоненты; их границы описаны в [архитектуре](docs/architecture.md).
+Точные зависимости — в [package.json](package.json) и [сборке API](apps/api/build.gradle.kts). Основная схема PostgreSQL задаётся [миграциями Ktor V1–V51](apps/api/src/main/resources/db/migration/). У двух контуров сборки общие игровые компоненты; их границы описаны в [архитектуре](docs/architecture.md).
 
 ## Где искать код
 

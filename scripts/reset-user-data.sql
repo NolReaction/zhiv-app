@@ -31,18 +31,19 @@ DECLARE
     remaining bigint;
     migration_history jsonb;
     collection_metadata jsonb;
+    promo_configuration jsonb;
 BEGIN
     SELECT array_agg(name ORDER BY name COLLATE "C") INTO expected_tables
-    FROM unnest(user_tables || ARRAY['game_tap_collection_metadata']) AS t(name);
+    FROM unnest(user_tables || ARRAY['game_tap_collection_metadata', 'managed_promo_codes']) AS t(name);
     SELECT array_agg(tablename::text ORDER BY tablename COLLATE "C") INTO actual_tables
     FROM pg_tables WHERE schemaname = 'public' AND tablename <> 'flyway_schema_history';
     IF actual_tables IS DISTINCT FROM expected_tables THEN
         RAISE EXCEPTION 'Unexpected application tables. Reset cancelled; review the schema first.';
     END IF;
     -- Keep this explicit: every new schema must be reviewed before destructive reset.
-    IF (SELECT version FROM public.flyway_schema_history ORDER BY installed_rank DESC LIMIT 1) IS DISTINCT FROM '49'
+    IF (SELECT version FROM public.flyway_schema_history ORDER BY installed_rank DESC LIMIT 1) IS DISTINCT FROM '51'
         OR EXISTS (SELECT 1 FROM public.flyway_schema_history WHERE NOT success) THEN
-        RAISE EXCEPTION 'Expected successfully applied migration V49. Reset cancelled.';
+        RAISE EXCEPTION 'Expected successfully applied migration V51. Reset cancelled.';
     END IF;
     SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank) INTO migration_history
     FROM public.flyway_schema_history h;
@@ -52,6 +53,8 @@ BEGIN
     END IF;
     SELECT jsonb_agg(to_jsonb(m) ORDER BY singleton) INTO collection_metadata
     FROM public.game_tap_collection_metadata m;
+    SELECT jsonb_agg(to_jsonb(p) ORDER BY promo_id) INTO promo_configuration
+    FROM public.managed_promo_codes p;
 
     EXECUTE 'TRUNCATE TABLE ' || (
         SELECT string_agg(format('public.%I', name), ', ') FROM unnest(user_tables) AS t(name)
@@ -73,6 +76,11 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'Collection metadata changed. Reset rolled back.';
     END IF;
-    RAISE NOTICE 'All % user-data tables are empty. Migration history and collection metadata are preserved.', cardinality(user_tables);
+    IF promo_configuration IS DISTINCT FROM (
+        SELECT jsonb_agg(to_jsonb(p) ORDER BY promo_id) FROM public.managed_promo_codes p
+    ) THEN
+        RAISE EXCEPTION 'Promo configuration changed. Reset rolled back.';
+    END IF;
+    RAISE NOTICE 'All % user-data tables are empty. Migration history, collection metadata and promo configuration are preserved.', cardinality(user_tables);
 END $$;
 COMMIT;

@@ -43,7 +43,7 @@ private fun ApplicationCall.adminSessionHash(config: AppConfig, codec: TokenCode
 
 fun Route.adminRoutes(repository: AdminRepository, codec: TokenCodec, config: AppConfig) {
     route("/api/v1/admin") {
-        install(RequestBodyLimit) { bodyLimit { 2_048 } }
+        install(RequestBodyLimit) { bodyLimit { 16_384 } }
         rateLimit(RateLimitName("admin-read")) {
             get("/access") { call.respond(repository.access(call.adminSessionHash(config, codec))) }
             get("/overview") {
@@ -109,6 +109,13 @@ fun Route.adminRoutes(repository: AdminRepository, codec: TokenCodec, config: Ap
             }
         }
         rateLimit(RateLimitName("admin-write")) {
+            post("/users/{publicId}/grant-economy") {
+                val hash = call.adminSessionHash(config, codec, writing = true)
+                val target = parsePublicId(call.parameters["publicId"]) ?: badQuery()
+                val request = call.receive<AdminEconomyGrantRequest>()
+                val id = parseCanonicalUuidV4(request.requestId) ?: badQuery()
+                call.respond(repository.grantEconomy(hash, target, id, request))
+            }
             post("/users/{publicId}/manage") {
                 val hash = call.adminSessionHash(config, codec, writing = true)
                 val target = parsePublicId(call.parameters["publicId"]) ?: badQuery()

@@ -110,6 +110,9 @@ import ru.zhiv.db.NotificationMaintenance
 import ru.zhiv.promo.PromoRepository
 import ru.zhiv.promo.promoRoutes
 import ru.zhiv.db.JdbcPromoRepository
+import ru.zhiv.admin.AdminPromoRepository
+import ru.zhiv.admin.adminPromoRoutes
+import ru.zhiv.db.JdbcAdminPromoRepository
 
 fun Application.module() {
     val config = AppConfig.fromEnvironment()
@@ -164,6 +167,7 @@ fun Application.module() {
         feedback = JdbcFeedbackRepository(dataSource, AdminConfig(config.adminPublicIds)),
         notifications = JdbcNotificationRepository(dataSource, pushConfig),
         promo = JdbcPromoRepository(dataSource),
+        adminPromo = JdbcAdminPromoRepository(dataSource, AdminConfig(config.adminPublicIds)),
     )
 }
 
@@ -197,6 +201,7 @@ fun Application.installZhivApi(
     presence: PresenceRepository? = null,
     notifications: NotificationRepository? = null,
     promo: PromoRepository? = null,
+    adminPromo: AdminPromoRepository? = null,
 ) {
     val metrics = RuntimeMetrics.shared
     val monitoring = MonitoringService(config.monitoringUrl)
@@ -361,6 +366,7 @@ fun Application.installZhivApi(
         feedback?.let { feedbackRoutes(it, tokenCodec, config) }
         notifications?.let { notificationRoutes(it, tokenCodec, config) }
         promo?.let { promoRoutes(it, tokenCodec, config, presence) }
+        adminPromo?.let { adminPromoRoutes(it, tokenCodec, config) }
         admin?.let { repository ->
             adminRoutes(repository, tokenCodec, config)
             rateLimit(RateLimitName("admin-read")) {
