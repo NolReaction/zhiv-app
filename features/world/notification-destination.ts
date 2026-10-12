@@ -8,8 +8,10 @@ export type WorldNotificationDestination = { kind: "activities" } | { kind: "pan
 /** Notifications can outlive a claimed/cancelled job. Navigate from confirmed current state. */
 export function worldNotificationDestination(target: WorldNotificationEntry["target"], economy: EconomyView, now: number): WorldNotificationDestination {
   if (target === "activities") return { kind: "activities" };
-  const job = economy.jobs.filter(job => job.kind === target && Date.parse(job.finishesAt) <= now)
-    .sort((left, right) => Date.parse(left.finishesAt) - Date.parse(right.finishesAt) || left.id.localeCompare(right.id))[0];
+  const job = economy.jobs.filter(job => job.kind === target).map(job => ({ job,
+    readyAt: Date.parse(job.kind === "production" && job.targetId === "garden" ? job.collection?.finishesAt ?? "" : job.finishesAt),
+  })).filter(({ readyAt }) => readyAt <= now)
+    .sort((left, right) => left.readyAt - right.readyAt || left.job.id.localeCompare(right.job.id))[0]?.job;
   if (job) return { kind: "station", stationId: job.targetId, ...(job.recipeId ? { recipeId: job.recipeId } : {}) };
   return { kind: target === "construction" ? "builder" : "pantry" };
 }

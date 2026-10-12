@@ -26,3 +26,17 @@ test("stale notification falls back when another device already collected the re
   assert.deepEqual(worldNotificationDestination("production", state, now), { kind: "pantry" });
   assert.deepEqual(worldNotificationDestination("construction", state, now), { kind: "builder" });
 });
+
+test("production notification ignores ripe berries until Mochlik finishes gathering", () => {
+  const berries = job("berries", "production", "garden", -20_000, "grow_berries");
+  const workshop = job("workshop", "production", "workshop", -1000, "rope");
+  const state = { jobs: [berries, workshop] };
+  const destination = { kind: "station", stationId: "workshop", recipeId: "rope" };
+  assert.deepEqual(worldNotificationDestination("production", state, now), destination);
+  berries.collection = { finishesAt: new Date(now + 1000).toISOString() };
+  assert.deepEqual(worldNotificationDestination("production", state, now), destination);
+  berries.collection.finishesAt = new Date(now - 500).toISOString();
+  assert.deepEqual(worldNotificationDestination("production", state, now), destination, "use gathering completion, not the earlier ripening date");
+  state.jobs = [berries];
+  assert.deepEqual(worldNotificationDestination("production", state, now), { kind: "station", stationId: "garden", recipeId: "grow_berries" });
+});
