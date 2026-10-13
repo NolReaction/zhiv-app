@@ -21,7 +21,7 @@ import { useGardenCollection } from "@/features/economy/integration/garden-colle
 import { berryCollectionStatus } from "@/features/economy/integration/garden-collection";
 import { ProductionActivity, productionIsActive } from "@/features/economy/ui/production/production-activity";
 import { WorldProductionSlots } from "@/features/economy/ui/production/world-production-slots";
-import { productionSlotCount } from "@/features/economy/domain/production-slots";
+import { worldConstructionReason, worldProductionReason, worldMissingRecipeRequirements } from "@/features/economy/ui/shared/world-stations";
 import { marketDailyLimit, marketItemUnlocked, marketMinimumPrice, marketRequiredHomeLevel, marketSaleFee } from "@/features/economy/domain/market-rules";
 import { BarterMarket } from "@/features/economy/ui/market/barter-market";
 import styles from "./economy-panel.module.css";
@@ -204,13 +204,10 @@ function BuildingCard({ economy, building, navigate }: { economy: ReadyEconomy; 
   const [preview, setPreview] = useState<number | null>(null);
   const target = building.levels.find(entry => entry.level === preview) ?? next ?? building.levels.at(-1);
   const ownJob = state.jobs.find(job => job.kind === "construction" && job.targetId === building.id);
-  const construction = state.jobs.some(job => job.kind === "construction");
   const production = state.jobs.some(job => job.kind === "production" && job.targetId === building.id);
-  const mining = building.id === "quarry" && state.jobs.some(job => job.kind === "exploration"
-    && !!state.catalog.explorations.find(route => route.id === job.targetId)?.requiredBuildings.quarry);
   const required = target ? requirements(target) : {};
   const reason = !target || target.level <= level ? "Этот уровень уже получен" : target.level !== level + 1 ? `Сначала получите уровень ${target.level - 1}`
-    : unmetRequirement(state, required) ?? (construction ? "Сначала завершите текущую стройку" : production ? "Сначала заберите готовую продукцию" : mining ? "Дождитесь Мохлика и заберите добычу" : !canAffordEconomy(state, target.cost) ? "Не хватает монет или материалов" : null);
+    : worldConstructionReason(state, building.id, target);
   const Icon = buildingIcons[building.id] ?? House;
   return <div className={styles.stack}>
     {ownJob && <JobCard economy={economy} job={ownJob} navigate={navigate} />}
@@ -254,18 +251,18 @@ function RecipeCard({ economy, recipe, navigate }: { economy: ReadyEconomy; reci
   const maximum = Math.min(recipe.maxBatch ?? state.catalog.maxBatch, state.catalog.maxBatch, Math.floor(state.storage.capacity / Math.max(1, rewardCount)));
   const quantity = Math.max(1, Math.min(requestedQuantity, maximum));
   const required = requirements(recipe, recipe);
-  const occupied = state.jobs.some(job => job.kind === "construction" && job.targetId === recipe.buildingId)
-    || state.jobs.filter(job => job.kind === "production" && job.targetId === recipe.buildingId).length >= productionSlotCount(state, recipe.buildingId);
-  const reason = unmetRequirement(state, required) ?? (maximum < 1 ? "Для этого заказа нужно расширить склад" : occupied ? "Все места заняты или идёт улучшение" : !canAffordEconomy(state, recipe.cost, quantity) ? "Не хватает ингредиентов" : null);
+  const reason = worldProductionReason(state, recipe, quantity);
+  const missingRecipes = worldMissingRecipeRequirements(state, recipe);
   const choices = Array.from({ length: maximum }, (_, index) => index + 1);
   return <article className={styles.card}><div className={styles.cardHeader}><span className={styles.iconTile}><PlayerItemIcon state={state} itemId={Object.keys(recipe.rewards)[0] ?? ""} size={28} /></span><div><span className={styles.eyebrow}>{buildingName(state, recipe.buildingId)}</span><h3>{recipe.name}</h3></div></div>
     <Rewards state={state} value={recipe.rewards} quantity={quantity} />
     <RequirementList state={state} required={required} navigate={navigate} />
     <Cost state={state} cost={recipe.cost} quantity={quantity} />
-    <label className={styles.field} htmlFor={inputId}>Размер заказа<select id={inputId} value={quantity} disabled={busy || uncertain || maximum < 1} onChange={event => setQuantity(Number(event.target.value))}>{choices.map(count => <option key={count} value={count}>{count} {count === 1 ? "партия" : count < 5 ? "партии" : "партий"} · {economyDuration(recipe.seconds * count)}</option>)}</select></label>
+    {maximum > 1 ? <label className={styles.field} htmlFor={inputId}>Размер заказа<select id={inputId} value={quantity} disabled={busy || uncertain || maximum < 1} onChange={event => setQuantity(Number(event.target.value))}>{choices.map(count => <option key={count} value={count}>{count} {count === 1 ? "партия" : count < 5 ? "партии" : "партий"} · {economyDuration(recipe.seconds * count)}</option>)}</select></label> : <p className={styles.muted}>{rewardCount === 1 ? "1 предмет занимает 1 место производства до получения." : `Результат: ${number(rewardCount)} шт. Место занято до получения.`}</p>}
     <p className={styles.muted}>Результат займёт {number(rewardCount * quantity)} мест. Сейчас свободно {number(state.storage.available)}; место понадобится при получении.</p>
     <button className={`${styles.primary} ${styles.wide}`} disabled={Boolean(reason) || busy || uncertain} onClick={() => void economy.act("start_production", recipe.id, quantity)}>Начать · {economyDuration(recipe.seconds * quantity)}<span className={styles.sr}>: {recipe.name}</span></button>
     {reason && <p className={styles.hint}><LockKeyhole size={14} aria-hidden />{reason}</p>}
+    {missingRecipes.map(({ id, recipe: prerequisite }) => prerequisite ? <button key={id} className={styles.textButton} onClick={() => navigate("production", prerequisite.buildingId)}>Приготовить: {prerequisite.name}<ArrowRight size={15} aria-hidden /></button> : null)}
     {maximum < 1 && <button className={styles.textButton} onClick={() => navigate("buildings", "warehouse")}>Расширить склад<ArrowRight size={15} aria-hidden /></button>}
     {Object.keys(recipe.cost.items).length > 0 && <button className={styles.textButton} onClick={() => navigate("inventory", Object.entries(recipe.cost.items).find(([id, amount]) => (state.inventory[id] ?? 0) < amount * quantity)?.[0] ?? Object.keys(recipe.cost.items)[0])}>Откуда брать ингредиенты?<ChevronRight size={14} aria-hidden /></button>}
   </article>;
@@ -321,16 +318,17 @@ function Exploration({ economy, navigate, focusId }: { economy: ReadyEconomy; na
 
 function SellForm({ economy, item }: { economy: ReadyEconomy; item: Item }) {
   const { snapshot: state } = economy;
-  const buyer = state.catalog.localBuyer, minimum = economyLocalSaleMinimumQuantity(item.baseSellPrice, buyer);
+  const buyer = state.catalog.localBuyer, minimum = economyLocalSaleMinimumQuantity(item.baseSellPrice, buyer, item.id);
   const [value, setValue] = useState(() => String(minimum));
   const inputId = useId(), stock = state.inventory[item.id] ?? 0;
-  const maximum = economyLocalSaleLimit(item.baseSellPrice, stock, state.wallet.coins, buyer);
+  const maximum = economyLocalSaleLimit(item.baseSellPrice, stock, state.wallet.coins, buyer, item.id);
   const parsed = integer(value, maximum), quantity = parsed && parsed >= minimum ? parsed : null;
-  const total = quantity ? economyLocalSellPrice(item.baseSellPrice, quantity, buyer) : 0;
-  const discount = (10_000 - (buyer?.payoutBps ?? 10_000)) / 100;
+  const total = quantity ? economyLocalSellPrice(item.baseSellPrice, quantity, buyer, item.id) : 0;
+  const fixedPrice = buyer?.unitPrices?.[item.id];
+  const discount = fixedPrice !== undefined ? 0 : (10_000 - (buyer?.payoutBps ?? 10_000)) / 100;
   const unavailable = economy.busy || economy.uncertain || economy.retryAt > economy.now;
   return <div className={styles.card}><h3>Продать торговцу: {item.name.toLocaleLowerCase("ru-RU")}</h3>
-    <p className={styles.muted}>{discount > 0 ? `Быстрая продажа с уценкой ${number(discount)}%. Итог за всё количество округляется вниз до целой монеты.` : `Торговец покупает сразу по ${number(item.baseSellPrice)} монет за штуку.`} На прилавке можно предложить свою цену другим игрокам.</p>
+    <p className={styles.muted}>{discount > 0 ? `Быстрая продажа с уценкой ${number(discount)}%. Итог за всё количество округляется вниз до целой монеты.` : `Торговец покупает сразу по ${number(fixedPrice ?? item.baseSellPrice)} монет за штуку.`} На прилавке можно предложить свою цену другим игрокам.</p>
     {discount > 0 && fishClassForItem(item.id, state.catalog.fishing) && <p className={styles.muted}>Плёска купит дороже: {number(item.baseSellPrice)} монет за штуку. Её лавка открывается на карте.</p>}
     <label className={styles.field} htmlFor={inputId}>Количество · на складе {number(stock)}<input id={inputId} type="number" inputMode="numeric" min={minimum} max={Math.max(minimum, maximum)} step={1} value={value} disabled={unavailable || maximum < minimum} onChange={event => setValue(event.target.value)} /></label>
     <button className={styles.primary} disabled={!quantity || unavailable} onClick={() => { if (quantity && !unavailable) void economy.act("sell", item.id, quantity, buyer ? total : 0); }}><ItemIcon itemId="coins" size={16} />Продать {quantity ?? "-"} шт. за {quantity ? number(total) : "-"} монет</button>
@@ -357,7 +355,9 @@ function ItemGuide({ economy, item, navigate }: { economy: ReadyEconomy; item: I
       {ingredients.map(recipe => <li key={recipe.id}><button className={styles.textButton} onClick={() => navigate("production", recipe.buildingId)}><Hammer size={15} aria-hidden />{recipe.name} · нужно {number(recipe.cost.items[item.id])}<ChevronRight size={14} aria-hidden /></button></li>)}
       {buildings.map(building => <li key={building.id}><button className={styles.textButton} onClick={() => navigate("buildings", building.id)}><House size={15} aria-hidden />Стройка: {building.name}<ChevronRight size={14} aria-hidden /></button></li>)}
       {provisions.map(route => <li key={route.id}><button className={styles.textButton} onClick={() => navigate("exploration", route.id)}><Compass size={15} aria-hidden />Припасы: {route.name}<ChevronRight size={14} aria-hidden /></button></li>)}
-    </ul>{item.tradable && <p className={styles.muted}>{state.catalog.localBuyer && state.catalog.localBuyer.payoutBps < 10_000
+    </ul>{item.tradable && <p className={styles.muted}>{state.catalog.localBuyer?.unitPrices?.[item.id] !== undefined
+      ? `Можно продать торговцу по ${number(state.catalog.localBuyer.unitPrices[item.id])} монет за штуку.`
+      : state.catalog.localBuyer && state.catalog.localBuyer.payoutBps < 10_000
       ? `Быстрая продажа торговцу: ${number(state.catalog.localBuyer.payoutBps / 100)}% базовой цены, с округлением итоговой суммы вниз.`
       : `Можно продать торговцу по ${number(item.baseSellPrice)} монет за штуку.`} На рынке игроков вы назначаете цену сами.</p>}</div>
   </div>;
@@ -440,16 +440,18 @@ function ListingPriceForm({ economy, item }: { economy: ReadyEconomy; item: Item
   const limits = state.catalog.market;
   const quantityMax = Math.min(limits.maxLotQuantity, state.inventory[item.id] ?? 0, Math.floor(marketDailyLimit(state.buildings.home ?? 1, state.catalog) / item.baseSellPrice));
   const quantity = integer(amount, quantityMax);
-  const maximum = quantity ? item.baseSellPrice * limits.maxPriceMultiplier * quantity : 0;
+  const quantum = state.catalog.currencyScale;
+  const maximum = quantity ? Math.floor(item.baseSellPrice * limits.maxPriceMultiplier * quantity / quantum) * quantum : 0;
   const totalPrice = integer(price, maximum);
-  const minimum = quantity ? marketMinimumPrice(item.id, quantity, state.catalog) : item.baseSellPrice;
-  const valid = Boolean(quantity && totalPrice && totalPrice >= minimum && totalPrice % state.catalog.currencyScale === 0);
+  const rawMinimum = quantity ? marketMinimumPrice(item.id, quantity, state.catalog) : item.baseSellPrice;
+  const minimum = Math.ceil(rawMinimum / quantum) * quantum;
+  const valid = Boolean(quantity && totalPrice && totalPrice >= minimum && totalPrice % quantum === 0);
   const full = (economy.market?.mine.length ?? 0) >= limits.maxListings;
   const disabled = !valid || full || busy || uncertain || !canTrade(state) || !marketItemUnlocked(state, item.id, state.catalog);
   return <div className={styles.card}>
     <div className={styles.fields}>
       <label className={styles.field} htmlFor={quantityId}>Количество<input id={quantityId} type="number" inputMode="numeric" min={1} max={quantityMax} step={1} value={amount} disabled={busy || uncertain} onChange={event => setAmount(event.target.value)} /></label>
-      <label className={styles.field} htmlFor={priceId}>Цена всего лота<input id={priceId} type="number" inputMode="numeric" min={minimum} max={maximum || undefined} step={state.catalog.currencyScale} value={price} disabled={busy || uncertain} onChange={event => setPrice(event.target.value)} /></label>
+      <label className={styles.field} htmlFor={priceId}>Цена всего лота<input id={priceId} type="number" inputMode="numeric" min={minimum} max={maximum || undefined} step={quantum} value={price} disabled={busy || uncertain} onChange={event => setPrice(event.target.value)} /></label>
     </div>
     <p className={styles.muted}>{quantity ? `Допустимая цена: ${number(minimum)}–${number(maximum)} монет за ${number(quantity)} шт.` : `До ${quantityMax} предметов в этом предложении.`}</p>
     {valid && <p className={styles.muted}>Получите {number(totalPrice! - marketSaleFee(totalPrice!, limits.feeBps))} монет после сбора {limits.feeBps / 100}%.</p>}

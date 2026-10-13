@@ -90,7 +90,8 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     val meal: EconomyJobMeal? = null,
 ) {
     init {
-        require(collection == null || kind == "production" && targetId == "garden" && (rewards["berries"] ?: 0L) > 0L)
+        require(collection == null || kind == "production" && targetId == "garden" &&
+            ((rewards["berries"] ?: 0L) > 0L || (rewards["strawberries"] ?: 0L) > 0L))
         require(rareDrop == null || kind == "exploration" && (rareDrop.itemId == null || rewards[rareDrop.itemId] == 1L))
         require(meal == null || (meal.consumer == "hero" && kind == "exploration" || meal.consumer == "builder" && kind == "construction"))
     }
@@ -124,8 +125,10 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     val requiredHomeLevel: Int = 1, val seconds: Long, val cost: EconomyCost = EconomyCost(), val rewards: Map<String, Long>,
     val requiredBuildings: Map<String, Int> = emptyMap(), val collection: EconomyCollectionSpec? = null,
     val maxBatch: Int? = null, val fishInput: EconomyRecipeFishInput? = null,
+    val requiredRecipes: Map<String, Long> = emptyMap(),
 ) {
-    init { require(collection == null || buildingId == "garden" && (rewards["berries"] ?: 0L) > 0L) }
+    init { require(collection == null || buildingId == "garden" &&
+        ((rewards["berries"] ?: 0L) > 0L || (rewards["strawberries"] ?: 0L) > 0L)) }
 }
 @Serializable data class EconomyExploration(
     val id: String, val name: String, val description: String, val requiredHomeLevel: Int = 1,
@@ -140,7 +143,7 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
         require(feeBps in 0..10000 && dailyTradeValueByHome.size == 5 && dailyTradeValueByHome.all { it in 0L..ECONOMY_MAX_BALANCE })
     }
 }
-@Serializable data class EconomyLocalBuyer(val payoutBps: Int = 10_000)
+@Serializable data class EconomyLocalBuyer(val payoutBps: Int = 10_000, val unitPrices: Map<String, Long> = emptyMap())
 @Serializable data class EconomyConstructionSpeedup(val secondsPerPearl: Long, val priceStepPearls: Long = 2)
 @Serializable data class EconomyProductionSlotUpgrade(val slots: Int, val requiredHomeLevel: Int, val pricePearls: Long) {
     init { require(slots in 2..3 && requiredHomeLevel in 1..5 && pricePearls in 1L..ECONOMY_MAX_PEARLS) }

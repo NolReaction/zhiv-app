@@ -7,21 +7,21 @@ const near = (actual, expected) => assert(Math.abs(actual - expected) < 1e-8, `$
 
 test("elementary materials retain recursive occupied-slot minutes without treating parallel slots as a wall clock", () => {
   const math = economicMath(readEconomyCatalog());
-  assert.deepEqual(math.profile("planks").slotMinutes, { workshop: 15, woodlot: 8 });
+  assert.deepEqual(math.profile("planks").slotMinutes, { workshop: 2, woodlot: 3 });
   near(math.profile("rope").totalSlotMinutes, 17.5);
   const brick = math.profile("bricks");
-  near(brick.slotMinutes.kiln, 30); near(brick.slotMinutes.quarry, 8.4375); near(brick.slotMinutes.woodlot, 4);
+  near(brick.slotMinutes.kiln, 30); near(brick.slotMinutes.quarry, 8.4375); near(brick.slotMinutes.woodlot, 3);
   near(brick.slotMinutes.mochlik, 8.4375);
-  near(math.profile("tools").totalSlotMinutes, 309.5);
-  near(math.profile("reinforced_parts").totalSlotMinutes, 504);
+  near(math.profile("tools").totalSlotMinutes, 270.5);
+  near(math.profile("reinforced_parts").totalSlotMinutes, 500);
   assert.equal(math.profile("fiber").sourceHome, 1, "Forest output exists before the dedicated fiber station");
   assert.equal(math.profile("fiber").referenceHome, 2);
   const berry = math.profile("berries");
-  near(berry.slotMinutes.garden, (1800 + 8) / 60 / 10);
-  near(berry.slotMinutes.mochlik, 8 / 60 / 10);
+  near(berry.slotMinutes.garden, (60 + 8) / 60);
+  near(berry.slotMinutes.mochlik, 8 / 60);
   const catalog = readEconomyCatalog();
   const dry = math.batch(catalog.recipes.find(r => r.id === "dry_berries"));
-  assert.equal(dry.directHome, 1); assert.equal(dry.referenceHome, 2);
+  assert.equal(dry.directHome, 2); assert.equal(dry.referenceHome, 2);
 });
 
 test("focused mining routes reserve the same intrinsic minutes of both Mochlik and the mine", () => {
@@ -67,7 +67,23 @@ test("catch expectation accounts for every fish as class stock and separately pr
   chargedRoute.explorations.find(r => r.id === "shore").cost = { coins: 7, items: { wood: 2 } };
   const charged = economicMath(chargedRoute).profile("fish_common");
   near(charged.coins, 7 / initial.output.fish_common);
-  near(charged.slotMinutes.woodlot, 8 / initial.output.fish_common);
+  near(charged.slotMinutes.woodlot, 6 / initial.output.fish_common);
+});
+
+test("first-stage fixed NPC prices are exact and strawberry profiles retain their recipe unlock", () => {
+  const catalog = readEconomyCatalog(), math = economicMath(catalog);
+  for (const [id, price] of Object.entries(catalog.localBuyer.unitPrices)) {
+    assert.equal(math.liquidation({ [id]: 1 }), price);
+    assert.equal(math.liquidation({ [id]: 3 }), price * 3);
+  }
+  const strawberry = math.profile("strawberries");
+  assert.deepEqual(strawberry.unlockRecipes, { cook_compote: 1 });
+  assert.equal(strawberry.producerLevels.dryer, 1);
+  near(strawberry.slotMinutes.garden, 308 / 60);
+  const locked = structuredClone(catalog); locked.recipes.find(recipe => recipe.id === "cook_compote").requiredHomeLevel = 2;
+  assert.equal(economicMath(locked).sourceHome("strawberries"), 2);
+  locked.recipes.find(recipe => recipe.id === "cook_compote").requiredRecipes = { grow_strawberries: 1 };
+  assert.throws(() => economicMath(locked).sourceHome("strawberries"), /Recipe unlock cycle/);
 });
 
 test("the longer catch gives eight class draws and consumes one bait per trip", () => {

@@ -46,12 +46,21 @@ test("class recipes combine species stock and save one exact class cost", () => 
   const state = fresh(); state.buildings.dryer = 1;
   state.inventory = { fish: 1, fish_silverfin: 1, wood: 3 };
   state.fishing.catches.fish_silverfin = 5;
-  apply(state, "start_production", "cook_grilled_fish", now, 2);
-  assert.deepEqual(state.inventory, { wood: 1 });
-  assert.equal(state.jobs[0].recipeId, "cook_grilled_fish");
-  assert.deepEqual(state.jobs[0].cost, { coins: 0, items: { fish_common: 2, wood: 2 } });
-  assert.deepEqual(state.jobs[0].rewards, { grilled_fish: 2 });
-  assert.equal(state.fishing.catches.fish_silverfin, 5);
+  failWithoutChanges(state, "start_production", "cook_grilled_fish", "INVALID_ECONOMY_COMMAND", now, 2);
+  apply(state, "start_production", "cook_grilled_fish");
+  assert.deepEqual(state.inventory, { fish_common: 1, wood: 3 });
+  const first = structuredClone(state.jobs[0]);
+  assert.equal(first.recipeId, "cook_grilled_fish");
+  assert.deepEqual(first.cost, { coins: 0, items: { fish_common: 1 } });
+  assert.deepEqual(first.rewards, { grilled_fish: 1 });
+  const ready = Date.parse(first.finishesAt);
+  apply(state, "claim_job", first.id, ready);
+  apply(state, "start_production", "cook_grilled_fish", ready);
+  assert.deepEqual(state.inventory, { wood: 3, grilled_fish: 1 });
+  assert.deepEqual(state.jobs[0].cost, first.cost); assert.deepEqual(state.jobs[0].rewards, first.rewards);
+  apply(state, "claim_job", state.jobs[0].id, Date.parse(state.jobs[0].finishesAt));
+  assert.deepEqual(state.inventory, { wood: 3, grilled_fish: 2 });
+  assert.equal(state.jobs.length, 0); assert.equal(state.fishing.catches.fish_silverfin, 5);
 });
 
 test("class recipes never substitute rare fish for missing common fish", () => {

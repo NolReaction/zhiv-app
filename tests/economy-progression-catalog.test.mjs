@@ -116,14 +116,23 @@ test("local-sale audit protects processing margins and rejects a zero recovery p
 
 test("bulk limits, overnight yield and ingredient conservation cannot silently regress", () => {
   for (const [id, mutate, pattern] of [
-    ["grow_berries", r => r.maxBatch = 10, /cannot be bulk queued/],
-    ["grow_berries_overnight", r => r.rewards.berries = 160, /unattended output|quarter of storage/],
+    ["grow_berries", r => r.maxBatch = 10, /cannot be bulk queued|First-stage production must reserve one slot/],
+    ["grow_berries_overnight", r => r.rewards.berries = 160, /unattended output|quarter of storage|one batch output/],
     ["quarry_stone_overnight", r => r.rewards.stone = 110, /unattended output|quarter of storage/],
     ["workshop_overnight", r => r.cost.items.wood = 1, /bulk order invents wood/],
   ]) {
     const catalog = readEconomyCatalog(); mutate([...catalog.recipes, ...catalog.explorations].find(r => r.id === id));
     assert.throws(() => auditEconomyProgression(catalog), pattern, id);
   }
+});
+
+test("first-stage slots stay single-unit and recipe dependencies cannot silently cycle", () => {
+  const oversized = readEconomyCatalog(); oversized.recipes.find(recipe => recipe.id === "make_planks").maxBatch = 2;
+  assert.throws(() => auditEconomyProgression(oversized), /First-stage production must reserve one slot/);
+  const invalidUnlock = readEconomyCatalog(); invalidUnlock.recipes.find(recipe => recipe.id === "grow_strawberries").requiredRecipes = { missing_compote: 1 };
+  assert.throws(() => auditEconomyProgression(invalidUnlock), /unknown or invalid recipe unlock/);
+  const cycle = readEconomyCatalog(); cycle.recipes.find(recipe => recipe.id === "cook_compote").requiredRecipes = { grow_strawberries: 1 };
+  assert.throws(() => auditEconomyProgression(cycle), /Recipe unlock cycle/);
 });
 
 test("rare source audit rejects ordinary prices NPC stock deterministic recipes and early upgrade gates", () => {

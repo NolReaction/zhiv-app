@@ -15,16 +15,16 @@ after(() => vite.close());
 const read = (p, at = now) => economy.getDevEconomy(p.token, at);
 const row = p => globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
 const shelf = (p, at = now) => economy.getDevEconomyMarket(p.token, {}, at);
-function player(home = 2, inventory = { berries: 100 }) {
+function player(home = 2, inventory = { wood: 100 }) {
   const p = identities.createDevIdentity("Лесник", crypto.randomUUID()); read(p);
   row(p).state.wallet.coins = 1000000; row(p).state.inventory = inventory;
-  row(p).state.buildings.home = home; row(p).state.completedExplorations = 1;
+  row(p).state.buildings.home = home; row(p).state.buildings.warehouse = 6; row(p).state.completedExplorations = 1;
   return p;
 }
 const command = (p, action, targetId, quantity = 1, totalPrice = 0, at = now) => ({ requestId: crypto.randomUUID(), ownerPublicId: p.me.user.publicId,
   expectedRevision: read(p, at).revision, action, targetId, quantity, totalPrice });
 const trade = (p, action, targetId, quantity = 1, totalPrice = 0, at = now) => economy.commandDevEconomyMarket(p.token, command(p, action, targetId, quantity, totalPrice, at), at);
-const offer = (p, quantity = 1, multiplier = 1, at = now) => trade(p, "create_listing", "berries", quantity, quantity * 30 * multiplier, at).listing;
+const offer = (p, quantity = 1, multiplier = 1, at = now) => trade(p, "create_listing", "wood", quantity, quantity * 30 * multiplier, at).listing;
 const buy = (p, lot, at = now) => trade(p, "buy_listing", lot.id, lot.quantity, lot.totalPrice, at);
 const barter = (p, action, fields, at = now) => economy.commandDevEconomyBarter(p.token, { requestId: crypto.randomUUID(), ownerPublicId: p.me.user.publicId,
   expectedRevision: read(p, at).revision, action, ...fields }, at);
@@ -47,7 +47,7 @@ test("current house bands allow 2–3 and 4–5 while blocking both cross-band d
     identities.resetDevStoreForTests();
     const seller = player(sellerHome), buyer = player(buyerHome, {}), lot = offer(seller);
     assert.equal(shelf(buyer).listings.some(item => item.id === lot.id), visible);
-    if (visible) assert.equal(buy(buyer, lot).state.inventory.berries, 1);
+    if (visible) assert.equal(buy(buyer, lot).state.inventory.wood, 1);
     else {
       // Even an injected/old showcase cannot bypass the authoritative purchase check.
       globalThis.__zhivDevEconomyStore.showcases.get(buyer.me.user.publicId).ids = [lot.id];
@@ -67,7 +67,7 @@ test("seller or buyer upgrading across a band cannot spend an already selected l
     const before = [read(seller), read(buyer)];
     assert.throws(() => buy(buyer, lot), { code: "ECONOMY_MARKET_HOME_BAND" });
     assert.deepEqual([read(seller), read(buyer)], before);
-    assert.equal(trade(seller, "cancel_listing", lot.id).state.inventory.berries, 100);
+    assert.equal(trade(seller, "cancel_listing", lot.id).state.inventory.wood, 100);
   }
 });
 
@@ -131,7 +131,7 @@ test("legacy zero-fee quotes survive, over-ceiling quotes are kept refundable bu
   globalThis.__zhivDevEconomyStore.showcases.get(buyer.me.user.publicId).ids = [overpriced.id];
   assert.throws(() => buy(buyer, { ...overpriced, totalPrice: 150 }), { code: "ECONOMY_MARKET_ITEM_LOCKED" });
   assert.equal(shelf(seller).mine[0].totalPrice, 150);
-  assert.equal(trade(seller, "cancel_listing", overpriced.id).state.inventory.berries, 99);
+  assert.equal(trade(seller, "cancel_listing", overpriced.id).state.inventory.wood, 99);
 });
 
 test("an unfillable new lot is refused without escrow and a higher-house daily budget permits it", () => {

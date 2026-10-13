@@ -48,14 +48,14 @@ class EconomyFishClassesTest {
         val fish = spec.fish.first().itemId
         val job = EconomyJob(UUID.randomUUID().toString(), "exploration", "shore", startedAt = now.minusSeconds(180).toString(),
             finishesAt = now.toString(), rewards = mapOf(fish to 2L), fishing = EconomyFishingCatch("reed_rod", null, fish))
-        val state = EconomyRules.initial().copy(inventory = mapOf("wood" to 298L), jobs = listOf(job))
+        val state = EconomyRules.initial().copy(inventory = mapOf("wood" to 48L), jobs = listOf(job))
         assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> {
             EconomyRules.apply(state, command("claim_job", job.id), now, mapOf("stone" to 1L))
         }.code)
         assertTrue(state.fishing.catches.isEmpty())
         assertEquals(job, state.jobs.single())
         val claimed = EconomyRules.apply(state, command("claim_job", job.id), now).first
-        assertEquals(300L, EconomyRules.storage(claimed).used)
+        assertEquals(50L, EconomyRules.storage(claimed).used)
     }
 
     @Test fun `recipe accepts mixed legacy common stock but never substitutes expensive classes`() {

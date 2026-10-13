@@ -12,7 +12,7 @@ after(() => vite.close());
 const owner = "TEST-GOAL-0001";
 const goal = { buildingId: "home", targetLevel: 2 };
 function state(overrides = {}) {
-  return { ownerPublicId: owner, wallet: { coins: 1000, pearls: 0 }, inventory: { wood: 40, stone: 20, planks: 2, fiber: 10 },
+  return { ownerPublicId: owner, wallet: { coins: 100, pearls: 0 }, inventory: { wood: 4, stone: 1, planks: 1, fiber: 10 },
     buildings: { home: 1, warehouse: 1, workshop: 1, woodlot: 1 }, jobs: [], catalog: structuredClone(economyCatalog), ...overrides };
 }
 function memoryStorage() {
@@ -34,15 +34,15 @@ test("home target reads current catalog, deficits and craft ingredients without 
   const view = state(), before = structuredClone(view);
   const details = constructionGoalDetails(view, goal);
   assert.equal(details.name, "Дом Мохлика");
-  assert.deepEqual(details.missing, { coins: 500, items: { planks: 4, rope: 2 } });
-  assert.deepEqual(details.keepItems, { wood: 28, stone: 15, planks: 6, rope: 2, fiber: 6 });
-  assert.deepEqual(details.excessItems, { wood: 12, stone: 5, planks: 0, fiber: 4 });
+  assert.deepEqual(details.missing, { coins: 150, items: { stone: 1, planks: 1 } });
+  assert.deepEqual(details.keepItems, { wood: 4, stone: 2, planks: 2 });
+  assert.deepEqual(details.excessItems, { wood: 0, stone: 0, planks: 0, fiber: 10 });
   assert.equal(details.reservesComplete, true);
   assert.deepEqual(view, before);
-  view.inventory.planks = 6; view.inventory.rope = 2;
-  view.wallet.coins = 1500;
+  view.inventory.planks = 2; view.inventory.stone = 2;
+  view.wallet.coins = 250;
   assert.deepEqual(constructionGoalDetails(view, goal).missing, { coins: 0, items: {} });
-  assert.equal(constructionGoalDetails(view, goal).keepItems.wood, 20);
+  assert.equal(constructionGoalDetails(view, goal).keepItems.wood, 3);
   assert.equal(constructionGoalDetails(view, goal).keepItems.fiber, undefined);
 });
 
@@ -102,9 +102,9 @@ test("recipe navigation and ingredient protection use the same available recipe"
 test("a future workshop goal already protects its crafting inputs before the workshop is built", () => {
   const view = state({ buildings: { home: 1, warehouse: 1 } });
   const details = constructionGoalDetails(view, goal);
-  assert.equal(details.keepItems.wood, 28);
-  assert.equal(details.keepItems.fiber, 6);
-  assert.equal(details.excessItems.fiber, 4);
+  assert.equal(details.keepItems.wood, 4);
+  assert.equal(details.keepItems.fiber, undefined);
+  assert.equal(details.excessItems.fiber, 10);
 });
 
 test("a cyclic or overflowing craft plan conservatively retains stock", () => {

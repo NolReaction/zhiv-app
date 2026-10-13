@@ -59,12 +59,12 @@ test("construction keeps the full-duration denomination while charging smaller t
   }
 });
 
-test("wallet limits and unchanged material prices preserve denomination while fish uses the new class price", () => {
+test("wallet limits preserve denomination while first-stage material prices follow the new catalog", () => {
   assert.equal(model.ECONOMY_MAX_PEARLS, 50_000_000_000); assert.equal(model.ECONOMY_MAX_BALANCE, 10_000_000_000); assert.equal(model.ECONOMY_MAX_ITEMS, 1_000_000_000);
-  for (const [id, base] of Object.entries({ berries: 3, wood: 4, stone: 3, fiber: 2 }))
+  for (const [id, base] of Object.entries({ berries: 1, wood: 3, stone: 4, fiber: 2 }))
     assert.equal(model.economyCatalog.items.find(item => item.id === id).baseSellPrice, base * 10);
   assert.equal(model.economyCatalog.items.find(item => item.id === "fish_common").baseSellPrice, 40);
-  assert.equal(model.economyCatalog.buildings.find(item => item.id === "home").levels[1].cost.coins, 1500);
+  assert.equal(model.economyCatalog.buildings.find(item => item.id === "home").levels[1].cost.coins, 250);
   assert.deepEqual(rules.convertLegacyEconomy({ sparks: 1_000_000, wood: 100, stone: 400 }), { version: 1, coinsGranted: 5000, woodGranted: 10, stoneGranted: 20 });
   const p = player(), view = economy.getDevEconomy(p.token); view.wallet.coins = model.ECONOMY_MAX_BALANCE;
   assert.equal(model.economyViewSchema.safeParse(view).success, true);

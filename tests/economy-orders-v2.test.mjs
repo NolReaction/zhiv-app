@@ -86,6 +86,7 @@ test("a small resident pool relaxes only oldest history without copying a curren
 
 test("three free replacements share one board budget, then require an approved pearl quote", () => {
   const state = fresh(); state.wallet.pearls = 40;
+  Object.assign(state.buildings, { home: 2, woodlot: 1, workshop: 1, dryer: 1 });
   for (const slot of [0, 1, 2]) {
     const before = board(state); assert.equal(before.replacementPricePearls, 0);
     apply(state, "replace_resident_order", before.offers[slot].id);

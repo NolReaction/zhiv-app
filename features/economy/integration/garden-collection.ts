@@ -3,7 +3,8 @@ import type { EconomySceneGarden, GardenHarvestEvent, GardenHarvestRequest } fro
 import { economyActorConflict } from "@/features/economy/domain/actor-availability";
 
 export function isBerryProduction(job: EconomyJob) {
-  return job.kind === "production" && job.targetId === "garden" && (job.rewards.berries ?? 0) > 0;
+  return job.kind === "production" && job.targetId === "garden"
+    && ((job.rewards.berries ?? 0) > 0 || (job.rewards.strawberries ?? 0) > 0);
 }
 
 export function economyGardenCrop(snapshot: EconomyView | null, preferredJobId?: string | null): EconomySceneGarden | null | undefined {

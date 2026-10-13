@@ -158,6 +158,8 @@ test("upgrade cost grants only the missing cost and leave prerequisite buildings
   const before = read(p), granted = cheat(p, "grant_upgrade_cost", "home").state;
   assert.deepEqual(granted.inventory, expected); assert.equal(granted.wallet.coins, before.wallet.coins);
   assert.deepEqual(granted.buildings, before.buildings);
+  assert.throws(() => normal(p, "start_construction", "home"), { code: "ECONOMY_TUTORIAL_REQUIRED" });
+  row.state.tutorialOrder = { version: 2, step: 4, ingredientsClaimed: true, completed: true, terms: null };
   assert.throws(() => normal(p, "start_construction", "home"), { code: "ECONOMY_BUILDING_REQUIRED" });
   assert.deepEqual(cheat(p, "grant_upgrade_cost", "home").state.inventory, expected, "repeated grants do not accumulate ingredients");
   cheat(p, "set_building_level", "home", 5);
@@ -327,7 +329,7 @@ test("individual DEV gear grants preserve paid trips and fish grants do not fake
   assert.deepEqual(granted.jobs[0], trip, "granting better tackle does not rewrite an already paid draw");
   for (const id of ["fish_shark", "fish", "firefly_bait"]) cheat(p, "grant_item", id, 3);
   const state = read(p);
-  assert.equal(state.inventory.fish_legendary, 3); assert.equal(state.inventory.fish_common, before.inventory.fish_common + 3); assert.equal(state.inventory.firefly_bait, 3);
+  assert.equal(state.inventory.fish_legendary, 3); assert.equal(state.inventory.fish_common, (before.inventory.fish_common ?? 0) + 3); assert.equal(state.inventory.firefly_bait, 3);
   assert.deepEqual(state.fishing.catches, {});
   assert.equal(state.completedExplorations, 0);
 });

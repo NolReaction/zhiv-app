@@ -9,6 +9,7 @@ const identities = await vite.ssrLoadModule("/lib/dev/api-store.ts");
 const economy = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
 const { economyCatalog: catalog, marketViewSchema } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const rules = await vite.ssrLoadModule("/features/economy/domain/market-rules.ts");
+const { economyLocalSellPrice } = await vite.ssrLoadModule("/features/economy/domain/local-sale.ts");
 const now = Date.parse("2026-10-05T12:00:00Z"), windowMs = catalog.market.showcaseRefreshSeconds * 1000;
 beforeEach(() => identities.resetDevStoreForTests());
 after(() => vite.close());
@@ -72,9 +73,11 @@ test("whole-lot floor prevents immediate NPC arbitrage for every item and preser
     const seller = player(5, { [item.id]: 2 });
     const floor = rules.marketMinimumPrice(item.id, 2);
     assert.throws(() => offer(seller, item.id, 2, floor - 1), { code: "ECONOMY_MARKET_PRICE" }, item.id);
-    const npc = catalog.fishing.classes.some(group => group.itemId === item.id) ? item.baseSellPrice * 2 : Math.floor(item.baseSellPrice * 2 * catalog.localBuyer.payoutBps / 10000);
+    const npc = catalog.fishing.classes.some(group => group.itemId === item.id) ? item.baseSellPrice * 2 : economyLocalSellPrice(item.baseSellPrice, 2, catalog.localBuyer, item.id);
     assert.ok(floor >= npc, item.id);
-    assert.equal(offer(seller, item.id, 1, item.baseSellPrice).totalPrice, item.baseSellPrice);
+    const legalBase = Math.ceil(item.baseSellPrice / 10) * 10;
+    if (legalBase !== item.baseSellPrice) assert.throws(() => offer(seller, item.id, 1, item.baseSellPrice), { code: "ECONOMY_MARKET_PRICE" });
+    assert.equal(offer(seller, item.id, 1, legalBase).totalPrice, legalBase);
     assert.equal(offer(seller, item.id, 1, item.baseSellPrice * catalog.market.maxPriceMultiplier).totalPrice, item.baseSellPrice * catalog.market.maxPriceMultiplier);
   }
 });
@@ -135,9 +138,9 @@ test("home gate applies to discovery and to a selected item after a level change
 
 test("historical cheap lots remain immutable and cancellable but cannot enter a showcase", () => {
   const seller = player(), buyer = player(2, {}), lot = offer(seller);
-  const saved = globalThis.__zhivDevEconomyStore.listings.get(lot.id); saved.totalPrice = 10;
+  const saved = globalThis.__zhivDevEconomyStore.listings.get(lot.id); saved.totalPrice = 5;
   const snapshot = structuredClone(saved);
-  assert.equal(market(buyer).listings.length, 0); assert.equal(market(seller).mine[0].totalPrice, 10);
+  assert.equal(market(buyer).listings.length, 0); assert.equal(market(seller).mine[0].totalPrice, 5);
   assert.deepEqual(saved, snapshot);
   assert.throws(() => buy(buyer, saved), { code: "ECONOMY_MARKET_SHOWCASE_CHANGED" });
   assert.equal(trade(seller, "cancel_listing", lot.id).state.inventory.berries, 100);

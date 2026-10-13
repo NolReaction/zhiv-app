@@ -2,6 +2,17 @@ import type { ReactNode } from "react";
 
 /** Prepared meals use different serving shapes so they remain distinct at 24 px. */
 export const foodItemArt: Record<string, ReactNode> = {
+  berry_compote: <>
+    <path d="M11 18h26v19c0 9-26 9-26 0Z" fill="#d6a195" />
+    <path d="M15 23h18v13c0 6-18 6-18 0Z" fill="#a55769" strokeWidth="1.3" />
+    <ellipse cx="24" cy="18" rx="13" ry="5" fill="#d4b286" />
+    <path d="M13 11h22v8H13Z" fill="#b68b55" />
+    <ellipse cx="24" cy="11" rx="11" ry="3.5" fill="#e7c38e" />
+    <path d="M16 21v13" stroke="#efd3bd" strokeWidth="2.6" />
+    <circle cx="22" cy="31" r="3.4" fill="#c87385" strokeWidth="1.2" />
+    <circle cx="28" cy="35" r="3.2" fill="#c87385" strokeWidth="1.2" />
+    <path d="m20 12 8-1M17 39c4 2 10 2 14 0" stroke="#f2d9af" strokeWidth="1.4" />
+  </>,
   grilled_fish: <>
     <ellipse cx="24" cy="31" rx="20" ry="11" fill="#e5dcc0" />
     <ellipse cx="24" cy="30" rx="16" ry="7" fill="#bdc8a0" stroke="#89967a" strokeWidth="1.4" />

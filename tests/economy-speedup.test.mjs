@@ -118,8 +118,9 @@ test("speedup honours locked old construction snapshots and can expand an overfl
   const f = fixture({ targetId: "warehouse" });
   f.row.state.inventory = { wood: 450 };
   f.row.state.jobs[0].catalogVersion = 1;
+  assert.equal(f.read().storage.overflow, 400);
   const result = issue(f, command(f)).state;
   assert.equal(result.buildings.warehouse, 2);
-  assert.deepEqual(result.storage, { capacity: 500, used: 450, reserved: 0, available: 50, overflow: 0 });
+  assert.deepEqual(result.storage, { capacity: 100, used: 450, reserved: 0, available: 0, overflow: 350 });
   assert.deepEqual(result.inventory, { wood: 450 });
 });

@@ -10,6 +10,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
 const { EconomyPanel, EconomyBalances, economyDuration } = await vite.ssrLoadModule("/features/economy/ui/economy-panel.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
+const { newTutorialOrder } = await vite.ssrLoadModule("/features/economy/domain/tutorial-order.ts");
 const { economyBuildingDestination } = await vite.ssrLoadModule("/features/economy/integration/world-adapter.ts");
 after(() => vite.close());
 
@@ -52,16 +53,19 @@ function job(overrides = {}) {
 
 test("fresh players can grow and explore without coins; expensive buildings explain missing materials", () => {
   const production = render("production");
-  assert.equal(disabled(button(production, "Начать · 15 мин")), false);
+  assert.equal(disabled(button(production, "Начать · 1 мин")), false);
   assert.match(production, /Без затрат/);
+  assert.match(production, /1 предмет занимает 1 место производства до получения/);
+  assert.doesNotMatch(production, /Размер заказа<select/);
   assert.equal(disabled(button(render("exploration"), "Отправиться: Лесная разведка")), false);
   const construction = render("buildings");
   assert.equal(disabled(button(construction, "Улучшить до ур. 2: Дом Мохлика")), true);
   assert.match(construction, /нужен уровень 1/);
-  assert.match(construction, /Древесина: 0 \/ 20/);
-  assert.match(construction, /Камень: 0 \/ 15/);
+  assert.match(construction, /Бревно: 0 \/ 3/);
+  assert.match(construction, /Камень: 0 \/ 2/);
+  assert.match(construction, /Доска: 0 \/ 2/);
   assert.ok(button(construction, "Где взять недостающие материалы?"));
-  assert.match(construction, /30 мин/);
+  assert.match(construction, /10 мин/);
 });
 
 test("construction checks materials together with coins and only opens when the full cost is available", () => {
@@ -73,16 +77,44 @@ test("construction checks materials together with coins and only opens when the 
   assert.equal(disabled(button(render("buildings", controller({ snapshot: state })), "Улучшить до ур. 2: Дом Мохлика")), false);
 });
 
+test("the first house upgrade requires all four server tutorial orders while legacy profiles retain access", () => {
+  const target = economyCatalog.buildings.find(building => building.id === "home").levels[1];
+  const state = snapshot({ wallet: { coins: target.cost.coins, pearls: 0 }, inventory: { ...target.cost.items },
+    buildings: { home: 1, garden: 1, ...target.requiredBuildings }, tutorialOrder: newTutorialOrder() });
+  let html = render("buildings", controller({ snapshot: state }));
+  assert.equal(disabled(button(html, "Улучшить до ур. 2: Дом Мохлика")), true);
+  assert.match(html, /Выполните учебные заказы: 0 \/ 4/);
+  state.tutorialOrder = { ...state.tutorialOrder, step: 3, terms: state.catalog.onboarding.residentOrders[3] };
+  html = render("buildings", controller({ snapshot: state }));
+  assert.equal(disabled(button(html, "Улучшить до ур. 2: Дом Мохлика")), true);
+  assert.match(html, /Выполните учебные заказы: 3 \/ 4/);
+  state.tutorialOrder = { ...state.tutorialOrder, step: 4, completed: true };
+  assert.equal(disabled(button(render("buildings", controller({ snapshot: state })), "Улучшить до ур. 2: Дом Мохлика")), false);
+  state.tutorialOrder = { version: 1, step: 0, ingredientsClaimed: true, completed: true, terms: state.catalog.onboarding.residentOrder };
+  assert.equal(disabled(button(render("buildings", controller({ snapshot: state })), "Улучшить до ур. 2: Дом Мохлика")), false);
+});
+
+test("strawberry production explains its first-compote prerequisite and unlocks after a collected result", () => {
+  const state = snapshot();
+  let html = render("production", controller({ snapshot: state }), "garden");
+  assert.equal(disabled(button(html, "Начать · 5 мин")), true);
+  assert.match(html, /Сначала приготовьте: Приготовить малиновый компот \(0 \/ 1\)/);
+  state.progression = { recipes: { cook_compote: 1 }, routes: {}, collections: { finds: [], travelSeconds: 0, quarrySeconds: 0 } };
+  html = render("production", controller({ snapshot: state }), "garden");
+  assert.equal(disabled(button(html, "Начать · 5 мин")), false);
+  assert.doesNotMatch(html, /Сначала приготовьте:/);
+});
+
 test("berry production owns its station and collection opens only after the server deadline", () => {
   const state = snapshot({ jobs: [job()] });
   let html = render("production", controller({ snapshot: state }));
-  assert.equal(disabled(button(html, "Начать · 15 мин")), true);
-  assert.equal(disabled(button(html, "Растут: Вырастить ягоды")), true);
-  assert.match(html, /Все места заняты или идёт улучшение/);
+  assert.equal(disabled(button(html, "Начать · 1 мин")), true);
+  assert.equal(disabled(button(html, "Растут: Вырастить малину")), true);
+  assert.match(html, /Все места заняты: сначала заберите результат/);
   state.jobs[0].finishesAt = new Date(now).toISOString();
   html = render("production", controller({ snapshot: state }));
-  assert.equal(disabled(button(html, "Собрать: Вырастить ягоды")), false);
-  assert.equal(disabled(button(html, "Начать · 15 мин")), true);
+  assert.equal(disabled(button(html, "Собрать: Вырастить малину")), false);
+  assert.equal(disabled(button(html, "Начать · 1 мин")), true);
   assert.match(html, /Ягоды созрели/);
 });
 
@@ -99,11 +131,11 @@ test("an active house build keeps the current level and does not offer a second 
 test("uncertain commands and retry cooldown prevent duplicate actions while navigation remains usable", () => {
   const state = snapshot({ jobs: [job({ finishesAt: new Date(now - 1).toISOString() })] });
   let html = render("overview", controller({ snapshot: state, uncertain: true, error: "No response" }));
-  assert.equal(disabled(button(html, "Собрать: Вырастить ягоды")), true);
+  assert.equal(disabled(button(html, "Собрать: Вырастить малину")), true);
   assert.equal(disabled(button(html, "Проверить результат")), false);
   assert.equal(disabled(button(html, "Производство")), false);
   html = render("production", controller({ snapshot: snapshot(), retryAt: now + 15_000, error: "Повторите позже" }));
-  assert.equal(disabled(button(html, "Начать · 15 мин")), true);
+  assert.equal(disabled(button(html, "Начать · 1 мин")), true);
   assert.equal(disabled(button(html, "Повторить через 15 с")), true);
 });
 
@@ -117,16 +149,16 @@ test("loading and failed initial reads never display a spend action or a made-up
 });
 
 test("market shows real full-lot quotes, escapes seller text and applies catalog access requirements", () => {
-  const market = { listings: [{ id: "offer", sellerPublicId: "OTHER", sellerName: "<script>seller</script>", itemId: "wood", quantity: 6, totalPrice: 420,
+  const market = { listings: [{ id: "offer", sellerPublicId: "OTHER", sellerName: "<script>seller</script>", itemId: "wood", quantity: 6, totalPrice: 300,
     status: "active", createdAt: new Date(now).toISOString(), closedAt: null, owned: false }], mine: [], nextCursor: null, serverTime: new Date(now).toISOString() };
-  const state = snapshot({ wallet: { coins: 420, pearls: 0 }, buildings: { home: 2, garden: 1 }, completedExplorations: 1 });
+  const state = snapshot({ wallet: { coins: 300, pearls: 0 }, buildings: { home: 2, garden: 1 }, completedExplorations: 1 });
   let html = render("market", controller({ snapshot: state, market }));
-  assert.match(html, /Древесина × 6/);
+  assert.match(html, /Бревно × 6/);
   assert.match(html, /за весь лот/);
   assert.match(html, /&lt;script&gt;seller&lt;\/script&gt;/);
   assert.doesNotMatch(html, /<script>/);
   assert.equal(disabled(button(html, "Купить весь лот")), false);
-  state.wallet.coins = 410;
+  state.wallet.coins = 290;
   assert.equal(disabled(button(render("market", controller({ snapshot: state, market })), "Не хватает монет")), true);
   state.catalog.market.requiredHomeLevel = 3;
   html = render("market", controller({ snapshot: state, market }));
@@ -143,7 +175,7 @@ test("an empty player market is honest and offers a next action without fictiona
 });
 
 test("a personal showcase explains its fixed window and disables stale quotes until refresh", () => {
-  const market = { listings: [{ id: "offer", sellerPublicId: "OTHER", sellerName: "Лесник", itemId: "wood", quantity: 6, totalPrice: 420,
+  const market = { listings: [{ id: "offer", sellerPublicId: "OTHER", sellerName: "Лесник", itemId: "wood", quantity: 6, totalPrice: 300,
     status: "active", createdAt: new Date(now).toISOString(), closedAt: null, owned: false }], mine: [], nextCursor: null, serverTime: new Date(now).toISOString(),
     showcase: { refreshAt: new Date(now + 1800_000).toISOString(), slots: 12, maxPerSeller: 2, refreshSeconds: 1800 } };
   const economy = controller({ snapshot: snapshot({ wallet: { coins: 10000, pearls: 0 }, buildings: { home: 2 }, completedExplorations: 1 }), market });
@@ -196,48 +228,50 @@ test("building progression requires the actual workshop and quarry, not only an 
 });
 
 test("warehouse shows real occupied, escrow, free and overflow counts and its next capacity upgrade", () => {
-  const state = snapshot({ inventory: { wood: 190 }, storage: { capacity: 200, used: 190, reserved: 30, available: 0, overflow: 20 } });
+  const state = snapshot({ inventory: { wood: 60 }, storage: { capacity: 50, used: 60, reserved: 10, available: 0, overflow: 20 } });
   const html = render("inventory", controller({ snapshot: state }));
-  assert.match(html, /В запасах: 190 · На прилавках: 30 · Свободно: 0/);
+  assert.match(html, /В запасах: 60 · На прилавках: 10 · Свободно: 0/);
   assert.match(html, /Сверх вместимости: 20/);
   assert.match(html, /отмена всегда вернёт вещи/);
   assert.ok(button(html, "Расширить склад"));
   const upgrade = render("buildings", controller({ snapshot: state }), "warehouse");
-  assert.match(upgrade, /Вместимость склада: 500 предметов/);
+  assert.match(upgrade, /Вместимость склада: 100 предметов/);
   assert.ok(button(upgrade, "Улучшить до ур. 2: Кладовая"));
 });
 
 test("full storage leaves ready rewards safe and offers recovery without preventing fitting production", () => {
+  // A saved pre-v6 harvest retains all six items even though new jobs yield one.
   const readyJob = job({ finishesAt: new Date(now).toISOString() });
-  const state = snapshot({ inventory: { wood: 197 }, jobs: [readyJob], storage: { capacity: 200, used: 197, reserved: 0, available: 3, overflow: 0 } });
+  const state = snapshot({ inventory: { wood: 47 }, jobs: [readyJob], storage: { capacity: 50, used: 47, reserved: 0, available: 3, overflow: 0 } });
   let html = render("overview", controller({ snapshot: state }));
-  assert.equal(disabled(button(html, "Собрать: Вырастить ягоды")), true);
+  assert.equal(disabled(button(html, "Собрать: Вырастить малину")), true);
   assert.match(html, /нужно 6 мест, свободно 3/);
   assert.match(html, /не портятся/);
   assert.ok(button(html, "Освободить место"));
   state.jobs = [];
   html = render("production", controller({ snapshot: state }));
-  assert.equal(disabled(button(html, "Начать · 15 мин")), false, "Production can finish while the player frees storage");
+  assert.equal(disabled(button(html, "Начать · 1 мин")), false, "Production can finish while the player frees storage");
   state.jobs = [job({ finishesAt: new Date(now).toISOString(), rewards: { berries: 250 }, catalogVersion: 1 })];
   html = render("overview", controller({ snapshot: state }));
   assert.ok(button(html, "Расширить склад"));
 });
 
 test("production batch options fit the entire result in warehouse capacity, even if current free space is lower", () => {
-  const state = snapshot({ storage: { capacity: 200, used: 195, reserved: 0, available: 5, overflow: 0 } });
+  const state = snapshot({ buildings: { home: 4, garden: 1, warehouse: 4 }, inventory: { wood: 195 },
+    storage: { capacity: 200, used: 195, reserved: 0, available: 5, overflow: 0 } });
   Object.assign(state.catalog.recipes.find(recipe => recipe.id === "grow_berries"), { rewards: { berries: 70, fiber: 20 }, maxBatch: 10 });
   const html = render("production", controller({ snapshot: state }));
   const size = html.match(/Размер заказа<select[^>]*>([\s\S]*?)<\/select>/)[1];
   assert.deepEqual([...size.matchAll(/<option value="(\d+)"/g)].map(match => Number(match[1])), [1, 2]);
   assert.match(html, /Результат займёт 90 мест/);
-  assert.equal(disabled(button(html, "Начать · 15 мин")), false);
+  assert.equal(disabled(button(html, "Начать · 1 мин")), false);
 });
 
 test("player market cannot buy an unaffordable storage lot and offers the warehouse as a next action", () => {
-  const market = { listings: [{ id: "offer", sellerPublicId: "OTHER", sellerName: "Лесник", itemId: "wood", quantity: 6, totalPrice: 420,
+  const market = { listings: [{ id: "offer", sellerPublicId: "OTHER", sellerName: "Лесник", itemId: "wood", quantity: 6, totalPrice: 300,
     status: "active", createdAt: new Date(now).toISOString(), closedAt: null, owned: false }], mine: [], nextCursor: null, serverTime: new Date(now).toISOString() };
-  const state = snapshot({ wallet: { coins: 420, pearls: 0 }, buildings: { home: 2, garden: 1, warehouse: 1 }, completedExplorations: 1,
-    storage: { capacity: 200, used: 190, reserved: 5, available: 5, overflow: 0 } });
+  const state = snapshot({ wallet: { coins: 300, pearls: 0 }, buildings: { home: 2, garden: 1, warehouse: 1 }, completedExplorations: 1,
+    storage: { capacity: 50, used: 40, reserved: 5, available: 5, overflow: 0 } });
   const html = render("market", controller({ snapshot: state, market }));
   assert.equal(disabled(button(html, "Не хватает места на складе")), true);
   assert.match(html, /Лот занимает 6 мест, свободно 5/);
@@ -246,11 +280,11 @@ test("player market cannot buy an unaffordable storage lot and offers the wareho
 
 test("material guide includes zero-stock goods, production sources, construction uses and respects non-tradable items", () => {
   let html = render("inventory", controller(), "planks");
-  assert.match(html, /Доски · на складе 0/);
+  assert.match(html, /Доска · на складе 0/);
   assert.match(html, /Где получить/);
   assert.match(html, /Для чего пригодится/);
   assert.ok(button(html, "Стройка: Дом Мохлика"));
-  assert.ok(button(html, "Доски"));
+  assert.ok(button(html, "Доска"));
   const stockItems = economyCatalog.items.filter(item => !economyCatalog.fishing.fish.some(fish => fish.itemId === item.id));
   assert.ok(html.includes(`Все товары · ${stockItems.length}`));
   assert.match(html, /<option value="fishing">Рыболовные товары<\/option>/);
@@ -329,6 +363,16 @@ test("inventory guide and sale consistently show the actual discounted payout", 
   assert.equal(disabled(button(render("inventory", controller({ snapshot: state }), "fish_common"), "Продать - шт.")), true);
 });
 
+test("generic inventory quotes the fixed NPC price without discounting or rounding a single item", () => {
+  for (const [id, coins] of [["berries", 10], ["wood", 30], ["grilled_fish", 55]]) {
+    const state = snapshot({ inventory: { [id]: 1 } });
+    const html = render("inventory", controller({ snapshot: state }), id);
+    assert.equal(disabled(button(html, `Продать 1 шт. за ${coins} монет`)), false);
+    assert.match(html, new RegExp(`Торговец покупает сразу по ${coins} монет за штуку`));
+    assert.doesNotMatch(html, /Быстрая продажа с уценкой/);
+  }
+});
+
 test("legacy inventory sale keeps full price; tiny stock cannot disappear for zero proceeds", () => {
   const state = snapshot({ inventory: { crumb_bait: 1 } }); state.catalog.localBuyer = { payoutBps: 6000 };
   let html = render("inventory", controller({ snapshot: state }), "crumb_bait");
@@ -360,7 +404,7 @@ test("generic economy will not offer a mine upgrade during an unclaimed actor sh
     wallet: { coins: target.cost.coins, pearls: 0 }, inventory: { ...target.cost.items },
     jobs: [job({ kind: "exploration", targetId: "quarry_stone", recipeId: null, rewards: { stone: 8 } })] });
   const html = render("buildings", controller({ snapshot: state }), "quarry");
-  assert.match(html, /Дождитесь Мохлика и заберите добычу/);
+  assert.match(html, /дождитесь Мохлика и заберите добычу/);
   assert.equal(disabled(button(html, "Улучшить до ур. 2: Каменоломня")), true);
 });
 
@@ -370,11 +414,11 @@ test("economy production hub exposes every slot job and allows the remaining cap
     job({ id: "22222222-2222-4222-8222-222222222222" })];
   const state = snapshot({ buildings: { home: 4, garden: 1, warehouse: 1 }, productionSlots: { garden: 3 }, jobs });
   let html = render("production", controller({ snapshot: state }), "garden");
-  assert.equal(disabled(button(html, "Начать · 15 мин")), false);
-  assert.equal(buttons(html).filter(entry => /(?:Собрать|Растут): Вырастить ягоды/.test(entry.text)).length, 2);
+  assert.equal(disabled(button(html, "Начать · 1 мин")), false);
+  assert.equal(buttons(html).filter(entry => /(?:Собрать|Растут): Вырастить малину/.test(entry.text)).length, 2);
   assert.match(html, /data-production-slots="garden"/);
   state.jobs.push(job({ id: "33333333-3333-4333-8333-333333333333" }));
   html = render("production", controller({ snapshot: state }), "garden");
-  assert.equal(disabled(button(html, "Начать · 15 мин")), true);
-  assert.equal(buttons(html).filter(entry => /(?:Собрать|Растут): Вырастить ягоды/.test(entry.text)).length, 3);
+  assert.equal(disabled(button(html, "Начать · 1 мин")), true);
+  assert.equal(buttons(html).filter(entry => /(?:Собрать|Растут): Вырастить малину/.test(entry.text)).length, 3);
 });

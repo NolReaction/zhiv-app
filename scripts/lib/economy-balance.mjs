@@ -1,14 +1,10 @@
 import assert from "node:assert/strict";
+import { createLiquidation } from "./economy-math.mjs";
 
 /** Timed production can create value; an unattended bundle must not create
  * extra raw materials or outperform its unlocked elementary station jobs. */
 export function auditProductionBalance(catalog) {
-  const items = new Map(catalog.items.map(item => [item.id, item]));
-  const fish = new Set([...(catalog.fishing?.fish ?? []), ...(catalog.fishing?.classes ?? [])].map(item => item.itemId));
-  const moneyScale = catalog.currencyScale ?? 1;
-  const value = quantities => Object.entries(quantities).reduce((sum, [id, quantity]) => sum
-    + (fish.has(id) ? items.get(id).baseSellPrice * quantity
-      : Math.floor(items.get(id).baseSellPrice / moneyScale * quantity * (catalog.localBuyer?.payoutBps ?? 10000) / 10000) * moneyScale), 0);
+  const value = createLiquidation(catalog);
   const net = recipe => value(recipe.rewards) - value(recipe.cost.items) - recipe.cost.coins;
   const rows = [];
   const mining = catalog.explorations.filter(route => route.activity === "mining" && route.requiredBuildings?.quarry && route.id.startsWith("quarry_"));
@@ -55,8 +51,10 @@ export function auditProductionBalance(catalog) {
         `${recipe.id}: unattended output exceeds ${efficiency * 100}% of active station work`);
       const fastestMargin = Math.max(...short.map(job => net(job) / job.seconds));
       assert(net(recipe) / recipe.seconds <= fastestMargin + 1e-8, `${recipe.id}: unattended sale income exceeds active jobs`);
-      if (free && level(recipe) === 1) {
-        const capacity = catalog.buildings.find(building => building.id === "warehouse").levels[0].warehouseCapacity;
+      if (free && level(recipe) === 1 && recipe.requiredHomeLevel === 1) {
+        const home = catalog.buildings.find(building => building.id === "home").levels.find(level => level.level === recipe.requiredHomeLevel);
+        const storageLevel = Math.max(1, recipe.requiredBuildings?.warehouse ?? 1, home?.requiredBuildings?.warehouse ?? 1);
+        const capacity = catalog.buildings.find(building => building.id === "warehouse").levels[storageLevel - 1].warehouseCapacity;
         assert(Object.values(recipe.rewards).reduce((sum, quantity) => sum + quantity, 0) <= capacity * .25,
           `${recipe.id}: starter overnight harvest occupies more than a quarter of storage`);
       }

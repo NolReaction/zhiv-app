@@ -39,6 +39,8 @@ test("catalog5 keeps all15 stable cards and legacy catalog4 remains unchanged", 
 
 test("successful claim persists first path and each explorer tier once, start cancel and replay cannot award", () => {
   const p = player(); let now = Date.now();
+  economy.getDevEconomy(p.token, now);
+  globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId).state.buildings.warehouse = 3;
   const canceled = issue(p, "start_exploration", "forest", now).state.jobs[0];
   assert.equal(card(p, "first_path", now).unlockedAt, null);
   issue(p, "cancel_exploration", canceled.id, now + 1000);
@@ -160,16 +162,16 @@ test("first sale belongs to seller after confirmed payment, not NPC sales, listi
   }
   issue(seller, "sell", "berries", now, 1);
   assert.equal(card(seller, "first_sale", now).unlockedAt, null);
-  const create = command(seller, "create_listing", "berries", now, 2, 60);
+  const create = command(seller, "create_listing", "berries", now, 2, 20);
   economy.commandDevEconomyMarket(seller.token, create, now);
   const canceled = economy.getDevEconomyMarket(seller.token, now).mine[0];
   economy.commandDevEconomyMarket(seller.token, command(seller, "cancel_listing", canceled.id, now), now);
   assert.equal(card(seller, "first_sale", now).unlockedAt, null);
-  economy.commandDevEconomyMarket(seller.token, command(seller, "create_listing", "berries", now, 2, 60), now);
+  economy.commandDevEconomyMarket(seller.token, command(seller, "create_listing", "berries", now, 2, 20), now);
   const lot = economy.getDevEconomyMarket(seller.token, now).mine[0];
   assert.equal(card(seller, "first_sale", now).unlockedAt, null);
   economy.getDevEconomyMarket(buyer.token, now);
-  const buy = command(buyer, "buy_listing", lot.id, now, 2, 60);
+  const buy = command(buyer, "buy_listing", lot.id, now, 2, 20);
   economy.commandDevEconomyMarket(buyer.token, buy, now);
   economy.commandDevEconomyMarket(buyer.token, buy, now + 1000);
   assert.equal(card(seller, "first_sale", now + 5000).unlockedAt, new Date(now).toISOString());

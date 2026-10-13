@@ -3,8 +3,9 @@ import { fishingBaitCompatible, fishingState, fishingTripCost } from "@/features
 import { recipeWithFish } from "@/features/economy/domain/food";
 import type { EconomyCost, EconomyJob, EconomyView } from "@/features/economy/domain/model";
 import { productionSlotCount } from "@/features/economy/domain/production-slots";
+import { tutorialOrderProgress } from "@/features/economy/domain/tutorial-order";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
-import { worldBatchLimit, worldConstructionReason, worldCostShortfalls, worldDuration, worldMaterialSource, worldMissingRequirements, worldProductionReason, worldRequirements } from "@/features/economy/ui/shared/world-stations";
+import { worldBatchLimit, worldConstructionReason, worldCostShortfalls, worldDuration, worldMaterialSource, worldMissingRecipeRequirements, worldMissingRequirements, worldProductionReason, worldRequirements } from "@/features/economy/ui/shared/world-stations";
 import type { ForestObservation } from "@/features/world/state/forest-observer";
 import type { WorldController } from "@/features/world/state/use-world";
 import type { WorldHelpContext, WorldHelpSuggestion, WorldHelpTarget } from "./world-help-types";
@@ -149,6 +150,12 @@ function contextAdvice(state: EconomyView, context: WorldHelpContext | undefined
     if (!next || !worldConstructionReason(state, stationId, next)) return null;
     const requirement = requirementAdvice(state, worldRequirements(next), now);
     if (requirement) return requirement;
+    const tutorial = tutorialOrderProgress(state);
+    if (stationId === "home" && next.level === 2 && tutorial.version === 2 && !tutorial.completed) return {
+      id: "construction:tutorial", title: "Завершите учебные заказы", topicId: "resident-orders", severity: "next",
+      message: `Выполнено ${tutorial.step} из 4. Соберите товары для текущей просьбы: награды помогут оплатить улучшение дома.`,
+      action: { label: "Открыть заказы", target: { kind: "food", tab: "orders" } },
+    };
     const construction = state.jobs.find(job => job.kind === "construction");
     if (construction) return jobAdvice(state, construction, now);
     const stationWork = state.jobs.find(job => job.kind === "production" && job.targetId === stationId
@@ -167,6 +174,12 @@ function contextAdvice(state: EconomyView, context: WorldHelpContext | undefined
   if (!worldProductionReason(state, recipe, quantity)) return null;
   const requirement = requirementAdvice(state, worldRequirements(recipe, recipe), now);
   if (requirement) return requirement;
+  const unlock = worldMissingRecipeRequirements(state, recipe)[0];
+  if (unlock) return {
+    id: `recipe:unlock:${unlock.id}`, title: "Сначала приготовьте новый предмет", topicId: "production", severity: "next",
+    message: `Получите результат рецепта «${unlock.recipe?.name ?? unlock.id}»: ${unlock.current} / ${unlock.count}. После этого откроется ${recipe.name.toLocaleLowerCase("ru-RU")}.`,
+    ...(unlock.recipe ? { action: { label: "Открыть рецепт", target: { kind: "station" as const, stationId: unlock.recipe.buildingId, recipeId: unlock.id } } } : {}),
+  };
   const buildingWork = state.jobs.find(job => job.kind === "construction" && job.targetId === recipe.buildingId);
   if (buildingWork) return jobAdvice(state, buildingWork, now);
   const jobs = state.jobs.filter(job => job.kind === "production" && job.targetId === recipe.buildingId);

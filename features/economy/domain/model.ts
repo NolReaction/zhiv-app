@@ -74,9 +74,10 @@ export const economyResidentOrderTermsSchema = z.object({
   items: z.record(id, count.positive().max(ECONOMY_MAX_ITEMS)), coins: balance.positive(),
 });
 export const economyTutorialOrderSchema = z.object({
+  version: z.union([z.literal(1), z.literal(2)]).default(1), step: count.max(4).default(0),
   ingredientsClaimed: z.boolean().default(false), completed: z.boolean().default(false),
   terms: economyResidentOrderTermsSchema.nullable().default(null),
-}).default({ ingredientsClaimed: false, completed: false, terms: null });
+}).default({ version: 1, step: 0, ingredientsClaimed: false, completed: false, terms: null });
 export type EconomyTutorialOrder = z.infer<typeof economyTutorialOrderSchema>;
 export const economyResidentOrdersSchema = z.object({
   version: z.union([z.literal(1), z.literal(2)]).default(1),
@@ -108,6 +109,7 @@ export const economyCatalogSchema = z.object({
   onboarding: z.object({
     startingWallet: z.object({ coins: balance, pearls: count.max(ECONOMY_MAX_PEARLS) }),
     startingItems: quantities, residentOrder: economyResidentOrderTermsSchema,
+    residentOrders: z.array(economyResidentOrderTermsSchema).length(4).optional(),
   }).optional(),
   productionSlots: z.object({ upgrades: z.array(z.object({
     slots: z.number().int().min(2).max(3), requiredHomeLevel: z.number().int().min(1).max(5), pricePearls: count.positive().max(ECONOMY_MAX_PEARLS),
@@ -115,8 +117,8 @@ export const economyCatalogSchema = z.object({
   rareDrops: economyRareDropsSchema.optional(),
   fishing: economyFishingCatalogSchema.optional(),
   food: economyFoodCatalogSchema.nullish(),
-  localBuyer: z.object({ payoutBps: count.positive().max(10_000) }).optional(),
-  version: z.literal(5), currencyScale: z.literal(10), pearlScale: z.literal(50), maxBatch: z.number().int().min(1).max(100),
+  localBuyer: z.object({ payoutBps: count.positive().max(10_000), unitPrices: z.record(id, balance.positive()).optional() }).optional(),
+  version: z.literal(6), currencyScale: z.literal(10), pearlScale: z.literal(50), maxBatch: z.number().int().min(1).max(100),
   constructionSpeedup: z.object({ secondsPerPearl: count.positive().max(86400), priceStepPearls: balance.positive().max(ECONOMY_PEARL_SCALE).default(2) }),
   market: z.object({ requiredHomeLevel: count.positive(), requiredExplorations: count, maxListings: count.positive(), maxLotQuantity: count.positive(), maxPriceMultiplier: count.positive(), feeBps: count.max(10000), dailyTradeValueByHome: z.array(balance).length(5).default([0, 2400, 4800, 9600, 14400]),
     showcaseSlots: count.positive().max(12).default(12), showcasePerSeller: count.positive().max(10).default(2), showcaseRefreshSeconds: count.positive().max(86400).default(1800) }),
@@ -129,9 +131,9 @@ export const economyCatalogSchema = z.object({
   recipes: z.array(z.object({ id, name: z.string(), buildingId: id, buildingLevel: count.positive(), requiredHomeLevel: count.positive(),
     maxBatch: count.positive().max(100).nullish(),
     fishInput: z.object({ itemIds: z.array(id).min(1).max(100).refine(ids => new Set(ids).size === ids.length) }).nullish(),
-    requiredBuildings, seconds: count.positive(), cost: economyCostSchema, rewards: quantities, collection: economyCollectionSpecSchema.nullish() })
-    .refine(recipe => !recipe.collection || recipe.buildingId === "garden" && (recipe.rewards.berries ?? 0) > 0,
-      "Berry collection requires a garden recipe with berries")
+    requiredBuildings, requiredRecipes: quantities.default({}), seconds: count.positive(), cost: economyCostSchema, rewards: quantities, collection: economyCollectionSpecSchema.nullish() })
+    .refine(recipe => !recipe.collection || recipe.buildingId === "garden" && ((recipe.rewards.berries ?? 0) > 0 || (recipe.rewards.strawberries ?? 0) > 0),
+      "Berry collection requires a garden recipe with known berries")
     .refine(recipe => !recipe.fishInput || recipe.fishInput.itemIds.filter(itemId => (recipe.cost.items[itemId] ?? 0) > 0).length === 1,
       "Fish recipes require exactly one replaceable fish ingredient")).max(1000),
   explorations: z.array(z.object({ id, name: z.string(), description: z.string(), requiredHomeLevel: count.positive(), activity: z.literal("mining").nullish(),
@@ -160,6 +162,15 @@ export const economyCatalogSchema = z.object({
     || Object.keys(catalog.onboarding.residentOrder.items).some(item => !itemIds.has(item))
     || !Object.keys(catalog.onboarding.residentOrder.items).length
     || catalog.onboarding.residentOrder.id !== "tutorial_first_order")) invalid("Onboarding requires known goods and a stable tutorial order");
+  if (catalog.onboarding?.residentOrders && (new Set(catalog.onboarding.residentOrders.map(order => order.id)).size !== 4
+    || catalog.onboarding.residentOrders[0].id !== catalog.onboarding.residentOrder.id
+    || catalog.onboarding.residentOrders.some(order => !Object.keys(order.items).length || Object.keys(order.items).some(item => !itemIds.has(item)))))
+    invalid("Tutorial sequence requires four distinct orders with known goods");
+  const recipeIds = new Set(catalog.recipes.map(recipe => recipe.id));
+  if (catalog.recipes.some(recipe => Object.entries(recipe.requiredRecipes).some(([recipeId, quantity]) => !recipeIds.has(recipeId) || quantity < 1)))
+    invalid("Recipe unlocks require known completed recipes");
+  if (Object.keys(catalog.localBuyer?.unitPrices ?? {}).some(itemId => !itemIds.has(itemId)))
+    invalid("Local buyer prices require known goods");
   const meals = catalog.food?.meals ?? [], orders = catalog.food?.orders.templates ?? [];
   if (new Set(meals.map(meal => meal.itemId)).size !== meals.length || meals.some(meal => !itemIds.has(meal.itemId)))
     invalid("Meals require unique known inventory items");
@@ -186,12 +197,12 @@ export const economyMigrationSchema = z.object({ version: z.literal(1), coinsGra
 export const economyJobSchema = z.object({
   id: uuid, kind: z.enum(["production", "exploration", "construction"]), targetId: id,
   recipeId: id.nullable(), targetLevel: count.nullable(), startedAt: z.string().datetime(), finishesAt: z.string().datetime(),
-  rewards: quantities, cost: economyCostSchema, catalogVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]),
+  rewards: quantities, cost: economyCostSchema, catalogVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6)]),
   collection: economyCollectionSchema.nullish(),
   fishing: z.object({ rodId: id, hookId: id.default("bare_hook"), baitId: id.nullable(), fishId: id }).nullish(),
   rareDrop: economyRareDropDeliverySchema.nullish(),
   meal: z.object({ itemId: id, consumer: z.enum(["hero", "builder"]), speedBps: count.max(10000) }).nullish(),
-}).refine(job => !job.collection || job.kind === "production" && job.targetId === "garden" && (job.rewards.berries ?? 0) > 0,
+}).refine(job => !job.collection || job.kind === "production" && job.targetId === "garden" && ((job.rewards.berries ?? 0) > 0 || (job.rewards.strawberries ?? 0) > 0),
   "Berry collection requires a garden production order")
   .refine(job => !job.rareDrop || job.kind === "exploration" && (!job.rareDrop.itemId || job.rewards[job.rareDrop.itemId] === 1),
     "Rare materials belong to a saved exploration delivery")

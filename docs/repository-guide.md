@@ -14,6 +14,7 @@
 | Профиль аккаунта, вход и привязки | [`features/account/profile-view.tsx`](../features/account/profile-view.tsx), остальные файлы `account/` |
 | Кнопка открытия, общий каркас игровых окон | [`features/world/world-view.tsx`](../features/world/world-view.tsx), `world-map-hud.module.css`, `world.module.css` |
 | Окно строительства, рынка, еды или кладовой | [`features/economy/ui/`](../features/economy/ui/): `construction/`, `market/`, `food/`, `inventory/` |
+| Первый этап: дом 1 → дом 2, новые старты и гарантированные заказы | [`economy-catalog.json`](../apps/api/src/main/resources/world/economy-catalog.json), [`tutorial-order.ts`](../features/economy/domain/tutorial-order.ts), TS/Ktor `EconomyRules`; [правила и маршрут](game/first-house-economy.md) |
 | Стоимость, длительность, награда и требования | [`economy-catalog.json`](../apps/api/src/main/resources/world/economy-catalog.json), [`economy/domain/`](../features/economy/domain/), [`Ktor economy/`](../apps/api/src/main/kotlin/ru/zhiv/economy/) |
 | Потеря ответа экономической команды, повтор, revision | [`features/economy/sync/`](../features/economy/sync/) |
 | Жесты камеры, порядок рисования, перекрытие объектов | [`features/world/scene/`](../features/world/scene/) |

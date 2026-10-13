@@ -36,8 +36,8 @@ const disabled = entry => /\bdisabled=/.test(entry.attributes);
 test("pantry content contains compact stock without a second frame, house tabs or duplicated wallet", () => {
   const html = render();
   assert.match(html, /aria-label="Предметы в кладовой"/);
-  assert.match(html, /aria-label="Древесина: 20"/);
-  assert.match(html, /aria-label="Лесные ягоды: 6"/);
+  assert.match(html, /aria-label="Бревно: 20"/);
+  assert.match(html, /aria-label="Малина: 6"/);
   assert.doesNotMatch(html, /aria-label="Камень: 0"/);
   assert.match(html, /width="20" height="20"/);
   assert.doesNotMatch(html, /role="dialog"|<h[12]\b|Оборудование:|Запасы дома|Выданы тестовые материалы|482[\s\S]?910|9[\s\S]?170/);
@@ -50,7 +50,7 @@ test("occupancy includes reserved market stock and full storage preserves item s
   assert.match(html, /data-full="true"/);
   assert.match(html, /На рынке 20/);
   assert.match(html, /Товары на рынке тоже занимают место до продажи/);
-  assert.equal(disabled(button(html, "Древесина")), false);
+  assert.equal(disabled(button(html, "Бревно")), false);
 });
 
 test("refrigerator separates all fish from materials while sharing the exact warehouse capacity", () => {
@@ -58,7 +58,7 @@ test("refrigerator separates all fish from materials while sharing the exact war
   const state = snapshot({ inventory });
   const before = structuredClone(state), economy = controller({ snapshot: state });
   const supplies = render(economy);
-  assert.match(supplies, /aria-label="Древесина: 20"/);
+  assert.match(supplies, /aria-label="Бревно: 20"/);
   assert.match(supplies, /aria-label="Копчёная рыба: 3"/);
   assert.match(supplies, /aria-label="Лесной червячок: 2"/);
   assert.doesNotMatch(supplies, /aria-label="(?:Обычная рыба|Легендарная рыба|Речная рыба|Серебринка|Теневая акула):/);
@@ -69,7 +69,7 @@ test("refrigerator separates all fish from materials while sharing the exact war
     assert.ok(fridge.includes(`aria-label="${name}: ${quantity}"`));
     assert.ok(fridge.includes(`data-item-icon="${id}"`));
   }
-  assert.doesNotMatch(fridge, /data-hidden-fish|aria-label="(?:Древесина|Копчёная рыба|Лесной червячок):/);
+  assert.doesNotMatch(fridge, /data-hidden-fish|aria-label="(?:Бревно|Копчёная рыба|Лесной червячок):/);
   assert.doesNotMatch(fridge, /data-item-icon="(?:fish|fish_silverfin|fish_shark)"/, "legacy species must coalesce into their class stocks");
   assert.match(fridge, /Места общие с кладовой/);
   for (const html of [supplies, fridge, render(economy, { initialTab: "relics" })]) {
@@ -100,7 +100,7 @@ test("empty refrigerator invites a shoreline trip without suggesting a new stora
   const html = render(controller(), { initialTab: "fridge" });
   assert.match(html, /Здесь будут рыба и готовые блюда/);
   assert.equal(disabled(button(html, "Выбрать вылазку")), false);
-  assert.doesNotMatch(html, /Купить холодильник|Улучшить холодильник|Древесина: 20/);
+  assert.doesNotMatch(html, /Купить холодильник|Улучшить холодильник|Бревно: 20/);
 });
 
 test("overflow reports actual occupancy while the capacity meter stays bounded", () => {
@@ -109,7 +109,7 @@ test("overflow reports actual occupancy while the capacity meter stays bounded",
   assert.match(html, /<progress value="200" max="200"/);
   assert.match(html, /Сверх вместимости: 50/);
   assert.match(html, /Запасы сохранены/);
-  assert.equal(disabled(button(html, "Древесина")), false);
+  assert.equal(disabled(button(html, "Бревно")), false);
   assert.equal(disabled(button(html, "Расширить кладовую")), false);
 });
 
@@ -127,7 +127,7 @@ test("uncertain result offers receipt recovery without hiding saved inventory", 
   let html = render(controller({ uncertain: true }));
   assert.match(html, /Продажа станет доступна после подтверждения/);
   assert.equal(disabled(button(html, "Проверить результат")), false);
-  assert.match(html, /aria-label="Древесина: 20"/);
+  assert.match(html, /aria-label="Бревно: 20"/);
   html = render(controller({ uncertain: true, busy: true }));
   assert.equal(disabled(button(html, "Проверить результат")), true);
 });
@@ -178,7 +178,7 @@ test("late pantry footer previews only the next capacity and its three relic cou
   const state = snapshot({ buildings: { home: 1, warehouse: 9 }, inventory: { ancient_core: 10, moon_crystal: 1, living_resin: 3 } });
   const before = structuredClone(state);
   const html = render(controller({ snapshot: state }));
-  assert.match(html, /Ур\. 9 → 10 · 8\s?200 → 10\s?000 мест/);
+  assert.match(html, /Ур\. 9 → 10 · 450 → 500 мест/);
   assert.match(html, /aria-label="Реликвии для следующего расширения"/);
   assert.match(html, /aria-label="Древнее ядро: есть 10, нужно 10"/);
   assert.match(html, /aria-label="Лунный кристалл: есть 1, нужно 3"/);
@@ -221,6 +221,22 @@ test("quick sale shows catalog markdown and sends the displayed minimum quote wi
   view.control("Продать торговцу").props.onClick();
   assert.deepEqual(view.calls, [["sell", "wood", 1, 10]]);
   assert.equal(state.inventory.wood, 20);
+});
+
+test("all seven first-stage goods display and send their fixed NPC price without markdown", () => {
+  const fixedPrices = { berries: 10, strawberries: 40, wood: 30, stone: 40, planks: 40, berry_compote: 30, grilled_fish: 55 };
+  for (const [itemId, price] of Object.entries(fixedPrices)) {
+    const state = snapshot({ inventory: { [itemId]: 2 } });
+    const view = inspectSale(state, { itemId });
+    assert.match(view.html, new RegExp(`${price} монет за штуку`));
+    assert.doesNotMatch(view.html, /уценкой|округляется вниз/);
+    const input = view.elements.find(element => element.type === "input");
+    assert.equal(input.props.min, 1);
+    assert.equal(input.props.max, 2);
+    view.control("Продать торговцу").props.onClick();
+    assert.deepEqual(view.calls, [["sell", itemId, 1, price]]);
+    assert.equal(state.inventory[itemId], 2, "a displayed quote does not optimistically debit stock");
+  }
 });
 
 test("penny stock starts at a payable batch, and wallet limits use the whole-stack rounded price", () => {
@@ -268,7 +284,7 @@ test("prepared meals share refrigerator capacity and cannot leak into the materi
   const fridge = render(economy, { initialTab: "fridge" });
   for (const [name, quantity] of [["Обычная рыба", 3], ["Жареная рыба", 4], ["Рыбная уха", 2]]) assert.ok(fridge.includes(`aria-label="${name}: ${quantity}"`));
   assert.match(fridge, /<small>9<\/small><span>Холодильник<\/span>/);
-  assert.doesNotMatch(fridge, /aria-label="Древесина:/);
+  assert.doesNotMatch(fridge, /aria-label="Бревно:/);
   assert.doesNotMatch(render(economy), /aria-label="(?:Жареная рыба|Рыбная уха):/);
   assert.ok(fridge.includes(`aria-label="Кладовая: занято ${state.storage.used} из ${state.storage.capacity} мест"`));
   assert.deepEqual(state, before, "opening the refrigerator never moves food or creates a second capacity");

@@ -28,7 +28,7 @@ export function Cost({ state, cost, quantity = 1, navigation }: { state: Economy
   return <ul className={styles.cost} aria-label="Стоимость">{cost.coins > 0 && <li data-missing={state.wallet.coins < cost.coins * quantity || undefined}><ItemIcon itemId="coins" size={18} /><span>Монеты</span><strong>{number(state.wallet.coins)} / {number(cost.coins * quantity)}</strong></li>}{Object.entries(cost.items).map(([id, amount]) => {
     const missing = (state.inventory[id] ?? 0) < amount * quantity;
     const source = missing ? worldMaterialSource(state, id) : null;
-    const openSource = source?.kind === "production" && navigation?.canOpen(source.stationId) ? () => navigation.open(source.stationId) : source?.kind === "exploration" ? navigation?.explore : undefined;
+    const openSource = source?.kind === "production" && navigation?.canOpen(source.stationId) ? () => navigation.open(source.stationId, source.targetId) : source?.kind === "exploration" ? navigation?.explore : undefined;
     return <li key={id} data-missing={missing || undefined}><ProductIcon state={state} itemId={id} size={18} /><span>{openSource ? <button type="button" className={styles.textButton} aria-label={`Где получить: ${itemName(state, id)}${source?.kind === "exploration" ? ", В путь" : ""}`} onClick={openSource}>{itemName(state, id)}<ArrowRight size={11} aria-hidden="true" /></button> : itemName(state, id)}</span><strong>{number(state.inventory[id] ?? 0)} / {number(amount * quantity)}</strong></li>;
   })}</ul>;
 }

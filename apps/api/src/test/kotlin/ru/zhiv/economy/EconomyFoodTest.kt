@@ -35,10 +35,12 @@ class EconomyFoodTest {
     @Test fun `class fish costs are frozen in recipe jobs and collections survive cooking`() {
         val state = stocked().copy(fishing = EconomyFishing(catches = mapOf("fish_silverfin" to 7)))
         val recipe = EconomyRules.catalog.recipes.single { it.id == "cook_grilled_fish" }
-        val cooked = apply(state, "start_production", recipe.id, quantity = 2)
+        failure("INVALID_ECONOMY_COMMAND") { apply(state, "start_production", recipe.id, quantity = 2) }
+        val cooked = apply(state, "start_production", recipe.id)
         val job = cooked.jobs.single()
-        val amount = recipe.cost.items.getValue("fish_common") * 2
+        val amount = recipe.cost.items.getValue("fish_common")
         assertEquals(recipe.id, job.recipeId)
+        assertEquals(mapOf("grilled_fish" to 1L), job.rewards)
         assertEquals(amount, job.cost.items["fish_common"])
         assertFalse(job.cost.items.containsKey("fish_silverfin"))
         assertEquals(state.inventory.getValue("fish_common") - amount, cooked.inventory["fish_common"])

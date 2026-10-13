@@ -29,9 +29,9 @@ const grow = p => issue(p, "start_production", "grow_berries").state.jobs[0];
 
 test("only berry recipes opt in and each order keeps its collection rules alongside paid rewards", () => {
   const configured = model.economyCatalog.recipes.filter(recipe => recipe.collection);
-  assert.deepEqual(configured.map(recipe => recipe.id), ["grow_berries", "grow_berries_overnight", "grow_berries_large", "garden_season", "garden_supply", "garden_abundance"]);
+  assert.deepEqual(configured.map(recipe => recipe.id), ["grow_berries", "grow_berries_overnight", "grow_berries_large", "garden_season", "garden_supply", "garden_abundance", "grow_strawberries"]);
   for (const recipe of configured) {
-    assert.equal(recipe.buildingId, "garden"); assert.ok(recipe.rewards.berries > 0);
+    assert.equal(recipe.buildingId, "garden"); assert.ok((recipe.rewards.berries ?? 0) + (recipe.rewards.strawberries ?? 0) > 0);
     assert.deepEqual(recipe.collection, { kind: "berry_harvest", seconds: 8 });
   }
   assert.equal(model.economyCatalog.recipes.find(recipe => recipe.id === "garden_fiber").collection, undefined);
@@ -93,7 +93,7 @@ test("market purchases during gathering may fill storage, but a failed delivery 
   const p = player(), seller = player();
   for (const [account, inventory] of [[p, { wood: 290 }], [seller, { wood: 10 }]]) {
     const row = fixture(account, { inventory, wallet: { coins: 1000, pearls: 0 }, completedExplorations: 1 });
-    row.state.buildings.home = 2;
+    row.state.buildings.home = 2; row.state.buildings.warehouse = 6;
   }
   const job = grow(p), readyAt = Date.parse(job.finishesAt);
   const collecting = issue(p, "start_collection", job.id, readyAt).state.jobs[0];

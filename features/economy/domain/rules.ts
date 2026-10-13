@@ -10,8 +10,7 @@ import { economyLocalSellPrice } from "./local-sale";
 import { economyActorConflict } from "./actor-availability";
 import { remainingTimePearlPrice } from "./time-price";
 import { advanceResidentOrder, foodState, initialResidentOrders, mealDuration, normalizedResidentOrders, pendingMeal, recipeWithFish, residentOrderBoard } from "./food";
-import { TUTORIAL_ORDER_ID, tutorialOrderProgress, tutorialResidentOrder } from "./tutorial-order";
-import { canClaimWorkshopStarter, workshopStarterCost } from "./workshop-starter";
+import { isTutorialOrderId, newTutorialOrder, TUTORIAL_ORDER_ID, tutorialOrderProgress, tutorialResidentOrder } from "./tutorial-order";
 export { economyLocalSellPrice, economyLocalSaleMinimumQuantity, economyLocalSaleLimit } from "./local-sale";
 
 export class EconomyRuleError extends Error {
@@ -77,7 +76,7 @@ export function newEconomyState(legacy: { resources: { sparks: number; wood: num
     wallet: { coins: migration.coinsGranted + (starting?.startingWallet.coins ?? 0), pearls: starting?.startingWallet.pearls ?? 0 }, inventory,
     buildings: Object.fromEntries(economyCatalog.buildings.map(building => [building.id, building.id === "home" ? Math.max(1, Math.min(5, legacy.houseLevel))
       : ["garden", "warehouse"].includes(building.id) ? 1 : building.id === "workshop" ? Math.max(0, Math.min(3, legacy.workshopLevel)) : 0])),
-    jobs: [], tutorialOrder: tutorialOrderProgress({}), workshopStarterClaimed: false, wardrobe: wardrobeOwned(), migration, completedExplorations: 0, fishing: fishingState({}), progression: newEconomyProgression(),
+    jobs: [], tutorialOrder: newTutorialOrder(), workshopStarterClaimed: false, wardrobe: wardrobeOwned(), migration, completedExplorations: 0, fishing: fishingState({}), progression: newEconomyProgression(),
     food: foodState({}), residentOrders: initialResidentOrders() };
 }
 function debit(state: EconomyState, cost: EconomyCost) {
@@ -136,34 +135,17 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
   if (!["start_production", "sell", "sell_fish", "buy_fishing_item"].includes(command.action) && command.quantity !== 1) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Для этого действия количество должно быть равно одному", 400);
   switch (command.action) {
     case "claim_tutorial_order": {
-      if (command.targetId !== TUTORIAL_ORDER_ID) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Набор предназначен для учебного заказа", 400);
+      if (command.targetId !== TUTORIAL_ORDER_ID) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Действие предназначено для первого учебного заказа", 400);
       const progress = tutorialOrderProgress(state);
-      if (progress.ingredientsClaimed || progress.completed) return fail("ECONOMY_TUTORIAL_ORDER_CLAIMED", "Ингредиенты учебного заказа уже получены");
-      const terms = economyCatalog.onboarding?.residentOrder;
+      if (progress.ingredientsClaimed || progress.completed) return fail("ECONOMY_TUTORIAL_ORDER_CLAIMED", "Учебный заказ уже открыт или выполнен");
+      const terms = progress.terms ?? economyCatalog.onboarding?.residentOrder;
       if (!terms) return fail("ECONOMY_TUTORIAL_ORDER_UNAVAILABLE", "Учебный заказ пока недоступен");
-      const next = { ...state, inventory: { ...state.inventory } };
-      creditEconomyItems(next, terms.items);
-      assertEconomyStorageTransition(state, next, reservedItems);
-      state.inventory = next.inventory;
-      state.tutorialOrder = { ingredientsClaimed: true, completed: false, terms: { ...terms, items: { ...terms.items } } };
-      return "Ингредиенты учебного заказа получены. Теперь отдай их Шишколапу на доске заказов";
+      state.tutorialOrder = { ...progress, ingredientsClaimed: true, terms: { ...terms, items: { ...terms.items } } };
+      return "Учебный заказ открыт. Соберите нужные предметы и отдайте их на доске заказов";
     }
     case "claim_workshop_starter": {
       if (command.targetId !== "workshop") throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Этот подарок предназначен для первой мастерской", 400);
-      if (state.workshopStarterClaimed) return fail("ECONOMY_WORKSHOP_STARTER_CLAIMED", "Подарок для мастерской уже получен");
-      if (!canClaimWorkshopStarter(state)) return fail("ECONOMY_WORKSHOP_STARTER_UNAVAILABLE", "Первая мастерская уже построена или строится");
-      const cost = workshopStarterCost();
-      if (cost.coins > ECONOMY_MAX_BALANCE - state.wallet.coins) return fail("ECONOMY_CAPACITY", "Кошелёк заполнен");
-      const inventory = { ...state.inventory };
-      for (const [item, amount] of Object.entries(cost.items)) {
-        if (amount > ECONOMY_MAX_ITEMS - (inventory[item] ?? 0)) return fail("ECONOMY_CAPACITY", "Сначала освободите место для этого материала");
-        inventory[item] = (inventory[item] ?? 0) + amount;
-      }
-      assertEconomyStorageTransition(state, { ...state, inventory }, reservedItems);
-      state.inventory = inventory;
-      state.wallet.coins += cost.coins;
-      state.workshopStarterClaimed = true;
-      return "Получены монеты и материалы для первой мастерской";
+      return fail("ECONOMY_WORKSHOP_STARTER_UNAVAILABLE", "Материалы для мастерской теперь получают из производства и заказов");
     }
     case "start_production": {
       if (command.targetId.startsWith("quarry_")) return fail("ECONOMY_MINING_ACTIVITY", "В шахте работает Мохлик. Выберите участок для вылазки");
@@ -180,6 +162,8 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       if ((state.buildings[recipe.buildingId] ?? 0) < recipe.buildingLevel) fail("ECONOMY_BUILDING_REQUIRED", "Сначала постройте или улучшите нужное здание");
       requireHome(state, recipe.requiredHomeLevel);
       requireBuildings(state, recipe.requiredBuildings);
+      const missingRecipes = Object.entries(recipe.requiredRecipes).filter(([recipeId, count]) => (state.progression.recipes[recipeId] ?? 0) < count);
+      if (missingRecipes.length) fail("ECONOMY_RECIPE_REQUIRED", `Сначала приготовьте: ${missingRecipes.map(([recipeId]) => economyCatalog.recipes.find(item => item.id === recipeId)?.name ?? recipeId).join(", ")}`);
       if (state.jobs.some(job => job.targetId === recipe.buildingId && job.kind === "construction"))
         fail("ECONOMY_BUILDING_BUSY", "Дождитесь улучшения здания и заберите результат");
       if (state.jobs.filter(job => job.targetId === recipe.buildingId && job.kind === "production").length >= productionSlotCount(state, recipe.buildingId))
@@ -207,7 +191,7 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       const job = state.jobs.find(item => item.id === command.targetId);
       if (!job) return fail("ECONOMY_JOB_GONE", "Результат уже получен или задание не найдено");
       const spec = job.collection ?? economyCatalog.recipes.find(recipe => recipe.id === job.recipeId)?.collection;
-      if (job.kind !== "production" || job.targetId !== "garden" || !(job.rewards.berries > 0) || !spec)
+      if (job.kind !== "production" || job.targetId !== "garden" || !((job.rewards.berries ?? 0) > 0 || (job.rewards.strawberries ?? 0) > 0) || !spec)
         return fail("ECONOMY_COLLECTION_KIND", "Для этой работы сбор Мохликом не требуется");
       if (job.collection?.startedAt) return fail("ECONOMY_COLLECTION_STARTED", "Мохлик уже собирает этот урожай");
       if (now < Date.parse(job.finishesAt)) return fail("ECONOMY_JOB_NOT_READY", "Урожай ещё не созрел");
@@ -284,6 +268,9 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       const target = building.levels.find(level => level.level === (state.buildings[building.id] ?? 0) + 1);
       if (!target) return fail("ECONOMY_MAX_LEVEL", "Доступные улучшения уже завершены");
       requireHome(state, target.requiredHomeLevel);
+      const tutorial = tutorialOrderProgress(state);
+      if (building.id === "home" && target.level === 2 && tutorial.version === 2 && !tutorial.completed)
+        fail("ECONOMY_TUTORIAL_REQUIRED", "Сначала выполните четыре учебных заказа на доске жителей");
       requireBuildings(state, target.requiredBuildings);
       if (state.jobs.some(job => job.kind === "construction")) fail("ECONOMY_CONSTRUCTION_BUSY", "Строитель занят. Сначала завершите текущую стройку");
       if (building.id === "quarry" && state.jobs.some(job => job.kind === "exploration" && economyCatalog.explorations.some(route => route.id === job.targetId && route.requiredBuildings.quarry)))
@@ -323,18 +310,22 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
     }
     case "complete_resident_order":
     case "replace_resident_order": {
-      if (command.targetId === TUTORIAL_ORDER_ID) {
+      if (isTutorialOrderId(command.targetId)) {
         const progress = tutorialOrderProgress(state), offer = tutorialResidentOrder(state);
-        if (command.action !== "complete_resident_order" || !progress.ingredientsClaimed || progress.completed || !progress.terms || !offer)
+        if (command.action !== "complete_resident_order" || !progress.ingredientsClaimed || progress.completed || progress.version === 2 && progress.step >= 4 || !progress.terms || !offer || offer.id !== command.targetId)
           return fail("ECONOMY_TUTORIAL_ORDER_UNAVAILABLE", "Учебный заказ недоступен или уже выполнен");
+        const nextStep = progress.version === 2 ? progress.step + 1 : progress.step;
+        const completed = progress.version === 1 || nextStep === 4;
+        const nextTerms = completed ? progress.terms : economyCatalog.onboarding?.residentOrders?.[nextStep];
+        if (!nextTerms) return fail("ECONOMY_TUTORIAL_ORDER_UNAVAILABLE", "Следующий учебный заказ пока недоступен");
         const orders = normalizedResidentOrders(state, now);
         if (offer.coins > ECONOMY_MAX_BALANCE - state.wallet.coins || !Number.isSafeInteger(orders.earnedCoins + offer.coins)
           || orders.completed >= Number.MAX_SAFE_INTEGER) return fail("ECONOMY_CAPACITY", "Кошелёк заполнен");
         debit(state, { coins: 0, items: offer.items });
         state.wallet.coins += offer.coins;
         state.residentOrders = { ...orders, completed: orders.completed + 1, earnedCoins: orders.earnedCoins + offer.coins };
-        state.tutorialOrder = { ...progress, completed: true };
-        return "Учебный заказ выполнен. Монеты получены. Обычные просьбы жителей работают так же";
+        state.tutorialOrder = { ...progress, step: nextStep, completed, terms: { ...nextTerms, items: { ...nextTerms.items } } };
+        return completed ? "Все учебные заказы выполнены. Монеты получены" : "Учебный заказ выполнен. Монеты получены, следующая просьба открыта";
       }
       const config = economyCatalog.food?.orders;
       const board = residentOrderBoard(state, now);
@@ -498,7 +489,7 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       if (!item) return fail("ECONOMY_ITEM", "Этот предмет нельзя продать");
       if ((state.inventory[item.id] ?? 0) < command.quantity) fail("ECONOMY_RESOURCES", "Не хватает предметов для продажи");
       const coins = command.action === "sell_fish" ? command.quantity * item.baseSellPrice
-        : economyLocalSellPrice(item.baseSellPrice, command.quantity, economyCatalog.localBuyer);
+        : economyLocalSellPrice(item.baseSellPrice, command.quantity, economyCatalog.localBuyer, item.id);
       if (coins === 0) return fail("ECONOMY_SALE_QUANTITY", "Для продажи добавьте предметы в партию: выручка должна быть хотя бы одна монета");
       if (command.action === "sell" && coins < command.totalPrice)
         return fail("ECONOMY_SALE_PRICE_CHANGED", "Выручка изменилась. Проверьте цену продажи и подтвердите снова");

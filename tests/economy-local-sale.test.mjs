@@ -52,16 +52,16 @@ test("wallet quantity limits use discounted packet proceeds and exclude zero-rev
 test("generic sale honors accepted minimum and revision receipt once while Pleska pays full price", () => {
   const p = player(); read(p); stored(p).inventory = { berries: 9, fish: 4 };
   const before = read(p);
-  assert.throws(() => issue(p, "sell", "berries", 3, 6), { code: "ECONOMY_SALE_PRICE_CHANGED" });
+  assert.throws(() => issue(p, "sell", "berries", 3, 4), { code: "ECONOMY_SALE_PRICE_CHANGED" });
   assert.deepEqual(read(p), before);
-  const sale = command(p, "sell", "berries", 3, 5);
+  const sale = command(p, "sell", "berries", 3, 3);
   const accepted = economy.commandDevEconomy(p.token, sale, now);
-  assert.equal(accepted.state.wallet.coins, before.wallet.coins + 50); assert.equal(accepted.state.inventory.berries, 6);
+  assert.equal(accepted.state.wallet.coins, before.wallet.coins + 30); assert.equal(accepted.state.inventory.berries, 6);
   assert.equal(economy.commandDevEconomy(p.token, sale, now).replayed, true);
-  assert.equal(read(p).wallet.coins, before.wallet.coins + 50);
+  assert.equal(read(p).wallet.coins, before.wallet.coins + 30);
   assert.throws(() => economy.commandDevEconomy(p.token, { ...sale, requestId: crypto.randomUUID() }, now), { code: "ECONOMY_REVISION_CONFLICT" });
-  assert.equal(issue(p, "sell", "fish", 2).state.wallet.coins, before.wallet.coins + 90, "generic buyer discounts the whole common fish stack");
-  assert.equal(issue(p, "sell_fish", "fish", 2).state.wallet.coins, before.wallet.coins + 170, "Pleska pays the full common class price");
+  assert.equal(issue(p, "sell", "fish", 2).state.wallet.coins, before.wallet.coins + 70, "generic buyer discounts the whole common fish stack");
+  assert.equal(issue(p, "sell_fish", "fish", 2).state.wallet.coins, before.wallet.coins + 150, "Pleska pays the full common class price");
 });
 
 test("zero-proceeds and wallet-overflow failures are atomic and rounded headroom can be filled exactly", () => {
@@ -70,11 +70,11 @@ test("zero-proceeds and wallet-overflow failures are atomic and rounded headroom
   assert.throws(() => issue(p, "sell", "crumb_bait"), { code: "ECONOMY_SALE_QUANTITY" });
   assert.deepEqual(read(p), before);
   assert.equal(issue(p, "sell", "crumb_bait", 2, 1).state.wallet.coins, before.wallet.coins + 10);
-  stored(p).wallet.coins = ECONOMY_MAX_BALANCE - 50;
+  stored(p).wallet.coins = ECONOMY_MAX_BALANCE - 30;
   const full = read(p);
   assert.throws(() => issue(p, "sell", "berries", 4), { code: "ECONOMY_CAPACITY" });
   assert.deepEqual(read(p), full);
-  assert.equal(issue(p, "sell", "berries", 3, 5).state.wallet.coins, ECONOMY_MAX_BALANCE);
+  assert.equal(issue(p, "sell", "berries", 3, 3).state.wallet.coins, ECONOMY_MAX_BALANCE);
 });
 
 test("discount preserves smoking margin against specialist raw-fish value and merchant recovery remains free", () => {
@@ -83,11 +83,30 @@ test("discount preserves smoking margin against specialist raw-fish value and me
   const commonFishValue = economyCatalog.items.find(item => item.id === "fish_common").baseSellPrice;
   const wood = economyCatalog.items.find(item => item.id === "wood");
   const proceeds = quote(smoked.baseSellPrice, recipe.rewards.smoked_fish, config);
-  assert.ok(proceeds > recipe.cost.items.fish_common * commonFishValue + quote(wood.baseSellPrice, recipe.cost.items.wood, config),
+  assert.ok(proceeds > recipe.cost.items.fish_common * commonFishValue + quote(wood.baseSellPrice, recipe.cost.items.wood, config, "wood"),
     "cooking even the highest-value allowed common fish retains a sale margin after the buyer discount");
   for (const recipeId of ["grow_berries", "grow_berries_overnight"]) {
     const recipe = economyCatalog.recipes.find(item => item.id === recipeId);
     assert.deepEqual(recipe.cost, { coins: 0, items: {} });
     assert.ok(quote(30, recipe.rewards.berries, config) > 0);
+  }
+});
+
+
+test("first-stage NPC prices pay one exact unit without discount and their stack limits use the same quote", () => {
+  const prices = { berries: 10, strawberries: 40, wood: 30, stone: 40, planks: 40, berry_compote: 30, grilled_fish: 55 };
+  assert.deepEqual(config.unitPrices, prices);
+  for (const [id, price] of Object.entries(prices)) {
+    const base = economyCatalog.items.find(item => item.id === id).baseSellPrice;
+    assert.equal(quote(base, 1, config, id), price); assert.equal(quote(base, 3, config, id), price * 3);
+    assert.equal(minimum(base, config, id), 1);
+    assert.equal(limit(base, 10, ECONOMY_MAX_BALANCE - price * 2, config, id), 2);
+    const p = player(); read(p); stored(p).inventory = { [id]: 3 };
+    const before = read(p), sold = issue(p, "sell", id, 1).state;
+    assert.equal(sold.wallet.coins, before.wallet.coins + price); assert.equal(sold.inventory[id], 2);
+    assert.throws(() => issue(p, "sell", id, 1, (price + 10) / 10), { code: "ECONOMY_SALE_PRICE_CHANGED" });
+    stored(p).wallet.coins = ECONOMY_MAX_BALANCE - price;
+    const nearCap = read(p); assert.throws(() => issue(p, "sell", id, 2), { code: "ECONOMY_CAPACITY" }); assert.deepEqual(read(p), nearCap);
+    assert.equal(issue(p, "sell", id, 1).state.wallet.coins, ECONOMY_MAX_BALANCE);
   }
 });

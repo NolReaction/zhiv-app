@@ -18,6 +18,10 @@ test("a simulated new player reaches home two from starting supplies using actua
     assert.equal(report.actions.buy_fishing_item, undefined);
     assert.equal(report.actions.speedup_construction, undefined);
     assert.equal(report.actions.cancel_exploration, undefined);
+    assert.equal(report.actions.complete_resident_order, 4);
+    assert.equal(report.coinFlow.orders, 330);
+    assert.equal(report.actions.claim_tutorial_order, undefined);
+    assert.equal(report.actions.claim_workshop_starter, undefined);
     assert(report.actions.start_fishing > 0, "The current fishing UI path is exercised");
     assert.equal(report.completionGoal, "base-tier-5");
     assert.equal(report.targetBuildingLevels.warehouse, 5);
@@ -48,7 +52,14 @@ test("the comparison base, final home and all current upgrades are distinct repr
 test("an automated player can complete all current buildings including storage ten with earned relics", async () => {
   const loaded = await loadJourneyRules();
   try {
-    const report = simulateJourney(loaded, "active16h", 1600,
+    let firstCommandAt = null;
+    const observed = { ...loaded, rules: { ...loaded.rules, applyEconomyCommand: (state, command, now, ...args) => {
+      firstCommandAt ??= now;
+      if (now - firstCommandAt >= 50 * 86400000)
+        assert(state.buildings.warehouse >= 3, "Crowded storage must not trap the planner replacing needed ore instead of making upgrade materials");
+      return loaded.rules.applyEconomyCommand(state, command, now, ...args);
+    } } };
+    const report = simulateJourney(observed, "active16h", 1600,
       { ...jointPlanningPolicy, dailyRewards: true, completionGoal: "all-current-buildings" });
     assert.equal(report.complete, true);
     assert.equal(report.stoppedAt, null);
@@ -231,7 +242,7 @@ test("the scenario conserves crafted inputs and exposes sales separately from pr
     assert(Object.entries(report.explorationRoutes).some(([id, count]) => id.startsWith("quarry_") && count > 0));
     assert.equal(report.productionRecipes.quarry_stone, undefined);
     for (const [id, flow] of Object.entries(report.itemFlow))
-      assert.equal(flow.initial + flow.received, flow.sold + flow.productionInputs + flow.expeditionInputs + flow.constructionInputs + flow.remaining, id);
+      assert.equal(flow.initial + flow.received, flow.sold + flow.productionInputs + flow.expeditionInputs + flow.constructionInputs + flow.orderInputs + flow.remaining, id);
     assert(report.itemFlow.fiber.productionInputs > 0, "Fiber serves actual crafting demand");
     assert(report.itemFlow.rope.constructionInputs > 0, "Rope serves actual construction demand");
     assert(report.itemFlow.berries.sold > 0, "Passive surplus pays progression coin costs");

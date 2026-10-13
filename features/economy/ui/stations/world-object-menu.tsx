@@ -12,7 +12,7 @@ import type { WorldHelpContext } from "@/features/world/ui/help/world-help-types
 import type { EconomyView } from "@/features/economy/domain/model";
 import { economyLocalSellPrice, economyLocalSaleMinimumQuantity, economyLocalSaleLimit } from "@/features/economy/domain/local-sale";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
-import { worldBatchLimit, worldDuration, worldJobProgress, worldMenuDimensions, worldMenuPosition, worldStableMenuPosition, worldMissingRequirements, worldPlaceForStation, worldProductionReason, worldRequirements, worldStations, type WorldMenuBounds, type WorldRecipe } from "@/features/economy/ui/shared/world-stations";
+import { worldBatchLimit, worldDuration, worldJobProgress, worldMenuDimensions, worldMenuPosition, worldStableMenuPosition, worldMissingRequirements, worldMissingRecipeRequirements, worldRecipeUnlockReason, worldPlaceForStation, worldProductionReason, worldRequirements, worldStations, type WorldMenuBounds, type WorldRecipe } from "@/features/economy/ui/shared/world-stations";
 import { locked, type ReadyEconomy } from "@/features/economy/sync/controller-state";
 import { Cost, Requirements, Work, ProductIcon, stationIcons, itemName, stationName, number, type StationNavigation } from "@/features/economy/ui/shared/world-economy-parts";
 import { WorldUpgradeDialog } from "@/features/economy/ui/construction/world-upgrade-dialog";
@@ -53,10 +53,12 @@ function recipeTitle(state: EconomyView, recipe: WorldRecipe) {
 
 function RecipeCard({ state, recipe, onChoose }: { state: EconomyView; recipe: WorldRecipe; onChoose: (id: string) => void }) {
   const results = Object.entries(recipe.rewards);
+  const unlockReason = worldRecipeUnlockReason(state, recipe);
   return <button type="button" className={`${styles.product} ${styles.recipeCard}`} data-recipe={recipe.id}
     aria-label={`${recipe.name}: ${results.map(([id, amount]) => `${itemName(state, id)} ×${number(amount)}`).join(", ")}, ${worldDuration(recipe.seconds)}`} onClick={() => onChoose(recipe.id)}>
     <span className={styles.recipeOutputs} aria-hidden="true">{results.map(([id, amount]) => <span key={id}><ProductIcon state={state} itemId={id} size={results.length > 1 ? 22 : 34} /><b>×{number(amount)}</b></span>)}</span>
     <strong>{recipeTitle(state, recipe)}</strong>
+    {unlockReason && <span className={styles.small}><LockKeyhole size={12} aria-hidden="true" />{unlockReason}</span>}
     <span className={styles.recipeTime}><Clock3 size={12} aria-hidden="true" />{worldDuration(recipe.seconds)}<ArrowRight size={13} aria-hidden="true" /></span>
   </button>;
 }
@@ -78,6 +80,7 @@ export function WorldRecipeDetail({ economy, recipe, navigation, onCollapse, onO
   const quantity = Math.max(1, Math.min(requestedQuantity, maximum));
   const reason = worldProductionReason(economy.snapshot, recipe, quantity);
   const missingRequirements = worldMissingRequirements(economy.snapshot, worldRequirements(recipe, recipe));
+  const missingRecipes = worldMissingRecipeRequirements(economy.snapshot, recipe);
   const output = Object.values(recipe.rewards).reduce((sum, amount) => sum + amount, 0) * quantity;
   const quantityId = useId();
   const helpBlocked = Boolean(reason) || economy.uncertain || economy.retryAt > economy.now;
@@ -102,11 +105,13 @@ export function WorldRecipeDetail({ economy, recipe, navigation, onCollapse, onO
       <div className={styles.recipeIngredients}><h3>Понадобится</h3><Cost state={economy.snapshot} cost={recipe.cost} quantity={quantity} navigation={navigation} /></div>
       <Requirements state={economy.snapshot} required={worldRequirements(recipe, recipe)} navigation={navigation} />
       {reason && !missingRequirements.length && <p className={styles.hint}>{reason}</p>}
+      {missingRecipes.map(({ id, recipe: prerequisite }) => prerequisite && navigation?.canOpen(prerequisite.buildingId)
+        ? <button key={id} type="button" className={styles.textButton} onClick={() => navigation.open(prerequisite.buildingId, prerequisite.id)}>Приготовить: {prerequisite.name}<ArrowRight size={13} aria-hidden="true" /></button> : null)}
       {helpBlocked && onOpenHelp && <button type="button" className={styles.contextHelp} onClick={() => onOpenHelp({ intent: "production", stationId: recipe.buildingId, recipeId: recipe.id, quantity })}><CircleHelp size={15} aria-hidden="true" />Как продолжить?</button>}
       {output > economy.snapshot.storage.available && !missingRequirements.length && <p className={styles.hint}>Для получения понадобится {number(output)} мест · свободно {number(economy.snapshot.storage.available)}.</p>}
     </div>
     <div className={styles.recipeOrder} data-recipe-order>
-      <div className={styles.batchControl}><label htmlFor={quantityId}>Партий</label><div className={styles.stepper}><button type="button" disabled={quantity <= 1 || locked(economy)} onClick={() => setQuantity(quantity - 1)} aria-label="Уменьшить партию"><Minus size={14} aria-hidden="true" /></button><output id={quantityId} aria-live="polite">{quantity}</output><button type="button" disabled={quantity >= maximum || locked(economy)} onClick={() => setQuantity(quantity + 1)} aria-label="Увеличить партию"><Plus size={14} aria-hidden="true" /></button></div></div>
+      {maximum > 1 ? <div className={styles.batchControl}><label htmlFor={quantityId}>Партий</label><div className={styles.stepper}><button type="button" disabled={quantity <= 1 || locked(economy)} onClick={() => setQuantity(quantity - 1)} aria-label="Уменьшить партию"><Minus size={14} aria-hidden="true" /></button><output id={quantityId} aria-live="polite">{quantity}</output><button type="button" disabled={quantity >= maximum || locked(economy)} onClick={() => setQuantity(quantity + 1)} aria-label="Увеличить партию"><Plus size={14} aria-hidden="true" /></button></div></div> : <p className={styles.small}>{output === 1 ? "1 предмет · 1 место производства" : `Результат: ${number(output)} шт. · 1 место производства`}</p>}
       <button type="button" className={styles.primary} disabled={Boolean(reason) || locked(economy)} onClick={() => {
         if (reason || locked(economy)) return;
         pendingOrder.current = { owner: economy.snapshot.ownerPublicId, jobIds: new Set(economy.snapshot.jobs.map(job => job.id)), started: false };
@@ -119,18 +124,19 @@ export function WorldRecipeDetail({ economy, recipe, navigation, onCollapse, onO
 export function WorldObjectSale({ economy, itemId, onCollapse }: { economy: ReadyEconomy; itemId: string; onCollapse: () => void }) {
   const state = economy.snapshot, buyer = state.catalog.localBuyer;
   const item = state.catalog.items.find(entry => entry.id === itemId);
-  const minimum = item ? economyLocalSaleMinimumQuantity(item.baseSellPrice, buyer) : 1;
+  const minimum = item ? economyLocalSaleMinimumQuantity(item.baseSellPrice, buyer, item.id) : 1;
   const [quantityText, setQuantityText] = useState(() => String(minimum));
   const inputId = useId(), stock = state.inventory[itemId] ?? 0;
   if (!item) return null;
-  const maximum = economyLocalSaleLimit(item.baseSellPrice, stock, state.wallet.coins, buyer);
+  const maximum = economyLocalSaleLimit(item.baseSellPrice, stock, state.wallet.coins, buyer, item.id);
   const quantity = Number(quantityText);
   const valid = /^\d+$/.test(quantityText) && Number.isSafeInteger(quantity) && quantity >= minimum && quantity <= maximum;
-  const total = valid ? economyLocalSellPrice(item.baseSellPrice, quantity, buyer) : 0;
-  const discount = (10_000 - (buyer?.payoutBps ?? 10_000)) / 100;
+  const total = valid ? economyLocalSellPrice(item.baseSellPrice, quantity, buyer, item.id) : 0;
+  const fixedPrice = buyer?.unitPrices?.[item.id];
+  const discount = fixedPrice !== undefined ? 0 : (10_000 - (buyer?.payoutBps ?? 10_000)) / 100;
   return <section className={styles.detail} aria-label={`Продажа: ${item.name}`}>
     <div className={styles.detailTitle}><h3>{item.name}</h3><button type="button" className={styles.iconButton} aria-label="Свернуть продажу" onClick={onCollapse}><ChevronUp size={16} aria-hidden="true" /></button></div>
-    <p className={styles.small}>На складе {number(stock)} · {discount > 0 ? `быстрая продажа с уценкой ${number(discount)}%. Итог округляется вниз до целой монеты.` : `торговец даёт ${number(item.baseSellPrice)} монет за штуку`}</p>
+    <p className={styles.small}>На складе {number(stock)} · {discount > 0 ? `быстрая продажа с уценкой ${number(discount)}%. Итог округляется вниз до целой монеты.` : `торговец даёт ${number(fixedPrice ?? item.baseSellPrice)} монет за штуку`}</p>
     {discount > 0 && fishClassForItem(item.id, state.catalog.fishing) && <p className={styles.hint}>Плёска купит дороже: {number(item.baseSellPrice)} монет за штуку. Её лавка открывается на карте.</p>}
     {item.tradable ? <div className={styles.sale}><label htmlFor={inputId}>Количество</label><input id={inputId} type="number" inputMode="numeric" min={minimum} max={Math.max(minimum, maximum)} step={1} value={quantityText} disabled={locked(economy) || maximum < minimum} onChange={event => setQuantityText(event.target.value)} /><button type="button" className={styles.primary} disabled={!valid || locked(economy)} onClick={() => { if (valid && !locked(economy)) void economy.act("sell", item.id, quantity, buyer ? total : 0); }}>Продать · {valid ? number(total) : "-"}<ItemIcon itemId="coins" size={16} /></button></div> : <p className={styles.hint}>Этот предмет нельзя продать торговцу.</p>}
     {item.tradable && maximum < minimum && <p className={styles.hint}>{stock < minimum ? `Для продажи нужно хотя бы ${number(minimum)} шт., чтобы получить целую монету.` : "В кошельке нет места для продажи."}</p>}

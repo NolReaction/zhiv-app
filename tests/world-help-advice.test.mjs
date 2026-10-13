@@ -9,6 +9,7 @@ after(() => vite.close());
 const { worldHelpAdvice } = await vite.ssrLoadModule("/features/world/ui/help/world-help-advice.ts");
 const { economyCatalog, economyViewSchema } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
+const { newTutorialOrder } = await vite.ssrLoadModule("/features/economy/domain/tutorial-order.ts");
 const now = Date.parse("2026-10-07T12:00:00Z");
 const snapshot = (patch = {}) => {
   const value = { ownerPublicId: "0000-0000-0001", revision: 0, serverTime: new Date(now).toISOString(), catalog: economyCatalog,
@@ -57,14 +58,14 @@ test("failed reads and cooldowns do not claim stale money or expose an early ret
   assert.equal(worldHelpAdvice({ economy: { ...economy, retryAt: now + 1, uncertain: true } })[0].action, undefined);
 });
 
-test("recipe advice uses the required fish class and batch without substituting rarer stock", () => {
-  const missing = advice({ inventory: { wood: 1 } }, { context: { ...context, quantity: 3 } });
-  assert.equal(missing[0].id, "missing:wood"); assert.match(missing[0].message, /Есть 1, нужно 6/);
+test("single-item recipe advice uses exact ingredients without substituting rarer fish stock", () => {
+  const missing = advice({ inventory: { wood: 0 } }, { context: { ...context, quantity: 1 } });
+  assert.equal(missing[0].id, "missing:wood"); assert.match(missing[0].message, /Есть 0, нужно 1/);
   assert.deepEqual(missing[0].action.target, { kind: "station", stationId: "woodlot", recipeId: "gather_wood" });
-  const foodContext = { intent: "production", stationId: "dryer", recipeId: "cook_grilled_fish", quantity: 2 };
-  assert.deepEqual(advice({ inventory: { fish_common: 2, wood: 2 } }, { context: foodContext }), []);
-  const selected = advice({ inventory: { fish_common: 1, wood: 2 } }, { context: foodContext });
-  assert.equal(selected[0].id, "missing:fish_common"); assert.match(selected[0].message, /Есть 1, нужно 2/);
+  const foodContext = { intent: "production", stationId: "dryer", recipeId: "cook_grilled_fish", quantity: 1 };
+  assert.deepEqual(advice({ inventory: { fish_common: 1 } }, { context: foodContext }), []);
+  const selected = advice({ inventory: {} }, { context: foodContext });
+  assert.equal(selected[0].id, "missing:fish_common"); assert.match(selected[0].message, /Есть 0, нужно 1/);
   assert.deepEqual(selected[0].action.target, { kind: "expeditions", sector: "coast" });
   const rarerStock = advice({ inventory: { fish_uncommon: 2, wood: 2 } }, { context: foodContext });
   assert.equal(rarerStock[0].id, "missing:fish_common");
@@ -86,7 +87,32 @@ test("missing prerequisites point to the next relevant building, not impossible 
 test("batch limits send the player back to quantity before recommending a bigger warehouse", () => {
   const result = advice({}, { context: { ...context, quantity: 9 } });
   assert.equal(result[0].id, "recipe:storage-capacity"); assert.equal(result[0].action.target.kind, "station");
-  assert.match(result[0].message, /не больше 8/);
+  assert.match(result[0].message, /не больше 1/);
+});
+
+test("strawberry advice opens the compote recipe until its result has been collected", () => {
+  const context = { intent: "production", stationId: "garden", recipeId: "grow_strawberries", quantity: 1 };
+  const result = advice({}, { context });
+  assert.equal(result[0].id, "recipe:unlock:cook_compote");
+  assert.match(result[0].message, /0 \/ 1/);
+  assert.deepEqual(result[0].action.target, { kind: "station", stationId: "dryer", recipeId: "cook_compote" });
+  const running = job({ targetId: "dryer", recipeId: "cook_compote", rewards: { berry_compote: 1 } });
+  assert.equal(advice({ jobs: [running] }, { context })[0].id, "recipe:unlock:cook_compote", "a started job does not unlock strawberries");
+  assert.deepEqual(advice({ progression: { recipes: { cook_compote: 1 } } }, { context }), []);
+});
+
+test("house two advice opens the four-step tutorial before suggesting money or sale sources", () => {
+  const patch = { inventory: { wood: 3, stone: 2, planks: 2 }, wallet: { coins: 250, pearls: 0 }, tutorialOrder: newTutorialOrder() };
+  const context = { intent: "construction", stationId: "home" };
+  let result = advice(patch, { context });
+  assert.equal(result[0].id, "construction:tutorial");
+  assert.match(result[0].message, /0 из 4/);
+  assert.deepEqual(result[0].action.target, { kind: "food", tab: "orders" });
+  patch.tutorialOrder.step = 3;
+  assert.match(advice(patch, { context })[0].message, /3 из 4/);
+  patch.tutorialOrder.step = 4; patch.tutorialOrder.completed = true;
+  result = advice(patch, { context });
+  assert.deepEqual(result, []);
 });
 
 test("ready jobs use the supplied server clock and never claim their result", () => {

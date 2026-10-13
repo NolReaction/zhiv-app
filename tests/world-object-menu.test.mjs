@@ -15,6 +15,7 @@ const { WorldUpgradeContent } = await vite.ssrLoadModule("/features/economy/ui/c
 const { ProductionActivity } = await vite.ssrLoadModule("/features/economy/ui/production/production-activity.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
+const { newTutorialOrder } = await vite.ssrLoadModule("/features/economy/domain/tutorial-order.ts");
 after(() => vite.close());
 
 const now = Date.parse("2026-10-03T12:00:00Z");
@@ -88,25 +89,25 @@ test("ordinary workshop menus hide future recipes while upgrade previews keep th
 });
 const disabled = entry => /\bdisabled=/.test(entry.attributes);
 
-test("production slots show house and pearl gates, bought capacity, and keep all orders claimable", () => {
+test("production slots are available at home one with pearl gates and keep all orders claimable", () => {
   let state = snapshot({ buildings: { home: 1, garden: 1 }, wallet: { coins: 0, pearls: 10000 } });
   let html = render("garden", controller({ snapshot: state }));
   assert.match(html, /data-production-slots="garden"/);
-  assert.match(html, /Нужен дом 2 уровня/);
-  assert.equal(disabled(button(html, "Место 2")), true);
+  assert.doesNotMatch(html, /Нужен дом 2 уровня/);
+  assert.equal(disabled(button(html, "Место 2")), false);
   state.buildings.home = 2;
   html = render("garden", controller({ snapshot: state }));
   assert.equal(disabled(button(html, "Место 2")), false);
-  assert.match(html, /Открыть место 2 за 750 жемчужин/);
-  state.wallet.pearls = 1499;
+  assert.match(html, /Открыть место 2 за 100 жемчужин/);
+  state.wallet.pearls = 199;
   html = render("garden", controller({ snapshot: state }));
   assert.equal(disabled(button(html, "Место 2")), true);
   assert.match(html, /Не хватает жемчужин: 0,5/);
   state.wallet.pearls = 10000; state.productionSlots = { garden: 2 };
   html = render("garden", controller({ snapshot: state }));
-  assert.match(html, /Нужен дом 4 уровня/);
-  assert.match(html, /Открыть место 3 за 2[^\d]?500 жемчужин/);
-  assert.equal(disabled(button(html, "Место 3")), true);
+  assert.doesNotMatch(html, /Нужен дом 4 уровня/);
+  assert.match(html, /Открыть место 3 за 250 жемчужин/);
+  assert.equal(disabled(button(html, "Место 3")), false);
   state.buildings.home = 4;
   assert.equal(disabled(button(render("garden", controller({ snapshot: state })), "Место 3")), false);
   assert.equal(disabled(button(render("garden", controller({ snapshot: state, uncertain: true })), "Место 3")), true);
@@ -145,7 +146,7 @@ test("idle production opens with a compact slot summary and recipes, leaving slo
     const summary = disclosure[2].match(/<summary\b[^>]*>[\s\S]*?<\/summary>/)?.[0];
     assert.match(summary, /Места производства: занято 0 из 1\. Расширить/);
     assert.doesNotMatch(summary, /<button|750|Не хватает/);
-    assert.match(disclosure[2].slice(summary.length), /Открыть место 2 за 750 жемчужин/);
+    assert.match(disclosure[2].slice(summary.length), /Открыть место 2 за 100 жемчужин/);
     const rest = html.replace(disclosure[0], "");
     assert.match(rest, /data-recipe=/);
     assert.doesNotMatch(rest, /data-running-orders=|Все уровни оборудования открыты/);
@@ -164,7 +165,7 @@ test("current orders expose each result and timer immediately, then move ready c
   assert.doesNotMatch(current, /<details|<summary|<button/);
   for (const entry of jobs) {
     assert.match(current, new RegExp(`data-job-id="${entry.id}"`));
-    assert.match(current, new RegExp(`Доски ×${entry.rewards.planks}`));
+    assert.match(current, new RegExp(`Доска ×${entry.rewards.planks}`));
     assert.match(current, new RegExp(`Осталось ${entry.rewards.planks} мин`));
   }
   assert.match(html, /data-recipe=/);
@@ -285,12 +286,49 @@ test("starter stone sources use an available forest exploration instead of the l
   assert.equal(helpers.worldMaterialSource(state, "stone").kind, "exploration");
 });
 
+test("first-stage preparation produces one item and strawberry unlock shows the real compote prerequisite", () => {
+  const state = snapshot({ buildings: { home: 1, garden: 1, warehouse: 1, dryer: 1, workshop: 1, woodlot: 1 },
+    inventory: { berries: 4, wood: 2, fish_common: 1 }, progression: { recipes: {} } });
+  for (const [place, stationId, recipeId] of [["garden", "garden", "grow_berries"], ["workshop", "workshop", "make_planks"],
+    ["campfire", "dryer", "cook_compote"], ["woodlot", "woodlot", "gather_wood"]]) {
+    const recipe = state.catalog.recipes.find(entry => entry.id === recipeId);
+    assert.ok(recipe, recipeId);
+    const html = render(place, controller({ snapshot: state }), { initialStationId: stationId, initialRecipeId: recipeId });
+    assert.match(html, /1 предмет · 1 место производства/);
+    assert.doesNotMatch(html, /Увеличить партию|Уменьшить партию|<label[^>]*>Партий/);
+    assert.equal(disabled(button(html, "Начать ·")), false);
+  }
+  const recipe = state.catalog.recipes.find(entry => entry.id === "grow_strawberries");
+  let html = render("garden", controller({ snapshot: state }), { initialRecipeId: recipe.id, onNavigate() {} });
+  assert.match(html, /Сначала приготовьте:.*компот/);
+  assert.match(html, /Приготовить:.*компот/);
+  assert.equal(disabled(button(html, "Начать ·")), true);
+  assert.equal(helpers.worldRecipeUnlockReason(state, recipe).includes("0 / 1"), true);
+  state.progression.recipes.cook_compote = 1;
+  html = render("garden", controller({ snapshot: state }), { initialRecipeId: recipe.id });
+  assert.doesNotMatch(html, /Сначала приготовьте:|Приготовить:/);
+  assert.equal(disabled(button(html, "Начать ·")), false);
+});
+
+test("new house two requires the four confirmed tutorial requests even with enough stock and coins", () => {
+  const state = snapshot({ wallet: { coins: 250, pearls: 0 }, inventory: { wood: 3, stone: 2, planks: 2 },
+    buildings: { home: 1, warehouse: 1, garden: 1, woodlot: 1, dryer: 1, workshop: 1 }, tutorialOrder: newTutorialOrder() });
+  const target = state.catalog.buildings.find(entry => entry.id === "home").levels.find(entry => entry.level === 2);
+  assert.match(helpers.worldConstructionReason(state, "home", target), /учебные заказы: 0 \/ 4/);
+  state.tutorialOrder.step = 3;
+  assert.match(renderUpgrade("home", controller({ snapshot: state })), /учебные заказы: 3 \/ 4/);
+  state.tutorialOrder.step = 4; state.tutorialOrder.completed = true;
+  assert.equal(helpers.worldConstructionReason(state, "home", target), null);
+  delete state.tutorialOrder;
+  assert.equal(helpers.worldConstructionReason(state, "home", target), null, "legacy profiles keep their previous building access");
+});
+
 test("berry collection uses the server clock and pantry space while construction can finish with a full pantry", () => {
   const state = snapshot({ storage: { capacity: 200, used: 197, reserved: 0, available: 3, overflow: 0 } });
   const growing = job({ collection: { kind: "berry_harvest", seconds: 8, startedAt: null, finishesAt: null } });
   assert.equal(helpers.worldJobProgress(state, growing, now).ready, false);
   const growth = render("garden", controller({ snapshot: snapshot({ jobs: [growing] }) }));
-  assert.match(growth, /Лесные ягоды ×6|Осталось/);
+  assert.match(growth, /Малина ×6|Осталось/);
   assert.doesNotMatch(growth, /aria-label="(?:Растут|Собрать):/);
   const ready = { ...growing, finishesAt: new Date(now).toISOString() };
   assert.deepEqual(helpers.worldJobProgress(state, ready, now), { ready: true, progress: 1, seconds: 0, storageShortfall: 3 });
@@ -313,7 +351,7 @@ test("map menu is compact and nonmodal with place-specific production rather tha
   const html = render("garden");
   assert.match(html, /role="dialog" aria-modal="false"/);
   assert.match(html, /Ягодный куст/);
-  assert.match(html, /aria-label="Вырастить ягоды/);
+  assert.match(html, /aria-label="Вырастить малину/);
   assert.doesNotMatch(html, /aria-label="[^\"]*(Выплавить|Доски|Рыбу)/);
   assert.equal(disabled(button(render("workshop"), "Мастерская")), false);
   assert.doesNotMatch(renderUpgrade("home"), /<button[^>]*>[^<]*Кладовая/);

@@ -62,11 +62,11 @@ class EconomyOrderProgressionTest {
 
     @Test fun `income boost preserves and pays an already saved 400 coin delivery`() {
         val template = catalog.food!!.orders.templates.single { it.id == "builder_wood_supply" }
-        assertEquals(560L, template.coins)
+        assertEquals(90L, template.coins)
         val initial = EconomyRules.initial()
         val board = EconomyFood.normalizedOrders(initial, now)
         val slots = board.slots.toMutableList()
-        slots[1] = EconomyResidentOrderSlot(3, now.toString(), template.id, template.copy(coins = 400))
+        slots[1] = EconomyResidentOrderSlot(3, now.toString(), template.id, template.copy(coins = 400, items = mapOf("wood" to 8L)))
         val saved = initial.copy(residentOrders = board.copy(slots = slots), inventory = mapOf("wood" to 8L))
         val offer = EconomyFood.residentOrderBoard(saved, now).offers.single { it.slot == 1 }
         assertEquals(400L, offer.coins); assertEquals(mapOf("wood" to 8L), offer.items)

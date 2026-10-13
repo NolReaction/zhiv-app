@@ -98,7 +98,7 @@ test("gathered materials route to expeditions and unavailable navigation is rend
   assert.match(material.props.title, /Камень: не хватает 7/);
   material.props.onClick();
   assert.deepEqual(calls, ["explore"]);
-  assert.equal(nodes.find(element => element.props["aria-label"] === "Доски: не хватает 6").type, "span");
+  assert.equal(nodes.find(element => element.props["aria-label"] === "Доска: не хватает 6").type, "span");
 });
 
 test("fully collected materials do not promise construction readiness while the builder is busy", () => {

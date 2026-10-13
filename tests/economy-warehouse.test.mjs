@@ -16,7 +16,7 @@ beforeEach(() => identities.resetDevStoreForTests());
 
 const now = Date.parse("2026-10-06T23:00:00Z");
 const warehouse = model.economyCatalog.buildings.find(building => building.id === "warehouse");
-const capacity = [300, 500, 1000, 1800, 3000, 4000, 5200, 6600, 8200, 10000];
+const capacity = [50, 100, 150, 200, 250, 300, 350, 400, 450, 500];
 const relicCosts = [[2, 1, 1], [3, 1, 1], [4, 1, 1], [5, 2, 2], [6, 2, 2], [8, 2, 2], [10, 3, 3]];
 const relicIds = ["ancient_core", "moon_crystal", "living_resin"];
 const initial = level => {
@@ -42,7 +42,7 @@ test("ten warehouse tiers preserve earned capacity and switch to escalating reli
   assert.deepEqual(warehouse.levels.map(level => level.level), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
   assert.deepEqual(warehouse.levels.map(level => level.warehouseCapacity), capacity);
   const third = warehouse.levels[2];
-  assert.deepEqual(third.cost, { coins: 16000, items: { planks: 50, bricks: 45, iron_ingot: 12, cloth: 10 } });
+  assert.deepEqual(third.cost, { coins: 16000, items: { planks: 36, bricks: 33, iron_ingot: 9, cloth: 7 } });
   for (const target of warehouse.levels) {
     assert.equal(target.requiredHomeLevel, 1); assert.deepEqual(target.requiredBuildings, {});
   }
@@ -58,8 +58,8 @@ test("ten warehouse tiers preserve earned capacity and switch to escalating reli
 test("ordinary warehouse expansions keep prices and materials but have no house or workshop gate", () => {
   const state = initial(1), buildings = structuredClone(state.buildings);
   const costs = [
-    { coins: 2500, items: { planks: 18, stone: 20, rope: 8 } },
-    { coins: 16000, items: { planks: 50, bricks: 45, iron_ingot: 12, cloth: 10 } },
+    { coins: 2500, items: { planks: 17, stone: 18, rope: 7 } },
+    { coins: 16000, items: { planks: 36, bricks: 33, iron_ingot: 9, cloth: 7 } },
   ];
   const seconds = [28800, 86400];
   let at = now;
@@ -141,7 +141,7 @@ test("construction and claim request replays cannot spend another relic set or g
   assert.equal(read(p).jobs.length, 1); assert.deepEqual(read(p).inventory, { wood: 5 });
   const end = Date.parse(job.finishesAt), claim = request(p, "claim_job", job.id, end);
   const claimed = economy.commandDevEconomy(p.token, claim, end);
-  assert.equal(claimed.state.buildings.warehouse, 10); assert.equal(claimed.state.storage.capacity, 10000);
+  assert.equal(claimed.state.buildings.warehouse, 10); assert.equal(claimed.state.storage.capacity, 500);
   assert.equal(economy.commandDevEconomy(p.token, claim, end + 1).replayed, true);
   assert.deepEqual(saved(p).inventory, { wood: 5 }); assert.equal(saved(p).buildings.warehouse, 10);
   assert.equal(read(p, end).jobs.length, 0);
@@ -183,7 +183,7 @@ test("speedup finishes warehouse ten once for the current pearl tariff without r
   assert.equal(price, 115200); assert.deepEqual(started.inventory, {});
   const speedup = request(p, "speedup_construction", job.id, now, { totalPrice: price });
   const finished = economy.commandDevEconomy(p.token, speedup, now).state;
-  assert.equal(finished.buildings.warehouse, 10); assert.equal(finished.storage.capacity, 10000);
+  assert.equal(finished.buildings.warehouse, 10); assert.equal(finished.storage.capacity, 500);
   assert.deepEqual(finished.wallet, { coins: 321, pearls: 500000 - price });
   assert.deepEqual(finished.inventory, {}); assert.deepEqual(finished.jobs, []);
   assert.equal(economy.commandDevEconomy(p.token, speedup, now + 1).replayed, true);

@@ -12,7 +12,7 @@ class EconomyLocalSaleTest {
     private fun command(action: String, target: String, quantity: Long = 1, minimum: Long = 0) =
         EconomyCommand(UUID.randomUUID().toString(), "ABCD-EFGH-JKMP", 0, action, target, quantity, minimum)
 
-    @Test fun `old catalogs default to full payout while current catalog has one explicit discount`() {
+    @Test fun `old catalogs default to full payout while current catalog discounts goods outside first stage overrides`() {
         val json=economyJson.encodeToJsonElement(EconomyRules.catalog).jsonObject
         val legacy=economyJson.decodeFromJsonElement<EconomyCatalog>(JsonObject(json-"localBuyer"))
         assertEquals(10_000,legacy.localBuyer.payoutBps)
@@ -23,6 +23,21 @@ class EconomyLocalSaleTest {
         assertEquals(160L,EconomyRules.localSellPrice(nominalBase,9))
         assertEquals(1800L,EconomyRules.catalog.fishing!!.rods.single { it.id=="river_rod" }.price)
         assertEquals(9000L,EconomyRules.catalog.fishing!!.rods.single { it.id=="willow_rod" }.price)
+    }
+
+    @Test fun `first stage item quotes use fixed unit payouts without packet rounding`() {
+        val prices = mapOf("berries" to 10L, "strawberries" to 40L, "wood" to 30L, "stone" to 40L,
+            "planks" to 40L, "berry_compote" to 30L, "grilled_fish" to 55L)
+        assertEquals(prices, EconomyRules.catalog.localBuyer.unitPrices)
+        val items = EconomyRules.catalog.items.associateBy { it.id }
+        for ((id, price) in prices) for (quantity in listOf(1L, 2L, 3L, 9999L, 10000L)) {
+            val base = items.getValue(id).baseSellPrice
+            val total = EconomyRules.localSellPrice(base, quantity, itemId = id)
+            assertEquals(price * quantity, total, id)
+            assertEquals(total, EconomyRules.localSellPrice(base, quantity / 2, itemId = id) +
+                EconomyRules.localSellPrice(base, quantity - quantity / 2, itemId = id), id)
+        }
+        assertEquals(EconomyRules.localSellPrice(30, 9), EconomyRules.localSellPrice(30, 9, itemId = "unknown"))
     }
 
     @Test fun `packet rounding cannot earn more by splitting and stays precise near command limits`() {
@@ -39,15 +54,15 @@ class EconomyLocalSaleTest {
     @Test fun `sale minimum cannot mint coins and specialist fish offers keep their full value`() {
         val state=EconomyRules.initial().copy(wallet=EconomyWallet(),inventory=mapOf("berries" to 9L,"fish" to 4L))
         assertEquals("ECONOMY_SALE_PRICE_CHANGED",assertFailsWith<AuthFailure> {
-            EconomyRules.apply(state,command("sell","berries",3,60),now)
+            EconomyRules.apply(state,command("sell","berries",3,40),now)
         }.code)
-        val sold=EconomyRules.apply(state,command("sell","berries",3,50),now).first
-        assertEquals(50L,sold.wallet.coins)
+        val sold=EconomyRules.apply(state,command("sell","berries",3,30),now).first
+        assertEquals(30L,sold.wallet.coins)
         assertEquals(6L,sold.inventory["berries"])
         val generic=EconomyRules.apply(sold,command("sell","fish",2),now).first
-        assertEquals(90L,generic.wallet.coins)
+        assertEquals(70L,generic.wallet.coins)
         val specialist=EconomyRules.apply(generic,command("sell_fish","fish",2),now).first
-        assertEquals(170L,specialist.wallet.coins)
+        assertEquals(150L,specialist.wallet.coins)
         assertTrue(specialist.fishing.catches.isEmpty())
         assertEquals(0L,state.wallet.coins,"the domain input remains unchanged")
     }
@@ -58,11 +73,11 @@ class EconomyLocalSaleTest {
             EconomyRules.apply(state,command("sell","crumb_bait"),now)
         }.code)
         assertEquals(10L,EconomyRules.apply(state,command("sell","crumb_bait",2,10),now).first.wallet.coins)
-        val full=state.copy(wallet=EconomyWallet(ECONOMY_MAX_BALANCE-50))
+        val full=state.copy(wallet=EconomyWallet(ECONOMY_MAX_BALANCE-30))
         assertEquals("ECONOMY_CAPACITY",assertFailsWith<AuthFailure> {
             EconomyRules.apply(full,command("sell","berries",4),now)
         }.code)
-        assertEquals(ECONOMY_MAX_BALANCE,EconomyRules.apply(full,command("sell","berries",3,50),now).first.wallet.coins)
+        assertEquals(ECONOMY_MAX_BALANCE,EconomyRules.apply(full,command("sell","berries",3,30),now).first.wallet.coins)
     }
 
     @Test fun `smoking retains a positive sale margin without nerfing specialist raw fish`() {
@@ -72,10 +87,10 @@ class EconomyLocalSaleTest {
         val specialistValue=items.getValue("fish_common").baseSellPrice
         val inputValue=recipe.cost.coins + recipe.cost.items.entries.sumOf { (id, quantity) ->
             if (id == "fish_common") specialistValue * quantity
-            else EconomyRules.localSellPrice(items.getValue(id).baseSellPrice, quantity)
+            else EconomyRules.localSellPrice(items.getValue(id).baseSellPrice, quantity, itemId = id)
         }
         val outputValue=recipe.rewards.entries.sumOf { (id, quantity) ->
-            EconomyRules.localSellPrice(items.getValue(id).baseSellPrice, quantity)
+            EconomyRules.localSellPrice(items.getValue(id).baseSellPrice, quantity, itemId = id)
         }
         assertTrue(outputValue > inputValue,
             "Smoking even the highest-value allowed fish must retain a margin after the local buyer discount")

@@ -26,6 +26,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
 after(() => vite.close());
 const { OfferCard, Market, ListingPriceForm } = await vite.ssrLoadModule("/features/economy/ui/economy-panel.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { marketMinimumPrice } = await vite.ssrLoadModule("/features/economy/domain/market-rules.ts");
 const { fishDiscovered } = await vite.ssrLoadModule("/features/economy/ui/fishing/fish-discovery.tsx");
 const hooks = await vite.ssrLoadModule(hookModule);
 const now = Date.parse("2026-10-05T14:00:00Z");
@@ -36,7 +37,7 @@ function economy() {
     busy: false, uncertain: false, now, retryAt: 0, refreshMarket() {}, actMarket() { assert.fail("navigation must not trade"); },
   };
 }
-function offer(id) { return { id, sellerName: "Сосед <лес>", itemId: "wood", quantity: 6, totalPrice: 420 }; }
+function offer(id) { return { id, sellerName: "Сосед <лес>", itemId: "wood", quantity: 6, totalPrice: 300 }; }
 function elements(tree) {
   const result = [];
   function visit(element) { if (!isValidElement(element)) return; result.push(element); Children.forEach(element.props.children, visit); }
@@ -64,10 +65,10 @@ test("buy and own offers share the compact merchandise list without a second mar
 test("compact offer preserves visible quantity, seller and distinct total and unit prices", () => {
   const h = harness(OfferCard, { economy: economy(), offer: offer("a"), navigate() {} });
   const view = h.render();
-  assert.match(view.html, /Древесина × 6/); assert.match(view.html, /Сосед &lt;лес&gt;/);
-  assert.match(view.html, /420<span[^>]+> монет<\/span>/); assert.match(view.html, /за весь лот/); assert.match(view.html, /70 за шт\./);
+  assert.match(view.html, /Бревно × 6/); assert.match(view.html, /Сосед &lt;лес&gt;/);
+  assert.match(view.html, /300<span[^>]+> монет<\/span>/); assert.match(view.html, /за весь лот/); assert.match(view.html, /50 за шт\./);
   const button = view.nodes.find(node => node.type === "button");
-  assert.equal(button.props["aria-label"], "Купить весь лот: Древесина × 6 за 420 монет");
+  assert.equal(button.props["aria-label"], "Купить весь лот: Бревно × 6 за 300 монет");
 });
 
 test("market fish previews show exact goods even before discovery or while all stock is in escrow", () => {
@@ -99,12 +100,12 @@ test("buy and return still require confirmation, preserve exact commands and res
     view = h.render(); assert.deepEqual(h.focused, ["confirmation", "trigger"]); assert.deepEqual(calls, []);
     view.nodes.find(node => node.type === "button").props.onClick(); view = h.render();
     view.nodes.find(node => node.type === "button" && node.props["aria-label"]?.startsWith(owned ? "Снять с продажи" : "Подтвердить покупку")).props.onClick();
-    assert.deepEqual(calls, owned ? [["cancel_listing", "a"]] : [["buy_listing", "a", 6, 420]]);
+    assert.deepEqual(calls, owned ? [["cancel_listing", "a"]] : [["buy_listing", "a", 6, 300]]);
   }
 });
 
 test("a stale quote or uncertain command cannot be spent from an already-open compact confirmation", () => {
-  for (const invalid of [e => { e.uncertain = true; }, e => { e.now += 1000; }, e => { e.snapshot.wallet.coins = 410; }]) {
+  for (const invalid of [e => { e.uncertain = true; }, e => { e.now += 1000; }, e => { e.snapshot.wallet.coins = 290; }]) {
     const e = economy(), calls = []; e.actMarket = (...args) => calls.push(args);
     const h = harness(OfferCard, { economy: e, offer: offer("a"), navigate() {} });
     h.render().nodes.find(node => node.type === "button").props.onClick(); invalid(e);
@@ -136,6 +137,42 @@ test("listing prices use the catalog currency quantum and cannot submit an inter
   assert.deepEqual(calls, [["create_listing", "wood", 1, acceptedPrice]]);
 });
 
+test("odd NPC prices align the native market input with allowed ten-coin prices for the whole lot", () => {
+  for (const quantity of [1, 2, 3]) {
+    const e = economy(), calls = [];
+    e.snapshot.inventory.grilled_fish = 3;
+    e.snapshot.catalog.market.maxPriceMultiplier = 3;
+    e.actMarket = (...args) => calls.push(args);
+    const item = e.snapshot.catalog.items.find(entry => entry.id === "grilled_fish");
+    const floor = marketMinimumPrice(item.id, quantity, e.snapshot.catalog);
+    assert.equal(floor, 55 * quantity, "the economic floor keeps its exact NPC price");
+    const h = harness(ListingPriceForm, { economy: e, item });
+    let view = h.render();
+    view.nodes.find(node => node.type === "input").props.onChange({ target: { value: String(quantity) } });
+    view = h.render();
+    let input = view.nodes.filter(node => node.type === "input")[1];
+    const minimum = Math.ceil(floor / 10) * 10, maximum = Math.floor(55 * quantity * 3 / 10) * 10;
+    assert.equal(input.props.min, minimum);
+    assert.equal(input.props.max, maximum);
+    assert.equal(input.props.step, 10);
+    assert.equal((minimum - input.props.min) % input.props.step, 0, "the browser accepts the valid minimum");
+    assert.equal((maximum - input.props.min) % input.props.step, 0, "the browser accepts the valid maximum");
+    assert.match(view.html, new RegExp(`Допустимая цена: ${minimum}–${maximum} монет`));
+    input.props.onChange({ target: { value: String(minimum - 1) } });
+    view = h.render();
+    const invalid = view.nodes.find(node => node.type === "button");
+    assert.equal(invalid.props.disabled, true);
+    invalid.props.onClick(); assert.deepEqual(calls, []);
+    input = view.nodes.filter(node => node.type === "input")[1];
+    input.props.onChange({ target: { value: String(minimum) } });
+    view = h.render();
+    const submit = view.nodes.find(node => node.type === "button");
+    assert.equal(submit.props.disabled, false);
+    submit.props.onClick();
+    assert.deepEqual(calls, [["create_listing", "grilled_fish", quantity, minimum]]);
+  }
+});
+
 test("an open seller form cannot list high-tier bait after a home-level change", () => {
   const e = economy(), calls = [];
   e.snapshot.inventory.firefly_bait = 2;
@@ -165,10 +202,10 @@ test("seller sees the net fee and a quantity which fits the full daily limit", (
   const e = economy(); e.snapshot.buildings.home = 2; e.snapshot.inventory.wood = 100;
   const item = e.snapshot.catalog.items.find(entry => entry.id === "wood");
   const view = harness(ListingPriceForm, { economy: e, item }).render();
-  assert.equal(view.nodes.find(node => node.type === "input").props.max, 60);
-  assert.match(view.html, /Получите 76 монет после сбора 5%/);
+  assert.equal(view.nodes.find(node => node.type === "input").props.max, 80);
+  assert.match(view.html, /Получите 57 монет после сбора 5%/);
   const old = harness(OfferCard, { economy: e, offer: { ...offer("legacy"), feeBps: 0 }, owned: true, navigate() {} }).render();
-  assert.match(old.html, /После продажи: 420 монет/); assert.match(old.html, /без сбора/);
+  assert.match(old.html, /После продажи: 300 монет/); assert.match(old.html, /без сбора/);
 });
 
 test("limits and reset countdown are available in collapsed market rules", () => {

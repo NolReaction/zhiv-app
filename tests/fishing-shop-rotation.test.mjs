@@ -55,7 +55,7 @@ test('stock is private to each player, gated by home, weighted by rarity and exc
   const first = createFishingShop(state, now, () => 0, '00000000-0000-4000-8000-000000000001');
   const last = createFishingShop(state, now, max => max - 1, '00000000-0000-4000-8000-000000000001');
   assert.deepEqual(first.offers.map(offer => offer.itemId), ['river_rod', 'barbed_hook', 'crumb_bait', 'fish_common']);
-  assert.deepEqual(last.offers.map(offer => offer.itemId), ['starfall_rod', 'leviathan_hook', 'firefly_bait', 'fish_common']);
+  assert.deepEqual(last.offers.map(offer => offer.itemId), ['starfall_rod', 'leviathan_hook', 'star_bait', 'fish_common']);
   state.fishing.ownedRods = spec.rods.map(item => item.id); state.fishing.ownedHooks = spec.hooks.map(item => item.id);
   assert.deepEqual(createFishingShop(state, now, () => 0).offers.map(offer => offer.kind), ['bait', 'fish']);
 });
@@ -170,8 +170,8 @@ test('shared Kotlin vectors keep category slots and fixed rare tickets with down
     ['river_rod', 'barbed_hook', 'worm_bait', 'fish_common']);
   const totals = [];
   assert.deepEqual(refreshFishingShop(state, now, max => { totals.push(max); return max - 1; }).offers.map(item => item.itemId),
-    ['starfall_rod', 'leviathan_hook', 'firefly_bait', 'fish_common']);
-  assert.deepEqual(totals, [10000, 1, 10000, 1, 95, 1]);
+    ['starfall_rod', 'leviathan_hook', 'star_bait', 'fish_common']);
+  assert.deepEqual(totals, [10000, 1, 10000, 1, 99, 1]);
 });
 
 test('all 10000 tickets per home keep exact legendary odds even after collecting every lesser model', () => {
@@ -253,6 +253,7 @@ test('discount fish purchase has bounded stock, no collection unlock, no NPC arb
 test('higher delivery rewards and free order replacements cannot refill an exhausted fish offer', () => {
   const p = player(); fund(p);
   const state = persisted(p);
+  Object.assign(state.buildings, { home: 2, woodlot: 1, workshop: 1, dryer: 1 });
   state.inventory = {};
   state.fishingShop = createFishingShop(state, now, () => 0);
   state.residentOrders = normalizedResidentOrders(state, now);

@@ -37,32 +37,27 @@ test("old saves and snapshots default to one slot and expose only the five real 
   assert.deepEqual(model.economyCatalog.buildings.filter(b => slots.productionStationSupported(b.id)).map(b => b.id).sort(), expected);
   for (const station of expected) {
     assert.equal(slots.productionSlotCount({}, station), 1);
-    assert.deepEqual(slots.productionSlotOffer({}, station), { slots: 2, requiredHomeLevel: 2, pricePearls: 1500 });
+    assert.deepEqual(slots.productionSlotOffer({}, station), { slots: 2, requiredHomeLevel: 1, pricePearls: 200 });
   }
   for (const station of ["quarry", "home", "warehouse", "unknown"]) assert.equal(slots.productionSlotOffer({}, station), null);
   assert.equal(slots.productionSlotCount({ productionSlots: { workshop: 999 } }, "workshop"), 3);
 });
 
-test("slot purchase follows house gates, debits pearls only and persists independently per station", () => {
+test("both premium slot tiers are available at home one and persist independently per station", () => {
   const p = player(1); const before = read(p);
-  assert.throws(() => issue(p, "buy_production_slot", "workshop"), { code: "ECONOMY_HOME_REQUIRED" });
-  assert.deepEqual(read(p), before);
-  p.row.state.buildings.home = 2;
   const second = issue(p, "buy_production_slot", "workshop").state;
   assert.deepEqual(second.productionSlots, { workshop: 2 });
-  assert.deepEqual(second.wallet, { coins: 100_000, pearls: 48_500 });
+  assert.deepEqual(second.wallet, { coins: 100_000, pearls: 49_800 });
   assert.deepEqual(second.inventory, before.inventory);
-  assert.throws(() => issue(p, "buy_production_slot", "workshop"), { code: "ECONOMY_HOME_REQUIRED" });
-  p.row.state.buildings.home = 4;
   const third = issue(p, "buy_production_slot", "workshop").state;
-  assert.equal(third.productionSlots.workshop, 3); assert.equal(third.wallet.pearls, 43_500);
+  assert.equal(third.productionSlots.workshop, 3); assert.equal(third.wallet.pearls, 49_300);
   assert.equal(slots.productionSlotCount(third, "kiln"), 1);
   assert.throws(() => issue(p, "buy_production_slot", "workshop"), { code: "ECONOMY_PRODUCTION_SLOTS_MAX" });
   assert.equal(slots.productionSlotOffer(third, "workshop"), null);
 });
 
 test("invalid stations, missing buildings, insufficient pearls and forged batch or price cannot buy capacity", () => {
-  const p = player(4, 1499);
+  const p = player(4, 199);
   for (const station of ["quarry", "home", "warehouse", "unknown"]) {
     const before = read(p);
     assert.throws(() => issue(p, "buy_production_slot", station), { code: "ECONOMY_PRODUCTION_STATION" });
@@ -71,7 +66,7 @@ test("invalid stations, missing buildings, insufficient pearls and forged batch 
   assert.throws(() => issue(p, "buy_production_slot", "workshop"), { code: "ECONOMY_PEARLS" });
   p.row.state.buildings.dryer = 0;
   assert.throws(() => issue(p, "buy_production_slot", "dryer"), { code: "ECONOMY_BUILDING_REQUIRED" });
-  for (const extra of [{ quantity: 2 }, { totalPrice: 1 }, { totalPrice: 1500 }]) {
+  for (const extra of [{ quantity: 2 }, { totalPrice: 1 }, { totalPrice: 200 }]) {
     const before = read(p);
     assert.throws(() => economy.commandDevEconomy(p.token, command(p, "buy_production_slot", "workshop", extra), now), { code: "INVALID_ECONOMY_COMMAND" });
     assert.deepEqual(read(p), before);
@@ -87,7 +82,7 @@ test("receipt replay spends once while stale revisions and cross-account command
   assert.throws(() => economy.commandDevEconomy(p.token, { ...buy, requestId: crypto.randomUUID() }, now), { code: "ECONOMY_REVISION_CONFLICT" });
   assert.throws(() => economy.commandDevEconomy(stranger.token, buy, now), { code: "ECONOMY_OWNER_CHANGED" });
   assert.throws(() => economy.commandDevEconomy(p.token, { ...buy, targetId: "kiln" }, now), { code: "ECONOMY_REQUEST_CONFLICT" });
-  assert.equal(read(p).wallet.pearls, 48_500);
+  assert.equal(read(p).wallet.pearls, 49_800);
 });
 
 test("three slots run distinct or repeated recipes in parallel and only a successful claim frees capacity", () => {

@@ -11,9 +11,12 @@ test("complete daily projection uses completed home tiers, the claim calendar an
   try {
     const report = simulateJourney(loaded, "visits3", 40, { ...policy, buyProductionSlots: true });
     const gifts = report.dailyRewards;
-    assert.equal(report.coinFlow.remaining, report.coinFlow.initial + report.coinFlow.sales + report.coinFlow.gifts
+    assert.equal(report.coinFlow.remaining, report.coinFlow.initial + report.coinFlow.sales + report.coinFlow.gifts + report.coinFlow.orders
       - Object.values(report.coinFlow.spendingByAction).reduce((sum, value) => sum + value, 0));
-    assert.equal(gifts.claims, 40, "Three visits cannot create three daily bundles");
+    assert.equal(report.coinFlow.initial, 100);
+    assert.equal(report.coinFlow.orders, 330);
+    assert(gifts.claims <= 40, "Three visits cannot create three daily bundles");
+    assert(gifts.claims + gifts.storageDeferrals >= 40, "Missed daily bundles must be explained by storage deferrals");
     assert(!report.excludedIncome.includes("daily_rewards"));
     assert(report.excludedIncome.includes("player_market"));
     assert(gifts.claimRows.some(row => row.homeLevel >= 2));
@@ -31,9 +34,13 @@ test("complete daily projection uses completed home tiers, the claim calendar an
     assert.equal(gifts.coinsReceived, gifts.claimRows.reduce((sum, row) => sum + row.reward.coins, 0));
     assert.equal(gifts.pearlsReceived, report.pearlsRemaining + report.pearlsSpent);
     assert.deepEqual(Object.fromEntries(Object.entries(report.itemFlow).filter(([, flow]) => flow.initial > 0)
-      .map(([id, flow]) => [id, flow.initial])), { fish_common: 10, wood: 10, stone: 10 });
+      .map(([id, flow]) => [id, flow.initial])), { wood: 3, stone: 5 });
+    assert.deepEqual(loaded.catalog.buildings.find(building => building.id === "warehouse").levels
+      .map(level => level.warehouseCapacity), Array.from({ length: 10 }, (_, index) => (index + 1) * 50));
+    assert.deepEqual(Object.fromEntries(Object.entries(report.itemFlow).filter(([, flow]) => flow.orderInputs > 0)
+      .map(([id, flow]) => [id, flow.orderInputs])), { wood: 2, berries: 2, berry_compote: 2, planks: 2 });
     for (const [id, flow] of Object.entries(report.itemFlow))
-      assert.equal(flow.initial + flow.received, flow.sold + flow.productionInputs + flow.expeditionInputs + flow.constructionInputs + flow.remaining, id);
+      assert.equal(flow.initial + flow.received, flow.sold + flow.productionInputs + flow.expeditionInputs + flow.constructionInputs + flow.orderInputs + flow.remaining, id);
     for (const [id, amount] of Object.entries(report.rareMaterials.inventory))
       assert.equal(amount, report.rareMaterials.received[id] + (gifts.itemsReceived[id] ?? 0) - report.rareMaterials.spentOnConstruction[id]);
   } finally { await loaded.close(); }
@@ -42,23 +49,31 @@ test("complete daily projection uses completed home tiers, the claim calendar an
 test("gift capacity rejection does not credit its wallet or advance its seven-step calendar", async () => {
   const loaded = await loadJourneyRules();
   try {
-    let denied = 0;
+    let denied = 0, naturalDeferrals = 0;
     const observed = { ...loaded, rules: { ...loaded.rules,
       assertEconomyStorageTransition(before, after, ...rest) {
         if (after.wallet?.coins > before.wallet?.coins && denied < 5) {
           denied++;
           throw new loaded.rules.EconomyRuleError("ECONOMY_STORAGE_FULL", "Research forced capacity boundary");
         }
-        return loaded.rules.assertEconomyStorageTransition(before, after, ...rest);
+        try { return loaded.rules.assertEconomyStorageTransition(before, after, ...rest); }
+        catch (error) {
+          if (error.code === "ECONOMY_STORAGE_FULL" || error.code === "ECONOMY_CAPACITY") naturalDeferrals++;
+          throw error;
+        }
       } } };
     const report = simulateJourney(observed, "visits3", 5, policy);
     assert.equal(denied, 5);
-    assert.equal(report.dailyRewards.storageDeferrals, 5);
+    assert.equal(report.dailyRewards.storageDeferrals, denied + naturalDeferrals);
     assert(report.dailyRewards.claims > 0);
     assert.equal(report.dailyRewards.claimRows[0].step, 1);
     assert.equal(report.dailyRewards.pearlsReceived, report.pearlsRemaining);
     assert.equal(report.dailyRewards.coinsReceived, report.dailyRewards.claimRows.reduce((sum, row) => sum + row.reward.coins, 0));
     assert.equal(report.dailyRewards.itemsReceived.wood, report.dailyRewards.claimRows.reduce((sum, row) => sum + (row.reward.items.wood ?? 0), 0));
+    assert.equal(report.coinFlow.remaining, report.coinFlow.initial + report.coinFlow.sales + report.coinFlow.gifts + report.coinFlow.orders
+      - Object.values(report.coinFlow.spendingByAction).reduce((sum, value) => sum + value, 0));
+    for (const [id, flow] of Object.entries(report.itemFlow))
+      assert.equal(flow.initial + flow.received, flow.sold + flow.productionInputs + flow.expeditionInputs + flow.constructionInputs + flow.orderInputs + flow.remaining, id);
   } finally { await loaded.close(); }
 });
 

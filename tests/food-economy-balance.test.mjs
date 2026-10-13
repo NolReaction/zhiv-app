@@ -48,21 +48,23 @@ test("buying raw fish and immediately submitting orders cannot mint coins", () =
 });
 
 test("cooking ceilings account for extra inventory, real production and aggregate sale rounding", () => {
-  assert.deepEqual(report.shopDeliveryBudgets.map(row => row.matchingCookedOrdersWithOrdinaryMaterialsCeiling.netCoins), [2710]);
+  assert.deepEqual(report.shopDeliveryBudgets.map(row => row.matchingCookedOrdersWithOrdinaryMaterialsCeiling.netCoins), [0]);
   const cooked = report.shopDeliveryBudgets[0].matchingCookedOrdersWithOrdinaryMaterialsCeiling;
-  assert.deepEqual(cooked.otherOwnedInputs, { wood: 6, berries: 12 });
-  assert.equal(cooked.otherOwnedInputsSaleCoins, 350);
-  assert.equal(cooked.productionMinutes, 90);
+  assert.deepEqual(cooked.otherOwnedInputs, {});
+  assert.equal(cooked.otherOwnedInputsSaleCoins, 0);
+  assert.equal(cooked.productionMinutes, 0);
   const expanded = report.shopDeliveryBudgets[0].matchingOrdersWithAdditionalRawIngredientsCeiling;
-  assert.deepEqual(expanded.otherOwnedInputs, { wood: 4, berries: 8, fish_uncommon: 2 });
-  assert.equal(expanded.otherOwnedInputsSaleCoins, 370);
-  assert.equal(expanded.productionMinutes, 150);
-  assert.equal(expanded.netCoins, 4350);
+  assert.deepEqual(expanded.otherOwnedInputs, { wood: 3, berries: 36 });
+  assert.equal(expanded.otherOwnedInputsSaleCoins, 450);
+  assert.equal(expanded.productionMinutes, 360);
+  assert.equal(expanded.netCoins, 4440);
 });
 
 test("a fresh account has diverse themed orders with unique compositions and no completion delay", () => {
   assert.equal(report.boardPolicy.completionCooldownSeconds, 0);
-  assert(report.boardPolicy.starterTemplates >= 10);
+  assert(report.boardPolicy.starterTemplates >= 5);
+  assert.equal(report.boardPolicy.tutorialTemplates, 4);
+  assert(report.boardPolicy.secondStageTemplates >= 10);
   const data = catalog(), builders = data.food.orders.templates.filter(order => order.residentId === "builder");
   const foods = new Set(data.food.meals.map(meal => meal.itemId));
   assert(builders.filter(order => !Object.keys(order.items).some(id => foods.has(id) || id.startsWith("fish"))).length / builders.length >= .8);

@@ -3,7 +3,7 @@ import { ECONOMY_MAX_BALANCE, economyCatalog, economyResidentOrdersSchema, type 
 import { fishingIneligibility, fishingState, fishClassInventory, fishingClassItemId, fishClassForItem } from "./fishing";
 
 type FoodSource = Pick<EconomyState, "food"> & { catalog?: EconomyCatalog };
-type OrderSource = Pick<EconomyState, "residentOrders" | "buildings"> & Partial<Pick<EconomyState, "fishing">> & { catalog?: EconomyCatalog };
+type OrderSource = Pick<EconomyState, "residentOrders" | "buildings"> & Partial<Pick<EconomyState, "fishing" | "progression">> & { catalog?: EconomyCatalog };
 type Recipe = EconomyCatalog["recipes"][number];
 export type ResidentOrderOffer = {
   id: string; slot: number; templateId: string; residentId: "plesk" | "builder"; name: string; description?: string;
@@ -79,6 +79,7 @@ export function obtainableResidentOrderItems(state: OrderSource, catalog = state
     const before = reachable.size;
     for (const source of [...catalog.explorations, ...catalog.recipes]) {
       if (!unlocked(source) || "buildingId" in source && (state.buildings[source.buildingId] ?? 0) < source.buildingLevel) continue;
+      if ("requiredRecipes" in source && Object.entries(source.requiredRecipes).some(([id, count]) => (state.progression?.recipes[id] ?? 0) < count)) continue;
       const fishInput = "fishInput" in source ? source.fishInput?.itemIds : undefined;
       if (Object.keys(source.cost.items).some(id => !reachable.has(id) && !fishInput?.includes(id))) continue;
       if (fishInput && !fishInput.some(id => reachable.has(id))) continue;

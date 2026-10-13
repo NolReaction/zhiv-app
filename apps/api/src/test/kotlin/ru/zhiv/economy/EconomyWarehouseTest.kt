@@ -10,7 +10,7 @@ import kotlin.test.*
 class EconomyWarehouseTest {
     private val now = Instant.parse("2026-10-06T23:00:00Z")
     private val warehouse = EconomyRules.catalog.buildings.single { it.id == "warehouse" }
-    private val capacities = listOf(300L, 500L, 1000L, 1800L, 3000L, 4000L, 5200L, 6600L, 8200L, 10000L)
+    private val capacities = (1L..10L).map { it * 50L }
     private val relicIds = listOf("ancient_core", "moon_crystal", "living_resin")
     private val relicCosts = listOf(listOf(2L, 1L, 1L), listOf(3L, 1L, 1L), listOf(4L, 1L, 1L),
         listOf(5L, 2L, 2L), listOf(6L, 2L, 2L), listOf(8L, 2L, 2L), listOf(10L, 3L, 3L))
@@ -20,7 +20,7 @@ class EconomyWarehouseTest {
     private fun apply(state: EconomyState, action: String, target: String, at: Instant = now, totalPrice: Long = 0) =
         EconomyRules.apply(state, command(action, target, totalPrice), at).first
 
-    @Test fun `ten storage tiers keep existing capacities and add escalating relic sets after level three`() {
+    @Test fun `ten storage tiers add fifty places and escalating relic sets after level three`() {
         assertEquals((1..10).toList(), warehouse.levels.map { it.level })
         assertEquals(capacities, warehouse.levels.map { it.warehouseCapacity })
         val third = warehouse.levels[2]
@@ -45,7 +45,7 @@ class EconomyWarehouseTest {
         var state = initial(1).copy(wallet = EconomyWallet(targets.sumOf { it.cost.coins }, 77), inventory = supplies)
         val originalBuildings = state.buildings
         assertEquals(1, state.buildings["home"]); assertEquals(0, state.buildings["workshop"])
-        assertEquals(0L, EconomyRules.storage(state).overflow)
+        assertEquals((supplies.values.sum() - capacities.first()).coerceAtLeast(0), EconomyRules.storage(state).overflow)
         var at = now
         for (target in targets) {
             val before = state
@@ -161,7 +161,7 @@ class EconomyWarehouseTest {
         assertTrue(started.inventory.isEmpty())
         val price = EconomyRules.constructionSpeedupPrice(job, now)
         val finished = apply(started, "speedup_construction", job.id, totalPrice = price)
-        assertEquals(10, finished.buildings["warehouse"]); assertEquals(10000L, EconomyRules.storage(finished).capacity)
+        assertEquals(10, finished.buildings["warehouse"]); assertEquals(500L, EconomyRules.storage(finished).capacity)
         assertTrue(finished.jobs.isEmpty()); assertTrue(finished.inventory.isEmpty())
         assertEquals(state.wallet.coins, finished.wallet.coins); assertEquals(state.wallet.pearls - price, finished.wallet.pearls)
         assertEquals("ECONOMY_JOB_GONE", assertFailsWith<AuthFailure> {
@@ -178,6 +178,6 @@ class EconomyWarehouseTest {
         assertEquals(before, economyJson.encodeToString(state))
         val maximum = initial(10)
         assertEquals(maximum, economyJson.decodeFromString<EconomyState>(economyJson.encodeToString(maximum)))
-        assertEquals(10000L, EconomyRules.storage(maximum).capacity)
+        assertEquals(500L, EconomyRules.storage(maximum).capacity)
     }
 }

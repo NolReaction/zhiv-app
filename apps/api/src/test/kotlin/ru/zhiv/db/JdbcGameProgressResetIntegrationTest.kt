@@ -120,6 +120,14 @@ class JdbcGameProgressResetIntegrationTest {
             assertEquals(0, preview.exitCode, preview.stderr)
             assertEquals(before, snapshot(source), "No-argument SQL invocation must be read only")
 
+            execute(source, "UPDATE flyway_schema_history SET version='51' WHERE version='50'")
+            val unreviewed = snapshot(source)
+            val wrongVersion = reset(true)
+            assertNotEquals(0, wrongVersion.exitCode)
+            assertTrue(wrongVersion.stderr.contains("Expected successfully applied migration V50"), wrongVersion.stderr)
+            assertEquals(unreviewed, snapshot(source), "An unreviewed migration must fail before deletion")
+            execute(source, "UPDATE flyway_schema_history SET version='50' WHERE version='51'")
+
             execute(source, "CREATE TABLE ci_unreviewed_game_reset_guard(value text)")
             val unexpected = snapshot(source)
             assertNotEquals(0, reset(true).exitCode)
@@ -165,6 +173,7 @@ class JdbcGameProgressResetIntegrationTest {
                 assertEquals(41L, fresh.revision, "Fence includes receipts newer than the current profile")
                 assertEquals(EconomyRules.initial().wallet, fresh.state.wallet)
                 assertEquals(EconomyRules.initial().inventory, fresh.state.inventory)
+                assertEquals(EconomyRules.initial().tutorialOrder, fresh.state.tutorialOrder)
                 assertTrue(fresh.state.jobs.isEmpty())
                 connection.createStatement().use { statement ->
                     statement.executeQuery("SELECT state::text,revision FROM world_profiles").use { rows ->

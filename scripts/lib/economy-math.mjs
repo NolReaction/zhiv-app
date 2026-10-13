@@ -16,6 +16,18 @@ const recipeSlots = recipe => {
   if (actorSeconds) slots.mochlik = actorSeconds / 60;
   return slots;
 };
+/** Fish use their specialist buyer; configured first-stage goods have exact NPC prices. */
+export function createLiquidation(catalog) {
+  const items = new Map(catalog.items.map(item => [item.id, item]));
+  const fish = new Set([...(catalog.fishing?.fish ?? []), ...(catalog.fishing?.classes ?? [])].map(item => item.itemId));
+  const scale = catalog.currencyScale ?? 1, buyer = catalog.localBuyer;
+  return quantities => Object.entries(quantities).reduce((sum, [id, quantity]) => {
+    const item = items.get(id); assert(item, `Unknown sale item ${id}`);
+    const fixed = buyer?.unitPrices?.[id];
+    return sum + (fish.has(id) ? item.baseSellPrice * quantity : fixed !== undefined ? fixed * quantity
+      : Math.floor(item.baseSellPrice / scale * quantity * (buyer?.payoutBps ?? 10000) / 10000) * scale);
+  }, 0);
+}
 
 /** Resource work is a vector of minimum intrinsic occupied slot-minutes, not
  * elapsed wall time: compulsory collection is included, waiting to claim is not.
@@ -27,9 +39,8 @@ export function economicMath(catalog) {
   const buildings = new Map(catalog.buildings.map(b => [b.id, b]));
   const fish = new Set([...(catalog.fishing?.fish ?? []), ...(catalog.fishing?.classes ?? [])].map(f => f.itemId));
   const rare = new Set(catalog.rareDrops?.itemIds ?? []);
-  const moneyScale = catalog.currencyScale ?? 1;
-  const liquidation = quantities => Object.entries(quantities).reduce((sum, [id, quantity]) => sum +
-    (fish.has(id) ? items.get(id).baseSellPrice * quantity : Math.floor(items.get(id).baseSellPrice / moneyScale * quantity * (catalog.localBuyer?.payoutBps ?? 10000) / 10000) * moneyScale), 0);
+  const liquidation = createLiquidation(catalog);
+  const recipes = new Map(catalog.recipes.map(recipe => [recipe.id, recipe]));
   const homeCache = new Map();
   function buildingHome(id, level, path = []) {
     const key = `${id}:${level}`;
@@ -41,16 +52,34 @@ export function economicMath(catalog) {
     for (const [b, l] of Object.entries(d.requiredBuildings)) result = Math.max(result, buildingHome(b, l, [...path, key]));
     homeCache.set(key, result); return result;
   }
-  const definitionHome = d => Math.max(d.requiredHomeLevel,
-    ...(d.buildingId ? [buildingHome(d.buildingId, d.buildingLevel)] : []),
-    ...Object.entries(d.requiredBuildings ?? {}).map(([id, level]) => buildingHome(id, level)));
+  const definitionHome = (d, path = []) => {
+    assert(!path.includes(d.id), `Recipe unlock cycle: ${[...path, d.id].join(" -> ")}`);
+    return Math.max(d.requiredHomeLevel,
+      ...(d.buildingId ? [buildingHome(d.buildingId, d.buildingLevel)] : []),
+      ...Object.entries(d.requiredBuildings ?? {}).map(([id, level]) => buildingHome(id, level)),
+      ...Object.keys(d.requiredRecipes ?? {}).map(id => {
+        const prior = recipes.get(id); assert(prior, `Unknown recipe unlock ${id}`);
+        return definitionHome(prior, [...path, d.id]);
+      }));
+  };
+  const unlockPrerequisites = (d, path = []) => {
+    assert(!path.includes(d.id), `Recipe unlock cycle: ${[...path, d.id].join(" -> ")}`);
+    const levels = { ...d.requiredBuildings, ...(d.buildingId ? { [d.buildingId]: d.buildingLevel } : {}), home: d.requiredHomeLevel };
+    const completedRecipes = { ...d.requiredRecipes };
+    for (const id of Object.keys(d.requiredRecipes ?? {})) {
+      const recipe = recipes.get(id); assert(recipe, `Unknown recipe unlock ${id}`);
+      const prior = unlockPrerequisites(recipe, [...path, d.id]);
+      requireLevels(levels, prior.levels); requireLevels(completedRecipes, prior.completedRecipes);
+    }
+    return { levels, completedRecipes };
+  };
   const rodCanCatch = (rod, rarity) => (rarity !== "legendary" || rod.rarity === "legendary")
     && (!rod.classOddsBps || rod.classOddsBps[rarity] > 0);
   const fishingHome = itemId => {
     const spec = [...catalog.fishing.fish, ...(catalog.fishing.classes ?? [])].find(f => f.itemId === itemId);
     return Math.max(1, Math.min(...catalog.fishing.rods.filter(rod => rodCanCatch(rod, spec.rarity)).map(rod => rod.requiredHomeLevel ?? 1)));
   };
-  const sourceHome = itemId => Math.min(...[...catalog.recipes, ...catalog.explorations].filter(d => d.rewards[itemId] > 0).map(definitionHome),
+  const sourceHome = itemId => Math.min(...[...catalog.recipes, ...catalog.explorations].filter(d => d.rewards[itemId] > 0).map(d => definitionHome(d)),
     ...(rare.has(itemId) ? [catalog.rareDrops.requiredHomeLevel] : []),
     ...(fish.has(itemId) ? [fishingHome(itemId)] : []),
     ...(catalog.fishing?.baits.filter(b => b.itemId === itemId).map(b => b.requiredHomeLevel ?? 1) ?? []));
@@ -94,16 +123,18 @@ export function economicMath(catalog) {
     if (profiles.has(id)) return profiles.get(id);
     assert(!path.includes(id), `Production cycle: ${[...path, id].join(" -> ")}`);
     const r = primitive.get(id);
-    const result = { itemId: id, slotMinutes: {}, rawInputs: {}, coins: 0, depth: 0, sourceHome: sourceHome(id), referenceHome: 1, byproducts: {}, producerLevels: {} };
+    const result = { itemId: id, slotMinutes: {}, rawInputs: {}, coins: 0, depth: 0, sourceHome: sourceHome(id), referenceHome: 1, byproducts: {}, producerLevels: {}, unlockRecipes: {} };
     if (r) {
       const output = r.rewards[id]; result[r.buildingId ? "recipeId" : "routeId"] = r.id; result.referenceHome = definitionHome(r);
-      requireLevels(result.producerLevels, { ...r.requiredBuildings, ...(r.buildingId ? { [r.buildingId]: r.buildingLevel } : {}), home: r.requiredHomeLevel });
+      const prerequisites = unlockPrerequisites(r);
+      requireLevels(result.producerLevels, prerequisites.levels); requireLevels(result.unlockRecipes, prerequisites.completedRecipes);
       add(result.slotMinutes, recipeSlots(r), 1 / output); result.coins += r.cost.coins / output;
       if (!Object.keys(r.cost.items).length) result.rawInputs[id] = 1;
       for (const [input, quantity] of Object.entries(r.cost.items)) {
         const p = profile(input, [...path, id]), scale = quantity / output;
         add(result.slotMinutes, p.slotMinutes, scale); add(result.rawInputs, p.rawInputs, scale); add(result.byproducts, p.byproducts, scale);
         requireLevels(result.producerLevels, p.producerLevels);
+        requireLevels(result.unlockRecipes, p.unlockRecipes);
         result.coins += p.coins * scale; result.depth = Math.max(result.depth, p.depth + 1); result.referenceHome = Math.max(result.referenceHome, p.referenceHome);
       }
     } else if (rare.has(id)) {

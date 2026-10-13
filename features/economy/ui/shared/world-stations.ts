@@ -2,6 +2,7 @@ import type { MapObjectSelection, WorldPlace } from "@/features/world/scene/map-
 import type { EconomyCatalog, EconomyCost, EconomyJob, EconomyView } from "@/features/economy/domain/model";
 import { fishClassForItem } from "@/features/economy/domain/fishing";
 import { productionSlotCount } from "@/features/economy/domain/production-slots";
+import { tutorialOrderProgress } from "@/features/economy/domain/tutorial-order";
 
 export type WorldStationDefinition = { label: string; stationIds: readonly string[]; future?: string };
 export const worldStations: Partial<Record<WorldPlace, WorldStationDefinition>> = {
@@ -71,7 +72,10 @@ export function worldMissingRequirements(state: EconomyView, required: Record<st
   return Object.entries(required).filter(([id, level]) => (state.buildings[id] ?? 0) < level).map(([id, level]) => ({ id, level, current: state.buildings[id] ?? 0 }));
 }
 export function worldMaterialSource(state: EconomyView, itemId: string) {
-  const recipe = state.catalog.recipes.find(entry => (entry.rewards[itemId] ?? 0) > 0 && !worldMissingRequirements(state, worldRequirements(entry, entry)).length);
+  const recipes = state.catalog.recipes.filter(entry => (entry.rewards[itemId] ?? 0) > 0);
+  const recipe = recipes.find(entry => !worldMissingRequirements(state, worldRequirements(entry, entry)).length && !worldRecipeUnlockReason(state, entry))
+    ?? recipes.find(entry => entry.requiredHomeLevel <= (state.buildings.home ?? 1)
+      && worldMissingRequirements(state, worldRequirements(entry, entry)).every(required => required.id === entry.buildingId));
   if (recipe) return { kind: "production" as const, stationId: recipe.buildingId, targetId: recipe.id };
   const fish = state.catalog.fishing && fishClassForItem(itemId, state.catalog.fishing);
   const exploration = state.catalog.explorations.find(entry => ((entry.rewards[itemId] ?? 0) > 0 || fish && state.catalog.fishing?.routeIds.includes(entry.id)) && !worldMissingRequirements(state, worldRequirements(entry)).length);
@@ -87,9 +91,20 @@ export function worldBatchLimit(state: EconomyView, recipe: WorldRecipe) {
   const output = Object.values(recipe.rewards).reduce((sum, amount) => sum + amount, 0);
   return Math.max(0, Math.min(recipe.maxBatch ?? state.catalog.maxBatch, state.catalog.maxBatch, Math.floor(state.storage.capacity / Math.max(1, output))));
 }
+export function worldMissingRecipeRequirements(state: EconomyView, recipe: WorldRecipe) {
+  return Object.entries(recipe.requiredRecipes ?? {}).filter(([id, count]) => (state.progression?.recipes?.[id] ?? 0) < count)
+    .map(([id, count]) => ({ id, count, current: state.progression?.recipes?.[id] ?? 0,
+      recipe: state.catalog.recipes.find(entry => entry.id === id) }));
+}
+export function worldRecipeUnlockReason(state: EconomyView, recipe: WorldRecipe) {
+  const first = worldMissingRecipeRequirements(state, recipe)[0];
+  return first ? `Сначала приготовьте: ${first.recipe?.name ?? first.id} (${first.current} / ${first.count})` : null;
+}
 export function worldProductionReason(state: EconomyView, recipe: WorldRecipe, quantity = 1) {
   const required = worldMissingRequirements(state, worldRequirements(recipe, recipe));
   if (required.length) return `${state.catalog.buildings.find(building => building.id === required[0].id)?.name ?? "Постройка"}: нужен уровень ${required[0].level}`;
+  const unlockReason = worldRecipeUnlockReason(state, recipe);
+  if (unlockReason) return unlockReason;
   if (recipe.buildingId === "quarry") return "Добыча доступна в вылазках Мохлика";
   if (state.jobs.some(job => job.kind === "construction" && job.targetId === recipe.buildingId)) return "Сначала завершите улучшение";
   if (state.jobs.filter(job => job.kind === "production" && job.targetId === recipe.buildingId).length >= productionSlotCount(state, recipe.buildingId)) return "Все места заняты: сначала заберите результат";
@@ -100,6 +115,9 @@ export function worldProductionReason(state: EconomyView, recipe: WorldRecipe, q
 export function worldConstructionReason(state: EconomyView, stationId: string, target: WorldBuildingLevel) {
   const required = worldMissingRequirements(state, worldRequirements(target));
   if (required.length) return `${state.catalog.buildings.find(building => building.id === required[0].id)?.name ?? "Постройка"}: нужен уровень ${required[0].level}`;
+  const tutorial = tutorialOrderProgress(state);
+  if (stationId === "home" && target.level === 2 && tutorial.version === 2 && !tutorial.completed)
+    return `Выполните учебные заказы: ${tutorial.step} / 4`;
   if (target.level !== (state.buildings[stationId] ?? 0) + 1) return "Сначала завершите предыдущее улучшение";
   if (state.jobs.some(job => job.kind === "construction")) return "Строитель занят. Сначала завершите текущую стройку";
   if (stationId === "quarry" && state.jobs.some(job => job.kind === "exploration" && state.catalog.explorations.some(route => route.id === job.targetId && route.requiredBuildings.quarry))) return "Сначала дождитесь Мохлика и заберите добычу";

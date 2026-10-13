@@ -36,14 +36,16 @@ export function auditFoodEconomy(catalog) {
     && (!definition.buildingId || (buildings[definition.buildingId] ?? 0) >= definition.buildingLevel);
   // Independent fixed-point audit of prerequisites, including ingredient chains.
   const obtainable = buildings => {
-    const reachable = new Set(); let changed = true;
+    const reachable = new Set(), completedRecipes = new Set(); let changed = true;
     while (changed) {
-      const before = reachable.size;
+      const before = reachable.size + completedRecipes.size;
       for (const source of [...catalog.explorations, ...catalog.recipes]) {
         if (!hasRequirements(source, buildings)) continue;
+        if (Object.keys(source.requiredRecipes ?? {}).some(id => !completedRecipes.has(id))) continue;
         const options = source.fishInput?.itemIds;
         if (Object.keys(source.cost.items).some(id => !reachable.has(id) && !options?.includes(id)) || options && !options.some(id => reachable.has(id))) continue;
         for (const [id, count] of Object.entries(source.rewards)) if (count > 0) reachable.add(id);
+        if (source.buildingId) completedRecipes.add(source.id);
         if (catalog.fishing.routeIds.includes(source.id)) for (const spec of catalog.fishing.classes) {
           const rods = catalog.fishing.rods.filter(rod => rod.requiredHomeLevel <= buildings.home && (spec.rarity !== "legendary" || rod.rarity === "legendary")
             && (!rod.classOddsBps || rod.classOddsBps[spec.rarity] > 0));
@@ -51,7 +53,7 @@ export function auditFoodEconomy(catalog) {
           if (rods.length && hooks.length) reachable.add(spec.itemId);
         }
       }
-      changed = before !== reachable.size;
+      changed = before !== reachable.size + completedRecipes.size;
     }
     return reachable;
   };
@@ -170,8 +172,14 @@ export function auditFoodEconomy(catalog) {
       byHome: Array.from({ length: 6 - order.requiredHomeLevel }, (_, index) => progressedOrder(order, index + order.requiredHomeLevel)) };
   });
   const earlyOrders = orders.templates.filter(order => hasRequirements(order, { home: 1, garden: 1, warehouse: 1 }));
-  assert(earlyOrders.length >= 10, "Starter board needs at least ten eligible distinct templates");
-  for (const resident of ["plesk", "builder"]) assert(earlyOrders.filter(order => order.residentId === resident).length >= 4, "Each starter resident needs variety");
+  const tutorials = catalog.onboarding?.residentOrders ?? [];
+  assert.equal(tutorials.length, 4, "First stage needs four guaranteed tutorial requests");
+  assert.equal(sum(tutorials.map(order => order.coins)), 330, "First-stage tutorial requests must pay the planned 330 coins");
+  assert(earlyOrders.length >= 5, "Starter board needs at least five eligible distinct templates alongside the tutorial requests");
+  for (const resident of ["plesk", "builder"]) assert(earlyOrders.some(order => order.residentId === resident), "Both starter residents need an eligible request");
+  const secondStageOrders = orders.templates.filter(order => hasRequirements(order, { home: 2, garden: 1, warehouse: 1 }));
+  assert(secondStageOrders.length >= 10, "Second-stage board needs at least ten eligible distinct templates");
+  for (const resident of ["plesk", "builder"]) assert(secondStageOrders.filter(order => order.residentId === resident).length >= 4, "Each second-stage resident needs variety");
 
   // Exhaustive finite unbounded-knapsack over <=6 purchased fish. Other goods are
   // explicitly owned inputs valued as one aggregate sale; no per-unit rounding.
@@ -250,7 +258,7 @@ export function auditFoodEconomy(catalog) {
     levels[id] = level;
   }
   return { catalogVersion: catalog.version, currency: "visible coins, identical to catalog integer amounts; currencyScale is a historical denomination marker",
-    assumptions: ["Fish use full Pleska buyback price; local sales round each aggregate item stack down to a multiple of 10 coins",
+    assumptions: ["Fish use full Pleska buyback price; first-stage goods use exact configured NPC prices; other local sales round each aggregate item stack down to a multiple of 10 coins",
       "Actual merchant purchase is ceil(buyPrice*fishPriceBps/10000), not nominal buyPrice; only common class stock is sold",
       "Direct purchase-resale and pure raw-fish buy-to-order turnover lose money; cooking value requires real time and ingredients",
       "Four natural deliveries per steady day is not a strict rolling-day cap; old stock may straddle the interval, and paid merchant refresh restocks the common class offer",
@@ -264,7 +272,8 @@ export function auditFoodEconomy(catalog) {
       "Construction projection assumes stocked meals and build inputs in one topological order; it excludes gathering, rarity, claim waits and cooking elapsed time"],
     boardPolicy: { slots: orders.slots, refreshHours: orders.refreshSeconds / 3600, freeReplacements: orders.freeReplacements,
       replacementWindowHours: orders.replacementWindowSeconds / 3600, paidReplacementStoredPearls: orders.replacementPricePearls,
-      recentLimit: orders.recentLimit, progression, starterTemplates: earlyOrders.length, completionCooldownSeconds: 0 },
+      recentLimit: orders.recentLimit, progression, starterTemplates: earlyOrders.length, tutorialTemplates: tutorials.length,
+      secondStageTemplates: secondStageOrders.length, completionCooldownSeconds: 0 },
     meals, recipes, templates, shopDeliveryBudgets,
     construction: { baseBuildSeconds, stockedFoodBuildSeconds, savedPercent: rounded((1 - stockedFoodBuildSeconds / baseBuildSeconds) * 100),
       mealCounts: fedCounts, mealPreparationMinutes, absoluteAllLegendaryTheoreticalSeconds: duration(baseBuildSeconds, food.meals.at(-1).builderSpeedBps) } };

@@ -30,20 +30,19 @@ class EconomyProductionSlotsTest {
         assertEquals(3, EconomyRules.productionSlotCount(paid.copy(productionSlots = mapOf("workshop" to 999)), "workshop"))
     }
 
-    @Test fun `purchases require sequential tiers house built station and sufficient pearls`() {
-        failure("ECONOMY_HOME_REQUIRED") { apply(fixture(home = 1), "buy_production_slot", "workshop") }
-        val second = apply(fixture(home = 2), "buy_production_slot", "workshop")
+    @Test fun `purchases allow both sequential tiers from house one and require a built station and sufficient pearls`() {
+        val second = apply(fixture(home = 1), "buy_production_slot", "workshop")
         assertEquals(mapOf("workshop" to 2), second.productionSlots)
-        assertEquals(EconomyWallet(100_000, 48_500), second.wallet)
+        assertEquals(EconomyWallet(100_000, 49_800), second.wallet)
         assertEquals(fixture().inventory, second.inventory)
-        failure("ECONOMY_HOME_REQUIRED") { apply(second, "buy_production_slot", "workshop") }
-        val third = apply(second.copy(buildings = second.buildings + ("home" to 4)), "buy_production_slot", "workshop")
+        val third = apply(second, "buy_production_slot", "workshop")
+        assertEquals(1, third.buildings["home"])
         assertEquals(3, third.productionSlots["workshop"])
-        assertEquals(43_500L, third.wallet.pearls)
+        assertEquals(49_300L, third.wallet.pearls)
         assertEquals(1, EconomyRules.productionSlotCount(third, "kiln"))
         failure("ECONOMY_PRODUCTION_SLOTS_MAX") { apply(third, "buy_production_slot", "workshop") }
         assertNull(EconomyRules.productionSlotOffer(third, "workshop"))
-        failure("ECONOMY_PEARLS") { apply(fixture(pearls = 1499), "buy_production_slot", "workshop") }
+        failure("ECONOMY_PEARLS") { apply(fixture(pearls = 199), "buy_production_slot", "workshop") }
         failure("ECONOMY_BUILDING_REQUIRED") { apply(fixture().copy(buildings = mapOf("home" to 4)), "buy_production_slot", "workshop") }
         for (station in listOf("home", "quarry", "warehouse", "unknown")) {
             failure("ECONOMY_PRODUCTION_STATION") { apply(fixture(), "buy_production_slot", station) }

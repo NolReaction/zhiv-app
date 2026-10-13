@@ -41,8 +41,9 @@ object EconomyRules {
 
     init {
         EconomyTutorialOrders.validateCatalog(catalog)
-        require(catalog.version == 5 && catalog.currencyScale == 10 && catalog.pearlScale == 50 && catalog.maxBatch in 1..10)
+        require(catalog.version == 6 && catalog.currencyScale == 10 && catalog.pearlScale == 50 && catalog.maxBatch in 1..10)
         require(catalog.localBuyer.payoutBps in 1..10_000)
+        require(catalog.localBuyer.unitPrices.all { (id, amount) -> amount in 1L..ECONOMY_MAX_BALANCE && catalog.items.any { it.id == id && it.tradable } })
         require(catalog.constructionSpeedup.secondsPerPearl in 1L..86_400L)
         require(catalog.constructionSpeedup.priceStepPearls in 1L..ECONOMY_PEARL_SCALE)
         require(catalog.market.maxListings in 1..10 && catalog.market.maxLotQuantity in 1L..99L &&
@@ -55,6 +56,8 @@ object EconomyRules {
         require(catalog.buildings.map { it.id }.distinct().size == catalog.buildings.size)
         require(catalog.recipes.map { it.id }.distinct().size == catalog.recipes.size)
         require(catalog.recipes.all { it.maxBatch == null || it.maxBatch in 1..catalog.maxBatch })
+        require(catalog.recipes.all { recipe -> recipe.requiredRecipes.all { (id, amount) ->
+            amount in 1L..ECONOMY_MAX_ITEMS && catalog.recipes.any { it.id == id } } })
         catalog.fishing?.let { fishing ->
             val rarities = setOf("common", "uncommon", "rare", "epic", "legendary")
             require(fishing.routeIds.isNotEmpty() && fishing.routeIds.all { id -> catalog.explorations.any { it.id == id && (it.rewards["fish"] ?: 0) > 0 } })
@@ -107,7 +110,9 @@ object EconomyRules {
         return EconomyState(currencyScale=10,pearlScale=50,
             wallet = EconomyWallet(grant.coinsGranted + (starting?.startingWallet?.coins ?: 0), starting?.startingWallet?.pearls ?: 0), inventory = EconomyFishInventory.items(inventory),
             buildings = mapOf("home" to homeLevel.coerceIn(1, 5), "garden" to 1, "woodlot" to 0, "quarry" to 0,
-                "workshop" to workshopLevel.coerceIn(0, 3), "dryer" to 0, "warehouse" to 1, "kiln" to 0), migration = grant)
+                "workshop" to workshopLevel.coerceIn(0, 3), "dryer" to 0, "warehouse" to 1, "kiln" to 0), migration = grant,
+            tutorialOrder = if (starting == null) EconomyTutorialOrder() else EconomyTutorialOrder(
+                version = 2, step = 0, ingredientsClaimed = true, terms = EconomyTutorialOrders.orders(starting).first()))
     }
 
     /** Escrow keeps its space until sold, so putting goods on the market cannot expand the warehouse. */
@@ -238,7 +243,8 @@ object EconomyRules {
     }
 
     /** Floor one whole stack; splitting cannot improve the payout. */
-    fun localSellPrice(basePrice: Long, quantity: Long = 1, config: EconomyLocalBuyer = catalog.localBuyer): Long {
+    fun localSellPrice(basePrice: Long, quantity: Long = 1, config: EconomyLocalBuyer = catalog.localBuyer, itemId: String? = null): Long {
+        itemId?.let { config.unitPrices[it] }?.let { return it * quantity }
         val total = basePrice / ECONOMY_CURRENCY_SCALE * quantity
         return ECONOMY_CURRENCY_SCALE * (total / 10_000 * config.payoutBps + total % 10_000 * config.payoutBps / 10_000)
     }
@@ -284,7 +290,7 @@ object EconomyRules {
             "claim_tutorial_order" -> EconomyTutorialOrders.claim(state, command, reservedItems)
             "claim_workshop_starter" -> EconomyWorkshopStarter.claim(state, command, reservedItems)
             "eat_food", "feed_builder" -> EconomyFood.eat(state, command.targetId, command.action == "feed_builder", now)
-            "complete_resident_order", "replace_resident_order" -> if (command.targetId == EconomyTutorialOrders.ID)
+            "complete_resident_order", "replace_resident_order" -> if (EconomyTutorialOrders.isTutorialId(command.targetId))
                 EconomyTutorialOrders.complete(state, command) else EconomyFood.order(state, command.targetId,
                     command.action == "replace_resident_order", now, command.totalPrice)
             "start_production" -> {
@@ -299,6 +305,8 @@ object EconomyRules {
                     economyFailure("ECONOMY_BUILDING_REQUIRED", "Сначала постройте или улучшите нужное здание")
                 requireHome(state, recipe.requiredHomeLevel)
                 requireBuildings(state, recipe.requiredBuildings)
+                if (recipe.requiredRecipes.any { (id, amount) -> (state.progression.recipes[id] ?: 0L) < amount })
+                    economyFailure("ECONOMY_RECIPE_REQUIRED", "Сначала приготовьте малиновый компот")
                 if (state.jobs.any { it.targetId == recipe.buildingId && it.kind == "construction" })
                     economyFailure("ECONOMY_BUILDING_BUSY", "Дождитесь улучшения здания и заберите результат")
                 if (state.jobs.count { it.targetId == recipe.buildingId && it.kind == "production" } >= productionSlotCount(state, recipe.buildingId))
@@ -327,7 +335,8 @@ object EconomyRules {
                 val job = state.jobs.find { it.id == command.targetId } ?: economyFailure("ECONOMY_JOB_GONE", "Результат уже получен или задание не найдено")
                 val spec = job.collection?.let { EconomyCollectionSpec(it.kind, it.seconds) }
                     ?: catalog.recipes.find { it.id == job.recipeId }?.collection
-                if (job.kind != "production" || job.targetId != "garden" || (job.rewards["berries"] ?: 0L) <= 0L || spec == null)
+                if (job.kind != "production" || job.targetId != "garden" ||
+                    ((job.rewards["berries"] ?: 0L) <= 0L && (job.rewards["strawberries"] ?: 0L) <= 0L) || spec == null)
                     economyFailure("ECONOMY_COLLECTION_KIND", "Для этой работы сбор Мохликом не требуется")
                 if (job.collection?.startedAt != null) economyFailure("ECONOMY_COLLECTION_STARTED", "Мохлик уже собирает этот урожай")
                 if (now.isBefore(Instant.parse(job.finishesAt))) economyFailure("ECONOMY_JOB_NOT_READY", "Урожай ещё не созрел")
@@ -403,6 +412,8 @@ object EconomyRules {
                 val next = (state.buildings[building.id] ?: 0) + 1
                 val upgrade = building.levels.find { it.level == next } ?: economyFailure("ECONOMY_MAX_LEVEL", "Доступные улучшения уже завершены")
                 requireHome(state, upgrade.requiredHomeLevel)
+                if (building.id == "home" && next == 2 && state.tutorialOrder.version == 2 && !state.tutorialOrder.completed)
+                    economyFailure("ECONOMY_TUTORIAL_REQUIRED", "Сначала выполните четыре учебных заказа")
                 requireBuildings(state, upgrade.requiredBuildings)
                 if (state.jobs.any { it.kind == "construction" }) economyFailure("ECONOMY_CONSTRUCTION_BUSY", "Строитель занят. Сначала завершите текущую стройку")
                 if (building.id == "quarry" && state.jobs.any { job -> job.kind == "exploration" && catalog.explorations.any { it.id == job.targetId && it.requiredBuildings.containsKey("quarry") } })
@@ -535,7 +546,7 @@ object EconomyRules {
                     economyFailure("ECONOMY_FISHING_ITEM", "Плёска принимает здесь только рыбу")
                 val item = catalog.items.find { it.id == itemId && it.tradable && it.category != "special" } ?: economyFailure("ECONOMY_ITEM", "Этот предмет нельзя продать")
                 val amount = if (command.action == "sell_fish") item.baseSellPrice * command.quantity
-                    else localSellPrice(item.baseSellPrice, command.quantity)
+                    else localSellPrice(item.baseSellPrice, command.quantity, itemId = item.id)
                 if (amount == 0L) economyFailure("ECONOMY_SALE_QUANTITY", "Для продажи добавьте предметы в партию: выручка должна быть хотя бы одна монета")
                 if (command.action == "sell" && amount < command.totalPrice)
                     economyFailure("ECONOMY_SALE_PRICE_CHANGED", "Выручка изменилась. Проверьте цену продажи и подтвердите снова")

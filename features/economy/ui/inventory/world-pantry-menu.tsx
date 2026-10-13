@@ -36,7 +36,7 @@ export type WorldPantryMenuProps = {
 export function PantrySale({ economy, itemId, onClose, onOpenFishingShop, onOpenFood, constructionGoal }: { economy: ReadyEconomy; itemId: string; onClose?: () => void; onOpenFishingShop?: () => void; onOpenFood?: () => void; constructionGoal?: ConstructionGoalController }) {
   const state = economy.snapshot, buyer = state.catalog.localBuyer;
   const item = state.catalog.items.find(entry => entry.id === itemId);
-  const minimum = item && item.category !== "special" && item.baseSellPrice > 0 ? economyLocalSaleMinimumQuantity(item.baseSellPrice, buyer) : 1;
+  const minimum = item && item.category !== "special" && item.baseSellPrice > 0 ? economyLocalSaleMinimumQuantity(item.baseSellPrice, buyer, item.id) : 1;
   const [quantityText, setQuantityText] = useState(() => String(minimum));
   const [quantityMode, setQuantityMode] = useState<"manual" | "excess">("manual");
   const inputId = useId();
@@ -49,22 +49,23 @@ export function PantrySale({ economy, itemId, onClose, onOpenFishingShop, onOpen
   if (!item) return null;
   if (item.category === "special") return <section ref={sale} className={styles.relicGuard} aria-label={item.name}><ItemIcon itemId={item.id} size={30} /><div><h3>{item.name}</h3><p>Можно обменять с другими игроками.</p></div></section>;
   const stock = state.inventory[itemId] ?? 0;
-  const maximum = economyLocalSaleLimit(item.baseSellPrice, stock, state.wallet.coins, buyer);
-  const discount = (10_000 - (buyer?.payoutBps ?? 10_000)) / 100;
+  const maximum = economyLocalSaleLimit(item.baseSellPrice, stock, state.wallet.coins, buyer, item.id);
+  const fixedPrice = buyer?.unitPrices?.[item.id];
+  const discount = fixedPrice !== undefined ? 0 : (10_000 - (buyer?.payoutBps ?? 10_000)) / 100;
   const betterFishPrice = discount > 0 && fishClassForItem(itemId, state.catalog.fishing);
   const goal = constructionGoal?.details;
   const needed = goal?.keepItems[itemId] ?? 0;
   const excess = goal ? Math.min(maximum, goal.excessItems[itemId] ?? 0) : 0;
   const quantity = quantityMode === "excess" ? excess : Number(quantityText);
   const valid = (quantityMode === "excess" || /^\d+$/.test(quantityText)) && Number.isSafeInteger(quantity) && quantity >= minimum && quantity <= maximum;
-  const total = valid ? economyLocalSellPrice(item.baseSellPrice, quantity, buyer) : 0;
+  const total = valid ? economyLocalSellPrice(item.baseSellPrice, quantity, buyer, item.id) : 0;
   return <section ref={sale} className={`${styles.pantry} ${styles.sale}`} data-guide-pantry-sale aria-label={`Продажа: ${item.name}`}>
     <div className={styles.saleHeading}>
       <ProductIcon state={state} itemId={item.id} size={18} />
       <h3>{item.name}</h3>
       {onClose && <button type="button" className={styles.iconButton} onClick={onClose} aria-label="Свернуть продажу"><ChevronUp size={16} aria-hidden="true" /></button>}
     </div>
-    <p className={styles.muted}>В запасе {number(stock)} · {discount > 0 ? `Быстрая продажа с уценкой ${number(discount)}%` : `${number(item.baseSellPrice)} монет за штуку`}</p>
+    <p className={styles.muted}>В запасе {number(stock)} · {discount > 0 ? `Быстрая продажа с уценкой ${number(discount)}%` : `${number(fixedPrice ?? item.baseSellPrice)} монет за штуку`}</p>
     {discount > 0 && <p className={styles.muted}>Сумма за всё количество округляется вниз до целой монеты.</p>}
     {betterFishPrice && <p className={styles.fishBuyer}>Плёска купит дороже: {number(item.baseSellPrice)} монет за штуку.{onOpenFishingShop && <button type="button" className={styles.textButton} onClick={onOpenFishingShop}>К Плёске</button>}</p>}
     {onOpenFood && state.catalog.food?.meals.some(meal => meal.itemId === itemId) && <button type="button" className={styles.textButton} onClick={onOpenFood}><Soup size={16} aria-hidden="true" />Подать еду</button>}

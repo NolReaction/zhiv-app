@@ -56,31 +56,19 @@ test("POST validates payload then atomically replays its original receipt", asyn
   const conflict = await POST(post({ ...cmd, quantity: 2 })); assert.equal(conflict.status, 409); assert.equal((await conflict.json()).code, "ECONOMY_REQUEST_CONFLICT");
 });
 
-test("HTTP starter gift is owner-bound server state and receipt retries never mint a second cost", async () => {
+test("HTTP obsolete starter gift remains owner-bound and repeated requests cannot mint any cost", async () => {
   const p = player(), before = economy.getDevEconomy(p.token);
   const cmd = { ...command(p), action: "claim_workshop_starter", targetId: "workshop" };
-  const suppliedReward = await POST(post({ ...cmd, coins: 999999 }));
-  assert.equal(suppliedReward.status, 400);
+  assert.equal((await POST(post({ ...cmd, coins: 999999 }))).status, 400);
   const other = identities.createDevIdentity("Other", crypto.randomUUID());
   assert.equal((await POST(post({ ...cmd, ownerPublicId: other.me.user.publicId }))).status, 409);
-  assert.deepEqual({ ...economy.getDevEconomy(p.token), serverTime: before.serverTime }, before);
-  const response = await POST(post(cmd));
-  assert.equal(response.status, 200);
-  const accepted = await response.json();
-  assert.equal(accepted.state.workshopStarterClaimed, true);
-  assert.deepEqual(accepted.state.wallet, { coins: before.wallet.coins + 1200, pearls: before.wallet.pearls });
-  assert.deepEqual(accepted.state.inventory, { ...before.inventory, wood: before.inventory.wood + 10, stone: before.inventory.stone + 8 });
-  assert.deepEqual(accepted.state.jobs, []);
-  const retried = await (await POST(post(cmd))).json();
-  assert.equal(retried.replayed, true);
-  assert.deepEqual(retried.state.wallet, accepted.state.wallet);
-  const freshRequest = { ...cmd, requestId: crypto.randomUUID(), expectedRevision: accepted.state.revision };
-  const repeated = await POST(post(freshRequest));
-  assert.equal(repeated.status, 409);
-  assert.equal((await repeated.json()).code, "ECONOMY_WORKSHOP_STARTER_CLAIMED");
+  for (const payload of [cmd, cmd, { ...cmd, requestId: crypto.randomUUID() }]) {
+    const response = await POST(post(payload)); assert.equal(response.status, 409);
+    assert.equal((await response.json()).code, "ECONOMY_WORKSHOP_STARTER_UNAVAILABLE");
+    assert.deepEqual({ ...economy.getDevEconomy(p.token), serverTime: before.serverTime }, before);
+  }
   const loaded = await (await GET(read())).json();
-  assert.equal(loaded.workshopStarterClaimed, true);
-  assert.deepEqual(loaded.wallet, accepted.state.wallet);
+  assert.equal(loaded.workshopStarterClaimed, false); assert.deepEqual(loaded.wallet, before.wallet); assert.deepEqual(loaded.inventory, before.inventory);
 });
 
 test("gameplay requires a live session even for receipt replay and explicit return preserves the original command", async () => {
@@ -185,7 +173,7 @@ test("HTTP builds and claims warehouse ten from earned low-home progress using o
   const started = await response.json();
   assert.equal(model.economyResultSchema.safeParse(started).success, true);
   assert.equal(started.state.jobs[0].targetLevel, 10);
-  assert.equal(started.state.storage.capacity, 8200);
+  assert.equal(started.state.storage.capacity, 450);
   assert.deepEqual(started.state.wallet, { coins: 0, pearls: 0 });
   assert.deepEqual(started.state.inventory, {});
   assert.equal((await (await POST(post(order))).json()).replayed, true);
@@ -200,7 +188,7 @@ test("HTTP builds and claims warehouse ten from earned low-home progress using o
   assert.equal(model.economyResultSchema.safeParse(claimed).success, true);
   assert.equal(claimed.state.buildings.home, 1);
   assert.equal(claimed.state.buildings.warehouse, 10);
-  assert.equal(claimed.state.storage.capacity, 10000);
+  assert.equal(claimed.state.storage.capacity, 500);
   assert.deepEqual(claimed.state.jobs, []);
   const repeated = await (await POST(post(claim))).json();
   assert.equal(repeated.replayed, true);

@@ -80,29 +80,29 @@ function harness(component = PantrySale, extra = {}) {
 
 test("selling only excess keeps direct building materials and raw inputs, and sends the displayed quote", () => {
   const sale = harness(), before = structuredClone(sale.economy.snapshot.inventory);
-  // Home 2 needs 20 wood plus 6 planks made from 2 wood each: retain 32 of 100.
-  assert.equal(constructionGoalDetails(sale.economy.snapshot, { buildingId: "home", targetLevel: 2 }).keepItems.wood, 32);
+  // Home 2 needs 3 wood plus 2 planks made from 1 wood each: retain 5 of 100.
+  assert.equal(constructionGoalDetails(sale.economy.snapshot, { buildingId: "home", targetLevel: 2 }).keepItems.wood, 5);
   sale.button("Только излишек").props.onClick();
-  assert.equal(sale.input().props.value, 68);
+  assert.equal(sale.input().props.value, 95);
   assert.equal(sale.button("Только излишек").props["aria-pressed"], true);
   const sell = sale.button("Продать излишек");
-  assert.equal(sell.props.disabled, false); assert.match(text(sell), /1\s?630/);
+  assert.equal(sell.props.disabled, false); assert.match(text(sell), /2\s?850/);
   assert.deepEqual(sale.calls, [], "choosing a quantity never sends a sale");
   sell.props.onClick();
-  assert.deepEqual(sale.calls, [["sell", "wood", 68, 1630]], "40 per wood at 60%, rounded once in the server's currency scale");
+  assert.deepEqual(sale.calls, [["sell", "wood", 95, 2850]], "the exact NPC quote keeps 5 wood for construction and recipes");
   assert.deepEqual(sale.economy.snapshot.inventory, before, "the UI waits for the server to change inventory");
 });
 
 test("excess mode follows new inventory and finished materials instead of retaining an old quantity", () => {
   const sale = harness();
-  sale.button("Только излишек").props.onClick(); assert.equal(sale.input().props.value, 68);
+  sale.button("Только излишек").props.onClick(); assert.equal(sale.input().props.value, 95);
   sale.economy.snapshot = snapshot({ ...sale.economy.snapshot.inventory, wood: 90 });
-  assert.equal(sale.input().props.value, 58, "ten wood already spent elsewhere are no longer offered");
+  assert.equal(sale.input().props.value, 85, "ten wood already spent elsewhere are no longer offered");
   sale.economy.snapshot = snapshot({ ...sale.economy.snapshot.inventory, planks: 4 });
-  assert.equal(sale.input().props.value, 66, "four ready planks release eight raw wood from the goal");
+  assert.equal(sale.input().props.value, 87, "ready planks release the two reserved raw wood");
   sale.button("Продать излишек").props.onClick();
-  assert.deepEqual(sale.calls, [["sell", "wood", 66, 1580]]);
-  sale.economy.snapshot = snapshot({ wood: 24, planks: 4 });
+  assert.deepEqual(sale.calls, [["sell", "wood", 87, 2610]]);
+  sale.economy.snapshot = snapshot({ wood: 3, planks: 2 });
   assert.equal(sale.input().props.value, 0);
   const emptySale = sale.button("Продать излишек");
   assert.equal(emptySale.props.disabled, true); emptySale.props.onClick();
@@ -111,7 +111,7 @@ test("excess mode follows new inventory and finished materials instead of retain
 
 test("clearing the goal in excess mode disables selling rather than turning the remaining stock into excess", () => {
   const sale = harness();
-  sale.button("Только излишек").props.onClick(); assert.equal(sale.input().props.value, 68);
+  sale.button("Только излишек").props.onClick(); assert.equal(sale.input().props.value, 95);
   sale.clearGoal();
   assert.equal(sale.input().props.value, 0);
   assert.ok(!nodes(sale.render()).some(node => node.type === "button" && text(node).startsWith("Только излишек")));
@@ -131,24 +131,24 @@ test("manual All warns about using goal materials but leaves the explicit sale a
   assert.match(text(warning), /В продажу попадут материалы для цели/);
   const sell = sale.button("Продать торговцу");
   assert.equal(sell.props.disabled, false); sell.props.onClick();
-  assert.deepEqual(sale.calls, [["sell", "wood", 100, 2400]]);
+  assert.deepEqual(sale.calls, [["sell", "wood", 100, 3000]]);
 });
 
 test("pantry annotates needed ingredients and offers the gift return without selling", () => {
   let returned = 0;
   const pantry = harness(WorldPantryMenu, { onReturnToGift() { returned++; } });
-  let wood = nodes(pantry.render()).find(node => node.props["aria-label"] === "Древесина: 100");
-  assert.match(text(wood), /Для цели: 32/);
+  let wood = nodes(pantry.render()).find(node => node.props["aria-label"] === "Бревно: 100");
+  assert.match(text(wood), /Для цели: 5/);
   const fiber = nodes(pantry.render()).find(node => node.props["aria-label"] === "Растительное волокно: 20");
-  assert.match(text(fiber), /Для цели: 6/, "two required ropes retain six fibers");
-  const berries = nodes(pantry.render()).find(node => node.props["aria-label"] === "Лесные ягоды: 3");
+  assert.doesNotMatch(text(fiber), /Для цели/, "home two no longer requires rope or fiber");
+  const berries = nodes(pantry.render()).find(node => node.props["aria-label"] === "Малина: 3");
   assert.doesNotMatch(text(berries), /Для цели/);
   wood.props.onClick();
   const selectedSale = nodes(pantry.render()).find(node => node.type === PantrySale);
-  assert.equal(selectedSale.props.itemId, "wood"); assert.equal(selectedSale.props.constructionGoal.details.keepItems.wood, 32);
+  assert.equal(selectedSale.props.itemId, "wood"); assert.equal(selectedSale.props.constructionGoal.details.keepItems.wood, 5);
   pantry.economy.snapshot = snapshot({ ...pantry.economy.snapshot.inventory, planks: 4 });
-  wood = nodes(pantry.render()).find(node => node.props["aria-label"] === "Древесина: 100");
-  assert.match(text(wood), /Для цели: 24/);
+  wood = nodes(pantry.render()).find(node => node.props["aria-label"] === "Бревно: 100");
+  assert.match(text(wood), /Для цели: 3/);
   pantry.button("Вернуться к подарку").props.onClick();
   assert.equal(returned, 1); assert.deepEqual(pantry.calls, []);
 });

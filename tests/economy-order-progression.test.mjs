@@ -61,9 +61,9 @@ test("saved cards keep IDs goods and payouts through home upgrades catalog edits
   assert.deepEqual(changed.offers.filter(offer => offer.slot !== 1), before.offers.filter(offer => offer.slot !== 1));
 });
 
-test("the income boost keeps a saved 400-coin delivery exact and pays 560 only for a new wood quote", () => {
+test("the first-stage update keeps a saved 400-coin delivery exact and quotes new wood at 90", () => {
   const state = fresh(), template = catalog.food.orders.templates.find(template => template.id === "builder_wood_supply");
-  assert.equal(template.coins, 560);
+  assert.equal(template.coins, 90);
   state.residentOrders = food.normalizedResidentOrders(state, now);
   state.residentOrders.slots[1] = { sequence: 3, readyAt: new Date(now).toISOString(), templateId: template.id,
     terms: { ...template, items: { wood: 8 }, coins: 400 } };
