@@ -4,7 +4,7 @@ import vm from "node:vm";
 import test from "node:test";
 const source = await readFile(new URL("../public/sw.js", import.meta.url), "utf8");
 const origin = "https://zhiv.example";
-const payload = { title: "Я Живой", body: "Пора разобрать находки", tag: "ready", url: "/?notification=world&section=activities&owner=AAAA-0000-0001", ownerPublicId: "AAAA-0000-0001" };
+const payload = { title: "Мохлик вернулся", body: "Пора разобрать находки", tag: "ready", url: "/?notification=world&section=activities&owner=AAAA-0000-0001", ownerPublicId: "AAAA-0000-0001" };
 function harness(windows = []) {
   const listeners = new Map(), shown = [], opened = [], calls = [];
   const self = { location: new URL(origin), addEventListener: (type, callback) => listeners.set(type, callback),
@@ -32,6 +32,23 @@ test("malformed, external, missing-owner and economic-action push targets never 
   for (const patch of [{ url: "https://evil.example/" }, { url: "/api/v1/economy/command" }, { url: "/?notification=world&section=sell&owner=AAAA-0000-0001" }, { ownerPublicId: "someoneelse" }, { ownerPublicId: undefined }, { body: {} }, { title: "" }, { tag: "x".repeat(129) }]) await h.dispatch("push", { data: { json: () => ({ ...payload, ...patch }) } });
   await h.dispatch("push", { data: { json: () => { throw new Error("bad json"); } } });
   assert.equal(h.shown.length, 0);
+});
+
+test("legacy API titles do not repeat the platform app name or lose grouped events", async () => {
+  const body = "Мохлик вернулся из путешествия. Стройка завершена. Ресурсы готовы.";
+  for (const title of ["Я Живой", "Я живой", "  Я   ЖИВОЙ  ", "Мохлик"]) {
+    const h = harness();
+    await h.dispatch("push", { data: { json: () => ({ ...payload, title, body }) } });
+    assert.equal(h.shown.length, 1);
+    assert.equal(h.shown[0][0], "Новости полянки");
+    assert.equal(h.shown[0][1].body, body);
+    assert.equal(h.shown[0][1].tag, payload.tag);
+    assert.equal(h.shown[0][1].data.ownerPublicId, payload.ownerPublicId);
+    const url = new URL(h.shown[0][1].data.url);
+    assert.equal(url.origin, origin);
+    assert.equal(url.searchParams.get("section"), "activities");
+    assert.equal(url.searchParams.get("owner"), payload.ownerPublicId);
+  }
 });
 
 test("click focuses existing app and posts a target without reload or duplicate window", async () => {

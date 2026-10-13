@@ -351,7 +351,10 @@ self.addEventListener("push", event => {
     || typeof payload.tag !== "string" || !payload.tag || payload.tag.length > 128) return;
   const url = notificationUrl(payload.url, payload.ownerPublicId);
   if (!url) return;
-  event.waitUntil(self.registration.showNotification(payload.title, {
+  // Older API instances can still send a brand-only title during rollout.
+  // The platform already identifies the app; keep all event details in the body.
+  const title = /^(?:я\s+живой|мохлик)$/i.test(payload.title.trim()) ? "Новости полянки" : payload.title;
+  event.waitUntil(self.registration.showNotification(title, {
     body: payload.body, tag: payload.tag, icon: "/icon-192.png", badge: "/icon-32.png",
     renotify: false, requireInteraction: false,
     data: { url, ownerPublicId: payload.ownerPublicId },

@@ -22,7 +22,9 @@
 
 ## Что отправляется
 
-Заголовок всех игровых push — «Я Живой»; событие описывается в тексте ниже. Системную подпись источника (например, `from Я живой` в iOS) добавляет ОС: заголовок сообщения её не скрывает и не переименовывает установленное приложение.
+Заголовок push описывает событие: «Мохлик вернулся», «Стройка завершена», «Ресурсы готовы» или «Пора отметиться». Текст под ним объясняет, что можно сделать. Для нескольких категорий приходит одна сводка «Новости полянки» со всеми событиями в тексте. Название приложения в заголовке и тексте не дублируется. Обновлённый service worker также заменяет прежние заголовки «Я Живой» и «Мохлик» от старого API на «Новости полянки», сохраняя весь текст и переход.
+
+Системную подпись источника (например, `from Я живой` в iOS) добавляет ОС/браузер. У Web Notifications нет настройки, чтобы убрать или переименовать эту строку; заголовок сообщения управляет только содержимым уведомления. Manifest `id`, `name` и существующие подписки не меняются. После обновления сервера новый заголовок приходит даже старому service worker. Обновление service worker требует открытия приложения; уведомления, уже лежащие в центре уведомлений, задним числом не меняются. Перед выпуском проверьте новое одиночное уведомление и сводку на реальном устройстве, включая открытие нужного раздела.
 
 По умолчанию выбраны завершение стройки, возвращение Мохлика и готовое производство. Напоминание об отметке выключено: после включения оно приходит только через **больше 24 часов с последней настоящей отметки**, включая историю объединённых аккаунтов. Для профиля без отметок оно не создаётся. На одну отметку приходится максимум одно напоминание; ежедневного повторения нет.
 
@@ -111,6 +113,7 @@ node scripts/configure-web-push.mjs
 - [`V47__web_push_notifications.sql`](../../apps/api/src/main/resources/db/migration/V47__web_push_notifications.sql): материализованная очередь, индексы, триггеры экономики, отметок и жизненного цикла аккаунта.
 - [`V49__optional_notification_rate_limits.sql`](../../apps/api/src/main/resources/db/migration/V49__optional_notification_rate_limits.sql): сохраняет включённые ограничения для существующих настроек; игрок может выключить их отдельно от тихих часов.
 - [`NotificationDispatcher.kt`](../../apps/api/src/main/kotlin/ru/zhiv/db/NotificationDispatcher.kt): фоновая обработка каждые 30 секунд, группировка, лимиты, повторная проверка перед отправкой.
+- [`NotificationMessages.kt`](../../apps/api/src/main/kotlin/ru/zhiv/notifications/NotificationMessages.kt): заголовки событий и текст сводки без повторения названия приложения.
 - [`WebPushSender.kt`](../../apps/api/src/main/kotlin/ru/zhiv/notifications/WebPushSender.kt): AES128GCM/VAPID через `web-push-libs/webpush-java`, ограниченный Java HTTP transport.
 
 Расписание обновляется в той же транзакции, что и экономический профиль. Рабочий цикл выбирает уже материализованные сроки через частичный индекс, а не сканирует JSONB всех игроков. На одного игрока одновременно может отправляться только согласованная сводка: блокировка аккаунта, постоянная запись отправки до сети и повторная проверка источника после резервирования. Удаление задания в промежутке убирает сообщение.
@@ -137,4 +140,4 @@ Snapshot: `{ ownerPublicId, preferences, delivery: { configured, publicKey, reas
 
 `NotificationRulesTest` проверяет ограничения, зоны/DST и SSRF allowlist; `WebPushSenderTest` проверяет подпись VAPID и полное шифрование/расшифровку payload на одноразовых ключах без отправки в интернет. `JdbcNotificationRepositoryIntegrationTest` проверяет подписки, owner fence, отмену/получение, сбор ягод, группировку, тихие часы, лимиты, наличие пользователя, строгие 24 часа, объединённую историю, два worker, retry, неоднозначную отправку и удаление аккаунта. Для него нужен PostgreSQL 18 (Testcontainers или явно заданный тестовый `TEST_DATABASE_URL`). Тесты не заменяют доставку на реальное устройство.
 
-Первичные источники: [WebKit: Web Push for Web Apps on iOS](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/), [исходники webpush-java](https://github.com/web-push-libs/webpush-java), [RFC8292 VAPID](https://www.rfc-editor.org/rfc/rfc8292), [RFC8030 Web Push](https://www.rfc-editor.org/rfc/rfc8030).
+Первичные источники: [WebKit: Web Push for Web Apps on iOS](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/), [Notifications API: интерфейс уведомления](https://notifications.spec.whatwg.org/#api), [исходники webpush-java](https://github.com/web-push-libs/webpush-java), [RFC8292 VAPID](https://www.rfc-editor.org/rfc/rfc8292), [RFC8030 Web Push](https://www.rfc-editor.org/rfc/rfc8030).

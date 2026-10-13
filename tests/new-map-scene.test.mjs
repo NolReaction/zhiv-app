@@ -35,6 +35,11 @@ async function modules(override) {
   try {
     const { default: scene } = await vite.ssrLoadModule("/features/world/tiled/forest.generated.json");
     Object.assign(scene, structuredClone(fixture), override);
+    // This canvas fixture has no audio files. Keep the real controller/runtime,
+    // but do not start the application-wide audio transport in scene timer tests.
+    // Asset preparation and cancellation have their own audio-runtime/world-audio tests.
+    const { AUDIO_CATALOG } = await vite.ssrLoadModule("/features/audio/catalog/catalog.ts");
+    for (const asset of AUDIO_CATALOG.assets) asset.status = "pending";
     const loaded = {
       ...await vite.ssrLoadModule("/features/mochlik/scene.ts"),
       ...await vite.ssrLoadModule("/features/world/scene/map-engine.ts"),

@@ -134,7 +134,7 @@ class JdbcNotificationRepositoryIntegrationTest {
         jobs(p,a,b,job(now))
         val sent=CopyOnWriteArrayList<PushPayload>(); val worker=dispatcher({now},sent)
         worker.tick(); worker.tick(); assertEquals(1,sent.size)
-        assertEquals("Я Живой",sent.single().title)
+        assertEquals("Новости полянки",sent.single().title)
         assertContains(sent.single().body,"Мохлик вернулся"); assertContains(sent.single().body,"Стройка")
         assertFalse(sent.single().body.contains("mythical")); assertEquals(p.owner,sent.single().ownerPublicId)
         assertContains(sent.single().url,"owner=${p.owner}")
