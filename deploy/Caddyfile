@@ -4,7 +4,9 @@
         timeouts {
             read_header 10s
             read_body 15s
-            write 30s
+            # Whole-response deadline: allow large forest images over slow VPNs.
+            # Client artwork/scene budgets remain bounded at 60/90 seconds.
+            write 2m
             idle 2m
         }
     }

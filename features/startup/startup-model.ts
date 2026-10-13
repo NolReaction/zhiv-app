@@ -53,7 +53,9 @@ export function startupPresentation(input: StartupInputs): StartupPresentation {
   if (!input.gameReady) return pending("Вспоминаем ваши достижения", input.gameFailed ? "Ответ задерживается. Повторяем проверку…" : null, input.gameFailed);
   if (!modulesReady || !sceneReady) {
     const failed = input.scene === "error" || input.modules === "error";
-    return pending(failed ? "Лес ещё загружается" : "Пробуждаем лес", failed ? "Повторяем загрузку. Уже готовое сохраняем." : null, failed);
+    const detail = input.modules === "error" ? "Не удалось подготовить лес. Повторяем попытку."
+      : input.scene === "error" ? "Не удалось загрузить рисунки леса. Повторяем попытку; готовое сохраняем." : null;
+    return pending(failed ? "Лес ещё загружается" : "Пробуждаем лес", detail, failed);
   }
   return done("Лес вас заждался");
 }

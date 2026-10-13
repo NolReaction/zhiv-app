@@ -34,6 +34,7 @@ class MemoryCache {
   async put(request, response) {
     const key = absoluteUrl(request);
     if (this.storage.failPutForUrl === key) throw new Error(`Failed to cache ${key}`);
+    if (this.storage.beforePut) await this.storage.beforePut(key, response);
     this.entries.set(key, response.clone());
   }
   async keys() { return [...this.entries.keys()].map(url => ({ url })); }
@@ -65,24 +66,30 @@ async function createServiceWorkerHarness() {
   const listeners = new Map();
   const responses = new Map();
   const caches = new MemoryCacheStorage();
+  const calls = { skipWaiting: 0, claim: 0, fetch: [] };
+  const timers = new Map();
+  const background = [];
+  let timerId = 0;
   const self = {
     location: new URL(origin),
     addEventListener(type, listener) {
       listeners.set(type, listener);
     },
-    async skipWaiting() {},
-    clients: { async claim() {} },
+    async skipWaiting() { calls.skipWaiting++; },
+    clients: { async claim() { calls.claim++; } },
   };
 
-  const fetch = async (request) => {
+  const fetch = async (request, options) => {
+    calls.fetch.push(absoluteUrl(request));
     const response = responses.get(absoluteUrl(request));
     if (!response) throw new Error(`Unexpected fetch: ${absoluteUrl(request)}`);
     if (response instanceof Error) throw response;
-    return response.clone();
+    return (await (typeof response === "function" ? response(options) : response)).clone();
   };
 
   vm.runInNewContext(source, {
     Array,
+    AbortController,
     Error,
     Promise,
     Response,
@@ -93,15 +100,17 @@ async function createServiceWorkerHarness() {
     crypto: globalThis.crypto,
     fetch,
     self,
+    setTimeout(callback, delay) { timers.set(++timerId, { callback, delay }); return timerId; },
+    clearTimeout(id) { timers.delete(id); },
   });
 
-  async function dispatchExtendable(type) {
+  async function dispatchExtendable(type, properties = {}) {
     const pending = [];
-    listeners.get(type)({ waitUntil: (promise) => pending.push(Promise.resolve(promise)) });
+    listeners.get(type)({ ...properties, waitUntil: (promise) => pending.push(Promise.resolve(promise)) });
     await Promise.all(pending);
   }
 
-  async function dispatchFetch(pathname, mode = "navigate") {
+  async function dispatchFetch(pathname, mode = "navigate", waitForBackground = true) {
     const pending = [];
     let responsePromise;
     listeners.get("fetch")({
@@ -115,11 +124,12 @@ async function createServiceWorkerHarness() {
       },
       waitUntil(promise) {
         pending.push(Promise.resolve(promise));
+        background.push(Promise.resolve(promise));
       },
     });
 
     const response = responsePromise ? await responsePromise : null;
-    await Promise.all(pending);
+    if (waitForBackground) await Promise.all(pending);
     return response;
   }
 
@@ -131,11 +141,20 @@ async function createServiceWorkerHarness() {
 
   return {
     caches,
+    calls,
     currentCacheName,
     dispatchExtendable,
     dispatchFetch,
     responses,
+    timers,
+    background,
   };
+}
+
+async function prepareOfflineShell(harness) {
+  await harness.dispatchExtendable("install");
+  await harness.dispatchExtendable("activate");
+  await harness.dispatchExtendable("message", { data: { type: "zhiv:cache-shell" } });
 }
 
 function setShellResponses(harness, label) {
@@ -178,6 +197,99 @@ function setShellResponses(harness, label) {
   return { assetPath, html };
 }
 
+test("production manifest revalidation cannot block worker installation or activation", async () => {
+  const harness = await createServiceWorkerHarness();
+  setShellResponses(harness, "production-manifest");
+  harness.responses.set(origin + "/manifest.webmanifest", new Response('{"name":"Я живой"}', {
+    headers: { "content-type": "application/manifest+json", "cache-control": "public, max-age=0, must-revalidate" },
+  }));
+  await harness.dispatchExtendable("install");
+  await harness.dispatchExtendable("activate");
+  assert.equal(harness.calls.skipWaiting, 1);
+  assert.equal(harness.calls.claim, 1);
+  assert.deepEqual(harness.calls.fetch, [], "worker readiness does not download the optional offline shell");
+  await harness.dispatchExtendable("message", { data: { type: "zhiv:cache-shell" } });
+  assert.equal(await harness.currentCacheName(), null, "must-revalidate is respected instead of caching a forbidden manifest");
+  assert.equal(harness.calls.claim, 1);
+});
+
+test("unavailable Cache Storage does not reject activation or optional cache warmup", async () => {
+  const harness = await createServiceWorkerHarness();
+  setShellResponses(harness, "storage-unavailable");
+  harness.caches.open = async () => { throw new Error("Storage unavailable"); };
+  await harness.dispatchExtendable("install");
+  await harness.dispatchExtendable("activate");
+  await harness.dispatchExtendable("message", { data: { type: "zhiv:cache-shell" } });
+  assert.equal(harness.calls.skipWaiting, 1);
+  assert.equal(harness.calls.claim, 1);
+  assert.deepEqual(await harness.caches.keys(), []);
+});
+
+test("hanging shell fetch stays independent from activation and duplicate warmups share it", async () => {
+  const harness = await createServiceWorkerHarness();
+  const shell = setShellResponses(harness, "slow-shell");
+  const rootResponse = harness.responses.get(origin + "/");
+  let resolveFetch;
+  harness.responses.set(origin + "/", new Promise(resolve => { resolveFetch = resolve; }));
+  await harness.dispatchExtendable("install");
+  await harness.dispatchExtendable("activate");
+  const first = harness.dispatchExtendable("message", { data: { type: "zhiv:cache-shell" } });
+  const second = harness.dispatchExtendable("message", { data: { type: "zhiv:cache-shell" } });
+  await Promise.resolve();
+  assert.deepEqual(harness.calls.fetch, [origin + "/"]);
+  assert.equal(harness.calls.skipWaiting, 1);
+  assert.equal(harness.calls.claim, 1);
+  assert.equal(await harness.currentCacheName(), null);
+  resolveFetch(rootResponse);
+  await Promise.all([first, second]);
+  const cache = await harness.caches.open(await harness.currentCacheName());
+  assert.equal(await (await cache.match("/")).text(), shell.html);
+});
+
+test("failed optional warmup preserves an existing complete shell and retries after quota recovery", async () => {
+  const harness = await createServiceWorkerHarness();
+  const previous = setShellResponses(harness, "old-shell");
+  await prepareOfflineShell(harness);
+  const previousName = await harness.currentCacheName();
+  const previousCache = await harness.caches.open(previousName);
+  const next = setShellResponses(harness, "new-shell");
+  harness.caches.failPutForUrl = origin + next.assetPath;
+  await harness.dispatchExtendable("install");
+  await harness.dispatchExtendable("activate");
+  await harness.dispatchExtendable("message", { data: { type: "zhiv:cache-shell" } });
+  assert.equal(await harness.currentCacheName(), previousName);
+  assert.equal(await (await previousCache.match("/")).text(), previous.html);
+  assert.deepEqual((await harness.caches.keys()).filter(name => name.startsWith("zhiv-shell-")), [previousName]);
+  harness.responses.set(origin + "/", new Error("Offline"));
+  assert.equal(await (await harness.dispatchFetch("/")).text(), previous.html);
+  harness.caches.failPutForUrl = null;
+  setShellResponses(harness, "new-shell");
+  await harness.dispatchExtendable("message", { data: { type: "zhiv:cache-shell" } });
+  const nextName = await harness.currentCacheName();
+  assert.notEqual(nextName, previousName);
+  assert.deepEqual((await harness.caches.keys()).filter(name => name.startsWith("zhiv-shell-")), [nextName]);
+});
+
+test("navigation waits for an older warmup before switching and cleaning the offline shell", async () => {
+  const harness = await createServiceWorkerHarness();
+  setShellResponses(harness, "existing-shell");
+  await prepareOfflineShell(harness);
+  setShellResponses(harness, "earlier-warmup");
+  const earlierResponse = harness.responses.get(origin + "/");
+  let resolveWarmup;
+  harness.responses.set(origin + "/", new Promise(resolve => { resolveWarmup = resolve; }));
+  const warmup = harness.dispatchExtendable("message", { data: { type: "zhiv:cache-shell" } });
+  await Promise.resolve();
+  const latest = setShellResponses(harness, "latest-navigation");
+  const navigation = harness.dispatchFetch("/");
+  resolveWarmup(earlierResponse);
+  await Promise.all([warmup, navigation]);
+  const currentName = await harness.currentCacheName();
+  const currentCache = await harness.caches.open(currentName);
+  assert.equal(await (await currentCache.match("/")).text(), latest.html);
+  assert.deepEqual((await harness.caches.keys()).filter(name => name.startsWith("zhiv-shell-")), [currentName]);
+});
+
 test("keeps identity and check-ins out of the offline cache", async () => {
   const serviceWorker = await readFile(new URL("../public/sw.js", import.meta.url), "utf8");
 
@@ -187,10 +299,24 @@ test("keeps identity and check-ins out of the offline cache", async () => {
   assert.match(serviceWorker, /key\.startsWith\(CACHE_PREFIX\)/);
 });
 
+test("offline product and other pages never receive the cached game at the wrong URL", async () => {
+  const harness = await createServiceWorkerHarness();
+  const shell = setShellResponses(harness, "public-site");
+  await prepareOfflineShell(harness);
+  harness.responses.set(origin + "/", new Error("Offline"));
+  assert.equal(await (await harness.dispatchFetch("/")).text(), shell.html);
+  for (const path of ["/site", "/site/", "/branch"]) {
+    harness.responses.set(origin + path, new Error("Offline"));
+    const response = await harness.dispatchFetch(path);
+    assert.equal(response.type, "error");
+    assert.equal(await response.text(), "");
+  }
+});
+
 test("release feed bypasses old shell and asset caches after a deployment", async () => {
   const harness = await createServiceWorkerHarness();
   setShellResponses(harness, "updates-a");
-  await harness.dispatchExtendable("install");
+  await prepareOfflineShell(harness);
   const shell = await harness.caches.open(await harness.currentCacheName());
   await shell.put("/updates.json", new Response('{"releases":[]}'));
   const assets = await harness.caches.open("zhiv-assets-v1");
@@ -206,7 +332,7 @@ test("release feed bypasses old shell and asset caches after a deployment", asyn
 
 test("maintenance status is always network-only even if a previous worker cached it", async () => {
   const harness = await createServiceWorkerHarness();
-  setShellResponses(harness, "maintenance-a"); await harness.dispatchExtendable("install");
+  setShellResponses(harness, "maintenance-a"); await prepareOfflineShell(harness);
   const shell = await harness.caches.open(await harness.currentCacheName());
   await shell.put("/app-status.json", new Response('{"schemaVersion":1,"buildId":"stale","maintenance":false}'));
   assert.equal(await harness.dispatchFetch("/app-status.json", "cors"), null);
@@ -215,7 +341,7 @@ test("maintenance status is always network-only even if a previous worker cached
 
 test("downloaded world artwork and lazy modules survive offline navigation and shell updates", async () => {
   const harness = await createServiceWorkerHarness();
-  setShellResponses(harness, "world-a"); await harness.dispatchExtendable("install");
+  setShellResponses(harness, "world-a"); await prepareOfflineShell(harness);
   const assets = ["/world/runtime/map-0123456789ab.webp", "/world/runtime/homePreview-0123456789ab.webp", "/_next/static/chunks/world-123.js"];
   for (const asset of assets) {
     harness.responses.set(origin + asset, new Response("asset-bytes", { headers: {
@@ -240,7 +366,7 @@ test("precaches the versioned launch logo from document preload for an offline l
   harness.responses.set(origin + "/", new Response(shell.html.replace("</head>",
     `<link rel="preload" as="image" href="${logo}"></head>`), { headers: { "content-type": "text/html" } }));
   harness.responses.set(origin + logo, new Response("logo-pixels", { headers: { "content-type": "image/webp" } }));
-  await harness.dispatchExtendable("install");
+  await prepareOfflineShell(harness);
   harness.responses.set(origin + logo, new Error("Offline"));
   assert.equal(await (await harness.dispatchFetch(logo, "cors")).text(), "logo-pixels");
   assert.equal(await harness.dispatchFetch("/brand/zhiv-logo.webp", "cors"), null,
@@ -250,7 +376,7 @@ test("precaches the versioned launch logo from document preload for an offline l
 test("keeps versioned branding across shell changes without replaying a prior icon revision", async () => {
   const harness = await createServiceWorkerHarness();
   setShellResponses(harness, "brand-a");
-  await harness.dispatchExtendable("install");
+  await prepareOfflineShell(harness);
   const icon = "/icon-192.png?v=0123456789ab";
   harness.responses.set(origin + icon, new Response("new-icon", { headers: { "content-type": "image/png" } }));
   assert.equal(await (await harness.dispatchFetch(icon, "cors")).text(), "new-icon");
@@ -266,7 +392,7 @@ test("keeps versioned branding across shell changes without replaying a prior ic
 test("mutable Next chunks and asset responses requiring revalidation always reach the network", async () => {
   const harness = await createServiceWorkerHarness();
   setShellResponses(harness, "mutable-assets");
-  await harness.dispatchExtendable("install");
+  await prepareOfflineShell(harness);
   const cache = await harness.caches.open("zhiv-assets-v1");
   const policies = [
     "no-cache, must-revalidate",
@@ -302,7 +428,7 @@ test("mutable Next chunks and asset responses requiring revalidation always reac
 test("a previous worker's mutable entries cannot bypass revalidation through either asset cache", async () => {
   const harness = await createServiceWorkerHarness();
   setShellResponses(harness, "old-mutable-cache");
-  await harness.dispatchExtendable("install");
+  await prepareOfflineShell(harness);
   const shell = await harness.caches.open(await harness.currentCacheName());
   const assets = await harness.caches.open("zhiv-assets-v1");
   const policies = ["no-cache", "must-revalidate", "no-store", "private"];
@@ -331,7 +457,7 @@ test("a previous worker's mutable entries cannot bypass revalidation through eit
 test("shell staging refuses mutable assets without replacing the production offline shell", async () => {
   const harness = await createServiceWorkerHarness();
   const production = setShellResponses(harness, "production-shell");
-  await harness.dispatchExtendable("install");
+  await prepareOfflineShell(harness);
   const productionCacheName = await harness.currentCacheName();
   const mutablePolicies = ["no-cache, must-revalidate", "no-store", "private", "must-revalidate", ""];
   for (const [index, policy] of mutablePolicies.entries()) {
@@ -354,7 +480,7 @@ test("shell staging refuses mutable assets without replacing the production offl
 test("shell staging cannot persist private or revalidation-only static resources", async () => {
   const harness = await createServiceWorkerHarness();
   const production = setShellResponses(harness, "static-production");
-  await harness.dispatchExtendable("install");
+  await prepareOfflineShell(harness);
   const cacheName = await harness.currentCacheName();
   for (const [index, policy] of ["no-cache", "must-revalidate", "no-store", "private"].entries()) {
     const candidate = setShellResponses(harness, `static-candidate-${index}`);
@@ -381,7 +507,7 @@ test("Next production shells preserve immutable eager and lazy chunks offline ac
       headers: { "content-type": "application/javascript", "cache-control": "public, max-age=31536000, immutable" },
     }));
   }
-  await harness.dispatchExtendable("install");
+  await prepareOfflineShell(harness);
   assert.equal(await (await harness.dispatchFetch(eager, "cors")).text(), `production:${eager}`);
   assert.equal(await (await harness.dispatchFetch(lazy, "cors")).text(), `production:${lazy}`);
   harness.responses.set(origin + lazy, new Error("Offline"));
@@ -395,7 +521,7 @@ test("named world assets remain available offline across shell updates and isola
   const artwork = JSON.parse(await readFile(new URL("../features/world/runtime-art.json", import.meta.url), "utf8"));
   const assets = [...new Set(Object.values(artwork))];
   setShellResponses(harness, "named-world-a");
-  await harness.dispatchExtendable("install");
+  await prepareOfflineShell(harness);
   for (const asset of assets) {
     harness.responses.set(origin + asset, new Response(`original:${asset}`, { headers: { "content-type": "image/webp" } }));
     assert.equal(await (await harness.dispatchFetch(asset, "cors")).text(), `original:${asset}`);
@@ -425,16 +551,104 @@ test("named world assets remain available offline across shell updates and isola
     "/world/prototype/forest-ground.webp?v=0123456789a",
     "/world/prototype/forest-ground.webp?v=0123456789ab&v=abcdef012345",
     "/world/prototype/forest-ground.webp?v=0123456789ab&preview=true",
-    "/world/prototype/forest-ground.png?v=0123456789ab",
+    "/world/prototype/forest-ground.gif?v=0123456789ab",
     "/world/runtime/unversioned.webp?v=0123456789ab",
   ]) {
     assert.equal(await harness.dispatchFetch(asset, "cors"), null, `${asset} is outside the versioned artwork contract`);
   }
 });
 
+test("all content-versioned Tiled PNG and WebP artwork survives an offline revisit", async () => {
+  const harness = await createServiceWorkerHarness();
+  const world = JSON.parse(await readFile(new URL("../features/world/tiled/forest.generated.json", import.meta.url), "utf8"));
+  const assets = [...new Set([
+    ...world.terrain.map(item => item.image),
+    ...world.sites.flatMap(site => site.states.map(state => state.image)),
+  ])];
+  assert.ok(assets.some(asset => /_[^/]+\.png\?/.test(asset)), "the real authored PNG filenames include underscores");
+  for (const asset of assets) {
+    harness.responses.set(origin + asset, new Response(asset, { headers: {
+      "content-type": asset.includes(".png?") ? "image/png" : "image/webp",
+    } }));
+    assert.equal(await (await harness.dispatchFetch(asset, "cors")).text(), asset);
+    harness.responses.set(origin + asset, new Error("Offline"));
+  }
+  for (const asset of assets) assert.equal(await (await harness.dispatchFetch(asset, "cors")).text(), asset);
+  for (const asset of [
+    "/world/prototype/Shishkolap_House.png",
+    "/world/prototype/Shishkolap_House.png?v=latest",
+    "/world/prototype/Shishkolap_House.png?v=0123456789ab&preview=true",
+    "/world/prototype/nested/house.png?v=0123456789ab",
+  ]) assert.equal(await harness.dispatchFetch(asset, "cors"), null);
+});
+
+test("stalled asset headers expire and a retry starts a fresh network request", async () => {
+  const harness = await createServiceWorkerHarness();
+  const asset = "/world/prototype/forest-ground.webp?v=0123456789ab";
+  let signal;
+  harness.responses.set(origin + asset, options => { signal = options.signal; return new Promise(() => {}); });
+  const first = harness.dispatchFetch(asset, "cors");
+  const rejected = assert.rejects(first, /timed out/);
+  const second = harness.dispatchFetch(asset, "cors");
+  const joined = assert.rejects(second, /timed out/);
+  await new Promise(setImmediate);
+  assert.equal(harness.calls.fetch.length, 1, "simultaneous requests share the original download");
+  const deadline = [...harness.timers.values()].find(timer => timer.delay === 60_000);
+  assert.ok(deadline); deadline.callback();
+  await Promise.all([rejected, joined]);
+  assert.equal(signal.aborted, true);
+  assert.equal(harness.timers.size, 0);
+  harness.responses.set(origin + asset, new Response("fresh-image", { headers: { "content-type": "image/webp" } }));
+  assert.equal(await (await harness.dispatchFetch(asset, "cors")).text(), "fresh-image");
+  assert.equal(harness.calls.fetch.length, 2, "a dead worker download cannot poison retries");
+});
+
+test("stalled cache writes never hold the network response and expire their shared download", async () => {
+  const harness = await createServiceWorkerHarness();
+  const asset = "/world/prototype/Shishkolap_House.png?v=0123456789ab";
+  harness.responses.set(origin + asset, new Response("usable-image", { headers: { "content-type": "image/png" } }));
+  harness.caches.beforePut = () => new Promise(() => {});
+  let response;
+  const first = harness.dispatchFetch(asset, "cors", false).then(value => { response = value; });
+  await new Promise(setImmediate);
+  assert.ok(response, "network pixels reach the page before persistent storage finishes");
+  await first;
+  assert.equal(await response.text(), "usable-image");
+  const deadline = [...harness.timers.values()].find(timer => timer.delay === 60_000);
+  assert.ok(deadline); deadline.callback();
+  await Promise.all(harness.background);
+  assert.equal(harness.timers.size, 0);
+  harness.caches.beforePut = null;
+  assert.equal(await (await harness.dispatchFetch(asset, "cors")).text(), "usable-image");
+  assert.equal(harness.calls.fetch.length, 2, "a stuck storage operation cannot retain the in-flight entry forever");
+});
+
+test("a stalled streamed asset body is aborted at the download deadline", async () => {
+  for (const storage of ["available", "full", "unavailable"]) {
+    const harness = await createServiceWorkerHarness();
+    const asset = "/world/prototype/forest-ground.webp?v=0123456789ab";
+    harness.caches.beforePut = (_url, response) => response.arrayBuffer();
+    if (storage === "full") harness.caches.failPutForUrl = origin + asset;
+    if (storage === "unavailable") harness.caches.open = async () => { throw new Error("Storage unavailable"); };
+    harness.responses.set(origin + asset, ({ signal }) => new Response(new ReadableStream({
+      start(controller) { signal.addEventListener("abort", () => controller.error(new Error("Body aborted")), { once: true }); },
+    }), { headers: { "content-type": "image/webp" } }));
+    const response = await harness.dispatchFetch(asset, "cors", false);
+    const body = assert.rejects(response.text(), /Body aborted/);
+    await new Promise(setImmediate);
+    const deadline = [...harness.timers.values()].find(timer => timer.delay === 60_000);
+    assert.ok(deadline, `a streamed body keeps its deadline when storage is ${storage}`); deadline.callback();
+    await body;
+    await Promise.all(harness.background);
+    assert.equal(harness.timers.size, 0);
+    harness.responses.set(origin + asset, new Response("recovered", { headers: { "content-type": "image/webp" } }));
+    assert.equal(await (await harness.dispatchFetch(asset, "cors")).text(), "recovered");
+  }
+});
+
 test("asset cache eviction and full storage never hide a successful network response", async () => {
   const harness = await createServiceWorkerHarness();
-  setShellResponses(harness, "limited"); await harness.dispatchExtendable("install");
+  setShellResponses(harness, "limited"); await prepareOfflineShell(harness);
   for (let i = 0; i < 100; i++) {
     const asset = `/world/runtime/map-${i.toString(16).padStart(12, "0")}.webp`;
     harness.responses.set(origin + asset, new Response("image", { headers: { "content-type": "image/webp" } }));
@@ -453,7 +667,7 @@ test("asset cache eviction and full storage never hide a successful network resp
 test("admin navigation and data always bypass offline cache and root-shell fallback", async () => {
   const harness = await createServiceWorkerHarness();
   setShellResponses(harness, "admin-network-only");
-  await harness.dispatchExtendable("install");
+  await prepareOfflineShell(harness);
   for (const path of ["/admin", "/admin/users", "/api/v1/admin/overview"]) {
     assert.equal(await harness.dispatchFetch(path), null);
   }
@@ -463,7 +677,7 @@ test("stages a build-specific shell before switching the active cache", async ()
   const harness = await createServiceWorkerHarness();
   const first = setShellResponses(harness, "a");
 
-  await harness.dispatchExtendable("install");
+  await prepareOfflineShell(harness);
 
   const firstCacheName = await harness.currentCacheName();
   assert.match(firstCacheName, /^zhiv-shell-[0-9a-f]{24}$/);
@@ -499,7 +713,7 @@ test("stages a build-specific shell before switching the active cache", async ()
 test("does not replace the root shell after a non-root navigation", async () => {
   const harness = await createServiceWorkerHarness();
   const shell = setShellResponses(harness, "root");
-  await harness.dispatchExtendable("install");
+  await prepareOfflineShell(harness);
   const cacheName = await harness.currentCacheName();
 
   const response = await harness.dispatchFetch("/manifest.webmanifest");
@@ -715,8 +929,10 @@ test("locks the iPhone app surface while preserving vertical touch scrolling", a
     ]);
 
   assert.match(layout, /minimumScale:\s*1/);
-  assert.match(layout, /maximumScale:\s*1/);
-  assert.match(layout, /userScalable:\s*false/);
+  assert.match(layout, /maximumScale:\s*5/, "public installation instructions remain zoomable");
+  assert.match(layout, /userScalable:\s*true/);
+  const entry = await readFile(new URL("../features/app/game-entry.tsx", import.meta.url), "utf8");
+  assert.match(entry, /<MobileGestureGuard\s*\/>/, "the game itself retains the native gesture guard");
   assert.match(layout, /viewportFit:\s*["']cover["']/);
   assert.match(config, /devIndicators:\s*false/);
 

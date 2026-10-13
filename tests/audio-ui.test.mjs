@@ -21,19 +21,20 @@ function controls(settings = DEFAULT_AUDIO_SETTINGS, state = "locked") {
   return { calls, nodes, markup: renderToStaticMarkup(tree) };
 }
 
-test("sound settings expose labelled master and six category sliders without playing on render", () => {
+test("sound settings expose labelled master and seven category sliders without playing on render", () => {
   const view = controls({ ...DEFAULT_AUDIO_SETTINGS, enabled: false });
   assert.equal(view.calls.enables, 0);
   assert.deepEqual(view.calls.changes, []);
   assert.deepEqual(view.calls.sliderFeedback, []);
   assert.match(view.markup, /role="switch" aria-checked="false" aria-label="Звуки игры"/);
-  assert.equal((view.markup.match(/type="range"/g) ?? []).length, 7);
-  for (const channel of ["master", "music", "ambience", "weather", "world", "characters", "ui"]) {
+  assert.equal((view.markup.match(/type="range"/g) ?? []).length, 8);
+  for (const channel of ["master", "music", "ambience", "weather", "world", "footsteps", "characters", "ui"]) {
     assert.ok(view.markup.includes(`for="audio-test-${channel}"`));
     assert.ok(view.markup.includes(`id="audio-test-${channel}"`));
   }
   assert.match(view.markup, /Лес и вода/);
   assert.match(view.markup, /Погода/);
+  assert.match(view.markup, /Шаги животных/);
   assert.doesNotMatch(view.markup, /Лес, вода и погода/);
   assert.doesNotMatch(view.markup, /pending|assets|AudioContext|Продолжить воспроизведение/);
   view.nodes.find(node => node.props.role === "switch").props.onClick();
@@ -67,7 +68,7 @@ test("volume reset is available while muted and never unlocks playback", () => {
 
 test("slider gestures update the chosen setting before requesting feedback", () => {
   const view = controls({ ...DEFAULT_AUDIO_SETTINGS, enabled: true }, "running");
-  for (const channel of ["master", "music", "ambience", "weather", "world", "characters", "ui"]) {
+  for (const channel of ["master", "music", "ambience", "weather", "world", "footsteps", "characters", "ui"]) {
     const slider = view.nodes.find(node => node.props.id === `audio-test-${channel}`);
     const before = view.calls.changes.length;
     slider.props.onChange(.71);
@@ -87,7 +88,7 @@ function eventSurface() {
     hidden: false,
     addEventListener(type, handler) { const set = handlers.get(type) ?? new Set(); set.add(handler); handlers.set(type, set); },
     removeEventListener(type, handler) { handlers.get(type)?.delete(handler); },
-    emit(type, event = {}) { handlers.get(type)?.forEach(handler => handler(event)); },
+    emit(type, event = {}) { event.type = type; handlers.get(type)?.forEach(handler => handler(event)); },
     count() { return [...handlers.values()].reduce((total, set) => total + set.size, 0); },
   };
 }
@@ -102,21 +103,21 @@ test("lifecycle waits for a trusted gesture, preserves muted preference and deta
     const cleanup = attachAudioLifecycle({ setVisible: value => visibility.push(value), getSettings: () => ({ enabled }), getDiagnostics: () => ({ state }), unlock: () => { unlocked++; return Promise.resolve(true); } }, page, surface);
     assert.deepEqual(visibility, [true]);
     assert.equal(unlocked, 0);
-    page.emit("pointerdown", { isTrusted: true });
+    page.emit("pointerdown", { isTrusted: true, pointerType: "mouse" });
     assert.equal(unlocked, 0, "ordinary interaction must not enable muted audio");
     enabled = true;
-    page.emit("pointerdown", { isTrusted: false });
+    page.emit("pointerdown", { isTrusted: false, pointerType: "mouse" });
     page.emit("keydown", new KeyboardEvent("a"));
     assert.equal(unlocked, 0, "typing and synthetic events are not playback triggers");
     page.emit("keydown", new KeyboardEvent("Enter"));
     assert.equal(unlocked, 1);
     state = "running";
-    page.emit("pointerdown", { isTrusted: true });
+    page.emit("pointerdown", { isTrusted: true, pointerType: "mouse" });
     assert.equal(unlocked, 1);
     page.hidden = true;
     page.emit("visibilitychange");
     state = "suspended";
-    page.emit("pointerdown", { isTrusted: true });
+    page.emit("pointerdown", { isTrusted: true, pointerType: "mouse" });
     assert.equal(unlocked, 1);
     page.hidden = false;
     surface.emit("pageshow");
@@ -124,6 +125,45 @@ test("lifecycle waits for a trusted gesture, preserves muted preference and deta
     surface.emit("pagehide");
     cleanup();
     assert.deepEqual(visibility, [true, false, true, false, false]);
+    assert.equal(page.count() + surface.count(), 0);
+  } finally { if (saved) Object.defineProperty(globalThis, "KeyboardEvent", saved); else delete globalThis.KeyboardEvent; }
+});
+
+test("touch and pen unlock synchronously on trusted release, with touchend fallback and no press-time attempt", () => {
+  const saved = Object.getOwnPropertyDescriptor(globalThis, "KeyboardEvent");
+  Object.defineProperty(globalThis, "KeyboardEvent", { value: class KeyboardEvent {}, configurable: true });
+  try {
+    const page = eventSurface(), surface = eventSurface();
+    let enabled = true, state = "locked", unlocked = 0;
+    const cleanup = attachAudioLifecycle({
+      setVisible() {}, getSettings: () => ({ enabled }), getDiagnostics: () => ({ state }),
+      // A native resume can remain pending; every real activation still gets
+      // its synchronous opportunity instead of waiting behind that promise.
+      unlock: () => { unlocked++; return new Promise(() => {}); },
+    }, page, surface);
+    for (const pointerType of ["touch", "pen"]) {
+      page.emit("pointerdown", { isTrusted: true, pointerType });
+      assert.equal(unlocked, pointerType === "touch" ? 0 : 1, "non-mouse press has no activation yet");
+      page.emit("pointerup", { isTrusted: true, pointerType });
+      assert.equal(unlocked, pointerType === "touch" ? 1 : 2, "resume runs inside the release handler");
+    }
+    page.emit("touchend", { isTrusted: true });
+    assert.equal(unlocked, 3, "touch events also work without a PointerEvent release");
+    page.emit("pointerup", { isTrusted: true, pointerType: "mouse" });
+    page.emit("pointercancel", { isTrusted: true, pointerType: "touch" });
+    page.emit("pointermove", { isTrusted: true, pointerType: "touch" });
+    page.emit("pointerup", { isTrusted: false, pointerType: "touch" });
+    page.emit("touchend", { isTrusted: false });
+    assert.equal(unlocked, 3, "no duplicate mouse release, movement, cancellation or synthetic activation");
+    for (const blocked of ["muted", "hidden", "running"]) {
+      enabled = blocked !== "muted";
+      page.hidden = blocked === "hidden";
+      state = blocked === "running" ? "running" : "locked";
+      page.emit("pointerup", { isTrusted: true, pointerType: "touch" });
+      page.emit("touchend", { isTrusted: true });
+      assert.equal(unlocked, 3, blocked);
+    }
+    cleanup();
     assert.equal(page.count() + surface.count(), 0);
   } finally { if (saved) Object.defineProperty(globalThis, "KeyboardEvent", saved); else delete globalThis.KeyboardEvent; }
 });

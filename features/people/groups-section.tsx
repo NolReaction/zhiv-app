@@ -201,7 +201,7 @@ export function GroupsSection({
     const normalizedTitle = normalizeGroupTitle(title);
     const normalizedEmoji = normalizeGroupEmoji(emoji);
     if (!isValidGroupTitle(normalizedTitle) || !isValidGroupEmoji(normalizedEmoji)) {
-      setLocalError("Название — от 1 до 64 символов");
+      setLocalError("В названии должно быть от 1 до 64 символов");
       return;
     }
     const inviteeCircleIds = [...selectedPeople].sort();
@@ -233,7 +233,7 @@ export function GroupsSection({
     const normalizedTitle = normalizeGroupTitle(title);
     const normalizedEmoji = normalizeGroupEmoji(emoji);
     if (!isValidGroupTitle(normalizedTitle) || !isValidGroupEmoji(normalizedEmoji)) {
-      setLocalError("Название — от 1 до 64 символов");
+      setLocalError("В названии должно быть от 1 до 64 символов");
       return;
     }
     await runMutation(`edit:${editGroup.groupId}`, async () => {
@@ -564,7 +564,7 @@ export function GroupsSection({
               </fieldset>
             </div>
           ) : (
-            <p className={styles.helper}>Сначала добавьте людей — группу можно создать и без них.</p>
+            <p className={styles.helper}>Добавьте людей сейчас или создайте группу без них.</p>
           )}
           <button className={styles.primaryButton} type="button" disabled={Boolean(pending)} onClick={() => void handleCreate()}>
             {pending === "create" ? "Создаём…" : "Создать группу"}

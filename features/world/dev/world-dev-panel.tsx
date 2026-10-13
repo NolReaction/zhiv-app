@@ -79,7 +79,7 @@ const routeReasons: Record<string, string> = {
   "invalid-bush": "Проверьте контур и точки куста: укрытие должно находиться внутри контура.",
   "bush-end-away-from-entry": "Последняя вершина маршрута должна совпадать с точкой входа в куст.",
   "invalid-bush-corridor": `От входа в куст до укрытия должно быть не меньше 0,1 размера Мохлика и не больше ${WORLD_INTERACTION_LIMITS.bushJump.toLocaleString("ru-RU")} ед. карты.`,
-  "campfire-collision": "Путь проходит через очаг — передвиньте костёр или маршрут.",
+  "campfire-collision": "Путь проходит через очаг. Передвиньте костёр или маршрут.",
   "water-collision": "Маршрут проходит по воде.", "invalid-length": "Маршрут слишком короткий или длинный для полянки.",
   "missing-navigation": "Нужны доступная WalkAreas и корректный размер Мохлика.",
   "unreachable-door-entry": "Подведите WalkAreas ближе к home-entry; снаружи порога нужен запас для лап.",
@@ -421,7 +421,7 @@ export function WorldDevPanelContent({ world, economy, worldView, presenceKey, o
         <button type="button" onClick={() => change({ residentPreview: null }, "Проверка Плёски отменена; обычный распорядок продолжен")}>Отменить проверку</button>
         <button type="button" onClick={() => change({ residentPreview: null, residentDirection: "front" }, "Показ Плёски сброшен")}>Сброс Плёски</button>
       </div>
-      <p className={styles.hint}>Кнопка проигрывает действие один раз; «Повторить» сверху запускает его заново. Поворот относится к отдельным действиям — в распорядке Плёска сама смотрит по ходу движения и на воду. Улов здесь не пополняет кладовую и не изменяет задания.</p>
+      <p className={styles.hint}>Кнопка проигрывает действие один раз; «Повторить» сверху запускает его заново. Поворот относится к отдельным действиям. В распорядке Плёска сама смотрит по ходу движения и на воду. Улов здесь не пополняет кладовую и не изменяет задания.</p>
     </>}
     {page === "builder" && <>
       <h3 className={styles.pageTitle}>Шишколап · строитель</h3>
@@ -449,7 +449,7 @@ export function WorldDevPanelContent({ world, economy, worldView, presenceKey, o
         <button type="button" onClick={() => change({ builderPreview: null }, "Проверка Шишколапа отменена")}>Отменить проверку</button>
         <button type="button" onClick={() => change({ builderPreview: null, builderDirection: "front" }, "Показ Шишколапа сброшен")}>Сброс Шишколапа</button>
       </div>
-      <p className={styles.hint}>Кнопки проигрывают действие один раз. Завершение работы здесь — только жест: стройка и ресурсы не меняются.</p>
+      <p className={styles.hint}>Кнопки проигрывают действие один раз. Завершение работы здесь показано только жестом: стройка и ресурсы не меняются.</p>
       <WorldDevBuilderPoints source={TILED_WORLD} preview={state} houseLevel={world.snapshot?.state.houseLevel}
         economy={economy?.snapshot} now={economy?.now ?? world.now} />
     </>}
@@ -584,11 +584,11 @@ export function WorldDevPanelContent({ world, economy, worldView, presenceKey, o
       <h3 className={styles.pageTitle}>Разметка сцены</h3>
       <Toggle label="Границы и точки карты" checked={state.debug} onChange={debug => change({ debug })} />
       <Toggle label="Границы воды" checked={state.debugWater} onChange={debugWater => change({ debugWater })} />
-      {state.debugWater && <p className={styles.hint}>Голубой контур — вода. Коралловый пунктир — исключения: листья, камни и другие предметы над водой.</p>}
+      {state.debugWater && <p className={styles.hint}>Голубой контур показывает воду. Коралловый пунктир показывает исключения: листья, камни и другие предметы над водой.</p>}
       <Toggle label="Проходимость и цель Мохлика" checked={state.debugNavigation} onChange={debugNavigation => change({ debugNavigation })} />
-      {state.debugNavigation && <p className={styles.hint}>Зелёный — разрешённая область и безопасные точки сетки, красный — препятствия, голубой — вода. Жёлтый — путь, цель и места назначения; круг под лапами показывает радиус обхода. Фиолетовый пунктир — перекрытие изображения; когда лапы достигают линии frontY или опускаются ниже, персонаж рисуется перед объектом.</p>}
+      {state.debugNavigation && <p className={styles.hint}>Зелёным показаны разрешённая область и безопасные точки сетки, красным препятствия, голубым вода. Жёлтым показаны путь, цель и места назначения; круг под лапами показывает радиус обхода. Фиолетовый пунктир показывает перекрытие изображения; когда лапы достигают линии frontY или опускаются ниже, персонаж рисуется перед объектом.</p>}
       <Toggle label="Особи и их цели" checked={state.debugFauna} onChange={debugFauna => change({ debugFauna })} />
-      {state.debugFauna && <p className={styles.hint}>Подписи показывают постоянный ID, состояние и цель особи. Фиолетовый пунктир — территория, красный — вычтенная из неё область. Подпись встречи указывает участника и фазу. Бабочки активны днём, светлячки — ночью.</p>}
+      {state.debugFauna && <p className={styles.hint}>Подписи показывают постоянный ID, состояние и цель особи. Фиолетовый пунктир показывает территорию, красный показывает вычтенную из неё область. Подпись встречи указывает участника и фазу. Бабочки активны днём, а светлячки активны ночью.</p>}
     </>}
     {page === "routes" && <>
       <h3 className={styles.pageTitle}>Навигация и входы</h3>
@@ -620,7 +620,7 @@ export function WorldDevPanelContent({ world, economy, worldView, presenceKey, o
       </div>
       <Section title="О DEV и ограничениях">
         <p className={styles.scope}>Настройки вида действуют в этой вкладке и сбрасываются при перезагрузке. «Читы» меняют ресурсы и постройки тестового профиля на сервере. Сброс вида не отменяет читы и не удаляет память Мохлика.</p>
-        <p className={styles.hint}>Валюта, материалы и мгновенная постройка — в отдельной вкладке «Читы».</p>
+        <p className={styles.hint}>Валюта, материалы и мгновенная постройка доступны в отдельной вкладке «Читы».</p>
       </Section>
     </>}
   </div>;

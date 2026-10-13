@@ -145,8 +145,8 @@ function progression() {
 test("new-player steps use all registrations, distinguish independent choices and current levels, and keep unknown timing honest", () => {
   const data = analytics(); data.progression = progression(); const before = structuredClone(data);
   const { markup } = inspect(AdminProgressionAnalytics({ data }));
-  for (const text of ["Шаги независимы", "включая ещё не заведшие хозяйство", "Дом ≥2 — уровень сейчас", "2 из 3 · 66,7%", "1 из 3 · 33,3%", "Медиана от регистрации: 0 с", "Медиана от регистрации: 1 д 1 ч", "Медиана от регистрации: Нет измерения", "Время игроков без подтверждённого шага не подставляется как ноль", "включая действия после выбранного периода"]) assert.ok(markup.includes(text), text);
-  assert.equal(progressionShare(1, 3), "33,3%"); assert.equal(progressionShare(0, 0), "—");
+  for (const text of ["Шаги независимы", "включая ещё не заведшие хозяйство", "Дом ≥2: уровень сейчас", "2 из 3 · 66,7%", "1 из 3 · 33,3%", "Медиана от регистрации: 0 с", "Медиана от регистрации: 1 д 1 ч", "Медиана от регистрации: Нет измерения", "Время игроков без подтверждённого шага не подставляется как ноль", "включая действия после выбранного периода"]) assert.ok(markup.includes(text), text);
+  assert.equal(progressionShare(1, 3), "33,3%"); assert.equal(progressionShare(0, 0), "-");
   assert.equal(progressionDuration(60), "1 мин"); assert.equal(progressionDuration(3660), "1 ч 1 мин");
   assert.deepEqual(data, before);
 });

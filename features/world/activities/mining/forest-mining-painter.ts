@@ -1,4 +1,4 @@
-import type { ForestMiningFrame } from "./forest-mining";
+import { miningWorkRhythm, type ForestMiningFrame } from "./forest-mining";
 import { drawGroundedHero } from "@/features/world/scene/grounding";
 import { drawMiningPickaxe } from "@/features/mochlik/mining-pickaxe";
 
@@ -20,7 +20,7 @@ export type ForestMiningWorkFrame = Pick<ForestMiningFrame, "working" | "workCue
 export function drawForestMiningWork(ctx: CanvasRenderingContext2D, frame: ForestMiningWorkFrame, still: boolean) {
   if (!frame.working || ![frame.workCue.x,frame.workCue.y,frame.size,frame.elapsed].every(Number.isFinite) || frame.size <= 0) return;
   const size = Math.max(26,Math.min(32,frame.size*.6)), {x,y} = frame.workCue;
-  const beat = still ? 0 : Math.sin(frame.elapsed*3.4);
+  const beat = still ? 0 : miningWorkRhythm(frame.elapsed).swing;
   ctx.save();
   ctx.fillStyle = "#263d35"; ctx.beginPath(); ctx.ellipse(x,y,size*.59,size*.49,0,0,Math.PI*2); ctx.fill();
   ctx.strokeStyle = "#d6c190"; ctx.lineWidth = 1.2; ctx.stroke();

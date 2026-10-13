@@ -20,7 +20,7 @@ export function WorldProductionStatus({ economy, groups, anchors, reserved = [],
     const entry = group.primary, active = entry.phase === "working" || entry.phase === "collecting", construction = entry.kind === "construction";
     const count = group.entries.length + Number(Boolean(group.construction));
     const work = group.construction ? [...group.entries, group.construction] : group.entries;
-    const details = work.map(work => `${stationName(state, work.stationId)}: ${work.recipeName} — ${work.label}${work.remaining ? `, ${constructionCountdown(work.remaining)}` : ""}`);
+    const details = work.map(work => `${stationName(state, work.stationId)}: ${work.recipeName}, ${work.label}${work.remaining ? `, ${constructionCountdown(work.remaining)}` : ""}`);
     return <button key={group.place} type="button" className={styles.marker} data-production-status={entry.phase}
       data-production-target={entry.stationId} data-map-object={anchor.objectId} data-work-kind={entry.kind}
       style={{ left: anchor.x, top: anchor.y, "--pointer-offset": `${anchor.pointerOffset}px` } as CSSProperties}

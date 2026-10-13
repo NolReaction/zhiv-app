@@ -6,7 +6,7 @@ export default function manifest(): MetadataRoute.Manifest {
     id: "/",
     name: "Я живой",
     short_name: "Я живой",
-    description: "Одна кнопка, чтобы близкие знали: вы живы и на связи.",
+    description: "Будьте на связи с близкими и обживайте уютный лесной мир Мохлика.",
     start_url: "/",
     scope: "/",
     display: "standalone",

@@ -39,6 +39,10 @@ export function attachAudioLifecycle(runtime: AudioRuntime, page: Document, surf
   const hide = () => runtime.setVisible(false);
   const resumeFromGesture = (event: Event) => {
     if (!event.isTrusted || page.hidden || !runtime.getSettings().enabled) return;
+    // Touch and pen acquire browser activation on release. Their pointerdown
+    // fires too early for Safari; mouse activation is available on press.
+    if (event.type === "pointerdown" && (event as PointerEvent).pointerType !== "mouse") return;
+    if (event.type === "pointerup" && (event as PointerEvent).pointerType === "mouse") return;
     if (event instanceof KeyboardEvent && !["Enter", " "].includes(event.key)) return;
     if (runtime.getDiagnostics().state !== "running") void runtime.unlock();
   };
@@ -52,6 +56,8 @@ export function attachAudioLifecycle(runtime: AudioRuntime, page: Document, surf
   surface.addEventListener("pagehide", hide);
   surface.addEventListener("pageshow", visible);
   page.addEventListener("pointerdown", resumeFromGesture, { capture: true, passive: true });
+  page.addEventListener("pointerup", resumeFromGesture, { capture: true, passive: true });
+  page.addEventListener("touchend", resumeFromGesture, { capture: true, passive: true });
   page.addEventListener("keydown", resumeFromGesture, true);
   page.addEventListener("click", click, true);
   return () => {
@@ -59,6 +65,8 @@ export function attachAudioLifecycle(runtime: AudioRuntime, page: Document, surf
     surface.removeEventListener("pagehide", hide);
     surface.removeEventListener("pageshow", visible);
     page.removeEventListener("pointerdown", resumeFromGesture, true);
+    page.removeEventListener("pointerup", resumeFromGesture, true);
+    page.removeEventListener("touchend", resumeFromGesture, true);
     page.removeEventListener("keydown", resumeFromGesture, true);
     page.removeEventListener("click", click, true);
     // StrictMode and hot reload may reattach immediately; the shared engine survives.

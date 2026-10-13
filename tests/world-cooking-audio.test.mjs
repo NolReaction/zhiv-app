@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test, { after } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { readFile } from 'node:fs/promises';
 import { createServer } from 'vite';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -75,7 +76,7 @@ test('several cooking slots share one loop until the final working order finishe
 test('cooking follows campfire placement and camera pan without moving to the hero', () => {
   const production = snapshot([job()]);
   const near = simmer({ production })[0];
-  const side = simmer({ production, camera: { x: 220, y: 100, zoom: 2, viewportWidth: 700 } })[0];
+  const side = simmer({ production, camera: { x: 150, y: 100, zoom: 2, viewportWidth: 700 } })[0];
   assert.equal(side.id, near.id);
   assert.ok(side.gain > 0 && side.gain < near.gain);
   assert.ok(side.pan < 0);
@@ -83,6 +84,29 @@ test('cooking follows campfire placement and camera pan without moving to the he
   const moved = { ...scene, campfires: [{ ...scene.campfires[0], position: { x: 900, y: 900 } }] };
   assert.equal(simmer({ production }, moved).length, 0);
   assert.equal(simmer({ production, camera: { x: 900, y: 900, zoom: 2, viewportWidth: 700 } }, moved)[0].id, near.id);
+});
+
+test('authored fire and active cooking stay close to the hearth on phone and desktop', async () => {
+  const authored = JSON.parse(await readFile(new URL('../features/world/tiled/forest.generated.json', import.meta.url)));
+  const fire = authored.campfires.find(item => item.id === 'clearing-campfire');
+  const production = snapshot([job()]);
+  for (const rain of [0, 1]) for (const cooking of [false, true]) {
+    const gains = [];
+    for (const viewportWidth of [392, 1400]) {
+      const frameAt = distance => buildWorldAudioFrame(authored, input({ rain,
+        production: cooking ? production : null,
+        fires: [{ ...fire, lit: true, flame: 1 }],
+        camera: { x: fire.position.x + distance, y: fire.position.y, zoom: viewportWidth / 350, viewportWidth } }));
+      const near = frameAt(0), side = frameAt(50), outside = frameAt(100);
+      assert.ok(loops(near, 'campfire')[0].gain > 0);
+      assert.ok(loops(side, 'campfire')[0].gain < loops(near, 'campfire')[0].gain * .4);
+      assert.equal(loops(outside, 'campfire').length, 0, 'fire cannot fill the clearing');
+      assert.equal(loops(outside, 'cooking.simmer').length, 0, 'cooking cannot restore a distant noise bed');
+      if (cooking) assert.ok(loops(near, 'cooking.simmer')[0].gain > loops(side, 'cooking.simmer')[0].gain);
+      gains.push(near.loops.filter(loop => ['campfire', 'cooking.simmer'].includes(loop.cueId)));
+    }
+    assert.deepEqual(gains[0], gains[1], 'physical radius and gain do not depend on device pixels');
+  }
 });
 
 test('a visible hot DEV rehearsal pot simmers without needing a server job', () => {

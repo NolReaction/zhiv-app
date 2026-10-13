@@ -59,7 +59,7 @@ export function AdminIncidentsPanel({ onAccessError }: { onAccessError: (error: 
       <label className={styles.selectLabel}><span>Код события</span><input className={styles.select} value={codeInput} maxLength={64} onChange={event => setCodeInput(event.target.value)} list="incident-codes" placeholder="Все коды" /><datalist id="incident-codes">{Object.keys(INCIDENT_MESSAGES).map(value => <option value={value} key={value} />)}</datalist></label>
       <button type="button" className={styles.textButton} disabled={busy} onClick={() => setVersion(value => value + 1)}><RefreshCw size={18} />Обновить</button>
     </div>
-    <p className={styles.muted}>Время UTC. Браузер может отправить событие позже, после восстановления связи. Повторы объединяются. Хранение — 30 дней.</p>
+    <p className={styles.muted}>Время UTC. Браузер может отправить событие позже, после восстановления связи. Повторы объединяются. Срок хранения: 30 дней.</p>
     {data && <p className={styles.muted}>Записей: {data.total.toLocaleString("ru-RU")} · С повторами: {data.totalOccurrences.toLocaleString("ru-RU")} · Игроков в выборке: {data.affectedUsers.toLocaleString("ru-RU")}</p>}
     {error && <p role="alert">{error}</p>}
     <span role="status" className={styles.muted}>{copyNotice}</span>
@@ -76,7 +76,7 @@ export function AdminIncidentsPanel({ onAccessError }: { onAccessError: (error: 
     </div>
     <div className={styles.viewHeading}>
       <button type="button" className={styles.textButton} disabled={busy || offset === 0} onClick={() => setOffset(Math.max(0, offset - 25))}><ChevronLeft size={18} />Назад</button>
-      <span>{data ? `${data.total ? offset + 1 : 0}–${Math.min(offset + 25, data.total)} из ${data.total}` : "—"}</span>
+      <span>{data ? `${data.total ? offset + 1 : 0}–${Math.min(offset + 25, data.total)} из ${data.total}` : "-"}</span>
       <button type="button" className={styles.textButton} disabled={busy || !data || offset + 25 >= data.total} onClick={() => setOffset(offset + 25)}>Далее<ChevronRight size={18} /></button>
     </div>
   </section>;

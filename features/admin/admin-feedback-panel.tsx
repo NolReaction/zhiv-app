@@ -129,7 +129,7 @@ export function AdminFeedbackPanel({ actorPublicId, onAccessError, refreshVersio
     </div>
     <div className={styles.pagination}>
       <button type="button" disabled={loading || offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}><ChevronLeft size={17} aria-hidden="true" />Назад</button>
-      <span>{data ? `${data.total ? offset + 1 : 0}–${Math.min(offset + PAGE_SIZE, data.total)} из ${data.total}` : "—"}</span>
+      <span>{data ? `${data.total ? offset + 1 : 0}–${Math.min(offset + PAGE_SIZE, data.total)} из ${data.total}` : "-"}</span>
       <button type="button" disabled={loading || !data || offset + PAGE_SIZE >= data.total} onClick={() => setOffset(offset + PAGE_SIZE)}>Далее<ChevronRight size={17} aria-hidden="true" /></button>
     </div>
   </section>;

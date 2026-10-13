@@ -44,7 +44,7 @@ export function RecoveryStarter({context,isOnline,onRecovered}: {
     } catch(e) {
       if(attempt && recoveryAttemptRejected(e)) {attempts.clear(attempt);setRetryNotice("");}
       else if(attempt) setRetryNotice(attempt.persisted
-        ? "Повторите с тем же кодом в течение 10 минут от первой попытки. Можно закрыть окно или перезагрузить эту вкладку — код потребуется ввести снова."
+        ? "Повторите с тем же кодом в течение 10 минут от первой попытки. Можно закрыть окно или перезагрузить эту вкладку, но код потребуется ввести снова."
         : "Браузер не сохранил попытку. Повторите с тем же кодом в этом окне; после перезагрузки повтор может быть недоступен.");
       setError(e instanceof Error?e.message:"Не удалось подключиться. Повторите с тем же кодом.");
     }
@@ -65,7 +65,7 @@ export function RecoveryStarter({context,isOnline,onRecovered}: {
           <label htmlFor="restore-code">Резервный код</label>
           <input id="restore-code" className={styles.codeInput} value={code} onChange={e=>setCode(e.target.value)} placeholder="ZHIV-R1-…" type="password" maxLength={80} autoComplete="off" autoCapitalize="none" spellCheck={false} disabled={busy}/>
           <p>После восстановления потребуется заново войти на других устройствах. Код сработает только один раз.</p>
-          <p>Есть доступ к привязанному ВК или почте? Используйте обычный вход — код не понадобится.</p>
+          <p>Есть доступ к привязанному ВК или почте? Используйте обычный вход, тогда код не понадобится.</p>
           {retryNotice && <p role="status">{retryNotice}</p>}
           <button type="submit" className={styles.primary} disabled={busy || !isOnline || !code.trim()}>{busy?"Восстанавливаем…":"Восстановить профиль"}</button>
         </form>}

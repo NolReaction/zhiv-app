@@ -162,9 +162,9 @@ export function WorldProfileContent({ world, economy, displayName, level, bestSt
             <strong>{observation?.mood ?? "Полянка загружается"}</strong></span><ChevronRight size={16} aria-hidden="true" />
         </button>
         <dl className={styles.stats} aria-label="Достижения Мохлика">
-          <div><dt>Дом</dt><dd>{houseLevel === undefined ? "—" : `${houseLevel} ур.`}</dd></div>
-          <div><dt>Исследования</dt><dd>{economy.snapshot?.completedExplorations ?? "—"}</dd></div>
-          <div><dt>Книга находок</dt><dd>{bookCount === null ? "—" : `${bookCount} / ${BOOK_COLLECTION_COUNT}`}</dd></div>
+          <div><dt>Дом</dt><dd>{houseLevel === undefined ? "-" : `${houseLevel} ур.`}</dd></div>
+          <div><dt>Исследования</dt><dd>{economy.snapshot?.completedExplorations ?? "-"}</dd></div>
+          <div><dt>Книга находок</dt><dd>{bookCount === null ? "-" : `${bookCount} / ${BOOK_COLLECTION_COUNT}`}</dd></div>
           {!!state?.completedJourneys && <div><dt>Прежние походы</dt><dd>{state.completedJourneys}</dd></div>}
           <div><dt>Лучшая серия отметок</dt><dd>{formatDayCount(bestStreakDays)}</dd></div>
         </dl>

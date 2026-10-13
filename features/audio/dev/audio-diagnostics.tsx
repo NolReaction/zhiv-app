@@ -48,7 +48,7 @@ function DevelopmentAudioDiagnostics() {
       {diagnostics.playback && <>
         <div><dt>Запусков петель</dt><dd>{diagnostics.playback.loopStarts}</dd></div>
         <div><dt>Запусков музыки</dt><dd>{diagnostics.playback.musicStarts}</dd></div>
-        <div><dt>Владелец звука</dt><dd>{diagnostics.playback.activeOwnerId ?? "—"}</dd></div>
+        <div><dt>Владелец звука</dt><dd>{diagnostics.playback.activeOwnerId ?? "-"}</dd></div>
       </>}
     </dl>
     <p className={styles.hint}>Счётчики запусков накопительные с открытия страницы. У неподвижной сцены число запусков фоновых петель должно оставаться постоянным.</p>
@@ -77,6 +77,6 @@ function DevelopmentAudioDiagnostics() {
           <td>{Math.round(source.gain * 100)}%</td><td>{source.pan.toFixed(2)}</td><td>{source.reason}</td></tr>)}</tbody>
       </table></div>}
     </details>
-    <p className={styles.hint}>Последнее событие: <code>{diagnostics.lastEvent ?? "—"}</code></p>
+    <p className={styles.hint}>Последнее событие: <code>{diagnostics.lastEvent ?? "-"}</code></p>
   </section>;
 }

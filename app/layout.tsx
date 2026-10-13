@@ -1,18 +1,16 @@
 import type { Metadata, Viewport } from "next";
 import { ServiceWorkerRegistration } from "@/components/service-worker-registration";
 import { AppNotifications } from "@/components/app-notifications";
-import { MobileGestureGuard } from "@/components/mobile-gesture-guard";
-import { AppLifecycle } from "@/features/updates/app-lifecycle-view";
+import { PwaInstallProvider } from "@/features/pwa/install-provider";
+import { AuxiliaryAppRuntime } from "@/features/app/auxiliary-app-runtime";
 import { BRAND_APPLE_ICON_SRC, BRAND_FAVICON_SRC, BRAND_ICON_32_SRC, BRAND_ICON_192_SRC, BRAND_LOGO_SRC } from "@/lib/brand-assets";
-import runtimeArt from "@/features/world/runtime-art.json";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Я живой",
-  description: "Одна кнопка, чтобы близкие знали: вы живы и на связи.",
+  description: "Будьте на связи с близкими и обживайте уютный лесной мир Мохлика.",
   applicationName: "Я живой",
   other: {
-    "codex-preview": "development",
     "mobile-web-app-capable": "yes",
   },
   icons: {
@@ -37,8 +35,8 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   minimumScale: 1,
-  maximumScale: 1,
-  userScalable: false,
+  maximumScale: 5,
+  userScalable: true,
   viewportFit: "cover",
   themeColor: "#11140f",
 };
@@ -52,14 +50,12 @@ export default function RootLayout({
     <html lang="ru" suppressHydrationWarning>
       <head>
         <link rel="preload" as="image" href={BRAND_LOGO_SRC} fetchPriority="high" />
-        <link rel="preload" as="image" href={runtimeArt.homePreview} fetchPriority="high" />
       </head>
       <body>
-        <MobileGestureGuard />
-        {children}
+        <PwaInstallProvider>{children}</PwaInstallProvider>
         <AppNotifications />
         <ServiceWorkerRegistration />
-        <AppLifecycle />
+        <AuxiliaryAppRuntime />
       </body>
     </html>
   );

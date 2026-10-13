@@ -413,7 +413,7 @@ test("odds previews use authoritative loadout weights and show every rarity targ
   const html = renderToStaticMarkup(createElement(PleskCatchOdds, { state, catalog, override, preview: true }));
   const percent = value => `${new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 4 }).format(value * 100)}%`;
   assert.match(html, /Каждый особый улов проверяется отдельно/);
-  assert.match(html, /остальная партия — обычная рыба/);
+  assert.match(html, /остальная партия состоит из обычной рыбы/);
   assert.match(html, /после выбора снасти перед отправлением/);
   assert.equal((html.match(/data-fish-odds=/g) ?? []).length, 12);
   for (const odd of expected) assert.ok(html.includes(`<dd>${percent(odd.probability)}</dd>`));

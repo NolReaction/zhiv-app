@@ -7,13 +7,14 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { createSceneLoader, bindSceneLoaderEnvironment } = await vite.ssrLoadModule("/features/startup/scene-loader.ts");
+const { createSceneLoader, bindSceneLoaderEnvironment, WORLD_SCENE_TIMEOUT_MS } = await vite.ssrLoadModule("/features/startup/scene-loader.ts");
 const drain = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
 
-function fixture(t, load) {
+function fixture(t, load, options = {}) {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const state = { online: true, visible: true, calls: [], events: [], ready: [], released: [] };
   const loader = createSceneLoader({
+    ...options,
     load: signal => { state.calls.push(signal); return load(signal, state.calls.length); },
     release: value => state.released.push(value),
     onReady: value => state.ready.push(value),
@@ -118,6 +119,60 @@ test("a hung setup times out, retries, and releases its late result without repl
   assert.deepEqual(state.released, ["expired"]);
   assert.deepEqual(state.ready, ["recovered"]);
   await tick(100_000); assert.equal(state.calls.length, 2, "success clears its deadline and all retry timers");
+});
+
+test("world artwork taking forty seconds finishes in one attempt without releasing a partial scene", async t => {
+  let finish;
+  const { state, loader, tick } = fixture(t, () => new Promise(resolve => { finish = resolve; }), { timeoutMs: WORLD_SCENE_TIMEOUT_MS });
+  loader.retry(); await drain();
+  await tick(25_000);
+  loader.retry(); loader.resume(); await drain();
+  assert.equal(state.calls.length, 1, "manual retry does not interrupt an in-progress download");
+  assert.equal(state.calls[0].aborted, false);
+  assert.deepEqual(state.ready, [], "the longer budget never fakes scene readiness");
+  await tick(15_000); finish("complete artwork"); await drain();
+  assert.deepEqual(state.ready, ["complete artwork"]);
+  assert.deepEqual(state.events.map(event => event.status), ["loading", "ready"]);
+  await tick(100_000);
+  assert.equal(state.calls.length, 1);
+});
+
+test("a stalled world still expires at ninety seconds and its late result cannot replace the retry", async t => {
+  let finishExpired;
+  const { state, loader, tick } = fixture(t, (_signal, attempt) => attempt === 1
+    ? new Promise(resolve => { finishExpired = resolve; }) : Promise.resolve("recovered world"), { timeoutMs: WORLD_SCENE_TIMEOUT_MS });
+  loader.retry(); await drain();
+  await tick(89_999);
+  assert.equal(state.calls[0].aborted, false);
+  assert.equal(state.events.some(event => event.status === "error"), false);
+  await tick(1);
+  assert.equal(state.calls[0].aborted, true);
+  assert.equal(state.events.at(-1).error.name, "TimeoutError");
+  await tick(1_000);
+  assert.deepEqual(state.ready, ["recovered world"]);
+  finishExpired("expired world"); await drain();
+  assert.deepEqual(state.released, ["expired world"]);
+  assert.deepEqual(state.ready, ["recovered world"]);
+  await tick(100_000);
+  assert.equal(state.calls.length, 2);
+});
+
+test("backgrounding a slow world cancels its extended deadline and fences its late completion", async t => {
+  const pending = [];
+  const { state, loader, tick } = fixture(t, () => new Promise(resolve => pending.push(resolve)), { timeoutMs: WORLD_SCENE_TIMEOUT_MS });
+  loader.retry(); await drain(); await tick(40_000);
+  state.visible = false; loader.pause();
+  await tick(100_000);
+  assert.equal(state.calls.length, 1);
+  assert.equal(state.calls[0].aborted, true);
+  assert.equal(state.events.some(event => event.status === "error"), false);
+  state.visible = true; loader.resume(); await drain();
+  pending[0]("backgrounded world"); pending[1]("current world"); await drain();
+  assert.deepEqual(state.released, ["backgrounded world"]);
+  assert.deepEqual(state.ready, ["current world"]);
+  loader.dispose(); await tick(100_000);
+  assert.deepEqual(state.released, ["backgrounded world", "current world"]);
+  assert.equal(state.calls.length, 2);
 });
 
 test("pausing or disposing a hung attempt clears its deadline and suppresses late updates", async t => {

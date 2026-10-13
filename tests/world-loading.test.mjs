@@ -80,7 +80,7 @@ test('map readiness waits for the character, aborted loading releases its scene,
   late.dispose();finish(WORLD_ART.homeDetail);await flush();
   assert.equal(observed,0);assert.equal(frames.size,0);assert.equal(timers.size,0);
   const stalled=loadHabitatImage('/qa-timeout.webp');const failed=assert.rejects(stalled,error=>error instanceof HabitatAssetError&&error.timedOut);
-  const timer=[...timers.values()].find(value=>value.ms===15000);assert.ok(timer);timer.fn();await failed;
+  const timer=[...timers.values()].find(value=>value.ms===60000);assert.ok(timer);timer.fn();await failed;
   const old=pending.shift().image;assert.equal(old.onload,null);
   const retry=loadHabitatImage('/qa-timeout.webp');finish('/qa-timeout.webp');await retry;assert.equal(timers.size,0);
  } finally {WORLD_PRESENTATION.rebuilding=rebuilding;Object.assign(WORLD_ART,originalArt);for(const [name,descriptor]of original){if(descriptor)Object.defineProperty(globalThis,name,descriptor);else delete globalThis[name]}}

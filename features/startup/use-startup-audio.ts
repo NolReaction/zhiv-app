@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { getStartupAudioEntry, INITIAL_STARTUP_AUDIO } from "./startup-audio";
+import { attachStartupAudioGestures } from "./startup-audio-gestures";
 
 export function useStartupAudio(logoReady: boolean, active: boolean) {
   const [state, setState] = useState(INITIAL_STARTUP_AUDIO);
@@ -16,6 +17,7 @@ export function useStartupAudio(logoReady: boolean, active: boolean) {
     const update = () => { if (attached) setState(current.getPresentation()); };
     const unsubscribe = current.subscribePresentation(update);
     const unsubscribeRuntime = runtime.subscribe(current.refresh);
+    const detachGestures = attachStartupAudioGestures(current, document);
     const visibility = () => { if (document.hidden) current.hide(); };
     document.addEventListener("visibilitychange", visibility);
     current.start();
@@ -24,12 +26,15 @@ export function useStartupAudio(logoReady: boolean, active: boolean) {
       attached = false;
       unsubscribe();
       unsubscribeRuntime();
+      detachGestures();
       document.removeEventListener("visibilitychange", visibility);
       detach();
       if (entry.current === current) entry.current = null;
     };
   }, []);
   useEffect(() => { if (logoReady && state.revealReady) entry.current?.reveal(); }, [logoReady, state.revealReady]);
-  useEffect(() => { if (!active) entry.current?.close(); }, [active]);
+  // Close in the leaving commit, before a pending resume/decode microtask can
+  // start branding during the transition to the app.
+  useLayoutEffect(() => { if (!active) entry.current?.close(); }, [active]);
   return state;
 }

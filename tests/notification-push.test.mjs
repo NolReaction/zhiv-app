@@ -34,6 +34,23 @@ test("malformed, external, missing-owner and economic-action push targets never 
   assert.equal(h.shown.length, 0);
 });
 
+test("legacy API titles do not repeat the platform app name or lose grouped events", async () => {
+  const body = "Мохлик вернулся из путешествия. Стройка завершена. Ресурсы готовы.";
+  for (const title of ["Я Живой", "Я живой", "  Я   ЖИВОЙ  ", "Мохлик"]) {
+    const h = harness();
+    await h.dispatch("push", { data: { json: () => ({ ...payload, title, body }) } });
+    assert.equal(h.shown.length, 1);
+    assert.equal(h.shown[0][0], "Новости полянки");
+    assert.equal(h.shown[0][1].body, body);
+    assert.equal(h.shown[0][1].tag, payload.tag);
+    assert.equal(h.shown[0][1].data.ownerPublicId, payload.ownerPublicId);
+    const url = new URL(h.shown[0][1].data.url);
+    assert.equal(url.origin, origin);
+    assert.equal(url.searchParams.get("section"), "activities");
+    assert.equal(url.searchParams.get("owner"), payload.ownerPublicId);
+  }
+});
+
 test("click focuses existing app and posts a target without reload or duplicate window", async () => {
   const calls = [];
   const h = harness([{ url: `${origin}/`, focus: async () => calls.push("focus"), postMessage: value => calls.push(value) }]);

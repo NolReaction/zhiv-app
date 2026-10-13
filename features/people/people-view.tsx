@@ -395,7 +395,7 @@ export function PeopleView({
 
     inviteLinkField.current?.focus({ preventScroll: true });
     inviteLinkField.current?.select();
-    setDialogError(`Не удалось скопировать автоматически — зажмите ${inviteShare.url ? "ссылку" : "код"} выше и выберите «Скопировать».`);
+    setDialogError(`Не удалось скопировать автоматически. Зажмите ${inviteShare.url ? "ссылку" : "код"} выше и выберите «Скопировать».`);
   }
 
   async function shareInvite() {
@@ -412,7 +412,7 @@ export function PeopleView({
     if (outcome === "shared") {
       setShareNotice("Приглашение отправлено");
     } else if (outcome !== "cancelled") {
-      setDialogError("Системная отправка недоступна — используйте «Скопировать».");
+      setDialogError("Системная отправка недоступна. Используйте «Скопировать».");
     }
   }
 
@@ -794,7 +794,7 @@ export function PeopleView({
               </button>
             </div>
             <p className={styles.searchHint} id="person-public-id-hint">
-              Дефисы можно вводить или пропустить — приложение расставит их само.
+              Дефисы можно вводить или пропустить: приложение расставит их само.
             </p>
           </form>
 
@@ -855,7 +855,7 @@ export function PeopleView({
               autoFocus
             />
             <p className={styles.searchHint} id="invite-import-hint">
-              Приглашение откроется здесь — в текущем профиле. Само открытие ссылки ничего не принимает без вашего подтверждения.
+              Приглашение откроется здесь, в текущем профиле. Само открытие ссылки ничего не принимает без вашего подтверждения.
             </p>
             <button type="submit" className={styles.shareButton}>
               <Link2 size={17} /> Проверить приглашение
@@ -965,7 +965,7 @@ export function PeopleView({
           <AlertDialogHeader>
             <AlertDialogTitle>Удалить связь?</AlertDialogTitle>
             <AlertDialogDescription className={styles.dialogDescription}>
-              Личная связь будет удалена. В общих группах отметки могут оставаться видны — это зависит от настроек показа.
+              Личная связь будет удалена. В общих группах отметки могут оставаться видны. Это зависит от настроек показа.
               Чтобы скрыть свои отметки от этого человека во всех группах, сначала выключите «Показывать мои отметки».
               Позже можно будет добавиться заново.
             </AlertDialogDescription>

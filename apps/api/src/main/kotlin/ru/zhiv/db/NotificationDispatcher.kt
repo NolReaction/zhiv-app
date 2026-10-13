@@ -109,19 +109,14 @@ class NotificationDispatcher(
             BrowserPushSubscription(it.getString(1),PushKeys(it.getString(2),it.getString(3)))
         }.singleOrNull()
         val categories=ready.map { it.category }.toSet()
-        val body=buildList {
-            if("exploration" in categories) add("Мохлик вернулся из путешествия")
-            if("construction" in categories) add("Стройка завершена")
-            if("production" in categories) add("Ресурсы готовы")
-            if("checkin" in categories) add("Можно отметиться: с последней отметки прошло больше суток")
-        }.joinToString(". ")+"."
+        val message=notificationMessage(categories)
         val target=when {
             "exploration" in categories -> "world&section=activities"
             "construction" in categories -> "world&section=construction"
             "production" in categories -> "world&section=production"
             else -> "checkin"
         }
-        val payload=PushPayload("Мохлик",body,"mochlik-updates","/?notification=$target&owner=$owner",owner)
+        val payload=PushPayload(message.title,message.body,"mochlik-updates","/?notification=$target&owner=$owner",owner)
         val result=if(subscription==null) PushResult.EXPIRED else sender.send(subscription,payload)
         val status=when(result) {
             PushResult.DELIVERED -> "delivered"

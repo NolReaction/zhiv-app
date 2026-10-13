@@ -5,7 +5,8 @@ import { builderDirection, builderLocalPlaces, builderRoute, builderWorkStops,
 import { forestConstructionJob, type EconomySceneConstruction, type SceneConstructionJob } from "@/features/world/state/economy/economy-construction-state";
 import { canTraverse, isWalkable } from "@/features/world/navigation/navigation";
 import { desiredSteeringSpeed, type SteeringPath } from "@/features/world/navigation/steering";
-import { canTraverseResidents, residentTrafficDetour, RESIDENT_TRAFFIC_LIMITS, type ResidentOccupant } from "@/features/world/navigation/resident-traffic";
+import { canTraverseResidents, residentTrafficDetour, residentRequestingPassage, residentPassageClear, residentYieldPoint,
+  RESIDENT_TRAFFIC_LIMITS, type ResidentOccupant } from "@/features/world/navigation/resident-traffic";
 import type { FixedWorldScene, WorldPoint } from "@/features/world/tiled/types";
 
 export type BuilderEnvironment = { now: number; construction?: EconomySceneConstruction | null; occupants?: readonly ResidentOccupant[]; night?: boolean };
@@ -32,6 +33,7 @@ export const BUILDER_MIND_LIMITS = { maxDelta: 1, workCycle: 2.2, workRoutine: 8
 const length = (a: WorldPoint, b: WorldPoint) => Math.hypot(a.x - b.x, a.y - b.y);
 const idleYieldAfter = new WeakMap<BuilderMind, number>();
 const trafficStalls = new WeakMap<BuilderMind, { startedAt: number; position: WorldPoint }>();
+const passageYields = new WeakSet<BuilderMind>();
 
 /** A single session owns the feet and cosmetic clock. No setInterval, job
  * commands, currency, reward generation or offline catch-up lives here. */
@@ -48,6 +50,7 @@ function action(mind: BuilderMind, value: BuilderAction) {
   if (mind.action !== value) { mind.action = value; mind.age = 0; }
 }
 function settle(mind: BuilderMind) {
+  passageYields.delete(mind);
   trafficStalls.delete(mind);
   mind.route = null; mind.distance = 0; mind.speed = 0; mind.trafficWaiting = false;
   if (mind.target) mind.direction = builderDirection(mind.target.lookAt.x - mind.position.x, mind.target.lookAt.y - mind.position.y);
@@ -60,14 +63,51 @@ function settle(mind: BuilderMind) {
 }
 
 function beginRoute(mind: BuilderMind, places: BuilderPlaces, candidates: readonly BuilderStop[]) {
+  passageYields.delete(mind);
+  assignRoute(mind, builderRoute(places, mind.position, candidates));
+}
+
+function assignRoute(mind: BuilderMind, selected: ReturnType<typeof builderRoute>) {
   trafficStalls.delete(mind);
   mind.decisions++;
-  const selected = builderRoute(places, mind.position, candidates);
   mind.distance = 0; mind.speed = 0; mind.trafficWaiting = false; mind.route = selected?.path ?? null; mind.target = selected?.target ?? null;
   mind.blocked = !selected;
   if (!selected) { action(mind, "idle"); mind.wait = 12; return; }
   if (selected.path.length < .001) { settle(mind); return; }
   action(mind, "walk");
+}
+
+/** A stationary neighbour must participate too: waiting for its idle timer is
+ * not a route solution. Optional walking/rest yields immediately. Construction
+ * may move only to another checked work stop, retaining its authoritative job.
+ * A social gesture and the private doorway remain owned by their directors. */
+function yieldRequestedPassage(mind: BuilderMind, places: BuilderPlaces, occupants?: readonly ResidentOccupant[]): boolean {
+  if (mind.sleepPhase !== "awake" || mind.socialVisit || mind.action === "finish" || passageYields.has(mind)) return false;
+  const requester = residentRequestingPassage(mind.position, BUILDER.size, occupants, BUILDER.id, mind.job ? 2 : mind.route ? 1 : 0);
+  if (!requester || mind.elapsed < (idleYieldAfter.get(mind) ?? 0)) return false;
+  idleYieldAfter.set(mind, mind.elapsed + RESIDENT_TRAFFIC_LIMITS.retry);
+  if (mind.job) {
+    const candidates = builderWorkStops(mind.scene, mind.job)
+      .filter(stop => length(mind.position, stop.position) > 1 && residentPassageClear(stop.position, BUILDER.size, requester, places.navigation.cellSize)
+        && canTraverseResidents(stop.position, stop.position, BUILDER.size, occupants, BUILDER.id))
+      .sort((a, b) => length(mind.position, a.position) - length(mind.position, b.position))
+      .slice(0, RESIDENT_TRAFFIC_LIMITS.searches);
+    for (const stop of candidates) {
+      const selected = builderRoute(places, mind.position, [stop]);
+      if (!selected || selected.path.points.some((point, index) => index > 0
+        && !canTraverseResidents(selected.path.points[index - 1], point, BUILDER.size, occupants, BUILDER.id))) continue;
+      assignRoute(mind, selected); passageYields.add(mind); return true;
+    }
+    return false;
+  }
+  const position = residentYieldPoint(places.navigation, mind.position, BUILDER.size, occupants, BUILDER.id, requester);
+  if (!position) return false;
+  const distance = length(mind.position, position), points = [{ ...mind.position }, position];
+  // Execute the exact checked segment; no smoothing can put the feet back into
+  // the corridor that was just released. The ordinary walker owns all movement.
+  assignRoute(mind, { target: { id: "builder-yield", position, lookAt: { ...requester.position } },
+    path: { points, distances: [0, distance], length: distance, speedLimits: [.85, 0], roundedCorners: 0, checks: 0 } });
+  passageYields.add(mind); return true;
 }
 
 /** Sampling is read-only; geometry uses the same checked polyline as steering. */
@@ -86,6 +126,10 @@ function sample(path: SteeringPath, at: number) {
 function yieldIdleDestination(mind: BuilderMind, places: BuilderPlaces, occupants?: readonly ResidentOccupant[], stalled = false): boolean {
   if (mind.job || mind.socialVisit || mind.sleepPhase !== "awake" || !mind.target || !stalled && canTraverseResidents(mind.target.position, mind.target.position, BUILDER.size, occupants, BUILDER.id)
     || mind.elapsed < (idleYieldAfter.get(mind) ?? 0)) return false;
+  // A neighbour already stepping aside owns a finite escape. Do not respond by
+  // abandoning our destination as well; keep the bounded stall fallback below.
+  if (!stalled && occupants?.some(other => other.moving && other.intent?.priority === 0
+    && !canTraverseResidents(mind.target!.position, mind.target!.position, BUILDER.size, [other], BUILDER.id))) return false;
   idleYieldAfter.set(mind, mind.elapsed + RESIDENT_TRAFFIC_LIMITS.retry);
   const nearest = (occupants ?? []).slice(0, RESIDENT_TRAFFIC_LIMITS.occupants)
     .filter(other => other.id !== BUILDER.id && Number.isFinite(other.position.x) && Number.isFinite(other.position.y))
@@ -300,6 +344,7 @@ export function advanceBuilderMind(mind: BuilderMind | null, scene: FixedWorldSc
     }
     return;
   }
+  yieldRequestedPassage(mind, places, environment.occupants);
   if (mind.route) { walk(mind, places, step, environment.occupants); return; }
   if (mind.sleepPhase === "approach") {
     mind.wait -= step;

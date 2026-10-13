@@ -2,6 +2,7 @@ const CACHE_PREFIX = "zhiv-shell-";
 // Content-versioned public files survive shell updates, including lazy game chunks.
 const ASSET_CACHE_NAME = "zhiv-assets-v1";
 const ASSET_CACHE_LIMIT = 96;
+const ASSET_REQUEST_TIMEOUT_MS = 60_000;
 const assetRequests = new Map();
 const META_CACHE_NAME = "zhiv-meta-v1";
 const ACTIVE_CACHE_KEY = new URL(
@@ -33,7 +34,7 @@ function isVersionedAsset(url) {
     || (/^\/brand\/[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)*\.webp$/.test(pathname)
       || /^\/(?:icon-(?:32|192|512|maskable-512)\.png|apple-touch-icon\.png|favicon\.ico)$/.test(pathname)) && /^\?v=[a-f0-9]{12}$/.test(search)
     || /^\/world\/runtime\/[a-zA-Z]+(?:-[a-zA-Z]+)*-[a-f0-9]{12}\.webp$/.test(pathname)
-    || (/^\/world\/prototype\/[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)*\.webp$/.test(pathname)
+    || (/^\/world\/prototype\/[a-zA-Z0-9]+(?:[-_][a-zA-Z0-9]+)*\.(?:webp|png)$/.test(pathname)
       || pathname === "/world/runtime/boat-wreck-lowquality.webp") && /^\?v=[a-f0-9]{12}$/.test(search);
 }
 
@@ -55,28 +56,55 @@ async function readCachedAsset(cache, request) {
   return null;
 }
 
-async function cachedAsset(request) {
+async function drainAssetBody(response) {
+  const reader = response.clone().body?.getReader();
+  if (!reader) return;
+  try { while (!(await reader.read()).done) { /* Discard chunks without buffering the whole asset. */ } }
+  finally { reader.releaseLock(); }
+}
+
+async function cachedAsset(request, keepAlive) {
   // Storage eviction, private browsing and full disks must not block the network.
   const cache = await caches.open(ASSET_CACHE_NAME).catch(() => null);
   const cached = await readCachedAsset(cache, request);
   if (cached) return cached;
   const key = request.url;
   if (!assetRequests.has(key)) {
-    const operation = (async () => {
-      const response = await fetch(request);
-      if (canCacheAsset(new URL(request.url), response)) {
+    const controller = new AbortController();
+    let timer;
+    const deadline = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        reject(new Error("Asset download timed out"));
+      }, ASSET_REQUEST_TIMEOUT_MS);
+    });
+    const response = Promise.race([fetch(request, { signal: controller.signal }), deadline]);
+    const stored = response.then(async response => {
+      let saved = false;
+      if (cache && canCacheAsset(new URL(request.url), response)) {
         try {
-          await cache?.put(request, response.clone());
-          const keys = await cache?.keys() ?? [];
+          await cache.put(request, response.clone()); saved = true;
+          const keys = await cache.keys();
           await Promise.all(keys.slice(0, Math.max(0, keys.length - ASSET_CACHE_LIMIT)).map(key => cache.delete(key)));
         } catch { /* A successful image/module remains usable without persistent storage. */ }
       }
-      return response;
-    })();
+      // A quota failure must not clear the network deadline while its body is
+      // still downloading. Drain one stream branch without accumulating bytes.
+      if (!saved) await drainAssetBody(response);
+    });
+    // Return the network stream immediately. Slow storage/body downloads must
+    // not delay its first byte or leave later retries sharing a stuck request.
+    const finished = Promise.race([stored, deadline]);
+    const operation = { response, finished };
     assetRequests.set(key, operation);
-    void operation.finally(() => assetRequests.delete(key)).catch(() => undefined);
+    void finished.finally(() => {
+      clearTimeout(timer);
+      if (assetRequests.get(key) === operation) assetRequests.delete(key);
+    }).catch(() => undefined);
   }
-  return (await assetRequests.get(key)).clone();
+  const operation = assetRequests.get(key);
+  keepAlive(operation.finished.catch(() => undefined));
+  return (await operation.response).clone();
 }
 
 function extractAssetUrls(html) {
@@ -202,7 +230,7 @@ async function stageShell(documentResponse, removeOldCaches = false) {
     await stagingCache.put("/", documentResponse);
     await setActiveCacheName(cacheName);
   } catch (error) {
-    await caches.delete(cacheName);
+    if (cacheName !== currentName) await caches.delete(cacheName);
     throw error;
   }
 
@@ -215,18 +243,38 @@ async function precacheShell() {
   await stageShell(documentResponse);
 }
 
+let shellUpdates = Promise.resolve();
+function updateShell(operation) {
+  // Warmup and navigation must not delete each other's incomplete staging cache.
+  const update = shellUpdates.then(operation);
+  shellUpdates = update.catch(() => undefined);
+  return update;
+}
+
 self.addEventListener("install", (event) => {
-  event.waitUntil(precacheShell().then(() => self.skipWaiting()));
+  // Push needs an active worker even when offline storage or a shell resource
+  // is unavailable. Optional precaching must never hold up installation.
+  event.waitUntil(self.skipWaiting());
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    (async () => {
-      await self.clients.claim();
+  event.waitUntil(self.clients.claim());
+});
+
+let shellWarmup = null;
+self.addEventListener("message", (event) => {
+  if (event.data?.type !== "zhiv:cache-shell") return;
+  // The page sends this after ready; a slow fetch/quota failure can affect
+  // offline availability, but not worker activation or notification setup.
+  // Duplicate tabs share this optional warmup instead of staging in parallel.
+  if (!shellWarmup) {
+    shellWarmup = updateShell(async () => {
+      await precacheShell();
       const currentName = await activeCacheName();
       if (currentName) await removeInactiveShellCaches(currentName);
-    })(),
-  );
+    }).catch(() => undefined).finally(() => { shellWarmup = null; });
+  }
+  event.waitUntil(shellWarmup);
 });
 
 self.addEventListener("fetch", (event) => {
@@ -243,15 +291,20 @@ self.addEventListener("fetch", (event) => {
     if (url.pathname === "/") {
       event.waitUntil(
         networkResponse
-          .then((response) =>
-            response.ok ? stageShell(response.clone(), true) : undefined,
-          )
+          .then((response) => {
+            if (!response.ok) return;
+            // Clone before queueing: the page can consume the response meanwhile.
+            const candidate = response.clone();
+            return updateShell(() => stageShell(candidate, true));
+          })
           .catch(() => undefined),
       );
     }
 
     event.respondWith(
       networkResponse.catch(async () => {
+        // Public product pages must never turn into the game at the wrong URL.
+        if (url.pathname !== "/") return Response.error();
         const cache = await openActiveCache();
         return (await cache?.match("/")) ?? Response.error();
       }),
@@ -263,13 +316,14 @@ self.addEventListener("fetch", (event) => {
     isVersionedAsset(url) || STATIC_SHELL.includes(url.pathname);
   if (!cacheableAsset) return;
 
-  event.respondWith(
-    (async () => {
-      const cache = await openActiveCache().catch(() => null);
-      const cached = await readCachedAsset(cache, request);
-      return cached ?? (isVersionedAsset(url) ? cachedAsset(request) : fetch(request));
-    })(),
-  );
+  const pending = [];
+  const response = (async () => {
+    const cache = await openActiveCache().catch(() => null);
+    const cached = await readCachedAsset(cache, request);
+    return cached ?? (isVersionedAsset(url) ? cachedAsset(request, promise => pending.push(promise)) : fetch(request));
+  })();
+  event.respondWith(response);
+  event.waitUntil(response.then(() => Promise.all(pending)).catch(() => undefined));
 });
 
 // Push data never contains executable commands or arbitrary navigation targets.
@@ -297,7 +351,10 @@ self.addEventListener("push", event => {
     || typeof payload.tag !== "string" || !payload.tag || payload.tag.length > 128) return;
   const url = notificationUrl(payload.url, payload.ownerPublicId);
   if (!url) return;
-  event.waitUntil(self.registration.showNotification(payload.title, {
+  // Older API instances can still send a brand-only title during rollout.
+  // The platform already identifies the app; keep all event details in the body.
+  const title = /^(?:я\s+живой|мохлик)$/i.test(payload.title.trim()) ? "Новости полянки" : payload.title;
+  event.waitUntil(self.registration.showNotification(title, {
     body: payload.body, tag: payload.tag, icon: "/icon-192.png", badge: "/icon-32.png",
     renotify: false, requireInteraction: false,
     data: { url, ownerPublicId: payload.ownerPublicId },

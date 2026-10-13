@@ -103,8 +103,8 @@ export function GameLeaderboardDialog({ open, onOpenChange, ownerPublicId, progr
         setScope(value); setLoading(true); setError("");
       }}>
       <div className={styles.score}>
-        <div><small>{metric === "monthly_taps" ? "Тапы за месяц" : "Ваш рекорд серии"}</small><strong>{(metric === "monthly_taps" ? visibleData?.monthlyTaps ?? progress?.monthlyTaps : visibleData?.bestSeries ?? progress?.bestSeries)?.toLocaleString("ru-RU") ?? "—"}</strong></div>
-        <div><small>{scope === "friends" ? "Среди друзей" : "Ваше место"}</small><strong>{optedIn && visibleData?.myRank ? `#${visibleData.myRank}` : "—"}</strong></div>
+        <div><small>{metric === "monthly_taps" ? "Тапы за месяц" : "Ваш рекорд серии"}</small><strong>{(metric === "monthly_taps" ? visibleData?.monthlyTaps ?? progress?.monthlyTaps : visibleData?.bestSeries ?? progress?.bestSeries)?.toLocaleString("ru-RU") ?? "-"}</strong></div>
+        <div><small>{scope === "friends" ? "Среди друзей" : "Ваше место"}</small><strong>{optedIn && visibleData?.myRank ? `#${visibleData.myRank}` : "-"}</strong></div>
       </div>
       <label className={styles.participation}>
         <span><strong>Участвовать в рейтингах</strong><small id="game-visibility-hint">Другие игроки увидят ваше имя, тапы за месяц и рекорд серии.</small></span>
@@ -130,7 +130,7 @@ export function GameLeaderboardDialog({ open, onOpenChange, ownerPublicId, progr
         </ol> : !error ? <p className={styles.empty}>{metric === "best_series" ? "Рекордов участников пока нет. Включите участие и сыграйте серию." : scope === "friends" ? "Пока нет участников среди друзей с игровыми тапами за этот месяц." : "В этом месяце ещё нет участников. Можно стать первым."}</p> : null}
       </TabsContent>
       </Tabs>
-      <p className={styles.hint}>{metric === "monthly_taps" ? "Новый месяц — новый старт. Уровень и общий прогресс сохраняются." : "Серия заканчивается после 10 секунд без нажатий. Рекорд сохраняется навсегда; одинаковым рекордам — одинаковое место."} Учитываются подтверждённые сервером тапы. Очень быстрые нажатия ограничены.</p>
+      <p className={styles.hint}>{metric === "monthly_taps" ? "С новым месяцем начинается новый рейтинг. Уровень и общий прогресс сохраняются." : "Серия заканчивается после 10 секунд без нажатий. Рекорд сохраняется навсегда; одинаковым рекордам присваивается одинаковое место."} Учитываются подтверждённые сервером тапы. Очень быстрые нажатия ограничены.</p>
     </DialogContent>
   </Dialog>;
 }

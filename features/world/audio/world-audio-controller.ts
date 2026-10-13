@@ -43,22 +43,33 @@ export function createWorldAudioController(runtime: AudioRuntime) {
   let current: AudioFrame | null = null;
   let lastScope: WorldAudioControl["scope"] | undefined;
   let lastPublishedAt = -Infinity;
+  let preparation: AbortController | undefined;
+  const stopPreparation = () => { preparation?.abort(); preparation = undefined; };
   return {
     update(scene: FixedWorldScene, state: ForestSessionState, input: Omit<WorldAudioEnvironment, "ownerId">, control: WorldAudioControl) {
       if (disposed) return;
       if (!control.visible || !control.observationOwner) {
+        stopPreparation();
         if (hadFrame) runtime.clearFrame(ownerId);
         hadFrame = false; current = null;
         // Do not let a secondary camera consume the active camera's markers.
         if (control.observationOwner) {
           waterTrackers.get(state)?.reset();
           const tracker = trackers.get(state);
-          tracker?.sample(worldAudioMarkers(scene, state, { ...control, showBuildings: input.showBuildings !== false }),
+          tracker?.sample(worldAudioMarkers(scene, state, { ...control, showBuildings: input.showBuildings !== false,
+            quarryWorking: input.quarryWorking }),
             worldAudioListener(scene, input.camera), input.sceneId, Date.now(), false);
         }
         return;
       }
-      if (lastState && lastState !== state) { runtime.clearFrame(ownerId); current = null; }
+      if (lastState && lastState !== state) { runtime.clearFrame(ownerId); current = null; stopPreparation(); }
+      if (control.scope !== "world") stopPreparation();
+      else if (!preparation) {
+        preparation = new AbortController();
+        // Four short files cover both actors and the mine. Warm them before
+        // contact; a slow first decode must never queue an out-of-time impact.
+        void runtime.prepare?.(["action.fish.bobber", "action.mine.strike"], { signal: preparation.signal }).catch(() => {});
+      }
       // The circle renders the live forest but is still a menu surface. Only
       // the full map requests spatial layers; both reuse the same music keys.
       const frame = control.scope === "world" ? buildWorldAudioFrame(scene, { ...input, ownerId })
@@ -75,7 +86,8 @@ export function createWorldAudioController(runtime: AudioRuntime) {
       current = frame;
       let tracker = trackers.get(state);
       if (!tracker) { tracker = createWorldAudioMarkerTracker(); trackers.set(state, tracker); }
-      const markers = worldAudioMarkers(scene, state, { ...control, showBuildings: input.showBuildings !== false });
+      const markers = worldAudioMarkers(scene, state, { ...control, showBuildings: input.showBuildings !== false,
+        quarryWorking: input.quarryWorking });
       const emit = Boolean(control.scope === "world" && lastScope === "world" && control.emitEvents && hadFrame && lastState === state);
       const events = tracker.sample(markers, frame.listener, input.sceneId, timestamp, emit);
       if (control.scope === "world") {
@@ -89,6 +101,6 @@ export function createWorldAudioController(runtime: AudioRuntime) {
       for (const event of events) runtime.play(event);
     },
     getFrame: () => current,
-    dispose() { if (disposed) return; disposed = true; runtime.clearFrame(ownerId); current = null; },
+    dispose() { if (disposed) return; disposed = true; stopPreparation(); runtime.clearFrame(ownerId); current = null; },
   };
 }

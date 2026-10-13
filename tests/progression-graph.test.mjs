@@ -128,7 +128,7 @@ test("fish ingredients resolve to a real chance source without inventing guarant
 test("food and resident orders are active optional uses rather than future progression gates", () => {
   assert.equal(node("orders").status, "active");
   assert.equal(node("meals").status, "active");
-  assert.match(node("orders").description, /Награда — монеты с надбавкой/);
+  assert.match(node("orders").description, /Награда: монеты с надбавкой/);
   assert.match(node("orders").description, /сытость отдельно/);
   assert.match(node("orders").description, /3 бесплатные замены/);
   assert.match(node("meals").description, /\+10–100%/);

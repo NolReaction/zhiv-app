@@ -86,7 +86,11 @@ test("forest and river share environmental volume while wind and rain have indep
     assert.equal(cue(id)?.maxInstances, 1, "continuous environmental beds cannot layer detuned copies");
     assert.equal(cue(id)?.pitchVariation, 0);
   }
-  assert.ok(cue("weather.wind").gainDb <= -8, "wind stays restrained even with old or raised user volumes");
+  assert.ok(cue("weather.wind").gainDb <= -36, "wind remains a barely audible bed even with old or raised user volumes");
+  for (const id of ["action.step.grass", "action.step.wood"]) {
+    assert.equal(cue(id)?.bus, "footsteps", `${id} obeys the independent animal footsteps slider`);
+    assert.ok(cue(id)?.gainDb <= -22, `${id} remains soft even at the closest camera position`);
+  }
   for (const id of ["action.fish.splash", "action.water.pour"]) {
     assert.equal(cue(id)?.bus, "world", `${id} is a visible action, independent of the continuous water bed`);
     assert.equal(cue(id)?.mode, "one-shot");

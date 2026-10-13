@@ -111,7 +111,7 @@ test("ready expeditions are explicit in the keyboard-accessible map dock", async
   const props = { world: { snapshot: { state, gifts: [] }, now, act() {} }, economy: { snapshot, now, busy: false, uncertain: false, error: null, retryAt: 0 }, ownerPublicId: "test", timeZone: "UTC", onClose() {}, displayName: "Мохлик", level: 1, wakeSignal: 0, bestStreakDays: 0 };
   let html = renderToStaticMarkup(createElement(WorldView, props));
   assert.match(html, /<button[^>]+data-world-quick="expeditions" data-expedition-ready="true"/);
-  assert.match(html, /aria-label="В путь\. Вылазка завершена — забрать находки"/); assert.match(html, /Находки ждут/);
+  assert.match(html, /aria-label="В путь\. Вылазка завершена, забрать находки"/); assert.match(html, /Находки ждут/);
   snapshot.jobs[0].finishesAt = time(30_000);
   html = renderToStaticMarkup(createElement(WorldView, props));
   assert.doesNotMatch(html, /data-expedition-ready="true"/); assert.match(html, /aria-label="В путь\. Мохлик в пути"/);

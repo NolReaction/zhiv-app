@@ -46,7 +46,7 @@ export function WorldCharacters({ open, onClose, onResident, onCloseAutoFocus, f
         <ul className={styles.grid} aria-label="Персонажи леса">
           {[...WORLD_CHARACTERS].sort((a, b) => Number(b.available) - Number(a.available)).map(character => <li key={character.id}>
             {character.available ? <button type="button" className={`${styles.card} ${styles.available}`} data-world-character={character.id}
-              aria-label={`${character.name} — ${character.role}. Открыть разговор`} aria-haspopup="dialog"
+              aria-label={`${character.name}, ${character.role}. Открыть разговор`} aria-haspopup="dialog"
               onClick={() => { const resident = worldCharacterResident(character.id); if (resident) onResident(resident); }}>
               <span className={styles.stage}>{character.id === "builder" ? <BuilderPortrait animated className={styles.portrait} /> : <PleskPortrait animated className={styles.portrait} />}</span>
               <strong>{character.name}</strong><small>{character.role}</small>

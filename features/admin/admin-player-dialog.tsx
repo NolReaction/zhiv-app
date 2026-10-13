@@ -116,7 +116,7 @@ export function AdminPlayerDialog({ target, actorPublicId, onAccessLost, onClose
             <button className={styles.danger} disabled={locked || !authorized || target.isAdmin} onClick={() => void run(player.bannedAt ? "unban" : "ban")}>{player.bannedAt ? "Разблокировать аккаунт" : "Заблокировать аккаунт"}</button>
             {player.watchlisted && <p className={styles.watchBadge}>Наблюдение</p>}
             {target.isAdmin && <p className={styles.hint}>Аккаунт администратора защищён от блокировки.</p>}
-            {player.tapSignalAt && <><p className={styles.hint}>Автоматический сигнал: {new Date(player.tapSignalAt).toLocaleString("ru-RU")}. Проверьте историю кликов. Если рисунок нажатий сохраняется, сигнал может появиться вновь.</p><button disabled={locked || !authorized} onClick={() => void run("clear_signal")}>Сигнал проверен — снять отметку</button></>}
+            {player.tapSignalAt && <><p className={styles.hint}>Автоматический сигнал: {new Date(player.tapSignalAt).toLocaleString("ru-RU")}. Проверьте историю кликов. Если рисунок нажатий сохраняется, сигнал может появиться вновь.</p><button disabled={locked || !authorized} onClick={() => void run("clear_signal")}>Сигнал проверен: снять отметку</button></>}
             <button disabled={locked || !authorized} onClick={() => void run(player.watchlisted ? "unwatch" : "watch")}>{player.watchlisted ? "Снять отметку наблюдения" : "Пометить для наблюдения"}</button>
           </TabsContent>
         </Tabs>

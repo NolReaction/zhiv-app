@@ -75,6 +75,7 @@ import {
 import { formatDayCount, getDailyStreakMessage } from "@/lib/daily-streak";
 import { PeopleView } from "@/features/people/people-view";
 import { ProfileView } from "@/features/account/profile-view";
+import type { NotificationSettingsExit } from "@/features/notifications/notification-settings";
 import { CheckInCalendar } from "@/features/check-in/check-in-calendar";
 import { GameLeaderboardDialog } from "@/features/game/game-leaderboard";
 import { useGameProgress } from "@/features/game/use-game-progress";
@@ -407,6 +408,7 @@ function CheckInContent() {
   const worldPortal = useWorldPortal(screen === "home" ? me?.user.publicId ?? null : null);
   const worldPeopleReturn = useRef(false);
   const appNavigationRef = useRef<HTMLElement | null>(null);
+  const notificationSettingsExit = useRef<NotificationSettingsExit | null>(null);
   const [worldMounted, setWorldMounted] = useState(false);
   const [notificationEntry, setNotificationEntry] = useState<WorldNotificationEntry>();
   const notificationRequest = useRef(0);
@@ -425,11 +427,15 @@ function CheckInContent() {
     setCalendarOpen(true);
   }, []);
   const selectView = (next: ActiveView) => {
-    if (next !== activeView) playUiCue(getAudioRuntime(), "ui.click");
-    const order = appViews;
-    setViewDirection(order.indexOf(next) >= order.indexOf(activeView) ? 1 : -1);
-    setActiveView(next);
-    if (next === "profile") void game.refresh();
+    const leave = () => {
+      if (next !== activeView) playUiCue(getAudioRuntime(), "ui.click");
+      const order = appViews;
+      setViewDirection(order.indexOf(next) >= order.indexOf(activeView) ? 1 : -1);
+      setActiveView(next);
+      if (next === "profile") void game.refresh();
+    };
+    if (activeView === "profile" && next !== activeView && notificationSettingsExit.current) notificationSettingsExit.current.requestLeave(leave);
+    else leave();
   };
   const [people, setPeople] = useState<PeopleResponse | null>(null);
   const [peopleLoading, setPeopleLoading] = useState(false);
@@ -650,7 +656,8 @@ function CheckInContent() {
     && !calendarOpen && !gameOpen && !statusOpen;
   const appAudioActive = screen === "home" && activity.active && appearanceReady && !startupActive;
   useMenuAudio({ active: appAudioActive && !worldPortal.open && !terrariumAudible,
-    handoff: appAudioActive && (worldPortal.open || terrariumAudible), ownerPublicId: me?.user.publicId ?? null,
+    handoff: appAudioActive && (worldPortal.open || terrariumAudible), prepareEnabled: appAudioActive,
+    ownerPublicId: me?.user.publicId ?? null,
     nowMs: economy.snapshot ? economy.now : world.now, timeZone: me?.profile.timeZone ?? "UTC" });
   const handleSceneLoadState = useCallback((state: SceneLoadState) => {
     setSceneLoad(previous => previous.owner === me?.user.publicId && previous.state === state ? previous : { owner: me?.user.publicId, state });
@@ -1416,7 +1423,7 @@ function CheckInContent() {
 
     void copyText(me.user.publicId)
       .then((copied) => notify(copied ? "ID скопирован" : "Не удалось скопировать ID. Зажмите его и выберите «Скопировать».", copied ? "success" : "error"))
-      .catch(() => notify("Не скопировано — зажмите ID", "error"))
+      .catch(() => notify("Не скопировано. Зажмите ID", "error"))
       .finally(() => {
         identityActionPending.current = false;
         setIsIdentityActionPending(false);
@@ -1608,7 +1615,7 @@ function CheckInContent() {
               onPointerDown={handlePrimaryPointerDown}
               onClick={handleGameClick}
               aria-busy={isSending}
-              aria-label="Я живой — отметиться и поиграть"
+              aria-label="Я живой: отметиться и поиграть"
               aria-describedby={[visualTapCount >= 1 ? "clicker-total" : null, mochlikVisible && currentActivity ? "mochlik-activity-status" : null].filter(Boolean).join(" ") || undefined}
             >
               <span className={styles.checkInTitle}>Я ЖИВОЙ</span>
@@ -1772,6 +1779,7 @@ function CheckInContent() {
       ) : me ? (
         <ProfileView
           simpleView={simpleView} onSimpleViewChange={setSimpleView}
+          notificationSettingsExit={notificationSettingsExit}
           onOpenOnboarding={() => appOnboardingEntry.current?.open()}
           getOnboardingActionLabel={() => appOnboardingEntry.current?.getActionLabel() ?? "Начать обучение"}
           me={me}

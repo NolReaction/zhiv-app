@@ -85,7 +85,7 @@ export function advanceCookingPreview(state: CookingSession, selection: CookingP
   if (!selection.repeat && age >= cookingPreviewDuration(selection)
     || preview.attentionAt !== undefined && age >= preview.attentionAt) {
     state.cookingPreview = undefined; state.clearing.frozen = false;
-    state.director.reason = "Репетиция готовки завершена — можно выбрать новое занятие";
+    state.director.reason = "Репетиция готовки завершена, можно выбрать новое занятие";
     if (preview.attentionAt !== undefined) noticeForestDirector(state, Boolean(options.still));
     return;
   }

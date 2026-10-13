@@ -15,12 +15,14 @@ const { connectForestSession } = await vite.ssrLoadModule("/features/world/state
 const { forestGardenBerries } = await vite.ssrLoadModule("/features/world/activities/garden/forest-garden-painter.ts");
 const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
 const { previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
+const { createGardenCollectionController } = await vite.ssrLoadModule("/features/economy/integration/garden-collection.ts");
+const { isWithinHomeClearing } = await vite.ssrLoadModule("/features/world/simulation/clearing-activity.ts");
 const calm = { autoLife: false, blocked: false, dusk: 0, rain: 0, homeAvailable: true };
 const start = Date.parse("2026-10-04T10:00:00Z"), finish = start + 600_000;
 const crop = { jobId: "berries-1", startedAt: new Date(start).toISOString(), finishesAt: new Date(finish).toISOString() };
-function setup() {
+function setup(view = "world") {
   const scene = withPlacedBushArtwork(previewWorldScene(TILED_WORLD, { home: 1 }));
-  const session = connectForestSession(undefined, scene, "world", finish, 0, () => {});
+  const session = connectForestSession(undefined, scene, view, finish, 0, () => {});
   session.release(); return { state: session.state, scene };
 }
 function until(state, predicate, settings = calm) {
@@ -100,4 +102,49 @@ test("reduced motion and stale requests report unavailable without inventing a p
   syncForestGardenProduction(garden, crop, start + 1000);
   requestForestGardenHarvest(state, { requestId: 3, jobId: crop.jobId }, calm);
   assert.equal(garden.harvestEvent.status, "unavailable");
+});
+
+test("a hero outside the authored home clearing gathers at the server deadline without returning or waiting for a watchdog", () => {
+  for (const view of ["circle", "world"]) for (const destination of ["workshop", "quarry", "fishing", "woodlot"]) {
+    const { state, scene } = setup(view), garden = state.life.garden;
+    state.clearing.position = { ...scene.destinations.find(item => item.id === destination).position };
+    state.clearing.stage = "clearing";
+    const before = structuredClone(state.clearing), basketBefore = structuredClone(garden.basket);
+    assert.equal(isWithinHomeClearing(state.clearing), false, `${view}: ${destination} is outside the main clearing`);
+
+    const job = { id: crop.jobId, kind: "production", targetId: "garden", ...crop, rewards: { berries: 6 },
+      collection: { kind: "berry_harvest", seconds: 8, startedAt: null, finishesAt: null } };
+    const snapshot = { ownerPublicId: "garden-owner", jobs: [job], storage: { available: 200 }, inventory: {} };
+    const controller = createGardenCollectionController(snapshot.ownerPublicId), sent = [];
+    const input = { snapshot, now: finish, busy: false, uncertain: false, retryAt: 0, sceneAvailable: true };
+    const update = patch => controller.update({ ...input, ...patch }, (action, targetId) => sent.push({ action, targetId }));
+    update({}); assert.equal(controller.start(job.id), true);
+    job.collection.startedAt = new Date(finish).toISOString(); job.collection.finishesAt = new Date(finish + 8000).toISOString();
+    update({});
+    syncForestGardenProduction(garden, job, finish);
+    requestForestGardenHarvest(state, controller.getSnapshot().request, calm);
+    assert.equal(garden.harvestEvent.status, "unavailable");
+    assert.match(garden.harvestEvent.reason, /вне поляны/);
+    assert.equal(garden.harvest, null); assert.equal(garden.routine, null); assert.equal(state.pendingLife, null);
+    assert.deepEqual(state.clearing, before, "presentation must preserve the distant actor's route and position");
+    assert.deepEqual(garden.basket, basketBefore);
+
+    controller.sceneEvent(garden.harvestEvent);
+    assert.equal(controller.getSnapshot().phase, "waiting"); assert.equal(controller.getSnapshot().request, null);
+    update({ now: finish + 7999 }); assert.equal(sent.length, 1, "no early reward before the authoritative eight seconds");
+    update({ now: finish + 8000 });
+    assert.deepEqual(sent, [{ action: "start_collection", targetId: job.id }, { action: "claim_job", targetId: job.id }]);
+    assert.deepEqual(snapshot.inventory, {}, "only the later server receipt may change stock");
+    controller.sceneEvent(garden.harvestEvent); update({ now: finish + 9000 });
+    assert.equal(sent.length, 2, "fallback does not send duplicate claims");
+  }
+});
+
+test("the home-clearing polygon controls harvest eligibility even where the camera focus overlaps another trail", () => {
+  const { state, scene } = setup();
+  assert.equal(isWithinHomeClearing(state.clearing), true);
+  state.clearing.position = { ...scene.navigation.areas.find(area => area.id === "home-clearing").points[0] };
+  assert.equal(isWithinHomeClearing(state.clearing), true, "the authored boundary is part of the clearing");
+  state.clearing.position = { x: scene.focus.x + scene.focus.width / 2, y: scene.focus.y + 1 };
+  assert.equal(isWithinHomeClearing(state.clearing), false, "camera visibility alone cannot reserve the garden actor");
 });

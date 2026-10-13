@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Bell, ChevronRight, Settings2, Volume2 } from "lucide-react";
+import { useEffect, useRef, useState, type RefObject } from "react";
+import { ArrowLeft, Bell, ChevronRight, Settings2, Smartphone, Volume2 } from "lucide-react";
+import { InstallPanel } from "@/features/pwa/install-panel";
 import { SharingSwitch as Switch } from "@/components/sharing-switch";
 import { AudioSettingsPanel } from "@/features/audio/ui/audio-settings";
-import { NotificationSettingsPanel } from "@/features/notifications/notification-settings";
+import { NotificationSettingsPanel, type NotificationSettingsExit } from "@/features/notifications/notification-settings";
 import { useSectionGuideLauncherPreference } from "@/features/onboarding/use-section-guide-preferences";
 import styles from "./profile-settings.module.css";
 
 const screens = [
+  { id: "installation", title: "Установить приложение", description: "Значок на экране и инструкция для вашего браузера", icon: Smartphone },
   { id: "notifications", title: "Уведомления", description: "События, тихие часы и частота сообщений", icon: Bell },
   { id: "audio", title: "Звук", description: "Музыка, окружение и громкость игры", icon: Volume2 },
   { id: "appearance", title: "Внешний вид", description: "Простой вид и кнопка подсказок", icon: Settings2 },
@@ -16,12 +18,13 @@ const screens = [
 
 type SettingsScreen = typeof screens[number]["id"];
 
-export function ProfileSettings({ ownerPublicId, isOnline, onSessionLost, simpleView, onSimpleViewChange }: {
+export function ProfileSettings({ ownerPublicId, isOnline, onSessionLost, simpleView, onSimpleViewChange, notificationSettingsExit }: {
   ownerPublicId: string;
   isOnline: boolean;
   onSessionLost: () => void;
   simpleView: boolean;
   onSimpleViewChange: (value: boolean) => void;
+  notificationSettingsExit: RefObject<NotificationSettingsExit | null>;
 }) {
   const { showSectionGuideLauncher, setShowSectionGuideLauncher } = useSectionGuideLauncherPreference(ownerPublicId);
   const [screen, setScreen] = useState<SettingsScreen | null>(null);
@@ -44,8 +47,9 @@ export function ProfileSettings({ ownerPublicId, isOnline, onSessionLost, simple
   }
 
   function goBack() {
-    pendingFocus.current = screen;
-    setScreen(null);
+    const leave = () => { pendingFocus.current = screen; setScreen(null); };
+    if (screen === "notifications" && notificationSettingsExit.current) notificationSettingsExit.current.requestLeave(leave);
+    else leave();
   }
 
   const currentTitle = screens.find(item => item.id === screen)?.title;
@@ -74,8 +78,11 @@ export function ProfileSettings({ ownerPublicId, isOnline, onSessionLost, simple
       <span className={styles.currentTitle} aria-hidden="true">{currentTitle}</span>
     </div>}
     {/* Keep visited screens mounted so returning does not discard notification drafts. */}
+    {visited.includes("installation") && <div className={styles.screen} hidden={screen !== "installation"}>
+      <InstallPanel compact context="settings" />
+    </div>}
     {visited.includes("notifications") && <div className={styles.screen} hidden={screen !== "notifications"}>
-      <NotificationSettingsPanel ownerPublicId={ownerPublicId} isOnline={isOnline} onSessionLost={onSessionLost} />
+      <NotificationSettingsPanel ownerPublicId={ownerPublicId} isOnline={isOnline} onSessionLost={onSessionLost} exitRef={notificationSettingsExit} />
     </div>}
     {visited.includes("audio") && <div className={styles.screen} hidden={screen !== "audio"}>
       <AudioSettingsPanel />

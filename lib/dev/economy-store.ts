@@ -210,14 +210,14 @@ export function commandDevEconomyCheat(token: string | undefined, input: Economy
         : job.targetId === command.targetId))
         return fail("ECONOMY_BUILDING_BUSY", "Сначала ускорьте работу этого здания и заберите результат");
       next.buildings[command.targetId] = command.quantity;
-      message = `DEV: ${economyCatalog.buildings.find(item => item.id === command.targetId)!.name} — уровень ${command.quantity}`;
+      message = `DEV: ${economyCatalog.buildings.find(item => item.id === command.targetId)!.name}: уровень ${command.quantity}`;
       break;
     }
     case "finish_jobs": {
       const jobs = next.jobs.filter(job => (command.targetId === "all" || job.kind === command.targetId) && Date.parse(job.finishesAt) > now);
       if (!jobs.length) return fail("ECONOMY_DEV_NO_JOBS", "Нет незавершённых работ этого типа");
       for (const job of jobs) job.finishesAt = new Date(now).toISOString();
-      message = `DEV: ускорено работ — ${jobs.length}. Заберите результат у объекта или в путешествиях`;
+      message = `DEV: ускорено работ: ${jobs.length}. Заберите результат у объекта или в путешествиях`;
       break;
     }
   }
@@ -480,7 +480,7 @@ export function commandDevEconomyBarter(token: string | undefined, input: Barter
       if (!marketSameHomeBand(next.buildings.home ?? 1, seller.state.buildings.home ?? 1) || (seller.state.buildings.home ?? 1) < 3)
         return fail("ECONOMY_BARTER_HOME_BAND", "Уровень поселения изменился. Обновите обмен");
       if (tradeTurnover(owner, now).barterUsed >= BARTER_DAILY_LIMIT || tradeTurnover(offer.sellerPublicId, now).barterUsed >= BARTER_DAILY_LIMIT)
-        return fail("ECONOMY_BARTER_DAILY_LIMIT", "Один из участников уже обменялся сегодня. Новый обмен — после 00:00 UTC");
+        return fail("ECONOMY_BARTER_DAILY_LIMIT", "Один из участников уже обменялся сегодня. Новый обмен доступен после 00:00 UTC");
       if (seller.revision >= Number.MAX_SAFE_INTEGER) return fail("ECONOMY_CAPACITY", "Автор предложения пока не может принять обмен");
       if (!(next.inventory[offer.requestedItemId] > 0)) return fail("ECONOMY_RESOURCES", "Не хватает реликвии для обмена");
       next.inventory[offer.requestedItemId]--;

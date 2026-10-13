@@ -116,7 +116,7 @@ export function LoginForm({ options, isOnline, link = false, pending = false, on
       {!registered && <button type="button" className={styles.textButton} disabled={disabled} onClick={() => void chooseAgain()}>Другой способ входа</button>}
     </form> : flow ? <form className={styles.entry} onSubmit={event => void verify(event)}>
       <label htmlFor={`${id}-otp`}>Код из письма</label>
-      <p className={styles.hint}>Отправили на {email}. Введите код здесь — он действует 10 минут. Проверьте также папку «Спам».</p>
+      <p className={styles.hint}>Отправили на {email}. Введите код здесь. Он действует 10 минут. Проверьте также папку «Спам».</p>
       <InputOTP id={`${id}-otp`} maxLength={6} pattern="^[0-9]*$" value={code} onChange={setCode} inputMode="numeric" autoComplete="one-time-code" disabled={disabled}>
         <InputOTPGroup>{Array.from({ length: 6 }, (_, index) => <InputOTPSlot className={styles.otpSlot} key={index} index={index} />)}</InputOTPGroup>
       </InputOTP>

@@ -47,7 +47,7 @@ export function ForestSessionNoticeContent({ sync, onTakeOver, onExit, onOpenAut
         <DialogDescription className={styles.description}>
           Управление Мохликом осталось в другой вкладке, на другом устройстве или в предыдущем запуске игры. Поэтому здесь он пока не двигается.
         </DialogDescription>
-        <p className={styles.hint}>Продолжи игру здесь — сохранённый прогресс останется.</p>
+        <p className={styles.hint}>Продолжи игру здесь, сохранённый прогресс останется.</p>
         <button type="button" className={styles.continue} disabled={!blocked || !sync.canTakeOver}
           onClick={() => { if (blocked && sync.canTakeOver) onTakeOver(); }}>
           Продолжить здесь<ArrowRight size={18} aria-hidden="true" />

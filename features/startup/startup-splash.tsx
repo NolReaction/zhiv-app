@@ -99,7 +99,7 @@ export function StartupSplash({ phase, progress, message, detail, retryAvailable
           </div> : <img
             ref={captureLogo}
             src={BRAND_LOGO_SRC}
-            alt="Я живой — Мохлик и его друзья"
+            alt="Я живой: Мохлик и его друзья"
             width={1024}
             height={1024}
             fetchPriority="high"
@@ -120,7 +120,7 @@ export function StartupSplash({ phase, progress, message, detail, retryAvailable
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={safeProgress}
-          aria-valuetext={`${safeProgress}% — ${message}`}
+          aria-valuetext={`${safeProgress}%. ${message}`}
         >
           <div className={styles.vine} aria-hidden="true">
             <span style={{ transform: `scaleX(${safeProgress / 100})` }} />

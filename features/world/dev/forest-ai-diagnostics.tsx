@@ -14,15 +14,15 @@ const MEMORY_LABELS: Record<ForestObservation["memory"]["status"], string> = {
   session: "Память текущей сессии",
   saved: "Сохранено на этом устройстве",
   restored: "Восстановлено на этом устройстве",
-  unavailable: "Хранилище недоступно — память только до закрытия",
+  unavailable: "Хранилище недоступно, память только до закрытия",
 };
 const SYNC_LABELS: Record<ForestMemorySyncStatus["mode"], string> = {
   loading: "Загрузка памяти аккаунта", synced: "Синхронизация подключена", saving: "Сохранение в аккаунт",
   offline: "Нет связи с сервером памяти", "other-device": "Право записи у другого устройства",
-  error: "Ошибка подключения памяти", disabled: "DEV-сценарий — запись отключена",
+  error: "Ошибка подключения памяти", disabled: "DEV-сценарий: запись отключена",
 };
 const percent = (value: number) => Math.round(Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0)) * 100);
-const scoreText = (score: number) => Number.isFinite(score) ? score.toFixed(2) : "—";
+const scoreText = (score: number) => Number.isFinite(score) ? score.toFixed(2) : "-";
 const text = (value: string) => value.slice(0, 512);
 const count = (value: number, max: number) => Math.floor(Math.max(0, Math.min(max, Number.isFinite(value) ? value : 0)));
 const GARDEN_PHASES: Record<string, string> = {
@@ -173,14 +173,14 @@ export function ForestAiDiagnostics({ observation, onExport, eventFilter = "all"
     </details>}
     <div className={styles.aiMemory}>
       <strong>Память</strong><span>{MEMORY_LABELS[observation.memory.status]}</span>
-      {observation.memory.sync && <span>{SYNC_LABELS[observation.memory.sync.mode]} · revision {observation.memory.sync.revision ?? "—"}</span>}
+      {observation.memory.sync && <span>{SYNC_LABELS[observation.memory.sync.mode]} · revision {observation.memory.sync.revision ?? "-"}</span>}
       {validSavedDate && <time dateTime={validSavedDate.toISOString()}>
         {observation.memory.sync ? "Последняя серверная запись" : "Последняя запись"}: {validSavedDate.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
       </time>}
     </div>
     <div className={styles.aiChoices}>
       <h3>Последний выбор занятия</h3>
-      <p className={styles.hint}>Оценка — полезность занятия, а не вероятность. Варианты обновляются при новом решении.</p>
+      <p className={styles.hint}>Оценка показывает полезность занятия, а не вероятность. Варианты обновляются при новом решении.</p>
       {candidates.length ? <ol className={styles.aiList} tabIndex={0} aria-label="Рассмотренные занятия">
         {candidates.map(candidate => <li key={candidate.id} data-available={candidate.available}>
           <div className={styles.aiHeadline}><strong>{candidate.label}</strong>
@@ -191,7 +191,7 @@ export function ForestAiDiagnostics({ observation, onExport, eventFilter = "all"
     </div>
     <div className={styles.aiJournal}>
       <h3>Последние события · {eventFilter === "all" ? events.length : `${events.length} из ${recentEvents.length}`}</h3>
-      <p className={styles.hint}>Новые — сверху. Время указано от начала симуляции; пауза его останавливает.</p>
+      <p className={styles.hint}>Новые сверху. Время указано от начала симуляции; пауза его останавливает.</p>
       {onEventFilterChange && <label className={styles.field}>
         <span>Показать в журнале</span>
         <select value={eventFilter} onChange={event => onEventFilterChange(event.target.value as ForestAiEventFilter)}>

@@ -12,7 +12,7 @@ import { useAudioDiagnostics } from "./use-audio-diagnostics";
 import styles from "./audio-settings.module.css";
 
 export const AUDIO_BUS_LABELS: Record<AudioBus, string> = {
-  music: "Музыка", ambience: "Лес и вода", weather: "Погода", world: "Постройки и действия", characters: "Голоса героев", ui: "Интерфейс",
+  music: "Музыка", ambience: "Лес и вода", weather: "Погода", world: "Постройки и действия", footsteps: "Шаги животных", characters: "Голоса героев", ui: "Интерфейс",
 };
 
 function VolumeSlider({ id, label, value, onChange }: {

@@ -133,7 +133,7 @@ fun Route.relationshipRoutes(
                 val nickname = if (request.keys == setOf("nickname") && rawNickname != null)
                     normalizePersonNickname(rawNickname) else null
                 if (nickname == null) {
-                    call.respondError(HttpStatusCode.BadRequest, "INVALID_NICKNAME", "Подпись — до 50 символов без переносов строк")
+                    call.respondError(HttpStatusCode.BadRequest, "INVALID_NICKNAME", "В подписи допустимо до 50 символов без переносов строк")
                     return@patch
                 }
                 when (val result = repository.updateNickname(sessionHash, circleId, nickname)) {

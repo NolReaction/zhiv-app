@@ -104,7 +104,7 @@ test("a finished kiln upgrade takes the shared host shortcut and keeps the works
     anchors: [anchor("workshop")], onOpen: id => calls.push(`station:${id}`), onOpenConstruction: id => calls.push(`upgrade:${id}`) });
   const html = renderToStaticMarkup(component);
   assert.match(html, /data-work-kind="construction"/); assert.match(html, /Строительство завершено/);
-  assert.match(html, /Распилить доски — Изготовление, 59:30/); assert.match(html, /Уровень 2/);
+  assert.match(html, /Распилить доски, Изготовление, 59:30/); assert.match(html, /Уровень 2/);
   assert.match(html, /Открыть улучшение/); assert.match(html, /Завершить/); assert.match(html, /\+1/);
   component.props.children[0].props.onClick(); assert.deepEqual(calls, ["upgrade:kiln"]);
   const overlapping = [anchor("campfire", 200, 250), anchor("workshop", 205, 252)];
@@ -117,8 +117,8 @@ test("working construction competes by finish time and all shared timers remain 
   const saved = state([job("workshop"), construction]), now = start + 30_000, groups = mapProductionGroups(saved, now);
   assert.equal(groups[0].primary.kind, "construction"); assert.equal(groups[0].primary.remaining, 270);
   const html = renderToStaticMarkup(WorldProductionStatus({ economy: { snapshot: saved, now }, groups, anchors: [anchor("workshop")], onOpen() {}, onOpenConstruction() {} }));
-  assert.match(html, /<strong>4:30<\/strong>/); assert.match(html, /Уровень 2 — Строительство, 4:30/);
-  assert.match(html, /Распилить доски — Изготовление, 59:30/); assert.match(html, /\+1/);
+  assert.match(html, /<strong>4:30<\/strong>/); assert.match(html, /Уровень 2, Строительство, 4:30/);
+  assert.match(html, /Распилить доски, Изготовление, 59:30/); assert.match(html, /\+1/);
   const soonerProduction = mapProductionGroups(state([job("workshop", { finishesAt: iso(start + 60_000) }), construction]), now);
   assert.equal(soonerProduction[0].primary.kind, "production");
 });

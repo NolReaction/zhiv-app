@@ -121,7 +121,7 @@ export function scoreForestAction(mind: ForestMindState, action: ForestMindActio
       score += unit(context.rain) * discomfort * 3;
       reasons.push(context.rain > .35 ? "В домике сухо и уютно" : "Можно отдохнуть дома");
     } else if (context.rain > .35) score -= 4;
-    if (mind.elapsed < mind.attentionUntil) return { key, action, score: null, available: false, reasons: ["Недавно разбудили — остаётся с игроком"], selected: false };
+    if (mind.elapsed < mind.attentionUntil) return { key, action, score: null, available: false, reasons: ["Недавно разбудили, остаётся с игроком"], selected: false };
   } else if (action === "groom") {
     score += discomfort * 3 + unit(context.rain) * .55;
     reasons.push(discomfort > .3 ? "Хочется привести мокрую шерсть в порядок" : "Спокойное занятие на полянке");
@@ -130,9 +130,9 @@ export function scoreForestAction(mind: ForestMindState, action: ForestMindActio
     // calm task its purpose. It should never turn into a need to work while tired.
     score += .85 + curious * .7 + n.energy * .85 - tired * 2
       - unit(context.rain) * 1.8 - unit(context.dusk) * .4 - n.attention * .5;
-    reasons.push(action === "water-bush" ? "Кусту пригодится вода — можно спокойно позаботиться о нём"
-      : "Ягоды созрели — можно отнести их в корзинку");
-    if (n.energy < .4) reasons.push("Сначала нужно восстановить силы — забота о кусте подождёт");
+    reasons.push(action === "water-bush" ? "Кусту пригодится вода, можно спокойно позаботиться о нём"
+      : "Ягоды созрели, можно отнести их в корзинку");
+    if (n.energy < .4) reasons.push("Сначала нужно восстановить силы, забота о кусте подождёт");
   } else if (action === "idle") {
     score += tired * .5 + n.attention * .8;
     reasons.push(n.attention > .3 ? "Прислушивается к игроку" : "Можно немного осмотреться");
@@ -141,14 +141,14 @@ export function scoreForestAction(mind: ForestMindState, action: ForestMindActio
     if (action === "bush") score -= unit(context.rain) * 2;
     score -= n.attention * .25;
     reasons.push(curious > .5 ? "Любопытно исследовать что-то новое" : "Рядом есть интересное занятие");
-    if (n.energy < .35) reasons.push("Сил немного — активность менее привлекательна");
+    if (n.energy < .35) reasons.push("Сил немного, активность менее привлекательна");
   }
   const tempo = (.45 - arousal) * stimulation[action] * 1.25;
   const impressions = -experience.saturation * stimulation[action] * .65;
   score += tempo + impressions;
   if (arousal > .58 && Math.abs(tempo) > .12) reasons.push("После оживления тянется к спокойному занятию");
-  else if (arousal < .3 && tempo > .12) reasons.push("Отдохнул от суеты — готов немного оживиться");
-  if (experience.saturation > .35 && Math.abs(impressions) > .12) reasons.push("Набрался впечатлений — хочется спокойствия");
+  else if (arousal < .3 && tempo > .12) reasons.push("Отдохнул от суеты, готов немного оживиться");
+  if (experience.saturation > .35 && Math.abs(impressions) > .12) reasons.push("Набрался впечатлений, хочется спокойствия");
   const family = actionFamily[action];
   // Variety never makes necessary rest less attractive. Failed attempts already have
   // their own recency penalty and must not count as satisfying experiences.
@@ -156,7 +156,7 @@ export function scoreForestAction(mind: ForestMindState, action: ForestMindActio
     const share = experience.families[family] / experience.total;
     const variety = experience.variety * (.45 - share * 1.5);
     score += variety;
-    if (Math.abs(variety) > .1) reasons.push(variety < 0 ? "Недавно занимался похожим — хочется разнообразия" : "Другое занятие внесёт разнообразие");
+    if (Math.abs(variety) > .1) reasons.push(variety < 0 ? "Недавно занимался похожим, хочется разнообразия" : "Другое занятие внесёт разнообразие");
   }
   let recoveryStillNeeded = false;
   const repeat = mind.recent.reduce((sum, previous) => {
@@ -170,8 +170,8 @@ export function scoreForestAction(mind: ForestMindState, action: ForestMindActio
     if (same * freshness > 0 && repetitionWeight < 1) recoveryStillNeeded = true;
     return sum + same * freshness * repetitionWeight;
   }, 0);
-  if (recoveryStillNeeded) reasons.push("Недавнего отдыха не хватило — восстановить силы важнее разнообразия");
-  if (repeat > .1) reasons.push("Недавно уже пробовал — лучше сменить занятие");
+  if (recoveryStillNeeded) reasons.push("Недавнего отдыха не хватило, восстановить силы важнее разнообразия");
+  if (repeat > .1) reasons.push("Недавно уже пробовал, лучше сменить занятие");
   const cost = Math.max(0, Math.min(3, context.cost ?? 0));
   if (cost > .4) reasons.push("До цели нужно пройти по безопасному пути");
   score += Math.max(0, Math.min(.6, context.noise ?? 0)) - repeat - cost;
@@ -212,11 +212,11 @@ export function noticeForestMind(mind: ForestMindState, options: { rested?: bool
   const log = mind.needs.attention < .9 || mind.elapsed - (mind.events.at(-1)?.at ?? -10) >= 2;
   mind.needs.attention = 1; mind.attentionUntil = mind.elapsed + 30;
   mind.arousal = Math.max(forestMindMotives(mind).arousal, .7);
-  if (log) event(mind, "attention", null, "Игрок позвал — отвечает и некоторое время остаётся бодрым");
+  if (log) event(mind, "attention", null, "Игрок позвал, отвечает и некоторое время остаётся бодрым");
 }
 export function forestMindMood(mind: ForestMindState): { label: string; description: string } {
   if (mind.needs.attention > .65) return { label: "Рад тебя видеть", description: "Услышал тебя и готов немного побыть рядом." };
-  if (mind.needs.energy < .3) return { label: "Хочет отдохнуть", description: "Нагулялся — выбирает спокойное занятие или отдых." };
+  if (mind.needs.energy < .3) return { label: "Хочет отдохнуть", description: "Нагулялся, выбирает спокойное занятие или отдых." };
   if (mind.needs.comfort < .45) return { label: "Хочется уюта", description: "Сырая погода располагает к отдыху и укрытию." };
   if (mind.needs.curiosity > .6) return { label: "Любопытничает", description: "Хочет исследовать полянку и понаблюдать за её обитателями." };
   return { label: "Всё хорошо", description: "Спокойно живёт на полянке и сам выбирает занятия." };

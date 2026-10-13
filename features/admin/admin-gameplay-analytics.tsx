@@ -55,7 +55,7 @@ export function AdminPresenceAnalytics({ data, onOpen }: { data: AdminAnalytics;
       <thead><tr><th>Дата UTC</th><th>Игроки</th><th>Общее время</th><th>Игроки &gt;20 ч</th></tr></thead><tbody>{p.daily.map(row => <tr key={row.date}>
         <th scope="row">{row.date}</th><td>{analyticsCount(row.players)}</td><td>{!p.coverageFrom || row.date < p.coverageFrom.slice(0, 10) ? "Нет измерений" : analyticsDuration(row.onlineSeconds)}</td><td>{analyticsCount(row.flaggedPlayers)}</td>
       </tr>)}</tbody></table></div></details>
-    <h4>Дни с присутствием свыше 20 часов</h4><p className={styles.note}>Такой день автоматически включает наблюдение с причиной, без блокировки. Исторический сигнал сохраняется после ручного снятия наблюдения. Статус наблюдения в таблице — текущий.</p>
+    <h4>Дни с присутствием свыше 20 часов</h4><p className={styles.note}>Такой день автоматически включает наблюдение с причиной, без блокировки. Исторический сигнал сохраняется после ручного снятия наблюдения. В таблице указан текущий статус наблюдения.</p>
     {!p.reviewDays.length ? <p className={styles.empty}>За выбранный период сигналов длительного присутствия нет.</p> : <div className={styles.tableScroll} tabIndex={0} role="region" aria-label="Сигналы длительного присутствия"><table>
       <thead><tr><th>Игрок</th><th>Дата UTC</th><th>Время за сутки</th><th>Статус сейчас</th><th>Сигнал получен, UTC</th></tr></thead><tbody>{p.reviewDays.map(row => <tr key={`${row.publicId}:${row.date}`}>
         <th scope="row">{onOpen ? <button type="button" className={styles.textButton} onClick={() => onOpen(row)}>{row.displayName}</button> : row.displayName}<small>{row.publicId}</small></th>

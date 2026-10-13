@@ -43,7 +43,7 @@ export function BuilderConversation({ economy, onOpenConstruction, onNavigateSta
     {feedback}
     <span className={styles.badge}>{status.ready ? <Check size={15} aria-hidden="true" /> : <Hammer size={15} aria-hidden="true" />}{status.ready ? "Готово" : "Занят улучшением"}</span>
     <div className={styles.building}><strong>{status.stationName}</strong>{status.job.targetLevel !== null && <span>Уровень {status.job.targetLevel}</span>}</div>
-    {status.ready ? <p>Работа закончена — завершите улучшение.</p> : <div className={styles.timerRow}><p className={styles.timer}><Clock3 size={16} aria-hidden="true" />Осталось {remaining}</p><WorldMealBoost economy={economy} consumer="builder" jobId={status.job.id} isOnline={isOnline} onNavigateStation={onNavigateStation} onOpenMeals={onOpenMeals} /></div>}
+    {status.ready ? <p>Работа закончена, завершите улучшение.</p> : <div className={styles.timerRow}><p className={styles.timer}><Clock3 size={16} aria-hidden="true" />Осталось {remaining}</p><WorldMealBoost economy={economy} consumer="builder" jobId={status.job.id} isOnline={isOnline} onNavigateStation={onNavigateStation} onOpenMeals={onOpenMeals} /></div>}
     {!status.ready && <ConstructionSpeedup key={status.job.id} economy={{ ...economy, snapshot: state }} job={status.job} />}
     <button type="button" className={styles.action} onClick={() => onOpenConstruction(status.stationId)}>{status.ready ? "Завершить улучшение" : "К постройке"}<ArrowRight size={16} aria-hidden="true" /></button>
   </section>;

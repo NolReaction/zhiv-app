@@ -34,7 +34,7 @@ function pcmWave(bytes) {
 
 test("original pack fills the catalog, documents source and verifies every shipped byte", () => {
   assert.deepEqual(inspectAudioCatalog(catalog, { root, requireReady: true }).errors, []);
-  assert.equal(manifest.assets.length, 98);
+  assert.equal(manifest.assets.length, 102);
   assert.deepEqual(new Set(manifest.assets.map(item => item.id)), new Set(catalog.assets.map(item => item.id)));
   const hashes = new Set();
   for (const source of manifest.sources) assert.equal(sha(readFileSync(path.join(root, source.path))), source.sha256, source.path);
@@ -69,9 +69,11 @@ test("weather noise and overlapping close footsteps keep headroom even at full p
   // compressor. The bus sliders must not be the only protection for old saves.
   assert.ok(cuePeak("weather.wind") + cuePeak("weather.rain") < .17,
     "both weather beds leave headroom even without rain's additional wind duck");
+  assert.ok(cuePeak("weather.wind") < .002,
+    "wind stays barely noticeable even before attenuation by the weather/master sliders");
   for (const id of ["action.step.grass", "action.step.wood"]) {
     const cue = catalog.cues.find(entry => entry.id === id);
-    assert.ok(cuePeak(id) * cue.maxInstances < .28,
+    assert.ok(cuePeak(id) * cue.maxInstances < .12,
       `${id}: two nearby residents cannot produce a near-full-scale impact`);
     assert.ok(cuePeak(id) > .03, `${id}: close steps remain audible`);
   }
@@ -153,22 +155,77 @@ test("wildlife phrases are sparse and individual peaks remain quieter than the p
   }
 });
 
-test("campfire stays continuous and added action sounds have bounded, restrained tails", () => {
+test("campfire has calmer, softer crackles instead of a constant wind bed", () => {
   const fire = manifest.assets.find(item => item.id === "campfire.01");
-  assert.match(fire.files[0].src, /embers-v2/);
-  assert.ok(fire.measurements.peakDb <= -13 && fire.measurements.rmsDb <= -27);
+  assert.match(fire.files[0].src, /calm-v4/);
+  assert.ok(fire.measurements.peakDb <= -25 && fire.measurements.rmsDb <= -41);
   const wav = pcmWave(readFileSync(path.join(root, "public", fire.files[0].src)));
   const window = wav.rate / 20;
+  const levels = [];
   for (let start = 0; start < fire.frames; start += window) {
     let squares = 0;
     for (let index = start; index < start + window; index++) squares += (wav.samples.readInt16LE(index * 2) / 32768) ** 2;
-    assert.ok(Math.sqrt(squares / window) > .01, "no chopped or silent flame segments");
+    const rms = Math.sqrt(squares / window);
+    assert.ok(rms > .0002, "faint embers remain between crackles without silent chopped segments");
+    levels.push(rms);
   }
+  levels.sort((a, b) => a - b);
+  const contrast = levels[Math.floor(levels.length * .9)] / levels[Math.floor(levels.length * .1)];
+  assert.ok(contrast > 4 && contrast < 25, "wood events stand above the faint bed; the old constant whoosh had a 1.3 ratio");
+
+  const old = pcmWave(readFileSync(path.join(root, "public/audio/originals-v1/loop/campfire.01.wood-v3.wav")));
+  const energy = audio => {
+    let squares = 0, differences = 0, previous = 0;
+    for (let offset = 0; offset < audio.samples.length; offset += 2) {
+      const sample = audio.samples.readInt16LE(offset) / 32768;
+      squares += sample * sample;
+      differences += (sample - previous) ** 2;
+      previous = sample;
+    }
+    return { squares, differences };
+  };
+  const currentEnergy = energy(wav), oldEnergy = energy(old);
+  assert.ok(currentEnergy.squares < oldEnergy.squares / 4, "same duration at least 6 dB quieter than the reported harsh revision");
+  assert.ok(currentEnergy.differences / currentEnergy.squares < .04,
+    "softer spectrum rather than turning down the same sharp transients");
+});
+
+test("cooking is quiet finite liquid bubbles without a continuous wind-like bed", () => {
+  const cooking = manifest.assets.find(item => item.id === "cooking.simmer.01");
+  assert.match(cooking.files[0].src, /bubbles-v2/);
+  assert.ok(cooking.measurements.peakDb <= -24 && cooking.measurements.rmsDb <= -36);
+  const wav = pcmWave(readFileSync(path.join(root, "public", cooking.files[0].src)));
+  const window = wav.rate / 20;
+  let quietWindows = 0, quietRun = 0, longestQuietRun = 0, squares = 0, differences = 0, previous = 0;
+  for (let start = 0; start < cooking.frames; start += window) {
+    let windowSquares = 0;
+    for (let frame = start; frame < start + window; frame++) {
+      const sample = wav.samples.readInt16LE(frame * 2) / 32768;
+      windowSquares += sample * sample;
+      differences += (sample - previous) ** 2;
+      previous = sample;
+    }
+    squares += windowSquares;
+    if (Math.sqrt(windowSquares / window) < .0002) {
+      quietWindows++;
+      quietRun++;
+      longestQuietRun = Math.max(longestQuietRun, quietRun);
+    } else quietRun = 0;
+  }
+  assert.ok(quietWindows / (cooking.frames / window) > .25,
+    "actual PCM has pauses between bubbles; the reported airy revision had none");
+  assert.ok(longestQuietRun <= 6, "small simmer releases continue without long silent gaps");
+  assert.ok(differences / squares < .005, "rounded low bubbles, without sharp or hissing upper texture");
+});
+
+test("added action sounds have bounded, restrained tails", () => {
   for (const [prefix, count, duration, rmsDb] of [
     ["cooking.simmer.", 1, 6, -25],
     ["action.bush.rustle.", 2, .65, -25],
     ["action.mushroom.eat.", 2, .25, -26],
     ["water.drop.", 2, .31, -28],
+    ["action.mine.strike.", 2, .36, -27],
+    ["action.fish.bobber.", 2, .37, -29],
   ]) {
     const entries = manifest.assets.filter(item => item.id.startsWith(prefix));
     assert.equal(entries.length, count);
@@ -177,6 +234,26 @@ test("campfire stays continuous and added action sounds have bounded, restrained
       assert.ok(item.durationSeconds <= duration, item.id);
       assert.ok(item.measurements.rmsDb <= rmsDb + .01, item.id);
     }
+  }
+});
+
+test("bobber and pick contacts stay quiet even with two actors and end without clicks", () => {
+  for (const id of ["action.mine.strike", "action.fish.bobber"]) {
+    const cue = catalog.cues.find(entry => entry.id === id);
+    let loudest = 0;
+    for (const assetId of cue.assets) {
+      const item = manifest.assets.find(entry => entry.id === assetId);
+      assert.ok(item.measurements.peakDb <= -14, `${assetId}: restrained impact`);
+      const wav = pcmWave(readFileSync(path.join(root, "public", item.files[0].src)));
+      const tailFrames = Math.round(wav.rate * .02);
+      let tailSquares = 0;
+      for (let frame = item.frames - tailFrames; frame < item.frames; frame++)
+        tailSquares += (wav.samples.readInt16LE(frame * 2) / 32768) ** 2;
+      assert.ok(Math.sqrt(tailSquares / tailFrames) < .001, `${assetId}: quiet final 20 ms`);
+      loudest = Math.max(loudest, 10 ** (item.measurements.peakDb / 20));
+    }
+    assert.ok(loudest * 10 ** (cue.gainDb / 20) * cue.maxInstances < .3,
+      `${id}: worst-case overlap leaves headroom before player/master attenuation`);
   }
 });
 

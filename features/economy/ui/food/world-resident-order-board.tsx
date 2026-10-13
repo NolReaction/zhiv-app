@@ -86,7 +86,7 @@ export function ResidentOrderCard({ economy, offer, onComplete, onReplace, confi
       const label = <><ProductIcon state={state} itemId={id} size={23} /><span>{itemName(state, id)}</span><strong>{number(owned)} / {number(quantity)}</strong></>;
       return <li key={id} data-missing={short || undefined}>{source ? <button type="button" aria-label={`Где получить для заказа: ${itemName(state, id)}`} onClick={source}>{label}</button> : <div>{label}</div>}</li>;
     })}</ul>
-    {bonus > 0 && !tutorial && <p className={styles.premium} title="Рыба — продажа Плёске, другие товары — местному скупщику.">На {number(bonus)} монет больше продажи</p>}
+    {bonus > 0 && !tutorial && <p className={styles.premium} title="Рыбу можно продать Плёске, другие товары местному скупщику.">На {number(bonus)} монет больше продажи</p>}
     {confirmation ?? <div className={styles.actions}>
       <button type="button" className={styles.primary} data-guide-order-submit disabled={locked(economy) || missing || walletFull || !currentOffer} onClick={() => {
         if (locked(economy) || missing || walletFull || !current()) return;
@@ -203,7 +203,7 @@ export function ResidentOrderBoard({ economy, residentId, ...navigation }: Order
     <div className={styles.boardSummary}><p><Clock3 size={13} aria-hidden="true" />Обновление через <strong>{waiting(remaining(board.refreshAt, economy.now))}</strong></p><p>Бесплатных замен: <strong>{board.freeReplacementsRemaining} / {config.freeReplacements}</strong></p></div>
     {board.replacementPricePearls > economy.snapshot.wallet.pearls && <p className={styles.warning}>На замену не хватает {formatPearls(board.replacementPricePearls - economy.snapshot.wallet.pearls)} жемчужин.</p>}
     <div className={styles.filters} role="group" aria-label="Заказчик">{(["all", "plesk", "builder"] as const).map(value => <button key={value} type="button" data-order-filter={value} aria-pressed={filter === value} onClick={() => { setFilter(value); setQuote(null); }}>{value === "all" ? "Все" : residents[value].name}<span>{value === "all" ? offers.length : offers.filter(offer => offer.residentId === value).length}</span></button>)}</div>
-    <p className={styles.lore}>{filter === "all" ? "Просьбы жителей за монеты. Угощения — во вкладке «Еда»." : residents[filter].role}</p>
+    <p className={styles.lore}>{filter === "all" ? "Просьбы жителей за монеты. Угощения во вкладке «Еда»." : residents[filter].role}</p>
     {confirmed && <p className={styles.success} role="status" ref={success} tabIndex={-1}><Check size={15} aria-hidden="true" /><span>{attempt.offerId === TUTORIAL_ORDER_ID ? `Учебный заказ выполнен · +${number(attempt.coins)} монет. Теперь можно выбирать обычные просьбы.`
       : attempt.action === "complete_resident_order" ? `Заказ выполнен · +${number(attempt.coins)} монет. Новая просьба уже на доске.` : "Заказ заменён. Новая просьба уже на доске."}</span><button type="button" aria-label="Скрыть результат заказа" onClick={() => setAttempt(null)}><X size={14} aria-hidden="true" /></button></p>}
     <section className={styles.orders} aria-labelledby={headingId}><h3 id={headingId} className={styles.srOnly}>Текущие заказы</h3>{matching.map(offer => <ResidentOrderCard key={offer.id} economy={economy} offer={offer} {...navigation} onComplete={entry => send(entry, "complete_resident_order", 0)} onReplace={replace}

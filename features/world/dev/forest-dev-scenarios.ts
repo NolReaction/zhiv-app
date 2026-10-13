@@ -24,6 +24,6 @@ export function applyForestDevScenario(state: ForestSessionState, kind: WorldDev
     state.clearing.behavior.mind.needs.energy = .18;
     state.clearing.awakeUntil = state.clearing.elapsed;
     state.director.nextDecisionAt = state.director.elapsed;
-    state.director.reason = "В DEV задана усталость — Мохлик сам выбирает отдых";
-  } else state.director.reason = "Дождливый вечер — наблюдаем укрытия и затухание костра";
+    state.director.reason = "В DEV задана усталость, Мохлик сам выбирает отдых";
+  } else state.director.reason = "Дождливый вечер: наблюдаем укрытия и затухание костра";
 }

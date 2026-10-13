@@ -33,7 +33,7 @@ class WebPushSenderTest {
         val vapid=pair();val browser=pair();val auth=ByteArray(16) { (it+1).toByte() }
         val config=WebPushConfig(publicKey(vapid),privateKey(vapid),"mailto:test@example.test")
         val subscription=BrowserPushSubscription("https://fcm.googleapis.com/fcm/send/test",PushKeys(publicKey(browser),base64.encodeToString(auth)))
-        val payload=PushPayload("Мохлик","Ресурсы готовы.","mochlik-updates","/?notification=world&section=production&owner=ABCD-EFGH-JKLM","ABCD-EFGH-JKLM")
+        val payload=PushPayload("Ресурсы готовы","Производство завершено. Можно забрать результат.","mochlik-updates","/?notification=world&section=production&owner=ABCD-EFGH-JKLM","ABCD-EFGH-JKLM")
         WebPushSender(config).use { sender ->
             val encoded=sender.encode(subscription,payload)
             assertEquals(subscription.endpoint,encoded.url)

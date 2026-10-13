@@ -2,13 +2,14 @@
 
 Для ручной работы в редакторе начните с [памятки Tiled: слои и конкретные действия](game/tiled-quickstart.md).
 
-Ищите задачу в таблице и открывайте указанный файл. Подробности изменения и проверки — в последнем столбце. Пути ниже относятся к структуре рабочей 0.6.8 и текущей Tiled-карте; прежний рендер отделён в конце. Границы состояния и безопасного расширения — [архитектура](architecture.md); состав и порядок выпуска — [0.6.8](releases/release-0.6.8.md).
+Ищите задачу в таблице и открывайте указанный файл. Подробности изменения и проверки — в последнем столбце. Пути ниже относятся к структуре рабочей 0.6.9 и текущей Tiled-карте; прежний рендер отделён в конце. Границы состояния и безопасного расширения — [архитектура](architecture.md); состав и порядок выпуска — [0.6.9](releases/release-0.6.9.md).
 
 ## Быстрый выбор раздела
 
 | Что нужно изменить | Начните здесь |
 |---|---|
 | Сборка приложения, переключение основных экранов | [`features/app/app-shell.tsx`](../features/app/app-shell.tsx), [`navigation.tsx`](../features/app/navigation.tsx) |
+| Публичная страница `/site`, установка PWA, первый вход из браузера | [`features/site/`](../features/site/), [`features/pwa/`](../features/pwa/), [`game-entry.tsx`](../features/app/game-entry.tsx); [устройство и проверка](development/product-site-and-pwa.md) |
 | «Мой Мохлик»: имя, статистика, настроение, друзья | [`features/world/ui/profile/`](../features/world/ui/profile/), основной экран — `world-profile-menu.tsx`, оформление — соседний `.module.css` |
 | Профиль аккаунта, вход и привязки | [`features/account/profile-view.tsx`](../features/account/profile-view.tsx), остальные файлы `account/` |
 | Кнопка открытия, общий каркас игровых окон | [`features/world/world-view.tsx`](../features/world/world-view.tsx), `world-map-hud.module.css`, `world.module.css` |

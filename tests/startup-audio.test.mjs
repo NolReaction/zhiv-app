@@ -10,6 +10,7 @@ after(() => vite.close());
 const { createStartupAudioEntry, getStartupAudioEntry, STARTUP_AUDIO_BUDGET_MS, STARTUP_LOGO_AUDIO_WINDOW_MS, STARTUP_LOGO_PREPARE_MS }
   = await vite.ssrLoadModule("/features/startup/startup-audio.ts");
 const { DEFAULT_AUDIO_SETTINGS } = await vite.ssrLoadModule("/features/audio/domain/settings.ts");
+const { attachStartupAudioGestures } = await vite.ssrLoadModule("/features/startup/startup-audio-gestures.ts");
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const deferred = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };
 
@@ -93,6 +94,80 @@ test("a blocked browser remains silent and future input never replays an expired
   f.advance(500); f.setState("running"); f.entry.refresh(); f.entry.reveal();
   assert.equal(f.events.length, 0);
   f.entry.close();
+});
+
+test("a trusted splash gesture can sound an expired automatic entrance once, with synchronous unlock", async () => {
+  const f = fixture();
+  let unlocks = 0;
+  f.runtime.unlock = () => { unlocks++; f.setState("running"); f.entry.refresh(); return Promise.resolve(true); };
+  f.setState("locked"); f.entry.start(); await flush(); f.entry.reveal();
+  f.advance(700); f.entry.refresh();
+  assert.equal(f.events.length, 0);
+  f.entry.playFromGesture();
+  assert.equal(unlocks, 1, "unlock is invoked inside the trusted gesture, before any await");
+  assert.deepEqual(f.events, [{ id: "startup:logo", cueId: "ui.startup", occurredAt: 1_700, maxAgeMs: STARTUP_LOGO_AUDIO_WINDOW_MS }]);
+  f.entry.playFromGesture(); await flush(); f.entry.refresh();
+  assert.equal(f.events.length, 1, "pointerup, touchend and click cannot repeat the signature");
+  f.entry.close(); f.entry.playFromGesture();
+  assert.equal(unlocks, 1);
+});
+
+test("gesture permission and decode must arrive within the fresh window, never after close, hide or mute", async () => {
+  for (const invalidation of ["close", "hide", "mute", "ui-zero", "master-zero", "late", "none"]) {
+    const permission = deferred(), preparation = deferred();
+    const f = fixture({ runtime: { prepare: () => preparation.promise, unlock: () => permission.promise } });
+    f.setState("locked"); f.entry.start(); await flush(); f.entry.reveal(); f.advance(700);
+    f.entry.playFromGesture();
+    if (invalidation === "close") f.entry.close();
+    if (invalidation === "hide") { f.setVisible(false); f.entry.hide(); }
+    if (invalidation === "mute") { f.settings.enabled = false; f.entry.refresh(); f.settings.enabled = true; }
+    if (invalidation === "ui-zero") { f.settings.buses.ui = 0; f.entry.refresh(); f.settings.buses.ui = 1; }
+    if (invalidation === "master-zero") { f.settings.master = 0; f.entry.refresh(); f.settings.master = .65; }
+    f.advance(invalidation === "late" ? STARTUP_LOGO_AUDIO_WINDOW_MS + 1 : 50);
+    f.setState("running"); permission.resolve(true); preparation.resolve(); await flush();
+    assert.equal(f.events.length, invalidation === "none" ? 1 : 0, invalidation);
+    f.entry.close();
+  }
+});
+
+test("gesture cannot play before reveal or with saved mute, and rejected unlock has no delayed replay", async () => {
+  const f = fixture(); let unlocks = 0;
+  f.runtime.unlock = () => { unlocks++; return Promise.reject(new Error("NotAllowedError")); };
+  f.setState("locked"); f.entry.playFromGesture(); f.entry.start(); await flush(); f.entry.playFromGesture();
+  assert.equal(unlocks, 0);
+  f.entry.reveal(); f.advance(700);
+  for (const field of ["enabled", "master"]) {
+    const previous = f.settings[field]; f.settings[field] = 0;
+    f.entry.playFromGesture(); f.settings[field] = previous;
+  }
+  assert.equal(unlocks, 0);
+  f.entry.playFromGesture(); await flush();
+  assert.equal(unlocks, 1); assert.equal(f.events.length, 0);
+  f.entry.close(); f.setState("running"); f.entry.refresh(); f.entry.playFromGesture();
+  assert.equal(f.events.length, 0);
+});
+
+test("splash gestures require a trusted visible target and detach before later menu taps", () => {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "Node");
+  class Node {}
+  Object.defineProperty(globalThis, "Node", { value: Node, configurable: true });
+  try {
+    let calls = 0, shown = true;
+    const target = new Node(), outside = new Node(), handlers = new Map();
+    const page = { hidden: false, querySelector: () => shown ? { contains: node => node === target } : null,
+      addEventListener: (type, handler) => handlers.set(type, handler), removeEventListener: type => handlers.delete(type) };
+    const detach = attachStartupAudioGestures({ playFromGesture: () => calls++ }, page);
+    const emit = (type, patch = {}) => handlers.get(type)?.({ type, target, isTrusted: true, ...patch });
+    emit("pointerdown"); emit("pointerup", { isTrusted: false }); emit("click", { target: outside });
+    emit("keydown", { key: "Escape" }); emit("keydown", { key: "Enter", repeat: true }); emit("keydown", { key: "Enter", ctrlKey: true });
+    assert.equal(calls, 0);
+    emit("pointerup"); emit("touchend"); emit("click"); emit("keydown", { key: " " });
+    assert.equal(calls, 4);
+    page.hidden = true; emit("pointerup"); page.hidden = false;
+    shown = false; emit("click"); emit("keydown", { key: "Enter" });
+    assert.equal(calls, 4);
+    detach(); assert.equal(handlers.size, 0);
+  } finally { if (previous) Object.defineProperty(globalThis, "Node", previous); else delete globalThis.Node; }
 });
 
 test("delayed autoplay permission never survives closing, hiding, mute or the entrance window", async () => {

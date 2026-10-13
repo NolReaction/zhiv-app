@@ -70,13 +70,11 @@ import { audioDevStore } from "@/features/audio/dev/audio-dev-store";
 import { createWorldAudioController } from "@/features/world/audio/world-audio-controller";
 import { quarryAudioWorking, type WorldAudioCamera } from "@/features/world/audio/world-audio-frame";
 import { drawWorldAudioDebug } from "@/features/world/audio/world-audio-debug";
+import { worldArtworkUrls } from "./world-artwork";
 
 const REACTION_SECONDS = .9;
 const levels = initialPreviewLevels(TILED_WORLD);
 const visualsFor = (next: PreviewLevels) => Object.fromEntries(TILED_WORLD.sites.map(site => [site.id, previewSiteVisual(site, next)]));
-const artworkUrls = (scene: FixedWorldScene, visuals: Record<string, SiteVisual>) => [...new Set([
-  ...scene.terrain.map(terrain => terrain.image), ...Object.values(visuals).map(visual => visual.image),
-])];
 
 function pointInPolygon(point: WorldPoint, polygon: WorldPoint[]) {
   let inside = false;
@@ -533,8 +531,9 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     const leaseMode = state.memory.sync?.mode;
     const leaseBlocked = active() && !session.isSimulationAllowed() && (leaseMode === "other-device" || leaseMode === "error");
     if (!session.isOwner() && !leaseBlocked) return;
-    // Keep the request unconsumed until the visible catch/tackle is put away.
-    if (request && Number.isSafeInteger(request.requestId) && request.requestId > 0 && (!forestJourneyEnding(state) || leaseBlocked)) {
+    // A returned server job can still have a cosmetic walk/tackle ending. That
+    // must not delay berry collection or replace the journey's physical route.
+    if (request && Number.isSafeInteger(request.requestId) && request.requestId > 0) {
       const fresh = session.consumeEvent("garden-harvest", request.requestId);
       if (fresh || leaseBlocked && garden.harvest?.request.requestId === request.requestId) {
         if (leaseBlocked) {
@@ -542,11 +541,14 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
           garden.harvestEvent = { ...request, status: "unavailable", reason: "Сбор продолжается без анимации на этом устройстве" };
           garden.harvest = null;
         } else {
-          advanceCookingPreview(state, null);
-          state.reaction = 0; state.animation = null;
-          requestForestGardenHarvest(state, request, directorOptions());
-          if (dev?.paused || options.paused || dev?.showHero === false || dev?.pose && dev.pose !== "auto") {
-            cancelForestDirector(state, "Сбор продолжается без анимации");
+          requestForestGardenHarvest(state, request, { ...directorOptions(),
+            actorAway: actorAway() || forestJourneyWalking(state) || forestJourneyEnding(state) });
+          if (garden.harvest?.request.requestId === request.requestId) {
+            advanceCookingPreview(state, null);
+            state.reaction = 0; state.animation = null;
+            if (dev?.paused || options.paused || dev?.showHero === false || dev?.pose && dev.pose !== "auto") {
+              cancelForestDirector(state, "Сбор продолжается без анимации");
+            }
           }
         }
       }
@@ -799,16 +801,21 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   function prepareArtwork() {
     const selected = accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev, options.economyBuildings);
     const nextWorld = previewWorldScene(TILED_WORLD, selected);
-    const next = visualsFor(selected), urls = artworkUrls(nextWorld, next);
-    const key = JSON.stringify(Object.entries(next).map(([id, visual]) => [id, visual.level, visual.image]));
+    const next = visualsFor(selected), urls = worldArtworkUrls(nextWorld, next);
+    const key = JSON.stringify([options.view ?? "circle", Object.entries(next).map(([id, visual]) => [id, visual.level, visual.image])]);
     if (key === requestedKey) return;
     requestedKey = key;
     const version = ++artworkVersion;
-    void Promise.all(urls.map(async url => {
-      const image = await loadHabitatImage(url);
+    // A first circle needs only its visible artwork. Full-map entry and every
+    // later geometry replacement still require a complete atomic scene.
+    const required = art === null && options.view !== "world" ? worldArtworkUrls(nextWorld, next, nextWorld.focus) : urls;
+    const background = urls.filter(url => !required.includes(url));
+    const load = async (url: string, priority: "high" | "low" = "high") => {
+      const image = await loadHabitatImage(url, priority);
       if (image.naturalWidth <= 0 || image.naturalHeight <= 0) throw new Error("Invalid world artwork dimensions");
       return [url, image] as const;
-    })).then(images => {
+    };
+    void Promise.all(required.map(url => load(url))).then(images => {
       if (disposed || version !== artworkVersion) return;
       const first = art === null;
       // Commit artwork and its geometry together; stale/failed loads retain the
@@ -839,11 +846,21 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
           }
         }
       }
-      art = new Map(images); visuals = next; syncOwner();
+      const committed = new Map(images);
+      art = committed; visuals = next; syncOwner();
       if (WORLD_DEV_ENABLED) worldDevStore.reportArtError(null);
       if (visible()) draw();
       if (first) callbacks.ready();
       resume();
+      if (disposed || version !== artworkVersion || !background.length) return;
+      // Start optional downloads only after ready. A failed remote building
+      // cannot take down the usable circle; a full-map mount retries through
+      // the shared image cache, which removes failed requests.
+      void Promise.allSettled(background.map(url => load(url, "low"))).then(results => {
+        if (disposed || version !== artworkVersion) return;
+        for (const result of results) if (result.status === "fulfilled") committed.set(...result.value);
+        if (visible()) draw();
+      });
     }).catch(error => {
       if (disposed || version !== artworkVersion) return;
       requestedKey = null;

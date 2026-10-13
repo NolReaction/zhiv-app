@@ -12,11 +12,11 @@
   "sources": [
     {
       "path": "scripts/audio_originals/ambience.py",
-      "sha256": "874db773d1e10c21559c81633cd6b93369517b07087cdee2e3227173e8c0289e"
+      "sha256": "01538c41b9c33a071393511901128c2180f6c43b4cc0a1ec7b17d139919d4efa"
     },
     {
       "path": "scripts/audio_originals/effects.py",
-      "sha256": "9e3493860490bd8292f8441ff144847a46452a21b714f3955f6839a398f8504f"
+      "sha256": "ee3e5a13e18283f374727bef1e8fdd3b249f4ecae427501be061f9ae2fbb08a0"
     },
     {
       "path": "scripts/audio_originals/music.py",
@@ -24,7 +24,7 @@
     },
     {
       "path": "scripts/audio_originals/render.py",
-      "sha256": "c8c6df95c879ad79d32a215c265b4e9d77d7232cae66866502e01acb56a9ad9c"
+      "sha256": "4f65b0e44e6928a958a1b6222ac4a512bafeaef43649f06f7dee457ad6776d92"
     }
   ],
   "assets": [
@@ -227,25 +227,25 @@
       "id": "campfire.01",
       "kind": "loop",
       "title": "Small Evening Fire",
-      "description": "A soft continuous flame and six padded ember movements, without rapid sharp crackle bursts.",
+      "description": "Sparse warm wood crackles with soft attacks over nearly silent embers; restrained upper frequencies and no roaring fire.",
       "sampleRate": 48000,
       "channels": 1,
       "frames": 384000,
       "durationSeconds": 8.0,
       "decodedBytes": 1536000,
-      "masterSha256": "0ac32f94e7ddb3364fcb1a2ba79bc0fd475981e08e7b49286fd678197a33c1de",
+      "masterSha256": "132d7db2e6a06e395d774137c0ca120fc9bdad3471230fd46a1800d4f411ea03",
       "measurements": {
-        "peakDb": -14.0244,
-        "rmsDb": -27.0,
+        "peakDb": -25.0,
+        "rmsDb": -46.9022,
         "dc": 0.0,
-        "seamDelta": 0.001189112,
-        "maxAdjacentDelta": 0.014072526
+        "seamDelta": 8.4397e-05,
+        "maxAdjacentDelta": 0.008716778
       },
       "files": [
         {
-          "src": "/audio/originals-v1/loop/campfire.01.embers-v2.wav",
+          "src": "/audio/originals-v1/loop/campfire.01.calm-v4.wav",
           "bytes": 768044,
-          "sha256": "0ac32f94e7ddb3364fcb1a2ba79bc0fd475981e08e7b49286fd678197a33c1de"
+          "sha256": "132d7db2e6a06e395d774137c0ca120fc9bdad3471230fd46a1800d4f411ea03"
         }
       ],
       "composition": {}
@@ -2441,25 +2441,25 @@
       "id": "cooking.simmer.01",
       "kind": "loop",
       "title": "Soup above the Embers",
-      "description": "Quiet simmering liquid with rounded irregular bubbles; a separate loop for active cooking, without baked-in fire.",
+      "description": "Separate rounded liquid bubbles and little paired gurgles with quiet gaps; no continuous airflow or baked-in fire.",
       "sampleRate": 48000,
       "channels": 1,
       "frames": 288000,
       "durationSeconds": 6.0,
       "decodedBytes": 1152000,
-      "masterSha256": "95d71b2d1a8f58905f57e7e9e32536898c17c25a60279355fc50fa2e2ff91135",
+      "masterSha256": "0ade9f1907fbfc69a254c9b7ecbca67d73fbf4db7949b90143ff57563a86adf6",
       "measurements": {
-        "peakDb": -12.2789,
-        "rmsDb": -25.0,
+        "peakDb": -24.0,
+        "rmsDb": -42.0196,
         "dc": 0.0,
-        "seamDelta": 0.00408785,
-        "maxAdjacentDelta": 0.024095375
+        "seamDelta": 3.8488e-05,
+        "maxAdjacentDelta": 0.00310896
       },
       "files": [
         {
-          "src": "/audio/originals-v1/loop/cooking.simmer.01.wav",
+          "src": "/audio/originals-v1/loop/cooking.simmer.01.bubbles-v2.wav",
           "bytes": 576044,
-          "sha256": "95d71b2d1a8f58905f57e7e9e32536898c17c25a60279355fc50fa2e2ff91135"
+          "sha256": "0ade9f1907fbfc69a254c9b7ecbca67d73fbf4db7949b90143ff57563a86adf6"
         }
       ],
       "composition": {}
@@ -2703,6 +2703,114 @@
           "src": "/audio/originals-v1/effect/ui.construction-complete.01.wav",
           "bytes": 88364,
           "sha256": "10a10f1adabf64d318608370594521e0a8aa7c235e1b2cc3a351428bcda4752b"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "action.mine.strike.01",
+      "kind": "effect",
+      "title": "Pick against stone 1",
+      "description": "One small rounded mineral knock, a short low tool ring and two tiny falling fragments; no piercing metal clang.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 16080,
+      "durationSeconds": 0.335,
+      "decodedBytes": 64320,
+      "masterSha256": "a33f52262357b155abcc3d439550cfaa8e04fe58d4ffe1d3d119d8e3ef36e7a5",
+      "measurements": {
+        "peakDb": -14.0,
+        "rmsDb": -32.9543,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.031180372
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/action.mine.strike.01.wav",
+          "bytes": 32204,
+          "sha256": "a33f52262357b155abcc3d439550cfaa8e04fe58d4ffe1d3d119d8e3ef36e7a5"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "action.mine.strike.02",
+      "kind": "effect",
+      "title": "Pick against stone 2",
+      "description": "One small rounded mineral knock, a short low tool ring and two tiny falling fragments; no piercing metal clang.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 16800,
+      "durationSeconds": 0.35,
+      "decodedBytes": 67200,
+      "masterSha256": "3e74eb93a66a8de3e1bb4185b4719944b77aedf184850adde2114fb65f9dda7c",
+      "measurements": {
+        "peakDb": -14.0,
+        "rmsDb": -34.2721,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.035477314
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/action.mine.strike.02.wav",
+          "bytes": 33644,
+          "sha256": "3e74eb93a66a8de3e1bb4185b4719944b77aedf184850adde2114fb65f9dda7c"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "action.fish.bobber.01",
+      "kind": "effect",
+      "title": "Bobber meets water 1",
+      "description": "One small rounded plop with a tiny fading ripple, for the float landing after a cast.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 16320,
+      "durationSeconds": 0.34,
+      "decodedBytes": 65280,
+      "masterSha256": "48af432dd5d8cf3f3ccc9210bc32b43dc54502bd2582bf29029c24dbd55aacd8",
+      "measurements": {
+        "peakDb": -14.0,
+        "rmsDb": -29.9813,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.01564212
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/action.fish.bobber.01.wav",
+          "bytes": 32684,
+          "sha256": "48af432dd5d8cf3f3ccc9210bc32b43dc54502bd2582bf29029c24dbd55aacd8"
+        }
+      ],
+      "composition": {}
+    },
+    {
+      "id": "action.fish.bobber.02",
+      "kind": "effect",
+      "title": "Bobber meets water 2",
+      "description": "One small rounded plop with a tiny fading ripple, for the float landing after a cast.",
+      "sampleRate": 48000,
+      "channels": 1,
+      "frames": 17280,
+      "durationSeconds": 0.36,
+      "decodedBytes": 69120,
+      "masterSha256": "8f5ec88a5d33373277acdafe5d2bdd77e5c8830c715b24a54afc3f4c2dd94009",
+      "measurements": {
+        "peakDb": -14.0,
+        "rmsDb": -31.8411,
+        "dc": 0.0,
+        "seamDelta": 0.0,
+        "maxAdjacentDelta": 0.016822513
+      },
+      "files": [
+        {
+          "src": "/audio/originals-v1/effect/action.fish.bobber.02.wav",
+          "bytes": 34604,
+          "sha256": "8f5ec88a5d33373277acdafe5d2bdd77e5c8830c715b24a54afc3f4c2dd94009"
         }
       ],
       "composition": {}

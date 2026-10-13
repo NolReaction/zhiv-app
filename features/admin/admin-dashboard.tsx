@@ -56,16 +56,16 @@ const chartTooltipStyle = {
 };
 
 function count(value: number | null | undefined) {
-  return value == null ? "—" : numberFormatter.format(value);
+  return value == null ? "-" : numberFormatter.format(value);
 }
 function decimal(value: number | null | undefined) {
-  return value == null ? "—" : decimalFormatter.format(value);
+  return value == null ? "-" : decimalFormatter.format(value);
 }
 function percent(value: number | null | undefined) {
-  return value == null ? "—" : `${decimalFormatter.format(value)}%`;
+  return value == null ? "-" : `${decimalFormatter.format(value)}%`;
 }
 function bytes(value: number | null | undefined) {
-  if (value == null) return "—";
+  if (value == null) return "-";
   if (value < 1024) return `${count(value)} Б`;
   const units = ["КиБ", "МиБ", "ГиБ", "ТиБ"];
   let result = value / 1024;
@@ -74,7 +74,7 @@ function bytes(value: number | null | undefined) {
   return `${decimal(result)} ${units[unit]}`;
 }
 function time(value: string | null | undefined, full = false) {
-  if (!value) return "—";
+  if (!value) return "-";
   return new Intl.DateTimeFormat("ru-RU", {
     timeZone: "UTC", day: "2-digit", month: "short", ...(full ? { year: "numeric" as const } : {}),
     hour: "2-digit", minute: "2-digit",
@@ -164,13 +164,13 @@ function Overview({ data, days }: { data: AdminOverview; days: number }) {
               <TableBody>{data.daily.map(day => <TableRow key={day.date}><TableCell>{day.date}</TableCell><TableCell>{count(day.checkIns)}</TableCell><TableCell>{count(day.activeUsers)}</TableCell><TableCell>{count(day.registrations)}</TableCell></TableRow>)}</TableBody>
             </Table></details>
           </>}
-          <p className={styles.footnote}>Активность здесь — сохранённая отметка. Простое открытие приложения не учитывается.</p>
+          <p className={styles.footnote}>Активностью здесь считается сохранённая отметка. Простое открытие приложения не учитывается.</p>
         </section>
         <section className={styles.panel}>
           <SectionHeading title="Возвращаются к отметкам" description="После регистрации · D1 / D7" />
           <div className={styles.retentionList}>{retention.map(item => <div className={styles.retention} key={item.code}>
             <div><span className={styles.retentionCode}>{item.code}</span><span>{item.label}</span></div>
-            <strong>{item.rate == null ? "—" : percent(item.rate)}</strong>
+            <strong>{item.rate == null ? "-" : percent(item.rate)}</strong>
             <p>{count(item.returned)} из {count(item.eligible)} пользователей, для которых уже наступил этот день</p>
           </div>)}</div>
           <p className={styles.footnote}>Дни считаются по UTC. Пустое значение означает, что подходящей группы пользователей пока нет.</p>
@@ -257,7 +257,7 @@ function Monitoring({ data }: { data: AdminMonitoring }) {
       <Metric label="Процессор сервера" value={percent(summary.cpuPercent)} note={`Нагрузка за 1 мин.: ${decimal(summary.load1)}`} icon={<Cpu size={18} />} tone={summary.cpuPercent != null && summary.cpuPercent >= 85 ? "warning" : undefined} />
       <Metric label="Память сервера" value={bytes(summary.memoryUsedBytes)} note={`Из ${bytes(summary.memoryTotalBytes)}`} icon={<Server size={18} />} />
       <Metric label="Диск сервера" value={bytes(summary.diskUsedBytes)} note={`Из ${bytes(summary.diskTotalBytes)}`} icon={<Database size={18} />} />
-      <Metric label="Время ответа p95" value={summary.p95LatencyMs == null ? "—" : `${decimal(summary.p95LatencyMs)} мс`} note="95% запросов API быстрее" icon={<Clock3 size={18} />} />
+      <Metric label="Время ответа p95" value={summary.p95LatencyMs == null ? "-" : `${decimal(summary.p95LatencyMs)} мс`} note="95% запросов API быстрее" icon={<Clock3 size={18} />} />
     </div>
     <div className={styles.metricGrid}>
       <Metric label="Запросы API" value={decimal(summary.requestRate)} note="Запросов в секунду" />
@@ -511,7 +511,7 @@ export function AdminDashboard() {
           <TabsContent value="incidents" className={styles.tabContent}>{tab === "incidents" && <AdminIncidentsPanel onAccessError={closeAccess} />}</TabsContent>
           <TabsContent value="feedback" className={styles.tabContent}>{tab === "feedback" && <AdminFeedbackPanel key={access.publicId} actorPublicId={access.publicId} onAccessError={closeAccess} refreshVersion={refreshVersion} />}</TabsContent>
           <TabsContent value="audit" className={styles.tabContent}>{auditData ? <Audit data={auditData} busy={loading} onPage={setAuditOffset} /> : <Empty>{loading ? "Загружаем журнал…" : "Журнал пока не загружен."}</Empty>}</TabsContent>
-          <footer className={styles.footer}><span><span className={styles.liveDot} />Обновление видимых разделов: клики — 10 с, аналитика — 60 с, операции — вручную, остальные — 30 с</span><span>Время и периоды — UTC</span></footer>
+          <footer className={styles.footer}><span><span className={styles.liveDot} />Обновление видимых разделов: клики каждые 10 с, аналитика каждые 60 с, операции вручную, остальные каждые 30 с</span><span>Время и периоды указаны в UTC</span></footer>
         </Tabs>
       </div>
       {playerTarget && <AdminPlayerDialog key={playerTarget.publicId} target={playerTarget} actorPublicId={access.publicId} onAccessLost={closeAccess} onClose={() => setPlayerTarget(null)} onChanged={requestRefresh} />}

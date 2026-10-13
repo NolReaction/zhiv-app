@@ -12,6 +12,25 @@ import java.util.Base64
 import kotlin.test.*
 
 class NotificationRulesTest {
+    @Test fun `single events describe the event without repeating the platform app identity`() {
+        val titles=mapOf("exploration" to "Мохлик вернулся", "construction" to "Стройка завершена",
+            "production" to "Ресурсы готовы", "checkin" to "Пора отметиться")
+        titles.forEach { (category,title) ->
+            val message=notificationMessage(setOf(category))
+            assertEquals(title,message.title)
+            assertTrue(message.body.isNotBlank())
+            assertFalse(message.body.startsWith(title))
+            assertFalse(message.title.contains("Я живой",ignoreCase=true))
+            assertFalse(message.body.contains("Я живой",ignoreCase=true))
+        }
+    }
+    @Test fun `grouped notification preserves every event and is independent of queue order`() {
+        val categories=setOf("exploration","construction","production","checkin")
+        val message=notificationMessage(categories)
+        assertEquals("Новости полянки",message.title)
+        assertEquals("Мохлик вернулся из путешествия. Стройка завершена. Ресурсы готовы. Можно отметиться: с последней отметки прошло больше суток.",message.body)
+        assertEquals(message,notificationMessage(categories.reversed().toSet()))
+    }
     @Test fun `quiet hours cross midnight in user zone and end exactly at ten`() {
         val p=NotificationPreferences(timeZone="Europe/Moscow")
         assertEquals(Instant.parse("2026-10-12T07:00:00Z"),nextNotificationWindow(p,Instant.parse("2026-10-11T20:00:00Z")))

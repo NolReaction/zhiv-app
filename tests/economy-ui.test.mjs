@@ -36,7 +36,7 @@ const disabled = entry => /\bdisabled=/.test(entry.attributes);
 test("standalone map market keeps trade actions without the old economy hub or repeated wallet", () => {
   const html = renderToStaticMarkup(createElement(EconomyPanel, {
     initialTab: "market", standalone: true, onNavigate() {},
-    economy: controller({ notice: "DEV: Дом Мохлика — уровень 2" }),
+    economy: controller({ notice: "DEV: Дом Мохлика: уровень 2" }),
   }));
   assert.match(html, /aria-label="Рынок между игроками"/);
   assert.doesNotMatch(html, /Разделы хозяйства|aria-label="Кошелёк"|DEV: Дом Мохлика/);
@@ -323,13 +323,13 @@ test("inventory guide and sale consistently show the actual discounted payout", 
   assert.equal(disabled(button(html, "Продать 1 шт. за 40 монет")), false);
   assert.doesNotMatch(html, /Продать 1 шт. за 80 монет|Торговец покупает сразу по 80/);
   state.wallet.coins = 10_000_000_000;
-  assert.equal(disabled(button(render("inventory", controller({ snapshot: state }), "fish"), "Продать — шт.")), true);
+  assert.equal(disabled(button(render("inventory", controller({ snapshot: state }), "fish"), "Продать - шт.")), true);
 });
 
 test("legacy inventory sale keeps full price; tiny stock cannot disappear for zero proceeds", () => {
   const state = snapshot({ inventory: { crumb_bait: 1 } }); state.catalog.localBuyer = { payoutBps: 6000 };
   let html = render("inventory", controller({ snapshot: state }), "crumb_bait");
-  assert.match(html, /нужно хотя бы 2 шт/); assert.equal(disabled(button(html, "Продать — шт.")), true);
+  assert.match(html, /нужно хотя бы 2 шт/); assert.equal(disabled(button(html, "Продать - шт.")), true);
   delete state.catalog.localBuyer;
   html = render("inventory", controller({ snapshot: state }), "crumb_bait");
   assert.doesNotMatch(html, /уценкой|округляется/);

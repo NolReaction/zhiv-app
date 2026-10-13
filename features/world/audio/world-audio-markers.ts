@@ -6,9 +6,13 @@ import { FOREST_MUSHROOM_CHEW } from "@/features/world/simulation/forest-life";
 import { builderMindFrame, BUILDER_MIND_LIMITS } from "@/features/world/characters/builder/builder-mind";
 import { pleskMindFrame } from "@/features/world/characters/plesk/plesk-mind";
 import { forestJourneyFishingFrame } from "@/features/world/activities/journeys/forest-journey-travel";
+import type { FishingPropFrame } from "@/features/world/activities/fishing/fishing-props";
+import { forestJourneyMiningFrame, miningWorkRhythm } from "@/features/world/activities/mining/forest-mining";
 import { worldAudioEventPosition } from "./world-audio-frame";
 
 export type WorldAudioMarker = { key: string; token: string | number | null; cueId: string; position: AudioPoint; active?: boolean;
+  /** A cast is audible only when this observer sees its float reach the water. */
+  contact?: "air" | "water"; maxAgeMs?: number; runId?: string;
   /** Explicit dialogue replies stay audible at any camera distance or zoom. */
   listenerRelative?: boolean };
 export type WorldAudioMarkerSnapshot = { epoch: object; elapsed: number; markers: WorldAudioMarker[] };
@@ -16,7 +20,7 @@ let nextMarkerSession = 0;
 
 /** Read semantic state/phase contacts. Rendering has no playback side effects. */
 export function worldAudioMarkers(scene: FixedWorldScene, state: ForestSessionState,
-  options: { showHero: boolean; showBuildings: boolean; actorAway: boolean; reducedMotion: boolean }): WorldAudioMarkerSnapshot {
+  options: { showHero: boolean; showBuildings: boolean; actorAway: boolean; reducedMotion: boolean; quarryWorking?: boolean }): WorldAudioMarkerSnapshot {
   const markers: WorldAudioMarker[] = [], actor = state.clearing, body = clearingActivityFrame(actor);
   const heroVisible = options.showHero && !options.actorAway;
   const add = (key: string, token: string | number | null, cueId: string, position: AudioPoint, active = true, listenerRelative = false) => {
@@ -42,6 +46,27 @@ export function worldAudioMarkers(scene: FixedWorldScene, state: ForestSessionSt
     ? Math.floor((routine.elapsed - chew.start) * chew.frameRate / chew.frameCount) : null;
   add("mochlik-mushroom-bite", bite === null ? null : `${state.life.sequence}:${routine!.mushroomId}:${bite}`,
     "action.mushroom.eat", actor.position, actionVisible && body.opacity > .3 && !state.journeyTravel?.mining && !routine?.interrupting);
+  // Keep sampling these contacts while presentation is hidden or static, so
+  // enabling it again cannot turn an already floating bobber into a new cast.
+  const fishing = forestJourneyFishingFrame(state, scene, false);
+  const plesk = pleskMindFrame(state.pleskMind, scene, false);
+  const cast = (key: string, frame: FishingPropFrame | null, token: string, visible: boolean) => {
+    const water = frame?.waterTarget;
+    const valid = Boolean(frame && !frame.settling && water && [water.x, water.y].every(Number.isFinite)
+      && (frame.action === "cast" || frame.action === "fish"));
+    markers.push({ key, token: valid ? token : null, cueId: "action.fish.bobber", position: water ?? actor.position,
+      // The shared tackle reaches water at cast phase 1; fish begins exactly
+      // there. Waiting/check/nibble subphases never cause another impact.
+      contact: valid ? frame!.action === "cast" && frame!.phase < 1 ? "air" : "water" : undefined,
+      active: valid && visible && !options.reducedMotion, maxAgeMs: 250 });
+  };
+  cast("mochlik-cast", fishing, `${state.journeyTravel?.jobId}:${fishing?.castIndex ?? 0}`, heroVisible);
+  cast("plesk-cast", plesk, `${state.pleskMind?.decisions}`, options.showBuildings);
+  const mining = forestJourneyMiningFrame(state, scene, false);
+  markers.push({ key: "mochlik-mine", token: mining?.working
+    ? `${state.journeyTravel?.jobId}:${miningWorkRhythm(mining.elapsed).strike}` : null,
+    cueId: "action.mine.strike", position: mining?.doorway ?? actor.position, maxAgeMs: 250, runId: state.journeyTravel?.jobId,
+    active: Boolean(options.quarryWorking && options.showBuildings && !options.reducedMotion && mining?.working) });
   if (!options.reducedMotion) {
     const outside = heroVisible && body.opacity > .3 && !state.journeyTravel?.mining && !state.animation && state.reaction <= 0;
     add("mochlik-step", Math.floor(actor.walked / (actor.size * .15)), "action.step.grass", actor.position, outside && body.pose === "walk");
@@ -52,11 +77,8 @@ export function worldAudioMarkers(scene: FixedWorldScene, state: ForestSessionSt
     // Fruit leaves the bush at .30 of each of the three one-second reaches.
     const picked = garden?.phase === "collect" ? Math.max(0, Math.min(3, Math.floor(garden.elapsed - 1.15) + 1)) : 0;
     add("garden-pick", picked > 0 ? `${garden!.bushId}:${picked}` : null, "action.berry.pick", actor.position, outside);
-    const fishing = heroVisible ? forestJourneyFishingFrame(state, scene, false) : null;
-    add("mochlik-cast", fishing?.action === "fish" ? `${state.journeyTravel?.jobId}:${fishing.castIndex ?? 0}` : null,
-      "action.fish.splash", fishing?.waterTarget ?? actor.position, Boolean(fishing && !fishing.settling));
     add("mochlik-catch", fishing?.action === "catch" ? `${state.journeyTravel?.jobId}:${fishing.castIndex ?? 0}` : null,
-      "actor.mochlik.joy", actor.position, Boolean(fishing && !fishing.settling));
+      "actor.mochlik.joy", actor.position, Boolean(heroVisible && fishing && !fishing.settling));
     const builder = options.showBuildings ? builderMindFrame(state.builderMind, scene, false) : null;
     const mind = state.builderMind;
     if (mind) {
@@ -69,14 +91,12 @@ export function worldAudioMarkers(scene: FixedWorldScene, state: ForestSessionSt
         builder?.action === "work" && !mind.ready);
       add("builder-ready", builder?.action === "finish" ? mind.jobKey : null, "actor.builder.joy", mind.position, Boolean(builder));
     }
-    const plesk = options.showBuildings ? pleskMindFrame(state.pleskMind, scene, false) : null;
     const fisher = state.pleskMind;
     if (fisher) {
       add("plesk-step", `${fisher.decisions}:${Math.floor((plesk?.frame ?? 0) / 4)}`, "action.step.grass", fisher.position,
-        plesk?.action === "walk" && !fisher.trafficWaiting);
-      add("plesk-cast", plesk?.action === "fish" ? `${fisher.decisions}` : null, "action.fish.splash",
-        plesk?.waterTarget ?? fisher.position, Boolean(plesk));
-      add("plesk-catch", plesk?.action === "catch" ? `${fisher.decisions}` : null, "actor.plesk.joy", fisher.position, Boolean(plesk));
+        options.showBuildings && plesk?.action === "walk" && !fisher.trafficWaiting);
+      add("plesk-catch", plesk?.action === "catch" ? `${fisher.decisions}` : null, "actor.plesk.joy", fisher.position,
+        options.showBuildings && Boolean(plesk));
     }
   }
   return { epoch: state.clearing, elapsed: state.elapsed, markers };
@@ -94,14 +114,18 @@ export function createWorldAudioMarkerTracker() {
       const old = new Map(before.markers.map(marker => [marker.key, marker]));
       return snapshot.markers.flatMap(marker => {
         const prior = old.get(marker.key);
-        if (!marker.active || marker.token === null || marker.token === prior?.token) return [];
+        if (!marker.active || marker.token === null || marker.runId !== prior?.runId) return [];
+        if (marker.contact) {
+          if (marker.contact !== "water" || prior?.contact !== "air" || !prior.active || prior.token !== marker.token) return [];
+        } else if (marker.token === prior?.token) return [];
         // Start/resume of walking is not a new ground contact by itself.
-        if ((marker.key.endsWith("-step") || marker.key === "builder-hammer") && (!prior?.active || prior.token === null)) return [];
+        if ((marker.key.endsWith("-step") || marker.key === "builder-hammer" || marker.key === "mochlik-mine")
+          && (!prior?.active || prior.token === null)) return [];
         // Keep the existing semantic token/dedup path: a tap must not also
         // trigger a second greeting through an independent UI audio handler.
         const spatial = marker.listenerRelative ? { gain: 1, pan: 0 } : worldAudioEventPosition(marker.position, listener);
         return spatial.gain > .001 ? [{ id: `${scope}:session-${sessionId}:${marker.key}:${marker.token}:${++sequence}`,
-          cueId: marker.cueId, occurredAt: now, ...spatial }] : [];
+          cueId: marker.cueId, occurredAt: now, ...(marker.maxAgeMs ? { maxAgeMs: marker.maxAgeMs } : {}), ...spatial }] : [];
       });
     },
   };

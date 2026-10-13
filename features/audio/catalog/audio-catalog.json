@@ -103,7 +103,7 @@
     },
     {
       "id": "campfire.01",
-      "src": "/audio/originals-v1/loop/campfire.01.embers-v2.wav",
+      "src": "/audio/originals-v1/loop/campfire.01.calm-v4.wav",
       "status": "ready",
       "license": {
         "name": "Project-original procedural audio; provenance recorded",
@@ -111,7 +111,7 @@
         "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
         "sourceUrl": "art/audio/originals-v1/manifest.json",
         "acquiredAt": "2026-10-11",
-        "changes": "Embers-v2 revision: continuous soft flame with six small smooth ember movements, no rapid click train, reduced RMS and peak level, seamless mono loop and TPDF PCM16. New cache-safe filename.",
+        "changes": "Calm-v4 revision: fewer soft wood fractures, lower upper spectrum, 5–9 ms rounded attacks, peak ceiling −25 dBFS; near-silent ember bed, seamless mono PCM16 and a new cache-safe filename.",
         "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
       }
     },
@@ -1237,7 +1237,7 @@
     },
     {
       "id": "cooking.simmer.01",
-      "src": "/audio/originals-v1/loop/cooking.simmer.01.wav",
+      "src": "/audio/originals-v1/loop/cooking.simmer.01.bubbles-v2.wav",
       "status": "ready",
       "license": {
         "name": "Project-original procedural audio; provenance recorded",
@@ -1245,7 +1245,7 @@
         "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
         "sourceUrl": "art/audio/originals-v1/manifest.json",
         "acquiredAt": "2026-10-11",
-        "changes": "Original deterministic DSP Foley, DC removal, gentle edges, restrained peak-safe level and TPDF PCM16; no external samples.",
+        "changes": "Bubbles-v2 revision: rounded low liquid releases with quiet gaps replace the continuous wind-like noise bed; finite damped bubbles, peak ceiling −24 dBFS, seamless mono PCM16 and a new cache-safe filename.",
         "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
       }
     },
@@ -1374,6 +1374,62 @@
         "changes": "Original soft wooden finishing taps and a warm felt major chord for building completion; deterministic synthesis, gentle edges, peak-safe level and TPDF PCM16.",
         "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
       }
+    },
+    {
+      "id": "action.mine.strike.01",
+      "src": "/audio/originals-v1/effect/action.mine.strike.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-12",
+        "changes": "Original small stone-pick impact with a short damped low tool ring and tiny falling fragments; rounded attack, low-pass upper spectrum, peak ceiling -14 dBFS and TPDF PCM16.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
+    },
+    {
+      "id": "action.mine.strike.02",
+      "src": "/audio/originals-v1/effect/action.mine.strike.02.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-12",
+        "changes": "Original small stone-pick impact with a short damped low tool ring and tiny falling fragments; rounded attack, low-pass upper spectrum, peak ceiling -14 dBFS and TPDF PCM16.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
+    },
+    {
+      "id": "action.fish.bobber.01",
+      "src": "/audio/originals-v1/effect/action.fish.bobber.01.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-12",
+        "changes": "Original small bobber plop and short fading ripple for the cast contact; no full fish splash, peak ceiling -14 dBFS and TPDF PCM16.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
+    },
+    {
+      "id": "action.fish.bobber.02",
+      "src": "/audio/originals-v1/effect/action.fish.bobber.02.wav",
+      "status": "ready",
+      "license": {
+        "name": "Project-original procedural audio; provenance recorded",
+        "url": "https://github.com/NolReaction/zhiv-app/blob/work/0.6.8/art/audio/originals-v1/PROVENANCE.md",
+        "author": "Original composition and synthesis generated with Codex for «Я живой» (NolReaction)",
+        "sourceUrl": "art/audio/originals-v1/manifest.json",
+        "acquiredAt": "2026-10-12",
+        "changes": "Original small bobber plop and short fading ripple for the cast contact; no full fish splash, peak ceiling -14 dBFS and TPDF PCM16.",
+        "attribution": "No third-party recordings, samples or soundfonts used. AI-assisted generation documented in PROVENANCE.md."
+      }
     }
   ],
   "cues": [
@@ -1440,7 +1496,7 @@
       "assets": [
         "weather.wind.01"
       ],
-      "gainDb": -12,
+      "gainDb": -36,
       "priority": 20,
       "maxInstances": 1,
       "cooldownMs": 0,
@@ -1859,7 +1915,7 @@
     },
     {
       "id": "action.step.grass",
-      "bus": "world",
+      "bus": "footsteps",
       "mode": "one-shot",
       "assets": [
         "action.step.grass.01",
@@ -1867,7 +1923,7 @@
         "action.step.grass.03",
         "action.step.grass.04"
       ],
-      "gainDb": -14,
+      "gainDb": -22,
       "priority": 50,
       "maxInstances": 2,
       "cooldownMs": 120,
@@ -1876,7 +1932,7 @@
     },
     {
       "id": "action.step.wood",
-      "bus": "world",
+      "bus": "footsteps",
       "mode": "one-shot",
       "assets": [
         "action.step.wood.01",
@@ -1884,7 +1940,7 @@
         "action.step.wood.03",
         "action.step.wood.04"
       ],
-      "gainDb": -14,
+      "gainDb": -22,
       "priority": 50,
       "maxInstances": 2,
       "cooldownMs": 120,
@@ -2059,6 +2115,36 @@
       "cooldownMs": 1000,
       "pitchVariation": 0,
       "fadeMs": 20
+    },
+    {
+      "id": "action.mine.strike",
+      "bus": "world",
+      "mode": "one-shot",
+      "assets": [
+        "action.mine.strike.01",
+        "action.mine.strike.02"
+      ],
+      "gainDb": -5,
+      "priority": 50,
+      "maxInstances": 2,
+      "cooldownMs": 250,
+      "pitchVariation": 0.02,
+      "fadeMs": 8
+    },
+    {
+      "id": "action.fish.bobber",
+      "bus": "world",
+      "mode": "one-shot",
+      "assets": [
+        "action.fish.bobber.01",
+        "action.fish.bobber.02"
+      ],
+      "gainDb": -3,
+      "priority": 50,
+      "maxInstances": 2,
+      "cooldownMs": 0,
+      "pitchVariation": 0.02,
+      "fadeMs": 8
     }
   ],
   "profiles": [

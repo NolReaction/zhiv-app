@@ -82,7 +82,7 @@ function StorageStatus({ state, navigate, compact = false, condensed = false }: 
     {condensed ? <p className={styles.storageSummary}><span>Запасы: {number(used)}</span><span>На прилавках: {number(reserved)}</span><span>Свободно: {number(available)}</span></p>
       : <p className={styles.muted}>В запасах: {number(used)} · На прилавках: {number(reserved)} · Свободно: {number(available)}</p>}
     {overflow > 0 && <p className={styles.hint}>Прежние запасы сохранены. Сверх вместимости: {number(overflow)}. Используйте или продайте часть вещей, либо расширьте склад.</p>}
-    {!compact && <><p className={styles.muted}>Каждая единица товара занимает одно место. Место для выставленных лотов зарезервировано до продажи — отмена всегда вернёт вещи.</p><button className={styles.textButton} onClick={() => navigate("buildings", "warehouse")}>Расширить склад<ArrowRight size={15} aria-hidden /></button></>}
+    {!compact && <><p className={styles.muted}>Каждая единица товара занимает одно место. Место для выставленных лотов зарезервировано до продажи, поэтому отмена всегда вернёт вещи.</p><button className={styles.textButton} onClick={() => navigate("buildings", "warehouse")}>Расширить склад<ArrowRight size={15} aria-hidden /></button></>}
   </div>;
 }
 
@@ -331,7 +331,7 @@ function SellForm({ economy, item }: { economy: ReadyEconomy; item: Item }) {
     <p className={styles.muted}>{discount > 0 ? `Быстрая продажа с уценкой ${number(discount)}%. Итог за всё количество округляется вниз до целой монеты.` : `Торговец покупает сразу по ${number(item.baseSellPrice)} монет за штуку.`} На прилавке можно предложить свою цену другим игрокам.</p>
     {discount > 0 && state.catalog.fishing?.fish.some(fish => fish.itemId === item.id) && <p className={styles.muted}>Плёска купит дороже: {number(item.baseSellPrice)} монет за штуку. Её лавка открывается на карте.</p>}
     <label className={styles.field} htmlFor={inputId}>Количество · на складе {number(stock)}<input id={inputId} type="number" inputMode="numeric" min={minimum} max={Math.max(minimum, maximum)} step={1} value={value} disabled={unavailable || maximum < minimum} onChange={event => setValue(event.target.value)} /></label>
-    <button className={styles.primary} disabled={!quantity || unavailable} onClick={() => { if (quantity && !unavailable) void economy.act("sell", item.id, quantity, buyer ? total : 0); }}><ItemIcon itemId="coins" size={16} />Продать {quantity ?? "—"} шт. за {quantity ? number(total) : "—"} монет</button>
+    <button className={styles.primary} disabled={!quantity || unavailable} onClick={() => { if (quantity && !unavailable) void economy.act("sell", item.id, quantity, buyer ? total : 0); }}><ItemIcon itemId="coins" size={16} />Продать {quantity ?? "-"} шт. за {quantity ? number(total) : "-"} монет</button>
     {maximum < minimum ? <p className={styles.hint}>{stock < minimum ? `Для продажи нужно хотя бы ${number(minimum)} шт., чтобы получить целую монету.` : "В кошельке нет места для продажи."}</p>
       : !quantity && <p className={styles.hint}>Укажите целое количество от {number(minimum)} до {number(maximum)}.</p>}
   </div>;
@@ -450,7 +450,7 @@ function ListingPriceForm({ economy, item }: { economy: ReadyEconomy; item: Item
     <p className={styles.muted}>{quantity ? `Допустимая цена: ${number(minimum)}–${number(maximum)} монет за ${number(quantity)} шт.` : `До ${quantityMax} предметов в этом предложении.`}</p>
     {valid && <p className={styles.muted}>Получите {number(totalPrice! - marketSaleFee(totalPrice!, limits.feeBps))} монет после сбора {limits.feeBps / 100}%.</p>}
     <p className={styles.hint}><Package size={15} aria-hidden />Выставленные предметы сохраняют место на складе до продажи. Отмена вернёт их; выставление лота само по себе не освобождает склад.</p>
-    <button className={styles.primary} disabled={disabled} onClick={() => { if (!disabled && quantity && totalPrice) void economy.actMarket("create_listing", item.id, quantity, totalPrice); }}><Store size={17} aria-hidden />{full ? `Все ${limits.maxListings} мест заняты` : `Выставить за ${valid ? number(totalPrice!) : "—"} монет`}</button>
+    <button className={styles.primary} disabled={disabled} onClick={() => { if (!disabled && quantity && totalPrice) void economy.actMarket("create_listing", item.id, quantity, totalPrice); }}><Store size={17} aria-hidden />{full ? `Все ${limits.maxListings} мест заняты` : `Выставить за ${valid ? number(totalPrice!) : "-"} монет`}</button>
   </div>;
 }
 
@@ -464,14 +464,14 @@ function Market({ economy, navigate }: { economy: ReadyEconomy; navigate: Naviga
   const refreshMarket = economy.refreshMarket;
   useEffect(() => { void refreshMarket(); }, [refreshMarket]);
   return <div className={`${styles.stack} ${styles.market}`} aria-label="Лесной рынок">
-    <p className={styles.muted}>Рынок — торговля между игроками. Здесь покупают чужие товары и выставляют свои; монеты придут после покупки лота. Быстрая продажа торговцу доступна в кладовой.</p>
+    <p className={styles.muted}>На рынке торгуют игроки. Здесь покупают чужие товары и выставляют свои; монеты придут после покупки лота. Быстрая продажа торговцу доступна в кладовой.</p>
     <StorageStatus state={state} navigate={navigate} compact condensed />
     <button type="button" className={styles.textButton} onClick={() => navigate("barter")}><ArrowLeftRight size={16} aria-hidden />Обмен особыми материалами<ArrowRight size={15} aria-hidden /></button>
     <nav className={styles.subnav} aria-label="Раздел рынка"><button data-guide-market-tab="buy" aria-pressed={section === "browse"} onClick={() => setSection("browse")}>Купить</button><button data-guide-market-tab="sell" aria-pressed={section === "sell"} onClick={() => setSection("sell")}>Продать</button><button data-guide-market-tab="mine" aria-pressed={section === "mine"} onClick={() => setSection("mine")}>Мои лоты{market?.mine.length ? ` · ${market.mine.length}` : ""}</button></nav>
     {!unlocked && <div className={styles.notice}><LockKeyhole size={18} aria-hidden /><div><p>Торговля с игроками откроется после обустройства дома и первой разведки.</p><p className={styles.muted}>Дом: {state.buildings.home ?? 1} / {limits.requiredHomeLevel} ур. · Завершённые вылазки: {Math.min(state.completedExplorations, limits.requiredExplorations)} / {limits.requiredExplorations}</p><button onClick={() => navigate((state.buildings.home ?? 1) < limits.requiredHomeLevel ? "buildings" : "exploration")}>Продолжить обустройство<ArrowRight size={15} aria-hidden /></button><p className={styles.muted}>Для быстрой продажи открой кладовую и нажми на предмет.</p></div></div>}
     {marketError && <div role="alert" className={styles.notice} data-kind="error"><CircleHelp size={18} aria-hidden /><div><p>{marketError}</p><button disabled={busy || uncertain} onClick={() => void refreshMarket()}>Обновить рынок</button></div></div>}
     {market && unlocked && <details className={styles.marketRules}><summary>Правила торговли и дневной объём</summary>
-      <p>Поселения с домами 2–3 и 4–5 торгуют в своих кругах. Цена партии: 1–{limits.maxPriceMultiplier} базовых стоимости. Сбор с новых продаж — {limits.feeBps / 100}%.</p>
+      <p>Поселения с домами 2–3 и 4–5 торгуют в своих кругах. Цена партии: 1–{limits.maxPriceMultiplier} базовых стоимости. Сбор с новых продаж: {limits.feeBps / 100}%.</p>
       {budget && <><p>Покупки: {number(budget.buysUsed)} / {number(budget.limit)}. Продажи: {number(budget.salesUsed)} / {number(budget.limit)}.</p>
         <p>Объём считается по базовой стоимости предметов, независимо от цены лота. Обновление через {economyDuration(Math.max(0, Math.ceil((Date.parse(budget.resetsAt) - economy.now) / 1000)))}.</p></>}
     </details>}
