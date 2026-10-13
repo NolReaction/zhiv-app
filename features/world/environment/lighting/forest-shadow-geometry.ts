@@ -11,7 +11,20 @@ export type PointShadowLight = {
 export type ShadowLight = DirectionalShadowLight | PointShadowLight;
 
 export const FOREST_SHADOW_GEOMETRY = { groundCompression: .55, maxDirectionalLength: 320, lightSegments: 32 } as const;
+export type PreparedForestShadowGeometry = { points: WorldPoint[]; triangles: number[][]; convex?: boolean };
 const EPSILON = 1e-7;
+// Generated footprints are immutable for the life of a render frame. Their
+// known convex topology follows point arrays through copies of the caster.
+const actorGeometry = new WeakMap<WorldPoint[], PreparedForestShadowGeometry>();
+const pointDisks = new WeakMap<PointShadowLight, { x: number; y: number; radius: number; points: WorldPoint[] }>();
+const unitDisk = Array.from({ length: FOREST_SHADOW_GEOMETRY.lightSegments }, (_, index) => {
+  const angle = index / FOREST_SHADOW_GEOMETRY.lightSegments * Math.PI * 2;
+  return { x: Math.cos(angle), y: Math.sin(angle) };
+});
+const unitActor = Array.from({ length: 8 }, (_, index) => {
+  const angle = index * Math.PI / 4;
+  return { x: Math.cos(angle), y: Math.sin(angle) * FOREST_SHADOW_GEOMETRY.groundCompression };
+});
 const finitePoint = (point: WorldPoint) => Number.isFinite(point.x) && Number.isFinite(point.y);
 const cross = (a: WorldPoint, b: WorldPoint, c: WorldPoint) => (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
 const area = (points: WorldPoint[]) => points.reduce((sum, point, index) => {
@@ -52,6 +65,27 @@ function triangulate(points: WorldPoint[]): number[][] {
   triangles.push(remaining); return triangles;
 }
 
+/** Prepare authored topology once; replace it whenever the contour is edited. */
+export function prepareForestShadowGeometry(points: WorldPoint[]): PreparedForestShadowGeometry {
+  const cleaned = cleanPolygon(points);
+  return { points: cleaned, triangles: triangulate(cleaned) };
+}
+
+function convexOutline(points: WorldPoint[]): WorldPoint[] {
+  const sorted = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
+  const lower: WorldPoint[] = [], upper: WorldPoint[] = [];
+  for (const point of sorted) {
+    while (lower.length > 1 && cross(lower[lower.length - 2], lower[lower.length - 1], point) <= EPSILON) lower.pop();
+    lower.push(point);
+  }
+  for (let index = sorted.length - 1; index >= 0; index--) {
+    const point = sorted[index];
+    while (upper.length > 1 && cross(upper[upper.length - 2], upper[upper.length - 1], point) <= EPSILON) upper.pop();
+    upper.push(point);
+  }
+  lower.pop(); upper.pop(); return lower.concat(upper);
+}
+
 function distanceToBoundary(point: WorldPoint, points: WorldPoint[]) {
   let distance = Infinity, inside = false;
   for (let index = 0; index < points.length; index++) {
@@ -65,10 +99,11 @@ function distanceToBoundary(point: WorldPoint, points: WorldPoint[]) {
 }
 
 function lightDisk(light: PointShadowLight) {
-  return Array.from({ length: FOREST_SHADOW_GEOMETRY.lightSegments }, (_, index) => {
-    const angle = index / FOREST_SHADOW_GEOMETRY.lightSegments * Math.PI * 2;
-    return { x: light.position.x + Math.cos(angle) * light.radius, y: light.position.y + Math.sin(angle) * light.radius };
-  });
+  const previous = pointDisks.get(light);
+  if (previous && previous.x === light.position.x && previous.y === light.position.y && previous.radius === light.radius) return previous.points;
+  const points = unitDisk.map(point => ({ x: light.position.x + point.x * light.radius, y: light.position.y + point.y * light.radius }));
+  pointDisks.set(light, { x: light.position.x, y: light.position.y, radius: light.radius, points });
+  return points;
 }
 
 /** Convex clipping keeps point shadows inside the actual finite light footprint. */
@@ -96,14 +131,16 @@ function clipPolygon(polygon: WorldPoint[], clip: WorldPoint[]) {
  * Receiver clipping belongs to the painter; receiver points use painted screen
  * coordinates. Their vertical screen offset is already applied here (y -= z).
  */
-export function projectForestShadow(caster: WorldShadowCaster, light: ShadowLight, receiverHeight = 0): WorldPoint[][] {
+export function projectForestShadow(caster: WorldShadowCaster, light: ShadowLight, receiverHeight = 0,
+  prepared?: PreparedForestShadowGeometry): WorldPoint[][] {
   if (!Number.isFinite(receiverHeight) || !Number.isFinite(caster.height) || caster.height <= 0
     || !Number.isFinite(caster.baseHeight) || caster.baseHeight < 0
     || caster.points.length < 3 || caster.points.some(point => !finitePoint(point))) return [];
   const topHeight = caster.baseHeight + caster.height, bottomHeight = Math.max(caster.baseHeight, receiverHeight);
   if (!Number.isFinite(topHeight) || topHeight <= bottomHeight) return [];
-  const points = cleanPolygon(caster.points), triangles = triangulate(points);
-  if (!triangles.length) return [];
+  const geometry = prepared ?? actorGeometry.get(caster.points) ?? prepareForestShadowGeometry(caster.points);
+  const { points, triangles } = geometry;
+  if (points.length < 3 || !geometry.convex && !triangles.length) return [];
   let project: (point: WorldPoint, height: number) => WorldPoint;
   let disk: WorldPoint[] | undefined;
   if (light.kind === "directional") {
@@ -138,11 +175,15 @@ export function projectForestShadow(caster: WorldShadowCaster, light: ShadowLigh
     };
   }
   const bottom = points.map(point => project(point, bottomHeight)), top = points.map(point => project(point, topHeight));
-  const pieces: WorldPoint[][] = [];
-  for (const indices of triangles) { pieces.push(indices.map(index => bottom[index])); pieces.push(indices.map(index => top[index])); }
-  for (let index = 0; index < points.length; index++) {
-    const next = (index + 1) % points.length;
-    pieces.push([bottom[index], bottom[next], top[next]], [bottom[index], top[next], top[index]]);
+  // A convex prism projects to one convex outline. Actor footprints therefore
+  // need one light-disk clip instead of 28 clips of overlapping triangles.
+  const pieces: WorldPoint[][] = geometry.convex ? [convexOutline(bottom.concat(top))] : [];
+  if (!geometry.convex) {
+    for (const indices of triangles) { pieces.push(indices.map(index => bottom[index])); pieces.push(indices.map(index => top[index])); }
+    for (let index = 0; index < points.length; index++) {
+      const next = (index + 1) % points.length;
+      pieces.push([bottom[index], bottom[next], top[next]], [bottom[index], top[next], top[index]]);
+    }
   }
   const result: WorldPoint[][] = [];
   for (const piece of pieces) {
@@ -159,9 +200,7 @@ export function projectForestShadow(caster: WorldShadowCaster, light: ShadowLigh
 /** Moving residents contribute a small ground footprint and a vertical body. */
 export function createForestActorShadow(point: WorldPoint, size: number, id: string): WorldShadowCaster {
   const radius = Math.max(0, Number.isFinite(size) ? size : 0);
-  return { id, height: radius * 2.4, baseHeight: 0, opacity: .8, softness: 2,
-    points: Array.from({ length: 8 }, (_, index) => {
-      const angle = index * Math.PI / 4;
-      return { x: point.x + Math.cos(angle) * radius, y: point.y + Math.sin(angle) * radius * FOREST_SHADOW_GEOMETRY.groundCompression };
-    }) };
+  const points = unitActor.map(offset => ({ x: point.x + offset.x * radius, y: point.y + offset.y * radius }));
+  actorGeometry.set(points, { points, triangles: [], convex: true });
+  return { id, height: radius * 2.4, baseHeight: 0, opacity: .8, softness: 2, points };
 }

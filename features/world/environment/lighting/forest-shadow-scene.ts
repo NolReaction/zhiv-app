@@ -11,6 +11,8 @@ type ShadowSceneOptions = {
   night: number; elapsed: number; reducedMotion: boolean;
   lights: readonly ForestLightSource[]; fires: readonly ForestCampfire[]; actors: readonly ForestShadowActor[];
   azimuth?: number; elevation?: number; quality?: "low" | "high"; showBuildings?: boolean; buildingShadows?: boolean;
+  /** Runtime/editor geometry version; omitted callers retain mutable compatibility. */
+  geometryRevision?: number;
   testLamp?: ForestTestLamp;
 };
 const clamp = (value: number, low: number, high: number) => Math.max(low, Math.min(high, value));
@@ -41,7 +43,8 @@ export function createForestShadowFrame(scene: FixedWorldScene, options: ShadowS
     baseHeight: Math.max(0, actor.lift ?? 0), opacity: clamp(actor.opacity ?? 1, 0, 1),
   }));
   return { night: options.night, azimuth: options.azimuth ?? 225, elevation: options.elevation ?? 40,
-    quality: options.quality ?? "low", showBuildings: options.showBuildings, buildingShadows: options.buildingShadows, sources, actors };
+    quality: options.quality ?? "low", showBuildings: options.showBuildings, buildingShadows: options.buildingShadows,
+    geometryRevision: options.geometryRevision, sources, actors };
 }
 
 /** A small developer marker ties the movable lamp to its ground anchor. */

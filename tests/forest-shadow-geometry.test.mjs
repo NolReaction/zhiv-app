@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const vite = await createServer({ root, configFile: false, logLevel: 'silent', resolve: { alias: { '@': root } },
   server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { projectForestShadow: project, createForestActorShadow: actor, FOREST_SHADOW_GEOMETRY: limits }
+const { projectForestShadow: project, createForestActorShadow: actor, prepareForestShadowGeometry: prepare, FOREST_SHADOW_GEOMETRY: limits }
   = await vite.ssrLoadModule('/features/world/environment/lighting/forest-shadow-geometry.ts');
 const rect = (x, y, width, height) => [{ x, y }, { x: x + width, y }, { x: x + width, y: y + height }, { x, y: y + height }];
 const caster = (points = rect(40, 30, 10, 10), height = 20, baseHeight = 0) => ({ id: 'house', points, height, baseHeight, opacity: 1, softness: 2 });
@@ -177,4 +177,36 @@ test('actor helper follows moving feet with an independent elliptical footprint 
   first.points.forEach((point, index) => { near(second.points[index].x - point.x, 10); near(second.points[index].y - point.y, 10); });
   assert.deepEqual(feet, { x: 50, y: 80 });
   assertConvexFinite(project(first, lamp(20, 80, 8)));
+});
+
+test('one convex actor outline matches the original prism union for light movement, jumps and receivers', () => {
+  for (const lift of [0, 7, 19]) for (const receiver of [0, 5, 24]) {
+    const body = { ...actor({ x: 50, y: 80 }, 6, 'moving'), height: 24, baseHeight: lift };
+    // A copied raw contour deliberately uses the general concave-capable path.
+    const generic = { ...body, points: body.points.map(point => ({ ...point })) };
+    for (const source of [sun(1, 0, 45), sun(-1, 1, 13), sun(0, 1, 80),
+      lamp(20, 80, 8, 100), lamp(90, 60, 50, 100), lamp(50, 80, 10, 100), lamp(50, 80, 75, 100)]) {
+      const fast = project(body, source, receiver), reference = project(generic, source, receiver);
+      assert.ok(fast.length <= 1, 'an actor needs at most one convex disk clip');
+      assertConvexFinite(fast);
+      for (let x = -50; x <= 150; x += 5) for (let y = -30; y <= 180; y += 5) {
+        const point = { x: x + .137, y: y + .271 };
+        assert.equal(contains(fast, point), contains(reference, point),
+          `${source.kind} lift=${lift} receiver=${receiver} at ${point.x},${point.y}`);
+      }
+    }
+  }
+});
+
+test('prepared concave topology stays equivalent and mutable light coordinates invalidate its cached disk', () => {
+  const building = caster([{ x: 0, y: 0 }, { x: 60, y: 0 }, { x: 60, y: 15 },
+    { x: 15, y: 15 }, { x: 15, y: 60 }, { x: 0, y: 60 }], 30);
+  const prepared = prepare(building.points), light = lamp(-20, -20, 15, 100);
+  assert.deepEqual(project(building, light, 4, prepared), project(building, light, 4));
+  const first = project(building, light, 4, prepared);
+  light.position.x = 70; light.position.y = 10; light.radius = 80;
+  const second = project(building, light, 4, prepared);
+  assert.notDeepEqual(first, second);
+  assert.deepEqual(second, project(building, { ...light, position: { ...light.position } }, 4));
+  assertConvexFinite(second);
 });

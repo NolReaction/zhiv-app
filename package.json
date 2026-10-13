@@ -24,6 +24,7 @@
     "world:export": "node scripts/tiled-world.mjs",
     "world:watch": "node scripts/tiled-world.mjs --watch",
     "world:check": "node scripts/tiled-world.mjs --check",
+    "world:lighting:apply": "node scripts/apply-lighting-patch.mjs",
     "audio:check": "node scripts/check-audio.mjs",
     "audio:prepare": "node scripts/prepare-audio.mjs",
     "audio:compose": "python3 scripts/audio_originals/render.py",

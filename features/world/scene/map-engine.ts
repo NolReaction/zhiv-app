@@ -10,6 +10,8 @@ import { drawRouteProps } from "@/features/world/legacy/route-props";
 import { drawBoatWreck, prepareBoatWreck } from "@/features/world/legacy/boat-wreck";
 import { NEW_MAP_BOUNDS, NEW_MAP_FOCUS, TILED_WORLD, WORLD_PRESENTATION } from "./presentation";
 import { WORLD_DEV_ENABLED, worldDevStore } from "@/features/world/dev/world-dev-store";
+import { WORLD_LIGHTING_EDITOR_CANCEL_EVENT, worldLightingEditorStore } from "@/features/world/dev/world-lighting-editor-store";
+import { createWorldLightingEditorMap } from "@/features/world/dev/world-lighting-editor-map";
 import { mapObjectAt, type MapObjectPlace, type MapInteractiveObject } from "./site-interactions";
 import { projectConstructionAnchor, type MapObjectScreenAnchor } from "./construction-map-anchor";
 import { drawMapGuideTarget, mapGuideCamera } from "./map-guide-target";
@@ -57,7 +59,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   const guideInsets = () => ({ ...cameraInsets, bottom: Math.max(cameraInsets.bottom, guideBottomInset) });
   let inView = true;
   const home = document.createElement("canvas");
-  type Touch = { initial: Point; position: Point; objectId?: string; capture: HTMLElement };
+  type Touch = { initial: Point; position: Point; objectId?: string; capture: HTMLElement; editor?: boolean };
   const pointers = new Map<number, Touch>();
   let travelled = 0, multiTouch = false, cancelled = false;
   let selectedObjectId: string | null = null, selectionKey: string | null = null;
@@ -69,6 +71,8 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     activity() {}, ready: readyResolve, failure: error => readyReject(new MapLoadError("character", error)),
     rendered: () => { if (motionReduced() || paused()) { if (pointers.size) requestDraw(); else draw(); } else updateSelection(); },
   });
+  const lightingEditor = createWorldLightingEditorMap(() => habitat.lightingCasters?.() ?? []);
+  const editingLight = () => WORLD_DEV_ENABLED && rebuilding && worldLightingEditorStore.getSnapshot().enabled;
   const abort = () => { disposed = true; habitat.dispose(); readyReject(signal?.reason ?? new DOMException("Aborted", "AbortError")); };
   signal?.addEventListener("abort", abort, { once: true });
   try { await habitatReady; signal?.throwIfAborted(); }
@@ -128,6 +132,10 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   }
   function updateObjectAnchors(objects: readonly MapInteractiveObject[]) {
     if (disposed || !objectAnchorsEnabled || !interactions.onObjectAnchorsChange) return;
+    if (editingLight()) {
+      if (anchorsKey !== "lighting-editor") { anchorsKey = "lighting-editor"; interactions.onObjectAnchorsChange([]); }
+      return;
+    }
     const projected = objects.flatMap(object => {
       const anchor = projectConstructionAnchor(object, camera, view, cameraInsets);
       return anchor ? [anchor] : [];
@@ -188,6 +196,10 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       habitat.paintVisitors(ctx, "air");
       habitat.paintWeather(ctx);
     }
+    if (editingLight()) {
+      ctx.setTransform(ratio, 0, 0, canvas.height / view.height, 0, 0);
+      lightingEditor.draw(ctx, p => worldToScreen(p, camera, view));
+    }
     const objects = habitat.mapObjects?.() ?? [];
     const guideTarget = guidePlace ? objects.find(object => object.place === guidePlace) : undefined;
     if (guideTarget) {
@@ -200,6 +212,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       anchor: worldToScreen(frame.anchor, camera, view) })), { ...view, insets: cameraInsets,
       reducedMotion: motionReduced(), night: options.dusk });
     for (const node of anchors) {
+      if (editingLight()) { node.style.visibility = "hidden"; continue; }
       // Keyboard/touch shortcuts follow the geometry committed with the visible artwork.
       const anchor = rebuilding ? node.dataset.objectId
         ? objects.find(object => object.id === node.dataset.objectId)?.anchor
@@ -234,6 +247,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   }
   function visibility() {
     if (document.hidden) {
+      lightingEditor.cancel();
       cancelled = true;
       for (const [id, touch] of pointers) if (touch.capture.hasPointerCapture(id)) touch.capture.releasePointerCapture(id);
       pointers.clear();
@@ -288,17 +302,24 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     if (event.pointerType === "mouse" && event.button !== 0) return;
     if (!pointers.size) { travelled = 0; multiTouch = false; cancelled = false; viewportRect = null; }
     const p = point(event);
+    if (pointers.size && editingLight()) {
+      lightingEditor.cancel();
+      for (const touch of pointers.values()) touch.editor = false;
+      cancelled = true;
+    }
+    const editor = !pointers.size && editingLight() && lightingEditor.down(screenToWorld(p, camera, view), 11 / camera.zoom);
     // Large touch targets overlap in the phone overview. Resolve the closest
     // rendered marker, independently of which DOM button received the press.
     // Keep capture on the original button on touch devices: transferring it to
     // a sibling canvas competes with the browser's implicit touch capture.
     const capture = typeof target.setPointerCapture === "function" ? target : canvas;
-    pointers.set(event.pointerId, { initial: p, position: p, objectId: objectId ? nearestMarkerObject(p) : undefined, capture });
+    pointers.set(event.pointerId, { initial: p, position: p, objectId: objectId ? nearestMarkerObject(p) : undefined, capture, editor });
     multiTouch ||= pointers.size > 1; capture.setPointerCapture(event.pointerId); capture.focus?.({ preventScroll: true });
   }
   function move(event: PointerEvent) {
     const touch = pointers.get(event.pointerId); if (!touch) return;
     const p = point(event), before = touch.position, oldDistance = separation();
+    if (touch.editor) { lightingEditor.move(screenToWorld(p, camera, view)); touch.position = p; requestDraw(); return; }
     const oldCenter = pointers.size >= 2 ? midpoint() : null;
     framing = "manual";
     travelled = Math.max(travelled, Math.hypot(p.x - touch.initial.x, p.y - touch.initial.y));
@@ -315,6 +336,17 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     const p = point(event), touch = pointers.get(event.pointerId)!;
     travelled = Math.max(travelled, Math.hypot(p.x - touch.initial.x, p.y - touch.initial.y));
     pointers.delete(event.pointerId);
+    if (touch.editor) {
+      if (!cancelled) lightingEditor.move(screenToWorld(p, camera, view));
+      lightingEditor.end(cancelled);
+      if (touch.capture.hasPointerCapture(event.pointerId)) touch.capture.releasePointerCapture(event.pointerId);
+      requestDraw(); return;
+    }
+    if (editingLight()) {
+      if (!pointers.size && isMapTap(travelled, multiTouch, cancelled)) worldLightingEditorStore.select(null);
+      if (touch.capture.hasPointerCapture(event.pointerId)) touch.capture.releasePointerCapture(event.pointerId);
+      requestDraw(); return;
+    }
     if (!pointers.size && isMapTap(travelled, multiTouch, cancelled)) {
       const world = screenToWorld(p, camera, view);
       if (rebuilding) {
@@ -362,10 +394,24 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       : action === "home" ? focusCamera(view, true) : action === "overview" ? overviewCamera(view, bounds) : zoomAt(camera, view, { x: view.width / 2, y: view.height / 2 }, action === "in" ? 1.25 : .8, bounds, cameraInsets); draw();
   }
   function key(event: KeyboardEvent) {
+    if (WORLD_DEV_ENABLED && lightingEditor.key(event)) { event.preventDefault(); requestDraw(); return; }
     const delta = { ArrowUp: [0, -40], ArrowDown: [0, 40], ArrowLeft: [-40, 0], ArrowRight: [40, 0] }[event.key];
     if (delta) { event.preventDefault(); framing = "manual"; camera = clampCamera({ ...camera, x: camera.x + delta[0] / camera.zoom, y: camera.y + delta[1] / camera.zoom }, view, bounds, cameraInsets); draw(); }
     else if (["+", "=", "-", "Home"].includes(event.key)) { event.preventDefault(); control(event.key === "Home" ? "pet" : event.key === "-" ? "out" : "in"); }
   }
+  // DEV and the enclosing world dialog both capture Escape. Handle a map drag
+  // first, while leaving keyboard input in the panel to its own controls.
+  function editorEscape(event: KeyboardEvent) {
+    if (event.key !== "Escape" || event.isComposing || event.target !== canvas || !editingLight()) return;
+    lightingEditor.key(event); event.preventDefault(); event.stopImmediatePropagation(); requestDraw();
+  }
+  window.addEventListener?.("keydown", editorEscape, true);
+  function editorCancel(event: Event) {
+    const key = (event as CustomEvent<KeyboardEvent>).detail;
+    if (!editingLight() || key?.key !== "Escape") return;
+    lightingEditor.key(key); requestDraw();
+  }
+  window.addEventListener?.(WORLD_LIGHTING_EDITOR_CANCEL_EVENT, editorCancel);
   canvas.addEventListener("pointerdown", down); canvas.addEventListener("pointermove", move);
   for (const name of ["pointerup", "pointercancel", "lostpointercapture"] as const) canvas.addEventListener(name, end);
   canvas.addEventListener("wheel", wheel, { passive: false }); canvas.addEventListener("keydown", key);
@@ -399,6 +445,11 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       if (!motionReduced() && !paused() && !raf) raf = requestAnimationFrame(tick);
     }
   }) : () => {};
+  const unsubscribeLightingEditor = WORLD_DEV_ENABLED ? worldLightingEditorStore.subscribe(() => {
+    if (!editingLight()) lightingEditor.cancel();
+    if (editingLight()) setSelectedObject(null);
+    requestDraw();
+  }) : () => {};
   return {
     control,
     activateObject,
@@ -418,7 +469,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     notice() { habitat.notice(); draw(); },
     visitBush() { habitat.invite("bush"); draw(); },
     dispose() {
-      disposed = true; cancelAnimationFrame(raf); unsubscribeDev(); habitat.dispose(); resizeObserver.disconnect(); observer.disconnect();
+      disposed = true; lightingEditor.cancel(); cancelAnimationFrame(raf); unsubscribeDev(); unsubscribeLightingEditor(); habitat.dispose(); resizeObserver.disconnect(); observer.disconnect();
       if (speechCanvas && speechContext !== ctx) {
         speechContext.setTransform(1, 0, 0, 1, 0, 0); speechContext.clearRect(0, 0, speechCanvas.width, speechCanvas.height);
       }
@@ -430,6 +481,8 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       canvas.removeEventListener("pointerdown", down); canvas.removeEventListener("pointermove", move);
       for (const name of ["pointerup", "pointercancel", "lostpointercapture"] as const) canvas.removeEventListener(name, end);
       canvas.removeEventListener("wheel", wheel); canvas.removeEventListener("keydown", key); document.removeEventListener("visibilitychange", visibility);
+      window.removeEventListener?.("keydown", editorEscape, true);
+      window.removeEventListener?.(WORLD_LIGHTING_EDITOR_CANCEL_EVENT, editorCancel);
     },
   };
 }

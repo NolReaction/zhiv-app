@@ -114,6 +114,8 @@ test('building-shadow toggle is independent of visible building lights and debug
   assert.equal(lamp.height, 65); assert.ok(lamp.intensity > 0); assert.ok(lamp.radius > 0);
   assert.equal(tested.azimuth, 123); assert.equal(tested.elevation, 22); assert.equal(tested.quality, 'high');
   assert.equal(tested.night, shared.night);
+  assert.equal(frame(scene, { ...shared, geometryRevision: 17 }).geometryRevision, 17);
+  assert.equal(normal.geometryRevision, undefined, 'legacy frame callers keep mutable geometry compatibility');
 });
 
 test('test lamp marker connects the ground to the elevated bulb and restores canvas state', () => {

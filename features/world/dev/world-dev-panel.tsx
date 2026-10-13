@@ -15,6 +15,7 @@ import { interactiveMapObjects, type MapObjectPlace } from "@/features/world/sce
 import type { WorldController } from "@/features/world/state/use-world";
 import { WorldAiDiagnostics } from "./world-ai-diagnostics";
 import { WorldDevLighting } from "./world-dev-lighting";
+import { WORLD_LIGHTING_EDITOR_CANCEL_EVENT, worldLightingEditorStore } from "./world-lighting-editor-store";
 import { ForestGardenDiagnostics } from "./forest-ai-diagnostics";
 import { WorldDevCheats } from "./world-dev-cheats";
 import { WorldDevFishing } from "./world-dev-fishing";
@@ -205,6 +206,16 @@ function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false
     closeButton.current?.focus({ preventScroll: true });
     const escape = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.isComposing) return;
+      if (event.target instanceof HTMLCanvasElement && worldLightingEditorStore.getSnapshot().enabled) {
+        // The panel may have opened before the map mounted. Delegate first so
+        // Escape still rolls back the drag regardless of listener order.
+        window.dispatchEvent(new CustomEvent(WORLD_LIGHTING_EDITOR_CANCEL_EVENT, { detail: event }));
+        event.preventDefault(); event.stopImmediatePropagation(); return;
+      }
+      if (event.target instanceof HTMLInputElement && event.target.closest("[data-world-lighting-editor]")) {
+        event.preventDefault(); event.stopPropagation();
+        worldLightingEditorStore.cancelGesture(); event.target.blur(); return;
+      }
       event.preventDefault(); event.stopPropagation();
       setOpen(false); trigger.current?.focus({ preventScroll: true });
     };
@@ -366,7 +377,7 @@ export function WorldDevPanelContent({ world, economy, worldView, presenceKey, o
   return <div className={styles.pageContent}>
     {page === "lighting" && <>
       <h3 className={styles.pageTitle}>Свет и тени</h3>
-      <WorldDevLighting state={state} change={change} onNightCampfire={() => {
+      <WorldDevLighting state={state} change={change} worldView={worldView} onOpenWorld={onOpenWorld} onNightCampfire={() => {
         change({ lightShadows: true, lightTestLamp: false });
         play({ kind: "scenario", scenario: "campfire" });
       }} />

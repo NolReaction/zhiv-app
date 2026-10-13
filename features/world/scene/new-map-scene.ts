@@ -21,6 +21,7 @@ import { drawForestTreeCrownMotion, drawForestTreeLeaves } from "@/features/worl
 import { drawForestGroundWeather, updateForestWetness } from "@/features/world/environment/weather/forest-ground-weather";
 import { drawForestGroundImpacts } from "@/features/world/environment/weather/forest-ground-impacts";
 import { drawForestLighting, drawForestLightEmitters, drawForestLighthouseBeams, forestLightSources } from "@/features/world/environment/lighting/forest-lighting";
+import { worldLightingEditorStore } from "@/features/world/dev/world-lighting-editor-store";
 import { createForestShadowFrame, drawForestTestLamp } from "@/features/world/environment/lighting/forest-shadow-scene";
 import { drawForestDirectionalShadows, drawForestOccludedLighting, drawForestShadowDebug } from "@/features/world/environment/lighting/forest-shadow-painter";
 import { forestLifeFrame, type ForestLifeState } from "@/features/world/simulation/forest-life";
@@ -175,7 +176,8 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   dusk = Number(options.dusk), preview?: NewMapPaintPreview) {
   const dev = preview?.state, still = reducedMotion(options, dev);
   const currentLevels = accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev, options.economyBuildings);
-  const world = preview?.scene ?? previewWorldScene(TILED_WORLD, currentLevels);
+  const authoredWorld = preview?.scene ?? previewWorldScene(TILED_WORLD, currentLevels);
+  const world = WORLD_DEV_ENABLED ? worldLightingEditorStore.applyToScene(authoredWorld) : authoredWorld;
   const home = world.sites.find(site => site.id === "home");
   const selectedVisuals = preview?.visuals ?? visualsFor(currentLevels);
   const selectedLevels = Object.fromEntries(Object.entries(selectedVisuals).map(([id, visual]) => [id, visual.level]));
@@ -223,7 +225,7 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   const shadowFrame = dev?.lightShadows !== false && world.shadowReceivers?.length ? createForestShadowFrame(world, {
     ...lighting, lights: forestLightSources(world, lighting), fires: cookingFires,
     azimuth: dev?.lightAzimuth, elevation: dev?.lightElevation, quality: dev?.lightQuality, testLamp,
-    buildingShadows: dev?.buildingShadow,
+    buildingShadows: dev?.buildingShadow, geometryRevision: WORLD_DEV_ENABLED ? worldLightingEditorStore.getSnapshot().revision : 0,
     actors: [
       ...(heroVisible && dev?.heroShadow !== false ? [{ ...(fishing ?? cooking ?? actor), id: "mochlik",
         size: actor.size, opacity: walking?.opacity ?? 1, lift: motion?.lift }] : []),
@@ -358,6 +360,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   if (!context) throw new Error("2D canvas unavailable");
   const ctx = context;
   let options = { ...initial }, art: ReadonlyMap<string, HTMLImageElement> | null = null, disposed = false;
+  if (WORLD_DEV_ENABLED) worldLightingEditorStore.hydrate();
   let dev = WORLD_DEV_ENABLED ? worldDevStore.getSnapshot() : undefined;
   let world = previewWorldScene(TILED_WORLD, accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev, options.economyBuildings));
   let trees = createForestTreeInteractions(world);
@@ -885,12 +888,13 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     if (canvas.width !== next || canvas.height !== next) { canvas.width = next; canvas.height = next; draw(); }
   }
   const observer = new ResizeObserver(resize); observer.observe(canvas); resize();
+  const unsubscribeLightingEditor = WORLD_DEV_ENABLED ? worldLightingEditorStore.subscribe(() => { if (visible()) draw(); }) : () => {};
   const unsubscribeAudioDebug = WORLD_DEV_ENABLED ? audioDevStore.subscribe(() => { if (visible()) draw(); }) : () => {};
   function visibilityChanged() { stop(); syncOwner(); if (visible()) draw(); resume(); }
   document.addEventListener("visibilitychange", visibilityChanged);
   function dispose() {
     if (disposed) return;
-    disposed = true; artworkVersion++; stop(); clearForestTreeInteractions(trees); unsubscribe(); unsubscribeAudioDebug(); audio.dispose(); observer.disconnect(); art = null;
+    disposed = true; artworkVersion++; stop(); clearForestTreeInteractions(trees); unsubscribe(); unsubscribeAudioDebug(); unsubscribeLightingEditor(); audio.dispose(); observer.disconnect(); art = null;
     document.removeEventListener("visibilitychange", visibilityChanged); session.release({ retain: true });
   }
   function prepareArtwork() {
@@ -1068,6 +1072,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       && point.y > feetY - size && point.y < feetY;
   }
   return {
+    lightingCasters: () => (WORLD_DEV_ENABLED ? worldLightingEditorStore.applyToScene(world) : world).shadowCasters ?? [],
     disturbTree(point) {
       if (disposed || !active() || !session.isOwner() || options.view !== "world" || !hitForestTree(trees, point)
         || dev?.showBuildings !== false && forestVisibleSiteAt(world, point)) return false;

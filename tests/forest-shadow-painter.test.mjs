@@ -222,3 +222,75 @@ test("lamps with no nearby actor screen cached pools directly without clearing o
   drawForestOccludedLighting(paint.ctx, map, { ...options, actors: [{ ...caster("wide-body", -30), points: square(-30, 80, 100) }] });
   assert.equal(scratch.calls.filter(call => call.method === "clearRect").length, 2, "a body's bounds crossing the light still needs a shadow");
 }));
+
+test("runtime geometry revisions avoid serialization and invalidate every edited shape or visibility state", () => withCanvas(surfaces => {
+  const map = scene(), paint = context(), options = { ...frame(), geometryRevision: 0 };
+  // Hot-path geometry serialization would invoke this callback. Source keys
+  // contain only scalar values and must remain independent of this object.
+  map.shadowCasters[0].toJSON = () => assert.fail("revisioned geometry must not be serialized during rendering");
+  drawForestDirectionalShadows(paint.ctx, map, options);
+  drawForestOccludedLighting(paint.ctx, map, options);
+  let count = surfaces.length;
+  drawForestDirectionalShadows(paint.ctx, map, options);
+  drawForestOccludedLighting(paint.ctx, map, { ...options, night: .4 });
+  assert.equal(surfaces.length, count);
+  map.shadowCasters[0].height += 20;
+  drawForestOccludedLighting(paint.ctx, map, { ...options, geometryRevision: 1 });
+  assert.ok(surfaces.length > count, "a height edit with a new revision rebuilds masks");
+  count = surfaces.length;
+  map.shadowCasters = [{ ...map.shadowCasters[0], points: square(95, 85, 19) }];
+  drawForestOccludedLighting(paint.ctx, map, { ...options, geometryRevision: 1 });
+  assert.ok(surfaces.length > count, "replacing contours invalidates even the same explicit revision");
+  count = surfaces.length;
+  drawForestOccludedLighting(paint.ctx, map, { ...options, geometryRevision: 1, buildingShadows: false });
+  assert.ok(surfaces.length > count, "visibility flags participate in the revision cache");
+}));
+
+test("small lamp masks only clear their cropped work area after a larger lamp grows the shared scratch", () => withCanvas(surfaces => {
+  const map = scene(), paint = context(), body = caster("near", 90);
+  const small = { ...lamp("small", 70), radius: 50 }, large = { ...lamp("large", 100), radius: 160 };
+  const options = { ...frame(), geometryRevision: 0, sources: [large, small], actors: [body] };
+  drawForestOccludedLighting(paint.ctx, map, options);
+  const scratch = surfaces[2], clears = scratch.calls.filter(call => call.method === "clearRect");
+  const largePool = pools(surfaces).find(surface => surface !== scratch && surface.canvas.width > 100);
+  const smallPool = pools(surfaces).find(surface => surface !== scratch && surface.canvas.width < 100);
+  assert.ok(scratch.canvas.width < 768 && scratch.canvas.height < 768);
+  assert.deepEqual(clears[0].args, [0, 0, largePool.canvas.width, largePool.canvas.height]);
+  assert.deepEqual(clears[1].args, [0, 0, smallPool.canvas.width, smallPool.canvas.height]);
+  const count = surfaces.length;
+  drawForestOccludedLighting(paint.ctx, map, options);
+  assert.equal(surfaces.length, count, "alternating pool sizes reuse a single backing canvas");
+  assert.deepEqual(scratch.calls.filter(call => call.method === "clearRect").at(-1).args, clears[1].args);
+  const contributions = surfaces[1].calls.filter(call => call.method === "drawImage" && call.globalCompositeOperation === "screen");
+  assert.deepEqual(contributions.at(-1).args.slice(1, 5), [0, 0, smallPool.canvas.width, smallPool.canvas.height]);
+}));
+
+test("directional shadows use the static mask directly when no moving actor contributes", () => withCanvas(surfaces => {
+  const map = scene(), paint = context();
+  drawForestDirectionalShadows(paint.ctx, map, frame());
+  assert.equal(surfaces[3].calls.length, 0, "no full-map copy or clear without actors");
+  assert.equal(paint.calls.find(call => call.method === "drawImage").args[0], surfaces.at(-1).canvas);
+}));
+
+test("native receiver paths are prepared once and reused by independent lamps", () => withCanvas(surfaces => {
+  const previous = globalThis.Path2D, paths = [];
+  globalThis.Path2D = class {
+    constructor() { this.calls = []; paths.push(this); }
+    moveTo(...args) { this.calls.push(["moveTo", ...args]); }
+    lineTo(...args) { this.calls.push(["lineTo", ...args]); }
+    closePath() { this.calls.push(["closePath"]); }
+  };
+  try {
+    const map = scene(), paint = context(), options = { ...frame(), geometryRevision: 0,
+      sources: [lamp("left", 40), lamp("right", 150)], actors: [caster("moving", 100)] };
+    drawForestOccludedLighting(paint.ctx, map, options);
+    drawForestDirectionalShadows(paint.ctx, map, options);
+    assert.equal(paths.length, 1, "one same-height receiver union is prepared once");
+    assert.ok(paths[0].calls.some(call => call[0] === "lineTo"));
+    const clips = surfaces.flatMap(surface => surface.calls.filter(call => call.method === "clip"));
+    assert.ok(clips.length >= 6);
+    assert.ok(clips.every(call => call.args[0] === paths[0]));
+  } finally {
+    if (previous === undefined) delete globalThis.Path2D; else globalThis.Path2D = previous;
+  }
+}));
