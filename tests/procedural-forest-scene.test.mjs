@@ -139,6 +139,7 @@ function controllerHarness(initialJson = null, focusBody = false) {
   install("requestAnimationFrame", callback => { const id = ++frameId; frames.set(id, callback); return id; });
   install("cancelAnimationFrame", id => frames.delete(id));
   install("ResizeObserver", class { observe() {} disconnect() {} });
+  install("Path2D", class {});
   const controller = createForestController(canvas, status => { lastStatus = status; });
   return {
     controller,
@@ -248,7 +249,7 @@ test("physical tool and brush hotkeys work with Russian keys and toolbar focus",
       assert.equal(harness.key(key, { code, target: harness.button }), true);
       harness.flush(); assert.equal(harness.status.mode, mode); assert.equal(harness.cursor, mode);
     }
-    for (const [i, brush] of ["tree", "shrub", "rock", "ruins", "bridge", "jetty"].entries()) {
+    for (const [i, brush] of ["tree", "shrub", "rock", "ruins", "bridge", "jetty", "stump-house"].entries()) {
       harness.key(String(i + 1), { code: `Digit${i + 1}`, target: harness.button }); harness.flush();
       assert.equal(harness.status.brush, brush); assert.equal(harness.status.mode, "plant");
     }
@@ -393,4 +394,51 @@ test("the editor receives initial hotkey focus only while the document body stil
   try { assert.equal(automatic.focuses, 1); } finally { automatic.dispose(); }
   const preserved = controllerHarness(null, false);
   try { assert.equal(preserved.focuses, 0, "existing input or link focus is preserved"); } finally { preserved.dispose(); }
+});
+
+test("stump-house hotkey creates a persisted object that supports picking, dragging, duplication and undo", () => {
+  const harness = controllerHarness();
+  let savedJson, houseId;
+  try {
+    const empty = initialScene();
+    empty.removed = [...forestObjects(empty.seed, { x: 0, y: 0, width: empty.width, height: WORLD_HEIGHT }), ...initialProps()].map(object => object.id);
+    assert.equal(harness.controller.importScene(serializeScene(empty)), true);
+    harness.key("7", { code: "Digit7", target: harness.button }); harness.flush();
+    assert.equal(harness.status.brush, "stump-house"); assert.equal(harness.status.mode, "plant");
+    harness.key("Enter"); harness.flush();
+    const house = harness.scene().planted[0]; houseId = house.id;
+    assert.equal(house.kind, "stump-house"); assert.match(harness.status.message, /дом-пень/);
+    assert.equal(harness.status.selected.id, house.id);
+    const planted = harness.controller.getSceneJson(), writes = harness.writes;
+    harness.key("м", { code: "KeyV", target: harness.button });
+    const start = harness.screen(house.x, house.y - 50);
+    harness.pointer("pointerdown", start.x, start.y); harness.pointer("pointermove", start.x + 30, start.y + 20); harness.flush();
+    assert.equal(harness.status.selected.id, house.id, "the painted house is selectable through normal scene picking");
+    assert.ok(Math.abs(harness.status.selected.x - house.x - 30 / .5875) < 1e-8);
+    assert.equal(harness.writes, writes, "a house drag is not saved before pointerup");
+    harness.pointer("pointerup", start.x + 30, start.y + 20);
+    assert.equal(harness.writes, writes + 1);
+    const moved = harness.controller.getSceneJson();
+    harness.key("я", { code: "KeyZ", ctrlKey: true }); assert.equal(harness.controller.getSceneJson(), planted);
+    harness.key("я", { code: "KeyZ", ctrlKey: true, shiftKey: true }); assert.equal(harness.controller.getSceneJson(), moved);
+    harness.controller.updateSelected({ scale: 1.3, rotation: 35 });
+    harness.key("в", { code: "KeyD", ctrlKey: true, target: harness.button });
+    const copies = harness.scene().planted;
+    assert.equal(copies.length, 2); assert.notEqual(copies[0].id, copies[1].id);
+    assert.equal(copies[1].kind, "stump-house"); assert.equal(copies[1].scale, 1.3); assert.equal(copies[1].rotation, 35);
+    harness.controller.undo(); assert.equal(harness.scene().planted.length, 1);
+    assert.equal(harness.controller.selectById(house.id), true);
+    harness.controller.setLayer("trees", false); harness.flush(); assert.equal(harness.status.selected.kind, "stump-house", "hiding vegetation never hides a house");
+    harness.key("7", { code: "Numpad7", target: harness.button }); harness.flush(); assert.equal(harness.status.brush, "stump-house");
+    savedJson = harness.controller.getSceneJson();
+    assert.deepEqual(parseScene(savedJson), harness.scene());
+    assert.deepEqual(parseScene(serializeScene(initialScene())), initialScene(), "existing version-1 scenes gain no unsolicited default house");
+  } finally { harness.dispose(); }
+  const restored = controllerHarness(savedJson);
+  try {
+    assert.deepEqual(restored.scene(), JSON.parse(savedJson));
+    assert.equal(restored.controller.selectById(houseId), true);
+    restored.flush(); assert.equal(restored.status.selected.kind, "stump-house"); assert.equal(restored.status.selected.rotation, 35);
+    assert.equal(restored.status.storage, "saved");
+  } finally { restored.dispose(); }
 });

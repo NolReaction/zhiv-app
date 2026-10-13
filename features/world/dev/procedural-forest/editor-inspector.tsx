@@ -4,7 +4,7 @@ import type { ForestObject, ObjectKind } from "./objects";
 import { EditorButton } from "./editor-button";
 import styles from "./procedural-forest-preview.module.css";
 
-export const objectNames: Record<ObjectKind, string> = { tree: "Дерево", shrub: "Куст", rock: "Камень", ruins: "Руины", bridge: "Мост", jetty: "Причал" };
+export const objectNames: Record<ObjectKind, string> = { tree: "Дерево", shrub: "Куст", rock: "Камень", ruins: "Руины", bridge: "Мост", jetty: "Причал", "stump-house": "Дом-пень" };
 
 function NumberField({ label, value, min, max, step = 1, change }: { label: string; value: number; min: number; max: number; step?: number; change: (value: number) => void }) {
   const formatted = String(Math.round(value * 100) / 100);
@@ -21,7 +21,7 @@ export function EditorInspector({ object, width, update, duplicate, remove }: {
   update: (patch: Partial<Pick<ForestObject, "x" | "y" | "scale" | "rotation" | "variant">>) => void;
   duplicate: () => void; remove: () => void;
 }) {
-  if (!object) return <div className={styles.emptySelection}><strong>Выбери предмет на карте</strong><p>Дерево, куст, камень, руины, мост или причал. Затем перетащи его или измени параметры здесь.</p></div>;
+  if (!object) return <div className={styles.emptySelection}><strong>Выбери предмет на карте</strong><p>Дерево, куст, камень или постройку. Затем перетащи предмет или измени параметры здесь.</p></div>;
   return <div className={styles.inspector}>
     <div className={styles.selectionHeading}><strong>{objectNames[object.kind]}</strong><span>ВЫБРАН</span></div>
     <div className={styles.fields}>
@@ -31,7 +31,7 @@ export function EditorInspector({ object, width, update, duplicate, remove }: {
       <NumberField label="Поворот" value={object.rotation ?? 0} min={-180} max={180} step={5} change={rotation => update({ rotation })} />
     </div>
     <p className={styles.small}>Размер в процентах, поворот в градусах. Enter применяет введённое число.</p>
-    {["tree", "shrub", "rock"].includes(object.kind) && <label className={styles.variant}><span>Внешний вид</span><select aria-label="Внешний вид" value={object.variant} onChange={event => update({ variant: Number(event.target.value) })}>{Array.from({ length: 24 }, (_, index) => <option key={index} value={index}>Вариант {index + 1}</option>)}</select></label>}
+    {["tree", "shrub", "rock", "stump-house"].includes(object.kind) && <label className={styles.variant}><span>Внешний вид</span><select aria-label="Внешний вид" value={object.variant} onChange={event => update({ variant: Number(event.target.value) })}>{Array.from({ length: 24 }, (_, index) => <option key={index} value={index}>Вариант {index + 1}</option>)}</select></label>}
     <div className={styles.selectionActions}><EditorButton type="button" onClick={duplicate}><Copy size={15} /> Дублировать</EditorButton><EditorButton type="button" onClick={remove}><Trash2 size={15} /> Удалить объект</EditorButton></div>
   </div>;
 }

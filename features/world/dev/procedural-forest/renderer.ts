@@ -1,6 +1,7 @@
 import { drawTree, drawShrub } from "./foliage";
 import { drawTerrain } from "./terrain";
 import { drawBridge, drawJetty, drawRock, drawRuins } from "./props";
+import { drawStumpHouse } from "./stump-house";
 import { compareObjects, forestObjects, initialProps, objectBounds, WORLD_HEIGHT, type Bounds, type ForestObject } from "./objects";
 
 export type CanvasFactory = (width: number, height: number) => HTMLCanvasElement;
@@ -36,12 +37,14 @@ export function createForestPainter(makeCanvas: CanvasFactory) {
     const key = `${object.kind}:${object.variant}`;
     let canvas = sprites.get(key);
     if (!canvas) {
-      canvas = makeCanvas(288, 288);
+      const house = object.kind === "stump-house";
+      canvas = makeCanvas(house ? 704 : 288, house ? 704 : 288);
       const ctx = canvas.getContext("2d");
       if (!ctx) throw new Error("Браузер не поддерживает Canvas 2D.");
-      ctx.scale(1.5, 1.5); ctx.translate(96, 172);
+      ctx.scale(house ? 2 : 1.5, house ? 2 : 1.5); ctx.translate(house ? 176 : 96, house ? 300 : 172);
       if (object.kind === "tree") drawTree(ctx, object.variant);
       else if (object.kind === "shrub") drawShrub(ctx, object.variant);
+      else if (house) drawStumpHouse(ctx, object.variant);
       else drawRock(ctx, object.variant);
       sprites.set(key, canvas);
     }
@@ -85,6 +88,7 @@ export function createForestPainter(makeCanvas: CanvasFactory) {
       if (object.kind === "ruins") drawRuins(ctx);
       else if (object.kind === "jetty") drawJetty(ctx);
       else if (object.kind === "bridge") drawBridge(ctx);
+      else if (object.kind === "stump-house") ctx.drawImage(sprite(object), -176, -300, 352, 352);
       else ctx.drawImage(sprite(object), -96, -172, 192, 192);
       ctx.restore();
     }

@@ -11,7 +11,7 @@ import styles from "./procedural-forest-preview.module.css";
 
 type Controller = ReturnType<typeof import("./controller")["createForestController"]>;
 const modes = [{ id: "select", label: "Выбрать", shortcut: "V", icon: MousePointer2 }, { id: "pan", label: "Осмотреть", shortcut: "H", icon: Hand }, { id: "plant", label: "Добавить", shortcut: "B", icon: Sprout }, { id: "erase", label: "Убрать", shortcut: "E", icon: X }] as const;
-const kinds: ObjectKind[] = ["tree", "shrub", "rock", "ruins", "bridge", "jetty"];
+const kinds: ObjectKind[] = ["tree", "shrub", "rock", "ruins", "bridge", "jetty", "stump-house"];
 
 export function ProceduralForestPreview() {
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -107,7 +107,7 @@ export function ProceduralForestPreview() {
             <dl>
               <div><dt><kbd>V</kbd> / <kbd>H</kbd></dt><dd>Выбрать предмет / двигать карту</dd></div>
               <div><dt><kbd>B</kbd> / <kbd>E</kbd></dt><dd>Добавить / убрать предмет</dd></div>
-              <div><dt><kbd>1</kbd>…<kbd>6</kbd></dt><dd>Выбрать предмет в палитре</dd></div>
+              <div><dt><kbd>1</kbd>…<kbd>7</kbd></dt><dd>Выбрать предмет в палитре; 7 — дом-пень</dd></div>
               <div><dt><kbd>Пробел</kbd></dt><dd>Удерживать и тянуть — двигать карту; также работает средняя кнопка мыши</dd></div>
               <div><dt><kbd>Shift</kbd></dt><dd>При перетаскивании двигать по одной оси; со стрелками шаг 10 единиц</dd></div>
               <div><dt><kbd>Ctrl/⌘ D</kbd></dt><dd>Дублировать выбранный предмет</dd></div>

@@ -12,7 +12,7 @@ type ObjectPatch = Partial<Pick<ForestObject, "x" | "y" | "scale" | "rotation" |
 type Point = { x: number; y: number };
 type Gesture = { start: Point; moved: boolean; pinched: boolean; pan: boolean; temporaryPan: boolean; pointerId: number;
   object?: ForestObject; grabOffset?: Point; shift: boolean; lockAxis?: "x" | "y" };
-const names: Record<ObjectKind, string> = { tree: "дерево", shrub: "куст", rock: "камень", ruins: "руины", bridge: "мост", jetty: "причал" };
+const names: Record<ObjectKind, string> = { tree: "дерево", shrub: "куст", rock: "камень", ruins: "руины", bridge: "мост", jetty: "причал", "stump-house": "дом-пень" };
 
 export function createForestController(canvas: HTMLCanvasElement, report: (status: ForestStatus) => void) {
   const ctx = canvas.getContext("2d");
@@ -291,10 +291,10 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
     }
     const tools: Partial<Record<string, ToolMode>> = { KeyV: "select", KeyH: "pan", KeyB: "plant", KeyE: "erase" };
     if (tools[code]) { event.preventDefault(); if (!event.repeat) setMode(tools[code]); return; }
-    const digit = /^(?:Digit|Numpad)([1-6])$/.exec(code);
+    const digit = /^(?:Digit|Numpad)([1-7])$/.exec(code);
     if (digit) {
       event.preventDefault();
-      if (!event.repeat) { setBrush((["tree", "shrub", "rock", "ruins", "bridge", "jetty"] as const)[Number(digit[1]) - 1]); setMode("plant"); }
+      if (!event.repeat) { setBrush((["tree", "shrub", "rock", "ruins", "bridge", "jetty", "stump-house"] as const)[Number(digit[1]) - 1]); setMode("plant"); }
       return;
     }
     if (event.key === "Enter" && event.target !== canvas) return;

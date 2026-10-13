@@ -1,6 +1,6 @@
 import { hash, sampleGround } from "./layout";
 
-export type ForestObject = { id: string; x: number; y: number; scale: number; variant: number; kind: "tree" | "shrub" | "rock" | "ruins" | "bridge" | "jetty"; rotation?: number };
+export type ForestObject = { id: string; x: number; y: number; scale: number; variant: number; kind: "tree" | "shrub" | "rock" | "ruins" | "bridge" | "jetty" | "stump-house"; rotation?: number };
 export type ObjectKind = ForestObject["kind"];
 export type Bounds = { x: number; y: number; width: number; height: number };
 export const INITIAL_WIDTH = 1600;
@@ -29,6 +29,7 @@ function localBounds(object: ForestObject): Bounds {
     case "ruins": return { x: -75, y: -101, width: 198, height: 158 };
     case "bridge": return { x: -67, y: -46, width: 144, height: 101 };
     case "jetty": return { x: -9, y: -13, width: 145, height: 86 };
+    case "stump-house": return { x: -176, y: -300, width: 352, height: 352 };
   }
 }
 
@@ -107,7 +108,7 @@ export function pickObject(objects: readonly ForestObject[], x: number, y: numbe
     } else {
       const bounds = localBounds(object);
       // Keep a prop's full silhouette selectable, without extending to its cast shadow.
-      const maxY = object.kind === "ruins" ? 37 : object.kind === "jetty" ? 55 : 29;
+      const maxY = object.kind === "stump-house" ? 50 : object.kind === "ruins" ? 37 : object.kind === "jetty" ? 55 : 29;
       if (localX >= bounds.x && localX <= bounds.x + bounds.width && localY >= bounds.y && localY <= maxY) return object;
     }
   }

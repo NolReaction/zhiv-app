@@ -5,7 +5,7 @@ export const SCENE_STORAGE_KEY = "zhiv:prototype:procedural-forest:scene:v1";
 export const MAX_SCENE_BYTES = 2_000_000;
 const MAX_OBJECTS = 5_000;
 const MAX_EDITS = 10_000;
-const kinds = new Set(["tree", "shrub", "rock", "ruins", "bridge", "jetty"]);
+const kinds = new Set(["tree", "shrub", "rock", "ruins", "bridge", "jetty", "stump-house"]);
 const objectKeys = new Set(["id", "kind", "x", "y", "scale", "variant", "rotation"]);
 const sceneKeys = new Set(["version", "seed", "width", "planted", "removed", "modified"]);
 
