@@ -20,6 +20,8 @@
 .page :is(button, a, canvas):focus-visible { outline: 2px solid #cee4a2; outline-offset: 4px; }
 .modes button { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 13px 2px 11px; font-size: 10px; }
 .modes button[aria-pressed="true"] { color: #d5e7b4; background: #37452a; border-color: #809156; }
+.page kbd { font: 10px ui-monospace, monospace; border: 1px solid #8da27645; border-radius: 3px; background: #102018; color: #bccfa3; padding: 2px 5px; }
+.modes kbd { font-size: 9px; }
 .small { font-size: 10px; color: #8f9e88; line-height: 1.65; margin: 11px 0 0; }
 .page .textButton { display: flex; align-items: center; gap: 6px; background: transparent; border: 0; padding: 12px 0 0; font-size: 10px; color: #afbc99; }
 .page .expandButton { background: #bcce88; color: #1e311f; display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 14px; font-size: 12px; font-weight: 650; border: 0; }
@@ -44,6 +46,8 @@
 .canvas[data-tool="plant"], .canvas[data-tool="erase"] { cursor: crosshair; }
 .canvas[data-tool="select"] { cursor: default; }
 .canvas[data-tool="select"]:active { cursor: move; }
+.canvas[data-dragging="true"] { cursor: grabbing; }
+.panHint { pointer-events: none; position: absolute; top: 14px; left: 50%; transform: translateX(-50%); border: 1px solid #afc49350; border-radius: 5px; padding: 8px 12px; background: #14271ded; color: #d5e7b4; font-size: 11px; white-space: nowrap; }
 .crosshair { pointer-events: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font: 25px monospace; color: #ffffdc; text-shadow: 0 1px 3px #000; }
 .mapTools { position: absolute; right: 16px; bottom: 16px; display: flex; align-items: center; gap: 1px; border: 1px solid #83956a60; border-radius: 5px; overflow: hidden; background: #14271dec; box-shadow: 0 3px 20px #08171044; }
 .mapTools button { border: 0; border-radius: 0; display: grid; place-items: center; width: 37px; height: 37px; background: transparent; }
@@ -68,13 +72,20 @@
 .field input:focus-visible, .variant select:focus-visible { outline: 2px solid #cee4a2; outline-offset: 2px; }
 .variant { margin-top: 14px; }
 .palette { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
-.palette button { padding: 13px 4px; font-size: 11px; }
+.palette button { display: flex; align-items: center; justify-content: center; gap: 7px; padding: 13px 4px; font-size: 11px; }
 .palette button[aria-pressed="true"] { color: #e3efc9; border-color: #9aad72; background: #37452a; }
 .fileActions { display: grid; gap: 7px; }
 .fileActions button { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 12px; font-size: 12px; }
 .fileInput { display: none; }
 .saveState { font-size: 11px; line-height: 1.6; color: #c0d297; margin: 12px 0 0; }
 .importError { font-size: 11px; line-height: 1.6; color: #efb6a0; }
+.shortcutHelp { border-top: 1px solid #a5b28a25; padding: 16px 0; color: #aebf9f; font-size: 11px; }
+.shortcutHelp summary { cursor: pointer; color: #c5d7ac; }
+.shortcutHelp dl { margin: 15px 0; }
+.shortcutHelp dl > div { display: grid; grid-template-columns: 92px 1fr; gap: 9px; margin: 12px 0; }
+.shortcutHelp dt { display: flex; align-items: start; flex-wrap: wrap; gap: 3px; }
+.shortcutHelp dd { margin: 0; line-height: 1.6; }
+.shortcutHelp p { font-size: 10px; line-height: 1.7; color: #8f9e88; }
 @media (max-width: 900px) { .header { padding: 0 20px; } .layout { grid-template-columns: 235px minmax(0, 1fr); padding: 20px; gap: 20px; } .intro h1 { font-size: 28px; } .viewport { min-height: 450px; } .footerDetail { display: none; } }
 @media (max-width: 650px) { .header { height: 60px; gap: 14px; padding: 0 14px; } .brand { font-size: 8px; letter-spacing: .08em; gap: 7px; } .brand > svg, .badge { display: none; } .divider { padding: 0 5px; } .layout { display: flex; flex-direction: column; padding: 14px; gap: 20px; } .mapPanel { position: static; order: -1; width: 100%; } .viewport { min-height: 0; height: 60svh; max-height: 620px; } .mapHeading, .mapFooter { padding: 12px; } .status { padding: 10px 12px; } .keyboard { padding: 0 12px 10px; } .sidebar { padding: 0 3px; } .intro h1 br { display: none; } .intro p { max-width: none; margin-bottom: 19px; } .intro h1 { font-size: 29px; margin: 10px 0; } .section { padding: 18px 0; } .small, .note { font-size: 11px; } .modes button { font-size: 10px; } .toggles button, .actions button { font-size: 12px; } .historyActions button, .selectionActions button, .palette button { font-size: 12px; } .label { font-size: 10px; } .mapTools { right: 10px; bottom: 10px; } }
 @media (prefers-reduced-motion: reduce) { .page button { transition: none; } }

@@ -117,20 +117,25 @@ test("storage restoration is isolated, survives reload and handles denial, corru
 });
 
 /** Input events and storage are real controller boundaries; drawing is a no-op here. */
-function controllerHarness(initialJson = null) {
+function controllerHarness(initialJson = null, focusBody = false) {
   const previousGlobals = new Map();
   const install = (key, value) => { previousGlobals.set(key, Object.getOwnPropertyDescriptor(globalThis, key)); Object.defineProperty(globalThis, key, { value, configurable: true, writable: true }); };
-  const frames = new Map(), handlers = new Map(), captured = new Set();
-  let frameId = 0, writes = 0, lastStatus;
+  const frames = new Map(), handlers = new Map(), editorHandlers = new Map(), windowHandlers = new Map(), captured = new Set();
+  let frameId = 0, writes = 0, focuses = 0, lastStatus;
   const values = new Map(initialJson === null ? [] : [[SCENE_STORAGE_KEY, initialJson]]);
   const storage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => { writes++; values.set(key, value); } };
   const noop = () => {};
   const ctx = new Proxy({}, { get: (target, key) => target[key] ?? (String(key).includes("Gradient") ? () => ({ addColorStop: noop }) : noop) });
+  const editor = { contains: target => target === canvas || target?.insideEditor === true,
+    addEventListener: (type, handler) => editorHandlers.set(type, handler), removeEventListener: type => editorHandlers.delete(type), focus: () => { focuses++; } };
   const canvas = { dataset: {}, width: 0, height: 0, getContext: () => ctx, getBoundingClientRect: () => ({ left: 0, top: 0, width: 1000, height: 1000 }),
     addEventListener: (type, handler) => handlers.set(type, handler), removeEventListener: type => handlers.delete(type), focus: noop,
+    closest: selector => selector === "[data-forest-editor]" ? editor : null,
     setPointerCapture: id => captured.add(id), hasPointerCapture: id => captured.has(id), releasePointerCapture: id => captured.delete(id) };
-  install("window", { devicePixelRatio: 1, localStorage: storage });
-  install("document", { createElement: () => ({ width: 0, height: 0, getContext: () => ctx }) });
+  install("window", { devicePixelRatio: 1, localStorage: storage,
+    addEventListener: (type, handler) => windowHandlers.set(type, handler), removeEventListener: type => windowHandlers.delete(type) });
+  const body = {};
+  install("document", { body, activeElement: focusBody ? body : {}, createElement: () => ({ width: 0, height: 0, getContext: () => ctx }) });
   install("requestAnimationFrame", callback => { const id = ++frameId; frames.set(id, callback); return id; });
   install("cancelAnimationFrame", id => frames.delete(id));
   install("ResizeObserver", class { observe() {} disconnect() {} });
@@ -139,11 +144,23 @@ function controllerHarness(initialJson = null) {
     controller,
     scene: () => JSON.parse(controller.getSceneJson()),
     get writes() { return writes; },
+    get focuses() { return focuses; },
     get status() { return lastStatus; },
-    flush() { const pending = [...frames.values()]; frames.clear(); for (const callback of pending) callback(); },
-    pointer(type, x, y, pointerId = 1) { handlers.get(type)?.({ type, target: canvas, pointerId, button: 0, clientX: x, clientY: y }); },
-    screen(x, y) { return { x: 500 + (x - 800) * .5875, y: 500 + (y - 800) * .5875 }; },
-    key(key, modifiers = {}) { handlers.get("keydown")?.({ key, target: canvas, preventDefault: noop, ...modifiers }); },
+    get cursor() { return canvas.dataset.tool; },
+    get pendingFrames() { return frames.size; },
+    button: { insideEditor: true, closest: () => null },
+    input: { insideEditor: true, closest: selector => selector.includes("input") ? {} : null },
+    contenteditable: { insideEditor: true, closest: () => null, isContentEditable: true },
+    outside: { insideEditor: false, closest: () => null },
+    flush(now) { const pending = [...frames.values()]; frames.clear(); for (const callback of pending) callback(now); },
+    pointer(type, x, y, pointerId = 1, button = 0, modifiers = {}) { handlers.get(type)?.({ type, target: canvas, pointerId, button, shiftKey: false, clientX: x, clientY: y, preventDefault: noop, ...modifiers }); },
+    screen(x, y, zoom = .5875) { return { x: 500 + (x - 800) * zoom, y: 500 + (y - 800) * zoom }; },
+    key(key, modifiers = {}) {
+      let prevented = false;
+      editorHandlers.get("keydown")?.({ key, target: canvas, preventDefault: () => { prevented = true; }, ...modifiers }); return prevented;
+    },
+    keyup(key, modifiers = {}) { windowHandlers.get("keyup")?.({ key, target: canvas, preventDefault: noop, ...modifiers }); },
+    blur() { windowHandlers.get("blur")?.(); },
     dispose() {
       controller.dispose();
       for (const [key, descriptor] of previousGlobals) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else delete globalThis[key]; }
@@ -222,4 +239,158 @@ test("corrupt restored data is shown as unavailable until a successful edit save
     harness.controller.resetEdits(); assert.equal(harness.scene().modified.length, 0);
     harness.controller.undo(); assert.deepEqual(harness.scene(), edited);
   } finally { harness.dispose(); }
+});
+
+test("physical tool and brush hotkeys work with Russian keys and toolbar focus", () => {
+  const harness = controllerHarness();
+  try {
+    for (const [code, key, mode] of [["KeyH", "р", "pan"], ["KeyV", "м", "select"], ["KeyB", "и", "plant"], ["KeyE", "у", "erase"]]) {
+      assert.equal(harness.key(key, { code, target: harness.button }), true);
+      harness.flush(); assert.equal(harness.status.mode, mode); assert.equal(harness.cursor, mode);
+    }
+    for (const [i, brush] of ["tree", "shrub", "rock", "ruins", "bridge", "jetty"].entries()) {
+      harness.key(String(i + 1), { code: `Digit${i + 1}`, target: harness.button }); harness.flush();
+      assert.equal(harness.status.brush, brush); assert.equal(harness.status.mode, "plant");
+    }
+    harness.controller.selectById("prop:bridge");
+    harness.key("в", { code: "KeyD", ctrlKey: true, target: harness.button }); assert.equal(harness.scene().planted.length, 1);
+    harness.key("в", { code: "KeyD", ctrlKey: true, repeat: true, target: harness.button }); assert.equal(harness.scene().planted.length, 1, "held duplicate hotkey never creates repeated objects");
+    harness.key("я", { code: "KeyZ", metaKey: true, target: harness.button }); assert.equal(harness.scene().planted.length, 0);
+    harness.key("я", { code: "KeyZ", metaKey: true, shiftKey: true, target: harness.button }); assert.equal(harness.scene().planted.length, 1);
+    harness.key("я", { code: "KeyZ", ctrlKey: true }); harness.key("н", { code: "KeyY", ctrlKey: true }); assert.equal(harness.scene().planted.length, 1);
+    assert.equal(harness.key("p", { code: "KeyP", ctrlKey: true, target: harness.button }), false, "unrelated browser shortcuts keep their native behavior");
+  } finally { harness.dispose(); }
+});
+
+test("editor shortcuts leave inputs, editable text and outside focus alone, and Enter on buttons never paints", () => {
+  const harness = controllerHarness();
+  try {
+    harness.controller.selectById("prop:bridge"); harness.controller.updateSelected({ rotation: 10 });
+    const saved = harness.controller.getSceneJson();
+    for (const target of [harness.input, harness.contenteditable, harness.outside]) {
+      for (const event of [{ key: "р", code: "KeyH" }, { key: " ", code: "Space" }, { key: "я", code: "KeyZ", ctrlKey: true }, { key: "Delete" }]) {
+        assert.equal(harness.key(event.key, { ...event, target }), false);
+      }
+    }
+    harness.flush(); assert.equal(harness.status.mode, "select"); assert.equal(harness.status.temporaryPan, false);
+    assert.equal(harness.controller.getSceneJson(), saved);
+    harness.key("3", { code: "Digit3", target: harness.button });
+    assert.equal(harness.key("Enter", { target: harness.button }), false);
+    assert.equal(harness.scene().planted.length, 0, "keyboard activation of a toolbar button is not a paint command");
+    harness.key("Enter"); assert.equal(harness.scene().planted.length, 1, "canvas Enter remains an explicit paint command");
+  } finally { harness.dispose(); }
+});
+
+test("Space and middle-mouse pan latch through keyup without modifying the selected object or erase/plant tools", () => {
+  const harness = controllerHarness();
+  try {
+    harness.controller.selectById("prop:ruins"); harness.controller.setMode("erase");
+    const start = harness.screen(780, 350), saved = harness.controller.getSceneJson();
+    harness.key(" ", { code: "Space", target: harness.button }); harness.flush();
+    assert.equal(harness.status.mode, "erase"); assert.equal(harness.status.temporaryPan, true); assert.equal(harness.cursor, "pan");
+    harness.pointer("pointerdown", start.x, start.y);
+    harness.keyup(" ", { code: "Space" }); harness.pointer("pointermove", start.x + 40, start.y + 30); harness.flush();
+    assert.equal(harness.status.temporaryPan, true, "releasing Space does not convert an ongoing pan to erase or object drag");
+    harness.pointer("pointerup", start.x + 40, start.y + 30); harness.flush();
+    assert.equal(harness.status.mode, "erase"); assert.equal(harness.status.temporaryPan, false); assert.equal(harness.cursor, "erase");
+    assert.equal(harness.controller.getSceneJson(), saved); assert.equal(harness.writes, 0);
+    harness.controller.setMode("plant"); harness.pointer("pointerdown", 600, 500, 2, 1);
+    harness.pointer("pointermove", 650, 510, 2, 1); harness.flush(); assert.equal(harness.status.temporaryPan, true);
+    harness.pointer("pointerup", 650, 510, 2, 1); harness.flush();
+    assert.equal(harness.status.mode, "plant"); assert.equal(harness.status.temporaryPan, false);
+    assert.equal(harness.controller.getSceneJson(), saved); assert.equal(harness.writes, 0);
+    harness.controller.setMode("select"); harness.controller.fit();
+    harness.pointer("pointerdown", start.x, start.y); harness.pointer("pointermove", start.x + 30, start.y + 10);
+    harness.key(" ", { code: "Space" }); harness.flush(); assert.equal(harness.status.selected.x, 780, "Space during a drag rolls back its preview before panning");
+    harness.blur(); harness.flush(); assert.equal(harness.status.temporaryPan, false); assert.equal(harness.cursor, "select");
+    harness.pointer("pointerup", start.x + 30, start.y + 10); assert.equal(harness.controller.getSceneJson(), saved); assert.equal(harness.writes, 0);
+  } finally { harness.dispose(); }
+});
+
+test("edge pan continues with a stationary pointer, preserves grab offset and zoom scale, and remains one undo command", () => {
+  const harness = controllerHarness();
+  try {
+    const fixture = initialScene();
+    fixture.removed = forestObjects(fixture.seed, { x: 0, y: 0, width: fixture.width, height: WORLD_HEIGHT }).map(object => object.id);
+    fixture.modified = [{ ...initialProps().find(object => object.kind === "ruins"), x: 750, y: 800 }];
+    harness.controller.importScene(serializeScene(fixture)); harness.controller.selectById("prop:ruins");
+    const before = harness.scene(), writes = harness.writes;
+    harness.controller.zoom(2); harness.flush(900);
+    const zoom = harness.status.zoom, start = harness.screen(750, 750, zoom);
+    harness.pointer("pointerdown", start.x, start.y); harness.pointer("pointermove", start.x + 2, start.y);
+    harness.flush(950); assert.equal(harness.status.selected.x, 750, "small motion cannot jump the anchor to the pointer");
+    harness.pointer("pointermove", 950, 460); harness.flush(1000);
+    const first = { ...harness.status.selected }; assert.equal(harness.pendingFrames, 1, "autopan schedules itself while the pointer is stationary");
+    harness.flush(1016); const second = { ...harness.status.selected };
+    const expectedAdvance = (480 * (950 - 928) / 72) * .016 / zoom;
+    assert.ok(Math.abs(second.x - first.x - expectedAdvance) < 1e-8, "camera edge speed is measured in screen pixels and adjusted for zoom");
+    assert.ok(Math.abs(second.y - (800 + (460 - start.y) / zoom)) < 1e-8, "the initial off-center grab offset is preserved");
+    assert.equal(harness.writes, writes, "autopan never saves a partial drag");
+    harness.flush(2016);
+    assert.ok(harness.status.selected.x - second.x < 10, "long frame gaps are capped instead of causing a large jump");
+    harness.pointer("pointerup", 950, 460); harness.flush(2032);
+    assert.equal(harness.writes, writes + 1); assert.equal(harness.pendingFrames, 0);
+    harness.controller.undo(); assert.deepEqual(harness.scene(), before, "one undo restores the whole drag including autopan");
+    harness.controller.fit(); harness.controller.zoom(2); harness.flush(2100);
+    harness.pointer("pointerdown", start.x, start.y); harness.pointer("pointermove", 700, 460); harness.flush(2116);
+    const beforeZoom = { ...harness.status.selected };
+    harness.controller.zoom(1.3, { x: 700, y: 460 }); harness.flush(2132);
+    assert.ok(Math.abs(harness.status.selected.x - beforeZoom.x) < 1e-8);
+    assert.ok(Math.abs(harness.status.selected.y - beforeZoom.y) < 1e-8, "zoom at the grabbed point does not change the object's coordinates");
+    harness.key("Escape"); harness.flush(2148); assert.deepEqual(harness.scene(), before); assert.equal(harness.pendingFrames, 0);
+  } finally { harness.dispose(); }
+});
+
+test("window blur rolls back an object drag and ignores late pointerup instead of committing it", () => {
+  const harness = controllerHarness();
+  try {
+    const start = harness.screen(780, 350), before = harness.controller.getSceneJson();
+    harness.pointer("pointerdown", start.x, start.y); harness.pointer("pointermove", start.x + 50, start.y + 30);
+    harness.flush(); assert.ok(harness.status.selected.x > 780);
+    harness.blur(); harness.flush(); assert.equal(harness.status.selected.x, 780);
+    harness.pointer("pointerup", start.x + 50, start.y + 30); harness.flush();
+    assert.equal(harness.controller.getSceneJson(), before); assert.equal(harness.writes, 0); assert.equal(harness.pendingFrames, 0);
+    harness.pointer("pointerdown", start.x, start.y); harness.pointer("pointermove", start.x + 20, start.y); harness.pointer("pointerup", start.x + 20, start.y);
+    assert.equal(harness.writes, 1, "the next gesture works after blur cleanup");
+  } finally { harness.dispose(); }
+});
+
+test("Shift drag locks its initial dominant axis and releasing Shift restores free movement", () => {
+  const harness = controllerHarness();
+  try {
+    const start = harness.screen(780, 350);
+    harness.pointer("pointerdown", start.x, start.y, 1, 0, { shiftKey: true });
+    harness.pointer("pointermove", start.x + 40, start.y + 10, 1, 0, { shiftKey: true }); harness.flush();
+    assert.equal(harness.status.selected.id, "prop:ruins"); assert.equal(harness.status.selected.y, 420);
+    harness.pointer("pointermove", start.x + 5, start.y + 60, 1, 0, { shiftKey: true }); harness.flush();
+    assert.equal(harness.status.selected.y, 420, "the chosen axis does not change when the pointer crosses a diagonal");
+    harness.keyup("Shift", { code: "ShiftLeft" }); harness.flush();
+    assert.ok(Math.abs(harness.status.selected.y - (420 + 60 / .5875)) < 1e-8);
+    harness.pointer("pointerup", start.x + 5, start.y + 60); harness.controller.undo(); harness.controller.fit(); harness.flush();
+    harness.pointer("pointerdown", start.x, start.y, 1, 0, { shiftKey: true });
+    harness.pointer("pointermove", start.x + 10, start.y + 40, 1, 0, { shiftKey: true }); harness.flush();
+    assert.equal(harness.status.selected.x, 780);
+    harness.pointer("pointermove", start.x + 50, start.y + 60, 1, 0, { shiftKey: true }); harness.flush();
+    assert.equal(harness.status.selected.x, 780); harness.pointer("pointercancel", start.x + 50, start.y + 60);
+  } finally { harness.dispose(); }
+});
+
+test("vegetation palette and plant hotkeys unhide their layer, and viewport layer state is reported", () => {
+  const harness = controllerHarness();
+  try {
+    harness.controller.setLayer("trees", false); harness.controller.setLayer("grid", true); harness.flush();
+    assert.equal(harness.status.trees, false); assert.equal(harness.status.grid, true);
+    harness.controller.setBrush("rock"); harness.flush(); assert.equal(harness.status.trees, false);
+    harness.key("1", { code: "Digit1" }); harness.flush(); assert.equal(harness.status.trees, true); assert.equal(harness.status.brush, "tree");
+    harness.controller.setLayer("trees", false); harness.controller.setBrush("shrub"); harness.flush(); assert.equal(harness.status.trees, true);
+    harness.controller.setLayer("trees", false); harness.key("и", { code: "KeyB" }); harness.flush();
+    assert.equal(harness.status.mode, "plant"); assert.equal(harness.status.trees, true);
+  } finally { harness.dispose(); }
+});
+
+test("the editor receives initial hotkey focus only while the document body still owns focus", () => {
+  const automatic = controllerHarness(null, true);
+  try { assert.equal(automatic.focuses, 1); } finally { automatic.dispose(); }
+  const preserved = controllerHarness(null, false);
+  try { assert.equal(preserved.focuses, 0, "existing input or link focus is preserved"); } finally { preserved.dispose(); }
 });
