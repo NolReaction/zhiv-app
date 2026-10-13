@@ -31,7 +31,7 @@ function block(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h
 }
 
 export function drawRuins(ctx: CanvasRenderingContext2D) {
-  ctx.save(); ctx.translate(780, 420);
+  ctx.save();
   ctx.fillStyle = "#193a2c55"; ctx.beginPath(); ctx.ellipse(23, 20, 98, 35, -.1, 0, Math.PI * 2); ctx.fill();
   // Broken stone steps, two masonry piers and a half-fallen lintel.
   for (let row = 0; row < 3; row++) for (let i = 0; i < 5; i++) block(ctx, -67 + i * 26 - row * 2, 34 - row * 12, 24, 6, 13);
@@ -48,7 +48,7 @@ export function drawRuins(ctx: CanvasRenderingContext2D) {
 }
 
 export function drawJetty(ctx: CanvasRenderingContext2D) {
-  ctx.save(); ctx.translate(1330, 1070); ctx.rotate(.36);
+  ctx.save(); ctx.rotate(.36);
   ctx.fillStyle = "#103c3f55"; ctx.fillRect(4, 13, 131, 59);
   for (const x of [0, 110]) for (const y of [0, 44]) {
     ctx.fillStyle = "#3f3324"; ctx.fillRect(x, y - 8, 8, 32);
@@ -64,7 +64,7 @@ export function drawJetty(ctx: CanvasRenderingContext2D) {
 }
 
 export function drawBridge(ctx: CanvasRenderingContext2D) {
-  ctx.save(); ctx.translate(749, 1249); ctx.rotate(.22);
+  ctx.save(); ctx.rotate(.22);
   ctx.fillStyle = "#132d2970"; ctx.fillRect(-61, 0, 137, 54);
   ctx.fillStyle = "#3d3325"; ctx.fillRect(-64, -16, 132, 44);
   for (let i = 0; i < 15; i++) {

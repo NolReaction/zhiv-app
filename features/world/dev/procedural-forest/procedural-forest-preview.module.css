@@ -5,7 +5,7 @@
 .brand > svg { color: #a3ba77; }
 .divider { padding: 0 9px; color: #68755e; }
 .badge { margin-left: auto; color: #8f9d80; letter-spacing: .14em; font-size: 9px; border: 1px solid #8c9e653b; padding: 7px 10px; border-radius: 3px; }
-.layout { display: grid; grid-template-columns: 290px minmax(0, 1fr); gap: 30px; max-width: 1720px; margin: auto; padding: 32px; }
+.layout { display: grid; grid-template-columns: 310px minmax(0, 1fr); gap: 30px; max-width: 1720px; margin: auto; padding: 32px; }
 .sidebar { padding: 13px 0 0; }
 .eyebrow { color: #a7bd76; letter-spacing: .18em; font-size: 9px; font-weight: 650; }
 .intro h1 { font-family: Georgia, "Times New Roman", serif; font-size: clamp(25px, 2.3vw, 35px); font-weight: 400; letter-spacing: -.025em; line-height: 1.15; margin: 16px 0; }
@@ -13,7 +13,7 @@
 .section { border-top: 1px solid #a5b28a25; padding: 22px 0; }
 .label { display: flex; gap: 12px; color: #758666; letter-spacing: .12em; font-size: 9px; margin-bottom: 15px; }
 .label span { color: #b4bfa8; }
-.modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.modes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
 .page button { cursor: pointer; border: 1px solid #b0c09328; border-radius: 5px; background: #1b2b22; color: #cad4c1; transition: background .15s; }
 .page button:hover:not(:disabled) { background: #30462d; }
 .page button:disabled { opacity: .38; cursor: default; }
@@ -33,7 +33,7 @@
 .actions { display: flex; gap: 7px; }
 .actions button { display: flex; align-items: center; justify-content: center; gap: 7px; padding: 11px 8px; flex: 1; font-size: 10px; }
 .note { color: #72816e; font-size: 9px; line-height: 1.65; margin-top: 15px; }
-.mapPanel { min-width: 0; align-self: start; border: 1px solid #7185663d; border-radius: 8px; background: #15231c; overflow: hidden; }
+.mapPanel { min-width: 0; align-self: start; position: sticky; top: 20px; border: 1px solid #7185663d; border-radius: 8px; background: #15231c; overflow: hidden; }
 .mapHeading, .mapFooter { display: flex; justify-content: space-between; align-items: center; padding: 17px 20px; font-size: 11px; color: #abb99c; }
 .mapHeading > span:first-child { display: flex; align-items: center; gap: 9px; color: #d1d9c6; }
 .mapHeading > span:last-child { font-size: 10px; letter-spacing: .08em; color: #89987d; }
@@ -42,6 +42,8 @@
 .canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
 .canvas:active { cursor: grabbing; }
 .canvas[data-tool="plant"], .canvas[data-tool="erase"] { cursor: crosshair; }
+.canvas[data-tool="select"] { cursor: default; }
+.canvas[data-tool="select"]:active { cursor: move; }
 .crosshair { pointer-events: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font: 25px monospace; color: #ffffdc; text-shadow: 0 1px 3px #000; }
 .mapTools { position: absolute; right: 16px; bottom: 16px; display: flex; align-items: center; gap: 1px; border: 1px solid #83956a60; border-radius: 5px; overflow: hidden; background: #14271dec; box-shadow: 0 3px 20px #08171044; }
 .mapTools button { border: 0; border-radius: 0; display: grid; place-items: center; width: 37px; height: 37px; background: transparent; }
@@ -52,6 +54,27 @@
 .status { border-top: 1px solid #71856626; margin: 0; padding: 11px 20px; font-size: 10px; color: #a6b397; line-height: 1.5; }
 .keyboard { margin: 0; padding: 0 20px 12px; color: #71836a; font-size: 9px; }
 .loading { position: absolute; inset: 0; display: grid; place-items: center; background: #11251eee; color: #c9d8ab; font-size: 13px; }
+.historyActions, .selectionActions { display: flex; gap: 6px; margin-top: 12px; }
+.historyActions button, .selectionActions button { display: flex; justify-content: center; align-items: center; gap: 6px; flex: 1; padding: 10px 5px; font-size: 10px; }
+.emptySelection { padding: 15px; border: 1px dashed #9aaa7040; border-radius: 6px; color: #b7c8a5; }
+.emptySelection strong { font-size: 12px; font-weight: 500; }
+.emptySelection p { font-size: 11px; line-height: 1.65; margin: 8px 0 0; color: #8f9e88; }
+.selectionHeading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.selectionHeading strong { color: #d5e7b4; font-size: 14px; font-weight: 500; }
+.selectionHeading span { color: #9aae7c; letter-spacing: .12em; font-size: 8px; }
+.field, .variant { display: flex; flex-direction: column; gap: 6px; font-size: 11px; color: #9daf92; min-width: 0; }
+.field input, .variant select { width: 100%; min-width: 0; border: 1px solid #adc08930; background: #132219; color: #d4dfc8; border-radius: 5px; padding: 9px; font: inherit; }
+.field input:focus-visible, .variant select:focus-visible { outline: 2px solid #cee4a2; outline-offset: 2px; }
+.variant { margin-top: 14px; }
+.palette { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.palette button { padding: 13px 4px; font-size: 11px; }
+.palette button[aria-pressed="true"] { color: #e3efc9; border-color: #9aad72; background: #37452a; }
+.fileActions { display: grid; gap: 7px; }
+.fileActions button { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 12px; font-size: 12px; }
+.fileInput { display: none; }
+.saveState { font-size: 11px; line-height: 1.6; color: #c0d297; margin: 12px 0 0; }
+.importError { font-size: 11px; line-height: 1.6; color: #efb6a0; }
 @media (max-width: 900px) { .header { padding: 0 20px; } .layout { grid-template-columns: 235px minmax(0, 1fr); padding: 20px; gap: 20px; } .intro h1 { font-size: 28px; } .viewport { min-height: 450px; } .footerDetail { display: none; } }
-@media (max-width: 650px) { .header { height: 60px; gap: 14px; padding: 0 14px; } .brand { font-size: 8px; letter-spacing: .08em; gap: 7px; } .brand > svg, .badge { display: none; } .divider { padding: 0 5px; } .layout { display: flex; flex-direction: column; padding: 14px; gap: 20px; } .mapPanel { order: -1; width: 100%; } .viewport { min-height: 0; height: 60svh; max-height: 620px; } .mapHeading, .mapFooter { padding: 12px; } .status { padding: 10px 12px; } .keyboard { padding: 0 12px 10px; } .sidebar { padding: 0 3px; } .intro h1 br { display: none; } .intro p { max-width: none; margin-bottom: 19px; } .intro h1 { font-size: 29px; margin: 10px 0; } .section { padding: 18px 0; } .small, .note { font-size: 11px; } .modes button, .toggles button, .actions button { font-size: 12px; } .label { font-size: 10px; } .mapTools { right: 10px; bottom: 10px; } }
+@media (max-width: 650px) { .header { height: 60px; gap: 14px; padding: 0 14px; } .brand { font-size: 8px; letter-spacing: .08em; gap: 7px; } .brand > svg, .badge { display: none; } .divider { padding: 0 5px; } .layout { display: flex; flex-direction: column; padding: 14px; gap: 20px; } .mapPanel { position: static; order: -1; width: 100%; } .viewport { min-height: 0; height: 60svh; max-height: 620px; } .mapHeading, .mapFooter { padding: 12px; } .status { padding: 10px 12px; } .keyboard { padding: 0 12px 10px; } .sidebar { padding: 0 3px; } .intro h1 br { display: none; } .intro p { max-width: none; margin-bottom: 19px; } .intro h1 { font-size: 29px; margin: 10px 0; } .section { padding: 18px 0; } .small, .note { font-size: 11px; } .modes button { font-size: 10px; } .toggles button, .actions button { font-size: 12px; } .historyActions button, .selectionActions button, .palette button { font-size: 12px; } .label { font-size: 10px; } .mapTools { right: 10px; bottom: 10px; } }
 @media (prefers-reduced-motion: reduce) { .page button { transition: none; } }

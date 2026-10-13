@@ -6,7 +6,7 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { forestObjects, canPlant, pickObject, INITIAL_WIDTH, MAX_WIDTH, WORLD_HEIGHT, INITIAL_SEED } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/objects.ts");
+const { forestObjects, initialProps, compareObjects, canPlant, pickObject, INITIAL_WIDTH, MAX_WIDTH, WORLD_HEIGHT, INITIAL_SEED } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/objects.ts");
 const { sampleGround } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/layout.ts");
 const { createForestPainter } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/renderer.ts");
 const bounds = Object.freeze({ x: 0, y: 0, width: INITIAL_WIDTH, height: WORLD_HEIGHT });
@@ -80,11 +80,12 @@ test("object queries preserve edits and inputs while extending or hiding vegetat
   assert.ok(!expanded.some(object => object.id === removedObject.id));
   const groundOnly = renderer.objects({ ...edited, trees: false });
   assert.ok(groundOnly.length > 0);
-  assert.ok(groundOnly.every(object => object.kind === "rock"));
+  assert.ok(groundOnly.every(object => object.kind !== "tree" && object.kind !== "shrub"));
+  assert.ok(groundOnly.some(object => object.kind === "bridge"));
   assert.deepEqual(renderer.objects(edited), visible, "layer visibility never destroys objects");
   assert.deepEqual([...removed], [removedObject.id]);
   assert.equal(planted.length, 1);
-  assert.deepEqual(renderer.objects(options()), original, "discarding edit state restores the original forest");
+  assert.deepEqual(renderer.objects(options()), [...original, ...initialProps()].sort(compareObjects), "discarding edit state restores the original scene");
   renderer.dispose();
 });
 
@@ -93,7 +94,7 @@ test("picking overlapping objects selects the frontmost visible object in painte
   const back = Object.freeze({ id: "planted:back", x: 620, y: 1000, scale: 1, variant: 0, kind: "tree" });
   const front = Object.freeze({ ...back, id: "planted:front", y: 1020 });
   const planted = Object.freeze([front, back]);
-  const ordered = renderer.objects(options({ removed: new Set(original.map(object => object.id)), planted }));
+  const ordered = renderer.objects(options({ removed: new Set([...original, ...initialProps()].map(object => object.id)), planted }));
   assert.deepEqual(ordered.map(object => object.id), [back.id, front.id]);
   assert.equal(pickObject(ordered, 620, 970)?.id, front.id);
   assert.equal(pickObject(ordered.filter(object => object.id !== front.id), 620, 970)?.id, back.id);

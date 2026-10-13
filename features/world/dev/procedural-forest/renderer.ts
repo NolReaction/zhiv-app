@@ -1,10 +1,14 @@
 import { drawTree, drawShrub } from "./foliage";
 import { drawTerrain } from "./terrain";
 import { drawBridge, drawJetty, drawRock, drawRuins } from "./props";
-import { forestObjects, WORLD_HEIGHT, type Bounds, type ForestObject } from "./objects";
+import { compareObjects, forestObjects, initialProps, objectBounds, WORLD_HEIGHT, type Bounds, type ForestObject } from "./objects";
 
 export type CanvasFactory = (width: number, height: number) => HTMLCanvasElement;
-export type ForestOptions = { seed: number; width: number; trees: boolean; grid: boolean; removed: ReadonlySet<string>; planted: readonly ForestObject[] };
+export type ForestOptions = {
+  seed: number; width: number; trees: boolean; grid: boolean;
+  removed: ReadonlySet<string>; planted: readonly ForestObject[];
+  modified?: ReadonlyMap<string, ForestObject>; selectedId?: string | null;
+};
 const TILE = 512;
 
 /** Ground chunks and a small sprite atlas are disposable caches, never map data. */
@@ -21,8 +25,11 @@ export function createForestPainter(makeCanvas: CanvasFactory) {
       lastSeed = options.seed; generatedWidth = options.width;
       generated = forestObjects(options.seed, { x: 0, y: 0, width: options.width, height: WORLD_HEIGHT });
     }
-    return [...generated.filter(o => !options.removed.has(o.id) && (options.trees || o.kind === "rock")), ...options.planted.filter(o => options.trees && !options.removed.has(o.id))]
-      .sort((a, b) => a.y - b.y || a.x - b.x);
+    const scene = new Map([...generated, ...initialProps(), ...options.planted].map(object => [object.id, object]));
+    for (const [id, object] of options.modified ?? []) scene.set(id, object);
+    return [...scene.values()]
+      .filter(object => !options.removed.has(object.id) && (options.trees || (object.kind !== "tree" && object.kind !== "shrub")))
+      .sort(compareObjects);
   }
 
   function sprite(object: ForestObject) {
@@ -60,31 +67,41 @@ export function createForestPainter(makeCanvas: CanvasFactory) {
       }
       ctx.drawImage(tile, tx * TILE - 1, ty * TILE - 1);
     }
-    const visible = all.filter(o => o.x + 110 > view.x && o.x - 110 < view.x + view.width && o.y + 30 > view.y && o.y - 190 < view.y + view.height);
+    const visible = all.filter(object => {
+      const bounds = objectBounds(object);
+      return bounds.x + bounds.width > view.x && bounds.x < view.x + view.width
+        && bounds.y + bounds.height > view.y && bounds.y < view.y + view.height;
+    });
     for (const object of visible) {
-      ctx.save(); ctx.translate(object.x, object.y); ctx.scale(object.scale, object.scale);
+      if (object.kind !== "tree" && object.kind !== "shrub" && object.kind !== "rock") continue;
+      ctx.save(); ctx.translate(object.x, object.y); ctx.rotate((object.rotation ?? 0) * Math.PI / 180); ctx.scale(object.scale, object.scale);
       const radius = object.kind === "tree" ? 61 : 22;
       const shadow = ctx.createRadialGradient(18, 2, 4, 20, 3, radius);
       shadow.addColorStop(0, "#122b2490"); shadow.addColorStop(.6, "#142e2460"); shadow.addColorStop(1, "#142e2400");
       ctx.scale(1.2, .48); ctx.fillStyle = shadow; ctx.beginPath(); ctx.arc(20, 3, radius, 0, Math.PI * 2); ctx.fill(); ctx.restore();
     }
-    let ruinsDrawn = false, jettyDrawn = false, bridgeDrawn = false;
     for (const object of visible) {
-      if (!ruinsDrawn && object.y > 440) { drawRuins(ctx); ruinsDrawn = true; }
-      if (!jettyDrawn && object.y > 1140) { drawJetty(ctx); jettyDrawn = true; }
-      if (!bridgeDrawn && object.y > 1280) { drawBridge(ctx); bridgeDrawn = true; }
-      const size = 192 * object.scale;
-      ctx.drawImage(sprite(object), object.x - 96 * object.scale, object.y - 172 * object.scale, size, size);
+      ctx.save(); ctx.translate(object.x, object.y); ctx.rotate((object.rotation ?? 0) * Math.PI / 180); ctx.scale(object.scale, object.scale);
+      if (object.kind === "ruins") drawRuins(ctx);
+      else if (object.kind === "jetty") drawJetty(ctx);
+      else if (object.kind === "bridge") drawBridge(ctx);
+      else ctx.drawImage(sprite(object), -96, -172, 192, 192);
+      ctx.restore();
     }
-    if (!ruinsDrawn) drawRuins(ctx);
-    if (!jettyDrawn) drawJetty(ctx);
-    if (!bridgeDrawn) drawBridge(ctx);
     if (options.grid) {
       ctx.strokeStyle = "#f3edb67a"; ctx.lineWidth = 1;
       ctx.setLineDash([6, 6]); ctx.beginPath();
       for (let x = TILE; x < options.width; x += TILE) { ctx.moveTo(x, 0); ctx.lineTo(x, WORLD_HEIGHT); }
       for (let y = TILE; y < WORLD_HEIGHT; y += TILE) { ctx.moveTo(0, y); ctx.lineTo(options.width, y); }
       ctx.stroke(); ctx.setLineDash([]);
+    }
+    const selected = all.find(object => object.id === options.selectedId);
+    if (selected) {
+      const bounds = objectBounds(selected);
+      ctx.strokeStyle = "#ffe4a0"; ctx.lineWidth = 2; ctx.setLineDash([5, 4]);
+      ctx.strokeRect(bounds.x - 4, bounds.y - 4, bounds.width + 8, bounds.height + 8);
+      ctx.setLineDash([]); ctx.fillStyle = "#ffe4a0"; ctx.beginPath();
+      ctx.arc(selected.x, selected.y, 4, 0, Math.PI * 2); ctx.fill();
     }
     ctx.restore();
     return { objects: all.length, chunks: ground.size };
