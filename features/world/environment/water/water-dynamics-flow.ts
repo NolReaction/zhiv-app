@@ -1,6 +1,6 @@
-import { dynamicsCellAt, dynamicsFootprintFits, dynamicsPathIsWet, WATER_DYNAMICS_LIMITS, type WaterDynamicsGeometry } from "./water-dynamics-geometry";
+import { dynamicsFootprintFits, WATER_DYNAMICS_LIMITS, type WaterDynamicsGeometry } from "./water-dynamics-geometry";
+import type { WaterDynamicsLeaf } from "./water-dynamics-leaves";
 
-export type WaterDynamicsLeaf = { id: number; x: number; y: number; rotation: number; size: number; opacity: number };
 const noise = (index: number) => { const value = Math.sin(index * 127.1 + 311.7) * 43758.5453; return value - Math.floor(value); };
 
 /** This is an artistic current along the river, not a depth/volume solver.
@@ -32,29 +32,9 @@ export function createDynamicsFlow(geometry: WaterDynamicsGeometry) {
       const point = { x: origin.x + (index % columns + .5) * cellSize, y: origin.y + (Math.floor(index / columns) + .5) * cellSize };
       if (!dynamicsFootprintFits(geometry, point, size + .6 * scale)) continue;
       if (leaves.some(leaf => Math.hypot(leaf.x - point.x, leaf.y - point.y) < 45 * scale)) continue;
-      leaves.push({ id, ...point, size, rotation: noise(id + 99) * Math.PI * 2, opacity: .64 + noise(id + 13) * .18 }); break;
+      leaves.push({ id, ...point, size, rotation: noise(id + 99) * Math.PI * 2, opacity: .64 + noise(id + 13) * .18,
+        vx: flowX[index], vy: flowY[index], angularVelocity: 0, bob: 0, submersion: 0, submersionVelocity: 0, shape: id % 3 }); break;
     }
   }
   return { flowX, flowY, leaves };
-}
-
-export function advanceDynamicsLeaves(geometry: WaterDynamicsGeometry, flowX: Float32Array, flowY: Float32Array,
-  leaves: WaterDynamicsLeaf[], elapsed: number, dt: number) {
-  for (const leaf of leaves) {
-    const index = dynamicsCellAt(geometry, leaf);
-    if (index < 0) continue;
-    const x = flowX[index] + Math.sin(elapsed * .47 + leaf.id * 3.7) * .22 * geometry.scale;
-    const y = flowY[index] + Math.cos(elapsed * .39 + leaf.id * 2.1) * .17 * geometry.scale;
-    const target = { x: leaf.x + x * dt, y: leaf.y + y * dt };
-    const fits = (point: { x: number; y: number }) => dynamicsFootprintFits(geometry, point, leaf.size + .6 * geometry.scale)
-      && dynamicsPathIsWet(geometry, leaf, point);
-    if (fits(target)) { leaf.x = target.x; leaf.y = target.y; }
-    else {
-      const tangent = { x: leaf.x - y * dt, y: leaf.y + x * dt };
-      if (fits(tangent)) { leaf.x = tangent.x; leaf.y = tangent.y; }
-    }
-    const wanted = Math.atan2(y, x) + Math.sin(elapsed * .61 + leaf.id) * .2;
-    const difference = Math.atan2(Math.sin(wanted - leaf.rotation), Math.cos(wanted - leaf.rotation));
-    leaf.rotation += difference * Math.min(1, dt * .8);
-  }
 }

@@ -9,8 +9,9 @@ import { drawGroundedHero } from "./grounding";
 import { drawBuildingDetails } from "./building-details";
 import { drawForestAtmosphere, forestAtmosphereState, FOREST_BIRD_FLIGHT_DURATION, type ForestAtmosphereOptions } from "@/features/world/environment/weather/forest-atmosphere";
 import { drawForestWater, forestWaterContactsFrame, isForestWater } from "@/features/world/environment/water/forest-water";
-import { createForestWaterDynamics, advanceForestWaterDynamics, disturbForestWater, type ForestWaterDynamics } from "@/features/world/environment/water/forest-water-dynamics";
+import { createForestWaterDynamics, advanceForestWaterDynamics, disturbForestWater, touchForestWater, type ForestWaterDynamics } from "@/features/world/environment/water/forest-water-dynamics";
 import { drawForestWaterDynamics } from "@/features/world/environment/water/forest-water-dynamics-painter";
+import { drawForestWaterRefraction } from "@/features/world/environment/water/forest-water-refraction";
 import { createForestWaterInteractionTracker } from "@/features/world/environment/water/forest-water-interactions";
 import { withForestWaterBuoyancy } from "@/features/world/environment/water/forest-water-buoyancy";
 import { forestWaterWind } from "@/features/world/environment/water/forest-water-surface";
@@ -228,6 +229,8 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   context.beginPath(); context.rect(0, 0, world.width, world.height); context.clip();
   paintFixedWorld(context, world, { images, visuals: selectedVisuals, actor: null, dusk: Number(atmosphere.dusk),
     bushMoisture: life?.garden?.bushes,
+    paintBackdrop: dev?.waterSurface === false ? undefined : (ground, image, terrain) =>
+      drawForestWaterRefraction(ground, world, preview?.water, image, terrain, { reducedMotion: still }),
     hiddenTerrainIds: foregroundTerrain && foregroundImage?.naturalWidth && foregroundImage.naturalHeight ? [foregroundTerrain.id] : undefined,
     paintGround: ground => {
       const weather = { ...forestAtmosphereState(world, atmosphere), reducedMotion: still };
@@ -1032,7 +1035,8 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
         || dev?.waterSurface === false || !Number.isFinite(point.x) || !Number.isFinite(point.y)
         || !isForestWater(world, point) || forestVisibleSiteAt(world, point)
         || forestPointOccluded(world, point.y, point)) return false;
-      if (!disturbForestWater(ensureWater(), point)) return false;
+      if (!touchForestWater(ensureWater(), point)) return false;
+      audio.touchWater(point);
       session.publish();
       return true;
     },

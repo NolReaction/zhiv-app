@@ -9,7 +9,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { createForestWaterDynamics: create, advanceForestWaterDynamics: advance,
-  disturbForestWater: disturb, sampleForestWater: sample, WATER_DYNAMICS_LIMITS: limits } =
+  disturbForestWater: disturb, touchForestWater: touch, sampleForestWater: sample, WATER_DYNAMICS_LIMITS: limits } =
   await vite.ssrLoadModule("/features/world/environment/water/forest-water-dynamics.ts");
 const { dynamicsFootprintFits, containsDynamicsWater } = await vite.ssrLoadModule("/features/world/environment/water/water-dynamics-geometry.ts");
 const actual = JSON.parse(await readFile(new URL("../features/world/tiled/forest.generated.json", import.meta.url)));
@@ -153,4 +153,86 @@ test("sampling is read-only, returns finite height/slope/current and rejects dry
     assert.equal(disturb(state, point), false); assert.equal(sample(state, point).height, 0);
   }
   assert.deepEqual(state, before);
+});
+
+const soloLeaf = (state, point = { x: 100, y: 100 }) => {
+  const leaf = { ...state.leaves[0], ...point, size: 3, vx: 0, vy: 0, angularVelocity: 0, rotation: 0 };
+  state.leaves = [leaf]; state.flowX.fill(0); state.flowY.fill(0); return leaf;
+};
+
+test("player touches depress water and keep a bounded visual history on active simulation time", () => {
+  const state = create(scene()), point = { x: 102, y: 102 };
+  assert.equal(touch(state, point), true);
+  assert.ok(sample(state, point).height < -.8, "initial contact presses into the water");
+  assert.deepEqual(state.touches[0], { id: 1, ...point, startedAt: 0, strength: 1 });
+  disturb(state, point); assert.equal(state.touches.length, 1, "weather and fishing do not add tap crowns");
+  for (let index = 0; index < 50; index++) touch(state, point);
+  assert.equal(state.touches.length, 12); assert.equal(state.touchSequence, 51);
+  assert.equal(new Set(state.touches.map(contact => contact.id)).size, 12);
+  const frozen = structuredClone(state);
+  advance(state, 120, { ...calm, reducedMotion: true });
+  assert.deepEqual(state, frozen, "reduced motion freezes contact ages and submerged leaves too");
+  run(state, 1.3); assert.equal(state.touches.length, 0);
+  const after = structuredClone(state);
+  for (const point of [{ x: -1, y: 10 }, { x: NaN, y: 10 }, { x: 10, y: Infinity }]) assert.equal(touch(state, point), false);
+  assert.deepEqual(state, after);
+});
+
+test("nearby touches impart bounded inertia while direct leaf hits sink and resurface with one ripple", () => {
+  const state = create(scene()), leaf = soloLeaf(state);
+  touch(state, { x: 85, y: 100 });
+  assert.ok(leaf.vx > 3); assert.equal(leaf.submersion, 0);
+  run(state, .2); assert.ok(leaf.x > 100.4, "momentum continues after the input call");
+  touch(state, leaf);
+  assert.ok(leaf.submersion > 0); assert.ok(leaf.submersionVelocity > 0);
+  let resurfaced = 0, maximumDepth = 0;
+  for (let tick = 0; tick < 90; tick++) {
+    const previous = leaf.submersion;
+    state.heights.fill(0); state.velocities.fill(0);
+    advance(state, 1 / 60, calm);
+    maximumDepth = Math.max(maximumDepth, leaf.submersion);
+    if (previous > 0 && leaf.submersion === 0) { resurfaced++; assert.ok(amplitude(state) > 0); }
+    else assert.equal(amplitude(state), 0, "no repeated automatic ripple while the leaf is already afloat");
+    assert.ok(Math.hypot(leaf.vx, leaf.vy) <= 18 + 1e-8);
+  }
+  assert.ok(maximumDepth > .3 && maximumDepth < 1);
+  assert.equal(resurfaced, 1); assert.equal(leaf.submersionVelocity, 0);
+  assert.doesNotThrow(() => structuredClone(state));
+});
+
+test("surface slope and wind alter leaf motion, and wave height drives finite bobbing", () => {
+  const flat = create(scene()), tilted = create(scene()), windy = create(scene());
+  soloLeaf(flat); soloLeaf(tilted); soloLeaf(windy);
+  for (const index of tilted.active) tilted.heights[index] = (pointAt(tilted, index).x - 60) * .012;
+  advance(flat, 1 / 60, calm); advance(tilted, 1 / 60, calm); advance(windy, 1 / 60, { rain: 0, wind: 1 });
+  assert.ok(tilted.leaves[0].vx < flat.leaves[0].vx, "slope accelerates a floating leaf down the wave");
+  assert.ok(tilted.leaves[0].bob > 0, "height raises the leaf for the painter");
+  assert.ok(windy.leaves[0].vx > flat.leaves[0].vx, "wind adds a drift independently of artistic current");
+  assert.ok(Object.values(tilted.leaves[0]).every(Number.isFinite));
+});
+
+test("overlapping leaves separate softly instead of passing through one another", () => {
+  const state = create(scene()), first = soloLeaf(state);
+  const second = { ...first, id: first.id + 1, x: first.x + 3 };
+  state.leaves.push(second);
+  run(state, .6);
+  assert.ok(Math.hypot(first.x - second.x, first.y - second.y) > 4.8);
+  for (const leaf of state.leaves) {
+    assert.ok(Math.hypot(leaf.vx, leaf.vy) < 18);
+    assert.ok(dynamicsFootprintFits(state.geometry, leaf, leaf.size + .6 * state.scale));
+  }
+});
+
+test("tap forces and moving leaf footprints cannot cross a sub-grid island or separate ponds", () => {
+  const state = create(scene(undefined, [rectangle(120, 0, .2, 240)]));
+  const leaf = soloLeaf(state, { x: 116.1, y: 100 });
+  const before = structuredClone(leaf);
+  touch(state, { x: 126, y: 100 });
+  assert.deepEqual(leaf, before, "a touch on the other bank cannot push or submerge this leaf");
+  leaf.vx = 18;
+  for (let tick = 0; tick < 300; tick++) {
+    advance(state, 1 / 60, { rain: 0, wind: 1 });
+    assert.ok(leaf.x < 116.4, "the full leaf stays on its original side");
+    assert.ok(dynamicsFootprintFits(state.geometry, leaf, leaf.size + .6 * state.scale));
+  }
 });

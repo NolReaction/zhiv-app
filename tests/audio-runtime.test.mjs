@@ -70,6 +70,65 @@ function fixture(cueList = [cue("tap"), cue("river", "loop")], options = {}) {
   return { runtime, context, requests, media, advance: amount => { time += amount; }, get contextCount() { return contextCount; } };
 }
 
+test("owned water taps cannot finish decoding after clear, handoff or handoff-and-return", async () => {
+  const touch = AUDIO_CATALOG.cues.find(cue => cue.id === "action.water.touch");
+  for (const transition of ["clear", "handoff", "return"]) {
+    const f = fixture([touch]), gate = deferred(); f.context.decode = () => gate.promise;
+    try {
+      await f.runtime.unlock(); f.runtime.updateFrame(frame());
+      f.runtime.play({ id: "wet-tap", cueId: touch.id, ownerId: "user-a", maxAgeMs: 180 });
+      await flush();
+      if (transition === "clear") f.runtime.clearFrame("user-a");
+      else f.runtime.updateFrame(frame([], { ownerId: "user-b" }));
+      if (transition === "return") f.runtime.updateFrame(frame());
+      gate.resolve({ length: 4800, numberOfChannels: 1, duration: .1 });
+      await flush();
+      assert.equal(f.context.started.length, 0, transition);
+    } finally { f.runtime.dispose(); }
+  }
+});
+
+test("same-owner camera updates retain a live water tap while another owner's requests are rejected", async () => {
+  const touch = AUDIO_CATALOG.cues.find(cue => cue.id === "action.water.touch");
+  const f = fixture([touch]), gate = deferred(); f.context.decode = () => gate.promise;
+  try {
+    await f.runtime.unlock(); f.runtime.updateFrame(frame());
+    f.runtime.play({ id: "wrong-view", cueId: touch.id, ownerId: "retired-view", maxAgeMs: 180 });
+    assert.equal(f.requests.length, 0);
+    f.runtime.play({ id: "wet-tap", cueId: touch.id, ownerId: "user-a", maxAgeMs: 180 });
+    await flush(); f.runtime.updateFrame(frame([], { listener: { ...frame().listener, zoom: 3 } }));
+    gate.resolve({ length: 4800, numberOfChannels: 1, duration: .1 }); await flush();
+    assert.equal(f.context.started.length, 1, "zooming does not revoke a current owner");
+  } finally { f.runtime.dispose(); }
+});
+
+test("water tap feedback obeys unlock, master and world mute, visibility, expiry and bounded polyphony", async () => {
+  const touch = AUDIO_CATALOG.cues.find(cue => cue.id === "action.water.touch");
+  const f = fixture([touch]);
+  let sequence = 0;
+  const tap = () => f.runtime.play({ id: `tap:${++sequence}`, cueId: touch.id, ownerId: "user-a", maxAgeMs: 180 });
+  try {
+    f.runtime.updateFrame(frame()); tap();
+    await f.runtime.unlock(); await flush();
+    assert.equal(f.context.started.length, 0, "a locked tap is never replayed after unlock");
+    await f.runtime.prepare([touch.id]);
+    for (const patch of [{ enabled: false }, { master: 0 }, { buses: { world: 0 } }]) {
+      f.runtime.setSettings(patch); tap(); await flush();
+      assert.equal(f.context.started.length, 0);
+      f.runtime.setSettings({ enabled: true, master: .65, buses: { world: .55 } });
+      f.advance(200);
+    }
+    f.runtime.setVisible(false); tap(); await flush();
+    assert.equal(f.context.started.length, 0, "hidden view is silent");
+    f.runtime.setVisible(true); await f.runtime.unlock();
+    f.runtime.play({ id: "expired-tap", cueId: touch.id, ownerId: "user-a", occurredAt: 1, maxAgeMs: 180 });
+    await flush(); assert.equal(f.context.started.length, 0);
+    for (let index = 0; index < 20; index++) { tap(); await flush(); f.advance(30); }
+    assert.equal(f.context.started.length, 2, "rapid taps share two quiet voices without a backlog");
+    assert.ok(f.context.started.every(source => Math.abs(source.playbackRate.value - 1) <= touch.pitchVariation));
+  } finally { f.runtime.dispose(); }
+});
+
 test("prepared building completion plays once in the simple view without sharing reward cooldown", async () => {
   const f = fixture([], { catalog: AUDIO_CATALOG });
   try {

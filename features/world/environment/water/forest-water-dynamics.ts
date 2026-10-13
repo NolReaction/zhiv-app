@@ -1,15 +1,19 @@
 import type { FixedWorldScene, WorldPoint } from "@/features/world/tiled/types";
 import { containsDynamicsWater, createDynamicsGeometry, dynamicsCellAt, dynamicsPathIsWet,
   WATER_DYNAMICS_LIMITS, type WaterDynamicsGeometry } from "./water-dynamics-geometry";
-import { advanceDynamicsLeaves, createDynamicsFlow, type WaterDynamicsLeaf } from "./water-dynamics-flow";
+import { createDynamicsFlow } from "./water-dynamics-flow";
+import { advanceDynamicsLeaves, touchDynamicsLeaves, type WaterDynamicsLeaf } from "./water-dynamics-leaves";
 
 export { WATER_DYNAMICS_LIMITS } from "./water-dynamics-geometry";
+export const WATER_TOUCH_LIFETIME = 1.2;
+export type ForestWaterTouch = { id: number; x: number; y: number; startedAt: number; strength: number };
 export type ForestWaterDynamics = {
   columns: number; rows: number; cellSize: number; origin: WorldPoint; scale: number;
   mask: Uint8Array; active: Uint32Array; neighbours: Int32Array;
   heights: Float32Array; velocities: Float32Array; flowX: Float32Array; flowY: Float32Array;
   leaves: WaterDynamicsLeaf[]; elapsed: number; revision: number;
   geometry: WaterDynamicsGeometry; accumulator: number; rainAccumulator: number; rainSequence: number;
+  touches: ForestWaterTouch[]; touchSequence: number;
 };
 type DynamicsWeather = { rain: number; wind: number; reducedMotion?: boolean };
 type Disturbance = { strength?: number; radius?: number };
@@ -24,7 +28,7 @@ export function createForestWaterDynamics(scene: FixedWorldScene): ForestWaterDy
   const { columns, rows, cellSize, origin, scale, mask, active, neighbours } = geometry;
   return { columns, rows, cellSize, origin, scale, mask, active, neighbours, geometry,
     heights: new Float32Array(mask.length), velocities: new Float32Array(mask.length), ...createDynamicsFlow(geometry),
-    elapsed: 0, revision: 0, accumulator: 0, rainAccumulator: 0, rainSequence: 0 };
+    elapsed: 0, revision: 0, accumulator: 0, rainAccumulator: 0, rainSequence: 0, touches: [], touchSequence: 0 };
 }
 
 /** A compact, zero-integral displacement gives a visible outward wave without
@@ -50,6 +54,16 @@ export function disturbForestWater(state: ForestWaterDynamics, point: WorldPoint
   }
   if (changed) state.revision++;
   return changed;
+}
+
+/** Only direct player contacts create a visual splash and push floating leaves.
+ * Weather and fishing keep their independent physical disturbance semantics. */
+export function touchForestWater(state: ForestWaterDynamics, point: WorldPoint) {
+  if (!disturbForestWater(state, point, { strength: -.95, radius: 13 * state.scale })) return false;
+  if (state.touches.length >= 12) state.touches.shift();
+  state.touches.push({ id: ++state.touchSequence, x: point.x, y: point.y, startedAt: state.elapsed, strength: 1 });
+  touchDynamicsLeaves(state.geometry, state.leaves, point);
+  return true;
 }
 
 function forceWeather(state: ForestWaterDynamics, rain: number, wind: number) {
@@ -88,7 +102,9 @@ function step(state: ForestWaterDynamics, rain: number, wind: number) {
   }
   for (const index of state.active) heights[index] = clamp((heights[index] + velocities[index] * FIXED_STEP) * heightDamping, -4, 4);
   state.elapsed += FIXED_STEP;
-  advanceDynamicsLeaves(state.geometry, state.flowX, state.flowY, state.leaves, state.elapsed, FIXED_STEP);
+  advanceDynamicsLeaves(state.geometry, state.flowX, state.flowY, heights, state.leaves, state.elapsed, FIXED_STEP, wind,
+    point => { disturbForestWater(state, point, { strength: .075, radius: 7 * state.scale }); });
+  while (state.touches.length && state.elapsed - state.touches[0].startedAt >= WATER_TOUCH_LIFETIME) state.touches.shift();
   state.revision++;
 }
 

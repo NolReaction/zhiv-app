@@ -80,6 +80,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
   let everUnlocked = false;
   let generation = 0;
   let soundscapeGeneration = 0;
+  let frameOwnerGeneration = 0;
   let sequence = 0;
   let audition = 0;
   let borrowedPreview: { voice: Voice; timer: ReturnType<typeof setTimeout> } | null = null;
@@ -760,6 +761,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
     getSettings: () => settings,
     updateFrame(next) {
       if (disposed) return;
+      if (frame?.ownerId !== next.ownerId) frameOwnerGeneration++;
       if (frameClearTimer) { clearTimeout(frameClearTimer); frameClearTimer = null; }
       if (lastSceneId !== null && lastSceneId !== next.sceneId) {
         invalidate(); eventIds.clear(); cooldowns.clear(); playbackCooldowns.clear(); musicPositions.clear(); loopTimelines.clear(); blockedStreams.clear();
@@ -778,6 +780,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
     },
     clearFrame(ownerId) {
       if (!frame || frame.ownerId !== ownerId || disposed) return;
+      frameOwnerGeneration++;
       frame = null;
       cancelStreamRetry();
       if (![...voices.values()].some(voice => voice.key.startsWith("loop:"))) {
@@ -803,6 +806,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
       const feedbackBus = sliderRequest !== null ? event.feedbackBus : undefined;
       for (const [id, seenAt] of eventIds) if (time - seenAt > DEDUP_TTL_MS) eventIds.delete(id);
       if (!cue || cue.mode !== "one-shot" || !event.id || eventIds.has(event.id) || !Number.isFinite(occurredAt)
+        || event.ownerId !== undefined && event.ownerId !== frame?.ownerId
         || time - occurredAt > eventTtl || occurredAt - time > 1000) { droppedEvents++; publish(); return; }
       eventIds.set(event.id, time);
       while (eventIds.size > MAX_EVENT_IDS) eventIds.delete(eventIds.keys().next().value!);
@@ -815,12 +819,14 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
       cooldowns.set(cue.id, time);
       const token = generation;
       const soundscapeToken = soundscapeGeneration;
+      const ownerToken = frameOwnerGeneration;
       const request = ++sequence;
       pendingEvents.add(request);
       lastEvent = cue.id; publish();
       loadBuffer(asset, buffer => {
         pendingEvents.delete(request);
         if (buffer && token === generation && (!SOUNDSCAPE_BUSES.has(cue.bus) || soundscapeToken === soundscapeGeneration)
+          && (event.ownerId === undefined || event.ownerId === frame?.ownerId && ownerToken === frameOwnerGeneration)
           && feedbackAudible(feedbackBus) && (sliderRequest === null || sliderRequest === latestSliderRequest)
           && now() - occurredAt <= Math.min(eventTtl, sliderRequest === null ? EVENT_TTL_MS : 180)) {
           // Several contacts can await the same cold download/decode. Their

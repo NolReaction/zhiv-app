@@ -2145,6 +2145,21 @@
       "cooldownMs": 0,
       "pitchVariation": 0.02,
       "fadeMs": 8
+    },
+    {
+      "id": "action.water.touch",
+      "bus": "world",
+      "mode": "one-shot",
+      "assets": [
+        "action.fish.bobber.01",
+        "action.fish.bobber.02"
+      ],
+      "gainDb": -12,
+      "priority": 45,
+      "maxInstances": 2,
+      "cooldownMs": 180,
+      "pitchVariation": 0.035,
+      "fadeMs": 12
     }
   ],
   "profiles": [

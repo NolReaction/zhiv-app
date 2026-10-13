@@ -8,6 +8,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { drawForestWaterDynamics } = await vite.ssrLoadModule("/features/world/environment/water/forest-water-dynamics-painter.ts");
+const { createDynamicsGeometry } = await vite.ssrLoadModule("/features/world/environment/water/water-dynamics-geometry.ts");
 
 const rectangle = (x, y, width, height) => [
   { x, y }, { x: x + width, y }, { x: x + width, y: y + height }, { x, y: y + height },
@@ -30,7 +31,7 @@ function state() {
   }
   return { columns, rows, cellSize: 5, scale: 1, origin: { x: 0, y: 0 },
     heights, neighbours, active: Uint32Array.from({ length }, (_, index) => index),
-    leaves: [], elapsed: 8, revision: 10 };
+    leaves: [], touches: [], elapsed: 8, revision: 10 };
 }
 
 // An independent winding-number evaluator checks the resulting clip geometry
@@ -76,12 +77,23 @@ function browser(run) {
 }
 
 function context(transform = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }) {
-  const clips = [], draws = [], stack = [];
-  return { clips, draws, canvas: { width: 100, height: 100 }, imageSmoothingEnabled: false,
+  const clips = [], draws = [], paints = [], operations = [], stack = [];
+  let path = [];
+  return { clips, draws, vectorPaints: paints, operations, globalAlpha: 1,
+    canvas: { width: 100, height: 100 }, imageSmoothingEnabled: false,
     getTransform: () => transform,
-    save() { stack.push(this.imageSmoothingEnabled); }, restore() { this.imageSmoothingEnabled = stack.pop(); },
+    save() { stack.push({ imageSmoothingEnabled: this.imageSmoothingEnabled, globalAlpha: this.globalAlpha }); },
+    restore() { Object.assign(this, stack.pop()); },
     clip(path, rule) { clips.push({ path, rule }); },
     drawImage(...args) { draws.push(args); },
+    beginPath() { path = []; }, closePath() { path.push(["close"]); },
+    moveTo(...args) { path.push(["move", ...args]); }, lineTo(...args) { path.push(["line", ...args]); },
+    quadraticCurveTo(...args) { path.push(["quadratic", ...args]); }, bezierCurveTo(...args) { path.push(["bezier", ...args]); },
+    ellipse(...args) { path.push(["ellipse", ...args]); },
+    translate(...args) { operations.push(["translate", ...args]); },
+    scale(...args) { operations.push(["scale", ...args]); }, rotate(...args) { operations.push(["rotate", ...args]); },
+    stroke() { paints.push({ kind: "stroke", path: path.slice(), alpha: this.globalAlpha, colour: this.strokeStyle, clips: clips.length }); },
+    fill() { paints.push({ kind: "fill", path: path.slice(), alpha: this.globalAlpha, colour: this.fillStyle, clips: clips.length }); },
     paints: point => clips.every(({ path, rule }) => path.contains(point, rule)),
   };
 }
@@ -130,3 +142,69 @@ test("module and painter remain safe without browser canvas or Path2D", () => {
   const ctx = context(); drawForestWaterDynamics(ctx, scene(), state(), { dusk: 0 });
   assert.deepEqual(ctx.draws, []);
 });
+
+test("a touch has a brief depression and droplets, then fading crests shared by both cameras", () => browser(() => {
+  const world = { width: 100, height: 100, water: { surfaces: [polygon(rectangle(0, 0, 100, 100))], exclusions: [] } };
+  const water = state(); water.geometry = createDynamicsGeometry(world);
+  water.touches = [{ id: 2, x: 50, y: 50, startedAt: 8, strength: 1 }];
+  const paint = age => {
+    water.elapsed = 8 + age;
+    const before = structuredClone(water), first = context(), second = context();
+    drawForestWaterDynamics(first, world, water, { dusk: 0 });
+    drawForestWaterDynamics(second, world, water, { dusk: 0 });
+    assert.deepEqual(first.vectorPaints, second.vectorPaints, "both cameras see the same impact phase");
+    assert.deepEqual(water, before, "paint cannot consume or age a touch");
+    assert.ok(first.vectorPaints.every(paint => paint.clips > 0), "every splash part is inside the exact water clip");
+    assert.equal(first.globalAlpha, 1, "caller opacity is restored");
+    return first.vectorPaints;
+  };
+  const contact = paint(.055), spreading = paint(.32), late = paint(.9);
+  assert.ok(contact.some(paint => paint.kind === "fill" && paint.colour === "#205c68"), "contact visibly depresses the surface");
+  assert.ok(contact.filter(paint => paint.kind === "fill").length >= 5, "contact has separate droplets");
+  assert.ok(spreading.some(paint => paint.kind === "stroke" && paint.alpha > .25), "the ripple remains readable after the initial impact");
+  assert.ok(late.every(paint => paint.kind === "stroke"), "only calm crests survive the splash");
+  assert.ok(Math.max(...late.map(paint => paint.alpha)) < Math.max(...spreading.map(paint => paint.alpha)), "crests fade");
+  assert.deepEqual(paint(1.21), [], "expired touches are invisible even before the next solver update");
+  assert.deepEqual(paint(-.01), [], "future timestamps do not flash");
+}));
+
+test("touch crests cannot reappear across a thin strip of dry land", () => browser(() => {
+  const world = { width: 100, height: 100, water: { surfaces: [polygon(rectangle(0, 0, 100, 100))],
+    exclusions: [polygon(rectangle(43, 0, 5, 100))] } };
+  const water = state(); water.geometry = createDynamicsGeometry(world); water.elapsed = 8.8;
+  water.touches = [{ id: 0, x: 30, y: 50, startedAt: 8, strength: 1 }];
+  const ctx = context(); drawForestWaterDynamics(ctx, world, water, { dusk: 0 });
+  const arcs = ctx.vectorPaints.flatMap(paint => paint.path.filter(part => part[0] === "ellipse"));
+  assert.ok(arcs.length > 0);
+  for (const [, x, , radius, , , start, end] of arcs) {
+    assert.ok(x + radius * Math.cos((start + end) / 2) < 43, "no far-bank highlight can jump through the land");
+  }
+  assert.equal(ctx.paints({ x: 45, y: 50 }), false);
+}));
+
+test("leaf artwork follows physical lift and submersion without changing physics or caller opacity", () => browser(() => {
+  const world = scene(), water = state();
+  const leaf = { id: 0, x: 65, y: 65, size: 3, rotation: .8, opacity: .8, shape: 1,
+    vx: 0, vy: 0, angularVelocity: 0, bob: 1.1, submersion: 0, submersionVelocity: 0 };
+  water.leaves = [leaf];
+  const before = structuredClone(water), floating = context();
+  drawForestWaterDynamics(floating, world, water, { dusk: .3 });
+  assert.deepEqual(water, before);
+  assert.ok(floating.operations.some(([kind, x, y]) => kind === "translate" && x === leaf.x && y === leaf.y - leaf.bob), "wave height lifts the visible blade");
+  assert.ok(floating.vectorPaints.some(paint => paint.path.filter(part => part[0] === "quadratic").length >= 6), "veins and a curved stem are present");
+  assert.ok(floating.vectorPaints.every(paint => paint.clips === 4), "leaf, veins and shadow share shoreline and exclusions");
+  assert.equal(floating.globalAlpha, 1);
+  leaf.submersion = .8;
+  const dipped = context(); drawForestWaterDynamics(dipped, world, water, { dusk: .3 });
+  assert.ok(Math.max(...dipped.vectorPaints.map(paint => paint.alpha)) < Math.max(...floating.vectorPaints.map(paint => paint.alpha)), "water veils a submerged leaf");
+  assert.ok(dipped.operations.some(([kind, x, y]) => kind === "translate" && x === leaf.x && y > leaf.y - leaf.bob), "submersion lowers the blade");
+}));
+
+test("replacing authored Water on a scene invalidates its exact render mask", () => browser(() => {
+  const world = scene(), water = state(), before = context();
+  drawForestWaterDynamics(before, world, water, { dusk: 0 });
+  assert.equal(before.paints({ x: 55, y: 55 }), true);
+  world.water = { ...world.water, exclusions: [...world.water.exclusions, polygon(rectangle(52, 52, 6, 6))] };
+  const after = context(); drawForestWaterDynamics(after, world, water, { dusk: 0 });
+  assert.equal(after.paints({ x: 55, y: 55 }), false);
+}));

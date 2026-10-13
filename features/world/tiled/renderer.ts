@@ -8,7 +8,7 @@ import { forestVisibleSiteAt, withForestImageOcclusion, withForestSiteOcclusion 
 import { drawSiteImage } from "./site-image";
 import { boundsInCanvas, canvasWorldViewport } from "@/features/world/scene/canvas-viewport";
 import { worldArtworkMipCache } from "@/features/world/scene/artwork-mip-cache";
-import type { FixedWorldScene, PreviewLevels, SiteVisual, WorldBounds, WorldPoint } from "./types";
+import type { FixedWorldScene, PreviewLevels, SiteVisual, WorldBounds, WorldImage, WorldPoint } from "./types";
 import { createPreviewRoute, type PreviewActor, type PreviewRouteStatus } from "./preview-route";
 
 export type FixedWorldRenderOptions = {
@@ -45,6 +45,8 @@ export type PaintFrame = {
   bushMoisture?: readonly { id: string; moisture: number }[];
   /** Cutouts drawn in a later foreground pass retain their soil and grounding here. */
   hiddenTerrainIds?: readonly string[];
+  /** Backdrop-only distortion belongs below every later terrain cutout. */
+  paintBackdrop?: (context: CanvasRenderingContext2D, image: HTMLImageElement | HTMLCanvasElement, terrain: WorldImage) => void;
   /** Ground effects belong above terrain and below all buildings and actors. */
   paintGround?: (context: CanvasRenderingContext2D) => void;
 };
@@ -90,7 +92,11 @@ export function paintFixedWorld(ctx: CanvasRenderingContext2D, scene: FixedWorld
           if (bushId) {
             target.drawImage(worldArtworkMipCache.image(ctx, terrain, forestObjectArtwork(image, "foliage")), bounds.x, bounds.y, bounds.width, bounds.height);
             drawForestBushLeafShade(target, scene, terrain, image);
-          } else drawSiteImage(target, terrain, worldArtworkMipCache.image(ctx, terrain, image));
+          } else {
+            const artwork = worldArtworkMipCache.image(ctx, terrain, image);
+            drawSiteImage(target, terrain, artwork);
+            if (terrain === scene.terrain[0]) frame.paintBackdrop?.(target, artwork, terrain);
+          }
         }
       }, { x: bounds.x - padding, y: bounds.y - padding, width: bounds.width + padding * 2, height: bounds.height + padding * 2 });
     }
