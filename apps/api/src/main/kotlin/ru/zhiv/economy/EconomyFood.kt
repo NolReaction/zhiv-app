@@ -123,7 +123,7 @@ object EconomyFood {
             if (state.food.heroMeal != null) economyFailure("ECONOMY_ALREADY_FED", "Мохлик уже сыт. Блюдо сохранено в кладовой")
             if (state.jobs.any { it.collection?.startedAt != null })
                 economyFailure("ECONOMY_COLLECTOR_BUSY", "Сначала завершите сбор припасов")
-            if (state.jobs.any { it.kind == "exploration" })
+            if (state.jobs.any { it.kind == "exploration" && !EconomyRules.isMinerJob(it) })
                 economyFailure("ECONOMY_EXPLORER_BUSY", "Сначала дождитесь Мохлика и заберите результат работы")
             if (state.jobs.any { it.kind == "production" && it.targetId == "quarry" })
                 economyFailure("ECONOMY_QUARRY_BUSY", "Сначала дождитесь Мохлика и заберите добычу из каменоломни")

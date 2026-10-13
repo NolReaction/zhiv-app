@@ -1,9 +1,10 @@
 import { fishClassForItem, fishClassInventory } from "./fishing";
+import { isMinerJob } from "./actor-availability";
 import type { EconomyCommand, EconomyResult, EconomyView, MarketCommand } from "./model";
 
 export type InventoryGain = Readonly<{
   id: string; ownerPublicId: string; revision: number; source: "claim" | "purchase";
-  /** Only an accepted production claim can celebrate at a map station. */
+  /** Only an accepted production or miner claim can celebrate at a map station. */
   stationId?: string;
   items: readonly Readonly<{ itemId: string; quantity: number }>[];
 }>;
@@ -29,6 +30,7 @@ export function inventoryGainFromReceipt(before: EconomyView | null, result: Eco
       allowed = { ...allowed, ...Object.fromEntries(after.catalog.fishing.classes.map(group => [group.itemId, count])) };
     }
     if (job.kind === "production" && after.catalog.buildings.some(station => station.id === job.targetId)) stationId = job.targetId;
+    if (isMinerJob(job) && after.catalog.buildings.some(station => station.id === "quarry")) stationId = "quarry";
   } else if (command.action === "buy_fishing_item") {
     const offer = before.fishingShop?.offers.find(item => item.id === command.targetId && (item.kind === "bait" || item.kind === "fish"));
     if (!offer || !before.catalog.fishing || !before.catalog.fishing.baits.some(item => item.itemId === offer.itemId) && !fishClassForItem(offer.itemId, before.catalog.fishing)) return null;

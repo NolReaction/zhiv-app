@@ -94,6 +94,21 @@ test("the first house upgrade requires all four server tutorial orders while leg
   assert.equal(disabled(button(render("buildings", controller({ snapshot: state })), "Улучшить до ур. 2: Дом Мохлика")), false);
 });
 
+test("the economy construction hub shares house-three stage-order gates with the map and permits warehouse one", () => {
+  const target = economyCatalog.buildings.find(building => building.id === "home").levels.find(entry => entry.level === 3);
+  const state = snapshot({ wallet: { coins: target.cost.coins, pearls: 0 }, inventory: { ...target.cost.items },
+    buildings: { home: 2, warehouse: 1, workshop: 1, quarry: 2, kiln: 1 },
+    tutorialOrder: { ...newTutorialOrder(), step: 4, completed: true },
+    stageOrders: { version: 1, stages: { 2: { step: 4, completed: false, terms: null } } } });
+  let html = render("buildings", controller({ snapshot: state }), "home");
+  assert.equal(disabled(button(html, "Улучшить до ур. 3: Дом Мохлика")), true);
+  assert.match(html, /заказы.*4 \/ 5/i);
+  state.stageOrders.stages[2] = { step: 5, completed: true, terms: null };
+  html = render("buildings", controller({ snapshot: state }), "home");
+  assert.equal(disabled(button(html, "Улучшить до ур. 3: Дом Мохлика")), false);
+  assert.equal(state.storage.capacity, 50);
+});
+
 test("strawberry production explains its first-compote prerequisite and unlocks after a collected result", () => {
   const state = snapshot();
   let html = render("production", controller({ snapshot: state }), "garden");
@@ -222,7 +237,9 @@ test("building progression requires the actual workshop and quarry, not only an 
   assert.match(html, /Условия открытия/);
   assert.ok(button(html, "Мастерская: 0 / 1 ур."));
   assert.match(html, /Что даёт этот уровень/);
-  assert.ok(button(html, "Мастерская · ур. 2"));
+  assert.ok(button(html, "Каменоломня · ур. 1"));
+  assert.ok(button(html, "Печь · ур. 1"));
+  assert.doesNotMatch(html, /Мастерская · ур. 2/, "equipment tier two belongs to house three");
   assert.equal(buttons(html).filter(entry => /^Ур\. [1-5]$/.test(entry.text)).length, 5);
   assert.ok(buttons(html).every(entry => !/^Построить:/.test(entry.text)), "Only the chosen building expands into a full card");
 });
@@ -393,7 +410,7 @@ test("generic economy keeps legacy quarry occupancy and mine construction behind
   state.jobs = [job({ kind: "construction", targetId: "quarry", recipeId: null, rewards: {} })];
   html = render("exploration", controller({ snapshot: state }));
   const mine = economyCatalog.explorations.find(route => route.id === "quarry_stone");
-  assert.equal(disabled(button(html, `Отправиться: ${mine.name}`)), true);
+  assert.equal(disabled(button(html, `Начать добычу: ${mine.name}`)), true);
   assert.equal(disabled(button(html, "Отправиться: Лесная разведка")), false);
   assert.match(html, /Дождитесь улучшения шахты/);
 });
@@ -406,6 +423,28 @@ test("generic economy will not offer a mine upgrade during an unclaimed actor sh
   const html = render("buildings", controller({ snapshot: state }), "quarry");
   assert.match(html, /дождитесь Мохлика и заберите добычу/);
   assert.equal(disabled(button(html, "Улучшить до ур. 2: Каменоломня")), true);
+});
+
+test("generic mining controls remain independent of the hero and expose unboosted one-item work without meal actions", () => {
+  const route = economyCatalog.explorations.find(entry => entry.id === "quarry_stone");
+  const hero = job({ kind: "exploration", targetId: "forest", recipeId: null, rewards: { wood: 5 } });
+  const state = snapshot({ buildings: { home: 2, warehouse: 1, quarry: 2 }, jobs: [hero],
+    inventory: { hearty_fish: 1 }, food: { heroMeal: "hearty_fish", builderMeal: null } });
+  const before = structuredClone(state), html = render("exploration", controller({ snapshot: state }));
+  assert.equal(disabled(button(html, `Начать добычу: ${route.name}`)), false);
+  const mineCard = [...html.matchAll(/<article\b[^>]*>([\s\S]*?)<\/article>/g)]
+    .find(match => match[1].includes(`<h3>${route.name}</h3>`))?.[1];
+  assert.ok(mineCard);
+  assert.match(mineCard, /3 мин/);
+  assert.match(mineCard.replace(/<[^>]*>/g, ""), /Начать добычу: Добыть камень/);
+  assert.doesNotMatch(mineCard, /Съесть|Еда|Сыт|Открыть место/);
+  assert.deepEqual(state, before);
+  state.jobs = [job({ kind: "exploration", actorId: "miner", targetId: route.id, recipeId: null,
+    rewards: { stone: 1 }, finishesAt: new Date(now).toISOString() })];
+  const occupied = render("exploration", controller({ snapshot: state }));
+  assert.equal(disabled(button(occupied, `Начать добычу: ${route.name}`)), true);
+  assert.equal(disabled(button(occupied, "Отправиться: Лесная разведка")), false);
+  assert.match(occupied, /Сначала заберите добычу шахтёра/);
 });
 
 

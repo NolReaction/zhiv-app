@@ -17,8 +17,11 @@ test("the quarry and workshop furnace follow home two without blocking the start
   assert.ok(order("woodlot:1") < order("home:2"));
   assert.ok(order("workshop:1") < order("home:2"));
   assert.ok(order("home:2") < order("quarry:1"));
-  assert.ok(order("quarry:1") < order("kiln:1"));
+  assert.ok(order("quarry:1") < order("quarry:2"));
+  assert.ok(order("quarry:2") < order("kiln:1"));
   assert.ok(order("workshop:1") < order("kiln:1"));
+  assert.ok(order("kiln:1") < order("home:3"));
+  assert.equal(catalog.buildings.find(building => building.id === "home").levels[2].requiredBuildings.warehouse, undefined);
 });
 
 test("the catalog cannot accidentally require the closed quarry to unlock home two", () => {
@@ -41,7 +44,7 @@ test("catalog audit catches a resource-source cycle even when the explicit const
 
 test("catalog audit rejects building prerequisites that route back through the target home", () => {
   const catalog = readEconomyCatalog();
-  catalog.buildings.find(building => building.id === "workshop").levels[1].requiredHomeLevel = 3;
+  catalog.buildings.find(building => building.id === "workshop").levels[0].requiredHomeLevel = 2;
   assert.throws(() => auditEconomyProgression(catalog), /Construction dependency cycle/);
 });
 
@@ -64,20 +67,20 @@ test("warehouse has ten increasing tiers, ordinary early costs and independent r
     c => c.buildings.find(building => building.id === "warehouse").levels[9].warehouseCapacity = 8200,
   ]) {
     const invalid = structuredClone(catalog); mutate(invalid);
-    assert.throws(() => auditEconomyProgression(invalid), /early storage|relic storage|storage must grow|storage must not require/);
+    assert.throws(() => auditEconomyProgression(invalid), /early storage|relic storage|storage must grow|storage must keep/);
   }
 });
 
-test("no storage tier can reintroduce a home or other-building unlock requirement", () => {
+test("only warehouse two requires home two and storage tiers cannot acquire other-building unlock requirements", () => {
   const catalog = readEconomyCatalog();
   for (const level of catalog.buildings.find(building => building.id === "warehouse").levels) {
-    assert.equal(level.requiredHomeLevel, 1);
+    assert.equal(level.requiredHomeLevel, level.level === 2 ? 2 : 1);
     assert.deepEqual(level.requiredBuildings, {});
     for (const requirement of ["home", "workshop"]) {
       const invalid = structuredClone(catalog), target = invalid.buildings.find(building => building.id === "warehouse").levels.find(candidate => candidate.level === level.level);
-      if (requirement === "home") target.requiredHomeLevel = 2;
+      if (requirement === "home") target.requiredHomeLevel = level.level === 2 ? 3 : 2;
       else target.requiredBuildings.workshop = 1;
-      assert.throws(() => auditEconomyProgression(invalid), /storage must not require developed homes or buildings/, `storage ${level.level}: ${requirement}`);
+      assert.throws(() => auditEconomyProgression(invalid), /storage must keep only the declared second-stage house gate/, `storage ${level.level}: ${requirement}`);
     }
   }
 });

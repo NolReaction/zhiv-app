@@ -1,11 +1,12 @@
 import type { EconomyView } from "@/features/economy/domain/model";
+import { isMinerJob } from "@/features/economy/domain/actor-availability";
 import { berryCollectionStatus, type GardenCollectionView } from "@/features/economy/integration/garden-collection";
 import { CONSTRUCTION_MARKER, constructionMapPlace, type MapObjectScreenAnchor } from "@/features/world/scene/construction-map-anchor";
 import type { MapObjectPlace } from "@/features/world/scene/site-interactions";
 
 export type MapProductionPhase = "working" | "awaiting-gather" | "collecting" | "paused" | "ready" | "storage-blocked";
 export type MapProduction = {
-  jobId: string; kind: "production" | "construction"; stationId: string; place: MapObjectPlace; recipeName: string; itemId?: string;
+  jobId: string; kind: "production" | "construction" | "exploration"; stationId: string; place: MapObjectPlace; recipeName: string; itemId?: string;
   phase: MapProductionPhase; label: string; remaining: number; progress: number;
 };
 export type MapProductionGroup = { place: MapObjectPlace; entries: readonly MapProduction[]; construction?: MapProduction; primary: MapProduction };
@@ -19,17 +20,20 @@ export function mapProductionGroups(state: EconomyView | null, now: number, coll
   if (!state || !Number.isFinite(now)) return [];
   const groups = new Map<MapObjectPlace, MapProduction[]>();
   for (const job of state.jobs) {
-    if (job.kind !== "production") continue;
+    const miner = isMinerJob(job);
+    if (job.kind !== "production" && !miner) continue;
+    const stationId = miner ? "quarry" : job.targetId;
     const recipe = state.catalog.recipes.find(entry => entry.id === job.recipeId && entry.buildingId === job.targetId);
     // Already paid quarry orders outlive the retired production catalog.
     // Keep their badge based on the saved clock/reward, including unknown old recipes.
-    const recipeName = recipe?.name ?? (job.targetId === "quarry"
+    const recipeName = miner ? state.catalog.explorations.find(route => route.id === job.targetId)?.name ?? "Добыча шахтёра"
+      : recipe?.name ?? (job.targetId === "quarry"
       ? state.catalog.explorations.find(route => route.id === job.recipeId)?.name ?? "Сохранённая добыча" : null);
-    const place = constructionMapPlace(job.targetId), start = Date.parse(job.startedAt), finish = Date.parse(job.finishesAt);
+    const place = constructionMapPlace(stationId), start = Date.parse(job.startedAt), finish = Date.parse(job.finishesAt);
     if (!recipeName || !place || !Number.isFinite(start) || !Number.isFinite(finish) || finish <= start || now < start) continue;
-    const berry = berryCollectionStatus(job, state, now, collection);
+    const berry = miner ? null : berryCollectionStatus(job, state, now, collection);
     const blocked = Object.values(job.rewards).reduce((sum, amount) => sum + amount, 0) > state.storage.available;
-    let phase: MapProductionPhase = "working", label = job.targetId === "garden" ? "Растёт"
+    let phase: MapProductionPhase = "working", label = miner ? "Шахтёр добывает" : job.targetId === "garden" ? "Растёт"
       : job.targetId === "quarry" ? "Добыча" : job.targetId === "woodlot" ? "Заготовка"
         : job.targetId === "workshop" || job.targetId === "kiln" ? "Изготовление" : "Готовится";
     let clockStart = start, clockFinish = finish;
@@ -45,7 +49,7 @@ export function mapProductionGroups(state: EconomyView | null, now: number, coll
       else if (berry && !berry.started) { phase = "awaiting-gather"; label = berry.away ? "Ждёт Мохлика" : "Созрело"; }
       else { phase = "ready"; label = "Можно забрать"; }
     }
-    const entry: MapProduction = { jobId: job.id, kind: "production", stationId: job.targetId, place, recipeName,
+    const entry: MapProduction = { jobId: job.id, kind: miner ? "exploration" : "production", stationId, place, recipeName,
       itemId: Object.keys(job.rewards).find(id => (job.rewards[id] ?? 0) > 0), phase, label,
       remaining: Math.max(0, Math.ceil((clockFinish - now) / 1000)),
       progress: Math.min(1, Math.max(0, (now - clockStart) / (clockFinish - clockStart))) };

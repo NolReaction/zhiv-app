@@ -36,7 +36,7 @@ test("branch opens the free start while keeping places, equipment and future wor
   assert.match(html, /data-node-id="b:kiln:1"[^>]*data-kind="building"/);
   const detail = html.slice(html.indexOf("<aside"));
   assert.match(detail, />Начало</);
-  assert.match(detail, /бесплатную лесную разведку/);
+  assert.match(detail, /Бесплатная лесная вылазка восстанавливает проданные материалы/);
   assert.match(detail, /Тапы не дают хозяйственную валюту/);
   assert.match(html, /data-node-id="start"[^>]*aria-pressed="true"/);
   assert.match(html, /Схема правил и возможностей/);

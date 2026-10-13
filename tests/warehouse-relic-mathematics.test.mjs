@@ -15,13 +15,14 @@ test("two-type expectation counts wrong types and duplicates rather than adding 
   assert.throws(() => expectedUniformTwoTypeDraws(1, 0, 1), /Invalid relic type count/);
 });
 
-test("current storage starts at 300 places and consumes 62 varied relics across its later tiers", () => {
+test("current storage starts at 50 places and consumes 62 varied relics across its later tiers", () => {
   const report = reviewWarehouseRelics(readEconomyCatalog());
   assert.equal(report.warehouseMaximumLevel, 10);
   assert.deepEqual(report.totalWarehouseRelics, { ancient_core: 38, moon_crystal: 12, living_resin: 12 });
   assert.equal(report.totalWarehouseRelicCount, 62);
-  assert.deepEqual(report.levels.map(level => level.capacity), [300, 500, 1000, 1800, 3000, 4000, 5200, 6600, 8200, 10000]);
-  assert.deepEqual(report.levels.map(level => level.capacityGain), [300, 200, 500, 800, 1200, 1000, 1200, 1400, 1600, 1800]);
+  assert.deepEqual(report.levels.map(level => level.capacity), [50, 100, 150, 200, 250, 300, 350, 400, 450, 500]);
+  assert.deepEqual(report.levels.map(level => level.capacityGain), Array(10).fill(50));
+  assert.equal(report.levels[1].requiredHomeLevel, 2);
   assert(report.levels.slice(0, 3).every(level => Object.values(level.relicCost).every(quantity => quantity === 0)));
   assert(report.levels.slice(3).every(level => Object.values(level.relicCost).every(quantity => quantity > 0)
     && level.cost.coins === 0 && level.requiredHomeLevel === 1 && !Object.keys(level.requiredBuildings).length));
@@ -29,8 +30,10 @@ test("current storage starts at 300 places and consumes 62 varied relics across 
 
 test("storage work time separates the full builder sum from partial random acquisition", () => {
   const report = reviewWarehouseRelics(readEconomyCatalog()), last = report.levels.at(-1);
-  assert.equal(report.totalWarehouseConstructionHours, 872);
-  assert.equal(report.totalWarehouseConstructionDays, 872 / 24);
+  assert.deepEqual(report.levels.map(level => level.constructionHours), [0, 1 / 6, 24, 48, 72, 96, 120, 144, 168, 192]);
+  const constructionSeconds = 600 + 864 * 3600;
+  assert(Math.abs(report.totalWarehouseConstructionHours - constructionSeconds / 3600) < 1e-9);
+  assert(Math.abs(report.totalWarehouseConstructionDays - constructionSeconds / 86400) < 1e-9);
   assert.equal(report.levels[3].partialNonCoreAcquisition.expectedDraws, 4.5);
   assert.equal(report.levels[3].partialNonCoreAcquisition.expectedWorkHours, 432);
   assert.equal(last.partialNonCoreAcquisition.cumulativeCrystals, 12);

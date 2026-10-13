@@ -175,6 +175,11 @@ export function auditFoodEconomy(catalog) {
   const tutorials = catalog.onboarding?.residentOrders ?? [];
   assert.equal(tutorials.length, 4, "First stage needs four guaranteed tutorial requests");
   assert.equal(sum(tutorials.map(order => order.coins)), 330, "First-stage tutorial requests must pay the planned 330 coins");
+  const secondCourse = catalog.stageOrders?.find(stage => stage.homeLevel === 2);
+  assert.equal(secondCourse?.orders.length, 5, "Second stage needs five guaranteed permanent requests");
+  assert.equal(sum(secondCourse.orders.map(order => order.coins)), 1380, "Second-stage requests must pay 1380 coins");
+  for (const order of secondCourse.orders)
+    assert.equal(order.coins, math.liquidation(order.items) * 1.5, `${order.id}: permanent requests must pay 150% of actual NPC value`);
   assert(earlyOrders.length >= 5, "Starter board needs at least five eligible distinct templates alongside the tutorial requests");
   for (const resident of ["plesk", "builder"]) assert(earlyOrders.some(order => order.residentId === resident), "Both starter residents need an eligible request");
   const secondStageOrders = orders.templates.filter(order => hasRequirements(order, { home: 2, garden: 1, warehouse: 1 }));

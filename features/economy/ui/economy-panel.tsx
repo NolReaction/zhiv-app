@@ -12,7 +12,7 @@ import type { EconomyController } from "@/features/economy/sync/use-economy";
 import type { ReadyEconomy } from "@/features/economy/sync/controller-state";
 import { formatPearls } from "@/features/economy/domain/money";
 import { canAffordEconomy } from "@/features/economy/domain/rules";
-import { economyActorConflict } from "@/features/economy/domain/actor-availability";
+import { economyActorConflict, economyMinerConflict, explorationActorId, isMinerJob } from "@/features/economy/domain/actor-availability";
 import { fishingTripCost } from "@/features/economy/domain/fishing";
 import { useFishingCommand } from "@/features/economy/ui/fishing/use-fishing-command";
 import { economyLocalSellPrice, economyLocalSaleMinimumQuantity, economyLocalSaleLimit } from "@/features/economy/domain/local-sale";
@@ -121,7 +121,7 @@ function Rewards({ state, value, quantity = 1 }: { state: EconomyView; value: Re
 
 function jobTitle(state: EconomyView, job: EconomyJob) {
   if (job.kind === "construction") return `${buildingName(state, job.targetId)} · уровень ${job.targetLevel}`;
-  if (job.kind === "exploration") return state.catalog.explorations.find(entry => entry.id === job.targetId)?.name ?? "Вылазка Мохлика";
+  if (job.kind === "exploration") return state.catalog.explorations.find(entry => entry.id === job.targetId)?.name ?? (isMinerJob(job) ? "Добыча в шахте" : "Вылазка Мохлика");
   return state.catalog.recipes.find(entry => entry.id === job.recipeId)?.name ?? "Производство";
 }
 
@@ -131,8 +131,8 @@ function JobCard({ economy, job, navigate }: { economy: ReadyEconomy; job: Econo
   const berry = berryCollectionStatus(job, state, now, collection);
   const start = Date.parse(job.startedAt), end = Date.parse(job.finishesAt), ready = now >= end;
   const progress = Math.min(1, Math.max(0, (now - start) / Math.max(1, end - start)));
-  const Icon = job.kind === "construction" ? Hammer : job.kind === "exploration" ? Compass : Sprout;
-  const caption = job.kind === "construction" ? "Строительство" : job.kind === "exploration" ? "Мохлик в пути" : buildingName(state, job.targetId);
+  const Icon = job.kind === "construction" ? Hammer : isMinerJob(job) ? Mountain : job.kind === "exploration" ? Compass : Sprout;
+  const caption = job.kind === "construction" ? "Строительство" : isMinerJob(job) ? "Шахта работает" : job.kind === "exploration" ? "Мохлик в пути" : buildingName(state, job.targetId);
   const rewardCount = Object.values(job.rewards).reduce((sum, amount) => sum + amount, 0);
   const storageBlocked = job.kind !== "construction" && rewardCount > state.storage.available;
   const working = productionIsActive(job, now);
@@ -163,10 +163,10 @@ function Overview({ economy, navigate }: { economy: ReadyEconomy; navigate: Navi
   const owned = Object.values(state.buildings).filter(level => level > 0).length;
   const migration = state.migration;
   return <div className={styles.stack}>
-    <div className={styles.heading}><div><span className={styles.eyebrow}>Своя жизнь в лесу</span><h2>{ready ? "Пора забрать результаты" : "Хозяйство Мохлика"}</h2><p className={styles.muted}>Постройки работают параллельно. Мохлик отправляется в одну вылазку за раз.</p></div></div>
+    <div className={styles.heading}><div><span className={styles.eyebrow}>Своя жизнь в лесу</span><h2>{ready ? "Пора забрать результаты" : "Хозяйство Мохлика"}</h2><p className={styles.muted}>Постройки и шахта работают параллельно. Мохлик отправляется в одну вылазку за раз.</p></div></div>
     <div className={styles.shortcuts}>
       <button onClick={() => navigate("production")}><Sprout size={22} aria-hidden /><span><strong>Производство</strong><small>Урожай и материалы</small></span><ChevronRight size={14} aria-hidden /></button>
-      <button onClick={() => navigate("exploration")}><Compass size={22} aria-hidden /><span><strong>Вылазки</strong><small>{state.jobs.some(job => job.kind === "exploration" || job.collection?.startedAt) ? "Мохлик занят" : "Можно отправляться"}</small></span><ChevronRight size={14} aria-hidden /></button>
+      <button onClick={() => navigate("exploration")}><Compass size={22} aria-hidden /><span><strong>Вылазки</strong><small>{state.jobs.some(job => job.kind === "exploration" && !isMinerJob(job) || job.collection?.startedAt) ? "Мохлик занят" : "Можно отправляться"}</small></span><ChevronRight size={14} aria-hidden /></button>
       <button onClick={() => navigate("buildings")}><House size={22} aria-hidden /><span><strong>Постройки</strong><small>Обустроено: {owned}</small></span><ChevronRight size={14} aria-hidden /></button>
       <button onClick={() => navigate("inventory")}><Package size={22} aria-hidden /><span><strong>Склад</strong><small>Свободно: {number(state.storage.available)}</small></span><ChevronRight size={14} aria-hidden /></button>
     </div>
@@ -292,23 +292,26 @@ function Exploration({ economy, navigate, focusId }: { economy: ReadyEconomy; na
   const { snapshot: state } = economy;
   const { blocked, send } = useFishingCommand({ economy, state });
   const conflict = economyActorConflict(state.jobs, "departure", economy.now);
-  const job = state.jobs.find(entry => entry.kind === "exploration");
+  const jobs = state.jobs.filter(entry => entry.kind === "exploration");
   const routes = [...state.catalog.explorations].sort((a, b) => Number(b.id === focusId) - Number(a.id === focusId));
-  return <div className={styles.stack}><div className={styles.heading}><div><h2>Мохлик-исследователь</h2><p className={styles.muted}>Выберите цель вылазки. Производство продолжится, пока Мохлик в пути.</p></div></div>
-    {job && <JobCard economy={economy} job={job} navigate={navigate} />}
+  return <div className={styles.stack}><div className={styles.heading}><div><h2>Вылазки и добыча</h2><p className={styles.muted}>Выберите вылазку для Мохлика или независимую работу шахты. Производство продолжается в фоне.</p></div></div>
+    {jobs.map(job => <JobCard key={job.id} economy={economy} job={job} navigate={navigate} />)}
     {routes.map(exploration => {
       const required = requirements(exploration), rewardCount = Object.values(exploration.rewards).reduce((sum, amount) => sum + amount, 0);
       const tooLarge = rewardCount > state.storage.capacity;
       const fishing = !!state.catalog.fishing?.routeIds.includes(exploration.id);
       const cost = fishing ? fishingTripCost(exploration.cost, state) : exploration.cost;
       const mineConstruction = exploration.requiredBuildings.quarry && state.jobs.some(entry => entry.kind === "construction" && entry.targetId === "quarry");
+      const mining = explorationActorId(exploration) === "miner";
+      const routeConflict = mining ? economyMinerConflict(state.jobs, economy.now) : conflict;
       const reason = unmetRequirement(state, required) ?? (tooLarge ? "Для этих находок нужно расширить склад"
-        : conflict?.message ?? (mineConstruction ? "Дождитесь улучшения шахты и заберите результат" : !canAffordEconomy(state, cost) ? "Не хватает припасов" : null));
-      const Icon = exploration.id.includes("cave") ? Mountain : exploration.id === "shore" ? Fish : Compass;
+        : routeConflict?.message ?? (mineConstruction ? "Дождитесь улучшения шахты и заберите результат" : !canAffordEconomy(state, cost) ? "Не хватает припасов" : null));
+      const Icon = mining || exploration.id.includes("cave") ? Mountain : exploration.id === "shore" ? Fish : Compass;
       return <article key={exploration.id} className={styles.card}><div className={styles.cardHeader}><span className={styles.iconTile}><Icon size={22} aria-hidden /></span><div><h3>{exploration.name}</h3><p className={styles.muted}>{exploration.description}</p></div></div>
         <Rewards state={state} value={exploration.rewards} /><RequirementList state={state} required={required} navigate={navigate} /><Cost state={state} cost={cost} />
         <p className={styles.muted}>Находки займут {number(rewardCount)} мест на складе.</p>
-        <div className={styles.actions}><span className={styles.duration}><Clock3 size={14} aria-hidden />{economyDuration(exploration.seconds)}</span><button className={styles.primary} disabled={Boolean(reason) || blocked} onClick={() => send(fishing ? "start_fishing" : "start_exploration", exploration.id, 1, 0, !reason)}>Отправиться<span className={styles.sr}>: {exploration.name}</span></button></div>
+        {mining && <p className={styles.muted}>Мохлик может гулять, рыбачить и собирать урожай, пока работает шахта.</p>}
+        <div className={styles.actions}><span className={styles.duration}><Clock3 size={14} aria-hidden />{economyDuration(exploration.seconds)}</span><button className={styles.primary} disabled={Boolean(reason) || blocked} onClick={() => send(fishing ? "start_fishing" : "start_exploration", exploration.id, 1, 0, !reason)}>{mining ? "Начать добычу" : "Отправиться"}<span className={styles.sr}>: {exploration.name}</span></button></div>
         {reason && <p className={styles.hint}><LockKeyhole size={14} aria-hidden />{reason}</p>}
         {tooLarge && <button className={styles.textButton} onClick={() => navigate("buildings", "warehouse")}>Расширить склад<ArrowRight size={15} aria-hidden /></button>}
       </article>;

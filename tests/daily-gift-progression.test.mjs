@@ -14,7 +14,7 @@ test("complete daily projection uses completed home tiers, the claim calendar an
     assert.equal(report.coinFlow.remaining, report.coinFlow.initial + report.coinFlow.sales + report.coinFlow.gifts + report.coinFlow.orders
       - Object.values(report.coinFlow.spendingByAction).reduce((sum, value) => sum + value, 0));
     assert.equal(report.coinFlow.initial, 100);
-    assert.equal(report.coinFlow.orders, 330);
+    assert.equal(report.coinFlow.orders, 1710);
     assert(gifts.claims <= 40, "Three visits cannot create three daily bundles");
     assert(gifts.claims + gifts.storageDeferrals >= 40, "Missed daily bundles must be explained by storage deferrals");
     assert(!report.excludedIncome.includes("daily_rewards"));
@@ -38,7 +38,7 @@ test("complete daily projection uses completed home tiers, the claim calendar an
     assert.deepEqual(loaded.catalog.buildings.find(building => building.id === "warehouse").levels
       .map(level => level.warehouseCapacity), Array.from({ length: 10 }, (_, index) => (index + 1) * 50));
     assert.deepEqual(Object.fromEntries(Object.entries(report.itemFlow).filter(([, flow]) => flow.orderInputs > 0)
-      .map(([id, flow]) => [id, flow.orderInputs])), { wood: 2, berries: 2, berry_compote: 2, planks: 2 });
+      .map(([id, flow]) => [id, flow.orderInputs])), { wood: 2, berries: 2, berry_compote: 2, planks: 2, rope: 2, stone: 6, clay: 4, charcoal: 2, bricks: 4 });
     for (const [id, flow] of Object.entries(report.itemFlow))
       assert.equal(flow.initial + flow.received, flow.sold + flow.productionInputs + flow.expeditionInputs + flow.constructionInputs + flow.orderInputs + flow.remaining, id);
     for (const [id, amount] of Object.entries(report.rareMaterials.inventory))

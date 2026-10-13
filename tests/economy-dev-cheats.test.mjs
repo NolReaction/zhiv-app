@@ -195,6 +195,7 @@ test("instant building levels use catalog bounds, can bypass gates and preserve 
 test("DEV storage controls fund every independent upgrade through level 10 without changing home or other buildings", () => {
   const p = player(), warehouse = model.economyCatalog.buildings.find(building => building.id === "warehouse");
   assert.equal(Math.max(...warehouse.levels.map(level => level.level)), 10);
+  cheat(p, "set_building_level", "home", 2);
   const ordinaryBuildings = structuredClone(read(p).buildings);
   for (const target of warehouse.levels.filter(level => level.level >= 2)) {
     const previous = cheat(p, "set_building_level", "warehouse", target.level - 1).state;

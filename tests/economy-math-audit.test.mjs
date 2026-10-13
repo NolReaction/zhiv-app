@@ -8,12 +8,12 @@ const near = (actual, expected) => assert(Math.abs(actual - expected) < 1e-8, `$
 test("elementary materials retain recursive occupied-slot minutes without treating parallel slots as a wall clock", () => {
   const math = economicMath(readEconomyCatalog());
   assert.deepEqual(math.profile("planks").slotMinutes, { workshop: 2, woodlot: 3 });
-  near(math.profile("rope").totalSlotMinutes, 17.5);
+  near(math.profile("rope").totalSlotMinutes, 5);
   const brick = math.profile("bricks");
-  near(brick.slotMinutes.kiln, 30); near(brick.slotMinutes.quarry, 8.4375); near(brick.slotMinutes.woodlot, 3);
-  near(brick.slotMinutes.mochlik, 8.4375);
-  near(math.profile("tools").totalSlotMinutes, 270.5);
-  near(math.profile("reinforced_parts").totalSlotMinutes, 500);
+  near(brick.slotMinutes.kiln, 5); near(brick.slotMinutes.quarry, 3); near(brick.slotMinutes.woodlot, 3);
+  near(brick.slotMinutes.miner, 3);
+  near(math.profile("tools").totalSlotMinutes, 227);
+  near(math.profile("reinforced_parts").totalSlotMinutes, 425.5);
   assert.equal(math.profile("fiber").sourceHome, 1, "Forest output exists before the dedicated fiber station");
   assert.equal(math.profile("fiber").referenceHome, 2);
   const berry = math.profile("berries");
@@ -21,23 +21,24 @@ test("elementary materials retain recursive occupied-slot minutes without treati
   near(berry.slotMinutes.mochlik, 8 / 60);
   const catalog = readEconomyCatalog();
   const dry = math.batch(catalog.recipes.find(r => r.id === "dry_berries"));
-  assert.equal(dry.directHome, 2); assert.equal(dry.referenceHome, 2);
+  assert.equal(dry.directHome, 3); assert.equal(dry.referenceHome, 3);
 });
 
-test("focused mining routes reserve the same intrinsic minutes of both Mochlik and the mine", () => {
+test("focused mining reserves the independent miner and mine while hero occupancy stays separate", () => {
   const catalog = readEconomyCatalog(), math = economicMath(catalog);
   const routes = catalog.explorations.filter(r => r.id.startsWith("quarry_"));
   assert.equal(routes.length, 8);
   for (const recipe of routes) {
     const batch = math.batch(recipe);
     near(batch.slotMinutes.quarry, recipe.seconds / 60);
-    near(batch.slotMinutes.mochlik, recipe.seconds / 60);
+    near(batch.slotMinutes.miner, recipe.seconds / 60);
+    assert.equal(batch.slotMinutes.mochlik, undefined);
     near(batch.processMinutes, recipe.seconds / 60);
   }
-  near(math.profile("stone").slotMinutes.mochlik, 3.75);
-  near(math.profile("ore").slotMinutes.mochlik, 9);
-  near(math.profile("tools").slotMinutes.mochlik, 27);
-  near(math.profile("reinforced_parts").slotMinutes.mochlik, 54);
+  near(math.profile("stone").slotMinutes.miner, 3);
+  near(math.profile("ore").slotMinutes.miner, 9);
+  near(math.profile("tools").slotMinutes.miner, 27);
+  near(math.profile("reinforced_parts").slotMinutes.miner, 54);
   assert.equal(math.profile("wood").slotMinutes.mochlik, undefined, "Passive gathering remains independent");
 });
 
@@ -45,8 +46,8 @@ test("a joint long order is costed once and exposes its output portfolio rather 
   const c = readEconomyCatalog(), math = economicMath(c);
   const batch = math.batch(c.recipes.find(r => r.id === "workshop_structures"));
   assert.deepEqual(batch.output, { beams: 2, cut_stone: 2, metal_parts: 2 });
-  near(batch.slotMinutes.workshop, 500); near(batch.elementaryOutputMinutes.workshop, 290);
-  for (const id of ["woodlot", "quarry", "kiln", "mochlik"]) near(batch.slotMinutes[id], batch.elementaryOutputMinutes[id]);
+  near(batch.slotMinutes.workshop, 486); near(batch.elementaryOutputMinutes.workshop, 276);
+  for (const id of ["woodlot", "quarry", "kiln", "miner"]) near(batch.slotMinutes[id], batch.elementaryOutputMinutes[id]);
   assert.equal(batch.coins, 0);
   const cycle = structuredClone(c); cycle.recipes.find(r => r.id === "make_planks").cost.items.planks = 1;
   assert.throws(() => economicMath(cycle).profile("planks"), /Production cycle/);
@@ -101,13 +102,15 @@ test("the longer catch gives eight class draws and consumes one bait per trip", 
   assert.equal(auditEconomicMath(catalog).fishingLoadouts.length, 216);
 });
 
-test("rare materials have one shared earned-time clock and no invented NPC price or additive production work", () => {
+test("rare-material expectations describe each independent actor clock without invented NPC price or additive ingredient work", () => {
   const report = auditEconomicMath(readEconomyCatalog());
   for (const p of report.profiles.filter(profile => profile.acquisition)) {
     assert.equal(p.sourceHome, 3); assert.equal(p.referenceHome, 3);
     assert.deepEqual(p.slotMinutes, {});
     assert.equal(p.oneUnitNpcRevenue, 0); assert.equal(p.slotOpportunityCoins, null);
     assert.equal(p.acquisition.coinPurchasePrice, null);
+    assert.equal(p.acquisition.clock, "per_actor_exploration");
+    assert.deepEqual(p.acquisition.actors, ["mochlik", "miner"]);
     assert.equal(p.acquisition.meanAnySeconds / 3600, 96);
     assert.equal(p.acquisition.expectedSpecificSeconds / 3600, 288);
     assert.equal(p.acquisition.expectedCompleteSetSeconds / 3600, 528);

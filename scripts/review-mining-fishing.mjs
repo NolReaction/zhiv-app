@@ -47,11 +47,11 @@ export function reviewMiningFishing(loaded, onScenario = () => {}) {
     return { routeId, testedCombinations: comparisons.length, maximum: comparisons[0] };
   });
   const resourceRoutes = catalog.explorations.filter(route => route.activity === "mining" || route.id === "coastal_deposits").map(route => {
-    const batch = math.batch(route), actorMinutes = batch.slotMinutes.mochlik;
+    const batch = math.batch(route), actorId = route.activity === "mining" ? "miner" : "mochlik", actorMinutes = batch.slotMinutes[actorId];
     return { routeId: route.id, homeLevel: route.requiredHomeLevel, buildingRequirements: route.requiredBuildings,
-      rewards: route.rewards, inputs: route.cost.items, durationMinutes: batch.processMinutes,
-      actorMinutesWithFoodAndTools: rounded(actorMinutes), outputEquivalentFocusedActorMinutes: rounded(batch.elementaryOutputMinutes.mochlik ?? 0),
-      equivalentFocusedWorkPerOccupiedActorMinute: rounded((batch.elementaryOutputMinutes.mochlik ?? 0) / actorMinutes),
+      rewards: route.rewards, inputs: route.cost.items, durationMinutes: batch.processMinutes, actorId,
+      actorMinutesWithFoodAndTools: rounded(actorMinutes), outputEquivalentFocusedActorMinutes: rounded(batch.elementaryOutputMinutes[actorId] ?? 0),
+      equivalentFocusedWorkPerOccupiedActorMinute: rounded((batch.elementaryOutputMinutes[actorId] ?? 0) / actorMinutes),
       netDirectSaleCoins: batch.incrementalMargin };
   });
   return {

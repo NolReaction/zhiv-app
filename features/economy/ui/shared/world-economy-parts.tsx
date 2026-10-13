@@ -8,6 +8,7 @@ import { locked, type ReadyEconomy } from "@/features/economy/sync/controller-st
 import { worldDuration, worldJobProgress, worldMaterialSource, worldMissingRequirements } from "./world-stations";
 import { useGardenCollection } from "@/features/economy/integration/garden-collection-context";
 import { berryCollectionStatus } from "@/features/economy/integration/garden-collection";
+import { explorationActorId, isMinerJob } from "@/features/economy/domain/actor-availability";
 import { ProductionActivity, productionIsActive } from "@/features/economy/ui/production/production-activity";
 import styles from "@/features/economy/ui/stations/world-object-menu.module.css";
 
@@ -28,8 +29,10 @@ export function Cost({ state, cost, quantity = 1, navigation }: { state: Economy
   return <ul className={styles.cost} aria-label="Стоимость">{cost.coins > 0 && <li data-missing={state.wallet.coins < cost.coins * quantity || undefined}><ItemIcon itemId="coins" size={18} /><span>Монеты</span><strong>{number(state.wallet.coins)} / {number(cost.coins * quantity)}</strong></li>}{Object.entries(cost.items).map(([id, amount]) => {
     const missing = (state.inventory[id] ?? 0) < amount * quantity;
     const source = missing ? worldMaterialSource(state, id) : null;
-    const openSource = source?.kind === "production" && navigation?.canOpen(source.stationId) ? () => navigation.open(source.stationId, source.targetId) : source?.kind === "exploration" ? navigation?.explore : undefined;
-    return <li key={id} data-missing={missing || undefined}><ProductIcon state={state} itemId={id} size={18} /><span>{openSource ? <button type="button" className={styles.textButton} aria-label={`Где получить: ${itemName(state, id)}${source?.kind === "exploration" ? ", В путь" : ""}`} onClick={openSource}>{itemName(state, id)}<ArrowRight size={11} aria-hidden="true" /></button> : itemName(state, id)}</span><strong>{number(state.inventory[id] ?? 0)} / {number(amount * quantity)}</strong></li>;
+    const mining = source?.kind === "exploration" && state.catalog.explorations.some(route => route.id === source.targetId && explorationActorId(route) === "miner");
+    const openSource = source?.kind === "production" && navigation?.canOpen(source.stationId) ? () => navigation.open(source.stationId, source.targetId)
+      : mining && navigation?.canOpen("quarry") ? () => navigation.open("quarry") : source?.kind === "exploration" ? navigation?.explore : undefined;
+    return <li key={id} data-missing={missing || undefined}><ProductIcon state={state} itemId={id} size={18} /><span>{openSource ? <button type="button" className={styles.textButton} aria-label={`Где получить: ${itemName(state, id)}${source?.kind === "exploration" ? mining ? ", Шахта" : ", В путь" : ""}`} onClick={openSource}>{itemName(state, id)}<ArrowRight size={11} aria-hidden="true" /></button> : itemName(state, id)}</span><strong>{number(state.inventory[id] ?? 0)} / {number(amount * quantity)}</strong></li>;
   })}</ul>;
 }
 export function Requirements({ state, required, navigation }: { state: EconomyView; required: Record<string, number>; navigation?: StationNavigation }) {
@@ -43,7 +46,8 @@ export function Work({ economy, job, openPantry, compact = false }: { economy: R
   const berry = berryCollectionStatus(job, economy.snapshot, economy.now, collection);
   const status = worldJobProgress(economy.snapshot, job, economy.now);
   const outputs = Object.entries(job.rewards);
-  const title = compact && job.kind === "production" && outputs.length === 1 ? `${itemName(economy.snapshot, outputs[0][0])} ×${number(outputs[0][1])}` : job.kind === "construction" ? `Обустройство · ур. ${job.targetLevel}` : economy.snapshot.catalog.recipes.find(recipe => recipe.id === job.recipeId)?.name ?? "Производство";
+  const title = isMinerJob(job) ? economy.snapshot.catalog.explorations.find(route => route.id === job.targetId)?.name ?? "Добыча в шахте"
+    : compact && job.kind === "production" && outputs.length === 1 ? `${itemName(economy.snapshot, outputs[0][0])} ×${number(outputs[0][1])}` : job.kind === "construction" ? `Обустройство · ур. ${job.targetLevel}` : economy.snapshot.catalog.recipes.find(recipe => recipe.id === job.recipeId)?.name ?? "Производство";
   const itemId = Object.keys(job.rewards)[0];
   const working = productionIsActive(job, economy.now);
   return <div className={`${styles.work} ${compact ? styles.compactWork : ""}`} data-job-id={job.id} data-ready={status.ready || undefined}>

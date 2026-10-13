@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { Dialog } from "radix-ui";
-import { ArrowRight, Check, CircleHelp, Clock3, Compass, Hammer, House, LockKeyhole, Package, Pin, RefreshCw, Store, X } from "lucide-react";
+import { ArrowRight, Check, CircleHelp, Clock3, Compass, Hammer, House, LockKeyhole, Package, Pickaxe, Pin, RefreshCw, Store, X } from "lucide-react";
 import type { WorldHelpContext } from "@/features/world/ui/help/world-help-types";
 import { ItemIcon } from "@/features/items/item-icon";
 import { FishingRodIcon } from "@/features/world/activities/fishing/fishing-rod-icon";
@@ -14,6 +14,7 @@ import { UpgradeBenefitCarousel, type UpgradeBenefitCard } from "./upgrade-benef
 import { WorldMealBoost } from "@/features/economy/ui/food/world-meal-boost";
 import { mealDuration, pendingMeal } from "@/features/economy/domain/food";
 import { economyBuilderStatus } from "@/features/economy/domain/builder-status";
+import { explorationActorId } from "@/features/economy/domain/actor-availability";
 import { locked, type ReadyEconomy } from "@/features/economy/sync/controller-state";
 import { Requirements, Work, ProductIcon, itemName, stationIcons, stationName, number, type StationNavigation } from "@/features/economy/ui/shared/world-economy-parts";
 import { worldConstructionReason, worldDuration, worldMaterialSource, worldMissingRequirements, worldRequirements, type WorldBuildingLevel } from "@/features/economy/ui/shared/world-stations";
@@ -59,9 +60,11 @@ function UpgradeCost({ state, cost, navigation }: { state: EconomyView; cost: Ec
     const source = missing && id !== "coins" ? worldMaterialSource(state, id) : null;
     const chanceSource = missing && relic && state.catalog.rareDrops?.itemIds.includes(id)
       && (state.buildings.home ?? 1) >= state.catalog.rareDrops.requiredHomeLevel;
-    const openSource = source?.kind === "production" && navigation?.canOpen(source.stationId) ? () => navigation.open(source.stationId) : source?.kind === "exploration" || chanceSource ? navigation?.explore : undefined;
+    const mining = source?.kind === "exploration" && state.catalog.explorations.some(route => route.id === source.targetId && explorationActorId(route) === "miner");
+    const openSource = source?.kind === "production" && navigation?.canOpen(source.stationId) ? () => navigation.open(source.stationId, source.targetId)
+      : mining && navigation?.canOpen("quarry") ? () => navigation.open("quarry") : source?.kind === "exploration" || chanceSource ? navigation?.explore : undefined;
     const content = <><span className={styles.costIcon}><ProductIcon state={state} itemId={id} size={relic ? 34 : 22} />{openSource && <ArrowRight size={10} className={styles.sourceArrow} aria-hidden="true" />}{!missing && relic && <Check size={12} className={styles.costCheck} aria-hidden="true" />}</span><span className={styles.costName}>{name}</span><strong><span>{number(available)}</span><span className={styles.costNeeded}> / {number(amount)}</span></strong></>;
-    return <li key={id} data-relic={relic ? id : undefined} data-missing={missing || undefined}>{openSource ? <button type="button" className={styles.costTile} onClick={openSource} title={chanceSource ? "Находки из вылазок; конкретный предмет не гарантирован." : undefined} aria-label={`${chanceSource ? "Где искать" : "Где получить"}: ${name}${source?.kind === "exploration" || chanceSource ? ", В путь" : ""}. Есть ${number(available)}, нужно ${number(amount)}`}>{content}</button> : <div className={styles.costTile}>{content}</div>}</li>;
+    return <li key={id} data-relic={relic ? id : undefined} data-missing={missing || undefined}>{openSource ? <button type="button" className={styles.costTile} onClick={openSource} title={chanceSource ? "Находки из вылазок; конкретный предмет не гарантирован." : undefined} aria-label={`${chanceSource ? "Где искать" : "Где получить"}: ${name}${source?.kind === "exploration" || chanceSource ? mining ? ", Шахта" : ", В путь" : ""}. Есть ${number(available)}, нужно ${number(amount)}`}>{content}</button> : <div className={styles.costTile}>{content}</div>}</li>;
   })}</ul>{lockedFinds && <p className={styles.muted}>Находки реликвий в вылазках доступны с домом ур. {state.catalog.rareDrops!.requiredHomeLevel}.</p>}</>;
 }
 
@@ -110,11 +113,14 @@ function UpgradeUnlocks({ state, stationId, target, navigation }: { state: Econo
   // Mine routes belong to the quarry; the house also previews the routes it unlocks.
   for (const route of stationId === "home" || stationId === "quarry" ? unlocks.routes : []) {
     const rewards = Object.entries(route.rewards);
+    const mining = explorationActorId(route) === "miner";
+    const ActivityIcon = mining ? Pickaxe : Compass;
     cards.push({ id: `route:${route.id}`, label: route.name, content: <div className={styles.benefitCard}>
-      <div className={styles.benefitArt} data-kind="route">{rewards.slice(0, 3).map(([id]) => <ProductIcon state={state} key={id} itemId={id} size={42} />)}<Compass size={20} className={styles.benefitArtBadge} aria-hidden="true" /></div>
-      <span className={styles.benefitKind}>Новый маршрут · {worldDuration(route.seconds)}</span><h4>{route.name.replace(/ · \d+ ч$/, "")}</h4>
+      <div className={styles.benefitArt} data-kind="route">{rewards.slice(0, 3).map(([id]) => <ProductIcon state={state} key={id} itemId={id} size={42} />)}<ActivityIcon size={20} className={styles.benefitArtBadge} aria-hidden="true" /></div>
+      <span className={styles.benefitKind}>{mining ? "Новая добыча" : "Новый маршрут"} · {worldDuration(route.seconds)}</span><h4>{route.name.replace(/ · \d+ ч$/, "")}</h4>
       <ul className={styles.benefitRewards} aria-label="Находки маршрута">{rewards.map(([id, amount]) => <li key={id}>{itemName(state, id)} <b>×{number(amount)}</b></li>)}</ul>
       {requirements(worldRequirements(route))}
+      {mining && <p className={styles.benefitDescription}>Шахта работает независимо от Мохлика.</p>}
     </div> });
   }
 

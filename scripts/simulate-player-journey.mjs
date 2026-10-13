@@ -11,16 +11,22 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const epoch = Date.parse("2026-10-05T00:00:00Z"), day = 86400, hour = 3600;
 const firstVisit = 7 * hour;
-export const journeyOrder = ["woodlot:1", "dryer:1", "workshop:1", "home:2", "quarry:1", "kiln:1", "garden:2", "warehouse:2", "woodlot:2", "quarry:2", "kiln:2", "dryer:2", "workshop:2", "home:3", "garden:3", "warehouse:3", "woodlot:3", "quarry:3", "kiln:3", "workshop:3", "dryer:3", "home:4", "woodlot:4", "quarry:4", "kiln:4", "workshop:4", "warehouse:4", "garden:4", "dryer:4", "home:5", "garden:5", "warehouse:5", "woodlot:5", "quarry:5", "kiln:5", "workshop:5", "dryer:5"];
+export const journeyOrder = ["woodlot:1", "dryer:1", "workshop:1", "home:2", "quarry:1", "warehouse:2", "quarry:2", "kiln:1", "home:3", "garden:2", "woodlot:2", "kiln:2", "dryer:2", "workshop:2", "garden:3", "warehouse:3", "woodlot:3", "quarry:3", "kiln:3", "workshop:3", "dryer:3", "home:4", "woodlot:4", "quarry:4", "kiln:4", "workshop:4", "warehouse:4", "garden:4", "dryer:4", "home:5", "warehouse:5", "garden:5", "woodlot:5", "quarry:5", "kiln:5", "workshop:5", "dryer:5"];
 export const DEFAULT_JOURNEY_RARE_SEED = 0x0672026;
 
 /** Preserve the existing comparison policy; maximum storage is an explicit
  * additional goal, rather than a prerequisite for home five. */
 export function journeyConstructionOrder(catalog, completionGoal = "base-tier-5") {
   assert(["home-5", "base-tier-5", "all-current-buildings"].includes(completionGoal), "Invalid research completion goal");
+  const expansions = catalog.buildings.flatMap(building => building.levels
+    .filter(level => level.level > 5).map(level => `${building.id}:${level.level}`));
+  // The full-storage goal pays for optional capacity before accumulating the
+  // final workshop chains. Every purchase still checks authored prerequisites
+  // through the ordinary command and pays with earned relic inventory.
+  const storageIndex = journeyOrder.indexOf("warehouse:5") + 1;
   const order = completionGoal === "home-5" ? journeyOrder.slice(0, journeyOrder.indexOf("home:5") + 1)
-    : completionGoal === "all-current-buildings" ? [...journeyOrder, ...catalog.buildings.flatMap(building => building.levels
-      .filter(level => level.level > 5).map(level => `${building.id}:${level.level}`))] : [...journeyOrder];
+    : completionGoal === "all-current-buildings" ? [...journeyOrder.slice(0, storageIndex), ...expansions,
+      ...journeyOrder.slice(storageIndex)] : [...journeyOrder];
   for (const key of order) {
     const [id, level] = key.split(":");
     assert(catalog.buildings.find(building => building.id === id)?.levels.some(entry => entry.level === Number(level)), `Unknown research goal ${key}`);
@@ -58,11 +64,12 @@ export async function loadJourneyRules() {
   const actorAvailability = await vite.ssrLoadModule("/features/economy/domain/actor-availability.ts");
   const progressionRewards = await vite.ssrLoadModule("/features/game/progression-rewards.ts");
   const fishing = await vite.ssrLoadModule("/features/economy/domain/fishing.ts");
-  return { rules, actorAvailability, progressionRewards, fishing, catalog: model.economyCatalog,
+  const stageOrders = await vite.ssrLoadModule("/features/economy/domain/stage-orders.ts");
+  return { rules, actorAvailability, progressionRewards, fishing, stageOrders, catalog: model.economyCatalog,
     walletLimits: { coins: model.ECONOMY_MAX_BALANCE, pearls: model.ECONOMY_MAX_PEARLS }, close: () => vite.close() };
 }
 
-export function simulateJourney({ rules, actorAvailability, progressionRewards, fishing, catalog, walletLimits }, mode, maxDays = 1600, policy = {}) {
+export function simulateJourney({ rules, actorAvailability, progressionRewards, fishing, stageOrders, catalog, walletLimits }, mode, maxDays = 1600, policy = {}) {
   const { prepareNextConstruction = false, preserveFutureCraftedStock = false, jointBatchPlanning = false,
     pearlBudget = 0, constructionSpeedups = true, buyProductionSlots = false,
     parallelProductionPlanning = buyProductionSlots, dailyPearlsOnly = false, dailyRewards = false, rareSeed = DEFAULT_JOURNEY_RARE_SEED,
@@ -92,15 +99,15 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
   const relicReceived = Object.fromEntries(relicIds.map(id => [id, 0]));
   const relicSpent = Object.fromEntries(relicIds.map(id => [id, 0]));
   const relicFinds = []; let eligibleExplorationSeconds = 0;
-  const miningRoutes = new Set(catalog.explorations.filter(route => route.activity === "mining").map(route => route.id));
-  const actorWorkSeconds = { quarry: 0, exploration: 0, collection: 0 };
+  const actorWorkSeconds = { miner: 0, exploration: 0, collection: 0 };
   const isActive = mode === "active16h", visits = mode === "visits2" ? [7, 19] : [7, 15, 23];
   const gap = isActive ? 1 : mode === "visits2" ? 12 * hour : 8 * hour;
   const uuid = () => `00000000-0000-4000-8000-${(++sequence).toString(16).padStart(12, "0")}`;
   const eligible = d => (state.buildings.home ?? 1) >= d.requiredHomeLevel && Object.entries(d.requiredBuildings ?? {}).every(([id, level]) => (state.buildings[id] ?? 0) >= level)
     && (!d.buildingId || state.buildings[d.buildingId] >= d.buildingLevel)
     && Object.entries(d.requiredRecipes ?? {}).every(([id, count]) => (state.progression.recipes[id] ?? 0) >= count);
-  const tutorialTerms = () => state.tutorialOrder?.ingredientsClaimed && !state.tutorialOrder.completed ? state.tutorialOrder.terms : null;
+  const courseTerms = () => state.tutorialOrder?.ingredientsClaimed && !state.tutorialOrder.completed
+    ? state.tutorialOrder.terms : stageOrders.stageResidentOrder(state, catalog);
   const command = (action, targetId, quantity = 1, totalPrice = 0) => {
     if (action === "start_exploration" && catalog.fishing.routeIds.includes(targetId)) action = "start_fishing";
     const next = structuredClone(state);
@@ -143,8 +150,8 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
       }
       if (action === "claim_job" && previousJob) {
         const duration = (Date.parse(previousJob.finishesAt) - Date.parse(previousJob.startedAt)) / 1000;
-        if (previousJob.kind === "exploration") actorWorkSeconds[miningRoutes.has(previousJob.targetId) ? "quarry" : "exploration"] += duration;
-        if (actorAvailability.isQuarryProduction(previousJob)) actorWorkSeconds.quarry += duration;
+        if (previousJob.kind === "exploration") actorWorkSeconds[previousJob.actorId === "miner" ? "miner" : "exploration"] += duration;
+        if (actorAvailability.isQuarryProduction(previousJob)) actorWorkSeconds.exploration += duration;
         if (previousJob.collection?.startedAt) actorWorkSeconds.collection += previousJob.collection.seconds;
       }
       if (action === "start_construction") {
@@ -260,7 +267,7 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
       for (const [input, quantity] of Object.entries(source.cost.items)) expand(input, quantity * batches, [...path, id]);
     };
     for (const [id, amount] of Object.entries(target.cost.items)) expand(id, amount);
-    const tutorial = tutorialTerms();
+    const tutorial = courseTerms();
     if (tutorial) for (const [id, amount] of Object.entries(tutorial.items)) {
       if ((planned[id] ?? 0) >= amount || sources(id).length) expand(id, amount);
       else needed[id] = (needed[id] ?? 0) + amount;
@@ -372,7 +379,7 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
       }
     }
     for (;;) {
-      const tutorial = tutorialTerms();
+      const tutorial = courseTerms();
       if (!tutorial || !rules.canAffordEconomy(state, { coins: 0, items: tutorial.items })) break;
       assert(command("complete_resident_order", tutorial.id), `Earned tutorial request failed: ${lastFailure}`);
     }
@@ -386,7 +393,7 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
     }
     plan = demand(target); sellExcess(plan.needed);
     const mineReserved = state.jobs.some(job => job.kind === "exploration" && catalog.explorations.find(route => route.id === job.targetId)?.requiredBuildings.quarry);
-    if (eligible(target) && rules.canAffordEconomy(state, target.cost) && !(target.id === "home" && target.level === 2 && tutorialTerms()) && !(target.id === "quarry" && mineReserved)
+    if (eligible(target) && rules.canAffordEconomy(state, target.cost) && !(target.id === "home" && courseTerms()) && !(target.id === "quarry" && mineReserved)
       && !state.jobs.some(j => j.kind === "construction" || j.kind === "production" && j.targetId === target.id)) command("start_construction", target.id);
     const construction = state.jobs.find(j => j.kind === "construction");
     if (constructionSpeedups && pearlBudget > 0 && construction) {
@@ -404,7 +411,9 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
     const available = d => eligible(d) && !(d.requiredBuildings?.quarry && busy.has("quarry"));
     const freeDefinitions = [...catalog.recipes, ...catalog.explorations].filter(d => available(d) && !Object.keys(d.cost.items).length && !d.cost.coins);
     const candidates = [...catalog.recipes, ...catalog.explorations].filter(available).sort((a, b) => (plan.recipeWants.get(b.id) ?? 0) - (plan.recipeWants.get(a.id) ?? 0));
-    const actorBusy = () => actorAvailability.economyActorConflict(state.jobs, "departure", epoch + clock * 1000);
+    const actorBusy = actorId => actorId === "miner"
+      ? actorAvailability.economyMinerConflict(state.jobs, epoch + clock * 1000)
+      : actorAvailability.economyActorConflict(state.jobs, "departure", epoch + clock * 1000);
     for (const d of candidates) {
       // Re-read guaranteed pending output after every additional slot. A stale
       // recipe demand would manufacture the same construction inputs twice.
@@ -414,7 +423,7 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
         // trying to stock every raw unit of the entire future craft chain.
         if (enoughGatheredInput(d, plan, target)) break;
         if (d.buildingId && (parallelProductionPlanning ? !productionAvailable(d.buildingId) || d.buildingId === drainingStation : busy.has(d.buildingId))) break;
-        if ((!d.buildingId || d.buildingId === "quarry") && actorBusy()) break;
+        if ((!d.buildingId || d.buildingId === "quarry") && actorBusy(d.activity === "mining" ? "miner" : "mochlik")) break;
         const wanted = Math.min(d.maxBatch ?? 1, plan.recipeWants.get(d.id));
         const affordable = Array.from({ length: wanted }, (_, i) => wanted - i).find(q => rules.canAffordEconomy(state, d.cost, q));
         if (!affordable) break;
@@ -424,8 +433,8 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
         if (!parallelProductionPlanning || !d.buildingId) break;
       }
     }
-    // Idle gathering earns sale money; mining and other routes use one actor.
-    // Every eligible completed route advances the same relic clock.
+    // Idle gathering earns sale money; the miner and Mochlik have independent queues.
+    // Eligible completed routes advance their saved actor's relic clock.
     // Costly processing is reserved for the next upgrade. This is not an optimum.
     const income = d => {
       let expectedCash = cash(d.rewards);
@@ -438,16 +447,17 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
       }
       return expectedCash / (isActive ? d.seconds : Math.max(1, Math.ceil(d.seconds / gap)));
     };
-    for (const id of ["garden", "woodlot", null]) {
-      if (!id && tutorialTerms()) continue; // Optional departures must not block the introductory berry collection.
-      if (id ? (parallelProductionPlanning ? !productionAvailable(id) || id === drainingStation : busy.has(id)) : actorBusy()) continue;
-      const needsRelic = !id && plan.needsRelic && (state.buildings.home ?? 1) >= (catalog.rareDrops?.requiredHomeLevel ?? Infinity);
+    for (const id of ["garden", "woodlot", "miner", "mochlik"]) {
+      const station = id !== "miner" && id !== "mochlik";
+      if (!station && id === "mochlik" && courseTerms()) continue; // Optional departures must not block the introductory berry collection.
+      if (station ? (parallelProductionPlanning ? !productionAvailable(id) || id === drainingStation : busy.has(id)) : actorBusy(id)) continue;
+      const needsRelic = !station && plan.needsRelic && (state.buildings.home ?? 1) >= (catalog.rareDrops?.requiredHomeLevel ?? Infinity);
       // The player gathers construction inputs above, and earns sale money only
       // until the next visible upgrade is funded. Relic work remains necessary
       // even when its wallet cost is already covered.
       if (!needsRelic && state.wallet.coins >= target.cost.coins) continue;
-      const d = freeDefinitions.filter(d => id ? d.buildingId === id
-        : !d.buildingId || !needsRelic && d.buildingId === "quarry" && !busy.has("quarry")).sort((a, b) => {
+      const d = freeDefinitions.filter(d => station ? d.buildingId === id
+        : !d.buildingId && (d.activity === "mining" ? "miner" : "mochlik") === id).sort((a, b) => {
         // When a visible upgrade lacks a relic, prefer free routes that bank
         // more authored travel time between visits. Never inspect the private
         // clock or pending type, never skip real costs or building requirements.

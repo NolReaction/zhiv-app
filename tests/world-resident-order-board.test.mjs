@@ -13,6 +13,7 @@ const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/mo
 const { residentOrderBoard, normalizedResidentOrders, advanceResidentOrder } = await vite.ssrLoadModule("/features/economy/domain/food.ts");
 const { economyLocalSellPrice } = await vite.ssrLoadModule("/features/economy/domain/local-sale.ts");
 const { TUTORIAL_ORDER_ID, tutorialResidentOrder, newTutorialOrder } = await vite.ssrLoadModule("/features/economy/domain/tutorial-order.ts");
+const { stageResidentOrder } = await vite.ssrLoadModule("/features/economy/domain/stage-orders.ts");
 after(() => vite.close());
 const now = Date.parse("2026-10-07T14:00:00Z");
 function controller(overrides = {}, flags = {}) {
@@ -78,6 +79,48 @@ test("educational order appears only after its activation, respects the resident
   economy.snapshot.tutorialOrder.completed = true;
   assert.doesNotMatch(render(ResidentOrderBoard, { economy }), /data-tutorial-order/);
   buttons(card)[0].props.onClick(); // Stale callback is rejected by the current confirmed marker.
+});
+
+test("house-two course pins one nonreplaceable request before normal filters with frozen accepted terms", () => {
+  const economy = controller({ buildings: { home: 2, warehouse: 1, workshop: 1, quarry: 2, kiln: 1 },
+    tutorialOrder: { ...newTutorialOrder(), step: 4, completed: true } });
+  const course = economy.snapshot.catalog.stageOrders.find(entry => entry.homeLevel === 2);
+  assert.equal(course.orders.length, 5);
+  const terms = { ...course.orders[0], items: { rope: 3 }, coins: 125 };
+  economy.snapshot.stageOrders = { version: 1, stages: { 2: { step: 0, completed: false, terms } } };
+  economy.snapshot.inventory = { rope: 3 };
+  const before = structuredClone(economy.snapshot), markup = render(ResidentOrderBoard, { economy });
+  assert.match(markup, /data-stage-order="true"/);
+  assert.match(markup, /К дому 3 · 1 \/ 5/);
+  assert.equal((markup.match(/data-stage-order=/g) ?? []).length, 1);
+  assert.equal((markup.match(/data-order-id=/g) ?? []).length, 4);
+  assert.ok(markup.indexOf(`data-order-id="${terms.id}"`) < markup.indexOf('aria-label="Заказчик"'));
+  assert.doesNotMatch(render(ResidentOrderBoard, { economy, residentId: "plesk" }), /data-stage-order/);
+  assert.match(render(ResidentOrderBoard, { economy, residentId: "builder" }), /data-stage-order/);
+  const offer = stageResidentOrder(economy.snapshot), card = ResidentOrderCard({ economy, offer });
+  assert.deepEqual(offer.items, { rope: 3 }); assert.equal(offer.coins, 125);
+  assert.equal(buttons(card).length, 1); assert.equal(buttons(card)[0].props.disabled, false);
+  assert.doesNotMatch(render(ResidentOrderCard, { economy, offer }), /Заменить заказ:|монет больше продажи/);
+  assert.deepEqual(economy.snapshot, before, "rendering cannot freeze, pay or advance the course");
+  economy.snapshot.tutorialOrder.completed = false;
+  assert.doesNotMatch(render(ResidentOrderBoard, { economy }), /data-stage-order/);
+  economy.snapshot.tutorialOrder.completed = true;
+  economy.snapshot.buildings.home = 3;
+  assert.doesNotMatch(render(ResidentOrderBoard, { economy }), /data-stage-order/);
+});
+
+test("stage request material shortcuts prefer the independent mine and retain first-house forest recovery", () => {
+  const calls = [], economy = controller({ buildings: { home: 2, warehouse: 1, workshop: 1, quarry: 1 } });
+  const offer = { ...residentOrderBoard(economy.snapshot, now).offers[0], items: { stone: 6, clay: 4 } };
+  const card = () => ResidentOrderCard({ economy, offer, onNavigateStation: (...args) => calls.push(args),
+    onNavigateExpeditions: sector => calls.push([sector]) });
+  buttons(card()).filter(button => button.props["aria-label"]?.startsWith("Где получить для заказа:")).forEach(button => button.props.onClick());
+  assert.deepEqual(calls, [["quarry"], ["quarry"]], "clay points to the mine upgrade even before level two");
+  calls.length = 0; economy.snapshot.buildings = { home: 1, warehouse: 1 };
+  const first = ResidentOrderCard({ economy, offer: { ...offer, items: { stone: 1 } },
+    onNavigateStation: (...args) => calls.push(args), onNavigateExpeditions: sector => calls.push([sector]) });
+  buttons(first).find(button => button.props["aria-label"]?.startsWith("Где получить для заказа:")).props.onClick();
+  assert.deepEqual(calls, [["forest"]]);
 });
 
 test("order premium compares real fish and rounded local sale proceeds, not the nominal catalogue base", () => {
@@ -220,6 +263,42 @@ test("paid replacement needs deliberate confirmation, checks fresh state and rej
       if (step < 3) assert.equal(cards(tree)[0].props.offer.id, economy.snapshot.catalog.onboarding.residentOrders[step + 1].id);
       first.props.onComplete(first.props.offer);
       assert.equal(calls.length, 1, "a stale tutorial card cannot submit the next pinned request");
+    }
+
+    const course = economy.snapshot.catalog.stageOrders.find(entry => entry.homeLevel === 2);
+    economy.snapshot.buildings = { home: 2, warehouse: 1, workshop: 1, quarry: 2, kiln: 1 };
+    for (let step = 0; step < course.orders.length; step++) {
+      hooks.reset(); calls.length = 0; economy.uncertain = false; economy.notice = "";
+      const terms = course.orders[step];
+      economy.snapshot.stageOrders = { version: 1, stages: { 2: { step, completed: false, terms } } };
+      economy.snapshot.inventory = { ...terms.items };
+      tree = board(); first = cards(tree)[0];
+      assert.equal(first.props.offer.id, terms.id);
+      assert.match(renderToStaticMarkup(tree), new RegExp(`К дому 3 · ${step + 1} / 5`));
+      assert.equal(buttons(Card(first.props)).length, 1);
+      first.props.onComplete(first.props.offer); first.props.onComplete(first.props.offer);
+      assert.deepEqual(calls, [["complete_resident_order", terms.id, 1, 0]]);
+      assert.doesNotMatch(renderToStaticMarkup(board()), /Заказ этапа выполнен ·/);
+      economy.snapshot = { ...economy.snapshot, revision: economy.snapshot.revision + 1 };
+      economy.notice = "Фоновый снимок обновлён";
+      assert.doesNotMatch(renderToStaticMarkup(board()), /Заказ этапа выполнен ·/, "revision and a notice alone do not confirm payment");
+      economy.snapshot.stageOrders.stages[2] = { step: step + 1, completed: step === 4, terms: course.orders[step + 1] ?? null };
+      economy.snapshot.inventory = {};
+      economy.notice = "Заказ выполнен";
+      tree = board();
+      assert.match(renderToStaticMarkup(tree), new RegExp(`Заказ этапа выполнен · \\+${terms.coins} монет`));
+      assert.equal(cards(tree).length, step === 4 ? 3 : 4);
+      if (step < 4) assert.equal(cards(tree)[0].props.offer.id, course.orders[step + 1].id);
+      else assert.match(renderToStaticMarkup(tree), /Все просьбы этого этапа выполнены/);
+      first.props.onComplete(first.props.offer);
+      buttons(Card(first.props))[0].props.onClick();
+      assert.equal(calls.length, 1, "the saved previous card cannot submit the next stage request");
+      economy.uncertain = true;
+      assert.doesNotMatch(renderToStaticMarkup(board()), /Заказ этапа выполнен ·/);
+      economy.uncertain = false;
+      const owner = economy.snapshot.ownerPublicId; economy.snapshot.ownerPublicId = "OTHER";
+      assert.doesNotMatch(renderToStaticMarkup(board()), /Заказ этапа выполнен ·/);
+      economy.snapshot.ownerPublicId = owner;
     }
   } finally { await runtime.close(); }
 });

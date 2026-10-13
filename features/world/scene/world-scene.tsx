@@ -19,6 +19,7 @@ import { MAP_PLACES } from "@/features/world/legacy/map-layout";
 import { TILED_WORLD, WORLD_PRESENTATION } from "./presentation";
 import { interactiveMapObjects, type MapObjectPlace } from "./site-interactions";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
+import { isMinerJob } from "@/features/economy/domain/actor-availability";
 import { WorldConstructionStatus } from "@/features/world/ui/hud/world-construction-status";
 import { WorldUpgradeEffects, UPGRADE_CELEBRATION_MS } from "@/features/world/ui/feedback/world-upgrade-effects";
 import { WorldProductionStatus } from "@/features/world/ui/hud/world-production-status";
@@ -62,7 +63,7 @@ export function WorldScene({ suspended = false, hideJourneyStatus = false, const
   const [ready, setReady] = useState(false), [error, setError] = useState<string | null>(null);
   const [anchorStore] = useState(createMapAnchorStore);
   const constructionActive = Boolean(constructionEconomy?.snapshot?.jobs.some(job => job.kind === "construction"));
-  const productionActive = Boolean(constructionEconomy?.snapshot?.jobs.some(job => job.kind === "production"));
+  const productionActive = Boolean(constructionEconomy?.snapshot?.jobs.some(job => job.kind === "production" || isMinerJob(job)));
   const completions = constructionEconomy?.completedConstructions;
   const gains = constructionEconomy?.inventoryGains;
   const anchorTracking = useRef({ enabled: constructionActive || productionActive, production: productionActive, seen: new Set(completions?.map(event => event.id)), gains: new Set(gains?.map(event => event.id)), until: 0 });

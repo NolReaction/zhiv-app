@@ -28,9 +28,11 @@ const quarryRoutes = economyCatalog.explorations.filter(route => route.id.starts
 const miningRoutes = economyCatalog.explorations.filter(route => route.activity === "mining");
 function legacyMine(p, routeId = "quarry_stone") {
   const route = quarryRoutes.find(route => route.id === routeId);
+  const seconds = routeId === "quarry_stone" ? 1800 : route.seconds;
+  const rewards = routeId === "quarry_stone" ? { stone: 8 } : { ...route.rewards };
   const job = { id: crypto.randomUUID(), kind: "production", targetId: "quarry", recipeId: routeId, targetLevel: null,
-    startedAt: new Date(now).toISOString(), finishesAt: new Date(now + route.seconds * 1000).toISOString(),
-    rewards: { ...route.rewards }, cost: { ...route.cost }, catalogVersion: 3 };
+    startedAt: new Date(now).toISOString(), finishesAt: new Date(now + seconds * 1000).toISOString(),
+    rewards, cost: { ...route.cost }, catalogVersion: 3 };
   p.row.state.jobs.push(job);
   return job;
 }
@@ -118,23 +120,28 @@ test("paid cave snapshots without a quarry remain claimable or cancellable witho
   }
 });
 
-test("every quarry order excludes every route and equipped fishing before costs, IDs or randomness change", () => {
+test("legacy quarry production excludes hero routes before spending while the miner keeps his independent queue", () => {
   const p = player(), mine = legacyMine(p);
   for (const at of [now, Date.parse(mine.finishesAt)]) {
     for (const route of economyCatalog.explorations) {
       const actions = economyCatalog.fishing.routeIds.includes(route.id) ? ["start_exploration", "start_fishing"] : ["start_exploration"];
       for (const action of actions) {
         const state = structuredClone(p.row.state), before = structuredClone(state);
-        assert.throws(() => applyEconomyCommand(state, command(p, action, route.id, at), at,
-          () => assert.fail("busy start generated a job ID"), {}, () => assert.fail("busy start rolled a reward")), { code: "ECONOMY_QUARRY_BUSY" });
-        assert.deepEqual(state, before);
+        if (route.activity === "mining") {
+          applyEconomyCommand(state, command(p, action, route.id, at), at, () => crypto.randomUUID(), {}, () => 0);
+          assert.equal(state.jobs.at(-1).actorId, "miner"); assert.deepEqual(state.jobs[0], before.jobs[0]);
+        } else {
+          assert.throws(() => applyEconomyCommand(state, command(p, action, route.id, at), at,
+            () => assert.fail("busy start generated a job ID"), {}, () => assert.fail("busy start rolled a reward")), { code: "ECONOMY_QUARRY_BUSY" });
+          assert.deepEqual(state, before);
+        }
       }
     }
   }
   const traveller = player(), trip = issue(traveller, "start_exploration", "cave").state.jobs[0];
   for (const at of [now, Date.parse(trip.finishesAt)]) for (const recipe of quarryRoutes) {
     const before = structuredClone(traveller.row.state);
-    assert.throws(() => issue(traveller, "start_exploration", recipe.id, at), { code: "ECONOMY_EXPLORER_BUSY" });
+    assert.throws(() => issue(traveller, "start_exploration", recipe.id, at), { code: "ECONOMY_MINER_BUSY" });
     assert.deepEqual(traveller.row.state, before);
   }
 });
@@ -153,8 +160,10 @@ test("harvesting waits for the quarry deadline and retains the hero until delive
   const collecting = issue(p, "start_collection", berries.id, finish).state.jobs.find(job => job.id === berries.id);
   const deliveredAt = Date.parse(collecting.collection.finishesAt);
   issue(p, "claim_job", mine.id, deliveredAt);
-  for (const recipe of quarryRoutes)
-    assert.throws(() => issue(p, "start_exploration", recipe.id, deliveredAt), { code: "ECONOMY_COLLECTOR_BUSY" });
+  for (const recipe of quarryRoutes) {
+    const independent = issue(p, "start_exploration", recipe.id, deliveredAt).state.jobs.find(job => job.actorId === "miner");
+    assert.ok(independent); issue(p, "cancel_exploration", independent.id, deliveredAt);
+  }
   assert.throws(() => issue(p, "start_exploration", "forest", deliveredAt), { code: "ECONOMY_COLLECTOR_BUSY" });
   issue(p, "claim_job", berries.id, deliveredAt);
   assert.ok(issue(p, "start_exploration", "quarry_stone", deliveredAt).state.jobs.some(job => job.targetId === "quarry_stone"));
@@ -184,7 +193,7 @@ test("competing quarry and cave starts accept one request in either order and re
     const [winner, loser] = miningFirst ? [mine, cave] : [cave, mine];
     const accepted = economy.commandDevEconomy(p.token, winner, now);
     assert.throws(() => economy.commandDevEconomy(p.token, loser, now), { code: "ECONOMY_REVISION_CONFLICT" });
-    assert.throws(() => issue(p, loser.action, loser.targetId), { code: "ECONOMY_EXPLORER_BUSY" });
+    assert.throws(() => issue(p, loser.action, loser.targetId), { code: "ECONOMY_MINER_BUSY" });
     assert.equal(economy.commandDevEconomy(p.token, winner, now).replayed, true);
     const job = accepted.state.jobs[0], finish = Date.parse(job.finishesAt);
     issue(p, "claim_job", job.id, finish);
@@ -200,7 +209,7 @@ test("already overlapping saved jobs keep locked rewards and collection progress
     const mine = legacyMine(p);
     const trip = issue(other, "start_exploration", "cave").state.jobs[0];
     const savedMine = { ...mine, recipeId: "retired-quarry-order", rewards: { stone: 13 }, catalogVersion: 1 };
-    const savedTrip = { ...trip, rewards: { ore: 9 }, rareDrop: null, catalogVersion: 1 };
+    const savedTrip = { ...trip, actorId: null, rewards: { ore: 9 }, rareDrop: null, catalogVersion: 1 };
     p.row.state.jobs = [savedMine, savedTrip]; p.row.state.inventory = {};
     const finish = Math.max(Date.parse(mine.finishesAt), Date.parse(trip.finishesAt));
     const jobs = miningFirst ? [savedMine, savedTrip] : [savedTrip, savedMine];
@@ -215,15 +224,16 @@ test("already overlapping saved jobs keep locked rewards and collection progress
   }
 });
 
-test("legacy journeys block quarry without spending while passive production stays available", () => {
+test("legacy journeys reserve only Mochlik while independent mining and passive production stay available", () => {
   for (const finished of [false, true]) {
     const p = player(), before = structuredClone(p.row.state);
     globalThis.__zhivDevWorldStore.get(p.me.user.publicId).state.journeys = [{ id: crypto.randomUUID(), routeId: "first_path",
       startedAt: new Date(now - 1000).toISOString(), finishesAt: new Date(now + (finished ? -1 : 600_000)).toISOString(),
       rewards: { sparks: 0, wood: 0, stone: 0 }, finds: [], introductory: true, catalogVersion: 3 }];
-    assert.throws(() => issue(p, "start_exploration", "quarry_stone"), { code: "ECONOMY_EXPLORER_BUSY" });
+    assert.throws(() => issue(p, "start_exploration", "forest"), { code: "ECONOMY_EXPLORER_BUSY" });
     assert.deepEqual(p.row.state, before);
-    assert.equal(issue(p, "start_production", "grow_berries").state.jobs[0].targetId, "garden");
+    const mining = issue(p, "start_exploration", "quarry_stone").state.jobs[0]; assert.equal(mining.actorId, "miner");
+    assert.equal(issue(p, "start_production", "grow_berries").state.jobs.at(-1).targetId, "garden");
   }
 });
 
@@ -245,18 +255,18 @@ test("retired quarry production is rejected before IDs, randomness or spending; 
 
 test("mining claims advance the mineral book and relic clock without minting crafting or travel completions", () => {
   const p = player(); p.row.state.inventory = {};
-  p.row.state.rareDropState = { version: 1, remainingSeconds: 1800, itemId: "moon_crystal" };
+  p.row.state.minerRareDropState = { version: 1, remainingSeconds: 180, itemId: "moon_crystal" };
   const mining = issue(p, "start_exploration", "quarry_stone").state.jobs[0];
   assert.equal(mining.rewards.moon_crystal, 1);
-  assert.equal(p.row.state.rareDropState.remainingSeconds, 1800);
+  assert.equal(p.row.state.minerRareDropState.remainingSeconds, 180);
   const result = issue(p, "claim_job", mining.id, Date.parse(mining.finishesAt)).state;
   assert.equal(result.inventory.moon_crystal, 1);
   assert.equal(result.completedExplorations, 0);
-  assert.equal(result.progression.collections.quarrySeconds, 1800);
+  assert.equal(result.progression.collections.quarrySeconds, 180);
   assert.equal(result.progression.collections.travelSeconds, 0);
   assert.equal(result.progression.routes.quarry_stone, 1);
   assert.deepEqual(result.progression.recipes, {});
-  assert.ok(p.row.state.rareDropState.remainingSeconds > 0);
+  assert.ok(p.row.state.minerRareDropState.remainingSeconds > 0);
 });
 
 test("focused mining keeps home and site gates and cannot overlap its upgrade", () => {

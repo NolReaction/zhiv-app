@@ -98,7 +98,7 @@ test("known retired quarry recipes retain historic achievement progress without 
   const p = player(); let now = Date.now();
   const initial = economy.getDevEconomy(p.token, now);
   const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
-  row.state.buildings = { ...initial.buildings, home: 2, quarry: 2 };
+  row.state.buildings = { ...initial.buildings, home: 3, quarry: 2 };
   const paid = { id: crypto.randomUUID(), kind: "production", targetId: "quarry", recipeId: "quarry_stone", targetLevel: null,
     startedAt: new Date(now - 1_800_000).toISOString(), finishesAt: new Date(now).toISOString(),
     rewards: { stone: 8 }, cost: { coins: 0, items: {} }, catalogVersion: 3 };

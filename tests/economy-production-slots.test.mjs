@@ -115,15 +115,23 @@ test("construction blocks production and slot purchases while live production st
   assert.deepEqual(read(p), before);
 });
 
-test("several growing crops still share one collecting hero and quarry expeditions never gain extra actors", () => {
+test("several growing crops share one collecting hero while mining retains its own single actor", () => {
   const p = player(); issue(p, "buy_production_slot", "garden");
   issue(p, "start_production", "grow_berries");
   const growing = issue(p, "start_production", "grow_berries").state;
   const ripe = Math.max(...growing.jobs.map(j => Date.parse(j.finishesAt)));
   const first = issue(p, "start_collection", growing.jobs[0].id, ripe).state.jobs[0];
+  const beforeSecondCollection = read(p, ripe);
   assert.throws(() => issue(p, "start_collection", growing.jobs[1].id, ripe), { code: "ECONOMY_COLLECTOR_BUSY" });
-  assert.throws(() => issue(p, "start_exploration", "cave", ripe), { code: "ECONOMY_COLLECTOR_BUSY" });
+  assert.deepEqual(read(p, ripe), beforeSecondCollection);
+  const miner = issue(p, "start_exploration", "cave", ripe).state.jobs.find(job => job.targetId === "cave");
+  assert.equal(miner.actorId, "miner");
+  const beforeSecondMining = read(p, ripe);
+  assert.throws(() => issue(p, "start_exploration", "quarry_stone", ripe), { code: "ECONOMY_MINER_BUSY" });
+  assert.deepEqual(read(p, ripe), beforeSecondMining);
   const done = Date.parse(first.collection.finishesAt);
   issue(p, "claim_job", first.id, done);
-  assert.ok(issue(p, "start_collection", growing.jobs[1].id, done).state.jobs[0].collection.startedAt);
+  const collecting = issue(p, "start_collection", growing.jobs[1].id, done).state;
+  assert.ok(collecting.jobs.find(job => job.id === growing.jobs[1].id).collection.startedAt);
+  assert.deepEqual(collecting.jobs.find(job => job.id === miner.id), miner, "the independent mining job survives both harvests");
 });

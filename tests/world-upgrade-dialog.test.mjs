@@ -18,32 +18,40 @@ function unlocks(stationId, level, catalog = economyCatalog) {
   return worldUpgradeUnlocks({ catalog }, stationId, target);
 }
 
-test("house 2 explains the mine, workshop kiln, exploration and player market together", () => {
+test("house two opens fiber, rope, the independent mine and kiln while metal and night batches wait for house three", () => {
   const result = unlocks("home", 2);
   assert.ok(result.upgrades.some(target => target.stationId === "quarry" && target.level === 1));
   assert.ok(result.upgrades.some(target => target.stationId === "kiln" && target.level === 1));
-  assert.ok(result.recipes.some(recipe => recipe.id === "smelt_iron"));
-  assert.ok(result.routes.some(route => route.id === "cave"));
+  assert.deepEqual(result.recipes.map(recipe => recipe.id), ["gather_fiber", "make_rope", "make_charcoal", "fire_bricks"]);
+  assert.deepEqual(result.routes.map(route => route.id), ["quarry_stone", "quarry_clay"]);
+  assert.ok(result.upgrades.some(target => target.stationId === "quarry" && target.level === 2));
   assert.equal(result.market, true);
   assert.ok(!result.upgrades.some(target => target.stationId === "home"));
   assert.ok(!result.upgrades.some(target => target.level === 3));
   assert.equal(unlocks("home", 3).market, false);
+  const third = unlocks("home", 3);
+  assert.ok(third.recipes.some(recipe => recipe.id === "smelt_iron"));
+  assert.ok(third.recipes.some(recipe => recipe.id === "workshop_overnight"));
+  assert.ok(third.routes.some(route => route.id === "cave"));
 });
 
 test("equipment upgrades include their recipes and dependent world progression", () => {
   const result = unlocks("workshop", 2);
   assert.deepEqual(result.recipes.map(recipe => recipe.id), ["make_metal_parts", "weave_cloth", "workshop_overnight"]);
   assert.ok(result.routes.some(route => route.id === "old_woodland"));
-  assert.ok(result.upgrades.some(target => target.stationId === "home" && target.level === 3));
+  assert.ok(!result.upgrades.some(target => target.stationId === "home" && target.level === 3));
+  assert.ok(unlocks("workshop", 1).upgrades.some(target => target.stationId === "home" && target.level === 3));
+  assert.ok(unlocks("quarry", 2).upgrades.some(target => target.stationId === "home" && target.level === 3));
   assert.equal(result.market, false);
   assert.deepEqual(unlocks("garden", 2).recipes.map(recipe => recipe.id), ["grow_berries_large", "garden_fiber"]);
 });
 
-test("pantry development has real dependent upgrades even though it has no recipes", () => {
+test("pantry development opens fitting bulk routes and dependent upgrades without requiring it for house three", () => {
   const result = unlocks("warehouse", 2);
   assert.equal(result.recipes.length, 0);
-  assert.equal(result.routes.length, 0);
-  assert.ok(result.upgrades.some(target => target.stationId === "home" && target.level === 3));
+  assert.deepEqual(result.routes.map(route => route.id), ["coastal_deposits", "quarry_shift"]);
+  assert.ok(!result.upgrades.some(target => target.stationId === "home" && target.level === 3));
+  assert.ok(result.upgrades.some(target => target.stationId === "workshop" && target.level === 3));
   assert.ok(!result.upgrades.some(target => target.stationId === "warehouse"));
 });
 

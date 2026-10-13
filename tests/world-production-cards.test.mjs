@@ -16,7 +16,7 @@ after(() => vite.close());
 const now = Date.parse("2026-10-03T12:00:00Z");
 function controller(overrides = {}, flags = {}) {
   const state = { ownerPublicId: "ME", revision: 1, serverTime: new Date(now).toISOString(), wallet: { coins: 100, pearls: 0 }, inventory: {},
-    buildings: { home: 2, garden: 2, warehouse: 1, workshop: 2 }, jobs: [], completedExplorations: 0,
+    buildings: { home: 3, garden: 2, warehouse: 1, workshop: 2 }, jobs: [], completedExplorations: 0,
     migration: { version: 1, coinsGranted: 0, woodGranted: 0, stoneGranted: 0 }, catalog: structuredClone(economyCatalog), ...overrides };
   return { snapshot: { ...state, storage: overrides.storage ?? economyStorage(state) }, market: null, marketError: null, busy: false, uncertain: false, error: null, notice: "", now, retryAt: 0,
     act() {}, actMarket() {}, refresh() {}, refreshMarket() {}, retry() {}, ...flags };
@@ -43,7 +43,7 @@ function prepareMineRoute(economy, routeId = "quarry_stone") {
   const trackedEconomy = { ...economy, act: (...args) => calls.push(args) };
   function Probe() {
     tree = WorldExpeditionSector({ sectorId: "caves", selectedRoute, onSelectRoute: id => { selectedRoute = id; },
-      economy: trackedEconomy, state: economy.snapshot, exploring: economy.snapshot.jobs.some(job => job.kind === "exploration"), onOpenPantry() {} });
+      economy: trackedEconomy, state: economy.snapshot, exploring: economy.snapshot.jobs.some(job => job.kind === "exploration" && job.actorId !== "miner"), onOpenPantry() {} });
     return tree;
   }
   function walk(element) {
@@ -67,7 +67,7 @@ function prepareMineRoute(economy, routeId = "quarry_stone") {
   const html = renderToStaticMarkup(createElement(Probe)); walk(tree);
   assert.match(html, /data-route-preparation="true"/);
   return { html, calls, departure: elements.find(element => element.type === "button"
-    && element.props["aria-label"] === "Отправиться: Добыть камень") };
+    && element.props["aria-label"] === "Начать добычу: Добыть камень") };
 }
 
 test("workshop presents one catalogue of unlocked recipes regardless of duration", () => {
@@ -79,7 +79,7 @@ test("workshop presents one catalogue of unlocked recipes regardless of duration
 });
 
 test("unlocking an external station reveals its recipe in the same catalogue", () => {
-  const html = renderMenu("workshop", controller({ buildings: { home: 2, workshop: 2, kiln: 2, warehouse: 1 } }));
+  const html = renderMenu("workshop", controller({ buildings: { home: 3, workshop: 2, kiln: 2, warehouse: 1 } }));
   assert.match(section(html, "Доступные рецепты"), /data-recipe="make_metal_parts"/);
 });
 
@@ -108,19 +108,21 @@ test("harvest cards distinguish quantity and time while keeping the result name 
   const catalogue = section(html, "Доступные рецепты");
   const cards = [...catalogue.matchAll(/<button[^>]*data-recipe="([^"]+)"[^>]*>([\s\S]*?)<\/button>/g)];
   assert.equal(cards.length, 2);
-  for (const [, , card] of cards) assert.match(card, /<strong>Лесные ягоды<\/strong>/);
-  assert.match(cards[0][2], /×4<\/b>/);
-  assert.match(cards[0][2], /15 мин/);
-  assert.match(cards[1][2], /×32<\/b>/);
-  assert.match(cards[1][2], /8 ч/);
+  assert.deepEqual(cards.map(card => card[1]), ["grow_berries", "grow_strawberries"]);
+  assert.match(cards[0][2], /<strong>Малина<\/strong>/);
+  assert.match(cards[1][2], /<strong>Клубника<\/strong>/);
+  for (const [, , card] of cards) assert.match(card, /×1<\/b>/);
+  assert.match(cards[0][2], /1 мин/);
+  assert.match(cards[1][2], /5 мин/);
+  assert.doesNotMatch(catalogue, /grow_berries_overnight|8 ч/);
 });
 
 test("selected recipe shows actual multi-item rewards and only its own costs", () => {
-  const html = renderRecipe("workshop_overnight", controller({ inventory: { wood: 12, fiber: 20 } }));
+  const html = renderRecipe("workshop_overnight", controller({ inventory: { wood: 6, fiber: 20 } }));
   assert.match(html, /Все рецепты/);
   for (const amount of [6, 4, 1]) assert.match(html, new RegExp(`×${amount}</b>`));
   assert.match(html, /Понадобится/);
-  assert.match(html, /12 \/ 12/);
+  assert.match(html, /6 \/ 6/);
   assert.match(html, /20 \/ 20/);
   assert.equal(startDisabled(html), false);
   assert.doesNotMatch(html, /Обычные заказы|На несколько часов|data-recipe=/);
@@ -130,7 +132,7 @@ test("selection preserves missing-material navigation and all request locks", ()
   const navigation = { open() {}, canOpen() { return true; }, explore() {} };
   const missing = renderRecipe("make_planks", controller(), { navigation });
   assert.equal(startDisabled(missing), true);
-  assert.match(missing, /aria-label="Где получить: Древесина, В путь"/);
+  assert.match(missing, /aria-label="Где получить: Бревно"/);
   for (const flags of [{ busy: true }, { uncertain: true }, { retryAt: now + 10_000 }]) {
     const html = renderRecipe("make_planks", controller({ inventory: { wood: 2 } }, flags));
     assert.equal(startDisabled(html), true);
@@ -159,7 +161,7 @@ test("direct material navigation opens only unlocked recipe preparations", () =>
     }
     const preparation = section(html, recipe.name);
     assert.match(preparation, /Все рецепты/);
-    assert.match(preparation, /2 \/ 2/);
+    assert.match(preparation, /2 \/ 1/);
     assert.equal(startDisabled(preparation), false);
     assert.match(html, /<div[^>]*hidden=""[^>]*aria-label="Продукция: Мастерская"/);
   }
@@ -190,8 +192,8 @@ test("a direct recipe from another station or an unknown recipe leaves the ordin
 });
 
 test("storage warning appears only when the selected result will not currently fit", () => {
-  const available = { capacity: 200, used: 198, reserved: 0, available: 2, overflow: 0 };
-  assert.match(renderRecipe("grow_berries", controller({ storage: available })), /Для получения понадобится 4 мест · свободно 2/);
+  const available = { capacity: 50, used: 50, reserved: 0, available: 0, overflow: 0 };
+  assert.match(renderRecipe("grow_berries", controller({ storage: available })), /Для получения понадобится 1 мест · свободно 0/);
   assert.doesNotMatch(renderRecipe("grow_berries", controller()), /Для получения понадобится|Место понадобится/);
 });
 
@@ -282,16 +284,10 @@ test("mine exposes actor routes instead of production and passive crafting remai
     assert.doesNotMatch(mine, /data-recipe=|Начать ·/);
     assert.match(mine, /data-route="quarry_stone"/);
     const preparation = prepareMineRoute(economy), departure = preparation.departure;
-    if (occupied.kind === "exploration") {
-      assert.equal(departure, undefined, "a current or unclaimed trip has a claim/recall card instead of another departure");
-      assert.match(preparation.html, /Сначала заберите находки или отмените текущую вылазку/);
-    } else {
-      assert.ok(departure);
-      assert.equal(departure.props.disabled, true);
-      assert.match(preparation.html, /Сначала завершите сбор припасов/);
-      departure.props.onClick();
-    }
-    assert.deepEqual(preparation.calls, [], "busy heroes cannot dispatch another departure from preparation");
+    assert.ok(departure);
+    assert.equal(departure.props.disabled, false, "the miner remains independent during a hero trip or harvest");
+    departure.props.onClick();
+    assert.deepEqual(preparation.calls, [["start_exploration", "quarry_stone", 1, 0]]);
     assert.equal(startDisabled(renderRecipe("make_planks", economy)), false);
   }
 });

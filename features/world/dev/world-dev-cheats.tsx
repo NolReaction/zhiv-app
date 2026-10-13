@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { economyCatalog, type EconomyJob } from "@/features/economy/domain/model";
 import { formatPearls } from "@/features/economy/domain/money";
+import { isMinerJob } from "@/features/economy/domain/actor-availability";
 import { economyDevSettlement } from "@/features/economy/dev/dev-presets";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import type { WorldController } from "@/features/world/state/use-world";
@@ -76,7 +77,7 @@ export function WorldDevCheats({ world, economy, previewBuildings = false, onSho
   function jobName(job: EconomyJob) {
     return job.kind === "construction" ? `${catalog.buildings.find(entry => entry.id === job.targetId)?.name ?? job.targetId} · ур. ${job.targetLevel}`
       : job.kind === "production" ? catalog.recipes.find(entry => entry.id === job.recipeId)?.name ?? job.targetId
-      : catalog.explorations.find(entry => entry.id === job.targetId)?.name ?? job.targetId;
+      : `${isMinerJob(job) ? "Шахтёр" : "Мохлик"} · ${catalog.explorations.find(entry => entry.id === job.targetId)?.name ?? job.targetId}`;
   }
 
   return <div className={styles.cheats}>

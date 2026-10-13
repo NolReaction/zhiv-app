@@ -118,16 +118,23 @@ test("HTTP rejects every mining route at an unbuilt quarry without spending or i
   }
 });
 
-test("HTTP upgrades warehouse one through three with home one and no workshop while preserving paid costs and one builder", async () => {
+test("HTTP gates warehouse two at home two and keeps warehouse three independent while preserving paid costs and one builder", async () => {
   const p = player();
   economy.getDevEconomy(p.token);
   const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
   row.state.buildings = { ...row.state.buildings, home: 1, warehouse: 1, workshop: 0 };
-  const buildings = structuredClone(row.state.buildings);
   const targets = model.economyCatalog.buildings.find(building => building.id === "warehouse").levels.slice(1, 3);
   for (const target of targets) {
     row.state.inventory = { ...target.cost.items, wood: 2 };
     row.state.wallet = { coins: target.cost.coins, pearls: 0 };
+    if (target.level === 2) {
+      const before = structuredClone(row.state), revision = row.revision, receipts = row.receipts.size;
+      const blocked = await POST(post({ ...command(p), action: "start_construction", targetId: "warehouse" }));
+      assert.equal(blocked.status, 409); assert.equal((await blocked.json()).code, "ECONOMY_HOME_REQUIRED");
+      assert.deepEqual(row.state, before); assert.equal(row.revision, revision); assert.equal(row.receipts.size, receipts);
+    }
+    row.state.buildings.home = target.level === 2 ? 2 : 1;
+    const buildings = structuredClone(row.state.buildings);
     const order = { ...command(p), action: "start_construction", targetId: "warehouse" };
     const response = await POST(post(order));
     assert.equal(response.status, 200);

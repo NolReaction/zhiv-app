@@ -18,8 +18,8 @@ test("a simulated new player reaches home two from starting supplies using actua
     assert.equal(report.actions.buy_fishing_item, undefined);
     assert.equal(report.actions.speedup_construction, undefined);
     assert.equal(report.actions.cancel_exploration, undefined);
-    assert.equal(report.actions.complete_resident_order, 4);
-    assert.equal(report.coinFlow.orders, 330);
+    assert.equal(report.actions.complete_resident_order, 9);
+    assert.equal(report.coinFlow.orders, 1710);
     assert.equal(report.actions.claim_tutorial_order, undefined);
     assert.equal(report.actions.claim_workshop_starter, undefined);
     assert(report.actions.start_fishing > 0, "The current fishing UI path is exercised");
@@ -32,7 +32,9 @@ test("the comparison base, final home and all current upgrades are distinct repr
   const catalog = readEconomyCatalog();
   assert.deepEqual(journeyConstructionOrder(catalog), journeyOrder);
   const full = journeyConstructionOrder(catalog, "all-current-buildings");
-  assert.deepEqual(full.slice(journeyOrder.length), ["warehouse:6", "warehouse:7", "warehouse:8", "warehouse:9", "warehouse:10"]);
+  assert.deepEqual(full.slice(full.indexOf("warehouse:5") + 1, full.indexOf("garden:5")),
+    ["warehouse:6", "warehouse:7", "warehouse:8", "warehouse:9", "warehouse:10"]);
+  assert(full.indexOf("warehouse:10") < full.indexOf("quarry:5"));
   const home = journeyConstructionOrder(catalog, "home-5");
   assert.equal(home.at(-1), "home:5");
   assert(!home.some(key => key.startsWith("warehouse:") && Number(key.split(":")[1]) > 4));
@@ -163,7 +165,7 @@ test("the current simulator earns relics only from completed home-three explorat
       const claimedJob = command.action === "claim_job" ? structuredClone(state.jobs.find(job => job.id === command.targetId)) : null;
       const result = loaded.rules.applyEconomyCommand(state, command, now, jobId, reserved, rareRandom);
       if (command.action === "start_fishing" || command.action === "start_exploration") {
-        const job = state.jobs.find(job => job.kind === "exploration");
+        const job = state.jobs.find(job => job.kind === "exploration" && job.targetId === command.targetId && Date.parse(job.startedAt) === now);
         starts.push({ home, rare: job.rareDrop });
       }
       if (claimedJob?.rareDrop) claims.push(claimedJob);
@@ -202,22 +204,24 @@ test("joint planning actually starts multi-output orders without unlocking stati
   } finally { await loaded.close(); }
 });
 
-test("the player policy shares Mochlik between mining, trips and harvesting without starving required relic trips", async () => {
+test("the player policy schedules the independent miner and Mochlik without overlapping either actor or starving relic work", async () => {
   const loaded = await loadJourneyRules();
   try {
-    const actorSeconds = { quarry: 0, exploration: 0, collection: 0 };
+    const actorSeconds = { miner: 0, exploration: 0, collection: 0 }; let parallelActors = false;
     const observed = { ...loaded, rules: { ...loaded.rules, applyEconomyCommand: (state, command, now, jobId, reserved, rareRandom) => {
       const claimed = command.action === "claim_job" ? structuredClone(state.jobs.find(job => job.id === command.targetId)) : null;
       const result = loaded.rules.applyEconomyCommand(state, command, now, jobId, reserved, rareRandom);
       const active = state.jobs.filter(job =>
         ((job.kind === "exploration" || loaded.actorAvailability.isQuarryProduction(job)) && Date.parse(job.finishesAt) > now)
         || (job.collection?.startedAt && Date.parse(job.collection.finishesAt) > now));
-      assert(active.length <= 1, "An observed confirmed state must not schedule the same actor twice");
+      const miners = active.filter(job => job.actorId === "miner");
+      const heroes = active.filter(job => job.actorId !== "miner");
+      assert(miners.length <= 1 && heroes.length <= 1, "An observed confirmed state must not schedule the same actor twice");
+      parallelActors ||= miners.length === 1 && heroes.length === 1;
       if (claimed) {
-        const mining = loaded.catalog.explorations.find(route => route.id === claimed.targetId)?.activity === "mining";
         const seconds = (Date.parse(claimed.finishesAt) - Date.parse(claimed.startedAt)) / 1000;
-        if (claimed.kind === "exploration") actorSeconds[mining ? "quarry" : "exploration"] += seconds;
-        if (loaded.actorAvailability.isQuarryProduction(claimed)) actorSeconds.quarry += seconds;
+        if (claimed.kind === "exploration") actorSeconds[claimed.actorId === "miner" ? "miner" : "exploration"] += seconds;
+        if (loaded.actorAvailability.isQuarryProduction(claimed)) actorSeconds.exploration += seconds;
         if (claimed.collection?.startedAt) actorSeconds.collection += claimed.collection.seconds;
       }
       return result;
@@ -227,10 +231,12 @@ test("the player policy shares Mochlik between mining, trips and harvesting with
       assert(actorSeconds[kind] > 0);
       assert.equal(report.actorWorkHours[kind], Number((actorSeconds[kind] / 3600).toFixed(4)));
     }
-    assert(Object.values(actorSeconds).reduce((sum, seconds) => sum + seconds, 0) <= report.elapsedDays * 86400);
-    for (const code of ["ECONOMY_QUARRY_BUSY", "ECONOMY_EXPLORER_BUSY", "ECONOMY_COLLECTOR_BUSY"])
+    assert(parallelActors, "A genuine confirmed state exercises simultaneous mining and hero activity");
+    assert(actorSeconds.miner <= report.elapsedDays * 86400);
+    assert(actorSeconds.exploration + actorSeconds.collection <= report.elapsedDays * 86400);
+    for (const code of ["ECONOMY_MINER_BUSY", "ECONOMY_QUARRY_BUSY", "ECONOMY_EXPLORER_BUSY", "ECONOMY_COLLECTOR_BUSY"])
       assert.equal(report.failures[code], undefined, "Policy availability matches the authoritative rule");
-    assert(report.rareMaterials.finds.length > 0, "Completed mining and other routes earn the shared relic clock");
+    assert(report.rareMaterials.finds.length > 0, "Completed mining and other routes earn relics on their own actor clocks");
   } finally { await loaded.close(); }
 });
 

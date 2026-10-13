@@ -48,6 +48,30 @@ test("legacy explorations never borrow new equipment metadata and ready trips st
   assert.equal(economySceneJourney(undefined), null); assert.equal(economySceneJourney(null), null);
 });
 
+test("the independent miner never drives Mochlik's journey or activity even when stored before his trip", () => {
+  const miner = trip({ id: "miner-stone", targetId: "quarry_stone", actorId: "miner", fishing: null,
+    rewards: { stone: 1 } });
+  const state = account(miner), before = structuredClone(state);
+  assert.equal(economySceneJourney(state), null);
+  assert.equal(economySceneActivity(state), null);
+  assert.deepEqual(state, before);
+  state.jobs.push(trip());
+  assert.equal(economySceneJourney(state).id, "saved-fishing");
+  assert.equal(economySceneActivity(state).id, "saved-fishing");
+  state.jobs = [miner, { id: "passive", kind: "production", targetId: "workshop", recipeId: "make_planks",
+    startedAt: miner.startedAt, finishesAt: miner.finishesAt, rewards: { planks: 1 } }];
+  assert.equal(economySceneActivity(state).id, "passive");
+});
+
+test("missing or null saved actor metadata keeps older mining journeys owned by Mochlik", () => {
+  for (const actorId of [undefined, null, "mochlik"]) {
+    const state = account(trip({ id: "legacy-mine", targetId: "quarry_stone", actorId, fishing: null, rewards: { stone: 17 } }));
+    assert.equal(economySceneJourney(state).id, "legacy-mine");
+    assert.equal(economySceneActivity(state).kind, "exploration");
+    assert.deepEqual(economySceneJourney(state).rewards, { stone: 17 });
+  }
+});
+
 test("production sorting leaves the account order and fishing collection untouched", () => {
   const first = { id: "later", kind: "production", targetId: "dryer", recipeId: "smoke_fish", rewards: { smoked_fish: 2 },
     startedAt: "2026-10-04T12:00:00.000Z", finishesAt: "2026-10-04T14:00:00.000Z" };

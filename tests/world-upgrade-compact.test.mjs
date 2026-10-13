@@ -35,17 +35,24 @@ function render(stationId = "home", overrides = {}) {
 const text = html => html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ");
 const buttons = html => [...html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)].map(match => ({ attributes: match[1], text: text(match[2]) }));
 
-test("every warehouse expansion is available at home one without other buildings when its cost is owned", () => {
+test("warehouse expansion respects its authored home tier without extra building gates when its cost is owned", () => {
   const warehouse = economyCatalog.buildings.find(building => building.id === "warehouse");
+  assert.equal(warehouse.levels.find(level => level.level === 2).requiredHomeLevel, 2);
   for (const target of warehouse.levels.filter(level => level.level > 1)) {
-    const snapshot = state({ buildings: { home: 1, warehouse: target.level - 1, workshop: 0 },
+    const snapshot = state({ buildings: { home: target.requiredHomeLevel, warehouse: target.level - 1, workshop: 0 },
       inventory: { ...target.cost.items }, wallet: { coins: target.cost.coins, pearls: 0 } });
     const html = render("warehouse", { snapshot });
     assert.doesNotMatch(html, /aria-label="Недостающие условия"|Нужны улучшения/);
     const start = buttons(html).find(button => button.text.includes(`Улучшить до ур. ${target.level}`));
     assert.ok(start, `warehouse ${target.level} keeps its normal upgrade action`);
-    assert.doesNotMatch(start.attributes, /disabled/, `warehouse ${target.level} has no house or workshop gate`);
+    assert.doesNotMatch(start.attributes, /disabled/, `warehouse ${target.level} is available after its declared home tier`);
   }
+  const first = warehouse.levels.find(level => level.level === 2);
+  const locked = render("warehouse", { snapshot: state({ buildings: { home: 1, warehouse: 1 },
+    inventory: { ...first.cost.items }, wallet: { coins: first.cost.coins, pearls: 0 } }) });
+  assert.match(locked, /aria-label="Недостающие условия"/);
+  assert.match(text(locked), /Дом Мохлика 1\/2/);
+  assert.match(buttons(locked).find(button => /Улучшить до ур\. 2/.test(button.text)).attributes, /disabled/);
 });
 
 test("upgrade leads with its result and keeps exact costs and missing-level navigation", () => {
@@ -54,7 +61,7 @@ test("upgrade leads with its result and keeps exact costs and missing-level navi
   assert.ok(html.indexOf('aria-label="Что изменится"') < html.indexOf('aria-label="Подготовка к улучшению"'));
   assert.match(html, /aria-label="Где получить: Камень, В путь\. Есть 0, нужно [0-9]+"/);
   assert.match(html, /aria-label="Недостающие условия"/);
-  assert.match(text(html), /Монеты 5 000 \/ 1 500/);
+  assert.match(text(html), /Монеты 5 000 \/ 250/);
   assert.ok(!buttons(html).some(button => button.text.trim() === "Кладовая"));
   assert.doesNotMatch(html, /DEV: Дом Мохлика/);
 });
@@ -147,7 +154,7 @@ test("a maximum-level pantry reports real capacity and does not offer another up
 test("late pantry expansion has three distinct relic counters and no house, building or coin gate", () => {
   const snapshot = state({ buildings: { home: 1, warehouse: 9 }, wallet: { coins: 0, pearls: 0 }, inventory: { ancient_core: 10, moon_crystal: 3, living_resin: 3 } });
   const html = render("warehouse", { snapshot });
-  assert.match(text(html), /Вместимость кладовой 8\s?200 10\s?000 \+1\s?800 мест/);
+  assert.match(text(html), /Вместимость кладовой 450 500 \+50 мест/);
   for (const id of ["ancient_core", "moon_crystal", "living_resin"]) assert.match(html, new RegExp(`data-relic="${id}"`));
   assert.equal((html.match(/width="34" height="34"/g) ?? []).length, 3);
   assert.match(text(html), /Древнее ядро 10 \/ 10/);
@@ -180,15 +187,15 @@ test("relic cost navigation describes chance finds and respects their actual hom
 
 test("pantry expansion shows only its real capacity gain, without dependent building upgrades", () => {
   const html = render("warehouse", { snapshot: state({ buildings: { home: 2, warehouse: 1, workshop: 1 } }) });
-  assert.match(text(html), /Вместимость кладовой 300 500 \+200 мест/);
+  assert.match(text(html), /Вместимость кладовой 50 100 \+50 мест/);
   assert.doesNotMatch(html, /Развитие хозяйства|Дом Мохлика|Ягодный куст|Можно развивать|Новые рецепты|другие постройки/);
-  assert.match(text(html), /Доски 0 \/ 18/);
-  assert.match(text(html), /Камень 0 \/ 20/);
-  assert.match(text(html), /Верёвка 0 \/ 8/);
+  assert.match(text(html), /Доска 0 \/ 3/);
+  assert.match(text(html), /Камень 0 \/ 2/);
+  assert.match(text(html), /Верёвка 0 \/ 2/);
 });
 
 test("workshop upgrade presents only its own three products, with recipe details initially closed", () => {
-  const html = render("workshop", { snapshot: state({ buildings: { home: 2, warehouse: 1, workshop: 1, woodlot: 2, kiln: 2 } }) });
+  const html = render("workshop", { snapshot: state({ buildings: { home: 3, warehouse: 1, workshop: 1, woodlot: 2, kiln: 2 } }) });
   const products = buttons(html).filter(button => /data-recipe=/.test(button.attributes));
   assert.equal(products.length, 3);
   assert.ok(products.every(button => /aria-expanded="false"/.test(button.attributes)));
@@ -199,9 +206,18 @@ test("workshop upgrade presents only its own three products, with recipe details
 });
 
 test("a furnace upgrade does not claim that it manufactures workshop products unlocked by the furnace", () => {
-  const html = render("kiln", { snapshot: state({ buildings: { home: 2, warehouse: 1, workshop: 1, quarry: 2, kiln: 1 } }) });
-  assert.deepEqual(buttons(html).filter(button => /data-recipe=/.test(button.attributes)).map(button => button.attributes.match(/data-recipe="([^"]+)"/)[1]), ["fire_bricks", "smelt_iron"]);
+  const html = render("kiln", { snapshot: state({ buildings: { home: 3, warehouse: 1, workshop: 1, quarry: 2, kiln: 1 } }) });
+  assert.deepEqual(buttons(html).filter(button => /data-recipe=/.test(button.attributes)).map(button => button.attributes.match(/data-recipe="([^"]+)"/)[1]), ["smelt_iron"]);
   assert.doesNotMatch(html, /Металлические детали|Сделать металлические детали/);
+});
+
+test("the first furnace previews one charcoal and one brick per separate second-stage job", () => {
+  const html = render("kiln", { snapshot: state({ buildings: { home: 2, warehouse: 1, workshop: 1, quarry: 2, kiln: 0 } }) });
+  const products = buttons(html).filter(button => /data-recipe=/.test(button.attributes));
+  assert.deepEqual(products.map(button => button.attributes.match(/data-recipe="([^"]+)"/)[1]), ["make_charcoal", "fire_bricks"]);
+  assert.match(products[0].text, /Древесный уголь ×1 · 2 мин/);
+  assert.match(products[1].text, /Кирпич ×1 · 3 мин/);
+  assert.doesNotMatch(html, /data-recipe="smelt_iron"/);
 });
 
 test("home previews each opportunity in a labelled carousel without hiding the additional requirements", () => {
@@ -209,8 +225,9 @@ test("home previews each opportunity in a labelled carousel without hiding the a
   assert.match(text(html), /Новый облик дома Можно развивать постройки до ур\. 2/);
   assert.match(html, /aria-roledescription="карусель"/);
   assert.doesNotMatch(html, /<details/);
-  assert.match(text(html), /Каменоломня.*Печь.*Вход в пещеру.*Рынок между игроками/);
-  for (const id of ["home", "building:quarry", "building:kiln", "route:cave", "market"]) assert.ok(html.includes(`data-upgrade-benefit="${id}"`));
+  assert.match(text(html), /Каменоломня.*Печь.*Добыть камень.*Добыть глину.*Рынок между игроками/);
+  for (const id of ["home", "building:quarry", "building:kiln", "route:quarry_stone", "route:quarry_clay", "market"]) assert.ok(html.includes(`data-upgrade-benefit="${id}"`));
+  assert.doesNotMatch(html, /data-upgrade-benefit="route:cave"|data-upgrade-benefit="route:quarry_stone_overnight"/);
   assert.match(buttons(html).find(button => /aria-label="Предыдущая возможность"/.test(button.attributes)).attributes, /disabled/);
   assert.doesNotMatch(buttons(html).find(button => /aria-label="Следующая возможность"/.test(button.attributes)).attributes, /disabled/);
   assert.match(text(html), /Нужно завершить вылазок: 0 \/ 1/);
@@ -221,8 +238,10 @@ test("home previews each opportunity in a labelled carousel without hiding the a
 test("mine route cards retain actual yields, times and the additional home requirements", () => {
   const html = render("quarry", { snapshot: state({ buildings: { home: 1, warehouse: 1 } }) });
   for (const id of ["cave", "deep_cave", "quarry_stone", "quarry_stone_overnight"]) assert.ok(html.includes(`data-upgrade-benefit="route:${id}"`));
-  assert.match(text(html), /Новый маршрут · 1 ч Вход в пещеру Камень ×8 Железная руда ×4 Ещё потребуется Дом Мохлика 1\/2/);
-  assert.match(text(html), /Новый маршрут · 4 ч Глубокий проход Камень ×32 Железная руда ×16 Ещё потребуется Дом Мохлика 1\/3/);
+  assert.match(text(html), /Новая добыча · 1 ч Вход в пещеру Камень ×8 Железная руда ×4 Ещё потребуется Дом Мохлика 1\/3/);
+  assert.match(text(html), /Новая добыча · 4 ч Глубокий проход Камень ×32 Железная руда ×16 Ещё потребуется Дом Мохлика 1\/3/);
+  assert.match(text(html), /Новая добыча · 3 мин Добыть камень Камень ×1 Ещё потребуется Дом Мохлика 1\/2/);
+  assert.match(text(html), /Шахта работает независимо от Мохлика/);
   assert.match(html, /data-item-icon="stone"/);
 });
 

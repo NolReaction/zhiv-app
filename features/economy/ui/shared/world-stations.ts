@@ -3,6 +3,8 @@ import type { EconomyCatalog, EconomyCost, EconomyJob, EconomyView } from "@/fea
 import { fishClassForItem } from "@/features/economy/domain/fishing";
 import { productionSlotCount } from "@/features/economy/domain/production-slots";
 import { tutorialOrderProgress } from "@/features/economy/domain/tutorial-order";
+import { stageCourseRequired, stageOrderProgress } from "@/features/economy/domain/stage-orders";
+import { explorationActorId, isMinerJob } from "@/features/economy/domain/actor-availability";
 
 export type WorldStationDefinition = { label: string; stationIds: readonly string[]; future?: string };
 export const worldStations: Partial<Record<WorldPlace, WorldStationDefinition>> = {
@@ -78,7 +80,12 @@ export function worldMaterialSource(state: EconomyView, itemId: string) {
       && worldMissingRequirements(state, worldRequirements(entry, entry)).every(required => required.id === entry.buildingId));
   if (recipe) return { kind: "production" as const, stationId: recipe.buildingId, targetId: recipe.id };
   const fish = state.catalog.fishing && fishClassForItem(itemId, state.catalog.fishing);
-  const exploration = state.catalog.explorations.find(entry => ((entry.rewards[itemId] ?? 0) > 0 || fish && state.catalog.fishing?.routeIds.includes(entry.id)) && !worldMissingRequirements(state, worldRequirements(entry)).length);
+  const explorations = state.catalog.explorations.filter(entry => ((entry.rewards[itemId] ?? 0) > 0 || fish && state.catalog.fishing?.routeIds.includes(entry.id)) && !worldMissingRequirements(state, worldRequirements(entry)).length);
+  const exploration = explorations.find(entry => explorationActorId(entry) === "miner")
+    ?? state.catalog.explorations.find(entry => (entry.rewards[itemId] ?? 0) > 0 && explorationActorId(entry) === "miner"
+      && entry.requiredHomeLevel <= (state.buildings.home ?? 1)
+      && worldMissingRequirements(state, worldRequirements(entry)).every(requirement => requirement.id === "quarry"))
+    ?? explorations[0];
   return exploration ? { kind: "exploration" as const, targetId: exploration.id } : null;
 }
 export function worldCostShortfalls(state: EconomyView, cost: EconomyCost, quantity = 1) {
@@ -118,9 +125,16 @@ export function worldConstructionReason(state: EconomyView, stationId: string, t
   const tutorial = tutorialOrderProgress(state);
   if (stationId === "home" && target.level === 2 && tutorial.version === 2 && !tutorial.completed)
     return `Выполните учебные заказы: ${tutorial.step} / 4`;
+  if (stationId === "home" && stageCourseRequired(state, target.level)) {
+    const home = state.buildings.home ?? 1;
+    const count = state.catalog.stageOrders?.find(course => course.homeLevel === home)?.orders.length ?? 0;
+    return `Выполните заказы для дома ${target.level}: ${stageOrderProgress(state, home).step} / ${count}`;
+  }
   if (target.level !== (state.buildings[stationId] ?? 0) + 1) return "Сначала завершите предыдущее улучшение";
   if (state.jobs.some(job => job.kind === "construction")) return "Строитель занят. Сначала завершите текущую стройку";
-  if (stationId === "quarry" && state.jobs.some(job => job.kind === "exploration" && state.catalog.explorations.some(route => route.id === job.targetId && route.requiredBuildings.quarry))) return "Сначала дождитесь Мохлика и заберите добычу";
+  if (stationId === "quarry" && state.jobs.some(job => isMinerJob(job)
+    || job.kind === "exploration" && state.catalog.explorations.some(route => route.id === job.targetId && route.requiredBuildings.quarry)))
+    return state.jobs.some(isMinerJob) ? "Сначала завершите добычу и заберите результат" : "Сначала дождитесь Мохлика и заберите добычу";
   if (state.jobs.some(job => job.kind === "production" && job.targetId === stationId)) return "Сначала заберите результат производства";
   if (worldCostShortfalls(state, target.cost).length) return "Не хватает материалов или монет";
   return null;

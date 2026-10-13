@@ -13,7 +13,7 @@ class EconomyWardrobeTest {
         UUID.randomUUID().toString(), "ABCD-EFGH-JKMP", 0, "buy_wardrobe_item", target, quantity, price)
 
     @Test fun `every sellable cosmetic spends its declared currency once without affecting gameplay or storage`() {
-        val initial = EconomyRules.initial().copy(wallet = EconomyWallet(20_000, 2_000), inventory = mapOf("wood" to 1000L))
+        val initial = EconomyRules.initial().copy(wallet = EconomyWallet(20_000, 2_000), inventory = mapOf("wood" to 50L))
         for (item in WorldRules.catalog.items.filter { it.purchase != null }) {
             val price = checkNotNull(item.purchase)
             val cmd = command("${price.currency}:${item.id}", price.amount)

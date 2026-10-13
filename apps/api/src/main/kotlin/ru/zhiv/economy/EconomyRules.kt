@@ -41,7 +41,8 @@ object EconomyRules {
 
     init {
         EconomyTutorialOrders.validateCatalog(catalog)
-        require(catalog.version == 6 && catalog.currencyScale == 10 && catalog.pearlScale == 50 && catalog.maxBatch in 1..10)
+        EconomyStageOrders.validateCatalog(catalog)
+        require(catalog.version == 7 && catalog.currencyScale == 10 && catalog.pearlScale == 50 && catalog.maxBatch in 1..10)
         require(catalog.localBuyer.payoutBps in 1..10_000)
         require(catalog.localBuyer.unitPrices.all { (id, amount) -> amount in 1L..ECONOMY_MAX_BALANCE && catalog.items.any { it.id == id && it.tradable } })
         require(catalog.constructionSpeedup.secondsPerPearl in 1L..86_400L)
@@ -249,14 +250,27 @@ object EconomyRules {
         return ECONOMY_CURRENCY_SCALE * (total / 10_000 * config.payoutBps + total % 10_000 * config.payoutBps / 10_000)
     }
 
-    fun commandUsesActor(command: EconomyCommand): Boolean =
-        command.action in setOf("start_exploration", "start_fishing", "start_collection", "eat_food")
+    fun commandUsesActor(command: EconomyCommand): Boolean = when (command.action) {
+        "start_exploration", "start_fishing" -> catalog.explorations.find { it.id == command.targetId }?.activity != "mining"
+        "start_collection", "eat_food" -> true
+        else -> false
+    }
+
+    fun isMinerJob(job: EconomyJob): Boolean = job.kind == "exploration" && job.actorId == "miner"
+
+    private fun requireMinerAvailable(state: EconomyState) {
+        if (state.jobs.any(::isMinerJob)) economyFailure("ECONOMY_MINER_BUSY", "Шахтёр занят. Сначала заберите добычу или отмените работу")
+    }
+
+    private fun requireJobCapacity(state: EconomyState) {
+        if (state.jobs.size >= 18) economyFailure("ECONOMY_JOBS_CAPACITY", "Все очереди заняты. Сначала заберите готовые результаты")
+    }
 
     /** Saved jobs retain their promised results. Only new starts compete for the hero. */
     private fun requireActorAvailable(state: EconomyState, now: Instant, collecting: Boolean = false) {
         val collection = state.jobs.any { it.collection?.startedAt != null }
         if (!collecting && collection) economyFailure("ECONOMY_COLLECTOR_BUSY", "Сначала завершите сбор припасов")
-        state.jobs.firstOrNull { it.kind == "exploration" && (!collecting || now.isBefore(Instant.parse(it.finishesAt))) }?.let {
+        state.jobs.firstOrNull { it.kind == "exploration" && !isMinerJob(it) && (!collecting || now.isBefore(Instant.parse(it.finishesAt))) }?.let {
             economyFailure("ECONOMY_EXPLORER_BUSY", if (now.isBefore(Instant.parse(it.finishesAt)))
                 "Мохлик ещё в вылазке. Дождитесь его возвращения" else "Сначала заберите находки Мохлика")
         }
@@ -278,8 +292,9 @@ object EconomyRules {
     /** Materialize the board from pre-command unlocks only on a successful mutation.
      * In particular, claiming a new building must not reroll previously displayed cards. */
     fun apply(input: EconomyState, command: EconomyCommand, now: Instant, reservedItems: Map<String, Long> = emptyMap()): Pair<EconomyState, String> {
-        val state = EconomyFishInventory.state(input)
-        return applyCurrent(state.copy(residentOrders = EconomyFood.normalizedOrders(state, now)), command, now, reservedItems)
+        val state = EconomyStageOrders.pin(EconomyFishInventory.state(input))
+        val (next, message) = applyCurrent(state.copy(residentOrders = EconomyFood.normalizedOrders(state, now)), command, now, reservedItems)
+        return EconomyStageOrders.pin(next) to message
     }
 
     private fun applyCurrent(state: EconomyState, command: EconomyCommand, now: Instant, reservedItems: Map<String, Long>): Pair<EconomyState, String> {
@@ -290,11 +305,13 @@ object EconomyRules {
             "claim_tutorial_order" -> EconomyTutorialOrders.claim(state, command, reservedItems)
             "claim_workshop_starter" -> EconomyWorkshopStarter.claim(state, command, reservedItems)
             "eat_food", "feed_builder" -> EconomyFood.eat(state, command.targetId, command.action == "feed_builder", now)
-            "complete_resident_order", "replace_resident_order" -> if (EconomyTutorialOrders.isTutorialId(command.targetId))
-                EconomyTutorialOrders.complete(state, command) else EconomyFood.order(state, command.targetId,
-                    command.action == "replace_resident_order", now, command.totalPrice)
+            "complete_resident_order", "replace_resident_order" -> when {
+                EconomyTutorialOrders.isTutorialId(command.targetId) -> EconomyTutorialOrders.complete(state, command)
+                EconomyStageOrders.isStageId(command.targetId) -> EconomyStageOrders.complete(state, command)
+                else -> EconomyFood.order(state, command.targetId, command.action == "replace_resident_order", now, command.totalPrice)
+            }
             "start_production" -> {
-                if (command.targetId.startsWith("quarry_")) economyFailure("ECONOMY_MINING_ACTIVITY", "В шахте работает Мохлик. Выберите участок для вылазки")
+                if (command.targetId.startsWith("quarry_")) economyFailure("ECONOMY_MINING_ACTIVITY", "Выберите участок добычи для шахтёра")
                 if (command.quantity > catalog.maxBatch) invalidEconomy()
                 val parts = command.targetId.split('@')
                 val baseRecipe = catalog.recipes.find { it.id == parts.first() } ?: economyFailure("ECONOMY_RECIPE", "Рецепт не найден")
@@ -311,6 +328,7 @@ object EconomyRules {
                     economyFailure("ECONOMY_BUILDING_BUSY", "Дождитесь улучшения здания и заберите результат")
                 if (state.jobs.count { it.targetId == recipe.buildingId && it.kind == "production" } >= productionSlotCount(state, recipe.buildingId))
                     economyFailure("ECONOMY_BUILDING_BUSY", "Все места производства заняты. Заберите готовый результат")
+                requireJobCapacity(state)
                 val cost = EconomyCost(recipe.cost.coins * command.quantity, recipe.cost.items.mapValues { it.value * command.quantity })
                 val job = EconomyJob(command.requestId, "production", recipe.buildingId, recipe.id,
                     startedAt = now.toString(), finishesAt = now.plusSeconds(recipe.seconds * command.quantity).toString(),
@@ -356,7 +374,8 @@ object EconomyRules {
                 requireBuildings(state, exploration.requiredBuildings)
                 if (exploration.requiredBuildings.containsKey("quarry") && state.jobs.any { it.kind == "construction" && it.targetId == "quarry" })
                     economyFailure("ECONOMY_BUILDING_BUSY", "Дождитесь улучшения шахты и заберите результат")
-                requireActorAvailable(state, now)
+                val mining = exploration.activity == "mining"
+                if (mining) requireMinerAvailable(state) else requireActorAvailable(state, now)
                 val tackle = state.fishing
                 val spec = catalog.fishing
                 // Normalize old clients too: a general command cannot bypass fishing equipment or bait costs.
@@ -372,6 +391,7 @@ object EconomyRules {
                         economyFailure("ECONOMY_FISHING_BAIT", "Наживка не найдена")
                     requireFishingBaitCompatible(tackle.equippedRodId, tackle.equippedBaitId)
                 }
+                requireJobCapacity(state)
                 // Fishing randomness is server-owned, unlike the client idempotency request ID.
                 val id = if (special) UUID.randomUUID().toString() else command.requestId
                 val seed = if (special) state.fishingCastSeed ?: UUID.randomUUID().toString() else state.fishingCastSeed
@@ -384,24 +404,34 @@ object EconomyRules {
                     rewards["fish"] = rewards.getValue("fish") - draws
                     catches.forEach { fishId -> rewards[fishId] = (rewards[fishId] ?: 0) + 1 }
                 }
-                val meal = EconomyFood.pendingMeal(state, "hero")
+                val meal = if (mining) null else EconomyFood.pendingMeal(state, "hero")
                 val tripSeconds = EconomyFood.mealDuration(exploration.seconds, meal?.speedBps ?: 0)
                 val rare = catalog.rareDrops?.takeIf { (state.buildings["home"] ?: 1) >= it.requiredHomeLevel }
-                    ?.let { EconomyRareDrops.prepare(state.rareDropState, tripSeconds, it) }
+                    ?.let { EconomyRareDrops.prepare(if (mining) state.minerRareDropState else state.rareDropState, tripSeconds, it) }
                 rare?.let { rewards.putAll(it.rewards) }
                 val cost = if (special && tackle.equippedBaitId != null) exploration.cost.copy(items = exploration.cost.items +
                     (tackle.equippedBaitId to ((exploration.cost.items[tackle.equippedBaitId] ?: 0) + 1))) else exploration.cost
                 val job = EconomyJob(id, "exploration", exploration.id, startedAt = now.toString(),
                     finishesAt = now.plusSeconds(tripSeconds).toString(), rewards = rewards.filterValues { it > 0 }, cost = cost,
-                    catalogVersion = catalog.version, fishing = fishingCatch, rareDrop = rare?.delivery, meal = meal)
+                    catalogVersion = catalog.version, fishing = fishingCatch, rareDrop = rare?.delivery, meal = meal,
+                    actorId = if (mining) "miner" else "mochlik")
                 requireRewardCapacity(state, job.rewards)
                 spend(state, cost).copy(jobs = state.jobs + job, fishingCastSeed = seed,
                     food = if (meal == null) state.food else state.food.copy(heroMeal = null),
-                    rareDropState = rare?.clock ?: state.rareDropState) to if (special) "Мохлик отправился рыбачить. Снасти и наживка подготовлены" else "Мохлик отправился на исследование"
+                    rareDropState = if (mining) state.rareDropState else rare?.clock ?: state.rareDropState,
+                    minerRareDropState = if (mining) rare?.clock ?: state.minerRareDropState else state.minerRareDropState) to
+                    if (mining) "Шахтёр начал работу" else if (special) "Мохлик отправился рыбачить. Снасти и наживка подготовлены" else "Мохлик отправился на исследование"
             }
             "cancel_exploration" -> {
                 val job = state.jobs.find { it.id == command.targetId } ?: economyFailure("ECONOMY_JOB_GONE", "Результат уже получен или задание не найдено")
-                if (job.kind != "exploration") economyFailure("ECONOMY_CANCEL_KIND", "Можно отменить только вылазку Мохлика")
+                if (job.kind != "exploration") economyFailure("ECONOMY_CANCEL_KIND", "Можно отменить только вылазку или работу в шахте")
+                if (isMinerJob(job)) {
+                    if (job.cost.coins > ECONOMY_MAX_BALANCE - state.wallet.coins) economyFailure("ECONOMY_CAPACITY", "Кошелёк заполнен")
+                    val refunded = state.copy(wallet = state.wallet.copy(coins = state.wallet.coins + job.cost.coins),
+                        inventory = addItems(state.inventory, job.cost.items), jobs = state.jobs.filterNot { it.id == job.id })
+                    assertStorageTransition(state, refunded, reservedItems)
+                    return refunded to "Работа шахтёра отменена. Внесённые припасы возвращены"
+                }
                 // Unclaimed rewards and already spent provisions are forfeited,
                 // including after the timer ends. This is not a completed trip.
                 state.copy(jobs = state.jobs.filterNot { it.id == job.id }) to
@@ -414,11 +444,14 @@ object EconomyRules {
                 requireHome(state, upgrade.requiredHomeLevel)
                 if (building.id == "home" && next == 2 && state.tutorialOrder.version == 2 && !state.tutorialOrder.completed)
                     economyFailure("ECONOMY_TUTORIAL_REQUIRED", "Сначала выполните четыре учебных заказа")
+                if (building.id == "home" && EconomyStageOrders.required(state, next))
+                    economyFailure("ECONOMY_STAGE_REQUIRED", "Сначала выполните заказы текущего этапа")
                 requireBuildings(state, upgrade.requiredBuildings)
                 if (state.jobs.any { it.kind == "construction" }) economyFailure("ECONOMY_CONSTRUCTION_BUSY", "Строитель занят. Сначала завершите текущую стройку")
-                if (building.id == "quarry" && state.jobs.any { job -> job.kind == "exploration" && catalog.explorations.any { it.id == job.targetId && it.requiredBuildings.containsKey("quarry") } })
-                    economyFailure("ECONOMY_BUILDING_BUSY", "Перед улучшением дождитесь Мохлика и заберите добычу")
+                if (building.id == "quarry" && state.jobs.any { job -> isMinerJob(job) || job.kind == "exploration" && catalog.explorations.any { it.id == job.targetId && it.requiredBuildings.containsKey("quarry") } })
+                    economyFailure("ECONOMY_BUILDING_BUSY", "Перед улучшением дождитесь окончания добычи и заберите результат")
                 if (state.jobs.any { it.kind == "production" && it.targetId == building.id }) economyFailure("ECONOMY_BUILDING_BUSY", "Получите результат производства перед улучшением")
+                requireJobCapacity(state)
                 val meal = EconomyFood.pendingMeal(state, "builder")
                 val job = EconomyJob(command.requestId, "construction", building.id, targetLevel = next,
                     startedAt = now.toString(), finishesAt = now.plusSeconds(EconomyFood.mealDuration(upgrade.seconds, meal?.speedBps ?: 0)).toString(),
@@ -449,7 +482,7 @@ object EconomyRules {
                 }
                 val buildings = if (job.kind == "construction") state.buildings + (job.targetId to checkNotNull(job.targetLevel)) else state.buildings
                 val next = state.copy(inventory = addItems(state.inventory, job.rewards), buildings = buildings, jobs = state.jobs.filterNot { it.id == job.id },
-                    completedExplorations = if (job.kind == "exploration" && !job.targetId.startsWith("quarry_")) minOf(ECONOMY_MAX_ITEMS, state.completedExplorations + 1) else state.completedExplorations,
+                    completedExplorations = if (job.kind == "exploration" && !isMinerJob(job) && !job.targetId.startsWith("quarry_")) minOf(ECONOMY_MAX_ITEMS, state.completedExplorations + 1) else state.completedExplorations,
                     fishing = if (job.kind == "exploration" && catalog.fishing?.routeIds?.contains(job.targetId) == true) {
                         val catches = state.fishing.catches.toMutableMap()
                         catalog.fishing.fish.forEach { fish -> if ((job.rewards[fish.itemId] ?: 0) > 0)
@@ -460,8 +493,11 @@ object EconomyRules {
                     progression = EconomyCollectionProgress.advance(state.progression, job))
                 addItems(next.inventory, reservedItems)
                 assertStorageTransition(state, next, reservedItems)
-                val delivered = if (job.rareDrop != null) next.copy(rareDropState = EconomyRareDrops.settle(state.rareDropState,
-                    job.rareDrop, checkNotNull(catalog.rareDrops))) else next
+                val delivered = if (job.rareDrop != null) {
+                    val clock = EconomyRareDrops.settle(if (isMinerJob(job)) state.minerRareDropState else state.rareDropState,
+                        job.rareDrop, checkNotNull(catalog.rareDrops))
+                    if (isMinerJob(job)) next.copy(minerRareDropState = clock) else next.copy(rareDropState = clock)
+                } else next
                 delivered to
                     if (job.kind == "construction") "Строительство завершено" else "Припасы доставлены на склад"
             }

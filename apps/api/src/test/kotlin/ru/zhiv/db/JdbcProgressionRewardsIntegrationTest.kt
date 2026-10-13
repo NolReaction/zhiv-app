@@ -73,7 +73,7 @@ class JdbcProgressionRewardsIntegrationTest {
         assertEquals(1,preview.daily.homeLevel)
         val original=source.connection.use { readEconomyProfile(it,p.id).state }
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(original.copy(
-            buildings=original.buildings+("home" to 4),productionSlots=mapOf("workshop" to 3))),p.id)
+            buildings=original.buildings+mapOf("home" to 4,"warehouse" to 4),productionSlots=mapOf("workshop" to 3))),p.id)
         val request=command(p); val paid=rewards.claim(p.hash,request)
         assertEquals(ProgressionRewardRules.dailyCycle(4)[0],paid.claim.reward)
         val after=source.connection.use { readEconomyProfile(it,p.id).state }

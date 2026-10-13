@@ -159,17 +159,17 @@ test("a direct topic opens exactly one answer and its related questions without 
 
 test("context advice explains the actual selected recipe and quantity, and only delegates an explicit navigation click", () => {
   hooks.reset(); const economy = controller({ inventory: { iron_ingot: 1 } }), opened = [], before = structuredClone(economy.snapshot);
-  const props = { economy, context: { intent: "production", stationId: "workshop", recipeId: "make_planks", quantity: 3 }, onNavigate: target => opened.push(target) };
+  const props = { economy, context: { intent: "production", stationId: "workshop", recipeId: "make_planks", quantity: 1 }, onNavigate: target => opened.push(target) };
   const view = help(props);
   assert.match(view.html, /data-help-advice="missing:wood"/);
-  assert.match(view.html, /Есть 0, нужно 6/);
+  assert.match(view.html, /Есть 0, нужно 1/);
   assert.doesNotMatch(view.html, /missing:fiber|missing:iron_ingot/);
   assert.deepEqual(opened, []);
-  const action = view.nodes.find(node => node.props.action?.target.kind === "expeditions");
+  const action = view.nodes.find(node => node.props.action?.target.kind === "station");
   assert.ok(action);
   const control = action.type(action.props); assert.equal(control.props.disabled, false);
   control.props.onClick();
-  assert.deepEqual(opened, [{ kind: "expeditions", sector: "forest" }]);
+  assert.deepEqual(opened, [{ kind: "station", stationId: "woodlot", recipeId: "gather_wood" }]);
   assert.deepEqual(economy.snapshot, before);
 });
 

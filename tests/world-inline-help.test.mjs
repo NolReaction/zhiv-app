@@ -82,17 +82,16 @@ test("recipe help appears for missing materials, locked stations and occupied sl
   }
 });
 
-test("recipe context follows fish class recipe quantity without a species selector or repeat effects", () => {
+test("single-fish recipe context stays at one item without species or batch controls and repeat effects", () => {
   hooks.reset(); const economy = controller(), contexts = [], opened = [];
   const props = recipeProps(economy, "cook_grilled_fish", { onOpenHelp: value => opened.push(value), onHelpContextChange: value => contexts.push(value) });
-  let nodes = hooked(WorldRecipeDetail, props);
+  const nodes = hooked(WorldRecipeDetail, props);
   assert.equal(contexts.length, 1);
   assert.equal(contexts[0].fishItemId, undefined);
   assert.equal(nodes.find(element => element.type === "select"), undefined);
-  nodes.find(element => element.props["aria-label"] === "Увеличить партию").props.onClick();
-  nodes = hooked(WorldRecipeDetail, props);
+  assert.equal(nodes.find(element => element.props["aria-label"] === "Увеличить партию"), undefined);
   helpButton(nodes).props.onClick();
-  assert.deepEqual(opened, [{ intent: "production", stationId: "dryer", recipeId: "cook_grilled_fish", quantity: 2 }]);
+  assert.deepEqual(opened, [{ intent: "production", stationId: "dryer", recipeId: "cook_grilled_fish", quantity: 1 }]);
   assert.deepEqual(contexts.at(-1), opened[0]);
   const count = contexts.length;
   hooked(WorldRecipeDetail, props); hooked(WorldRecipeDetail, { ...props, economy: { ...economy, now: now + 1000 } });

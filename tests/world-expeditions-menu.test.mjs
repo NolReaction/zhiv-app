@@ -32,7 +32,7 @@ function render(economy = controller(), props = {}) {
   return renderToStaticMarkup(createElement(WorldExpeditionsMenu, { economy, onOpenPantry() {}, ...props }));
 }
 function renderSector(sectorId, economy = controller(), props = {}) {
-  return renderToStaticMarkup(createElement(WorldExpeditionSector, { sectorId, economy, state: economy.snapshot, selectedRoute: null, exploring: economy.snapshot.jobs.some(job => job.kind === "exploration"), onSelectRoute() {}, onOpenPantry() {}, ...props }));
+  return renderToStaticMarkup(createElement(WorldExpeditionSector, { sectorId, economy, state: economy.snapshot, selectedRoute: null, exploring: economy.snapshot.jobs.some(job => job.kind === "exploration" && job.actorId !== "miner"), onSelectRoute() {}, onOpenPantry() {}, ...props }));
 }
 function renderPreparation(id, economy = controller(), props = {}) {
   return renderSector(expeditionSector(id), economy, { selectedRoute: id, ...props });
@@ -80,7 +80,7 @@ test("pending hero food quotes the same speed-adjusted time in route list, prepa
 
 test("travel starts with three decorated activities and no premature route form", () => {
   const html = render(controller(), { onUpgradeQuarry() {} });
-  assert.match(html, /role="group" aria-label="Занятия Мохлика"/);
+  assert.match(html, /role="group" aria-label="Занятия леса"/);
   for (const id of ["forest", "shore", "caves"]) {
     assert.match(html, new RegExp(`data-sector-select="${id}"`));
     assert.match(html, new RegExp(`data-activity-art="${id}"`));
@@ -172,8 +172,10 @@ test("cave preparation explains the unbuilt quarry and guards departure until it
     const state = snapshot({ buildings: { home: 3, warehouse: 5, quarry: 0 },
       inventory: { dried_berries: 1, smoked_fish: 1 } });
     const locked = sectorView("caves", state, {}, { selectedRoute: id, onNavigateStation() {} });
-    assert.doesNotMatch(locked.html, /data-route=|aria-label="Отправиться:/);
-    assert.equal(locked.depart(id), undefined);
+    assert.match(locked.html, new RegExp(`data-route="${id}"`));
+    assert.match(locked.html, /Каменоломня · нужен ур. 1/);
+    assert.equal(locked.depart(id).props.disabled, true);
+    locked.depart(id).props.onClick();
     assert.deepEqual(locked.calls, []);
     state.buildings.quarry = 1;
     const open = sectorView("caves", state, {}, { selectedRoute: id });
@@ -191,11 +193,11 @@ test("cave preparation explains the unbuilt quarry and guards departure until it
 test("deep routes use actual consumable amounts, and missing provisions block departure", () => {
   const state = snapshot({ buildings: { home: 3, warehouse: 1, quarry: 1 }, inventory: { dried_berries: 1 } });
   let html = route(renderPreparation("deep_cave", controller({ snapshot: state })), "deep_cave");
-  assert.match(html, /Припасы для вылазки/);
+  assert.match(html, /Припасы для вылазки|Для добычи/);
   assert.match(html, /Не хватает припасов/);
-  assert.equal(disabled(button(html, "Отправиться")), true);
+  assert.equal(disabled(button(html, "Начать добычу")), true);
   html = route(renderPreparation("deep_cave", controller({ snapshot: snapshot({ ...state, inventory: { dried_berries: 1, smoked_fish: 1 } }) })), "deep_cave");
-  assert.equal(disabled(button(html, "Отправиться")), false);
+  assert.equal(disabled(button(html, "Начать добычу")), false);
 });
 
 test("departure compares reward size with total capacity; a full pantry can be cleared before return", () => {
@@ -217,14 +219,14 @@ test("ongoing exploration shows real progress and seconds, and exposes no second
   assert.match(html, /<progress[^>]*value="0\.033/);
   assert.equal(disabled(button(html, "Забрать находки: Лесная разведка")), true);
   assert.doesNotMatch(html, /aria-label="Отправиться:/);
-  assert.ok(html.indexOf("Текущая вылазка") < html.indexOf("Занятия Мохлика"));
+  assert.ok(html.indexOf("Текущая вылазка") < html.indexOf("Занятия леса"));
 });
 
 test("an active route from another sector stays above the sector picker", () => {
   const html = render(controller({ snapshot: snapshot({ jobs: [job({ targetId: "deep_cave", rewards: { stone: 30, ore: 20 } })] }) }));
   assert.match(html, /Текущая вылазка: Глубокий проход/);
   assert.match(html, /data-sector-select="forest"/);
-  assert.ok(html.indexOf("Текущая вылазка") < html.indexOf("Занятия Мохлика"));
+  assert.ok(html.indexOf("Текущая вылазка") < html.indexOf("Занятия леса"));
   assert.doesNotMatch(html, /aria-label="Отправиться:/);
 });
 
@@ -245,17 +247,23 @@ test("construction and production do not hide exploration or occupy the explorer
   assert.equal(disabled(button(route(html, "forest"), "Отправиться")), false);
 });
 
-test("quarry work blocks all departures and gives a way to claim its result", () => {
+test("legacy quarry work blocks Mochlik departures and leaves the independent miner available", () => {
   for (const finished of [false, true]) {
     const saved = job({ kind: "production", targetId: "quarry", recipeId: "quarry_stone", finishesAt: new Date(now + (finished ? 0 : 30_000)).toISOString() });
     const economy = controller({ snapshot: snapshot({ jobs: [saved], buildings: { home: 3, warehouse: 1, quarry: 1 } }) });
     const html = render(economy, { onNavigateStation() {} });
     assert.match(html, finished ? /Сначала заберите добычу из каменоломни/ : /Мохлик работает в каменоломне/);
     assert.equal(disabled(button(html, "Открыть шахту")), false);
-    for (const [sector, id] of [["forest", "forest"], ["shore", "shore"], ["caves", "cave"]]) {
-      const content = route(renderSector(sector, economy, { selectedRoute: id }), id);
-      assert.equal(disabled(button(content, "Отправиться")), true);
+    for (const [sector, id] of [["forest", "forest"], ["shore", "shore"]]) {
+      const blocked = sectorView(sector, economy.snapshot, {}, { selectedRoute: id });
+      assert.equal(blocked.depart(id), undefined);
+      assert.match(blocked.html, /Мохлик работает в каменоломне|Сначала заберите добычу из каменоломни/);
+      assert.deepEqual(blocked.calls, []);
     }
+    const mine = sectorView("caves", economy.snapshot, {}, { selectedRoute: "quarry_stone" });
+    assert.equal(mine.depart("quarry_stone").props.disabled, false);
+    mine.depart("quarry_stone").props.onClick();
+    assert.deepEqual(mine.calls, [["start_exploration", "quarry_stone", 1, 0]]);
     assert.doesNotMatch(html, /Можно отправиться/);
   }
 });
@@ -488,7 +496,7 @@ function sectorView(sectorId, state, overrides = {}, props = {}) {
   let tree;
   function Probe() {
     tree = WorldExpeditionSector({ sectorId, selectedRoute: null, onSelectRoute: id => selections.push(id), economy, state,
-      exploring: state.jobs.some(entry => entry.kind === "exploration"), onOpenPantry() {},
+      exploring: state.jobs.some(entry => entry.kind === "exploration" && entry.actorId !== "miner"), onOpenPantry() {},
       onOpenFishingShop: () => visits.push("plesk"), ...props });
     return tree;
   }
@@ -505,10 +513,85 @@ function sectorView(sectorId, state, overrides = {}, props = {}) {
     Children.forEach(element.props.children, walk);
   }
   walk(tree);
-  const depart = routeId => elements.find(element => element.type === "button"
-    && element.props["aria-label"] === `Отправиться: ${state.catalog.explorations.find(entry => entry.id === routeId).name}`);
+  const depart = routeId => {
+    const selected = state.catalog.explorations.find(entry => entry.id === routeId);
+    return elements.find(element => element.type === "button"
+      && element.props["aria-label"] === `${selected.activity === "mining" ? "Начать добычу" : "Отправиться"}: ${selected.name}`);
+  };
   return { html, elements, calls, visits, selections, depart };
 }
+
+test("stage-two mining keeps one-item unboosted timers and no meal or paid-slot controls", () => {
+  for (const selectedRoute of ["quarry_stone", "quarry_clay"]) {
+    const state = snapshot({ buildings: { home: 2, warehouse: 1, quarry: 2 },
+      inventory: { hearty_fish: 2, grilled_fish: 2 }, food: { heroMeal: "hearty_fish", builderMeal: "grilled_fish" } });
+    const before = structuredClone(state), selected = state.catalog.explorations.find(entry => entry.id === selectedRoute);
+    const list = route(renderSector("caves", controller({ snapshot: state })), selectedRoute);
+    assert.match(list, /3 мин/); assert.match(list, /×1/);
+    const view = sectorView("caves", state, {}, { selectedRoute, onOpenMeals() { assert.fail("mining has no food chooser"); } });
+    assert.match(view.html, /Результат одной добычи/);
+    assert.equal(view.depart(selectedRoute).props.disabled, false);
+    assert.match(button(view.html, "Начать добычу").text, /3 мин/);
+    assert.doesNotMatch(view.html, /скорость следующей вылазки|Сыт|Съесть|Угостить|Еда ускорит|data-production-slots|Открыть место/);
+    view.depart(selectedRoute).props.onClick(); view.depart(selectedRoute).props.onClick();
+    assert.deepEqual(view.calls, [["start_exploration", selected.id, 1, 0]]);
+    assert.deepEqual(state, before, "quoted mining never consumes a pending hero or builder meal");
+  }
+});
+
+test("miner and hero departures use independent queues while each ready result keeps its own queue occupied", () => {
+  const buildings = { home: 2, warehouse: 1, quarry: 2 };
+  const miner = job({ id: "miner", targetId: "quarry_stone", actorId: "miner", rewards: { stone: 1 } });
+  const hero = job({ id: "hero" });
+  for (const finished of [false, true]) {
+    miner.finishesAt = hero.finishesAt = new Date(now + (finished ? 0 : 29_000)).toISOString();
+    const mining = sectorView("caves", snapshot({ buildings, jobs: [hero] }), {}, { selectedRoute: "quarry_clay" });
+    assert.equal(mining.depart("quarry_clay").props.disabled, false);
+    mining.depart("quarry_clay").props.onClick();
+    assert.deepEqual(mining.calls, [["start_exploration", "quarry_clay", 1, 0]]);
+    const forest = sectorView("forest", snapshot({ buildings, jobs: [miner] }), {}, { selectedRoute: "forest" });
+    assert.equal(forest.depart("forest").props.disabled, false);
+    forest.depart("forest").props.onClick();
+    assert.deepEqual(forest.calls, [["start_exploration", "forest", 1, 0]]);
+    const occupied = sectorView("caves", snapshot({ buildings, jobs: [miner] }), {}, { selectedRoute: "quarry_clay" });
+    assert.equal(occupied.depart("quarry_clay"), undefined);
+    assert.match(occupied.html, finished ? /Сначала заберите добычу шахтёра/ : /Шахтёр ещё добывает материалы/);
+    assert.deepEqual(occupied.calls, []);
+  }
+  const both = snapshot({ buildings, jobs: [miner, hero] });
+  const travel = render(controller({ snapshot: both }));
+  assert.match(travel, /Текущая вылазка: Лесная разведка/);
+  assert.doesNotMatch(travel, /Текущая добыча:/);
+  const mine = render(controller({ snapshot: both }), { initialSector: "caves" });
+  assert.match(mine, /Текущая добыча: Добыть камень/);
+  assert.doesNotMatch(mine, /Текущая вылазка: Лесная разведка/);
+});
+
+test("mining saved ownership participates in approval identity and stale claim or cancellation guards", () => {
+  const miner = job({ targetId: "quarry_stone", actorId: "miner", rewards: { stone: 1 } });
+  const key = expeditionCancellationKey("ME", miner);
+  assert.notEqual(expeditionCancellationKey("ME", { ...miner, actorId: "mochlik" }), key);
+  assert.notEqual(expeditionCancellationKey("ME", { ...miner, actorId: null }), key);
+  const current = activeView(miner, { confirmed: true });
+  assert.match(current.html, /Шахта работает|Прервать добычу/);
+  assert.doesNotMatch(current.html, /Мохлик в пути|Мохлик вернётся/);
+  current.control("Остановить без результата").props.onClick();
+  current.control("Остановить без результата").props.onClick();
+  assert.deepEqual(current.calls, [["cancel_exploration", miner.id]]);
+  for (const actorId of [null, undefined, "mochlik"]) {
+    const saved = { ...miner, finishesAt: new Date(now).toISOString() };
+    const stale = activeView(saved, { confirmed: true, economy: { snapshot: snapshot({ jobs: [{ ...saved, actorId }] }) } });
+    assert.equal(stale.control("Забрать находки: Добыть камень").props.disabled, true);
+    stale.control("Забрать находки: Добыть камень").props.onClick();
+    stale.control("Остановить без результата").props.onClick();
+    assert.deepEqual(stale.calls, [], "the same job ID cannot authorize a different saved actor");
+  }
+  for (const actorId of [undefined, null]) {
+    const legacy = activeView({ ...miner, actorId });
+    assert.match(legacy.html, /Мохлик в пути/);
+    assert.doesNotMatch(legacy.html, /data-mining=|Шахта работает/);
+  }
+});
 const fishingGear = (overrides = {}) => ({ ownedRods: ["reed_rod", "river_rod", "willow_rod"], equippedRodId: "willow_rod",
   equippedBaitId: "worm_bait", catches: {}, ...overrides });
 
@@ -595,10 +678,17 @@ test("stale selections cannot prepare another sector or a route superseded by mi
   }
 });
 
-test("a stale mine route selection cannot reveal future rewards or send a command", () => {
-  const view = sectorView("caves", snapshot({ buildings: { home: 3, warehouse: 1, quarry: 0 } }), {}, { selectedRoute: "cave" });
-  assert.doesNotMatch(view.html, /data-route=|Вход в пещеру|aria-label="Отправиться:/);
-  assert.deepEqual(view.calls, []);
+test("a future mine selection explains its exact quarry requirement and rejects departure", () => {
+  for (const [selectedRoute, level] of [["quarry_stone", 1], ["quarry_clay", 2], ["cave", 1]]) {
+    const view = sectorView("caves", snapshot({ buildings: { home: 3, warehouse: 1, quarry: 0 } }), {}, { selectedRoute });
+    assert.match(view.html, new RegExp(`Каменоломня · нужен ур. ${level}`));
+    assert.equal(view.depart(selectedRoute).props.disabled, true);
+    view.depart(selectedRoute).props.onClick();
+    assert.deepEqual(view.calls, []);
+  }
+  const firstHouse = sectorView("caves", snapshot(), {}, { selectedRoute: "quarry_stone" });
+  assert.doesNotMatch(firstHouse.html, /data-route=|data-route-preparation/);
+  assert.equal(firstHouse.depart("quarry_stone"), undefined);
 });
 
 test("a selected route cannot start while an exploration or a mine upgrade is still active", () => {

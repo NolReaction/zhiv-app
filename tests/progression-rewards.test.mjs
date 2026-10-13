@@ -29,8 +29,9 @@ test("shared catalog totals 2150 achievement pearls and valuable seven-step bund
   assert.deepEqual([...new Set(catalog.daily.flatMap(r => Object.keys(r.items)))].sort(), ["ancient_core", "berries", "fiber", "fish", "planks", "rope", "stone", "wood"]);
 });
 
-test("completed home tiers add useful materials within fixed pearl and relic budgets", () => {
-  const totals = [5500, 11000, 22000, 44000, 66000], minutes = [250, 490, 840, 1260, 1520];
+test("completed home tiers retain gift materials and fixed budgets with current recipe time savings", () => {
+  const totals = [5500, 11000, 22000, 44000, 66000], minutes = [45, 255, 570, 1122, 1320];
+  const retainedAdvancedGifts = { 1: { rope: 2 }, 2: { iron_ingot: 3, cloth: 3, metal_parts: 3 } };
   for (let home = 1; home <= 5; home++) {
     const cycle = rules.dailyRewardCycle(home);
     assert.equal(cycle.length, 7);
@@ -45,7 +46,10 @@ test("completed home tiers add useful materials within fixed pearl and relic bud
       if (item.category !== "crafted") continue;
       // Count direct single-output recipe time only, not recursively saved inputs or queue scheduling.
       const recipes = model.economyCatalog.recipes.filter(recipe => Object.keys(recipe.rewards).length === 1 && recipe.rewards[id]);
-      assert.ok(recipes.some(recipe => recipe.requiredHomeLevel <= home), `${id} must be unlocked at house ${home}`);
+      // Daily bundles are unchanged while v7 moves some recipes to a later home.
+      // These four retained bonuses add stock without unlocking production.
+      const minimumHome = Math.min(...recipes.map(recipe => recipe.requiredHomeLevel));
+      if (minimumHome > home) assert.equal(minimumHome, retainedAdvancedGifts[home]?.[id], `${id}: only the retained advanced gift may precede its recipe`);
       workshopMinutes += amount * Math.min(...recipes.map(recipe => recipe.seconds / recipe.rewards[id])) / 60;
     }
     assert.equal(workshopMinutes, minutes[home - 1]);
@@ -77,9 +81,12 @@ test("claim chooses the current server home tier and replay preserves the actual
 test("an unfinished home upgrade cannot unlock a higher daily tier", () => {
   const p = player(), now = at("2026-10-05T12:00:00Z"); rewards.getDevProgressionRewards(p.token, now);
   const value = profile(p);
-  value.state.buildings.workshop = 1;
-  value.state.wallet.coins = 1500;
-  value.state.inventory = { wood: 20, stone: 15, planks: 6, rope: 2 };
+  const target = model.economyCatalog.buildings.find(building => building.id === "home").levels.find(level => level.level === 2);
+  value.state.buildings = { ...value.state.buildings, ...target.requiredBuildings };
+  value.state.tutorialOrder = { ...value.state.tutorialOrder, step: 4, completed: true,
+    terms: structuredClone(model.economyCatalog.onboarding.residentOrders.at(-1)) };
+  value.state.wallet.coins = target.cost.coins;
+  value.state.inventory = { ...target.cost.items };
   const start = economy.commandDevEconomy(p.token, { requestId: crypto.randomUUID(), ownerPublicId: p.me.user.publicId,
     expectedRevision: value.revision, action: "start_construction", targetId: "home", quantity: 1, totalPrice: 0 }, now).state;
   const ready = Date.parse(start.jobs[0].finishesAt);
@@ -102,6 +109,8 @@ test("UTC midnight and twenty-hour fences both apply independently of player tim
 
 test("opening rewards changes no wallet; seven manual claims wrap and skipped days preserve the step", () => {
   const p = player(); let now = at("2026-10-05T12:00:00Z");
+  economy.getDevEconomy(p.token, now);
+  profile(p).state.buildings.warehouse = 3; // Calendar/replay fixture: fit all 106 gifts while keeping the home-1 tier.
   const initial = economy.getDevEconomy(p.token, now), opened = rewards.getDevProgressionRewards(p.token, now);
   assert.equal(api.gameRewardsSchema.safeParse(opened).success, true);
   assert.equal(opened.achievementRewards.length, 21); assert.equal(opened.daily.step, 1);
@@ -263,6 +272,8 @@ test("materials reserved in active market lots still occupy storage during a dai
 
 test("final gift credits its relic and currencies atomically, and exact replay never repeats them", () => {
   const p = player(), start = at("2026-10-05T12:00:00Z");
+  economy.getDevEconomy(p.token, start);
+  profile(p).state.buildings.warehouse = 3; // Accumulate earlier days; the explicit full-storage rejection below is unchanged.
   for (let day = 0; day < 6; day++) claim(p, request(p), start + day * 86400_000);
   const now = start + 6 * 86400_000, command = request(p), value = profile(p);
   value.state.inventory = { wood: economy.getDevEconomy(p.token, now).storage.capacity };

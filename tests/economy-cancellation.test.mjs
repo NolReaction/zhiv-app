@@ -53,6 +53,7 @@ test("abandoning a supplied trip never refunds its consumed provisions or histor
   assert.notDeepEqual(started.inventory, { ...route.cost.items, fish: 3 });
   // Persisted jobs can originate in an older catalog with a coin cost.
   row.state.jobs[0].cost.coins = 250;
+  row.state.jobs[0].actorId = null; row.state.jobs[0].catalogVersion = 6;
   const result = issue(p, "cancel_exploration", trip.id).state;
   assert.deepEqual(result.inventory, started.inventory);
   assert.deepEqual(result.wallet, started.wallet);

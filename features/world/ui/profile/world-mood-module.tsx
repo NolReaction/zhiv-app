@@ -3,6 +3,7 @@
 import { CircleHelp, Heart, Leaf, Moon, Search, Soup, Sprout } from "lucide-react";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import { pendingMeal } from "@/features/economy/domain/food";
+import { isMinerJob } from "@/features/economy/domain/actor-availability";
 import type { ForestObservation } from "@/features/world/state/use-forest-observation";
 import styles from "./world-mood-module.module.css";
 
@@ -26,7 +27,7 @@ type Props = {
 export function WorldMoodModule({ observation, economy, onCall, callPulse = 0, onOpenHelp, onOpenFood }: Props) {
   const snapshot = economy.snapshot;
   const meal = snapshot ? pendingMeal(snapshot, "hero") : null;
-  const jobMeal = snapshot?.jobs.find(job => job.kind === "exploration" && job.meal?.consumer === "hero")?.meal;
+  const jobMeal = snapshot?.jobs.find(job => job.kind === "exploration" && !isMinerJob(job) && job.meal?.consumer === "hero")?.meal;
   const speedBps = meal?.heroSpeedBps ?? jobMeal?.speedBps;
   return <div className={styles.module}>
     {observation ? <>

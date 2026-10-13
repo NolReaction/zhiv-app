@@ -157,7 +157,7 @@ test("topic navigation points to existing buildings and valid destinations", () 
   assert.deepEqual(topic("storage").action.target, { kind: "pantry" });
   assert.deepEqual(topic("mochlik-life").action.target, { kind: "profile", tab: "mood" });
   assert.deepEqual(topic("friend-profile").action.target, { kind: "profile", tab: "friends" });
-  assert.deepEqual(topic("mining").action.target, { kind: "expeditions", sector: "caves" });
+  assert.deepEqual(topic("mining").action.target, { kind: "station", stationId: "quarry" });
 });
 
 test("beginner answers explain costs, receipt of results, blocked work and recovery without destructive advice", () => {
@@ -166,7 +166,8 @@ test("beginner answers explain costs, receipt of results, blocked work and recov
   assert.match(answer("production"), /красный материал.*получению/);
   assert.match(answer("production"), /Забрать/);
   assert.match(answer("construction"), /подтвердите завершение.*новый уровень.*освободится/);
-  assert.match(answer("journeys"), /одно занятие/);
+  assert.match(answer("journeys"), /одну вылазку или собирает ягоды/);
+  assert.match(answer("journeys"), /добыча шахты идут независимо/);
   assert.match(answer("journeys"), /Отзыв теряет добычу.*не возвращаются/);
   assert.match(answer("storage"), /Отмена лота не освобождает место/);
   assert.match(answer("storage"), /не пропадут/);
@@ -259,4 +260,23 @@ test("profile guidance distinguishes mood, food, friends and future profile link
   assert.match(answer("friend-profile"), /Кошелёк, запасы и задания остаются личными/);
   assert.match(answer("future-world"), /ещё готовятся/);
   assert.doesNotMatch(answer("friend-profile"), /онлайн|последний вход|чужие запасы/);
+});
+
+test("second-house guidance quotes the five permanent orders and independent stone/clay production", () => {
+  const course = economyCatalog.stageOrders.find(entry => entry.homeLevel === 2);
+  for (const order of course.orders) {
+    assert.ok(answer("second-stage-orders").includes(`${order.coins} монет`));
+    for (const [id, count] of Object.entries(order.items)) {
+      const item = economyCatalog.items.find(entry => entry.id === id);
+      assert.ok(answer("second-stage-orders").includes(`${item.name} × ${count}`));
+    }
+  }
+  assert.match(answer("second-stage-orders"), /не исчезают и не заменяются/);
+  assert.match(answer("second-house-stage"), /50 мест/);
+  assert.match(answer("second-house-stage"), /один предмет/);
+  assert.match(answer("mining"), /одну глину за три минуты/);
+  assert.match(answer("mining"), /одну отдельную очередь без платных слотов/);
+  assert.match(answer("mining"), /Мохлик может гулять, рыбачить и собирать ягоды одновременно/);
+  assert.match(answer("mining"), /Обед Мохлика не ускоряет шахту/);
+  assert.equal(searchWorldHelp(topics, "что делать после дома 2")[0]?.id, "second-house-stage");
 });

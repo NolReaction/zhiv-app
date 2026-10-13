@@ -25,9 +25,10 @@ class EconomyLocalSaleTest {
         assertEquals(9000L,EconomyRules.catalog.fishing!!.rods.single { it.id=="willow_rod" }.price)
     }
 
-    @Test fun `first stage item quotes use fixed unit payouts without packet rounding`() {
+    @Test fun `first and second stage item quotes use fixed unit payouts without packet rounding`() {
         val prices = mapOf("berries" to 10L, "strawberries" to 40L, "wood" to 30L, "stone" to 40L,
-            "planks" to 40L, "berry_compote" to 30L, "grilled_fish" to 55L)
+            "planks" to 40L, "berry_compote" to 30L, "grilled_fish" to 55L,
+            "fiber" to 10L, "rope" to 30L, "clay" to 30L, "charcoal" to 50L, "bricks" to 100L)
         assertEquals(prices, EconomyRules.catalog.localBuyer.unitPrices)
         val items = EconomyRules.catalog.items.associateBy { it.id }
         for ((id, price) in prices) for (quantity in listOf(1L, 2L, 3L, 9999L, 10000L)) {

@@ -40,7 +40,7 @@ test("relic masters are distinct native illustrations without external artwork o
 test("supplies omit relic sale cards while their separate tab reports the actual units", () => {
   const state = fresh({ wood: 5, ancient_core: 2, moon_crystal: 1 });
   const supplies = pantry(state);
-  assert.match(supplies, /aria-label="Древесина: 5"/);
+  assert.match(supplies, /aria-label="Бревно: 5"/);
   assert.doesNotMatch(supplies, /aria-label="Древнее ядро: 2"|aria-label="Лунный кристалл: 1"|data-relic=/);
   assert.match(supplies, /role="tab"[^>]*aria-selected="false"[^>]*>[\s\S]*?<small>3<\/small><span>Реликвии<\/span>/);
   const relics = pantry(state, "relics");

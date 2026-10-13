@@ -74,7 +74,7 @@ test("workshop and kiln share one host and report all jobs including a simultane
   const html = renderToStaticMarkup(component);
   assert.equal((html.match(/data-production-status=/g) ?? []).length, 1);
   assert.match(html, /data-production-target="kiln"/); assert.match(html, /\+1/);
-  assert.match(html, /Выжечь древесный уголь/); assert.match(html, /Распилить доски/);
+  assert.match(html, /Выжечь древесный уголь/); assert.match(html, /Распилить доску/);
   component.props.children[0].props.onClick(); assert.deepEqual(calls, ["kiln"]);
   assert.equal(saved.jobs.length, 2, "the badge only opens a station and never starts or claims work");
 });
@@ -90,7 +90,7 @@ test("three slots per station remain visible behind one workshop host badge", ()
   const html = renderToStaticMarkup(WorldProductionStatus({ economy: { snapshot: saved, now }, groups, anchors: [anchor("workshop")], onOpen() {} }));
   assert.equal((html.match(/data-production-status=/g) ?? []).length, 1);
   assert.match(html, /\+5/);
-  assert.match(html, /Выжечь древесный уголь/); assert.match(html, /Распилить доски/);
+  assert.match(html, /Выжечь древесный уголь/); assert.match(html, /Распилить доску/);
 });
 
 test("a finished kiln upgrade takes the shared host shortcut and keeps the workshop order visible", () => {
@@ -104,7 +104,7 @@ test("a finished kiln upgrade takes the shared host shortcut and keeps the works
     anchors: [anchor("workshop")], onOpen: id => calls.push(`station:${id}`), onOpenConstruction: id => calls.push(`upgrade:${id}`) });
   const html = renderToStaticMarkup(component);
   assert.match(html, /data-work-kind="construction"/); assert.match(html, /Строительство завершено/);
-  assert.match(html, /Распилить доски, Изготовление, 59:30/); assert.match(html, /Уровень 2/);
+  assert.match(html, /Распилить доску, Изготовление, 59:30/); assert.match(html, /Уровень 2/);
   assert.match(html, /Открыть улучшение/); assert.match(html, /Завершить/); assert.match(html, /\+1/);
   component.props.children[0].props.onClick(); assert.deepEqual(calls, ["upgrade:kiln"]);
   const overlapping = [anchor("campfire", 200, 250), anchor("workshop", 205, 252)];
@@ -118,7 +118,7 @@ test("working construction competes by finish time and all shared timers remain 
   assert.equal(groups[0].primary.kind, "construction"); assert.equal(groups[0].primary.remaining, 270);
   const html = renderToStaticMarkup(WorldProductionStatus({ economy: { snapshot: saved, now }, groups, anchors: [anchor("workshop")], onOpen() {}, onOpenConstruction() {} }));
   assert.match(html, /<strong>4:30<\/strong>/); assert.match(html, /Уровень 2, Строительство, 4:30/);
-  assert.match(html, /Распилить доски, Изготовление, 59:30/); assert.match(html, /\+1/);
+  assert.match(html, /Распилить доску, Изготовление, 59:30/); assert.match(html, /\+1/);
   const soonerProduction = mapProductionGroups(state([job("workshop", { finishesAt: iso(start + 60_000) }), construction]), now);
   assert.equal(soonerProduction[0].primary.kind, "production");
 });
@@ -194,4 +194,24 @@ test("retired mine badges preserve saved quantities and deadlines, including unk
   assert.deepEqual(saved.jobs, before.jobs);
   assert.deepEqual(mapProductionGroups(state([{ ...oldJob, kind: "exploration", targetId: "quarry_stone" }]), start), [],
     "new mining is an actor activity and never duplicates a production badge");
+});
+
+test("independent miner work belongs to the quarry badge without a hero journey badge or changed saved clock", () => {
+  const route = catalog.explorations.find(entry => entry.id === "quarry_stone");
+  const miner = { id: "miner", kind: "exploration", actorId: "miner", targetId: route.id,
+    startedAt: iso(start), finishesAt: iso(start + route.seconds * 1000), rewards: { stone: 1 } };
+  const saved = state([miner], 0), before = structuredClone(saved);
+  const [group] = mapProductionGroups(saved, start + 60_000);
+  assert.equal(group.place, "quarry"); assert.equal(group.entries.length, 1);
+  assert.equal(group.primary.kind, "exploration"); assert.equal(group.primary.stationId, "quarry");
+  assert.equal(group.primary.label, "Шахтёр добывает"); assert.equal(group.primary.remaining, 120);
+  assert.equal(group.primary.recipeName, route.name);
+  const readyAt = start + route.seconds * 1000;
+  assert.equal(mapProductionGroups(saved, readyAt)[0].primary.phase, "storage-blocked");
+  saved.storage.available = 1;
+  assert.equal(mapProductionGroups(saved, readyAt)[0].primary.phase, "ready");
+  assert.deepEqual(saved.jobs, before.jobs);
+  for (const actorId of [undefined, null, "mochlik"]) {
+    assert.deepEqual(mapProductionGroups(state([{ ...miner, actorId }]), start), [], "legacy mining remains a Mochlik journey");
+  }
 });

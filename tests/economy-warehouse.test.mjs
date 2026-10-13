@@ -44,7 +44,7 @@ test("ten warehouse tiers preserve earned capacity and switch to escalating reli
   const third = warehouse.levels[2];
   assert.deepEqual(third.cost, { coins: 16000, items: { planks: 36, bricks: 33, iron_ingot: 9, cloth: 7 } });
   for (const target of warehouse.levels) {
-    assert.equal(target.requiredHomeLevel, 1); assert.deepEqual(target.requiredBuildings, {});
+    assert.equal(target.requiredHomeLevel, target.level === 2 ? 2 : 1); assert.deepEqual(target.requiredBuildings, {});
   }
   for (const target of warehouse.levels.slice(0, 3))
     assert.ok(relicIds.every(id => !target.cost.items[id]));
@@ -55,18 +55,25 @@ test("ten warehouse tiers preserve earned capacity and switch to escalating reli
   }
 });
 
-test("ordinary warehouse expansions keep prices and materials but have no house or workshop gate", () => {
-  const state = initial(1), buildings = structuredClone(state.buildings);
+test("warehouse two uses second-stage costs and its house gate while warehouse three remains independent of other buildings", () => {
+  const state = initial(1);
   const costs = [
-    { coins: 2500, items: { planks: 17, stone: 18, rope: 7 } },
+    { coins: 150, items: { planks: 3, stone: 2, rope: 2 } },
     { coins: 16000, items: { planks: 36, bricks: 33, iron_ingot: 9, cloth: 7 } },
   ];
-  const seconds = [28800, 86400];
+  const seconds = [600, 86400];
   let at = now;
   for (const [index, target] of warehouse.levels.slice(1, 3).entries()) {
     assert.deepEqual(target.cost, costs[index]); assert.equal(target.seconds, seconds[index]);
     state.wallet.coins = target.cost.coins;
     state.inventory = { ...target.cost.items, wood: 2 };
+    if (target.level === 2) {
+      const missingHome = structuredClone(state), before = structuredClone(missingHome);
+      assert.throws(() => direct(missingHome, "start_construction", "warehouse", at), { code: "ECONOMY_HOME_REQUIRED" });
+      assert.deepEqual(missingHome, before);
+    }
+    state.buildings.home = target.level === 2 ? 2 : 1;
+    const buildings = structuredClone(state.buildings);
     const before = structuredClone(state);
     const missingCoins = structuredClone(state); missingCoins.wallet.coins--;
     assert.throws(() => direct(missingCoins, "start_construction", "warehouse", at), { code: "ECONOMY_RESOURCES" });
@@ -148,20 +155,22 @@ test("construction and claim request replays cannot spend another relic set or g
   assert.throws(() => issue(p, "claim_job", job.id, end), { code: "ECONOMY_JOB_GONE" });
 });
 
-test("saved paid fourth and fifth warehouse upgrades keep their original cost and finish without a new relic charge", () => {
-  const originalCosts = [
-    { coins: 70000, items: { beams: 60, cut_stone: 70, glass: 25, tools: 15, ancient_core: 1 } },
-    { coins: 220000, items: { beams: 100, cut_stone: 140, reinforced_parts: 35, glass: 60, cloth: 45, moon_crystal: 1 } },
-  ];
-  for (const level of [4, 5]) {
+test("saved paid second, fourth and fifth warehouse upgrades keep original costs and finish without new house or relic requirements", () => {
+  const originalCosts = {
+    2: { coins: 2500, items: { planks: 17, stone: 18, rope: 7 } },
+    4: { coins: 70000, items: { beams: 60, cut_stone: 70, glass: 25, tools: 15, ancient_core: 1 } },
+    5: { coins: 220000, items: { beams: 100, cut_stone: 140, reinforced_parts: 35, glass: 60, cloth: 45, moon_crystal: 1 } },
+  };
+  for (const level of [2, 4, 5]) {
     const p = player(level - 1), state = saved(p);
     state.wallet = { coins: 321, pearls: 500 }; state.inventory = { wood: 5 };
+    const seconds = level === 2 ? 28800 : (level - 2) * 86400;
     const job = model.economyJobSchema.parse({ id: crypto.randomUUID(), kind: "construction", targetId: "warehouse",
-      recipeId: null, targetLevel: level, startedAt: new Date(now).toISOString(), finishesAt: new Date(now + (level - 2) * 86400000).toISOString(),
-      rewards: {}, cost: originalCosts[level - 4], catalogVersion: 3 });
+      recipeId: null, targetLevel: level, startedAt: new Date(now).toISOString(), finishesAt: new Date(now + seconds * 1000).toISOString(),
+      rewards: {}, cost: originalCosts[level], catalogVersion: level === 2 ? 6 : 3 });
     state.jobs = [job];
     const snapshot = model.economyViewSchema.parse(read(p));
-    assert.deepEqual(snapshot.jobs[0].cost, originalCosts[level - 4]);
+    assert.deepEqual(snapshot.jobs[0].cost, originalCosts[level]);
     const before = structuredClone(state);
     assert.throws(() => issue(p, "claim_job", job.id), { code: "ECONOMY_JOB_NOT_READY" });
     assert.deepEqual(state, before);

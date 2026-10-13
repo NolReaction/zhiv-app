@@ -93,8 +93,9 @@ test("discount preserves smoking margin against specialist raw-fish value and me
 });
 
 
-test("first-stage NPC prices pay one exact unit without discount and their stack limits use the same quote", () => {
-  const prices = { berries: 10, strawberries: 40, wood: 30, stone: 40, planks: 40, berry_compote: 30, grilled_fish: 55 };
+test("first two stages' NPC prices pay one exact unit without discount and their stack limits use the same quote", () => {
+  const prices = { berries: 10, strawberries: 40, wood: 30, stone: 40, planks: 40, berry_compote: 30, grilled_fish: 55,
+    fiber: 10, rope: 30, clay: 30, charcoal: 50, bricks: 100 };
   assert.deepEqual(config.unitPrices, prices);
   for (const [id, price] of Object.entries(prices)) {
     const base = economyCatalog.items.find(item => item.id === id).baseSellPrice;

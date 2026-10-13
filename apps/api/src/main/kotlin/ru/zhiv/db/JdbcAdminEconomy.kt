@@ -99,10 +99,12 @@ internal fun readAdminEconomyPlayer(c: Connection, target: String, now: OffsetDa
     }.firstOrNull() ?: return null
     val state = profile.state
     val time = now.toInstant()
-    val view = state?.let {
+    val view = state?.let { raw ->
+        val it = EconomyStageOrders.pin(raw)
         EconomyView(target,profile.revision,time.toString(),it.wallet,it.inventory,it.buildings,it.jobs.map(EconomyPublicJobs::project),it.migration,
             EconomyRules.catalog,EconomyRules.storage(it,reservedEconomyMarketItems(c,profile.id)),it.completedExplorations,it.fishing,
-            wardrobe=it.wardrobe, productionSlots=it.productionSlots, food=it.food, residentOrders=it.residentOrders)
+            wardrobe=it.wardrobe, productionSlots=it.productionSlots, food=it.food, residentOrders=it.residentOrders,
+            stageOrders=it.stageOrders, tutorialOrder=it.tutorialOrder, workshopStarterClaimed=it.workshopStarterClaimed)
     }
     val ledger = c.economyRows("""SELECT kind,coins,pearls,currency_scale,pearl_scale,items,created_at FROM economy_ledger
         WHERE user_id=? ORDER BY created_at DESC,source_key DESC LIMIT 30""", profile.id) { r ->

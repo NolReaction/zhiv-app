@@ -27,7 +27,7 @@ export function auditEconomyProgression(catalog) {
   for (const route of catalog.explorations.filter(route => route.activity === "mining")) {
     assert(route.requiredBuildings?.quarry >= 1, `${route.id}: mining requires a built quarry`);
   }
-  assert.equal(catalog.version, 6);
+  assert.equal(catalog.version, 7);
   assert.equal(catalog.currencyScale, 10);
   const rare = catalog.rareDrops;
   const special = [...items.values()].filter(item => item.category === "special");
@@ -73,8 +73,8 @@ export function auditEconomyProgression(catalog) {
       assert(Number.isSafeInteger(level.seconds) && level.seconds >= 0, `${key}: invalid duration`);
       assert(Number.isSafeInteger(level.cost.coins) && level.cost.coins >= 0, `${key}: invalid price`);
       if (building.id === "warehouse") {
-        assert(level.requiredHomeLevel === 1 && !Object.keys(level.requiredBuildings ?? {}).length,
-          `${key}: storage must not require developed homes or buildings`);
+        assert(level.requiredHomeLevel === (level.level === 2 ? 2 : 1) && !Object.keys(level.requiredBuildings ?? {}).length,
+          `${key}: storage must keep only the declared second-stage house gate`);
         assert(Number.isSafeInteger(level.warehouseCapacity) && level.warehouseCapacity > 0, `${key}: warehouse capacity missing`);
         assert.equal(level.warehouseCapacity, level.level * 50, `${key}: storage must grow by 50 places per level`);
         if (level.level <= 3) assert(Object.keys(level.cost.items).every(id => !rare?.itemIds.includes(id)), `${key}: early storage must use ordinary materials`);
@@ -287,7 +287,7 @@ export function auditEconomyProgression(catalog) {
   assert.deepEqual(Object.fromEntries([...buildings.keys()].map(id => [id, completed[id] ?? 0])), Object.fromEntries([...buildings.values()].map(building => [building.id, building.levels.at(-1).level])), "A material/building dependency blocks progression without market purchases");
   const firstCrops = catalog.recipes.filter(recipe => recipe.requiredHomeLevel === 1 && recipe.buildingId === "garden" && recipe.buildingLevel === 1 && recipe.cost.coins === 0 && !Object.keys(recipe.cost.items).length);
   assert(firstCrops.some(recipe => recipe.seconds === 60) && firstCrops.some(recipe => recipe.seconds === 300 && recipe.requiredRecipes?.cook_compote === 1), "Starter needs one-minute raspberries and five-minute strawberries unlocked by compote");
-  assert(catalog.recipes.some(recipe => recipe.requiredHomeLevel === 2 && recipe.buildingId === "garden" && recipe.buildingLevel === 1 && recipe.seconds >= 8 * 3600 && recipe.cost.coins === 0 && !Object.keys(recipe.cost.items).length), "Second stage needs a free overnight crop");
+  assert(catalog.recipes.some(recipe => recipe.requiredHomeLevel === 3 && recipe.buildingId === "garden" && recipe.buildingLevel === 1 && recipe.seconds >= 8 * 3600 && recipe.cost.coins === 0 && !Object.keys(recipe.cost.items).length), "Home three opens the free overnight crop");
   assert(catalog.explorations.some(route => route.requiredHomeLevel === 1 && route.seconds >= 8 * 3600 && route.cost.coins === 0 && !Object.keys(route.cost.items).length), "Starter needs a free overnight exploration");
   const duration = targets => [...targets].reduce((sum, key) => sum + nodes.get(key).seconds, 0);
   const homeStages = buildings.get("home").levels.map(level => ({ level: level.level, minimumSeconds: duration(closure(`home:${level.level}`)) }));

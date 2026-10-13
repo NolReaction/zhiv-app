@@ -63,11 +63,11 @@ BEGIN
     IF actual_tables IS DISTINCT FROM expected_tables THEN
         RAISE EXCEPTION 'Unexpected application tables. Game reset cancelled; review the schema first.';
     END IF;
-    -- V50 only replaces the starter initializer; the reviewed table inventory is unchanged.
+    -- V51 extends the job validation limit; the reviewed table inventory is unchanged.
     -- Any later migration must be reviewed, including columns on retained tables.
-    IF (SELECT version FROM public.flyway_schema_history ORDER BY installed_rank DESC LIMIT 1) IS DISTINCT FROM '50'
+    IF (SELECT version FROM public.flyway_schema_history ORDER BY installed_rank DESC LIMIT 1) IS DISTINCT FROM '51'
         OR EXISTS (SELECT 1 FROM public.flyway_schema_history WHERE NOT success) THEN
-        RAISE EXCEPTION 'Expected successfully applied migration V50. Game reset cancelled.';
+        RAISE EXCEPTION 'Expected successfully applied migration V51. Game reset cancelled.';
     END IF;
 
     IF apply_mode THEN

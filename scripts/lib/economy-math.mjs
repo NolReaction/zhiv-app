@@ -10,10 +10,10 @@ const productionStation = definition => definition.buildingId ?? (definition.act
 const recipeSlots = recipe => {
   const station = productionStation(recipe);
   const slots = station ? { [station]: (recipe.seconds + (recipe.collection?.seconds ?? 0)) / 60 } : {};
-  // Focused mining reserves both the mine and Mochlik for the same interval.
+  // Focused mining reserves both the mine and its independent miner for the same interval.
   // This is resource occupancy, not two consecutive wall-clock intervals.
   const actorSeconds = (!recipe.buildingId ? recipe.seconds : 0) + (recipe.collection?.seconds ?? 0);
-  if (actorSeconds) slots.mochlik = actorSeconds / 60;
+  if (actorSeconds) slots[recipe.activity === "mining" ? "miner" : "mochlik"] = actorSeconds / 60;
   return slots;
 };
 /** Fish use their specialist buyer; configured first-stage goods have exact NPC prices. */
@@ -139,12 +139,13 @@ export function economicMath(catalog) {
       }
     } else if (rare.has(id)) {
       const spec = catalog.rareDrops, meanSeconds = (spec.minSeconds + spec.maxSeconds) / 2;
-      result.reference = "shared completed-exploration clock; no NPC or coin-market purchase";
+      result.reference = "independent completed-exploration clock per actor; no NPC or coin-market purchase";
       result.referenceHome = spec.requiredHomeLevel;
       result.producerLevels.home = spec.requiredHomeLevel;
       // These are expectations, not a deterministic recipe or a zero-cost NPC item.
       // The same expedition hours yield other types, so individual expectations cannot be summed.
-      result.acquisition = { kind: "rare_drop", clock: "shared_exploration", requiredHomeLevel: spec.requiredHomeLevel,
+      result.acquisition = { kind: "rare_drop", clock: "per_actor_exploration", actors: ["mochlik", "miner"],
+        timeReference: "completed work of one actor; simultaneous wall-clock rates are not modeled", requiredHomeLevel: spec.requiredHomeLevel,
         minClockSeconds: spec.minSeconds, maxClockSeconds: spec.maxSeconds, meanAnySeconds: meanSeconds,
         maxDeliveryRoundingSeconds: Math.max(...catalog.explorations.map(route => route.seconds)),
         typeProbability: 1 / spec.itemIds.length, expectedSpecificSeconds: meanSeconds * spec.itemIds.length,
@@ -208,6 +209,7 @@ export function economicMath(catalog) {
     const rate = margin / stationMinutes, prior = stationBenchmarks[productionStation(r)];
     if (!prior || rate > prior.coinsPerMinute) stationBenchmarks[productionStation(r)] = { recipeId: r.id, coinsPerMinute: rate, marginPerBatch: margin, stationMinutes };
   }
+  if (stationBenchmarks.quarry) stationBenchmarks.miner = { ...stationBenchmarks.quarry };
   const portfolio = catchPortfolio(); stationBenchmarks.mochlik = { recipeId: "shore with starter tackle, expectation", coinsPerMinute: (portfolio.expectedFishRevenue - portfolio.routeCoins - portfolio.baitPurchaseCoins - liquidation(portfolio.routeInputs)) / portfolio.slotMinutes.mochlik };
   function startup(producerLevels) {
     const nodes = new Map(), initial = { home: 1, garden: 1, warehouse: 1 };

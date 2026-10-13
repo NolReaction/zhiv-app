@@ -5,7 +5,7 @@
     { "templateId": "builder_wood_supply", "home": 3, "items": { "wood": 4 }, "coins": 180 },
     { "templateId": "builder_wood_supply", "home": 4, "items": { "wood": 7 }, "coins": 320 },
     { "templateId": "builder_wood_supply", "home": 5, "items": { "wood": 10 }, "coins": 450 },
-    { "templateId": "builder_plank_brace", "home": 5, "items": { "planks": 6, "rope": 3 }, "coins": 720 },
+    { "templateId": "builder_plank_brace", "home": 5, "items": { "planks": 6, "rope": 3 }, "coins": 500 },
     { "templateId": "builder_final_fittings", "home": 5, "items": { "reinforced_parts": 6, "glass": 9 }, "coins": 22680 },
     { "templateId": "plesk_river_catch", "home": 5, "items": { "fish_common": 6 }, "coins": 440 },
     { "templateId": "plesk_grilled_dinner", "home": 5, "items": { "grilled_fish": 1, "berries": 10 }, "coins": 250 },
