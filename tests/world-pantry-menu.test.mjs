@@ -54,22 +54,23 @@ test("occupancy includes reserved market stock and full storage preserves item s
 });
 
 test("refrigerator separates all fish from materials while sharing the exact warehouse capacity", () => {
-  const inventory = { wood: 20, fish: 84, fish_silverfin: 1, fish_shark: 2, ancient_core: 1, smoked_fish: 3, worm_bait: 2 };
+  const inventory = { wood: 20, fish: 82, fish_common: 2, fish_silverfin: 1, fish_shark: 1, fish_legendary: 1, ancient_core: 1, smoked_fish: 3, worm_bait: 2 };
   const state = snapshot({ inventory });
   const before = structuredClone(state), economy = controller({ snapshot: state });
   const supplies = render(economy);
   assert.match(supplies, /aria-label="Древесина: 20"/);
   assert.match(supplies, /aria-label="Копчёная рыба: 3"/);
   assert.match(supplies, /aria-label="Лесной червячок: 2"/);
-  assert.doesNotMatch(supplies, /aria-label="(?:Речная рыба|Серебринка|Теневая акула):/);
+  assert.doesNotMatch(supplies, /aria-label="(?:Обычная рыба|Легендарная рыба|Речная рыба|Серебринка|Теневая акула):/);
   const fridge = render(economy, { initialTab: "fridge" });
   assert.match(fridge, /aria-label="Рыба и еда в холодильнике"/);
   assert.match(fridge, /<small>87<\/small><span>Холодильник<\/span>/);
-  for (const [name, quantity, id] of [["Речная рыба", 84, "fish"], ["Серебринка", 1, "fish_silverfin"], ["Теневая акула", 2, "fish_shark"]]) {
+  for (const [name, quantity, id] of [["Обычная рыба", 85, "fish_common"], ["Легендарная рыба", 2, "fish_legendary"]]) {
     assert.ok(fridge.includes(`aria-label="${name}: ${quantity}"`));
     assert.ok(fridge.includes(`data-item-icon="${id}"`));
   }
   assert.doesNotMatch(fridge, /data-hidden-fish|aria-label="(?:Древесина|Копчёная рыба|Лесной червячок):/);
+  assert.doesNotMatch(fridge, /data-item-icon="(?:fish|fish_silverfin|fish_shark)"/, "legacy species must coalesce into their class stocks");
   assert.match(fridge, /Места общие с кладовой/);
   for (const html of [supplies, fridge, render(economy, { initialTab: "relics" })]) {
     assert.ok(html.includes(`aria-label="Кладовая: занято ${state.storage.used} из ${state.storage.capacity} мест"`));
@@ -239,13 +240,13 @@ test("penny stock starts at a payable batch, and wallet limits use the whole-sta
 });
 
 test("fish points to Pleska's full price and an available navigation callback", () => {
-  const state = snapshot({ inventory: { fish: 4 } }); state.catalog.localBuyer = { payoutBps: 6000 };
+  const state = snapshot({ inventory: { fish_common: 4 } }); state.catalog.localBuyer = { payoutBps: 6000 };
   let opened = 0;
-  const view = inspectSale(state, { itemId: "fish", onOpenFishingShop() { opened++; } });
-  assert.match(view.html, /Плёска купит дороже: 80 монет за штуку/);
-  assert.match(button(view.html, "Продать торговцу").text, /· 40$/);
+  const view = inspectSale(state, { itemId: "fish_common", onOpenFishingShop() { opened++; } });
+  assert.match(view.html, /Плёска купит дороже: 40 монет за штуку/);
+  assert.match(button(view.html, "Продать торговцу").text, /· 20$/);
   view.control("К Плёске").props.onClick(); assert.equal(opened, 1); assert.deepEqual(view.calls, []);
-  assert.doesNotMatch(inspectSale(state, { itemId: "fish" }).html, />К Плёске/);
+  assert.doesNotMatch(inspectSale(state, { itemId: "fish_common" }).html, />К Плёске/);
 });
 
 test("old catalogs keep full sale prices and zero quote, while blocked handlers cannot dispatch", () => {
@@ -265,7 +266,7 @@ test("prepared meals share refrigerator capacity and cannot leak into the materi
   const inventory = { fish: 3, grilled_fish: 4, fish_soup: 2, wood: 5 };
   const state = snapshot({ inventory }), before = structuredClone(state), economy = controller({ snapshot: state });
   const fridge = render(economy, { initialTab: "fridge" });
-  for (const [name, quantity] of [["Речная рыба", 3], ["Жареная рыба", 4], ["Рыбная уха", 2]]) assert.ok(fridge.includes(`aria-label="${name}: ${quantity}"`));
+  for (const [name, quantity] of [["Обычная рыба", 3], ["Жареная рыба", 4], ["Рыбная уха", 2]]) assert.ok(fridge.includes(`aria-label="${name}: ${quantity}"`));
   assert.match(fridge, /<small>9<\/small><span>Холодильник<\/span>/);
   assert.doesNotMatch(fridge, /aria-label="Древесина:/);
   assert.doesNotMatch(render(economy), /aria-label="(?:Жареная рыба|Рыбная уха):/);

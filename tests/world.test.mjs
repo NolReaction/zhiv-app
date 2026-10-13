@@ -161,7 +161,7 @@ test("legacy savings convert once and all five homes plus workshops remain reada
     const converted = economy.getDevEconomy(p.token, now);
     assert.deepEqual(converted.wallet, { coins: 7500, pearls: 1000 });
     assert.equal(converted.currencyScale, 10);
-    assert.deepEqual(converted.inventory, { fish: 10, wood: 40, stone: 40 });
+    assert.deepEqual(converted.inventory, { fish_common: 10, wood: 40, stone: 40 });
     assert.equal(converted.buildings.home, level);
     assert.equal(converted.buildings.workshop, 3);
     world.getDevWorld(p.token, now + 1);

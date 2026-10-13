@@ -119,7 +119,7 @@ test("opening rewards changes no wallet; seven manual claims wrap and skipped da
   }
   const final = economy.getDevEconomy(p.token, now);
   assert.equal(final.wallet.coins - initial.wallet.coins, 5500); assert.equal(final.wallet.pearls - initial.wallet.pearls, 450);
-  for (const [id, amount] of Object.entries({ wood: 28, stone: 20, fiber: 22, berries: 10, fish: 6, planks: 12, rope: 7, ancient_core: 1 })) assert.equal((final.inventory[id] ?? 0) - (initial.inventory[id] ?? 0), amount);
+  for (const [id, amount] of Object.entries({ wood: 28, stone: 20, fiber: 22, berries: 10, fish_common: 6, planks: 12, rope: 7, ancient_core: 1 })) assert.equal((final.inventory[id] ?? 0) - (initial.inventory[id] ?? 0), amount);
   assert.ok(final.revision >= initial.revision + 7); assert.equal(last.rewards.daily.step, 1);
 });
 

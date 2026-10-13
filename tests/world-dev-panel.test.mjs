@@ -474,8 +474,9 @@ test("DEV inventory browser exposes fish, consumable bait and permanent tackle a
     ["all", "materials", "food", "fish", "rods", "hooks", "bait", "relics", "wardrobe"]);
   const items = view.elements.find(element => element.type === "select" && element.props.value === "wood");
   const ids = Children.toArray(items.props.children).map(option => option.props.value);
-  for (const id of ["fish_shark", "fish", "firefly_bait", "leviathan_hook", "starfall_rod", "ancient_core"]) assert.ok(ids.includes(id), id);
+  for (const id of ["fish_common", "fish_uncommon", "fish_rare", "fish_epic", "fish_legendary", "firefly_bait", "leviathan_hook", "starfall_rod", "ancient_core"]) assert.ok(ids.includes(id), id);
   assert.equal(new Set(ids).size, ids.length);
+  for (const species of ["fish", "fish_silverfin", "fish_shark"]) assert.ok(!ids.includes(species), "collection species cannot be granted as separate stock");
   assert.match(view.markup, /data-item-icon="wood"/);
   assert.deepEqual(view.commands, []);
 });

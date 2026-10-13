@@ -57,11 +57,12 @@ export async function loadJourneyRules() {
   const model = await vite.ssrLoadModule("/features/economy/domain/model.ts");
   const actorAvailability = await vite.ssrLoadModule("/features/economy/domain/actor-availability.ts");
   const progressionRewards = await vite.ssrLoadModule("/features/game/progression-rewards.ts");
-  return { rules, actorAvailability, progressionRewards, catalog: model.economyCatalog,
+  const fishing = await vite.ssrLoadModule("/features/economy/domain/fishing.ts");
+  return { rules, actorAvailability, progressionRewards, fishing, catalog: model.economyCatalog,
     walletLimits: { coins: model.ECONOMY_MAX_BALANCE, pearls: model.ECONOMY_MAX_PEARLS }, close: () => vite.close() };
 }
 
-export function simulateJourney({ rules, actorAvailability, progressionRewards, catalog, walletLimits }, mode, maxDays = 1600, policy = {}) {
+export function simulateJourney({ rules, actorAvailability, progressionRewards, fishing, catalog, walletLimits }, mode, maxDays = 1600, policy = {}) {
   const { prepareNextConstruction = false, preserveFutureCraftedStock = false, jointBatchPlanning = false,
     pearlBudget = 0, constructionSpeedups = true, buyProductionSlots = false,
     parallelProductionPlanning = buyProductionSlots, dailyPearlsOnly = false, dailyRewards = false, rareSeed = DEFAULT_JOURNEY_RARE_SEED,
@@ -175,7 +176,7 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
       lastFailure = error.code ?? error.message; failures[lastFailure] = (failures[lastFailure] ?? 0) + 1; return false;
     }
   };
-  const cash = rewards => Object.entries(rewards).reduce((sum, [id, amount]) => sum + (catalog.fishing.fish.some(f => f.itemId === id)
+  const cash = rewards => Object.entries(rewards).reduce((sum, [id, amount]) => sum + (fishing.fishClassForItem(id, catalog.fishing)
     ? items.get(id).baseSellPrice * amount : rules.economyLocalSellPrice(items.get(id).baseSellPrice, amount, catalog.localBuyer)), 0);
   const projectedEligible = d => {
     if (!prepareNextConstruction) return eligible(d);
@@ -217,9 +218,8 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
       const rewards = { ...job.rewards };
       for (const id of relicIds) delete rewards[id];
       if (job.fishing) {
-        for (const fish of catalog.fishing.fish) delete rewards[fish.itemId];
-        const route = catalog.explorations.find(route => route.id === job.targetId);
-        rewards.fish = route.rewards.fish - (catalog.fishing.collectionDrawsByRoute?.[route.id] ?? 1);
+        // Every fish is random now. No class stock is guaranteed before claim.
+        for (const id of Object.keys(rewards)) if (fishing.fishClassForItem(id, catalog.fishing)) delete rewards[id];
       }
       for (const [id, quantity] of Object.entries(rewards)) planned[id] = (planned[id] ?? 0) + quantity;
     }
@@ -266,7 +266,7 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
       });
       const manufactured = futureUses && catalog.recipes.some(r => r.rewards[id] > 0 && Object.keys(r.cost.items).length > 0);
       const quantity = amount - (manufactured ? amount : (needed[id] ?? 0));
-      if (quantity > 0 && cash({ [id]: quantity }) > 0) sold = command(catalog.fishing.fish.some(f => f.itemId === id) ? "sell_fish" : "sell", id, quantity) || sold;
+      if (quantity > 0 && cash({ [id]: quantity }) > 0) sold = command(fishing.fishClassForItem(id, catalog.fishing) ? "sell_fish" : "sell", id, quantity) || sold;
     }
     return sold;
   };
@@ -323,7 +323,7 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
         const expendable = Object.entries(state.inventory).filter(([id, amount]) => amount > 0 && cash({ [id]: amount }) > 0)
           .sort((a, b) => Number(!!sources(b[0])[0]?.cost.items && Object.keys(sources(b[0])[0].cost.items).length === 0)
             - Number(!!sources(a[0])[0]?.cost.items && Object.keys(sources(a[0])[0].cost.items).length === 0) || b[1] - a[1])[0];
-        if (expendable) { command(catalog.fishing.fish.some(f => f.itemId === expendable[0]) ? "sell_fish" : "sell", ...expendable); storageRecovery++; command("claim_job", job.id); }
+        if (expendable) { command(fishing.fishClassForItem(expendable[0], catalog.fishing) ? "sell_fish" : "sell", ...expendable); storageRecovery++; command("claim_job", job.id); }
       }
       if (job.kind === "construction" && state.buildings[job.targetId] === job.targetLevel) {
         const key = `${job.targetId}:${job.targetLevel}`; milestones[key] = (clock - firstVisit) / day;
@@ -378,7 +378,17 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
     // Idle gathering earns sale money; mining and other routes use one actor.
     // Every eligible completed route advances the same relic clock.
     // Costly processing is reserved for the next upgrade. This is not an optimum.
-    const income = d => cash(d.rewards) / (isActive ? d.seconds : Math.max(1, Math.ceil(d.seconds / gap)));
+    const income = d => {
+      let expectedCash = cash(d.rewards);
+      if (catalog.fishing.routeIds.includes(d.id)) {
+        // Use visible class odds for route choice, never inspect a pending private draw.
+        const perFish = fishing.fishingClassOdds(state, catalog.fishing).reduce((sum, group) =>
+          sum + group.probability * items.get(group.itemId).baseSellPrice, 0);
+        const { fish: count, ...otherRewards } = d.rewards;
+        expectedCash = cash(otherRewards) + count * perFish;
+      }
+      return expectedCash / (isActive ? d.seconds : Math.max(1, Math.ceil(d.seconds / gap)));
+    };
     for (const id of ["garden", "woodlot", null]) {
       if (id ? (parallelProductionPlanning ? !productionAvailable(id) || id === drainingStation : busy.has(id)) : actorBusy()) continue;
       const needsRelic = !id && plan.needsRelic && (state.buildings.home ?? 1) >= (catalog.rareDrops?.requiredHomeLevel ?? Infinity);

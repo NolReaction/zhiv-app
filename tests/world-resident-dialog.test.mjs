@@ -37,7 +37,7 @@ const disabled = value => /\bdisabled=/.test(value.attributes);
 
 test("Pleska opens current merchant offers, while the catch tab sells the player's actual stock", () => {
   const state = snapshot({ wallet: { coins: 20000, pearls: 100 } });
-  state.catalog.items.find(item => item.id === "fish").baseSellPrice = 17;
+  state.catalog.items.find(item => item.id === "fish_common").baseSellPrice = 17;
   const economy = controller({ snapshot: state }), html = render(economy);
   assert.match(html, /Предложения Плёски/);
   assert.match(html, /Новые товары через[\s\S]*6:00:00/);
@@ -45,9 +45,9 @@ test("Pleska opens current merchant offers, while the catch tab sells the player
   assert.equal(disabled(button(html, "Купить удочку")), false);
   assert.match(html, /role="tablist" aria-label="Лавка Плёски"/);
   assert.match(html, /Книга/);
-  assert.doesNotMatch(html, /Продажа: Речная рыба|Свернуть продажу|Забрать улов|Бесплатно/);
+  assert.doesNotMatch(html, /Продажа: Обычная рыба|Свернуть продажу|Забрать улов|Бесплатно/);
   const catchTab = renderCatch(economy);
-  assert.match(catchTab, /Продажа: Речная рыба/);
+  assert.match(catchTab, /Продажа: Обычная рыба/);
   assert.match(catchTab, /В запасе <strong>5<\/strong>/);
   assert.match(catchTab, /За штуку[\s\S]+17/);
   assert.equal(disabled(button(catchTab, "Продать")), false);
@@ -81,15 +81,18 @@ test("trading respects in-flight, uncertain and cooldown locks with receipt reco
 });
 
 test("purchased stock is visible in the sell tab without becoming a personal catch", () => {
-  const state = snapshot({ inventory: { fish_shark: 1 } }), economy = controller({ snapshot: state });
+  const state = snapshot({ inventory: { fish_shark: 1, fish_legendary: 2 } }), economy = controller({ snapshot: state });
   const purchased = renderCatch(economy);
-  assert.match(purchased, /data-item-icon="fish_shark"/);
+  assert.match(purchased, /data-item-icon="fish_legendary"/);
   assert.doesNotMatch(purchased, /data-hidden-fish/);
   assert.equal(disabled(button(purchased, "Продать")), false);
+  assert.match(purchased, /В запасе <strong>3<\/strong>/);
+  assert.doesNotMatch(purchased, /Теневая акула|data-item-icon="fish_shark"/);
+  assert.deepEqual(state.inventory, { fish_shark: 1, fish_legendary: 2 }, "class aggregation is a read-only view");
   assert.deepEqual(state.fishing.catches, {});
   state.fishing.catches.fish_shark = 1;
   const caught = renderCatch(economy);
-  assert.match(caught, /data-item-icon="fish_shark"/);
+  assert.match(caught, /data-item-icon="fish_legendary"/);
   assert.doesNotMatch(caught, /data-hidden-fish/);
 });
 

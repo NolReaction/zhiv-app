@@ -93,15 +93,26 @@ test("lookahead prepares later upgrades with real commands while omitted options
 test("an explicit research pearl balance pays only actual construction speedups and cannot create materials", async () => {
   const loaded = await loadJourneyRules();
   try {
-    const casts = [];
+    const casts = [], fishSales = [];
     const observed = { ...loaded, rules: { ...loaded.rules, applyEconomyCommand: (state, command, now, jobId, reserved, rareRandom) => {
+      const beforeCoins = state.wallet.coins;
       const result = loaded.rules.applyEconomyCommand(state, command, now, jobId, reserved, rareRandom);
       if (command.action === "start_fishing") casts.push(state.fishingCastSeed);
+      const group = loaded.fishing.fishClassForItem(command.targetId, loaded.catalog.fishing);
+      if (group && ["sell", "sell_fish"].includes(command.action)) {
+        assert.equal(command.action, "sell_fish", "The simulated player sells class stock to Pleska at the specialist price");
+        const price = loaded.catalog.items.find(item => item.id === group.itemId).baseSellPrice;
+        assert.equal(state.wallet.coins - beforeCoins, price * command.quantity);
+        fishSales.push(group.itemId);
+      }
       return result;
     } } };
-    simulateJourney(observed, "visits3", 40, lookaheadPolicy);
+    // Minute-scale fishing needs an active visit schedule. At three visits per
+    // day, a rational construction policy prefers long forest/mining outings.
+    simulateJourney(observed, "active16h", 2, lookaheadPolicy);
     const baseline = casts.splice(0);
-    const result = simulateJourney(observed, "visits3", 40, { ...lookaheadPolicy, pearlBudget: 1000 });
+    assert(fishSales.length > 0 && fishSales.every(id => id.startsWith("fish_")));
+    const result = simulateJourney(observed, "active16h", 2, { ...lookaheadPolicy, pearlBudget: 1000 });
     const pairedCasts = Math.min(casts.length, baseline.length);
     assert(pairedCasts >= 20, "Both policies exercise repeated fishing despite competing quarry work");
     assert.deepEqual(casts.slice(0, pairedCasts), baseline.slice(0, pairedCasts), "The paired scenarios share the same nth-cast seeds");
