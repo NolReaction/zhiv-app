@@ -31,7 +31,7 @@ const userSchema = z.object({
 const usersSchema = z.object({ ...page, users: z.array(userSchema).max(100) });
 const auditSchema = z.object({ ...page, events: z.array(z.object({
   requestId: z.string().uuid(), actorPublicId: publicId, targetPublicId: publicId,
-  action: z.enum(["revoke_sessions", "grant_item", "grant_achievement", "grant_resource", "grant_world_item", "grant_find", "set_tag", "ban", "unban", "watch", "unwatch", "clear_signal"]), details: z.string().nullable().optional(), rewardId: z.string().nullable().default(null), granted: z.boolean().nullable().default(null), reason: z.string().max(240), affectedSessions: count, createdAt: instant,
+  action: z.enum(["revoke_sessions", "grant_item", "grant_achievement", "grant_resource", "grant_world_item", "grant_find", "grant_economy", "promo_create", "promo_update", "promo_delete", "set_tag", "ban", "unban", "watch", "unwatch", "clear_signal"]), details: z.string().nullable().optional(), rewardId: z.string().nullable().default(null), granted: z.boolean().nullable().default(null), reason: z.string().max(240), affectedSessions: count, createdAt: instant,
 })).max(100) });
 const metric = z.number().finite().nullable();
 const monitoringSchema = z.object({
@@ -53,7 +53,7 @@ export type AdminAudit = z.infer<typeof auditSchema>;
 export type AdminMonitoring = z.infer<typeof monitoringSchema>;
 export type AdminRevokeRequest = { requestId: string; confirmationPublicId: string; reason: string };
 
-export async function adminRequest<T>(path: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>, signal?: AbortSignal, body?: AdminRevokeRequest | AdminGrantRequest | AdminPlayerCommand): Promise<T> {
+export async function adminRequest<T>(path: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>, signal?: AbortSignal, body?: object): Promise<T> {
   const controller = new AbortController();
   const abort = () => controller.abort(signal?.reason);
   if (signal?.aborted) abort();

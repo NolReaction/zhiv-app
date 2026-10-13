@@ -7,7 +7,7 @@ fun main() {
     val config = AppConfig.fromEnvironment()
     require(config.databaseUser != "zhiv_app") { "Runtime role must not execute migrations" }
     DatabaseFactory.create(config).use { source ->
-        DatabaseFactory.migrate(source)
+        migrateWithLegacyAdminHistory(source)
         source.connection.use { connection ->
             connection.createStatement().use {
                 it.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO zhiv_app")

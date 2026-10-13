@@ -8,11 +8,15 @@ const reset = await readFile(new URL("../scripts/reset-user-data.sql", import.me
 
 test("the destructive reset explicitly reviews the latest migration", () => {
   const latestVersion = Math.max(...files.map(file => Number(file.match(/^V(\d+)__/)[1])));
-  const reviewedVersion = Number(reset.match(/ORDER BY installed_rank DESC LIMIT 1\) IS DISTINCT FROM '(\d+)'/)?.[1]);
+  const reviewedVersion = Number(reset.match(/max\(version::integer\)[\s\S]*?\) IS DISTINCT FROM (\d+)/)?.[1]);
   assert.equal(reviewedVersion, latestVersion, "Review the new schema and update reset-user-data.sql before release");
+  assert.doesNotMatch(reset, /ORDER BY installed_rank DESC LIMIT 1/,
+    "An admin compatibility upgrade can apply V50 after V52; installation order cannot identify the schema version");
+  assert.match(reset, /count\(DISTINCT version::integer\)/);
+  assert.match(reset, /WHERE NOT success/);
 });
 
-test("the reset inventory covers every migrated user table and preserves collection metadata", async () => {
+test("the reset inventory covers every migrated user table and preserves global configuration", async () => {
   // Migrations currently only add tables. A future drop/rename needs an explicit
   // update to this reader as well as a review of the destructive reset policy.
   const createdTables = [];
@@ -26,6 +30,7 @@ test("the reset inventory covers every migrated user table and preserves collect
   assert.ok(userTableArray, "Reset must declare its reviewed user table inventory");
   const cleared = [...userTableArray.matchAll(/'([a-z_]+)'/g)].map(match => match[1]);
   assert.equal(new Set(cleared).size, cleared.length, "Reset table list must not contain duplicates");
-  assert.deepEqual([...cleared, "game_tap_collection_metadata"].sort(), createdTables.sort(),
-    "New user tables must be reviewed and cleared; collection metadata alone is preserved");
+  assert.deepEqual([...cleared, "game_tap_collection_metadata", "managed_promo_codes"].sort(), createdTables.sort(),
+    "New tables must be reviewed: user data is cleared, collection metadata and global campaigns are preserved");
+  assert.match(reset, /IF promo_configuration IS DISTINCT FROM/);
 });

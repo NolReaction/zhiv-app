@@ -32,9 +32,10 @@ class JdbcReleaseUpgradeIntegrationTest {
 
     private fun legacyData(source: DataSource, tables: List<String>): Map<String, String> = tables.associateWith { table ->
         require(table.matches(Regex("[a-z_]+")))
-        // Compare every historical field; V38/V50 add separately checked metadata.
+        // Compare historical data while separately checking V38/V50/V51 metadata.
         val row = when (table) {
             "game_achievements" -> "(to_jsonb(t)-'reward_eligible')"
+            "admin_actions" -> "(to_jsonb(t)-'accepted_revision')"
             "notification_events" -> "(to_jsonb(t)-'harvest_ready_at'-'waiting_for_actor'-'actor_wait_until')"
             else -> "to_jsonb(t)"
         }
@@ -62,6 +63,40 @@ class JdbcReleaseUpgradeIntegrationTest {
         c.economyUpdate("""UPDATE app_users SET last_check_in_at=(SELECT max(checked_at) FROM check_ins WHERE user_id=?),
             updated_at=clock_timestamp() WHERE id=?""",user,user)
         c.commit()
+    }
+
+    @Test fun `upgrade from populated V50 preserves immutable audit and reward receipts and permits economy grants`() = runBlocking<Unit> {
+        val config = AppConfig(postgres.jdbcUrl, postgres.username, postgres.password, false, setOf("http://localhost"))
+        DatabaseFactory.create(config).use { source ->
+            Flyway.configure().dataSource(source).locations("classpath:db/migration").target("50").load().migrate()
+            val tokens = TokenCodec(); val token = tokens.issue(); val playerToken = tokens.issue()
+            val identities = JdbcZhivRepository(source)
+            val admin = identities.bootstrap("Администратор", tokens.issue().hash, token.hash, 365)
+            val player = identities.bootstrap("До новой панели", tokens.issue().hash, playerToken.hash, 365)
+            val repository = JdbcAdminRepository(source, ru.zhiv.admin.AdminConfig(setOf(admin.publicId)))
+            val requestId = UUID.randomUUID()
+            val reward = ru.zhiv.admin.AdminGrantRequest(requestId.toString(), player.publicId, "item", "flower", "Награда до обновления")
+            val receipt = repository.grantReward(token.hash, player.publicId, requestId, reward)
+            val moderation = ru.zhiv.admin.AdminPlayerCommand(UUID.randomUUID().toString(), player.publicId, "Проверка до обновления", "watch")
+            repository.managePlayer(token.hash, player.publicId, UUID.fromString(moderation.requestId), moderation)
+            JdbcEconomyRepository(source).snapshot(playerToken.hash)
+            val tables = source.connection.use { c -> c.economyRows(
+                "SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename<>'flyway_schema_history' ORDER BY tablename") { it.getString(1) } }
+            val before = legacyData(source, tables)
+            val oldHistorySql = "SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank)::text FROM flyway_schema_history h WHERE version::int<=50"
+            val oldHistory = scalar(source, oldHistorySql)
+            DatabaseFactory.migrate(source)
+            assertEquals(before, legacyData(source, tables), "Existing audit, receipts, sessions and balances are unchanged")
+            assertEquals("2", scalar(source, "SELECT count(*) FROM admin_actions WHERE accepted_revision IS NULL"))
+            assertEquals(oldHistory, scalar(source, oldHistorySql))
+            assertEquals("52", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
+            assertEquals(receipt, repository.grantReward(token.hash, player.publicId, requestId, reward))
+            DatabaseFactory.migrate(source)
+            assertEquals(before, legacyData(source, tables))
+            val grant = ru.zhiv.admin.AdminEconomyGrantRequest(UUID.randomUUID().toString(), player.publicId, "Компенсация после обновления", coins = 25)
+            assertTrue(repository.grantEconomy(token.hash, player.publicId, UUID.fromString(grant.requestId), grant).changed)
+            assertEquals("1", scalar(source, "SELECT count(*) FROM admin_actions WHERE action='grant_economy' AND accepted_revision IS NOT NULL"))
+        }
     }
 
     @Test fun `upgrade from populated V48 preserves notification settings and queue while keeping limits enabled`() = runBlocking<Unit> {
@@ -121,7 +156,7 @@ class JdbcReleaseUpgradeIntegrationTest {
             DatabaseFactory.migrate(source)
             assertEquals(before, legacyData(source, tables))
             assertEquals(history, scalar(source, historySql))
-            assertEquals("50", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
+            assertEquals("52", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             for (table in listOf("game_presence_clients", "game_presence_accounts", "game_presence_daily"))
                 assertEquals("0", scalar(source, "SELECT count(*) FROM $table"))
             val presence = JdbcPresenceRepository(source)
@@ -165,7 +200,7 @@ class JdbcReleaseUpgradeIntegrationTest {
             DatabaseFactory.migrate(source)
             assertEquals(before, legacyData(source, unchangedTables))
             assertEquals(beforeHistory, scalar(source, historySql))
-            assertEquals("50", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
+            assertEquals("52", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM forest_memory"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM forest_memory_receipts"))
             DatabaseFactory.migrate(source)
@@ -227,7 +262,7 @@ class JdbcReleaseUpgradeIntegrationTest {
             assertEquals(before, legacyData(source, unchangedTables), "Only the explicitly converted world profile may change")
             assertEquals("true", scalar(source, "SELECT bool_and(reward_eligible)::text FROM game_achievements"), "Existing ownership keeps its finite reward eligibility")
             assertEquals(oldHistory, scalar(source, historySql), "Existing migration records/checksums must stay intact")
-            assertEquals("50", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
+            assertEquals("52", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM player_feedback"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM player_feedback_actions"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM forest_memory"))

@@ -6,7 +6,9 @@ import { AdminTapActivityPanel } from "./admin-tap-activity-panel";
 import { type AdminEconomyTarget } from "./admin-economy-panel";
 import { AdminEconomyWorkspace, type AdminHistoryRequest } from "./admin-analytics-panel";
 import { AdminEconomyDialog } from "./admin-economy-dialog";
-import { worldCatalog } from "@/features/world/domain/model";
+import { AdminGrantsPanel } from "./admin-grants-panel";
+import { AdminPromoPanel } from "./admin-promo-panel";
+import { adminActionName, adminActionDetails } from "./admin-audit-details";
 import { AdminFeedbackPanel } from "./admin-feedback-panel";
 import { validAdminReason } from "./admin-input";
 import { AdminIncidentsPanel } from "./admin-incidents-panel";
@@ -18,7 +20,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import {
   Activity, RefreshCw, ArrowLeft, ArrowUpRight, Check, ChevronLeft, ChevronRight, CircleAlert,
   Clock3, Cpu, Database, Gift, HeartPulse, LayoutDashboard, LoaderCircle,
-  LogOut, Search, Server, ShieldCheck, ShieldX, Terminal, Trophy, Users, MessageSquare, Warehouse,
+  LogOut, Search, Server, ShieldCheck, ShieldX, Terminal, Ticket, Trophy, Users, MessageSquare, Warehouse,
 } from "lucide-react";
 import {
   CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -39,7 +41,7 @@ import {
 } from "@/features/admin/admin-api";
 import styles from "./admin-dashboard.module.css";
 
-type AdminTab = "overview" | "users" | "economy" | "monitoring" | "audit" | "incidents" | "clicks" | "feedback";
+type AdminTab = "grants" | "promos" | "overview" | "users" | "economy" | "monitoring" | "audit" | "incidents" | "clicks" | "feedback";
 type UserSort = "created" | "activity" | "taps" | "review";
 type AccessStatus = "loading" | "allowed" | "signed-out" | "forbidden" | "error";
 type Snapshot<T> = { key: string; value: T };
@@ -202,11 +204,11 @@ function Overview({ data, days }: { data: AdminOverview; days: number }) {
   );
 }
 
-function UsersTable({ data, access, busy, onPage, onRevoke, onRewards, onManage, onClicks, onEconomy }: {
-  data: AdminUsers; access: AdminAccess; busy: boolean; onPage: (offset: number) => void; onRevoke: (user: AdminUser) => void; onRewards: (user: AdminUser) => void; onManage: (user: AdminUser) => void; onClicks: (user: AdminUser) => void; onEconomy: (user: AdminEconomyTarget) => void;
+function UsersTable({ data, access, busy, onPage, onRevoke, onRewards, onManage, onClicks, onEconomy, onGrant }: {
+  data: AdminUsers; access: AdminAccess; busy: boolean; onPage: (offset: number) => void; onRevoke: (user: AdminUser) => void; onRewards: (user: AdminUser) => void; onManage: (user: AdminUser) => void; onClicks: (user: AdminUser) => void; onEconomy: (user: AdminEconomyTarget) => void; onGrant: (user: AdminUser) => void;
 }) {
   return <section className={styles.panel}>
-    <SectionHeading title="Пользователи приложения" description="Поиск по имени или ID. Сеансы можно завершить без удаления аккаунта." />
+    <SectionHeading title="Пользователи приложения" description="Найдите игрока и перейдите к выдаче, истории хозяйства или управлению аккаунтом." />
     {data.users.length === 0 ? <Empty>Пользователи не найдены. Попробуйте другое имя или ID.</Empty> : <Table className={styles.userTable}>
       <TableHeader><TableRow><TableHead>Пользователь</TableHead><TableHead>Последняя отметка</TableHead><TableHead>Отметки / друзья</TableHead><TableHead>Игра</TableHead><TableHead>Сеансы</TableHead><TableHead><span className={styles.srOnly}>Действия</span></TableHead></TableRow></TableHeader>
       <TableBody>{data.users.map(user => <TableRow key={user.publicId}>
@@ -215,7 +217,7 @@ function UsersTable({ data, access, busy, onPage, onRevoke, onRewards, onManage,
         <TableCell><strong>{count(user.checkInCount)}</strong> отметок<small>{count(user.friendCount)} друзей</small></TableCell>
         <TableCell><strong>{count(user.lifetimeTaps)}</strong> тапов<small>Месяц {count(user.monthlyTaps)} · рекорд ×{count(user.bestSeries)}</small><small>{user.leaderboardOptIn ? "Участвует в рейтинге" : "Рейтинг скрыт"}</small></TableCell>
         <TableCell><strong>{count(user.activeSessions)}</strong><small>{user.loginMethods.length ? user.loginMethods.join(" · ") : "Нет привязанных способов"}</small></TableCell>
-        <TableCell><button type="button" className={styles.textButton} disabled={busy} onClick={() => onManage(user)}>Управление</button><button type="button" className={styles.textButton} disabled={busy} onClick={() => onEconomy(user)}>Хозяйство</button><button type="button" className={styles.textButton} disabled={busy} onClick={() => onClicks(user)}>Клики</button><button type="button" className={styles.textButton} disabled={busy} onClick={() => onRewards(user)}><Gift size={16} />Награды</button>{!user.isAdmin && user.publicId !== access.publicId ? <button type="button" className={styles.dangerLink} disabled={user.activeSessions === 0 || busy} onClick={() => onRevoke(user)}><LogOut size={16} />Завершить сеансы</button> : <span className={styles.muted}>Защищённый аккаунт</span>}</TableCell>
+        <TableCell><button type="button" className={styles.primaryButton} disabled={busy} onClick={() => onGrant(user)}><Gift size={16} />Выдать</button><button type="button" className={styles.textButton} disabled={busy} onClick={() => onManage(user)}>Аккаунт</button><button type="button" className={styles.textButton} disabled={busy} onClick={() => onEconomy(user)}>Хозяйство</button><button type="button" className={styles.textButton} disabled={busy} onClick={() => onClicks(user)}>Клики</button><button type="button" className={styles.textButton} disabled={busy} onClick={() => onRewards(user)}><Gift size={16} />Награды</button>{!user.isAdmin && user.publicId !== access.publicId ? <button type="button" className={styles.dangerLink} disabled={user.activeSessions === 0 || busy} onClick={() => onRevoke(user)}><LogOut size={16} />Завершить сеансы</button> : <span className={styles.muted}>Защищённый аккаунт</span>}</TableCell>
       </TableRow>)}</TableBody>
     </Table>}
     <Pagination total={data.total} offset={data.offset} busy={busy} onChange={onPage} />
@@ -274,21 +276,6 @@ function Monitoring({ data }: { data: AdminMonitoring }) {
   </div>;
 }
 
-function adminActionName(action: string) {
-  const labels: Record<string, string> = { revoke_sessions: "Завершение сеансов", grant_item: "Календарный предмет", grant_achievement: "Достижение", grant_resource: "Ресурсы", grant_world_item: "Предмет мира", grant_find: "Находка", set_tag: "Тег", ban: "Блокировка", unban: "Разблокировка", watch: "Наблюдение", unwatch: "Снятие наблюдения", clear_signal: "Сигнал проверен" };
-  return labels[action] ?? action;
-}
-function adminActionDetails(details: string) {
-  try {
-    const value = JSON.parse(details) as { action?: string; target?: string; amount?: number; tag?: { text?: string; color?: string } };
-    const resources: Record<string, string> = { sparks: "Искры", wood: "Дерево", stone: "Камень" };
-    if (value.action === "grant_resource") return `${resources[value.target ?? ""] ?? value.target}: +${value.amount}`;
-    if (value.action === "set_tag") return value.tag ? `[${value.tag.text}] · ${value.tag.color}` : "Тег снят";
-    if (value.target) return [...worldCatalog.items, ...worldCatalog.finds].find(item => item.id === value.target)?.name ?? value.target;
-    return adminActionName(value.action ?? "");
-  } catch { return "Записано в журнал"; }
-}
-
 function Audit({ data, busy, onPage }: { data: AdminAudit; busy: boolean; onPage: (offset: number) => void }) {
   return <section className={styles.panel}>
     <SectionHeading title="Журнал действий" description="Награды, ресурсы, теги и модерация · кто, когда и почему · UTC" />
@@ -307,7 +294,7 @@ function Audit({ data, busy, onPage }: { data: AdminAudit; busy: boolean; onPage
 export function AdminDashboard() {
   const [access, setAccess] = useState<AdminAccess | null>(null);
   const [accessStatus, setAccessStatus] = useState<AccessStatus>("loading");
-  const [tab, setTab] = useState<AdminTab>("overview");
+  const [tab, setTab] = useState<AdminTab>("grants");
   const [rangeMinutes, setRangeMinutes] = useState(360);
   const [days, setDays] = useState<7 | 30 | 90>(30);
   const [queryInput, setQueryInput] = useState("");
@@ -322,6 +309,8 @@ export function AdminDashboard() {
   const [users, setUsers] = useState<Snapshot<AdminUsers> | null>(null);
   const [monitoring, setMonitoring] = useState<Snapshot<AdminMonitoring> | null>(null);
   const [audit, setAudit] = useState<Snapshot<AdminAudit> | null>(null);
+  const [grantTarget, setGrantTarget] = useState<AdminUser | null>(null);
+  const [grantsLocked, setGrantsLocked] = useState(false);
   const [playerTarget, setPlayerTarget] = useState<AdminUser | null>(null);
   const [economyTarget, setEconomyTarget] = useState<AdminEconomyTarget | null>(null);
   const [historyRequest, setHistoryRequest] = useState<AdminHistoryRequest | null>(null);
@@ -341,7 +330,7 @@ export function AdminDashboard() {
     setOverview(null); setUsers(null); setMonitoring(null); setAudit(null);
     setQueryInput(""); setQuery(""); setUsersOffset(0); setAuditOffset(0);
     setRevocation(null); setRewardTarget(null); setPlayerTarget(null); setEconomyTarget(null); setClickTarget(null); setActionError(null); setActionReceipt(null);
-    setHistoryRequest(null);
+    setHistoryRequest(null); setGrantTarget(null); setGrantsLocked(false);
     actionControllerRef.current?.abort();
     actionBusyRef.current = false;
     setActionBusy(false);
@@ -483,8 +472,12 @@ export function AdminDashboard() {
         <Tabs value={tab} onValueChange={value => setTab(value as AdminTab)} className={styles.tabs}>
           <div className={styles.toolbar}>
             <TabsList className={styles.tabList} aria-label="Разделы управления">
-              <TabsTrigger className={styles.tab} value="overview"><LayoutDashboard size={18} />Обзор</TabsTrigger>
+              <span className={styles.navCaption} aria-hidden="true">Работа с игроками</span>
+              <TabsTrigger className={styles.tab} value="grants"><Gift size={18} />Выдать игроку</TabsTrigger>
+              <TabsTrigger className={styles.tab} value="promos"><Ticket size={18} />Промокоды</TabsTrigger>
               <TabsTrigger className={styles.tab} value="users"><Users size={18} />Пользователи</TabsTrigger>
+              <span className={styles.navCaption} aria-hidden="true">Аналитика и контроль</span>
+              <TabsTrigger className={styles.tab} value="overview"><LayoutDashboard size={18} />Обзор</TabsTrigger>
               <TabsTrigger className={styles.tab} value="economy"><Warehouse size={18} />Экономика</TabsTrigger>
               <TabsTrigger className={styles.tab} value="clicks"><Activity size={18} />Клики</TabsTrigger>
               <TabsTrigger className={styles.tab} value="monitoring"><Server size={18} />Сервер</TabsTrigger>
@@ -492,18 +485,20 @@ export function AdminDashboard() {
               <TabsTrigger className={styles.tab} value="feedback"><MessageSquare size={18} />Обратная связь</TabsTrigger>
               <TabsTrigger className={styles.tab} value="audit"><Terminal size={18} />Журнал</TabsTrigger>
             </TabsList>
-            {tab !== "economy" && <div className={styles.refreshGroup}>{tab !== "clicks" && tab !== "incidents" && tab !== "feedback" && <span className={styles.updated}>{currentTime ? `Снимок ${time(currentTime)} UTC` : "Ожидаем данные"}</span>}<button type="button" className={styles.iconButton} onClick={requestRefresh} disabled={loading} aria-label="Обновить данные" title="Обновить данные">{loading ? <LoaderCircle size={19} className={styles.spin} /> : <RefreshCw size={19} />}</button></div>}
+            {tab !== "economy" && tab !== "grants" && tab !== "promos" && <div className={styles.refreshGroup}>{tab !== "clicks" && tab !== "incidents" && tab !== "feedback" && <span className={styles.updated}>{currentTime ? `Снимок ${time(currentTime)} UTC` : "Ожидаем данные"}</span>}<button type="button" className={styles.iconButton} onClick={requestRefresh} disabled={loading} aria-label="Обновить данные" title="Обновить данные">{loading ? <LoaderCircle size={19} className={styles.spin} /> : <RefreshCw size={19} />}</button></div>}
           </div>
-          <div className={styles.viewHeading}><div><h1>{tab === "feedback" ? "Обратная связь" : tab === "overview" ? "Состояние приложения" : tab === "users" ? "Пользователи" : tab === "economy" ? "Экономика и развитие игроков" : tab === "clicks" ? "Нажатия игроков" : tab === "monitoring" ? "Нагрузка и доступность" : tab === "incidents" ? "Сбои у пользователей" : "Действия администраторов"}</h1><p>{tab === "feedback" ? "Обращения игроков: ошибки, идеи и вопросы" : tab === "overview" ? "Рост, отметки и возвращаемость" : tab === "users" ? "Награды, вещи, теги и модерация" : tab === "economy" ? "Действия игроков, расходы ресурсов, строительство и история хозяйства" : tab === "clicks" ? "Частота нажатий и признаки для ручной проверки" : tab === "monitoring" ? "Измерения сервера и API" : tab === "incidents" ? "Сообщения браузера, ответы API и восстановление связи" : "История изменений аккаунтов и выдачи наград"}</p></div>
+          <div className={styles.viewHeading}><div><h1>{tab === "grants" ? "Выдать игроку" : tab === "promos" ? "Промокоды" : tab === "feedback" ? "Обратная связь" : tab === "overview" ? "Состояние приложения" : tab === "users" ? "Пользователи" : tab === "economy" ? "Экономика и развитие игроков" : tab === "clicks" ? "Нажатия игроков" : tab === "monitoring" ? "Нагрузка и доступность" : tab === "incidents" ? "Сбои у пользователей" : "Действия администраторов"}</h1><p>{tab === "grants" ? "Валюта, предметы и улучшения — одной понятной выдачей" : tab === "promos" ? "Создание акций, награды и срок действия" : tab === "feedback" ? "Обращения игроков: ошибки, идеи и вопросы" : tab === "overview" ? "Рост, отметки и возвращаемость" : tab === "users" ? "Награды, вещи, теги и модерация" : tab === "economy" ? "Действия игроков, расходы ресурсов, строительство и история хозяйства" : tab === "clicks" ? "Частота нажатий и признаки для ручной проверки" : tab === "monitoring" ? "Измерения сервера и API" : tab === "incidents" ? "Сообщения браузера, ответы API и восстановление связи" : "История изменений аккаунтов и выдачи наград"}</p></div>
             {tab === "monitoring" && <label className={styles.selectLabel}><span>История</span><select className={styles.select} value={rangeMinutes} onChange={event => setRangeMinutes(Number(event.target.value))}><option value={60}>1 час</option><option value={360}>6 часов</option><option value={1440}>24 часа</option><option value={10080}>7 дней</option></select></label>}
             {tab === "overview" && <label className={styles.selectLabel}><span>Период</span><select value={days} onChange={event => setDays(Number(event.target.value) as 7 | 30 | 90)} className={styles.select}><option value={7}>7 дней</option><option value={30}>30 дней</option><option value={90}>90 дней</option></select></label>}
           </div>
           {loadError && <div className={styles.notice} role="status"><CircleAlert size={20} /><div><strong>{currentData ? "Данные не обновились" : "Не удалось загрузить раздел"}</strong><p>{loadError}{currentData ? " Показан последний успешный снимок." : ""}</p></div><button className={styles.button} type="button" onClick={requestRefresh} disabled={loading}>Повторить</button></div>}
           {actionReceipt && <div className={styles.successNotice} role="status"><Check size={20} /><span>{actionReceipt}</span><button type="button" className={styles.textButton} onClick={() => setActionReceipt(null)}>Скрыть</button></div>}
+          <TabsContent value="grants" forceMount hidden={tab !== "grants"} className={styles.tabContent}><AdminGrantsPanel key={access.publicId} actorPublicId={access.publicId} target={grantTarget} onTargetChange={setGrantTarget} onAccessLost={closeAccess} onLockChange={setGrantsLocked} onManage={setPlayerTarget} onEconomy={setEconomyTarget} onRewards={target => { rewardTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setRewardTarget(target); }} /></TabsContent>
+          <TabsContent value="promos" forceMount hidden={tab !== "promos"} className={styles.tabContent}><AdminPromoPanel key={access.publicId} actorPublicId={access.publicId} onAccessLost={closeAccess} /></TabsContent>
           <TabsContent value="overview" className={styles.tabContent}>{overviewData ? <Overview data={overviewData} days={days} /> : <Empty>{loading ? "Загружаем статистику…" : "Статистика пока не загружена."}</Empty>}</TabsContent>
           <TabsContent value="users" className={styles.tabContent}>
             <div className={styles.searchToolbar}><label className={styles.search}><Search size={19} /><span className={styles.srOnly}>Поиск пользователя по имени или ID</span><input type="search" value={queryInput} onChange={event => setQueryInput(event.target.value)} placeholder="Имя или ID пользователя" maxLength={100} autoComplete="off" /></label><label className={styles.selectLabel}><span>Сортировка</span><select className={styles.select} value={sort} onChange={event => { setSort(event.target.value as UserSort); setUsersOffset(0); }}><option value="created">Сначала новые</option><option value="activity">По последней отметке</option><option value="taps">По числу тапов</option><option value="review">Сначала на проверку</option></select></label></div>
-            {usersData ? <UsersTable data={usersData} access={access} busy={loading || actionBusy} onPage={setUsersOffset} onRevoke={startRevocation} onManage={setPlayerTarget} onEconomy={setEconomyTarget} onClicks={target => { setClickTarget(target); setTab("clicks"); }} onRewards={target => { rewardTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setRewardTarget(target); }} /> : <Empty>{loading ? "Ищем пользователей…" : "Список пока не загружен."}</Empty>}
+            {usersData ? <UsersTable data={usersData} access={access} busy={loading || actionBusy || grantsLocked} onGrant={target => { setGrantTarget(target); setTab("grants"); }} onPage={setUsersOffset} onRevoke={startRevocation} onManage={setPlayerTarget} onEconomy={setEconomyTarget} onClicks={target => { setClickTarget(target); setTab("clicks"); }} onRewards={target => { rewardTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setRewardTarget(target); }} /> : <Empty>{loading ? "Ищем пользователей…" : "Список пока не загружен."}</Empty>}
           </TabsContent>
           <TabsContent value="economy" className={styles.tabContent}>{tab === "economy" && <AdminEconomyWorkspace key={access.publicId} actorPublicId={access.publicId} refreshVersion={refreshVersion} onAccessLost={closeAccess} onOpen={setEconomyTarget} historyRequest={historyRequest} />}</TabsContent>
           <TabsContent value="clicks" className={styles.tabContent}>{tab === "clicks" && <AdminTapActivityPanel key={access.publicId} initialTarget={clickTarget} refreshVersion={refreshVersion} onManage={setPlayerTarget} onAccessError={closeAccess} />}</TabsContent>
@@ -511,7 +506,7 @@ export function AdminDashboard() {
           <TabsContent value="incidents" className={styles.tabContent}>{tab === "incidents" && <AdminIncidentsPanel onAccessError={closeAccess} />}</TabsContent>
           <TabsContent value="feedback" className={styles.tabContent}>{tab === "feedback" && <AdminFeedbackPanel key={access.publicId} actorPublicId={access.publicId} onAccessError={closeAccess} refreshVersion={refreshVersion} />}</TabsContent>
           <TabsContent value="audit" className={styles.tabContent}>{auditData ? <Audit data={auditData} busy={loading} onPage={setAuditOffset} /> : <Empty>{loading ? "Загружаем журнал…" : "Журнал пока не загружен."}</Empty>}</TabsContent>
-          <footer className={styles.footer}><span><span className={styles.liveDot} />Обновление видимых разделов: клики каждые 10 с, аналитика каждые 60 с, операции вручную, остальные каждые 30 с</span><span>Время и периоды указаны в UTC</span></footer>
+          <footer className={styles.footer}><span><span className={styles.liveDot} />Обновление видимых разделов: клики каждые 10 с, аналитика каждые 60 с, операции и промокоды вручную, остальные каждые 30 с</span><span>Время и периоды указаны в UTC, сроки промокодов указаны в МСК</span></footer>
         </Tabs>
       </div>
       {playerTarget && <AdminPlayerDialog key={playerTarget.publicId} target={playerTarget} actorPublicId={access.publicId} onAccessLost={closeAccess} onClose={() => setPlayerTarget(null)} onChanged={requestRefresh} />}

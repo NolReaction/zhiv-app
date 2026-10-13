@@ -89,6 +89,44 @@ class JdbcAdminRepository(private val source: DataSource, private val config: Ad
             ?: fail("ADMIN_USER_NOT_FOUND", "Профиль не найден", 404)
     }
 
+    override suspend fun grantEconomy(sessionHash: ByteArray, targetPublicId: String, requestId: UUID, request: AdminEconomyGrantRequest): AdminEconomyGrantReceipt = tx { c ->
+        val initial = actor(c, sessionHash)
+        AdminEconomyGrants.validate(request)
+        if (request.confirmationPublicId != targetPublicId || request.requestId != requestId.toString() ||
+            requestId.version() != 4 || requestId.variant() != 2) invalid()
+        val payload = ru.zhiv.economy.economyJson.encodeToString(request)
+        // All admin actions share this global fence, including older moderation
+        // endpoints. The receipt always wins over newer player state on replay.
+        c.one("SELECT pg_advisory_xact_lock(?)", requestId.mostSignificantBits xor requestId.leastSignificantBits) { true }
+        val previous = c.one("SELECT *,payload=?::jsonb AS same_payload FROM admin_actions WHERE request_id=?", payload, requestId) { r ->
+            val matching = r.getString("actor_public_id") == initial.publicId && r.getString("target_public_id") == targetPublicId &&
+                r.getString("action") == "grant_economy" && r.getBoolean("same_payload")
+            matching to if (matching) AdminEconomyGrantReceipt(requestId.toString(), targetPublicId, r.getBoolean("changed"),
+                r.getLong("accepted_revision"), r.time("created_at")!!) else null
+        }
+        if (previous != null) {
+            c.one("SELECT id FROM app_users WHERE id=? FOR NO KEY UPDATE", initial.id) { true }
+            val current = actor(c, sessionHash, lockSession = true)
+            if (current.id != initial.id || !previous.first)
+                fail("ADMIN_REQUEST_CONFLICT", "Этот запрос уже использован с другими параметрами", 409)
+            return@tx checkNotNull(previous.second)
+        }
+        val target = c.one("SELECT id FROM app_users WHERE public_id=? AND deleted_at IS NULL", targetPublicId) { it.getObject(1, UUID::class.java) }
+            ?: fail("ADMIN_USER_NOT_FOUND", "Профиль не найден", 404)
+        c.rows("SELECT id FROM app_users WHERE id IN (?,?) ORDER BY id FOR NO KEY UPDATE", initial.id, target) { true }
+        val current = actor(c, sessionHash, lockSession = true)
+        if (current.id != initial.id) fail("UNAUTHORIZED", "Войдите в профиль ещё раз", 401)
+        if (c.one("SELECT id FROM app_users WHERE id=? AND deleted_at IS NULL", target) { true } != true)
+            fail("ADMIN_USER_NOT_FOUND", "Профиль не найден", 404)
+        val (changed, revision) = grantAdminEconomy(c, target, requestId, request, now(c).toInstant())
+        c.one("""INSERT INTO admin_actions(request_id,actor_user_id,target_user_id,actor_public_id,target_public_id,
+                action,reason,affected_sessions,payload,changed,accepted_revision)
+            VALUES (?,?,?,?,?,'grant_economy',?,0,?::jsonb,?,?) RETURNING created_at""",
+            requestId, current.id, target, current.publicId, targetPublicId, request.reason, payload, changed, revision) {
+            AdminEconomyGrantReceipt(requestId.toString(), targetPublicId, changed, revision, it.time("created_at")!!)
+        }!!
+    }
+
     override suspend fun overview(sessionHash: ByteArray, days: Int): AdminOverview = tx { c ->
         actor(c, sessionHash)
         if (days !in setOf(7, 30, 90)) invalid()

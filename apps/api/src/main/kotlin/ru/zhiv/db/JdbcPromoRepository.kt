@@ -46,7 +46,7 @@ class JdbcPromoRepository(private val source: DataSource, private val catalog: P
                     if (c.economyRows("SELECT 1 FROM $table WHERE user_id=? AND request_id=?", owner.id, requestId) { true }.isNotEmpty())
                         economyFailure("ECONOMY_REQUEST_CONFLICT", "Этот запрос уже использован для другого действия")
                 }
-                val entry = PromoRules.available(catalog, input.code, now)
+                val entry = availableManagedPromo(c, catalog, input.code)
                 if (c.economyRows("SELECT 1 FROM promo_redemptions WHERE user_id=? AND promo_id=?", owner.id, entry.id) { true }.isNotEmpty())
                     economyFailure("PROMO_ALREADY_USED", "Вы уже получили подарок по этому промокоду.")
                 val before = readEconomyProfile(c, owner.id)
