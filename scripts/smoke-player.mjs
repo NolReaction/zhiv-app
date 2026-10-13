@@ -50,7 +50,7 @@ try {
   assert.equal(initial.buildings.home, 1); assert.equal(initial.buildings.warehouse, 1);
   // API pearls retain their internal units (1000 here displays as 500).
   assert.deepEqual(initial.wallet, { coins: 2500, pearls: 1000 });
-  assert.deepEqual(initial.inventory, { fish: 10, wood: 10, stone: 10 });
+  assert.deepEqual(initial.inventory, { fish_common: 10, wood: 10, stone: 10 });
   assert.deepEqual(initial.storage, { capacity: 300, used: 30, reserved: 0, available: 270, overflow: 0 });
   assert.equal(initial.jobs.length, 0);
   const command = (state, action, targetId, quantity = 1) => ({ requestId: crypto.randomUUID(), ownerPublicId: state.ownerPublicId,
