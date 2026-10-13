@@ -554,6 +554,23 @@ function dragMap(canvas, x, y) {
   canvas.flushFrame();
 }
 
+function waterPointer(canvas, point, pointerId = 1) {
+  const projection = mapProjection(canvas);
+  return { pointerId, pointerType: "touch", button: 0,
+    clientX: projection.left + point.x * projection.zoom, clientY: projection.top + point.y * projection.zoom };
+}
+
+const sendWaterPointer = (target, type, point) => target.events.get(type)({ ...point, type });
+
+const waterRectangle = (x, y, width, height = width) => [
+  { x, y }, { x: x + width, y }, { x: x + width, y: y + height }, { x, y: y + height },
+];
+const waterPhysicsFixture = () => ({ water: {
+  surfaces: [{ id: "test-river", points: waterRectangle(900, 900, 200) }],
+  exclusions: [{ id: "test-dry-island", points: waterRectangle(945, 945, 30) }],
+} });
+const waterEnergy = state => state ? [...state.heights, ...state.velocities].reduce((sum, value) => sum + value * value, 0) : 0;
+
 const approximately = (actual, expected, message) => assert.ok(Math.abs(actual - expected) < 1e-8, `${message}: ${actual} ≈ ${expected}`);
 
 test("map object selection tracks projected anchors through camera changes and deduplicates unchanged pixels", async () => {
@@ -4918,4 +4935,157 @@ test("builder DEV playback shares cameras, retains real work and restores natura
     const restored = paint(circle); assert.ok(restored);
     assert.deepEqual(mind, beforeSample, "stop resumes the current actual task without restarting it");
   } finally { engine?.dispose(); views.forEach(view => view.dispose()); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
+test("water physics accepts wet taps and freezes disturbances during pause reduced motion and backgrounding", async () => {
+  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore } = await modules(waterPhysicsFixture());
+  const env = browser(); let scene, probe;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false, waterWind: "calm", waterFish: "off" });
+    const initial = { ...options, reducedMotion: false, serverNow: 100_000, presenceKey: "water-disturbances" };
+    scene = mountHabitat(env.surface(), initial, { activity() {}, ready() {}, failure: assert.fail });
+    env.finish(); await flush();
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 100_000, 0, () => {});
+    const wet = { x: 1030, y: 1030 };
+    assert.equal(scene.disturbWater(wet), true);
+    const water = probe.state.water;
+    assert.ok(waterEnergy(water) > 0, "the real shared surface receives energy from a tap");
+    const snapshot = structuredClone(water);
+    for (const point of [{ x: 800, y: 1000 }, { x: 960, y: 960 }, { x: NaN, y: 1000 }]) {
+      assert.equal(scene.disturbWater(point), false, "dry ground, exclusions and invalid coordinates reject impulses");
+    }
+    assert.deepEqual(water, snapshot);
+    for (const change of [{ paused: true }, { reducedMotion: true }, { backgrounded: true }]) {
+      scene.configure({ ...initial, ...change });
+      assert.equal(scene.disturbWater(wet), false);
+      env.tick(1000);
+      assert.deepEqual(water, snapshot, "an inactive surface cannot accumulate input or simulation time");
+    }
+    scene.configure(initial); env.visibility(true);
+    assert.equal(scene.disturbWater(wet), false);
+    assert.deepEqual(water, snapshot);
+    env.visibility(false);
+    worldDevStore.patch({ waterSurface: false });
+    assert.equal(scene.disturbWater(wet), false, "the water display switch also disables hidden tap simulation");
+    assert.deepEqual(water, snapshot);
+  } finally { scene?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
+test("water physics map gestures never splash until a single completed wet tap", async () => {
+  const { createMapEngine, connectForestSession, TILED_WORLD, worldDevStore } = await modules(waterPhysicsFixture());
+  const env = browser(); let engine, probe;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false, waterWind: "calm", waterFish: "off" });
+    const initial = { ...options, reducedMotion: false, serverNow: 100_000, presenceKey: "water-map-input" };
+    const canvas = env.surface(400), loading = createMapEngine(canvas, initial, assert.fail, []);
+    env.finish(); await flush(); engine = await loading; engine.control("overview");
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 100_000, 0, () => {});
+    const before = structuredClone(probe.state.water), wet = { x: 1030, y: 1030 };
+    let first = waterPointer(canvas, wet);
+    sendWaterPointer(canvas, "pointerdown", first);
+    sendWaterPointer(canvas, "pointermove", { ...first, clientX: first.clientX + 30 });
+    sendWaterPointer(canvas, "pointerup", { ...first, clientX: first.clientX + 30 });
+    engine.control("overview");
+    for (const cancellation of ["pointercancel", "lostpointercapture"]) {
+      first = waterPointer(canvas, wet);
+      sendWaterPointer(canvas, "pointerdown", first); sendWaterPointer(canvas, cancellation, first);
+    }
+    first = waterPointer(canvas, wet);
+    const second = { ...first, pointerId: 2, clientX: first.clientX + 20 };
+    sendWaterPointer(canvas, "pointerdown", first); sendWaterPointer(canvas, "pointerdown", second);
+    sendWaterPointer(canvas, "pointermove", { ...second, clientX: second.clientX + 10 });
+    sendWaterPointer(canvas, "pointerup", first);
+    sendWaterPointer(canvas, "pointerup", { ...second, clientX: second.clientX + 10 });
+    engine.control("overview");
+    assert.deepEqual(probe.state.water, before, "pan, pinch, cancellation and lost capture do not inject waves");
+    for (const dry of [{ x: 800, y: 1000 }, { x: 960, y: 960 }]) {
+      first = waterPointer(canvas, dry);
+      sendWaterPointer(canvas, "pointerdown", first); sendWaterPointer(canvas, "pointerup", first);
+    }
+    assert.deepEqual(probe.state.water, before, "map projection respects both shorelines and WaterExclusions");
+    first = waterPointer(canvas, wet);
+    sendWaterPointer(canvas, "pointerdown", first); sendWaterPointer(canvas, "pointerup", first);
+    assert.ok(waterEnergy(probe.state.water) > waterEnergy(before));
+    assert.ok(probe.state.water.revision > (before?.revision ?? 0), "one completed tap reaches the shared solver");
+  } finally { engine?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
+test("water physics yields taps to visible characters buildings and explicit markers", async () => {
+  const authored = { ...residentFixture(), sites: [clearingHome], water: {
+    // Wet pixels overlap the visible bodies while their authored feet and
+    // navigation remain dry, as with a pier or a tall riverbank sprite.
+    surfaces: [
+      { id: "hero-water", points: waterRectangle(610, 630, 40, 20) },
+      { id: "resident-water", points: waterRectangle(680, 675, 20, 15) },
+      { id: "house-water", points: waterRectangle(640, 580, 60, 50) },
+      { id: "marker-water", points: waterRectangle(640, 680, 20, 15) },
+      { id: "open-water", points: waterRectangle(780, 780, 70) },
+    ], exclusions: [],
+  } };
+  const { createMapEngine, connectForestSession, TILED_WORLD, worldDevStore } = await modules(authored);
+  const env = browser(); let engine, probe;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false, waterWind: "calm", waterFish: "off" });
+    const initial = { ...options, reducedMotion: false, serverNow: 100_000, presenceKey: "water-input-priority" };
+    const canvas = env.surface(400), places = [], residents = [];
+    const marker = Object.assign(env.surface(), { dataset: { objectId: "home", kind: "house" }, style: {} });
+    const loading = createMapEngine(canvas, initial, place => places.push(place), [marker], undefined, {},
+      { onResident: resident => residents.push(resident) });
+    env.finish(); await flush(); env.finishPath("/test-residence.webp"); engine = await loading; engine.control("overview");
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 100_000, 0, () => {});
+    const before = structuredClone(probe.state.water);
+    const tap = (x, y, target = canvas) => {
+      const point = waterPointer(canvas, { x, y });
+      sendWaterPointer(target, "pointerdown", point); sendWaterPointer(target, "pointerup", point);
+    };
+    tap(630, 642);
+    assert.equal(probe.state.clearing.stage, "attention", "the visible hero receives his own tap");
+    tap(690, 682);
+    assert.deepEqual(residents, ["plesk"]);
+    tap(675, 600);
+    assert.deepEqual(places, ["house"]);
+    tap(650, 690, marker);
+    assert.deepEqual(places, ["house", "house"], "the explicit marker activates even outside the building silhouette");
+    assert.deepEqual(probe.state.water, before, "consumed interactions cannot also disturb the water behind them");
+    tap(800, 800);
+    assert.ok(waterEnergy(probe.state.water) > 0, "unclaimed water nearby remains interactive");
+  } finally { engine?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
+test("water physics shares one clock across circle map paint and camera handoff", async () => {
+  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore } = await modules(waterPhysicsFixture());
+  const env = browser(), scenes = []; let probe;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false, waterWind: "calm", waterFish: "off" });
+    const initial = { ...options, reducedMotion: false, serverNow: 100_000, presenceKey: "water-camera-handoff" };
+    const callbacks = { activity() {}, ready() {}, failure: assert.fail };
+    const circle = mountHabitat(env.surface(), initial, callbacks); scenes.push(circle);
+    env.finish(); await flush();
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 100_000, 0, () => {});
+    assert.equal(circle.disturbWater({ x: 1030, y: 1030 }), true);
+    const water = probe.state.water, clock = sceneClock(env); clock.step();
+    const beforeMount = structuredClone(water);
+    const world = mountHabitat(env.surface(), { ...initial, view: "world" }, callbacks); scenes.push(world); await flush();
+    assert.equal(probe.state.water, water, "camera creation keeps the existing surface object");
+    assert.deepEqual(water, beforeMount, "camera creation neither resets nor advances existing waves");
+    assert.equal(env.frames.size, 1, "one owner advances both views of the surface");
+    const target = env.surface();
+    for (let index = 0; index < 4; index++) { circle.paintWorld(target.context); world.paintWorld(target.context); }
+    assert.deepEqual(water, beforeMount, "painting both cameras cannot step waves or apply fishing contacts");
+    clock.step(); // The newly elected owner reanchors its RAF timestamp.
+    const time = water.elapsed;
+    clock.step();
+    approximately(water.elapsed - time, .05, "two cameras advance one 50ms interval");
+    const beforeReturn = structuredClone(water);
+    world.dispose(); await flush();
+    assert.equal(probe.state.water, water);
+    assert.deepEqual(water, beforeReturn, "returning to the circle preserves energy and leaves exactly");
+    clock.step(); clock.step();
+    assert.ok(water.elapsed > beforeReturn.elapsed);
+    circle.configure({ ...initial, paused: true });
+    const paused = structuredClone(water); clock.advance(1);
+    assert.deepEqual(water, paused);
+    circle.configure({ ...initial, presenceKey: "water-other-account" });
+    assert.deepEqual(water, paused, "switching accounts cannot apply the new account's clock to old waves");
+  } finally { scenes.forEach(scene => scene.dispose()); probe?.release(); worldDevStore.reset(); env.restore(); }
 });

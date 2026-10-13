@@ -15,11 +15,14 @@ import { createBuilderMind, rehydrateBuilderMind, type BuilderMind } from "@/fea
 import type { EconomySceneConstruction } from "@/features/world/state/economy/economy-construction-state";
 import type { ForestJourneyTravel } from "@/features/world/activities/journeys/forest-journey-travel";
 import type { EconomySceneProduction } from "@/features/world/state/economy/economy-production-state";
+import type { ForestWaterDynamics } from "@/features/world/environment/water/forest-water-dynamics";
 
 type View = "circle" | "world";
 type Member = { view: View; active: boolean; retain: boolean; changed: (ownerChanged: boolean) => void };
 export type ForestSessionState = {
   memory: ForestMemoryStatus;
+  /** Cosmetic, shared by both cameras and deliberately absent from saved memory. */
+  water?: ForestWaterDynamics;
   elapsed: number; timestamp: number; dusk: number; wetness: number;
   life: ReturnType<typeof createForestLife>;
   clearing: ReturnType<typeof createClearingActivity>;
@@ -109,7 +112,8 @@ export function connectForestSession(key: string | undefined, scene: FixedWorldS
         capture: memory.capture,
         apply(payload) {
           // Hydration starts at a safe state: no old paths, encounter participants or forced animations survive it.
-          Object.assign(state, { elapsed: 0, wetness: 0, clearing: createClearingActivity(scene), life: createForestLife(scene),
+          Object.assign(state, { elapsed: 0, wetness: 0, water: undefined,
+            clearing: createClearingActivity(scene), life: createForestLife(scene),
             social: createForestSocial(`${key ?? "guest"}:${timestamp}`), fauna: createForestFauna(scene), pleskMind: createPleskMind(scene), builderMind: rehydrateBuilderMind(scene, state.builderMind), director: createForestDirector(), birdReactions: createBirdReactions(),
             lastBirdStimulus: 0, pendingLife: null, pendingAttention: false, explorationId: undefined, journeyTravel: undefined, cookingPreview: undefined, builderPreview: undefined, reaction: 0, animation: null,
             birdStarted: null, birdSeed: -1 });

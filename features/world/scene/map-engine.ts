@@ -334,6 +334,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
         else {
           setSelectedObject(null);
           if (habitat.hitPet(petPoint.x, petPoint.y)) habitat.notice();
+          else habitat.disturbWater?.(world);
         }
       } else {
         const { x, y } = worldToHome(world);
