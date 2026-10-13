@@ -43,7 +43,11 @@ class JdbcOnboardingEconomyIntegrationTest {
                     val legacy = WorldState(resources = WorldResources(sparks = 100, wood = 81, stone = 49), houseLevel = 4, workshop = true, workshopLevel = 2)
                     val initialized = c.economyRows("SELECT economy_v4_initial_state(?::jsonb,?)", worldJson.encodeToString(legacy), include) {
                         economyJson.decodeFromString<EconomyState>(it.getString(1)) }.single()
-                    assertEquals(EconomyRules.initial(100, 81, 49, 4, 2, includeStartingPack = include), initialized)
+                    // V46 is immutable history: the SQL initializer still issues its original species ID.
+                    assertEquals(if (include) 10L else 0L, initialized.inventory["fish"] ?: 0L)
+                    assertFalse(initialized.inventory.containsKey("fish_common"))
+                    assertEquals(EconomyRules.initial(100, 81, 49, 4, 2, includeStartingPack = include),
+                        EconomyFishInventory.state(initialized))
                 }
             }
             val newToken = tokens.issue(); val newPlayer = identities.bootstrap("Новичок", tokens.issue().hash, newToken.hash, 365)

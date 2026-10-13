@@ -525,7 +525,7 @@ class JdbcEconomyRepositoryIntegrationTest {
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(stocked), p.id)
         val stock = economy.snapshot(p.hash)
         val rodOffer = checkNotNull(stock.fishingShop).offers.single { it.itemId == "river_rod" }
-        assertEquals(13_500L, rodOffer.unitPrice)
+        assertEquals(1_800L, rodOffer.unitPrice)
         val buy = command(p, stock, "buy_fishing_item", rodOffer.id).copy(totalPrice = rodOffer.unitPrice + 50)
         val attempts = coroutineScope { List(2) { async(Dispatchers.IO) { JdbcEconomyRepository(source).command(p.hash, buy) } }.awaitAll() }
         assertEquals(1, attempts.count { it.replayed })
@@ -1099,9 +1099,13 @@ class JdbcEconomyRepositoryIntegrationTest {
         assertTrue(after.jobs.isEmpty())
         assertEquals(before.revision + 1, after.revision)
         assertEquals(before.wallet, after.wallet)
-        val expectedInventory = if (winner.action == "claim_job")
-            before.inventory + savedRewards.mapValues { (id, amount) -> (before.inventory[id] ?: 0L) + amount }
-            else before.inventory
+        val expectedInventory = before.inventory.toMutableMap()
+        if (winner.action == "claim_job") savedRewards.forEach { (id, amount) ->
+            val fishing = checkNotNull(EconomyRules.catalog.fishing)
+            val rarity = fishing.fish.find { it.itemId == id }?.rarity
+            val stockId = fishing.classes.find { it.rarity == rarity }?.itemId ?: id
+            expectedInventory[stockId] = (expectedInventory[stockId] ?: 0L) + amount
+        }
         assertEquals(expectedInventory, after.inventory)
         assertEquals(if (winner.action == "claim_job") 1L else 0L, after.completedExplorations)
         assertEquals("1", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind IN ('claim_job','cancel_exploration')", p.id))
@@ -1306,7 +1310,11 @@ class JdbcEconomyRepositoryIntegrationTest {
         val next = JdbcEconomyRepository(source).snapshot(p.hash)
         assertEquals(950L, next.wallet.pearls)
         assertNotEquals(shop.id, next.fishingShop?.id)
-        assertTrue(checkNotNull(next.fishingShop).offers.none { offer -> shop.offers.any { it.itemId == offer.itemId } })
+        assertTrue(checkNotNull(next.fishingShop).offers.filter { it.kind != "fish" }
+            .none { offer -> shop.offers.any { it.itemId == offer.itemId } })
+        val fish = checkNotNull(next.fishingShop).offers.single { it.kind == "fish" }
+        assertEquals("fish_common", fish.itemId)
+        assertEquals(checkNotNull(EconomyRules.catalog.fishing).shop.fishStock, fish.remaining)
         assertEquals(next.fishingShop, economy.command(p.hash, refresh).state.fishingShop)
         assertEquals("1", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='refresh_fishing_shop'", p.id))
         assertEquals("-50", scalar("SELECT pearls FROM economy_ledger WHERE user_id=? AND kind='refresh_fishing_shop'", p.id))
