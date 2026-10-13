@@ -103,7 +103,7 @@ export function InstallPanelContent({ installation, compact = false, context = "
         {installation.busy && <button type="button" className={styles.reset} onClick={stopForManualGuide}>Окно не появилось? Показать инструкцию</button>}
       </>}
       <div ref={status} className={styles.status} role="status" aria-live="polite" tabIndex={-1}>
-        {completed && <p><Check size={18} aria-hidden="true" />{installation.installedHere ? "Приложение добавлено. Закройте вкладку и запустите «Я живой» со значка." : "Запрос принят. Завершите установку в браузере и запустите «Я живой» со значка."}</p>}
+        {completed && <p><Check size={18} aria-hidden="true" />{installation.installedHere ? "Приложение добавлено. Закройте вкладку и запустите «Я Живой» со значка." : "Запрос принят. Завершите установку в браузере и запустите «Я Живой» со значка."}</p>}
         {selected === null && installation.outcome === "dismissed" && <p>Можно установить позже. Вот способ через меню браузера.</p>}
         {selected === null && installation.outcome === "error" && <p>Браузер не завершил установку. Попробуйте способ через его меню.</p>}
         {selected === null && installation.outcome === "timeout" && <p>Ответ браузера не пришёл. Если окно установки не появилось, воспользуйтесь инструкцией ниже.</p>}
@@ -113,7 +113,7 @@ export function InstallPanelContent({ installation, compact = false, context = "
   return <section className={`${styles.panel} ${compact ? styles.compact : ""}`} aria-labelledby={`${id}-title`} data-install-panel>
     <div className={styles.panelHeading}><span className={styles.panelIcon}>{installation.standalone ? <Check size={22} aria-hidden="true" /> : desktop ? <Monitor size={22} aria-hidden="true" /> : <Smartphone size={22} aria-hidden="true" />}</span><div>
       <p className={styles.eyebrow}>Ваша полянка. Всегда рядом.</p>
-      <h2 id={`${id}-title`}>{installation.standalone ? "Вы уже в приложении" : desktopEntry ? "Можно сразу играть" : "Установить «Я живой»"}</h2>
+      <h2 id={`${id}-title`}>{installation.standalone ? "Вы уже в приложении" : desktopEntry ? "Можно сразу играть" : "Установить «Я Живой»"}</h2>
     </div></div>
     <p className={styles.description}>{installation.standalone ? "Возвращайтесь в свой лес прямо со значка. Это отдельное окно приложения." : desktopEntry ? "На компьютере игра работает прямо в браузере. Откройте свою полянку и познакомьтесь с Мохликом." : "Один значок. Свой маленький мир. Установите прямо отсюда, без магазина приложений."}</p>
     {!installation.ready ? <div className={styles.pending} role="status" data-install-pending><span aria-hidden="true" /><p>Подбираем способ установки…</p></div> : installation.standalone ? <>

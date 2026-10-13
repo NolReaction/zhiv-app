@@ -1,6 +1,10 @@
 package ru.zhiv.db
 
 import org.slf4j.LoggerFactory
+import ru.zhiv.economy.EconomyJob
+import ru.zhiv.economy.EconomyRules
+import ru.zhiv.economy.EconomyState
+import ru.zhiv.economy.economyJson
 import ru.zhiv.notifications.*
 import java.sql.Connection
 import java.time.Instant
@@ -19,6 +23,10 @@ class NotificationDispatcher(
 ) {
     private data class Event(val key: String, val category: String, val due: Instant, val attempts: Int)
     private data class Batch(val id: UUID, val user: UUID)
+    private data class Sources(val state: EconomyState?, val hasLegacyJourney: Boolean) {
+        val jobs: List<EconomyJob> get() = state?.jobs.orEmpty()
+    }
+    private data class SourceEvent(val event: Event, val job: EconomyJob?, val readiness: NotificationJobReadiness)
     private fun <T> transaction(block: (Connection) -> T): T = source.connection.use { c ->
         c.autoCommit=false
         try { val result=block(c); c.commit(); result } catch(error: Exception) { c.rollback(); throw error }
@@ -44,6 +52,34 @@ class NotificationDispatcher(
         else "SELECT source_key,category,due_at,attempts FROM notification_events WHERE user_id=? AND state='sending' AND batch_id=? ORDER BY due_at",
         user,batch ?: now.notificationSqlTime()
     ) { Event(it.getString(1),it.getString(2),it.getObject(3,OffsetDateTime::class.java).toInstant(),it.getInt(4)) }
+    private fun sources(c: Connection,user: UUID): Sources {
+        val state=c.economyRows("SELECT state::text FROM economy_profiles WHERE user_id=?",user) {
+            economyJson.decodeFromString<EconomyState>(it.getString(1))
+        }.singleOrNull()
+        val legacy=c.economyRows("SELECT jsonb_array_length(coalesce(state->'journeys','[]'::jsonb))>0 FROM world_profiles WHERE user_id=?",user) {
+            it.getBoolean(1)
+        }.singleOrNull() ?: false
+        return Sources(state,legacy)
+    }
+    private fun sourceEvents(events: List<Event>,sources: Sources,now: Instant): List<SourceEvent> = events.mapNotNull { event ->
+        if(event.category=="checkin") SourceEvent(event,null,NotificationJobReadiness(event.due))
+        else sources.jobs.singleOrNull { "job:${it.id}"==event.key && it.kind==event.category }?.let { job ->
+            val readiness=notificationJobReadiness(job,sources.jobs,sources.hasLegacyJourney,now)
+            // The queue persists the actual availability after an actor wait;
+            // removing a returned trip must not regress this to old ripening.
+            SourceEvent(event,job,if(readiness.phase=="harvest") readiness.copy(dueAt=event.due) else readiness)
+        }
+    }
+    private fun sourceIsStale(source: SourceEvent,now: Instant): Boolean =
+        source.readiness.blockedUntil==null && source.readiness.dueAt<now.minusSeconds(86400)
+    private fun postpone(c: Connection,user: UUID,events: List<SourceEvent>,now: Instant,wasReserved: Boolean) {
+        events.forEach { source ->
+            val after=maxOf(source.readiness.dueAt,source.readiness.blockedUntil ?: now)
+            c.economyUpdate("""UPDATE notification_events SET state='pending',batch_id=NULL,
+                attempts=greatest(0,attempts-?),next_attempt_at=? WHERE user_id=? AND source_key=?""",
+                if(wasReserved) 1 else 0,after.notificationSqlTime(),user,source.event.key)
+        }
+    }
     private fun budgetAfter(c: Connection,user: UUID,p: NotificationPreferences,now: Instant,excludeBatch: UUID?=null): Instant {
         if(!p.rateLimitsEnabled) return nextNotificationWindow(p,now)
         // A rolling 24-hour cap also prevents timezone changes or midnight from
@@ -61,12 +97,19 @@ class NotificationDispatcher(
         val locked=c.economyRows("SELECT id FROM app_users WHERE id=? AND deleted_at IS NULL AND banned_at IS NULL FOR NO KEY UPDATE SKIP LOCKED",user) { true }.isNotEmpty()
         if(!locked) return@transaction null
         val p=preferences(c,user) ?: return@transaction null
-        c.economyRows("SELECT notification_sync_sources(?)",user) { true }
+        c.economyRows("SELECT notification_sync_sources_at(?,?::timestamptz)",user,now.notificationSqlTime()) { true }
         val due=events(c,user,now)
         if(due.isEmpty()) return@transaction null
-        val stale=due.filter { !p.enabled(it.category) || it.due<now.minusSeconds(86400) || it.attempts>=3 }
+        val current=sourceEvents(due,sources(c,user),now)
+        val stale=due.filter { event ->
+            val source=current.singleOrNull { it.event==event }
+            source==null || !p.enabled(event.category) || sourceIsStale(source,now) || event.attempts>=3
+        }
         dismiss(c,user,stale)
-        val ready=due-stale.toSet()
+        val valid=current.filter { it.event !in stale }
+        val waiting=valid.filter { it.readiness.dueAt>now || it.readiness.blockedUntil!=null }
+        postpone(c,user,waiting,now,wasReserved=false)
+        val ready=(valid-waiting.toSet()).map { it.event }
         if(ready.isEmpty()) return@transaction null
         if(visible(c,user,now) || !subscribed(c,user,now)) { dismiss(c,user,ready); return@transaction null }
         val after=budgetAfter(c,user,p,now)
@@ -83,12 +126,17 @@ class NotificationDispatcher(
         val owner=c.economyRows("SELECT public_id FROM app_users WHERE id=? AND deleted_at IS NULL AND banned_at IS NULL FOR NO KEY UPDATE",batch.user) { it.getString(1) }.singleOrNull()
         val p=preferences(c,batch.user)
         // Source deletion/speedup/claim between reservation and send is observed.
-        c.economyRows("SELECT notification_sync_sources(?)",batch.user) { true }
+        c.economyRows("SELECT notification_sync_sources_at(?,?::timestamptz)",batch.user,now.notificationSqlTime()) { true }
         val queued=events(c,batch.user,now,batch.id)
-        val ready=queued.filter { p?.enabled(it.category)==true && it.due<=now && it.due>=now.minusSeconds(86400) }
-        val postponed=queued.filter { it.due>now && p?.enabled(it.category)==true }
-        postponed.forEach { event -> c.economyUpdate("UPDATE notification_events SET state='pending',batch_id=NULL,attempts=greatest(0,attempts-1),next_attempt_at=due_at WHERE user_id=? AND source_key=?",batch.user,event.key) }
-        dismiss(c,batch.user,queued-ready.toSet()-postponed.toSet())
+        val sources=sources(c,batch.user)
+        val current=sourceEvents(queued,sources,now).filter {
+            p?.enabled(it.event.category)==true && !sourceIsStale(it,now)
+        }
+        val postponed=current.filter { it.readiness.dueAt>now || it.readiness.blockedUntil!=null }
+        postpone(c,batch.user,postponed,now,wasReserved=true)
+        val readySources=current-postponed.toSet()
+        val ready=readySources.map { it.event }
+        dismiss(c,batch.user,queued-ready.toSet()-postponed.map { it.event }.toSet())
         if(owner==null || p==null || ready.isEmpty() || visible(c,batch.user,now)) {
             dismiss(c,batch.user,ready)
             c.economyUpdate("UPDATE notification_batches SET state='dismissed',finished_at=? WHERE id=?",now.notificationSqlTime(),batch.id)
@@ -109,7 +157,17 @@ class NotificationDispatcher(
             BrowserPushSubscription(it.getString(1),PushKeys(it.getString(2),it.getString(3)))
         }.singleOrNull()
         val categories=ready.map { it.category }.toSet()
-        val message=notificationMessage(categories)
+        // Production quantities are already public and exact. Check the whole
+        // summary against current storage, including market AND barter escrow.
+        // Exploration drops remain private and never affect this hint.
+        val productionQuantity=readySources.filter { it.event.category=="production" }.sumOf { it.job?.rewards?.values?.sum() ?: 0L }
+        val storageBlocked=sources.state?.let { state ->
+            productionQuantity>EconomyRules.storage(state,reservedEconomyMarketItems(c,batch.user)).available
+        } ?: false
+        val message=notificationMessage(readySources.map { source ->
+            NotificationMessageEvent(source.event.category,source.job,source.readiness.phase,
+                storageBlocked=source.event.category=="production" && storageBlocked)
+        })
         val target=when {
             "exploration" in categories -> "world&section=activities"
             "construction" in categories -> "world&section=construction"

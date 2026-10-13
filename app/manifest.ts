@@ -4,8 +4,8 @@ import { BRAND_ICON_192_SRC, BRAND_ICON_512_SRC, BRAND_MASKABLE_ICON_SRC } from 
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: "/",
-    name: "Я живой",
-    short_name: "Я живой",
+    name: "Я Живой",
+    short_name: "Я Живой",
     description: "Будьте на связи с близкими и обживайте уютный лесной мир Мохлика.",
     start_url: "/",
     scope: "/",

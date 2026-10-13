@@ -1,4 +1,5 @@
-import type { AudioFrame, AudioRuntime } from "@/features/audio/domain/types";
+import type { AudioFrame, AudioPoint, AudioRuntime } from "@/features/audio/domain/types";
+import { stereoPan } from "@/features/audio/domain/spatial";
 import type { FixedWorldScene } from "@/features/world/tiled/types";
 import type { ForestSessionState } from "@/features/world/state/forest-session";
 import { menuAudioFrame } from "@/features/audio/ui/menu-audio";
@@ -43,6 +44,8 @@ export function createWorldAudioController(runtime: AudioRuntime) {
   let current: AudioFrame | null = null;
   let lastScope: WorldAudioControl["scope"] | undefined;
   let lastPublishedAt = -Infinity;
+  let lastTouchAt = -Infinity, touchSequence = 0;
+  let lastTreeTouchAt = -Infinity;
   let preparation: AbortController | undefined;
   const stopPreparation = () => { preparation?.abort(); preparation = undefined; };
   return {
@@ -66,9 +69,9 @@ export function createWorldAudioController(runtime: AudioRuntime) {
       if (control.scope !== "world") stopPreparation();
       else if (!preparation) {
         preparation = new AbortController();
-        // Four short files cover both actors and the mine. Warm them before
+        // Short contact files cover fishing, the mine and tree taps. Warm them before
         // contact; a slow first decode must never queue an out-of-time impact.
-        void runtime.prepare?.(["action.fish.bobber", "action.mine.strike"], { signal: preparation.signal }).catch(() => {});
+        void runtime.prepare?.(["action.fish.bobber", "action.mine.strike", "action.tree.rustle"], { signal: preparation.signal }).catch(() => {});
       }
       // The circle renders the live forest but is still a menu surface. Only
       // the full map requests spatial layers; both reuse the same music keys.
@@ -99,6 +102,29 @@ export function createWorldAudioController(runtime: AudioRuntime) {
       } else waterTrackers.get(state)?.reset();
       hadFrame = true; lastState = state; lastScope = control.scope;
       for (const event of events) runtime.play(event);
+    },
+    /** Call only after a visible water tap was accepted by the scene. Explicit
+     * feedback keeps a fixed quiet gain; zoom affects its gentle pan only. */
+    touchWater(point: AudioPoint): boolean {
+      if (disposed || !current || current.soundscape === false || lastScope !== "world"
+        || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return false;
+      const timestamp = Date.now();
+      if (timestamp >= lastTouchAt && timestamp - lastTouchAt < 180) return false;
+      lastTouchAt = timestamp;
+      runtime.play({ id: `${current.sceneId}:${ownerId}:water-touch:${++touchSequence}`, cueId: "action.water.touch",
+        ownerId, occurredAt: timestamp, maxAgeMs: 180, gain: 1, pan: stereoPan(point, current.listener) * .45 });
+      return true;
+    },
+    /** Explicit tree feedback shares the action slider, never camera gain. */
+    touchTree(point: AudioPoint): boolean {
+      if (disposed || !current || current.soundscape === false || lastScope !== "world"
+        || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return false;
+      const timestamp = Date.now();
+      if (timestamp >= lastTreeTouchAt && timestamp - lastTreeTouchAt < 350) return false;
+      lastTreeTouchAt = timestamp;
+      runtime.play({ id: `${current.sceneId}:${ownerId}:tree-touch:${++touchSequence}`, cueId: "action.tree.rustle",
+        ownerId, occurredAt: timestamp, maxAgeMs: 200, gain: 1, pan: stereoPan(point, current.listener) * .45 });
+      return true;
     },
     getFrame: () => current,
     dispose() { if (disposed) return; disposed = true; stopPreparation(); runtime.clearFrame(ownerId); current = null; },

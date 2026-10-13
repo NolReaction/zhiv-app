@@ -143,7 +143,7 @@ test('the mine contacts share the painted pickaxe beat and require the confirmed
   } finally { session.release(); }
 });
 
-test('map preparation warms only four contact files and aborts on hidden view, menu and disposal', () => {
+test('map preparation warms six shared contact files and aborts on hidden view, menu and disposal', () => {
   const session = create(), state = session.state, preparations = [];
   const controller = createWorldAudioController({ updateFrame() {}, clearFrame() {}, play() {},
     prepare(cues, options) { preparations.push({ cues, signal: options.signal }); return Promise.resolve(); } });
@@ -155,7 +155,7 @@ test('map preparation warms only four contact files and aborts on hidden view, m
     controller.update(scene, state, input, { ...control, scope: 'world' });
     controller.update(scene, state, input, { ...control, scope: 'world' });
     assert.equal(preparations.length, 1);
-    assert.deepEqual(preparations[0].cues, ['action.fish.bobber', 'action.mine.strike']);
+    assert.deepEqual(preparations[0].cues, ['action.fish.bobber', 'action.mine.strike', 'action.tree.rustle']);
     controller.update(scene, state, input, { ...control, scope: 'world', visible: false });
     assert.equal(preparations[0].signal.aborted, true);
     controller.update(scene, state, input, { ...control, scope: 'world' });

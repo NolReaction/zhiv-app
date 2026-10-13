@@ -1734,3 +1734,238 @@ test("occluder validation rejects bad depth, duplicate IDs and unknown building 
   map.layers.at(-1).objects.push({ ...map.layers.at(-1).objects[0], id: 301 });
   await assert.rejects(compile(), /duplicate occluder ID/);
 });
+
+const treeInteraction = (id = 300, name = "birch-west") => ({
+  id, name, x: 30, y: 30, width: 0, height: 0, type: "TreeInteraction",
+  polygon: [{ x: 0, y: 0 }, { x: 15, y: 0 }, { x: 15, y: 15 }, { x: 0, y: 15 }],
+});
+
+test("TreeInteractions is independent from Occluders and preserves arbitrary tree IDs without suffix matching", async t => {
+  const { map, compile } = await fixture(t);
+  map.layers.push(objectLayer(30, "Occluders", [livingPolygon(299, "birch-canopy", "occluder")]));
+  const before = await compile();
+  assert.equal(before.treeInteractions, undefined, "occlusion silhouettes never invent tree touch regions");
+  map.layers.push(groupLayer(31, "TreeInteractions", [objectLayer(32, "Crowns", [treeInteraction()])]));
+  const source = clone(map), world = await compile();
+  assert.deepEqual(world.treeInteractions, [{ id: "birch-west", frontY: 45,
+    points: [{ x: 30, y: 30 }, { x: 45, y: 30 }, { x: 45, y: 45 }, { x: 30, y: 45 }] }]);
+  const otherFields = clone(world); delete otherFields.treeInteractions;
+  assert.deepEqual(otherFields, before, "touch zones do not change occlusion, collision, images or routes");
+  assert.deepEqual(map, source, "the exporter does not mutate authored zones");
+  map.layers.at(-1).layers[0].objects = [];
+  assert.deepEqual((await compile()).treeInteractions, [], "an empty authored layer deliberately has no touch regions");
+  map.layers.at(-1).layers = [];
+  assert.deepEqual((await compile()).treeInteractions, [], "an empty folder remains an explicit empty set");
+});
+
+test("TreeInteractions follows ordinary folder offsets, polygon rotation and selected site levels", async t => {
+  const { map, compile } = await fixture(t);
+  const tree = { ...treeInteraction(), rotation: 90, properties: props({ frontY: 18, siteId: "kiln", level: 1 }) };
+  map.layers.push({ ...groupLayer(30, "Foliage", [groupLayer(31, "TreeInteractions", [objectLayer(32, "Crowns", [tree])])]),
+    offsetx: 5, offsety: 10 });
+  assert.deepEqual((await compile()).treeInteractions, [{ id: "birch-west", frontY: 58, when: { siteId: "kiln", level: 1 },
+    points: [{ x: 35, y: 40 }, { x: 35, y: 55 }, { x: 20, y: 55 }, { x: 20, y: 40 }] }]);
+  tree.properties = [];
+  assert.equal((await compile()).treeInteractions[0].frontY, 55, "default depth follows the bottom of transformed geometry");
+  map.layers.at(-1).visible = false;
+  tree.visible = false;
+  assert.equal((await compile()).treeInteractions.length, 1, "editor eyes do not change runtime touch geometry");
+});
+
+test("TreeInteractions needs only a polygon and Name; modern class and legacy type are optional", async t => {
+  const { map, compile } = await fixture(t);
+  const zones = [treeInteraction(300, "one"), treeInteraction(301, "two"), treeInteraction(302, "three"), treeInteraction(303, "four")];
+  delete zones[0].type;
+  zones[1].class = "TreeInteraction"; delete zones[1].type;
+  zones[2].class = "TreeInteraction";
+  zones[3].class = ""; zones[3].type = "";
+  map.layers.push(objectLayer(30, "TreeInteractions", zones));
+  assert.deepEqual((await compile()).treeInteractions.map(zone => zone.id), ["one", "two", "three", "four"]);
+});
+
+test("TreeInteractions rejects malformed geometry, classes, properties, names and conditional references", async t => {
+  const { map, compile } = await fixture(t);
+  map.layers.push(objectLayer(30, "TreeInteractions", [treeInteraction()]));
+  const mutations = [
+    ["point", o => { delete o.polygon; o.point = true; }, /shape: expected "polygon"/],
+    ["too few vertices", o => { o.polygon.length = 2; }, /requires at least 3 points/],
+    ["nonfinite vertex", o => { o.polygon[1].x = NaN; }, /expected a finite number/],
+    ["out of world", o => { o.x = 95; }, /outside world bounds/],
+    ["zero area", o => { o.polygon = [{ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 10, y: 0 }]; }, /nonzero area/],
+    ["self intersection", o => { o.polygon = [{ x: 0, y: 0 }, { x: 15, y: 10 }, { x: 0, y: 10 }, { x: 10, y: 0 }]; }, /must not self-intersect/],
+    ["bad class", o => { o.class = "Occluder"; }, /class: expected "TreeInteraction"/],
+    ["bad type", o => { o.type = "occluder"; }, /type: expected "TreeInteraction"/],
+    ["invalid class value", o => { o.class = null; }, /class: expected "TreeInteraction"/],
+    ["empty Name", o => { o.name = ""; }, /expected a non-empty string/],
+    ["invalid Name", o => { o.name = "Birch west"; }, /expected a lowercase identifier/],
+    ["unsupported role", o => { o.properties = props({ role: "occluder" }); }, /unknown property "role"/],
+    ["bad frontY type", o => { o.properties = [{ name: "frontY", type: "string", value: "10" }]; }, /expected float or int/],
+    ["frontY outside world", o => { o.properties = props({ frontY: 90 }); }, /frontY must resolve inside world height/],
+    ["half condition", o => { o.properties = props({ siteId: "kiln" }); }, /siteId and level together/],
+    ["unknown site", o => { o.properties = props({ siteId: "missing", level: 1 }); }, /references unknown site missing/],
+    ["unknown level", o => { o.properties = props({ siteId: "kiln", level: 9 }); }, /references unknown visual level 9/],
+  ];
+  for (const [label, mutate, expected] of mutations) await t.test(label, async () => {
+    const broken = clone(map); mutate(broken.layers.at(-1).objects[0]);
+    await assert.rejects(compile(broken), expected);
+  });
+  const duplicate = clone(map); duplicate.layers.at(-1).objects.push(treeInteraction(301));
+  await assert.rejects(compile(duplicate), /duplicate tree interaction ID birch-west/);
+  const mixed = clone(map); mixed.layers[mixed.layers.length - 1] = groupLayer(30, "TreeInteractions", [objectLayer(31, "Occluders", [])]);
+  await assert.rejects(compile(mixed), /different metadata layers must not be nested/);
+});
+
+const shadowProperties = values => Object.entries(values).map(([name, value]) => ({
+  name, type: name === "level" ? "int" : typeof value === "number" ? "float" : "string", value,
+}));
+const shadowPolygon = (id, name, values = {}) => ({ ...treeInteraction(id, name), type: "", properties: shadowProperties(values) });
+
+test("ShadowCasters and ShadowReceivers are independent authored geometry inside ordinary Lighting folders", async t => {
+  const { map, compile } = await fixture(t);
+  map.layers.push(objectLayer(30, "Occluders", [livingPolygon(298, "tree-canopy", "occluder")]),
+    objectLayer(31, "TreeInteractions", [treeInteraction(299)]));
+  const before = await compile();
+  assert.equal(before.shadowCasters, undefined);
+  assert.equal(before.shadowReceivers, undefined);
+  map.layers.push(groupLayer(32, "Lighting", [
+    groupLayer(33, "ShadowCasters", [objectLayer(34, "Trees", [shadowPolygon(300, "oak", { height: 21.5 })])]),
+    objectLayer(35, "ShadowReceivers", [shadowPolygon(301, "roof")]),
+  ]));
+  const original = clone(map), result = await compile();
+  const points = [{ x: 30, y: 30 }, { x: 45, y: 30 }, { x: 45, y: 45 }, { x: 30, y: 45 }];
+  assert.deepEqual(result.shadowCasters, [{ id: "oak", points, height: 21.5, baseHeight: 0, opacity: 1, softness: 2 }]);
+  assert.deepEqual(result.shadowReceivers, [{ id: "roof", points, height: 0 }]);
+  const { shadowCasters, shadowReceivers, ...unchanged } = result;
+  assert.equal(shadowCasters.length + shadowReceivers.length, 2);
+  assert.deepEqual(unchanged, before, "shadow markup never changes occlusion, tree effects, images or navigation");
+  assert.deepEqual(map, original);
+  map.layers.at(-1).layers[0].layers = [];
+  map.layers.at(-1).layers[1].objects = [];
+  assert.deepEqual((await compile()).shadowCasters, [], "empty groups deliberately remove casters");
+  assert.deepEqual((await compile()).shadowReceivers, [], "empty layers deliberately remove receivers");
+});
+
+test("Shadow geometry preserves height while folder offsets and polygon rotation move its footprint", async t => {
+  const { map, compile } = await fixture(t);
+  const caster = { ...shadowPolygon(300, "canopy", { height: 10.25, baseHeight: 8.5, opacity: 0.6, softness: 3.5, siteId: "kiln", level: 1 }),
+    rotation: 90, class: "ShadowCaster", visible: false };
+  const receiver = { ...shadowPolygon(301, "roof", { height: 12.5, siteId: "kiln", level: 1 }), type: "ShadowReceiver" };
+  map.layers.push({ ...groupLayer(30, "Lighting", [objectLayer(31, "ShadowCasters", [caster]), objectLayer(32, "ShadowReceivers", [receiver])]),
+    offsetx: 5, offsety: 10, visible: false });
+  const result = await compile();
+  assert.deepEqual(result.shadowCasters, [{ id: "canopy", height: 10.25, baseHeight: 8.5, opacity: 0.6, softness: 3.5,
+    when: { siteId: "kiln", level: 1 }, points: [{ x: 35, y: 40 }, { x: 35, y: 55 }, { x: 20, y: 55 }, { x: 20, y: 40 }] }]);
+  assert.deepEqual(result.shadowReceivers, [{ id: "roof", height: 12.5, when: { siteId: "kiln", level: 1 },
+    points: [{ x: 35, y: 40 }, { x: 50, y: 40 }, { x: 50, y: 55 }, { x: 35, y: 55 }] }]);
+});
+
+test("Shadow polygons accept optional classes, concave contours and inclusive numeric boundaries", async t => {
+  const { map, compile } = await fixture(t);
+  const zones = Array.from({ length: 4 }, (_, index) => shadowPolygon(300 + index, `caster-${index}`, {
+    height: index ? 300 : 0.001, baseHeight: index ? 100 : 0, opacity: index ? 1 : 0, softness: index ? 12 : 0,
+  }));
+  delete zones[0].type;
+  zones[0].polygon = [{ x: 0, y: 0 }, { x: 15, y: 0 }, { x: 8, y: 8 }, { x: 15, y: 15 }, { x: 0, y: 15 }];
+  zones[1].type = "ShadowCaster";
+  zones[2].class = "ShadowCaster";
+  zones[3].type = "ShadowCaster"; zones[3].class = "ShadowCaster";
+  map.layers.push(objectLayer(30, "ShadowCasters", zones), objectLayer(31, "ShadowReceivers", [shadowPolygon(310, "high-roof", { height: 300 })]));
+  const result = await compile();
+  assert.deepEqual(result.shadowCasters.map(value => value.id), zones.map(value => value.name));
+  assert.equal(result.shadowCasters[0].opacity, 0);
+  assert.equal(result.shadowCasters[0].points.length, 5);
+  assert.equal(result.shadowCasters[1].height + result.shadowCasters[1].baseHeight, 400);
+  assert.equal(result.shadowReceivers[0].height, 300);
+});
+
+test("Shadow geometry rejects invalid authoring with the exact polygon and property in the error", async t => {
+  const { map, compile } = await fixture(t);
+  for (const [layerName, className, base] of [["ShadowCasters", "ShadowCaster", { height: 20 }], ["ShadowReceivers", "ShadowReceiver", {}]]) {
+    const valid = clone(map);
+    valid.layers.push(objectLayer(30, layerName, [shadowPolygon(300, "oak", base)]));
+    const cases = [
+      ["missing name", value => { delete value.name; }, /name: expected a non-empty string/],
+      ["invalid name", value => { value.name = "Big Tree"; }, /name: expected a lowercase identifier/],
+      ["wrong class", value => { value.class = "Occluder"; }, new RegExp(`class: expected "${className}"`)],
+      ["wrong type", value => { value.type = "TreeInteraction"; }, new RegExp(`type: expected "${className}"`)],
+      ["null class", value => { value.class = null; }, new RegExp(`class: expected "${className}"`)],
+      ["point", value => { delete value.polygon; value.point = true; }, /shape: expected "polygon"/],
+      ["too few vertices", value => { value.polygon.length = 2; }, /requires at least 3 points/],
+      ["out of bounds", value => { value.x = 95; }, /outside world bounds/],
+      ["nonfinite vertex", value => { value.polygon[1].x = NaN; }, /expected a finite number/],
+      ["zero area", value => { value.polygon = [{ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 10, y: 0 }]; }, /nonzero area/],
+      ["self intersection", value => { value.polygon = [{ x: 0, y: 0 }, { x: 15, y: 10 }, { x: 0, y: 10 }, { x: 10, y: 0 }]; }, /must not self-intersect/],
+      ["role", value => { value.properties.push(...shadowProperties({ role: "occluder" })); }, /unknown property "role"/],
+      ["negative height", value => { value.properties = shadowProperties({ ...base, height: -1 }); }, /properties.height: expected a finite number >= 0/],
+      ["excessive height", value => { value.properties = shadowProperties({ ...base, height: 300.001 }); }, /properties.height: expected height/],
+      ["string height", value => { value.properties = shadowProperties({ ...base, height: "20" }); }, /type: expected float or int/],
+      ["nonfinite height", value => { value.properties = shadowProperties({ ...base, height: Infinity }); }, /expected a finite number/],
+      ["half condition", value => { value.properties = shadowProperties({ ...base, siteId: "kiln" }); }, /siteId and level together/],
+      ["unknown site", value => { value.properties = shadowProperties({ ...base, siteId: "missing", level: 1 }); }, /unknown site missing/],
+      ["unknown level", value => { value.properties = shadowProperties({ ...base, siteId: "kiln", level: 99 }); }, /unknown visual level 99/],
+    ];
+    if (layerName === "ShadowCasters") cases.push(
+      ["missing height", value => { value.properties = []; }, /properties.height: expected a finite number/],
+      ["zero height", value => { value.properties = shadowProperties({ height: 0 }); }, /properties.height: expected height > 0/],
+      ["negative base", value => { value.properties = shadowProperties({ height: 20, baseHeight: -1 }); }, /properties.baseHeight: expected a finite number >= 0/],
+      ["excessive top", value => { value.properties = shadowProperties({ height: 20, baseHeight: 380.001 }); }, /baseHeight \+ height must not exceed 400/],
+      ["negative opacity", value => { value.properties = shadowProperties({ height: 20, opacity: -0.1 }); }, /properties.opacity: expected a finite number >= 0/],
+      ["excessive opacity", value => { value.properties = shadowProperties({ height: 20, opacity: 1.01 }); }, /properties.opacity: expected opacity/],
+      ["negative softness", value => { value.properties = shadowProperties({ height: 20, softness: -0.1 }); }, /properties.softness: expected a finite number >= 0/],
+      ["excessive softness", value => { value.properties = shadowProperties({ height: 20, softness: 12.01 }); }, /properties.softness: expected softness/],
+    );
+    else cases.push(["caster-only property", value => { value.properties = shadowProperties({ opacity: 1 }); }, /unknown property "opacity"/]);
+    for (const [label, mutate, expected] of cases) await t.test(`${layerName}: ${label}`, async () => {
+      const invalid = clone(valid); mutate(invalid.layers.at(-1).objects[0]);
+      await assert.rejects(compile(invalid), expected);
+    });
+  }
+});
+
+test("Shadow metadata rejects cross-nesting and duplicate names across its folders", async t => {
+  const { map, compile } = await fixture(t);
+  for (const [name, height] of [["ShadowCasters", { height: 20 }], ["ShadowReceivers", {}]]) {
+    const duplicate = clone(map);
+    duplicate.layers.push(groupLayer(30, name, [objectLayer(31, "One", [shadowPolygon(300, "oak", height)]),
+      objectLayer(32, "Two", [shadowPolygon(301, "oak", height)])]));
+    await assert.rejects(compile(duplicate), /duplicate shadow-(caster|receiver) ID oak/);
+    for (const childName of ["Occluders", "TreeInteractions", name === "ShadowCasters" ? "ShadowReceivers" : "ShadowCasters"]) {
+      const nested = clone(map); nested.layers.push(groupLayer(30, name, [objectLayer(31, childName, [])]));
+      await assert.rejects(compile(nested), /different metadata layers must not be nested/);
+    }
+  }
+});
+
+test("Shadow authoring has bounded polygon complexity and bounded caster and receiver counts", async t => {
+  const { map, compile } = await fixture(t);
+  for (const [name, limit, values] of [["ShadowCasters", 128, { height: 10 }], ["ShadowReceivers", 32, {}]]) {
+    const valid = clone(map), objects = Array.from({ length: limit }, (_, index) => shadowPolygon(300 + index, `shape-${index}`, values));
+    objects[0].polygon = Array.from({ length: 64 }, (_, index) => ({ x: Math.cos(index * Math.PI / 32) * 10, y: Math.sin(index * Math.PI / 32) * 10 }));
+    valid.layers.push(objectLayer(30, name, objects));
+    const field = name === "ShadowCasters" ? "shadowCasters" : "shadowReceivers";
+    assert.equal((await compile(valid))[field].length, limit);
+    const tooMany = clone(valid); tooMany.layers.at(-1).objects.push(shadowPolygon(500, "extra", values));
+    await assert.rejects(compile(tooMany), new RegExp(`at most ${limit} shadow-`));
+    objects[0].polygon.push({ x: 0, y: 0 });
+    await assert.rejects(compile(valid), /at most 64 vertices per shadow polygon/);
+  }
+});
+
+test("Lights accepts an optional bounded bulb height without changing legacy lights", async t => {
+  const { map, compile } = await fixture(t);
+  const lamp = { id: 300, name: "raised-lamp", x: 30, y: 30, point: true };
+  map.layers.push(objectLayer(30, "Lights", [lamp]));
+  const legacy = (await compile()).lights[0];
+  assert.equal(Object.hasOwn(legacy, "height"), false);
+  for (const height of [1, 17.25, 200]) {
+    lamp.properties = shadowProperties({ height });
+    assert.deepEqual((await compile()).lights[0], { ...legacy, height });
+  }
+  for (const [height, expected] of [[0, /height between 1 and 200/], [0.99, /height between 1 and 200/],
+    [200.01, /height between 1 and 200/], [Infinity, /finite number/], ["20", /expected float or int/]]) {
+    lamp.properties = shadowProperties({ height });
+    await assert.rejects(compile(), expected);
+  }
+  delete lamp.properties;
+  assert.deepEqual((await compile()).lights[0], legacy);
+});

@@ -3,6 +3,7 @@ import { mergeAudioSettings, sanitizeAudioSettings } from "@/features/audio/doma
 import { AUDIO_BUSES, type AudioAsset, type AudioBus, type AudioCatalog, type AudioCue, type AudioDiagnostics, type AudioEvent, type AudioFrame, type AudioLoopTarget, type AudioRuntime, type AudioSettings, type AudioSourceDebug } from "@/features/audio/domain/types";
 import { createAudioAssetCache } from "./audio-asset-cache";
 import { createAudioAssetTransport } from "./audio-asset-transport";
+import { createAudioParameterSmoother } from "./audio-parameter-smoother";
 import { createMusicLoopEnvelope } from "./music-loop-envelope";
 
 const MAX_VOICES = 24;
@@ -80,6 +81,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
   let everUnlocked = false;
   let generation = 0;
   let soundscapeGeneration = 0;
+  let frameOwnerGeneration = 0;
   let sequence = 0;
   let audition = 0;
   let borrowedPreview: { voice: Voice; timer: ReturnType<typeof setTimeout> } | null = null;
@@ -104,6 +106,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
   const bufferClaims = new Map<string, number>();
   const pendingEvents = new Set<number>();
   const parameterRamps = new WeakMap<AudioParam, ParameterRamp>();
+  const loopParameters = createAudioParameterSmoother({ get currentTime() { return context?.currentTime ?? 0; } });
   const transport = createAudioAssetTransport({ fetchAsset: options.fetchAsset ?? ((...args) => fetch(...args)),
     cacheStorage: options.cacheStorage });
   const preparedMusic = new Map<string, { url: string; bytes: number }>();
@@ -174,7 +177,19 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
   function updateMix() {
     if (!master) return;
     ramp(master.gain, settings.enabled && visible && !visibilityDrain && !visibilitySuspension ? settings.master : 0, .12);
-    for (const [bus, node] of buses) ramp(node.gain, settings.buses[bus] * (bus === "music" ? finiteClamp(frame?.musicDuck ?? 1, 0, 1) : 1), bus === "music" ? .8 : .12);
+    for (const [bus, node] of buses) {
+      if (bus === "music") smoothLoopParameter(node.gain, settings.buses[bus] * finiteClamp(frame?.musicDuck ?? 1, 0, 1), .8);
+      else ramp(node.gain, settings.buses[bus], .12);
+    }
+  }
+  function smoothLoopParameter(param: AudioParam, target: number, seconds: number) {
+    loopParameters.smooth(param, target, seconds / 3);
+  }
+  function fadeVoice(voice: Voice, seconds: number) {
+    // Keep a spatial envelope continuous through exit/re-entry too. At the
+    // cleanup deadline this release is below -69 dB of its starting level.
+    if (loopParameters.has(voice.gain.gain)) loopParameters.smooth(voice.gain.gain, 0, seconds / 8, true);
+    else ramp(voice.gain.gain, 0, seconds);
   }
   function releaseBorrowedPreview() {
     if (!borrowedPreview) return;
@@ -219,7 +234,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
     if (immediate || !context || context.state !== "running") { cleanup(voice); return; }
     retiring.set(voice.serial, voice);
     const seconds = Math.min(1.5, Math.max(.04, voice.cue.fadeMs / 1000));
-    ramp(voice.gain.gain, 0, seconds);
+    fadeVoice(voice, seconds);
     if (!voice.media) {
       try { (voice.source as AudioBufferSourceNode | OscillatorNode).stop(context.currentTime + seconds + .01); } catch { cleanup(voice); }
     }
@@ -233,7 +248,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
     retiring.set(voice.serial, voice);
     voice.reclaimable = true;
     const seconds = Math.min(1.5, Math.max(.3, voice.cue.fadeMs / 1000));
-    ramp(voice.gain.gain, 0, seconds);
+    fadeVoice(voice, seconds);
     // Unlike a final stop, a proximity fade must be reversible. Scheduling
     // source.stop() here forces a new sample when the next camera frame returns.
     voice.timer = setTimeout(() => cleanup(voice), seconds * 1000 + 80);
@@ -404,8 +419,9 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
     return voice;
   }
   function tune(voice: Voice, gain: number, pan: number) {
-    ramp(voice.gain.gain, dbGain(voice.cue.gainDb) * finiteClamp(gain, 0, 4), Math.max(.025, Math.min(1.5, voice.cue.fadeMs / 1000)));
-    if (voice.panner) ramp(voice.panner.pan, finiteClamp(pan, -1, 1), .1);
+    const retarget = voice.cue.mode === "loop" ? smoothLoopParameter : ramp;
+    retarget(voice.gain.gain, dbGain(voice.cue.gainDb) * finiteClamp(gain, 0, 4), Math.max(.025, Math.min(1.5, voice.cue.fadeMs / 1000)));
+    if (voice.panner) retarget(voice.panner.pan, finiteClamp(pan, -1, 1), .1);
   }
   function borrowSceneVoice(cueId: string) {
     const existing = [...voices.values()].find(voice => voice.key.startsWith("loop:") && voice.cue.id === cueId);
@@ -760,6 +776,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
     getSettings: () => settings,
     updateFrame(next) {
       if (disposed) return;
+      if (frame?.ownerId !== next.ownerId) frameOwnerGeneration++;
       if (frameClearTimer) { clearTimeout(frameClearTimer); frameClearTimer = null; }
       if (lastSceneId !== null && lastSceneId !== next.sceneId) {
         invalidate(); eventIds.clear(); cooldowns.clear(); playbackCooldowns.clear(); musicPositions.clear(); loopTimelines.clear(); blockedStreams.clear();
@@ -778,6 +795,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
     },
     clearFrame(ownerId) {
       if (!frame || frame.ownerId !== ownerId || disposed) return;
+      frameOwnerGeneration++;
       frame = null;
       cancelStreamRetry();
       if (![...voices.values()].some(voice => voice.key.startsWith("loop:"))) {
@@ -803,6 +821,7 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
       const feedbackBus = sliderRequest !== null ? event.feedbackBus : undefined;
       for (const [id, seenAt] of eventIds) if (time - seenAt > DEDUP_TTL_MS) eventIds.delete(id);
       if (!cue || cue.mode !== "one-shot" || !event.id || eventIds.has(event.id) || !Number.isFinite(occurredAt)
+        || event.ownerId !== undefined && event.ownerId !== frame?.ownerId
         || time - occurredAt > eventTtl || occurredAt - time > 1000) { droppedEvents++; publish(); return; }
       eventIds.set(event.id, time);
       while (eventIds.size > MAX_EVENT_IDS) eventIds.delete(eventIds.keys().next().value!);
@@ -815,12 +834,14 @@ export function createAudioRuntime(options: AudioRuntimeOptions = {}): AudioRunt
       cooldowns.set(cue.id, time);
       const token = generation;
       const soundscapeToken = soundscapeGeneration;
+      const ownerToken = frameOwnerGeneration;
       const request = ++sequence;
       pendingEvents.add(request);
       lastEvent = cue.id; publish();
       loadBuffer(asset, buffer => {
         pendingEvents.delete(request);
         if (buffer && token === generation && (!SOUNDSCAPE_BUSES.has(cue.bus) || soundscapeToken === soundscapeGeneration)
+          && (event.ownerId === undefined || event.ownerId === frame?.ownerId && ownerToken === frameOwnerGeneration)
           && feedbackAudible(feedbackBus) && (sliderRequest === null || sliderRequest === latestSliderRequest)
           && now() - occurredAt <= Math.min(eventTtl, sliderRequest === null ? EVENT_TTL_MS : 180)) {
           // Several contacts can await the same cold download/decode. Their

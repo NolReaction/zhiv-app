@@ -736,7 +736,9 @@ test("ships installable PNG icons for iOS and Android", async () => {
   assert.match(brand, /icon-192\.png\?v=[a-f0-9]{12}/);
   assert.match(brand, /icon-512\.png\?v=[a-f0-9]{12}/);
   assert.match(brand, /apple-touch-icon\.png\?v=[a-f0-9]{12}/);
-  assert.match(manifest, /name:\s*["']Я живой["']/);
+  assert.match(manifest, /name:\s*["']Я Живой["']/);
+  assert.match(layout, /applicationName:\s*["']Я Живой["']/);
+  assert.match(layout, /appleWebApp:\s*\{[^}]*title:\s*["']Я Живой["']/);
   assert.match(layout, /title:\s*["']Я живой["']/);
 });
 

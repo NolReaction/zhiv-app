@@ -71,6 +71,9 @@ test("weather noise and overlapping close footsteps keep headroom even at full p
     "both weather beds leave headroom even without rain's additional wind duck");
   assert.ok(cuePeak("weather.wind") < .002,
     "wind stays barely noticeable even before attenuation by the weather/master sliders");
+  const touch = catalog.cues.find(entry => entry.id === "action.water.touch");
+  assert.ok(cuePeak(touch.id) * touch.maxInstances < .105,
+    "even two simultaneous water touches keep a quiet ceiling at full user volume");
   for (const id of ["action.step.grass", "action.step.wood"]) {
     const cue = catalog.cues.find(entry => entry.id === id);
     assert.ok(cuePeak(id) * cue.maxInstances < .12,

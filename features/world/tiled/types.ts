@@ -46,6 +46,9 @@ export type WorldNavigationPolygon = { id: string; points: WorldPoint[]; when?: 
 /** A visual silhouette, independent of ground collision. Characters behind frontY
  * are clipped by this polygon; those in front keep their complete sprite. */
 export type WorldOccluder = WorldNavigationPolygon & { frontY: number };
+/** Authored touch region for tree motion, falling leaves and rustle. Independent
+ * of occlusion silhouettes and navigation; frontY orders overlapping crowns. */
+export type WorldTreeInteraction = WorldNavigationPolygon & { frontY: number };
 /** World travel targets deliberately do not enlarge the hero's home interests. */
 export type WorldDestination = { id: string; position: WorldPoint; siteId?: string; pauseSeconds: number };
 export type WorldInterest = {
@@ -91,11 +94,32 @@ export type WorldLight = {
   /** Position of the flame or bulb, in logical world coordinates. */
   position: WorldPoint;
   kind: "lantern" | "torch" | "glow";
+  /** Optional vertical height of the bulb above the ground, independent from its painted position. */
+  height?: number;
   radius: number;
   intensity: number;
   /** Opaque #rrggbb; brightness is controlled by intensity. */
   color: string;
   flicker: number;
+};
+/** An independent ground-projected footprint extruded vertically for light blocking. */
+export type WorldShadowCaster = {
+  id: string;
+  points: WorldPoint[];
+  /** Thickness above baseHeight, in vertical world units. */
+  height: number;
+  /** Zero for a grounded volume; positive for a raised canopy. */
+  baseHeight: number;
+  opacity: number;
+  softness: number;
+  when?: WorldVisibilityCondition;
+};
+/** Receiver contour follows the painted surface at its authored vertical height. */
+export type WorldShadowReceiver = {
+  id: string;
+  points: WorldPoint[];
+  height: number;
+  when?: WorldVisibilityCondition;
 };
 export type WorldCampfire = { id: string; position: WorldPoint; seat: WorldPoint; radius: number };
 /** Ground contact at the bottom center of the parked berry basket. */
@@ -143,6 +167,9 @@ export type FixedWorldScene = {
   bushes?: WorldBush[];
   water?: WorldWater;
   lights?: WorldLight[];
+  /** Independent lighting geometry; absent or empty never derives it from other map layers. */
+  shadowCasters?: WorldShadowCaster[];
+  shadowReceivers?: WorldShadowReceiver[];
   /** Absent retains a valid silent legacy map; empty lists deliberately add no local sound. */
   audio?: WorldAudio;
   /** Absent means legacy routes; an explicitly empty area list permits no free walking. */
@@ -150,6 +177,8 @@ export type FixedWorldScene = {
   /** Absent keeps legacy Paths; an empty list explicitly disables destination travel. */
   destinations?: WorldDestination[];
   occluders?: WorldOccluder[];
+  /** Absent or empty adds no tree touch effects; never falls back to Occluders. */
+  treeInteractions?: WorldTreeInteraction[];
   /** Absent retains legacy fauna; [] deliberately contains no inhabitants. */
   habitats?: WorldHabitat[];
 };

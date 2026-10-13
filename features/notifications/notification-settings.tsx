@@ -13,9 +13,9 @@ import { useNotificationDevice } from "./use-notification-device";
 import styles from "./notification-settings.module.css";
 
 const topics = [
-  ["constructionCompleted", "Постройка и улучшения", "Когда здание готово к работе."],
-  ["explorationCompleted", "Возвращение Мохлика", "Когда путешествие или рыбалка завершились."],
-  ["productionCompleted", "Готовые ресурсы", "Когда закончились производство или сбор ресурсов."],
+  ["constructionCompleted", "Постройка и улучшения", "Какое здание достроено и до какого уровня."],
+  ["explorationCompleted", "Возвращение Мохлика", "Откуда он вернулся: из леса, шахты или с рыбалки."],
+  ["productionCompleted", "Готовые ресурсы", "Что готово и сколько. О созревших ягодах сообщим, когда Мохлик сможет их собрать."],
   ["checkinReminder", "Напомнить отметиться", "Только если с последней отметки прошло больше 24 часов. Одно напоминание до следующей отметки."],
 ] as const;
 
@@ -138,6 +138,7 @@ function NotificationSettingsForOwner({ ownerPublicId, isOnline, onSessionLost, 
         </details>
       </div>
       <p className={styles.hint}>Пока вы играете, пуши не приходят. Готовые дела объединяем; собранные награды и отменённые задания не напоминают о себе. Настройки событий общие для аккаунта, подключение отдельное на каждом устройстве.</p>
+      <p className={styles.hint}>Новое приложение устанавливается с именем «Я Живой». На iPhone прежняя установка может сохранить старое имя в системной подписи уведомлений.</p>
       <div className={styles.actions}><button type="button" className={styles.save} disabled={busy || !isOnline || !dirty} onClick={save}><Check size={17} aria-hidden="true" />{saving ? "Сохраняем…" : "Сохранить настройки"}</button><span role="status" aria-live="polite">{notice || (!isOnline ? "Для сохранения нужно подключение к интернету" : dirty ? "Есть несохранённые изменения" : "")}</span></div>
     </>}
     <Dialog open={confirmLeave} onOpenChange={open => { if (!open) cancelLeave(); }}>

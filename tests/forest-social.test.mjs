@@ -8,12 +8,13 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { createForestSocial, noticeForestSocial, advanceForestSocial, forestSocialFrames,
-  forestSocialHolding, cancelForestSocial, FOREST_SOCIAL_LIMITS } = await vite.ssrLoadModule("/features/world/characters/social/forest-social.ts");
+  forestSocialHolding, forestSocialPartner, cancelForestSocial, FOREST_SOCIAL_LIMITS } = await vite.ssrLoadModule("/features/world/characters/social/forest-social.ts");
 const { createBuilderMind, advanceBuilderMind, requestBuilderVisit, cancelBuilderVisit } = await vite.ssrLoadModule("/features/world/characters/builder/builder-mind.ts");
 const { builderLocalPlaces } = await vite.ssrLoadModule("/features/world/characters/builder/builder-navigation.ts");
 const { canTraverse } = await vite.ssrLoadModule("/features/world/navigation/navigation.ts");
 const { residentClearance } = await vite.ssrLoadModule("/features/world/navigation/resident-traffic.ts");
-const { FOREST_CHAT_TOPICS, FOREST_ANIMAL_LINES, forestClickLines } = await vite.ssrLoadModule("/features/world/characters/social/forest-social-dialogue.ts");
+const { FOREST_ANIMAL_LINES, forestClickLines } = await vite.ssrLoadModule("/features/world/characters/social/forest-social-dialogue.ts");
+const { FOREST_CONVERSATIONS } = await vite.ssrLoadModule("/features/world/characters/social/forest-conversations.ts");
 const now = Date.parse("2026-10-06T18:00:00Z");
 const rect = (x, y, width, height) => [{ x, y }, { x: x + width, y }, { x: x + width, y: y + height }, { x, y: y + height }];
 function fixture(seed = "social-test") {
@@ -27,7 +28,7 @@ function fixture(seed = "social-test") {
       interests: [{ id: "look", activity: "look", position: { x: 325, y: 215 } }] } };
   const mind = createBuilderMind(scene), state = createForestSocial(seed);
   const hero = { id: "mochlik", position: { x: 70, y: 170 }, size: 50, visible: true, available: true, context: "idle" };
-  const plesk = { id: "plesk", position: { x: 360, y: 210 }, size: 44, visible: true, available: true, context: "idle" };
+  const plesk = { id: "plesk", position: { x: 360, y: 210 }, size: 44, visible: true, available: false, context: "idle" };
   const value = { scene, mind, state, hero, plesk, construction: { ownerPublicId: "owner", revision: 1, jobs: [] },
     enabled: true, ambient: true, animalEvents: [] };
   value.env = () => ({ scene, builder: mind, enabled: value.enabled, ambient: value.ambient, animalEvents: value.animalEvents,
@@ -94,33 +95,32 @@ test("hidden, sleeping or explicitly disabled residents cannot speak, while work
 test("automatic meetings leave a long quiet opening and do not catch up offline", () => {
   const value = fixture("same"), equal = createForestSocial("same");
   assert.deepEqual(value.state, equal);
-  assert.ok(value.state.nextEncounterAt >= 45 && value.state.nextEncounterAt <= 75);
+  assert.ok(value.state.nextEncounterAt >= 30 && value.state.nextEncounterAt <= 50);
   advanceForestSocial(value.state, 3600, value.env());
   assert.equal(value.state.elapsed, 1); assert.equal(value.state.meeting, null);
-  tick(value, 35); assert.equal(value.state.meeting, null); assert.equal(value.state.current, null);
+  tick(value, 25); assert.equal(value.state.meeting, null); assert.equal(value.state.current, null);
   const before = structuredClone(value.state);
   for (const dt of [NaN, Infinity, -1, 0]) advanceForestSocial(value.state, dt, value.env());
   assert.deepEqual(value.state, before);
 });
 
-test("builder walks safely to personal space, trades three coherent lines, then releases both residents", () => {
+test("builder walks safely to personal space, trades a complete authored dialogue, then releases both residents", () => {
   const value = fixture(); reachMeeting(value);
   const gap = Math.hypot(value.mind.position.x - value.hero.position.x, value.mind.position.y - value.hero.position.y);
   assert.ok(gap > residentClearance(40, 50)); assert.equal(value.mind.route, null);
   assert.equal(forestSocialHolding(value.state), "mochlik");
   const feet = { ...value.mind.position }, spoken = [structuredClone(value.state.current)];
-  tick(value, 16, () => {
+  tick(value, 32, () => {
     const line = value.state.current;
     if (line && !spoken.some(old => old.id === line.id)) spoken.push(structuredClone(line));
     if (value.state.meeting?.phase === "talk") assert.deepEqual(value.mind.position, feet);
   });
-  assert.deepEqual(spoken.map(line => line.speaker), ["builder", "mochlik", "builder"]);
-  assert.ok(spoken.every(line => line.origin === "ambient"));
-  const topic = FOREST_CHAT_TOPICS.find(item => item.id === value.state.topicHistory[0]);
-  assert.ok(topic.open.includes(spoken[0].text)); assert.ok(topic.reply.includes(spoken[1].text)); assert.ok(topic.close.includes(spoken[2].text));
+    assert.ok(spoken.every(line => line.origin === "ambient"));
+  const topic = FOREST_CONVERSATIONS.find(item => item.id === value.state.topicHistory[0]);
+  assert.deepEqual(spoken.map(({ speaker, text }) => ({ speaker, text })), topic.lines);
   assert.equal(value.state.current, null); assert.equal(value.state.meeting, null); assert.equal(value.mind.socialVisit, null);
   assert.equal(forestSocialHolding(value.state), null);
-  assert.ok(value.state.nextEncounterAt > value.state.elapsed + 150, "another spontaneous chat cannot immediately follow");
+  assert.ok(value.state.nextEncounterAt > value.state.elapsed + 70, "another spontaneous chat cannot immediately follow");
 });
 
 test("a due invitation waits for the next quiet moment instead of missing short idle windows", () => {
@@ -139,15 +139,15 @@ test("history varies complete subjects and bounds all dialogue memory", () => {
   for (let iteration = 0; iteration < 16; iteration++) {
     reachMeeting(value);
     topics.push(value.state.topicHistory.at(-1));
-    const recent = topics.slice(Math.max(0, topics.length - 9), -1);
+    const recent = topics.slice(Math.max(0, topics.length - 5), -1);
     assert.ok(!recent.includes(topics.at(-1)));
-    tick(value, 14, () => {
+    tick(value, 32, () => {
       const current = value.state.current;
       if (current && !lines.some(line => line.id === current.id)) lines.push(structuredClone(current));
     });
     assert.equal(value.state.meeting, null);
   }
-  assert.ok(new Set(topics).size >= 10); assert.equal(value.state.topicHistory.length, 8); assert.equal(value.state.lineHistory.length, 24);
+  assert.ok(new Set(topics).size >= 8); assert.equal(value.state.topicHistory.length, 12); assert.equal(value.state.lineHistory.length, 48);
   assert.ok(lines.length >= 32);
 });
 
@@ -218,17 +218,89 @@ test("still-mode expiry updates cooldowns without autonomous conversations or pe
   assert.equal(createForestSocial("cold").current, null);
 });
 
-test("authored lines remain compact and each topic has meaningful bounded variation", () => {
-  assert.ok(FOREST_CHAT_TOPICS.length >= 20);
+test("authored scripts stay whole, alternate real participants and fit a finite meeting", () => {
+  assert.equal(FOREST_CONVERSATIONS.length, 42);
+  assert.equal(new Set(FOREST_CONVERSATIONS.map(topic => topic.id)).size, 42);
   const lines = Object.values(FOREST_ANIMAL_LINES).flat();
-  for (const topic of FOREST_CHAT_TOPICS) {
-    assert.ok(topic.open.length >= 3 && topic.reply.length >= 3 && topic.close.length >= 2);
-    lines.push(...topic.open, ...topic.reply, ...topic.close);
+  for (const pair of ["builder-mochlik", "builder-plesk", "mochlik-plesk"])
+    assert.equal(FOREST_CONVERSATIONS.filter(topic => topic.pair === pair).length, 14);
+  for (const topic of FOREST_CONVERSATIONS) {
+    assert.ok(topic.lines.length >= 4 && topic.lines.length <= 6);
+    assert.deepEqual([...new Set(topic.lines.map(line => line.speaker))].sort(), topic.pair.split("-").sort());
+    topic.lines.forEach((line, index) => {
+      assert.notEqual(line.speaker, topic.lines[index - 1]?.speaker);
+      assert.ok(line.text.length > 0 && line.text.length <= 42, `${topic.id}: ${line.text}`);
+      lines.push(line.text);
+    });
+    const duration = topic.lines.reduce((total, line) => total + Math.min(4.4, 2.8 + line.text.length * .027), 0)
+      + (topic.lines.length - 1) * FOREST_SOCIAL_LIMITS.gap;
+    assert.ok(duration + 1 < FOREST_SOCIAL_LIMITS.conversation, topic.id);
   }
   for (const id of ["mochlik", "plesk", "builder"]) for (const context of ["idle", "walk", "build", "ready", "fish", "cook", "trade", "busy", "animal"])
     lines.push(...forestClickLines(id, context));
-  assert.ok(lines.every(line => line.length <= 42), "spoken lines stay short enough for a small character bubble");
-  assert.equal(FOREST_SOCIAL_LIMITS.historyTopics, 8); assert.equal(FOREST_SOCIAL_LIMITS.historyLines, 24);
+  assert.ok(lines.every(line => line.length <= 42), "short captions fit a small character bubble");
   const value = fixture(); startMeeting(value); const before = { ...value.mind.position };
   cancelBuilderVisit(value.mind); assert.deepEqual(value.mind.position, before);
+});
+
+test("the builder can visit Plesk without holding or using Mochlik", () => {
+  const value = fixture(); value.hero.available = false; value.plesk.available = true;
+  reachMeeting(value);
+  assert.equal(value.state.meeting.host, "plesk");
+  assert.equal(forestSocialHolding(value.state), null);
+  assert.equal(forestSocialPartner(value.state, "plesk"), "builder");
+  assert.equal(forestSocialPartner(value.state, "builder"), "plesk");
+  const topic = FOREST_CONVERSATIONS.find(item => item.id === value.state.topicHistory.at(-1));
+  assert.equal(topic.pair, "builder-plesk");
+  const spoken = [value.state.current.text];
+  tick(value, 32, () => {
+    if (value.state.current && spoken.at(-1) !== value.state.current.text) spoken.push(value.state.current.text);
+  });
+  assert.deepEqual(spoken, topic.lines.map(line => line.text));
+  assert.equal(value.state.meeting, null);
+});
+
+test("Mochlik and Plesk chat only when already nearby, without asking the builder to move", () => {
+  const value = fixture(); value.plesk.available = true; value.plesk.position = { x: 130, y: 170 };
+  value.state.nextEncounterAt = 0;
+  const env = { ...value.env(), builder: null, actors: [value.hero, value.plesk] };
+  const before = structuredClone(value.mind);
+  advanceForestSocial(value.state, .1, env);
+  assert.equal(value.state.meeting.phase, "talk");
+  assert.equal(forestSocialPartner(value.state, "mochlik"), "plesk");
+  assert.equal(forestSocialPartner(value.state, "plesk"), "mochlik");
+  assert.equal(forestSocialHolding(value.state), "mochlik");
+  assert.equal(forestSocialPartner(value.state, "builder"), null);
+  assert.deepEqual(value.mind, before);
+  value.plesk.available = false;
+  advanceForestSocial(value.state, 0, env);
+  assert.equal(value.state.current, null); assert.equal(value.state.meeting, null);
+  assert.deepEqual(value.mind, before);
+});
+
+test("busy, absent, distant or separated residents do not start a Plesk conversation", () => {
+  for (const change of [value => { value.plesk.available = false; }, value => { value.plesk.visible = false; },
+    value => { value.plesk.context = "fish"; }, value => { value.plesk.context = "trade"; },
+    value => { value.plesk.context = "sleep"; }, value => { value.plesk.position.x = 300; },
+    value => { value.scene.navigation.obstacles = [{ id: "water", points: rect(96, 0, 8, 280) }]; }]) {
+    const value = fixture(); value.plesk.available = true; value.plesk.position = { x: 130, y: 170 };
+    value.state.nextEncounterAt = 0; change(value);
+    advanceForestSocial(value.state, .1, { ...value.env(), builder: null, actors: [value.hero, value.plesk] });
+    assert.equal(value.state.meeting, null); assert.equal(value.state.current, null);
+  }
+});
+
+test("weather and local scenery filter whole stories without inventing a nearby river", () => {
+  for (const weather of [{ dusk: 0, rain: 0 }, { dusk: 1, rain: 0 }, { dusk: 0, rain: 1 }]) {
+    const value = fixture(); const baseEnv = value.env;
+    value.env = () => ({ ...baseEnv(), ...weather });
+    for (let iteration = 0; iteration < 18; iteration++) {
+      reachMeeting(value);
+      const topic = FOREST_CONVERSATIONS.find(item => item.id === value.state.topicHistory.at(-1));
+      assert.ok(!topic.weather || topic.weather === "night" && weather.dusk > .55
+        || topic.weather === "rain" && weather.rain > .35 || topic.weather === "day" && !weather.dusk && !weather.rain);
+      assert.ok(!topic.place, "this fixture has no scenery near the two residents");
+      cancelForestSocial(value.state, value.env());
+    }
+  }
 });

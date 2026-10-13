@@ -9,7 +9,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Я живой",
   description: "Будьте на связи с близкими и обживайте уютный лесной мир Мохлика.",
-  applicationName: "Я живой",
+  applicationName: "Я Живой",
   other: {
     "mobile-web-app-capable": "yes",
   },
@@ -24,7 +24,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Я живой",
+    title: "Я Живой",
   },
   formatDetection: {
     telephone: false,

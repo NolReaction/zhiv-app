@@ -7,6 +7,8 @@ export { fishingRodAppearance, type FishingRodAppearance } from "./fishing-rod-a
 
 export type FishingAction = "walk" | "idle" | "cast" | "fish" | "bite" | "reel" | "catch" | "pack" | "trade" | "rest" | "greet";
 export type FishingMotion = {
+  /** Cosmetic surface displacement sampled by the scene, never a new fishing target. */
+  waterDisplacement?: WorldPoint;
   castIndex?: number;
   variation?: "calm" | "check" | "nibble" | "struggle" | "escape";
   outcome?: "small" | "large" | "miss";
@@ -236,6 +238,13 @@ export function fishingTackleFrame(frame: FishingPropFrame, still: boolean, anch
       bobber.y += Math.sin(phase * tau * 4) * size * .009 + nibble;
     }
     if (!still && frame.action === "bite") bobber.y += (1 - Math.cos(phase * tau * (large ? 4 : 3))) * size * (large ? .043 : .03);
+    if (!still && frame.waterDisplacement && (frame.action === "fish" || frame.action === "bite" || casting && cast >= 1)) {
+      const offset = frame.waterDisplacement;
+      if (Number.isFinite(offset.x) && Number.isFinite(offset.y)) {
+        bobber.x += Math.max(-size * .04, Math.min(size * .04, offset.x));
+        bobber.y += Math.max(-size * .04, Math.min(size * .04, offset.y));
+      }
+    }
     if (reeling) {
       const held = fishingLandingCenter(frame, side);
       bobber = between(water, missed ? hanging

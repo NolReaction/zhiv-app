@@ -30,7 +30,7 @@ test("renders application metadata and the public site without development tags"
     /^text\/html\b/i,
   );
     const html = await response.text();
-    assert.match(html, /<meta(?=[^>]*\bname=["']application-name["'])(?=[^>]*\bcontent=["']Я живой["'])[^>]*>/i);
+    assert.match(html, /<meta(?=[^>]*\bname=["']application-name["'])(?=[^>]*\bcontent=["']Я Живой["'])[^>]*>/i);
     assert.doesNotMatch(html, /name=["']codex-preview["']/i);
     assert.match(html, /rel=["']manifest["']/i);
     assert.doesNotMatch(html, /<link(?=[^>]*rel=["']preload["'])(?=[^>]*href=["'][^"']*forest-ground)/i,

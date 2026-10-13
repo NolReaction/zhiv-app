@@ -166,7 +166,7 @@ test("desktop panels lead with a real game link and keep installation optional",
   for (const platform of ["ios", "android"]) {
     const view = harness({ device: { platform, browser: "chrome", embedded: false } }).render();
     assert.doesNotMatch(view.html, /data-install-play|data-install-optional/);
-    assert.match(view.html, /Установить «Я живой»/);
+    assert.match(view.html, /Установить «Я Живой»/);
   }
 });
 
@@ -174,7 +174,7 @@ test("game settings show installation directly without links that reload the cur
   for (const platform of ["windows", "mac", "linux", "ios", "android"]) {
     const h = harness({ device: { platform, browser: "chrome", embedded: false } }, { compact: true, context: "settings" });
     let view = h.render();
-    assert.match(view.html, /Установить «Я живой»/);
+    assert.match(view.html, /Установить «Я Живой»/);
     assert.ok(view.guide);
     assert.doesNotMatch(view.html, /data-install-play|data-install-optional|href="\/"|Можно сразу играть/);
     h.installation.canInstall = true; view = h.render();

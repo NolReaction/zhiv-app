@@ -32,8 +32,12 @@ class JdbcReleaseUpgradeIntegrationTest {
 
     private fun legacyData(source: DataSource, tables: List<String>): Map<String, String> = tables.associateWith { table ->
         require(table.matches(Regex("[a-z_]+")))
-        // V38 adds an eligibility flag while preserving every historical ownership field.
-        val row = if (table == "game_achievements") "(to_jsonb(t)-'reward_eligible')" else "to_jsonb(t)"
+        // Compare every historical field; V38/V50 add separately checked metadata.
+        val row = when (table) {
+            "game_achievements" -> "(to_jsonb(t)-'reward_eligible')"
+            "notification_events" -> "(to_jsonb(t)-'harvest_ready_at'-'waiting_for_actor'-'actor_wait_until')"
+            else -> "to_jsonb(t)"
+        }
         scalar(source, "SELECT COALESCE(jsonb_agg($row ORDER BY ($row)::text),'[]'::jsonb)::text FROM public.\"$table\" t")
     }
 
@@ -85,6 +89,9 @@ class JdbcReleaseUpgradeIntegrationTest {
             DatabaseFactory.migrate(source)
             assertEquals(beforePreferences,scalar(source,preferenceSql),"Existing choices, presence and timestamps are preserved")
             assertEquals(beforeQueue,legacyData(source,listOf("notification_events")),"Pending reminders keep their state and retry time")
+            assertEquals("1",scalar(source,"""SELECT count(*) FROM notification_events
+                WHERE harvest_ready_at IS NULL AND NOT waiting_for_actor AND actor_wait_until IS NULL"""),
+                "Ordinary pending reminders do not acquire berry-collection metadata")
             val repository=JdbcNotificationRepository(source)
             assertEquals(preferences,repository.snapshot(token.hash,legacy.publicId).preferences)
             assertFalse(repository.snapshot(otherToken.hash,explicit.publicId).preferences.rateLimitsEnabled)
@@ -114,7 +121,7 @@ class JdbcReleaseUpgradeIntegrationTest {
             DatabaseFactory.migrate(source)
             assertEquals(before, legacyData(source, tables))
             assertEquals(history, scalar(source, historySql))
-            assertEquals("49", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
+            assertEquals("50", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             for (table in listOf("game_presence_clients", "game_presence_accounts", "game_presence_daily"))
                 assertEquals("0", scalar(source, "SELECT count(*) FROM $table"))
             val presence = JdbcPresenceRepository(source)
@@ -158,7 +165,7 @@ class JdbcReleaseUpgradeIntegrationTest {
             DatabaseFactory.migrate(source)
             assertEquals(before, legacyData(source, unchangedTables))
             assertEquals(beforeHistory, scalar(source, historySql))
-            assertEquals("49", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
+            assertEquals("50", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM forest_memory"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM forest_memory_receipts"))
             DatabaseFactory.migrate(source)
@@ -220,7 +227,7 @@ class JdbcReleaseUpgradeIntegrationTest {
             assertEquals(before, legacyData(source, unchangedTables), "Only the explicitly converted world profile may change")
             assertEquals("true", scalar(source, "SELECT bool_and(reward_eligible)::text FROM game_achievements"), "Existing ownership keeps its finite reward eligibility")
             assertEquals(oldHistory, scalar(source, historySql), "Existing migration records/checksums must stay intact")
-            assertEquals("49", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
+            assertEquals("50", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM player_feedback"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM player_feedback_actions"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM forest_memory"))

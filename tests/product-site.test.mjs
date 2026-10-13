@@ -410,7 +410,7 @@ test("public demo controls remain native keyboard controls and communicate their
 test("installing from the presentation preserves the existing root application identity", () => {
   const identity = manifest();
   assert.equal(identity.id, "/"); assert.equal(identity.start_url, "/"); assert.equal(identity.scope, "/");
-  assert.equal(identity.display, "standalone"); assert.equal(identity.name, "Я живой");
+  assert.equal(identity.display, "standalone"); assert.equal(identity.name, "Я Живой"); assert.equal(identity.short_name, "Я Живой");
   assert.equal(page.metadata.alternates.canonical, "https://im-alive.ru/site");
   assert.equal(page.viewport.userScalable, true); assert.ok(page.viewport.maximumScale >= 5);
 });

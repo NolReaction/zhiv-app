@@ -40,9 +40,9 @@ BEGIN
         RAISE EXCEPTION 'Unexpected application tables. Reset cancelled; review the schema first.';
     END IF;
     -- Keep this explicit: every new schema must be reviewed before destructive reset.
-    IF (SELECT version FROM public.flyway_schema_history ORDER BY installed_rank DESC LIMIT 1) IS DISTINCT FROM '49'
+    IF (SELECT version FROM public.flyway_schema_history ORDER BY installed_rank DESC LIMIT 1) IS DISTINCT FROM '50'
         OR EXISTS (SELECT 1 FROM public.flyway_schema_history WHERE NOT success) THEN
-        RAISE EXCEPTION 'Expected successfully applied migration V49. Reset cancelled.';
+        RAISE EXCEPTION 'Expected successfully applied migration V50. Reset cancelled.';
     END IF;
     SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank) INTO migration_history
     FROM public.flyway_schema_history h;

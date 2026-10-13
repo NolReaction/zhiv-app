@@ -20,6 +20,10 @@ import ru.zhiv.economy.*
 import ru.zhiv.installZhivApi
 import ru.zhiv.notifications.*
 import ru.zhiv.security.TokenCodec
+import ru.zhiv.world.WorldJourney
+import ru.zhiv.world.WorldResources
+import ru.zhiv.world.WorldState
+import ru.zhiv.world.worldJson
 import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
@@ -88,6 +92,13 @@ class JdbcNotificationRepositoryIntegrationTest {
         val state=source.connection.use { readEconomyProfile(it,p.id).state }
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(state.copy(jobs=jobs.toList())),p.id)
     }
+    private fun legacyJourney(p: Player,finishedAt: Instant) {
+        val journey=WorldJourney(UUID.randomUUID().toString(),"first_path",finishedAt.minusSeconds(60).toString(),
+            finishedAt.toString(),WorldResources(),emptyList(),true,3)
+        val state=worldJson.encodeToString(WorldState(journeys=listOf(journey)))
+        execute("""INSERT INTO world_profiles(user_id,state) VALUES (?,?::jsonb)
+            ON CONFLICT(user_id) DO UPDATE SET state=jsonb_set(world_profiles.state,'{journeys}',EXCLUDED.state->'journeys')""",p.id,state)
+    }
     private fun dispatcher(now: () -> Instant,sent: MutableList<PushPayload>,result: PushResult=PushResult.DELIVERED) =
         NotificationDispatcher(source,PushSender { _,payload -> sent.add(payload); result },now)
     private fun checkin(p: Player,at: Instant) {
@@ -141,14 +152,157 @@ class JdbcNotificationRepositoryIntegrationTest {
         jobs(p,a,b); repository.preferences(p.hash,p.owner,noQuiet.copy(maxPerDay=1)); worker.tick()
         assertEquals(1,sent.size)
     }
-    @Test fun `garden only notifies after collection actually finishes`() = runBlocking<Unit> {
+    @Test fun `ripe berries notify before collection and collection never repeats the same source`() = runBlocking<Unit> {
         val p=player(); connect(p); var now=Instant.now()
-        val j=job(now,target="garden").copy(rewards=mapOf("berries" to 2),collection=EconomyCollection("berry_harvest",30,null,null))
-        jobs(p,j); assertEquals("0",scalar("SELECT count(*) FROM notification_events WHERE user_id=?",p.id))
+        val j=job(now,target="garden").copy(rewards=mapOf("berries" to 20),collection=EconomyCollection("berry_harvest",30,null,null))
+        jobs(p,j); assertEquals("1",scalar("SELECT count(*) FROM notification_events WHERE user_id=?",p.id))
         val sent=CopyOnWriteArrayList<PushPayload>(); val worker=dispatcher({now},sent)
+        worker.tick(); assertEquals(1,sent.size)
+        assertEquals("Ресурсы готовы",sent.single().title); assertContains(sent.single().body,"20 ягод готовы к сбору")
         jobs(p,j.copy(collection=EconomyCollection("berry_harvest",30,now.toString(),now.plusSeconds(30).toString())))
+        worker.tick(); assertEquals(1,sent.size)
+        now=now.plusSeconds(31); worker.tick(); assertEquals(1,sent.size)
+    }
+    @Test fun `collection started before first delivery shifts reminder to actual collection finish`() = runBlocking<Unit> {
+        val p=player(); connect(p); var now=Instant.now()
+        val j=job(now,target="garden").copy(rewards=mapOf("berries" to 20),collection=EconomyCollection("berry_harvest",30,null,null))
+        jobs(p,j)
+        jobs(p,j.copy(collection=EconomyCollection("berry_harvest",30,now.toString(),now.plusSeconds(30).toString())))
+        val sent=CopyOnWriteArrayList<PushPayload>(); val worker=dispatcher({now},sent)
         worker.tick(); assertTrue(sent.isEmpty())
         now=now.plusSeconds(31); worker.tick(); assertEquals(1,sent.size)
+        assertContains(sent.single().body,"Урожай собран"); assertContains(sent.single().body,"20 ягод")
+        assertFalse(sent.single().body.contains("готовы к сбору"))
+    }
+    @Test fun `ripe berry reminder waits for travelling actor while garden fiber and cooking are immediately actionable`() = runBlocking<Unit> {
+        val p=player(); connect(p,noQuiet.copy(rateLimitsEnabled=false)); var now=Instant.now()
+        val crop=job(now,target="garden",finish=now.minusSeconds(172800)).copy(rewards=mapOf("berries" to 20),collection=EconomyCollection("berry_harvest",8,null,null))
+        val trip=job(now,"exploration","forest",now.plusSeconds(600))
+        val fiber=job(now,target="garden").copy(recipeId="garden_fiber",rewards=mapOf("fiber" to 3))
+        val cooking=job(now,target="dryer").copy(rewards=mapOf("dried_berries" to 2))
+        jobs(p,crop,trip,fiber,cooking)
+        val sent=CopyOnWriteArrayList<PushPayload>(); val worker=dispatcher({now},sent)
+        worker.tick(); assertEquals(1,sent.size); assertFalse(sent.single().body.contains("готовы к сбору"))
+        assertEquals("pending",scalar("SELECT state FROM notification_events WHERE user_id=? AND source_key=?",p.id,"job:${crop.id}"))
+        assertEquals("0",scalar("SELECT attempts FROM notification_events WHERE user_id=? AND source_key=?",p.id,"job:${crop.id}"))
+        now=now.plusSeconds(601); worker.tick(); assertEquals(2,sent.size)
+        assertContains(sent.last().body,"Мохлик вернулся"); assertContains(sent.last().body,"20 ягод")
+        assertEquals("delivered",scalar("SELECT state FROM notification_events WHERE user_id=? AND source_key=?",p.id,"job:${crop.id}"))
+    }
+    @Test fun `another completed unclaimed harvest defers ripe crop without consuming attempts or losing its source`() = runBlocking<Unit> {
+        val p=player(); connect(p,noQuiet.copy(rateLimitsEnabled=false)); var now=Instant.now()
+        val crop=job(now,target="garden").copy(rewards=mapOf("berries" to 20),collection=EconomyCollection("berry_harvest",8,null,null))
+        val collected=crop.copy(id=UUID.randomUUID().toString(),collection=EconomyCollection("berry_harvest",8,
+            now.minusSeconds(30).toString(),now.minusSeconds(22).toString()))
+        jobs(p,crop,collected)
+        val sent=CopyOnWriteArrayList<PushPayload>(); val worker=dispatcher({now},sent)
+        worker.tick(); assertEquals(1,sent.size); assertContains(sent.single().body,"Урожай собран")
+        assertEquals("0",scalar("SELECT attempts FROM notification_events WHERE user_id=? AND source_key=?",p.id,"job:${crop.id}"))
+        jobs(p,crop); now=now.plusSeconds(301); worker.tick()
+        assertEquals(2,sent.size); assertContains(sent.last().body,"20 ягод готовы к сбору")
+    }
+    @Test fun `legacy world journey keeps ripe berries pending until removed even after its recorded finish`() = runBlocking<Unit> {
+        val p=player(); connect(p,noQuiet.copy(rateLimitsEnabled=false)); var now=Instant.now()
+        legacyJourney(p,now.minusSeconds(1))
+        val crop=job(now,target="garden").copy(rewards=mapOf("berries" to 20),collection=EconomyCollection("berry_harvest",8,null,null))
+        jobs(p,crop); val sent=CopyOnWriteArrayList<PushPayload>(); val worker=dispatcher({now},sent)
+        worker.tick(); assertTrue(sent.isEmpty())
+        assertEquals("0",scalar("SELECT count(*) FROM notification_batches WHERE user_id=?",p.id))
+        execute("UPDATE world_profiles SET state=jsonb_set(state,'{journeys}','[]'::jsonb) WHERE user_id=?",p.id)
+        now=now.plusSeconds(301); worker.tick(); assertEquals(1,sent.size)
+    }
+    @Test fun `actor starts travelling between reservation and delivery so ripe notification is postponed`() = runBlocking<Unit> {
+        val p=player(); connect(p,noQuiet.copy(rateLimitsEnabled=false)); var now=Instant.now()
+        val crop=job(now,target="garden").copy(rewards=mapOf("berries" to 20),collection=EconomyCollection("berry_harvest",8,null,null))
+        jobs(p,crop); var calls=0; val sent=CopyOnWriteArrayList<PushPayload>()
+        val worker=dispatcher({
+            if(++calls==2) jobs(p,crop,job(now,"exploration","forest",now.plusSeconds(600)))
+            now
+        },sent)
+        worker.tick(); assertTrue(sent.isEmpty())
+        assertEquals("pending",scalar("SELECT state FROM notification_events WHERE user_id=? AND source_key=?",p.id,"job:${crop.id}"))
+        assertEquals("0",scalar("SELECT attempts FROM notification_events WHERE user_id=? AND source_key=?",p.id,"job:${crop.id}"))
+        now=now.plusSeconds(601); worker.tick(); assertEquals(1,sent.size); assertContains(sent.single().body,"20 ягод")
+    }
+    @Test fun `claim between reservation and delivery suppresses stale payload and releases batch`() = runBlocking<Unit> {
+        val p=player(); connect(p); val now=Instant.now(); jobs(p,job(now))
+        var calls=0; val sent=CopyOnWriteArrayList<PushPayload>()
+        dispatcher({ if(++calls==2) jobs(p); now },sent).tick()
+        assertTrue(sent.isEmpty()); assertEquals("0",scalar("SELECT count(*) FROM notification_events WHERE user_id=?",p.id))
+        assertEquals("dismissed",scalar("SELECT state FROM notification_batches WHERE user_id=?",p.id))
+    }
+    @Test fun `harvest held over a day by collection or legacy journey becomes fresh once and remains deduplicated`() = runBlocking<Unit> {
+        listOf(false,true).forEach { legacy ->
+            val p=player(); connect(p,noQuiet.copy(rateLimitsEnabled=false)); var now=Instant.now()
+            val crop=job(now,target="garden",finish=now.minusSeconds(3*86400)).copy(rewards=mapOf("berries" to 20),collection=EconomyCollection("berry_harvest",8,null,null))
+            val blocker=crop.copy(id=UUID.randomUUID().toString(),collection=EconomyCollection("berry_harvest",8,
+                now.minusSeconds(2*86400+8).toString(),now.minusSeconds(2*86400).toString()))
+            if(legacy) legacyJourney(p,now.minusSeconds(2*86400))
+            jobs(p,*if(legacy) arrayOf(crop) else arrayOf(crop,blocker))
+            // An existing waiting row wakes after the long hold. It must not
+            // expire according to the old growth timer while actor-owned.
+            execute("UPDATE notification_events SET next_attempt_at=? WHERE user_id=?",now.minusSeconds(1).notificationSqlTime(),p.id)
+            val sent=CopyOnWriteArrayList<PushPayload>(); val worker=dispatcher({now},sent)
+            worker.tick(); assertTrue(sent.isEmpty())
+            assertEquals("pending",scalar("SELECT state FROM notification_events WHERE user_id=? AND source_key=?",p.id,"job:${crop.id}"))
+            assertEquals("0",scalar("SELECT attempts FROM notification_events WHERE user_id=? AND source_key=?",p.id,"job:${crop.id}"))
+            if(legacy) execute("UPDATE world_profiles SET state=jsonb_set(state,'{journeys}','[]'::jsonb) WHERE user_id=?",p.id)
+            else jobs(p,crop)
+            now=Instant.now().plusSeconds(1); worker.tick()
+            assertEquals(1,sent.size); assertContains(sent.single().body,"20 ягод готовы к сбору")
+            val available=scalar("SELECT harvest_ready_at::text FROM notification_events WHERE user_id=? AND source_key=?",p.id,"job:${crop.id}")
+            assertNotNull(available)
+            now=now.plusSeconds(90000); worker.tick(); jobs(p,crop); worker.tick()
+            assertEquals(1,sent.size); assertEquals(available,scalar("SELECT harvest_ready_at::text FROM notification_events WHERE user_id=? AND source_key=?",p.id,"job:${crop.id}"))
+        }
+    }
+    @Test fun `claiming returned trip between reservation and send cannot regress harvest freshness to old ripening`() = runBlocking<Unit> {
+        val p=player(); connect(p,noQuiet.copy(rateLimitsEnabled=false)); val now=Instant.now()
+        val crop=job(now,target="garden",finish=now.minusSeconds(2*86400)).copy(rewards=mapOf("berries" to 20),collection=EconomyCollection("berry_harvest",8,null,null))
+        jobs(p,crop,job(now,"exploration","forest",now.minusSeconds(1)))
+        var calls=0; val sent=CopyOnWriteArrayList<PushPayload>()
+        dispatcher({ if(++calls==2) jobs(p,crop); now },sent).tick()
+        assertEquals(1,sent.size); assertContains(sent.single().body,"20 ягод готовы к сбору")
+        assertEquals("Ресурсы готовы",sent.single().title)
+    }
+    @Test fun `cancelling active trip makes old ripe harvest actionable without waiting for the cancelled deadline`() = runBlocking<Unit> {
+        val p=player(); connect(p,noQuiet.copy(rateLimitsEnabled=false)); var now=Instant.now()
+        val crop=job(now,target="garden",finish=now.minusSeconds(2*86400)).copy(rewards=mapOf("berries" to 20),collection=EconomyCollection("berry_harvest",8,null,null))
+        jobs(p,crop,job(now,"exploration","forest",now.plusSeconds(3600))); jobs(p,crop)
+        now=Instant.now().plusSeconds(1); val sent=CopyOnWriteArrayList<PushPayload>(); dispatcher({now},sent).tick()
+        assertEquals(1,sent.size); assertContains(sent.single().body,"20 ягод готовы к сбору")
+    }
+    @Test fun `free old harvest expires and rechecking a fresh harvest does not extend its age indefinitely`() = runBlocking<Unit> {
+        val p=player(); connect(p,noQuiet.copy(rateLimitsEnabled=false)); var now=Instant.now()
+        val crop=job(now,target="garden",finish=now.minusSeconds(2*86400)).copy(rewards=mapOf("berries" to 20),collection=EconomyCollection("berry_harvest",8,null,null))
+        jobs(p,crop); val sent=CopyOnWriteArrayList<PushPayload>(); val worker=dispatcher({now},sent,PushResult.RETRY)
+        worker.tick(); assertTrue(sent.isEmpty()); assertEquals("dismissed",scalar("SELECT state FROM notification_events WHERE user_id=?",p.id))
+        val fresh=crop.copy(id=UUID.randomUUID().toString(),finishesAt=now.minusSeconds(1).toString())
+        jobs(p,fresh); worker.tick(); assertEquals(1,sent.size)
+        val available=scalar("SELECT harvest_ready_at::text FROM notification_events WHERE user_id=?",p.id)
+        now=now.plusSeconds(86401); worker.tick(); assertEquals(1,sent.size)
+        assertEquals("dismissed",scalar("SELECT state FROM notification_events WHERE user_id=?",p.id))
+        assertEquals(available,scalar("SELECT harvest_ready_at::text FROM notification_events WHERE user_id=?",p.id))
+    }
+    @Test fun `payload quantities use latest saved job at send rather than reservation snapshot or current recipe`() = runBlocking<Unit> {
+        val p=player(); connect(p); val now=Instant.now()
+        val j=job(now,target="garden").copy(recipeId="garden_fiber",rewards=mapOf("fiber" to 17)); jobs(p,j)
+        var calls=0; val sent=CopyOnWriteArrayList<PushPayload>()
+        dispatcher({ if(++calls==2) jobs(p,j.copy(rewards=mapOf("fiber" to 23))); now },sent).tick()
+        assertEquals(1,sent.size); assertContains(sent.single().body,"23"); assertFalse(sent.single().body.contains("17"))
+    }
+    @Test fun `production summary warns when combined rewards exceed warehouse space including both escrows`() = runBlocking<Unit> {
+        val p=player(); connect(p); val now=Instant.now()
+        val state=source.connection.use { readEconomyProfile(it,p.id).state }
+        val capacity=EconomyRules.storage(state).capacity
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(state.copy(inventory=mapOf("wood" to capacity-10))),p.id)
+        execute("INSERT INTO economy_market_listings(id,seller_id,item_id,quantity,total_price) VALUES (?,?,'wood',3,10)",UUID.randomUUID(),p.id)
+        execute("INSERT INTO economy_barter_offers(id,seller_id,offered_item_id,requested_item_id) VALUES (?,?,'ancient_coin','moon_shard')",UUID.randomUUID(),p.id)
+        val crop=job(now,target="garden").copy(rewards=mapOf("berries" to 4),collection=EconomyCollection("berry_harvest",8,null,null))
+        jobs(p,crop,job(now).copy(rewards=mapOf("planks" to 3)))
+        val sent=CopyOnWriteArrayList<PushPayload>(); dispatcher({now},sent).tick()
+        assertEquals(1,sent.size); assertContains(sent.single().body,"Освободите место в кладовой")
+        assertFalse(sent.single().body.contains("Можно забрать")); assertFalse(sent.single().body.contains("чтобы Мохлик собрал"))
     }
     @Test fun `cancel and construction speedup suppress pending reminders`() = runBlocking<Unit> {
         val p=player(); connect(p); val now=Instant.now()

@@ -17,6 +17,7 @@ class Param {
   cancelScheduledValues() {}
   setValueAtTime(value) { this.value = value; }
   linearRampToValueAtTime(value, time) { this.value = value; this.ramps.push({ value, time }); }
+  setTargetAtTime(value, time, timeConstant) { this.value = value; this.ramps.push({ value, time, timeConstant }); }
 }
 class Node {
   connected = []; disconnected = false;
@@ -68,6 +69,71 @@ function fixture(cueList = [cue("tap"), cue("river", "loop")], options = {}) {
     ...options,
   });
   return { runtime, context, requests, media, advance: amount => { time += amount; }, get contextCount() { return contextCount; } };
+}
+
+for (const cueId of ["action.water.touch", "action.tree.rustle"]) {
+  const maxAgeMs = cueId === "action.tree.rustle" ? 200 : 180;
+  test(`owned ${cueId} taps cannot finish decoding after losing their active view or sound`, async () => {
+    const touch = AUDIO_CATALOG.cues.find(cue => cue.id === cueId);
+    for (const transition of ["clear", "handoff", "return", "menu", "hidden", "mute"]) {
+      const f = fixture([touch]), gate = deferred(); f.context.decode = () => gate.promise;
+      try {
+        await f.runtime.unlock(); f.runtime.updateFrame(frame());
+        f.runtime.play({ id: "owned-tap", cueId: touch.id, ownerId: "user-a", maxAgeMs });
+        await flush();
+        if (transition === "clear") f.runtime.clearFrame("user-a");
+        else if (transition === "menu") f.runtime.updateFrame(frame([], { soundscape: false }));
+        else if (transition === "hidden") f.runtime.setVisible(false);
+        else if (transition === "mute") f.runtime.setSettings({ buses: { world: 0 } });
+        else f.runtime.updateFrame(frame([], { ownerId: "user-b" }));
+        if (transition === "return") f.runtime.updateFrame(frame());
+        gate.resolve({ length: 4800, numberOfChannels: 1, duration: .1 });
+        await flush();
+        assert.equal(f.context.started.length, 0, transition);
+      } finally { f.runtime.dispose(); }
+    }
+  });
+
+  test(`same-owner camera updates retain ${cueId} while another owner's requests are rejected`, async () => {
+    const touch = AUDIO_CATALOG.cues.find(cue => cue.id === cueId);
+    const f = fixture([touch]), gate = deferred(); f.context.decode = () => gate.promise;
+    try {
+      await f.runtime.unlock(); f.runtime.updateFrame(frame());
+      f.runtime.play({ id: "wrong-view", cueId: touch.id, ownerId: "retired-view", maxAgeMs });
+      assert.equal(f.requests.length, 0);
+      f.runtime.play({ id: "owned-tap", cueId: touch.id, ownerId: "user-a", maxAgeMs });
+      await flush(); f.runtime.updateFrame(frame([], { listener: { ...frame().listener, zoom: 3 } }));
+      gate.resolve({ length: 4800, numberOfChannels: 1, duration: .1 }); await flush();
+      assert.equal(f.context.started.length, 1, "zooming does not revoke a current owner");
+    } finally { f.runtime.dispose(); }
+  });
+
+  test(`${cueId} obeys unlock, master and world mute, visibility, expiry and bounded polyphony`, async () => {
+    const touch = AUDIO_CATALOG.cues.find(cue => cue.id === cueId);
+    const f = fixture([touch]);
+    let sequence = 0;
+    const tap = () => f.runtime.play({ id: `tap:${++sequence}`, cueId: touch.id, ownerId: "user-a", maxAgeMs });
+    try {
+      f.runtime.updateFrame(frame()); tap();
+      await f.runtime.unlock(); await flush();
+      assert.equal(f.context.started.length, 0, "a locked tap is never replayed after unlock");
+      await f.runtime.prepare([touch.id]);
+      for (const patch of [{ enabled: false }, { master: 0 }, { buses: { world: 0 } }]) {
+        f.runtime.setSettings(patch); tap(); await flush();
+        assert.equal(f.context.started.length, 0);
+        f.runtime.setSettings({ enabled: true, master: .65, buses: { world: .55 } });
+        f.advance(200);
+      }
+      f.runtime.setVisible(false); tap(); await flush();
+      assert.equal(f.context.started.length, 0, "hidden view is silent");
+      f.runtime.setVisible(true); await f.runtime.unlock();
+      f.runtime.play({ id: "expired-tap", cueId: touch.id, ownerId: "user-a", occurredAt: 1, maxAgeMs });
+      await flush(); assert.equal(f.context.started.length, 0);
+      for (let index = 0; index < 20; index++) { tap(); await flush(); f.advance(30); }
+      assert.equal(f.context.started.length, 2, "rapid taps share two quiet voices without a backlog");
+      assert.ok(f.context.started.every(source => Math.abs(source.playbackRate.value - 1) <= touch.pitchVariation));
+    } finally { f.runtime.dispose(); }
+  });
 }
 
 test("prepared building completion plays once in the simple view without sharing reward cooldown", async () => {
@@ -274,6 +340,7 @@ test("camera and duck changes retarget only affected gains while keeping the sam
   f.runtime.updateFrame(next);
   assert.equal(master.ramps.length, counts[0]);
   assert.equal(musicBus.ramps.length, counts[1] + 1);
+  assert.equal(musicBus.ramps.at(-1).timeConstant, .8 / 3, "camera-driven music ducking also stays on the native envelope");
   assert.equal(riverGain.ramps.length, counts[2] + 1);
   assert.equal(riverPan.ramps.length, counts[3] + 1);
   for (let index = 0; index < 120; index++) { f.context.currentTime += 1 / 120; f.runtime.updateFrame(next); }
@@ -407,8 +474,48 @@ test("a fading catalog river cannot be reclaimed near water until environment is
   f.runtime.dispose();
 });
 
-test("legacy AudioParam retargeting closes the interrupted ramp without resetting its held value", async () => {
-  const f = fixture([cue("river", "loop")]);
+test("camera retargets and proximity fades never re-anchor spatial loops on a rounded clock", async () => {
+  for (const legacy of [false, true]) {
+    const f = fixture([cue("river", "loop"), cue("campfire", "loop")]);
+    await f.runtime.unlock();
+    const targets = [target("water"), target("fire", "campfire")];
+    f.runtime.updateFrame(frame(targets)); await flush();
+    const params = f.context.started.flatMap(source => [source.connected[0].gain, source.connected[0].connected[0].pan]);
+    for (const param of params) {
+      if (legacy) param.cancelAndHoldAtTime = undefined;
+      else param.cancelAndHoldAtTime = () => assert.fail("continuous spatial automation must not cancel");
+      param.cancelScheduledValues = () => assert.fail("camera motion must not discard the running envelope");
+      param.setValueAtTime = () => assert.fail("a JS clock estimate must not set the rendered value");
+      param.linearRampToValueAtTime = () => assert.fail("spatial loops must use native continuous targets");
+    }
+    for (let index = 1; index <= 240; index++) {
+      // Strong privacy rounding: several pointer/camera frames share one time.
+      f.context.currentTime = Math.floor(index / 120 * 10) / 10;
+      f.runtime.updateFrame(frame(targets.map((item, offset) => ({ ...item,
+        gain: .4 + .3 * Math.sin(index / 17 + offset), pan: .6 * Math.sin(index / 29 + offset),
+      }))));
+    }
+    f.runtime.updateFrame(frame([]));
+    for (const source of f.context.started) {
+      const release = source.connected[0].gain.ramps.at(-1);
+      assert.equal(release.value, 0); assert.equal(release.timeConstant, .3 / 8);
+    }
+    f.context.currentTime += .1;
+    f.runtime.updateFrame(frame(targets));
+    assert.equal(f.context.started.length, 2, "radius re-entry must reclaim the same river and fire voices");
+    assert.equal(f.runtime.getDiagnostics().playback.loopStarts, 2);
+    f.runtime.setSettings({ enabled: false });
+    for (const source of f.context.started) {
+      const release = source.connected[0].gain.ramps.at(-1);
+      assert.equal(release.value, 0); assert.equal(release.timeConstant, .08 / 8,
+        "a final stop must be effectively silent before source.stop");
+    }
+    f.runtime.dispose();
+  }
+});
+
+test("legacy finite music fades close the interrupted ramp without resetting its held value", async () => {
+  const f = fixture([cue("river", "music")]);
   const createGain = f.context.createGain.bind(f.context);
   f.context.createGain = () => {
     const node = createGain();
@@ -419,7 +526,7 @@ test("legacy AudioParam retargeting closes the interrupted ramp without resettin
   };
   await f.runtime.unlock();
   f.runtime.updateFrame(frame([target("water", "river", .8)])); await flush();
-  const param = f.context.started[0].connected[0].gain, level = 10 ** (-10 / 20);
+  const param = f.context.mediaSources[0].connected[0].gain, level = 10 ** (-10 / 20);
   f.context.currentTime = .04;
   f.runtime.updateFrame(frame([target("water", "river", .3)]));
   let [hold, destination] = param.ramps.slice(-2);
@@ -434,7 +541,7 @@ test("legacy AudioParam retargeting closes the interrupted ramp without resettin
   const count = param.ramps.length;
   for (let index = 0; index < 120; index++) f.runtime.updateFrame(frame([target("water", "river", .9)]));
   assert.equal(param.ramps.length, count, "legacy browsers also avoid redundant cancellation");
-  assert.equal(f.context.started.length, 1);
+  assert.equal(f.media.length, 1);
   f.runtime.dispose();
 });
 

@@ -36,7 +36,7 @@ export function InstallationGate({ children }: { children: ReactNode }) {
       <img className={styles.gateArtwork} src={BRAND_LOGO_SRC} alt="Мохлик и друзья. Я живой" width={1024} height={1024} fetchPriority="high" decoding="async" draggable={false} />
       <p className={styles.eyebrow}>Ваш маленький мир рядом</p>
       <h1>Пусть полянка<br />будет под рукой.</h1>
-      <p className={styles.lead}>Добавьте «Я живой» на экран устройства. Возвращайтесь к Мохлику и сообщайте близким, что у вас всё хорошо.</p>
+      <p className={styles.lead}>Добавьте «Я Живой» на экран устройства. Возвращайтесь к Мохлику и сообщайте близким, что у вас всё хорошо.</p>
       <a href="/site" className={styles.siteLink}>Познакомиться с приложением <ArrowRight size={17} aria-hidden="true" /></a>
     </div>
     <div className={styles.gatePanel}><InstallPanel compact /></div>
