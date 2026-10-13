@@ -10,7 +10,12 @@ export type InstallDevice = { platform: InstallPlatform; browser: InstallBrowser
 
 export const UNKNOWN_INSTALL_DEVICE: InstallDevice = { platform: "unknown", browser: "other", embedded: false };
 
-/** Detection selects help text, never grants capabilities or proves installation. */
+/** Desktop browsers run the game directly. Installation stays optional. */
+export function isDesktopInstallDevice(device: InstallDevice): boolean {
+  return device.platform === "windows" || device.platform === "mac" || device.platform === "linux";
+}
+
+/** Detection selects the entry/help experience, never proves installation. */
 export function detectInstallDevice(input: InstallEnvironment): InstallDevice {
   const ua = input.userAgent;
   const hintedPlatform = input.clientHints?.platform ?? "";
@@ -134,12 +139,12 @@ export const INSTALL_GUIDES: Record<InstallGuideId, InstallGuide> = {
     title: "Приложение в Firefox на Windows",
     actions: ["Кнопка веб-приложения", "Добавить", "Открыть приложение"],
     steps: ["В обновлённом Firefox на Windows найдите кнопку веб-приложения справа в адресной строке.", "Добавьте сайт как веб-приложение и подтвердите действие.", "Запускайте «Я живой» через меню «Пуск» или панель задач."],
-    note: "Доступно с Firefox 143 на Windows, для версии из Microsoft Store — с 150. На macOS / Linux или без этой кнопки используйте Chrome либо Edge.",
+    note: "Доступно с Firefox 143 на Windows, для версии из Microsoft Store с 150. На macOS / Linux или без этой кнопки используйте Chrome либо Edge.",
   },
   other: {
     title: "Подберём способ установки",
     actions: ["Ваше устройство", "Подходящий браузер", "Установить"],
-    steps: ["Откройте «Другой браузер или устройство» и выберите подходящий вариант.", "На iPhone / iPad используйте Safari, на Android — Chrome. На компьютере подойдут Chrome, Edge или Safari на macOS 14 и новее.", "Следуйте выбранной инструкции и запускайте приложение с появившегося значка."],
+    steps: ["Откройте «Другой браузер или устройство» и выберите подходящий вариант.", "На iPhone / iPad используйте Safari, на Android используйте Chrome. На компьютере подойдут Chrome, Edge или Safari на macOS 14 и новее.", "Следуйте выбранной инструкции и запускайте приложение с появившегося значка."],
     note: "Браузер передал недостаточно сведений для точной инструкции. Ручной выбор всегда доступен; можно также продолжить в браузере.",
   },
 };
@@ -150,7 +155,7 @@ export function installGuideForDevice(device: InstallDevice): InstallGuide {
   const guide = INSTALL_GUIDES[suggested];
   if (suggested === "other" && device.platform !== "unknown") return {
     ...INSTALL_GUIDES["android-yandex"],
-    note: "У этого браузера не определён способ установки. Откройте сайт в Chrome — там мы покажем подходящую инструкцию.",
+    note: "У этого браузера не определён способ установки. Откройте сайт в Chrome, там мы покажем подходящую инструкцию.",
   };
   if (device.platform !== "ios" || device.browser === "safari") return guide;
   if (device.browser === "chrome") return {

@@ -1,15 +1,16 @@
 import type { Metadata, Viewport } from "next";
+import media from "@/public/site/media.json";
 import { ProductSite } from "@/features/site/product-site";
 
 export const metadata: Metadata = {
-  title: "Я живой — близкие рядом, целый лес в кармане",
-  description: "Сообщайте близким, что всё хорошо, и обживайте уютный мир Мохлика. Познакомьтесь с игрой и установите «Я живой» на телефон или компьютер.",
+  title: "Я живой. близкие рядом, целый лес в кармане",
+  description: "Сообщайте близким, что всё хорошо, и обживайте уютный мир Мохлика. Играйте на компьютере или установите «Я живой» на телефон.",
   alternates: { canonical: "https://im-alive.ru/site" },
   openGraph: {
-    title: "Я живой — маленькая отметка. Большой тёплый мир.",
-    description: "Близкие спокойны. А у тебя — целый лес. Знакомство с приложением и установка на своё устройство.",
+    title: "Я живой. маленькая отметка. Большой тёплый мир.",
+    description: "Близкие спокойны. А у тебя целый лес. Знакомство с приложением и установка на своё устройство.",
     url: "https://im-alive.ru/site", type: "website", locale: "ru_RU",
-    images: [{ url: "https://im-alive.ru/site/poster.webp", width: 1440, height: 900, alt: "Лесная полянка в игре «Я живой»" }],
+    images: [{ url: `https://im-alive.ru${media.poster.src}`, width: media.poster.width, height: media.poster.height, alt: "Лесная полянка в игре «Я живой»" }],
   },
 };
 

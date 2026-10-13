@@ -319,7 +319,7 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
         state.wallet.coins += offer.coins;
         state.residentOrders = { ...orders, completed: orders.completed + 1, earnedCoins: orders.earnedCoins + offer.coins };
         state.tutorialOrder = { ...progress, completed: true };
-        return "Учебный заказ выполнен. Монеты получены — обычные просьбы жителей работают так же";
+        return "Учебный заказ выполнен. Монеты получены. Обычные просьбы жителей работают так же";
       }
       const config = economyCatalog.food?.orders;
       const board = residentOrderBoard(state, now);

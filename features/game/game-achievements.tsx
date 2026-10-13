@@ -63,7 +63,7 @@ export function AchievementCard({ quest, state, rewardRows = [], claimBlocked = 
     <div className={styles.progressBlock}>
       <div className={styles.progressMeta}>
         <span>{view.complete && !multi ? "Получено" : stage}</span>
-        <strong>{state ? `${view.progress!.toLocaleString("ru-RU")} / ${view.target.toLocaleString("ru-RU")}` : "—"}</strong>
+        <strong>{state ? `${view.progress!.toLocaleString("ru-RU")} / ${view.target.toLocaleString("ru-RU")}` : "-"}</strong>
       </div>
       {state && <progress value={view.progress} max={view.target} aria-label={`Прогресс достижения «${quest.title}»${multi && view.next ? `, ступень ${roman[view.next.level - 1]}` : ""}`} />}
       {multi && <ol className={styles.tierTrack} aria-label={`Ступени достижения «${quest.title}»`}>

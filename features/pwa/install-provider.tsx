@@ -15,5 +15,5 @@ export function usePwaInstall() {
   const controller = useContext(InstallContext);
   if (!controller) throw new Error("PWA installation UI requires PwaInstallProvider");
   const snapshot = useSyncExternalStore(controller.subscribe, controller.snapshot, () => INITIAL_INSTALL_SNAPSHOT);
-  return { ...snapshot, install: controller.install, allowBrowser: controller.allowBrowser };
+  return { ...snapshot, install: controller.install, stopWaiting: controller.stopWaiting, allowBrowser: controller.allowBrowser };
 }

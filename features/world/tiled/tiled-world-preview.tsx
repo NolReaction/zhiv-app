@@ -111,7 +111,7 @@ export function TiledWorldPreview() {
             {ready && status.loading && <div className={styles.loadingBadge} role="status"><LoaderCircle className={styles.spinner} aria-hidden size={16} /> Загружаем карту</div>}
           </div>
           <div className={styles.mapFooter}>
-            <span className={styles.mapHint}>В кружке — область focus из Tiled</span>
+            <span className={styles.mapHint}>В кружке показана область focus из Tiled</span>
             <div className={styles.viewOptions}>
               <button type="button" aria-pressed={debug} onClick={() => setDebug(value => !value)}><Grid2X2 aria-hidden size={17} />Разметка</button>
             </div>

@@ -91,7 +91,7 @@ function BetaInfoDialog({ ownerPublicId }: { ownerPublicId: string }) {
       <section className={styles.cooperation} aria-label="Сотрудничество и обратная связь">
         <h2><Pin size={14} aria-hidden="true" />Делаем приложение вместе</h2>
         <p>
-          Приложение в beta-тесте и активно развивается. Расскажите об ошибке или предложите идею — ваше сообщение попадёт прямо разработчику.
+          Приложение в beta-тесте и активно развивается. Расскажите об ошибке или предложите идею. Ваше сообщение попадёт прямо разработчику.
         </p>
         <FeedbackDialog ownerPublicId={ownerPublicId} />
       </section>
@@ -103,7 +103,7 @@ function BetaInfoDialog({ ownerPublicId }: { ownerPublicId: string }) {
           </button>
         </div>
         <p role="status" className={styles.status}>
-          {checking ? "Проверяем обновления…" : refreshError ? "Не удалось проверить новости. Показаны сохранённые записи." : "Новые версии — сверху"}
+          {checking ? "Проверяем обновления…" : refreshError ? "Не удалось проверить новости. Показаны сохранённые записи." : "Новые версии сверху"}
         </p>
         {releases.length > 0
           ? <ReleaseNotesList releases={releases} unreadIds={unreadIds} expandedId={expandedId} onToggle={toggleRelease} />

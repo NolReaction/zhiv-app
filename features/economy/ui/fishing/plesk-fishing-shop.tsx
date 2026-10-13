@@ -49,7 +49,7 @@ export function PleskCatchOdds({ state, catalog, override, preview = false }: { 
   return <section className={styles.odds} data-guide-plesk-odds aria-label={preview ? "Шансы с выбранной снастью" : "Шансы текущих снастей"}>
     <p><span>{preview ? "С этой снастью" : "Шансы выбранных снастей"}</span><small>на один особый улов</small></p>
     <dl className={styles.rarityOdds} aria-label="Шансы по разрядам">{byRarity.map(({ rarity, probability }) => <div key={rarity}><dt><FishRarityBadge rarity={rarity} /></dt><dd>{percent(probability)}</dd></div>)}</dl>
-    <details><summary>Шансы всех видов</summary><p className={styles.hint}>Каждый особый улов проверяется отдельно. Их количество зависит от длительности рыбалки; остальная партия — обычная рыба.</p>
+    <details><summary>Шансы всех видов</summary><p className={styles.hint}>Каждый особый улов проверяется отдельно. Их количество зависит от длительности рыбалки; остальная партия состоит из обычной рыбы.</p>
       <dl className={styles.oddsList}>{odds.map(odd => {
         const fish = catalog.fish.find(entry => entry.itemId === odd.itemId)!;
         const reason = fishingIneligibility(fish, override?.rodId ?? gear.equippedRodId, override?.hookId ?? gear.equippedHookId, catalog);
@@ -76,7 +76,7 @@ export function PleskFishTrade({ economy, state, itemId }: ReadyProps & { itemId
   return <section className={styles.trade} data-guide-plesk-sale aria-label={`Продажа: ${itemName(state, itemId)}`}>
     <div className={styles.tradeHeading}><span>В запасе <strong>{number(stock)}</strong></span><span>За штуку <Price value={limits.sellPrice} /></span></div>
     <div className={styles.quantity}><label htmlFor={id}>Количество</label><input id={id} type="number" inputMode="numeric" min={1} max={Math.max(1, limits.sell)} step={1} value={quantityText} disabled={blocked} onChange={event => setQuantityText(event.target.value)} /><button type="button" disabled={blocked || limits.sell === 0} onClick={() => setQuantityText(String(limits.sell))}>{limits.sell < stock ? `До ${number(limits.sell)}` : "Весь улов"}</button></div>
-    <button type="button" className={styles.primary} disabled={blocked || !canSell} onClick={() => send("sell_fish", itemId, quantity, 0, canSell)} aria-label={`Продать ${itemName(state, itemId)}: ${valid ? quantity : 0}`}><span>Продать</span>{canSell ? <Price value={quantity * limits.sellPrice} /> : <span>—</span>}</button>
+    <button type="button" className={styles.primary} disabled={blocked || !canSell} onClick={() => send("sell_fish", itemId, quantity, 0, canSell)} aria-label={`Продать ${itemName(state, itemId)}: ${valid ? quantity : 0}`}><span>Продать</span>{canSell ? <Price value={quantity * limits.sellPrice} /> : <span>-</span>}</button>
     {!valid && <p className={styles.hint}>Введите целое количество от 1.</p>}
     {valid && stock > 0 && !canSell && <p className={styles.hint}>{quantity > stock ? "Столько рыбы в запасе пока нет." : "Этот объём пока нельзя продать. Уменьшите количество."}</p>}
   </section>;
@@ -87,10 +87,10 @@ export function FishCounter({ economy, state, catalog }: ReadyProps & { catalog:
   const [selection, setSelection] = useState(() => available[0]?.itemId);
   const selected = available.find(fish => fish.itemId === selection) ?? available[0];
   return <>
-    <p className={styles.intro}>«Принесёшь улов — с радостью куплю!»</p>
+    <p className={styles.intro}>«Приноси улов, с радостью куплю!»</p>
     {available.length ? <div className={styles.fishList} aria-label="Рыба в вашей кладовой">{available.map(fish => <button type="button" key={fish.itemId} className={styles.fishChoice} aria-pressed={fish === selected} onClick={() => setSelection(fish.itemId)}>
       <PlayerItemIcon state={state} itemId={fish.itemId} size={40} /><span><strong>{itemName(state, fish.itemId)}</strong><FishRarityBadge rarity={fish.rarity} /></span><span className={styles.stock}>×{number(state.inventory[fish.itemId])}</span>
-    </button>)}</div> : <div className={styles.emptyCatch}><Fish size={32} aria-hidden="true" /><strong>Улов ещё впереди</strong><p>Заберите рыбу после вылазки — она появится здесь.</p></div>}
+    </button>)}</div> : <div className={styles.emptyCatch}><Fish size={32} aria-hidden="true" /><strong>Улов ещё впереди</strong><p>Заберите рыбу после вылазки, и она появится здесь.</p></div>}
     {selected && <PleskFishTrade key={selected.itemId} economy={economy} state={state} itemId={selected.itemId} />}
   </>;
 }
@@ -135,7 +135,7 @@ export function PleskBaitOffer({ economy, state, bait }: ReadyProps & { bait: Fi
     <p className={styles.description}>{bait.description}</p>
     <PleskCatchOdds state={state} catalog={state.catalog.fishing!} override={{ baitId: bait.itemId }} preview />
     {live && <><div className={styles.quantity}><label htmlFor={id}>Купить штук</label><input id={id} type="number" inputMode="numeric" min={1} max={Math.max(1, maximum)} step={1} value={quantityText} disabled={blocked} onChange={event => setQuantityText(event.target.value)} /><small>На прилавке {offer!.remaining}</small></div>
-      <button type="button" className={styles.primary} disabled={blocked || !valid} onClick={() => send("buy_fishing_item", offer!.id, quantity, quantity * price, valid)} aria-label={`Купить наживку: ${itemName(state, bait.itemId)}`}><span>Купить наживку</span>{Number.isSafeInteger(quantity) && quantity > 0 ? <Price value={quantity * price} /> : <span>—</span>}</button></>}
+      <button type="button" className={styles.primary} disabled={blocked || !valid} onClick={() => send("buy_fishing_item", offer!.id, quantity, quantity * price, valid)} aria-label={`Купить наживку: ${itemName(state, bait.itemId)}`}><span>Купить наживку</span>{Number.isSafeInteger(quantity) && quantity > 0 ? <Price value={quantity * price} /> : <span>-</span>}</button></>}
     {live && maximum === 0 && <p className={styles.hint}>{state.storage.available === 0 ? "Кладовая заполнена." : "Для покупки не хватает монет."}</p>}
     {!live && <p className={styles.hint}>Сегодня на прилавке закончилась.</p>}
   </article>;
@@ -153,7 +153,7 @@ export function PleskFishOffer({ economy, state, fish, onOpenOrders }: ReadyProp
     <p className={styles.description}>Для готовки и заказов. В книгу попадёт только ваш собственный улов.</p>
     <div className={styles.discountPrice}>{price < fish.buyPrice && <del aria-label={`Обычная цена: ${number(fish.buyPrice)} монет`}><Price value={fish.buyPrice} /></del>}<Price value={price} /><span>за штуку</span></div>
     {live ? <><div className={styles.quantity}><label htmlFor={id}>Купить штук</label><input id={id} type="number" inputMode="numeric" min={1} max={Math.max(1, maximum)} step={1} value={quantityText} disabled={blocked} onChange={event => setQuantityText(event.target.value)} /><small>На прилавке {offer!.remaining}</small></div>
-      <button type="button" className={styles.primary} disabled={blocked || !valid} onClick={() => send("buy_fishing_item", offer!.id, quantity, quantity * price, valid)} aria-label={`Купить рыбу: ${name}`}><span>Купить рыбу</span>{Number.isSafeInteger(quantity) && quantity > 0 ? <Price value={quantity * price} /> : <span>—</span>}</button></>
+      <button type="button" className={styles.primary} disabled={blocked || !valid} onClick={() => send("buy_fishing_item", offer!.id, quantity, quantity * price, valid)} aria-label={`Купить рыбу: ${name}`}><span>Купить рыбу</span>{Number.isSafeInteger(quantity) && quantity > 0 ? <Price value={quantity * price} /> : <span>-</span>}</button></>
       : <p className={styles.hint}>Сегодня на прилавке закончилась.</p>}
     {live && maximum === 0 && <p className={styles.hint}>{state.storage.available === 0 ? "Кладовая заполнена." : "Для покупки не хватает монет."}</p>}
     {order && <div className={styles.fishOrder}><p>Плёске нужно ×{number(order.items[fish.itemId])}: «{order.name}»</p>{onOpenOrders && <button type="button" className={styles.secondary} onClick={onOpenOrders}>К заказам<ArrowRight size={14} aria-hidden="true" /></button>}</div>}
@@ -330,7 +330,7 @@ export function PleskFishingShop({ economy, onFishing, onOpenPantry, onOpenOrder
   return <div ref={shop} className={styles.shop} data-section-guide-content="plesk" aria-busy={economy.busy || undefined}>
     {state && <div className={styles.wallet}><span>Лавка у пирса</span><span aria-label={`Монеты: ${number(state.wallet.coins)}. Жемчуг: ${formatPearls(state.wallet.pearls)}`}><Price value={state.wallet.coins} /><Price value={state.wallet.pearls} pearls /></span></div>}
     {recovery}
-    {!state ? <p className={styles.hint} role="status">Проверяем ваши запасы…</p> : !catalog ? <><p className={styles.intro}>«Принесёшь речную рыбу — куплю!»</p>{(state.inventory.fish ?? 0) > 0 ? <PantrySale economy={{ ...economy, snapshot: state }} itemId="fish" /> : <p className={styles.hint}>В вашей кладовой пока нет речной рыбы.</p>}</> : <>
+    {!state ? <p className={styles.hint} role="status">Проверяем ваши запасы…</p> : !catalog ? <><p className={styles.intro}>«Приноси речную рыбу, куплю!»</p>{(state.inventory.fish ?? 0) > 0 ? <PantrySale economy={{ ...economy, snapshot: state }} itemId="fish" /> : <p className={styles.hint}>В вашей кладовой пока нет речной рыбы.</p>}</> : <>
       <div className={styles.tabs} role="tablist" aria-label="Лавка Плёски">{tabs.map((entry, index) => <button key={entry.id} ref={node => { tabButtons.current[index] = node; }} type="button" role="tab" data-guide-plesk-tab={entry.id} id={`${id}-${entry.id}`} aria-selected={tab === entry.id} aria-controls={`${id}-panel`} tabIndex={tab === entry.id ? 0 : -1} onClick={() => changeTab(entry.id)} onKeyDown={event => {
         let next = index;
         if (event.key === "ArrowRight") next = (index + 1) % tabs.length;

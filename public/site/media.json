@@ -12,23 +12,102 @@
     "workshop": 1,
     "home": 2
   },
+  "mapPlaces": {
+    "home": {
+      "x": 53.21175720529682,
+      "y": 48.80949315619137
+    },
+    "workshop": {
+      "x": 17.11415653907496,
+      "y": 43.49370167464115
+    },
+    "neighbors": {
+      "x": 84.92822966507177,
+      "y": 43.46092503987241
+    }
+  },
+  "artwork": {
+    "terrainMaster": "art/world/prototype/forest-ground.png",
+    "width": 2560,
+    "height": 2560
+  },
   "poster": {
-    "src": "/site/poster.webp",
+    "src": "/site/poster.webp?v=d9c08aebccc8",
     "width": 1440,
     "height": 900,
-    "alt": "Мохлик у дома-пня и ягодного куста на лесной полянке"
+    "bytes": 295022,
+    "alt": "Мохлик у дома-пня и ягодного куста на лесной полянке",
+    "srcSet": "/site/poster-960.webp?v=780c6717b89e 960w, /site/poster.webp?v=d9c08aebccc8 1440w",
+    "variants": [
+      {
+        "src": "/site/poster-960.webp?v=780c6717b89e",
+        "width": 960,
+        "height": 600,
+        "bytes": 172232
+      },
+      {
+        "src": "/site/poster.webp?v=d9c08aebccc8",
+        "width": 1440,
+        "height": 900,
+        "bytes": 295022
+      }
+    ]
   },
   "map": {
-    "src": "/site/map.webp",
+    "src": "/site/map.webp?v=b78380615791",
     "width": 1600,
     "height": 1600,
-    "alt": "Карта лесного мира с полянкой, мастерской, шахтой, рекой и домами жителей"
+    "bytes": 900002,
+    "alt": "Карта лесного мира с полянкой, мастерской, шахтой, рекой и домами жителей",
+    "srcSet": "/site/map-800.webp?v=1d6609d7e320 800w, /site/map.webp?v=b78380615791 1600w, /site/map-2560.webp?v=7d292614ad7e 2560w",
+    "variants": [
+      {
+        "src": "/site/map-800.webp?v=1d6609d7e320",
+        "width": 800,
+        "height": 800,
+        "bytes": 281084
+      },
+      {
+        "src": "/site/map.webp?v=b78380615791",
+        "width": 1600,
+        "height": 1600,
+        "bytes": 900002
+      },
+      {
+        "src": "/site/map-2560.webp?v=7d292614ad7e",
+        "width": 2560,
+        "height": 2560,
+        "bytes": 1895910
+      }
+    ]
   },
   "nightMap": {
-    "src": "/site/map-night.webp",
+    "src": "/site/map-night.webp?v=8edcde97f9cd",
     "width": 1600,
     "height": 1600,
-    "alt": "Тот же лес вечером: свет в окнах домов и фонари вдоль дорожек"
+    "bytes": 477112,
+    "alt": "Тот же лес вечером: свет в окнах домов и фонари вдоль дорожек",
+    "srcSet": "/site/map-night-800.webp?v=4d5ddef2a6e1 800w, /site/map-night.webp?v=8edcde97f9cd 1600w, /site/map-night-2560.webp?v=f22478e5de64 2560w",
+    "variants": [
+      {
+        "src": "/site/map-night-800.webp?v=4d5ddef2a6e1",
+        "width": 800,
+        "height": 800,
+        "bytes": 152550
+      },
+      {
+        "src": "/site/map-night.webp?v=8edcde97f9cd",
+        "width": 1600,
+        "height": 1600,
+        "bytes": 477112
+      },
+      {
+        "src": "/site/map-night-2560.webp?v=f22478e5de64",
+        "width": 2560,
+        "height": 2560,
+        "bytes": 910462
+      }
+    ]
   },
   "video": null
 }

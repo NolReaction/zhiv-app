@@ -9,8 +9,8 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { detectInstallDevice, suggestedInstallGuide, installDeviceLabel, installGuideForDevice, hasApplicationEntryLink, INSTALL_GUIDES } = await vite.ssrLoadModule("/features/pwa/install-platform.ts");
-const { PwaInstallController, INSTALL_DISMISSED_KEY, INITIAL_INSTALL_SNAPSHOT } = await vite.ssrLoadModule("/features/pwa/install-controller.ts");
+const { detectInstallDevice, suggestedInstallGuide, installDeviceLabel, installGuideForDevice, isDesktopInstallDevice, hasApplicationEntryLink, INSTALL_GUIDES } = await vite.ssrLoadModule("/features/pwa/install-platform.ts");
+const { PwaInstallController, INSTALL_DISMISSED_KEY, INSTALL_PROMPT_TIMEOUT_MS, INITIAL_INSTALL_SNAPSHOT } = await vite.ssrLoadModule("/features/pwa/install-controller.ts");
 const { PwaInstallProvider } = await vite.ssrLoadModule("/features/pwa/install-provider.tsx");
 const { InstallationGate } = await vite.ssrLoadModule("/features/pwa/installation-gate.tsx");
 const { InstallPanel, InstallPanelContent } = await vite.ssrLoadModule("/features/pwa/install-panel.tsx");
@@ -19,6 +19,7 @@ function harness(patch = {}) {
   const events = new EventTarget();
   const media = new Map();
   const storage = new Map();
+  const timers = new Set();
   const source = { userAgent: "Mozilla/5.0 (Linux; Android 14) Chrome/140.0 Safari/537.36", platform: "Linux armv8l", maxTouchPoints: 5,
     standalone: false, secure: true, pathname: "/", search: "", hash: "", ...patch };
   const adapter = {
@@ -32,9 +33,14 @@ function harness(patch = {}) {
     },
     read: () => source,
     storage: () => ({ getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) }),
+    scheduleTimeout(callback, milliseconds) {
+      assert.equal(milliseconds, INSTALL_PROMPT_TIMEOUT_MS);
+      const timer = { callback }; timers.add(timer); return () => timers.delete(timer);
+    },
   };
   const controller = new PwaInstallController(adapter);
-  return { controller, adapter, events, media, storage, source,
+  return { controller, adapter, events, media, storage, source, timers,
+    expire() { for (const timer of [...timers]) timer.callback(); },
     display(mode, matches) { const query = media.get(`(display-mode: ${mode})`); query.matches = matches; query.target.dispatchEvent(new Event("change")); },
     offer(outcome = "accepted", fail = false) {
       let calls = 0;
@@ -66,6 +72,93 @@ test("device help distinguishes iPad desktop mode and browsers that include Chro
     assert.equal(suggestedInstallGuide(detected), guide);
   }
   assert.equal(detectInstallDevice({ userAgent: "Mozilla/5.0 (Linux; Android 14; wv) Chrome/140", platform: "Linux", maxTouchPoints: 5 }).embedded, true);
+});
+
+test("desktop browsers enter the game directly while mobile and desktop-mode iPad retain their install choice", () => {
+  const devices = [
+    ["Mozilla/5.0 (Windows NT 10.0) Chrome/150 YaBrowser/26 Safari/537", "Win32", 0, true],
+    ["Mozilla/5.0 (Macintosh) AppleWebKit/605 Version/26 Safari/605", "MacIntel", 0, true],
+    ["Mozilla/5.0 (X11; Linux x86_64) Firefox/150", "Linux x86_64", 0, true],
+    ["Mozilla/5.0 (Macintosh) AppleWebKit/605 Version/26 Safari/605", "MacIntel", 5, false],
+    ["Mozilla/5.0 (Linux; Android 14) Chrome/150 Safari/537", "Linux armv8l", 5, false],
+    ["Mozilla/5.0 (iPhone) AppleWebKit/605 Version/26 Mobile Safari/605", "iPhone", 5, false],
+    ["Private browser", "", 0, false],
+  ];
+  for (const [userAgent, platform, maxTouchPoints, direct] of devices) {
+    const h = harness({ userAgent, platform, maxTouchPoints }); h.controller.start();
+    assert.equal(isDesktopInstallDevice(h.controller.snapshot().device), direct, userAgent);
+    assert.equal(h.controller.snapshot().browserAllowed, direct, userAgent);
+    assert.equal(h.controller.snapshot().standalone, false, "desktop admission does not pretend the application is installed");
+    assert.equal(h.storage.size, 0, "automatic desktop admission is not persisted as a user's mobile decision");
+    h.controller.stop();
+  }
+});
+
+function deferredOffer(h) {
+  const prompt = Promise.withResolvers(), choice = Promise.withResolvers();
+  let calls = 0;
+  const event = new Event("beforeinstallprompt", { cancelable: true });
+  event.prompt = () => { calls++; return prompt.promise; };
+  event.userChoice = choice.promise;
+  h.events.dispatchEvent(event);
+  return { prompt, choice, event, calls: () => calls };
+}
+
+test("missing native responses time out, release callers and cannot revive a consumed install event", async () => {
+  const h = harness(); h.controller.start();
+  const offered = deferredOffer(h), operation = h.controller.install();
+  assert.equal(h.controller.snapshot().busy, true); assert.equal(h.timers.size, 1);
+  h.expire(); await operation;
+  assert.equal(h.controller.snapshot().busy, false); assert.equal(h.controller.snapshot().outcome, "timeout");
+  assert.equal(h.timers.size, 0);
+  const recovered = h.controller.snapshot();
+  offered.prompt.resolve({ outcome: "accepted" }); offered.choice.resolve({ outcome: "accepted" });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.controller.snapshot(), recovered, "late promises cannot replace the timeout recovery");
+  h.events.dispatchEvent(offered.event); await h.controller.install(); assert.equal(offered.calls(), 1);
+  h.events.dispatchEvent(new Event("appinstalled"));
+  assert.equal(h.controller.snapshot().installedHere, true, "a real appinstalled event still updates known installation");
+  h.controller.stop();
+});
+
+test("either native promise may complete and every error or stop clears its wait timer", async () => {
+  for (const source of ["prompt", "choice"]) {
+    const h = harness(); h.controller.start();
+    const offered = deferredOffer(h), operation = h.controller.install();
+    offered[source].resolve({ outcome: "accepted" }); await operation;
+    assert.equal(h.controller.snapshot().outcome, "accepted"); assert.equal(h.timers.size, 0);
+    offered[source === "prompt" ? "choice" : "prompt"].reject(new Error("late rejection"));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(h.controller.snapshot().outcome, "accepted"); h.controller.stop();
+  }
+  for (const action of ["error", "stop", "manual", "browser"]) {
+    const h = harness(); h.controller.start();
+    const offered = deferredOffer(h), operation = h.controller.install();
+    if (action === "error") offered.prompt.reject(new Error("unavailable"));
+    else if (action === "stop") h.controller.stop();
+    else if (action === "manual") h.controller.stopWaiting();
+    else h.controller.allowBrowser();
+    await operation;
+    assert.equal(h.controller.snapshot().busy, false, action); assert.equal(h.timers.size, 0, action);
+    if (action === "browser") assert.equal(h.controller.snapshot().browserAllowed, true);
+    h.controller.stop();
+  }
+});
+
+test("new install events survive cancellation and stale completions cannot overwrite the next attempt", async () => {
+  const h = harness(); h.controller.start();
+  const old = deferredOffer(h), first = h.controller.install();
+  const next = deferredOffer(h);
+  assert.equal(h.controller.snapshot().canInstall, false, "a new offered event must not launch a second dialog while busy");
+  h.controller.stopWaiting(); await first;
+  assert.equal(h.controller.snapshot().canInstall, true, "the new event remains usable after leaving the previous wait");
+  const second = h.controller.install(); assert.equal(next.calls(), 1);
+  old.choice.resolve({ outcome: "accepted" }); old.prompt.reject(new Error("late rejection"));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.controller.snapshot().busy, true); assert.equal(h.controller.snapshot().outcome, "idle");
+  next.choice.resolve({ outcome: "dismissed" }); await second;
+  assert.equal(h.controller.snapshot().outcome, "dismissed"); assert.equal(h.timers.size, 0);
+  h.controller.stop();
 });
 
 test("low-entropy hints refine reduced UA without treating shared Chromium as Chrome", () => {

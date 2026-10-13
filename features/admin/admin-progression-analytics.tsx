@@ -18,7 +18,7 @@ const signalNames: Record<AdminProgression["snapshot"]["review"][number]["signal
   awaiting_collection_24h: "Урожай ждёт начала сбора более 24 ч",
 };
 const percent = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 });
-export function progressionShare(players: number, total: number) { return total ? `${percent.format(players / total * 100)}%` : "—"; }
+export function progressionShare(players: number, total: number) { return total ? `${percent.format(players / total * 100)}%` : "-"; }
 export function progressionDuration(seconds: number | null) {
   if (seconds === null) return "Нет измерения";
   if (seconds < 60) return `${analyticsCount(seconds)} с`;
@@ -55,7 +55,7 @@ export function AdminProgressionAnalytics({ data, onOpen, onPlayer }: {
   return <>
     <section className={styles.panel} aria-label="Первые шаги новых игроков">
       <div className={styles.sectionRow}><div className={styles.heading}><h3>Как начинают новые игроки</h3>
-        <p>Аккаунты, зарегистрированные {data.from} — {data.to} по UTC, с учётом поиска и аудитории. Их развитие наблюдаем до {economyTime(p.observedUntil)}, включая действия после выбранного периода.</p></div>
+        <p>Аккаунты, зарегистрированные с {data.from} по {data.to} (UTC), с учётом поиска и аудитории. Их развитие наблюдаем до {economyTime(p.observedUntil)}, включая действия после выбранного периода.</p></div>
         <button type="button" className={styles.button} onClick={() => downloadAnalyticsCsv(`progression-${data.from}-${data.to}.csv`, progressionCohortCsvRows(data, p))}>CSV первых шагов</button></div>
       <div className={styles.resourceMetrics}>
         <div><span>Новые аккаунты</span><strong>{analyticsCount(c.players)}</strong></div>
@@ -63,13 +63,13 @@ export function AdminProgressionAnalytics({ data, onOpen, onPlayer }: {
         <div><span>Дом ≥2 сейчас</span><strong>{analyticsCount(c.home2Players)} <small>· {progressionShare(c.home2Players, c.players)}</small></strong></div>
       </div>
       {!c.players ? <p className={styles.empty}>Новых аккаунтов с такими фильтрами нет. Расширьте период или измените поиск.</p> : <>
-        <p className={styles.note}>Шаги независимы: игроки могут выбирать разные занятия и строить в разном порядке. Доля считается от всех {analyticsCount(c.players)} новых аккаунтов, включая ещё не заведшие хозяйство. Дом ≥2 — уровень сейчас, дата его достижения неизвестна.</p>
+        <p className={styles.note}>Шаги независимы: игроки могут выбирать разные занятия и строить в разном порядке. Доля считается от всех {analyticsCount(c.players)} новых аккаунтов, включая ещё не заведшие хозяйство. Дом ≥2: уровень сейчас, дата его достижения неизвестна.</p>
         <ul className={styles.progressionStages} aria-label="Подтверждённые первые шаги">{c.stages.map(stage => <li key={stage.id}>
           <span>{stageNames[stage.id]}<small>Медиана от регистрации: {progressionDuration(stage.medianSeconds)}</small></span>
           <strong>{analyticsCount(stage.players)} из {analyticsCount(c.players)} · {progressionShare(stage.players, c.players)}</strong>
           <span className={styles.barTrack} aria-hidden="true"><span style={{ width: `${stage.players / c.players * 100}%` }} /></span>
         </li>)}</ul>
-        <p className={styles.note}>Медиана — время, за которое половина достигших шага игроков его прошла. Время игроков без подтверждённого шага не подставляется как ноль. Занятия — вылазка, рыбалка или производство; получение постройки показано отдельно.</p>
+        <p className={styles.note}>Медиана показывает время, за которое половина достигших шага игроков его прошла. Время игроков без подтверждённого шага не подставляется как ноль. Занятия включают вылазку, рыбалку или производство; получение постройки показано отдельно.</p>
       </>}
       <p className={styles.note}>У {analyticsCount(c.playersWithEvents)} из {analyticsCount(c.players)} новых аккаунтов есть сохранённые операции. Самая ранняя: {c.firstRecordedAt ? economyTime(c.firstRecordedAt) : "истории пока нет"}. Удалённые и несохранённые события не восстанавливаются; первое наблюдённое действие может быть не первым за жизнь аккаунта.</p>
     </section>

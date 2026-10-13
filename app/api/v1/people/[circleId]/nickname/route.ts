@@ -16,7 +16,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ circl
     && Object.keys(body).length === 1 && "nickname" in body && typeof body.nickname === "string"
       ? normalizePersonNickname(body.nickname) : null;
   if (!circleId || nickname === null) {
-    return NextResponse.json({ code: "INVALID_NICKNAME", message: "Подпись — до 50 символов без переносов строк" }, { status: 400, headers: NO_STORE_HEADERS });
+    return NextResponse.json({ code: "INVALID_NICKNAME", message: "В подписи допустимо до 50 символов без переносов строк" }, { status: 400, headers: NO_STORE_HEADERS });
   }
   const result = updateDevNickname(await devSessionToken(), circleId, nickname);
   return result.kind === "ok" ? NextResponse.json(result.value, { headers: NO_STORE_HEADERS }) : devResultError(result);

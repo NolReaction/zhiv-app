@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import test, { after } from "node:test";
@@ -17,6 +18,8 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
 after(() => vite.close());
 const page = await vite.ssrLoadModule("/app/site/page.tsx");
 const { PwaInstallProvider } = await vite.ssrLoadModule("/features/pwa/install-provider.tsx");
+const installPlatform = await vite.ssrLoadModule("/features/pwa/install-platform.ts");
+const { INITIAL_INSTALL_SNAPSHOT } = await vite.ssrLoadModule("/features/pwa/install-controller.ts");
 const { default: manifest } = await vite.ssrLoadModule("/app/manifest.ts");
 const media = JSON.parse(await readFile(path.join(root, "public/site/media.json"), "utf8"));
 const demoSource = await readFile(path.join(root, "features/site/site-demos.tsx"), "utf8");
@@ -70,19 +73,48 @@ function demoHarness(name, environment = {}) {
       if (id === "react") return hooks;
       if (id === "react/jsx-runtime") return jsxRuntime;
       if (id === "lucide-react") return new Proxy({}, { get: (_, icon) => props => createElement("svg", { ...props, "data-icon": icon }) });
+      if (id === "next/link") return { default: ({ prefetch, ...props }) => { assert.equal(prefetch, false); return createElement("a", props); } };
+      if (id === "@/public/site/media.json") return { default: media };
       if (id.endsWith(".module.css")) return new Proxy({}, { get: (_, key) => key });
       assert.fail(`Unexpected demo dependency: ${id}`);
     },
   };
   vm.runInNewContext(demoCode, context, { filename: "site-demos.tsx" });
   return {
-    render() {
+    render(props = {}) {
       cursor = 0;
-      const tree = context.exports[name](), nodes = elements(tree);
+      const tree = context.exports[name](props), nodes = elements(tree);
       while (pending.length) pending.shift()();
       return { nodes, html: renderToStaticMarkup(tree) };
     },
     unmount() { for (const cleanup of cleanups.values()) cleanup?.(); cleanups.clear(); },
+  };
+}
+
+function productHarness() {
+  const motion = { motionEnabled: true, reducedMotion: false };
+  const installation = { ...INITIAL_INSTALL_SNAPSHOT };
+  let toggles = 0;
+  function WorldDemo() { return null; }
+  const context = { exports: {}, require(id) {
+    if (id === "react") return { useRef: initial => ({ current: initial }) };
+    if (id === "react/jsx-runtime") return jsxRuntime;
+    if (id === "lucide-react") return new Proxy({}, { get: (_, icon) => props => createElement("svg", { ...props, "data-icon": icon }) });
+    if (id === "next/link") return { default: ({ prefetch, ...props }) => { assert.equal(prefetch, false, "the presentation must not prefetch the game"); return createElement("a", props); } };
+    if (id === "@/lib/brand-assets") return { BRAND_LOGO_SRC: "/brand/logo.png" };
+    if (id === "@/features/pwa/install-panel") return { InstallPanel: () => null };
+    if (id === "@/features/pwa/install-provider") return { usePwaInstall: () => installation };
+    if (id === "@/features/pwa/install-platform") return installPlatform;
+    if (id === "@/public/site/media.json") return { default: media };
+    if (id === "./forest-atmosphere") return { ForestAtmosphere: () => null };
+    if (id === "./use-site-motion") return { useSiteMotion: () => ({ ...motion, toggleMotion: () => { toggles++; } }) };
+    if (id === "./site-demos") return { SiteCheckInDemo: () => null, SiteWorldDemo: WorldDemo, SiteVideoPlaceholder: () => null };
+    if (id.endsWith(".module.css")) return new Proxy({}, { get: (_, key) => key });
+    assert.fail(`Unexpected product dependency: ${id}`);
+  } };
+  vm.runInNewContext(productCode, context, { filename: "product-site.tsx" });
+  return { motion, installation, WorldDemo, toggles: () => toggles,
+    render() { const tree = context.exports.ProductSite(); return { nodes: elements(tree), html: renderToStaticMarkup(tree) }; },
   };
 }
 
@@ -162,6 +194,26 @@ test("world preview switches places and night art through real controls without 
   demo.unmount();
 });
 
+test("preview markers follow the effective world geometry rather than drifting after an artwork update", async () => {
+  const source = JSON.parse(await readFile(path.join(root, "features/world/tiled/forest.generated.json"), "utf8"));
+  const { previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
+  const scene = previewWorldScene(source, media.levels);
+  const h = demoHarness("SiteWorldDemo"), view = h.render();
+  for (const [key, siteId, label] of [["home", "home", "Дом"], ["workshop", "workshop", "Мастерская"], ["neighbors", "plesk-shop", "Плёска"]]) {
+    const anchor = scene.sites.find(site => site.id === siteId)?.anchor;
+    assert.ok(anchor, `World site is missing: ${siteId}`);
+    const pin = view.nodes.find(node => node.props["aria-label"] === `Узнать: ${label}`);
+    assert.ok(pin);
+    for (const [axis, style, size] of [["x", "left", scene.width], ["y", "top", scene.height]]) {
+      const position = media.mapPlaces[key][axis];
+      assert.ok(Number.isFinite(position) && position >= 0 && position <= 100);
+      assert.ok(Math.abs(position - anchor[axis] / size * 100) < 1e-8, `Regenerate site metadata after moving ${siteId}`);
+      assert.equal(pin.props.style[style], `${position}%`, `Rendered marker must use regenerated ${key}.${axis}`);
+    }
+  }
+  h.unmount();
+});
+
 test("the video placeholder has no play action, movie element, API call, or playback effect", () => {
   const document = { addEventListener() { assert.fail("a placeholder must not subscribe to playback events"); } };
   const video = { play() { assert.fail("a placeholder must not start playback"); }, pause() { assert.fail("a placeholder must not pause playback"); }, load() { assert.fail("a placeholder must not request a movie"); } };
@@ -212,13 +264,32 @@ test("the public route's complete import graph excludes game runtimes and authen
   assert.ok(visited.has(path.join(root, "features/pwa/install-panel.tsx")), "real installation instructions remain connected to the public route");
 });
 
-test("every local media URL exists and images decode at their declared dimensions within a small budget", async () => {
-  const html = renderPage(), declarations = [], urls = new Set();
+test("responsive artwork decodes at its advertised dimensions and budgets one selected resource per image", async () => {
+  const html = renderPage(), declarations = [], urls = new Set(), fallbackUrls = new Set();
   for (const [, tag] of html.matchAll(/(<img\b[^>]*>)/g)) {
     const attrs = Object.fromEntries([...tag.matchAll(/([\w-]+)="([^"]*)"/g)].map(match => [match[1], match[2]]));
     declarations.push({ src: attrs.src.replaceAll("&amp;", "&"), width: Number(attrs.width), height: Number(attrs.height) });
+    fallbackUrls.add(attrs.src.replaceAll("&amp;", "&"));
+    if (attrs.src.startsWith("/site/")) {
+      assert.ok(attrs.srcSet && attrs.sizes, "public artwork must give the browser responsive candidates and layout sizes");
+      for (const candidate of attrs.srcSet.split(",")) {
+        const [src, descriptor] = candidate.trim().split(/\s+/);
+        assert.match(descriptor, /^[1-9]\d*w$/, "responsive media uses actual pixel width descriptors");
+        urls.add(src.replaceAll("&amp;", "&"));
+      }
+    }
   }
   declarations.push(media.poster, media.map, media.nightMap);
+  for (const group of [media.poster, media.map, media.nightMap]) {
+    assert.ok(group.variants.length >= 2, "artwork has a smaller screen option");
+    assert.equal(group.srcSet, group.variants.map(image => `${image.src} ${image.width}w`).join(", "));
+    assert.ok(group.variants.some(image => image.src === group.src), "the fallback belongs to the responsive family");
+    declarations.push(...group.variants);
+  }
+  for (const group of [media.map, media.nightMap]) {
+    assert.ok(group.variants.some(image => image.width <= 800), "small devices need a compact map");
+    assert.ok(group.variants.some(image => image.width >= 2560), "high-DPI maps retain the source's native detail");
+  }
   for (const image of declarations) urls.add(image.src);
   for (const filename of await readdir(path.join(root, "features/site"))) {
     const content = await readFile(path.join(root, "features/site", filename), "utf8");
@@ -233,10 +304,12 @@ test("every local media URL exists and images decode at their declared dimension
       collect(source);
     }
   }
-  let initialImageBytes = 0;
+  let fallbackImageBytes = 0;
+  const resourceBytes = new Map();
   for (const src of urls) {
     assert.ok(src.startsWith("/"), `Media must be self-hosted: ${src}`);
     const bytes = await readFile(localAsset(src));
+    resourceBytes.set(src, bytes.length);
     assert.ok(bytes.length > 0, `Empty asset: ${src}`);
     if (/\.(?:mp4|webm)(?:[?#].*)?$/.test(src)) continue;
     const { info } = await sharp(bytes).raw().toBuffer({ resolveWithObject: true });
@@ -245,44 +318,75 @@ test("every local media URL exists and images decode at their declared dimension
       assert.equal(info.width / info.height, dimensions.width / dimensions.height, `Wrong declared aspect ratio: ${src}`);
       if (src.startsWith("/site/")) {
         assert.equal(info.width, dimensions.width, src); assert.equal(info.height, dimensions.height, src);
+        if (dimensions.bytes !== undefined) assert.equal(bytes.length, dimensions.bytes, `Stale metadata byte size: ${src}`);
       }
     }
-    if (src.startsWith("/site/")) assert.ok(bytes.length < 1_000_000, `${src} exceeds the 1 MB image budget: ${bytes.length}`);
-    if (html.includes(src.replaceAll("&", "&amp;"))) initialImageBytes += bytes.length;
+    if (src.startsWith("/site/")) {
+      const budget = info.width > 1600 ? 2_500_000 : 1_000_000;
+      assert.ok(bytes.length < budget, `${src} exceeds its ${budget} byte image budget: ${bytes.length}`);
+      assert.match(src, /\?v=[a-f\d]{12}$/, "new artwork must invalidate a previously downloaded preview");
+      assert.equal(new URL(src, "https://im-alive.ru").searchParams.get("v"), createHash("sha256").update(bytes).digest("hex").slice(0, 12),
+        `The asset revision must match its bytes: ${src}`);
+    }
+    if (fallbackUrls.has(src)) fallbackImageBytes += bytes.length;
   }
-  assert.ok(initialImageBytes < 2_000_000, `Initial unique images exceed 2 MB: ${initialImageBytes}`);
+  assert.ok(fallbackImageBytes < 2_000_000, `Fallback page images exceed 2 MB: ${fallbackImageBytes}`);
+  const compactSceneBytes = [media.poster, media.map].reduce((sum, group) => sum + resourceBytes.get(group.variants[0].src), 0);
+  assert.ok(compactSceneBytes < 750_000, `Small-screen scene candidates exceed 750 KB: ${compactSceneBytes}`);
   assert.equal(page.metadata.openGraph.images[0].url, `https://im-alive.ru${media.poster.src}`);
   assert.equal(page.metadata.openGraph.images[0].width, media.poster.width);
   assert.equal(page.metadata.openGraph.images[0].height, media.poster.height);
 });
 
 test("the site exposes an honest native pause toggle and respects a system motion preference", () => {
-  const motion = { motionEnabled: true, reducedMotion: false };
-  let toggles = 0;
-  const context = { exports: {}, require(id) {
-    if (id === "react") return { useRef: initial => ({ current: initial }) };
-    if (id === "react/jsx-runtime") return jsxRuntime;
-    if (id === "lucide-react") return new Proxy({}, { get: (_, icon) => props => createElement("svg", { ...props, "data-icon": icon }) });
-    if (id === "next/link") return { default: ({ prefetch, ...props }) => { assert.equal(prefetch, false, "the presentation must not prefetch the game"); return createElement("a", props); } };
-    if (id === "@/lib/brand-assets") return { BRAND_LOGO_SRC: "/brand/logo.png" };
-    if (id === "@/features/pwa/install-panel") return { InstallPanel: () => null };
-    if (id === "./forest-atmosphere") return { ForestAtmosphere: () => null };
-    if (id === "./use-site-motion") return { useSiteMotion: () => ({ ...motion, toggleMotion: () => { toggles++; } }) };
-    if (id === "./site-demos") return { SiteCheckInDemo: () => null, SiteWorldDemo: () => null, SiteVideoPlaceholder: () => null };
-    if (id.endsWith(".module.css")) return new Proxy({}, { get: (_, key) => key });
-    assert.fail(`Unexpected product dependency: ${id}`);
-  } };
-  vm.runInNewContext(productCode, context, { filename: "product-site.tsx" });
-  const view = () => { const tree = context.exports.ProductSite(); return { nodes: elements(tree), html: renderToStaticMarkup(tree) }; };
-  let control = button(view(), "Спокойный режим");
+  const h = productHarness();
+  let control = button(h.render(), "Спокойный режим");
   assert.equal(control.props.type, "button");
   assert.equal(control.props["aria-pressed"], false);
-  control.props.onClick(); assert.equal(toggles, 1, "the user can pause the actual motion hook from a native button");
-  motion.motionEnabled = false;
-  control = button(view(), "Спокойный режим");
+  control.props.onClick(); assert.equal(h.toggles(), 1, "the user can pause the actual motion hook from a native button");
+  h.motion.motionEnabled = false;
+  control = button(h.render(), "Спокойный режим");
   assert.equal(control.props["aria-pressed"], true, "the calm state is exposed without changing the button's name");
-  motion.reducedMotion = true;
-  assert.doesNotMatch(view().html, /Спокойный режим/, "a reduced-motion visitor is not offered an override to the system preference");
+  h.motion.reducedMotion = true;
+  assert.doesNotMatch(h.render().html, /Спокойный режим/, "a reduced-motion visitor is not offered an override to the system preference");
+});
+
+test("desktop and installed visitors enter the game from every primary site action while phones retain installation guidance", () => {
+  const h = productHarness();
+  for (const device of [
+    { platform: "windows", browser: "yandex", embedded: false },
+    { platform: "mac", browser: "safari", embedded: false },
+    { platform: "linux", browser: "firefox", embedded: false },
+  ]) {
+    Object.assign(h.installation, { ready: true, device });
+    const view = h.render();
+    const entries = view.nodes.filter(node => node.props.href === "/");
+    assert.ok(entries.length >= 4, "header, hero, closing and footer offer a direct game entry");
+    assert.ok(entries.some(node => renderToStaticMarkup(node).includes("Играть")));
+    for (const entry of entries) assert.equal(entry.props.prefetch, false, "game chunks load only on deliberate entry");
+    assert.equal(view.nodes.find(node => node.type === h.WorldDemo).props.entryHref, "/");
+    assert.doesNotMatch(view.html, /href="#install"[^>]*>Установить/, "desktop primary actions must not become an install detour");
+  }
+  Object.assign(h.installation, { ready: true, standalone: false, device: { platform: "ios", browser: "safari", embedded: false } });
+  let view = h.render();
+  assert.ok(view.nodes.some(node => node.props.href === "#install" && renderToStaticMarkup(node).includes("Установить")));
+  assert.equal(view.nodes.find(node => node.type === h.WorldDemo).props.entryHref, "#install");
+  h.installation.standalone = true; view = h.render();
+  assert.equal(view.nodes.find(node => node.type === h.WorldDemo).props.entryHref, "/", "installed phones do not return to installation guidance");
+  h.installation.ready = false; h.installation.standalone = false;
+  view = h.render();
+  assert.equal(view.nodes.find(node => node.type === h.WorldDemo).props.entryHref, "#install", "server output does not guess a desktop client");
+});
+
+test("the world demo follows its entry route without prefetching or mounting the game", () => {
+  const h = demoHarness("SiteWorldDemo");
+  for (const entryHref of ["/", "#install"]) {
+    const view = h.render({ entryHref });
+    const entry = view.nodes.find(node => node.props.href === entryHref);
+    assert.ok(entry); assert.equal(entry.props.prefetch, false);
+    assert.match(view.html, entryHref === "/" ? /Играть на своей полянке/ : /Хочу свою полянку/);
+  }
+  h.unmount();
 });
 
 test("public demo controls remain native keyboard controls and communicate their state", () => {

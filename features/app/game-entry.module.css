@@ -2,4 +2,5 @@
 .loading p { margin: 0; max-width: 360px; line-height: 1.65; font-size: 14px; }
 .loading p:first-child { font-size: 20px; font-weight: 600; }
 .loading button { padding: 13px 20px; border: 1px solid #d3e89d; border-radius: 12px; background: #d3e89d; color: #25351e; font: inherit; cursor: pointer; }
-.loading button:focus-visible { outline: 3px solid #effacb; outline-offset: 5px; }
+.loading a { display: inline-flex; align-items: center; min-height: 44px; color: #d2dfc4; text-underline-offset: 4px; }
+.loading :is(button, a):focus-visible { outline: 3px solid #effacb; outline-offset: 5px; }

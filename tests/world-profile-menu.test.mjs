@@ -132,8 +132,8 @@ test("unknown state disables calling and does not claim zero progress or an inve
   const view = profile({ observation: null, economy: { snapshot: null } });
   assert.match(view.markup, /Полянка загружается/);
   assert.match(view.markup, /<dt>Дом<\/dt><dd>1 ур\.<\/dd>/);
-  assert.match(view.markup, /<dt>Исследования<\/dt><dd>—<\/dd>/);
-  assert.match(view.markup, /<dt>Книга находок<\/dt><dd>—<\/dd>/);
+  assert.match(view.markup, /<dt>Исследования<\/dt><dd>-<\/dd>/);
+  assert.match(view.markup, /<dt>Книга находок<\/dt><dd>-<\/dd>/);
   assert.equal(namedButton(view, "Позвать Мохлика").props.disabled, true);
   assert.doesNotMatch(view.markup, /Полон сил|Память сохранена/);
   assert.match(profile({ world: { snapshot: { state: { ...newWorldState(), completedJourneys: 2 } } } }).markup, /<dt>Прежние походы<\/dt><dd>2<\/dd>/);

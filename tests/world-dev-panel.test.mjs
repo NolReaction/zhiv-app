@@ -450,12 +450,12 @@ test("full fishing rehearsal has explicit start and cancel without issuing econo
 
 
 test("Pleska DEV readout shows her own needs and returns to free behavior without account commands", () => {
-  const resident = { action: "rest", reason: "Устала — пора восстановить силы.", destinationId: "plesk-rest",
+  const resident = { action: "rest", reason: "Устала, пора восстановить силы.", destinationId: "plesk-rest",
     catchCount: 2, decisions: 7, needs: { energy: .23, patience: .66, social: .4 } };
   const view = panel("plesk", { observation: { resident }, state: { ...WORLD_DEV_DEFAULTS,
     residentPreview: { id: 1, action: "fish", direction: "front", repeat: true } } });
   assert.match(view.markup, /Внутреннее состояние Плёски/);
-  assert.match(view.markup, /Устала — пора восстановить силы/);
+  assert.match(view.markup, /Устала, пора восстановить силы/);
   const meters = view.elements.filter(element => element.type === "meter");
   assert.deepEqual(meters.map(meter => meter.props.value), [.23, .66, .4]);
   assert.match(view.markup, /Свой улов: 2/);

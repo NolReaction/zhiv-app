@@ -50,7 +50,7 @@ export function AdminTapHistoryPanel({ target, refreshVersion, onAccessError }: 
       </tbody></table></div>
       <label>Детали за день UTC<select value={selectedDay} onChange={event => setDay(event.target.value)}>{days.map(value => <option key={value.day}>{value.day}</option>)}</select></label>
       <div className={styles.tableScroll}><table><caption>Минуты активности · {selectedDay}</caption><thead><tr><th>UTC</th><th>Получено</th><th>Время клиента</th><th>Интервал, мс</th><th>Отметки</th></tr></thead><tbody>
-        {minutes.map(row => <tr key={row.at}><td>{row.at.slice(11, 16)}{!row.complete && " · неполная"}</td><td>{row.receivedTaps}</td><td>{row.eventTaps}</td><td>{row.intervalCount ? Math.round(row.intervalSumMs / row.intervalCount) : "—"}</td><td>{row.watchlisted && <span className={styles.watchBadge}>Наблюдение</span>}{row.reviewSignal && " Сигнал для проверки"}</td></tr>)}
+        {minutes.map(row => <tr key={row.at}><td>{row.at.slice(11, 16)}{!row.complete && " · неполная"}</td><td>{row.receivedTaps}</td><td>{row.eventTaps}</td><td>{row.intervalCount ? Math.round(row.intervalSumMs / row.intervalCount) : "-"}</td><td>{row.watchlisted && <span className={styles.watchBadge}>Наблюдение</span>}{row.reviewSignal && " Сигнал для проверки"}</td></tr>)}
       </tbody></table></div>
     </>}
     <p className={styles.hint}>Секундные окна выше доступны за последние два часа. Месячная история накапливается после обновления сервера; уже удалённые записи не восстанавливаются. История обновляется при выборе игрока и по кнопке обновления.</p>

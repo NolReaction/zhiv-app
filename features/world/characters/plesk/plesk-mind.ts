@@ -68,20 +68,20 @@ function selectIntent(mind: PleskMind, places: PleskPlaces, env: PleskEnvironmen
   const { energy, patience, social } = mind.needs;
   const candidates: { intent: PleskIntent; score: number; reason: string }[] = [
     { intent: "rest", score: (1 - energy) * 2.4 + env.rain * 1.1 + env.dusk * .65 + (energy < .22 ? 4 : 0),
-      reason: env.rain > .6 ? "Дождь усилился — откладывает удочку и отдыхает у пирса." : env.dusk > .7 ? "Стемнело — решила немного передохнуть." : "Устала — пора восстановить силы." },
-    { intent: "look", score: (1 - patience) * 1.1 + .12, reason: "Клёв не радует — осматривается и набирается терпения." },
+      reason: env.rain > .6 ? "Дождь усилился, откладывает удочку и отдыхает у пирса." : env.dusk > .7 ? "Стемнело, решила немного передохнуть." : "Устала, пора восстановить силы." },
+    { intent: "look", score: (1 - patience) * 1.1 + .12, reason: "Клёв не радует, осматривается и набирается терпения." },
     { intent: "tackle", score: (1 - patience) * .75 + .16, reason: "Проверяет снасти перед следующим забросом." },
   ];
   if (places.waterTarget && energy > .18 && env.rain < .82 && mind.catchCount < PLESK_MIND_LIMITS.basket) candidates.push({ intent: "fish",
     score: .55 + energy * .6 + patience * .45 - env.rain * .5 - env.dusk * .55,
-    reason: "Отдохнула, снасти готовы — можно попробовать поймать ещё рыбу." });
+    reason: "Отдохнула, снасти готовы. Можно попробовать поймать ещё рыбу." });
   if (places.trade && (mind.tradePending || mind.catchCount > 0 || mind.elapsed >= mind.tradeAfter)) candidates.push({ intent: "trade",
     score: mind.tradePending ? 9 : mind.catchCount * .55 + social * .55
       + (mind.catchCount >= PLESK_MIND_LIMITS.basket ? 2 : 0) + (mind.elapsed >= mind.tradeAfter ? 2 : 0),
-    reason: mind.tradePending ? "Гость ждёт у лавки — заканчивает дела и идёт к прилавку."
-      : mind.catchCount >= 2 ? "Набрался улов — пора открыть лавку." : "Пора заглянуть в лавку, проверить товары и встретить гостей." });
+    reason: mind.tradePending ? "Гость ждёт у лавки, заканчивает дела и идёт к прилавку."
+      : mind.catchCount >= 2 ? "Набрался улов, пора открыть лавку." : "Пора заглянуть в лавку, проверить товары и встретить гостей." });
   if ((mind.noticePending || env.playerNear) && mind.elapsed >= mind.greetAfter) candidates.push({ intent: "greet",
-    score: mind.noticePending ? 8 : .3 + social * 1.6, reason: "Заметила гостя — здоровается." });
+    score: mind.noticePending ? 8 : .3 + social * 1.6, reason: "Заметила гостя, здоровается." });
   for (const item of candidates) {
     item.score += random(mind) * .18;
     item.score -= mind.recent.slice(-3).filter(action => action === item.intent).length * .18;
@@ -171,7 +171,7 @@ export function requestPleskTrade(mind: PleskMind | null): void {
 export function advancePleskMind(mind: PleskMind | null, scene: FixedWorldScene, dt: number, environment: PleskEnvironment): void {
   if (!mind || !Number.isFinite(dt) || dt <= 0) return;
   const places = pleskLocalPlaces(scene);
-  if (!places) { mind.available = false; mind.reason = "Личный пирс недоступен — ждёт безопасной разметки."; observe(mind); return; }
+  if (!places) { mind.available = false; mind.reason = "Личный пирс недоступен, ждёт безопасной разметки."; observe(mind); return; }
   if (!acceptScene(mind, scene, places)) { observe(mind); return; }
   if (environment.wildlife && !mind.noticePending && !mind.tradePending) {
     const step = Math.min(PLESK_MIND_LIMITS.maxDelta, dt);
@@ -183,7 +183,7 @@ export function advancePleskMind(mind: PleskMind | null, scene: FixedWorldScene,
   }
   const env = { rain: clamp(environment.rain), dusk: clamp(environment.dusk), playerNear: Boolean(environment.playerNear) };
   if (mind.stage.action === "fish" && mind.age > 1 && (env.rain > .82 || mind.noticePending && mind.elapsed >= mind.greetAfter)) {
-    mind.reason = env.rain > .82 ? "Начался сильный дождь — аккуратно сматывает леску." : "Гость позвал — сматывает леску, чтобы ответить.";
+    mind.reason = env.rain > .82 ? "Начался сильный дождь, аккуратно сматывает леску." : "Гость позвал, сматывает леску, чтобы ответить.";
     mind.queue = [{ action: "reel", duration: 1.4, target: mind.stage.target, outcome: "miss", variation: "escape" },
       { action: "idle", duration: 1.5, target: mind.stage.target, variation: "check" }];
     startNext(mind);
@@ -194,7 +194,7 @@ export function advancePleskMind(mind: PleskMind | null, scene: FixedWorldScene,
     mind.queue.unshift({ ...mind.stage, duration: Math.max(.1, mind.stage.duration - mind.age) });
     mind.stage = { action: "greet", duration: 2.5, target: mind.stage.target, direction: "front" };
     mind.age = 0; mind.noticePending = false; mind.greetAfter = mind.elapsed + 25;
-    mind.reason = "Заметила гостя — здоровается.";
+    mind.reason = "Заметила гостя, здоровается.";
   }
   let remaining = Math.min(PLESK_MIND_LIMITS.maxDelta, dt);
   for (let transitions = 0; remaining > 1e-8 && transitions < PLESK_MIND_LIMITS.transitions; transitions++) {

@@ -266,7 +266,7 @@ export function BranchPage() {
             <button type="button" aria-label="Показать всю ветку" title="Вся ветка" onClick={fitGraph}><Expand size={17} aria-hidden="true" /></button>
           </div>
         </div>
-        <div ref={canvasRef} className={styles.viewport} data-dragging={dragging || undefined} tabIndex={0} role="region" aria-label="Карта развития. Перетаскивайте для перемещения, колесо для масштаба. Клавиатура: стрелки, плюс, минус, ноль — вся ветка." onPointerDown={startGesture} onPointerMove={moveGesture} onPointerUp={endGesture} onPointerCancel={endGesture} onKeyDown={canvasKeys}>
+        <div ref={canvasRef} className={styles.viewport} data-dragging={dragging || undefined} tabIndex={0} role="region" aria-label="Карта развития. Перетаскивайте для перемещения, колесо для масштаба. Клавиатура: стрелки, плюс, минус, ноль для показа всей ветки." onPointerDown={startGesture} onPointerMove={moveGesture} onPointerUp={endGesture} onPointerCancel={endGesture} onKeyDown={canvasKeys}>
           <div className={styles.graph} style={{ width: graphLayout.width, height: graphLayout.height, transform: `translate(${camera.x}px, ${camera.y}px) scale(${camera.scale})` }}>
             {graphLayout.sections.map(section => <div key={section.phase} className={styles.phase} style={{ left: section.x, top: section.y, width: section.width, height: section.height }}><span className={styles.phaseNumber}>{section.phase === 0 ? "СТАРТ" : section.phase < 6 ? `УРОВЕНЬ ${section.phase}` : section.phase === 6 ? "ЖИЗНЬ МИРА" : "БУДУЩЕЕ"}</span><h2>{phaseTitles[section.phase]}</h2></div>)}
             {graphLayout.groups.map(group => <div key={`${group.phase}:${group.locationId}`} className={styles.locationGroup} style={{ left: group.x, top: group.y, width: group.width, height: group.height }}><span>{group.title} · хозяйство</span></div>)}
@@ -289,7 +289,7 @@ export function BranchPage() {
             })}
           </div>
         </div>
-        <footer className={styles.boardFooter}><span className={styles.legend}><i />Условия<span className={styles.locationKey}><i />Внутри места</span><span className={styles.costKey}><i />Ресурсы</span><span className={styles.planKey}><i />План</span></span><span className={styles.navigationHint}>Перетаскивай · колесо / два пальца — масштаб</span><span>{activeCount} действующих · {progressionGraph.nodes.length - activeCount} планов</span></footer>
+        <footer className={styles.boardFooter}><span className={styles.legend}><i />Условия<span className={styles.locationKey}><i />Внутри места</span><span className={styles.costKey}><i />Ресурсы</span><span className={styles.planKey}><i />План</span></span><span className={styles.navigationHint}>Перетаскивай · масштаб: колесо / два пальца</span><span>{activeCount} действующих · {progressionGraph.nodes.length - activeCount} планов</span></footer>
       </section>
       <aside ref={detailRef} className={styles.details} data-open={detailOpen || undefined} aria-labelledby={detailHeadingId}>
         <div className={styles.detailHeader}><span className={styles.detailIcon} aria-hidden="true"><NodeIcon node={selected} size={30} /></span><div><span>{kindNames[selected.kind] ?? "Мир"}{selected.status === "plan" ? " · План" : ""}</span><h2 id={detailHeadingId}>{selected.title}</h2></div><button type="button" className={styles.closeDetails} aria-label="Закрыть подробности" onClick={() => { setDetailOpen(false); canvasRef.current?.focus(); }}><X size={19} aria-hidden="true" /></button></div>

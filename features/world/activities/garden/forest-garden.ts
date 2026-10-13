@@ -219,7 +219,7 @@ export function cancelForestGarden(state: ForestGardenState, foot?: WorldPoint, 
     parkForestGardenBasket(state, foot, nav);
   state.routine = null;
   if (state.harvest && state.harvest.phase !== "completed") state.harvestEvent = {
-    ...state.harvest.request, status: "interrupted", reason: "Сбор остановлен — готовый урожай сохранён",
+    ...state.harvest.request, status: "interrupted", reason: "Сбор остановлен, готовый урожай сохранён",
   };
   state.harvest = null;
   state.nextActionAt = state.elapsed + 30;

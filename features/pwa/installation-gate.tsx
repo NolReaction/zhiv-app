@@ -9,7 +9,7 @@ import { InstallPanel } from "./install-panel";
 import { usePwaInstall } from "./install-provider";
 import styles from "./install.module.css";
 
-/** Children are not mounted until the user chooses the browser or launches the PWA. */
+/** Desktop browsers enter directly; mobile visitors can install or continue. */
 export function InstallationGate({ children }: { children: ReactNode }) {
   const installation = usePwaInstall();
   const continued = useRef(false);
@@ -33,7 +33,7 @@ export function InstallationGate({ children }: { children: ReactNode }) {
   return <main className={styles.gate} data-installation-gate>
     <div className={styles.intro}>
       <a href="/site" className={styles.brand}><Sprout size={24} aria-hidden="true" />Я живой</a>
-      <img className={styles.gateArtwork} src={BRAND_LOGO_SRC} alt="Мохлик и друзья — Я живой" width={1024} height={1024} fetchPriority="high" decoding="async" draggable={false} />
+      <img className={styles.gateArtwork} src={BRAND_LOGO_SRC} alt="Мохлик и друзья. Я живой" width={1024} height={1024} fetchPriority="high" decoding="async" draggable={false} />
       <p className={styles.eyebrow}>Ваш маленький мир рядом</p>
       <h1>Пусть полянка<br />будет под рукой.</h1>
       <p className={styles.lead}>Добавьте «Я живой» на экран устройства. Возвращайтесь к Мохлику и сообщайте близким, что у вас всё хорошо.</p>

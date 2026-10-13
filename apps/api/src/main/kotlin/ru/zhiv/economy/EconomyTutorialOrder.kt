@@ -45,7 +45,7 @@ object EconomyTutorialOrders {
         return spent.copy(wallet = spent.wallet.copy(coins = spent.wallet.coins + terms.coins),
             residentOrders = board.copy(completed = board.completed + 1, earnedCoins = board.earnedCoins + terms.coins),
             tutorialOrder = progress.copy(completed = true)) to
-            "Учебный заказ выполнен. Монеты получены — обычные просьбы жителей работают так же"
+            "Учебный заказ выполнен. Монеты получены. Обычные просьбы жителей работают так же"
     }
     /** Combining accounts never reopens a paid gift or a finished request. */
     fun merge(a: EconomyTutorialOrder, b: EconomyTutorialOrder): EconomyTutorialOrder = EconomyTutorialOrder(

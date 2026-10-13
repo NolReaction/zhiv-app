@@ -1,6 +1,7 @@
-import { detectInstallDevice, hasApplicationEntryLink, UNKNOWN_INSTALL_DEVICE, type InstallDevice, type InstallEnvironment } from "./install-platform";
+import { detectInstallDevice, hasApplicationEntryLink, isDesktopInstallDevice, UNKNOWN_INSTALL_DEVICE, type InstallDevice, type InstallEnvironment } from "./install-platform";
 
 export const INSTALL_DISMISSED_KEY = "zhiv.install-dismissed.v1";
+export const INSTALL_PROMPT_TIMEOUT_MS = 15_000;
 const APP_DISPLAY_MODES = ["standalone", "minimal-ui", "window-controls-overlay"] as const;
 export type DeferredInstallEvent = Event & {
   prompt: () => Promise<unknown>;
@@ -15,7 +16,7 @@ export type InstallSnapshot = {
   browserAllowed: boolean;
   secure: boolean;
   device: InstallDevice;
-  outcome: "idle" | "accepted" | "dismissed" | "error";
+  outcome: "idle" | "accepted" | "dismissed" | "error" | "timeout";
 };
 export const INITIAL_INSTALL_SNAPSHOT: InstallSnapshot = {
   ready: false, standalone: false, installedHere: false, canInstall: false, busy: false,
@@ -26,6 +27,7 @@ export type InstallEnvironmentAdapter = {
   media: (query: string) => Pick<MediaQueryList, "matches" | "addEventListener" | "removeEventListener">;
   read: () => InstallEnvironment & { standalone: boolean; secure: boolean; pathname: string; search: string; hash: string };
   storage: () => Pick<Storage, "getItem" | "setItem">;
+  scheduleTimeout?: (callback: () => void, milliseconds: number) => () => void;
 };
 
 /** Owns the one-use install event independently of whichever page displays the guide. */
@@ -35,7 +37,7 @@ export class PwaInstallController {
   private deferred: DeferredInstallEvent | null = null;
   private consumed = new WeakSet<Event>();
   private cleanup: (() => void) | null = null;
-  private generation = 0;
+  private pending: { finish: (outcome: InstallSnapshot["outcome"] | null) => void } | null = null;
   constructor(private environment: InstallEnvironmentAdapter | null) {}
   snapshot = () => this.state;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
@@ -60,20 +62,24 @@ export class PwaInstallController {
       // Fullscreen can override the PWA display mode. It only preserves a
       // previously observed app window; fullscreen alone proves nothing.
       const standalone = current.standalone || media.some(query => query.matches) || this.state.standalone && fullscreen.matches;
-      this.update({ ready: true, secure: current.secure, device: detectInstallDevice(current), standalone,
-        browserAllowed: this.state.browserAllowed || standalone || remembered || hasApplicationEntryLink(current),
-        canInstall: Boolean(this.deferred) && current.secure && !standalone && !this.state.installedHere });
+      const device = detectInstallDevice(current);
+      this.update({ ready: true, secure: current.secure, device, standalone,
+        browserAllowed: this.state.browserAllowed || isDesktopInstallDevice(device) || standalone || remembered || hasApplicationEntryLink(current),
+        canInstall: Boolean(this.deferred) && current.secure && !standalone && !this.state.installedHere && !this.state.busy });
+      if (standalone) this.pending?.finish("accepted");
     };
     const beforeInstall = (raw: Event) => {
       const event = raw as DeferredInstallEvent;
       if (typeof event.prompt !== "function" || !event.userChoice || this.consumed.has(event)) return;
       event.preventDefault();
       this.deferred = event;
+      if (!this.state.busy && !this.state.installedHere) this.update({ outcome: "idle" });
       refresh();
     };
     const installed = () => {
       this.deferred = null;
       this.update({ installedHere: true, canInstall: false, busy: false, outcome: "accepted" });
+      this.pending?.finish("accepted");
       refresh();
     };
     env.events.addEventListener("beforeinstallprompt", beforeInstall);
@@ -95,30 +101,54 @@ export class PwaInstallController {
     refresh();
   };
   stop = () => {
-    this.generation++;
+    this.pending?.finish(null);
     this.cleanup?.(); this.cleanup = null;
     this.deferred = null;
     this.update({ busy: false, canInstall: false });
   };
   allowBrowser = () => {
+    this.stopWaiting();
     try { this.environment?.storage().setItem(INSTALL_DISMISSED_KEY, "1"); } catch { /* Keep the in-memory choice. */ }
     this.update({ browserAllowed: true });
   };
-  install = async () => {
+  /** Releases this UI's wait; browsers provide no API to close their own dialog. */
+  stopWaiting = () => { this.pending?.finish("idle"); };
+  install = (): Promise<void> => {
     const event = this.deferred;
-    if (!event || this.state.busy || !this.state.canInstall) return;
+    if (!event || this.state.busy || !this.state.canInstall) return Promise.resolve();
     this.deferred = null;
     this.consumed.add(event);
-    const generation = this.generation;
     this.update({ busy: true, canInstall: false, outcome: "idle" });
-    try {
-      // The native prompt starts synchronously in the click handler, before any await.
-      await event.prompt();
-      const choice = await event.userChoice;
-      if (generation === this.generation) this.update({ busy: false, outcome: this.state.installedHere ? "accepted" : choice.outcome });
-    } catch {
-      if (generation === this.generation) this.update({ busy: false, outcome: this.state.installedHere ? "accepted" : "error" });
-    }
+    return new Promise(resolve => {
+      let cancelTimeout = () => {};
+      const attempt = { finish: (outcome: InstallSnapshot["outcome"] | null) => {
+        if (this.pending !== attempt) return;
+        this.pending = null;
+        cancelTimeout();
+        if (outcome !== null) this.update({ busy: false,
+          outcome: this.state.installedHere ? "accepted" : outcome,
+          canInstall: Boolean(this.deferred) && this.state.secure && !this.state.standalone && !this.state.installedHere });
+        resolve();
+      } };
+      this.pending = attempt;
+      const schedule = this.environment?.scheduleTimeout ?? ((callback: () => void, milliseconds: number) => {
+        const timer = setTimeout(callback, milliseconds);
+        return () => clearTimeout(timer);
+      });
+      cancelTimeout = schedule(() => attempt.finish("timeout"), INSTALL_PROMPT_TIMEOUT_MS);
+      const acceptChoice = (choice: unknown) => {
+        if (choice && typeof choice === "object" && "outcome" in choice && (choice.outcome === "accepted" || choice.outcome === "dismissed")) attempt.finish(choice.outcome);
+      };
+      try {
+        // Call synchronously inside the click. Some browsers resolve only one
+        // of these promises; neither may keep the UI waiting forever.
+        Promise.resolve(event.prompt()).then(acceptChoice, () => attempt.finish("error"));
+        Promise.resolve(event.userChoice).then(acceptChoice, () => attempt.finish("error"));
+      } catch {
+        Promise.resolve(event.userChoice).catch(() => {});
+        attempt.finish("error");
+      }
+    });
   };
 }
 

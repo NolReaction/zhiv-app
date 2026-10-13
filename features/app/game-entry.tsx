@@ -13,18 +13,24 @@ import styles from "./game-entry.module.css";
 export function GameLoader() {
   const [Game, setGame] = useState<ComponentType | null>(null);
   const [failed, setFailed] = useState(false);
+  const [slow, setSlow] = useState(false);
   useEffect(() => {
     let disposed = false;
+    // A network request can stay pending indefinitely. Offer recovery without
+    // discarding a late successful load or changing auth/invite parameters.
+    const timeout = window.setTimeout(() => { if (!disposed) setSlow(true); }, 30_000);
     void import("./app-shell").then(module => {
+      window.clearTimeout(timeout);
       if (!disposed) setGame(() => module.AppShell);
-    }).catch(() => { if (!disposed) setFailed(true); });
-    return () => { disposed = true; };
+    }).catch(() => { window.clearTimeout(timeout); if (!disposed) setFailed(true); });
+    return () => { disposed = true; window.clearTimeout(timeout); };
   }, []);
   if (Game) return <Game />;
-  return <main className={styles.loading} aria-busy={!failed}>
-    <p role="status">{failed ? "Не удалось загрузить приложение" : "Загружаем полянку…"}</p>
-    {failed && <><p>Проверьте подключение и повторите попытку. Ваш прогресс остаётся в аккаунте.</p>
-      <button type="button" onClick={() => window.location.reload()}>Повторить загрузку</button></>}
+  return <main className={styles.loading} aria-busy={!failed && !slow}>
+    <p role="status">{failed ? "Не удалось загрузить приложение" : slow ? "Загрузка занимает больше времени" : "Загружаем полянку…"}</p>
+    {(failed || slow) && <><p>Проверьте подключение и повторите попытку. Ваш прогресс остаётся в аккаунте.</p>
+      <button type="button" onClick={() => window.location.reload()}>Повторить загрузку</button>
+      <a href="/site">На сайт приложения</a></>}
   </main>;
 }
 

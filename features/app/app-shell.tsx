@@ -1423,7 +1423,7 @@ function CheckInContent() {
 
     void copyText(me.user.publicId)
       .then((copied) => notify(copied ? "ID скопирован" : "Не удалось скопировать ID. Зажмите его и выберите «Скопировать».", copied ? "success" : "error"))
-      .catch(() => notify("Не скопировано — зажмите ID", "error"))
+      .catch(() => notify("Не скопировано. Зажмите ID", "error"))
       .finally(() => {
         identityActionPending.current = false;
         setIsIdentityActionPending(false);
@@ -1615,7 +1615,7 @@ function CheckInContent() {
               onPointerDown={handlePrimaryPointerDown}
               onClick={handleGameClick}
               aria-busy={isSending}
-              aria-label="Я живой — отметиться и поиграть"
+              aria-label="Я живой: отметиться и поиграть"
               aria-describedby={[visualTapCount >= 1 ? "clicker-total" : null, mochlikVisible && currentActivity ? "mochlik-activity-status" : null].filter(Boolean).join(" ") || undefined}
             >
               <span className={styles.checkInTitle}>Я ЖИВОЙ</span>

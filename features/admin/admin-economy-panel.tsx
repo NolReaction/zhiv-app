@@ -13,9 +13,9 @@ const formatter = new Intl.NumberFormat("ru-RU");
 const dateFormatter = new Intl.DateTimeFormat("ru-RU", {
   timeZone: "UTC", day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
 });
-export const economyCount = (value: number | null | undefined) => value == null ? "—" : formatter.format(value);
-export const economyPearls = (value: number | null | undefined) => value == null ? "—" : formatPearls(value);
-export const economyTime = (value: string | null) => value ? `${dateFormatter.format(new Date(value))} UTC` : "—";
+export const economyCount = (value: number | null | undefined) => value == null ? "-" : formatter.format(value);
+export const economyPearls = (value: number | null | undefined) => value == null ? "-" : formatPearls(value);
+export const economyTime = (value: string | null) => value ? `${dateFormatter.format(new Date(value))} UTC` : "-";
 export type AdminEconomyTarget = Pick<AdminEconomyPlayer, "publicId" | "displayName">;
 
 /** Verify the same administrator before every read, including background refreshes. */
@@ -87,7 +87,7 @@ export function AdminEconomyList({ data, loading, query, sort, offset, onQuery, 
           </TableRow>)}</TableBody>
         </Table></div>}
       <div className={styles.pagination}>
-        <span>{data ? data.total === 0 ? "Нет записей" : `${economyCount(offset + 1)}–${economyCount(Math.min(offset + data.players.length, data.total))} из ${economyCount(data.total)}` : "—"}</span>
+        <span>{data ? data.total === 0 ? "Нет записей" : `${economyCount(offset + 1)}–${economyCount(Math.min(offset + data.players.length, data.total))} из ${economyCount(data.total)}` : "-"}</span>
         <div><button type="button" className={styles.button} disabled={loading || offset === 0} onClick={() => { if (!loading && offset > 0) onPage(Math.max(0, offset - PAGE_SIZE)); }} aria-label="Предыдущая страница хозяйств"><ChevronLeft size={18} />Назад</button>
           <button type="button" className={styles.button} disabled={loading || !data || offset + PAGE_SIZE >= data.total} onClick={() => { if (!loading && data && offset + PAGE_SIZE < data.total) onPage(offset + PAGE_SIZE); }} aria-label="Следующая страница хозяйств">Далее<ChevronRight size={18} /></button></div>
       </div>

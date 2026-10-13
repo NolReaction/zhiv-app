@@ -92,7 +92,7 @@ export function WorldDevCheats({ world, economy, previewBuildings = false, onSho
       onClick={() => { if (!economy.busy && !cooldown) void economy.retry(); }}>{economy.uncertain ? "Проверить результат" : "Загрузить хозяйство"}</button>}
 
     <section className={styles.presetSection} aria-label="Готовое поселение">
-      <div><h4>Готовое поселение</h4><p className={styles.hint}>Дом и доступные ему улучшения на карте. Кладовая — того же уровня; расширения до 10 проверяйте отдельно.</p></div>
+      <div><h4>Готовое поселение</h4><p className={styles.hint}>Дом и доступные ему улучшения на карте. Кладовая того же уровня; расширения до 10 проверяйте отдельно.</p></div>
       <div className={styles.presetLevels} role="group" aria-label="Уровень дома для сценария">
         {catalog.buildings.find(entry => entry.id === "home")!.levels.map(entry => <button type="button" key={entry.level}
           aria-pressed={presetLevel === entry.level} onClick={() => setPresetLevel(entry.level)}>Дом {entry.level}</button>)}
@@ -111,8 +111,8 @@ export function WorldDevCheats({ world, economy, previewBuildings = false, onSho
       <summary>Валюта</summary>
       <div className={styles.cheatTools}>
       <dl className={styles.cheatBalance}>
-        <div><dt>Монеты</dt><dd>{snapshot ? format(snapshot.wallet.coins) : "—"}</dd></div>
-        <div><dt>Жемчуг</dt><dd>{snapshot ? formatPearls(snapshot.wallet.pearls) : "—"}</dd></div>
+        <div><dt>Монеты</dt><dd>{snapshot ? format(snapshot.wallet.coins) : "-"}</dd></div>
+        <div><dt>Жемчуг</dt><dd>{snapshot ? formatPearls(snapshot.wallet.pearls) : "-"}</dd></div>
       </dl>
       <div className={styles.columns}>
         {([["coins", 10000], ["coins", 100000], ["pearls", 5000], ["pearls", 50000]] as const).map(([currency, value]) =>

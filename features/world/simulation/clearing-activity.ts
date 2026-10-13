@@ -397,7 +397,7 @@ function settleClearing(state: ClearingActivityState) {
 function releaseOccupiedRoamingGoal(state: ClearingActivityState, id: string) {
   const intention = state.behavior.mind.intention;
   if (intention?.source === "clearing" && intention.key === id)
-    finishForestIntention(state.behavior.mind, "interrupted", "Место занято соседом — выберет другое занятие");
+    finishForestIntention(state.behavior.mind, "interrupted", "Место занято соседом, выберет другое занятие");
   state.behavior.target = null;
   settleClearing(state);
   state.behavior.reason = "roaming-place-occupied";
@@ -851,7 +851,7 @@ export function advanceClearingActivity(state: ClearingActivityState, delta: num
     else { retrace(state); state.behavior.reason = "return-before-mode-change"; }
   }
   if (!state.homeEnabled && state.routeKind === "home" && state.stage !== "home-return" && state.stage !== "exiting") {
-    if (state.behavior.mind.intention?.action === "home-sleep") finishForestIntention(state.behavior.mind, "interrupted", "Домик недоступен — выходит на полянку");
+    if (state.behavior.mind.intention?.action === "home-sleep") finishForestIntention(state.behavior.mind, "interrupted", "Домик недоступен, выходит на полянку");
     state.retiring = false; retrace(state);
   }
   if (state.homeEnabled && !state.retiring && state.idleSeconds >= CLEARING_HOME_IDLE_SECONDS

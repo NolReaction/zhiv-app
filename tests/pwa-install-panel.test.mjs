@@ -17,12 +17,13 @@ const platformContext = { exports: {}, URLSearchParams };
 vm.runInNewContext(platformCode, platformContext, { filename: "install-platform.ts" });
 const platform = platformContext.exports;
 
-function harness(patch = {}) {
+function harness(patch = {}, panelProps = {}) {
   const frame = { slots: [], cursor: 0, pending: [] }, copied = [], focuses = [];
   const document = { body: { isConnected: true }, activeElement: null };
   document.activeElement = document.body;
   const installation = { ready: true, standalone: false, installedHere: false, canInstall: false, busy: false, secure: true, outcome: "idle",
-    device: { platform: "android", browser: "chrome", embedded: false }, install: async () => {}, ...patch };
+    device: { platform: "android", browser: "chrome", embedded: false }, install: async () => {}, allowBrowser: () => {},
+    stopWaiting: () => { installation.busy = false; installation.outcome = "idle"; }, ...patch };
   const hooks = {
     useState(initial) {
       const index = frame.cursor++;
@@ -43,7 +44,7 @@ function harness(patch = {}) {
     require(id) {
       if (id === "react") return hooks;
       if (id === "react/jsx-runtime") return jsxRuntime;
-      if (id === "next/link") return { default: props => createElement("a", props) };
+      if (id === "next/link") return { default: props => { const attributes = { ...props }; delete attributes.prefetch; return createElement("a", attributes); } };
       if (id === "lucide-react") return new Proxy({}, { get: (_, icon) => props => createElement("svg", { ...props, "data-icon": icon }) });
       if (id === "./install-platform") return platform;
       if (id === "./install-provider") return { usePwaInstall: () => installation };
@@ -68,13 +69,13 @@ function harness(patch = {}) {
       node.props.ref.current = element;
     }
     Children.forEach(node.props.children, child => visit(child, nodes,
-      hidden || node.type === "details" && !node.props.open && child?.type !== "summary"));
+      hidden || node.type === "details" && !(node.props.open || node.props.ref?.current?.open) && child?.type !== "summary"));
   }
   return {
     installation, document, focuses, copied,
     render() {
       frame.cursor = 0;
-      const tree = evaluate(createElement(context.exports.InstallPanelContent, { installation })), nodes = [];
+      const tree = evaluate(createElement(context.exports.InstallPanel, panelProps)), nodes = [];
       visit(tree, nodes);
       while (frame.pending.length) frame.pending.shift()();
       return { html: renderToStaticMarkup(tree), nodes,
@@ -99,6 +100,7 @@ test("manual browser selection survives detection updates and reset restores aut
   assert.match(view.html, /data-icon="Smartphone"/);
   h.installation.canInstall = false; view = h.render();
   assert.equal(view.guide.props["data-install-guide"], "ios");
+  view.nodes.find(node => node.props["data-install-optional"]).props.ref.current.open = true; h.render();
   view.button("Вернуть автоопределение").props.onClick(); view = h.render();
   assert.equal(view.guide.props["data-install-guide"], "desktop-edge");
   assert.doesNotMatch(view.html, /Выбрано вами|Вернуть автоопределение/);
@@ -107,6 +109,7 @@ test("manual browser selection survives detection updates and reset restores aut
 test("choosing a second device hides current native installation until returning to auto mode", () => {
   const h = harness({ canInstall: true, device: { platform: "windows", browser: "chrome", embedded: false } });
   let view = h.render(); assert.ok(view.button("Установить приложение"));
+  view.nodes.find(node => node.props["data-install-optional"]).props.ref.current.open = true; h.render();
   view.select.props.onChange({ target: { value: "ios" } }); view = h.render();
   assert.equal(view.button("Установить приложение"), undefined);
   assert.equal(view.guide.props["data-install-guide"], "ios"); assert.match(view.html, /Три шага в Safari/);
@@ -120,7 +123,7 @@ test("choosing a second device hides current native installation until returning
 });
 
 test("consumed native prompts restore focus to visible instructions or completion status", async () => {
-  for (const outcome of ["dismissed", "error", "accepted"]) {
+  for (const outcome of ["dismissed", "error", "timeout", "accepted"]) {
     const h = harness({ canInstall: true });
     h.installation.install = async () => { h.installation.busy = true; h.installation.canInstall = false; };
     let view = h.render(); view.button("Установить приложение").props.onClick(); h.render();
@@ -129,7 +132,7 @@ test("consumed native prompts restore focus to visible instructions or completio
     view = h.render();
     assert.deepEqual(h.focuses, [outcome === "accepted" ? "div" : "h3"]);
     assert.equal(view.button("Установить приложение"), undefined, "one-use native trigger is gone after its result");
-    assert.match(view.html, outcome === "accepted" ? /Запрос принят/ : /через (?:его )?меню/);
+    assert.match(view.html, outcome === "accepted" ? /Запрос принят/ : outcome === "timeout" ? /Ответ браузера не пришёл/ : /через (?:его )?меню/);
   }
 });
 
@@ -143,6 +146,93 @@ test("prompt completion respects a user's newer focus and copies only the clean 
   view.button("Скопировать адрес сайта").props.onClick(); await new Promise(resolve => setImmediate(resolve));
   assert.deepEqual(h.copied, ["https://im-alive.ru/"]);
   view = h.render(); assert.match(view.html, /Адрес скопирован/);
+});
+
+test("desktop panels lead with a real game link and keep installation optional", () => {
+  for (const platform of ["windows", "mac", "linux"]) {
+    let opened = 0;
+    const h = harness({ canInstall: true, device: { platform, browser: "chrome", embedded: false }, allowBrowser: () => opened++ });
+    const view = h.render();
+    const play = view.nodes.find(node => node.props["data-install-play"]);
+    assert.equal(play.type, "a"); assert.equal(play.props.href, "/");
+    assert.match(renderToStaticMarkup(play), />Играть</);
+    assert.ok(view.html.indexOf("data-install-play") < view.html.indexOf("data-install-optional"));
+    assert.match(view.html, /На компьютере игра работает прямо в браузере/);
+    const optional = view.nodes.find(node => node.props["data-install-optional"]);
+    assert.equal(optional.type, "details"); assert.equal(optional.props.open, undefined);
+    assert.match(renderToStaticMarkup(optional), /Установить приложение/);
+    play.props.onClick(); assert.equal(opened, 1);
+  }
+  for (const platform of ["ios", "android"]) {
+    const view = harness({ device: { platform, browser: "chrome", embedded: false } }).render();
+    assert.doesNotMatch(view.html, /data-install-play|data-install-optional/);
+    assert.match(view.html, /Установить «Я живой»/);
+  }
+});
+
+test("game settings show installation directly without links that reload the current route", () => {
+  for (const platform of ["windows", "mac", "linux", "ios", "android"]) {
+    const h = harness({ device: { platform, browser: "chrome", embedded: false } }, { compact: true, context: "settings" });
+    let view = h.render();
+    assert.match(view.html, /Установить «Я живой»/);
+    assert.ok(view.guide);
+    assert.doesNotMatch(view.html, /data-install-play|data-install-optional|href="\/"|Можно сразу играть/);
+    h.installation.canInstall = true; view = h.render();
+    assert.ok(view.button("Установить приложение"));
+    assert.doesNotMatch(view.html, /data-install-optional|href="\/"/);
+    h.installation.canInstall = false; h.installation.standalone = true; view = h.render();
+    assert.match(view.html, /Вы уже в приложении|Установить на другом устройстве/);
+    assert.doesNotMatch(view.html, /href="\/"|Вернуться на полянку/);
+  }
+});
+
+test("desktop settings restore focus to their visible guide after a prompt timeout", () => {
+  const h = harness({ canInstall: true, device: { platform: "windows", browser: "yandex", embedded: false } }, { context: "settings" });
+  h.installation.install = async () => { h.installation.busy = true; h.installation.canInstall = false; };
+  let view = h.render(); view.button("Установить приложение").props.onClick(); h.render();
+  h.installation.busy = false; h.installation.outcome = "timeout"; view = h.render();
+  assert.match(view.html, /Ответ браузера не пришёл/);
+  assert.deepEqual(h.focuses, ["h3"]);
+});
+
+test("the other-browser chooser remains usable during a hung native prompt", () => {
+  const h = harness({ canInstall: true });
+  let stopped = 0;
+  h.installation.stopWaiting = () => { stopped++; h.installation.busy = false; h.installation.outcome = "idle"; };
+  h.installation.install = async () => { h.installation.busy = true; h.installation.canInstall = false; };
+  let view = h.render(); view.button("Установить приложение").props.onClick(); view = h.render();
+  assert.equal(h.installation.busy, true); assert.equal(view.select.props.disabled, undefined);
+  const chooser = view.nodes.find(node => node.type === "summary" && renderToStaticMarkup(node).includes("Другой браузер"));
+  chooser.props.onClick(); assert.equal(h.installation.busy, false); assert.equal(stopped, 1);
+  view.select.props.onChange({ target: { value: "ios" } }); view = h.render();
+  assert.equal(stopped, 2); assert.equal(view.guide.props["data-install-guide"], "ios");
+  assert.doesNotMatch(view.html, /Ожидаем ответ браузера|Установить через меню браузера/);
+  assert.deepEqual(h.focuses, [], "manual selection must not trigger a stale native focus recovery");
+});
+
+test("a missing native dialog can immediately reveal a focused manual guide", () => {
+  const h = harness({ canInstall: true });
+  h.installation.install = async () => { h.installation.busy = true; h.installation.canInstall = false; };
+  let view = h.render(); view.button("Установить приложение").props.onClick(); view = h.render();
+  view.button("Окно не появилось?").props.onClick(); view = h.render();
+  assert.equal(h.installation.busy, false); assert.equal(view.guide.props["data-install-guide"], "android-chrome");
+  assert.doesNotMatch(view.html, /Ожидаем ответ браузера|Установить через меню браузера/);
+  assert.deepEqual(h.focuses, ["h3"]);
+});
+
+test("closing optional desktop setup releases a wait and keeps late focus outside the closed disclosure", () => {
+  const h = harness({ canInstall: true, device: { platform: "windows", browser: "yandex", embedded: false } });
+  h.installation.install = async () => { h.installation.busy = true; h.installation.canInstall = false; };
+  let view = h.render();
+  const optional = view.nodes.find(node => node.props["data-install-optional"]);
+  optional.props.ref.current.open = true; view = h.render();
+  view.button("Установить приложение").props.onClick(); view = h.render();
+  optional.props.ref.current.open = false;
+  optional.props.onToggle({ currentTarget: optional.props.ref.current }); view = h.render();
+  assert.equal(h.installation.busy, false);
+  h.installation.outcome = "accepted"; view = h.render();
+  assert.deepEqual(h.focuses, []);
+  assert.ok(view.nodes.find(node => node.props["data-install-play"]));
 });
 
 test("browser adapter reads only default brand/platform hints and tolerates privacy blocks", () => {

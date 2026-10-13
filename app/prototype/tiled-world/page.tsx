@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { TiledWorldPreview } from "@/features/world/tiled/tiled-world-preview";
 
 export const metadata: Metadata = {
-  title: "Мир Мохлика — проверка карты",
+  title: "Мир Мохлика: проверка карты",
   robots: { index: false, follow: false },
 };
 

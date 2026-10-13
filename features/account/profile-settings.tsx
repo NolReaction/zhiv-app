@@ -79,7 +79,7 @@ export function ProfileSettings({ ownerPublicId, isOnline, onSessionLost, simple
     </div>}
     {/* Keep visited screens mounted so returning does not discard notification drafts. */}
     {visited.includes("installation") && <div className={styles.screen} hidden={screen !== "installation"}>
-      <InstallPanel compact />
+      <InstallPanel compact context="settings" />
     </div>}
     {visited.includes("notifications") && <div className={styles.screen} hidden={screen !== "notifications"}>
       <NotificationSettingsPanel ownerPublicId={ownerPublicId} isOnline={isOnline} onSessionLost={onSessionLost} exitRef={notificationSettingsExit} />

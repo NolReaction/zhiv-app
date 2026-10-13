@@ -22,8 +22,10 @@ function harness(snapshot = {}) {
   const installation = { ready: true, standalone: false, browserAllowed: false, ...snapshot,
     allowBrowser() { installation.browserAllowed = true; } };
   const location = { pathname: "/", search: "?auth=verified", hash: "#/invite/retained", reload() { calls.reloads++; } };
-  const frames = new Map(), pending = [], animationFrames = new Map();
-  let active, frameId = 0;
+  const frames = new Map(), pending = [], animationFrames = new Map(), timers = new Map();
+  let active, frameId = 0, timerId = 0, now = 0;
+  const setTimeout = (callback, delay) => { const id = ++timerId; timers.set(id, { callback, at: now + delay }); return id; };
+  const clearTimeout = id => timers.delete(id);
   const hooks = {
     useState(initial) {
       const frame = active, index = frame.cursor++;
@@ -50,7 +52,7 @@ function harness(snapshot = {}) {
   let gate;
   function load(code, filename) {
     const context = {
-      exports: {}, window: { location },
+      exports: {}, window: { location, setTimeout, clearTimeout },
       document: { body: null, activeElement: null, querySelector() { return null; } },
       requestAnimationFrame(callback) { animationFrames.set(++frameId, callback); return frameId; },
       cancelAnimationFrame(id) { animationFrames.delete(id); },
@@ -97,7 +99,8 @@ function harness(snapshot = {}) {
     visit(tree); return result;
   }
   return {
-    calls, installation, location,
+    calls, installation, location, timers,
+    advance(milliseconds) { now += milliseconds; for (const [id, timer] of [...timers]) if (timer.at <= now) { timers.delete(id); timer.callback(); } },
     resolve() { resolveImport({ AppShell }); },
     reject() { rejectImport(new TypeError("Failed to fetch dynamically imported module")); },
     render(component = "GameLoader", effects = true) {
@@ -127,6 +130,7 @@ test("game shell loads only after the loader mounts and renders only after a suc
   assert.equal(h.calls.gameRenders, 0, "resolving a module is not mounting its component");
   view = h.render(); assert.equal(h.calls.gameRenders, 1);
   assert.match(view.html, /data-game="true"/); assert.doesNotMatch(view.html, /Загружаем|aria-busy/);
+  assert.equal(h.timers.size, 0, "successful import clears the recovery delay");
   h.unmount();
 });
 
@@ -139,23 +143,49 @@ test("failed import ends the loading state and retry reloads the current auth/in
   assert.match(view.html, /Ваш прогресс остаётся в аккаунте/);
   assert.doesNotMatch(view.html, /Загружаем полянку/);
   assert.equal(h.calls.gameRenders, 0); assert.equal(h.calls.imports, 1);
+  assert.equal(h.timers.size, 0, "rejected import clears the recovery delay");
   const retry = view.nodes.find(node => node.type === "button");
   assert.ok(retry); assert.match(renderToStaticMarkup(retry), /Повторить загрузку/);
   assert.equal(retry.props.disabled, undefined); retry.props.onClick();
   assert.equal(h.calls.reloads, 1);
   assert.deepEqual({ pathname: h.location.pathname, search: h.location.search, hash: h.location.hash }, originalUrl);
+  assert.ok(view.nodes.some(node => node.type === "a" && node.props.href === "/site"));
   h.unmount();
 });
 
-test("late import success and rejection cannot update an unmounted loader", async () => {
+test("late import success, rejection and queued timeout cannot update an unmounted loader", async () => {
   for (const finish of ["resolve", "reject"]) {
     const h = harness(); h.render(); await flushPromises();
     assert.equal(h.calls.imports, 1);
-    h.unmount(); h[finish](); await flushPromises();
+    const queued = [...h.timers.values()].map(timer => timer.callback);
+    h.unmount(); assert.equal(h.timers.size, 0);
+    for (const callback of queued) callback();
+    h[finish](); await flushPromises();
     assert.equal(h.calls.stateWrites, 0, finish);
     assert.equal(h.calls.gameRenders, 0, finish);
     assert.equal(h.calls.reloads, 0, finish);
   }
+});
+
+test("a stalled game import offers recovery after 30 seconds and still accepts a late success", async () => {
+  const h = harness(), originalUrl = { pathname: h.location.pathname, search: h.location.search, hash: h.location.hash };
+  h.render(); await flushPromises();
+  h.advance(29_999);
+  assert.equal(h.render().nodes.some(node => node.type === "button"), false);
+  h.advance(1);
+  let view = h.render();
+  assert.match(view.html, /Загрузка занимает больше времени/);
+  assert.match(view.html, /aria-busy="false"/, "recovery actions are announced without waiting on a stalled request");
+  const retry = view.nodes.find(node => node.type === "button");
+  assert.ok(retry, "silence must reveal a reload action");
+  assert.ok(view.nodes.some(node => node.type === "a" && node.props.href === "/site"), "the visitor can leave the stalled loader");
+  retry.props.onClick(); assert.equal(h.calls.reloads, 1);
+  assert.deepEqual({ pathname: h.location.pathname, search: h.location.search, hash: h.location.hash }, originalUrl);
+  assert.equal(h.calls.imports, 1, "the timeout does not request another chunk");
+  h.resolve(); await flushPromises(); view = h.render();
+  assert.match(view.html, /data-game="true"/, "a slow successful response still opens the game");
+  assert.doesNotMatch(view.html, /Загрузка занимает|Повторить загрузку/);
+  assert.equal(h.timers.size, 0); h.unmount();
 });
 
 test("parent installation gate blocks game imports, art preloads and runtime effects until browser continuation", async () => {

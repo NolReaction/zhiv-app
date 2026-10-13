@@ -415,7 +415,7 @@ export default function WorldView({ open, world, economy, ownerPublicId, timeZon
           <Package size={18} aria-hidden="true" /><span>Кладовая</span>
         </button>
         <button data-audio-cue={quickMenu === "expeditions" ? "ui.close" : "ui.open"} data-world-quick="expeditions" data-expedition-ready={expeditionReady || undefined} aria-haspopup="dialog" aria-expanded={quickMenu === "expeditions"} aria-controls={quickMenu === "expeditions" ? "world-quick-menu" : undefined} onClick={() => toggleQuick("expeditions")}
-          aria-label={expeditionReady ? "В путь. Вылазка завершена — забрать находки" : economicJourney ? "В путь. Мохлик в пути" : "В путь"}>
+          aria-label={expeditionReady ? "В путь. Вылазка завершена, забрать находки" : economicJourney ? "В путь. Мохлик в пути" : "В путь"}>
           <span className={hudStyles.expeditionIcon}><Compass size={18} aria-hidden="true" />{expeditionReady && <span className={hudStyles.expeditionCheck}><Check size={9} aria-hidden="true" /></span>}</span>
           <span className={hudStyles.expeditionLabel}>В путь{expeditionReady && <small>Находки ждут</small>}</span>{economicJourney && !expeditionReady && <span className={hudStyles.journeyDot} aria-hidden="true" />}
         </button>

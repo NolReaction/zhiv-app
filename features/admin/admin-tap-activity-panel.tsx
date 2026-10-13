@@ -91,7 +91,7 @@ export function AdminTapActivityPanel({ initialTarget, refreshVersion, onManage,
           <div className={styles.metric}><span>Отклонено</span><strong>{format.format(history.rejectedTaps)}</strong><small>В доставленных пакетах</small></div>
           <div className={styles.metric}><span>С задержкой &gt;10 с</span><strong>{format.format(history.delayedTaps)}</strong><small>Из принятых сервером</small></div>
         </div>
-        <p className={styles.hint}>{formatTapBucket(history.from, 10080)} — {formatTapBucket(history.to, 10080)} UTC · шаг графика: {history.bucketMinutes === 120 ? "2 часа" : history.bucketMinutes === 30 ? "30 минут" : "1 минута"}. Начало периода округлено до минуты. Клиентское время и доставка учитываются отдельно: офлайн-очередь может прийти позже.</p>
+        <p className={styles.hint}>С {formatTapBucket(history.from, 10080)} по {formatTapBucket(history.to, 10080)} UTC · шаг графика: {history.bucketMinutes === 120 ? "2 часа" : history.bucketMinutes === 30 ? "30 минут" : "1 минута"}. Начало периода округлено до минуты. Клиентское время и доставка учитываются отдельно: офлайн-очередь может прийти позже.</p>
         {!history.coverageComplete && <p className={styles.notice}>История неполная. Непрерывный сбор начался {formatTapBucket(history.coverageFrom, 10080)} UTC. До этого сохранены только отдельные записи; пустые участки означают отсутствие данных. Итоги относятся к доступным записям.</p>}
         <div className={styles.chart} role="img" aria-label="Нажатия за выбранный период: время клиента и получение сервером. Точные значения доступны ниже.">
           <ResponsiveContainer width="100%" height="100%"><LineChart data={history.buckets} margin={{ top: 10, right: 12, bottom: 8, left: -12 }} accessibilityLayer>

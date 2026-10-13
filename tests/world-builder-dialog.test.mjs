@@ -75,7 +75,7 @@ test("finished but unclaimed work keeps the builder reserved and links to comple
   const controller = economy([job], { now: now + 90_000 }), opened = [];
   const { tree, html } = conversation(controller, id => opened.push(id));
   assert.match(html, /data-builder-status="ready"/);
-  assert.match(html, /Работа закончена — завершите улучшение/);
+  assert.match(html, /Работа закончена, завершите улучшение/);
   assert.doesNotMatch(html, /Свободен|Осталось/);
   assert.doesNotMatch(html, /data-construction-speedup|жемчужин/);
   const button = elements(tree).find(element => element.type === "button");

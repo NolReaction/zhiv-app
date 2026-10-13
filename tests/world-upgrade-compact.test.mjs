@@ -172,9 +172,9 @@ test("relic cost navigation describes chance finds and respects their actual hom
   snapshot.buildings.home = economyCatalog.rareDrops.requiredHomeLevel - 1;
   const locked = render("warehouse", { snapshot, navigation });
   assert.ok(!buttons(locked).some(button => /aria-label="Где искать:/.test(button.attributes)));
-  assert.ok(text(locked).includes(`Находки реликвий в вылазках — с домом ур. ${economyCatalog.rareDrops.requiredHomeLevel}.`));
+  assert.ok(text(locked).includes(`Находки реликвий в вылазках доступны с домом ур. ${economyCatalog.rareDrops.requiredHomeLevel}.`));
   snapshot.inventory = { ...economyCatalog.buildings.find(building => building.id === "warehouse").levels.find(level => level.level === 4).cost.items };
-  assert.doesNotMatch(render("warehouse", { snapshot, navigation }), /Находки реликвий в вылазках — с домом/);
+  assert.doesNotMatch(render("warehouse", { snapshot, navigation }), /Находки реликвий в вылазках доступны с домом/);
 });
 
 

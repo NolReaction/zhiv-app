@@ -442,7 +442,7 @@ test("embedded warehouse sale quotes the same markdown and preserves legacy cata
 test("embedded warehouse sale rejects zero-value stock and uses the aggregate wallet cap", () => {
   const state = snapshot({ inventory: { crumb_bait: 1 } }); state.catalog.localBuyer = { payoutBps: 6000 };
   const sale = () => renderToStaticMarkup(createElement(WorldObjectSale, { economy: controller({ snapshot: state }), itemId: "crumb_bait", onCollapse() {} }));
-  let html = sale(); assert.match(html, /нужно хотя бы 2 шт/); assert.match(html, /disabled=""[^>]*>Продать · —/);
+  let html = sale(); assert.match(html, /нужно хотя бы 2 шт/); assert.match(html, /disabled=""[^>]*>Продать · -/);
   state.inventory.crumb_bait = 10; state.wallet.coins = 9_999_999_990;
   html = sale(); assert.match(html, /min="2" max="3"/); assert.match(html, /Продать · 10/);
 });

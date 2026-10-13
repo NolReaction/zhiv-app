@@ -46,7 +46,7 @@ export function CheckInReceipt({ lastCheckInAt, lastCheckInLabel, timeZone, isSe
         <PopoverContent className={styles.details} side="top" sideOffset={10} collisionPadding={20} aria-labelledby={titleId}>
           <h3 id={titleId}>{title}</h3>
           <p className={styles.fact}>{lastCheckInLabel}</p>
-          <p>{state === "sending" ? "Ещё немного — ждём подтверждения отправки."
+          <p>{state === "sending" ? "Ещё немного, ждём подтверждения отправки."
             : state === "pending" ? "Связь прервалась. Проверьте, дошла ли отметка."
               : state === "offline" ? "Последняя сохранённая отметка остаётся с вами. Для новой нужно подключение."
                 : state === "saved" ? "Всё готово. Эта отметка сохранена в вашем аккаунте."

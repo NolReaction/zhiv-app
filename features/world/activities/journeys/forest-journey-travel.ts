@@ -133,7 +133,7 @@ function syncMiningTravel(state: ForestSessionState, scene: FixedWorldScene, jou
       travel.phase="exiting"; mine.phaseAt=state.director.elapsed-(1-progress)*MINING_PORTAL_SECONDS;
     } else if (travel.phase === "leaving") { travel.phase="returning"; travel.requested=false; travel.beganAt=state.clearing.elapsed; releaseClearingPoint(state.clearing); }
   }
-  if (still) { state.director.reason=travel.phase==="working" ? "Работает внутри шахты" : "Шахтная вылазка — движение приостановлено"; return true; }
+  if (still) { state.director.reason=travel.phase==="working" ? "Работает внутри шахты" : "Шахтная вылазка: движение приостановлено"; return true; }
   if (travel.phase==="entering" || travel.phase==="exiting") {
     if (state.director.elapsed-mine.phaseAt>=MINING_PORTAL_SECONDS-1e-9) {
       if (travel.phase==="entering") travel.phase="working";
@@ -180,7 +180,7 @@ function beginFishing(state: ForestSessionState, travel: ForestJourneyTravel) {
   travel.phase = "fishing"; travel.fishingAt = state.director.elapsed;
   travel.fishBeganAge=travel.jobAge ?? 0;
   state.clearing.direction = fishingDirection(travel.shore, travel.waterTarget);
-  state.director.reason = travel.waterTarget ? "Ловит рыбу на берегу" : "Отдыхает на берегу — безопасного места для заброса нет";
+  state.director.reason = travel.waterTarget ? "Ловит рыбу на берегу" : "Отдыхает на берегу, безопасного места для заброса нет";
 }
 
 function fishingFrameAt(state: ForestSessionState, scene: FixedWorldScene, travel: ForestJourneyTravel,
@@ -323,7 +323,7 @@ export function syncForestJourneyTravel(state: ForestSessionState, scene: FixedW
         state.journeyTravel = undefined; releaseClearingPoint(state.clearing);
       }
       state.clearing.idleSeconds = 0;
-      state.director.reason = travel?.cancelled ? "Вылазка отменена — возвращается без добычи" : "Вернулся из исследования";
+      state.director.reason = travel?.cancelled ? "Вылазка отменена, возвращается без добычи" : "Вернулся из исследования";
       state.director.nextDecisionAt = state.director.elapsed + 7;
     }
   }
