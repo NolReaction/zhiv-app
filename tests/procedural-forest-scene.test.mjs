@@ -39,7 +39,7 @@ test("versioned JSON round trips edited vegetation and all authored props withou
 test("validation rejects entire invalid scenes, duplicate IDs, unknown references, kind changes and unsafe keys", () => {
   const source = editedScene();
   const invalid = [
-    { ...source, version: 3 }, { ...source, seed: NaN }, { ...source, seed: 2.5 },
+    { ...source, version: 4 }, { ...source, seed: NaN }, { ...source, seed: 2.5 },
     { ...source, width: 2000 }, { ...source, width: Infinity },
     { ...source, planted: [source.planted[0], source.planted[0]] },
     { ...source, planted: [{ ...source.planted[0], id: source.modified[0].id }] },
@@ -633,5 +633,215 @@ test("a perpendicular corner gesture leaves no spurious modification or undo ent
     const before = harness.controller.getSceneJson(), writes = harness.writes;
     harness.pointer("pointerdown", start.x, start.y); harness.pointer("pointermove", target.x, target.y); harness.pointer("pointerup", target.x, target.y);
     assert.equal(harness.controller.getSceneJson(), before); assert.equal(harness.writes, writes);
+  } finally { harness.dispose(); }
+});
+
+function stackedScene(overrides = {}) {
+  const scene = initialScene();
+  scene.removed = [...forestObjects(scene.seed, { x: 0, y: 0, width: scene.width, height: WORLD_HEIGHT }), ...initialProps()].map(object => object.id);
+  scene.planted = ["a", "b", "c"].map(letter => ({ id: `planted:${letter}`, kind: "rock", x: 800, y: 900, scale: 1, variant: 0, rotation: 0, ...(overrides[letter] ?? {}) }));
+  return scene;
+}
+const listedIds = harness => harness.status.objectList.map(object => object.id);
+
+test("hidden and locked objects remain selectable in the list but cannot be picked or edited on the canvas", async () => {
+  const harness = controllerHarness();
+  try {
+    await harness.controller.importScene(serializeScene(stackedScene({ b: { hidden: true }, c: { locked: true } })));
+    harness.flush(); assert.deepEqual(listedIds(harness), ["planted:c", "planted:b", "planted:a"]); assert.equal(harness.status.objects, 2);
+    const body = harness.screen(800, 888);
+    harness.pointer("pointerdown", body.x, body.y); harness.pointer("pointerup", body.x, body.y); harness.flush();
+    assert.equal(harness.status.selected.id, "planted:a", "the visible locked front object does not steal picking from the unlocked object behind it");
+    harness.controller.selectById("planted:c"); harness.flush(); assert.equal(harness.status.selectedLocked, true);
+    const before = harness.controller.getSceneJson(), writes = harness.writes;
+    harness.controller.updateSelected({ x: 1100 }); harness.controller.deleteSelected(); harness.controller.duplicateSelected();
+    harness.controller.setSelectedOrder("back"); harness.controller.setSelectedLayer("foreground"); harness.key("Delete");
+    assert.equal(harness.controller.getSceneJson(), before); assert.equal(harness.writes, writes);
+    harness.controller.renameSelected("Камень под замком"); harness.controller.setObjectHidden("planted:c", true); harness.flush();
+    assert.equal(harness.status.selected.name, "Камень под замком"); assert.equal(harness.status.selectedHidden, true); assert.equal(harness.status.selectedLocked, true);
+    harness.controller.setObjectLocked("planted:c", false); harness.controller.setObjectHidden("planted:c", false); harness.flush();
+    assert.equal(harness.status.selectedLocked, false); assert.equal(harness.status.selectedHidden, false);
+    harness.pointer("pointerdown", body.x, body.y); harness.pointer("pointerup", body.x, body.y); harness.flush(); assert.equal(harness.status.selected.id, "planted:c");
+    harness.controller.setLayerLocked("world", true); harness.controller.selectById("planted:a"); harness.flush(); assert.equal(harness.status.selectedLocked, true);
+    const locked = harness.controller.getSceneJson(); harness.controller.setSelectedOrder("front"); harness.controller.updateSelected({ scale: 2 }); assert.equal(harness.controller.getSceneJson(), locked);
+    harness.controller.setLayerVisibility("world", false); harness.controller.selectById("planted:b"); harness.flush();
+    assert.equal(harness.status.selectedHidden, true); assert.equal(harness.status.selectedLocked, true); assert.equal(harness.status.objectList.length, 3); assert.equal(harness.status.objects, 0);
+  } finally { harness.dispose(); }
+});
+
+test("layer creation, ordering, deletion and undo preserve every object and save each command once", async () => {
+  const harness = controllerHarness();
+  try {
+    await harness.controller.importScene(serializeScene(stackedScene()));
+    const layer = harness.controller.addLayer(); assert.ok(layer); harness.controller.renameLayer(layer, "Дома у воды");
+    harness.controller.selectById("planted:a"); const writes = harness.writes;
+    harness.controller.setSelectedLayer(layer); assert.equal(harness.writes, writes + 1); harness.flush();
+    assert.equal(harness.status.activeLayerId, layer); assert.equal(harness.status.objectList[0].id, "planted:a");
+    harness.controller.moveLayer(layer, "backward"); harness.controller.moveLayer(layer, "backward"); harness.flush();
+    assert.equal(harness.status.layers.findIndex(entry => entry.id === layer), 1);
+    assert.equal(harness.status.objectList.at(-1).id, "planted:a", "a layer behind world paints behind every world object");
+    const before = harness.controller.getSceneJson(), count = harness.status.objectList.length, beforeDeleteWrites = harness.writes;
+    harness.controller.deleteLayer(layer); harness.flush();
+    assert.equal(harness.writes, beforeDeleteWrites + 1); assert.equal(harness.status.objectList.length, count);
+    assert.equal(harness.status.activeLayerId, "world"); assert.equal(harness.scene().planted.find(object => object.id === "planted:a").layerId, "world");
+    assert.deepEqual(listedIds(harness), ["planted:c", "planted:b", "planted:a"], "deleting a back layer merges its contents behind existing world objects");
+    harness.controller.undo(); assert.equal(harness.controller.getSceneJson(), before);
+    const stable = harness.controller.getSceneJson(); harness.controller.deleteLayer("world"); assert.equal(harness.controller.getSceneJson(), stable);
+    harness.controller.setLayerVisibility(layer, false); harness.controller.setLayerLocked(layer, true);
+    const configured = harness.scene().layers; harness.controller.resetEdits(); assert.deepEqual(harness.scene().layers, configured);
+    harness.controller.regenerate(); assert.deepEqual(harness.scene().layers, configured);
+  } finally { harness.dispose(); }
+});
+
+test("object hide and layer hide undo independently, and the all-object list remains stable across camera and preview frames", async () => {
+  const harness = controllerHarness();
+  try {
+    await harness.controller.importScene(serializeScene(stackedScene())); harness.controller.selectById("planted:a"); harness.flush();
+    const list = harness.status.objectList; harness.controller.zoom(1.1); harness.flush(); assert.equal(harness.status.objectList, list);
+    harness.controller.selectById("planted:c"); const body = harness.screen(800, 888, harness.status.zoom);
+    harness.pointer("pointerdown", body.x, body.y); harness.pointer("pointermove", body.x + 30, body.y); harness.flush();
+    assert.equal(harness.status.objectList, list); assert.ok(harness.status.selected.x > 800, "the inspector receives live geometry while the list keeps its committed cache");
+    harness.pointer("pointercancel", body.x + 30, body.y); harness.controller.selectById("planted:a");
+    harness.controller.setObjectHidden("planted:a", true); harness.flush(); assert.equal(harness.status.selectedHidden, true); assert.equal(harness.status.objects, 2);
+    const afterHide = harness.controller.getSceneJson(); harness.controller.setLayerVisibility("world", false); harness.flush(); assert.equal(harness.status.objects, 0);
+    harness.controller.undo(); assert.equal(harness.controller.getSceneJson(), afterHide); harness.flush(); assert.equal(harness.status.objects, 2);
+    harness.controller.undo(); harness.flush(); assert.equal(harness.status.selectedHidden, false); assert.equal(harness.status.objects, 3);
+    const vegetation = forestObjects(initialScene().seed, { x: 0, y: 0, width: 1600, height: WORLD_HEIGHT }).find(object => object.kind === "tree");
+    await harness.controller.importScene(serializeScene(initialScene())); harness.controller.selectById(vegetation.id); harness.flush();
+    const all = harness.status.objectList; harness.controller.setLayer("trees", false); harness.flush();
+    assert.equal(harness.status.objectList, all); assert.ok(all.some(object => object.id === vegetation.id)); assert.equal(harness.status.selectedHidden, true);
+  } finally { harness.dispose(); }
+});
+
+test("front/back and list insertion separate same-position objects, preserve manual order through transforms and recover equal manual keys", async () => {
+  const harness = controllerHarness();
+  try {
+    await harness.controller.importScene(serializeScene(stackedScene())); harness.controller.selectById("planted:a");
+    harness.controller.setSelectedOrder("front"); harness.flush(); assert.deepEqual(listedIds(harness), ["planted:a", "planted:c", "planted:b"]);
+    const manual = harness.scene().planted.find(object => object.id === "planted:a").stackOrder;
+    harness.controller.updateSelected({ y: 200, rotation: 45 }); harness.flush(); assert.deepEqual(harness.scene().planted.find(object => object.id === "planted:a").stackOrder, manual);
+    assert.equal(harness.status.objectList[0].id, "planted:a", "manual overlap stays fixed when the object is moved");
+    harness.controller.setSelectedOrder("auto"); harness.flush(); assert.equal(harness.scene().planted.find(object => object.id === "planted:a").stackOrder, undefined);
+    assert.equal(harness.status.objectList.at(-1).id, "planted:a");
+    harness.controller.reorderObject("planted:a", "planted:c", "after"); harness.flush(); assert.deepEqual(listedIds(harness), ["planted:c", "planted:a", "planted:b"]);
+    harness.controller.reorderObject("planted:b", "planted:c", "before"); harness.flush(); assert.deepEqual(listedIds(harness), ["planted:b", "planted:c", "planted:a"]);
+    const tied = stackedScene({ a: { stackOrder: [0] }, b: { stackOrder: [1], locked: true }, c: { stackOrder: [1] } });
+    await harness.controller.importScene(serializeScene(tied)); const before = harness.controller.getSceneJson(), writes = harness.writes;
+    harness.controller.reorderObject("planted:a", "planted:c", "after"); harness.flush();
+    assert.deepEqual(listedIds(harness), ["planted:c", "planted:a", "planted:b"]); assert.equal(harness.writes, writes + 1);
+    assert.equal(harness.scene().planted.find(object => object.id === "planted:b").locked, true);
+    assert.ok(parseScene(harness.controller.getSceneJson()), "collision recovery saves only valid bounded keys");
+    harness.controller.undo(); assert.equal(harness.controller.getSceneJson(), before);
+    await harness.controller.importScene(serializeScene(stackedScene({ a: { stackOrder: [1e9] }, b: { stackOrder: [-1e9] } })));
+    harness.controller.selectById("planted:b"); harness.controller.setSelectedOrder("front"); harness.flush();
+    assert.equal(harness.status.objectList[0].id, "planted:b"); assert.ok(parseScene(harness.controller.getSceneJson()));
+  } finally { harness.dispose(); }
+});
+
+test("hidden or locked destination layers block new placements, and list reorder can prepare an unlocked hidden layer", async () => {
+  const asset = await readPngFile(pngFile()), harness = controllerHarness();
+  try {
+    await harness.controller.importScene(serializeScene(stackedScene()));
+    harness.controller.setLayerVisibility("foreground", false); harness.controller.selectById("planted:c"); harness.controller.setSelectedLayer("foreground");
+    harness.flush(); assert.equal(harness.status.activeLayerId, "foreground"); assert.equal(harness.status.selectedHidden, true);
+    const before = harness.controller.getSceneJson(), writes = harness.writes;
+    harness.controller.setBrush("rock"); harness.controller.setMode("plant"); harness.key("Enter");
+    assert.equal(await harness.controller.addPngAsset(asset), false); harness.controller.duplicateSelected();
+    assert.equal(harness.controller.getSceneJson(), before); assert.equal(harness.writes, writes);
+    harness.controller.reorderObject("planted:a", "planted:c", "before"); harness.flush();
+    assert.equal(harness.scene().planted.find(object => object.id === "planted:a").layerId, "foreground");
+    assert.equal(harness.status.objectList[0].id, "planted:a", "list order remains editable while a layer is hidden");
+    harness.controller.setLayerLocked("foreground", true); const locked = harness.controller.getSceneJson();
+    harness.controller.reorderObject("planted:b", "planted:a", "before"); assert.equal(harness.controller.getSceneJson(), locked);
+    harness.controller.setLayerVisibility("foreground", true); harness.controller.setLayerLocked("foreground", false);
+    harness.controller.setActiveLayer("foreground"); assert.equal(await harness.controller.addPngAsset(asset), true);
+    assert.equal(harness.scene().planted.at(-1).layerId, "foreground");
+  } finally { harness.dispose(); }
+});
+
+test("layer metadata mutations cancel a drag preview and overscan metadata survives JSON and reload without moving it", async () => {
+  const harness = controllerHarness(); let saved;
+  try {
+    await harness.controller.importScene(serializeScene(stackedScene())); harness.controller.selectById("planted:a");
+    harness.controller.setSelectedOrder("front"); harness.flush(); const body = harness.screen(800, 888);
+    harness.pointer("pointerdown", body.x, body.y); harness.pointer("pointermove", body.x + 50, body.y + 20); harness.flush(); assert.ok(harness.status.selected.x > 800);
+    const writes = harness.writes; harness.controller.setLayerLocked("world", true); harness.flush();
+    assert.equal(harness.status.selected.x, 800); assert.equal(harness.writes, writes + 1, "only the completed lock command is saved");
+    harness.pointer("pointerup", body.x + 50, body.y + 20); assert.equal(harness.writes, writes + 1);
+    await harness.controller.importScene(serializeScene(initialScene())); harness.flush();
+    const overscan = harness.status.objectList.find(object => object.x < 0 || object.x > 1600 || object.y < 0 || object.y > WORLD_HEIGHT);
+    assert.ok(overscan); harness.controller.selectById(overscan.id); harness.controller.renameSelected("Дерево на краю");
+    harness.controller.setSelectedLayer("foreground"); harness.controller.setObjectHidden(overscan.id, true); harness.controller.setObjectLocked(overscan.id, true);
+    saved = harness.controller.getSceneJson(); const restored = parseScene(saved); assert.ok(restored);
+    const metadata = restored.modified.find(object => object.id === overscan.id);
+    assert.equal(metadata.x, overscan.x); assert.equal(metadata.y, overscan.y); assert.equal(metadata.name, "Дерево на краю"); assert.equal(metadata.layerId, "foreground");
+  } finally { harness.dispose(); }
+  const restored = controllerHarness(saved);
+  try { restored.controller.selectById(parseScene(saved).modified[0].id); restored.flush(); assert.equal(restored.status.selectedHidden, true); assert.equal(restored.status.selectedLocked, true); }
+  finally { restored.dispose(); }
+});
+
+test("physical F/L and bracket shortcuts focus or change order from the toolbar while leaving text input and browser commands alone", async () => {
+  let toggles = 0; const harness = controllerHarness(null, false, { requestLayersToggle: () => { toggles++; } });
+  try {
+    await harness.controller.importScene(serializeScene(stackedScene())); harness.controller.selectById("planted:a"); harness.flush();
+    assert.equal(harness.key("д", { code: "KeyL", target: harness.button }), true); assert.equal(toggles, 1);
+    harness.key("д", { code: "KeyL", target: harness.input }); harness.key("д", { code: "KeyL", ctrlKey: true, target: harness.button }); assert.equal(toggles, 1);
+    const oldZoom = harness.status.zoom; harness.key("а", { code: "KeyF", target: harness.button }); harness.flush(); assert.ok(harness.status.zoom > oldZoom);
+    const unchanged = harness.controller.getSceneJson(); harness.key("ъ", { code: "BracketRight", ctrlKey: true, target: harness.input }); assert.equal(harness.controller.getSceneJson(), unchanged);
+    harness.key("ъ", { code: "BracketRight", ctrlKey: true, target: harness.button }); harness.flush(); assert.deepEqual(listedIds(harness), ["planted:c", "planted:a", "planted:b"]);
+    harness.key("ъ", { code: "BracketRight", metaKey: true, shiftKey: true }); harness.flush(); assert.equal(harness.status.objectList[0].id, "planted:a");
+    harness.key("х", { code: "BracketLeft", ctrlKey: true, shiftKey: true }); harness.flush(); assert.equal(harness.status.objectList.at(-1).id, "planted:a");
+  } finally { harness.dispose(); }
+});
+
+test("a valid long PNG filename imports without being forced into the shorter custom object-name limit", async () => {
+  const file = pngFile(`${"🐻".repeat(55)}-leaf.png`), asset = await readPngFile(file), harness = controllerHarness();
+  try {
+    assert.ok(asset.name.length > 100); assert.equal(await harness.controller.importPng(file), true); harness.flush();
+    assert.equal(harness.scene().assets[0].name, asset.name); assert.equal(harness.scene().planted[0].name, undefined);
+    assert.ok(parseScene(harness.controller.getSceneJson())); assert.equal(harness.status.assets[0].name, asset.name);
+  } finally { harness.dispose(); }
+});
+
+test("truncating long layer and object names cannot create invalid trailing whitespace", async () => {
+  const harness = controllerHarness();
+  try {
+    await harness.controller.importScene(serializeScene(stackedScene())); harness.controller.selectById("planted:a");
+    const name = `${"a".repeat(99)} b`; harness.controller.renameSelected(name);
+    const layer = harness.controller.addLayer(); harness.controller.renameLayer(layer, name);
+    const saved = parseScene(harness.controller.getSceneJson()); assert.ok(saved);
+    assert.equal(saved.planted[0].name, "a".repeat(99)); assert.equal(saved.layers.find(entry => entry.id === layer).name, "a".repeat(99));
+    harness.controller.renameSelected(""); assert.equal(harness.scene().planted[0].name, undefined);
+  } finally { harness.dispose(); }
+});
+
+test("deleting a locked layer or transferring its contents into locked world makes no change", async () => {
+  const harness = controllerHarness();
+  try {
+    await harness.controller.importScene(serializeScene(stackedScene())); const layer = harness.controller.addLayer();
+    harness.controller.selectById("planted:a"); harness.controller.setSelectedLayer(layer); harness.controller.setLayerLocked(layer, true);
+    let before = harness.controller.getSceneJson(), writes = harness.writes;
+    harness.controller.deleteLayer(layer); assert.equal(harness.controller.getSceneJson(), before); assert.equal(harness.writes, writes);
+    harness.controller.setLayerLocked(layer, false); harness.controller.setLayerLocked("world", true);
+    before = harness.controller.getSceneJson(); writes = harness.writes;
+    harness.controller.deleteLayer(layer); assert.equal(harness.controller.getSceneJson(), before); assert.equal(harness.writes, writes);
+    const empty = harness.controller.addLayer(); harness.controller.deleteLayer(empty); assert.ok(!harness.scene().layers.some(entry => entry.id === empty), "an empty unlocked layer needs no transfer into locked world");
+    harness.controller.setLayerLocked("world", false); harness.controller.deleteLayer(layer); assert.ok(!harness.scene().layers.some(entry => entry.id === layer));
+    assert.equal(harness.scene().planted.length, 3); assert.equal(harness.scene().planted.find(object => object.id === "planted:a").layerId, "world");
+  } finally { harness.dispose(); }
+});
+
+test("explicit front/back commands pin an automatic boundary object even before its position changes", async () => {
+  const harness = controllerHarness();
+  try {
+    await harness.controller.importScene(serializeScene(stackedScene())); harness.controller.selectById("planted:c");
+    const writes = harness.writes; harness.controller.setSelectedOrder("front"); assert.equal(harness.writes, writes + 1);
+    assert.ok(harness.scene().planted.find(object => object.id === "planted:c").stackOrder);
+    harness.controller.updateSelected({ y: 100 }); harness.flush(); assert.equal(harness.status.objectList[0].id, "planted:c");
+    harness.controller.selectById("planted:a"); harness.controller.setSelectedOrder("back"); harness.controller.updateSelected({ y: 1500 }); harness.flush();
+    assert.equal(harness.status.objectList.at(-1).id, "planted:a");
+    const stable = harness.controller.getSceneJson(); harness.controller.setSelectedOrder("back"); assert.equal(harness.controller.getSceneJson(), stable);
+    harness.controller.setSelectedOrder("backward"); assert.equal(harness.controller.getSceneJson(), stable, "one-step moves at the edge remain no-ops");
   } finally { harness.dispose(); }
 });

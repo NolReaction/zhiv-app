@@ -3,6 +3,7 @@ import { drawTerrain } from "./terrain";
 import { drawBridge, drawJetty, drawRock, drawRuins } from "./props";
 import { compareObjects, forestObjects, initialProps, objectBounds, objectCorners, objectLocalBounds, WORLD_HEIGHT, type Bounds, type ForestObject } from "./objects";
 import { assertPngDataUrl, type ImageAsset } from "./image-assets";
+import { DEFAULT_LAYERS, isObjectLocked, isObjectVisible, type SceneLayer } from "./stacking";
 
 export type CanvasFactory = (width: number, height: number) => HTMLCanvasElement;
 export type ImageLoader = (dataUrl: string) => Promise<CanvasImageSource>;
@@ -11,6 +12,7 @@ export type ForestOptions = {
   removed: ReadonlySet<string>; planted: readonly ForestObject[];
   modified?: ReadonlyMap<string, ForestObject>; selectedId?: string | null;
   assets?: ReadonlyMap<string, ImageAsset>; selectionZoom?: number;
+  layers?: readonly SceneLayer[]; includeHidden?: boolean;
 };
 const TILE = 512;
 const SOURCE_PIXEL_BUDGET = 64_000_000;
@@ -107,9 +109,11 @@ export function createForestPainter(makeCanvas: CanvasFactory, onAssetsChanged?:
     }
     const scene = new Map([...generated, ...initialProps(), ...options.planted].map(object => [object.id, object]));
     for (const [id, object] of options.modified ?? []) scene.set(id, object);
+    const layers = options.layers ?? DEFAULT_LAYERS;
     return [...scene.values()]
-      .filter(object => !options.removed.has(object.id) && (options.trees || (object.kind !== "tree" && object.kind !== "shrub")))
-      .sort(compareObjects);
+      .filter(object => !options.removed.has(object.id) && (options.includeHidden || (isObjectVisible(object, layers)
+        && (options.trees || (object.kind !== "tree" && object.kind !== "shrub")))))
+      .sort((a, b) => compareObjects(a, b, layers));
   }
 
   function sprite(object: ForestObject) {
@@ -139,7 +143,8 @@ export function createForestPainter(makeCanvas: CanvasFactory, onAssetsChanged?:
     }
     preparedSources.clear();
     pruneSources();
-    const all = objects(options);
+    // The object list may include hidden records; drawing and image export always honor visibility.
+    const all = objects({ ...options, includeHidden: false });
     ctx.save(); ctx.beginPath(); ctx.rect(0, 0, options.width, WORLD_HEIGHT); ctx.clip();
     const minX = Math.max(0, Math.floor(view.x / TILE)), maxX = Math.min(Math.ceil(options.width / TILE) - 1, Math.floor((view.x + view.width) / TILE));
     const minY = Math.max(0, Math.floor(view.y / TILE)), maxY = Math.min(Math.ceil(WORLD_HEIGHT / TILE) - 1, Math.floor((view.y + view.height) / TILE));
@@ -205,9 +210,11 @@ export function createForestPainter(makeCanvas: CanvasFactory, onAssetsChanged?:
       ctx.beginPath(); ctx.moveTo(corners[0].x, corners[0].y);
       for (const corner of corners.slice(1)) ctx.lineTo(corner.x, corner.y);
       ctx.closePath(); ctx.stroke(); ctx.setLineDash([]);
-      for (const corner of corners) {
-        ctx.fillStyle = "#fff5dc"; ctx.strokeStyle = "#315c50"; ctx.lineWidth = 2 / zoom;
-        ctx.beginPath(); ctx.arc(corner.x, corner.y, 7 / zoom, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      if (!isObjectLocked(selected, options.layers ?? DEFAULT_LAYERS)) {
+        for (const corner of corners) {
+          ctx.fillStyle = "#fff5dc"; ctx.strokeStyle = "#315c50"; ctx.lineWidth = 2 / zoom;
+          ctx.beginPath(); ctx.arc(corner.x, corner.y, 7 / zoom, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        }
       }
       ctx.fillStyle = "#ffe4a0"; ctx.beginPath();
       ctx.arc(selected.x, selected.y, 3 / zoom, 0, Math.PI * 2); ctx.fill();

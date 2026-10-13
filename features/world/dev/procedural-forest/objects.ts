@@ -1,6 +1,8 @@
 import { hash, sampleGround } from "./layout";
+import { DEFAULT_LAYERS, compareStackKeys, isObjectLocked, isObjectVisible, objectDepth, objectLayerId, stackKey, type SceneLayer } from "./stacking";
+export { objectDepth } from "./stacking";
 
-export type ForestObject = { id: string; x: number; y: number; scale: number; variant: number; kind: "tree" | "shrub" | "rock" | "ruins" | "bridge" | "jetty" | "image"; rotation?: number; assetId?: string; imageWidth?: number; imageHeight?: number };
+export type ForestObject = { id: string; x: number; y: number; scale: number; variant: number; kind: "tree" | "shrub" | "rock" | "ruins" | "bridge" | "jetty" | "image"; rotation?: number; assetId?: string; imageWidth?: number; imageHeight?: number; layerId?: string; hidden?: boolean; locked?: boolean; name?: string; stackOrder?: number[] };
 export type ObjectKind = ForestObject["kind"];
 export type Bounds = { x: number; y: number; width: number; height: number };
 export const INITIAL_WIDTH = 1600;
@@ -52,14 +54,12 @@ export function objectBounds(object: ForestObject): Bounds {
   return { x, y, width: Math.max(...corners.map(point => point.x)) - x, height: Math.max(...corners.map(point => point.y)) - y };
 }
 
-/** Authored props retain their original overlap depth even though their anchor differs. */
-export function objectDepth(object: ForestObject): number {
-  const offset = object.kind === "ruins" ? 20 : object.kind === "jetty" ? 70 : object.kind === "bridge" ? 31 : 0;
-  return object.y + offset * object.scale * Math.cos(radians(object.rotation));
-}
-
-export function compareObjects(a: ForestObject, b: ForestObject): number {
-  return objectDepth(a) - objectDepth(b) || a.x - b.x || a.id.localeCompare(b.id);
+export function compareObjects(a: ForestObject, b: ForestObject, layers: readonly SceneLayer[] = DEFAULT_LAYERS): number {
+  const layerA = objectLayerId(a), layerB = objectLayerId(b);
+  const layerOrder = layerA === layerB ? 0 : layers.findIndex(layer => layer.id === layerA) - layers.findIndex(layer => layer.id === layerB);
+  if (layerOrder) return layerOrder;
+  const order = !a.stackOrder && !b.stackOrder ? objectDepth(a) - objectDepth(b) || a.x - b.x : compareStackKeys(stackKey(a), stackKey(b));
+  return order || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 }
 
 function reservedForProp(x: number, y: number): boolean {
@@ -99,9 +99,9 @@ export function canPlant(x: number, y: number, width: number): boolean {
   return ground.water < -28 && ground.path < .2;
 }
 
-export function pickObject(objects: readonly ForestObject[], x: number, y: number): ForestObject | undefined {
+export function pickObject(objects: readonly ForestObject[], x: number, y: number, layers: readonly SceneLayer[] = DEFAULT_LAYERS): ForestObject | undefined {
   if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-  const ordered = [...objects].sort(compareObjects);
+  const ordered = objects.filter(object => isObjectVisible(object, layers) && !isObjectLocked(object, layers)).sort((a, b) => compareObjects(a, b, layers));
   for (let i = ordered.length - 1; i >= 0; i--) {
     const object = ordered[i];
     if (!Number.isFinite(object.scale) || object.scale <= 0) continue;

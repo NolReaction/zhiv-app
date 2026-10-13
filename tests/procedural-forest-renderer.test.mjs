@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { createForestPainter } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/renderer.ts");
-const { forestObjects, initialProps, objectCorners, INITIAL_SEED, INITIAL_WIDTH, WORLD_HEIGHT } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/objects.ts");
+const { forestObjects, initialProps, objectCorners, objectDepth, INITIAL_SEED, INITIAL_WIDTH, WORLD_HEIGHT, MAX_WIDTH } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/objects.ts");
 const removed = new Set([...forestObjects(INITIAL_SEED, { x: 0, y: 0, width: INITIAL_WIDTH, height: WORLD_HEIGHT }), ...initialProps()].map(object => object.id));
 const options = (overrides = {}) => ({ seed: INITIAL_SEED, width: INITIAL_WIDTH, trees: true, grid: false, removed, planted: [], ...overrides });
 const asset = (id, overrides = {}) => ({ id, name: `${id}.png`, dataUrl: `data:image/png;base64,${id}`, width: 1200, height: 600, ...overrides });
@@ -127,5 +127,95 @@ test("a failed lazy restore does not re-decode on every paint and explicit prepa
   assert.equal(attempts, 1);
   await assert.rejects(painter.prepareAssets([image]), /bad PNG/);
   assert.equal(attempts, 2);
+  painter.dispose();
+});
+
+test("manual stacking swaps overlapping PNGs without changing placement or re-decoding sources", async () => {
+  const images = [asset("first"), asset("second")], decoded = [], calls = [];
+  const native = new Map(images.map(image => [image.dataUrl, { name: image.id }]));
+  const painter = createForestPainter(factory, undefined, async url => { decoded.push(url); return native.get(url); });
+  await painter.prepareAssets(images);
+  const items = images.map((image, index) => imageObject(image, { id: `planted:${index}`, stackOrder: [100 + index * 100] }));
+  const settings = options({ assets: new Map(images.map(image => [image.id, image])), planted: items });
+  const drawingOrder = () => calls.filter(call => call[0] === "drawImage" && [...native.values()].includes(call[1])).map(call => call[1].name);
+  assert.deepEqual(painter.objects(settings).map(item => item.id), ["planted:0", "planted:1"]);
+  painter.paint(context(calls), view, settings);
+  assert.deepEqual(drawingOrder(), ["first", "second"]);
+  calls.length = 0;
+  const swapped = { ...settings, planted: [{ ...items[0], stackOrder: [300] }, items[1]] };
+  assert.deepEqual(painter.objects(swapped).map(item => item.id), ["planted:1", "planted:0"]);
+  painter.paint(context(calls), view, swapped);
+  assert.deepEqual(drawingOrder(), ["second", "first"]);
+  assert.deepEqual(swapped.planted.map(({ x, y, scale, rotation }) => ({ x, y, scale, rotation })), items.map(({ x, y, scale, rotation }) => ({ x, y, scale, rotation })));
+  assert.deepEqual(decoded, images.map(image => image.dataUrl));
+  painter.dispose();
+});
+
+test("unmodified scenes retain their original automatic depth order at both map sizes", () => {
+  const painter = createForestPainter(() => { throw new Error("Scene lookup must not draw"); });
+  for (const width of [INITIAL_WIDTH, MAX_WIDTH]) {
+    const baseline = [...forestObjects(INITIAL_SEED, { x: 0, y: 0, width, height: WORLD_HEIGHT }), ...initialProps()]
+      .sort((a, b) => objectDepth(a) - objectDepth(b) || a.x - b.x || a.id.localeCompare(b.id));
+    assert.deepEqual(painter.objects(options({ width, removed: new Set() })).map(item => item.id), baseline.map(item => item.id));
+  }
+  painter.dispose();
+});
+
+test("layer order takes priority over manual object order and PNG export uses the same stacking", async () => {
+  const images = [asset("back"), asset("front")], calls = [], native = new Map(images.map(image => [image.dataUrl, { name: image.id }]));
+  const painter = createForestPainter(factory, undefined, async url => native.get(url));
+  await painter.prepareAssets(images);
+  const layers = [{ id: "back", name: "Back", visible: true, locked: false }, { id: "world", name: "World", visible: true, locked: false }, { id: "front", name: "Front", visible: true, locked: false }];
+  const items = [imageObject(images[0], { id: "planted:back", layerId: "back", stackOrder: [65000] }), imageObject(images[1], { id: "planted:front", layerId: "front", stackOrder: [1] })];
+  const settings = options({ layers, assets: new Map(images.map(image => [image.id, image])), planted: items });
+  assert.deepEqual(painter.objects(settings).map(item => item.id), ["planted:back", "planted:front"]);
+  painter.paint(context(calls), view, settings);
+  assert.deepEqual(calls.filter(call => call[0] === "drawImage" && call[1].name).map(call => call[1].name), ["back", "front"]);
+  calls.length = 0;
+  const reordered = { ...settings, layers: [layers[2], layers[1], layers[0]] };
+  painter.paint(context(calls), view, reordered);
+  assert.deepEqual(calls.filter(call => call[0] === "drawImage" && call[1].name).map(call => call[1].name), ["front", "back"]);
+  assert.ok(!calls.some(call => call[0] === "arc"), "export-style painting has no selection markers");
+  painter.dispose();
+});
+
+test("object-list queries include hidden records while painting and export honor all visibility controls", async () => {
+  const image = asset("visible"), native = {}, calls = [];
+  const painter = createForestPainter(factory, undefined, async () => native);
+  await painter.prepareAssets([image]);
+  const layers = [{ id: "world", name: "World", visible: true, locked: false }, { id: "back", name: "Back", visible: false, locked: false }];
+  const individual = imageObject(image, { id: "planted:individual", hidden: true });
+  const byLayer = imageObject(image, { id: "planted:layer", layerId: "back" });
+  const tree = { id: "planted:tree", kind: "tree", x: 700, y: 800, scale: 1, rotation: 0, variant: 0 };
+  const settings = options({ layers, trees: false, assets: new Map([[image.id, image]]), planted: [individual, byLayer, tree] });
+  assert.deepEqual(painter.objects(settings), []);
+  assert.deepEqual(new Set(painter.objects({ ...settings, includeHidden: true }).map(item => item.id)), new Set([individual.id, byLayer.id, tree.id]));
+  for (const selectedId of [individual.id, byLayer.id, undefined]) {
+    calls.length = 0;
+    assert.equal(painter.paint(context(calls), view, { ...settings, includeHidden: true, selectedId }).objects, 0);
+    assert.ok(!calls.some(call => call[0] === "drawImage" && call[1] === native));
+    assert.ok(!calls.some(call => call[0] === "arc"), "hidden objects do not show selection handles or an anchor");
+  }
+  calls.length = 0;
+  const shown = { ...settings, layers: [layers[0], { ...layers[1], visible: true }] };
+  assert.equal(painter.paint(context(calls), view, shown).objects, 1);
+  assert.equal(calls.filter(call => call[0] === "drawImage" && call[1] === native).length, 1);
+  painter.dispose();
+});
+
+test("locked objects and locked layers remain visible with a selection frame but no resize handles", async () => {
+  const image = asset("locked"), native = {}, item = imageObject(image), calls = [];
+  const painter = createForestPainter(factory, undefined, async () => native);
+  await painter.prepareAssets([image]);
+  const settings = options({ assets: new Map([[image.id, image]]), planted: [item], selectedId: item.id });
+  painter.paint(context(calls), view, settings);
+  assert.equal(calls.filter(call => call[0] === "arc" && call[3] === 7).length, 4);
+  for (const locked of [{ ...settings, planted: [{ ...item, locked: true }] }, { ...settings, layers: [{ id: "world", name: "World", visible: true, locked: true }] }]) {
+    calls.length = 0;
+    painter.paint(context(calls), view, locked);
+    assert.ok(calls.some(call => call[0] === "drawImage" && call[1] === native));
+    assert.ok(calls.some(call => call[0] === "moveTo"), "locked selection still has a frame");
+    assert.equal(calls.filter(call => call[0] === "arc" && call[3] === 7).length, 0);
+  }
   painter.dispose();
 });
