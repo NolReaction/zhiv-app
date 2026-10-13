@@ -57,7 +57,7 @@ class JdbcDirectInviteRepositoryIntegrationTest {
             allowedOrigins = setOf("http://localhost"),
         ))
         // Exercise the upgrade with real 0.5.2 consumed data, not only an empty schema.
-        Flyway.configure().dataSource(dataSource).locations("classpath:db/migration")
+        Flyway.configure().dataSource(dataSource).locations("classpath:db/migration/history")
             .target("17").cleanDisabled(true).load().migrate()
         val inviter = UUID.randomUUID()
         val recipient = UUID.randomUUID()

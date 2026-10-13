@@ -25,7 +25,7 @@ class JdbcPromoRepositoryIntegrationTest {
 
     @Test fun `migration preserves existing account and concurrent retries credit once even after code removal`() = runBlocking<Unit> {
         DatabaseFactory.create(config()).use { source ->
-            Flyway.configure().dataSource(source).locations("classpath:db/migration").target("47").load().migrate()
+            Flyway.configure().dataSource(source).locations("classpath:db/migration/history").target("47").load().migrate()
             val codec = TokenCodec(); val token = codec.issue()
             val player = JdbcZhivRepository(source).bootstrap("Подарок", codec.issue().hash, token.hash, 365)
             val economy = JdbcEconomyRepository(source); val before = economy.snapshot(token.hash)

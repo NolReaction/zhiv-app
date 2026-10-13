@@ -55,7 +55,7 @@
 
 ## Основные файлы
 
-- Сервер: [`promo/PromoModel.kt`](../../apps/api/src/main/kotlin/ru/zhiv/promo/PromoModel.kt), [`PromoRoutes.kt`](../../apps/api/src/main/kotlin/ru/zhiv/promo/PromoRoutes.kt), [`JdbcPromoRepository.kt`](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcPromoRepository.kt), [V48](../../apps/api/src/main/resources/db/migration/V48__promo_codes.sql).
+- Сервер: [`promo/PromoModel.kt`](../../apps/api/src/main/kotlin/ru/zhiv/promo/PromoModel.kt), [`PromoRoutes.kt`](../../apps/api/src/main/kotlin/ru/zhiv/promo/PromoRoutes.kt), [`JdbcPromoRepository.kt`](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcPromoRepository.kt), [V48](../../apps/api/src/main/resources/db/migration/history/V48__promo_codes.sql).
 - Клиент: [`features/promo/`](../../features/promo/), [`currency-shop-panel.tsx`](../../features/economy/ui/market/currency-shop-panel.tsx).
 - Локальный API: [`lib/server/promo-catalog.ts`](../../lib/server/promo-catalog.ts), [`lib/dev/economy-store.ts`](../../lib/dev/economy-store.ts), [`app/api/v1/economy/promo/route.ts`](../../app/api/v1/economy/promo/route.ts).
 - Проверки: [`tests/promo-codes.test.mjs`](../../tests/promo-codes.test.mjs), [`PromoRulesTest.kt`](../../apps/api/src/test/kotlin/ru/zhiv/promo/PromoRulesTest.kt), [`JdbcPromoRepositoryIntegrationTest.kt`](../../apps/api/src/test/kotlin/ru/zhiv/db/JdbcPromoRepositoryIntegrationTest.kt).

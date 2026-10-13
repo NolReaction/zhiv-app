@@ -110,8 +110,8 @@ node scripts/configure-web-push.mjs
 - [`Notifications.kt`](../../apps/api/src/main/kotlin/ru/zhiv/notifications/Notifications.kt): DTO, категории, ограничения, тихие часы, проверка endpoint.
 - [`NotificationRoutes.kt`](../../apps/api/src/main/kotlin/ru/zhiv/notifications/NotificationRoutes.kt): authenticated API с owner fence, trusted origin, body limit и rate limit.
 - [`JdbcNotificationRepository.kt`](../../apps/api/src/main/kotlin/ru/zhiv/db/JdbcNotificationRepository.kt): настройки, привязка подписки к конкретной сессии, presence.
-- [`V47__web_push_notifications.sql`](../../apps/api/src/main/resources/db/migration/V47__web_push_notifications.sql): материализованная очередь, индексы, триггеры экономики, отметок и жизненного цикла аккаунта.
-- [`V49__optional_notification_rate_limits.sql`](../../apps/api/src/main/resources/db/migration/V49__optional_notification_rate_limits.sql): сохраняет включённые ограничения для существующих настроек; игрок может выключить их отдельно от тихих часов.
+- [`V47__web_push_notifications.sql`](../../apps/api/src/main/resources/db/migration/history/V47__web_push_notifications.sql): материализованная очередь, индексы, триггеры экономики, отметок и жизненного цикла аккаунта.
+- [`V49__optional_notification_rate_limits.sql`](../../apps/api/src/main/resources/db/migration/history/V49__optional_notification_rate_limits.sql): сохраняет включённые ограничения для существующих настроек; игрок может выключить их отдельно от тихих часов.
 - [`NotificationDispatcher.kt`](../../apps/api/src/main/kotlin/ru/zhiv/db/NotificationDispatcher.kt): фоновая обработка каждые 30 секунд, группировка, лимиты, повторная проверка перед отправкой.
 - [`NotificationMessages.kt`](../../apps/api/src/main/kotlin/ru/zhiv/notifications/NotificationMessages.kt): заголовки событий и текст сводки без повторения названия приложения.
 - [`WebPushSender.kt`](../../apps/api/src/main/kotlin/ru/zhiv/notifications/WebPushSender.kt): AES128GCM/VAPID через `web-push-libs/webpush-java`, ограниченный Java HTTP transport.

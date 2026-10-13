@@ -1189,7 +1189,7 @@ class JdbcEconomyRepositoryIntegrationTest {
         try {
             val isolatedConfig = config.copy(databaseUrl = "jdbc:postgresql://${postgres.host}:${postgres.getMappedPort(5432)}/$database")
             DatabaseFactory.create(isolatedConfig).use { isolated ->
-                Flyway.configure().dataSource(isolated).locations("classpath:db/migration").target("34").load().migrate()
+                Flyway.configure().dataSource(isolated).locations("classpath:db/migration/history").target("34").load().migrate()
                 val token = tokens.issue()
                 val user = JdbcZhivRepository(isolated).bootstrap("Старый строитель", tokens.issue().hash, token.hash, 365)
                 val repo = JdbcEconomyRepository(isolated)
@@ -1233,7 +1233,7 @@ class JdbcEconomyRepositoryIntegrationTest {
         try {
             val isolatedConfig = config.copy(databaseUrl = "jdbc:postgresql://${postgres.host}:${postgres.getMappedPort(5432)}/$database")
             DatabaseFactory.create(isolatedConfig).use { isolated ->
-                Flyway.configure().dataSource(isolated).locations("classpath:db/migration").target("31").load().migrate()
+                Flyway.configure().dataSource(isolated).locations("classpath:db/migration/history").target("31").load().migrate()
                 val token = tokens.issue()
                 val user = JdbcZhivRepository(isolated).bootstrap("Старый житель", tokens.issue().hash, token.hash, 365)
                 val legacy = WorldState(resources = WorldResources(ECONOMY_MAX_REVISION, ECONOMY_MAX_REVISION, ECONOMY_MAX_REVISION), houseLevel = 5, workshop = true, workshopLevel = 3,

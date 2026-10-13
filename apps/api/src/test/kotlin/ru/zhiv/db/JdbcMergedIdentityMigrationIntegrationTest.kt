@@ -28,7 +28,7 @@ class JdbcMergedIdentityMigrationIntegrationTest {
     @Test fun `V42 preserves old retirement digests and economy without guessing historical merge targets`(): Unit=runBlocking {
         val config=AppConfig(postgres.jdbcUrl,postgres.username,postgres.password,false,setOf("http://localhost"))
         DatabaseFactory.create(config).use { source ->
-            Flyway.configure().dataSource(source).locations("classpath:db/migration").target("41").load().migrate()
+            Flyway.configure().dataSource(source).locations("classpath:db/migration/history").target("41").load().migrate()
             val tokens=TokenCodec();val session=tokens.issue().hash
             val existing=JdbcZhivRepository(source).bootstrap("До обновления",tokens.issue().hash,session,365)
             val oldIdentity="history-${UUID.randomUUID()}@example.com"

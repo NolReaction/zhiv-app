@@ -38,10 +38,10 @@
 
 | Миграция | Назначение | Проверка совместимости |
 |---|---|---|
-| [V46](../../apps/api/src/main/resources/db/migration/V46__new_player_starting_pack.sql) | Новый инициализатор экономического профиля со стартовым набором | Существующие JSON-состояния, balances, revision и receipts неизменны; без повторного набора после сброса |
-| [V47](../../apps/api/src/main/resources/db/migration/V47__web_push_notifications.sql) | Предпочтения, подписки, presence, очередь, попытки доставки и триггеры жизненного цикла | Смена владельца/сессии и удаление аккаунта отключают неподходящие подписки; без VAPID приложение работает без доставки |
-| [V48](../../apps/api/src/main/resources/db/migration/V48__promo_codes.sql) | Квитанции промокодов отдельно от изменяемого хозяйства | Повтор команды, объединение аккаунтов и сброс не позволяют получить акцию ещё раз |
-| [V49](../../apps/api/src/main/resources/db/migration/V49__optional_notification_rate_limits.sql) | Отдельный флаг лимитов в существовавших настройках уведомлений | Исторический backfill `true` сохраняется; новый default `false` задаётся правилами API, а не переписыванием миграции |
+| [V46](../../apps/api/src/main/resources/db/migration/history/V46__new_player_starting_pack.sql) | Новый инициализатор экономического профиля со стартовым набором | Существующие JSON-состояния, balances, revision и receipts неизменны; без повторного набора после сброса |
+| [V47](../../apps/api/src/main/resources/db/migration/history/V47__web_push_notifications.sql) | Предпочтения, подписки, presence, очередь, попытки доставки и триггеры жизненного цикла | Смена владельца/сессии и удаление аккаунта отключают неподходящие подписки; без VAPID приложение работает без доставки |
+| [V48](../../apps/api/src/main/resources/db/migration/history/V48__promo_codes.sql) | Квитанции промокодов отдельно от изменяемого хозяйства | Повтор команды, объединение аккаунтов и сброс не позволяют получить акцию ещё раз |
+| [V49](../../apps/api/src/main/resources/db/migration/history/V49__optional_notification_rate_limits.sql) | Отдельный флаг лимитов в существовавших настройках уведомлений | Исторический backfill `true` сохраняется; новый default `false` задаётся правилами API, а не переписыванием миграции |
 
 [`JdbcReleaseUpgradeIntegrationTest`](../../apps/api/src/test/kotlin/ru/zhiv/db/JdbcReleaseUpgradeIntegrationTest.kt) проверяет заполненные исторические схемы, неизменность сохранений и повтор миграций. JDBC-проверки уведомлений и промокодов покрывают их транзакции и жизненный цикл. Наличие тестов не заменяет успешный прогон PostgreSQL для выпускаемого SHA. Подробнее — [backend и данные](../development/backend-and-data.md).
 

@@ -509,7 +509,7 @@ class JdbcGameRepositoryIntegrationTest {
         try {
             val upgraded=DatabaseFactory.create(config.copy(databaseUrl=postgres.jdbcUrl.substringBeforeLast('/')+"/"+database))
             upgraded.use { db ->
-                Flyway.configure().dataSource(db).locations("classpath:db/migration").target("20").load().migrate()
+                Flyway.configure().dataSource(db).locations("classpath:db/migration/history").target("20").load().migrate()
                 val owner=historicalPlayer(db,"До обновления")
                 val friends=List(5) { historicalPlayer(db,"Друг") }
                 db.connection.use { c ->
@@ -564,7 +564,7 @@ class JdbcGameRepositoryIntegrationTest {
         source.connection.use { c -> c.autoCommit=true; c.createStatement().use { it.execute("CREATE DATABASE $database") } }
         try {
             DatabaseFactory.create(config.copy(databaseUrl=postgres.jdbcUrl.substringBeforeLast('/')+"/"+database)).use { db ->
-                Flyway.configure().dataSource(db).locations("classpath:db/migration").target("23").load().migrate()
+                Flyway.configure().dataSource(db).locations("classpath:db/migration/history").target("23").load().migrate()
                 val owner=historicalPlayer(db,"Before update")
                 val champion=historicalPlayer(db,"Champion")
                 fun write(sql: String,vararg args: Any) = db.connection.use { c ->

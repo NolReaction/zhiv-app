@@ -12,21 +12,33 @@ const policy = name => [...sql.match(new RegExp(`${name} text\\[\\] := ARRAY\\[(
 
 test("game reset reviews every table and the latest migration without clearing identity or social data", async () => {
   const migrationDir = new URL("../apps/api/src/main/resources/db/migration/", import.meta.url);
-  const files = (await readdir(migrationDir)).filter(file => /^V\d+__.*\.sql$/.test(file));
-  const created = [];
-  for (const file of files) {
-    const migration = await readFile(new URL(file, migrationDir), "utf8");
-    assert.doesNotMatch(migration, /^\s*(?:DROP\s+TABLE|ALTER\s+TABLE\s+\w+\s+RENAME\s+TO)\b/im,
-      `${file}: review inventory parsing for a dropped/renamed table`);
-    created.push(...[...migration.matchAll(/^\s*CREATE\s+TABLE\s+(\w+)\s*\(/gim)].map(match => match[1]));
-  }
+  const files = (await readdir(migrationDir, { recursive: true })).flatMap(file => {
+    const match = file.match(/(?:^|[/\\])([BV])(\d+)__.*\.sql$/);
+    return match ? [{ file, prefix: match[1], version: Number(match[2]) }] : [];
+  });
   const reviewed = Number(sql.match(/ORDER BY installed_rank DESC LIMIT 1\) IS DISTINCT FROM '(\d+)'/)[1]);
-  assert.equal(reviewed, Math.max(...files.map(file => Number(file.match(/^V(\d+)__/)[1]))));
+  assert.equal(reviewed, Math.max(...files.map(file => file.version)));
   const cleared = policy("cleared_tables"), preserved = policy("preserved_tables"), partial = policy("partial_tables");
   const reinitialized = policy("reinitialized_tables");
   const classified = [...cleared, ...preserved, ...reinitialized, ...partial];
   assert.equal(new Set(classified).size, classified.length);
-  assert.deepEqual(classified.sort(), created.sort());
+  const versioned = files.filter(file => file.prefix === "V");
+  const paths = [{ name: "historical V chain", files: versioned },
+    ...files.filter(file => file.prefix === "B").map(baseline => ({
+      name: `${baseline.file} and later V migrations`,
+      files: [baseline, ...versioned.filter(file => file.version > baseline.version)],
+    }))];
+  for (const path of paths) {
+    const created = [];
+    for (const { file } of path.files) {
+      const migration = await readFile(new URL(file, migrationDir), "utf8");
+      assert.doesNotMatch(migration, /^\s*(?:DROP\s+TABLE|ALTER\s+TABLE\s+(?:public\.)?\w+\s+RENAME\s+TO)\b/im,
+        `${file}: review inventory parsing for a dropped/renamed table`);
+      created.push(...[...migration.matchAll(/^\s*CREATE\s+TABLE\s+(?:public\.)?(\w+)\s*\(/gim)].map(match => match[1]));
+    }
+    assert.equal(new Set(created).size, created.length, `${path.name}: duplicate table definitions`);
+    assert.deepEqual(classified.toSorted(), created.toSorted(), `${path.name}: game reset must classify every table`);
+  }
   for (const name of ["app_users", "app_sessions", "account_login_identities", "account_recovery_codes",
     "circles", "circle_memberships", "direct_requests", "check_ins", "admin_actions", "promo_redemptions",
     "notification_subscriptions", "notification_preferences", "game_presence_daily"]) assert.ok(preserved.includes(name), name);

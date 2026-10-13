@@ -24,7 +24,7 @@ class JdbcCurrencyDenominationIntegrationTest {
     @Test fun `V40 converts operational money once and replays old receipts without another credit`() = runBlocking<Unit> {
         val config = AppConfig(postgres.jdbcUrl, postgres.username, postgres.password, false, setOf("http://localhost"))
         DatabaseFactory.create(config).use { source ->
-            Flyway.configure().dataSource(source).locations("classpath:db/migration").target("39").load().migrate()
+            Flyway.configure().dataSource(source).locations("classpath:db/migration/history").target("39").load().migrate()
             val tokens = TokenCodec(); val sellerToken = tokens.issue(); val buyerToken = tokens.issue()
             val identities = JdbcZhivRepository(source)
             val seller = identities.bootstrap("Прежний номинал", tokens.issue().hash, sellerToken.hash, 365)

@@ -23,7 +23,7 @@ class JdbcPearlDenominationIntegrationTest {
     @Test fun `V41 changes only pearl units and projects old receipts without recrediting`() = runBlocking<Unit> {
         val config = AppConfig(postgres.jdbcUrl, postgres.username, postgres.password, false, setOf("http://localhost"))
         DatabaseFactory.create(config).use { source ->
-            Flyway.configure().dataSource(source).locations("classpath:db/migration").target("40").load().migrate()
+            Flyway.configure().dataSource(source).locations("classpath:db/migration/history").target("40").load().migrate()
             val tokens = TokenCodec(); val token = tokens.issue()
             val player = JdbcZhivRepository(source).bootstrap("Жемчуг", tokens.issue().hash, token.hash, 365)
             val state = EconomyRules.initial().copy(currencyScale = 10, pearlScale = null,

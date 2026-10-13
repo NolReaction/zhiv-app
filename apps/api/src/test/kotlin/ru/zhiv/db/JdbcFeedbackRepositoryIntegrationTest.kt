@@ -40,7 +40,7 @@ class JdbcFeedbackRepositoryIntegrationTest {
         config = AppConfig(postgres.jdbcUrl, postgres.username, postgres.password, false, setOf("http://localhost"))
         source = DatabaseFactory.create(config)
         // Upgrade an already-populated V28 schema; installing feedback must not touch player progress.
-        Flyway.configure().dataSource(source).locations("classpath:db/migration").target("28").cleanDisabled(true).load().migrate()
+        Flyway.configure().dataSource(source).locations("classpath:db/migration/history").target("28").cleanDisabled(true).load().migrate()
         execute("INSERT INTO app_users(public_id,display_name) VALUES ('0000-0000-0001','Before feedback')")
         execute("INSERT INTO game_profiles(user_id,lifetime_taps) SELECT id,42 FROM app_users WHERE public_id='0000-0000-0001'")
         DatabaseFactory.migrate(source)

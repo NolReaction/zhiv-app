@@ -20,7 +20,7 @@ class JdbcModerationMigrationIntegrationTest {
     @Test fun `V27 upgrades a populated V26 database without changing users rewards or audit history`() = runBlocking<Unit> {
         val config=AppConfig(postgres.jdbcUrl,postgres.username,postgres.password,false,setOf("http://localhost"))
         DatabaseFactory.create(config).use { source ->
-            Flyway.configure().dataSource(source).locations("classpath:db/migration").target("26").cleanDisabled(true).load().migrate()
+            Flyway.configure().dataSource(source).locations("classpath:db/migration/history").target("26").cleanDisabled(true).load().migrate()
             val admin=UUID.randomUUID(); val player=UUID.randomUUID(); val key=ByteArray(32) { 7 }; val auditId=UUID.randomUUID()
             source.connection.use { c ->
                 c.prepareStatement("INSERT INTO app_users(id,public_id,display_name) VALUES (?,'0000-0000-0001','Admin'),(?,'0000-0000-0002','Player')").use { s -> s.setObject(1,admin);s.setObject(2,player);s.executeUpdate() }

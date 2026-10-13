@@ -139,6 +139,7 @@ def main():
     assert json.loads(runtime_status.read_text(encoding="utf8")) == stale_status
     backup_dir = ROOT.parent / "zhiv-backups"
     previous_backups = set(backup_dir.glob("before-database-reset-*.dump"))
+    reset_started_epoch = float(sql("SELECT extract(epoch FROM clock_timestamp())"))
     assert interactive_reset("RESET zhiv") == 0
     assert not runtime_status.exists(), "A ready status from the previous web build must not shadow the new build"
     built_status = json.loads(run(COMPOSE + ["exec", "-T", "web", "node", "-e",
@@ -149,17 +150,25 @@ def main():
     assert public_status == built_status, "HTTPS lifecycle status must identify the web build that is actually running"
     assert built_status["maintenance"] is False and built_status["buildId"] != stale_status["buildId"]
 
-    latest_migration = max(int(path.name.split("__", 1)[0][1:])
-                           for path in (ROOT / "apps/api/src/main/resources/db/migration").glob("V*__*.sql"))
+    latest_migration = max(int(match.group(1))
+                           for path in (ROOT / "apps/api/src/main/resources/db/migration").rglob("*.sql")
+                           if (match := re.fullmatch(r"[BV](\d+)__.*\.sql", path.name)))
     assert sql("SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1") == str(latest_migration)
     assert sql("SELECT count(*) FROM flyway_schema_history WHERE NOT success OR description = 'ci-reset-history-marker'") == "0"
     assert sql("SELECT to_regnamespace('ci_reset_obsolete') IS NULL AND to_regclass('public.ci_reset_old_table') IS NULL") == "t"
     for table in ("app_users", "app_sessions", "account_login_identities", "account_login_flows", "account_registration_tickets",
                   "player_feedback", "player_feedback_actions"):
         assert sql(f"SELECT count(*) FROM {table}") == "0", table
-    assert sql("""SELECT count(*) = 1 AND bool_and(m.singleton AND m.started_at = h.installed_on::timestamptz)
-                  FROM game_tap_collection_metadata m
-                  JOIN flyway_schema_history h ON h.version = '28' AND h.success""") == "t"
+    assert sql(f"""SELECT count(*)=1 AND bool_and(m.singleton AND isfinite(m.started_at) AND (
+                    (NOT EXISTS (SELECT 1 FROM flyway_schema_history WHERE type='SQL_BASELINE')
+                      AND EXISTS (SELECT 1 FROM flyway_schema_history h
+                        WHERE h.version='28' AND h.type='SQL' AND h.success
+                          AND m.started_at=h.installed_on::timestamptz))
+                    OR ((SELECT count(*) FROM flyway_schema_history)=1
+                      AND EXISTS (SELECT 1 FROM flyway_schema_history h
+                        WHERE h.version='49' AND h.type='SQL_BASELINE' AND h.success)
+                      AND m.started_at BETWEEN to_timestamp({reset_started_epoch}) AND clock_timestamp())
+                  )) FROM game_tap_collection_metadata m""") == "t"
     assert original_volumes == {name: volume_mounts(name, project) for name in ("db", "caddy")}
     assert original_secrets == secret_fingerprints()
 

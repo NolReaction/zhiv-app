@@ -63,7 +63,7 @@ class JdbcReleaseUpgradeIntegrationTest {
     @Test fun `upgrade from populated V48 preserves notification settings and queue while keeping limits enabled`() = runBlocking<Unit> {
         val config=AppConfig(postgres.jdbcUrl,postgres.username,postgres.password,false,setOf("http://localhost"))
         DatabaseFactory.create(config).use { source ->
-            Flyway.configure().dataSource(source).locations("classpath:db/migration").target("48").load().migrate()
+            Flyway.configure().dataSource(source).locations("classpath:db/migration/history").target("48").load().migrate()
             val token=TokenCodec().issue(); val otherToken=TokenCodec().issue()
             val identities=JdbcZhivRepository(source)
             val legacy=identities.bootstrap("Прежние настройки",TokenCodec().issue().hash,token.hash,365)
@@ -96,7 +96,7 @@ class JdbcReleaseUpgradeIntegrationTest {
     @Test fun `upgrade from populated V44 adds presence without changing accounts balances or receipts`() = runBlocking<Unit> {
         val config = AppConfig(postgres.jdbcUrl, postgres.username, postgres.password, false, setOf("http://localhost"))
         DatabaseFactory.create(config).use { source ->
-            Flyway.configure().dataSource(source).locations("classpath:db/migration").target("44").cleanDisabled(true).load().migrate()
+            Flyway.configure().dataSource(source).locations("classpath:db/migration/history").target("44").cleanDisabled(true).load().migrate()
             val token = TokenCodec().issue()
             val identity = JdbcZhivRepository(source)
             val player = identity.bootstrap("До активности", TokenCodec().issue().hash, token.hash, 365)
@@ -129,7 +129,7 @@ class JdbcReleaseUpgradeIntegrationTest {
     @Test fun `upgrade from populated V30 preserves accounts and feedback while initializing the new economy`() = runBlocking<Unit> {
         val config = AppConfig(postgres.jdbcUrl, postgres.username, postgres.password, false, setOf("http://localhost"))
         DatabaseFactory.create(config).use { source ->
-            Flyway.configure().dataSource(source).locations("classpath:db/migration").target("30").cleanDisabled(true).load().migrate()
+            Flyway.configure().dataSource(source).locations("classpath:db/migration/history").target("30").cleanDisabled(true).load().migrate()
             val tokens = TokenCodec(); val token = tokens.issue()
             val identities = JdbcZhivRepository(source)
             val player = identities.bootstrap("До памяти", tokens.issue().hash, token.hash, 365)
@@ -181,7 +181,7 @@ class JdbcReleaseUpgradeIntegrationTest {
     @Test fun `upgrade from deployed V28 preserves accounts authenticated sessions balances trips and receipts`() = runBlocking<Unit> {
         val config = AppConfig(postgres.jdbcUrl, postgres.username, postgres.password, false, setOf("http://localhost"))
         DatabaseFactory.create(config).use { source ->
-            Flyway.configure().dataSource(source).locations("classpath:db/migration").target("28").cleanDisabled(true).load().migrate()
+            Flyway.configure().dataSource(source).locations("classpath:db/migration/history").target("28").cleanDisabled(true).load().migrate()
             val token = TokenCodec().issue()
             val identity = JdbcZhivRepository(source)
             val player = identity.bootstrap("До обновления", TokenCodec().issue().hash, token.hash, 365)
@@ -254,7 +254,7 @@ class JdbcReleaseUpgradeIntegrationTest {
     @Test fun `V34 preserves overfull inventories old jobs and escrow and initializes storage only once`() = runBlocking<Unit> {
         val config = AppConfig(postgres.jdbcUrl, postgres.username, postgres.password, false, setOf("http://localhost"))
         DatabaseFactory.create(config).use { source ->
-            Flyway.configure().dataSource(source).locations("classpath:db/migration").target("33").cleanDisabled(true).load().migrate()
+            Flyway.configure().dataSource(source).locations("classpath:db/migration/history").target("33").cleanDisabled(true).load().migrate()
             val tokens = TokenCodec()
             val token = tokens.issue()
             val identities = JdbcZhivRepository(source)
@@ -275,7 +275,7 @@ class JdbcReleaseUpgradeIntegrationTest {
             val unchangedTables = listOf("economy_market_listings", "economy_market_receipts", "economy_conversion_audit", "economy_ledger", "economy_commands")
             val before = legacyData(source, unchangedTables)
             // This assertion isolates V34; V35 separately tests its new ledger column.
-            val warehouseMigration = Flyway.configure().dataSource(source).locations("classpath:db/migration").target("34").load()
+            val warehouseMigration = Flyway.configure().dataSource(source).locations("classpath:db/migration/history").target("34").load()
             warehouseMigration.migrate()
             val expected = state.copy(buildings = state.buildings + ("warehouse" to 1) + ("kiln" to 0))
             source.connection.use { c ->

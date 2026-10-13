@@ -37,16 +37,25 @@ class JdbcTapHistoryIntegrationTest {
     private lateinit var source: HikariDataSource
     private lateinit var identities: JdbcZhivRepository
     private lateinit var config: AppConfig
+    private lateinit var migrationStartedAt: OffsetDateTime
+    private lateinit var migrationFinishedAt: OffsetDateTime
     private val tokens = TokenCodec()
     private data class User(val id: UUID, val publicId: String, val hash: ByteArray, val raw: String)
     @BeforeAll fun setup() {
         config = AppConfig(postgres.jdbcUrl, postgres.username, postgres.password, false, setOf("http://localhost"))
         source = DatabaseFactory.create(config)
+        migrationStartedAt = databaseTime()
         DatabaseFactory.migrate(source)
+        migrationFinishedAt = databaseTime()
         identities = JdbcZhivRepository(source)
     }
     @AfterAll fun close() { source.close() }
     @BeforeEach fun clear() { execute("TRUNCATE app_users CASCADE") }
+    private fun databaseTime(): OffsetDateTime = source.connection.use { c ->
+        c.createStatement().use { statement -> statement.executeQuery("SELECT clock_timestamp()").use { row ->
+            assertTrue(row.next()); row.getObject(1, OffsetDateTime::class.java)
+        } }
+    }
     private fun execute(sql: String, vararg values: Any?): Int = source.connection.use { c ->
         c.prepareStatement(sql).use { s ->
             values.forEachIndexed { i, value -> s.setObject(i + 1, value) }; s.executeUpdate()
@@ -192,7 +201,11 @@ class JdbcTapHistoryIntegrationTest {
         execute("GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA public TO tap_history_runtime")
         execute("REVOKE ALL ON TABLE flyway_schema_history FROM tap_history_runtime")
         execute("REVOKE INSERT,UPDATE,DELETE ON game_tap_collection_metadata FROM tap_history_runtime")
-        assertEquals("yes",scalar("SELECT CASE WHEN started_at=(SELECT installed_on::timestamptz FROM flyway_schema_history WHERE version='28' AND success) THEN 'yes' ELSE 'no' END FROM game_tap_collection_metadata"))
+        assertEquals("yes", scalar("""SELECT CASE WHEN singleton AND (
+            started_at=(SELECT installed_on::timestamptz FROM flyway_schema_history WHERE version='28' AND success)
+            OR (EXISTS (SELECT 1 FROM flyway_schema_history WHERE version='49' AND type='SQL_BASELINE' AND success)
+                AND started_at BETWEEN ?::timestamptz AND ?::timestamptz)
+            ) THEN 'yes' ELSE 'no' END FROM game_tap_collection_metadata""", migrationStartedAt, migrationFinishedAt))
         HikariDataSource(HikariConfig().apply {
             jdbcUrl=postgres.jdbcUrl; username=postgres.username; password=postgres.password
             maximumPoolSize=1; minimumIdle=0; isAutoCommit=false

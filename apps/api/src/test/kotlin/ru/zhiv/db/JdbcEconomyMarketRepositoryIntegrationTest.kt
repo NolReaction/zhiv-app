@@ -507,7 +507,7 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
         try {
             val isolatedConfig = config.copy(databaseUrl="jdbc:postgresql://${postgres.host}:${postgres.getMappedPort(5432)}/$database")
             DatabaseFactory.create(isolatedConfig).use { isolated ->
-                Flyway.configure().dataSource(isolated).locations("classpath:db/migration").target("35").load().migrate()
+                Flyway.configure().dataSource(isolated).locations("classpath:db/migration/history").target("35").load().migrate()
                 val token = tokens.issue()
                 val user = JdbcZhivRepository(isolated).bootstrap("Прежняя лавка", tokens.issue().hash, token.hash, 365)
                 val repo = JdbcEconomyRepository(isolated)
@@ -528,7 +528,7 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
                 fun rows(table: String) = isolated.connection.use { c -> c.economyRows("SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb)::text FROM $table t") { it.getString(1) }.single() }
                 val tables = listOf("economy_profiles", "economy_market_listings", "economy_market_receipts", "economy_ledger")
                 val before = tables.associateWith(::rows)
-                val showcaseMigration = Flyway.configure().dataSource(isolated).locations("classpath:db/migration").target("36").load()
+                val showcaseMigration = Flyway.configure().dataSource(isolated).locations("classpath:db/migration/history").target("36").load()
                 showcaseMigration.migrate(); showcaseMigration.migrate()
                 assertEquals(before, tables.associateWith(::rows))
                 DatabaseFactory.migrate(isolated)
@@ -659,7 +659,7 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
         try {
             val isolatedConfig=config.copy(databaseUrl="jdbc:postgresql://${postgres.host}:${postgres.getMappedPort(5432)}/$database")
             DatabaseFactory.create(isolatedConfig).use { isolated ->
-                Flyway.configure().dataSource(isolated).locations("classpath:db/migration").target("42").load().migrate()
+                Flyway.configure().dataSource(isolated).locations("classpath:db/migration/history").target("42").load().migrate()
                 val token=tokens.issue()
                 val user=JdbcZhivRepository(isolated).bootstrap("До защиты рынка",tokens.issue().hash,token.hash,365)
                 val lot=UUID.randomUUID();val request=UUID.randomUUID()

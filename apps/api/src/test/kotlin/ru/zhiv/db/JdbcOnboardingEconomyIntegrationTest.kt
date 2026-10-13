@@ -25,7 +25,7 @@ class JdbcOnboardingEconomyIntegrationTest {
     @Test fun `V46 preserves saved economies and initializes only future profiles with the catalog pack`() = runBlocking<Unit> {
         val config = AppConfig(postgres.jdbcUrl, postgres.username, postgres.password, false, setOf("http://localhost"))
         DatabaseFactory.create(config).use { source ->
-            Flyway.configure().dataSource(source).locations("classpath:db/migration").target("45").load().migrate()
+            Flyway.configure().dataSource(source).locations("classpath:db/migration/history").target("45").load().migrate()
             val tokens = TokenCodec(); val token = tokens.issue()
             val identities = JdbcZhivRepository(source)
             val old = identities.bootstrap("Сохранённый", tokens.issue().hash, token.hash, 365)

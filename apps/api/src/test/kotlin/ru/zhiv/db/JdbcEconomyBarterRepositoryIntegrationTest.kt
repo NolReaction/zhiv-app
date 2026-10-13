@@ -330,7 +330,7 @@ class JdbcEconomyBarterRepositoryIntegrationTest {
         try {
             val isolatedConfig=config.copy(databaseUrl="jdbc:postgresql://${postgres.host}:${postgres.getMappedPort(5432)}/$database")
             DatabaseFactory.create(isolatedConfig).use{isolated->
-                Flyway.configure().dataSource(isolated).locations("classpath:db/migration").target("38").load().migrate()
+                Flyway.configure().dataSource(isolated).locations("classpath:db/migration/history").target("38").load().migrate()
                 val token=tokens.issue();val user=JdbcZhivRepository(isolated).bootstrap("До обмена",tokens.issue().hash,token.hash,365)
                 val listing=UUID.randomUUID();val request=UUID.randomUUID()
                 isolated.connection.use{c->
@@ -350,7 +350,7 @@ class JdbcEconomyBarterRepositoryIntegrationTest {
                 val tables=listOf("economy_profiles","economy_market_listings","economy_market_receipts","economy_ledger","game_reward_claims")
                 val before=tables.associateWith(::rows)
                 // First prove V39 is additive, before the explicit later currency conversions.
-                val barterMigration=Flyway.configure().dataSource(isolated).locations("classpath:db/migration").target("39").load()
+                val barterMigration=Flyway.configure().dataSource(isolated).locations("classpath:db/migration/history").target("39").load()
                 barterMigration.migrate();barterMigration.migrate()
                 assertEquals(before,tables.associateWith(::rows))
                 DatabaseFactory.migrate(isolated);DatabaseFactory.migrate(isolated)
