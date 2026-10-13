@@ -151,10 +151,10 @@ export function drawForestCampfires(ctx: CanvasRenderingContext2D, fires: readon
 }
 /** Dynamic pools are cheap gradients; they do not invalidate the cached night texture. */
 export function drawForestCampfireGlow(ctx: CanvasRenderingContext2D, fires: readonly ForestCampfire[], elapsed: number, still: boolean, night: number,
-  actor?: { x: number; y: number; size: number }, coveredFireIds: readonly string[] = []) {
+  actor?: { x: number; y: number; size: number }, coveredFireIds: readonly string[] = [], lightPools = true) {
   if (night <= 0) return;
   ctx.save(); ctx.globalCompositeOperation = "screen";
-  for (const fire of fires) {
+  for (const fire of lightPools ? fires : []) {
     const strength = (fire.flame * .28 + fire.embers * .03) * night;
     if (strength < .003) continue;
     const phase = fire.position.x * .073 + fire.position.y * .041;

@@ -34,7 +34,9 @@ test("disabled store ignores every mutation and does not register subscribers", 
   const store = createWorldDevStore(false);
   const unsubscribe = store.subscribe(() => assert.fail("disabled store notified a listener"));
   store.patch({ weather: "downpour", heroScale: 2, levels: { unknown: 1 }, autoLife: false, puddles: false,
-    debugWater: true, debugNavigation: true, debugFauna: true, navigationMode: "routes" });
+    debugWater: true, debugNavigation: true, debugFauna: true, navigationMode: "routes",
+    lightShadows: false, lightAzimuth: 12, lightElevation: 60, lightQuality: "high", lightDebug: true,
+    lightTestLamp: true, lightLampX: 300, lightLampY: 400, lightLampHeight: 120 });
   store.triggerPose("greet"); store.triggerLife("butterfly"); store.triggerLife("bush"); store.triggerLife("idle");
   for (const kind of ["water-bush", "harvest-berries", "grow-berries"]) store.triggerLife(kind);
   store.triggerBirds(); store.triggerCamera("pet"); store.reportArtError("broken image"); store.reset();
@@ -146,6 +148,40 @@ test("hero scale clamps finite values without accepting non-numeric input", () =
   const before = store.getSnapshot();
   for (const value of [NaN, Infinity, -Infinity, "1", null, undefined]) store.patch({ heroScale: value });
   assert.equal(store.getSnapshot(), before);
+});
+
+test("lighting controls remain local, reset together and ignore invalid modes and flags", () => {
+  const store = createWorldDevStore(true);
+  const defaults = { lightShadows: true, lightAzimuth: 225, lightElevation: 40, lightQuality: "low", lightDebug: false,
+    lightTestLamp: false, lightLampX: 650, lightLampY: 660, lightLampHeight: 55 };
+  for (const [key, value] of Object.entries(defaults)) assert.equal(store.getSnapshot()[key], value);
+  const patch = { lightShadows: false, lightAzimuth: 90, lightElevation: 30, lightQuality: "high", lightDebug: true,
+    lightTestLamp: true, lightLampX: 400, lightLampY: 700, lightLampHeight: 90 };
+  store.patch(patch);
+  for (const [key, value] of Object.entries(patch)) assert.equal(store.getSnapshot()[key], value);
+  assert.equal(createWorldDevStore(true).getSnapshot(), WORLD_DEV_DEFAULTS);
+  assert.equal(store.getServerSnapshot(), WORLD_DEV_DEFAULTS);
+  assert.equal(store.getSnapshot().scenarioEvent, null);
+  assert.equal(store.getSnapshot().cameraEvent, null);
+  assert.equal(store.getSnapshot().debug, false);
+  const before = store.getSnapshot();
+  store.patch({ lightShadows: "on", lightQuality: "ultra", lightDebug: 1, lightTestLamp: null });
+  assert.equal(store.getSnapshot(), before);
+  store.reset();
+  assert.equal(store.getSnapshot(), WORLD_DEV_DEFAULTS);
+});
+
+test("lighting angles, lamp ground position and height clamp finite inputs without accepting NaN or coercion", () => {
+  const store = createWorldDevStore(true);
+  const bounds = { lightAzimuth: [0, 360], lightElevation: [10, 80], lightLampX: [0, 1254], lightLampY: [0, 1254], lightLampHeight: [8, 150] };
+  for (const [key, [min, max]] of Object.entries(bounds)) {
+    store.patch({ [key]: -100 }); assert.equal(store.getSnapshot()[key], min);
+    store.patch({ [key]: 9000 }); assert.equal(store.getSnapshot()[key], max);
+    store.patch({ [key]: (min + max) / 2 }); assert.equal(store.getSnapshot()[key], (min + max) / 2);
+    const before = store.getSnapshot();
+    for (const value of [NaN, Infinity, -Infinity, "40", null, undefined, false]) store.patch({ [key]: value });
+    assert.equal(store.getSnapshot(), before, `${key} must ignore malformed values`);
+  }
 });
 
 test("building overrides accept only authored site states and preserve untouched levels", () => {

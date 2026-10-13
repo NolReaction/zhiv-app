@@ -32367,9 +32367,1043 @@
           "visible": true,
           "x": 0,
           "y": 0
+        },
+        {
+          "id": 131,
+          "name": "Lighting",
+          "type": "group",
+          "locked": false,
+          "visible": true,
+          "opacity": 1,
+          "x": 0,
+          "y": 0,
+          "layers": [
+            {
+              "id": 132,
+              "name": "ShadowCasters",
+              "type": "objectgroup",
+              "draworder": "index",
+              "color": "#e6ae5b",
+              "locked": false,
+              "visible": true,
+              "opacity": 1,
+              "x": 0,
+              "y": 0,
+              "objects": [
+                {
+                  "id": 470,
+                  "name": "home-shadow-1",
+                  "type": "ShadowCaster",
+                  "x": 607.0794,
+                  "y": 630.881,
+                  "width": 0,
+                  "height": 0,
+                  "rotation": 0,
+                  "visible": true,
+                  "polygon": [
+                    {
+                      "x": 103.8919,
+                      "y": 18.1024
+                    },
+                    {
+                      "x": 96.9325,
+                      "y": 27.1536
+                    },
+                    {
+                      "x": 77.919,
+                      "y": 33.7795
+                    },
+                    {
+                      "x": 51.946,
+                      "y": 36.2048
+                    },
+                    {
+                      "x": 25.973,
+                      "y": 33.7795
+                    },
+                    {
+                      "x": 6.9595,
+                      "y": 27.1536
+                    },
+                    {
+                      "x": 0.0,
+                      "y": 18.1024
+                    },
+                    {
+                      "x": 6.9595,
+                      "y": 9.0512
+                    },
+                    {
+                      "x": 25.973,
+                      "y": 2.4253
+                    },
+                    {
+                      "x": 51.946,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 77.919,
+                      "y": 2.4253
+                    },
+                    {
+                      "x": 96.9325,
+                      "y": 9.0512
+                    }
+                  ],
+                  "properties": [
+                    {
+                      "name": "height",
+                      "type": "float",
+                      "value": 110.19
+                    },
+                    {
+                      "name": "softness",
+                      "type": "float",
+                      "value": 2.2
+                    },
+                    {
+                      "name": "siteId",
+                      "type": "string",
+                      "value": "home"
+                    },
+                    {
+                      "name": "level",
+                      "type": "int",
+                      "value": 1
+                    }
+                  ]
+                },
+                {
+                  "id": 471,
+                  "name": "home-shadow-2",
+                  "type": "ShadowCaster",
+                  "x": 610.0528,
+                  "y": 624.7343,
+                  "width": 0,
+                  "height": 0,
+                  "rotation": 0,
+                  "visible": true,
+                  "polygon": [
+                    {
+                      "x": 95.7,
+                      "y": 16.675
+                    },
+                    {
+                      "x": 89.2893,
+                      "y": 25.0125
+                    },
+                    {
+                      "x": 71.775,
+                      "y": 31.116
+                    },
+                    {
+                      "x": 47.85,
+                      "y": 33.35
+                    },
+                    {
+                      "x": 23.925,
+                      "y": 31.116
+                    },
+                    {
+                      "x": 6.4107,
+                      "y": 25.0125
+                    },
+                    {
+                      "x": 0.0,
+                      "y": 16.675
+                    },
+                    {
+                      "x": 6.4107,
+                      "y": 8.3375
+                    },
+                    {
+                      "x": 23.925,
+                      "y": 2.234
+                    },
+                    {
+                      "x": 47.85,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 71.775,
+                      "y": 2.234
+                    },
+                    {
+                      "x": 89.2893,
+                      "y": 8.3375
+                    }
+                  ],
+                  "properties": [
+                    {
+                      "name": "height",
+                      "type": "float",
+                      "value": 101.5
+                    },
+                    {
+                      "name": "softness",
+                      "type": "float",
+                      "value": 2.2
+                    },
+                    {
+                      "name": "siteId",
+                      "type": "string",
+                      "value": "home"
+                    },
+                    {
+                      "name": "level",
+                      "type": "int",
+                      "value": 2
+                    }
+                  ]
+                },
+                {
+                  "id": 472,
+                  "name": "home-shadow-3",
+                  "type": "ShadowCaster",
+                  "x": 610.0528,
+                  "y": 624.7343,
+                  "width": 0,
+                  "height": 0,
+                  "rotation": 0,
+                  "visible": true,
+                  "polygon": [
+                    {
+                      "x": 95.7,
+                      "y": 16.675
+                    },
+                    {
+                      "x": 89.2893,
+                      "y": 25.0125
+                    },
+                    {
+                      "x": 71.775,
+                      "y": 31.116
+                    },
+                    {
+                      "x": 47.85,
+                      "y": 33.35
+                    },
+                    {
+                      "x": 23.925,
+                      "y": 31.116
+                    },
+                    {
+                      "x": 6.4107,
+                      "y": 25.0125
+                    },
+                    {
+                      "x": 0.0,
+                      "y": 16.675
+                    },
+                    {
+                      "x": 6.4107,
+                      "y": 8.3375
+                    },
+                    {
+                      "x": 23.925,
+                      "y": 2.234
+                    },
+                    {
+                      "x": 47.85,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 71.775,
+                      "y": 2.234
+                    },
+                    {
+                      "x": 89.2893,
+                      "y": 8.3375
+                    }
+                  ],
+                  "properties": [
+                    {
+                      "name": "height",
+                      "type": "float",
+                      "value": 101.5
+                    },
+                    {
+                      "name": "softness",
+                      "type": "float",
+                      "value": 2.2
+                    },
+                    {
+                      "name": "siteId",
+                      "type": "string",
+                      "value": "home"
+                    },
+                    {
+                      "name": "level",
+                      "type": "int",
+                      "value": 3
+                    }
+                  ]
+                },
+                {
+                  "id": 473,
+                  "name": "home-shadow-4",
+                  "type": "ShadowCaster",
+                  "x": 610.0528,
+                  "y": 623.7343,
+                  "width": 0,
+                  "height": 0,
+                  "rotation": 0,
+                  "visible": true,
+                  "polygon": [
+                    {
+                      "x": 95.7,
+                      "y": 16.675
+                    },
+                    {
+                      "x": 89.2893,
+                      "y": 25.0125
+                    },
+                    {
+                      "x": 71.775,
+                      "y": 31.116
+                    },
+                    {
+                      "x": 47.85,
+                      "y": 33.35
+                    },
+                    {
+                      "x": 23.925,
+                      "y": 31.116
+                    },
+                    {
+                      "x": 6.4107,
+                      "y": 25.0125
+                    },
+                    {
+                      "x": 0.0,
+                      "y": 16.675
+                    },
+                    {
+                      "x": 6.4107,
+                      "y": 8.3375
+                    },
+                    {
+                      "x": 23.925,
+                      "y": 2.234
+                    },
+                    {
+                      "x": 47.85,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 71.775,
+                      "y": 2.234
+                    },
+                    {
+                      "x": 89.2893,
+                      "y": 8.3375
+                    }
+                  ],
+                  "properties": [
+                    {
+                      "name": "height",
+                      "type": "float",
+                      "value": 101.5
+                    },
+                    {
+                      "name": "softness",
+                      "type": "float",
+                      "value": 2.2
+                    },
+                    {
+                      "name": "siteId",
+                      "type": "string",
+                      "value": "home"
+                    },
+                    {
+                      "name": "level",
+                      "type": "int",
+                      "value": 4
+                    }
+                  ]
+                },
+                {
+                  "id": 474,
+                  "name": "home-shadow-5",
+                  "type": "ShadowCaster",
+                  "x": 609.6928,
+                  "y": 622.3243,
+                  "width": 0,
+                  "height": 0,
+                  "rotation": 0,
+                  "visible": true,
+                  "polygon": [
+                    {
+                      "x": 94.38,
+                      "y": 16.445
+                    },
+                    {
+                      "x": 88.0577,
+                      "y": 24.6675
+                    },
+                    {
+                      "x": 70.785,
+                      "y": 30.6868
+                    },
+                    {
+                      "x": 47.19,
+                      "y": 32.89
+                    },
+                    {
+                      "x": 23.595,
+                      "y": 30.6868
+                    },
+                    {
+                      "x": 6.3223,
+                      "y": 24.6675
+                    },
+                    {
+                      "x": 0.0,
+                      "y": 16.445
+                    },
+                    {
+                      "x": 6.3223,
+                      "y": 8.2225
+                    },
+                    {
+                      "x": 23.595,
+                      "y": 2.2032
+                    },
+                    {
+                      "x": 47.19,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 70.785,
+                      "y": 2.2032
+                    },
+                    {
+                      "x": 88.0577,
+                      "y": 8.2225
+                    }
+                  ],
+                  "properties": [
+                    {
+                      "name": "height",
+                      "type": "float",
+                      "value": 100.1
+                    },
+                    {
+                      "name": "softness",
+                      "type": "float",
+                      "value": 2.2
+                    },
+                    {
+                      "name": "siteId",
+                      "type": "string",
+                      "value": "home"
+                    },
+                    {
+                      "name": "level",
+                      "type": "int",
+                      "value": 5
+                    }
+                  ]
+                },
+                {
+                  "id": 475,
+                  "name": "clearing-north-trunk",
+                  "type": "ShadowCaster",
+                  "x": 613.0,
+                  "y": 544.0,
+                  "width": 0,
+                  "height": 0,
+                  "rotation": 0,
+                  "visible": true,
+                  "polygon": [
+                    {
+                      "x": 14.0,
+                      "y": 4.0
+                    },
+                    {
+                      "x": 11.9497,
+                      "y": 6.8284
+                    },
+                    {
+                      "x": 7.0,
+                      "y": 8.0
+                    },
+                    {
+                      "x": 2.0503,
+                      "y": 6.8284
+                    },
+                    {
+                      "x": 0.0,
+                      "y": 4.0
+                    },
+                    {
+                      "x": 2.0503,
+                      "y": 1.1716
+                    },
+                    {
+                      "x": 7.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 11.9497,
+                      "y": 1.1716
+                    }
+                  ],
+                  "properties": [
+                    {
+                      "name": "height",
+                      "type": "float",
+                      "value": 72
+                    },
+                    {
+                      "name": "softness",
+                      "type": "float",
+                      "value": 1.1
+                    }
+                  ]
+                },
+                {
+                  "id": 476,
+                  "name": "clearing-north-crown",
+                  "type": "ShadowCaster",
+                  "x": 528.0,
+                  "y": 520.0,
+                  "width": 0,
+                  "height": 0,
+                  "rotation": 0,
+                  "visible": true,
+                  "polygon": [
+                    {
+                      "x": 188.0,
+                      "y": 28.0
+                    },
+                    {
+                      "x": 180.8447,
+                      "y": 38.7151
+                    },
+                    {
+                      "x": 160.468,
+                      "y": 47.799
+                    },
+                    {
+                      "x": 129.9722,
+                      "y": 53.8686
+                    },
+                    {
+                      "x": 94.0,
+                      "y": 56.0
+                    },
+                    {
+                      "x": 58.0278,
+                      "y": 53.8686
+                    },
+                    {
+                      "x": 27.532,
+                      "y": 47.799
+                    },
+                    {
+                      "x": 7.1553,
+                      "y": 38.7151
+                    },
+                    {
+                      "x": 0.0,
+                      "y": 28.0
+                    },
+                    {
+                      "x": 7.1553,
+                      "y": 17.2849
+                    },
+                    {
+                      "x": 27.532,
+                      "y": 8.201
+                    },
+                    {
+                      "x": 58.0278,
+                      "y": 2.1314
+                    },
+                    {
+                      "x": 94.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 129.9722,
+                      "y": 2.1314
+                    },
+                    {
+                      "x": 160.468,
+                      "y": 8.201
+                    },
+                    {
+                      "x": 180.8447,
+                      "y": 17.2849
+                    }
+                  ],
+                  "properties": [
+                    {
+                      "name": "baseHeight",
+                      "type": "float",
+                      "value": 48
+                    },
+                    {
+                      "name": "height",
+                      "type": "float",
+                      "value": 46
+                    },
+                    {
+                      "name": "opacity",
+                      "type": "float",
+                      "value": 0.58
+                    },
+                    {
+                      "name": "softness",
+                      "type": "float",
+                      "value": 4
+                    }
+                  ]
+                },
+                {
+                  "id": 477,
+                  "name": "clearing-west-trunk",
+                  "type": "ShadowCaster",
+                  "x": 482.0,
+                  "y": 727.0,
+                  "width": 0,
+                  "height": 0,
+                  "rotation": 0,
+                  "visible": true,
+                  "polygon": [
+                    {
+                      "x": 10.0,
+                      "y": 3.0
+                    },
+                    {
+                      "x": 8.5355,
+                      "y": 5.1213
+                    },
+                    {
+                      "x": 5.0,
+                      "y": 6.0
+                    },
+                    {
+                      "x": 1.4645,
+                      "y": 5.1213
+                    },
+                    {
+                      "x": 0.0,
+                      "y": 3.0
+                    },
+                    {
+                      "x": 1.4645,
+                      "y": 0.8787
+                    },
+                    {
+                      "x": 5.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 8.5355,
+                      "y": 0.8787
+                    }
+                  ],
+                  "properties": [
+                    {
+                      "name": "height",
+                      "type": "float",
+                      "value": 52
+                    },
+                    {
+                      "name": "softness",
+                      "type": "float",
+                      "value": 1.1
+                    }
+                  ]
+                },
+                {
+                  "id": 478,
+                  "name": "clearing-west-crown",
+                  "type": "ShadowCaster",
+                  "x": 445.0,
+                  "y": 717.4012,
+                  "width": 0,
+                  "height": 0,
+                  "rotation": 0,
+                  "visible": true,
+                  "polygon": [
+                    {
+                      "x": 74.0,
+                      "y": 15.5988
+                    },
+                    {
+                      "x": 70.3358,
+                      "y": 22.5409
+                    },
+                    {
+                      "x": 60.0691,
+                      "y": 28.1081
+                    },
+                    {
+                      "x": 45.2333,
+                      "y": 31.1976
+                    },
+                    {
+                      "x": 28.7667,
+                      "y": 31.1976
+                    },
+                    {
+                      "x": 13.9309,
+                      "y": 28.1081
+                    },
+                    {
+                      "x": 3.6642,
+                      "y": 22.5409
+                    },
+                    {
+                      "x": 0.0,
+                      "y": 15.5988
+                    },
+                    {
+                      "x": 3.6642,
+                      "y": 8.6567
+                    },
+                    {
+                      "x": 13.9309,
+                      "y": 3.0895
+                    },
+                    {
+                      "x": 28.7667,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 45.2333,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 60.0691,
+                      "y": 3.0895
+                    },
+                    {
+                      "x": 70.3358,
+                      "y": 8.6567
+                    }
+                  ],
+                  "properties": [
+                    {
+                      "name": "baseHeight",
+                      "type": "float",
+                      "value": 25
+                    },
+                    {
+                      "name": "height",
+                      "type": "float",
+                      "value": 51
+                    },
+                    {
+                      "name": "opacity",
+                      "type": "float",
+                      "value": 0.65
+                    },
+                    {
+                      "name": "softness",
+                      "type": "float",
+                      "value": 3.4
+                    }
+                  ]
+                },
+                {
+                  "id": 479,
+                  "name": "clearing-boulder",
+                  "type": "ShadowCaster",
+                  "x": 722.0,
+                  "y": 712.0,
+                  "width": 0,
+                  "height": 0,
+                  "rotation": 0,
+                  "visible": true,
+                  "polygon": [
+                    {
+                      "x": 48.0,
+                      "y": 12.0
+                    },
+                    {
+                      "x": 44.7846,
+                      "y": 18.0
+                    },
+                    {
+                      "x": 36.0,
+                      "y": 22.3923
+                    },
+                    {
+                      "x": 24.0,
+                      "y": 24.0
+                    },
+                    {
+                      "x": 12.0,
+                      "y": 22.3923
+                    },
+                    {
+                      "x": 3.2154,
+                      "y": 18.0
+                    },
+                    {
+                      "x": 0.0,
+                      "y": 12.0
+                    },
+                    {
+                      "x": 3.2154,
+                      "y": 6.0
+                    },
+                    {
+                      "x": 12.0,
+                      "y": 1.6077
+                    },
+                    {
+                      "x": 24.0,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 36.0,
+                      "y": 1.6077
+                    },
+                    {
+                      "x": 44.7846,
+                      "y": 6.0
+                    }
+                  ],
+                  "properties": [
+                    {
+                      "name": "height",
+                      "type": "float",
+                      "value": 28
+                    },
+                    {
+                      "name": "softness",
+                      "type": "float",
+                      "value": 1.5
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": 133,
+              "name": "ShadowReceivers",
+              "type": "objectgroup",
+              "draworder": "index",
+              "color": "#66bfd9",
+              "locked": false,
+              "visible": true,
+              "opacity": 1,
+              "x": 0,
+              "y": 0,
+              "objects": [
+                {
+                  "id": 480,
+                  "name": "clearing-west-ground",
+                  "type": "ShadowReceiver",
+                  "x": 506,
+                  "y": 517,
+                  "width": 0,
+                  "height": 0,
+                  "rotation": 0,
+                  "visible": true,
+                  "polygon": [
+                    {
+                      "x": 8,
+                      "y": 38
+                    },
+                    {
+                      "x": 35,
+                      "y": 6
+                    },
+                    {
+                      "x": 69,
+                      "y": 0
+                    },
+                    {
+                      "x": 74,
+                      "y": 26
+                    },
+                    {
+                      "x": 72,
+                      "y": 72
+                    },
+                    {
+                      "x": 79,
+                      "y": 110
+                    },
+                    {
+                      "x": 77,
+                      "y": 135
+                    },
+                    {
+                      "x": 64,
+                      "y": 158
+                    },
+                    {
+                      "x": 25,
+                      "y": 163
+                    },
+                    {
+                      "x": 14,
+                      "y": 140
+                    },
+                    {
+                      "x": 10,
+                      "y": 110
+                    },
+                    {
+                      "x": 0,
+                      "y": 83
+                    }
+                  ],
+                  "properties": []
+                },
+                {
+                  "id": 481,
+                  "name": "clearing-front-ground",
+                  "type": "ShadowReceiver",
+                  "x": 531,
+                  "y": 657,
+                  "width": 0,
+                  "height": 0,
+                  "rotation": 0,
+                  "visible": true,
+                  "polygon": [
+                    {
+                      "x": 0,
+                      "y": 20
+                    },
+                    {
+                      "x": 42,
+                      "y": 13
+                    },
+                    {
+                      "x": 68,
+                      "y": 13
+                    },
+                    {
+                      "x": 99,
+                      "y": 24
+                    },
+                    {
+                      "x": 137,
+                      "y": 27
+                    },
+                    {
+                      "x": 164,
+                      "y": 23
+                    },
+                    {
+                      "x": 189,
+                      "y": 5
+                    },
+                    {
+                      "x": 211,
+                      "y": 0
+                    },
+                    {
+                      "x": 228,
+                      "y": 14
+                    },
+                    {
+                      "x": 225,
+                      "y": 38
+                    },
+                    {
+                      "x": 210,
+                      "y": 59
+                    },
+                    {
+                      "x": 201,
+                      "y": 76
+                    },
+                    {
+                      "x": 173,
+                      "y": 90
+                    },
+                    {
+                      "x": 139,
+                      "y": 90
+                    },
+                    {
+                      "x": 107,
+                      "y": 80
+                    },
+                    {
+                      "x": 78,
+                      "y": 82
+                    },
+                    {
+                      "x": 50,
+                      "y": 70
+                    },
+                    {
+                      "x": 19,
+                      "y": 61
+                    },
+                    {
+                      "x": 0,
+                      "y": 42
+                    }
+                  ],
+                  "properties": []
+                },
+                {
+                  "id": 482,
+                  "name": "clearing-east-ground",
+                  "type": "ShadowReceiver",
+                  "x": 740,
+                  "y": 550,
+                  "width": 0,
+                  "height": 0,
+                  "rotation": 0,
+                  "visible": true,
+                  "polygon": [
+                    {
+                      "x": 0,
+                      "y": 0
+                    },
+                    {
+                      "x": 15,
+                      "y": 18
+                    },
+                    {
+                      "x": 28,
+                      "y": 45
+                    },
+                    {
+                      "x": 33,
+                      "y": 74
+                    },
+                    {
+                      "x": 30,
+                      "y": 97
+                    },
+                    {
+                      "x": 19,
+                      "y": 121
+                    },
+                    {
+                      "x": 2,
+                      "y": 107
+                    },
+                    {
+                      "x": 0,
+                      "y": 75
+                    },
+                    {
+                      "x": 0,
+                      "y": 36
+                    }
+                  ],
+                  "properties": []
+                }
+              ]
+            }
+          ]
         }],
- "nextlayerid":131,
- "nextobjectid":470,
+ "nextlayerid":134,
+ "nextobjectid":483,
  "orientation":"orthogonal",
  "properties":[
         {

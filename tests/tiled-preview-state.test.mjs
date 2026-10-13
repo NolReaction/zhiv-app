@@ -158,3 +158,33 @@ test("tree touch visibility follows site levels independently of occlusion and c
   const legacy = previewWorldScene(scene, { home: 2 });
   assert.equal(legacy.treeInteractions, undefined, "preview does not derive touch zones from another field");
 });
+
+test("shadow geometry switches with its site visual and preserves unrelated scene state", () => {
+  const points = [{ x: 10, y: 10 }, { x: 30, y: 10 }, { x: 20, y: 30 }];
+  const receiver = (id, level) => ({ id, points, height: 20, ...(level ? { when: { siteId: "home", level } } : {}) });
+  const caster = (id, level) => ({ ...receiver(id, level), baseHeight: 0, opacity: 1, softness: 2 });
+  const permanent = caster("oak"), low = caster("home-low", 1), high = caster("home-high", 2);
+  const floor = receiver("floor"), roofLow = receiver("roof-low", 1), roofHigh = receiver("roof-high", 2);
+  const authored = { ...scene, shadowCasters: [permanent, low, high], shadowReceivers: [floor, roofLow, roofHigh],
+    occluders: [{ id: "occlusion", points, frontY: 30 }], treeInteractions: [{ id: "touch", points, frontY: 30 }] };
+  const original = structuredClone(authored), start = previewWorldScene(authored, { home: 1 }), upgraded = previewWorldScene(authored, { home: 2 });
+  assert.deepEqual(start.shadowCasters, [permanent, low]);
+  assert.deepEqual(start.shadowReceivers, [floor, roofLow]);
+  assert.deepEqual(upgraded.shadowCasters, [permanent, high]);
+  assert.deepEqual(upgraded.shadowReceivers, [floor, roofHigh]);
+  assert.equal(upgraded.shadowCasters[0], permanent);
+  assert.equal(upgraded.shadowReceivers[0], floor);
+  for (const field of ["occluders", "treeInteractions", "navigation", "terrain", "sites"]) assert.equal(upgraded[field], authored[field]);
+  assert.equal(previewWorldScene(authored, { home: 2 }), upgraded);
+  assert.equal(previewWorldScene(authored, { home: 99 }), start);
+  assert.notEqual(previewWorldScene(structuredClone(authored), { home: 2 }), upgraded);
+  assert.deepEqual(authored, original);
+  assert.equal(previewWorldScene(scene, { home: 2 }).shadowCasters, undefined);
+  assert.equal(previewWorldScene(scene, { home: 2 }).shadowReceivers, undefined);
+  const empty = { ...scene, shadowCasters: [], shadowReceivers: [] };
+  assert.equal(previewWorldScene(empty, { home: 2 }), empty);
+  for (const field of ["shadowCasters", "shadowReceivers"]) {
+    const only = { ...scene, [field]: authored[field] };
+    assert.deepEqual(previewWorldScene(only, { home: 2 })[field], upgraded[field], "either independent lighting field activates preview filtering");
+  }
+});

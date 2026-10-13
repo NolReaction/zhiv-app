@@ -9,6 +9,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { WorldDevTabs, WorldDevPanelContent, gardenDevActionUnavailable } = await vite.ssrLoadModule("/features/world/dev/world-dev-panel.tsx");
+const { WorldDevLighting } = await vite.ssrLoadModule("/features/world/dev/world-dev-lighting.tsx");
 const { WORLD_DEV_DEFAULTS, WORLD_DEV_POSES, WORLD_DEV_RESIDENT_ACTIONS, WORLD_DEV_BUILDER_ACTIONS, worldDevStore } = await vite.ssrLoadModule("/features/world/dev/world-dev-store.ts");
 const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
 const { interactiveMapObjects } = await vite.ssrLoadModule("/features/world/scene/site-interactions.ts");
@@ -90,7 +91,7 @@ test("each DEV page renders only its controls, with no simulation or account mut
     plesk: "Плёска · рыбачка и торговка",
     builder: "Шишколап · строитель",
     scenarios: "Готовые сценарии", scenes: "Лесные сценки", activities: "Занятия на полянке", animation: "Анимации Мохлика", appearance: "Внешность Мохлика",
-    world: "Погода и живность", buildings: "Постройки", cheats: "Читы хозяйства", ai: "Мышление и память",
+    world: "Погода и живность", lighting: "Свет и тени", buildings: "Постройки", cheats: "Читы хозяйства", ai: "Мышление и память",
     overlays: "Разметка сцены", routes: "Навигация и входы", fishing: "Расчёт улова", app: "Приложение и тесты",
   };
   for (const [page, title] of Object.entries(expected)) {
@@ -210,6 +211,52 @@ test("water DEV controls separate wildlife, surface, breeze and wind without aff
   fish.props.onChange("on"); breeze.props.onChange(true);
   surface.props.onChange(true); wind.props.onChange("windy");
   assert.deepEqual(view.calls.patches, [{ waterFish: "on" }, { waterBreeze: true }, { waterSurface: true }, { waterWind: "windy" }]);
+  assert.deepEqual(view.calls.actions, []);
+});
+
+test("lighting page offers an A/B shadow switch and a night campfire through the existing local scenario", () => {
+  const view = panel("lighting", { state: { ...WORLD_DEV_DEFAULTS, lightShadows: false, lightTestLamp: true } });
+  const controls = view.elements.find(element => element.type === WorldDevLighting);
+  assert.ok(controls);
+  const { elements, markup } = inspect(WorldDevLighting(controls.props));
+  const checkboxes = elements.filter(element => element.type === "input" && element.props.type === "checkbox");
+  assert.deepEqual(checkboxes.map(input => input.props.checked), [false, false, true]);
+  checkboxes[0].props.onChange({ target: { checked: true } });
+  checkboxes[1].props.onChange({ target: { checked: true } });
+  checkboxes[2].props.onChange({ target: { checked: false } });
+  assert.deepEqual(view.calls.patches, [{ lightShadows: true }, { lightDebug: true }, { lightTestLamp: false }]);
+  const quality = elements.find(element => element.type === "select");
+  assert.equal(quality.props.value, "low");
+  quality.props.onChange({ target: { value: "high" } });
+  assert.deepEqual(view.calls.patches.at(-1), { lightQuality: "high" });
+  elements.find(element => element.type === "button" && labelText(element) === "Ночь у костра").props.onClick();
+  assert.deepEqual(view.calls.patches.at(-1), { lightShadows: true, lightTestLamp: false });
+  assert.deepEqual(view.calls.actions, [{ kind: "scenario", scenario: "campfire" }]);
+  assert.match(markup, /условные высоты.*тени на земле/);
+  assert.match(markup, /Бережный.*Детальный/);
+  assert.match(markup, /только в текущей DEV-сессии/);
+});
+
+test("lighting sliders expose labelled keyboard controls and disable a hidden test lamp", () => {
+  const view = panel("lighting");
+  const controls = view.elements.find(element => element.type === WorldDevLighting);
+  const { elements, markup } = inspect(WorldDevLighting(controls.props));
+  const ranges = elements.filter(element => element.type === "input" && element.props.type === "range");
+  const expected = [["lightAzimuth", 0, 360, 225], ["lightElevation", 10, 80, 40],
+    ["lightLampX", 0, 1254, 650], ["lightLampY", 0, 1254, 660], ["lightLampHeight", 8, 150, 55]];
+  assert.equal(ranges.length, expected.length);
+  for (const [index, [key, min, max, value]] of expected.entries()) {
+    const range = ranges[index];
+    assert.ok(range.props["aria-label"]);
+    assert.equal(range.props.min, min); assert.equal(range.props.max, max); assert.equal(range.props.value, value);
+    range.props.onChange({ target: { value: String(min + 1) } });
+    assert.deepEqual(view.calls.patches.at(-1), { [key]: min + 1 });
+  }
+  const lampFields = elements.filter(element => element.type === "fieldset").at(-1);
+  assert.equal(lampFields.props.disabled, true);
+  const enabled = inspect(WorldDevLighting({ ...controls.props, state: { ...controls.props.state, lightTestLamp: true } }));
+  assert.equal(enabled.elements.filter(element => element.type === "fieldset").at(-1).props.disabled, false);
+  assert.match(markup, /Координаты лампы задают точку на земле/);
   assert.deepEqual(view.calls.actions, []);
 });
 

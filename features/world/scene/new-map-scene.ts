@@ -20,7 +20,9 @@ import { createForestTreeInteractions, hitForestTree, touchForestTree, advanceFo
 import { drawForestTreeCrownMotion, drawForestTreeLeaves } from "@/features/world/environment/trees/forest-tree-interactions-painter";
 import { drawForestGroundWeather, updateForestWetness } from "@/features/world/environment/weather/forest-ground-weather";
 import { drawForestGroundImpacts } from "@/features/world/environment/weather/forest-ground-impacts";
-import { drawForestLighting, drawForestLightEmitters, drawForestLighthouseBeams } from "@/features/world/environment/lighting/forest-lighting";
+import { drawForestLighting, drawForestLightEmitters, drawForestLighthouseBeams, forestLightSources } from "@/features/world/environment/lighting/forest-lighting";
+import { createForestShadowFrame, drawForestTestLamp } from "@/features/world/environment/lighting/forest-shadow-scene";
+import { drawForestDirectionalShadows, drawForestOccludedLighting, drawForestShadowDebug } from "@/features/world/environment/lighting/forest-shadow-painter";
 import { forestLifeFrame, type ForestLifeState } from "@/features/world/simulation/forest-life";
 import { drawForestLifePartner, drawForestMushrooms } from "@/features/world/simulation/forest-life-painter";
 import { drawForestBush, forestBushForegroundActive } from "@/features/world/activities/garden/forest-bush-painter";
@@ -212,6 +214,22 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   const behindFires = (life?.campfires ?? []).filter(item => item.position.y < actor.y);
   const frontFires = (life?.campfires ?? []).filter(item => item.position.y >= actor.y);
   const productions = preview?.productions ?? forestProductionFrames(options.economyProduction, world, selectedVisuals, timestamp, elapsed, dev?.showBuildings !== false);
+  const lighting = { night: Number(atmosphere.dusk), elapsed, reducedMotion: still,
+    showBuildings: dev?.showBuildings, levels: selectedLevels };
+  // Confirmed production uses the same source as its visible cooking burner.
+  const cookingFires = (life?.campfires ?? []).map(fire => productions.some(frame => frame.fireId === fire.id && frame.phase === "working")
+    ? { ...fire, flame: Math.max(fire.flame, .45), embers: Math.max(fire.embers, .4) } : fire);
+  const testLamp = dev?.lightTestLamp ? { x: dev.lightLampX, y: dev.lightLampY, height: dev.lightLampHeight } : undefined;
+  const shadowFrame = dev?.lightShadows !== false && world.shadowReceivers?.length ? createForestShadowFrame(world, {
+    ...lighting, lights: forestLightSources(world, lighting), fires: cookingFires,
+    azimuth: dev?.lightAzimuth, elevation: dev?.lightElevation, quality: dev?.lightQuality, testLamp,
+    buildingShadows: dev?.buildingShadow,
+    actors: [
+      ...(heroVisible && dev?.heroShadow !== false ? [{ ...(fishing ?? cooking ?? actor), id: "mochlik",
+        size: actor.size, opacity: walking?.opacity ?? 1, lift: motion?.lift }] : []),
+      ...(preview?.residents ?? []).map(resident => ({ ...resident, opacity: "opacity" in resident ? resident.opacity : 1 })),
+    ],
+  }) : undefined;
   const paintProduction = (front: boolean) => {
     for (const frame of productions) if ((frame.y >= actor.y) === front) {
       if (frame.stationId === "dryer") drawForestProductionCooking(context, frame, still);
@@ -250,6 +268,7 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
       drawForestGroundImpacts(ground, world, { ...weather, groundExclusions });
       if (dev?.puddles !== false) drawForestGroundWeather(ground, world, { ...atmosphere, wetness: preview?.wetness ?? 0,
         groundExclusions });
+      if (shadowFrame) drawForestDirectionalShadows(ground, world, shadowFrame);
       if (life) drawForestMushrooms(ground, life, PET_SIZE);
     },
     options: { levels: selectedLevels, night: false, debug: dev?.debug ?? false, selectedSiteId: null,
@@ -306,18 +325,15 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   drawForestCampfires(context, frontFires, elapsed, still);
   paintProduction(true);
   if (preview?.trees) drawForestTreeLeaves(context, preview.trees, { dusk: Number(atmosphere.dusk), reducedMotion: still });
-  const lighting = { night: Number(atmosphere.dusk), elapsed, reducedMotion: still,
-    showBuildings: dev?.showBuildings, levels: selectedLevels };
-  // A confirmed cooking burner may glow during a cold evening without changing
-  // the weather-owned fire or making its natural flame paint over the kettle.
-  const cookingFires = (life?.campfires ?? []).map(fire => productions.some(frame => frame.fireId === fire.id && frame.phase === "working")
-    ? { ...fire, flame: Math.max(fire.flame, .45), embers: Math.max(fire.embers, .4) } : fire);
-  drawForestAtmosphere(context, world, { ...atmosphere, groundBirdsPainted: true }, () => { drawForestLighting(context, world, lighting);
+  drawForestAtmosphere(context, world, { ...atmosphere, groundBirdsPainted: true }, () => {
+    const occludedLighting = shadowFrame ? drawForestOccludedLighting(context, world, shadowFrame) : false;
+    if (!occludedLighting) drawForestLighting(context, world, lighting);
     drawForestCampfireGlow(context, cookingFires, elapsed, still, lighting.night, heroVisible ? actor : undefined,
-      productions.flatMap(frame => frame.fireId ? [frame.fireId] : [])); });
+      productions.flatMap(frame => frame.fireId ? [frame.fireId] : []), !occludedLighting); });
   drawForestLighthouseBeams(context, world, lighting);
   drawForestLightEmitters(context, world, lighting);
   drawBuildingDetails(context, world, lighting);
+  if (shadowFrame && testLamp) drawForestTestLamp(context, testLamp);
   // Station status stays legible above the roof in both daylight and night.
   // The full map's production badge owns this roof whenever an order exists.
   // The circle and an expedition without production retain the animated picks.
@@ -331,6 +347,7 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
     if (work) drawForestMiningWork(context,work,still);
   }
   if (WORLD_DEV_ENABLED && dev?.debugWater) drawWaterDebug(context, world);
+  if (WORLD_DEV_ENABLED && dev?.lightDebug && shadowFrame) drawForestShadowDebug(context, world, shadowFrame);
   if (WORLD_DEV_ENABLED && preview?.livingDebug) drawLivingWorldDebug(context, world, preview.livingDebug);
   context.restore();
 }

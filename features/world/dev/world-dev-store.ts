@@ -51,6 +51,15 @@ export type WorldDevState = Readonly<{
   waterBreeze: boolean;
   waterSurface: boolean;
   waterWind: "auto" | "calm" | "breeze" | "windy";
+  lightShadows: boolean;
+  lightAzimuth: number;
+  lightElevation: number;
+  lightQuality: "low" | "high";
+  lightDebug: boolean;
+  lightTestLamp: boolean;
+  lightLampX: number;
+  lightLampY: number;
+  lightLampHeight: number;
   autoLife: boolean;
   navigationMode: "auto" | "routes";
   puddles: boolean;
@@ -86,6 +95,8 @@ export type WorldDevState = Readonly<{
 export const WORLD_DEV_DEFAULTS: WorldDevState = Object.freeze({
   weather: "auto", timeOfDay: "auto", butterflies: "auto", fireflies: "auto", birds: "auto", waterFish: "auto", waterBreeze: true,
   waterSurface: true, waterWind: "auto",
+  lightShadows: true, lightAzimuth: 225, lightElevation: 40, lightQuality: "low",
+  lightDebug: false, lightTestLamp: false, lightLampX: 650, lightLampY: 660, lightLampHeight: 55,
   autoLife: true, navigationMode: "auto", puddles: true,
   paused: false, reducedMotion: "auto", pose: "auto", direction: "front", heroScale: 1,
   residentDirection: "front", residentPreview: null, cookingPreview: null,
@@ -103,13 +114,18 @@ const enumValues = {
   butterflies: ["auto", "on", "off"], fireflies: ["auto", "on", "off"], birds: ["auto", "on", "off"],
   waterFish: ["auto", "on", "off"],
   waterWind: ["auto", "calm", "breeze", "windy"],
+  lightQuality: ["low", "high"],
   reducedMotion: ["auto", "on", "off"], pose: ["auto", ...WORLD_DEV_POSES],
   navigationMode: ["auto", "routes"],
   direction: ["front", "back", "left", "right"],
   residentDirection: ["front", "back", "left", "right"],
   builderDirection: ["front", "back", "left", "right"],
 } as const;
-const booleanKeys = ["paused", "autoLife", "puddles", "waterBreeze", "waterSurface", "showHero", "showBuildings", "heroShadow", "buildingShadow", "previewBuildings", "debug", "debugWater", "debugNavigation", "debugFauna"] as const;
+const booleanKeys = ["paused", "autoLife", "puddles", "waterBreeze", "waterSurface", "lightShadows", "lightDebug", "lightTestLamp", "showHero", "showBuildings", "heroShadow", "buildingShadow", "previewBuildings", "debug", "debugWater", "debugNavigation", "debugFauna"] as const;
+const numericBounds = {
+  heroScale: [.5, 2], lightAzimuth: [0, 360], lightElevation: [10, 80],
+  lightLampX: [0, 1254], lightLampY: [0, 1254], lightLampHeight: [8, 150],
+} as const;
 const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
 const isPose = (value: unknown): value is PixelPose => WORLD_DEV_POSES.some(pose => pose === value);
 const isResidentAction = (value: unknown): value is "routine" | PleskAction => value === "routine"
@@ -143,8 +159,9 @@ export function createWorldDevStore(enabled: boolean) {
         if (enumValues[key].some(option => option === value)) Object.assign(next, { [key]: value });
       }
       for (const key of booleanKeys) if (typeof patch[key] === "boolean") next[key] = patch[key];
-      if (typeof patch.heroScale === "number" && Number.isFinite(patch.heroScale)) {
-        next.heroScale = Math.max(.5, Math.min(2, patch.heroScale));
+      for (const key of Object.keys(numericBounds) as (keyof typeof numericBounds)[]) {
+        const value = patch[key], [min, max] = numericBounds[key];
+        if (typeof value === "number" && Number.isFinite(value)) next[key] = Math.max(min, Math.min(max, value));
       }
       // Events may be cancelled here, but only the trigger methods can create them.
       if (patch.animation === null) next.animation = null;

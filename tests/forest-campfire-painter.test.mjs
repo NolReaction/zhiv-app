@@ -161,3 +161,16 @@ test('a pot covers only its own fire emission while each ground light remains vi
   }
   assert.deepEqual(fires, before);
 });
+
+test('occluded lighting replaces the broad fire pool without removing visible flame emission', () => {
+  const ordinary = context(), occluded = context(), covered = context();
+  drawForestCampfireGlow(ordinary.ctx, [fire], 6, true, 1);
+  drawForestCampfireGlow(occluded.ctx, [fire], 6, true, 1, undefined, [], false);
+  drawForestCampfireGlow(covered.ctx, [fire], 6, true, 1, undefined, [fire.id], false);
+  assert.equal(ordinary.calls.filter(call => call.method === 'createRadialGradient').length, 1);
+  assert.equal(occluded.calls.filter(call => call.method === 'createRadialGradient').length, 0,
+    'the unmasked legacy pool must not illuminate the new shadow a second time');
+  assert.ok(occluded.calls.some(call => call.method === 'bezierCurveTo'), 'visible fire still emits above night shading');
+  assert.equal(covered.calls.some(call => call.method === 'bezierCurveTo'), false, 'the cooking pot still covers its flame');
+  assert.deepEqual(occluded.state, ordinary.state);
+});

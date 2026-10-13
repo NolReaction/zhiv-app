@@ -10,6 +10,7 @@ const fixture = {
   focus: { x: 455, y: 480, width: 350, height: 350 },
   actor: { spawn: { x: 630, y: 660 }, size: 36 }, sites: [], paths: [], lights: [], destinations: [],
   water: { surfaces: [], exclusions: [] }, bushes: [], campfires: [], basket: undefined, navigation: undefined, habitats: undefined,
+  shadowCasters: undefined, shadowReceivers: undefined,
   mushrooms: [{ id: "test-mushroom", position: { x: 635, y: 665 } }],
 };
 const livingHabitats = [
@@ -1284,6 +1285,92 @@ test("DEV day and night shade the complete scene and hide lights belonging to hi
     assert.equal(core(hidden, lights[0]), false, "a hidden building cannot leave its lantern floating in the forest");
     assert.equal(core(hidden, lights[1]), true, "independent path lights remain visible");
   } finally { scene?.dispose(); worldDevStore.reset(); env.restore(); }
+});
+
+test("authored shadow lighting integrates ground and night masks with the scene and DEV comparison restores legacy light", async () => {
+  const receiver = { id: "light-test-ground", height: 0,
+    points: [{ x: 530, y: 540 }, { x: 850, y: 540 }, { x: 850, y: 820 }, { x: 530, y: 820 }] };
+  const caster = { id: "light-test-tree", height: 55, baseHeight: 0, opacity: .8, softness: 2,
+    points: [{ x: 660, y: 660 }, { x: 680, y: 660 }, { x: 680, y: 680 }, { x: 660, y: 680 }] };
+  const light = { id: "light-test-lamp", position: { x: 620, y: 620 }, height: 30,
+    kind: "lantern", radius: 180, intensity: 1, color: "#ffd28a", flicker: 0 };
+  const { mountHabitat, worldDevStore, pixelSprite } = await modules({ occluders: [], treeInteractions: [],
+    shadowCasters: [caster], shadowReceivers: [receiver], lights: [light] });
+  const env = browser(); let scene;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false, lightQuality: "low" });
+    scene = mountHabitat(env.surface(), options, { activity() {}, ready() {}, failure: assert.fail });
+    env.finish(); await flush();
+    const sample = () => { const target = env.surface(); scene.paintWorld(target.context); return target.calls; };
+    const lightDraws = calls => calls.filter(call => call.method === "drawImage" && call.args.length === 5
+      && call.args[0]?.calls && [512, 768].includes(call.args[0].width) && call.args[3] === fixture.width);
+    const day = sample(), directional = lightDraws(day);
+    assert.equal(directional.length, 1, "authored ground has a directional shadow mask even in daylight");
+    const hero = calls => calls.findIndex(call => call.method === "drawImage" && call.args[0] === pixelSprite("idle", "front", 0));
+    assert.ok(day.indexOf(directional[0]) < hero(day), "ground shadows are painted before the actor, not over its face");
+    const staticMask = directional[0].args[0].calls.find(call => call.method === "drawImage").args[0];
+    assert.ok(staticMask.calls.some(call => call.method === "clip"), "caster projection is restricted to authored receivers");
+    assert.ok(staticMask.calls.some(call => call.method === "fill"), "the scene passes its caster geometry into the mask");
+
+    worldDevStore.patch({ timeOfDay: "night" });
+    const night = sample(), masked = lightDraws(night);
+    assert.equal(masked.length, 2, "night combines ground shadows and one final illumination field");
+    assert.ok(night.indexOf(masked[1]) > hero(night), "final illumination includes the actor and terrain together");
+    const field = masked[1].args[0];
+    const pool = field.calls.find(call => call.method === "drawImage" && call.args.length === 9)?.args[0];
+    assert.ok(pool?.calls.some(call => call.method === "globalCompositeOperation" && call.args[0] === "destination-out"),
+      "the scene uses a source-specific erased shadow mask, rather than the old unoccluded pool");
+    assert.ok(night.some(call => call.method === "ellipse" && call.args[0] === light.position.x && call.args[1] === light.position.y),
+      "the visible lamp is still drawn over the illumination field");
+
+    worldDevStore.patch({ lightShadows: false });
+    const comparison = sample(), legacy = lightDraws(comparison);
+    assert.equal(legacy.length, 1, "A/B removes both new directional and occluded lighting passes");
+    assert.equal(legacy[0].args[0].width, 768, "A/B uses the existing legacy night texture");
+    assert.notEqual(legacy[0].args[0], field);
+    worldDevStore.patch({ lightShadows: true });
+    assert.equal(lightDraws(sample()).at(-1).args[0], field, "re-enabling the prototype reuses its retained field");
+  } finally { scene?.dispose(); worldDevStore.reset(); env.restore(); }
+});
+
+test("authored shadow lighting keeps building lamps when DEV disables only building shadows", async () => {
+  const site = { id: "home", label: "Дом", bounds: { x: 600, y: 600, width: 120, height: 120 },
+    anchor: { x: 660, y: 720 }, entry: { x: 660, y: 730 }, hitArea: [], collision: [], initialLevel: 1,
+    states: [{ level: 1, label: "Дом", image: "/test/home-level-1.png" }] };
+  const receiver = { id: "light-test-ground", height: 0,
+    points: [{ x: 480, y: 500 }, { x: 880, y: 500 }, { x: 880, y: 860 }, { x: 480, y: 860 }] };
+  const caster = { id: "home-volume", height: 65, baseHeight: 0, opacity: 1, softness: 1,
+    points: [{ x: 630, y: 690 }, { x: 690, y: 690 }, { x: 690, y: 720 }, { x: 630, y: 720 }],
+    when: { siteId: "home", level: 1 } };
+  const light = { id: "path-lamp", position: { x: 580, y: 650 }, kind: "lantern", height: 30,
+    radius: 220, intensity: 1, color: "#ffd28a", flicker: 0 };
+  const { paintNewMap, TILED_WORLD, WORLD_DEV_DEFAULTS } = await modules({ sites: [site], lights: [light],
+    occluders: [], treeInteractions: [], shadowCasters: [caster], shadowReceivers: [receiver] });
+  const env = browser();
+  try {
+    const home = new Image(), ground = new Image();
+    const images = new Map([[fixture.terrain[0].image, ground], [site.states[0].image, home]]);
+    const sample = buildingShadow => {
+      const target = env.surface();
+      paintNewMap(target.context, images, { ...options, dusk: true }, 0, false, 0, 1,
+        { scene: TILED_WORLD, residents: [], state: { ...WORLD_DEV_DEFAULTS, ...quietClearing,
+          timeOfDay: "night", showHero: false, heroShadow: false, buildingShadow, lightQuality: "low" } });
+      const field = target.calls.findLast(call => call.method === "drawImage" && call.args[0]?.width === 512
+        && call.args.length === 5 && call.args[3] === fixture.width)?.args[0];
+      assert.ok(field, "the complete scene selected its occluded night renderer");
+      return { calls: target.calls, pools: field.calls.filter(call => call.method === "drawImage" && call.args.length === 9).map(call => call.args[0]) };
+    };
+    const enabled = sample(true), disabled = sample(false);
+    assert.ok(enabled.pools.some(pool => pool.calls.some(call => call.method === "fill")),
+      "the home blocks another lamp's light when building shadows are enabled");
+    assert.ok(disabled.pools.every(pool => !pool.calls.some(call => call.method === "fill")),
+      "disabling building shadows removes the conditional home volume from every source mask");
+    assert.equal(disabled.pools.length, enabled.pools.length, "building shadow toggle cannot discard any lamp contributions");
+    assert.ok(disabled.pools.length >= 2, "both the artwork-mounted home lamp and independent path lamp remain lit");
+    assert.ok(disabled.calls.some(call => call.method === "drawImage" && call.args[0] === home), "the visible building remains present");
+    const cores = calls => calls.filter(call => call.method === "ellipse" && call.args[0] === light.position.x && call.args[1] === light.position.y);
+    assert.ok(cores(enabled.calls).length > 0); assert.equal(cores(disabled.calls).length, cores(enabled.calls).length);
+  } finally { env.restore(); }
 });
 
 test("manual pose events restart, finish, preserve loop choice and use finite reduced-motion stills", async () => {

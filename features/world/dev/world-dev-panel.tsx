@@ -14,6 +14,7 @@ import { previewWorldScene } from "../tiled/preview-state";
 import { interactiveMapObjects, type MapObjectPlace } from "@/features/world/scene/site-interactions";
 import type { WorldController } from "@/features/world/state/use-world";
 import { WorldAiDiagnostics } from "./world-ai-diagnostics";
+import { WorldDevLighting } from "./world-dev-lighting";
 import { ForestGardenDiagnostics } from "./forest-ai-diagnostics";
 import { WorldDevCheats } from "./world-dev-cheats";
 import { WorldDevFishing } from "./world-dev-fishing";
@@ -143,7 +144,7 @@ function Section({ title, children, initiallyOpen = false }: { title: string; ch
 
 const DEV_TABS = [["cheats", "Читы"], ["mochlik", "Герои"], ["scene", "Сцена"], ["debug", "Отладка"]] as const;
 const MOCHLIK_TABS = [["scenes", "Мохлик"], ["animation", "Анимации"], ["appearance", "Внешность"], ["plesk", "Плёска"], ["builder", "Шишколап"]] as const;
-const SCENE_TABS = [["scenarios", "Сценарии"], ["world", "Погода"], ["activities", "Сад"], ["buildings", "Здания"]] as const;
+const SCENE_TABS = [["scenarios", "Сценарии"], ["world", "Погода"], ["lighting", "Свет"], ["activities", "Сад"], ["buildings", "Здания"]] as const;
 const DEBUG_TABS = [["ai", "Мышление"], ["overlays", "Разметка"], ["routes", "Пути"], ["fishing", "Рыбалка"], ["audio", "Звук"], ["app", "Приложение"]] as const;
 type DevTab = typeof DEV_TABS[number][0];
 type MochlikTab = typeof MOCHLIK_TABS[number][0];
@@ -363,6 +364,13 @@ export function WorldDevPanelContent({ world, economy, worldView, presenceKey, o
     ? [...new Set(GARDEN_ACTIONS.map(([action]) => unavailable({ kind: "life", action })).filter((reason): reason is string => Boolean(reason)))] : [];
   const cookingReason = page === "animation" ? unavailable({ kind: "cooking", action: "sequence" }) : null;
   return <div className={styles.pageContent}>
+    {page === "lighting" && <>
+      <h3 className={styles.pageTitle}>Свет и тени</h3>
+      <WorldDevLighting state={state} change={change} onNightCampfire={() => {
+        change({ lightShadows: true, lightTestLamp: false });
+        play({ kind: "scenario", scenario: "campfire" });
+      }} />
+    </>}
     {page === "audio" && <AudioDiagnosticsPanel />}
     {page === "fishing" && <>
       <h3 className={styles.pageTitle}>Расчёт улова</h3>
