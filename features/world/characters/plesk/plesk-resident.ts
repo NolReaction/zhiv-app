@@ -157,11 +157,14 @@ function routine(scene: FixedWorldScene): Routine | null {
   cache.set(scene, result); return result;
 }
 
-export function samplePleskTrail(trail: ForestTrail, age: number) {
+export function pleskTrailDistance(trail: ForestTrail, age: number) {
   const ramp = rampTime(trail), duration = pleskTravelTime(trail);
-  const distance = age < ramp ? PLESK.speed * age * age / (2 * ramp)
+  return age < ramp ? PLESK.speed * age * age / (2 * ramp)
     : age > duration - ramp ? trail.length - PLESK.speed * (duration - age) ** 2 / (2 * ramp)
       : PLESK.speed * (age - ramp * .5);
+}
+export function samplePleskTrail(trail: ForestTrail, age: number) {
+  const distance = pleskTrailDistance(trail, age);
   let low = 1, high = trail.points.length - 1;
   while (low < high) { const mid = (low + high) >> 1; if (trail.distances[mid] < distance) low = mid + 1; else high = mid; }
   const before = trail.points[low - 1], after = trail.points[low];

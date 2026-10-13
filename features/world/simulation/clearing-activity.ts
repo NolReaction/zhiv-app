@@ -9,7 +9,8 @@ import { prepareSteeringPath, desiredSteeringSpeed, type SteeringPath } from "@/
 import { compileWorldInteractions, findInteractionApproach, WORLD_INTERACTION_LIMITS, type WorldInteraction } from "@/features/world/navigation/interaction-navigation";
 import { chooseForestGoal, createForestBehavior, type ForestBehaviorMemory, type ForestInterest } from "./forest-behavior";
 import { beginForestIntention, finishForestIntention, noticeForestMind, recordForestCandidates, scoreForestAction } from "./forest-mind";
-import { canTraverseResidents, residentTrafficDetour, type ResidentOccupant } from "@/features/world/navigation/resident-traffic";
+import { canTraverseResidents, residentRouteIntent, residentTrafficDetour, residentRequestingPassage, residentYieldPoint,
+  RESIDENT_TRAFFIC_LIMITS, type ResidentOccupant } from "@/features/world/navigation/resident-traffic";
 
 type ClearingAction = "look" | "sniff" | "groom" | "rest" | "bush";
 type ClearingBush = { id: string; entry: WorldPoint; hide: WorldPoint; concealStart: number };
@@ -67,6 +68,7 @@ export type ClearingActivityFrame = WorldPoint & {
 };
 const temporaryNavigation = new WeakMap<ClearingActivityState, { base: WorldNavigation; key: string; current: WorldNavigation }>();
 const parkedPropWait = new WeakMap<ClearingActivityState, { navigation: WorldNavigation; route: ClearingRoute; stage: ClearingStage }>();
+const passageYieldAfter = new WeakMap<ClearingActivityState, number>();
 
 export function baseClearingNavigation(state: ClearingActivityState): WorldNavigation | null {
   const previous = temporaryNavigation.get(state);
@@ -731,6 +733,35 @@ function detourResidents(state: ClearingActivityState, route: ClearingRoute, opt
   return true;
 }
 
+/** Read the same remaining route the movement owner will execute, including
+ * reverse departures. Held gameplay/player goals outrank optional wandering. */
+export function clearingResidentIntent(state: ClearingActivityState, size = state.size) {
+  if (!["free-walk", "outbound", "return", "homebound", "home-return"].includes(state.stage)) return;
+  const route = state.stage === "free-walk" ? state.freeRoute : state.activeInteraction?.route
+    ?? (state.routeKind === "home" ? state.homeRoute : state.routes[state.routeIndex]);
+  if (!route) return;
+  const priority = state.requestedPoint ? 3 : route.id === "resident-yield" ? 0 : state.freePurpose === "roam" ? 1 : 2;
+  return residentRouteIntent(route, state.position, state.distance, size, priority,
+    state.stage === "return" || state.stage === "home-return");
+}
+
+function yieldClearingPassage(state: ClearingActivityState, options: ClearingActivityOptions) {
+  if (!state.navigation || !state.navigationEnabled || options.idleEligible === false || state.requestedPoint || state.retiring
+    || state.activeInteraction || state.routeIndex >= 0 || state.pendingBush !== null || state.pendingInteractionBush !== null
+    || !["home", "clearing", "free-walk"].includes(state.stage)
+    || state.stage === "free-walk" && (state.freePurpose !== "roam" || state.freeRoute?.id === "resident-yield")
+    || state.elapsed < (passageYieldAfter.get(state) ?? 0)) return;
+  const size = options.residentSize ?? state.size;
+  const requester = residentRequestingPassage(state.position, size, options.occupants, "mochlik", state.stage === "free-walk" ? 1 : 0);
+  if (!requester) return;
+  passageYieldAfter.set(state, state.elapsed + RESIDENT_TRAFFIC_LIMITS.retry);
+  const point = residentYieldPoint(state.navigation, state.position, size, options.occupants, "mochlik", requester);
+  if (!point) return;
+  if (state.freeRoute) releaseOccupiedRoamingGoal(state, state.freeRoute.id);
+  beginFreeWalk(state, [{ ...state.position }, point], "roam", "look", "resident-yield");
+  state.behavior.reason = "yielding-to-resident";
+}
+
 function advanceWalk(state: ClearingActivityState, dt: number, options: ClearingActivityOptions) {
   const free = state.stage === "free-walk";
   const route = free ? state.freeRoute : state.activeInteraction?.route ?? (state.routeKind === "home" ? state.homeRoute : state.routes[state.routeIndex]);
@@ -803,6 +834,7 @@ function advanceWalk(state: ClearingActivityState, dt: number, options: Clearing
       if (state.freePurpose === "home") arriveHome(state, options.dusk);
       else if (state.freePurpose === "interaction-exit") completeDynamicExit(state);
       else if (state.freePurpose === "point") settleClearing(state);
+      else if (route.id === "resident-yield") settleClearing(state);
       else startActivity(state, options, route);
     } else if (returning) arriveHome(state, options.dusk);
     else if (state.routeKind === "home") { state.stage = "entering"; state.stageElapsed = 0; state.doorProgress = 0; state.speed = 0; state.direction = "back"; }
@@ -894,6 +926,7 @@ export function advanceClearingActivity(state: ClearingActivityState, delta: num
     if (target && startDynamicInteraction(state, target)) return;
     state.retiring = false; state.bushRequested = false; state.navigationRetryAt = state.elapsed + 5;
   }
+  yieldClearingPassage(state, options);
   if (state.stage === "home" || state.stage === "clearing") {
     if (state.stage === "clearing" && (state.retiring || state.pendingBush !== null)) { retrace(state); return; }
     if (state.retiring && state.homeEnabled) {

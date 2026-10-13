@@ -4,8 +4,12 @@ import type { WorldPoint } from "@/features/world/tiled/types";
 /** Transient visible feet, never an economic reservation or a saved coordinate. */
 export type ResidentOccupant = {
   readonly id: string; readonly position: WorldPoint; readonly size: number; readonly moving?: boolean;
+  /** A short forward corridor, detached from the route owner's state. */
+  readonly intent?: ResidentRouteIntent;
 };
-export const RESIDENT_TRAFFIC_LIMITS = { clearanceRatio: .28, occupants: 8, retry: .8, priorityWait: .35, searches: 4, polygonSides: 12 } as const;
+export type ResidentRouteIntent = { readonly points: readonly WorldPoint[]; readonly target: WorldPoint; readonly priority: number };
+export const RESIDENT_TRAFFIC_LIMITS = { clearanceRatio: .28, occupants: 8, retry: .8, priorityWait: .35,
+  searches: 4, polygonSides: 12, intentPoints: 16, lookAheadRatio: 2.5 } as const;
 const finite = (point: WorldPoint) => Number.isFinite(point?.x) && Number.isFinite(point?.y);
 const distance = (a: WorldPoint, b: WorldPoint) => Math.hypot(a.x - b.x, a.y - b.y);
 const EPS = 1e-7;
@@ -22,6 +26,65 @@ function segmentDistance(point: WorldPoint, from: WorldPoint, to: WorldPoint) {
   const dx = to.x - from.x, dy = to.y - from.y;
   const t = Math.max(0, Math.min(1, ((point.x - from.x) * dx + (point.y - from.y) * dy) / (dx * dx + dy * dy || 1)));
   return distance(point, { x: from.x + dx * t, y: from.y + dy * t });
+}
+
+/** Publish intent, not only velocity: a stopped walker still needs his held
+ * destination. Bound snapshots independently of the length of the world route. */
+export function residentRouteIntent(route: { points: readonly WorldPoint[]; distances: readonly number[] },
+  from: WorldPoint, progress: number, size: number, priority: number, returning = false): ResidentRouteIntent | undefined {
+  const target = returning ? route.points[0] : route.points.at(-1);
+  if (!target || !finite(from) || !finite(target)) return;
+  const points = [{ ...from }], budget = size * RESIDENT_TRAFFIC_LIMITS.lookAheadRatio;
+  let remaining = budget, low = 0, high = route.distances.length;
+  while (low < high) { const middle = (low + high) >> 1; if (route.distances[middle] <= progress + EPS) low = middle + 1; else high = middle; }
+  let index = returning ? low - 1 : low;
+  for (; index >= 0 && index < route.points.length && points.length < RESIDENT_TRAFFIC_LIMITS.intentPoints; index += returning ? -1 : 1) {
+    const next = route.points[index], previous = points.at(-1)!, length = distance(previous, next);
+    if (length <= EPS) continue;
+    const ratio = Math.min(1, remaining / length);
+    points.push({ x: previous.x + (next.x - previous.x) * ratio, y: previous.y + (next.y - previous.y) * ratio });
+    remaining -= length;
+    if (remaining <= EPS) break;
+  }
+  return points.length > 1 ? { points, target: { ...target }, priority } : undefined;
+}
+
+/** A yielding stop must clear both the approach and the exact held goal. */
+export function residentPassageClear(position: WorldPoint, size: number, other: ResidentOccupant, margin = 0): boolean {
+  const intent = other.intent;
+  if (!intent) return true;
+  const gap = residentClearance(size, other.size) + margin;
+  return distance(position, intent.target) >= gap && intent.points.every((point, index) => !index
+    || segmentDistance(position, intent.points[index - 1], point) >= gap);
+}
+
+/** Higher-value work gets the passage; equal priorities have one stable winner.
+ * Nobody acquires permission to step through occupied feet. */
+export function residentRequestingPassage(position: WorldPoint, size: number, occupants: readonly ResidentOccupant[] | undefined,
+  selfId: string, priority: number): ResidentOccupant | undefined {
+  return neighbours(occupants, selfId).filter(other => other.moving && other.intent
+    && (other.intent.priority > priority || other.intent.priority === priority && other.id < selfId)
+    && distance(position, other.position) <= residentClearance(size, other.size) * 2.4
+    && !residentPassageClear(position, size, other, 1))
+    .sort((a, b) => b.intent!.priority - a.intent!.priority || a.id.localeCompare(b.id))[0];
+}
+
+/** Small deterministic candidate set, with no grid search. Prefer a side step
+ * clear of the incoming corridor; retreat is useful where a narrow path widens. */
+export function residentYieldPoint(navigation: WorldNavigation, from: WorldPoint, size: number,
+  occupants: readonly ResidentOccupant[] | undefined, selfId: string, requester: ResidentOccupant): WorldPoint | null {
+  const points = requester.intent?.points, next = points?.[1];
+  if (!points || !next) return null;
+  const heading = Math.atan2(next.y - points[0].y, next.x - points[0].x);
+  const gap = residentClearance(size, requester.size), margin = Math.max(navigation.cellSize, size * .2);
+  for (const radius of [gap + margin, (gap + margin) * 2, (gap + margin) * 3]) {
+    for (const angle of [Math.PI / 2, -Math.PI / 2, Math.PI * .75, -Math.PI * .75, 0, Math.PI, Math.PI / 4, -Math.PI / 4]) {
+      const point = { x: from.x + Math.cos(heading + angle) * radius, y: from.y + Math.sin(heading + angle) * radius };
+      if (residentPassageClear(point, size, requester, margin)
+        && canTraverse(navigation, from, point) && canTraverseResidents(from, point, size, occupants, selfId)) return point;
+    }
+  }
+  return null;
 }
 
 /** Check the swept feet before committing route progress. An old overlap may
