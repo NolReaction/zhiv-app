@@ -22,7 +22,7 @@ import { drawForestGroundWeather, updateForestWetness } from "@/features/world/e
 import { drawForestGroundImpacts } from "@/features/world/environment/weather/forest-ground-impacts";
 import { drawForestLighting, drawForestLightEmitters, drawForestLighthouseBeams, forestLightSources } from "@/features/world/environment/lighting/forest-lighting";
 import { worldLightingEditorStore } from "@/features/world/dev/world-lighting-editor-store";
-import { createForestShadowFrame, drawForestTestLamp } from "@/features/world/environment/lighting/forest-shadow-scene";
+import { createForestShadowFrame, drawForestTestLamp, forestShadowLightHeight } from "@/features/world/environment/lighting/forest-shadow-scene";
 import { drawForestDirectionalShadows, drawForestOccludedLighting, drawForestShadowDebug } from "@/features/world/environment/lighting/forest-shadow-painter";
 import { forestLifeFrame, type ForestLifeState } from "@/features/world/simulation/forest-life";
 import { drawForestLifePartner, drawForestMushrooms } from "@/features/world/simulation/forest-life-painter";
@@ -225,7 +225,7 @@ export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyM
   const shadowFrame = dev?.lightShadows !== false && world.shadowReceivers?.length ? createForestShadowFrame(world, {
     ...lighting, lights: forestLightSources(world, lighting), fires: cookingFires,
     azimuth: dev?.lightAzimuth, elevation: dev?.lightElevation, quality: dev?.lightQuality, testLamp,
-    buildingShadows: dev?.buildingShadow, geometryRevision: WORLD_DEV_ENABLED ? worldLightingEditorStore.getSnapshot().revision : 0,
+    buildingShadows: dev?.buildingShadow, geometryRevision: WORLD_DEV_ENABLED ? worldLightingEditorStore.getSnapshot().casterRevision : 0,
     actors: [
       ...(heroVisible && dev?.heroShadow !== false ? [{ ...(fishing ?? cooking ?? actor), id: "mochlik",
         size: actor.size, opacity: walking?.opacity ?? 1, lift: motion?.lift }] : []),
@@ -1073,6 +1073,17 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   }
   return {
     lightingCasters: () => (WORLD_DEV_ENABLED ? worldLightingEditorStore.applyToScene(world) : world).shadowCasters ?? [],
+    lightingLights: () => {
+      const edited = WORLD_DEV_ENABLED ? worldLightingEditorStore.applyToScene(world) : world;
+      const disabled = new Set(edited.lights?.filter(light => light.enabled === false).map(light => light.id));
+      // Disabled authored lamps retain their effective artwork anchor in the editor.
+      const inspectable = disabled.size ? { ...edited, lights: edited.lights?.map(light => disabled.has(light.id) ? { ...light, enabled: true } : light) } : edited;
+      const sources = forestLightSources(inspectable, { showBuildings: dev?.showBuildings,
+        levels: accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev, options.economyBuildings) })
+        .map(light => ({ ...light, height: forestShadowLightHeight(edited, light), ...(disabled.has(light.id) ? { enabled: false } : {}) }));
+      if (WORLD_DEV_ENABLED) worldLightingEditorStore.setLightProjections(sources.map(light => ({ id: light.id, position: light.position, height: light.height })));
+      return sources;
+    },
     disturbTree(point) {
       if (disposed || !active() || !session.isOwner() || options.view !== "world" || !hitForestTree(trees, point)
         || dev?.showBuildings !== false && forestVisibleSiteAt(world, point)) return false;

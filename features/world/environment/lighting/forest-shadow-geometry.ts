@@ -15,7 +15,8 @@ export type PreparedForestShadowGeometry = { points: WorldPoint[]; triangles: nu
 const EPSILON = 1e-7;
 // Generated footprints are immutable for the life of a render frame. Their
 // known convex topology follows point arrays through copies of the caster.
-const actorGeometry = new WeakMap<WorldPoint[], PreparedForestShadowGeometry>();
+type ActorGeometry = PreparedForestShadowGeometry & { footprintKey: string; x: number; y: number; radius: number };
+const actorGeometry = new WeakMap<WorldPoint[], ActorGeometry>();
 const pointDisks = new WeakMap<PointShadowLight, { x: number; y: number; radius: number; points: WorldPoint[] }>();
 const unitDisk = Array.from({ length: FOREST_SHADOW_GEOMETRY.lightSegments }, (_, index) => {
   const angle = index / FOREST_SHADOW_GEOMETRY.lightSegments * Math.PI * 2;
@@ -69,6 +70,22 @@ function triangulate(points: WorldPoint[]): number[][] {
 export function prepareForestShadowGeometry(points: WorldPoint[]): PreparedForestShadowGeometry {
   const cleaned = cleanPolygon(points);
   return { points: cleaned, triangles: triangulate(cleaned) };
+}
+
+function currentActorGeometry(caster: WorldShadowCaster): ActorGeometry | undefined {
+  const geometry = actorGeometry.get(caster.points);
+  if (!geometry || caster.points.length !== unitActor.length || caster.points.some((point, index) =>
+    point.x !== geometry.x + unitActor[index].x * geometry.radius
+    || point.y !== geometry.y + unitActor[index].y * geometry.radius)) return;
+  return geometry;
+}
+
+/** Generated contours are affine copies of one immutable ellipse. Their three
+ * footprint parameters identify the same shape without serializing 8 vertices. */
+export function forestActorShadowFootprintKey(caster: WorldShadowCaster): string | undefined {
+  // Mutable legacy callers can still edit an actor's vertices. Such a contour
+  // falls back to its full signature and generic concave-capable projection.
+  return currentActorGeometry(caster)?.footprintKey;
 }
 
 function convexOutline(points: WorldPoint[]): WorldPoint[] {
@@ -138,7 +155,7 @@ export function projectForestShadow(caster: WorldShadowCaster, light: ShadowLigh
     || caster.points.length < 3 || caster.points.some(point => !finitePoint(point))) return [];
   const topHeight = caster.baseHeight + caster.height, bottomHeight = Math.max(caster.baseHeight, receiverHeight);
   if (!Number.isFinite(topHeight) || topHeight <= bottomHeight) return [];
-  const geometry = prepared ?? actorGeometry.get(caster.points) ?? prepareForestShadowGeometry(caster.points);
+  const geometry = prepared ?? currentActorGeometry(caster) ?? prepareForestShadowGeometry(caster.points);
   const { points, triangles } = geometry;
   if (points.length < 3 || !geometry.convex && !triangles.length) return [];
   let project: (point: WorldPoint, height: number) => WorldPoint;
@@ -201,6 +218,7 @@ export function projectForestShadow(caster: WorldShadowCaster, light: ShadowLigh
 export function createForestActorShadow(point: WorldPoint, size: number, id: string): WorldShadowCaster {
   const radius = Math.max(0, Number.isFinite(size) ? size : 0);
   const points = unitActor.map(offset => ({ x: point.x + offset.x * radius, y: point.y + offset.y * radius }));
-  actorGeometry.set(points, { points, triangles: [], convex: true });
+  actorGeometry.set(points, { points, triangles: [], convex: true, footprintKey: JSON.stringify([point.x, point.y, radius]),
+    x: point.x, y: point.y, radius });
   return { id, height: radius * 2.4, baseHeight: 0, opacity: .8, softness: 2, points };
 }

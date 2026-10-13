@@ -84,6 +84,31 @@ test("actual map uses one aligned home lamp at every level plus the working mine
     "Tiled intensity=0 still disables a lamp that follows its building");
 });
 
+test("disabled authored lamps suppress their automatic building source without hiding other lights", async () => {
+  const map = JSON.parse(await readFile(new URL("../features/world/tiled/forest.generated.json", import.meta.url), "utf8"));
+  const authored = map.lights.find(light => light.id === "home-lantern");
+  authored.enabled = false;
+  const sources = forestLightSources(map, { levels: { home: 1, workshop: 2 } });
+  assert.equal(sources.some(light => light.id === "home-lantern"), false);
+  assert.ok(sources.some(light => light.id === "workshop-lantern"));
+  assert.equal(authored.enabled, false, "source resolution never mutates the authored draft");
+});
+
+test("explicitly moved building lamps use authored coordinates and leave the artwork glass behind", async () => {
+  const map = JSON.parse(await readFile(new URL("../features/world/tiled/forest.generated.json", import.meta.url), "utf8"));
+  const authored = map.lights.find(light => light.id === "home-lantern");
+  const bound = forestLightSources(map, { levels: { home: 1 } }).find(light => light.id === authored.id);
+  authored.position = { x: 300, y: 320 }; authored.height = 42;
+  assert.deepEqual(forestLightSources(map, { levels: { home: 1 } }).find(light => light.id === authored.id).position,
+    bound.position, "an untouched binding still follows the building");
+  authored.manualPosition = true;
+  const moved = forestLightSources(map, { levels: { home: 1 } }).find(light => light.id === authored.id);
+  assert.deepEqual(moved.position, authored.position); assert.equal(moved.height, 42);
+  assert.equal(moved.glass, undefined); assert.equal(moved.siteId, undefined);
+  assert.ok(forestLightSources(map, { showBuildings: false, levels: { home: 1 } }).some(light => light.id === authored.id),
+    "a detached source remains independent when building previews are hidden");
+});
+
 test("lighthouse casts two soft beams only at night; shared clock, reduced motion, hiding and camera culling apply", () => {
   const beforeDocument = globalThis.document, canvases = [];
   globalThis.document = { createElement() {

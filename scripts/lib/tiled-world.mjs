@@ -70,6 +70,7 @@ function properties(object, at, allowed) {
     else exact(type, allowed[name], `${where}.type`);
     if (type === "int") integer(value.value, `${where}.value`, allowed[name] === "float" ? -Infinity : 0);
     else if (type === "float") number(value.value, `${where}.value`);
+    else if (type === "bool") requireThat(typeof value.value === "boolean", `${where}.value`, "expected a boolean");
     else string(value.value, `${where}.value`);
     result[name] = value.value;
   }
@@ -280,7 +281,8 @@ function compileLight(object, shape, at, world) {
   exact(object.point, true, `${at}.point`);
   defaultValue(object, "width", 0, at);
   defaultValue(object, "height", 0, at);
-  const props = properties(object, at, { kind: "string", radius: "float", intensity: "float", color: "color", flicker: "float", height: "float" });
+  const props = properties(object, at, { kind: "string", radius: "float", intensity: "float", color: "color", flicker: "float", height: "float",
+    enabled: "bool", manualPosition: "bool" });
   const kind = props.kind ?? "lantern";
   requireThat(["lantern", "torch", "glow"].includes(kind), `${at}.properties.kind`, "expected lantern, torch or glow");
   const defaults = {
@@ -298,7 +300,9 @@ function compileLight(object, shape, at, world) {
   requireThat(authoredColor.length === 7 || authoredColor.slice(1, 3).toLowerCase() === "ff", `${at}.properties.color`, "light color must be opaque; use intensity to change brightness");
   const color = `#${authoredColor.slice(-6).toLowerCase()}`;
   return { id: string(object.name, `${at}.name`), position: point(object, at, world), kind, radius, intensity, color, flicker,
-    ...(own(props, "height") ? { height: props.height } : {}) };
+    ...(own(props, "height") ? { height: props.height } : {}),
+    ...(own(props, "enabled") ? { enabled: props.enabled } : {}),
+    ...(own(props, "manualPosition") ? { manualPosition: props.manualPosition } : {}) };
 }
 
 async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetadata = false }) {

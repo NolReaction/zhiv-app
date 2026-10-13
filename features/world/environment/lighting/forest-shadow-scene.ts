@@ -1,4 +1,4 @@
-import type { FixedWorldScene, WorldPoint, WorldShadowCaster } from "@/features/world/tiled/types";
+import type { FixedWorldScene, WorldLight, WorldPoint, WorldShadowCaster } from "@/features/world/tiled/types";
 import type { ForestCampfire } from "@/features/world/activities/campfire/forest-campfire";
 import type { ForestLightSource } from "./forest-building-lights";
 import { forestLightPulse } from "./forest-lighting";
@@ -17,13 +17,19 @@ type ShadowSceneOptions = {
 };
 const clamp = (value: number, low: number, high: number) => Math.max(low, Math.min(high, value));
 
+/** The exact projection height used for an authored or artwork-attached lamp. */
+export function forestShadowLightHeight(scene: FixedWorldScene, light: ForestLightSource | WorldLight): number {
+  const siteId = "siteId" in light ? light.siteId : undefined;
+  const site = siteId ? scene.sites.find(site => site.id === siteId) : undefined;
+  return light.height ?? (light.kind === "torch" ? 17 : site
+    ? clamp(site.entry.y - light.position.y, 12, 90) : 24);
+}
+
 /** Artwork positions mark the glass. The shadow solver uses its ground position
  * plus an independent height; both therefore follow the selected building PNG. */
 export function createForestShadowFrame(scene: FixedWorldScene, options: ShadowSceneOptions): ForestShadowFrame {
   const sources: ForestShadowSource[] = options.lights.map(light => {
-    const site = light.siteId ? scene.sites.find(site => site.id === light.siteId) : undefined;
-    const height = light.height ?? (light.kind === "torch" ? 17 : site
-      ? clamp(site.entry.y - light.position.y, 12, 90) : 24);
+    const height = forestShadowLightHeight(scene, light);
     return { id: light.id, position: { x: light.position.x, y: light.position.y + height }, height,
       radius: light.radius, color: light.color, ownerSiteId: light.siteId,
       intensity: light.intensity * forestLightPulse(light, options.elapsed, options.reducedMotion) };

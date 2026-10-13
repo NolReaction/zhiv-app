@@ -91,6 +91,10 @@ export type WorldWater = {
 };
 export type WorldLight = {
   id: string;
+  /** Optional authoring switch; absent keeps the source enabled. */
+  enabled?: boolean;
+  /** Use the authored bulb position instead of its building artwork anchor. */
+  manualPosition?: boolean;
   /** Position of the flame or bulb, in logical world coordinates. */
   position: WorldPoint;
   kind: "lantern" | "torch" | "glow";

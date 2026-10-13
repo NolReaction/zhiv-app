@@ -26,7 +26,7 @@ import ru.zhiv.world.WorldState
 import ru.zhiv.world.worldJson
 import java.time.Instant
 import java.time.OffsetDateTime
-import java.time.ZoneOffset
+import java.time.ZoneId
 import java.util.Base64
 import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
@@ -103,7 +103,7 @@ class JdbcNotificationRepositoryIntegrationTest {
         NotificationDispatcher(source,PushSender { _,payload -> sent.add(payload); result },now)
     private fun checkin(p: Player,at: Instant) {
         execute("""INSERT INTO check_ins(user_id,session_id,idempotency_key,checked_at,next_allowed_at,timezone_id,local_date)
-            VALUES (?,?,?,?,?,'Europe/Moscow',?)""",p.id,p.session,UUID.randomUUID(),at.notificationSqlTime(),at.plusSeconds(30).notificationSqlTime(),at.atOffset(ZoneOffset.UTC).toLocalDate())
+            VALUES (?,?,?,?,?,'Europe/Moscow',?)""",p.id,p.session,UUID.randomUUID(),at.notificationSqlTime(),at.plusSeconds(30).notificationSqlTime(),at.atZone(ZoneId.of("Europe/Moscow")).toLocalDate())
     }
 
     @Test fun `unconfigured server saves preferences but never pretends to subscribe`() = runBlocking<Unit> {

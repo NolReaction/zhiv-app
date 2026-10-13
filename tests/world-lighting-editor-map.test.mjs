@@ -8,15 +8,19 @@ const vite = await createServer({ root, configFile: false, appType: "custom", lo
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { createWorldLightingEditorStore } = await vite.ssrLoadModule("/features/world/dev/world-lighting-editor-store.ts");
-const { createWorldLightingEditorMap } = await vite.ssrLoadModule("/features/world/dev/world-lighting-editor-map.ts");
-function rig() {
+const { createWorldLightingEditorMap, requestWorldLightingEditorFocus, takeWorldLightingEditorFocus } = await vite.ssrLoadModule("/features/world/dev/world-lighting-editor-map.ts");
+function rig(studio = false) {
   const caster = (id, x) => ({ id, points: [{ x, y: 50 }, { x: x + 20, y: 50 }, { x: x + 20, y: 70 }, { x, y: 70 }], height: 20, baseHeight: 0, opacity: 1, softness: 2 });
   const scene = { schemaVersion: 1, id: "editor-map", width: 200, height: 200, terrain: [], sites: [], paths: [], focus: { x: 0, y: 0, width: 100, height: 100 },
-    shadowCasters: [caster("tree", 20), caster("house", 100)] };
+    shadowCasters: [caster("tree", 20), caster("house", 100)],
+    lights: studio ? [{ id: "home-lamp", kind: "lantern", position: { x: 120, y: 100 }, height: 20, radius: 15, intensity: 1, color: "#ffd28a", flicker: 0 }] : [] };
   const store = createWorldLightingEditorStore(true, scene); store.setEnabled(true);
-  const map = createWorldLightingEditorMap(() => store.applyToScene(scene).shadowCasters, store);
+  const focuses = [];
+  const getLights = () => store.getSnapshot().lights.map(light => light.manualPosition ? light : { ...light, position: { x: 150, y: 100 } })
+    .concat({ id: "generated-lamp", kind: "lantern", position: { x: 180, y: 50 }, radius: 12, intensity: 1, color: "#ffffff", flicker: 0 });
+  const map = createWorldLightingEditorMap(() => store.applyToScene(scene).shadowCasters, store, studio ? { getLights, onFocus: request => focuses.push(request) } : undefined);
   const point = id => store.getSnapshot().casters.find(c => c.id === id).points[0];
-  return { scene, store, map, point };
+  return { scene, store, map, point, focuses };
 }
 
 test("a dragged vertex is one undo step and cancelling restores only the unfinished gesture", () => {
@@ -52,4 +56,99 @@ test("Escape rolls back before pointer release, and keyboard nudges preserve und
   assert.deepEqual(point("tree"), { x: 20, y: 50 }); assert.equal(store.getSnapshot().canUndo, false);
   store.select("tree", 0); map.key({ key: "ArrowRight", shiftKey: true }); assert.deepEqual(point("tree"), { x: 30, y: 50 });
   map.key({ key: "z", ctrlKey: true }); assert.deepEqual(point("tree"), { x: 20, y: 50 });
+});
+
+test("whole-volume translation preserves the shape, snaps its anchor and is one undo action", () => {
+  const { store, map } = rig(true), before = structuredClone(store.getSnapshot().casters[0]);
+  store.setTool("move"); store.setSnap(5);
+  assert.equal(map.down({ x: 30, y: 60 }, 1), true);
+  map.move({ x: 37, y: 67 }); map.move({ x: 42, y: 73 }); map.end(false);
+  assert.deepEqual(store.getSnapshot().casters[0].points, before.points.map(p => ({ x: p.x + 10, y: p.y + 15 })));
+  store.undo(); assert.deepEqual(store.getSnapshot().casters[0], before); assert.equal(store.getSnapshot().canUndo, false);
+});
+
+test("edge insertion and vertex dragging undo together; invalid movement keeps the last valid polygon", () => {
+  const { map, store } = rig(true), before = structuredClone(store.getSnapshot().casters[0]);
+  store.select("tree"); store.setTool("vertex");
+  assert.equal(map.down({ x: 30, y: 50 }, 1), true);
+  map.move({ x: 30, y: 45 }); map.end(false);
+  assert.equal(store.getSnapshot().casters[0].points.length, 5);
+  assert.deepEqual(store.getSnapshot().casters[0].points[1], { x: 30, y: 45 });
+  store.undo(); assert.deepEqual(store.getSnapshot().casters[0], before);
+  map.down({ x: 20, y: 50 }, 1); map.move({ x: 40, y: 70 });
+  assert.ok(store.getSnapshot().error); map.end(true); assert.deepEqual(store.getSnapshot().casters[0], before);
+});
+
+test("height handles preserve the opposite boundary and cancellation restores the volume", () => {
+  const { store, map } = rig(true);
+  store.select("tree"); store.setTool("height");
+  assert.equal(map.down({ x: 30, y: 40 }, 1), true); map.move({ x: 30, y: 30 }); map.end(false);
+  assert.equal(store.getSnapshot().casters[0].height, 30); assert.equal(store.getSnapshot().casters[0].baseHeight, 0);
+  assert.equal(map.down({ x: 30, y: 60 }, 1), true); map.move({ x: 30, y: 50 }); map.end(false);
+  assert.equal(store.getSnapshot().casters[0].baseHeight, 10); assert.equal(store.getSnapshot().casters[0].height, 20);
+  map.down({ x: 30, y: 30 }, 1); map.move({ x: 30, y: -300 }); map.end(true);
+  assert.equal(store.getSnapshot().casters[0].baseHeight, 10); assert.equal(store.getSnapshot().casters[0].height, 20);
+});
+
+test("placing a source commits only on release; pinch or Escape cancellation creates nothing", () => {
+  const { store, map } = rig(true), count = store.getSnapshot().lights.length;
+  store.setTool("light"); store.setLightKind("torch"); store.setSnap(5);
+  map.down({ x: 156, y: 133 }, 1); map.move({ x: 161, y: 137 }); map.end(true);
+  assert.equal(store.getSnapshot().lights.length, count);
+  map.down({ x: 156, y: 133 }, 1); map.key({ key: "Escape" }); map.end(false);
+  assert.equal(store.getSnapshot().lights.length, count); assert.equal(store.getSnapshot().tool, "select");
+  store.setTool("light"); map.down({ x: 156, y: 133 }, 1); map.end(false);
+  const source = store.getSnapshot().lights.at(-1);
+  assert.equal(source.kind, "torch"); assert.deepEqual(source.position, { x: 155, y: 135 });
+  assert.equal(store.getSnapshot().selectedKind, "light"); store.undo(); assert.equal(store.getSnapshot().lights.length, count);
+});
+
+test("effective building-lamp coordinates select and move without jumping; generated lights remain read-only", () => {
+  const { store, map } = rig(true);
+  assert.equal(map.down({ x: 180, y: 50 }, 1), false); assert.equal(store.getSnapshot().selectedId, null);
+  store.setTool("move"); map.down({ x: 150, y: 100 }, 1); map.move({ x: 154, y: 103 }); map.end(false);
+  assert.deepEqual(store.getSnapshot().lights[0].position, { x: 154, y: 103 }); assert.equal(store.getSnapshot().lights[0].manualPosition, true);
+  store.undo(); store.selectLight("home-lamp"); map.key({ key: "ArrowRight" });
+  assert.deepEqual(store.getSnapshot().lights[0].position, { x: 151, y: 100 });
+});
+
+test("a move-tool click on an attached source does not detach it or create an undo step", () => {
+  const { store, map } = rig(true), before = structuredClone(store.getSnapshot().lights[0]);
+  store.setTool("move"); map.down({ x: 150, y: 100 }, 11); map.move({ x: 151, y: 100 }); map.end(false);
+  assert.deepEqual(store.getSnapshot().lights[0], before); assert.equal(store.getSnapshot().canUndo, false);
+});
+
+test("source radius and height gizmos edit the real source, keeping its ground anchor during height drag", () => {
+  const { store, map } = rig(true); store.selectLight("home-lamp");
+  map.down({ x: 165, y: 100 }, 1); map.move({ x: 175, y: 100 }); map.end(false);
+  assert.equal(store.getSnapshot().lights[0].radius, 25);
+  store.setTool("height"); map.down({ x: 150, y: 100 }, 1); map.move({ x: 150, y: 90 }); map.end(false);
+  assert.equal(store.getSnapshot().lights[0].height, 30); assert.deepEqual(store.getSnapshot().lights[0].position, { x: 150, y: 90 });
+  assert.equal(store.getSnapshot().lights[0].position.y + store.getSnapshot().lights[0].height, 120);
+});
+
+test("tool shortcuts, Space pan and focus leave geometry unchanged and release on blur", () => {
+  const { store, map, focuses } = rig(true); store.select("tree");
+  const revision = store.getSnapshot().revision;
+  for (const [key, tool] of [["g", "move"], ["p", "vertex"], ["h", "height"], ["l", "light"], ["v", "select"]]) {
+    assert.equal(map.key({ key }), true); assert.equal(store.getSnapshot().tool, tool);
+  }
+  assert.equal(map.key({ key: " ", code: "Space" }), true); assert.equal(map.isPanning(), true);
+  assert.equal(map.down({ x: 20, y: 50 }, 1), false); map.keyUp({ key: " ", code: "Space" }); assert.equal(map.isPanning(), false);
+  map.key({ key: " ", code: "Space" }); map.blur(); assert.equal(map.isPanning(), false);
+  assert.equal(map.key({ key: "f" }), true); assert.equal(focuses.length, 1); assert.ok(focuses[0].bounds.height >= 40);
+  assert.equal(store.getSnapshot().revision, revision);
+  requestWorldLightingEditorFocus({ point: { x: 50, y: 60 } }); assert.deepEqual(takeWorldLightingEditorFocus(), { point: { x: 50, y: 60 } });
+  assert.equal(takeWorldLightingEditorFocus(), null);
+  requestWorldLightingEditorFocus(); assert.equal(takeWorldLightingEditorFocus(), "selection");
+});
+
+test("original comparison permits selection and focus without mutating the draft", () => {
+  const { store, map, focuses } = rig(true); store.selectLight("home-lamp"); store.setPreviewDraft(false);
+  const before = structuredClone(store.getSnapshot().lights), revision = store.getSnapshot().revision;
+  map.key({ key: "g" }); map.down({ x: 150, y: 100 }, 1); map.move({ x: 155, y: 105 }); map.end(false);
+  map.key({ key: "ArrowRight" }); map.key({ key: "z", ctrlKey: true });
+  map.key({ key: "l" }); map.down({ x: 180, y: 150 }, 1); map.end(false);
+  assert.deepEqual(store.getSnapshot().lights, before); assert.equal(store.getSnapshot().revision, revision);
+  store.selectLight("home-lamp"); map.key({ key: "f" }); assert.equal(focuses.length, 1);
 });

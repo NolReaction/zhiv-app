@@ -1,0 +1,86 @@
+.studio { --dev-bg: #17251e; --dev-line: #405548; --dev-ink: #eef2df; --dev-muted: #b7c7b4; position: fixed; top: calc(var(--quick-top, 80px) + 6px); bottom: max(78px, calc(65px + env(safe-area-inset-bottom))); left: max(12px, env(safe-area-inset-left)); z-index: 28; display: flex; flex-direction: column; width: 300px; max-width: calc(100vw - 24px); border: 1px solid #7b8360; border-radius: 15px; color: var(--dev-ink); background: #17251ef7; box-shadow: 0 8px 24px #07100a35; pointer-events: auto; overflow: hidden; text-align: left; font-size: 12px; line-height: 1.45; }
+.studio [hidden] { display: none; }
+.studio button, .studio input, .studio select, .studio summary { font: inherit; }
+.studio button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 38px; box-sizing: border-box; padding: 7px 8px; border: 1px solid var(--dev-line); border-radius: 8px; background: #21372a; color: var(--dev-ink); cursor: pointer; touch-action: manipulation; }
+.studio button:disabled { opacity: .45; cursor: default; }
+.studio button:hover:not(:disabled) { background: #314633; }
+.studio button[aria-pressed='true'], .studio button[aria-selected='true'] { border-color: #cab879; background: #43543c; color: #ffefd0; }
+.studio :is(button, input, select, summary):focus-visible { outline: 2px solid #ead79b; outline-offset: 2px; }
+.header { display: flex; flex: 0 0 auto; align-items: center; gap: 5px; padding: 9px 10px; border-bottom: 1px solid var(--dev-line); }
+.header > div { flex: 1; min-width: 0; }
+.header h2 { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 15px; color: #fff0c1; }
+.header span { display: block; font-size: 10px; color: var(--dev-muted); margin-top: 2px; }
+.studio .iconButton { flex: 0 0 auto; width: 36px; min-height: 36px; padding: 6px; }
+.studio .collapse { display: none; }
+.tools { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); flex: 0 0 auto; gap: 5px; padding: 8px; border-bottom: 1px solid var(--dev-line); }
+.tools button { min-width: 0; padding: 6px 4px; font-size: 11px; }
+.tools kbd { font: inherit; font-size: 9px; opacity: .65; }
+.content { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; overflow: hidden; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #62735c #17251e; }
+.utility { display: flex; flex: 0 0 auto; align-items: center; gap: 5px; padding: 8px 9px 3px; }
+.utility > button:not(.iconButton) { flex: 1; font-size: 11px; min-width: 0; white-space: nowrap; }
+.snap { display: grid; gap: 1px; color: var(--dev-muted); font-size: 9px; }
+.snap select { min-width: 0; min-height: 30px; padding: 2px 3px; color: var(--dev-ink); background: #21372a; border: 1px solid var(--dev-line); border-radius: 6px; }
+.toolHint { flex: 0 0 auto; min-height: 28px; margin: 3px 10px 7px; color: var(--dev-muted); font-size: 10px; line-height: 1.4; }
+.compare { display: grid; grid-template-columns: 1fr 1fr; flex: 0 0 auto; gap: 4px; margin: 0 10px 8px; }
+.compare button { font-size: 11px; min-height: 32px; padding-block: 5px; }
+.notice { margin: 0 10px 8px; color: #efda9e; font-size: 11px; line-height: 1.45; }
+.panes { display: grid; grid-template-columns: repeat(3, 1fr); flex: 0 0 auto; gap: 4px; padding: 0 9px 8px; border-bottom: 1px solid var(--dev-line); }
+.panes button { font-size: 11px; min-height: 34px; }
+.body { flex: 1 1 auto; min-height: 0; min-width: 0; overflow: auto; overscroll-behavior: contain; padding: 10px; scrollbar-width: thin; scrollbar-color: #62735c #17251e; }
+.body section { min-width: 0; }
+.search { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 38px; padding: 0 8px; border: 1px solid var(--dev-line); border-radius: 8px; background: #10231a; }
+.search input { width: 100%; min-width: 0; min-height: 36px; padding: 5px 0; border: 0; color: var(--dev-ink); background: transparent; }
+.filters { display: flex; flex-wrap: wrap; gap: 4px; padding-block: 8px; }
+.filters button { flex: 1; min-height: 30px; padding: 4px; font-size: 10px; }
+.objectList { display: grid; gap: 5px; list-style: none; padding: 0; margin: 0; }
+.objectList li { min-width: 0; }
+.objectList button { width: 100%; min-width: 0; justify-content: flex-start; text-align: left; }
+.objectList button > svg { flex-shrink: 0; color: #d9ce99; }
+.objectList button > span { min-width: 0; overflow-wrap: anywhere; }
+.objectList small { display: block; margin-top: 2px; color: var(--dev-muted); font-size: 10px; }
+.presets { display: grid; gap: 7px; margin-top: 13px; padding-top: 12px; border-top: 1px solid var(--dev-line); }
+.presets h3, .preview h3 { margin: 0; font-size: 12px; color: #e1d6a8; }
+.presets > div { display: flex; flex-wrap: wrap; gap: 5px; }
+.presets button { flex: 1 1 72px; min-width: 0; padding-inline: 5px; font-size: 11px; }
+.presets p, .preview p { margin: 0; color: var(--dev-muted); font-size: 11px; }
+.preview { display: grid; gap: 12px; }
+.preview .compare { margin: 0; }
+.field { display: grid; gap: 5px; color: var(--dev-muted); }
+.field select { min-width: 0; width: 100%; min-height: 38px; padding: 6px; border: 1px solid var(--dev-line); border-radius: 7px; background: #15281e; color: var(--dev-ink); }
+.field input[type='range'] { width: 100%; margin: 0; min-height: 32px; accent-color: #dfcc8b; }
+.toggle { display: flex; align-items: center; gap: 8px; min-height: 38px; cursor: pointer; }
+.toggle input { width: 17px; height: 17px; margin: 0; accent-color: #dfcc8b; }
+.colorField { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.colorField label { flex: 1; color: var(--dev-muted); }
+.colorField input { width: 38px; height: 34px; padding: 2px; border: 1px solid var(--dev-line); border-radius: 6px; background: #15281e; }
+.colorField span { font-size: 10px; font-variant-numeric: tabular-nums; }
+.error { margin: 6px 10px; padding: 7px; border: 1px solid #9c705c; border-radius: 7px; color: #ffe2c6; background: #452e24; font-size: 11px; overflow-wrap: anywhere; }
+.save { flex: 0 0 auto; max-height: 45%; overflow: auto; padding-inline: 10px; border-top: 1px solid var(--dev-line); background: #132219; scrollbar-width: thin; }
+.save summary { position: sticky; top: 0; z-index: 1; min-height: 38px; box-sizing: border-box; padding-block: 9px; color: #e7dba9; background: #132219; cursor: pointer; font-size: 11px; }
+.saveBody { display: grid; gap: 8px; padding-bottom: 10px; }
+.saveBody p { margin: 0; color: var(--dev-muted); font-size: 11px; line-height: 1.45; }
+.saveBody code { padding: 6px; border-radius: 5px; background: #0d1b13; color: #dce8b3; font-size: 10px; overflow-wrap: anywhere; }
+@media (max-width: 700px) {
+  .studio { top: auto; bottom: max(74px, calc(62px + env(safe-area-inset-bottom))); left: max(8px, env(safe-area-inset-left)); right: max(8px, env(safe-area-inset-right)); width: auto; max-width: none; height: min(34dvh, 330px); max-height: 34dvh; border-radius: 13px; }
+  .header { min-height: 40px; padding: 4px 8px; }
+  .header h2 { font-size: 14px; }
+  .header span { display: none; }
+  .studio .collapse { display: inline-flex; min-height: 34px; border: 0; background: transparent; font-size: 11px; }
+  .tools { display: flex; gap: 4px; padding: 5px 7px; overflow-x: auto; }
+  .tools button { flex: 0 0 auto; min-height: 34px; padding-inline: 7px; }
+  .tools kbd { display: none; }
+  .utility { padding-top: 6px; }
+  .toolHint { min-height: 0; margin-bottom: 5px; }
+  .body { padding-top: 8px; }
+  /* Scroll the compact mobile content as a whole so inspector fields retain
+     room after the tool chrome. The closed save footer stays in reach. */
+  .content { overflow: auto; }
+  .body { flex: 1 0 auto; min-height: auto; overflow: visible; }
+  .panes { position: sticky; top: 0; z-index: 1; padding-top: 5px; background: #17251e; }
+  .save { position: sticky; bottom: 0; z-index: 2; max-height: none; overflow: visible; }
+  .save[open] { position: static; }
+  .search input, .field select, .snap select { font-size: 16px; }
+  .studio[data-collapsed='true'] { height: auto; max-height: none; }
+  .studio[data-collapsed='true'] .tools, .studio[data-collapsed='true'] .content { display: none; }
+}
+@media (max-height: 520px) and (min-width: 701px) { .studio { top: 8px; bottom: 8px; } .header { padding-block: 5px; } }

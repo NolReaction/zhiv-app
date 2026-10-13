@@ -47,6 +47,8 @@ async function modules(override) {
       ...await vite.ssrLoadModule("/features/world/scene/art.ts"),
       ...await vite.ssrLoadModule("/features/world/scene/presentation.ts"),
       ...await vite.ssrLoadModule("/features/world/dev/world-dev-store.ts"),
+      ...await vite.ssrLoadModule("/features/world/dev/world-lighting-editor-store.ts"),
+      ...await vite.ssrLoadModule("/features/world/dev/world-lighting-editor-map.ts"),
       ...await vite.ssrLoadModule("/features/mochlik/pixel-sprite.ts"),
       ...await vite.ssrLoadModule("/features/world/state/forest-session.ts"),
       ...await vite.ssrLoadModule("/features/world/tiled/preview-state.ts"),
@@ -5329,4 +5331,112 @@ test("tree contacts respect scene ownership pause and hidden state while reduced
     assert.equal(env.frames.size, 0, "reduced motion does not start a leaf animation loop");
     scene.dispose(); assert.equal(scene.disturbTree(point), false);
   } finally { scene?.dispose(); runtime.dispose(); worldDevStore.reset(); env.restore(); }
+});
+
+test("lighting studio drafts feed the visible sources and renderer while preview off restores authored light", async () => {
+  const light = { id: "studio-lamp", position: { x: 620, y: 620 }, height: 30,
+    kind: "lantern", radius: 100, intensity: 1, color: "#ffd28a", flicker: 0 };
+  const caster = { id: "studio-tree", height: 55, baseHeight: 0, opacity: .8, softness: 2,
+    points: [{ x: 660, y: 660 }, { x: 680, y: 660 }, { x: 680, y: 680 }, { x: 660, y: 680 }] };
+  const { mountHabitat, worldDevStore, worldLightingEditorStore } = await modules({ lights: [light], shadowCasters: [caster] });
+  const env = browser(); let scene;
+  try {
+    worldDevStore.patch({ ...quietClearing, timeOfDay: "night", autoLife: false });
+    scene = mountHabitat(env.surface(), options, { activity() {}, ready() {}, failure: assert.fail });
+    env.finish(); await flush();
+    const baselineCasters = scene.lightingCasters();
+    worldLightingEditorStore.setEnabled(true); worldLightingEditorStore.selectLight(light.id);
+    worldLightingEditorStore.patchLight({ position: { x: 640, y: 630 }, radius: 125 });
+    assert.deepEqual(scene.lightingLights().find(item => item.id === light.id).position, { x: 640, y: 630 });
+    assert.deepEqual(worldLightingEditorStore.getSnapshot().lightProjections.find(item => item.id === light.id),
+      { id: light.id, position: { x: 640, y: 630 }, height: 30 });
+    assert.equal(scene.lightingCasters(), baselineCasters, "lamp edits do not replace caster geometry");
+    const target = env.surface(); scene.paintWorld(target.context);
+    assert.ok(target.calls.some(call => call.method === "ellipse" && call.args[0] === 640 && call.args[1] === 630),
+      "the lamp emitter follows the same edited source as the map tool");
+    worldLightingEditorStore.setPreviewDraft(false);
+    assert.deepEqual(scene.lightingLights().find(item => item.id === light.id).position, light.position);
+    worldLightingEditorStore.setPreviewDraft(true);
+    const added = worldLightingEditorStore.addLight({ x: 700, y: 710 }, "glow");
+    assert.ok(scene.lightingLights().some(item => item.id === added));
+    worldLightingEditorStore.undo(); assert.equal(scene.lightingLights().some(item => item.id === added), false);
+    worldLightingEditorStore.selectLight(light.id); worldLightingEditorStore.patchLight({ enabled: false });
+    assert.equal(scene.lightingLights().find(item => item.id === light.id).enabled, false, "a disabled lamp remains selectable in the studio");
+  } finally {
+    scene?.dispose(); worldLightingEditorStore.resetAll(); worldLightingEditorStore.setEnabled(false); worldDevStore.reset(); env.restore();
+  }
+});
+
+test("lighting studio map capture cancels a vertex on pinch, hidden page and Escape before release", async () => {
+  const caster = { id: "studio-tree", height: 55, baseHeight: 0, opacity: .8, softness: 2,
+    points: [{ x: 660, y: 660 }, { x: 680, y: 660 }, { x: 680, y: 680 }, { x: 660, y: 680 }] };
+  const { createMapEngine, worldDevStore, worldLightingEditorStore } = await modules({ shadowCasters: [caster] });
+  const env = browser(); let engine;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false });
+    worldLightingEditorStore.setEnabled(true); worldLightingEditorStore.setTool("vertex");
+    const canvas = env.surface(700), loading = createMapEngine(canvas, options, assert.fail, []);
+    env.finish(); await flush(); engine = await loading; engine.control("home"); canvas.flushFrame();
+    const pointer = () => {
+      const projection = mapProjection(canvas);
+      return { pointerId: 1, pointerType: "touch", button: 0, clientX: projection.left + caster.points[0].x * projection.zoom,
+        clientY: projection.top + caster.points[0].y * projection.zoom };
+    };
+    const send = (type, event) => canvas.events.get(type)({ ...event, type });
+    let first = pointer(); send("pointerdown", first); assert.equal(canvas.hasPointerCapture(1), true);
+    send("pointermove", { ...first, clientX: first.clientX - 5 });
+    assert.notDeepEqual(worldLightingEditorStore.getSnapshot().casters[0].points[0], caster.points[0]);
+    const second = { ...first, pointerId: 2, clientX: first.clientX + 40 };
+    send("pointerdown", second); assert.deepEqual(worldLightingEditorStore.getSnapshot().casters[0].points[0], caster.points[0]);
+    send("pointerup", first); send("pointerup", second); canvas.flushFrame();
+    first = pointer(); send("pointerdown", first); send("pointermove", { ...first, clientX: first.clientX - 5 });
+    canvas.events.get("keydown")({ key: "Escape", preventDefault() {} });
+    send("pointerup", first); assert.deepEqual(worldLightingEditorStore.getSnapshot().casters[0].points[0], caster.points[0]);
+    first = pointer(); send("pointerdown", first); send("pointermove", { ...first, clientX: first.clientX - 5 });
+    env.visibility(true); assert.equal(canvas.hasPointerCapture(1), false);
+    assert.deepEqual(worldLightingEditorStore.getSnapshot().casters[0].points[0], caster.points[0]);
+    env.visibility(false); canvas.flushFrame();
+    worldLightingEditorStore.setTool("light"); first = { ...pointer(), clientX: 300, clientY: 300 };
+    send("pointerdown", first); send("pointerdown", { ...first, pointerId: 2, clientX: 340 });
+    send("pointerup", first); send("pointerup", { ...first, pointerId: 2, clientX: 340 });
+    assert.equal(worldLightingEditorStore.getSnapshot().lights.length, 0, "pinch does not accidentally place a lamp");
+    worldLightingEditorStore.setEnabled(false); engine.control("home"); canvas.flushFrame();
+    const cameraBefore = mapProjection(canvas); first = pointer();
+    send("pointerdown", first); send("pointermove", { ...first, clientX: first.clientX + 30 });
+    send("pointerup", { ...first, clientX: first.clientX + 30 }); canvas.flushFrame();
+    assert.notDeepEqual(mapProjection(canvas), cameraBefore, "ordinary camera dragging resumes when the studio closes");
+    assert.deepEqual(worldLightingEditorStore.getSnapshot().casters[0].points, caster.points);
+  } finally {
+    engine?.dispose(); worldLightingEditorStore.resetAll(); worldLightingEditorStore.setEnabled(false); worldDevStore.reset(); env.restore();
+  }
+});
+
+const studioFocusLayouts = [
+  { name: "right panel", view: { width: 1000, height: 700 }, panel: { left: 680, top: 0, width: 320, height: 700 },
+    point: { x: 800, y: 650 }, check: point => assert.ok(point.x > 250 && point.x < 420, "focus centers to the left of a right panel") },
+  { name: "left panel", view: { width: 1000, height: 700 }, panel: { left: 12, top: 0, width: 300, height: 700 },
+    point: { x: 800, y: 650 }, check: point => assert.ok(point.x > 570 && point.x < 740, "focus centers to the right of a left panel") },
+  { name: "left panel near the map edge", view: { width: 1000, height: 700 }, panel: { left: 12, top: 0, width: 300, height: 700 },
+    point: { x: 20, y: 650 }, check: point => assert.ok(point.x > 328 && point.x < 980, "world clamping keeps an edge target outside the left panel") },
+  { name: "bottom panel near the map edge", view: { width: 430, height: 800 }, panel: { left: 0, top: 540, width: 430, height: 260 },
+    point: { x: 630, y: 1234 }, check: point => assert.ok(point.y > 16 && point.y < 524, "world clamping keeps an edge target above the bottom panel") },
+];
+for (const layout of studioFocusLayouts) test("lighting studio pending focus survives map loading with " + layout.name, async () => {
+  const light = { id: "studio-focus", position: layout.point, kind: "lantern", radius: 50, intensity: 1, color: "#ffd28a", flicker: 0 };
+  const { createMapEngine, worldDevStore, worldLightingEditorStore, requestWorldLightingEditorFocus } = await modules({ lights: [light] });
+  const env = browser(); let engine;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false });
+    worldLightingEditorStore.setEnabled(true);
+    worldLightingEditorStore.selectLight(light.id);
+    document.querySelector = () => ({ getBoundingClientRect: () => layout.panel });
+    requestWorldLightingEditorFocus();
+    const canvas = env.surface(layout.view.width, layout.view.height), loading = createMapEngine(canvas, options, assert.fail, []);
+    env.finish(); await flush(); engine = await loading;
+    const projection = mapProjection(canvas);
+    layout.check({ x: projection.left + layout.point.x * projection.zoom, y: projection.top + layout.point.y * projection.zoom });
+    assert.ok(projection.zoom > 1, "focus also frames the requested object bounds");
+  } finally {
+    engine?.dispose(); worldLightingEditorStore.setEnabled(false); worldDevStore.reset(); env.restore();
+  }
 });

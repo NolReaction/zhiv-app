@@ -11,7 +11,7 @@ import { drawBoatWreck, prepareBoatWreck } from "@/features/world/legacy/boat-wr
 import { NEW_MAP_BOUNDS, NEW_MAP_FOCUS, TILED_WORLD, WORLD_PRESENTATION } from "./presentation";
 import { WORLD_DEV_ENABLED, worldDevStore } from "@/features/world/dev/world-dev-store";
 import { WORLD_LIGHTING_EDITOR_CANCEL_EVENT, worldLightingEditorStore } from "@/features/world/dev/world-lighting-editor-store";
-import { createWorldLightingEditorMap } from "@/features/world/dev/world-lighting-editor-map";
+import { createWorldLightingEditorMap, WORLD_LIGHTING_EDITOR_FOCUS_EVENT, takeWorldLightingEditorFocus, type WorldLightingEditorFocus } from "@/features/world/dev/world-lighting-editor-map";
 import { mapObjectAt, type MapObjectPlace, type MapInteractiveObject } from "./site-interactions";
 import { projectConstructionAnchor, type MapObjectScreenAnchor } from "./construction-map-anchor";
 import { drawMapGuideTarget, mapGuideCamera } from "./map-guide-target";
@@ -71,8 +71,45 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     activity() {}, ready: readyResolve, failure: error => readyReject(new MapLoadError("character", error)),
     rendered: () => { if (motionReduced() || paused()) { if (pointers.size) requestDraw(); else draw(); } else updateSelection(); },
   });
-  const lightingEditor = createWorldLightingEditorMap(() => habitat.lightingCasters?.() ?? []);
+  const lightingEditor = createWorldLightingEditorMap(() => habitat.lightingCasters?.() ?? [], worldLightingEditorStore,
+    { getLights: () => habitat.lightingLights?.() ?? [], onFocus: focusLighting });
   const editingLight = () => WORLD_DEV_ENABLED && rebuilding && worldLightingEditorStore.getSnapshot().enabled;
+  function focusLighting(request: WorldLightingEditorFocus) {
+    if (disposed || !editingLight() || !Number.isFinite(request.point?.x) || !Number.isFinite(request.point?.y)) return;
+    const safe = { left: 20, right: view.width - 20, top: cameraInsets.top + 16, bottom: view.height - cameraInsets.bottom - 16 };
+    const panel = document.querySelector?.<HTMLElement>("[data-world-lighting-studio-panel]")?.getBoundingClientRect();
+    if (panel) {
+      const viewport = canvas.getBoundingClientRect();
+      const left = (panel.left - viewport.left) * view.width / Math.max(1, viewport.width);
+      const top = (panel.top - viewport.top) * view.height / Math.max(1, viewport.height);
+      const width = panel.width * view.width / Math.max(1, viewport.width);
+      const height = panel.height * view.height / Math.max(1, viewport.height);
+      if (left < view.width && left + width > 0 && top < view.height && top + height > 0) {
+        if (width < view.width * .65) {
+          const freeLeft = left - 16 - safe.left, freeRight = safe.right - left - width - 16;
+          if (freeRight >= freeLeft) safe.left = Math.min(safe.right - 100, Math.max(safe.left, left + width + 16));
+          else safe.right = Math.max(safe.left + 100, Math.min(safe.right, left - 16));
+        } else {
+          const freeAbove = top - 16 - safe.top, freeBelow = safe.bottom - top - height - 16;
+          if (freeBelow > freeAbove) safe.top = Math.min(safe.bottom - 100, Math.max(safe.top, top + height + 16));
+          else safe.bottom = Math.max(safe.top + 100, Math.min(safe.bottom, top - 16));
+        }
+      }
+    }
+    const width = Math.max(100, safe.right - safe.left), height = Math.max(100, safe.bottom - safe.top);
+    const box = request.bounds;
+    const zoom = box && Number.isFinite(box.width) && Number.isFinite(box.height)
+      ? Math.min(width / Math.max(50, box.width + 40), height / Math.max(50, box.height + 40)) : Math.max(camera.zoom, 2);
+    const bounded = clampCamera({ ...camera, zoom }, view, bounds, cameraInsets);
+    // Constrain the world to the usable rectangle, not to the hidden area under
+    // the studio. Near map edges the full-viewport clamp would hide the target.
+    const focused = clampCamera({ x: request.point.x, y: request.point.y, zoom: bounded.zoom }, { width, height }, bounds);
+    framing = "manual";
+    camera = { zoom: focused.zoom,
+      x: focused.x + (view.width / 2 - safe.left - width / 2) / focused.zoom,
+      y: focused.y + (view.height / 2 - safe.top - height / 2) / focused.zoom };
+    draw(); canvas.focus?.({ preventScroll: true });
+  }
   const abort = () => { disposed = true; habitat.dispose(); readyReject(signal?.reason ?? new DOMException("Aborted", "AbortError")); };
   signal?.addEventListener("abort", abort, { once: true });
   try { await habitatReady; signal?.throwIfAborted(); }
@@ -247,7 +284,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   }
   function visibility() {
     if (document.hidden) {
-      lightingEditor.cancel();
+      lightingEditor.blur();
       cancelled = true;
       for (const [id, touch] of pointers) if (touch.capture.hasPointerCapture(id)) touch.capture.releasePointerCapture(id);
       pointers.clear();
@@ -315,9 +352,16 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     const capture = typeof target.setPointerCapture === "function" ? target : canvas;
     pointers.set(event.pointerId, { initial: p, position: p, objectId: objectId ? nearestMarkerObject(p) : undefined, capture, editor });
     multiTouch ||= pointers.size > 1; capture.setPointerCapture(event.pointerId); capture.focus?.({ preventScroll: true });
+    if (editingLight()) requestDraw();
   }
   function move(event: PointerEvent) {
-    const touch = pointers.get(event.pointerId); if (!touch) return;
+    const touch = pointers.get(event.pointerId);
+    if (!touch) {
+      if (editingLight() && worldLightingEditorStore.getSnapshot().tool === "light") {
+        lightingEditor.hover(screenToWorld(point(event), camera, view)); requestDraw();
+      }
+      return;
+    }
     const p = point(event), before = touch.position, oldDistance = separation();
     if (touch.editor) { lightingEditor.move(screenToWorld(p, camera, view)); touch.position = p; requestDraw(); return; }
     const oldCenter = pointers.size >= 2 ? midpoint() : null;
@@ -343,7 +387,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       requestDraw(); return;
     }
     if (editingLight()) {
-      if (!pointers.size && isMapTap(travelled, multiTouch, cancelled)) worldLightingEditorStore.select(null);
+      if (!lightingEditor.isPanning() && !pointers.size && isMapTap(travelled, multiTouch, cancelled)) worldLightingEditorStore.select(null);
       if (touch.capture.hasPointerCapture(event.pointerId)) touch.capture.releasePointerCapture(event.pointerId);
       requestDraw(); return;
     }
@@ -382,7 +426,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     if (touch.capture.hasPointerCapture(event.pointerId)) touch.capture.releasePointerCapture(event.pointerId);
     requestDraw();
   }
-  function wheel(event: WheelEvent) { event.preventDefault(); framing = "manual"; camera = zoomAt(camera, view, point(event), Math.exp(-event.deltaY * .0015), bounds, cameraInsets); requestDraw(); }
+  function wheel(event: WheelEvent) { event.preventDefault(); lightingEditor.cancel(); framing = "manual"; camera = zoomAt(camera, view, point(event), Math.exp(-event.deltaY * .0015), bounds, cameraInsets); requestDraw(); }
   function control(action: MapAction) {
     framing = action === "home" || action === "overview" ? action : "manual";
     if (action === "plesk" || action === "builder" || action === "fishing") {
@@ -399,10 +443,20 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     if (delta) { event.preventDefault(); framing = "manual"; camera = clampCamera({ ...camera, x: camera.x + delta[0] / camera.zoom, y: camera.y + delta[1] / camera.zoom }, view, bounds, cameraInsets); draw(); }
     else if (["+", "=", "-", "Home"].includes(event.key)) { event.preventDefault(); control(event.key === "Home" ? "pet" : event.key === "-" ? "out" : "in"); }
   }
+  function keyUp(event: KeyboardEvent) { if (lightingEditor.keyUp(event)) { event.preventDefault(); requestDraw(); } }
+  function editorBlur() { lightingEditor.blur(); requestDraw(); }
+  function editorLeave() { lightingEditor.hover(null); if (editingLight()) requestDraw(); }
+  function editorFocus(event: Event) {
+    const request = takeWorldLightingEditorFocus() ?? (event as CustomEvent<WorldLightingEditorFocus | "selection">).detail;
+    const target = request === "selection" ? lightingEditor.focus() : request;
+    if (target) focusLighting(target);
+  }
+  if (WORLD_DEV_ENABLED) window.addEventListener?.(WORLD_LIGHTING_EDITOR_FOCUS_EVENT, editorFocus);
   // DEV and the enclosing world dialog both capture Escape. Handle a map drag
   // first, while leaving keyboard input in the panel to its own controls.
   function editorEscape(event: KeyboardEvent) {
     if (event.key !== "Escape" || event.isComposing || event.target !== canvas || !editingLight()) return;
+    if (document.querySelector?.("[data-world-lighting-studio-panel]")) return;
     lightingEditor.key(event); event.preventDefault(); event.stopImmediatePropagation(); requestDraw();
   }
   window.addEventListener?.("keydown", editorEscape, true);
@@ -415,6 +469,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   canvas.addEventListener("pointerdown", down); canvas.addEventListener("pointermove", move);
   for (const name of ["pointerup", "pointercancel", "lostpointercapture"] as const) canvas.addEventListener(name, end);
   canvas.addEventListener("wheel", wheel, { passive: false }); canvas.addEventListener("keydown", key);
+  canvas.addEventListener("keyup", keyUp); canvas.addEventListener("blur", editorBlur); canvas.addEventListener("pointerleave", editorLeave);
   // Markers are real touch targets as well as keyboard buttons. Native touch
   // capture keeps their move/up events on the marker, so handle the whole
   // gesture there. React's detail=0 click remains the keyboard/AT fallback.
@@ -432,6 +487,9 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   // Controls may have changed while the scene's selected artwork was loading.
   if (WORLD_DEV_ENABLED) dev = worldDevStore.getSnapshot();
   document.addEventListener("visibilitychange", visibility); visibility();
+  const pendingLightingFocus = WORLD_DEV_ENABLED ? takeWorldLightingEditorFocus() : null;
+  const pendingLightingTarget = pendingLightingFocus === "selection" ? lightingEditor.focus() : pendingLightingFocus;
+  if (pendingLightingTarget) focusLighting(pendingLightingTarget);
   // An absolute DEV target chosen in the circle survives opening the full map.
   if (dev?.cameraEvent?.action === "plesk" || dev?.cameraEvent?.action === "builder" || dev?.cameraEvent?.action === "fishing") control(dev.cameraEvent.action);
   const unsubscribeDev = WORLD_DEV_ENABLED ? worldDevStore.subscribe(() => {
@@ -446,7 +504,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     }
   }) : () => {};
   const unsubscribeLightingEditor = WORLD_DEV_ENABLED ? worldLightingEditorStore.subscribe(() => {
-    if (!editingLight()) lightingEditor.cancel();
+    if (!editingLight()) lightingEditor.blur();
     if (editingLight()) setSelectedObject(null);
     requestDraw();
   }) : () => {};
@@ -469,7 +527,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     notice() { habitat.notice(); draw(); },
     visitBush() { habitat.invite("bush"); draw(); },
     dispose() {
-      disposed = true; lightingEditor.cancel(); cancelAnimationFrame(raf); unsubscribeDev(); unsubscribeLightingEditor(); habitat.dispose(); resizeObserver.disconnect(); observer.disconnect();
+      disposed = true; lightingEditor.blur(); cancelAnimationFrame(raf); unsubscribeDev(); unsubscribeLightingEditor(); habitat.dispose(); resizeObserver.disconnect(); observer.disconnect();
       if (speechCanvas && speechContext !== ctx) {
         speechContext.setTransform(1, 0, 0, 1, 0, 0); speechContext.clearRect(0, 0, speechCanvas.width, speechCanvas.height);
       }
@@ -481,6 +539,8 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       canvas.removeEventListener("pointerdown", down); canvas.removeEventListener("pointermove", move);
       for (const name of ["pointerup", "pointercancel", "lostpointercapture"] as const) canvas.removeEventListener(name, end);
       canvas.removeEventListener("wheel", wheel); canvas.removeEventListener("keydown", key); document.removeEventListener("visibilitychange", visibility);
+      canvas.removeEventListener("keyup", keyUp); canvas.removeEventListener("blur", editorBlur); canvas.removeEventListener("pointerleave", editorLeave);
+      window.removeEventListener?.(WORLD_LIGHTING_EDITOR_FOCUS_EVENT, editorFocus);
       window.removeEventListener?.("keydown", editorEscape, true);
       window.removeEventListener?.(WORLD_LIGHTING_EDITOR_CANCEL_EVENT, editorCancel);
     },

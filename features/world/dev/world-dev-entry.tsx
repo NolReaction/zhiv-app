@@ -1,8 +1,9 @@
 "use client";
 
 import { Component, type ComponentType } from "react";
-import { FlaskConical, X } from "lucide-react";
+import { FlaskConical, Sun, X } from "lucide-react";
 import type { WorldDevPanelProps } from "./world-dev-panel";
+import { takeWorldLightingStudioHandoff } from "./world-lighting-studio-session";
 import styles from "./world-dev-panel.module.css";
 
 type PanelModule = { default: ComponentType<WorldDevPanelProps> };
@@ -14,14 +15,16 @@ type State = {
   pending: boolean;
   failed: boolean;
   noticeOpen: boolean;
+  initialLightingStudio: boolean;
 };
 
 /** Load optional diagnostics on demand; a failed DEV chunk must not take down the game. */
 export class WorldDevEntry extends Component<Props, State> {
-  state: State = { Panel: null, pending: false, failed: false, noticeOpen: false };
+  state: State = { Panel: null, pending: false, failed: false, noticeOpen: false, initialLightingStudio: false };
   private mounted = false;
 
-  componentDidMount() { this.mounted = true; }
+  componentDidMount() { this.mounted = true; this.claimLightingHandoff(); }
+  componentDidUpdate() { this.claimLightingHandoff(); }
   componentWillUnmount() { this.mounted = false; }
 
   static getDerivedStateFromError(): Partial<State> {
@@ -32,14 +35,23 @@ export class WorldDevEntry extends Component<Props, State> {
     console.warn("DEV panel is unavailable; the game remains open.", error);
   }
 
-  open = async () => {
+  private claimLightingHandoff() {
+    if (!this.props.worldView || this.props.active === false || this.state.pending || !takeWorldLightingStudioHandoff()) return;
+    if (this.state.Panel) this.setState({ initialLightingStudio: true });
+    else void this.openLighting();
+  }
+
+  open = () => this.load(false);
+  openLighting = () => this.load(true);
+
+  private load = async (initialLightingStudio: boolean) => {
     const load = this.props.loadPanel ?? loadDevelopmentPanel;
     if (!load || this.state.pending) return;
     if (this.state.failed) {
       this.setState(state => ({ noticeOpen: !state.noticeOpen }));
       return;
     }
-    this.setState({ pending: true });
+    this.setState({ pending: true, initialLightingStudio });
     try {
       const panelModule = await load();
       if (this.mounted) this.setState({ Panel: panelModule.default, pending: false });
@@ -53,11 +65,14 @@ export class WorldDevEntry extends Component<Props, State> {
 
   render() {
     if (!loadDevelopmentPanel) return null;
-    const { Panel, pending, failed, noticeOpen } = this.state;
-    if (Panel) return <Panel {...this.props} initiallyOpen />;
+    const { Panel, pending, failed, noticeOpen, initialLightingStudio } = this.state;
+    if (Panel) return <Panel {...this.props} initiallyOpen={!initialLightingStudio} initialLightingStudio={initialLightingStudio} />;
     if (this.props.active === false) return null;
     return <aside className={styles.root} data-world-view={this.props.worldView || undefined} aria-label="Инструменты разработчика">
       <div className={styles.toolbar}>
+        <button type="button" className={styles.lightingTrigger} disabled={pending} aria-label="Мастерская света" onClick={this.openLighting}>
+          <Sun size={16} aria-hidden /><strong>Свет</strong>
+        </button>
         <button type="button" className={styles.trigger} disabled={pending}
           aria-label="Панель разработчика" aria-expanded={failed && noticeOpen} onClick={this.open}>
           <FlaskConical size={16} aria-hidden /><strong>{pending ? "Загрузка DEV…" : "DEV"}</strong>

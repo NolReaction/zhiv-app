@@ -250,3 +250,11 @@
   bottom: max(88px, calc(env(safe-area-inset-bottom) + 80px));
   height: auto;
 }
+
+.root .toolbar .lightingTrigger { border-radius: 999px; padding: 8px 12px; background: #293627f5; border-color: #aa9e65; color: #f4e5ad; font-size: 12px; }
+.root .toolbar .lightingTrigger[aria-pressed='true'] { background: #465439; border-color: #dec987; }
+/* Keep both direct launchers reachable alongside the compact onboarding row. */
+:global(main[data-active-view]:has(> [data-guide-coach="app"])) > .root:not([data-world-view="true"]) { width: auto; max-width: 100px; }
+:global(main[data-active-view]:has(> [data-guide-coach="app"])) > .root:not([data-world-view="true"]) .lightingTrigger { min-width: 44px; padding: 8px; }
+:global(main[data-active-view]:has(> [data-guide-coach="app"])) > .root:not([data-world-view="true"]) .lightingTrigger strong { display: none; }
+:global(main[data-active-view]:has(> [data-guide-coach="app"])):has(> .root:not([data-world-view="true"])) > :global(footer) { padding-right: 100px; }

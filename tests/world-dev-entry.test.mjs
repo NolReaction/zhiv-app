@@ -9,6 +9,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { WorldDevEntry } = await vite.ssrLoadModule("/features/world/dev/world-dev-entry.tsx");
+const { requestWorldLightingStudioHandoff, takeWorldLightingStudioHandoff } = await vite.ssrLoadModule("/features/world/dev/world-lighting-studio-session.ts");
 
 function entry(loadPanel, props = {}) {
   const view = new WorldDevEntry({ world: {}, loadPanel, ...props });
@@ -90,4 +91,39 @@ test("late import completion or failure after logout cannot update an unmounted 
     await pending;
     assert.equal(updates.length, count);
   }
+});
+
+test("the direct lighting launcher loads the same DEV chunk once and starts the studio without opening the drawer", async () => {
+  let imports = 0, finish;
+  const { view } = entry(() => { imports++; return new Promise(resolve => { finish = resolve; }); }, { worldView: false, onOpenWorld() {} });
+  const launchers = elements(view.render()).filter(node => node.type === "button");
+  assert.deepEqual(launchers.map(node => node.props["aria-label"]), ["Мастерская света", "Панель разработчика"]);
+  const pending = view.openLighting();
+  assert.equal(view.state.pending, true);
+  assert.equal(view.state.initialLightingStudio, true);
+  await view.open(); assert.equal(imports, 1);
+  const Panel = () => createElement("div", null, "loaded");
+  finish({ default: Panel }); await pending;
+  const rendered = view.render();
+  assert.equal(rendered.type, Panel);
+  assert.equal(rendered.props.initiallyOpen, false);
+  assert.equal(rendered.props.initialLightingStudio, true);
+  assert.equal(rendered.props.onOpenWorld, view.props.onOpenWorld);
+});
+
+test("a requested home-to-map handoff loads only the new world entry and is consumed once", async () => {
+  requestWorldLightingStudioHandoff();
+  let imports = 0, finish;
+  entry(() => { assert.fail("The home entry must not consume the full-map handoff"); }, { worldView: false });
+  const { view } = entry(() => { imports++; return new Promise(resolve => { finish = resolve; }); }, { worldView: true });
+  assert.equal(imports, 1);
+  assert.equal(view.state.pending, true);
+  assert.equal(view.state.initialLightingStudio, true);
+  assert.equal(takeWorldLightingStudioHandoff(), false);
+  const Panel = () => null;
+  finish({ default: Panel }); await Promise.resolve();
+  assert.equal(view.render().type, Panel);
+  assert.equal(view.render().props.initialLightingStudio, true);
+  assert.equal(view.render().props.initiallyOpen, false);
+  entry(() => { assert.fail("An unrelated later world entry must stay lazy"); }, { worldView: true });
 });

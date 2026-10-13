@@ -1969,3 +1969,28 @@ test("Lights accepts an optional bounded bulb height without changing legacy lig
   delete lamp.properties;
   assert.deepEqual((await compile()).lights[0], legacy);
 });
+
+test("Lights preserves implicit enabled and positioning defaults and validates authored boolean overrides", async t => {
+  const { map, compile } = await fixture(t);
+  const lamp = { id: 300, name: "editable-lamp", x: 30, y: 30, point: true };
+  map.layers.push(objectLayer(30, "Lights", [lamp]));
+  const legacy = (await compile()).lights[0];
+  assert.equal(Object.hasOwn(legacy, "enabled"), false);
+  assert.equal(Object.hasOwn(legacy, "manualPosition"), false);
+  for (const enabled of [true, false]) for (const manualPosition of [true, false]) {
+    lamp.properties = [
+      { name: "enabled", type: "bool", value: enabled },
+      { name: "manualPosition", type: "bool", value: manualPosition },
+    ];
+    assert.deepEqual((await compile()).lights[0], { ...legacy, enabled, manualPosition });
+  }
+  for (const name of ["enabled", "manualPosition"]) for (const [type, value, pattern] of [
+    ["string", "false", /type: expected "bool"/], ["int", 0, /type: expected "bool"/],
+    ["bool", 1, /expected a boolean/], ["bool", "true", /expected a boolean/],
+  ]) {
+    lamp.properties = [{ name, type, value }];
+    await assert.rejects(compile(), pattern);
+  }
+  delete lamp.properties;
+  assert.deepEqual((await compile()).lights[0], legacy, "legacy world export stays byte-compatible when flags are absent");
+});
