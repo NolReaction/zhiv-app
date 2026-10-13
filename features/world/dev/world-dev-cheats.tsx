@@ -40,9 +40,9 @@ export function WorldDevCheats({ world, economy, previewBuildings = false, onSho
   const quantity = Number(amount);
   const validQuantity = /^\d+$/.test(amount) && Number.isSafeInteger(quantity) && quantity >= 1 && quantity <= 1_000_000;
   const items = useMemo(() => {
-    const fishIds = new Set(catalog.fishing?.fish.map(fish => fish.itemId));
+    const fishIds = new Set(catalog.fishing?.classes.map(group => group.itemId));
     return [
-      ...catalog.items.map(item => ({ id: item.id, name: item.name, category: fishIds.has(item.id) ? "fish" : item.category === "fishing" ? "bait"
+      ...catalog.items.filter(item => !catalog.fishing?.fish.some(fish => fish.itemId === item.id)).map(item => ({ id: item.id, name: item.name, category: fishIds.has(item.id) ? "fish" : item.category === "fishing" ? "bait"
         : item.category === "special" ? "relics" : ["produce", "provisions"].includes(item.category) ? "food" : "materials", action: "grant_item" as const })),
       ...(catalog.fishing?.rods ?? []).map(rod => ({ id: rod.id, name: rod.name, category: "rods", action: "grant_fishing_gear" as const })),
       ...(catalog.fishing?.hooks ?? []).map(hook => ({ id: hook.id, name: hook.name, category: "hooks", action: "grant_fishing_gear" as const })),

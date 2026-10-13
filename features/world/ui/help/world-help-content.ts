@@ -1,6 +1,6 @@
 import { CLICKER_IDLE_RESET_MS, CLICKER_LEVELS } from "@/features/game/clicker-story";
 import { economyCatalog } from "@/features/economy/domain/model";
-import { fishingOdds } from "@/features/economy/domain/fishing";
+import { fishingClassOdds } from "@/features/economy/domain/fishing";
 import { formatPearls } from "@/features/economy/domain/money";
 import { progressionRewardsCatalog } from "@/features/game/progression-rewards";
 import { BARTER_HOME_LEVEL } from "@/features/economy/domain/barter-model";
@@ -39,9 +39,9 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
   const food = economyCatalog.food;
   const onboarding = economyCatalog.onboarding;
   const firstWorkshop = economyCatalog.buildings.find(building => building.id === "workshop")?.levels.find(level => level.level === 1);
-  const legendaryChance = economyCatalog.fishing ? fishingOdds({}, economyCatalog.fishing,
+  const legendaryChance = economyCatalog.fishing ? fishingClassOdds({}, economyCatalog.fishing,
     { rodId: "starfall_rod", hookId: "leviathan_hook", baitId: "firefly_bait" })
-    .filter(odds => economyCatalog.fishing!.fish.some(fish => fish.itemId === odds.itemId && fish.rarity === "legendary"))
+    .filter(odds => odds.rarity === "legendary")
     .reduce((sum, odds) => sum + odds.probability, 0) : 0;
   return [
     {
@@ -291,14 +291,14 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
       relatedIds: ["construction", "journeys"],
     },
     {
-      id: "fishing", group: "travel", title: "Как поймать редкую рыбу?", summary: "Особые попытки и шансы снастей",
+      id: "fishing", group: "travel", title: "Как поймать редкую рыбу?", summary: "Пять классов и шансы снастей",
       keywords: "рыбалка поймать улов вероятность шанс шансы редкая эпическая легендарная акула наживка удочка крючок",
       steps: [
         "Откройте «В путь» → «На рыбалку» → маршрут → «Снасти». Выберите удочку, крючок и при желании наживку.",
-        "В «Шансах и условиях улова» проверьте проценты выбранного набора. Они относятся к одной особой попытке, а не к каждой рыбе партии.",
-        `Звёздная удочка + Крючок Левиафана + Искристая мушка дают ${(legendaryChance * 100).toFixed(2).replace(".", ",")}% на легендарную рыбу за особую попытку. Без легендарной удочки и крючка она не ловится.`,
+        "В «Шансах улова» проверьте пять классов выбранного набора. Каждая пойманная рыба получает класс, затем случайный вид внутри него.",
+        `Звёздная удочка + Крючок Левиафана + Искристая мушка дают ${(legendaryChance * 100).toFixed(2).replace(".", ",")}% на легендарную рыбу на каждую пойманную рыбу. Без легендарной удочки и крючка она не ловится.`,
       ],
-      note: "Особая попытка тоже может дать обычную рыбу. Гарантированные речные рыбы не дают дополнительных бросков. Еда ускоряет поход, но не повышает шансы; отмена не возвращает наживку.",
+      note: "Класс определяет цену и применение в рецептах и заказах. Вид открывается в коллекции. Еда ускоряет поход, но не повышает шансы; отмена не возвращает наживку.",
       action: { label: "К рыбалке", target: { kind: "expeditions", sector: "coast" } },
       relatedIds: ["plesk", "collection", "campfire"],
     },
@@ -309,7 +309,7 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
         "Нажмите Плёску или её прилавок на карте. Ещё один вход: «Ещё» → «Персонажи» → «Плёска».",
         "В «Лавке» купите снасти, наживку или рыбу. Удочки и крючки остаются навсегда и не занимают кладовую; одна наживка расходуется на весь поход.",
         "В знакомстве с Плёской снасть и таблица вероятностей открываются сами. Видимая кнопка «Показать шансы» вернёт к таблице. Наживка необязательна; сравните её влияние до покупки.",
-        "В «Улове» продайте рыбу по полной базовой цене. В «Книге» смотрите пойманные виды и снасти.",
+        "В «Улове» рыба собрана по пяти классам с единой ценой внутри класса. В «Книге» смотрите пойманные виды и снасти.",
       ],
       note: `Поставка меняется каждые ${(economyCatalog.fishing?.shop.refreshSeconds ?? 21600) / 3600} часов; досрочное обновление тратит жемчуг. Редкие снасти чаще появляются с ростом дома, легендарные - начиная с дома 4. Рыбалка самой Плёски не приносит вам добычу.`,
       action: { label: "Поговорить с Плёской", target: { kind: "resident", residentId: "plesk" } },
@@ -319,7 +319,7 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
       id: "fish-day", group: "travel", title: "Зачем покупать рыбу дня?", summary: "Быстрые ингредиенты для готовки и заказов",
       keywords: "рыба дня скидка купить лавка плёска выгодно прибыль запас холодильник",
       steps: [
-        `В лавке Плёски одна поставка содержит ${economyCatalog.fishing?.shop.fishStock ?? 6} рыб одного обычного вида. Скидка - ${100 - (economyCatalog.fishing?.shop.fishPriceBps ?? 6000) / 100}% от обычной цены покупки; новый прилавок приходит через ${(economyCatalog.fishing?.shop.refreshSeconds ?? 21600) / 3600} ч.`,
+        `В лавке Плёски одна поставка содержит ${economyCatalog.fishing?.shop.fishStock ?? 6} рыб обычного класса. Скидка - ${100 - (economyCatalog.fishing?.shop.fishPriceBps ?? 6000) / 100}% от обычной цены покупки; новый прилавок приходит через ${(economyCatalog.fishing?.shop.refreshSeconds ?? 21600) / 3600} ч.`,
         "Купленная рыба подходит для жарки, ухи и копчения. Можно сразу закрыть подходящий заказ: перед покупкой сравните нужное количество и награду.",
       ],
       note: "Запас ограничен. Простая перепродажа Плёске убыточна, а подходящий заказ может принести прибыль. Покупка не открывает вид в книге находок.",
@@ -345,14 +345,14 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
       relatedIds: ["mining", "journeys", "construction"],
     },
     {
-      id: "campfire", group: "food", title: "Как приготовить рыбу?", summary: "Рецепт, нужный вид и получение блюда",
+      id: "campfire", group: "food", title: "Как приготовить рыбу?", summary: "Рецепт, нужный класс и получение блюда",
       keywords: "костер костёр готовка готовить еда рецепты жареная уха суп соус копченая рыба сушеные ягоды котелок припасы эпическая легендарная акула акулье жаркое праздничная",
       steps: [
         "Нажмите костёр → выберите рецепт. Будущие рецепты и нужные уровни указаны в улучшении костра.",
-        "В рецепте указана нужная редкость и все подходящие виды. Выберите один вид из кладовой: спишется именно эта рыба; редкий улов автоматически не подставляется.",
+        "В рецепте указаны класс рыбы и количество. Все пойманные виды одного класса уже объединены в запас. Рыба другого класса автоматически не подставляется.",
         "Проверьте состав и партии → «Начать». После таймера нажмите «Забрать»: готовое блюдо окажется в холодильнике кладовой.",
       ],
-      note: "Сытный ужин принимает редкую или эпическую рыбу. Для особых блюд нужны эпическая или легендарная рыба. Готовка не стирает запись в книге; дождь не меняет таймер.",
+      note: "Сытный ужин требует редкую рыбу. Для особых блюд нужны эпическая или легендарная рыба. Готовка не стирает запись в книге; дождь не меняет таймер.",
       action: { label: "Открыть костёр", target: { kind: "station", stationId: "dryer" } },
       relatedIds: ["food", "builder-food", "resident-orders", "production"],
     },
@@ -382,7 +382,7 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
         relatedIds: ["construction", "pearls", "resident-orders"],
       },
       {
-        id: "resident-orders", group: "food", title: "Как заработать на заказах жителей?", summary: "Плёске - улов, Шишколапу - материалы",
+        id: "resident-orders", group: "food", title: "Как заработать на заказах жителей?", summary: "Плёске - классы рыбы, Шишколапу - материалы",
         keywords: "заказ заказы доска заказчик плёска шишколап монеты награда сменить заменить обновить повторы жемчуг",
         steps: [
           "Откройте «Еда и заказы» → «Заказы». Карточка показывает жителя, его просьбу, ваши запасы и награду. Фильтр оставит нужного заказчика.",

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
  * extra raw materials or outperform its unlocked elementary station jobs. */
 export function auditProductionBalance(catalog) {
   const items = new Map(catalog.items.map(item => [item.id, item]));
-  const fish = new Set(catalog.fishing?.fish.map(item => item.itemId) ?? []);
+  const fish = new Set([...(catalog.fishing?.fish ?? []), ...(catalog.fishing?.classes ?? [])].map(item => item.itemId));
   const moneyScale = catalog.currencyScale ?? 1;
   const value = quantities => Object.entries(quantities).reduce((sum, [id, quantity]) => sum
     + (fish.has(id) ? items.get(id).baseSellPrice * quantity

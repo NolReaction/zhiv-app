@@ -3,7 +3,7 @@ import { ECONOMY_MAX_BALANCE, ECONOMY_MAX_ITEMS, ECONOMY_CURRENCY_SCALE, ECONOMY
 import { productionSlotCount, productionSlotOffer, productionStationSupported } from "./production-slots";
 
 import { refreshFishingShop, fishingShopExpired, fishingShopRefreshPrice } from "./fishing-shop";
-import { fishingState, fishingTripCost, fishingCollectionDraws, selectFishingCatch } from "./fishing";
+import { fishingState, fishingTripCost, fishingCollectionDraws, selectFishingCatch, fishClassForItem, fishClassInventory, fishingClassItemId } from "./fishing";
 import { advanceEconomyProgression, newEconomyProgression } from "./collection-progress";
 import { prepareRareDrop, settleRareDrop, secureRareInteger, type RareRandomInteger } from "./rare-drops";
 import { economyLocalSellPrice } from "./local-sale";
@@ -24,6 +24,13 @@ export function constructionSpeedupPrice(job: Pick<EconomyJob, "kind" | "finishe
   return remainingTimePearlPrice(job.finishesAt, now, config.secondsPerPearl, ECONOMY_PEARL_SCALE, config.priceStepPearls);
 }
 const fail = (code: string, message: string): never => { throw new EconomyRuleError(code, message); };
+function normalizedInventory(items: Record<string, number>): Record<string, number> {
+  try { return fishClassInventory(items); }
+  catch (error) {
+    if (error instanceof RangeError) return fail("ECONOMY_CAPACITY", "Сначала освободите место для этого материала");
+    throw error;
+  }
+}
 export function canAffordEconomy(state: Pick<EconomyState, "wallet" | "inventory">, cost: EconomyCost, quantity = 1) {
   return state.wallet.coins >= cost.coins * quantity && Object.entries(cost.items).every(([item, amount]) => (state.inventory[item] ?? 0) >= amount * quantity);
 }
@@ -44,8 +51,8 @@ export function economyStorage(state: Pick<EconomyState, "buildings" | "inventor
 /** Escrow occupies storage too. Existing over-capacity inventories can shrink or move, never grow. */
 export function assertEconomyStorageTransition(previous: Pick<EconomyState, "buildings" | "inventory">, next: Pick<EconomyState, "buildings" | "inventory">,
   previousReserved: Record<string, number> = {}, nextReserved: Record<string, number> = previousReserved) {
-  const totals = { ...next.inventory };
-  for (const [item, quantity] of Object.entries(nextReserved)) totals[item] = (totals[item] ?? 0) + quantity;
+  const totals = normalizedInventory(next.inventory);
+  for (const [item, quantity] of Object.entries(normalizedInventory(nextReserved))) totals[item] = (totals[item] ?? 0) + quantity;
   if (Object.values(totals).some(quantity => quantity > ECONOMY_MAX_ITEMS)) fail("ECONOMY_CAPACITY", "Сначала освободите место для этого материала");
   const before = economyStorage(previous, previousReserved), after = economyStorage(next, nextReserved);
   if (after.used + after.reserved > after.capacity && after.used + after.reserved > before.used + before.reserved)
@@ -82,6 +89,8 @@ function debit(state: EconomyState, cost: EconomyCost) {
   }
 }
 export function creditEconomyItems(state: EconomyState, rewards: Record<string, number>) {
+  state.inventory = normalizedInventory(state.inventory);
+  rewards = normalizedInventory(rewards);
   for (const [item, amount] of Object.entries(rewards)) {
     if ((state.inventory[item] ?? 0) + amount > ECONOMY_MAX_ITEMS) fail("ECONOMY_CAPACITY", "Сначала освободите место для этого материала");
   }
@@ -103,9 +112,13 @@ function requireActorAvailable(state: EconomyState, intent: "departure" | "colle
 }
 /** Pure domain transition. The caller owns the clone, authentication, receipt and atomic commit. */
 export function applyEconomyCommand(state: EconomyState, command: EconomyCommand, now: number, jobId: () => string, reservedItems: Record<string, number> = {}, rareRandom: RareRandomInteger = secureRareInteger): string {
+  const previousInventory = state.inventory;
+  state.inventory = normalizedInventory(state.inventory);
   const previousOrders = state.residentOrders;
   const boardBefore = economyCatalog.food ? normalizedResidentOrders(state, now) : undefined;
-  const message = applyEconomyTransition(state, command, now, jobId, reservedItems, rareRandom);
+  let message: string;
+  try { message = applyEconomyTransition(state, command, now, jobId, reservedItems, rareRandom); }
+  catch (error) { state.inventory = previousInventory; throw error; }
   // Pin the board before this command unlocks a new building. Failed commands
   // never migrate it, and an order command already supplied its next board.
   if (boardBefore && state.residentOrders === previousOrders) state.residentOrders = boardBefore;
@@ -429,8 +442,8 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       const rod = offer.kind === "rod" ? catalog.rods.find(item => item.id === offer.itemId) : undefined;
       const hook = offer.kind === "hook" ? catalog.hooks.find(item => item.id === offer.itemId) : undefined;
       const bait = offer.kind === "bait" ? catalog.baits.find(item => item.itemId === offer.itemId) : undefined;
-      const fish = offer.kind === "fish" ? catalog.fish.find(item => item.itemId === offer.itemId && item.rarity === "common") : undefined;
-      if (!rod && !hook && !bait && !fish) return fail("ECONOMY_FISHING_ITEM", "Плёска не продаёт этот предмет");
+      const fish = offer.kind === "fish" ? fishClassForItem(offer.itemId, catalog) : undefined;
+      if (!rod && !hook && !bait && fish?.rarity !== "common") return fail("ECONOMY_FISHING_ITEM", "Плёска не продаёт этот предмет");
       requireHome(state, (rod ?? hook ?? bait)?.requiredHomeLevel ?? 1);
       if (command.quantity > economyCatalog.maxBatch || (rod || hook) && command.quantity !== 1)
         throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Проверьте количество товара", 400);
@@ -474,9 +487,9 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
     }
     case "sell_fish":
     case "sell": {
-      if (command.action === "sell_fish" && !economyCatalog.fishing?.fish.some(fish => fish.itemId === command.targetId))
+      if (command.action === "sell_fish" && !fishClassForItem(command.targetId))
         return fail("ECONOMY_FISHING_ITEM", "Плёска принимает здесь только рыбу");
-      const item = economyCatalog.items.find(item => item.id === command.targetId && item.tradable && item.category !== "special");
+      const item = economyCatalog.items.find(item => item.id === fishingClassItemId(command.targetId) && item.tradable && item.category !== "special");
       if (!item) return fail("ECONOMY_ITEM", "Этот предмет нельзя продать");
       if ((state.inventory[item.id] ?? 0) < command.quantity) fail("ECONOMY_RESOURCES", "Не хватает предметов для продажи");
       const coins = command.action === "sell_fish" ? command.quantity * item.baseSellPrice

@@ -13,7 +13,7 @@ import { applyEconomyCommand, assertEconomyStorageTransition, convertLegacyEcono
 import { inheritEconomyCollection } from "@/features/economy/domain/collection-progress";
 import { economyCommandUsesActor } from "@/features/economy/domain/actor-availability";
 import { createFishingShop, fishingShopExpired } from "@/features/economy/domain/fishing-shop";
-import { fishingState } from "@/features/economy/domain/fishing";
+import { fishingState, fishClassInventory, fishingClassItemId } from "@/features/economy/domain/fishing";
 import { publicEconomyJob } from "@/features/economy/domain/public-jobs";
 import { tutorialOrderProgress } from "@/features/economy/domain/tutorial-order";
 import { foodState } from "@/features/economy/domain/food";
@@ -62,6 +62,7 @@ function profile(token: string | undefined, now: number) {
   }
   normalizeCurrency(value);
   value.state.fishing ??= fishingState({});
+  value.state.inventory = fishClassInventory(value.state.inventory);
   value.state.wardrobe = wardrobeOwned(value.state.wardrobe, getDevLegacyWardrobe(owner));
   value.state.progression = inheritEconomyCollection(value.state.progression, getDevCollectionFinds(owner));
   value.state.buildings.warehouse ??= 1;
@@ -111,7 +112,7 @@ function escrowItems(owner: string, excluding?: string): Record<string, number> 
     if (offer.id !== excluding && offer.status === "active" && offer.sellerPublicId === owner)
       totals[offer.offeredItemId] = (totals[offer.offeredItemId] ?? 0) + 1;
   }
-  return totals;
+  return fishClassInventory(totals);
 }
 function commit(owner: string, value: Profile, next: EconomyState, command: ReceiptCommand, message: string, now: number): EconomyResult {
   value.state = next; bump(value);
@@ -320,7 +321,7 @@ export function commandDevEconomyMarket(token: string | undefined, input: Market
   if (command.action !== "cancel_listing") requireMarket(value.state);
   const next = structuredClone(value.state);
   if (command.action === "create_listing") {
-    const item = economyCatalog.items.find(item => item.id === command.targetId && item.tradable);
+    const item = economyCatalog.items.find(item => item.id === fishingClassItemId(command.targetId) && item.tradable);
     if (!item) return fail("ECONOMY_MARKET_ITEM", "Этот предмет нельзя выставить на рынок", 400);
     if (!marketItemUnlocked(next, item.id)) return fail("ECONOMY_MARKET_ITEM_LOCKED", "Предмет пока недоступен на вашем уровне дома");
     if (command.totalPrice % ECONOMY_CURRENCY_SCALE !== 0 || command.totalPrice < marketMinimumPrice(item.id, command.quantity) || command.totalPrice > item.baseSellPrice * economyCatalog.market.maxPriceMultiplier * command.quantity) return fail("ECONOMY_MARKET_PRICE", "Цена лота вне разрешённого диапазона", 400);

@@ -573,8 +573,8 @@ test("closed fishing details leave catch guarantees, missing supplies and depart
   assert.match(visible, /Шансы выбранных снастей/);
   assert.ok(visible.indexOf("Шансы выбранных снастей") < visible.indexOf('aria-label="Отправиться:'), "actual odds are visible before departure");
   assert.match(visible, /Улов за одну вылазку/);
-  assert.match(visible, /Всего рыб/); assert.match(visible, /Речных гарантировано/);
-  assert.match(visible, /Попыток особого улова/); assert.match(visible, /Наживки за поход/);
+  assert.match(visible, /Всего рыб/);
+  assert.match(visible, /Наживки за поход/);
   assert.match(visible, /Не хватает припасов/);
   assert.equal(disabled(button(visible, "Отправиться")), true);
   assert.doesNotMatch(visible, /<select\b/);
@@ -667,7 +667,7 @@ test("shore gear shortcuts open Pleska without spending and fishing keeps each r
     assert.equal(full.depart(routeId).props.disabled, true);
     assert.match(route(full.html, routeId), new RegExp(`Находки займут ${quantity} мест`));
     assert.match(route(full.html, routeId), /Всего рыб/);
-    assert.match(route(full.html, routeId), new RegExp(`<dd>${entry.rewards.fish}</dd>`));
+    assert.match(route(full.html, routeId), new RegExp(`<dd>${economyCatalog.fishing.collectionDrawsByRoute[entry.id]}</dd>`));
   }
 });
 

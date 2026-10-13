@@ -35,7 +35,7 @@ export function reviewMiningFishing(loaded, onScenario = () => {}) {
     const route = catalog.explorations.find(route => route.id === routeId), portfolio = math.catchPortfolio("reed_rod", null, routeId);
     return { routeId, hours: route.seconds / 3600, totalCatch: route.rewards.fish, speciesDraws: portfolio.speciesDrawsPerJob,
       catchesPerHour: route.rewards.fish * 3600 / route.seconds, speciesDrawsPerHour: portfolio.speciesDrawsPerJob * 3600 / route.seconds,
-      expectedStarterRevenue: portfolio.expectedFishRevenue, expectedStarterOrdinaryFish: portfolio.output.fish };
+      expectedStarterRevenue: portfolio.expectedFishRevenue, expectedStarterOrdinaryFish: portfolio.output.fish_common };
   });
   const baitMargins = catalog.fishing.routeIds.map(routeId => {
     const comparisons = audit.fishingLoadouts.filter(loadout => loadout.baitId).map(loadout => {

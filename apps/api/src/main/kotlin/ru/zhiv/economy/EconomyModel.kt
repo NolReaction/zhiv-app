@@ -30,6 +30,7 @@ const val ECONOMY_MAX_REVISION = 9_007_199_254_740_991L
     val ownedHooks: List<String> = listOf("bare_hook"), val equippedHookId: String = "bare_hook",
 )
 @Serializable data class EconomyFishingCatch(val rodId: String, val baitId: String?, val fishId: String, val hookId: String = "bare_hook")
+@Serializable data class EconomyFishClass(val rarity: String, val itemId: String, val weight: Int, val buyPrice: Long)
 @Serializable data class EconomyFishSpec(val itemId: String, val description: String, val rarity: String,
     val weight: Int, val affinity: Int, val buyPrice: Long, val requiredHookId: String? = null)
 @Serializable data class EconomyRodSpec(val id: String, val name: String, val description: String, val price: Long, val rareBonus: Int,
@@ -65,7 +66,7 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
 @Serializable data class EconomyFishingCatalog(val routeIds: List<String>, val fish: List<EconomyFishSpec>,
     val rods: List<EconomyRodSpec>, val baits: List<EconomyBaitSpec>, val shop: EconomyFishingShopConfig = EconomyFishingShopConfig(),
     val hooks: List<EconomyHookSpec> = listOf(EconomyHookSpec("bare_hook", "Простой крючок", "Начальная снасть без дополнительных усилений.", 0, 0)),
-    val collectionDrawsByRoute: Map<String, Int> = emptyMap())
+    val collectionDrawsByRoute: Map<String, Int> = emptyMap(), val classes: List<EconomyFishClass> = emptyList())
 @Serializable data class EconomyRareDropSpec(val version: Int = 1, val requiredHomeLevel: Int,
     val minSeconds: Long, val maxSeconds: Long, val itemIds: List<String>) {
     init { require(version == 1 && requiredHomeLevel in 1..5 && minSeconds in 1L..31_536_000L && maxSeconds in minSeconds..31_536_000L

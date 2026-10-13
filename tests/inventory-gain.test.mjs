@@ -32,12 +32,12 @@ test("a claim event contains only this removed job's confirmed inventory increas
   const after = state(5, [], { fish: 20, wood: 95, stone: 7 }), receipt = command("claim_job", trip.id, 4);
   const saved = structuredClone(before), event = inventoryGainFromReceipt(before, result(after), receipt);
   assert.deepEqual(event, { id: receipt.requestId, ownerPublicId: owner, revision: 5, source: "claim",
-    items: [{ itemId: "fish", quantity: 3 }, { itemId: "stone", quantity: 2 }] });
+    items: [{ itemId: "fish_common", quantity: 3 }, { itemId: "stone", quantity: 2 }] });
   assert.equal(event.stationId, undefined, "a trip must not invent a production station");
   assert.ok(Object.isFrozen(event) && Object.isFrozen(event.items) && event.items.every(Object.isFrozen));
   assert.deepEqual(before, saved); assert.deepEqual(after.inventory, { fish: 20, wood: 95, stone: 7 });
   const partial = inventoryGainFromReceipt(before, result(state(5, [], { fish: 18, wood: 90, stone: 5 })), receipt);
-  assert.deepEqual(partial.items, [{ itemId: "fish", quantity: 1 }]);
+  assert.deepEqual(partial.items, [{ itemId: "fish_common", quantity: 1 }]);
 });
 
 test("loading, old or unrelated revisions, foreign accounts and unclaimed/cancelled jobs cannot celebrate", () => {
@@ -94,7 +94,7 @@ test("pending claims have no optimistic badge; the accepted receipt emits once a
     session.act("claim_job", trip.id); assert.deepEqual(session.getSnapshot().inventoryGains, []);
     latest = state(1, [], { fish: 3, stone: 2 }); resolve(result(latest)); await flush();
     assert.equal(session.getSnapshot().inventoryGains.length, 1);
-    assert.deepEqual(session.getSnapshot().inventoryGains[0].items, [{ itemId: "fish", quantity: 3 }, { itemId: "stone", quantity: 2 }]);
+    assert.deepEqual(session.getSnapshot().inventoryGains[0].items, [{ itemId: "fish_common", quantity: 3 }, { itemId: "stone", quantity: 2 }]);
     assert.ok(Object.isFrozen(session.getSnapshot().inventoryGains));
     await session.refresh(); await session.retry(); assert.equal(session.getSnapshot().inventoryGains.length, 1);
     latest = state(2, [], { fish: 100 }); await session.refresh(); assert.equal(session.getSnapshot().inventoryGains.length, 1);

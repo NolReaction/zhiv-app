@@ -1,5 +1,6 @@
 import type { MapObjectSelection, WorldPlace } from "@/features/world/scene/map-engine";
 import type { EconomyCatalog, EconomyCost, EconomyJob, EconomyView } from "@/features/economy/domain/model";
+import { fishClassForItem } from "@/features/economy/domain/fishing";
 import { productionSlotCount } from "@/features/economy/domain/production-slots";
 
 export type WorldStationDefinition = { label: string; stationIds: readonly string[]; future?: string };
@@ -72,7 +73,8 @@ export function worldMissingRequirements(state: EconomyView, required: Record<st
 export function worldMaterialSource(state: EconomyView, itemId: string) {
   const recipe = state.catalog.recipes.find(entry => (entry.rewards[itemId] ?? 0) > 0 && !worldMissingRequirements(state, worldRequirements(entry, entry)).length);
   if (recipe) return { kind: "production" as const, stationId: recipe.buildingId, targetId: recipe.id };
-  const exploration = state.catalog.explorations.find(entry => (entry.rewards[itemId] ?? 0) > 0 && !worldMissingRequirements(state, worldRequirements(entry)).length);
+  const fish = state.catalog.fishing && fishClassForItem(itemId, state.catalog.fishing);
+  const exploration = state.catalog.explorations.find(entry => ((entry.rewards[itemId] ?? 0) > 0 || fish && state.catalog.fishing?.routeIds.includes(entry.id)) && !worldMissingRequirements(state, worldRequirements(entry)).length);
   return exploration ? { kind: "exploration" as const, targetId: exploration.id } : null;
 }
 export function worldCostShortfalls(state: EconomyView, cost: EconomyCost, quantity = 1) {

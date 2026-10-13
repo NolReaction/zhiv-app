@@ -25,7 +25,7 @@ const recipeSlots = recipe => {
 export function economicMath(catalog) {
   const items = new Map(catalog.items.map(i => [i.id, i]));
   const buildings = new Map(catalog.buildings.map(b => [b.id, b]));
-  const fish = new Set(catalog.fishing?.fish.map(f => f.itemId) ?? []);
+  const fish = new Set([...(catalog.fishing?.fish ?? []), ...(catalog.fishing?.classes ?? [])].map(f => f.itemId));
   const rare = new Set(catalog.rareDrops?.itemIds ?? []);
   const moneyScale = catalog.currencyScale ?? 1;
   const liquidation = quantities => Object.entries(quantities).reduce((sum, [id, quantity]) => sum +
@@ -45,7 +45,7 @@ export function economicMath(catalog) {
     ...(d.buildingId ? [buildingHome(d.buildingId, d.buildingLevel)] : []),
     ...Object.entries(d.requiredBuildings ?? {}).map(([id, level]) => buildingHome(id, level)));
   const fishingHome = itemId => {
-    const spec = catalog.fishing.fish.find(f => f.itemId === itemId), legendary = spec.rarity === "legendary";
+    const spec = [...catalog.fishing.fish, ...(catalog.fishing.classes ?? [])].find(f => f.itemId === itemId), legendary = spec.rarity === "legendary";
     return Math.max(1, Math.min(...catalog.fishing.rods.filter(rod => !legendary || rod.rarity === "legendary").map(rod => rod.requiredHomeLevel ?? 1)),
       Math.min(...catalog.fishing.hooks.filter(hook => (!spec.requiredHookId || hook.id === spec.requiredHookId)
         && (!legendary || hook.rarity === "legendary")).map(hook => hook.requiredHomeLevel ?? 1)));
@@ -61,20 +61,30 @@ export function economicMath(catalog) {
   }
   function catchPortfolio(rodId = "reed_rod", baitId = null, routeId = "shore", hookId = "bare_hook") {
     const route = catalog.explorations.find(r => r.id === routeId); assert(route && route.rewards.fish > 0);
-    const bonus = (catalog.fishing.rods.find(r => r.id === rodId)?.rareBonus ?? 0) + (catalog.fishing.baits.find(b => b.itemId === baitId)?.rareBonus ?? 0)
-      + (catalog.fishing.hooks?.find(h => h.id === hookId)?.rareBonus ?? 0);
     const tackle = [catalog.fishing.rods.find(r => r.id === rodId), catalog.fishing.hooks.find(h => h.id === hookId), catalog.fishing.baits.find(b => b.itemId === baitId)];
-    const specialized = [...catalog.fishing.rods, ...catalog.fishing.hooks, ...catalog.fishing.baits].some(gear => gear.rarityWeights);
-    const weights = catalog.fishing.fish.map(f => ({ ...f, w: f.rarity === "legendary" && (tackle[0]?.rarity !== "legendary" || tackle[1]?.rarity !== "legendary") ? 0
-      : f.requiredHookId && f.requiredHookId !== hookId ? 0
-      : specialized ? Math.max(1, Math.floor(f.weight * tackle.reduce((weight, gear) => weight * (gear?.rarityWeights?.[f.rarity] ?? 100), 1) / 1_000_000))
-        : f.weight + f.affinity * bonus })), total = weights.reduce((sum, f) => sum + f.w, 0);
+    const eligible = f => (f.rarity !== "legendary" || tackle[0]?.rarity === "legendary" && tackle[1]?.rarity === "legendary")
+      && (!f.requiredHookId || f.requiredHookId === hookId);
+    const classes = catalog.fishing.classes.map(group => {
+      const species = catalog.fishing.fish.filter(f => f.rarity === group.rarity && eligible(f));
+      const weight = species.length ? Math.max(1, Math.floor(group.weight * tackle.reduce((weight, gear) =>
+        weight * (gear?.rarityWeights?.[group.rarity] ?? 100), 1) / 1_000_000)) : 0;
+      return { ...group, species, weight };
+    });
+    const total = classes.reduce((sum, group) => sum + group.weight, 0);
+    assert(total > 0, "Fishing requires an eligible class");
+    const classProbabilities = Object.fromEntries(classes.map(group => [group.itemId, group.weight / total]));
+    const probabilities = Object.fromEntries(catalog.fishing.fish.map(f => {
+      const group = classes.find(group => group.rarity === f.rarity);
+      return [f.itemId, eligible(f) && group.species.length ? group.weight / total / group.species.length : 0];
+    }));
     const draws = catalog.fishing.collectionDrawsByRoute?.[routeId] ?? 1;
     assert(Number.isInteger(draws) && draws > 0 && draws <= route.rewards.fish, `${routeId}: invalid number of species draws`);
-    const output = { ...route.rewards, fish: route.rewards.fish - draws };
-    for (const f of weights) output[f.itemId] = (output[f.itemId] ?? 0) + draws * f.w / total;
+    const output = { ...route.rewards };
+    delete output.fish;
+    for (const group of classes) output[group.itemId] = draws * classProbabilities[group.itemId];
+    output[classes.find(group => group.rarity === "common").itemId] += route.rewards.fish - draws;
     const baitCost = baitId ? catalog.fishing.baits.find(b => b.itemId === baitId).price : 0;
-    return { slotMinutes: { mochlik: route.seconds / 60 }, output, speciesDrawsPerJob: draws, probabilities: Object.fromEntries(weights.map(f => [f.itemId, f.w / total])),
+    return { slotMinutes: { mochlik: route.seconds / 60 }, output, speciesDrawsPerJob: draws, probabilities, classProbabilities,
       routeCoins: route.cost.coins, routeInputs: { ...route.cost.items }, baitPurchaseCoins: baitCost, expectedFishRevenue: Object.entries(output).filter(([id]) => fish.has(id)).reduce((sum, [id, q]) => sum + items.get(id).baseSellPrice * q, 0) };
   }
   const profiles = new Map();
@@ -107,41 +117,32 @@ export function economicMath(catalog) {
         typeProbability: 1 / spec.itemIds.length, expectedSpecificSeconds: meanSeconds * spec.itemIds.length,
         expectedCompleteSetSeconds: meanSeconds * spec.itemIds.length * spec.itemIds.reduce((sum, _, index) => sum + 1 / (index + 1), 0),
         finiteSpecificGuarantee: false, coinPurchasePrice: null };
-    } else if (id === "fish") {
-      const portfolio = catchPortfolio(), output = portfolio.output.fish;
-      result.reference = "steady-state starter catch portfolio";
-      add(result.slotMinutes, portfolio.slotMinutes, 1 / output); result.rawInputs.fish = 1;
-      result.coins = (portfolio.routeCoins + portfolio.baitPurchaseCoins) / output;
+    } else if (fish.has(id)) {
+      const spec = [...catalog.fishing.fish, ...catalog.fishing.classes].find(f => f.itemId === id);
+      const group = catalog.fishing.classes.find(f => f.rarity === spec.rarity), legendary = spec.rarity === "legendary";
+      const rod = legendary ? catalog.fishing.rods.filter(rod => rod.rarity === "legendary").sort((a, b) => a.price - b.price)[0]
+        : catalog.fishing.rods.find(rod => rod.id === "reed_rod");
+      const hook = catalog.fishing.hooks.filter(hook => (!spec.requiredHookId || hook.id === spec.requiredHookId)
+        && (!legendary || hook.rarity === "legendary")).sort((a, b) => a.price - b.price)[0];
+      assert(rod && hook, `${id}: no eligible reference tackle`);
+      const portfolio = catchPortfolio(rod.id, null, "shore", hook.id), probability = portfolio.classProbabilities[group.itemId];
+      const output = portfolio.output[group.itemId];
+      assert(output > 0, `${id}: reference tackle cannot catch the fish class`);
+      result.reference = "steady-state class stock with least expensive eligible tackle; merchant waiting excluded";
+      result.referenceHome = result.sourceHome;
+      result.producerLevels.home = result.referenceHome;
+      result.rawInputs[group.itemId] = 1;
+      result.catchReference = { rodId: rod.id, hookId: hook.id, probability, expectedTrips: 1 / output,
+        expectedFishPerTrip: output, rodPurchaseCoins: rod.price, hookPurchaseCoins: hook.price, finiteGuarantee: false };
+      add(result.slotMinutes, portfolio.slotMinutes, 1 / output);
+      result.coins = portfolio.routeCoins / output;
       for (const [input, quantity] of Object.entries(portfolio.routeInputs)) {
         const p = profile(input, [...path, id]), scale = quantity / output;
         add(result.slotMinutes, p.slotMinutes, scale); add(result.rawInputs, p.rawInputs, scale); add(result.byproducts, p.byproducts, scale);
         requireLevels(result.producerLevels, p.producerLevels); result.coins += p.coins * scale;
         result.depth = Math.max(result.depth, p.depth + 1); result.referenceHome = Math.max(result.referenceHome, p.referenceHome);
       }
-      for (const [other, quantity] of Object.entries(portfolio.output)) if (other !== "fish") result.byproducts[other] = quantity / output;
-    } else if (fish.has(id)) {
-      const spec = catalog.fishing.fish.find(f => f.itemId === id), legendary = spec.rarity === "legendary";
-      const rod = legendary ? catalog.fishing.rods.filter(rod => rod.rarity === "legendary").sort((a, b) => a.price - b.price)[0]
-        : catalog.fishing.rods.find(rod => rod.id === "reed_rod");
-      const hook = catalog.fishing.hooks.filter(hook => (!spec.requiredHookId || hook.id === spec.requiredHookId)
-        && (!legendary || hook.rarity === "legendary")).sort((a, b) => a.price - b.price)[0];
-      assert(rod && hook, `${id}: no eligible reference tackle`);
-      const portfolio = catchPortfolio(rod.id, null, "shore", hook.id), probability = portfolio.probabilities[id];
-      assert(probability > 0, `${id}: reference tackle cannot catch the fish`);
-      result.reference = "expected shared catch portfolio with least expensive eligible tackle; merchant waiting excluded";
-      result.referenceHome = result.sourceHome;
-      result.producerLevels.home = result.referenceHome;
-      result.catchReference = { rodId: rod.id, hookId: hook.id, probability, expectedTrips: 1 / probability,
-        rodPurchaseCoins: rod.price, hookPurchaseCoins: hook.price, finiteGuarantee: false };
-      add(result.slotMinutes, portfolio.slotMinutes, 1 / probability);
-      result.coins = portfolio.routeCoins / probability;
-      for (const [input, quantity] of Object.entries(portfolio.routeInputs)) {
-        const p = profile(input, [...path, id]), scale = quantity / probability;
-        add(result.slotMinutes, p.slotMinutes, scale); add(result.rawInputs, p.rawInputs, scale); add(result.byproducts, p.byproducts, scale);
-        requireLevels(result.producerLevels, p.producerLevels); result.coins += p.coins * scale;
-        result.depth = Math.max(result.depth, p.depth + 1); result.referenceHome = Math.max(result.referenceHome, p.referenceHome);
-      }
-      for (const [other, quantity] of Object.entries(portfolio.output)) if (other !== id && quantity > 0) result.byproducts[other] = quantity / probability;
+      for (const [other, quantity] of Object.entries(portfolio.output)) if (other !== group.itemId && quantity > 0) result.byproducts[other] = quantity / output;
     } else {
       const purchase = catalog.fishing?.baits.find(b => b.itemId === id);
       assert(purchase, `No elementary reference or NPC stock for ${id}`);

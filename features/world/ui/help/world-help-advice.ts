@@ -92,11 +92,11 @@ function costAdvice(state: EconomyView, cost: EconomyCost, now: number, quantity
     if (conflict) return jobAdvice(state, conflict.job, now);
     target = { kind: "expeditions", sector: sector(source.targetId) };
     instruction = "Этот материал есть в наградах доступной вылазки. Откройте маршрут и проверьте припасы.";
-  } else if (state.catalog.fishing?.fish.some(fish => fish.itemId === missing.id)) {
+  } else if (state.catalog.fishing?.classes.some(group => group.itemId === missing.id)) {
     const conflict = economyActorConflict(state.jobs, "departure", now);
     if (conflict) return jobAdvice(state, conflict.job, now);
     target = { kind: "expeditions", sector: "coast" };
-    instruction = "Рыбу можно поймать на побережье. Особый вид выпадает с шансом: проверьте снасти перед отправлением.";
+    instruction = "Рыбу этого класса можно поймать на побережье. Проверьте шансы класса с выбранными снастями перед отправлением.";
   }
   return { id: `missing:${missing.id}`, title: `Не хватает: ${itemName(state, missing.id)}`, topicId: "production", severity: "problem",
     message: `Есть ${missing.available}, нужно ${missing.required}. ${instruction}`,
@@ -172,14 +172,6 @@ function contextAdvice(state: EconomyView, context: WorldHelpContext | undefined
       ? { label: "Изменить партию", target: { kind: "station", stationId: recipe.buildingId, recipeId: recipe.id } }
       : { label: "Улучшение кладовой", target: { kind: "upgrade", stationId: "warehouse" } },
   };
-  // A recipe's default fish is a placeholder. An owned alternative is useful,
-  // but help must never select it or spend a rarer species on the player's behalf.
-  const placeholder = recipe.fishInput?.itemIds.find(id => recipe.cost.items[id] > 0);
-  const alternate = placeholder && (state.inventory[placeholder] ?? 0) < recipe.cost.items[placeholder] * quantity
-    ? recipe.fishInput?.itemIds.find(id => id !== placeholder && (state.inventory[id] ?? 0) >= recipe.cost.items[placeholder] * quantity) : null;
-  if (alternate) return { id: `recipe:fish-choice:${recipe.id}`, title: "Подойдёт другая рыба", topicId: "food", severity: "next",
-    message: `У вас есть ${itemName(state, alternate)}. В рецепте можно выбрать этот вид; сначала проверьте остальные ингредиенты.`,
-    action: { label: "Выбрать рыбу в рецепте", target: { kind: "station", stationId: recipe.buildingId, recipeId: recipe.id } } };
   return costAdvice(state, recipe.cost, now, quantity);
 }
 

@@ -8,6 +8,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
   server: { middlewareMode: true, hmr: false } });
 const { publicEconomyJob } = await vite.ssrLoadModule("/features/economy/domain/public-jobs.ts");
 const { economyJobSchema, economyViewSchema } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { fishClassInventory } = await vite.ssrLoadModule("/features/economy/domain/fishing.ts");
 const identities = await vite.ssrLoadModule("/lib/dev/api-store.ts");
 const economy = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
 const now = Date.parse("2026-10-06T00:00:00Z");
@@ -49,7 +50,7 @@ test("snapshots, commands and receipt replays conceal draws until an atomic succ
     expectedRevision: read(at).revision, action, targetId, quantity: 1, totalPrice: 0 });
   const start = command("start_fishing", "shore");
   const started = economy.commandDevEconomy(player.token, start, now);
-  assert.deepEqual(started.state.jobs[0].rewards, { fish: 4 });
+  assert.deepEqual(started.state.jobs[0].rewards, { fish: 2 });
   assert.equal(started.state.jobs[0].fishing.fishId, "fish");
   const profile = globalThis.__zhivDevEconomyStore.profiles.get(player.me.user.publicId);
   // Force a mixed persisted catch: this check must not pass only because a random draw was common.
@@ -74,7 +75,7 @@ test("snapshots, commands and receipt replays conceal draws until an atomic succ
   const delivered = economy.commandDevEconomy(player.token, claim, finishedAt);
   const expected = { ...inventory };
   for (const [item, amount] of Object.entries(privateJob.rewards)) expected[item] = (expected[item] ?? 0) + amount;
-  assert.deepEqual(delivered.state.inventory, expected);
+  assert.deepEqual(delivered.state.inventory, fishClassInventory(expected));
   assert.deepEqual(delivered.state.fishing.catches, privateJob.rewards);
   assert.deepEqual(delivered.state.jobs, []);
   const replay = economy.commandDevEconomy(player.token, claim, finishedAt);
@@ -95,7 +96,7 @@ test("general exploration commands cannot bypass fishing gear, bait costs, hidde
   const start = command("start_exploration", "shore_camp");
   const active = economy.commandDevEconomy(player.token, start, now).state;
   const first = active.jobs[0], seed = profile.state.fishingCastSeed;
-  assert.deepEqual(first.rewards, { fish: 24 });
+  assert.deepEqual(first.rewards, { fish: 8 });
   assert.deepEqual(first.cost.items, { worm_bait: 1 });
   assert.equal(first.fishing.baitId, "worm_bait");
   assert.equal(active.inventory.worm_bait, 1);
@@ -120,7 +121,7 @@ test("general exploration commands cannot bypass fishing gear, bait costs, hidde
   const claimed = economy.commandDevEconomy(player.token, command("claim_job", last.id, Date.parse(last.finishesAt)), Date.parse(last.finishesAt)).state;
   const expected = { ...inventory };
   for (const [item, amount] of Object.entries(saved.rewards)) expected[item] = (expected[item] ?? 0) + amount;
-  assert.deepEqual(claimed.inventory, expected);
+  assert.deepEqual(claimed.inventory, fishClassInventory(expected));
   assert.deepEqual(claimed.fishing.catches, saved.rewards);
   assert.equal(profile.state.fishingCastSeed, null);
 });

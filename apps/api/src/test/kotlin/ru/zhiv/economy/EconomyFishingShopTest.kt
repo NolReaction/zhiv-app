@@ -20,8 +20,8 @@ class EconomyFishingShopTest {
         val state = ready(5)
         val first = EconomyFishingShops.create(state, now, { 0 })
         val last = EconomyFishingShops.create(state, now, { it - 1 })
-        assertEquals(listOf("river_rod", "barbed_hook", "crumb_bait", "fish"), first.offers.map { it.itemId })
-        assertEquals(listOf("starfall_rod", "leviathan_hook", "firefly_bait", "fish_rudd"), last.offers.map { it.itemId })
+        assertEquals(listOf("river_rod", "barbed_hook", "crumb_bait", "fish_common"), first.offers.map { it.itemId })
+        assertEquals(listOf("starfall_rod", "leviathan_hook", "firefly_bait", "fish_common"), last.offers.map { it.itemId })
         assertEquals(now.plusSeconds(21600).toString(), first.refreshAt)
         assertEquals(100L, first.refreshPricePearls)
         val spec = checkNotNull(EconomyRules.catalog.fishing)
@@ -43,11 +43,11 @@ class EconomyFishingShopTest {
     @Test fun `cheaper starter tackle is applied to new stock without rewriting saved prices`() {
         val current = ready()
         val shop = checkNotNull(current.fishingShop)
-        assertEquals(13500L, shop.offers.single { it.itemId == "river_rod" }.unitPrice)
-        assertEquals(9000L, shop.offers.single { it.itemId == "barbed_hook" }.unitPrice)
+        assertEquals(1800L, shop.offers.single { it.itemId == "river_rod" }.unitPrice)
+        assertEquals(1200L, shop.offers.single { it.itemId == "barbed_hook" }.unitPrice)
         val alternate = EconomyFishingShops.create(current, now, { it - 1 })
-        assertEquals(9000L, alternate.offers.single { it.itemId == "brook_rod" }.unitPrice)
-        assertEquals(6000L, alternate.offers.single { it.itemId == "round_hook" }.unitPrice)
+        assertEquals(900L, alternate.offers.single { it.itemId == "brook_rod" }.unitPrice)
+        assertEquals(600L, alternate.offers.single { it.itemId == "round_hook" }.unitPrice)
         val saved = current.copy(fishingShop = shop.copy(offers = shop.offers.map {
             if (it.itemId == "river_rod") it.copy(unitPrice = 18000) else it
         }))
@@ -106,22 +106,22 @@ class EconomyFishingShopTest {
     @Test fun `discounted fish stays bounded pays server quote and never unlocks catch collection`() {
         val state = ready()
         val offer = checkNotNull(state.fishingShop).offers.single { it.kind == "fish" }
-        assertEquals(96L, offer.unitPrice)
+        assertEquals(120L, offer.unitPrice)
         val bought = EconomyRules.apply(state, command("buy_fishing_item", offer.id, 2, 300), now).first
-        assertEquals(state.wallet.coins - 192, bought.wallet.coins)
+        assertEquals(state.wallet.coins - 240, bought.wallet.coins)
         assertEquals((state.inventory[offer.itemId] ?: 0) + 2, bought.inventory[offer.itemId])
         assertEquals(state.fishing, bought.fishing)
         assertEquals(state.progression, bought.progression)
         assertEquals(4L, checkNotNull(bought.fishingShop).offers.single { it.id == offer.id }.remaining)
         assertEquals("ECONOMY_FISHING_PRICE_CHANGED", assertFailsWith<AuthFailure> {
-            EconomyRules.apply(state, command("buy_fishing_item", offer.id, price = 95), now)
+            EconomyRules.apply(state, command("buy_fishing_item", offer.id, price = 119), now)
         }.code)
         assertEquals("ECONOMY_FISHING_STOCK", assertFailsWith<AuthFailure> {
-            EconomyRules.apply(state, command("buy_fishing_item", offer.id, 7, 672), now)
+            EconomyRules.apply(state, command("buy_fishing_item", offer.id, 7, 840), now)
         }.code)
         assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> {
             EconomyRules.apply(state.copy(inventory = mapOf("wood" to 290L)),
-                command("buy_fishing_item", offer.id, price = 96), now, mapOf("stone" to 10L))
+                command("buy_fishing_item", offer.id, price = 120), now, mapOf("stone" to 10L))
         }.code)
         val forged = state.copy(fishingShop = checkNotNull(state.fishingShop).copy(offers = listOf(
             offer.copy(itemId = "fish_shark"))))
@@ -129,7 +129,7 @@ class EconomyFishingShopTest {
             EconomyRules.apply(forged, command("buy_fishing_item", offer.id, price = offer.unitPrice), now)
         }.code)
         val spec = checkNotNull(EconomyRules.catalog.fishing)
-        for (fish in spec.fish.filter { it.rarity == "common" }) {
+        for (fish in spec.classes.filter { it.rarity == "common" }) {
             val price = (fish.buyPrice * spec.shop.fishPriceBps + 9999) / 10000
             assertTrue(price > EconomyRules.catalog.items.single { it.id == fish.itemId }.baseSellPrice)
         }
@@ -152,8 +152,10 @@ class EconomyFishingShopTest {
         assertEquals(900L, next.wallet.pearls)
         assertEquals(state.wallet.coins, next.wallet.coins)
         assertNotEquals(shop.id, next.fishingShop?.id)
+        assertEquals("fish_common", checkNotNull(next.fishingShop).offers.single { it.kind == "fish" }.itemId)
+        assertEquals(6L, checkNotNull(next.fishingShop).offers.single { it.kind == "fish" }.remaining)
         assertEquals(listOf("rod", "hook", "bait", "fish"), checkNotNull(next.fishingShop).offers.map { it.kind })
-        assertTrue(checkNotNull(next.fishingShop).offers.none { offer -> shop.offers.any { it.itemId == offer.itemId } })
+        assertTrue(checkNotNull(next.fishingShop).offers.filter { it.kind != "fish" }.none { offer -> shop.offers.any { it.itemId == offer.itemId } })
         assertEquals("ECONOMY_FISHING_SHOP_CHANGED", assertFailsWith<AuthFailure> {
             EconomyRules.apply(next, refresh, now.plusSeconds(2))
         }.code)
@@ -163,17 +165,17 @@ class EconomyFishingShopTest {
         val state = ready(5, 6000).let { it.copy(fishingShop = checkNotNull(it.fishingShop).let { shop ->
             shop.copy(offers = shop.offers.map { offer -> offer.copy(remaining = 0) }) }) }
         assertTrue(EconomyFishingShops.canRefresh(state))
-        assertEquals(listOf("river_rod", "barbed_hook", "worm_bait", "fish_silverfin"),
+        assertEquals(listOf("river_rod", "barbed_hook", "worm_bait", "fish_common"),
             checkNotNull(EconomyFishingShops.refresh(state, now, { 0 })).offers.map { it.itemId })
         val totals = mutableListOf<Int>()
-        assertEquals(listOf("starfall_rod", "leviathan_hook", "firefly_bait", "fish_rudd"),
+        assertEquals(listOf("starfall_rod", "leviathan_hook", "firefly_bait", "fish_common"),
             checkNotNull(EconomyFishingShops.refresh(state, now, { totals += it; it - 1 })).offers.map { it.itemId })
-        assertEquals(listOf(10000, 1, 10000, 1, 95, 2), totals)
+        assertEquals(listOf(10000, 1, 10000, 1, 95, 1), totals)
         var legendary = 0
         repeat(10000) { ticket ->
             val shop = checkNotNull(EconomyFishingShops.refresh(state, now, { if (it == 10000) ticket else 0 }, "paid"))
             assertEquals(listOf("rod", "hook", "bait", "fish"), shop.offers.map { it.kind })
-            assertTrue(shop.offers.none { offer -> checkNotNull(state.fishingShop).offers.any { it.itemId == offer.itemId } })
+            assertTrue(shop.offers.filter { it.kind != "fish" }.none { offer -> checkNotNull(state.fishingShop).offers.any { it.itemId == offer.itemId } })
             if (shop.offers.any { it.itemId == "starfall_rod" }) legendary++
         }
         assertEquals(800, legendary)
@@ -183,11 +185,11 @@ class EconomyFishingShopTest {
         val state = ready()
         assertTrue(EconomyFishingShops.canRefresh(state))
         val next = checkNotNull(EconomyFishingShops.refresh(state, now, { 0 }))
-        assertEquals(listOf("brook_rod", "round_hook", "worm_bait", "fish_silverfin"), next.offers.map { it.itemId })
+        assertEquals(listOf("brook_rod", "round_hook", "worm_bait", "fish_common"), next.offers.map { it.itemId })
         val old = checkNotNull(state.fishingShop)
-        assertTrue(next.offers.none { offer -> old.offers.any { it.itemId == offer.itemId } })
+        assertTrue(next.offers.filter { it.kind != "fish" }.none { offer -> old.offers.any { it.itemId == offer.itemId } })
         val second = checkNotNull(EconomyFishingShops.refresh(state.copy(fishingShop = next), now, { 0 }))
-        assertEquals(listOf("river_rod", "barbed_hook", "crumb_bait", "fish"), second.offers.map { it.itemId })
+        assertEquals(listOf("river_rod", "barbed_hook", "crumb_bait", "fish_common"), second.offers.map { it.itemId })
     }
 
     @Test fun `exhausted ordinary alternatives cannot charge or promote a rare replacement`() {

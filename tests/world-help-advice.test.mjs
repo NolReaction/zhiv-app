@@ -57,18 +57,18 @@ test("failed reads and cooldowns do not claim stale money or expose an early ret
   assert.equal(worldHelpAdvice({ economy: { ...economy, retryAt: now + 1, uncertain: true } })[0].action, undefined);
 });
 
-test("recipe advice follows actual selected fish and batch instead of its placeholder", () => {
+test("recipe advice uses the required fish class and batch without substituting rarer stock", () => {
   const missing = advice({ inventory: { wood: 1 } }, { context: { ...context, quantity: 3 } });
   assert.equal(missing[0].id, "missing:wood"); assert.match(missing[0].message, /Есть 1, нужно 6/);
   assert.deepEqual(missing[0].action.target, { kind: "station", stationId: "woodlot", recipeId: "gather_wood" });
-  const foodContext = { intent: "production", stationId: "dryer", recipeId: "cook_grilled_fish", fishItemId: "fish_silverfin", quantity: 2 };
-  assert.deepEqual(advice({ inventory: { fish_silverfin: 2, wood: 2 } }, { context: foodContext }), []);
-  const selected = advice({ inventory: { fish_silverfin: 1, wood: 2 } }, { context: foodContext });
-  assert.equal(selected[0].id, "missing:fish_silverfin"); assert.match(selected[0].message, /Есть 1, нужно 2/);
+  const foodContext = { intent: "production", stationId: "dryer", recipeId: "cook_grilled_fish", quantity: 2 };
+  assert.deepEqual(advice({ inventory: { fish_common: 2, wood: 2 } }, { context: foodContext }), []);
+  const selected = advice({ inventory: { fish_common: 1, wood: 2 } }, { context: foodContext });
+  assert.equal(selected[0].id, "missing:fish_common"); assert.match(selected[0].message, /Есть 1, нужно 2/);
   assert.deepEqual(selected[0].action.target, { kind: "expeditions", sector: "coast" });
-  const alternative = advice({ inventory: { fish_silverfin: 2, wood: 2 } }, { context: { ...foodContext, fishItemId: "fish", quantity: 2 } });
-  assert.equal(alternative[0].id, "recipe:fish-choice:cook_grilled_fish");
-  assert.deepEqual(alternative[0].action.target, { kind: "station", stationId: "dryer", recipeId: "cook_grilled_fish" });
+  const rarerStock = advice({ inventory: { fish_uncommon: 2, wood: 2 } }, { context: foodContext });
+  assert.equal(rarerStock[0].id, "missing:fish_common");
+  assert.deepEqual(rarerStock[0].action.target, { kind: "expeditions", sector: "coast" });
   for (const bad of [{ recipeId: "unknown" }, { quantity: 0 }, { quantity: 1.1 }, { stationId: "kiln" }, { fishItemId: "fish_shark" }])
     assert.deepEqual(advice({}, { context: { ...context, ...bad } }), []);
 });

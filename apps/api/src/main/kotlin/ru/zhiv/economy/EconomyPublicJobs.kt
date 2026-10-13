@@ -5,7 +5,7 @@ package ru.zhiv.economy
 object EconomyPublicJobs {
     fun project(job: EconomyJob): EconomyJob {
         val fishing = job.fishing ?: return job
-        val fishIds = (EconomyRules.catalog.fishing?.fish?.map { it.itemId } ?: listOf("fish")).toSet() + fishing.fishId
+        val fishIds = (EconomyRules.catalog.fishing?.fish?.map { it.itemId } ?: listOf("fish")).toSet() + (EconomyRules.catalog.fishing?.classes?.map { it.itemId } ?: emptyList()) + fishing.fishId
         val rewards = job.rewards.filterKeys { it !in fishIds }.toMutableMap()
         val fishCount = job.rewards.filterKeys { it in fishIds }.values.sum()
         if (fishCount > 0L) rewards["fish"] = fishCount

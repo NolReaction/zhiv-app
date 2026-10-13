@@ -17,7 +17,8 @@ export function auditFoodEconomy(catalog) {
   const food = catalog.food, math = economicMath(catalog), scale = catalog.currencyScale;
   assert(food?.meals.length >= 6, "The six-tier meal catalog is required");
   const items = new Map(catalog.items.map(item => [item.id, item]));
-  const fish = new Map(catalog.fishing.fish.map(item => [item.itemId, item]));
+  const fish = new Map([...catalog.fishing.fish, ...catalog.fishing.classes].map(item => [item.itemId, item]));
+  const fishOptions = recipe => recipe.fishInput?.itemIds ?? Object.keys(recipe.cost.items).filter(id => fish.has(id));
   const mealIds = new Set(food.meals.map(meal => meal.itemId));
   assert.equal(mealIds.size, food.meals.length, "Duplicate meal");
   const positiveInt = value => Number.isSafeInteger(value) && value > 0;
@@ -43,7 +44,7 @@ export function auditFoodEconomy(catalog) {
         const options = source.fishInput?.itemIds;
         if (Object.keys(source.cost.items).some(id => !reachable.has(id) && !options?.includes(id)) || options && !options.some(id => reachable.has(id))) continue;
         for (const [id, count] of Object.entries(source.rewards)) if (count > 0) reachable.add(id);
-        if (catalog.fishing.routeIds.includes(source.id)) for (const spec of catalog.fishing.fish) {
+        if (catalog.fishing.routeIds.includes(source.id)) for (const spec of catalog.fishing.classes) {
           const rods = catalog.fishing.rods.filter(rod => rod.requiredHomeLevel <= buildings.home && (spec.rarity !== "legendary" || rod.rarity === "legendary"));
           const hooks = catalog.fishing.hooks.filter(hook => hook.requiredHomeLevel <= buildings.home && (!spec.requiredHookId || hook.id === spec.requiredHookId)
             && (spec.rarity !== "legendary" || hook.rarity === "legendary"));
@@ -77,9 +78,9 @@ export function auditFoodEconomy(catalog) {
       itemReferenceCoins: Number(scaledValue), directSaleCoins: math.liquidation(quantities),
       inputSourceSlotMinutes: Object.fromEntries(Object.entries(slotMinutes).map(([id, minutes]) => [id, rounded(minutes)])) };
   };
-  const fishRecipes = catalog.recipes.filter(recipe => recipe.fishInput);
+  const fishRecipes = catalog.recipes.filter(recipe => fishOptions(recipe).length);
   const recipes = fishRecipes.map(recipe => {
-    const options = recipe.fishInput.itemIds, original = Object.keys(recipe.cost.items).filter(id => options.includes(id));
+    const options = fishOptions(recipe), original = Object.keys(recipe.cost.items).filter(id => options.includes(id));
     assert.equal(original.length, 1, `${recipe.id}: exactly one fish placeholder is required`);
     assert.equal(new Set(options).size, options.length, `${recipe.id}: duplicate fish option`);
     assert(options.every(id => fish.has(id)), `${recipe.id}: unknown fish option`);
@@ -120,7 +121,7 @@ export function auditFoodEconomy(catalog) {
       assert(Number.isInteger(bonus) && bonus > 0 && bonus <= 10000, `Unbounded ${consumer} meal bonus`);
       if (index) assert(bonus > food.meals[index - 1][`${consumer}SpeedBps`], "Meal tiers must improve both consumers");
     }
-    const producer = defaultProducer(meal.itemId); assert(producer?.fishInput, `${meal.itemId}: no fish recipe`);
+    const producer = defaultProducer(meal.itemId); assert(producer && fishOptions(producer).length, `${meal.itemId}: no fish recipe`);
     const mealValue = math.liquidation({ [meal.itemId]: 1 });
     const fishingReturn = catalog.fishing.routeIds.map(routeId => {
       const route = catalog.explorations.find(route => route.id === routeId);
@@ -131,7 +132,7 @@ export function auditFoodEconomy(catalog) {
         return { ...loadout, withoutFoodNetCoinsPerHour: rounded(net * 3600 / route.seconds),
           withFoodNetCoinsPerHour: rounded((net - mealValue) * 3600 / fedSeconds),
           fishNetCoinsPerJob: rounded(net), dishOpportunityCoins: mealValue, fedSeconds,
-          compatibleFishExpectedPerJob: rounded(sum(producer.fishInput.itemIds.map(id => caught.output[id] ?? 0))) };
+          compatibleFishExpectedPerJob: rounded(sum(fishOptions(producer).map(id => caught.output[id] ?? 0))) };
       });
       const best = cases.reduce((a, b) => a.withFoodNetCoinsPerHour >= b.withFoodNetCoinsPerHour ? a : b);
       return { routeId, starter: cases.find(row => row.rodId === "reed_rod" && row.hookId === "bare_hook" && row.baitId === null), best };
@@ -175,7 +176,7 @@ export function auditFoodEconomy(catalog) {
   // Exhaustive finite unbounded-knapsack over <=6 purchased fish. Other goods are
   // explicitly owned inputs valued as one aggregate sale; no per-unit rounding.
   // Matching offers/history are relaxed, so this is a ceiling, not a promised run.
-  const shopDeliveryBudgets = catalog.fishing.fish.filter(spec => spec.rarity === "common").map(spec => {
+  const shopDeliveryBudgets = catalog.fishing.classes.filter(spec => spec.rarity === "common").map(spec => {
     const unitPrice = shopPrice(spec.itemId), stock = catalog.fishing.shop.fishStock;
     assert(unitPrice > items.get(spec.itemId).baseSellPrice, `${spec.itemId}: instant NPC buy-sell arbitrage`);
     const candidates = orders.templates.flatMap(order => {
@@ -183,8 +184,8 @@ export function auditFoodEconomy(catalog) {
       for (const [id, count] of Object.entries(order.items)) {
         if (id === spec.itemId) { quantity += count; continue; }
         const recipe = defaultProducer(id);
-        if (recipe?.fishInput?.itemIds.includes(spec.itemId)) {
-          const placeholder = recipe.fishInput.itemIds.find(id => recipe.cost.items[id] > 0), batches = count / recipe.rewards[id];
+        if (recipe && fishOptions(recipe).includes(spec.itemId)) {
+          const placeholder = fishOptions(recipe).find(id => recipe.cost.items[id] > 0), batches = count / recipe.rewards[id];
           quantity += recipe.cost.items[placeholder] * batches;
           minutes += recipe.seconds / 60 * batches; coins += recipe.cost.coins * batches;
           add(others, Object.fromEntries(Object.entries(recipe.cost.items).filter(([id]) => id !== placeholder)), batches);
@@ -250,9 +251,9 @@ export function auditFoodEconomy(catalog) {
   }
   return { catalogVersion: catalog.version, currency: "visible coins, identical to catalog integer amounts; currencyScale is a historical denomination marker",
     assumptions: ["Fish use full Pleska buyback price; local sales round each aggregate item stack down to a multiple of 10 coins",
-      "Actual merchant purchase is ceil(buyPrice*fishPriceBps/10000), not nominal buyPrice; only common species are stocked",
-      "Direct purchase-resale loses money; positive buy-to-order turnover is intentional and limited by six fish per delivery, stock, other goods and manual confirmed orders",
-      "Four natural deliveries per steady day is not a strict rolling-day cap; old stock may straddle the interval, and paid merchant refresh buys more stock with pearls",
+      "Actual merchant purchase is ceil(buyPrice*fishPriceBps/10000), not nominal buyPrice; only common class stock is sold",
+      "Direct purchase-resale and pure raw-fish buy-to-order turnover lose money; cooking value requires real time and ingredients",
+      "Four natural deliveries per steady day is not a strict rolling-day cap; old stock may straddle the interval, and paid merchant refresh restocks the common class offer",
       "Order template/shop ceilings below are base-quantity comparisons; templates.byHome reports issued scaled quantities and corresponding rewards",
       "Production input-source minutes include independent station occupancy and expected fish acquisition; they are not a wall-clock guarantee",
       "Order payouts, including home scaling and rounding, remain at or below twice full reference value; low-price player trades remain bounded by existing trade limits",

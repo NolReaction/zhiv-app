@@ -1,5 +1,7 @@
 "use client";
 
+import { fishClassForItem } from "@/features/economy/domain/fishing";
+
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { ArrowLeft, ArrowRight, Check, ChevronUp, CircleHelp, Clock3, Fence, Flame, Hammer, House, LockKeyhole, Minus, Package, Pickaxe, Plus, RefreshCw, Sprout, TowerControl, Trees, X, type LucideIcon } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
@@ -18,8 +20,6 @@ import { useGardenCollection } from "@/features/economy/integration/garden-colle
 import { WorldExpeditionsMenu } from "@/features/economy/ui/expeditions/world-expeditions-menu";
 import { WorldProductionSlots } from "@/features/economy/ui/production/world-production-slots";
 import type { ConstructionGoalController } from "@/features/economy/ui/construction/use-construction-goal";
-import { recipeFishOptions, recipeWithFish } from "@/features/economy/domain/food";
-import { recipeFishGroupLabel } from "@/features/economy/ui/food/food-recipe-labels";
 import { ConstructionGoalSummary } from "@/features/economy/ui/construction/construction-goal-summary";
 import styles from "./world-object-menu.module.css";
 
@@ -71,28 +71,19 @@ function RecipeCatalog({ state, recipes, onChoose }: { state: EconomyView; recip
 
 export function WorldRecipeDetail({ economy, recipe, navigation, onCollapse, onOpenHelp, onHelpContextChange }: { economy: ReadyEconomy; recipe: WorldRecipe; navigation?: StationNavigation; onCollapse: () => void; onOpenHelp?: (context: WorldHelpContext) => void; onHelpContextChange?: (context: WorldHelpContext) => void }) {
   const [requestedQuantity, setQuantity] = useState(1);
-  // The original ingredient is the safe default. Never spend a valuable fish
-  // just because it is the first available one in the player's inventory.
-  const [requestedFish, setFish] = useState<string | undefined>(undefined);
-  const fishOptions = recipeFishOptions(economy.snapshot, recipe, economy.snapshot.catalog);
-  const selectedFish = requestedFish && fishOptions.some(option => option.itemId === requestedFish) ? requestedFish : undefined;
-  const resolvedRecipe = recipeWithFish(recipe, selectedFish);
-  const fishId = selectedFish ?? fishOptions.find(option => (recipe.cost.items[option.itemId] ?? 0) > 0)?.itemId;
-  const selectedRarity = fishOptions.find(option => option.itemId === fishId)?.rarity;
   const meal = economy.snapshot.catalog.food?.meals.find(entry => (recipe.rewards[entry.itemId] ?? 0) > 0);
-  const fishIdLabel = useId();
   const backButton = useRef<HTMLButtonElement>(null);
   const pendingOrder = useRef<{ owner: string; jobIds: Set<string>; started: boolean } | null>(null);
-  const maximum = worldBatchLimit(economy.snapshot, resolvedRecipe);
+  const maximum = worldBatchLimit(economy.snapshot, recipe);
   const quantity = Math.max(1, Math.min(requestedQuantity, maximum));
-  const reason = worldProductionReason(economy.snapshot, resolvedRecipe, quantity);
+  const reason = worldProductionReason(economy.snapshot, recipe, quantity);
   const missingRequirements = worldMissingRequirements(economy.snapshot, worldRequirements(recipe, recipe));
   const output = Object.values(recipe.rewards).reduce((sum, amount) => sum + amount, 0) * quantity;
   const quantityId = useId();
   const helpBlocked = Boolean(reason) || economy.uncertain || economy.retryAt > economy.now;
   useEffect(() => {
-    onHelpContextChange?.({ intent: "production", stationId: recipe.buildingId, recipeId: recipe.id, fishItemId: fishId, quantity });
-  }, [onHelpContextChange, recipe.buildingId, recipe.id, fishId, quantity]);
+    onHelpContextChange?.({ intent: "production", stationId: recipe.buildingId, recipeId: recipe.id, quantity });
+  }, [onHelpContextChange, recipe.buildingId, recipe.id, quantity]);
   useEffect(() => { backButton.current?.focus({ preventScroll: true }); }, []);
   useEffect(() => {
     const pending = pendingOrder.current;
@@ -108,18 +99,10 @@ export function WorldRecipeDetail({ economy, recipe, navigation, onCollapse, onO
       <button ref={backButton} type="button" className={styles.recipeBack} onClick={onCollapse}><ArrowLeft size={14} aria-hidden="true" />Все рецепты</button>
       <div className={styles.resultCards} aria-label="Результат">{Object.entries(recipe.rewards).map(([id, amount]) => <div key={id}><span><ProductIcon state={economy.snapshot} itemId={id} size={24} /></span><strong>{itemName(economy.snapshot, id)}</strong><b>×{number(amount * quantity)}</b></div>)}</div>
       {meal && <p className={styles.mealBenefits}>Вылазка +{number(meal.heroSpeedBps / 100)}% · стройка +{number(meal.builderSpeedBps / 100)}% к скорости</p>}
-      {fishOptions.length > 0 && <div className={styles.fishIngredient}>
-        <label htmlFor={fishIdLabel}>Рыба для блюда</label>
-        <p id={`${fishIdLabel}-group`} className={styles.fishGroup}>{recipeFishGroupLabel(recipe, economy.snapshot.catalog)} · ×{number((resolvedRecipe.cost.items[fishId ?? ""] ?? 0) * quantity)}</p>
-        <select id={fishIdLabel} aria-describedby={`${fishIdLabel}-group`} value={fishId} disabled={locked(economy)} onChange={event => { if (!locked(economy) && fishOptions.some(option => option.itemId === event.target.value)) setFish(event.target.value); }}>
-          {fishOptions.map(option => <option key={option.itemId} value={option.itemId}>{option.name} · в запасе {number(option.quantity)}</option>)}
-        </select>
-        {selectedRarity && ["rare", "epic", "legendary"].includes(selectedRarity) && <p className={styles.hint}>Выбрана ценная рыба. Она будет потрачена на приготовление.</p>}
-      </div>}
-      <div className={styles.recipeIngredients}><h3>Понадобится</h3><Cost state={economy.snapshot} cost={resolvedRecipe.cost} quantity={quantity} navigation={navigation} /></div>
+      <div className={styles.recipeIngredients}><h3>Понадобится</h3><Cost state={economy.snapshot} cost={recipe.cost} quantity={quantity} navigation={navigation} /></div>
       <Requirements state={economy.snapshot} required={worldRequirements(recipe, recipe)} navigation={navigation} />
       {reason && !missingRequirements.length && <p className={styles.hint}>{reason}</p>}
-      {helpBlocked && onOpenHelp && <button type="button" className={styles.contextHelp} onClick={() => onOpenHelp({ intent: "production", stationId: recipe.buildingId, recipeId: recipe.id, fishItemId: fishId, quantity })}><CircleHelp size={15} aria-hidden="true" />Как продолжить?</button>}
+      {helpBlocked && onOpenHelp && <button type="button" className={styles.contextHelp} onClick={() => onOpenHelp({ intent: "production", stationId: recipe.buildingId, recipeId: recipe.id, quantity })}><CircleHelp size={15} aria-hidden="true" />Как продолжить?</button>}
       {output > economy.snapshot.storage.available && !missingRequirements.length && <p className={styles.hint}>Для получения понадобится {number(output)} мест · свободно {number(economy.snapshot.storage.available)}.</p>}
     </div>
     <div className={styles.recipeOrder} data-recipe-order>
@@ -127,7 +110,7 @@ export function WorldRecipeDetail({ economy, recipe, navigation, onCollapse, onO
       <button type="button" className={styles.primary} disabled={Boolean(reason) || locked(economy)} onClick={() => {
         if (reason || locked(economy)) return;
         pendingOrder.current = { owner: economy.snapshot.ownerPublicId, jobIds: new Set(economy.snapshot.jobs.map(job => job.id)), started: false };
-        void economy.act("start_production", selectedFish ? `${recipe.id}@${selectedFish}` : recipe.id, quantity);
+        void economy.act("start_production", recipe.id, quantity);
       }}>Начать · {worldDuration(recipe.seconds * quantity)}</button>
     </div>
   </section>;
@@ -148,7 +131,7 @@ export function WorldObjectSale({ economy, itemId, onCollapse }: { economy: Read
   return <section className={styles.detail} aria-label={`Продажа: ${item.name}`}>
     <div className={styles.detailTitle}><h3>{item.name}</h3><button type="button" className={styles.iconButton} aria-label="Свернуть продажу" onClick={onCollapse}><ChevronUp size={16} aria-hidden="true" /></button></div>
     <p className={styles.small}>На складе {number(stock)} · {discount > 0 ? `быстрая продажа с уценкой ${number(discount)}%. Итог округляется вниз до целой монеты.` : `торговец даёт ${number(item.baseSellPrice)} монет за штуку`}</p>
-    {discount > 0 && state.catalog.fishing?.fish.some(fish => fish.itemId === item.id) && <p className={styles.hint}>Плёска купит дороже: {number(item.baseSellPrice)} монет за штуку. Её лавка открывается на карте.</p>}
+    {discount > 0 && fishClassForItem(item.id, state.catalog.fishing) && <p className={styles.hint}>Плёска купит дороже: {number(item.baseSellPrice)} монет за штуку. Её лавка открывается на карте.</p>}
     {item.tradable ? <div className={styles.sale}><label htmlFor={inputId}>Количество</label><input id={inputId} type="number" inputMode="numeric" min={minimum} max={Math.max(minimum, maximum)} step={1} value={quantityText} disabled={locked(economy) || maximum < minimum} onChange={event => setQuantityText(event.target.value)} /><button type="button" className={styles.primary} disabled={!valid || locked(economy)} onClick={() => { if (valid && !locked(economy)) void economy.act("sell", item.id, quantity, buyer ? total : 0); }}>Продать · {valid ? number(total) : "-"}<ItemIcon itemId="coins" size={16} /></button></div> : <p className={styles.hint}>Этот предмет нельзя продать торговцу.</p>}
     {item.tradable && maximum < minimum && <p className={styles.hint}>{stock < minimum ? `Для продажи нужно хотя бы ${number(minimum)} шт., чтобы получить целую монету.` : "В кошельке нет места для продажи."}</p>}
     {item.tradable && !valid && maximum >= minimum && <p className={styles.hint}>Укажите от {number(minimum)} до {number(maximum)}.</p>}

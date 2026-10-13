@@ -20,13 +20,13 @@ class EconomyTutorialOrderTest {
     @Test fun `starting pack preserves conversion and uses current stored money units`() {
         val fresh = EconomyRules.initial()
         assertEquals(EconomyWallet(2500, 1000), fresh.wallet)
-        assertEquals(mapOf("fish" to 10L, "stone" to 10L, "wood" to 10L), fresh.inventory)
+        assertEquals(mapOf("fish_common" to 10L, "stone" to 10L, "wood" to 10L), fresh.inventory)
         assertTrue(fresh.fishing.catches.isEmpty())
         assertFalse(fresh.workshopStarterClaimed)
         val legacy = EconomyRules.initial(100, 81, 49, 4, 2)
         assertEquals(EconomyMigration(coinsGranted = 360, woodGranted = 9, stoneGranted = 7), legacy.migration)
         assertEquals(EconomyWallet(2860, 1000), legacy.wallet)
-        assertEquals(mapOf("fish" to 10L, "wood" to 19L, "stone" to 17L), legacy.inventory)
+        assertEquals(mapOf("fish_common" to 10L, "wood" to 19L, "stone" to 17L), legacy.inventory)
         assertEquals(EconomyWallet(), EconomyRules.initial(includeStartingPack = false).wallet)
         assertTrue(EconomyRules.initial(includeStartingPack = false).inventory.isEmpty())
     }
@@ -42,7 +42,7 @@ class EconomyTutorialOrderTest {
     @Test fun `explicit grant adds exact ingredients without paying coins constructing or replacing normal offers`() {
         val before = EconomyRules.initial(); val after = claim(before)
         assertEquals(before.wallet, after.wallet)
-        assertEquals(mapOf("fish" to 10L, "wood" to 12L, "stone" to 10L, "berries" to 3L), after.inventory)
+        assertEquals(mapOf("fish_common" to 10L, "wood" to 12L, "stone" to 10L, "berries" to 3L), after.inventory)
         assertTrue(after.tutorialOrder.ingredientsClaimed); assertFalse(after.tutorialOrder.completed)
         assertEquals(EconomyRules.catalog.onboarding!!.residentOrder, after.tutorialOrder.terms)
         assertEquals(EconomyFood.residentOrderBoard(before, now).offers, EconomyFood.residentOrderBoard(after, now).offers)
@@ -51,7 +51,7 @@ class EconomyTutorialOrderTest {
 
     @Test fun `completion spends the saved request once with one reward and no board replacement`() {
         val before = claim(); val after = complete(before)
-        assertEquals(mapOf("fish" to 10L, "stone" to 10L, "wood" to 10L), after.inventory)
+        assertEquals(mapOf("fish_common" to 10L, "stone" to 10L, "wood" to 10L), after.inventory)
         assertEquals(before.wallet.coins + 100, after.wallet.coins)
         assertEquals(before.wallet.pearls, after.wallet.pearls)
         assertTrue(after.tutorialOrder.completed)

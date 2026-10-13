@@ -104,7 +104,10 @@ test("fishing shop cannot introduce buy-sell arbitrage or meaningless tackle spe
 
 test("local-sale audit protects processing margins and rejects a zero recovery payout", () => {
   const lowSmokedPrice = readEconomyCatalog();
-  lowSmokedPrice.items.find(item => item.id === "smoked_fish").baseSellPrice = 240;
+  const recipe = lowSmokedPrice.recipes.find(recipe => recipe.id === "smoke_fish");
+  const nominalInputs = Object.entries(recipe.cost.items).reduce((sum, [id, quantity]) =>
+    sum + lowSmokedPrice.items.find(item => item.id === id).baseSellPrice * quantity, 0);
+  lowSmokedPrice.items.find(item => item.id === "smoked_fish").baseSellPrice = nominalInputs + 10;
   assert.throws(() => auditEconomyProgression(lowSmokedPrice), /actual sale proceeds/);
   const unavailableRecovery = readEconomyCatalog();
   unavailableRecovery.localBuyer.payoutBps = 0;

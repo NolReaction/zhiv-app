@@ -430,19 +430,30 @@ test("navigation to house storage preserves the requested station instead of ope
 });
 
 test("embedded warehouse sale quotes the same markdown and preserves legacy catalog prices", () => {
-  const state = snapshot({ inventory: { fish: 4 } }); state.catalog.localBuyer = { payoutBps: 6000 };
-  const sale = () => renderToStaticMarkup(createElement(WorldObjectSale, { economy: controller({ snapshot: state }), itemId: "fish", onCollapse() {} }));
+  const state = snapshot({ inventory: { fish_common: 4 } }); state.catalog.localBuyer = { payoutBps: 6000 };
+  const sale = () => renderToStaticMarkup(createElement(WorldObjectSale, { economy: controller({ snapshot: state }), itemId: "fish_common", onCollapse() {} }));
   let html = sale();
-  assert.match(html, /быстрая продажа с уценкой 40%/); assert.match(html, /Плёска купит дороже: 80 монет/);
-  assert.match(html, /Продать · 40/); assert.doesNotMatch(html, /торговец даёт 80/);
+  assert.match(html, /быстрая продажа с уценкой 40%/); assert.match(html, /Плёска купит дороже: 40 монет/);
+  assert.match(html, /Продать · 20/); assert.doesNotMatch(html, /торговец даёт 40/);
   delete state.catalog.localBuyer;
-  html = sale(); assert.match(html, /торговец даёт 80 монет за штуку/); assert.match(html, /Продать · 80/);
+  html = sale(); assert.match(html, /торговец даёт 40 монет за штуку/); assert.match(html, /Продать · 40/);
 });
 
 test("embedded warehouse sale rejects zero-value stock and uses the aggregate wallet cap", () => {
   const state = snapshot({ inventory: { crumb_bait: 1 } }); state.catalog.localBuyer = { payoutBps: 6000 };
+  state.catalog.items.find(item => item.id === "crumb_bait").baseSellPrice = 10;
   const sale = () => renderToStaticMarkup(createElement(WorldObjectSale, { economy: controller({ snapshot: state }), itemId: "crumb_bait", onCollapse() {} }));
   let html = sale(); assert.match(html, /нужно хотя бы 2 шт/); assert.match(html, /disabled=""[^>]*>Продать · -/);
   state.inventory.crumb_bait = 10; state.wallet.coins = 9_999_999_990;
   html = sale(); assert.match(html, /min="2" max="3"/); assert.match(html, /Продать · 10/);
+});
+
+
+test("missing fish class ingredients link to an available fishing route", () => {
+  const state = snapshot({ buildings: { home: 3, warehouse: 3, dryer: 3 }, inventory: {} });
+  for (const group of state.catalog.fishing.classes) {
+    const source = helpers.worldMaterialSource(state, group.itemId);
+    assert.equal(source.kind, "exploration");
+    assert.ok(state.catalog.fishing.routeIds.includes(source.targetId));
+  }
 });

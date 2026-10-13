@@ -106,17 +106,18 @@ test("fish ingredients resolve to a real chance source without inventing guarant
   assert.equal(source.rewards, undefined);
   assert.equal(source.seconds, undefined);
   assert.equal(source.cost, undefined);
-  assert.deepEqual(plain(source.fishingSource.itemIds), catalog.fishing.fish.map(fish => fish.itemId));
+  assert.deepEqual(plain(source.fishingSource.itemIds), catalog.fishing.classes.map(group => group.itemId));
   assert.deepEqual(plain(source.fishingSource.routeIds), catalog.fishing.routeIds);
-  assert.match(source.description, /конкретная рыба не гарантирована/);
+  assert.match(source.description, /конкретный класс не гарантирован/);
   assert.match(source.description, /легендарная удочка/);
   assert(hasEdge("b:home:1", source.id, "requirement"));
   for (const route of catalog.fishing.routeIds) assert(hasEdge(`e:${route}`, source.id, "any"));
-  for (const recipe of catalog.recipes.filter(recipe => recipe.fishInput)) {
-    for (const id of recipe.fishInput.itemIds) {
+  const classIds = new Set(catalog.fishing.classes.map(group => group.itemId));
+  for (const recipe of catalog.recipes.filter(recipe => Object.keys(recipe.cost.items).some(id => classIds.has(id)))) {
+    for (const id of Object.keys(recipe.cost.items).filter(id => classIds.has(id))) {
       assert(getProgressionResourceSource(graph, id), `${recipe.id}: no ingredient source for ${id}`);
       assert(node(`r:${recipe.id}`).description.includes(catalog.items.find(item => item.id === id).name));
-      if (id !== "fish") assert.equal(getProgressionResourceSource(graph, id).id, source.id);
+      assert.equal(getProgressionResourceSource(graph, id).id, source.id);
     }
   }
   for (const recipe of ["cook_berry_fish", "cook_hearty_fish"]) assert(hasEdge(source.id, `r:${recipe}`, "cost"));

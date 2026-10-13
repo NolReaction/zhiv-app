@@ -65,7 +65,7 @@ class EconomyPublicJobsTest {
             val retried = EconomyRules.apply(refilled, command("start_fishing", route), now).first
             assertEquals(saved.rewards, retried.jobs.single().rewards)
             val claimed = EconomyRules.apply(retried, command("claim_job", retried.jobs.single().id), Instant.parse(saved.finishesAt)).first
-            assertEquals(saved.rewards, claimed.inventory)
+            assertEquals(EconomyFishInventory.items(saved.rewards), claimed.inventory)
             assertEquals(saved.rewards, claimed.fishing.catches)
             assertNull(claimed.fishingCastSeed)
         }

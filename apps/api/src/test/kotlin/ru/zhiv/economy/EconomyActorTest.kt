@@ -94,7 +94,7 @@ class EconomyActorTest {
             val result = apply(saved, if (cancel) "cancel_exploration" else "claim_job", job.id, readyAt(job))
             assertTrue(result.jobs.isEmpty())
             assertEquals(saved.wallet, result.wallet, "historic coin costs are never recomputed or refunded")
-            assertEquals(if (cancel) emptyMap() else job.rewards, result.inventory)
+            assertEquals(if (cancel) emptyMap() else EconomyFishInventory.items(job.rewards), result.inventory)
             assertEquals(0, result.buildings["quarry"])
             assertEquals(if (cancel) 0L else 1L, result.completedExplorations)
             assertEquals(if (cancel) 0L else 1L, result.progression.routes[id] ?: 0L)

@@ -1,3 +1,4 @@
+import { fishClassForItem, fishingIneligibility } from "./fishing";
 import { economyCatalog, type EconomyCatalog, type EconomyMarketListing, type EconomyState } from "./model";
 
 /** A market purchase substitutes for a workshop, but cannot skip its home tier. */
@@ -21,12 +22,15 @@ export function marketRequiredHomeLevel(itemId: string, catalog: EconomyCatalog 
   ];
   const bait = catalog.fishing?.baits.find(item => item.itemId === itemId);
   if (bait) sources.push(bait.requiredHomeLevel);
-  const fish = catalog.fishing?.fish.find(item => item.itemId === itemId);
-  if (fish) {
-    const hookHome = fish.requiredHookId
-      ? catalog.fishing?.hooks.find(hook => hook.id === fish.requiredHookId)?.requiredHomeLevel ?? Infinity : 1;
-    for (const route of catalog.explorations.filter(route => catalog.fishing?.routeIds.includes(route.id)))
-      sources.push(Math.max(hookHome, requirements(route.requiredHomeLevel, route.requiredBuildings)));
+  const group = catalog.fishing && fishClassForItem(itemId, catalog.fishing);
+  if (group && catalog.fishing) {
+    const fishing = catalog.fishing;
+    const gearHomes = fishing.rods.flatMap(rod => fishing.hooks.flatMap(hook =>
+      fishing.fish.some(fish => fish.rarity === group.rarity && !fishingIneligibility(fish, rod.id, hook.id, fishing))
+        ? [Math.max(rod.requiredHomeLevel, hook.requiredHomeLevel)] : []));
+    const tackleHome = Math.min(...gearHomes);
+    for (const route of catalog.explorations.filter(route => fishing.routeIds.includes(route.id)))
+      sources.push(Math.max(tackleHome, requirements(route.requiredHomeLevel, route.requiredBuildings)));
   }
   return Math.min(...sources);
 }

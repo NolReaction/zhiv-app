@@ -64,7 +64,7 @@ class EconomyCancellationTest {
         assertEquals("ECONOMY_JOB_GONE", assertFailsWith<AuthFailure> {
             apply(claimed, "cancel_exploration", job.id, Instant.parse(job.finishesAt))
         }.code)
-        assertEquals(started.inventory + job.rewards.mapValues { (id, amount) -> (started.inventory[id] ?: 0L) + amount }, claimed.inventory)
+        assertEquals(EconomyRules.addItems(started.inventory, job.rewards), claimed.inventory)
         assertEquals(1L, claimed.completedExplorations)
     }
 

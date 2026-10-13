@@ -1,5 +1,7 @@
 "use client";
 
+import { fishClassForItem } from "@/features/economy/domain/fishing";
+
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Check, ClipboardList, Clock3, RefreshCw, X } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
@@ -35,7 +37,7 @@ export function residentOrderSaleValue(economy: ReadyEconomy, offer: ResidentOrd
   for (const [id, quantity] of Object.entries(offer.items)) {
     const item = catalog.items.find(entry => entry.id === id);
     if (!item?.tradable || item.category === "special") return null;
-    total += catalog.fishing?.fish.some(fish => fish.itemId === id) ? item.baseSellPrice * quantity
+    total += fishClassForItem(id, catalog.fishing) ? item.baseSellPrice * quantity
       : economyLocalSellPrice(item.baseSellPrice, quantity, catalog.localBuyer);
   }
   return total;
@@ -43,7 +45,7 @@ export function residentOrderSaleValue(economy: ReadyEconomy, offer: ResidentOrd
 
 function materialAction(economy: ReadyEconomy, itemId: string, navigation: OrderNavigation): (() => void) | null {
   const state = economy.snapshot;
-  if (state.catalog.fishing?.fish.some(fish => fish.itemId === itemId)) {
+  if (fishClassForItem(itemId, state.catalog.fishing)) {
     return navigation.onNavigateExpeditions ? () => navigation.onNavigateExpeditions?.("shore") : null;
   }
   const source = worldMaterialSource(state, itemId);

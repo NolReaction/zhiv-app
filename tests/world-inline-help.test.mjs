@@ -76,26 +76,23 @@ test("recipe help appears for missing materials, locked stations and occupied sl
     assert.equal(Boolean(helpButton(nodes)), expected);
     if (expected) {
       helpButton(nodes).props.onClick();
-      assert.deepEqual(opened, [{ intent: "production", stationId: "workshop", recipeId: "make_planks", fishItemId: undefined, quantity: 1 }]);
+      assert.deepEqual(opened, [{ intent: "production", stationId: "workshop", recipeId: "make_planks", quantity: 1 }]);
     }
     assert.deepEqual(economy.snapshot, before);
   }
 });
 
-test("recipe context follows an explicit fish choice and quantity, preserving the canonical recipe and avoiding repeat effects", () => {
+test("recipe context follows fish class recipe quantity without a species selector or repeat effects", () => {
   hooks.reset(); const economy = controller(), contexts = [], opened = [];
   const props = recipeProps(economy, "cook_grilled_fish", { onOpenHelp: value => opened.push(value), onHelpContextChange: value => contexts.push(value) });
   let nodes = hooked(WorldRecipeDetail, props);
   assert.equal(contexts.length, 1);
-  assert.equal(contexts[0].fishItemId, "fish");
-  const fish = props.recipe.fishInput.itemIds.find(id => id !== "fish");
-  const selector = nodes.find(element => element.type === "select");
-  selector.props.onChange({ target: { value: fish } });
-  nodes = hooked(WorldRecipeDetail, props);
+  assert.equal(contexts[0].fishItemId, undefined);
+  assert.equal(nodes.find(element => element.type === "select"), undefined);
   nodes.find(element => element.props["aria-label"] === "Увеличить партию").props.onClick();
   nodes = hooked(WorldRecipeDetail, props);
   helpButton(nodes).props.onClick();
-  assert.deepEqual(opened, [{ intent: "production", stationId: "dryer", recipeId: "cook_grilled_fish", fishItemId: fish, quantity: 2 }]);
+  assert.deepEqual(opened, [{ intent: "production", stationId: "dryer", recipeId: "cook_grilled_fish", quantity: 2 }]);
   assert.deepEqual(contexts.at(-1), opened[0]);
   const count = contexts.length;
   hooked(WorldRecipeDetail, props); hooked(WorldRecipeDetail, { ...props, economy: { ...economy, now: now + 1000 } });
@@ -131,7 +128,7 @@ test("leaving the upgrade dialog for help suppresses old focus restoration, whil
 });
 
 test("route help keeps the selected route, remains readable under command locks and is absent on a free route", () => {
-  for (const [economy, routeId, expected] of [[controller(), "forest", false], [controller({ storage: { capacity: 10, used: 0, reserved: 0, available: 10, overflow: 0 } }), "shore_camp", true], [controller({}, { uncertain: true }), "forest", true]]) {
+  for (const [economy, routeId, expected] of [[controller(), "forest", false], [controller({ storage: { capacity: 5, used: 0, reserved: 0, available: 5, overflow: 0 } }), "shore_camp", true], [controller({}, { uncertain: true }), "forest", true]]) {
     const opened = [], route = economy.snapshot.catalog.explorations.find(entry => entry.id === routeId);
     const nodes = probe(ExpeditionRouteDetails, { economy, state: economy.snapshot, route, exploring: false, onOpenPantry() {}, onOpenHelp: value => opened.push(value) });
     assert.equal(Boolean(helpButton(nodes)), expected);

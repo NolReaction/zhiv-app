@@ -1,6 +1,7 @@
 import { economyCatalog, type EconomyJob } from "./model";
 
-const fishIds = new Set(economyCatalog.fishing?.fish.map(fish => fish.itemId) ?? ["fish"]);
+const fishIds = new Set([...(economyCatalog.fishing?.fish.map(fish => fish.itemId) ?? ["fish"]),
+  ...(economyCatalog.fishing?.classes.map(group => group.itemId) ?? [])]);
 
 /** The saved catch is private until claim. Otherwise cancelling after inspecting
  * rewards lets a player probe different loadouts against the same draw. */

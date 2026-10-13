@@ -8,9 +8,9 @@ class EconomyFishingTackleOddsTest {
     @Test fun `shared UUID vectors exercise legendary tackle gate and match TypeScript`() {
         val seeds = listOf("00000000-0000-4000-8000-000000000001", "a2f6bce4-1d99-4c0f-a910-656320724833", "ffffffff-ffff-4fff-bfff-ffffffffffff",
             "00000000-0000-4000-8000-00000000000f", "00000000-0000-4000-8000-00000000014a", "00000000-0000-4000-8000-000000000376")
-        assertEquals(listOf("fish", "fish", "fish_silverfin", "fish_shark", "fish_shark", "fish_shark"),
+        assertEquals(listOf("fish_rudd", "fish_silverfin", "fish", "fish_shark", "fish_silverfin", "fish_shark"),
             seeds.map { EconomyRules.selectFishingCatch(it, "starfall_rod", "firefly_bait", "leviathan_hook") })
-        assertEquals(listOf("fish", "fish", "fish_silverfin", "fish_mirror_koi", "fish_mirror_koi", "fish_mirror_koi"),
+        assertEquals(listOf("fish_rudd", "fish_silverfin", "fish", "fish_mirror_koi", "fish_silverfin", "fish_mirror_koi"),
             seeds.map { EconomyRules.selectFishingCatch(it, "starfall_rod", "firefly_bait", "tide_hook") })
     }
 
@@ -29,8 +29,8 @@ class EconomyFishingTackleOddsTest {
             assertNotEquals("fish_shark", EconomyRules.selectFishingCatch(seed, "reed_rod", "firefly_bait", "leviathan_hook"))
         }
         val weights = EconomyRules.fishingWeights("starfall_rod", "firefly_bait", "leviathan_hook")
-        assertEquals(504, weights.single { it.first.itemId == "fish_shark" }.second)
-        assertEquals(5047, weights.sumOf { it.second })
+        assertEquals(450.0, weights.single { it.first.itemId == "fish_shark" }.second)
+        assertEquals(4780.0, weights.sumOf { it.second })
     }
 
     @Test fun `every lower hook excludes the shark even with the strongest rod and bait`() {
@@ -55,10 +55,10 @@ class EconomyFishingTackleOddsTest {
         val rare = chance("willow_rod", "silver_hook", "glow_bait", "rare")
         val epic = chance("tide_rod", "tide_hook", "firefly_bait", "epic")
         val legendary = chance("starfall_rod", "leviathan_hook", "firefly_bait", "legendary")
-        assertTrue(rare in 0.38..0.40)
-        assertTrue(epic in 0.24..0.25)
-        assertTrue(legendary in 0.099..0.10)
-        assertTrue(1 - (1 - legendary).pow(6) in 0.46..0.47)
+        assertTrue(rare in 0.410..0.411)
+        assertTrue(epic in 0.258..0.259)
+        assertTrue(legendary in 0.094..0.095)
+        assertTrue(1 - (1 - legendary).pow(8) in 0.546..0.547)
         for (rod in catalog.rods) for (hook in catalog.hooks) for (bait in listOf<String?>(null) + catalog.baits.map { it.itemId }) {
             assertTrue(chance(rod.id, hook.id, bait, "legendary") <= legendary)
             assertTrue(chance(rod.id, hook.id, bait, "rare") <= rare)
@@ -85,9 +85,9 @@ class EconomyFishingTackleOddsTest {
         }
     }
 
-    @Test fun `camp draw sequence matches TypeScript and is not six correlated adjacent hashes`() {
-        assertEquals(listOf("fish", "fish_dace", "fish_reedperch", "fish_silverfin", "fish_bream", "fish_pike"),
-            (0 until 6).map { EconomyRules.selectFishingCatch("00000000-0000-4000-8000-000000000001", "river_rod", "worm_bait", "barbed_hook", it) })
-        assertEquals(6, checkNotNull(EconomyRules.catalog.fishing).collectionDrawsByRoute["shore_camp"])
+    @Test fun `camp draw sequence matches TypeScript with eight independent class and species domains`() {
+        assertEquals(listOf("fish_bream", "fish_bream", "fish_bream", "fish_dace", "fish_bream", "fish_dace", "fish_dace", "fish_dace"),
+            (0 until 8).map { EconomyRules.selectFishingCatch("00000000-0000-4000-8000-000000000001", "river_rod", "worm_bait", "barbed_hook", it) })
+        assertEquals(8, checkNotNull(EconomyRules.catalog.fishing).collectionDrawsByRoute["shore_camp"])
     }
 }

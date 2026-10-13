@@ -21,7 +21,7 @@ export type ProgressionNode = {
   rewards?: Record<string, number>;
   /** Possible items share one clock; these are not guaranteed per-trip rewards. */
   rareDrops?: NonNullable<EconomyCatalog["rareDrops"]>;
-  /** Possible species from fishing attempts, never a guaranteed reward list. */
+  /** Possible inventory classes from fishing, never a guaranteed class reward list. */
   fishingSource?: { itemIds: string[]; routeIds: string[] };
   /** Building ids map to minimum levels; completedExplorations is a cumulative counter. */
   requirements: Record<string, number>;
@@ -90,9 +90,9 @@ const worldDefinitions: WorldDefinition[] = [
   ["tap_streak", "Серия тапов", "⚡", "Непрерывная серия тапов заканчивается после паузы 10 секунд. Она даёт лучший рекорд серии."],
   ["leaderboard", "Рейтинг и рекорды", "🏆", "В рейтинге две метрики: месячные тапы и лучшая непрерывная серия. Уровень по общему счёту не входит в эти рейтинги."],
   ["achievements", "Достижения со ступенями", "🏅", "Вылазки, освоенные рецепты, дом, собственный улов, находки и продажи дополняют прежние цели аккаунта. Все ступени одной цели находятся в одной карточке. Полученные награды сохраняются и не служат воротами хозяйственного развития."],
-  ["pleska", "Плёска · лавка и рыбалка", "🎣", `Открывается через «Ещё → Персонажи» или нажатием на жительницу берега. Плёска предлагает ограниченный набор удочек, крючков и наживок на шесть часов. Досрочное обновление стоит до ${formatPearls(economyCatalog.fishing?.shop.refreshPricePearls ?? 0)} жемчужин: цена уменьшается вместе с оставшимся временем. Оно заменяет все товары на другие. Если доступного ассортимента мало, остаётся бесплатная поставка по таймеру. Стартовая удочка бесплатна; купленные снасти выбираются перед следующей вылазкой. Плёска покупает сырую рыбу по полной базовой цене. Её декоративная рыбалка не выдаёт игроку товары.`],
+  ["pleska", "Плёска · лавка и рыбалка", "🎣", `Открывается через «Ещё → Персонажи» или нажатием на жительницу берега. Плёска предлагает ограниченный набор удочек, крючков и наживок на шесть часов. Досрочное обновление стоит до ${formatPearls(economyCatalog.fishing?.shop.refreshPricePearls ?? 0)} жемчужин: цена уменьшается вместе с оставшимся временем. Оно заменяет все товары на другие. Если доступного ассортимента мало, остаётся бесплатная поставка по таймеру. Стартовая удочка бесплатна; купленные снасти выбираются перед следующей вылазкой. Плёска покупает сырую рыбу по полной базовой цене её класса. Её декоративная рыбалка не выдаёт игроку товары.`],
   ["public_profiles", "Профили друзей", "👥", "Нажмите имя друга в списке людей: видны уровень дома, завершённые вылазки, игровые достижения и найденные страницы книги. Нужны действующая связь и разрешённая видимость. Кошелёк, запасы, личные отметки и задания закрыты."],
-  ["fishing_catches", "Коллекция пойманной рыбы", "🐟", `В книге ${economyCatalog.fishing?.fish.length ?? 0} видов пяти разрядов, включая легендарную акулу. Запись появляется после получения собственного улова. Купленная рыба не открывает коллекцию. Удочка, крючок и наживка специализируют улов по разрядам. Стоянка даёт больше попыток для коллекции, короткая рыбалка даёт больше улова в час; редкий вид не гарантирован.`, "collection"],
+  ["fishing_catches", "Коллекция пойманной рыбы", "🐟", `В книге ${economyCatalog.fishing?.fish.length ?? 0} видов пяти разрядов, включая легендарную акулу. Запись появляется после получения собственного улова. Купленная рыба не открывает коллекцию. Каждая рыба сначала получает класс с учётом снастей, затем равновероятный вид внутри класса. В кладовой рыба объединяется по пяти классам; виды остаются в коллекции. Стоянка даёт больше улова за один выход; редкий класс не гарантирован.`, "collection"],
 ];
 
 const projectDefinitions: WorldDefinition[] = [
@@ -182,6 +182,7 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
       });
       for (const recipe of catalog.recipes.filter(value => value.buildingId === building.id && value.buildingLevel === level)) {
         const outputs = Object.keys(recipe.rewards), single = outputs.length === 1, itemId = outputs[0];
+        const fishIngredients = catalog.fishing?.classes.filter(group => (recipe.cost.items[group.itemId] ?? 0) > 0) ?? [];
         const outputLabel = itemLabels[itemId] || items.get(itemId)?.name || recipe.name;
         const requirements: Record<string, number> = { home: recipe.requiredHomeLevel, ...recipe.requiredBuildings };
         requirements[recipe.buildingId] = Math.max(requirements[recipe.buildingId] || 0, recipe.buildingLevel);
@@ -191,7 +192,7 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
           icon: single ? itemIcons[itemId] || "📦" : "📦", kind: "recipe", status: "active", phase: level,
           buildingId: recipe.buildingId, locationId: locationByBuilding.get(recipe.buildingId)?.id, level: recipe.buildingLevel, cost: cloneCost(recipe.cost), seconds: recipe.seconds,
           rewards: { ...recipe.rewards }, requirements, children: [],
-          description: `${recipe.fishInput ? `Рыбный ингредиент выбирается перед запуском: ${recipe.fishInput.itemIds.map(id => items.get(id)?.name ?? id).join(", ")}. Вся партия использует один выбранный вид; редкая рыба автоматически не подставляется. ` : ""}${recipe.collection ? "После созревания нажмите «Собрать»: Мохлик принесёт урожай. Во время активной вылазки он занят, сбор ждёт возвращения. " : ""}Таймер идёт и после закрытия приложения; готовый результат нужно забрать. Каждый заказ занимает отдельное место до получения. Изначально место одно; второе открывается за ${formatPearls(catalog.productionSlots.upgrades[0].pricePearls)} жемчужин с дома 2, третье за ${formatPearls(catalog.productionSlots.upgrades[1].pricePearls)} с дома 4. Партия: до ${recipe.maxBatch ?? catalog.maxBatch}; короткая переработка допускает очередь до двух часов, бесплатный сбор и длинные заказы допускают одну партию. Перед получением проверьте место в кладовой.`,
+          description: `${fishIngredients.length ? `Рыбный ингредиент по классу: ${fishIngredients.map(group => items.get(group.itemId)?.name ?? group.itemId).join(", ")}. Виды внутри нужного класса взаимозаменяемы. Более редкий класс автоматически не подставляется. ` : ""}${recipe.collection ? "После созревания нажмите «Собрать»: Мохлик принесёт урожай. Во время активной вылазки он занят, сбор ждёт возвращения. " : ""}Таймер идёт и после закрытия приложения; готовый результат нужно забрать. Каждый заказ занимает отдельное место до получения. Изначально место одно; второе открывается за ${formatPearls(catalog.productionSlots.upgrades[0].pricePearls)} жемчужин с дома 2, третье за ${formatPearls(catalog.productionSlots.upgrades[1].pricePearls)} с дома 4. Партия: до ${recipe.maxBatch ?? catalog.maxBatch}; короткая переработка допускает очередь до двух часов, бесплатный сбор и длинные заказы допускают одну партию. Перед получением проверьте место в кладовой.`,
         });
         node.children.push(child.id);
         edge(node.id, child.id, "unlock");
@@ -204,7 +205,7 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
         icon: exploration.id.includes("shore") ? "🎣" : exploration.id.includes("cave") || exploration.id.includes("quarry") ? "⛏️" : exploration.id === "coastal_deposits" ? "🏖️" : "🧭",
         kind: "exploration", status: "active", phase: level,
         ...(mineLevel ? { buildingId: "quarry", locationId: "place:quarry", level: mineLevel } : {}), cost: cloneCost(exploration.cost), seconds: exploration.seconds,
-        rewards: { ...exploration.rewards }, requirements: { home: exploration.requiredHomeLevel, ...exploration.requiredBuildings }, children: [], description: `${exploration.description} Мохлик выполняет одну вылазку; таймер идёт и после закрытия приложения. Находки нужно получить, освободив место в кладовой.${catalog.fishing?.routeIds.includes(exploration.id) ? ` Снасти определяют ${catalog.fishing.collectionDrawsByRoute[exploration.id] ?? 1} попыток выбора вида из этой партии; редкий улов не гарантирован.` : ""}`,
+        rewards: { ...exploration.rewards }, requirements: { home: exploration.requiredHomeLevel, ...exploration.requiredBuildings }, children: [], description: `${exploration.description} Мохлик выполняет одну вылазку; таймер идёт и после закрытия приложения. Находки нужно получить, освободив место в кладовой.${catalog.fishing?.routeIds.includes(exploration.id) ? ` Снасти определяют ${catalog.fishing.collectionDrawsByRoute[exploration.id] ?? 1} попыток выбора класса и вида — по одной на каждую рыбу; редкий улов не гарантирован.` : ""}`,
       });
     }
   }
@@ -277,10 +278,10 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
     const fishing = catalog.fishing;
     const routes = catalog.explorations.filter(route => fishing.routeIds.includes(route.id));
     const home = Math.min(...routes.map(route => route.requiredHomeLevel));
-    const source = fixed("fishing_species", "Виды рыбы из улова", "🐟", home,
-      "В каждом рыболовном маршруте есть отдельные попытки особого улова. Вид определяется снастями и случайным результатом; конкретная рыба не гарантирована. Обычные виды также встречаются в прилавке Плёски, но покупка не открывает коллекцию. Для легендарного улова нужны легендарная удочка и подходящий легендарный крючок. Выбранную рыбу можно приготовить или передать по заказу; открытая коллекция сохраняется.", "acquisition");
+    const source = fixed("fishing_species", "Классы рыбы из улова", "🐟", home,
+      "Каждая рыба получает класс с учётом снастей, затем равновероятный вид внутри класса. В кладовой, рецептах и заказах используются пять классов; конкретный класс не гарантирован. Рыбу также можно купить у Плёски, но покупка не открывает коллекцию. Для легендарного улова нужны легендарная удочка и легендарный крючок. Собственные виды сохраняются в книге после продажи или приготовления улова.", "acquisition");
     source.requirements = { home };
-    source.fishingSource = { itemIds: fishing.fish.map(fish => fish.itemId), routeIds: routes.map(route => route.id) };
+    source.fishingSource = { itemIds: fishing.classes.map(group => group.itemId), routeIds: routes.map(route => route.id) };
     edge(buildingNodeId("home", home), source.id);
     for (const route of routes) edge(`e:${route.id}`, source.id, "any");
   }

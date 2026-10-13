@@ -45,9 +45,9 @@ class EconomyLocalSaleTest {
         assertEquals(50L,sold.wallet.coins)
         assertEquals(6L,sold.inventory["berries"])
         val generic=EconomyRules.apply(sold,command("sell","fish",2),now).first
-        assertEquals(140L,generic.wallet.coins)
+        assertEquals(90L,generic.wallet.coins)
         val specialist=EconomyRules.apply(generic,command("sell_fish","fish",2),now).first
-        assertEquals(300L,specialist.wallet.coins)
+        assertEquals(170L,specialist.wallet.coins)
         assertTrue(specialist.fishing.catches.isEmpty())
         assertEquals(0L,state.wallet.coins,"the domain input remains unchanged")
     }
@@ -68,10 +68,10 @@ class EconomyLocalSaleTest {
     @Test fun `smoking retains a positive sale margin without nerfing specialist raw fish`() {
         val items=EconomyRules.catalog.items.associateBy { it.id }
         val recipe=EconomyRules.catalog.recipes.single { it.id=="smoke_fish" }
-        val fishInput=assertNotNull(recipe.fishInput)
-        val specialistValue=fishInput.itemIds.maxOf { items.getValue(it).baseSellPrice }
+        assertNull(recipe.fishInput)
+        val specialistValue=items.getValue("fish_common").baseSellPrice
         val inputValue=recipe.cost.coins + recipe.cost.items.entries.sumOf { (id, quantity) ->
-            if (id == "fish") specialistValue * quantity
+            if (id == "fish_common") specialistValue * quantity
             else EconomyRules.localSellPrice(items.getValue(id).baseSellPrice, quantity)
         }
         val outputValue=recipe.rewards.entries.sumOf { (id, quantity) ->

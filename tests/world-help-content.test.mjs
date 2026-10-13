@@ -8,7 +8,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
 after(() => vite.close());
 const { worldHelpTopics, worldHelpGroups, searchWorldHelp, searchWorldHelpWithStatus } = await vite.ssrLoadModule("/features/world/ui/help/world-help-content.ts");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
-const { fishingOdds } = await vite.ssrLoadModule("/features/economy/domain/fishing.ts");
+const { fishingClassOdds } = await vite.ssrLoadModule("/features/economy/domain/fishing.ts");
 const { formatPearls } = await vite.ssrLoadModule("/features/economy/domain/money.ts");
 const { CLICKER_IDLE_RESET_MS, CLICKER_LEVELS } = await vite.ssrLoadModule("/features/game/clicker-story.ts");
 const { progressionRewardsCatalog } = await vite.ssrLoadModule("/features/game/progression-rewards.ts");
@@ -206,8 +206,8 @@ test("food, building speed and orders are distinct and use current catalog numbe
   assert.match(answer("resident-orders"), /с подтверждением/);
   assert.match(answer("resident-orders"), /Одновременных повторов нет/);
   assert.doesNotMatch(answer("resident-orders"), /через 30|ждёт 60/);
-  assert.match(answer("campfire"), /редкий улов автоматически не подставляется/);
-  assert.match(answer("campfire"), /редкую или эпическую/);
+  assert.match(answer("campfire"), /Рыба другого класса автоматически не подставляется/);
+  assert.match(answer("campfire"), /Сытный ужин требует редкую рыбу/);
 });
 
 test("fish-of-the-day guidance explains the actual discount and separates delivery profit from resale", () => {
@@ -220,15 +220,15 @@ test("fish-of-the-day guidance explains the actual discount and separates delive
   assert.match(answer("fish-day"), /Покупка не открывает вид/);
 });
 
-test("fishing help quotes the real probability per special attempt without promising a rare catch", () => {
+test("fishing help quotes the real probability per fish class without promising a rare catch", () => {
   const fishing = economyCatalog.fishing;
-  const chance = fishingOdds({}, fishing, { rodId: "starfall_rod", hookId: "leviathan_hook", baitId: "firefly_bait" })
-    .filter(odds => fishing.fish.some(fish => fish.itemId === odds.itemId && fish.rarity === "legendary"))
+  const chance = fishingClassOdds({}, fishing, { rodId: "starfall_rod", hookId: "leviathan_hook", baitId: "firefly_bait" })
+    .filter(odds => odds.rarity === "legendary")
     .reduce((sum, odds) => sum + odds.probability, 0);
   assert.ok(answer("fishing").includes(`${(chance * 100).toFixed(2).replace(".", ",")}%`));
-  assert.match(answer("fishing"), /одной особой попытке, а не к каждой рыбе/);
-  assert.match(answer("fishing"), /Особая попытка тоже может дать обычную рыбу/);
-  assert.match(answer("fishing"), /Гарантированные речные рыбы не дают дополнительных бросков/);
+  assert.match(answer("fishing"), /Каждая пойманная рыба получает класс/);
+  assert.match(answer("fishing"), /Класс определяет цену и применение/);
+  assert.match(answer("fishing"), /Вид открывается в коллекции/);
   assert.match(answer("plesk"), /одна наживка расходуется на весь поход/);
   assert.match(answer("collection"), /Продажа, готовка и заказ не стирают находку/);
 });

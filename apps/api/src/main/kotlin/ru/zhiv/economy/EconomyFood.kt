@@ -158,13 +158,14 @@ object EconomyFood {
             val before = reachable.size
             catalog.explorations.forEach { route ->
                 if (unlocked(route.requiredHomeLevel, route.requiredBuildings) && route.cost.items.keys.all { it in reachable }) {
-                    reachable += route.rewards.filterValues { it > 0 }.keys
+                    reachable += if (route.id in (catalog.fishing?.routeIds ?: emptyList())) route.rewards.filter { (id, count) -> id != "fish" && count > 0 }.keys
+                        else EconomyFishInventory.items(route.rewards, catalog).filterValues { it > 0 }.keys
                     if (route.id in (catalog.fishing?.routeIds ?: emptyList())) catalog.fishing?.fish?.forEach { fish ->
                         val hookAvailable = catalog.fishing.hooks.any { hook -> hook.id in state.fishing.ownedHooks &&
                             (fish.requiredHookId == null || hook.id == fish.requiredHookId) && (fish.rarity != "legendary" || hook.rarity == "legendary") }
                         val rodAvailable = catalog.fishing.rods.any { rod -> rod.id in state.fishing.ownedRods &&
                             (fish.rarity != "legendary" || rod.rarity == "legendary") }
-                        if (hookAvailable && rodAvailable) reachable += fish.itemId
+                        if (hookAvailable && rodAvailable) reachable += EconomyFishInventory.itemId(fish.itemId, catalog)
                     }
                 }
             }
@@ -183,7 +184,7 @@ object EconomyFood {
         val progression = catalog.food?.orders?.progression ?: return template
         val level = (homeLevel - 1).coerceIn(0, 4)
         val byId = catalog.items.associateBy { it.id }
-        val fishIds = catalog.fishing?.fish?.map { it.itemId }?.toSet() ?: emptySet()
+        val fishIds = catalog.fishing?.classes?.map { it.itemId }?.toSet() ?: emptySet()
         val items = template.items.mapValues { (id, quantity) ->
             val bps = when {
                 id in fishIds -> progression.fishBpsByHome[level]
@@ -231,7 +232,7 @@ object EconomyFood {
     }
 
     fun normalizedOrders(state: EconomyState, now: Instant, catalog: EconomyCatalog = EconomyRules.catalog): EconomyResidentOrders {
-        val previous = state.residentOrders
+        val previous = EconomyFishInventory.state(state, catalog).residentOrders
         val config = catalog.food?.orders ?: return EconomyResidentOrders(completed = previous.completed, earnedCoins = previous.earnedCoins)
         val cycle = Math.floorDiv(now.epochSecond, config.refreshSeconds)
         val replacementCycle = Math.floorDiv(now.epochSecond, config.replacementWindowSeconds)

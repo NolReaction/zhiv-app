@@ -449,7 +449,7 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
     }
 
     @Test fun `merchant bait and mandatory shark hook tiers also gate listing and purchase`() = runBlocking<Unit> {
-        for ((itemId, home) in listOf("firefly_bait" to 3, "fish_shark" to 4)) {
+        for ((itemId, home) in listOf("firefly_bait" to 3, "fish_legendary" to 4)) {
             val price = EconomyRules.catalog.items.single { it.id == itemId }.baseSellPrice
             val low = player(coins = 1000, berries = 0)
             editState(low) { it.copy(inventory=mapOf(itemId to 1L), buildings=it.buildings + ("home" to home - 1)) }

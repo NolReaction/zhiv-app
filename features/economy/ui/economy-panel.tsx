@@ -1,5 +1,7 @@
 "use client";
 
+import { fishClassForItem } from "@/features/economy/domain/fishing";
+
 import { useEffect, useId, useRef, useState } from "react";
 import { ArrowLeftRight, ArrowRight, Check, ChevronRight, CircleHelp, Clock3, Compass, Fish, Flame, Hammer, House, Leaf, LockKeyhole, Mountain, Package, RefreshCw, ShoppingBasket, Sprout, Store, Trees } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -40,7 +42,7 @@ const tabs: { id: EconomyTab; label: string; Icon: LucideIcon }[] = [
   { id: "inventory", label: "Склад", Icon: Package },
 ];
 const buildingIcons: Record<string, LucideIcon> = { home: House, garden: Sprout, woodlot: Trees, quarry: Mountain, workshop: Hammer, dryer: Flame, warehouse: Package, kiln: Flame };
-const categoryNames: Record<string, string> = { produce: "Урожай и рыба", material: "Сырьё", crafted: "Материалы и изделия", provisions: "Припасы", fishing: "Рыболовные товары", special: "Особые материалы" };
+const categoryNames: Record<string, string> = { produce: "Урожай", raw: "Рыба", material: "Сырьё", crafted: "Материалы и изделия", provisions: "Припасы", fishing: "Рыболовные товары", special: "Особые материалы" };
 const itemName = (state: EconomyView, id: string) => state.catalog.items.find(item => item.id === id)?.name ?? "Предмет";
 const buildingName = (state: EconomyView, id: string) => state.catalog.buildings.find(building => building.id === id)?.name ?? "Постройка";
 const number = (value: number) => value.toLocaleString("ru-RU");
@@ -329,7 +331,7 @@ function SellForm({ economy, item }: { economy: ReadyEconomy; item: Item }) {
   const unavailable = economy.busy || economy.uncertain || economy.retryAt > economy.now;
   return <div className={styles.card}><h3>Продать торговцу: {item.name.toLocaleLowerCase("ru-RU")}</h3>
     <p className={styles.muted}>{discount > 0 ? `Быстрая продажа с уценкой ${number(discount)}%. Итог за всё количество округляется вниз до целой монеты.` : `Торговец покупает сразу по ${number(item.baseSellPrice)} монет за штуку.`} На прилавке можно предложить свою цену другим игрокам.</p>
-    {discount > 0 && state.catalog.fishing?.fish.some(fish => fish.itemId === item.id) && <p className={styles.muted}>Плёска купит дороже: {number(item.baseSellPrice)} монет за штуку. Её лавка открывается на карте.</p>}
+    {discount > 0 && fishClassForItem(item.id, state.catalog.fishing) && <p className={styles.muted}>Плёска купит дороже: {number(item.baseSellPrice)} монет за штуку. Её лавка открывается на карте.</p>}
     <label className={styles.field} htmlFor={inputId}>Количество · на складе {number(stock)}<input id={inputId} type="number" inputMode="numeric" min={minimum} max={Math.max(minimum, maximum)} step={1} value={value} disabled={unavailable || maximum < minimum} onChange={event => setValue(event.target.value)} /></label>
     <button className={styles.primary} disabled={!quantity || unavailable} onClick={() => { if (quantity && !unavailable) void economy.act("sell", item.id, quantity, buyer ? total : 0); }}><ItemIcon itemId="coins" size={16} />Продать {quantity ?? "-"} шт. за {quantity ? number(total) : "-"} монет</button>
     {maximum < minimum ? <p className={styles.hint}>{stock < minimum ? `Для продажи нужно хотя бы ${number(minimum)} шт., чтобы получить целую монету.` : "В кошельке нет места для продажи."}</p>
@@ -340,7 +342,8 @@ function SellForm({ economy, item }: { economy: ReadyEconomy; item: Item }) {
 function ItemGuide({ economy, item, navigate }: { economy: ReadyEconomy; item: Item; navigate: Navigate }) {
   const { snapshot: state } = economy;
   const recipes = state.catalog.recipes.filter(recipe => recipe.rewards[item.id] > 0);
-  const routes = state.catalog.explorations.filter(route => route.rewards[item.id] > 0);
+  const fish = state.catalog.fishing && fishClassForItem(item.id, state.catalog.fishing);
+  const routes = state.catalog.explorations.filter(route => route.rewards[item.id] > 0 || fish && state.catalog.fishing?.routeIds.includes(route.id));
   const ingredients = state.catalog.recipes.filter(recipe => recipe.cost.items[item.id] > 0);
   const buildings = state.catalog.buildings.filter(building => building.levels.some(level => level.level > (state.buildings[building.id] ?? 0) && level.cost.items[item.id] > 0));
   const provisions = state.catalog.explorations.filter(route => route.cost.items[item.id] > 0);
@@ -366,13 +369,14 @@ function Inventory({ economy, navigate, focusId }: { economy: ReadyEconomy; navi
   const [all, setAll] = useState(Boolean(focusId));
   const [category, setCategory] = useState("all");
   const categoryId = useId();
-  const categories = [...new Set(state.catalog.items.map(item => item.category))];
-  const owned = state.catalog.items.filter(item => (state.inventory[item.id] ?? 0) > 0);
-  const items = (all ? state.catalog.items : owned).filter(item => category === "all" || category === item.category);
+  const stockItems = state.catalog.items.filter(item => !state.catalog.fishing?.fish.some(species => species.itemId === item.id));
+  const categories = [...new Set(stockItems.map(item => item.category))];
+  const owned = stockItems.filter(item => (state.inventory[item.id] ?? 0) > 0);
+  const items = (all ? stockItems : owned).filter(item => category === "all" || category === item.category);
   const item = state.catalog.items.find(entry => entry.id === selected);
   return <div className={styles.stack}><div className={styles.heading}><div><h2>Ваши запасы</h2><p className={styles.muted}>Материалы пригодятся для строительства и производства. Выберите товар, чтобы увидеть, где его добывать и использовать.</p></div></div>
     <StorageStatus state={state} navigate={navigate} />
-    <div className={styles.subnav} aria-label="Товары на складе"><button aria-pressed={!all} onClick={() => setAll(false)}>В наличии · {owned.length}</button><button aria-pressed={all} onClick={() => setAll(true)}>Все товары · {state.catalog.items.length}</button></div>
+    <div className={styles.subnav} aria-label="Товары на складе"><button aria-pressed={!all} onClick={() => setAll(false)}>В наличии · {owned.length}</button><button aria-pressed={all} onClick={() => setAll(true)}>Все товары · {stockItems.length}</button></div>
     <label className={styles.field} htmlFor={categoryId}>Категория<select id={categoryId} value={category} onChange={event => setCategory(event.target.value)}><option value="all">Все категории</option>{categories.map(value => <option key={value} value={value}>{categoryNames[value] ?? value}</option>)}</select></label>
     {items.length ? <div className={styles.stockGrid}>{items.map(entry => {
       return <button key={entry.id} aria-pressed={selected === entry.id} onClick={() => setSelected(entry.id)}><PlayerItemIcon state={state} itemId={entry.id} size={23} /><span><strong>{entry.name}</strong><small>× {number(state.inventory[entry.id] ?? 0)}</small></span></button>;

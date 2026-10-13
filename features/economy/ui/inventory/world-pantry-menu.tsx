@@ -1,5 +1,7 @@
 "use client";
 
+import { fishClassForItem, fishClassInventory } from "@/features/economy/domain/fishing";
+
 import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { useEffect, useId, useRef, useState } from "react";
@@ -49,7 +51,7 @@ export function PantrySale({ economy, itemId, onClose, onOpenFishingShop, onOpen
   const stock = state.inventory[itemId] ?? 0;
   const maximum = economyLocalSaleLimit(item.baseSellPrice, stock, state.wallet.coins, buyer);
   const discount = (10_000 - (buyer?.payoutBps ?? 10_000)) / 100;
-  const betterFishPrice = discount > 0 && state.catalog.fishing?.fish.some(fish => fish.itemId === itemId);
+  const betterFishPrice = discount > 0 && fishClassForItem(itemId, state.catalog.fishing);
   const goal = constructionGoal?.details;
   const needed = goal?.keepItems[itemId] ?? 0;
   const excess = goal ? Math.min(maximum, goal.excessItems[itemId] ?? 0) : 0;
@@ -105,7 +107,7 @@ export function WorldPantryMenu({ economy, onUpgrade, onExplore, onOpenMarket, o
     if (next !== tab) playUiCue(getAudioRuntime(), "ui.tab");
     setTab(next); setSelectedItemId(null);
   };
-  const state = economy.snapshot;
+  const state = economy.snapshot ? { ...economy.snapshot, inventory: fishClassInventory(economy.snapshot.inventory, economy.snapshot.catalog.fishing) } : null;
   const cooldown = Math.max(0, Math.ceil((economy.retryAt - economy.now) / 1000));
   const recovery = (economy.error || economy.uncertain) && <div className={styles.error} role="alert">
     <p>{economy.uncertain ? "Проверяем последнее действие. Продажа станет доступна после подтверждения." : economy.error}</p>
@@ -116,7 +118,7 @@ export function WorldPantryMenu({ economy, onUpgrade, onExplore, onOpenMarket, o
   const { used, reserved, capacity, available, overflow } = state.storage;
   const occupied = used + reserved;
   // This is a view of the same inventory, not another capacity or reward store.
-  const fishIds = new Set<string>([...FISH_SPECIES_IDS, ...(state.catalog.fishing?.fish.map(fish => fish.itemId) ?? []), ...(state.catalog.food?.meals.map(meal => meal.itemId) ?? [])]);
+  const fishIds = new Set<string>([...FISH_SPECIES_IDS, ...(state.catalog.fishing?.classes.map(fish => fish.itemId) ?? []), ...(state.catalog.food?.meals.map(meal => meal.itemId) ?? [])]);
   const ownedItems = state.catalog.items.filter(item => item.category !== "special" && (state.inventory[item.id] ?? 0) > 0);
   const supplies = ownedItems.filter(item => !fishIds.has(item.id));
   const fishItems = ownedItems.filter(item => fishIds.has(item.id));
@@ -162,7 +164,7 @@ export function WorldPantryMenu({ economy, onUpgrade, onExplore, onOpenMarket, o
       {!selectedItemId && <p className={styles.muted}>Чтобы продать запасы за монеты, нажми на предмет и проверь условия.</p>}
       <div className={`${styles.items} ${tab === "fridge" ? styles.fishItems : ""}`} aria-label={tab === "fridge" ? "Рыба и еда в холодильнике" : "Предметы в кладовой"}>
         {visibleItems.map(item => {
-          const fish = state.catalog.fishing?.fish.find(entry => entry.itemId === item.id);
+          const fish = fishClassForItem(item.id, state.catalog.fishing);
           return <button key={item.id} type="button" className={styles.item} data-guide-pantry-item={item.id} aria-label={`${item.name}: ${number(state.inventory[item.id])}`} aria-pressed={selectedItemId === item.id} onClick={() => setSelectedItemId(current => current === item.id ? null : item.id)}>
           <ProductIcon state={state} itemId={item.id} size={20} />
           <span>{item.name}</span>

@@ -36,9 +36,9 @@ class EconomyFishingTest {
 
     @Test fun `shared catalog has no immediate arbitrage and UUID draw vectors match TypeScript`() {
         val spec = checkNotNull(EconomyRules.catalog.fishing)
-        spec.fish.forEach { fish -> assertTrue(fish.buyPrice > EconomyRules.catalog.items.single { it.id == fish.itemId }.baseSellPrice) }
+        spec.classes.forEach { fish -> assertTrue(fish.buyPrice > EconomyRules.catalog.items.single { it.id == fish.itemId }.baseSellPrice) }
         spec.baits.forEach { bait -> assertTrue(bait.price > EconomyRules.catalog.items.single { it.id == bait.itemId }.baseSellPrice) }
-        assertEquals(listOf("fish", "fish", "fish_silverfin"),
+        assertEquals(listOf("fish_rudd", "fish_silverfin", "fish"),
             listOf("00000000-0000-4000-8000-000000000001", "a2f6bce4-1d99-4c0f-a910-656320724833", "ffffffff-ffff-4fff-bfff-ffffffffffff")
                 .map { EconomyRules.selectFishingCatch(it, "willow_rod", "worm_bait") })
     }
@@ -52,47 +52,47 @@ class EconomyFishingTest {
 
     @Test fun `shop charges server quote rods stay unique and purchased fish never counts as caught`() {
         val initial = funded()
-        val rod = apply(initial, "buy_fishing_item", "river_rod", price = 13550)
-        assertEquals(86500L, rod.wallet.coins)
+        val rod = apply(initial, "buy_fishing_item", "river_rod", price = 1850)
+        assertEquals(98200L, rod.wallet.coins)
         assertEquals(listOf("reed_rod", "river_rod"), rod.fishing.ownedRods)
         assertEquals(initial.inventory, rod.inventory)
-        assertEquals("ECONOMY_FISHING_OWNED", assertFailsWith<AuthFailure> { apply(rod, "buy_fishing_item", "river_rod", price = 13500) }.code)
+        assertEquals("ECONOMY_FISHING_OWNED", assertFailsWith<AuthFailure> { apply(rod, "buy_fishing_item", "river_rod", price = 1800) }.code)
         assertEquals("ECONOMY_FISHING_SHOP_CHANGED", assertFailsWith<AuthFailure> {
             apply(rod, "buy_fishing_item", "fish_mooncarp", quantity = 2, price = 1280)
         }.code)
-        val bought = rod.copy(inventory = mapOf("fish_mooncarp" to 2L))
-        assertEquals(2L, bought.inventory["fish_mooncarp"])
+        val bought = rod.copy(inventory = mapOf("fish_rare" to 2L))
+        assertEquals(2L, bought.inventory["fish_rare"])
         assertTrue(bought.fishing.catches.isEmpty())
-        val sold = apply(bought, "sell_fish", "fish_mooncarp", quantity = 2)
-        assertEquals(87140L, sold.wallet.coins)
+        val sold = apply(bought, "sell_fish", "fish_rare", quantity = 2)
+        assertEquals(98420L, sold.wallet.coins)
         assertTrue(sold.fishing.catches.isEmpty())
         assertEquals("ECONOMY_FISHING_ITEM", assertFailsWith<AuthFailure> { apply(sold, "sell_fish", "wood") }.code)
     }
 
     @Test fun `bad quotes unknown goods unsupported quantities inventory and escrow limits are rejected`() {
         val initial = funded()
-        assertEquals("ECONOMY_FISHING_PRICE_CHANGED", assertFailsWith<AuthFailure> { apply(initial, "buy_fishing_item", "river_rod", price = 13490) }.code)
+        assertEquals("ECONOMY_FISHING_PRICE_CHANGED", assertFailsWith<AuthFailure> { apply(initial, "buy_fishing_item", "river_rod", price = 1790) }.code)
         assertEquals("ECONOMY_FISHING_SHOP_CHANGED", assertFailsWith<AuthFailure> { apply(initial, "buy_fishing_item", "wood", price = 1000) }.code)
-        assertEquals("INVALID_ECONOMY_COMMAND", assertFailsWith<AuthFailure> { apply(initial, "buy_fishing_item", "river_rod", quantity = 2, price = 27000) }.code)
+        assertEquals("INVALID_ECONOMY_COMMAND", assertFailsWith<AuthFailure> { apply(initial, "buy_fishing_item", "river_rod", quantity = 2, price = 3600) }.code)
         assertEquals("INVALID_ECONOMY_COMMAND", assertFailsWith<AuthFailure> { apply(initial, "buy_fishing_item", "crumb_bait", quantity = 11, price = 330) }.code)
         val full = initial.copy(inventory = mapOf("wood" to 290L))
         assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> {
-            EconomyRules.apply(full, command("buy_fishing_item", offerId(full, "crumb_bait"), price = 30), now, mapOf("stone" to 10L))
+            EconomyRules.apply(full, command("buy_fishing_item", offerId(full, "crumb_bait"), price = 20), now, mapOf("stone" to 10L))
         }.code)
-        val rod = EconomyRules.apply(full, command("buy_fishing_item", offerId(full, "river_rod"), price = 13500), now, mapOf("stone" to 10L)).first
+        val rod = EconomyRules.apply(full, command("buy_fishing_item", offerId(full, "river_rod"), price = 1800), now, mapOf("stone" to 10L)).first
         assertEquals(full.inventory, rod.inventory)
-        assertEquals("ECONOMY_RESOURCES", assertFailsWith<AuthFailure> { apply(funded().copy(wallet = EconomyWallet()), "buy_fishing_item", "river_rod", price = 13500) }.code)
+        assertEquals("ECONOMY_RESOURCES", assertFailsWith<AuthFailure> { apply(funded().copy(wallet = EconomyWallet()), "buy_fishing_item", "river_rod", price = 1800) }.code)
         for (invalid in listOf(command("equip_fishing_rod", "reed_rod", quantity = 2), command("sell_fish", "fish", price = 1)))
             assertEquals("INVALID_ECONOMY_COMMAND", assertFailsWith<AuthFailure> { EconomyRules.apply(initial, invalid, now) }.code)
     }
 
-    @Test fun `fishing locks equipment and one replacement species while claims alone advance collection`() {
+    @Test fun `fishing locks equipment and all species rolls while claims advance collection and class stock`() {
         var state = funded("worm_bait")
         assertEquals("ECONOMY_FISHING_ROD", assertFailsWith<AuthFailure> { apply(state, "equip_fishing_rod", "willow_rod") }.code)
         assertEquals("ECONOMY_RESOURCES", assertFailsWith<AuthFailure> { apply(state, "equip_fishing_bait", "worm_bait") }.code)
-        state = apply(state, "buy_fishing_item", "river_rod", price = 13500)
+        state = apply(state, "buy_fishing_item", "river_rod", price = 1800)
         state = apply(state, "equip_fishing_rod", "river_rod")
-        state = apply(state, "buy_fishing_item", "worm_bait", quantity = 2, price = 140)
+        state = apply(state, "buy_fishing_item", "worm_bait", quantity = 2, price = 60)
         state = apply(state, "equip_fishing_bait", "worm_bait")
         assertEquals("ECONOMY_FISHING_ROUTE", assertFailsWith<AuthFailure> { apply(state, "start_fishing", "forest") }.code)
         val start = command("start_fishing", "shore")
@@ -101,7 +101,7 @@ class EconomyFishingTest {
         assertNotEquals(start.requestId, job.id, "the client does not pick a reward by choosing requestId")
         assertNotEquals(active.fishingCastSeed, job.id, "public job IDs do not reveal the hidden draw seed")
         assertEquals(1L, active.inventory["worm_bait"])
-        assertEquals(4L, job.rewards.values.sum())
+        assertEquals(2L, job.rewards.values.sum())
         assertEquals("river_rod", job.fishing?.rodId)
         assertEquals("worm_bait", job.fishing?.baitId)
         assertTrue(active.fishing.catches.isEmpty())
@@ -110,7 +110,11 @@ class EconomyFishingTest {
         val claimed = apply(changed, "claim_job", job.id, at = Instant.parse(job.finishesAt))
         assertEquals(job.rewards, claimed.fishing.catches)
         assertNull(claimed.fishingCastSeed)
-        assertEquals(claimed.fishing.catches, apply(claimed, "sell_fish", "fish", quantity = job.rewards.getValue("fish")).fishing.catches)
+        val classId = checkNotNull(EconomyRules.catalog.fishing).classes.single { group ->
+            group.rarity == checkNotNull(EconomyRules.catalog.fishing).fish.single { it.itemId == job.rewards.keys.first() }.rarity
+        }.itemId
+        assertTrue((claimed.inventory[classId] ?: 0) > 0)
+        assertEquals(claimed.fishing.catches, apply(claimed, "sell_fish", classId, quantity = 1).fishing.catches)
         val next = apply(claimed, "start_fishing", "shore")
         assertNotEquals(active.fishingCastSeed, next.fishingCastSeed)
     }
@@ -124,7 +128,7 @@ class EconomyFishingTest {
         assertTrue(cancelled.fishing.catches.isEmpty())
         assertTrue(cancelled.inventory.isEmpty())
         assertEquals("ECONOMY_RESOURCES", assertFailsWith<AuthFailure> { apply(cancelled, "start_fishing", "shore") }.code)
-        val replenished = apply(cancelled, "buy_fishing_item", "crumb_bait", price = 30)
+        val replenished = apply(cancelled, "buy_fishing_item", "crumb_bait", price = 20)
         val retry = apply(replenished, "start_fishing", "shore")
         assertNotEquals(first.id, retry.jobs.single().id)
         assertEquals(first.fishing?.fishId, retry.jobs.single().fishing?.fishId)
@@ -159,16 +163,16 @@ class EconomyFishingTest {
         val homeTwo = funded().copy(buildings = funded().buildings + ("home" to 2))
         val initial = homeTwo.copy(fishingShop = EconomyFishingShops.create(homeTwo, now, { it - 1 }))
         assertEquals("ECONOMY_FISHING_HOOK", assertFailsWith<AuthFailure> { apply(initial, "equip_fishing_hook", "silver_hook") }.code)
-        assertEquals("INVALID_ECONOMY_COMMAND", assertFailsWith<AuthFailure> { apply(initial, "buy_fishing_item", "silver_hook", 2, 84000) }.code)
-        val purchased = apply(initial, "buy_fishing_item", "silver_hook", price = 42000)
-        assertEquals(58000L, purchased.wallet.coins); assertEquals(initial.inventory, purchased.inventory)
+        assertEquals("INVALID_ECONOMY_COMMAND", assertFailsWith<AuthFailure> { apply(initial, "buy_fishing_item", "silver_hook", 2, 12000) }.code)
+        val purchased = apply(initial, "buy_fishing_item", "silver_hook", price = 6000)
+        assertEquals(94000L, purchased.wallet.coins); assertEquals(initial.inventory, purchased.inventory)
         assertEquals(listOf("bare_hook", "silver_hook"), purchased.fishing.ownedHooks)
-        assertEquals("ECONOMY_FISHING_OWNED", assertFailsWith<AuthFailure> { apply(purchased, "buy_fishing_item", "silver_hook", price = 42000) }.code)
+        assertEquals("ECONOMY_FISHING_OWNED", assertFailsWith<AuthFailure> { apply(purchased, "buy_fishing_item", "silver_hook", price = 6000) }.code)
         val equipped = apply(purchased, "equip_fishing_hook", "silver_hook")
         val active = apply(equipped, "start_fishing", "shore"); val job = active.jobs.single()
         assertEquals("silver_hook", job.fishing?.hookId)
-        assertEquals(4L, job.rewards.values.sum())
-        assertEquals(2700L, java.time.Duration.between(Instant.parse(job.startedAt), Instant.parse(job.finishesAt)).seconds)
+        assertEquals(2L, job.rewards.values.sum())
+        assertEquals(180L, java.time.Duration.between(Instant.parse(job.startedAt), Instant.parse(job.finishesAt)).seconds)
         val changed = apply(active, "equip_fishing_hook", "bare_hook")
         assertEquals(job, changed.jobs.single())
         val retry = apply(apply(apply(changed, "cancel_exploration", job.id), "equip_fishing_hook", "silver_hook"), "start_fishing", "shore")
@@ -183,19 +187,19 @@ class EconomyFishingTest {
         assertEquals(12, spec.fish.size)
         assertEquals(setOf("common", "uncommon", "rare", "epic", "legendary"), spec.fish.map { it.rarity }.toSet())
         assertEquals("fish_shark", spec.fish.single { it.rarity == "legendary" }.itemId)
-        assertEquals(10000, spec.fish.sumOf { it.weight })
+        assertEquals(10000, spec.classes.sumOf { it.weight })
         for (hook in spec.hooks) assertEquals(hook.id == "leviathan_hook",
             EconomyRules.fishingWeights("starfall_rod", "firefly_bait", hook.id).single { it.first.itemId == "fish_shark" }.second > 0)
     }
 
-    @Test fun `overnight catch has six saved draws and only successful claim advances collection`() {
+    @Test fun `camp catch has eight saved draws and only successful claim advances collection`() {
         val seed = "00000000-0000-4000-8000-000000000001"
         val initial = funded().copy(inventory = mapOf("worm_bait" to 2L), fishingCastSeed = seed,
             fishing = EconomyFishing(ownedRods = listOf("reed_rod", "river_rod"), equippedRodId = "river_rod", equippedBaitId = "worm_bait",
                 ownedHooks = listOf("bare_hook", "barbed_hook"), equippedHookId = "barbed_hook"))
         val active = apply(initial, "start_fishing", "shore_camp")
         val job = active.jobs.single()
-        assertEquals(mapOf("fish" to 19L, "fish_dace" to 1L, "fish_reedperch" to 1L, "fish_silverfin" to 1L, "fish_bream" to 1L, "fish_pike" to 1L), job.rewards)
+        assertEquals(mapOf("fish_bream" to 4L, "fish_dace" to 4L), job.rewards)
         assertEquals(1L, active.inventory["worm_bait"])
         val changed = apply(active, "equip_fishing_rod", "reed_rod")
         assertEquals(job, changed.jobs.single())
@@ -205,6 +209,9 @@ class EconomyFishingTest {
         assertEquals(job.rewards, retry.jobs.single().rewards)
         val done = apply(retry, "claim_job", retry.jobs.single().id, at = Instant.parse(retry.jobs.single().finishesAt))
         assertEquals(job.rewards, done.fishing.catches)
+        assertEquals(8L, done.inventory["fish_uncommon"])
+        assertFalse(done.inventory.containsKey("fish_bream"))
+        assertFalse(done.inventory.containsKey("fish_dace"))
         assertEquals(1L, done.completedExplorations)
         assertNull(done.fishingCastSeed)
     }

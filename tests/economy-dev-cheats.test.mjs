@@ -327,7 +327,7 @@ test("individual DEV gear grants preserve paid trips and fish grants do not fake
   assert.deepEqual(granted.jobs[0], trip, "granting better tackle does not rewrite an already paid draw");
   for (const id of ["fish_shark", "fish", "firefly_bait"]) cheat(p, "grant_item", id, 3);
   const state = read(p);
-  assert.equal(state.inventory.fish_shark, 3); assert.equal(state.inventory.fish, before.inventory.fish + 3); assert.equal(state.inventory.firefly_bait, 3);
+  assert.equal(state.inventory.fish_legendary, 3); assert.equal(state.inventory.fish_common, before.inventory.fish_common + 3); assert.equal(state.inventory.firefly_bait, 3);
   assert.deepEqual(state.fishing.catches, {});
   assert.equal(state.completedExplorations, 0);
 });

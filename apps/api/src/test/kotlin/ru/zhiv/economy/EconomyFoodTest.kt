@@ -17,7 +17,7 @@ class EconomyFoodTest {
     private fun apply(state: EconomyState, action: String, target: String, at: Instant = now, quantity: Long = 1, totalPrice: Long = 0) =
         EconomyRules.apply(state, command(action, target, quantity, totalPrice), at).first
     private fun stocked() = EconomyRules.initial().copy(wallet = EconomyWallet(100_000),
-        inventory = EconomyRules.catalog.items.associate { it.id to 20L },
+        inventory = EconomyRules.catalog.items.filter { item -> EconomyRules.catalog.fishing!!.fish.none { it.itemId == item.id } }.associate { it.id to 20L },
         buildings = EconomyRules.catalog.buildings.associate { it.id to it.levels.last().level })
     private fun failure(code: String, block: () -> Unit) { assertEquals(code, assertFailsWith<AuthFailure>(block = block).code) }
 
@@ -32,28 +32,31 @@ class EconomyFoodTest {
         assertEquals("fish_soup", EconomyPublicJobs.project(trip.jobs.single()).meal?.itemId)
     }
 
-    @Test fun `selected fish costs are frozen in canonical recipe jobs and collections survive cooking`() {
+    @Test fun `class fish costs are frozen in recipe jobs and collections survive cooking`() {
         val state = stocked().copy(fishing = EconomyFishing(catches = mapOf("fish_silverfin" to 7)))
         val recipe = EconomyRules.catalog.recipes.single { it.id == "cook_grilled_fish" }
-        val cooked = apply(state, "start_production", "${recipe.id}@fish_silverfin", quantity = 2)
+        val cooked = apply(state, "start_production", recipe.id, quantity = 2)
         val job = cooked.jobs.single()
-        val amount = recipe.cost.items.getValue("fish") * 2
+        val amount = recipe.cost.items.getValue("fish_common") * 2
         assertEquals(recipe.id, job.recipeId)
-        assertEquals(amount, job.cost.items["fish_silverfin"])
-        assertFalse(job.cost.items.containsKey("fish"))
-        assertEquals(state.inventory.getValue("fish_silverfin") - amount, cooked.inventory["fish_silverfin"])
-        assertEquals(state.inventory["fish"], cooked.inventory["fish"])
+        assertEquals(amount, job.cost.items["fish_common"])
+        assertFalse(job.cost.items.containsKey("fish_silverfin"))
+        assertEquals(state.inventory.getValue("fish_common") - amount, cooked.inventory["fish_common"])
+        assertEquals(state.inventory["fish_rare"], cooked.inventory["fish_rare"])
         assertEquals(state.fishing.catches, cooked.fishing.catches)
-        assertEquals(recipe.cost.items.getValue("fish"), apply(state, "start_production", recipe.id).jobs.single().cost.items["fish"])
+        assertEquals(recipe.cost.items.getValue("fish_common"), apply(state, "start_production", recipe.id).jobs.single().cost.items["fish_common"])
     }
 
-    @Test fun `dish recipes never substitute rare fish or accept malformed selections silently`() {
+    @Test fun `dish recipes require their exact class and reject old species selectors`() {
         val state = stocked()
         val encoded = economyJson.encodeToString(state)
-        failure("ECONOMY_RECIPE_FISH") { apply(state, "start_production", "cook_grilled_fish@fish_shark") }
-        failure("ECONOMY_RECIPE_FISH") { apply(state, "start_production", "grow_berries@fish") }
-        failure("ECONOMY_RECIPE_FISH") { apply(state, "start_production", "cook_grilled_fish@@fish") }
-        failure("ECONOMY_RESOURCES") { apply(state.copy(inventory = state.inventory - "fish_silverfin"), "start_production", "cook_grilled_fish@fish_silverfin") }
+        for (target in listOf("cook_grilled_fish@fish_shark", "grow_berries@fish", "cook_grilled_fish@@fish", "cook_grilled_fish@fish_silverfin"))
+            failure("ECONOMY_RECIPE_FISH") { apply(state, "start_production", target) }
+        failure("ECONOMY_RESOURCES") { apply(state.copy(inventory = state.inventory - "fish_common"), "start_production", "cook_grilled_fish") }
+        failure("ECONOMY_RESOURCES") { apply(state.copy(inventory = state.inventory - "fish_rare"), "start_production", "cook_hearty_fish") }
+        val dinner = apply(state, "start_production", "cook_hearty_fish")
+        assertEquals(1L, dinner.jobs.single().cost.items["fish_rare"])
+        assertEquals(state.inventory["fish_epic"], dinner.inventory["fish_epic"])
         assertEquals(encoded, economyJson.encodeToString(state))
     }
 
@@ -232,8 +235,8 @@ class EconomyFoodTest {
 
     @Test fun `exhausted recent history relaxes oldest locally without duplicating current offers`() {
         val templates = listOf(
-            EconomyResidentOrderTemplate("plesk_a", "plesk", "A", items = mapOf("fish" to 1), coins = 10),
-            EconomyResidentOrderTemplate("plesk_b", "plesk", "B", items = mapOf("fish" to 2), coins = 20),
+            EconomyResidentOrderTemplate("plesk_a", "plesk", "A", items = mapOf("fish_common" to 1), coins = 10),
+            EconomyResidentOrderTemplate("plesk_b", "plesk", "B", items = mapOf("fish_common" to 2), coins = 20),
             EconomyResidentOrderTemplate("builder_a", "builder", "A", items = mapOf("wood" to 1), coins = 10),
             EconomyResidentOrderTemplate("builder_b", "builder", "B", items = mapOf("wood" to 2), coins = 20))
         val catalog = EconomyRules.catalog.copy(food = EconomyRules.catalog.food!!.copy(orders = EconomyRules.catalog.food!!.orders.copy(templates = templates)))

@@ -15,10 +15,10 @@ import javax.sql.DataSource
 
 /** Callers hold the common account lock, shared by production, market and lifecycle writes. */
 internal fun reservedEconomyMarketItems(c: Connection, user: UUID): Map<String, Long> =
-    c.economyRows("""SELECT item_id,sum(quantity) FROM (
+    EconomyFishInventory.items(c.economyRows("""SELECT item_id,sum(quantity) FROM (
         SELECT item_id,quantity FROM economy_market_listings WHERE seller_id=? AND status='active'
         UNION ALL SELECT offered_item_id,1::bigint FROM economy_barter_offers WHERE seller_id=? AND status='active'
-        ) held GROUP BY item_id""", user, user) { it.getString(1) to it.getLong(2) }.toMap()
+        ) held GROUP BY item_id""", user, user) { it.getString(1) to it.getLong(2) }.toMap())
 
 /** Escrow occupies warehouse space; returning it must also work for preserved old overflow. */
 internal fun assertEconomyMarketCapacity(
@@ -49,7 +49,8 @@ internal fun cancelEconomyMarketListings(c: Connection, user: UUID) {
     val inventory = row.state.inventory.toMutableMap()
     val reservedBefore = reservedEconomyMarketItems(c, user)
     for ((id, item, quantity) in lots) {
-        inventory[item] = Math.addExact(inventory[item] ?: 0L, quantity)
+        val canonical = EconomyFishInventory.itemId(item)
+        inventory[canonical] = Math.addExact(inventory[canonical] ?: 0L, quantity)
         c.economyUpdate("UPDATE economy_market_listings SET status='cancelled',closed_at=clock_timestamp() WHERE id=?", id)
         c.economyUpdate("""INSERT INTO economy_ledger(user_id,source_key,kind,coins,items)
             VALUES (?,?,'market_cancel',0,?::jsonb)""", user, "market:cancel:$id", economyJson.encodeToString(mapOf(item to quantity)))
@@ -248,7 +249,7 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
     }
 
     private fun create(c: Connection, user: UUID, state: EconomyState, command: EconomyCommand): String {
-        val item = EconomyRules.catalog.items.firstOrNull { it.id == command.targetId && it.tradable }
+        val item = EconomyRules.catalog.items.firstOrNull { it.id == EconomyFishInventory.itemId(command.targetId) && it.tradable }
             ?: throw AuthFailure("ECONOMY_MARKET_ITEM", "Этот предмет нельзя выставить на рынок", 400)
         if ((state.buildings["home"] ?: 1) < EconomyMarketRules.requiredHomeLevel(item.id))
             throw AuthFailure("ECONOMY_MARKET_ITEM_LOCKED", "Предмет пока недоступен на вашем уровне дома", 409)
@@ -299,10 +300,7 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
         val sellerProceeds = lot.totalPrice - EconomyMarketRules.sellerFee(lot.totalPrice, lot.feeBps)
         if (seller.wallet.coins > ECONOMY_MAX_BALANCE - sellerProceeds)
             throw AuthFailure("ECONOMY_CAPACITY", "Продавец пока не может принять монеты", 409)
-        val amount = state.inventory[lot.itemId] ?: 0L
-        if (amount > ECONOMY_MAX_ITEMS - lot.quantity)
-            throw AuthFailure("ECONOMY_CAPACITY", "Освободите место для предметов", 409)
-        val inventory = state.inventory + (lot.itemId to amount + lot.quantity)
+        val inventory = EconomyRules.addItems(state.inventory, mapOf(lot.itemId to lot.quantity))
         val next = state.copy(wallet = state.wallet.copy(coins = state.wallet.coins - lot.totalPrice), inventory = inventory)
         assertEconomyMarketCapacity(c, user, state, next)
         c.economyUpdate("UPDATE economy_market_listings SET status='sold',buyer_id=?,closed_at=clock_timestamp() WHERE id=?", user, UUID.fromString(lot.id))
@@ -318,7 +316,7 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
     private fun cancel(c: Connection, user: UUID, state: EconomyState, row: ListingRow): String {
         if (row.seller != user) throw AuthFailure("ECONOMY_MARKET_OWNER", "Отменить объявление может только продавец", 403)
         val lot = row.listing
-        val inventory = state.inventory + (lot.itemId to Math.addExact(state.inventory[lot.itemId] ?: 0L, lot.quantity))
+        val inventory = EconomyRules.addItems(state.inventory, mapOf(lot.itemId to lot.quantity))
         val reservedBefore = reservedEconomyMarketItems(c, user)
         c.economyUpdate("UPDATE economy_market_listings SET status='cancelled',closed_at=clock_timestamp() WHERE id=?", UUID.fromString(lot.id))
         val next = state.copy(inventory = inventory)

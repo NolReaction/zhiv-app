@@ -92,7 +92,11 @@ test("claim and cancel from the same revision allow exactly one outcome in eithe
     assert.throws(() => economy.commandDevEconomy(p.token, stale, at), { code: "ECONOMY_REVISION_CONFLICT" });
     assert.throws(() => issue(p, loser, trip.id, at), { code: "ECONOMY_JOB_GONE" });
     const expected = { ...started.inventory };
-    if (winner === "claim_job") for (const [item, amount] of Object.entries(savedRewards)) expected[item] = (expected[item] ?? 0) + amount;
+    if (winner === "claim_job") for (const [item, amount] of Object.entries(savedRewards)) {
+      const species = economyCatalog.fishing.fish.find(fish => fish.itemId === item);
+      const stockId = species ? `fish_${species.rarity}` : item;
+      expected[stockId] = (expected[stockId] ?? 0) + amount;
+    }
     assert.deepEqual(result.state.inventory, expected);
     assert.equal(result.state.completedExplorations, winner === "claim_job" ? 1 : 0);
     assert.deepEqual(read(p, at), result.state);

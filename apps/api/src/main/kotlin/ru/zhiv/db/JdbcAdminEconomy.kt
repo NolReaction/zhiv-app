@@ -95,7 +95,7 @@ internal fun readAdminEconomyPlayer(c: Connection, target: String, now: OffsetDa
     val profile = c.economyRows("""SELECT u.id,u.display_name,e.revision,e.updated_at,e.state FROM app_users u
         LEFT JOIN economy_profiles e ON e.user_id=u.id WHERE u.public_id=? AND u.deleted_at IS NULL""", target) { r ->
         Profile(r.getObject("id",UUID::class.java),r.getString("display_name"),r.getLong("revision"),r.adminTime("updated_at"),
-            r.getString("state")?.let { economyJson.decodeFromString<EconomyState>(it) })
+            r.getString("state")?.let { EconomyFishInventory.state(economyJson.decodeFromString<EconomyState>(it)) })
     }.firstOrNull() ?: return null
     val state = profile.state
     val time = now.toInstant()

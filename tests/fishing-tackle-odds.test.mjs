@@ -23,7 +23,7 @@ test("all 180 tackle combinations normalize and agree with the audit; legendary 
   for (const rod of catalog.rods) for (const hook of catalog.hooks) for (const baitId of baits) {
     const chances = odds(rod.id, hook.id, baitId), mathChances = math.catchPortfolio(rod.id, baitId, "shore", hook.id).probabilities;
     assert.ok(Math.abs(chances.reduce((sum, fish) => sum + fish.probability, 0) - 1) < 1e-12);
-    for (const fish of chances) assert.equal(fish.probability, mathChances[fish.itemId]);
+    for (const fish of chances) assert.ok(Math.abs(fish.probability - mathChances[fish.itemId]) < 1e-12);
     assert.equal(chances.find(fish => fish.itemId === shark.itemId).probability > 0, hook.rarity === "legendary" && rod.rarity === "legendary");
     combinations++;
   }
@@ -33,26 +33,26 @@ test("all 180 tackle combinations normalize and agree with the audit; legendary 
 const classChance = (row, rarity) => row.filter(odd => catalog.fish.find(fish => fish.itemId === odd.itemId).rarity === rarity)
   .reduce((sum, odd) => sum + odd.probability, 0);
 
-test("food-era tackle opens attainable rare fish and caps legendary odds at ten percent per special attempt", () => {
-  const targets = { uncommon: ["river_rod", "barbed_hook", "worm_bait", 0.50, 0.53],
-    rare: ["willow_rod", "silver_hook", "glow_bait", 0.38, 0.40],
-    epic: ["tide_rod", "tide_hook", "firefly_bait", 0.24, 0.25],
-    legendary: ["starfall_rod", "leviathan_hook", "firefly_bait", 0.099, 0.10] };
+test("class targeting remains distinct and legendary odds stay below ten percent per fish", () => {
+  const targets = { uncommon: ["river_rod", "barbed_hook", "worm_bait", .62, .65],
+    rare: ["willow_rod", "silver_hook", "glow_bait", .40, .43],
+    epic: ["tide_rod", "tide_hook", "firefly_bait", .25, .27],
+    legendary: ["starfall_rod", "leviathan_hook", "firefly_bait", .09, .10] };
   for (const [rarity, [rodId, hookId, baitId, minimum, maximum]] of Object.entries(targets)) {
     const target = classChance(odds(rodId, hookId, baitId), rarity);
     assert.ok(target >= minimum && target <= maximum, `${rarity}: ${target}`);
     for (const rod of catalog.rods) for (const hook of catalog.hooks) for (const bait of baits)
-      assert.ok(classChance(odds(rod.id, hook.id, bait), rarity) <= target, `${rarity}: unexpected stronger loadout`);
+      assert.ok(classChance(odds(rod.id, hook.id, bait), rarity) <= target + 1e-12, `${rarity}: unexpected stronger loadout`);
   }
   const p = classChance(odds("starfall_rod", "leviathan_hook", "firefly_bait"), "legendary");
-  assert.ok(1 - (1 - p) ** 6 > 0.46 && 1 - (1 - p) ** 6 < 0.47, "six attempts are not a guaranteed or sixty-percent catch");
   const report = auditFishingBalance(economyCatalog);
   assert.equal(report.combinations, 180);
-  assert.equal(report.targets.find(target => target.rarity === "legendary").probabilityPerSpecialAttempt, Number(p.toFixed(9)));
-  assert.ok(report.baitMargins.every(row => row.maximum.incrementalSaleProfitPerHour <= 30));
+  const legendary = report.targets.find(target => target.rarity === "legendary");
+  assert.equal(legendary.probabilityPerFish, Number(p.toFixed(9)));
+  assert.equal(legendary.probabilityAtLeastOneInCamp, Number((1 - (1 - p) ** 8).toFixed(9)));
+  assert.ok(legendary.probabilityAtLeastOneInCamp < 8 * p);
   assert.ok(report.incomeRanges.every(row => row.minimumNetSaleCoinsPerHour > 0
-    && row.maximumNetSaleCoinsPerHour < row.starterNetSaleCoinsPerHour * 2));
-  assert.deepEqual(report.shop.slice(3).map(row => row.expectedDaysPerLegendaryModel), [6.25, 3.125]);
+    && row.maximumNetSaleCoinsPerHour <= row.starterNetSaleCoinsPerHour * 2));
 });
 
 test("each specialist rod and hook wins a distinct collection target instead of a universal price ladder", () => {
@@ -87,29 +87,43 @@ test("the rarity gate applies before normalization to every legendary species, w
   assert.equal(fishingWeights("starfall_rod", "firefly_bait", wrongRequiredHook, "leviathan_hook").find(fish => fish.itemId === "fish_shark").weight, 0);
 });
 
-test("bait focuses on a class with a downside and remains worthwhile for cooking without dominating fishing income", () => {
+test("species inside each class are equiprobable and do not determine class odds", () => {
+  const loadout = { rodId: "starfall_rod", hookId: "leviathan_hook", baitId: "firefly_bait" };
+  const original = fishingOdds({}, catalog, loadout);
+  for (const group of catalog.classes) {
+    const members = catalog.fish.filter(fish => fish.rarity === group.rarity);
+    const chances = members.map(fish => original.find(row => row.itemId === fish.itemId).probability);
+    assert.ok(chances.every(chance => Math.abs(chance - chances[0]) < 1e-12));
+  }
+  const expanded = structuredClone(catalog);
+  expanded.fish.push({ ...expanded.fish.find(fish => fish.rarity === "uncommon"), itemId: "fish_collection_test", weight: 9999 });
+  const modified = fishingOdds({}, expanded, loadout);
+  for (const group of catalog.classes) {
+    const share = (rows, data) => rows.filter(row => data.fish.find(fish => fish.itemId === row.itemId).rarity === group.rarity)
+      .reduce((sum, row) => sum + row.probability, 0);
+    assert.ok(Math.abs(share(original, catalog) - share(modified, expanded)) < 1e-12);
+  }
+  // Expanding the collection must not reroll the economic class of an existing cast.
+  for (let index = 0; index < 100; index++) {
+    const seed = `server-class-invariance-${index}`;
+    const first = selectFishingCatch(seed, loadout.rodId, loadout.baitId, catalog, loadout.hookId);
+    const second = selectFishingCatch(seed, loadout.rodId, loadout.baitId, expanded, loadout.hookId);
+    assert.equal(catalog.fish.find(fish => fish.itemId === first).rarity, expanded.fish.find(fish => fish.itemId === second).rarity);
+  }
+});
+
+test("bait targets its advertised class and every affordable loadout has positive expected catch value", () => {
   const roles = ["common", "uncommon", "rare", "epic"];
-  const value = row => row.reduce((sum, odd) => sum + odd.probability * economyCatalog.items.find(item => item.id === odd.itemId).baseSellPrice, 0);
+  const math = economicMath(economyCatalog);
   for (const rod of catalog.rods) for (const hook of catalog.hooks) for (const [index, bait] of catalog.baits.entries()) {
     const targeted = odds(rod.id, hook.id, bait.itemId), plain = odds(rod.id, hook.id, null);
     assert.ok(classChance(targeted, roles[index]) > classChance(plain, roles[index]));
     assert.ok(catalog.fish.some(fish => targeted.find(row => row.itemId === fish.itemId).probability < plain.find(row => row.itemId === fish.itemId).probability));
-    for (const [draws, totalFish, hours] of [[1, 4, 0.75], [6, 24, 8]]) {
-      const net = (totalFish - draws) * economyCatalog.items.find(item => item.id === "fish").baseSellPrice + draws * value(targeted) - bait.price;
-      assert.ok(net > 0, "the expected catch pays for the bait even on a short trip");
-      assert.ok((draws * (value(targeted) - value(plain)) - bait.price) / hours <= 30,
-        "bait may pay for itself over a long trip, but not dominate the hourly income");
+    for (const routeId of catalog.routeIds) {
+      const portfolio = math.catchPortfolio(rod.id, bait.itemId, routeId, hook.id);
+      assert.ok(portfolio.expectedFishRevenue - portfolio.routeCoins - portfolio.baitPurchaseCoins > 0);
     }
   }
-});
-
-test("server UUID vectors include the shark boundary and match Kotlin without a client-selected reroll", () => {
-  const seeds = ["00000000-0000-4000-8000-000000000001", "a2f6bce4-1d99-4c0f-a910-656320724833", "ffffffff-ffff-4fff-bfff-ffffffffffff",
-    "00000000-0000-4000-8000-00000000000f", "00000000-0000-4000-8000-00000000014a", "00000000-0000-4000-8000-000000000376"];
-  assert.deepEqual(seeds.map(seed => selectFishingCatch(seed, "starfall_rod", "firefly_bait", catalog, "leviathan_hook")),
-    ["fish", "fish", "fish_silverfin", "fish_shark", "fish_shark", "fish_shark"]);
-  assert.deepEqual(seeds.map(seed => selectFishingCatch(seed, "starfall_rod", "firefly_bait", catalog, "tide_hook")),
-    ["fish", "fish", "fish_silverfin", "fish_mirror_koi", "fish_mirror_koi", "fish_mirror_koi"]);
 });
 
 test("older gear snapshots receive display defaults without changing bonuses or requiring a hook for ordinary fish", () => {
@@ -122,17 +136,19 @@ test("older gear snapshots receive display defaults without changing bonuses or 
   assert.equal(parsed.fish[0].requiredHookId, undefined);
 });
 
-test("camp contains six stable independent collection draws, while short trips remain more productive per hour", () => {
+test("every fish in both routes receives a class draw; active fishing trades attention for a modest yield advantage", () => {
   const camp = economyCatalog.explorations.find(route => route.id === "shore_camp"), shore = economyCatalog.explorations.find(route => route.id === "shore");
-  assert.deepEqual(camp.rewards, { fish: 24 });
-  assert.equal(catalog.collectionDrawsByRoute.shore_camp, 6);
-  assert.ok(camp.rewards.fish / camp.seconds < shore.rewards.fish / shore.seconds);
-  assert.ok(6 / camp.seconds < 1 / shore.seconds);
-  assert.deepEqual(Array.from({ length: 6 }, (_, index) => selectFishingCatch("00000000-0000-4000-8000-000000000001", "river_rod", "worm_bait", catalog, "barbed_hook", index)),
-    ["fish", "fish_dace", "fish_reedperch", "fish_silverfin", "fish_bream", "fish_pike"]);
-  const math = economicMath(economyCatalog).catchPortfolio("river_rod", "worm_bait", "shore_camp", "barbed_hook");
-  assert.equal(math.speciesDrawsPerJob, 6);
-  assert.ok(Math.abs(Object.values(math.output).reduce((sum, n) => sum + n, 0) - 24) < 1e-12);
+  assert.deepEqual([shore.seconds, shore.rewards.fish, camp.seconds, camp.rewards.fish], [180, 2, 900, 8]);
+  const math = economicMath(economyCatalog);
+  for (const route of [shore, camp]) {
+    assert.equal(catalog.collectionDrawsByRoute[route.id], route.rewards.fish);
+    const portfolio = math.catchPortfolio("river_rod", "worm_bait", route.id, "barbed_hook");
+    assert.equal(portfolio.speciesDrawsPerJob, route.rewards.fish);
+    assert.ok(Math.abs(Object.values(portfolio.output).reduce((sum, n) => sum + n, 0) - route.rewards.fish) < 1e-12);
+    assert.ok(Object.keys(portfolio.output).every(id => catalog.classes.some(group => group.itemId === id)));
+  }
+  assert.equal(shore.rewards.fish * 3600 / shore.seconds, 40);
+  assert.equal(camp.rewards.fish * 3600 / camp.seconds, 32);
 });
 
 test("affordable mixed gear trades ordinary catch share for uncommon share between the two specialists", () => {

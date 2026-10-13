@@ -156,7 +156,7 @@ class JdbcWorldRepositoryIntegrationTest {
         val economy=JdbcEconomyRepository(source).snapshot(p.hash)
         assertEquals(7500L,economy.wallet.coins)
         assertEquals(1000L,economy.wallet.pearls)
-        assertEquals(mapOf("fish" to 10L,"wood" to 40L,"stone" to 40L),economy.inventory)
+        assertEquals(mapOf("fish_common" to 10L,"wood" to 40L,"stone" to 40L),economy.inventory)
         assertEquals(5,economy.buildings["home"])
         assertEquals(3,economy.buildings["workshop"])
         world.snapshot(secondDevice(p))

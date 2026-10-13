@@ -30,6 +30,14 @@ const fishingArt: Record<string, ReactNode> = {
   </>,
   ...Object.fromEntries(FISH_SPECIES_IDS.map(species => [species,
     <g key={species} transform="translate(27 25) scale(27)"><FishArt species={species} /></g>])),
+  ...Object.fromEntries(([
+    ["fish_common", "#829884", "I"], ["fish_uncommon", "#5ca775", "II"], ["fish_rare", "#579bd4", "III"],
+    ["fish_epic", "#a782cb", "IV"], ["fish_legendary", "#d8ac4e", "V"],
+  ] as const).map(([itemId, color, mark]) => [itemId, <g key={itemId}>
+    <g transform="translate(25 22) scale(24)"><FishArt species="fish" /></g>
+    <circle cx="36" cy="36" r="10" fill={color} stroke="#344236" strokeWidth="1.5" />
+    <text x="36" y="39.5" fill="#17251b" stroke="none" textAnchor="middle" fontSize="10" fontWeight="800">{mark}</text>
+  </g>])),
   crumb_bait: <>
     <path d="M13 19c-2 5-7 14-4 19 4 6 27 6 31-1 2-5-4-14-6-19Z" fill="#bda370" />
     <path d="m15 9 5 2 5-3 7 2-1 8H17Z" fill="#dfca96" />

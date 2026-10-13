@@ -31,7 +31,7 @@ function fixture(p, { coins = 5000, pearls = 0, items = { wood: 30, stone: 30, b
 test("fresh account starts with a fixed supply and keeps garden and exploration free", () => {
   const p = player(), state = read(p);
   assert.equal(model.economyViewSchema.safeParse(state).success, true);
-  assert.deepEqual(state.wallet, { coins: 2500, pearls: 1000 }); assert.deepEqual(state.inventory, { fish: 10, wood: 10, stone: 10 });
+  assert.deepEqual(state.wallet, { coins: 2500, pearls: 1000 }); assert.deepEqual(state.inventory, { fish_common: 10, wood: 10, stone: 10 });
   assert.equal(state.buildings.home, 1); assert.equal(state.buildings.garden, 1);
   assert.equal(state.buildings.warehouse, 1); assert.equal(state.buildings.kiln, 0);
   assert.deepEqual(state.storage, { capacity: 300, used: 30, reserved: 0, available: 270, overflow: 0 });
@@ -163,7 +163,7 @@ test("legacy conversion is modest, monotonic and capped for safe-integer beta ba
   const initial = rules.newEconomyState({ resources: { sparks: 100, wood: 25, stone: 9 }, houseLevel: 5, workshopLevel: 3 });
   assert.equal(initial.buildings.home, 5); assert.equal(initial.buildings.workshop, 3);
   assert.deepEqual(initial.wallet, { coins: 2780, pearls: 1000 });
-  assert.deepEqual(initial.inventory, { fish: 10, wood: 15, stone: 13 });
+  assert.deepEqual(initial.inventory, { fish_common: 10, wood: 15, stone: 13 });
 });
 
 test("the browser accepts explicit nullable Kotlin catalog fields and validates warehouse capacity", () => {
@@ -191,7 +191,7 @@ test("production batch snapshots ingredients, duration and output; another slot 
   const job = started.jobs[0];
   assert.equal(started.inventory.wood, 30 - recipe.cost.items.wood * 3); assert.deepEqual(job.cost, rules.scaledEconomyCost(recipe.cost, 3));
   assert.equal(Date.parse(job.finishesAt) - now, recipe.seconds * 3 * 1000); assert.deepEqual(job.rewards, { planks: recipe.rewards.planks * 3 });
-  assert.equal(job.catalogVersion, 3);
+  assert.equal(job.catalogVersion, 4);
   assert.throws(() => issue(p, "start_production", "make_rope"), { code: "ECONOMY_BUILDING_BUSY" });
   assert.equal(issue(p, "start_production", "grow_berries").state.jobs.length, 2);
   assert.throws(() => issue(p, "start_production", "grow_berries", 11), { code: "INVALID_ECONOMY_COMMAND" });

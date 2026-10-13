@@ -28,7 +28,7 @@ object EconomyFishingShops {
             spec.baits.filter { it.requiredHomeLevel <= home }
                 .map { Candidate("bait", it.itemId, it.price, spec.shop.baitStock, it.rarity, rarityWeight.getValue(it.rarity)) } +
             // Ordinary kitchen stock neither reveals nor sells the rare collection.
-            spec.fish.filter { it.rarity == "common" }
+            spec.classes.filter { it.rarity == "common" }
                 .map { Candidate("fish", it.itemId, (it.buyPrice * spec.shop.fishPriceBps + 9999) / 10000,
                     spec.shop.fishStock, it.rarity, 1) }
     }
@@ -75,9 +75,9 @@ object EconomyFishingShops {
     fun create(state: EconomyState, now: Instant, random: (Int) -> Int = secure::nextInt,
         shopId: String = UUID.randomUUID().toString()): EconomyFishingShop = stock(candidates(state), state, now, random, shopId)
     private fun replacementPool(state: EconomyState): List<Candidate> {
-        // Sold-out entries count too: paying cannot merely restock the same item.
+        // Tackle and bait must change; ordinary fish is a permanent cooking staple.
         val previous = state.fishingShop?.offers?.map { it.itemId }?.toSet() ?: emptySet()
-        return candidates(state).filter { it.itemId !in previous }
+        return candidates(state).filter { it.kind == "fish" || it.itemId !in previous }
     }
     fun canRefresh(state: EconomyState): Boolean {
         val previous = state.fishingShop?.offers
@@ -85,7 +85,7 @@ object EconomyFishingShops {
         val pool = replacementPool(state)
         val odds = levelOdds(state)
         val lowestTier = fishingShopRarities.indexOfFirst { odds.getValue(it) > 0 }
-        // A paid change must offer a different item for every previous category.
+        // A paid change replaces tackle and bait while retaining the common-fish staple.
         // Do not increase rare odds or charge for losing an occupied gear slot.
         return categories.filter { kind -> kind == "bait" || kind == "fish" || previous.any { it.kind == kind } }
             .all { kind -> pool.any { it.kind == kind &&

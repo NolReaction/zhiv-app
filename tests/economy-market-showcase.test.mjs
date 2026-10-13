@@ -32,16 +32,16 @@ test("every tradable item has a finite home tier; workshop ownership is unnecess
   assert.equal(rules.marketRequiredHomeLevel("resin"), 3, "old forest is an earlier source");
   assert.equal(rules.marketRequiredHomeLevel("tools"), 4);
   assert.equal(rules.marketRequiredHomeLevel("reinforced_parts"), 4);
-  assert.equal(rules.marketRequiredHomeLevel("fish_mooncarp"), 1);
+  assert.equal(rules.marketRequiredHomeLevel("fish_rare"), 1);
   for (const bait of catalog.fishing.baits) assert.equal(rules.marketRequiredHomeLevel(bait.itemId), bait.requiredHomeLevel);
-  assert.equal(rules.marketRequiredHomeLevel("fish_shark"), 4);
+  assert.equal(rules.marketRequiredHomeLevel("fish_legendary"), 4);
   assert.equal(rules.marketItemUnlocked({ buildings: { home: 4, workshop: 0 } }, "tools"), true);
   assert.equal(rules.marketItemUnlocked({ buildings: { home: 3, workshop: 5 } }, "tools"), false);
   assert.equal(rules.marketRequiredHomeLevel("pearls"), Infinity);
 });
 
-test("the market cannot bypass merchant bait tiers or the shark hook tier, including direct stale purchases", () => {
-  for (const [itemId, home] of [["firefly_bait", 3], ["fish_shark", 4]]) {
+test("the market cannot bypass merchant bait tiers or the legendary tackle tier, including direct stale purchases", () => {
+  for (const [itemId, home] of [["firefly_bait", 3], ["fish_legendary", 4]]) {
     const low = player(home - 1, { [itemId]: 1 }), beforeLow = read(low);
     assert.throws(() => offer(low, itemId), { code: "ECONOMY_MARKET_ITEM_LOCKED" });
     assert.deepEqual(read(low), beforeLow, "legacy stock stays owned; rejection cannot consume it");
@@ -58,7 +58,7 @@ test("the market cannot bypass merchant bait tiers or the shark hook tier, inclu
     row.state.buildings.home = home;
     const paid = buy(high, lot).state;
     assert.equal(paid.inventory[itemId], 1);
-    assert.deepEqual(paid.fishing.catches, {}, "buying a shark does not open its discovery");
+    assert.deepEqual(paid.fishing.catches, {}, "buying class stock does not open a species discovery");
 
     const cancel = offer(seller, itemId);
     globalThis.__zhivDevEconomyStore.profiles.get(seller.me.user.publicId).state.buildings.home = home - 1;
@@ -72,7 +72,7 @@ test("whole-lot floor prevents immediate NPC arbitrage for every item and preser
     const seller = player(5, { [item.id]: 2 });
     const floor = rules.marketMinimumPrice(item.id, 2);
     assert.throws(() => offer(seller, item.id, 2, floor - 1), { code: "ECONOMY_MARKET_PRICE" }, item.id);
-    const npc = catalog.fishing.fish.some(fish => fish.itemId === item.id) ? item.baseSellPrice * 2 : Math.floor(item.baseSellPrice * 2 * catalog.localBuyer.payoutBps / 10000);
+    const npc = catalog.fishing.classes.some(group => group.itemId === item.id) ? item.baseSellPrice * 2 : Math.floor(item.baseSellPrice * 2 * catalog.localBuyer.payoutBps / 10000);
     assert.ok(floor >= npc, item.id);
     assert.equal(offer(seller, item.id, 1, item.baseSellPrice).totalPrice, item.baseSellPrice);
     assert.equal(offer(seller, item.id, 1, item.baseSellPrice * catalog.market.maxPriceMultiplier).totalPrice, item.baseSellPrice * catalog.market.maxPriceMultiplier);

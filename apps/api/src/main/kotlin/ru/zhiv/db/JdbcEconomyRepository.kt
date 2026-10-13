@@ -25,7 +25,7 @@ internal data class EconomyProfileRow(val revision: Long, val state: EconomyStat
 internal fun readEconomyProfile(c: Connection, user: UUID): EconomyProfileRow = c.economyRows(
     """SELECT e.revision,e.state,coalesce(w.state->'collection','[]'::jsonb),coalesce(w.state->'inventory','[]'::jsonb)
         FROM economy_profiles e LEFT JOIN world_profiles w ON w.user_id=e.user_id WHERE e.user_id=?""", user) {
-    val state = economyJson.decodeFromString<EconomyState>(it.getString(2))
+    val state = EconomyFishInventory.state(economyJson.decodeFromString<EconomyState>(it.getString(2)))
     val inherited = economyJson.decodeFromString<List<String>>(it.getString(3))
     val legacyWardrobe = economyJson.decodeFromString<List<String>>(it.getString(4))
     val clothing = WorldRules.catalog.items.filter { item -> item.slot != "rod" }.map { item -> item.id }.toSet()
@@ -77,7 +77,7 @@ internal fun ensureEconomyProfile(c: Connection, user: UUID) {
 
 internal fun saveEconomyProfile(c: Connection, user: UUID, state: EconomyState, recordAwards: Boolean = true) {
     val count = c.economyUpdate("""UPDATE economy_profiles SET state=?::jsonb,revision=revision+1,updated_at=clock_timestamp()
-        WHERE user_id=? AND revision<9007199254740991""", economyJson.encodeToString(state), user)
+        WHERE user_id=? AND revision<9007199254740991""", economyJson.encodeToString(EconomyFishInventory.state(state)), user)
     if (count != 1) economyFailure("ECONOMY_REVISION_CONFLICT", "Состояние хозяйства изменилось. Обновите страницу.")
     if (recordAwards) recordEconomyAchievements(c, user, state)
 }

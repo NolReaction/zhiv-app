@@ -50,7 +50,7 @@ class JdbcOnboardingEconomyIntegrationTest {
             val economy = JdbcEconomyRepository(source)
             val first = economy.snapshot(newToken.hash)
             assertEquals(EconomyWallet(2500, 1000), first.wallet)
-            assertEquals(mapOf("fish" to 10L, "wood" to 10L, "stone" to 10L), first.inventory)
+            assertEquals(mapOf("fish_common" to 10L, "wood" to 10L, "stone" to 10L), first.inventory)
             assertEquals(first.wallet, economy.snapshot(newToken.hash).wallet)
             source.connection.use { c ->
                 val ledger = c.economyRows("SELECT kind,coins,pearls,items FROM economy_ledger WHERE user_id=? ORDER BY kind", newPlayer.id) {

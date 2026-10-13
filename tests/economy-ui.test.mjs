@@ -251,11 +251,14 @@ test("material guide includes zero-stock goods, production sources, construction
   assert.match(html, /Для чего пригодится/);
   assert.ok(button(html, "Стройка: Дом Мохлика"));
   assert.ok(button(html, "Доски"));
-  assert.ok(html.includes(`Все товары · ${economyCatalog.items.length}`));
+  const stockItems = economyCatalog.items.filter(item => !economyCatalog.fishing.fish.some(fish => fish.itemId === item.id));
+  assert.ok(html.includes(`Все товары · ${stockItems.length}`));
   assert.match(html, /<option value="fishing">Рыболовные товары<\/option>/);
-  for (const fish of economyCatalog.fishing.fish) {
-    assert.equal(economyCatalog.items.find(item => item.id === fish.itemId).category, "produce", "all fish share the existing harvest and fish category");
+  for (const fish of economyCatalog.fishing.classes) {
+    assert.ok(html.includes(`data-item-icon="${fish.itemId}"`), "all five class stocks are discoverable goods");
   }
+  for (const fish of economyCatalog.fishing.fish) assert.ok(!html.includes(`data-item-icon="${fish.itemId}"`), "species belong only to the collection");
+  assert.match(html, /<option value="raw">Рыба<\/option>/);
   assert.doesNotMatch(html, /<option value="fish">fish<\/option>/);
   assert.match(html, /Сырьё/);
   const state = snapshot({ inventory: { planks: 8 } });
@@ -315,15 +318,15 @@ test("placed workshop opens production while the mine keeps activity unlocks and
 });
 
 test("inventory guide and sale consistently show the actual discounted payout", () => {
-  const state = snapshot({ inventory: { fish: 3 } }); state.catalog.localBuyer = { payoutBps: 6000 };
-  const html = render("inventory", controller({ snapshot: state }), "fish");
+  const state = snapshot({ inventory: { fish_common: 3 } }); state.catalog.localBuyer = { payoutBps: 6000 };
+  const html = render("inventory", controller({ snapshot: state }), "fish_common");
   assert.match(html, /Быстрая продажа с уценкой 40%/);
   assert.match(html, /Быстрая продажа торговцу: 60% базовой цены/);
-  assert.match(html, /Плёска купит дороже: 80 монет за штуку/);
-  assert.equal(disabled(button(html, "Продать 1 шт. за 40 монет")), false);
-  assert.doesNotMatch(html, /Продать 1 шт. за 80 монет|Торговец покупает сразу по 80/);
+  assert.match(html, /Плёска купит дороже: 40 монет за штуку/);
+  assert.equal(disabled(button(html, "Продать 1 шт. за 20 монет")), false);
+  assert.doesNotMatch(html, /Продать 1 шт. за 40 монет|Торговец покупает сразу по 40/);
   state.wallet.coins = 10_000_000_000;
-  assert.equal(disabled(button(render("inventory", controller({ snapshot: state }), "fish"), "Продать - шт.")), true);
+  assert.equal(disabled(button(render("inventory", controller({ snapshot: state }), "fish_common"), "Продать - шт.")), true);
 });
 
 test("legacy inventory sale keeps full price; tiny stock cannot disappear for zero proceeds", () => {

@@ -1,3 +1,4 @@
+import { fishClassForItem, fishClassInventory } from "./fishing";
 import type { EconomyCommand, EconomyResult, EconomyView, MarketCommand } from "./model";
 
 export type InventoryGain = Readonly<{
@@ -21,20 +22,27 @@ export function inventoryGainFromReceipt(before: EconomyView | null, result: Eco
   if (command.action === "claim_job") {
     const job = before.jobs.find(item => item.id === command.targetId);
     if (!job || job.kind === "construction" || after.jobs.some(item => item.id === job.id)) return null;
-    allowed = job.rewards; source = "claim";
+    allowed = fishClassInventory(job.rewards); source = "claim";
+    if (job.fishing && after.catalog.fishing) {
+      const count = Object.entries(job.rewards).reduce((sum, [id, quantity]) => sum + (fishClassForItem(id, after.catalog.fishing) ? quantity : 0), 0);
+      // Public jobs hide all classes until claim. Only confirmed stock gains reveal them.
+      allowed = { ...allowed, ...Object.fromEntries(after.catalog.fishing.classes.map(group => [group.itemId, count])) };
+    }
     if (job.kind === "production" && after.catalog.buildings.some(station => station.id === job.targetId)) stationId = job.targetId;
   } else if (command.action === "buy_fishing_item") {
-    const offer = before.fishingShop?.offers.find(item => item.id === command.targetId && item.kind === "bait");
-    if (!offer || !before.catalog.fishing?.baits.some(item => item.itemId === offer.itemId)) return null;
+    const offer = before.fishingShop?.offers.find(item => item.id === command.targetId && (item.kind === "bait" || item.kind === "fish"));
+    if (!offer || !before.catalog.fishing || !before.catalog.fishing.baits.some(item => item.itemId === offer.itemId) && !fishClassForItem(offer.itemId, before.catalog.fishing)) return null;
     allowed = { [offer.itemId]: command.quantity }; source = "purchase";
   } else if (command.action === "buy_listing") {
     const listing = result.listing;
     if (!listing || listing.id !== command.targetId || listing.status !== "sold") return null;
     allowed = { [listing.itemId]: listing.quantity }; source = "purchase";
   } else return null;
+  allowed = fishClassInventory(allowed);
+  const previousInventory = fishClassInventory(before.inventory), currentInventory = fishClassInventory(after.inventory);
   const known = new Set(after.catalog.items.map(item => item.id));
   const items = Object.entries(allowed).flatMap(([itemId, limit]) => {
-    const previous = before.inventory[itemId] ?? 0, current = after.inventory[itemId] ?? 0;
+    const previous = previousInventory[itemId] ?? 0, current = currentInventory[itemId] ?? 0;
     if (!known.has(itemId) || ![previous, current, limit].every(value => Number.isSafeInteger(value) && value >= 0)) return [];
     const quantity = Math.min(limit, current - previous);
     return quantity > 0 ? [Object.freeze({ itemId, quantity })] : [];

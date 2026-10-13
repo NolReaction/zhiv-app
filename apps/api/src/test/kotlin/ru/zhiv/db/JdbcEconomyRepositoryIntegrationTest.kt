@@ -512,7 +512,7 @@ class JdbcEconomyRepositoryIntegrationTest {
             economy.command(p.hash, sale.copy(totalPrice = 40))
         }.code)
         val specialist = economy.command(p.hash, command(p, sold, "sell_fish", "fish", 2)).state
-        assertEquals(before.wallet.coins + 210L, specialist.wallet.coins)
+        assertEquals(before.wallet.coins + 130L, specialist.wallet.coins)
         assertTrue(specialist.fishing.catches.isEmpty())
     }
 
@@ -598,7 +598,7 @@ class JdbcEconomyRepositoryIntegrationTest {
             inventory = mapOf("worm_bait" to 1L), fishing = initial.fishing.copy(equippedBaitId = "worm_bait"))), p.id)
         val start = command(p, economy.snapshot(p.hash), "start_exploration", "shore")
         val started = economy.command(p.hash, start).state
-        assertEquals(mapOf("fish" to 4L), started.jobs.single().rewards)
+        assertEquals(mapOf("fish" to 2L), started.jobs.single().rewards)
         assertEquals("fish", started.jobs.single().fishing?.fishId)
         assertEquals(mapOf("worm_bait" to 1L), started.jobs.single().cost.items)
         assertTrue(started.inventory.isEmpty())
@@ -625,7 +625,7 @@ class JdbcEconomyRepositoryIntegrationTest {
         assertEquals(mapOf("fish" to 4L), ready.jobs.single().rewards, "a finished but unclaimed catch is still cancelable")
         val claim = command(p, ready, "claim_job", saved.id)
         val delivered = economy.command(p.hash, claim).state
-        assertEquals(saved.rewards, delivered.inventory)
+        assertEquals(EconomyFishInventory.items(saved.rewards), delivered.inventory)
         assertEquals(saved.rewards, delivered.fishing.catches)
         assertTrue(delivered.jobs.isEmpty())
         assertEquals(delivered.inventory, economy.command(p.hash, claim).state.inventory)
@@ -869,7 +869,7 @@ class JdbcEconomyRepositoryIntegrationTest {
         execute("INSERT INTO world_profiles(user_id,state) VALUES (?,?::jsonb)", p.id, worldJson.encodeToString(legacy))
         val result = economy.snapshot(p.hash)
         assertEquals(EconomyWallet(3260, 1000), result.wallet)
-        assertEquals(mapOf("fish" to 10L, "wood" to 19L, "stone" to 17L), result.inventory)
+        assertEquals(mapOf("fish_common" to 10L, "wood" to 19L, "stone" to 17L), result.inventory)
         assertEquals(4, result.buildings["home"])
         assertEquals(2, result.buildings["workshop"])
         assertEquals(1, result.buildings["warehouse"])

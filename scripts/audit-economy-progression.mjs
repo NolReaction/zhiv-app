@@ -26,7 +26,7 @@ export function auditEconomyProgression(catalog) {
   for (const route of catalog.explorations.filter(route => route.activity === "mining")) {
     assert(route.requiredBuildings?.quarry >= 1, `${route.id}: mining requires a built quarry`);
   }
-  assert.equal(catalog.version, 3);
+  assert.equal(catalog.version, 4);
   assert.equal(catalog.currencyScale, 10);
   const rare = catalog.rareDrops;
   const special = [...items.values()].filter(item => item.category === "special");
@@ -93,7 +93,7 @@ export function auditEconomyProgression(catalog) {
   assert(catalog.recipes.every(recipe => recipe.buildingId !== "quarry"), "Quarry production must not duplicate character mining routes");
   const payoutBps = catalog.localBuyer?.payoutBps ?? 10_000;
   assert(Number.isInteger(payoutBps) && payoutBps > 0 && payoutBps <= 10_000, "Invalid local buyer payout");
-  const specialistFish = new Set((catalog.fishing?.fish ?? []).map(fish => fish.itemId));
+  const specialistFish = new Set([...(catalog.fishing?.fish ?? []), ...(catalog.fishing?.classes ?? [])].map(fish => fish.itemId));
   const cashValue = quantities => Object.entries(quantities).reduce((sum, [id, amount]) => sum +
     (specialistFish.has(id) ? items.get(id).baseSellPrice * amount : Math.floor(items.get(id).baseSellPrice / catalog.currencyScale * amount * payoutBps / 10_000) * catalog.currencyScale), 0);
   const production = [...catalog.recipes, ...catalog.explorations];
@@ -135,8 +135,16 @@ export function auditEconomyProgression(catalog) {
       assert(Number.isSafeInteger(fish.buyPrice) && fish.buyPrice > items.get(fish.itemId).baseSellPrice, "Fish buy-sell arbitrage");
       assert(Number.isSafeInteger(fish.weight) && fish.weight > 0 && Number.isSafeInteger(fish.affinity) && fish.affinity >= 0, "Invalid fishing weight");
       assert(!fish.requiredHookId || fishing.hooks.some(hook => hook.id === fish.requiredHookId), "Fish requires an unknown hook");
-      itemUses.add(fish.itemId); // Caught on a paid trip, sold to Pleska and recorded permanently.
+      itemUses.add(fish.itemId); // Species are permanent collection entries; class stock is economic.
     }
+    for (const group of fishing.classes) {
+      assert(items.has(group.itemId), `Unknown fish class ${group.itemId}`);
+      assert(Number.isSafeInteger(group.weight) && group.weight > 0, "Invalid class weight");
+      assert(Number.isSafeInteger(group.buyPrice) && group.buyPrice > items.get(group.itemId).baseSellPrice, "Fish class buy-sell arbitrage");
+      itemUses.add(group.itemId);
+    }
+    assert.deepEqual(fishing.classes.map(group => group.rarity).sort(), [...rarity].sort(), "Exactly one stock item is required per fish class");
+    assert.equal(new Set(fishing.classes.map(group => group.itemId)).size, rarity.size, "Duplicate fish class item");
     for (const bait of fishing.baits) {
       assert(items.has(bait.itemId), `Fishing: unknown bait ${bait.itemId}`);
       assert(Number.isSafeInteger(bait.price) && bait.price > items.get(bait.itemId).baseSellPrice, "Bait buy-sell arbitrage");
@@ -152,9 +160,10 @@ export function auditEconomyProgression(catalog) {
       for (const entry of list) assert([...rarity].some(id => entry.rarityWeights[id] > 100)
         && [...rarity].some(id => entry.rarityWeights[id] < 100), "Every durable specialization needs an advantage and a tradeoff");
     }
+    assert.deepEqual(Object.keys(fishing.collectionDrawsByRoute ?? {}).sort(), [...fishing.routeIds].sort(), "Every fishing route needs a class draw budget");
     for (const [routeId, draws] of Object.entries(fishing.collectionDrawsByRoute ?? {})) {
       const route = catalog.explorations.find(route => route.id === routeId);
-      assert(fishing.routeIds.includes(routeId) && Number.isSafeInteger(draws) && draws > 0 && draws <= route.rewards.fish, "Invalid route collection draw budget");
+      assert(fishing.routeIds.includes(routeId) && Number.isSafeInteger(draws) && draws > 0 && draws === route.rewards.fish, "Every caught fish must receive a class draw");
     }
   }
   for (const meal of catalog.food?.meals ?? []) {
@@ -227,8 +236,10 @@ export function auditEconomyProgression(catalog) {
       if (completed.home >= (bait?.requiredHomeLevel ?? 1) && !obtainable.has(item)) { obtainable.add(item); changed = true; }
     }
     if (catalog.fishing && catalog.explorations.some(route => catalog.fishing.routeIds.includes(route.id) && hasRequirements(route) && hasMaterials(route.cost))) {
-      for (const fish of catalog.fishing.fish) {
+      for (const fish of [...catalog.fishing.fish, ...catalog.fishing.classes]) {
         const hook = catalog.fishing.hooks.find(hook => hook.id === fish.requiredHookId);
+        if (fish.rarity === "legendary" && ![catalog.fishing.rods, catalog.fishing.hooks].every(list =>
+          list.some(gear => gear.rarity === "legendary" && gear.requiredHomeLevel <= completed.home))) continue;
         if (completed.home >= (hook?.requiredHomeLevel ?? 1) && !obtainable.has(fish.itemId)) { obtainable.add(fish.itemId); changed = true; }
       }
     }

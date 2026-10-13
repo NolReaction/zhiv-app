@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "maxBatch": 10,
   "productionSlots": {
     "upgrades": [
@@ -56,10 +56,45 @@
       "tradable": true
     },
     {
+      "id": "fish_common",
+      "name": "Обычная рыба",
+      "category": "raw",
+      "baseSellPrice": 40,
+      "tradable": true
+    },
+    {
+      "id": "fish_uncommon",
+      "name": "Необычная рыба",
+      "category": "raw",
+      "baseSellPrice": 70,
+      "tradable": true
+    },
+    {
+      "id": "fish_rare",
+      "name": "Редкая рыба",
+      "category": "raw",
+      "baseSellPrice": 110,
+      "tradable": true
+    },
+    {
+      "id": "fish_epic",
+      "name": "Эпическая рыба",
+      "category": "raw",
+      "baseSellPrice": 180,
+      "tradable": true
+    },
+    {
+      "id": "fish_legendary",
+      "name": "Легендарная рыба",
+      "category": "raw",
+      "baseSellPrice": 320,
+      "tradable": true
+    },
+    {
       "id": "fish",
       "name": "Речная рыба",
       "category": "produce",
-      "baseSellPrice": 80,
+      "baseSellPrice": 40,
       "tradable": true
     },
     {
@@ -192,21 +227,21 @@
       "id": "fish_silverfin",
       "name": "Серебринка",
       "category": "produce",
-      "baseSellPrice": 120,
+      "baseSellPrice": 40,
       "tradable": true
     },
     {
       "id": "fish_reedperch",
       "name": "Камышовый окунёк",
       "category": "produce",
-      "baseSellPrice": 180,
+      "baseSellPrice": 70,
       "tradable": true
     },
     {
       "id": "fish_mooncarp",
       "name": "Лунный карасик",
       "category": "produce",
-      "baseSellPrice": 320,
+      "baseSellPrice": 110,
       "tradable": true
     },
     {
@@ -220,21 +255,21 @@
       "id": "worm_bait",
       "name": "Лесной червячок",
       "category": "fishing",
-      "baseSellPrice": 20,
+      "baseSellPrice": 10,
       "tradable": true
     },
     {
       "id": "glow_bait",
       "name": "Светлячковая наживка",
       "category": "fishing",
-      "baseSellPrice": 40,
+      "baseSellPrice": 20,
       "tradable": true
     },
     {
       "id": "firefly_bait",
       "name": "Искристая мушка",
       "category": "fishing",
-      "baseSellPrice": 70,
+      "baseSellPrice": 30,
       "tradable": true
     },
     {
@@ -262,56 +297,56 @@
       "id": "fish_rudd",
       "name": "Краснопёрка",
       "category": "produce",
-      "baseSellPrice": 140,
+      "baseSellPrice": 40,
       "tradable": true
     },
     {
       "id": "fish_dace",
       "name": "Лесной елец",
       "category": "produce",
-      "baseSellPrice": 200,
+      "baseSellPrice": 70,
       "tradable": true
     },
     {
       "id": "fish_bream",
       "name": "Бронзовый лещ",
       "category": "produce",
-      "baseSellPrice": 240,
+      "baseSellPrice": 70,
       "tradable": true
     },
     {
       "id": "fish_pike",
       "name": "Изумрудная щука",
       "category": "produce",
-      "baseSellPrice": 400,
+      "baseSellPrice": 110,
       "tradable": true
     },
     {
       "id": "fish_eel",
       "name": "Тёмный угорь",
       "category": "produce",
-      "baseSellPrice": 480,
+      "baseSellPrice": 110,
       "tradable": true
     },
     {
       "id": "fish_sturgeon",
       "name": "Золотой осётр",
       "category": "produce",
-      "baseSellPrice": 720,
+      "baseSellPrice": 180,
       "tradable": true
     },
     {
       "id": "fish_mirror_koi",
       "name": "Зеркальный кои",
       "category": "produce",
-      "baseSellPrice": 960,
+      "baseSellPrice": 180,
       "tradable": true
     },
     {
       "id": "fish_shark",
       "name": "Теневая акула",
       "category": "produce",
-      "baseSellPrice": 1600,
+      "baseSellPrice": 320,
       "tradable": true
     },
     {
@@ -351,7 +386,7 @@
     },
     {
       "id": "legendary_fish",
-      "name": "Акулье жаркое",
+      "name": "Легендарное рыбное жаркое",
       "category": "provisions",
       "baseSellPrice": 4000,
       "tradable": true
@@ -1673,21 +1708,14 @@
       "cost": {
         "coins": 0,
         "items": {
-          "fish": 1,
-          "wood": 1
+          "wood": 1,
+          "fish_common": 1
         }
       },
       "rewards": {
         "grilled_fish": 1
       },
-      "maxBatch": 8,
-      "fishInput": {
-        "itemIds": [
-          "fish",
-          "fish_silverfin",
-          "fish_rudd"
-        ]
-      }
+      "maxBatch": 8
     },
     {
       "id": "cook_fish_soup",
@@ -1700,21 +1728,14 @@
       "cost": {
         "coins": 0,
         "items": {
-          "fish": 3,
-          "wood": 1
+          "wood": 1,
+          "fish_common": 3
         }
       },
       "rewards": {
         "fish_soup": 1
       },
-      "maxBatch": 2,
-      "fishInput": {
-        "itemIds": [
-          "fish",
-          "fish_silverfin",
-          "fish_rudd"
-        ]
-      }
+      "maxBatch": 2
     },
     {
       "id": "cook_berry_fish",
@@ -1727,22 +1748,15 @@
       "cost": {
         "coins": 0,
         "items": {
-          "fish_reedperch": 1,
           "berries": 4,
-          "wood": 1
+          "wood": 1,
+          "fish_uncommon": 1
         }
       },
       "rewards": {
         "berry_fish": 1
       },
-      "maxBatch": 4,
-      "fishInput": {
-        "itemIds": [
-          "fish_reedperch",
-          "fish_dace",
-          "fish_bream"
-        ]
-      }
+      "maxBatch": 4
     },
     {
       "id": "cook_hearty_fish",
@@ -1755,24 +1769,15 @@
       "cost": {
         "coins": 0,
         "items": {
-          "fish_mooncarp": 1,
           "berries": 4,
-          "wood": 2
+          "wood": 2,
+          "fish_rare": 1
         }
       },
       "rewards": {
         "hearty_fish": 1
       },
-      "maxBatch": 2,
-      "fishInput": {
-        "itemIds": [
-          "fish_mooncarp",
-          "fish_pike",
-          "fish_eel",
-          "fish_sturgeon",
-          "fish_mirror_koi"
-        ]
-      }
+      "maxBatch": 2
     },
     {
       "id": "cook_epic_fish",
@@ -1788,26 +1793,20 @@
       "cost": {
         "coins": 0,
         "items": {
-          "fish_sturgeon": 1,
           "berries": 6,
           "hardwood": 1,
-          "charcoal": 2
+          "charcoal": 2,
+          "fish_epic": 1
         }
       },
       "rewards": {
         "epic_fish": 1
       },
-      "maxBatch": 1,
-      "fishInput": {
-        "itemIds": [
-          "fish_sturgeon",
-          "fish_mirror_koi"
-        ]
-      }
+      "maxBatch": 1
     },
     {
       "id": "cook_legendary_fish",
-      "name": "Приготовить акулье жаркое",
+      "name": "Приготовить легендарное жаркое",
       "buildingId": "dryer",
       "buildingLevel": 5,
       "requiredHomeLevel": 5,
@@ -1819,21 +1818,16 @@
       "cost": {
         "coins": 0,
         "items": {
-          "fish_shark": 1,
           "berries": 8,
           "hardwood": 2,
-          "charcoal": 2
+          "charcoal": 2,
+          "fish_legendary": 1
         }
       },
       "rewards": {
         "legendary_fish": 1
       },
-      "maxBatch": 1,
-      "fishInput": {
-        "itemIds": [
-          "fish_shark"
-        ]
-      }
+      "maxBatch": 1
     },
     {
       "id": "dry_berries",
@@ -1865,21 +1859,14 @@
       "cost": {
         "coins": 0,
         "items": {
-          "fish": 2,
-          "wood": 1
+          "wood": 1,
+          "fish_common": 2
         }
       },
       "rewards": {
         "smoked_fish": 1
       },
-      "maxBatch": 4,
-      "fishInput": {
-        "itemIds": [
-          "fish",
-          "fish_silverfin",
-          "fish_rudd"
-        ]
-      }
+      "maxBatch": 4
     },
     {
       "id": "prepare_provisions",
@@ -1893,22 +1880,15 @@
         "coins": 0,
         "items": {
           "berries": 18,
-          "fish": 4,
-          "wood": 2
+          "wood": 2,
+          "fish_common": 4
         }
       },
       "rewards": {
         "dried_berries": 3,
         "smoked_fish": 2
       },
-      "maxBatch": 1,
-      "fishInput": {
-        "itemIds": [
-          "fish",
-          "fish_silverfin",
-          "fish_rudd"
-        ]
-      }
+      "maxBatch": 1
     },
     {
       "id": "prepare_expedition_provisions",
@@ -1922,22 +1902,15 @@
         "coins": 0,
         "items": {
           "berries": 24,
-          "fish": 8,
-          "wood": 4
+          "wood": 4,
+          "fish_common": 8
         }
       },
       "rewards": {
         "dried_berries": 4,
         "smoked_fish": 4
       },
-      "maxBatch": 1,
-      "fishInput": {
-        "itemIds": [
-          "fish",
-          "fish_silverfin",
-          "fish_rudd"
-        ]
-      }
+      "maxBatch": 1
     },
     {
       "id": "provisions_supply",
@@ -1951,22 +1924,15 @@
         "coins": 0,
         "items": {
           "berries": 36,
-          "fish": 8,
-          "wood": 4
+          "wood": 4,
+          "fish_common": 8
         }
       },
       "rewards": {
         "dried_berries": 6,
         "smoked_fish": 4
       },
-      "maxBatch": 1,
-      "fishInput": {
-        "itemIds": [
-          "fish",
-          "fish_silverfin",
-          "fish_rudd"
-        ]
-      }
+      "maxBatch": 1
     },
     {
       "id": "make_charcoal",
@@ -2222,15 +2188,15 @@
     {
       "id": "shore",
       "name": "Рыбалка на берегу",
-      "description": "Короткая рыбалка: 4 рыбы, одна может оказаться особым видом. Частые возвращения приносят больше улова за час.",
+      "description": "Короткая рыбалка: 2 рыбы за 3 минуты. Для каждой рыбы отдельно разыгрывается класс, затем вид для коллекции.",
       "requiredHomeLevel": 1,
-      "seconds": 2700,
+      "seconds": 180,
       "cost": {
         "coins": 0,
         "items": {}
       },
       "rewards": {
-        "fish": 4
+        "fish": 2
       },
       "requiredBuildings": {}
     },
@@ -2294,17 +2260,17 @@
     },
     {
       "id": "shore_camp",
-      "name": "Стоянка на берегу · 8 ч",
-      "description": "Долгая рыбалка: 24 рыбы, шесть отдельных шансов на особые виды. Удобно оставить Мохлика на ночь.",
+      "name": "Стоянка на берегу · 15 мин",
+      "description": "Спокойная рыбалка: 8 рыб за 15 минут. Каждый улов имеет собственный шанс класса и вида для коллекции.",
       "requiredHomeLevel": 1,
       "requiredBuildings": {},
-      "seconds": 28800,
+      "seconds": 900,
       "cost": {
         "coins": 0,
         "items": {}
       },
       "rewards": {
-        "fish": 24
+        "fish": 8
       }
     },
     {
@@ -2586,11 +2552,11 @@
     "fish": [
       {
         "itemId": "fish",
-        "description": "Знакомая речная рыба. Подходит для рецептов копчения.",
+        "description": "Знакомая речная рыба. Открывает вид в коллекции и пополняет запас обычной рыбы.",
         "rarity": "common",
         "weight": 4400,
         "affinity": 0,
-        "buyPrice": 160
+        "buyPrice": 200
       },
       {
         "itemId": "fish_silverfin",
@@ -2598,7 +2564,7 @@
         "rarity": "common",
         "weight": 2400,
         "affinity": 10,
-        "buyPrice": 240
+        "buyPrice": 200
       },
       {
         "itemId": "fish_rudd",
@@ -2606,7 +2572,7 @@
         "rarity": "common",
         "weight": 1000,
         "affinity": 8,
-        "buyPrice": 280
+        "buyPrice": 200
       },
       {
         "itemId": "fish_reedperch",
@@ -2614,7 +2580,7 @@
         "rarity": "uncommon",
         "weight": 800,
         "affinity": 10,
-        "buyPrice": 360
+        "buyPrice": 350
       },
       {
         "itemId": "fish_dace",
@@ -2622,7 +2588,7 @@
         "rarity": "uncommon",
         "weight": 450,
         "affinity": 8,
-        "buyPrice": 400
+        "buyPrice": 350
       },
       {
         "itemId": "fish_bream",
@@ -2630,7 +2596,7 @@
         "rarity": "uncommon",
         "weight": 302,
         "affinity": 7,
-        "buyPrice": 480
+        "buyPrice": 350
       },
       {
         "itemId": "fish_mooncarp",
@@ -2638,7 +2604,7 @@
         "rarity": "rare",
         "weight": 250,
         "affinity": 8,
-        "buyPrice": 640
+        "buyPrice": 550
       },
       {
         "itemId": "fish_pike",
@@ -2646,7 +2612,7 @@
         "rarity": "rare",
         "weight": 160,
         "affinity": 6,
-        "buyPrice": 800
+        "buyPrice": 550
       },
       {
         "itemId": "fish_eel",
@@ -2654,7 +2620,7 @@
         "rarity": "rare",
         "weight": 90,
         "affinity": 4,
-        "buyPrice": 960
+        "buyPrice": 550
       },
       {
         "itemId": "fish_sturgeon",
@@ -2662,7 +2628,7 @@
         "rarity": "epic",
         "weight": 82,
         "affinity": 3,
-        "buyPrice": 1440
+        "buyPrice": 900
       },
       {
         "itemId": "fish_mirror_koi",
@@ -2670,7 +2636,7 @@
         "rarity": "epic",
         "weight": 38,
         "affinity": 2,
-        "buyPrice": 1920
+        "buyPrice": 900
       },
       {
         "itemId": "fish_shark",
@@ -2678,7 +2644,7 @@
         "rarity": "legendary",
         "weight": 28,
         "affinity": 2,
-        "buyPrice": 3200,
+        "buyPrice": 1600,
         "requiredHookId": "leviathan_hook"
       }
     ],
@@ -2703,7 +2669,7 @@
         "id": "river_rod",
         "name": "Речная удочка",
         "description": "Для необычной рыбы у камышей. Хуже подходит для обычной рыбы и обитателей глубин.",
-        "price": 13500,
+        "price": 1800,
         "rareBonus": 2,
         "rarity": "uncommon",
         "requiredHomeLevel": 1,
@@ -2719,7 +2685,7 @@
         "id": "brook_rod",
         "name": "Ручьевая удочка",
         "description": "Для смешанного улова обычной и необычной рыбы. Не заменяет снасти для редких обитателей глубин.",
-        "price": 9000,
+        "price": 900,
         "rareBonus": 1,
         "rarity": "uncommon",
         "requiredHomeLevel": 1,
@@ -2735,7 +2701,7 @@
         "id": "willow_rod",
         "name": "Ивовая удочка",
         "description": "Для редких осторожных рыб. Уступает речной удочке по необычным видам и приливной по эпическим.",
-        "price": 72000,
+        "price": 9000,
         "rareBonus": 5,
         "rarity": "rare",
         "requiredHomeLevel": 2,
@@ -2750,8 +2716,8 @@
       {
         "id": "tide_rod",
         "name": "Приливная удочка",
-        "description": "Для эпических глубоководных рыб. Необычные виды попадаются реже; для акулы лучше звёздная.",
-        "price": 160000,
+        "description": "Для эпических глубоководных рыб. Необычные виды попадаются реже; для легендарной рыбы лучше звёздная.",
+        "price": 24000,
         "rareBonus": 8,
         "rarity": "epic",
         "requiredHomeLevel": 3,
@@ -2766,8 +2732,8 @@
       {
         "id": "starfall_rod",
         "name": "Звёздная удочка",
-        "description": "Для охоты за акулой с крючком Левиафана. Уступает другим удочкам по необычным, редким и эпическим видам.",
-        "price": 360000,
+        "description": "Для легендарной рыбы с крючком Левиафана. Уступает другим удочкам по необычным, редким и эпическим видам.",
+        "price": 60000,
         "rareBonus": 12,
         "rarity": "legendary",
         "requiredHomeLevel": 4,
@@ -2784,7 +2750,7 @@
       {
         "itemId": "crumb_bait",
         "description": "Привлекает обычную рыбу для кухни, отвлекая особые виды. Одна порция на всю рыбалку.",
-        "price": 30,
+        "price": 20,
         "rareBonus": 1,
         "rarity": "common",
         "requiredHomeLevel": 1,
@@ -2799,7 +2765,7 @@
       {
         "itemId": "worm_bait",
         "description": "Привлекает необычную рыбу; эпические и легендарные виды клюют реже. Одна порция на рыбалку.",
-        "price": 70,
+        "price": 30,
         "rareBonus": 3,
         "rarity": "uncommon",
         "requiredHomeLevel": 1,
@@ -2814,7 +2780,7 @@
       {
         "itemId": "glow_bait",
         "description": "Привлекает редкую рыбу, но не заменяет наживку для эпических и легендарных видов. Одна порция на рыбалку.",
-        "price": 140,
+        "price": 40,
         "rareBonus": 5,
         "rarity": "rare",
         "requiredHomeLevel": 2,
@@ -2828,8 +2794,8 @@
       },
       {
         "itemId": "firefly_bait",
-        "description": "Привлекает эпическую рыбу и акулу; обычные, необычные и редкие виды клюют реже. Одна порция на рыбалку.",
-        "price": 260,
+        "description": "Привлекает эпическую и легендарную рыбу; обычные, необычные и редкие виды клюют реже. Одна порция на рыбалку.",
+        "price": 60,
         "rareBonus": 8,
         "rarity": "epic",
         "requiredHomeLevel": 3,
@@ -2863,7 +2829,7 @@
         "id": "barbed_hook",
         "name": "Бородатый крючок",
         "description": "Для необычных рыб. Менее удобен для обычной рыбы и глубоководных видов.",
-        "price": 9000,
+        "price": 1200,
         "rareBonus": 2,
         "rarity": "uncommon",
         "requiredHomeLevel": 1,
@@ -2879,7 +2845,7 @@
         "id": "round_hook",
         "name": "Круглый крючок",
         "description": "Для смешанного улова обычной и необычной рыбы. Для редких и глубоководных видов нужны другие снасти.",
-        "price": 6000,
+        "price": 600,
         "rareBonus": 1,
         "rarity": "uncommon",
         "requiredHomeLevel": 1,
@@ -2895,7 +2861,7 @@
         "id": "silver_hook",
         "name": "Серебряный крючок",
         "description": "Тонкое жало для редкой рыбы. Уступает бородатому по необычным видам и приливному по эпическим.",
-        "price": 42000,
+        "price": 6000,
         "rareBonus": 4,
         "rarity": "rare",
         "requiredHomeLevel": 2,
@@ -2910,8 +2876,8 @@
       {
         "id": "tide_hook",
         "name": "Приливный крючок",
-        "description": "Для эпической рыбы. Хуже удерживает небольших необычных рыб; для акулы не подходит.",
-        "price": 110000,
+        "description": "Для эпической рыбы. Хуже удерживает небольших необычных рыб; для легендарной рыбы не подходит.",
+        "price": 16000,
         "rareBonus": 7,
         "rarity": "epic",
         "requiredHomeLevel": 3,
@@ -2926,8 +2892,8 @@
       {
         "id": "leviathan_hook",
         "name": "Крючок Левиафана",
-        "description": "Единственный крючок, способный удержать акулу. Необычная, редкая и эпическая рыба лучше ловится другими крючками.",
-        "price": 260000,
+        "description": "Для легендарной рыбы вместе со Звёздной удочкой. Необычная, редкая и эпическая рыба лучше ловится другими крючками.",
+        "price": 40000,
         "rareBonus": 10,
         "rarity": "legendary",
         "requiredHomeLevel": 4,
@@ -2987,9 +2953,41 @@
       ]
     },
     "collectionDrawsByRoute": {
-      "shore": 1,
-      "shore_camp": 6
-    }
+      "shore": 2,
+      "shore_camp": 8
+    },
+    "classes": [
+      {
+        "rarity": "common",
+        "itemId": "fish_common",
+        "weight": 7000,
+        "buyPrice": 200
+      },
+      {
+        "rarity": "uncommon",
+        "itemId": "fish_uncommon",
+        "weight": 2300,
+        "buyPrice": 350
+      },
+      {
+        "rarity": "rare",
+        "itemId": "fish_rare",
+        "weight": 550,
+        "buyPrice": 550
+      },
+      {
+        "rarity": "epic",
+        "itemId": "fish_epic",
+        "weight": 125,
+        "buyPrice": 900
+      },
+      {
+        "rarity": "legendary",
+        "itemId": "fish_legendary",
+        "weight": 25,
+        "buyPrice": 1600
+      }
+    ]
   },
   "localBuyer": {
     "payoutBps": 6000
@@ -3053,64 +3051,39 @@
         {
           "id": "plesk_river_catch",
           "residentId": "plesk",
-          "name": "Пополнить речной прилавок",
-          "description": "Сегодня речную рыбу разбирают особенно охотно. Принесёшь ещё немного?",
+          "name": "Пополнить рыбный прилавок",
+          "description": "Принесёшь три обычные рыбы? Любые пойманные виды этого класса подойдут.",
           "requiredHomeLevel": 1,
           "requiredBuildings": {},
           "items": {
-            "fish": 3
+            "fish_common": 3
           },
-          "coins": 470
+          "coins": 220
         },
         {
           "id": "plesk_silver_catch",
           "residentId": "plesk",
-          "name": "Серебристая стайка",
-          "description": "Серебринки украсят свежий привоз. Приберегу им место на прилавке.",
+          "name": "Небольшой свежий улов",
+          "description": "Нужны две обычные рыбы к ближайшему привозу. Вид рыбы не важен.",
           "requiredHomeLevel": 1,
           "requiredBuildings": {},
           "items": {
-            "fish_silverfin": 2
+            "fish_common": 2
           },
-          "coins": 470
-        },
-        {
-          "id": "plesk_rudd_catch",
-          "residentId": "plesk",
-          "name": "Краснопёрые гости",
-          "description": "Рыбаки спрашивали краснопёрку. Поможешь собрать небольшой запас?",
-          "requiredHomeLevel": 1,
-          "requiredBuildings": {},
-          "items": {
-            "fish_rudd": 2
-          },
-          "coins": 540
+          "coins": 150
         },
         {
           "id": "plesk_morning_assortment",
           "residentId": "plesk",
           "name": "Утренний ассортимент",
-          "description": "Хочу предложить соседям разный улов: речную рыбу и серебринку.",
+          "description": "Соберу небольшой набор: две обычные и одну необычную рыбу.",
           "requiredHomeLevel": 1,
           "requiredBuildings": {},
           "items": {
-            "fish": 2,
-            "fish_silverfin": 1
+            "fish_common": 2,
+            "fish_uncommon": 1
           },
-          "coins": 540
-        },
-        {
-          "id": "plesk_bright_assortment",
-          "residentId": "plesk",
-          "name": "Яркий улов",
-          "description": "Поставлю рядом серебринку и краснопёрку: пусть каждый выберет по вкусу.",
-          "requiredHomeLevel": 1,
-          "requiredBuildings": {},
-          "items": {
-            "fish_silverfin": 1,
-            "fish_rudd": 1
-          },
-          "coins": 510
+          "coins": 270
         },
         {
           "id": "plesk_net_patch",
@@ -3234,38 +3207,14 @@
         {
           "id": "plesk_reed_catch",
           "residentId": "plesk",
-          "name": "Камышовый улов",
-          "description": "Камышовые окуньки пригодятся тем, кто любит рыбу с ягодным соусом.",
-          "requiredHomeLevel": 2,
+          "name": "Необычный улов",
+          "description": "Принесёшь две необычные рыбы? Можно разных видов.",
+          "requiredHomeLevel": 1,
           "requiredBuildings": {},
           "items": {
-            "fish_reedperch": 2
+            "fish_uncommon": 2
           },
-          "coins": 690
-        },
-        {
-          "id": "plesk_dace_catch",
-          "residentId": "plesk",
-          "name": "Рыба из прохладного ручья",
-          "description": "Сегодня на прилавке не хватает лесных ельцов.",
-          "requiredHomeLevel": 2,
-          "requiredBuildings": {},
-          "items": {
-            "fish_dace": 2
-          },
-          "coins": 760
-        },
-        {
-          "id": "plesk_bream_catch",
-          "residentId": "plesk",
-          "name": "Бронзовые бока",
-          "description": "Свежие лещи разнообразят привоз. Их любят готовить к ужину.",
-          "requiredHomeLevel": 2,
-          "requiredBuildings": {},
-          "items": {
-            "fish_bream": 2
-          },
-          "coins": 910
+          "coins": 240
         },
         {
           "id": "plesk_camp_provisions",
@@ -3349,38 +3298,27 @@
         {
           "id": "plesk_mooncatch",
           "residentId": "plesk",
-          "name": "Лунный улов",
-          "description": "Лунные карасики редко задерживаются на прилавке. Принесёшь немного?",
+          "name": "Редкий улов",
+          "description": "Приберегу место для одной редкой рыбы. Подойдёт любой вид редкого класса.",
           "requiredHomeLevel": 3,
           "requiredBuildings": {},
           "items": {
-            "fish_mooncarp": 2
+            "fish_rare": 1
           },
-          "coins": 1220
+          "coins": 200
         },
         {
           "id": "plesk_pike_catch",
           "residentId": "plesk",
-          "name": "Изумрудная гостья",
-          "description": "Нашёлся любитель речных хищниц. Для него отложу изумрудную щуку.",
+          "name": "Разнообразный привоз",
+          "description": "Дополню прилавок необычной и редкой рыбой. Конкретные виды выбирать не нужно.",
           "requiredHomeLevel": 3,
           "requiredBuildings": {},
           "items": {
-            "fish_pike": 1
+            "fish_uncommon": 1,
+            "fish_rare": 1
           },
-          "coins": 760
-        },
-        {
-          "id": "plesk_eel_catch",
-          "residentId": "plesk",
-          "name": "Тёмный житель заводи",
-          "description": "Угорь пригодится для сытного ужина. Пополню запас для соседей.",
-          "requiredHomeLevel": 3,
-          "requiredBuildings": {},
-          "items": {
-            "fish_eel": 1
-          },
-          "coins": 910
+          "coins": 320
         },
         {
           "id": "plesk_hearty_table",
@@ -3432,26 +3370,14 @@
         {
           "id": "plesk_golden_sturgeon",
           "residentId": "plesk",
-          "name": "Золотой гость",
-          "description": "Золотой осётр станет главным уловом сегодняшнего привоза.",
+          "name": "Особенный привоз",
+          "description": "Куплю одну эпическую рыбу. Любой вид этого класса украсит прилавок.",
           "requiredHomeLevel": 4,
           "requiredBuildings": {},
           "items": {
-            "fish_sturgeon": 1
+            "fish_epic": 1
           },
-          "coins": 1420
-        },
-        {
-          "id": "plesk_mirror_catch",
-          "residentId": "plesk",
-          "name": "Зеркальный улов",
-          "description": "Для зеркального кои приготовлено особое место на прилавке.",
-          "requiredHomeLevel": 4,
-          "requiredBuildings": {},
-          "items": {
-            "fish_mirror_koi": 1
-          },
-          "coins": 1890
+          "coins": 330
         },
         {
           "id": "plesk_epic_dinner",
@@ -3509,18 +3435,18 @@
           "id": "plesk_shadow_catch",
           "residentId": "plesk",
           "name": "Легенда речной глубины",
-          "description": "Теневую акулу захочет увидеть каждый рыбак. Готова заплатить за такой улов.",
+          "description": "Куплю одну легендарную рыбу, если решишь расстаться с таким уловом.",
           "requiredHomeLevel": 4,
           "requiredBuildings": {},
           "items": {
-            "fish_shark": 1
+            "fish_legendary": 1
           },
-          "coins": 3140
+          "coins": 590
         },
         {
           "id": "plesk_legendary_dinner",
           "residentId": "plesk",
-          "name": "Акулье жаркое к празднику",
+          "name": "Легендарное жаркое к празднику",
           "description": "Для особого вечера закажу блюдо из легендарного улова.",
           "requiredHomeLevel": 5,
           "requiredBuildings": {
@@ -3681,9 +3607,9 @@
       "pearls": 1000
     },
     "startingItems": {
-      "fish": 10,
       "wood": 10,
-      "stone": 10
+      "stone": 10,
+      "fish_common": 10
     },
     "residentOrder": {
       "id": "tutorial_first_order",

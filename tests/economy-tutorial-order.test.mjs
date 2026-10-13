@@ -28,7 +28,7 @@ test("new players start with requested visible currencies and ten ordinary fish,
   const state = fresh();
   assert.deepEqual(state.wallet, { coins: 2500, pearls: 1000 });
   assert.equal(formatPearls(state.wallet.pearls), "500");
-  assert.deepEqual(state.inventory, { fish: 10, wood: 10, stone: 10 });
+  assert.deepEqual(state.inventory, { fish_common: 10, wood: 10, stone: 10 });
   assert.deepEqual(state.fishing.catches, {}, "a starting fish is not a caught collection entry");
   assert.equal(state.workshopStarterClaimed, false);
   assert.deepEqual(read(player()).inventory, state.inventory);
@@ -38,7 +38,7 @@ test("legacy conversion remains additive and old persisted wallets never refill"
   const state = rules.newEconomyState({ resources: { sparks: 100, wood: 81, stone: 49 }, houseLevel: 4, workshopLevel: 2 });
   assert.deepEqual(state.migration, { version: 1, coinsGranted: 360, woodGranted: 9, stoneGranted: 7 });
   assert.deepEqual(state.wallet, { coins: 2860, pearls: 1000 });
-  assert.deepEqual(state.inventory, { fish: 10, wood: 19, stone: 17 });
+  assert.deepEqual(state.inventory, { fish_common: 10, wood: 19, stone: 17 });
   const p = player(), saved = row(p);
   saved.state.wallet = { coins: 27, pearls: 8 }; saved.state.inventory = { stone: 2 };
   delete saved.state.tutorialOrder;
@@ -62,7 +62,7 @@ test("the explicit claim grants exact extra ingredients, pins terms and preserve
   const p = player(), before = read(p), board = food.residentOrderBoard(before, now);
   const result = send(p), after = result.state;
   assert.deepEqual(after.wallet, before.wallet);
-  assert.deepEqual(after.inventory, { fish: 10, wood: 12, stone: 10, berries: 3 });
+  assert.deepEqual(after.inventory, { fish_common: 10, wood: 12, stone: 10, berries: 3 });
   assert.equal(after.tutorialOrder.ingredientsClaimed, true); assert.equal(after.tutorialOrder.completed, false);
   assert.deepEqual(after.tutorialOrder.terms, model.economyCatalog.onboarding.residentOrder);
   assert.deepEqual(food.residentOrderBoard(after, now).offers, board.offers);
@@ -73,7 +73,7 @@ test("the explicit claim grants exact extra ingredients, pins terms and preserve
 test("completion uses ordinary inventory debit and one coin reward without replacing a board slot", () => {
   const p = player(), accepted = send(p).state, board = food.residentOrderBoard(accepted, now);
   const result = send(p, "complete_resident_order").state;
-  assert.deepEqual(result.inventory, { fish: 10, wood: 10, stone: 10 });
+  assert.deepEqual(result.inventory, { fish_common: 10, wood: 10, stone: 10 });
   assert.equal(result.wallet.coins, accepted.wallet.coins + 100);
   assert.equal(result.wallet.pearls, accepted.wallet.pearls);
   assert.equal(result.tutorialOrder.completed, true);

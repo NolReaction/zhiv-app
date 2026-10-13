@@ -41,7 +41,7 @@ object EconomyRules {
 
     init {
         EconomyTutorialOrders.validateCatalog(catalog)
-        require(catalog.version == 3 && catalog.currencyScale == 10 && catalog.pearlScale == 50 && catalog.maxBatch in 1..10)
+        require(catalog.version == 4 && catalog.currencyScale == 10 && catalog.pearlScale == 50 && catalog.maxBatch in 1..10)
         require(catalog.localBuyer.payoutBps in 1..10_000)
         require(catalog.constructionSpeedup.secondsPerPearl in 1L..86_400L)
         require(catalog.constructionSpeedup.priceStepPearls in 1L..ECONOMY_PEARL_SCALE)
@@ -58,9 +58,15 @@ object EconomyRules {
         catalog.fishing?.let { fishing ->
             val rarities = setOf("common", "uncommon", "rare", "epic", "legendary")
             require(fishing.routeIds.isNotEmpty() && fishing.routeIds.all { id -> catalog.explorations.any { it.id == id && (it.rewards["fish"] ?: 0) > 0 } })
+            require(fishing.classes.map { it.rarity }.toSet() == rarities && fishing.classes.size == rarities.size)
+            require(fishing.classes.map { it.itemId }.distinct().size == rarities.size)
+            require(fishing.classes.all { tier -> tier.itemId == "fish_${tier.rarity}" && tier.weight in 1..10000 &&
+                tier.buyPrice in 1L..ECONOMY_MAX_BALANCE && catalog.items.any { it.id == tier.itemId && it.baseSellPrice < tier.buyPrice } &&
+                fishing.fish.any { it.rarity == tier.rarity } })
             require(fishing.fish.isNotEmpty() && fishing.fish.map { it.itemId }.distinct().size == fishing.fish.size)
+            require(fishing.collectionDrawsByRoute.keys == fishing.routeIds.toSet())
             require(fishing.collectionDrawsByRoute.all { (id, draws) -> id in fishing.routeIds && draws in 1..100 &&
-                draws.toLong() <= catalog.explorations.first { it.id == id }.rewards.getValue("fish") })
+                draws.toLong() == catalog.explorations.first { it.id == id }.rewards.getValue("fish") })
             require((fishing.rods.map { it.rarityWeights } + fishing.hooks.map { it.rarityWeights } + fishing.baits.map { it.rarityWeights })
                 .filterNotNull().all { weights -> weights.keys == rarities && weights.values.all { it in 1..1000 } })
             require(fishing.fish.all { fish -> fish.weight in 1..10000 && fish.affinity in 0..10 && fish.rarity in rarities &&
@@ -95,7 +101,7 @@ object EconomyRules {
         if (grant.woodGranted > 0) inventory["wood"] = (inventory["wood"] ?: 0) + grant.woodGranted
         if (grant.stoneGranted > 0) inventory["stone"] = (inventory["stone"] ?: 0) + grant.stoneGranted
         return EconomyState(currencyScale=10,pearlScale=50,
-            wallet = EconomyWallet(grant.coinsGranted + (starting?.startingWallet?.coins ?: 0), starting?.startingWallet?.pearls ?: 0), inventory = inventory,
+            wallet = EconomyWallet(grant.coinsGranted + (starting?.startingWallet?.coins ?: 0), starting?.startingWallet?.pearls ?: 0), inventory = EconomyFishInventory.items(inventory),
             buildings = mapOf("home" to homeLevel.coerceIn(1, 5), "garden" to 1, "woodlot" to 0, "quarry" to 0,
                 "workshop" to workshopLevel.coerceIn(0, 3), "dryer" to 0, "warehouse" to 1, "kiln" to 0), migration = grant)
     }
@@ -128,8 +134,8 @@ object EconomyRules {
     }
 
     fun addItems(inventory: Map<String, Long>, amounts: Map<String, Long>): Map<String, Long> {
-        val result = inventory.toMutableMap()
-        for ((id, quantity) in amounts) {
+        val result = EconomyFishInventory.items(inventory).toMutableMap()
+        for ((id, quantity) in EconomyFishInventory.items(amounts)) {
             val current = result[id] ?: 0
             if (quantity < 0 || current !in 0L..ECONOMY_MAX_ITEMS || quantity > ECONOMY_MAX_ITEMS - current)
                 economyFailure("ECONOMY_CAPACITY", "Запас этого предмета достиг предела. Сначала освободите место.")
@@ -138,7 +144,9 @@ object EconomyRules {
         return result.filterValues { it > 0 }
     }
 
-    internal fun spend(state: EconomyState, cost: EconomyCost): EconomyState {
+    internal fun spend(input: EconomyState, originalCost: EconomyCost): EconomyState {
+        val state = EconomyFishInventory.state(input)
+        val cost = originalCost.copy(items = EconomyFishInventory.items(originalCost.items))
         if (state.wallet.coins < cost.coins || cost.items.any { (id, quantity) -> (state.inventory[id] ?: 0) < quantity })
             economyFailure("ECONOMY_RESOURCES", "Не хватает монет или материалов. Можно собрать их, произвести или купить на рынке.")
         return state.copy(wallet = state.wallet.copy(coins = state.wallet.coins - cost.coins),
@@ -166,35 +174,50 @@ object EconomyRules {
             ECONOMY_PEARL_SCALE, catalog.constructionSpeedup.priceStepPearls)
     }
 
-    /** Integer rarity weights match the browser; costly gear targets a niche rather than all fish. */
-    fun fishingWeights(rodId: String, baitId: String?, hookId: String = "bare_hook"): List<Pair<EconomyFishSpec, Int>> {
-        val spec = checkNotNull(catalog.fishing)
+    /** Multiply class masses, not species weights: adding a collection entry cannot change rarity odds. */
+    fun fishingClassWeights(rodId: String, baitId: String?, hookId: String = "bare_hook",
+        spec: EconomyFishingCatalog = checkNotNull(catalog.fishing)): List<Pair<EconomyFishClass, Int>> {
         val rod = spec.rods.find { it.id == rodId }
         val hook = spec.hooks.find { it.id == hookId }
         val bait = spec.baits.find { it.itemId == baitId }
-        val specialized = spec.rods.any { it.rarityWeights != null } || spec.hooks.any { it.rarityWeights != null } || spec.baits.any { it.rarityWeights != null }
-        val legacyBonus = (rod?.rareBonus ?: 0) + (hook?.rareBonus ?: 0) + (bait?.rareBonus ?: 0)
-        return spec.fish.map { fish -> fish to when {
-            fish.rarity == "legendary" && (rod?.rarity != "legendary" || hook?.rarity != "legendary") -> 0
-            fish.requiredHookId != null && fish.requiredHookId != hookId -> 0
-            specialized -> maxOf(1L, fish.weight.toLong() * (rod?.rarityWeights?.get(fish.rarity) ?: 100) *
-                (hook?.rarityWeights?.get(fish.rarity) ?: 100) * (bait?.rarityWeights?.get(fish.rarity) ?: 100) / 1_000_000L).toInt()
-            else -> fish.weight + fish.affinity * legacyBonus
+        return spec.classes.map { tier -> tier to when {
+            tier.rarity == "legendary" && (rod?.rarity != "legendary" || hook?.rarity != "legendary") -> 0
+            spec.fish.none { it.rarity == tier.rarity && (it.requiredHookId == null || it.requiredHookId == hookId) } -> 0
+            else -> maxOf(1L, tier.weight.toLong() * (rod?.rarityWeights?.get(tier.rarity) ?: 100) *
+                (hook?.rarityWeights?.get(tier.rarity) ?: 100) * (bait?.rarityWeights?.get(tier.rarity) ?: 100) / 1_000_000L).toInt()
         } }
     }
 
-    /** Server-private seed with an avalanche: successive collection draws must not be correlated.
-     * Unclaimed species are private; changing specialized gear cannot preview a better catch. */
-    fun selectFishingCatch(serverSeed: String, rodId: String, baitId: String?, hookId: String = "bare_hook", drawIndex: Int = 0): String {
-        val weights = fishingWeights(rodId, baitId, hookId)
+    /** Display-only distribution; the actual draw below first selects class, then uniform species. */
+    fun fishingWeights(rodId: String, baitId: String?, hookId: String = "bare_hook"): List<Pair<EconomyFishSpec, Double>> {
+        val spec = checkNotNull(catalog.fishing)
+        val classes = fishingClassWeights(rodId, baitId, hookId).associate { it.first.rarity to it.second }
+        return spec.fish.map { fish -> fish to if (fish.requiredHookId != null && fish.requiredHookId != hookId) 0.0
+            else classes.getValue(fish.rarity).toDouble() / spec.fish.count {
+                it.rarity == fish.rarity && (it.requiredHookId == null || it.requiredHookId == hookId) }
+        }
+    }
+
+    private fun fishingRoll(seed: String, drawIndex: Int, domain: String): Long {
         var hash = 2166136261L
-        for (character in "$serverSeed:$drawIndex") hash = ((hash xor character.code.toLong()) * 16777619L) and 0xffffffffL
+        for (character in "$seed:$drawIndex:$domain") hash = ((hash xor character.code.toLong()) * 16777619L) and 0xffffffffL
         hash = ((hash xor (hash ushr 16)) * 0x85ebca6bL) and 0xffffffffL
         hash = ((hash xor (hash ushr 13)) * 0xc2b2ae35L) and 0xffffffffL
-        hash = (hash xor (hash ushr 16)) and 0xffffffffL
-        var roll = (hash * weights.sumOf { it.second } / 4294967296L).toInt()
-        for ((fish, weight) in weights) { if (roll < weight) return fish.itemId; roll -= weight }
-        return weights.last().first.itemId
+        return (hash xor (hash ushr 16)) and 0xffffffffL
+    }
+
+    /** Independent, server-private hash domains prevent class/species correlation and catch previews. */
+    fun selectFishingCatch(serverSeed: String, rodId: String, baitId: String?, hookId: String = "bare_hook", drawIndex: Int = 0): String {
+        val weights = fishingClassWeights(rodId, baitId, hookId).filter { it.second > 0 }
+        var roll = fishingRoll(serverSeed, drawIndex, "class") * weights.sumOf { it.second } / 4294967296L
+        var selected = weights.last().first
+        for ((tier, weight) in weights) {
+            if (roll < weight) { selected = tier; break }
+            roll -= weight
+        }
+        val species = checkNotNull(catalog.fishing).fish.filter {
+            it.rarity == selected.rarity && (it.requiredHookId == null || it.requiredHookId == hookId) }
+        return species[(fishingRoll(serverSeed, drawIndex, "species") * species.size / 4294967296L).toInt()].itemId
     }
 
     /** Floor one whole stack; splitting cannot improve the payout. */
@@ -231,8 +254,10 @@ object EconomyRules {
 
     /** Materialize the board from pre-command unlocks only on a successful mutation.
      * In particular, claiming a new building must not reroll previously displayed cards. */
-    fun apply(state: EconomyState, command: EconomyCommand, now: Instant, reservedItems: Map<String, Long> = emptyMap()): Pair<EconomyState, String> =
-        applyCurrent(state.copy(residentOrders = EconomyFood.normalizedOrders(state, now)), command, now, reservedItems)
+    fun apply(input: EconomyState, command: EconomyCommand, now: Instant, reservedItems: Map<String, Long> = emptyMap()): Pair<EconomyState, String> {
+        val state = EconomyFishInventory.state(input)
+        return applyCurrent(state.copy(residentOrders = EconomyFood.normalizedOrders(state, now)), command, now, reservedItems)
+    }
 
     private fun applyCurrent(state: EconomyState, command: EconomyCommand, now: Instant, reservedItems: Map<String, Long>): Pair<EconomyState, String> {
         validateEconomyCommand(command)
@@ -323,7 +348,7 @@ object EconomyRules {
                 // Fishing randomness is server-owned, unlike the client idempotency request ID.
                 val id = if (special) UUID.randomUUID().toString() else command.requestId
                 val seed = if (special) state.fishingCastSeed ?: UUID.randomUUID().toString() else state.fishingCastSeed
-                val draws = if (special) checkNotNull(spec).collectionDrawsByRoute[exploration.id] ?: 1 else 0
+                val draws = if (special) exploration.rewards.getValue("fish").toInt() else 0
                 val catches = (0 until draws).map { index -> selectFishingCatch(checkNotNull(seed), tackle.equippedRodId, tackle.equippedBaitId, tackle.equippedHookId, index) }
                 val fishingCatch = if (special) EconomyFishingCatch(tackle.equippedRodId, tackle.equippedBaitId,
                     catches.first(), tackle.equippedHookId) else null
@@ -447,7 +472,7 @@ object EconomyRules {
                 val rod = spec.rods.find { offer.kind == "rod" && it.id == offer.itemId }
                 val hook = spec.hooks.find { offer.kind == "hook" && it.id == offer.itemId }
                 val bait = spec.baits.find { offer.kind == "bait" && it.itemId == offer.itemId }
-                val fish = spec.fish.find { offer.kind == "fish" && it.itemId == offer.itemId && it.rarity == "common" }
+                val fish = spec.classes.find { offer.kind == "fish" && it.itemId == offer.itemId && it.rarity == "common" }
                 if (rod == null && hook == null && bait == null && fish == null) economyFailure("ECONOMY_FISHING_ITEM", "Плёска не продаёт этот предмет")
                 requireHome(state, rod?.requiredHomeLevel ?: hook?.requiredHomeLevel ?: bait?.requiredHomeLevel ?: 1)
                 if (command.quantity > catalog.maxBatch || (rod != null || hook != null) && command.quantity != 1L) invalidEconomy()
@@ -485,9 +510,10 @@ object EconomyRules {
                     if (baitId == null) "Выбрана рыбалка без наживки" else "Наживка выбрана: одна порция на следующую вылазку"
             }
             "sell", "sell_fish" -> {
-                if (command.action == "sell_fish" && catalog.fishing?.fish?.none { it.itemId == command.targetId } != false)
+                val itemId = EconomyFishInventory.itemId(command.targetId)
+                if (command.action == "sell_fish" && catalog.fishing?.classes?.none { it.itemId == itemId } != false)
                     economyFailure("ECONOMY_FISHING_ITEM", "Плёска принимает здесь только рыбу")
-                val item = catalog.items.find { it.id == command.targetId && it.tradable && it.category != "special" } ?: economyFailure("ECONOMY_ITEM", "Этот предмет нельзя продать")
+                val item = catalog.items.find { it.id == itemId && it.tradable && it.category != "special" } ?: economyFailure("ECONOMY_ITEM", "Этот предмет нельзя продать")
                 val amount = if (command.action == "sell_fish") item.baseSellPrice * command.quantity
                     else localSellPrice(item.baseSellPrice, command.quantity)
                 if (amount == 0L) economyFailure("ECONOMY_SALE_QUANTITY", "Для продажи добавьте предметы в партию: выручка должна быть хотя бы одна монета")

@@ -16,41 +16,50 @@ const spec = economyCatalog.fishing, math = economicMath(economyCatalog);
 const select = (patch = {}) => ({ rodId: "reed_rod", hookId: "bare_hook", baitId: null, routeId: "shore", ...patch });
 const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-10, `${a} != ${b}`);
 
-test("DEV normalizes the server weights and preserves batch size for all 360 route and tackle choices", () => {
+test("DEV normalizes class and species probabilities for every route and tackle choice", () => {
   for (const rod of spec.rods) for (const hook of spec.hooks) for (const baitId of [null, ...spec.baits.map(bait => bait.itemId)]) for (const routeId of spec.routeIds) {
     const report = fishingDiagnostics(select({ rodId: rod.id, hookId: hook.id, baitId, routeId }));
     const portfolio = math.catchPortfolio(rod.id, baitId, routeId, hook.id);
     assert.ok(report); near(report.rows.reduce((sum, row) => sum + row.expectedCount, 0), report.totalFish);
     near(report.rows.reduce((sum, row) => sum + row.probability, 0), 1);
+    near(report.classes.reduce((sum, group) => sum + group.probability, 0), 1);
+    for (const group of report.classes) {
+      near(group.probability, portfolio.classProbabilities[group.itemId]);
+      near(group.expectedCount, portfolio.output[group.itemId]);
+      assert.equal(group.probability, group.weight / group.totalWeight);
+      near(report.rows.filter(row => row.rarity === group.rarity).reduce((sum, row) => sum + row.probability, 0), group.probability);
+    }
     for (const row of report.rows) {
-      assert.equal(row.probability, portfolio.probabilities[row.itemId]);
-      near(row.expectedCount, portfolio.output[row.itemId]);
-      assert.equal(row.probability, row.weight / row.totalWeight);
+      near(row.probability, portfolio.probabilities[row.itemId]);
+      near(row.expectedCount, report.draws * portfolio.probabilities[row.itemId]);
     }
   }
 });
 
-test("trip chances use six separate camp draws and include guaranteed ordinary fish", () => {
+test("every camp fish gets a class draw and collection species are uniform within the class", () => {
   const report = fishingDiagnostics(select({ rodId: "starfall_rod", hookId: "leviathan_hook", baitId: "firefly_bait", routeId: "shore_camp" }));
-  const shark = report.rows.find(row => row.itemId === "fish_shark"), ordinary = report.rows.find(row => row.itemId === "fish");
-  assert.equal(report.draws, 6); assert.equal(report.totalFish, 24);
-  assert.equal(shark.weight, 504); assert.equal(shark.totalWeight, 5047);
-  near(shark.atLeastOne, 1 - (1 - 504 / 5047) ** 6);
-  near(shark.expectedCount, 6 * 504 / 5047);
-  assert.equal(ordinary.guaranteed, 18); assert.equal(ordinary.atLeastOne, 1);
-  near(ordinary.expectedCount, 18 + ordinary.probability * 6);
-  assert.deepEqual([shark.rodFactor, shark.hookFactor, shark.baitFactor], [400, 300, 150]);
+  const shark = report.rows.find(row => row.itemId === "fish_shark"), legendary = report.classes.find(group => group.rarity === "legendary");
+  assert.equal(report.draws, 8); assert.equal(report.totalFish, 8);
+  near(shark.atLeastOne, 1 - (1 - shark.probability) ** 8);
+  near(shark.expectedCount, 8 * shark.probability);
+  near(legendary.atLeastOne, 1 - (1 - legendary.probability) ** 8);
+  for (const group of report.classes) {
+    const rows = report.rows.filter(row => row.rarity === group.rarity && !row.reason);
+    for (const row of rows) near(row.probability, group.probability / rows.length);
+  }
+  assert.deepEqual([legendary.rodFactor, legendary.hookFactor, legendary.baitFactor], [400, 300, 150]);
 });
 
 test("DEV explains forbidden legendary fish, even when the hook is already legendary", () => {
   const report = fishingDiagnostics(select({ hookId: "leviathan_hook", baitId: "firefly_bait" }));
   const shark = report.rows.find(row => row.itemId === "fish_shark");
-  assert.equal(shark.reason, "legendary_tackle"); assert.equal(shark.weight, 0);
+  assert.equal(shark.reason, "legendary_tackle"); assert.equal(shark.probability, 0);
   assert.equal(shark.expectedCount, 0); assert.ok(shark.atLeastOne === 0);
   const html = renderToStaticMarkup(createElement(FishingDiagnosticReport, { report }));
   assert.match(html, /Нужны легендарные удочка и крючок/);
-  assert.match(html, /Точная доля: 0 \/ /);
+  assert.match(html, /Точная доля класса: 0 \/ /);
   assert.equal((html.match(/data-dev-fish=/g) ?? []).length, spec.fish.length);
+  assert.equal((html.match(/data-dev-fish-class=/g) ?? []).length, spec.classes.length);
 });
 
 test("DEV lists unowned test gear without changing the account or hiding species", () => {

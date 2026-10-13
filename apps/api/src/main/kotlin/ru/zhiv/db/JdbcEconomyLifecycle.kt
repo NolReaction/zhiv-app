@@ -12,6 +12,7 @@ import ru.zhiv.economy.EconomyCollectionProgress
 import ru.zhiv.economy.EconomyRareDrops
 import ru.zhiv.economy.EconomyFood
 import ru.zhiv.economy.EconomyFoodState
+import ru.zhiv.economy.EconomyFishInventory
 import ru.zhiv.world.WorldState
 import ru.zhiv.world.worldJson
 import ru.zhiv.economy.economyJson
@@ -29,7 +30,7 @@ private fun economyStateForReview(c: Connection, user: UUID): EconomyState {
         statement.setObject(1, user)
         statement.executeQuery().use { if (it.next()) economyJson.decodeFromString<EconomyState>(it.getString(1)) else null }
     }
-    if (current != null) return current
+    if (current != null) return EconomyFishInventory.state(current)
     val old = c.prepareStatement("SELECT state FROM world_profiles WHERE user_id=?").use { statement ->
         statement.setObject(1, user)
         statement.executeQuery().use { if (it.next()) worldJson.decodeFromString<WorldState>(it.getString(1)) else WorldState() }
@@ -53,8 +54,9 @@ internal fun economyMergeConflicts(c: Connection, target: UUID, source: UUID): L
         statement.setObject(3,target); statement.setObject(4,source)
         statement.executeQuery().use { rows -> buildMap<String, Long> { while (rows.next()) put(rows.getString(1),rows.getLong(2)) } }
     }
-    val combinedInventory = (states.flatMap { it.inventory.keys } + escrow.keys).distinct().associateWith { item ->
-        states.sumOf { it.inventory[item] ?: 0L } + (escrow[item] ?: 0L)
+    val canonicalEscrow = EconomyFishInventory.items(escrow)
+    val combinedInventory = (states.flatMap { it.inventory.keys } + canonicalEscrow.keys).distinct().associateWith { item ->
+        states.sumOf { it.inventory[item] ?: 0L } + (canonicalEscrow[item] ?: 0L)
     }
     val combinedBuildings = states.flatMap { it.buildings.keys }.distinct().associateWith { building ->
         states.maxOf { it.buildings[building] ?: 0 }
