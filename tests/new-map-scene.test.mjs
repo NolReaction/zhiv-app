@@ -53,6 +53,8 @@ async function modules(override) {
       ...await vite.ssrLoadModule("/features/world/simulation/clearing-activity.ts"),
       ...await vite.ssrLoadModule("/features/world/navigation/resident-traffic.ts"),
       ...await vite.ssrLoadModule("/features/world/scene/new-map-scene.ts"),
+      ...await vite.ssrLoadModule("/features/world/characters/social/forest-conversations.ts"),
+      ...await vite.ssrLoadModule("/features/audio/runtime/audio-service.ts"),
       ...await vite.ssrLoadModule("/features/world/state/economy/economy-scene-state.ts"),
       ...await vite.ssrLoadModule("/features/world/state/economy/economy-production-state.ts"),
       ...await vite.ssrLoadModule("/features/world/state/forest-observer.ts"),
@@ -4855,8 +4857,8 @@ test("authoritative forest-memory rehydration drops speech and visits without sa
   } finally { scene?.dispose(); probe?.release(); forgetForestSession(key); env.restore(); }
 });
 
-test("a voluntary map conversation alternates three lines and releases both neighbours after its finite exchange", async () => {
-  const { createMapEngine, connectForestSession, TILED_WORLD, worldDevStore } = await modules(residentFixture());
+test("a voluntary map conversation preserves a complete script and releases both neighbours after its finite exchange", async () => {
+  const { createMapEngine, connectForestSession, TILED_WORLD, worldDevStore, FOREST_CONVERSATIONS } = await modules(residentFixture());
   const env = browser(); let engine, probe;
   try {
     worldDevStore.patch({ ...quietClearing, autoLife: true });
@@ -4871,20 +4873,102 @@ test("a voluntary map conversation alternates three lines and releases both neig
     const social = probe.state.social, hero = { ...probe.state.clearing.position }, clock = sceneClock(env);
     clock.until(() => social.meeting?.phase === "talk", "a visitor arrives before anyone speaks", 160);
     const lines = [], ids = new Set();
-    for (let pass = 0; pass < 400 && social.meeting; pass++) {
+    for (let pass = 0; pass < 720 && social.meeting; pass++) {
       if (social.current && !ids.has(social.current.id)) { ids.add(social.current.id); lines.push({ ...social.current }); }
       assert.deepEqual(probe.state.clearing.position, hero, "the brief exchange holds the listener without moving its feet");
       assert.ok(distanceBetween(probe.state.builderMind.position, hero) >= 24, "the conversation preserves a visible body gap");
       clock.step();
     }
-    assert.deepEqual(lines.map(line => line.speaker), ["builder", "mochlik", "builder"]);
-    assert.equal(new Set(lines.map(line => line.text)).size, 3);
+    const script = FOREST_CONVERSATIONS.find(topic => topic.id === social.topicHistory.at(-1));
+    assert.deepEqual(lines.map(({ speaker, text }) => ({ speaker, text })), script.lines);
+    assert.ok(lines.length >= 4 && lines.length <= 6);
     assert.equal(social.meeting, null); assert.equal(social.current, null); assert.equal(social.queue.length, 0);
     assert.equal(probe.state.builderMind.socialVisit, null, "the visit cannot reserve the builder after the last reply");
     const labels = new Set(canvas.calls.filter(call => call.method === "fillText").map(call => call.args[0]));
     assert.ok(labels.has("Шишколап") && labels.has("Мохлик"), "the full map paints both turns above their visible speakers");
-    assert.ok(social.nextEncounterAt > social.elapsed + 100, "a conversation is followed by a substantial quiet interval");
+    assert.ok(social.nextEncounterAt > social.elapsed + 60, "a conversation is followed by a substantial quiet interval");
   } finally { engine?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
+
+test("Mochlik and Plesk hold only their live conversation and a manual shop visit preempts it", async () => {
+  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore, FOREST_CONVERSATIONS } = await modules(tradingFixture());
+  const env = browser(); let scene, probe;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: true });
+    const initial = { ...options, reducedMotion: false, serverNow: 100_000, presenceKey: "social-mochlik-plesk-runtime" };
+    scene = mountHabitat(env.surface(), initial, { activity() {}, ready() {}, failure: assert.fail });
+    env.finish(); await flush(); env.finishPath("/test-plesk-shop.webp"); await flush();
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 100_000, 0, () => {});
+    const state = probe.state, plesk = state.pleskMind, social = state.social;
+    state.builderMind = null;
+    state.director.nextDecisionAt = 120;
+    plesk.intent = "look"; plesk.stage = { ...plesk.stage, action: "idle", duration: .15 }; plesk.age = 0; plesk.queue = [];
+    social.nextEncounterAt = social.elapsed;
+    const heroFeet = { ...state.clearing.position }, pleskFeet = { ...plesk.position }, clock = sceneClock(env);
+    clock.until(() => social.meeting?.phase === "talk", "nearby free Mochlik and Plesk start a real map conversation", 20);
+    assert.equal(social.meeting.guest, "mochlik"); assert.equal(social.meeting.host, "plesk");
+    const heldAge = plesk.age, heroAge = state.clearing.stageElapsed, spoken = [], seen = new Set();
+    for (let pass = 0; pass < 720 && social.meeting; pass++) {
+      if (social.current && !seen.has(social.current.id)) { seen.add(social.current.id); spoken.push({ speaker: social.current.speaker, text: social.current.text }); }
+      assert.deepEqual(plesk.position, pleskFeet); assert.deepEqual(state.clearing.position, heroFeet);
+      assert.equal(plesk.age, heldAge, "socialHold prevents a nearly complete idle stage from turning into fishing");
+      assert.equal(state.clearing.stageElapsed, heroAge, "the actual director holds Mochlik during his own exchange");
+      clock.step();
+    }
+    assert.equal(social.meeting, null);
+    const script = FOREST_CONVERSATIONS.find(topic => topic.id === social.topicHistory.at(-1));
+    assert.equal(script.pair, "mochlik-plesk"); assert.deepEqual(spoken, script.lines);
+    // Start another finite exchange to exercise the public manual-shop action,
+    // rather than toggling the social state or calling its cancellation helper.
+    plesk.intent = "look"; plesk.stage = { ...plesk.stage, action: "idle", duration: 60 }; plesk.age = 0; plesk.queue = [];
+    state.clearing.waitSeconds = 60; state.director.nextDecisionAt = state.elapsed + 60;
+    social.nextEncounterAt = social.elapsed;
+    clock.until(() => social.meeting?.phase === "talk", "the next requested quiet opportunity starts", 20);
+    scene.visitTradingPlace("plesk");
+    assert.equal(social.meeting, null); assert.equal(social.queue.length, 0); assert.equal(social.current, null);
+    assert.equal(plesk.tradePending, true);
+    assert.equal(state.director.tradeVisit?.phase, "outbound", "the optional chat cannot make a manual trip to the stall fail its blocked gate");
+    const ageBefore = plesk.age;
+    clock.advance(.2);
+    assert.ok(plesk.age > ageBefore || plesk.intent === "trade", "Plesk resumes her finite stage after the hold is released");
+    assert.ok(distanceBetween(state.clearing.position, heroFeet) > 0, "Mochlik follows the explicit shop route after cancellation");
+  } finally { scene?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
+test("Plesk and the builder finish their live exchange while uninvolved Mochlik keeps his route", async () => {
+  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore, FOREST_CONVERSATIONS, requestClearingPoint } = await modules(residentFixture());
+  const env = browser(); let scene, probe;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: true });
+    const initial = { ...options, reducedMotion: false, serverNow: 100_000, presenceKey: "social-builder-plesk-runtime" };
+    scene = mountHabitat(env.surface(), initial, { activity() {}, ready() {}, failure: assert.fail });
+    env.finish(); await flush();
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 100_000, 0, () => {});
+    const state = probe.state, plesk = state.pleskMind, builder = state.builderMind, social = state.social;
+    state.director.nextDecisionAt = 120;
+    builder.position = { x: 660, y: 680 }; builder.route = null; builder.target = null; builder.wait = 60; builder.action = "idle";
+    plesk.intent = "look"; plesk.stage = { ...plesk.stage, action: "idle", duration: 60 }; plesk.age = 0; plesk.queue = [];
+    const heroFeet = { ...state.clearing.position }, pleskFeet = { ...plesk.position };
+    assert.equal(requestClearingPoint(state.clearing, { x: 590, y: 660 }), true);
+    social.nextEncounterAt = social.elapsed;
+    const clock = sceneClock(env);
+    clock.until(() => social.meeting?.phase === "talk", "the real builder visits idle Plesk while Mochlik has his own route", 160);
+    assert.equal(social.meeting.guest, "builder"); assert.equal(social.meeting.host, "plesk");
+    const heldAge = plesk.age, builderFeet = { ...builder.position }, heroAtTalk = { ...state.clearing.position }, spoken = [], seen = new Set();
+    plesk.stage.duration = heldAge + .1;
+    for (let pass = 0; pass < 720 && social.meeting; pass++) {
+      if (social.current && !seen.has(social.current.id)) { seen.add(social.current.id); spoken.push({ speaker: social.current.speaker, text: social.current.text }); }
+      assert.deepEqual(plesk.position, pleskFeet); assert.deepEqual(builder.position, builderFeet);
+      assert.equal(plesk.age, heldAge, "Plesk stays in the accepted conversation instead of restarting her AI stage");
+      clock.step();
+    }
+    const script = FOREST_CONVERSATIONS.find(topic => topic.id === social.topicHistory.at(-1));
+    assert.equal(script.pair, "builder-plesk"); assert.deepEqual(spoken, script.lines);
+    assert.equal(social.meeting, null); assert.equal(builder.socialVisit, null);
+    assert.ok(distanceBetween(state.clearing.position, heroFeet) > 30);
+    assert.ok(distanceBetween(state.clearing.position, heroAtTalk) > 10, "a Plesk-builder chat cannot apply Mochlik's social hold");
+  } finally { scene?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
 });
 
 
@@ -5088,4 +5172,72 @@ test("water physics shares one clock across circle map paint and camera handoff"
     circle.configure({ ...initial, presenceKey: "water-other-account" });
     assert.deepEqual(water, paused, "switching accounts cannot apply the new account's clock to old waves");
   } finally { scenes.forEach(scene => scene.dispose()); probe?.release(); worldDevStore.reset(); env.restore(); }
+});
+
+function treeTouchFixture() {
+  return { ...fixture, occluders: [
+    { id: "test-canopy", frontY: 690, points: waterRectangle(770, 560, 90, 90) },
+    { id: "test-boulder", frontY: 690, points: waterRectangle(890, 560, 70, 70) },
+  ] };
+}
+
+test("tree taps wait for a completed gesture and never repeat while holding panning pinching or cancelling", async t => {
+  const { createMapEngine, worldDevStore, getAudioRuntime } = await modules(treeTouchFixture());
+  const env = browser(); let engine;
+  const events = [], runtime = getAudioRuntime();
+  t.mock.method(runtime, "play", event => events.push(event));
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false });
+    const canvas = env.surface(400), loading = createMapEngine(canvas,
+      { ...options, reducedMotion: false, serverNow: 100_000, presenceKey: "tree-gestures" }, assert.fail, [], undefined, {}, { objectAnchorsEnabled: false });
+    env.finish(); await flush(); engine = await loading; engine.control("overview");
+    const point = { x: 810, y: 600 }, tap = () => waterPointer(canvas, point);
+    let first = tap(); sendWaterPointer(canvas, "pointerdown", first);
+    for (let frame = 0; frame < 8; frame++) canvas.flushFrame();
+    assert.equal(events.length, 0, "holding the tree does not repeat a contact");
+    sendWaterPointer(canvas, "pointermove", { ...first, clientX: first.clientX + 30 });
+    sendWaterPointer(canvas, "pointerup", { ...first, clientX: first.clientX + 30 });
+    engine.control("overview");
+    for (const reason of ["pointercancel", "lostpointercapture"]) {
+      first = tap(); sendWaterPointer(canvas, "pointerdown", first); sendWaterPointer(canvas, reason, first);
+    }
+    first = tap(); const second = { ...first, pointerId: 2, clientX: first.clientX + 20 };
+    sendWaterPointer(canvas, "pointerdown", first); sendWaterPointer(canvas, "pointerdown", second);
+    sendWaterPointer(canvas, "pointerup", first); sendWaterPointer(canvas, "pointerup", second);
+    engine.control("overview");
+    const rock = waterPointer(canvas, { x: 920, y: 600 });
+    sendWaterPointer(canvas, "pointerdown", rock); sendWaterPointer(canvas, "pointerup", rock);
+    assert.equal(events.length, 0, "gestures and non-tree artwork stay silent");
+    first = tap(); sendWaterPointer(canvas, "pointerdown", first); sendWaterPointer(canvas, "pointerup", first);
+    assert.equal(events.length, 1); assert.equal(events[0].cueId, "action.tree.rustle");
+    for (let repeat = 0; repeat < 8; repeat++) {
+      sendWaterPointer(canvas, "pointerdown", first); sendWaterPointer(canvas, "pointerup", first);
+    }
+    assert.equal(events.length, 1, "rapid completed taps are bounded too");
+  } finally { engine?.dispose(); runtime.dispose(); worldDevStore.reset(); env.restore(); }
+});
+
+test("tree contacts respect scene ownership pause and hidden state while reduced motion keeps only a quiet sound", async t => {
+  const { mountHabitat, worldDevStore, getAudioRuntime } = await modules(treeTouchFixture());
+  const env = browser(); let scene;
+  const events = [], runtime = getAudioRuntime(); t.mock.method(runtime, "play", event => events.push(event));
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false });
+    const initial = { ...options, view: "world", serverNow: 100_000, presenceKey: "tree-still" };
+    scene = mountHabitat(env.surface(), initial, { activity() {}, ready() {}, failure: assert.fail });
+    env.finish(); await flush();
+    const point = { x: 810, y: 600 };
+    for (const next of [{ ...initial, paused: true }, { ...initial, backgrounded: true }, { ...initial, view: "circle" }]) {
+      scene.configure(next); assert.equal(scene.disturbTree(point), false);
+    }
+    scene.configure(initial); env.visibility(true); assert.equal(scene.disturbTree(point), false);
+    env.visibility(false);
+    assert.equal(scene.disturbTree({ x: NaN, y: 600 }), false);
+    assert.equal(scene.disturbTree({ x: 920, y: 600 }), false);
+    assert.equal(events.length, 0);
+    assert.equal(scene.disturbTree(point), true);
+    assert.equal(events.length, 1); assert.equal(events[0].cueId, "action.tree.rustle");
+    assert.equal(env.frames.size, 0, "reduced motion does not start a leaf animation loop");
+    scene.dispose(); assert.equal(scene.disturbTree(point), false);
+  } finally { scene?.dispose(); runtime.dispose(); worldDevStore.reset(); env.restore(); }
 });

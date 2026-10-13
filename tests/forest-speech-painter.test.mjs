@@ -8,6 +8,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { layoutForestSpeech, drawForestSpeech, FOREST_SPEECH_FONT } = await vite.ssrLoadModule("/features/world/characters/social/forest-speech-painter.ts");
+const { FOREST_CONVERSATIONS } = await vite.ssrLoadModule("/features/world/characters/social/forest-conversations.ts");
 const measure = text => Array.from(text).reduce((width, char) => width + (char === " " ? 3.5 : 7), 0);
 const base = { id: "greeting", speaker: "builder", text: "Доски ровные. Можно и о жизни поговорить!",
   elapsed: 1, duration: 5, anchor: { x: 160, y: 150 } };
@@ -84,6 +85,17 @@ test("circular view wraps a complete short reply into the available space to the
   const fallback = layoutForestSpeech({ ...base, text: long, anchor }, viewport, measure);
   assert.ok(fallback.x <= anchor.x, "a phrase that needs more room retains the wider fallback");
   assert.equal(fallback.lines.join(" "), long, "do not sacrifice readable words for a strict side placement");
+});
+
+test("every authored conversation keeps its complete replies and punchlines in the circular viewport", () => {
+  const viewport = { width: 320, height: 320, insets: { top: 48, bottom: 48, left: 30, right: 30 } };
+  for (const conversation of FOREST_CONVERSATIONS) for (const line of conversation.lines) {
+    const box = layoutForestSpeech({ ...base, ...line, anchor: { x: 160, y: 170 } }, viewport, measure);
+    assert.ok(box, `${conversation.id}: a reply must remain visible`);
+    assert.equal(box.lines.join(" "), line.text, `${conversation.id}: a reply must not be shortened`);
+    assert.ok(box.lines.length <= 2);
+    assert.ok(box.lines.every(text => measure(text) <= box.width - 20));
+  }
 });
 
 test("bubble points toward a visible resident and switches below heads near the top", () => {

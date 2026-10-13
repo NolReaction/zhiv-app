@@ -2160,6 +2160,21 @@
       "cooldownMs": 180,
       "pitchVariation": 0.035,
       "fadeMs": 12
+    },
+    {
+      "id": "action.tree.rustle",
+      "bus": "world",
+      "mode": "one-shot",
+      "assets": [
+        "action.bush.rustle.01",
+        "action.bush.rustle.02"
+      ],
+      "gainDb": -16,
+      "priority": 44,
+      "maxInstances": 2,
+      "cooldownMs": 350,
+      "pitchVariation": 0.025,
+      "fadeMs": 18
     }
   ],
   "profiles": [

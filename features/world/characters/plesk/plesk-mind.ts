@@ -12,7 +12,9 @@ import type { FixedWorldScene, WorldPoint } from "@/features/world/tiled/types";
 
 export type PleskIntent = "fish" | "trade" | "rest" | "look" | "greet" | "tackle";
 export type PleskNeeds = { energy: number; patience: number; social: number };
-export type PleskEnvironment = { rain: number; dusk: number; playerNear?: boolean; wildlife?: boolean; occupants?: readonly ResidentOccupant[] };
+export type PleskEnvironment = { rain: number; dusk: number; playerNear?: boolean; wildlife?: boolean;
+  /** Only an accepted finite conversation may pause an otherwise idle resident. */
+  socialHold?: boolean; occupants?: readonly ResidentOccupant[] };
 export type PleskObservation = {
   action: PleskAction; intent: PleskIntent; reason: string; needs: PleskNeeds;
   catchCount: number; destinationId: string; decisions: number;
@@ -239,6 +241,19 @@ export function advancePleskMind(mind: PleskMind | null, scene: FixedWorldScene,
   const places = pleskLocalPlaces(scene);
   if (!places) { mind.available = false; mind.reason = "Личный пирс недоступен, ждёт безопасной разметки."; observe(mind); return; }
   if (!acceptScene(mind, scene, places)) { observe(mind); return; }
+  // A conversation owns no doorway or work route. Yielding changes the visible
+  // action to walking, so the social director releases the exchange next tick.
+  if (environment.socialHold && !passageYields.has(mind)) beginPassageYield(mind, places, environment.occupants);
+  if (environment.socialHold && !mind.noticePending && !mind.tradePending && !passageYields.has(mind)
+    && ["idle", "rest"].includes(mind.stage.action) && !mind.stage.deposit && !mind.stage.sell) {
+    const step = Math.min(PLESK_MIND_LIMITS.maxDelta, dt);
+    mind.elapsed += step;
+    mind.needs.energy = clamp(mind.needs.energy + step * .001);
+    mind.needs.patience = clamp(mind.needs.patience + step * .008);
+    mind.needs.social = clamp(mind.needs.social - step * .016);
+    mind.reason = "Обменивается новостями с соседом.";
+    observe(mind); return;
+  }
   if (environment.wildlife && !mind.noticePending && !mind.tradePending) {
     const step = Math.min(PLESK_MIND_LIMITS.maxDelta, dt);
     mind.elapsed += step;

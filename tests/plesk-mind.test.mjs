@@ -24,6 +24,54 @@ function until(mind, predicate, seconds = 180, env = day) {
   assert.fail(`condition not reached: ${JSON.stringify(mind.observation)}`);
 }
 
+test("an accepted conversation pauses only an idle Plesk and resumes her exact harmless stage", () => {
+  const mind = createPleskMind(world, 9);
+  assert.equal(mind.stage.action, "idle");
+  const stage = mind.stage, age = mind.age, queue = [...mind.queue], position = { ...mind.position }, count = mind.catchCount;
+  advance(mind, 28, { ...day, socialHold: true });
+  assert.equal(mind.stage, stage); assert.equal(mind.age, age);
+  assert.deepEqual(mind.queue, queue); assert.deepEqual(mind.position, position); assert.equal(mind.catchCount, count);
+  assert.match(mind.reason, /соседом/);
+  advance(mind, .1);
+  assert.ok(mind.stage !== stage || mind.age > age, "ordinary life resumes as soon as the conversation releases her");
+});
+
+test("a greeting or shop request immediately outranks a conversation hold", () => {
+  for (const request of [noticePleskMind, requestPleskTrade]) {
+    const mind = createPleskMind(world, 9), stage = mind.stage;
+    advance(mind, 1, { ...day, socialHold: true });
+    request(mind); advance(mind, 1, { ...day, socialHold: true });
+    assert.notEqual(mind.stage, stage);
+    assert.equal(mind.stage.action, request === noticePleskMind ? "greet" : "walk");
+  }
+});
+
+test("a stale conversation hold cannot pause fishing, a catch deposit or a sale", () => {
+  for (const action of ["cast", "fish", "pack", "trade"]) {
+    const mind = createPleskMind(world, 9);
+    until(mind, item => item.stage.action === action, 600);
+    const stage = mind.stage, age = mind.age;
+    advance(mind, .1, { ...day, socialHold: true });
+    assert.ok(mind.stage !== stage || mind.age > age, action);
+  }
+});
+
+test("a conversation yields to an incoming work route instead of blocking the passage", () => {
+  const point = (x, y) => ({ x, y });
+  const scene = { schemaVersion: 1, id: "social-passage", width: 400, height: 240, terrain: [], sites: [], paths: [],
+    focus: { x: 0, y: 0, width: 400, height: 240 }, actor: { spawn: point(80, 120), size: 50 },
+    destinations: [{ id: "plesk-fishing", position: point(230, 120), pauseSeconds: 4 },
+      { id: "plesk-trade", position: point(350, 120), pauseSeconds: 4 }],
+    navigation: { version: 1, cellSize: 5, areas: [{ id: "grass", points: [point(0, 0), point(400, 0), point(400, 240), point(0, 240)] }], obstacles: [], interests: [] } };
+  const mind = createPleskMind(scene, 9), feet = { ...mind.position }, queue = [...mind.queue];
+  const route = { id: "mochlik", position: point(190, 120), size: 50, moving: true,
+    intent: { points: [point(190, 120), point(300, 120)], target: point(300, 120), priority: 3 } };
+  advancePleskMind(mind, scene, .1, { ...day, socialHold: true, occupants: [route] });
+  assert.equal(mind.stage.action, "walk"); assert.equal(mind.stage.target.id, "plesk-yield");
+  assert.ok(Math.hypot(mind.position.x - feet.x, mind.position.y - feet.y) <= PLESK.speed * .1 + 1e-6);
+  assert.deepEqual(mind.queue, queue); assert.equal(mind.catchCount, 0);
+});
+
 test("the live resident chooses occupations from needs, stock and weather rather than replaying a timed tour", () => {
   const ready = createPleskMind(world, 9), tired = createPleskMind(world, 9), rain = createPleskMind(world, 9);
   tired.needs.energy = .08;

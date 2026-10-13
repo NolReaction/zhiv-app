@@ -333,7 +333,8 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
         else if (object) activateObject(object.id);
         else {
           setSelectedObject(null);
-          if (habitat.hitPet(petPoint.x, petPoint.y)) habitat.notice();
+          if (habitat.disturbTree?.(world)) { /* A crown consumes its tap, including its quiet cooldown. */ }
+          else if (habitat.hitPet(petPoint.x, petPoint.y)) habitat.notice();
           else habitat.disturbWater?.(world);
         }
       } else {
