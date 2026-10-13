@@ -1,16 +1,14 @@
 /**
- * Render the product site's illustrative forest tour with the game's compositor.
- * Requires ffmpeg, esbuild, sharp and @napi-rs/canvas. Optional render-only modules
+ * Render the product site's still artwork with the game's compositor.
+ * Requires esbuild, sharp and @napi-rs/canvas. Optional render-only modules
  * can live outside this repository via SITE_MEDIA_NODE_MODULES. The app itself
- * needs none of these at runtime. Pass --stills-only to skip the MP4.
+ * needs none of these at runtime. A future recorded video is supplied separately.
  */
 import { createRequire } from "node:module";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { spawn } from "node:child_process";
-import { once } from "node:events";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
@@ -61,7 +59,6 @@ try {
   const options = { levels, night: false, debug: false, selectedSiteId: null, reducedMotion: false, showBuildings: true, showHero: true };
   const route = runtime.createPreviewRoute(scene);
   if (!route.select("clearing-look")) throw new Error(route.status().error);
-  const smooth = value => { const t = Math.max(0, Math.min(1, value)); return t * t * (3 - 2 * t); };
 
   function render(canvas, camera, elapsed = 0, night = 0, actor = null) {
     const ctx = canvas.getContext("2d");
@@ -88,58 +85,14 @@ try {
   await sharp(render(map, mapCamera, 3, .86).toBuffer("image/png")).webp({ quality: 80, effort: 6 }).toFile(path.join(output, "map-night.webp"));
   console.log("Rendered poster.webp (1440×900), map.webp and map-night.webp (1600×1600).");
 
-  if (!process.argv.includes("--stills-only")) {
-    const fps = 24, duration = 12, frames = fps * duration;
-    const video = createCanvas(1280, 720);
-    const sourceVideo = path.join(temporary, "source.mp4");
-    const ffmpeg = spawn(process.env.FFMPEG_PATH ?? "ffmpeg", [
-      "-y", "-hide_banner", "-loglevel", "error", "-f", "image2pipe", "-framerate", String(fps), "-i", "pipe:0",
-      "-an", "-c:v", "libx264", "-preset", "slow", "-crf", "27", "-maxrate", "1600k", "-bufsize", "3200k",
-      "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-map_metadata", "-1", sourceVideo,
-    ], { stdio: ["pipe", "ignore", "inherit"] });
-    const completion = once(ffmpeg, "close");
-    route.start(false);
-    try {
-      for (let index = 0; index < frames; index++) {
-        const time = index / fps;
-        // A calm out-and-back camera move ends at its starting composition.
-        const sweep = (1 - Math.cos(time / duration * Math.PI * 2)) / 2;
-        const night = smooth((sweep - .3) / .7) * .86;
-        const camera = { x: 610 + 17 * sweep, y: 615 - 42 * sweep, width: 570 + 400 * sweep };
-        if (index === fps * 8) route.reverse(false);
-        route.advance(1 / fps * .55);
-        const frame = render(video, camera, time, night, route.at(time, true)).toBuffer("image/png");
-        if (!ffmpeg.stdin.write(frame)) await once(ffmpeg.stdin, "drain");
-        if (index % (fps * 3) === 0) console.log(`Rendering tour: ${index}/${frames} frames`);
-      }
-      ffmpeg.stdin.end();
-      const [code] = await completion;
-      if (code !== 0) throw new Error(`ffmpeg exited with code ${code}`);
-    } catch (error) {
-      ffmpeg.kill();
-      throw error;
-    }
-    // Two-pass encoding keeps the optional mobile teaser around 330 KB.
-    for (const pass of [1, 2]) {
-      const encoder = spawn(process.env.FFMPEG_PATH ?? "ffmpeg", [
-        "-y", "-hide_banner", "-loglevel", "error", "-i", sourceVideo,
-        "-vf", "scale=854:480:flags=lanczos,fps=20", "-an", "-c:v", "libx264", "-preset", "slow", "-b:v", "210k",
-        "-pass", String(pass), "-passlogfile", path.join(temporary, "tour-pass"), "-pix_fmt", "yuv420p",
-        ...(pass === 1 ? ["-f", "null", "-"] : ["-movflags", "+faststart", path.join(output, "forest-tour.mp4")]),
-      ], { stdio: ["ignore", "ignore", "inherit"] });
-      const [code] = await once(encoder, "close");
-      if (code !== 0) throw new Error(`ffmpeg encoding pass ${pass} exited with code ${code}`);
-    }
-    console.log("Rendered forest-tour.mp4 (854×480, 12 seconds, 20fps, H.264, no audio).");
-  }
   await writeFile(path.join(output, "media.json"), JSON.stringify({
-    title: "Видеопрогулка по полянке",
-    description: "Иллюстративный пролёт камеры по текущей карте с Мохликом и сменой освещения. Подготовлено игровым рендерером; не запись действий игрока.",
+    title: "Лесной мир «Я живой»",
+    description: "Иллюстрации текущей полянки, подготовленные игровым рендерером без аккаунта и действий игрока.",
     scene: source.id, levels,
     poster: { src: "/site/poster.webp", width: 1440, height: 900, alt: "Мохлик у дома-пня и ягодного куста на лесной полянке" },
     map: { src: "/site/map.webp", width: 1600, height: 1600, alt: "Карта лесного мира с полянкой, мастерской, шахтой, рекой и домами жителей" },
     nightMap: { src: "/site/map-night.webp", width: 1600, height: 1600, alt: "Тот же лес вечером: свет в окнах домов и фонари вдоль дорожек" },
-    video: { src: "/site/forest-tour.mp4", width: 854, height: 480, duration: 12, fps: 20, audio: false },
+    video: null,
   }, null, 2) + "\n");
 } finally {
   await rm(temporary, { recursive: true, force: true });

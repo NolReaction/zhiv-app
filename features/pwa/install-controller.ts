@@ -127,9 +127,18 @@ export function browserInstallEnvironment(): InstallEnvironmentAdapter | null {
   return {
     events: window,
     media: query => window.matchMedia(query),
-    read: () => ({ userAgent: navigator.userAgent, platform: navigator.platform, maxTouchPoints: navigator.maxTouchPoints,
-      standalone: (navigator as Navigator & { standalone?: boolean }).standalone === true,
-      secure: window.isSecureContext, pathname: window.location.pathname, search: window.location.search, hash: window.location.hash }),
+    read: () => {
+      // Only the browser's already available brand/platform hints. No model,
+      // full version, high-entropy request, tracking or persisted UA data.
+      let clientHints: InstallEnvironment["clientHints"];
+      try {
+        const hints = (navigator as Navigator & { userAgentData?: InstallEnvironment["clientHints"] }).userAgentData;
+        if (hints) clientHints = { platform: hints.platform, brands: hints.brands?.map(({ brand }) => ({ brand })) };
+      } catch { /* Privacy tools may block client hints. */ }
+      return { userAgent: navigator.userAgent, platform: navigator.platform, maxTouchPoints: navigator.maxTouchPoints, clientHints,
+        standalone: (navigator as Navigator & { standalone?: boolean }).standalone === true,
+        secure: window.isSecureContext, pathname: window.location.pathname, search: window.location.search, hash: window.location.hash };
+    },
     storage: () => window.sessionStorage,
   };
 }

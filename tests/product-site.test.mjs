@@ -24,6 +24,10 @@ const demoCode = ts.transpileModule(demoSource, { compilerOptions: {
   target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX,
 } }).outputText;
 const renderPage = () => renderToStaticMarkup(createElement(PwaInstallProvider, null, createElement(page.default)));
+const productSource = await readFile(path.join(root, "features/site/product-site.tsx"), "utf8");
+const productCode = ts.transpileModule(productSource, { compilerOptions: {
+  target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX,
+} }).outputText;
 
 function elements(tree) {
   const result = [];
@@ -37,7 +41,7 @@ function elements(tree) {
 }
 
 // Execute the real components and handlers. Only React's hook scheduling and
-// native media/document capabilities are replaced; no production behavior is copied.
+// browser scheduling is replaced; no production behavior is copied.
 function demoHarness(name, environment = {}) {
   const slots = [], pending = [], cleanups = new Map();
   let cursor = 0;
@@ -75,7 +79,6 @@ function demoHarness(name, environment = {}) {
     render() {
       cursor = 0;
       const tree = context.exports[name](), nodes = elements(tree);
-      for (const node of nodes) if (node.type === "video" && node.props.ref) node.props.ref.current = environment.video;
       while (pending.length) pending.shift()();
       return { nodes, html: renderToStaticMarkup(tree) };
     },
@@ -94,50 +97,33 @@ function localAsset(url) {
   return path.join(root, "public", pathname);
 }
 
-// Read bounded ISO BMFF boxes directly, so the normal test runner needs neither
-// ffmpeg nor optional authoring tools to inspect the shipped MP4's real metadata.
-function boxes(bytes, start = 0, end = bytes.length) {
-  const result = [];
-  for (let offset = start; offset < end;) {
-    assert.ok(offset + 8 <= end, "truncated MP4 box header");
-    const smallSize = bytes.readUInt32BE(offset), type = bytes.toString("ascii", offset + 4, offset + 8);
-    const header = smallSize === 1 ? 16 : 8;
-    assert.ok(offset + header <= end, `truncated ${type} extended header`);
-    const size = smallSize === 1 ? Number(bytes.readBigUInt64BE(offset + 8)) : smallSize || end - offset;
-    assert.ok(size >= header && offset + size <= end, `invalid ${type} box size`);
-    result.push({ type, offset, start: offset + header, end: offset + size });
-    offset += size;
-  }
-  return result;
-}
-function child(bytes, box, type) {
-  const result = boxes(bytes, box.start, box.end).find(item => item.type === type);
-  assert.ok(result, `Missing ${type} box`);
-  return result;
-}
-
-test("public page server-renders its story, demos, installation instructions and every navigation target", t => {
+test("public page server-renders its story, demos, installation entry and every navigation target", t => {
   const requests = [];
   t.mock.method(globalThis, "fetch", async url => { requests.push(url); throw new Error("unexpected public-page request"); });
   const html = renderPage();
   assert.match(html, /<h1[^>]*id="site-title"/);
   for (const id of ["about", "world", "install", "questions"]) assert.match(html, new RegExp(`<section[^>]*id="${id}"`));
-  for (const content of ["Близкие спокойны", "Попробуй · демонстрация", "Интерактивное знакомство", "Смотреть прогулку", "Инструкция для вашего устройства", "iPhone / iPad", "Android · Chrome", "Mac · Safari", "Что такое PWA?", "Прогресс привязан к аккаунту"]) {
+  for (const content of ["Близкие спокойны", "Попробуй · демонстрация", "Интерактивное знакомство", "Скоро здесь появится видеопрогулка", "Что такое PWA?", "Прогресс привязан к аккаунту"]) {
     assert.ok(html.includes(content), `SSR is missing: ${content}`);
   }
   assert.match(html, /data-install-panel/);
-  assert.match(html, /<ol><li>/, "manual installation steps exist before hydration");
+  assert.match(html, /data-install-pending/, "the server does not guess a visitor's browser before capability detection");
+  assert.doesNotMatch(html, /data-install-guide/, "device-specific steps are selected after hydration");
+  const visible = html.replace(/<details\b[^>]*>[\s\S]*?<\/details>/g, "");
+  assert.doesNotMatch(visible, /<(?:select|option)\b/, "browser correction is not an upfront catalogue of installation choices");
+  assert.match(html, /<details(?=[^>]*data-install-correction)(?![^>]*\bopen(?:=|\s|>))[^>]*>/,
+    "manual browser correction remains discoverable inside native closed details");
   assert.match(html, /<a href="\/"[^>]*>Перейти к приложению/);
   const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]));
   for (const [, target] of html.matchAll(/href="#([^"]+)"/g)) assert.ok(ids.has(target), `Broken in-page link: #${target}`);
   assert.deepEqual(requests, []);
 });
 
-test("initial page exposes no video source or preload and needs no autoplay permission", () => {
+test("the public page honestly reserves a future film without mounting or requesting a movie", () => {
   const html = renderPage();
-  assert.doesNotMatch(html, /<(?:video|source)\b|\.mp4\b|\bautoplay\b|\bas="video"/i);
-  assert.match(html, /<button[^>]*>[\s\S]*Смотреть прогулку/);
-  assert.match(html, /Без звука\. Запускается только по нажатию/);
+  assert.doesNotMatch(html, /<(?:video|source)\b|\.(?:mp4|webm)\b|\bautoplay\b|\bas="video"/i);
+  assert.match(html, /Скоро здесь появится видеопрогулка/);
+  assert.doesNotMatch(html, /Смотреть прогулку|Без звука\. Запускается только по нажатию/);
 });
 
 test("check-in demonstration can be tried and reset without sending a real check-in", () => {
@@ -176,32 +162,17 @@ test("world preview switches places and night art through real controls without 
   demo.unmount();
 });
 
-test("video is mounted by a click, handles rejected playback and media errors, and pauses while hidden", async () => {
-  const document = new EventTarget(); document.hidden = false;
-  const calls = { play: 0, pause: 0, load: 0 };
-  const video = { play() { calls.play++; return Promise.reject(new Error("browser denied playback")); }, pause() { calls.pause++; }, load() { calls.load++; } };
-  const demo = demoHarness("SiteVideo", { document, video });
-  let view = demo.render();
-  assert.equal(view.nodes.some(node => node.type === "video"), false);
-  assert.deepEqual(calls, { play: 0, pause: 0, load: 0 });
-  button(view, "Смотреть прогулку").props.onClick(); view = demo.render();
-  const player = view.nodes.find(node => node.type === "video");
-  assert.ok(player);
-  assert.equal(player.props.src, media.video.src);
-  assert.equal(player.props.poster, media.poster.src);
-  assert.equal(player.props.autoPlay, undefined);
-  assert.equal(player.props.controls, true); assert.equal(player.props.muted, true); assert.equal(player.props.playsInline, true);
-  assert.equal(calls.play, 1);
-  await Promise.resolve();
-  document.dispatchEvent(new Event("visibilitychange")); assert.equal(calls.pause, 0);
-  document.hidden = true; document.dispatchEvent(new Event("visibilitychange")); assert.equal(calls.pause, 1);
-  player.props.onError(); view = demo.render();
-  assert.match(view.html, /Не удалось загрузить видео/);
-  button(view, "Повторить").props.onClick(); view = demo.render();
-  assert.doesNotMatch(view.html, /Не удалось загрузить видео/);
-  assert.deepEqual(calls, { play: 2, pause: 1, load: 1 });
-  await Promise.resolve(); demo.unmount();
-  document.dispatchEvent(new Event("visibilitychange")); assert.equal(calls.pause, 1, "visibility handler was removed on unmount");
+test("the video placeholder has no play action, movie element, API call, or playback effect", () => {
+  const document = { addEventListener() { assert.fail("a placeholder must not subscribe to playback events"); } };
+  const video = { play() { assert.fail("a placeholder must not start playback"); }, pause() { assert.fail("a placeholder must not pause playback"); }, load() { assert.fail("a placeholder must not request a movie"); } };
+  const demo = demoHarness("SiteVideoPlaceholder", { document, video });
+  const view = demo.render();
+  assert.match(view.html, /Скоро здесь появится видеопрогулка/);
+  assert.equal(view.nodes.some(node => node.type === "video" || node.type === "source"), false);
+  assert.equal(view.nodes.some(node => node.type === "button" || node.type === "a"), false,
+    "a promised future film must not look playable or downloadable today");
+  assert.doesNotMatch(view.html, /\.(?:mp4|webm)\b|\bautoplay\b|\bas="video"/i);
+  demo.unmount();
 });
 
 test("the public route's complete import graph excludes game runtimes and authenticated APIs", async () => {
@@ -285,26 +256,51 @@ test("every local media URL exists and images decode at their declared dimension
   assert.equal(page.metadata.openGraph.images[0].height, media.poster.height);
 });
 
-test("shipped tour is a compact 12-second H.264 video with real dimensions, no audio, and faststart", async () => {
-  const bytes = await readFile(localAsset(media.video.src)), top = boxes(bytes);
-  assert.ok(bytes.length > 10_000 && bytes.length < 3_000_000, `MP4 size outside the playback budget: ${bytes.length}`);
-  assert.equal(top[0].type, "ftyp");
-  const moov = top.find(box => box.type === "moov"), mdat = top.find(box => box.type === "mdat");
-  assert.ok(moov && mdat); assert.ok(moov.offset < mdat.offset, "faststart avoids downloading the full video before playback");
-  const mvhd = child(bytes, moov, "mvhd");
-  const timeOffset = bytes[mvhd.start] === 1 ? 20 : 12;
-  const timescale = bytes.readUInt32BE(mvhd.start + timeOffset);
-  const duration = bytes[mvhd.start] === 1 ? Number(bytes.readBigUInt64BE(mvhd.start + timeOffset + 4)) : bytes.readUInt32BE(mvhd.start + timeOffset + 4);
-  assert.equal(duration / timescale, media.video.duration);
-  const tracks = boxes(bytes, moov.start, moov.end).filter(box => box.type === "trak");
-  assert.equal(tracks.length, 1, "no audio or other hidden tracks"); assert.equal(media.video.audio, false);
-  const tkhd = child(bytes, tracks[0], "tkhd"), mdia = child(bytes, tracks[0], "mdia");
-  assert.equal(bytes.readUInt32BE(tkhd.end - 8) / 65536, media.video.width);
-  assert.equal(bytes.readUInt32BE(tkhd.end - 4) / 65536, media.video.height);
-  const hdlr = child(bytes, mdia, "hdlr"); assert.equal(bytes.toString("ascii", hdlr.start + 8, hdlr.start + 12), "vide");
-  const stbl = child(bytes, child(bytes, mdia, "minf"), "stbl"), stsd = child(bytes, stbl, "stsd");
-  assert.equal(boxes(bytes, stsd.start + 8, stsd.end)[0].type, "avc1");
-  const stsz = child(bytes, stbl, "stsz"); assert.equal(bytes.readUInt32BE(stsz.start + 8) / media.video.duration, media.video.fps);
+test("the site exposes an honest native pause toggle and respects a system motion preference", () => {
+  const motion = { motionEnabled: true, reducedMotion: false };
+  let toggles = 0;
+  const context = { exports: {}, require(id) {
+    if (id === "react") return { useRef: initial => ({ current: initial }) };
+    if (id === "react/jsx-runtime") return jsxRuntime;
+    if (id === "lucide-react") return new Proxy({}, { get: (_, icon) => props => createElement("svg", { ...props, "data-icon": icon }) });
+    if (id === "next/link") return { default: ({ prefetch, ...props }) => { assert.equal(prefetch, false, "the presentation must not prefetch the game"); return createElement("a", props); } };
+    if (id === "@/lib/brand-assets") return { BRAND_LOGO_SRC: "/brand/logo.png" };
+    if (id === "@/features/pwa/install-panel") return { InstallPanel: () => null };
+    if (id === "./forest-atmosphere") return { ForestAtmosphere: () => null };
+    if (id === "./use-site-motion") return { useSiteMotion: () => ({ ...motion, toggleMotion: () => { toggles++; } }) };
+    if (id === "./site-demos") return { SiteCheckInDemo: () => null, SiteWorldDemo: () => null, SiteVideoPlaceholder: () => null };
+    if (id.endsWith(".module.css")) return new Proxy({}, { get: (_, key) => key });
+    assert.fail(`Unexpected product dependency: ${id}`);
+  } };
+  vm.runInNewContext(productCode, context, { filename: "product-site.tsx" });
+  const view = () => { const tree = context.exports.ProductSite(); return { nodes: elements(tree), html: renderToStaticMarkup(tree) }; };
+  let control = button(view(), "Спокойный режим");
+  assert.equal(control.props.type, "button");
+  assert.equal(control.props["aria-pressed"], false);
+  control.props.onClick(); assert.equal(toggles, 1, "the user can pause the actual motion hook from a native button");
+  motion.motionEnabled = false;
+  control = button(view(), "Спокойный режим");
+  assert.equal(control.props["aria-pressed"], true, "the calm state is exposed without changing the button's name");
+  motion.reducedMotion = true;
+  assert.doesNotMatch(view().html, /Спокойный режим/, "a reduced-motion visitor is not offered an override to the system preference");
+});
+
+test("public demo controls remain native keyboard controls and communicate their state", () => {
+  const checkIn = demoHarness("SiteCheckInDemo"), world = demoHarness("SiteWorldDemo");
+  for (const demo of [checkIn, world]) {
+    let view = demo.render();
+    const controls = view.nodes.filter(node => node.type === "button");
+    assert.ok(controls.length > 0);
+    for (const control of controls) {
+      assert.equal(control.props.type, "button", "a demo must not accidentally submit a form");
+      assert.notEqual(control.props.tabIndex, -1, "native demo buttons remain in the keyboard focus order");
+      assert.equal(typeof control.props.onClick, "function");
+      assert.ok(control.props["aria-label"] || renderToStaticMarkup(control).replace(/<[^>]*>/g, "").trim(), "every control has an accessible name");
+    }
+    const initial = controls.find(node => node.props["aria-pressed"] === true) ?? controls.find(node => node.props["aria-pressed"] === false);
+    assert.ok(initial, "toggles expose their initial state");
+    demo.unmount();
+  }
 });
 
 test("installing from the presentation preserves the existing root application identity", () => {

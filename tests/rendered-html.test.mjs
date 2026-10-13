@@ -37,7 +37,9 @@ test("renders application metadata and the public site without development tags"
       assert.match(html, /Близкие спокойны/);
       assert.match(html, /data-install-panel/);
       assert.match(html, /src=["']\/site\/poster.webp["']/);
-      assert.doesNotMatch(html, /<video\b/i, "the movie is requested only by a click");
+      assert.match(html, /Скоро здесь появится видеопрогулка/);
+      assert.doesNotMatch(html, /<(?:video|source)\b|\.(?:mp4|webm)\b|as=["']video["']/i,
+        "the future film is an inert placeholder, with no hidden movie request");
     } else assert.match(html, /Открываем «Я живой»/);
   }
 });

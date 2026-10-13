@@ -1,20 +1,20 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { ArrowUpRight, Check, Heart, Home, Moon, Play, Sprout, Sun, Users } from "lucide-react";
+import { useState } from "react";
+import { ArrowUpRight, Check, Heart, Home, Moon, Sprout, Sun, Users } from "lucide-react";
 import styles from "./product-site.module.css";
 
 export function SiteCheckInDemo() {
   const [checked, setChecked] = useState(false);
-  return <div className={styles.checkInDemo}>
-    <span className={styles.demoLabel}>Попробуй · демонстрация</span>
+  return <div className={styles.checkInDemo} data-checked={checked}>
+    <span className={styles.demoLabel}><span />Попробуй · демонстрация</span>
     <div className={styles.demoDay}>Сегодня — хороший день,<br />чтобы быть рядом.</div>
     <button type="button" className={styles.checkInButton} onClick={() => setChecked(true)} aria-pressed={checked}>
       {checked ? <Check size={34} aria-hidden /> : <Heart size={32} aria-hidden />}<span>{checked ? "Я здесь" : "Я живой"}</span>
     </button>
-    <div className={styles.demoReceipt} role="status"><span className={styles.demoAvatar}>М</span><span><strong>{checked ? "Мама видит: всё хорошо" : "Мама"}</strong><small>{checked ? "Так выглядит отметка для близкого" : "Будет рада знать, что ты на связи"}</small></span><span className={checked ? styles.receiptDone : styles.receiptIdle}>{checked ? <Check size={16} aria-hidden /> : "···"}</span></div>
+    <div className={styles.demoReceipt} role="status"><span className={styles.demoAvatar}>М</span><span><strong>{checked ? "Мама видит: всё хорошо" : "Мама"}</strong><small>{checked ? "Так выглядит отметка для близкого" : "Будет рада знать, что ты на связи"}</small></span><span className={checked ? styles.receiptDone : styles.receiptIdle}>{checked ? <Check size={17} aria-hidden /> : "···"}</span></div>
     <p className={styles.demoDisclaimer}>Это пример. Отметка никому не отправляется.</p>
-    {checked && <button type="button" className={styles.resetDemo} onClick={() => setChecked(false)}>Попробовать ещё раз</button>}
+    <div className={styles.resetDemoSlot}>{checked && <button type="button" className={styles.resetDemo} onClick={() => setChecked(false)}>Попробовать ещё раз</button>}</div>
   </div>;
 }
 
@@ -36,40 +36,28 @@ export function SiteWorldDemo() {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img className={styles.nightMap} src="/site/map-night.webp" width={1600} height={1600} alt="" />
       </>}
-      <div className={styles.stageToolbar}><span>Интерактивное знакомство</span><button type="button" onClick={() => setNight(value => !value)} aria-pressed={night} aria-label="Вечерний вид панорамы">{night ? <Moon size={17} aria-hidden /> : <Sun size={17} aria-hidden />}{night ? "Вечер" : "День"}</button></div>
-      {places.map(({ id, label, Icon, x, y }, index) => <button type="button" key={id} className={styles.mapPin} style={{ left: `${x}%`, top: `${y}%` }} aria-label={`Узнать: ${label}`} aria-pressed={selected === index} onClick={() => setSelected(index)}><Icon size={19} aria-hidden /><span>{label}</span></button>)}
-      <span className={styles.stageNote}>Выбери место на карте</span>
+      <div className={styles.stageVignette} aria-hidden="true" />
+      <div className={styles.stageToolbar}><span><span />Интерактивное знакомство</span><button type="button" onClick={() => setNight(value => !value)} aria-pressed={night} aria-label="Вечерний вид панорамы">{night ? <Moon size={16} aria-hidden /> : <Sun size={16} aria-hidden />}{night ? "Вечер" : "День"}</button></div>
+      {places.map(({ id, label, Icon, x, y }, index) => <button type="button" key={id} className={styles.mapPin} style={{ left: `${x}%`, top: `${y}%` }} aria-label={`Узнать: ${label}`} aria-pressed={selected === index} aria-controls="place-description" onClick={() => setSelected(index)}><Icon size={19} aria-hidden /><span>{label}</span></button>)}
+      <span className={styles.stageNote}><span aria-hidden="true">✦</span>Выбери место на карте</span>
     </div>
     <div className={styles.worldStory}>
-      <div className={styles.storyTabs} aria-label="Места на полянке">{places.map(({ id, label }, index) => <button type="button" key={id} aria-pressed={selected === index} onClick={() => setSelected(index)}><span>0{index + 1}</span>{label}</button>)}</div>
-      <div className={styles.storyContent} aria-live="polite"><place.Icon size={32} aria-hidden /><h3>{place.title}</h3><p>{place.text}</p><small>{place.detail}</small></div>
+      <div className={styles.storyTabs} aria-label="Места на полянке">{places.map(({ id, label }, index) => <button type="button" key={id} aria-pressed={selected === index} aria-controls="place-description" onClick={() => setSelected(index)}><span>0{index + 1}</span>{label}</button>)}</div>
+      <div id="place-description" className={styles.storyContent} aria-live="polite" aria-atomic="true"><span className={styles.storyIcon}><place.Icon size={31} aria-hidden /></span><h3>{place.title}</h3><p>{place.text}</p><small>{place.detail}</small></div>
       <a href="#install">Хочу свою полянку<ArrowUpRight size={18} aria-hidden /></a>
     </div>
   </div>;
 }
 
-export function SiteVideo() {
-  const [started, setStarted] = useState(false);
-  const [failed, setFailed] = useState(false);
-  const video = useRef<HTMLVideoElement>(null);
-  useEffect(() => {
-    if (!started) return;
-    const element = video.current;
-    if (!element) return;
-    // Native controls remain available if this browser does not allow play().
-    void element.play().catch(() => undefined);
-    const stopWhenHidden = () => { if (document.hidden) element.pause(); };
-    document.addEventListener("visibilitychange", stopWhenHidden);
-    return () => document.removeEventListener("visibilitychange", stopWhenHidden);
-  }, [started]);
+export function SiteVideoPlaceholder() {
   return <div className={styles.videoSection}>
-    <div><p className={styles.eyebrow}>Посмотри вокруг</p><h3>Двенадцать секунд<br />лесного спокойствия.</h3><p>Домики среди деревьев, тёплый вечер и Мохлик на своей полянке. Короткая видеопрогулка по графике игры.</p><p className={styles.muted}>Без звука. Запускается только по нажатию.</p></div>
-    <div className={styles.videoFrame}>
-      {started ? <video ref={video} controls playsInline muted preload="metadata" poster="/site/poster.webp" src="/site/forest-tour.mp4" onError={() => setFailed(true)} aria-label="Видеопрогулка: камера приближается к лесной полянке, день сменяется тёплым вечером, затем возвращается дневной свет" /> : <button type="button" onClick={() => setStarted(true)} className={styles.videoStart}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/site/poster.webp" width={1440} height={900} alt="Лесная полянка с домом Мохлика" loading="lazy" /><span><Play size={24} aria-hidden fill="currentColor" />Смотреть прогулку<small>0:12</small></span>
-      </button>}
-      {failed && <p role="status" className={styles.videoError}>Не удалось загрузить видео. <button type="button" onClick={() => { setFailed(false); video.current?.load(); void video.current?.play().catch(() => undefined); }}>Повторить</button></p>}
-    </div>
+    <div className={styles.videoCopy}><p className={styles.eyebrow}>Почувствовать атмосферу</p><h3>У этого леса<br /><em>свой ритм.</em></h3><p>Тёплый свет в окнах. Дождь на полянке. Маленькие дела Мохлика. Скоро покажем всё это в движении.</p></div>
+    <figure className={styles.videoPlaceholder}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/site/poster.webp" width={1440} height={900} alt="" loading="lazy" />
+      <div className={styles.filmCorners} aria-hidden="true"><span /><span /><span /><span /></div>
+      <figcaption><span className={styles.filmLabel}>Видеопрогулка / в подготовке</span><strong>Скоро.</strong><span>Скоро здесь появится видеопрогулка</span></figcaption>
+      <span className={styles.filmNote} aria-hidden="true">Мир Мохлика</span>
+    </figure>
   </div>;
 }
