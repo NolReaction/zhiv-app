@@ -21,8 +21,8 @@ class EconomyLocalSaleTest {
         val nominalBase = EconomyMoney.nominal(3)
         assertEquals(270L,EconomyRules.localSellPrice(nominalBase,9,legacy.localBuyer))
         assertEquals(160L,EconomyRules.localSellPrice(nominalBase,9))
-        assertEquals(13500L,EconomyRules.catalog.fishing!!.rods.single { it.id=="river_rod" }.price)
-        assertEquals(72000L,EconomyRules.catalog.fishing!!.rods.single { it.id=="willow_rod" }.price)
+        assertEquals(1800L,EconomyRules.catalog.fishing!!.rods.single { it.id=="river_rod" }.price)
+        assertEquals(9000L,EconomyRules.catalog.fishing!!.rods.single { it.id=="willow_rod" }.price)
     }
 
     @Test fun `packet rounding cannot earn more by splitting and stays precise near command limits`() {
