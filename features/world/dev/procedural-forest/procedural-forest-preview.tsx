@@ -6,6 +6,7 @@ import { ArrowLeft, ArrowRight, Download, Expand, Grid2X2, Hand, Leaf, Minus, Mo
 import type { ForestStatus, ToolMode } from "./controller";
 import { INITIAL_SEED, INITIAL_WIDTH, MAX_WIDTH, type ObjectKind } from "./objects";
 import { EditorInspector, objectNames } from "./editor-inspector";
+import { EditorButton } from "./editor-button";
 import styles from "./procedural-forest-preview.module.css";
 
 type Controller = ReturnType<typeof import("./controller")["createForestController"]>;
@@ -60,9 +61,9 @@ export function ProceduralForestPreview() {
           <div className={styles.intro}><span className={styles.eyebrow}>МАСТЕРСКАЯ МИРА</span><h1>Собери свою карту.</h1><p>Выбери предмет, перетащи его и измени размер. Добавляй деревья, камни и постройки. Скачай сцену, чтобы продолжить на другом компьютере.</p></div>
           <div className={styles.section}>
             <span className={styles.label}>01 <span>ИНСТРУМЕНТ</span></span>
-            <div className={styles.modes} role="group" aria-label="Инструмент карты">{modes.map(({ id, label, icon: Icon }) => <button key={id} type="button" disabled={!ready} aria-pressed={mode === id} onClick={() => changeMode(id)}><Icon size={18} /><span>{label}</span></button>)}</div>
+            <div className={styles.modes} role="group" aria-label="Инструмент карты">{modes.map(({ id, label, icon: Icon }) => <EditorButton key={id} type="button" disabled={!ready} aria-pressed={mode === id} onClick={() => changeMode(id)}><Icon size={18} /><span>{label}</span></EditorButton>)}</div>
             <p className={styles.small}>{mode === "select" ? "Нажми на предмет и перетащи его. За свободную землю можно двигать карту." : mode === "pan" ? "Перетаскивай карту. Колесо или два пальца — масштаб." : mode === "plant" ? objectNames[status.brush] + ": нажми на карту, чтобы добавить." : "Нажми на предмет, чтобы удалить. Можно отменить действие."}</p>
-            <div className={styles.historyActions}><button type="button" aria-label="Отменить" disabled={!status.canUndo} onClick={() => controller.current?.undo()}><Undo2 size={16} /> Отменить</button><button type="button" aria-label="Повторить" disabled={!status.canRedo} onClick={() => controller.current?.redo()}><Redo2 size={16} /> Повторить</button></div>
+            <div className={styles.historyActions}><EditorButton type="button" aria-label="Отменить" disabled={!status.canUndo} onClick={() => controller.current?.undo()}><Undo2 size={16} /> Отменить</EditorButton><EditorButton type="button" aria-label="Повторить" disabled={!status.canRedo} onClick={() => controller.current?.redo()}><Redo2 size={16} /> Повторить</EditorButton></div>
           </div>
           <div className={styles.section}>
             <span className={styles.label}>02 <span>ВЫБРАННЫЙ ПРЕДМЕТ</span></span>
@@ -70,15 +71,15 @@ export function ProceduralForestPreview() {
           </div>
           <div className={styles.section}>
             <span className={styles.label}>03 <span>ДОБАВИТЬ НА КАРТУ</span></span>
-            <div className={styles.palette} role="group" aria-label="Предмет для добавления">{kinds.map(kind => <button type="button" key={kind} disabled={!ready} aria-pressed={mode === "plant" && status.brush === kind} onClick={() => chooseKind(kind)}>{objectNames[kind]}</button>)}</div>
+            <div className={styles.palette} role="group" aria-label="Предмет для добавления">{kinds.map(kind => <EditorButton type="button" key={kind} disabled={!ready} aria-pressed={mode === "plant" && status.brush === kind} onClick={() => chooseKind(kind)}>{objectNames[kind]}</EditorButton>)}</div>
             <p className={styles.small}>Деревья и кусты растут на земле. Мост и причал можно поставить у воды.</p>
           </div>
           <div className={styles.section}>
             <span className={styles.label}>04 <span>ТЕРРИТОРИЯ И СЛОИ</span></span>
-            <button type="button" className={styles.expandButton} disabled={!ready || status.width >= MAX_WIDTH} onClick={() => controller.current?.expand()}><span>{status.width >= MAX_WIDTH ? "Тестовый мир открыт" : "Продолжить лес вправо"}</span><ArrowRight size={18} /></button>
+            <EditorButton type="button" className={styles.expandButton} disabled={!ready || status.width >= MAX_WIDTH} onClick={() => controller.current?.expand()}><span>{status.width >= MAX_WIDTH ? "Тестовый мир открыт" : "Продолжить лес вправо"}</span><ArrowRight size={18} /></EditorButton>
             <div className={styles.toggles}>
-              <button type="button" disabled={!ready} aria-pressed={trees} onClick={() => { setTrees(!trees); controller.current?.setLayer("trees", !trees); }}><Trees size={17} /> Растительность <span className={styles.switch} /></button>
-              <button type="button" disabled={!ready} aria-pressed={grid} onClick={() => { setGrid(!grid); controller.current?.setLayer("grid", !grid); }}><Grid2X2 size={17} /> Границы участков <span className={styles.switch} /></button>
+              <EditorButton type="button" disabled={!ready} aria-pressed={trees} onClick={() => { setTrees(!trees); controller.current?.setLayer("trees", !trees); }}><Trees size={17} /> Растительность <span className={styles.switch} /></EditorButton>
+              <EditorButton type="button" disabled={!ready} aria-pressed={grid} onClick={() => { setGrid(!grid); controller.current?.setLayer("grid", !grid); }}><Grid2X2 size={17} /> Границы участков <span className={styles.switch} /></EditorButton>
             </div>
             {!trees && <p className={styles.small}>Деревья и кусты скрыты. Включи «Растительность», чтобы увидеть их снова.</p>}
             <p className={styles.small}>Форма земли, троп и воды пока задана отдельно. Эти слои ещё нельзя рисовать кистью.</p>
@@ -86,9 +87,9 @@ export function ProceduralForestPreview() {
           <div className={styles.section}>
             <span className={styles.label}>05 <span>СОХРАНЕНИЕ</span></span>
             <div className={styles.fileActions}>
-              <button type="button" disabled={!ready} onClick={() => controller.current?.exportScene()}><Download size={16} /> Скачать сцену</button>
-              <button type="button" disabled={!ready} onClick={() => sceneFile.current?.click()}><Upload size={16} /> Открыть сцену</button>
-              <button type="button" disabled={!ready} onClick={() => controller.current?.exportPng()}><Download size={16} /> Скачать PNG</button>
+              <EditorButton type="button" disabled={!ready} onClick={() => controller.current?.exportScene()}><Download size={16} /> Скачать сцену</EditorButton>
+              <EditorButton type="button" disabled={!ready} onClick={() => sceneFile.current?.click()}><Upload size={16} /> Открыть сцену</EditorButton>
+              <EditorButton type="button" disabled={!ready} onClick={() => controller.current?.exportPng()}><Download size={16} /> Скачать PNG</EditorButton>
             </div>
             <input ref={sceneFile} type="file" accept="application/json,.json" aria-label="Файл сцены" className={styles.fileInput} onChange={event => { void importScene(event.target.files?.[0]); }} />
             <p className={styles.saveState}>{!ready ? "Открываем карту…" : status.storage === "saved" ? "Правки сохранены в этом браузере." : "Автосохранение недоступно. Скачай сцену, чтобы сохранить правки."}</p>
@@ -96,8 +97,8 @@ export function ProceduralForestPreview() {
             {error && ready && <p role="alert" className={styles.importError}>{error}</p>}
           </div>
           <div className={styles.actions}>
-            <button type="button" disabled={!ready} onClick={() => controller.current?.regenerate()}><Shuffle size={16} /> Другой лес</button>
-            <button type="button" disabled={!ready || !status.edited} onClick={() => controller.current?.resetEdits()}><RotateCcw size={16} /> Сбросить правки</button>
+            <EditorButton type="button" disabled={!ready} onClick={() => controller.current?.regenerate()}><Shuffle size={16} /> Другой лес</EditorButton>
+            <EditorButton type="button" disabled={!ready || !status.edited} onClick={() => controller.current?.resetEdits()}><RotateCcw size={16} /> Сбросить правки</EditorButton>
           </div>
           <p className={styles.note}>«Другой лес» меняет растительность и сбрасывает расстановку. Действие можно отменить. Это отдельная мастерская для тестирования карты.</p>
         </aside>
@@ -108,10 +109,10 @@ export function ProceduralForestPreview() {
             {(mode === "plant" || mode === "erase") && <span className={styles.crosshair} aria-hidden>+</span>}
             {!ready && <div className={styles.loading} role={error ? "alert" : "status"}>{error ?? "Открываем карту…"}</div>}
             <div className={styles.mapTools} aria-label="Управление масштабом">
-              <button type="button" disabled={!ready} onClick={() => controller.current?.zoom(1.25)} aria-label="Приблизить"><Plus size={19} /></button>
-              <button type="button" disabled={!ready} onClick={() => controller.current?.zoom(.8)} aria-label="Отдалить"><Minus size={19} /></button>
+              <EditorButton type="button" disabled={!ready} onClick={() => controller.current?.zoom(1.25)} aria-label="Приблизить"><Plus size={19} /></EditorButton>
+              <EditorButton type="button" disabled={!ready} onClick={() => controller.current?.zoom(.8)} aria-label="Отдалить"><Minus size={19} /></EditorButton>
               <span>{Math.round(status.zoom * 100)}%</span>
-              <button type="button" disabled={!ready} onClick={() => controller.current?.fit()} aria-label="Показать весь лес"><Expand size={18} /></button>
+              <EditorButton type="button" disabled={!ready} onClick={() => controller.current?.fit()} aria-label="Показать весь лес"><Expand size={18} /></EditorButton>
             </div>
           </div>
           <div className={styles.mapFooter}><span>SEED {status.seed} <span className={styles.dim}>·</span> {status.objects} объектов</span><span className={styles.footerDetail}>{status.edited} ПРАВОК</span></div>

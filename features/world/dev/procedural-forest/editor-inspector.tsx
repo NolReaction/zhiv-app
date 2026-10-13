@@ -1,6 +1,7 @@
 "use client";
 import { Copy, Trash2 } from "lucide-react";
 import type { ForestObject, ObjectKind } from "./objects";
+import { EditorButton } from "./editor-button";
 import styles from "./procedural-forest-preview.module.css";
 
 export const objectNames: Record<ObjectKind, string> = { tree: "Дерево", shrub: "Куст", rock: "Камень", ruins: "Руины", bridge: "Мост", jetty: "Причал" };
@@ -31,6 +32,6 @@ export function EditorInspector({ object, width, update, duplicate, remove }: {
     </div>
     <p className={styles.small}>Размер в процентах, поворот в градусах. Enter применяет введённое число.</p>
     {["tree", "shrub", "rock"].includes(object.kind) && <label className={styles.variant}><span>Внешний вид</span><select aria-label="Внешний вид" value={object.variant} onChange={event => update({ variant: Number(event.target.value) })}>{Array.from({ length: 24 }, (_, index) => <option key={index} value={index}>Вариант {index + 1}</option>)}</select></label>}
-    <div className={styles.selectionActions}><button type="button" onClick={duplicate}><Copy size={15} /> Дублировать</button><button type="button" onClick={remove}><Trash2 size={15} /> Удалить объект</button></div>
+    <div className={styles.selectionActions}><EditorButton type="button" onClick={duplicate}><Copy size={15} /> Дублировать</EditorButton><EditorButton type="button" onClick={remove}><Trash2 size={15} /> Удалить объект</EditorButton></div>
   </div>;
 }
