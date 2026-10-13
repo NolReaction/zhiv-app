@@ -363,6 +363,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
   const mushroomIds = new Set(), bushes = new Map(), bushMarkers = new Map(), bushRoutes = [];
   const navigationIds = new Set(), habitats = new Map(), habitatExclusions = [], habitatAnchors = [], anchorIds = new Set();
   const destinationIds = new Set(), occluderIds = new Set();
+  const treeInteractionIds = new Set();
   const audioIds = new Set(), audioReferences = [];
   const livingKinds = { WalkAreas: "walk-area", Obstacles: "nav-obstacle", PointsOfInterest: "interest", Destinations: "destination", Occluders: "occluder", Habitats: "wildlife-habitat", WildlifeAnchors: "wildlife-anchor" };
   const navigation = () => world.navigation ??= { version: 1, cellSize, areas: [], obstacles: [], interests: [] };
@@ -375,6 +376,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
       const layerAt = `${at}[${layerIndex}]`;
       record(layer, layerAt);
       const namedKind = layer.name === "Water" ? "surfaces" : layer.name === "WaterExclusions" ? "exclusions" : layer.name === "Lights" ? "lights"
+        : layer.name === "TreeInteractions" ? "tree-interaction"
         : layer.name === "AudioEmitters" ? "audio-emitter" : layer.name === "AudioZones" ? "audio-zone"
           : own(livingKinds, layer.name) ? livingKinds[layer.name] : undefined;
       requireThat(!namedKind || !inheritedKind || namedKind === inheritedKind, layerAt, "different metadata layers must not be nested inside each other");
@@ -398,6 +400,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
       if (["walk-area", "nav-obstacle", "interest"].includes(livingKind)) navigation();
       if (livingKind === "destination") world.destinations ??= [];
       if (livingKind === "occluder") world.occluders ??= [];
+      if (metadataKind === "tree-interaction") world.treeInteractions ??= [];
       if (["wildlife-habitat", "wildlife-anchor"].includes(livingKind)) world.habitats ??= [];
       if (isLifeLayer && layer.name === "Mushrooms") world.mushrooms ??= [];
       if (isLifeLayer && layer.name === "Bushes") world.bushes ??= [];
@@ -407,7 +410,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
         const terrainOnly = Array.isArray(layer.objects) && layer.objects.every(object => tiles.get(object.gid)?.role === "terrain");
         if (metadataKind || isLifeLayer || terrainOnly) requireThat(["index", "topdown"].includes(layer.draworder), `${layerAt}.draworder`, "expected index or topdown for metadata/terrain");
         else exact(layer.draworder, "index", `${layerAt}.draworder`);
-        yield { layer, layerAt, waterKind, isLightLayer: metadataKind === "lights", livingKind, audioKind, groups, offset: layerOffset };
+        yield { layer, layerAt, waterKind, isLightLayer: metadataKind === "lights", isTreeLayer: metadataKind === "tree-interaction", livingKind, audioKind, groups, offset: layerOffset };
       }
     }
   }
@@ -426,9 +429,9 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
     }
   }
   const routeOwners = [], visibilityReferences = [];
-  for (const { layer, layerAt, waterKind, isLightLayer, livingKind, audioKind, groups, offset } of leaves) {
+  for (const { layer, layerAt, waterKind, isLightLayer, isTreeLayer, livingKind, audioKind, groups, offset } of leaves) {
     const entries = [...array(layer.objects, `${layerAt}.objects`).entries()];
-    if (layer.draworder === "topdown" && !waterKind && !isLightLayer && !livingKind && !audioKind) entries.sort((a, b) => a[1].y - b[1].y);
+    if (layer.draworder === "topdown" && !waterKind && !isLightLayer && !isTreeLayer && !livingKind && !audioKind) entries.sort((a, b) => a[1].y - b[1].y);
     for (const [objectIndex, authoredObject] of entries) {
       const at = `${layerAt}.objects[${objectIndex}]`;
       record(authoredObject, at);
@@ -437,7 +440,7 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
         y: number(authoredObject.y, `${at}.y`) + offset.y } : authoredObject;
       absent(object, ["template", "text", "ellipse", "capsule", "offsetx", "offsety"], at);
       const rotation = own(object, "rotation") ? number(object.rotation, `${at}.rotation`) : 0;
-      const isImage = !waterKind && !isLightLayer && !livingKind && !audioKind && own(object, "gid");
+      const isImage = !waterKind && !isLightLayer && !isTreeLayer && !livingKind && !audioKind && own(object, "gid");
       defaultValue(object, "opacity", 1, at);
       editorVisibility(object, at);
       const objectId = integer(object.id, `${at}.id`, 1);
@@ -462,6 +465,29 @@ async function compileTiledWorldMap(map, { mapPath, publicDir, refreshImageMetad
         requireThat(!waterIds[waterKind].has(id), waterAt, `duplicate water ${waterKind} ID ${id}`);
         waterIds[waterKind].add(id);
         world.water[waterKind].push({ id, points: vertices(object, "polygon", waterAt, world) });
+        continue;
+      }
+      if (isTreeLayer) {
+        const treeAt = `${at} (${object.name || `object ${objectId}`})`;
+        const props = properties(object, treeAt, { frontY: "float", siteId: "string", level: "int" });
+        for (const key of ["class", "type"]) {
+          if (own(object, key) && object[key] !== "") exact(object[key], "TreeInteraction", `${treeAt}.${key}`);
+        }
+        exact(shape, "polygon", `${treeAt} shape`);
+        defaultValue(object, "width", 0, treeAt);
+        defaultValue(object, "height", 0, treeAt);
+        const id = identifier(object.name, `${treeAt}.name`);
+        requireThat(!treeInteractionIds.has(id), treeAt, `duplicate tree interaction ID ${id}`);
+        treeInteractionIds.add(id);
+        const points = vertices(object, "polygon", treeAt, world);
+        // Local depth offset follows the touch region when its object/group moves.
+        const frontY = own(props, "frontY") ? object.y + props.frontY : Math.max(...points.map(p => p.y));
+        requireThat(frontY >= 0 && frontY <= world.height, treeAt, "frontY must resolve inside world height");
+        const when = siteLevelCondition(props, treeAt);
+        if (when) visibilityReferences.push({ when, at: treeAt });
+        requireThat(world.treeInteractions.length < 256, treeAt, "at most 256 tree interactions are supported");
+        requireThat(points.length <= 256, treeAt, "at most 256 vertices per tree interaction are supported");
+        world.treeInteractions.push({ id, points, frontY, ...(when ? { when } : {}) });
         continue;
       }
       const authoredRole = Array.isArray(object.properties) ? object.properties.find(property => property?.name === "role")?.value : undefined;

@@ -5175,8 +5175,10 @@ test("water physics shares one clock across circle map paint and camera handoff"
 });
 
 function treeTouchFixture() {
-  return { ...fixture, occluders: [
-    { id: "test-canopy", frontY: 690, points: waterRectangle(770, 560, 90, 90) },
+  return { ...fixture, treeInteractions: [
+    { id: "test-crown-touch", frontY: 690, points: waterRectangle(770, 560, 90, 90) },
+  ], occluders: [
+    { id: "test-canopy", frontY: 690, points: waterRectangle(890, 560, 70, 70) },
     { id: "test-boulder", frontY: 690, points: waterRectangle(890, 560, 70, 70) },
   ] };
 }
@@ -5207,7 +5209,7 @@ test("tree taps wait for a completed gesture and never repeat while holding pann
     engine.control("overview");
     const rock = waterPointer(canvas, { x: 920, y: 600 });
     sendWaterPointer(canvas, "pointerdown", rock); sendWaterPointer(canvas, "pointerup", rock);
-    assert.equal(events.length, 0, "gestures and non-tree artwork stay silent");
+    assert.equal(events.length, 0, "gestures and occluders without an interaction zone stay silent");
     first = tap(); sendWaterPointer(canvas, "pointerdown", first); sendWaterPointer(canvas, "pointerup", first);
     assert.equal(events.length, 1); assert.equal(events[0].cueId, "action.tree.rustle");
     for (let repeat = 0; repeat < 8; repeat++) {

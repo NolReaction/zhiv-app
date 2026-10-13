@@ -16,7 +16,7 @@ const { previewPointInPolygon: contains } = await vite.ssrLoadModule('/features/
 const { TILED_WORLD: scene } = await vite.ssrLoadModule('/features/world/scene/presentation.ts');
 const rect = (x, y, width, height) => [{ x, y }, { x: x + width, y }, { x: x + width, y: y + height }, { x, y: y + height }];
 const crown = (id, x = 10, frontY = 90) => ({ id, points: rect(x, 10, 60, 70), frontY });
-const simple = { ...scene, occluders: [crown('west-tree'), crown('east-canopy', 100)] };
+const simple = { ...scene, treeInteractions: [crown('west-tree'), crown('east-canopy', 100)] };
 const point = { x: 40, y: 35 }, second = { x: 130, y: 35 };
 function inner(crown) {
   for (let y = crown.top + 1; y < crown.bottom; y += 2) for (let x = crown.left + 1; x < crown.right; x += 2) {
@@ -25,34 +25,45 @@ function inner(crown) {
   throw new Error(`No inside point for ${crown.id}`);
 }
 
-test('all 15 authored tree crowns react; rock, counter and building masks do not', () => {
+test('all 15 independent interaction crowns react without consulting occluders', () => {
   const state = create(scene);
   assert.equal(state.crowns.length, 15);
-  assert.ok(state.crowns.some(crown => crown.id === 'shishkolap-tree'));
+  assert.ok(state.crowns.some(crown => crown.id === 'shishkolap-tree-touch'));
   for (const crown of state.crowns) assert.equal(hit(state, inner(crown)).id, crown.id);
-  for (const mask of scene.occluders.filter(mask => !state.crowns.some(crown => crown.id === mask.id))) {
-    const onlyMask = create({ ...scene, occluders: [mask] });
-    assert.equal(onlyMask.crowns.length, 0, mask.id);
-  }
+  assert.deepEqual(create({ ...scene, occluders: [] }).crowns, state.crowns);
+  assert.deepEqual(create({ ...scene, occluders: [crown('invented-tree')] }).crowns, state.crowns);
+  assert.equal(create({ ...scene, treeInteractions: undefined }).crowns.length, 0, 'no fallback to occlusion masks');
+  assert.equal(create({ ...scene, treeInteractions: [] }).crowns.length, 0);
+});
+
+test('adding moving and deleting a named interaction zone changes only its touch target', () => {
+  const originalMasks = structuredClone(scene.occluders);
+  const added = create({ ...scene, treeInteractions: [crown('my-new-crown')] });
+  assert.equal(hit(added, point).id, 'my-new-crown', 'name needs no tree or canopy suffix');
+  const moved = create({ ...scene, treeInteractions: [crown('my-new-crown', 100)] });
+  assert.equal(hit(moved, point), null);
+  assert.equal(hit(moved, second).id, 'my-new-crown');
+  assert.equal(hit(create({ ...scene, treeInteractions: [] }), second), null);
+  assert.deepEqual(scene.occluders, originalMasks);
 });
 
 test('hit testing follows the exact concave silhouette and the frontmost tree', () => {
   const concave = { ...crown('concave-tree'), points: [{ x: 0, y: 0 }, { x: 80, y: 0 }, { x: 80, y: 20 },
     { x: 20, y: 20 }, { x: 20, y: 80 }, { x: 0, y: 80 }] };
-  const state = create({ ...scene, occluders: [concave] });
+  const state = create({ ...scene, treeInteractions: [concave] });
   assert.equal(hit(state, { x: 50, y: 50 }), null, 'empty space inside the AABB stays empty');
   assert.equal(hit(state, { x: 10, y: 60 }).id, 'concave-tree');
   assert.equal(hit(state, { x: NaN, y: 20 }), null);
   assert.equal(hit(state, { x: 10, y: Infinity }), null);
-  const overlap = create({ ...scene, occluders: [crown('front-tree', 10, 120), crown('back-canopy', 10, 100)] });
+  const overlap = create({ ...scene, treeInteractions: [crown('front-tree', 10, 120), crown('back-canopy', 10, 100)] });
   assert.equal(hit(overlap, point).id, 'front-tree');
 });
 
 test('missing and malformed tree geometry is inert', () => {
-  for (const occluders of [undefined, [], [crown('stone')], [{ ...crown('broken-tree'), frontY: NaN }],
+  for (const treeInteractions of [undefined, [], [{ ...crown('broken-tree'), frontY: NaN }],
     [{ ...crown('broken-tree'), points: [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }] }],
     [{ ...crown('broken-tree'), points: [{ x: 0, y: NaN }, { x: 1, y: 0 }, { x: 0, y: 1 }] }]]) {
-    const state = create({ ...scene, occluders });
+    const state = create({ ...scene, treeInteractions });
     assert.equal(hit(state, point), null);
     assert.equal(touch(state, point), null);
     assert.equal(state.leaves.length, 0);

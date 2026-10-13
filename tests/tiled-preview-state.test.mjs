@@ -139,3 +139,22 @@ test("occlusion visibility follows the selected building state without changing 
   assert.equal(upgraded.navigation, authored.navigation);
   assert.deepEqual(authored.occluders, [mask]);
 });
+
+test("tree touch visibility follows site levels independently of occlusion and caches the effective zones", () => {
+  const tree = (id, when) => ({ id, frontY: 30, points: [{ x: 10, y: 10 }, { x: 30, y: 10 }, { x: 20, y: 30 }], ...(when ? { when } : {}) });
+  const permanent = tree("birch"), levelOne = tree("sapling", { siteId: "home", level: 1 }), levelTwo = tree("grown", { siteId: "home", level: 2 });
+  const authored = { ...scene, treeInteractions: [permanent, levelOne, levelTwo], occluders: [tree("canopy")] };
+  const original = structuredClone(authored), start = previewWorldScene(authored, { home: 1 });
+  assert.deepEqual(start.treeInteractions, [permanent, levelOne]);
+  const upgraded = previewWorldScene(authored, { home: 2 });
+  assert.deepEqual(upgraded.treeInteractions, [permanent, levelTwo]);
+  assert.equal(upgraded.occluders, authored.occluders);
+  assert.equal(upgraded.navigation, authored.navigation);
+  assert.equal(upgraded.treeInteractions[0], permanent);
+  assert.equal(previewWorldScene(authored, { home: 2 }), upgraded);
+  assert.equal(previewWorldScene(authored, { home: 99 }), start);
+  assert.deepEqual(authored, original);
+  assert.equal(previewWorldScene({ ...scene, treeInteractions: [] }, { home: 2 }).treeInteractions.length, 0);
+  const legacy = previewWorldScene(scene, { home: 2 });
+  assert.equal(legacy.treeInteractions, undefined, "preview does not derive touch zones from another field");
+});

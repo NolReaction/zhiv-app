@@ -46,6 +46,9 @@ export type WorldNavigationPolygon = { id: string; points: WorldPoint[]; when?: 
 /** A visual silhouette, independent of ground collision. Characters behind frontY
  * are clipped by this polygon; those in front keep their complete sprite. */
 export type WorldOccluder = WorldNavigationPolygon & { frontY: number };
+/** Authored touch region for tree motion, falling leaves and rustle. Independent
+ * of occlusion silhouettes and navigation; frontY orders overlapping crowns. */
+export type WorldTreeInteraction = WorldNavigationPolygon & { frontY: number };
 /** World travel targets deliberately do not enlarge the hero's home interests. */
 export type WorldDestination = { id: string; position: WorldPoint; siteId?: string; pauseSeconds: number };
 export type WorldInterest = {
@@ -150,6 +153,8 @@ export type FixedWorldScene = {
   /** Absent keeps legacy Paths; an empty list explicitly disables destination travel. */
   destinations?: WorldDestination[];
   occluders?: WorldOccluder[];
+  /** Absent or empty adds no tree touch effects; never falls back to Occluders. */
+  treeInteractions?: WorldTreeInteraction[];
   /** Absent retains legacy fauna; [] deliberately contains no inhabitants. */
   habitats?: WorldHabitat[];
 };

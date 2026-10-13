@@ -27,10 +27,10 @@ const noise = (seed: number) => { const value = Math.sin(seed * 127.1 + 311.7) *
 function crownsFor(scene: FixedWorldScene): ForestTreeCrown[] {
   const cached = geometry.get(scene); if (cached) return cached;
   const crowns: ForestTreeCrown[] = [];
-  for (const mask of scene.occluders ?? []) {
-    // These are the authored tree silhouettes. Rocks, the shop counter and
-    // building masks have different IDs and must never shed leaves.
-    if (!/(?:^|-)(?:canopy|tree)$/.test(mask.id) || !Number.isFinite(mask.frontY)
+  for (const mask of scene.treeInteractions ?? []) {
+    // Interaction crowns are authored independently in TreeInteractions.
+    // Occlusion masks never create, remove or reshape these touch targets.
+    if (!Number.isFinite(mask.frontY)
       || mask.points.length < 3 || mask.points.some(point => !finitePoint(point))) continue;
     let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
     for (const point of mask.points) {

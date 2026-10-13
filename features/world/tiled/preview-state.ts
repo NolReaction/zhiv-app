@@ -20,6 +20,7 @@ export function previewWorldScene(scene: FixedWorldScene, levels: PreviewLevels)
   const hasConditions = scene.terrain.some(image => image.when)
     || scene.navigation?.areas.some(area => area.when) || scene.navigation?.obstacles.some(obstacle => obstacle.when)
     || scene.occluders?.some(occluder => occluder.when)
+    || scene.treeInteractions?.some(tree => tree.when)
     || scene.audio?.emitters.some(emitter => emitter.when) || scene.audio?.zones.some(zone => zone.when);
   if (!hasGeometry && !hasConditions) return scene;
   let cache = sceneCache.get(scene);
@@ -36,6 +37,7 @@ export function previewWorldScene(scene: FixedWorldScene, levels: PreviewLevels)
   }) : scene.sites, terrain: filterVisible(scene.terrain),
     ...(scene.audio ? { audio: { emitters: filterVisible(scene.audio.emitters), zones: filterVisible(scene.audio.zones) } } : {}),
     ...(scene.occluders ? { occluders: filterVisible(scene.occluders) } : {}),
+    ...(scene.treeInteractions ? { treeInteractions: filterVisible(scene.treeInteractions) } : {}),
     ...(scene.navigation ? { navigation: { ...scene.navigation,
       areas: filterVisible(scene.navigation.areas), obstacles: filterVisible(scene.navigation.obstacles) } } : {}) };
   if (cache.size >= 32) cache.delete(cache.keys().next().value!);

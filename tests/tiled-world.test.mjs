@@ -1734,3 +1734,83 @@ test("occluder validation rejects bad depth, duplicate IDs and unknown building 
   map.layers.at(-1).objects.push({ ...map.layers.at(-1).objects[0], id: 301 });
   await assert.rejects(compile(), /duplicate occluder ID/);
 });
+
+const treeInteraction = (id = 300, name = "birch-west") => ({
+  id, name, x: 30, y: 30, width: 0, height: 0, type: "TreeInteraction",
+  polygon: [{ x: 0, y: 0 }, { x: 15, y: 0 }, { x: 15, y: 15 }, { x: 0, y: 15 }],
+});
+
+test("TreeInteractions is independent from Occluders and preserves arbitrary tree IDs without suffix matching", async t => {
+  const { map, compile } = await fixture(t);
+  map.layers.push(objectLayer(30, "Occluders", [livingPolygon(299, "birch-canopy", "occluder")]));
+  const before = await compile();
+  assert.equal(before.treeInteractions, undefined, "occlusion silhouettes never invent tree touch regions");
+  map.layers.push(groupLayer(31, "TreeInteractions", [objectLayer(32, "Crowns", [treeInteraction()])]));
+  const source = clone(map), world = await compile();
+  assert.deepEqual(world.treeInteractions, [{ id: "birch-west", frontY: 45,
+    points: [{ x: 30, y: 30 }, { x: 45, y: 30 }, { x: 45, y: 45 }, { x: 30, y: 45 }] }]);
+  const otherFields = clone(world); delete otherFields.treeInteractions;
+  assert.deepEqual(otherFields, before, "touch zones do not change occlusion, collision, images or routes");
+  assert.deepEqual(map, source, "the exporter does not mutate authored zones");
+  map.layers.at(-1).layers[0].objects = [];
+  assert.deepEqual((await compile()).treeInteractions, [], "an empty authored layer deliberately has no touch regions");
+  map.layers.at(-1).layers = [];
+  assert.deepEqual((await compile()).treeInteractions, [], "an empty folder remains an explicit empty set");
+});
+
+test("TreeInteractions follows ordinary folder offsets, polygon rotation and selected site levels", async t => {
+  const { map, compile } = await fixture(t);
+  const tree = { ...treeInteraction(), rotation: 90, properties: props({ frontY: 18, siteId: "kiln", level: 1 }) };
+  map.layers.push({ ...groupLayer(30, "Foliage", [groupLayer(31, "TreeInteractions", [objectLayer(32, "Crowns", [tree])])]),
+    offsetx: 5, offsety: 10 });
+  assert.deepEqual((await compile()).treeInteractions, [{ id: "birch-west", frontY: 58, when: { siteId: "kiln", level: 1 },
+    points: [{ x: 35, y: 40 }, { x: 35, y: 55 }, { x: 20, y: 55 }, { x: 20, y: 40 }] }]);
+  tree.properties = [];
+  assert.equal((await compile()).treeInteractions[0].frontY, 55, "default depth follows the bottom of transformed geometry");
+  map.layers.at(-1).visible = false;
+  tree.visible = false;
+  assert.equal((await compile()).treeInteractions.length, 1, "editor eyes do not change runtime touch geometry");
+});
+
+test("TreeInteractions needs only a polygon and Name; modern class and legacy type are optional", async t => {
+  const { map, compile } = await fixture(t);
+  const zones = [treeInteraction(300, "one"), treeInteraction(301, "two"), treeInteraction(302, "three"), treeInteraction(303, "four")];
+  delete zones[0].type;
+  zones[1].class = "TreeInteraction"; delete zones[1].type;
+  zones[2].class = "TreeInteraction";
+  zones[3].class = ""; zones[3].type = "";
+  map.layers.push(objectLayer(30, "TreeInteractions", zones));
+  assert.deepEqual((await compile()).treeInteractions.map(zone => zone.id), ["one", "two", "three", "four"]);
+});
+
+test("TreeInteractions rejects malformed geometry, classes, properties, names and conditional references", async t => {
+  const { map, compile } = await fixture(t);
+  map.layers.push(objectLayer(30, "TreeInteractions", [treeInteraction()]));
+  const mutations = [
+    ["point", o => { delete o.polygon; o.point = true; }, /shape: expected "polygon"/],
+    ["too few vertices", o => { o.polygon.length = 2; }, /requires at least 3 points/],
+    ["nonfinite vertex", o => { o.polygon[1].x = NaN; }, /expected a finite number/],
+    ["out of world", o => { o.x = 95; }, /outside world bounds/],
+    ["zero area", o => { o.polygon = [{ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 10, y: 0 }]; }, /nonzero area/],
+    ["self intersection", o => { o.polygon = [{ x: 0, y: 0 }, { x: 15, y: 10 }, { x: 0, y: 10 }, { x: 10, y: 0 }]; }, /must not self-intersect/],
+    ["bad class", o => { o.class = "Occluder"; }, /class: expected "TreeInteraction"/],
+    ["bad type", o => { o.type = "occluder"; }, /type: expected "TreeInteraction"/],
+    ["invalid class value", o => { o.class = null; }, /class: expected "TreeInteraction"/],
+    ["empty Name", o => { o.name = ""; }, /expected a non-empty string/],
+    ["invalid Name", o => { o.name = "Birch west"; }, /expected a lowercase identifier/],
+    ["unsupported role", o => { o.properties = props({ role: "occluder" }); }, /unknown property "role"/],
+    ["bad frontY type", o => { o.properties = [{ name: "frontY", type: "string", value: "10" }]; }, /expected float or int/],
+    ["frontY outside world", o => { o.properties = props({ frontY: 90 }); }, /frontY must resolve inside world height/],
+    ["half condition", o => { o.properties = props({ siteId: "kiln" }); }, /siteId and level together/],
+    ["unknown site", o => { o.properties = props({ siteId: "missing", level: 1 }); }, /references unknown site missing/],
+    ["unknown level", o => { o.properties = props({ siteId: "kiln", level: 9 }); }, /references unknown visual level 9/],
+  ];
+  for (const [label, mutate, expected] of mutations) await t.test(label, async () => {
+    const broken = clone(map); mutate(broken.layers.at(-1).objects[0]);
+    await assert.rejects(compile(broken), expected);
+  });
+  const duplicate = clone(map); duplicate.layers.at(-1).objects.push(treeInteraction(301));
+  await assert.rejects(compile(duplicate), /duplicate tree interaction ID birch-west/);
+  const mixed = clone(map); mixed.layers[mixed.layers.length - 1] = groupLayer(30, "TreeInteractions", [objectLayer(31, "Occluders", [])]);
+  await assert.rejects(compile(mixed), /different metadata layers must not be nested/);
+});
