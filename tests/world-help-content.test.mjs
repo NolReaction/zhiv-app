@@ -222,7 +222,7 @@ test("fish-of-the-day guidance explains the actual discount and separates delive
 
 test("fishing help quotes the real probability per fish class without promising a rare catch", () => {
   const fishing = economyCatalog.fishing;
-  const chance = fishingClassOdds({}, fishing, { rodId: "starfall_rod", hookId: "leviathan_hook", baitId: "firefly_bait" })
+  const chance = fishingClassOdds({}, fishing, { rodId: "starfall_rod", hookId: "leviathan_hook", baitId: "star_bait" })
     .filter(odds => odds.rarity === "legendary")
     .reduce((sum, odds) => sum + odds.probability, 0);
   assert.ok(answer("fishing").includes(`${(chance * 100).toFixed(2).replace(".", ",")}%`));

@@ -92,7 +92,8 @@ test("fishing ROI subtracts the consumed dish and exposes expensive short-trip m
   assert.equal(short.dishOpportunityCoins, 2400);
   const long = legendary.fishingReturn.find(row => row.routeId === "shore_camp").best;
   assert(long.withFoodNetCoinsPerHour < long.withoutFoodNetCoinsPerHour);
-  assert(long.compatibleFishExpectedPerJob < 1, "one fed trip cannot guarantee the next legendary meal");
+  assert(long.compatibleFishExpectedPerJob > 1, "the arcade legendary kit can replenish a dish on average");
+  assert(long.compatibleFishExpectedPerJob < 8, "an expected catch remains below a guaranteed all-legendary trip");
 });
 
 test("build projection distinguishes unlock-feasible stocked meals from an impossible all-legendary start", () => {

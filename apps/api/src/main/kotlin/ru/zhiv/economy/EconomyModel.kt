@@ -32,12 +32,18 @@ const val ECONOMY_MAX_REVISION = 9_007_199_254_740_991L
 @Serializable data class EconomyFishingCatch(val rodId: String, val baitId: String?, val fishId: String, val hookId: String = "bare_hook")
 @Serializable data class EconomyFishClass(val rarity: String, val itemId: String, val weight: Int, val buyPrice: Long)
 @Serializable data class EconomyFishSpec(val itemId: String, val description: String, val rarity: String,
-    val weight: Int, val affinity: Int, val buyPrice: Long, val requiredHookId: String? = null)
-@Serializable data class EconomyRodSpec(val id: String, val name: String, val description: String, val price: Long, val rareBonus: Int,
+    val weight: Int? = null, val affinity: Int? = null, val buyPrice: Long, val requiredHookId: String? = null)
+@Serializable data class EconomyRodSpec(val id: String, val name: String, val description: String, val price: Long, val rareBonus: Int = 0,
+    val rarity: String = "common", val requiredHomeLevel: Int = 1, val rarityWeights: Map<String, Int>? = null,
+    val classOddsBps: Map<String, Int>? = null) {
+    init {
+        require(classOddsBps == null || (classOddsBps.keys == setOf("common", "uncommon", "rare", "epic", "legendary") &&
+            classOddsBps.values.all { it in 0..10000 } && classOddsBps.values.sum() == 10000))
+    }
+}
+@Serializable data class EconomyHookSpec(val id: String, val name: String, val description: String, val price: Long, val rareBonus: Int = 0,
     val rarity: String = "common", val requiredHomeLevel: Int = 1, val rarityWeights: Map<String, Int>? = null)
-@Serializable data class EconomyHookSpec(val id: String, val name: String, val description: String, val price: Long, val rareBonus: Int,
-    val rarity: String = "common", val requiredHomeLevel: Int = 1, val rarityWeights: Map<String, Int>? = null)
-@Serializable data class EconomyBaitSpec(val itemId: String, val description: String, val price: Long, val rareBonus: Int,
+@Serializable data class EconomyBaitSpec(val itemId: String, val description: String, val price: Long, val rareBonus: Int = 0,
     val rarity: String = "common", val requiredHomeLevel: Int = 1, val rarityWeights: Map<String, Int>? = null)
 @Serializable data class EconomyFishingOffer(val id: String, val kind: String, val itemId: String, val unitPrice: Long, val remaining: Long)
 @Serializable data class EconomyFishingShop(val id: String, val openedAt: String, val refreshAt: String, val refreshPricePearls: Long, val offers: List<EconomyFishingOffer>)

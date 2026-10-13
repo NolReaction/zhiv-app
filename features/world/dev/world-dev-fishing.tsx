@@ -47,15 +47,15 @@ export function FishingDiagnosticReport({ report }: { report: NonNullable<Return
       <div><dt>Классов доступно</dt><dd>{report.classes.filter(group => group.weight > 0).length} из {report.classes.length}</dd></div>
       <div><dt>Расход наживки</dt><dd>{report.bait ? "1 за поход" : "Нет"}</dd></div>
     </dl>
-    <p className={styles.note}>Класс разыгрывается для каждой рыбы. Затем равновероятно выбирается вид внутри класса. Множители снастей меняют вес класса.</p>
+    <p className={styles.note}>Класс разыгрывается для каждой рыбы. Затем равновероятно выбирается вид внутри класса. Удочка задаёт базовые шансы, крючок и наживка усиливают свой класс.</p>
     <div className={styles.groups}>{FISH_RARITY_LEVELS.map(rarity => {
       const rows = report.rows.filter(row => row.rarity === rarity), group = report.classes.find(group => group.rarity === rarity);
       if (!rows.length || !group) return null;
       return <details key={rarity} className={styles.group}>
         <summary><FishRarityBadge rarity={rarity} /><span>{rows.length} {rows.length === 1 ? "вид" : "вида"}</span><strong>{percent(group.probability)}</strong></summary>
-        <p className={styles.factors}>Удочка {factor(group.rodFactor)} · крючок {factor(group.hookFactor)} · наживка {factor(group.baitFactor)}</p>
+        <p className={styles.factors}>База удочки {percent(group.rodBasisPoints / 10_000)} · крючок {factor(group.hookFactor)} · наживка {factor(group.baitFactor)}</p>
         <div className={styles.fish} data-dev-fish-class={group.itemId}>
-          <p className={styles.weight}>Вес класса: {group.baseWeight} × {number(group.rodFactor / 100)} × {number(group.hookFactor / 100)} × {number(group.baitFactor / 100)} → {group.weight}</p>
+          <p className={styles.weight}>Вес класса: {group.rodBasisPoints} bps × {number(group.hookFactor / 100)} × {number(group.baitFactor / 100)} → {group.weight}</p>
           <p className={styles.weight}>Точная доля класса: {group.weight} / {group.totalWeight}</p>
           <dl className={styles.result}><div><dt>В среднем рыб класса за поход</dt><dd>{number(group.expectedCount)}</dd></div>
             <div><dt>Хотя бы одна рыба класса</dt><dd>{group.atLeastOne > 0 && group.atLeastOne < 1 ? "≈ " : ""}{percent(group.atLeastOne)}</dd></div></dl>
@@ -63,16 +63,14 @@ export function FishingDiagnosticReport({ report }: { report: NonNullable<Return
         {rows.map(row => <article key={row.itemId} className={styles.fish} data-dev-fish={row.itemId}>
           <header><strong>{row.name}</strong><b>{percent(row.probability)}</b></header>
           {!row.reason && <p className={styles.weight}>Шанс вида: {percent(group.probability)} / {row.eligibleSpecies} равновероятных видов</p>}
-          {row.reason && <p className={styles.lock}>{row.reason === "legendary_tackle"
-            ? "Нужны легендарные удочка и крючок. Наживка это условие не меняет."
-            : `Нужен крючок ${row.requiredHookId}.`}</p>}
+          {row.reason && <p className={styles.lock}>{row.reason === "legendary_tackle" ? "Нужна легендарная удочка. Крючок и наживка сами не открывают этот класс." : "Эта удочка не ловит этот класс. Нужна подходящая удочка."}</p>}
           <dl className={styles.result}><div><dt>В среднем за поход</dt><dd>{number(row.expectedCount)}</dd></div>
             <div><dt>Хотя бы одна за поход</dt><dd>{row.atLeastOne > 0 && row.atLeastOne < 1 ? "≈ " : ""}{percent(row.atLeastOne)}</dd></div></dl>
         </article>)}
       </details>;
     })}</div>
     <details className={styles.formula}><summary>Формула и смысл чисел</summary>
-      <p>Вес доступного класса: max(1, floor(база × удочка × крючок × наживка)). Множители выше уже разделены на 100. Класс без доступных видов получает вес 0.</p>
+      <p>Вес класса: floor(базовые bps удочки × множитель крючка × множитель наживки). 100 bps = 1%. Множители уже разделены на 100. Нулевая база остаётся нулевой; легендарный класс открывает только легендарная удочка.</p>
       <p>p класса = вес / сумма весов; p вида = p класса / число доступных видов. Средний улов: {report.draws} × p. Шанс хотя бы одной: 1 − (1 − p)<sup>{report.draws}</sup>. Добавление вида не меняет шанс класса.</p>
       <p>Вероятность за поход рассчитана по модели отдельных случайных попыток. Реальный результат заранее сохраняется сервером по закрытому seed; отмена не даёт нового броска. Дробный средний улов показывает ожидание на множестве походов.</p>
     </details>

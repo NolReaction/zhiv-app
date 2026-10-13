@@ -38,7 +38,7 @@ class EconomyFishingTest {
         val spec = checkNotNull(EconomyRules.catalog.fishing)
         spec.classes.forEach { fish -> assertTrue(fish.buyPrice > EconomyRules.catalog.items.single { it.id == fish.itemId }.baseSellPrice) }
         spec.baits.forEach { bait -> assertTrue(bait.price > EconomyRules.catalog.items.single { it.id == bait.itemId }.baseSellPrice) }
-        assertEquals(listOf("fish_rudd", "fish_silverfin", "fish"),
+        assertEquals(listOf("fish_bream", "fish_pike", "fish_reedperch"),
             listOf("00000000-0000-4000-8000-000000000001", "a2f6bce4-1d99-4c0f-a910-656320724833", "ffffffff-ffff-4fff-bfff-ffffffffffff")
                 .map { EconomyRules.selectFishingCatch(it, "willow_rod", "worm_bait") })
     }
@@ -48,6 +48,29 @@ class EconomyFishingTest {
         for (rod in checkNotNull(EconomyRules.catalog.fishing).rods)
             for (bait in listOf(null, "crumb_bait", "worm_bait"))
                 assertEquals(EconomyRules.selectFishingCatch(seed, rod.id, bait), EconomyRules.selectFishingCatch(seed, rod.id, bait))
+    }
+
+    @Test fun `incompatible bait cannot be equipped or spent and rod switch only clears its selection`() {
+        val initial = funded().copy(inventory = mapOf("firefly_bait" to 2L, "star_bait" to 3L, "worm_bait" to 4L),
+            fishingCastSeed = "00000000-0000-4000-8000-000000000001")
+        for (bait in listOf("firefly_bait", "star_bait")) {
+            val equippedFailure = assertFailsWith<AuthFailure> { apply(initial, "equip_fishing_bait", bait) }
+            assertEquals("ECONOMY_FISHING_BAIT", equippedFailure.code)
+            val stale = initial.copy(fishing = initial.fishing.copy(equippedBaitId = bait))
+            val before = economyJson.encodeToString(stale)
+            for (action in listOf("start_fishing", "start_exploration"))
+                assertEquals("ECONOMY_FISHING_BAIT", assertFailsWith<AuthFailure> { apply(stale, action, "shore") }.code)
+            assertEquals(before, economyJson.encodeToString(stale), "Rejected starts keep stock, private seed and pending jobs unchanged")
+        }
+        val star = initial.copy(fishing = initial.fishing.copy(ownedRods = listOf("reed_rod", "starfall_rod"),
+            equippedRodId = "starfall_rod", equippedBaitId = "star_bait"))
+        val switched = apply(star, "equip_fishing_rod", "reed_rod")
+        assertNull(switched.fishing.equippedBaitId)
+        assertEquals(star.inventory, switched.inventory)
+        assertEquals(star.fishingCastSeed, switched.fishingCastSeed)
+        val compatible = apply(star.copy(fishing = star.fishing.copy(equippedBaitId = "worm_bait")), "equip_fishing_rod", "reed_rod")
+        assertEquals("worm_bait", compatible.fishing.equippedBaitId)
+        assertEquals(star.inventory, compatible.inventory)
     }
 
     @Test fun `shop charges server quote rods stay unique and purchased fish never counts as caught`() {
@@ -182,13 +205,13 @@ class EconomyFishingTest {
         assertEquals(listOf("bare_hook"), restored.ownedHooks); assertEquals("bare_hook", restored.equippedHookId)
     }
 
-    @Test fun `twelve fish span five rarities and only Leviathan admits the shark`() {
+    @Test fun `twelve fish span five rarities and every hook works with the legendary rod`() {
         val spec = checkNotNull(EconomyRules.catalog.fishing)
         assertEquals(12, spec.fish.size)
         assertEquals(setOf("common", "uncommon", "rare", "epic", "legendary"), spec.fish.map { it.rarity }.toSet())
         assertEquals("fish_shark", spec.fish.single { it.rarity == "legendary" }.itemId)
         assertEquals(10000, spec.classes.sumOf { it.weight })
-        for (hook in spec.hooks) assertEquals(hook.id == "leviathan_hook",
+        for (hook in spec.hooks) assertTrue(
             EconomyRules.fishingWeights("starfall_rod", "firefly_bait", hook.id).single { it.first.itemId == "fish_shark" }.second > 0)
     }
 

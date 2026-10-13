@@ -23,15 +23,15 @@
       "label": "leviathan-hook-without-legendary-rod",
       "buildings": { "home": 5, "garden": 1, "warehouse": 1, "workshop": 4, "woodlot": 4, "dryer": 5, "kiln": 3, "quarry": 2 },
       "ownedRods": ["reed_rod"], "ownedHooks": ["bare_hook", "leviathan_hook"],
-      "present": ["iron_ingot", "metal_parts", "tools", "reinforced_parts", "epic_fish"],
-      "missing": ["fish_legendary", "legendary_fish"]
+      "present": ["iron_ingot", "metal_parts", "tools", "reinforced_parts"],
+      "missing": ["fish_epic", "epic_fish", "fish_legendary", "legendary_fish"]
     },
     {
       "label": "legendary-rod-without-leviathan-hook",
       "buildings": { "home": 5, "garden": 1, "warehouse": 1, "workshop": 4, "woodlot": 4, "dryer": 5, "kiln": 3, "quarry": 2 },
       "ownedRods": ["reed_rod", "starfall_rod"], "ownedHooks": ["bare_hook"],
-      "present": ["fish_epic", "epic_fish"],
-      "missing": ["fish_legendary", "legendary_fish"]
+      "present": ["fish_epic", "epic_fish", "fish_legendary", "legendary_fish"],
+      "missing": []
     },
     {
       "label": "complete-chain-and-owned-but-not-equipped-tackle",

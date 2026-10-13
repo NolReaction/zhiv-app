@@ -72,17 +72,17 @@ test("catch expectation accounts for every fish as class stock and separately pr
 
 test("the longer catch gives eight class draws and consumes one bait per trip", () => {
   const catalog = readEconomyCatalog(), math = economicMath(catalog);
-  const best = math.catchPortfolio("starfall_rod", "firefly_bait", "shore", "leviathan_hook");
-  const camp = math.catchPortfolio("starfall_rod", "firefly_bait", "shore_camp", "leviathan_hook");
+  const best = math.catchPortfolio("starfall_rod", "star_bait", "shore", "leviathan_hook");
+  const camp = math.catchPortfolio("starfall_rod", "star_bait", "shore_camp", "leviathan_hook");
   assert.equal(best.speciesDrawsPerJob, 2); assert.equal(camp.speciesDrawsPerJob, 8);
-  assert(best.probabilities.fish_shark > .09 && best.probabilities.fish_shark < .1);
+  near(best.probabilities.fish_shark, 27 / 35);
   near(camp.expectedFishRevenue, 4 * best.expectedFishRevenue);
   near(Object.values(camp.output).reduce((a, b) => a + b, 0), 8);
   assert.equal(camp.output.wood, undefined);
   assert(camp.speciesDrawsPerJob / camp.slotMinutes.mochlik < best.speciesDrawsPerJob / best.slotMinutes.mochlik);
-  assert.equal(best.baitPurchaseCoins, catalog.fishing.baits.find(b => b.itemId === "firefly_bait").price);
+  assert.equal(best.baitPurchaseCoins, catalog.fishing.baits.find(b => b.itemId === "star_bait").price);
   assert.equal(camp.baitPurchaseCoins, best.baitPurchaseCoins);
-  assert.equal(auditEconomicMath(catalog).fishingLoadouts.length, 180);
+  assert.equal(auditEconomicMath(catalog).fishingLoadouts.length, 216);
 });
 
 test("rare materials have one shared earned-time clock and no invented NPC price or additive production work", () => {
@@ -100,20 +100,21 @@ test("rare materials have one shared earned-time clock and no invented NPC price
   assert.equal(report.profiles.filter(profile => profile.acquisition).length, 3);
 });
 
-test("fish references disclose both legendary tackle startup costs and use the eligible catch portfolio", () => {
+test("fish references use the least expensive eligible rod and allow legendary fish with the free hook", () => {
   const math = economicMath(readEconomyCatalog()), shark = math.profile("fish_shark");
   assert.equal(shark.sourceHome, 4); assert.equal(shark.referenceHome, 4);
-  assert.equal(shark.catchReference.hookId, "leviathan_hook");
+  assert.equal(shark.catchReference.hookId, "bare_hook");
   assert.equal(shark.catchReference.rodId, "starfall_rod");
-  const portfolio = math.catchPortfolio("starfall_rod", null, "shore", "leviathan_hook");
+  const portfolio = math.catchPortfolio("starfall_rod", null, "shore", "bare_hook");
   near(shark.catchReference.probability, portfolio.classProbabilities.fish_legendary);
   near(shark.slotMinutes.mochlik, 3 / portfolio.output.fish_legendary);
   assert.equal(shark.coins, 0, "the permanent hook startup price is disclosed separately from every catch");
-  assert.equal(shark.catchReference.hookPurchaseCoins, readEconomyCatalog().fishing.hooks.find(hook => hook.id === "leviathan_hook").price);
+  assert.equal(shark.catchReference.hookPurchaseCoins, 0);
   assert.equal(shark.catchReference.rodPurchaseCoins, readEconomyCatalog().fishing.rods.find(rod => rod.id === "starfall_rod").price);
   assert.equal(shark.catchReference.finiteGuarantee, false);
   assert.equal(math.profile("glow_bait").sourceHome, 2);
   assert.equal(math.profile("firefly_bait").sourceHome, 3);
+  assert.equal(math.profile("star_bait").sourceHome, 4);
 });
 
 

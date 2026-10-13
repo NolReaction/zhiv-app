@@ -12,7 +12,7 @@ import { fishClassForItem, fishClassInventory, fishingClassOdds, fishingState } 
 import { canRefreshFishingShop, fishingShopRefreshPrice } from "@/features/economy/domain/fishing-shop";
 import { formatPearls } from "@/features/economy/domain/money";
 import { residentOrderBoard } from "@/features/economy/domain/food";
-import { FishRarityBadge } from "./fish-rarity";
+import { FishRarityBadge, FISH_RARITY_NAMES, type FishRarity } from "./fish-rarity";
 import { PantrySale } from "@/features/economy/ui/inventory/world-pantry-menu";
 import { locked } from "@/features/economy/sync/controller-state";
 import { listenForSectionGuideNavigation } from "@/features/onboarding/section-guide-navigation";
@@ -39,14 +39,18 @@ function offerLive(state: EconomyView, now: number, offer?: Offer) {
 }
 
 /** Class probabilities describe every fish; species remain a separate collection. */
-export function PleskCatchOdds({ state, catalog, override, preview = false }: { state: EconomyView; catalog: FishingCatalog;
-  override?: Parameters<typeof fishingClassOdds>[2]; preview?: boolean }) {
+export function PleskCatchOdds({ state, catalog, override, preview = false, targetRarity }: { state: EconomyView; catalog: FishingCatalog;
+  override?: Parameters<typeof fishingClassOdds>[2]; preview?: boolean; targetRarity?: FishRarity }) {
   const odds = fishingClassOdds(state, catalog, override);
+  const target = odds.find(odd => odd.rarity === targetRarity);
+  const current = target && fishingClassOdds(state, catalog).find(odd => odd.rarity === target.rarity);
   return <section className={styles.odds} data-guide-plesk-odds aria-label={preview ? "Шансы с выбранной снастью" : "Шансы текущих снастей"}>
     <p><span>{preview ? "С этой снастью" : "Шансы выбранных снастей"}</span><small>на каждую пойманную рыбу</small></p>
-    <dl className={styles.rarityOdds} aria-label="Шансы по классам">{odds.map(({ rarity, itemId, probability }) => <div key={rarity} data-fish-class-odds={itemId}><dt><FishRarityBadge rarity={rarity} /></dt><dd>{percent(probability)}</dd></div>)}</dl>
+    {target && <p className={styles.targetOdds} data-fishing-target={target.itemId}><strong>{FISH_RARITY_NAMES[target.rarity]} рыба</strong><span>{preview && current && Math.abs(current.probability - target.probability) > 1e-10 ? `Сейчас ${percent(current.probability)} → с этой снастью ${percent(target.probability)}` : `Шанс с этим набором: ${percent(target.probability)}`}</span></p>}
+    <dl className={styles.rarityOdds} aria-label="Шансы по классам">{odds.map(({ rarity, itemId, probability }) => <div key={rarity} data-fish-class-odds={itemId} data-target={rarity === targetRarity || undefined}><dt><FishRarityBadge rarity={rarity} /></dt><dd>{percent(probability)}</dd></div>)}</dl>
     <p className={styles.hint}>Сначала определяется класс, затем случайный вид внутри него. Все виды одного класса одинаково подходят для заказов, блюд и продажи.</p>
-    {odds.some(odd => odd.rarity === "legendary" && odd.probability === 0) && <p className={styles.hint}>Для легендарного улова нужны легендарные удочка и крючок.</p>}
+    {odds.some(odd => odd.rarity === "legendary" && odd.probability === 0) && <p className={styles.hint}>Легендарную рыбу открывает легендарная удочка. Крючок и наживка сами её не открывают.</p>}
+    {target?.probability === 0 && <p className={styles.hint}>Выбранной удочке недоступен этот класс. Сначала выберите подходящую удочку.</p>}
     {preview && <small>Эти шансы будут после выбора снасти перед отправлением.</small>}
   </section>;
 }
@@ -96,7 +100,7 @@ export function PleskRodOffer({ economy, state, rod }: ReadyProps & { rod: Fishi
   return <article className={styles.gearCard} data-gear-rarity={rod.rarity}>
     <div className={styles.gearHeading}><FishingRodIcon rodId={rod.id} size={48} /><div><h3>{rod.name}</h3><FishRarityBadge rarity={rod.rarity} /><p>{owned ? "Уже куплена" : "Останется навсегда"}</p></div>{owned && <Check size={17} aria-hidden="true" />}</div>
     <p className={styles.description}>{rod.description}</p>
-    <PleskCatchOdds state={state} catalog={state.catalog.fishing!} override={{ rodId: rod.id }} preview={!equipped} />
+    <PleskCatchOdds state={state} catalog={state.catalog.fishing!} override={{ rodId: rod.id }} targetRarity={rod.rarity} preview={!equipped} />
     <button type="button" className={styles.primary} disabled={blocked || !allowed} onClick={() => send("buy_fishing_item", offer?.id ?? "", 1, price, allowed)}>{owned ? "Куплено" : !live ? "Нет на прилавке" : <><span>Купить удочку</span><Price value={price} /></>}</button>
     {!owned && live && !affordable && <p className={styles.hint}>Не хватает {number(price - state.wallet.coins)} монет.</p>}
   </article>;
@@ -110,7 +114,7 @@ export function PleskHookOffer({ economy, state, hook }: ReadyProps & { hook: Fi
   return <article className={styles.gearCard} data-gear-rarity={hook.rarity}>
     <div className={styles.gearHeading}><ItemIcon itemId={hook.id} size={48} /><div><h3>{hook.name}</h3><FishRarityBadge rarity={hook.rarity} /><p>{owned ? "Уже куплен" : "Останется навсегда"}</p></div>{owned && <Check size={17} aria-hidden="true" />}</div>
     <p className={styles.description}>{hook.description}</p>
-    <PleskCatchOdds state={state} catalog={state.catalog.fishing!} override={{ hookId: hook.id }} preview={!equipped} />
+    <PleskCatchOdds state={state} catalog={state.catalog.fishing!} override={{ hookId: hook.id }} targetRarity={hook.rarity} preview={!equipped} />
     <button type="button" className={styles.primary} disabled={blocked || !allowed} onClick={() => send("buy_fishing_item", offer?.id ?? "", 1, price, allowed)}>{owned ? "Куплено" : !live ? "Нет на прилавке" : <><span>Купить крючок</span><Price value={price} /></>}</button>
     {!owned && live && !affordable && <p className={styles.hint}>Не хватает {number(price - state.wallet.coins)} монет.</p>}
     <p className={styles.footnote}>Не расходуется и не занимает место в кладовой.</p>
@@ -126,7 +130,7 @@ export function PleskBaitOffer({ economy, state, bait }: ReadyProps & { bait: Fi
   return <article className={styles.gearCard} data-gear-rarity={bait.rarity}>
     <div className={styles.gearHeading}><ItemIcon itemId={bait.itemId} size={40} /><div><h3>{itemName(state, bait.itemId)}</h3><FishRarityBadge rarity={bait.rarity} /><p>В запасе {number(stock)}</p></div></div>
     <p className={styles.description}>{bait.description}</p>
-    <PleskCatchOdds state={state} catalog={state.catalog.fishing!} override={{ baitId: bait.itemId }} preview />
+    <PleskCatchOdds state={state} catalog={state.catalog.fishing!} override={{ baitId: bait.itemId }} targetRarity={bait.rarity} preview />
     {live && <><div className={styles.quantity}><label htmlFor={id}>Купить штук</label><input id={id} type="number" inputMode="numeric" min={1} max={Math.max(1, maximum)} step={1} value={quantityText} disabled={blocked} onChange={event => setQuantityText(event.target.value)} /><small>На прилавке {offer!.remaining}</small></div>
       <button type="button" className={styles.primary} disabled={blocked || !valid} onClick={() => send("buy_fishing_item", offer!.id, quantity, quantity * price, valid)} aria-label={`Купить наживку: ${itemName(state, bait.itemId)}`}><span>Купить наживку</span>{Number.isSafeInteger(quantity) && quantity > 0 ? <Price value={quantity * price} /> : <span>-</span>}</button></>}
     {live && maximum === 0 && <p className={styles.hint}>{state.storage.available === 0 ? "Кладовая заполнена." : "Для покупки не хватает монет."}</p>}

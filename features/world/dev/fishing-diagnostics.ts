@@ -18,8 +18,8 @@ export function fishingDiagnostics(selection: FishingDiagnosticSelection, catalo
   const classes = spec.classes.map(group => {
     const weight = weights.find(row => row.itemId === group.itemId)!.weight, probability = weight / totalWeight;
     const eligibleSpecies = spec.fish.filter(fish => fish.rarity === group.rarity && !fishingIneligibility(fish, rod.id, hook.id, spec)).length;
-    return { ...group, baseWeight: group.weight, weight, probability, totalWeight, eligibleSpecies,
-      rodFactor: rod.rarityWeights?.[group.rarity] ?? 100, hookFactor: hook.rarityWeights?.[group.rarity] ?? 100,
+    return { ...group, rodBasisPoints: rod.classOddsBps?.[group.rarity] ?? group.weight, weight, probability, totalWeight, eligibleSpecies,
+      hookFactor: hook.rarityWeights?.[group.rarity] ?? 100,
       baitFactor: bait?.rarityWeights?.[group.rarity] ?? 100, expectedCount: draws * probability,
       atLeastOne: -Math.expm1(draws * Math.log1p(-probability)) };
   });

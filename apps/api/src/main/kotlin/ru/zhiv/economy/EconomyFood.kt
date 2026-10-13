@@ -160,12 +160,13 @@ object EconomyFood {
                 if (unlocked(route.requiredHomeLevel, route.requiredBuildings) && route.cost.items.keys.all { it in reachable }) {
                     reachable += if (route.id in (catalog.fishing?.routeIds ?: emptyList())) route.rewards.filter { (id, count) -> id != "fish" && count > 0 }.keys
                         else EconomyFishInventory.items(route.rewards, catalog).filterValues { it > 0 }.keys
-                    if (route.id in (catalog.fishing?.routeIds ?: emptyList())) catalog.fishing?.fish?.forEach { fish ->
-                        val hookAvailable = catalog.fishing.hooks.any { hook -> hook.id in state.fishing.ownedHooks &&
-                            (fish.requiredHookId == null || hook.id == fish.requiredHookId) && (fish.rarity != "legendary" || hook.rarity == "legendary") }
-                        val rodAvailable = catalog.fishing.rods.any { rod -> rod.id in state.fishing.ownedRods &&
-                            (fish.rarity != "legendary" || rod.rarity == "legendary") }
-                        if (hookAvailable && rodAvailable) reachable += EconomyFishInventory.itemId(fish.itemId, catalog)
+                    if (route.id in (catalog.fishing?.routeIds ?: emptyList())) catalog.fishing?.let { fishing ->
+                        if (fishing.hooks.any { it.id in state.fishing.ownedHooks }) {
+                            fishing.rods.filter { it.id in state.fishing.ownedRods }.forEach { rod ->
+                                reachable += EconomyRules.fishingClassWeights(rod.id, null, spec = fishing)
+                                    .filter { it.second > 0 }.map { it.first.itemId }
+                            }
+                        }
                     }
                 }
             }

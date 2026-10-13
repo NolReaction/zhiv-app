@@ -313,7 +313,7 @@ class EconomyRulesTest {
         val job = started.jobs.single()
         assertEquals(recipe.cost.items.mapValues { it.value * 3 }, job.cost.items)
         assertEquals(recipe.rewards.mapValues { it.value * 3 }, job.rewards)
-        assertEquals(4, job.catalogVersion)
+        assertEquals(5, job.catalogVersion)
         assertEquals(Duration.ofSeconds(recipe.seconds * 3), Duration.between(Instant.parse(job.startedAt), Instant.parse(job.finishesAt)))
         assertEquals("ECONOMY_JOB_NOT_READY", assertFailsWith<AuthFailure> { apply(started, "claim_job", job.id, at = Instant.parse(job.finishesAt).minusMillis(1)) }.code)
         val completed = apply(started, "claim_job", job.id, at = Instant.parse(job.finishesAt))
@@ -490,7 +490,9 @@ class EconomyRulesTest {
         for (fish in fishing.fish) {
             val item = assertNotNull(items[fish.itemId], "Unknown fish item: ${fish.itemId}")
             assertTrue(fish.buyPrice > item.baseSellPrice, "${fish.itemId}: fish buy-sell arbitrage")
-            assertTrue(fish.weight > 0 && fish.affinity >= 0)
+            assertNull(fish.weight)
+            assertNull(fish.affinity)
+            assertNull(fish.requiredHookId)
         }
         for (bait in fishing.baits) {
             val item = assertNotNull(items[bait.itemId], "Unknown bait item: ${bait.itemId}")
@@ -498,16 +500,24 @@ class EconomyRulesTest {
             assertTrue(bait.rareBonus >= 0)
         }
         val rarities = setOf("common", "uncommon", "rare", "epic", "legendary")
-        val weights = fishing.rods.map { it.rarityWeights } + fishing.hooks.map { it.rarityWeights } + fishing.baits.map { it.rarityWeights }
+        for (rod in fishing.rods) {
+            val probabilities = assertNotNull(rod.classOddsBps)
+            assertEquals(rarities, probabilities.keys)
+            assertTrue(probabilities.values.all { it in 0..10000 })
+            assertEquals(10000, probabilities.values.sum())
+        }
+        val weights = fishing.hooks.map { it.rarityWeights } + fishing.baits.map { it.rarityWeights }
         for (entry in weights) {
             val specialization = assertNotNull(entry, "Current fishing gear must define its rarity specialization")
             assertEquals(rarities, specialization.keys)
             assertTrue(specialization.values.all { it in 1..1000 }, "Specialization factors must be finite and positive")
         }
-        for (durable in listOf(fishing.rods.map { it.rarityWeights }, fishing.hooks.map { it.rarityWeights })) {
-            assertEquals(durable.size, durable.toSet().size, "Durable tackle must have distinct specializations")
-            assertTrue(durable.all { entry -> entry!!.values.any { it > 100 } && entry.values.any { it < 100 } },
-                "Each durable specialization must have both an advantage and a tradeoff")
+        assertEquals(fishing.rods.size, fishing.rods.map { it.classOddsBps }.toSet().size)
+        assertEquals(fishing.hooks.size, fishing.hooks.map { it.rarityWeights }.toSet().size)
+        for (hook in fishing.hooks) {
+            val factors = assertNotNull(hook.rarityWeights)
+            assertTrue(factors.values.all { it >= 100 }, "Hooks boost their target without hidden penalties")
+            assertEquals(if (hook.id == "bare_hook") 0 else 1, factors.values.count { it > 100 })
         }
         return fishing.baits.map { it.itemId }.toSet()
     }
@@ -664,8 +674,10 @@ class EconomyRulesTest {
             }
             if (fishing != null && fishing.routeIds.any { it in reachableExplorations }) {
                 for (fish in fishing.fish) {
-                    val hook = fish.requiredHookId?.let { id -> fishing.hooks.single { it.id == id } }
-                    if (hook == null || (unlocked(hook.requiredHomeLevel, emptyMap()) && (hook.price == 0L || canEarnCoins)))
+                    val rodAvailable = fishing.rods.any { rod -> unlocked(rod.requiredHomeLevel, emptyMap()) &&
+                        (rod.price == 0L || canEarnCoins) && EconomyRules.fishingClassWeights(rod.id, null)
+                            .any { it.first.rarity == fish.rarity && it.second > 0 } }
+                    if (rodAvailable)
                         items.addAll(listOf(fish.itemId, EconomyFishInventory.itemId(fish.itemId)))
                 }
             }

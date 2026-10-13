@@ -1,5 +1,5 @@
 import { economyActorConflict } from "@/features/economy/domain/actor-availability";
-import { fishingState, fishingTripCost } from "@/features/economy/domain/fishing";
+import { fishingBaitCompatible, fishingState, fishingTripCost } from "@/features/economy/domain/fishing";
 import { recipeWithFish } from "@/features/economy/domain/food";
 import type { EconomyCost, EconomyJob, EconomyView } from "@/features/economy/domain/model";
 import { productionSlotCount } from "@/features/economy/domain/production-slots";
@@ -128,6 +128,11 @@ function contextAdvice(state: EconomyView, context: WorldHelpContext | undefined
         id: "fishing:gear", title: "Проверьте выбранные снасти", topicId: "journeys", severity: "problem",
         message: "Перед отправлением выберите имеющиеся удочку и крючок. Наживку можно отключить.",
         action: { label: "Открыть рыбалку", target: { kind: "expeditions", sector: "coast" } },
+      };
+      if (gear.equippedBaitId && !fishingBaitCompatible(gear.equippedRodId, gear.equippedBaitId, fishing)) return {
+        id: "fishing:bait-incompatible", title: "Нужна подходящая удочка", topicId: "fishing", severity: "problem",
+        message: "Эта наживка усиливает класс, который выбранная удочка не ловит. Смените удочку или выберите «Без наживки»; запас наживки сохранится.",
+        action: { label: "Выбрать снасти", target: { kind: "expeditions", sector: "coast" } },
       };
       if (gear.equippedBaitId && (state.inventory[gear.equippedBaitId] ?? 0) < 1) return {
         id: "fishing:bait", title: "Выбранная наживка закончилась", topicId: "journeys", severity: "problem",

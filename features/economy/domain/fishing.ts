@@ -34,20 +34,33 @@ export function fishingTripCost(cost: EconomyCost, state: { fishing?: EconomyFis
 export function fishingCollectionDraws(routeId: string, catalog = economyCatalog.fishing!): number {
   return catalog.collectionDrawsByRoute?.[routeId] ?? 1;
 }
-export function fishingIneligibility(fish: EconomyFishingCatalog["fish"][number], rodId: string, hookId: string,
-  catalog = economyCatalog.fishing!): "legendary_tackle" | "hook" | null {
-  if (fish.rarity === "legendary" && (catalog.rods.find(rod => rod.id === rodId)?.rarity !== "legendary"
-    || catalog.hooks.find(hook => hook.id === hookId)?.rarity !== "legendary")) return "legendary_tackle";
-  return fish.requiredHookId && fish.requiredHookId !== hookId ? "hook" : null;
+export function fishingIneligibility(fish: EconomyFishingCatalog["fish"][number], rodId: string, _hookId: string,
+  catalog = economyCatalog.fishing!): "legendary_tackle" | "rod_class" | null {
+  const rod = catalog.rods.find(rod => rod.id === rodId);
+  if (fish.rarity === "legendary" && rod?.rarity !== "legendary") return "legendary_tackle";
+  return rod?.classOddsBps?.[fish.rarity] === 0 ? "rod_class" : null;
 }
-/** Integer class tickets are independent of how many species the book contains. */
+/** Bait may improve an available class, but cannot unlock an impossible one. */
+export function fishingBaitCompatible(rodId: string, baitId: string | null, catalog = economyCatalog.fishing!): boolean {
+  if (baitId === null) return true;
+  const rod = catalog.rods.find(item => item.id === rodId), bait = catalog.baits.find(item => item.itemId === baitId);
+  if (!rod || !bait) return false;
+  return fishingClassWeights(rodId, null, catalog).some(group => group.rarity === bait.rarity && group.weight > 0);
+}
+/** Rods set direct class odds. Hooks and bait multiply those tickets; zero stays
+ * impossible. Species count and old species/hook metadata never change classes. */
 export function fishingClassWeights(rodId: string, baitId: string | null, catalog = economyCatalog.fishing!, hookId = "bare_hook") {
   const rod = catalog.rods.find(rod => rod.id === rodId), hook = catalog.hooks.find(hook => hook.id === hookId),
     bait = catalog.baits.find(bait => bait.itemId === baitId);
-  return catalog.classes.map(group => ({ rarity: group.rarity, itemId: group.itemId,
-    weight: catalog.fish.some(fish => fish.rarity === group.rarity && !fishingIneligibility(fish, rodId, hookId, catalog))
-      ? Math.max(1, Math.floor(group.weight * (rod?.rarityWeights?.[group.rarity] ?? 100)
-        * (hook?.rarityWeights?.[group.rarity] ?? 100) * (bait?.rarityWeights?.[group.rarity] ?? 100) / 1_000_000)) : 0 }));
+  return catalog.classes.map(group => {
+    const eligible = catalog.fish.some(fish => fish.rarity === group.rarity && !fishingIneligibility(fish, rodId, hookId, catalog));
+    const multiplier = (hook?.rarityWeights?.[group.rarity] ?? 100) * (bait?.rarityWeights?.[group.rarity] ?? 100);
+    const weight = rod?.classOddsBps
+      ? Math.floor(rod.classOddsBps[group.rarity] * multiplier / 10_000)
+      // Read older catalog snapshots without changing their authored rod weights.
+      : Math.max(1, Math.floor(group.weight * (rod?.rarityWeights?.[group.rarity] ?? 100) * multiplier / 1_000_000));
+    return { rarity: group.rarity, itemId: group.itemId, weight: eligible ? weight : 0 };
+  });
 }
 /** Per-species display only. Authoritative drawing always uses integer class tickets. */
 export function fishingWeights(rodId: string, baitId: string | null, catalog = economyCatalog.fishing!, hookId = "bare_hook"): { itemId: string; weight: number }[] {

@@ -37,7 +37,7 @@ test("DEV normalizes class and species probabilities for every route and tackle 
 });
 
 test("every camp fish gets a class draw and collection species are uniform within the class", () => {
-  const report = fishingDiagnostics(select({ rodId: "starfall_rod", hookId: "leviathan_hook", baitId: "firefly_bait", routeId: "shore_camp" }));
+  const report = fishingDiagnostics(select({ rodId: "starfall_rod", hookId: "leviathan_hook", baitId: "star_bait", routeId: "shore_camp" }));
   const shark = report.rows.find(row => row.itemId === "fish_shark"), legendary = report.classes.find(group => group.rarity === "legendary");
   assert.equal(report.draws, 8); assert.equal(report.totalFish, 8);
   near(shark.atLeastOne, 1 - (1 - shark.probability) ** 8);
@@ -47,16 +47,18 @@ test("every camp fish gets a class draw and collection species are uniform withi
     const rows = report.rows.filter(row => row.rarity === group.rarity && !row.reason);
     for (const row of rows) near(row.probability, group.probability / rows.length);
   }
-  assert.deepEqual([legendary.rodFactor, legendary.hookFactor, legendary.baitFactor], [400, 300, 150]);
+  assert.equal(legendary.rodBasisPoints, spec.rods.find(rod => rod.id === "starfall_rod").classOddsBps.legendary);
+  assert.deepEqual([legendary.hookFactor, legendary.baitFactor], [150, 150]);
+  assert.equal(legendary.weight, Math.floor(legendary.rodBasisPoints * 1.5 * 1.5));
 });
 
 test("DEV explains forbidden legendary fish, even when the hook is already legendary", () => {
-  const report = fishingDiagnostics(select({ hookId: "leviathan_hook", baitId: "firefly_bait" }));
+  const report = fishingDiagnostics(select({ hookId: "leviathan_hook", baitId: "star_bait" }));
   const shark = report.rows.find(row => row.itemId === "fish_shark");
   assert.equal(shark.reason, "legendary_tackle"); assert.equal(shark.probability, 0);
   assert.equal(shark.expectedCount, 0); assert.ok(shark.atLeastOne === 0);
   const html = renderToStaticMarkup(createElement(FishingDiagnosticReport, { report }));
-  assert.match(html, /Нужны легендарные удочка и крючок/);
+  assert.match(html, /Нужна легендарная удочка/);
   assert.match(html, /Точная доля класса: 0 \/ /);
   assert.equal((html.match(/data-dev-fish=/g) ?? []).length, spec.fish.length);
   assert.equal((html.match(/data-dev-fish-class=/g) ?? []).length, spec.classes.length);
@@ -76,4 +78,20 @@ test("invalid selection or a non-fishing route cannot manufacture diagnostic odd
   assert.equal(fishingDiagnostics(select({ routeId: "deep_cave" })), null);
   assert.equal(fishingDiagnostics(select({ rodId: "missing" })), null);
   assert.equal(fishingDiagnostics(select({ baitId: "missing" })), null);
+});
+
+
+test("DEV reports rod base odds, allows legendary rods with plain hooks and explains zero-base classes", () => {
+  const report = fishingDiagnostics(select({ rodId: "starfall_rod", hookId: "bare_hook", baitId: null }));
+  const legendary = report.classes.find(group => group.rarity === "legendary");
+  assert.ok(legendary.probability > 0);
+  const html = renderToStaticMarkup(createElement(FishingDiagnosticReport, { report }));
+  assert.match(html, /База удочки/);
+  assert.match(html, /bps/);
+  assert.doesNotMatch(html, /Нужен крючок|Нужны легендарные удочка и крючок/);
+  const starter = fishingDiagnostics(select());
+  const zero = starter.rows.filter(row => spec.rods.find(rod => rod.id === "reed_rod").classOddsBps[row.rarity] === 0);
+  assert.ok(zero.length > 0);
+  assert.ok(zero.every(row => row.probability === 0 && row.reason));
+  assert.match(renderToStaticMarkup(createElement(FishingDiagnosticReport, { report: starter })), /Эта удочка не ловит этот класс/);
 });

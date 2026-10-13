@@ -26,7 +26,7 @@ export function auditEconomyProgression(catalog) {
   for (const route of catalog.explorations.filter(route => route.activity === "mining")) {
     assert(route.requiredBuildings?.quarry >= 1, `${route.id}: mining requires a built quarry`);
   }
-  assert.equal(catalog.version, 4);
+  assert.equal(catalog.version, 5);
   assert.equal(catalog.currencyScale, 10);
   const rare = catalog.rareDrops;
   const special = [...items.values()].filter(item => item.category === "special");
@@ -133,8 +133,9 @@ export function auditEconomyProgression(catalog) {
     for (const fish of fishing.fish) {
       assert(items.has(fish.itemId), `Fishing: unknown item ${fish.itemId}`);
       assert(Number.isSafeInteger(fish.buyPrice) && fish.buyPrice > items.get(fish.itemId).baseSellPrice, "Fish buy-sell arbitrage");
-      assert(Number.isSafeInteger(fish.weight) && fish.weight > 0 && Number.isSafeInteger(fish.affinity) && fish.affinity >= 0, "Invalid fishing weight");
-      assert(!fish.requiredHookId || fishing.hooks.some(hook => hook.id === fish.requiredHookId), "Fish requires an unknown hook");
+      assert(rarity.has(fish.rarity), "Unknown fish rarity");
+      assert(!Object.hasOwn(fish, "weight") && !Object.hasOwn(fish, "affinity") && !Object.hasOwn(fish, "requiredHookId"),
+        "Current fish species must not carry individual chances or hook gates");
       itemUses.add(fish.itemId); // Species are permanent collection entries; class stock is economic.
     }
     for (const group of fishing.classes) {
@@ -152,14 +153,23 @@ export function auditEconomyProgression(catalog) {
       itemUses.add(bait.itemId); // One stack unit is consumed by a special fishing departure.
       merchantItems.push(bait.itemId);
     }
-    const gear = [...fishing.rods, ...fishing.hooks, ...fishing.baits];
+    for (const rod of fishing.rods) {
+      assert(rod.classOddsBps && Object.keys(rod.classOddsBps).length === rarity.size
+        && [...rarity].every(id => Number.isSafeInteger(rod.classOddsBps[id]) && rod.classOddsBps[id] >= 0 && rod.classOddsBps[id] <= 10000)
+        && Object.values(rod.classOddsBps).reduce((sum, value) => sum + value, 0) === 10000,
+      "Each rod needs five class probabilities adding to 100%");
+      assert(rod.classOddsBps[rod.rarity] >= 5000, "An arcade rod must strongly target its named class");
+      assert(rod.rarity === "legendary" || rod.classOddsBps.legendary === 0, "Only legendary rods open legendary fish");
+    }
+    const gear = [...fishing.hooks, ...fishing.baits];
     for (const entry of gear) assert(entry.rarityWeights && Object.keys(entry.rarityWeights).length === rarity.size
       && [...rarity].every(id => Number.isSafeInteger(entry.rarityWeights[id]) && entry.rarityWeights[id] >= 1 && entry.rarityWeights[id] <= 1000), "Each fishing item needs finite positive specialization factors");
-    for (const list of [fishing.rods, fishing.hooks]) {
+    for (const list of [fishing.hooks]) {
       assert.equal(new Set(list.map(entry => JSON.stringify([...rarity].map(id => entry.rarityWeights[id])))).size, list.length, "Durable tackle must have distinct specializations");
-      for (const entry of list) assert([...rarity].some(id => entry.rarityWeights[id] > 100)
-        && [...rarity].some(id => entry.rarityWeights[id] < 100), "Every durable specialization needs an advantage and a tradeoff");
     }
+    for (const entry of gear) for (const id of rarity) assert.equal(entry.rarityWeights[id],
+      entry.id === "bare_hook" || id !== entry.rarity ? 100 : entry.id === "round_hook" ? 125 : 150,
+      "Hooks and bait boost only their named class; normalization adjusts other shares");
     assert.deepEqual(Object.keys(fishing.collectionDrawsByRoute ?? {}).sort(), [...fishing.routeIds].sort(), "Every fishing route needs a class draw budget");
     for (const [routeId, draws] of Object.entries(fishing.collectionDrawsByRoute ?? {})) {
       const route = catalog.explorations.find(route => route.id === routeId);
@@ -237,10 +247,10 @@ export function auditEconomyProgression(catalog) {
     }
     if (catalog.fishing && catalog.explorations.some(route => catalog.fishing.routeIds.includes(route.id) && hasRequirements(route) && hasMaterials(route.cost))) {
       for (const fish of [...catalog.fishing.fish, ...catalog.fishing.classes]) {
-        const hook = catalog.fishing.hooks.find(hook => hook.id === fish.requiredHookId);
-        if (fish.rarity === "legendary" && ![catalog.fishing.rods, catalog.fishing.hooks].every(list =>
-          list.some(gear => gear.rarity === "legendary" && gear.requiredHomeLevel <= completed.home))) continue;
-        if (completed.home >= (hook?.requiredHomeLevel ?? 1) && !obtainable.has(fish.itemId)) { obtainable.add(fish.itemId); changed = true; }
+        if (!catalog.fishing.rods.some(rod => rod.requiredHomeLevel <= completed.home
+          && (fish.rarity !== "legendary" || rod.rarity === "legendary")
+          && (!rod.classOddsBps || rod.classOddsBps[fish.rarity] > 0))) continue;
+        if (!obtainable.has(fish.itemId)) { obtainable.add(fish.itemId); changed = true; }
       }
     }
     for (const building of buildings.values()) {

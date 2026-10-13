@@ -101,6 +101,35 @@ class EconomyFishClassesTest {
         for (tier in spec.classes) assertTrue(EconomyMarketRules.requiredHomeLevel(tier.itemId) in 1..5)
         assertEquals(4, EconomyMarketRules.requiredHomeLevel("fish_legendary"))
         assertEquals(1, EconomyMarketRules.requiredHomeLevel("fish_common"))
+        assertEquals(4, EconomyMarketRules.requiredHomeLevel("star_bait"))
+    }
+
+    @Test fun `orders require a positive class chance from owned rods and no legendary hook`() {
+        val state = EconomyRules.initial().copy(inventory = mapOf("fish_epic" to 2L, "fish_legendary" to 1L),
+            buildings = EconomyRules.initial().buildings + ("home" to 5))
+        val starter = EconomyFood.obtainableOrderItems(state)
+        assertTrue(setOf("fish_common", "fish_uncommon", "fish_rare").all { it in starter })
+        assertFalse("fish_epic" in starter)
+        assertFalse("fish_legendary" in starter)
+        val brook = state.copy(fishing = state.fishing.copy(ownedRods = state.fishing.ownedRods + "brook_rod"))
+        assertTrue("fish_epic" in EconomyFood.obtainableOrderItems(brook))
+        val legendary = state.copy(fishing = state.fishing.copy(ownedRods = state.fishing.ownedRods + "starfall_rod"))
+        assertEquals(listOf("bare_hook"), legendary.fishing.ownedHooks)
+        assertTrue("fish_legendary" in EconomyFood.obtainableOrderItems(legendary))
+    }
+
+    @Test fun `catalogue rebalance never rerolls a saved catch or rejects its old bait`() {
+        val epic = spec.fish.first { it.rarity == "epic" }.itemId
+        val job = EconomyJob(UUID.randomUUID().toString(), "exploration", "shore", startedAt = now.minusSeconds(180).toString(),
+            finishesAt = now.toString(), rewards = mapOf(epic to 2L), catalogVersion = 4,
+            cost = EconomyCost(items = mapOf("firefly_bait" to 1L)), fishing = EconomyFishingCatch("reed_rod", "firefly_bait", epic))
+        val state = EconomyRules.initial().copy(inventory = emptyMap(), jobs = listOf(job),
+            fishing = EconomyFishing(equippedBaitId = "firefly_bait"))
+        assertFalse(EconomyRules.fishingBaitCompatible("reed_rod", "firefly_bait"))
+        val claimed = EconomyRules.apply(state, command("claim_job", job.id), now).first
+        assertEquals(mapOf("fish_epic" to 2L), claimed.inventory)
+        assertEquals(job.rewards, claimed.fishing.catches)
+        assertEquals(job, state.jobs.single())
     }
     @Test fun `saved species order preserves payout and sequence but rejects old fingerprint after class conversion`() {
         val common = spec.fish.filter { it.rarity == "common" }.take(2)

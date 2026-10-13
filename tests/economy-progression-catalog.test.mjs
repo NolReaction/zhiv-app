@@ -97,8 +97,8 @@ test("fishing shop cannot introduce buy-sell arbitrage or meaningless tackle spe
   catalog.fishing.fish.find(fish => fish.itemId === "fish_mooncarp").buyPrice = 1;
   assert.throws(() => auditEconomyProgression(catalog), /arbitrage/);
   const invalid = readEconomyCatalog();
-  invalid.fishing.rods[0].rarityWeights.common = 0;
-  assert.throws(() => auditEconomyProgression(invalid), /specialization factors/);
+  invalid.fishing.rods[0].classOddsBps.common = 0;
+  assert.throws(() => auditEconomyProgression(invalid), /class probabilities/);
 });
 
 

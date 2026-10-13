@@ -18,6 +18,14 @@ const fishingArt: Record<string, ReactNode> = {
     <path d="m16 28 7-3m3-2 7-3m-13 16 9-5" stroke="#bdd398" strokeWidth="1" />
     <path d="M14 38c6 3 14 3 20 0" stroke="#c8d5ad" strokeWidth="1.5" />
   </>,
+  star_bait: <>
+    <path d="M14 14h20l5 23c-2 7-28 7-30 0Z" fill="#a797cf" />
+    <ellipse cx="24" cy="14" rx="10" ry="4" fill="#725e9b" />
+    <path d="M15 9h18v7H15Z" fill="#d8b566" />
+    <path d="m24 21 3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1Z" fill="#f7dd8e" stroke="#9c743d" strokeWidth="1.3" />
+    <path d="m7 13 1 3 3 1-3 1-1 3-1-3-3-1 3-1Zm32-7 1 3 3 1-3 1-1 3-1-3-3-1 3-1Z" fill="#f5e1a4" strokeWidth="1" />
+    <path d="M13 37c1 3 4 4 7 4" fill="none" stroke="#d8ccef" strokeWidth="1.5" />
+  </>,
   firefly_bait: <>
     <path d="M24 24c-3-16-16-14-14-5 1 5 8 8 14 8m1-3c6-16 18-11 13-3-3 4-9 6-13 6" fill="#c6b5d8" />
     <path d="m15 15 10 11 10-12" fill="none" stroke="#eadcc6" strokeWidth="1.5" />

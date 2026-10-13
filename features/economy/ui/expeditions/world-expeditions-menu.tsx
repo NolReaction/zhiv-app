@@ -14,7 +14,7 @@ import type { EconomyController } from "@/features/economy/sync/use-economy";
 import { locked } from "@/features/economy/sync/controller-state";
 import { ProductIcon, Work, itemName, number, stationName } from "@/features/economy/ui/shared/world-economy-parts";
 import { worldCostShortfalls, worldDuration, worldJobProgress, worldMissingRequirements, worldRequirements } from "@/features/economy/ui/shared/world-stations";
-import { fishingState, fishingTripCost } from "@/features/economy/domain/fishing";
+import { fishingBaitCompatible, fishingState, fishingTripCost } from "@/features/economy/domain/fishing";
 import { ExpeditionFishingSummary } from "@/features/economy/ui/fishing/expedition-fishing-summary";
 import { PleskCatchOdds } from "@/features/economy/ui/fishing/plesk-fishing-shop";
 import { useFishingCommand } from "@/features/economy/ui/fishing/use-fishing-command";
@@ -144,8 +144,9 @@ export function ExpeditionRouteDetails({ route, state, economy, exploring, onOpe
   const hooks = catalog?.hooks.filter(hook => gear.ownedHooks.includes(hook.id)) ?? [];
   const invalidGear = fishing && (!rods.some(rod => rod.id === gear.equippedRodId) || !hooks.some(hook => hook.id === gear.equippedHookId)
     || Boolean(gear.equippedBaitId && !catalog?.baits.some(bait => bait.itemId === gear.equippedBaitId)));
+  const incompatibleBait = fishing && Boolean(gear.equippedBaitId && catalog && !fishingBaitCompatible(gear.equippedRodId, gear.equippedBaitId, catalog));
   const mineUpgrading = Boolean(route.requiredBuildings.quarry && state.jobs.some(job => job.kind === "construction" && job.targetId === "quarry"));
-  const blocked = missing.length > 0 || shortfalls.length > 0 || tooLarge || exploring || Boolean(actorConflict) || invalidGear || mineUpgrading;
+  const blocked = missing.length > 0 || shortfalls.length > 0 || tooLarge || exploring || Boolean(actorConflict) || invalidGear || incompatibleBait || mineUpgrading;
   return <div className={styles.detail}>
     {fishing ? <ExpeditionFishingSummary state={state} route={route} /> : <div className={styles.routeRewards}><span className={styles.caption}>Привезёт с собой</span><Findings state={state} rewards={route.rewards} /></div>}
     {fishing && <details className={styles.fishingGear} aria-label="Снасти для вылазки">
@@ -165,10 +166,10 @@ export function ExpeditionRouteDetails({ route, state, economy, exploring, onOpe
       }}>{!hooks.some(hook => hook.id === gear.equippedHookId) && <option value={gear.equippedHookId} disabled>Выберите крючок</option>}{hooks.map(hook => <option key={hook.id} value={hook.id}>{hook.name}</option>)}</select></label></div>
       <div className={styles.loadoutRow}>{gear.equippedBaitId ? <ItemIcon itemId={gear.equippedBaitId} size={32} /> : <Fish size={27} aria-hidden="true" />}<label htmlFor={`${id}-bait`}>Наживка<select id={`${id}-bait`} value={gear.equippedBaitId ?? "none"} disabled={command.blocked} onChange={event => {
         const baitId = event.target.value;
-        const owned = baitId === "none" || Boolean(catalog?.baits.some(bait => bait.itemId === baitId) && (state.inventory[baitId] ?? 0) > 0);
+        const owned = baitId === "none" || Boolean(catalog?.baits.some(bait => bait.itemId === baitId) && (state.inventory[baitId] ?? 0) > 0 && fishingBaitCompatible(gear.equippedRodId, baitId, catalog));
         command.send("equip_fishing_bait", baitId, 1, 0, baitId !== (gear.equippedBaitId ?? "none") && owned);
-      }}><option value="none">Без наживки</option>{gear.equippedBaitId && !catalog?.baits.some(bait => bait.itemId === gear.equippedBaitId) && <option value={gear.equippedBaitId} disabled>Недоступная наживка</option>}{catalog?.baits.filter(bait => bait.requiredHomeLevel <= (state.buildings.home ?? 1) || (state.inventory[bait.itemId] ?? 0) > 0 || bait.itemId === gear.equippedBaitId).map(bait => <option key={bait.itemId} value={bait.itemId} disabled={(state.inventory[bait.itemId] ?? 0) <= 0}>{itemName(state, bait.itemId)} · {(state.inventory[bait.itemId] ?? 0) > 0 ? `×${number(state.inventory[bait.itemId])}` : "нет в запасе"}</option>)}</select></label></div>
-      <p>Удочка и крючок не расходуются.</p>
+      }}><option value="none">Без наживки</option>{gear.equippedBaitId && !catalog?.baits.some(bait => bait.itemId === gear.equippedBaitId) && <option value={gear.equippedBaitId} disabled>Недоступная наживка</option>}{catalog?.baits.filter(bait => bait.requiredHomeLevel <= (state.buildings.home ?? 1) || (state.inventory[bait.itemId] ?? 0) > 0 || bait.itemId === gear.equippedBaitId).map(bait => <option key={bait.itemId} value={bait.itemId} disabled={(state.inventory[bait.itemId] ?? 0) <= 0 || !fishingBaitCompatible(gear.equippedRodId, bait.itemId, catalog)}>{itemName(state, bait.itemId)} · {!fishingBaitCompatible(gear.equippedRodId, bait.itemId, catalog) ? "нужна подходящая удочка" : (state.inventory[bait.itemId] ?? 0) > 0 ? `×${number(state.inventory[bait.itemId])}` : "нет в запасе"}</option>)}</select></label></div>
+      <p>Удочка и крючок не расходуются. При смене удочки неподходящая наживка снимается и остаётся в кладовой.</p>
       <details className={styles.gearDescription}><summary>О выбранных снастях</summary>
         <p>{catalog?.rods.find(rod => rod.id === gear.equippedRodId)?.description}</p>
         <p>{catalog?.hooks.find(hook => hook.id === gear.equippedHookId)?.description}</p>
@@ -188,6 +189,7 @@ export function ExpeditionRouteDetails({ route, state, economy, exploring, onOpe
     {actorConflict && !exploring && <p className={styles.caption}>{actorConflict.message}</p>}
     {pendingMeal(state, "hero") && !exploring && <p className={styles.caption}>Сыт · скорость следующей вылазки +{pendingMeal(state, "hero")!.heroSpeedBps / 100}%. Время уже учитывает еду.</p>}
     {invalidGear && <p className={styles.warning}>Выберите доступную удочку и крючок перед отправлением.</p>}
+    {incompatibleBait && <p className={styles.warning}>Эта наживка не подходит к выбранной удочке. Нужна подходящая удочка или рыбалка без наживки. <button type="button" className={styles.link} disabled={command.blocked} onClick={() => command.send("equip_fishing_bait", "none", 1, 0, Boolean(gear.equippedBaitId))}>Снять наживку</button></p>}
     {(blocked || economy.uncertain || economy.retryAt > economy.now) && onOpenHelp && <button type="button" className={styles.contextHelp} onClick={() => onOpenHelp({ intent: "expedition", routeId: route.id })}><CircleHelp size={15} aria-hidden="true" />Как продолжить?</button>}
     {fishing && catalog && <section className={styles.catchDetails} aria-label="Шансы улова"><PleskCatchOdds state={state} catalog={catalog} /></section>}
     {exploring ? <p className={styles.caption}>Сначала заберите находки или отмените текущую вылазку.</p> : <div className={styles.actions}>{shortfalls.length > 0 && <span className={styles.warning}>Не хватает припасов</span>}<button type="button" className={styles.primary} disabled={blocked || command.blocked} onClick={() => command.send(fishing ? "start_fishing" : "start_exploration", route.id, 1, 0, !blocked)} aria-label={`Отправиться: ${route.name}`}>Отправиться · {worldDuration(mealDuration(route.seconds, pendingMeal(state, "hero")?.heroSpeedBps ?? 0))}<ArrowRight size={13} aria-hidden="true" /></button></div>}

@@ -409,7 +409,7 @@ test("unaffordable stale foreign busy uncertain and cooling-down hooks cannot di
 
 test("odds previews use authoritative loadout weights and show every rarity target without a universal upgrade score", () => {
   const state = snapshot(), catalog = state.catalog.fishing, before = structuredClone(state);
-  const override = { rodId: "starfall_rod", hookId: "leviathan_hook", baitId: "firefly_bait" };
+  const override = { rodId: "starfall_rod", hookId: "leviathan_hook", baitId: "star_bait" };
   const expected = fishingClassOdds(state, catalog, override);
   const html = renderToStaticMarkup(createElement(PleskCatchOdds, { state, catalog, override, preview: true }));
   const percent = value => `${new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 4 }).format(value * 100)}%`;
@@ -420,7 +420,7 @@ test("odds previews use authoritative loadout weights and show every rarity targ
   for (const odd of expected) assert.ok(html.includes(`<dd>${percent(odd.probability)}</dd>`));
   const baseShark = fishingClassOdds(state, catalog).find(odd => odd.rarity === "legendary").probability;
   const betterShark = expected.find(odd => odd.rarity === "legendary").probability;
-  assert.equal(baseShark, 0); assert(betterShark >= .09 && betterShark <= .11);
+  assert.equal(baseShark, 0); assert(betterShark > .55 && betterShark < 1);
   assert.doesNotMatch(html, /Теневая акула/); assert.match(html, /data-fish-rarity="legendary"/);
   assert.deepEqual(state, before, "Previewing gear cannot buy, equip or rewrite current odds");
 });
@@ -515,4 +515,48 @@ test("an old species offer keeps its exact quote while showing the class it supp
   view.control("Купить рыбу: Обычная рыба").props.onClick();
   assert.deepEqual(calls, [["buy_fishing_item", selectedOffer.id, 1, selectedOffer.unitPrice]]);
   assert.deepEqual(state.fishing.catches, {});
+});
+
+
+test("matching hook preview highlights its target class and actual current-to-preview probabilities", () => {
+  const state = snapshot();
+  state.fishing = { ...state.fishing, equippedRodId: "willow_rod", equippedHookId: "bare_hook", equippedBaitId: null };
+  const hook = state.catalog.fishing.hooks.find(entry => entry.id === "silver_hook");
+  const before = structuredClone(state);
+  const html = renderToStaticMarkup(createElement(PleskHookOffer, { state, hook, economy: controller(state) }));
+  const format = probability => new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 4 }).format(probability * 100) + "%";
+  const current = fishingClassOdds(state, state.catalog.fishing).find(row => row.rarity === hook.rarity).probability;
+  const target = fishingClassOdds(state, state.catalog.fishing, { hookId: hook.id }).find(row => row.rarity === hook.rarity).probability;
+  assert.ok(target > current);
+  assert.match(html, /data-fishing-target="fish_rare"/);
+  assert.ok(html.includes(`Сейчас ${format(current)} → с этой снастью ${format(target)}`));
+  assert.doesNotMatch(html, /bps|floor|rarityWeights/);
+  assert.deepEqual(state, before);
+});
+
+test("star bait has visible artwork, a purchasable class preview and an owned book entry", async () => {
+  const state = snapshot();
+  state.fishing.equippedRodId = "starfall_rod";
+  state.inventory.star_bait = 2;
+  const bait = state.catalog.fishing.baits.find(entry => entry.itemId === "star_bait");
+  const offer = { id: "shop:star_bait", kind: "bait", itemId: "star_bait", unitPrice: bait.price, remaining: 3 };
+  state.fishingShop.offers = [offer];
+  const calls = [], view = inspect(PleskBaitOffer, { state, bait, economy: controller(state, { act(...args) { calls.push(args); } }) });
+  assert.match(view.html, /data-item-icon="star_bait"/);
+  assert.match(view.html, /data-fishing-target="fish_legendary"/);
+  view.control("Купить наживку: Звёздная наживка").props.onClick();
+  assert.deepEqual(calls, [["buy_fishing_item", offer.id, 1, bait.price]]);
+  const entry = fishingBookEntries(state, state.catalog.fishing, "baits").find(entry => entry.id === "star_bait");
+  assert.equal(entry.known, true); assert.equal(entry.name, "Звёздная наживка");
+  const { itemIconIds } = await vite.ssrLoadModule("/features/items/item-icon.tsx");
+  assert.ok(itemIconIds.includes("star_bait"));
+});
+
+test("bait for a zero-base class explains that changing the rod is necessary", () => {
+  const state = snapshot(), bait = state.catalog.fishing.baits.find(entry => entry.itemId === "star_bait");
+  const html = renderToStaticMarkup(createElement(PleskBaitOffer, { state, bait, economy: controller(state) }));
+  assert.match(html, /Выбранной удочке недоступен этот класс/);
+  assert.match(html, /Легендарную рыбу открывает легендарная удочка/);
+  const legendary = renderToStaticMarkup(createElement(PleskCatchOdds, { state, catalog: state.catalog.fishing, override: { rodId: "starfall_rod", hookId: "bare_hook" } }));
+  assert.doesNotMatch(legendary, /Нужны легендарные|Крючок и наживка сами её не открывают/);
 });

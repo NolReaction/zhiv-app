@@ -41,7 +41,7 @@ object EconomyRules {
 
     init {
         EconomyTutorialOrders.validateCatalog(catalog)
-        require(catalog.version == 4 && catalog.currencyScale == 10 && catalog.pearlScale == 50 && catalog.maxBatch in 1..10)
+        require(catalog.version == 5 && catalog.currencyScale == 10 && catalog.pearlScale == 50 && catalog.maxBatch in 1..10)
         require(catalog.localBuyer.payoutBps in 1..10_000)
         require(catalog.constructionSpeedup.secondsPerPearl in 1L..86_400L)
         require(catalog.constructionSpeedup.priceStepPearls in 1L..ECONOMY_PEARL_SCALE)
@@ -69,11 +69,15 @@ object EconomyRules {
                 draws.toLong() == catalog.explorations.first { it.id == id }.rewards.getValue("fish") })
             require((fishing.rods.map { it.rarityWeights } + fishing.hooks.map { it.rarityWeights } + fishing.baits.map { it.rarityWeights })
                 .filterNotNull().all { weights -> weights.keys == rarities && weights.values.all { it in 1..1000 } })
-            require(fishing.fish.all { fish -> fish.weight in 1..10000 && fish.affinity in 0..10 && fish.rarity in rarities &&
-                (fish.requiredHookId == null || fishing.hooks.any { it.id == fish.requiredHookId }) &&
+            require(fishing.fish.all { fish -> (fish.weight == null || fish.weight in 1..10000) &&
+                (fish.affinity == null || fish.affinity in 0..10) && fish.rarity in rarities &&
                 catalog.items.any { it.id == fish.itemId && it.baseSellPrice < fish.buyPrice } })
             require(fishing.rods.map { it.id }.distinct().size == fishing.rods.size && fishing.rods.any { it.id == "reed_rod" && it.price == 0L })
-            require(fishing.rods.all { it.price in 0..ECONOMY_MAX_BALANCE && it.rareBonus in 0..100 && it.rarity in rarities && it.requiredHomeLevel in 1..5 })
+            require(fishing.rods.all { it.price in 0..ECONOMY_MAX_BALANCE && it.rareBonus in 0..100 && it.rarity in rarities &&
+                it.requiredHomeLevel in 1..5 && it.classOddsBps != null })
+            require(fishing.classes.all { tier -> fishing.rods.any { rod ->
+                (tier.rarity != "legendary" || rod.rarity == "legendary") && (rod.classOddsBps?.get(tier.rarity) ?: 0) > 0
+            } })
             require(fishing.hooks.map { it.id }.distinct().size == fishing.hooks.size && fishing.hooks.any { it.id == "bare_hook" && it.price == 0L })
             require(fishing.hooks.all { it.price in 0..ECONOMY_MAX_BALANCE && it.rareBonus in 0..100 && it.rarity in rarities && it.requiredHomeLevel in 1..5 })
             require(fishing.baits.map { it.itemId }.distinct().size == fishing.baits.size && fishing.baits.all { bait ->
@@ -174,15 +178,18 @@ object EconomyRules {
             ECONOMY_PEARL_SCALE, catalog.constructionSpeedup.priceStepPearls)
     }
 
-    /** Multiply class masses, not species weights: adding a collection entry cannot change rarity odds. */
+    /** Rods define class odds; hooks and bait multiply those odds without opening zero-probability classes. */
     fun fishingClassWeights(rodId: String, baitId: String?, hookId: String = "bare_hook",
         spec: EconomyFishingCatalog = checkNotNull(catalog.fishing)): List<Pair<EconomyFishClass, Int>> {
         val rod = spec.rods.find { it.id == rodId }
         val hook = spec.hooks.find { it.id == hookId }
         val bait = spec.baits.find { it.itemId == baitId }
         return spec.classes.map { tier -> tier to when {
-            tier.rarity == "legendary" && (rod?.rarity != "legendary" || hook?.rarity != "legendary") -> 0
-            spec.fish.none { it.rarity == tier.rarity && (it.requiredHookId == null || it.requiredHookId == hookId) } -> 0
+            tier.rarity == "legendary" && rod?.rarity != "legendary" -> 0
+            spec.fish.none { it.rarity == tier.rarity } -> 0
+            rod?.classOddsBps != null -> (rod.classOddsBps.getValue(tier.rarity).toLong() *
+                (hook?.rarityWeights?.get(tier.rarity) ?: 100) * (bait?.rarityWeights?.get(tier.rarity) ?: 100) / 10_000L).toInt()
+            // Standalone legacy catalogues can still be inspected; the current v5 catalogue requires rod odds.
             else -> maxOf(1L, tier.weight.toLong() * (rod?.rarityWeights?.get(tier.rarity) ?: 100) *
                 (hook?.rarityWeights?.get(tier.rarity) ?: 100) * (bait?.rarityWeights?.get(tier.rarity) ?: 100) / 1_000_000L).toInt()
         } }
@@ -192,10 +199,21 @@ object EconomyRules {
     fun fishingWeights(rodId: String, baitId: String?, hookId: String = "bare_hook"): List<Pair<EconomyFishSpec, Double>> {
         val spec = checkNotNull(catalog.fishing)
         val classes = fishingClassWeights(rodId, baitId, hookId).associate { it.first.rarity to it.second }
-        return spec.fish.map { fish -> fish to if (fish.requiredHookId != null && fish.requiredHookId != hookId) 0.0
-            else classes.getValue(fish.rarity).toDouble() / spec.fish.count {
-                it.rarity == fish.rarity && (it.requiredHookId == null || it.requiredHookId == hookId) }
+        return spec.fish.map { fish -> fish to classes.getValue(fish.rarity).toDouble() / spec.fish.count {
+                it.rarity == fish.rarity }
         }
+    }
+
+    fun fishingBaitCompatible(rodId: String, baitId: String?, spec: EconomyFishingCatalog = checkNotNull(catalog.fishing)): Boolean {
+        if (baitId == null) return true
+        if (spec.rods.none { it.id == rodId }) return false
+        val bait = spec.baits.find { it.itemId == baitId } ?: return false
+        return fishingClassWeights(rodId, null, spec = spec).any { it.first.rarity == bait.rarity && it.second > 0 }
+    }
+
+    private fun requireFishingBaitCompatible(rodId: String, baitId: String?) {
+        if (!fishingBaitCompatible(rodId, baitId))
+            economyFailure("ECONOMY_FISHING_BAIT", "Эта удочка не ловит рыбу для выбранной наживки")
     }
 
     private fun fishingRoll(seed: String, drawIndex: Int, domain: String): Long {
@@ -215,8 +233,7 @@ object EconomyRules {
             if (roll < weight) { selected = tier; break }
             roll -= weight
         }
-        val species = checkNotNull(catalog.fishing).fish.filter {
-            it.rarity == selected.rarity && (it.requiredHookId == null || it.requiredHookId == hookId) }
+        val species = checkNotNull(catalog.fishing).fish.filter { it.rarity == selected.rarity }
         return species[(fishingRoll(serverSeed, drawIndex, "species") * species.size / 4294967296L).toInt()].itemId
     }
 
@@ -344,6 +361,7 @@ object EconomyRules {
                         economyFailure("ECONOMY_FISHING_HOOK", "Сначала выберите свой крючок")
                     if (tackle.equippedBaitId != null && spec.baits.none { it.itemId == tackle.equippedBaitId })
                         economyFailure("ECONOMY_FISHING_BAIT", "Наживка не найдена")
+                    requireFishingBaitCompatible(tackle.equippedRodId, tackle.equippedBaitId)
                 }
                 // Fishing randomness is server-owned, unlike the client idempotency request ID.
                 val id = if (special) UUID.randomUUID().toString() else command.requestId
@@ -494,7 +512,8 @@ object EconomyRules {
             "equip_fishing_rod" -> {
                 if (catalog.fishing?.rods?.none { it.id == command.targetId } != false || command.targetId !in state.fishing.ownedRods)
                     economyFailure("ECONOMY_FISHING_ROD", "Сначала приобретите эту удочку")
-                state.copy(fishing = state.fishing.copy(equippedRodId = command.targetId)) to "Удочка выбрана для следующих вылазок"
+                val bait = state.fishing.equippedBaitId.takeIf { fishingBaitCompatible(command.targetId, it) }
+                state.copy(fishing = state.fishing.copy(equippedRodId = command.targetId, equippedBaitId = bait)) to "Удочка выбрана для следующих вылазок"
             }
             "equip_fishing_hook" -> {
                 val hook = catalog.fishing?.hooks?.find { it.id == command.targetId }
@@ -505,6 +524,7 @@ object EconomyRules {
                 val baitId = command.targetId.takeUnless { it == "none" }
                 if (baitId != null && catalog.fishing?.baits?.none { it.itemId == baitId } != false)
                     economyFailure("ECONOMY_FISHING_BAIT", "Наживка не найдена")
+                requireFishingBaitCompatible(state.fishing.equippedRodId, baitId)
                 if (baitId != null && (state.inventory[baitId] ?: 0) <= 0) economyFailure("ECONOMY_RESOURCES", "Сначала приобретите эту наживку")
                 state.copy(fishing = state.fishing.copy(equippedBaitId = baitId)) to
                     if (baitId == null) "Выбрана рыбалка без наживки" else "Наживка выбрана: одна порция на следующую вылазку"

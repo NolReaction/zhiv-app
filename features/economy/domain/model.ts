@@ -37,6 +37,9 @@ const defaultGearShopOdds = [
 ];
 const shopRarityOdds = z.object({ common: count.max(10000), uncommon: count.max(10000), rare: count.max(10000),
   epic: count.max(10000), legendary: count.max(10000) }).refine(value => Object.values(value).reduce((a, b) => a + b, 0) === 10000);
+const fishingRodClassOdds = z.object({ common: count.max(10000), uncommon: count.max(10000), rare: count.max(10000),
+  epic: count.max(10000), legendary: count.max(10000) }).strict()
+  .refine(value => Object.values(value).reduce((sum, weight) => sum + weight, 0) === 10000, "Rod class odds must sum to 10000");
 export const economyFishingCatalogSchema = z.object({
   shop: z.object({ refreshSeconds: count.positive().max(86400), refreshPricePearls: balance.positive(), refreshPriceStepPearls: balance.positive().default(2), slots: z.literal(4), baitStock: count.positive().max(100),
     fishStock: count.positive().max(100).default(3), fishPriceBps: count.positive().max(9999).default(8000),
@@ -49,8 +52,9 @@ export const economyFishingCatalogSchema = z.object({
     weight: count.positive().max(10000), buyPrice: balance.positive() })).length(5)
     .refine(classes => new Set(classes.map(item => item.rarity)).size === 5 && new Set(classes.map(item => item.itemId)).size === 5, "Fish classes must cover five unique rarities and items"),
   fish: z.array(z.object({ itemId: id, description: z.string(), rarity: z.enum(["common", "uncommon", "rare", "epic", "legendary"]),
-    weight: count.positive().max(10000), affinity: count.max(10), buyPrice: balance.positive(), requiredHookId: id.nullish() })).min(1).max(100),
+    weight: count.positive().max(10000).nullish(), affinity: count.max(10).nullish(), buyPrice: balance.positive(), requiredHookId: id.nullish() })).min(1).max(100),
   rods: z.array(z.object({ id, name: z.string(), description: z.string(), price: balance, rareBonus: count.max(100), rarityWeights: rarityWeights.nullish(),
+    classOddsBps: fishingRodClassOdds.nullish(),
     rarity: z.enum(["common", "uncommon", "rare", "epic", "legendary"]).default("common"), requiredHomeLevel: count.positive().max(5).default(1) })).min(1).max(100),
   hooks: z.array(z.object({ id, name: z.string(), description: z.string(), price: balance, rareBonus: count.max(100), rarityWeights: rarityWeights.nullish(),
     rarity: z.enum(["common", "uncommon", "rare", "epic", "legendary"]).default("common"), requiredHomeLevel: count.positive().max(5).default(1) })).min(1).max(100)
@@ -112,7 +116,7 @@ export const economyCatalogSchema = z.object({
   fishing: economyFishingCatalogSchema.optional(),
   food: economyFoodCatalogSchema.nullish(),
   localBuyer: z.object({ payoutBps: count.positive().max(10_000) }).optional(),
-  version: z.literal(4), currencyScale: z.literal(10), pearlScale: z.literal(50), maxBatch: z.number().int().min(1).max(100),
+  version: z.literal(5), currencyScale: z.literal(10), pearlScale: z.literal(50), maxBatch: z.number().int().min(1).max(100),
   constructionSpeedup: z.object({ secondsPerPearl: count.positive().max(86400), priceStepPearls: balance.positive().max(ECONOMY_PEARL_SCALE).default(2) }),
   market: z.object({ requiredHomeLevel: count.positive(), requiredExplorations: count, maxListings: count.positive(), maxLotQuantity: count.positive(), maxPriceMultiplier: count.positive(), feeBps: count.max(10000), dailyTradeValueByHome: z.array(balance).length(5).default([0, 2400, 4800, 9600, 14400]),
     showcaseSlots: count.positive().max(12).default(12), showcasePerSeller: count.positive().max(10).default(2), showcaseRefreshSeconds: count.positive().max(86400).default(1800) }),
@@ -143,8 +147,11 @@ export const economyCatalogSchema = z.object({
       || group.itemId !== `fish_${group.rarity}` || !fishing.fish.some(fish => fish.rarity === group.rarity)))
       invalid("Fish classes require canonical inventory ids and at least one collection species");
     if (new Set(fishing.fish.map(fish => fish.itemId)).size !== fishing.fish.length
-      || fishing.fish.some(fish => !itemIds.has(fish.itemId) || fish.requiredHookId && !fishing.hooks.some(hook => hook.id === fish.requiredHookId)))
-      invalid("Fish species require unique known items and valid hooks");
+      || fishing.fish.some(fish => !itemIds.has(fish.itemId)))
+      invalid("Fish species require unique known items");
+    if (fishing.rods.some(rod => !rod.classOddsBps)) invalid("Current rods require explicit class odds");
+    if (fishing.classes.some(group => !fishing.rods.some(rod => (rod.classOddsBps?.[group.rarity] ?? 0) > 0
+      && (group.rarity !== "legendary" || rod.rarity === "legendary")))) invalid("Every fish class requires an eligible rod");
     if (Object.keys(fishing.collectionDrawsByRoute).some(routeId => !fishing.routeIds.includes(routeId)) || fishing.routeIds.some(routeId => !catalog.explorations.some(route => route.id === routeId && (route.rewards.fish ?? 0) > 0
       && fishing.collectionDrawsByRoute[routeId] === route.rewards.fish)))
       invalid("Every fish in a fishing route must have its own draw");
@@ -179,7 +186,7 @@ export const economyMigrationSchema = z.object({ version: z.literal(1), coinsGra
 export const economyJobSchema = z.object({
   id: uuid, kind: z.enum(["production", "exploration", "construction"]), targetId: id,
   recipeId: id.nullable(), targetLevel: count.nullable(), startedAt: z.string().datetime(), finishesAt: z.string().datetime(),
-  rewards: quantities, cost: economyCostSchema, catalogVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
+  rewards: quantities, cost: economyCostSchema, catalogVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]),
   collection: economyCollectionSchema.nullish(),
   fishing: z.object({ rodId: id, hookId: id.default("bare_hook"), baitId: id.nullable(), fishId: id }).nullish(),
   rareDrop: economyRareDropDeliverySchema.nullish(),

@@ -23,7 +23,7 @@ test("shared Kotlin vectors scale raw materials strongly, bound complex goods an
   }
 });
 
-test("shared Kotlin reachability vectors require every production input and both legendary tackle pieces", () => {
+test("shared Kotlin reachability vectors require every production input and rods with positive class odds", () => {
   for (const scenario of vectors.availability) {
     const state = fresh(); state.buildings = scenario.buildings;
     state.fishing.ownedRods = scenario.ownedRods; state.fishing.ownedHooks = scenario.ownedHooks;

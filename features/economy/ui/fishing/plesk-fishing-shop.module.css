@@ -122,3 +122,8 @@
 .fishOrder { display: flex; align-items: center; gap: 8px; padding-top: 9px; border-top: 1px solid #bfc3a066; }
 .fishOrder p { flex: 1; margin: 0; font-size: 12px; line-height: 1.4; }
 .fishOrder button { flex-shrink: 0; }
+
+.odds > .targetOdds { display: grid; gap: 3px; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--forest-primary, #466347) 8%, transparent); }
+.targetOdds strong { font-size: .75rem; }
+.targetOdds span { font-size: .7rem; line-height: 1.45; overflow-wrap: anywhere; }
+.rarityOdds > [data-target="true"] dd { font-weight: 750; color: var(--forest-ink, #394d3e); }

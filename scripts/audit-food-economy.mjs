@@ -45,9 +45,9 @@ export function auditFoodEconomy(catalog) {
         if (Object.keys(source.cost.items).some(id => !reachable.has(id) && !options?.includes(id)) || options && !options.some(id => reachable.has(id))) continue;
         for (const [id, count] of Object.entries(source.rewards)) if (count > 0) reachable.add(id);
         if (catalog.fishing.routeIds.includes(source.id)) for (const spec of catalog.fishing.classes) {
-          const rods = catalog.fishing.rods.filter(rod => rod.requiredHomeLevel <= buildings.home && (spec.rarity !== "legendary" || rod.rarity === "legendary"));
-          const hooks = catalog.fishing.hooks.filter(hook => hook.requiredHomeLevel <= buildings.home && (!spec.requiredHookId || hook.id === spec.requiredHookId)
-            && (spec.rarity !== "legendary" || hook.rarity === "legendary"));
+          const rods = catalog.fishing.rods.filter(rod => rod.requiredHomeLevel <= buildings.home && (spec.rarity !== "legendary" || rod.rarity === "legendary")
+            && (!rod.classOddsBps || rod.classOddsBps[spec.rarity] > 0));
+          const hooks = catalog.fishing.hooks.filter(hook => hook.requiredHomeLevel <= buildings.home);
           if (rods.length && hooks.length) reachable.add(spec.itemId);
         }
       }

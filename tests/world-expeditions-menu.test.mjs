@@ -810,3 +810,25 @@ test("travel sectors only emit a soft tab cue for a changed destination", () => 
     else globalThis.window = previousWindow;
   }
 });
+
+
+test("incompatible stocked bait is disabled and stale equipped bait blocks departure until removed", () => {
+  const state = snapshot({ fishing: fishingGear({ equippedRodId: "reed_rod", equippedBaitId: null }), inventory: { star_bait: 2 } });
+  const view = fishingDepartureView(state);
+  const option = Children.toArray(view.bait.props.children).find(option => isValidElement(option) && option.props.value === "star_bait");
+  assert.equal(option.props.disabled, true);
+  assert.match(renderToStaticMarkup(option), /нужна подходящая удочка/);
+  view.bait.props.onChange({ target: { value: "star_bait" } });
+  assert.deepEqual(view.calls, [], "forged selection cannot equip unusable bait");
+  const stale = snapshot({ ...state, fishing: { ...state.fishing, equippedBaitId: "star_bait" } });
+  const blocked = fishingDepartureView(stale), before = structuredClone(stale);
+  assert.equal(blocked.start.props.disabled, true);
+  blocked.start.props.onClick(); assert.deepEqual(blocked.calls, []);
+  assert.match(blocked.html, /Эта наживка не подходит к выбранной удочке/);
+  const remove = blocked.elements.find(element => element.type === "button" && element.props.children === "Снять наживку");
+  assert.ok(remove); remove.props.onClick();
+  assert.deepEqual(blocked.calls, [["equip_fishing_bait", "none", 1, 0]]);
+  assert.deepEqual(stale, before, "removal awaits server confirmation and cannot consume stock");
+  const compatible = fishingDepartureView(snapshot({ ...state, fishing: { ...state.fishing, ownedRods: ["starfall_rod"], equippedRodId: "starfall_rod" } }));
+  assert.equal(Children.toArray(compatible.bait.props.children).find(option => isValidElement(option) && option.props.value === "star_bait").props.disabled, false);
+});

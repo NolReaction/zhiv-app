@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 5,
   "maxBatch": 10,
   "productionSlots": {
     "upgrades": [
@@ -270,6 +270,13 @@
       "name": "Искристая мушка",
       "category": "fishing",
       "baseSellPrice": 30,
+      "tradable": true
+    },
+    {
+      "id": "star_bait",
+      "name": "Звёздная наживка",
+      "category": "fishing",
+      "baseSellPrice": 40,
       "tradable": true
     },
     {
@@ -2554,256 +2561,246 @@
         "itemId": "fish",
         "description": "Знакомая речная рыба. Открывает вид в коллекции и пополняет запас обычной рыбы.",
         "rarity": "common",
-        "weight": 4400,
-        "affinity": 0,
         "buyPrice": 200
       },
       {
         "itemId": "fish_silverfin",
         "description": "Быстрая стайная рыбка с серебристой спинкой и голубыми плавниками.",
         "rarity": "common",
-        "weight": 2400,
-        "affinity": 10,
         "buyPrice": 200
       },
       {
         "itemId": "fish_rudd",
         "description": "Золотистая речная рыбка с яркими красными плавниками.",
         "rarity": "common",
-        "weight": 1000,
-        "affinity": 8,
         "buyPrice": 200
       },
       {
         "itemId": "fish_reedperch",
         "description": "Полосатый лесной окунёк прячется у камышей.",
         "rarity": "uncommon",
-        "weight": 800,
-        "affinity": 10,
         "buyPrice": 350
       },
       {
         "itemId": "fish_dace",
         "description": "Стремительная стройная рыбка, любящая прохладные ручьи.",
         "rarity": "uncommon",
-        "weight": 450,
-        "affinity": 8,
         "buyPrice": 350
       },
       {
         "itemId": "fish_bream",
         "description": "Широкая спокойная рыба с тёплой бронзовой чешуёй.",
         "rarity": "uncommon",
-        "weight": 302,
-        "affinity": 7,
         "buyPrice": 350
       },
       {
         "itemId": "fish_mooncarp",
         "description": "Округлый карасик с лунным пятнышком. Осторожно касается наживки.",
         "rarity": "rare",
-        "weight": 250,
-        "affinity": 8,
         "buyPrice": 550
       },
       {
         "itemId": "fish_pike",
         "description": "Длинная пятнистая хищница с изумрудной спинкой.",
         "rarity": "rare",
-        "weight": 160,
-        "affinity": 6,
         "buyPrice": 550
       },
       {
         "itemId": "fish_eel",
         "description": "Извилистый ночной житель глубоких заводей.",
         "rarity": "rare",
-        "weight": 90,
-        "affinity": 4,
         "buyPrice": 550
       },
       {
         "itemId": "fish_sturgeon",
         "description": "Крупная древняя рыба с золотистыми костяными щитками.",
         "rarity": "epic",
-        "weight": 82,
-        "affinity": 3,
         "buyPrice": 900
       },
       {
         "itemId": "fish_mirror_koi",
         "description": "Яркий пятнистый кои с длинными плавниками и зеркальным блеском.",
         "rarity": "epic",
-        "weight": 38,
-        "affinity": 2,
         "buyPrice": 900
       },
       {
         "itemId": "fish_shark",
         "description": "Легендарная гостья глубоких вод. Треугольный плавник выдаёт её силуэт.",
         "rarity": "legendary",
-        "weight": 28,
-        "affinity": 2,
-        "buyPrice": 1600,
-        "requiredHookId": "leviathan_hook"
+        "buyPrice": 1600
       }
     ],
     "rods": [
       {
         "id": "reed_rod",
         "name": "Камышовая удочка",
-        "description": "Для обычной речной рыбы. Реже замечает необычных обитателей и глубоководные виды.",
+        "description": "Для обычной рыбы: базовый шанс 85%. Подходит для первых заказов и готовки.",
         "price": 0,
         "rareBonus": 0,
         "rarity": "common",
         "requiredHomeLevel": 1,
-        "rarityWeights": {
-          "common": 140,
-          "uncommon": 80,
-          "rare": 65,
-          "epic": 55,
-          "legendary": 50
+        "classOddsBps": {
+          "common": 8500,
+          "uncommon": 1200,
+          "rare": 300,
+          "epic": 0,
+          "legendary": 0
         }
       },
       {
         "id": "river_rod",
         "name": "Речная удочка",
-        "description": "Для необычной рыбы у камышей. Хуже подходит для обычной рыбы и обитателей глубин.",
+        "description": "Для необычной рыбы: базовый шанс 65%, выше, чем у Ручьевой удочки.",
         "price": 1800,
         "rareBonus": 2,
         "rarity": "uncommon",
         "requiredHomeLevel": 1,
-        "rarityWeights": {
-          "common": 90,
-          "uncommon": 180,
-          "rare": 85,
-          "epic": 60,
-          "legendary": 50
+        "classOddsBps": {
+          "common": 2500,
+          "uncommon": 6500,
+          "rare": 900,
+          "epic": 100,
+          "legendary": 0
         }
       },
       {
         "id": "brook_rod",
         "name": "Ручьевая удочка",
-        "description": "Для смешанного улова обычной и необычной рыбы. Не заменяет снасти для редких обитателей глубин.",
+        "description": "Доступная удочка для необычной рыбы: базовый шанс 55%. Крючок и наживка усиливают выбранный класс.",
         "price": 900,
         "rareBonus": 1,
         "rarity": "uncommon",
         "requiredHomeLevel": 1,
-        "rarityWeights": {
-          "common": 120,
-          "uncommon": 135,
-          "rare": 60,
-          "epic": 50,
-          "legendary": 40
+        "classOddsBps": {
+          "common": 3500,
+          "uncommon": 5500,
+          "rare": 900,
+          "epic": 100,
+          "legendary": 0
         }
       },
       {
         "id": "willow_rod",
         "name": "Ивовая удочка",
-        "description": "Для редких осторожных рыб. Уступает речной удочке по необычным видам и приливной по эпическим.",
+        "description": "Для редкой рыбы: базовый шанс 60%. Подходящие крючок и наживка повышают его ещё сильнее.",
         "price": 9000,
         "rareBonus": 5,
         "rarity": "rare",
         "requiredHomeLevel": 2,
-        "rarityWeights": {
-          "common": 85,
-          "uncommon": 90,
-          "rare": 240,
-          "epic": 110,
-          "legendary": 65
+        "classOddsBps": {
+          "common": 1500,
+          "uncommon": 2000,
+          "rare": 6000,
+          "epic": 500,
+          "legendary": 0
         }
       },
       {
         "id": "tide_rod",
         "name": "Приливная удочка",
-        "description": "Для эпических глубоководных рыб. Необычные виды попадаются реже; для легендарной рыбы лучше звёздная.",
+        "description": "Для эпической рыбы: базовый шанс 65%. Подходящие крючок и наживка повышают его ещё сильнее.",
         "price": 24000,
         "rareBonus": 8,
         "rarity": "epic",
         "requiredHomeLevel": 3,
-        "rarityWeights": {
-          "common": 80,
-          "uncommon": 65,
-          "rare": 100,
-          "epic": 350,
-          "legendary": 120
+        "classOddsBps": {
+          "common": 1000,
+          "uncommon": 1000,
+          "rare": 1500,
+          "epic": 6500,
+          "legendary": 0
         }
       },
       {
         "id": "starfall_rod",
         "name": "Звёздная удочка",
-        "description": "Для легендарной рыбы с крючком Левиафана. Уступает другим удочкам по необычным, редким и эпическим видам.",
+        "description": "Для легендарной рыбы: базовый шанс 60% с любым крючком. Крючок Левиафана и Звёздная наживка усиливают этот класс.",
         "price": 60000,
         "rareBonus": 12,
         "rarity": "legendary",
         "requiredHomeLevel": 4,
-        "rarityWeights": {
-          "common": 75,
-          "uncommon": 55,
-          "rare": 70,
-          "epic": 150,
-          "legendary": 400
+        "classOddsBps": {
+          "common": 500,
+          "uncommon": 1000,
+          "rare": 1000,
+          "epic": 1500,
+          "legendary": 6000
         }
       }
     ],
     "baits": [
       {
         "itemId": "crumb_bait",
-        "description": "Привлекает обычную рыбу для кухни, отвлекая особые виды. Одна порция на всю рыбалку.",
+        "description": "Повышает шанс обычной рыбы. Можно сочетать с крючком на тот же класс. Одна порция на всю рыбалку.",
         "price": 20,
         "rareBonus": 1,
         "rarity": "common",
         "requiredHomeLevel": 1,
         "rarityWeights": {
-          "common": 135,
-          "uncommon": 85,
-          "rare": 65,
-          "epic": 55,
-          "legendary": 50
+          "common": 150,
+          "uncommon": 100,
+          "rare": 100,
+          "epic": 100,
+          "legendary": 100
         }
       },
       {
         "itemId": "worm_bait",
-        "description": "Привлекает необычную рыбу; эпические и легендарные виды клюют реже. Одна порция на рыбалку.",
+        "description": "Повышает шанс необычной рыбы. Можно сочетать с крючком на тот же класс. Одна порция на всю рыбалку.",
         "price": 30,
         "rareBonus": 3,
         "rarity": "uncommon",
         "requiredHomeLevel": 1,
         "rarityWeights": {
-          "common": 90,
+          "common": 100,
           "uncommon": 150,
-          "rare": 85,
-          "epic": 65,
-          "legendary": 55
+          "rare": 100,
+          "epic": 100,
+          "legendary": 100
         }
       },
       {
         "itemId": "glow_bait",
-        "description": "Привлекает редкую рыбу, но не заменяет наживку для эпических и легендарных видов. Одна порция на рыбалку.",
+        "description": "Повышает шанс редкой рыбы. Можно сочетать с крючком на тот же класс. Одна порция на всю рыбалку.",
         "price": 40,
         "rareBonus": 5,
         "rarity": "rare",
         "requiredHomeLevel": 2,
         "rarityWeights": {
-          "common": 85,
-          "uncommon": 90,
-          "rare": 170,
-          "epic": 95,
-          "legendary": 65
+          "common": 100,
+          "uncommon": 100,
+          "rare": 150,
+          "epic": 100,
+          "legendary": 100
         }
       },
       {
         "itemId": "firefly_bait",
-        "description": "Привлекает эпическую и легендарную рыбу; обычные, необычные и редкие виды клюют реже. Одна порция на рыбалку.",
+        "description": "Повышает шанс эпической рыбы. Можно сочетать с крючком на тот же класс. Одна порция на всю рыбалку.",
         "price": 60,
         "rareBonus": 8,
         "rarity": "epic",
         "requiredHomeLevel": 3,
         "rarityWeights": {
-          "common": 80,
-          "uncommon": 60,
-          "rare": 75,
+          "common": 100,
+          "uncommon": 100,
+          "rare": 100,
           "epic": 150,
+          "legendary": 100
+        }
+      },
+      {
+        "itemId": "star_bait",
+        "description": "Повышает шанс легендарной рыбы со Звёздной удочкой. Вместе с крючком Левиафана даёт сильнейший шанс этого класса. Одна порция на всю рыбалку.",
+        "price": 100,
+        "rareBonus": 10,
+        "rarity": "legendary",
+        "requiredHomeLevel": 4,
+        "rarityWeights": {
+          "common": 100,
+          "uncommon": 100,
+          "rare": 100,
+          "epic": 100,
           "legendary": 150
         }
       }
@@ -2812,97 +2809,97 @@
       {
         "id": "bare_hook",
         "name": "Простой крючок",
-        "description": "Простая снасть для обычной рыбы. Особые виды цепляются реже.",
+        "description": "Базовые шансы выбранной удочки без дополнительных усилений.",
         "price": 0,
         "rareBonus": 0,
         "rarity": "common",
         "requiredHomeLevel": 1,
         "rarityWeights": {
-          "common": 130,
-          "uncommon": 85,
-          "rare": 70,
-          "epic": 60,
-          "legendary": 50
+          "common": 100,
+          "uncommon": 100,
+          "rare": 100,
+          "epic": 100,
+          "legendary": 100
         }
       },
       {
         "id": "barbed_hook",
         "name": "Бородатый крючок",
-        "description": "Для необычных рыб. Менее удобен для обычной рыбы и глубоководных видов.",
+        "description": "Повышает шанс необычной рыбы. Наживка на тот же класс усиливает набор ещё больше.",
         "price": 1200,
         "rareBonus": 2,
         "rarity": "uncommon",
         "requiredHomeLevel": 1,
         "rarityWeights": {
-          "common": 95,
-          "uncommon": 160,
-          "rare": 95,
-          "epic": 65,
-          "legendary": 55
+          "common": 100,
+          "uncommon": 150,
+          "rare": 100,
+          "epic": 100,
+          "legendary": 100
         }
       },
       {
         "id": "round_hook",
         "name": "Круглый крючок",
-        "description": "Для смешанного улова обычной и необычной рыбы. Для редких и глубоководных видов нужны другие снасти.",
+        "description": "Немного повышает шанс необычной рыбы. Доступный первый крючок; Бородатый усиливает этот класс заметнее.",
         "price": 600,
         "rareBonus": 1,
         "rarity": "uncommon",
         "requiredHomeLevel": 1,
         "rarityWeights": {
-          "common": 115,
+          "common": 100,
           "uncommon": 125,
-          "rare": 60,
-          "epic": 50,
-          "legendary": 40
+          "rare": 100,
+          "epic": 100,
+          "legendary": 100
         }
       },
       {
         "id": "silver_hook",
         "name": "Серебряный крючок",
-        "description": "Тонкое жало для редкой рыбы. Уступает бородатому по необычным видам и приливному по эпическим.",
+        "description": "Повышает шанс редкой рыбы. Наживка на тот же класс усиливает набор ещё больше.",
         "price": 6000,
         "rareBonus": 4,
         "rarity": "rare",
         "requiredHomeLevel": 2,
         "rarityWeights": {
-          "common": 90,
-          "uncommon": 95,
-          "rare": 200,
-          "epic": 95,
-          "legendary": 70
+          "common": 100,
+          "uncommon": 100,
+          "rare": 150,
+          "epic": 100,
+          "legendary": 100
         }
       },
       {
         "id": "tide_hook",
         "name": "Приливный крючок",
-        "description": "Для эпической рыбы. Хуже удерживает небольших необычных рыб; для легендарной рыбы не подходит.",
+        "description": "Повышает шанс эпической рыбы. Наживка на тот же класс усиливает набор ещё больше.",
         "price": 16000,
         "rareBonus": 7,
         "rarity": "epic",
         "requiredHomeLevel": 3,
         "rarityWeights": {
-          "common": 85,
-          "uncommon": 70,
-          "rare": 110,
-          "epic": 260,
+          "common": 100,
+          "uncommon": 100,
+          "rare": 100,
+          "epic": 150,
           "legendary": 100
         }
       },
       {
         "id": "leviathan_hook",
         "name": "Крючок Левиафана",
-        "description": "Для легендарной рыбы вместе со Звёздной удочкой. Необычная, редкая и эпическая рыба лучше ловится другими крючками.",
+        "description": "Повышает шанс легендарной рыбы со Звёздной удочкой. Звёздная наживка усиливает этот набор ещё больше.",
         "price": 40000,
         "rareBonus": 10,
         "rarity": "legendary",
         "requiredHomeLevel": 4,
         "rarityWeights": {
-          "common": 80,
-          "uncommon": 55,
-          "rare": 75,
-          "epic": 120,
-          "legendary": 300
+          "common": 100,
+          "uncommon": 100,
+          "rare": 100,
+          "epic": 100,
+          "legendary": 150
         }
       }
     ],

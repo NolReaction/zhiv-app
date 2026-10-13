@@ -279,7 +279,7 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
     const routes = catalog.explorations.filter(route => fishing.routeIds.includes(route.id));
     const home = Math.min(...routes.map(route => route.requiredHomeLevel));
     const source = fixed("fishing_species", "Классы рыбы из улова", "🐟", home,
-      "Каждая рыба получает класс с учётом снастей, затем равновероятный вид внутри класса. В кладовой, рецептах и заказах используются пять классов; конкретный класс не гарантирован. Рыбу также можно купить у Плёски, но покупка не открывает коллекцию. Для легендарного улова нужны легендарная удочка и легендарный крючок. Собственные виды сохраняются в книге после продажи или приготовления улова.", "acquisition");
+      "Каждая рыба получает класс с учётом снастей, затем равновероятный вид внутри класса. В кладовой, рецептах и заказах используются пять классов; конкретный класс не гарантирован. Рыбу также можно купить у Плёски, но покупка не открывает коллекцию. Легендарный улов открывает легендарная удочка. Крючок и наживка усиливают свой класс. Собственные виды сохраняются в книге после продажи или приготовления улова.", "acquisition");
     source.requirements = { home };
     source.fishingSource = { itemIds: fishing.classes.map(group => group.itemId), routeIds: routes.map(route => route.id) };
     edge(buildingNodeId("home", home), source.id);

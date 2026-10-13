@@ -185,3 +185,17 @@ test("advice stays deterministic, bounded, mutation-free and only uses valid hel
   const ids = new Set(worldHelpTopics().map(topic => topic.id));
   assert.ok(first.every(entry => ids.has(entry.topicId)));
 });
+
+
+test("trip advice explains incompatible stocked bait before allowing a wasted departure", () => {
+  const state = snapshot();
+  state.fishing.equippedRodId = "reed_rod";
+  state.fishing.equippedBaitId = "star_bait";
+  state.inventory.star_bait = 2;
+  const before = structuredClone(state);
+  const advice = worldHelpAdvice({ economy: controller({ snapshot: state }), context: { intent: "expedition", routeId: "shore" } });
+  assert.equal(advice[0].id, "fishing:bait-incompatible");
+  assert.match(advice[0].message, /Без наживки/);
+  assert.match(advice[0].message, /запас наживки сохранится/);
+  assert.deepEqual(state, before);
+});

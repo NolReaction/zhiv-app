@@ -40,7 +40,7 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
   const onboarding = economyCatalog.onboarding;
   const firstWorkshop = economyCatalog.buildings.find(building => building.id === "workshop")?.levels.find(level => level.level === 1);
   const legendaryChance = economyCatalog.fishing ? fishingClassOdds({}, economyCatalog.fishing,
-    { rodId: "starfall_rod", hookId: "leviathan_hook", baitId: "firefly_bait" })
+    { rodId: "starfall_rod", hookId: "leviathan_hook", baitId: "star_bait" })
     .filter(odds => odds.rarity === "legendary")
     .reduce((sum, odds) => sum + odds.probability, 0) : 0;
   return [
@@ -294,11 +294,11 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
       id: "fishing", group: "travel", title: "Как поймать редкую рыбу?", summary: "Пять классов и шансы снастей",
       keywords: "рыбалка поймать улов вероятность шанс шансы редкая эпическая легендарная акула наживка удочка крючок",
       steps: [
-        "Откройте «В путь» → «На рыбалку» → маршрут → «Снасти». Выберите удочку, крючок и при желании наживку.",
+        "Откройте «В путь» → «На рыбалку» → маршрут → «Снасти». Выберите удочку нужного класса. Крючок и наживка такого же класса дополнительно повышают его шанс; наживка необязательна.",
         "В «Шансах улова» проверьте пять классов выбранного набора. Каждая пойманная рыба получает класс, затем случайный вид внутри него.",
-        `Звёздная удочка + Крючок Левиафана + Искристая мушка дают ${(legendaryChance * 100).toFixed(2).replace(".", ",")}% на легендарную рыбу на каждую пойманную рыбу. Без легендарной удочки и крючка она не ловится.`,
+        `Звёздная удочка + Крючок Левиафана + Звёздная наживка дают ${(legendaryChance * 100).toFixed(2).replace(".", ",")}% на легендарный класс для каждой пойманной рыбы. Его открывает легендарная удочка; крючок и наживка усиливают шанс.`,
       ],
-      note: "Класс определяет цену и применение в рецептах и заказах. Вид открывается в коллекции. Еда ускоряет поход, но не повышает шансы; отмена не возвращает наживку.",
+      note: "Класс определяет цену и применение в рецептах и заказах. Вид открывается в коллекции. Если удочка не ловит класс наживки, выбрать её нельзя. При смене удочки неподходящая наживка снимается и остаётся в кладовой. Еда ускоряет поход, но не повышает шансы; отмена не возвращает наживку.",
       action: { label: "К рыбалке", target: { kind: "expeditions", sector: "coast" } },
       relatedIds: ["plesk", "collection", "campfire"],
     },

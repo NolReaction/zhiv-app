@@ -47,7 +47,7 @@ test('class orders consume mixed species while preserving their saved payment an
   assert.deepEqual(food.residentOrderBoard(state, now).offers.filter(item => item.slot !== 0), board.offers.filter(item => item.slot !== 0));
 });
 
-test('market class unlocks follow available routes and both legendary tackle pieces', () => {
+test('market class unlocks follow available routes and a rod with positive class odds', () => {
   assert.equal(market.marketRequiredHomeLevel('fish_common'), 1);
   assert.equal(market.marketRequiredHomeLevel('fish_uncommon'), 1);
   const legendary = market.marketRequiredHomeLevel('fish_legendary');
@@ -57,6 +57,23 @@ test('market class unlocks follow available routes and both legendary tackle pie
     const quantity = 2, price = catalog.items.find(item => item.id === group.itemId).baseSellPrice * quantity;
     assert.equal(market.marketListingEligible({ itemId: group.itemId, quantity, totalPrice: price }, 5), true);
   }
+});
+
+test('version4 jobs claim their frozen species and costs regardless of current rod odds', () => {
+  const state = fresh(); state.inventory = {};
+  const id = crypto.randomUUID();
+  const saved = { id, kind: 'exploration', targetId: 'shore_camp', recipeId: null, targetLevel: null,
+    startedAt: new Date(now - 900000).toISOString(), finishesAt: new Date(now).toISOString(),
+    cost: { coins: 0, items: { firefly_bait: 1 } }, catalogVersion: 4,
+    rewards: { fish_sturgeon: 2, fish_mirror_koi: 1, fish_shark: 1 },
+    fishing: { rodId: 'reed_rod', hookId: 'bare_hook', baitId: 'firefly_bait', fishId: 'fish_sturgeon' } };
+  state.jobs = [structuredClone(saved)];
+  assert.equal(fish.fishingBaitCompatible(saved.fishing.rodId, saved.fishing.baitId), false);
+  apply(state, command('claim_job', id));
+  assert.deepEqual(state.inventory, { fish_epic: 3, fish_legendary: 1 });
+  assert.deepEqual(state.fishing.catches, saved.rewards);
+  assert.equal(state.jobs.length, 0);
+  assert.equal(state.fishing.equippedRodId, 'reed_rod');
 });
 
 test('public catches hide class rolls and accepted claims celebrate actual classes only', () => {
@@ -83,5 +100,7 @@ test('catalog rejects duplicate classes, missing class species, extra routes and
     value => { value.fishing.fish = value.fishing.fish.filter(item => item.rarity !== 'legendary'); },
     value => { value.fishing.collectionDrawsByRoute.missing_route = 1; },
     value => { value.fishing.collectionDrawsByRoute.shore = 1; },
+    value => { delete value.fishing.rods[0].classOddsBps; },
+    value => { for (const rod of value.fishing.rods) { rod.classOddsBps.common += rod.classOddsBps.epic; rod.classOddsBps.epic = 0; } },
   ]) { const changed = structuredClone(catalog); alter(changed); assert.equal(economyCatalogSchema.safeParse(changed).success, false); }
 });

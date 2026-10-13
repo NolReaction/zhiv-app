@@ -125,11 +125,9 @@ object EconomyMarketRules {
             fishing.baits.find { it.itemId == itemId }?.let { sources += it.requiredHomeLevel }
             val tier = fishing.classes.find { it.itemId == EconomyFishInventory.itemId(itemId, catalog) }
             if (tier != null) {
-                val hookHome = fishing.hooks.filter { hook ->
-                    (tier.rarity != "legendary" || hook.rarity == "legendary") && fishing.fish.any { fish ->
-                        fish.rarity == tier.rarity && (fish.requiredHookId == null || fish.requiredHookId == hook.id) }
-                }.minOfOrNull { it.requiredHomeLevel } ?: Int.MAX_VALUE
-                val rodHome = fishing.rods.filter { tier.rarity != "legendary" || it.rarity == "legendary" }
+                val hookHome = fishing.hooks.minOfOrNull { it.requiredHomeLevel } ?: Int.MAX_VALUE
+                val rodHome = fishing.rods.filter { rod -> EconomyRules.fishingClassWeights(rod.id, null, spec = fishing)
+                    .any { it.first.rarity == tier.rarity && it.second > 0 } }
                     .minOfOrNull { it.requiredHomeLevel } ?: Int.MAX_VALUE
                 sources += catalog.explorations.filter { it.id in fishing.routeIds }.map {
                     maxOf(hookHome, rodHome, requirements(it.requiredHomeLevel, it.requiredBuildings))

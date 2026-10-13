@@ -21,7 +21,7 @@ class EconomyFishingShopTest {
         val first = EconomyFishingShops.create(state, now, { 0 })
         val last = EconomyFishingShops.create(state, now, { it - 1 })
         assertEquals(listOf("river_rod", "barbed_hook", "crumb_bait", "fish_common"), first.offers.map { it.itemId })
-        assertEquals(listOf("starfall_rod", "leviathan_hook", "firefly_bait", "fish_common"), last.offers.map { it.itemId })
+        assertEquals(listOf("starfall_rod", "leviathan_hook", "star_bait", "fish_common"), last.offers.map { it.itemId })
         assertEquals(now.plusSeconds(21600).toString(), first.refreshAt)
         assertEquals(100L, first.refreshPricePearls)
         val spec = checkNotNull(EconomyRules.catalog.fishing)
@@ -168,9 +168,9 @@ class EconomyFishingShopTest {
         assertEquals(listOf("river_rod", "barbed_hook", "worm_bait", "fish_common"),
             checkNotNull(EconomyFishingShops.refresh(state, now, { 0 })).offers.map { it.itemId })
         val totals = mutableListOf<Int>()
-        assertEquals(listOf("starfall_rod", "leviathan_hook", "firefly_bait", "fish_common"),
+        assertEquals(listOf("starfall_rod", "leviathan_hook", "star_bait", "fish_common"),
             checkNotNull(EconomyFishingShops.refresh(state, now, { totals += it; it - 1 })).offers.map { it.itemId })
-        assertEquals(listOf(10000, 1, 10000, 1, 95, 1), totals)
+        assertEquals(listOf(10000, 1, 10000, 1, 99, 1), totals)
         var legendary = 0
         repeat(10000) { ticket ->
             val shop = checkNotNull(EconomyFishingShops.refresh(state, now, { if (it == 10000) ticket else 0 }, "paid"))
