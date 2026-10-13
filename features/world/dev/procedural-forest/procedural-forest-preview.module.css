@@ -47,6 +47,9 @@
 .canvas[data-tool="select"] { cursor: default; }
 .canvas[data-tool="select"]:active { cursor: move; }
 .canvas[data-dragging="true"] { cursor: grabbing; }
+.canvas[data-tool="resize"] { cursor: nwse-resize; }
+.canvas[data-tool="resize"][data-resize-direction="nwse"] { cursor: nwse-resize; }
+.canvas[data-tool="resize"][data-resize-direction="nesw"] { cursor: nesw-resize; }
 .panHint { pointer-events: none; position: absolute; top: 14px; left: 50%; transform: translateX(-50%); border: 1px solid #afc49350; border-radius: 5px; padding: 8px 12px; background: #14271ded; color: #d5e7b4; font-size: 11px; white-space: nowrap; }
 .crosshair { pointer-events: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font: 25px monospace; color: #ffffdc; text-shadow: 0 1px 3px #000; }
 .mapTools { position: absolute; right: 16px; bottom: 16px; display: flex; align-items: center; gap: 1px; border: 1px solid #83956a60; border-radius: 5px; overflow: hidden; background: #14271dec; box-shadow: 0 3px 20px #08171044; }
@@ -67,6 +70,7 @@
 .fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
 .selectionHeading strong { color: #d5e7b4; font-size: 14px; font-weight: 500; }
 .selectionHeading span { color: #9aae7c; letter-spacing: .12em; font-size: 8px; }
+.imageName { color: #9daf92; font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; margin: -3px 0 12px; }
 .field, .variant { display: flex; flex-direction: column; gap: 6px; font-size: 11px; color: #9daf92; min-width: 0; }
 .field input, .variant select { width: 100%; min-width: 0; border: 1px solid #adc08930; background: #132219; color: #d4dfc8; border-radius: 5px; padding: 9px; font: inherit; }
 .field input:focus-visible, .variant select:focus-visible { outline: 2px solid #cee4a2; outline-offset: 2px; }
@@ -74,10 +78,19 @@
 .palette { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
 .palette button { display: flex; align-items: center; justify-content: center; gap: 7px; padding: 13px 4px; font-size: 11px; }
 .palette button[aria-pressed="true"] { color: #e3efc9; border-color: #9aad72; background: #37452a; }
+.pngActions { display: grid; gap: 7px; margin-top: 10px; }
+.pngActions button { display: flex; align-items: center; gap: 9px; padding: 12px; font-size: 12px; text-align: left; }
+.pngActions kbd { margin-left: auto; }
+.assetList { display: grid; gap: 5px; margin-top: 13px; }
+.assetList button { display: flex; align-items: center; gap: 8px; padding: 10px; font-size: 11px; min-width: 0; text-align: left; }
+.assetList button > svg { flex-shrink: 0; }
+.assetList button > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.assetList button[aria-pressed="true"] { color: #e3efc9; border-color: #9aad72; background: #37452a; }
 .fileActions { display: grid; gap: 7px; }
 .fileActions button { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 12px; font-size: 12px; }
 .fileInput { display: none; }
 .saveState { font-size: 11px; line-height: 1.6; color: #c0d297; margin: 12px 0 0; }
+.fileProgress { color: #c0d297; font-size: 11px; line-height: 1.6; margin: 12px 0 0; }
 .importError { font-size: 11px; line-height: 1.6; color: #efb6a0; }
 .shortcutHelp { border-top: 1px solid #a5b28a25; padding: 16px 0; color: #aebf9f; font-size: 11px; }
 .shortcutHelp summary { cursor: pointer; color: #c5d7ac; }

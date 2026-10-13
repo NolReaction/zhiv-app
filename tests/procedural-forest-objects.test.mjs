@@ -27,8 +27,9 @@ test("default props preserve their anchors and authored painter depths", () => {
 
 test("all object kinds accept edits and removal while the vegetation layer hides only vegetation", () => {
   const painter = queryPainter();
-  const planted = ["tree", "shrub", "rock", "ruins", "bridge", "jetty", "stump-house"].map((kind, index) =>
-    Object.freeze({ id: `planted:${kind}`, x: 200 + index * 50, y: 620, scale: 1, variant: 2, kind }));
+  const planted = ["tree", "shrub", "rock", "ruins", "bridge", "jetty", "image"].map((kind, index) =>
+    Object.freeze({ id: `planted:${kind}`, x: 200 + index * 50, y: 620, scale: 1, variant: 2, kind,
+      ...(kind === "image" ? { assetId: "png:test", imageWidth: 320, imageHeight: 160 } : {}) }));
   const editedRock = Object.freeze({ ...planted[2], x: 400, y: 650, scale: 2, rotation: 31 });
   const movedBridge = Object.freeze({ ...initialProps().find(object => object.kind === "bridge"), x: 300, y: 700, rotation: 90 });
   const removed = new Set(["prop:jetty", "planted:ruins"]);
@@ -39,7 +40,7 @@ test("all object kinds accept edits and removal while the vegetation layer hides
   assert.equal(scene.find(object => object.id === movedBridge.id), movedBridge);
   assert.ok(scene.some(object => object.id === "planted:bridge"));
   assert.ok(scene.some(object => object.id === "planted:jetty"));
-  assert.ok(scene.some(object => object.id === "planted:stump-house"));
+  assert.ok(scene.some(object => object.id === "planted:image"));
   assert.ok(!scene.some(object => removed.has(object.id)));
   const restoredLayer = painter.objects(options({ planted, removed, modified }));
   assert.ok(restoredLayer.some(object => object.id === "planted:tree"));
@@ -63,8 +64,9 @@ test("moving a generated object persists through expansion and shrinking of its 
 });
 
 test("picking and world bounds follow rotation and scale for all seven kinds", () => {
-  for (const kind of ["tree", "shrub", "rock", "ruins", "bridge", "jetty", "stump-house"]) {
-    const object = { id: `test:${kind}`, kind, x: 600, y: 800, scale: 2.7, variant: 0, rotation: 123 };
+  for (const kind of ["tree", "shrub", "rock", "ruins", "bridge", "jetty", "image"]) {
+    const object = { id: `test:${kind}`, kind, x: 600, y: 800, scale: 2.7, variant: 0, rotation: 123,
+      ...(kind === "image" ? { assetId: "png:test", imageWidth: 320, imageHeight: 160 } : {}) };
     const angle = object.rotation * Math.PI / 180 + (kind === "bridge" ? .22 : kind === "jetty" ? .36 : 0);
     const local = kind === "tree" ? [0, -69] : kind === "shrub" ? [0, -20] : kind === "rock" ? [0, -12]
       : kind === "jetty" ? [50, 20] : [0, -20];
@@ -101,43 +103,12 @@ test("painting respects removed props, scaled footprints and optional selection 
   assert.equal(painter.paint(context(true), view, sceneOptions).objects, 1);
   assert.ok(calls.some(call => call[0] === "translate" && call[1] === 900 && call[2] === 420), "a large prop is painted when its footprint enters the viewport");
   assert.ok(!calls.some(call => call[0] === "translate" && ((call[1] === 749 && call[2] === 1249) || (call[1] === 1330 && call[2] === 1070))), "removed props are not painted at fixed coordinates");
-  assert.ok(!calls.some(call => call[0] === "strokeRect"), "export-style painting has no selection frame");
+  assert.ok(!calls.some(call => call[0] === "arc"), "export-style painting has no selection handles");
   calls.length = 0;
   painter.paint(context(true), view, { ...sceneOptions, selectedId: ruins.id });
-  assert.equal(calls.filter(call => call[0] === "strokeRect").length, 1);
+  assert.equal(calls.filter(call => call[0] === "arc").length, 5, "the rotated frame has four corner handles and an anchor");
   calls.length = 0;
   painter.paint(context(true), view, { ...sceneOptions, removed: new Set([...removed, ruins.id]) });
   assert.ok(!calls.some(call => call[0] === "translate" && call[1] === 900 && call[2] === 420));
-  painter.dispose();
-});
-
-test("a large house entering the viewport is painted and moving it reuses its cached artwork", t => {
-  const originalPath = globalThis.Path2D;
-  globalThis.Path2D = class {};
-  t.after(() => { if (originalPath === undefined) delete globalThis.Path2D; else globalThis.Path2D = originalPath; });
-  const surfaces = [], calls = [];
-  const context = (record = false) => new Proxy({}, {
-    get: (_, key) => key === "createRadialGradient" || key === "createLinearGradient"
-      ? () => ({ addColorStop() {} }) : (...args) => { if (record) calls.push([key, ...args]); },
-    set: () => true,
-  });
-  const painter = createForestPainter((width, height) => {
-    const canvas = { width, height, getContext: () => context() }; surfaces.push(canvas); return canvas;
-  });
-  const house = { id: "planted:house", kind: "stump-house", x: 600, y: 700, scale: 1, rotation: 0, variant: 0 };
-  const removed = new Set([...generated, ...initialProps()].map(object => object.id));
-  const view = { x: 610, y: 425, width: 80, height: 100 };
-  const settings = options({ removed, planted: [house] });
-  painter.paint(context(true), view, settings);
-  const houseDraw = calls.find(call => call[0] === "drawImage" && call.length === 6);
-  assert.ok(houseDraw, "the house crown enters the view even while its anchor is outside");
-  assert.ok(houseDraw[1].width / houseDraw[4] >= 2, "the cached illustration retains detail at normal zoom");
-  const count = surfaces.length;
-  calls.length = 0;
-  painter.paint(context(true), view, { ...settings, planted: [{ ...house, x: 620 }] });
-  assert.equal(surfaces.length, count, "moving a house does not repaint its leaves or bark");
-  assert.ok(calls.some(call => call[0] === "translate" && call[1] === 620 && call[2] === 700));
-  painter.paint(context(), view, { ...settings, planted: [{ ...house, variant: 1 }] });
-  assert.equal(surfaces.length, count + 1, "a new appearance creates only its own sprite");
   painter.dispose();
 });

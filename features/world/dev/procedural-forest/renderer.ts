@@ -1,24 +1,103 @@
 import { drawTree, drawShrub } from "./foliage";
 import { drawTerrain } from "./terrain";
 import { drawBridge, drawJetty, drawRock, drawRuins } from "./props";
-import { drawStumpHouse } from "./stump-house";
-import { compareObjects, forestObjects, initialProps, objectBounds, WORLD_HEIGHT, type Bounds, type ForestObject } from "./objects";
+import { compareObjects, forestObjects, initialProps, objectBounds, objectCorners, objectLocalBounds, WORLD_HEIGHT, type Bounds, type ForestObject } from "./objects";
+import { assertPngDataUrl, type ImageAsset } from "./image-assets";
 
 export type CanvasFactory = (width: number, height: number) => HTMLCanvasElement;
+export type ImageLoader = (dataUrl: string) => Promise<CanvasImageSource>;
 export type ForestOptions = {
   seed: number; width: number; trees: boolean; grid: boolean;
   removed: ReadonlySet<string>; planted: readonly ForestObject[];
   modified?: ReadonlyMap<string, ForestObject>; selectedId?: string | null;
+  assets?: ReadonlyMap<string, ImageAsset>; selectionZoom?: number;
 };
 const TILE = 512;
+const SOURCE_PIXEL_BUDGET = 64_000_000;
+
+async function decodeImage(dataUrl: string): Promise<CanvasImageSource> {
+  await assertPngDataUrl(dataUrl);
+  const image = new Image();
+  image.src = dataUrl;
+  try { await image.decode(); }
+  catch { throw new Error("Не удалось прочитать PNG. Проверьте, что файл не повреждён."); }
+  if (!image.naturalWidth || !image.naturalHeight) throw new Error("PNG не содержит изображения.");
+  return image;
+}
 
 /** Ground chunks and a small sprite atlas are disposable caches, never map data. */
-export function createForestPainter(makeCanvas: CanvasFactory) {
+export function createForestPainter(makeCanvas: CanvasFactory, onAssetsChanged?: () => void, loadImage: ImageLoader = decodeImage) {
   const ground = new Map<string, HTMLCanvasElement>();
   const sprites = new Map<string, HTMLCanvasElement>();
+  type Source = { promise: Promise<CanvasImageSource>; image?: CanvasImageSource; pixels: number; used: number; failed?: boolean };
+  // Current scene and freshly prepared imports stay decoded; older undo entries use LRU.
+  const sources = new Map<string, Map<string, Source>>();
+  let currentSources = new Set<Source>(), preparedSources = new Set<Source>();
+  const preparingSources = new Map<Source, number>();
+  let sourceClock = 0;
+  let disposed = false;
   let lastSeed = -1;
   let generated: ForestObject[] = [];
   let generatedWidth = 0;
+
+  function pruneSources() {
+    let pixels = 0;
+    const candidates: { id: string; dataUrl: string; source: Source }[] = [];
+    for (const [id, versions] of sources) for (const [dataUrl, source] of versions) {
+      if (source.failed && !currentSources.has(source) && !preparingSources.has(source)) {
+        versions.delete(dataUrl);
+        if (!versions.size) sources.delete(id);
+        continue;
+      }
+      if (!source.image) continue;
+      pixels += source.pixels;
+      if (!currentSources.has(source) && !preparedSources.has(source) && !preparingSources.has(source)) candidates.push({ id, dataUrl, source });
+    }
+    candidates.sort((a, b) => a.source.used - b.source.used);
+    for (const { id, dataUrl, source } of candidates) {
+      if (pixels <= SOURCE_PIXEL_BUDGET) break;
+      pixels -= source.pixels;
+      const versions = sources.get(id);
+      versions?.delete(dataUrl);
+      if (!versions?.size) sources.delete(id);
+    }
+  }
+
+  function prepareAsset(asset: ImageAsset, retry = false) {
+    let versions = sources.get(asset.id);
+    if (!versions) { versions = new Map(); sources.set(asset.id, versions); }
+    const existing = versions.get(asset.dataUrl);
+    if (existing && !(existing.failed && retry)) { existing.used = ++sourceClock; return existing; }
+    const bucket = versions;
+    const source: Source = { pixels: asset.width * asset.height, used: ++sourceClock,
+      promise: Promise.resolve().then(() => loadImage(asset.dataUrl)).then(image => {
+        if (!disposed) { source.image = image; pruneSources(); onAssetsChanged?.(); }
+        return image;
+      }).catch(error => {
+        // Remember a lazy failure to avoid retrying every camera frame; explicit import retries it.
+        source.failed = true;
+        throw error instanceof Error ? error : new Error("Не удалось подготовить PNG.");
+      }) };
+    bucket.set(asset.dataUrl, source);
+    return source;
+  }
+
+  async function prepareAssets(assets: readonly ImageAsset[]) {
+    if (disposed) throw new Error("Редактор уже закрыт.");
+    const pending = assets.map(asset => prepareAsset(asset, true));
+    for (const source of pending) preparingSources.set(source, (preparingSources.get(source) ?? 0) + 1);
+    try {
+      await Promise.all(pending.map(source => source.promise));
+      if (disposed) throw new Error("Редактор уже закрыт.");
+      preparedSources = new Set(pending);
+    } finally {
+      for (const source of pending) {
+        const count = (preparingSources.get(source) ?? 1) - 1;
+        if (count) preparingSources.set(source, count); else preparingSources.delete(source);
+      }
+      pruneSources();
+    }
+  }
 
   function objects(options: ForestOptions) {
     if (lastSeed !== options.seed || generatedWidth !== options.width) {
@@ -37,14 +116,12 @@ export function createForestPainter(makeCanvas: CanvasFactory) {
     const key = `${object.kind}:${object.variant}`;
     let canvas = sprites.get(key);
     if (!canvas) {
-      const house = object.kind === "stump-house";
-      canvas = makeCanvas(house ? 704 : 288, house ? 704 : 288);
+      canvas = makeCanvas(288, 288);
       const ctx = canvas.getContext("2d");
       if (!ctx) throw new Error("Браузер не поддерживает Canvas 2D.");
-      ctx.scale(house ? 2 : 1.5, house ? 2 : 1.5); ctx.translate(house ? 176 : 96, house ? 300 : 172);
+      ctx.scale(1.5, 1.5); ctx.translate(96, 172);
       if (object.kind === "tree") drawTree(ctx, object.variant);
       else if (object.kind === "shrub") drawShrub(ctx, object.variant);
-      else if (house) drawStumpHouse(ctx, object.variant);
       else drawRock(ctx, object.variant);
       sprites.set(key, canvas);
     }
@@ -52,6 +129,16 @@ export function createForestPainter(makeCanvas: CanvasFactory) {
   }
 
   function paint(ctx: CanvasRenderingContext2D, view: Bounds, options: ForestOptions) {
+    if (disposed) return { objects: 0, chunks: 0 };
+    currentSources = new Set();
+    for (const asset of options.assets?.values() ?? []) {
+      const source = prepareAsset(asset);
+      currentSources.add(source);
+      // Loading a source evicted from undo is asynchronous; imports/exports await preparation.
+      void source.promise.catch(() => {});
+    }
+    preparedSources.clear();
+    pruneSources();
     const all = objects(options);
     ctx.save(); ctx.beginPath(); ctx.rect(0, 0, options.width, WORLD_HEIGHT); ctx.clip();
     const minX = Math.max(0, Math.floor(view.x / TILE)), maxX = Math.min(Math.ceil(options.width / TILE) - 1, Math.floor((view.x + view.width) / TILE));
@@ -88,7 +175,19 @@ export function createForestPainter(makeCanvas: CanvasFactory) {
       if (object.kind === "ruins") drawRuins(ctx);
       else if (object.kind === "jetty") drawJetty(ctx);
       else if (object.kind === "bridge") drawBridge(ctx);
-      else if (object.kind === "stump-house") ctx.drawImage(sprite(object), -176, -300, 352, 352);
+      else if (object.kind === "image") {
+        const asset = object.assetId ? options.assets?.get(object.assetId) : undefined;
+        const image = asset && sources.get(asset.id)?.get(asset.dataUrl)?.image;
+        const bounds = objectLocalBounds(object);
+        if (image) ctx.drawImage(image, bounds.x, bounds.y, bounds.width, bounds.height);
+        else {
+          ctx.fillStyle = "#233d3455"; ctx.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
+          ctx.strokeStyle = "#e5d5a9"; ctx.lineWidth = 1 / (object.scale * (options.selectionZoom ?? 1));
+          ctx.setLineDash([5, 4]); ctx.strokeRect(bounds.x, bounds.y, bounds.width, bounds.height); ctx.setLineDash([]);
+          ctx.fillStyle = "#fff3cf"; ctx.font = "14px sans-serif"; ctx.textAlign = "center";
+          ctx.fillText("Загрузка PNG…", 0, bounds.y + bounds.height / 2);
+        }
+      }
       else ctx.drawImage(sprite(object), -96, -172, 192, 192);
       ctx.restore();
     }
@@ -101,15 +200,21 @@ export function createForestPainter(makeCanvas: CanvasFactory) {
     }
     const selected = all.find(object => object.id === options.selectedId);
     if (selected) {
-      const bounds = objectBounds(selected);
-      ctx.strokeStyle = "#ffe4a0"; ctx.lineWidth = 2; ctx.setLineDash([5, 4]);
-      ctx.strokeRect(bounds.x - 4, bounds.y - 4, bounds.width + 8, bounds.height + 8);
-      ctx.setLineDash([]); ctx.fillStyle = "#ffe4a0"; ctx.beginPath();
-      ctx.arc(selected.x, selected.y, 4, 0, Math.PI * 2); ctx.fill();
+      const zoom = Math.max(.01, options.selectionZoom ?? 1), corners = objectCorners(selected);
+      ctx.strokeStyle = "#ffe4a0"; ctx.lineWidth = 2 / zoom; ctx.setLineDash([5 / zoom, 4 / zoom]);
+      ctx.beginPath(); ctx.moveTo(corners[0].x, corners[0].y);
+      for (const corner of corners.slice(1)) ctx.lineTo(corner.x, corner.y);
+      ctx.closePath(); ctx.stroke(); ctx.setLineDash([]);
+      for (const corner of corners) {
+        ctx.fillStyle = "#fff5dc"; ctx.strokeStyle = "#315c50"; ctx.lineWidth = 2 / zoom;
+        ctx.beginPath(); ctx.arc(corner.x, corner.y, 7 / zoom, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      }
+      ctx.fillStyle = "#ffe4a0"; ctx.beginPath();
+      ctx.arc(selected.x, selected.y, 3 / zoom, 0, Math.PI * 2); ctx.fill();
     }
     ctx.restore();
     return { objects: all.length, chunks: ground.size };
   }
 
-  return { paint, objects, dispose() { ground.clear(); sprites.clear(); generated = []; } };
+  return { paint, objects, prepareAssets, dispose() { disposed = true; ground.clear(); sprites.clear(); sources.clear(); currentSources.clear(); preparedSources.clear(); preparingSources.clear(); generated = []; } };
 }

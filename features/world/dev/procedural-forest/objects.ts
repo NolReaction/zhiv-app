@@ -1,6 +1,6 @@
 import { hash, sampleGround } from "./layout";
 
-export type ForestObject = { id: string; x: number; y: number; scale: number; variant: number; kind: "tree" | "shrub" | "rock" | "ruins" | "bridge" | "jetty" | "stump-house"; rotation?: number };
+export type ForestObject = { id: string; x: number; y: number; scale: number; variant: number; kind: "tree" | "shrub" | "rock" | "ruins" | "bridge" | "jetty" | "image"; rotation?: number; assetId?: string; imageWidth?: number; imageHeight?: number };
 export type ObjectKind = ForestObject["kind"];
 export type Bounds = { x: number; y: number; width: number; height: number };
 export const INITIAL_WIDTH = 1600;
@@ -21,7 +21,7 @@ const radians = (degrees = 0) => degrees * Math.PI / 180;
 const intrinsicAngle = (kind: ObjectKind) => kind === "jetty" ? .36 : kind === "bridge" ? .22 : 0;
 
 /** Conservative local extents include painted shadows, for rotated culling and selection. */
-function localBounds(object: ForestObject): Bounds {
+export function objectLocalBounds(object: ForestObject): Bounds {
   switch (object.kind) {
     case "tree": return { x: -80, y: -158, width: 179, height: 190 };
     case "shrub": return { x: -32, y: -45, width: 85, height: 61 };
@@ -29,16 +29,25 @@ function localBounds(object: ForestObject): Bounds {
     case "ruins": return { x: -75, y: -101, width: 198, height: 158 };
     case "bridge": return { x: -67, y: -46, width: 144, height: 101 };
     case "jetty": return { x: -9, y: -13, width: 145, height: 86 };
-    case "stump-house": return { x: -176, y: -300, width: 352, height: 352 };
+    case "image": return { x: -(object.imageWidth ?? 0) / 2, y: -(object.imageHeight ?? 0), width: object.imageWidth ?? 0, height: object.imageHeight ?? 0 };
   }
 }
 
-export function objectBounds(object: ForestObject): Bounds {
-  const local = localBounds(object), angle = radians(object.rotation) + intrinsicAngle(object.kind);
+export function objectAngle(object: ForestObject): number {
+  return radians(object.rotation) + intrinsicAngle(object.kind);
+}
+
+/** World corners in top-left, top-right, bottom-right, bottom-left order. */
+export function objectCorners(object: ForestObject): { x: number; y: number }[] {
+  const local = objectLocalBounds(object), angle = objectAngle(object);
   const cosine = Math.cos(angle) * object.scale, sine = Math.sin(angle) * object.scale;
-  const corners = [[local.x, local.y], [local.x + local.width, local.y],
+  return [[local.x, local.y], [local.x + local.width, local.y],
     [local.x + local.width, local.y + local.height], [local.x, local.y + local.height]]
     .map(([x, y]) => ({ x: object.x + x * cosine - y * sine, y: object.y + x * sine + y * cosine }));
+}
+
+export function objectBounds(object: ForestObject): Bounds {
+  const corners = objectCorners(object);
   const x = Math.min(...corners.map(point => point.x)), y = Math.min(...corners.map(point => point.y));
   return { x, y, width: Math.max(...corners.map(point => point.x)) - x, height: Math.max(...corners.map(point => point.y)) - y };
 }
@@ -96,7 +105,7 @@ export function pickObject(objects: readonly ForestObject[], x: number, y: numbe
   for (let i = ordered.length - 1; i >= 0; i--) {
     const object = ordered[i];
     if (!Number.isFinite(object.scale) || object.scale <= 0) continue;
-    const angle = radians(object.rotation) + intrinsicAngle(object.kind);
+    const angle = objectAngle(object);
     const dx = (x - object.x) / object.scale, dy = (y - object.y) / object.scale;
     const localX = dx * Math.cos(angle) + dy * Math.sin(angle);
     const localY = -dx * Math.sin(angle) + dy * Math.cos(angle);
@@ -106,9 +115,9 @@ export function pickObject(objects: readonly ForestObject[], x: number, y: numbe
       const centerY = object.kind === "tree" ? -69 : object.kind === "shrub" ? -20 : -12;
       if ((localX / radiusX) ** 2 + ((localY - centerY) / radiusY) ** 2 < 1) return object;
     } else {
-      const bounds = localBounds(object);
+      const bounds = objectLocalBounds(object);
       // Keep a prop's full silhouette selectable, without extending to its cast shadow.
-      const maxY = object.kind === "stump-house" ? 50 : object.kind === "ruins" ? 37 : object.kind === "jetty" ? 55 : 29;
+      const maxY = object.kind === "image" ? 0 : object.kind === "ruins" ? 37 : object.kind === "jetty" ? 55 : 29;
       if (localX >= bounds.x && localX <= bounds.x + bounds.width && localY >= bounds.y && localY <= maxY) return object;
     }
   }
