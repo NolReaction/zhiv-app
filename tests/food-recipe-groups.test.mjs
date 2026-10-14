@@ -30,6 +30,8 @@ test('rare recipe preview shows exact class and both bonuses without substitutin
   assert.doesNotMatch(html, /<select|data-item-icon="fish_epic"/);
   assert.match(html, /data-blocked="true"/);
   assert.doesNotMatch(html, /disabled=|Все рецепты|Способ производства/);
-  assert.match(html, /Вылазка \+60% · стройка \+50% к скорости/);
+  assert.match(html, /Вылазка \+60%/);
+  assert.match(html, /Стройка \+50%/);
+  assert.match(html, /Скорость вылазки \+60%, стройки \+50%/);
   assert.deepEqual(state.inventory, { fish_epic: 5 });
 });

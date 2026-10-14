@@ -264,8 +264,8 @@ function Production({ economy, navigate, focusId }: { economy: ReadyEconomy; nav
     {(state.buildings[station] > 0 || jobs.length > 0) && <WorldProductionSlots key={`${state.ownerPublicId}:${station}`} economy={economy} stationId={station} openPantry={() => navigate("inventory")} />}
     {!productionStationSupported(station) && jobs.map(job => <JobCard key={job.id} economy={economy} job={job} navigate={navigate} />)}
     {!(state.buildings[station] > 0) && <div className={styles.notice}><House size={18} aria-hidden /><div><p>Сначала обустройте это место.</p><button onClick={() => navigate("buildings", station)}>К постройке<ArrowRight size={15} aria-hidden /></button></div></div>}
-    {open.map(group => <WorldProductionCard key={group.key} economy={economy} recipe={group.recipe} focused={group.methods.some(recipe => recipe.id === focusedRecipe?.id)} />)}
-    {locked.length > 0 && <details className={styles.details} open={!open.length}><summary>Будущие рецепты · {locked.length}</summary><div className={styles.stack}>{locked.map(group => <WorldProductionCard key={group.key} economy={economy} recipe={group.recipe} focused={group.methods.some(recipe => recipe.id === focusedRecipe?.id)} />)}</div></details>}
+    <div className={styles.productionGrid}>{open.map(group => <WorldProductionCard key={group.key} economy={economy} recipe={group.recipe} focused={group.methods.some(recipe => recipe.id === focusedRecipe?.id)} />)}</div>
+    {locked.length > 0 && <details className={styles.details} open={!open.length}><summary>Будущие рецепты · {locked.length}</summary><div className={styles.productionGrid}>{locked.map(group => <WorldProductionCard key={group.key} economy={economy} recipe={group.recipe} focused={group.methods.some(recipe => recipe.id === focusedRecipe?.id)} />)}</div></details>}
   </div>;
 }
 

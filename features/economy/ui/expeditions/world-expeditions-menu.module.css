@@ -47,7 +47,6 @@
 .provisions li > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .provisions strong { color: var(--forest-ink, #394d3e); font-weight: 500; }
 .provisions [data-missing="true"] strong { color: var(--forest-ink, #394d3e); }
-.free { display: flex; align-items: center; gap: 4px; color: var(--forest-ink, #394d3e); font-size: 10px; }
 .requirements { display: flex; flex-wrap: wrap; gap: 4px 8px; color: var(--forest-muted, #59624d); }
 .requirements li { min-width: 0; overflow-wrap: anywhere; display: flex; align-items: center; gap: 4px; font-size: 10px; }
 .content.content .link { min-height: 44px; padding: 4px 0; color: var(--forest-ink, #394d3e); text-align: left; font-size: 10px; }
@@ -84,9 +83,15 @@
 .preparation { min-width: 0; }
 .content.content .back { display: flex; justify-content: flex-start; width: 100%; gap: 6px; min-height: 44px; padding: 0; background: none; color: var(--forest-ink, #394d3e); font-size: 12px; }
 .content.content .back > span { margin-left: auto; color: var(--forest-muted, #59624d); font-size: 11px; }
-.preparationHeading { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin: 0 0 10px; }
+.preparationHeading { position: relative; isolation: isolate; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; margin: 0 0 10px; padding: 13px 14px; overflow: hidden; border: 1px solid var(--forest-border, #c8bd98); border-radius: 12px; background: color-mix(in srgb, #8dba76 11%, var(--forest-paper-light, #f0e6ca)); }
 .preparationHeading h3 { margin: 0; min-width: 0; font-size: 15px; font-weight: 650; line-height: 1.35; color: var(--forest-ink, #394d3e); overflow-wrap: anywhere; }
-.preparationHeading .routeDuration { padding-top: 3px; font-size: 11px; }
+.preparationHeading h3, .preparationHeading .routeDuration { position: relative; z-index: 1; max-width: 100%; }
+.preparationHeading .routeDuration { font-size: 11px; color: var(--forest-ink, #394d3e); padding: 3px 6px; border-radius: 5px; background: var(--forest-paper-light, #f0e6ca); }
+.preparationHeading[data-activity="shore"] { background: color-mix(in srgb, #7eb2b0 15%, var(--forest-paper-light, #f0e6ca)); }
+.preparationHeading[data-activity="caves"] { background: color-mix(in srgb, #b09180 12%, var(--forest-paper-light, #f0e6ca)); }
+.preparationArt { position: absolute; z-index: 0; width: 103px; height: 95px; top: -12px; right: -7px; color: var(--forest-primary, #466347); opacity: .18; pointer-events: none; }
+.preparationArt > svg { width: 100%; height: 100%; }
+.preparationBoost { min-width: 0; margin: 0 0 10px; }
 .routeRewards { display: grid; gap: 5px; }
 .detail > .actions .primary { width: 100%; font-size: 12px; }
 .fishingGear { min-width: 0; border-radius: 10px; border: 1px solid var(--forest-border, #c8bd98); background: var(--forest-paper-light, #f0e6ca); color: var(--forest-ink, #394d3e); font-size: .8125rem; line-height: 1.5; }
@@ -144,9 +149,6 @@
 .contextHelp:hover { background: #edf3e5; }
 .contextHelp:focus-visible { outline: 2px solid #55774c; outline-offset: 2px; }
 
-.preparationTime { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 5px; flex: 0 0 auto; max-width: 48%; }
-.preparationTime .routeDuration { padding-top: 0; }
-
 /* Mine resource cards retain their size when a route is locked or filtered. */
 .miningRoutes { container-type: inline-size; gap: 14px; }
 .miningFilters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
@@ -156,15 +158,17 @@
 .miningGroupTitle { min-width: 0; display: flex; align-items: center; gap: 5px; margin: 0; color: var(--forest-ink, #394d3e); font-size: 11px; font-weight: 600; }
 .miningGroupTitle > span { flex: 1; }
 .miningGroupTitle small { color: var(--forest-muted, #59624d); font-size: 10px; font-weight: 400; }
-.miningCards { min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; align-items: start; }
-.content.content .miningCard { min-width: 0; display: grid; align-content: start; justify-items: start; gap: 3px; width: 100%; min-height: 85px; padding: 8px; border: 1px solid var(--forest-border, #c8bd98); border-radius: 9px; background: var(--forest-paper-light, #f0e6ca); text-align: left; }
+.miningCards { min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; align-items: stretch; }
+.content.content .miningCard { min-width: 0; display: grid; grid-template-rows: auto 1fr 12px auto; align-content: start; justify-items: stretch; gap: 3px; width: 100%; min-height: 106px; padding: 8px; border: 1px solid var(--forest-border, #c8bd98); border-radius: 9px; background: var(--forest-paper-light, #f0e6ca); text-align: left; }
 .content.content .miningCard:hover { border-color: var(--forest-primary, #466347); }
-.miningName { min-width: 0; overflow-wrap: anywhere; font-size: 11px; font-weight: 600; line-height: 1.25; }
-.miningFindings { min-width: 0; }
-.miningFindings .findings { gap: 0 3px; }
-.miningFindings .findings > span { padding-right: 0; gap: 2px; }
+.miningName { min-width: 0; min-height: 2.5em; overflow-wrap: anywhere; font-size: 11px; font-weight: 600; line-height: 1.25; }
+.miningFindings { min-width: 0; display: grid; align-content: start; gap: 3px; }
+.miningYield { min-width: 0; display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 3px; font-size: 10px; line-height: 1.2; }
+.miningYield > span { min-width: 0; overflow-wrap: anywhere; }
+.miningYield strong { font-size: 10px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .miningCard .routeDuration { font-size: 10px; }
-.miningLocked { min-width: 0; display: flex; align-items: flex-start; gap: 3px; color: var(--forest-accent-ink, #785021); font-size: 9px; line-height: 1.25; overflow-wrap: anywhere; }
+.miningLocked { min-width: 0; display: flex; align-items: center; gap: 3px; color: var(--forest-accent-ink, #785021); font-size: 9px; line-height: 1.25; }
+.miningLocked > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .miningEmpty { padding: 4px 0; color: var(--forest-muted, #59624d); font-size: 11px; }
 @container (max-width: 250px) { .miningCards { grid-template-columns: minmax(0, 1fr); } .miningFilters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
@@ -197,7 +201,6 @@
 .routeText strong { font-size: 12px; }
 .groupTitle { font-size: 11px; padding-bottom: 4px; }
 .content.content .back { font-size: 12px; margin-bottom: 3px; }
-.preparationHeading { padding: 10px 0; }
 .preparationHeading h3 { font-size: 18px; }
 .fishingGear { border-radius: 13px; }
 .fishingGear > summary { padding: 12px; gap: 8px; }

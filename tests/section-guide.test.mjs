@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-simple-guides-sections-vite", server: { middlewareMode: true, hmr: false, ws: false } });
+const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-tidy-cards-guides-sections-vite", server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { sectionGuideIds, sectionGuideLessons, sectionGuideCanOpen, parseSectionGuideProgress, transitionSectionGuide: move } = await vite.ssrLoadModule("/features/onboarding/section-guide-model.ts");
 const { sectionGuideStorageKey, createSectionGuideStore } = await vite.ssrLoadModule("/features/onboarding/section-guide-storage.ts");
@@ -52,6 +52,21 @@ test("expedition lessons keep safe route selectors and direct mining to its sepa
     assert.ok(step.targets.includes("[data-route]"));
     assert.ok(step.targets.includes('[data-section-guide-target="expedition-routes"]'));
     assert.notEqual(step.revealOnOpen, true, "the coach must not activate a route card");
+  }
+});
+
+test("travel and meal lessons explain a named optional boost without automatic eating", () => {
+  const preparation = sectionGuideLessons.expeditions.find(step => step.id === "preparation");
+  const portion = sectionGuideLessons.meals.find(step => step.id === "portion");
+  assert.match(preparation.summary, /«Ускорение едой» под таймером/);
+  assert.match(preparation.summary, /он необязателен/);
+  assert.match(preparation.text, /«Выбрать блюдо».*не тратя еду/);
+  assert.match(preparation.text, /только после «Съесть 1»/);
+  assert.match(portion.text, /блок «Ускорение едой».*«Выбрать блюдо»/);
+  assert.match(portion.text, /не потратив порцию/);
+  for (const step of [preparation, portion]) {
+    assert.doesNotMatch(step.text, /Кнопка «Еда» рядом/);
+    assert.notEqual(step.revealOnOpen, true, "opening a lesson must not choose or consume a dish");
   }
 });
 

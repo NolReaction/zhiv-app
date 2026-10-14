@@ -1,19 +1,25 @@
-.entry { display: grid; align-content: start; gap: 5px; min-width: 0; }
-button.card.card { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 7px; width: 100%; min-height: 118px; padding: 10px; border: 1px solid #c8bd98; border-radius: 12px; background: #f0e6ca; color: #3c513a; font: inherit; text-align: left; cursor: pointer; touch-action: manipulation; }
+.entry { position: relative; display: grid; align-items: stretch; min-width: 0; }
+button.card.card { display: flex; flex-direction: column; align-items: stretch; gap: 6px; width: 100%; height: 100%; min-width: 0; box-sizing: border-box; padding: 9px; border: 1px solid #c8bd98; border-radius: 12px; background: #f0e6ca; color: #3c513a; font: inherit; text-align: left; cursor: pointer; touch-action: manipulation; }
 button.card.card:hover { background: #e5e6c4; border-color: #7c8e68; }
 button.card.card:focus-visible { outline: 2px solid var(--forest-focus, #355e48); outline-offset: 2px; }
 button.card.card[data-recipe-focused="true"] { border-color: #718352; }
 button.card.card[data-blocked="true"] { background: #e8dfc3; }
-.outputs { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; min-height: 34px; }
-.outputs > span { display: inline-flex; align-items: center; gap: 5px; }
-.outputs b { font-size: 15px; font-weight: 650; font-variant-numeric: tabular-nums; }
-.card > strong { font-size: 12px; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
-.time { display: inline-flex; align-items: center; gap: 4px; color: #59624d; font-size: 11px; }
-.costs { display: grid; gap: 4px; }
-.costs > span { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; color: #59624d; font-size: 10px; line-height: 1.25; }
-.costs > span > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.costs b { font-size: 10px; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.costs > span[data-missing="true"], .reason, .notice { color: #8a492d; }
-.reason, .benefits, .notice { font-size: 10px; line-height: 1.35; overflow-wrap: anywhere; }
-.benefits { color: #59624d; }
-.notice { margin: 0; padding: 0 3px; }
+.header { display: flex; align-items: center; gap: 6px; min-height: 30px; min-width: 0; }
+.header > strong { flex: 1; min-width: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 11px; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.outputs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; flex: 0 0 auto; }
+.outputs > span { display: inline-flex; align-items: center; gap: 3px; }
+.header[data-production-mixed="true"] { flex-wrap: wrap; }
+.header[data-production-mixed="true"] > strong { flex-basis: 100%; }
+.outputs b { font-size: 11px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.time { display: flex; align-items: center; gap: 4px; min-height: 14px; color: #59624d; font-size: 10px; }
+.lock { margin-left: auto; color: #80562d; }
+.details { display: flex; flex: 1; flex-direction: column; gap: 6px; min-width: 0; }
+.costs { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 3px; min-width: 0; }
+.costs > span { display: inline-flex; align-items: center; gap: 3px; max-width: 100%; box-sizing: border-box; padding: 2px 3px; border-radius: 5px; background: #c9c3a82d; color: #59624d; font-size: 9px; line-height: 1.25; }
+.costs > span > span { min-width: 0; max-width: 9ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.costs b { font-size: 9px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.costs > span[data-missing="true"] { color: #8a492d; background: #c8846020; }
+.benefits { display: flex; flex-wrap: wrap; gap: 2px 6px; margin-top: auto; color: #59624d; font-size: 9px; line-height: 1.3; }
+.benefits > span { white-space: nowrap; }
+.notice { position: absolute; z-index: 3; top: calc(100% + 4px); left: 0; right: 0; margin: 0; padding: 7px 8px; border: 1px solid #c49e7e; border-radius: 8px; background: #f7edd8; color: #8a492d; box-shadow: 0 3px 9px #51432c26; font-size: 10px; line-height: 1.35; overflow-wrap: anywhere; pointer-events: none; }
+.accessible { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }

@@ -100,6 +100,42 @@ test("cards keep locked extraction requirements and missing provisions visible u
   assert.deepEqual(calls, []);
 });
 
+test("mine yields name every resource and retain real multi-item amounts without single-item badges", () => {
+  hooks.reset(); const snapshot = state(), calls = [], view = sector(snapshot, {}, calls);
+  for (const routeId of view.ids) {
+    const route = snapshot.catalog.explorations.find(entry => entry.id === routeId);
+    const card = view.nodes.find(node => node.type === "button" && node.props["data-route"] === routeId);
+    const yields = elements(card).filter(node => node.props["data-mining-yield"]);
+    assert.equal(yields.length, Object.keys(route.rewards).length);
+    for (const resource of yields) {
+      const itemId = resource.props["data-mining-yield"], quantity = route.rewards[itemId];
+      const html = renderToStaticMarkup(resource);
+      assert.ok(html.includes(snapshot.catalog.items.find(item => item.id === itemId).name));
+      const badge = elements(resource).find(node => node.type === "strong");
+      if (quantity === 1) assert.equal(badge, undefined);
+      else assert.equal(badge.props.children.join(""), `×${quantity}`);
+    }
+    card.props.onClick();
+  }
+  assert.deepEqual(view.selections, view.ids); assert.deepEqual(calls, []);
+});
+
+test("mine card status has its own fixed slot before duration for both free and blocked extraction", () => {
+  hooks.reset(); const view = sector(state());
+  for (const routeId of ["cave", "deep_cave"]) {
+    const card = view.nodes.find(node => node.type === "button" && node.props["data-route"] === routeId);
+    const children = Children.toArray(card.props.children), note = children.find(node => node.type === "small");
+    assert.equal(children.indexOf(note), children.length - 2);
+    const duration = children.at(-1);
+    assert.match(renderToStaticMarkup(duration), routeId === "cave" ? /1 ч/ : /4 ч/);
+    if (routeId === "cave") assert.equal(note.props["aria-hidden"], true);
+    else {
+      assert.match(renderToStaticMarkup(note), /Нужны припасы/);
+      assert.ok(card.props["aria-describedby"].includes(note.props.id));
+    }
+  }
+});
+
 test("filtered-empty state explains recovery and the all chip restores routes", () => {
   hooks.reset(); const snapshot = state({ buildings: { home: 2, quarry: 1, warehouse: 1 } });
   let view = sector(snapshot); view.filter("medium").props.onClick(); view = sector(snapshot);
@@ -131,6 +167,41 @@ test("menu initial route and changed help target open only their own review, inv
   view = menu("quarry_ore"); assert.match(view.html, /data-route="quarry_ore"[^>]*data-route-preparation="true"/);
   view = menu("forest"); assert.doesNotMatch(view.html, /data-route-preparation/);
   assert.deepEqual(calls, []);
+});
+
+test("an active help target stays closed after claiming while a new help target opens its own review", () => {
+  for (const ready of [false, true]) {
+    hooks.reset();
+    const saved = { id: "da818fb4-6c9e-4b42-9b78-60669b234f0a", kind: "exploration", targetId: "quarry_stone_overnight", actorId: "miner", recipeId: null, targetLevel: null,
+      startedAt: new Date(now - 1000).toISOString(), finishesAt: new Date(now + (ready ? -1 : 30000)).toISOString(), rewards: { stone: 30 }, cost: { coins: 0, items: {} }, catalogVersion: 10 };
+    const legacy = { ...saved, id: "92c06bb8-161c-439e-8b60-7b3bf3c944c2", targetId: "cave", actorId: undefined, rewards: { stone: 8, ore: 4 } };
+    const snapshot = state({ jobs: [saved, legacy] }), calls = [], economy = controller(snapshot, calls);
+    function menu(initialRouteId) {
+      hooks.render(); const tree = WorldExpeditionsMenu({ economy, embeddedCaves: true, initialRouteId, onOpenPantry() {} });
+      return { tree, html: renderToStaticMarkup(tree), nodes: elements(tree) };
+    }
+    let view = menu(saved.targetId);
+    assert.doesNotMatch(view.html, /data-route-preparation/);
+    assert.match(view.html, /Добыча по ресурсам/); assert.match(view.html, /Время добычи/);
+    let active = view.nodes.filter(node => node.type?.name === "ActiveExpedition");
+    assert.deepEqual(active.map(node => node.props.job.id), [saved.id, legacy.id]); assert.deepEqual(calls, []);
+    if (!ready) {
+      economy.snapshot = { ...snapshot, jobs: [{ ...saved, finishesAt: new Date(now - 1).toISOString() }, legacy] };
+      view = menu(saved.targetId); active = view.nodes.filter(node => node.type?.name === "ActiveExpedition");
+    }
+    const savedCard = active.find(node => node.props.job.id === saved.id);
+    const claim = elements(savedCard.type(savedCard.props)).find(node => node.type === "button" && node.props["aria-label"]?.startsWith("Забрать находки:"));
+    assert.equal(claim.props.disabled, false); claim.props.onClick();
+    assert.deepEqual(calls, [["claim_job", saved.id]]);
+    economy.snapshot = { ...snapshot, jobs: [legacy] };
+    view = menu(saved.targetId);
+    assert.doesNotMatch(view.html, /data-route-preparation/);
+    assert.match(view.html, /Добыча по ресурсам/);
+    assert.deepEqual(view.nodes.filter(node => node.type?.name === "ActiveExpedition").map(node => node.props.job.id), [legacy.id]);
+    view = menu("quarry_ore");
+    assert.match(view.html, /data-route="quarry_ore"[^>]*data-route-preparation="true"/);
+    assert.deepEqual(calls, [["claim_job", saved.id]]);
+  }
 });
 
 test("help preview focuses its heading and back restores focus to the same route card", () => {

@@ -153,6 +153,50 @@ test("crafting shows only its actual ingredient images and quantities inline", (
   assert.doesNotMatch(html, /disabled=/, "shortages remain clickable for an explanation");
 });
 
+test("ordinary production puts the product name alongside its image without an output multiplier", () => {
+  const html = renderCard("grow_berries");
+  const header = html.match(/<span\b[^>]*data-production-header[^>]*>([\s\S]*?)<\/strong><\/span>/)?.[1];
+  assert.ok(header);
+  assert.match(header, /data-item-icon="berries"/);
+  assert.match(header, /<strong[^>]*>Малина/);
+  assert.doesNotMatch(header, /×1/);
+  assert.doesNotMatch(html, /×1/, "free one-item cultivation has no redundant quantity badge or invented inputs");
+  assert.match(html, /1 мин/);
+});
+
+test("larger and mixed production outputs retain their actual quantities", () => {
+  const economy = controller();
+  const recipe = economy.snapshot.catalog.recipes.find(entry => entry.id === "grow_berries");
+  for (const rewards of [{ berries: 3 }, { berries: 1, strawberries: 2 }]) {
+    const html = renderToStaticMarkup(createElement(WorldProductionCard, { economy, recipe: { ...recipe, rewards } }));
+    for (const [id, amount] of Object.entries(rewards)) {
+      assert.match(html, new RegExp(`data-item-icon="${id}"`));
+      assert.match(html, new RegExp(`×${amount}`));
+    }
+  }
+});
+
+test("locked food cards keep ingredients and bonuses while moving the full prerequisite out of the visible card", () => {
+  const economy = controller({ buildings: { home: 3, dryer: 2, warehouse: 1 }, inventory: { berries: 1 } });
+  const recipe = economy.snapshot.catalog.recipes.find(entry => entry.id === "cook_fish_soup");
+  let tree;
+  function Probe() { tree = WorldProductionCard({ economy, recipe }); return tree; }
+  const html = renderToStaticMarkup(createElement(Probe));
+  const card = elements(tree).find(element => element.type === "button");
+  assert.match(card.props.title, /Приготовьте и заберите/);
+  const contents = renderToStaticMarkup(createElement("div", null, card.props.children));
+  assert.doesNotMatch(contents, /Приготовьте и заберите/, "the long locked-recipe explanation does not increase card height");
+  assert.match(contents, /data-production-inputs/);
+  assert.match(contents, /data-item-icon="fish_common"/);
+  assert.match(contents, /data-item-icon="berries"/);
+  assert.match(contents, /data-item-icon="charcoal"/);
+  assert.match(contents, /0 \/ 2/);
+  assert.match(contents, /Вылазка \+25%/);
+  assert.match(contents, /Стройка \+25%/);
+  assert.match(html, /aria-describedby=/);
+  assert.equal(card.props.disabled, undefined, "a locked card still explains its reason on tap");
+});
+
 test("one tap dispatches a single unit, reports shortages and refuses repeated submissions", async () => {
   const hookModule = "virtual:simple-production-hooks";
   const runtime = await createServer({ appType: "custom", configFile: false, root, cacheDir: `/tmp/zhiv-simple-card-hooks-${process.pid}`,

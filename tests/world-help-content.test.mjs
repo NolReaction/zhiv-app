@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-simple-guides-help-vite", resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
+const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-tidy-cards-guides-help-vite", resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { worldHelpTopics, worldHelpGroups, searchWorldHelp, searchWorldHelpWithStatus } = await vite.ssrLoadModule("/features/world/ui/help/world-help-content.ts");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
@@ -169,6 +169,7 @@ test("beginner answers explain costs, receipt of results, blocked work and recov
   assert.match(answer("start"), /урожай бесплатный/);
   assert.match(answer("production"), /монеты и материалы спишутся/);
   assert.match(answer("production"), /нехватка выделена рядом с количеством/);
+  assert.match(answer("production"), /Рядом с рисунком указано название предмета, ниже - время и материалы/);
   assert.match(answer("production"), /одна работа начнётся сразу/);
   assert.match(answer("production"), /«Удалить\?» и таймер 5 секунд/);
   assert.match(answer("production"), /Второе нажатие за это время отменит работу и вернёт монеты и материалы/);
@@ -192,6 +193,18 @@ test("beginner answers explain costs, receipt of results, blocked work and recov
   assert.match(answer("saving"), /таймеры уже начатых работ продолжаются/);
   assert.match(answer("saving"), /Продолжить здесь/);
   assert.match(answer("currency-shop"), /Покупка за реальные деньги.*недоступны/);
+});
+
+test("food guidance names the choice tile and makes spending an explicit second action", () => {
+  for (const id of ["food", "builder-food"]) {
+    assert.match(answer(id), /«Выбрать блюдо» в блоке «Ускорение едой»/);
+    assert.doesNotMatch(answer(id), /нажмите «Еда» рядом/i);
+  }
+  assert.match(answer("food"), /Только «Съесть 1» потратит порцию/);
+  assert.match(answer("builder-food"), /Только «Угостить 1» потратит порцию/);
+  assert.match(answer("journeys"), /«Ускорение едой» под таймером/);
+  assert.match(answer("journeys"), /открытие ничего не тратит/);
+  assert.match(answer("journeys"), /У начатой работы показаны оставшееся время и находки/);
 });
 
 test("food, building speed and orders are distinct and use current catalog numbers", () => {
@@ -301,7 +314,8 @@ test("second-house guidance quotes all seven permanent orders and independent st
   assert.match(answer("mining"), /блок ресурса или «Несколько ресурсов»/);
   for (const label of ["Все", "До 15 мин", "15 мин - 1 ч", "Дольше 1 ч"]) assert.ok(answer("mining").includes(`«${label}»`));
   assert.match(answer("mining"), /Текущая добыча видна при любом фильтре/);
-  assert.match(answer("mining"), /проверить условия перед запуском/);
+  assert.match(answer("mining"), /проверить припасы перед запуском/);
+  assert.match(answer("mining"), /У начатой работы видны добыча и оставшееся время/);
   assert.equal(searchWorldHelp(topics, "что делать после дома 2")[0]?.id, "second-house-stage");
 });
 

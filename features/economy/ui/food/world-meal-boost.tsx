@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Popover } from "radix-ui";
-import { ArrowRight, Check, Clock3, Soup, X } from "lucide-react";
+import { ArrowRight, Check, ChevronRight, Clock3, Soup, X } from "lucide-react";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import { mealDuration, pendingMeal } from "@/features/economy/domain/food";
 import { availableMealRecipe, mealBlockedReason, visibleMeals, type MealConsumer } from "./meal-availability";
@@ -56,6 +56,7 @@ const duration = (seconds: number) => seconds < 60 ? `${seconds} с` : worldDura
 export function WorldMealBoost(props: WorldMealBoostProps) {
   const { economy, consumer, jobId, stationId, onNavigateStation, onOpenMeals } = props;
   const [quote, setQuote] = useState<Quote | null>(null);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
   const sent = useRef<Quote | null>(null), navigating = useRef(false);
   const latest = useRef({ props, quote });
   const trigger = useRef<HTMLButtonElement>(null), heading = useRef<HTMLHeadingElement>(null), savedBadge = useRef<HTMLSpanElement>(null);
@@ -83,31 +84,46 @@ export function WorldMealBoost(props: WorldMealBoostProps) {
       || current.props.jobId !== quote.jobId || current.props.stationId !== quote.stationId || (snapshot.inventory[itemId] ?? 0) < 1
       || !snapshot.catalog.food?.meals.some(meal => meal.itemId === itemId)) return;
     sent.current = quote;
-    void current.props.economy.act(consumer === "hero" ? "eat_food" : "feed_builder", itemId, 1, 0);
+    const accepted = current.props.economy.act(consumer === "hero" ? "eat_food" : "feed_builder", itemId, 1, 0);
+    if (accepted === false) {
+      sent.current = null;
+      setSubmissionError("Обед не отправлен. Попробуйте ещё раз.");
+    } else setSubmissionError(null);
   }
   if (saved) return <span ref={savedBadge} tabIndex={-1} className={styles.saved} data-meal-boost={consumer} data-meal-applied={saved.itemId}
     title={`${itemName(state, saved.itemId)} · ${applied ? "текущая" : "следующая"} ${consumer === "hero" ? "вылазка" : "стройка"}`} aria-label={`${itemName(state, saved.itemId)}: скорость +${saved.speedBps / 100}%`}>
-    <Soup size={17} aria-hidden="true" /><span>+{saved.speedBps / 100}%</span><Check size={12} aria-hidden="true" />
+    <span className={styles.tileIcon}><ProductIcon state={state} itemId={saved.itemId} size={30} /></span>
+    <span className={styles.tileDescription}><span className={styles.tileLabel}>Ускорение едой</span><strong>{itemName(state, saved.itemId)}</strong>
+      <small>+{saved.speedBps / 100}% скорости</small>
+      {baseSeconds !== null && <span className={styles.tileDuration} data-meal-duration><Clock3 size={11} aria-hidden="true" />
+        {applied ? duration(baseSeconds) : <>{duration(baseSeconds)}<ArrowRight size={10} aria-hidden="true" /><b>{duration(mealBoostSeconds(props, saved.speedBps) ?? baseSeconds)}</b></>}
+      </span>}
+      <small>{applied ? "Обед учтён" : `Для следующей ${consumer === "hero" ? "вылазки" : "стройки"}`}</small>
+    </span><Check className={styles.tileControl} size={17} aria-hidden="true" />
   </span>;
   return <Popover.Root open={open} onOpenChange={value => {
     if (!value) setQuote(null);
     else if (!mealBoostReason(latest.current.props) && latest.current.props.economy.snapshot) {
       const current = latest.current.props.economy.snapshot;
       navigating.current = false;
+      setSubmissionError(null);
       setQuote({ owner: current.ownerPublicId, revision: current.revision, consumer, jobId, stationId });
     }
   }}>
     <Popover.Trigger asChild><button ref={trigger} type="button" className={styles.trigger} data-meal-boost={consumer} disabled={Boolean(reason)}
       aria-label={reason ?? (consumer === "hero" ? "Еда: ускорить вылазку" : "Еда: ускорить стройку")} title={reason ?? "Ускорить едой"}>
-      <Soup size={18} aria-hidden="true" /><span>Еда</span>
+      <span className={styles.tileIcon}><Soup size={24} aria-hidden="true" /></span>
+      <span className={styles.tileDescription}><span className={styles.tileLabel}>Ускорение едой</span><strong>Выбрать блюдо</strong><small>{reason ?? "1 порция ускорит работу"}</small></span>
+      <ChevronRight className={styles.tileControl} size={17} aria-hidden="true" />
     </button></Popover.Trigger>
     {open && <Popover.Portal><Popover.Content className={styles.picker} data-meal-picker={consumer} side="top" align="end" sideOffset={7} collisionPadding={12}
       aria-labelledby={headingId} onOpenAutoFocus={event => { event.preventDefault(); heading.current?.focus({ preventScroll: true }); }}
       onEscapeKeyDown={event => event.stopPropagation()} onCloseAutoFocus={event => {
         event.preventDefault(); if (navigating.current) return; const target = trigger.current?.isConnected ? trigger.current : savedBadge.current; target?.focus({ preventScroll: true });
       }} onPointerDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()} onWheel={event => event.stopPropagation()}>
-      <header className={styles.heading}><div><h3 ref={heading} tabIndex={-1} id={headingId}>{consumer === "hero" ? "Обед перед вылазкой" : jobId ? "Обед для строителя" : "Обед перед стройкой"}</h3><p>Бафф скорости за 1 готовое блюдо</p></div><Popover.Close asChild><button type="button" data-meal-picker-close aria-label="Закрыть выбор еды"><X size={17} aria-hidden="true" /></button></Popover.Close></header>
+      <header className={styles.heading}><div><h3 ref={heading} tabIndex={-1} id={headingId}>{consumer === "hero" ? "Обед перед вылазкой" : jobId ? "Обед для строителя" : "Обед перед стройкой"}</h3><p>Выберите блюдо, затем отдайте 1 порцию</p></div><Popover.Close asChild><button type="button" data-meal-picker-close aria-label="Закрыть выбор еды"><X size={17} aria-hidden="true" /></button></Popover.Close></header>
       {reason && <p className={styles.reason} role="status">{reason}</p>}
+      {submissionError && <p className={styles.reason} role="status">{submissionError}</p>}
       <div className={styles.meals} aria-label="Готовые блюда">{meals.map(meal => {
         const stock = state.inventory[meal.itemId] ?? 0;
         const speed = consumer === "hero" ? meal.heroSpeedBps : meal.builderSpeedBps;
