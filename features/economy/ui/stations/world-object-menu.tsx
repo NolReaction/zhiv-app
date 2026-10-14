@@ -215,7 +215,7 @@ function ObjectMenuBody({ guide, guideRoot: guideRootRef, selection, economy, is
           {[...readyJobs, ...runningJobs].map(job => <Work key={job.id} economy={readyEconomy} job={job} openPantry={openJobPantry} compact />)}
         </section>}
         {readyEconomy && <WorldProductionSlots key={`${state.ownerPublicId}:${stationId}`} economy={readyEconomy} stationId={stationId} openPantry={openJobPantry} compact />}
-        {stationId === "quarry" && <WorldExpeditionsMenu economy={economy} isOnline={isOnline} embeddedCaves onOpenHelp={openHelp} onOpenPantry={openPantry} onNavigateStation={(id, targetRecipeId) => id === "quarry" ? openUpgrade() : openStation(id, targetRecipeId)} onCancellationComplete={() => panel.current?.focus({ preventScroll: true })} />}
+        {stationId === "quarry" && <WorldExpeditionsMenu economy={economy} isOnline={isOnline} embeddedCaves initialRouteId={initialRecipeId} onOpenHelp={openHelp} onOpenPantry={openPantry} onNavigateStation={(id, targetRecipeId) => id === "quarry" ? openUpgrade() : openStation(id, targetRecipeId)} onCancellationComplete={() => panel.current?.focus({ preventScroll: true })} />}
         {landmark ? <section className={styles.recipeGroup} aria-label="Возможности постройки">
           <p className={styles.small}>{building?.description}</p>
           {!current && !construction && <p className={styles.empty}>{stationId === "bridge" ? "Восстановите мост, чтобы открыть рынок игроков." : "Восстановите маяк, чтобы зажечь свет у причала."}</p>}

@@ -1,0 +1,175 @@
+import assert from "node:assert/strict";
+import test, { after } from "node:test";
+import { fileURLToPath } from "node:url";
+import { Children, isValidElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { createServer } from "vite";
+
+const root = fileURLToPath(new URL("..", import.meta.url));
+const hooksId = "virtual:mining-resource-hooks";
+const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: `/tmp/zhiv-mining-resource-vite-${process.pid}`,
+  resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false },
+  plugins: [{ name: "mining-resource-hooks", enforce: "pre",
+    resolveId(id) { if (id === hooksId) return `\0${id}`; },
+    load(id) { if (id === `\0${hooksId}`) return `
+      let slots = [], cursor = 0, pending = [];
+      export function reset() { slots = []; cursor = 0; pending = []; }
+      export function render() { cursor = 0; pending = []; }
+      export function flush() { const current = pending; pending = []; current.forEach(effect => effect()); }
+      export function capture() { return slots; }
+      export function useState(initial) { const index = cursor++; if (!(index in slots)) slots[index] = typeof initial === "function" ? initial() : initial;
+        return [slots[index], value => { slots[index] = typeof value === "function" ? value(slots[index]) : value; }]; }
+      export function useRef(initial) { const index = cursor++; return slots[index] ??= { current: initial }; }
+      export function useId() { return "mining-resource-test"; }
+      export function useEffect(effect, dependencies) { const index = cursor++, previous = slots[index];
+        if (!previous || dependencies.some((value, position) => !Object.is(value, previous[position]))) { slots[index] = dependencies; pending.push(effect); } }
+    `; },
+    transform(source, id) { if (id.endsWith("/features/economy/ui/expeditions/world-expeditions-menu.tsx")) return source.replace('from "react";', `from "${hooksId}";`); },
+  }],
+});
+after(() => vite.close());
+const hooks = await vite.ssrLoadModule(hooksId);
+const { WorldExpeditionSector, WorldExpeditionsMenu } = await vite.ssrLoadModule("/features/economy/ui/expeditions/world-expeditions-menu.tsx");
+const { miningResourceGroups, miningDurationMatches, miningDurationLabel } = await vite.ssrLoadModule("/features/economy/ui/expeditions/mining-resource-groups.ts");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const now = Date.parse("2026-10-14T22:00:00Z");
+function state(overrides = {}) {
+  return { ownerPublicId: "ME", revision: 2, wallet: { coins: 200, pearls: 0 }, inventory: {}, buildings: { home: 5, warehouse: 5, quarry: 5, workshop: 4 },
+    jobs: [], storage: { capacity: 250, available: 250, used: 0, reserved: 0 }, catalog: structuredClone(economyCatalog), ...overrides };
+}
+function controller(snapshot, calls = []) { return { snapshot, now, busy: false, uncertain: false, retryAt: 0, act: (...args) => { calls.push(args); return true; }, retry() {} }; }
+function elements(tree) {
+  const result = [];
+  function walk(node) { if (!isValidElement(node)) return; result.push(node); Children.forEach(node.props.children, walk); }
+  walk(tree); return result;
+}
+function sector(snapshot, props = {}, calls = []) {
+  hooks.render();
+  const selections = [], tree = WorldExpeditionSector({ sectorId: "caves", selectedRoute: null, onSelectRoute: value => selections.push(value), economy: controller(snapshot, calls), state: snapshot, exploring: false, onOpenPantry() {}, ...props });
+  const nodes = elements(tree), html = renderToStaticMarkup(tree);
+  return { nodes, tree, html, selections, filter: id => nodes.find(node => node.props["data-mining-duration"] === id), ids: nodes.filter(node => node.type === "button" && node.props["data-route"]).map(node => node.props["data-route"]) };
+}
+
+test("resource groups keep each route once, sort by duration and do not mutate catalog order", () => {
+  const routes = economyCatalog.explorations.filter(route => route.activity === "mining"), before = structuredClone(routes);
+  const groups = miningResourceGroups(routes, "all", route => route.seconds);
+  assert.deepEqual(groups.map(group => group.id), ["stone", "ore", "clay", "sand", "mixed"]);
+  assert.deepEqual(groups.find(group => group.id === "stone").routes.map(route => route.id), ["quarry_stone", "quarry_stone_overnight"]);
+  assert.ok(groups.find(group => group.id === "mixed").routes.every(route => Object.keys(route.rewards).length > 1));
+  assert.deepEqual(groups.flatMap(group => group.routes.map(route => route.id)).sort(), routes.map(route => route.id).sort());
+  assert.deepEqual(routes, before);
+});
+
+test("duration boundaries are exact and each duration belongs to one non-all filter", () => {
+  for (const [seconds, expected] of [[1, "short"], [900, "short"], [901, "medium"], [3600, "medium"], [3601, "long"], [28800, "long"]]) {
+    assert.equal(miningDurationMatches(seconds, "all"), true);
+    assert.deepEqual(["short", "medium", "long"].filter(filter => miningDurationMatches(seconds, filter)), [expected]);
+  }
+  assert.equal(miningDurationLabel(270), "4 мин 30 с");
+  assert.equal(miningDurationLabel(3601), "1 ч 1 с");
+  assert.equal(miningDurationLabel(0), "Сразу");
+});
+
+test("actual filter handlers reveal compact resource cards without starting or spending", () => {
+  hooks.reset(); const snapshot = state(), before = structuredClone(snapshot), calls = [];
+  let view = sector(snapshot, {}, calls);
+  assert.equal(view.filter("all").props["aria-pressed"], true);
+  assert.match(view.html, /data-mining-resource="stone"/);
+  assert.match(view.html, /data-mining-resource="mixed"/);
+  assert.match(view.html, /4 мин 30 с/);
+  assert.doesNotMatch(view.html, /Доступные маршруты|Нужно подготовиться|lucide-mountain/);
+  view.filter("short").props.onClick(); view = sector(snapshot, {}, calls);
+  assert.deepEqual(view.ids.sort(), ["quarry_stone", "quarry_ore", "quarry_clay", "quarry_sand"].sort());
+  view.filter("medium").props.onClick(); view = sector(snapshot, {}, calls);
+  assert.deepEqual(view.ids, ["cave"]);
+  view.filter("long").props.onClick(); view = sector(snapshot, {}, calls);
+  assert.deepEqual(view.ids.sort(), ["quarry_stone_overnight", "deep_cave", "abandoned_quarry", "quarry_supply"].sort());
+  view.filter("all").props.onClick(); view = sector(snapshot, {}, calls);
+  assert.equal(new Set(view.ids).size, view.ids.length);
+  assert.deepEqual(calls, []); assert.deepEqual(snapshot, before);
+});
+
+test("cards keep locked extraction requirements and missing provisions visible under filters", () => {
+  hooks.reset(); const snapshot = state({ buildings: { home: 3, quarry: 1, warehouse: 1 }, storage: { capacity: 50, available: 50 }, inventory: {} }), calls = [];
+  let view = sector(snapshot, {}, calls);
+  const locked = view.nodes.find(node => node.props["data-route"] === "quarry_ore");
+  assert.equal(locked.props["data-locked"], true); assert.match(renderToStaticMarkup(locked), /Каменоломня · ур. 2/);
+  locked.props.onClick(); assert.deepEqual(view.selections, ["quarry_ore"]); assert.deepEqual(calls, []);
+  view.filter("long").props.onClick(); view = sector(snapshot, {}, calls);
+  assert.match(view.html, /data-route="deep_cave"/); assert.match(view.html, /Нужны припасы/);
+  assert.deepEqual(calls, []);
+});
+
+test("filtered-empty state explains recovery and the all chip restores routes", () => {
+  hooks.reset(); const snapshot = state({ buildings: { home: 2, quarry: 1, warehouse: 1 } });
+  let view = sector(snapshot); view.filter("medium").props.onClick(); view = sector(snapshot);
+  assert.deepEqual(view.ids, []); assert.match(view.html, /Нет добычи с таким временем/);
+  view.filter("all").props.onClick(); assert.ok(sector(snapshot).ids.includes("quarry_stone"));
+});
+
+test("new help route reveals review outside a filter and back resets hidden filter without sending", () => {
+  hooks.reset(); const snapshot = state(), calls = [];
+  let view = sector(snapshot, {}, calls); view.filter("short").props.onClick();
+  view = sector(snapshot, { selectedRoute: "quarry_stone_overnight" }, calls);
+  assert.match(view.html, /data-route-preparation="true"/); assert.match(view.html, /Камень к утру/);
+  const back = view.nodes.find(node => node.type === "button" && node.props.children?.some?.(child => child === "Вся добыча"));
+  assert.ok(back); back.props.onClick();
+  assert.deepEqual(view.selections, [null]); view = sector(snapshot, {}, calls);
+  assert.equal(view.filter("all").props["aria-pressed"], true); assert.ok(view.ids.includes("quarry_stone_overnight"));
+  assert.deepEqual(calls, []);
+});
+
+test("menu initial route and changed help target open only their own review, invalid IDs stay safe", () => {
+  hooks.reset(); const snapshot = state(), calls = [], economy = controller(snapshot, calls);
+  function menu(initialRouteId) {
+    hooks.render(); const tree = WorldExpeditionsMenu({ economy, embeddedCaves: true, initialRouteId, onOpenPantry() {} });
+    return { tree, html: renderToStaticMarkup(tree), nodes: elements(tree) };
+  }
+  let view = menu("quarry_stone_overnight"); assert.match(view.html, /data-route="quarry_stone_overnight"[^>]*data-route-preparation="true"/);
+  const child = view.nodes.find(node => node.type === WorldExpeditionSector); child.props.onSelectRoute(null);
+  view = menu("quarry_stone_overnight"); assert.doesNotMatch(view.html, /data-route-preparation/);
+  view = menu("quarry_ore"); assert.match(view.html, /data-route="quarry_ore"[^>]*data-route-preparation="true"/);
+  view = menu("forest"); assert.doesNotMatch(view.html, /data-route-preparation/);
+  assert.deepEqual(calls, []);
+});
+
+test("help preview focuses its heading and back restores focus to the same route card", () => {
+  hooks.reset(); const snapshot = state(), calls = [], economy = controller(snapshot, calls), focused = [];
+  const heading = { focus: () => focused.push("heading") };
+  const origin = { dataset: { route: "quarry_stone_overnight" }, focus: () => focused.push("card") };
+  const content = { querySelector: selector => selector === "[data-route-heading]" ? heading : null, querySelectorAll: () => [origin] };
+  function menu() {
+    hooks.render(); const tree = WorldExpeditionsMenu({ economy, embeddedCaves: true, initialRouteId: "quarry_stone_overnight", onOpenPantry() {} });
+    renderToStaticMarkup(tree); tree.props.ref.current = content; hooks.flush(); return tree;
+  }
+  const tree = menu(); assert.deepEqual(focused, ["heading"]);
+  elements(tree).find(node => node.type === WorldExpeditionSector).props.onSelectRoute(null);
+  menu(); assert.deepEqual(focused, ["heading", "card"]); assert.deepEqual(calls, []);
+});
+
+test("running and ready independent and legacy mine jobs remain above every duration filter", () => {
+  for (const actorId of ["miner", undefined]) for (const ready of [false, true]) {
+    hooks.reset(); const saved = { id: "da818fb4-6c9e-4b42-9b78-60669b234f0a", kind: "exploration", targetId: "cave", actorId, recipeId: null, targetLevel: null,
+      startedAt: new Date(now - 1000).toISOString(), finishesAt: new Date(now + (ready ? -1 : 30000)).toISOString(), rewards: { stone: 8, ore: 4 }, cost: { coins: 0, items: {} }, catalogVersion: 10 };
+    const snapshot = state({ jobs: [saved] }), calls = [], economy = controller(snapshot, calls);
+    hooks.render(); const tree = WorldExpeditionsMenu({ economy, embeddedCaves: true, onOpenPantry() {} });
+    assert.match(renderToStaticMarkup(tree), /Текущая (добыча|вылазка)/);
+    const child = elements(tree).find(node => node.type === WorldExpeditionSector);
+    // Exercise the real child filter while the active parent remains separate.
+    hooks.reset(); let view = sector(snapshot, child.props, calls); view.filter("short").props.onClick();
+    view = sector(snapshot, child.props, calls); assert.ok(!view.ids.includes("cave"));
+    const active = elements(tree).filter(node => node.type?.name === "ActiveExpedition");
+    assert.equal(active.length, 1); assert.equal(active[0].props.job.id, saved.id);
+    assert.deepEqual(calls, []);
+  }
+});
+
+test("miner times ignore hero food while saved hero route quotes drive the filter", () => {
+  hooks.reset(); const snapshot = state({ food: { heroMeal: "hearty_fish", builderMeal: null } });
+  let view = sector(snapshot); view.filter("medium").props.onClick(); view = sector(snapshot);
+  assert.deepEqual(view.ids, ["cave"]); assert.match(view.html, /1 ч/);
+  // Catalog ownership, not the caves sector alone, governs a legacy route.
+  snapshot.catalog.explorations.find(route => route.id === "cave").activity = "hero";
+  snapshot.catalog.explorations.find(route => route.id === "cave").seconds = 4000;
+  view = sector(snapshot); assert.ok(view.ids.includes("cave")); assert.doesNotMatch(view.html, /1 ч 6 мин 40 с/);
+});

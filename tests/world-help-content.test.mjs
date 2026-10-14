@@ -170,8 +170,10 @@ test("beginner answers explain costs, receipt of results, blocked work and recov
   assert.match(answer("production"), /монеты и материалы спишутся/);
   assert.match(answer("production"), /нехватка выделена рядом с количеством/);
   assert.match(answer("production"), /одна работа начнётся сразу/);
-  assert.match(answer("production"), /ещё раз на «Отменить\?»/);
-  assert.match(answer("production"), /отмена возвращает потраченные монеты и материалы/);
+  assert.match(answer("production"), /«Удалить\?» и таймер 5 секунд/);
+  assert.match(answer("production"), /Второе нажатие за это время отменит работу и вернёт монеты и материалы/);
+  assert.match(answer("production"), /Без второго нажатия работа продолжится/);
+  assert.doesNotMatch(answer("production"), /«Отменить\?»|«Оставить»/);
   assert.doesNotMatch(answer("production"), /«Начать»|выберите нужный в подготовке/);
   assert.match(answer("production"), /Забрать/);
   assert.match(answer("construction"), /подтвердите завершение.*новый уровень.*освободится/);
@@ -254,6 +256,7 @@ test("timers, production slots and prices derive from gameplay catalogs", () => 
   for (const upgrade of economyCatalog.productionSlots.upgrades) {
     assert.ok(answer("production-slots").includes(`${upgrade.slots}-е - за ${formatPearls(upgrade.pricePearls)} жемчужин с дома ${upgrade.requiredHomeLevel}`));
   }
+  assert.match(answer("production-slots"), /Третье до покупки второго показывает только замок/);
   for (const [label, seconds] of [["1 мин", 60], ["1 ч", 3600], ["24 ч", 86400], ["48 ч", 172800]]) {
     assert.ok(answer("pearls").includes(`${label} - ${formatPearls(constructionTimePearlPrice(seconds))} жемчужин`));
   }
@@ -295,6 +298,10 @@ test("second-house guidance quotes all seven permanent orders and independent st
   assert.match(answer("mining"), /одну отдельную очередь без платных слотов/);
   assert.match(answer("mining"), /Мохлик может гулять, рыбачить и собирать ягоды одновременно/);
   assert.match(answer("mining"), /Обед Мохлика не ускоряет шахту/);
+  assert.match(answer("mining"), /блок ресурса или «Несколько ресурсов»/);
+  for (const label of ["Все", "До 15 мин", "15 мин - 1 ч", "Дольше 1 ч"]) assert.ok(answer("mining").includes(`«${label}»`));
+  assert.match(answer("mining"), /Текущая добыча видна при любом фильтре/);
+  assert.match(answer("mining"), /проверить условия перед запуском/);
   assert.equal(searchWorldHelp(topics, "что делать после дома 2")[0]?.id, "second-house-stage");
 });
 

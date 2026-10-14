@@ -8,6 +8,7 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const hookModule = "virtual:world-help-ui-hooks";
 const vite = await createServer({ appType: "custom", configFile: false, root,
+  cacheDir: "/tmp/zhiv-compact-guides-help-ui-vite",
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false },
   plugins: [{ name: "world-help-ui-hooks", enforce: "pre",
     resolveId(id) { if (id === hookModule) return `\0${id}`; },
@@ -171,6 +172,32 @@ test("context advice explains the actual selected recipe and quantity, and only 
   control.props.onClick();
   assert.deepEqual(opened, [{ kind: "station", stationId: "woodlot", recipeId: "gather_wood" }]);
   assert.deepEqual(economy.snapshot, before);
+});
+
+test("mine material help preserves the exact source route and only opens its review after an explicit click", () => {
+  hooks.reset();
+  const economy = controller({ buildings: { home: 3, warehouse: 1, workshop: 2, kiln: 1, quarry: 2 }, inventory: { charcoal: 1 } });
+  const opened = [], before = structuredClone(economy.snapshot);
+  const props = { economy, context: { intent: "production", stationId: "kiln", recipeId: "fire_bricks", quantity: 1 }, onNavigate: target => opened.push(target) };
+  const view = help(props);
+  assert.match(view.html, /data-help-advice="missing:clay"/);
+  assert.deepEqual(opened, [], "mounting the help must not select or start a mining route");
+  const action = view.nodes.find(node => node.props.action?.target.stationId === "quarry");
+  assert.ok(action);
+  const control = action.type(action.props);
+  control.props.onClick();
+  assert.deepEqual(opened, [{ kind: "station", stationId: "quarry", recipeId: "quarry_clay" }]);
+  assert.deepEqual(economy.snapshot, before, "source navigation never changes the paid queue or inventory");
+
+  for (const flags of [{ busy: true }, { uncertain: true }, { retryAt: now + 1000 }]) {
+    hooks.reset();
+    const blocked = help({ ...props, economy: { ...economy, ...flags } });
+    assert.equal(blocked.nodes.some(node => node.props.action?.target.stationId === "quarry"), false,
+      "unknown or pending state must not invent a source from stale supplies");
+  }
+  hooks.reset();
+  assert.equal(help({ ...props, isOnline: false }).nodes.some(node => node.props.action?.target.stationId === "quarry"), false);
+  assert.equal(opened.length, 1);
 });
 
 test("retry is explicit and its control blocks busy, cooldown, offline and missing-controller calls", () => {

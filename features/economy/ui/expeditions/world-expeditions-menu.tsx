@@ -20,6 +20,7 @@ import { PleskCatchOdds } from "@/features/economy/ui/fishing/plesk-fishing-shop
 import { useFishingCommand } from "@/features/economy/ui/fishing/use-fishing-command";
 import { economyActorConflict, economyMinerConflict, explorationActorId, isMinerJob } from "@/features/economy/domain/actor-availability";
 import { ExpeditionActivityArt } from "./expedition-activity-art";
+import { miningDurationFilters, miningDurationLabel, miningDurationMatches, miningResourceGroups, type MiningDurationFilter } from "./mining-resource-groups";
 import styles from "./world-expeditions-menu.module.css";
 
 export type WorldExpeditionsMenuProps = {
@@ -30,6 +31,7 @@ export type WorldExpeditionsMenuProps = {
   onOpenMeals?: () => void;
   onOpenFishingShop?: () => void;
   initialSector?: SectorId;
+  initialRouteId?: string;
   onUpgradeQuarry?: () => void;
   onOpenHelp?: (context: WorldHelpContext) => void;
   /** Dedicated mine content; independent extraction and saved legacy journeys share the frame. */
@@ -56,6 +58,7 @@ const routeIcon = (id: string): LucideIcon => expeditionSectors.find(sector => s
 const isFishingRoute = (state: EconomyView, route: Route) => state.catalog.fishing?.routeIds.includes(route.id) ?? false;
 const expeditionCost = (state: EconomyView, route: Route) => isFishingRoute(state, route) ? fishingTripCost(route.cost, state) : route.cost;
 const routeSeconds = (state: EconomyView, route: Route) => explorationActorId(route) === "miner" ? route.seconds : mealDuration(route.seconds, pendingMeal(state, "hero")?.heroSpeedBps ?? 0);
+const displayedRouteDuration = (state: EconomyView, route: Route) => expeditionSector(route.id) === "caves" ? miningDurationLabel(routeSeconds(state, route)) : worldDuration(routeSeconds(state, route));
 const canPrepare = (state: EconomyView, route: Route) => worldMissingRequirements(state, worldRequirements(route)).length === 0 && countRewards(route.rewards) <= state.storage.capacity && worldCostShortfalls(state, expeditionCost(state, route)).length === 0;
 const sectorRoutes = (state: EconomyView, sectorId: SectorId) => state.catalog.explorations.filter(route => (isFishingRoute(state, route) ? "shore" : expeditionSector(route.id)) === sectorId
   && worldMissingRequirements(state, worldRequirements(route)).every(requirement => explorationActorId(route) === "miner" && requirement.id === "quarry")
@@ -197,22 +200,47 @@ export function ExpeditionRouteDetails({ route, state, economy, exploring, onOpe
     {incompatibleBait && <p className={styles.warning}>Эта наживка не подходит к выбранной удочке. Нужна подходящая удочка или рыбалка без наживки. <button type="button" className={styles.link} disabled={command.blocked} onClick={() => command.send("equip_fishing_bait", "none", 1, 0, Boolean(gear.equippedBaitId))}>Снять наживку</button></p>}
     {(blocked || economy.uncertain || economy.retryAt > economy.now) && onOpenHelp && <button type="button" className={styles.contextHelp} onClick={() => onOpenHelp({ intent: "expedition", routeId: route.id })}><CircleHelp size={15} aria-hidden="true" />Как продолжить?</button>}
     {fishing && catalog && <section className={styles.catchDetails} aria-label="Шансы улова"><PleskCatchOdds state={state} catalog={catalog} /></section>}
-    {actorBusy ? <p className={styles.caption}>{mining ? "Заберите результат добычи перед следующим запуском." : "Сначала заберите находки или отмените текущую вылазку."}</p> : <div className={styles.actions}>{shortfalls.length > 0 && <span className={styles.warning}>Не хватает припасов</span>}<button type="button" className={styles.primary} disabled={blocked || command.blocked} onClick={() => command.send(fishing ? "start_fishing" : "start_exploration", route.id, 1, 0, !blocked)} aria-label={`${mining ? "Начать добычу" : "Отправиться"}: ${route.name}`}>{mining ? "Начать добычу" : "Отправиться"} · {worldDuration(routeSeconds(state, route))}<ArrowRight size={13} aria-hidden="true" /></button></div>}
+    {actorBusy ? <p className={styles.caption}>{mining ? "Заберите результат добычи перед следующим запуском." : "Сначала заберите находки или отмените текущую вылазку."}</p> : <div className={styles.actions}>{shortfalls.length > 0 && <span className={styles.warning}>Не хватает припасов</span>}<button type="button" className={styles.primary} disabled={blocked || command.blocked} onClick={() => command.send(fishing ? "start_fishing" : "start_exploration", route.id, 1, 0, !blocked)} aria-label={`${mining ? "Начать добычу" : "Отправиться"}: ${route.name}`}>{mining ? "Начать добычу" : "Отправиться"} · {displayedRouteDuration(state, route)}<ArrowRight size={13} aria-hidden="true" /></button></div>}
   </div>;
 }
 
 export function WorldExpeditionSector({ sectorId, selectedRoute, onSelectRoute, economy, state, exploring, onOpenPantry, onNavigateStation, onOpenFishingShop, onUpgradeQuarry, onOpenHelp, onOpenMeals, isOnline }: WorldExpeditionsMenuProps & { sectorId: SectorId; selectedRoute: string | null; onSelectRoute: (id: string | null) => void; state: EconomyView; exploring: boolean }) {
   const descriptionPrefix = useId();
+  const [durationFilter, setDurationFilter] = useState<MiningDurationFilter>("all");
   const routes = sectorRoutes(state, sectorId);
   const readyRoutes = routes.filter(route => canPrepare(state, route));
   const laterRoutes = routes.filter(route => !canPrepare(state, route));
   const sector = expeditionSectors.find(entry => entry.id === sectorId)!;
   const selected = routes.find(route => route.id === selectedRoute);
+  const selectedSeconds = selected ? routeSeconds(state, selected) : 0;
   if (selected) return <section className={styles.preparation} data-section-guide-target="expedition-preparation" aria-label={`Подготовка: ${routeName(selected.name)}`} data-sector={sectorId} data-route={selected.id} data-route-preparation="true">
-    <button type="button" className={styles.back} onClick={() => onSelectRoute(null)}><ArrowLeft size={15} aria-hidden="true" />Все маршруты<span>{sector.name}</span></button>
-    <header className={styles.preparationHeading}><h3 tabIndex={-1} data-route-heading>{routeName(selected.name)}</h3><div className={styles.preparationTime}><span className={styles.routeDuration}><Clock3 size={13} aria-hidden="true" />{worldDuration(routeSeconds(state, selected))}</span>{explorationActorId(selected) !== "miner" && <WorldMealBoost key={selected.id} economy={economy} consumer="hero" seconds={selected.seconds} isOnline={isOnline} onNavigateStation={onNavigateStation} onOpenMeals={onOpenMeals} />}</div></header>
+    <button type="button" className={styles.back} onClick={() => { if (sectorId === "caves" && !miningDurationMatches(selectedSeconds, durationFilter)) setDurationFilter("all"); onSelectRoute(null); }}><ArrowLeft size={15} aria-hidden="true" />{sectorId === "caves" ? "Вся добыча" : "Все маршруты"}<span>{sector.name}</span></button>
+    <header className={styles.preparationHeading}><h3 tabIndex={-1} data-route-heading>{routeName(selected.name)}</h3><div className={styles.preparationTime}><span className={styles.routeDuration}><Clock3 size={13} aria-hidden="true" />{displayedRouteDuration(state, selected)}</span>{explorationActorId(selected) !== "miner" && <WorldMealBoost key={selected.id} economy={economy} consumer="hero" seconds={selected.seconds} isOnline={isOnline} onNavigateStation={onNavigateStation} onOpenMeals={onOpenMeals} />}</div></header>
     <ExpeditionRouteDetails key={selected.id} route={selected} state={state} economy={economy} exploring={exploring} onOpenPantry={onOpenPantry} onNavigateStation={onNavigateStation} onOpenFishingShop={onOpenFishingShop} onUpgradeQuarry={onUpgradeQuarry} onOpenHelp={onOpenHelp} />
   </section>;
+  if (sectorId === "caves") {
+    const groups = miningResourceGroups(routes, durationFilter, route => routeSeconds(state, route));
+    return <section className={`${styles.routes} ${styles.miningRoutes}`} data-section-guide-target="expedition-routes" aria-label="Добыча по ресурсам" data-sector="caves">
+      <div className={styles.miningFilters} role="group" aria-label="Время добычи">{miningDurationFilters.map(filter => <button type="button" key={filter.id} aria-pressed={durationFilter === filter.id} data-mining-duration={filter.id} onClick={() => setDurationFilter(filter.id)}>{filter.label}</button>)}</div>
+      {groups.map(group => <section className={styles.miningGroup} key={group.id} data-mining-resource={group.id} aria-label={group.itemId ? itemName(state, group.itemId) : "Несколько ресурсов"}>
+        <h4 className={styles.miningGroupTitle}>{group.itemId && <ProductIcon state={state} itemId={group.itemId} size={19} />}<span>{group.itemId ? itemName(state, group.itemId) : "Несколько ресурсов"}</span><small>{group.routes.length}</small></h4>
+        <div className={styles.miningCards}>{group.routes.map(route => {
+          const missing = worldMissingRequirements(state, worldRequirements(route));
+          const tooLarge = countRewards(route.rewards) > state.storage.capacity;
+          const needsProvisions = worldCostShortfalls(state, expeditionCost(state, route)).length > 0;
+          const reason = missing.length ? `${stationName(state, missing[0].id)} · ур. ${missing[0].level}${missing.length > 1 ? ` +${missing.length - 1}` : ""}` : tooLarge ? "Расширьте кладовую" : needsProvisions ? "Нужны припасы" : null;
+          const descriptionId = `${descriptionPrefix}-${route.id}`;
+          return <button type="button" key={route.id} className={styles.miningCard} data-route={route.id} data-locked={Boolean(reason) || undefined} aria-label={`Подготовиться: ${route.name}`} aria-describedby={`${descriptionId}-duration ${descriptionId}-rewards${reason ? ` ${descriptionId}-reason` : ""}`} onClick={() => onSelectRoute(route.id)}>
+            <strong className={styles.miningName}>{routeName(route.name)}</strong>
+            <span id={`${descriptionId}-rewards`} className={styles.miningFindings}><Findings state={state} rewards={route.rewards} compact /></span>
+            <span id={`${descriptionId}-duration`} className={styles.routeDuration}><Clock3 size={11} aria-hidden="true" />{displayedRouteDuration(state, route)}</span>
+            {reason && <small id={`${descriptionId}-reason`} className={styles.miningLocked}><LockKeyhole size={10} aria-hidden="true" />{reason}</small>}
+          </button>;
+        })}</div>
+      </section>)}
+      {!groups.length && <p className={styles.miningEmpty} role="status">{routes.length ? "Нет добычи с таким временем. Выберите другой фильтр." : "Добыча откроется после улучшения дома."}</p>}
+    </section>;
+  }
   return <section className={styles.routes} data-section-guide-target="expedition-routes" aria-label={`Маршруты: ${sector.name}`} data-sector={sectorId}>
     {[{ key: "ready", label: "Доступные маршруты", routes: readyRoutes }, { key: "later", label: "Нужно подготовиться", routes: laterRoutes }].filter(group => group.routes.length > 0).map(group => <div className={styles.routeGroup} key={group.key}>
       <p className={styles.groupTitle}>{group.label}<span>{group.routes.length}</span></p>
@@ -233,10 +261,15 @@ export function WorldExpeditionSector({ sectorId, selectedRoute, onSelectRoute, 
   </section>;
 }
 
-export function WorldExpeditionsMenu({ economy, onOpenPantry, onNavigateStation, onOpenFishingShop, onUpgradeQuarry, onOpenHelp, onOpenMeals, isOnline, initialSector = "forest", embeddedCaves = false, activeOnly = false, onCancellationComplete }: WorldExpeditionsMenuProps) {
+export function WorldExpeditionsMenu({ economy, onOpenPantry, onNavigateStation, onOpenFishingShop, onUpgradeQuarry, onOpenHelp, onOpenMeals, isOnline, initialSector = "forest", initialRouteId, embeddedCaves = false, activeOnly = false, onCancellationComplete }: WorldExpeditionsMenuProps) {
   const initialTravelSector = initialSector === "shore" ? "shore" : null;
   const [selectedSector, setSelectedSector] = useState<SectorId | null>(initialTravelSector);
-  const [selectedRoute, setSelectedRoute] = useState<string | null>(null);
+  const routeTarget = embeddedCaves ? initialRouteId ?? null : null;
+  const [routeSelection, setRouteSelection] = useState({ target: routeTarget, route: routeTarget });
+  // A new help target is a read-only preview; local back/select overrides it
+  // until another target is requested. No effect needs to send a command.
+  const selectedRoute = routeSelection.target === routeTarget ? routeSelection.route : routeTarget;
+  const setSelectedRoute = (route: string | null) => setRouteSelection({ target: routeTarget, route });
   const [confirmationKey, setConfirmationKey] = useState<string | null>(null);
   const previousRoute = useRef<string | null>(null);
   const previousSector = useRef<SectorId | null>(initialTravelSector);
@@ -310,7 +343,7 @@ export function WorldExpeditionsMenu({ economy, onOpenPantry, onNavigateStation,
         <button ref={selectedSectorButton} type="button" className={styles.back} onClick={() => selectSector(null)}><ArrowLeft size={15} aria-hidden="true" />Все занятия</button>
         <header className={styles.activityHeading} data-activity={currentSector}><span className={styles.activityArt}><ExpeditionActivityArt sector={currentSector} /></span><h3 data-activity-heading tabIndex={-1}>{expeditionSectors.find(sector => sector.id === currentSector)!.name}</h3><p>{currentSector === "shore" ? "Выбери время у воды. Снасти настроим перед выходом." : "Выбери, что пригодится твоей полянке."}</p></header>
       </>}
-      {!activeOnly && currentSector === "caves" && <p className={styles.intro} data-independent-mining>Шахта добывает материалы независимо от вылазок и сбора ягод Мохликом. На втором этапе один запуск даёт один предмет; следующая работа начинается после получения результата.</p>}
+      {!activeOnly && currentSector === "caves" && !visibleRoute && <p className={styles.intro} data-independent-mining>Своя очередь добычи. Выберите ресурс и время; Мохлик свободен.</p>}
       {!activeOnly && currentSector && <WorldExpeditionSector isOnline={isOnline} onOpenMeals={onOpenMeals} sectorId={currentSector} selectedRoute={visibleRoute} onSelectRoute={setSelectedRoute} state={state} economy={economy} exploring={heroTrips.length > 0} onOpenPantry={onOpenPantry} onNavigateStation={onNavigateStation} onOpenFishingShop={onOpenFishingShop} onUpgradeQuarry={onUpgradeQuarry} onOpenHelp={onOpenHelp} />}
     </>}
   </div>;

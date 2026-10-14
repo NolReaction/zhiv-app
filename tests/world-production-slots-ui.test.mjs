@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
+import { readFile } from "node:fs/promises";
 import { Children, isValidElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createServer } from "vite";
@@ -15,10 +16,11 @@ const vite = await createServer({ appType: "custom", configFile: false, root, ca
     resolveId(id) { if (id === hooksId) return `\0${id}`; },
     load(id) { if (id === `\0${hooksId}`) return `
       let slots = [], cursor = 0, pending = [], collection = null;
-      export function reset() { slots = []; cursor = 0; pending = []; collection = null; }
+      function dispose() { slots.forEach(slot => { if (typeof slot?.cleanup === 'function') slot.cleanup(); }); }
+      export function reset() { dispose(); slots = []; cursor = 0; pending = []; collection = null; }
       export function render() { cursor = 0; }
       export function capture() { return slots; }
-      export function restore(value) { slots = value; cursor = 0; pending = []; }
+      export function restore(value) { if (slots !== value) dispose(); slots = value; cursor = 0; pending = []; }
       export function flush() { const effects = pending; pending = []; effects.forEach(effect => effect()); }
       export function useState(initial) {
         const index = cursor++;
@@ -29,8 +31,10 @@ const vite = await createServer({ appType: "custom", configFile: false, root, ca
       export function useId() { return 'production-slot-confirmation'; }
       export function useEffect(effect, dependencies) {
         const index = cursor++, previous = slots[index];
-        if (!previous || dependencies.some((value, position) => !Object.is(value, previous[position]))) {
-          slots[index] = dependencies; pending.push(effect);
+        if (!previous || dependencies.some((value, position) => !Object.is(value, previous.dependencies[position]))) {
+          previous?.cleanup?.();
+          const entry = { dependencies, cleanup: null }; slots[index] = entry;
+          pending.push(() => { if (slots[index] !== entry) return; entry.cleanup = effect(); });
         }
       }
       export function useGardenCollection() { return collection; }
@@ -51,7 +55,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, ca
     },
   }],
 });
-after(() => vite.close());
+after(() => { hooks.reset(); return vite.close(); });
 const hooks = await vite.ssrLoadModule(hooksId);
 const { WorldProductionSlots } = await vite.ssrLoadModule("/features/economy/ui/production/world-production-slots.tsx");
 const { Work } = await vite.ssrLoadModule("/features/economy/ui/shared/world-economy-parts.tsx");
@@ -90,6 +94,18 @@ function production(id, targetId = "woodlot", overrides = {}) {
   return { id, kind: "production", targetId, recipeId: targetId === "garden" ? "grow_berries" : "gather_wood",
     startedAt: new Date(now - 60_000).toISOString(), finishesAt: new Date(now + 120_000).toISOString(),
     rewards: targetId === "garden" ? { berries: 1 } : { wood: 1 }, cost: { coins: 0, items: {} }, ...overrides };
+}
+
+function withMonotonicClock(run) {
+  hooks.reset();
+  const previous = { performance: globalThis.performance, setInterval: globalThis.setInterval, clearInterval: globalThis.clearInterval };
+  let current = 100_000, nextId = 0;
+  const intervals = new Map();
+  globalThis.performance = { now: () => current };
+  globalThis.setInterval = callback => { const id = ++nextId; intervals.set(id, callback); return id; };
+  globalThis.clearInterval = id => intervals.delete(id);
+  try { return run({ advance(milliseconds, callbacks = true) { current += milliseconds; if (callbacks) [...intervals.values()].forEach(callback => callback()); }, intervals }); }
+  finally { hooks.reset(); Object.assign(globalThis, previous); }
 }
 
 test("opening, cancelling and dismissing purchase confirmation never spends pearls", () => {
@@ -163,11 +179,22 @@ test("only explicit confirmation buys the next station tier and double clicks ca
   assert.deepEqual(calls, [["buy_production_slot", "woodlot"], ["buy_production_slot", "woodlot"]]);
 });
 
-test("the third place explains purchase order and insufficient funds or unconfirmed state block confirmation", () => {
-  for (const scenario of ["third", "poor", "busy", "uncertain", "cooldown", "error", "unbuilt", "construction"]) {
+test("the third place is inert without a visible or accessible price until the second is bought", () => {
+  hooks.reset(); const calls = [], economy = controller({ act: (...args) => calls.push(args) });
+  const third = card(render(economy), 3), html = renderToStaticMarkup(third);
+  assert.equal(third.props.disabled, true); assert.match(html, /Закрыто/);
+  assert.doesNotMatch(html, /250|pearls|жемчужин|aria-haspopup|aria-expanded/);
+  click(third); assert.equal(buy(render(economy)), undefined); assert.deepEqual(calls, []);
+  economy.snapshot.productionSlots.woodlot = 2; economy.snapshot.revision++;
+  const available = card(render(economy), 3);
+  assert.equal(available.props.disabled, false); assert.match(renderToStaticMarkup(available), /250/);
+  click(available); assert.match(renderToStaticMarkup(render(economy)), /Купить за 250/);
+});
+
+test("insufficient funds or unconfirmed state block purchase confirmation", () => {
+  for (const scenario of ["poor", "busy", "uncertain", "cooldown", "error", "unbuilt", "construction"]) {
     hooks.reset(); const calls = [], economy = controller({ act: (...args) => calls.push(args) });
     let slot = 2;
-    if (scenario === "third") slot = 3;
     if (scenario === "poor") economy.snapshot.wallet.pearls = 199;
     if (scenario === "busy") economy.busy = true;
     if (scenario === "uncertain") economy.uncertain = true;
@@ -178,7 +205,6 @@ test("the third place explains purchase order and insufficient funds or unconfir
     click(card(render(economy), slot)); const tree = render(economy);
     const confirmationButton = buy(tree); assert.equal(confirmationButton.props.disabled, true, scenario);
     click(confirmationButton); assert.deepEqual(calls, [], scenario);
-    if (scenario === "third") assert.match(renderToStaticMarkup(tree), /Сначала откройте место 2/);
     if (scenario === "poor") assert.match(renderToStaticMarkup(tree), /Не хватает жемчужин: 0,5/);
   }
 });
@@ -279,7 +305,7 @@ test("working cells show their saved products in every manufacturing station", (
   }
 });
 
-test("cancellation needs two deliberate clicks and shows the exact stored refund", () => {
+test("cancellation uses one compact action row and describes the exact stored refund accessibly", () => {
   hooks.reset(); const calls = [];
   const job = production("paid", "workshop", { recipeId: "make_rope", rewards: { rope: 1 }, cost: { coins: 17, items: { fiber: 3, wood: 2 } }, catalogVersion: 1 });
   const economy = controller({ act(...args) { calls.push(args); return true; } }); economy.snapshot.jobs = [job];
@@ -289,8 +315,10 @@ test("cancellation needs two deliberate clicks and shows the exact stored refund
   const main = tree => elements(tree).find(node => node.props["data-production-control"]);
   click(main(renderCell())); assert.deepEqual(calls, []);
   const armed = renderCell(), html = renderToStaticMarkup(armed);
-  assert.match(html, /Отменить\?/); assert.match(html, /Вернётся:/); assert.match(html, /data-item-icon="coins"[^>]*>/);
-  assert.match(html, />17<\/span>/); assert.match(html, /data-item-icon="fiber"/); assert.match(html, /×3/); assert.match(html, /data-item-icon="wood"/); assert.match(html, /×2/);
+  assert.match(html, /Удалить\?/); assert.match(html, /5 с/);
+  assert.equal(main(armed).props.title, "Вернётся: 17 монет, Растительное волокно ×3, Бревно ×2");
+  assert.match(html, /title="Вернётся:/); assert.match(html, /aria-describedby="production-slot-confirmation"/);
+  assert.doesNotMatch(html, /data-production-dismiss|Оставить|data-item-icon="coins"|data-item-icon="fiber"|data-item-icon="wood"/);
   assert.doesNotMatch(html, /999|×44|role="dialog"/);
   assert.equal(elements(main(armed)).filter(node => node.type === "button").length, 1, "cell buttons must not be nested");
   const confirmationButton = main(armed); click(confirmationButton); click(confirmationButton);
@@ -298,22 +326,88 @@ test("cancellation needs two deliberate clicks and shows the exact stored refund
   assert.equal(main(renderCell()).props.disabled, true, "the gap before busy publication also blocks repeats");
 });
 
-test("escape, leaving the cell and explicit dismissal discard consent without cancelling", () => {
-  for (const method of ["escape", "blur", "dismiss", "outside"]) {
+test("five-second confirmation counts down and expires without issuing any command", () => withMonotonicClock(clock => {
+  hooks.reset(); const calls = [], job = production("countdown"), economy = controller({ act: (...args) => { calls.push(args); return true; } });
+  economy.snapshot.jobs = [job];
+  const renderCell = () => renderWork(ProductionWork, { economy, job, compact: true });
+  const main = tree => elements(tree).find(node => node.props["data-production-control"]);
+  click(main(renderCell())); assert.match(renderToStaticMarkup(renderCell()), /Удалить\?.*5 с/);
+  hooks.flush(); assert.equal(clock.intervals.size, 1);
+  clock.advance(1000); assert.match(renderToStaticMarkup(renderCell()), /Удалить\?.*4 с/);
+  clock.advance(4000); const expired = renderCell(); hooks.flush();
+  assert.equal(clock.intervals.size, 0); assert.doesNotMatch(renderToStaticMarkup(expired), /Удалить\?/); assert.deepEqual(calls, []);
+  click(main(expired)); assert.match(renderToStaticMarkup(renderCell()), /Удалить\?.*5 с/); assert.deepEqual(calls, []);
+}));
+
+test("the second click must precede the monotonic deadline even if timer callbacks are delayed", () => {
+  for (const elapsed of [4999, 5000, 7000]) withMonotonicClock(clock => {
+    hooks.reset(); const calls = [], job = production(`deadline-${elapsed}`), economy = controller({ act: (...args) => { calls.push(args); return true; } });
+    economy.snapshot.jobs = [job];
+    const renderCell = () => renderWork(ProductionWork, { economy, job });
+    const main = tree => elements(tree).find(node => node.props["data-production-control"]);
+    click(main(renderCell())); const armedButton = main(renderCell()); hooks.flush();
+    clock.advance(elapsed, false); click(armedButton);
+    assert.deepEqual(calls, elapsed < 5000 ? [["cancel_production", job.id]] : [], `deadline ${elapsed}`);
+    if (elapsed >= 5000) {
+      assert.match(renderToStaticMarkup(renderCell()), /Удалить\?.*5 с/, "a late click only opens new consent");
+      clock.advance(4999, false); click(main(renderCell())); assert.deepEqual(calls, [["cancel_production", job.id]]);
+    }
+  });
+});
+
+test("fast repeated clicks send one cancellation and never rearm a submitted cell", () => withMonotonicClock(() => {
+  hooks.reset(); const calls = [], job = production("rapid-clicks"), economy = controller({ act: (...args) => { calls.push(args); return true; } });
+  economy.snapshot.jobs = [job];
+  const renderCell = () => renderWork(ProductionWork, { economy, job });
+  const control = elements(renderCell()).find(node => node.props["data-production-control"]);
+  click(control); click(control); click(control); click(control);
+  assert.deepEqual(calls, [["cancel_production", job.id]]);
+  const submitted = renderCell(); assert.doesNotMatch(renderToStaticMarkup(submitted), /Удалить\?/);
+  assert.equal(elements(submitted).find(node => node.props["data-production-control"]).props.disabled, true);
+}));
+
+test("arming and expiry retain the same visible product, timer, action row and slot structure", async () => {
+  withMonotonicClock(clock => {
+    hooks.reset(); const job = production("stable-layout", "workshop", { rewards: { rope: 1 }, cost: { coins: 17, items: { fiber: 3 } } }), economy = controller(); economy.snapshot.jobs = [job];
+    const renderCell = () => renderWork(ProductionWork, { economy, job, compact: true });
+    const original = renderCell(), control = elements(original).find(node => node.props["data-production-control"]);
+    const visibleShape = tree => elements(tree).filter(node => typeof node.type === "string" && !node.props.id).map(node => [node.type, node.props["data-production-action"] ?? null]);
+    const before = visibleShape(original);
+    click(control); const armed = renderCell();
+    assert.deepEqual(visibleShape(armed), [...before.slice(0, -1), ["span", null], before.at(-1)], "only the countdown is added within the existing action line");
+    assert.equal(Children.toArray(original.props.children).length, Children.toArray(armed.props.children).length);
+    assert.equal(elements(armed).filter(node => node.type === "button").length, 1);
+    assert.equal(elements(armed).filter(node => node.props["data-production-action"]).length, 1);
+    assert.match(renderToStaticMarkup(armed), /data-item-icon="rope"/); assert.match(renderToStaticMarkup(armed), /Осталось 2 мин/);
+    hooks.flush(); clock.advance(5000); const expired = renderCell(); assert.deepEqual(visibleShape(expired), before);
+  });
+  const css = await readFile(new URL("../features/economy/ui/production/production-work.module.css", import.meta.url), "utf8");
+  assert.match(css, /\.actionLine\s*\{[^}]*flex: 0 0 26px;[^}]*height: 26px;/);
+  assert.match(css, /\[data-confirm-cancel\][^}]*text-decoration: line-through/);
+  assert.doesNotMatch(css, /\.refund|\.dismiss/);
+});
+
+test("escape, leaving the cell, clicking outside and hiding the page discard consent without cancelling", () => {
+  for (const method of ["escape", "blur", "outside", "background", "pagehide"]) {
     hooks.reset(); const calls = [], job = production(`dismiss-${method}`), economy = controller({ act: (...args) => { calls.push(args); return true; } });
     economy.snapshot.jobs = [job];
-    const listeners = new Map(), previousDocument = globalThis.document;
-    if (method === "outside") globalThis.document = { addEventListener(name, listener) { listeners.set(name, listener); }, removeEventListener(name) { listeners.delete(name); } };
+    const listeners = new Map(), previousDocument = globalThis.document, previousWindow = globalThis.window;
+    if (["outside", "background", "pagehide"].includes(method)) {
+      globalThis.document = { hidden: false, addEventListener(name, listener) { listeners.set(name, listener); }, removeEventListener(name) { listeners.delete(name); } };
+      globalThis.window = { addEventListener(name, listener) { listeners.set(name, listener); }, removeEventListener(name) { listeners.delete(name); } };
+    }
     try {
       const renderCell = () => renderWork(ProductionWork, { economy, job });
       click(elements(renderCell()).find(node => node.props["data-production-control"])); const armed = renderCell();
       if (method === "escape") armed.props.onKeyDown({ key: "Escape", preventDefault() {}, stopPropagation() {} });
       if (method === "blur") armed.props.onBlurCapture({ currentTarget: { contains: () => false }, relatedTarget: null });
-      if (method === "dismiss") click(elements(armed).find(node => node.props["data-production-dismiss"]));
       if (method === "outside") { armed.props.ref.current = { contains: () => false }; hooks.flush(); listeners.get("pointerdown")({ target: {} }); }
-      assert.doesNotMatch(renderToStaticMarkup(renderCell()), /Отменить\?/);
+      if (method === "background") { hooks.flush(); globalThis.document.hidden = true; listeners.get("visibilitychange")(); }
+      if (method === "pagehide") { hooks.flush(); listeners.get("pagehide")(); }
+      assert.doesNotMatch(renderToStaticMarkup(renderCell()), /Удалить\?/);
+      if (["outside", "background", "pagehide"].includes(method)) assert.equal(listeners.size, 0, "dismissal removes every page listener");
       click(elements(renderCell()).find(node => node.props["data-production-control"])); assert.deepEqual(calls, [], method);
-    } finally { globalThis.document = previousDocument; }
+    } finally { hooks.reset(); globalThis.document = previousDocument; globalThis.window = previousWindow; }
   }
 });
 
@@ -322,15 +416,16 @@ test("owner, revision and job changes reset inline cancellation rather than reus
     hooks.reset(); const calls = [], first = production(`context-${change}`), economy = controller({ act: (...args) => { calls.push(args); return true; } });
     let job = first; economy.snapshot.jobs = [job];
     const renderCell = () => renderWork(ProductionWork, { economy, job });
-    click(elements(renderCell()).find(node => node.props["data-production-control"])); assert.match(renderToStaticMarkup(renderCell()), /Отменить\?/);
+    click(elements(renderCell()).find(node => node.props["data-production-control"])); const consent = renderCell(); assert.match(renderToStaticMarkup(consent), /Удалить\?/);
     if (change === "owner") economy.snapshot.ownerPublicId = "OTHER";
     if (change === "revision") economy.snapshot.revision++;
     if (change === "job") { job = production("replacement"); economy.snapshot.jobs = [job]; }
     if (change === "ready") economy.now = Date.parse(job.finishesAt);
-    const changed = renderCell(); assert.doesNotMatch(renderToStaticMarkup(changed), /Отменить\?/);
+    if (["owner", "revision"].includes(change)) { click(elements(consent).find(node => node.props["data-production-control"])); assert.deepEqual(calls, [], "a callback captured before a context change cannot reuse consent"); }
+    const changed = renderCell(); assert.doesNotMatch(renderToStaticMarkup(changed), /Удалить\?/);
     click(elements(changed).find(node => node.props["data-production-control"]));
     assert.deepEqual(calls, change === "ready" ? [["claim_job", job.id]] : [], change);
-    if (change === "owner") { economy.snapshot.ownerPublicId = "ME"; assert.doesNotMatch(renderToStaticMarkup(renderCell()), /Отменить\?/); }
+    if (change === "owner") { economy.snapshot.ownerPublicId = "ME"; assert.doesNotMatch(renderToStaticMarkup(renderCell()), /Удалить\?/); }
   }
 });
 

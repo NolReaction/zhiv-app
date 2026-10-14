@@ -35,11 +35,23 @@ test("workshop lessons explain direct cards and same-cell cancellation without p
   assert.match(recipes.summary, /Нажатие сразу начнёт/);
   assert.match(recipes.text, /недостающие материалы показаны прямо в карточке/);
   assert.ok(queue.targets.includes("[data-recipe-order]"), "the one-tap card is itself the action target");
-  assert.match(queue.text, /ещё раз на «Отменить\?»/);
+  assert.match(queue.text, /«Удалить\?» и таймер 5 секунд/);
+  assert.match(queue.text, /без второго нажатия она продолжится/);
   for (const step of [recipes, queue]) {
     assert.doesNotMatch(`${step.summary} ${step.text}`, /«Начать»|количество партий/);
     assert.ok(step.targets.every(selector => !selector.includes("recipe-preparation")));
     assert.notEqual(step.revealOnOpen, true, "a workshop explanation must never activate a production card");
+  }
+});
+
+test("expedition lessons keep safe route selectors and direct mining to its separate menu", () => {
+  const [routes, preparation] = sectionGuideLessons.expeditions;
+  assert.match(routes.summary, /Шахта открывается отдельно на карте/);
+  assert.match(routes.text, /само по себе не отправляет в путь/);
+  for (const step of [routes, preparation]) {
+    assert.ok(step.targets.includes("[data-route]"));
+    assert.ok(step.targets.includes('[data-section-guide-target="expedition-routes"]'));
+    assert.notEqual(step.revealOnOpen, true, "the coach must not activate a route card");
   }
 });
 

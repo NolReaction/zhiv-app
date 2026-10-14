@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
+const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-compact-guides-advice-vite", resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { worldHelpAdvice } = await vite.ssrLoadModule("/features/world/ui/help/world-help-advice.ts");
 const { economyCatalog, economyViewSchema } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
@@ -172,10 +172,10 @@ test("material advice directs stage-two stone and clay to the mine and first-sta
   const patch = { buildings: { home: 2, warehouse: 1, workshop: 1, quarry: 2, kiln: 1 }, inventory,
     wallet: { coins: target.cost.coins, pearls: 0 } };
   const stone = advice(patch, { context: { intent: "construction", stationId: "home" } }).find(entry => entry.id === "missing:stone");
-  assert.deepEqual(stone.action.target, { kind: "station", stationId: "quarry" });
+  assert.deepEqual(stone.action.target, { kind: "station", stationId: "quarry", recipeId: "quarry_stone" });
   const clay = advice({ ...patch, inventory: { clay: 0, charcoal: 1 } },
     { context: { intent: "production", stationId: "kiln", recipeId: "fire_bricks", quantity: 1 } }).find(entry => entry.id === "missing:clay");
-  assert.deepEqual(clay.action.target, { kind: "station", stationId: "quarry" });
+  assert.deepEqual(clay.action.target, { kind: "station", stationId: "quarry", recipeId: "quarry_clay" });
   const first = advice({ inventory: { wood: 3, stone: 0, planks: 2 }, wallet: { coins: 250, pearls: 0 } },
     { context: { intent: "construction", stationId: "home" } }).find(entry => entry.id === "missing:stone");
   assert.deepEqual(first.action.target, { kind: "expeditions", sector: "forest" });

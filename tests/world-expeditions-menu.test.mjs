@@ -6,7 +6,7 @@ import { Children, createElement, isValidElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
+const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: `/tmp/zhiv-expedition-ui-vite-${process.pid}`, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 const { WorldExpeditionsMenu, WorldExpeditionSector, ExpeditionRouteDetails, ActiveExpedition, expeditionCancellationKey, expeditionSector, expeditionSectors } = await vite.ssrLoadModule("/features/economy/ui/expeditions/world-expeditions-menu.tsx");
 const { getAudioRuntime } = await vite.ssrLoadModule("/features/audio/runtime/audio-service.ts");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");

@@ -8,7 +8,7 @@
 .slotNumber { align-self: stretch; font-size: 9px; font-weight: 400; color: #66704f; }
 .slot > svg { margin-top: 4px; color: #809364; }
 .slots.slots .closed { border-style: dashed; border-color: #b9ab83; background: #e1d6b8; cursor: pointer; touch-action: manipulation; }
-.slots.slots .closed:hover { background: #eee1c1; }
+.slots.slots .closed:hover:not(:disabled) { background: #eee1c1; }
 .closed > strong { color: #5c5874; }
 .lock { position: relative; display: grid; place-items: center; width: 34px; height: 34px; color: #867f61; }
 .lock::after { position: absolute; content: ""; width: 36px; height: 2px; border-radius: 2px; background: #9f9578; transform: rotate(-38deg); }
@@ -18,7 +18,6 @@
 /* The product cell keeps its own claim/cancellation behavior in every station. */
 .job > div[data-job-id] { width: 100%; min-width: 0; padding: 0; border: 0; background: transparent; }
 .slots.slots .job button[data-production-control] { border: 0; background: transparent; color: #394d3e; }
-.slots.slots .job button[data-production-dismiss] { border: 0; background: transparent; color: #59624d; }
 .job progress { margin-top: 6px; }
 .job p { overflow-wrap: anywhere; text-align: left; }
 .hint { margin: 6px 0 0; color: #776044; font-size: 10px; overflow-wrap: anywhere; }

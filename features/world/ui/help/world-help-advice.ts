@@ -108,7 +108,7 @@ function costAdvice(state: EconomyView, cost: EconomyCost, now: number, quantity
     const mining = state.catalog.explorations.some(route => route.id === source.targetId && explorationActorId(route) === "miner");
     const conflict = mining ? economyMinerConflict(state.jobs, now) : economyActorConflict(state.jobs, "departure", now);
     if (conflict) return jobAdvice(state, conflict.job, now);
-    target = mining ? { kind: "station", stationId: "quarry" } : { kind: "expeditions", sector: sector(source.targetId) };
+    target = mining ? { kind: "station", stationId: "quarry", recipeId: source.targetId } : { kind: "expeditions", sector: sector(source.targetId) };
     instruction = mining ? "Этот материал добывает шахта. Откройте её и выберите работу; Мохлик может заниматься другими делами."
       : "Этот материал есть в наградах доступной вылазки. Откройте маршрут и проверьте припасы.";
   } else if (state.catalog.fishing?.classes.some(group => group.itemId === missing.id)) {

@@ -26,7 +26,7 @@ export function WorldProductionSlots({ economy, stationId, compact = false, open
   const jobs = state.jobs.filter(job => job.kind === "production" && job.targetId === stationId);
   const construction = state.jobs.some(job => job.kind === "construction" && job.targetId === stationId);
   const unavailable = construction || !(state.buildings[stationId] > 0);
-  const currentConfirmation = confirmation?.stationId === stationId && confirmation.owner === state.ownerPublicId && confirmation.slot > capacity ? confirmation : null;
+  const currentConfirmation = confirmation?.stationId === stationId && confirmation.owner === state.ownerPublicId && confirmation.slot === capacity + 1 ? confirmation : null;
   const selectedOffer = state.catalog.productionSlots.upgrades.find(entry => entry.slots === currentConfirmation?.slot);
   const reason = !(state.buildings[stationId] > 0) ? "Сначала обустройте это место"
     : construction ? "Дождитесь завершения улучшения"
@@ -58,16 +58,17 @@ export function WorldProductionSlots({ economy, stationId, compact = false, open
     <div className={styles.track}>{Array.from({ length: 3 }, (_, index) => {
       const job = jobs[index], opened = index < capacity;
       const tier = state.catalog.productionSlots.upgrades.find(entry => entry.slots === index + 1);
+      const nextLocked = !opened && index === capacity;
       const slotState = job ? worldJobProgress(state, job, economy.now).ready ? "ready" : "working" : !opened ? "locked" : "free";
       return job ? <div key={index} className={`${styles.slot} ${styles.job}`} data-production-slot={index + 1} data-state={slotState}>
         <span className={styles.slotNumber}>Место {index + 1}</span><Work economy={economy} job={job} openPantry={openPantry} compact />
       </div> : opened ? <div key={index} className={styles.slot} data-production-slot={index + 1} data-state={slotState}>
         <span className={styles.slotNumber}>Место {index + 1}</span><Plus size={25} aria-hidden="true" /><strong>{unavailable ? "Недоступно" : "Свободно"}</strong><span>{unavailable ? construction ? "Идёт улучшение" : "Нужно обустроить" : "Выберите рецепт"}</span>
       </div> : <button key={index} type="button" className={`${styles.slot} ${styles.closed}`} data-production-slot={index + 1} data-state="locked"
-        aria-label={`Открыть место ${index + 1} за ${formatPearls(tier?.pricePearls ?? 0)} жемчужин`}
-        aria-haspopup="dialog" aria-expanded={currentConfirmation?.slot === index + 1} aria-controls={confirming && currentConfirmation?.slot === index + 1 ? dialogId : undefined}
-        onClick={event => { purchaseTrigger.current = event.currentTarget; setConfirmation({ stationId, owner: state.ownerPublicId, slot: index + 1, pricePearls: tier?.pricePearls ?? 0 }); }}>
-        <span className={styles.slotNumber}>Место {index + 1}</span><span className={styles.lock}><LockKeyhole size={24} aria-hidden="true" /></span><strong>Открыть</strong><span className={styles.price}>{formatPearls(tier?.pricePearls ?? 0)}<ItemIcon itemId="pearls" size={16} /></span>
+        disabled={!nextLocked} aria-label={nextLocked ? `Открыть место ${index + 1} за ${formatPearls(tier?.pricePearls ?? 0)} жемчужин` : `Место ${index + 1}: закрыто`}
+        aria-haspopup={nextLocked ? "dialog" : undefined} aria-expanded={nextLocked ? currentConfirmation?.slot === index + 1 : undefined} aria-controls={confirming && currentConfirmation?.slot === index + 1 ? dialogId : undefined}
+        onClick={event => { if (index !== productionSlotCount(economy.snapshot, stationId)) return; purchaseTrigger.current = event.currentTarget; setConfirmation({ stationId, owner: state.ownerPublicId, slot: index + 1, pricePearls: tier?.pricePearls ?? 0 }); }}>
+        <span className={styles.slotNumber}>Место {index + 1}</span><span className={styles.lock}><LockKeyhole size={24} aria-hidden="true" /></span><strong>{nextLocked ? "Открыть" : "Закрыто"}</strong>{nextLocked && <span className={styles.price}>{formatPearls(tier?.pricePearls ?? 0)}<ItemIcon itemId="pearls" size={16} /></span>}
       </button>;
     })}</div>
     {reason && !confirming && <p className={styles.hint}>{reason}</p>}
