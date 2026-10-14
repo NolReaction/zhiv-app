@@ -608,8 +608,8 @@ test("closed fishing details leave catch guarantees, missing supplies and depart
   }
   assert.equal(depth, 0);
   visible += view.html.slice(previous);
-  assert.match(visible, /Шансы выбранных снастей/);
-  assert.ok(visible.indexOf("Шансы выбранных снастей") < visible.indexOf('aria-label="Отправиться:'), "actual odds are visible before departure");
+  assert.match(visible, /Шансы улова/);
+  assert.ok(visible.indexOf("Шансы улова") < visible.indexOf('aria-label="Отправиться:'), "actual odds are visible before departure");
   assert.match(visible, /Улов за одну вылазку/);
   assert.match(visible, /Всего рыб/);
   assert.match(visible, /Наживки за поход/);
@@ -716,14 +716,16 @@ test("shore gear shortcuts open Pleska without spending and fishing keeps each r
   }
 });
 
-test("an active fishing job shows its saved species and forfeits the exact result and bait on cancellation", () => {
+test("a completed fishing job shows its saved species before discovery and forfeits the exact result and bait on cancellation", () => {
   const saved = job({ targetId: "shore", rewards: { fish: 3, fish_mooncarp: 1 }, cost: { coins: 0, items: { worm_bait: 1 } },
-    fishing: { rodId: "willow_rod", baitId: "worm_bait", fishId: "fish_mooncarp" } });
+    finishesAt: new Date(now).toISOString(), fishing: { rodId: "willow_rod", baitId: "worm_bait", fishId: "fish_mooncarp", catchRevealed: true } });
   const state = snapshot({ jobs: [saved], fishing: fishingGear({ equippedRodId: "reed_rod", equippedBaitId: null }) });
   const view = activeView(saved, { state, confirmed: true });
   assert.doesNotMatch(view.html, /Рыбный улов/);
   for (const fishId of ["fish", "fish_mooncarp"]) assert.match(view.html, new RegExp(economyCatalog.items.find(item => item.id === fishId).name));
-  assert.match(view.html, /×3/); assert.match(view.html, /aria-label="Лунный карасик, 1"/); assert.doesNotMatch(view.html, /×1(?!\d)/);
+  assert.match(view.html, /×3/); assert.match(view.html, /aria-label="Лунный карасик, 1"/);
+  assert.match(view.html, /data-item-icon="fish_mooncarp"/); assert.doesNotMatch(view.html, /data-hidden-fish|Крючок этой вылазки/);
+  assert.match(view.html, /data-fish-rarity="rare"/);
   assert.match(view.html, /Потраченные монеты и припасы не возвращаются/);
   view.control("Вернуться без добычи").props.onClick();
   assert.deepEqual(view.calls, [["cancel_exploration", saved.id]]);
@@ -791,11 +793,10 @@ test("a missing owned hook blocks departure and saved jobs show their original h
   const saved = job({ targetId: "shore", fishing: { rodId: "reed_rod", hookId: "barbed_hook", baitId: null, fishId: "fish" } });
   const state = snapshot({ jobs: [saved], fishing: fishingGear({ ownedHooks: ["bare_hook", "barbed_hook", "silver_hook"], equippedHookId: "silver_hook", equippedBaitId: null }) });
   const view = activeView(saved, { state });
-  assert.match(view.html, /Крючок этой вылазки: Бородатый крючок/);
-  assert.doesNotMatch(view.html, /Крючок этой вылазки: Серебряный крючок/);
+  assert.doesNotMatch(view.html, /Крючок этой вылазки/);
   assert.notEqual(expeditionCancellationKey("ME", { ...saved, fishing: { ...saved.fishing, hookId: "silver_hook" } }), view.key);
   const legacy = activeView(job({ targetId: "shore", fishing: { rodId: "reed_rod", baitId: null, fishId: "fish" } }));
-  assert.match(legacy.html, /Крючок этой вылазки: Простой крючок/);
+  assert.doesNotMatch(legacy.html, /Крючок этой вылазки/);
 });
 
 test("equipping then immediately departing waits for a confirmed snapshot and never auto-starts", () => {

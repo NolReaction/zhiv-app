@@ -7,9 +7,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
+const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-workshop-status-vite",
+  optimizeDeps: { noDiscovery: true, include: [] }, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { mapProductionGroups, layoutProductionMarkers } = await vite.ssrLoadModule("/features/world/ui/hud/world-production-state.ts");
+const { mapProductionGroups, layoutProductionMarkers, workshopProductionSections, productionMarkerHeight } = await vite.ssrLoadModule("/features/world/ui/hud/world-production-state.ts");
 const { WorldProductionStatus } = await vite.ssrLoadModule("/features/world/ui/hud/world-production-status.tsx");
 const { WorldProductionEffects } = await vite.ssrLoadModule("/features/world/ui/feedback/world-production-effects.tsx");
 const { economyCatalog: catalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
@@ -72,10 +73,15 @@ test("workshop and kiln share one host and report all jobs including a simultane
   const calls = [], economy = { snapshot: saved, now: start + 30_000 };
   const component = WorldProductionStatus({ economy, groups, anchors: [anchor("workshop")], onOpen: id => calls.push(id) });
   const html = renderToStaticMarkup(component);
-  assert.equal((html.match(/data-production-status=/g) ?? []).length, 1);
-  assert.match(html, /data-production-target="kiln"/); assert.match(html, /\+1/);
+  assert.equal((html.match(/data-production-status=/g) ?? []).length, 2);
+  assert.match(html, /data-production-host="workshop"/); assert.match(html, /Верстак/); assert.match(html, /Печь/);
+  assert.match(html, /data-production-target="kiln"/); assert.doesNotMatch(html, /\+1/);
+  assert.match(html, /data-item-icon="planks"/); assert.match(html, /data-item-icon="charcoal"/);
   assert.match(html, /Выжечь древесный уголь/); assert.match(html, /Распилить доску/);
-  component.props.children[0].props.onClick(); assert.deepEqual(calls, ["kiln"]);
+  const sections = component.props.children[0].props.children;
+  assert.equal(sections[0].props["data-production-status"], "working");
+  assert.equal(sections[1].props["data-production-status"], "ready");
+  sections[0].props.onClick(); sections[1].props.onClick(); assert.deepEqual(calls, ["workshop", "kiln"]);
   assert.equal(saved.jobs.length, 2, "the badge only opens a station and never starts or claims work");
 });
 
@@ -88,9 +94,51 @@ test("three slots per station remain visible behind one workshop host badge", ()
   assert.equal(groups[0].primary.phase, "ready");
   assert.deepEqual(new Set(groups[0].entries.map(entry => entry.jobId)), new Set(jobs.map(entry => entry.id)));
   const html = renderToStaticMarkup(WorldProductionStatus({ economy: { snapshot: saved, now }, groups, anchors: [anchor("workshop")], onOpen() {} }));
-  assert.equal((html.match(/data-production-status=/g) ?? []).length, 1);
-  assert.match(html, /\+5/);
+  assert.equal((html.match(/data-production-status=/g) ?? []).length, 2);
+  assert.equal((html.match(/\+2/g) ?? []).length, 2);
+  assert.doesNotMatch(html, /\+5/);
   assert.match(html, /Выжечь древесный уголь/); assert.match(html, /Распилить доску/);
+});
+
+test("each shared queue keeps its own saved countdown, progress and extra paid jobs", () => {
+  const jobs = [job("workshop", { id: "plank", finishesAt: iso(start + 120_000) }),
+    ...Array.from({ length: 5 }, (_, index) => job("kiln", { id: `legacy-kiln-${index}`, finishesAt: iso(start + 300_000 + index * 1000) }))];
+  const saved = state(jobs), before = structuredClone(saved), now = start + 60_000;
+  const [group] = mapProductionGroups(saved, now), sections = workshopProductionSections(group);
+  assert.equal(productionMarkerHeight(group), 88);
+  assert.deepEqual(sections.map(section => [section.stationId, section.primary.remaining, section.entries.length]), [["workshop", 60, 1], ["kiln", 240, 5]]);
+  assert.equal(sections[0].primary.progress, .5); assert.equal(sections[1].primary.progress, .2);
+  const html = renderToStaticMarkup(WorldProductionStatus({ economy: { snapshot: saved, now }, groups: [group], anchors: [anchor("workshop")], onOpen() {} }));
+  assert.match(html, /<strong>1:00<\/strong>/); assert.match(html, /<strong>4:00<\/strong>/);
+  assert.match(html, /width:50%/); assert.match(html, /width:20%/); assert.match(html, /\+4/);
+  for (const id of jobs.map(value => value.id)) assert.ok(group.entries.some(entry => entry.jobId === id));
+  assert.deepEqual(saved, before, "the split badge never truncates or rewrites old paid queues");
+});
+
+test("a lone workbench or kiln keeps a single 44px button and names its equipment", () => {
+  for (const [stationId, label] of [["workshop", "Верстак"], ["kiln", "Печь"]]) {
+    const saved = state([job(stationId)]), groups = mapProductionGroups(saved, start), calls = [];
+    assert.equal(productionMarkerHeight(groups[0]), 44);
+    const component = WorldProductionStatus({ economy: { snapshot: saved, now: start }, groups, anchors: [anchor("workshop")], onOpen: id => calls.push(id) });
+    const html = renderToStaticMarkup(component);
+    assert.equal((html.match(/data-production-status=/g) ?? []).length, 1);
+    assert.match(html, new RegExp(`<small>${label}<\\/small>`)); assert.doesNotMatch(html, /data-production-host=/);
+    component.props.children[0].props.onClick(); assert.deepEqual(calls, [stationId]);
+  }
+});
+
+test("a completed shared-host upgrade keeps its shortcut ahead of both production sections", () => {
+  const construction = { ...job("kiln"), id: "upgrade", kind: "construction", targetLevel: 2, finishesAt: iso(start + 1000) };
+  const saved = state([job("workshop"), job("kiln"), construction]), now = start + 2000, groups = mapProductionGroups(saved, now), calls = [];
+  assert.equal(groups[0].primary.kind, "construction"); assert.equal(productionMarkerHeight(groups[0]), 44);
+  assert.deepEqual(workshopProductionSections(groups[0]), []);
+  const component = WorldProductionStatus({ economy: { snapshot: saved, now }, groups, anchors: [anchor("workshop")],
+    onOpen: id => calls.push(`station:${id}`), onOpenConstruction: id => calls.push(`construction:${id}`) });
+  const html = renderToStaticMarkup(component);
+  assert.equal((html.match(/data-production-status=/g) ?? []).length, 1);
+  assert.match(html, /\+2/); assert.match(html, /data-work-kind="construction"/);
+  assert.match(html, /Распилить доску/); assert.match(html, /Выжечь древесный уголь/);
+  component.props.children[0].props.onClick(); assert.deepEqual(calls, ["construction:kiln"]);
 });
 
 test("a finished kiln upgrade takes the shared host shortcut and keeps the workshop order visible", () => {
@@ -138,6 +186,23 @@ test("projected host coordinates follow pan/zoom and cull overlaps/offscreen bad
   assert.equal(projectConstructionAnchor(object, { ...camera, x: 900 }, view), null);
 });
 
+test("split workshop placement reserves its actual height and clears the measured top HUD", () => {
+  const groups = mapProductionGroups(state([job("workshop"), job("kiln"), job("quarry", { finishesAt: iso(start + 1000) })]), start + 2000);
+  const shared = groups.find(group => group.place === "workshop");
+  const upperReady = [anchor("quarry", 200, 250), anchor("workshop", 200, 305)];
+  assert.deepEqual(layoutProductionMarkers(groups, upperReady).map(value => value.group.place), ["quarry"],
+    "the upper part of an 88px badge cannot cover a higher ready 44px badge");
+  assert.equal(layoutProductionMarkers(groups, [anchor("workshop", 200, 250), anchor("quarry", 200, 305)]).length, 2,
+    "the taller badge extends upward, so the same spacing below is safe");
+  assert.equal(layoutProductionMarkers([shared], [anchor("workshop", 200, 250)], [anchor("house", 200, 200)]).length, 0);
+  const object = { id: "workshop", place: "workshop", hitArea: [{ x: 100, y: 200 }, { x: 220, y: 280 }] };
+  const camera = { x: 160, y: 240, zoom: 1 }, view = { width: 320, height: 480 };
+  assert.ok(projectConstructionAnchor(object, camera, view, { top: 130, bottom: 90 }));
+  assert.equal(projectConstructionAnchor(object, camera, view, { top: 130, bottom: 90 }, productionMarkerHeight(shared)), null);
+  assert.ok(projectConstructionAnchor(object, camera, view, { top: 90, bottom: 90 }, productionMarkerHeight(shared)));
+  assert.equal(projectConstructionAnchor(object, { ...camera, x: 900 }, view, { top: 0, bottom: 0 }, 88), null);
+});
+
 test("badges retain 44px targets, accessible detail, hidden modal state and server time", () => {
   const saved = state([job("quarry")]), economy = { snapshot: saved, now: start + 30_000 };
   const props = { economy, groups: mapProductionGroups(saved, economy.now), anchors: [anchor("quarry")], onOpen() {} };
@@ -173,10 +238,14 @@ test("shared receipt playback does not replay production effects after mount, hi
 test("map-local feedback stays under object menus and disables decorative motion", async () => {
   const files = await Promise.all(["ui/hud/world-production-status.module.css", "ui/feedback/world-production-effects.module.css", "scene/world-scene.tsx"].map(name => readFile(`${root}features/world/${name}`, "utf8")));
   assert.match(files[0], /width: 124px; height: 44px; min-height: 44px/);
+  assert.match(files[0], /markerSplit\.markerSplit \{ height: 88px; min-height: 88px/);
+  assert.match(files[0], /sectionButton\.sectionButton[\s\S]*height: 44px; min-height: 44px/);
+  assert.match(files[0], /sectionButton\.sectionButton:focus-visible/);
   assert.match(files[0], /prefers-reduced-motion: reduce/);
   assert.match(files[1], /z-index: 3; pointer-events: none/);
   assert.match(files[1], /prefers-reduced-motion: reduce[\s\S]*animation: none/);
   assert.match(files[2], /constructionAnchors.*anchors.filter/);
+  assert.match(files[2], /objectMarkerHeight: place => markerHeights\.current\.get\(place\)/);
 });
 
 

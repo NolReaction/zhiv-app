@@ -611,7 +611,7 @@ class JdbcEconomyRepositoryIntegrationTest {
         }.code)
     }
 
-    @Test fun `unclaimed species stay private in snapshots commands replays and admin views while saved catches survive claim`() = runBlocking<Unit> {
+    @Test fun `unfinished species stay private and ready species are visible before saved catches survive claim`() = runBlocking<Unit> {
         val p = player()
         economy.snapshot(p.hash)
         val initial = source.connection.use { readEconomyProfile(it, p.id).state }
@@ -638,12 +638,22 @@ class JdbcEconomyRepositoryIntegrationTest {
         for (view in listOf(snapshot, replay.state, checkNotNull(admin?.economy))) {
             assertEquals(mapOf("fish" to 4L), view.jobs.single().rewards)
             assertEquals("fish", view.jobs.single().fishing?.fishId)
+            assertNotEquals(true, view.jobs.single().fishing?.catchRevealed)
             assertFalse(economyJson.encodeToString(view).contains("fishingCastSeed"))
         }
         assertEquals(saved, source.connection.use { readEconomyProfile(it, p.id).state.jobs.single() })
         finish(p, snapshot)
         val ready = economy.snapshot(p.hash)
-        assertEquals(mapOf("fish" to 4L), ready.jobs.single().rewards, "a finished but unclaimed catch is still cancelable")
+        assertEquals(saved.rewards, ready.jobs.single().rewards, "the completed report shows its saved actual catch")
+        assertEquals(true, ready.jobs.single().fishing?.catchRevealed)
+        assertEquals(saved.fishing?.fishId, ready.jobs.single().fishing?.fishId)
+        assertTrue(ready.fishing.catches.isEmpty(), "previewing the completed report cannot open the personal collection")
+        assertTrue(ready.inventory.isEmpty(), "previewing the completed report cannot award fish")
+        val readyReplay = economy.command(p.hash, start)
+        assertEquals(ready.jobs, readyReplay.state.jobs)
+        val readyAdmin = source.connection.use { readAdminEconomyPlayer(it, p.publicId, java.time.OffsetDateTime.now()) }
+        assertEquals(ready.jobs, checkNotNull(readyAdmin?.economy).jobs)
+        assertFalse(economyJson.encodeToString(ready).contains("fishingCastSeed"))
         val claim = command(p, ready, "claim_job", saved.id)
         val delivered = economy.command(p.hash, claim).state
         assertEquals(EconomyFishInventory.items(saved.rewards), delivered.inventory)

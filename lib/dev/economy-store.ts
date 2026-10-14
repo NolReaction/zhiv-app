@@ -84,7 +84,7 @@ function view(owner: string, value: Profile, now: number): EconomyView {
   delete state.rareDropState;
   delete state.minerRareDropState;
   delete state.itemUnlockVersion;
-  state.jobs = state.jobs.map(publicEconomyJob);
+  state.jobs = state.jobs.map(job => publicEconomyJob(job, now));
   return { ownerPublicId: owner, revision: value.revision, serverTime: new Date(now).toISOString(), ...state, currencyScale: ECONOMY_CURRENCY_SCALE, pearlScale: ECONOMY_PEARL_SCALE,
     tutorialOrder: tutorialOrderProgress(state), stageOrders: stageOrdersProgress(state), food: foodState(state), residentOrders: economyResidentOrdersSchema.parse(state.residentOrders),
     marketSlots: marketSlotCount(state), unlockedItems,

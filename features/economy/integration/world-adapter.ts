@@ -28,7 +28,8 @@ export function economySceneJourney(economy: EconomyView | null | undefined): Ec
   const job = economy?.jobs.find(job => job.kind === "exploration" && !isMinerJob(job));
   return job ? { id: job.id, startedAt: job.startedAt, finishesAt: job.finishesAt, routeId: job.targetId,
     rewards: { ...job.rewards },
-    ...(job.fishing ? { fishing: { rodId: job.fishing.rodId, fishId: job.fishing.fishId } } : {}),
+    ...(job.fishing ? { fishing: { rodId: job.fishing.rodId, fishId: job.fishing.fishId,
+      ...(job.fishing.catchRevealed == null ? {} : { catchRevealed: job.fishing.catchRevealed }) } } : {}),
     label: economy?.catalog.explorations.find(route => route.id === job.targetId)?.name ?? "Исследование" } : null;
 }
 

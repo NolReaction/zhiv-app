@@ -6,6 +6,8 @@
 .item { display: flex; align-items: center; gap: 7px; min-width: 0; font-size: 12px; line-height: 1.25; animation: item-in .45s ease-out var(--gain-delay) both; }
 .icon { display: inline-flex; flex: 0 0 29px; width: 29px; height: 29px; align-items: center; justify-content: center; border-radius: 9px; background: #b7d58b15; }
 .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.description { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
+.description .rarity { font-size: 8px; line-height: 1.15; padding: 1px 4px; }
 .item strong { margin-left: auto; padding-left: 6px; color: #d9efaa; font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .more { display: block; margin-top: 5px; color: #b9cca7; font-size: 10px; }
 .glints { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; }

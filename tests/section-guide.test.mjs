@@ -100,6 +100,20 @@ test("Plesk explains permanent tackle and consumable bait before automatically r
   assert.deepEqual(parseSectionGuideProgress(JSON.stringify(saved), "plesk"), saved, "existing progress remains resumable");
 });
 
+test("Plesk lessons compare class odds without buying and keep representative artwork separate from stock", () => {
+  const lesson = id => sectionGuideLessons.plesk.find(step => step.id === id);
+  for (const id of ["rods", "bait"]) {
+    assert.match(lesson(id).summary, /Пять строк|пяти строк/);
+    assert.match(lesson(id).text, /[Оо]ткрытие таблицы не покупает|[Пп]росмотр ничего не покупает/);
+  }
+  assert.match(lesson("catch").text, /После возвращения.*виды и редкость/);
+  assert.match(lesson("catch").text, /«Забрать».*виды откроются в твоей книге/);
+  assert.match(lesson("catch").text, /Рисунок знакомой рыбы украшает класс, а не показывает состав запаса/);
+  const queue = sectionGuideLessons.workshop.find(step => step.id === "queue");
+  assert.match(queue.text, /Ячейки остаются одинакового размера/);
+  assert.match(queue.text, /обе очереди мастерской, «Верстак» и «Печь»/);
+});
+
 test("explicit pause survives reopening until deliberately resumed", () => {
   const disk = storage(), first = createSectionGuideStore("paused-owner", "market", disk);
   const second = move("market", move("market", null, "start"), "next");

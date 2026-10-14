@@ -4,8 +4,8 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } },
-  server: { middlewareMode: true, hmr: false } });
+const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-fish-public-jobs-vite", resolve: { alias: { "@": root } },
+  server: { middlewareMode: true, hmr: false, ws: false } });
 const { publicEconomyJob } = await vite.ssrLoadModule("/features/economy/domain/public-jobs.ts");
 const { economyJobSchema, economyViewSchema } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { fishClassInventory } = await vite.ssrLoadModule("/features/economy/domain/fishing.ts");
@@ -22,28 +22,54 @@ const job = () => economyJobSchema.parse({ id: crypto.randomUUID(), kind: "explo
   fishing: { rodId: "river_rod", hookId: "bare_hook", baitId: "worm_bait", fishId: "fish_mooncarp" },
   rareDrop: { version: 1, seconds: 28_800, itemId: "ancient_core" } });
 
-test("public fishing jobs conceal every species while preserving counts, gear, relics and saved delivery", () => {
-  const saved = job(), original = structuredClone(saved), projected = publicEconomyJob(saved);
+test("unfinished fishing jobs conceal every species while completed jobs show only their saved actual catch", () => {
+  const saved = job(), original = structuredClone(saved), projected = publicEconomyJob(saved, now);
   assert.deepEqual(projected.rewards, { fish: 24, ancient_core: 1 });
   assert.deepEqual(projected.fishing, { ...saved.fishing, fishId: "fish" });
   assert.equal(Object.values(projected.rewards).reduce((a, b) => a + b, 0), Object.values(saved.rewards).reduce((a, b) => a + b, 0));
   assert.deepEqual({ ...projected, rewards: saved.rewards, fishing: saved.fishing }, saved);
   assert.deepEqual(saved, original, "projecting must never alter the catch kept by the server");
-  assert.deepEqual(publicEconomyJob(projected), projected, "repeated projections preserve quantity");
+  assert.deepEqual(publicEconomyJob(projected, now), projected, "repeated projections preserve quantity");
   assert.equal(economyJobSchema.safeParse(projected).success, true);
-  const ready = { ...saved, finishesAt: new Date(now - 1000).toISOString() };
-  assert.deepEqual(publicEconomyJob(ready).rewards, projected.rewards, "completion is not a claim and cannot reveal a cancelable catch");
+  const finish = Date.parse(saved.finishesAt);
+  const revealed = { ...original, fishing: { ...original.fishing, catchRevealed: true } };
+  assert.deepEqual(publicEconomyJob(saved, finish - 1).rewards, projected.rewards, "the final unfinished millisecond is still concealed");
+  assert.deepEqual(publicEconomyJob(saved, finish), revealed, "the authoritative deadline reveals the frozen catch without claiming it");
+  assert.deepEqual(publicEconomyJob(saved, finish + 1000), revealed);
+  assert.equal(economyJobSchema.safeParse(revealed).success, true);
+  assert.deepEqual(saved, original, "ready projection cannot mutate the saved delivery");
 });
 
-test("other jobs remain unchanged and a retired saved species is still hidden", () => {
+test("other jobs remain unchanged and unfinished retired species are still hidden", () => {
   const ordinary = { ...job(), kind: "production", targetId: "campfire", fishing: null, rareDrop: null, rewards: { smoked_fish: 1 } };
-  assert.deepEqual(publicEconomyJob(ordinary), ordinary);
+  assert.deepEqual(publicEconomyJob(ordinary, now), ordinary);
   const retired = job(); retired.fishing.fishId = "retired_species"; retired.rewards.retired_species = 2;
-  assert.equal(publicEconomyJob(retired).rewards.retired_species, undefined);
-  assert.equal(publicEconomyJob(retired).rewards.fish, 26);
+  assert.equal(publicEconomyJob(retired, now).rewards.retired_species, undefined);
+  assert.equal(publicEconomyJob(retired, now).rewards.fish, 26);
+  assert.deepEqual(publicEconomyJob(retired, Date.parse(retired.finishesAt)), { ...retired, fishing: { ...retired.fishing, catchRevealed: true } });
 });
 
-test("snapshots, commands and receipt replays conceal draws until an atomic successful claim", () => {
+test("invalid job or server timestamps never reveal a private unfinished draw", () => {
+  const saved = job(), hidden = publicEconomyJob(saved, now);
+  saved.fishing.catchRevealed = true;
+  for (const finishesAt of ["invalid", ""]) {
+    assert.deepEqual(publicEconomyJob({ ...saved, finishesAt }, now).rewards, hidden.rewards);
+  }
+  for (const invalidNow of [NaN, Infinity, -Infinity]) assert.deepEqual(publicEconomyJob(saved, invalidNow).rewards, hidden.rewards);
+  assert.equal(publicEconomyJob(saved, now).fishing.catchRevealed, undefined, "unfinished projection scrubs a stale reveal marker");
+  assert.equal(saved.fishing.catchRevealed, true, "projection does not write into persisted metadata");
+});
+
+test("the reveal marker distinguishes a real all river fish catch from an older masked snapshot", () => {
+  const saved = job(); saved.rewards = { fish: 3 }; saved.fishing.fishId = "fish";
+  const hidden = publicEconomyJob(saved, now), revealed = publicEconomyJob(saved, Date.parse(saved.finishesAt));
+  assert.deepEqual(hidden.rewards, revealed.rewards);
+  assert.equal(hidden.fishing.catchRevealed, undefined);
+  assert.equal(revealed.fishing.catchRevealed, true);
+  assert.equal(saved.fishing.catchRevealed, undefined);
+});
+
+test("snapshots and replays reveal completed catches without granting goods or opening the collection", () => {
   const player = identities.createDevIdentity("Private catch", crypto.randomUUID());
   const read = (at = now) => economy.getDevEconomy(player.token, at);
   const command = (action, targetId, at = now) => ({ requestId: crypto.randomUUID(), ownerPublicId: player.me.user.publicId,
@@ -58,9 +84,18 @@ test("snapshots, commands and receipt replays conceal draws until an atomic succ
   saved.rewards = { fish: 1, fish_mooncarp: 1, fish_shark: 2 };
   saved.fishing.fishId = "fish_mooncarp";
   const privateJob = structuredClone(saved), finishedAt = Date.parse(saved.finishesAt);
-  for (const snapshot of [read(), read(finishedAt), economy.commandDevEconomy(player.token, start, finishedAt).state]) {
+  for (const snapshot of [read(), read(finishedAt - 1)]) {
     assert.deepEqual(snapshot.jobs[0].rewards, { fish: 4 });
     assert.equal(snapshot.jobs[0].fishing.fishId, "fish");
+    assert.notEqual(snapshot.jobs[0].fishing.catchRevealed, true);
+    assert.equal(snapshot.fishingCastSeed, undefined);
+    assert.equal(economyViewSchema.safeParse(snapshot).success, true);
+  }
+  for (const snapshot of [read(finishedAt), economy.commandDevEconomy(player.token, start, finishedAt).state]) {
+    assert.deepEqual(snapshot.jobs[0].rewards, privateJob.rewards);
+    assert.equal(snapshot.jobs[0].fishing.fishId, privateJob.fishing.fishId);
+    assert.equal(snapshot.jobs[0].fishing.catchRevealed, true);
+    assert.deepEqual(snapshot.fishing.catches, {}, "showing a completed job does not open the personal collection");
     assert.equal(snapshot.fishingCastSeed, undefined);
     assert.equal(economyViewSchema.safeParse(snapshot).success, true);
   }
@@ -69,7 +104,7 @@ test("snapshots, commands and receipt replays conceal draws until an atomic succ
   profile.state.inventory = { stone: 299 };
   const claim = command("claim_job", saved.id, finishedAt);
   assert.throws(() => economy.commandDevEconomy(player.token, claim, finishedAt), { code: "ECONOMY_STORAGE_FULL" });
-  assert.deepEqual(read(finishedAt).jobs[0].rewards, { fish: 4 });
+  assert.deepEqual(read(finishedAt).jobs[0].rewards, privateJob.rewards);
   assert.deepEqual(profile.state.jobs[0], privateJob);
   profile.state.inventory = inventory;
   const delivered = economy.commandDevEconomy(player.token, claim, finishedAt);

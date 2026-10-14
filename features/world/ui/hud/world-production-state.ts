@@ -10,9 +10,24 @@ export type MapProduction = {
   phase: MapProductionPhase; label: string; remaining: number; progress: number;
 };
 export type MapProductionGroup = { place: MapObjectPlace; entries: readonly MapProduction[]; construction?: MapProduction; primary: MapProduction };
+export type MapProductionSection = { stationId: "workshop" | "kiln"; label: string; entries: readonly MapProduction[]; primary: MapProduction };
 const priority: Record<MapProductionPhase, number> = { ready: 0, "awaiting-gather": 1, paused: 2, "storage-blocked": 3, collecting: 4, working: 5 };
 const workPriority = (entry: MapProduction) => entry.kind === "construction" && entry.phase === "ready" ? -1 : priority[entry.phase];
 const compareWork = (a: MapProduction, b: MapProduction) => workPriority(a) - workPriority(b) || a.remaining - b.remaining || a.jobId.localeCompare(b.jobId);
+
+/** The workbench and kiln are independent queues inside the same map building.
+ * A construction shortcut keeps its existing ready/finish-time priority. */
+export function workshopProductionSections(group: MapProductionGroup): MapProductionSection[] {
+  if (group.place !== "workshop" || group.primary.kind === "construction") return [];
+  return (["workshop", "kiln"] as const).flatMap(stationId => {
+    const entries = group.entries.filter(entry => entry.stationId === stationId).sort(compareWork);
+    return entries.length ? [{ stationId, label: stationId === "workshop" ? "Верстак" : "Печь", entries, primary: entries[0] }] : [];
+  });
+}
+
+export function productionMarkerHeight(group: MapProductionGroup) {
+  return CONSTRUCTION_MARKER.height * Math.max(1, workshopProductionSections(group).length);
+}
 
 /** Read-only presentation of confirmed work. A ripe bush still needs its real
  * gathering step; reaching zero never manufactures inventory or a claim. */
@@ -72,13 +87,14 @@ export function mapProductionGroups(state: EconomyView | null, now: number, coll
  * narrow/zoomed-out map. Available work wins; no offscreen badge is pinned. */
 export function layoutProductionMarkers(groups: readonly MapProductionGroup[], anchors: readonly MapObjectScreenAnchor[],
   reserved: readonly MapObjectScreenAnchor[] = []) {
-  const occupied = [...reserved];
+  const occupied: { anchor: MapObjectScreenAnchor; height: number }[] = reserved.map(anchor => ({ anchor, height: CONSTRUCTION_MARKER.height }));
   return [...groups].sort((a, b) => compareWork(a.primary, b.primary) || a.place.localeCompare(b.place))
     .flatMap(group => {
       const anchor = anchors.find(entry => entry.place === group.place);
-      if (!anchor || occupied.some(other => Math.abs(other.x - anchor.x) < CONSTRUCTION_MARKER.width + 6
-        && Math.abs(other.y - anchor.y) < CONSTRUCTION_MARKER.height + 6)) return [];
-      occupied.push(anchor);
+      const height = productionMarkerHeight(group);
+      if (!anchor || occupied.some(other => Math.abs(other.anchor.x - anchor.x) < CONSTRUCTION_MARKER.width + 6
+        && anchor.y > other.anchor.y - other.height - 6 && other.anchor.y > anchor.y - height - 6)) return [];
+      occupied.push({ anchor, height });
       return [{ group, anchor }];
     });
 }

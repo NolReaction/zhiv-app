@@ -9,7 +9,21 @@ import { foodItemArt } from "./art-food";
 import { expeditionItemArt } from "./art-expeditions";
 import { berryTierArt } from "./art-berry-tiers";
 import { FishArt } from "@/features/world/activities/fishing/fish-icon";
-import { FISH_SPECIES_IDS } from "@/features/world/activities/fishing/fish-species";
+import { FISH_SPECIES_IDS, type FishSpeciesId } from "@/features/world/activities/fishing/fish-species";
+
+const fishClassMarks = {
+  fish_common: ["#829884", "I"], fish_uncommon: ["#5ca775", "II"], fish_rare: ["#579bd4", "III"],
+  fish_epic: ["#a782cb", "IV"], fish_legendary: ["#d8ac4e", "V"],
+} as const;
+
+function fishClassArt(itemId: keyof typeof fishClassMarks, species: FishSpeciesId = "fish") {
+  const [color, mark] = fishClassMarks[itemId];
+  return <g data-fish-illustration={species}>
+    <g transform="translate(25 22) scale(24)"><FishArt species={species} /></g>
+    <circle cx="36" cy="36" r="10" fill={color} stroke="#344236" strokeWidth="1.5" />
+    <text x="36" y="39.5" fill="#17251b" stroke="none" textAnchor="middle" fontSize="10" fontWeight="800">{mark}</text>
+  </g>;
+}
 
 const fishingArt: Record<string, ReactNode> = {
   glow_bait: <>
@@ -40,14 +54,7 @@ const fishingArt: Record<string, ReactNode> = {
   </>,
   ...Object.fromEntries(FISH_SPECIES_IDS.map(species => [species,
     <g key={species} transform="translate(27 25) scale(27)"><FishArt species={species} /></g>])),
-  ...Object.fromEntries(([
-    ["fish_common", "#829884", "I"], ["fish_uncommon", "#5ca775", "II"], ["fish_rare", "#579bd4", "III"],
-    ["fish_epic", "#a782cb", "IV"], ["fish_legendary", "#d8ac4e", "V"],
-  ] as const).map(([itemId, color, mark]) => [itemId, <g key={itemId}>
-    <g transform="translate(25 22) scale(24)"><FishArt species="fish" /></g>
-    <circle cx="36" cy="36" r="10" fill={color} stroke="#344236" strokeWidth="1.5" />
-    <text x="36" y="39.5" fill="#17251b" stroke="none" textAnchor="middle" fontSize="10" fontWeight="800">{mark}</text>
-  </g>])),
+  ...Object.fromEntries(Object.keys(fishClassMarks).map(itemId => [itemId, fishClassArt(itemId as keyof typeof fishClassMarks)])),
   crumb_bait: <>
     <path d="M13 19c-2 5-7 14-4 19 4 6 27 6 31-1 2-5-4-14-6-19Z" fill="#bda370" />
     <path d="m15 9 5 2 5-3 7 2-1 8H17Z" fill="#dfca96" />
@@ -100,8 +107,11 @@ function Illustration({ art, size = 24, className, label, itemId, findId }: Icon
 }
 
 /** One visual identity for inventory, recipes, prices, trade and progression. */
-export function ItemIcon({ itemId, ...props }: IconProps & { itemId: string }) {
-  return <Illustration {...props} itemId={itemId} art={Object.hasOwn(itemArt, itemId) ? itemArt[itemId] : unknownArt} />;
+export function ItemIcon({ itemId, fishSpecies, ...props }: IconProps & { itemId: string; fishSpecies?: FishSpeciesId }) {
+  const art = fishSpecies && Object.hasOwn(fishClassMarks, itemId)
+    ? fishClassArt(itemId as keyof typeof fishClassMarks, fishSpecies)
+    : Object.hasOwn(itemArt, itemId) ? itemArt[itemId] : unknownArt;
+  return <Illustration {...props} itemId={itemId} art={art} />;
 }
 
 /** Collection art is keyed by the find itself, never by its old shared symbol. */

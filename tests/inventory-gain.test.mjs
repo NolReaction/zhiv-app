@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root,
+const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: `/tmp/zhiv-inventory-gain-vite-${process.pid}`,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { inventoryGainFromReceipt, INVENTORY_GAIN_HISTORY_LIMIT } = await vite.ssrLoadModule("/features/economy/domain/inventory-gain.ts");
@@ -26,6 +26,62 @@ const result = snapshot => ({ state: snapshot, message: "Получено", acce
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const storage = () => { const values = new Map(); return { getItem: key => values.get(key) ?? null,
   setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) }; };
+
+test("confirmed fishing feedback draws exact saved species while economic items stay rarity classes", () => {
+  const trip = { ...job("exploration", { fish_silverfin: 2, fish_rudd: 1, fish_mooncarp: 1, ancient_core: 1 }),
+    fishing: { rodId: "willow_rod", hookId: "bare_hook", baitId: null, fishId: "fish_silverfin", catchRevealed: true } };
+  const before = { ...state(4, [trip], { fish_common: 10 }), fishing: { catches: {} } };
+  const after = { ...state(5, [], { fish_common: 13, fish_rare: 1, ancient_core: 1 }), fishing: { catches: { fish_silverfin: 2, fish_rudd: 1, fish_mooncarp: 1 } } };
+  const event = inventoryGainFromReceipt(before, result(after), command("claim_job", trip.id, 4));
+  assert.deepEqual(event.items, [{ itemId: "fish_common", quantity: 3 }, { itemId: "fish_rare", quantity: 1 }, { itemId: "ancient_core", quantity: 1 }]);
+  assert.deepEqual(event.displayItems, [{ itemId: "fish_silverfin", quantity: 2 }, { itemId: "fish_rudd", quantity: 1 }, { itemId: "fish_mooncarp", quantity: 1 }, { itemId: "ancient_core", quantity: 1 }]);
+  assert.ok(Object.isFrozen(event.displayItems) && event.displayItems.every(Object.isFrozen));
+  assert.equal(inventoryGainFromReceipt(after, { ...result(after), replayed: true }, command("claim_job", trip.id, 4)), null);
+});
+
+test("saved ready catches stay exact when personal discovery counters are already capped", () => {
+  const trip = { ...job("exploration", { fish: 2, fish_silverfin: 1 }), fishing: { rodId: "reed_rod", baitId: null, fishId: "fish", catchRevealed: true } };
+  const catches = { fish: 1_000_000, fish_silverfin: 1_000_000 };
+  const before = { ...state(0, [trip]), fishing: { catches } }, after = { ...state(1, [], { fish_common: 3 }), fishing: { catches } };
+  const event = inventoryGainFromReceipt(before, result(after), command("claim_job", trip.id));
+  assert.deepEqual(event.items, [{ itemId: "fish_common", quantity: 3 }]);
+  assert.deepEqual(event.displayItems, [{ itemId: "fish", quantity: 2 }, { itemId: "fish_silverfin", quantity: 1 }]);
+  const onlyRiver = { ...trip, rewards: { fish: 3 } };
+  const riverEvent = inventoryGainFromReceipt({ ...before, jobs: [onlyRiver] }, result(after), command("claim_job", trip.id));
+  assert.deepEqual(riverEvent.displayItems, [{ itemId: "fish", quantity: 3 }]);
+});
+
+test("an older masked snapshot recovers accepted species deltas without inventing river fish", () => {
+  const trip = { ...job("exploration", { fish: 4, stone: 1 }), fishing: { rodId: "willow_rod", baitId: null, fishId: "fish" } };
+  const before = { ...state(0, [trip]), fishing: { catches: { fish_silverfin: 5 } } };
+  const after = { ...state(1, [], { fish_common: 3, fish_rare: 1, stone: 1 }), fishing: { catches: { fish_silverfin: 7, fish_rudd: 1, fish_mooncarp: 1 } } };
+  const event = inventoryGainFromReceipt(before, result(after), command("claim_job", trip.id));
+  assert.deepEqual(event.items, [{ itemId: "fish_common", quantity: 3 }, { itemId: "stone", quantity: 1 }, { itemId: "fish_rare", quantity: 1 }]);
+  assert.deepEqual(event.displayItems, [{ itemId: "fish_silverfin", quantity: 2 }, { itemId: "fish_rudd", quantity: 1 }, { itemId: "fish_mooncarp", quantity: 1 }, { itemId: "stone", quantity: 1 }]);
+  assert.ok(event.displayItems.every(item => item.itemId !== "fish"));
+});
+
+test("unknown legacy catches keep class fallbacks, and unrelated collection deltas cannot exceed stock gains", () => {
+  const trip = { ...job("exploration", { fish: 4 }), fishing: { rodId: "reed_rod", baitId: null, fishId: "fish" } };
+  const before = { ...state(0, [trip]), fishing: { catches: { fish: 100 } } };
+  const after = { ...state(1, [], { fish_common: 2, fish_rare: 2 }), fishing: { catches: { fish: 100 } } };
+  const unknown = inventoryGainFromReceipt(before, result(after), command("claim_job", trip.id));
+  assert.equal(unknown.displayItems, undefined);
+  assert.deepEqual(unknown.items, [{ itemId: "fish_common", quantity: 2 }, { itemId: "fish_rare", quantity: 2 }]);
+  const mixed = { ...after, fishing: { catches: { fish: 100, fish_silverfin: 50, fish_mooncarp: 1, fish_shark: 99 } } };
+  const event = inventoryGainFromReceipt(before, result(mixed), command("claim_job", trip.id));
+  assert.deepEqual(event.displayItems, [{ itemId: "fish_silverfin", quantity: 2 }, { itemId: "fish_mooncarp", quantity: 1 }, { itemId: "fish_rare", quantity: 1 }]);
+  assert.equal(event.displayItems.reduce((sum, item) => sum + item.quantity, 0), 4);
+});
+
+test("an actual species result cannot authorize stock or discovery for an absent class", () => {
+  const trip = { ...job("exploration", { fish_silverfin: 2 }), fishing: { rodId: "reed_rod", baitId: null, fishId: "fish_silverfin", catchRevealed: true } };
+  const before = { ...state(0, [trip]), fishing: { catches: {} } };
+  const after = { ...state(1, [], { fish_common: 2, fish_legendary: 30 }), fishing: { catches: { fish_silverfin: 2, fish_shark: 30 } } };
+  const event = inventoryGainFromReceipt(before, result(after), command("claim_job", trip.id));
+  assert.deepEqual(event.items, [{ itemId: "fish_common", quantity: 2 }]);
+  assert.deepEqual(event.displayItems, [{ itemId: "fish_silverfin", quantity: 2 }]);
+});
 
 test("a claim event contains only this removed job's confirmed inventory increase, not the full pantry", () => {
   const trip = job(), before = state(4, [trip], { fish: 17, wood: 90, stone: 5 });

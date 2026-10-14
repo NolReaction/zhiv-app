@@ -262,6 +262,18 @@ test("fishing help quotes the real probability per fish class without promising 
   assert.match(answer("collection"), /Продажа, готовка и заказ не стирают находку/);
 });
 
+test("fishing guidance distinguishes an authoritative catch, class stock art and personal discoveries", () => {
+  assert.match(answer("plesk"), /нынешние проценты с выбранной снастью в пяти строках/);
+  assert.match(answer("plesk"), /Открытие не покупает снасть/);
+  assert.match(answer("fishing-result"), /Пока рыбалка идёт, видно только количество рыб/);
+  assert.match(answer("fishing-result"), /Когда игра подтвердит возвращение.*виды, редкость и количество/);
+  assert.match(answer("fishing-result"), /Нажмите «Забрать».*запасы по классам.*навсегда откроются в вашей книге/);
+  assert.match(answer("fishing-result"), /прежних вылазок могут остаться общие классы рыб/);
+  assert.match(answer("fishing-result"), /иллюстрация класса, а не состав оставшихся рыб/);
+  assert.deepEqual(topic("fishing-result").action.target, { kind: "expeditions", sector: "coast" });
+  assert.ok(topic("collection").relatedIds.includes("fishing-result"));
+});
+
 test("timers, production slots and prices derive from gameplay catalogs", () => {
   assert.ok(answer("check-in").includes(`${CLICKER_IDLE_RESET_MS / 1000} секунд`));
   assert.ok(answer("level").includes(`уровней ${CLICKER_LEVELS.length}`));
@@ -270,6 +282,8 @@ test("timers, production slots and prices derive from gameplay catalogs", () => 
     assert.ok(answer("production-slots").includes(`${upgrade.slots}-е - за ${formatPearls(upgrade.pricePearls)} жемчужин с дома ${upgrade.requiredHomeLevel}`));
   }
   assert.match(answer("production-slots"), /Третье до покупки второго показывает только замок/);
+  assert.match(answer("production-slots"), /три одинаковых места/);
+  assert.match(answer("production-slots"), /обе очереди.*«Верстак» и «Печь».*откроет нужное производство/);
   for (const [label, seconds] of [["1 мин", 60], ["1 ч", 3600], ["24 ч", 86400], ["48 ч", 172800]]) {
     assert.ok(answer("pearls").includes(`${label} - ${formatPearls(constructionTimePearlPrice(seconds))} жемчужин`));
   }

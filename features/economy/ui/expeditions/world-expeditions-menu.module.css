@@ -112,7 +112,6 @@
 .fishingGear[open] > summary > .chevron, .catchDetails[open] > summary > .chevron { transform: rotate(180deg); }
 .fishingGear summary:focus-visible, .catchDetails summary:focus-visible { outline: 2px solid var(--forest-focus, #355e48); outline-offset: 2px; border-radius: 6px; }
 @media (max-width: 360px) { .content.content .route { gap: 4px 5px; padding: 7px; grid-template-columns: 26px minmax(0, 1fr) auto 12px; } .routeIcon { width: 26px; height: 28px; } .gearPreview { gap: 3px; } }
-.savedHook { margin: 0; display: flex; align-items: center; gap: 6px; color: var(--forest-muted, #59624d); font-size: .75rem; line-height: 1.5; overflow-wrap: anywhere; }
 .fishingGear strong { color: var(--forest-ink, #394d3e); font-weight: 600; }
 .fishingGear p { margin: 0; color: var(--forest-muted, #59624d); font-size: .75rem; }
 .gearControls > button { min-height: 44px; justify-self: start; text-align: left; }

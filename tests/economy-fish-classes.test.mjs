@@ -3,7 +3,7 @@ import test, { after } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
 const root = fileURLToPath(new URL('..', import.meta.url));
-const vite = await createServer({ appType: 'custom', configFile: false, root, resolve: { alias: { '@': root } }, server: { middlewareMode: true, hmr: false, ws: false } });
+const vite = await createServer({ appType: 'custom', configFile: false, root, cacheDir: '/tmp/zhiv-fish-classes-vite', resolve: { alias: { '@': root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { economyCatalog: catalog, economyCatalogSchema, ECONOMY_MAX_ITEMS } = await vite.ssrLoadModule('/features/economy/domain/model.ts');
 const fish = await vite.ssrLoadModule('/features/economy/domain/fishing.ts');
@@ -83,13 +83,15 @@ test('version4 jobs claim their frozen species and costs regardless of current r
   assert.equal(state.fishing.equippedRodId, 'reed_rod');
 });
 
-test('public catches hide class rolls and accepted claims celebrate actual classes only', () => {
+test('unfinished catches hide class rolls while completed catches preserve actual classes without inventing species', () => {
   const id = crypto.randomUUID();
   const saved = { id, kind: 'exploration', targetId: 'shore', recipeId: null, targetLevel: null,
     startedAt: new Date(now - 180000).toISOString(), finishesAt: new Date(now).toISOString(), cost: { coins: 0, items: {} }, catalogVersion: 4,
     rewards: { fish_common: 1, fish_legendary: 1 }, fishing: { rodId: 'starfall_rod', hookId: 'leviathan_hook', baitId: null, fishId: 'fish_shark' } };
-  const hidden = publicEconomyJob(saved);
+  const hidden = publicEconomyJob(saved, now - 1);
   assert.deepEqual(hidden.rewards, { fish: 2 }); assert.equal(hidden.fishing.fishId, 'fish');
+  assert.deepEqual(publicEconomyJob(saved, now).rewards, saved.rewards);
+  assert.deepEqual(publicEconomyJob(saved, now).fishing, { ...saved.fishing, catchRevealed: true });
   const state = fresh(); state.inventory = {}; state.jobs = [saved];
   const before = { ...structuredClone(state), jobs: [hidden], ownerPublicId: 'AAAA-0000-0001', revision: 0, catalog };
   const input = command('claim_job', id); apply(state, input);

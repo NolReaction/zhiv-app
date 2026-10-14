@@ -24,8 +24,10 @@ export type ForestJourneyTravel = {
   fishingAt?: number;
   carryingFish?: boolean;
   basketSpecies?: FishSpeciesId;
+  basketCatchIndex?: number;
   rodId?: string;
   catchSpecies?: FishSpeciesId;
+  catchRevealed?: boolean;
   mining?: { entry: WorldPoint; doorway: WorldPoint; workCue: WorldPoint; phaseAt: number; prepared: boolean };
   jobFishing?: ForestJobFishingPlan;
   jobStartedAt?: number;
@@ -194,6 +196,16 @@ function fishingFrameAt(state: ForestSessionState, scene: FixedWorldScene, trave
     rodId: travel.rodId };
 }
 
+function fishingCleanupSource(travel: ForestJourneyTravel, source: ForestFishingFrame): ForestFishingFrame {
+  if (!travel.jobFishing || source.castIndex === undefined) return source;
+  const packedIndex = Math.max(0, source.castIndex - 1);
+  // Rest after pack points at the next catch window, but its tackle cleanup
+  // still belongs to the fish just packed. Never repaint it with the next fish.
+  const index = source.action === "rest" && source.basketFilled ? packedIndex : source.castIndex;
+  return { ...source, species: travel.jobFishing.catches[index]?.species ?? source.species,
+    basketSpecies: source.basketFilled ? travel.jobFishing.catches[packedIndex]?.species ?? source.basketSpecies : source.basketSpecies };
+}
+
 function beginFishingEnd(state: ForestSessionState, scene: FixedWorldScene, travel: ForestJourneyTravel) {
   const age = travel.jobFishing ? travel.jobAge ?? 0 : Math.max(0, state.director.elapsed - (travel.fishingAt ?? state.director.elapsed));
   const cleanup = travel.jobFishing ? forestJobFishingCleanup(travel.jobFishing,age) : fishingCleanupEnd(age), finishAge = cleanup ?? age;
@@ -201,13 +213,32 @@ function beginFishingEnd(state: ForestSessionState, scene: FixedWorldScene, trav
   travel.ending = { settleAt, endsAt: settleAt + (cleanup === undefined ? .6 : .4), finishAge,
     // Across repeated cycles modulo rounding can sample pack(1) just before
     // rest(0); choose the unambiguous completed side of that same boundary.
-    source: fishingFrameAt(state, scene, travel, finishAge + (cleanup === undefined ? 0 : 1e-9)) };
+    source: fishingCleanupSource(travel, fishingFrameAt(state, scene, travel, finishAge + (cleanup === undefined ? 0 : 1e-9))) };
   state.director.reason = travel.cancelled ? "Убирает снасти после отмены вылазки" : "Убирает снасти перед возвращением";
 }
 
-function preservePackedCatch(travel: ForestJourneyTravel, frame: ForestFishingFrame) {
+function preservePackedCatch(travel: ForestJourneyTravel, frame: Pick<ForestFishingFrame, "basketFilled" | "basketSpecies" | "castIndex">) {
   travel.carryingFish = Boolean(!travel.cancelled && travel.waterTarget && frame.basketFilled);
   travel.basketSpecies = travel.carryingFish ? frame.basketSpecies : undefined;
+  travel.basketCatchIndex = travel.carryingFish && travel.jobFishing && frame.castIndex !== undefined ? Math.max(0, frame.castIndex - 1) : undefined;
+}
+
+/** The server reveals identities after completion. Repaint the existing paid
+ * slots once, including an already packed return, without replaying a catch or
+ * changing its deadline, cleanup clock, physical feet or finite catch count. */
+function revealFishingCatch(travel: ForestJourneyTravel, journey: EconomySceneJourney | null | undefined) {
+  if (!travel.jobFishing || travel.cancelled || travel.catchRevealed || journey?.id !== travel.jobId || journey.fishing?.catchRevealed !== true) return;
+  const revealed = forestJobFishingPlan(journey);
+  travel.jobFishing = { ...travel.jobFishing, catches: travel.jobFishing.catches.map((slot, index) => ({
+    ...slot, species: revealed.catches[index]?.species ?? slot.species,
+  })) };
+  travel.catchRevealed = true;
+  travel.catchSpecies = fishSpeciesId(journey.fishing.fishId);
+  if (travel.carryingFish && travel.basketCatchIndex !== undefined)
+    travel.basketSpecies = travel.jobFishing.catches[travel.basketCatchIndex]?.species ?? travel.basketSpecies;
+  if (travel.ending) {
+    travel.ending.source = fishingCleanupSource(travel, travel.ending.source);
+  }
 }
 
 /** Detached frame shares the session clock, actual feet and authored water.
@@ -265,8 +296,9 @@ export function syncForestJourneyTravel(state: ForestSessionState, scene: FixedW
     || !active && !journey && now < current.finishesAt && !current.jobId.startsWith("dev-fishing:"))) {
     // A confirmed removal before its deadline forfeits the trip on every view.
     // Local cancellation receipts also cover ready jobs already walking home.
-    current.cancelled = true; current.carryingFish = false; current.basketSpecies = undefined;
+    current.cancelled = true; current.carryingFish = false; current.basketSpecies = undefined; current.basketCatchIndex = undefined;
   }
+  if (current) revealFishingCatch(current, journey);
   let cleaned = false;
   if (current?.ending) {
     // Sampling another camera or receiving the same snapshot cannot restart
@@ -298,7 +330,8 @@ export function syncForestJourneyTravel(state: ForestSessionState, scene: FixedW
         const restoring = !observed && age > 15 || still;
         const travel: ForestJourneyTravel = { jobId: id, finishesAt: Date.parse(journey!.finishesAt), phase: "leaving", shore,
           home: { ...state.clearing.home }, beganAt: state.clearing.elapsed, requested: false,
-          ...(journey!.fishing ? { rodId: journey!.fishing.rodId, catchSpecies: fishSpeciesId(journey!.fishing.fishId) } : {}),
+          ...(journey!.fishing ? { rodId: journey!.fishing.rodId, catchSpecies: fishSpeciesId(journey!.fishing.fishId),
+            catchRevealed: journey!.fishing.catchRevealed === true } : {}),
           ...(!id.startsWith("dev-fishing:") ? {jobFishing:forestJobFishingPlan(journey!),jobStartedAt:Date.parse(journey!.startedAt),
             jobAge:Math.max(0,(now-Date.parse(journey!.startedAt))/1000)} : {}),
           scene, waterTarget: fishingWaterTarget(scene, shore, state.clearing.size) };
@@ -315,7 +348,7 @@ export function syncForestJourneyTravel(state: ForestSessionState, scene: FixedW
         if (!cleaned && travel.carryingFish) {
           const catchFrame = travel.jobFishing ? forestJobFishingFrame(travel.jobFishing,travel.jobAge ?? 0,travel.fishBeganAge ?? 0)
             : fishingActionFrame(state.director.elapsed - travel.fishingAt!, false);
-          travel.basketSpecies = catchFrame.basketSpecies;
+          preservePackedCatch(travel, catchFrame);
         }
         travel.phase = "returning"; travel.requested = false; travel.beganAt = state.clearing.elapsed;
         releaseClearingPoint(state.clearing); requestClearingOutside(state.clearing);

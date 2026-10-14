@@ -1,6 +1,7 @@
 import { ItemIcon } from "@/features/items/item-icon";
 import { FISH_SPECIES_IDS } from "@/features/world/activities/fishing/fish-species";
 import type { EconomyView } from "@/features/economy/domain/model";
+import { fishClassIllustration } from "./fish-class-illustration";
 
 /** Inventory, gifts and purchases are not personal discoveries. */
 export function fishDiscovered(state: Pick<EconomyView, "fishing"> | null | undefined, itemId: string) {
@@ -17,7 +18,7 @@ export function HiddenFishIcon({ size = 40 }: { size?: number }) {
 }
 
 /** Owned fish are visible goods. Only personal catches unlock the separate collection book. */
-export function PlayerItemIcon({ state, itemId, size = 24 }: { state?: Pick<EconomyView, "fishing"> & Partial<Pick<EconomyView, "inventory">> | null; itemId: string; size?: number }) {
+export function PlayerItemIcon({ state, itemId, size = 24 }: { state?: Pick<EconomyView, "fishing"> & Partial<Pick<EconomyView, "inventory" | "catalog">> | null; itemId: string; size?: number }) {
   return itemId !== "fish" && FISH_SPECIES_IDS.some(id => id === itemId) && !fishDiscovered(state, itemId) && (state?.inventory?.[itemId] ?? 0) <= 0
-    ? <HiddenFishIcon size={size} /> : <ItemIcon itemId={itemId} size={size} />;
+    ? <HiddenFishIcon size={size} /> : <ItemIcon itemId={itemId} size={size} fishSpecies={fishClassIllustration(state, itemId)} />;
 }

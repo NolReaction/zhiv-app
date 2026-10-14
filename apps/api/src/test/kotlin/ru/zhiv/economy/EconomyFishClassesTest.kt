@@ -93,8 +93,9 @@ class EconomyFishClassesTest {
         val job = EconomyJob(UUID.randomUUID().toString(), "exploration", "shore", startedAt = now.toString(),
             finishesAt = now.plusSeconds(180).toString(), rewards = mapOf("fish_rare" to 1L, "fish" to 1L),
             fishing = EconomyFishingCatch("reed_rod", null, "fish_rare"))
-        assertEquals(mapOf("fish" to 2L), EconomyPublicJobs.project(job).rewards)
-        assertEquals("fish", EconomyPublicJobs.project(job).fishing?.fishId)
+        assertEquals(mapOf("fish" to 2L), EconomyPublicJobs.project(job, now).rewards)
+        assertEquals("fish", EconomyPublicJobs.project(job, now).fishing?.fishId)
+        assertEquals(job.copy(fishing = job.fishing?.copy(catchRevealed = true)), EconomyPublicJobs.project(job, Instant.parse(job.finishesAt)))
     }
 
     @Test fun `canonical market unlocks exist and legendary class respects tackle home gate`() {

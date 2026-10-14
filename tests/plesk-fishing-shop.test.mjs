@@ -6,7 +6,7 @@ import { Children, createElement, isValidElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
+const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "node_modules/.vite-plesk-shop", resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 const { PleskFishingShop, PleskFishTrade, PleskRodOffer, PleskHookOffer, PleskBaitOffer, PleskFishOffer, PleskTackleCounter, PleskFishingCollection, PleskCatchOdds, PleskMerchantHeader, FishCounter, fishingTradeLimits } = await vite.ssrLoadModule("/features/economy/ui/fishing/plesk-fishing-shop.tsx");
 const { PleskFishingBookPage, fishingBookEntries, fishingBookPage, FISHING_BOOK_PAGE_SIZE } = await vite.ssrLoadModule("/features/economy/ui/fishing/plesk-fishing-book.tsx");
 const { economyCatalog, economyFishingSchema, ECONOMY_MAX_BALANCE } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
@@ -15,7 +15,7 @@ const { fishingClassOdds, fishingState } = await vite.ssrLoadModule("/features/e
 const { normalizedResidentOrders } = await vite.ssrLoadModule("/features/economy/domain/food.ts");
 after(() => vite.close());
 const merchantHookModule = "virtual:merchant-selection-hooks";
-const merchantVite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } },
+const merchantVite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "node_modules/.vite-plesk-shop-hooks", resolve: { alias: { "@": root } },
   server: { middlewareMode: true, hmr: false, ws: false }, plugins: [{ name: "merchant-selection-handlers", enforce: "pre",
     resolveId(id) { if (id === merchantHookModule) return `\0${id}`; },
     load(id) { if (id === `\0${merchantHookModule}`) return `
@@ -413,11 +413,10 @@ test("odds previews use authoritative loadout weights and show every rarity targ
   const expected = fishingClassOdds(state, catalog, override);
   const html = renderToStaticMarkup(createElement(PleskCatchOdds, { state, catalog, override, preview: true }));
   const percent = value => `${new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 4 }).format(value * 100)}%`;
-  assert.match(html, /на каждую пойманную рыбу/);
-  assert.match(html, /Сначала определяется класс/);
-  assert.match(html, /после выбора снасти перед отправлением/);
+  assert.match(html, /Шансы улова|Сейчас → с этой снастью/);
+  assert.doesNotMatch(html, /Сначала определяется класс|Легендарную рыбу открывает|Сначала выберите|после выбора снасти перед отправлением/);
   assert.equal((html.match(/data-fish-class-odds=/g) ?? []).length, 5);
-  for (const odd of expected) assert.ok(html.includes(`<dd>${percent(odd.probability)}</dd>`));
+  for (const odd of expected) assert.ok(html.includes(`data-catch-probability="${odd.itemId}" aria-hidden="true">${percent(odd.probability)}</strong>`));
   const baseShark = fishingClassOdds(state, catalog).find(odd => odd.rarity === "legendary").probability;
   const betterShark = expected.find(odd => odd.rarity === "legendary").probability;
   assert.equal(baseShark, 0); assert(betterShark > .55 && betterShark < 1);
@@ -552,11 +551,47 @@ test("star bait has visible artwork, a purchasable class preview and an owned bo
   assert.ok(itemIconIds.includes("star_bait"));
 });
 
-test("bait for a zero-base class explains that changing the rod is necessary", () => {
+test("bait for a zero-base class shows honest zero chances without unrelated rod warnings", () => {
   const state = snapshot(), bait = state.catalog.fishing.baits.find(entry => entry.itemId === "star_bait");
   const html = renderToStaticMarkup(createElement(PleskBaitOffer, { state, bait, economy: controller(state) }));
-  assert.match(html, /Выбранной удочке недоступен этот класс/);
-  assert.match(html, /Легендарную рыбу открывает легендарная удочка/);
+  assert.match(html, /aria-label="Легендарная рыба: 0%"/);
+  assert.match(html, /data-fishing-target="fish_legendary"/);
+  assert.doesNotMatch(html, /Выбранной удочке недоступен|Легендарную рыбу открывает|Крючок и наживка|Сначала выберите/);
   const legendary = renderToStaticMarkup(createElement(PleskCatchOdds, { state, catalog: state.catalog.fishing, override: { rodId: "starfall_rod", hookId: "bare_hook" } }));
   assert.doesNotMatch(legendary, /Нужны легендарные|Крючок и наживка сами её не открывают/);
+});
+
+test("the odds compare every changed class against the saved loadout including decreases", () => {
+  const state = snapshot();
+  state.fishing = { ...state.fishing, equippedRodId: "willow_rod", equippedHookId: "bare_hook", equippedBaitId: "glow_bait" };
+  const before = structuredClone(state), override = { hookId: "silver_hook" };
+  const current = fishingClassOdds(state, state.catalog.fishing);
+  const next = fishingClassOdds(state, state.catalog.fishing, override);
+  const view = inspect(PleskCatchOdds, { state, catalog: state.catalog.fishing, override, preview: true, targetRarity: "rare" });
+  const format = probability => new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 4 }).format(probability * 100) + "%";
+  for (const odd of next) {
+    const row = view.elements.find(element => element.props["data-fish-class-odds"] === odd.itemId);
+    const currentChance = current.find(item => item.rarity === odd.rarity).probability;
+    const changed = Math.abs(currentChance - odd.probability) > 1e-10;
+    assert.equal(row.props["data-odds-change"], changed ? odd.probability > currentChance ? "increase" : "decrease" : undefined);
+    const value = Children.toArray(row.props.children).find(element => element.type === "dd");
+    assert.ok(value.props["aria-label"].includes(format(odd.probability)));
+    if (changed) assert.ok(value.props["aria-label"].includes(`Сейчас ${format(currentChance)} → с этой снастью ${format(odd.probability)}`));
+    else assert.doesNotMatch(value.props["aria-label"], /Сейчас|с этой снастью/);
+  }
+  assert.equal(next.find(item => item.rarity === "legendary").probability, 0);
+  assert.deepEqual(state, before);
+});
+
+test("current and unchanged tackle odds have one probability per class with no false changes", () => {
+  const state = snapshot(), before = structuredClone(state);
+  const owned = state.catalog.fishing.rods.find(rod => rod.id === state.fishing.equippedRodId);
+  const html = renderToStaticMarkup(createElement(PleskRodOffer, { state, rod: owned, economy: controller(state) }));
+  assert.match(html, /Шансы улова|На одну рыбу/);
+  assert.equal((html.match(/data-catch-probability=/g) ?? []).length, state.catalog.fishing.classes.length);
+  assert.doesNotMatch(html, /data-odds-change=|Сейчас → с этой снастью|Сначала определяется класс/);
+  assert.ok(!html.includes(owned.description), "authored percentage copy does not duplicate the real odds");
+  const preview = inspect(PleskCatchOdds, { state, catalog: state.catalog.fishing, override: { rodId: owned.id }, preview: true });
+  assert.equal(preview.elements.filter(element => element.props["data-odds-change"]).length, 0);
+  assert.deepEqual(state, before);
 });

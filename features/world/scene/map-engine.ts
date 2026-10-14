@@ -23,6 +23,7 @@ export type MapInteractionCallbacks = {
   objectAnchorsEnabled?: boolean;
   onSelectionChange?: (selection: MapObjectSelection | null) => void;
   onObjectAnchorsChange?: (anchors: readonly MapObjectScreenAnchor[]) => void;
+  objectMarkerHeight?: (place: MapObjectPlace) => number;
 };
 export type MapAction = "home" | "pet" | "overview" | "in" | "out" | "plesk" | "builder" | "fishing";
 export type CameraHudElements = { top?: HTMLElement | null; bottom?: HTMLElement | null };
@@ -129,7 +130,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   function updateObjectAnchors(objects: readonly MapInteractiveObject[]) {
     if (disposed || !objectAnchorsEnabled || !interactions.onObjectAnchorsChange) return;
     const projected = objects.flatMap(object => {
-      const anchor = projectConstructionAnchor(object, camera, view, cameraInsets);
+      const anchor = projectConstructionAnchor(object, camera, view, cameraInsets, interactions.objectMarkerHeight?.(object.place));
       return anchor ? [anchor] : [];
     });
     const key = JSON.stringify(projected);
@@ -402,6 +403,9 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     activateObject,
     setSelectedObject,
     setGuidePlace,
+    refreshObjectAnchors() {
+      if (!document.hidden && !options.backgrounded && inView) updateObjectAnchors(habitat.mapObjects?.() ?? []);
+    },
     setObjectAnchorsEnabled(enabled: boolean) {
       if (disposed || enabled === objectAnchorsEnabled) return;
       objectAnchorsEnabled = enabled; anchorsKey = "";

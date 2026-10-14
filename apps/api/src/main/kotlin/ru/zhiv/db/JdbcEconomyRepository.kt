@@ -116,7 +116,7 @@ internal fun saveEconomyProfile(c: Connection, user: UUID, state: EconomyState, 
 internal fun economyView(c: Connection, user: UUID, publicId: String, now: Instant): EconomyView {
     val row = readEconomyProfile(c, user)
     val s = EconomyStageOrders.pin(row.state, now=now)
-    return EconomyView(publicId, row.revision, now.toString(), s.wallet, s.inventory, s.buildings, s.jobs.map(EconomyPublicJobs::project), s.migration,
+    return EconomyView(publicId, row.revision, now.toString(), s.wallet, s.inventory, s.buildings, s.jobs.map { EconomyPublicJobs.project(it, now) }, s.migration,
         EconomyRules.catalog, EconomyRules.storage(s, reservedEconomyMarketItems(c, user)), s.completedExplorations, s.fishing, s.progression, wardrobe = s.wardrobe, fishingShop = s.fishingShop,
         productionSlots = s.productionSlots, food = s.food, residentOrders = s.residentOrders,
         workshopStarterClaimed = s.workshopStarterClaimed, tutorialOrder = s.tutorialOrder, stageOrders = s.stageOrders,

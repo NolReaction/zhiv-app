@@ -305,6 +305,28 @@ test("working cells show their saved products in every manufacturing station", (
   }
 });
 
+test("long saved product names fit the reserved slot frame and keep their full accessible label", async () => {
+  hooks.reset();
+  const economy = controller();
+  economy.snapshot.buildings.kiln = 1;
+  const fullName = "Древесный уголь из тщательно высушенных лесных брёвен";
+  economy.snapshot.catalog.items.find(item => item.id === "charcoal").name = fullName;
+  const job = production("long-charcoal", "kiln", { recipeId: "make_charcoal", rewards: { charcoal: 1 } });
+  economy.snapshot.jobs = [job];
+  const tree = renderWork(ProductionWork, { economy, job, compact: true });
+  const control = elements(tree).find(node => node.props["data-production-control"]);
+  assert.equal(control.props["aria-label"], `Отменить производство: ${fullName} ×1`);
+  assert.match(renderToStaticMarkup(tree), /data-item-icon="charcoal"/);
+  assert.equal(elements(control).find(node => node.type === "strong").props.children, `${fullName} ×1`);
+  assert.equal(elements(control).filter(node => node.props["data-production-action"]).length, 1);
+
+  const css = await readFile(new URL("../features/economy/ui/production/world-production-slots.module.css", import.meta.url), "utf8");
+  assert.match(css, /\.slots\.slots \.slot\s*\{[^}]*height: 118px;[^}]*min-height: 118px;/);
+  assert.match(css, /button\[data-production-control\]\s*\{[^}]*grid-template-rows:[^}]*height: 84px;[^}]*min-height: 0;/);
+  assert.match(css, /button\[data-production-control\] > strong\s*\{[^}]*-webkit-line-clamp: 2;/);
+  assert.match(css, /\.job:has\(p\)\s*\{\s*height: auto;/, "blocking messages and pantry controls remain readable");
+});
+
 test("cancellation uses one compact action row and describes the exact stored refund accessibly", () => {
   hooks.reset(); const calls = [];
   const job = production("paid", "workshop", { recipeId: "make_rope", rewards: { rope: 1 }, cost: { coins: 17, items: { fiber: 3, wood: 2 } }, catalogVersion: 1 });

@@ -3,9 +3,9 @@
 .heading h3 { margin: 0; font-size: 11px; font-weight: 600; }
 .heading > span { font-size: 10px; color: #59674d; font-variant-numeric: tabular-nums; }
 .track { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: stretch; gap: 5px; }
-.slots.slots .slot { display: flex; flex-direction: column; justify-content: flex-start; align-items: center; gap: 5px; box-sizing: border-box; min-height: 118px; min-width: 0; padding: 7px 4px; border: 1px solid #b3bb8c; border-radius: 8px; background: #e2e5c5; color: #394d3e; text-align: center; font: inherit; font-size: 10px; line-height: 1.3; }
+.slots.slots .slot { display: flex; flex-direction: column; justify-content: flex-start; align-items: center; gap: 4px; box-sizing: border-box; height: 118px; min-height: 118px; min-width: 0; padding: 6px 4px; border: 1px solid #b3bb8c; border-radius: 8px; background: #e2e5c5; color: #394d3e; text-align: center; font: inherit; font-size: 10px; line-height: 1.3; }
 .slot > span, .slot > strong { min-width: 0; overflow-wrap: anywhere; }
-.slotNumber { align-self: stretch; font-size: 9px; font-weight: 400; color: #66704f; }
+.slotNumber { flex: 0 0 12px; align-self: stretch; font-size: 9px; line-height: 12px; font-weight: 400; color: #66704f; }
 .slot > svg { margin-top: 4px; color: #809364; }
 .slots.slots .closed { border-style: dashed; border-color: #b9ab83; background: #e1d6b8; cursor: pointer; touch-action: manipulation; }
 .slots.slots .closed:hover:not(:disabled) { background: #eee1c1; }
@@ -15,10 +15,18 @@
 .price { display: inline-flex; align-items: center; justify-content: center; gap: 3px; color: #625578; font-variant-numeric: tabular-nums; }
 .slots.slots .slot[data-state="working"] { border-color: #99ae7a; background: #e7e7c4; }
 .slots.slots .slot[data-state="ready"] { border-color: #96a071; background: #dce1b7; }
-/* The product cell keeps its own claim/cancellation behavior in every station. */
+/* Reserve every work row before a job starts; the independent action cell
+   retains its claim/cancellation handlers and full accessible product name. */
 .job > div[data-job-id] { width: 100%; min-width: 0; padding: 0; border: 0; background: transparent; }
-.slots.slots .job button[data-production-control] { border: 0; background: transparent; color: #394d3e; }
-.job progress { margin-top: 6px; }
+.slots.slots .job button[data-production-control] { display: grid; grid-template-rows: 24px 22px 11px 20px 3px; align-items: center; justify-items: center; gap: 1px; width: 100%; height: 84px; min-height: 0; padding: 0; border: 0; background: transparent; color: #394d3e; }
+.job button[data-production-control] > span:first-child { min-width: 0; height: 24px; flex-wrap: nowrap; }
+.job button[data-production-control] > span:first-child > svg { width: 24px; height: 24px; }
+.job button[data-production-control] > strong { display: -webkit-box; min-width: 0; max-width: 100%; max-height: 22px; margin: 0; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; font-size: 10px; line-height: 11px; overflow-wrap: anywhere; }
+.job button[data-production-control] > span:nth-of-type(2) { display: block; width: 100%; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 9px; line-height: 11px; }
+.slots.slots .job [data-production-action] { flex: 0 0 20px; height: 20px; max-width: 100%; padding: 2px 4px; font-size: 9px; }
+.job progress { width: 100%; height: 3px; margin: 0; }
+/* A blocking explanation must stay readable, including its pantry action. */
+.slots.slots .job:has(p) { height: auto; }
 .job p { overflow-wrap: anywhere; text-align: left; }
 .hint { margin: 6px 0 0; color: #776044; font-size: 10px; overflow-wrap: anywhere; }
 .confirmation { margin-top: 8px; padding: 9px; border: 1px solid #aaa0bd; border-radius: 9px; background: #eee7e5; }

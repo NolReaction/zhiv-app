@@ -14,8 +14,9 @@ import type { EconomyController } from "@/features/economy/sync/use-economy";
 import { locked } from "@/features/economy/sync/controller-state";
 import { ProductIcon, itemName, number, stationName } from "@/features/economy/ui/shared/world-economy-parts";
 import { worldCostShortfalls, worldDuration, worldJobProgress, worldMissingRequirements, worldRequirements } from "@/features/economy/ui/shared/world-stations";
-import { fishingBaitCompatible, fishingState, fishingTripCost } from "@/features/economy/domain/fishing";
+import { fishClassForItem, fishingBaitCompatible, fishingState, fishingTripCost } from "@/features/economy/domain/fishing";
 import { ExpeditionFishingSummary } from "@/features/economy/ui/fishing/expedition-fishing-summary";
+import { FishingCatchReport, fishingCatchRevealed } from "@/features/economy/ui/fishing/fishing-catch-report";
 import { PleskCatchOdds } from "@/features/economy/ui/fishing/plesk-fishing-shop";
 import { useFishingCommand } from "@/features/economy/ui/fishing/use-fishing-command";
 import { economyActorConflict, economyMinerConflict, explorationActorId, isMinerJob, isQuarryProduction } from "@/features/economy/domain/actor-availability";
@@ -82,7 +83,7 @@ export function expeditionCancellationKey(owner: string, job: EconomyJob) {
     entries(job.rewards), job.cost.coins, entries(job.cost.items), job.catalogVersion, job.collection ?? null, job.fishing ?? null, job.meal ?? null, job.actorId ?? null]);
 }
 
-export function ActiveExpedition({ economy, state, job, onOpenPantry, onOpenHelp, confirmationKey, onConfirmation, onCancellationSent }: Pick<WorldExpeditionsMenuProps, "economy" | "onOpenPantry" | "onOpenHelp"> & {
+export function ActiveExpedition({ economy, state, job, onOpenPantry, onOpenHelp, isOnline, confirmationKey, onConfirmation, onCancellationSent }: Pick<WorldExpeditionsMenuProps, "economy" | "onOpenPantry" | "onOpenHelp" | "isOnline"> & {
   state: EconomyView; job: EconomyJob; confirmationKey: string | null; onConfirmation: (key: string | null) => void;
   onCancellationSent: (jobId: string) => void;
 }) {
@@ -106,8 +107,20 @@ export function ActiveExpedition({ economy, state, job, onOpenPantry, onOpenHelp
   }, [confirming, blocked]);
   const claimBlocked = !status.ready || status.storageShortfall > 0 || blocked || confirming;
   const paid = job.cost.coins > 0 || Object.values(job.cost.items).some(quantity => quantity > 0);
-  const tripHookId = job.fishing?.hookId ?? "bare_hook";
-  const tripHook = state.catalog.fishing?.hooks.find(hook => hook.id === tripHookId);
+  const fishing = Boolean(state.catalog.fishing && (job.fishing || state.catalog.fishing.routeIds.includes(job.targetId)));
+  const catchRevealed = status.ready && fishingCatchRevealed(state, job);
+  const catchRefresh = useRef<string | null>(null);
+  const refreshCatch = economy.refresh;
+  useEffect(() => {
+    if (!job.fishing || !status.ready || catchRevealed || blocked || isOnline === false || document.hidden || !navigator.onLine) return;
+    const revealKey = JSON.stringify([state.ownerPublicId, job.id, job.finishesAt]);
+    if (catchRefresh.current === revealKey) return;
+    catchRefresh.current = revealKey;
+    // One read at the deadline, never a claim or a loop against an older server snapshot.
+    // The controller additionally checks its session's enabled/available state.
+    void refreshCatch();
+  }, [state.ownerPublicId, job.id, job.finishesAt, job.fishing, status.ready, catchRevealed, blocked, isOnline, economy.now, refreshCatch]);
+  const extraRewards = fishing ? Object.fromEntries(Object.entries(job.rewards).filter(([id]) => !fishClassForItem(id, state.catalog.fishing))) : job.rewards;
   function cancel() {
     if (!confirming || blocked || sentForKey.current === key) return;
     sentForKey.current = key;
@@ -118,8 +131,8 @@ export function ActiveExpedition({ economy, state, job, onOpenPantry, onOpenHelp
   const ActivityIcon = mining ? Mountain : Compass;
   return <section ref={card} tabIndex={-1} className={styles.active} aria-label={`${mining ? "Текущая добыча" : "Текущая вылазка"}: ${title}`} aria-busy={economy.busy || undefined} data-mining={mining || undefined} data-ready={status.ready || undefined}>
     <div className={styles.activeTitle}><ActivityIcon size={18} aria-hidden="true" /><div><span>{mining ? status.ready ? "Добыча готова" : "Шахта работает" : status.ready ? "Мохлик вернулся" : "Мохлик в пути"}</span><strong>{title}</strong></div></div>
-    {job.fishing && <p className={styles.savedHook}><ItemIcon itemId={tripHookId} size={20} /><span>Крючок этой вылазки: {tripHook?.name ?? (tripHookId === "bare_hook" ? "Простой крючок" : "Сохранённый крючок")}</span></p>}
-    <Findings state={state} rewards={job.rewards} />
+    {fishing && <FishingCatchReport state={state} rewards={job.rewards} revealed={catchRevealed} />}
+    {Object.keys(extraRewards).length > 0 && <Findings state={state} rewards={extraRewards} />}
     <progress className={styles.progress} value={status.progress} max={1} aria-label={`Готовность ${mining ? "добычи" : "вылазки"}: ${title}`} />
     <div className={styles.actions}><span className={styles.time}>{status.ready ? <Check size={13} aria-hidden="true" /> : <Clock3 size={13} aria-hidden="true" />}{status.ready ? "Находки ждут" : `Ещё ${status.seconds < 60 ? `${status.seconds} с` : worldDuration(status.seconds)}`}</span><button type="button" className={styles.primary} disabled={claimBlocked} onClick={() => { if (!claimBlocked) void economy.act("claim_job", job.id); }} aria-label={`Забрать находки: ${title}`}>Забрать</button></div>
     {status.ready && status.storageShortfall > 0 && <div className={styles.warning}><p>Нужно освободить {number(status.storageShortfall)} мест. Находки сохранятся до получения.</p><button type="button" className={styles.link} onClick={onOpenPantry}><Package size={13} aria-hidden="true" />Открыть кладовую<ArrowRight size={12} aria-hidden="true" /></button></div>}
@@ -333,7 +346,7 @@ export function WorldExpeditionsMenu({ economy, onOpenPantry, onNavigateStation,
   return <div ref={content} className={styles.content} tabIndex={-1} data-embedded={embeddedCaves || undefined}>
     {!state ? <div className={styles.loading}><Compass size={18} aria-hidden="true" /><p>{economy.error ?? "Открываем маршруты…"}</p>{economy.error && retry}</div> : <>
       {!embeddedCaves && (economy.error || economy.uncertain || cooldown > 0) && <div className={styles.warning} role="alert"><p>{economy.uncertain ? "Проверяем последнее действие. Дождитесь подтверждения, прежде чем продолжать." : economy.error ?? "Подождите перед следующим действием."}</p>{retry}</div>}
-      {jobs.map(job => <ActiveExpedition key={job.id} economy={economy} state={state} job={job} onOpenPantry={onOpenPantry} onOpenHelp={onOpenHelp}
+      {jobs.map(job => <ActiveExpedition key={job.id} economy={economy} state={state} job={job} onOpenPantry={onOpenPantry} onOpenHelp={onOpenHelp} isOnline={isOnline}
         confirmationKey={confirmationKey} onConfirmation={setConfirmationKey} onCancellationSent={jobId => { cancellationSent.current = jobId; }} />)}
       {!embeddedCaves && !activeOnly && !currentSector && <>
         <header className={styles.chooserHeading}><span>Время приключений</span><h3>Чем займёмся?</h3><p>{jobs.length ? "Пока Мохлик в пути, можно выбрать следующий маршрут." : "Небольшая прогулка или целое приключение."}</p></header>

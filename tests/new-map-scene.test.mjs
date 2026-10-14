@@ -717,6 +717,40 @@ test("construction anchors follow live map projection without repeated React not
   } finally { engine?.dispose(); worldDevStore.reset(); env.restore(); }
 });
 
+test("shared workshop marker height refreshes paused anchors without repaint or top HUD overlap", async () => {
+  const workshop = { ...clearingHome, id: "workshop", label: "Мастерская" };
+  const { createMapEngine, worldDevStore } = await modules({ sites: [workshop] });
+  const env = browser(); let engine;
+  try {
+    worldDevStore.patch(quietClearing);
+    const canvas = env.surface(400), samples = [], top = { offsetHeight: 40 }, bottom = { offsetHeight: 40 };
+    let markerHeight = 44;
+    const loading = createMapEngine(canvas, options, assert.fail, [], undefined, { top, bottom }, {
+      onObjectAnchorsChange: anchors => samples.push(anchors),
+      objectMarkerHeight: place => place === "workshop" ? markerHeight : 44,
+    });
+    env.finish(); await flush(); env.finishPath("/test-residence.webp"); engine = await loading;
+    engine.control("overview");
+    const [original] = samples.at(-1);
+    assert.equal(original.place, "workshop");
+    top.offsetHeight = original.y - 66; env.resize(top);
+    assert.deepEqual(samples.at(-1), [original], "one 44px section fits below the measured HUD");
+    engine.update({ ...options, paused: true });
+    const painted = canvas.calls.length, frames = env.frames.size;
+    markerHeight = 88; engine.refreshObjectAnchors();
+    assert.deepEqual(samples.at(-1), [], "adding the second section cannot extend behind the HUD");
+    markerHeight = 44; engine.refreshObjectAnchors();
+    assert.deepEqual(samples.at(-1), [original], "a completed queue restores the smaller badge immediately while paused");
+    assert.equal(canvas.calls.length, painted, "a footprint change projects UI anchors without repainting or moving the forest");
+    assert.equal(env.frames.size, frames, "the refresh does not start a reduced-motion animation loop");
+    const notifications = samples.length;
+    engine.refreshObjectAnchors(); assert.equal(samples.length, notifications, "unchanged anchors remain deduplicated");
+    env.visibility(true); markerHeight = 88; engine.refreshObjectAnchors();
+    assert.equal(samples.length, notifications, "a hidden view buffers the footprint change");
+    env.visibility(false); assert.deepEqual(samples.at(-1), [], "the visible view adopts the buffered height before presenting its badge");
+  } finally { engine?.dispose(); worldDevStore.reset(); env.restore(); }
+});
+
 test("map object selection ignores drag pinch and canceled pointers before a real tap", async () => {
   const { createMapEngine, worldDevStore } = await modules({ sites: [clearingHome] });
   const env = browser(); let engine;

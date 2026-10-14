@@ -36,7 +36,9 @@ internal val economyBerryItemIds = setOf("berries", "strawberries", "blueberries
     val equippedBaitId: String? = null, val catches: Map<String, Long> = emptyMap(),
     val ownedHooks: List<String> = listOf("bare_hook"), val equippedHookId: String = "bare_hook",
 )
-@Serializable data class EconomyFishingCatch(val rodId: String, val baitId: String?, val fishId: String, val hookId: String = "bare_hook")
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable data class EconomyFishingCatch(val rodId: String, val baitId: String?, val fishId: String, val hookId: String = "bare_hook",
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val catchRevealed: Boolean? = null)
 @Serializable data class EconomyFishClass(val rarity: String, val itemId: String, val weight: Int, val buyPrice: Long)
 @Serializable data class EconomyFishSpec(val itemId: String, val description: String, val rarity: String,
     val weight: Int? = null, val affinity: Int? = null, val buyPrice: Long, val requiredHookId: String? = null)
