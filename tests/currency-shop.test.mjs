@@ -40,11 +40,12 @@ test("shop quotes use current currency units and fixed packages without volume d
 
 test("completed house and catalog buildings contribute separate additive percentages", () => {
   const middle = state({ home: 3, workshop: 3, warehouse: 3, garden: 2, woodlot: 2 });
-  assert.deepEqual(shop.currencyShopDevelopment(middle), { homeLevel: 3, completedLevels: 10, totalLevels: 35,
-    homeBonusPercent: 150, buildingBonusPercent: 28, bonusPercent: 178 });
-  assert.deepEqual(shop.currencyShopGoldOffers(middle).map(pack => pack.coins), [27800, 83400, 208500]);
-  assert.equal(firstQuote({ home: 1, garden: 1 }).coins, 10200, "one of 35 completed levels floors the bonus to two percent");
-  const full = state(Object.fromEntries(economyCatalog.buildings.map(building => [building.id, 5])));
+  assert.deepEqual(shop.currencyShopDevelopment(middle), { homeLevel: 3, completedLevels: 10, totalLevels: 37,
+    homeBonusPercent: 150, buildingBonusPercent: 27, bonusPercent: 177 });
+  assert.deepEqual(shop.currencyShopGoldOffers(middle).map(pack => pack.coins), [27700, 83100, 207750]);
+  assert.equal(firstQuote({ home: 1, garden: 1 }).coins, 10200, "one of 37 completed levels floors the bonus to two percent");
+  const full = state({ home: 5, workshop: 5, warehouse: 10, garden: 5, woodlot: 5, quarry: 5, dryer: 5, kiln: 5, bridge: 1, lighthouse: 1 });
+  assert.equal(shop.currencyShopDevelopment(full).completedLevels, 37, "each restored landmark contributes one completed level");
   assert.equal(shop.currencyShopDevelopment(full).bonusPercent, 700);
   assert.deepEqual(shop.currencyShopGoldOffers(full).map(pack => pack.coins), [80000, 240000, 600000]);
 });
@@ -54,7 +55,8 @@ test("optional warehouse expansions preserve every original gold quote and never
   originalCatalog.buildings.find(building => building.id === "warehouse").levels =
     originalCatalog.buildings.find(building => building.id === "warehouse").levels.filter(level => level.level <= 5);
   for (const home of [1, 2, 3, 4, 5]) for (const warehouse of [0, 1, 2, 3, 4, 5]) for (const other of [0, 2, 5]) {
-    const buildings = Object.fromEntries(economyCatalog.buildings.map(building => [building.id, other]));
+    const buildings = Object.fromEntries(economyCatalog.buildings.map(building => [building.id,
+      ["bridge", "lighthouse"].includes(building.id) ? Math.min(1, other) : other]));
     Object.assign(buildings, { home, warehouse });
     const original = { catalog: originalCatalog, buildings };
     assert.deepEqual(shop.currencyShopGoldOffers(state(buildings)), shop.currencyShopGoldOffers(original));

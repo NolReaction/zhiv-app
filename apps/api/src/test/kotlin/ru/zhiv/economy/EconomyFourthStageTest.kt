@@ -93,6 +93,8 @@ class EconomyFourthStageTest {
         fails("ECONOMY_JOB_NOT_READY") { apply(travelling, "claim_job", job.id, end.minusNanos(1)) }
         val claimed = apply(travelling, "claim_job", job.id, end)
         assertEquals(1L, claimed.progression.routes[route.id])
+        assertEquals(route.seconds, claimed.progression.collections.travelSeconds)
+        assertEquals(5, claimed.progression.collections.finds.size)
         assertTrue(claimed.inventory.values.sum() <= 50L, "One complete route fits the free warehouse")
         fails("ECONOMY_JOB_GONE") { apply(claimed, "claim_job", job.id, end) }
         val delivered = apply(claimed.copy(inventory = course.orders.last().items), "complete_resident_order", course.orders.last().id, end)

@@ -45,6 +45,20 @@ test("inherited finds are kept and the next interval reveals a missing entry", (
   assert.deepEqual(inherited.routes, {}); assert.equal(inherited.collections.travelSeconds, 0);
 });
 
+test("far bank expeditions count saved travel time and forest finds in the book", () => {
+  for (const id of ["far_bank_path", "far_bank_grove", "ancient_ruins"]) {
+    const route = model.economyCatalog.explorations.find(entry => entry.id === id);
+    assert.ok(route);
+    const completed = progress.advanceEconomyProgression(undefined, job(id, route.seconds));
+    const forest = progress.advanceEconomyProgression(undefined, job("forest", route.seconds));
+    assert.deepEqual(completed.routes, { [id]: 1 });
+    assert.equal(completed.collections.travelSeconds, route.seconds);
+    assert.equal(completed.collections.quarrySeconds, 0);
+    assert.deepEqual(completed.collections, forest.collections);
+    assert.ok(completed.collections.finds.length > 0);
+  }
+});
+
 test("quarry productions and cave routes use their actual saved durations and keep separate clocks", () => {
   let state = progress.advanceEconomyProgression(undefined, job("quarry", 7200, "production", "extract_stone"));
   state = progress.advanceEconomyProgression(state, job("cave", 7200));

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test, { after, beforeEach } from "node:test";
 import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -13,6 +14,7 @@ const api = await vite.ssrLoadModule("/features/game/game-api.ts");
 const math = await vite.ssrLoadModule("/features/game/achievement-progress.ts");
 const model = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const collection = await vite.ssrLoadModule("/features/economy/domain/collection-progress.ts");
+const achievementCatalog = JSON.parse(readFileSync(new URL("../apps/api/src/main/resources/world/achievements-catalog.json", import.meta.url), "utf8"));
 beforeEach(() => { identities.resetDevStoreForTests(); game.resetDevGameStoreForTests(); });
 after(() => vite.close());
 const player = () => identities.createDevIdentity("Исследователь", crypto.randomUUID());
@@ -92,6 +94,18 @@ test("biomes cover exactly the menu directions and known recipe/catch IDs preven
   state.fishing.catches = Object.fromEntries([...model.economyCatalog.fishing.fish.map(fish => [fish.itemId, 1]), ["unknown", 999]]);
   assert.equal(math.economyAchievementProgress(state).river_atlas, 12);
   assert.equal(math.economyAchievementProgress(economy.getDevEconomy(player().token)).explorer, 0);
+});
+
+test("achievement biomes cover every economy route once and recognize the restored far bank", () => {
+  const routes = Object.values(achievementCatalog.biomes).flat();
+  assert.deepEqual(new Set(routes), new Set(model.economyCatalog.explorations.map(route => route.id)));
+  assert.equal(routes.length, new Set(routes).size, "A route belongs to exactly one achievement biome");
+  const initial = economy.getDevEconomy(player().token);
+  for (const id of ["far_bank_path", "far_bank_grove", "ancient_ruins"]) {
+    assert.ok(achievementCatalog.biomes.forest.includes(id));
+    const visited = { ...initial, progression: { ...collection.newEconomyProgression(), routes: { [id]: 1 } } };
+    assert.equal(math.economyAchievementProgress(visited).familiar_trails, 1);
+  }
 });
 
 test("known retired quarry recipes retain historic achievement progress without counting new mining as crafting", () => {

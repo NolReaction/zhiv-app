@@ -39,6 +39,19 @@ class EconomyBookProgressionTest {
         assertEquals(listOf("acorn", "feather", "fern_leaf"), next.collections.finds)
     }
 
+    @Test fun `far bank expeditions contribute saved travel duration and forest finds without quarry time`() {
+        for (id in listOf("far_bank_path", "far_bank_grove", "ancient_ruins")) {
+            val route = EconomyRules.catalog.explorations.single { it.id == id }
+            val completed = EconomyCollectionProgress.advance(EconomyProgression(), job(id, route.seconds))
+            val forest = EconomyCollectionProgress.advance(EconomyProgression(), job("forest", route.seconds))
+            assertEquals(mapOf(id to 1L), completed.routes)
+            assertEquals(route.seconds, completed.collections.travelSeconds)
+            assertEquals(0L, completed.collections.quarrySeconds)
+            assertEquals(forest.collections, completed.collections)
+            assertTrue(completed.collections.finds.isNotEmpty())
+        }
+    }
+
     @Test fun `quarry orders and cave routes contribute saved job durations to a separate clock`() {
         val first = EconomyCollectionProgress.advance(EconomyProgression(), job("quarry", 7200, "production", "extract_stone"))
         val next = EconomyCollectionProgress.advance(first, job("cave", 7200))

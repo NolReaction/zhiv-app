@@ -6,7 +6,10 @@
       "forest",
       "forest_camp",
       "old_woodland",
-      "uplands"
+      "uplands",
+      "far_bank_path",
+      "far_bank_grove",
+      "ancient_ruins"
     ],
     "finds": [
       "acorn",
