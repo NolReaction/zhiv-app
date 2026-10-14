@@ -7,11 +7,11 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { initialScene, cloneScene, validateScene, parseScene, serializeScene, createSceneHistory, readStoredScene, writeStoredScene, SCENE_STORAGE_KEY, MAX_SCENE_BYTES } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/scene/editor-scene.ts");
-const { forestObjects, initialProps, objectCorners, WORLD_HEIGHT } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/scene/objects.ts");
-const { createForestPainter } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/rendering/renderer.ts");
-const { createForestController } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/input/controller.ts");
-const { readPngFile, imageObjectSize } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/assets/image-assets.ts");
+const { initialScene, cloneScene, validateScene, parseScene, serializeScene, createSceneHistory, readStoredScene, writeStoredScene, createSceneStorageAdapter, SCENE_STORAGE_KEY, MAX_SCENE_BYTES } = await vite.ssrLoadModule("/apps/engine/src/editor/scene/editor-scene.ts");
+const { forestObjects, initialProps, objectCorners, WORLD_HEIGHT } = await vite.ssrLoadModule("/apps/engine/examples/forest/scene/objects.ts");
+const { createForestPainter } = await vite.ssrLoadModule("/apps/engine/examples/forest/rendering/renderer.ts");
+const { createForestController } = await vite.ssrLoadModule("/apps/engine/src/editor/input/controller.ts");
+const { readPngFile, imageObjectSize } = await vite.ssrLoadModule("/packages/engine/src/assets/image-assets.ts");
 
 function editedScene() {
   const scene = initialScene();
@@ -123,7 +123,7 @@ function controllerHarness(initialJson = null, focusBody = false, settings = {})
   const previousGlobals = new Map();
   const install = (key, value) => { previousGlobals.set(key, Object.getOwnPropertyDescriptor(globalThis, key)); Object.defineProperty(globalThis, key, { value, configurable: true, writable: true }); };
   const frames = new Map(), handlers = new Map(), editorHandlers = new Map(), windowHandlers = new Map(), captured = new Set(), idle = new Map(), documentHandlers = new Map();
-  let frameId = 0, idleId = 0, reports = 0, writes = 0, focuses = 0, pngRequests = 0, harnessDisposed = false, lastStatus;
+  let frameId = 0, idleId = 0, reports = 0, writes = 0, focuses = 0, pngRequests = 0, browserStorageReads = 0, harnessDisposed = false, lastStatus;
   const draws = [], translations = [], downloads = [], blobs = [];
   const OriginalURL = globalThis.URL;
   install("URL", class extends OriginalURL { static createObjectURL(blob) { blobs.push(blob); return "blob:controller-test"; } static revokeObjectURL() {} });
@@ -141,6 +141,7 @@ function controllerHarness(initialJson = null, focusBody = false, settings = {})
   install("window", { devicePixelRatio: 1, localStorage: storage,
     ...(settings.deferredSave ? { requestIdleCallback: callback => { const id = ++idleId; idle.set(id, callback); return id; }, cancelIdleCallback: id => idle.delete(id) } : {}),
     addEventListener: (type, handler) => windowHandlers.set(type, handler), removeEventListener: type => windowHandlers.delete(type), setTimeout: callback => { callback(); return 0; } });
+  if (settings.denyBrowserStorage) Object.defineProperty(window, "localStorage", { get() { browserStorageReads++; throw new Error("Host owns storage"); } });
   const body = {};
   install("document", { body, addEventListener: (type, handler) => documentHandlers.set(type, handler), removeEventListener: type => documentHandlers.delete(type), activeElement: focusBody ? body : {}, createElement: tag => tag === "a" ? { click() { downloads.push(this.download); } }
     : { width: 0, height: 0, getContext: () => ctx, toBlob: callback => callback(new Blob(["PNG"], { type: "image/png" })) } });
@@ -171,6 +172,7 @@ function controllerHarness(initialJson = null, focusBody = false, settings = {})
     get status() { return lastStatus; },
     get cursor() { return canvas.dataset.tool; },
     get pendingFrames() { return frames.size; },
+    get browserStorageReads() { return browserStorageReads; },
     button: { insideEditor: true, closest: () => null },
     input: { insideEditor: true, closest: selector => selector.includes("input") ? {} : null },
     contenteditable: { insideEditor: true, closest: () => null, isContentEditable: true },
@@ -1205,6 +1207,70 @@ test("a multi-slider settings preview remains outside exports/history and commit
     harness.controller.commitSettingsEdit(); harness.flush(); assert.equal(harness.writes, 1); assert.equal(harness.status.canUndo, true);
     assert.equal(harness.scene().lighting.ambient, .5); assert.equal(harness.scene().terrain.appearance.blendWidth, 48); assert.equal(harness.scene().planted[0].shadowHeight, 180); assert.ok(parseScene(harness.controller.getSceneJson()));
     harness.controller.undo(); assert.equal(harness.controller.getSceneJson(), before); harness.controller.redo(); assert.equal(harness.scene().planted[0].shadowHeight, 180);
+  } finally { harness.dispose(); }
+});
+
+test("host storage adapters isolate project namespaces and retain the legacy default key", () => {
+  const values = new Map(), storage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
+  const first = createSceneStorageAdapter(storage, "host:alpha"), second = createSceneStorageAdapter(storage, "host:beta");
+  const alpha = initialScene(); alpha.seed += 17;
+  const beta = initialScene(); beta.seed += 43;
+  assert.equal(first.key, "host:alpha"); assert.equal(second.key, "host:beta");
+  assert.equal(first.write(alpha), true); assert.equal(second.write(beta), true);
+  assert.deepEqual(first.read().scene, alpha); assert.deepEqual(second.read().scene, beta);
+  values.set("host:alpha", "{broken");
+  assert.equal(first.read().invalid, true); assert.deepEqual(second.read().scene, beta, "a corrupt project cannot replace another namespace");
+  const legacy = createSceneStorageAdapter(storage); assert.equal(legacy.key, SCENE_STORAGE_KEY);
+  assert.equal(legacy.write(alpha), true); assert.deepEqual(readStoredScene(storage).scene, alpha);
+  assert.deepEqual([...values.keys()], ["host:alpha", "host:beta", SCENE_STORAGE_KEY]);
+  const forbidden = { getItem() { assert.fail("invalid namespaces must not access host storage"); }, setItem() { assert.fail("invalid namespaces must not access host storage"); } };
+  for (const key of ["", "   ", "x".repeat(257), "project\nother"]) assert.throws(() => createSceneStorageAdapter(forbidden, key));
+});
+
+test("two hosted controller instances persist and restore independent scenes in one shared storage", () => {
+  const alpha = initialScene(); alpha.seed += 17;
+  const beta = initialScene(); beta.seed += 43;
+  const values = new Map([["host:alpha", serializeScene(alpha)], ["host:beta", serializeScene(beta)]]), written = [];
+  const storage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => { written.push(key); values.set(key, value); } };
+  const first = controllerHarness(null, false, { storage, storageKey: "host:alpha", denyBrowserStorage: true });
+  const second = controllerHarness(null, false, { storage, storageKey: "host:beta", denyBrowserStorage: true });
+  let savedAlpha, savedBeta;
+  try {
+    assert.deepEqual(first.scene(), alpha); assert.deepEqual(second.scene(), beta);
+    first.controller.setLighting({ enabled: true, ambient: .32 });
+    second.controller.setLighting({ enabled: true, ambient: .74 });
+    savedAlpha = first.scene(); savedBeta = second.scene();
+    assert.deepEqual(parseScene(values.get("host:alpha")), savedAlpha);
+    assert.deepEqual(parseScene(values.get("host:beta")), savedBeta);
+    assert.equal(values.has(SCENE_STORAGE_KEY), false);
+    assert.ok(written.includes("host:alpha") && written.includes("host:beta"));
+    assert.equal(first.browserStorageReads + second.browserStorageReads, 0, "explicit ports must bypass browser localStorage entirely");
+    first.controller.undo(); assert.deepEqual(first.scene(), alpha); assert.deepEqual(second.scene(), savedBeta);
+    first.controller.redo(); assert.deepEqual(first.scene(), savedAlpha);
+  } finally { second.dispose(); first.dispose(); }
+  const restored = controllerHarness(null, false, { storage, storageKey: "host:alpha", denyBrowserStorage: true });
+  try { assert.deepEqual(restored.scene(), savedAlpha); assert.equal(restored.browserStorageReads, 0); }
+  finally { restored.dispose(); }
+});
+
+test("explicit disabled storage and an injected canvas factory remain usable through PNG export", async () => {
+  const allocations = [], noop = () => {};
+  const ctx = new Proxy({}, { get: (_, key) => String(key).includes("Gradient") ? () => ({ addColorStop: noop }) : noop });
+  const createCanvas = (width, height) => {
+    const canvas = { width, height, getContext: () => ctx, toBlob: callback => callback(new Blob(["HOST-PNG"], { type: "image/png" })) };
+    allocations.push(canvas); return canvas;
+  };
+  const harness = controllerHarness(null, false, { storage: null, storageKey: "host:disabled", denyBrowserStorage: true, createCanvas });
+  try {
+    harness.controller.setLighting({ ambient: .5 });
+    harness.flush();
+    assert.equal(harness.browserStorageReads, 0); assert.equal(harness.writes, 0);
+    assert.equal(harness.status.storage, "unavailable");
+    await harness.controller.exportPng();
+    assert.ok(allocations.some(canvas => canvas.width === harness.scene().width && canvas.height === WORLD_HEIGHT), "export uses a full-sized host canvas");
+    assert.ok(harness.downloads.some(name => name.endsWith(".png")));
+    assert.equal(await harness.blobs.at(-1).text(), "HOST-PNG", "download comes from the injected canvas rather than a hidden document canvas");
+    assert.equal(harness.browserStorageReads, 0); assert.equal(harness.writes, 0);
   } finally { harness.dispose(); }
 });
 

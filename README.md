@@ -38,6 +38,7 @@
 | Мир | Tiled, общий TypeScript-рендер и логика персонажей |
 | Развёртывание | Docker Compose, Caddy, HTTPS, мониторинг |
 | Совместимый контур Sites | Vite, Vinext, Cloudflare Workers |
+| Отдельный Engine | TypeScript и Canvas 2D в `packages/engine`; React/Vite-редактор в `apps/engine` |
 
 Точные зависимости — в [package.json](package.json) и [сборке API](apps/api/build.gradle.kts). Основная схема PostgreSQL задаётся [миграциями Ktor V1–V49](apps/api/src/main/resources/db/migration/). У двух контуров сборки общие игровые компоненты; их границы описаны в [архитектуре](docs/architecture.md).
 
@@ -46,6 +47,8 @@
 Проект разделён по функциям (`features/`), крупные модули — по ответственности. Общая сборка приложения находится в [`features/app/app-shell.tsx`](features/app/app-shell.tsx). Игровые окна — в [`features/world/ui/`](features/world/ui/), сцена — в `features/world/scene/`, поведение — в `features/world/simulation/`. Экономика отделяет [`domain/`](features/economy/domain/) (правила), `sync/` (команды и состояние) и `ui/` (экраны по темам).
 
 Для профиля «Мой Мохлик» откройте [`features/world/ui/profile/`](features/world/ui/profile/); профиль аккаунта находится в `features/account/`. [Правила размещения кода](docs/development/code-organization.md) · [Задача → конкретный файл](docs/repository-guide.md) · [Владельцы состояния и API](docs/architecture.md).
+
+Ядро экспериментального движка — [`packages/engine/`](packages/engine/), самостоятельный редактор и лесной пример — [`apps/engine/`](apps/engine/). Основная игра пока использует свой Tiled-рендер. [Запуск Engine и перенос JSON](docs/engine/README.md) · [Границы и API](docs/engine/architecture.md).
 
 ## Локальный запуск
 
@@ -59,6 +62,8 @@ npm run dev:local
 Откройте [localhost:3000](http://localhost:3000). Локальный API-имитатор хранит данные в памяти процесса. Для постоянного хранения и полноценной авторизации подключите Ktor по [инструкции локальной разработки](docs/development/local-development.md).
 
 Для телефона используйте `npm run dev:lan`. Для DEV-проверки карты без аккаунта откройте `/prototype/tiled-world`; `npm run world:watch` во втором терминале обновляет экспорт после сохранения Tiled. DEV-панели, стенд карты и API-имитатор закрыты в production. Серверная админка использует отдельную проверку сессии и `ADMIN_PUBLIC_IDS`.
+
+Самостоятельный редактор запускается командой `npm run dev:engine` на [http://localhost:5174](http://localhost:5174). Ему нужны npm-зависимости; запуск API, Next и вход в игру не требуются. [Пошаговая инструкция](docs/engine/README.md).
 
 ## Проверки
 

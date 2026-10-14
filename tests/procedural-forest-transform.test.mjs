@@ -6,8 +6,8 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { objectCorners, objectLocalBounds } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/scene/objects.ts");
-const { resizeHandlePositions, findResizeHandle, beginResize, resizedObject, MIN_OBJECT_SCALE, MAX_OBJECT_SCALE } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/input/transform.ts");
+const { objectCorners, objectLocalBounds } = await vite.ssrLoadModule("/apps/engine/examples/forest/scene/objects.ts");
+const { resizeHandlePositions, findResizeHandle, beginResize, resizedObject, MIN_OBJECT_SCALE, MAX_OBJECT_SCALE } = await vite.ssrLoadModule("/apps/engine/examples/forest/input/transform.ts");
 
 const close = (actual, expected, message) => assert.ok(Math.abs(actual - expected) < 1e-8, `${message}: expected ${expected}, got ${actual}`);
 const closePoint = (actual, expected, message) => { close(actual.x, expected.x, `${message} x`); close(actual.y, expected.y, `${message} y`); };

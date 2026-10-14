@@ -7,10 +7,10 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { initialLighting, cloneLighting, validateLighting, MAX_POINT_LIGHTS } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/lighting/lighting-data.ts");
-const { initialScene, cloneScene, validateScene, parseScene, serializeScene, createSceneHistory } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/scene/editor-scene.ts");
-const { forestObjects, initialProps, getObjectShadowHeight, WORLD_HEIGHT, OVERSCAN_EDIT_MARGIN } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/scene/objects.ts");
-const { readPngFile, imageObjectSize } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/assets/image-assets.ts");
+const { initialLighting, cloneLighting, validateLighting, MAX_POINT_LIGHTS } = await vite.ssrLoadModule("/apps/engine/examples/forest/lighting/lighting-data.ts");
+const { initialScene, cloneScene, validateScene, parseScene, serializeScene, createSceneHistory } = await vite.ssrLoadModule("/apps/engine/src/editor/scene/editor-scene.ts");
+const { forestObjects, initialProps, getObjectShadowHeight, WORLD_HEIGHT, OVERSCAN_EDIT_MARGIN } = await vite.ssrLoadModule("/apps/engine/examples/forest/scene/objects.ts");
+const { readPngFile, imageObjectSize } = await vite.ssrLoadModule("/packages/engine/src/assets/image-assets.ts");
 
 const defaults = {
   enabled: false, ambient: 1, ambientColor: "#ffffff", sunAngle: 135, sunElevation: 45,

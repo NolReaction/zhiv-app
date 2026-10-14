@@ -8,9 +8,9 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { readPngFile, assertPngDataUrl, validateImageAsset, imageObjectSize, sceneAssetsWithinLimits, MAX_PNG_BYTES, MAX_ASSET_BYTES, MAX_ASSET_PIXELS, MAX_IMAGE_ASSETS } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/assets/image-assets.ts");
-const { initialScene, cloneScene, validateScene, parseScene, serializeScene, createSceneHistory, MAX_SCENE_BYTES } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/scene/editor-scene.ts");
-const { initialProps, forestObjects, objectLocalBounds, objectCorners, objectAngle, WORLD_HEIGHT } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/scene/objects.ts");
+const { readPngFile, assertPngDataUrl, validateImageAsset, imageObjectSize, sceneAssetsWithinLimits, MAX_PNG_BYTES, MAX_ASSET_BYTES, MAX_ASSET_PIXELS, MAX_IMAGE_ASSETS } = await vite.ssrLoadModule("/packages/engine/src/assets/image-assets.ts");
+const { initialScene, cloneScene, validateScene, parseScene, serializeScene, createSceneHistory, MAX_SCENE_BYTES } = await vite.ssrLoadModule("/apps/engine/src/editor/scene/editor-scene.ts");
+const { initialProps, forestObjects, objectLocalBounds, objectCorners, objectAngle, WORLD_HEIGHT } = await vite.ssrLoadModule("/apps/engine/examples/forest/scene/objects.ts");
 
 function crc(bytes) {
   let value = 0xffffffff;

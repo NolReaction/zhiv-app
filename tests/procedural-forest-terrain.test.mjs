@@ -11,8 +11,8 @@ const {
   applyTerrainPatch, strokeTerrainCells, dirtyTerrainChunks, sampleEditedGround,
   CELL_SIZE, TERRAIN_CHUNK_SIZE, MAX_TERRAIN_CELLS,
   terrainAppearance, validateTerrainAppearance, updateTerrainAppearance,
-} = await vite.ssrLoadModule("/features/world/dev/procedural-forest/terrain/terrain-data.ts");
-const { sampleGround } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/terrain/layout.ts");
+} = await vite.ssrLoadModule("/apps/engine/examples/forest/terrain/terrain-data.ts");
+const { sampleGround } = await vite.ssrLoadModule("/apps/engine/examples/forest/terrain/layout.ts");
 const preview = cells => ({ cells: new Map(cells), chunkVersions: new Map() });
 
 test("initial terrain preserves the old base and cloned cells remain independent", () => {

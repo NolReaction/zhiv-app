@@ -6,10 +6,10 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { marchingSquares, createWaterContourCache } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/terrain/contours.ts");
-const { sampleGround, sampleWaterSignedDistance } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/terrain/layout.ts");
-const { initialTerrain, applyTerrainPatch, strokeTerrainCells, dirtyTerrainChunks, updateTerrainAppearance } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/terrain/terrain-data.ts");
-const { drawTerrain, drawTerrainMaterial } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/terrain/terrain.ts");
+const { marchingSquares, createWaterContourCache } = await vite.ssrLoadModule("/apps/engine/examples/forest/terrain/contours.ts");
+const { sampleGround, sampleWaterSignedDistance } = await vite.ssrLoadModule("/apps/engine/examples/forest/terrain/layout.ts");
+const { initialTerrain, applyTerrainPatch, strokeTerrainCells, dirtyTerrainChunks, updateTerrainAppearance } = await vite.ssrLoadModule("/apps/engine/examples/forest/terrain/terrain-data.ts");
+const { drawTerrain, drawTerrainMaterial } = await vite.ssrLoadModule("/apps/engine/examples/forest/terrain/terrain.ts");
 const contains = (points, x, y) => {
   let inside = false;
   for (let i = 0, j = points.length - 1; i < points.length; j = i++) {

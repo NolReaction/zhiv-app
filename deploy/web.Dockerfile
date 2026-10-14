@@ -2,6 +2,8 @@ FROM node:24-bookworm-slim AS build
 
 WORKDIR /app
 COPY package.json package-lock.json ./
+COPY packages/engine/package.json ./packages/engine/package.json
+COPY apps/engine/package.json ./apps/engine/package.json
 RUN npm ci
 COPY . .
 ARG APP_BUILD_ID

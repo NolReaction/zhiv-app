@@ -39,6 +39,11 @@ yarn-error.log*
 next-env.d.ts
 *.tsbuildinfo
 /dist/
+/apps/engine/dist/
+/apps/engine/.cache/
+/apps/engine/node_modules/
+/packages/engine/dist/
+/packages/engine/node_modules/
 /.wrangler/
 /.sites-runtime/
 /outputs/

@@ -7,11 +7,11 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { DEFAULT_LAYERS, defaultLayers, objectLayerId, isObjectVisible, isObjectLocked, stackKey, compareStackKeys, stackKeyBetween } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/scene/stacking.ts");
-const { forestObjects, initialProps, compareObjects, pickObject, WORLD_HEIGHT } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/scene/objects.ts");
-const { initialScene, cloneScene, validateScene, parseScene, serializeScene, createSceneHistory, MAX_SCENE_BYTES } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/scene/editor-scene.ts");
-const { readPngFile, imageObjectSize } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/assets/image-assets.ts");
-const { beginResize, resizedObject, resizeHandlePositions } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/input/transform.ts");
+const { DEFAULT_LAYERS, defaultLayers, objectLayerId, isObjectVisible, isObjectLocked, stackKey, compareStackKeys, stackKeyBetween } = await vite.ssrLoadModule("/apps/engine/examples/forest/scene/stacking.ts");
+const { forestObjects, initialProps, compareObjects, pickObject, WORLD_HEIGHT } = await vite.ssrLoadModule("/apps/engine/examples/forest/scene/objects.ts");
+const { initialScene, cloneScene, validateScene, parseScene, serializeScene, createSceneHistory, MAX_SCENE_BYTES } = await vite.ssrLoadModule("/apps/engine/src/editor/scene/editor-scene.ts");
+const { readPngFile, imageObjectSize } = await vite.ssrLoadModule("/packages/engine/src/assets/image-assets.ts");
+const { beginResize, resizedObject, resizeHandlePositions } = await vite.ssrLoadModule("/apps/engine/examples/forest/input/transform.ts");
 
 const rock = (id = "planted:rock", patch = {}) => ({ id, kind: "rock", x: 800, y: 700, scale: 1, variant: 0, rotation: 0, ...patch });
 const sceneWithRock = patch => ({ ...initialScene(), planted: [rock("planted:rock", patch)] });

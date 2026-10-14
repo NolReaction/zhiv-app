@@ -30,7 +30,12 @@
     "economy:check": "node scripts/audit-economy-progression.mjs",
     "architecture:check": "node scripts/check-architecture.mjs",
     "security:check": "node scripts/check-secrets.mjs",
-    "security:history": "node scripts/check-secrets.mjs --history"
+    "security:history": "node scripts/check-secrets.mjs --history",
+    "dev:engine": "npm run dev --workspace @zhiv/engine-lab --",
+    "build:engine": "npm run build --workspace @zhiv/engine && npm run build --workspace @zhiv/engine-lab",
+    "test:engine": "node --test --test-concurrency=1 tests/engine-*.test.mjs tests/procedural-forest*.test.mjs",
+    "typecheck:engine": "npm run typecheck --workspace @zhiv/engine && npm run typecheck --workspace @zhiv/engine-lab",
+    "preview:engine": "npm run preview --workspace @zhiv/engine-lab --"
   },
   "dependencies": {
     "class-variance-authority": "0.7.1",
@@ -71,5 +76,9 @@
     "wrangler": "4.92.0"
   },
   "type": "module",
-  "displayName": "Я живой"
+  "displayName": "Я живой",
+  "workspaces": [
+    "packages/engine",
+    "apps/engine"
+  ]
 }

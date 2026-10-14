@@ -5,6 +5,11 @@
 .sites-runtime
 .wrangler
 node_modules
+apps/engine/node_modules
+apps/engine/.cache
+apps/engine/dist
+packages/engine/node_modules
+packages/engine/dist
 apps/api/.gradle
 apps/api/build
 deploy/.env
