@@ -127,7 +127,8 @@ class JdbcEconomyRepositoryIntegrationTest {
         val p = player(); economy.snapshot(p.hash)
         val original = source.connection.use { readEconomyProfile(it, p.id).state }
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",
-            economyJson.encodeToString(original.copy(wallet = original.wallet.copy(pearls = 100))), p.id)
+            economyJson.encodeToString(original.copy(wallet = original.wallet.copy(pearls = 100),
+                buildings = original.buildings + mapOf("home" to 2, "woodlot" to 1, "workshop" to 1, "dryer" to 1, "quarry" to 2, "kiln" to 1))), p.id)
         repeat(3) { index ->
             val before = economy.snapshot(p.hash)
             val saved = source.connection.use { readEconomyProfile(it, p.id).state }
@@ -166,6 +167,12 @@ class JdbcEconomyRepositoryIntegrationTest {
 
     @Test fun `account merge preserves target resident cards and cannot refill replacement allowance`() = runBlocking<Unit> {
         val target = player(); val origin = player()
+        for (p in listOf(target, origin)) {
+            economy.snapshot(p.hash)
+            val original = source.connection.use { readEconomyProfile(it, p.id).state }
+            execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(original.copy(
+                buildings = original.buildings + mapOf("home" to 2, "woodlot" to 1, "workshop" to 1, "dryer" to 1, "quarry" to 2, "kiln" to 1))), p.id)
+        }
         for (p in listOf(target, origin)) repeat(2) { slot ->
             val before = economy.snapshot(p.hash)
             val saved = source.connection.use { readEconomyProfile(it, p.id).state }
@@ -436,33 +443,33 @@ class JdbcEconomyRepositoryIntegrationTest {
         assertEquals(1L,economy.snapshot(p.hash).progression.routes.getValue("forest"))
     }
 
-    @Test fun `discounted sales persist one rounded payment and reject stale minimum without consuming goods`() = runBlocking<Unit> {
+    @Test fun `fixed berry sales persist one payment and reject stale minimum without consuming goods`() = runBlocking<Unit> {
         val p = player()
         economy.snapshot(p.hash)
         val state = source.connection.use { readEconomyProfile(it, p.id).state }
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(state.copy(
             inventory = mapOf("berries" to 9L, "fish" to 2L, "crumb_bait" to 1L))), p.id)
         val before = economy.snapshot(p.hash)
-        val stale = command(p, before, "sell", "berries", 3).copy(totalPrice = 60)
+        val stale = command(p, before, "sell", "berries", 3).copy(totalPrice = 40)
         assertEquals("ECONOMY_SALE_PRICE_CHANGED", assertFailsWith<AuthFailure> { economy.command(p.hash, stale) }.code)
         assertEquals("ECONOMY_SALE_QUANTITY", assertFailsWith<AuthFailure> {
             economy.command(p.hash, command(p, before, "sell", "crumb_bait"))
         }.code)
         assertEquals(before, economy.snapshot(p.hash).copy(serverTime = before.serverTime))
         assertEquals("0", scalar("SELECT count(*) FROM economy_commands WHERE user_id=?", p.id))
-        val sale = command(p, before, "sell", "berries", 3).copy(totalPrice = 50)
+        val sale = command(p, before, "sell", "berries", 3).copy(totalPrice = 30)
         val results = coroutineScope { List(2) { async(Dispatchers.IO) { JdbcEconomyRepository(source).command(p.hash, sale) } }.awaitAll() }
         assertEquals(1, results.count { it.replayed })
         val sold = economy.snapshot(p.hash)
-        assertEquals(before.wallet.coins + 50L, sold.wallet.coins)
+        assertEquals(before.wallet.coins + 30L, sold.wallet.coins)
         assertEquals(6L, sold.inventory["berries"])
         assertEquals("1", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='sell'", p.id))
-        assertEquals("50", scalar("SELECT coins FROM economy_ledger WHERE user_id=? AND kind='sell'", p.id))
+        assertEquals("30", scalar("SELECT coins FROM economy_ledger WHERE user_id=? AND kind='sell'", p.id))
         assertEquals("ECONOMY_REQUEST_CONFLICT", assertFailsWith<AuthFailure> {
-            economy.command(p.hash, sale.copy(totalPrice = 40))
+            economy.command(p.hash, sale.copy(totalPrice = 20))
         }.code)
         val specialist = economy.command(p.hash, command(p, sold, "sell_fish", "fish", 2)).state
-        assertEquals(before.wallet.coins + 130L, specialist.wallet.coins)
+        assertEquals(before.wallet.coins + 110L, specialist.wallet.coins)
         assertTrue(specialist.fishing.catches.isEmpty())
     }
 

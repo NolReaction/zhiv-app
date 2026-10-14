@@ -296,7 +296,7 @@ class JdbcEconomyBarterRepositoryIntegrationTest {
         economy.command(p.hash,sell)
         assertEquals("ECONOMY_REQUEST_CONFLICT",assertFailsWith<AuthFailure>{barter.command(p.hash,createCommand(p).copy(requestId=sell.requestId))}.code)
         val market=JdbcEconomyMarketRepository(source)
-        val marketRequest=EconomyCommand(UUID.randomUUID().toString(),p.publicId,economy.snapshot(p.hash).revision,"create_listing","berries",totalPrice=30)
+        val marketRequest=EconomyCommand(UUID.randomUUID().toString(),p.publicId,economy.snapshot(p.hash).revision,"create_listing","berries",totalPrice=10)
         market.command(p.hash,marketRequest)
         assertEquals("ECONOMY_REQUEST_CONFLICT",assertFailsWith<AuthFailure>{barter.command(p.hash,createCommand(p).copy(requestId=marketRequest.requestId))}.code)
         val rewardId=UUID.randomUUID()

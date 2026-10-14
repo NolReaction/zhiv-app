@@ -344,8 +344,11 @@ class EconomyFoodTest {
         assertNotEquals(offer.templateId, next.templateId)
         assertTrue(!Instant.parse(next.availableAt).isAfter(now))
         assertEquals(3, nextBoard.freeReplacementsRemaining)
-        val ready = apply(completed, "complete_resident_order", next.id)
+        val supplied = completed.copy(inventory = next.items)
+        val ready = apply(supplied, "complete_resident_order", next.id)
         assertEquals(2L, ready.residentOrders.completed)
+        assertEquals(supplied.wallet.coins + next.coins, ready.wallet.coins)
+        assertTrue(ready.inventory.isEmpty())
     }
 
     @Test fun `free replacement budget is shared across slots then server pearl price requires confirmation`() {
@@ -381,7 +384,9 @@ class EconomyFoodTest {
     }
 
     @Test fun `current and retired orders are excluded and home upgrades do not replace untouched cards`() {
-        var state = EconomyRules.initial().copy(wallet = EconomyWallet(100_000, 1000))
+        val initial = EconomyRules.initial()
+        var state = initial.copy(wallet = EconomyWallet(100_000, 1000),
+            buildings = initial.buildings + mapOf("home" to 2, "woodlot" to 1, "workshop" to 1, "dryer" to 1, "quarry" to 2, "kiln" to 1))
         repeat(12) { index ->
             val before = EconomyFood.residentOrderBoard(state, now)
             val slot = index % 3
