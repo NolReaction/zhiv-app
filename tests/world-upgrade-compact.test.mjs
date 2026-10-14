@@ -169,11 +169,20 @@ test("late pantry expansion has three distinct relic counters and no house, buil
   assert.match(buttons(missing).find(button => /Улучшить до ур\. 10/.test(button.text)).attributes, /disabled/);
 });
 
-test("relic cost navigation describes chance finds and respects their actual home unlock", () => {
+test("relic cost navigation separates an available project reward from chance finds and respects their actual home unlock", () => {
   const navigation = { canOpen() { return true; }, open() {}, explore() {} };
   const snapshot = state({ buildings: { home: economyCatalog.rareDrops.requiredHomeLevel, warehouse: 3 }, inventory: {} });
+  const pending = render("warehouse", { snapshot, navigation });
+  const pendingFinds = buttons(pending).filter(button => /aria-label="Где искать:/.test(button.attributes));
+  assert.equal(pendingFinds.length, 2);
+  assert.ok(pendingFinds.some(button => /Где искать: Древнее ядро/.test(button.attributes)));
+  assert.ok(pendingFinds.some(button => /Где искать: Лунный кристалл/.test(button.attributes)));
+  assert.ok(!pendingFinds.some(button => /Где искать: Живая смола/.test(button.attributes)));
+  assert.match(text(pending), /Гарантированный источник: завершите проект к дому 4.*Награда: Живая смола × 1/);
+  snapshot.stageOrders = { version: 1, stages: { 3: { step: 8, completed: true, terms: null, completionRewards: { living_resin: 1 } } } };
   const html = render("warehouse", { snapshot, navigation });
   assert.equal(buttons(html).filter(button => /aria-label="Где искать:/.test(button.attributes)).length, 3);
+  assert.doesNotMatch(html, /Гарантированный источник: завершите проект/);
   assert.match(html, /конкретный предмет не гарантирован/);
   assert.doesNotMatch(html, /Где получить: (Древнее ядро|Лунный кристалл|Живая смола)/);
   snapshot.buildings.home = economyCatalog.rareDrops.requiredHomeLevel - 1;

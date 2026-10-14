@@ -47,10 +47,26 @@ test("daily-only pearl projection follows gift payouts and cannot buy a slot bef
     assert.equal(report.dailyPearlProjection.pearlsReceived, earned);
     assert.equal(report.pearlsSpent + report.pearlsRemaining, earned);
     assert.deepEqual(report.productionSlots.purchases, [], "forty compact daily gifts cannot yet pay for a 200-unit slot");
-    const earnedSlot = simulateJourney(loaded, "visits3", 105, { ...jointPlanningPolicy, constructionSpeedups: false,
+    const completedBase = simulateJourney(loaded, "visits3", 105, { ...jointPlanningPolicy, constructionSpeedups: false,
       buyProductionSlots: true, dailyPearlsOnly: true });
+    assert.equal(completedBase.complete, true);
+    assert.equal(completedBase.stoppedAt, null);
+    assert(completedBase.elapsedDays < dailyPearlThreshold(rewards, 200).elapsedDaysWithFirstGiftToday,
+      "The current base-tier policy completes before daily gifts can fund the first optional slot");
+    assert(completedBase.dailyPearlProjection.pearlsReceived < 200);
+    assert.deepEqual(completedBase.productionSlots.purchases, [], "A completed policy must not keep playing to buy unnecessary capacity");
+    assert.equal(completedBase.pearlsSpent, 0);
+    assert.equal(completedBase.pearlsRemaining, completedBase.dailyPearlProjection.pearlsReceived);
+    // Optional maximum storage keeps a real goal after day 103, allowing this
+    // check to exercise an earned purchase instead of becoming vacuous.
+    const earnedSlot = simulateJourney(loaded, "visits3", 105, { ...jointPlanningPolicy, constructionSpeedups: false,
+      buyProductionSlots: true, dailyPearlsOnly: true, completionGoal: "all-current-buildings" });
     assert.equal(earnedSlot.productionSlots.purchases.length, 1);
     assert.equal(earnedSlot.productionSlots.purchases[0].day, 103);
+    assert.equal(earnedSlot.pearlBudget, 0);
+    assert.equal(earnedSlot.dailyPearlProjection.claims, 105);
+    assert.equal(earnedSlot.pearlsSpent, 200);
+    assert.equal(earnedSlot.pearlsRemaining + earnedSlot.pearlsSpent, earnedSlot.dailyPearlProjection.pearlsReceived);
     for (const purchase of earnedSlot.productionSlots.purchases) {
       const byDay = Math.floor(purchase.day), earnedAtPurchase = Array.from({ length: byDay + 1 }, (_, index) => rewards.daily[index % rewards.daily.length].pearls).reduce((sum, amount) => sum + amount, 0);
       const paidByPurchase = earnedSlot.productionSlots.purchases.filter(row => row.day <= purchase.day).reduce((sum, row) => sum + row.pricePearls, 0);

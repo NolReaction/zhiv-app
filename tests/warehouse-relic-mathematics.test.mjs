@@ -34,8 +34,8 @@ test("current storage starts at 50 places and consumes 62 varied relics across i
 
 test("storage work time separates the full builder sum from partial random acquisition", () => {
   const report = reviewWarehouseRelics(readEconomyCatalog()), last = report.levels.at(-1);
-  assert.deepEqual(report.levels.map(level => level.constructionHours), [0, 1 / 6, 12, 48, 72, 96, 120, 144, 168, 192]);
-  const constructionSeconds = 600 + 852 * 3600;
+  assert.deepEqual(report.levels.map(level => level.constructionHours), [0, 1 / 6, 4, 2, 4, 6, 8, 12, 16, 24]);
+  const constructionSeconds = 600 + 76 * 3600;
   assert(Math.abs(report.totalWarehouseConstructionHours - constructionSeconds / 3600) < 1e-9);
   assert(Math.abs(report.totalWarehouseConstructionDays - constructionSeconds / 86400) < 1e-9);
   assert.equal(report.levels[3].partialNonCoreAcquisition.expectedDraws, 4.5);

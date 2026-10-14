@@ -95,7 +95,7 @@ test("travel starts with three decorated activities and no premature route form"
 });
 
 test("every catalog route belongs to exactly one sector and keeps its actual findings", () => {
-  const expected = { forest: ["forest", "forest_camp", "old_woodland", "coastal_deposits", "uplands"], shore: ["shore", "shore_camp"], caves: ["cave", "deep_cave", "abandoned_quarry", "quarry_stone", "quarry_stone_overnight", "quarry_ore", "quarry_clay", "quarry_sand", "quarry_shift", "quarry_deep_face", "quarry_supply"] };
+  const expected = { forest: ["forest", "forest_camp", "old_woodland", "coastal_deposits", "uplands", "far_bank_path", "far_bank_grove", "ancient_ruins"], shore: ["shore", "shore_camp"], caves: ["cave", "deep_cave", "abandoned_quarry", "quarry_stone", "quarry_stone_overnight", "quarry_ore", "quarry_clay", "quarry_sand", "quarry_shift", "quarry_deep_face", "quarry_supply"] };
   const seen = [];
   for (const sector of expeditionSectors) {
     const state = snapshot({ buildings: Object.fromEntries(economyCatalog.buildings.map(building => [building.id, 5])) });
