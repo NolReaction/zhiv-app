@@ -1,5 +1,7 @@
 .editor { display: grid; gap: 12px; min-width: 0; }
 .editor h3 { margin: 0; color: #eef2dc; font-size: 14px; line-height: 1.45; }
+.kindLabel { margin: -4px 0 0; color: #d5bfee; font-size: 11px; }
+.editor .danger { color: #ffd4b6; border-color: #7d5d48; }
 .controls { display: grid; gap: 11px; margin: 0; padding: 0; border: 0; min-width: 0; }
 .controls:disabled { opacity: .6; }
 .controls:disabled :is(input, select, button) { cursor: default; }

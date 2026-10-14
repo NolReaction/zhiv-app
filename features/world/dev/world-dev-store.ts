@@ -4,6 +4,7 @@ import type { BuilderAction } from "@/features/world/characters/builder/builder-
 import type { CookingAction } from "@/features/world/activities/cooking/forest-cooking";
 import { TILED_WORLD } from "@/features/world/scene/presentation";
 import { initialPreviewLevels } from "../tiled/preview-state";
+import { retainWorldDevClientState } from "./world-dev-hmr-cache";
 
 export const WORLD_DEV_ENABLED = process.env.NODE_ENV === "development";
 export type WorldDevCameraAction = "in" | "out" | "overview" | "pet" | "plesk" | "builder" | "fishing";
@@ -254,4 +255,6 @@ export function createWorldDevStore(enabled: boolean) {
   };
 }
 
-export const worldDevStore = createWorldDevStore(WORLD_DEV_ENABLED);
+export const worldDevStore = retainWorldDevClientState("world-controls",
+  `v1:1:${TILED_WORLD.id}:${TILED_WORLD.width}:${TILED_WORLD.height}:${JSON.stringify(TILED_WORLD.sites.map(site => [site.id, site.initialLevel, site.states.map(state => state.level)]))}`,
+  () => createWorldDevStore(WORLD_DEV_ENABLED)).value;

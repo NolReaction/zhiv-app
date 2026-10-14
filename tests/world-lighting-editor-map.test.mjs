@@ -8,17 +8,18 @@ const vite = await createServer({ root, configFile: false, appType: "custom", lo
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { createWorldLightingEditorStore } = await vite.ssrLoadModule("/features/world/dev/world-lighting-editor-store.ts");
-const { createWorldLightingEditorMap, requestWorldLightingEditorFocus, takeWorldLightingEditorFocus } = await vite.ssrLoadModule("/features/world/dev/world-lighting-editor-map.ts");
-function rig(studio = false) {
+const { createWorldLightingEditorMap, requestWorldLightingEditorFocus, takeWorldLightingEditorFocus, requestWorldStudioCreate, takeWorldStudioCreate } = await vite.ssrLoadModule("/features/world/dev/world-lighting-editor-map.ts");
+function rig(studio = false, surfaces = false) {
   const caster = (id, x) => ({ id, points: [{ x, y: 50 }, { x: x + 20, y: 50 }, { x: x + 20, y: 70 }, { x, y: 70 }], height: 20, baseHeight: 0, opacity: 1, softness: 2 });
   const scene = { schemaVersion: 1, id: "editor-map", width: 200, height: 200, terrain: [], sites: [], paths: [], focus: { x: 0, y: 0, width: 100, height: 100 },
     shadowCasters: [caster("tree", 20), caster("house", 100)],
+    shadowReceivers: surfaces ? [{ id: "clearing", points: [{ x: 20, y: 110 }, { x: 40, y: 110 }, { x: 40, y: 130 }, { x: 20, y: 130 }], height: 0 }] : [],
     lights: studio ? [{ id: "home-lamp", kind: "lantern", position: { x: 120, y: 100 }, height: 20, radius: 15, intensity: 1, color: "#ffd28a", flicker: 0 }] : [] };
   const store = createWorldLightingEditorStore(true, scene); store.setEnabled(true);
   const focuses = [];
   const getLights = () => store.getSnapshot().lights.map(light => light.manualPosition ? light : { ...light, position: { x: 150, y: 100 } })
     .concat({ id: "generated-lamp", kind: "lantern", position: { x: 180, y: 50 }, radius: 12, intensity: 1, color: "#ffffff", flicker: 0 });
-  const map = createWorldLightingEditorMap(() => store.applyToScene(scene).shadowCasters, store, studio ? { getLights, onFocus: request => focuses.push(request) } : undefined);
+  const map = createWorldLightingEditorMap(() => store.applyToScene(scene).shadowCasters, store, studio ? { getLights, getReceivers: () => store.applyToScene(scene).shadowReceivers, onFocus: request => focuses.push(request) } : undefined);
   const point = id => store.getSnapshot().casters.find(c => c.id === id).points[0];
   return { scene, store, map, point, focuses };
 }
@@ -151,4 +152,92 @@ test("original comparison permits selection and focus without mutating the draft
   map.key({ key: "l" }); map.down({ x: 180, y: 150 }, 1); map.end(false);
   assert.deepEqual(store.getSnapshot().lights, before); assert.equal(store.getSnapshot().revision, revision);
   store.selectLight("home-lamp"); map.key({ key: "f" }); assert.equal(focuses.length, 1);
+});
+
+
+test("receiving surfaces are selected explicitly, edited in painted coordinates and share one gesture undo", () => {
+  const { store, map } = rig(true, true), original = structuredClone(store.getSnapshot().receivers[0]);
+  assert.equal(map.down({ x: 30, y: 120 }, 1), false, "unselected hidden surfaces do not steal map navigation");
+  store.setShowReceivers(true); store.setTool("move"); store.setSnap(5);
+  assert.equal(map.down({ x: 30, y: 120 }, 1), true); assert.equal(store.getSnapshot().selectedKind, "receiver");
+  map.move({ x: 37, y: 128 }); map.move({ x: 42, y: 133 }); map.end(false);
+  assert.deepEqual(store.getSnapshot().receivers[0].points, original.points.map(p => ({ x: p.x + 10, y: p.y + 15 })));
+  store.undo(); assert.deepEqual(store.getSnapshot().receivers[0], original);
+  store.setShowReceivers(false); store.selectReceiver("clearing"); store.setTool("vertex");
+  map.down({ x: 20, y: 110 }, 1); map.move({ x: 15, y: 105 }); map.end(false);
+  assert.deepEqual(store.getSnapshot().receivers[0].points[0], { x: 15, y: 105 }, "selected hidden-class surface remains editable");
+  store.undo(); store.setTool("height");
+  map.down({ x: 30, y: 120 }, 1); map.move({ x: 30, y: 100 }); map.end(false);
+  assert.equal(store.getSnapshot().receivers[0].height, 20); assert.deepEqual(store.getSnapshot().receivers[0].points, original.points);
+  store.undo(); assert.deepEqual(store.getSnapshot().receivers[0], original);
+});
+
+test("surface edge insertion, focus and cancellation preserve semantic selection", () => {
+  const { store, map, focuses } = rig(true, true);
+  store.selectReceiver("clearing"); store.setTool("vertex");
+  map.down({ x: 30, y: 110 }, 1); map.move({ x: 30, y: 105 }); map.end(false);
+  assert.equal(store.getSnapshot().receivers[0].points.length, 5);
+  store.undo(); assert.equal(store.getSnapshot().receivers[0].points.length, 4);
+  map.down({ x: 20, y: 110 }, 1); map.move({ x: 15, y: 105 }); map.key({ key: "Escape" }); map.end(false);
+  assert.deepEqual(store.getSnapshot().receivers[0].points[0], { x: 20, y: 110 });
+  assert.equal(store.getSnapshot().selectedKind, "receiver");
+  map.key({ key: "f" }); assert.equal(focuses.length, 1); assert.deepEqual(focuses[0].point, { x: 30, y: 120 });
+});
+
+test("Delete removes selected elements and only removes a vertex when its contour tool is active", () => {
+  const { store, map } = rig(true, true);
+  store.select("tree"); map.key({ key: "Delete" }); assert.equal(store.getSnapshot().casters.some(c => c.id === "tree"), false);
+  store.undo(); assert.ok(store.getSnapshot().casters.some(c => c.id === "tree"));
+  store.selectReceiver("clearing", 0); store.setTool("vertex"); map.key({ key: "Delete" });
+  assert.equal(store.getSnapshot().receivers[0].points.length, 3);
+  store.undo(); store.setTool("select"); store.selectReceiver("clearing", 0); map.key({ key: "Backspace" });
+  assert.equal(store.getSnapshot().receivers.length, 0); store.undo(); assert.equal(store.getSnapshot().receivers.length, 1);
+  store.selectLight("home-lamp"); map.key({ key: "Delete" }); assert.equal(store.getSnapshot().lights[0].enabled, false);
+  const created = store.addLight({ x: 170, y: 150 }, "glow"); map.key({ key: "Delete" });
+  assert.equal(store.getSnapshot().lights.some(l => l.id === created), false);
+});
+
+test("text entry and original comparison cannot delete or mutate geometry", () => {
+  const { store, map } = rig(true, true); store.selectReceiver("clearing");
+  const original = structuredClone(store.getSnapshot().receivers), revision = store.getSnapshot().revision;
+  for (const key of ["Delete", "Backspace", "g", "ArrowRight", "z"]) {
+    assert.equal(map.key({ key, target: { closest: () => ({}) } }), false);
+  }
+  store.setPreviewDraft(false); map.key({ key: "Delete" }); map.key({ key: "g" });
+  map.down({ x: 30, y: 120 }, 1); map.move({ x: 35, y: 125 }); map.end(false);
+  assert.deepEqual(store.getSnapshot().receivers, original); assert.equal(store.getSnapshot().revision, revision);
+});
+
+test("selected overlays explain volumes and receiving surfaces without painting every outline", () => {
+  const { store, map } = rig(true, true), labels = [];
+  const ctx = new Proxy({}, { get: (_, key) => key === "fillText" ? text => labels.push(text) : () => {}, set: () => true });
+  assert.equal(store.getSnapshot().overlay, "selected");
+  map.draw(ctx, p => p); assert.deepEqual(labels, []);
+  store.selectReceiver("clearing"); map.draw(ctx, p => p);
+  assert.ok(labels.some(text => text.includes("Поверхность") && text.includes("принимает тени")));
+  assert.equal(labels.some(text => text.includes("Объём")), false);
+  labels.length = 0; store.select("tree"); map.draw(ctx, p => p);
+  assert.ok(labels.some(text => text.startsWith("Объём · tree")));
+  assert.equal(labels.some(text => text.includes("house")), false);
+});
+
+test("creation requests survive delayed map mounting and are consumed once", () => {
+  requestWorldStudioCreate("receiver"); assert.equal(takeWorldStudioCreate(), "receiver"); assert.equal(takeWorldStudioCreate(), null);
+  requestWorldStudioCreate("caster"); assert.equal(takeWorldStudioCreate(), "caster");
+});
+
+
+test("original comparison never draws or focuses unsaved elements through optional fallbacks or draft-backed getters", () => {
+  for (const kind of ["caster", "receiver", "light"]) {
+    const { store, map } = rig(true, true);
+    const id = kind === "caster" ? store.addCaster({ x: 80, y: 150 }) : kind === "receiver" ? store.addReceiver({ x: 80, y: 150 }) : store.addLight({ x: 80, y: 150 }, "glow");
+    assert.ok(map.focus(), "new draft element can be framed while editing");
+    const fallbackMap = createWorldLightingEditorMap(() => store.getSnapshot().casters, store, { onFocus() {} });
+    store.setPreviewDraft(false);
+    assert.equal(map.focus(), null); assert.equal(fallbackMap.focus(), null, "missing effective getters never borrow unsaved snapshot elements");
+    const labels = [], ctx = new Proxy({}, { get: (_, key) => key === "fillText" ? text => labels.push(text) : () => {}, set: () => true });
+    map.draw(ctx, p => p); fallbackMap.draw(ctx, p => p);
+    assert.equal(labels.some(text => text.includes(id)), false, "unsaved element has no original overlay");
+    store.setPreviewDraft(true); assert.ok(fallbackMap.focus());
+  }
 });

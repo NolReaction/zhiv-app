@@ -17,7 +17,7 @@ export function WorldDevLighting({ state, change, onNightCampfire, onOpenStudio 
     <label className={styles.toggle}><input type="checkbox" checked={state.lightShadows}
       onChange={event => change({ lightShadows: event.target.checked })} /><span>Тени от света</span></label>
     <p className={styles.hint}>Выключайте тени для сравнения. Костёр и фонари остаются источниками света.</p>
-    {onOpenStudio && <button type="button" onClick={onOpenStudio}>Открыть мастерскую света</button>}
+    {onOpenStudio && <button type="button" onClick={onOpenStudio}>Открыть студию</button>}
     <button type="button" onClick={onNightCampfire}>Ночь у костра</button>
     <fieldset className={styles.fieldset}>
       <legend>Солнце и луна</legend>

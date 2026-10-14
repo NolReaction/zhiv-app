@@ -70,9 +70,10 @@ test("every standalone web API entrypoint rejects production before accessing lo
       });
       const response = await module[method](request, { params: Promise.resolve({ publicId: "player", path: ["overview"] }) });
       const body = await response.json();
-      const retired = path.includes("/account-recovery/"), admin = path.includes("/admin/");
-      assert.equal(response.status, retired ? 410 : 503, `${method} ${path}`);
-      assert.equal(body.code, retired ? "RECOVERY_RETIRED" : admin ? "ADMIN_UNAVAILABLE" : "DEV_API_DISABLED", `${method} ${path}`);
+      const retired = path.includes("/account-recovery/"), admin = path.includes("/admin/"), studio = path === "app/api/dev/world-studio/route.ts";
+      assert.equal(response.status, studio ? 404 : retired ? 410 : 503, `${method} ${path}`);
+      assert.equal(body.code, studio ? "STUDIO_PROJECT_UNAVAILABLE" : retired ? "RECOVERY_RETIRED" : admin ? "ADMIN_UNAVAILABLE" : "DEV_API_DISABLED", `${method} ${path}`);
+      if (studio) assert.equal(body.available, false, `${method} ${path}`);
       assert.equal(response.headers.get("Cache-Control"), "no-store", `${method} ${path}`);
       checked++;
     }

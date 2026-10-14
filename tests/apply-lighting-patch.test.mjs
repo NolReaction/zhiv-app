@@ -7,7 +7,8 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import test from "node:test";
 import sharp from "sharp";
-import { applyLightingPatch } from "../scripts/apply-lighting-patch.mjs";
+import { applyLightingPatch, applyLightingPatchToFile, lightingMapRevision, prepareLightingPatch,
+  validateLightingPatch } from "../scripts/apply-lighting-patch.mjs";
 import { compileTiledWorld, readTiledWorld } from "../scripts/lib/tiled-world.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -165,7 +166,7 @@ test("stale, unknown, duplicate and immutable-condition edits reject the entire 
 test("unsafe JSON fields, numeric limits, bounds and intersecting polygons fail without partial edits", async t => {
   const { mapPath, makePatch, apply } = await fixture(t);
   const cases = [
-    [patch => { patch.schemaVersion = 3; }, /schemaVersion/],
+    [patch => { patch.schemaVersion = 4; }, /schemaVersion/],
     [patch => { patch.unexpected = true; }, /unknown field unexpected/],
     [patch => { patch.casters[0].after.height = 0; }, /after.height/],
     [patch => { patch.casters[0].after.height = 301; }, /after.height/],
@@ -394,4 +395,189 @@ test("invalid source ID counters and excessive resulting source counts fail atom
   const source = await readFile(mapPath, "utf8");
   await assert.rejects(apply(patch), /at most 128 authored lights/);
   assert.equal(await readFile(mapPath, "utf8"), source);
+});
+
+const studioCaster = (id = "studio-caster-1", changes = {}) => ({ id,
+  points: [{ x: 70, y: 70 }, { x: 80, y: 70 }, { x: 80, y: 80 }, { x: 70, y: 80 }],
+  height: 30, baseHeight: 4, opacity: 0.8, softness: 3, ...changes });
+const studioReceiver = (id = "studio-receiver-1", changes = {}) => ({ id,
+  points: [{ x: 5, y: 70 }, { x: 15, y: 70 }, { x: 15, y: 80 }, { x: 5, y: 80 }], height: 8, ...changes });
+const v3Patch = scene => ({ schemaVersion: 3, sceneId: scene.id, casters: [], receivers: [], lights: [] });
+
+test("v3 mixed caster and receiver CRUD preserves nested source authoring and replays idempotently", async t => {
+  const { map, mapPath, options, scene, makePatch, makeLightPatch, apply, oak } = await fixture(t, { lights: true });
+  const receiverLayer = map.layers[2].layers[0].layers[1];
+  receiverLayer.objects.push(polygon(40, "removed-receiver", 60, 60, { class: "ShadowReceiver", properties: props({ height: 12 }) }));
+  receiverLayer.objects[0].rotation = 17;
+  await writeFile(mapPath, JSON.stringify(map));
+  const beforeWorld = await compileTiledWorld(map, options);
+  const receiver = beforeWorld.shadowReceivers.find(value => value.id === "ground-receiver");
+  const patch = v3Patch(scene);
+  const caster = studioCaster("home-second-shadow", { when: { siteId: "home", level: 1 } });
+  patch.casters = [makePatch("oak", { height: 26.5 }).casters[0],
+    { id: "home-shadow-1", before: clone(scene.shadowCasters[1]), after: null }, { id: caster.id, before: null, after: caster }];
+  patch.receivers = [{ id: receiver.id, before: clone(receiver), after: { ...clone(receiver), height: 10.25,
+    points: receiver.points.map(({ x, y }) => ({ x: x + 1.125, y: y + 2.25 })) } },
+  { id: "removed-receiver", before: clone(beforeWorld.shadowReceivers[1]), after: null },
+  { id: "new-ground-receiver", before: null, after: studioReceiver("new-ground-receiver") }];
+  patch.lights = makeLightPatch("path-lamp", { enabled: false }).lights;
+  const result = await apply(patch);
+  assert.equal(result.changed, 7);
+  const changed = JSON.parse(await readFile(mapPath, "utf8"));
+  const casters = changed.layers[2].layers[0].layers[0].layers[0].objects;
+  assert.equal(casters.find(value => value.name === "oak").id, oak.id);
+  assert.equal(casters.some(value => value.name === "home-shadow-1"), false);
+  const createdCaster = casters.find(value => value.name === caster.id);
+  assert.equal(createdCaster.id, 41); assert.equal(createdCaster.x, 69); assert.equal(createdCaster.y, 64);
+  assert.equal(createdCaster.class, "ShadowCaster");
+  const receivers = changed.layers[2].layers[0].layers[1].objects;
+  assert.equal(receivers[0].rotation, 17); assert.equal(receivers[0].id, receiverLayer.objects[0].id);
+  assert.equal(receivers.some(value => value.name === "removed-receiver"), false);
+  assert.equal(receivers[1].class, "ShadowReceiver"); assert.equal(receivers[1].id, 42);
+  assert.equal(changed.nextobjectid, 43);
+  assert.deepEqual(changed.layers.slice(0, 2), map.layers.slice(0, 2), "world art, interaction masks and Occluders are untouched");
+  const world = await readTiledWorld(mapPath, options.publicDir);
+  assert.deepEqual(world.shadowCasters.find(value => value.id === caster.id), caster);
+  assert.deepEqual(world.shadowReceivers.find(value => value.id === "new-ground-receiver"), patch.receivers[2].after);
+  assert.equal(world.shadowReceivers[0].height, 10.25);
+  assert.deepEqual(world.terrain, beforeWorld.terrain); assert.deepEqual(world.occluders, beforeWorld.occluders);
+  const source = await readFile(mapPath, "utf8"), files = await readdir(path.dirname(mapPath));
+  const replay = await apply(patch);
+  assert.equal(replay.changed, 0); assert.equal(replay.unchanged, 7);
+  assert.equal(await readFile(mapPath, "utf8"), source);
+  assert.deepEqual(await readdir(path.dirname(mapPath)), files);
+});
+
+test("v3 creates both missing metadata sections in one independent Lighting group with safe IDs", async t => {
+  const { map, mapPath, options, scene, apply } = await fixture(t);
+  map.layers.pop(); map.nextobjectid = 1; map.nextlayerid = 1;
+  await writeFile(mapPath, JSON.stringify(map));
+  const patch = v3Patch(scene), caster = studioCaster(), receiver = studioReceiver();
+  patch.casters = [{ id: caster.id, before: null, after: caster }];
+  patch.receivers = [{ id: receiver.id, before: null, after: receiver }];
+  await apply(patch);
+  const changed = JSON.parse(await readFile(mapPath, "utf8"));
+  assert.deepEqual(changed.layers.slice(0, 2), map.layers);
+  assert.equal(changed.layers.length, 3);
+  assert.equal(changed.layers[2].name, "Lighting");
+  assert.deepEqual(changed.layers[2].layers.map(value => value.name), ["ShadowCasters", "ShadowReceivers"]);
+  assert.deepEqual(changed.layers[2].layers.map(value => value.objects[0].id), [13, 14]);
+  assert.equal(changed.nextobjectid, 15); assert.equal(changed.nextlayerid, 6);
+  const world = await readTiledWorld(mapPath, options.publicDir);
+  assert.deepEqual(world.shadowCasters, [caster]); assert.deepEqual(world.shadowReceivers, [receiver]);
+});
+
+test("v3 strict receiver shapes, immutable conditions and invalid geometry reject all sections before writes", async t => {
+  const { mapPath, scene, makePatch, apply } = await fixture(t);
+  const baseline = scene.shadowReceivers[0];
+  const make = () => ({ ...v3Patch(scene), casters: makePatch("oak", { height: 50 }).casters,
+    receivers: [{ id: baseline.id, before: clone(baseline), after: { ...clone(baseline), height: 12 } }] });
+  const cases = [
+    [patch => { delete patch.receivers; }, /requires receivers/],
+    [patch => { patch.receivers[0].after.opacity = 1; }, /unknown field opacity/],
+    [patch => { patch.receivers[0].after.height = 301; }, /after.height/],
+    [patch => { patch.receivers[0].after.height = -1; }, /after.height/],
+    [patch => { patch.receivers[0].after.when = { siteId: "home", level: 1 }; }, /condition cannot change/],
+    [patch => { patch.receivers[0].before.height = 5; }, /stale receiver/],
+    [patch => { patch.receivers[0].id = patch.receivers[0].before.id = patch.receivers[0].after.id = "missing"; }, /unknown receiver/],
+    [patch => { patch.receivers.push(clone(patch.receivers[0])); }, /duplicate receiver/],
+    [patch => { patch.receivers[0] = { id: "unused", before: null, after: null }; }, /both be null/],
+    [patch => { patch.receivers[0].after.points[0].x = 101; }, /points\[0\].x/],
+    [patch => { patch.receivers[0].after.points = [{ x: 20, y: 20 }, { x: 50, y: 40 }, { x: 20, y: 40 }, { x: 40, y: 20 }]; }, /self-intersect/],
+    [patch => { patch.receivers[0].after.points = [{ x: 20, y: 20 }, { x: 30, y: 30 }, { x: 40, y: 40 }]; }, /nonzero area/],
+    [patch => { patch.receivers = Array.from({ length: 33 }, () => clone(patch.receivers[0])); }, /at most 32 edits/],
+  ];
+  const source = await readFile(mapPath, "utf8");
+  for (const [mutate, expected] of cases) {
+    const patch = make(); mutate(patch);
+    await assert.rejects(apply(patch), expected);
+    assert.equal(await readFile(mapPath, "utf8"), source);
+    assert.deepEqual(await readdir(path.dirname(mapPath)), ["forest.tmj"]);
+  }
+  const legacy = { schemaVersion: 2, sceneId: scene.id, casters: [{ id: "oak", before: clone(scene.shadowCasters[0]), after: null }], lights: [] };
+  await assert.rejects(apply(legacy), /require schemaVersion 3/);
+});
+
+test("v3 new conditions and cross-section ID collisions are checked against current source before commit", async t => {
+  const { mapPath, scene, apply } = await fixture(t);
+  const cases = [
+    [{ ...v3Patch(scene), casters: [{ id: "invalid-shadow", before: null,
+      after: studioCaster("invalid-shadow", { when: { siteId: "missing", level: 1 } }) }] }, /unknown site/],
+    [{ ...v3Patch(scene), receivers: [{ id: "invalid-receiver", before: null,
+      after: studioReceiver("invalid-receiver", { when: { siteId: "home", level: 99 } }) }] }, /level/],
+    [{ ...v3Patch(scene), receivers: [{ id: "oak", before: null, after: studioReceiver("oak") }] }, /already used by another/],
+    [{ ...v3Patch(scene), casters: [{ id: "same-id", before: null, after: studioCaster("same-id") }],
+      lights: [{ id: "same-id", before: null, after: studioLight("same-id") }] }, /already used by another/],
+  ];
+  const source = await readFile(mapPath, "utf8");
+  for (const [patch, expected] of cases) {
+    await assert.rejects(apply(patch), expected);
+    assert.equal(await readFile(mapPath, "utf8"), source);
+  }
+});
+
+test("v3 receiver count limits include unchanged source items and reject creation past capacity", async t => {
+  const { map, mapPath, options, scene, apply } = await fixture(t);
+  const receiverLayer = map.layers[2].layers[0].layers[1];
+  receiverLayer.objects = Array.from({ length: 32 }, (_, index) => polygon(50 + index, `receiver-${index}`, 30, 60,
+    { class: "ShadowReceiver", properties: [] }));
+  await writeFile(mapPath, JSON.stringify(map));
+  const full = await compileTiledWorld(map, options);
+  assert.equal(full.shadowReceivers.length, 32);
+  const source = await readFile(mapPath, "utf8"), after = studioReceiver();
+  await assert.rejects(apply({ ...v3Patch(scene), receivers: [{ id: after.id, before: null, after }] }), /at most 32 receivers/);
+  assert.equal(await readFile(mapPath, "utf8"), source);
+  await apply({ ...v3Patch(scene), receivers: [{ id: full.shadowReceivers[0].id, before: full.shadowReceivers[0], after: null },
+    { id: after.id, before: null, after }] });
+  assert.equal((await readTiledWorld(mapPath, options.publicDir)).shadowReceivers.length, 32);
+});
+
+test("nonwriting preparation returns exact revisions and complete compiled candidate without mutating its patch or files", async t => {
+  const { mapPath, options, scene } = await fixture(t);
+  const mapSource = await readFile(mapPath, "utf8"), after = studioCaster();
+  const patch = { ...v3Patch(scene), casters: [{ id: after.id, before: null, after }] }, originalPatch = clone(patch);
+  const prepared = await prepareLightingPatch({ patch, mapSource, ...options });
+  assert.equal(prepared.changed, 1); assert.equal(prepared.unchanged, 0);
+  assert.equal(prepared.beforeRevision, lightingMapRevision(mapSource));
+  assert.equal(prepared.revision, lightingMapRevision(prepared.sourceText));
+  assert.notEqual(prepared.revision, prepared.beforeRevision);
+  assert.deepEqual(prepared.world.shadowCasters.at(-1), after);
+  assert.deepEqual(prepared.beforeWorld, scene);
+  assert.deepEqual(patch, originalPatch);
+  assert.equal(await readFile(mapPath, "utf8"), mapSource);
+  const replay = await prepareLightingPatch({ patch, mapSource: prepared.sourceText, ...options });
+  assert.equal(replay.changed, 0); assert.equal(replay.sourceText, prepared.sourceText); assert.equal(replay.revision, prepared.revision);
+  assert.equal(validateLightingPatch(patch, prepared.world).casters[0].applied, true);
+});
+
+test("direct save guards the exact map revision, preserves byte-exact no-ops and makes retry safe", async t => {
+  const { mapPath, options, scene } = await fixture(t);
+  const mapSource = await readFile(mapPath, "utf8"), after = studioReceiver();
+  const patch = { ...v3Patch(scene), receivers: [{ id: after.id, before: null, after }] };
+  const saved = await applyLightingPatchToFile({ patch, ...options, expectedRevision: lightingMapRevision(mapSource) });
+  assert.equal(saved.changed, 1); assert.equal(saved.revision, lightingMapRevision(await readFile(mapPath, "utf8")));
+  const source = await readFile(mapPath, "utf8");
+  await assert.rejects(applyLightingPatchToFile({ patch, ...options, expectedRevision: lightingMapRevision(mapSource) }), /changed since Studio loaded/);
+  assert.equal(await readFile(mapPath, "utf8"), source);
+  const retry = await applyLightingPatchToFile({ patch, ...options, expectedRevision: saved.revision });
+  assert.equal(retry.changed, 0); assert.equal(retry.revision, saved.revision);
+  await writeFile(mapPath, `${source} `);
+  await assert.rejects(applyLightingPatchToFile({ patch, ...options, expectedRevision: saved.revision }), /changed since Studio loaded/);
+  assert.equal(await readFile(mapPath, "utf8"), `${source} `, "unrelated Tiled whitespace is also protected by source revision");
+});
+
+test("overlapping direct saves serialize and reject the second stale request without partial changes", async t => {
+  const { mapPath, options, scene } = await fixture(t);
+  const mapSource = await readFile(mapPath, "utf8"), expectedRevision = lightingMapRevision(mapSource);
+  const caster = studioCaster(), receiver = studioReceiver();
+  const outcomes = await Promise.allSettled([
+    applyLightingPatchToFile({ patch: { ...v3Patch(scene), casters: [{ id: caster.id, before: null, after: caster }] }, ...options, expectedRevision }),
+    applyLightingPatchToFile({ patch: { ...v3Patch(scene), receivers: [{ id: receiver.id, before: null, after: receiver }] }, ...options, expectedRevision }),
+  ]);
+  assert.equal(outcomes[0].status, "fulfilled"); assert.equal(outcomes[1].status, "rejected");
+  assert.match(outcomes[1].reason.message, /changed since Studio loaded/);
+  const world = await readTiledWorld(mapPath, options.publicDir);
+  assert.deepEqual(world.shadowCasters.at(-1), caster);
+  assert.equal(world.shadowReceivers.some(value => value.id === receiver.id), false);
+  assert.deepEqual(await readdir(path.dirname(mapPath)), ["forest.tmj"]);
 });

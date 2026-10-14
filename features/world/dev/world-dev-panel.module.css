@@ -23,6 +23,7 @@
 .root button, .root select, .root a, .root summary { touch-action: manipulation; }
 .toolbar, .drawer { pointer-events: auto; }
 .toolbar { display: flex; align-items: center; justify-content: flex-end; gap: 7px; }
+.root:has([data-world-studio-mode]) > .toolbar { display: none; }
 .root > .drawer button, .root > .drawer a, .root > .toolbar button { min-height: 44px; border: 1px solid var(--dev-line); border-radius: 10px; padding: 8px 11px; color: var(--dev-ink); background: #283b2d; cursor: pointer; font: inherit; }
 .root > .drawer button, .root > .toolbar button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
 .root .drawer button:hover:not(:disabled), .root .drawer a:hover { background: #354d37; }

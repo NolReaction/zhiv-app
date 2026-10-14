@@ -349,7 +349,7 @@ function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false
       {lastAction && <button type="button" className={styles.repeat} disabled={Boolean(repeatUnavailable)}
         aria-label={`Повторить: ${repeatLabel}`} title={repeatUnavailable ?? repeatLabel} onClick={() => play(lastAction)}><RotateCcw size={15} aria-hidden />Повторить</button>}
       <button ref={lightingTrigger} type="button" className={styles.lightingTrigger} aria-pressed={lighting.enabled}
-        aria-label="Мастерская света" onClick={() => lighting.enabled ? closeLighting() : openLighting()}><Sun size={16} aria-hidden /><strong>Свет</strong></button>
+        aria-label="Студия" onClick={() => lighting.enabled ? closeLighting() : openLighting()}><Sun size={16} aria-hidden /><strong>Студия</strong></button>
       <button ref={trigger} type="button" className={styles.trigger} aria-expanded={open} aria-controls={drawerId}
         aria-label={`Панель разработчика${overrides ? `, изменений: ${overrides}` : ""}`} onClick={() => { closeLighting(); setOpen(value => !value); }}>
         <FlaskConical size={16} aria-hidden /><strong>DEV</strong>{overrides > 0 && <span className={styles.count}>{overrides}</span>}
