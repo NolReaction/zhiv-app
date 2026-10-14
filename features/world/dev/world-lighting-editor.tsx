@@ -1,10 +1,13 @@
-import { useId, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { TILED_WORLD } from "@/features/world/scene/presentation";
 import type { WorldShadowCaster } from "@/features/world/tiled/types";
 import type { WorldDevState } from "./world-dev-store";
 import { WORLD_LIGHTING_EDITOR_LIMITS, worldLightingEditorStore } from "./world-lighting-editor-store";
 import { studioReceiverName } from "./world-studio-outliner";
 import { WorldStudioMetadata } from "./world-studio-metadata";
+import { WorldStudioElementControls } from "./world-studio-element-controls";
+import { requestWorldStudioCreate } from "./world-lighting-editor-map";
+import { WORLD_STUDIO_UI_EVENT } from "./world-studio-keyboard";
 import styles from "./world-lighting-editor.module.css";
 
 type EditorProps = { state: WorldDevState; change: (patch: Partial<WorldDevState>) => void; levels?: Readonly<Record<string, number>> };
@@ -18,13 +21,24 @@ const rangeKeys = new Set(["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "H
 /** Keep partial keyboard input local; publish only valid values for the live preview. */
 export function LightingNumberField({ label, value, min, max, step = .1, range = true, onChange }: NumberFieldProps) {
   const id = useId();
+  const input = useRef<HTMLInputElement>(null);
   const [entry, setEntry] = useState<string | null>(null);
   const numeric = entry === null || entry.trim() === "" ? NaN : Number(entry);
   const invalid = entry !== null && (!Number.isFinite(numeric) || numeric < min || numeric > max);
   const finish = () => { worldLightingEditorStore.commitGesture(); setEntry(null); };
+  useEffect(() => {
+    const command = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (detail?.action === "cancel-input" && detail.target === input.current) {
+        worldLightingEditorStore.cancelGesture(); setEntry(null); input.current?.blur();
+      }
+    };
+    window.addEventListener(WORLD_STUDIO_UI_EVENT, command);
+    return () => window.removeEventListener(WORLD_STUDIO_UI_EVENT, command);
+  }, []);
   return <div className={styles.numberField}>
     <label htmlFor={id}>{label}</label>
-    <input id={id} type="number" min={min} max={max} step={step}
+    <input ref={input} id={id} type="number" min={min} max={max} step={step}
       value={entry ?? displayLightingNumber(value)} aria-invalid={invalid || undefined}
       aria-describedby={invalid ? `${id}-bounds` : undefined}
       onFocus={() => { setEntry(displayLightingNumber(value)); worldLightingEditorStore.beginGesture(); }}
@@ -83,14 +97,15 @@ export function WorldLightingEditor({ state, change, levels = state.levels }: Ed
   return <section className={styles.editor} aria-label="Свойства объекта" data-world-lighting-editor>
     <h3>{selected.studioName ?? lightingCasterName(selected)}</h3>
     <WorldStudioMetadata key={`caster:${selected.id}`} kind="caster" element={selected} automaticName={lightingCasterName(selected)} levels={levels} />
+    <WorldStudioElementControls kind="caster" id={selected.id} />
     <p className={styles.kindLabel}>Объём, отбрасывающий тень</p>
-    <p className={styles.hint}>Фиолетовый контур — форма объёма для расчёта тени. Контур и высота меняют тень; PNG здания или дерева редактируются отдельно.</p>
+    <details className={styles.details}><summary>Как устроена тень</summary><div className={styles.detailsBody}><p className={styles.hint}>Фиолетовый контур — форма объёма для расчёта тени. Контур и высота меняют тень; PNG здания или дерева редактируются отдельно.</p><p className={styles.hint}>Основание 0 — на земле. Поднимите основание для кроны. Рисунок объекта сохраняет свой размер.</p></div></details>
     {selected.when && <div className={styles.levelHint}>
       <p>Показывается при уровне здания {selected.when.level}.{activeLevel === selected.when.level ? " Этот уровень активен." : ""}</p>
       {activeLevel !== selected.when.level && <button type="button"
         onClick={() => previewLightingCasterLevel(selected, levels, change)}>Показать уровень {selected.when.level}</button>}
     </div>}
-    <fieldset className={styles.controls} disabled={!snapshot.enabled || !snapshot.previewDraft}>
+    <fieldset className={styles.controls} disabled={!snapshot.enabled || !snapshot.previewDraft || snapshot.editorFlags[`caster:${selected.id}`]?.locked}>
       <legend className={styles.srOnly}>Высота и контур</legend>
       <LightingNumberField key={`${selected.id}-height`} label="Высота" value={selected.height} min={.1}
         max={Math.min(WORLD_LIGHTING_EDITOR_LIMITS.maxHeight, WORLD_LIGHTING_EDITOR_LIMITS.maxTop - selected.baseHeight)}
@@ -103,7 +118,6 @@ export function WorldLightingEditor({ state, change, levels = state.levels }: Ed
           min={selected.baseHeight + .1} max={Math.min(WORLD_LIGHTING_EDITOR_LIMITS.maxTop, selected.baseHeight + WORLD_LIGHTING_EDITOR_LIMITS.maxHeight)}
           onChange={value => worldLightingEditorStore.patchSelected({ height: value - selected.baseHeight })} />
       </div>
-      <p className={styles.hint}>Основание 0 — на земле. Поднимите основание для кроны. Рисунок объекта сохраняет свой размер.</p>
       <details className={styles.details} open={snapshot.tool === "vertex" || undefined}>
         <summary>Контур · {selected.points.length} точек</summary>
         <div className={styles.detailsBody}>
@@ -150,37 +164,48 @@ export function WorldLightingReceiverInspector({ levels }: { levels?: Readonly<R
     worldLightingEditorStore.getSnapshot, worldLightingEditorStore.getServerSnapshot);
   const selected = snapshot.selectedKind === "receiver" ? snapshot.receivers.find(receiver => receiver.id === snapshot.selectedId) : undefined;
   const index = snapshot.selectedVertex;
-  const vertex = selected && index !== null ? selected.points[index] : null;
+  const points = selected ? snapshot.selectedHole === null ? selected.points : selected.holes?.[snapshot.selectedHole] ?? selected.points : [];
+  const vertex = index !== null ? points[index] : null;
   if (!selected) return <p className={styles.hint}>Выберите поверхность на карте или в списке.</p>;
   return <section className={styles.editor} aria-label="Свойства поверхности" data-world-lighting-editor>
     <h3>{selected.studioName ?? studioReceiverName(selected.id)}</h3>
     <WorldStudioMetadata key={`receiver:${selected.id}`} kind="receiver" element={selected} automaticName={studioReceiverName(selected.id)} levels={levels} />
+    <WorldStudioElementControls kind="receiver" id={selected.id} />
     <p className={styles.kindLabel}>Поверхность, принимающая тень</p>
-    <p className={styles.hint}>Синий контур ограничивает землю, на которой видны рассчитанные тени. Это не часть дома и не препятствие. Обычно соседние поверхности должны покрывать землю без разрывов.</p>
-    <p className={styles.hint}>Для быстрого предпросмотра можно обвести поляну целиком. Для аккуратных ночных теней размечайте видимую землю вокруг дома несколькими поверхностями; отверстия в одном контуре пока не поддерживаются.</p>
-    <fieldset className={styles.controls} disabled={!snapshot.enabled || !snapshot.previewDraft}>
+    <details className={styles.details}><summary>Как разметить землю</summary><div className={styles.detailsBody}>
+      <p className={styles.hint}>Синий контур ограничивает землю, на которой видны рассчитанные тени. Это не часть дома и не препятствие. Обычно соседние поверхности должны покрывать землю без разрывов.</p>
+      <p className={styles.hint}>Обведите поляну внешним контуром, затем добавьте исключения под домом и другими объектами. Исключение убирает тени этой поверхности; другая земля, перекрывающая это место, может заполнить его обратно. При необходимости исключите место во всех покрывающих поверхностях. Каждый контур должен целиком помещаться внутри поверхности и не пересекать другие исключения.</p>
+      <p className={styles.hint}>Обычно 0 — земля. Поднятые поверхности пока экспериментальные; они не заменяют освещение стен и крыш.</p>
+    </div></details>
+    <fieldset className={styles.controls} disabled={!snapshot.enabled || !snapshot.previewDraft || snapshot.editorFlags[`receiver:${selected.id}`]?.locked}>
       <legend className={styles.srOnly}>Параметры поверхности</legend>
       <LightingNumberField key={`${selected.id}-height`} label="Высота поверхности" value={selected.height} min={0} max={WORLD_LIGHTING_EDITOR_LIMITS.maxHeight}
         onChange={value => worldLightingEditorStore.patchReceiver({ height: value })} />
-      <p className={styles.hint}>Обычно 0 — земля. Поднятые поверхности пока экспериментальные; они не заменяют освещение стен и крыш.</p>
       <details className={styles.details} open={snapshot.tool === "vertex" || undefined}>
-        <summary>Контур поверхности · {selected.points.length} точек</summary><div className={styles.detailsBody}>
-          <label className={styles.field}><span>Выбранная точка</span><select value={index ?? ""} onChange={event => worldLightingEditorStore.selectReceiver(selected.id, event.target.value === "" ? null : Number(event.target.value))}>
-            <option value="">Выберите точку</option>{selected.points.map((point, at) => <option key={at} value={at}>{at + 1} · {displayLightingNumber(point.x)}, {displayLightingNumber(point.y)}</option>)}
+        <summary>Контур поверхности · {points.length} точек</summary><div className={styles.detailsBody}>
+          <label className={styles.field}><span>Редактируемый контур</span><select value={snapshot.selectedHole ?? "outer"} onChange={event => worldLightingEditorStore.selectHole(event.target.value === "outer" ? null : Number(event.target.value))}>
+            <option value="outer">Внешний контур</option>{selected.holes?.map((ring, at) => <option key={at} value={at}>Исключение {at + 1} · {ring.length} точек</option>)}
+          </select></label>
+          <div className={styles.actions} aria-label="Исключения земли">
+            <button type="button" disabled={(selected.holes?.length ?? 0) >= 16} onClick={() => requestWorldStudioCreate("receiver-hole")}>Добавить исключение</button>
+            <button type="button" disabled={snapshot.selectedHole === null} onClick={() => worldLightingEditorStore.removeReceiverHole()}>Удалить исключение</button>
+          </div>
+          <label className={styles.field}><span>Выбранная точка</span><select value={index ?? ""} onChange={event => worldLightingEditorStore.selectHole(snapshot.selectedHole, event.target.value === "" ? null : Number(event.target.value))}>
+            <option value="">Выберите точку</option>{points.map((point, at) => <option key={at} value={at}>{at + 1} · {displayLightingNumber(point.x)}, {displayLightingNumber(point.y)}</option>)}
           </select></label>
           {vertex && index !== null && <div className={styles.heightFields}>
-            <LightingNumberField key={`${selected.id}-${index}-x`} label="X точки" value={vertex.x} min={0} max={TILED_WORLD.width} range={false} onChange={value => worldLightingEditorStore.moveVertex(index, { x: value, y: vertex.y })} />
-            <LightingNumberField key={`${selected.id}-${index}-y`} label="Y точки" value={vertex.y} min={0} max={TILED_WORLD.height} range={false} onChange={value => worldLightingEditorStore.moveVertex(index, { x: vertex.x, y: value })} />
+            <LightingNumberField key={`${selected.id}-${snapshot.selectedHole}-${index}-x`} label="X точки" value={vertex.x} min={0} max={TILED_WORLD.width} range={false} onChange={value => worldLightingEditorStore.moveVertex(index, { x: value, y: vertex.y })} />
+            <LightingNumberField key={`${selected.id}-${snapshot.selectedHole}-${index}-y`} label="Y точки" value={vertex.y} min={0} max={TILED_WORLD.height} range={false} onChange={value => worldLightingEditorStore.moveVertex(index, { x: vertex.x, y: value })} />
           </div>}
           <div className={styles.actions}>
-            <button type="button" disabled={index === null || selected.points.length >= WORLD_LIGHTING_EDITOR_LIMITS.vertices} onClick={() => {
+            <button type="button" disabled={index === null || points.length >= WORLD_LIGHTING_EDITOR_LIMITS.vertices} onClick={() => {
               if (index === null) return;
-              const a = selected.points[index], b = selected.points[(index + 1) % selected.points.length];
+              const a = points[index], b = points[(index + 1) % points.length];
               worldLightingEditorStore.addVertex(index, { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
             }}>Добавить точку</button>
-            <button type="button" disabled={index === null || selected.points.length <= 3} onClick={() => { if (index !== null) worldLightingEditorStore.deleteVertex(index); }}>Удалить точку</button>
+            <button type="button" disabled={index === null || points.length <= 3} onClick={() => { if (index !== null) worldLightingEditorStore.deleteVertex(index); }}>Удалить точку</button>
           </div>
-          <p className={styles.hint}>Инструмент «Контур» меняет границы поверхности. «Двигать» переносит её целиком.</p>
+          <p className={styles.hint}>Инструмент «Контур» меняет выбранную границу или исключение. «Двигать» переносит поверхность вместе со всеми исключениями.</p>
         </div>
       </details>
       <div className={styles.actions}>

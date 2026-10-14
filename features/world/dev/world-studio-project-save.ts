@@ -54,11 +54,16 @@ const sceneDraft = (scene: FixedWorldScene): Draft => ({ casters: scene.shadowCa
 const fingerprint = (draft: Draft) => canonical({ casters: [...draft.casters].sort((a, b) => a.id.localeCompare(b.id)),
   receivers: [...draft.receivers].sort((a, b) => a.id.localeCompare(b.id)), lights: [...draft.lights].sort((a, b) => a.id.localeCompare(b.id)) });
 const equal = (a: unknown, b: unknown) => canonical(a) === canonical(b);
-function sameItem(a: { id: string; points?: readonly { x: number; y: number }[] } | null, b: typeof a) {
+type PolygonPoints = readonly { x: number; y: number }[];
+const samePoints = (a: PolygonPoints, b: PolygonPoints) => a.length === b.length
+  && a.every((point, index) => Math.abs(point.x - b[index].x) <= 1e-9 && Math.abs(point.y - b[index].y) <= 1e-9);
+function sameItem(a: { id: string; points?: PolygonPoints; holes?: readonly PolygonPoints[] } | null, b: typeof a) {
   if (!a || !b) return a === b;
   if (!a.points || !b.points) return equal(a, b);
-  return equal({ ...a, points: undefined }, { ...b, points: undefined }) && a.points.length === b.points.length
-    && a.points.every((point, index) => Math.abs(point.x - b.points![index].x) <= 1e-9 && Math.abs(point.y - b.points![index].y) <= 1e-9);
+  const leftHoles = a.holes ?? [], rightHoles = b.holes ?? [];
+  return equal({ ...a, points: undefined, holes: undefined }, { ...b, points: undefined, holes: undefined })
+    && samePoints(a.points, b.points) && leftHoles.length === rightHoles.length
+    && leftHoles.every((ring, index) => samePoints(ring, rightHoles[index]));
 }
 function sameDraft(a: Draft, b: Draft) {
   return (["casters", "receivers", "lights"] as const).every(key => {

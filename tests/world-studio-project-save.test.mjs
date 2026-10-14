@@ -188,10 +188,16 @@ test("production coordinator never probes or edits store", async t => {
 });
 
 test("compiler's rotated contour roundtrip noise does not cause repeated autonomous saves", async t => {
-  const store = editor(), backend = server();
+  const initial = scene();
+  initial.shadowReceivers[0].holes = [[{ x: 50, y: 10 }, { x: 65, y: 10 }, { x: 65, y: 25 }]];
+  const store = editor(initial), backend = server(initial);
   const fetcher = async (url, options) => {
     const response = await backend.fetcher(url, options), data = await response.json();
-    if (options.method === "POST") data.scene.shadowCasters[0].points[0].x += 1e-13;
+    if (options.method === "POST") {
+      data.scene.shadowCasters[0].points[0].x += 1e-13;
+      data.scene.shadowReceivers[0].points[0].x += 1e-13;
+      data.scene.shadowReceivers[0].holes[0][1].y += 1e-13;
+    }
     return Response.json(data);
   };
   const { manager } = setup(t, { editor: store, fetcher });
@@ -200,6 +206,21 @@ test("compiler's rotated contour roundtrip noise does not cause repeated autonom
   assert.equal(backend.requests.length, 1);
   assert.equal(manager.getSnapshot().pending, false);
   assert.equal(manager.getSnapshot().status, "saved");
+});
+
+test("receiver exclusion edits remain real patches while harmless coordinate noise does not create a save loop", () => {
+  const initial = scene();
+  initial.shadowReceivers[0].holes = [[{ x: 50, y: 10 }, { x: 65, y: 10 }, { x: 65, y: 25 }]];
+  const current = { casters: clone(initial.shadowCasters), receivers: clone(initial.shadowReceivers), lights: [] };
+  current.receivers[0].holes[0][0].x += 1e-13;
+  assert.equal(createWorldStudioIncrementalPatch(initial, current).receivers.length, 0);
+  current.receivers[0].holes[0][0].x += .01;
+  const patch = createWorldStudioIncrementalPatch(initial, current);
+  assert.equal(patch.receivers.length, 1);
+  assert.deepEqual(patch.receivers[0].before.holes, initial.shadowReceivers[0].holes);
+  assert.deepEqual(patch.receivers[0].after.holes, current.receivers[0].holes);
+  current.receivers[0].holes = [];
+  assert.equal(createWorldStudioIncrementalPatch(initial, current).receivers.length, 1);
 });
 
 test("a conflicting raw browser draft is never treated as an empty draft or overwritten", async t => {

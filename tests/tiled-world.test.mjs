@@ -1994,3 +1994,34 @@ test("Lights preserves implicit enabled and positioning defaults and validates a
   delete lamp.properties;
   assert.deepEqual((await compile()).lights[0], legacy, "legacy world export stays byte-compatible when flags are absent");
 });
+
+test("receiver exclusions use object-local polygon coordinates and follow nested offsets and rotation", async t => {
+  const { map, compile } = await fixture(t);
+  const local = [[{ x: 3, y: 4 }, { x: 7, y: 4 }, { x: 7, y: 8 }, { x: 3, y: 8 }]];
+  const receiver = { ...shadowPolygon(300, "ground-with-house", { shadowHoles: JSON.stringify(local) }), rotation: 90 };
+  map.layers.push({ ...groupLayer(30, "Authoring", [
+    { ...groupLayer(31, "Lighting", [groupLayer(32, "ShadowReceivers", [objectLayer(33, "Clearing", [receiver])])]), offsetx: 2, offsety: 3 },
+  ]), offsetx: 5, offsety: 10 });
+  const result = await compile();
+  assert.deepEqual(result.shadowReceivers[0].holes, [[{ x: 33, y: 46 }, { x: 33, y: 50 }, { x: 29, y: 50 }, { x: 29, y: 46 }]]);
+  assert.deepEqual(result.shadowReceivers[0].points, [{ x: 37, y: 43 }, { x: 37, y: 58 }, { x: 22, y: 58 }, { x: 22, y: 43 }]);
+  receiver.properties = shadowProperties({ shadowHoles: "[]" });
+  assert.equal(Object.hasOwn((await compile()).shadowReceivers[0], "holes"), false);
+});
+
+test("receiver exclusion authoring rejects invalid JSON, formats, bounds and topology", async t => {
+  const { map, compile } = await fixture(t), receiver = shadowPolygon(300, "ground-with-house", {});
+  map.layers.push(objectLayer(30, "ShadowReceivers", [receiver]));
+  const square = (x, y, size) => [{ x, y }, { x: x + size, y }, { x: x + size, y: y + size }, { x, y: y + size }];
+  const cases = ["{", "null", "{}", JSON.stringify([[]]), JSON.stringify([square(0, 3, 4)]),
+    JSON.stringify([square(14, 3, 4)]), JSON.stringify([square(2, 2, 8), square(3, 3, 2)]),
+    JSON.stringify([square(2, 2, 6), square(8, 2, 3)]), JSON.stringify(Array.from({ length: 17 }, () => square(2, 2, 3))),
+    JSON.stringify([square(2, 2, 3).map(point => ({ ...point, z: 1 }))]),
+    JSON.stringify([[{ x: 1, y: 1 }, { x: 12, y: 10 }, { x: 1, y: 10 }, { x: 10, y: 1 }]])];
+  for (const value of cases) {
+    receiver.properties = shadowProperties({ shadowHoles: value });
+    await assert.rejects(compile(), /ground-with-house.*shadowHoles/);
+  }
+  receiver.properties = [{ name: "shadowHoles", type: "bool", value: true }];
+  await assert.rejects(compile(), /expected "string"/);
+});

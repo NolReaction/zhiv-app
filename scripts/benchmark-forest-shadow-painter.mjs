@@ -25,11 +25,13 @@ const compile = source => `data:text/javascript;base64,${Buffer.from(ts.transpil
 const read = path => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 const fromGit = path => execFileSync("git", ["show", `${baselineRef}:${path}`], { cwd: root, encoding: "utf8" });
 const viewport = compile(await read(viewportPath));
+const receiverGeometry = compile(await read("features/world/environment/lighting/forest-receiver-geometry.mjs"));
 async function renderer(before) {
   const geometry = compile((before ? fromGit(geometryPath) : await read(geometryPath))
     .replace("  if (!Number.isFinite(receiverHeight)", "  globalThis.__shadowBenchmark.projections++;\n  if (!Number.isFinite(receiverHeight)"));
   const source = (before ? fromGit(painterPath) : await read(painterPath))
     .replace('"./forest-shadow-geometry"', JSON.stringify(geometry))
+    .replace('"./forest-receiver-geometry"', JSON.stringify(receiverGeometry))
     .replace('"@/features/world/scene/canvas-viewport"', JSON.stringify(viewport));
   return { painter: compile(source), geometry };
 }

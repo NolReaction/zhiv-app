@@ -1,14 +1,17 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Focus, Hand, Lightbulb, Move, MousePointer2, Pentagon, Redo2, Sun, Undo2, X, ArrowUpDown } from "lucide-react";
+import { Focus, Hand, HelpCircle, History, Lightbulb, Move, MousePointer2, Pentagon, Redo2, Sun, Undo2, X, ArrowUpDown } from "lucide-react";
 import { TILED_WORLD } from "@/features/world/scene/presentation";
 import type { WorldLight } from "@/features/world/tiled/types";
 import { worldDevStore, type WorldDevState } from "./world-dev-store";
-import { WORLD_LIGHTING_EDITOR_CANCEL_EVENT, WORLD_LIGHTING_EDITOR_LIMITS, worldLightingEditorStore } from "./world-lighting-editor-store";
+import { WORLD_LIGHTING_EDITOR_LIMITS, worldLightingEditorStore } from "./world-lighting-editor-store";
 import { requestWorldLightingEditorFocus } from "./world-lighting-editor-map";
 import { requestWorldLightingStudioHandoff } from "./world-lighting-studio-session";
 import { LightingNumberField, WorldLightingEditor, WorldLightingReceiverInspector } from "./world-lighting-editor";
 import { WorldStudioObjects } from "./world-studio-objects";
-import { WORLD_STUDIO_TEXT_CANCEL_EVENT, WorldStudioMetadata } from "./world-studio-metadata";
+import { WorldStudioMetadata } from "./world-studio-metadata";
+import { WorldStudioElementControls } from "./world-studio-element-controls";
+import { WORLD_STUDIO_UI_EVENT } from "./world-studio-keyboard";
+import { useWorldStudioKeyboard } from "./use-world-studio-keyboard";
 import { WorldStudioSave } from "./world-studio-save";
 import editorStyles from "./world-lighting-editor.module.css";
 import styles from "./world-lighting-studio.module.css";
@@ -66,7 +69,8 @@ export function WorldLightingSourceInspector({ light, levels }: { light: WorldLi
   return <section className={editorStyles.editor} aria-label="Свойства источника" data-world-lighting-editor>
     <h3>{light.studioName ?? lightingSourceName(light)}</h3>
     <WorldStudioMetadata key={`light:${light.id}`} kind="light" element={light} automaticName={lightingSourceName(light)} levels={levels} />
-    <fieldset className={editorStyles.controls} disabled={!snapshot.previewDraft}>
+    <WorldStudioElementControls kind="light" id={light.id} />
+    <fieldset className={editorStyles.controls} disabled={!snapshot.previewDraft || snapshot.editorFlags[`light:${light.id}`]?.locked}>
       <legend className={editorStyles.srOnly}>Параметры света</legend>
       <label className={styles.toggle}><input type="checkbox" checked={light.enabled !== false}
         onChange={event => worldLightingEditorStore.patchLight({ enabled: event.target.checked })} />Источник включён</label>
@@ -124,58 +128,46 @@ export function WorldLightingStudio({ state, change, levels = state.levels, worl
   const snapshot = useSyncExternalStore(worldLightingEditorStore.subscribe, worldLightingEditorStore.getSnapshot, worldLightingEditorStore.getServerSnapshot);
   const selectionKey = `${snapshot.selectedKind}:${snapshot.selectedId}`;
   const [mobilePane, setMobilePane] = useState<StudioPane>("objects"), [viewOpen, setViewOpen] = useState(false), [collapsed, setCollapsed] = useState(false);
-  const inspector = useRef<HTMLDivElement>(null), closeCallback = useRef(onClose);
-  useEffect(() => { closeCallback.current = onClose; }, [onClose]);
+  const [commandPane, setCommandPane] = useState<"history" | "help" | null>(null);
+  const inspector = useRef<HTMLDivElement>(null);
+  useWorldStudioKeyboard({ onClose: () => {
+    if (commandPane) setCommandPane(null);
+    else if (viewOpen) setViewOpen(false);
+    else onClose();
+  } });
   useEffect(() => { if (inspector.current) inspector.current.scrollTop = 0; }, [selectionKey]);
   useEffect(() => {
     worldLightingEditorStore.hydrate();
     const save = () => { worldLightingEditorStore.commitGesture(); worldLightingEditorStore.saveDraft(); };
-    const escape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.isComposing || !worldLightingEditorStore.getSnapshot().enabled) return;
-      if (event.target instanceof Element && event.target.matches("[data-studio-text-field]")) {
-        window.dispatchEvent(new CustomEvent(WORLD_STUDIO_TEXT_CANCEL_EVENT, { detail: event.target }));
-        event.preventDefault(); event.stopImmediatePropagation(); return;
+    const command = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (detail?.action === "history" || detail?.action === "help") {
+        setCommandPane(previous => previous === detail.action ? null : detail.action); setViewOpen(false); setCollapsed(false);
       }
-      const placing = worldLightingEditorStore.getSnapshot().tool === "light", gesturing = worldLightingEditorStore.isGesturing();
-      if (gesturing || placing) {
-        window.dispatchEvent(new CustomEvent(WORLD_LIGHTING_EDITOR_CANCEL_EVENT, { detail: event })); worldLightingEditorStore.cancelGesture();
-        if (placing) worldLightingEditorStore.setTool("select");
-        if (event.target instanceof HTMLInputElement) event.target.blur();
-      } else {
-        if (event.target instanceof Element && event.target.closest("input,textarea,select,[contenteditable]")) { event.stopImmediatePropagation(); return; }
-        closeCallback.current();
+      if (detail?.action === "rename") { setMobilePane("inspector"); setCollapsed(false); }
+      if (detail?.action === "cancel-input" && detail.target instanceof HTMLElement && !detail.target.matches("[data-studio-text-field]")) {
+        worldLightingEditorStore.cancelGesture(); detail.target.blur();
       }
-      event.preventDefault(); event.stopImmediatePropagation();
     };
-    window.addEventListener("pagehide", save); window.addEventListener("keydown", escape, true);
-    return () => { window.removeEventListener("pagehide", save); window.removeEventListener("keydown", escape, true); save(); };
+    window.addEventListener("pagehide", save); window.addEventListener(WORLD_STUDIO_UI_EVENT, command);
+    return () => { window.removeEventListener("pagehide", save); window.removeEventListener(WORLD_STUDIO_UI_EVENT, command); save(); };
   }, []);
   const selectedLight = snapshot.selectedKind === "light" ? snapshot.lights.find(item => item.id === snapshot.selectedId) : undefined;
   const dirty = snapshot.dirtyIds.length + snapshot.dirtyLightIds.length + snapshot.dirtyReceiverIds.length;
-  return <section className={styles.studio} data-world-studio-mode data-mobile-pane={mobilePane} data-collapsed={collapsed || undefined} data-view-open={viewOpen || undefined} aria-label="Студия" onKeyDown={event => {
-    if (event.target instanceof Element && event.target.closest("input,textarea,select,[contenteditable]")) return;
-    if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "z") { event.preventDefault(); event.stopPropagation(); if (event.shiftKey) worldLightingEditorStore.redo(); else worldLightingEditorStore.undo(); return; }
-    if (event.ctrlKey || event.metaKey || event.altKey || event.nativeEvent.isComposing) return;
-    if ((event.key === "Delete" || event.key === "Backspace") && snapshot.selectedId && snapshot.previewDraft) {
-      event.preventDefault(); event.stopPropagation(); worldLightingEditorStore.cancelGesture();
-      if (snapshot.tool === "vertex" && snapshot.selectedKind !== "light" && snapshot.selectedVertex !== null) worldLightingEditorStore.deleteVertex(snapshot.selectedVertex); else worldLightingEditorStore.removeSelected();
-      return;
-    }
-    const tool = tools.find(item => item.key && item.key.toLowerCase() === event.key.toLowerCase());
-    if (tool) { event.preventDefault(); worldLightingEditorStore.setTool(tool.id); }
-    else if (event.key.toLowerCase() === "f" && snapshot.selectedId) { event.preventDefault(); focusLightingSelection(); }
-  }}>
+  return <section className={styles.studio} data-world-studio-mode data-mobile-pane={mobilePane} data-collapsed={collapsed || undefined} data-view-open={viewOpen || undefined} aria-label="Студия">
     <header className={styles.topbar} data-world-lighting-studio-panel>
       <div className={styles.title}><h2><Sun size={16} aria-hidden />Студия</h2><small>Свет, тени и поверхности · {dirty} правок</small></div>
       <div className={styles.tools} role="toolbar" aria-label="Инструменты студии">{tools.map(({ id: tool, label, key, Icon }) => <button key={tool} type="button" aria-pressed={snapshot.tool === tool} title={`${label}${key ? ` (${key})` : ""}`} onClick={() => worldLightingEditorStore.setTool(tool)}><Icon size={15} aria-hidden /><span>{label}</span>{key && <kbd>{key}</kbd>}</button>)}</div>
       <div className={styles.topActions}><button className={styles.collapse} type="button" aria-expanded={!collapsed} onClick={() => setCollapsed(value => !value)}>{collapsed ? "Развернуть" : "Свернуть"}</button><button type="button" className={styles.iconButton} aria-label="Закрыть студию" onClick={onClose}><X size={18} aria-hidden /></button></div>
       <div className={styles.utility}>
-        <button type="button" className={styles.iconButton} aria-label="Отменить изменение" title="Отменить · Ctrl/Cmd+Z" disabled={!snapshot.canUndo} onClick={() => worldLightingEditorStore.undo()}><Undo2 size={16} aria-hidden /></button>
-        <button type="button" className={styles.iconButton} aria-label="Повторить изменение" title="Повторить · Ctrl/Cmd+Shift+Z" disabled={!snapshot.canRedo} onClick={() => worldLightingEditorStore.redo()}><Redo2 size={16} aria-hidden /></button>
+        <button type="button" className={styles.historyStep} aria-label={`Отменить изменение${snapshot.undoLabel ? `: ${snapshot.undoLabel}` : ""}`} title={`Ctrl/Cmd+Z · ${snapshot.undoLabel ?? "История пока пуста"}`} disabled={!snapshot.canUndo || !snapshot.previewDraft} onClick={() => worldLightingEditorStore.undo()}><Undo2 size={20} aria-hidden /><span>Назад<small>{snapshot.undoLabel ?? "Нет изменений"}</small></span></button>
+        <button type="button" className={styles.historyStep} aria-label={`Повторить изменение${snapshot.redoLabel ? `: ${snapshot.redoLabel}` : ""}`} title={`Ctrl/Cmd+Shift+Z или Ctrl+Y · ${snapshot.redoLabel ?? "Нет отменённых действий"}`} disabled={!snapshot.canRedo || !snapshot.previewDraft} onClick={() => worldLightingEditorStore.redo()}><Redo2 size={20} aria-hidden /><span>Вперёд<small>{snapshot.redoLabel ?? "Нет отменённых действий"}</small></span></button>
+        <button type="button" aria-pressed={commandPane === "history"} onClick={() => { setCommandPane(value => value === "history" ? null : "history"); setViewOpen(false); }}><History size={15} aria-hidden />История</button>
         <button type="button" disabled={!snapshot.selectedId} onClick={focusLightingSelection}><Focus size={15} aria-hidden />Найти · F</button>
         <label className={styles.snap}><span>Шаг</span><select aria-label="Шаг привязки" value={snapshot.snap} onChange={event => worldLightingEditorStore.setSnap(Number(event.target.value) as 0 | 1 | 5 | 10)}><option value={0}>Нет</option><option value={1}>1</option><option value={5}>5</option><option value={10}>10</option></select></label>
         <div className={styles.compare} aria-label="Сравнение разметки"><button type="button" aria-pressed={snapshot.previewDraft} onClick={() => worldLightingEditorStore.setPreviewDraft(true)}>Черновик</button><button type="button" title="Последняя сохранённая разметка проекта; при недоступном проекте — загруженный экспорт" aria-pressed={!snapshot.previewDraft} onClick={() => worldLightingEditorStore.setPreviewDraft(false)}>Сохранённое</button></div>
-        <button type="button" className={styles.desktopView} aria-pressed={viewOpen} onClick={() => setViewOpen(value => !value)}>Вид и легенда</button>
+        <button type="button" className={styles.desktopView} aria-pressed={viewOpen} onClick={() => { setViewOpen(value => !value); setCommandPane(null); }}>Вид и легенда</button>
+        <button type="button" aria-pressed={commandPane === "help"} onClick={() => { setCommandPane(value => value === "help" ? null : "help"); setViewOpen(false); }}><HelpCircle size={15} aria-hidden />Клавиши · ?</button>
         {!worldView && onOpenWorld && <button type="button" onClick={onOpenWorld}>Большая карта</button>}
       </div>
       <p className={styles.toolHint}>{snapshot.previewDraft ? toolHints[snapshot.tool] : "Показана последняя сохранённая разметка проекта. Верните черновик для редактирования."}</p>
@@ -183,10 +175,24 @@ export function WorldLightingStudio({ state, change, levels = state.levels, worl
     <nav className={styles.mobileNav} aria-label="Панели студии">{([["objects", "Объекты"], ["inspector", "Свойства"], ["preview", "Вид"]] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={mobilePane === value} onClick={() => setMobilePane(value)}>{label}</button>)}</nav>
     <section className={`${styles.panel} ${styles.outliner}`} data-world-lighting-studio-panel aria-label="Объекты студии"><h3 className={styles.panelTitle}>Объекты и папки</h3><WorldStudioObjects levels={levels} onSelect={() => setMobilePane("inspector")} /></section>
     <section className={`${styles.panel} ${styles.inspector}`} data-world-lighting-studio-panel aria-label="Инспектор студии"><h3 className={styles.panelTitle}>Свойства выбранного</h3><div ref={inspector} className={styles.inspectorScroll} data-studio-inspector-scroll>
+      {snapshot.selectedElements.length > 1 && <p className={styles.multiNotice}>Выбрано {snapshot.selectedElements.length}. Здесь свойства основного элемента; действия с группой доступны в списке.</p>}
       {selectedLight ? <WorldLightingSourceInspector key={selectedLight.id} light={selectedLight} levels={levels} /> : snapshot.selectedId ? snapshot.selectedKind === "receiver" ? <WorldLightingReceiverInspector key={snapshot.selectedId} levels={levels} /> : <WorldLightingEditor key={snapshot.selectedId} state={state} change={change} levels={levels} /> : <div className={styles.welcome}><h3>Выберите элемент</h3><p>Список объектов слева остаётся на месте, пока вы меняете свойства справа.</p><p>Объём отбрасывает тень. Поверхность земли принимает её. Источник освещает карту.</p><p>Добавьте элемент внизу списка или выберите существующий на карте.</p></div>}
       {snapshot.error && <p className={styles.error} role="alert">{snapshot.error}</p>}
     </div></section>
     <section className={`${styles.panel} ${styles.viewPanel}`} data-world-lighting-studio-panel aria-label="Вид студии"><div className={styles.panelTitle}><span>Вид и легенда</span><button type="button" className={styles.iconButton} aria-label="Закрыть вид и легенду" onClick={() => setViewOpen(false)}><X size={14} aria-hidden /></button></div><div className={styles.inspectorScroll}><StudioView state={state} change={change} /></div></section>
+    {commandPane && <section className={`${styles.panel} ${styles.commandPanel}`} data-world-lighting-studio-panel aria-label={commandPane === "history" ? "История изменений" : "Клавиши студии"}>
+      <div className={styles.panelTitle}><span>{commandPane === "history" ? "История изменений" : "Клавиши студии"}</span><button type="button" className={styles.iconButton} aria-label="Закрыть панель подсказок" onClick={() => setCommandPane(null)}><X size={14} aria-hidden /></button></div>
+      <div className={styles.inspectorScroll}>{commandPane === "history" ? <>
+        <p className={styles.notice}>История этой сессии. После обновления страницы она начинается заново; сохранённый черновик остаётся.</p>
+        <div className={styles.batchButtons}><button type="button" aria-label="Отменить действие из истории" title={snapshot.undoLabel ?? "Нет изменений"} disabled={!snapshot.canUndo || !snapshot.previewDraft} onClick={() => worldLightingEditorStore.undo()}><Undo2 size={16} aria-hidden />Назад</button><button type="button" aria-label="Повторить действие из истории" title={snapshot.redoLabel ?? "Нет отменённых действий"} disabled={!snapshot.canRedo || !snapshot.previewDraft} onClick={() => worldLightingEditorStore.redo()}><Redo2 size={16} aria-hidden />Вперёд</button></div>
+        {snapshot.history.length ? <ol className={styles.historyList}>{snapshot.history.map(entry => <li key={entry.id} data-applied={entry.applied}><span>{entry.label}</span><small>{entry.applied ? "Применено" : "Отменено · доступно вперёд"}</small></li>)}</ol> : <p className={styles.emptyHistory}>Изменений пока нет. Высота, контуры, имена, папки и групповые правки попадут в историю.</p>}
+      </> : <>
+        <p className={styles.notice}>Сочетания работают в русской и английской раскладке. В текстовом поле Ctrl/Cmd+Z отменяет ввод текста.</p>
+        <table className={styles.shortcutTable}><tbody>{[
+          ["Ctrl/Cmd+Z", "Назад"], ["Ctrl/Cmd+Shift+Z · Ctrl+Y", "Вперёд"], ["Ctrl/Cmd+S", "Сохранить"], ["Ctrl/Cmd+A", "Выбрать видимые строки"], ["Ctrl/Cmd+D", "Дублировать выбранное"], ["F2", "Переименовать"], ["F · двойной щелчок", "Найти на карте"], ["V · G · P · H · L", "Выбор · перенос · контур · высота · свет"], ["Удерживать Space", "Временно перемещать камеру"], ["Стрелки · Shift+стрелки", "Сдвинуть выбранное · крупный шаг"], ["Delete", "Удалить выбранную точку или разметку"], ["Escape", "Отменить ввод или жест"], ["? · Ctrl/Cmd+Shift+H", "Клавиши · история"],
+        ].map(([key, action]) => <tr key={key}><th>{key}</th><td>{action}</td></tr>)}</tbody></table>
+      </>}</div>
+    </section>}
     <WorldStudioSave />
   </section>;
 }

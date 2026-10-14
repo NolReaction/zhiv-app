@@ -2,6 +2,7 @@ import { TILED_WORLD } from "@/features/world/scene/presentation";
 import type { FixedWorldScene, WorldLight, WorldPoint, WorldShadowCaster, WorldShadowReceiver, WorldStudioElementMetadata } from "@/features/world/tiled/types";
 import { WORLD_DEV_ENABLED } from "./world-dev-store";
 import { retainWorldDevClientState } from "./world-dev-hmr-cache";
+import { validateForestReceiverHoles } from "@/features/world/environment/lighting/forest-receiver-geometry";
 
 export const WORLD_LIGHTING_EDITOR_LIMITS = Object.freeze({ vertices: 64, maxHeight: 300, maxTop: 400, maxSoftness: 12, maxCasters: 128, maxReceivers: 32,
   maxLightHeight: 200, maxLightRadius: 500, maxLightIntensity: 2, maxLightFlicker: 1, maxLights: 128 });
@@ -16,6 +17,9 @@ export type WorldLightingEditorOverlay = "all" | "selected" | "off";
 export type WorldLightingEditorLightPatch = Partial<Omit<WorldLight, "id">>;
 export type WorldLightingLightProjection = Readonly<{ id: string; position: Readonly<WorldPoint>; height: number }>;
 export type WorldLightingElementKind = "caster" | "receiver" | "light";
+export type WorldLightingElementSelection = Readonly<{ kind: WorldLightingElementKind; id: string }>;
+export type WorldLightingEditorFlags = Readonly<{ locked?: boolean; hidden?: boolean }>;
+export type WorldLightingHistoryEntry = Readonly<{ id: number; label: string; applied: boolean }>;
 export type WorldLightingElementMetadataPatch = { studioName?: string | null; studioFolder?: string | null };
 export type WorldLightingEditorSnapshot = Readonly<{
   sceneId: string;
@@ -23,6 +27,9 @@ export type WorldLightingEditorSnapshot = Readonly<{
   selectedKind: WorldLightingElementKind;
   selectedId: string | null;
   selectedVertex: number | null;
+  selectedHole: number | null;
+  selectedElements: readonly WorldLightingElementSelection[];
+  editorFlags: Readonly<Record<string, WorldLightingEditorFlags>>;
   casters: readonly WorldShadowCaster[];
   receivers: readonly WorldShadowReceiver[];
   dirtyIds: readonly string[];
@@ -47,6 +54,9 @@ export type WorldLightingEditorSnapshot = Readonly<{
   localSaveError: string | null;
   canUndo: boolean;
   canRedo: boolean;
+  undoLabel: string | null;
+  redoLabel: string | null;
+  history: readonly WorldLightingHistoryEntry[];
   /** Changes when authored lighting or Studio metadata changes; selection never changes it. */
   revision: number;
   casterRevision: number;
@@ -59,6 +69,7 @@ type GeometryEntry<T> = { id: string; before: T | null; after: T | null };
 type LightingPatch = { schemaVersion: 3; sceneId: string; casters: GeometryEntry<WorldShadowCaster>[];
   receivers: GeometryEntry<WorldShadowReceiver>[]; lights: GeometryEntry<WorldLight>[] };
 type EditorGeometry = Readonly<{ casters: readonly WorldShadowCaster[]; receivers: readonly WorldShadowReceiver[]; lights: readonly WorldLight[] }>;
+type HistoryFrame = { geometry: EditorGeometry; id: number; label: string };
 type ShadowPolygon = WorldShadowCaster | WorldShadowReceiver;
 const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
@@ -94,7 +105,8 @@ const canonicalCaster = (a: WorldShadowCaster | undefined, b: WorldShadowCaster 
 const sameCasters = (a: readonly WorldShadowCaster[], b: readonly WorldShadowCaster[]) => a.length === b.length && a.every((caster, index) => sameCaster(caster, b[index]));
 const sameCasterGeometry = (a: readonly WorldShadowCaster[], b: readonly WorldShadowCaster[]) => a.length === b.length && a.every((caster, index) => equalCaster(caster, b[index], 0, false));
 const equalReceiver = (a: WorldShadowReceiver | undefined, b: WorldShadowReceiver | undefined, tolerance = 0, includeMetadata = true) => a === b || !!a && !!b && a.id === b.id && a.height === b.height
-  && sameCondition(a.when, b.when) && (!includeMetadata || sameStudioMetadata(a, b)) && samePoints(a.points, b.points, tolerance);
+  && sameCondition(a.when, b.when) && (!includeMetadata || sameStudioMetadata(a, b)) && samePoints(a.points, b.points, tolerance)
+  && (a.holes?.length ?? 0) === (b.holes?.length ?? 0) && (a.holes ?? []).every((ring, index) => samePoints(ring, b.holes![index], tolerance));
 const sameReceiver = (a: WorldShadowReceiver | undefined, b: WorldShadowReceiver | undefined) => equalReceiver(a, b);
 const canonicalReceiver = (a: WorldShadowReceiver | undefined, b: WorldShadowReceiver | undefined) => equalReceiver(a, b, 1e-9);
 const sameReceivers = (a: readonly WorldShadowReceiver[], b: readonly WorldShadowReceiver[]) => a.length === b.length && a.every((receiver, index) => sameReceiver(receiver, b[index]));
@@ -106,7 +118,8 @@ function freezeCaster(caster: WorldShadowCaster): WorldShadowCaster {
 }
 function freezeReceiver(receiver: WorldShadowReceiver): WorldShadowReceiver {
   return Object.freeze({ id: receiver.id, points: Object.freeze(receiver.points.map(point => Object.freeze({ x: point.x, y: point.y }))) as unknown as WorldPoint[],
-    height: receiver.height, ...studioMetadata(receiver), ...(receiver.when ? { when: Object.freeze({ siteId: receiver.when.siteId, level: receiver.when.level }) } : {}) });
+    height: receiver.height, ...studioMetadata(receiver), ...(receiver.holes?.length ? { holes: Object.freeze(receiver.holes.map(ring => Object.freeze(ring.map(point => Object.freeze({ x: point.x, y: point.y }))))) as unknown as WorldPoint[][] } : {}),
+    ...(receiver.when ? { when: Object.freeze({ siteId: receiver.when.siteId, level: receiver.when.level }) } : {}) });
 }
 const sameLight = (a: WorldLight | undefined, b: WorldLight | undefined) => a === b || !!a && !!b && a.id === b.id
   && a.position.x === b.position.x && a.position.y === b.position.y && a.kind === b.kind && a.height === b.height
@@ -183,8 +196,10 @@ function validateCaster(value: unknown, scene: FixedWorldScene): string | null {
   return validateCondition(value.when) ?? validateStudioMetadata(value);
 }
 function validateReceiver(value: unknown, scene: FixedWorldScene): string | null {
-  if (!isRecord(value) || Object.keys(value).some(key => !["id", "points", "height", "when", "studioName", "studioFolder"].includes(key)) || !validGeometryId(value.id)) return "Некорректные данные поверхности.";
+  if (!isRecord(value) || Object.keys(value).some(key => !["id", "points", "height", "when", "studioName", "studioFolder", "holes"].includes(key)) || !validGeometryId(value.id)) return "Некорректные данные поверхности.";
   const polygonError = validatePolygon(value.points, scene); if (polygonError) return polygonError;
+  const holeError = validateForestReceiverHoles(value.points as WorldPoint[], value.holes); if (holeError) return holeError;
+  for (const ring of value.holes as WorldPoint[][] ?? []) { const error = validatePolygon(ring, scene); if (error) return error; }
   if (!finite(value.height) || value.height < 0 || value.height > WORLD_LIGHTING_EDITOR_LIMITS.maxHeight) return "Высота поверхности должна быть от 0 до 300.";
   return validateCondition(value.when) ?? validateStudioMetadata(value);
 }
@@ -201,7 +216,8 @@ export function createWorldLightingEditorStore(available: boolean, originalScene
   const originalLights = new Map(baselineLights.map(light => [light.id, light]));
   const initialCasterIds = new Set(baseline.map(item => item.id)), initialReceiverIds = new Set(baselineReceivers.map(item => item.id));
   const knownCasterIds = new Set(initialCasterIds), knownReceiverIds = new Set(initialReceiverIds), knownLightIds = new Set(baselineLights.map(item => item.id));
-  const initial: WorldLightingEditorSnapshot = Object.freeze({ sceneId: original.id, enabled: false, selectedKind: "caster", selectedId: null, selectedVertex: null,
+  const initial: WorldLightingEditorSnapshot = Object.freeze({ sceneId: original.id, enabled: false, selectedKind: "caster", selectedId: null, selectedVertex: null, selectedHole: null,
+    selectedElements: Object.freeze([]), editorFlags: Object.freeze({}), undoLabel: null, redoLabel: null, history: Object.freeze([]),
     casters: baseline, receivers: baselineReceivers, lights: baselineLights, lightProjections: Object.freeze([]),
     dirtyIds: Object.freeze([]), dirtyReceiverIds: Object.freeze([]), dirtyLightIds: Object.freeze([]), deletedCasters: Object.freeze([]), deletedReceivers: Object.freeze([]),
     tool: "select", lightKind: "lantern", snap: 0, overlay: "selected", showCasters: true, showReceivers: false, showWireframe: false, previewDraft: true,
@@ -210,14 +226,16 @@ export function createWorldLightingEditorStore(available: boolean, originalScene
   let state = initial, hydrated = false, sequence = 0;
   let hydrationConflict = false, conflictedDraft: string | null = null;
   let gesture: EditorGeometry | null = null;
+  let gestureLabel = "Изменение разметки", historySequence = 0, flagsHydrated = false;
   let gestureSaveState: Pick<WorldLightingEditorSnapshot, "localSaveStatus" | "localSavedAt" | "localSaveError"> | null = null;
-  const past: EditorGeometry[] = [], future: EditorGeometry[] = [];
+  const past: HistoryFrame[] = [], future: HistoryFrame[] = [];
   const listeners = new Set<() => void>();
   const sceneCache = new WeakMap<FixedWorldScene, { revision: number; casterRevision: number; receiverRevision: number; visibilityKey: string; scene: FixedWorldScene }>();
   const baselineSceneCache = new WeakMap<FixedWorldScene, { revision: number; casterRevision: number; receiverRevision: number; visibilityKey: string; scene: FixedWorldScene }>();
   let baselineRevision = 0, baselineCasterRevision = 0, baselineReceiverRevision = 0;
   const storageKey = `zhiv:world-lighting-editor:v3:${original.id}`;
   const oldStorageKeys = [`zhiv:world-lighting-editor:v2:${original.id}`, `zhiv:world-lighting-editor:v1:${original.id}`];
+  const flagsStorageKey = `zhiv:world-lighting-editor:flags:v1:${original.id}`;
   const geometry = (): EditorGeometry => ({ casters: state.casters, receivers: state.receivers, lights: state.lights });
   const publish = (patch: Partial<WorldLightingEditorSnapshot>) => {
     if (!available || Object.entries(patch).every(([key, value]) => state[key as keyof WorldLightingEditorSnapshot] === value)) return;
@@ -225,6 +243,72 @@ export function createWorldLightingEditorStore(available: boolean, originalScene
     for (const listener of [...listeners]) listener();
   };
   const fail = (error: string) => { publish({ error }); return false; };
+  const elementKey = (element: WorldLightingElementSelection) => `${element.kind}:${element.id}`;
+  const elementValue = (element: WorldLightingElementSelection) => (element.kind === "caster" ? state.casters : element.kind === "receiver" ? state.receivers : state.lights).find(item => item.id === element.id);
+  const selection = (elements: readonly WorldLightingElementSelection[]): readonly WorldLightingElementSelection[] | null => {
+    if (!Array.isArray(elements)) { fail("Некорректный список объектов."); return null; }
+    const seen = new Set<string>(), result: WorldLightingElementSelection[] = [];
+    for (const candidate of elements) {
+      if (!isRecord(candidate) || typeof candidate.kind !== "string" || !["caster", "receiver", "light"].includes(candidate.kind) || typeof candidate.id !== "string") {
+        fail("Один из объектов не найден в разметке света."); return null;
+      }
+      const element = { kind: candidate.kind as WorldLightingElementKind, id: candidate.id };
+      if (!elementValue(element)) { fail("Один из объектов не найден в разметке света."); return null; }
+      const key = elementKey(element); if (!seen.has(key)) { seen.add(key); result.push(Object.freeze({ kind: element.kind, id: element.id })); }
+    }
+    return Object.freeze(result);
+  };
+  const mutationAllowed = (elements: readonly WorldLightingElementSelection[] = []) => {
+    if (!available) return false;
+    if (!state.previewDraft) return fail("Включите черновик, чтобы изменять разметку.");
+    if (elements.some(element => state.editorFlags[elementKey(element)]?.locked)) return fail("Выбранный объект заблокирован. Сначала снимите блокировку.");
+    return true;
+  };
+  const selectedMutationAllowed = () => mutationAllowed(state.selectedId ? [{ kind: state.selectedKind, id: state.selectedId }] : []);
+  const importAllowed = (next: EditorGeometry) => {
+    const changed: WorldLightingElementSelection[] = [];
+    for (const [kind, current, incoming, same] of [["caster", state.casters, next.casters, sameCaster], ["receiver", state.receivers, next.receivers, sameReceiver], ["light", state.lights, next.lights, sameLight]] as const) {
+      const currentById = new Map<string, unknown>(current.map(item => [item.id, item])), incomingById = new Map<string, unknown>(incoming.map(item => [item.id, item]));
+      for (const id of new Set([...currentById.keys(), ...incomingById.keys()])) if (!(same as (a: unknown, b: unknown) => boolean)(currentById.get(id), incomingById.get(id))) changed.push({ kind, id });
+    }
+    return mutationAllowed(changed);
+  };
+  const historySnapshot = () => ({ canUndo: past.length > 0, canRedo: future.length > 0, undoLabel: past.at(-1)?.label ?? null, redoLabel: future.at(-1)?.label ?? null,
+    history: Object.freeze([...past.map(item => Object.freeze({ id: item.id, label: item.label, applied: true })), ...[...future].reverse().map(item => Object.freeze({ id: item.id, label: item.label, applied: false }))]) });
+  const setSelection = (elements: readonly WorldLightingElementSelection[], primary?: WorldLightingElementSelection) => {
+    if (!available) return false;
+    const next = selection(elements); if (!next) return false;
+    const active = primary && next.find(item => elementKey(item) === elementKey(primary)) || next.at(-1);
+    commitGesture();
+    publish({ selectedElements: next, selectedKind: active?.kind ?? state.selectedKind, selectedId: active?.id ?? null, selectedVertex: null, selectedHole: null, error: null }); return true;
+  };
+  const parseEditorPrefs = (value: unknown): Readonly<Record<string, WorldLightingEditorFlags>> | null => {
+    if (!isRecord(value) || Object.keys(value).length > 512) { fail("Некорректные настройки объектов студии."); return null; }
+    const result: Record<string, WorldLightingEditorFlags> = {};
+    for (const [key, flags] of Object.entries(value)) {
+      if (!/^(caster|receiver|light):.+$/.test(key) || key.length > 256 || /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(key)
+        || !isRecord(flags) || Object.keys(flags).some(name => name !== "locked" && name !== "hidden")
+        || Object.values(flags).some(flag => typeof flag !== "boolean")) { fail("Некорректные настройки объектов студии."); return null; }
+      if (flags.locked || flags.hidden) result[key] = Object.freeze({ ...(flags.locked ? { locked: true } : {}), ...(flags.hidden ? { hidden: true } : {}) });
+    }
+    return Object.freeze(result);
+  };
+  const persistFlags = () => {
+    if (!available || typeof window === "undefined") return true;
+    try {
+      if (Object.keys(state.editorFlags).length) window.localStorage.setItem(flagsStorageKey, JSON.stringify(state.editorFlags));
+      else window.localStorage.removeItem(flagsStorageKey);
+      return true;
+    } catch { return fail("Не удалось сохранить блокировки и видимость в браузере."); }
+  };
+  const hydrateFlags = () => {
+    if (!available || flagsHydrated || typeof window === "undefined") return;
+    flagsHydrated = true;
+    try {
+      const text = window.localStorage.getItem(flagsStorageKey); if (text === null) return;
+      const flags = parseEditorPrefs(JSON.parse(text)); if (flags) publish({ editorFlags: flags });
+    } catch { fail("Не удалось прочитать блокировки и видимость студии из браузера."); }
+  };
   const dirty = <T extends { id: string }>(values: readonly T[], baseline: readonly T[], same: (a: T | undefined, b: T | undefined) => boolean) => {
     const authored = new Map(baseline.map(item => [item.id, item])), current = new Map(values.map(item => [item.id, item]));
     return Object.freeze([...new Set([...baseline.map(item => item.id), ...values.map(item => item.id)])].filter(id => !same(authored.get(id), current.get(id))));
@@ -241,7 +325,8 @@ export function createWorldLightingEditorStore(available: boolean, originalScene
     lights: entries(state.dirtyLightIds, originalLights, state.lights),
   } satisfies LightingPatch, null, 2) : "";
   const exportSceneBackup = () => available ? JSON.stringify({ type: "world-studio-backup", schemaVersion: 1, sceneId: original.id,
-    width: original.width, height: original.height, casters: state.casters, receivers: state.receivers, lights: state.lights }, null, 2) : "";
+    width: original.width, height: original.height, casters: state.casters, receivers: state.receivers, lights: state.lights,
+    ...(Object.keys(state.editorFlags).length ? { editorPrefs: state.editorFlags } : {}) }, null, 2) : "";
   const persist = (): boolean => {
     if (!available) return false;
     if (hydrationConflict) {
@@ -261,10 +346,10 @@ export function createWorldLightingEditorStore(available: boolean, originalScene
       publish({ localSaveStatus: "error", localSaveError: error, error }); return false;
     }
   };
-  const recordHistory = (previous: EditorGeometry) => {
-    past.push(previous); if (past.length > 100) past.shift(); future.length = 0;
+  const recordHistory = (previous: EditorGeometry, label = "Изменение разметки") => {
+    past.push({ geometry: previous, label, id: ++historySequence }); if (past.length > 100) past.shift(); future.length = 0;
   };
-  const applyGeometry = (next: EditorGeometry, record = true, save = true, vertex = state.selectedVertex) => {
+  const applyGeometry = (next: EditorGeometry, record = true, save = true, vertex = state.selectedVertex, label = "Изменение разметки") => {
     const casterChanged = !sameCasters(next.casters, state.casters), receiverChanged = !sameReceivers(next.receivers, state.receivers), lightChanged = !sameLights(next.lights, state.lights);
     const geometryChanged = !sameCasterGeometry(next.casters, state.casters) || !sameReceiverGeometry(next.receivers, state.receivers);
     if (!available || !casterChanged && !receiverChanged && !lightChanged) { publish({ error: null }); return false; }
@@ -278,13 +363,18 @@ export function createWorldLightingEditorStore(available: boolean, originalScene
     if (next.lights.length > WORLD_LIGHTING_EDITOR_LIMITS.maxLights || metadata.dirtyLightIds.length > WORLD_LIGHTING_EDITOR_LIMITS.maxLights) {
       fail("В черновике поддерживается не больше 128 источников и изменений источников. Сначала примените текущие правки к карте."); return false;
     }
-    if (record && !gesture) recordHistory(geometry());
+    if (record && !gesture) recordHistory(geometry(), label); else if (record) gestureLabel = label;
     next.casters.forEach(item => knownCasterIds.add(item.id)); next.receivers.forEach(item => knownReceiverIds.add(item.id)); next.lights.forEach(item => knownLightIds.add(item.id));
-    const selected = (state.selectedKind === "caster" ? next.casters : state.selectedKind === "receiver" ? next.receivers : next.lights).find(item => item.id === state.selectedId);
+    const selectedElements = Object.freeze(state.selectedElements.filter(element => (element.kind === "caster" ? next.casters : element.kind === "receiver" ? next.receivers : next.lights).some(item => item.id === element.id)));
+    const primary = selectedElements.find(element => element.kind === state.selectedKind && element.id === state.selectedId) ?? selectedElements.at(-1);
+    const selected = primary ? (primary.kind === "caster" ? next.casters : primary.kind === "receiver" ? next.receivers : next.lights).find(item => item.id === primary.id) : undefined;
+    const selectedHole = primary?.kind === "receiver" && primary.id === state.selectedId && state.selectedHole !== null
+      && (selected as WorldShadowReceiver)?.holes?.[state.selectedHole] ? state.selectedHole : null;
+    const selectedPoints = selected && "points" in selected ? selectedHole !== null ? (selected as WorldShadowReceiver).holes![selectedHole] : selected.points : undefined;
     publish({ casters: casterChanged ? next.casters : state.casters, receivers: receiverChanged ? next.receivers : state.receivers,
       lights: lightChanged ? next.lights : state.lights, ...metadata,
-      error: null, localSaveStatus: "pending", canUndo: past.length > 0, canRedo: future.length > 0, selectedId: selected ? state.selectedId : null,
-      selectedVertex: selected && "points" in selected && vertex !== null && vertex < selected.points.length ? vertex : null,
+      error: null, localSaveStatus: "pending", ...historySnapshot(), selectedId: primary?.id ?? null, selectedKind: primary?.kind ?? state.selectedKind, selectedElements,
+      selectedHole, selectedVertex: selectedPoints && vertex !== null && vertex < selectedPoints.length ? vertex : null,
       revision: state.revision + 1, casterRevision: state.casterRevision + Number(casterChanged), receiverRevision: state.receiverRevision + Number(receiverChanged),
       geometryRevision: state.geometryRevision + Number(geometryChanged), lightRevision: state.lightRevision + Number(lightChanged) });
     if (save && !gesture) persist();
@@ -293,11 +383,11 @@ export function createWorldLightingEditorStore(available: boolean, originalScene
   const commitGesture = () => {
     if (!available || !gesture) return;
     const previous = gesture, saveState = gestureSaveState; gesture = null; gestureSaveState = null;
-    if (!sameGeometry(previous, geometry())) { recordHistory(previous); publish({ canUndo: true, canRedo: false }); persist(); }
+    if (!sameGeometry(previous, geometry())) { recordHistory(previous, gestureLabel); publish(historySnapshot()); persist(); }
     else if (saveState) publish(saveState);
   };
-  const editSelected = (edit: (polygon: ShadowPolygon) => ShadowPolygon | null, vertex = state.selectedVertex) => {
-    if (!available) return;
+  const editSelected = (edit: (polygon: ShadowPolygon) => ShadowPolygon | null, vertex = state.selectedVertex, label = state.selectedKind === "receiver" ? "Изменение поверхности" : "Изменение объёма") => {
+    if (!selectedMutationAllowed()) return;
     const receiver = state.selectedKind === "receiver", values: readonly ShadowPolygon[] = receiver ? state.receivers : state.casters;
     const index = state.selectedKind === "light" ? -1 : values.findIndex(item => item.id === state.selectedId);
     if (index < 0) { fail("Сначала выберите объём или поверхность."); return; }
@@ -307,11 +397,11 @@ export function createWorldLightingEditorStore(available: boolean, originalScene
     if (receiver) {
       const authored = originalReceivers.get(next.id), copy = [...state.receivers];
       copy[index] = authored && sameReceiver(next, authored) ? authored : freezeReceiver(next);
-      applyGeometry({ ...geometry(), receivers: Object.freeze(copy) }, true, true, vertex);
+      applyGeometry({ ...geometry(), receivers: Object.freeze(copy) }, true, true, vertex, label);
     } else {
       const authored = originals.get(next.id), copy = [...state.casters];
       copy[index] = authored && sameCaster(next as WorldShadowCaster, authored) ? authored : freezeCaster(next as WorldShadowCaster);
-      applyGeometry({ ...geometry(), casters: Object.freeze(copy) }, true, true, vertex);
+      applyGeometry({ ...geometry(), casters: Object.freeze(copy) }, true, true, vertex, label);
     }
   };
   const effectiveLight = (light: WorldLight) => {
@@ -319,7 +409,7 @@ export function createWorldLightingEditorStore(available: boolean, originalScene
     return { position: projection?.position ?? light.position, height: light.height ?? projection?.height };
   };
   const editLight = (patch: WorldLightingEditorLightPatch) => {
-    if (!available) return;
+    if (!selectedMutationAllowed()) return;
     if (!isRecord(patch) || Object.keys(patch).some(key => !["position", "kind", "height", "radius", "intensity", "color", "flicker", "enabled", "manualPosition"].includes(key))) {
       fail("Неизвестное свойство источника света."); return;
     }
@@ -335,26 +425,32 @@ export function createWorldLightingEditorStore(available: boolean, originalScene
     next.color = next.color.toLowerCase();
     const copy = [...state.lights], authored = originalLights.get(next.id);
     copy[index] = authored && sameLight(next, authored) ? authored : freezeLight(next);
-    applyGeometry({ ...geometry(), lights: Object.freeze(copy) });
+    applyGeometry({ ...geometry(), lights: Object.freeze(copy) }, true, true, state.selectedVertex,
+      patch.position ? "Перемещение источника света" : patch.enabled === false ? "Выключение источника света" : "Изменение источника света");
   };
   const snapCoordinate = (value: number) => state.snap ? Math.round(value / state.snap) * state.snap : value;
   const snapped = (point: WorldPoint): WorldPoint => ({ x: snapCoordinate(point.x), y: snapCoordinate(point.y) });
-  const validIndex = (index: number, polygon: ShadowPolygon) => Number.isInteger(index) && index >= 0 && index < polygon.points.length;
+  const contour = (polygon: ShadowPolygon) => state.selectedKind === "receiver" && state.selectedHole !== null
+    ? (polygon as WorldShadowReceiver).holes?.[state.selectedHole] ?? [] : polygon.points;
+  const withContour = (polygon: ShadowPolygon, points: WorldPoint[]): ShadowPolygon => state.selectedKind === "receiver" && state.selectedHole !== null
+    ? { ...polygon, holes: (polygon as WorldShadowReceiver).holes?.map((ring, index) => index === state.selectedHole ? points : ring) } : { ...polygon, points };
+  const validIndex = (index: number, polygon: ShadowPolygon) => Number.isInteger(index) && index >= 0 && index < contour(polygon).length;
   const freshId = (kind: WorldLightingElementKind) => {
     let id: string;
     do { id = `studio-${kind}-${++sequence}`; } while (originals.has(id) || originalReceivers.has(id) || originalLights.has(id)
+      || knownCasterIds.has(id) || knownReceiverIds.has(id) || knownLightIds.has(id)
       || state.casters.some(item => item.id === id) || state.receivers.some(item => item.id === id) || state.lights.some(item => item.id === id));
     return id;
   };
   const createLight = (light: Omit<WorldLight, "id">): string | null => {
-    if (!available) return null;
+    if (!mutationAllowed()) return null;
     const next = { ...light, id: freshId("light") }, error = validateLight(next, original);
     if (error) { fail(error); return null; }
-    if (!applyGeometry({ ...geometry(), lights: Object.freeze([...state.lights, freezeLight(next)]) })) return null;
-    publish({ selectedKind: "light", selectedId: next.id, selectedVertex: null, error: null }); return next.id;
+    if (!applyGeometry({ ...geometry(), lights: Object.freeze([...state.lights, freezeLight(next)]) }, true, true, null, "Создание источника света")) return null;
+    setSelection([{ kind: "light", id: next.id }]); return next.id;
   };
   const createPolygon = (kind: "caster" | "receiver", position: WorldPoint): string | null => {
-    if (!available) return null;
+    if (!mutationAllowed()) return null;
     if (!finite(position?.x) || !finite(position?.y) || position.x < 0 || position.x > original.width || position.y < 0 || position.y > original.height) {
       fail("Укажите координаты нового объекта внутри карты."); return null;
     }
@@ -363,10 +459,10 @@ export function createWorldLightingEditorStore(available: boolean, originalScene
     const common = { id: freshId(kind), points: [{ x: left, y: top }, { x: left + width, y: top }, { x: left + width, y: top + height }, { x: left, y: top + height }] };
     const next = kind === "caster" ? { ...common, height: 30, baseHeight: 0, opacity: 1, softness: 2 } : { ...common, height: 0 };
     const error = kind === "caster" ? validateCaster(next, original) : validateReceiver(next, original); if (error) { fail(error); return null; }
-    const changed = kind === "caster" ? applyGeometry({ ...geometry(), casters: Object.freeze([...state.casters, freezeCaster(next as WorldShadowCaster)]) })
-      : applyGeometry({ ...geometry(), receivers: Object.freeze([...state.receivers, freezeReceiver(next)]) });
+    const changed = kind === "caster" ? applyGeometry({ ...geometry(), casters: Object.freeze([...state.casters, freezeCaster(next as WorldShadowCaster)]) }, true, true, null, "Создание объёма")
+      : applyGeometry({ ...geometry(), receivers: Object.freeze([...state.receivers, freezeReceiver(next)]) }, true, true, null, "Создание поверхности");
     if (!changed) return null;
-    publish({ selectedKind: kind, selectedId: next.id, selectedVertex: null, error: null }); return next.id;
+    setSelection([{ kind, id: next.id }]); return next.id;
   };
   const parsePatch = (text: string, alreadyApplied = false): EditorGeometry | null => {
     const reject = (error: string) => { if (!alreadyApplied) fail(error); return null; };
@@ -419,17 +515,19 @@ export function createWorldLightingEditorStore(available: boolean, originalScene
     if (id !== null && !polygon) { fail("Объект не найден в разметке света."); return; }
     if (vertex !== null && (!polygon || !validIndex(vertex, polygon))) { fail("Вершина контура не найдена."); return; }
     if (id !== state.selectedId || state.selectedKind !== kind) commitGesture();
-    publish({ selectedKind: kind, selectedId: id, selectedVertex: vertex, error: null });
+    publish({ selectedKind: kind, selectedId: id, selectedVertex: vertex, selectedHole: null,
+      selectedElements: Object.freeze(id ? [Object.freeze({ kind, id })] : []), error: null });
   };
   const parseSceneBackup = (text: string): EditorGeometry | null => {
     let value: unknown;
     try { value = JSON.parse(text); } catch { fail("Не удалось прочитать резервную копию студии."); return null; }
     if (!isRecord(value) || value.type !== "world-studio-backup" || value.schemaVersion !== 1 || value.sceneId !== original.id
       || value.width !== original.width || value.height !== original.height
-      || Object.keys(value).some(key => !["type", "schemaVersion", "sceneId", "width", "height", "casters", "receivers", "lights"].includes(key))
+      || Object.keys(value).some(key => !["type", "schemaVersion", "sceneId", "width", "height", "casters", "receivers", "lights", "editorPrefs"].includes(key))
       || !Array.isArray(value.casters) || value.casters.length > WORLD_LIGHTING_EDITOR_LIMITS.maxCasters
       || !Array.isArray(value.receivers) || value.receivers.length > WORLD_LIGHTING_EDITOR_LIMITS.maxReceivers
       || !Array.isArray(value.lights) || value.lights.length > WORLD_LIGHTING_EDITOR_LIMITS.maxLights) { fail("Формат резервной копии или размеры карты не совпадают."); return null; }
+    if (Object.hasOwn(value, "editorPrefs") && !parseEditorPrefs(value.editorPrefs)) return null;
     const newIds = new Set<string>();
     const section = <T extends { id: string; when?: WorldShadowCaster["when"] }>(values: unknown[], kind: WorldLightingElementKind,
       authored: Map<string, T>, validate: (value: unknown, scene: FixedWorldScene) => string | null, freeze: (value: T) => T): readonly T[] | null => {
@@ -465,7 +563,7 @@ export function createWorldLightingEditorStore(available: boolean, originalScene
     return next;
   };
   const removeLight = () => {
-    if (!available) return;
+    if (!selectedMutationAllowed()) return;
     const source = state.selectedKind === "light" ? state.lights.find(light => light.id === state.selectedId) : undefined;
     if (!source) { fail("Сначала выберите источник света."); return; }
     if (originalLights.has(source.id)) editLight({ enabled: false });
@@ -512,7 +610,7 @@ export function createWorldLightingEditorStore(available: boolean, originalScene
     if (!preserveDraft) {
       past.length = 0; future.length = 0;
       applyGeometry(baselineGeometry, false, false);
-      publish({ canUndo: false, canRedo: false });
+      publish(historySnapshot());
     }
     publish({ ...dirtyMetadata(geometry()), error: null, localSaveStatus: "pending" });
     persist(); return true;
@@ -539,8 +637,133 @@ export function createWorldLightingEditorStore(available: boolean, originalScene
     baselineChanged(previousBaseline);
     baseline.forEach(item => knownCasterIds.add(item.id)); baselineReceivers.forEach(item => knownReceiverIds.add(item.id)); baselineLights.forEach(item => knownLightIds.add(item.id));
     past.length = 0; future.length = 0; applyGeometry(next, false, false);
-    publish({ ...dirtyMetadata(geometry()), canUndo: false, canRedo: false, error: null, localSaveStatus: "pending" });
+    publish({ ...dirtyMetadata(geometry()), ...historySnapshot(), error: null, localSaveStatus: "pending" });
     persist(); return "restored";
+  };
+  const mutateElements = (elements: readonly WorldLightingElementSelection[], label: string,
+    transform: (element: WorldLightingElementSelection, value: WorldShadowCaster | WorldShadowReceiver | WorldLight) => WorldShadowCaster | WorldShadowReceiver | WorldLight | null, finishGesture = true): boolean => {
+    if (!available) return false;
+    const selected = selection(elements); if (!selected || !selected.length) return fail("Сначала выберите объект.");
+    if (!mutationAllowed(selected)) return false;
+    const changes = new Map<string, WorldShadowCaster | WorldShadowReceiver | WorldLight | null>();
+    for (const element of selected) {
+      const previous = elementValue(element)!, value = transform(element, previous);
+      if (value) {
+        const error = element.kind === "caster" ? validateCaster(value, original) : element.kind === "receiver" ? validateReceiver(value, original) : validateLight(value, original);
+        if (error) return fail(error);
+        if (value.id !== previous.id || element.kind !== "light" && !sameCondition((value as ShadowPolygon).when, (previous as ShadowPolygon).when)) return fail("ID и уровень объекта изменять нельзя.");
+      }
+      changes.set(elementKey(element), value);
+    }
+    const update = <T extends { id: string }>(values: readonly T[], kind: WorldLightingElementKind, freeze: (value: T) => T) => Object.freeze(values.flatMap(value => {
+      const key = `${kind}:${value.id}`; if (!changes.has(key)) return [value];
+      const next = changes.get(key); return next ? [freeze(next as unknown as T)] : [];
+    }));
+    if (finishGesture) commitGesture();
+    const next = { casters: update(state.casters, "caster", freezeCaster), receivers: update(state.receivers, "receiver", freezeReceiver), lights: update(state.lights, "light", freezeLight) };
+    if (sameGeometry(geometry(), next)) { publish({ error: null }); return true; }
+    return applyGeometry(next, true, true, state.selectedVertex, label);
+  };
+  const setElementsMetadata = (elements: readonly WorldLightingElementSelection[], patch: WorldLightingElementMetadataPatch) => {
+    if (!available) return false;
+    if (!Array.isArray(elements)) return fail("Некорректный список объектов.");
+    if (!isRecord(patch) || Object.keys(patch).some(key => key !== "studioName" && key !== "studioFolder")) return fail("Неизвестное свойство объекта студии.");
+    for (const key of Object.keys(patch) as (keyof WorldLightingElementMetadataPatch)[]) if (patch[key] !== null && typeof patch[key] !== "string") return fail("Название объекта и папка должны быть строками.");
+    const label = Object.hasOwn(patch, "studioFolder") ? `Перенос в папку (${elements.length})` : `Переименование (${elements.length})`;
+    return mutateElements(elements, label, (_element, value) => {
+      const next = { ...value };
+      for (const key of ["studioName", "studioFolder"] as const) if (Object.hasOwn(patch, key)) {
+        const text = patch[key]?.trim(); if (text) next[key] = text; else delete next[key];
+      }
+      return next;
+    });
+  };
+  const setElementsFlags = (elements: readonly WorldLightingElementSelection[], patch: Partial<WorldLightingEditorFlags>) => {
+    if (!available) return false;
+    if (!Array.isArray(elements)) return fail("Некорректный список объектов.");
+    const selected: WorldLightingElementSelection[] = [], seen = new Set<string>();
+    for (const candidate of elements) {
+      if (!isRecord(candidate) || typeof candidate.kind !== "string" || !["caster", "receiver", "light"].includes(candidate.kind) || typeof candidate.id !== "string") return fail("Неизвестный объект студии.");
+      const element = { kind: candidate.kind as WorldLightingElementKind, id: candidate.id };
+      const known = element.kind === "caster" ? knownCasterIds : element.kind === "receiver" ? knownReceiverIds : knownLightIds;
+      if (!known.has(element.id)) return fail("Неизвестный объект студии.");
+      const key = elementKey(element); if (!seen.has(key)) { seen.add(key); selected.push(element); }
+    }
+    if (!isRecord(patch) || Object.keys(patch).some(key => key !== "locked" && key !== "hidden") || Object.values(patch).some(flag => typeof flag !== "boolean")) return fail("Некорректные настройки объектов студии.");
+    commitGesture();
+    const retained = new Set<string>();
+    for (const value of [geometry(), baselineGeometry, ...past.map(item => item.geometry), ...future.map(item => item.geometry), ...(gesture ? [gesture] : [])]) {
+      for (const [kind, elements] of [["caster", value.casters], ["receiver", value.receivers], ["light", value.lights]] as const) for (const element of elements) retained.add(`${kind}:${element.id}`);
+    }
+    const next = Object.fromEntries(Object.entries(state.editorFlags).filter(([key]) => retained.has(key)));
+    for (const element of selected) {
+      const key = elementKey(element), flags = { ...next[key], ...patch };
+      if (flags.locked || flags.hidden) next[key] = Object.freeze({ ...(flags.locked ? { locked: true } : {}), ...(flags.hidden ? { hidden: true } : {}) }); else delete next[key];
+    }
+    if (Object.keys(next).length > 512) return fail("Настройки сохранены для 512 объектов. Снимите ненужные блокировки или скрытие перед добавлением новых.");
+    publish({ editorFlags: Object.freeze(next), error: null }); return persistFlags();
+  };
+  const removeElements = (elements: readonly WorldLightingElementSelection[] = state.selectedElements) => {
+    if (!available) return false;
+    if (!Array.isArray(elements)) return fail("Некорректный список объектов.");
+    return mutateElements(elements, `Удаление объектов (${elements.length})`,
+      (element, value) => element.kind === "light" && originalLights.has(element.id) ? { ...value, enabled: false } as WorldLight : null);
+  };
+  const moveElementsBy = (dx: number, dy: number, elements: readonly WorldLightingElementSelection[] = state.selectedElements) => {
+    if (!available) return false;
+    const selected = selection(elements); if (!selected || !selected.length) return fail("Сначала выберите объект.");
+    if (!finite(dx) || !finite(dy)) return fail("Смещение должно быть числовым.");
+    const primary = selected.find(item => item.kind === state.selectedKind && item.id === state.selectedId) ?? selected[0], primaryValue = elementValue(primary)!;
+    const anchor = primary.kind === "light" ? effectiveLight(primaryValue as WorldLight).position : (primaryValue as ShadowPolygon).points[0];
+    const target = snapped({ x: anchor.x + dx, y: anchor.y + dy }), shift = { x: target.x - anchor.x, y: target.y - anchor.y };
+    return mutateElements(selected, `Перемещение объектов (${selected.length})`, (element, value) => {
+      if (element.kind === "light") {
+        const light = value as WorldLight, effective = effectiveLight(light);
+        return { ...light, position: { x: effective.position.x + shift.x, y: effective.position.y + shift.y }, manualPosition: true,
+          ...(light.height === undefined && effective.height !== undefined ? { height: effective.height } : {}) };
+      }
+      const polygon = value as ShadowPolygon;
+      return { ...polygon, points: polygon.points.map(point => ({ x: point.x + shift.x, y: point.y + shift.y })),
+        ...("holes" in polygon && polygon.holes?.length ? { holes: polygon.holes.map(ring => ring.map(point => ({ x: point.x + shift.x, y: point.y + shift.y }))) } : {}) };
+    }, false);
+  };
+  const duplicateElements = (elements: readonly WorldLightingElementSelection[] = state.selectedElements): readonly WorldLightingElementSelection[] => {
+    if (!available) return [];
+    const selected = selection(elements); if (!selected || !selected.length) { fail("Сначала выберите объект."); return []; }
+    if (!mutationAllowed(selected)) return [];
+    const points = selected.flatMap(element => element.kind === "light" ? [effectiveLight(elementValue(element) as WorldLight).position] : (elementValue(element) as ShadowPolygon).points);
+    const offset = state.snap || 10;
+    const delta = (axis: "x" | "y", maximum: number) => {
+      const minimum = Math.min(...points.map(point => point[axis])), upper = Math.max(...points.map(point => point[axis]));
+      return maximum - upper > 0 ? Math.min(offset, maximum - upper) : -Math.min(offset, minimum);
+    };
+    const dx = delta("x", original.width), dy = delta("y", original.height), next = { casters: [...state.casters], receivers: [...state.receivers], lights: [...state.lights] };
+    const created: WorldLightingElementSelection[] = [];
+    for (const element of selected) {
+      const source = elementValue(element)!, id = freshId(element.kind);
+      const common = { ...source, id, ...(source.studioName ? { studioName: `${source.studioName.slice(0, 120)} · копия` } : {}) };
+      if (element.kind === "light") {
+        const effective = effectiveLight(source as WorldLight), light = { ...common, position: { x: effective.position.x + dx, y: effective.position.y + dy },
+          ...(effective.height !== undefined ? { height: effective.height } : {}), manualPosition: true, enabled: true } as WorldLight;
+        const error = validateLight(light, original); if (error) { fail(error); return []; } next.lights.push(freezeLight(light));
+      } else {
+        const polygon = { ...common, points: (source as ShadowPolygon).points.map(point => ({ x: point.x + dx, y: point.y + dy })),
+          ...("holes" in source && source.holes?.length ? { holes: source.holes.map(ring => ring.map(point => ({ x: point.x + dx, y: point.y + dy }))) } : {}) } as ShadowPolygon;
+        const error = element.kind === "caster" ? validateCaster(polygon, original) : validateReceiver(polygon, original);
+        if (error) { fail(error); return []; }
+        if (element.kind === "caster") next.casters.push(freezeCaster(polygon as WorldShadowCaster)); else next.receivers.push(freezeReceiver(polygon));
+      }
+      created.push(Object.freeze({ kind: element.kind, id }));
+    }
+    commitGesture();
+    if (!applyGeometry({ casters: Object.freeze(next.casters), receivers: Object.freeze(next.receivers), lights: Object.freeze(next.lights) }, true, true, null, `Дублирование объектов (${created.length})`)) return [];
+    setSelection(created); return Object.freeze(created);
+  };
+  const importBackupPrefs = (text: string) => {
+    const value: unknown = JSON.parse(text);
+    if (isRecord(value) && Object.hasOwn(value, "editorPrefs")) {
+      const flags = parseEditorPrefs(value.editorPrefs); if (flags) { publish({ editorFlags: flags }); persistFlags(); }
+    }
   };
   return {
     getSnapshot: () => state,
@@ -585,29 +808,57 @@ export function createWorldLightingEditorStore(available: boolean, originalScene
       if (!available) return;
       if (id !== null && !state.lights.some(light => light.id === id)) { fail("Источник света не найден."); return; }
       if (id !== state.selectedId || state.selectedKind !== "light") commitGesture();
-      publish({ selectedKind: "light", selectedId: id, selectedVertex: null, error: null });
+      publish({ selectedKind: "light", selectedId: id, selectedVertex: null, selectedHole: null,
+        selectedElements: Object.freeze(id ? [Object.freeze({ kind: "light", id })] : []), error: null });
     },
-    setElementMetadata(kind: WorldLightingElementKind, id: string, patch: WorldLightingElementMetadataPatch): boolean {
+    selectElements: setSelection,
+    selectElement(kind: WorldLightingElementKind, id: string, options?: { additive?: boolean; toggle?: boolean }) {
       if (!available) return false;
-      if (!["caster", "receiver", "light"].includes(kind) || !isRecord(patch)
-        || Object.keys(patch).some(key => key !== "studioName" && key !== "studioFolder")) return fail("Неизвестное свойство объекта студии.");
-      const values = kind === "caster" ? state.casters : kind === "receiver" ? state.receivers : state.lights;
-      const current = values.find(item => item.id === id);
-      if (!current) return fail("Объект не найден в разметке света.");
-      const next = { ...current };
-      for (const key of ["studioName", "studioFolder"] as const) {
-        if (!Object.hasOwn(patch, key)) continue;
-        const value = patch[key];
-        if (value !== null && typeof value !== "string") return fail("Название объекта и папка должны быть строками.");
-        const trimmed = value?.trim();
-        if (!trimmed) delete next[key]; else next[key] = trimmed;
-      }
-      const error = validateStudioMetadata(next); if (error) return fail(error);
+      const element = { kind, id }, key = elementKey(element), exists = state.selectedElements.some(item => elementKey(item) === key);
+      const next = options?.toggle && exists ? state.selectedElements.filter(item => elementKey(item) !== key)
+        : options?.additive || options?.toggle ? [...state.selectedElements.filter(item => elementKey(item) !== key), element] : [element];
+      return setSelection(next, element);
+    },
+    clearSelection: () => available && setSelection([]),
+    isElementLocked: (kind: WorldLightingElementKind, id: string) => state.editorFlags[`${kind}:${id}`]?.locked === true,
+    isElementHidden: (kind: WorldLightingElementKind, id: string) => state.editorFlags[`${kind}:${id}`]?.hidden === true,
+    setElementFlags: (kind: WorldLightingElementKind, id: string, patch: Partial<WorldLightingEditorFlags>) => setElementsFlags([{ kind, id }], patch),
+    setElementsFlags,
+    setElementMetadata: (kind: WorldLightingElementKind, id: string, patch: WorldLightingElementMetadataPatch) => setElementsMetadata([{ kind, id }], patch),
+    setElementsMetadata,
+    removeElements,
+    moveElementsBy,
+    duplicateElements,
+    duplicateSelected: () => duplicateElements(),
+    reportError: fail,
+    selectHole(index: number | null, vertex: number | null = null) {
+      if (!available) return false;
+      const receiver = state.selectedKind === "receiver" ? state.receivers.find(item => item.id === state.selectedId) : undefined;
+      if (!receiver) return fail("Сначала выберите поверхность.");
+      const ring = index === null ? receiver.points : Number.isInteger(index) && index >= 0 ? receiver.holes?.[index] : undefined;
+      if (!ring || vertex !== null && (!Number.isInteger(vertex) || vertex < 0 || vertex >= ring.length)) return fail("Исключение или вершина не найдены.");
+      if (index !== state.selectedHole) commitGesture();
+      publish({ selectedHole: index, selectedVertex: vertex, error: null }); return true;
+    },
+    addReceiverHole(points: WorldPoint[]) {
+      if (!selectedMutationAllowed()) return false;
+      const receiver = state.selectedKind === "receiver" ? state.receivers.find(item => item.id === state.selectedId) : undefined;
+      if (!receiver) return fail("Сначала выберите поверхность.");
+      const next = { ...receiver, holes: [...receiver.holes ?? [], points] };
+      const error = validateReceiver(next, original); if (error) return fail(error);
       commitGesture();
-      if (sameStudioMetadata(current, next)) { publish({ error: null }); return true; }
-      if (kind === "caster") return applyGeometry({ ...geometry(), casters: Object.freeze(state.casters.map(item => item.id === id ? freezeCaster(next as WorldShadowCaster) : item)) });
-      if (kind === "receiver") return applyGeometry({ ...geometry(), receivers: Object.freeze(state.receivers.map(item => item.id === id ? freezeReceiver(next as WorldShadowReceiver) : item)) });
-      return applyGeometry({ ...geometry(), lights: Object.freeze(state.lights.map(item => item.id === id ? freezeLight(next as WorldLight) : item)) });
+      if (!applyGeometry({ ...geometry(), receivers: Object.freeze(state.receivers.map(item => item.id === next.id ? freezeReceiver(next) : item)) }, true, true, null, "Создание исключения поверхности")) return false;
+      publish({ selectedHole: next.holes.length - 1, selectedVertex: null }); return true;
+    },
+    removeReceiverHole(index: number | null = state.selectedHole) {
+      if (!selectedMutationAllowed()) return false;
+      const receiver = state.selectedKind === "receiver" ? state.receivers.find(item => item.id === state.selectedId) : undefined;
+      if (!receiver || index === null || !Number.isInteger(index) || index < 0 || !receiver.holes?.[index]) return fail("Сначала выберите исключение поверхности.");
+      commitGesture();
+      const previousHole = state.selectedHole;
+      const next = freezeReceiver({ ...receiver, holes: receiver.holes.filter((_, at) => at !== index) });
+      if (!applyGeometry({ ...geometry(), receivers: Object.freeze(state.receivers.map(item => item.id === next.id ? next : item)) }, true, true, null, "Удаление исключения поверхности")) return false;
+      publish({ selectedHole: previousHole === index ? null : previousHole !== null && previousHole > index ? previousHole - 1 : previousHole, selectedVertex: null }); return true;
     },
     setTool(tool: WorldLightingEditorTool) {
       if (!available) return;
@@ -634,8 +885,8 @@ export function createWorldLightingEditorStore(available: boolean, originalScene
     setShowWireframe(showWireframe: boolean) { if (typeof showWireframe === "boolean") publish({ showWireframe }); },
     setPreviewDraft(previewDraft: boolean) { if (available && typeof previewDraft === "boolean") { commitGesture(); publish({ previewDraft, error: null }); } },
     beginGesture() {
-      if (available && !gesture) {
-        gesture = geometry(); gestureSaveState = { localSaveStatus: state.localSaveStatus, localSavedAt: state.localSavedAt, localSaveError: state.localSaveError };
+      if (mutationAllowed() && !gesture) {
+        gesture = geometry(); gestureLabel = "Изменение разметки"; gestureSaveState = { localSaveStatus: state.localSaveStatus, localSavedAt: state.localSavedAt, localSaveError: state.localSaveError };
       }
     },
     isGesturing: () => available && gesture !== null,
@@ -648,30 +899,30 @@ export function createWorldLightingEditorStore(available: boolean, originalScene
     patchSelected(patch: CasterPatch) {
       if (!available) return;
       if (state.selectedKind !== "caster" || !isRecord(patch) || Object.keys(patch).some(key => !["baseHeight", "height", "opacity", "softness"].includes(key))) { fail("Неизвестное свойство объёма."); return; }
-      editSelected(caster => ({ ...caster, ...patch }));
+      editSelected(caster => ({ ...caster, ...patch }), state.selectedVertex, Object.keys(patch).length === 1 && "height" in patch ? "Высота объёма" : "Параметры объёма");
     },
     patchReceiver(patch: Partial<Pick<WorldShadowReceiver, "height">>) {
       if (!available) return;
       if (state.selectedKind !== "receiver" || !isRecord(patch) || Object.keys(patch).some(key => key !== "height")) { fail("Неизвестное свойство поверхности."); return; }
-      editSelected(receiver => ({ ...receiver, ...patch }));
+      editSelected(receiver => ({ ...receiver, ...patch }), state.selectedVertex, "Высота поверхности");
     },
     moveVertex(index: number, point: WorldPoint) {
       editSelected(polygon => {
         if (!validIndex(index, polygon)) { fail("Вершина контура не найдена."); return null; }
-        return { ...polygon, points: polygon.points.map((previous, at) => at === index ? finite(point?.x) && finite(point?.y) ? snapped(point) : point : previous) };
-      });
+        return withContour(polygon, contour(polygon).map((previous, at) => at === index ? finite(point?.x) && finite(point?.y) ? snapped(point) : point : previous));
+      }, state.selectedVertex, state.selectedHole === null ? "Перемещение вершины" : "Перемещение вершины исключения");
     },
     addVertex(index: number, point: WorldPoint) {
       editSelected(polygon => {
         if (!validIndex(index, polygon)) { fail("Ребро контура не найдено."); return null; }
-        return { ...polygon, points: [...polygon.points.slice(0, index + 1), point, ...polygon.points.slice(index + 1)] };
-      }, state.selectedVertex !== null && state.selectedVertex > index ? state.selectedVertex + 1 : state.selectedVertex);
+        return withContour(polygon, [...contour(polygon).slice(0, index + 1), point, ...contour(polygon).slice(index + 1)]);
+      }, state.selectedVertex !== null && state.selectedVertex > index ? state.selectedVertex + 1 : state.selectedVertex, state.selectedHole === null ? "Добавление вершины" : "Добавление вершины исключения");
     },
     deleteVertex(index: number) {
       editSelected(polygon => {
         if (!validIndex(index, polygon)) { fail("Вершина контура не найдена."); return null; }
-        return { ...polygon, points: polygon.points.filter((_, at) => at !== index) };
-      }, state.selectedVertex === index ? null : state.selectedVertex !== null && state.selectedVertex > index ? state.selectedVertex - 1 : state.selectedVertex);
+        return withContour(polygon, contour(polygon).filter((_, at) => at !== index));
+      }, state.selectedVertex === index ? null : state.selectedVertex !== null && state.selectedVertex > index ? state.selectedVertex - 1 : state.selectedVertex, state.selectedHole === null ? "Удаление вершины" : "Удаление вершины исключения");
     },
     patchLight: editLight,
     addLight(position: WorldPoint, kind: WorldLight["kind"]): string | null {
@@ -682,7 +933,7 @@ export function createWorldLightingEditorStore(available: boolean, originalScene
     addCaster: (position: WorldPoint) => createPolygon("caster", position),
     addReceiver: (position: WorldPoint) => createPolygon("receiver", position),
     duplicateLight(): string | null {
-      if (!available) return null;
+      if (!selectedMutationAllowed()) return null;
       const source = state.selectedKind === "light" ? state.lights.find(light => light.id === state.selectedId) : undefined;
       if (!source) { fail("Сначала выберите источник света."); return null; }
       const offset = state.snap || 10, effective = effectiveLight(source);
@@ -691,15 +942,10 @@ export function createWorldLightingEditorStore(available: boolean, originalScene
     },
     removeLight,
     removeSelected() {
-      if (!available) return;
-      commitGesture();
-      if (state.selectedId === null) { fail("Сначала выберите объект."); return; }
-      if (state.selectedKind === "light") removeLight();
-      else if (state.selectedKind === "caster") applyGeometry({ ...geometry(), casters: Object.freeze(state.casters.filter(item => item.id !== state.selectedId)) });
-      else applyGeometry({ ...geometry(), receivers: Object.freeze(state.receivers.filter(item => item.id !== state.selectedId)) });
+      if (available) removeElements();
     },
     restoreElement(kind: WorldLightingElementKind, id: string) {
-      if (!available) return false;
+      if (!mutationAllowed([{ kind, id }])) return false;
       commitGesture();
       if (kind === "caster") {
         const authored = originals.get(id); if (!authored) return fail("Исходный объём не найден.");
@@ -715,23 +961,13 @@ export function createWorldLightingEditorStore(available: boolean, originalScene
         applyGeometry({ ...geometry(), lights: restoredValues(state.lights, baselineLights, restored) });
         if (!state.lights.some(item => item.id === id)) return false;
       } else return fail("Неизвестный вид объекта.");
-      publish({ selectedKind: kind, selectedId: id, selectedVertex: null, error: null }); return true;
+      setSelection([{ kind, id }]); return true;
     },
     moveSelectedBy(dx: number, dy: number) {
-      if (!available) return;
-      if (!finite(dx) || !finite(dy)) { fail("Смещение должно быть числовым."); return; }
-      if (dx === 0 && dy === 0) return;
-      if (state.selectedKind === "light") {
-        const light = state.lights.find(light => light.id === state.selectedId);
-        if (!light) { fail("Сначала выберите источник света."); return; }
-        const effective = effectiveLight(light); editLight({ position: snapped({ x: effective.position.x + dx, y: effective.position.y + dy }) });
-      } else editSelected(polygon => {
-        const anchor = polygon.points[0], target = snapped({ x: anchor.x + dx, y: anchor.y + dy });
-        return { ...polygon, points: polygon.points.map(point => ({ x: point.x + target.x - anchor.x, y: point.y + target.y - anchor.y })) };
-      });
+      if (available && (dx !== 0 || dy !== 0)) moveElementsBy(dx, dy);
     },
     resetSelected() {
-      if (!available) return;
+      if (!selectedMutationAllowed()) return;
       commitGesture(); const id = state.selectedId;
       if (id === null) { fail("Сначала выберите объект."); return; }
       if (state.selectedKind === "caster") {
@@ -742,22 +978,23 @@ export function createWorldLightingEditorStore(available: boolean, originalScene
         const authored = originalLights.get(id); applyGeometry({ ...geometry(), lights: Object.freeze(state.lights.flatMap(item => item.id === id ? authored ? [authored] : [] : [item])) });
       }
     },
-    resetAll() { if (available) { commitGesture(); hydrationConflict = false; conflictedDraft = null; if (!applyGeometry(baselineGeometry)) persist(); } },
+    resetAll() { if (mutationAllowed([...state.casters.map(item => ({ kind: "caster" as const, id: item.id })), ...state.receivers.map(item => ({ kind: "receiver" as const, id: item.id })), ...state.lights.map(item => ({ kind: "light" as const, id: item.id }))])) { commitGesture(); hydrationConflict = false; conflictedDraft = null; if (!applyGeometry(baselineGeometry, true, true, null, "Сброс всей разметки")) persist(); } },
     undo() {
-      if (!available) return;
+      if (!mutationAllowed()) return;
       commitGesture(); const previous = past.pop(); if (!previous) return;
-      future.push(geometry());
-      if (!applyGeometry(previous, false)) { future.pop(); past.push(previous); publish({ canUndo: past.length > 0, canRedo: future.length > 0 }); }
+      future.push({ ...previous, geometry: geometry() });
+      if (!applyGeometry(previous.geometry, false)) { future.pop(); past.push(previous); publish(historySnapshot()); }
     },
     redo() {
-      if (!available) return;
+      if (!mutationAllowed()) return;
       commitGesture(); const next = future.pop(); if (!next) return;
-      past.push(geometry());
-      if (!applyGeometry(next, false)) { past.pop(); future.push(next); publish({ canUndo: past.length > 0, canRedo: future.length > 0 }); }
+      past.push({ ...next, geometry: geometry() });
+      if (!applyGeometry(next.geometry, false)) { past.pop(); future.push(next); publish(historySnapshot()); }
     },
     hydrate() {
       if (!available || hydrated || typeof window === "undefined") return;
       hydrated = true;
+      hydrateFlags();
       try {
         let text: string | null = null, key = storageKey;
         for (const candidate of [storageKey, ...oldStorageKeys]) {
@@ -781,17 +1018,19 @@ export function createWorldLightingEditorStore(available: boolean, originalScene
     exportSceneBackup,
     importSceneBackup(text: string) {
       if (!available || typeof text !== "string") return false;
-      const next = parseSceneBackup(text); if (!next) return false;
+      if (!mutationAllowed()) return false;
+      const next = parseSceneBackup(text); if (!next || !importAllowed(next)) return false;
       hydrationConflict = false; conflictedDraft = null;
-      commitGesture(); if (!applyGeometry(next)) persist(); return true;
+      commitGesture(); if (!applyGeometry(next, true, true, null, "Импорт резервной копии")) persist(); importBackupPrefs(text); return true;
     },
     importPatch(text: string) {
       if (!available || typeof text !== "string") return false;
+      if (!mutationAllowed()) return false;
       let backup = false;
       try { const value: unknown = JSON.parse(text); backup = isRecord(value) && value.type === "world-studio-backup"; } catch { /* The parser reports the malformed JSON. */ }
-      const next = backup ? parseSceneBackup(text) : parsePatch(text); if (!next) return false;
+      const next = backup ? parseSceneBackup(text) : parsePatch(text); if (!next || !importAllowed(next)) return false;
       hydrationConflict = false; conflictedDraft = null;
-      commitGesture(); if (!applyGeometry(next)) persist(); return true;
+      commitGesture(); if (!applyGeometry(next, true, true, null, backup ? "Импорт резервной копии" : "Импорт правок")) persist(); if (backup) importBackupPrefs(text); return true;
     },
     applyToScene(scene: FixedWorldScene, levels?: Readonly<Record<string, number>>): FixedWorldScene {
       if (!available || scene.id !== original.id) return scene;
@@ -843,5 +1082,5 @@ export function createWorldLightingEditorStore(available: boolean, originalScene
 }
 
 export const worldLightingEditorStore = retainWorldDevClientState("lighting-editor",
-  `v3:2:${TILED_WORLD.id}:${TILED_WORLD.width}:${TILED_WORLD.height}`,
+  `v3:3:${TILED_WORLD.id}:${TILED_WORLD.width}:${TILED_WORLD.height}`,
   () => createWorldLightingEditorStore(WORLD_DEV_ENABLED, TILED_WORLD)).value;

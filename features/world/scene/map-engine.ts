@@ -13,6 +13,7 @@ import { WORLD_DEV_ENABLED, worldDevStore } from "@/features/world/dev/world-dev
 import { retainWorldDevClientState } from "@/features/world/dev/world-dev-hmr-cache";
 import { WORLD_LIGHTING_EDITOR_CANCEL_EVENT, worldLightingEditorStore } from "@/features/world/dev/world-lighting-editor-store";
 import { createWorldLightingEditorMap, WORLD_LIGHTING_EDITOR_FOCUS_EVENT, takeWorldLightingEditorFocus, WORLD_STUDIO_CREATE_EVENT, takeWorldStudioCreate, type WorldStudioCreateKind, type WorldLightingEditorFocus } from "@/features/world/dev/world-lighting-editor-map";
+import { WORLD_STUDIO_MAP_KEY_EVENT, type WorldStudioMapKeyRequest } from "@/features/world/dev/world-studio-keyboard";
 import { mapObjectAt, type MapObjectPlace, type MapInteractiveObject } from "./site-interactions";
 import { projectConstructionAnchor, type MapObjectScreenAnchor } from "./construction-map-anchor";
 import { drawMapGuideTarget, mapGuideCamera } from "./map-guide-target";
@@ -71,7 +72,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   const guideInsets = () => ({ ...cameraInsets, bottom: Math.max(cameraInsets.bottom, guideBottomInset) });
   let inView = true;
   const home = document.createElement("canvas");
-  type Touch = { initial: Point; position: Point; objectId?: string; capture: HTMLElement; editor?: boolean };
+  type Touch = { initial: Point; position: Point; objectId?: string; capture: HTMLElement; editor?: boolean; additive?: boolean };
   const pointers = new Map<number, Touch>();
   let travelled = 0, multiTouch = false, cancelled = false;
   let selectedObjectId: string | null = null, selectionKey: string | null = null;
@@ -117,8 +118,9 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     lightingEditor.cancel();
     const safe = studioUsableRectangle();
     const point = screenToWorld({ x: (safe.left + safe.right) / 2, y: (safe.top + safe.bottom) / 2 }, camera, view);
-    const created = kind === "caster" ? worldLightingEditorStore.addCaster(point) : worldLightingEditorStore.addReceiver(point);
-    if (created) { worldLightingEditorStore.setTool("move"); requestDraw(); canvas.focus?.({ preventScroll: true }); }
+    const created = kind === "receiver-hole" ? lightingEditor.createReceiverHole(point)
+      : kind === "caster" ? worldLightingEditorStore.addCaster(point) : worldLightingEditorStore.addReceiver(point);
+    if (created) { if (kind !== "receiver-hole") worldLightingEditorStore.setTool("move"); requestDraw(); canvas.focus?.({ preventScroll: true }); }
   }
   function focusLighting(request: WorldLightingEditorFocus) {
     if (disposed || !editingLight() || !Number.isFinite(request.point?.x) || !Number.isFinite(request.point?.y)) return;
@@ -381,13 +383,14 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       for (const touch of pointers.values()) touch.editor = false;
       cancelled = true;
     }
-    const editor = !pointers.size && editingLight() && lightingEditor.down(screenToWorld(p, camera, view), 11 / camera.zoom);
+    const editor = !pointers.size && editingLight() && lightingEditor.down(screenToWorld(p, camera, view), 11 / camera.zoom,
+      { ctrlKey: event.ctrlKey, metaKey: event.metaKey, shiftKey: event.shiftKey });
     // Large touch targets overlap in the phone overview. Resolve the closest
     // rendered marker, independently of which DOM button received the press.
     // Keep capture on the original button on touch devices: transferring it to
     // a sibling canvas competes with the browser's implicit touch capture.
     const capture = typeof target.setPointerCapture === "function" ? target : canvas;
-    pointers.set(event.pointerId, { initial: p, position: p, objectId: objectId ? nearestMarkerObject(p) : undefined, capture, editor });
+    pointers.set(event.pointerId, { initial: p, position: p, objectId: objectId ? nearestMarkerObject(p) : undefined, capture, editor, additive: event.ctrlKey || event.metaKey });
     multiTouch ||= pointers.size > 1; capture.setPointerCapture(event.pointerId); capture.focus?.({ preventScroll: true });
     if (editingLight()) requestDraw();
   }
@@ -424,7 +427,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       requestDraw(); return;
     }
     if (editingLight()) {
-      if (!lightingEditor.isPanning() && !pointers.size && isMapTap(travelled, multiTouch, cancelled)) worldLightingEditorStore.select(null);
+      if (!touch.additive && !lightingEditor.isPanning() && !pointers.size && isMapTap(travelled, multiTouch, cancelled)) worldLightingEditorStore.clearSelection();
       if (touch.capture.hasPointerCapture(event.pointerId)) touch.capture.releasePointerCapture(event.pointerId);
       requestDraw(); return;
     }
@@ -492,12 +495,21 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   }
   function editorCreate(event: Event) {
     const kind = takeWorldStudioCreate() ?? (event as CustomEvent<WorldStudioCreateKind>).detail;
-    if (kind === "caster" || kind === "receiver") createStudioElement(kind);
+    if (kind === "caster" || kind === "receiver" || kind === "receiver-hole") createStudioElement(kind);
   }
   if (WORLD_DEV_ENABLED) {
     window.addEventListener?.(WORLD_LIGHTING_EDITOR_FOCUS_EVENT, editorFocus);
     window.addEventListener?.(WORLD_STUDIO_CREATE_EVENT, editorCreate);
   }
+  function editorMapKey(event: Event) {
+    if (!editingLight()) return;
+    const request = (event as CustomEvent<WorldStudioMapKeyRequest>).detail;
+    if (!request || request.handled) return;
+    if (request.phase === "cancel") { lightingEditor.blur(); request.handled = true; }
+    else request.handled = request.phase === "up" ? lightingEditor.keyUp(request.input) : lightingEditor.key(request.input);
+    if (request.handled) requestDraw();
+  }
+  if (WORLD_DEV_ENABLED) window.addEventListener?.(WORLD_STUDIO_MAP_KEY_EVENT, editorMapKey);
   // DEV and the enclosing world dialog both capture Escape. Handle a map drag
   // first, while leaving keyboard input in the panel to its own controls.
   function editorEscape(event: KeyboardEvent) {
@@ -593,6 +605,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       canvas.removeEventListener("keyup", keyUp); canvas.removeEventListener("blur", editorBlur); canvas.removeEventListener("pointerleave", editorLeave);
       window.removeEventListener?.(WORLD_LIGHTING_EDITOR_FOCUS_EVENT, editorFocus);
       window.removeEventListener?.(WORLD_STUDIO_CREATE_EVENT, editorCreate);
+      window.removeEventListener?.(WORLD_STUDIO_MAP_KEY_EVENT, editorMapKey);
       window.removeEventListener?.("keydown", editorEscape, true);
       window.removeEventListener?.(WORLD_LIGHTING_EDITOR_CANCEL_EVENT, editorCancel);
     },

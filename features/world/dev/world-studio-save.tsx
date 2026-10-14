@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Check, Download, Save, Upload } from "lucide-react";
 import { worldLightingEditorStore } from "./world-lighting-editor-store";
 import { useWorldStudioProjectSave } from "./world-studio-project-save";
+import { WORLD_STUDIO_UI_EVENT } from "./world-studio-keyboard";
 import styles from "./world-lighting-studio.module.css";
 
 function saveTime(value: number | null) { return value === null ? "" : new Date(value).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" }); }
@@ -18,11 +19,10 @@ export function WorldStudioSave() {
   const [notice, setNotice] = useState(""), [error, setError] = useState(""), [confirmReset, setConfirmReset] = useState(false), [confirmProject, setConfirmProject] = useState(false), [loadingProject, setLoadingProject] = useState(false);
   useEffect(() => { saveNow.current = project.saveNow; }, [project.saveNow]);
   useEffect(() => {
-    const save = (event: KeyboardEvent) => {
-      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.key.toLowerCase() !== "s" || !worldLightingEditorStore.getSnapshot().enabled) return;
-      event.preventDefault(); event.stopImmediatePropagation(); worldLightingEditorStore.commitGesture(); worldLightingEditorStore.saveDraft(); void saveNow.current();
+    const save = (event: Event) => {
+      if ((event as CustomEvent).detail?.action === "save") void saveNow.current();
     };
-    window.addEventListener("keydown", save, true); return () => window.removeEventListener("keydown", save, true);
+    window.addEventListener(WORLD_STUDIO_UI_EVENT, save); return () => window.removeEventListener(WORLD_STUDIO_UI_EVENT, save);
   }, []);
   const localLabel = snapshot.localSaveStatus === "error" ? "Черновик в браузере: ошибка сохранения" : snapshot.localSaveStatus === "pending" ? "Черновик в браузере: сохраняется…" : snapshot.localSavedAt ? `Черновик в браузере: сохранён в ${saveTime(snapshot.localSavedAt)}` : "Черновик в браузере: сохранён";
   const projectLabel = project.paused ? "Файлы проекта: автосохранение на паузе" : project.status === "probing" ? "Файлы проекта: проверяем доступность…" : project.status === "unavailable" ? "Файлы проекта: доступны только в локальном DEV" : project.status === "conflict" ? "В проекте есть другие правки" : project.status === "error" ? "Файлы проекта: ошибка сохранения" : project.status === "saving" ? "Файлы проекта: сохраняются…" : project.pending ? "Файлы проекта: есть несохранённые правки" : project.savedAt ? `Проект сохранён · ${saveTime(project.savedAt)}` : "Файлы проекта: готовы к автосохранению";

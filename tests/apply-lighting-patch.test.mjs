@@ -630,3 +630,58 @@ test("overlapping direct saves serialize and reject the second stale request wit
   assert.equal(world.shadowReceivers.some(value => value.id === receiver.id), false);
   assert.deepEqual(await readdir(path.dirname(mapPath)), ["forest.tmj"]);
 });
+
+test("v3 receiver exclusions roundtrip object-local rotation/offsets, replay, conflicts and removal", async t => {
+  const { map, mapPath, options, apply } = await fixture(t);
+  const target = map.layers[2].layers[0].layers[1].objects[0];
+  target.rotation = 27.5;
+  target.polygon = square(24);
+  await writeFile(mapPath, JSON.stringify(map));
+  const scene = await compileTiledWorld(map, options), before = scene.shadowReceivers[0];
+  const angle = target.rotation * Math.PI / 180, local = square(5).map(({ x, y }) => ({ x: x + 6, y: y + 5 }));
+  const hole = local.map(({ x, y }) => ({ x: before.points[0].x + x * Math.cos(angle) - y * Math.sin(angle),
+    y: before.points[0].y + x * Math.sin(angle) + y * Math.cos(angle) }));
+  const patch = { ...v3Patch(scene), receivers: [{ id: before.id, before: clone(before), after: { ...clone(before), holes: [hole] } }] };
+  const originalPatch = clone(patch), originalMap = clone(map);
+  const prepared = await prepareLightingPatch({ patch, mapSource: await readFile(mapPath, "utf8"), ...options });
+  assert.equal(prepared.changed, 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(prepared.world)).shadowReceivers[0], prepared.world.shadowReceivers[0], "generated JSON preserves all exclusions");
+  assert.deepEqual(patch, originalPatch);
+  assert.equal((await apply(patch)).changed, 1);
+  const changed = JSON.parse(await readFile(mapPath, "utf8")), actualObject = changed.layers[2].layers[0].layers[1].objects[0];
+  const actualLocal = JSON.parse(actualObject.properties.find(property => property.name === "shadowHoles").value);
+  for (let vertex = 0; vertex < local.length; vertex++) for (const axis of ["x", "y"])
+    assert.ok(Math.abs(actualLocal[0][vertex][axis] - local[vertex][axis]) < 1e-9);
+  const restored = clone(changed); restored.layers[2].layers[0].layers[1].objects[0] = clone(target);
+  assert.deepEqual(restored, originalMap, "only the targeted receiver custom property changes");
+  const compiled = await readTiledWorld(mapPath, options.publicDir), current = compiled.shadowReceivers[0];
+  for (let vertex = 0; vertex < hole.length; vertex++) for (const axis of ["x", "y"])
+    assert.ok(Math.abs(current.holes[0][vertex][axis] - hole[vertex][axis]) < 1e-9);
+  const source = await readFile(mapPath, "utf8");
+  assert.equal((await apply(patch)).changed, 0);
+  assert.equal(await readFile(mapPath, "utf8"), source, "roundtrip floating error does not produce repeated writes");
+  const stale = clone(patch); stale.receivers[0].after.holes[0][0].x += .5;
+  await assert.rejects(apply(stale), /stale receiver/);
+  assert.equal(await readFile(mapPath, "utf8"), source);
+  await apply({ ...v3Patch(compiled), receivers: [{ id: current.id, before: current, after: { ...current, holes: [] } }] });
+  const cleared = JSON.parse(await readFile(mapPath, "utf8")).layers[2].layers[0].layers[1].objects[0];
+  assert.equal(cleared.properties.some(property => property.name === "shadowHoles"), false);
+  assert.equal(Object.hasOwn((await readTiledWorld(mapPath, options.publicDir)).shadowReceivers[0], "holes"), false);
+});
+
+test("v3 malformed or escaping receiver exclusions reject the whole patch without touching unrelated sections", async t => {
+  const { scene, mapPath, makePatch, apply } = await fixture(t), receiver = scene.shadowReceivers[0];
+  const shift = (x, y, size) => square(size).map(point => ({ x: point.x + x, y: point.y + y }));
+  const cases = [null, [shift(0, 0, 3)], [shift(31, 67, 10)], [shift(31, 68, 3)],
+    [shift(32, 68, 4), shift(34, 70, 4)], [shift(32, 68, 6), shift(33, 69, 2)],
+    Array.from({ length: 17 }, () => shift(32, 68, 3)), [[{ x: 32, y: 68 }, { x: 33, y: 69 }]],
+    [[{ x: 32, y: 68, extra: true }, { x: 36, y: 68 }, { x: 36, y: 72 }]]];
+  const source = await readFile(mapPath, "utf8");
+  for (const holes of cases) {
+    const patch = { ...v3Patch(scene), casters: makePatch("oak", { height: 29 }).casters,
+      receivers: [{ id: receiver.id, before: clone(receiver), after: { ...clone(receiver), holes } }] };
+    await assert.rejects(apply(patch), /holes/);
+    assert.equal(await readFile(mapPath, "utf8"), source);
+    assert.deepEqual(await readdir(path.dirname(mapPath)), ["forest.tmj"]);
+  }
+});

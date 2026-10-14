@@ -4,6 +4,8 @@ import { open, rename, rm, writeFile } from "node:fs/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { compileTiledWorld } from "./lib/tiled-world.mjs";
+import { validateForestReceiverHoles, FOREST_RECEIVER_MAX_HOLES }
+  from "../features/world/environment/lighting/forest-receiver-geometry.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const defaultMap = path.join(root, "world/tiled/forest.tmj");
@@ -52,7 +54,8 @@ function studioMetadata(value, at) {
 }
 
 function canonicalShadow(value, at, world, caster) {
-  object(value, at, ["id", "points", "height", ...(caster ? ["baseHeight", "opacity", "softness"] : [])], ["when", "studioName", "studioFolder"]);
+  object(value, at, ["id", "points", "height", ...(caster ? ["baseHeight", "opacity", "softness"] : [])],
+    ["when", "studioName", "studioFolder", ...(!caster ? ["holes"] : [])]);
   const id = identifier(value.id, `${at}.id`);
   assert(Array.isArray(value.points) && value.points.length >= 3 && value.points.length <= 64, `${at}.points`,
     "expected 3 to 64 vertices");
@@ -70,7 +73,24 @@ function canonicalShadow(value, at, world, caster) {
     when = { siteId: identifier(value.when.siteId, `${at}.when.siteId`), level };
   }
   const common = { id, points, height, ...(when ? { when } : {}), ...studioMetadata(value, at) };
-  if (!caster) return common;
+  if (!caster) {
+    let holes;
+    if (own(value, "holes")) {
+      assert(Array.isArray(value.holes) && value.holes.length <= FOREST_RECEIVER_MAX_HOLES, `${at}.holes`,
+        `expected an array of at most ${FOREST_RECEIVER_MAX_HOLES} exclusions`);
+      holes = value.holes.map((polygon, index) => {
+        const where = `${at}.holes[${index}]`;
+        assert(Array.isArray(polygon) && polygon.length >= 3 && polygon.length <= 64, where, "expected 3 to 64 vertices");
+        return polygon.map((point, vertex) => {
+          object(point, `${where}[${vertex}]`, ["x", "y"]);
+          return { x: number(point.x, `${where}[${vertex}].x`, 0, world.width), y: number(point.y, `${where}[${vertex}].y`, 0, world.height) };
+        });
+      });
+      const error = validateForestReceiverHoles(points, holes);
+      assert(!error, `${at}.holes`, error);
+    }
+    return { ...common, ...(holes?.length ? { holes } : {}) };
+  }
   const baseHeight = number(value.baseHeight, `${at}.baseHeight`, 0, 400 - height);
   const opacity = number(value.opacity, `${at}.opacity`, 0, 1);
   const softness = number(value.softness, `${at}.softness`, 0, 12);
@@ -281,15 +301,21 @@ function updateLightObject(target, before, after) {
 
 function updateObject(target, before, after) {
   const object = target.object;
-  if (before === null || !isDeepStrictEqual(before.points, after.points)) {
+  const localPoints = points => {
     const angle = ((object.rotation ?? 0) % 360) * Math.PI / 180;
     const snap = value => Math.abs(value) < 1e-12 ? 0 : value;
     const cos = snap(Math.cos(angle)), sin = snap(Math.sin(angle));
     const origin = { x: object.x + target.offset.x, y: object.y + target.offset.y };
-    object.polygon = after.points.map(point => {
+    return points.map(point => {
       const dx = point.x - origin.x, dy = point.y - origin.y;
       return { x: dx * cos + dy * sin, y: -dx * sin + dy * cos };
     });
+  };
+  if (before === null || !isDeepStrictEqual(before.points, after.points)) {
+    object.polygon = localPoints(after.points);
+  }
+  if (before === null || !isDeepStrictEqual(before.holes ?? [], after.holes ?? [])) {
+    lightProperty(object, "shadowHoles", after.holes?.length ? JSON.stringify(after.holes.map(localPoints)) : undefined, "string");
   }
   for (const name of ["height", "baseHeight", "opacity", "softness"].filter(name => own(after, name))) {
     if (before !== null && before[name] === after[name]) continue;
@@ -333,11 +359,12 @@ function parseJson(source, label) {
 
 function sameShadowGeometry(actual, expected) {
   if (actual === null || actual === undefined || expected === null || expected === undefined) return (actual ?? null) === (expected ?? null);
-  const { points: actualPoints, ...actualProperties } = actual;
-  const { points: expectedPoints, ...expectedProperties } = expected;
-  return isDeepStrictEqual(actualProperties, expectedProperties) && actualPoints.length === expectedPoints.length
-    && actualPoints.every((point, index) => Math.abs(point.x - expectedPoints[index].x) <= 1e-9
-      && Math.abs(point.y - expectedPoints[index].y) <= 1e-9);
+  const { points: actualPoints, holes: actualHoles = [], ...actualProperties } = actual;
+  const { points: expectedPoints, holes: expectedHoles = [], ...expectedProperties } = expected;
+  const samePoints = (first, second) => first.length === second.length && first.every((point, index) =>
+    Math.abs(point.x - second[index].x) <= 1e-9 && Math.abs(point.y - second[index].y) <= 1e-9);
+  return isDeepStrictEqual(actualProperties, expectedProperties) && samePoints(actualPoints, expectedPoints)
+    && actualHoles.length === expectedHoles.length && actualHoles.every((hole, index) => samePoints(hole, expectedHoles[index]));
 }
 
 /** Revision of exact source bytes, including external Tiled changes unrelated to lighting. */

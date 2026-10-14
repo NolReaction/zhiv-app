@@ -250,7 +250,8 @@ test("the application output requires spawn before any export write and watch pr
   await copyFile(script, cli);
   await copyFile(path.join(root, "scripts/lib/tiled-world.mjs"), path.join(directory, "scripts/lib/tiled-world.mjs"));
   await copyFile(path.join(root, "features/world/interaction-limits.json"), path.join(directory, "features/world/interaction-limits.json"));
-  for (const relative of ["features/audio/catalog/audio-catalog.json", "apps/api/src/main/resources/world/economy-catalog.json"]) {
+  for (const relative of ["features/audio/catalog/audio-catalog.json", "apps/api/src/main/resources/world/economy-catalog.json",
+    "features/world/environment/lighting/forest-receiver-geometry.mjs"]) {
     const target = path.join(directory, relative);
     await mkdir(path.dirname(target), { recursive: true });
     await copyFile(path.join(root, relative), target);

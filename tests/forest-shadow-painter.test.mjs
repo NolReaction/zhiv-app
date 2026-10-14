@@ -380,3 +380,62 @@ test("native receiver paths are prepared once and reused by independent lamps", 
     if (previous === undefined) delete globalThis.Path2D; else globalThis.Path2D = previous;
   }
 }));
+
+function receiverContours(surface) {
+  const clipIndex = surface.calls.findIndex(call => call.method === "clip");
+  assert.ok(clipIndex >= 0);
+  const nativePath = surface.calls[clipIndex].args[0];
+  const calls = nativePath?.calls ?? surface.calls.slice(0, clipIndex).map(call => [call.method, ...call.args ?? []]);
+  let contours = [], current = [];
+  for (const [method, x, y] of calls) {
+    if (method === "beginPath") { contours = []; current = []; }
+    if (method === "moveTo") current = [{ x, y }];
+    if (method === "lineTo") current.push({ x, y });
+    if (method === "closePath") { contours.push(current); current = []; }
+  }
+  return contours;
+}
+// Independent nonzero winding evaluation of the actual paths sent to Canvas.
+function windingAt(point, contours) {
+  let winding = 0;
+  for (const contour of contours) for (let index = 0; index < contour.length; index++) {
+    const a = contour[index], b = contour[(index + 1) % contour.length];
+    const side = (b.x - a.x) * (point.y - a.y) - (point.x - a.x) * (b.y - a.y);
+    if (a.y <= point.y && b.y > point.y && side > 0) winding++;
+    if (a.y > point.y && b.y <= point.y && side < 0) winding--;
+  }
+  return winding;
+}
+
+for (const native of [false, true]) test(`receiver holes clip lamp/sun/body shadows with scoped surface union (${native ? "Path2D" : "immediate"})`, () => withCanvas(surfaces => {
+  const previous = globalThis.Path2D;
+  if (native) globalThis.Path2D = class {
+    constructor() { this.calls = []; }
+    moveTo(...args) { this.calls.push(["moveTo", ...args]); }
+    lineTo(...args) { this.calls.push(["lineTo", ...args]); }
+    closePath() { this.calls.push(["closePath"]); }
+  }; else delete globalThis.Path2D;
+  try {
+    const map = scene(), options = { ...frame(), actors: [caster("moving", 110)] };
+    map.shadowReceivers = [{ id: "ground", points: square(0, 0, 400).reverse(), holes: [square(60, 60, 100)], height: 0 },
+      { id: "island-in-hole", points: square(100, 100, 20).reverse(), height: 0 },
+      { id: "overlapping-ground", points: square(180, 180, 100).reverse(), height: 0 }];
+    drawForestOccludedLighting(context().ctx, map, options);
+    drawForestDirectionalShadows(context().ctx, map, options);
+    const masks = surfaces.filter(surface => surface.calls.some(call => call.method === "clip"));
+    assert.ok(masks.length >= 4, "static lamps, sun and both moving masks are clipped");
+    for (const mask of masks) {
+      const contours = receiverContours(mask);
+      assert.equal(contours.length, 4, "three outer contours and one hole");
+      assert.equal(windingAt({ x: 90, y: 90 }, contours), 0, "hole in its receiver excludes shadows");
+      assert.equal(windingAt({ x: 110, y: 110 }, contours), 1, "another independent receiver can receive inside the first one's hole");
+      assert.equal(windingAt({ x: 200, y: 200 }, contours), 2, "overlap remains in nonzero union instead of cancelling as evenodd would");
+      assert.equal(windingAt({ x: 500, y: 500 }, contours), 0, "outside receiving surfaces remains excluded");
+      assert.equal(mask.calls.filter(call => call.method === "clip").length, 1, "one same-height union avoids repeated shadow alpha");
+    }
+    const paint = context(); drawForestShadowDebug(paint.ctx, map, options);
+    assert.ok(paint.calls.some(call => call.method === "moveTo" && call.args[0] === 60 && call.args[1] === 60), "debug shows the inner contour");
+  } finally {
+    if (previous === undefined) delete globalThis.Path2D; else globalThis.Path2D = previous;
+  }
+}));

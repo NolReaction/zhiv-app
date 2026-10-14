@@ -31,7 +31,7 @@ const sourceAndDestination = args => args.length === 5
 const builderRigForHero = new WeakMap();
 
 async function modules(override) {
-  const vite = await createServer({ appType: "custom", configFile: false, root,
+  const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "node_modules/.vite-scene-map-interactions",
     resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
   try {
     const { default: scene } = await vite.ssrLoadModule("/features/world/tiled/forest.generated.json");
@@ -49,6 +49,7 @@ async function modules(override) {
       ...await vite.ssrLoadModule("/features/world/dev/world-dev-store.ts"),
       ...await vite.ssrLoadModule("/features/world/dev/world-lighting-editor-store.ts"),
       ...await vite.ssrLoadModule("/features/world/dev/world-lighting-editor-map.ts"),
+      ...await vite.ssrLoadModule("/features/world/dev/world-studio-keyboard.ts"),
       ...await vite.ssrLoadModule("/features/mochlik/pixel-sprite.ts"),
       ...await vite.ssrLoadModule("/features/world/state/forest-session.ts"),
       ...await vite.ssrLoadModule("/features/world/tiled/preview-state.ts"),
@@ -5406,6 +5407,51 @@ test("lighting studio map capture cancels a vertex on pinch, hidden page and Esc
     send("pointerup", { ...first, clientX: first.clientX + 30 }); canvas.flushFrame();
     assert.notDeepEqual(mapProjection(canvas), cameraBefore, "ordinary camera dragging resumes when the studio closes");
     assert.deepEqual(worldLightingEditorStore.getSnapshot().casters[0].points, caster.points);
+  } finally {
+    engine?.dispose(); worldLightingEditorStore.resetAll(); worldLightingEditorStore.setEnabled(false); worldDevStore.reset(); env.restore();
+  }
+});
+
+test("lighting studio bridge supports mixed pointer selection, layout-independent keyboard commands and viewport exclusions", async () => {
+  const caster = (id, x) => ({ id, height: 20, baseHeight: 0, opacity: 1, softness: 2,
+    points: [{ x, y: 650 }, { x: x + 20, y: 650 }, { x: x + 20, y: 670 }, { x, y: 670 }] });
+  const receiver = { id: "studio-ground", height: 0, points: [{ x: 610, y: 710 }, { x: 750, y: 710 }, { x: 750, y: 800 }, { x: 610, y: 800 }] };
+  const { createMapEngine, createWorldStudioKeyboard, WORLD_STUDIO_MAP_KEY_EVENT, worldDevStore, worldLightingEditorStore, requestWorldStudioCreate } = await modules({
+    shadowCasters: [caster("studio-one", 620), caster("studio-two", 700)], shadowReceivers: [receiver] });
+  const env = browser(); let engine;
+  const events = new Map();
+  window.addEventListener = (name, callback) => { if (!events.has(name)) events.set(name, new Set()); events.get(name).add(callback); };
+  window.removeEventListener = (name, callback) => events.get(name)?.delete(callback);
+  window.dispatchEvent = event => { for (const callback of events.get(event.type) ?? []) callback(event); return true; };
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false }); worldLightingEditorStore.setEnabled(true);
+    const canvas = env.surface(1000, 800), loading = createMapEngine(canvas, options, assert.fail, []);
+    env.finish(); await flush(); engine = await loading; engine.control("home"); canvas.flushFrame();
+    const send = (type, x, y, modifiers = {}) => {
+      const projection = mapProjection(canvas);
+      canvas.events.get(type)({ type, pointerId: 1, pointerType: "mouse", button: 0,
+        clientX: projection.left + x * projection.zoom, clientY: projection.top + y * projection.zoom, ...modifiers });
+    };
+    send("pointerdown", 630, 660); send("pointerup", 630, 660);
+    send("pointerdown", 710, 660, { ctrlKey: true }); send("pointerup", 710, 660, { ctrlKey: true });
+    assert.equal(worldLightingEditorStore.getSnapshot().selectedElements.length, 2, "the map passes additive modifiers to studio selection");
+    send("pointerdown", 1000, 1000, { metaKey: true }); send("pointerup", 1000, 1000, { metaKey: true });
+    assert.equal(worldLightingEditorStore.getSnapshot().selectedElements.length, 2, "additive empty taps preserve the existing group");
+    const keyboard = createWorldStudioKeyboard({ store: worldLightingEditorStore, ui() {}, close() {},
+      map: request => window.dispatchEvent(new CustomEvent(WORLD_STUDIO_MAP_KEY_EVENT, { detail: request })) });
+    const input = (key, code, modifiers = {}) => ({ key, code, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, isComposing: false, target: null, ...modifiers });
+    assert.equal(keyboard.down(input("п", "KeyG")), true); assert.equal(worldLightingEditorStore.getSnapshot().tool, "move");
+    const before = structuredClone(worldLightingEditorStore.getSnapshot().casters);
+    assert.equal(keyboard.down(input("ArrowRight", "ArrowRight")), true);
+    assert.equal(worldLightingEditorStore.getSnapshot().casters[0].points[0].x, before[0].points[0].x + 1);
+    assert.equal(worldLightingEditorStore.getSnapshot().casters[1].points[0].x, before[1].points[0].x + 1);
+    assert.equal(keyboard.down(input("я", "KeyZ", { ctrlKey: true })), true);
+    assert.deepEqual(worldLightingEditorStore.getSnapshot().casters, before);
+    worldLightingEditorStore.selectReceiver(receiver.id); requestWorldStudioCreate("receiver-hole");
+    assert.equal(worldLightingEditorStore.getSnapshot().receivers[0].holes.length, 1);
+    assert.equal(worldLightingEditorStore.getSnapshot().selectedHole, 0); assert.equal(worldLightingEditorStore.getSnapshot().tool, "vertex");
+    engine.dispose(); engine = null;
+    assert.equal(events.get(WORLD_STUDIO_MAP_KEY_EVENT)?.size, 0, "disposed maps release their global keyboard bridge");
   } finally {
     engine?.dispose(); worldLightingEditorStore.resetAll(); worldLightingEditorStore.setEnabled(false); worldDevStore.reset(); env.restore();
   }

@@ -16,15 +16,19 @@
 .topActions { grid-column: 3 / -1; display: flex; justify-content: flex-end; gap: 5px; }
 .studio .iconButton { flex: 0 0 auto; width: 34px; min-height: 34px; padding: 5px; }
 .studio .collapse { display: none; }
-.utility { grid-column: 1 / 3; display: flex; align-items: center; gap: 5px; min-width: 0; }
+.utility { grid-column: 1 / -1; display: flex; align-items: center; flex-wrap: wrap; gap: 5px; min-width: 0; }
 .utility button { min-height: 32px; font-size: 11px; white-space: nowrap; }
 .snap { display: flex; align-items: center; gap: 4px; color: var(--dev-muted); font-size: 10px; }
 .snap select { width: 47px; min-height: 30px; padding: 2px 3px; color: var(--dev-ink); background: #20372a; border: 1px solid var(--dev-line); border-radius: 6px; }
 .compare { display: flex; gap: 4px; min-width: 0; }
 .compare button { min-height: 32px; font-size: 11px; }
-.toolHint { grid-column: 3 / -1; margin: 0; color: var(--dev-muted); font-size: 10px; line-height: 1.4; }
+.toolHint { grid-column: 1 / -1; margin: 0; color: var(--dev-muted); font-size: 10px; line-height: 1.4; }
+.studio .historyStep { min-height: 40px; gap: 7px; padding: 4px 8px; text-align: left; justify-content: flex-start; }
+.historyStep > svg { flex-shrink: 0; }
+.historyStep > span { min-width: 0; font-size: 12px; font-weight: 600; }
+.historyStep small { display: block; max-width: 130px; overflow: hidden; text-overflow: ellipsis; font-size: 9px; font-weight: 400; opacity: .8; }
 .mobileNav { display: none; }
-.panel { position: absolute; top: 104px; bottom: 86px; display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+.panel { position: absolute; top: 145px; bottom: 86px; display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
 .outliner { left: 0; width: var(--studio-left); }
 .inspector { right: 0; width: var(--studio-right); }
 .panelTitle { display: flex; align-items: center; justify-content: space-between; flex: 0 0 auto; min-height: 36px; box-sizing: border-box; margin: 0; padding: 9px 11px; border-bottom: 1px solid var(--dev-line); color: #e1d6a8; font-size: 12px; }
@@ -49,16 +53,44 @@
 .objectList button[data-kind='receiver'] > svg { color: #82c8ed; }
 .objectList button[data-kind='light'] > svg { color: #e8cf76; }
 .objectList small { display: block; margin-top: 2px; color: var(--dev-muted); font-size: 10px; }
+.objectList button[data-kind] small { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .studio .folderButton { min-height: 31px; padding: 4px; border-color: transparent; background: transparent; font-size: 11px; }
 .studio .folderButton[data-drop-target='true'] { border-color: #ead79b; background: #40533b; outline: 1px solid #ead79b; }
 .folderButton > span { flex: 1; }
 .folderButton > small { flex: 0 0 auto; margin: 0; }
 .objectRow { display: flex; gap: 3px; min-width: 0; }
 .objectRow[draggable='true'] { cursor: grab; }
-.objectRow[draggable='true'] > button:first-child { cursor: grab; }
+.objectRow[draggable='true'] > button[data-kind] { cursor: grab; }
 .objectRow[data-dragging='true'] { opacity: .5; }
 .organizeHint { margin: 6px 0 0; color: var(--dev-muted); font-size: 10px; line-height: 1.4; }
-.objectRow > button:first-child { flex: 1; }
+.objectRow > button[data-kind] { flex: 1; }
+.objectRow[data-hidden='true'] > button[data-kind] { opacity: .5; }
+.objectRow .selectionBox { align-self: center; flex: 0 0 auto; width: 14px; height: 14px; margin: 0 1px; accent-color: #dfcc8b; }
+.studio .rowControl { flex: 0 0 25px; width: 25px; min-height: 31px; padding: 3px; justify-content: center; }
+.selectionHelp { color: var(--dev-muted); font-size: 10px; }
+.selectionHelp summary { cursor: pointer; padding-top: 5px; }
+.selectionHelp p { margin: 5px 0 0; }
+.batchActions { display: grid; gap: 6px; flex: 0 0 auto; padding: 8px; border-block: 1px solid var(--dev-line); background: #233a2b; }
+.batchActions > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: 5px; }
+.batchActions > div:first-child button { min-height: 25px; font-size: 10px; padding: 3px; }
+.batchActions .field { font-size: 10px; }
+.batchActions .field select { min-height: 32px; font-size: 11px; }
+.batchButtons { display: flex; flex-wrap: wrap; gap: 4px; }
+.batchButtons > button { flex: 1 1 90px; min-height: 27px; padding: 3px; font-size: 10px; }
+.batchActions p { margin: 0; color: var(--dev-muted); font-size: 10px; line-height: 1.35; }
+.batchDetails summary { cursor: pointer; color: #efda9e; font-size: 11px; }
+.batchDetails > div { display: grid; gap: 6px; max-height: 185px; overflow: auto; padding-top: 7px; }
+.outlinerContent:has(.batchDetails[open]) .filters, .outlinerContent:has(.batchDetails[open]) .folderActions, .outlinerContent:has(.batchDetails[open]) .selectionHelp { display: none; }
+.multiNotice { margin: 0 0 10px; padding: 7px; color: #efda9e; border: 1px solid var(--dev-line); border-radius: 7px; font-size: 11px; }
+.commandPanel { right: calc(var(--studio-right) + 10px); width: 320px; }
+.historyList { display: grid; gap: 6px; padding-left: 20px; margin-block: 12px; }
+.historyList li { padding: 6px; border-radius: 6px; background: #20372a; font-size: 11px; }
+.historyList small { display: block; margin-top: 3px; color: var(--dev-muted); font-size: 10px; }
+.historyList [data-applied='false'] { opacity: .6; }
+.emptyHistory { color: var(--dev-muted); font-size: 11px; line-height: 1.5; }
+.shortcutTable { width: 100%; table-layout: fixed; margin-top: 12px; border-collapse: collapse; font-size: 11px; overflow-wrap: anywhere; }
+.shortcutTable th, .shortcutTable td { padding: 7px 4px; border-bottom: 1px solid var(--dev-line); text-align: left; vertical-align: top; }
+.shortcutTable th { width: 44%; font-weight: 500; color: #efda9e; }
 .studio .restore { flex: 0 0 32px; width: 32px; padding: 4px; justify-content: center; }
 .presets { flex: 0 0 auto; padding: 0 8px 8px; border-top: 1px solid var(--dev-line); }
 .presets summary { min-height: 36px; box-sizing: border-box; padding-block: 9px; color: #e1d6a8; cursor: pointer; }
@@ -123,9 +155,12 @@
   .tools { grid-column: 1 / -1; grid-row: 2; flex-wrap: nowrap; overflow-x: auto; }
   .tools button { flex: 0 0 auto; min-height: 31px; padding: 5px 6px; font-size: 10px; }
   .tools kbd { display: none; }
-  .utility { grid-column: 1 / -1; display: flex; overflow-x: auto; padding-block: 1px; }
+  .utility { grid-column: 1 / -1; display: flex; flex-wrap: nowrap; overflow-x: auto; padding-block: 1px; }
   .utility button { flex: 0 0 auto; min-height: 28px; padding: 4px 6px; font-size: 10px; }
   .utility .iconButton { width: 28px; min-height: 28px; }
+  .studio .utility .historyStep { min-width: 105px; min-height: 37px; }
+  .utility .historyStep > span { font-size: 11px; }
+  .utility .historyStep small { max-width: 95px; font-size: 8px; }
   .snap span { display: none; }
   .snap select { width: 54px; min-height: 28px; font-size: 16px; }
   .toolHint, .utility .desktopView { display: none; }
@@ -134,8 +169,13 @@
   .panel { position: static; display: none; flex: 1 1 auto; min-height: 0; width: auto; border: 0; border-radius: 0; box-shadow: none; }
   .studio[data-mobile-pane='objects'] .outliner, .studio[data-mobile-pane='inspector'] .inspector, .studio[data-mobile-pane='preview'] .viewPanel { display: flex; }
   .panelTitle { display: none; }
+  .commandPanel { display: flex; position: absolute; inset: 0; width: auto; z-index: 5; background: #14231c; }
+  .commandPanel .panelTitle { display: flex; }
   .inspectorScroll { padding: 10px; }
   .search input, .field select { font-size: 16px; }
+  .batchDetails > div { max-height: 135px; }
+  .batchActions .field select { font-size: 16px; }
+  .batchActions p { font-size: 9px; }
   .outlinerControls { padding: 6px; }
   .folderActions { padding-top: 4px; }
   .outlinerScroll { padding: 0 6px 6px; }

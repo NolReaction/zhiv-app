@@ -13,7 +13,7 @@ const { worldDevStore, WORLD_DEV_DEFAULTS } = await vite.ssrLoadModule("/feature
 const { worldLightingEditorStore: store } = await vite.ssrLoadModule("/features/world/dev/world-lighting-editor-store.ts");
 const { activateWorldLightingStudio, WorldLightingStudio, WorldLightingSourceInspector, focusLightingSelection } = await vite.ssrLoadModule("/features/world/dev/world-lighting-studio.tsx");
 const { WorldLightingEditor, WorldLightingReceiverInspector, previewLightingCasterLevel } = await vite.ssrLoadModule("/features/world/dev/world-lighting-editor.tsx");
-const { buildWorldStudioOutliner, filterWorldStudioOutliner, studioDefaultFolders, studioFolderAncestors, studioFolderOptions } = await vite.ssrLoadModule("/features/world/dev/world-studio-outliner.ts");
+const { buildWorldStudioOutliner, filterWorldStudioOutliner, studioDefaultFolders, studioFolderAncestors, studioFolderOptions, studioVisibleObjects, studioSelectionRange } = await vite.ssrLoadModule("/features/world/dev/world-studio-outliner.ts");
 const { accountSceneLevels } = await vite.ssrLoadModule("/features/world/state/economy/economy-scene-state.ts");
 const { takeWorldLightingEditorFocus } = await vite.ssrLoadModule("/features/world/dev/world-lighting-editor-map.ts");
 const { claimWorldLightingStudio, releaseWorldLightingStudio, hasWorldLightingStudioOwner, takeWorldLightingStudioHandoff } = await vite.ssrLoadModule("/features/world/dev/world-lighting-studio-session.ts");
@@ -227,4 +227,69 @@ test("saved preview disables metadata controls and dragging along with map edits
   assert.match(html, /<fieldset[^>]*disabled=""[^>]*aria-label="Имя и папка элемента"/);
   assert.doesNotMatch(html, /draggable="true"/);
   assert.match(html, /draggable="false"/);
+});
+
+test("visible selection and Shift ranges follow expanded filtered rows and skip the restore area", () => {
+  const roots = buildWorldStudioOutliner(store.getSnapshot(), WORLD_DEV_DEFAULTS.levels), expanded = new Set(studioDefaultFolders(roots));
+  const visible = studioVisibleObjects(roots, expanded);
+  assert.ok(visible.some(node => node.id === "home-shadow-1")); assert.ok(!visible.some(node => node.id === "home-shadow-2"));
+  const all = studioVisibleObjects(roots, new Set(), true); assert.ok(all.length > visible.length);
+  const range = studioSelectionRange(all, all[2], all[5]); assert.deepEqual(range, all.slice(2, 6));
+  assert.deepEqual(studioSelectionRange(all, all[5], all[2]), range);
+  const receivers = filterWorldStudioOutliner(roots, "", "receivers");
+  assert.ok(studioVisibleObjects(receivers, new Set(), true).every(node => node.kind === "receiver"));
+  const removed = { type: "object", kind: "caster", id: "removed", label: "Removed", detail: "", dirty: true, removed: true };
+  assert.deepEqual(studioVisibleObjects([removed], new Set()), []);
+});
+
+test("undo and redo arrows name their next action instead of presenting unexplained icons", () => {
+  activateWorldLightingStudio(true); store.select("home-shadow-1"); store.patchSelected({ height: 76 });
+  const label = store.getSnapshot().undoLabel; assert.ok(label);
+  let html = markup(WorldLightingStudio, props());
+  assert.match(html, />Назад<small>/); assert.match(html, />Вперёд<small>/);
+  assert.ok(html.includes(label)); assert.ok(html.includes("История")); assert.ok(html.includes("Клавиши · ?"));
+  store.undo(); assert.equal(store.getSnapshot().redoLabel, label);
+  html = markup(WorldLightingStudio, props()); assert.ok(html.includes(`Повторить изменение: ${label}`));
+  assert.ok(store.getSnapshot().history.some(entry => !entry.applied && entry.label === label));
+});
+
+test("locked inspector keeps unlock and eye controls available while authoring and dragging are blocked", () => {
+  activateWorldLightingStudio(true); const id = "home-shadow-1"; store.select(id);
+  const before = store.getSnapshot().casters.find(item => item.id === id);
+  store.setElementFlags("caster", id, { locked: true, hidden: true });
+  try {
+    const html = markup(WorldLightingStudio, props());
+    assert.match(html, /data-hidden="true" data-locked="true"/);
+    assert.match(html, /<fieldset[^>]*disabled=""[^>]*aria-label="Имя и папка элемента"/);
+    assert.match(html, /Показать разметку/); assert.match(html, /Разблокировать/);
+    const row = html.split('data-studio-object="caster:home-shadow-1"')[1].split("</li>")[0];
+    assert.match(row, /draggable="false"/);
+    assert.deepEqual(store.getSnapshot().casters.find(item => item.id === id), before);
+  } finally { store.setElementFlags("caster", id, { locked: false, hidden: false }); }
+});
+
+test("batch controls expose counts, reversible author actions and locked-group explanation", () => {
+  activateWorldLightingStudio(true);
+  const elements = ["home-shadow-1", "home-shadow-2"].map(id => ({ kind: "caster", id })); store.selectElements(elements);
+  let html = markup(WorldLightingStudio, props());
+  for (const label of ["Выбрано 2", "Действия с группой", "Перенести выбранные в папку", "Дублировать 2", "Удалить разметку · 2", "Автоматические папки", "Выделить видимые"]) assert.ok(html.includes(label), label);
+  assert.ok(html.includes("сохраняет положение и условия уровней зданий"));
+  store.setElementsFlags(elements, { locked: true });
+  try {
+    html = markup(WorldLightingStudio, props());
+    assert.match(html, /2 заблокировано/); assert.match(html, /<select[^>]*disabled=""/);
+    assert.match(html, /Разблокировать/);
+  } finally { store.setElementsFlags(elements, { locked: false }); }
+});
+
+test("receiver inspector selects exclusion vertices and explains clipping of overlapping surfaces", () => {
+  activateWorldLightingStudio(true);
+  const id = store.addReceiver({ x: 600, y: 600 });
+  assert.ok(id); assert.equal(store.addReceiverHole([{ x: 590, y: 590 }, { x: 610, y: 590 }, { x: 610, y: 610 }, { x: 590, y: 610 }]), true);
+  store.selectHole(0, 1);
+  const html = markup(WorldLightingReceiverInspector, {});
+  for (const label of ["Редактируемый контур", "Внешний контур", "Исключение 1 · 4 точек", "Добавить исключение", "Удалить исключение", "X точки", "Y точки"]) assert.ok(html.includes(label), label);
+  assert.match(html, /value="610"/); assert.match(html, /value="590"/);
+  assert.match(html, /другая земля, перекрывающая это место/);
+  assert.match(html, /вместе со всеми исключениями/);
 });

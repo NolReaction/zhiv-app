@@ -128,6 +128,8 @@ export type WorldShadowCaster = WorldStudioElementMetadata & {
 export type WorldShadowReceiver = WorldStudioElementMetadata & {
   id: string;
   points: WorldPoint[];
+  /** Interior exclusions in painted world coordinates; subtract only from this surface. */
+  holes?: WorldPoint[][];
   height: number;
   when?: WorldVisibilityCondition;
 };

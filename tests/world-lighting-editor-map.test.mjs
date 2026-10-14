@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ root, configFile: false, appType: "custom", logLevel: "silent",
+const vite = await createServer({ root, cacheDir: "node_modules/.vite-editor-map", configFile: false, appType: "custom", logLevel: "silent",
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { createWorldLightingEditorStore } = await vite.ssrLoadModule("/features/world/dev/world-lighting-editor-store.ts");
@@ -256,4 +256,76 @@ test("original comparison never draws or focuses unsaved elements through option
     assert.equal(labels.some(text => text.includes(id)), false, "unsaved element has no original overlay");
     store.setPreviewDraft(true); assert.ok(fallbackMap.focus());
   }
+});
+
+test("Ctrl and Cmd clicks toggle mixed selection; dragging a selected member keeps the group and creates one Undo", () => {
+  const { store, map } = rig(true, true);
+  store.setShowReceivers(true);
+  map.down({ x: 30, y: 60 }, 1); map.end(false);
+  map.down({ x: 30, y: 120 }, 1, { ctrlKey: true }); map.end(false);
+  map.down({ x: 150, y: 100 }, 1, { metaKey: true }); map.end(false);
+  assert.deepEqual(store.getSnapshot().selectedElements, [{ kind: "caster", id: "tree" }, { kind: "receiver", id: "clearing" }, { kind: "light", id: "home-lamp" }]);
+  const before = structuredClone({ casters: store.getSnapshot().casters, receivers: store.getSnapshot().receivers, lights: store.getSnapshot().lights });
+  store.setTool("move"); store.setSnap(5);
+  map.down({ x: 30, y: 60 }, 1); map.move({ x: 37, y: 68 }); map.move({ x: 42, y: 73 }); map.end(false);
+  assert.equal(store.getSnapshot().selectedElements.length, 3);
+  assert.deepEqual(store.getSnapshot().casters[0].points[0], { x: 30, y: 65 });
+  assert.deepEqual(store.getSnapshot().receivers[0].points[0], { x: 30, y: 125 });
+  assert.deepEqual(store.getSnapshot().lights[0].position, { x: 160, y: 115 }, "an attached source starts from its actual painted position");
+  store.undo();
+  assert.deepEqual(store.getSnapshot().casters, before.casters); assert.deepEqual(store.getSnapshot().receivers, before.receivers); assert.deepEqual(store.getSnapshot().lights, before.lights);
+  assert.equal(store.getSnapshot().canUndo, false);
+  map.down({ x: 30, y: 120 }, 1, { ctrlKey: true }); map.end(false);
+  assert.equal(store.getSnapshot().selectedElements.length, 2);
+  assert.equal(store.getSnapshot().selectedElements.some(element => element.id === "clearing"), false);
+});
+
+test("a locked group cannot move, locked items stay selectable, and hidden guides never intercept the map", () => {
+  const { store, map } = rig(true, true);
+  store.selectElements([{ kind: "caster", id: "tree" }, { kind: "light", id: "home-lamp" }]);
+  store.setElementFlags("light", "home-lamp", { locked: true }); store.setTool("move");
+  const before = structuredClone(store.getSnapshot().casters);
+  map.down({ x: 30, y: 60 }, 1); map.move({ x: 40, y: 70 }); map.end(false);
+  assert.deepEqual(store.getSnapshot().casters, before); assert.equal(store.getSnapshot().canUndo, false);
+  map.down({ x: 150, y: 100 }, 1); map.end(false); assert.equal(store.getSnapshot().selectedId, "home-lamp");
+  store.setElementFlags("caster", "tree", { hidden: true }); store.select("tree");
+  assert.equal(map.down({ x: 30, y: 60 }, 1), false);
+  const labels = [], ctx = new Proxy({}, { get: (_, key) => key === "fillText" ? text => labels.push(text) : () => {}, set: () => true });
+  map.draw(ctx, point => point); assert.equal(labels.some(text => text.includes("tree")), false);
+  assert.ok(map.focus(), "a hidden element chosen through the list can still be framed");
+  assert.equal(store.applyToScene(rig(true).scene).shadowCasters.some(caster => caster.id === "tree"), true, "hiding a guide never removes runtime lighting geometry");
+});
+
+test("focus bounds include every selected volume, surface and effective source position", () => {
+  const { store, map } = rig(true, true);
+  store.selectElements([{ kind: "caster", id: "tree" }, { kind: "receiver", id: "clearing" }, { kind: "light", id: "home-lamp" }]);
+  assert.deepEqual(map.focus(), { point: { x: 92.5, y: 82.5 }, bounds: { x: 20, y: 30, width: 145, height: 105 } });
+});
+
+test("exclusion creation fits a selected surface and hole vertex, edge and Delete edits preserve its outer contour", () => {
+  const { store, map } = rig(true, true); store.selectReceiver("clearing");
+  const outer = structuredClone(store.getSnapshot().receivers[0].points);
+  assert.equal(map.createReceiverHole({ x: 190, y: 190 }), true, "viewport centre outside the receiver is relocated inside it");
+  assert.equal(store.getSnapshot().selectedHole, 0); assert.equal(store.getSnapshot().tool, "vertex");
+  const hole = structuredClone(store.getSnapshot().receivers[0].holes[0]);
+  assert.equal(hole.length, 4);
+  const edge = { x: (hole[0].x + hole[1].x) / 2, y: hole[0].y };
+  assert.equal(map.down(edge, .2), true); map.move({ x: edge.x, y: edge.y - .3 }); map.end(false);
+  assert.equal(store.getSnapshot().receivers[0].holes[0].length, 5);
+  assert.deepEqual(store.getSnapshot().receivers[0].points, outer);
+  store.undo(); assert.deepEqual(store.getSnapshot().receivers[0].holes[0], hole);
+  map.down(hole[0], .2); map.move({ x: hole[0].x + .2, y: hole[0].y + .2 }); map.end(false);
+  assert.deepEqual(store.getSnapshot().receivers[0].holes[0][0], { x: hole[0].x + .2, y: hole[0].y + .2 });
+  store.selectHole(0, null); map.key({ key: "Delete" });
+  assert.equal(store.getSnapshot().receivers[0].holes?.length ?? 0, 0); assert.equal(store.getSnapshot().receivers.length, 1);
+  store.undo(); assert.equal(store.getSnapshot().receivers[0].holes.length, 1);
+});
+
+test("the empty interior of an exclusion lets camera gestures through while its boundary can be edited", () => {
+  const { store, map } = rig(true, true); store.selectReceiver("clearing");
+  store.addReceiverHole([{ x: 25, y: 115 }, { x: 35, y: 115 }, { x: 35, y: 125 }, { x: 25, y: 125 }]);
+  store.setTool("select");
+  assert.equal(map.down({ x: 30, y: 120 }, .2), false);
+  assert.equal(map.down({ x: 30, y: 115 }, .2), true); map.end(false);
+  requestWorldStudioCreate("receiver-hole"); assert.equal(takeWorldStudioCreate(), "receiver-hole");
 });

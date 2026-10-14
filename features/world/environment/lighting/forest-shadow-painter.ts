@@ -1,5 +1,6 @@
 import type { FixedWorldScene, WorldBounds, WorldPoint, WorldShadowCaster, WorldShadowReceiver } from "@/features/world/tiled/types";
 import { boundsInCanvas, canvasWorldViewport } from "@/features/world/scene/canvas-viewport";
+import { validateForestReceiverHoles } from "./forest-receiver-geometry";
 import { forestActorShadowFootprintKey, prepareForestShadowGeometry, projectForestShadow, type PreparedForestShadowGeometry,
   FOREST_SHADOW_GEOMETRY, type PointShadowLight, type ShadowLight } from "./forest-shadow-geometry";
 
@@ -32,7 +33,7 @@ type Surface = { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D };
 type Pool = Surface & { x: number; y: number; width: number; height: number; light: PointShadowLight;
   dynamic?: Surface; actorSignature?: string };
 type DirectionalMask = Surface & { light: ShadowLight };
-type ReceiverGroup = { height: number; polygons: WorldPoint[][]; bounds: WorldBounds; path?: Path2D };
+type ReceiverGroup = { height: number; polygons: WorldPoint[][]; holes: WorldPoint[][]; bounds: WorldBounds; path?: Path2D };
 type ShadowActor = { caster: WorldShadowCaster; bounds: WorldBounds };
 type SourceKey = { x: number; y: number; height: number; radius: number; color: string; ownerSiteId?: string; key: string };
 type SceneCache = {
@@ -88,14 +89,13 @@ function reset(target: Surface, width = target.canvas.width, height = target.can
   ctx.filter = "none"; ctx.clearRect(0, 0, width, height);
 }
 type PathSink = Pick<CanvasRenderingContext2D, "moveTo" | "lineTo" | "closePath">;
-function appendPath(ctx: PathSink, polygons: readonly WorldPoint[][], normalized = false) {
+function appendPath(ctx: PathSink, polygons: readonly WorldPoint[][], normalized = false, clockwise = true) {
   for (const polygon of polygons) {
     if (polygon.length < 3) continue;
-    // Receiver contours authored in either direction form a union, not holes.
     const area = normalized ? 1 : polygon.reduce((sum, point, index) => {
       const next = polygon[(index + 1) % polygon.length]; return sum + point.x * next.y - point.y * next.x;
     }, 0);
-    const points = area < 0 ? [...polygon].reverse() : polygon;
+    const points = (area > 0) !== clockwise ? [...polygon].reverse() : polygon;
     ctx.moveTo(points[0].x, points[0].y);
     for (let index = 1; index < points.length; index++) ctx.lineTo(points[index].x, points[index].y);
     ctx.closePath();
@@ -105,17 +105,23 @@ function path(ctx: CanvasRenderingContext2D, polygons: readonly WorldPoint[][], 
   ctx.beginPath(); appendPath(ctx, polygons, normalized);
 }
 function receiverGroups(receivers: WorldShadowReceiver[]): ReceiverGroup[] {
-  const groups = new Map<number, WorldPoint[][]>();
+  const groups = new Map<number, { polygons: WorldPoint[][]; holes: WorldPoint[][] }>();
   for (const receiver of receivers) {
-    if (!Number.isFinite(receiver.height) || receiver.points.length < 3 || receiver.points.some(point => !finitePoint(point))) continue;
-    const polygons = groups.get(receiver.height) ?? []; polygons.push(receiver.points); groups.set(receiver.height, polygons);
+    if (!Number.isFinite(receiver.height) || receiver.points.length < 3 || receiver.points.some(point => !finitePoint(point))
+      || validateForestReceiverHoles(receiver.points, receiver.holes)) continue;
+    const group = groups.get(receiver.height) ?? { polygons: [], holes: [] };
+    group.polygons.push(receiver.points); group.holes.push(...receiver.holes ?? []); groups.set(receiver.height, group);
   }
-  return [...groups].map(([height, polygons]) => {
+  return [...groups].map(([height, { polygons, holes }]) => {
     // Native receiver paths are reusable across lamps and moving characters;
     // headless/older environments retain the same immediate-mode path.
     const receiverPath = typeof Path2D === "undefined" ? undefined : new Path2D();
-    if (receiverPath) appendPath(receiverPath, polygons);
-    return { height, polygons, bounds: pointBounds(polygons.flat()), path: receiverPath };
+    // Each valid surface contributes winding 1 inside its outer minus its own
+    // holes, 0 elsewhere. Summing these nonnegative windings produces the exact
+    // union, including overlaps, without applying alpha or erasure twice. An
+    // evenodd path would incorrectly cancel overlapping independent surfaces.
+    if (receiverPath) { appendPath(receiverPath, polygons); appendPath(receiverPath, holes, false, false); }
+    return { height, polygons, holes, bounds: pointBounds(polygons.flat()), path: receiverPath };
   });
 }
 function ambient(cache: SceneCache, scene: FixedWorldScene) {
@@ -180,7 +186,7 @@ function shadows(ctx: CanvasRenderingContext2D, cache: SceneCache, light: Shadow
     if (footprint && !boundsInCanvas(footprint, receiver.bounds)) continue;
     ctx.save();
     if (receiver.path) ctx.clip(receiver.path);
-    else { path(ctx, receiver.polygons); ctx.clip(); }
+    else { path(ctx, receiver.polygons); appendPath(ctx, receiver.holes, false, false); ctx.clip(); }
     for (const caster of casters) {
       if (ownerSiteId && caster.when?.siteId === ownerSiteId || clamp(caster.opacity) <= 0) continue;
       const pieces = projectForestShadow(caster, light, receiver.height, dynamic ? undefined : cache.prepared.get(caster)); if (!pieces.length) continue;
@@ -353,7 +359,8 @@ export function drawForestOccludedLighting(ctx: CanvasRenderingContext2D, scene:
 export function drawForestShadowDebug(ctx: CanvasRenderingContext2D, scene: FixedWorldScene, frame: ForestShadowFrame) {
   ctx.save(); ctx.globalAlpha = .8; ctx.globalCompositeOperation = "source-over"; ctx.lineWidth = 1;
   ctx.strokeStyle = "#56d5ec";
-  path(ctx, visibleGeometry(scene.shadowReceivers ?? [], frame).map(receiver => receiver.points)); ctx.stroke();
+  const receivers = visibleGeometry(scene.shadowReceivers ?? [], frame);
+  path(ctx, receivers.flatMap(receiver => [receiver.points, ...receiver.holes ?? []])); ctx.stroke();
   ctx.strokeStyle = "#d187ff";
   for (const caster of [...visibleCasters(scene, frame), ...frame.actors]) {
     path(ctx, [caster.points]); ctx.stroke();

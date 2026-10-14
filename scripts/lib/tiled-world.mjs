@@ -5,6 +5,8 @@ import sharp from "sharp";
 import interactionLimits from "../../features/world/interaction-limits.json" with { type: "json" };
 import audioCatalog from "../../features/audio/catalog/audio-catalog.json" with { type: "json" };
 import economyCatalog from "../../apps/api/src/main/resources/world/economy-catalog.json" with { type: "json" };
+import { validateForestReceiverHoles, FOREST_RECEIVER_MAX_HOLES, FOREST_RECEIVER_MAX_VERTICES }
+  from "../../features/world/environment/lighting/forest-receiver-geometry.mjs";
 
 const audioProfiles = new Set(audioCatalog.profiles.map(profile => profile.id));
 const spatialAudioProfiles = new Set(audioCatalog.profiles.filter(profile => profile.cues.length > 0
@@ -270,7 +272,7 @@ function aspect(image, rect, at) {
 function compileShadowGeometry(object, shape, kind, at, world) {
   const isCaster = kind === "shadow-caster", className = isCaster ? "ShadowCaster" : "ShadowReceiver";
   const props = properties(object, at, { height: "float", siteId: "string", level: "int", studioName: "string", studioFolder: "string",
-    ...(isCaster ? { baseHeight: "float", opacity: "float", softness: "float" } : {}) });
+    ...(isCaster ? { baseHeight: "float", opacity: "float", softness: "float" } : { shadowHoles: "string" }) });
   for (const key of ["class", "type"]) {
     if (own(object, key) && object[key] !== "") exact(object[key], className, `${at}.${key}`);
   }
@@ -283,7 +285,28 @@ function compileShadowGeometry(object, shape, kind, at, world) {
   requireThat(height <= 300 && (!isCaster || height > 0), `${at}.properties.height`,
     isCaster ? "expected height > 0 and <= 300" : "expected height between 0 and 300");
   const when = siteLevelCondition(props, at), common = { id, points, height, ...(when ? { when } : {}), ...studioMetadata(props, at) };
-  if (!isCaster) return common;
+  if (!isCaster) {
+    if (!own(props, "shadowHoles")) return common;
+    requireThat(props.shadowHoles.length <= 128 * 1024, `${at}.properties.shadowHoles`, "exclusions JSON exceeds 128 KiB");
+    let localHoles;
+    try { localHoles = JSON.parse(props.shadowHoles); }
+    catch { fail(`${at}.properties.shadowHoles`, "expected a JSON array of object-local polygon arrays"); }
+    requireThat(Array.isArray(localHoles) && localHoles.length <= FOREST_RECEIVER_MAX_HOLES, `${at}.properties.shadowHoles`,
+      `expected at most ${FOREST_RECEIVER_MAX_HOLES} exclusion polygons`);
+    const holes = localHoles.map((polygon, index) => {
+      const where = `${at}.properties.shadowHoles[${index}]`;
+      requireThat(Array.isArray(polygon) && polygon.length <= FOREST_RECEIVER_MAX_VERTICES, where,
+        `expected 3 to ${FOREST_RECEIVER_MAX_VERTICES} vertices`);
+      for (const value of polygon) requireThat(value && typeof value === "object" && !Array.isArray(value)
+        && Object.keys(value).every(key => key === "x" || key === "y"), where, "expected vertices with only x and y coordinates");
+      // Same object-local origin/rotation as its outer contour; inherited group
+      // offsets have already been applied to object.x/y by the compiler.
+      return vertices({ ...object, polygon }, "polygon", where, world);
+    });
+    const error = validateForestReceiverHoles(points, holes);
+    requireThat(!error, `${at}.properties.shadowHoles`, error);
+    return { ...common, ...(holes.length ? { holes } : {}) };
+  }
   const baseHeight = number(props.baseHeight ?? 0, `${at}.properties.baseHeight`, 0);
   requireThat(baseHeight + height <= 400, `${at}.properties.baseHeight`, "baseHeight + height must not exceed 400");
   const opacity = number(props.opacity ?? 1, `${at}.properties.opacity`, 0);

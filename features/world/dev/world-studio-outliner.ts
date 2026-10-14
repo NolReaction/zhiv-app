@@ -83,6 +83,16 @@ export function studioFolderOptions(nodes: readonly StudioNode[], prefix = ""): 
   });
 }
 
+/** Selection ranges follow the rows the user can actually see, including active search results. */
+export function studioVisibleObjects(nodes: readonly StudioNode[], expanded: ReadonlySet<string>, searching = false): StudioObject[] {
+  return nodes.flatMap(node => node.type === "object" ? node.removed ? [] : [node]
+    : searching || expanded.has(node.id) ? studioVisibleObjects(node.children, expanded, searching) : []);
+}
+export function studioSelectionRange(nodes: readonly StudioObject[], anchor: { kind: WorldLightingElementKind; id: string } | null, target: StudioObject) {
+  const end = nodes.findIndex(node => node.kind === target.kind && node.id === target.id), start = anchor ? nodes.findIndex(node => node.kind === anchor.kind && node.id === anchor.id) : end;
+  return start < 0 || end < 0 ? [target] : nodes.slice(Math.min(start, end), Math.max(start, end) + 1);
+}
+
 export function filterWorldStudioOutliner(nodes: readonly StudioNode[], query: string, filter: StudioObjectFilter): StudioNode[] {
   const needle = query.trim().toLocaleLowerCase("ru");
   function visit(items: readonly StudioNode[], ancestors: string): StudioNode[] {

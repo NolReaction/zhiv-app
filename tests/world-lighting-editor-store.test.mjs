@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
+import { tmpdir } from "node:os";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
+const cacheDir = `${tmpdir()}/zhiv-world-lighting-store-${process.pid}`;
+const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { createWorldLightingEditorStore } = await vite.ssrLoadModule("/features/world/dev/world-lighting-editor-store.ts");
 const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
@@ -833,7 +835,7 @@ test("explicit project conflict resolution validates the fresh scene before disc
 
 test("DEV client module reevaluation preserves the exact editor session, subscribers, selection and undo", async () => {
   const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window"), previousMode = process.env.NODE_ENV;
-  const hot = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
+  const hot = await createServer({ appType: "custom", configFile: false, root, cacheDir: `${cacheDir}-hmr`, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
   Object.defineProperty(globalThis, "window", { configurable: true, value: { localStorage: memoryStorage() } });
   process.env.NODE_ENV = "development";
   try {
@@ -980,4 +982,171 @@ test("warm derived-scene caches refresh Studio metadata across rename, move, pro
   const redone = store.applyToScene(original);
   assert.equal(redone.shadowCasters[0].studioFolder, "custom:Лес/Север"); assert.equal(redone.shadowReceivers[0].studioFolder, "custom:Лес/Земля");
   store.setPreviewDraft(false); assert.equal(store.applyToScene(original), savedPreview, "saved preview cache remains independent from Undo");
+});
+
+const batchScene = () => ({ ...litScene(), sites: [{ id: "home", states: [{ level: 1 }] }],
+  shadowReceivers: [{ id: "ground", points: [{ x: 10, y: 50 }, { x: 60, y: 50 }, { x: 60, y: 90 }, { x: 10, y: 90 }], height: 0,
+    holes: [[{ x: 20, y: 60 }, { x: 30, y: 60 }, { x: 30, y: 70 }, { x: 20, y: 70 }]] }] });
+const allSelected = [{ kind: "caster", id: "house" }, { kind: "receiver", id: "ground" }, { kind: "light", id: "home-lantern" }];
+
+test("multi-selection keeps mixed element keys and primary identity without modifying geometry or history", () => {
+  const original = batchScene(), store = createWorldLightingEditorStore(true, original), initial = store.getSnapshot();
+  assert.equal(store.selectElements(allSelected, allSelected[0]), true);
+  assert.deepEqual(store.getSnapshot().selectedElements, allSelected); assert.equal(store.getSnapshot().selectedId, "house");
+  assert.equal(store.getSnapshot().selectedKind, "caster"); assert.equal(store.getSnapshot().revision, initial.revision);
+  assert.deepEqual(store.getSnapshot().history, []);
+  assert.equal(store.selectElement("receiver", "ground", { toggle: true }), true);
+  assert.deepEqual(store.getSnapshot().selectedElements, [allSelected[0], allSelected[2]]); assert.equal(store.getSnapshot().selectedId, "home-lantern");
+  store.selectElement("receiver", "ground", { additive: true }); assert.equal(store.getSnapshot().selectedKind, "receiver");
+  const selected = store.getSnapshot().selectedElements;
+  assert.equal(store.selectElements([...selected, { kind: "caster", id: "missing" }]), false); assert.equal(store.getSnapshot().selectedElements, selected);
+  assert.throws(() => { selected.push(allSelected[0]); }, TypeError);
+  store.select("house", 1); assert.deepEqual(store.getSnapshot().selectedElements, [allSelected[0]]);
+  assert.equal(store.getSnapshot().selectedVertex, 1); store.clearSelection(); assert.deepEqual(store.getSnapshot().selectedElements, []); assert.equal(store.getSnapshot().selectedId, null);
+});
+
+test("group dragging moves mixed geometry and receiver holes together in one undoable gesture", () => {
+  const original = batchScene(), store = createWorldLightingEditorStore(true, original); store.selectElements(allSelected, allSelected[0]);
+  store.setLightProjections([{ id: "home-lantern", position: { x: 42, y: 43 }, height: 24 }]);
+  store.beginGesture(); assert.equal(store.moveElementsBy(2, 2), true); assert.equal(store.moveElementsBy(3, 1), true);
+  assert.equal(store.isGesturing(), true); assert.deepEqual(store.getSnapshot().history, []);
+  store.commitGesture(); const moved = store.getSnapshot();
+  assert.equal(moved.history.length, 1); assert.match(moved.undoLabel, /Перемещение.*3/);
+  assert.deepEqual(moved.casters[1].points[0], { x: 15, y: 13 });
+  assert.deepEqual(moved.receivers[0].points[0], { x: 15, y: 53 }); assert.deepEqual(moved.receivers[0].holes[0][0], { x: 25, y: 63 });
+  assert.deepEqual(moved.lights[0].position, { x: 47, y: 46 }); assert.equal(moved.lights[0].height, 24); assert.equal(moved.lights[0].manualPosition, true);
+  store.undo(); assert.deepEqual(store.getSnapshot().casters, original.shadowCasters); assert.deepEqual(store.getSnapshot().receivers, original.shadowReceivers);
+  assert.match(store.getSnapshot().redoLabel, /Перемещение/); store.redo();
+  assert.deepEqual(store.getSnapshot().receivers, moved.receivers);
+  const before = store.getSnapshot(); assert.equal(store.moveElementsBy(100, 0), false);
+  assert.equal(store.getSnapshot().casters, before.casters); assert.equal(store.getSnapshot().receivers, before.receivers); assert.equal(store.getSnapshot().lights, before.lights);
+  assert.equal(store.moveElementsBy(Infinity, 0), false); assert.equal(store.getSnapshot().revision, before.revision);
+  store.beginGesture(); store.moveElementsBy(1, 1); store.cancelGesture(); assert.deepEqual(store.getSnapshot().receivers, moved.receivers);
+  assert.equal(store.getSnapshot().history.length, 1);
+});
+
+test("batch metadata, delete and lock guards are atomic while editor flags do not affect lighting or authored patches", () => {
+  const original = batchScene(), store = createWorldLightingEditorStore(true, original); store.selectElements(allSelected);
+  assert.equal(store.setElementsMetadata(allSelected, { studioFolder: "custom:Участок" }), true);
+  assert.equal(store.getSnapshot().history.length, 1); assert.match(store.getSnapshot().undoLabel, /Перенос в папку.*3/);
+  const beforeFlags = store.getSnapshot(), draft = store.applyToScene(original), patch = store.exportPatch();
+  assert.equal(store.setElementsFlags(allSelected, { hidden: true }), true);
+  assert.equal(store.getSnapshot().revision, beforeFlags.revision); assert.equal(store.getSnapshot().history, beforeFlags.history);
+  assert.equal(store.applyToScene(original), draft); assert.equal(store.exportPatch(), patch);
+  assert.equal(store.isElementHidden("caster", "house"), true);
+  store.setElementFlags("receiver", "ground", { locked: true }); const locked = store.getSnapshot();
+  for (const action of [() => store.moveElementsBy(1, 0), () => store.setElementsMetadata(allSelected, { studioFolder: "lights" }),
+    () => store.removeElements(), () => store.duplicateElements().length > 0]) assert.equal(action(), false);
+  assert.equal(store.getSnapshot().casters, locked.casters); assert.equal(store.getSnapshot().revision, locked.revision);
+  store.selectReceiver("ground"); store.moveVertex(0, { x: 11, y: 50 }); assert.equal(store.getSnapshot().receivers, locked.receivers);
+  const backup = JSON.parse(store.exportSceneBackup()); backup.receivers[0].height = 2;
+  assert.equal(store.importSceneBackup(JSON.stringify(backup)), false); assert.equal(store.getSnapshot().receivers, locked.receivers);
+  store.setElementFlags("receiver", "ground", { locked: false }); store.selectElements(allSelected);
+  assert.equal(store.removeElements(), true); assert.equal(store.getSnapshot().casters.some(item => item.id === "house"), false);
+  assert.equal(store.getSnapshot().receivers.length, 0); assert.equal(store.getSnapshot().lights[0].enabled, false);
+  assert.equal(store.getSnapshot().history.length, 2); store.undo();
+  assert.equal(store.getSnapshot().casters[1].studioFolder, "custom:Участок"); assert.equal(store.getSnapshot().receivers[0].studioFolder, "custom:Участок");
+  store.setPreviewDraft(false); const saved = store.getSnapshot();
+  assert.equal(store.setElementMetadata("caster", "house", { studioName: "No" }), false); assert.equal(store.duplicateElements(allSelected).length, 0);
+  assert.equal(store.setElementFlags("caster", "house", { locked: true }), true); assert.equal(store.getSnapshot().revision, saved.revision);
+});
+
+test("mixed duplication creates independent IDs, preserves site conditions and holes, and is a single history operation", () => {
+  const original = batchScene(), store = createWorldLightingEditorStore(true, original);
+  store.setElementMetadata("caster", "house", { studioName: "Дом", studioFolder: "custom:Посёлок" }); store.selectElements(allSelected);
+  const before = store.getSnapshot(), created = store.duplicateSelected(); assert.equal(created.length, 3);
+  const duplicated = store.getSnapshot(); assert.equal(duplicated.history.length, before.history.length + 1); assert.match(duplicated.undoLabel, /Дублирование.*3/);
+  assert.deepEqual(duplicated.selectedElements, created); assert.equal(duplicated.selectedId, created[2].id);
+  assert.equal(new Set(created.map(item => item.id)).size, 3);
+  const copiedCaster = duplicated.casters.find(item => item.id === created[0].id), copiedReceiver = duplicated.receivers.find(item => item.id === created[1].id);
+  assert.deepEqual(copiedCaster.when, original.shadowCasters[1].when); assert.equal(copiedCaster.studioName, "Дом · копия"); assert.equal(copiedCaster.studioFolder, "custom:Посёлок");
+  assert.deepEqual(copiedReceiver.holes[0][0], { x: 30, y: 70 }); assert.notEqual(copiedReceiver.holes, original.shadowReceivers[0].holes);
+  const backup = store.exportSceneBackup(), imported = createWorldLightingEditorStore(true, original); assert.equal(imported.importSceneBackup(backup), true);
+  assert.deepEqual(imported.getSnapshot().receivers, duplicated.receivers);
+  store.undo(); assert.equal(store.getSnapshot().casters.length, before.casters.length); assert.equal(store.getSnapshot().receivers.length, before.receivers.length);
+  store.redo(); assert.deepEqual(store.getSnapshot().casters, duplicated.casters);
+  store.selectElements(created); store.removeSelected(); store.selectElements(allSelected); const again = store.duplicateSelected();
+  assert.equal(again.some(item => created.some(previous => previous.id === item.id)), false, "deleted duplicate IDs remain reserved within the session");
+});
+
+test("editor preferences survive browser reload and backups independently from session selection and history", () => {
+  const original = batchScene(), storage = memoryStorage();
+  browser(storage, () => {
+    const store = createWorldLightingEditorStore(true, original); store.hydrate(); store.selectElements(allSelected);
+    store.setElementsFlags(allSelected, { hidden: true }); store.setElementFlags("caster", "house", { locked: true });
+    const backup = JSON.parse(store.exportSceneBackup()); assert.equal(backup.editorPrefs["caster:house"].locked, true);
+    assert.equal(JSON.parse(store.exportPatch()).editorPrefs, undefined);
+    const restored = createWorldLightingEditorStore(true, original); restored.hydrate();
+    assert.deepEqual(restored.getSnapshot().editorFlags, store.getSnapshot().editorFlags); assert.deepEqual(restored.getSnapshot().selectedElements, []);
+    assert.deepEqual(restored.getSnapshot().history, []); assert.equal(restored.getSnapshot().undoLabel, null);
+    assert.equal(restored.applyToScene(original), original);
+    const imported = createWorldLightingEditorStore(true, original); assert.equal(imported.importSceneBackup(JSON.stringify(backup)), true);
+    assert.deepEqual(imported.getSnapshot().editorFlags, store.getSnapshot().editorFlags);
+    const invalid = structuredClone(backup); invalid.editorPrefs["caster:house"].locked = "yes"; invalid.casters[0].height = 77;
+    const unchanged = imported.getSnapshot(); assert.equal(imported.importSceneBackup(JSON.stringify(invalid)), false);
+    assert.equal(imported.getSnapshot().casters, unchanged.casters); assert.equal(imported.getSnapshot().editorFlags, unchanged.editorFlags);
+  });
+});
+
+test("preference updates prune unreachable stale entries while retaining flags needed by Undo and baseline restoration", () => {
+  const original = batchScene(), storage = memoryStorage();
+  browser(storage, () => {
+    const flags = Object.fromEntries(Array.from({ length: 512 }, (_, index) => [`caster:old-${index}`, { hidden: true }]));
+    storage.setItem(`zhiv:world-lighting-editor:flags:v1:${original.id}`, JSON.stringify(flags));
+    const store = createWorldLightingEditorStore(true, original); store.hydrate();
+    assert.equal(Object.keys(store.getSnapshot().editorFlags).length, 512);
+    assert.equal(store.setElementFlags("caster", "house", { hidden: true }), true);
+    assert.deepEqual(Object.keys(store.getSnapshot().editorFlags), ["caster:house"]);
+    const custom = store.addCaster({ x: 70, y: 20 }); store.setElementFlags("caster", custom, { hidden: true }); store.removeSelected();
+    store.setElementFlags("caster", "tree", { hidden: true });
+    assert.equal(store.isElementHidden("caster", custom), true, "deleted custom object is still reachable through Undo");
+    store.undo(); assert.equal(store.getSnapshot().casters.some(item => item.id === custom), true); assert.equal(store.isElementHidden("caster", custom), true);
+    const imported = createWorldLightingEditorStore(true, original); assert.equal(imported.importSceneBackup(store.exportSceneBackup()), true);
+  });
+});
+
+test("known deleted elements can be unlocked after history replay without permitting flags for unknown IDs", () => {
+  const store = createWorldLightingEditorStore(true, batchScene()); store.select("house"); store.removeSelected(); store.undo();
+  assert.equal(store.setElementFlags("caster", "house", { locked: true }), true); store.redo();
+  assert.equal(store.getSnapshot().casters.some(item => item.id === "house"), false);
+  assert.equal(store.restoreElement("caster", "house"), false);
+  assert.equal(store.setElementFlags("caster", "house", { locked: false }), true);
+  assert.equal(store.restoreElement("caster", "house"), true);
+  const flags = store.getSnapshot().editorFlags;
+  assert.equal(store.setElementFlags("caster", "never-existed", { locked: true }), false); assert.equal(store.getSnapshot().editorFlags, flags);
+});
+
+test("descriptive history remains read-only across project ACK, Undo, Redo and divergent edits", () => {
+  const original = batchScene(), store = createWorldLightingEditorStore(true, original); store.selectElements(allSelected);
+  store.moveElementsBy(1, 1); store.setElementsMetadata(allSelected, { studioFolder: "custom:Мир" });
+  const history = store.getSnapshot().history, saved = structuredClone(store.applyToScene(original));
+  assert.equal(history.length, 2); assert.match(store.getSnapshot().undoLabel, /Перенос/);
+  assert.throws(() => { history[0].label = "Changed"; }, TypeError);
+  assert.equal(store.reconcileProjectBaseline(saved), true); assert.equal(store.getSnapshot().history, history);
+  store.undo(); assert.equal(store.getSnapshot().history[1].applied, false); assert.match(store.getSnapshot().redoLabel, /Перенос/);
+  assert.equal(JSON.parse(store.exportPatch()).casters[0].before.studioFolder, "custom:Мир");
+  store.redo(); assert.equal(store.getSnapshot().history[1].applied, true);
+  store.undo(); store.setElementMetadata("caster", "house", { studioName: "Новый дом" });
+  assert.equal(store.getSnapshot().canRedo, false); assert.equal(store.getSnapshot().history.some(item => item.id === history[1].id), false);
+  assert.match(store.getSnapshot().undoLabel, /Переименование/);
+});
+
+test("receiver hole authoring validates exclusions and edits the selected ring without moving the outer contour", () => {
+  const original = batchScene(), store = createWorldLightingEditorStore(true, original); store.selectReceiver("ground");
+  const outer = structuredClone(original.shadowReceivers[0].points), hole = [{ x: 40, y: 60 }, { x: 50, y: 60 }, { x: 50, y: 70 }, { x: 40, y: 70 }];
+  assert.equal(store.addReceiverHole(hole), true); assert.equal(store.getSnapshot().selectedHole, 1);
+  hole[0].x = 999; assert.equal(store.getSnapshot().receivers[0].holes[1][0].x, 40);
+  assert.throws(() => { store.getSnapshot().receivers[0].holes[0][0].x = 10; }, TypeError);
+  assert.equal(store.selectHole(0, 1), true); store.beginGesture(); store.moveVertex(1, { x: 32, y: 60 }); store.moveVertex(1, { x: 33, y: 60 }); store.commitGesture();
+  assert.deepEqual(store.getSnapshot().receivers[0].points, outer); assert.equal(store.getSnapshot().receivers[0].holes[0][1].x, 33);
+  const valid = store.getSnapshot(); store.moveVertex(1, { x: 85, y: 60 });
+  assert.equal(store.getSnapshot().receivers, valid.receivers); assert.ok(store.getSnapshot().error);
+  assert.equal(store.addReceiverHole([{ x: 10, y: 50 }, { x: 15, y: 50 }, { x: 15, y: 55 }]), false);
+  assert.equal(store.getSnapshot().receivers, valid.receivers);
+  assert.equal(store.removeReceiverHole(1), true); assert.equal(store.getSnapshot().receivers[0].holes.length, 1); store.undo();
+  assert.equal(store.getSnapshot().receivers[0].holes.length, 2);
+  const imported = createWorldLightingEditorStore(true, original); assert.equal(imported.importPatch(store.exportPatch()), true);
+  assert.deepEqual(imported.getSnapshot().receivers, store.getSnapshot().receivers);
+  const disk = structuredClone(store.applyToScene(original)); disk.shadowReceivers[0].holes[0][0].x += 5e-10;
+  assert.equal(store.reconcileProjectBaseline(disk), true); assert.deepEqual(store.getSnapshot().dirtyReceiverIds, []);
 });
