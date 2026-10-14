@@ -4,10 +4,12 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, server: { middlewareMode: true, hmr: false, ws: false } });
+const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { createForestPainter } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/renderer.ts");
-const { forestObjects, initialProps, objectCorners, objectDepth, INITIAL_SEED, INITIAL_WIDTH, WORLD_HEIGHT, MAX_WIDTH } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/objects.ts");
+const { createForestPainter } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/rendering/renderer.ts");
+const { forestObjects, initialProps, objectCorners, objectDepth, INITIAL_SEED, INITIAL_WIDTH, WORLD_HEIGHT, MAX_WIDTH } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/scene/objects.ts");
+const { drawTerrain } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/terrain/terrain.ts");
+const { sampleGround, TRAILS } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/terrain/layout.ts");
 const removed = new Set([...forestObjects(INITIAL_SEED, { x: 0, y: 0, width: INITIAL_WIDTH, height: WORLD_HEIGHT }), ...initialProps()].map(object => object.id));
 const options = (overrides = {}) => ({ seed: INITIAL_SEED, width: INITIAL_WIDTH, trees: true, grid: false, removed, planted: [], ...overrides });
 const asset = (id, overrides = {}) => ({ id, name: `${id}.png`, dataUrl: `data:image/png;base64,${id}`, width: 1200, height: 600, ...overrides });
@@ -217,5 +219,196 @@ test("locked objects and locked layers remain visible with a selection frame but
     assert.ok(calls.some(call => call[0] === "moveTo"), "locked selection still has a frame");
     assert.equal(calls.filter(call => call[0] === "arc" && call[3] === 7).length, 0);
   }
+  painter.dispose();
+});
+
+test("warm camera frames reuse prepared scene geometry and shadow artwork", () => {
+  const items = Array.from({ length: 500 }, (_, index) => ({ id: `planted:${index}`, kind: "tree", x: 600 + index % 10 * 5,
+    y: 800 + Math.floor(index / 10), scale: 1, rotation: 0, variant: 0 }));
+  const painter = createForestPainter(factory), settings = options({ planted: items });
+  painter.paint(context(), { x: 550, y: 600, width: 400, height: 400 }, settings);
+  const warm = painter.diagnostics();
+  assert.equal(warm.sceneBuilds, 1); assert.equal(warm.boundsComputed, 500); assert.equal(warm.shadowBuilds, 1);
+  for (let index = 0; index < 5; index++) painter.paint(context(), { x: 540 + index * 10, y: 600 + index * 5, width: 400, height: 400 }, settings);
+  assert.deepEqual(painter.diagnostics(), warm, "camera movement neither sorts the scene nor computes geometry nor creates shadows");
+  const original = painter.objects(settings).map(item => item.id);
+  painter.objects(settings).reverse();
+  assert.deepEqual(painter.objects(settings).map(item => item.id), original, "list callers cannot mutate the painter's cached draw order");
+  painter.dispose();
+});
+
+test("live preview replaces a base object, updates depth and culling, and leaves the committed cache intact", async () => {
+  const images = [asset("preview-a"), asset("preview-b")], calls = [], native = new Map(images.map(image => [image.dataUrl, { name: image.id }]));
+  const painter = createForestPainter(factory, undefined, async url => native.get(url));
+  await painter.prepareAssets(images);
+  const items = images.map((image, index) => imageObject(image, { id: `planted:${index}`, y: 800 + index * 50 }));
+  const previewObjects = new Map(), settings = options({ assets: new Map(images.map(image => [image.id, image])), planted: items, previewObjects, previewRevision: 0 });
+  const visible = { x: 500, y: 600, width: 500, height: 350 };
+  painter.paint(context(), visible, settings);
+  const prepared = painter.diagnostics().sceneBuilds;
+  previewObjects.set(items[0].id, { ...items[0], y: 900 }); settings.previewRevision++;
+  painter.paint(context(calls), visible, settings);
+  assert.deepEqual(calls.filter(call => call[0] === "drawImage" && call[1].name).map(call => call[1].name), ["preview-b", "preview-a"]);
+  assert.equal(painter.objects(settings).find(item => item.id === items[0].id).y, 900);
+  assert.equal(items[0].y, 800);
+  calls.length = 0;
+  previewObjects.set(items[0].id, { ...items[0], y: 500 }); settings.previewRevision++;
+  painter.paint(context(calls), visible, settings);
+  assert.deepEqual(calls.filter(call => call[0] === "drawImage" && call[1].name).map(call => call[1].name), ["preview-b"], "the old position disappears while the preview is outside the viewport");
+  previewObjects.clear(); settings.previewRevision++;
+  painter.paint(context(), visible, settings);
+  assert.equal(painter.diagnostics().sceneBuilds, prepared);
+  assert.deepEqual(painter.objects(settings).map(item => item.y), [800, 850]);
+  painter.dispose();
+});
+
+test("terrain edits and undo update only touched chunks while restoring the exact base canvas", () => {
+  const painter = createForestPainter(factory), calls = [], settings = options({ terrain: { baseTrails: true, cells: {} } });
+  const visible = { x: 450, y: 50, width: 200, height: 300 };
+  const tiles = () => calls.filter(call => call[0] === "drawImage" && call.length === 4).map(call => call[1]);
+  painter.paint(context(calls), visible, settings); const base = tiles();
+  assert.equal(base.length, 2);
+  const warm = painter.diagnostics(); calls.length = 0;
+  settings.terrain = { baseTrails: true, cells: { "3:3": "water" } };
+  painter.paint(context(calls), visible, settings); const edited = tiles();
+  assert.notEqual(edited[0], base[0]); assert.equal(edited[1], base[1]);
+  assert.equal(painter.diagnostics().baseTerrainBuilds, warm.baseTerrainBuilds);
+  assert.equal(painter.diagnostics().sceneBuilds, warm.sceneBuilds, "painting ground does not regenerate or sort objects");
+  assert.equal(painter.diagnostics().terrainComposites, 1);
+  painter.paint(context(), visible, settings);
+  assert.equal(painter.diagnostics().terrainComposites, 1, "camera movement reuses the edited chunk");
+  settings.terrain = { baseTrails: true, cells: {} }; calls.length = 0;
+  painter.paint(context(calls), visible, settings);
+  assert.deepEqual(tiles(), base, "undo returns the original untouched chunk sources");
+  painter.dispose();
+});
+
+test("terrain preview versions update neighbouring seam chunks and restore without changing committed cells", () => {
+  const painter = createForestPainter(factory), calls = [], cells = new Map(), chunkVersions = new Map();
+  const settings = options({ terrain: { baseTrails: true, cells: {} }, terrainPreview: { cells, chunkVersions } });
+  const visible = { x: 450, y: 50, width: 200, height: 300 };
+  const tiles = () => calls.filter(call => call[0] === "drawImage" && call.length === 4).map(call => call[1]);
+  painter.paint(context(calls), visible, settings); const base = tiles();
+  cells.set("31:10", "path"); chunkVersions.set("0:0", 1); chunkVersions.set("1:0", 1); calls.length = 0;
+  painter.paint(context(calls), visible, settings); const painted = tiles();
+  assert.notEqual(painted[0], base[0]); assert.notEqual(painted[1], base[1], "the shared feather is composed on both sides of the seam");
+  assert.equal(painter.diagnostics().terrainComposites, 2);
+  assert.deepEqual(settings.terrain.cells, {});
+  painter.paint(context(), visible, settings); assert.equal(painter.diagnostics().terrainComposites, 2);
+  cells.set("31:10", null); chunkVersions.set("0:0", 2); chunkVersions.set("1:0", 2); calls.length = 0;
+  painter.paint(context(calls), visible, settings);
+  assert.deepEqual(tiles(), base);
+  painter.dispose();
+});
+
+test("nested folder visibility and locks control drawing and group frames", async () => {
+  const image = asset("folder"), native = {}, calls = [], painter = createForestPainter(factory, undefined, async () => native);
+  await painter.prepareAssets([image]);
+  const folders = [{ id: "group", name: "Group", parentId: null, visible: true, locked: false }, { id: "child", name: "Child", parentId: "group", visible: true, locked: false }];
+  const item = imageObject(image, { folderId: "child" });
+  const settings = options({ folders, assets: new Map([[image.id, image]]), planted: [item], selectedFolderId: "group" });
+  painter.paint(context(calls), view, settings);
+  assert.ok(calls.some(call => call[0] === "strokeRect"), "the parent group frame includes descendant objects");
+  assert.ok(!calls.some(call => call[0] === "arc"), "a folder frame has no resize handles");
+  calls.length = 0;
+  painter.paint(context(calls), view, { ...settings, selectedFolderId: undefined, selectedId: item.id, folders: [{ ...folders[0], locked: true }, folders[1]] });
+  assert.ok(calls.some(call => call[0] === "drawImage" && call[1] === native));
+  assert.equal(calls.filter(call => call[0] === "arc" && call[3] === 7).length, 0, "an ancestor lock disables resize handles");
+  const hidden = { ...settings, folders: [{ ...folders[0], visible: false }, folders[1]] }; calls.length = 0;
+  assert.equal(painter.paint(context(calls), view, hidden).objects, 0);
+  assert.equal(painter.objects({ ...hidden, includeHidden: true }).length, 1);
+  assert.ok(!calls.some(call => call[0] === "drawImage" && call[1] === native));
+  assert.ok(!calls.some(call => call[0] === "strokeRect"));
+  painter.dispose();
+});
+
+test("brush and area outlines are transient drawing options omitted from a normal export", () => {
+  const painter = createForestPainter(factory), calls = [], settings = options();
+  painter.paint(context(calls), view, { ...settings, brushCursor: { x: 600, y: 650, diameter: 120 }, selectionArea: { x: 580, y: 620, width: 40, height: 30 } });
+  assert.ok(calls.some(call => call[0] === "arc" && call[1] === 600 && call[2] === 650 && call[3] === 60));
+  assert.ok(calls.some(call => call[0] === "strokeRect" && call[1] === 580 && call[3] === 40));
+  calls.length = 0; painter.paint(context(calls), view, settings);
+  assert.ok(!calls.some(call => call[0] === "arc" || call[0] === "strokeRect"));
+  painter.dispose();
+});
+
+test("hiding baseline trails removes their strokes and path sampling while keeping the default drawing contract", () => {
+  const standard = [], explicit = [], hidden = [], bounds = { x: 500, y: 600, width: 200, height: 200 };
+  drawTerrain(context(standard), INITIAL_SEED, bounds);
+  drawTerrain(context(explicit), INITIAL_SEED, bounds, true);
+  drawTerrain(context(hidden), INITIAL_SEED, bounds, false);
+  assert.equal(JSON.stringify(standard), JSON.stringify(explicit));
+  assert.equal(standard.filter(call => call[0] === "stroke").length - hidden.filter(call => call[0] === "stroke").length, TRAILS.length * 5);
+  assert.ok(sampleGround(620, 773).path > .9);
+  assert.equal(sampleGround(620, 773, false).path, 0);
+});
+
+const distantTrees = (count, start = 0) => Array.from({ length: count }, (_, index) => ({ id: `planted:cache-${start + index}`, kind: "tree",
+  x: 1200 + index % 10, y: 1200 + Math.floor(index / 10), scale: 1, rotation: 0, variant: 0 }));
+
+test("interactive low-zoom bitmap reuses static objects across camera and terrain changes within its memory budget", () => {
+  const painter = createForestPainter(factory), calls = [], settings = options({ planted: distantTrees(500), interactiveCache: true, renderScale: .5,
+    terrain: { baseTrails: true, cells: {} } });
+  const visible = { x: 1000, y: 1000, width: 400, height: 400 };
+  painter.paint(context(calls), visible, settings);
+  const warm = painter.diagnostics();
+  assert.ok(warm.staticTileBuilds > 0); assert.ok(warm.staticPixels <= MAX_WIDTH * WORLD_HEIGHT + 514 ** 2);
+  calls.length = 0; painter.paint(context(calls), { ...visible, x: 1010 }, settings);
+  assert.equal(painter.diagnostics().staticTileBuilds, warm.staticTileBuilds);
+  assert.ok(!calls.some(call => call[0] === "translate"), "warm static objects are drawn as one bitmap instead of individual sprites");
+  settings.terrain = { baseTrails: true, cells: { "65:65": "water" } };
+  painter.paint(context(), visible, settings);
+  assert.equal(painter.diagnostics().staticTileBuilds, warm.staticTileBuilds, "ground painting does not rebuild the transparent actor bitmap");
+  calls.length = 0; painter.paint(context(calls), visible, { ...settings, interactiveCache: false, renderScale: 1 });
+  assert.ok(calls.some(call => call[0] === "translate" && call[1] >= 1200), "export-style rendering uses the individual original drawing sources");
+  assert.equal(painter.diagnostics().staticTileBuilds, warm.staticTileBuilds);
+  painter.dispose();
+});
+
+test("cached live preview repairs opaque ground before drawing lower and higher alpha layers in depth order", async () => {
+  const images = [asset("repair-a"), asset("repair-b")], calls = [], native = new Map(images.map(image => [image.dataUrl, { name: image.id }]));
+  const painter = createForestPainter(factory, undefined, async url => native.get(url));
+  await painter.prepareAssets(images);
+  const items = images.map((image, index) => imageObject(image, { id: `planted:repair-${index}`, y: 800 + index * 50 }));
+  const previewObjects = new Map(), settings = options({ planted: [...items, ...distantTrees(498)], assets: new Map(images.map(image => [image.id, image])),
+    interactiveCache: true, renderScale: .5, previewObjects, previewRevision: 0 });
+  const visible = { x: 500, y: 600, width: 500, height: 350 };
+  painter.paint(context(), visible, settings); const warm = painter.diagnostics().staticTileBuilds;
+  previewObjects.set(items[0].id, { ...items[0], y: 820 }); settings.previewRevision++;
+  painter.paint(context(calls), visible, settings);
+  const sourceCalls = calls.map((call, index) => ({ call, index })).filter(({ call }) => call[0] === "drawImage" && call[1].name);
+  assert.deepEqual(sourceCalls.map(({ call }) => call[1].name), ["repair-a", "repair-b"], "an object behind another PNG does not jump above it during a cached drag");
+  const clip = calls.findLastIndex(call => call[0] === "clip");
+  assert.ok(clip >= 0 && clip < sourceCalls[0].index);
+  assert.ok(calls.slice(clip + 1, sourceCalls[0].index).some(call => call[0] === "drawImage" && call.length === 4 && call[1].width === 514), "opaque ground replaces the old alpha composite before the patch is rebuilt");
+  assert.ok(painter.diagnostics().staticTileBuilds > warm, "the original position is removed from affected static tiles");
+  const dragging = painter.diagnostics().staticTileBuilds;
+  previewObjects.set(items[0].id, { ...items[0], y: 830 }); settings.previewRevision++;
+  painter.paint(context(), visible, settings);
+  assert.equal(painter.diagnostics().staticTileBuilds, dragging, "moving an existing preview does not rebuild its static neighbours");
+  previewObjects.clear(); settings.previewRevision++; calls.length = 0;
+  painter.paint(context(calls), visible, settings);
+  assert.ok(painter.diagnostics().staticTileBuilds > dragging, "cancel restores the original object into its static tiles");
+  assert.ok(!calls.some(call => call[0] === "drawImage" && call[1].name));
+  assert.equal(painter.objects(settings).find(object => object.id === items[0].id).y, 800);
+  painter.dispose();
+});
+
+test("committed object changes invalidate only their footprint and source readiness replaces cached PNG placeholders", async () => {
+  const image = asset("ready"), native = { name: "ready" }, recorded = [];
+  let complete;
+  const painter = createForestPainter((width, height) => ({ width, height, getContext: () => context(recorded) }), undefined,
+    () => new Promise(resolve => { complete = resolve; }));
+  const item = imageObject(image), settings = options({ planted: [item, ...distantTrees(499)], assets: new Map([[image.id, image]]), interactiveCache: true, renderScale: .5 });
+  const visible = { x: 450, y: 600, width: 500, height: 350 };
+  painter.paint(context(), visible, settings); const pending = painter.diagnostics().staticTileBuilds;
+  await Promise.resolve(); complete(native); await flush(); recorded.length = 0;
+  painter.paint(context(), visible, settings);
+  assert.ok(painter.diagnostics().staticTileBuilds > pending);
+  assert.ok(recorded.some(call => call[0] === "drawImage" && call[1] === native), "source decode invalidates the cached placeholder");
+  const ready = painter.diagnostics().staticTileBuilds;
+  settings.planted = [{ ...item, x: 710 }, ...settings.planted.slice(1)]; settings.objectRevision = 1;
+  painter.paint(context(), visible, settings);
+  assert.equal(painter.diagnostics().staticTileBuilds, ready + 1, "unrelated previously cached chunks remain valid after a position change");
   painter.dispose();
 });

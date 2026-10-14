@@ -8,9 +8,9 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { readPngFile, assertPngDataUrl, validateImageAsset, imageObjectSize, sceneAssetsWithinLimits, MAX_PNG_BYTES, MAX_ASSET_BYTES, MAX_ASSET_PIXELS, MAX_IMAGE_ASSETS } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/image-assets.ts");
-const { initialScene, cloneScene, validateScene, parseScene, serializeScene, createSceneHistory, MAX_SCENE_BYTES } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/editor-scene.ts");
-const { initialProps, forestObjects, objectLocalBounds, objectCorners, objectAngle, WORLD_HEIGHT } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/objects.ts");
+const { readPngFile, assertPngDataUrl, validateImageAsset, imageObjectSize, sceneAssetsWithinLimits, MAX_PNG_BYTES, MAX_ASSET_BYTES, MAX_ASSET_PIXELS, MAX_IMAGE_ASSETS } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/assets/image-assets.ts");
+const { initialScene, cloneScene, validateScene, parseScene, serializeScene, createSceneHistory, MAX_SCENE_BYTES } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/scene/editor-scene.ts");
+const { initialProps, forestObjects, objectLocalBounds, objectCorners, objectAngle, WORLD_HEIGHT } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/scene/objects.ts");
 
 function crc(bytes) {
   let value = 0xffffffff;
@@ -165,9 +165,9 @@ test("world image dimensions and corner transforms retain native aspect and bott
   assert.ok(Math.abs(corners[2].x - 800) < 1e-9 && Math.abs(corners[2].y - 1020) < 1e-9);
 });
 
-test("v3 JSON is portable with exact embedded PNG bytes and validates image references, shape and scales", () => {
+test("v4 JSON is portable with exact embedded PNG bytes and validates image references, shape and scales", () => {
   const source = sceneWithImage();
-  assert.equal(source.version, 3); assert.equal(MAX_SCENE_BYTES, 32 * 1024 * 1024);
+  assert.equal(source.version, 4); assert.equal(MAX_SCENE_BYTES, 32 * 1024 * 1024);
   const restored = parseScene(serializeScene(source));
   assert.deepEqual(restored, source); assert.equal(restored.assets[0].dataUrl, asset.dataUrl);
   assert.deepEqual(Buffer.from(restored.assets[0].dataUrl.split(",")[1], "base64"), original);
@@ -192,7 +192,7 @@ test("legacy scenes discard only retired stump houses and their own edits", () =
     planted: [house, { ...house, id: "planted:removed-house" }, rock],
     removed: ["planted:removed-house", "prop:jetty"], modified: [{ ...house, x: 600 }, { ...tree, x: 800, y: 600, rotation: 20 }] };
   const migrated = parseScene(JSON.stringify(legacy));
-  assert.deepEqual(migrated, { version: 3, seed: legacy.seed, width: legacy.width, assets: [], layers: initial.layers,
+  assert.deepEqual(migrated, { version: 4, seed: legacy.seed, width: legacy.width, assets: [], layers: initial.layers, folders: initial.folders, terrain: initial.terrain,
     planted: [rock], removed: ["prop:jetty"], modified: [legacy.modified[1]] });
   assert.equal(legacy.planted.length, 3, "migration leaves the source unchanged");
   assert.equal(validateScene({ ...legacy, planted: [{ ...rock, kind: "unknown" }] }), null);

@@ -1,14 +1,17 @@
-import { hash, sampleGround } from "./layout";
+import { hash, sampleGround } from "@/features/world/dev/procedural-forest/terrain/layout";
 import { DEFAULT_LAYERS, compareStackKeys, isObjectLocked, isObjectVisible, objectDepth, objectLayerId, stackKey, type SceneLayer } from "./stacking";
+import { DEFAULT_FOLDERS, type SceneFolder } from "./folders";
+import { sampleEditedGround, type TerrainPreview, type TerrainState } from "@/features/world/dev/procedural-forest/terrain/terrain-data";
 export { objectDepth } from "./stacking";
 
-export type ForestObject = { id: string; x: number; y: number; scale: number; variant: number; kind: "tree" | "shrub" | "rock" | "ruins" | "bridge" | "jetty" | "image"; rotation?: number; assetId?: string; imageWidth?: number; imageHeight?: number; layerId?: string; hidden?: boolean; locked?: boolean; name?: string; stackOrder?: number[] };
+export type ForestObject = { id: string; x: number; y: number; scale: number; variant: number; kind: "tree" | "shrub" | "rock" | "ruins" | "bridge" | "jetty" | "image"; rotation?: number; assetId?: string; imageWidth?: number; imageHeight?: number; layerId?: string; folderId?: string | null; hidden?: boolean; locked?: boolean; name?: string; stackOrder?: number[] };
 export type ObjectKind = ForestObject["kind"];
 export type Bounds = { x: number; y: number; width: number; height: number };
 export const INITIAL_WIDTH = 1600;
 export const WORLD_HEIGHT = 1600;
 export const MAX_WIDTH = 3200;
 export const INITIAL_SEED = 7391;
+export const OVERSCAN_EDIT_MARGIN = 320;
 
 /** Props use the same scene records as vegetation, with their original ground anchors. */
 export function initialProps(): ForestObject[] {
@@ -91,17 +94,17 @@ export function forestObjects(seed: number, bounds: Bounds): ForestObject[] {
   return result.sort((a, b) => a.y - b.y || a.x - b.x);
 }
 
-export function canPlant(x: number, y: number, width: number): boolean {
+export function canPlant(x: number, y: number, width: number, terrain?: TerrainState, preview?: TerrainPreview): boolean {
   if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
   if (x < 0 || y < 0 || x > width || y > WORLD_HEIGHT) return false;
   if (reservedForProp(x, y)) return false;
-  const ground = sampleGround(x, y);
+  const ground = terrain ? sampleEditedGround(x, y, terrain, preview) : sampleGround(x, y);
   return ground.water < -28 && ground.path < .2;
 }
 
-export function pickObject(objects: readonly ForestObject[], x: number, y: number, layers: readonly SceneLayer[] = DEFAULT_LAYERS): ForestObject | undefined {
+export function pickObject(objects: readonly ForestObject[], x: number, y: number, layers: readonly SceneLayer[] = DEFAULT_LAYERS, folders: readonly SceneFolder[] = DEFAULT_FOLDERS): ForestObject | undefined {
   if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-  const ordered = objects.filter(object => isObjectVisible(object, layers) && !isObjectLocked(object, layers)).sort((a, b) => compareObjects(a, b, layers));
+  const ordered = objects.filter(object => isObjectVisible(object, layers, folders) && !isObjectLocked(object, layers, folders)).sort((a, b) => compareObjects(a, b, layers));
   for (let i = ordered.length - 1; i >= 0; i--) {
     const object = ordered[i];
     if (!Number.isFinite(object.scale) || object.scale <= 0) continue;

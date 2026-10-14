@@ -59,9 +59,9 @@ function segmentDistanceSquared(x: number, y: number, a: Point, b: Point): numbe
   return (x - a[0] - projection * dx) ** 2 + (y - a[1] - projection * dy) ** 2;
 }
 
-export function sampleGround(x: number, y: number): GroundSample {
+export function sampleGround(x: number, y: number, includeTrails = true): GroundSample {
   let path = 0;
-  for (const trail of TRAILS) {
+  for (const trail of includeTrails ? TRAILS : []) {
     let closest = Infinity;
     for (let index = 1; index < trail.points.length; index++) {
       const a = trail.points[index - 1], b = trail.points[index];

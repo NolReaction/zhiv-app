@@ -1,23 +1,30 @@
-import { createForestPainter, type ForestOptions, type ImageLoader } from "./renderer";
-import { canPlant, compareObjects, INITIAL_SEED, MAX_WIDTH, objectBounds, objectCorners, pickObject, WORLD_HEIGHT, type ForestObject, type ObjectKind } from "./objects";
-import { createSceneHistory, parseScene, readStoredScene, serializeScene, validateScene, writeStoredScene, type SceneStorage } from "./editor-scene";
-import { imageObjectSize, readPngFile, validateImageAsset, type ImageAsset } from "./image-assets";
+import { createForestPainter, type ForestOptions, type ImageLoader } from "@/features/world/dev/procedural-forest/rendering/renderer";
+import { canPlant, compareObjects, INITIAL_SEED, MAX_WIDTH, objectBounds, objectCorners, OVERSCAN_EDIT_MARGIN, pickObject, WORLD_HEIGHT, type Bounds, type ForestObject, type ObjectKind } from "@/features/world/dev/procedural-forest/scene/objects";
+import { createSceneHistory, parseScene, readStoredScene, serializeScene, validateScene, SCENE_STORAGE_KEY, type SceneStorage } from "@/features/world/dev/procedural-forest/scene/editor-scene";
+import { imageObjectSize, readPngFile, validateImageAsset, type ImageAsset } from "@/features/world/dev/procedural-forest/assets/image-assets";
 import { beginResize, findResizeHandle, MAX_OBJECT_SCALE, MIN_OBJECT_SCALE, resizedObject, type ResizeCorner, type ResizeSession } from "./transform";
-import { isObjectLocked, isObjectVisible, objectLayerId, stackKey, stackKeyBetween, type SceneLayer } from "./stacking";
+import { isObjectLocked, isObjectVisible, objectLayerId, stackKey, stackKeyBetween, type SceneLayer } from "@/features/world/dev/procedural-forest/scene/stacking";
 
-export type ToolMode = "pan" | "select" | "plant" | "erase";
+import { folderAncestors, folderContains, isFolderLocked, isFolderVisible, MAX_SCENE_FOLDERS, objectFolderId, type SceneFolder } from "@/features/world/dev/procedural-forest/scene/folders";
+import { applyTerrainPatch, CELL_SIZE, dirtyTerrainChunks, MAX_TERRAIN_CELLS, strokeTerrainCells, type TerrainBrush, type TerrainMaterial } from "@/features/world/dev/procedural-forest/terrain/terrain-data";
+import { createDeferredSave } from "./controller-autosave";
+
+export type ToolMode = "pan" | "select" | "plant" | "erase" | "terrain" | "area";
 export type ForestStatus = {
   seed: number; width: number; objects: number; zoom: number; edited: number; message: string;
-  selected: ForestObject | null; canUndo: boolean; canRedo: boolean; storage: "saved" | "unavailable"; brush: ObjectKind;
+  selected: ForestObject | null; canUndo: boolean; canRedo: boolean; storage: "saved" | "pending" | "unavailable"; brush: ObjectKind;
   mode: ToolMode; temporaryPan: boolean; trees: boolean; grid: boolean;
   assets: { id: string; name: string }[]; brushAssetId: string | null;
   layers: SceneLayer[]; activeLayerId: string; objectList: ForestObject[]; selectedHidden: boolean; selectedLocked: boolean;
+  folders: SceneFolder[]; activeFolderId: string | null | undefined;
+  selectedFolder: { folder: SceneFolder; count: number; bounds: Bounds | null; hidden: boolean; locked: boolean } | null;
+  terrainBrush: TerrainBrush; terrainSize: number; terrainBaseTrails: boolean; clearVegetation: boolean;
 };
-export type ForestControllerOptions = { requestPngImport?: () => void; requestLayersToggle?: () => void; loadImage?: ImageLoader };
+export type ForestControllerOptions = { requestPngImport?: () => void; requestLayersToggle?: () => void; requestTerrainTools?: () => void; loadImage?: ImageLoader };
 type ObjectPatch = Partial<Pick<ForestObject, "x" | "y" | "scale" | "rotation" | "variant">>;
 type Point = { x: number; y: number };
 type Gesture = { start: Point; moved: boolean; pinched: boolean; pan: boolean; temporaryPan: boolean; pointerId: number;
-  object?: ForestObject; grabOffset?: Point; resize?: ResizeSession; shift: boolean; lockAxis?: "x" | "y" };
+  object?: ForestObject; grabOffset?: Point; resize?: ResizeSession; members?: ForestObject[]; terrainLast?: Point; areaStart?: Point; blocked?: boolean; shift: boolean; lockAxis?: "x" | "y" };
 const names: Record<ObjectKind, string> = { tree: "дерево", shrub: "куст", rock: "камень", ruins: "руины", bridge: "мост", jetty: "причал", image: "PNG-объект" };
 
 export function createForestController(canvas: HTMLCanvasElement, report: (status: ForestStatus) => void, controllerOptions: ForestControllerOptions = {}) {
@@ -35,7 +42,7 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
   let scene = history.getScene();
   const options: ForestOptions = { seed: scene.seed, width: scene.width, trees: true, grid: false,
     removed: new Set(scene.removed), planted: scene.planted, modified: new Map(scene.modified.map(object => [object.id, object])), selectedId: null,
-    assets: new Map(scene.assets.map(asset => [asset.id, asset])), selectionZoom: 1, layers: scene.layers };
+    assets: new Map(scene.assets.map(asset => [asset.id, asset])), selectionZoom: 1, interactiveCache: true, layers: scene.layers, folders: scene.folders, terrain: scene.terrain };
   let storage: ForestStatus["storage"] = restored.available && !restored.invalid ? "saved" : "unavailable";
   let mode: ToolMode = "select", brush: ObjectKind = "tree", brushAssetId: string | null = null, selectedId: string | null = null;
   let screenWidth = 1, screenHeight = 1, zoom = .5, cameraX = 800, cameraY = 800;
@@ -48,6 +55,24 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
   let spaceHeld = false, lastPanTime: number | null = null, revision = 0, sceneImportToken = 0;
   let hoverResize: ResizeCorner | null = null;
   let activeLayerId = "world", objectListRevision = -1, cachedObjectList: ForestObject[] = [];
+  let activeFolderId: string | null | undefined, selectedFolderId: string | null = null;
+  let terrainBrush: TerrainBrush = "path", terrainSize = 80, clearVegetation = false;
+  const previewObjects = new Map<string, ForestObject>();
+  const terrainCells = new Map<string, TerrainMaterial | null>(), terrainChunks = new Map<string, number>();
+  const terrainPreview = { cells: terrainCells, chunkVersions: terrainChunks };
+  options.previewObjects = previewObjects; options.previewRevision = 0;
+  let cachedAssets: ForestStatus["assets"] = [], previousAssets = scene.assets;
+  let lastStatus: ForestStatus | undefined;
+  let plantedIds = new Set<string>();
+  const objectLookup = new Map<string, ForestObject>();
+  const autosave = createDeferredSave(() => {
+    try { if (!localStorage) return false; localStorage.setItem(SCENE_STORAGE_KEY, JSON.stringify(scene)); return true; } catch { return false; }
+  }, value => { storage = value; invalidate(); }, callback => {
+    if (typeof window.requestIdleCallback === "function") {
+      const id = window.requestIdleCallback(callback, { timeout: 800 }); return () => window.cancelIdleCallback(id);
+    }
+    const id = window.setTimeout(callback, 300); return () => window.clearTimeout?.(id);
+  });
 
   function temporaryPan() { return spaceHeld || !!gesture?.temporaryPan; }
   function cursor() {
@@ -66,10 +91,13 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
   }
 
   function sync() {
-    options.seed = scene.seed; options.width = scene.width; options.planted = scene.planted;
+    options.seed = scene.seed; options.width = scene.width; options.planted = scene.planted; plantedIds = new Set(scene.planted.map(object => object.id));
     options.removed = new Set(scene.removed); options.modified = new Map(scene.modified.map(object => [object.id, object]));
     options.assets = new Map(scene.assets.map(asset => [asset.id, asset]));
-    options.layers = scene.layers;
+    options.layers = scene.layers; options.folders = scene.folders; options.terrain = scene.terrain; options.objectRevision = revision;
+    if (previousAssets !== scene.assets || !cachedAssets.length) { cachedAssets = scene.assets.map(({ id, name }) => ({ id, name })); previousAssets = scene.assets; }
+    if (activeFolderId && !scene.folders.some(folder => folder.id === activeFolderId)) activeFolderId = undefined;
+    if (selectedFolderId && !scene.folders.some(folder => folder.id === selectedFolderId)) selectedFolderId = null;
     if (!scene.layers.some(layer => layer.id === activeLayerId)) activeLayerId = "world";
     if (brushAssetId && !options.assets.has(brushAssetId)) { brushAssetId = null; if (brush === "image") { brush = "tree"; mode = "select"; } }
     options.selectedId = selectedId;
@@ -80,31 +108,123 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
     }
   }
   sync(); cursor();
-  function allObjects() { return painter.objects({ ...options, trees: true, includeHidden: true }); }
+  function allObjects() { return objectList(); }
   function selected() {
     if (!selectedId || options.removed.has(selectedId)) return null;
-    return options.modified?.get(selectedId) ?? scene.planted.find(object => object.id === selectedId) ?? objectList().find(object => object.id === selectedId) ?? null;
+    if (previewObjects.has(selectedId)) return previewObjects.get(selectedId)!;
+    objectList(); return objectLookup.get(selectedId) ?? null;
   }
   function objectList() {
     if (objectListRevision !== revision) {
-      const committed = history.getScene();
-      cachedObjectList = painter.objects({ ...options, seed: committed.seed, width: committed.width, trees: true, includeHidden: true,
-        planted: committed.planted, modified: new Map(committed.modified.map(object => [object.id, object])), removed: new Set(committed.removed), layers: committed.layers })
-        .reverse().map(object => ({ ...object, ...(object.stackOrder ? { stackOrder: [...object.stackOrder] } : {}) }));
+      cachedObjectList = painter.objects({ ...options, trees: true, includeHidden: true, previewObjects: undefined, previewRevision: 0 }).reverse();
+      objectLookup.clear(); for (const object of cachedObjectList) objectLookup.set(object.id, object);
       objectListRevision = revision;
     }
     return cachedObjectList;
   }
-  function objectVisible(object: ForestObject) { return isObjectVisible(object, scene.layers) && (options.trees || (object.kind !== "tree" && object.kind !== "shrub")); }
-  function canvasEditable(object: ForestObject) { return objectVisible(object) && !isObjectLocked(object, scene.layers); }
+  function objectVisible(object: ForestObject) { return isObjectVisible(object, scene.layers, scene.folders) && (options.trees || (object.kind !== "tree" && object.kind !== "shrub")); }
+  function canvasEditable(object: ForestObject) { return objectVisible(object) && !isObjectLocked(object, scene.layers, scene.folders); }
   function unlocked(object: ForestObject) {
-    if (!isObjectLocked(object, scene.layers)) return true;
+    if (!isObjectLocked(object, scene.layers, scene.folders)) return true;
     message = "Объект или его слой заблокирован. Сначала сними замок в списке слоёв."; invalidate(); return false;
   }
-  function placementAllowed() {
+  function placementAllowed(kind: ObjectKind = brush) {
     const layer = scene.layers.find(entry => entry.id === activeLayerId);
-    if (layer?.visible && !layer.locked) return true;
-    message = "Активный слой скрыт или заблокирован. Включи его или выбери другой слой."; invalidate(); return false;
+    const folderId = objectFolderId({ kind, folderId: activeFolderId } as ForestObject, scene.folders);
+    if (layer?.visible && !layer.locked && isFolderVisible(folderId, scene.folders) && !isFolderLocked(folderId, scene.folders)) return true;
+    message = "Активный слой или папка скрыты или заблокированы. Включи его или выбери другой слой."; invalidate(); return false;
+  }
+  let membershipRevision = -1;
+  const folderLocks = new Map<string, boolean>();
+  const memberships = new Map<string, ForestObject[]>(), folderBoundsCache = new Map<string, Bounds | null>();
+  function folderObjects(id: string) {
+    if (membershipRevision !== revision) {
+      memberships.clear(); folderBoundsCache.clear(); folderLocks.clear();
+      for (const object of allObjects()) for (const ancestor of folderAncestors(objectFolderId(object, scene.folders), scene.folders) ?? []) {
+        let members = memberships.get(ancestor.id); if (!members) { members = []; memberships.set(ancestor.id, members); } members.push(object);
+      }
+      membershipRevision = revision;
+    }
+    return memberships.get(id) ?? [];
+  }
+  function committedFolderBounds(id: string, members: ForestObject[]) {
+    if (folderBoundsCache.has(id)) return folderBoundsCache.get(id)!;
+    let bounds: Bounds | null = null;
+    for (const member of members) {
+      const box = objectBounds(member);
+      if (!bounds) bounds = { ...box };
+      else { const right = Math.max(bounds.x + bounds.width, box.x + box.width), bottom = Math.max(bounds.y + bounds.height, box.y + box.height);
+        bounds.x = Math.min(bounds.x, box.x); bounds.y = Math.min(bounds.y, box.y); bounds.width = right - bounds.x; bounds.height = bottom - bounds.y; }
+    }
+    folderBoundsCache.set(id, bounds); return bounds;
+  }
+  let summaryCache: { key: string; value: ForestStatus["selectedFolder"] } | undefined;
+  function folderSummary(): ForestStatus["selectedFolder"] {
+    if (!selectedFolderId) return null;
+    const key = `${revision}:${options.previewRevision}:${selectedFolderId}`;
+    if (summaryCache?.key === key) return summaryCache.value;
+    const folder = scene.folders.find(entry => entry.id === selectedFolderId); if (!folder) return null;
+    const members = folderObjects(folder.id);
+    const baseBounds = committedFolderBounds(folder.id, members);
+    const first = members[0], preview = first ? previewObjects.get(first.id) : undefined;
+    const bounds = baseBounds && preview ? { ...baseBounds, x: baseBounds.x + preview.x - first.x, y: baseBounds.y + preview.y - first.y } : baseBounds;
+    if (!folderLocks.has(folder.id)) folderLocks.set(folder.id, isFolderLocked(folder.id, scene.folders) || members.some(object => isObjectLocked(object, scene.layers, scene.folders)));
+    const value = { folder, count: members.length, bounds, hidden: !isFolderVisible(folder.id, scene.folders),
+      locked: folderLocks.get(folder.id)! };
+    summaryCache = { key, value }; return value;
+  }
+  function anchorLimits(object: ForestObject) {
+    const generated = !plantedIds.has(object.id) && ["tree", "shrub", "rock"].includes(object.kind);
+    const margin = generated ? OVERSCAN_EDIT_MARGIN : 0;
+    return { x0: -margin, x1: scene.width + margin, y0: -margin, y1: WORLD_HEIGHT + margin };
+  }
+  function withinObject(candidate: ForestObject, original?: ForestObject) {
+    if (original && candidate.x === original.x && candidate.y === original.y) return true;
+    const limits = anchorLimits(candidate);
+    return Number.isFinite(candidate.x) && Number.isFinite(candidate.y) && candidate.x >= limits.x0 && candidate.x <= limits.x1 && candidate.y >= limits.y0 && candidate.y <= limits.y1;
+  }
+  function previewObject(object: ForestObject) { previewObjects.set(object.id, object); options.previewRevision = (options.previewRevision ?? 0) + 1; }
+  function translatedObjects(members: ForestObject[], dx: number, dy: number) {
+    let x0 = -Infinity, x1 = Infinity, y0 = -Infinity, y1 = Infinity;
+    for (const object of members) { const limits = anchorLimits(object); x0 = Math.max(x0, limits.x0 - object.x); x1 = Math.min(x1, limits.x1 - object.x); y0 = Math.max(y0, limits.y0 - object.y); y1 = Math.min(y1, limits.y1 - object.y); }
+    dx = Math.max(x0, Math.min(x1, dx)); dy = Math.max(y0, Math.min(y1, dy));
+    return members.map(object => ({ ...object, x: object.x + dx, y: object.y + dy }));
+  }
+  function previewTranslation(members: ForestObject[], dx: number, dy: number) {
+    for (const object of translatedObjects(members, dx, dy)) previewObjects.set(object.id, object);
+    options.previewRevision = (options.previewRevision ?? 0) + 1;
+  }
+  function membersUnlocked(members: ForestObject[]) {
+    const locked = members.find(object => isObjectLocked(object, scene.layers, scene.folders));
+    if (locked) return unlocked(locked);
+    return true;
+  }
+  function paintTerrain(position: Point) {
+    if (!gesture || !gesture.terrainLast) return;
+    const patch = strokeTerrainCells(gesture.terrainLast, position, terrainSize, terrainBrush, scene.width), changed: string[] = [];
+    for (const [key, material] of patch) if (!terrainCells.has(key) || terrainCells.get(key) !== material) { terrainCells.set(key, material); changed.push(key); }
+    for (const key of dirtyTerrainChunks(changed)) terrainChunks.set(key, (terrainChunks.get(key) ?? 0) + 1);
+    gesture.terrainLast = position; options.terrainPreview = terrainPreview;
+    options.brushCursor = { ...position, diameter: terrainSize }; invalidate();
+  }
+  function commitGesture() {
+    if (gesture?.terrainLast) {
+      const terrain = applyTerrainPatch(scene.terrain, terrainCells);
+      if (Object.keys(terrain.cells).length > MAX_TERRAIN_CELLS) { rollbackDrag(); message = "Достигнут предел правок земли. Уменьши мазок или восстанови часть карты."; invalidate(); return; }
+      if (clearVegetation && terrainBrush !== "restore") {
+        const objects = allObjects().filter(object => (object.kind === "tree" || object.kind === "shrub")
+          && objectVisible(object) && !isObjectLocked(object, scene.layers, scene.folders) && terrainCells.has(`${Math.floor(object.x / CELL_SIZE)}:${Math.floor(object.y / CELL_SIZE)}`));
+        for (const object of objects) removeObjectRecord(object);
+      }
+      scene.terrain = terrain; rollbackDrag(); commit("Земля изменена. Весь мазок можно отменить одним действием.");
+    } else {
+      objectList();
+      for (const object of previewObjects.values()) {
+        const original = objectLookup.get(object.id);
+        if (original && (object.x !== original.x || object.y !== original.y || object.scale !== original.scale || object.rotation !== original.rotation)) replaceObject(object);
+      }
+      rollbackDrag(); commit(gesture?.members ? "Папка перемещена." : gesture?.resize ? "Размер объекта изменён." : "Объект перемещён.");
+    }
   }
   function fit() { zoom = Math.min(screenWidth / options.width, screenHeight / WORLD_HEIGHT) * .94; cameraX = options.width / 2; cameraY = WORLD_HEIGHT / 2; invalidate(); }
   function clamp() {
@@ -114,17 +234,19 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
   function draw(now = performance.now()) {
     frame = 0; if (disposed || !ctx) return;
     clamp(); const autoPanning = edgePan(now); const current = selected();
-    options.selectedId = current && objectVisible(current) ? selectedId : null; options.selectionZoom = zoom;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    options.selectedId = current && objectVisible(current) ? selectedId : null; options.selectedFolderId = selectedFolderId; options.selectionZoom = zoom;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2); options.renderScale = zoom * dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.fillStyle = "#11251e"; ctx.fillRect(0, 0, screenWidth, screenHeight);
     ctx.translate(screenWidth / 2, screenHeight / 2); ctx.scale(zoom, zoom); ctx.translate(-cameraX, -cameraY);
     const stats = painter.paint(ctx, { x: cameraX - screenWidth / zoom / 2, y: cameraY - screenHeight / zoom / 2, width: screenWidth / zoom, height: screenHeight / zoom }, options);
     const object = selected();
-    report({ seed: options.seed, width: options.width, objects: stats.objects, zoom,
+    const status: ForestStatus = { seed: options.seed, width: options.width, objects: stats.objects, zoom,
       edited: scene.removed.length + scene.planted.length + scene.modified.length, message,
-      selected: object ? { ...object } : null, canUndo: history.canUndo, canRedo: history.canRedo, storage, brush, mode, temporaryPan: temporaryPan(), trees: options.trees, grid: options.grid,
-      assets: scene.assets.map(({ id, name }) => ({ id, name })), brushAssetId,
-      layers: scene.layers, activeLayerId, objectList: objectList(), selectedHidden: !!object && !objectVisible(object), selectedLocked: !!object && isObjectLocked(object, scene.layers) });
+      selected: object, canUndo: history.canUndo, canRedo: history.canRedo, storage, brush, mode, temporaryPan: temporaryPan(), trees: options.trees, grid: options.grid,
+      assets: cachedAssets, brushAssetId, layers: scene.layers, folders: scene.folders, activeLayerId, activeFolderId, objectList: objectList(),
+      selectedHidden: !!object && !objectVisible(object), selectedLocked: !!object && isObjectLocked(object, scene.layers, scene.folders),
+      selectedFolder: folderSummary(), terrainBrush, terrainSize, terrainBaseTrails: scene.terrain.baseTrails, clearVegetation };
+    if (!lastStatus || Object.keys(status).some(key => status[key as keyof ForestStatus] !== lastStatus![key as keyof ForestStatus])) { lastStatus = status; report(status); }
     if (autoPanning) invalidate();
   }
   function invalidate() { if (!disposed && !frame) frame = requestAnimationFrame(draw); }
@@ -140,8 +262,8 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
     const before = world(point); zoom *= factor; clamp();
     const after = world(point); cameraX += before.x - after.x; cameraY += before.y - after.y; clamp(); updateDrag(); invalidate();
   }
-  function save() { storage = writeStoredScene(localStorage, scene) ? "saved" : "unavailable"; }
-  function commit(text: string) { sync(); if (history.commit(scene)) { revision++; save(); } message = text; invalidate(); }
+  function save() { autosave.request(); }
+  function commit(text: string) { if (history.commit(scene)) { revision++; sync(); save(); } else sync(); message = text; invalidate(); }
   function replaceObject(object: ForestObject) {
     const index = scene.planted.findIndex(entry => entry.id === object.id);
     if (index >= 0) {
@@ -152,10 +274,11 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
       const modified = scene.modified.findIndex(entry => entry.id === object.id);
       if (modified >= 0) scene.modified[modified] = { ...object }; else scene.modified.push({ ...object });
     }
-    sync();
   }
   function rollbackDrag() {
-    if (gesture?.object && gesture.moved) { scene = history.getScene(); sync(); invalidate(); }
+    if (previewObjects.size) { previewObjects.clear(); options.previewRevision = (options.previewRevision ?? 0) + 1; }
+    if (terrainCells.size) { terrainCells.clear(); for (const [key, version] of terrainChunks) terrainChunks.set(key, version + 1); }
+    options.terrainPreview = undefined; options.selectionArea = undefined; invalidate();
   }
   function cancelGesture() {
     rollbackDrag(); gesture = undefined; hoverResize = null; lastPanTime = null; cursor();
@@ -168,10 +291,10 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
     if (gesture.resize) {
       const object = resizedObject(gesture.resize, position, options.width, WORLD_HEIGHT);
       const initial = gesture.object;
-      if (!within(object) || !Number.isFinite(object.scale) || object.scale < MIN_OBJECT_SCALE || object.scale > MAX_OBJECT_SCALE) return;
+      if (!withinObject(object) || !Number.isFinite(object.scale) || object.scale < MIN_OBJECT_SCALE || object.scale > MAX_OBJECT_SCALE) return;
       if (Math.abs(object.x - initial.x) < 1e-10 && Math.abs(object.y - initial.y) < 1e-10 && Math.abs(object.scale - initial.scale) < 1e-10) {
-        scene = history.getScene(); sync();
-      } else replaceObject(object);
+        previewObjects.delete(object.id); options.previewRevision = (options.previewRevision ?? 0) + 1;
+      } else previewObject(object);
       return;
     }
     if (!gesture.grabOffset) return;
@@ -180,7 +303,8 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
       gesture.lockAxis ??= Math.abs(x - gesture.object.x) >= Math.abs(y - gesture.object.y) ? "x" : "y";
       if (gesture.lockAxis === "x") y = gesture.object.y; else x = gesture.object.x;
     } else gesture.lockAxis = undefined;
-    replaceObject({ ...gesture.object, x: Math.max(0, Math.min(options.width, x)), y: Math.max(0, Math.min(WORLD_HEIGHT, y)) });
+    if (gesture.members) previewTranslation(gesture.members, x - gesture.object.x, y - gesture.object.y);
+    else previewObject({ ...gesture.object, x: Math.max(0, Math.min(scene.width, x)), y: Math.max(0, Math.min(WORLD_HEIGHT, y)) });
   }
   function edgePan(now: number) {
     const p = gesture ? pointers.get(gesture.pointerId) : undefined;
@@ -207,31 +331,32 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
   }
   function plant(position: Point) {
     if (!within(position) || !placementAllowed()) return;
-    if ((brush === "tree" || brush === "shrub") && !canPlant(position.x, position.y, options.width)) {
+    if ((brush === "tree" || brush === "shrub") && !canPlant(position.x, position.y, options.width, scene.terrain)) {
       message = "Деревья и кусты можно добавить на свободную землю, вдали от воды и тропинок."; invalidate(); return;
     }
     if (scene.planted.length >= 5_000) { message = "Достигнут предел 5000 добавленных объектов."; invalidate(); return; }
     const asset = brush === "image" ? scene.assets.find(entry => entry.id === brushAssetId) : null;
     if (brush === "image" && !asset) { message = "Сначала добавь PNG через кнопку «Импорт PNG»."; invalidate(); return; }
-    const object: ForestObject = { id: newId(), ...position, layerId: activeLayerId, scale: brush === "tree" ? .92 : 1, variant: asset ? 0 : nextId % 24, kind: brush, rotation: 0,
+    const object: ForestObject = { id: newId(), ...position, layerId: activeLayerId, folderId: activeFolderId, scale: brush === "tree" ? .92 : 1, variant: asset ? 0 : nextId % 24, kind: brush, rotation: 0,
       ...(asset ? { assetId: asset.id, ...imageObjectSize(asset) } : {}) };
-    scene.planted.push(object); selectedId = object.id;
+    scene.planted.push(object); selectedId = object.id; selectedFolderId = null;
     commit(`Добавлен объект: ${names[brush]}. Его можно выбрать и переместить.`);
   }
-  function removeObject(object: ForestObject) {
-    if (!unlocked(object)) return;
+  function removeObjectRecord(object: ForestObject) {
     const index = scene.planted.findIndex(entry => entry.id === object.id);
     if (index >= 0) scene.planted.splice(index, 1);
     else if (!scene.removed.includes(object.id)) scene.removed.push(object.id);
     scene.modified = scene.modified.filter(entry => entry.id !== object.id);
     if (selectedId === object.id) selectedId = null;
-    commit("Объект удалён. Можно вернуть его кнопкой «Отменить».");
+  }
+  function removeObject(object: ForestObject) {
+    if (!unlocked(object)) return; removeObjectRecord(object); commit("Объект удалён. Можно вернуть его кнопкой «Отменить».");
   }
   function edit(p: Point) {
     const position = world(p);
     if (mode === "plant") plant(position);
     else if (mode === "erase") {
-      const object = pickObject(painter.objects(options), position.x, position.y, scene.layers);
+      const object = pickObject(painter.objects(options), position.x, position.y, scene.layers, scene.folders);
       if (object) removeObject(object); else { message = "Нажми на объект, чтобы удалить его."; invalidate(); }
     }
   }
@@ -239,7 +364,7 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
     cancelGesture();
     const object = selected(); if (!object || !unlocked(object)) return;
     const candidate = { ...object, ...patch };
-    if (!within(candidate) || !Number.isFinite(candidate.scale) || candidate.scale < MIN_OBJECT_SCALE || candidate.scale > MAX_OBJECT_SCALE
+    if (!withinObject(candidate, object) || !Number.isFinite(candidate.scale) || candidate.scale < MIN_OBJECT_SCALE || candidate.scale > MAX_OBJECT_SCALE
       || !Number.isInteger(candidate.variant) || candidate.variant < 0 || candidate.variant > 23
       || !Number.isFinite(candidate.rotation ?? 0) || (candidate.rotation ?? 0) < -180 || (candidate.rotation ?? 0) > 180) {
       message = "Параметры вне диапазона: координаты внутри карты, масштаб 0,1–8, поворот −180°…180°, вариант 0–23."; invalidate(); return;
@@ -256,10 +381,10 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
     scene = next; revision++; sync(); if (!selected()) selectedId = null; save(); message = "Изменение повторено."; prepareCurrentAssets(); cursor(); invalidate();
   }
   function setMode(value: ToolMode) {
-    cancelGesture(); mode = value; if (value === "plant" && (brush === "tree" || brush === "shrub")) options.trees = true; cursor();
+    cancelGesture(); mode = value; if (value !== "terrain") options.brushCursor = undefined; if (value === "plant" && (brush === "tree" || brush === "shrub")) options.trees = true; cursor();
     message = value === "pan" ? "Перетаскивай карту или используй стрелки."
       : value === "select" ? "Нажми на любой объект, затем перетащи его или измени параметры."
-      : value === "plant" ? `Нажми на карту, чтобы добавить объект: ${names[brush]}.` : "Нажми на любой объект, чтобы удалить его.";
+      : value === "plant" ? `Нажми на карту, чтобы добавить объект: ${names[brush]}.` : value === "area" ? "Обведи область, чтобы собрать предметы в новую папку." : value === "terrain" ? "Рисуй землю кистью. Отмена вернёт весь мазок." : "Нажми на любой объект, чтобы удалить его.";
     invalidate();
   }
   function setBrush(value: ObjectKind) {
@@ -281,7 +406,8 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
     });
   }
   async function addPngAsset(value: ImageAsset): Promise<boolean> {
-    if (disposed || !placementAllowed()) return false;
+    const before = revision, token = sceneImportToken;
+    if (disposed || !placementAllowed("image")) return false;
     const asset = validateImageAsset(value);
     if (!asset) { if (!disposed) { message = "Не удалось добавить PNG: неверный файл или параметры изображения."; invalidate(); } return false; }
     const mergeAssets = () => {
@@ -291,33 +417,34 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
     const staged = mergeAssets();
     if (!staged || !validateScene({ ...scene, assets: staged })) { message = "Не удалось добавить PNG: превышен размер сцены или лимит изображений."; invalidate(); return false; }
     try { await painter.prepareAssets(staged); } catch (error) {
-      if (!disposed) { message = `Не удалось открыть PNG: ${assetError(error)}`; invalidate(); } return false;
+      if (!disposed && before === revision && token === sceneImportToken) { message = `Не удалось открыть PNG: ${assetError(error)}`; invalidate(); } return false;
     }
-    if (disposed || !placementAllowed()) return false;
+    if (disposed || !placementAllowed("image")) return false;
     cancelGesture();
     const assets = mergeAssets();
     if (!assets || scene.planted.length >= 5_000) { message = "Не удалось добавить PNG: достигнут лимит объектов или изображений."; invalidate(); return false; }
     const size = imageObjectSize(asset);
-    const object: ForestObject = { id: newId(), kind: "image", assetId: asset.id, ...size, layerId: activeLayerId,
+    const object: ForestObject = { id: newId(), kind: "image", assetId: asset.id, ...size, layerId: activeLayerId, folderId: activeFolderId,
       x: Math.max(0, Math.min(scene.width, cameraX)), y: Math.max(0, Math.min(WORLD_HEIGHT, cameraY + size.imageHeight / 2)), scale: 1, rotation: 0, variant: 0 };
     const appended = validateScene({ ...scene, assets, planted: [...scene.planted, object] });
     if (!appended) { message = "Не удалось добавить PNG: превышен размер сцены или лимит изображений."; invalidate(); return false; }
-    scene = appended; selectedId = object.id; brush = "image"; brushAssetId = asset.id; mode = "select"; cursor();
+    scene = appended; selectedId = object.id; selectedFolderId = null; brush = "image"; brushAssetId = asset.id; mode = "select"; cursor();
     commit(`Добавлен PNG: ${asset.name}. Перетаскивай картинку или тяни за угол.`); return true;
   }
   async function importPng(file: File): Promise<boolean> {
-    if (disposed || !placementAllowed()) return false;
+    const before = revision, token = sceneImportToken;
+    if (disposed || !placementAllowed("image")) return false;
     try { return await addPngAsset(await readPngFile(file)); } catch (error) {
-      if (!disposed) { message = `Не удалось добавить PNG: ${assetError(error)}`; invalidate(); } return false;
+      if (!disposed && before === revision && token === sceneImportToken) { message = `Не удалось добавить PNG: ${assetError(error)}`; invalidate(); } return false;
     }
   }
   function duplicateSelected() {
     cancelGesture(); const object = selected(); if (!object || !unlocked(object) || scene.planted.length >= 5_000) return;
-    if (!scene.layers.find(layer => layer.id === objectLayerId(object))?.visible) { message = "Сначала покажи слой, чтобы добавить на него копию."; invalidate(); return; }
+    if (!isObjectVisible({ ...object, hidden: false }, scene.layers, scene.folders)) { message = "Сначала покажи слой, чтобы добавить на него копию."; invalidate(); return; }
     let position: Point | undefined;
     for (const offset of [40, -40, 80, -80, 120, -120]) {
       const candidate = { x: Math.max(0, Math.min(options.width, object.x + offset)), y: Math.max(0, Math.min(WORLD_HEIGHT, object.y + 30)) };
-      if ((object.kind !== "tree" && object.kind !== "shrub") || canPlant(candidate.x, candidate.y, options.width)) { position = candidate; break; }
+      if ((object.kind !== "tree" && object.kind !== "shrub") || canPlant(candidate.x, candidate.y, options.width, scene.terrain)) { position = candidate; break; }
     }
     if (!position) { message = "Рядом нет свободной земли для копии. Добавь объект в другом месте."; invalidate(); return; }
     const copy = { ...object, ...position, id: newId(), hidden: false, locked: false }; delete copy.stackOrder;
@@ -337,7 +464,7 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
   }
   function selectById(id: string) {
     cancelGesture(); const object = allObjects().find(entry => entry.id === id); selectedId = object?.id ?? null;
-    if (object) activeLayerId = objectLayerId(object); cursor(); invalidate(); return !!object;
+    selectedFolderId = null; if (object) { mode = "select"; options.brushCursor = undefined; activeLayerId = objectLayerId(object); activeFolderId = objectFolderId(object, scene.folders); message = "Объект выбран. Перетащи его или измени параметры справа."; } cursor(); invalidate(); return !!object;
   }
   function setActiveLayer(id: string) {
     if (!scene.layers.some(layer => layer.id === id)) return false;
@@ -365,6 +492,7 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
   function deleteLayer(id: string) {
     cancelGesture(); const layer = scene.layers.find(entry => entry.id === id); if (id === "world" || !layer) return;
     const incoming = layerObjects(id), existing = layerObjects("world");
+    if (!membersUnlocked(incoming)) return;
     if (layer.locked || (incoming.length > 0 && scene.layers.find(entry => entry.id === "world")?.locked)) {
       message = layer.locked ? "Сначала сними замок удаляемого слоя." : "Сначала сними замок слоя «Мир», чтобы перенести в него объекты."; invalidate(); return;
     }
@@ -427,14 +555,98 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
     cancelGesture(); if (id === targetId) return;
     const objects = allObjects(), object = objects.find(entry => entry.id === id), target = objects.find(entry => entry.id === targetId);
     if (!object || !target || !unlocked(object)) return;
-    const layerId = objectLayerId(target); if (scene.layers.find(layer => layer.id === layerId)?.locked) { message = "Сначала сними замок целевого слоя."; invalidate(); return; }
+    const layerId = objectLayerId(target); if (isObjectLocked(target, scene.layers, scene.folders)) { message = "Сначала сними замок целевого слоя."; invalidate(); return; }
     const siblings = layerObjects(layerId, id), targetIndex = siblings.findIndex(entry => entry.id === targetId), index = targetIndex + (position === "before" ? 1 : 0);
-    if (objectLayerId(object) === layerId && layerObjects(layerId).findIndex(entry => entry.id === id) === index) return;
-    orderAt(object, layerId, index, siblings); selectedId = id; activeLayerId = layerId; commit("Объект перемещён в списке.");
+    const folderId = objectFolderId(target, scene.folders);
+    if (objectLayerId(object) === layerId && objectFolderId(object, scene.folders) === folderId && layerObjects(layerId).findIndex(entry => entry.id === id) === index) return;
+    orderAt({ ...object, folderId }, layerId, index, siblings); selectedId = id; activeLayerId = layerId; commit("Объект перемещён в списке.");
   }
+  function areaBounds(from: Point, to: Point): Bounds { return { x: Math.min(from.x, to.x), y: Math.min(from.y, to.y), width: Math.abs(from.x - to.x), height: Math.abs(from.y - to.y) }; }
+  function createFolderFromArea(bounds: Bounds) {
+    cancelGesture();
+    if (![bounds.x, bounds.y, bounds.width, bounds.height].every(Number.isFinite) || bounds.width <= 0 || bounds.height <= 0) return null;
+    const objects = allObjects().filter(object => canvasEditable(object) && object.x >= bounds.x && object.x <= bounds.x + bounds.width && object.y >= bounds.y && object.y <= bounds.y + bounds.height);
+    if (!objects.length || scene.folders.length >= MAX_SCENE_FOLDERS) { message = "В области нет доступных предметов или достигнут предел папок."; invalidate(); return null; }
+    const parentId = activeFolderId && isFolderVisible(activeFolderId, scene.folders) && !isFolderLocked(activeFolderId, scene.folders) ? activeFolderId : null;
+    let number = 1; while (scene.folders.some(folder => folder.id === `folder:${number}`)) number++;
+    const id = `folder:${number}`;
+    scene.folders = [...scene.folders, { id, name: `Группа ${number}`, parentId, visible: true, locked: false }];
+    for (const object of objects) replaceObject({ ...object, folderId: id });
+    selectedId = null; selectedFolderId = id; activeFolderId = id; mode = "select"; commit("Предметы области собраны в папку."); cursor(); return id;
+  }
+  function folderDestinationAllowed(id: string | null) {
+    if (id !== null && !scene.folders.some(folder => folder.id === id)) return false;
+    if (isFolderLocked(id, scene.folders)) { message = "Сначала сними замок целевой папки."; invalidate(); return false; }
+    return true;
+  }
+  function setActiveFolder(id: string | null | undefined) {
+    if (id !== undefined && id !== null && !scene.folders.some(folder => folder.id === id)) return false;
+    cancelGesture(); activeFolderId = id; invalidate(); return true;
+  }
+  function selectFolder(id: string | null) {
+    if (id !== null && !scene.folders.some(folder => folder.id === id)) return false;
+    cancelGesture(); selectedFolderId = id; selectedId = null; if (id) { mode = "select"; options.brushCursor = undefined; activeFolderId = id; message = "Папка выбрана. Её предметами можно управлять справа."; } cursor(); invalidate(); return true;
+  }
+  function addFolder(parentId: string | null = null) {
+    cancelGesture(); if (scene.folders.length >= MAX_SCENE_FOLDERS || !folderDestinationAllowed(parentId)) return null;
+    let number = 1; while (scene.folders.some(folder => folder.id === `folder:${number}`)) number++;
+    const id = `folder:${number}`;
+    scene.folders = [...scene.folders, { id, name: `Папка ${number}`, parentId, visible: true, locked: false }];
+    selectedFolderId = id; selectedId = null; activeFolderId = id; mode = "select"; options.brushCursor = undefined; commit("Добавлена папка. Новые предметы появятся в ней."); cursor(); return id;
+  }
+  function renameFolder(id: string, value: string) {
+    cancelGesture(); const folder = scene.folders.find(entry => entry.id === id), name = cleanName(value);
+    if (!folder || !name || folder.name === name) return;
+    scene.folders = scene.folders.map(entry => entry.id === id ? { ...entry, name } : entry); commit("Название папки изменено.");
+  }
+  function setFolderVisibility(id: string, visible: boolean) {
+    cancelGesture(); const folder = scene.folders.find(entry => entry.id === id); if (!folder || folder.visible === visible) return;
+    scene.folders = scene.folders.map(entry => entry.id === id ? { ...entry, visible } : entry); commit(visible ? "Папка показана." : "Папка скрыта."); cursor();
+  }
+  function setFolderLocked(id: string, locked: boolean) {
+    cancelGesture(); const folder = scene.folders.find(entry => entry.id === id); if (!folder || folder.locked === locked) return;
+    scene.folders = scene.folders.map(entry => entry.id === id ? { ...entry, locked } : entry); commit(locked ? "Папка заблокирована." : "Замок папки снят."); cursor();
+  }
+  function subtreeLocked(id: string) { return scene.folders.some(folder => folder.locked && folderContains(id, folder.id, scene.folders)); }
+  function reparentFolder(id: string, parentId: string | null) {
+    cancelGesture(); const folder = scene.folders.find(entry => entry.id === id); if (!folder || folder.parentId === parentId || folderContains(id, parentId, scene.folders)) return;
+    if (isFolderLocked(id, scene.folders) || subtreeLocked(id) || !folderDestinationAllowed(parentId) || !membersUnlocked(folderObjects(id))) { message = "Сначала сними замки папки и её предметов."; invalidate(); return; }
+    scene.folders = scene.folders.map(entry => entry.id === id ? { ...entry, parentId } : entry); commit("Папка перенесена.");
+  }
+  function deleteFolder(id: string) {
+    cancelGesture(); const folder = scene.folders.find(entry => entry.id === id); if (!folder) return;
+    if (isFolderLocked(id, scene.folders) || subtreeLocked(id) || !folderDestinationAllowed(folder.parentId) || !membersUnlocked(folderObjects(id))) { message = "Сначала сними замки папки и её предметов."; invalidate(); return; }
+    for (const object of allObjects()) if (objectFolderId(object, scene.folders) === id) replaceObject({ ...object, folderId: folder.parentId });
+    scene.folders = scene.folders.filter(entry => entry.id !== id).map(entry => entry.parentId === id ? { ...entry, parentId: folder.parentId } : entry);
+    if (activeFolderId === id) activeFolderId = folder.parentId; if (selectedFolderId === id) selectedFolderId = null;
+    commit("Папка удалена. Её предметы и вложенные папки сохранены.");
+  }
+  function moveObjectToFolder(id: string, folderId: string | null | undefined) {
+    cancelGesture(); const object = allObjects().find(entry => entry.id === id); if (!object || !unlocked(object)) return;
+    const moved = { ...object }; if (folderId === undefined) delete moved.folderId; else moved.folderId = folderId;
+    if (!folderDestinationAllowed(objectFolderId(moved, scene.folders)) || object.folderId === moved.folderId) return;
+    replaceObject(moved); if (selectedId === id) activeFolderId = folderId; commit("Предмет перенесён в папку.");
+  }
+  function translateSelectedFolder(dx: number, dy: number) {
+    cancelGesture(); if (!selectedFolderId || !Number.isFinite(dx) || !Number.isFinite(dy)) return;
+    const members = folderObjects(selectedFolderId); if (isFolderLocked(selectedFolderId, scene.folders) || !membersUnlocked(members)) return;
+    for (const object of translatedObjects(members, dx, dy)) { const original = objectLookup.get(object.id); if (original && (original.x !== object.x || original.y !== object.y)) replaceObject(object); } commit("Папка перемещена.");
+  }
+  function deleteFolderObjects(id: string) {
+    cancelGesture(); const members = folderObjects(id);
+    if (!scene.folders.some(folder => folder.id === id) || isFolderLocked(id, scene.folders) || !membersUnlocked(members)) return;
+    for (const object of members) removeObjectRecord(object); commit("Предметы папки удалены. Их можно вернуть кнопкой «Отменить».");
+  }
+  function setTerrainBrush(value: TerrainBrush) {
+    if (!["grass", "path", "sand", "water", "restore"].includes(value)) return;
+    cancelGesture(); terrainBrush = value; invalidate();
+  }
+  function setTerrainSize(value: number) { if (!Number.isFinite(value)) return; cancelGesture(); terrainSize = Math.max(24, Math.min(320, value)); if (options.brushCursor) options.brushCursor = { ...options.brushCursor, diameter: terrainSize }; invalidate(); }
+  function setClearVegetation(value: boolean) { cancelGesture(); clearVegetation = value; invalidate(); }
+  function setBaseTrails(value: boolean) { cancelGesture(); if (scene.terrain.baseTrails === value) return; scene.terrain = { ...scene.terrain, baseTrails: value }; commit(value ? "Исходные тропы показаны." : "Исходные тропы скрыты."); }
   function focusSelected() {
-    cancelGesture(); const object = selected(); if (!object) return;
-    const bounds = objectBounds(object); cameraX = bounds.x + bounds.width / 2; cameraY = bounds.y + bounds.height / 2;
+    cancelGesture(); const object = selected();
+    const bounds = selectedFolderId ? folderSummary()?.bounds : object ? objectBounds(object) : null; if (!bounds) return; cameraX = bounds.x + bounds.width / 2; cameraY = bounds.y + bounds.height / 2;
     zoom = Math.min(2.5, screenWidth * .72 / Math.max(1, bounds.width), screenHeight * .72 / Math.max(1, bounds.height)); clamp(); invalidate();
   }
   const down = (event: PointerEvent) => {
@@ -446,19 +658,28 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
       const transient = spaceHeld || event.button === 1;
       gesture = { start: p, moved: false, pinched: false, pan: mode === "pan" || transient, temporaryPan: transient, pointerId: event.pointerId, shift: event.shiftKey };
       const position = world(p), current = selected();
-      const corner = current && canvasEditable(current) && !gesture.pan ? findResizeHandle(current, position, zoom, event.pointerType === "touch" ? 22 : 14) : null;
-      if (current && corner !== null) {
+      const corner = current && canvasEditable(current) && !gesture.pan && mode !== "terrain" && mode !== "area" ? findResizeHandle(current, position, zoom, event.pointerType === "touch" ? 22 : 14) : null;
+      if (mode === "terrain" && !gesture.pan) {
+        gesture.terrainLast = position; paintTerrain(position);
+      } else if (mode === "area" && !gesture.pan) {
+        gesture.areaStart = position; options.selectionArea = { ...position, width: 0, height: 0 };
+      } else if (current && corner !== null) {
         activeLayerId = objectLayerId(current);
         gesture.object = { ...current }; gesture.resize = beginResize(current, corner, position); hoverResize = corner; mode = "select";
         message = "Тяни за угол, чтобы изменить размер. Пропорции картинки сохраняются.";
       } else if (mode === "select" && !gesture.pan) {
-        const object = pickObject(painter.objects(options), position.x, position.y, scene.layers);
-        selectedId = object?.id ?? null; options.selectedId = selectedId;
-        if (object) { activeLayerId = objectLayerId(object); gesture.object = { ...object }; gesture.grabOffset = { x: object.x - position.x, y: object.y - position.y }; message = "Объект выбран. Перетащи его или измени параметры справа."; }
-        else { gesture.pan = true; message = "Перетаскивай пустое место для перемещения карты."; }
+        const object = pickObject(painter.objects(options), position.x, position.y, scene.layers, scene.folders);
+        if (object && selectedFolderId && folderContains(selectedFolderId, objectFolderId(object, scene.folders), scene.folders)) {
+          const members = folderObjects(selectedFolderId);
+          if (membersUnlocked(members)) { gesture.object = { ...object }; gesture.members = members; gesture.grabOffset = { x: object.x - position.x, y: object.y - position.y }; message = "Перетаскивай папку целиком."; } else gesture.blocked = true;
+        } else {
+          selectedFolderId = null; selectedId = object?.id ?? null; options.selectedId = selectedId;
+          if (object) { activeLayerId = objectLayerId(object); activeFolderId = objectFolderId(object, scene.folders); gesture.object = { ...object }; gesture.grabOffset = { x: object.x - position.x, y: object.y - position.y }; message = "Объект выбран. Перетащи его или измени параметры справа."; }
+          else { gesture.pan = true; message = "Перетаскивай пустое место для перемещения карты."; }
+        }
       }
     } else if (gesture) {
-      rollbackDrag(); gesture.object = undefined; gesture.grabOffset = undefined; gesture.resize = undefined; gesture.pinched = true; hoverResize = null; lastPanTime = null;
+      rollbackDrag(); gesture.object = undefined; gesture.grabOffset = undefined; gesture.resize = undefined; gesture.members = undefined; gesture.terrainLast = undefined; gesture.areaStart = undefined; gesture.pinched = true; hoverResize = null; lastPanTime = null;
     }
     cursor(); invalidate();
   };
@@ -466,8 +687,9 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
     const p = point(event.clientX, event.clientY);
     const previous = pointers.get(event.pointerId);
     if (!previous) {
-      const current = selected(), object = current && canvasEditable(current) && !temporaryPan() && mode !== "pan" ? current : null;
-      hoverResize = object ? findResizeHandle(object, world(p), zoom, event.pointerType === "touch" ? 22 : 14) : null; cursor(); return;
+      const current = selected(), object = current && canvasEditable(current) && !temporaryPan() && mode !== "pan" && mode !== "terrain" && mode !== "area" ? current : null;
+      hoverResize = object ? findResizeHandle(object, world(p), zoom, event.pointerType === "touch" ? 22 : 14) : null;
+      if (mode === "terrain") { options.brushCursor = { ...world(p), diameter: terrainSize }; invalidate(); } cursor(); return;
     }
     if (gesture) gesture.shift = event.shiftKey;
     if (gesture && Math.hypot(p.x - gesture.start.x, p.y - gesture.start.y) > 3) gesture.moved = true;
@@ -480,18 +702,24 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
           cameraX -= (p.x - previous.x) / (2 * zoom); cameraY -= (p.y - previous.y) / (2 * zoom); invalidate();
         }
       }
+    } else if (gesture?.terrainLast && !gesture.pinched && !gesture.pan) {
+      paintTerrain(world(p));
+    } else if (gesture?.areaStart && !gesture.pinched && !gesture.pan) {
+      options.selectionArea = areaBounds(gesture.areaStart, world(p)); invalidate();
     } else if (gesture?.object && !gesture.pinched && !gesture.pan) {
       updateDrag(p); invalidate();
-    } else { cameraX -= (p.x - previous.x) / zoom; cameraY -= (p.y - previous.y) / zoom; invalidate(); }
+    } else if (!gesture?.blocked) { cameraX -= (p.x - previous.x) / zoom; cameraY -= (p.y - previous.y) / zoom; invalidate(); }
     pointers.set(event.pointerId, p);
   };
   const up = (event: PointerEvent) => {
     if (!pointers.has(event.pointerId)) return;
     const finishing = pointers.size === 1;
     if (event.type !== "pointerup") {
-      rollbackDrag(); if (gesture) { gesture.pinched = true; gesture.object = undefined; gesture.resize = undefined; } hoverResize = null;
+      rollbackDrag(); if (gesture) { gesture.pinched = true; gesture.object = undefined; gesture.resize = undefined; gesture.members = undefined; gesture.terrainLast = undefined; gesture.areaStart = undefined; } hoverResize = null;
     } else if (finishing && gesture && !gesture.pinched) {
-      if (gesture.object && gesture.moved) { updateDrag(point(event.clientX, event.clientY)); commit(gesture.resize ? "Размер объекта изменён." : "Объект перемещён."); }
+      if (gesture.terrainLast) { paintTerrain(world(point(event.clientX, event.clientY))); commitGesture(); }
+      else if (gesture.areaStart) { const bounds = areaBounds(gesture.areaStart, world(point(event.clientX, event.clientY))); rollbackDrag(); createFolderFromArea(bounds); }
+      else if (gesture.object && gesture.moved) { updateDrag(point(event.clientX, event.clientY)); commitGesture(); }
       else if (!gesture.moved && !gesture.pan && mode !== "pan" && mode !== "select") edit(point(event.clientX, event.clientY));
     }
     pointers.delete(event.pointerId); if (!pointers.size) { gesture = undefined; hoverResize = null; lastPanTime = null; }
@@ -528,14 +756,14 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
       event.preventDefault();
       if (!spaceHeld) {
         rollbackDrag(); spaceHeld = true;
-        if (gesture) { gesture.object = undefined; gesture.grabOffset = undefined; gesture.resize = undefined; gesture.pan = true; gesture.temporaryPan = true; lastPanTime = null; }
+        if (gesture) { gesture.object = undefined; gesture.grabOffset = undefined; gesture.resize = undefined; gesture.members = undefined; gesture.terrainLast = undefined; gesture.areaStart = undefined; gesture.pan = true; gesture.temporaryPan = true; lastPanTime = null; }
         hoverResize = null;
         cursor(); invalidate();
       }
       return;
     }
-    const tools: Partial<Record<string, ToolMode>> = { KeyV: "select", KeyH: "pan", KeyB: "plant", KeyE: "erase" };
-    if (tools[code]) { event.preventDefault(); if (!event.repeat) setMode(tools[code]); return; }
+    const tools: Partial<Record<string, ToolMode>> = { KeyV: "select", KeyH: "pan", KeyB: "plant", KeyE: "erase", KeyT: "terrain", KeyR: "area" };
+    if (tools[code]) { event.preventDefault(); if (!event.repeat) { setMode(tools[code]); if (code === "KeyT") controllerOptions.requestTerrainTools?.(); } return; }
     if (code === "Digit7" || code === "Numpad7") { event.preventDefault(); if (!event.repeat) controllerOptions.requestPngImport?.(); return; }
     const digit = /^(?:Digit|Numpad)([1-6])$/.exec(code);
     if (digit) {
@@ -546,9 +774,12 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
     if (event.key === "Enter" && event.target !== canvas) return;
     if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "+", "=", "-", "0", "Enter", "Delete", "Backspace", "Escape"].includes(event.key)) event.preventDefault();
     if (event.key === "Delete" || event.key === "Backspace") { cancelGesture(); const object = selected(); if (object) removeObject(object); return; }
-    if (event.key === "Escape") { cancelGesture(); selectedId = null; invalidate(); return; }
+    if (event.key === "Escape") { cancelGesture(); selectedId = null; selectedFolderId = null; invalidate(); return; }
     const object = mode === "select" && !temporaryPan() ? selected() : null;
     const delta = event.shiftKey ? 10 : 1;
+    if (selectedFolderId && mode === "select" && !temporaryPan() && event.key.startsWith("Arrow")) {
+      translateSelectedFolder(event.key === "ArrowLeft" ? -delta : event.key === "ArrowRight" ? delta : 0, event.key === "ArrowUp" ? -delta : event.key === "ArrowDown" ? delta : 0); return;
+    }
     if (object && event.key.startsWith("Arrow")) {
       updateSelected({ x: Math.max(0, Math.min(options.width, object.x + (event.key === "ArrowLeft" ? -delta : event.key === "ArrowRight" ? delta : 0))),
         y: Math.max(0, Math.min(WORLD_HEIGHT, object.y + (event.key === "ArrowUp" ? -delta : event.key === "ArrowDown" ? delta : 0))) }); return;
@@ -570,12 +801,15 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
   };
   const blur = () => { spaceHeld = false; cancelGesture(); cursor(); invalidate(); };
   const auxiliary = (event: MouseEvent) => { if (event.button === 1) event.preventDefault(); };
-  const leave = () => { if (!pointers.size) { hoverResize = null; cursor(); } };
+  const leave = () => { if (!pointers.size) { hoverResize = null; options.brushCursor = undefined; cursor(); invalidate(); } };
   canvas.addEventListener("pointerdown", down); canvas.addEventListener("pointermove", move); canvas.addEventListener("pointerup", up);
   canvas.addEventListener("pointercancel", up); canvas.addEventListener("lostpointercapture", up);
   canvas.addEventListener("pointerleave", leave);
   canvas.addEventListener("wheel", wheel, { passive: false }); canvas.addEventListener("auxclick", auxiliary); editor.addEventListener("keydown", key);
   window.addEventListener("keyup", keyup); window.addEventListener("blur", blur);
+  const flushSave = () => { autosave.flush(); };
+  const visibility = () => { if (document.visibilityState === "hidden") flushSave(); };
+  window.addEventListener("pagehide", flushSave); window.addEventListener("beforeunload", flushSave); document.addEventListener?.("visibilitychange", visibility);
   const observer = new ResizeObserver(resize); observer.observe(canvas); resize();
   if (document.body && document.activeElement === document.body) editor.focus({ preventScroll: true });
   prepareCurrentAssets();
@@ -589,7 +823,10 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
     fit, zoom: zoomAt, updateSelected, undo, redo, setMode, setBrush, setImageBrush, duplicateSelected, importPng, addPngAsset,
     selectById, setActiveLayer, addLayer, renameLayer, moveLayer, deleteLayer, setLayerVisibility, setLayerLocked,
     renameSelected, setSelectedLayer, setObjectHidden, setObjectLocked, setSelectedOrder, reorderObject, focusSelected,
-    clearSelection() { cancelGesture(); selectedId = null; invalidate(); },
+    setActiveFolder, selectFolder, addFolder, renameFolder, reparentFolder, deleteFolder, moveObjectToFolder,
+    setFolderVisibility, setFolderLocked, translateSelectedFolder, deleteFolderObjects, createFolderFromArea,
+    setTerrainBrush, setTerrainSize, setClearVegetation, setBaseTrails, flushPendingSave: autosave.flush,
+    clearSelection() { cancelGesture(); selectedId = null; selectedFolderId = null; invalidate(); },
     deleteSelected() { cancelGesture(); const object = selected(); if (object) removeObject(object); },
     setLayer(layer: "trees" | "grid", value: boolean) {
       cancelGesture(); options[layer] = value;
@@ -597,12 +834,12 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
     },
     expand() { cancelGesture(); if (scene.width >= MAX_WIDTH) return; scene.width += 800; commit("Добавлено 800 единиц справа. Все твои объекты сохранились."); fit(); },
     regenerate() {
-      cancelGesture(); scene = { version: 3, seed: (scene.seed + 137) % 2_147_483_648, width: scene.width, planted: [], removed: [], modified: [], assets: scene.assets, layers: scene.layers };
-      selectedId = null; commit("Создан новый лес. Прежний вариант можно вернуть кнопкой «Отменить».");
+      cancelGesture(); scene = { version: 4, seed: (scene.seed + 137) % 2_147_483_648, width: scene.width, planted: [], removed: [], modified: [], assets: scene.assets, layers: scene.layers, folders: scene.folders, terrain: scene.terrain };
+      selectedId = null; selectedFolderId = null; commit("Создан новый лес. Прежний вариант можно вернуть кнопкой «Отменить».");
     },
-    resetEdits() { cancelGesture(); scene.planted = []; scene.removed = []; scene.modified = []; selectedId = null; commit("Все объекты возвращены к исходному состоянию. Действие можно отменить."); },
-    getSceneJson() { return serializeScene(history.getScene()); },
-    exportScene() { download(new Blob([serializeScene(history.getScene())], { type: "application/json" }), `forest-scene-${scene.seed}-${scene.width}.json`); },
+    resetEdits() { cancelGesture(); scene.planted = []; scene.removed = []; scene.modified = []; selectedId = null; selectedFolderId = null; commit("Все объекты возвращены к исходному состоянию. Действие можно отменить."); },
+    getSceneJson() { return serializeScene(scene); },
+    exportScene() { autosave.flush(); download(new Blob([serializeScene(history.getScene())], { type: "application/json" }), `forest-scene-${scene.seed}-${scene.width}.json`); },
     async importScene(json: string): Promise<boolean> {
       if (disposed) return false;
       const imported = parseScene(json);
@@ -613,26 +850,27 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
       }
       if (disposed || token !== sceneImportToken) return false;
       if (revision !== before || gesture) { message = "Во время загрузки сцена изменилась. Импорт отменён; попробуй открыть JSON ещё раз."; invalidate(); return false; }
-      scene = imported; selectedId = null; hoverResize = null; commit("Сцена открыта из JSON. Импорт можно отменить."); cursor(); fit(); return true;
+      scene = imported; selectedId = null; selectedFolderId = null; hoverResize = null; commit("Сцена открыта из JSON. Импорт можно отменить."); cursor(); fit(); return true;
     },
     async exportPng(): Promise<void> {
-      const committed = history.getScene(), trees = options.trees;
+      autosave.flush(); const committed = history.getScene(), trees = options.trees;
       try { await painter.prepareAssets(committed.assets); } catch (error) { if (!disposed) { message = `Не удалось экспортировать PNG: ${assetError(error)}`; invalidate(); } return; }
       if (disposed) return;
       const image = makeCanvas(committed.width, WORLD_HEIGHT), exportCtx = image.getContext("2d"); if (!exportCtx) return;
       painter.paint(exportCtx, { x: 0, y: 0, width: committed.width, height: WORLD_HEIGHT }, { ...options, seed: committed.seed, width: committed.width,
         trees, assets: new Map(committed.assets.map(asset => [asset.id, asset])), planted: committed.planted, removed: new Set(committed.removed),
-        modified: new Map(committed.modified.map(object => [object.id, object])), layers: committed.layers, grid: false, selectedId: null, selectionZoom: 1 });
+        modified: new Map(committed.modified.map(object => [object.id, object])), layers: committed.layers, folders: committed.folders, terrain: committed.terrain, grid: false, selectedId: null, selectedFolderId: null, selectionArea: undefined, brushCursor: undefined, previewObjects: undefined, terrainPreview: undefined, previewRevision: 0, interactiveCache: false, renderScale: 1, selectionZoom: 1 });
       const blob = await new Promise<Blob | null>(resolve => image.toBlob(resolve, "image/png"));
       if (blob) download(blob, `forest-${committed.seed}-${committed.width}.png`);
     },
     dispose() {
-      cancelGesture(); disposed = true; cancelAnimationFrame(frame); observer.disconnect(); painter.dispose();
+      cancelGesture(); autosave.flush(); disposed = true; cancelAnimationFrame(frame); observer.disconnect(); painter.dispose();
       canvas.removeEventListener("pointerdown", down); canvas.removeEventListener("pointermove", move); canvas.removeEventListener("pointerup", up);
       canvas.removeEventListener("pointercancel", up); canvas.removeEventListener("lostpointercapture", up);
       canvas.removeEventListener("pointerleave", leave);
       canvas.removeEventListener("wheel", wheel); canvas.removeEventListener("auxclick", auxiliary); editor.removeEventListener("keydown", key);
-      window.removeEventListener("keyup", keyup); window.removeEventListener("blur", blur); pointers.clear();
+      window.removeEventListener("keyup", keyup); window.removeEventListener("blur", blur);
+      window.removeEventListener("pagehide", flushSave); window.removeEventListener("beforeunload", flushSave); document.removeEventListener?.("visibilitychange", visibility); pointers.clear();
     },
   };
 }

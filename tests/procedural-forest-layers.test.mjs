@@ -7,11 +7,11 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { DEFAULT_LAYERS, defaultLayers, objectLayerId, isObjectVisible, isObjectLocked, stackKey, compareStackKeys, stackKeyBetween } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/stacking.ts");
-const { forestObjects, initialProps, compareObjects, pickObject, WORLD_HEIGHT } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/objects.ts");
-const { initialScene, cloneScene, validateScene, parseScene, serializeScene, createSceneHistory, MAX_SCENE_BYTES } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/editor-scene.ts");
-const { readPngFile, imageObjectSize } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/image-assets.ts");
-const { beginResize, resizedObject, resizeHandlePositions } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/transform.ts");
+const { DEFAULT_LAYERS, defaultLayers, objectLayerId, isObjectVisible, isObjectLocked, stackKey, compareStackKeys, stackKeyBetween } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/scene/stacking.ts");
+const { forestObjects, initialProps, compareObjects, pickObject, WORLD_HEIGHT } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/scene/objects.ts");
+const { initialScene, cloneScene, validateScene, parseScene, serializeScene, createSceneHistory, MAX_SCENE_BYTES } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/scene/editor-scene.ts");
+const { readPngFile, imageObjectSize } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/assets/image-assets.ts");
+const { beginResize, resizedObject, resizeHandlePositions } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/input/transform.ts");
 
 const rock = (id = "planted:rock", patch = {}) => ({ id, kind: "rock", x: 800, y: 700, scale: 1, variant: 0, rotation: 0, ...patch });
 const sceneWithRock = patch => ({ ...initialScene(), planted: [rock("planted:rock", patch)] });
@@ -48,19 +48,19 @@ test("default layers and new scenes are independently editable without changing 
   first.reverse(); first[0].visible = false; first[0].name = "Изменено";
   assert.deepEqual(second, expectedLayers); assert.deepEqual(DEFAULT_LAYERS, expectedLayers);
   const a = initialScene(), b = initialScene();
-  assert.equal(a.version, 3); assert.deepEqual(a.layers, expectedLayers);
+  assert.equal(a.version, 4); assert.deepEqual(a.layers, expectedLayers);
   a.layers[1].locked = true;
   assert.deepEqual(b.layers, expectedLayers); assert.deepEqual(defaultLayers(), expectedLayers);
   assert.equal(objectLayerId(rock()), "world");
   assert.equal(objectLayerId(rock("planted:background", { layerId: "background" })), "background");
 });
 
-test("v2 scenes migrate embedded PNG bytes and object edits to v3 with fresh default layers", () => {
+test("v2 scenes migrate embedded PNG bytes and object edits with fresh default layers", () => {
   const image = { ...rock("planted:picture"), kind: "image", assetId: pngAsset.id, ...imageObjectSize(pngAsset) };
   const legacy = { version: 2, seed: initialScene().seed, width: 1600, planted: [image], removed: ["prop:jetty"],
     modified: [{ ...initialProps()[0], x: 700, rotation: 20 }], assets: [pngAsset] };
   const before = structuredClone(legacy), migrated = parseScene(JSON.stringify(legacy));
-  assert.ok(migrated); assert.equal(migrated.version, 3); assert.deepEqual(migrated.layers, expectedLayers);
+  assert.ok(migrated); assert.equal(migrated.version, 4); assert.deepEqual(migrated.layers, expectedLayers);
   assert.deepEqual(migrated.planted, [image]); assert.deepEqual(migrated.removed, legacy.removed); assert.deepEqual(migrated.modified, legacy.modified);
   assert.equal(migrated.assets[0].dataUrl, pngAsset.dataUrl);
   assert.deepEqual(Buffer.from(migrated.assets[0].dataUrl.split(",")[1], "base64"), originalPng);
@@ -225,21 +225,22 @@ test("history deeply isolates layer records and key arrays, detects semantic no-
   assert.equal(history.commit(cloneScene(redone)), false); assert.equal(history.canRedo, false);
 });
 
-test("metadata-only edits may preserve generated overscan anchors but arbitrary out-of-world moves are rejected", () => {
+test("legacy v3 metadata-only edits preserve overscan anchors while arbitrary out-of-world moves remain rejected", () => {
   const source = initialScene();
+  const legacy = { ...source, version: 3 }; delete legacy.folders; delete legacy.terrain;
   const overscan = forestObjects(source.seed, { x: 0, y: 0, width: source.width, height: WORLD_HEIGHT })
     .find(object => object.x < 0 || object.y < 0 || object.x > source.width || object.y > WORLD_HEIGHT);
   assert.ok(overscan, "fixture includes a genuine generated object beyond the canvas edge");
   const metadata = { ...overscan, rotation: 0, layerId: "background", hidden: true, locked: true, name: "За краем", stackOrder: [3, 1] };
-  const scene = { ...source, modified: [metadata] };
-  assert.deepEqual(validateScene(scene), scene); assert.deepEqual(parseScene(serializeScene(scene)), scene);
+  const scene = { ...legacy, modified: [metadata] }, migrated = { ...source, modified: [metadata] };
+  assert.deepEqual(validateScene(scene), migrated); assert.deepEqual(parseScene(serializeScene(scene)), migrated);
   for (const patch of [{ x: metadata.x + .001 }, { y: metadata.y + .001 }, { x: -10000, y: -10000 }]) {
     assert.equal(validateScene({ ...scene, modified: [{ ...metadata, ...patch }] }), null);
   }
   assert.equal(validateScene({ ...source, planted: [rock("planted:outside", { x: overscan.x, y: overscan.y })] }), null);
   const original = forestObjects(source.seed, { x: 0, y: 0, width: source.width, height: WORLD_HEIGHT })
     .find(object => object.x > 0 && object.x < source.width && object.y > 0 && object.y < WORLD_HEIGHT);
-  assert.equal(validateScene({ ...source, modified: [{ ...original, x: -1, rotation: 0 }] }), null);
+  assert.equal(validateScene({ ...legacy, modified: [{ ...original, x: -1, rotation: 0 }] }), null);
 });
 
 test("large valid compact imports remain portable when pretty formatting would exceed the JSON byte limit", () => {

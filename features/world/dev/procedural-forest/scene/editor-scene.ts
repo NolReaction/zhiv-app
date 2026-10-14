@@ -1,6 +1,8 @@
-import { forestObjects, initialProps, INITIAL_SEED, INITIAL_WIDTH, MAX_WIDTH, WORLD_HEIGHT, type ForestObject } from "./objects";
-import { MAX_IMAGE_ASSETS, sceneAssetsWithinLimits, validateImageAsset, type ImageAsset } from "./image-assets";
+import { forestObjects, initialProps, INITIAL_SEED, INITIAL_WIDTH, MAX_WIDTH, OVERSCAN_EDIT_MARGIN, WORLD_HEIGHT, type ForestObject } from "./objects";
+import { MAX_IMAGE_ASSETS, sceneAssetsWithinLimits, validateImageAsset, type ImageAsset } from "@/features/world/dev/procedural-forest/assets/image-assets";
 import { MAX_SCENE_LAYERS, MAX_STACK_VALUE, defaultLayers, validStackKey, type SceneLayer } from "./stacking";
+import { MAX_SCENE_FOLDERS, defaultFolders, folderAncestors, type SceneFolder } from "./folders";
+import { cloneTerrain, initialTerrain, validateTerrain, type TerrainState } from "@/features/world/dev/procedural-forest/terrain/terrain-data";
 
 /** This namespace never reads or writes the actual game's saves. */
 export const SCENE_STORAGE_KEY = "zhiv:prototype:procedural-forest:scene:v1";
@@ -9,13 +11,14 @@ const MAX_OBJECTS = 5_000;
 const MAX_EDITS = 10_000;
 const kinds = new Set(["tree", "shrub", "rock", "ruins", "bridge", "jetty", "image"]);
 const metadataKeys = ["layerId", "hidden", "locked", "name", "stackOrder"] as const;
-const objectKeys = new Set(["id", "kind", "x", "y", "scale", "variant", "rotation", "assetId", "imageWidth", "imageHeight", ...metadataKeys]);
+const objectKeys = new Set(["id", "kind", "x", "y", "scale", "variant", "rotation", "assetId", "imageWidth", "imageHeight", "folderId", ...metadataKeys]);
 const scalarObjectKeys = [...objectKeys].filter(key => key !== "stackOrder") as (keyof ForestObject)[];
-const sceneKeys = new Set(["version", "seed", "width", "planted", "removed", "modified", "assets", "layers"]);
+const sceneKeys = new Set(["version", "seed", "width", "planted", "removed", "modified", "assets", "layers", "folders", "terrain"]);
 const layerKeys = new Set(["id", "name", "visible", "locked"]);
+const folderKeys = new Set(["id", "name", "parentId", "visible", "locked"]);
 
 export type ForestScene = {
-  version: 3;
+  version: 4;
   seed: number;
   width: number;
   planted: ForestObject[];
@@ -23,16 +26,19 @@ export type ForestScene = {
   modified: ForestObject[];
   assets: ImageAsset[];
   layers: SceneLayer[];
+  folders: SceneFolder[];
+  terrain: TerrainState;
 };
 
 export function initialScene(): ForestScene {
-  return { version: 3, seed: INITIAL_SEED, width: INITIAL_WIDTH, planted: [], removed: [], modified: [], assets: [], layers: defaultLayers() };
+  return { version: 4, seed: INITIAL_SEED, width: INITIAL_WIDTH, planted: [], removed: [], modified: [], assets: [], layers: defaultLayers(), folders: defaultFolders(), terrain: initialTerrain() };
 }
 
 export function cloneScene(scene: ForestScene): ForestScene {
   const cloneObject = (object: ForestObject) => ({ ...object, ...(object.stackOrder ? { stackOrder: [...object.stackOrder] } : {}) });
   return { ...scene, planted: scene.planted.map(cloneObject), removed: [...scene.removed], modified: scene.modified.map(cloneObject),
-    assets: scene.assets.map(asset => ({ ...asset })), layers: scene.layers.map(layer => ({ ...layer })) };
+    assets: scene.assets.map(asset => ({ ...asset })), layers: scene.layers.map(layer => ({ ...layer })),
+    folders: scene.folders.map(folder => ({ ...folder })), terrain: cloneTerrain(scene.terrain) };
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -64,9 +70,21 @@ function readLayers(value: unknown): SceneLayer[] | null {
   return ids.has("world") ? layers : null;
 }
 
+function readFolders(value: unknown): SceneFolder[] | null {
+  if (!Array.isArray(value) || value.length > MAX_SCENE_FOLDERS) return null;
+  const folders: SceneFolder[] = [], ids = new Set<string>();
+  for (const entry of value) {
+    if (!record(entry) || Object.keys(entry).some(key => !folderKeys.has(key)) || !validId(entry.id) || ids.has(entry.id)
+      || !validName(entry.name) || (entry.parentId !== null && !validId(entry.parentId))
+      || typeof entry.visible !== "boolean" || typeof entry.locked !== "boolean") return null;
+    ids.add(entry.id); folders.push({ id: entry.id, name: entry.name, parentId: entry.parentId, visible: entry.visible, locked: entry.locked });
+  }
+  return folders.every(folder => folderAncestors(folder.id, folders) !== null) ? folders : null;
+}
+
 /** Imported values are copied field by field; none are merged into live objects. */
 type SceneObject = ForestObject | (Omit<ForestObject, "kind"> & { kind: "stump-house" });
-function readObject(value: unknown, width: number, assets: ReadonlyMap<string, ImageAsset>, layerIds: ReadonlySet<string>, version: number, original?: SceneObject): SceneObject | null {
+function readObject(value: unknown, width: number, assets: ReadonlyMap<string, ImageAsset>, layerIds: ReadonlySet<string>, folderIds: ReadonlySet<string>, version: number, original?: SceneObject): SceneObject | null {
   if (!record(value) || Object.keys(value).some(key => !objectKeys.has(key))) return null;
   const legacy = version === 1;
   if (!validId(value.id) || typeof value.kind !== "string" || (!kinds.has(value.kind) && !(legacy && value.kind === "stump-house"))
@@ -75,9 +93,14 @@ function readObject(value: unknown, width: number, assets: ReadonlyMap<string, I
     || !finite(value.scale, .1, 8) || !finite(value.variant, 0, 23) || !Number.isInteger(value.variant)
     || (value.rotation !== undefined && !finite(value.rotation, -180, 180))) return null;
   const onMap = value.x >= 0 && value.x <= width && value.y >= 0 && value.y <= WORLD_HEIGHT;
-  if (!onMap && (!original || value.x !== original.x || value.y !== original.y)) return null;
-  if (version !== 3 && metadataKeys.some(key => key in value)) return null;
+  const originalAnchor = !!original && value.x === original.x && value.y === original.y;
+  const generated = !!original && !original.id.startsWith("planted:") && (original.kind === "tree" || original.kind === "shrub" || original.kind === "rock");
+  const buffered = version === 4 && generated && value.x >= -OVERSCAN_EDIT_MARGIN && value.x <= width + OVERSCAN_EDIT_MARGIN
+    && value.y >= -OVERSCAN_EDIT_MARGIN && value.y <= WORLD_HEIGHT + OVERSCAN_EDIT_MARGIN;
+  if (!onMap && !originalAnchor && !buffered) return null;
+  if ((version < 3 && metadataKeys.some(key => key in value)) || (version < 4 && "folderId" in value)) return null;
   if ((value.layerId !== undefined && (!validId(value.layerId) || !layerIds.has(value.layerId)))
+    || (value.folderId !== undefined && value.folderId !== null && (!validId(value.folderId) || !folderIds.has(value.folderId)))
     || (value.hidden !== undefined && typeof value.hidden !== "boolean") || (value.locked !== undefined && typeof value.locked !== "boolean")
     || (value.name !== undefined && !validName(value.name)) || (value.stackOrder !== undefined && !validStackKey(value.stackOrder))) return null;
   const object: SceneObject = { id: value.id, kind: value.kind as SceneObject["kind"], x: value.x, y: value.y,
@@ -90,6 +113,7 @@ function readObject(value: unknown, width: number, assets: ReadonlyMap<string, I
     object.assetId = asset.id; object.imageWidth = value.imageWidth; object.imageHeight = value.imageHeight;
   } else if (["assetId", "imageWidth", "imageHeight"].some(key => key in value)) return null;
   if (value.layerId !== undefined) object.layerId = value.layerId as string;
+  if (value.folderId !== undefined) object.folderId = value.folderId as string | null;
   if (value.hidden !== undefined) object.hidden = value.hidden as boolean;
   if (value.locked !== undefined) object.locked = value.locked as boolean;
   if (value.name !== undefined) object.name = value.name as string;
@@ -98,16 +122,20 @@ function readObject(value: unknown, width: number, assets: ReadonlyMap<string, I
 }
 
 export function validateScene(value: unknown): ForestScene | null {
-  if (!record(value) || Object.keys(value).some(key => !sceneKeys.has(key)) || (value.version !== 1 && value.version !== 2 && value.version !== 3)
+  if (!record(value) || Object.keys(value).some(key => !sceneKeys.has(key)) || (value.version !== 1 && value.version !== 2 && value.version !== 3 && value.version !== 4)
     || (value.version === 1 && "assets" in value) || (value.version !== 1 && (!Array.isArray(value.assets) || value.assets.length > MAX_IMAGE_ASSETS))
-    || (value.version !== 3 && "layers" in value)
+    || (value.version < 3 && "layers" in value) || (value.version !== 4 && ("folders" in value || "terrain" in value))
     || !finite(value.seed, 0, 2_147_483_647) || !Number.isInteger(value.seed)
     || !finite(value.width, INITIAL_WIDTH, MAX_WIDTH) || (value.width - INITIAL_WIDTH) % 800 !== 0
     || !Array.isArray(value.planted) || !Array.isArray(value.removed) || !Array.isArray(value.modified)
     || value.planted.length > MAX_OBJECTS || value.removed.length > MAX_EDITS || value.modified.length > MAX_EDITS) return null;
-  const layers = value.version === 3 ? readLayers(value.layers) : defaultLayers();
+  const layers = value.version >= 3 ? readLayers(value.layers) : defaultLayers();
   if (!layers) return null;
+  const folders = value.version === 4 ? readFolders(value.folders) : defaultFolders();
+  const terrain = value.version === 4 ? validateTerrain(value.terrain, value.width) : initialTerrain();
+  if (!folders || !terrain) return null;
   const layerIds = new Set(layers.map(layer => layer.id));
+  const folderIds = new Set(folders.map(folder => folder.id));
   const assets: ImageAsset[] = [];
   const byAssetId = new Map<string, ImageAsset>();
   if (value.version !== 1) {
@@ -122,7 +150,7 @@ export function validateScene(value: unknown): ForestScene | null {
   const known = new Map<string, SceneObject>(baseObjects.map(object => [object.id, object]));
   const planted: ForestObject[] = [];
   for (const entry of value.planted) {
-    const object = readObject(entry, value.width, byAssetId, layerIds, value.version);
+    const object = readObject(entry, value.width, byAssetId, layerIds, folderIds, value.version);
     if (!object || !object.id.startsWith("planted:") || known.has(object.id)) return null;
     if (object.kind !== "stump-house") planted.push(object);
     known.set(object.id, object);
@@ -136,13 +164,13 @@ export function validateScene(value: unknown): ForestScene | null {
   const modifiedIds = new Set<string>();
   for (const entry of value.modified) {
     const original = record(entry) && typeof entry.id === "string" ? known.get(entry.id) : undefined;
-    const object = readObject(entry, value.width, byAssetId, layerIds, value.version, original);
+    const object = readObject(entry, value.width, byAssetId, layerIds, folderIds, value.version, original);
     if (!object || !original || original.kind !== object.kind || removed.has(object.id) || modifiedIds.has(object.id)) return null;
     if (object.kind !== "stump-house") modified.push(object);
     modifiedIds.add(object.id);
   }
-  return { version: 3, seed: value.seed, width: value.width, planted,
-    removed: [...removed].filter(id => known.get(id)?.kind !== "stump-house"), modified, assets, layers };
+  return { version: 4, seed: value.seed, width: value.width, planted,
+    removed: [...removed].filter(id => known.get(id)?.kind !== "stump-house"), modified, assets, layers, folders, terrain };
 }
 
 export function parseScene(json: string): ForestScene | null {
@@ -167,6 +195,12 @@ function sameScene(a: ForestScene, b: ForestScene): boolean {
       const other = b.layers[index];
       return layer.id === other.id && layer.name === other.name && layer.visible === other.visible && layer.locked === other.locked;
     })
+    && a.folders.length === b.folders.length && a.folders.every((folder, index) => {
+      const other = b.folders[index];
+      return folder.id === other.id && folder.name === other.name && folder.parentId === other.parentId && folder.visible === other.visible && folder.locked === other.locked;
+    })
+    && a.terrain.baseTrails === b.terrain.baseTrails && Object.keys(a.terrain.cells).length === Object.keys(b.terrain.cells).length
+    && Object.keys(a.terrain.cells).every(key => a.terrain.cells[key] === b.terrain.cells[key])
     && a.assets.length === b.assets.length && a.assets.every((asset, index) => {
       const other = b.assets[index];
       return asset.id === other.id && asset.name === other.name && asset.width === other.width && asset.height === other.height && asset.dataUrl === other.dataUrl;
@@ -210,5 +244,5 @@ export function readStoredScene(storage: SceneStorage | null): { scene: ForestSc
 
 export function writeStoredScene(storage: SceneStorage | null, scene: ForestScene): boolean {
   if (!storage) return false;
-  try { storage.setItem(SCENE_STORAGE_KEY, serializeScene(scene)); return true; } catch { return false; }
+  try { storage.setItem(SCENE_STORAGE_KEY, JSON.stringify(scene)); return true; } catch { return false; }
 }

@@ -1,4 +1,5 @@
 import type { ForestObject } from "./objects";
+import { DEFAULT_FOLDERS, isFolderLocked, isFolderVisible, objectFolderId, type SceneFolder } from "./folders";
 
 export type SceneLayer = { id: string; name: string; visible: boolean; locked: boolean };
 export const MAX_SCENE_LAYERS = 32;
@@ -13,13 +14,13 @@ export const DEFAULT_LAYERS: readonly SceneLayer[] = Object.freeze([
 export function defaultLayers(): SceneLayer[] { return DEFAULT_LAYERS.map(layer => ({ ...layer })); }
 export function objectLayerId(object: ForestObject): string { return object.layerId ?? "world"; }
 
-export function isObjectVisible(object: ForestObject, layers: readonly SceneLayer[] = DEFAULT_LAYERS): boolean {
-  return !object.hidden && layers.some(layer => layer.id === objectLayerId(object) && layer.visible);
+export function isObjectVisible(object: ForestObject, layers: readonly SceneLayer[] = DEFAULT_LAYERS, folders: readonly SceneFolder[] = DEFAULT_FOLDERS): boolean {
+  return !object.hidden && layers.some(layer => layer.id === objectLayerId(object) && layer.visible) && isFolderVisible(objectFolderId(object, folders), folders);
 }
 
-export function isObjectLocked(object: ForestObject, layers: readonly SceneLayer[] = DEFAULT_LAYERS): boolean {
+export function isObjectLocked(object: ForestObject, layers: readonly SceneLayer[] = DEFAULT_LAYERS, folders: readonly SceneFolder[] = DEFAULT_FOLDERS): boolean {
   const layer = layers.find(layer => layer.id === objectLayerId(object));
-  return !!object.locked || !layer || layer.locked;
+  return !!object.locked || !layer || layer.locked || isFolderLocked(objectFolderId(object, folders), folders);
 }
 
 /** Props preserve their authored contact depth; manual placement can override this key. */

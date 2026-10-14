@@ -1,6 +1,6 @@
 "use client";
 import { Copy, Trash2 } from "lucide-react";
-import type { ForestObject, ObjectKind } from "./objects";
+import type { ForestObject, ObjectKind } from "@/features/world/dev/procedural-forest/scene/objects";
 import { EditorButton } from "./editor-button";
 import styles from "./procedural-forest-preview.module.css";
 

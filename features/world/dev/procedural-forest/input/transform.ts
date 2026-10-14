@@ -1,4 +1,4 @@
-import { objectAngle, objectCorners, objectLocalBounds, type ForestObject } from "./objects";
+import { objectAngle, objectCorners, objectLocalBounds, type ForestObject } from "@/features/world/dev/procedural-forest/scene/objects";
 
 export type ResizePoint = { x: number; y: number };
 /** Clockwise: top-left, top-right, bottom-right, bottom-left in object coordinates. */

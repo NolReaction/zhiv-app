@@ -7,11 +7,11 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { initialScene, cloneScene, validateScene, parseScene, serializeScene, createSceneHistory, readStoredScene, writeStoredScene, SCENE_STORAGE_KEY, MAX_SCENE_BYTES } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/editor-scene.ts");
-const { forestObjects, initialProps, objectCorners, WORLD_HEIGHT } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/objects.ts");
-const { createForestPainter } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/renderer.ts");
-const { createForestController } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/controller.ts");
-const { readPngFile, imageObjectSize } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/image-assets.ts");
+const { initialScene, cloneScene, validateScene, parseScene, serializeScene, createSceneHistory, readStoredScene, writeStoredScene, SCENE_STORAGE_KEY, MAX_SCENE_BYTES } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/scene/editor-scene.ts");
+const { forestObjects, initialProps, objectCorners, WORLD_HEIGHT } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/scene/objects.ts");
+const { createForestPainter } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/rendering/renderer.ts");
+const { createForestController } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/input/controller.ts");
+const { readPngFile, imageObjectSize } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/assets/image-assets.ts");
 
 function editedScene() {
   const scene = initialScene();
@@ -39,7 +39,7 @@ test("versioned JSON round trips edited vegetation and all authored props withou
 test("validation rejects entire invalid scenes, duplicate IDs, unknown references, kind changes and unsafe keys", () => {
   const source = editedScene();
   const invalid = [
-    { ...source, version: 4 }, { ...source, seed: NaN }, { ...source, seed: 2.5 },
+    { ...source, version: 5 }, { ...source, seed: NaN }, { ...source, seed: 2.5 },
     { ...source, width: 2000 }, { ...source, width: Infinity },
     { ...source, planted: [source.planted[0], source.planted[0]] },
     { ...source, planted: [{ ...source.planted[0], id: source.modified[0].id }] },
@@ -122,11 +122,11 @@ test("storage restoration is isolated, survives reload and handles denial, corru
 function controllerHarness(initialJson = null, focusBody = false, settings = {}) {
   const previousGlobals = new Map();
   const install = (key, value) => { previousGlobals.set(key, Object.getOwnPropertyDescriptor(globalThis, key)); Object.defineProperty(globalThis, key, { value, configurable: true, writable: true }); };
-  const frames = new Map(), handlers = new Map(), editorHandlers = new Map(), windowHandlers = new Map(), captured = new Set();
-  let frameId = 0, writes = 0, focuses = 0, pngRequests = 0, harnessDisposed = false, lastStatus;
+  const frames = new Map(), handlers = new Map(), editorHandlers = new Map(), windowHandlers = new Map(), captured = new Set(), idle = new Map(), documentHandlers = new Map();
+  let frameId = 0, idleId = 0, reports = 0, writes = 0, focuses = 0, pngRequests = 0, harnessDisposed = false, lastStatus;
   const draws = [], translations = [], downloads = [];
   const values = new Map(initialJson === null ? [] : [[SCENE_STORAGE_KEY, initialJson]]);
-  const storage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => { writes++; values.set(key, value); } };
+  const storage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => { if (settings.failWrites) throw new Error("quota"); writes++; values.set(key, value); } };
   const noop = () => {};
   const ctx = new Proxy({}, { get: (target, key) => target[key] ?? (key === "drawImage" ? (...args) => draws.push(args) : key === "translate" ? (...args) => translations.push(args)
     : String(key).includes("Gradient") ? () => ({ addColorStop: noop }) : noop) });
@@ -137,14 +137,15 @@ function controllerHarness(initialJson = null, focusBody = false, settings = {})
     closest: selector => selector === "[data-forest-editor]" ? editor : null,
     setPointerCapture: id => captured.add(id), hasPointerCapture: id => captured.has(id), releasePointerCapture: id => captured.delete(id) };
   install("window", { devicePixelRatio: 1, localStorage: storage,
+    ...(settings.deferredSave ? { requestIdleCallback: callback => { const id = ++idleId; idle.set(id, callback); return id; }, cancelIdleCallback: id => idle.delete(id) } : {}),
     addEventListener: (type, handler) => windowHandlers.set(type, handler), removeEventListener: type => windowHandlers.delete(type), setTimeout: callback => { callback(); return 0; } });
   const body = {};
-  install("document", { body, activeElement: focusBody ? body : {}, createElement: tag => tag === "a" ? { click() { downloads.push(this.download); } }
+  install("document", { body, addEventListener: (type, handler) => documentHandlers.set(type, handler), removeEventListener: type => documentHandlers.delete(type), activeElement: focusBody ? body : {}, createElement: tag => tag === "a" ? { click() { downloads.push(this.download); } }
     : { width: 0, height: 0, getContext: () => ctx, toBlob: callback => callback(new Blob(["PNG"], { type: "image/png" })) } });
   install("requestAnimationFrame", callback => { const id = ++frameId; frames.set(id, callback); return id; });
   install("cancelAnimationFrame", id => frames.delete(id));
   install("ResizeObserver", class { observe() {} disconnect() {} });
-  const controller = createForestController(canvas, status => { lastStatus = status; }, {
+  const controller = createForestController(canvas, status => { reports++; lastStatus = status; }, {
     loadImage: async dataUrl => ({ width: 2, height: 1, dataUrl }), ...settings,
     requestPngImport: () => { pngRequests++; settings.requestPngImport?.(); },
   });
@@ -152,6 +153,12 @@ function controllerHarness(initialJson = null, focusBody = false, settings = {})
     controller,
     scene: () => JSON.parse(controller.getSceneJson()),
     get writes() { return writes; },
+    get reports() { return reports; },
+    get pendingSaves() { return idle.size; },
+    savedScene: () => JSON.parse(values.get(SCENE_STORAGE_KEY)),
+    flushIdle() { const pending = [...idle.values()]; idle.clear(); for (const callback of pending) callback(); },
+    lifecycle(type) { windowHandlers.get(type)?.(); },
+    hidden() { document.visibilityState = "hidden"; documentHandlers.get("visibilitychange")?.(); },
     get focuses() { return focuses; },
     get pngRequests() { return pngRequests; },
     get draws() { return draws; },
@@ -843,5 +850,320 @@ test("explicit front/back commands pin an automatic boundary object even before 
     assert.equal(harness.status.objectList.at(-1).id, "planted:a");
     const stable = harness.controller.getSceneJson(); harness.controller.setSelectedOrder("back"); assert.equal(harness.controller.getSceneJson(), stable);
     harness.controller.setSelectedOrder("backward"); assert.equal(harness.controller.getSceneJson(), stable, "one-step moves at the edge remain no-ops");
+  } finally { harness.dispose(); }
+});
+
+function groupedScene() {
+  const scene = stackedScene();
+  scene.folders.push({ id: "group:north", name: "Север", parentId: null, visible: true, locked: false },
+    { id: "group:child", name: "Детали", parentId: "group:north", visible: true, locked: false });
+  scene.planted = scene.planted.map((object, index) => ({ ...object, x: 700 + index * 100, y: 900,
+    folderId: index === 2 ? "group:child" : "group:north", hidden: index === 1, stackOrder: [index] }));
+  return scene;
+}
+
+test("folders move nested and hidden members together, preserve offsets/order, and commit or cancel the whole gesture", () => {
+  const fixture = groupedScene(), harness = controllerHarness(serializeScene(fixture));
+  try {
+    harness.controller.selectFolder("group:north"); harness.flush();
+    assert.equal(harness.status.selected, null); assert.equal(harness.status.selectedFolder.count, 3);
+    const stableList = harness.status.objectList, start = harness.screen(700, 880), before = harness.controller.getSceneJson();
+    harness.pointer("pointerdown", start.x, start.y); harness.pointer("pointermove", start.x + 30, start.y + 20); harness.flush();
+    assert.equal(harness.controller.getSceneJson(), before, "group preview never mutates the committed scene");
+    assert.equal(harness.status.objectList, stableList); assert.equal(harness.writes, 0);
+    assert.ok(harness.status.selectedFolder.bounds.x > 667);
+    harness.pointer("pointercancel", start.x + 30, start.y + 20); harness.flush(); assert.equal(harness.controller.getSceneJson(), before);
+    harness.pointer("pointerdown", start.x, start.y); harness.pointer("pointermove", start.x + 60, start.y + 40);
+    harness.pointer("pointerup", start.x + 60, start.y + 40); harness.flush();
+    const moved = harness.scene(); assert.equal(harness.writes, 1);
+    moved.planted.forEach((object, index) => { assert.ok(Math.abs(object.x - fixture.planted[index].x - 60 / .5875) < 1e-9);
+      assert.ok(Math.abs(object.y - 900 - 40 / .5875) < 1e-9); assert.deepEqual(object.stackOrder, [index]); });
+    assert.equal(moved.planted[1].hidden, true); assert.ok(parseScene(harness.controller.getSceneJson()));
+    harness.controller.undo(); assert.equal(harness.controller.getSceneJson(), before);
+  } finally { harness.dispose(); }
+});
+
+test("inherited folder locks guard transforms, bulk deletion, transfer and canvas dragging while metadata can still unlock", () => {
+  const fixture = groupedScene(); fixture.folders.find(folder => folder.id === "group:child").locked = true;
+  const harness = controllerHarness(serializeScene(fixture));
+  try {
+    harness.controller.selectFolder("group:north"); harness.flush(); assert.equal(harness.status.selectedFolder.locked, true);
+    const before = harness.controller.getSceneJson(), start = harness.screen(700, 880);
+    harness.controller.translateSelectedFolder(50, 20); harness.controller.deleteFolderObjects("group:north"); harness.controller.deleteFolder("group:north");
+    harness.pointer("pointerdown", start.x, start.y); harness.pointer("pointermove", start.x + 40, start.y); harness.pointer("pointerup", start.x + 40, start.y);
+    assert.equal(harness.controller.getSceneJson(), before); assert.equal(harness.writes, 0);
+    harness.controller.selectById("planted:c"); harness.controller.updateSelected({ x: 1200 }); harness.controller.moveObjectToFolder("planted:c", null);
+    assert.equal(harness.controller.getSceneJson(), before);
+    harness.controller.renameFolder("group:child", "Замкнутая папка"); harness.controller.setFolderLocked("group:child", false);
+    harness.controller.selectFolder("group:north"); harness.controller.translateSelectedFolder(10, 20);
+    assert.equal(harness.scene().planted[2].x, 910); assert.equal(harness.scene().planted[2].y, 920);
+    harness.controller.undo(); assert.equal(harness.scene().planted[2].x, 900);
+  } finally { harness.dispose(); }
+});
+
+test("folder hierarchy, membership and inherited visibility round trip and deleting a folder preserves its children and actors", () => {
+  const harness = controllerHarness(serializeScene(groupedScene()));
+  try {
+    const folder = harness.controller.addFolder(); harness.controller.renameFolder(folder, "Мои вещи");
+    harness.controller.reparentFolder(folder, "group:north");
+    const beforeCycle = harness.controller.getSceneJson(); harness.controller.reparentFolder("group:north", folder); assert.equal(harness.controller.getSceneJson(), beforeCycle);
+    harness.controller.moveObjectToFolder("planted:a", folder); harness.controller.setFolderVisibility("group:north", false);
+    harness.controller.selectById("planted:a"); harness.flush(); assert.equal(harness.status.selectedHidden, true);
+    const hiddenScene = parseScene(harness.controller.getSceneJson()); assert.ok(hiddenScene);
+    harness.controller.undo(); harness.flush(); assert.equal(harness.status.selectedHidden, false);
+    harness.controller.deleteFolder("group:north");
+    const scene = harness.scene(); assert.equal(scene.planted.length, 3); assert.ok(!scene.folders.some(entry => entry.id === "group:north"));
+    assert.equal(scene.folders.find(entry => entry.id === folder).parentId, null); assert.equal(scene.planted[1].folderId, null);
+    harness.controller.undo(); assert.ok(harness.scene().folders.some(entry => entry.id === "group:north"));
+    harness.controller.moveObjectToFolder("planted:a", undefined); assert.equal(harness.scene().planted[0].folderId, undefined);
+    harness.controller.setActiveFolder(folder); harness.controller.setBrush("rock"); harness.controller.setMode("plant"); harness.key("Enter");
+    assert.equal(harness.scene().planted.at(-1).folderId, folder);
+    harness.controller.setFolderVisibility(folder, false); const count = harness.scene().planted.length; harness.key("Enter"); assert.equal(harness.scene().planted.length, count);
+  } finally { harness.dispose(); }
+});
+
+test("list reordering adopts target folder and layer in one command and automatic membership can be restored", () => {
+  const fixture = groupedScene(); fixture.planted[2].layerId = "foreground";
+  const harness = controllerHarness(serializeScene(fixture));
+  try {
+    harness.controller.reorderObject("planted:a", "planted:c", "before"); const scene = harness.scene();
+    assert.equal(scene.planted[0].folderId, "group:child"); assert.equal(scene.planted[0].layerId, "foreground"); assert.equal(harness.writes, 1);
+    harness.controller.undo(); assert.equal(harness.scene().planted[0].folderId, "group:north"); assert.equal(harness.scene().planted[0].layerId, undefined);
+  } finally { harness.dispose(); }
+});
+
+test("group deltas clamp jointly to world limits and generated overscan remains valid after movement", () => {
+  const fixture = groupedScene(); fixture.planted[0].x = 5; fixture.planted[2].x = 1595;
+  const harness = controllerHarness(serializeScene(fixture));
+  try {
+    harness.controller.selectFolder("group:north"); harness.controller.translateSelectedFolder(100, -1000);
+    const moved = harness.scene().planted; assert.equal(moved[0].x, 10); assert.equal(moved[2].x, 1600); assert.equal(moved[0].y, 0);
+    assert.equal(moved[2].x - moved[0].x, 1590); assert.ok(parseScene(harness.controller.getSceneJson()));
+    harness.controller.resetEdits(); harness.controller.selectFolder("trees"); harness.controller.translateSelectedFolder(10, 10);
+    assert.ok(harness.scene().modified.length > 0); assert.ok(parseScene(harness.controller.getSceneJson()), "generated overscan edits remain serializable");
+  } finally { harness.dispose(); }
+});
+
+test("terrain strokes interpolate, save one command and restore cells without regenerating forest or moving locked objects", () => {
+  const fixture = groupedScene(); fixture.folders.find(folder => folder.id === "group:north").locked = true;
+  const harness = controllerHarness(serializeScene(fixture));
+  try {
+    harness.controller.setActiveFolder("group:north"); harness.controller.setActiveLayer("world"); harness.controller.setLayerLocked("world", true);
+    const actors = harness.scene().planted, writes = harness.writes;
+    harness.key("е", { code: "KeyT" }); harness.flush(); assert.equal(harness.status.mode, "terrain");
+    harness.controller.setTerrainBrush("water"); harness.controller.setTerrainSize(48);
+    const start = harness.screen(600, 600), end = harness.screen(1000, 600);
+    harness.pointer("pointerdown", start.x, start.y); harness.pointer("pointermove", end.x, end.y); harness.flush();
+    assert.deepEqual(harness.scene().terrain.cells, {}); assert.equal(harness.writes, writes);
+    harness.pointer("pointerup", end.x, end.y); const painted = harness.scene(); assert.equal(harness.writes, writes + 1);
+    for (let cx = 38; cx < 62; cx++) assert.equal(painted.terrain.cells[`${cx}:37`], "water", "sparse events leave no gaps");
+    assert.deepEqual(painted.planted, actors); assert.equal(painted.seed, fixture.seed); assert.ok(parseScene(harness.controller.getSceneJson()));
+    harness.controller.undo(); assert.deepEqual(harness.scene().terrain.cells, {}); harness.controller.redo();
+    harness.controller.setTerrainBrush("restore"); harness.pointer("pointerdown", start.x, start.y); harness.pointer("pointermove", end.x, end.y); harness.pointer("pointerup", end.x, end.y);
+    assert.deepEqual(harness.scene().terrain.cells, {});
+    harness.controller.setBaseTrails(false); assert.equal(harness.scene().terrain.baseTrails, false); harness.controller.undo(); assert.equal(harness.scene().terrain.baseTrails, true);
+  } finally { harness.dispose(); }
+});
+
+test("terrain and area previews are canceled by pointercancel, Escape, blur, pinch and temporary Space pan", () => {
+  const harness = controllerHarness(serializeScene(groupedScene()));
+  try {
+    const start = harness.screen(650, 750), end = harness.screen(950, 1000);
+    for (const mode of ["terrain", "area"]) for (const stop of ["pointercancel", "Escape", "blur", "pinch", "Space"]) {
+      harness.controller.fit(); harness.controller.setMode(mode); const before = harness.controller.getSceneJson(), writes = harness.writes;
+      harness.pointer("pointerdown", start.x, start.y); harness.pointer("pointermove", end.x, end.y);
+      if (stop === "pointercancel") harness.pointer("pointercancel", end.x, end.y);
+      else if (stop === "Escape") harness.key("Escape");
+      else if (stop === "blur") harness.blur();
+      else if (stop === "Space") { harness.key(" ", { code: "Space" }); harness.keyup(" ", { code: "Space" }); }
+      else { harness.pointer("pointerdown", end.x + 50, end.y, 2); harness.pointer("pointerup", end.x + 50, end.y, 2); }
+      harness.pointer("pointerup", end.x, end.y); assert.equal(harness.controller.getSceneJson(), before, `${mode}/${stop}`); assert.equal(harness.writes, writes);
+    }
+  } finally { harness.dispose(); }
+});
+
+test("terrain clearing removes only visible unlocked vegetation in the stroke, and planting uses edited water/grass", () => {
+  const fixture = stackedScene(); fixture.planted = [
+    { id: "planted:tree", kind: "tree", x: 600, y: 600, scale: 1, variant: 0 },
+    { id: "planted:locked", kind: "shrub", x: 608, y: 600, scale: 1, variant: 0, locked: true },
+    { id: "planted:hidden", kind: "tree", x: 616, y: 600, scale: 1, variant: 0, hidden: true },
+    { id: "planted:rock", kind: "rock", x: 624, y: 600, scale: 1, variant: 0 }];
+  const harness = controllerHarness(serializeScene(fixture));
+  try {
+    harness.controller.setMode("terrain"); harness.controller.setClearVegetation(true); harness.controller.setTerrainBrush("water"); const p = harness.screen(608, 600);
+    harness.pointer("pointerdown", p.x, p.y); harness.pointer("pointerup", p.x, p.y);
+    assert.deepEqual(harness.scene().planted.map(object => object.id), ["planted:locked", "planted:hidden", "planted:rock"]);
+    harness.controller.undo(); assert.equal(harness.scene().planted.length, 4); assert.deepEqual(harness.scene().terrain.cells, {});
+    harness.controller.setClearVegetation(false); harness.pointer("pointerdown", p.x, p.y); harness.pointer("pointerup", p.x, p.y);
+    harness.controller.setBrush("tree"); harness.controller.setMode("plant"); harness.pointer("pointerdown", p.x, p.y); harness.pointer("pointerup", p.x, p.y); assert.equal(harness.scene().planted.length, 4);
+    harness.controller.setMode("terrain"); harness.controller.setTerrainBrush("grass"); harness.pointer("pointerdown", p.x, p.y); harness.pointer("pointerup", p.x, p.y);
+    harness.controller.setMode("plant"); harness.pointer("pointerdown", p.x, p.y); harness.pointer("pointerup", p.x, p.y); assert.equal(harness.scene().planted.length, 5);
+  } finally { harness.dispose(); }
+});
+
+test("area selection creates one practical folder with visible unlocked anchors and preserves existing layers/manual order", () => {
+  const fixture = groupedScene(); fixture.planted[2].locked = true; fixture.planted[0].layerId = "foreground";
+  const harness = controllerHarness(serializeScene(fixture));
+  try {
+    harness.key("к", { code: "KeyR" }); harness.flush(); assert.equal(harness.status.mode, "area");
+    const start = harness.screen(650, 850), end = harness.screen(950, 950), before = harness.controller.getSceneJson();
+    harness.pointer("pointerdown", start.x, start.y); harness.pointer("pointermove", end.x, end.y); assert.equal(harness.controller.getSceneJson(), before); assert.equal(harness.writes, 0);
+    harness.pointer("pointerup", end.x, end.y); harness.flush(); const scene = harness.scene(), folder = harness.status.selectedFolder.folder;
+    assert.equal(harness.writes, 1); assert.match(folder.name, /^Группа/); assert.equal(harness.status.mode, "select"); assert.equal(harness.status.selectedFolder.count, 1);
+    assert.equal(scene.planted[0].folderId, folder.id); assert.equal(scene.planted[0].layerId, "foreground"); assert.deepEqual(scene.planted[0].stackOrder, [0]);
+    assert.equal(scene.planted[1].folderId, "group:north"); assert.equal(scene.planted[2].folderId, "group:child");
+    harness.controller.undo(); assert.equal(harness.controller.getSceneJson(), before);
+    const writes = harness.writes; assert.equal(harness.controller.createFolderFromArea({ x: 0, y: 0, width: 10, height: 10 }), null); assert.equal(harness.writes, writes);
+  } finally { harness.dispose(); }
+});
+
+test("idle autosave coalesces commands, reports pending, and lifecycle/export/dispose flush the latest committed snapshot", () => {
+  const harness = controllerHarness(serializeScene(groupedScene()), false, { deferredSave: true });
+  try {
+    harness.controller.selectById("planted:a"); harness.controller.updateSelected({ x: 710 }); harness.controller.updateSelected({ x: 720 }); harness.controller.renameSelected("Свежая правка"); harness.flush();
+    assert.equal(harness.writes, 0); assert.equal(harness.pendingSaves, 1); assert.equal(harness.status.storage, "pending");
+    harness.lifecycle("pagehide"); assert.equal(harness.writes, 1); assert.equal(harness.pendingSaves, 0); assert.equal(harness.savedScene().planted[0].x, 720); assert.equal(harness.savedScene().planted[0].name, "Свежая правка");
+    harness.flush(); assert.equal(harness.status.storage, "saved");
+    harness.controller.updateSelected({ x: 730 }); harness.hidden(); assert.equal(harness.writes, 2); assert.equal(harness.savedScene().planted[0].x, 730);
+    harness.controller.updateSelected({ x: 740 }); harness.controller.exportScene(); assert.equal(harness.writes, 3);
+    harness.controller.updateSelected({ x: 750 }); harness.flushIdle(); assert.equal(harness.writes, 4);
+    harness.controller.updateSelected({ x: 760 }); harness.controller.dispose(); assert.equal(harness.writes, 5); assert.equal(harness.savedScene().planted[0].x, 760);
+  } finally { harness.dispose(); }
+});
+
+test("camera pan emits no redundant status and preserves committed list/assets/layers/folders references through drag previews", () => {
+  const harness = controllerHarness(serializeScene(groupedScene()));
+  try {
+    harness.controller.selectById("planted:a"); harness.flush(); const { objectList, assets, layers, folders } = harness.status, reports = harness.reports;
+    harness.controller.setMode("pan"); harness.flush(); const panReports = harness.reports;
+    harness.pointer("pointerdown", 500, 500); harness.pointer("pointermove", 520, 510); harness.flush(); const activeReports = harness.reports;
+    harness.pointer("pointermove", 540, 520); harness.flush(); assert.equal(harness.reports, activeReports, "pure camera frames don't update React state");
+    harness.pointer("pointerup", 540, 520); harness.flush(); assert.equal(harness.reports, panReports); assert.ok(panReports > reports);
+    assert.equal(harness.status.objectList, objectList); assert.equal(harness.status.assets, assets); assert.equal(harness.status.layers, layers); assert.equal(harness.status.folders, folders);
+    harness.controller.fit(); harness.controller.setMode("select"); const start = harness.screen(700, 880);
+    harness.pointer("pointerdown", start.x, start.y); harness.pointer("pointermove", start.x + 40, start.y); harness.flush();
+    assert.equal(harness.status.objectList, objectList); assert.equal(harness.status.assets, assets); assert.equal(harness.status.layers, layers); assert.equal(harness.status.folders, folders);
+    harness.pointer("pointercancel", start.x + 40, start.y);
+  } finally { harness.dispose(); }
+});
+
+test("restoring ground never deletes vegetation even while the clearing preference remains enabled", () => {
+  const fixture = stackedScene(); fixture.planted = [{ id: "planted:tree", kind: "tree", x: 600, y: 600, scale: 1, variant: 0 }];
+  fixture.terrain.cells["37:37"] = "water";
+  const harness = controllerHarness(serializeScene(fixture));
+  try {
+    harness.controller.setClearVegetation(true); harness.controller.setTerrainBrush("restore"); harness.controller.setMode("terrain");
+    const p = harness.screen(600, 600); harness.pointer("pointerdown", p.x, p.y); harness.pointer("pointerup", p.x, p.y);
+    assert.equal(harness.scene().planted.length, 1); assert.deepEqual(harness.scene().terrain.cells, {});
+    harness.controller.undo(); assert.equal(harness.scene().terrain.cells["37:37"], "water"); assert.equal(harness.scene().planted.length, 1);
+  } finally { harness.dispose(); }
+});
+
+test("deferred storage failure reports unavailable and a queued undo saves the latest state instead of the discarded edit", () => {
+  const fixture = groupedScene(), denied = controllerHarness(serializeScene(fixture), false, { deferredSave: true, failWrites: true });
+  try {
+    denied.controller.selectById("planted:a"); denied.controller.updateSelected({ x: 740 }); denied.flush(); assert.equal(denied.status.storage, "pending");
+    assert.equal(denied.controller.flushPendingSave(), false); denied.flush(); assert.equal(denied.status.storage, "unavailable"); assert.equal(denied.writes, 0);
+  } finally { denied.dispose(); }
+  const harness = controllerHarness(serializeScene(fixture), false, { deferredSave: true });
+  try {
+    harness.controller.selectById("planted:a"); harness.controller.updateSelected({ x: 740 }); harness.controller.undo();
+    assert.equal(harness.pendingSaves, 1); harness.flushIdle(); assert.equal(harness.writes, 1); assert.deepEqual(harness.savedScene(), fixture);
+  } finally { harness.dispose(); }
+});
+
+test("terrain and area physical hotkeys invoke tools from toolbar focus and leave text editing untouched", () => {
+  let requests = 0; const harness = controllerHarness(null, false, { requestTerrainTools: () => requests++ });
+  try {
+    assert.equal(harness.key("е", { code: "KeyT", target: harness.button }), true); harness.flush(); assert.equal(harness.status.mode, "terrain"); assert.equal(requests, 1);
+    harness.key("е", { code: "KeyT", target: harness.button, repeat: true }); assert.equal(requests, 1);
+    assert.equal(harness.key("к", { code: "KeyR", target: harness.input }), false); harness.flush(); assert.equal(harness.status.mode, "terrain");
+    harness.key("к", { code: "KeyR", target: harness.button }); harness.flush(); assert.equal(harness.status.mode, "area");
+  } finally { harness.dispose(); }
+});
+
+test("single generated actor stays within the world while its selected folder can translate into the overscan margin", () => {
+  const fixture = initialScene(), base = [...forestObjects(fixture.seed, { x: 0, y: 0, width: fixture.width, height: WORLD_HEIGHT }), ...initialProps()];
+  const object = base.find(entry => entry.kind === "tree" && entry.x > 300 && entry.x < 900 && entry.y > 300 && entry.y < 1000);
+  assert.ok(object); fixture.removed = base.filter(entry => entry.id !== object.id).map(entry => entry.id);
+  const harness = controllerHarness(serializeScene(fixture));
+  try {
+    const start = harness.screen(object.x, object.y - 60);
+    harness.pointer("pointerdown", start.x, start.y); harness.pointer("pointermove", start.x - 2000, start.y); harness.pointer("pointerup", start.x - 2000, start.y);
+    assert.equal(harness.scene().modified[0].x, 0, "individual actors clamp to world edge");
+    harness.controller.undo(); harness.controller.selectFolder("trees"); harness.controller.translateSelectedFolder(-2000, 0);
+    assert.equal(harness.scene().modified[0].x, -320, "generated group members use the seam-preserving margin"); assert.ok(parseScene(harness.controller.getSceneJson()));
+  } finally { harness.dispose(); }
+});
+
+test("empty locked descendants protect folder structural moves and deletion until explicitly unlocked", () => {
+  const harness = controllerHarness();
+  try {
+    const parent = harness.controller.addFolder(), child = harness.controller.addFolder(parent), grandchild = harness.controller.addFolder(child), target = harness.controller.addFolder();
+    harness.controller.setFolderLocked(grandchild, true); const before = harness.controller.getSceneJson(), writes = harness.writes;
+    harness.controller.reparentFolder(parent, target); harness.controller.deleteFolder(parent);
+    assert.equal(harness.controller.getSceneJson(), before); assert.equal(harness.writes, writes);
+    harness.controller.setFolderLocked(grandchild, false); harness.controller.reparentFolder(parent, target);
+    assert.equal(harness.scene().folders.find(folder => folder.id === parent).parentId, target);
+  } finally { harness.dispose(); }
+});
+
+test("late PNG read and decode failures cannot replace a newer JSON scene's status", async () => {
+  const asset = await readPngFile(pngFile());
+  for (const stage of ["read", "decode"]) {
+    const gate = deferred(), harness = controllerHarness(null, false, { loadImage: () => gate.promise });
+    try {
+      const file = pngFile(); if (stage === "read") Object.defineProperty(file, "arrayBuffer", { value: () => gate.promise });
+      const pending = stage === "read" ? harness.controller.importPng(file) : harness.controller.addPngAsset(asset); await microtasks();
+      assert.equal(await harness.controller.importScene(serializeScene(stackedScene())), true); harness.flush(); const message = harness.status.message, before = harness.controller.getSceneJson();
+      gate.reject(new Error("abandoned PNG failed")); assert.equal(await pending, false); harness.flush();
+      assert.equal(harness.controller.getSceneJson(), before); assert.equal(harness.status.message, message, stage);
+    } finally { harness.dispose(); }
+  }
+});
+
+test("zero or returned-to-start generated transforms consume no history or save", () => {
+  const fixture = initialScene(), base = [...forestObjects(fixture.seed, { x: 0, y: 0, width: fixture.width, height: WORLD_HEIGHT }), ...initialProps()];
+  const object = base.find(entry => entry.kind === "tree" && entry.x > 300 && entry.x < 900 && entry.y > 300 && entry.y < 1000);
+  assert.ok(object); fixture.removed = base.filter(entry => entry.id !== object.id).map(entry => entry.id);
+  const harness = controllerHarness(serializeScene(fixture));
+  try {
+    harness.controller.selectFolder("trees"); const before = harness.controller.getSceneJson(); harness.controller.translateSelectedFolder(0, 0); assert.equal(harness.controller.getSceneJson(), before);
+    const start = harness.screen(object.x, object.y - 60);
+    for (const group of [false, true]) {
+      if (group) harness.controller.selectFolder("trees"); else harness.controller.selectById(object.id);
+      harness.pointer("pointerdown", start.x, start.y); harness.pointer("pointermove", start.x + 40, start.y + 20); harness.pointer("pointermove", start.x, start.y); harness.pointer("pointerup", start.x, start.y);
+      harness.flush(); assert.equal(harness.controller.getSceneJson(), before); assert.equal(harness.writes, 0); assert.equal(harness.status.canUndo, false);
+    }
+  } finally { harness.dispose(); }
+});
+
+test("explicit object/folder selection or folder creation leaves drawing tools and restores one-command dragging", () => {
+  const fixture = groupedScene(), harness = controllerHarness(serializeScene(fixture));
+  try {
+    const tools = [["е", "KeyT", "terrain"], ["у", "KeyE", "erase"], ["и", "KeyB", "plant"], ["к", "KeyR", "area"]];
+    for (const [key, code, mode] of tools) for (const selection of ["object", "folder"]) {
+      harness.key(key, { code, target: harness.button }); harness.controller.setActiveFolder(null); harness.flush();
+      assert.equal(harness.status.mode, mode, "active placement folder deliberately preserves the current tool");
+      if (selection === "object") harness.controller.selectById("planted:a"); else harness.controller.selectFolder("group:north");
+      harness.flush(); assert.equal(harness.status.mode, "select"); assert.equal(harness.cursor, "select");
+      assert.equal(harness.status.canUndo, false, "selection itself is not a history command");
+      assert.equal(harness.status.selected?.id ?? null, selection === "object" ? "planted:a" : null);
+      assert.equal(harness.status.selectedFolder?.folder.id ?? null, selection === "folder" ? "group:north" : null);
+      const before = harness.controller.getSceneJson(), writes = harness.writes, start = harness.screen(700, 880);
+      harness.pointer("pointerdown", start.x, start.y); harness.pointer("pointermove", start.x + 40, start.y + 20); harness.pointer("pointerup", start.x + 40, start.y + 20); harness.flush();
+      const scene = harness.scene(); assert.equal(harness.writes, writes + 1); assert.equal(harness.status.canUndo, true);
+      assert.equal(scene.planted.length, fixture.planted.length, "the drag never erases or plants an object");
+      assert.equal(scene.folders.length, fixture.folders.length, "the drag never starts a new area group");
+      assert.deepEqual(scene.terrain, fixture.terrain, "the drag never paints terrain");
+      assert.ok(scene.planted[0].x > fixture.planted[0].x);
+      assert.equal(scene.planted[1].x > fixture.planted[1].x, selection === "folder", "only folder selection translates all members");
+      harness.controller.undo(); harness.flush(); assert.equal(harness.controller.getSceneJson(), before); assert.equal(harness.status.canUndo, false);
+    }
+    harness.key("е", { code: "KeyT" }); const added = harness.controller.addFolder(); harness.flush();
+    assert.ok(added); assert.equal(harness.status.mode, "select"); assert.equal(harness.cursor, "select"); assert.equal(harness.status.selectedFolder.folder.id, added);
+    harness.controller.undo(); assert.equal(harness.scene().folders.length, fixture.folders.length);
+    harness.key("у", { code: "KeyE" }); assert.equal(harness.controller.selectFolder("missing"), false); assert.equal(harness.controller.selectById("missing"), false); harness.flush();
+    assert.equal(harness.status.mode, "erase", "invalid list selection never changes the tool");
   } finally { harness.dispose(); }
 });

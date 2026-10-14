@@ -25,7 +25,7 @@
 .mapPanel { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: #11251e; }
 .canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
 .canvas:active { cursor: grabbing; }
-.canvas[data-tool="plant"], .canvas[data-tool="erase"] { cursor: crosshair; }
+.canvas[data-tool="plant"], .canvas[data-tool="erase"], .canvas[data-tool="terrain"], .canvas[data-tool="area"] { cursor: crosshair; }
 .canvas[data-tool="select"] { cursor: default; }
 .canvas[data-tool="select"]:active { cursor: move; }
 .canvas[data-dragging="true"] { cursor: grabbing; }
@@ -80,6 +80,7 @@
 .helpPopover dd { margin: 0; color: #aebf9c; font-size: 10px; line-height: 1.55; }
 .helpPopover dt { font-size: 10px; }
 .dock { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: #17251d; border-left: 1px solid #81956c38; }
+.dock[data-desktop-open="false"] { display: none; }
 .dockHeading { height: 42px; flex: 0 0 42px; display: flex; align-items: center; justify-content: space-between; padding: 0 15px; border-bottom: 1px solid #81956c25; }
 .dockHeading > span { font-size: 8px; letter-spacing: .16em; color: #8ea47a; }
 .dockHeading button { border: 0; background: transparent; display: grid; place-items: center; width: 24px; height: 24px; }
@@ -121,8 +122,50 @@
 .panelSectionHeading strong { color: #c6d5b4; font-size: 11px; font-weight: 500; }
 .panelSectionHeading strong span { color: #7e986d; font-size: 9px; margin-left: 5px; }
 .panelSectionHeading button { display: grid; place-items: center; width: 26px; height: 25px; border: 0; background: transparent; }
+.folderCreateControls { display: flex; align-items: center; gap: 3px; }
+.panelSectionHeading .areaGroupButton { display: flex; align-items: center; gap: 5px; width: auto; padding: 0 5px; font-size: 10px; }
+.areaGroupButton kbd { font-size: 8px; }
 .stackHint { font-size: 8px; color: #7e946f; }
 .layerList { flex: 0 1 auto; min-height: 44px; max-height: min(27dvh, 220px); overflow-y: auto; overscroll-behavior: contain; }
+.layerDetails { flex-shrink: 0; max-height: min(35dvh, 260px); overflow-y: auto; padding-bottom: 6px; border-bottom: 1px solid #81956c2b; }
+.layerDetails summary { cursor: pointer; padding: 8px 2px; color: #a9bc97; font-size: 11px; }
+.layerDetails summary span { color: #789266; font-size: 9px; margin-left: 5px; }
+.layerDetails .panelSectionHeading strong { font-size: 9px; color: #81976f; }
+.folderRow { position: absolute; left: 0; right: 0; height: 44px; display: grid; grid-template-columns: 16px minmax(0, 1fr) 27px 27px; align-items: center; gap: 2px; padding-right: 3px; border-bottom: 1px solid #81956c28; }
+.folderRow[data-selected="true"] { background: #354a29; }
+.folderRow[data-hidden="true"] .folderSelect { color: #7d9270; }
+.folderRow[data-drop="inside"] { box-shadow: inset 0 0 0 1px #bdd791; background: #3a4c2d; }
+.folderRow > button { display: grid; place-items: center; height: 32px; border: 0; background: transparent; }
+.page .folderSelect { display: flex; align-items: center; gap: 6px; text-align: left; min-width: 0; padding: 0 3px; font-size: 12px; }
+.folderSelect > svg { flex-shrink: 0; color: #afc98a; }
+.folderSelect > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folderSelect > small { margin-left: auto; color: #8fa477; font: 9px ui-monospace, monospace; flex-shrink: 0; }
+.folderMembership { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; color: #9daf92; font-size: 11px; }
+.folderMembership select { width: 100%; padding: 9px; min-height: 35px; font-size: 12px; }
+.editableFields:disabled .folderMembership { opacity: .5; }
+.folderAction { display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; min-height: 34px; margin-top: 12px; padding: 9px; font-size: 11px; }
+.folderMove { margin-top: 18px; }
+.folderDelete { display: grid; gap: 8px; margin-top: 22px; padding-top: 16px; border-top: 1px solid #81956c30; }
+.folderDelete button { display: flex; align-items: center; justify-content: center; gap: 7px; padding: 10px; font-size: 11px; }
+.folderDelete .small { margin: 0; }
+.terrainContent { padding: 16px; }
+.terrainMaterials { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.terrainMaterials button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; padding: 12px 4px; min-height: 63px; font-size: 11px; }
+.terrainMaterials button:last-child { grid-column: span 2; }
+.terrainMaterials button[aria-pressed="true"] { color: #e3efc9; border-color: #9aad72; background: #37452a; }
+.terrainMaterials button[aria-label="Вода"] svg { color: #78b7c3; }
+.terrainMaterials button[aria-label="Песок"] svg { color: #d0bb80; }
+.terrainMaterials button[aria-label="Тропа"] svg { color: #bda482; }
+.brushSize { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; color: #a7bb96; font-size: 11px; }
+.brushSize > span { display: flex; justify-content: space-between; }
+.brushSize strong { color: #cbd9b5; font: 11px ui-monospace, monospace; }
+.brushSize input { width: 100%; border: 0; background: transparent; accent-color: #b0cc7f; }
+.terrainToggle { display: flex; align-items: center; gap: 9px; margin-top: 17px; color: #b5c7a3; font-size: 11px; cursor: pointer; }
+.terrainToggle input { width: 16px; height: 16px; accent-color: #b0cc7f; }
+.terrainToggle + .small { margin-top: 5px; }
+.terrainInstructions { margin-top: 22px; padding-top: 16px; border-top: 1px solid #81956c30; }
+.terrainInstructions strong { font-size: 12px; font-weight: 500; color: #c5d7b0; }
+.terrainInstructions p { font-size: 11px; line-height: 1.7; color: #8f9e88; }
 .layerRow { min-height: 44px; display: grid; grid-template-columns: 18px minmax(0, 1fr) 27px 27px 20px 25px; align-items: center; gap: 3px; border-bottom: 1px solid #81956c20; padding: 3px 0; }
 .layerRow[data-active="true"] { background: #35432b4d; }
 .layerRow > button { display: grid; place-items: center; height: 29px; background: transparent; border: 0; }
@@ -165,7 +208,7 @@
   .panelToggle > span { display: none; }
   .workspace, .withDock { grid-template-columns: minmax(0, 1fr); }
   .toolRail { flex-direction: row; top: 10px; left: 8px; padding: 4px; gap: 2px; }
-  .toolRail button { width: 35px; height: 35px; }
+  .toolRail button { width: 31px; height: 35px; }
   .railDivider { width: 1px; height: 22px; margin: 0 2px; }
   .historyTools { top: 10px; right: 8px; left: auto; transform: none; gap: 0; padding: 4px; }
   .historyTools button { width: 29px; height: 35px; }
@@ -190,5 +233,7 @@
   .layerRow > button { height: 33px; }
   .objectRow { grid-template-columns: 12px minmax(0, 1fr) 29px 29px; }
   .objectRow > button { height: 33px; }
+  .folderRow { grid-template-columns: 16px minmax(0, 1fr) 29px 29px; }
+  .folderRow > button { height: 33px; }
 }
 @media (prefers-reduced-motion: reduce) { .page button { transition: none; } }
