@@ -1170,9 +1170,20 @@ class JdbcEconomyRepositoryIntegrationTest {
                 }
                 // A historical fixture must not call the latest view, which reads V39 escrow.
                 val before = isolated.connection.use { readEconomyProfile(it, user.id) }
+                val pearlLedgerMigration = Flyway.configure().dataSource(isolated).locations("classpath:db/migration/history").target("35").load()
+                pearlLedgerMigration.migrate(); pearlLedgerMigration.migrate()
+                assertEquals(before, isolated.connection.use { readEconomyProfile(it, user.id) },
+                    "V35 adds ledger pearl deltas without altering the saved profile")
+                isolated.connection.use { c ->
+                    assertEquals(123L to 0L, c.economyRows("SELECT coins,pearls FROM economy_ledger WHERE user_id=? AND source_key='historic'", user.id) {
+                        it.getLong(1) to it.getLong(2)
+                    }.single())
+                    assertEquals("preserved", c.economyRows("SELECT signature FROM economy_commands WHERE user_id=? AND request_id=?", user.id, requestId) { it.getString(1) }.single())
+                }
                 DatabaseFactory.migrate(isolated)
                 DatabaseFactory.migrate(isolated)
-                assertEquals(before.copy(state = EconomyMoney.redenominate(before.state), revision = before.revision + 2), isolated.connection.use { readEconomyProfile(it, user.id) })
+                assertEquals(before.copy(state = EconomyMoney.redenominate(before.state), revision = before.revision + 3),
+                    isolated.connection.use { readEconomyProfile(it, user.id) }, "V40/V41 convert once; V52 adds its knowledge revision fence")
                 val migrated = repo.snapshot(token.hash)
                 assertEquals(EconomyMoney.redenominate(before.state).wallet, migrated.wallet)
                 isolated.connection.use { c ->

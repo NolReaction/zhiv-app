@@ -30,12 +30,23 @@ class JdbcPromoRepositoryIntegrationTest {
             val player = JdbcZhivRepository(source).bootstrap("Подарок", codec.issue().hash, token.hash, 365)
             val economy = JdbcEconomyRepository(source); val before = economy.snapshot(token.hash)
             DatabaseFactory.migrate(source); DatabaseFactory.migrate(source)
-            assertEquals(before.wallet, economy.snapshot(token.hash).wallet)
-            val request = PromoRequest(UUID.randomUUID().toString(), player.publicId, before.revision, " qa-gift ")
+            val migrated = economy.snapshot(token.hash)
+            assertEquals(before.wallet, migrated.wallet); assertEquals(before.inventory, migrated.inventory)
+            assertEquals(before.revision + 1, migrated.revision, "V52 fences the newly inherited item knowledge once")
+            val stale = PromoRequest(UUID.randomUUID().toString(), player.publicId, before.revision, " qa-gift ")
+            val promo = JdbcPromoRepository(source, catalog)
+            assertEquals("ECONOMY_REVISION_CONFLICT", assertFailsWith<AuthFailure> { promo.redeem(token.hash, stale) }.code)
+            assertEquals(migrated, economy.snapshot(token.hash).copy(serverTime = migrated.serverTime))
+            source.connection.use { c ->
+                assertEquals(0L, c.economyRows("SELECT count(*) FROM promo_redemptions WHERE user_id=?", player.id) { it.getLong(1) }.single())
+                assertEquals(0L, c.economyRows("SELECT count(*) FROM economy_commands WHERE user_id=? AND request_id=?", player.id,
+                    UUID.fromString(stale.requestId)) { it.getLong(1) }.single())
+            }
+            val request = stale.copy(expectedRevision = migrated.revision)
             val results = coroutineScope { List(3) { async(Dispatchers.IO) { JdbcPromoRepository(source, catalog).redeem(token.hash, request) } }.awaitAll() }
             assertEquals(1, results.count { !it.replayed })
             val after = economy.snapshot(token.hash)
-            assertEquals(before.revision + 1, after.revision); assertEquals(before.wallet.coins + 500, after.wallet.coins)
+            assertEquals(migrated.revision + 1, after.revision); assertEquals(before.wallet.coins + 500, after.wallet.coins)
             assertEquals(before.wallet.pearls + 40, after.wallet.pearls); assertEquals(before.inventory.getValue("wood") + 5, after.inventory.getValue("wood"))
             val replay = JdbcPromoRepository(source, PromoCatalog(1, emptyList())).redeem(token.hash, request)
             assertTrue(replay.replayed); assertEquals(results.first().reward, replay.reward)

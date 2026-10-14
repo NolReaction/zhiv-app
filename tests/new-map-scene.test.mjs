@@ -31,6 +31,9 @@ const builderRigForHero = new WeakMap();
 
 async function modules(override) {
   const vite = await createServer({ appType: "custom", configFile: false, root,
+    // These fixtures load server modules only. Client dependency discovery can
+    // outlive fake scene clocks and keep server.close() waiting after the checks.
+    optimizeDeps: { noDiscovery: true, include: [] },
     resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
   try {
     const { default: scene } = await vite.ssrLoadModule("/features/world/tiled/forest.generated.json");

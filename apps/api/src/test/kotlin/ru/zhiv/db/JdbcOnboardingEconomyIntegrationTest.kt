@@ -34,11 +34,15 @@ class JdbcOnboardingEconomyIntegrationTest {
                 c.economyUpdate("INSERT INTO economy_profiles(user_id,state,revision) VALUES (?,?::jsonb,7)", old.id, economyJson.encodeToString(saved))
                 c.commit()
             }
-            DatabaseFactory.migrate(source); DatabaseFactory.migrate(source)
+            repeat(2) {
+                Flyway.configure().dataSource(source).locations("classpath:db/migration").target("50").load().migrate()
+            }
             source.connection.use { c ->
                 val preserved = readEconomyProfile(c, old.id)
                 assertEquals(7L, preserved.revision)
                 assertEquals(saved.wallet, preserved.state.wallet); assertEquals(saved.inventory, preserved.state.inventory)
+                assertEquals(saved, c.economyRows("SELECT state FROM economy_profiles WHERE user_id=?", old.id) {
+                    economyJson.decodeFromString<EconomyState>(it.getString(1)) }.single(), "V50 does not rewrite saved economies")
                 for (include in listOf(true, false)) {
                     val legacy = WorldState(resources = WorldResources(sparks = 100, wood = 81, stone = 49), houseLevel = 4, workshop = true, workshopLevel = 2)
                     val initialized = c.economyRows("SELECT economy_v4_initial_state(?::jsonb,?)", worldJson.encodeToString(legacy), include) {
@@ -46,8 +50,21 @@ class JdbcOnboardingEconomyIntegrationTest {
                     // The V50 initializer changes future packs only and contains no gifted fish.
                     assertEquals(0L, initialized.inventory["fish"] ?: 0L)
                     assertFalse(initialized.inventory.containsKey("fish_common"))
-                    assertEquals(EconomyRules.initial(100, 81, 49, 4, 2, includeStartingPack = include),
+                    assertEquals(EconomyRules.initial(100, 81, 49, 4, 2, includeStartingPack = include).copy(itemUnlockVersion = 0),
                         EconomyFishInventory.state(initialized))
+                }
+            }
+            DatabaseFactory.migrate(source); DatabaseFactory.migrate(source)
+            source.connection.use { c ->
+                assertEquals(8L, readEconomyProfile(c, old.id).revision, "V52 fences item knowledge once")
+                assertEquals(saved.copy(unlockedItems = listOf("stone")), c.economyRows("SELECT state FROM economy_profiles WHERE user_id=?", old.id) {
+                    economyJson.decodeFromString<EconomyState>(it.getString(1)) }.single(), "Current migration adds knowledge without changing the starter budget")
+                for (include in listOf(true, false)) {
+                    val legacy = WorldState(resources = WorldResources(sparks = 100, wood = 81, stone = 49), houseLevel = 4, workshop = true, workshopLevel = 2)
+                    val initialized = c.economyRows("SELECT economy_v4_initial_state(?::jsonb,?)", worldJson.encodeToString(legacy), include) {
+                        economyJson.decodeFromString<EconomyState>(it.getString(1)) }.single()
+                    assertEquals(EconomyRules.initial(100, 81, 49, 4, 2, includeStartingPack = include),
+                        EconomyFishInventory.state(initialized), "The current initializer adds the item knowledge marker and five market slots")
                 }
             }
             val newToken = tokens.issue(); val newPlayer = identities.bootstrap("Новичок", tokens.issue().hash, newToken.hash, 365)

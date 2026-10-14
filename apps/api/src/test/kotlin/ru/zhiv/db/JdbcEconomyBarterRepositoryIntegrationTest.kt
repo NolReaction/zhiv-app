@@ -46,6 +46,9 @@ class JdbcEconomyBarterRepositoryIntegrationTest {
     @BeforeEach fun clearOffers() { execute("DELETE FROM economy_barter_showcases"); execute("DELETE FROM economy_barter_offers") }
     private fun execute(sql: String, vararg values: Any?) = source.connection.use { c -> c.economyUpdate(sql, *values).also { c.commit() } }
     private fun scalar(sql: String, vararg values: Any?): Long = source.connection.use { c -> c.economyRows(sql, *values) { it.getLong(1) }.single() }
+    private fun persistedProfile(player: Player): String = source.connection.use { c ->
+        c.economyRows("SELECT to_jsonb(e)::text FROM economy_profiles e WHERE user_id=?", player.id) { it.getString(1) }.single()
+    }
     private suspend fun player(items: Map<String,Long> = mapOf("ancient_core" to 3L), home: Int = 3): Player {
         val token=tokens.issue(); val user=identities.bootstrap("Хранитель", tokens.issue().hash, token.hash, 365)
         economy.snapshot(token.hash)
@@ -256,9 +259,19 @@ class JdbcEconomyBarterRepositoryIntegrationTest {
         assertEquals("ECONOMY_RESOURCES",assertFailsWith<AuthFailure>{barter.command(buyer.hash,first)}.code)
         edit(buyer){it.copy(inventory=mapOf("moon_crystal" to 1L,"ancient_core" to ECONOMY_MAX_ITEMS))}
         val beforeBuyer=economy.snapshot(buyer.hash);val beforeSeller=economy.snapshot(seller.hash)
+        val buyerProfile=persistedProfile(buyer);val sellerProfile=persistedProfile(seller)
         assertEquals("ECONOMY_CAPACITY",assertFailsWith<AuthFailure>{barter.command(buyer.hash,first)}.code)
-        assertEquals(beforeBuyer,economy.snapshot(buyer.hash).copy(serverTime=beforeBuyer.serverTime))
-        assertEquals(beforeSeller,economy.snapshot(seller.hash).copy(serverTime=beforeSeller.serverTime))
+        assertEquals(buyerProfile,persistedProfile(buyer), "Failed acceptance keeps the complete persisted profile and its revision")
+        assertEquals(sellerProfile,persistedProfile(seller), "Failed acceptance cannot mutate the counterparty's profile")
+        // An unaccepted first stage quote uses this read's clock; every saved field remains exact above.
+        fun normalizeReadClock(current: EconomyView, before: EconomyView): EconomyView {
+            val quote = current.stageOrders.stages.getValue("3")
+            assertEquals(0, quote.step)
+            return current.copy(serverTime = before.serverTime, stageOrders = current.stageOrders.copy(stages =
+                current.stageOrders.stages + ("3" to quote.copy(availableAt = before.stageOrders.stages.getValue("3").availableAt))))
+        }
+        assertEquals(beforeBuyer,normalizeReadClock(economy.snapshot(buyer.hash),beforeBuyer))
+        assertEquals(beforeSeller,normalizeReadClock(economy.snapshot(seller.hash),beforeSeller))
         assertEquals("active",barter.barter(seller.hash).mine.single().status)
         assertEquals(0L,scalar("SELECT count(*) FROM economy_barter_receipts WHERE user_id=?",buyer.id))
         assertEquals(0L,scalar("SELECT count(*) FROM economy_ledger WHERE source_key=?","barter:accept:${lot.id}"))
@@ -354,10 +367,11 @@ class JdbcEconomyBarterRepositoryIntegrationTest {
                 barterMigration.migrate();barterMigration.migrate()
                 assertEquals(before,tables.associateWith(::rows))
                 DatabaseFactory.migrate(isolated);DatabaseFactory.migrate(isolated)
-                assertEquals(9L,isolated.connection.use{readEconomyProfile(it,user.id).revision})
+                assertEquals(10L,isolated.connection.use{readEconomyProfile(it,user.id).revision},
+                    "V40/V41 convert units and V52 fences inherited knowledge once")
                 val repository=JdbcEconomyBarterRepository(isolated)
                 val current=JdbcEconomyRepository(isolated).snapshot(token.hash)
-                assertEquals(10L,current.revision,"Current merchant stock is initialized once after both conversions")
+                assertEquals(11L,current.revision,"Current merchant stock is initialized once after both conversions and the knowledge fence")
                 val command=EconomyBarterCommand(UUID.randomUUID().toString(),user.publicId,current.revision,"create_offer","ancient_core","moon_crystal")
                 val result=repository.command(token.hash,command)
                 assertEquals(2L,result.state.storage.reserved,"coin listing and barter share warehouse escrow")

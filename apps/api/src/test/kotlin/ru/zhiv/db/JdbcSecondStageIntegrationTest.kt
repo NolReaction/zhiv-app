@@ -38,6 +38,7 @@ class JdbcSecondStageIntegrationTest {
                 c.commit()
             }
             val course = EconomyRules.catalog.stageOrders.single { it.homeLevel == 2 }
+            assertEquals(7, course.orders.size)
             val quote = repository.snapshot(token.hash)
             assertEquals(course.orders.first(), quote.stageOrders.stages.getValue("2").terms)
             source.connection.use { c -> assertTrue(readEconomyProfile(c, player.id).state.stageOrders.stages.isEmpty()) }
@@ -67,8 +68,8 @@ class JdbcSecondStageIntegrationTest {
             assertTrue(current.inventory.isEmpty())
             source.connection.use { c ->
                 assertEquals(current.stageOrders, readEconomyProfile(c, player.id).state.stageOrders)
-                assertEquals(5L, c.economyRows("SELECT count(*) FROM economy_commands WHERE user_id=?", player.id) { it.getLong(1) }.single())
-                assertEquals(5L, c.economyRows("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='complete_resident_order'", player.id) { it.getLong(1) }.single())
+                assertEquals(course.orders.size.toLong(), c.economyRows("SELECT count(*) FROM economy_commands WHERE user_id=?", player.id) { it.getLong(1) }.single())
+                assertEquals(course.orders.size.toLong(), c.economyRows("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='complete_resident_order'", player.id) { it.getLong(1) }.single())
             }
         }
     }

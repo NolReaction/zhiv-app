@@ -42,12 +42,14 @@ class JdbcPearlDenominationIntegrationTest {
                     signature, progressionRewardsJson.encodeToString(gift))
                 c.commit()
             }
-            DatabaseFactory.migrate(source); DatabaseFactory.migrate(source)
+            repeat(2) {
+                Flyway.configure().dataSource(source).locations("classpath:db/migration/history").target("41").load().migrate()
+            }
+            val expected = EconomyMoney.redenominate(state)
             source.connection.use { c ->
                 val current = readEconomyProfile(c, player.id)
                 assertEquals(8L, current.revision)
-                val expected = EconomyMoney.redenominate(state)
-                assertEquals(expected.copy(wardrobe = expected.wardrobe.sorted()), current.state)
+                assertEquals(EconomyItemUnlocks.persist(expected.copy(wardrobe = expected.wardrobe.sorted())), current.state)
                 assertEquals(expected, c.economyRows("SELECT state FROM economy_profiles WHERE user_id=?", player.id) {
                     economyJson.decodeFromString<EconomyState>(it.getString(1)) }.single(), "Migration preserves stored ownership order")
                 assertEquals(EconomyWallet(1230, 50_000_000_000L), current.state.wallet)
@@ -58,12 +60,33 @@ class JdbcPearlDenominationIntegrationTest {
                 val fresh = c.economyRows("SELECT economy_v3_initial_state('{}'::jsonb)") { economyJson.decodeFromString<EconomyState>(it.getString(1)) }.single()
                 assertEquals(10, fresh.currencyScale); assertEquals(50, fresh.pearlScale)
             }
+            DatabaseFactory.migrate(source); DatabaseFactory.migrate(source)
+            val upgraded = expected.copy(unlockedItems = listOf("wood"))
+            source.connection.use { c ->
+                assertEquals(9L, readEconomyProfile(c, player.id).revision, "V52 adds one fence after V41's denomination fence")
+                assertEquals(upgraded, c.economyRows("SELECT state FROM economy_profiles WHERE user_id=?", player.id) {
+                    economyJson.decodeFromString<EconomyState>(it.getString(1)) }.single(), "Current migration adds knowledge without redenominating again")
+                assertEquals(signature, c.economyRows("SELECT signature FROM game_reward_claims WHERE user_id=?", player.id) { it.getString(1) }.single())
+                assertEquals(gift, c.economyRows("SELECT claim FROM game_reward_claims WHERE user_id=?", player.id) {
+                    progressionRewardsJson.decodeFromString<ProgressionRewardReceipt>(it.getString(1)) }.single())
+            }
             val rewards = JdbcProgressionRewardsRepository(source)
             val replay = rewards.claim(token.hash, command)
             assertTrue(replay.replayed); assertEquals(7L, replay.acceptedRevision)
             assertEquals(gift.copy(reward = gift.reward.copy(pearls = 100)), replay.claim)
             assertEquals(EconomyWallet(1230, 50_000_000_000L), replay.economy.wallet)
             assertEquals(replay.economy.wallet, rewards.claim(token.hash, command).economy.wallet)
+            source.connection.use { c ->
+                assertEquals(9L, readEconomyProfile(c, player.id).revision, "Replaying a historical reward never writes another grant")
+                assertEquals(upgraded, c.economyRows("SELECT state FROM economy_profiles WHERE user_id=?", player.id) {
+                    economyJson.decodeFromString<EconomyState>(it.getString(1)) }.single())
+                assertEquals(1L, c.economyRows("SELECT count(*) FROM game_reward_claims WHERE user_id=?", player.id) { it.getLong(1) }.single())
+                assertEquals(1L, c.economyRows("SELECT count(*) FROM game_achievement_reward_claims WHERE user_id=?", player.id) { it.getLong(1) }.single())
+                assertEquals(2L, c.economyRows("SELECT count(*) FROM economy_ledger WHERE user_id=?", player.id) { it.getLong(1) }.single())
+                assertEquals(signature, c.economyRows("SELECT signature FROM game_reward_claims WHERE user_id=?", player.id) { it.getString(1) }.single())
+                assertEquals(gift, c.economyRows("SELECT claim FROM game_reward_claims WHERE user_id=?", player.id) {
+                    progressionRewardsJson.decodeFromString<ProgressionRewardReceipt>(it.getString(1)) }.single())
+            }
         }
     }
 }

@@ -80,9 +80,13 @@ class EconomyRulesTest {
 
     @Test fun `berry recipes snapshot a separate server timed collection and deliver locked rewards only after it finishes`() {
         val berryRecipes = EconomyRules.catalog.recipes.filter { it.buildingId == "garden" && (it.rewards["berries"] ?: 0L) > 0L }
-        assertEquals(1, berryRecipes.size)
+        assertEquals(setOf("grow_berries", "grow_berries_large", "garden_season"), berryRecipes.map { it.id }.toSet())
         assertEquals(EconomyCollectionSpec("berry_harvest", 8), EconomyRules.catalog.recipes.single { it.id == "grow_strawberries" }.collection)
-        for (recipe in berryRecipes) assertEquals(EconomyCollectionSpec("berry_harvest", 8), recipe.collection)
+        for (recipe in berryRecipes) {
+            assertEquals(EconomyCollectionSpec("berry_harvest", 8), recipe.collection)
+            assertEquals(1, recipe.maxBatch)
+            assertEquals(mapOf("berries" to 1L), recipe.rewards)
+        }
         val started = apply(EconomyRules.initial(), "start_production", "grow_berries", 1)
         val job = started.jobs.single()
         assertEquals(EconomyCollection("berry_harvest", 8, null, null), job.collection)
