@@ -101,7 +101,7 @@ test("production slots are available at home one with pearl gates and keep all o
   assert.match(html, /Открыть место 2 за 100 жемчужин/);
   state.wallet.pearls = 199;
   html = render("garden", controller({ snapshot: state }));
-  assert.equal(disabled(button(html, "Место 2")), true);
+  assert.equal(disabled(button(html, "Место 2")), false, "A locked place still opens the explanation without charging pearls");
   assert.match(html, /Не хватает жемчужин: 0,5/);
   state.wallet.pearls = 10000; state.productionSlots = { garden: 2 };
   html = render("garden", controller({ snapshot: state }));
@@ -110,12 +110,12 @@ test("production slots are available at home one with pearl gates and keep all o
   assert.equal(disabled(button(html, "Место 3")), false);
   state.buildings.home = 4;
   assert.equal(disabled(button(render("garden", controller({ snapshot: state })), "Место 3")), false);
-  assert.equal(disabled(button(render("garden", controller({ snapshot: state, uncertain: true })), "Место 3")), true);
-  assert.equal(disabled(button(render("garden", controller({ snapshot: state, busy: true })), "Место 3")), true);
+  assert.equal(disabled(button(render("garden", controller({ snapshot: state, uncertain: true })), "Место 3")), false);
+  assert.equal(disabled(button(render("garden", controller({ snapshot: state, busy: true })), "Место 3")), false);
   state.productionSlots.garden = 3;
   state.jobs = [job({ id: "crop-a", finishesAt: new Date(now).toISOString() }), job({ id: "crop-b" }), job({ id: "crop-c" })];
   html = render("garden", controller({ snapshot: state }));
-  assert.match(html, /Свободно <span[^>]*>0 из 3<\/span>/);
+  assert.match(html, /Свободно 0 из 3/);
   assert.doesNotMatch(html, /Открыть место/);
   for (const id of ["crop-a", "crop-b", "crop-c"]) assert.match(html, new RegExp(`data-job-id="${id}"`));
   assert.match(html, /data-state="ready"/);
@@ -133,34 +133,33 @@ test("a second recipe uses the remaining station slot while ready results and co
   assert.match(helpers.worldProductionReason(state, recipe), /Все места заняты/);
   state.jobs.pop(); state.jobs[0].kind = "construction";
   assert.match(helpers.worldProductionReason(state, recipe), /завершите улучшение/);
-  assert.equal(disabled(button(render("workshop", controller({ snapshot: state })), "Место 3")), true);
+  assert.equal(disabled(button(render("workshop", controller({ snapshot: state })), "Место 3")), false, "The explanation remains reachable during construction");
 });
 
-test("idle production opens with a compact slot summary and recipes, leaving slot purchases inside a closed disclosure", () => {
+test("idle production always shows three places and both expansion prices beside recipes", () => {
   const buildings = { home: 5, workshop: 5, kiln: 5, garden: 5, woodlot: 5, dryer: 5, warehouse: 5 };
   for (const [place, stationId] of [["workshop", "workshop"], ["workshop", "kiln"], ["garden", "garden"], ["woodlot", "woodlot"], ["campfire", "dryer"]]) {
     const html = render(place, controller({ snapshot: snapshot({ buildings, wallet: { coins: 0, pearls: 10000 } }) }), { initialStationId: stationId });
-    const disclosure = html.match(new RegExp(`<details\\b([^>]*data-production-slots="${stationId}"[^>]*)>([\\s\\S]*?)</details>`));
-    assert.ok(disclosure, `Missing slots disclosure for ${stationId}`);
-    assert.doesNotMatch(disclosure[1], /\bopen(?:=|\s|$)/);
-    const summary = disclosure[2].match(/<summary\b[^>]*>[\s\S]*?<\/summary>/)?.[0];
-    assert.match(summary, /Места производства: занято 0 из 1\. Расширить/);
-    assert.doesNotMatch(summary, /<button|750|Не хватает/);
-    assert.match(disclosure[2].slice(summary.length), /Открыть место 2 за 100 жемчужин/);
-    const rest = html.replace(disclosure[0], "");
-    assert.match(rest, /data-recipe=/);
-    assert.doesNotMatch(rest, /data-running-orders=|Все уровни оборудования открыты/);
+    const slots = html.match(new RegExp(`<section\\b[^>]*data-production-slots="${stationId}"[^>]*>([\\s\\S]*?)</section>`));
+    assert.ok(slots, `Missing visible places for ${stationId}`);
+    assert.equal((slots[1].match(/data-production-slot="/g) ?? []).length, 3);
+    assert.match(slots[1], /data-state="free"/);
+    assert.equal((slots[1].match(/data-state="locked"/g) ?? []).length, 2);
+    assert.match(slots[1], /Открыть место 2 за 100 жемчужин/);
+    assert.match(slots[1], /Открыть место 3 за 250 жемчужин/);
+    assert.doesNotMatch(slots[0], /<details|<summary/);
+    assert.match(html, /data-recipe=/);
   }
 });
 
-test("current orders expose each result and timer immediately, then move ready claims first", () => {
+test("current orders stay in their visible places and expose each result and timer immediately", () => {
   const recipe = economyCatalog.recipes.find(entry => entry.buildingId === "workshop");
   const jobs = [3, 1, 2].map(index => job({ id: `order-${index}`, targetId: "workshop", recipeId: recipe.id, rewards: { planks: index },
     finishesAt: new Date(now + index * 60000).toISOString() }));
   const state = snapshot({ buildings: { home: 5, workshop: 5, warehouse: 5 }, productionSlots: { workshop: 3 }, jobs });
   const economy = controller({ snapshot: state });
   let html = render("workshop", economy);
-  const current = html.match(/<section[^>]*aria-label="Текущая работа"[^>]*>([\s\S]*?)<\/section>/)?.[1];
+  const current = html.match(/<section[^>]*aria-label="Места производства"[^>]*>([\s\S]*?)<\/section>/)?.[1];
   assert.ok(current);
   assert.doesNotMatch(current, /<details|<summary|<button/);
   for (const entry of jobs) {
@@ -172,7 +171,7 @@ test("current orders expose each result and timer immediately, then move ready c
   economy.now += 60000;
   html = render("workshop", economy);
   assert.match(html, /data-job-id="order-1" data-ready="true"/);
-  assert.ok(html.indexOf('data-job-id="order-1"') < html.indexOf('data-job-id="order-3"'));
+  assert.ok(html.indexOf('data-job-id="order-3"') < html.indexOf('data-job-id="order-1"'), "A ready order must not jump to another place");
   assert.equal(disabled(button(html, "Забрать")), false);
   assert.equal(state.jobs.length, 3, "view changes must not claim or remove an order");
 });

@@ -22,6 +22,7 @@ import { useGardenCollection } from "@/features/economy/integration/garden-colle
 import { berryCollectionStatus } from "@/features/economy/integration/garden-collection";
 import { ProductionActivity, productionIsActive } from "@/features/economy/ui/production/production-activity";
 import { WorldProductionSlots } from "@/features/economy/ui/production/world-production-slots";
+import { productionStationSupported } from "@/features/economy/domain/production-slots";
 import { worldConstructionReason, worldProductionReason, worldMissingRecipeRequirements } from "@/features/economy/ui/shared/world-stations";
 import { economyMarketUnlocked, marketDailyLimit, marketItemUnlocked, marketMinimumPrice, marketSaleFee, marketSlotCount } from "@/features/economy/domain/market-rules";
 import { BarterMarket } from "@/features/economy/ui/market/barter-market";
@@ -282,8 +283,8 @@ function Production({ economy, navigate, focusId }: { economy: ReadyEconomy; nav
   return <div className={styles.stack}><div className={styles.heading}><div><h2>Лесное хозяйство</h2><p className={styles.muted}>До трёх заказов на каждом производстве. Каждый занимает своё место до получения результата.</p></div></div>
     <label className={styles.field} htmlFor={selectId}>Выберите место<select id={selectId} value={station} onChange={event => navigate("production", event.target.value)}>{stations.map(building => <option key={building.id} value={building.id}>{building.name} · {(state.buildings[building.id] ?? 0) > 0 ? `ур. ${state.buildings[building.id]}` : "не построено"}</option>)}</select></label>
     {state.buildings[station] > 0 && <button className={styles.textButton} onClick={() => navigate("buildings", station)}><House size={16} aria-hidden />Развитие: {buildingName(state, station)}<ArrowRight size={15} aria-hidden /></button>}
-    {state.buildings[station] > 0 && <WorldProductionSlots economy={economy} stationId={station} />}
-    {jobs.map(job => <JobCard key={job.id} economy={economy} job={job} navigate={navigate} />)}
+    {(state.buildings[station] > 0 || jobs.length > 0) && <WorldProductionSlots key={`${state.ownerPublicId}:${station}`} economy={economy} stationId={station} openPantry={() => navigate("inventory")} />}
+    {!productionStationSupported(station) && jobs.map(job => <JobCard key={job.id} economy={economy} job={job} navigate={navigate} />)}
     {!(state.buildings[station] > 0) && <div className={styles.notice}><House size={18} aria-hidden /><div><p>Сначала обустройте это место.</p><button onClick={() => navigate("buildings", station)}>К постройке<ArrowRight size={15} aria-hidden /></button></div></div>}
     {open.map(recipe => <RecipeCard key={recipe.id} economy={economy} recipe={recipe} navigate={navigate} />)}
     {locked.length > 0 && <details className={styles.details} open={!open.length}><summary>Будущие рецепты · {locked.length}</summary><div className={styles.stack}>{locked.map(recipe => <RecipeCard key={recipe.id} economy={economy} recipe={recipe} navigate={navigate} />)}</div></details>}

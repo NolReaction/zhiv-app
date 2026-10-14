@@ -21,6 +21,7 @@ import { WorldUpgradeDialog } from "@/features/economy/ui/construction/world-upg
 import { useGardenCollection } from "@/features/economy/integration/garden-collection-context";
 import { WorldExpeditionsMenu } from "@/features/economy/ui/expeditions/world-expeditions-menu";
 import { WorldProductionSlots } from "@/features/economy/ui/production/world-production-slots";
+import { productionStationSupported } from "@/features/economy/domain/production-slots";
 import type { ConstructionGoalController } from "@/features/economy/ui/construction/use-construction-goal";
 import { ConstructionGoalSummary } from "@/features/economy/ui/construction/construction-goal-summary";
 import styles from "./world-object-menu.module.css";
@@ -286,11 +287,11 @@ function ObjectMenuBody({ guide, guideRoot: guideRootRef, selection, economy, is
         {(economy.error || economy.uncertain) && <div className={styles.error} role="alert"><p>{economy.uncertain ? "Проверяем последнее действие. Новые заказы доступны после подтверждения." : economy.error}</p><button type="button" className={styles.textButton} disabled={economy.busy || cooldown > 0} onClick={() => void economy.retry()}><RefreshCw size={12} aria-hidden="true" />{cooldown ? `Повторить через ${cooldown} с` : economy.uncertain ? "Проверить результат" : "Повторить"}</button></div>}
         {!selectedRecipe && stationId === "dryer" && onOpenFood && <button type="button" className={styles.foodEntry} onClick={() => { navigating.current = true; onOpenFood(); }}><Flame size={16} aria-hidden="true" /><strong>Еда и заказы</strong><span>Угостить · заработать</span></button>}
         {!selectedRecipe && readyEconomy && construction && <Work economy={readyEconomy} job={construction} openPantry={openJobPantry} compact />}
-        {!selectedRecipe && readyEconomy && (readyJobs.length > 0 || runningJobs.length > 0) && <section className={styles.activeOrders} data-section-guide-target="workshop-queue" data-running-orders={runningJobs.length ? stationId : undefined} aria-label="Текущая работа">
+        {!selectedRecipe && readyEconomy && !productionStationSupported(stationId) && (readyJobs.length > 0 || runningJobs.length > 0) && <section className={styles.activeOrders} data-section-guide-target="workshop-queue" data-running-orders={runningJobs.length ? stationId : undefined} aria-label="Текущая работа">
           <h3>Сейчас <span>{readyJobs.length + runningJobs.length}</span></h3>
           {[...readyJobs, ...runningJobs].map(job => <Work key={job.id} economy={readyEconomy} job={job} openPantry={openJobPantry} compact />)}
         </section>}
-        {!selectedRecipe && readyEconomy && <WorldProductionSlots economy={readyEconomy} stationId={stationId} compact />}
+        {!selectedRecipe && readyEconomy && <WorldProductionSlots key={`${state.ownerPublicId}:${stationId}`} economy={readyEconomy} stationId={stationId} openPantry={openJobPantry} compact />}
         {stationId === "quarry" && <WorldExpeditionsMenu economy={economy} isOnline={isOnline} embeddedCaves onOpenHelp={openHelp} onOpenPantry={openPantry} onNavigateStation={(id, targetRecipeId) => id === "quarry" ? openUpgrade() : openStation(id, targetRecipeId)} onCancellationComplete={() => panel.current?.focus({ preventScroll: true })} />}
         {landmark ? <section className={styles.recipeGroup} aria-label="Возможности постройки">
           <p className={styles.small}>{building?.description}</p>

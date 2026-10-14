@@ -3,6 +3,7 @@ import { economyLocalSellPrice } from "@/features/economy/domain/local-sale";
 import { pearlDisplayAmount } from "@/features/economy/domain/money";
 import { constructionTimePearlPrice } from "@/features/economy/domain/rules";
 import { currencyShopGoldOffers, GOLD_SHOP_PACKAGES, MAX_BUILDING_BONUS_PERCENT, PEARL_SHOP_PACKAGES } from "@/features/economy/domain/currency-shop";
+import { VISIBLE_GAME_ACHIEVEMENTS } from "@/features/game/game-rewards";
 import progressionRewards from "@/apps/api/src/main/resources/world/progression-rewards-catalog.json";
 
 export type EconomyItemSource = {
@@ -375,6 +376,10 @@ export function buildProgressionEconomy(catalog: EconomyCatalog = economyCatalog
       capacity: level.warehouseCapacity ?? 0, homeLevel: level.requiredHomeLevel, cost: copyCost(level.cost), seconds: level.seconds })),
     pearls: { dailyCycle: pearlDisplayAmount(progressionRewards.daily.reduce((sum, reward) => sum + reward.pearls, 0)),
       achievementLifetime: pearlDisplayAmount(Object.values(progressionRewards.achievementPearls).flat().reduce((sum, value) => sum + value, 0)),
+      dailyRewards: progressionRewards.daily.map((reward, index) => ({ step: index + 1, pearls: pearlDisplayAmount(reward.pearls) })),
+      achievementRewards: VISIBLE_GAME_ACHIEVEMENTS.map(quest => ({ id: quest.id, title: quest.title, description: quest.description,
+        tiers: quest.tiers.map((target, index) => ({ level: index + 1, target,
+          pearls: pearlDisplayAmount(progressionRewards.achievementPearls[quest.id][index]) })) })),
       dailyMinimumHours: progressionRewards.dailyMinimumHours, dailyCycleLength: progressionRewards.daily.length,
       marketBaseSlots: catalog.market.baseSlots, marketSlotPrices, marketTotal: marketSlotPrices.reduce((sum, value) => sum + value, 0),
       productionSlots: catalog.productionSlots.upgrades.map(upgrade => ({ slots: upgrade.slots, pearls: pearlDisplayAmount(upgrade.pricePearls) })),

@@ -24,10 +24,12 @@ const money = load("../features/economy/domain/money.ts");
 const timePrice = load("../features/economy/domain/time-price.ts");
 const sale = load("../features/economy/domain/local-sale.ts", { "./model": money });
 const currencyShop = load("../features/economy/domain/currency-shop.ts");
+const gameRewards = load("../features/game/game-rewards.ts");
 const model = load("../features/progression/economy-data.ts", {
   "@/features/economy/domain/model": { economyCatalog: catalog },
   "@/features/economy/domain/money": money,
   "@/features/economy/domain/currency-shop": currencyShop,
+  "@/features/game/game-rewards": gameRewards,
   "@/features/economy/domain/rules": { constructionTimePearlPrice: (seconds, config) => timePrice.durationPearlPrice(seconds * 1000,
     config.secondsPerPearl, money.ECONOMY_PEARL_SCALE, config.priceStepPearls, config.pricingPoints) },
   "@/features/economy/domain/local-sale": sale,
@@ -184,8 +186,13 @@ test("stage budgets derive only required new buildings and preserve the seven da
 });
 
 test("pearl budgets respect visible denomination and distinguish repeat gifts from finite achievements", () => {
-  assert.equal(economy.pearls.dailyCycle, 28);
-  assert.equal(economy.pearls.achievementLifetime, 119);
+  assert.equal(economy.pearls.dailyCycle, 500);
+  assert.equal(economy.pearls.achievementLifetime, 1500);
+  assert.deepEqual(plain(economy.pearls.dailyRewards.map(reward => reward.pearls)), [40, 50, 60, 70, 80, 90, 110]);
+  assert.equal(economy.pearls.achievementRewards.flatMap(quest => quest.tiers).reduce((sum, tier) => sum + tier.pearls, 0), 1500);
+  assert.ok(economy.pearls.achievementRewards.every(quest => quest.id !== "full_collection"));
+  assert.deepEqual(plain(economy.pearls.achievementRewards.find(quest => quest.id === "explorer").tiers),
+    [{ level: 1, target: 10, pearls: 30 }, { level: 2, target: 50, pearls: 80 }, { level: 3, target: 200, pearls: 200 }]);
   assert.equal(economy.pearls.dailyMinimumHours, 20);
   assert.deepEqual(plain(economy.pearls.marketSlotPrices), [50, 80, 120, 180, 250]);
   assert.equal(economy.pearls.marketTotal, 680);

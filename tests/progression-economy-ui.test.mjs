@@ -385,6 +385,10 @@ test("stage and pearl summaries distinguish guaranteed project gates from chance
   assert.match(value, /63 шаблонов · 3 активные карточки/);
   assert.match(value, /5 бесплатных мест, максимум 10/);
   assert.match(value, /Все расширения вместе: 680 жемчужин/);
+  assert.match(value, /За 7 полученных подарков 500/);
+  assert.match(value, /Все достижения однократно 1 500/);
+  assert.match(value, /Жемчуг за каждый полученный подарок/);
+  assert.match(value, /Цели и жемчуг за каждую ступень/);
   assert.match(value, /Ускорение стройки считается по оставшемуся времени и кривой цен/);
   assert.doesNotMatch(value, /Предварительный баланс/);
   assert.match(value, /Кладовая не входит в обязательные стройки/);

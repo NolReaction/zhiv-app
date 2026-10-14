@@ -10,11 +10,11 @@ import kotlin.test.*
 class ProgressionRewardsTest {
     private fun at(value: String)=Instant.parse(value)
     @Test fun `catalog pays finite achievement pearls and seven valuable bundles`() {
-        assertEquals(238L,ProgressionRewardRules.achievementPearls.values.flatten().sum())
+        assertEquals(3000L,ProgressionRewardRules.achievementPearls.values.flatten().sum())
         assertEquals(21,ProgressionRewardRules.achievementPearls.values.sumOf { it.size })
         assertEquals(320L,ProgressionRewardRules.daily.sumOf { it.coins })
-        assertEquals(56L,ProgressionRewardRules.daily.sumOf { it.pearls })
-        assertEquals(listOf(4L,4L,6L,6L,8L,8L,20L),ProgressionRewardRules.daily.map { it.pearls })
+        assertEquals(1000L,ProgressionRewardRules.daily.sumOf { it.pearls })
+        assertEquals(listOf(80L,100L,120L,140L,160L,180L,220L),ProgressionRewardRules.daily.map { it.pearls })
         assertEquals(20L,ProgressionRewardRules.daily.sumOf { it.items.values.sum() })
         assertEquals(setOf("wood","stone","fiber","berries","fish","planks","ancient_core"),ProgressionRewardRules.daily.flatMap { it.items.keys }.toSet())
         assertEquals(listOf(0L),ProgressionRewardRules.achievementPearls.getValue("full_collection"))
@@ -34,7 +34,7 @@ class ProgressionRewardsTest {
         for(home in 1..5) {
             val cycle=ProgressionRewardRules.dailyCycle(home)
             assertEquals(coins[home-1],cycle.sumOf { it.coins })
-            assertEquals(56L,cycle.sumOf { it.pearls })
+            assertEquals(1000L,cycle.sumOf { it.pearls })
             assertTrue(cycle.all { it.items.values.sum() in 2L..4L })
             assertEquals(1L,cycle.sumOf { it.items["ancient_core"] ?: 0L })
             assertTrue(cycle.all { it.items.size>=2 })
