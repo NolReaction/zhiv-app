@@ -18,11 +18,15 @@ fun validateEconomyCommand(command: EconomyCommand) {
     if (parseCanonicalUuidV4(command.requestId) == null || parsePublicId(command.ownerPublicId) != command.ownerPublicId ||
         command.expectedRevision !in 0L until ECONOMY_MAX_REVISION || command.targetId.length !in 1..80 ||
         command.action.length !in 1..40 || command.quantity !in 1L..10_000L || command.totalPrice !in 0L..ECONOMY_MAX_BALANCE) invalidEconomy()
+    command.fishSelection?.let { selection ->
+        if (command.action !in setOf("start_production", "complete_resident_order") || selection.size > 100 ||
+            selection.keys.any { it.length !in 1..80 }) invalidEconomy()
+    }
 }
 
 fun decodeEconomyCommand(element: JsonElement): EconomyCommand {
     val value = element as? JsonObject ?: invalidEconomy()
-    val fields = setOf("requestId", "ownerPublicId", "expectedRevision", "action", "targetId", "quantity", "totalPrice")
+    val fields = setOf("requestId", "ownerPublicId", "expectedRevision", "action", "targetId", "quantity", "totalPrice", "fishSelection")
     if (value.keys.any { it !in fields }) invalidEconomy()
     for (field in listOf("requestId", "ownerPublicId", "action", "targetId"))
         if ((value[field] as? JsonPrimitive)?.isString != true) invalidEconomy()
@@ -30,6 +34,14 @@ fun decodeEconomyCommand(element: JsonElement): EconomyCommand {
         val number = value[field] ?: if (field == "expectedRevision") invalidEconomy() else continue
         val primitive = number as? JsonPrimitive ?: invalidEconomy()
         if (primitive.isString || primitive.longOrNull == null) invalidEconomy()
+    }
+    value["fishSelection"]?.takeUnless { it == JsonNull }?.let { supplied ->
+        val selection = supplied as? JsonObject ?: invalidEconomy()
+        if (selection.size > 100) invalidEconomy()
+        selection.forEach { (id, number) ->
+            val primitive = number as? JsonPrimitive ?: invalidEconomy()
+            if (id.length !in 1..80 || primitive.isString || primitive.longOrNull == null) invalidEconomy()
+        }
     }
     return try { economyJson.decodeFromJsonElement<EconomyCommand>(value).also(::validateEconomyCommand) }
     catch (_: SerializationException) { invalidEconomy() }
@@ -162,12 +174,13 @@ object EconomyRules {
         return result.filterValues { it > 0 }
     }
 
-    internal fun spend(input: EconomyState, originalCost: EconomyCost): EconomyState {
+    internal fun spend(input: EconomyState, originalCost: EconomyCost, fishSelection: Map<String, Long>? = null): EconomyState {
         val state = EconomyFishInventory.state(input)
         val cost = originalCost.copy(items = EconomyFishInventory.items(originalCost.items))
         if (state.wallet.coins < cost.coins || cost.items.any { (id, quantity) -> (state.inventory[id] ?: 0) < quantity })
             economyFailure("ECONOMY_RESOURCES", "Не хватает монет или материалов. Можно собрать их, произвести или купить на рынке.")
         return state.copy(wallet = state.wallet.copy(coins = state.wallet.coins - cost.coins),
+            fishing = EconomyFishStock.debit(state, cost.items, fishSelection).fishing,
             inventory = state.inventory.mapValues { (id, quantity) -> quantity - (cost.items[id] ?: 0) }.filterValues { it > 0 })
     }
 
@@ -328,7 +341,7 @@ object EconomyRules {
     private fun claimJob(state: EconomyState, job: EconomyJob, now: Instant, reservedItems: Map<String, Long>): EconomyState {
         requireClaimReady(job, now)
         val buildings = if (job.kind == "construction") state.buildings + (job.targetId to checkNotNull(job.targetLevel)) else state.buildings
-        val next = EconomyItemUnlocks.delivered(state.copy(inventory = addItems(state.inventory, job.rewards), buildings = buildings, jobs = state.jobs.filterNot { it.id == job.id },
+        val delivered = EconomyItemUnlocks.delivered(state.copy(inventory = addItems(state.inventory, job.rewards), buildings = buildings, jobs = state.jobs.filterNot { it.id == job.id },
             completedExplorations = if (job.kind == "exploration" && !isMinerJob(job) && !job.targetId.startsWith("quarry_")) minOf(ECONOMY_MAX_ITEMS, state.completedExplorations + 1) else state.completedExplorations,
             fishing = if (job.kind == "exploration" && catalog.fishing?.routeIds?.contains(job.targetId) == true) {
                 val catches = state.fishing.catches.toMutableMap()
@@ -338,6 +351,8 @@ object EconomyRules {
             } else state.fishing,
             fishingCastSeed = if (job.kind == "exploration" && catalog.fishing?.routeIds?.contains(job.targetId) == true) null else state.fishingCastSeed,
             progression = EconomyCollectionProgress.advance(state.progression, job)), job.rewards)
+        val next = if (job.kind == "exploration" && catalog.fishing?.routeIds?.contains(job.targetId) == true)
+            EconomyFishStock.credit(delivered, job.rewards) else delivered
         addItems(next.inventory, reservedItems)
         assertStorageTransition(state, next, reservedItems)
         return if (job.rareDrop != null) {
@@ -358,7 +373,7 @@ object EconomyRules {
             "complete_resident_order", "replace_resident_order" -> when {
                 EconomyTutorialOrders.isTutorialId(command.targetId) -> EconomyTutorialOrders.complete(state, command)
                 EconomyStageOrders.isStageId(command.targetId) -> EconomyStageOrders.complete(state, command, now, reservedItems)
-                else -> EconomyFood.order(state, command.targetId, command.action == "replace_resident_order", now, command.totalPrice)
+                else -> EconomyFood.order(state, command.targetId, command.action == "replace_resident_order", now, command.totalPrice, fishSelection = command.fishSelection)
             }
             "start_production" -> {
                 if (command.targetId.startsWith("quarry_")) economyFailure("ECONOMY_MINING_ACTIVITY", "Выберите участок добычи для шахтёра")
@@ -380,12 +395,17 @@ object EconomyRules {
                     economyFailure("ECONOMY_BUILDING_BUSY", "Все места производства заняты. Заберите готовый результат")
                 requireJobCapacity(state)
                 val cost = EconomyCost(recipe.cost.coins * command.quantity, recipe.cost.items.mapValues { it.value * command.quantity })
+                val spent = spend(state, cost, command.fishSelection)
+                val beforeStock = EconomyFishStock.normalized(state).orEmpty()
+                val afterStock = EconomyFishStock.normalized(spent).orEmpty()
+                val fishStockCost = beforeStock.mapValues { (id, amount) -> amount - (afterStock[id] ?: 0L) }.filterValues { it > 0L }
                 val job = EconomyJob(command.requestId, "production", recipe.buildingId, recipe.id,
                     startedAt = now.toString(), finishesAt = now.plusSeconds(recipe.seconds * command.quantity).toString(),
                     rewards = recipe.rewards.mapValues { it.value * command.quantity }, cost = cost, catalogVersion = catalog.version,
-                    collection = recipe.collection?.let { EconomyCollection(it.kind, it.seconds, null, null) })
+                    collection = recipe.collection?.let { EconomyCollection(it.kind, it.seconds, null, null) },
+                    fishStockCost = fishStockCost.takeIf { it.isNotEmpty() })
                 requireRewardCapacity(state, job.rewards)
-                spend(state, cost).copy(jobs = state.jobs + job) to "Производство началось. Результат дождётся вас."
+                spent.copy(jobs = state.jobs + job) to "Производство началось. Результат дождётся вас."
             }
             "buy_production_slot" -> {
                 if (!productionStationSupported(command.targetId)) economyFailure("ECONOMY_PRODUCTION_STATION", "В этой постройке нет мест производства")
@@ -490,8 +510,8 @@ object EconomyRules {
                     economyFailure("ECONOMY_CANCEL_READY", "Готовое производство уже нельзя отменить. Заберите результат")
                 if (job.cost.coins > ECONOMY_MAX_BALANCE - state.wallet.coins) economyFailure("ECONOMY_CAPACITY", "Кошелёк заполнен")
                 // Saved paid terms include the selected fish and survive catalog updates.
-                val refunded = state.copy(wallet = state.wallet.copy(coins = state.wallet.coins + job.cost.coins),
-                    inventory = addItems(state.inventory, job.cost.items), jobs = state.jobs.filterNot { it.id == job.id })
+                val refunded = EconomyFishStock.credit(state.copy(wallet = state.wallet.copy(coins = state.wallet.coins + job.cost.coins),
+                    inventory = addItems(state.inventory, job.cost.items), jobs = state.jobs.filterNot { it.id == job.id }), EconomyFishStock.within(job.fishStockCost ?: job.cost.items, job.cost.items))
                 addItems(refunded.inventory, reservedItems)
                 assertStorageTransition(state, refunded, reservedItems)
                 refunded to "Производство отменено. Потраченные монеты и материалы возвращены"

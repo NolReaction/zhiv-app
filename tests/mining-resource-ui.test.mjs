@@ -120,17 +120,40 @@ test("mine yields name every resource and retain real multi-item amounts without
   assert.deepEqual(view.selections, view.ids); assert.deepEqual(calls, []);
 });
 
-test("mine card status has its own fixed slot before duration for both free and blocked extraction", () => {
+test("mine rows lead with their actual result and separate mixed mission names from yield", () => {
+  hooks.reset(); const view = sector(state());
+  for (const routeId of ["quarry_stone", "quarry_ore", "quarry_stone_overnight"]) {
+    const card = view.nodes.find(node => node.type === "button" && node.props["data-route"] === routeId);
+    const children = Children.toArray(card.props.children), main = children[0];
+    assert.equal(card.props["data-mixed"], undefined);
+    assert.equal(elements(main).filter(node => node.props["data-mining-yield"]).length, 1);
+    assert.doesNotMatch(renderToStaticMarkup(main), /Добыть камень|Добыть руду|Камень к утру/);
+    assert.ok(children[1].props.id.endsWith("-duration"));
+    assert.equal(String(children[2].props["aria-hidden"]), "true");
+    assert.ok(children.at(-1).props.children.some(node => node?.props?.children === (routeId === "quarry_stone_overnight" ? "К утру" : "Быстрая добыча")));
+  }
+  const mixed = view.nodes.find(node => node.type === "button" && node.props["data-route"] === "cave");
+  const children = Children.toArray(mixed.props.children);
+  assert.equal(mixed.props["data-mixed"], true);
+  assert.match(renderToStaticMarkup(children[0]), /Вход в пещеру/);
+  assert.equal(elements(children[0]).filter(node => node.props["data-mining-yield"]).length, 0);
+  assert.equal(children[3].props["data-mixed"], true);
+  assert.equal(elements(children[3]).filter(node => node.props["data-mining-yield"]).length, 2);
+});
+
+test("compact mine metadata retains accessible real blockers and has no empty lock rows", () => {
   hooks.reset(); const view = sector(state());
   for (const routeId of ["cave", "deep_cave"]) {
     const card = view.nodes.find(node => node.type === "button" && node.props["data-route"] === routeId);
-    const children = Children.toArray(card.props.children), note = children.find(node => node.type === "small");
-    assert.equal(children.indexOf(note), children.length - 2);
-    const duration = children.at(-1);
+    const children = Children.toArray(card.props.children), duration = children[1], metadata = children.at(-1);
     assert.match(renderToStaticMarkup(duration), routeId === "cave" ? /1 ч/ : /4 ч/);
-    if (routeId === "cave") assert.equal(note.props["aria-hidden"], true);
-    else {
+    const note = elements(metadata).find(node => node.props.id?.endsWith("-reason"));
+    if (routeId === "cave") {
+      assert.equal(note, undefined);
+      assert.equal(elements(metadata).filter(node => node.type === "small").length, 1);
+    } else {
       assert.match(renderToStaticMarkup(note), /Нужны припасы/);
+      assert.equal(note.props.title, "Нужны припасы");
       assert.ok(card.props["aria-describedby"].includes(note.props.id));
     }
   }

@@ -31,10 +31,13 @@ internal val economyBerryItemIds = setOf("berries", "strawberries", "blueberries
             require(!Instant.parse(finishesAt).isBefore(Instant.parse(startedAt).plusSeconds(seconds)))
     }
 }
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable data class EconomyFishing(
     val ownedRods: List<String> = listOf("reed_rod"), val equippedRodId: String = "reed_rod",
     val equippedBaitId: String? = null, val catches: Map<String, Long> = emptyMap(),
     val ownedHooks: List<String> = listOf("bare_hook"), val equippedHookId: String = "bare_hook",
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val stock: Map<String, Long>? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val escrow: Map<String, Map<String, Long>>? = null,
 )
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable data class EconomyFishingCatch(val rodId: String, val baitId: String?, val fishId: String, val hookId: String = "bare_hook",
@@ -91,12 +94,14 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
 @Serializable data class EconomyRareDropDelivery(val version: Int = 1, val seconds: Long, val itemId: String? = null) {
     init { require(version == 1 && seconds > 0) }
 }
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable data class EconomyJob(
     val id: String, val kind: String, val targetId: String, val recipeId: String? = null,
     val targetLevel: Int? = null, val startedAt: String, val finishesAt: String,
     val rewards: Map<String, Long> = emptyMap(), val cost: EconomyCost = EconomyCost(), val catalogVersion: Int = 1,
     val collection: EconomyCollection? = null, val fishing: EconomyFishingCatch? = null, val rareDrop: EconomyRareDropDelivery? = null,
     val meal: EconomyJobMeal? = null, val actorId: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val fishStockCost: Map<String, Long>? = null,
 ) {
     init {
         require(actorId == null || kind == "exploration" && actorId in setOf("mochlik", "miner"))
@@ -195,9 +200,11 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     val stageOrders: EconomyStageOrderState = EconomyStageOrderState(),
     val marketSlots: Int = 5, val unlockedItems: List<String> = emptyList(),
 )
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable data class EconomyCommand(
     val requestId: String, val ownerPublicId: String, val expectedRevision: Long,
     val action: String, val targetId: String, val quantity: Long = 1, val totalPrice: Long = 0,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val fishSelection: Map<String, Long>? = null,
 )
 @Serializable data class EconomyResult(val state: EconomyView, val message: String, val acceptedRevision: Long, val replayed: Boolean = false)
 interface EconomyRepository {

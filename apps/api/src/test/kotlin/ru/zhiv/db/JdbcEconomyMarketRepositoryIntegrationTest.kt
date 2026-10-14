@@ -87,6 +87,112 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
     }
     private fun expireShowcase(player: Player) { execute("UPDATE economy_market_showcases SET refresh_at=clock_timestamp()-interval '1 second' WHERE user_id=?", player.id) }
 
+    @Test fun `fish lot escrow conserves known species and unidentified remainder on cancellation`() = runBlocking<Unit> {
+        val seller = player()
+        val fish = checkNotNull(EconomyRules.catalog.fishing).fish.filter { it.rarity == "common" }
+        val known = mapOf(fish[0].itemId to 1L, fish[1].itemId to 3L)
+        editState(seller) { it.copy(inventory = mapOf("fish_common" to 5L), fishing = it.fishing.copy(stock = known)) }
+        val create = command(seller, "create_listing", "fish_common", 3L, 120L)
+        market.command(seller.hash, create)
+        val lot = market.market(seller.hash).mine.single()
+        val held = economy.snapshot(seller.hash)
+        assertEquals(mapOf("fish_common" to 2L), held.inventory)
+        assertEquals(mapOf(fish[0].itemId to 1L, fish[1].itemId to 1L), held.fishing.stock)
+        assertEquals(mapOf(fish[1].itemId to 2L), held.fishing.escrow?.get(lot.id))
+        assertTrue(market.command(seller.hash, create).replayed)
+        val cancel = command(seller, "cancel_listing", lot.id)
+        val restored = market.command(seller.hash, cancel).state
+        assertEquals(mapOf("fish_common" to 5L), restored.inventory)
+        assertEquals(known, restored.fishing.stock)
+        assertTrue(restored.fishing.escrow.orEmpty().isEmpty())
+        assertTrue(market.command(seller.hash, cancel).replayed)
+        assertEquals(known, economy.snapshot(seller.hash).fishing.stock)
+    }
+
+    @Test fun `bought class lot transfers exact known fish without opening personal collection`() = runBlocking<Unit> {
+        val seller = player(); val buyer = player(berries = 0)
+        val fish = checkNotNull(EconomyRules.catalog.fishing).fish.first { it.rarity == "common" }.itemId
+        editState(seller) { it.copy(inventory = mapOf("fish_common" to 2L), fishing = it.fishing.copy(stock = mapOf(fish to 2L))) }
+        market.command(seller.hash, command(seller, "create_listing", "fish_common", 2L, 80L))
+        val lot = market.market(seller.hash).mine.single()
+        val buy = purchase(buyer, lot)
+        val bought = market.command(buyer.hash, buy).state
+        assertEquals(mapOf("fish_common" to 2L), bought.inventory)
+        assertEquals(mapOf(fish to 2L), bought.fishing.stock)
+        assertTrue(bought.fishing.catches.isEmpty())
+        val sold = economy.snapshot(seller.hash)
+        assertTrue(sold.fishing.stock.orEmpty().isEmpty())
+        assertTrue(sold.fishing.escrow.orEmpty().isEmpty())
+        assertTrue(market.command(buyer.hash, buy).replayed)
+        assertEquals(mapOf(fish to 2L), economy.snapshot(buyer.hash).fishing.stock)
+    }
+
+    @Test fun `lifecycle cancellation restores fish metadata from every lot once`() = runBlocking<Unit> {
+        val seller = player()
+        val fish = checkNotNull(EconomyRules.catalog.fishing).fish.first { it.rarity == "common" }.itemId
+        editState(seller) { it.copy(inventory = mapOf("fish_common" to 4L), fishing = it.fishing.copy(stock = mapOf(fish to 4L))) }
+        repeat(2) { market.command(seller.hash, command(seller, "create_listing", "fish_common", 2L, 80L)) }
+        source.connection.use { c ->
+            c.economyRows("SELECT id FROM app_users WHERE id=? FOR NO KEY UPDATE", seller.id) { it.getObject(1) }
+            cancelEconomyMarketListings(c, seller.id)
+            cancelEconomyMarketListings(c, seller.id)
+            c.commit()
+        }
+        val restored = economy.snapshot(seller.hash)
+        assertEquals(mapOf("fish_common" to 4L), restored.inventory)
+        assertEquals(mapOf(fish to 4L), restored.fishing.stock)
+        assertTrue(restored.fishing.escrow.orEmpty().isEmpty())
+    }
+
+    @Test fun `old raw species lot returns known fish on cancellation without collection rewards`() = runBlocking<Unit> {
+        val seller = player()
+        val species = checkNotNull(EconomyRules.catalog.fishing).fish.first { it.rarity == "common" }.itemId
+        editState(seller) { it.copy(inventory = mapOf("fish_common" to 2L), fishing = it.fishing.copy(stock = null, escrow = null)) }
+        market.command(seller.hash, command(seller, "create_listing", "fish_common", 2L, 80L))
+        val lot = market.market(seller.hash).mine.single()
+        execute("UPDATE economy_market_listings SET item_id=? WHERE id=?", species, UUID.fromString(lot.id))
+        val restored = market.command(seller.hash, command(seller, "cancel_listing", lot.id)).state
+        assertEquals(mapOf("fish_common" to 2L), restored.inventory)
+        assertEquals(mapOf(species to 2L), restored.fishing.stock)
+        assertTrue(restored.fishing.catches.isEmpty())
+    }
+
+    @Test fun `old raw species lot transfers known fish to buyer without adding catches`() = runBlocking<Unit> {
+        val seller = player(); val buyer = player(berries = 0)
+        val species = checkNotNull(EconomyRules.catalog.fishing).fish.first { it.rarity == "common" }.itemId
+        editState(seller) { it.copy(inventory = mapOf("fish_common" to 2L), fishing = it.fishing.copy(stock = null, escrow = null)) }
+        market.command(seller.hash, command(seller, "create_listing", "fish_common", 2L, 80L))
+        val created = market.market(seller.hash).mine.single()
+        // Retain the old showcase lease; fresh showcases list only canonical class IDs.
+        val buy = purchase(buyer, created)
+        execute("UPDATE economy_market_listings SET item_id=? WHERE id=?", species, UUID.fromString(created.id))
+        val bought = market.command(buyer.hash, buy).state
+        assertEquals(mapOf("fish_common" to 2L), bought.inventory)
+        assertEquals(mapOf(species to 2L), bought.fishing.stock)
+        assertTrue(bought.fishing.catches.isEmpty())
+        assertTrue(economy.snapshot(seller.hash).fishing.stock.orEmpty().isEmpty())
+    }
+
+    @Test fun `bulk cancellation restores literal legacy species lot but respects explicit empty escrow proof`() = runBlocking<Unit> {
+        val seller = player()
+        val species = checkNotNull(EconomyRules.catalog.fishing).fish.first { it.rarity == "common" }.itemId
+        editState(seller) { it.copy(inventory = mapOf("fish_common" to 4L), fishing = it.fishing.copy(stock = null, escrow = null)) }
+        repeat(2) { market.command(seller.hash, command(seller, "create_listing", "fish_common", 2L, 80L)) }
+        val lots = market.market(seller.hash).mine
+        lots.forEach { lot -> execute("UPDATE economy_market_listings SET item_id=? WHERE id=?", species, UUID.fromString(lot.id)) }
+        editState(seller) { it.copy(fishing = it.fishing.copy(escrow = mapOf(lots[0].id to emptyMap()))) }
+        source.connection.use { c ->
+            c.economyRows("SELECT id FROM app_users WHERE id=? FOR NO KEY UPDATE", seller.id) { it.getObject(1) }
+            cancelEconomyMarketListings(c, seller.id)
+            c.commit()
+        }
+        val restored = economy.snapshot(seller.hash)
+        assertEquals(mapOf("fish_common" to 4L), restored.inventory)
+        assertEquals(mapOf(species to 2L), restored.fishing.stock)
+        assertTrue(restored.fishing.escrow.orEmpty().isEmpty())
+        assertTrue(restored.fishing.catches.isEmpty())
+    }
+
     @Test fun `only confirmed player payment awards first sale to seller inside the transaction`() = runBlocking<Unit> {
         val seller=player(); val buyer=player(berries=0)
         val cancelled=offer(seller)

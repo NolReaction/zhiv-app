@@ -324,7 +324,7 @@ object EconomyFood {
     }
 
     fun order(state: EconomyState, targetId: String, replace: Boolean, now: Instant, quotedPrice: Long = 0,
-        catalog: EconomyCatalog = EconomyRules.catalog): Pair<EconomyState, String> {
+        catalog: EconomyCatalog = EconomyRules.catalog, fishSelection: Map<String, Long>? = null): Pair<EconomyState, String> {
         val config = catalog.food?.orders ?: economyFailure("ECONOMY_ORDER_CHANGED", "Заказы пока недоступны")
         val current = residentOrderBoard(state, now, catalog)
         val offer = current.offers.find { it.id == targetId }
@@ -343,7 +343,7 @@ object EconomyFood {
             if (replacement == null || replacement.id == offer.templateId || replacement.items == offer.items)
                 economyFailure("ECONOMY_ORDER_NO_ALTERNATIVE", "Других подходящих заказов пока нет. Замена не потрачена")
         }
-        val spent = if (replace) state else spendItems(state, offer.items)
+        val spent = if (replace) state else EconomyRules.spend(state, EconomyCost(items = offer.items), fishSelection)
         return spent.copy(wallet = if (replace) spent.wallet.copy(pearls = spent.wallet.pearls - price)
             else spent.wallet.copy(coins = spent.wallet.coins + offer.coins), residentOrders = nextBoard.copy(
                 freeReplacementsUsed = if (replace && current.freeReplacementsRemaining > 0)
@@ -356,6 +356,6 @@ object EconomyFood {
     private fun spendItems(state: EconomyState, items: Map<String, Long>): EconomyState {
         if (items.any { (id, quantity) -> (state.inventory[id] ?: 0L) < quantity })
             economyFailure("ECONOMY_RESOURCES", "Не хватает припасов в кладовой")
-        return state.copy(inventory = state.inventory.mapValues { (id, quantity) -> quantity - (items[id] ?: 0L) }.filterValues { it > 0 })
+        return EconomyRules.spend(state, EconomyCost(items = items))
     }
 }

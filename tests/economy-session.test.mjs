@@ -19,6 +19,38 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 function storage() { const data = new Map(); return { getItem: key => data.get(key) ?? null, setItem: (key, value) => data.set(key, value), removeItem: key => data.delete(key), data }; }
 
+test("fish selections are copied into exactly one accepted command and cannot be edited after sending", async () => {
+  const pending = deferred(), sent = [];
+  const session = createEconomySession(owner, transport({ send: command => { sent.push(command); return pending.promise; } }), () => assert.fail());
+  const stop = session.activate(); await session.refresh();
+  const selection = { fish_mirror_koi: 1 };
+  assert.equal(session.act("start_production", "cook_epic_fish", 1, 0, selection), true);
+  selection.fish_mirror_koi = 99;
+  assert.deepEqual(sent[0].fishSelection, { fish_mirror_koi: 1 });
+  assert.equal(session.act("start_production", "cook_epic_fish", 1, 0, { fish_sturgeon: 1 }), false);
+  assert.equal(sent.length, 1);
+  pending.resolve(result(state(1))); await flush(); stop();
+});
+
+test("a lost fish order receipt keeps the exact chosen species across session recreation", async () => {
+  const cache = storage(), sent = []; let authoritative = state();
+  const t = transport({ get: async () => authoritative, send: async command => {
+    sent.push(structuredClone(command));
+    if (sent.length === 1) { authoritative = state(1); throw Error("Committed fish order response lost"); }
+    return { ...result(authoritative), replayed: true };
+  } });
+  const original = createEconomySession(owner, t, () => assert.fail(), cache), stop = original.activate();
+  await original.refresh();
+  assert.equal(original.act("complete_resident_order", "fish-order", 1, 0, { fish_sturgeon: 1, fish_rare: 2 }), true);
+  await flush(); assert.equal(original.getSnapshot().uncertain, true); stop();
+  const restored = createEconomySession(owner, t, () => assert.fail(), cache), deactivate = restored.activate();
+  await restored.refresh(); await restored.retry();
+  assert.deepEqual(sent[1], sent[0], "the same request id, revision and selection recover together");
+  assert.deepEqual(sent[1].fishSelection, { fish_sturgeon: 1, fish_rare: 2 });
+  assert.equal(restored.getSnapshot().uncertain, false); assert.equal(cache.data.size, 0);
+  deactivate();
+});
+
 test("act reports refusal before snapshot, while suspended or busy, and acceptance only for an issued request", async () => {
   const wait = deferred(), sent = [];
   const session = createEconomySession(owner, transport({ send: command => { sent.push(command); return wait.promise; } }), () => assert.fail());

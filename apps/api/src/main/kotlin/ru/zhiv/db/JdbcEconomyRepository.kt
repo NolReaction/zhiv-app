@@ -194,7 +194,7 @@ class JdbcEconomyRepository(private val source: DataSource) : EconomyRepository 
         validateEconomyCommand(command)
         return transaction(sessionHash, command.ownerPublicId) { c, actor, now ->
             val requestId = UUID.fromString(command.requestId)
-            val signature = economyJson.encodeToString(command)
+            val signature = economyJson.encodeToString(command.copy(fishSelection = command.fishSelection?.toSortedMap()))
             val receipt = c.economyRows("SELECT signature,message,accepted_revision FROM economy_commands WHERE user_id=? AND request_id=?", actor.id, requestId) {
                 Receipt(it.getString(1), it.getString(2), it.getLong(3))
             }.firstOrNull()

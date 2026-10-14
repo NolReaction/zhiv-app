@@ -56,6 +56,62 @@ test("POST validates payload then atomically replays its original receipt", asyn
   const conflict = await POST(post({ ...cmd, quantity: 2 })); assert.equal(conflict.status, 409); assert.equal((await conflict.json()).code, "ECONOMY_REQUEST_CONFLICT");
 });
 
+test("HTTP fishSelection cooks exact owned species, binds its receipt and keeps old clients compatible", async () => {
+  const p = player();
+  economy.getDevEconomy(p.token);
+  const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
+  Object.assign(row.state.buildings, { home: 3, dryer: 2, warehouse: 10 });
+  row.state.productionSlots = { dryer: 3 };
+  row.state.progression.recipes.cook_grilled_fish = 1;
+  // Actual old species inventory is ownership proof, separate from lifetime catches.
+  row.state.inventory = { fish_silverfin: 2, fish_rudd: 2, berries: 1, charcoal: 1 };
+  row.state.fishing.catches = { fish_sturgeon: 100 };
+  const before = await (await GET(read())).json();
+  assert.deepEqual(before.fishing.stock, { fish_silverfin: 2, fish_rudd: 2 });
+  const cmd = { ...command(p), targetId: "cook_fish_soup", fishSelection: { fish_silverfin: 1, fish_rudd: 1 } };
+  const response = await POST(post(cmd));
+  assert.equal(response.status, 200);
+  const started = await response.json();
+  assert.equal(model.economyResultSchema.safeParse(started).success, true);
+  assert.deepEqual(started.state.inventory, { fish_common: 2 });
+  assert.deepEqual(started.state.fishing.stock, { fish_silverfin: 1, fish_rudd: 1 });
+  assert.deepEqual(started.state.fishing.catches, before.fishing.catches);
+  assert.deepEqual(started.state.jobs[0].cost.items, { fish_common: 2, berries: 1, charcoal: 1 });
+  assert.deepEqual(started.state.jobs[0].fishStockCost, cmd.fishSelection);
+
+  const repeatedResponse = await POST(post({ ...cmd, fishSelection: { fish_rudd: 1, fish_silverfin: 1 } }));
+  assert.equal(repeatedResponse.status, 200);
+  const repeated = await repeatedResponse.json();
+  assert.equal(repeated.replayed, true);
+  assert.equal(repeated.acceptedRevision, started.acceptedRevision);
+  assert.deepEqual(repeated.state.inventory, started.state.inventory);
+  assert.deepEqual(repeated.state.fishing.stock, started.state.fishing.stock);
+  assert.deepEqual(repeated.state.jobs, started.state.jobs);
+
+  const changed = await POST(post({ ...cmd, fishSelection: { fish_rudd: 2 } }));
+  assert.equal(changed.status, 409);
+  assert.equal((await changed.json()).code, "ECONOMY_REQUEST_CONFLICT");
+  for (const fishSelection of [{}, { fish_silverfin: 2 }, { fish_sturgeon: 1 }]) {
+    const invalid = await POST(post({ ...command(p), targetId: "cook_grilled_fish", fishSelection }));
+    assert.equal(invalid.status, 409);
+    assert.equal((await invalid.json()).code, "ECONOMY_FISH_SELECTION_CHANGED");
+    const unchanged = await (await GET(read())).json();
+    assert.equal(unchanged.revision, started.state.revision);
+    assert.deepEqual(unchanged.wallet, started.state.wallet);
+    assert.deepEqual(unchanged.inventory, started.state.inventory);
+    assert.deepEqual(unchanged.fishing, started.state.fishing);
+    assert.deepEqual(unchanged.jobs, started.state.jobs);
+  }
+
+  const legacy = await POST(post({ ...command(p), targetId: "cook_grilled_fish" }));
+  assert.equal(legacy.status, 200);
+  const automatic = await legacy.json();
+  assert.equal(automatic.state.inventory.fish_common, 1);
+  assert.deepEqual(automatic.state.fishing.stock, { fish_rudd: 1 });
+  assert.deepEqual(automatic.state.fishing.catches, before.fishing.catches);
+  assert.equal(automatic.state.jobs.length, 2);
+});
+
 test("HTTP obsolete starter gift remains owner-bound and repeated requests cannot mint any cost", async () => {
   const p = player(), before = economy.getDevEconomy(p.token);
   const cmd = { ...command(p), action: "claim_workshop_starter", targetId: "workshop" };

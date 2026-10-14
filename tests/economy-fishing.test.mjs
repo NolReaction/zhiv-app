@@ -32,7 +32,8 @@ test("old snapshots and profiles receive a free starter rod, never retroactive c
   assert.deepEqual(parsed.fishing, { ownedRods: ["reed_rod"], equippedRodId: "reed_rod", ownedHooks: ["bare_hook"], equippedHookId: "bare_hook", equippedBaitId: null, catches: {} });
   assert.equal(parsed.catalog.fishing, undefined);
   delete stored(p).fishing; stored(p).inventory.fish = 50;
-  assert.deepEqual(read(p).fishing, parsed.fishing);
+  assert.deepEqual(read(p).fishing, { ...parsed.fishing, stock: { fish: 50 } });
+  assert.deepEqual(read(p).fishing.catches, {}, "raw owned fish are not retroactive collection catches");
 });
 
 test("Pleska catalog has no buy-sell arbitrage and upgrades visibly improve their target class odds", () => {

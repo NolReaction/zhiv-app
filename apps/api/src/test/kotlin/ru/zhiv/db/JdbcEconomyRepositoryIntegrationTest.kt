@@ -66,6 +66,31 @@ class JdbcEconomyRepositoryIntegrationTest {
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(ready), p.id)
     }
 
+    @Test fun `species order selection is signed canonically and stale retry never consumes another fish`() = runBlocking<Unit> {
+        val p = player(); economy.snapshot(p.hash)
+        val initial = source.connection.use { readEconomyProfile(it, p.id).state }
+        val fish = checkNotNull(EconomyRules.catalog.fishing).fish.filter { it.rarity == "common" }.take(2)
+        val known = fish.associate { it.itemId to 2L }
+        val terms = EconomyResidentOrderTemplate("tutorial_first_order", "plesk", "Сохранённый рыбный заказ",
+            items = mapOf("fish_common" to 2L), coins = 90L)
+        val seeded = initial.copy(inventory = mapOf("fish_common" to 4L), fishing = initial.fishing.copy(stock = known),
+            tutorialOrder = EconomyTutorialOrder(ingredientsClaimed = true, terms = terms))
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(seeded), p.id)
+        val snapshot = economy.snapshot(p.hash)
+        val selection = linkedMapOf(fish[0].itemId to 1L, fish[1].itemId to 1L)
+        val request = command(p, snapshot, "complete_resident_order", terms.id).copy(fishSelection = selection)
+        val done = economy.command(p.hash, request)
+        assertEquals(mapOf("fish_common" to 2L), done.state.inventory)
+        assertEquals(fish.associate { it.itemId to 1L }, done.state.fishing.stock)
+        val reordered = request.copy(fishSelection = linkedMapOf(fish[1].itemId to 1L, fish[0].itemId to 1L))
+        assertTrue(economy.command(p.hash, reordered).replayed)
+        assertEquals(done.state.revision, economy.snapshot(p.hash).revision)
+        assertEquals("ECONOMY_REQUEST_CONFLICT", assertFailsWith<AuthFailure> {
+            economy.command(p.hash, request.copy(fishSelection = mapOf(fish[0].itemId to 2L)))
+        }.code)
+        assertEquals(fish.associate { it.itemId to 1L }, economy.snapshot(p.hash).fishing.stock)
+    }
+
     @Test fun `concurrent production cancellation refunds saved terms once and retains only safe recipe context`() = runBlocking<Unit> {
         val p = player(); economy.snapshot(p.hash)
         val original = source.connection.use { readEconomyProfile(it, p.id).state }

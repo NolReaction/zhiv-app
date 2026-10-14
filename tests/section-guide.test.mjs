@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-tidy-cards-guides-sections-vite", server: { middlewareMode: true, hmr: false, ws: false } });
+const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-fish-stock-guides-sections-vite", server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { sectionGuideIds, sectionGuideLessons, sectionGuideCanOpen, parseSectionGuideProgress, transitionSectionGuide: move } = await vite.ssrLoadModule("/features/onboarding/section-guide-model.ts");
 const { sectionGuideStorageKey, createSectionGuideStore } = await vite.ssrLoadModule("/features/onboarding/section-guide-storage.ts");
@@ -107,11 +107,24 @@ test("Plesk lessons compare class odds without buying and keep representative ar
     assert.match(lesson(id).text, /[Оо]ткрытие таблицы не покупает|[Пп]росмотр ничего не покупает/);
   }
   assert.match(lesson("catch").text, /После возвращения.*виды и редкость/);
-  assert.match(lesson("catch").text, /«Забрать».*виды откроются в твоей книге/);
-  assert.match(lesson("catch").text, /Рисунок знакомой рыбы украшает класс, а не показывает состав запаса/);
+  assert.match(lesson("catch").text, /«Забрать».*текущий запас.*виды откроются в книге навсегда/);
+  assert.match(lesson("catch").text, /оставшихся видов.*Книга помнит и уже потраченные поимки/);
   const queue = sectionGuideLessons.workshop.find(step => step.id === "queue");
   assert.match(queue.text, /Ячейки остаются одинакового размера/);
   assert.match(queue.text, /обе очереди мастерской, «Верстак» и «Печь»/);
+});
+
+test("order and travel lessons separate fish selection from consumption and owned gear from buying", () => {
+  const [requirements, reward] = sectionGuideLessons.orders;
+  assert.match(requirements.text, /выбор оставшихся видов: он уже заполнен/);
+  assert.match(reward.text, /тап заменяет рыбу, минус убирает одну/);
+  assert.match(reward.text, /Только «Отдать заказ».*потратит рыбу/);
+  assert.match(reward.text, /Закрытие ничего не расходует/);
+  const preparation = sectionGuideLessons.expeditions.find(step => step.id === "preparation");
+  assert.match(preparation.text, /три ячейки: удочка, крючок и наживка/);
+  assert.match(preparation.text, /твою снасть без покупки и отправления/);
+  assert.match(preparation.text, /Наживка уйдёт только при выходе/);
+  for (const step of [requirements, reward, preparation]) assert.notEqual(step.revealOnOpen, true);
 });
 
 test("explicit pause survives reopening until deliberately resumed", () => {

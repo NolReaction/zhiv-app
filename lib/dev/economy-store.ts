@@ -14,6 +14,7 @@ import { inheritEconomyCollection } from "@/features/economy/domain/collection-p
 import { economyCommandUsesActor } from "@/features/economy/domain/actor-availability";
 import { createFishingShop, fishingShopExpired } from "@/features/economy/domain/fishing-shop";
 import { fishingState, fishClassInventory, fishingClassItemId } from "@/features/economy/domain/fishing";
+import { creditFishStock, debitFishStock, fishStockWithinItems, normalizeFishStockInventory, reconcileFishStock } from "@/features/economy/domain/fish-stock";
 import { publicEconomyJob } from "@/features/economy/domain/public-jobs";
 import { tutorialOrderProgress } from "@/features/economy/domain/tutorial-order";
 import { ensureStageOrders, stageOrdersProgress } from "@/features/economy/domain/stage-orders";
@@ -64,7 +65,7 @@ function profile(token: string | undefined, now: number) {
   }
   normalizeCurrency(value);
   value.state.fishing ??= fishingState({});
-  value.state.inventory = fishClassInventory(value.state.inventory);
+  normalizeFishStockInventory(value.state);
   value.state.wardrobe = wardrobeOwned(value.state.wardrobe, getDevLegacyWardrobe(owner));
   value.state.progression = inheritEconomyCollection(value.state.progression, getDevCollectionFinds(owner));
   value.state.buildings.warehouse ??= 1;
@@ -96,7 +97,7 @@ function bump(value: Profile) {
 }
 function receipt(value: Profile, owner: string, command: ReceiptCommand, now: number): EconomyResult | null {
   if (owner !== command.ownerPublicId) return fail("ECONOMY_OWNER_CHANGED", "Аккаунт изменился. Обновите хозяйство");
-  const signature = JSON.stringify([command.ownerPublicId, command.expectedRevision, command.action, command.targetId, command.quantity, command.totalPrice]);
+  const signature = commandSignature(command);
   const found = value.receipts.get(receiptKey(command));
   if (found) {
     if (found.signature !== signature) return fail("ECONOMY_REQUEST_CONFLICT", "Этот запрос уже использован для другого действия");
@@ -108,6 +109,19 @@ function receipt(value: Profile, owner: string, command: ReceiptCommand, now: nu
 }
 function receiptKey(command: ReceiptCommand) {
   return command.requestId.toLowerCase();
+}
+function commandSignature(command: ReceiptCommand) {
+  const parts: unknown[] = [command.ownerPublicId, command.expectedRevision, command.action, command.targetId, command.quantity, command.totalPrice];
+  if ("fishSelection" in command && command.fishSelection != null)
+    parts.push(Object.entries(command.fishSelection).sort(([first], [second]) => first < second ? -1 : first > second ? 1 : 0));
+  return JSON.stringify(parts);
+}
+function removeFishEscrow(state: EconomyState, listingId: string) {
+  const current = fishingState(state);
+  if (!current.escrow?.[listingId]) return;
+  const escrow = { ...current.escrow };
+  delete escrow[listingId];
+  state.fishing = { ...current, escrow };
 }
 function escrowItems(owner: string, excluding?: string): Record<string, number> {
   const totals: Record<string, number> = {};
@@ -141,12 +155,13 @@ function persistItemUnlocks(owner: string, previous: EconomyState, next: Economy
   persistEconomyItemUnlocks(next, confirmedRewards);
 }
 function commit(owner: string, value: Profile, next: EconomyState, command: ReceiptCommand, message: string, now: number): EconomyResult {
+  reconcileFishStock(next);
   persistItemUnlocks(owner, value.state, next);
   bump(value); value.state = next;
   if (!["grant_currency", "grant_item", "grant_fishing_gear", "grant_wardrobe", "grant_upgrade_cost", "set_building_level", "finish_jobs", "apply_settlement"].includes(command.action))
     awardDevEconomyAchievements(owner, next, now);
   value.receipts.set(receiptKey(command), {
-    signature: JSON.stringify([command.ownerPublicId, command.expectedRevision, command.action, command.targetId, command.quantity, command.totalPrice]),
+    signature: commandSignature(command),
     message, acceptedRevision: value.revision,
   });
   return { state: view(owner, value, now), message, acceptedRevision: value.revision, replayed: false };
@@ -206,6 +221,7 @@ export function commandDevEconomyCheat(token: string | undefined, input: Economy
     }
     case "grant_item":
       creditEconomyItems(next, { [command.targetId]: command.quantity });
+      creditFishStock(next, { [command.targetId]: command.quantity });
       message = `DEV: выдано ${command.quantity} × ${economyCatalog.items.find(item => item.id === command.targetId)!.name}`;
       break;
     case "grant_wardrobe": {
@@ -363,12 +379,17 @@ export function commandDevEconomyMarket(token: string | undefined, input: Market
     if (marketMinimumPrice(item.id, command.quantity) > marketDailyLimit(next.buildings.home ?? 1))
       return fail("ECONOMY_MARKET_DAILY_LOT_LIMIT", "Разделите партию: её базовая стоимость превышает дневной объём продаж");
     if ((next.inventory[item.id] ?? 0) < command.quantity) return fail("ECONOMY_RESOURCES", "Не хватает предметов для лота");
+    const fishStockCost = debitFishStock(next, { [item.id]: command.quantity });
     next.inventory[item.id] -= command.quantity;
     if (!next.inventory[item.id]) delete next.inventory[item.id];
     const reserved = escrowItems(owner);
     assertEconomyStorageTransition(value.state, next, reserved, { ...reserved, [item.id]: (reserved[item.id] ?? 0) + command.quantity });
     const listing: Listing = { id: crypto.randomUUID(), sellerPublicId: owner, itemId: item.id, quantity: command.quantity,
       totalPrice: command.totalPrice, feeBps: economyCatalog.market.feeBps, currencyScale: ECONOMY_CURRENCY_SCALE, status: "active", createdAt: new Date(now).toISOString(), closedAt: null };
+    if (Object.keys(fishStockCost).length) {
+      const current = fishingState(next);
+      next.fishing = { ...current, escrow: { ...current.escrow, [listing.id]: fishStockCost } };
+    }
     store().listings.set(listing.id, listing);
     return { ...commit(owner, value, next, command, "Лот размещён на прилавке", now), listing: publicListing(listing, owner, token) };
   }
@@ -379,6 +400,8 @@ export function commandDevEconomyMarket(token: string | undefined, input: Market
     if (listing.sellerPublicId !== owner) return fail("ECONOMY_MARKET_OWNER", "Это прилавок другого игрока", 403);
     creditEconomyItems(next, { [listing.itemId]: listing.quantity });
     assertEconomyStorageTransition(value.state, next, escrowItems(owner), escrowItems(owner, listing.id));
+    creditFishStock(next, fishStockWithinItems(next.fishing.escrow?.[listing.id] ?? { [listing.itemId]: listing.quantity }, { [listing.itemId]: listing.quantity }));
+    removeFishEscrow(next, listing.id);
     listing.status = "cancelled"; listing.closedAt = new Date(now).toISOString();
     return { ...commit(owner, value, next, command, "Лот снят, предметы возвращены", now), listing: publicListing(listing, owner, token) };
   }
@@ -406,8 +429,11 @@ export function commandDevEconomyMarket(token: string | undefined, input: Market
   if (seller.state.wallet.coins + proceeds > ECONOMY_MAX_BALANCE || seller.revision >= Number.MAX_SAFE_INTEGER) return fail("ECONOMY_CAPACITY", "Продавец пока не может принять оплату");
   creditEconomyItems(next, { [listing.itemId]: listing.quantity });
   assertEconomyStorageTransition(value.state, next, escrowItems(owner));
+  creditFishStock(next, fishStockWithinItems(seller.state.fishing.escrow?.[listing.id] ?? { [listing.itemId]: listing.quantity }, { [listing.itemId]: listing.quantity }));
   next.wallet.coins -= listing.totalPrice;
   const sellerNext = structuredClone(seller.state);
+  removeFishEscrow(sellerNext, listing.id);
+  reconcileFishStock(sellerNext);
   sellerNext.wallet.coins += proceeds;
   persistItemUnlocks(listing.sellerPublicId, seller.state, sellerNext);
   bump(seller); seller.state = sellerNext;

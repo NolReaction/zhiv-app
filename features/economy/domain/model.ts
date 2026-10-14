@@ -22,7 +22,8 @@ export const economyCollectionSchema = economyCollectionSpecSchema.extend({
 export const economyFishingSchema = z.object({
   ownedRods: z.array(id).max(100).default(["reed_rod"]), equippedRodId: id.default("reed_rod"),
   ownedHooks: z.array(id).max(100).default(["bare_hook"]), equippedHookId: id.default("bare_hook"),
-  equippedBaitId: id.nullable().default(null), catches: quantities.default({}),
+  equippedBaitId: id.nullable().default(null), catches: quantities.default({}), stock: quantities.nullish(),
+  escrow: z.record(uuid, quantities).nullish(),
 }).default({ ownedRods: ["reed_rod"], equippedRodId: "reed_rod", ownedHooks: ["bare_hook"], equippedHookId: "bare_hook", equippedBaitId: null, catches: {} });
 export const economyFishingShopSchema = z.object({
   id: uuid, openedAt: z.string().datetime(), refreshAt: z.string().datetime(), refreshPricePearls: balance,
@@ -242,6 +243,7 @@ export const economyJobSchema = z.object({
   collection: economyCollectionSchema.nullish(),
   fishing: z.object({ rodId: id, hookId: id.default("bare_hook"), baitId: id.nullable(), fishId: id,
     catchRevealed: z.boolean().nullish() }).nullish(),
+  fishStockCost: quantities.nullish(),
   rareDrop: economyRareDropDeliverySchema.nullish(),
   meal: z.object({ itemId: id, consumer: z.enum(["hero", "builder"]), speedBps: count.max(10000) }).nullish(),
 }).refine(job => !job.actorId || job.kind === "exploration", "Only exploration jobs have a saved actor")
@@ -272,6 +274,7 @@ const commandBase = {
 };
 export const economyCommandSchema = z.object({ ...commandBase,
   action: z.enum(["start_production", "cancel_production", "buy_production_slot", "buy_market_slot", "start_collection", "start_garden_collection", "claim_garden_collection", "start_exploration", "cancel_exploration", "start_construction", "speedup_construction", "claim_job", "claim_workshop_starter", "claim_tutorial_order", "sell", "buy_fishing_item", "buy_wardrobe_item", "refresh_fishing_shop", "sell_fish", "equip_fishing_rod", "equip_fishing_hook", "equip_fishing_bait", "start_fishing", "eat_food", "feed_builder", "complete_resident_order", "replace_resident_order"]),
+  fishSelection: quantities.nullish(),
 }).strict();
 export const marketCommandSchema = z.object({ ...commandBase,
   action: z.enum(["create_listing", "buy_listing", "cancel_listing"]),

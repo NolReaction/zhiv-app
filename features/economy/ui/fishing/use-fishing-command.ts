@@ -13,9 +13,11 @@ export function useFishingCommand({ economy, state }: { economy: EconomyControll
   const current = economy.snapshot?.ownerPublicId === state.ownerPublicId && economy.snapshot?.revision === state.revision;
   const blocked = locked(economy) || !current;
   function send(action: EconomyCommand["action"], targetId: string, quantity = 1, totalPrice = 0, allowed = true) {
-    if (blocked || !allowed || sent.current) return;
+    if (blocked || !allowed || sent.current) return false;
     sent.current = true;
-    economy.act(action, targetId, quantity, totalPrice);
+    const accepted = economy.act(action, targetId, quantity, totalPrice);
+    if (accepted === false) sent.current = false;
+    return accepted !== false;
   }
   return { blocked, send };
 }

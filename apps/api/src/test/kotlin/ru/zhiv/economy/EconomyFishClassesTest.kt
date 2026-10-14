@@ -20,7 +20,7 @@ class EconomyFishClassesTest {
         val normalized = EconomyFishInventory.state(state)
         assertEquals(mapOf("fish_common" to 9L, "wood" to 5L), normalized.inventory)
         assertEquals(state.inventory.values.sum(), normalized.inventory.values.sum())
-        assertEquals(state.fishing, normalized.fishing)
+        assertEquals(state.fishing.copy(stock = mapOf(common[0].itemId to 2L, common[1].itemId to 3L)), normalized.fishing)
         assertEquals(normalized, EconomyFishInventory.state(normalized))
         assertEquals(2L, state.inventory[common[0].itemId], "normalization does not mutate its input")
     }
@@ -35,6 +35,7 @@ class EconomyFishClassesTest {
         val next = EconomyRules.apply(state, command("claim_job", job.id), now).first
         assertEquals(mapOf("fish_common" to 2L, "fish_uncommon" to 1L), next.inventory)
         assertEquals(job.rewards, next.fishing.catches)
+        assertEquals(job.rewards, next.fishing.stock)
         assertEquals(job, state.jobs.single(), "pending rewards remain the promised species")
         assertEquals("ECONOMY_JOB_GONE", assertFailsWith<AuthFailure> {
             EconomyRules.apply(next, command("claim_job", job.id), now)

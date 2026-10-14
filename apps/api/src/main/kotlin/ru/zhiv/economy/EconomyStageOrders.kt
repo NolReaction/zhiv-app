@@ -99,7 +99,7 @@ object EconomyStageOrders {
         val board = state.residentOrders
         if (terms.coins > ECONOMY_MAX_BALANCE - state.wallet.coins || terms.coins > ECONOMY_MAX_REVISION - board.earnedCoins || board.completed >= ECONOMY_MAX_REVISION)
             economyFailure("ECONOMY_CAPACITY", "Кошелёк заполнен")
-        val spent = EconomyRules.spend(state, EconomyCost(items = terms.items))
+        val spent = EconomyRules.spend(state, EconomyCost(items = terms.items), command.fishSelection)
         val rewards = if (completed) progress.completionRewards ?: emptyMap() else emptyMap()
         val next = spent.copy(wallet = spent.wallet.copy(coins = spent.wallet.coins + terms.coins),
             inventory = EconomyRules.addItems(spent.inventory, rewards),

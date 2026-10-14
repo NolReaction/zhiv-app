@@ -242,9 +242,10 @@ export function createEconomySession(owner: string | null, transport: Transport,
       };
     },
     refresh, refreshSoft: () => refresh(false), refreshMarket, refreshBarter,
-    act(action: EconomyCommand["action"], targetId: string, quantity = 1, totalPrice = 0) {
+    act(action: EconomyCommand["action"], targetId: string, quantity = 1, totalPrice = 0, fishSelection?: Record<string, number>) {
       if (!owner || !view.snapshot || pending || !active || !available || view.busy || performance.now() < blockedUntil) return false;
-      void execute({ kind: "economy", command: { requestId: createUuidV4(), ownerPublicId: owner, expectedRevision: view.snapshot.revision, action, targetId, quantity, totalPrice } });
+      void execute({ kind: "economy", command: { requestId: createUuidV4(), ownerPublicId: owner, expectedRevision: view.snapshot.revision, action, targetId, quantity, totalPrice,
+        ...(fishSelection === undefined ? {} : { fishSelection: { ...fishSelection } }) } });
       return true;
     },
     actMarket(action: MarketCommand["action"], targetId: string, quantity = 1, totalPrice = 0) {

@@ -86,3 +86,21 @@ test("fridge reports class stock and sale targets even when its illustration com
   assert.doesNotMatch(html, /data-guide-pantry-item="fish_sturgeon"|data-guide-pantry-item="fish_shark"/);
   assert.deepEqual(value, before);
 });
+
+test("tracked stocks use a fish still owned instead of an exhausted lifetime favourite", () => {
+  const value = state({ fish_epic: 3 }, { fish_sturgeon: 900, fish_mirror_koi: 4 });
+  value.fishing.stock = { fish_mirror_koi: 3 };
+  assert.equal(fishClassIllustration(value, "fish_epic"), "fish_mirror_koi");
+  value.fishing.stock = {};
+  assert.equal(fishClassIllustration(value, "fish_epic"), undefined, "unidentified class stock cannot resurrect a consumed species");
+});
+
+test("owned species received by trade are visible goods without unlocking a personal collection entry", () => {
+  const value = state({ fish_epic: 1 });
+  value.fishing.stock = { fish_mirror_koi: 1 };
+  const before = structuredClone(value);
+  assert.doesNotMatch(render(PlayerItemIcon, { state: value, itemId: "fish_mirror_koi" }), /data-hidden-fish="true"/);
+  assert.match(render(PlayerItemIcon, { state: value, itemId: "fish_sturgeon" }), /data-hidden-fish="true"/);
+  assert.deepEqual(value.fishing.catches, {});
+  assert.deepEqual(value, before);
+});

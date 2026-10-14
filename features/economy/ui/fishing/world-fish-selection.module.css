@@ -1,0 +1,27 @@
+.overlay { position: fixed; inset: 0; z-index: 1400; background: #14261f88; }
+.picker { position: fixed; z-index: 1401; left: 50%; top: 50%; transform: translate(-50%, -50%); display: grid; gap: 10px; width: min(390px, calc(100vw - 24px)); max-height: min(640px, calc(100dvh - 32px)); overflow-y: auto; box-sizing: border-box; padding: 14px; border: 1px solid #acb286; border-radius: 17px; background: #f4ead0; color: #3c513a; box-shadow: 0 12px 40px #14261f44; font-family: inherit; }
+.picker button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 44px; border: 1px solid #b5bb94; border-radius: 9px; background: #e8e5ca; color: inherit; font: inherit; font-size: 12px; cursor: pointer; touch-action: manipulation; }
+.picker button:disabled { opacity: .5; cursor: default; }
+.picker button:focus-visible { outline: 2px solid #355e48; outline-offset: 2px; }
+.header { display: flex; align-items: center; gap: 8px; }
+.header h2 { flex: 1; margin: 0; font-size: 16px; font-weight: 650; }
+.header button { width: 44px; flex-shrink: 0; }
+.description { margin: 0; font-size: 11px; color: #626a50; line-height: 1.45; }
+.tools { display: flex; flex-wrap: wrap; gap: 6px; }
+.tools button:first-child { flex: 1; }
+.tools button { padding: 4px 8px; }
+.groups { display: grid; gap: 12px; }
+.group h3 { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 0 0 5px; font-size: 12px; }
+.group h3 strong { display: inline-flex; gap: 3px; align-items: center; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.group h3 strong[data-complete] { color: #537144; }
+.fishList { display: grid; gap: 5px; }
+.fish { display: grid; grid-template-columns: minmax(0, 1fr) 44px; gap: 5px; }
+.fish .add { justify-content: flex-start; padding: 5px 8px; text-align: left; min-width: 0; }
+.fish .add span { display: grid; flex: 1; min-width: 0; gap: 2px; }
+.fish .add strong { font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
+.fish .add small { font-size: 10px; color: #626a50; }
+.fish .add b { min-width: 18px; text-align: center; font-variant-numeric: tabular-nums; }
+.fish[data-selected] .add { border-color: #829861; background: #e1e8c5; }
+.empty, .notice { margin: 0; color: #8b603a; font-size: 11px; line-height: 1.4; }
+.picker .confirm { border-color: #506e44; background: #466347; color: #fff3d6; font-weight: 650; }
+@media (forced-colors: active) { .picker, .picker button { border-color: ButtonText; } }

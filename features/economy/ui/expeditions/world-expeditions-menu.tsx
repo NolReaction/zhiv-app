@@ -3,12 +3,11 @@
 import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { useEffect, useId, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, ChevronDown, CircleHelp, Clock3, Compass, Fish, LockKeyhole, Mountain, Package, RefreshCw, Trees, type LucideIcon } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, CircleHelp, Clock3, Compass, Fish, LockKeyhole, Mountain, Package, RefreshCw, Trees, type LucideIcon } from "lucide-react";
 import type { WorldHelpContext } from "@/features/world/ui/help/world-help-types";
 import { WorldMealBoost } from "@/features/economy/ui/food/world-meal-boost";
 import { mealDuration, pendingMeal } from "@/features/economy/domain/food";
 import { ItemIcon } from "@/features/items/item-icon";
-import { FishingRodIcon } from "@/features/world/activities/fishing/fishing-rod-icon";
 import type { EconomyJob, EconomyView } from "@/features/economy/domain/model";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import { locked } from "@/features/economy/sync/controller-state";
@@ -19,6 +18,7 @@ import { ExpeditionFishingSummary } from "@/features/economy/ui/fishing/expediti
 import { FishingCatchReport, fishingCatchRevealed } from "@/features/economy/ui/fishing/fishing-catch-report";
 import { PleskCatchOdds } from "@/features/economy/ui/fishing/plesk-fishing-shop";
 import { useFishingCommand } from "@/features/economy/ui/fishing/use-fishing-command";
+import { WorldTacklePicker, fishingTackleChoice } from "@/features/economy/ui/fishing/world-tackle-picker";
 import { economyActorConflict, economyMinerConflict, explorationActorId, isMinerJob, isQuarryProduction } from "@/features/economy/domain/actor-availability";
 import { ExpeditionActivityArt } from "./expedition-activity-art";
 import { miningDurationFilters, miningDurationLabel, miningDurationMatches, miningResourceGroups, type MiningDurationFilter } from "./mining-resource-groups";
@@ -152,7 +152,6 @@ export function ActiveExpedition({ economy, state, job, onOpenPantry, onOpenHelp
 }
 
 export function ExpeditionRouteDetails({ route, state, economy, exploring, onOpenPantry, onNavigateStation, onOpenFishingShop, onUpgradeQuarry, onOpenHelp }: WorldExpeditionsMenuProps & { route: Route; state: EconomyView; exploring: boolean }) {
-  const id = useId();
   const command = useFishingCommand({ economy, state });
   const missing = worldMissingRequirements(state, worldRequirements(route));
   const fishing = isFishingRoute(state, route), gear = fishingState(state), cost = expeditionCost(state, route);
@@ -172,35 +171,10 @@ export function ExpeditionRouteDetails({ route, state, economy, exploring, onOpe
   const blocked = missing.length > 0 || shortfalls.length > 0 || tooLarge || actorBusy || invalidGear || incompatibleBait || mineUpgrading;
   return <div className={styles.detail}>
     {fishing ? <ExpeditionFishingSummary state={state} route={route} /> : <div className={styles.routeRewards}><Findings state={state} rewards={route.rewards} /></div>}
-    {fishing && <details className={styles.fishingGear} aria-label="Снасти для вылазки">
-      <summary><span className={styles.gearHeading}>Снасти<small>Изменить</small></span><ChevronDown size={14} className={styles.chevron} aria-hidden="true" /><span className={styles.gearPreview}>
-        <span title={catalog?.rods.find(rod => rod.id === gear.equippedRodId)?.name}><FishingRodIcon rodId={gear.equippedRodId} size={23} /><span>{catalog?.rods.find(rod => rod.id === gear.equippedRodId)?.name ?? "Удочка"}</span></span>
-        <span title={catalog?.hooks.find(hook => hook.id === gear.equippedHookId)?.name}><ItemIcon itemId={gear.equippedHookId} size={20} /><span>{catalog?.hooks.find(hook => hook.id === gear.equippedHookId)?.name ?? "Крючок"}</span></span>
-        <span title={gear.equippedBaitId ? itemName(state, gear.equippedBaitId) : "Без наживки"}>{gear.equippedBaitId ? <ItemIcon itemId={gear.equippedBaitId} size={20} /> : <Fish size={18} aria-hidden="true" />}<span>{gear.equippedBaitId ? itemName(state, gear.equippedBaitId) : "Без наживки"}</span></span>
-      </span></summary>
-      <div className={styles.gearControls}>
-      <div className={styles.loadoutRow}><FishingRodIcon rodId={gear.equippedRodId} size={43} /><label htmlFor={`${id}-rod`}>Удочка<select id={`${id}-rod`} value={gear.equippedRodId} disabled={command.blocked || !rods.length} onChange={event => {
-        const rodId = event.target.value;
-        command.send("equip_fishing_rod", rodId, 1, 0, rodId !== gear.equippedRodId && rods.some(rod => rod.id === rodId));
-      }}>{!rods.some(rod => rod.id === gear.equippedRodId) && <option value={gear.equippedRodId} disabled>Выберите удочку</option>}{rods.map(rod => <option key={rod.id} value={rod.id}>{rod.name}</option>)}</select></label></div>
-      <div className={styles.loadoutRow}><ItemIcon itemId={gear.equippedHookId} size={36} /><label htmlFor={`${id}-hook`}>Крючок<select id={`${id}-hook`} value={gear.equippedHookId} disabled={command.blocked || !hooks.length} onChange={event => {
-        const hookId = event.target.value;
-        command.send("equip_fishing_hook", hookId, 1, 0, hookId !== gear.equippedHookId && hooks.some(hook => hook.id === hookId));
-      }}>{!hooks.some(hook => hook.id === gear.equippedHookId) && <option value={gear.equippedHookId} disabled>Выберите крючок</option>}{hooks.map(hook => <option key={hook.id} value={hook.id}>{hook.name}</option>)}</select></label></div>
-      <div className={styles.loadoutRow}>{gear.equippedBaitId ? <ItemIcon itemId={gear.equippedBaitId} size={32} /> : <Fish size={27} aria-hidden="true" />}<label htmlFor={`${id}-bait`}>Наживка<select id={`${id}-bait`} value={gear.equippedBaitId ?? "none"} disabled={command.blocked} onChange={event => {
-        const baitId = event.target.value;
-        const owned = baitId === "none" || Boolean(catalog?.baits.some(bait => bait.itemId === baitId) && (state.inventory[baitId] ?? 0) > 0 && fishingBaitCompatible(gear.equippedRodId, baitId, catalog));
-        command.send("equip_fishing_bait", baitId, 1, 0, baitId !== (gear.equippedBaitId ?? "none") && owned);
-      }}><option value="none">Без наживки</option>{gear.equippedBaitId && !catalog?.baits.some(bait => bait.itemId === gear.equippedBaitId) && <option value={gear.equippedBaitId} disabled>Недоступная наживка</option>}{catalog?.baits.filter(bait => bait.requiredHomeLevel <= (state.buildings.home ?? 1) || (state.inventory[bait.itemId] ?? 0) > 0 || bait.itemId === gear.equippedBaitId).map(bait => <option key={bait.itemId} value={bait.itemId} disabled={(state.inventory[bait.itemId] ?? 0) <= 0 || !fishingBaitCompatible(gear.equippedRodId, bait.itemId, catalog)}>{itemName(state, bait.itemId)} · {!fishingBaitCompatible(gear.equippedRodId, bait.itemId, catalog) ? "нужна подходящая удочка" : (state.inventory[bait.itemId] ?? 0) > 0 ? `×${number(state.inventory[bait.itemId])}` : "нет в запасе"}</option>)}</select></label></div>
-      <p>Удочка и крючок не расходуются. При смене удочки неподходящая наживка снимается и остаётся в кладовой.</p>
-      <details className={styles.gearDescription}><summary>О выбранных снастях</summary>
-        <p>{catalog?.rods.find(rod => rod.id === gear.equippedRodId)?.description}</p>
-        <p>{catalog?.hooks.find(hook => hook.id === gear.equippedHookId)?.description}</p>
-        {gear.equippedBaitId && <p>{catalog?.baits.find(bait => bait.itemId === gear.equippedBaitId)?.description}</p>}
-      </details>
-      {onOpenFishingShop && <button type="button" className={styles.link} onClick={onOpenFishingShop}>Купить снасти у Плёски<ArrowRight size={12} aria-hidden="true" /></button>}
-      </div>
-    </details>}
+    {fishing && <WorldTacklePicker state={state} economy={economy} disabled={command.blocked} onOpenFishingShop={onOpenFishingShop} onChoose={(kind, itemId) => {
+      const action = kind === "rod" ? "equip_fishing_rod" : kind === "hook" ? "equip_fishing_hook" : "equip_fishing_bait";
+      return command.send(action, itemId, 1, 0, Boolean(fishingTackleChoice(state, kind, itemId)));
+    }} />}
     {missing.length > 0 && <ul className={styles.requirements} aria-label="Условия открытия">{missing.map(({ id, level }) => {
       const openRequirement = id === "quarry" && onUpgradeQuarry ? onUpgradeQuarry : onNavigateStation ? () => onNavigateStation(id) : undefined;
       return <li key={id} data-missing="true"><LockKeyhole size={12} aria-hidden="true" />{openRequirement ? <button type="button" className={styles.link} onClick={openRequirement}>{stationName(state, id)} · нужен ур. {level}<ArrowRight size={12} aria-hidden="true" /></button> : <span>{stationName(state, id)} · нужен ур. {level}</span>}</li>;
@@ -244,13 +218,18 @@ export function WorldExpeditionSector({ sectorId, selectedRoute, onSelectRoute, 
           const needsProvisions = worldCostShortfalls(state, expeditionCost(state, route)).length > 0;
           const reason = missing.length ? `${stationName(state, missing[0].id)} · ур. ${missing[0].level}${missing.length > 1 ? ` +${missing.length - 1}` : ""}` : tooLarge ? "Расширьте кладовую" : needsProvisions ? "Нужны припасы" : null;
           const descriptionId = `${descriptionPrefix}-${route.id}`;
-          return <button type="button" key={route.id} className={styles.miningCard} data-route={route.id} data-locked={Boolean(reason) || undefined} aria-label={`Подготовиться: ${route.name}`} aria-describedby={`${descriptionId}-duration ${descriptionId}-rewards${reason ? ` ${descriptionId}-reason` : ""}`} onClick={() => onSelectRoute(route.id)}>
-            <strong className={styles.miningName}>{routeName(route.name)}</strong>
-            <span id={`${descriptionId}-rewards`} className={styles.miningFindings} role="list" aria-label="Добыча">{Object.entries(route.rewards).map(([itemId, quantity]) => <span key={itemId} role="listitem" className={styles.miningYield} data-mining-yield={itemId}>
-              <ProductIcon state={state} itemId={itemId} size={18} /><span>{itemName(state, itemId)}</span>{quantity !== 1 && <strong>×{number(quantity)}</strong>}
-            </span>)}</span>
-            <small id={reason ? `${descriptionId}-reason` : undefined} className={styles.miningLocked} aria-hidden={!reason || undefined}>{reason && <><LockKeyhole size={10} aria-hidden="true" /><span>{reason}</span></>}</small>
+          const mixed = group.itemId === null;
+          const seconds = routeSeconds(state, route);
+          const label = route.id === "quarry_stone_overnight" ? "К утру" : seconds <= 900 ? "Быстрая добыча" : seconds <= 3600 ? "Короткая смена" : "Длинная смена";
+          const findings = <span id={`${descriptionId}-rewards`} className={styles.miningFindings} role="list" aria-label="Добыча" data-mixed={mixed || undefined}>{Object.entries(route.rewards).filter(([, quantity]) => quantity > 0).map(([itemId, quantity]) => <span key={itemId} role="listitem" className={styles.miningYield} data-mining-yield={itemId}>
+            <ProductIcon state={state} itemId={itemId} size={mixed ? 18 : 24} /><span title={itemName(state, itemId)}>{itemName(state, itemId)}</span>{quantity !== 1 && <strong>×{number(quantity)}</strong>}
+          </span>)}</span>;
+          return <button type="button" key={route.id} className={styles.miningCard} data-route={route.id} data-mixed={mixed || undefined} data-locked={Boolean(reason) || undefined} aria-label={`Подготовиться: ${route.name}`} aria-describedby={`${descriptionId}-duration ${descriptionId}-rewards${reason ? ` ${descriptionId}-reason` : ""}`} onClick={() => onSelectRoute(route.id)}>
+            <span className={styles.miningMain}>{mixed ? <strong className={styles.miningName}>{routeName(route.name)}</strong> : findings}</span>
             <span id={`${descriptionId}-duration`} className={styles.routeDuration}><Clock3 size={11} aria-hidden="true" />{displayedRouteDuration(state, route)}</span>
+            <ArrowRight className={styles.miningChevron} size={13} aria-hidden="true" />
+            {mixed && findings}
+            <span className={styles.miningMeta}><small className={styles.miningTag}>{label}</small>{reason && <small id={`${descriptionId}-reason`} className={styles.miningLocked} title={reason}><LockKeyhole size={10} aria-hidden="true" /><span>{reason}</span></small>}</span>
           </button>;
         })}</div>
       </section>)}

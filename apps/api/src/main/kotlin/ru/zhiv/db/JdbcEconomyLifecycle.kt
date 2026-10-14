@@ -13,6 +13,7 @@ import ru.zhiv.economy.EconomyCollectionProgress
 import ru.zhiv.economy.EconomyRareDrops
 import ru.zhiv.economy.EconomyFood
 import ru.zhiv.economy.EconomyFoodState
+import ru.zhiv.economy.EconomyFishStock
 import ru.zhiv.economy.EconomyFishInventory
 import ru.zhiv.economy.EconomyItemUnlocks
 import ru.zhiv.world.WorldState
@@ -93,6 +94,8 @@ internal fun mergeEconomyProfiles(c: Connection, target: UUID, source: UUID) {
         wardrobe=(a.wardrobe+b.wardrobe).distinct().sorted(), inventory=inventory, buildings=buildings, completedExplorations=add(a.completedExplorations,b.completedExplorations,ECONOMY_MAX_ITEMS),
         fishing=a.fishing.copy(ownedRods=(a.fishing.ownedRods+b.fishing.ownedRods).distinct(),
             ownedHooks=(a.fishing.ownedHooks+b.fishing.ownedHooks).distinct(),
+            stock=EconomyFishStock.merge(a,b),
+            escrow=if (a.fishing.escrow == null && b.fishing.escrow == null) null else a.fishing.escrow.orEmpty() + b.fishing.escrow.orEmpty(),
             catches=(a.fishing.catches.keys+b.fishing.catches.keys).associateWith {
                 minOf(ECONOMY_MAX_ITEMS,(a.fishing.catches[it] ?: 0)+(b.fishing.catches[it] ?: 0)) }),
         fishingCastSeed=a.fishingCastSeed ?: b.fishingCastSeed,

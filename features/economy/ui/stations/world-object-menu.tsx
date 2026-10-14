@@ -3,7 +3,7 @@
 import { fishClassForItem } from "@/features/economy/domain/fishing";
 
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
-import { ArrowRight, Check, ChevronUp, Compass, Fence, Flame, Hammer, House, LockKeyhole, Package, Pickaxe, RefreshCw, Sprout, Store, TowerControl, Trees, X, type LucideIcon } from "lucide-react";
+import { ArrowRight, Backpack, Check, Cherry, ChevronUp, Compass, CupSoda, Fence, Fish, Flame, Hammer, House, LockKeyhole, Package, Pickaxe, RefreshCw, Sprout, Store, TowerControl, Trees, X, type LucideIcon } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
@@ -24,6 +24,7 @@ import type { ConstructionGoalController } from "@/features/economy/ui/construct
 import { ConstructionGoalSummary } from "@/features/economy/ui/construction/construction-goal-summary";
 import { worldRecipeGroups } from "./world-recipe-groups";
 import { WorldProductionCard } from "@/features/economy/ui/production/world-production-card";
+import { campfireDurationFilters, campfireDurationMatches, campfireRecipeGroups, type CampfireDurationFilter } from "@/features/economy/ui/food/campfire-recipe-groups";
 import styles from "./world-object-menu.module.css";
 
 export type WorldObjectMenuProps = {
@@ -56,6 +57,31 @@ function RecipeCatalog({ economy, recipes, focusedRecipeId, onHelpContextChange 
     <h3>Что произвести?</h3>
     <div className={styles.recipeGrid}>{available.map(group => <WorldProductionCard key={group.key} economy={economy} recipe={group.recipe} focused={group.methods.some(recipe => recipe.id === focusedRecipeId)} onHelpContextChange={onHelpContextChange} />)}</div>
   </section> : <p className={styles.empty}>Сначала обустройте это место.</p>;
+}
+
+const cookingSectionIcons: Record<string, LucideIcon> = { fish: Fish, drinks: CupSoda, desserts: Cherry, provisions: Backpack };
+
+export function CampfireRecipeCatalog({ economy, recipes, focusedRecipeId, onHelpContextChange }: { economy: ReadyEconomy; recipes: WorldRecipe[]; focusedRecipeId: string | null; onHelpContextChange?: (context: WorldHelpContext) => void }) {
+  const [selection, setSelection] = useState<{ focus: string | null; filter: CampfireDurationFilter }>({ focus: focusedRecipeId, filter: "all" });
+  const available = worldRecipeGroups(economy.snapshot, recipes);
+  const keys = new Set(available.map(product => product.key));
+  const products = worldRecipeGroups(economy.snapshot, recipes, { includeFuture: true })
+    .filter(product => keys.has(product.key) || product.methods.some(method => method.id === focusedRecipeId));
+  const focusedProduct = products.find(product => product.methods.some(method => method.id === focusedRecipeId));
+  // A new source/help target stays visible; choosing another filter is always read-only.
+  const filter = selection.focus !== focusedRecipeId && focusedProduct && !campfireDurationMatches(focusedProduct.recipe.seconds, selection.filter) ? "all" : selection.filter;
+  const groups = campfireRecipeGroups(products, filter);
+  return <div className={styles.cookingCatalog} data-campfire-catalog>
+    <div className={styles.cookingFilters} role="group" aria-label="Время приготовления">{campfireDurationFilters.map(entry => <button key={entry.id} type="button" aria-pressed={filter === entry.id} data-cooking-duration={entry.id} onClick={() => setSelection({ focus: focusedRecipeId, filter: entry.id })}>{entry.label}</button>)}</div>
+    {groups.map(group => {
+      const SectionIcon = cookingSectionIcons[group.id] ?? Package;
+      return <section key={group.id} className={styles.recipeGroup} data-cooking-group={group.id} aria-label={group.label}>
+        <h3 className={styles.cookingHeading}><SectionIcon size={15} aria-hidden="true" />{group.label}</h3>
+        <div className={styles.recipeGrid}>{group.recipes.map(product => <WorldProductionCard key={product.key} economy={economy} recipe={product.recipe} focused={product.methods.some(recipe => recipe.id === focusedRecipeId)} onHelpContextChange={onHelpContextChange} />)}</div>
+      </section>;
+    })}
+    {!groups.length && <p className={styles.empty}>{products.length ? "Нет рецептов с таким временем. Выберите другой фильтр." : "Сначала обустройте костёр."}</p>}
+  </div>;
 }
 
 export function WorldObjectSale({ economy, itemId, onCollapse }: { economy: ReadyEconomy; itemId: string; onCollapse: () => void }) {
@@ -116,7 +142,7 @@ function ObjectMenuBody({ guide, guideRoot: guideRootRef, selection, economy, is
   const building = state?.catalog.buildings.find(entry => entry.id === stationId);
   const target = building?.levels.find(level => level.level === current + 1);
   const recipes = state?.catalog.recipes.filter(recipe => recipe.buildingId === stationId) ?? [];
-  const focusedRecipe = state ? worldRecipeGroups(state, recipes).find(group => group.methods.some(recipe => recipe.id === recipeId))?.recipe : undefined;
+  const focusedRecipe = state ? worldRecipeGroups(state, recipes, { includeFuture: stationId === "dryer" }).find(group => group.methods.some(recipe => recipe.id === recipeId))?.recipe : undefined;
   const focusedRecipeId = focusedRecipe?.id;
   const fitOverview = position.side === "sheet" && ["garden", "dryer", "woodlot", "workshop", "kiln"].includes(stationId);
   const jobs = state?.jobs.filter(entry => ["production", "construction"].includes(entry.kind) && entry.targetId === stationId) ?? [];
@@ -233,7 +259,7 @@ function ObjectMenuBody({ guide, guideRoot: guideRootRef, selection, economy, is
             {onExplore && <button type="button" className={styles.primary} onClick={() => { navigating.current = true; onExplore(); }}><Compass size={15} aria-hidden="true" />Выбрать экспедицию<ArrowRight size={13} aria-hidden="true" /></button>}
           </>}
         </section> : stationId === "warehouse" ? <><div className={styles.inventoryHeading}><span>Кладовая</span><strong>{number(state.storage.used + state.storage.reserved)} / {number(state.storage.capacity)}</strong></div>{ownedItems.length ? <div className={styles.products} aria-label="Предметы в кладовой">{ownedItems.map(item => <button key={item.id} type="button" className={styles.product} aria-pressed={saleItem === item.id} onClick={() => { setSaleItem(value => value === item.id ? null : item.id); setUpgradeStation(null); }}><ProductIcon state={state} itemId={item.id} /><strong>{item.name}</strong><span>×{number(state.inventory[item.id])}</span></button>)}</div> : <p className={styles.empty}>Пока пусто. Урожай и находки появятся здесь после получения.</p>}{readyEconomy && saleItem && <WorldObjectSale key={saleItem} economy={readyEconomy} itemId={saleItem} onCollapse={() => setSaleItem(null)} />}{state.storage.reserved > 0 && <p className={styles.small}>На рынке зарезервировано {number(state.storage.reserved)} мест.</p>}</> : stationId !== "quarry" ? <>
-          <div className={styles.recipeCatalog} data-section-guide-target="workshop-recipes" aria-label={`Продукция: ${building?.name ?? definition.label}`}><RecipeCatalog economy={readyEconomy!} recipes={recipes} focusedRecipeId={recipeId} onHelpContextChange={productContext} /></div>
+          <div className={styles.recipeCatalog} data-section-guide-target="workshop-recipes" aria-label={`Продукция: ${building?.name ?? definition.label}`}>{stationId === "dryer" ? <CampfireRecipeCatalog economy={readyEconomy!} recipes={recipes} focusedRecipeId={recipeId} onHelpContextChange={productContext} /> : <RecipeCatalog economy={readyEconomy!} recipes={recipes} focusedRecipeId={recipeId} onHelpContextChange={productContext} />}</div>
         </> : null}
       </>}
     </div>

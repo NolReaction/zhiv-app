@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const options = { appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } };
+const options = { appType: "custom", configFile: false, root, cacheDir: `/tmp/zhiv-resident-orders-${process.pid}`, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } };
 const vite = await createServer(options);
 const { ResidentOrderBoard, ResidentOrderCard, ResidentOrderReplacement, residentOrderQuoteReason, residentOrderSaleValue } = await vite.ssrLoadModule("/features/economy/ui/food/world-resident-order-board.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
@@ -36,6 +36,7 @@ function elements(tree) {
   visit(tree); return result;
 }
 const buttons = tree => elements(tree).filter(element => element.type === "button");
+const submissionControls = tree => elements(tree).filter(element => element.props["data-guide-order-submit"] !== undefined || element.type?.name === "FishOrderAction");
 
 test("board offers three real portraits and an initial NPC filter without mixing meals into feeding", () => {
   const economy = controller({}, { act() { assert.fail("rendering cannot change an order"); } });
@@ -208,10 +209,10 @@ test("the final supply previews its guaranteed resin and counts consumed goods w
   assert.match(markup, /aria-label="Дополнительная награда за этап"/);
   assert.match(markup, /Живая смола × 1/);
   assert.doesNotMatch(markup, /После сдачи этой поставки|Получено:/);
-  assert.equal(buttons(ResidentOrderCard({ economy, offer }))[0].props.disabled, false);
+  assert.equal(submissionControls(ResidentOrderCard({ economy, offer }))[0].props.disabled, false);
   assert.deepEqual(economy.snapshot, before, "the reward preview never creates inventory");
   economy.snapshot.storage.reserved = consumed;
-  assert.equal(buttons(ResidentOrderCard({ economy, offer }))[0].props.disabled, true);
+  assert.equal(submissionControls(ResidentOrderCard({ economy, offer }))[0].props.disabled, true);
   assert.match(render(ResidentOrderCard, { economy, offer }), /Освободите место в кладовой/);
 });
 
@@ -268,7 +269,7 @@ test("free budget reset can lower the price without spending a previously quoted
 
 test("paid replacement needs deliberate confirmation, checks fresh state and rejects duplicate presses", async () => {
   const hooksId = "virtual:order-board-hooks";
-  const runtime = await createServer({ ...options, plugins: [{ name: "order-board-hooks", enforce: "pre",
+  const runtime = await createServer({ ...options, cacheDir: `/tmp/zhiv-resident-order-hooks-${process.pid}`, plugins: [{ name: "order-board-hooks", enforce: "pre",
     resolveId(id) { if (id === hooksId) return `\0${id}`; },
     load(id) { if (id === `\0${hooksId}`) return `
       let slots = [], cursor = 0;
@@ -381,7 +382,7 @@ test("paid replacement needs deliberate confirmation, checks fresh state and rej
       tree = board(); first = cards(tree)[0];
       assert.equal(first.props.offer.id, terms.id);
       assert.match(renderToStaticMarkup(tree), new RegExp(`К дому 3 · ${step + 1} / 7`));
-      assert.equal(buttons(Card(first.props)).length, 1);
+      assert.equal(submissionControls(Card(first.props)).length, 1);
       first.props.onComplete(first.props.offer); first.props.onComplete(first.props.offer);
       assert.deepEqual(calls, [["complete_resident_order", terms.id, 1, 0]]);
       assert.doesNotMatch(renderToStaticMarkup(board()), /Заказ этапа выполнен ·/);
@@ -397,7 +398,8 @@ test("paid replacement needs deliberate confirmation, checks fresh state and rej
       if (step < course.orders.length - 1) assert.equal(cards(tree)[0].props.offer.id, course.orders[step + 1].id);
       else assert.match(renderToStaticMarkup(tree), /Все просьбы этого этапа выполнены/);
       first.props.onComplete(first.props.offer);
-      buttons(Card(first.props))[0].props.onClick();
+      const staleControl = submissionControls(Card(first.props))[0];
+      if (staleControl.type === "button") staleControl.props.onClick(); else staleControl.props.onSubmit({});
       assert.equal(calls.length, 1, "the saved previous card cannot submit the next stage request");
       economy.uncertain = true;
       assert.doesNotMatch(renderToStaticMarkup(board()), /Заказ этапа выполнен ·/);

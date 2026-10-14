@@ -54,7 +54,7 @@ object EconomyTutorialOrders {
         val board = state.residentOrders
         if (terms.coins > ECONOMY_MAX_BALANCE - state.wallet.coins || terms.coins > ECONOMY_MAX_REVISION - board.earnedCoins || board.completed >= ECONOMY_MAX_REVISION)
             economyFailure("ECONOMY_CAPACITY", "Кошелёк заполнен")
-        val spent = EconomyRules.spend(state, EconomyCost(items = terms.items))
+        val spent = EconomyRules.spend(state, EconomyCost(items = terms.items), command.fishSelection)
         val nextProgress = if (progress.version == 1) progress.copy(completed = true) else {
             val requests = EconomyRules.catalog.onboarding?.let(::orders)
                 ?: economyFailure("ECONOMY_TUTORIAL_ORDER_UNAVAILABLE", "Учебные заказы пока недоступны")
