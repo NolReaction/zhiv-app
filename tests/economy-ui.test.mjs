@@ -102,8 +102,8 @@ test("the economy construction hub shares house-three stage-order gates with the
     stageOrders: { version: 1, stages: { 2: { step: 4, completed: false, terms: null } } } });
   let html = render("buildings", controller({ snapshot: state }), "home");
   assert.equal(disabled(button(html, "Улучшить до ур. 3: Дом Мохлика")), true);
-  assert.match(html, /заказы.*4 \/ 5/i);
-  state.stageOrders.stages[2] = { step: 5, completed: true, terms: null };
+  assert.match(html, /заказы.*4 \/ 7/i);
+  state.stageOrders.stages[2] = { step: 7, completed: true, terms: null };
   html = render("buildings", controller({ snapshot: state }), "home");
   assert.equal(disabled(button(html, "Улучшить до ур. 3: Дом Мохлика")), false);
   assert.equal(state.storage.capacity, 50);
@@ -206,12 +206,15 @@ test("a personal showcase explains its fixed window and disables stale quotes un
   assert.equal(disabled(button(html, "Обновить витрину")), false);
 });
 
-test("stale or older-server offers cannot bypass home tiers or the NPC resale price floor", () => {
+test("stale offers stay hidden until personal discovery and cannot bypass the NPC resale price floor", () => {
   const market = { listings: [{ id: "offer", sellerPublicId: "OTHER", sellerName: "Лесник", itemId: "tools", quantity: 1, totalPrice: 1000,
     status: "active", createdAt: new Date(now).toISOString(), closedAt: null, owned: false }], mine: [], nextCursor: null, serverTime: new Date(now).toISOString() };
   const state = snapshot({ wallet: { coins: 10000, pearls: 0 }, buildings: { home: 2 }, completedExplorations: 1 });
-  assert.equal(disabled(button(render("market", controller({ snapshot: state, market })), "Нужен дом 4 ур.")), true);
+  assert.equal(buttons(render("market", controller({ snapshot: state, market }))).some(entry => entry.text.includes("Купить весь лот")), false);
   state.buildings.home = 4;
+  assert.equal(buttons(render("market", controller({ snapshot: state, market }))).some(entry => entry.text.includes("Купить весь лот")), false,
+    "The house alone cannot open an unavailable producer");
+  state.unlockedItems = ["tools"];
   assert.equal(disabled(button(render("market", controller({ snapshot: state, market })), "Купить весь лот")), false);
   market.listings[0].totalPrice = 990;
   assert.equal(disabled(button(render("market", controller({ snapshot: state, market })), "Предложение недоступно")), true);
@@ -277,6 +280,7 @@ test("production batch options fit the entire result in warehouse capacity, even
   const state = snapshot({ buildings: { home: 4, garden: 1, warehouse: 4 }, inventory: { wood: 195 },
     storage: { capacity: 200, used: 195, reserved: 0, available: 5, overflow: 0 } });
   Object.assign(state.catalog.recipes.find(recipe => recipe.id === "grow_berries"), { rewards: { berries: 70, fiber: 20 }, maxBatch: 10 });
+  state.catalog.maxBatch = 10; // A synthetic bulk quote retains the independent whole-capacity guard.
   const html = render("production", controller({ snapshot: state }));
   const size = html.match(/Размер заказа<select[^>]*>([\s\S]*?)<\/select>/)[1];
   assert.deepEqual([...size.matchAll(/<option value="(\d+)"/g)].map(match => Number(match[1])), [1, 2]);

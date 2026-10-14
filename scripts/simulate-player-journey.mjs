@@ -98,6 +98,7 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
   const relicIds = catalog.items.filter(item => item.category === "special").map(item => item.id);
   const relicReceived = Object.fromEntries(relicIds.map(id => [id, 0]));
   const relicSpent = Object.fromEntries(relicIds.map(id => [id, 0]));
+  const stageRelics = Object.fromEntries(relicIds.map(id => [id, 0]));
   const relicFinds = []; let eligibleExplorationSeconds = 0;
   const actorWorkSeconds = { miner: 0, exploration: 0, collection: 0 };
   const isActive = mode === "active16h", visits = mode === "visits2" ? [7, 19] : [7, 15, 23];
@@ -123,7 +124,10 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
         action, targetId, quantity, totalPrice }, epoch + clock * 1000, jobId, {}, rareRandom.integer);
       if (action === "start_fishing" && generated >= 2) castSequence++;
       if (action === "sell" || action === "sell_fish") revenue += next.wallet.coins - state.wallet.coins;
-      if (action === "complete_resident_order") tutorialRevenue += next.wallet.coins - state.wallet.coins;
+      if (action === "complete_resident_order") {
+        tutorialRevenue += next.wallet.coins - state.wallet.coins;
+        for (const id of relicIds) stageRelics[id] += Math.max(0, (next.inventory[id] ?? 0) - (state.inventory[id] ?? 0));
+      }
       if (next.wallet.coins < state.wallet.coins) coinSpending[action] = (coinSpending[action] ?? 0) + state.wallet.coins - next.wallet.coins;
       if (action === "speedup_construction") {
         const job = state.jobs.find(j => j.id === targetId);
@@ -199,7 +203,12 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
       && (!d.buildingId || predicted[d.buildingId] >= d.buildingLevel)
       && Object.entries(d.requiredRecipes ?? {}).every(([id, count]) => (state.progression.recipes[id] ?? 0) >= count);
   };
-  const sources = itemId => [...catalog.recipes, ...catalog.explorations.filter(route => !Object.keys(route.cost.items).length && !route.cost.coins)]
+  const sources = itemId => [...catalog.recipes, ...catalog.explorations.filter(route => !Object.keys(route.cost.items).length && !route.cost.coins)
+    .map(route => catalog.fishing.routeIds.includes(route.id) && fishing.fishClassForItem(itemId, catalog.fishing)
+      && fishing.fishingClassOdds(state, catalog.fishing).some(group => group.itemId === itemId && group.probability > 0)
+      // A desired class is only a possible catch. No pending draw is credited:
+      // the demand is recomputed from actually claimed inventory after each trip.
+      ? { ...route, rewards: { [itemId]: route.rewards.fish } } : route)]
     .filter(d => projectedEligible(d) && d.rewards[itemId] > 0)
     .sort((a, b) => {
       const rate = d => {
@@ -332,11 +341,13 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
           }
         } else next.wallet.pearls += gift.reward.pearls;
         if (accepted) {
+          const creditedItems = Object.fromEntries(Object.entries(next.inventory).map(([id, quantity]) =>
+            [id, quantity - (state.inventory[id] ?? 0)]).filter(([, quantity]) => quantity > 0));
           Object.assign(state, next);
           dailyPearls += gift.reward.pearls; dailyClaims++;
           if (dailyRewards) {
             dailyCoins += gift.reward.coins;
-            for (const [id, quantity] of Object.entries(gift.reward.items)) {
+            for (const [id, quantity] of Object.entries(creditedItems)) {
               dailyItems[id] = (dailyItems[id] ?? 0) + quantity;
               (itemFlow[id] ??= { initial: 0, received: 0, sold: 0, productionInputs: 0, expeditionInputs: 0, constructionInputs: 0, orderInputs: 0 }).received += quantity;
             }
@@ -380,7 +391,8 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
     }
     for (;;) {
       const tutorial = courseTerms();
-      if (!tutorial || !rules.canAffordEconomy(state, { coins: 0, items: tutorial.items })) break;
+      if (!tutorial || Date.parse(tutorial.availableAt ?? "1970-01-01T00:00:00.000Z") > epoch + clock * 1000
+        || !rules.canAffordEconomy(state, { coins: 0, items: tutorial.items })) break;
       assert(command("complete_resident_order", tutorial.id), `Earned tutorial request failed: ${lastFailure}`);
     }
     target = goal(); if (!target) return;
@@ -519,13 +531,14 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
     excludedIncome: [...(dailyRewards ? [] : [dailyPearlsOnly ? "daily_reward_coins_and_items" : "daily_rewards"]), "achievement_rewards", "taps", "player_market", "legacy_grants"],
     rareMaterials: { seed: rareSeed, generator: "xorshift32-rejection-v1", draws: rareRandom.draws,
       eligibleExplorationHours: Number((eligibleExplorationSeconds / hour).toFixed(4)), received: relicReceived,
+      stageRewards: stageRelics,
       spentOnConstruction: relicSpent, inventory: Object.fromEntries(relicIds.map(id => [id, state.inventory[id] ?? 0])), finds: relicFinds } };
   assert.equal(state.wallet.pearls, pearlBudget + dailyPearls - pearlsSpent); assert(state.wallet.coins >= 0);
   assert.equal(state.wallet.coins, initialCoins + revenue + dailyCoins + tutorialRevenue - Object.values(coinSpending).reduce((sum, value) => sum + value, 0), "Coins must reconcile across gifts, orders, sales and actual paid commands");
   assert(Object.values(state.inventory).every(q => Number.isSafeInteger(q) && q >= 0));
   for (const [id, flow] of Object.entries(itemFlow))
     assert.equal(flow.initial + flow.received - flow.sold - flow.productionInputs - flow.expeditionInputs - flow.constructionInputs - flow.orderInputs, state.inventory[id] ?? 0, `${id}: inventory flow must conserve starting and earned items`);
-  for (const id of relicIds) assert.equal(relicReceived[id] + (dailyItems[id] ?? 0) - relicSpent[id], state.inventory[id] ?? 0, "Exploration and gifted relics must be conserved through construction");
+  for (const id of relicIds) assert.equal(relicReceived[id] + stageRelics[id] + (dailyItems[id] ?? 0) - relicSpent[id], state.inventory[id] ?? 0, "Exploration, project and gifted relics must be conserved through construction");
   return report;
 }
 

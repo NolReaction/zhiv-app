@@ -138,13 +138,14 @@ test("loadout is validated, fishing spends one bait and locks catch before later
   assert.throws(() => issue(p, "equip_fishing_rod", "willow_rod"), { code: "ECONOMY_FISHING_ROD" });
   assert.throws(() => issue(p, "equip_fishing_bait", "worm_bait"), { code: "ECONOMY_RESOURCES" });
   issue(p, "buy_fishing_item", "river_rod", { totalPrice: 1800 }); issue(p, "equip_fishing_rod", "river_rod");
-  issue(p, "buy_fishing_item", "worm_bait", { quantity: 2, totalPrice: 140 }); issue(p, "equip_fishing_bait", "worm_bait");
+  const baitOffer = read(p).fishingShop.offers.find(offer => offer.itemId === "worm_bait");
+  issue(p, "buy_fishing_item", "worm_bait", { quantity: 1, totalPrice: baitOffer.unitPrice }); issue(p, "equip_fishing_bait", "worm_bait");
   assert.deepEqual(fishingTripCost({ coins: 0, items: {} }, read(p)), { coins: 0, items: { worm_bait: 1 } });
   assert.throws(() => issue(p, "start_fishing", "forest"), { code: "ECONOMY_FISHING_ROUTE" });
   const start = command(p, "start_fishing", "shore");
   const active = economy.commandDevEconomy(p.token, start, now).state, job = active.jobs[0];
   assert.notEqual(job.id, start.requestId, "client request IDs cannot choose the draw");
-  assert.equal(active.inventory.worm_bait, 1);
+  assert.equal(active.inventory.worm_bait ?? 0, 0);
   assert.equal(job.fishing.rodId, "river_rod"); assert.equal(job.fishing.baitId, "worm_bait");
   assert.equal(Object.values(job.rewards).reduce((a, b) => a + b, 0), 2, "every fish is an independent class draw");
   assert.equal(active.fishingCastSeed, undefined, "internal draw state is not a public field");

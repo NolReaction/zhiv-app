@@ -47,17 +47,19 @@ test("buying raw fish and immediately submitting orders cannot mint coins", () =
   assert.throws(() => auditFoodEconomy(data), /excessive order premium/);
 });
 
-test("cooking ceilings account for extra inventory, real production and aggregate sale rounding", () => {
-  assert.deepEqual(report.shopDeliveryBudgets.map(row => row.matchingCookedOrdersWithOrdinaryMaterialsCeiling.netCoins), [0]);
+test("cooking ceilings account for extra inventory, real production and full NPC opportunity value", () => {
+  assert.deepEqual(report.shopDeliveryBudgets.map(row => row.matchingCookedOrdersWithOrdinaryMaterialsCeiling.netCoins), [60]);
   const cooked = report.shopDeliveryBudgets[0].matchingCookedOrdersWithOrdinaryMaterialsCeiling;
-  assert.deepEqual(cooked.otherOwnedInputs, {});
-  assert.equal(cooked.otherOwnedInputsSaleCoins, 0);
-  assert.equal(cooked.productionMinutes, 0);
+  assert.deepEqual(cooked.otherOwnedInputs, { berries: 2, charcoal: 2 });
+  assert.equal(cooked.otherOwnedInputsSaleCoins, 120);
+  assert.equal(cooked.productionMinutes, 60);
+  assert.equal(cooked.netCoins, cooked.rewardCoins - cooked.purchaseCoins - cooked.productionCoinCost - cooked.otherOwnedInputsSaleCoins);
   const expanded = report.shopDeliveryBudgets[0].matchingOrdersWithAdditionalRawIngredientsCeiling;
-  assert.deepEqual(expanded.otherOwnedInputs, { wood: 3, berries: 36 });
-  assert.equal(expanded.otherOwnedInputsSaleCoins, 450);
-  assert.equal(expanded.productionMinutes, 360);
-  assert.equal(expanded.netCoins, 4440);
+  assert.deepEqual(expanded.otherOwnedInputs, { berries: 15, charcoal: 3, wood: 3, fish_uncommon: 3 });
+  assert.equal(expanded.otherOwnedInputsSaleCoins, 600);
+  assert.equal(expanded.productionMinutes, 180);
+  assert.equal(expanded.netCoins, 1020);
+  assert.equal(expanded.netCoins, expanded.rewardCoins - expanded.purchaseCoins - expanded.productionCoinCost - expanded.otherOwnedInputsSaleCoins);
 });
 
 test("a fresh account has diverse themed orders with unique compositions and no completion delay", () => {
@@ -79,7 +81,7 @@ test("orders cannot offer an unopened kitchen's meals", () => {
 
 test("stronger dishes improve both consumers and divide duration rather than subtracting percentages", () => {
   assert.deepEqual(report.meals.map(meal => meal.heroSpeedPercent), [10, 25, 40, 60, 80, 100]);
-  assert.deepEqual(report.meals.map(meal => meal.builderSpeedPercent), [10, 20, 35, 50, 70, 90]);
+  assert.deepEqual(report.meals.map(meal => meal.builderSpeedPercent), [10, 25, 35, 50, 70, 90]);
   assert.equal(report.meals[0].twentyFourHourBuildSeconds, 78546);
   assert.equal(report.meals.at(-1).eightHourHeroTripSeconds, 14400);
   assert.equal(report.meals.at(-1).twentyFourHourBuildSeconds, 45474);
@@ -91,7 +93,7 @@ test("fishing ROI subtracts the consumed dish and exposes expensive short-trip m
   const legendary = report.meals.find(meal => meal.itemId === "legendary_fish");
   const short = legendary.fishingReturn.find(row => row.routeId === "shore").best;
   assert(short.withFoodNetCoinsPerHour < 0);
-  assert.equal(short.dishOpportunityCoins, 2400);
+  assert.equal(short.dishOpportunityCoins, 1200);
   const long = legendary.fishingReturn.find(row => row.routeId === "shore_camp").best;
   assert(long.withFoodNetCoinsPerHour < long.withoutFoodNetCoinsPerHour);
   assert(long.compatibleFishExpectedPerJob > 1, "the arcade legendary kit can replenish a dish on average");

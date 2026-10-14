@@ -12,7 +12,7 @@ class EconomyLocalSaleTest {
     private fun command(action: String, target: String, quantity: Long = 1, minimum: Long = 0) =
         EconomyCommand(UUID.randomUUID().toString(), "ABCD-EFGH-JKMP", 0, action, target, quantity, minimum)
 
-    @Test fun `old catalogs default to full payout while current catalog discounts goods outside first stage overrides`() {
+    @Test fun `old catalogs default to full payout and optional packet quotes retain their former discount`() {
         val json=economyJson.encodeToJsonElement(EconomyRules.catalog).jsonObject
         val legacy=economyJson.decodeFromJsonElement<EconomyCatalog>(JsonObject(json-"localBuyer"))
         assertEquals(10_000,legacy.localBuyer.payoutBps)
@@ -29,7 +29,9 @@ class EconomyLocalSaleTest {
         val prices = mapOf("berries" to 10L, "strawberries" to 40L, "wood" to 30L, "stone" to 40L,
             "planks" to 40L, "berry_compote" to 30L, "grilled_fish" to 55L,
             "fiber" to 10L, "rope" to 30L, "clay" to 30L, "charcoal" to 50L, "bricks" to 100L)
-        assertEquals(prices, EconomyRules.catalog.localBuyer.unitPrices)
+        assertEquals(prices, EconomyRules.catalog.localBuyer.unitPrices.filterKeys { it in prices })
+        assertEquals(EconomyRules.catalog.items.filter { it.tradable }.associate { it.id to it.baseSellPrice },
+            EconomyRules.catalog.localBuyer.unitPrices)
         val items = EconomyRules.catalog.items.associateBy { it.id }
         for ((id, price) in prices) for (quantity in listOf(1L, 2L, 3L, 9999L, 10000L)) {
             val base = items.getValue(id).baseSellPrice
@@ -61,19 +63,19 @@ class EconomyLocalSaleTest {
         assertEquals(30L,sold.wallet.coins)
         assertEquals(6L,sold.inventory["berries"])
         val generic=EconomyRules.apply(sold,command("sell","fish",2),now).first
-        assertEquals(70L,generic.wallet.coins)
+        assertEquals(110L,generic.wallet.coins)
         val specialist=EconomyRules.apply(generic,command("sell_fish","fish",2),now).first
-        assertEquals(150L,specialist.wallet.coins)
+        assertEquals(190L,specialist.wallet.coins)
         assertTrue(specialist.fishing.catches.isEmpty())
         assertEquals(0L,state.wallet.coins,"the domain input remains unchanged")
     }
 
-    @Test fun `zero proceeds cannot discard goods and exact rounded wallet headroom is accepted`() {
+    @Test fun `small goods sell individually and exact fixed wallet headroom is accepted`() {
         val state=EconomyRules.initial().copy(wallet=EconomyWallet(),inventory=mapOf("crumb_bait" to 2L,"berries" to 4L))
-        assertEquals("ECONOMY_SALE_QUANTITY",assertFailsWith<AuthFailure> {
-            EconomyRules.apply(state,command("sell","crumb_bait"),now)
-        }.code)
-        assertEquals(10L,EconomyRules.apply(state,command("sell","crumb_bait",2,10),now).first.wallet.coins)
+        val single = EconomyRules.apply(state,command("sell","crumb_bait",1,10),now).first
+        assertEquals(10L,single.wallet.coins); assertEquals(1L,single.inventory["crumb_bait"])
+        assertEquals(20L,EconomyRules.apply(state,command("sell","crumb_bait",2,20),now).first.wallet.coins)
+        assertEquals(0L,EconomyRules.localSellPrice(10), "The optional old packet-discount fallback remains available")
         val full=state.copy(wallet=EconomyWallet(ECONOMY_MAX_BALANCE-30))
         assertEquals("ECONOMY_CAPACITY",assertFailsWith<AuthFailure> {
             EconomyRules.apply(full,command("sell","berries",4),now)

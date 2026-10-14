@@ -31,17 +31,24 @@ class EconomySecondStageTest {
         assertEquals(ready.wallet, pinned.wallet); assertEquals(ready.inventory, pinned.inventory)
         assertEquals(0, pinned.stageOrders.stages.getValue("2").step)
         assertEquals(course.orders.first(), pinned.stageOrders.stages.getValue("2").terms)
-        assertNull(EconomyStageOrders.offer(player(3)))
+        assertTrue(checkNotNull(EconomyStageOrders.offer(player(3))).id.startsWith("stage3_"))
         val legacy = player().copy(tutorialOrder = EconomyTutorialOrder())
         assertEquals(course.orders.first(), EconomyStageOrders.offer(legacy), "The legacy course can opt into stage orders")
     }
 
-    @Test fun `five orders consume produced goods in sequence and persist completion without repeat rewards`() {
+    @Test fun `all current orders consume produced goods and caught fish in sequence without repeat rewards`() {
         var state = player()
         var at = now
         val initialCoins = state.wallet.coins
         val selected = mapOf("wood" to "gather_wood", "fiber" to "gather_fiber", "rope" to "make_rope",
-            "charcoal" to "make_charcoal", "bricks" to "fire_bricks")
+            "charcoal" to "make_charcoal", "bricks" to "fire_bricks", "grilled_fish" to "cook_grilled_fish")
+        val fishing = checkNotNull(EconomyRules.catalog.fishing)
+        val shore = EconomyRules.catalog.explorations.single { it.id == "shore" }
+        val seed = (1..100).map { "stage-two-common-$it" }.first { candidate ->
+            (0 until shore.rewards.getValue("fish").toInt()).all { index ->
+                EconomyFishInventory.itemId(EconomyRules.selectFishingCatch(candidate, "reed_rod", null, "bare_hook", index)) == "fish_common"
+            }
+        }
         fun finish(action: String, target: String) {
             state = apply(state, action, target, at)
             val job = state.jobs.single()
@@ -54,7 +61,12 @@ class EconomySecondStageTest {
         }
         fun obtain(itemId: String, amount: Long) {
             if ((state.inventory[itemId] ?: 0L) >= amount) return
-            if (itemId in setOf("stone", "clay")) {
+            if (itemId == "fish_common") {
+                while ((state.inventory[itemId] ?: 0L) < amount) {
+                    state = state.copy(fishingCastSeed = seed)
+                    finish("start_fishing", "shore")
+                }
+            } else if (itemId in setOf("stone", "clay")) {
                 while ((state.inventory[itemId] ?: 0L) < amount) finish("start_exploration", "quarry_$itemId")
             } else {
                 val recipeId = selected.getValue(itemId)
@@ -78,10 +90,12 @@ class EconomySecondStageTest {
             fails("ECONOMY_STAGE_ORDER_UNAVAILABLE") { apply(state, "complete_resident_order", terms.id, at) }
         }
         assertEquals(initialCoins + course.orders.sumOf { it.coins }, state.wallet.coins)
-        assertEquals(5L, state.residentOrders.completed)
+        assertEquals(course.orders.size.toLong(), state.residentOrders.completed)
         assertEquals(course.orders.sumOf { it.coins }, state.residentOrders.earnedCoins)
         assertEquals(0L, EconomyRules.storage(state).overflow)
-        assertTrue(state.inventory.isEmpty())
+        assertTrue(state.inventory.keys.all { it == "fish_common" })
+        assertTrue((state.inventory["fish_common"] ?: 0L) < shore.rewards.getValue("fish"))
+        assertTrue(state.fishing.catches.keys.all { id -> fishing.fish.single { it.itemId == id }.rarity == "common" })
         val restored = economyJson.decodeFromString<EconomyState>(economyJson.encodeToString(state))
         assertEquals(state.stageOrders, restored.stageOrders); assertNull(EconomyStageOrders.offer(restored))
     }
@@ -112,7 +126,7 @@ class EconomySecondStageTest {
         assertEquals(before, economyJson.encodeToString(full))
     }
 
-    @Test fun `home three requires all five stage orders only for the new tutorial version`() {
+    @Test fun `home three requires the new course but never reopens completed legacy five-order courses`() {
         val upgrade = EconomyRules.catalog.buildings.single { it.id == "home" }.levels.single { it.level == 3 }
         val state = player().copy(wallet = EconomyWallet(upgrade.cost.coins), inventory = upgrade.cost.items,
             buildings = player().buildings + upgrade.requiredBuildings + ("home" to 2))
@@ -123,7 +137,7 @@ class EconomySecondStageTest {
             assertEquals(3, started.jobs.single().targetLevel)
             assertEquals(upgrade.cost, started.jobs.single().cost)
         }
-        assertTrue(EconomyStageOrders.pin(player(3)).stageOrders.stages.isEmpty(), "Existing advanced players get no forced stage-two course")
+        assertFalse("2" in EconomyStageOrders.pin(player(3)).stageOrders.stages, "Existing advanced players get no forced stage-two course")
     }
 
     @Test fun `merging takes furthest progress independently and never reopens completed stages`() {

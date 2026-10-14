@@ -77,6 +77,21 @@ test("shared inputs are aggregated once and output batches round up across a mul
   assert.equal(constructionGoalDetails(view, goal).keepItems.wood, 7, "one missing plank still needs a whole batch");
 });
 
+test("advanced goals protect current unit recipe inputs even with the base warehouse", () => {
+  const view = state({ buildings: { home: 3, warehouse: 1, workshop: 3, woodlot: 3, kiln: 2, quarry: 3 },
+    inventory: { beams: 1, hardwood: 30, rope: 20, cut_stone: 8, bricks: 10, cloth: 4, metal_parts: 4, fish_soup: 4, living_resin: 1 } });
+  const before = structuredClone(view);
+  const recipe = view.catalog.recipes.find(entry => entry.id === "make_beams");
+  assert.equal(recipe.maxBatch, 1); assert.deepEqual(recipe.rewards, { beams: 1 });
+  assert.deepEqual(recipe.cost.items, { hardwood: 4, rope: 1 });
+  const details = constructionGoalDetails(view, { buildingId: "home", targetLevel: 4 });
+  assert.deepEqual(details.missing.items, { beams: 5 });
+  assert.equal(details.keepItems.hardwood, 20); assert.equal(details.keepItems.rope, 5);
+  assert.equal(details.excessItems.hardwood, 10); assert.equal(details.excessItems.rope, 15);
+  assert.equal(details.reservesComplete, true);
+  assert.deepEqual(view, before);
+});
+
 test("unclaimed jobs and recipe byproducts cannot make inventory appear disposable", () => {
   const view = customState({ planks: 2, rope: 1 }, [
     recipe("rope", { rope: 1 }, { fiber: 2 }), recipe("planks", { planks: 2, rope: 1 }, { wood: 3 }),

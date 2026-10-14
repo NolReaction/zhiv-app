@@ -8,18 +8,19 @@ const near = (actual, expected) => assert(Math.abs(actual - expected) < 1e-8, `$
 test("elementary materials retain recursive occupied-slot minutes without treating parallel slots as a wall clock", () => {
   const math = economicMath(readEconomyCatalog());
   assert.deepEqual(math.profile("planks").slotMinutes, { workshop: 2, woodlot: 3 });
-  near(math.profile("rope").totalSlotMinutes, 5);
+  near(math.profile("rope").totalSlotMinutes, 4.5);
   const brick = math.profile("bricks");
   near(brick.slotMinutes.kiln, 5); near(brick.slotMinutes.quarry, 3); near(brick.slotMinutes.woodlot, 3);
   near(brick.slotMinutes.miner, 3);
-  near(math.profile("tools").totalSlotMinutes, 227);
-  near(math.profile("reinforced_parts").totalSlotMinutes, 425.5);
+  near(math.profile("tools").totalSlotMinutes, 216.5);
+  near(math.profile("reinforced_parts").totalSlotMinutes, 356.5);
   assert.equal(math.profile("fiber").sourceHome, 1, "Forest output exists before the dedicated fiber station");
-  assert.equal(math.profile("fiber").referenceHome, 2);
+  assert.equal(math.profile("fiber").referenceHome, 3);
   const berry = math.profile("berries");
-  near(berry.slotMinutes.garden, (60 + 8) / 60);
+  near(berry.slotMinutes.garden, (30 + 8) / 60);
   near(berry.slotMinutes.mochlik, 8 / 60);
   const catalog = readEconomyCatalog();
+  near(math.batch(catalog.recipes.find(r => r.id === "grow_berries")).slotMinutes.garden, (60 + 8) / 60);
   const dry = math.batch(catalog.recipes.find(r => r.id === "dry_berries"));
   assert.equal(dry.directHome, 3); assert.equal(dry.referenceHome, 3);
 });
@@ -42,9 +43,13 @@ test("focused mining reserves the independent miner and mine while hero occupanc
   assert.equal(math.profile("wood").slotMinutes.mochlik, undefined, "Passive gathering remains independent");
 });
 
-test("a joint long order is costed once and exposes its output portfolio rather than charging the entire recipe per product", () => {
+test("a saved legacy joint job is costed once and exposes its portfolio without charging the whole recipe per product", () => {
   const c = readEconomyCatalog(), math = economicMath(c);
-  const batch = math.batch(c.recipes.find(r => r.id === "workshop_structures"));
+  assert.equal(c.recipes.some(r => r.id === "workshop_structures"), false, "Retired bulk jobs cannot be started again");
+  const paidTerms = { id: "workshop_structures", buildingId: "workshop", buildingLevel: 4, requiredHomeLevel: 4,
+    requiredBuildings: {}, seconds: 28800, cost: { coins: 0, items: { hardwood: 8, rope: 2, stone: 6, iron_ingot: 2, wood: 2 } },
+    rewards: { beams: 2, cut_stone: 2, metal_parts: 2 }, maxBatch: 1 };
+  const batch = math.batch(paidTerms);
   assert.deepEqual(batch.output, { beams: 2, cut_stone: 2, metal_parts: 2 });
   near(batch.slotMinutes.workshop, 486); near(batch.elementaryOutputMinutes.workshop, 276);
   for (const id of ["woodlot", "quarry", "kiln", "miner"]) near(batch.slotMinutes[id], batch.elementaryOutputMinutes[id]);
@@ -80,7 +85,8 @@ test("first-stage fixed NPC prices are exact and strawberry profiles retain thei
   const strawberry = math.profile("strawberries");
   assert.deepEqual(strawberry.unlockRecipes, { cook_compote: 1 });
   assert.equal(strawberry.producerLevels.dryer, 1);
-  near(strawberry.slotMinutes.garden, 308 / 60);
+  near(strawberry.slotMinutes.garden, 128 / 60);
+  near(math.batch(catalog.recipes.find(recipe => recipe.id === "grow_strawberries")).slotMinutes.garden, 308 / 60);
   const locked = structuredClone(catalog); locked.recipes.find(recipe => recipe.id === "cook_compote").requiredHomeLevel = 2;
   assert.equal(economicMath(locked).sourceHome("strawberries"), 2);
   locked.recipes.find(recipe => recipe.id === "cook_compote").requiredRecipes = { grow_strawberries: 1 };

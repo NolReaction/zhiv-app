@@ -211,7 +211,7 @@ test("paid replacement receipts replay once, reject altered quotes, and fence co
 });
 
 test("all six meal tiers shorten one job by their own speed and old saved jobs keep their paid timing", () => {
-  assert.deepEqual(catalog.food.meals.map(meal => [meal.heroSpeedBps, meal.builderSpeedBps]), [[1000,1000],[2500,2000],[4000,3500],[6000,5000],[8000,7000],[10000,9000]]);
+  assert.deepEqual(catalog.food.meals.map(meal => [meal.heroSpeedBps, meal.builderSpeedBps]), [[1000,1000],[2500,2500],[4000,3500],[6000,5000],[8000,7000],[10000,9000]]);
   for (const meal of catalog.food.meals) {
     const state = fresh(); state.inventory = { [meal.itemId]: 1 };
     apply(state, "eat_food", meal.itemId); apply(state, "start_exploration", "forest");

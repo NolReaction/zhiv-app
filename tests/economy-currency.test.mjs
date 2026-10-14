@@ -51,9 +51,11 @@ test("whole-stack NPC rounding and minimum quantities are exactly old proceeds t
   assert.equal(sale.economyLocalSaleLimit(30, 99, money.ECONOMY_MAX_BALANCE - 20, { payoutBps: 6000 }), 1);
 });
 
-test("construction keeps the full-duration denomination while charging smaller time steps", () => {
+test("construction quotes the new tariff in stored units without redenominating saved money", () => {
   const now = Date.parse("2026-10-05T12:00:00Z"), interval = model.economyCatalog.constructionSpeedup.secondsPerPearl * 1000;
-  assert.equal(interval, 300000);
+  assert.equal(interval, 15000000);
+  assert.equal(model.economyCatalog.constructionSpeedup.priceStepPearls, 2);
+  assert.equal(money.formatPearls(rules.constructionSpeedupPrice({ kind: "construction", finishesAt: new Date(now + 600000).toISOString() }, now)), "1");
   for (const remaining of [0, 1, interval - 1, interval, interval + 1, 8 * 3600000, 72 * 3600000]) {
     assert.equal(rules.constructionSpeedupPrice({ kind: "construction", finishesAt: new Date(now + remaining).toISOString() }, now), Math.ceil(remaining * 50 / interval / 2) * 2);
   }
@@ -70,7 +72,8 @@ test("wallet limits preserve denomination while first-two-stage material prices 
   assert.equal(model.economyViewSchema.safeParse(view).success, true);
   view.inventory.wood = model.ECONOMY_MAX_ITEMS + 1; assert.equal(model.economyViewSchema.safeParse(view).success, false);
   assert.equal(rewardRules.progressionRewardsCatalog.pearlScale, 50);
-  assert.equal(Object.values(rewardRules.progressionRewardsCatalog.achievementPearls).flat().reduce((a, b) => a + b), 2150);
+  assert.equal(Object.values(rewardRules.progressionRewardsCatalog.achievementPearls).flat().reduce((a, b) => a + b), 238);
+  assert.equal(money.formatPearls(238), "119");
 });
 
 test("DEV HMR upgrades old profiles and live offers once, retaining historical offer units", () => {

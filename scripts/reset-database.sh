@@ -107,11 +107,11 @@ BEGIN
                         WHERE h.version='28' AND h.type='SQL' AND h.success
                             AND m.started_at=h.installed_on::timestamptz))
                 OR
-                -- A fresh baseline has no V28 row. Require precisely the
-                -- reviewed SQL baseline, not any successful/baseline marker.
-                ((SELECT count(*) FROM public.flyway_schema_history)=1
-                    AND EXISTS (SELECT 1 FROM public.flyway_schema_history h
-                        WHERE h.version='49' AND h.type='SQL_BASELINE' AND h.success)
+                -- A fresh baseline has no V28 row. Require the exact reviewed
+                -- baseline plus later migrations, not an arbitrary history.
+                (ARRAY(SELECT h.version || ':' || h.type || ':' || h.success::text
+                    FROM public.flyway_schema_history h ORDER BY h.installed_rank)
+                    = ARRAY['49:SQL_BASELINE:true','50:SQL:true','51:SQL:true','52:SQL:true']
                     AND m.started_at BETWEEN migration_started_at AND clock_timestamp())
             )
         ) THEN

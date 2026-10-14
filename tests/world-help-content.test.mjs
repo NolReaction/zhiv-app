@@ -66,6 +66,10 @@ test("search understands normal Russian questions, endings, ё and one-letter mi
     ["магазин удочек", "plesk"],
     ["как варить уху", "campfire"],
     ["расскажи про заказы", "resident-orders"],
+    ["проект полянки", "third-house-stage"],
+    ["как выставить больше лотов", "market-slots"],
+    ["что значит открыть товар", "item-unlocks"],
+    ["как сварить рыбный суп", "fish-soup"],
   ]) {
     const results = searchWorldHelp(topics, query);
     assert.equal(results[0]?.id, expected, `${query}: ${results.map(entry => entry.id).join(", ")}`);
@@ -196,7 +200,7 @@ test("food, building speed and orders are distinct and use current catalog numbe
   }
   assert.match(answer("builder-food"), /оставшуюся часть/);
   assert.match(answer("builder-food"), /только один раз/);
-  assert.match(answer("resident-orders"), /только монеты, не сытость/);
+  assert.match(answer("resident-orders"), /Обычные заказы дают монеты, не сытость/);
   assert.match(answer("resident-orders"), /не резервируются/);
   assert.ok(answer("resident-orders").includes(`${food.orders.slots} заказа`));
   assert.ok(answer("resident-orders").includes(`${food.orders.refreshSeconds / 3600} ч`));
@@ -241,7 +245,7 @@ test("timers, production slots and prices derive from gameplay catalogs", () => 
   for (const upgrade of economyCatalog.productionSlots.upgrades) {
     assert.ok(answer("production-slots").includes(`${upgrade.slots}-е - за ${formatPearls(upgrade.pricePearls)} жемчужин с дома ${upgrade.requiredHomeLevel}`));
   }
-  assert.ok(answer("pearls").includes(`${economyCatalog.constructionSpeedup.secondsPerPearl / 60} минут`));
+  assert.ok(answer("pearls").includes(`${economyCatalog.constructionSpeedup.secondsPerPearl * economyCatalog.constructionSpeedup.priceStepPearls / economyCatalog.pearlScale / 60} минут`));
   assert.ok(answer("rewards").includes(`${progressionRewardsCatalog.dailyMinimumHours} часов`));
   assert.ok(answer("market").includes(`${economyCatalog.market.feeBps / 100}%`));
   assert.ok(answer("market").includes(`${economyCatalog.market.showcaseRefreshSeconds / 60} минут`));
@@ -262,8 +266,9 @@ test("profile guidance distinguishes mood, food, friends and future profile link
   assert.doesNotMatch(answer("friend-profile"), /онлайн|последний вход|чужие запасы/);
 });
 
-test("second-house guidance quotes the five permanent orders and independent stone/clay production", () => {
+test("second-house guidance quotes all seven permanent orders and independent stone/clay production", () => {
   const course = economyCatalog.stageOrders.find(entry => entry.homeLevel === 2);
+  assert.equal(course.orders.length, 7);
   for (const order of course.orders) {
     assert.ok(answer("second-stage-orders").includes(`${order.coins} монет`));
     for (const [id, count] of Object.entries(order.items)) {
@@ -279,4 +284,46 @@ test("second-house guidance quotes the five permanent orders and independent sto
   assert.match(answer("mining"), /Мохлик может гулять, рыбачить и собирать ягоды одновременно/);
   assert.match(answer("mining"), /Обед Мохлика не ускоряет шахту/);
   assert.equal(searchWorldHelp(topics, "что делать после дома 2")[0]?.id, "second-house-stage");
+});
+
+test("house-three guidance explains seven full waits, guaranteed resin and optional storage", () => {
+  const course = economyCatalog.stageOrders.find(entry => entry.homeLevel === 3);
+  assert.equal(course.orders.length, 8); assert.equal(course.intervalSeconds, 86400);
+  assert.deepEqual(course.completionRewards, { living_resin: 1 });
+  assert.match(answer("third-house-stage"), /Первая из 8.*доступна сразу/);
+  assert.match(answer("third-house-stage"), /через 24 ч/);
+  assert.match(answer("third-house-stage"), /с передачи товаров.*не со смены суток UTC/);
+  assert.match(answer("third-house-stage"), /минимум 7 суток/);
+  assert.match(answer("third-house-stage"), /гарантированно.*Живая смола × 1/);
+  assert.match(answer("third-house-stage"), /Жемчуг и обеды не сокращают интервалы/);
+  assert.match(answer("third-house-stage"), /не истекают и не заменяются/);
+  assert.match(answer("third-house-stage"), /Расширять кладовую необязательно/);
+  assert.deepEqual(topic("third-house-stage").action.target, { kind: "food", tab: "orders" });
+});
+
+test("seller-slot and item-opening answers describe permanent rights and current pearl prices", () => {
+  assert.match(answer("market-slots"), /Бесплатно доступны 5.*максимум.*10/);
+  const prices = [50, 80, 120, 180, 250];
+  assert.deepEqual(economyCatalog.market.slotPricesPearls.map(price => Number(formatPearls(price))), prices);
+  for (const [index, price] of prices.entries()) assert.ok(answer("market-slots").includes(`${index + 6}-е — ${price} жемчужин`));
+  assert.match(answer("market-slots"), /по очереди/);
+  assert.match(answer("market-slots"), /остаётся навсегда/);
+  assert.match(answer("market-slots"), /не увеличивают кладовую.*не меняют общую витрину/);
+  assert.match(answer("item-unlocks"), /Один уровень дома не заменяет остальные требования/);
+  assert.match(answer("item-unlocks"), /даже если вы продали весь запас или источник позже недоступен/);
+  assert.match(answer("item-unlocks"), /Подаренный или купленный продвинутый предмет сам по себе не открывает/);
+});
+
+test("fish-soup guidance uses the authored recipe and distinct hero/builder bonuses", () => {
+  const recipe = economyCatalog.recipes.find(entry => entry.id === "cook_fish_soup");
+  const meal = economyCatalog.food.meals.find(entry => entry.itemId === "fish_soup");
+  assert.ok(answer("fish-soup").includes(`дом ${recipe.requiredHomeLevel} и костёр уровня ${recipe.buildingLevel}`));
+  for (const [id, count] of Object.entries(recipe.cost.items)) {
+    assert.ok(answer("fish-soup").includes(`${economyCatalog.items.find(item => item.id === id).name} × ${count}`));
+  }
+  assert.ok(answer("fish-soup").includes(`${recipe.seconds / 60} минут`));
+  assert.ok(answer("fish-soup").includes(`Мохлику +${meal.heroSpeedBps / 100}%`));
+  assert.ok(answer("fish-soup").includes(`строителю +${meal.builderSpeedBps / 100}%`));
+  assert.match(answer("fish-soup"), /Шахтёра не ускоряет/);
+  assert.deepEqual(topic("fish-soup").action.target, { kind: "station", stationId: "dryer", recipeId: recipe.id });
 });

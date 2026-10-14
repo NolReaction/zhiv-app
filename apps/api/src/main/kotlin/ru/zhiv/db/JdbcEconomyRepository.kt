@@ -22,16 +22,46 @@ internal fun <T> Connection.economyRows(sql: String, vararg values: Any?, read: 
     statement.executeQuery().use { result -> buildList { while (result.next()) add(read(result)) } }
 }
 internal data class EconomyProfileRow(val revision: Long, val state: EconomyState)
-internal fun readEconomyProfile(c: Connection, user: UUID): EconomyProfileRow = c.economyRows(
-    """SELECT e.revision,e.state,coalesce(w.state->'collection','[]'::jsonb),coalesce(w.state->'inventory','[]'::jsonb)
-        FROM economy_profiles e LEFT JOIN world_profiles w ON w.user_id=e.user_id WHERE e.user_id=?""", user) {
-    val state = EconomyFishInventory.state(economyJson.decodeFromString<EconomyState>(it.getString(2)))
-    val inherited = economyJson.decodeFromString<List<String>>(it.getString(3))
-    val legacyWardrobe = economyJson.decodeFromString<List<String>>(it.getString(4))
-    val clothing = WorldRules.catalog.items.filter { item -> item.slot != "rod" }.map { item -> item.id }.toSet()
-    EconomyProfileRow(it.getLong(1), state.copy(progression = EconomyCollectionProgress.inherit(state.progression, inherited),
-        wardrobe = (state.wardrobe + legacyWardrobe).filter { id -> id in clothing }.distinct().sorted()))
-}.single()
+/** Only committed inventory movements and escrow count as legacy knowledge. Pending job rewards are private. */
+internal fun legacyEconomyItemHistory(c: Connection, user: UUID): Set<String> {
+    // Historical migration tests read populated V32-V38 schemas with the current
+    // mapper. Build only sources that exist; SQL still parses absent tables in CASE.
+    val available = c.economyRows("""SELECT
+        EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid=to_regclass('public.economy_ledger')
+            AND attname='items' AND NOT attisdropped),
+        to_regclass('public.economy_market_listings') IS NOT NULL,
+        to_regclass('public.economy_barter_offers') IS NOT NULL""") {
+        Triple(it.getBoolean(1),it.getBoolean(2),it.getBoolean(3))
+    }.single()
+    val sources = buildList {
+        if (available.first) add("""SELECT item.key AS item_id FROM economy_ledger l CROSS JOIN LATERAL jsonb_each(
+            CASE WHEN jsonb_typeof(l.items)='object' THEN l.items ELSE '{}'::jsonb END) item
+            WHERE l.user_id=? AND CASE WHEN jsonb_typeof(item.value)='number'
+                THEN (item.value#>>'{}')::numeric>0 ELSE false END""")
+        if (available.second) add("SELECT item_id FROM economy_market_listings WHERE seller_id=? AND status='active'")
+        if (available.third) add("SELECT offered_item_id AS item_id FROM economy_barter_offers WHERE seller_id=? AND status='active'")
+    }
+    if (sources.isEmpty()) return emptySet()
+    return c.economyRows("SELECT item_id FROM (${sources.joinToString(" UNION ")}) history",
+        *Array(sources.size) { user }) { it.getString(1) }.toSet()
+}
+
+internal fun readEconomyProfile(c: Connection, user: UUID): EconomyProfileRow {
+    val row = c.economyRows(
+        """SELECT e.revision,e.state,coalesce(w.state->'collection','[]'::jsonb),coalesce(w.state->'inventory','[]'::jsonb)
+            FROM economy_profiles e LEFT JOIN world_profiles w ON w.user_id=e.user_id WHERE e.user_id=?""", user) {
+        val state = EconomyFishInventory.state(economyJson.decodeFromString<EconomyState>(it.getString(2)))
+        val inherited = economyJson.decodeFromString<List<String>>(it.getString(3))
+        val legacyWardrobe = economyJson.decodeFromString<List<String>>(it.getString(4))
+        val clothing = WorldRules.catalog.items.filter { item -> item.slot != "rod" }.map { item -> item.id }.toSet()
+        EconomyProfileRow(it.getLong(1), state.copy(progression = EconomyCollectionProgress.inherit(state.progression, inherited),
+            wardrobe = (state.wardrobe + legacyWardrobe).filter { id -> id in clothing }.distinct().sorted()))
+    }.single()
+    val history = if (row.state.itemUnlockVersion == 0) legacyEconomyItemHistory(c, user) else emptySet()
+    // Seal the legacy projection in the returned value before a reward writer adds
+    // gifted stock. Reading still leaves stored JSON and its revision untouched.
+    return row.copy(state = EconomyItemUnlocks.persist(row.state, history))
+}
 
 /** Caller holds app_users FOR NO KEY UPDATE. The audit remains a permanent
  * conversion fence even if an administrative gameplay reset removes a profile. */
@@ -76,18 +106,21 @@ internal fun ensureEconomyProfile(c: Connection, user: UUID) {
 }
 
 internal fun saveEconomyProfile(c: Connection, user: UUID, state: EconomyState, recordAwards: Boolean = true) {
+    val history = if (state.itemUnlockVersion == 0) legacyEconomyItemHistory(c, user) else emptySet()
+    val persisted = EconomyItemUnlocks.persist(EconomyFishInventory.state(state), history)
     val count = c.economyUpdate("""UPDATE economy_profiles SET state=?::jsonb,revision=revision+1,updated_at=clock_timestamp()
-        WHERE user_id=? AND revision<9007199254740991""", economyJson.encodeToString(EconomyFishInventory.state(state)), user)
+        WHERE user_id=? AND revision<9007199254740991""", economyJson.encodeToString(persisted), user)
     if (count != 1) economyFailure("ECONOMY_REVISION_CONFLICT", "Состояние хозяйства изменилось. Обновите страницу.")
-    if (recordAwards) recordEconomyAchievements(c, user, state)
+    if (recordAwards) recordEconomyAchievements(c, user, persisted)
 }
 internal fun economyView(c: Connection, user: UUID, publicId: String, now: Instant): EconomyView {
     val row = readEconomyProfile(c, user)
-    val s = EconomyStageOrders.pin(row.state)
+    val s = EconomyStageOrders.pin(row.state, now=now)
     return EconomyView(publicId, row.revision, now.toString(), s.wallet, s.inventory, s.buildings, s.jobs.map(EconomyPublicJobs::project), s.migration,
         EconomyRules.catalog, EconomyRules.storage(s, reservedEconomyMarketItems(c, user)), s.completedExplorations, s.fishing, s.progression, wardrobe = s.wardrobe, fishingShop = s.fishingShop,
         productionSlots = s.productionSlots, food = s.food, residentOrders = s.residentOrders,
-        workshopStarterClaimed = s.workshopStarterClaimed, tutorialOrder = s.tutorialOrder, stageOrders = s.stageOrders)
+        workshopStarterClaimed = s.workshopStarterClaimed, tutorialOrder = s.tutorialOrder, stageOrders = s.stageOrders,
+        marketSlots = s.marketSlots, unlockedItems = s.unlockedItems)
 }
 
 /** Save only public action context before a consumed job disappears. In
@@ -175,7 +208,8 @@ class JdbcEconomyRepository(private val source: DataSource) : EconomyRepository 
                 "SELECT jsonb_array_length(coalesce(state->'journeys','[]'::jsonb))>0 FROM world_profiles WHERE user_id=?", actor.id
             ) { it.getBoolean(1) }.firstOrNull() == true)
                 economyFailure("ECONOMY_EXPLORER_BUSY", "Сначала завершите прежнее путешествие Мохлика")
-            val (next, message) = EconomyRules.apply(before.state, command, now, reservedEconomyMarketItems(c, actor.id))
+            val history = if (before.state.itemUnlockVersion == 0) legacyEconomyItemHistory(c, actor.id) else emptySet()
+            val (next, message) = EconomyRules.apply(before.state, command, now, reservedEconomyMarketItems(c, actor.id), history)
             assertEconomyMarketCapacity(c, actor.id, before.state, next)
             saveEconomyProfile(c, actor.id, next)
             if (next.wardrobe != before.state.wardrobe) syncWorldWardrobe(c, actor.id, next.wardrobe)

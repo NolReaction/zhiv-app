@@ -108,13 +108,21 @@ class JdbcReleaseUpgradeIntegrationTest {
             seedLegacyCheckIn(source, player.id, token.hash)
             val tables = source.connection.use { c -> c.economyRows(
                 "SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename<>'flyway_schema_history' ORDER BY tablename") { it.getString(1) } }
-            val before = legacyData(source, tables)
+            val preservedTables = tables.filter { it != "economy_profiles" }
+            val before = legacyData(source, preservedTables)
+            val expectedProfile = scalar(source, """SELECT jsonb_build_object('state',state,
+                'immutable',to_jsonb(e)-'state'-'revision'-'updated_at','revision',revision+1)::text
+                FROM economy_profiles e WHERE user_id='${player.id}'""")
             val historySql = "SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank)::text FROM flyway_schema_history h WHERE version::int<=44"
             val history = scalar(source, historySql)
             DatabaseFactory.migrate(source)
-            assertEquals(before, legacyData(source, tables))
+            assertEquals(before, legacyData(source, preservedTables))
+            assertEquals(expectedProfile, scalar(source, """SELECT jsonb_build_object(
+                'state',state-'marketSlots'-'unlockedItems'-'itemUnlockVersion',
+                'immutable',to_jsonb(e)-'state'-'revision'-'updated_at','revision',revision)::text
+                FROM economy_profiles e WHERE user_id='${player.id}'"""), "V52 changes only knowledge metadata and its revision fence")
             assertEquals(history, scalar(source, historySql))
-            assertEquals("51", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
+            assertEquals("52", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             for (table in listOf("game_presence_clients", "game_presence_accounts", "game_presence_daily"))
                 assertEquals("0", scalar(source, "SELECT count(*) FROM $table"))
             val presence = JdbcPresenceRepository(source)
@@ -158,7 +166,7 @@ class JdbcReleaseUpgradeIntegrationTest {
             DatabaseFactory.migrate(source)
             assertEquals(before, legacyData(source, unchangedTables))
             assertEquals(beforeHistory, scalar(source, historySql))
-            assertEquals("51", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
+            assertEquals("52", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM forest_memory"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM forest_memory_receipts"))
             DatabaseFactory.migrate(source)
@@ -220,7 +228,7 @@ class JdbcReleaseUpgradeIntegrationTest {
             assertEquals(before, legacyData(source, unchangedTables), "Only the explicitly converted world profile may change")
             assertEquals("true", scalar(source, "SELECT bool_and(reward_eligible)::text FROM game_achievements"), "Existing ownership keeps its finite reward eligibility")
             assertEquals(oldHistory, scalar(source, historySql), "Existing migration records/checksums must stay intact")
-            assertEquals("51", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
+            assertEquals("52", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM player_feedback"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM player_feedback_actions"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM forest_memory"))
@@ -281,7 +289,7 @@ class JdbcReleaseUpgradeIntegrationTest {
             source.connection.use { c ->
                 val row = readEconomyProfile(c, player.id)
                 assertEquals(20L, row.revision)
-                assertEquals(expected.copy(wardrobe = expected.wardrobe.sorted()), row.state)
+                assertEquals(EconomyItemUnlocks.persist(expected, setOf("berries")).copy(wardrobe = expected.wardrobe.sorted()), row.state)
                 assertEquals(expected, c.economyRows("SELECT state FROM economy_profiles WHERE user_id=?", player.id) {
                     economyJson.decodeFromString<EconomyState>(it.getString(1)) }.single(), "V34 changes only storage buildings")
             }
@@ -299,15 +307,16 @@ class JdbcReleaseUpgradeIntegrationTest {
                 val initialized = c.economyRows("SELECT economy_v2_initial_state(?::jsonb)", worldJson.encodeToString(legacy)) {
                     economyJson.decodeFromString<EconomyState>(it.getString(1))
                 }.single()
-                assertEquals(EconomyRules.initial(100, 81, 49, 4, 2, includeStartingPack = false), EconomyMoney.redenominate(initialized))
+                assertEquals(EconomyRules.initial(100, 81, 49, 4, 2, includeStartingPack = false).copy(itemUnlockVersion = 0),
+                    EconomyMoney.redenominate(initialized), "Historical initializers predate the permanent-knowledge marker")
             }
             DatabaseFactory.migrate(source)
-            assertEquals(22L, source.connection.use { readEconomyProfile(it, player.id).revision }, "V40 and V41 each convert once")
+            assertEquals(23L, source.connection.use { readEconomyProfile(it, player.id).revision }, "V40 and V41 convert once; V52 fences inherited knowledge once")
             val economy = JdbcEconomyRepository(source)
             val upgraded = economy.snapshot(token.hash)
             assertEquals(EconomyStorage(50, 720, 30, 0, 700), upgraded.storage)
             assertEquals(listOf(oldJob.copy(cost = oldJob.cost.copy(coins = 30))), upgraded.jobs)
-            assertEquals(23L, upgraded.revision, "The first current read initializes the merchant stock once")
+            assertEquals(24L, upgraded.revision, "The first current read initializes the merchant stock once")
             assertEquals(upgraded.revision, economy.snapshot(token.hash).revision)
         }
     }

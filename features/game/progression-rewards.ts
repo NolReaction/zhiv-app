@@ -48,13 +48,13 @@ export function achievementRewardRows(earned: (id: GameAchievementId, level: num
 }
 /** Daily bundles are authoritative and finite; the finale also grants one relic. */
 export function assertProgressionRewardCatalog(): void {
-  if (catalog.version !== 1 || catalog.currencyScale !== 10 || catalog.pearlScale !== 50 || catalog.daily.length !== 7 || catalog.dailyMinimumHours !== 20) throw new Error("Invalid rewards cycle");
+  if (catalog.version !== 2 || catalog.currencyScale !== 10 || catalog.pearlScale !== 50 || catalog.daily.length !== 7 || catalog.dailyMinimumHours !== 20) throw new Error("Invalid rewards cycle");
   if (Object.keys(catalog.dailyByHomeLevel).sort().join() !== "2,3,4,5") throw new Error("Invalid daily home tiers");
   const ids = Object.keys(GAME_ACHIEVEMENT_TARGETS) as GameAchievementId[];
   if (Object.keys(catalog.achievementPearls).length !== ids.length || ids.some(id => catalog.achievementPearls[id].length !== GAME_ACHIEVEMENT_TARGETS[id].length)) throw new Error("Invalid achievement rewards");
   const itemIds = new Set(["wood", "stone", "fiber", "berries", "fish", "hardwood", "resin", "planks", "rope", "bricks", "iron_ingot", "cloth", "metal_parts", "glass", "beams", "cut_stone", "tools", "reinforced_parts", "ancient_core"]);
   for (const cycle of [catalog.daily, ...Object.values(catalog.dailyByHomeLevel)]) {
-    if (cycle.length !== 7 || cycle.reduce((sum, reward) => sum + reward.pearls, 0) !== 450
+    if (cycle.length !== 7 || cycle.reduce((sum, reward) => sum + reward.pearls, 0) !== 14
       || cycle.reduce((sum, reward) => sum + (reward.items.ancient_core ?? 0), 0) !== 1) throw new Error("Invalid daily tier budget");
     for (const [index, reward] of cycle.entries()) {
       if ([reward.coins, reward.pearls].some(value => !Number.isSafeInteger(value) || value < 0)

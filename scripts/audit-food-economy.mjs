@@ -176,10 +176,19 @@ export function auditFoodEconomy(catalog) {
   assert.equal(tutorials.length, 4, "First stage needs four guaranteed tutorial requests");
   assert.equal(sum(tutorials.map(order => order.coins)), 330, "First-stage tutorial requests must pay the planned 330 coins");
   const secondCourse = catalog.stageOrders?.find(stage => stage.homeLevel === 2);
-  assert.equal(secondCourse?.orders.length, 5, "Second stage needs five guaranteed permanent requests");
-  assert.equal(sum(secondCourse.orders.map(order => order.coins)), 1380, "Second-stage requests must pay 1380 coins");
+  assert.equal(secondCourse?.orders.length, 7, "Second stage needs seven guaranteed permanent requests");
+  assert.equal(sum(secondCourse.orders.map(order => order.coins)), 1990, "Second-stage requests must pay 1990 coins");
   for (const order of secondCourse.orders)
-    assert.equal(order.coins, math.liquidation(order.items) * 1.5, `${order.id}: permanent requests must pay 150% of actual NPC value`);
+    assert.equal(order.coins, Math.ceil(math.liquidation(order.items) * 1.5 / scale) * scale,
+      `${order.id}: permanent requests must pay 150% of actual NPC value rounded up to the coin quantum`);
+  const thirdCourse = catalog.stageOrders?.find(stage => stage.homeLevel === 3);
+  assert.equal(thirdCourse?.orders.length, 8, "Third stage needs eight guaranteed permanent requests");
+  assert.equal(thirdCourse.intervalSeconds, 86400, "Each next third-stage request waits 24 hours after its actual prior delivery");
+  assert.deepEqual(thirdCourse.completionRewards, { living_resin: 1 }, "The course guarantees the house's required resin");
+  assert.equal(sum(thirdCourse.orders.map(order => order.coins)), 14840, "Third-stage requests must pay 14840 coins");
+  for (const order of thirdCourse.orders)
+    assert.equal(order.coins, Math.ceil(math.liquidation(order.items) * 1.5 / scale) * scale,
+      `${order.id}: third-stage requests keep the exact rounded 150% premium`);
   assert(earlyOrders.length >= 5, "Starter board needs at least five eligible distinct templates alongside the tutorial requests");
   for (const resident of ["plesk", "builder"]) assert(earlyOrders.some(order => order.residentId === resident), "Both starter residents need an eligible request");
   const secondStageOrders = orders.templates.filter(order => hasRequirements(order, { home: 2, garden: 1, warehouse: 1 }));

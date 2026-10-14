@@ -24,7 +24,7 @@ class EconomyWarehouseTest {
         assertEquals((1..10).toList(), warehouse.levels.map { it.level })
         assertEquals(capacities, warehouse.levels.map { it.warehouseCapacity })
         val third = warehouse.levels[2]
-        assertEquals(EconomyCost(16000, mapOf("planks" to 36L, "bricks" to 33L, "iron_ingot" to 9L, "cloth" to 7L)), third.cost)
+        assertEquals(EconomyCost(1000, mapOf("planks" to 6L, "bricks" to 6L, "iron_ingot" to 2L, "cloth" to 2L)), third.cost)
         warehouse.levels.forEach { target ->
             assertEquals(if (target.level == 2) 2 else 1, target.requiredHomeLevel); assertTrue(target.requiredBuildings.isEmpty())
         }

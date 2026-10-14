@@ -144,6 +144,7 @@ test('merging retains the farther existing clock without adding hours, selecting
 test('later house upgrades consume the required special stack and older paid construction needs no new charge', () => {
   const home = model.economyCatalog.buildings.find(building => building.id === 'home'), target = home.levels.find(level => level.level === 4);
   const state = rules.newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 3, workshopLevel: 0 });
+  state.stageOrders = { version: 1, stages: { 3: { step: 8, completed: true, terms: null } } };
   state.wallet.coins = target.cost.coins; state.inventory = { ...target.cost.items }; delete state.inventory.living_resin;
   Object.assign(state.buildings, target.requiredBuildings);
   const command = { action: 'start_construction', targetId: 'home', quantity: 1, totalPrice: 0 };

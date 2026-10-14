@@ -22,6 +22,8 @@ data class EconomyMarketListing(
 @Serializable
 data class EconomyMarketShowcase(val refreshAt: String, val slots: Int, val maxPerSeller: Int, val refreshSeconds: Long)
 
+data class EconomyMarketSlotOffer(val targetId: String, val slots: Int, val pricePearls: Long)
+
 @Serializable
 data class EconomyMarketTradeBudget(
     val buysUsed: Long, val salesUsed: Long, val limit: Long, val resetsAt: String,
@@ -143,4 +145,14 @@ object EconomyMarketRules {
             totalPrice <= item.baseSellPrice * quantity * EconomyRules.catalog.market.maxPriceMultiplier &&
             homeLevel >= requiredHomeLevel(itemId)
     }
+
+    fun eligible(itemId: String, quantity: Long, totalPrice: Long, state: EconomyState): Boolean {
+        val item = EconomyRules.catalog.items.firstOrNull { it.id == itemId && it.tradable } ?: return false
+        return quantity in 1L..MAX_QUANTITY && totalPrice / quantity >= item.baseSellPrice &&
+            totalPrice <= item.baseSellPrice * quantity * EconomyRules.catalog.market.maxPriceMultiplier &&
+            itemUnlocked(state, itemId)
+    }
+
+    fun itemUnlocked(state: EconomyState, itemId: String): Boolean =
+        EconomyFishInventory.itemId(itemId) in EconomyItemUnlocks.project(state)
 }

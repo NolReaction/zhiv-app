@@ -14,6 +14,7 @@ import ru.zhiv.economy.EconomyRareDrops
 import ru.zhiv.economy.EconomyFood
 import ru.zhiv.economy.EconomyFoodState
 import ru.zhiv.economy.EconomyFishInventory
+import ru.zhiv.economy.EconomyItemUnlocks
 import ru.zhiv.world.WorldState
 import ru.zhiv.world.worldJson
 import ru.zhiv.economy.economyJson
@@ -96,6 +97,9 @@ internal fun mergeEconomyProfiles(c: Connection, target: UUID, source: UUID) {
                 minOf(ECONOMY_MAX_ITEMS,(a.fishing.catches[it] ?: 0)+(b.fishing.catches[it] ?: 0)) }),
         fishingCastSeed=a.fishingCastSeed ?: b.fishingCastSeed,
         fishingShop=a.fishingShop ?: b.fishingShop,
+        marketSlots=maxOf(a.marketSlots,b.marketSlots),
+        unlockedItems=(EconomyItemUnlocks.project(a)+EconomyItemUnlocks.project(b)).distinct().sorted(),
+        itemUnlockVersion=1,
         productionSlots=(a.productionSlots.keys+b.productionSlots.keys).associateWith {
             maxOf(EconomyRules.productionSlotCount(a,it),EconomyRules.productionSlotCount(b,it)) },
         progression=EconomyCollectionProgress.merge(a.progression,b.progression),
@@ -105,7 +109,7 @@ internal fun mergeEconomyProfiles(c: Connection, target: UUID, source: UUID) {
         tutorialOrder=EconomyTutorialOrders.merge(a.tutorialOrder,b.tutorialOrder),
         stageOrders=EconomyStageOrders.merge(a.stageOrders,b.stageOrders),
         rareDropState=EconomyRareDrops.merge(a.rareDropState,b.rareDropState),
-        minerRareDropState=EconomyRareDrops.merge(a.minerRareDropState,b.minerRareDropState))), recordAwards=false)
+        minerRareDropState=EconomyRareDrops.merge(a.minerRareDropState,b.minerRareDropState)), now=now), recordAwards=false)
     // Preserve original signatures: an old source browser cannot reuse a consumed request ID.
     c.lifecycleEconomyUpdate("""INSERT INTO economy_commands(user_id,request_id,signature,message,accepted_revision)
         SELECT ?,request_id,signature,message,accepted_revision FROM economy_commands WHERE user_id=? ON CONFLICT DO NOTHING""", target, source)

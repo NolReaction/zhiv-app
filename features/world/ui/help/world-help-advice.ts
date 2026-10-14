@@ -168,8 +168,10 @@ function contextAdvice(state: EconomyView, context: WorldHelpContext | undefined
     if (stationId === "home" && stageCourseRequired(state, next.level)) {
       const home = state.buildings.home ?? 1;
       const count = state.catalog.stageOrders?.find(course => course.homeLevel === home)?.orders.length ?? 0;
-      return { id: "construction:stage-orders", title: "Завершите заказы этапа", topicId: "resident-orders", severity: "next",
-        message: `Выполнено ${stageOrderProgress(state, home).step} из ${count}. Соберите товары для следующей постоянной просьбы, чтобы открыть дом ${next.level}.`,
+      const progress = stageOrderProgress(state, home);
+      const wait = progress.availableAt ? Math.max(0, Math.ceil((Date.parse(progress.availableAt) - now) / 1000)) : 0;
+      return { id: "construction:stage-orders", title: wait > 0 ? "Дождитесь следующей поставки" : "Завершите заказы этапа", topicId: "resident-orders", severity: "next",
+        message: `Выполнено ${progress.step} из ${count}. ${wait > 0 ? `Следующая поставка через ${worldDuration(wait)}. Материалы можно подготовить заранее; жемчуг не сокращает этот срок.` : `Соберите товары для следующей постоянной просьбы, чтобы открыть дом ${next.level}.`}`,
         action: { label: "Открыть заказы", target: { kind: "food", tab: "orders" } } };
     }
     const construction = state.jobs.find(job => job.kind === "construction");

@@ -66,11 +66,56 @@ const secondStageSchedule = withWarehouse => {
   return events.sort((a, b) => a.minute - b.minute || priority(a.action) - priority(b.action) || a.index - b.index);
 };
 
-for (const withWarehouse of [true, false]) test(`a real 179-minute house-two route completes house three ${withWarehouse ? "with the optional warehouse" : "in the original 50-place warehouse"}`, () => {
-  const p = player(), produced = {}, raw = {}, costs = [], orders = []; let peak = 0;
-  for (const event of secondStageSchedule(withWarehouse)) {
+for (const withWarehouse of [true, false]) test(`a real 179-minute house-two route completes seven orders and house three ${withWarehouse ? "with the optional warehouse" : "in the original 50-place warehouse"}`, t => {
+  const p = player(), produced = {}, raw = {}, costs = [], orders = [], caught = {}, sold = {};
+  const events = secondStageSchedule(withWarehouse); let peak = 0, cast = 0, fishSaleCoins = 0, cooked = 0, previousMinute = 0;
+  const check = state => {
+    peak = Math.max(peak, state.storage.used);
+    assert.ok(state.storage.used <= state.storage.capacity); assert.equal(state.wallet.pearls, 0); assert.deepEqual(state.productionSlots, {});
+    assert.ok(state.jobs.filter(job => job.kind === "construction").length <= 1);
+    for (const id of ["woodlot", "workshop", "kiln", "dryer"]) assert.ok(state.jobs.filter(job => job.kind === "production" && job.targetId === id).length <= 1);
+    for (const actorId of ["miner", "mochlik"]) assert.ok(state.jobs.filter(job => job.kind === "exploration" && job.actorId === actorId).length <= 1);
+    assert.ok(state.jobs.every(job => !job.meal));
+  };
+  const queue = (minute, action, target) => {
+    events.push({ minute, action, target, index: events.length });
+    const priority = action => ["claim", "claim_building", "claim_fish"].includes(action) ? 0 : action === "complete_resident_order" ? 1 : 2;
+    events.sort((a, b) => a.minute - b.minute || priority(a.action) - priority(b.action) || a.index - b.index);
+  };
+  const fish = minute => {
+    assert.ok(cast < 30, "the bounded schedule must obtain nine common fish from actual catches");
+    // Fixed server entropy makes the fixture repeatable; every catch still uses the
+    // normal class/species sampler. Seeds are sequential, never chosen for outcomes.
+    globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId).state.fishingCastSeed =
+      `00000000-0000-4000-8000-${String(++cast).padStart(12, "0")}`;
+    const state = send(p, "start_fishing", "shore", minute); check(state);
+    if (cast === 1) assert.ok(state.jobs.some(job => job.actorId === "miner"), "the mine and fishing use independent actor queues");
+    const job = state.jobs.find(job => job.fishing);
+    assert.equal(job.actorId, "mochlik"); assert.equal(job.fishing.rodId, "reed_rod"); assert.equal(job.fishing.baitId, null);
+    queue((Date.parse(job.finishesAt) - now) / 60000, "claim_fish", job.id);
+  };
+  queue(21, "start_fish", "shore");
+  while (events.length) {
+    const event = events.shift(); assert.ok(event.minute >= previousMinute, "the route never rewinds its clock"); previousMinute = event.minute;
     let state;
-    if (["claim", "claim_building"].includes(event.action)) {
+    if (event.action === "start_fish") {
+      fish(event.minute); state = read(p, event.minute);
+    } else if (event.action === "claim_fish") {
+      const before = read(p, event.minute); state = send(p, "claim_job", event.target, event.minute); check(state);
+      // Decisions use only delivered public inventory, never an unclaimed private catch.
+      for (const group of model.economyCatalog.fishing.classes) {
+        const count = (state.inventory[group.itemId] ?? 0) - (before.inventory[group.itemId] ?? 0);
+        if (count) caught[group.itemId] = (caught[group.itemId] ?? 0) + count;
+        const surplus = group.itemId === "fish_common" ? Math.max(0, (caught.fish_common ?? 0) - 9) - (sold.fish_common ?? 0) : count;
+        if (surplus) {
+          const coins = state.wallet.coins;
+          state = send(p, "sell_fish", group.itemId, event.minute, { quantity: surplus }); check(state);
+          fishSaleCoins += state.wallet.coins - coins; sold[group.itemId] = (sold[group.itemId] ?? 0) + surplus;
+        }
+      }
+      assert.equal(state.fishingCastSeed, undefined, "server entropy is never exposed in the API");
+      if ((caught.fish_common ?? 0) < 9) fish(event.minute);
+    } else if (["claim", "claim_building"].includes(event.action)) {
       const job = read(p, event.minute).jobs.find(entry => event.action === "claim_building"
         ? entry.kind === "construction" && entry.targetId === event.target
         : entry.recipeId === event.target || entry.kind === "exploration" && entry.targetId === event.target);
@@ -79,28 +124,44 @@ for (const withWarehouse of [true, false]) test(`a real 179-minute house-two rou
       for (const [id, count] of Object.entries(job.rewards)) (Object.keys(job.cost.items).length ? produced : raw)[id] = ((Object.keys(job.cost.items).length ? produced : raw)[id] ?? 0) + count;
     } else {
       const before = read(p, event.minute); state = send(p, event.action, event.target, event.minute);
+      if (event.action === "start_construction" && event.target === "home") {
+        assert.equal(before.stageOrders.stages["2"].step, 7); assert.equal(before.stageOrders.stages["2"].completed, true);
+        assert.equal(before.progression.recipes.cook_grilled_fish, 3); assert.ok(!before.jobs.some(job => job.fishing));
+      }
       if (event.action === "start_construction") costs.push(before.wallet.coins - state.wallet.coins);
       if (event.action === "complete_resident_order") orders.push(state.wallet.coins - before.wallet.coins);
     }
-    peak = Math.max(peak, state.storage.used);
-    assert.ok(state.storage.used <= state.storage.capacity); assert.equal(state.wallet.pearls, 0); assert.deepEqual(state.productionSlots, {});
-    assert.ok(state.jobs.filter(job => job.kind === "construction").length <= 1);
-    for (const id of ["woodlot", "workshop", "kiln"]) assert.ok(state.jobs.filter(job => job.kind === "production" && job.targetId === id).length <= 1);
-    assert.ok(state.jobs.filter(job => job.kind === "exploration" && job.actorId === "miner").length <= 1);
-    assert.ok(state.jobs.every(job => !job.meal && !job.fishing));
+    check(state);
+    if (cooked < 3 && (state.inventory.fish_common ?? 0) > 0 && !state.jobs.some(job => job.kind === "production" && job.targetId === "dryer")) {
+      state = send(p, "start_production", "cook_grilled_fish", event.minute); cooked++; check(state);
+      queue(event.minute + recipe("cook_grilled_fish").seconds / 60, "claim", "cook_grilled_fish");
+    }
+    if (state.stageOrders.stages["2"].step === 5 && (state.inventory.fish_common ?? 0) >= 6) {
+      const coins = state.wallet.coins; state = send(p, "complete_resident_order", "stage2_fish_order", event.minute);
+      orders.push(state.wallet.coins - coins); check(state);
+    }
+    if (state.stageOrders.stages["2"].step === 6 && (state.inventory.grilled_fish ?? 0) >= 3) {
+      const coins = state.wallet.coins; state = send(p, "complete_resident_order", "stage2_fish_meal_order", event.minute);
+      orders.push(state.wallet.coins - coins); check(state);
+    }
   }
   const finish = read(p, 179);
   assert.equal(finish.buildings.home, 3); assert.equal(finish.buildings.quarry, 2); assert.equal(finish.buildings.kiln, 1);
   assert.equal(finish.buildings.warehouse, withWarehouse ? 2 : 1); assert.equal(finish.jobs.length, 0);
   assert.deepEqual(raw, { fiber: 20, wood: 30, stone: 19, clay: 16 });
-  assert.deepEqual(produced, { rope: 10, planks: 16, charcoal: 12, bricks: 10 });
-  assert.deepEqual(orders, [90, 360, 180, 150, 600]); assert.equal(orders.reduce((sum, value) => sum + value, 0), 1380);
+  assert.deepEqual(produced, { rope: 10, planks: 16, grilled_fish: 3, charcoal: 12, bricks: 10 });
+  assert.deepEqual(orders, [90, 360, 180, 150, 600, 360, 250]); assert.equal(orders.reduce((sum, value) => sum + value, 0), 1990);
+  assert.equal((caught.fish_common ?? 0) - (sold.fish_common ?? 0), 9);
+  assert.equal(Object.values(caught).reduce((sum, value) => sum + value, 0), cast * 2);
+  assert.equal(Object.values(finish.fishing.catches).reduce((sum, value) => sum + value, 0), cast * 2);
+  for (const [id, quantity] of Object.entries(caught)) if (id !== "fish_common") assert.equal(sold[id], quantity);
   assert.equal(costs.reduce((sum, value) => sum + value, 0), withWarehouse ? 1200 : 1050);
-  assert.deepEqual(finish.wallet, { coins: withWarehouse ? 230 : 380, pearls: 0 });
+  assert.deepEqual(finish.wallet, { coins: (withWarehouse ? 840 : 990) + fishSaleCoins, pearls: 0 });
   assert.deepEqual(finish.inventory, withWarehouse ? {} : { planks: 3, stone: 2, rope: 2 });
-  assert.equal(finish.stageOrders.stages["2"].step, 5); assert.equal(finish.stageOrders.stages["2"].completed, true);
+  assert.equal(finish.stageOrders.stages["2"].step, 7); assert.equal(finish.stageOrders.stages["2"].completed, true);
   assert.ok(peak <= 50, "the optional expansion must not hide a mandatory oversized stock requirement");
-  assert.equal(peak, withWarehouse ? 31 : 38);
+  assert.equal(peak, withWarehouse ? 40 : 47);
+  t.diagnostic(`${cast} shore trips; caught ${JSON.stringify(caught)}; sold ${JSON.stringify(sold)} for ${fishSaleCoins} coins; peak ${peak}/${finish.storage.capacity}; final ${finish.wallet.coins} coins`);
 });
 
 test("second-stage basic production and construction keep unit counts, exact timers and optional storage", () => {

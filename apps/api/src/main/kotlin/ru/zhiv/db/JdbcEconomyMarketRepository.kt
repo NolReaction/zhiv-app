@@ -123,7 +123,8 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
         val config = EconomyRules.catalog.market
         val home = state.buildings["home"] ?: 1
         val band = EconomyMarketRules.homeBand(home)
-        val items = EconomyRules.catalog.items.filter { it.tradable && home >= EconomyMarketRules.requiredHomeLevel(it.id) }
+        val unlockedItems = EconomyItemUnlocks.project(state).toSet()
+        val items = EconomyRules.catalog.items.filter { it.tradable && it.id in unlockedItems }
         val ids = if (items.isEmpty()) emptyList() else {
             val values = items.joinToString(",") { "(?::text,?::bigint)" }
             val parameters = items.flatMap { listOf<Any?>(it.id, it.baseSellPrice) }.toMutableList()
@@ -177,7 +178,7 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
                 AND l.status='active' AND u.deleted_at IS NULL AND u.banned_at IS NULL
                 AND COALESCE((ep.state->'buildings'->>'home')::int,1) BETWEEN ? AND ?""",
                 *(selection.ids + listOf(band.first, band.last)).toTypedArray<Any>()) { listing(it, user.id).listing }
-                .filter { EconomyMarketRules.eligible(it.itemId, it.quantity, it.totalPrice, state.buildings["home"] ?: 1) }
+                .filter { EconomyMarketRules.eligible(it.itemId, it.quantity, it.totalPrice, state) }
                 .sortedBy { selection.ids.indexOf(UUID.fromString(it.id)) }
             val mine = c.economyRows("""SELECT l.*,u.public_id,u.display_name FROM economy_market_listings l
                 JOIN app_users u ON u.id=l.seller_id WHERE l.status='active' AND l.seller_id=?
@@ -251,14 +252,14 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
     private fun create(c: Connection, user: UUID, state: EconomyState, command: EconomyCommand): String {
         val item = EconomyRules.catalog.items.firstOrNull { it.id == EconomyFishInventory.itemId(command.targetId) && it.tradable }
             ?: throw AuthFailure("ECONOMY_MARKET_ITEM", "Этот предмет нельзя выставить на рынок", 400)
-        if ((state.buildings["home"] ?: 1) < EconomyMarketRules.requiredHomeLevel(item.id))
-            throw AuthFailure("ECONOMY_MARKET_ITEM_LOCKED", "Предмет пока недоступен на вашем уровне дома", 409)
+        if (item.id !in EconomyItemUnlocks.project(state))
+            throw AuthFailure("ECONOMY_MARKET_ITEM_LOCKED", "Сначала откройте получение этого предмета в своём хозяйстве", 409)
         val marketConfig = EconomyRules.catalog.market
         EconomyMarketRules.validatePrice(command.quantity, command.totalPrice, item.baseSellPrice, marketConfig.maxPriceMultiplier)
         if (item.baseSellPrice * command.quantity > EconomyMarketRules.dailyTradeLimit(state.buildings["home"] ?: 1))
             throw AuthFailure("ECONOMY_MARKET_DAILY_LOT_LIMIT", "Уменьшите партию: её базовая стоимость превышает дневной объём торговли", 409)
         val active = c.economyRows("SELECT count(*) FROM economy_market_listings WHERE seller_id=? AND status='active'", user) { it.getInt(1) }.single()
-        if (active >= marketConfig.maxListings) throw AuthFailure("ECONOMY_MARKET_LIMIT", "Достигнут лимит активных объявлений", 409)
+        if (active >= state.marketSlots) throw AuthFailure("ECONOMY_MARKET_LIMIT", "Все места вашей лавки заняты", 409)
         val available = state.inventory[item.id] ?: 0L
         if (available < command.quantity) throw AuthFailure("ECONOMY_RESOURCES", "Недостаточно предметов для этой партии", 409)
         val inventory = state.inventory + (item.id to available - command.quantity)
@@ -284,8 +285,8 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
         val selection = readShowcase(c, user)
         if (selection == null || !at.isBefore(selection.refreshAt) || UUID.fromString(lot.id) !in selection.ids)
             throw AuthFailure("ECONOMY_MARKET_SHOWCASE_CHANGED", "Предложение вне текущей витрины. Обновите лавку.", 409)
-        if (!EconomyMarketRules.eligible(lot.itemId, lot.quantity, lot.totalPrice, state.buildings["home"] ?: 1))
-            throw AuthFailure("ECONOMY_MARKET_ITEM_LOCKED", "Предмет пока недоступен на вашем уровне дома или цена устарела", 409)
+        if (!EconomyMarketRules.eligible(lot.itemId, lot.quantity, lot.totalPrice, state))
+            throw AuthFailure("ECONOMY_MARKET_ITEM_LOCKED", "Предмет ещё не открыт в вашем хозяйстве или цена устарела", 409)
         if (state.wallet.coins < lot.totalPrice) throw AuthFailure("ECONOMY_RESOURCES", "Недостаточно монет", 409)
         ensureEconomyProfile(c, row.seller)
         val seller = readEconomyProfile(c, row.seller).state

@@ -20,6 +20,7 @@ import styles from "./world-resident-order-board.module.css";
 
 type ResidentId = ResidentOrderOffer["residentId"];
 type Filter = "all" | ResidentId;
+type BoardOrderOffer = ResidentOrderOffer & { intervalSeconds?: number; completionRewards?: Record<string, number> };
 export type OrderNavigation = {
   onNavigateStation?: (stationId: string, recipeId?: string) => void;
   onNavigateExpeditions?: (sector?: "forest" | "shore" | "caves") => void;
@@ -64,7 +65,7 @@ function materialAction(economy: ReadyEconomy, itemId: string, navigation: Order
 
 export function ResidentOrderCard({ economy, offer, onComplete, onReplace, confirmation, ...navigation }: OrderNavigation & {
   economy: ReadyEconomy;
-  offer: ResidentOrderOffer;
+  offer: BoardOrderOffer;
   onComplete?: (offer: ResidentOrderOffer) => void;
   onReplace?: (offer: ResidentOrderOffer) => void;
   confirmation?: ReactNode;
@@ -79,12 +80,18 @@ export function ResidentOrderCard({ economy, offer, onComplete, onReplace, confi
   const practice = tutorialOrderProgress(state);
   const stage = stageOrderProgress(state);
   const stageTotal = state.catalog.stageOrders?.find(course => course.homeLevel === (state.buildings.home ?? 1))?.orders.length ?? 0;
-  const current = () => tutorial ? tutorialOrderProgress(economy.snapshot).ingredientsClaimed && tutorialResidentOrder(economy.snapshot)?.id === offer.id
-    : stageOrder ? stageResidentOrder(economy.snapshot)?.id === offer.id
-    : residentOrderBoard(economy.snapshot, economy.now, economy.snapshot.catalog).offers.some(order => order.id === offer.id);
+  const waitSeconds = stageOrder ? remaining(offer.availableAt, economy.now) : 0;
+  const intervalSeconds = offer.intervalSeconds ?? 0;
+  const completionRewards = stageOrder ? Object.entries(offer.completionRewards ?? {}) : [];
+  const consumed = Object.values(offer.items).reduce((total, amount) => total + amount, 0);
+  const rewardUnits = completionRewards.reduce((total, [, amount]) => total + amount, 0);
+  const rewardRoom = rewardUnits === 0 || state.storage.used + state.storage.reserved - consumed + rewardUnits <= state.storage.capacity;
+  const current = (): BoardOrderOffer | null | undefined => tutorial ? tutorialOrderProgress(economy.snapshot).ingredientsClaimed ? tutorialResidentOrder(economy.snapshot) : null
+    : stageOrder ? stageResidentOrder(economy.snapshot)
+    : residentOrderBoard(economy.snapshot, economy.now, economy.snapshot.catalog).offers.find(order => order.id === offer.id);
   const resident = residents[offer.residentId], sale = residentOrderSaleValue(economy, offer);
   const bonus = sale === null ? 0 : offer.coins - sale;
-  const currentOffer = current();
+  const currentOffer = current()?.id === offer.id;
   return <article className={styles.order} data-order-id={offer.id} data-resident={offer.residentId} data-tutorial-order={tutorial || undefined} data-stage-order={stageOrder || undefined}>
     {tutorial && <p className={styles.tutorialLabel}>Учебный заказ · {practice.version === 2 ? `${practice.step + 1} / 4` : "один раз"}</p>}
     {stageOrder && <p className={styles.tutorialLabel}>К дому {(state.buildings.home ?? 2) + 1} · {stage.step + 1} / {stageTotal}</p>}
@@ -94,25 +101,35 @@ export function ResidentOrderCard({ economy, offer, onComplete, onReplace, confi
       <strong className={styles.payout} data-guide-order-reward aria-label={`Награда: ${number(offer.coins)} монет`}><ItemIcon itemId="coins" size={19} />{number(offer.coins)}</strong>
     </header>
     {offer.description && <p className={styles.description}>{offer.description}</p>}
+    {waitSeconds > 0 && <p className={styles.wait} data-stage-order-wait><Clock3 size={15} aria-hidden="true" /><span>Следующая поставка через <strong>{waiting(waitSeconds)}</strong>. Материалы можно подготовить заранее.</span></p>}
+    {stageOrder && intervalSeconds > 0 && stage.step + 1 < stageTotal && <p className={styles.description}>После сдачи этой поставки до следующей пройдёт {waiting(intervalSeconds)}. Жемчуг не сокращает этот срок.</p>}
     <ul className={styles.ingredients} data-guide-order-requirements aria-label="Для заказа">{Object.entries(offer.items).map(([id, quantity]) => {
       const owned = state.inventory[id] ?? 0, short = owned < quantity;
       const source = short ? materialAction(economy, id, navigation) : null;
       const label = <><ProductIcon state={state} itemId={id} size={23} /><span>{itemName(state, id)}</span><strong>{number(owned)} / {number(quantity)}</strong></>;
       return <li key={id} data-missing={short || undefined}>{source ? <button type="button" aria-label={`Где получить для заказа: ${itemName(state, id)}`} onClick={source}>{label}</button> : <div>{label}</div>}</li>;
     })}</ul>
+    {completionRewards.length > 0 && <div className={styles.completionReward}><p>Награда за завершение этапа</p><ul aria-label="Дополнительная награда за этап">{completionRewards.map(([id, amount]) => <li key={id}><ProductIcon state={state} itemId={id} size={21} /><span>{itemName(state, id)} × {number(amount)}</span></li>)}</ul></div>}
     {bonus > 0 && !permanent && <p className={styles.premium} title="Рыбу можно продать Плёске, другие товары местному скупщику.">На {number(bonus)} монет больше продажи</p>}
     {confirmation ?? <div className={styles.actions}>
-      <button type="button" className={styles.primary} data-guide-order-submit disabled={locked(economy) || missing || walletFull || !currentOffer} onClick={() => {
-        if (locked(economy) || missing || walletFull || !current()) return;
-        if (onComplete) onComplete(offer); else void economy.act("complete_resident_order", offer.id, 1, 0);
-      }}>Отдать заказ</button>
+      <button type="button" className={styles.primary} data-guide-order-submit disabled={locked(economy) || missing || walletFull || !rewardRoom || waitSeconds > 0 || !currentOffer} onClick={() => {
+        const active = current(), latest = economy.snapshot;
+        if (locked(economy) || !active || active.id !== offer.id || Date.parse(active.availableAt) > economy.now
+          || Object.entries(active.items).some(([id, amount]) => (latest.inventory[id] ?? 0) < amount)
+          || latest.wallet.coins > ECONOMY_MAX_BALANCE - active.coins) return;
+        const rewards = Object.values(active.completionRewards ?? {}).reduce((total, amount) => total + amount, 0);
+        const items = Object.values(active.items).reduce((total, amount) => total + amount, 0);
+        if (rewards > 0 && latest.storage.used + latest.storage.reserved - items + rewards > latest.storage.capacity) return;
+        if (onComplete) onComplete(active); else void economy.act("complete_resident_order", active.id, 1, 0);
+      }}>{waitSeconds > 0 ? `Доступно через ${waiting(waitSeconds)}` : "Отдать заказ"}</button>
       {!permanent && <button type="button" className={styles.replace} disabled={locked(economy) || !currentOffer || price > state.wallet.pearls || (price > 0 && !onReplace)}
         aria-label={`Заменить заказ: ${offer.name}${price > 0 ? `, за ${formatPearls(price)} жемчужин` : ", бесплатно"}`} onClick={() => {
-          if (locked(economy) || !current() || price > state.wallet.pearls) return;
+          if (locked(economy) || current()?.id !== offer.id || price > state.wallet.pearls) return;
           if (onReplace) onReplace(offer); else if (price === 0) void economy.act("replace_resident_order", offer.id, 1, 0);
         }}><RefreshCw size={14} aria-hidden="true" /><span>Заменить</span>{price > 0 && <span className={styles.price}><ItemIcon itemId="pearls" size={16} />{formatPearls(price)}</span>}</button>}
     </div>}
     {walletFull && <p className={styles.warning}>В кошельке нет места для награды.</p>}
+    {!rewardRoom && <p className={styles.warning}>Освободите место в кладовой для награды за этап.</p>}
   </article>;
 }
 
@@ -142,7 +159,7 @@ export function ResidentOrderReplacement({ economy, quote, offer, headingRef, on
   </section>;
 }
 
-type Attempt = { owner: string; revision: number; offerId: string; action: "complete_resident_order" | "replace_resident_order"; coins: number; completed: number; tutorialStep: number; stageHome: number; stageStep: number };
+type Attempt = { owner: string; revision: number; offerId: string; action: "complete_resident_order" | "replace_resident_order"; coins: number; completed: number; tutorialStep: number; stageHome: number; stageStep: number; completionRewards: Record<string, number> };
 export function ResidentOrderBoard({ economy, residentId, ...navigation }: OrderNavigation & { economy: ReadyEconomy; residentId?: ResidentId }) {
   const [filter, setFilter] = useState<Filter>(residentId ?? "all");
   const [quote, setQuote] = useState<ResidentOrderQuote | null>(null);
@@ -173,16 +190,21 @@ export function ResidentOrderBoard({ economy, residentId, ...navigation }: Order
     const current = latest.current.economy;
     if (sent.current || locked(current)) return;
     const currentBoard = residentOrderBoard(current.snapshot, current.now, current.snapshot.catalog);
-    const active = isTutorialOrderId(offer.id, current.snapshot.catalog) && action === "complete_resident_order" && tutorialOrderProgress(current.snapshot).ingredientsClaimed
+    const active: BoardOrderOffer | null | undefined = isTutorialOrderId(offer.id, current.snapshot.catalog) && action === "complete_resident_order" && tutorialOrderProgress(current.snapshot).ingredientsClaimed
       ? tutorialResidentOrder(current.snapshot) : isStageOrderId(offer.id, current.snapshot.catalog) && action === "complete_resident_order"
         ? stageResidentOrder(current.snapshot) : currentBoard.offers.find(entry => entry.id === offer.id);
     if (!active || active.id !== offer.id || current.snapshot.ownerPublicId !== economy.snapshot.ownerPublicId) return;
     if (action === "complete_resident_order" && (Object.entries(active.items).some(([id, count]) => (current.snapshot.inventory[id] ?? 0) < count)
-      || current.snapshot.wallet.coins > ECONOMY_MAX_BALANCE - active.coins)) return;
+      || current.snapshot.wallet.coins > ECONOMY_MAX_BALANCE - active.coins || Date.parse(active.availableAt) > current.now)) return;
+    const rewardUnits = Object.values(active.completionRewards ?? {}).reduce((total, count) => total + count, 0);
+    const consumed = Object.values(active.items).reduce((total, count) => total + count, 0);
+    if (action === "complete_resident_order" && rewardUnits > 0
+      && current.snapshot.storage.used + current.snapshot.storage.reserved - consumed + rewardUnits > current.snapshot.storage.capacity) return;
     if (action === "replace_resident_order" && (currentBoard.replacementPricePearls > price || currentBoard.replacementPricePearls > current.snapshot.wallet.pearls)) return;
     sent.current = true;
     setAttempt({ owner: current.snapshot.ownerPublicId, revision: current.snapshot.revision, offerId: active.id, action, coins: active.coins, completed: currentBoard.completed,
-      tutorialStep: tutorialOrderProgress(current.snapshot).step, stageHome: current.snapshot.buildings.home ?? 1, stageStep: stageOrderProgress(current.snapshot).step });
+      tutorialStep: tutorialOrderProgress(current.snapshot).step, stageHome: current.snapshot.buildings.home ?? 1, stageStep: stageOrderProgress(current.snapshot).step,
+      completionRewards: { ...active.completionRewards } });
     void current.act(action, active.id, 1, price);
   };
   const replace = (offer: ResidentOrderOffer) => {
@@ -220,6 +242,8 @@ export function ResidentOrderBoard({ economy, residentId, ...navigation }: Order
       : !board.offers.some(offer => offer.id === attempt.offerId)
         && (attempt.action !== "complete_resident_order" || board.completed > attempt.completed));
   useEffect(() => { if (confirmed) success.current?.focus({ preventScroll: true }); }, [confirmed]);
+  const acceptedStage = attempt ? stageOrderProgress(economy.snapshot, attempt.stageHome) : null;
+  const nextStageWait = acceptedStage?.availableAt ? remaining(acceptedStage.availableAt, economy.now) : 0;
   return <div className={styles.board} ref={container}>
     {tutorialVisible && tutorial && <ResidentOrderCard economy={economy} offer={tutorial} {...navigation} onComplete={entry => send(entry, "complete_resident_order", 0)} />}
     {stageVisible && stage && <ResidentOrderCard economy={economy} offer={stage} {...navigation} onComplete={entry => send(entry, "complete_resident_order", 0)} />}
@@ -228,11 +252,11 @@ export function ResidentOrderBoard({ economy, residentId, ...navigation }: Order
     <div className={styles.filters} role="group" aria-label="Заказчик">{(["all", "plesk", "builder"] as const).map(value => <button key={value} type="button" data-order-filter={value} aria-pressed={filter === value} onClick={() => { setFilter(value); setQuote(null); }}>{value === "all" ? "Все" : residents[value].name}<span>{value === "all" ? offers.length : offers.filter(offer => offer.residentId === value).length}</span></button>)}</div>
     <p className={styles.lore}>{filter === "all" ? "Просьбы жителей за монеты. Угощения во вкладке «Еда»." : residents[filter].role}</p>
     {confirmed && <p className={styles.success} role="status" ref={success} tabIndex={-1}><Check size={15} aria-hidden="true" /><span>{isTutorialOrderId(attempt.offerId, economy.snapshot.catalog) ? `Учебный заказ выполнен · +${number(attempt.coins)} монет. ${tutorialOrderProgress(economy.snapshot).completed ? "Все учебные просьбы выполнены." : "Следующая учебная просьба уже на доске."}`
-      : isStageOrderId(attempt.offerId, economy.snapshot.catalog) ? `Заказ этапа выполнен · +${number(attempt.coins)} монет. ${stageOrderProgress(economy.snapshot, attempt.stageHome).completed ? "Все просьбы этого этапа выполнены." : "Следующая просьба уже на доске."}`
+      : isStageOrderId(attempt.offerId, economy.snapshot.catalog) ? `Заказ этапа выполнен · +${number(attempt.coins)} монет. ${acceptedStage?.completed ? "Все просьбы этого этапа выполнены." : nextStageWait > 0 ? `Следующая поставка через ${waiting(nextStageWait)}.` : "Следующая просьба уже на доске."}${Object.entries(attempt.completionRewards).map(([id, count]) => ` Получено: ${itemName(economy.snapshot, id)} × ${number(count)}.`).join("")}`
       : attempt.action === "complete_resident_order" ? `Заказ выполнен · +${number(attempt.coins)} монет. Новая просьба уже на доске.` : "Заказ заменён. Новая просьба уже на доске."}</span><button type="button" aria-label="Скрыть результат заказа" onClick={() => setAttempt(null)}><X size={14} aria-hidden="true" /></button></p>}
     <section className={styles.orders} aria-labelledby={headingId}><h3 id={headingId} className={styles.srOnly}>Текущие заказы</h3>{matching.map(offer => <ResidentOrderCard key={offer.id} economy={economy} offer={offer} {...navigation} onComplete={entry => send(entry, "complete_resident_order", 0)} onReplace={replace}
       confirmation={quoteOffer?.id === offer.id && quote ? <ResidentOrderReplacement economy={economy} quote={quote} offer={offer} headingRef={heading} onCancel={cancel} onConfirm={confirm} /> : undefined} />)}</section>
     {!matching.length && !tutorialVisible && !stageVisible && <p className={styles.empty}><ClipboardList size={20} aria-hidden="true" />{offers.length ? "Сейчас просьб от этого жителя нет. Посмотрите все заказы." : "Просьбы жителей пока недоступны."}{offers.length > 0 && <button type="button" onClick={() => setFilter("all")}>Все заказы</button>}</p>}
-    <p className={styles.footnote}>После сдачи новый заказ появится сразу. Ещё {board.freeReplacementsRemaining} замен бесплатно, затем {formatPearls(config.replacementPricePearls)} жемчужин за замену. Бесплатные замены восстановятся через {waiting(remaining(board.replacementsResetAt, economy.now))}.</p>
+    <p className={styles.footnote}>После сдачи обычной просьбы новый заказ появится сразу. Ещё {board.freeReplacementsRemaining} замен бесплатно, затем {formatPearls(config.replacementPricePearls)} жемчужин за замену. Бесплатные замены восстановятся через {waiting(remaining(board.replacementsResetAt, economy.now))}.</p>
   </div>;
 }

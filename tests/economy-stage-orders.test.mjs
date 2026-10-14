@@ -51,19 +51,20 @@ test("claiming house two pins the first permanent request without minting its su
   assert.deepEqual(claimed.inventory, {}); assert.equal(claimed.wallet.coins, 0);
 });
 
-test("five frozen course requests settle sequentially without rerolling the ordinary board or replaying goods and rewards", () => {
-  const p = player(), expected = [[{ rope: 2 }, 90], [{ stone: 6 }, 360], [{ clay: 4 }, 180], [{ charcoal: 2 }, 150], [{ bricks: 4 }, 600]], receipts = [];
+test("seven frozen course requests settle sequentially without rerolling the ordinary board or replaying goods and rewards", () => {
+  const p = player(), expected = [[{ rope: 2 }, 90], [{ stone: 6 }, 360], [{ clay: 4 }, 180], [{ charcoal: 2 }, 150], [{ bricks: 4 }, 600], [{ fish_common: 6 }, 360], [{ grilled_fish: 3 }, 250]], receipts = [];
   const board = food.residentOrderBoard(read(p), now).offers; let paid = 0;
   for (const [step, [items, coins]] of expected.entries()) {
     const offer = quote(p); assert.deepEqual(offer.items, items); assert.equal(offer.coins, coins);
     row(p).state.inventory = { ...items };
     const cmd = request(p), result = economy.commandDevEconomy(p.token, cmd, now); receipts.push([cmd, result.acceptedRevision]); paid += coins;
-    assert.equal(result.state.stageOrders.stages["2"].step, step + 1); assert.equal(result.state.stageOrders.stages["2"].completed, step === 4);
+    assert.equal(result.state.stageOrders.stages["2"].step, step + 1); assert.equal(result.state.stageOrders.stages["2"].completed, step === expected.length - 1);
+    assert.equal(stages.stageCourseRequired(result.state, 3), step < expected.length - 1);
     assert.deepEqual(result.state.inventory, {}); assert.equal(result.state.wallet.coins, 50 + paid);
     assert.deepEqual(food.residentOrderBoard(result.state, now).offers, board);
     assert.throws(() => send(p, "complete_resident_order", offer.id), { code: "ECONOMY_STAGE_ORDER_UNAVAILABLE" });
   }
-  const latest = read(p); assert.equal(paid, 1380); assert.equal(quote(p), null);
+  const latest = read(p); assert.equal(paid, 1990); assert.equal(quote(p), null);
   for (const [cmd, revision] of receipts) {
     const replay = economy.commandDevEconomy(p.token, cmd, now);
     assert.equal(replay.replayed, true); assert.equal(replay.acceptedRevision, revision); assert.deepEqual(replay.state, latest);
@@ -80,7 +81,39 @@ test("accepted terms survive JSON persistence and later catalog changes without 
   assert.equal(result.wallet.coins, 140); assert.deepEqual(result.inventory, {}); assert.equal(result.stageOrders.stages["2"].step, 1);
 });
 
-test("home three requires the new course but unfinished legacy v1 and already developed settlements remain compatible", () => {
+test("accepted legacy brick terms remain frozen before the appended fish and meal requests", () => {
+  const p = player(), terms = { ...model.economyCatalog.stageOrders[0].orders[4], items: { bricks: 3 }, coins: 590, description: "Прежние принятые условия" };
+  row(p).state.stageOrders = { version: 1, stages: { "2": { step: 4, completed: false, terms } } };
+  row(p).state = JSON.parse(JSON.stringify(row(p).state)); row(p).state.inventory = { bricks: 3 };
+  const offer = quote(p); assert.deepEqual(offer.items, { bricks: 3 }); assert.equal(offer.coins, 590); assert.equal(offer.description, terms.description);
+  const result = send(p, "complete_resident_order", "stage2_bricks_order").state;
+  assert.equal(result.wallet.coins, 640); assert.deepEqual(result.inventory, {});
+  assert.equal(result.stageOrders.stages["2"].step, 5); assert.equal(result.stageOrders.stages["2"].completed, false);
+  assert.equal(stages.stageResidentOrder(result).id, "stage2_fish_order"); assert.deepEqual(stages.stageResidentOrder(result).items, { fish_common: 6 });
+  assert.equal(stages.stageCourseRequired(result, 3), true);
+});
+
+test("persisted legacy courses completed at step five stay closed and retain their paid brick receipt", () => {
+  const p = player(), state = row(p).state, terms = structuredClone(model.economyCatalog.stageOrders[0].orders[4]);
+  state.stageOrders = { version: 1, stages: { "2": { step: 5, completed: true, terms } } };
+  state.wallet.coins = 1430; state.residentOrders = { ...read(p).residentOrders, completed: 5, earnedCoins: 1380 };
+  const cmd = request(p, "complete_resident_order", "stage2_bricks_order"), acceptedRevision = row(p).revision + 1;
+  row(p).revision = acceptedRevision;
+  row(p).receipts.set(cmd.requestId, {
+    signature: JSON.stringify([cmd.ownerPublicId, cmd.expectedRevision, cmd.action, cmd.targetId, cmd.quantity, cmd.totalPrice]),
+    message: "Все постоянные заказы этапа выполнены. Монеты получены", acceptedRevision,
+  });
+  row(p).state = JSON.parse(JSON.stringify(row(p).state));
+  row(p).receipts = new Map(JSON.parse(JSON.stringify([...row(p).receipts])));
+  const before = read(p); assert.equal(quote(p), null); assert.equal(stages.stageCourseRequired(before, 3), false);
+  const replay = economy.commandDevEconomy(p.token, cmd, now);
+  assert.equal(replay.replayed, true); assert.equal(replay.acceptedRevision, acceptedRevision); assert.deepEqual(replay.state, before);
+  for (const targetId of ["stage2_bricks_order", "stage2_fish_order", "stage2_fish_meal_order"])
+    assert.throws(() => send(p, "complete_resident_order", targetId), { code: "ECONOMY_STAGE_ORDER_UNAVAILABLE" });
+  assert.deepEqual(read(p), before); assert.equal(read(p).stageOrders.stages["2"].step, 5);
+});
+
+test("home three requires the new course while unfinished legacy tutorial v1 remains compatible", () => {
   const cost = model.economyCatalog.buildings.find(building => building.id === "home").levels[2].cost;
   for (const version of [1, 2]) {
     const p = player(2, version); row(p).state.wallet.coins = cost.coins; row(p).state.inventory = { ...cost.items };
@@ -88,8 +121,21 @@ test("home three requires the new course but unfinished legacy v1 and already de
     if (version === 2) { assert.throws(() => send(p, "start_construction", "home"), { code: "ECONOMY_STAGE_REQUIRED" }); assert.deepEqual(read(p), before); }
     else { row(p).state.tutorialOrder.completed = false; assert.equal(send(p, "start_construction", "home").state.jobs[0].targetLevel, 3); }
   }
-  const p = player(3); assert.equal(quote(p), null); assert.equal(read(p).stageOrders.stages["2"], undefined);
-  assert.equal(stages.stageCourseRequired(read(p), 4), false);
+});
+
+test("home four requires the stage three course for every tutorial version", () => {
+  const target = model.economyCatalog.buildings.find(building => building.id === "home").levels[3], cost = target.cost;
+  const course = model.economyCatalog.stageOrders.find(stage => stage.homeLevel === 3);
+  for (const version of [1, 2]) {
+    const p = player(3, version); row(p).state.wallet.coins = cost.coins; row(p).state.inventory = { ...cost.items };
+    Object.assign(row(p).state.buildings, target.requiredBuildings); row(p).state.tutorialOrder.completed = version === 2;
+    const before = read(p); assert.equal(quote(p).id, "stage3_foundation_order"); assert.equal(before.stageOrders.stages["2"], undefined);
+    assert.equal(stages.stageCourseRequired(before, 4), true);
+    assert.throws(() => send(p, "start_construction", "home"), { code: "ECONOMY_STAGE_REQUIRED" }); assert.deepEqual(read(p), before);
+    row(p).state.stageOrders = { version: 1, stages: { "3": { step: course.orders.length, completed: true, terms: null } } };
+    assert.equal(stages.stageCourseRequired(read(p), 4), false);
+    assert.equal(send(p, "start_construction", "home").state.jobs[0].targetLevel, 4);
+  }
 });
 
 test("course receipts keep owner and revision fences and overflowing wallets cannot consume pending goods", () => {

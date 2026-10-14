@@ -60,16 +60,19 @@ test("generic sale honors accepted minimum and revision receipt once while Plesk
   assert.equal(economy.commandDevEconomy(p.token, sale, now).replayed, true);
   assert.equal(read(p).wallet.coins, before.wallet.coins + 30);
   assert.throws(() => economy.commandDevEconomy(p.token, { ...sale, requestId: crypto.randomUUID() }, now), { code: "ECONOMY_REVISION_CONFLICT" });
-  assert.equal(issue(p, "sell", "fish", 2).state.wallet.coins, before.wallet.coins + 70, "generic buyer discounts the whole common fish stack");
-  assert.equal(issue(p, "sell_fish", "fish", 2).state.wallet.coins, before.wallet.coins + 150, "Pleska pays the full common class price");
+  assert.equal(issue(p, "sell", "fish", 2).state.wallet.coins, before.wallet.coins + 110, "the current NPC override pays the full common fish price");
+  assert.equal(issue(p, "sell_fish", "fish", 2).state.wallet.coins, before.wallet.coins + 190, "Pleska pays the same full common class price");
 });
 
 test("zero-proceeds and wallet-overflow failures are atomic and rounded headroom can be filled exactly", () => {
   const p = player(); read(p); stored(p).inventory = { crumb_bait: 2, berries: 4 };
   const before = read(p);
-  assert.throws(() => issue(p, "sell", "crumb_bait"), { code: "ECONOMY_SALE_QUANTITY" });
+  const discounted = { payoutBps: 6000 };
+  assert.equal(quote(10, 1, discounted), 0); assert.equal(minimum(10, discounted), 2);
+  assert.equal(limit(10, 1, 0, discounted), 0, "a generic zero-revenue quote is never a sale candidate");
+  assert.throws(() => issue(p, "sell", "crumb_bait", 0), { code: "INVALID_ECONOMY_COMMAND" });
   assert.deepEqual(read(p), before);
-  assert.equal(issue(p, "sell", "crumb_bait", 2, 1).state.wallet.coins, before.wallet.coins + 10);
+  assert.equal(issue(p, "sell", "crumb_bait", 2, 2).state.wallet.coins, before.wallet.coins + 20);
   stored(p).wallet.coins = ECONOMY_MAX_BALANCE - 30;
   const full = read(p);
   assert.throws(() => issue(p, "sell", "berries", 4), { code: "ECONOMY_CAPACITY" });
@@ -82,13 +85,13 @@ test("discount preserves smoking margin against specialist raw-fish value and me
   const recipe = economyCatalog.recipes.find(item => item.id === "smoke_fish");
   const commonFishValue = economyCatalog.items.find(item => item.id === "fish_common").baseSellPrice;
   const wood = economyCatalog.items.find(item => item.id === "wood");
-  const proceeds = quote(smoked.baseSellPrice, recipe.rewards.smoked_fish, config);
+  const proceeds = quote(smoked.baseSellPrice, recipe.rewards.smoked_fish, config, smoked.id);
   assert.ok(proceeds > recipe.cost.items.fish_common * commonFishValue + quote(wood.baseSellPrice, recipe.cost.items.wood, config, "wood"),
     "cooking even the highest-value allowed common fish retains a sale margin after the buyer discount");
-  for (const recipeId of ["grow_berries", "grow_berries_overnight"]) {
+  for (const recipeId of ["grow_berries", "grow_berries_large"]) {
     const recipe = economyCatalog.recipes.find(item => item.id === recipeId);
     assert.deepEqual(recipe.cost, { coins: 0, items: {} });
-    assert.ok(quote(30, recipe.rewards.berries, config) > 0);
+    assert.ok(quote(30, recipe.rewards.berries, config, "berries") > 0);
   }
 });
 
@@ -96,7 +99,12 @@ test("discount preserves smoking margin against specialist raw-fish value and me
 test("first two stages' NPC prices pay one exact unit without discount and their stack limits use the same quote", () => {
   const prices = { berries: 10, strawberries: 40, wood: 30, stone: 40, planks: 40, berry_compote: 30, grilled_fish: 55,
     fiber: 10, rope: 30, clay: 30, charcoal: 50, bricks: 100 };
-  assert.deepEqual(config.unitPrices, prices);
+  assert.deepEqual(Object.fromEntries(Object.keys(prices).map(id => [id, config.unitPrices[id]])), prices);
+  for (const [id, price] of Object.entries(config.unitPrices)) {
+    const item = economyCatalog.items.find(item => item.id === id);
+    assert.ok(item, id); assert.equal(price, item.baseSellPrice, `${id}: the authored NPC override keeps its full value`);
+    assert.equal(quote(item.baseSellPrice, 1, config, id), price); assert.equal(quote(item.baseSellPrice, 3, config, id), price * 3);
+  }
   for (const [id, price] of Object.entries(prices)) {
     const base = economyCatalog.items.find(item => item.id === id).baseSellPrice;
     assert.equal(quote(base, 1, config, id), price); assert.equal(quote(base, 3, config, id), price * 3);

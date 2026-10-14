@@ -10,6 +10,7 @@ const { worldHelpAdvice } = await vite.ssrLoadModule("/features/world/ui/help/wo
 const { economyCatalog, economyViewSchema } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const { newTutorialOrder } = await vite.ssrLoadModule("/features/economy/domain/tutorial-order.ts");
+const { worldDuration } = await vite.ssrLoadModule("/features/economy/ui/shared/world-stations.ts");
 const now = Date.parse("2026-10-07T12:00:00Z");
 const snapshot = (patch = {}) => {
   const value = { ownerPublicId: "0000-0000-0001", revision: 0, serverTime: new Date(now).toISOString(), catalog: economyCatalog,
@@ -115,7 +116,7 @@ test("house two advice opens the four-step tutorial before suggesting money or s
   assert.deepEqual(result, []);
 });
 
-test("house-three advice prioritizes the five stage requests and keeps the original warehouse sufficient", () => {
+test("house-three advice prioritizes the seven current stage requests and keeps the original warehouse sufficient", () => {
   const target = economyCatalog.buildings.find(entry => entry.id === "home").levels.find(entry => entry.level === 3);
   const patch = { buildings: { home: 2, warehouse: 1, workshop: 1, quarry: 2, kiln: 1, garden: 1, dryer: 1, woodlot: 1 },
     inventory: { ...target.cost.items }, wallet: { coins: target.cost.coins, pearls: 0 },
@@ -124,13 +125,41 @@ test("house-three advice prioritizes the five stage requests and keeps the origi
   const context = { intent: "construction", stationId: "home" };
   let result = advice(patch, { context });
   assert.equal(result[0].id, "construction:stage-orders");
-  assert.match(result[0].message, /0 из 5/);
+  assert.match(result[0].message, /0 из 7/);
   assert.deepEqual(result[0].action.target, { kind: "food", tab: "orders" });
-  patch.stageOrders.stages[2].step = 4;
-  assert.match(advice(patch, { context })[0].message, /4 из 5/);
+  patch.stageOrders.stages[2].step = 6;
+  assert.match(advice(patch, { context })[0].message, /6 из 7/);
   patch.stageOrders.stages[2] = { step: 5, completed: true, terms: null };
   result = advice(patch, { context });
   assert.deepEqual(result, []);
+});
+
+test("house-four advice gates legacy tutorials on the eight supplies and distinguishes waiting from preparation", () => {
+  const target = economyCatalog.buildings.find(entry => entry.id === "home").levels.find(entry => entry.level === 4);
+  const course = economyCatalog.stageOrders.find(entry => entry.homeLevel === 3);
+  const patch = { buildings: { home: 3, warehouse: 1, garden: 1, woodlot: 1, dryer: 2, ...target.requiredBuildings },
+    inventory: { ...target.cost.items }, wallet: { coins: target.cost.coins, pearls: 1000 },
+    tutorialOrder: { version: 1, ingredientsClaimed: true, completed: true, step: 0, terms: null },
+    stageOrders: { version: 1, stages: { 3: { step: 0, completed: false, terms: course.orders[0],
+      availableAt: new Date(now).toISOString(), intervalSeconds: course.intervalSeconds, completionRewards: course.completionRewards } } } };
+  const context = { intent: "construction", stationId: "home" };
+  let result = advice(patch, { context });
+  assert.equal(result[0].id, "construction:stage-orders");
+  assert.equal(result[0].title, "Завершите заказы этапа");
+  assert.match(result[0].message, /0 из 8/);
+  assert.deepEqual(result[0].action.target, { kind: "food", tab: "orders" });
+  patch.stageOrders.stages[3] = { ...patch.stageOrders.stages[3], step: 1, terms: course.orders[1], availableAt: new Date(now + 86400000).toISOString() };
+  const before = structuredClone(patch);
+  result = advice(patch, { context });
+  assert.equal(result[0].title, "Дождитесь следующей поставки");
+  assert.match(result[0].message, new RegExp(`1 из 8.*Следующая поставка через ${worldDuration(course.intervalSeconds)}`));
+  assert.match(result[0].message, /Материалы можно подготовить заранее.*жемчуг не сокращает/);
+  assert.deepEqual(result[0].action.target, { kind: "food", tab: "orders" });
+  assert.deepEqual(patch, before, "waiting advice never moves the accepted deadline or the course");
+  assert.equal(advice({ ...patch, inventory: {} }, { context })[0].id, "construction:stage-orders",
+    "the required project remains ahead of unrelated resource shortfalls");
+  patch.stageOrders.stages[3] = { step: 8, completed: true, terms: null };
+  assert.deepEqual(advice(patch, { context }), [], "warehouse one remains sufficient when project and other requirements are complete");
 });
 
 test("material advice directs stage-two stone and clay to the mine and first-stage recovery to the forest", () => {

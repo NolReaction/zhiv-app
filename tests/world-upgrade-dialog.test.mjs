@@ -18,7 +18,7 @@ function unlocks(stationId, level, catalog = economyCatalog) {
   return worldUpgradeUnlocks({ catalog }, stationId, target);
 }
 
-test("house two opens fiber, rope, the independent mine and kiln while metal and night batches wait for house three", () => {
+test("house two opens fiber, rope, the independent mine and kiln while metal and soup wait for house three", () => {
   const result = unlocks("home", 2);
   assert.ok(result.upgrades.some(target => target.stationId === "quarry" && target.level === 1));
   assert.ok(result.upgrades.some(target => target.stationId === "kiln" && target.level === 1));
@@ -31,13 +31,13 @@ test("house two opens fiber, rope, the independent mine and kiln while metal and
   assert.equal(unlocks("home", 3).market, false);
   const third = unlocks("home", 3);
   assert.ok(third.recipes.some(recipe => recipe.id === "smelt_iron"));
-  assert.ok(third.recipes.some(recipe => recipe.id === "workshop_overnight"));
+  assert.ok(third.recipes.some(recipe => recipe.id === "cook_fish_soup"));
   assert.ok(third.routes.some(route => route.id === "cave"));
 });
 
 test("equipment upgrades include their recipes and dependent world progression", () => {
   const result = unlocks("workshop", 2);
-  assert.deepEqual(result.recipes.map(recipe => recipe.id), ["make_metal_parts", "weave_cloth", "workshop_overnight"]);
+  assert.deepEqual(result.recipes.map(recipe => recipe.id), ["make_metal_parts", "weave_cloth"]);
   assert.ok(result.routes.some(route => route.id === "old_woodland"));
   assert.ok(!result.upgrades.some(target => target.stationId === "home" && target.level === 3));
   assert.ok(unlocks("workshop", 1).upgrades.some(target => target.stationId === "home" && target.level === 3));
@@ -46,12 +46,12 @@ test("equipment upgrades include their recipes and dependent world progression",
   assert.deepEqual(unlocks("garden", 2).recipes.map(recipe => recipe.id), ["grow_berries_large", "garden_fiber"]);
 });
 
-test("pantry development opens fitting bulk routes and dependent upgrades without requiring it for house three", () => {
+test("pantry development adds storage without gating production, expeditions or further houses", () => {
   const result = unlocks("warehouse", 2);
   assert.equal(result.recipes.length, 0);
-  assert.deepEqual(result.routes.map(route => route.id), ["coastal_deposits", "quarry_shift"]);
+  assert.deepEqual(result.routes.map(route => route.id), []);
   assert.ok(!result.upgrades.some(target => target.stationId === "home" && target.level === 3));
-  assert.ok(result.upgrades.some(target => target.stationId === "workshop" && target.level === 3));
+  assert.equal(result.upgrades.length, 0);
   assert.ok(!result.upgrades.some(target => target.stationId === "warehouse"));
 });
 

@@ -52,7 +52,7 @@ class JdbcProgressionRewardsIntegrationTest {
         val p=player(); val initial=economy.snapshot(p.hash); val request=command(p)
         val both=List(2) { async(Dispatchers.IO) { rewards.claim(p.hash,request) } }.awaitAll()
         assertEquals(1,both.count { it.replayed }); assertEquals(both[0].claim,both[1].claim)
-        assertEquals(initial.wallet.coins+600,economy.snapshot(p.hash).wallet.coins)
+        assertEquals(initial.wallet.coins+30,economy.snapshot(p.hash).wallet.coins)
         assertEquals(initial.revision+1,economy.snapshot(p.hash).revision)
         assertEquals("1",scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='daily_reward'",p.id))
         val conflict=assertFailsWith<AuthFailure> { rewards.claim(p.hash,request.copy(kind="achievement",achievementId="first_path",level=1)) }
@@ -104,9 +104,10 @@ class JdbcProgressionRewardsIntegrationTest {
         assertEquals("ECONOMY_STORAGE_FULL",assertFailsWith<AuthFailure> { rewards.claim(p.hash,request) }.code)
         assertEquals(before.revision,economy.snapshot(p.hash).revision); assertEquals(2,rewards.snapshot(p.hash).daily.step)
         assertEquals("0",scalar("SELECT count(*) FROM game_reward_claims WHERE user_id=?",p.id))
-        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(original.copy(inventory=mapOf("wood" to capacity-20))),p.id)
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(original.copy(inventory=mapOf("wood" to capacity-4))),p.id)
         val success=rewards.claim(p.hash,request); assertFalse(success.replayed); assertEquals(2,success.claim.step)
-        assertEquals(capacity-20,success.economy.inventory["wood"]); assertEquals(10L,success.economy.inventory["fiber"]); assertEquals(10L,success.economy.inventory["berries"])
+        assertEquals(capacity-4,success.economy.inventory["wood"]); assertEquals(2L,success.economy.inventory["fiber"]); assertEquals(2L,success.economy.inventory["berries"])
+        assertEquals(capacity,success.economy.storage.used)
     }
     @Test fun `final gift keeps all currencies when full and pays its relic once after retry`()=runBlocking<Unit> {
         val p=player(); rewards.snapshot(p.hash)
@@ -119,11 +120,12 @@ class JdbcProgressionRewardsIntegrationTest {
         assertEquals(before.wallet,economy.snapshot(p.hash).wallet)
         assertEquals(7,rewards.snapshot(p.hash).daily.step)
         assertEquals("0",scalar("SELECT count(*) FROM game_reward_claims WHERE user_id=?",p.id))
-        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(original.copy(inventory=mapOf("wood" to capacity-7))),p.id)
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(original.copy(inventory=mapOf("wood" to capacity-3))),p.id)
         val paid=rewards.claim(p.hash,request); val repeated=rewards.claim(p.hash,request)
         assertEquals(1L,paid.economy.inventory["ancient_core"])
-        assertEquals(before.wallet.coins+1500,paid.economy.wallet.coins)
-        assertEquals(before.wallet.pearls+300,paid.economy.wallet.pearls)
+        assertEquals(before.wallet.coins+80,paid.economy.wallet.coins)
+        assertEquals(before.wallet.pearls+8,paid.economy.wallet.pearls)
+        assertEquals(capacity,paid.economy.storage.used)
         assertTrue(repeated.replayed); assertEquals(paid.claim,repeated.claim)
         assertEquals(paid.economy.wallet,repeated.economy.wallet)
         assertEquals(paid.economy.inventory,repeated.economy.inventory)
@@ -148,8 +150,8 @@ class JdbcProgressionRewardsIntegrationTest {
         val row=rewards.snapshot(p.hash).achievementRewards.single { it.achievementId=="thousand_taps" }
         assertTrue(row.eligible); assertEquals("2020-01-01T00:00:00Z",row.earnedAt)
         val command=command(p,achievement="thousand_taps",level=1); val paid=rewards.claim(p.hash,command)
-        assertEquals(initial.wallet.pearls+50,paid.economy.wallet.pearls); assertEquals(initial.revision+1,paid.acceptedRevision)
-        assertEquals("50",scalar("SELECT pearls FROM economy_ledger WHERE user_id=? AND source_key=?",p.id,"reward:${command.requestId}"))
+        assertEquals(initial.wallet.pearls+4,paid.economy.wallet.pearls); assertEquals(initial.revision+1,paid.acceptedRevision)
+        assertEquals("4",scalar("SELECT pearls FROM economy_ledger WHERE user_id=? AND source_key=?",p.id,"reward:${command.requestId}"))
         assertEquals(paid.claim,rewards.claim(p.hash,command).claim)
     }
     @Test fun `reward merge unions paid tiers and receipts retaining latest daily without crediting twice`()=runBlocking<Unit> {

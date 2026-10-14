@@ -60,7 +60,7 @@ class EconomyMoneyTest {
         val job = EconomyJob(UUID.randomUUID().toString(), "construction", "home", targetLevel = 2,
             startedAt = now.toString(), finishesAt = now.toString())
         for ((milliseconds, visiblePearls) in listOf(-1L to 0L, 0L to 0L, 1L to 1L,
-            299_999L to 25L, 300_000L to 25L, 300_001L to 26L, 900_000L to 75L))
+            599_999L to 1L, 600_000L to 1L, 600_001L to 2L, 900_000L to 2L))
             assertEquals(visiblePearls * 2, EconomyRules.constructionSpeedupPrice(
                 job.copy(finishesAt = now.plusMillis(milliseconds).toString()), now))
     }

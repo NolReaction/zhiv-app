@@ -11,24 +11,42 @@ test("complete daily projection uses completed home tiers, the claim calendar an
   try {
     const report = simulateJourney(loaded, "visits3", 40, { ...policy, buyProductionSlots: true });
     const gifts = report.dailyRewards;
+    const completedOrders = report.actions.complete_resident_order ?? 0;
+    const courses = [...loaded.catalog.onboarding.residentOrders, ...loaded.catalog.stageOrders.flatMap(stage => stage.orders)];
+    assert(completedOrders >= loaded.catalog.onboarding.residentOrders.length, "the calendar projection still completes the first course");
+    assert(completedOrders <= courses.length, "permanent requests cannot be paid again");
+    const delivered = courses.slice(0, completedOrders), orderInputs = {};
+    for (const order of delivered) for (const [id, quantity] of Object.entries(order.items))
+      orderInputs[id] = (orderInputs[id] ?? 0) + quantity;
     assert.equal(report.coinFlow.remaining, report.coinFlow.initial + report.coinFlow.sales + report.coinFlow.gifts + report.coinFlow.orders
       - Object.values(report.coinFlow.spendingByAction).reduce((sum, value) => sum + value, 0));
     assert.equal(report.coinFlow.initial, 100);
-    assert.equal(report.coinFlow.orders, 1710);
+    assert.equal(report.coinFlow.orders, delivered.reduce((sum, order) => sum + order.coins, 0));
     assert(gifts.claims <= 40, "Three visits cannot create three daily bundles");
     assert(gifts.claims + gifts.storageDeferrals >= 40, "Missed daily bundles must be explained by storage deferrals");
     assert(!report.excludedIncome.includes("daily_rewards"));
     assert(report.excludedIncome.includes("player_market"));
     assert(gifts.claimRows.some(row => row.homeLevel >= 2));
     const earnedItems = {};
+    const cycle = [
+      { wood: 2, stone: 1 }, { fiber: 2, berries: 2 }, { planks: 1, wood: 1 },
+      { fish: 1, berries: 1 }, { wood: 2, fiber: 2 }, { planks: 1, stone: 1 },
+      { ancient_core: 1, planks: 1, wood: 1 },
+    ];
     for (const [index, row] of gifts.claimRows.entries()) {
       assert.equal(row.step, index % 7 + 1);
       assert.deepEqual(row.reward, loaded.progressionRewards.dailyRewardCycle(row.homeLevel)[row.step - 1]);
+      assert.equal(row.reward.coins, [30, 30, 40, 40, 50, 50, 80][row.step - 1] * row.homeLevel);
+      assert.equal(row.reward.pearls, [0, 0, 2, 0, 0, 4, 8][row.step - 1]);
+      assert.deepEqual(row.reward.items, cycle[row.step - 1], "completed homes keep the same compact stock without advanced gifts");
       if (index > 0) {
         assert(Date.parse(row.at) - Date.parse(gifts.claimRows[index - 1].at) >= 20 * 3_600_000);
         assert.notEqual(row.at.slice(0, 10), gifts.claimRows[index - 1].at.slice(0, 10));
       }
-      for (const [id, quantity] of Object.entries(row.reward.items)) earnedItems[id] = (earnedItems[id] ?? 0) + quantity;
+      for (const [id, quantity] of Object.entries(row.reward.items)) {
+        const storedId = id === "fish" ? "fish_common" : id;
+        earnedItems[storedId] = (earnedItems[storedId] ?? 0) + quantity;
+      }
     }
     assert.deepEqual(gifts.itemsReceived, earnedItems);
     assert.equal(gifts.coinsReceived, gifts.claimRows.reduce((sum, row) => sum + row.reward.coins, 0));
@@ -38,11 +56,12 @@ test("complete daily projection uses completed home tiers, the claim calendar an
     assert.deepEqual(loaded.catalog.buildings.find(building => building.id === "warehouse").levels
       .map(level => level.warehouseCapacity), Array.from({ length: 10 }, (_, index) => (index + 1) * 50));
     assert.deepEqual(Object.fromEntries(Object.entries(report.itemFlow).filter(([, flow]) => flow.orderInputs > 0)
-      .map(([id, flow]) => [id, flow.orderInputs])), { wood: 2, berries: 2, berry_compote: 2, planks: 2, rope: 2, stone: 6, clay: 4, charcoal: 2, bricks: 4 });
+      .map(([id, flow]) => [id, flow.orderInputs])), orderInputs);
     for (const [id, flow] of Object.entries(report.itemFlow))
       assert.equal(flow.initial + flow.received, flow.sold + flow.productionInputs + flow.expeditionInputs + flow.constructionInputs + flow.orderInputs + flow.remaining, id);
     for (const [id, amount] of Object.entries(report.rareMaterials.inventory))
-      assert.equal(amount, report.rareMaterials.received[id] + (gifts.itemsReceived[id] ?? 0) - report.rareMaterials.spentOnConstruction[id]);
+      assert.equal(amount, report.rareMaterials.received[id] + report.rareMaterials.stageRewards[id]
+        + (gifts.itemsReceived[id] ?? 0) - report.rareMaterials.spentOnConstruction[id]);
   } finally { await loaded.close(); }
 });
 

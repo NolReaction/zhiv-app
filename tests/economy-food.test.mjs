@@ -148,7 +148,8 @@ test("feeding an active builder speeds up only remaining milliseconds once and p
   const before = structuredClone(state.jobs[0]), at = now + 123456;
   apply(state, "feed_builder", "fish_soup", at);
   const changed = state.jobs[0];
-  assert.equal(changed.finishesAt, new Date(at + Math.ceil((Date.parse(before.finishesAt) - at) * 10000 / 12000)).toISOString());
+  const speed = catalog.food.meals.find(meal => meal.itemId === "fish_soup").builderSpeedBps;
+  assert.equal(changed.finishesAt, new Date(at + Math.ceil((Date.parse(before.finishesAt) - at) * 10000 / (10000 + speed))).toISOString());
   assert.equal(changed.startedAt, before.startedAt); assert.deepEqual(changed.cost, before.cost);
   assert.deepEqual(changed.rewards, before.rewards); assert.equal(changed.id, before.id);
   assert.equal(state.inventory.fish_soup, 1); assert.equal(state.food.builderMeal, null);

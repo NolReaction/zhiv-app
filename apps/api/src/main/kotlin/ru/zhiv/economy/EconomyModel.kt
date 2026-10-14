@@ -116,7 +116,8 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     val food: EconomyFoodState = EconomyFoodState(), val residentOrders: EconomyResidentOrders = EconomyResidentOrders(),
     val workshopStarterClaimed: Boolean = false, val tutorialOrder: EconomyTutorialOrder = EconomyTutorialOrder(),
     val stageOrders: EconomyStageOrderState = EconomyStageOrderState(),
-)
+    val marketSlots: Int = 5, val unlockedItems: List<String> = emptyList(), val itemUnlockVersion: Int = 0,
+) { init { require(marketSlots in 5..10 && unlockedItems.distinct().size == unlockedItems.size && itemUnlockVersion in 0..1) } }
 @Serializable data class EconomyItem(val id: String, val name: String, val category: String, val baseSellPrice: Long, val tradable: Boolean = true)
 @Serializable data class EconomyBuildingLevel(
     val level: Int, val seconds: Long, val cost: EconomyCost, val requiredHomeLevel: Int = 1,
@@ -140,10 +141,13 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
 ) { init { require(activity == null || activity == "mining") } }
 @Serializable data class EconomyMarketConfig(val requiredHomeLevel: Int = 2, val requiredExplorations: Long = 1, val maxListings: Int = 10, val maxLotQuantity: Long = 99, val maxPriceMultiplier: Long = 2, val feeBps: Int = 500,
     val showcaseSlots: Int = 12, val showcasePerSeller: Int = 2, val showcaseRefreshSeconds: Long = 1800,
-    val dailyTradeValueByHome: List<Long> = listOf(0, 2400, 4800, 9600, 14400)) {
+    val dailyTradeValueByHome: List<Long> = listOf(0, 2400, 4800, 9600, 14400),
+    val baseSlots: Int = 5, val slotPricesPearls: List<Long> = emptyList()) {
     init {
         require(showcaseSlots in 1..12 && showcasePerSeller in 1..10 && showcaseRefreshSeconds in 1L..86400L)
         require(feeBps in 0..10000 && dailyTradeValueByHome.size == 5 && dailyTradeValueByHome.all { it in 0L..ECONOMY_MAX_BALANCE })
+        require(baseSlots == 5 && maxListings == 10 && (slotPricesPearls.isEmpty() ||
+            slotPricesPearls.size == maxListings - baseSlots && slotPricesPearls.all { it in 1L..ECONOMY_MAX_PEARLS }))
     }
 }
 @Serializable data class EconomyLocalBuyer(val payoutBps: Int = 10_000, val unitPrices: Map<String, Long> = emptyMap())
@@ -177,6 +181,7 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     val food: EconomyFoodState = EconomyFoodState(), val residentOrders: EconomyResidentOrders = EconomyResidentOrders(),
     val workshopStarterClaimed: Boolean = false, val tutorialOrder: EconomyTutorialOrder = EconomyTutorialOrder(),
     val stageOrders: EconomyStageOrderState = EconomyStageOrderState(),
+    val marketSlots: Int = 5, val unlockedItems: List<String> = emptyList(),
 )
 @Serializable data class EconomyCommand(
     val requestId: String, val ownerPublicId: String, val expectedRevision: Long,

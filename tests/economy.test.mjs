@@ -183,7 +183,7 @@ test("the browser accepts explicit nullable Kotlin catalog fields and validates 
   }
 });
 
-test("production batch snapshots ingredients, duration and output; another station still works", () => {
+test("unit production snapshots ingredients, duration and output; another station still works", () => {
   const p = player(), row = fixture(p, { home: 3 });
   row.state.buildings.workshop = 2; row.state.inventory.fiber = 30; row.state.inventory.rope = 5;
   const recipe = model.economyCatalog.recipes.find(item => item.id === "weave_cloth");
@@ -191,18 +191,34 @@ test("production batch snapshots ingredients, duration and output; another stati
   const before = read(p);
   assert.throws(() => issue(p, "start_production", recipe.id, recipe.maxBatch + 1), { code: "INVALID_ECONOMY_COMMAND" });
   assert.deepEqual(read(p), before);
-  const started = issue(p, "start_production", recipe.id, 3).state;
+  assert.equal(recipe.maxBatch, 1);
+  const started = issue(p, "start_production", recipe.id, 1).state;
   const job = started.jobs[0];
-  assert.equal(started.inventory.fiber, 30 - recipe.cost.items.fiber * 3);
-  assert.equal(started.inventory.rope, 5 - recipe.cost.items.rope * 3);
-  assert.deepEqual(job.cost, rules.scaledEconomyCost(recipe.cost, 3));
-  assert.equal(Date.parse(job.finishesAt) - now, recipe.seconds * 3 * 1000); assert.deepEqual(job.rewards, { cloth: recipe.rewards.cloth * 3 });
-  assert.equal(job.catalogVersion, 7);
+  assert.equal(started.inventory.fiber, 30 - recipe.cost.items.fiber);
+  assert.equal(started.inventory.rope, 5 - recipe.cost.items.rope);
+  assert.deepEqual(job.cost, recipe.cost);
+  assert.equal(Date.parse(job.finishesAt) - now, recipe.seconds * 1000); assert.deepEqual(job.rewards, { cloth: 1 });
+  assert.equal(job.catalogVersion, 8);
   assert.throws(() => issue(p, "start_production", "make_planks"), { code: "ECONOMY_BUILDING_BUSY" });
   assert.equal(issue(p, "start_production", "grow_berries").state.jobs.length, 2);
   assert.throws(() => issue(p, "start_production", "grow_berries", 11), { code: "INVALID_ECONOMY_COMMAND" });
   assert.throws(() => issue(p, "claim_job", job.id, 1, Date.parse(job.finishesAt) - 1), { code: "ECONOMY_JOB_NOT_READY" });
-  assert.equal(issue(p, "claim_job", job.id, 1, Date.parse(job.finishesAt)).state.inventory.cloth, recipe.rewards.cloth * 3);
+  assert.equal(issue(p, "claim_job", job.id, 1, Date.parse(job.finishesAt)).state.inventory.cloth, 1);
+});
+
+test("a saved retired bulk job keeps its accepted cost, clock and output and claims once", () => {
+  const p = player(), row = fixture(p, { home: 3, coins: 710, items: {} });
+  assert.equal(model.economyCatalog.recipes.some(recipe => recipe.id === "workshop_overnight"), false);
+  const saved = model.economyJobSchema.parse({ id: crypto.randomUUID(), kind: "production", targetId: "workshop",
+    recipeId: "workshop_overnight", targetLevel: null, catalogVersion: 7, startedAt: new Date(now - 3600000).toISOString(),
+    finishesAt: new Date(now).toISOString(), cost: { coins: 1500, items: { wood: 13 } }, rewards: { planks: 12 } });
+  row.state.jobs = [saved];
+  const quoted = read(p); assert.deepEqual(quoted.jobs[0], saved);
+  const claim = command(p, "claim_job", saved.id), first = economy.commandDevEconomy(p.token, claim, now);
+  assert.equal(first.state.inventory.planks, 12); assert.equal(first.state.wallet.coins, quoted.wallet.coins);
+  assert.deepEqual(first.state.jobs, []);
+  const retry = economy.commandDevEconomy(p.token, claim, now + 1000);
+  assert.equal(retry.replayed, true); assert.equal(retry.state.inventory.planks, 12);
 });
 
 test("legacy overlapping hero jobs can fill eighteen slots but a nineteenth start cannot spend or consume a builder meal", () => {
@@ -365,9 +381,11 @@ test("market gates, limits and price range come from the shared catalog", () => 
   assert.throws(() => trade(p, "create_listing", "wood", 100, 100), { code: "ECONOMY_MARKET_QUANTITY" });
   assert.throws(() => trade(p, "create_listing", "wood", 1, 21), { code: "ECONOMY_MARKET_PRICE" });
   assert.throws(() => trade(p, "create_listing", "pearls", 1, 1), { code: "ECONOMY_MARKET_ITEM" });
-  for (let i = 0; i < 10; i++) trade(p, "create_listing", "wood", 1, 4);
+  const freeSlots = model.economyCatalog.market.baseSlots;
+  assert.equal(freeSlots, 5); assert.equal(model.economyCatalog.market.maxListings, 10);
+  for (let i = 0; i < freeSlots; i++) trade(p, "create_listing", "wood", 1, 4);
   assert.throws(() => trade(p, "create_listing", "wood", 1, 4), { code: "ECONOMY_MARKET_LIMIT" });
-  assert.equal(read(p).inventory.wood, 20);
+  assert.equal(read(p).inventory.wood, 30 - freeSlots);
 });
 
 test("showcase has two lots per seller, no cursor and stays fixed across smaller reads", () => {

@@ -164,9 +164,9 @@ def main():
                       AND EXISTS (SELECT 1 FROM flyway_schema_history h
                         WHERE h.version='28' AND h.type='SQL' AND h.success
                           AND m.started_at=h.installed_on::timestamptz))
-                    OR ((SELECT count(*) FROM flyway_schema_history)=1
-                      AND EXISTS (SELECT 1 FROM flyway_schema_history h
-                        WHERE h.version='49' AND h.type='SQL_BASELINE' AND h.success)
+                    OR (ARRAY(SELECT h.version || ':' || h.type || ':' || h.success::text
+                        FROM flyway_schema_history h ORDER BY h.installed_rank)
+                        = ARRAY['49:SQL_BASELINE:true','50:SQL:true','51:SQL:true','52:SQL:true']
                       AND m.started_at BETWEEN to_timestamp({reset_started_epoch}) AND clock_timestamp())
                   )) FROM game_tap_collection_metadata m""") == "t"
     assert original_volumes == {name: volume_mounts(name, project) for name in ("db", "caddy")}

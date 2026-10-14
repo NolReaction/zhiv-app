@@ -27,7 +27,7 @@ export function auditEconomyProgression(catalog) {
   for (const route of catalog.explorations.filter(route => route.activity === "mining")) {
     assert(route.requiredBuildings?.quarry >= 1, `${route.id}: mining requires a built quarry`);
   }
-  assert.equal(catalog.version, 7);
+  assert.equal(catalog.version, 8);
   assert.equal(catalog.currencyScale, 10);
   const rare = catalog.rareDrops;
   const special = [...items.values()].filter(item => item.category === "special");
@@ -101,6 +101,11 @@ export function auditEconomyProgression(catalog) {
     itemUses.add(id);
   }
   const production = [...catalog.recipes, ...catalog.explorations];
+  assert(production.every(definition => !Object.hasOwn(definition.requiredBuildings ?? {}, "warehouse")),
+    "Storage must remain optional for every production and expedition source");
+  assert(catalog.buildings.filter(building => building.id !== "warehouse").every(building => building.levels
+    .every(level => !Object.hasOwn(level.requiredBuildings ?? {}, "warehouse"))),
+  "Storage expansion must not gate ordinary buildings or homes");
   const npcValue = quantities => Object.entries(quantities).reduce((sum, [item, amount]) => sum + items.get(item).baseSellPrice * amount, 0);
   for (const definition of production) {
     validateRequirements(definition, definition.id);
@@ -127,6 +132,9 @@ export function auditEconomyProgression(catalog) {
   assert(firstStageRecipes.length >= 6 && firstStageRecipes.every(recipe => recipe.maxBatch === 1
     && Object.values(recipe.rewards).reduce((sum, quantity) => sum + quantity, 0) === 1),
   "First-stage production must reserve one slot for one item");
+  assert(catalog.recipes.every(recipe => recipe.maxBatch === 1
+    && Object.values(recipe.rewards).reduce((sum, quantity) => sum + quantity, 0) === 1),
+  "Every current production recipe must reserve one slot for one item");
   const merchantItems = [];
   if (catalog.fishing) {
     const fishing = catalog.fishing;
@@ -287,7 +295,9 @@ export function auditEconomyProgression(catalog) {
   assert.deepEqual(Object.fromEntries([...buildings.keys()].map(id => [id, completed[id] ?? 0])), Object.fromEntries([...buildings.values()].map(building => [building.id, building.levels.at(-1).level])), "A material/building dependency blocks progression without market purchases");
   const firstCrops = catalog.recipes.filter(recipe => recipe.requiredHomeLevel === 1 && recipe.buildingId === "garden" && recipe.buildingLevel === 1 && recipe.cost.coins === 0 && !Object.keys(recipe.cost.items).length);
   assert(firstCrops.some(recipe => recipe.seconds === 60) && firstCrops.some(recipe => recipe.seconds === 300 && recipe.requiredRecipes?.cook_compote === 1), "Starter needs one-minute raspberries and five-minute strawberries unlocked by compote");
-  assert(catalog.recipes.some(recipe => recipe.requiredHomeLevel === 3 && recipe.buildingId === "garden" && recipe.buildingLevel === 1 && recipe.seconds >= 8 * 3600 && recipe.cost.coins === 0 && !Object.keys(recipe.cost.items).length), "Home three opens the free overnight crop");
+  assert(catalog.recipes.some(recipe => recipe.requiredHomeLevel === 3 && recipe.buildingId === "garden" && recipe.buildingLevel === 2
+    && recipe.seconds < 60 && recipe.rewards.berries === 1 && recipe.maxBatch === 1
+    && recipe.cost.coins === 0 && !Object.keys(recipe.cost.items).length), "Home three opens a faster free unit crop");
   assert(catalog.explorations.some(route => route.requiredHomeLevel === 1 && route.seconds >= 8 * 3600 && route.cost.coins === 0 && !Object.keys(route.cost.items).length), "Starter needs a free overnight exploration");
   const duration = targets => [...targets].reduce((sum, key) => sum + nodes.get(key).seconds, 0);
   const homeStages = buildings.get("home").levels.map(level => ({ level: level.level, minimumSeconds: duration(closure(`home:${level.level}`)) }));

@@ -41,6 +41,9 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
   const firstWorkshop = economyCatalog.buildings.find(building => building.id === "workshop")?.levels.find(level => level.level === 1);
   const tutorialOrders = onboarding?.residentOrders ?? (onboarding ? [onboarding.residentOrder] : []);
   const secondStageOrders = economyCatalog.stageOrders?.find(stage => stage.homeLevel === 2)?.orders ?? [];
+  const thirdStage = economyCatalog.stageOrders?.find(stage => stage.homeLevel === 3);
+  const soupRecipe = economyCatalog.recipes.find(recipe => recipe.id === "cook_fish_soup");
+  const soupMeal = food?.meals.find(meal => meal.itemId === "fish_soup");
   const storageLevels = economyCatalog.buildings.find(building => building.id === "warehouse")?.levels ?? [];
   const legendaryChance = economyCatalog.fishing ? fishingClassOdds({}, economyCatalog.fishing,
     { rodId: "starfall_rod", hookId: "leviathan_hook", baitId: "star_bait" })
@@ -79,6 +82,18 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
       action: { label: "Посмотреть заказы", target: { kind: "food", tab: "orders" } },
       relatedIds: ["resident-orders", "resources", "workshop-starter"],
     }] satisfies WorldHelpTopic[] : []),
+    ...(thirdStage ? [{
+      id: "third-house-stage", group: "economy", title: "Как перейти от дома 3 к дому 4?", summary: "Проект полянки и поставки на неделю",
+      keywords: "третий этап дом 3 дом 4 проект полянка поставка поставки неделя живая смола ожидание сутки",
+      steps: [
+        `Откройте «Еда и заказы» → «Заказы». Первая из ${thirdStage.orders.length} проектных поставок доступна сразу.`,
+        `После сдачи каждой поставки следующая появится через ${thirdStage.intervalSeconds / 3600} ч. Отсчёт идёт с передачи товаров, а не со смены суток UTC.`,
+        `Завершите цепочку: последняя поставка гарантированно выдаёт ${Object.entries(thirdStage.completionRewards).map(([id, count]) => `${itemName(id)} × ${count}`).join(", ")}. Остальные требования видны в улучшении дома 4.`,
+      ],
+      note: `Поставки не истекают и не заменяются. Жемчуг и обеды не сокращают интервалы. Даже при готовых запасах цепочка занимает минимум ${(thirdStage.orders.length - 1) * thirdStage.intervalSeconds / 86400} суток. Расширять кладовую необязательно.`,
+      action: { label: "Посмотреть проект", target: { kind: "food", tab: "orders" } },
+      relatedIds: ["resident-orders", "construction", "relics", "fish-soup"],
+    }] satisfies WorldHelpTopic[] : []),
     ...(secondStageOrders.length ? [{
       id: "second-house-stage", group: "economy", title: "Что делать после дома 2?", summary: "Верёвка, шахта, печь и дом 3",
       keywords: "второй этап дом 2 дом 3 второй уровень третий веревка верёвка волокно глина уголь кирпич печь",
@@ -86,18 +101,18 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
         "Собирайте волокно на лесном участке. В мастерской две единицы волокна дают одну верёвку за три минуты.",
         "Постройте шахту, добудьте камень и улучшите её до уровня 2 для глины. Добыча работает независимо от Мохлика.",
         "Откройте вкладку «Печь» в мастерской. Из бревна уголь получается за две минуты; из глины и угля кирпич — за три.",
-        "Выполните пять постоянных просьб этого этапа, соберите материалы и монеты для дома 3 и начните его улучшение.",
+        `Выполните ${secondStageOrders.length} постоянных просьб, включая улов и жареную рыбу. Соберите материалы и монеты для дома 3 и начните улучшение.`,
       ],
       note: "Кладовая на 50 мест и бесплатные места производства подходят для всего этапа. Каждый запуск выпускает один предмет; очередь занята до получения.",
       action: { label: "Открыть заказы", target: { kind: "food", tab: "orders" } },
       relatedIds: ["mining", "production", "second-stage-orders", "construction"],
     }, {
-      id: "second-stage-orders", group: "economy", title: "Какие просьбы ведут к дому 3?", summary: "Пять постоянных заказов второго этапа",
-      keywords: "второй этап постоянные просьбы дом 3 верёвки камень глина древесный уголь кирпичи награда",
+      id: "second-stage-orders", group: "economy", title: "Какие просьбы ведут к дому 3?", summary: `${secondStageOrders.length} постоянных просьб второго этапа`,
+      keywords: "второй этап постоянные просьбы дом 3 верёвки камень глина древесный уголь кирпичи улов жареная рыба",
       paragraphs: [secondStageOrders.map(order => `${Object.entries(order.items).map(([id, count]) => `${itemName(id)} × ${count}`).join(" + ")} за ${order.coins} монет`).join("; ") + "."],
       steps: [
         "Откройте «Еда и заказы» → «Заказы». Постоянная просьба стоит над обычными заказами; недостающий товар открывает его источник.",
-        "Передайте собранные товары. Следующая просьба появится сразу. Все пять нужны для нового дома 3; они не исчезают и не заменяются.",
+        `Передайте собранные товары. Следующая просьба появится сразу. Все ${secondStageOrders.length} нужны для нового дома 3; они не исчезают и не заменяются.`,
       ],
       action: { label: "Посмотреть заказы", target: { kind: "food", tab: "orders" } },
       relatedIds: ["second-house-stage", "resident-orders", "mining"],
@@ -175,7 +190,7 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
         "Продайте излишки, приготовьте блюдо или выполните заказ жителей, затем снова заберите готовый результат.",
         "Для постоянного расширения нажмите улучшение кладовой. Стоимость и новая вместимость видны заранее; понадобится свободный строитель.",
       ],
-      note: `Первый уровень кладовой — ${storageLevels[0]?.warehouseCapacity ?? 50} мест; каждый следующий добавляет 50, десятый — ${storageLevels.at(-1)?.warehouseCapacity ?? 500}. Одна вещь занимает одно место. Готовые работы не пропадут; сохранённый излишек не удаляется. Первые два этапа можно пройти с кладовой на 50 мест: расширение необязательно.`,
+      note: `Первый уровень кладовой — ${storageLevels[0]?.warehouseCapacity ?? 50} мест; каждый следующий добавляет 50, десятый — ${storageLevels.at(-1)?.warehouseCapacity ?? 500}. Одна вещь занимает одно место. Готовые работы не пропадут; сохранённый излишек не удаляется. Расширение удобно для запасов, но улучшение дома не требует уровня кладовой.`,
       action: { label: "Освободить место", target: { kind: "pantry" } },
       relatedIds: ["resources", "construction", "relics"],
     },
@@ -184,10 +199,10 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
       keywords: "крафт изготовить где взять найти не хватает доски веревка верёвка мастерская верстак печь лесной участок производство рецепты партии очередь закрыто недоступно",
       steps: [
         "Нажмите здание → выберите предмет. Мастерская и печь переключаются в заголовке. Новые рецепты заранее показаны в улучшениях здания.",
-        "Проверьте состав: на первых двух этапах один запуск занимает одно место и даёт один предмет. Нажмите красный материал, чтобы перейти к его получению. В обычном меню видны только открытые рецепты.",
+        "Проверьте состав: один запуск занимает одно место и даёт один предмет. Нажмите красный материал, чтобы перейти к его получению. В обычном меню видны только открытые рецепты.",
         "Нажмите «Начать»: монеты и материалы спишутся сразу. Результат придёт только после кнопки «Забрать» у готовой работы.",
       ],
-      note: "Для двух предметов первых двух этапов нужны два запуска. После получения первого компота откроется клубника. Длинные и массовые заготовки появляются с дома 3. При улучшении здания его производство недоступно.",
+      note: "Для двух предметов нужны два запуска. После получения первого компота откроется клубника. Длительные заготовки появляются с дома 3. При улучшении здания его производство недоступно.",
       action: { label: "В мастерскую", target: { kind: "station", stationId: "workshop" } },
       relatedIds: ["production-slots", "storage", "construction", "campfire"],
     },
@@ -209,9 +224,9 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
         "Проверьте стоимость и требования. Нужен свободный Шишколап: одновременно строится одно здание.",
         "После таймера подтвердите завершение. Только тогда применится новый уровень и строитель освободится.",
       ],
-      note: "Новый дом 2 требует лесной участок, костёр, мастерскую и четыре учебных заказа. Новый дом 3 требует шахту уровня 2, печь и пять постоянных заказов второго этапа; расширять кладовую необязательно. Таймер находится над зданием: кладовая — над домом, печь — над мастерской, заготовки — над костром. При открытом меню он скрывается.",
+      note: `Новый дом 2 требует лесной участок, костёр, мастерскую и четыре учебных заказа. Дом 3 требует шахту уровня 2, печь и ${secondStageOrders.length} постоянных просьб. Дом 4 требует завершить проект полянки. Расширять кладовую необязательно. Таймер кладовой — над домом, печи — над мастерской, заготовок — над костром. При открытом меню он скрывается.`,
       action: { label: "К улучшению дома", target: { kind: "upgrade", stationId: "home" } },
-      relatedIds: ["construction-goal", "builder-food", "pearls", "future-world"],
+      relatedIds: ["construction-goal", "builder-food", "pearls", "second-house-stage"],
     },
     ...(firstWorkshop ? [{
       id: "workshop-starter", group: "start", title: "Есть ли отдельный стартовый набор?", summary: "Материалы и монеты от первых заказов",
@@ -243,10 +258,10 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
       keywords: "ускорение ускорить жемчужина жемчужины мгновенно цена стоимость завершить сейчас",
       steps: [
         "Нажмите таймер стройки или откройте строящееся здание → «Завершить сейчас».",
-        `Проверьте цену: ${economyCatalog.constructionSpeedup.secondsPerPearl / 60} минут ожидания стоят ${formatPearls(economyCatalog.pearlScale)} жемчужин. Сумма убывает со временем и округляется вверх до ${formatPearls(economyCatalog.constructionSpeedup.priceStepPearls)}.`,
+        `Тариф: ${economyCatalog.constructionSpeedup.secondsPerPearl * economyCatalog.constructionSpeedup.priceStepPearls / economyCatalog.pearlScale / 60} минут ожидания стоят ${formatPearls(economyCatalog.constructionSpeedup.priceStepPearls)} жемчужину. Цена убывает со временем и округляется вверх с таким же шагом.`,
         "Подтвердите. Если цена успела снизиться, спишется меньшая сумма; готовая стройка завершается бесплатно.",
       ],
-      note: "Это ускоряет только стройку. Без жемчуга дождитесь таймера и подтвердите завершение. Еда строителю тоже помогает сократить ожидание.",
+      note: "Это ускоряет только стройку. Без жемчуга дождитесь таймера и подтвердите завершение. Еда строителю тоже помогает. Интервал между проектными поставками за жемчуг не сокращается.",
       action: { label: "К строителю", target: { kind: "resident", residentId: "builder" } },
       relatedIds: ["builder-food", "rewards", "currency-shop"],
     },
@@ -259,8 +274,29 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
         "Монеты поступят, когда другой игрок купит ваш лот. До продажи вещи продолжают занимать место; в «Моих лотах» можно снять предложение и вернуть их.",
         "Для быстрой продажи торговцу откройте кладовую, нажмите предмет, проверьте количество и сумму. Это отдельная продажа, без ожидания покупателя.",
       ],
-      note: `Витрина меняется раз в ${economyCatalog.market.showcaseRefreshSeconds / 60} минут, а не при перезагрузке. Товары и дневной объём торговли зависят от уровня дома; остаток лимита виден в рынке.`,
-      relatedIds: ["resources", "storage", "relics"],
+      note: `Витрина меняется раз в ${economyCatalog.market.showcaseRefreshSeconds / 60} минут. Покупать можно открытые товары: одного уровня дома для открытия недостаточно. Право на открытый товар сохраняется. Дневной объём торговли зависит от дома; остаток лимита виден в рынке.`,
+      relatedIds: ["market-slots", "item-unlocks", "storage", "relics"],
+    },
+    {
+      id: "market-slots", group: "economy", title: "Как выставить больше лотов?", summary: "Постоянные места продавца",
+      keywords: "рынок лоты объявления слоты продавец витрина больше расширить места жемчуг",
+      steps: [
+        `На рынке откройте «Мои лоты». Бесплатно доступны ${economyCatalog.market.baseSlots} мест продавца; максимум — ${economyCatalog.market.maxListings}.`,
+        `Дополнительные места покупаются по очереди: ${economyCatalog.market.slotPricesPearls.map((price, index) => `${economyCatalog.market.baseSlots + index + 1}-е — ${formatPearls(price)} жемчужин`).join("; ")}. Цена показана перед подтверждением.`,
+        "Полученное место остаётся навсегда. После продажи или снятия лота оно освобождается для следующего объявления.",
+      ],
+      note: "Места продавца не увеличивают кладовую и не меняют общую витрину покупателей. Товары в активных лотах продолжают занимать место в кладовой.",
+      relatedIds: ["market", "storage", "currency-shop"],
+    },
+    {
+      id: "item-unlocks", group: "economy", title: "Что значит открыть товар?", summary: "Доступ сохраняется после открытия",
+      keywords: "открытый товар предмет доступ закрыто рецепт купить источник постоянное открытие",
+      steps: [
+        "Откройте источник товара: нужное оборудование, рецепт или маршрут с его условиями. Один уровень дома не заменяет остальные требования.",
+        "Открытый товар остаётся доступным для покупок на рынке и обычных просьб жителей, даже если вы продали весь запас или источник позже недоступен.",
+      ],
+      note: "Подаренный или купленный продвинутый предмет сам по себе не открывает его источник. Условия нового открытия можно посмотреть у рецепта или недостающего товара.",
+      relatedIds: ["production", "market", "resident-orders"],
     },
     {
       id: "relics", group: "economy", title: "Где взять реликвии для улучшений?", summary: "Редкие материалы и обмен",
@@ -380,8 +416,20 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
       ],
       note: "Сытный ужин требует редкую рыбу. Для особых блюд нужны эпическая или легендарная рыба. Готовка не стирает запись в книге; дождь не меняет таймер.",
       action: { label: "Открыть костёр", target: { kind: "station", stationId: "dryer" } },
-      relatedIds: ["food", "builder-food", "resident-orders", "production"],
+      relatedIds: ["fish-soup", "food", "builder-food", "production"],
     },
+    ...(soupRecipe && soupMeal ? [{
+      id: "fish-soup", group: "food", title: "Как сварить рыбный суп?", summary: "Обычная рыба, ягоды и уголь",
+      keywords: "рыбный суп обед обычная рыба малина уголь жареная порция",
+      steps: [
+        `Нужны дом ${soupRecipe.requiredHomeLevel} и костёр уровня ${soupRecipe.buildingLevel}. Сначала приготовьте и заберите ${Object.entries(soupRecipe.requiredRecipes).map(([id, count]) => `${Object.keys(economyCatalog.recipes.find(recipe => recipe.id === id)?.rewards ?? {}).map(itemName).join(", ")} × ${count}`).join("; ")}.`,
+        `Нажмите костёр → «${soupRecipe.name}». Состав: ${Object.entries(soupRecipe.cost.items).map(([id, count]) => `${itemName(id)} × ${count}`).join(" + ")}. Приготовление занимает ${soupRecipe.seconds / 60} минут.`,
+        "Заберите готовую порцию. Её можно отдать в просьбу, продать из кладовой или подать как обед.",
+      ],
+      note: `Суп даёт Мохлику +${soupMeal.heroSpeedBps / 100}% скорости одной вылазки, строителю +${soupMeal.builderSpeedBps / 100}% скорости одной стройки. Шахтёра не ускоряет.${economyCatalog.localBuyer?.unitPrices?.fish_soup ? ` NPC покупает порцию за ${economyCatalog.localBuyer.unitPrices.fish_soup} монет.` : ""}`,
+      action: { label: "К рыбному супу", target: { kind: "station", stationId: "dryer", recipeId: soupRecipe.id } },
+      relatedIds: ["campfire", "food", "builder-food", "third-house-stage"],
+    }] satisfies WorldHelpTopic[] : []),
     ...(food ? [
       {
         id: "food", group: "food", title: "Как накормить Мохлика и что это даёт?", summary: "Один обед ускоряет следующую вылазку",
@@ -413,12 +461,12 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
         steps: [
           "Откройте «Еда и заказы» → «Заказы». Карточка показывает жителя, его просьбу, ваши запасы и награду. Фильтр оставит нужного заказчика.",
           "Нажмите «Отдать заказ»: товары спишутся, монеты придут, а обычная карточка сразу сменится новой - без ожидания. До выполнения товары не резервируются.",
-          "После улучшения дома новые просьбы становятся крупнее и выгоднее. Появляются товары, всю цепочку получения которых вы уже открыли; условия выданных карточек не меняются до их смены.",
+          "Обычные просьбы разнообразны и используют открытые товары. Доступ к товару сохраняется после открытия; одного уровня дома недостаточно. Условия карточки остаются до её смены.",
           `Для обычных просьб первые ${food.orders.freeReplacements} замены за ${food.orders.replacementWindowSeconds / 3600} ч бесплатны, затем каждая стоит ${formatPearls(food.orders.replacementPricePearls)} жемчужин с подтверждением. Новый заказ доступен сразу.`,
         ],
-        note: `На доске ${food.orders.slots} заказа, обновление каждые ${food.orders.refreshSeconds / 3600} ч. Одновременных повторов нет, недавние просьбы откладываются. Учебные и этапные просьбы идут отдельной постоянной цепочкой: они не исчезают и не заменяются. Заказы дают только монеты, не сытость. Обычные просьбы можно пропускать без штрафов.`,
+        note: `На доске ${food.orders.slots} заказа, обновление каждые ${food.orders.refreshSeconds / 3600} ч. Одновременных повторов нет, недавние просьбы откладываются. Постоянные этапные просьбы идут отдельно. Обычные заказы дают монеты, не сытость; их можно пропускать без штрафов.`,
         action: { label: "Посмотреть заказы", target: { kind: "food", tab: "orders" } },
-        relatedIds: ["tutorial-order", "campfire", "food", "resources"],
+        relatedIds: ["tutorial-order", "second-stage-orders", "third-house-stage", "item-unlocks"],
       },
     ] satisfies WorldHelpTopic[] : []),
     {

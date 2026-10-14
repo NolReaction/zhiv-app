@@ -53,10 +53,17 @@ test('market class unlocks follow available routes and a rod with positive class
   const legendary = market.marketRequiredHomeLevel('fish_legendary');
   assert.ok(Number.isFinite(legendary) && legendary >= 4);
   assert.equal(market.marketRequiredHomeLevel('fish_shark'), legendary);
+  const state = fresh(); state.buildings.home = 5;
+  assert.equal(market.marketItemUnlocked(state, 'fish_legendary'), false, 'a high home cannot invent ownership of a legendary rod');
+  state.fishing.ownedRods = catalog.fishing.rods.map(rod => rod.id);
+  state.fishing.ownedHooks = catalog.fishing.hooks.map(hook => hook.id);
   for (const group of catalog.fishing.classes) {
     const quantity = 2, price = catalog.items.find(item => item.id === group.itemId).baseSellPrice * quantity;
-    assert.equal(market.marketListingEligible({ itemId: group.itemId, quantity, totalPrice: price }, 5), true);
+    assert.equal(market.marketListingEligible({ itemId: group.itemId, quantity, totalPrice: price }, state), true);
   }
+  state.unlockedItems = catalog.fishing.classes.map(group => group.itemId);
+  state.fishing.ownedRods = ['reed_rod'];
+  assert.equal(market.marketItemUnlocked(state, 'fish_legendary'), true, 'permanent discovery remains after the source becomes unavailable');
 });
 
 test('version4 jobs claim their frozen species and costs regardless of current rod odds', () => {

@@ -5,6 +5,9 @@ import vm from "node:vm";
 import ts from "typescript";
 
 const catalog = JSON.parse(readFileSync(new URL("../apps/api/src/main/resources/world/economy-catalog.json", import.meta.url), "utf8"));
+// The real model schema supplies this default before graph construction.
+for (const recipe of catalog.recipes) recipe.requiredRecipes ??= {};
+const progressionRewards = JSON.parse(readFileSync(new URL("../apps/api/src/main/resources/world/progression-rewards-catalog.json", import.meta.url), "utf8"));
 const source = readFileSync(new URL("../features/progression/graph.ts", import.meta.url), "utf8");
 const code = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
 const moneyContext = { exports: {}, structuredClone };
@@ -93,7 +96,7 @@ test("node and edge ids are unique and actual world remains connected without pr
   assert.equal(all.size, ids.size);
   const actual = reachableIds(graph, edge => edge.kind !== "plan" && edge.kind !== "cost");
   for (const value of graph.nodes.filter(value => value.status === "active")) assert(actual.has(value.id), `Disconnected active node ${value.id}`);
-  assert.equal(graph.nodes.length, 166);
+  assert.equal(graph.nodes.length, 156);
   assert.equal(node("pearls").status, "active");
   assert.ok(!graph.edges.some(edge => edge.source === "pearls" && ["requirement", "unlock"].includes(edge.kind)), "optional acceleration never gates progression");
   assert.equal(graph.nodes.filter(value => value.status === "plan").length, 16);
@@ -129,7 +132,7 @@ test("fish ingredients resolve to a real chance source without inventing guarant
 test("food and resident orders are active optional uses rather than future progression gates", () => {
   assert.equal(node("orders").status, "active");
   assert.equal(node("meals").status, "active");
-  assert.match(node("orders").description, /Награда: монеты с надбавкой/);
+  assert.match(node("orders").description, /Обычные заказы дают монеты/);
   assert.match(node("orders").description, /сытость отдельно/);
   assert.match(node("orders").description, /3 бесплатные замены/);
   assert.match(node("meals").description, /\+10–100%/);
@@ -143,9 +146,11 @@ test("food and resident orders are active optional uses rather than future progr
 
 test("daily and earned achievements explain current pearl sources while the future merchant cannot gate upgrades", () => {
   assert.equal(node("daily_rewards").status, "active");
-  assert.match(node("daily_rewards").description, /7 получений/); assert.match(node("daily_rewards").description, /225 жемчужин/);
+  const dailyPearls = moneyContext.exports.formatPearls(progressionRewards.daily.reduce((sum, reward) => sum + reward.pearls, 0));
+  const achievementPearls = moneyContext.exports.formatPearls(Object.values(progressionRewards.achievementPearls).flat().reduce((sum, reward) => sum + reward, 0));
+  assert.match(node("daily_rewards").description, /7 получений/); assert.ok(node("daily_rewards").description.includes(`${dailyPearls} жемчужин`));
   assert.match(node("daily_rewards").description, /20 часов/); assert.match(node("daily_rewards").description, /Пропуск не сбрасывает/);
-  assert.match(node("pearls").description, /до 1\s075/); assert.match(node("achievements").description, /до 1\s075/);
+  assert.ok(node("pearls").description.includes(`до ${achievementPearls}`)); assert.ok(node("achievements").description.includes(`до ${achievementPearls}`));
   assert(hasEdge("daily_rewards", "pearls", "flow")); assert(hasEdge("achievements", "pearls", "flow"));
   assert.equal(node("pearl_trader").status, "plan");
   assert(graph.edges.filter(edge => edge.source === "pearl_trader" || edge.target === "pearl_trader").every(edge => edge.kind === "plan"));
@@ -202,10 +207,10 @@ test("fishing and friend profiles are current while glade visits and Pleska's ho
   assert.match(node("willow_rod").description, /отдельная вещь/);
   assert.match(node("trader").description, /40%/);
   assert.match(node("b:warehouse:1").description, /объявлениях рынка/);
-  assert.match(node("r:grow_berries").description, /Максимум партий за запуск: 1;/);
-  assert.match(node("r:grow_berries").description, /На первых двух этапах каждый запуск даёт один предмет/);
-  for (const recipe of catalog.recipes.filter(recipe => recipe.maxBatch > 1)) {
-    assert(node(`r:${recipe.id}`).description.includes(`Максимум партий за запуск: ${recipe.maxBatch};`), recipe.id);
+  for (const recipe of catalog.recipes) {
+    assert.equal(recipe.maxBatch, 1, recipe.id);
+    assert.equal(Object.values(recipe.rewards).reduce((sum, count) => sum + count, 0), 1, recipe.id);
+    assert.match(node(`r:${recipe.id}`).description, /Каждый запуск выпускает один предмет/);
   }
 });
 
@@ -227,7 +232,8 @@ test("production and construction retain every house, previous-level and additio
     for (const [other, minimum] of Object.entries(exploration.requiredBuildings)) assert(hasEdge(`b:${other}:${minimum}`, id, "requirement"));
   }
   const finalHouse = getPrerequisiteIds(graph, "b:home:5", false);
-  for (const id of ["b:workshop:4", "b:quarry:4", "b:warehouse:4", "b:kiln:4", "b:dryer:3", "b:woodlot:4"]) assert(finalHouse.has(id), id);
+  for (const id of ["b:workshop:4", "b:quarry:4", "b:kiln:4", "b:dryer:3"]) assert(finalHouse.has(id), id);
+  assert(!graph.nodes.some(value => value.buildingId === "warehouse" && finalHouse.has(value.id)), "storage remains optional for the final house");
   assert.equal(node("r:make_reinforced_parts").requirements.woodlot, 4);
   assert.equal(node("r:make_beams").requirements.woodlot, 3);
 });
@@ -467,9 +473,29 @@ test("mine upgrades visibly unlock actor activities and never revive retired pro
 
 
 test("player graph prices and rewards use visible pearls while costs keep internal units", () => {
-  assert.match(node("pleska").description, /обновление стоит до 50 жемчужин/);
-  assert.match(node("pearls").description, /25 жемчужин за полные 5 минут/);
-  assert.match(node("daily_rewards").description, /225 жемчужин/);
+  assert.ok(node("pleska").description.includes(`обновление стоит до ${moneyContext.exports.formatPearls(catalog.fishing.shop.refreshPricePearls)} жемчужин`));
+  assert.match(node("pearls").description, /Тариф: 1 жемчужина за 10 минут остатка/);
+  assert.match(node("daily_rewards").description, /7 жемчужин/);
   assert.equal(catalog.pearlScale, 50);
   assert.equal(catalog.fishing.shop.refreshPricePearls, 100);
+});
+
+test("the orders graph describes the week-long house-four project and permanent market discovery", () => {
+  const orders = node("orders").description;
+  assert.match(orders, /7 постоянных просьб дома 2, включая улов и жареную рыбу/);
+  assert.match(orders, /проект из 8 поставок: первая сразу, остальные через 24 ч после сдачи предыдущей/);
+  assert.match(orders, /Смена суток UTC и жемчуг интервал не сокращают/);
+  assert.match(orders, /Минимум 7 суток.*Живая смола × 1/);
+  assert.match(node("market").description, /бесплатно доступны 5 мест/);
+  assert.match(node("market").description, /покупаются по очереди до 10/);
+  for (const [index, price] of [50, 80, 120, 180, 250].entries()) assert.ok(node("market").description.includes(`${index + 6}-е — ${price} жемчужин`));
+  assert.match(node("market").description, /одного уровня дома недостаточно/);
+  assert.match(node("market").description, /Открытие сохраняется после продажи запасов и недоступности источника/);
+  const soup = catalog.food.meals.find(meal => meal.itemId === "fish_soup");
+  assert.match(node("r:cook_fish_soup").description,
+    new RegExp(`Рыбный суп даёт Мохлику \\+${soup.heroSpeedBps / 100}%.*строителю \\+${soup.builderSpeedBps / 100}%.*шахтёра не ускоряет`));
+  for (const building of catalog.buildings.filter(entry => entry.id !== "warehouse")) for (const level of building.levels)
+    assert(!("warehouse" in node(`b:${building.id}:${level.level}`).requirements), `${building.id}:${level.level}: storage is optional`);
+  for (const recipe of catalog.recipes) assert(!("warehouse" in node(`r:${recipe.id}`).requirements), recipe.id);
+  for (const route of catalog.explorations) assert(!("warehouse" in node(`e:${route.id}`).requirements), route.id);
 });

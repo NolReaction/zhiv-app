@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { auditEconomyProgression, readEconomyCatalog } from "../scripts/audit-economy-progression.mjs";
+import { createLiquidation } from "../scripts/lib/economy-math.mjs";
 
 test("economy catalog has useful chains, reachable upgrades, sufficient storage and a market-proof pacing floor", () => {
   const report = auditEconomyProgression(readEconomyCatalog());
@@ -88,7 +89,7 @@ test("only warehouse two requires home two and storage tiers cannot acquire othe
 test("optional warehouse tiers cannot gate the final home or prop up a compressed five-tier base", () => {
   const catalog = readEconomyCatalog();
   catalog.buildings.find(building => building.id === "home").levels[4].requiredBuildings.warehouse = 6;
-  assert.throws(() => auditEconomyProgression(catalog), /Optional warehouse/);
+  assert.throws(() => auditEconomyProgression(catalog), /Storage expansion must not gate ordinary buildings or homes/);
   const compressed = readEconomyCatalog();
   for (const building of compressed.buildings) for (const level of building.levels) if (level.level <= 5) level.seconds = Math.floor(level.seconds / 10);
   assert.throws(() => auditEconomyProgression(compressed), /four weeks|seven weeks/);
@@ -108,24 +109,40 @@ test("fishing shop cannot introduce buy-sell arbitrage or meaningless tackle spe
 test("local-sale audit protects processing margins and rejects a zero recovery payout", () => {
   const lowSmokedPrice = readEconomyCatalog();
   const recipe = lowSmokedPrice.recipes.find(recipe => recipe.id === "smoke_fish");
-  const nominalInputs = Object.entries(recipe.cost.items).reduce((sum, [id, quantity]) =>
-    sum + lowSmokedPrice.items.find(item => item.id === id).baseSellPrice * quantity, 0);
-  lowSmokedPrice.items.find(item => item.id === "smoked_fish").baseSellPrice = nominalInputs + 10;
+  const actualInputs = createLiquidation(lowSmokedPrice)(recipe.cost.items) + recipe.cost.coins;
+  lowSmokedPrice.localBuyer.unitPrices.smoked_fish = actualInputs;
   assert.throws(() => auditEconomyProgression(lowSmokedPrice), /actual sale proceeds/);
   const unavailableRecovery = readEconomyCatalog();
   unavailableRecovery.localBuyer.payoutBps = 0;
   assert.throws(() => auditEconomyProgression(unavailableRecovery), /Invalid local buyer payout/);
 });
 
-test("bulk limits, overnight yield and ingredient conservation cannot silently regress", () => {
+test("unit production, bounded unattended mining and ingredient value cannot silently regress", () => {
   for (const [id, mutate, pattern] of [
     ["grow_berries", r => r.maxBatch = 10, /cannot be bulk queued|First-stage production must reserve one slot/],
-    ["grow_berries_overnight", r => r.rewards.berries = 160, /unattended output|quarter of storage|one batch output/],
+    ["garden_abundance", r => r.rewards.berries = 2, /Every current production recipe must reserve one slot for one item/],
     ["quarry_stone_overnight", r => r.rewards.stone = 110, /unattended output|quarter of storage/],
-    ["workshop_overnight", r => r.cost.items.wood = 1, /bulk order invents wood/],
+    ["make_planks", r => r.cost.items.wood = 100, /crafting destroys NPC value|crafting destroys actual sale proceeds/],
   ]) {
     const catalog = readEconomyCatalog(); mutate([...catalog.recipes, ...catalog.explorations].find(r => r.id === id));
     assert.throws(() => auditEconomyProgression(catalog), pattern, id);
+  }
+});
+
+test("the authored v8 catalog keeps every current production unit-sized and every storage gate optional", () => {
+  const catalog = readEconomyCatalog();
+  assert.equal(catalog.version, 8); assert.equal(catalog.recipes.length, 39);
+  for (const recipe of catalog.recipes) {
+    assert.equal(recipe.maxBatch, 1, recipe.id);
+    assert.equal(Object.values(recipe.rewards).reduce((sum, count) => sum + count, 0), 1, recipe.id);
+    assert.equal(recipe.requiredBuildings?.warehouse, undefined, recipe.id);
+    const invalid = structuredClone(catalog); invalid.recipes.find(entry => entry.id === recipe.id).maxBatch = 2;
+    assert.throws(() => auditEconomyProgression(invalid), /production.*one slot for one item/, recipe.id);
+  }
+  for (const route of catalog.explorations) assert.equal(route.requiredBuildings?.warehouse, undefined, route.id);
+  for (const building of catalog.buildings.filter(entry => entry.id !== "warehouse")) for (const level of building.levels) {
+    assert.equal(level.requiredBuildings?.warehouse, undefined, `${building.id}:${level.level}`);
+    assert.ok(Object.values(level.cost.items).reduce((sum, count) => sum + count, 0) <= 42, `${building.id}:${level.level}`);
   }
 });
 

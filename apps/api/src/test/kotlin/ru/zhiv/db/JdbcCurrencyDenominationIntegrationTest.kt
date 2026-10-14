@@ -60,9 +60,10 @@ class JdbcCurrencyDenominationIntegrationTest {
             }
             DatabaseFactory.migrate(source); DatabaseFactory.migrate(source)
             val persisted = source.connection.use { readEconomyProfile(it, seller.id) }
-            assertEquals(9L, persisted.revision)
-            val expected = EconomyMoney.redenominate(old)
-            assertEquals(expected.copy(wardrobe = expected.wardrobe.sorted()), persisted.state)
+            assertEquals(10L, persisted.revision)
+            val expected = EconomyMoney.redenominate(old).copy(marketSlots = 5,
+                unlockedItems = listOf("berries", "wood"), itemUnlockVersion = 1)
+            assertEquals(EconomyItemUnlocks.persist(expected).copy(wardrobe = expected.wardrobe.sorted()), persisted.state)
             source.connection.use { c ->
                 // Migration preserves the stored wardrobe; the repository orders ownership on read.
                 assertEquals(expected, c.economyRows("SELECT state FROM economy_profiles WHERE user_id=?", seller.id) {

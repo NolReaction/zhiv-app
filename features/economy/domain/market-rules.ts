@@ -1,7 +1,8 @@
-import { fishClassForItem, fishingIneligibility } from "./fishing";
+import { fishClassForItem, fishingClassItemId, fishingIneligibility } from "./fishing";
 import { economyCatalog, type EconomyCatalog, type EconomyMarketListing, type EconomyState } from "./model";
+import { unlockedEconomyItems, type ItemUnlockSource } from "./item-unlocks";
 
-/** A market purchase substitutes for a workshop, but cannot skip its home tier. */
+/** Catalog source threshold for descriptions; permanent discovery controls actual trades. */
 export function marketRequiredHomeLevel(itemId: string, catalog: EconomyCatalog = economyCatalog): number {
   const buildingHome = (id: string, level: number, seen = new Set<string>()): number => {
     if (id === "home") return level;
@@ -41,14 +42,25 @@ export function marketMinimumPrice(itemId: string, quantity: number, catalog: Ec
   return item && Number.isSafeInteger(quantity) && quantity > 0 ? item.baseSellPrice * quantity : Infinity;
 }
 
-export function marketItemUnlocked(state: Pick<EconomyState, "buildings">, itemId: string, catalog: EconomyCatalog = economyCatalog): boolean {
-  return (state.buildings.home ?? 1) >= marketRequiredHomeLevel(itemId, catalog);
+export function marketItemUnlocked(state: ItemUnlockSource, itemId: string, catalog: EconomyCatalog = economyCatalog): boolean {
+  return unlockedEconomyItems(state, [], catalog).includes(fishingClassItemId(itemId, catalog.fishing));
 }
 
-export function marketListingEligible(listing: Pick<EconomyMarketListing, "itemId" | "quantity" | "totalPrice">, homeLevel: number, catalog: EconomyCatalog = economyCatalog): boolean {
+export function marketListingEligible(listing: Pick<EconomyMarketListing, "itemId" | "quantity" | "totalPrice">, state: ItemUnlockSource, catalog: EconomyCatalog = economyCatalog): boolean {
   const minimum = marketMinimumPrice(listing.itemId, listing.quantity, catalog);
-  return homeLevel >= marketRequiredHomeLevel(listing.itemId, catalog) && listing.totalPrice >= minimum
+  return marketItemUnlocked(state, listing.itemId, catalog) && listing.totalPrice >= minimum
     && listing.totalPrice <= minimum * catalog.market.maxPriceMultiplier;
+}
+
+export function marketSlotCount(state: Pick<EconomyState, "marketSlots">, catalog = economyCatalog): number {
+  const slots = state.marketSlots;
+  return Number.isInteger(slots) ? Math.max(catalog.market.baseSlots, Math.min(catalog.market.maxListings, slots!)) : catalog.market.baseSlots;
+}
+export function marketSlotOffer(state: Pick<EconomyState, "marketSlots">, catalog = economyCatalog):
+  { slots: number; targetId: string; pricePearls: number } | null {
+  const slots = marketSlotCount(state, catalog) + 1;
+  const pricePearls = catalog.market.slotPricesPearls[slots - catalog.market.baseSlots - 1];
+  return slots <= catalog.market.maxListings && pricePearls ? { slots, targetId: `market:${slots}`, pricePearls } : null;
 }
 
 /** Match current progression, never the level captured when a lot was posted. */

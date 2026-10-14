@@ -16,7 +16,7 @@ test("two-type expectation counts wrong types and duplicates rather than adding 
 });
 
 test("current storage starts at 50 places and consumes 62 varied relics across its later tiers", () => {
-  const report = reviewWarehouseRelics(readEconomyCatalog());
+  const catalog = readEconomyCatalog(), report = reviewWarehouseRelics(catalog);
   assert.equal(report.warehouseMaximumLevel, 10);
   assert.deepEqual(report.totalWarehouseRelics, { ancient_core: 38, moon_crystal: 12, living_resin: 12 });
   assert.equal(report.totalWarehouseRelicCount, 62);
@@ -26,12 +26,16 @@ test("current storage starts at 50 places and consumes 62 varied relics across i
   assert(report.levels.slice(0, 3).every(level => Object.values(level.relicCost).every(quantity => quantity === 0)));
   assert(report.levels.slice(3).every(level => Object.values(level.relicCost).every(quantity => quantity > 0)
     && level.cost.coins === 0 && level.requiredHomeLevel === 1 && !Object.keys(level.requiredBuildings).length));
+  assert(catalog.buildings.filter(building => building.id !== "warehouse")
+    .every(building => building.levels.every(level => !level.requiredBuildings.warehouse)), "earned storage is optional for every other building");
+  assert(report.levels.every(level => Object.values(level.cost.items).reduce((sum, quantity) => sum + quantity, 0) <= 42),
+    "each paid storage expansion can hold its own materials in the starter warehouse");
 });
 
 test("storage work time separates the full builder sum from partial random acquisition", () => {
   const report = reviewWarehouseRelics(readEconomyCatalog()), last = report.levels.at(-1);
-  assert.deepEqual(report.levels.map(level => level.constructionHours), [0, 1 / 6, 24, 48, 72, 96, 120, 144, 168, 192]);
-  const constructionSeconds = 600 + 864 * 3600;
+  assert.deepEqual(report.levels.map(level => level.constructionHours), [0, 1 / 6, 12, 48, 72, 96, 120, 144, 168, 192]);
+  const constructionSeconds = 600 + 852 * 3600;
   assert(Math.abs(report.totalWarehouseConstructionHours - constructionSeconds / 3600) < 1e-9);
   assert(Math.abs(report.totalWarehouseConstructionDays - constructionSeconds / 86400) < 1e-9);
   assert.equal(report.levels[3].partialNonCoreAcquisition.expectedDraws, 4.5);

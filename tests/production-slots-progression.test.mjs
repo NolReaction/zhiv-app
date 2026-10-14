@@ -37,8 +37,8 @@ test("daily-only pearl projection follows gift payouts and cannot buy a slot bef
   const loaded = await loadJourneyRules();
   try {
     const rewards = loaded.progressionRewards.progressionRewardsCatalog;
-    assert.deepEqual(dailyPearlThreshold(rewards, 200), { targetPearls: 200, giftClaims: 7, elapsedDaysWithFirstGiftToday: 6, pearlsReceived: 450 });
-    assert.deepEqual(dailyPearlThreshold(rewards, 3500), { targetPearls: 3500, giftClaims: 56, elapsedDaysWithFirstGiftToday: 55, pearlsReceived: 3600 });
+    assert.deepEqual(dailyPearlThreshold(rewards, 200), { targetPearls: 200, giftClaims: 104, elapsedDaysWithFirstGiftToday: 103, pearlsReceived: 202 });
+    assert.deepEqual(dailyPearlThreshold(rewards, 3500), { targetPearls: 3500, giftClaims: 1750, elapsedDaysWithFirstGiftToday: 1749, pearlsReceived: 3500 });
     const report = simulateJourney(loaded, "visits3", 40, { ...jointPlanningPolicy, constructionSpeedups: false,
       buyProductionSlots: true, dailyPearlsOnly: true });
     assert.equal(report.pearlBudget, 0);
@@ -46,11 +46,14 @@ test("daily-only pearl projection follows gift payouts and cannot buy a slot bef
     const earned = Array.from({ length: 40 }, (_, index) => rewards.daily[index % rewards.daily.length].pearls).reduce((sum, amount) => sum + amount, 0);
     assert.equal(report.dailyPearlProjection.pearlsReceived, earned);
     assert.equal(report.pearlsSpent + report.pearlsRemaining, earned);
-    assert.equal(report.productionSlots.purchases[0].day, 6);
-    assert(report.productionSlots.purchases.length > 1);
-    for (const purchase of report.productionSlots.purchases) {
+    assert.deepEqual(report.productionSlots.purchases, [], "forty compact daily gifts cannot yet pay for a 200-unit slot");
+    const earnedSlot = simulateJourney(loaded, "visits3", 105, { ...jointPlanningPolicy, constructionSpeedups: false,
+      buyProductionSlots: true, dailyPearlsOnly: true });
+    assert.equal(earnedSlot.productionSlots.purchases.length, 1);
+    assert.equal(earnedSlot.productionSlots.purchases[0].day, 103);
+    for (const purchase of earnedSlot.productionSlots.purchases) {
       const byDay = Math.floor(purchase.day), earnedAtPurchase = Array.from({ length: byDay + 1 }, (_, index) => rewards.daily[index % rewards.daily.length].pearls).reduce((sum, amount) => sum + amount, 0);
-      const paidByPurchase = report.productionSlots.purchases.filter(row => row.day <= purchase.day).reduce((sum, row) => sum + row.pricePearls, 0);
+      const paidByPurchase = earnedSlot.productionSlots.purchases.filter(row => row.day <= purchase.day).reduce((sum, row) => sum + row.pricePearls, 0);
       assert(paidByPurchase <= earnedAtPurchase, "Slots consume already earned pearls");
     }
     assert.equal(report.actions.speedup_construction, undefined);

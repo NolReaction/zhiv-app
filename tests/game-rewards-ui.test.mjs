@@ -23,7 +23,7 @@ afterEach(() => { globalThis.fetch = fetchOriginal; });
 const owner = "AAAA-0000-0001", other = "AAAA-0000-0002", at = "2026-10-05T12:00:00.000Z", clock = Date.parse(at);
 const reward = { coins: 10, pearls: 0, items: {} };
 function view(step = 1, claimable = true, ownerPublicId = owner) {
-  return { ownerPublicId, serverTime: at, catalogVersion: 1,
+  return { ownerPublicId, serverTime: at, catalogVersion: 2,
     daily: { step, claimable, nextClaimAt: new Date(clock + (claimable ? 0 : 86_400_000)).toISOString(), lastClaimAt: null, lastClaimDate: null,
       reward, cycle: Array.from({ length: 7 }, (_, index) => ({ step: index + 1, reward: index === 6 ? { ...reward, pearls: 2 } : reward })) },
     achievementRewards: Object.entries(GAME_ACHIEVEMENT_TARGETS).flatMap(([achievementId, targets]) => targets.map((target, index) => ({

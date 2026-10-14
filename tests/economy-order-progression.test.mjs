@@ -14,12 +14,18 @@ const vectors = JSON.parse(await readFile(new URL("../apps/api/src/test/resource
 const now = Date.parse("2026-10-07T12:00:00Z");
 const fresh = () => rules.newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 });
 
-test("shared Kotlin vectors scale raw materials strongly, bound complex goods and preserve mixed item premiums", () => {
+test("shared Kotlin vectors keep compact requests and mixed-item premiums identical across home levels", () => {
+  for (const multipliers of Object.values(catalog.food.orders.progression)) assert.deepEqual(multipliers, [10000, 10000, 10000, 10000, 10000]);
   for (const expected of vectors.scaling) {
     const template = catalog.food.orders.templates.find(template => template.id === expected.templateId);
     const actual = food.progressedResidentOrderTemplate(template, expected.home);
     assert.deepEqual(actual.items, expected.items, `${expected.templateId}@${expected.home}`);
     assert.equal(actual.coins, expected.coins, `${expected.templateId}@${expected.home}`);
+  }
+  for (const template of catalog.food.orders.templates) for (let home = 1; home <= 5; home++) {
+    const actual = food.progressedResidentOrderTemplate(template, home);
+    assert.deepEqual(actual.items, template.items, `${template.id}@${home}: higher houses keep the accepted quantity compact`);
+    assert.equal(actual.coins, template.coins, `${template.id}@${home}: the authored premium is preserved`);
   }
 });
 

@@ -118,16 +118,20 @@ test("replaying cancellation after a new departure cannot cancel the replacement
   assert.deepEqual(read(p), next);
 });
 
-test("cancellation is available with full storage and cannot be forged into a refund or bulk command", () => {
-  const p = player(), trip = issue(p, "start_exploration", "shore").state.jobs[0];
-  const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
-  row.state.inventory = { wood: 300 };
-  const before = read(p), cancel = command(p, "cancel_exploration", trip.id);
-  for (const extra of [{ quantity: 2 }, { totalPrice: 1 }, { rewards: { fish: 99 } }, { refund: true }, { targetId: "" }]) {
-    assert.throws(() => economy.commandDevEconomy(p.token, { ...cancel, ...extra }, now), { code: "INVALID_ECONOMY_COMMAND" });
-    assert.deepEqual(read(p), before);
+test("cancellation is available with full or overflowing storage and cannot be forged into a refund or bulk command", () => {
+  for (const stored of [50, 300]) {
+    const p = player(), trip = issue(p, "start_exploration", "shore").state.jobs[0];
+    const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
+    row.state.inventory = { wood: stored };
+    const before = read(p), cancel = command(p, "cancel_exploration", trip.id);
+    assert.equal(before.storage.capacity, 50); assert.equal(before.storage.available, 0);
+    assert.equal(before.storage.overflow, stored - 50);
+    for (const extra of [{ quantity: 2 }, { totalPrice: 1 }, { rewards: { fish: 99 } }, { refund: true }, { targetId: "" }]) {
+      assert.throws(() => economy.commandDevEconomy(p.token, { ...cancel, ...extra }, now), { code: "INVALID_ECONOMY_COMMAND" });
+      assert.deepEqual(read(p), before);
+    }
+    const result = economy.commandDevEconomy(p.token, cancel, now);
+    assert.deepEqual(result.state.inventory, before.inventory);
+    assert.deepEqual(result.state.jobs, []);
   }
-  const result = economy.commandDevEconomy(p.token, cancel, now);
-  assert.deepEqual(result.state.inventory, before.inventory);
-  assert.deepEqual(result.state.jobs, []);
 });

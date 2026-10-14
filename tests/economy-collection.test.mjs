@@ -29,7 +29,7 @@ const grow = p => issue(p, "start_production", "grow_berries").state.jobs[0];
 
 test("only berry recipes opt in and each order keeps its collection rules alongside paid rewards", () => {
   const configured = model.economyCatalog.recipes.filter(recipe => recipe.collection);
-  assert.deepEqual(configured.map(recipe => recipe.id), ["grow_berries", "grow_berries_overnight", "grow_berries_large", "garden_season", "garden_supply", "garden_abundance", "grow_strawberries"]);
+  assert.deepEqual(configured.map(recipe => recipe.id), ["grow_berries", "grow_berries_large", "garden_season", "garden_supply", "garden_abundance", "grow_strawberries"]);
   for (const recipe of configured) {
     assert.equal(recipe.buildingId, "garden"); assert.ok((recipe.rewards.berries ?? 0) + (recipe.rewards.strawberries ?? 0) > 0);
     assert.deepEqual(recipe.collection, { kind: "berry_harvest", seconds: 8 });

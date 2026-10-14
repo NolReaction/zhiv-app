@@ -157,7 +157,7 @@ class EconomyFoodTest {
     }
 
     @Test fun `six meal tiers use recorded individual hero and builder speed bonuses`() {
-        val expected = listOf("grilled_fish" to (1000 to 1000), "fish_soup" to (2500 to 2000),
+        val expected = listOf("grilled_fish" to (1000 to 1000), "fish_soup" to (2500 to 2500),
             "berry_fish" to (4000 to 3500), "hearty_fish" to (6000 to 5000),
             "epic_fish" to (8000 to 7000), "legendary_fish" to (10000 to 9000))
         val route = EconomyRules.catalog.explorations.single { it.id == "forest" }
