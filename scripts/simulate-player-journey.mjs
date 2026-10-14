@@ -11,7 +11,7 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const epoch = Date.parse("2026-10-05T00:00:00Z"), day = 86400, hour = 3600;
 const firstVisit = 7 * hour;
-export const journeyOrder = ["woodlot:1", "dryer:1", "workshop:1", "home:2", "quarry:1", "warehouse:2", "quarry:2", "kiln:1", "home:3", "garden:2", "woodlot:2", "kiln:2", "dryer:2", "workshop:2", "garden:3", "warehouse:3", "woodlot:3", "quarry:3", "kiln:3", "workshop:3", "dryer:3", "home:4", "woodlot:4", "quarry:4", "kiln:4", "workshop:4", "warehouse:4", "garden:4", "dryer:4", "home:5", "warehouse:5", "garden:5", "woodlot:5", "quarry:5", "kiln:5", "workshop:5", "dryer:5"];
+export const journeyOrder = ["woodlot:1", "dryer:1", "workshop:1", "home:2", "quarry:1", "warehouse:2", "quarry:2", "kiln:1", "home:3", "garden:2", "woodlot:2", "kiln:2", "dryer:2", "workshop:2", "garden:3", "warehouse:3", "woodlot:3", "quarry:3", "kiln:3", "workshop:3", "dryer:3", "home:4", "bridge:1", "lighthouse:1", "woodlot:4", "quarry:4", "kiln:4", "workshop:4", "warehouse:4", "garden:4", "dryer:4", "home:5", "warehouse:5", "garden:5", "woodlot:5", "quarry:5", "kiln:5", "workshop:5", "dryer:5"];
 export const DEFAULT_JOURNEY_RARE_SEED = 0x0672026;
 
 /** Preserve the existing comparison policy; maximum storage is an explicit
@@ -30,6 +30,9 @@ export function journeyConstructionOrder(catalog, completionGoal = "base-tier-5"
   for (const key of order) {
     const [id, level] = key.split(":");
     assert(catalog.buildings.find(building => building.id === id)?.levels.some(entry => entry.level === Number(level)), `Unknown research goal ${key}`);
+  }
+  if (completionGoal === "all-current-buildings") for (const building of catalog.buildings) {
+    assert(order.includes(`${building.id}:${building.levels.at(-1).level}`), `Missing current maximum tier for ${building.id}`);
   }
   return order;
 }
@@ -281,6 +284,17 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
       if ((planned[id] ?? 0) >= amount || sources(id).length) expand(id, amount);
       else needed[id] = (needed[id] ?? 0) + amount;
     }
+    // A project's route gate is satisfied only by a real successful claim.
+    // Schedule its paid departure once, reserve its inputs, and never credit a
+    // pending job as a completed exploration or reveal its private rare reward.
+    for (const [id, count] of Object.entries(tutorial?.requiredExplorations ?? {})) {
+      if ((state.progression.routes[id] ?? 0) >= count || state.jobs.some(job => job.kind === "exploration" && job.targetId === id)) continue;
+      const route = catalog.explorations.find(route => route.id === id);
+      assert(route, `Unknown required research route ${id}`);
+      if (!projectedEligible(route)) continue;
+      recipeWants.set(id, 1);
+      for (const [input, quantity] of Object.entries(route.cost.items)) expand(input, quantity);
+    }
     return { needed, recipeWants, needsRelic };
   }
   const sellExcess = needed => {
@@ -392,6 +406,8 @@ export function simulateJourney({ rules, actorAvailability, progressionRewards, 
     for (;;) {
       const tutorial = courseTerms();
       if (!tutorial || Date.parse(tutorial.availableAt ?? "1970-01-01T00:00:00.000Z") > epoch + clock * 1000
+        || Object.entries(tutorial.requiredBuildings ?? {}).some(([id, level]) => (state.buildings[id] ?? 0) < level)
+        || Object.entries(tutorial.requiredExplorations ?? {}).some(([id, count]) => (state.progression.routes[id] ?? 0) < count)
         || !rules.canAffordEconomy(state, { coins: 0, items: tutorial.items })) break;
       assert(command("complete_resident_order", tutorial.id), `Earned tutorial request failed: ${lastFailure}`);
     }

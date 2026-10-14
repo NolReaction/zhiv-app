@@ -86,3 +86,103 @@ export function auditProductionBalance(catalog) {
   for (const item of edges.keys()) visit(item);
   return rows;
 }
+
+/** Current authored project contracts. Waits belong to deliveries, not buildings. */
+export function auditProjectCourses(catalog) {
+  const items = new Set(catalog.items.map(item => item.id));
+  const buildings = new Map(catalog.buildings.map(building => [building.id, building]));
+  const routes = new Map(catalog.explorations.map(route => [route.id, route]));
+  const courses = new Map((catalog.stageOrders ?? []).map(stage => [stage.homeLevel, stage]));
+  assert.equal(courses.size, catalog.stageOrders?.length, "Duplicate project home level");
+  const ids = new Set();
+  for (const stage of courses.values()) {
+    assert(Number.isSafeInteger(stage.intervalSeconds ?? 0) && (stage.intervalSeconds ?? 0) >= 0, "Invalid project interval");
+    for (const order of stage.orders) {
+      assert(!ids.has(order.id), `Duplicate project order ${order.id}`); ids.add(order.id);
+      assert(Number.isSafeInteger(order.coins) && order.coins > 0, `${order.id}: invalid project reward`);
+      assert(Object.keys(order.items).length > 0 && Object.entries(order.items).every(([id, quantity]) =>
+        items.has(id) && Number.isSafeInteger(quantity) && quantity > 0), `${order.id}: invalid project ingredients`);
+      assert(Object.values(order.items).reduce((sum, count) => sum + count, 0) <= 50, `${order.id}: project delivery exceeds starter storage`);
+      assert(!Object.hasOwn(order.requiredBuildings ?? {}, "warehouse"), `${order.id}: storage must remain optional for projects`);
+      for (const [id, level] of Object.entries(order.requiredBuildings ?? {})) {
+        assert(buildings.get(id)?.levels.some(spec => spec.level === level), `${order.id}: unknown project building ${id}:${level}`);
+      }
+      for (const [id, count] of Object.entries(order.requiredExplorations ?? {})) {
+        assert(routes.has(id) && Number.isSafeInteger(count) && count > 0, `${order.id}: unknown or invalid claimed exploration ${id}`);
+        assert(routes.get(id).requiredHomeLevel <= stage.homeLevel, `${order.id}: claimed exploration opens after its project`);
+      }
+    }
+    assert(Object.entries(stage.completionRewards ?? {}).every(([id, quantity]) => items.has(id)
+      && Number.isSafeInteger(quantity) && quantity > 0), "Invalid project completion reward");
+  }
+  const third = courses.get(3), fourth = courses.get(4);
+  assert(third?.orders.length === 8 && third.intervalSeconds === 86400,
+    "Third stage project must keep eight deliveries and seven daily waits");
+  assert.deepEqual(third.completionRewards, { living_resin: 1 }, "Third stage must guarantee its home relic");
+  assert(fourth?.orders.length === 12 && fourth.intervalSeconds === 86400,
+    "Fourth stage project must keep twelve deliveries and eleven daily waits");
+  assert.equal(fourth.orders.reduce((sum, order) => sum + order.coins, 0), 50000,
+    "Fourth stage one-time project financing must total 50000 coins");
+  assert.deepEqual(fourth.completionRewards, { ancient_core: 1, moon_crystal: 1 }, "Fourth stage must guarantee both home relics");
+  assert(fourth.orders.slice(4).every(order => order.requiredBuildings?.bridge === 1), "Fourth stage deliveries from five onward require the bridge");
+  const final = fourth.orders.at(-1);
+  assert.equal(final.requiredBuildings?.lighthouse, 1, "Fourth stage final delivery requires the lighthouse");
+  assert.equal(final.requiredExplorations?.ancient_ruins, 1, "Fourth stage final delivery requires a claimed ruins expedition");
+  const rare = new Set(catalog.rareDrops?.itemIds ?? []);
+  const rareFish = new Set([...(catalog.fishing?.classes ?? []), ...(catalog.fishing?.fish ?? [])]
+    .filter(fish => ["rare", "epic", "legendary"].includes(fish.rarity)).map(fish => fish.itemId));
+  const dependsOnRare = (id, path = new Set()) => {
+    if (rare.has(id) || rareFish.has(id)) return true;
+    if (path.has(id)) return false; // The general production audit reports cycles separately.
+    const recipe = catalog.recipes.find(recipe => recipe.rewards[id] > 0);
+    return Boolean(recipe && Object.keys(recipe.cost.items).some(input => dependsOnRare(input, new Set(path).add(id))));
+  };
+  assert(fourth.orders.every(order => Object.keys(order.items).every(id => !dependsOnRare(id))),
+    "Fourth stage deliveries must not depend on a rare find or rare fish, including recipe ingredients");
+  for (const stage of [third, fourth]) {
+    const home = buildings.get("home").levels.find(level => level.level === stage.homeLevel + 1);
+    assert(home, `Project ${stage.homeLevel}: next home is missing`);
+    assert(Object.entries(home.cost.items).filter(([id]) => rare.has(id)).every(([id, quantity]) =>
+      quantity <= (stage.completionRewards[id] ?? 0)), `Home ${home.level}: required relics must be covered by guaranteed project rewards`);
+  }
+  return [...courses.values()].map(stage => ({ homeLevel: stage.homeLevel, orderCount: stage.orders.length,
+    intervalSeconds: stage.intervalSeconds ?? 0, minimumWaitSeconds: Math.max(0, stage.orders.length - 1) * (stage.intervalSeconds ?? 0),
+    coins: stage.orders.reduce((sum, order) => sum + order.coins, 0), completionRewards: { ...stage.completionRewards },
+    requiredClaimedExplorations: Object.assign({}, ...stage.orders.map(order => order.requiredExplorations ?? {})) }));
+}
+
+/** Unit work and construction accounting; this is not a calendar-playthrough simulation. */
+export function auditFourthStageBudget(catalog, requiredConstruction) {
+  const constructionCoins = requiredConstruction.reduce((sum, node) => sum + node.cost.coins, 0);
+  const constructionSeconds = requiredConstruction.reduce((sum, node) => sum + node.seconds, 0);
+  assert.equal(constructionCoins, 73300, "Fourth stage mandatory construction must total 73300 coins");
+  assert.equal(constructionSeconds, 96 * 3600, "Fourth stage mandatory construction must total 96 hours");
+  const stage = catalog.stageOrders.find(stage => stage.homeLevel === 4);
+  const ruins = catalog.explorations.find(route => route.id === "ancient_ruins");
+  assert(ruins, "Fourth stage needs a real ruins expedition");
+  const runs = new Map(), queueSeconds = {};
+  const expand = (itemId, count, path = new Set()) => {
+    assert(!path.has(itemId), `Fourth stage recipe cycle at ${itemId}`);
+    const recipe = catalog.recipes.filter(recipe => (recipe.rewards[itemId] ?? 0) > 0).sort((a, b) =>
+      a.requiredHomeLevel - b.requiredHomeLevel || a.buildingLevel - b.buildingLevel
+      || Object.keys(a.requiredRecipes ?? {}).length - Object.keys(b.requiredRecipes ?? {}).length
+      || a.id.localeCompare(b.id))[0];
+    if (!recipe) return;
+    const amount = count / recipe.rewards[itemId];
+    runs.set(recipe.id, (runs.get(recipe.id) ?? 0) + amount);
+    queueSeconds[recipe.buildingId] = (queueSeconds[recipe.buildingId] ?? 0) + amount * recipe.seconds;
+    for (const [id, quantity] of Object.entries(recipe.cost.items)) expand(id, quantity * amount, new Set(path).add(itemId));
+  };
+  for (const quantities of [...requiredConstruction.map(node => node.cost.items), ...stage.orders.map(order => order.items), ruins.cost.items]) {
+    for (const [id, quantity] of Object.entries(quantities)) expand(id, quantity);
+  }
+  const longWorkshopRuns = Object.fromEntries([...runs].filter(([id]) => {
+    const recipe = catalog.recipes.find(recipe => recipe.id === id);
+    return recipe.buildingId === "workshop" && recipe.seconds >= 1800;
+  }));
+  const longWorkshopJobs = Object.values(longWorkshopRuns).reduce((sum, count) => sum + count, 0);
+  assert(longWorkshopJobs <= 40, "Fourth stage mandatory workshop workload must stay within forty long unit jobs");
+  return { constructionCoins, constructionSeconds, constructionCount: requiredConstruction.length,
+    projectCoins: stage.orders.reduce((sum, order) => sum + order.coins, 0), longWorkshopJobs, longWorkshopRuns,
+    productionQueueSeconds: queueSeconds, timingBasis: "Occupied queues and delivery waits are separate; visits, coins, mining, fishing and wall-clock playthrough are not simulated" };
+}

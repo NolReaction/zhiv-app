@@ -50,7 +50,7 @@ function reachableIds(currentGraph, accepts) {
 }
 
 test("progression contains every catalog building level, recipe and exploration exactly once", () => {
-  assert.equal(graph.nodes.filter(value => value.kind === "building").length, 45);
+  assert.equal(graph.nodes.filter(value => value.kind === "building").length, 47);
   assert.equal(graph.nodes.filter(value => value.kind === "recipe").length, catalog.recipes.length);
   assert.equal(graph.nodes.filter(value => value.kind === "exploration").length, catalog.explorations.length);
   for (const building of catalog.buildings) for (const level of building.levels) {
@@ -96,10 +96,10 @@ test("node and edge ids are unique and actual world remains connected without pr
   assert.equal(all.size, ids.size);
   const actual = reachableIds(graph, edge => edge.kind !== "plan" && edge.kind !== "cost");
   for (const value of graph.nodes.filter(value => value.status === "active")) assert(actual.has(value.id), `Disconnected active node ${value.id}`);
-  assert.equal(graph.nodes.length, 156);
+  assert.equal(graph.nodes.length, 163);
   assert.equal(node("pearls").status, "active");
   assert.ok(!graph.edges.some(edge => edge.source === "pearls" && ["requirement", "unlock"].includes(edge.kind)), "optional acceleration never gates progression");
-  assert.equal(graph.nodes.filter(value => value.status === "plan").length, 16);
+  assert.equal(graph.nodes.filter(value => value.status === "plan").length, 14);
 });
 
 test("fish ingredients resolve to a real chance source without inventing guaranteed species rewards", () => {
@@ -283,19 +283,28 @@ test("market requires both home and completed exploration; any route suffices in
   assert.deepEqual(Array.from(getPrerequisiteIds(graph, "claimed", false)), ["claimed"]);
 });
 
-test("future bridge and lighthouse proposals cannot gate actual production, collections or market", () => {
+test("restored landmarks gate real routes while future proposals cannot gate active progression", () => {
   const proposed = new Set(graph.nodes.filter(value => value.status === "plan").map(value => value.id));
   assert.equal(node("bridge_ruin").status, "active");
   assert.equal(node("lighthouse_ruin").status, "active");
-  assert.equal(node("bridge").status, "plan");
-  assert.equal(node("lighthouse").status, "plan");
+  assert.equal(node("bridge").status, "active");
+  assert.equal(node("lighthouse").status, "active");
   assert.equal(node("mine_interior").status, "plan");
   for (const edge of graph.edges.filter(edge => proposed.has(edge.source) || proposed.has(edge.target))) assert.equal(edge.kind, "plan", edge.id);
   for (const value of graph.nodes.filter(value => value.status === "active")) {
     for (const prerequisite of getPrerequisiteIds(graph, value.id)) assert(!proposed.has(prerequisite), `${prerequisite} gates ${value.id}`);
   }
-  const bridge = getPrerequisiteIds(graph, "bridge", false);
-  for (const id of ["bridge_ruin", "r:make_planks", "r:make_rope", "r:make_tools"]) assert(bridge.has(id));
+  const bridge = getPrerequisiteIds(graph, "b:bridge:1", false);
+  for (const id of ["b:home:4", "b:workshop:3"]) assert(bridge.has(id));
+  assert(hasEdge("bridge", "b:bridge:1", "contains"));
+  assert(hasEdge("lighthouse", "b:lighthouse:1", "contains"));
+  assert(hasEdge("b:bridge:1", "e:far_bank_path", "requirement"));
+  assert(hasEdge("b:bridge:1", "e:far_bank_grove", "requirement"));
+  assert(hasEdge("b:lighthouse:1", "e:ancient_ruins", "requirement"));
+  assert.deepEqual(plain(node("e:ancient_ruins").requirements), { home: 4, bridge: 1, lighthouse: 1, workshop: 3 });
+  const finalHouse = getPrerequisiteIds(graph, "b:home:5", false);
+  assert(finalHouse.has("b:bridge:1"));
+  assert(finalHouse.has("b:lighthouse:1"));
   assert(!getPrerequisiteIds(graph, "album").has("new_finds"));
   assert(!getPrerequisiteIds(graph, "leaderboard").has("taps"), "Rating flow is not an unlock gate");
 });
@@ -303,7 +312,7 @@ test("future bridge and lighthouse proposals cannot gate actual production, coll
 test("existing places contain improvements without becoming construction or recipe gates", () => {
   const expected = {
     "place:home": ["home", "warehouse"], "place:workshop": ["workshop", "kiln"],
-    bush: ["garden"], campfire: ["dryer"], "place:woodlot": ["woodlot"], "place:quarry": ["quarry"],
+    bush: ["garden"], campfire: ["dryer"], "place:woodlot": ["woodlot"], "place:quarry": ["quarry"], bridge: ["bridge"], lighthouse: ["lighthouse"],
   };
   assert.equal(graph.nodes.filter(value => value.kind === "location").length, Object.keys(expected).length);
   for (const [locationId, buildingIds] of Object.entries(expected)) {
@@ -526,4 +535,16 @@ test("the orders graph describes the week-long house-four project and permanent 
     assert(!("warehouse" in node(`b:${building.id}:${level.level}`).requirements), `${building.id}:${level.level}: storage is optional`);
   for (const recipe of catalog.recipes) assert(!("warehouse" in node(`r:${recipe.id}`).requirements), recipe.id);
   for (const route of catalog.explorations) assert(!("warehouse" in node(`e:${route.id}`).requirements), route.id);
+});
+
+test("the house-five graph distinguishes project funding and guaranteed relics from random exploration", () => {
+  assert.match(node("orders").description, /Дом 5 требует 12 поставок с интервалом 24 ч/);
+  assert.match(node("orders").description, /50000 монет за весь проект/);
+  assert.match(node("orders").description, /Финал гарантирует Древнее ядро × 1, Лунный кристалл × 1/);
+  assert.match(node("orders").description, /полученный результат исследования руин; запуск или отмена не засчитываются/);
+  assert.match(node("rare_materials").description, /Проект дома 4 отдельно гарантирует Древнее ядро × 1, Лунный кристалл × 1/);
+  assert.match(node("rare_materials").description, /переход к дому 5 не зависит от случайного вида реликвии/);
+  assert.equal(node("e:ancient_ruins").rewards.ancient_core, undefined);
+  assert.equal(node("e:ancient_ruins").rewards.moon_crystal, undefined);
+  for (const relic of ["ancient_core", "moon_crystal"]) assert.equal(getProgressionResourceSource(graph, relic).id, "rare_materials");
 });

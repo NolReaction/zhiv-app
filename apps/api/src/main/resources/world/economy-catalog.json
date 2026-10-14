@@ -1,5 +1,5 @@
 {
-  "version": 8,
+  "version": 9,
   "maxBatch": 10,
   "productionSlots": {
     "upgrades": [
@@ -411,6 +411,20 @@
       "category": "provisions",
       "baseSellPrice": 30,
       "tradable": true
+    },
+    {
+      "id": "trail_ration",
+      "name": "Походный паёк",
+      "category": "provisions",
+      "baseSellPrice": 360,
+      "tradable": true
+    },
+    {
+      "id": "research_gear",
+      "name": "Снаряжение исследователя",
+      "category": "crafted",
+      "baseSellPrice": 1600,
+      "tradable": true
     }
   ],
   "buildings": [
@@ -490,16 +504,16 @@
         },
         {
           "level": 5,
-          "seconds": 864000,
+          "seconds": 172800,
           "cost": {
-            "coins": 420000,
+            "coins": 25000,
             "items": {
-              "beams": 6,
-              "cut_stone": 6,
-              "bricks": 7,
-              "glass": 7,
-              "reinforced_parts": 7,
-              "cloth": 7,
+              "beams": 2,
+              "cut_stone": 2,
+              "bricks": 2,
+              "glass": 2,
+              "reinforced_parts": 2,
+              "cloth": 2,
               "ancient_core": 1,
               "moon_crystal": 1
             }
@@ -509,7 +523,9 @@
             "workshop": 4,
             "quarry": 4,
             "kiln": 4,
-            "dryer": 3
+            "dryer": 3,
+            "bridge": 1,
+            "lighthouse": 1
           }
         }
       ]
@@ -564,14 +580,14 @@
         },
         {
           "level": 4,
-          "seconds": 86400,
+          "seconds": 14400,
           "cost": {
-            "coins": 35000,
+            "coins": 6000,
             "items": {
-              "beams": 11,
-              "bricks": 11,
-              "glass": 12,
-              "tools": 8
+              "beams": 1,
+              "bricks": 2,
+              "glass": 2,
+              "tools": 1
             }
           },
           "requiredHomeLevel": 4,
@@ -581,15 +597,15 @@
         },
         {
           "level": 5,
-          "seconds": 172800,
+          "seconds": 28800,
           "cost": {
-            "coins": 120000,
+            "coins": 12000,
             "items": {
-              "beams": 8,
-              "bricks": 9,
-              "glass": 9,
-              "tools": 9,
-              "reinforced_parts": 7
+              "beams": 2,
+              "bricks": 2,
+              "glass": 2,
+              "tools": 1,
+              "reinforced_parts": 1
             }
           },
           "requiredHomeLevel": 5,
@@ -651,13 +667,14 @@
         },
         {
           "level": 4,
-          "seconds": 172800,
+          "seconds": 21600,
           "cost": {
-            "coins": 48000,
+            "coins": 6000,
             "items": {
-              "beams": 14,
-              "cut_stone": 14,
-              "metal_parts": 14
+              "beams": 1,
+              "cut_stone": 1,
+              "metal_parts": 1,
+              "rope": 1
             }
           },
           "requiredHomeLevel": 4,
@@ -667,14 +684,14 @@
         },
         {
           "level": 5,
-          "seconds": 345600,
+          "seconds": 28800,
           "cost": {
-            "coins": 160000,
+            "coins": 12000,
             "items": {
-              "beams": 10,
-              "tools": 10,
-              "reinforced_parts": 11,
-              "rope": 11
+              "beams": 2,
+              "tools": 1,
+              "reinforced_parts": 1,
+              "rope": 2
             }
           },
           "requiredHomeLevel": 5,
@@ -739,13 +756,14 @@
         },
         {
           "level": 4,
-          "seconds": 259200,
+          "seconds": 21600,
           "cost": {
-            "coins": 60000,
+            "coins": 6500,
             "items": {
-              "beams": 14,
-              "cut_stone": 14,
-              "metal_parts": 14
+              "beams": 1,
+              "cut_stone": 1,
+              "metal_parts": 1,
+              "planks": 2
             }
           },
           "requiredHomeLevel": 4,
@@ -755,14 +773,14 @@
         },
         {
           "level": 5,
-          "seconds": 432000,
+          "seconds": 36000,
           "cost": {
-            "coins": 200000,
+            "coins": 15000,
             "items": {
-              "beams": 10,
-              "reinforced_parts": 10,
-              "tools": 11,
-              "glass": 11
+              "beams": 2,
+              "reinforced_parts": 1,
+              "tools": 1,
+              "glass": 2
             }
           },
           "requiredHomeLevel": 5,
@@ -827,14 +845,14 @@
         },
         {
           "level": 4,
-          "seconds": 259200,
+          "seconds": 28800,
           "cost": {
-            "coins": 110000,
+            "coins": 9000,
             "items": {
-              "beams": 10,
-              "cut_stone": 10,
-              "metal_parts": 11,
-              "glass": 11
+              "beams": 1,
+              "metal_parts": 1,
+              "glass": 2,
+              "cloth": 1
             }
           },
           "requiredHomeLevel": 4,
@@ -845,14 +863,14 @@
         },
         {
           "level": 5,
-          "seconds": 432000,
+          "seconds": 43200,
           "cost": {
-            "coins": 360000,
+            "coins": 18000,
             "items": {
-              "reinforced_parts": 10,
-              "tools": 10,
-              "beams": 11,
-              "glass": 11
+              "reinforced_parts": 2,
+              "tools": 1,
+              "beams": 2,
+              "glass": 2
             }
           },
           "requiredHomeLevel": 5,
@@ -883,13 +901,13 @@
         },
         {
           "level": 2,
-          "seconds": 21600,
+          "seconds": 7200,
           "cost": {
             "coins": 1800,
             "items": {
-              "planks": 12,
-              "stone": 15,
-              "rope": 5
+              "planks": 2,
+              "stone": 3,
+              "rope": 1
             }
           },
           "requiredHomeLevel": 3,
@@ -899,14 +917,14 @@
         },
         {
           "level": 3,
-          "seconds": 64800,
+          "seconds": 14400,
           "cost": {
-            "coins": 11000,
+            "coins": 4000,
             "items": {
-              "planks": 12,
-              "bricks": 12,
-              "iron_ingot": 8,
-              "glass": 10
+              "planks": 2,
+              "bricks": 2,
+              "iron_ingot": 1,
+              "glass": 1
             }
           },
           "requiredHomeLevel": 3,
@@ -916,14 +934,14 @@
         },
         {
           "level": 4,
-          "seconds": 172800,
+          "seconds": 21600,
           "cost": {
-            "coins": 42000,
+            "coins": 6000,
             "items": {
-              "beams": 11,
-              "bricks": 11,
-              "glass": 12,
-              "tools": 8
+              "beams": 1,
+              "bricks": 2,
+              "glass": 2,
+              "tools": 1
             }
           },
           "requiredHomeLevel": 4,
@@ -933,14 +951,14 @@
         },
         {
           "level": 5,
-          "seconds": 259200,
+          "seconds": 28800,
           "cost": {
-            "coins": 140000,
+            "coins": 12000,
             "items": {
-              "reinforced_parts": 10,
-              "beams": 10,
-              "glass": 11,
-              "cloth": 11
+              "reinforced_parts": 1,
+              "beams": 1,
+              "glass": 2,
+              "cloth": 1
             }
           },
           "requiredHomeLevel": 5,
@@ -991,13 +1009,13 @@
         },
         {
           "level": 3,
-          "seconds": 86400,
+          "seconds": 14400,
           "cost": {
-            "coins": 16000,
+            "coins": 4000,
             "items": {
-              "planks": 14,
-              "bricks": 15,
-              "iron_ingot": 13
+              "planks": 2,
+              "bricks": 2,
+              "iron_ingot": 1
             }
           },
           "requiredHomeLevel": 3,
@@ -1008,14 +1026,14 @@
         },
         {
           "level": 4,
-          "seconds": 259200,
+          "seconds": 28800,
           "cost": {
-            "coins": 65000,
+            "coins": 8000,
             "items": {
-              "beams": 10,
-              "cut_stone": 10,
-              "glass": 11,
-              "metal_parts": 11
+              "beams": 1,
+              "cut_stone": 1,
+              "glass": 2,
+              "metal_parts": 1
             }
           },
           "requiredHomeLevel": 4,
@@ -1026,14 +1044,14 @@
         },
         {
           "level": 5,
-          "seconds": 432000,
+          "seconds": 36000,
           "cost": {
-            "coins": 240000,
+            "coins": 15000,
             "items": {
-              "reinforced_parts": 10,
-              "bricks": 10,
-              "glass": 11,
-              "tools": 11
+              "reinforced_parts": 1,
+              "bricks": 2,
+              "glass": 2,
+              "tools": 1
             }
           },
           "requiredHomeLevel": 5,
@@ -1077,7 +1095,7 @@
         },
         {
           "level": 3,
-          "seconds": 43200,
+          "seconds": 14400,
           "cost": {
             "coins": 1000,
             "items": {
@@ -1093,7 +1111,7 @@
         },
         {
           "level": 4,
-          "seconds": 172800,
+          "seconds": 7200,
           "cost": {
             "coins": 0,
             "items": {
@@ -1108,7 +1126,7 @@
         },
         {
           "level": 5,
-          "seconds": 259200,
+          "seconds": 14400,
           "cost": {
             "coins": 0,
             "items": {
@@ -1123,7 +1141,7 @@
         },
         {
           "level": 6,
-          "seconds": 345600,
+          "seconds": 21600,
           "cost": {
             "coins": 0,
             "items": {
@@ -1138,7 +1156,7 @@
         },
         {
           "level": 7,
-          "seconds": 432000,
+          "seconds": 28800,
           "cost": {
             "coins": 0,
             "items": {
@@ -1153,7 +1171,7 @@
         },
         {
           "level": 8,
-          "seconds": 518400,
+          "seconds": 43200,
           "cost": {
             "coins": 0,
             "items": {
@@ -1168,7 +1186,7 @@
         },
         {
           "level": 9,
-          "seconds": 604800,
+          "seconds": 57600,
           "cost": {
             "coins": 0,
             "items": {
@@ -1183,7 +1201,7 @@
         },
         {
           "level": 10,
-          "seconds": 691200,
+          "seconds": 86400,
           "cost": {
             "coins": 0,
             "items": {
@@ -1195,6 +1213,55 @@
           "requiredHomeLevel": 1,
           "requiredBuildings": {},
           "warehouseCapacity": 500
+        }
+      ]
+    },
+    {
+      "id": "bridge",
+      "name": "Мост на дальний берег",
+      "description": "Восстанови существующий деревянный мост: он открывает дальний берег и новые походы. Текущий этап включает одно восстановление; новые уровни появятся позднее.",
+      "levels": [
+        {
+          "level": 1,
+          "seconds": 14400,
+          "cost": {
+            "coins": 4000,
+            "items": {
+              "beams": 1,
+              "planks": 2,
+              "rope": 2,
+              "metal_parts": 1
+            }
+          },
+          "requiredHomeLevel": 4,
+          "requiredBuildings": {
+            "workshop": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "lighthouse",
+      "name": "Лесной маяк",
+      "description": "Восстанови существующий маяк после моста. Его свет открывает путь к древним руинам. Текущий этап включает одно восстановление.",
+      "levels": [
+        {
+          "level": 1,
+          "seconds": 21600,
+          "cost": {
+            "coins": 5000,
+            "items": {
+              "cut_stone": 2,
+              "bricks": 2,
+              "glass": 2,
+              "tools": 1
+            }
+          },
+          "requiredHomeLevel": 4,
+          "requiredBuildings": {
+            "bridge": 1,
+            "kiln": 3
+          }
         }
       ]
     }
@@ -1592,7 +1659,7 @@
       "id": "make_tools",
       "name": "Собрать инструменты",
       "buildingId": "workshop",
-      "buildingLevel": 4,
+      "buildingLevel": 3,
       "requiredHomeLevel": 4,
       "requiredBuildings": {},
       "seconds": 5400,
@@ -1999,6 +2066,48 @@
         "iron_ingot": 1
       },
       "maxBatch": 1
+    },
+    {
+      "id": "prepare_trail_ration",
+      "name": "Собрать походный паёк",
+      "buildingId": "dryer",
+      "buildingLevel": 2,
+      "requiredHomeLevel": 4,
+      "requiredBuildings": {},
+      "seconds": 3600,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "smoked_fish": 1,
+          "dried_berries": 1,
+          "berry_compote": 1
+        }
+      },
+      "rewards": {
+        "trail_ration": 1
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "make_research_gear",
+      "name": "Подготовить снаряжение исследователя",
+      "buildingId": "workshop",
+      "buildingLevel": 3,
+      "requiredHomeLevel": 4,
+      "requiredBuildings": {},
+      "seconds": 7200,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "tools": 1,
+          "cloth": 1,
+          "rope": 2
+        }
+      },
+      "rewards": {
+        "research_gear": 1
+      },
+      "maxBatch": 1
     }
   ],
   "explorations": [
@@ -2355,6 +2464,77 @@
         "ore": 8,
         "clay": 8,
         "sand": 8
+      }
+    },
+    {
+      "id": "far_bank_path",
+      "name": "Тропа дальнего берега · 2 ч",
+      "description": "После восстановления моста Мохлик может исследовать дальний берег. Походный паёк расходуется при старте; обычные материалы гарантированы после получения.",
+      "requiredHomeLevel": 4,
+      "requiredBuildings": {
+        "bridge": 1
+      },
+      "seconds": 7200,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "trail_ration": 1
+        }
+      },
+      "rewards": {
+        "wood": 8,
+        "fiber": 6,
+        "hardwood": 4,
+        "stone": 4
+      }
+    },
+    {
+      "id": "far_bank_grove",
+      "name": "Роща за рекой · 6 ч",
+      "description": "Дальний поход через восстановленный мост. Два пайка расходуются при старте; древесина и материалы для печи входят в гарантированную поставку.",
+      "requiredHomeLevel": 4,
+      "requiredBuildings": {
+        "bridge": 1
+      },
+      "seconds": 21600,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "trail_ration": 2
+        }
+      },
+      "rewards": {
+        "wood": 4,
+        "hardwood": 8,
+        "ore": 8,
+        "sand": 8,
+        "clay": 6
+      }
+    },
+    {
+      "id": "ancient_ruins",
+      "name": "Древние руины · 10 ч",
+      "description": "Свет восстановленного маяка помогает найти руины. Паёк и снаряжение расходуются при старте. Маршрут гарантирует материалы; случайная реликвия не нужна для завершения проекта.",
+      "requiredHomeLevel": 4,
+      "requiredBuildings": {
+        "bridge": 1,
+        "lighthouse": 1,
+        "workshop": 3
+      },
+      "seconds": 36000,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "trail_ration": 1,
+          "research_gear": 1
+        }
+      },
+      "rewards": {
+        "wood": 8,
+        "hardwood": 10,
+        "ore": 12,
+        "sand": 8,
+        "resin": 4
       }
     }
   ],
@@ -2874,7 +3054,9 @@
       "fish_sturgeon": 180,
       "fish_mirror_koi": 180,
       "fish_shark": 320,
-      "fish_soup": 220
+      "fish_soup": 220,
+      "trail_ration": 360,
+      "research_gear": 1600
     }
   },
   "rareDrops": {
@@ -3651,6 +3833,75 @@
           "requiredBuildings": {
             "dryer": 2
           }
+        },
+        {
+          "id": "builder_trail_supplies",
+          "residentId": "builder",
+          "name": "Запасы для дальнего берега",
+          "description": "Подготовь небольшой паёк и связки для следующего похода. Это обычная повторяемая просьба.",
+          "requiredHomeLevel": 4,
+          "requiredBuildings": {
+            "dryer": 2,
+            "workshop": 1
+          },
+          "items": {
+            "trail_ration": 1,
+            "rope": 2
+          },
+          "coins": 630
+        },
+        {
+          "id": "builder_research_tools",
+          "residentId": "builder",
+          "name": "Инструменты исследователя",
+          "description": "Снаряжение и готовый инструмент помогут изучать дальний берег. Это обычная повторяемая просьба.",
+          "requiredHomeLevel": 4,
+          "requiredBuildings": {
+            "workshop": 3,
+            "kiln": 2,
+            "woodlot": 1,
+            "quarry": 2
+          },
+          "items": {
+            "research_gear": 1,
+            "tools": 1
+          },
+          "coins": 3900
+        },
+        {
+          "id": "plesk_trail_table",
+          "residentId": "plesk",
+          "name": "Походный стол у воды",
+          "description": "Соберу припасы и свежий улов для тех, кто собирается за реку. Это обычная повторяемая просьба.",
+          "requiredHomeLevel": 4,
+          "requiredBuildings": {
+            "dryer": 2
+          },
+          "items": {
+            "trail_ration": 2,
+            "fish_common": 2
+          },
+          "coins": 1200
+        },
+        {
+          "id": "builder_survey_camp",
+          "residentId": "builder",
+          "name": "Набор для исследовательского лагеря",
+          "description": "Подготовь снаряжение и паёк для лагеря за восстановленным мостом. Это обычная повторяемая просьба.",
+          "requiredHomeLevel": 4,
+          "requiredBuildings": {
+            "workshop": 3,
+            "dryer": 2,
+            "bridge": 1,
+            "kiln": 2,
+            "quarry": 2,
+            "woodlot": 1
+          },
+          "items": {
+            "research_gear": 1,
+            "trail_ration": 1
+          },
+          "coins": 2940
         }
       ],
       "progression": {
@@ -3913,6 +4164,172 @@
             "fish_soup": 3
           },
           "coins": 1350
+        }
+      ]
+    },
+    {
+      "homeLevel": 4,
+      "intervalSeconds": 86400,
+      "completionRewards": {
+        "ancient_core": 1,
+        "moon_crystal": 1
+      },
+      "orders": [
+        {
+          "id": "stage4_survey_order",
+          "residentId": "builder",
+          "name": "Разметка дальнего берега",
+          "description": "Однократная проектная поставка. Награда включает финансирование восстановления хозяйства; повторяемые просьбы жителей оплачиваются отдельно.",
+          "items": {
+            "planks": 2,
+            "rope": 2
+          },
+          "coins": 2000
+        },
+        {
+          "id": "stage4_hearth_order",
+          "residentId": "builder",
+          "name": "Запасы для походов",
+          "description": "Однократная проектная поставка. Награда включает финансирование восстановления хозяйства; повторяемые просьбы жителей оплачиваются отдельно.",
+          "items": {
+            "bricks": 2,
+            "charcoal": 2
+          },
+          "coins": 2500
+        },
+        {
+          "id": "stage4_first_ration_order",
+          "residentId": "plesk",
+          "name": "Первый походный паёк",
+          "description": "Однократная проектная поставка. Награда включает финансирование восстановления хозяйства; повторяемые просьбы жителей оплачиваются отдельно.",
+          "items": {
+            "trail_ration": 1
+          },
+          "coins": 3000
+        },
+        {
+          "id": "stage4_tools_order",
+          "residentId": "builder",
+          "name": "Инструменты для восстановления",
+          "description": "Однократная проектная поставка. Награда включает финансирование восстановления хозяйства; повторяемые просьбы жителей оплачиваются отдельно.",
+          "items": {
+            "tools": 1
+          },
+          "coins": 4000
+        },
+        {
+          "id": "stage4_bridge_order",
+          "residentId": "builder",
+          "name": "Опоры дальнего берега",
+          "description": "Однократная проектная поставка. Награда включает финансирование восстановления хозяйства; повторяемые просьбы жителей оплачиваются отдельно.",
+          "items": {
+            "beams": 1,
+            "cut_stone": 1
+          },
+          "coins": 4000,
+          "requiredBuildings": {
+            "bridge": 1
+          }
+        },
+        {
+          "id": "stage4_glass_order",
+          "residentId": "builder",
+          "name": "Свет для маяка",
+          "description": "Однократная проектная поставка. Награда включает финансирование восстановления хозяйства; повторяемые просьбы жителей оплачиваются отдельно.",
+          "items": {
+            "glass": 2
+          },
+          "coins": 4500,
+          "requiredBuildings": {
+            "bridge": 1
+          }
+        },
+        {
+          "id": "stage4_materials_order",
+          "residentId": "builder",
+          "name": "Материалы для исследования",
+          "description": "Однократная проектная поставка. Награда включает финансирование восстановления хозяйства; повторяемые просьбы жителей оплачиваются отдельно.",
+          "items": {
+            "wood": 8,
+            "ore": 6
+          },
+          "coins": 5000,
+          "requiredBuildings": {
+            "bridge": 1
+          }
+        },
+        {
+          "id": "stage4_river_meals_order",
+          "residentId": "plesk",
+          "name": "Улов и обеды для похода",
+          "description": "Однократная проектная поставка. Награда включает финансирование восстановления хозяйства; повторяемые просьбы жителей оплачиваются отдельно.",
+          "items": {
+            "fish_common": 6,
+            "grilled_fish": 2
+          },
+          "coins": 3000,
+          "requiredBuildings": {
+            "bridge": 1
+          }
+        },
+        {
+          "id": "stage4_grove_order",
+          "residentId": "builder",
+          "name": "Древесина для защиты построек",
+          "description": "Однократная проектная поставка. Награда включает финансирование восстановления хозяйства; повторяемые просьбы жителей оплачиваются отдельно.",
+          "items": {
+            "hardwood": 4,
+            "resin": 4
+          },
+          "coins": 4500,
+          "requiredBuildings": {
+            "bridge": 1
+          }
+        },
+        {
+          "id": "stage4_provisions_order",
+          "residentId": "plesk",
+          "name": "Припасы для дальней дороги",
+          "description": "Однократная проектная поставка. Награда включает финансирование восстановления хозяйства; повторяемые просьбы жителей оплачиваются отдельно.",
+          "items": {
+            "trail_ration": 2
+          },
+          "coins": 5000,
+          "requiredBuildings": {
+            "bridge": 1
+          }
+        },
+        {
+          "id": "stage4_reinforcement_order",
+          "residentId": "builder",
+          "name": "Крепление новой пристройки",
+          "description": "Однократная проектная поставка. Награда включает финансирование восстановления хозяйства; повторяемые просьбы жителей оплачиваются отдельно.",
+          "items": {
+            "reinforced_parts": 1
+          },
+          "coins": 5500,
+          "requiredBuildings": {
+            "bridge": 1
+          }
+        },
+        {
+          "id": "stage4_completion_order",
+          "residentId": "builder",
+          "name": "Возвращение из древних руин",
+          "description": "Однократная проектная поставка. Награда включает финансирование восстановления хозяйства; повторяемые просьбы жителей оплачиваются отдельно.",
+          "items": {
+            "cloth": 1,
+            "glass": 2,
+            "trail_ration": 1
+          },
+          "coins": 7000,
+          "requiredBuildings": {
+            "bridge": 1,
+            "lighthouse": 1
+          },
+          "requiredExplorations": {
+            "ancient_ruins": 1
+          }
         }
       ]
     }

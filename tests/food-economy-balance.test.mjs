@@ -55,10 +55,11 @@ test("cooking ceilings account for extra inventory, real production and full NPC
   assert.equal(cooked.productionMinutes, 60);
   assert.equal(cooked.netCoins, cooked.rewardCoins - cooked.purchaseCoins - cooked.productionCoinCost - cooked.otherOwnedInputsSaleCoins);
   const expanded = report.shopDeliveryBudgets[0].matchingOrdersWithAdditionalRawIngredientsCeiling;
-  assert.deepEqual(expanded.otherOwnedInputs, { berries: 15, charcoal: 3, wood: 3, fish_uncommon: 3 });
-  assert.equal(expanded.otherOwnedInputsSaleCoins, 600);
-  assert.equal(expanded.productionMinutes, 180);
-  assert.equal(expanded.netCoins, 1020);
+  assert.deepEqual(expanded.orderCounts, { plesk_trail_table: 3 });
+  assert.deepEqual(expanded.otherOwnedInputs, { wood: 6, fish_common: 12, berries: 48 });
+  assert.equal(expanded.otherOwnedInputsSaleCoins, 1140);
+  assert.equal(expanded.productionMinutes, 828);
+  assert.equal(expanded.netCoins, 1740);
   assert.equal(expanded.netCoins, expanded.rewardCoins - expanded.purchaseCoins - expanded.productionCoinCost - expanded.otherOwnedInputsSaleCoins);
 });
 

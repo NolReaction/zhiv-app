@@ -46,6 +46,8 @@ export type EconomyRecipe = EconomyCatalog["recipes"][number] & {
 export type EconomyStageOrder = {
   id: string; name: string; items: Record<string, number>; coins: number;
   inputNpcValue: number; addedNpcValue: number;
+  requiredBuildings: Record<string, number>;
+  requiredExplorations: Record<string, number>;
 };
 export type EconomyStage = {
   homeLevel: number;
@@ -192,7 +194,8 @@ function buildStages(catalog: EconomyCatalog): EconomyStage[] {
     const course = catalog.stageOrders?.find(stage => stage.homeLevel === homeLevel);
     const terms = homeLevel === 1 ? catalog.onboarding?.residentOrders ?? (catalog.onboarding ? [catalog.onboarding.residentOrder] : []) : course?.orders ?? [];
     const orders: EconomyStageOrder[] = terms.map(order => ({ id: order.id, name: order.name, items: { ...order.items }, coins: order.coins,
-      inputNpcValue: npcValue(catalog, order.items), addedNpcValue: order.coins - npcValue(catalog, order.items) }));
+      inputNpcValue: npcValue(catalog, order.items), addedNpcValue: order.coins - npcValue(catalog, order.items),
+      requiredBuildings: { ...order.requiredBuildings }, requiredExplorations: { ...order.requiredExplorations } }));
     const buildingItems: Record<string, number> = {}, orderItems: Record<string, number> = {};
     for (const building of buildings) addCounts(buildingItems, building.cost.items);
     for (const order of orders) addCounts(orderItems, order.items);
@@ -200,7 +203,7 @@ function buildStages(catalog: EconomyCatalog): EconomyStage[] {
     return { homeLevel, nextHomeLevel: home.level, buildings, buildingCoins: buildings.reduce((sum, building) => sum + building.cost.coins, 0),
       buildingItems, buildSeconds: buildings.reduce((sum, building) => sum + building.seconds, 0), orders,
       orderCoins: orders.reduce((sum, order) => sum + order.coins, 0), orderItems, intervalSeconds,
-      minimumGateSeconds: Math.max(0, orders.length - 1) * intervalSeconds, completionRewards: { ...course?.completionRewards }, preliminary: homeLevel >= 4 };
+      minimumGateSeconds: Math.max(0, orders.length - 1) * intervalSeconds, completionRewards: { ...course?.completionRewards }, preliminary: false };
   });
 }
 

@@ -90,7 +90,7 @@ class EconomyThirdStageTest {
         val previous = player(2).copy(tutorialOrder = EconomyTutorialOrder(version = 2, step = 4, completed = true),
             stageOrders = EconomyStageOrderState(stages = mapOf("2" to EconomyStageOrderProgress(5, true))))
         assertNull(EconomyStageOrders.offer(previous)); assertFalse(EconomyStageOrders.required(previous, 3))
-        assertNull(EconomyStageOrders.offer(player(4)))
+        assertNull(EconomyStageOrders.offer(player(5)))
         val paid = EconomyJob(UUID.randomUUID().toString(), "construction", "home", targetLevel = 4,
             startedAt = now.minusSeconds(100).toString(), finishesAt = now.toString(), catalogVersion = 7)
         assertEquals(4, apply(state.copy(jobs = listOf(paid)), "claim_job", paid.id).buildings["home"])

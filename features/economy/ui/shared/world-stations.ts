@@ -14,8 +14,8 @@ export const worldStations: Partial<Record<WorldPlace, WorldStationDefinition>> 
   workshop: { label: "Мастерская", stationIds: ["workshop", "kiln"] },
   woodlot: { label: "Лесной участок", stationIds: ["woodlot"] },
   quarry: { label: "Шахта", stationIds: ["quarry"] },
-  bridge: { label: "Мост", stationIds: [], future: "Восстановление моста и переход на другой берег готовятся. Сейчас материалы здесь не расходуются." },
-  lighthouse: { label: "Маяк", stationIds: [], future: "Восстановление маяка и морские маршруты готовятся. Сейчас материалы здесь не расходуются." },
+  bridge: { label: "Мост", stationIds: ["bridge"] },
+  lighthouse: { label: "Маяк", stationIds: ["lighthouse"] },
 };
 export function worldPlaceForStation(stationId: string): WorldPlace | null {
   const result = Object.entries(worldStations).find(([, value]) => value.stationIds.includes(stationId));

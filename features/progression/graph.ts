@@ -40,7 +40,7 @@ export type ProgressionEdge = {
 export type ProgressionGraph = { nodes: ProgressionNode[]; edges: ProgressionEdge[] };
 
 export const buildingLabels: Record<string, string> = {
-  home: "Дом", garden: "Ягодный куст", woodlot: "Лесозаготовки", quarry: "Шахта", kiln: "Печь", workshop: "Верстак", dryer: "Костёр", warehouse: "Кладовая",
+  home: "Дом", garden: "Ягодный куст", woodlot: "Лесозаготовки", quarry: "Шахта", kiln: "Печь", workshop: "Верстак", dryer: "Костёр", warehouse: "Кладовая", bridge: "Мост", lighthouse: "Маяк",
 };
 export const progressionLocations = [
   { id: "place:home", title: "Дом", icon: "🏠", buildingIds: ["home", "warehouse"], description: "Дом на полянке. Уровень дома открывает новые возможности хозяйства; кладовая расширяется отдельно внутри дома." },
@@ -49,9 +49,11 @@ export const progressionLocations = [
   { id: "place:workshop", title: "Мастерская", icon: "🛠️", buildingIds: ["workshop", "kiln"], description: "Одно здание мастерской: внутри отдельно развиваются верстак и печь. У каждого оборудования свои условия обустройства и рецепты." },
   { id: "campfire", title: "Костёр", icon: "🏕️", buildingIds: ["dryer"], description: "Существующий костёр служит местом отдыха и приготовления запасов. Заготовки еды развиваются здесь, без отдельного здания сушилки." },
   { id: "place:quarry", title: "Шахта", icon: "⛏️", buildingIds: ["quarry"], description: "Заброшенная шахта уже есть на карте. Материалы добывает шахтёр в собственной очереди. Мохлик может гулять, рыбачить и собирать ягоды одновременно с добычей. Улучшения открывают новые материалы и длительные смены. Интерьер и его мини-карта относятся к будущему этапу." },
+  { id: "bridge", title: "Мост", icon: "🌉", buildingIds: ["bridge"], description: "Восстановление моста на доме 4 открывает вылазки другого берега. После получения стройки используется существующий рисунок уровня 1. Свободный проход через реку ещё требует разметки путей карты." },
+  { id: "lighthouse", title: "Маяк", icon: "🔦", buildingIds: ["lighthouse"], description: "Восстановление маяка на доме 4 открывает исследование древних руин. После получения стройки появляются существующий рисунок уровня 1 и ночной свет. Корабли и морские экспедиции остаются будущим направлением." },
 ] as const;
 const locationByBuilding = new Map<string, typeof progressionLocations[number]>(progressionLocations.flatMap(location => location.buildingIds.map(id => [id, location] as const)));
-const buildingIcons: Record<string, string> = { home: "🏠", garden: "🌱", woodlot: "🌲", quarry: "⛏️", kiln: "🔥", workshop: "🛠️", dryer: "♨️", warehouse: "📦" };
+const buildingIcons: Record<string, string> = { home: "🏠", garden: "🌱", woodlot: "🌲", quarry: "⛏️", kiln: "🔥", workshop: "🛠️", dryer: "♨️", warehouse: "📦", bridge: "🌉", lighthouse: "🔦" };
 const itemIcons: Record<string, string> = {
   berries: "🫐", wood: "🪵", stone: "🪨", ore: "⛏️", fiber: "🌾", fish: "🐟", planks: "🪵", rope: "🪢", metal_parts: "⚙️", dried_berries: "🫐", smoked_fish: "🐟", clay: "🏺", sand: "⌛", charcoal: "🔥", iron_ingot: "🔩", bricks: "🧱", glass: "💎", hardwood: "🌳", resin: "🍯", cloth: "🧵", beams: "🏗️", tools: "🛠️", reinforced_parts: "⚙️", cut_stone: "🪨",
 };
@@ -61,7 +63,7 @@ export const itemLabels: Record<string, string> = {
 export const progressionItemNames: Record<string, string> = Object.fromEntries(economyCatalog.items.map(item => [item.id, item.name]));
 
 const routeLabels: Record<string, string> = { quarry_stone: "Камень", quarry_stone_overnight: "Камень к утру", quarry_ore: "Руда", quarry_clay: "Глина", quarry_sand: "Песок", quarry_shift: "Шахта", quarry_deep_face: "Глубокий забой", quarry_supply: "Большая смена", forest: "Лесная разведка", shore: "Берег", forest_camp: "Лесной обход", shore_camp: "Стоянка на берегу", cave: "Пещера", deep_cave: "Глубокий проход", old_woodland: "Старый лес", coastal_deposits: "Отложения", uplands: "Нагорье", abandoned_quarry: "Заброш. карьер" };
-const productionOrder = ["garden", "woodlot", "quarry", "kiln", "workshop", "dryer", "warehouse"];
+const productionOrder = ["garden", "woodlot", "quarry", "kiln", "workshop", "dryer", "bridge", "lighthouse", "warehouse"];
 const initialBuildings = new Set(["home", "garden", "warehouse"]);
 const buildingNodeId = (id: string, level: number) => `b:${id}:${level}`;
 const cloneCost = (cost: EconomyCost): EconomyCost => ({ coins: cost.coins, items: { ...cost.items } });
@@ -73,8 +75,8 @@ type WorldDefinition = [id: string, label: string, icon: string, description: st
 const worldDefinitions: WorldDefinition[] = [
   ["living", "Живая поляна", "🌿", "Мохлик выбирает занятия, отдыхает, спит, встречает живность и запоминает состояние полянки. Эта жизнь развивается отдельно от серверного хозяйства."],
   ["wildlife", "Птицы и живность", "🦋", "Птицы, бабочки и светлячки взаимодействуют с полянкой. Они не являются производством ресурсов."],
-  ["bridge_ruin", "Мост · уровень 0", "🌉", "Существующий разрушенный мост на карте. Для него пока нет экономической стройки, действующего перехода на другой берег или игровых требований восстановления."],
-  ["lighthouse_ruin", "Маяк · уровень 0", "🔦", "Существующий маяк на карте. Рисунок следующего состояния можно примерить в редакторе, но это ещё не игровое восстановление и не доступ к кораблям."],
+  ["bridge_ruin", "Мост · уровень 0", "🌉", "Разрушенный мост на карте. Восстанавливается с дома 4 через обычную стройку: материалы и монеты списываются сервером, готовую работу нужно получить."],
+  ["lighthouse_ruin", "Маяк · уровень 0", "🔦", "Разрушенный маяк на карте. Восстанавливается с дома 4 после моста; готовую стройку нужно получить, чтобы открыть исследование руин и включить ночной свет."],
   ["album", "Книга находок", "📖", "Три главы: путешествия, рыбалка и каменоломня. Находки отмечаются после получения результата занятия и остаются навсегда; продажа материалов не стирает страницы.", "collection"],
   ["travel_book", "Путешествия", "🍃", "Лесные вылазки пополняют книгу. Прежние лесные находки сохранены; зачтённое время открывает недостающие страницы без повторов.", "collection"],
   ["quarry_book", "Каменоломня", "💎", "Добыча шахтёра и исследования пещер открывают страницы с минералами. Это памятные находки, они не расходуются при строительстве и не занимают кладовую.", "collection"],
@@ -96,14 +98,12 @@ const worldDefinitions: WorldDefinition[] = [
 
 const projectDefinitions: WorldDefinition[] = [
   ["mine_interior", "Шахта: интерьер", "⛏️", "Будущий внутренний экран шахты с собственной мини-картой. Он не требуется для действующих шахтных смен: шахтёр добывает материалы независимо от Мохлика, результат определяется серверным таймером."],
-  ["bridge", "Восстановить мост", "🌉", "На карте есть разрушенный мост уровня 0. Восстановление и проход ещё не реализованы."],
-  ["far_bank", "Другой берег", "🗺️", "Предлагаемое открытие территории после восстановления моста."],
+  ["far_bank", "Прогулка на другом берегу", "🗺️", "Вылазки другого берега открываются после моста. Свободная прогулка по новой территории требует отдельной разметки путей и перехода через реку."],
   ["regional_trips", "Новые территории", "🧭", "Предлагаемые региональные исследования за пределами нынешних маршрутов."],
   ["new_finds", "Новые находки", "🔍", "Будущее пополнение альбомов за новые исследования."],
   ["shore_site", "Личный берег", "🏖️", "Развитие собственного берега запланировано на будущее."],
   ["boat", "Лодка", "🛶", "Предлагаемое продолжение ветки берега."],
   ["port", "Порт", "⚓", "Предлагаемый следующий этап лодки и берегового хозяйства."],
-  ["lighthouse", "Восстановить маяк", "🔦", "Маяк есть в карте; рисунок уровня 1 доступен для примерки. Экономического восстановления и кораблей ещё нет."],
   ["ships", "Прибывающие корабли", "⛵", "Предлагаемая связь маяка и порта с прибытием кораблей."],
   ["sea_trips", "Морские экспедиции", "🌊", "Будущее направление экспедиций и маяка. Конкретные маршруты и награды ещё не утверждены."],
   ["new_fruits", "Новые плоды", "🍎", "Будущее расширение сада новыми плодами. Уровень сада для открытия ещё не выбран."],
@@ -124,6 +124,7 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
   const achievementPearls = Object.values(progressionRewards.achievementPearls).flat().reduce((sum, count) => sum + count, 0);
   const secondStageCount = catalog.stageOrders?.find(stage => stage.homeLevel === 2)?.orders.length ?? 0;
   const thirdStage = catalog.stageOrders?.find(stage => stage.homeLevel === 3);
+  const fourthStage = catalog.stageOrders?.find(stage => stage.homeLevel === 4);
   const fullPriceBuyer = catalog.items.filter(item => item.tradable).every(item => catalog.localBuyer?.unitPrices?.[item.id] === item.baseSellPrice);
 
   function add(node: ProgressionNode) {
@@ -312,6 +313,21 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
     }
   }
   byId.get("achievements")!.description += ` За самостоятельно полученные ступени можно вручную забрать до ${formatPearls(achievementPearls)} жемчужин суммарно, каждую награду только один раз. Администраторская выдача достижения не создаёт валютную награду.`;
+  if (fourthStage) {
+    const orders = byId.get("orders");
+    if (orders) orders.description += ` Дом 5 требует ${fourthStage.orders.length} поставок с интервалом ${fourthStage.intervalSeconds / 3600} ч. Жители однократно финансируют восстановление моста, маяка и хозяйства: ${fourthStage.orders.reduce((sum, order) => sum + order.coins, 0)} монет за весь проект. Финал гарантирует ${Object.entries(fourthStage.completionRewards).map(([id, count]) => `${items.get(id)?.name ?? id} × ${count}`).join(", ")}. Для завершения нужны восстановленные объекты и полученный результат исследования руин; запуск или отмена не засчитываются.`;
+    const rare = byId.get("rare_materials");
+    if (rare) rare.description += ` Проект дома 4 отдельно гарантирует ${Object.entries(fourthStage.completionRewards).map(([id, count]) => `${items.get(id)?.name ?? id} × ${count}`).join(", ")}; переход к дому 5 не зависит от случайного вида реликвии.`;
+  }
+  for (const course of catalog.stageOrders ?? []) {
+    const home = byId.get(buildingNodeId("home", course.homeLevel + 1));
+    if (!home) continue;
+    home.description += ` Перед новой стройкой завершите все ${course.orders.length} поставок проекта текущего дома.`;
+    for (const order of course.orders) for (const [routeId, count] of Object.entries(order.requiredExplorations ?? {})) {
+      edge(`e:${routeId}`, home.id);
+      home.description += ` Получите результат «${catalog.explorations.find(route => route.id === routeId)?.name ?? routeId}» × ${count}.`;
+    }
+  }
   edge("achievements", "pearls", "flow");
   edge("start", "pleska", "available");
   edge("pleska", "fishing_catches", "flow");
@@ -330,15 +346,13 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
   ]) edge(source, target, "flow");
 
   for (const [id, title, icon, description] of projectDefinitions) fixed(id, title, icon, 7, description, "project", "plan");
-  byId.get("bridge")!.label = "Мост: ремонт";
-  byId.get("lighthouse")!.label = "Маяк: ремонт";
   edge("place:quarry", "mine_interior", "plan");
   edge("start", "public_profiles", "available"); edge("achievements", "public_profiles", "flow");
   edge("album", "public_profiles", "flow"); edge("public_profiles", "friend_glade", "plan");
   edge("pleska", "pleska_home", "plan");
   edge("pearls", "pearl_trader", "plan");
   if (catalog.rareDrops) edge("rare_materials", "pearl_trader", "plan");
-  edge("bridge_ruin", "bridge", "plan"); edge("lighthouse_ruin", "lighthouse", "plan");
+  edge("bridge_ruin", "bridge", "available"); edge("lighthouse_ruin", "lighthouse", "available");
   for (const [source, target] of [
     ["r:make_planks", "bridge"], ["r:make_rope", "bridge"], ["r:make_tools", "bridge"], ["bridge", "far_bank"],
     ["far_bank", "regional_trips"], ["regional_trips", "new_finds"], ["new_finds", "album"], ["r:make_beams", "shore_site"],

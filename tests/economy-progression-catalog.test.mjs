@@ -3,13 +3,23 @@ import test from "node:test";
 import { auditEconomyProgression, readEconomyCatalog } from "../scripts/audit-economy-progression.mjs";
 import { createLiquidation } from "../scripts/lib/economy-math.mjs";
 
-test("economy catalog has useful chains, reachable upgrades, sufficient storage and a market-proof pacing floor", () => {
-  const report = auditEconomyProgression(readEconomyCatalog());
-  assert.equal(report.itemCount, readEconomyCatalog().items.length);
-  assert.equal(report.buildingCount, 8);
-  assert.equal(report.constructionOrder.length, 42);
+test("economy catalog has useful chains, reachable actual tiers and separate project and construction bounds", () => {
+  const catalog = readEconomyCatalog(), report = auditEconomyProgression(catalog);
+  assert.equal(report.itemCount, catalog.items.length);
+  assert.equal(report.buildingCount, catalog.buildings.length);
+  assert.equal(report.buildingCount, 10);
+  assert.equal(report.constructionOrder.length, catalog.buildings.reduce((sum, building) => sum + building.levels.length, 0) - 3);
   assert.equal(report.completionLevels.warehouse, 10);
+  assert.equal(report.completionLevels.bridge, 1);
+  assert.equal(report.completionLevels.lighthouse, 1);
+  assert.deepEqual(report.completionLevels, Object.fromEntries(catalog.buildings.map(building => [building.id, building.levels.at(-1).level])));
   assert.ok(report.fullBaseMinimumSeconds > report.fiveTierBaseMinimumSeconds);
+  assert.equal(report.projects.find(stage => stage.homeLevel === 3).minimumWaitSeconds, 7 * 86400);
+  assert.equal(report.projects.find(stage => stage.homeLevel === 4).minimumWaitSeconds, 11 * 86400);
+  assert.equal(report.fourthStage.constructionCoins, 73300);
+  assert.equal(report.fourthStage.constructionSeconds, 96 * 3600);
+  assert.equal(report.fourthStage.longWorkshopJobs, 39);
+  assert.match(report.timingBasis, /construction queue.*actual play duration are separate/);
 });
 
 test("the quarry and workshop furnace follow home two without blocking the starter route", () => {
@@ -49,10 +59,10 @@ test("catalog audit rejects building prerequisites that route back through the t
   assert.throws(() => auditEconomyProgression(catalog), /Construction dependency cycle/);
 });
 
-test("catalog audit rejects compression of the long-term construction floor", () => {
+test("catalog audit rejects compression of the authored stage construction contracts", () => {
   const catalog = readEconomyCatalog();
   for (const building of catalog.buildings) for (const level of building.levels) level.seconds = Math.floor(level.seconds / 10);
-  assert.throws(() => auditEconomyProgression(catalog), /four weeks|seven weeks/);
+  assert.throws(() => auditEconomyProgression(catalog), /Third stage home construction.*24 hours|Fourth stage.*48 hours|Fourth stage.*96 hours/);
 });
 
 test("warehouse has ten increasing tiers, ordinary early costs and independent relic expansions", () => {
@@ -86,13 +96,13 @@ test("only warehouse two requires home two and storage tiers cannot acquire othe
   }
 });
 
-test("optional warehouse tiers cannot gate the final home or prop up a compressed five-tier base", () => {
+test("optional warehouse tiers cannot gate the final home or replace the authored home construction", () => {
   const catalog = readEconomyCatalog();
   catalog.buildings.find(building => building.id === "home").levels[4].requiredBuildings.warehouse = 6;
   assert.throws(() => auditEconomyProgression(catalog), /Storage expansion must not gate ordinary buildings or homes/);
   const compressed = readEconomyCatalog();
   for (const building of compressed.buildings) for (const level of building.levels) if (level.level <= 5) level.seconds = Math.floor(level.seconds / 10);
-  assert.throws(() => auditEconomyProgression(compressed), /four weeks|seven weeks/);
+  assert.throws(() => auditEconomyProgression(compressed), /Third stage home construction.*24 hours|Fourth stage.*48 hours|Fourth stage.*96 hours/);
 });
 
 
@@ -129,9 +139,9 @@ test("unit production, bounded unattended mining and ingredient value cannot sil
   }
 });
 
-test("the authored v8 catalog keeps every current production unit-sized and every storage gate optional", () => {
+test("the authored v9 catalog keeps every current production unit-sized and every storage gate optional", () => {
   const catalog = readEconomyCatalog();
-  assert.equal(catalog.version, 8); assert.equal(catalog.recipes.length, 39);
+  assert.equal(catalog.version, 9); assert.equal(catalog.recipes.length, 41);
   for (const recipe of catalog.recipes) {
     assert.equal(recipe.maxBatch, 1, recipe.id);
     assert.equal(Object.values(recipe.rewards).reduce((sum, count) => sum + count, 0), 1, recipe.id);
@@ -143,6 +153,64 @@ test("the authored v8 catalog keeps every current production unit-sized and ever
   for (const building of catalog.buildings.filter(entry => entry.id !== "warehouse")) for (const level of building.levels) {
     assert.equal(level.requiredBuildings?.warehouse, undefined, `${building.id}:${level.level}`);
     assert.ok(Object.values(level.cost.items).reduce((sum, count) => sum + count, 0) <= 42, `${building.id}:${level.level}`);
+  }
+});
+
+test("project pacing cannot lose its daily fences or guaranteed home relics", () => {
+  for (const [mutate, pattern] of [
+    [c => c.stageOrders.find(stage => stage.homeLevel === 3).orders.pop(), /Third stage project.*eight deliveries/],
+    [c => c.stageOrders.find(stage => stage.homeLevel === 3).intervalSeconds = 86399, /Third stage project.*daily waits/],
+    [c => c.stageOrders.find(stage => stage.homeLevel === 3).completionRewards = {}, /Third stage must guarantee/],
+    [c => c.stageOrders.find(stage => stage.homeLevel === 4).orders.pop(), /Fourth stage project.*twelve deliveries/],
+    [c => c.stageOrders.find(stage => stage.homeLevel === 4).intervalSeconds = 86399, /Fourth stage project.*daily waits/],
+    [c => delete c.stageOrders.find(stage => stage.homeLevel === 4).completionRewards.moon_crystal, /Fourth stage must guarantee both/],
+  ]) {
+    const invalid = readEconomyCatalog(); mutate(invalid);
+    assert.throws(() => auditEconomyProgression(invalid), pattern);
+  }
+});
+
+test("the fourth stage needs restored landmarks and a successfully claimed ruins route", () => {
+  for (const [mutate, pattern] of [
+    [c => delete c.stageOrders.find(stage => stage.homeLevel === 4).orders[4].requiredBuildings.bridge, /deliveries from five onward require the bridge/],
+    [c => delete c.stageOrders.find(stage => stage.homeLevel === 4).orders.at(-1).requiredBuildings.lighthouse, /final delivery requires the lighthouse/],
+    [c => delete c.stageOrders.find(stage => stage.homeLevel === 4).orders.at(-1).requiredExplorations, /final delivery requires a claimed ruins/],
+    [c => c.stageOrders.find(stage => stage.homeLevel === 4).orders.at(-1).requiredExplorations.ancient_ruins = 0, /unknown or invalid claimed exploration/],
+    [c => delete c.buildings.find(building => building.id === "home").levels.at(-1).requiredBuildings.bridge, /Final home must require restored bridge/],
+    [c => c.explorations.find(route => route.id === "ancient_ruins").requiredHomeLevel = 5, /claimed exploration opens after its project/],
+  ]) {
+    const invalid = readEconomyCatalog(); mutate(invalid);
+    assert.throws(() => auditEconomyProgression(invalid), pattern);
+  }
+  const cycle = readEconomyCatalog();
+  cycle.buildings.find(building => building.id === "lighthouse").levels[0].requiredHomeLevel = 5;
+  assert.throws(() => auditEconomyProgression(cycle), /Construction dependency cycle/);
+});
+
+test("new landmarks stop at their actual restored tier and cannot add a fake production benefit", () => {
+  const catalog = readEconomyCatalog();
+  for (const id of ["bridge", "lighthouse"]) {
+    assert.deepEqual(catalog.buildings.find(building => building.id === id).levels.map(level => level.level), [1]);
+    const invalid = structuredClone(catalog);
+    invalid.buildings.find(building => building.id === id).levels.push({ ...invalid.buildings.find(building => building.id === id).levels[0], level: 2 });
+    assert.throws(() => auditEconomyProgression(invalid), /current landmark has one restoration tier/);
+  }
+});
+
+test("the compact fourth stage protects financing, construction fees and manual unit workload", () => {
+  for (const [mutate, pattern] of [
+    [c => c.stageOrders.find(stage => stage.homeLevel === 4).orders[0].coins += 1, /project financing must total 50000/],
+    [c => c.buildings.find(building => building.id === "woodlot").levels[3].cost.coins += 1, /mandatory construction must total 73300/],
+    [c => c.buildings.find(building => building.id === "quarry").levels[3].seconds -= 1, /mandatory construction must total 96 hours/],
+    [c => c.buildings.find(building => building.id === "home").levels[4].cost.items.beams = 20, /workshop workload must stay within forty/],
+    [c => c.buildings.find(building => building.id === "home").levels[4].cost.items.wood = 51, /upgrade inputs exceed available storage/],
+    [c => c.stageOrders.find(stage => stage.homeLevel === 4).orders[0].items.moon_crystal = 1, /must not depend on a rare find/],
+    [c => c.stageOrders.find(stage => stage.homeLevel === 4).orders[0].items.fish_epic = 1, /must not depend on a rare find or rare fish/],
+    [c => c.stageOrders.find(stage => stage.homeLevel === 4).orders[0].items.epic_fish = 1, /must not depend on a rare find or rare fish.*recipe ingredients/],
+    [c => c.buildings.find(building => building.id === "home").levels[4].cost.items.moon_crystal = 2, /required relics must be covered by guaranteed project rewards/],
+  ]) {
+    const invalid = readEconomyCatalog(); mutate(invalid);
+    assert.throws(() => auditEconomyProgression(invalid), pattern);
   }
 });
 

@@ -20,7 +20,8 @@ import styles from "./world-resident-order-board.module.css";
 
 type ResidentId = ResidentOrderOffer["residentId"];
 type Filter = "all" | ResidentId;
-type BoardOrderOffer = ResidentOrderOffer & { intervalSeconds?: number; completionRewards?: Record<string, number> };
+type BoardOrderOffer = ResidentOrderOffer & { intervalSeconds?: number; completionRewards?: Record<string, number>;
+  requiredBuildings?: Record<string, number> | null; requiredExplorations?: Record<string, number> | null };
 export type OrderNavigation = {
   onNavigateStation?: (stationId: string, recipeId?: string) => void;
   onNavigateExpeditions?: (sector?: "forest" | "shore" | "caves") => void;
@@ -73,6 +74,8 @@ export function ResidentOrderCard({ economy, offer, onComplete, onReplace, confi
   const state = economy.snapshot, board = residentOrderBoard(state, economy.now, state.catalog);
   const price = board.replacementPricePearls;
   const missing = Object.entries(offer.items).some(([id, quantity]) => (state.inventory[id] ?? 0) < quantity);
+  const requiredBuildings = Object.entries(offer.requiredBuildings ?? {}).filter(([id, level]) => (state.buildings[id] ?? 0) < level);
+  const requiredExplorations = Object.entries(offer.requiredExplorations ?? {}).filter(([id, count]) => (state.progression?.routes[id] ?? 0) < count);
   const walletFull = state.wallet.coins > ECONOMY_MAX_BALANCE - offer.coins;
   const tutorial = isTutorialOrderId(offer.id, state.catalog);
   const stageOrder = isStageOrderId(offer.id, state.catalog);
@@ -101,6 +104,8 @@ export function ResidentOrderCard({ economy, offer, onComplete, onReplace, confi
       <strong className={styles.payout} data-guide-order-reward aria-label={`Награда: ${number(offer.coins)} монет`}><ItemIcon itemId="coins" size={19} />{number(offer.coins)}</strong>
     </header>
     {offer.description && <p className={styles.description}>{offer.description}</p>}
+    {requiredBuildings.length > 0 && <ul className={styles.ingredients} aria-label="Условия поставки">{requiredBuildings.map(([id, level]) => <li key={id} data-missing><div><span>{state.catalog.buildings.find(building => building.id === id)?.name ?? id} · нужен ур. {level}</span>{navigation.onNavigateStation && <button type="button" onClick={() => navigation.onNavigateStation?.(id)}>К постройке</button>}</div></li>)}</ul>}
+    {requiredExplorations.length > 0 && <ul className={styles.ingredients} aria-label="Нужные экспедиции">{requiredExplorations.map(([id, count]) => <li key={id} data-missing><div><span>{state.catalog.explorations.find(route => route.id === id)?.name ?? id}: забрано {number(state.progression?.routes[id] ?? 0)} / {number(count)}</span>{navigation.onNavigateExpeditions && <button type="button" onClick={() => navigation.onNavigateExpeditions?.("forest")}>В путь</button>}</div></li>)}</ul>}
     {waitSeconds > 0 && <p className={styles.wait} data-stage-order-wait><Clock3 size={15} aria-hidden="true" /><span>Следующая поставка через <strong>{waiting(waitSeconds)}</strong>. Материалы можно подготовить заранее.</span></p>}
     {stageOrder && intervalSeconds > 0 && stage.step + 1 < stageTotal && <p className={styles.description}>После сдачи этой поставки до следующей пройдёт {waiting(intervalSeconds)}. Жемчуг не сокращает этот срок.</p>}
     <ul className={styles.ingredients} data-guide-order-requirements aria-label="Для заказа">{Object.entries(offer.items).map(([id, quantity]) => {
@@ -112,11 +117,13 @@ export function ResidentOrderCard({ economy, offer, onComplete, onReplace, confi
     {completionRewards.length > 0 && <div className={styles.completionReward}><p>Награда за завершение этапа</p><ul aria-label="Дополнительная награда за этап">{completionRewards.map(([id, amount]) => <li key={id}><ProductIcon state={state} itemId={id} size={21} /><span>{itemName(state, id)} × {number(amount)}</span></li>)}</ul></div>}
     {bonus > 0 && !permanent && <p className={styles.premium} title="Рыбу можно продать Плёске, другие товары местному скупщику.">На {number(bonus)} монет больше продажи</p>}
     {confirmation ?? <div className={styles.actions}>
-      <button type="button" className={styles.primary} data-guide-order-submit disabled={locked(economy) || missing || walletFull || !rewardRoom || waitSeconds > 0 || !currentOffer} onClick={() => {
+      <button type="button" className={styles.primary} data-guide-order-submit disabled={locked(economy) || missing || requiredBuildings.length > 0 || requiredExplorations.length > 0 || walletFull || !rewardRoom || waitSeconds > 0 || !currentOffer} onClick={() => {
         const active = current(), latest = economy.snapshot;
         if (locked(economy) || !active || active.id !== offer.id || Date.parse(active.availableAt) > economy.now
           || Object.entries(active.items).some(([id, amount]) => (latest.inventory[id] ?? 0) < amount)
           || latest.wallet.coins > ECONOMY_MAX_BALANCE - active.coins) return;
+        if (stageOrder && Object.entries(stageResidentOrder(latest)?.requiredBuildings ?? {}).some(([id, level]) => (latest.buildings[id] ?? 0) < level)) return;
+        if (stageOrder && Object.entries(stageResidentOrder(latest)?.requiredExplorations ?? {}).some(([id, count]) => (latest.progression?.routes[id] ?? 0) < count)) return;
         const rewards = Object.values(active.completionRewards ?? {}).reduce((total, amount) => total + amount, 0);
         const items = Object.values(active.items).reduce((total, amount) => total + amount, 0);
         if (rewards > 0 && latest.storage.used + latest.storage.reserved - items + rewards > latest.storage.capacity) return;

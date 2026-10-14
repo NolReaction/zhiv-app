@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { auditProductionBalance } from "./lib/economy-balance.mjs";
+import { auditFourthStageBudget, auditProductionBalance, auditProjectCourses } from "./lib/economy-balance.mjs";
 import { createLiquidation } from "./lib/economy-math.mjs";
 
 const catalogPath = new URL("../apps/api/src/main/resources/world/economy-catalog.json", import.meta.url);
@@ -27,8 +27,9 @@ export function auditEconomyProgression(catalog) {
   for (const route of catalog.explorations.filter(route => route.activity === "mining")) {
     assert(route.requiredBuildings?.quarry >= 1, `${route.id}: mining requires a built quarry`);
   }
-  assert.equal(catalog.version, 8);
+  assert.equal(catalog.version, 9);
   assert.equal(catalog.currencyScale, 10);
+  const projects = auditProjectCourses(catalog);
   const rare = catalog.rareDrops;
   const special = [...items.values()].filter(item => item.category === "special");
   assert([...items.values()].every(item => Number.isSafeInteger(item.baseSellPrice)
@@ -63,7 +64,8 @@ export function auditEconomyProgression(catalog) {
     }
   };
   for (const building of buildings.values()) {
-    const maximum = building.id === "warehouse" ? 10 : 5;
+    const maximum = building.levels.at(-1)?.level;
+    assert(Number.isSafeInteger(maximum) && maximum > 0, `${building.id}: maximum tier missing`);
     assert.deepEqual(building.levels.map(level => level.level), Array.from({ length: maximum }, (_, index) => index + 1), `${building.id}: sequential tiers expected`);
     for (const level of building.levels) {
       const key = `${building.id}:${level.level}`;
@@ -86,6 +88,9 @@ export function auditEconomyProgression(catalog) {
         }
       } else if (building.id === "quarry") {
         assert(catalog.explorations.some(route => route.activity === "mining" && route.requiredBuildings?.quarry === level.level), `${key}: upgrade has no mining route benefit`);
+      } else if (["bridge", "lighthouse"].includes(building.id)) {
+        assert.equal(maximum, 1, `${building.id}: current landmark has one restoration tier`);
+        assert(catalog.explorations.some(route => route.requiredBuildings?.[building.id] === level.level), `${key}: restoration has no exploration benefit`);
       } else if (building.id !== "home") {
         assert(catalog.recipes.some(recipe => recipe.buildingId === building.id && recipe.buildingLevel === level.level), `${key}: upgrade has no production benefit`);
       }
@@ -209,6 +214,7 @@ export function auditEconomyProgression(catalog) {
     validateQuantities(order.items, order.id, true);
   }
   for (const order of catalog.onboarding?.residentOrders ?? []) validateQuantities(order.items, order.id, true);
+  for (const stage of catalog.stageOrders ?? []) for (const order of stage.orders) validateQuantities(order.items, order.id, true);
   assert.deepEqual([...items.keys()].filter(item => !itemUses.has(item)), [], "Every item must serve crafting, construction, exploration, fishing, meals or resident orders");
   auditProductionBalance(catalog);
 
@@ -230,7 +236,7 @@ export function auditEconomyProgression(catalog) {
     const priorStorage = Math.max(1, ...[...prerequisites].filter(id => id !== key && id.startsWith("warehouse:")).map(id => nodes.get(id).level));
     const capacity = buildings.get("warehouse").levels[priorStorage - 1].warehouseCapacity;
     const inputCount = Object.values(node.cost.items).reduce((sum, amount) => sum + amount, 0);
-    assert(inputCount <= capacity * 0.85, `${key}: upgrade inputs leave insufficient space (${inputCount}/${capacity})`);
+    assert(inputCount <= capacity, `${key}: upgrade inputs exceed available storage (${inputCount}/${capacity})`);
   }
   for (const definition of production) {
     const prerequisites = new Set();
@@ -239,7 +245,8 @@ export function auditEconomyProgression(catalog) {
     const storageLevel = Math.max(1, ...[...prerequisites].filter(id => id.startsWith("warehouse:")).map(id => nodes.get(id).level));
     const capacity = buildings.get("warehouse").levels[storageLevel - 1].warehouseCapacity;
     assert(Object.values(definition.cost.items).reduce((sum, amount) => sum + amount, 0) <= capacity, `${definition.id}: one batch input exceeds available storage`);
-    assert(Object.values(definition.rewards).reduce((sum, amount) => sum + amount, 0) <= capacity, `${definition.id}: one batch output exceeds available storage`);
+    const outputCount = Object.values(definition.rewards).reduce((sum, amount) => sum + amount, 0);
+    assert(outputCount + (!definition.buildingId && rare ? 1 : 0) <= capacity, `${definition.id}: one batch output and possible rare find exceed available storage`);
   }
 
   // Constructive unlock audit. An obtainable item can be generated repeatedly;
@@ -247,6 +254,7 @@ export function auditEconomyProgression(catalog) {
   const completed = { ...startingBuildings };
   const obtainable = new Set();
   const completedRecipes = new Set();
+  const completedRoutes = new Set(), completedProjects = new Set();
   const constructionOrder = [];
   const hasRequirements = definition => Object.entries(requirements(definition)).every(([id, level]) => (completed[id] ?? 0) >= level);
   const hasMaterials = cost => Object.keys(cost.items).every(item => obtainable.has(item));
@@ -258,9 +266,18 @@ export function auditEconomyProgression(catalog) {
         || Object.keys(definition.requiredRecipes ?? {}).some(id => !completedRecipes.has(id))) continue;
       if (definition.buildingId && (completed[definition.buildingId] ?? 0) < definition.buildingLevel) continue;
       if (definition.buildingId && !completedRecipes.has(definition.id)) { completedRecipes.add(definition.id); changed = true; }
+      if (!definition.buildingId && !completedRoutes.has(definition.id)) { completedRoutes.add(definition.id); changed = true; }
       for (const item of Object.keys(definition.rewards)) {
         if (!obtainable.has(item)) { obtainable.add(item); changed = true; }
       }
+    }
+    for (const stage of catalog.stageOrders ?? []) {
+      if (completedProjects.has(stage.homeLevel) || completed.home < stage.homeLevel) continue;
+      if (stage.orders.some(order => !Object.entries(order.requiredBuildings ?? {}).every(([id, level]) => (completed[id] ?? 0) >= level)
+        || Object.keys(order.items).some(id => !obtainable.has(id))
+        || Object.keys(order.requiredExplorations ?? {}).some(id => !completedRoutes.has(id)))) continue;
+      completedProjects.add(stage.homeLevel); changed = true;
+      for (const item of Object.keys(stage.completionRewards ?? {})) obtainable.add(item);
     }
     // A successful available exploration can eventually deliver each equally likely
     // special material; this is earned play time, never a coin purchase assumption.
@@ -286,6 +303,8 @@ export function auditEconomyProgression(catalog) {
       if (!next || !hasRequirements(next) || !hasMaterials(next.cost)) continue;
       if (building.id === "home" && next.level === 2
         && (catalog.onboarding?.residentOrders ?? []).some(order => Object.keys(order.items).some(id => !obtainable.has(id)))) continue;
+      if (building.id === "home" && next.level >= 3 && catalog.stageOrders?.some(stage => stage.homeLevel === next.level - 1)
+        && !completedProjects.has(next.level - 1)) continue;
       completed[building.id] = next.level;
       constructionOrder.push(`${building.id}:${next.level}`);
       changed = true;
@@ -302,19 +321,25 @@ export function auditEconomyProgression(catalog) {
   const duration = targets => [...targets].reduce((sum, key) => sum + nodes.get(key).seconds, 0);
   const homeStages = buildings.get("home").levels.map(level => ({ level: level.level, minimumSeconds: duration(closure(`home:${level.level}`)) }));
   const allConstruction = new Set([...nodes.keys()].flatMap(key => [...closure(key)]));
-  // Optional storage beyond tier five must not disguise a compressed main-base
-  // progression floor, nor become a hidden prerequisite for the last home.
+  // This remains a construction-only comparison of the ordinary base and all
+  // optional storage. Project waits and production cannot be inferred from it.
   const fiveTierConstruction = new Set([...nodes.keys()].filter(key => nodes.get(key).level <= 5).flatMap(key => [...closure(key)]));
   const fiveTierBaseMinimumSeconds = duration(fiveTierConstruction);
   const fullBaseMinimumSeconds = duration(allConstruction);
-  assert(homeStages[4].minimumSeconds >= 28 * day, "Home 5 must retain at least four weeks of mandatory construction");
-  assert([...closure("home:5")].every(key => nodes.get(key).buildingId !== "warehouse" || nodes.get(key).level <= 5),
+  assert.equal(buildings.get("home").levels.find(level => level.level === 4).seconds, day, "Third stage home construction must retain 24 hours");
+  assert.equal(buildings.get("home").levels.find(level => level.level === 5).seconds, 2 * day, "Fourth stage home construction must retain 48 hours");
+  assert([...closure("home:5")].every(key => nodes.get(key).buildingId !== "warehouse"),
     "Optional warehouse expansions must not gate home five");
-  assert(fiveTierBaseMinimumSeconds >= 49 * day, "Five-tier base must retain at least seven weeks of mandatory construction");
+  const homeFive = buildings.get("home").levels.find(level => level.level === 5);
+  assert(homeFive.requiredBuildings?.bridge === 1 && homeFive.requiredBuildings?.lighthouse === 1,
+    "Final home must require restored bridge and lighthouse");
+  const previousHome = closure("home:4");
+  const fourthStage = auditFourthStageBudget(catalog, [...closure("home:5")].filter(key => !previousHome.has(key)).map(key => nodes.get(key)));
   return {
     catalogVersion: catalog.version, itemCount: items.size, buildingCount: buildings.size,
     recipeCount: catalog.recipes.length, explorationCount: catalog.explorations.length,
     homeStages, fiveTierBaseMinimumSeconds, fullBaseMinimumSeconds,
+    projects, fourthStage, timingBasis: "Home/base minimumSeconds count only one builder's construction queue; project waits and actual play duration are separate",
     completionLevels: Object.fromEntries([...buildings.values()].map(building => [building.id, building.levels.at(-1).level])),
     totalConstructionCoins: [...allConstruction].reduce((sum, key) => sum + nodes.get(key).cost.coins, 0),
     constructionOrder,

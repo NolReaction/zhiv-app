@@ -198,7 +198,7 @@ test("unit production snapshots ingredients, duration and output; another statio
   assert.equal(started.inventory.rope, 5 - recipe.cost.items.rope);
   assert.deepEqual(job.cost, recipe.cost);
   assert.equal(Date.parse(job.finishesAt) - now, recipe.seconds * 1000); assert.deepEqual(job.rewards, { cloth: 1 });
-  assert.equal(job.catalogVersion, 8);
+  assert.equal(job.catalogVersion, 9);
   assert.throws(() => issue(p, "start_production", "make_planks"), { code: "ECONOMY_BUILDING_BUSY" });
   assert.equal(issue(p, "start_production", "grow_berries").state.jobs.length, 2);
   assert.throws(() => issue(p, "start_production", "grow_berries", 11), { code: "INVALID_ECONOMY_COMMAND" });

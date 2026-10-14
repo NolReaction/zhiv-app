@@ -362,6 +362,9 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
           || !progress.terms || !offer || offer.id !== command.targetId)
           return fail("ECONOMY_STAGE_ORDER_UNAVAILABLE", "Постоянный заказ недоступен или уже выполнен");
         if (now < Date.parse(offer.availableAt)) return fail("ECONOMY_STAGE_WAIT", "Следующая просьба ещё не готова. Дождитесь указанного времени");
+        requireBuildings(state, offer.requiredBuildings ?? {});
+        if (Object.entries(offer.requiredExplorations ?? {}).some(([routeId, count]) => (state.progression?.routes[routeId] ?? 0) < count))
+          return fail("ECONOMY_EXPLORATION_REQUIRED", "Сначала завершите нужную экспедицию и заберите её результат");
         const nextStep = progress.step + 1, completed = nextStep === course.orders.length;
         const nextTerms = completed ? progress.terms : course.orders[nextStep];
         if (!nextTerms) return fail("ECONOMY_STAGE_ORDER_UNAVAILABLE", "Следующий постоянный заказ пока недоступен");
@@ -378,7 +381,9 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
         state.residentOrders = { ...orders, completed: orders.completed + 1, earnedCoins: orders.earnedCoins + offer.coins };
         const current = stageOrdersProgress(state);
         state.stageOrders = { ...current, stages: { ...current.stages, [String(home)]: {
-          ...progress, step: nextStep, completed, terms: { ...nextTerms, items: { ...nextTerms.items } },
+          ...progress, step: nextStep, completed, terms: { ...nextTerms, items: { ...nextTerms.items },
+            ...(nextTerms.requiredBuildings ? { requiredBuildings: { ...nextTerms.requiredBuildings } } : {}),
+            ...(nextTerms.requiredExplorations ? { requiredExplorations: { ...nextTerms.requiredExplorations } } : {}) },
           availableAt: completed ? null : new Date(now + (progress.intervalSeconds ?? course.intervalSeconds) * 1000).toISOString() } } };
         state.unlockedItems = [...new Set([...(state.unlockedItems ?? []), ...Object.entries(earnedRewards).filter(([, quantity]) => quantity > 0).map(([itemId]) => itemId)])];
         return completed ? "Все постоянные заказы этапа выполнены. Монеты получены" : "Постоянный заказ выполнен. Следующая просьба открыта";

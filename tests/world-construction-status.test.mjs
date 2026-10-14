@@ -54,9 +54,9 @@ test("a hidden or offscreen host cannot leave a floating construction marker beh
 });
 
 test("every economy construction maps to its existing map host including interior stations", () => {
-  const places = { home: "house", warehouse: "house", workshop: "workshop", kiln: "workshop", garden: "garden", woodlot: "woodlot", quarry: "quarry", dryer: "campfire" };
+  const places = { home: "house", warehouse: "house", workshop: "workshop", kiln: "workshop", garden: "garden", woodlot: "woodlot", quarry: "quarry", dryer: "campfire", bridge: "bridge", lighthouse: "lighthouse" };
   for (const station of economyCatalog.buildings) assert.equal(constructionMapPlace(station.id), places[station.id]);
-  for (const unknown of ["bridge", "lighthouse", "constructor", "unknown"]) assert.equal(constructionMapPlace(unknown), null);
+  for (const unknown of ["constructor", "unknown"]) assert.equal(constructionMapPlace(unknown), null);
 });
 
 test("construction marker follows roof geometry through pan zoom resize and authored visual levels", () => {

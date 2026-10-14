@@ -74,7 +74,7 @@ export function reviewDailyGiftProgression(loaded, baselineBytes, onScenario = (
       comparison: "Both phases claim complete real daily bundles: coins, pearls, ordinary items and the weekly relic. Only the selected daily cycle changes; calendar, planner, recipes and commands stay identical.",
       grants: "dailyRewardView chooses the completed home at claim time. Inventory credit and storage checks use actual TS rules, matching the DEV grant adapter; rejected capacity leaves the whole gift/calendar untouched. Calendar advances only after successful credit. No escrow exists in these no-market policies.",
       accounting: "Raw catalog currency units; pearls displayed in game at raw/2. All item flows and pearls reconcile; gift relics and exploration relics are tracked separately.",
-      completion: "Home level5 and all eight progression buildings level5, not every collection or all future content",
+      completion: "Home level5 and the current comparison base: ordinary stations through tier5, bridge/lighthouse at their authored restored tier, and storage through tier5; not every collection or all future content",
       limitations: ["Research grant projection, not HTTP, transaction, receipt or PostgreSQL integration testing.",
         "No market, gifts from friends, tap income, achievement rewards, purchased gold or construction speedups.",
         "Prepaid slots assume their entire budget already exists; earning or paying for that budget is outside the clock.",

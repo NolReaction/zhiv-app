@@ -15,6 +15,7 @@ export const CONSTRUCTION_MARKER = { width: 124, height: 44, gap: 10, margin: 8 
 const constructionPlaces: Readonly<Record<string, MapObjectPlace>> = {
   home: "house", warehouse: "house", workshop: "workshop", kiln: "workshop",
   garden: "garden", woodlot: "woodlot", quarry: "quarry", dryer: "campfire",
+  bridge: "bridge", lighthouse: "lighthouse",
 };
 
 /** Interior stations belong to their real map host; no invented coordinates. */

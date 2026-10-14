@@ -35,9 +35,9 @@ const queue = (plan, id) => plan.queues.find(value => value.buildingId === id);
 
 test("economy reference covers every actual item and recipe, with sources and reverse uses", () => {
   assert.equal(economy.items.length, catalog.items.length);
-  assert.equal(economy.items.length, 56);
+  assert.equal(economy.items.length, 58);
   assert.equal(economy.recipes.length, catalog.recipes.length);
-  assert.equal(economy.recipes.length, 39);
+  assert.equal(economy.recipes.length, 41);
   assert.equal(new Set(economy.items.map(value => value.id)).size, catalog.items.length);
   for (const value of economy.items) assert.ok(value.sources.length, `No source for ${value.id}`);
   for (const value of catalog.recipes) {
@@ -68,7 +68,8 @@ test("fish species remain collection records, and no fishing route promises comm
   assert.ok(item("fish").uses.some(use => use.id === "recipe:cook_grilled_fish"));
   assert.ok(item("fish_mooncarp").uses.some(use => use.id === "recipe:cook_hearty_fish"));
   assert.equal(item("ancient_core").npcSellPrice, null);
-  assert.ok(item("moon_crystal").sources.every(source => !source.guaranteed));
+  assert.ok(item("moon_crystal").sources.some(source => source.kind === "rare" && !source.guaranteed));
+  assert.ok(item("moon_crystal").sources.some(source => source.kind === "project" && source.guaranteed && source.homeLevel === 4 && source.quantity === 1));
 });
 
 test("source costs and prerequisites are complete catalog copies, including the recipe's own station", () => {
@@ -176,7 +177,7 @@ test("stage budgets derive only required new buildings and preserve the seven da
   assert.equal(third.orders[0].inputNpcValue, 380);
   assert.equal(third.orders[0].addedNpcValue, 190);
   assert.ok(economy.stages.every(stage => !stage.buildings.some(value => value.id === "warehouse")));
-  assert.ok(economy.stages.find(stage => stage.homeLevel === 4).preliminary);
+  assert.equal(economy.stages.find(stage => stage.homeLevel === 4).preliminary, false);
 });
 
 test("pearl budgets respect visible denomination and distinguish repeat gifts from finite achievements", () => {
@@ -187,10 +188,61 @@ test("pearl budgets respect visible denomination and distinguish repeat gifts fr
   assert.equal(economy.pearls.marketTotal, 680);
   assert.deepEqual(plain(economy.pearls.productionSlots), [{ slots: 2, pearls: 100 }, { slots: 3, pearls: 250 }]);
   assert.deepEqual(plain(economy.pearls.construction), { pearls: 1, seconds: 600 });
-  assert.equal(economy.orderBoard.templates, 49);
+  assert.equal(economy.orderBoard.templates, 53);
   assert.equal(economy.orderBoard.slots, 3);
   assert.equal(economy.orderBoard.replacementPricePearls, 5);
   assert.deepEqual(plain(economy.fishingShop), { refreshSeconds: 21600, maximumRefreshPearls: 50 });
+});
+
+test("house four has a separate twelve-delivery course, restored landmarks and guaranteed home-five relics", () => {
+  const fourth = economy.stages.find(stage => stage.homeLevel === 4);
+  assert.equal(fourth.buildingCoins, 73300);
+  assert.equal(fourth.buildSeconds, 96 * 3600, "one builder's queue excludes delivery waits and resource preparation");
+  assert.equal(fourth.orders.length, 12);
+  assert.equal(fourth.orderCoins, 50000);
+  assert.equal(fourth.intervalSeconds, 86400);
+  assert.equal(fourth.minimumGateSeconds, 11 * 86400);
+  assert.deepEqual(plain(fourth.completionRewards), { ancient_core: 1, moon_crystal: 1 });
+  assert.equal(fourth.preliminary, false, "the command route is verified; its runtime is not a guarantee for every visit pattern");
+  for (const id of ["bridge", "lighthouse"]) assert.ok(fourth.buildings.some(building => building.id === id && building.level === 1));
+  assert.equal(fourth.buildings.find(building => building.id === "home").seconds, 48 * 3600);
+  const final = fourth.orders.find(order => order.id === "stage4_completion_order");
+  assert.deepEqual(plain(final.requiredBuildings), { bridge: 1, lighthouse: 1 });
+  assert.deepEqual(plain(final.requiredExplorations), { ancient_ruins: 1 });
+  const before = JSON.stringify(catalog), copied = buildProgressionEconomy(catalog);
+  const copiedFinal = copied.stages.find(stage => stage.homeLevel === 4).orders.find(order => order.id === final.id);
+  copiedFinal.requiredBuildings.bridge = 10;
+  copiedFinal.requiredExplorations.ancient_ruins = 10;
+  copiedFinal.items.cloth = 10;
+  assert.equal(JSON.stringify(catalog), before, "view mutation cannot rewrite catalog gates or paid ingredients");
+});
+
+test("rations and research equipment add NPC value and expand the actual dependency chains", () => {
+  const ration = recipe("prepare_trail_ration"), gear = recipe("make_research_gear");
+  assert.deepEqual(plain(ration.cost.items), { smoked_fish: 1, dried_berries: 1, berry_compote: 1 });
+  assert.deepEqual(plain(gear.cost.items), { tools: 1, cloth: 1, rope: 2 });
+  for (const [entry, input, output, added] of [[ration, 280, 360, 80], [gear, 1300, 1600, 300]]) {
+    assert.equal(entry.inputNpcValue, input);
+    assert.equal(entry.outputNpcValue, output);
+    assert.equal(entry.addedNpcValue, added);
+    assert.equal(entry.maxBatch, 1);
+    assert.equal(Object.values(entry.rewards).reduce((sum, count) => sum + count, 0), 1);
+  }
+  const rationPlan = calculateRecipePlan(ration.id);
+  assert.deepEqual(plain(rationPlan.rawInputs), { wood: 1, fish_common: 2, berries: 8 });
+  assert.deepEqual(plain(rationPlan.uncertainItemIds), ["fish_common"]);
+  assert.equal(queue(rationPlan, "dryer").seconds, 8280);
+  assert.equal(queue(rationPlan, "garden").collectionSeconds, 64);
+  const gearPlan = calculateRecipePlan(gear.id);
+  assert.deepEqual(plain(gearPlan.rawInputs), { ore: 3, wood: 4, fiber: 13 });
+  assert.equal(gearPlan.uncertainItemIds.length, 0);
+  assert.equal(queue(gearPlan, "workshop").seconds, 17760);
+  assert.equal(queue(gearPlan, "quarry").seconds, 1620);
+  assert.equal(queue(gearPlan, "kiln").seconds, 1920);
+  for (const [itemId, routeId] of [["trail_ration", "far_bank_path"], ["research_gear", "ancient_ruins"]]) {
+    assert.ok(item(itemId).uses.some(use => use.id === `route:${routeId}`));
+    assert.ok(item(itemId).sources.some(source => source.kind === "recipe" && source.guaranteed));
+  }
 });
 
 test("builders and calculations do not mutate the source catalog, and reject invalid requests", () => {

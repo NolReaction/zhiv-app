@@ -3,7 +3,7 @@
 import { fishClassForItem } from "@/features/economy/domain/fishing";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { ArrowLeftRight, ArrowRight, Check, ChevronRight, CircleHelp, Clock3, Compass, Fish, Flame, Hammer, House, Leaf, LockKeyhole, Mountain, Package, RefreshCw, ShoppingBasket, Sprout, Store, Trees } from "lucide-react";
+import { ArrowLeftRight, ArrowRight, Check, ChevronRight, CircleHelp, Clock3, Compass, Fence, Fish, Flame, Hammer, House, Leaf, LockKeyhole, Mountain, Package, RefreshCw, ShoppingBasket, Sprout, Store, TowerControl, Trees } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { PlayerItemIcon } from "@/features/economy/ui/fishing/fish-discovery";
 import { ItemIcon } from "@/features/items/item-icon";
@@ -42,7 +42,7 @@ const tabs: { id: EconomyTab; label: string; Icon: LucideIcon }[] = [
   { id: "barter", label: "Обмен", Icon: ArrowLeftRight },
   { id: "inventory", label: "Склад", Icon: Package },
 ];
-const buildingIcons: Record<string, LucideIcon> = { home: House, garden: Sprout, woodlot: Trees, quarry: Mountain, workshop: Hammer, dryer: Flame, warehouse: Package, kiln: Flame };
+const buildingIcons: Record<string, LucideIcon> = { home: House, garden: Sprout, woodlot: Trees, quarry: Mountain, workshop: Hammer, dryer: Flame, warehouse: Package, kiln: Flame, bridge: Fence, lighthouse: TowerControl };
 const categoryNames: Record<string, string> = { produce: "Урожай", raw: "Рыба", material: "Сырьё", crafted: "Материалы и изделия", provisions: "Припасы", fishing: "Рыболовные товары", special: "Особые материалы" };
 const itemName = (state: EconomyView, id: string) => state.catalog.items.find(item => item.id === id)?.name ?? "Предмет";
 const buildingName = (state: EconomyView, id: string) => state.catalog.buildings.find(building => building.id === id)?.name ?? "Постройка";

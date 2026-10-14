@@ -181,7 +181,7 @@ test("map objects group equipment by place, with campfire food and pantry at the
   assert.deepEqual(helpers.worldStations.house.stationIds, ["home", "warehouse"]);
   assert.deepEqual(helpers.worldStations.workshop.stationIds, ["workshop", "kiln"]);
   assert.deepEqual(helpers.worldStations.campfire.stationIds, ["dryer"]);
-  for (const id of ["home", "warehouse", "garden", "dryer", "workshop", "kiln", "quarry", "woodlot"]) assert.ok(helpers.worldPlaceForStation(id));
+  for (const id of ["home", "warehouse", "garden", "dryer", "workshop", "kiln", "quarry", "woodlot", "bridge", "lighthouse"]) assert.ok(helpers.worldPlaceForStation(id));
   assert.equal(helpers.worldPlaceForStation("unknown"), null);
 });
 
@@ -460,15 +460,65 @@ test("busy, uncertain and retry cooldown block claims while closing remains avai
   }
 });
 
-test("missing-navigation requirements remain honest text; future landmarks offer no spend controls", () => {
+test("missing-navigation requirements remain honest text and landmarks offer actual restoration with home gates", () => {
   const html = renderUpgrade("quarry");
   assert.match(html, /нужен ур. 2/);
   assert.equal(disabled(button(html, "Начать обустройство")), true);
   for (const place of ["bridge", "lighthouse"]) {
     const landmark = render(place);
-    assert.match(landmark, /Будущая ветка/);
-    assert.doesNotMatch(landmark, /Начать обустройство|Продать|Улучшить|монет"/);
+    assert.match(landmark, /Требует восстановления/);
+    assert.match(landmark, /Восстановить/);
+    assert.doesNotMatch(landmark, /Будущая ветка|Выберите рецепт|data-production-slots=/);
+    const upgrade = renderUpgrade(place);
+    assert.match(upgrade, /Время восстановления/);
+    assert.match(upgrade, /Новый маршрут/);
+    assert.doesNotMatch(upgrade, /Следующий уровень постройки/);
+    assert.match(upgrade, /нужен ур. 4/);
+    assert.equal(disabled(button(upgrade, "Начать восстановление")), true);
   }
+});
+
+test("restored landmarks show expedition routes and their remaining prerequisites without a production queue", () => {
+  for (const place of ["bridge", "lighthouse"]) {
+    const html = render(place, controller({ snapshot: snapshot({ buildings: { home: 4, warehouse: 1, bridge: 1, lighthouse: 1, workshop: 3 } }) }), { onExplore() {} });
+    assert.match(html, /Восстановлено/);
+    assert.match(html, /Маршруты экспедиций/);
+    assert.match(html, /Выбрать экспедицию/);
+    assert.match(html, /Восстановление завершено/);
+    assert.doesNotMatch(html, /Выберите рецепт|Сначала обустройте|data-production-slots=|Место 2/);
+    assert.doesNotMatch(html, /data-guide-station-upgrade=/);
+  }
+});
+
+test("house five names the project as a guaranteed relic source while restoration keeps the generic paid-job controls", () => {
+  const state = snapshot({ buildings: { home: 4, warehouse: 1, bridge: 1, lighthouse: 1, workshop: 3 } });
+  const house = renderUpgrade("home", controller({ snapshot: state }));
+  assert.match(house, /Гарантированный источник: завершите проект к дому 5/);
+  assert.match(house, /Жемчуг не требуется/);
+  const paid = job({ kind: "construction", targetId: "bridge", targetLevel: 1, rewards: {}, recipeId: null, finishesAt: new Date(now).toISOString() });
+  const html = renderUpgrade("bridge", controller({ snapshot: snapshot({ buildings: { home: 4, warehouse: 1 }, jobs: [paid] }) }));
+  assert.match(html, /Материалы оплачены/);
+  assert.equal(disabled(button(html, "Завершить")), false);
+  assert.doesNotMatch(html, /Начать восстановление/);
+});
+
+test("spent one-time project relics fall back to exploration and frozen reward terms override later catalog rewards", () => {
+  const state = snapshot({ buildings: { home: 4, warehouse: 1, bridge: 1, lighthouse: 1, workshop: 3 },
+    stageOrders: { version: 1, stages: { 4: { step: 12, completed: true, terms: null,
+      completionRewards: { ancient_core: 1, moon_crystal: 1 } } } } });
+  let html = renderUpgrade("home", controller({ snapshot: state }), { navigation: { canOpen() { return false; }, open() {}, explore() {} } });
+  assert.doesNotMatch(html, /Гарантированный источник: завершите проект/);
+  for (const id of ["ancient_core", "moon_crystal"]) {
+    const name = state.catalog.items.find(item => item.id === id).name;
+    assert.ok(html.includes(`Где искать: ${name}`), "an exhausted one-time reward does not hide its repeatable exploration alternative");
+  }
+  state.stageOrders.stages[4] = { step: 11, completed: false, terms: null, completionRewards: { ancient_core: 2 } };
+  html = renderUpgrade("home", controller({ snapshot: state }), { navigation: { canOpen() { return false; }, open() {}, explore() {} } });
+  const coreName = state.catalog.items.find(item => item.id === "ancient_core").name;
+  const crystalName = state.catalog.items.find(item => item.id === "moon_crystal").name;
+  assert.ok(html.includes(`${coreName} × 2`), "the accepted project reward remains frozen");
+  assert.ok(html.includes(`Где искать: ${crystalName}`), "the current catalog cannot invent a crystal in an accepted older reward");
+  assert.ok(!html.includes(`Где искать: ${coreName}`));
 });
 
 test("loading and initial failures show no made-up stocks or spend action", () => {

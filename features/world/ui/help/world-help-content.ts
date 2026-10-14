@@ -42,6 +42,8 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
   const tutorialOrders = onboarding?.residentOrders ?? (onboarding ? [onboarding.residentOrder] : []);
   const secondStageOrders = economyCatalog.stageOrders?.find(stage => stage.homeLevel === 2)?.orders ?? [];
   const thirdStage = economyCatalog.stageOrders?.find(stage => stage.homeLevel === 3);
+  const fourthStage = economyCatalog.stageOrders?.find(stage => stage.homeLevel === 4);
+  const fifthHome = economyCatalog.buildings.find(building => building.id === "home")?.levels.find(level => level.level === 5);
   const soupRecipe = economyCatalog.recipes.find(recipe => recipe.id === "cook_fish_soup");
   const soupMeal = food?.meals.find(meal => meal.itemId === "fish_soup");
   const storageLevels = economyCatalog.buildings.find(building => building.id === "warehouse")?.levels ?? [];
@@ -81,6 +83,19 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
       note: "Для нового хозяйства все четыре просьбы нужны перед улучшением дома до уровня 2. Повтор обучения не повторяет выплаты. Принятые старые учебные просьбы сохраняют прежние условия; обычные заказы работают отдельно.",
       action: { label: "Посмотреть заказы", target: { kind: "food", tab: "orders" } },
       relatedIds: ["resident-orders", "resources", "workshop-starter"],
+    }] satisfies WorldHelpTopic[] : []),
+    ...(fourthStage && fifthHome ? [{
+      id: "fourth-house-stage", group: "economy", title: "Как перейти от дома 4 к дому 5?", summary: "Мост, маяк и исследование руин",
+      keywords: "четвертый четвёртый этап дом 4 дом 5 мост маяк руины экспедиция паек паёк снаряжение ядро кристалл проект",
+      steps: [
+        `Откройте «Еда и заказы» → «Заказы». Жители помогают оплатить стройки: ${fourthStage.orders.length} поставок дают ${fourthStage.orders.reduce((sum, order) => sum + order.coins, 0)} монет однократного финансирования проекта. Обычные заказы и продажа товаров приносят остальные монеты.`,
+        "В мастерской изготовьте инструменты и снаряжение исследователя, у костра — походный паёк. Восстановите мост и маяк через их меню на карте; готовые стройки нужно получить.",
+        "Выберите «Древние руины» в меню вылазок. Подготовьте паёк и снаряжение; после похода заберите добычу. Запуск или отмена не заменяют получение результата.",
+        `Завершите проект: получите ${Object.entries(fourthStage.completionRewards).map(([id, count]) => `${itemName(id)} × ${count}`).join(", ")}. Соберите остальные материалы дома 5 и запустите стройку на ${fifthHome.seconds / 3600} ч.`,
+      ],
+      note: `Следующая поставка доступна через ${fourthStage.intervalSeconds / 3600} ч после сдачи предыдущей; пропуск сохраняет прогресс. Жемчуг не сокращает эти интервалы. Достаточно одного бесплатного места каждого производства и начальной кладовой.`,
+      action: { label: "Посмотреть проект", target: { kind: "food", tab: "orders" } },
+      relatedIds: ["future-world", "construction", "journeys", "relics", "resident-orders"],
     }] satisfies WorldHelpTopic[] : []),
     ...(thirdStage ? [{
       id: "third-house-stage", group: "economy", title: "Как перейти от дома 3 к дому 4?", summary: "Проект полянки и поставки на неделю",
@@ -303,6 +318,7 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
       keywords: "реликвии древнее ядро лунный кристалл живая смола редкие особые материалы обмен склад расширение",
       steps: [
         `С дома ${economyCatalog.rareDrops!.requiredHomeLevel} получайте результаты вылазок. ${economyCatalog.rareDrops!.itemIds.map(itemName).join(", ")} появляются через ${economyCatalog.rareDrops!.minSeconds / 3600}-${economyCatalog.rareDrops!.maxSeconds / 3600} часов накопленного времени завершённых и полученных вылазок.`,
+        "Проект перехода к дому 4 гарантирует живую смолу, а проект дома 5 — древнее ядро и лунный кристалл. Обязательные улучшения дома можно пройти без удачного случайного выпадения.",
         "Заберите седьмой подарок за вход - в нём тоже есть древнее ядро. Реликвии находятся в своей вкладке кладовой и занимают место.",
         `С дома ${BARTER_HOME_LEVEL} откройте «Рынок» → «Обмен»: одна реликвия меняется на другую. Один успешный обмен за сутки UTC учитывается у обоих игроков.`,
       ],
@@ -401,10 +417,15 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
       relatedIds: ["fishing", "relics"],
     },
     {
-      id: "future-world", group: "travel", title: "Почему нельзя восстановить мост или маяк?", summary: "Эти места ещё готовятся",
+      id: "future-world", group: "travel", title: "Как восстановить мост и маяк?", summary: "Новые вылазки после дома 4",
       keywords: "мост маяк другой берег свет лучи будущее развитие восстановить закрыто",
-      paragraphs: ["Мост и маяк пока показывают описание будущих возможностей. Их восстановление, другой берег и новые морские маршруты ещё готовятся. Материалы за них сейчас не списываются."],
-      relatedIds: ["mining", "journeys", "construction"],
+      steps: [
+        "С дома 4 нажмите мост или маяк на карте и откройте восстановление. Стоимость и условия видны заранее; работает один строитель.",
+        "После таймера получите результат, чтобы объект изменился и открыл новые вылазки. Мост открывает тропу и рощу другого берега.",
+        "Маяк после восстановления моста открывает исследование древних руин и светится ночью. Новые направления выбираются в меню «В путь».",
+      ],
+      note: "Свободная прогулка через реку и морские путешествия ещё готовятся.",
+      relatedIds: ["fourth-house-stage", "construction", "journeys"],
     },
     {
       id: "campfire", group: "food", title: "Как приготовить компот и рыбу?", summary: "Костёр, рецепт и получение результата",

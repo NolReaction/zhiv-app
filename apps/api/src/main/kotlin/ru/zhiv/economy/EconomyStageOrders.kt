@@ -31,6 +31,12 @@ object EconomyStageOrders {
             require(course.orders.all { terms -> terms.id.startsWith("stage${course.homeLevel}_") &&
                 terms.residentId in setOf("builder", "plesk") && terms.items.isNotEmpty() &&
                 terms.items.all { (id, amount) -> id in known && amount in 1L..ECONOMY_MAX_ITEMS } &&
+                terms.requiredBuildings.all { (id, level) -> catalog.buildings.any { building ->
+                    building.id == id && building.levels.any { it.level == level }
+                } } &&
+                terms.requiredExplorations.all { (id, count) -> count in 1L..ECONOMY_MAX_ITEMS &&
+                    catalog.explorations.any { it.id == id }
+                } &&
                 terms.coins in 1L..ECONOMY_MAX_BALANCE })
         }
     }
@@ -84,6 +90,9 @@ object EconomyStageOrders {
         val progress = progress(state, home)
         if (progress.availableAt != null && now.isBefore(Instant.parse(progress.availableAt)))
             economyFailure("ECONOMY_STAGE_WAIT", "Следующий заказ появится в назначенное время")
+        EconomyRules.requireBuildings(state, terms.requiredBuildings)
+        if (terms.requiredExplorations.any { (id, count) -> (state.progression.routes[id] ?: 0L) < count })
+            economyFailure("ECONOMY_EXPLORATION_REQUIRED", "Сначала завершите нужные исследования и заберите находки")
         val nextStep = progress.step + 1
         val completed = nextStep == course.orders.size
         val nextTerms = if (completed) terms else course.orders[nextStep]

@@ -5,7 +5,8 @@ import type { ResidentOrderOffer } from "./food";
 
 type StageSource = Pick<EconomyState, "stageOrders" | "tutorialOrder" | "buildings"> & { catalog?: EconomyCatalog; serverTime?: string };
 const copyTerms = (terms: NonNullable<ReturnType<typeof economyStageOrderProgressSchema.parse>["terms"]>) =>
-  ({ ...terms, items: { ...terms.items } });
+  ({ ...terms, items: { ...terms.items }, ...(terms.requiredBuildings ? { requiredBuildings: { ...terms.requiredBuildings } } : {}),
+    ...(terms.requiredExplorations ? { requiredExplorations: { ...terms.requiredExplorations } } : {}) });
 
 export function stageOrdersProgress(state: Pick<EconomyState, "stageOrders">): EconomyStageOrders {
   return economyStageOrdersSchema.parse(state.stageOrders);
@@ -39,7 +40,8 @@ export function ensureStageOrders(state: StageSource, catalog = state.catalog ??
 }
 /** Stable accepted conditions override subsequent catalog edits and never expire. */
 export function stageResidentOrder(state: StageSource, catalog = state.catalog ?? economyCatalog):
-  (ResidentOrderOffer & { intervalSeconds: number; completionRewards: Record<string, number> }) | null {
+  (ResidentOrderOffer & { intervalSeconds: number; completionRewards: Record<string, number>;
+    requiredBuildings?: Record<string, number> | null; requiredExplorations?: Record<string, number> | null }) | null {
   const course = currentCourse(state, catalog);
   if (!course) return null;
   const progress = stageOrderProgress(state, course.homeLevel);

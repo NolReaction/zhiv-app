@@ -50,7 +50,9 @@ class JdbcOnboardingEconomyIntegrationTest {
                     // The V50 initializer changes future packs only and contains no gifted fish.
                     assertEquals(0L, initialized.inventory["fish"] ?: 0L)
                     assertFalse(initialized.inventory.containsKey("fish_common"))
-                    assertEquals(EconomyRules.initial(100, 81, 49, 4, 2, includeStartingPack = include).copy(itemUnlockVersion = 0),
+                    val expected = EconomyRules.initial(100, 81, 49, 4, 2, includeStartingPack = include)
+                    // Published SQL initializers omit later optional building keys; absence is level zero.
+                    assertEquals(expected.copy(itemUnlockVersion = 0, buildings = expected.buildings - setOf("bridge", "lighthouse")),
                         EconomyFishInventory.state(initialized))
                 }
             }
@@ -63,7 +65,8 @@ class JdbcOnboardingEconomyIntegrationTest {
                     val legacy = WorldState(resources = WorldResources(sparks = 100, wood = 81, stone = 49), houseLevel = 4, workshop = true, workshopLevel = 2)
                     val initialized = c.economyRows("SELECT economy_v4_initial_state(?::jsonb,?)", worldJson.encodeToString(legacy), include) {
                         economyJson.decodeFromString<EconomyState>(it.getString(1)) }.single()
-                    assertEquals(EconomyRules.initial(100, 81, 49, 4, 2, includeStartingPack = include),
+                    val expected = EconomyRules.initial(100, 81, 49, 4, 2, includeStartingPack = include)
+                    assertEquals(expected.copy(buildings = expected.buildings - setOf("bridge", "lighthouse")),
                         EconomyFishInventory.state(initialized), "The current initializer adds the item knowledge marker and five market slots")
                 }
             }

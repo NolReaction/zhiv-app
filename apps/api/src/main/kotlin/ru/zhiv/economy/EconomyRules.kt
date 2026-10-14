@@ -42,7 +42,7 @@ object EconomyRules {
     init {
         EconomyTutorialOrders.validateCatalog(catalog)
         EconomyStageOrders.validateCatalog(catalog)
-        require(catalog.version == 8 && catalog.currencyScale == 10 && catalog.pearlScale == 50 && catalog.maxBatch in 1..10)
+        require(catalog.version == 9 && catalog.currencyScale == 10 && catalog.pearlScale == 50 && catalog.maxBatch in 1..10)
         require(catalog.localBuyer.payoutBps in 1..10_000)
         require(catalog.localBuyer.unitPrices.all { (id, amount) -> amount in 1L..ECONOMY_MAX_BALANCE && catalog.items.any { it.id == id && it.tradable } })
         require(catalog.constructionSpeedup.secondsPerPearl in 1L..86_400L)
@@ -112,7 +112,8 @@ object EconomyRules {
         return EconomyState(currencyScale=10,pearlScale=50,itemUnlockVersion=1,
             wallet = EconomyWallet(grant.coinsGranted + (starting?.startingWallet?.coins ?: 0), starting?.startingWallet?.pearls ?: 0), inventory = EconomyFishInventory.items(inventory),
             buildings = mapOf("home" to homeLevel.coerceIn(1, 5), "garden" to 1, "woodlot" to 0, "quarry" to 0,
-                "workshop" to workshopLevel.coerceIn(0, 3), "dryer" to 0, "warehouse" to 1, "kiln" to 0), migration = grant,
+                "workshop" to workshopLevel.coerceIn(0, 3), "dryer" to 0, "warehouse" to 1, "kiln" to 0,
+                "bridge" to 0, "lighthouse" to 0), migration = grant,
             tutorialOrder = if (starting == null) EconomyTutorialOrder() else EconomyTutorialOrder(
                 version = 2, step = 0, ingredientsClaimed = true, terms = EconomyTutorialOrders.orders(starting).first()))
     }
@@ -168,7 +169,7 @@ object EconomyRules {
         if ((state.buildings["home"] ?: 1) < level) economyFailure("ECONOMY_HOME_REQUIRED", "Сначала улучшите дом до уровня $level")
     }
 
-    private fun requireBuildings(state: EconomyState, requiredBuildings: Map<String, Int>) {
+    internal fun requireBuildings(state: EconomyState, requiredBuildings: Map<String, Int>) {
         val unmet = requiredBuildings.filter { (id, level) -> (state.buildings[id] ?: 0) < level }
         if (unmet.isNotEmpty()) {
             val description = unmet.entries.joinToString(", ") { (id, level) ->
@@ -331,7 +332,7 @@ object EconomyRules {
                 requireHome(state, recipe.requiredHomeLevel)
                 requireBuildings(state, recipe.requiredBuildings)
                 if (recipe.requiredRecipes.any { (id, amount) -> (state.progression.recipes[id] ?: 0L) < amount })
-                    economyFailure("ECONOMY_RECIPE_REQUIRED", "Сначала приготовьте малиновый компот")
+                    economyFailure("ECONOMY_RECIPE_REQUIRED", "Сначала освоите нужные рецепты")
                 if (state.jobs.any { it.targetId == recipe.buildingId && it.kind == "construction" })
                     economyFailure("ECONOMY_BUILDING_BUSY", "Дождитесь улучшения здания и заберите результат")
                 if (state.jobs.count { it.targetId == recipe.buildingId && it.kind == "production" } >= productionSlotCount(state, recipe.buildingId))

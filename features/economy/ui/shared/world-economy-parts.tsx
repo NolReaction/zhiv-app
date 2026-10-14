@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Check, Clock3, CookingPot, Flame, Hammer, House, LockKeyhole, Package, Pickaxe, Sprout, Trees, type LucideIcon } from "lucide-react";
+import { ArrowRight, Check, Clock3, CookingPot, Fence, Flame, Hammer, House, LockKeyhole, Package, Pickaxe, Sprout, TowerControl, Trees, type LucideIcon } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
 import { PlayerItemIcon } from "@/features/economy/ui/fishing/fish-discovery";
 import type { EconomyCost, EconomyJob, EconomyView } from "@/features/economy/domain/model";
@@ -14,7 +14,7 @@ import styles from "@/features/economy/ui/stations/world-object-menu.module.css"
 
 export type StationNavigation = { open: (id: string, recipeId?: string) => void; canOpen: (id: string) => boolean; explore?: () => void };
 export const number = (value: number) => value.toLocaleString("ru-RU");
-export const stationIcons: Record<string, LucideIcon> = { home: House, warehouse: Package, garden: Sprout, dryer: CookingPot, workshop: Hammer, kiln: Flame, quarry: Pickaxe, woodlot: Trees };
+export const stationIcons: Record<string, LucideIcon> = { home: House, warehouse: Package, garden: Sprout, dryer: CookingPot, workshop: Hammer, kiln: Flame, quarry: Pickaxe, woodlot: Trees, bridge: Fence, lighthouse: TowerControl };
 export const itemName = (state: EconomyView, id: string) => state.catalog.items.find(item => item.id === id)?.name ?? id;
 export const stationName = (state: EconomyView, id: string) => state.catalog.buildings.find(building => building.id === id)?.name ?? id;
 

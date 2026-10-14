@@ -1,6 +1,8 @@
 package ru.zhiv.economy
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import java.math.BigInteger
@@ -22,10 +24,12 @@ import java.time.Instant
     val version: Int = 1, val recentTemplateIds: List<String> = emptyList(),
     val replacementCycle: Long = -1, val freeReplacementsUsed: Int = 0,
 )
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable data class EconomyResidentOrderTemplate(
     val id: String, val residentId: String, val name: String, val requiredHomeLevel: Int = 1,
     val requiredBuildings: Map<String, Int> = emptyMap(), val items: Map<String, Long>, val coins: Long,
     val description: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val requiredExplorations: Map<String, Long> = emptyMap(),
 )
 @Serializable data class EconomyResidentOrderProgression(
     val rawBpsByHome: List<Int>, val fishBpsByHome: List<Int>, val craftedBpsByHome: List<Int>,
@@ -79,6 +83,8 @@ object EconomyFood {
                     template.items.all { (id, quantity) -> id in itemIds && quantity in 1L..100L } &&
                     template.coins in 1L..ECONOMY_MAX_BALANCE && template.requiredBuildings.all { (id, level) ->
                         catalog.buildings.any { it.id == id && it.levels.any { spec -> spec.level == level } }
+                    } && template.requiredExplorations.all { (id, count) ->
+                        count in 1L..ECONOMY_MAX_ITEMS && catalog.explorations.any { it.id == id }
                     }
             })
             require(orders.templates.any { it.requiredHomeLevel == 1 && it.requiredBuildings.isEmpty() })

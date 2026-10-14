@@ -69,7 +69,7 @@ export function reviewProductionSlots(loaded, onScenario = () => {}) {
     ].map(file => [file, createHash("sha256").update(readFileSync(new URL(file, import.meta.url))).digest("hex")])),
     method: {
       rules: "Real TypeScript production, buy_production_slot, claims, construction, actor locks, stock and coin accounting through Vite SSR",
-      completion: "Home level 5 and separately all eight progression buildings level 5; not all collections, legendary fishing, social goals or a final game ending",
+      completion: "Home level 5 and separately the current comparison base: ordinary stations through tier 5, bridge/lighthouse at their authored restored tier, and storage through tier 5; not all collections, legendary fishing, social goals or a final game ending",
       policies: {
         one_slot: "Same parallel-aware planning policy, no slot purchases and no initial pearls",
         slots_from_daily_pearls: "Start with zero pearls. Project only daily gifts' pearl component using real dailyRewardView/afterDailyClaim UTC and minimum-hours rules; purchases use ordinary commands",

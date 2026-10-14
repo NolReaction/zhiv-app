@@ -120,6 +120,36 @@ test("a completed legacy five-request course stays closed while the current hous
   assert.equal(stageResidentOrder(economy.snapshot), null);
 });
 
+test("house-four final project shows actual restoration and claimed expedition prerequisites and rechecks stale callbacks", () => {
+  const economy = controller({ buildings: { home: 4, warehouse: 1, bridge: 1, lighthouse: 0, workshop: 3 },
+    progression: { routes: {}, recipes: {}, collections: { finds: [], travelSeconds: 0, quarrySeconds: 0 } } });
+  const course = economy.snapshot.catalog.stageOrders.find(entry => entry.homeLevel === 4);
+  const terms = structuredClone(course.orders.at(-1));
+  economy.snapshot.stageOrders = { version: 1, stages: { 4: { step: course.orders.length - 1, completed: false,
+    terms, availableAt: new Date(now).toISOString(), intervalSeconds: course.intervalSeconds, completionRewards: course.completionRewards } } };
+  economy.snapshot.inventory = { ...terms.items };
+  const calls = [], navigation = { onNavigateStation: id => calls.push(["station", id]), onNavigateExpeditions: sector => calls.push(["explore", sector]) };
+  let offer = stageResidentOrder(economy.snapshot), card = ResidentOrderCard({ economy, offer, ...navigation });
+  const markup = render(ResidentOrderCard, { economy, offer, ...navigation });
+  assert.match(markup, /Условия поставки|Маяк/);
+  assert.match(markup, /Нужные экспедиции/);
+  assert.match(markup, /забрано 0 \/ 1/);
+  assert.match(markup, /Награда за завершение этапа/);
+  const find = (tree, text) => buttons(tree).find(button => button.props.children === text);
+  assert.equal(find(card, "Отдать заказ").props.disabled, true);
+  find(card, "К постройке").props.onClick(); find(card, "В путь").props.onClick();
+  assert.deepEqual(calls, [["station", "lighthouse"], ["explore", "forest"]]);
+  economy.snapshot.buildings.lighthouse = 1;
+  economy.snapshot.progression.routes.ancient_ruins = 1;
+  offer = stageResidentOrder(economy.snapshot); card = ResidentOrderCard({ economy, offer });
+  const ready = find(card, "Отдать заказ"); assert.equal(ready.props.disabled, false);
+  economy.act = (...args) => calls.push(args);
+  economy.snapshot.progression.routes.ancient_ruins = 0;
+  ready.props.onClick(); assert.equal(calls.length, 2, "the ready callback cannot bypass a changed expedition proof");
+  economy.snapshot.progression.routes.ancient_ruins = 1;
+  ready.props.onClick(); assert.deepEqual(calls[2], ["complete_resident_order", terms.id, 1, 0]);
+});
+
 test("house-three supply stays pinned while waiting and explains the full interval after handover", () => {
   const economy = controller({ buildings: { home: 3, warehouse: 1, workshop: 2, quarry: 2, kiln: 1 },
     tutorialOrder: { version: 1, ingredientsClaimed: true, completed: true } });
