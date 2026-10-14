@@ -28,6 +28,35 @@ test("parallel garden beds show the earliest crop but preserve one actor's reque
   assert.equal(berryCollectionStatus(ripe, saved, now, h.controller.getSnapshot()).disabled, true);
   assert.deepEqual(h.sent, []);
 });
+
+test("scene crops project every berry from confirmed rewards, independently of recipe names and unlocked levels", () => {
+  const ids = ["berries", "strawberries", "blueberries", "currants", "blackberries", "cranberries"];
+  const jobs = ids.map((itemId, index) => ({ ...job(`crop-${index}`), recipeId: "legacy_berry_recipe",
+    startedAt: new Date(now - 60_000 * (index + 1)).toISOString(),
+    finishesAt: new Date(now + 60_000 * index).toISOString(), rewards: { unknown_future_item: 1, [itemId]: 1 } }));
+  const ignored = [{ ...job("fiber"), rewards: { fiber: 1 } },
+    { ...job("workshop"), targetId: "workshop", rewards: { strawberries: 1 } },
+    { ...job("walk"), kind: "exploration", rewards: { blueberries: 1 } },
+    { ...job("empty"), rewards: { cranberries: 0 } }];
+  const saved = snapshot([...jobs, ...ignored]), before = structuredClone(saved);
+  const projected = economyGardenCrop(saved, "crop-4");
+  assert.equal(projected.itemId, "blackberries");
+  assert.deepEqual(projected.orders.map(order => order.itemId), ids);
+  assert.deepEqual(projected.orders.map(order => [order.startedAt, order.finishesAt]), jobs.map(entry => [entry.startedAt, entry.finishesAt]));
+  assert.deepEqual(saved, before, "visual metadata must not rewrite confirmed jobs or inventory");
+  assert.equal(economyGardenCrop(snapshot(ignored)), null);
+});
+
+test("large historical garden queues remain bounded while the explicitly collected crop is included", () => {
+  const jobs = Array.from({ length: 40 }, (_, index) => ({ ...job(`legacy-${String(index).padStart(2, "0")}`),
+    finishesAt: new Date(now + index * 1000).toISOString(), rewards: { strawberries: 1 } }));
+  const projected = economyGardenCrop(snapshot(jobs), "legacy-39");
+  assert.equal(projected.jobId, "legacy-39");
+  assert.equal(projected.orders.length, 32);
+  assert.equal(new Set(projected.orders.map(order => order.jobId)).size, 32);
+  assert.ok(projected.orders.some(order => order.jobId === "legacy-39"));
+  assert.equal(jobs.length, 40, "already paid jobs remain in the authoritative queue");
+});
 function harness(initial = {}, boundOwner = owner) {
   const controller = createGardenCollectionController(boundOwner), sent = [];
   let input = { snapshot: snapshot(), now, busy: false, uncertain: false, retryAt: 0, error: null, sceneAvailable: true, ...initial };

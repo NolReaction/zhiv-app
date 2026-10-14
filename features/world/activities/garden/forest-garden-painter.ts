@@ -3,25 +3,27 @@ import type { FixedWorldScene, WorldPoint } from "@/features/world/tiled/types";
 import { FOREST_GARDEN_LIMITS, type ForestGardenState } from "./forest-garden";
 import { heroSourceAnchor, type FaunaActor, type HeroAnchorPose } from "@/features/world/scene/hero-anchors";
 import { forestBushArtworkAvailable } from "./forest-bush-artwork";
-import { forestFruitVisual } from "./forest-fruit-appearance";
+import { forestFruitAppearance, forestFruitVisual } from "./forest-fruit-appearance";
 import { forestBushSoilGeometry } from "./forest-bush-soil";
 import { forestGardenBerryLayout, type BerryLayout } from "./forest-garden-layout";
+import { economyGardenGrowth, type EconomySceneGardenOrder } from "@/features/world/state/economy/economy-garden-state";
+import { drawForestFruit, forestClusterFruit } from "./forest-fruit-painter";
 
 const TAU = Math.PI * 2;
 const unit = (value: number) => Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
 const blend = (a: WorldPoint, b: WorldPoint, t: number) => ({ x: a.x + (b.x - a.x) * unit(t), y: a.y + (b.y - a.y) * unit(t) });
 type GardenBerry = WorldPoint & { radius: number; growth: number; picked: number; opacity: number;
-  clusterIndex: number; foliage: readonly WorldPoint[] };
+  clusterIndex: number; foliage: readonly WorldPoint[]; itemId?: string; jobId?: string };
 const smooth = (value: number) => { const t = unit(value); return t * t * (3 - 2 * t); };
 const mixPoint = (a: WorldPoint, b: WorldPoint, progress: number) => blend(a, b, smooth(progress));
 const COLLECT = { lowerEnd: .65, pickStart: .85, cycle: 1, liftStart: 4.15, end: 5 } as const;
-type BasketVisual = WorldPoint & { size: number; berries: number; behind: boolean; grounded: boolean };
+type BasketVisual = WorldPoint & { size: number; berries: number; behind: boolean; grounded: boolean; itemId?: string };
 type GardenArm = { shoulder: WorldPoint; elbow: WorldPoint; hand: WorldPoint };
 export type ForestGardenVisualFrame = {
   pose: PixelPose; direction: PixelDirection; frame: number; rig?: PixelRigOptions;
   basket: BasketVisual | null;
   can: (WorldPoint & { size: number; side: number; tilt: number; spout: WorldPoint; target: WorldPoint; pouring: boolean }) | null;
-  pickedBerry: (WorldPoint & { size: number }) | null;
+  pickedBerry: (WorldPoint & { size: number; itemId?: string }) | null;
   arms: GardenArm[]; actor: FaunaActor;
   elapsed: number; still: boolean;
 };
@@ -39,46 +41,60 @@ function harvestProgress(garden: ForestGardenState) {
     fade: smooth((routine.elapsed - 3.85) / .3) };
 }
 
+function gardenCropSlots(garden: ForestGardenState): { crop: EconomySceneGardenOrder; slot: number }[] {
+  const production = garden.production;
+  if (!production) return [];
+  const orders = production.orders?.length ? production.orders : [production];
+  const sorted = [...orders].sort((a, b) => a.startedAt.localeCompare(b.startedAt) || a.jobId.localeCompare(b.jobId));
+  const visible: { crop: EconomySceneGardenOrder; slot: number }[] = [];
+  for (const crop of sorted) {
+    const slot = garden.productionSlots?.[crop.jobId];
+    if (slot !== undefined && Number.isInteger(slot) && slot >= 0 && slot < 3 && !visible.some(entry => entry.slot === slot))
+      visible.push({ crop, slot });
+  }
+  if (!visible.length) for (const [slot, crop] of sorted.slice(0, 3).entries()) visible.push({ crop, slot });
+  if (!visible.some(entry => entry.crop.jobId === production.jobId)) {
+    const free = [0, 1, 2].find(slot => !visible.some(entry => entry.slot === slot));
+    if (free === undefined) visible.splice(visible.findIndex(entry => entry.slot === 2), 1);
+    visible.push({ crop: production, slot: free ?? 2 });
+  }
+  return visible;
+}
+
+/** All jobs have a reachable front subgroup; distant fruit stays in its own stable slot zone. */
+function gardenCropCluster(cluster: BerryLayout, slot: number): BerryLayout {
+  return { ...cluster, x: cluster.x + (slot - 1) * Math.min(1.9, cluster.radius * 1.18), radius: cluster.radius * .82 };
+}
+
 /** Fruit grows continuously from small green buds; no decorative flower stage. */
 export function forestGardenBerries(scene: FixedWorldScene, garden: ForestGardenState | undefined): GardenBerry[] {
   if (!garden) return [];
   const result: GardenBerry[] = [], harvest = harvestProgress(garden);
   for (const plant of garden.bushes) {
-    const bush = scene.bushes?.find(item => item.id === plant.id), growth = unit(plant.growth);
-    if (!bush || !forestBushArtworkAvailable(scene, bush) || growth <= .01) continue;
+    const bush = scene.bushes?.find(item => item.id === plant.id);
+    if (!bush || !forestBushArtworkAvailable(scene, bush)) continue;
     const selected = garden.routine?.bushId === plant.id || garden.harvest?.phase === "completed";
-    forestGardenBerryLayout(bush, bush.entry).forEach((berry, index) => result.push({ ...berry, growth, clusterIndex: index, foliage: bush.points,
-      picked: selected && index === 0 ? harvest.picked : 0,
-      opacity: selected && index !== 0 ? 1 - harvest.fade : 1 }));
+    const layout = forestGardenBerryLayout(bush, bush.entry);
+    if (garden.production === undefined) {
+      const growth = unit(plant.growth);
+      if (growth <= .01) continue;
+      layout.forEach((berry, index) => result.push({ ...berry, growth, clusterIndex: index, foliage: bush.points,
+        picked: selected && index === 0 ? harvest.picked : 0, opacity: selected && index !== 0 ? 1 - harvest.fade : 1 }));
+      continue;
+    }
+    for (const { crop, slot } of gardenCropSlots(garden)) {
+      const growth = garden.productionNow === undefined ? unit(plant.growth) : economyGardenGrowth(crop, garden.productionNow);
+      if (growth <= .01) continue;
+      const worked = selected && crop.jobId === (garden.harvest?.request.jobId ?? garden.production?.jobId);
+      layout.forEach((berry, index) => {
+        if (index && (index - 1) % 3 !== slot) return;
+        result.push({ ...(index ? berry : gardenCropCluster(berry, slot)), growth, clusterIndex: index,
+          foliage: bush.points, itemId: crop.itemId, jobId: crop.jobId,
+          picked: worked && index === 0 ? harvest.picked : 0, opacity: worked && index !== 0 ? 1 - harvest.fade : 1 });
+      });
+    }
   }
   return result;
-}
-
-function drawBerry(ctx: CanvasRenderingContext2D, point: WorldPoint, radius: number, growth: number, clusterIndex = 0, fruitIndex = 0) {
-  const visual = forestFruitVisual(growth, clusterIndex, fruitIndex), { palette } = visual;
-  radius *= visual.size;
-  if (visual.opacity <= 0) return;
-  ctx.save(); ctx.globalAlpha *= visual.opacity;
-  // Uneven warm facets keep a tiny fruit readable without a black outline or white shine.
-  ctx.fillStyle = palette.shade;
-  ctx.beginPath(); ctx.ellipse(point.x, point.y, radius, radius * 1.08, -.16, 0, TAU); ctx.fill();
-  ctx.fillStyle = palette.body;
-  ctx.beginPath(); ctx.ellipse(point.x - radius * .12, point.y - radius * .13, radius * .82, radius * .85, -.16, 0, TAU); ctx.fill();
-  ctx.fillStyle = palette.light;
-  ctx.beginPath(); ctx.ellipse(point.x - radius * .32, point.y - radius * .35, radius * .3, radius * .2, -.6, 0, TAU); ctx.fill();
-  ctx.fillStyle = palette.detail;
-  ctx.beginPath(); ctx.ellipse(point.x + radius * .32, point.y + radius * .28, radius * .12, radius * .11, 0, 0, TAU); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(point.x - radius * .25, point.y + radius * .5, radius * .09, radius * .08, 0, 0, TAU); ctx.fill();
-  ctx.fillStyle = palette.stem;
-  ctx.beginPath(); ctx.moveTo(point.x - radius * .36, point.y - radius * .85);
-  ctx.lineTo(point.x, point.y - radius * .64); ctx.lineTo(point.x + radius * .34, point.y - radius * .91);
-  ctx.lineTo(point.x, point.y - radius * 1.12); ctx.closePath(); ctx.fill();
-  ctx.restore();
-}
-function clusterFruit(cluster: BerryLayout, index: number) {
-  const offsets = [[-.48, -.08], [.48, .06], [0, .75]];
-  const [dx, dy] = offsets[index];
-  return { x: cluster.x + dx * cluster.radius, y: cluster.y + dy * cluster.radius, size: cluster.radius * .58 };
 }
 
 export function drawForestGardenPlants(ctx: CanvasRenderingContext2D, scene: FixedWorldScene, garden: ForestGardenState | undefined) {
@@ -92,9 +108,10 @@ export function drawForestGardenPlants(ctx: CanvasRenderingContext2D, scene: Fix
     ctx.beginPath(); berry.foliage.forEach((point, index) => index ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y));
     ctx.closePath(); ctx.clip();
     for (let index = berry.picked; index < 3; index++) {
-      const fruit = clusterFruit(berry, index), visual = forestFruitVisual(berry.growth, berry.clusterIndex, index);
+      const fruit = forestClusterFruit(berry, index, berry.itemId), appearance = forestFruitAppearance(berry.itemId);
+      const visual = forestFruitVisual(berry.growth, berry.clusterIndex, index, appearance);
       if (visual.opacity <= 0) continue;
-      const r = fruit.size * visual.size;
+      const r = fruit.size * visual.size * appearance.radiusScale;
       ctx.globalAlpha = alpha * berry.opacity * visual.opacity * .2;
       ctx.fillStyle = "#263c1c";
       ctx.beginPath(); ctx.ellipse(fruit.x + r * .4, fruit.y + r * .45, r * 1.15, r * .78, -.2, 0, TAU); ctx.fill();
@@ -103,7 +120,7 @@ export function drawForestGardenPlants(ctx: CanvasRenderingContext2D, scene: Fix
       ctx.beginPath(); ctx.moveTo(berry.x - berry.radius * .1, berry.y - berry.radius * 1.08);
       ctx.quadraticCurveTo(fruit.x - r * .24, fruit.y - r * 1.6, fruit.x, fruit.y - r * .86); ctx.stroke();
       ctx.globalAlpha = alpha * berry.opacity;
-      drawBerry(ctx, fruit, fruit.size, berry.growth, berry.clusterIndex, index);
+      drawForestFruit(ctx, fruit, fruit.size, berry.growth, berry.itemId, berry.clusterIndex, index);
     }
     ctx.restore();
   }
@@ -132,6 +149,7 @@ export function forestGardenVisualFrame(garden: ForestGardenState | undefined, a
   const stationary = ["take-basket", "water", "collect", "deposit"].includes(routine.phase);
   const carries = routine.carryingBasket || routine.phase === "take-basket" || routine.phase === "deposit";
   const plant = garden.bushes.find(item => item.id === routine.bushId);
+  const crop = gardenCropSlots(garden).find(entry => entry.crop.jobId === (garden.harvest?.request.jobId ?? garden.production?.jobId));
   const crownX = plant?.points.length ? plant.points.reduce((sum, point) => sum + point.x, 0) / plant.points.length : actor.x;
   const side = crownX < actor.x ? -1 : 1;
   const pose: PixelPose = stationary ? "idle" : carries ? "carry" : motion.pose;
@@ -180,7 +198,8 @@ export function forestGardenVisualFrame(garden: ForestGardenState | undefined, a
       grounded = t >= COLLECT.lowerEnd && t <= COLLECT.liftStart;
     }
     basket = { ...position, size: basketSize, berries: Math.min(garden.basket.capacity,
-      (garden.production === undefined ? garden.basket.berries : 0) + harvestProgress(garden).putAway), behind: grounded ? position.y < actor.y : direction === "back", grounded };
+      (garden.production === undefined ? garden.basket.berries : 0) + harvestProgress(garden).putAway), itemId: crop?.crop.itemId,
+      behind: grounded ? position.y < actor.y : direction === "back", grounded };
     hands = basketHands(position);
     if (routine.phase === "take-basket" && t < .24) hands = rests.map((rest, index) => mixPoint(rest, hands[index], t / .24));
     if (routine.phase === "deposit" && t > 1.2) hands = hands.map((hand, index) => mixPoint(hand, rests[index], (t - 1.2) / .3));
@@ -190,8 +209,9 @@ export function forestGardenVisualFrame(garden: ForestGardenState | undefined, a
       else if (t >= endPick) hands = rests.map((hand, index) => mixPoint(hand, groundGrip[index], (t - endPick) / (COLLECT.liftStart - endPick)));
       else {
         const elapsed = (t - COLLECT.pickStart) / COLLECT.cycle, index = Math.min(2, Math.floor(elapsed)), phase = elapsed - index;
-        const cluster = plant ? forestGardenBerryLayout(plant, plant.position)[0] : undefined;
-        const fruit = cluster ? clusterFruit(cluster, index) : { ...rests[side < 0 ? 0 : 1], size: actor.size * .016 };
+        const baseCluster = plant ? forestGardenBerryLayout(plant, plant.position)[0] : undefined;
+        const cluster = baseCluster && crop ? gardenCropCluster(baseCluster, crop.slot) : baseCluster;
+        const fruit = cluster ? forestClusterFruit(cluster, index, crop?.crop.itemId) : { ...rests[side < 0 ? 0 : 1], size: actor.size * .016 };
         const reaching = side < 0 ? 0 : 1, lowering = 1 - reaching;
         const center = { x: actor.x, y: actor.y - actor.size * .24 };
         const rim = { x: ground.x, y: ground.y - basketSize * 8 / 14 };
@@ -200,7 +220,7 @@ export function forestGardenVisualFrame(garden: ForestGardenState | undefined, a
           : phase < .6 ? mixPoint(fruit, center, (phase - .35) / .25) : mixPoint(center, rests[reaching], (phase - .6) / .2);
         hands[lowering] = phase < .35 ? rests[lowering] : phase < .6 ? mixPoint(rests[lowering], center, (phase - .35) / .25)
           : phase < .8 ? mixPoint(center, rim, (phase - .6) / .2) : mixPoint(rim, rests[lowering], (phase - .8) / .2);
-        if (phase >= .3 && phase < .8) pickedBerry = { ...hands[phase < .6 ? reaching : lowering], size: fruit.size };
+        if (phase >= .3 && phase < .8) pickedBerry = { ...hands[phase < .6 ? reaching : lowering], size: fruit.size, itemId: crop?.crop.itemId };
       }
     }
   }
@@ -265,8 +285,8 @@ function drawBasket(ctx: CanvasRenderingContext2D, basket: BasketVisual) {
   }
   ctx.fillStyle = "#694526"; ctx.fillRect(-7, -8, 14, 2);
   const count = Math.max(0, Math.min(7, Math.ceil(basket.berries / 2)));
-  for (let index = 0; index < count; index++) drawBerry(ctx,
-    { x: -4.8 + index % 4 * 3.1 + (index >= 4 ? 1.1 : 0), y: -8.2 - (index >= 4 ? 1.6 : 0) }, 1.2, 1);
+  for (let index = 0; index < count; index++) drawForestFruit(ctx,
+    { x: -4.8 + index % 4 * 3.1 + (index >= 4 ? 1.1 : 0), y: -8.2 - (index >= 4 ? 1.6 : 0) }, 1.2, 1, basket.itemId);
   ctx.fillStyle = "#d2ad6c"; ctx.fillRect(-7, -7, 14, 1);
   ctx.restore();
 }
@@ -318,6 +338,6 @@ export function drawForestGardenProps(ctx: CanvasRenderingContext2D, frame: Fore
     }
   }
   if (!behind) drawGardenArms(ctx, frame, true);
-  if (frame.pickedBerry) drawBerry(ctx, frame.pickedBerry, frame.pickedBerry.size, 1);
+  if (frame.pickedBerry) drawForestFruit(ctx, frame.pickedBerry, frame.pickedBerry.size, 1, frame.pickedBerry.itemId);
   ctx.restore();
 }

@@ -28,6 +28,9 @@ export type ForestGardenState = {
   routine: ForestGardenRoutine | null; nextActionAt: number;
   /** Undefined retains legacy/DEV growth; null is a managed empty bush. Never persisted. */
   production?: EconomySceneGarden | null;
+  /** Latest server wall time and three cosmetic zones, never saved as crop state. */
+  productionNow?: number;
+  productionSlots?: Record<string, number>;
   harvest?: { request: GardenHarvestRequest; phase: "pending" | "running" | "completed" } | null;
   harvestEvent?: GardenHarvestEvent | null;
 };
@@ -141,6 +144,27 @@ export function advanceForestGarden(state: ForestGardenState, delta: number, opt
 /** Server dates are transient and progress is independent of simulation speed. */
 export function syncForestGardenProduction(state: ForestGardenState, crop: EconomySceneGarden | null, now: number) {
   state.production = crop;
+  state.productionNow = now;
+  const orders = crop?.orders?.length ? crop.orders : crop ? [crop] : [], confirmed = new Set(orders.map(order => order.jobId));
+  const slots: Record<string, number> = Object.create(null), occupied = new Set<number>();
+  for (const [jobId, slot] of Object.entries(state.productionSlots ?? {})) {
+    if (!confirmed.has(jobId) || !Number.isInteger(slot) || slot < 0 || slot > 2 || occupied.has(slot)) continue;
+    slots[jobId] = slot; occupied.add(slot);
+  }
+  for (const order of orders.slice().sort((left, right) => Date.parse(left.startedAt) - Date.parse(right.startedAt)
+    || left.jobId.localeCompare(right.jobId))) {
+    if (Object.hasOwn(slots, order.jobId)) continue;
+    const free = [0, 1, 2].find(slot => !occupied.has(slot));
+    if (free === undefined) break;
+    slots[order.jobId] = free; occupied.add(free);
+  }
+  if (crop && !Object.hasOwn(slots, crop.jobId)) {
+    // A selected historical fourth crop must still be reachable for collection.
+    const replaced = Object.keys(slots).find(jobId => slots[jobId] === 2);
+    if (replaced) delete slots[replaced];
+    slots[crop.jobId] = 2;
+  }
+  state.productionSlots = slots;
   const growth = economyGardenGrowth(crop, now);
   for (const bush of state.bushes) bush.growth = growth;
 }

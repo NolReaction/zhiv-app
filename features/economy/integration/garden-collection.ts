@@ -1,11 +1,16 @@
 import type { EconomyCommand, EconomyJob, EconomyView } from "@/features/economy/domain/model";
-import type { EconomySceneGarden, GardenHarvestEvent, GardenHarvestRequest } from "@/features/world/state/economy/economy-garden-state";
+import type { EconomySceneGarden, EconomySceneGardenOrder, GardenHarvestEvent, GardenHarvestRequest } from "@/features/world/state/economy/economy-garden-state";
 import { economyActorConflict } from "@/features/economy/domain/actor-availability";
-import { hasGardenBerryReward } from "@/features/economy/domain/garden-berries";
+import { GARDEN_BERRY_ITEM_IDS, hasGardenBerryReward } from "@/features/economy/domain/garden-berries";
 
 export function isBerryProduction(job: EconomyJob) {
   return job.kind === "production" && job.targetId === "garden"
     && hasGardenBerryReward(job.rewards);
+}
+
+function gardenOrder(job: EconomyJob): EconomySceneGardenOrder {
+  return { jobId: job.id, itemId: GARDEN_BERRY_ITEM_IDS.find(id => (job.rewards[id] ?? 0) > 0),
+    startedAt: job.startedAt, finishesAt: job.finishesAt, collection: job.collection ?? undefined };
 }
 
 export function economyGardenCrop(snapshot: EconomyView | null, preferredJobId?: string | null): EconomySceneGarden | null | undefined {
@@ -15,8 +20,12 @@ export function economyGardenCrop(snapshot: EconomyView | null, preferredJobId?:
   const jobs = snapshot.jobs.filter(isBerryProduction)
     .sort((left, right) => Date.parse(left.finishesAt) - Date.parse(right.finishesAt) || left.id.localeCompare(right.id));
   const job = jobs.find(item => item.id === preferredJobId) ?? jobs.find(item => item.collection?.startedAt) ?? jobs[0];
-  return job ? { jobId: job.id, startedAt: job.startedAt, finishesAt: job.finishesAt,
-    collection: job.collection ?? undefined } : null;
+  if (!job) return null;
+  // Ordinary stations have three slots. Retain a bounded set of historical paid
+  // jobs too, always including a requested harvest even beyond the visible slots.
+  const visibleJobs = jobs.slice(0, 32);
+  if (!visibleJobs.includes(job)) visibleJobs[visibleJobs.length - 1] = job;
+  return { ...gardenOrder(job), orders: visibleJobs.map(gardenOrder) };
 }
 
 type Input = { snapshot: EconomyView | null; now: number; busy: boolean; uncertain: boolean; retryAt: number; error?: string | null; sceneAvailable: boolean };
