@@ -221,6 +221,22 @@ test("selected overlays explain volumes and receiving surfaces without painting 
   assert.equal(labels.some(text => text.includes("house")), false);
 });
 
+test("renamed elements display their studio name on the map and undo restores their ID labels", () => {
+  const { store, map } = rig(true, true), labels = [];
+  const ctx = new Proxy({}, { get: (_, key) => key === "fillText" ? text => labels.push(text) : () => {}, set: () => true });
+  for (const [kind, id, name] of [["caster", "tree", "Дерево у дома"], ["receiver", "clearing", "Земля вокруг дома"], ["light", "home-lamp", "Тёплый фонарь"]]) {
+    if (kind === "caster") store.select(id);
+    else if (kind === "receiver") store.selectReceiver(id);
+    else store.selectLight(id);
+    assert.equal(store.setElementMetadata(kind, id, { studioName: name }), true);
+    labels.length = 0; map.draw(ctx, p => p);
+    assert.ok(labels.some(text => text.includes(name)));
+    assert.equal(labels.some(text => text.includes(id)), false);
+    store.undo(); labels.length = 0; map.draw(ctx, p => p);
+    assert.ok(labels.some(text => text.includes(id)));
+  }
+});
+
 test("creation requests survive delayed map mounting and are consumed once", () => {
   requestWorldStudioCreate("receiver"); assert.equal(takeWorldStudioCreate(), "receiver"); assert.equal(takeWorldStudioCreate(), null);
   requestWorldStudioCreate("caster"); assert.equal(takeWorldStudioCreate(), "caster");

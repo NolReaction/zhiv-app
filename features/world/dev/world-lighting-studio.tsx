@@ -8,6 +8,7 @@ import { requestWorldLightingEditorFocus } from "./world-lighting-editor-map";
 import { requestWorldLightingStudioHandoff } from "./world-lighting-studio-session";
 import { LightingNumberField, WorldLightingEditor, WorldLightingReceiverInspector } from "./world-lighting-editor";
 import { WorldStudioObjects } from "./world-studio-objects";
+import { WORLD_STUDIO_TEXT_CANCEL_EVENT, WorldStudioMetadata } from "./world-studio-metadata";
 import { WorldStudioSave } from "./world-studio-save";
 import editorStyles from "./world-lighting-editor.module.css";
 import styles from "./world-lighting-studio.module.css";
@@ -55,7 +56,7 @@ export function focusLightingSelection() {
   if (worldLightingEditorStore.getSnapshot().selectedId) requestWorldLightingEditorFocus();
 }
 
-export function WorldLightingSourceInspector({ light }: { light: WorldLight }) {
+export function WorldLightingSourceInspector({ light, levels }: { light: WorldLight; levels?: Readonly<Record<string, number>> }) {
   const snapshot = useSyncExternalStore(worldLightingEditorStore.subscribe,
     worldLightingEditorStore.getSnapshot, worldLightingEditorStore.getServerSnapshot);
   const baseline = worldLightingEditorStore.getSceneBaseline().lights?.some(item => item.id === light.id);
@@ -63,7 +64,8 @@ export function WorldLightingSourceInspector({ light }: { light: WorldLight }) {
   const position = light.manualPosition ? light.position : projection?.position ?? light.position;
   const height = light.height ?? projection?.height;
   return <section className={editorStyles.editor} aria-label="Свойства источника" data-world-lighting-editor>
-    <h3>{lightingSourceName(light)}</h3>
+    <h3>{light.studioName ?? lightingSourceName(light)}</h3>
+    <WorldStudioMetadata key={`light:${light.id}`} kind="light" element={light} automaticName={lightingSourceName(light)} levels={levels} />
     <fieldset className={editorStyles.controls} disabled={!snapshot.previewDraft}>
       <legend className={editorStyles.srOnly}>Параметры света</legend>
       <label className={styles.toggle}><input type="checkbox" checked={light.enabled !== false}
@@ -130,6 +132,10 @@ export function WorldLightingStudio({ state, change, levels = state.levels, worl
     const save = () => { worldLightingEditorStore.commitGesture(); worldLightingEditorStore.saveDraft(); };
     const escape = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.isComposing || !worldLightingEditorStore.getSnapshot().enabled) return;
+      if (event.target instanceof Element && event.target.matches("[data-studio-text-field]")) {
+        window.dispatchEvent(new CustomEvent(WORLD_STUDIO_TEXT_CANCEL_EVENT, { detail: event.target }));
+        event.preventDefault(); event.stopImmediatePropagation(); return;
+      }
       const placing = worldLightingEditorStore.getSnapshot().tool === "light", gesturing = worldLightingEditorStore.isGesturing();
       if (gesturing || placing) {
         window.dispatchEvent(new CustomEvent(WORLD_LIGHTING_EDITOR_CANCEL_EVENT, { detail: event })); worldLightingEditorStore.cancelGesture();
@@ -177,7 +183,7 @@ export function WorldLightingStudio({ state, change, levels = state.levels, worl
     <nav className={styles.mobileNav} aria-label="Панели студии">{([["objects", "Объекты"], ["inspector", "Свойства"], ["preview", "Вид"]] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={mobilePane === value} onClick={() => setMobilePane(value)}>{label}</button>)}</nav>
     <section className={`${styles.panel} ${styles.outliner}`} data-world-lighting-studio-panel aria-label="Объекты студии"><h3 className={styles.panelTitle}>Объекты и папки</h3><WorldStudioObjects levels={levels} onSelect={() => setMobilePane("inspector")} /></section>
     <section className={`${styles.panel} ${styles.inspector}`} data-world-lighting-studio-panel aria-label="Инспектор студии"><h3 className={styles.panelTitle}>Свойства выбранного</h3><div ref={inspector} className={styles.inspectorScroll} data-studio-inspector-scroll>
-      {selectedLight ? <WorldLightingSourceInspector key={selectedLight.id} light={selectedLight} /> : snapshot.selectedId ? snapshot.selectedKind === "receiver" ? <WorldLightingReceiverInspector key={snapshot.selectedId} /> : <WorldLightingEditor key={snapshot.selectedId} state={state} change={change} levels={levels} /> : <div className={styles.welcome}><h3>Выберите элемент</h3><p>Список объектов слева остаётся на месте, пока вы меняете свойства справа.</p><p>Объём отбрасывает тень. Поверхность земли принимает её. Источник освещает карту.</p><p>Добавьте элемент внизу списка или выберите существующий на карте.</p></div>}
+      {selectedLight ? <WorldLightingSourceInspector key={selectedLight.id} light={selectedLight} levels={levels} /> : snapshot.selectedId ? snapshot.selectedKind === "receiver" ? <WorldLightingReceiverInspector key={snapshot.selectedId} levels={levels} /> : <WorldLightingEditor key={snapshot.selectedId} state={state} change={change} levels={levels} /> : <div className={styles.welcome}><h3>Выберите элемент</h3><p>Список объектов слева остаётся на месте, пока вы меняете свойства справа.</p><p>Объём отбрасывает тень. Поверхность земли принимает её. Источник освещает карту.</p><p>Добавьте элемент внизу списка или выберите существующий на карте.</p></div>}
       {snapshot.error && <p className={styles.error} role="alert">{snapshot.error}</p>}
     </div></section>
     <section className={`${styles.panel} ${styles.viewPanel}`} data-world-lighting-studio-panel aria-label="Вид студии"><div className={styles.panelTitle}><span>Вид и легенда</span><button type="button" className={styles.iconButton} aria-label="Закрыть вид и легенду" onClick={() => setViewOpen(false)}><X size={14} aria-hidden /></button></div><div className={styles.inspectorScroll}><StudioView state={state} change={change} /></div></section>

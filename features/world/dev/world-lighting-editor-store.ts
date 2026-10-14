@@ -1,5 +1,5 @@
 import { TILED_WORLD } from "@/features/world/scene/presentation";
-import type { FixedWorldScene, WorldLight, WorldPoint, WorldShadowCaster, WorldShadowReceiver } from "@/features/world/tiled/types";
+import type { FixedWorldScene, WorldLight, WorldPoint, WorldShadowCaster, WorldShadowReceiver, WorldStudioElementMetadata } from "@/features/world/tiled/types";
 import { WORLD_DEV_ENABLED } from "./world-dev-store";
 import { retainWorldDevClientState } from "./world-dev-hmr-cache";
 
@@ -16,6 +16,7 @@ export type WorldLightingEditorOverlay = "all" | "selected" | "off";
 export type WorldLightingEditorLightPatch = Partial<Omit<WorldLight, "id">>;
 export type WorldLightingLightProjection = Readonly<{ id: string; position: Readonly<WorldPoint>; height: number }>;
 export type WorldLightingElementKind = "caster" | "receiver" | "light";
+export type WorldLightingElementMetadataPatch = { studioName?: string | null; studioFolder?: string | null };
 export type WorldLightingEditorSnapshot = Readonly<{
   sceneId: string;
   enabled: boolean;
@@ -46,7 +47,7 @@ export type WorldLightingEditorSnapshot = Readonly<{
   localSaveError: string | null;
   canUndo: boolean;
   canRedo: boolean;
-  /** Changes only when lighting geometry changes; selection never invalidates shadow caches. */
+  /** Changes when authored lighting or Studio metadata changes; selection never changes it. */
   revision: number;
   casterRevision: number;
   receiverRevision: number;
@@ -63,44 +64,66 @@ const isRecord = (value: unknown): value is Record<string, unknown> => value !==
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 const cross = (a: WorldPoint, b: WorldPoint, c: WorldPoint) => (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
 const sameCondition = (a: WorldShadowCaster["when"], b: WorldShadowCaster["when"]) => a?.siteId === b?.siteId && a?.level === b?.level;
+const sameStudioMetadata = (a: WorldStudioElementMetadata, b: WorldStudioElementMetadata) => a.studioName === b.studioName && a.studioFolder === b.studioFolder;
+const studioMetadata = (value: WorldStudioElementMetadata): WorldStudioElementMetadata => ({
+  ...(value.studioName !== undefined ? { studioName: value.studioName } : {}),
+  ...(value.studioFolder !== undefined ? { studioFolder: value.studioFolder } : {}),
+});
+function validateStudioMetadata(value: Record<string, unknown>): string | null {
+  for (const [key, limit] of [["studioName", 128], ["studioFolder", 256]] as const) {
+    const text = value[key];
+    if (text !== undefined && (typeof text !== "string" || !text.trim() || text !== text.trim() || text.length > limit
+      || /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(text))) return key === "studioName"
+      ? "Имя объекта должно содержать от 1 до 128 символов без управляющих символов."
+      : "Путь папки должен содержать от 1 до 256 символов без управляющих символов.";
+  }
+  if (typeof value.studioFolder === "string" && value.studioFolder.startsWith("custom:")) {
+    const parts = value.studioFolder.slice(7).split("/");
+    if (parts.length > 8 || parts.some(part => !part || part !== part.trim() || part.length > 64 || part === "." || part === ".."))
+      return "В пути папки поддерживается до 8 названий по 64 символа; разделите вложенные папки знаком /.";
+  }
+  return null;
+}
 const samePoints = (a: readonly WorldPoint[], b: readonly WorldPoint[], tolerance = 0) => a.length === b.length
   && a.every((point, index) => Math.abs(point.x - b[index].x) <= tolerance && Math.abs(point.y - b[index].y) <= tolerance);
-const equalCaster = (a: WorldShadowCaster | undefined, b: WorldShadowCaster | undefined, tolerance = 0) => a === b || !!a && !!b && a.id === b.id && a.height === b.height
-  && a.baseHeight === b.baseHeight && a.opacity === b.opacity && a.softness === b.softness && sameCondition(a.when, b.when) && samePoints(a.points, b.points, tolerance);
+const equalCaster = (a: WorldShadowCaster | undefined, b: WorldShadowCaster | undefined, tolerance = 0, includeMetadata = true) => a === b || !!a && !!b && a.id === b.id && a.height === b.height
+  && a.baseHeight === b.baseHeight && a.opacity === b.opacity && a.softness === b.softness && sameCondition(a.when, b.when) && (!includeMetadata || sameStudioMetadata(a, b)) && samePoints(a.points, b.points, tolerance);
 const sameCaster = (a: WorldShadowCaster | undefined, b: WorldShadowCaster | undefined) => equalCaster(a, b);
 /** Tiled rotation/offset round trips introduce only floating-point coordinate noise. */
 const canonicalCaster = (a: WorldShadowCaster | undefined, b: WorldShadowCaster | undefined) => equalCaster(a, b, 1e-9);
 const sameCasters = (a: readonly WorldShadowCaster[], b: readonly WorldShadowCaster[]) => a.length === b.length && a.every((caster, index) => sameCaster(caster, b[index]));
-const equalReceiver = (a: WorldShadowReceiver | undefined, b: WorldShadowReceiver | undefined, tolerance = 0) => a === b || !!a && !!b && a.id === b.id && a.height === b.height
-  && sameCondition(a.when, b.when) && samePoints(a.points, b.points, tolerance);
+const sameCasterGeometry = (a: readonly WorldShadowCaster[], b: readonly WorldShadowCaster[]) => a.length === b.length && a.every((caster, index) => equalCaster(caster, b[index], 0, false));
+const equalReceiver = (a: WorldShadowReceiver | undefined, b: WorldShadowReceiver | undefined, tolerance = 0, includeMetadata = true) => a === b || !!a && !!b && a.id === b.id && a.height === b.height
+  && sameCondition(a.when, b.when) && (!includeMetadata || sameStudioMetadata(a, b)) && samePoints(a.points, b.points, tolerance);
 const sameReceiver = (a: WorldShadowReceiver | undefined, b: WorldShadowReceiver | undefined) => equalReceiver(a, b);
 const canonicalReceiver = (a: WorldShadowReceiver | undefined, b: WorldShadowReceiver | undefined) => equalReceiver(a, b, 1e-9);
 const sameReceivers = (a: readonly WorldShadowReceiver[], b: readonly WorldShadowReceiver[]) => a.length === b.length && a.every((receiver, index) => sameReceiver(receiver, b[index]));
+const sameReceiverGeometry = (a: readonly WorldShadowReceiver[], b: readonly WorldShadowReceiver[]) => a.length === b.length && a.every((receiver, index) => equalReceiver(receiver, b[index], 0, false));
 function freezeCaster(caster: WorldShadowCaster): WorldShadowCaster {
   return Object.freeze({ id: caster.id, points: Object.freeze(caster.points.map(point => Object.freeze({ x: point.x, y: point.y }))) as unknown as WorldPoint[],
-    height: caster.height, baseHeight: caster.baseHeight, opacity: caster.opacity, softness: caster.softness,
+    height: caster.height, baseHeight: caster.baseHeight, opacity: caster.opacity, softness: caster.softness, ...studioMetadata(caster),
     ...(caster.when ? { when: Object.freeze({ siteId: caster.when.siteId, level: caster.when.level }) } : {}) });
 }
 function freezeReceiver(receiver: WorldShadowReceiver): WorldShadowReceiver {
   return Object.freeze({ id: receiver.id, points: Object.freeze(receiver.points.map(point => Object.freeze({ x: point.x, y: point.y }))) as unknown as WorldPoint[],
-    height: receiver.height, ...(receiver.when ? { when: Object.freeze({ siteId: receiver.when.siteId, level: receiver.when.level }) } : {}) });
+    height: receiver.height, ...studioMetadata(receiver), ...(receiver.when ? { when: Object.freeze({ siteId: receiver.when.siteId, level: receiver.when.level }) } : {}) });
 }
 const sameLight = (a: WorldLight | undefined, b: WorldLight | undefined) => a === b || !!a && !!b && a.id === b.id
   && a.position.x === b.position.x && a.position.y === b.position.y && a.kind === b.kind && a.height === b.height
   && a.radius === b.radius && a.intensity === b.intensity && a.color.toLowerCase() === b.color.toLowerCase() && a.flicker === b.flicker
-  && a.enabled === b.enabled && a.manualPosition === b.manualPosition;
+  && a.enabled === b.enabled && a.manualPosition === b.manualPosition && sameStudioMetadata(a, b);
 const sameLights = (a: readonly WorldLight[], b: readonly WorldLight[]) => a.length === b.length && a.every((light, index) => sameLight(light, b[index]));
 const sameGeometry = (a: EditorGeometry, b: EditorGeometry) => sameCasters(a.casters, b.casters) && sameReceivers(a.receivers, b.receivers) && sameLights(a.lights, b.lights);
 function freezeLight(light: WorldLight): WorldLight {
   return Object.freeze({ id: light.id, position: Object.freeze({ x: light.position.x, y: light.position.y }), kind: light.kind,
-    radius: light.radius, intensity: light.intensity, color: light.color.toLowerCase(), flicker: light.flicker,
+    radius: light.radius, intensity: light.intensity, color: light.color.toLowerCase(), flicker: light.flicker, ...studioMetadata(light),
     ...(light.height !== undefined ? { height: light.height } : {}),
     ...(light.enabled !== undefined ? { enabled: light.enabled } : {}),
     ...(light.manualPosition !== undefined ? { manualPosition: light.manualPosition } : {}) });
 }
 const lightKinds: readonly WorldLight["kind"][] = ["lantern", "torch", "glow"];
 function validateLight(value: unknown, scene: FixedWorldScene): string | null {
-  if (!isRecord(value) || Object.keys(value).some(key => !["id", "position", "kind", "height", "radius", "intensity", "color", "flicker", "enabled", "manualPosition"].includes(key))
+  if (!isRecord(value) || Object.keys(value).some(key => !["id", "position", "kind", "height", "radius", "intensity", "color", "flicker", "enabled", "manualPosition", "studioName", "studioFolder"].includes(key))
     || typeof value.id !== "string" || !value.id.trim() || value.id.length > 128 || /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(value.id) || !lightKinds.some(kind => kind === value.kind)) return "Некорректные данные источника света.";
   if (!isRecord(value.position) || Object.keys(value.position).some(key => key !== "x" && key !== "y") || !finite(value.position.x) || !finite(value.position.y)
     || value.position.x < 0 || value.position.x > scene.width || value.position.y < 0 || value.position.y > scene.height) return "Источник света должен находиться внутри карты.";
@@ -110,7 +133,7 @@ function validateLight(value: unknown, scene: FixedWorldScene): string | null {
   if (!finite(value.flicker) || value.flicker < 0 || value.flicker > WORLD_LIGHTING_EDITOR_LIMITS.maxLightFlicker) return "Мерцание должно быть от 0 до 1.";
   if (typeof value.color !== "string" || !/^#[0-9a-f]{6}$/i.test(value.color)) return "Цвет должен иметь формат #rrggbb.";
   if (value.enabled !== undefined && typeof value.enabled !== "boolean" || value.manualPosition !== undefined && typeof value.manualPosition !== "boolean") return "Признаки источника должны быть логическими значениями.";
-  return null;
+  return validateStudioMetadata(value);
 }
 function segmentsIntersect(a: WorldPoint, b: WorldPoint, c: WorldPoint, d: WorldPoint) {
   const epsilon = 1e-9;
@@ -150,20 +173,20 @@ function validateCondition(value: unknown): string | null {
     || !validGeometryId(value.siteId) || !Number.isSafeInteger(value.level) || (value.level as number) < 0) ? "Некорректное условие уровня здания." : null;
 }
 function validateCaster(value: unknown, scene: FixedWorldScene): string | null {
-  if (!isRecord(value) || Object.keys(value).some(key => !["id", "points", "height", "baseHeight", "opacity", "softness", "when"].includes(key))
+  if (!isRecord(value) || Object.keys(value).some(key => !["id", "points", "height", "baseHeight", "opacity", "softness", "when", "studioName", "studioFolder"].includes(key))
     || !validGeometryId(value.id)) return "Некорректные данные объёма.";
   const polygonError = validatePolygon(value.points, scene); if (polygonError) return polygonError;
   if (!finite(value.height) || value.height <= 0 || value.height > WORLD_LIGHTING_EDITOR_LIMITS.maxHeight) return "Высота должна быть больше 0 и не больше 300.";
   if (!finite(value.baseHeight) || value.baseHeight < 0 || value.baseHeight + value.height > WORLD_LIGHTING_EDITOR_LIMITS.maxTop) return "Основание должно быть не ниже 0, а верх объёма — не выше 400.";
   if (!finite(value.opacity) || value.opacity < 0 || value.opacity > 1) return "Непрозрачность должна быть от 0 до 1.";
   if (!finite(value.softness) || value.softness < 0 || value.softness > WORLD_LIGHTING_EDITOR_LIMITS.maxSoftness) return "Мягкость должна быть от 0 до 12.";
-  return validateCondition(value.when);
+  return validateCondition(value.when) ?? validateStudioMetadata(value);
 }
 function validateReceiver(value: unknown, scene: FixedWorldScene): string | null {
-  if (!isRecord(value) || Object.keys(value).some(key => !["id", "points", "height", "when"].includes(key)) || !validGeometryId(value.id)) return "Некорректные данные поверхности.";
+  if (!isRecord(value) || Object.keys(value).some(key => !["id", "points", "height", "when", "studioName", "studioFolder"].includes(key)) || !validGeometryId(value.id)) return "Некорректные данные поверхности.";
   const polygonError = validatePolygon(value.points, scene); if (polygonError) return polygonError;
   if (!finite(value.height) || value.height < 0 || value.height > WORLD_LIGHTING_EDITOR_LIMITS.maxHeight) return "Высота поверхности должна быть от 0 до 300.";
-  return validateCondition(value.when);
+  return validateCondition(value.when) ?? validateStudioMetadata(value);
 }
 
 /** Isolated DEV drafts. The authored scene and player state remain immutable. */
@@ -243,6 +266,7 @@ export function createWorldLightingEditorStore(available: boolean, originalScene
   };
   const applyGeometry = (next: EditorGeometry, record = true, save = true, vertex = state.selectedVertex) => {
     const casterChanged = !sameCasters(next.casters, state.casters), receiverChanged = !sameReceivers(next.receivers, state.receivers), lightChanged = !sameLights(next.lights, state.lights);
+    const geometryChanged = !sameCasterGeometry(next.casters, state.casters) || !sameReceiverGeometry(next.receivers, state.receivers);
     if (!available || !casterChanged && !receiverChanged && !lightChanged) { publish({ error: null }); return false; }
     const metadata = dirtyMetadata(next);
     if (next.casters.length > WORLD_LIGHTING_EDITOR_LIMITS.maxCasters || metadata.dirtyIds.length > WORLD_LIGHTING_EDITOR_LIMITS.maxCasters) {
@@ -262,7 +286,7 @@ export function createWorldLightingEditorStore(available: boolean, originalScene
       error: null, localSaveStatus: "pending", canUndo: past.length > 0, canRedo: future.length > 0, selectedId: selected ? state.selectedId : null,
       selectedVertex: selected && "points" in selected && vertex !== null && vertex < selected.points.length ? vertex : null,
       revision: state.revision + 1, casterRevision: state.casterRevision + Number(casterChanged), receiverRevision: state.receiverRevision + Number(receiverChanged),
-      geometryRevision: state.geometryRevision + Number(casterChanged || receiverChanged), lightRevision: state.lightRevision + Number(lightChanged) });
+      geometryRevision: state.geometryRevision + Number(geometryChanged), lightRevision: state.lightRevision + Number(lightChanged) });
     if (save && !gesture) persist();
     return true;
   };
@@ -563,6 +587,28 @@ export function createWorldLightingEditorStore(available: boolean, originalScene
       if (id !== state.selectedId || state.selectedKind !== "light") commitGesture();
       publish({ selectedKind: "light", selectedId: id, selectedVertex: null, error: null });
     },
+    setElementMetadata(kind: WorldLightingElementKind, id: string, patch: WorldLightingElementMetadataPatch): boolean {
+      if (!available) return false;
+      if (!["caster", "receiver", "light"].includes(kind) || !isRecord(patch)
+        || Object.keys(patch).some(key => key !== "studioName" && key !== "studioFolder")) return fail("Неизвестное свойство объекта студии.");
+      const values = kind === "caster" ? state.casters : kind === "receiver" ? state.receivers : state.lights;
+      const current = values.find(item => item.id === id);
+      if (!current) return fail("Объект не найден в разметке света.");
+      const next = { ...current };
+      for (const key of ["studioName", "studioFolder"] as const) {
+        if (!Object.hasOwn(patch, key)) continue;
+        const value = patch[key];
+        if (value !== null && typeof value !== "string") return fail("Название объекта и папка должны быть строками.");
+        const trimmed = value?.trim();
+        if (!trimmed) delete next[key]; else next[key] = trimmed;
+      }
+      const error = validateStudioMetadata(next); if (error) return fail(error);
+      commitGesture();
+      if (sameStudioMetadata(current, next)) { publish({ error: null }); return true; }
+      if (kind === "caster") return applyGeometry({ ...geometry(), casters: Object.freeze(state.casters.map(item => item.id === id ? freezeCaster(next as WorldShadowCaster) : item)) });
+      if (kind === "receiver") return applyGeometry({ ...geometry(), receivers: Object.freeze(state.receivers.map(item => item.id === id ? freezeReceiver(next as WorldShadowReceiver) : item)) });
+      return applyGeometry({ ...geometry(), lights: Object.freeze(state.lights.map(item => item.id === id ? freezeLight(next as WorldLight) : item)) });
+    },
     setTool(tool: WorldLightingEditorTool) {
       if (!available) return;
       if (!["select", "move", "vertex", "height", "light", "pan"].includes(tool)) { fail("Неизвестный инструмент."); return; }
@@ -797,5 +843,5 @@ export function createWorldLightingEditorStore(available: boolean, originalScene
 }
 
 export const worldLightingEditorStore = retainWorldDevClientState("lighting-editor",
-  `v3:1:${TILED_WORLD.id}:${TILED_WORLD.width}:${TILED_WORLD.height}`,
+  `v3:2:${TILED_WORLD.id}:${TILED_WORLD.width}:${TILED_WORLD.height}`,
   () => createWorldLightingEditorStore(WORLD_DEV_ENABLED, TILED_WORLD)).value;

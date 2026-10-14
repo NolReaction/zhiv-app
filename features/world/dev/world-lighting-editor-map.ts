@@ -276,7 +276,7 @@ export function createWorldLightingEditorMap(getCasters: () => readonly WorldSha
           if (tool() === "height") { const anchor = center(caster.points); handle({ x: anchor.x, y: anchor.y - caster.baseHeight }, "Низ " + caster.baseHeight); handle({ x: anchor.x, y: anchor.y - caster.baseHeight - caster.height }, "Верх " + (caster.baseHeight + caster.height)); }
           if (tool() === "move") handle(center(caster.points), "Переместить объём");
           const label = project(top[0]); ctx.fillStyle = "#fff"; ctx.strokeStyle = "#152a25"; ctx.lineWidth = 3;
-          const text = "Объём · " + caster.id + " · " + caster.baseHeight + "–" + (caster.baseHeight + caster.height);
+          const text = "Объём · " + (caster.studioName ?? caster.id) + " · " + caster.baseHeight + "–" + (caster.baseHeight + caster.height);
           ctx.strokeText(text, label.x + 5, label.y - 9); ctx.fillText(text, label.x + 5, label.y - 9); ctx.lineWidth = 1.5;
         }
         for (const receiver of receivers()) {
@@ -294,7 +294,7 @@ export function createWorldLightingEditorMap(getCasters: () => readonly WorldSha
           if (tool() === "height") handle(center(receiver.points), "Высота поверхности " + receiver.height);
           if (tool() === "move") handle(center(receiver.points), "Переместить поверхность");
           const label = project(receiver.points[0]); ctx.fillStyle = "#fff"; ctx.strokeStyle = "#152a25"; ctx.lineWidth = 3;
-          const text = "Поверхность · " + receiver.id + " · принимает тени";
+          const text = "Поверхность · " + (receiver.studioName ?? receiver.id) + " · принимает тени";
           ctx.strokeText(text, label.x + 5, label.y - 9); ctx.fillText(text, label.x + 5, label.y - 9); ctx.lineWidth = 1.5;
         }
         for (const light of frameLights) {
@@ -302,7 +302,7 @@ export function createWorldLightingEditorMap(getCasters: () => readonly WorldSha
           if (state.overlay === "selected" && !selected) continue;
           guideColor = "#ffdf78"; ctx.setLineDash(light.enabled === false || light.intensity === 0 ? [3, 3] : []); ctx.strokeStyle = selected ? "#ffdf78" : "#e2b977";
           if (selected) circle(light.position, light.radius);
-          ctx.setLineDash([]); handle(light.position, selected ? light.id : undefined, selected);
+          ctx.setLineDash([]); handle(light.position, selected ? light.studioName ?? light.id : undefined, selected);
           if (!selected) continue;
           handle({ x: light.position.x + light.radius, y: light.position.y }, "Радиус " + light.radius);
           if (tool() === "height") {

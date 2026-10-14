@@ -84,6 +84,23 @@ function siteLevelCondition(props, at) {
   return { siteId: identifier(props.siteId, `${at}.properties.siteId`), level: integer(props.level, `${at}.properties.level`) };
 }
 
+function studioMetadata(props, at) {
+  const result = {};
+  for (const [key, limit] of [["studioName", 128], ["studioFolder", 256]]) {
+    if (!own(props, key)) continue;
+    const text = props[key];
+    requireThat(text === text.trim() && text.length <= limit && !/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(text), `${at}.properties.${key}`,
+      `expected 1 to ${limit} characters without surrounding whitespace or control characters`);
+    if (key === "studioFolder" && text.startsWith("custom:")) {
+      const parts = text.slice(7).split("/");
+      requireThat(parts.length <= 8 && parts.every(part => part.length > 0 && part === part.trim() && part.length <= 64 && part !== "." && part !== ".."),
+        `${at}.properties.${key}`, "expected at most 8 non-empty folder names of at most 64 characters separated by /");
+    }
+    result[key] = text;
+  }
+  return result;
+}
+
 function transforms(object, at, allowOffset = false) {
   for (const key of ["x", "y", "parallaxoriginx", "parallaxoriginy"]) defaultValue(object, key, 0, at);
   for (const key of ["offsetx", "offsety"]) {
@@ -252,7 +269,7 @@ function aspect(image, rect, at) {
 
 function compileShadowGeometry(object, shape, kind, at, world) {
   const isCaster = kind === "shadow-caster", className = isCaster ? "ShadowCaster" : "ShadowReceiver";
-  const props = properties(object, at, { height: "float", siteId: "string", level: "int",
+  const props = properties(object, at, { height: "float", siteId: "string", level: "int", studioName: "string", studioFolder: "string",
     ...(isCaster ? { baseHeight: "float", opacity: "float", softness: "float" } : {}) });
   for (const key of ["class", "type"]) {
     if (own(object, key) && object[key] !== "") exact(object[key], className, `${at}.${key}`);
@@ -265,7 +282,7 @@ function compileShadowGeometry(object, shape, kind, at, world) {
   const height = number(isCaster ? props.height : (props.height ?? 0), `${at}.properties.height`, 0);
   requireThat(height <= 300 && (!isCaster || height > 0), `${at}.properties.height`,
     isCaster ? "expected height > 0 and <= 300" : "expected height between 0 and 300");
-  const when = siteLevelCondition(props, at), common = { id, points, height, ...(when ? { when } : {}) };
+  const when = siteLevelCondition(props, at), common = { id, points, height, ...(when ? { when } : {}), ...studioMetadata(props, at) };
   if (!isCaster) return common;
   const baseHeight = number(props.baseHeight ?? 0, `${at}.properties.baseHeight`, 0);
   requireThat(baseHeight + height <= 400, `${at}.properties.baseHeight`, "baseHeight + height must not exceed 400");
@@ -282,7 +299,7 @@ function compileLight(object, shape, at, world) {
   defaultValue(object, "width", 0, at);
   defaultValue(object, "height", 0, at);
   const props = properties(object, at, { kind: "string", radius: "float", intensity: "float", color: "color", flicker: "float", height: "float",
-    enabled: "bool", manualPosition: "bool" });
+    enabled: "bool", manualPosition: "bool", studioName: "string", studioFolder: "string" });
   const kind = props.kind ?? "lantern";
   requireThat(["lantern", "torch", "glow"].includes(kind), `${at}.properties.kind`, "expected lantern, torch or glow");
   const defaults = {
@@ -299,7 +316,7 @@ function compileLight(object, shape, at, world) {
   requireThat(/^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(authoredColor), `${at}.properties.color`, "expected #RRGGBB or opaque #FFRRGGBB");
   requireThat(authoredColor.length === 7 || authoredColor.slice(1, 3).toLowerCase() === "ff", `${at}.properties.color`, "light color must be opaque; use intensity to change brightness");
   const color = `#${authoredColor.slice(-6).toLowerCase()}`;
-  return { id: string(object.name, `${at}.name`), position: point(object, at, world), kind, radius, intensity, color, flicker,
+  return { id: string(object.name, `${at}.name`), position: point(object, at, world), kind, radius, intensity, color, flicker, ...studioMetadata(props, at),
     ...(own(props, "height") ? { height: props.height } : {}),
     ...(own(props, "enabled") ? { enabled: props.enabled } : {}),
     ...(own(props, "manualPosition") ? { manualPosition: props.manualPosition } : {}) };

@@ -20,8 +20,15 @@
 .detailsBody { display: grid; gap: 10px; min-width: 0; padding-bottom: 5px; }
 .field { display: grid; gap: 5px; min-width: 0; color: var(--dev-muted); font-size: 12px; }
 .field select { min-width: 0; width: 100%; min-height: 40px; padding: 6px; border: 1px solid var(--dev-line); border-radius: 7px; background: #15281e; color: var(--dev-ink); }
+.field input[type='text'] { box-sizing: border-box; min-width: 0; width: 100%; min-height: 40px; padding: 6px; border: 1px solid var(--dev-line); border-radius: 7px; background: #15281e; color: var(--dev-ink); }
+.field input[aria-invalid='true'] { border-color: #e5b383; }
+.metadata { display: grid; gap: 9px; margin: 0; padding: 0 0 10px; border: 0; border-bottom: 1px solid var(--dev-line); min-width: 0; }
+.metadata:disabled { opacity: .6; }
+.elementId { margin: 0; color: var(--dev-muted); font-size: 10px; overflow-wrap: anywhere; }
+.elementId code { font-size: inherit; }
+.fieldError { margin: 0; color: #f4cead; font-size: 11px; line-height: 1.4; }
 .hint { margin: 0; color: var(--dev-muted); font-size: 11px; line-height: 1.55; }
 .levelHint { display: grid; gap: 6px; padding: 8px; border: 1px dashed var(--dev-line); border-radius: 8px; }
 .levelHint p { margin: 0; color: var(--dev-muted); font-size: 11px; line-height: 1.4; }
 .srOnly { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
-@media (max-width: 700px) { .numberField input[type='number'], .field select { font-size: 16px; } }
+@media (max-width: 700px) { .numberField input[type='number'], .field select, .field input[type='text'] { font-size: 16px; } }

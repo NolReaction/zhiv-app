@@ -130,6 +130,55 @@ test("matching conditional home-level patch updates only that caster and keeps i
   assert.deepEqual(result.shadowCasters[1], patch.casters[0].after);
 });
 
+test("metadata patch round trips all element kinds without moving Tiled IDs, layers, coordinates or conditions", async t => {
+  const { map, mapPath, options, scene, apply, house, lamp } = await fixture(t, { lights: true });
+  const operation = (value, studioName, studioFolder) => ({ id: value.id, before: clone(value), after: { ...clone(value), studioName, studioFolder } });
+  const patch = { schemaVersion: 3, sceneId: scene.id,
+    casters: [operation(scene.shadowCasters[1], "Дом · тень", "custom:Посёлок/Дом")],
+    receivers: [operation(scene.shadowReceivers[0], "Земля", "building:home:1")],
+    lights: [operation(scene.lights[0], "Фонарь дорожки", "custom:Посёлок/Дом")] };
+  const result = await apply(patch); assert.equal(result.changed, 3);
+  const saved = JSON.parse(await readFile(mapPath, "utf8"));
+  const elements = [saved.layers[2].layers[0].layers[0].layers[0].objects[1], saved.layers[2].layers[0].layers[1].objects[0], saved.layers[2].layers[0].layers[2].objects[0]];
+  assert.equal(elements[0].name, house.name); assert.equal(elements[0].id, house.id);
+  assert.equal(elements[2].name, lamp.name); assert.equal(elements[2].id, lamp.id);
+  const withoutMetadata = clone(saved);
+  const removeMetadata = layers => {
+    for (const layer of layers) {
+      if (layer.layers) removeMetadata(layer.layers);
+      for (const object of layer.objects ?? []) if (object.properties) object.properties = object.properties.filter(value => !["studioName", "studioFolder"].includes(value.name));
+    }
+  };
+  removeMetadata(withoutMetadata.layers); assert.deepEqual(withoutMetadata, map);
+  const compiled = await readTiledWorld(mapPath, options.publicDir);
+  assert.deepEqual(compiled.shadowCasters[1], patch.casters[0].after); assert.deepEqual(compiled.shadowReceivers[0], patch.receivers[0].after);
+  assert.deepEqual(compiled.lights[0], patch.lights[0].after);
+  const bytes = await readFile(mapPath, "utf8");
+  assert.equal((await apply(patch, { allowAlreadyApplied: true })).changed, 0, "metadata retries are idempotent"); assert.equal(await readFile(mapPath, "utf8"), bytes);
+  const clear = { schemaVersion: 3, sceneId: scene.id,
+    casters: [{ id: patch.casters[0].id, before: patch.casters[0].after, after: clone(scene.shadowCasters[1]) }],
+    receivers: [{ id: patch.receivers[0].id, before: patch.receivers[0].after, after: clone(scene.shadowReceivers[0]) }],
+    lights: [{ id: patch.lights[0].id, before: patch.lights[0].after, after: clone(scene.lights[0]) }] };
+  await apply(clear); assert.deepEqual(JSON.parse(await readFile(mapPath, "utf8")), map, "clearing removes string properties rather than writing empty strings");
+});
+
+test("metadata participates in baseline conflicts and invalid metadata never writes files", async t => {
+  const { mapPath, scene, makePatch, apply, options } = await fixture(t);
+  await apply(makePatch("oak", { studioName: "Сосна", studioFolder: "custom:Деревья" }));
+  const saved = await readFile(mapPath, "utf8");
+  await assert.rejects(() => apply(makePatch("oak", { height: 23 })), /stale caster oak/, "legacy patches cannot erase newer metadata silently");
+  const compiled = await readTiledWorld(mapPath, options.publicDir);
+  for (const metadata of [{ studioName: "x".repeat(129) }, { studioName: "bad\nname" }, { studioFolder: "custom:One//Two" }, { studioFolder: "custom:.." }]) {
+    const before = compiled.shadowCasters[0], invalid = { schemaVersion: 3, sceneId: scene.id, receivers: [], lights: [],
+      casters: [{ id: before.id, before, after: { ...before, ...metadata } }] };
+    await assert.rejects(() => apply(invalid), /studio(Name|Folder)/);
+    assert.equal(await readFile(mapPath, "utf8"), saved);
+  }
+  const invalidMap = JSON.parse(saved);
+  invalidMap.layers[2].layers[0].layers[0].layers[0].objects[0].properties.find(property => property.name === "studioFolder").value = "custom:One/..";
+  await assert.rejects(() => compileTiledWorld(invalidMap, options), /studioFolder/);
+});
+
 test("check and unchanged patches leave source bytes and filesystem contents untouched", async t => {
   const { mapPath, makePatch, apply } = await fixture(t);
   const source = await readFile(mapPath, "utf8"), files = await readdir(path.dirname(mapPath));

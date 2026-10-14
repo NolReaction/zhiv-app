@@ -89,7 +89,13 @@ export type WorldWater = {
   surfaces: WorldWaterPolygon[];
   exclusions: WorldWaterPolygon[];
 };
-export type WorldLight = {
+/** Studio-only organization; identity, geometry and visibility are independent. */
+export type WorldStudioElementMetadata = {
+  studioName?: string;
+  /** Built-in folder ID or a nested custom:Name/Child path. */
+  studioFolder?: string;
+};
+export type WorldLight = WorldStudioElementMetadata & {
   id: string;
   /** Optional authoring switch; absent keeps the source enabled. */
   enabled?: boolean;
@@ -107,7 +113,7 @@ export type WorldLight = {
   flicker: number;
 };
 /** An independent ground-projected footprint extruded vertically for light blocking. */
-export type WorldShadowCaster = {
+export type WorldShadowCaster = WorldStudioElementMetadata & {
   id: string;
   points: WorldPoint[];
   /** Thickness above baseHeight, in vertical world units. */
@@ -119,7 +125,7 @@ export type WorldShadowCaster = {
   when?: WorldVisibilityCondition;
 };
 /** Receiver contour follows the painted surface at its authored vertical height. */
-export type WorldShadowReceiver = {
+export type WorldShadowReceiver = WorldStudioElementMetadata & {
   id: string;
   points: WorldPoint[];
   height: number;

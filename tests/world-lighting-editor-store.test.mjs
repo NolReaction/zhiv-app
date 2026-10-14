@@ -865,3 +865,119 @@ test("restoring a deleted authored lamp re-enables it after its disabled tombsto
   const patch = JSON.parse(store.exportPatch()); assert.equal(patch.lights[0].before.enabled, false); assert.equal(patch.lights[0].after.enabled, true);
   store.undo(); assert.equal(store.getSnapshot().lights[0].enabled, false); store.redo(); assert.equal(store.getSnapshot().lights[0].enabled, true);
 });
+
+test("Studio names and folders are undoable authoring changes independent from IDs, conditions and geometry", () => {
+  const original = litScene(), unchanged = structuredClone(original), store = createWorldLightingEditorStore(true, original);
+  store.select("house", 2);
+  const before = store.getSnapshot();
+  assert.equal(store.setElementMetadata("caster", "house", { studioName: "  Дом · тень  ", studioFolder: "custom:Посёлок/Дом" }), true);
+  assert.equal(store.setElementMetadata("receiver", "ground", { studioName: "Земля под домом", studioFolder: "building:home:1" }), true);
+  assert.equal(store.setElementMetadata("light", "home-lantern", { studioName: "Тёплый фонарь", studioFolder: "custom:Посёлок/Дом" }), true);
+  const renamed = store.getSnapshot();
+  assert.equal(renamed.revision, before.revision + 3);
+  assert.equal(renamed.geometryRevision, before.geometryRevision);
+  assert.equal(renamed.selectedId, "house"); assert.equal(renamed.selectedVertex, 2);
+  assert.deepEqual(renamed.dirtyIds, ["house"]); assert.deepEqual(renamed.dirtyReceiverIds, ["ground"]); assert.deepEqual(renamed.dirtyLightIds, ["home-lantern"]);
+  assert.deepEqual(original, unchanged);
+  const draft = store.applyToScene(original);
+  assert.equal(draft.shadowCasters[1].studioName, "Дом · тень"); assert.equal(draft.shadowReceivers[0].studioFolder, "building:home:1");
+  assert.deepEqual(draft.shadowCasters[1].when, original.shadowCasters[1].when);
+  assert.deepEqual(draft.shadowCasters[1].points, original.shadowCasters[1].points);
+  assert.deepEqual(draft.lights[0].position, original.lights[0].position);
+  store.undo(); assert.deepEqual(store.getSnapshot().lights, original.lights);
+  store.undo(); assert.deepEqual(store.getSnapshot().receivers, original.shadowReceivers);
+  store.undo(); assert.deepEqual(store.getSnapshot().casters, original.shadowCasters);
+  store.redo(); store.redo(); store.redo(); assert.deepEqual(store.getSnapshot().lights, renamed.lights);
+  const revision = store.getSnapshot().revision;
+  assert.equal(store.setElementMetadata("caster", "house", { studioName: "Дом · тень" }), true);
+  assert.equal(store.getSnapshot().revision, revision, "same metadata creates no history or revision");
+  store.select("house"); store.removeSelected(); store.undo();
+  assert.equal(store.getSnapshot().casters[1].studioName, "Дом · тень", "Undo of deletion restores current custom metadata");
+});
+
+test("metadata survives browser hydration, JSON patch and full backup, disk acknowledgement and Undo", () => {
+  const original = litScene(), storage = memoryStorage();
+  browser(storage, () => {
+    const store = createWorldLightingEditorStore(true, original);
+    store.setElementMetadata("caster", "tree", { studioName: "Сосна", studioFolder: "trees" });
+    store.setElementMetadata("receiver", "ground", { studioName: "Поляна", studioFolder: "custom:Мир/Земля" });
+    store.setElementMetadata("light", "home-lantern", { studioName: "У дома", studioFolder: "lights" });
+    const hydrated = createWorldLightingEditorStore(true, original); hydrated.hydrate();
+    const imported = createWorldLightingEditorStore(true, original); assert.equal(imported.importPatch(store.exportPatch()), true);
+    const backup = createWorldLightingEditorStore(true, original); assert.equal(backup.importSceneBackup(store.exportSceneBackup()), true);
+    for (const restored of [hydrated, imported, backup]) {
+      assert.deepEqual(restored.getSnapshot().casters, store.getSnapshot().casters);
+      assert.deepEqual(restored.getSnapshot().receivers, store.getSnapshot().receivers);
+      assert.deepEqual(restored.getSnapshot().lights, store.getSnapshot().lights);
+    }
+    const savedScene = { ...structuredClone(original), shadowCasters: structuredClone(store.getSnapshot().casters),
+      shadowReceivers: structuredClone(store.getSnapshot().receivers), lights: structuredClone(store.getSnapshot().lights) };
+    assert.equal(store.reconcileProjectBaseline(savedScene), true);
+    assert.deepEqual(JSON.parse(store.exportPatch()).lights, []);
+    store.undo();
+    const undoPatch = JSON.parse(store.exportPatch());
+    assert.equal(undoPatch.lights[0].before.studioName, "У дома"); assert.equal(undoPatch.lights[0].after.studioName, undefined);
+    store.redo();
+    assert.equal(store.setElementMetadata("receiver", "ground", { studioName: null, studioFolder: " " }), true);
+    assert.equal(store.getSnapshot().receivers[0].studioName, undefined); assert.equal(store.getSnapshot().receivers[0].studioFolder, undefined);
+    const replacement = createWorldLightingEditorStore(true, savedScene);
+    assert.equal(replacement.importPatch(store.exportPatch()), true);
+    assert.equal(replacement.getSnapshot().receivers[0].studioFolder, undefined);
+  });
+});
+
+test("metadata validation rejects malformed names and paths atomically in API, patch and backup", () => {
+  const original = litScene(), store = createWorldLightingEditorStore(true, original);
+  for (const invalid of [{ studioName: "x".repeat(129) }, { studioName: "bad\nname" }, { studioFolder: "custom:" },
+    { studioFolder: "custom:My//Folder" }, { studioFolder: "custom:My/.." }, { studioFolder: `custom:${"A/".repeat(8)}B` },
+    { studioFolder: `custom:${"x".repeat(65)}` }, { studioFolder: 12 }, { studioName: undefined }, { id: "new-id" }]) {
+    const before = store.getSnapshot();
+    assert.equal(store.setElementMetadata("caster", "tree", invalid), false);
+    assert.equal(store.getSnapshot().casters, before.casters); assert.equal(store.getSnapshot().revision, before.revision);
+    assert.equal(store.getSnapshot().canUndo, false);
+  }
+  assert.equal(store.setElementMetadata("caster", "missing", { studioName: "Name" }), false);
+  const invalidPatch = JSON.parse(patchV3(original, { receivers: [["ground", { ...original.shadowReceivers[0], studioName: " untrimmed " }]] }));
+  assert.equal(store.importPatch(JSON.stringify(invalidPatch)), false);
+  const invalidBackup = JSON.parse(store.exportSceneBackup()); invalidBackup.lights[0].studioFolder = "custom: Bad";
+  assert.equal(store.importSceneBackup(JSON.stringify(invalidBackup)), false);
+  assert.equal(store.getSnapshot().revision, 0);
+  const disabled = createWorldLightingEditorStore(false, original);
+  assert.equal(disabled.setElementMetadata("light", "home-lantern", { studioName: "No" }), false);
+  assert.equal(disabled.getSnapshot().revision, 0);
+});
+
+test("warm derived-scene caches refresh Studio metadata across rename, move, project acknowledgement and Undo", () => {
+  const original = litScene(), store = createWorldLightingEditorStore(true, original);
+  const initial = store.applyToScene(original), revisions = store.getSnapshot();
+  assert.equal(initial, original); assert.equal(store.applyToScene(original), initial);
+  store.setElementMetadata("caster", "tree", { studioName: "Северная сосна", studioFolder: "custom:Лес/Север" });
+  const renamed = store.applyToScene(original);
+  assert.notEqual(renamed, initial); assert.equal(store.applyToScene(original), renamed);
+  assert.equal(renamed.shadowCasters[0].studioName, "Северная сосна"); assert.equal(renamed.shadowCasters[0].studioFolder, "custom:Лес/Север");
+  assert.equal(renamed.shadowReceivers, initial.shadowReceivers, "unchanged receiver arrays are reused");
+  assert.equal(store.getSnapshot().geometryRevision, revisions.geometryRevision);
+  store.setElementMetadata("receiver", "ground", { studioName: "Поляна", studioFolder: "custom:Лес/Земля" });
+  const moved = store.applyToScene(original);
+  assert.equal(moved.shadowCasters, renamed.shadowCasters, "unchanged caster arrays are reused");
+  assert.equal(moved.shadowReceivers[0].studioName, "Поляна"); assert.equal(moved.shadowReceivers[0].studioFolder, "custom:Лес/Земля");
+  assert.equal(store.getSnapshot().geometryRevision, revisions.geometryRevision);
+  const saved = structuredClone(moved);
+  assert.equal(store.reconcileProjectBaseline(saved), true);
+  const acknowledged = store.applyToScene(original);
+  assert.equal(acknowledged, moved, "acknowledgement retains an already current rendered scene");
+  store.setPreviewDraft(false);
+  const savedPreview = store.applyToScene(original);
+  assert.equal(savedPreview.shadowCasters[0].studioName, "Северная сосна"); assert.equal(savedPreview.shadowReceivers[0].studioName, "Поляна");
+  store.setPreviewDraft(true); store.undo();
+  const undone = store.applyToScene(original);
+  assert.equal(undone.shadowCasters[0].studioName, "Северная сосна"); assert.equal(undone.shadowReceivers[0].studioName, undefined);
+  store.undo();
+  const restored = store.applyToScene(original);
+  assert.equal(restored.shadowCasters[0].studioName, undefined); assert.equal(restored.shadowCasters[0].studioFolder, undefined);
+  assert.equal(store.getSnapshot().geometryRevision, revisions.geometryRevision);
+  store.redo(); store.redo();
+  const redone = store.applyToScene(original);
+  assert.equal(redone.shadowCasters[0].studioFolder, "custom:Лес/Север"); assert.equal(redone.shadowReceivers[0].studioFolder, "custom:Лес/Земля");
+  store.setPreviewDraft(false); assert.equal(store.applyToScene(original), savedPreview, "saved preview cache remains independent from Undo");
+});

@@ -27,38 +27,67 @@ export function buildWorldStudioOutliner(snapshot: Pick<WorldLightingEditorSnaps
     if (!node) { node = { type: "folder", id, label, children: [], active }; folders.set(id, node); (parent?.children ?? roots).push(node); }
     return node;
   }
-  for (const caster of snapshot.casters) {
-    let parent: StudioFolder;
-    if (caster.when) {
-      const site = TILED_WORLD.sites.find(item => item.id === caster.when!.siteId);
-      const buildings = folder("buildings", "Здания");
-      const building = folder(`building:${caster.when.siteId}`, site?.label ?? caster.when.siteId, buildings);
-      const active = levels[caster.when.siteId] === caster.when.level;
-      parent = folder(`building:${caster.when.siteId}:${caster.when.level}`, `Уровень ${caster.when.level}${active ? " · на карте" : ""}`, building, active);
-    } else if (/-(trunk|crown)$/.test(caster.id)) {
-      const stem = caster.id.replace(/-(trunk|crown)$/, "");
-      parent = folder(`tree:${stem}`, treeName(stem), folder("trees", "Деревья"));
-    } else parent = /boulder|stone|rock/.test(caster.id) ? folder("stones", "Камни") : folder("volumes", "Свои объёмы");
-    parent.children.push({ type: "object", kind: "caster", id: caster.id,
-      label: caster.when ? "Объём здания" : /-trunk$/.test(caster.id) ? "Ствол" : /-crown$/.test(caster.id) ? "Крона" : caster.id === "clearing-boulder" ? "Камень на поляне" : caster.id,
-      detail: "Отбрасывает тень", dirty: snapshot.dirtyIds.includes(caster.id), removed: false });
+  function destination(id: string): StudioFolder {
+    const existing = folders.get(id); if (existing) return existing;
+    if (id.startsWith("custom:")) {
+      const segments = id.slice(7).split("/"); let parent: StudioFolder | undefined;
+      for (let at = 0; at < segments.length; at++) parent = folder(`custom:${segments.slice(0, at + 1).join("/")}`, segments[at], parent);
+      return parent!;
+    }
+    const building = /^building:([^:]+)(?::(\d+))?$/.exec(id);
+    if (building) {
+      const siteId = building[1], level = building[2] === undefined ? undefined : Number(building[2]);
+      const site = TILED_WORLD.sites.find(item => item.id === siteId);
+      const parent = folder(`building:${siteId}`, site?.label ?? siteId, folder("buildings", "Здания"));
+      if (level === undefined) return parent;
+      const active = levels[siteId] === level;
+      return folder(id, `Уровень ${level}${active ? " · на карте" : ""}`, parent, active);
+    }
+    if (id.startsWith("tree:")) return folder(id, treeName(id.slice(5)), folder("trees", "Деревья"));
+    const labels: Record<string, string> = { buildings: "Здания", trees: "Деревья", stones: "Камни", volumes: "Свои объёмы", surfaces: "Поверхности земли", lights: "Источники света", removed: "Удалённые / выключенные" };
+    return folder(id, labels[id] ?? id);
   }
-  for (const receiver of snapshot.receivers) folder("surfaces", "Поверхности земли").children.push({ type: "object", kind: "receiver", id: receiver.id, label: studioReceiverName(receiver.id), detail: "Принимает тени", dirty: snapshot.dirtyReceiverIds.includes(receiver.id), removed: false });
+  function naturalCasterFolder(caster: WorldLightingEditorSnapshot["casters"][number]) {
+    if (caster.when) return destination(`building:${caster.when.siteId}:${caster.when.level}`);
+    if (/-(trunk|crown)$/.test(caster.id)) return destination(`tree:${caster.id.replace(/-(trunk|crown)$/, "")}`);
+    return destination(/boulder|stone|rock/.test(caster.id) ? "stones" : "volumes");
+  }
+  // Keep automatic destinations available when their objects have been moved.
+  for (const caster of snapshot.casters) naturalCasterFolder(caster);
+  if (snapshot.receivers.length) destination("surfaces");
+  if (snapshot.lights.some(light => light.enabled !== false)) destination("lights");
+  for (const caster of snapshot.casters) {
+    const parent = caster.studioFolder ? destination(caster.studioFolder) : naturalCasterFolder(caster);
+    const site = caster.when ? TILED_WORLD.sites.find(item => item.id === caster.when!.siteId) : undefined;
+    parent.children.push({ type: "object", kind: "caster", id: caster.id,
+      label: caster.studioName ?? (caster.when ? "Объём здания" : /-trunk$/.test(caster.id) ? "Ствол" : /-crown$/.test(caster.id) ? "Крона" : caster.id === "clearing-boulder" ? "Камень на поляне" : caster.id),
+      detail: `Отбрасывает тень${caster.when ? ` · ${site?.label ?? caster.when.siteId} · уровень ${caster.when.level}${levels[caster.when.siteId] === caster.when.level ? " · на карте" : ""}` : ""}`,
+      dirty: snapshot.dirtyIds.includes(caster.id), removed: false });
+  }
+  for (const receiver of snapshot.receivers) destination(receiver.studioFolder ?? "surfaces").children.push({ type: "object", kind: "receiver", id: receiver.id, label: receiver.studioName ?? studioReceiverName(receiver.id), detail: "Принимает тени", dirty: snapshot.dirtyReceiverIds.includes(receiver.id), removed: false });
   for (const light of snapshot.lights) {
     const removed = light.enabled === false;
-    folder(removed ? "removed" : "lights", removed ? "Удалённые / выключенные" : "Источники света").children.push({ type: "object", kind: "light", id: light.id, label: studioSourceName(light.id, light.kind), detail: removed ? "Источник выключен" : "Источник света", dirty: snapshot.dirtyLightIds.includes(light.id), removed });
+    destination(removed ? "removed" : light.studioFolder ?? "lights").children.push({ type: "object", kind: "light", id: light.id, label: light.studioName ?? studioSourceName(light.id, light.kind), detail: removed ? "Источник выключен" : "Источник света", dirty: snapshot.dirtyLightIds.includes(light.id), removed });
   }
   for (const [kind, deleted] of [["caster", snapshot.deletedCasters], ["receiver", snapshot.deletedReceivers]] as const) {
-    for (const element of deleted) folder("removed", "Удалённые / выключенные").children.push({ type: "object", kind, id: element.id, label: kind === "receiver" ? studioReceiverName(element.id) : element.id, detail: kind === "receiver" ? "Поверхность удалена" : "Объём тени удалён", dirty: true, removed: true });
+    for (const element of deleted) destination("removed").children.push({ type: "object", kind, id: element.id, label: element.studioName ?? (kind === "receiver" ? studioReceiverName(element.id) : element.id), detail: kind === "receiver" ? "Поверхность удалена" : "Объём тени удалён", dirty: true, removed: true });
   }
   return roots;
+}
+
+export function studioFolderOptions(nodes: readonly StudioNode[], prefix = ""): { id: string; label: string }[] {
+  return nodes.flatMap(node => {
+    if (node.type !== "folder" || node.id === "removed") return [];
+    const label = prefix ? `${prefix} / ${node.label}` : node.label;
+    return [{ id: node.id, label }, ...studioFolderOptions(node.children, label)];
+  });
 }
 
 export function filterWorldStudioOutliner(nodes: readonly StudioNode[], query: string, filter: StudioObjectFilter): StudioNode[] {
   const needle = query.trim().toLocaleLowerCase("ru");
   function visit(items: readonly StudioNode[], ancestors: string): StudioNode[] {
     return items.flatMap<StudioNode>(node => {
-      if (node.type === "folder") { const children = visit(node.children, `${ancestors} ${node.label}`); return children.length ? [{ ...node, children }] : []; }
+      if (node.type === "folder") { const children = visit(node.children, `${ancestors} ${node.label}`); return children.length || !needle && filter === "all" ? [{ ...node, children }] : []; }
       const matchesKind = filter === "all" || filter === "changed" && node.dirty || filter === "casters" && node.kind === "caster" || filter === "lights" && node.kind === "light" || filter === "receivers" && node.kind === "receiver";
       return matchesKind && (!needle || `${ancestors} ${node.label} ${node.id} ${node.detail}`.toLocaleLowerCase("ru").includes(needle)) ? [node] : [];
     });
@@ -75,7 +104,7 @@ export function studioFolderAncestors(nodes: readonly StudioNode[], kind: WorldL
 }
 export function studioDefaultFolders(nodes: readonly StudioNode[]): string[] {
   return nodes.flatMap(node => node.type === "object" ? [] : [
-    ...(node.id === "buildings" || node.id.startsWith("building:") && !/:[0-9]+$/.test(node.id) || node.active ? [node.id] : []),
+    ...(node.id === "buildings" || node.id.startsWith("building:") && !/:[0-9]+$/.test(node.id) || node.id.startsWith("custom:") || node.active ? [node.id] : []),
     ...studioDefaultFolders(node.children),
   ]);
 }

@@ -4,6 +4,7 @@ import type { WorldShadowCaster } from "@/features/world/tiled/types";
 import type { WorldDevState } from "./world-dev-store";
 import { WORLD_LIGHTING_EDITOR_LIMITS, worldLightingEditorStore } from "./world-lighting-editor-store";
 import { studioReceiverName } from "./world-studio-outliner";
+import { WorldStudioMetadata } from "./world-studio-metadata";
 import styles from "./world-lighting-editor.module.css";
 
 type EditorProps = { state: WorldDevState; change: (patch: Partial<WorldDevState>) => void; levels?: Readonly<Record<string, number>> };
@@ -80,7 +81,8 @@ export function WorldLightingEditor({ state, change, levels = state.levels }: Ed
   if (!selected) return <p className={styles.hint}>Выберите объект на карте или в списке.</p>;
   const activeLevel = selected.when ? levels[selected.when.siteId] : undefined;
   return <section className={styles.editor} aria-label="Свойства объекта" data-world-lighting-editor>
-    <h3>{lightingCasterName(selected)}</h3>
+    <h3>{selected.studioName ?? lightingCasterName(selected)}</h3>
+    <WorldStudioMetadata key={`caster:${selected.id}`} kind="caster" element={selected} automaticName={lightingCasterName(selected)} levels={levels} />
     <p className={styles.kindLabel}>Объём, отбрасывающий тень</p>
     <p className={styles.hint}>Фиолетовый контур — форма объёма для расчёта тени. Контур и высота меняют тень; PNG здания или дерева редактируются отдельно.</p>
     {selected.when && <div className={styles.levelHint}>
@@ -143,7 +145,7 @@ export function WorldLightingEditor({ state, change, levels = state.levels }: Ed
   </section>;
 }
 
-export function WorldLightingReceiverInspector() {
+export function WorldLightingReceiverInspector({ levels }: { levels?: Readonly<Record<string, number>> } = {}) {
   const snapshot = useSyncExternalStore(worldLightingEditorStore.subscribe,
     worldLightingEditorStore.getSnapshot, worldLightingEditorStore.getServerSnapshot);
   const selected = snapshot.selectedKind === "receiver" ? snapshot.receivers.find(receiver => receiver.id === snapshot.selectedId) : undefined;
@@ -151,9 +153,11 @@ export function WorldLightingReceiverInspector() {
   const vertex = selected && index !== null ? selected.points[index] : null;
   if (!selected) return <p className={styles.hint}>Выберите поверхность на карте или в списке.</p>;
   return <section className={styles.editor} aria-label="Свойства поверхности" data-world-lighting-editor>
-    <h3>{studioReceiverName(selected.id)}</h3>
+    <h3>{selected.studioName ?? studioReceiverName(selected.id)}</h3>
+    <WorldStudioMetadata key={`receiver:${selected.id}`} kind="receiver" element={selected} automaticName={studioReceiverName(selected.id)} levels={levels} />
     <p className={styles.kindLabel}>Поверхность, принимающая тень</p>
     <p className={styles.hint}>Синий контур ограничивает землю, на которой видны рассчитанные тени. Это не часть дома и не препятствие. Обычно соседние поверхности должны покрывать землю без разрывов.</p>
+    <p className={styles.hint}>Для быстрого предпросмотра можно обвести поляну целиком. Для аккуратных ночных теней размечайте видимую землю вокруг дома несколькими поверхностями; отверстия в одном контуре пока не поддерживаются.</p>
     <fieldset className={styles.controls} disabled={!snapshot.enabled || !snapshot.previewDraft}>
       <legend className={styles.srOnly}>Параметры поверхности</legend>
       <LightingNumberField key={`${selected.id}-height`} label="Высота поверхности" value={selected.height} min={0} max={WORLD_LIGHTING_EDITOR_LIMITS.maxHeight}

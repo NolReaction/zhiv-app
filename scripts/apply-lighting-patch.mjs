@@ -33,8 +33,26 @@ function number(value, at, minimum, maximum) {
   return value;
 }
 
+function studioMetadata(value, at) {
+  const result = {};
+  for (const [key, limit] of [["studioName", 128], ["studioFolder", 256]]) {
+    if (!own(value, key)) continue;
+    const text = value[key];
+    assert(typeof text === "string" && text.trim().length > 0 && text === text.trim() && text.length <= limit
+      && !/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(text), `${at}.${key}`,
+    `expected 1 to ${limit} characters without surrounding whitespace or control characters`);
+    if (key === "studioFolder" && text.startsWith("custom:")) {
+      const parts = text.slice(7).split("/");
+      assert(parts.length <= 8 && parts.every(part => part.length > 0 && part === part.trim() && part.length <= 64 && part !== "." && part !== ".."),
+        `${at}.${key}`, "expected at most 8 non-empty folder names of at most 64 characters separated by /");
+    }
+    result[key] = text;
+  }
+  return result;
+}
+
 function canonicalShadow(value, at, world, caster) {
-  object(value, at, ["id", "points", "height", ...(caster ? ["baseHeight", "opacity", "softness"] : [])], ["when"]);
+  object(value, at, ["id", "points", "height", ...(caster ? ["baseHeight", "opacity", "softness"] : [])], ["when", "studioName", "studioFolder"]);
   const id = identifier(value.id, `${at}.id`);
   assert(Array.isArray(value.points) && value.points.length >= 3 && value.points.length <= 64, `${at}.points`,
     "expected 3 to 64 vertices");
@@ -51,7 +69,7 @@ function canonicalShadow(value, at, world, caster) {
     assert(Number.isSafeInteger(level), `${at}.when.level`, "expected a safe integer");
     when = { siteId: identifier(value.when.siteId, `${at}.when.siteId`), level };
   }
-  const common = { id, points, height, ...(when ? { when } : {}) };
+  const common = { id, points, height, ...(when ? { when } : {}), ...studioMetadata(value, at) };
   if (!caster) return common;
   const baseHeight = number(value.baseHeight, `${at}.baseHeight`, 0, 400 - height);
   const opacity = number(value.opacity, `${at}.opacity`, 0, 1);
@@ -67,7 +85,7 @@ function lightIdentifier(value, at) {
 }
 
 function canonicalLight(value, at, world) {
-  object(value, at, ["id", "position", "kind", "radius", "intensity", "color", "flicker"], ["height", "enabled", "manualPosition"]);
+  object(value, at, ["id", "position", "kind", "radius", "intensity", "color", "flicker"], ["height", "enabled", "manualPosition", "studioName", "studioFolder"]);
   const id = lightIdentifier(value.id, `${at}.id`);
   object(value.position, `${at}.position`, ["x", "y"]);
   const position = { x: number(value.position.x, `${at}.position.x`, 0, world.width),
@@ -83,7 +101,7 @@ function canonicalLight(value, at, world) {
     assert(typeof value[key] === "boolean", `${at}.${key}`, "expected a boolean");
     optional[key] = value[key];
   }
-  return { id, position, kind: value.kind, radius, intensity, color: value.color.toLowerCase(), flicker, ...optional };
+  return { id, position, kind: value.kind, radius, intensity, color: value.color.toLowerCase(), flicker, ...optional, ...studioMetadata(value, at) };
 }
 
 function patchShape(patch) {
@@ -251,12 +269,12 @@ function updateLightObject(target, before, after) {
     target.object.x = after.position.x - target.offset.x;
     target.object.y = after.position.y - target.offset.y;
   }
-  for (const name of ["kind", "radius", "intensity", "color", "flicker", "height", "enabled", "manualPosition"]) {
+  for (const name of ["kind", "radius", "intensity", "color", "flicker", "height", "enabled", "manualPosition", "studioName", "studioFolder"]) {
     // Kind changes can change compiler defaults for absent properties. Make the
     // complete requested light authoritative without altering unchanged markers.
     const defaultChanged = before !== null && before.kind !== after.kind && ["radius", "intensity", "color", "flicker"].includes(name);
     if (before !== null && !defaultChanged && own(before, name) === own(after, name) && before[name] === after[name]) continue;
-    const type = ["enabled", "manualPosition"].includes(name) ? "bool" : name === "kind" ? "string" : name === "color" ? "color" : "float";
+    const type = ["enabled", "manualPosition"].includes(name) ? "bool" : ["kind", "studioName", "studioFolder"].includes(name) ? "string" : name === "color" ? "color" : "float";
     lightProperty(target.object, name, after[name], type);
   }
 }
@@ -276,6 +294,10 @@ function updateObject(target, before, after) {
   for (const name of ["height", "baseHeight", "opacity", "softness"].filter(name => own(after, name))) {
     if (before !== null && before[name] === after[name]) continue;
     lightProperty(object, name, after[name], "float");
+  }
+  for (const name of ["studioName", "studioFolder"]) {
+    if (before !== null && own(before, name) === own(after, name) && before[name] === after[name]) continue;
+    lightProperty(object, name, after[name], "string");
   }
   if (before === null && after.when) {
     lightProperty(object, "siteId", after.when.siteId, "string");

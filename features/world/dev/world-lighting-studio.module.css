@@ -50,9 +50,14 @@
 .objectList button[data-kind='light'] > svg { color: #e8cf76; }
 .objectList small { display: block; margin-top: 2px; color: var(--dev-muted); font-size: 10px; }
 .studio .folderButton { min-height: 31px; padding: 4px; border-color: transparent; background: transparent; font-size: 11px; }
+.studio .folderButton[data-drop-target='true'] { border-color: #ead79b; background: #40533b; outline: 1px solid #ead79b; }
 .folderButton > span { flex: 1; }
 .folderButton > small { flex: 0 0 auto; margin: 0; }
 .objectRow { display: flex; gap: 3px; min-width: 0; }
+.objectRow[draggable='true'] { cursor: grab; }
+.objectRow[draggable='true'] > button:first-child { cursor: grab; }
+.objectRow[data-dragging='true'] { opacity: .5; }
+.organizeHint { margin: 6px 0 0; color: var(--dev-muted); font-size: 10px; line-height: 1.4; }
 .objectRow > button:first-child { flex: 1; }
 .studio .restore { flex: 0 0 32px; width: 32px; padding: 4px; justify-content: center; }
 .presets { flex: 0 0 auto; padding: 0 8px 8px; border-top: 1px solid var(--dev-line); }

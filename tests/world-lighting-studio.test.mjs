@@ -13,7 +13,7 @@ const { worldDevStore, WORLD_DEV_DEFAULTS } = await vite.ssrLoadModule("/feature
 const { worldLightingEditorStore: store } = await vite.ssrLoadModule("/features/world/dev/world-lighting-editor-store.ts");
 const { activateWorldLightingStudio, WorldLightingStudio, WorldLightingSourceInspector, focusLightingSelection } = await vite.ssrLoadModule("/features/world/dev/world-lighting-studio.tsx");
 const { WorldLightingEditor, WorldLightingReceiverInspector, previewLightingCasterLevel } = await vite.ssrLoadModule("/features/world/dev/world-lighting-editor.tsx");
-const { buildWorldStudioOutliner, filterWorldStudioOutliner, studioDefaultFolders, studioFolderAncestors } = await vite.ssrLoadModule("/features/world/dev/world-studio-outliner.ts");
+const { buildWorldStudioOutliner, filterWorldStudioOutliner, studioDefaultFolders, studioFolderAncestors, studioFolderOptions } = await vite.ssrLoadModule("/features/world/dev/world-studio-outliner.ts");
 const { accountSceneLevels } = await vite.ssrLoadModule("/features/world/state/economy/economy-scene-state.ts");
 const { takeWorldLightingEditorFocus } = await vite.ssrLoadModule("/features/world/dev/world-lighting-editor-map.ts");
 const { claimWorldLightingStudio, releaseWorldLightingStudio, hasWorldLightingStudioOwner, takeWorldLightingStudioHandoff } = await vite.ssrLoadModule("/features/world/dev/world-lighting-studio-session.ts");
@@ -171,4 +171,60 @@ test("large tree inventories remain grouped and search prunes unrelated branches
   const roots = buildWorldStudioOutliner({ ...snapshot, casters, receivers: [], lights: [], deletedCasters: [], deletedReceivers: [] }, {});
   assert.equal(roots.length, 1); assert.equal(roots[0].children.length, 500); assert.equal(roots[0].children[0].children.length, 2);
   const filtered = filterWorldStudioOutliner(roots, "tree-499", "all"); assert.equal(filtered[0].children.length, 1); assert.equal(filtered[0].children[0].children.length, 2);
+});
+
+test("renaming and nested folder moves keep identity and the building's actual level condition", () => {
+  activateWorldLightingStudio(true); store.select("home-shadow-2");
+  const before = store.getSnapshot().casters.find(item => item.id === "home-shadow-2"), levels = { ...WORLD_DEV_DEFAULTS.levels, home: 3 };
+  assert.equal(store.setElementMetadata("caster", before.id, { studioName: "Дом · второй этаж", studioFolder: "custom:Поляна/Дом" }), true);
+  const after = store.getSnapshot().casters.find(item => item.id === before.id);
+  assert.deepEqual(after.when, before.when); assert.deepEqual(after.points, before.points); assert.equal(after.id, before.id);
+  const roots = buildWorldStudioOutliner(store.getSnapshot(), levels);
+  assert.deepEqual(studioFolderAncestors(roots, "caster", before.id), ["custom:Поляна", "custom:Поляна/Дом"]);
+  const custom = roots.find(node => node.id === "custom:Поляна").children[0];
+  assert.equal(custom.children[0].label, "Дом · второй этаж"); assert.match(custom.children[0].detail, /уровень 2/); assert.doesNotMatch(custom.children[0].detail, /на карте/);
+  const original = roots.find(node => node.id === "buildings").children.find(node => node.id === "building:home").children.find(node => node.id === "building:home:2");
+  assert.deepEqual(original.children, []); assert.equal(original.active, false);
+  assert.ok(studioFolderOptions(roots).some(option => option.id === original.id));
+  const searched = filterWorldStudioOutliner(roots, "Дом · второй этаж", "casters");
+  assert.equal(searched.length, 1); assert.equal(searched[0].id, "custom:Поляна");
+  store.undo(); assert.deepEqual(studioFolderAncestors(buildWorldStudioOutliner(store.getSnapshot(), levels), "caster", before.id), ["buildings", "building:home", "building:home:2"]);
+});
+
+test("all kinds share named folders while disabled sources stay in the restore area", () => {
+  activateWorldLightingStudio(true);
+  const receiver = store.getSnapshot().receivers[0], light = store.getSnapshot().lights[0];
+  store.setElementMetadata("receiver", receiver.id, { studioName: "Земля у входа", studioFolder: "custom:Поляна/Дом" });
+  store.setElementMetadata("light", light.id, { studioName: "Свет у входа", studioFolder: "custom:Поляна/Дом" });
+  let roots = buildWorldStudioOutliner(store.getSnapshot(), WORLD_DEV_DEFAULTS.levels);
+  assert.deepEqual(studioFolderAncestors(roots, "receiver", receiver.id), studioFolderAncestors(roots, "light", light.id));
+  store.selectLight(light.id); store.patchLight({ enabled: false });
+  roots = buildWorldStudioOutliner(store.getSnapshot(), WORLD_DEV_DEFAULTS.levels);
+  assert.deepEqual(studioFolderAncestors(roots, "light", light.id), ["removed"]);
+  assert.ok(!studioFolderOptions(roots).some(option => option.id === "removed"));
+  assert.equal(roots.find(node => node.id === "removed").children.find(node => node.id === light.id).label, "Свет у входа");
+});
+
+test("inspector exposes editable names, stable IDs, folder selection and touch-friendly custom paths", () => {
+  activateWorldLightingStudio(true);
+  for (const kind of ["caster", "receiver", "light"]) {
+    const collection = kind === "light" ? "lights" : kind === "receiver" ? "receivers" : "casters", element = store.getSnapshot()[collection][0];
+    store.setElementMetadata(kind, element.id, { studioName: `Имя ${kind}` });
+    if (kind === "light") store.selectLight(element.id); else if (kind === "receiver") store.selectReceiver(element.id); else store.select(element.id);
+    const html = markup(WorldLightingStudio, props());
+    assert.match(html, /aria-label="Имя и папка элемента"/);
+    assert.ok(html.includes(`value="Имя ${kind}"`)); assert.ok(html.includes(`<code>${element.id}</code>`));
+    for (const label of ["Имя элемента", "Папка в списке", "Автоматическая папка", "Новая папка", "Путь новой папки", "Создать и перенести"]) assert.ok(html.includes(label), `${kind}: ${label}`);
+    assert.doesNotMatch(html, /<input[^>]*(?:id|name)="(?:caster|receiver|light)-id"/);
+  }
+});
+
+test("saved preview disables metadata controls and dragging along with map edits", () => {
+  activateWorldLightingStudio(true); store.select("home-shadow-1");
+  let html = markup(WorldLightingStudio, props());
+  assert.match(html, /draggable="true"/);
+  store.setPreviewDraft(false); html = markup(WorldLightingStudio, props());
+  assert.match(html, /<fieldset[^>]*disabled=""[^>]*aria-label="Имя и папка элемента"/);
+  assert.doesNotMatch(html, /draggable="true"/);
+  assert.match(html, /draggable="false"/);
 });

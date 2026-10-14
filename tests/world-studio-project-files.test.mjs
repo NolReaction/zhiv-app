@@ -97,6 +97,24 @@ test("lost acknowledgement retry is idempotent; same key cannot change payload",
   await assert.rejects(() => files.save({ ...body, patch: { ...body.patch, lights: [] }, expectedRevision: first.revision }), /Ключ/);
 });
 
+test("Studio metadata is preserved in both project files, save receipts and subsequent clearing", async t => {
+  const { files, state, makeBody, mapPath, outputPath } = await fixture(t);
+  const original = state.scene.shadowCasters[0];
+  const body = makeBody(state, { studioName: "Северная сосна", studioFolder: "custom:Мои объекты/Лес" }, "request-metadata");
+  const saved = await files.save(body);
+  assert.equal(saved.scene.shadowCasters[0].studioName, "Северная сосна");
+  assert.equal(saved.scene.shadowCasters[0].studioFolder, "custom:Мои объекты/Лес");
+  assert.deepEqual(saved.scene.shadowCasters[0].points, original.points);
+  assert.deepEqual(JSON.parse(await readFile(outputPath, "utf8")), saved.scene);
+  const bytes = await readFile(mapPath, "utf8");
+  assert.equal((await files.save(body)).revision, saved.revision); assert.equal(await readFile(mapPath, "utf8"), bytes);
+  const renamed = saved.scene.shadowCasters[0];
+  const cleared = await files.save({ requestId: "request-metadata-clear", expectedRevision: saved.revision,
+    patch: { schemaVersion: 3, sceneId: saved.scene.id, casters: [{ id: original.id, before: renamed, after: original }], receivers: [], lights: [] } });
+  assert.deepEqual(cleared.scene.shadowCasters[0], original);
+  assert.deepEqual(JSON.parse(await readFile(outputPath, "utf8")), cleared.scene);
+});
+
 test("external Tiled edits conflict even if unrelated to light edits; concurrent stale save never overwrites", async t => {
   const { files, makeBody, mapPath, outputPath } = await fixture(t);
   const body = makeBody();
