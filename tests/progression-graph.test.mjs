@@ -538,7 +538,7 @@ test("player graph prices and rewards use visible pearls while costs keep intern
   assert.ok(node("pleska").description.includes(`обновление стоит до ${moneyContext.exports.formatPearls(catalog.fishing.shop.refreshPricePearls)} жемчужин`));
   assert.match(node("pearls").description, /1 мин — 1 жемчужин; 1 ч — 20 жемчужин; 24 ч — 260 жемчужин; 48 ч — 384 жемчужин/);
   assert.doesNotMatch(node("pearls").description, /жемчужина за 10 минут/);
-  assert.match(node("daily_rewards").description, /28 жемчужин/);
+  assert.match(node("daily_rewards").description, /500 жемчужин/);
   assert.equal(catalog.pearlScale, 50);
   assert.equal(catalog.fishing.shop.refreshPricePearls, 100);
 });

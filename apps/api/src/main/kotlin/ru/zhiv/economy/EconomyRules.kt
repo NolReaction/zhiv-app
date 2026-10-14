@@ -263,7 +263,7 @@ object EconomyRules {
 
     fun commandUsesActor(command: EconomyCommand): Boolean = when (command.action) {
         "start_exploration", "start_fishing" -> catalog.explorations.find { it.id == command.targetId }?.activity != "mining"
-        "start_collection", "eat_food" -> true
+        "start_collection", "start_garden_collection", "eat_food" -> true
         else -> false
     }
 
@@ -313,6 +313,38 @@ object EconomyRules {
         val state = EconomyStageOrders.pin(known, now = now)
         val (next, message) = applyCurrent(state.copy(residentOrders = EconomyFood.normalizedOrders(state, now)), command, now, reservedItems)
         return EconomyItemUnlocks.persist(EconomyStageOrders.pin(next, now = now)) to message
+    }
+
+    private fun requireClaimReady(job: EconomyJob, now: Instant) {
+        if (now.isBefore(Instant.parse(job.finishesAt))) economyFailure("ECONOMY_JOB_NOT_READY", "Работа ещё не завершена")
+        job.collection?.let { collection ->
+            if (collection.startedAt == null || collection.finishesAt == null)
+                economyFailure("ECONOMY_COLLECTION_REQUIRED", "Сначала отправьте Мохлика собрать урожай")
+            if (now.isBefore(Instant.parse(collection.finishesAt)))
+                economyFailure("ECONOMY_COLLECTION_NOT_READY", "Мохлик ещё собирает урожай")
+        }
+    }
+
+    private fun claimJob(state: EconomyState, job: EconomyJob, now: Instant, reservedItems: Map<String, Long>): EconomyState {
+        requireClaimReady(job, now)
+        val buildings = if (job.kind == "construction") state.buildings + (job.targetId to checkNotNull(job.targetLevel)) else state.buildings
+        val next = EconomyItemUnlocks.delivered(state.copy(inventory = addItems(state.inventory, job.rewards), buildings = buildings, jobs = state.jobs.filterNot { it.id == job.id },
+            completedExplorations = if (job.kind == "exploration" && !isMinerJob(job) && !job.targetId.startsWith("quarry_")) minOf(ECONOMY_MAX_ITEMS, state.completedExplorations + 1) else state.completedExplorations,
+            fishing = if (job.kind == "exploration" && catalog.fishing?.routeIds?.contains(job.targetId) == true) {
+                val catches = state.fishing.catches.toMutableMap()
+                catalog.fishing.fish.forEach { fish -> if ((job.rewards[fish.itemId] ?: 0) > 0)
+                    catches[fish.itemId] = minOf(ECONOMY_MAX_ITEMS, (catches[fish.itemId] ?: 0) + job.rewards.getValue(fish.itemId)) }
+                state.fishing.copy(catches = catches)
+            } else state.fishing,
+            fishingCastSeed = if (job.kind == "exploration" && catalog.fishing?.routeIds?.contains(job.targetId) == true) null else state.fishingCastSeed,
+            progression = EconomyCollectionProgress.advance(state.progression, job)), job.rewards)
+        addItems(next.inventory, reservedItems)
+        assertStorageTransition(state, next, reservedItems)
+        return if (job.rareDrop != null) {
+            val clock = EconomyRareDrops.settle(if (isMinerJob(job)) state.minerRareDropState else state.rareDropState,
+                job.rareDrop, checkNotNull(catalog.rareDrops))
+            if (isMinerJob(job)) next.copy(minerRareDropState = clock) else next.copy(rareDropState = clock)
+        } else next
     }
 
     private fun applyCurrent(state: EconomyState, command: EconomyCommand, now: Instant, reservedItems: Map<String, Long>): Pair<EconomyState, String> {
@@ -367,7 +399,7 @@ object EconomyRules {
                 state.copy(wallet = state.wallet.copy(pearls = state.wallet.pearls - offer.pricePearls),
                     productionSlots = state.productionSlots + (command.targetId to offer.slots)) to "Открыто новое место производства"
             }
-            "start_collection" -> {
+            "start_collection", "start_garden_collection" -> {
                 val job = state.jobs.find { it.id == command.targetId } ?: economyFailure("ECONOMY_JOB_GONE", "Результат уже получен или задание не найдено")
                 val spec = job.collection?.let { EconomyCollectionSpec(it.kind, it.seconds) }
                     ?: catalog.recipes.find { it.id == job.recipeId }?.collection
@@ -377,14 +409,24 @@ object EconomyRules {
                 if (job.collection?.startedAt != null) economyFailure("ECONOMY_COLLECTION_STARTED", "Мохлик уже собирает этот урожай")
                 if (now.isBefore(Instant.parse(job.finishesAt))) economyFailure("ECONOMY_JOB_NOT_READY", "Урожай ещё не созрел")
                 requireActorAvailable(state, now, collecting = true)
+                val batch = command.action == "start_garden_collection"
+                val jobs = if (batch) state.jobs.filter { current -> current.kind == "production" && current.targetId == "garden" &&
+                    current.rewards.any { (id, quantity) -> id in economyBerryItemIds && quantity > 0L } && current.collection?.startedAt == null &&
+                    !now.isBefore(Instant.parse(current.finishesAt)) && (current.collection != null || catalog.recipes.find { it.id == current.recipeId }?.collection != null) }
+                    else listOf(job)
                 // Check the eventual delivery, including escrow, before sending the hero.
                 // This reserves no goods and credits nothing; claim checks capacity again.
-                val projected = state.copy(inventory = addItems(state.inventory, job.rewards))
+                val projected = state.copy(inventory = jobs.fold(state.inventory) { inventory, current -> addItems(inventory, current.rewards) })
                 addItems(projected.inventory, reservedItems)
                 assertStorageTransition(state, projected, reservedItems)
-                val collecting = job.copy(collection = EconomyCollection(spec.kind, spec.seconds,
-                    now.toString(), now.plusSeconds(spec.seconds).toString()))
-                state.copy(jobs = state.jobs.map { if (it.id == job.id) collecting else it }) to "Мохлик отправился собирать урожай"
+                val seconds = if (batch) maxOf(8L, jobs.maxOf { current -> current.collection?.seconds ?: checkNotNull(catalog.recipes.find { it.id == current.recipeId }?.collection).seconds }) else spec.seconds
+                val ids = jobs.map { it.id }.toSet()
+                state.copy(jobs = state.jobs.map { current -> if (current.id !in ids) current else {
+                    val saved = current.collection?.let { EconomyCollectionSpec(it.kind, it.seconds) }
+                        ?: checkNotNull(catalog.recipes.find { it.id == current.recipeId }?.collection)
+                    current.copy(collection = EconomyCollection(saved.kind, saved.seconds,
+                        now.toString(), now.plusSeconds(seconds).toString(), if (batch) command.requestId else null))
+                } }) to "Мохлик отправился собирать урожай"
             }
             "start_exploration", "start_fishing" -> {
                 val exploration = catalog.explorations.find { it.id == command.targetId } ?: economyFailure("ECONOMY_EXPLORATION", "Место исследования не найдено")
@@ -489,34 +531,19 @@ object EconomyRules {
                     jobs = state.jobs.filterNot { it.id == job.id }) to
                     if (price > 0) "Строительство завершено за жемчуг" else "Постройка готова"
             }
+            "claim_garden_collection" -> {
+                val jobs = state.jobs.filter { it.collection?.batchId == command.targetId }
+                if (jobs.isEmpty()) economyFailure("ECONOMY_JOB_GONE", "Урожай уже получен или сбор не найден")
+                jobs.forEach { requireClaimReady(it, now) }
+                val projected = state.copy(inventory = jobs.fold(state.inventory) { inventory, job -> addItems(inventory, job.rewards) })
+                addItems(projected.inventory, reservedItems)
+                assertStorageTransition(state, projected, reservedItems)
+                jobs.fold(state) { next, job -> claimJob(next, job, now, reservedItems) } to "Весь собранный урожай доставлен на склад"
+            }
             "claim_job" -> {
                 val job = state.jobs.find { it.id == command.targetId } ?: economyFailure("ECONOMY_JOB_GONE", "Результат уже получен или задание не найдено")
-                if (now.isBefore(Instant.parse(job.finishesAt))) economyFailure("ECONOMY_JOB_NOT_READY", "Работа ещё не завершена")
-                job.collection?.let { collection ->
-                    if (collection.startedAt == null || collection.finishesAt == null)
-                        economyFailure("ECONOMY_COLLECTION_REQUIRED", "Сначала отправьте Мохлика собрать урожай")
-                    if (now.isBefore(Instant.parse(collection.finishesAt)))
-                        economyFailure("ECONOMY_COLLECTION_NOT_READY", "Мохлик ещё собирает урожай")
-                }
-                val buildings = if (job.kind == "construction") state.buildings + (job.targetId to checkNotNull(job.targetLevel)) else state.buildings
-                val next = EconomyItemUnlocks.delivered(state.copy(inventory = addItems(state.inventory, job.rewards), buildings = buildings, jobs = state.jobs.filterNot { it.id == job.id },
-                    completedExplorations = if (job.kind == "exploration" && !isMinerJob(job) && !job.targetId.startsWith("quarry_")) minOf(ECONOMY_MAX_ITEMS, state.completedExplorations + 1) else state.completedExplorations,
-                    fishing = if (job.kind == "exploration" && catalog.fishing?.routeIds?.contains(job.targetId) == true) {
-                        val catches = state.fishing.catches.toMutableMap()
-                        catalog.fishing.fish.forEach { fish -> if ((job.rewards[fish.itemId] ?: 0) > 0)
-                            catches[fish.itemId] = minOf(ECONOMY_MAX_ITEMS, (catches[fish.itemId] ?: 0) + job.rewards.getValue(fish.itemId)) }
-                        state.fishing.copy(catches = catches)
-                    } else state.fishing,
-                    fishingCastSeed = if (job.kind == "exploration" && catalog.fishing?.routeIds?.contains(job.targetId) == true) null else state.fishingCastSeed,
-                    progression = EconomyCollectionProgress.advance(state.progression, job)), job.rewards)
-                addItems(next.inventory, reservedItems)
-                assertStorageTransition(state, next, reservedItems)
-                val delivered = if (job.rareDrop != null) {
-                    val clock = EconomyRareDrops.settle(if (isMinerJob(job)) state.minerRareDropState else state.rareDropState,
-                        job.rareDrop, checkNotNull(catalog.rareDrops))
-                    if (isMinerJob(job)) next.copy(minerRareDropState = clock) else next.copy(rareDropState = clock)
-                } else next
-                delivered to
+                if (job.collection?.batchId != null) economyFailure("ECONOMY_COLLECTION_BATCH_REQUIRED", "Заберите весь собранный урожай вместе")
+                claimJob(state, job, now, reservedItems) to
                     if (job.kind == "construction") "Строительство завершено" else "Припасы доставлены на склад"
             }
             "buy_market_slot" -> {

@@ -9,7 +9,8 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { connectForestSession } = await vite.ssrLoadModule("/features/world/state/forest-session.ts");
-const { requestForestDirective, advanceForestDirector } = await vite.ssrLoadModule("/features/world/simulation/forest-director.ts");
+const { requestForestDirective, requestForestGardenHarvest, advanceForestDirector } = await vite.ssrLoadModule("/features/world/simulation/forest-director.ts");
+const { syncForestGardenProduction } = await vite.ssrLoadModule("/features/world/activities/garden/forest-garden.ts");
 const { clearingActivityFrame } = await vite.ssrLoadModule("/features/world/simulation/clearing-activity.ts");
 const { forestGardenVisualFrame } = await vite.ssrLoadModule("/features/world/activities/garden/forest-garden-painter.ts");
 const { previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
@@ -47,5 +48,55 @@ test("a real harvest preserves basket position through pickup, walking, collecti
     assert.ok(delivered, `level ${level} completes an actual harvest`);
     for (const phase of ["take-basket", "approach-bush", "collect", "return-basket", "deposit", "settle"])
       assert.ok(phases.has(phase), `level ${level} exercises ${phase}`);
+  }
+});
+
+test("one authorized mixed harvest makes one basket trip and emits one completion for the exact batch", () => {
+  const scene = withPlacedBushArtwork(previewWorldScene(TILED_WORLD, { home: 5 }));
+  const session = connectForestSession(undefined, scene, "world", 60_000, 0, () => {}), state = session.state;
+  session.release();
+  const garden = state.life.garden;
+  const orders = ['berries', 'blackberries', 'cranberries'].map((itemId, index) => ({
+    jobId: `batch-${index}`, itemId, startedAt: new Date(0).toISOString(), finishesAt: new Date(60_000).toISOString(),
+    collection: { batchId: 'batch', startedAt: new Date(60_000).toISOString(), finishesAt: new Date(68_000).toISOString() },
+  }));
+  syncForestGardenProduction(garden, { ...orders[0], orders }, 60_000);
+  const request = { requestId: 9, jobId: orders[0].jobId, jobIds: orders.map(order => order.jobId) };
+  requestForestGardenHarvest(state, request, calm);
+  const transitions = [], observedSpecies = new Set();
+  let previous = null;
+  for (let tick = 0; tick < 4800 && garden.harvestEvent?.status !== 'completed'; tick++) {
+    advanceForestDirector(state, .025, calm);
+    const phase = garden.routine?.phase;
+    if (phase && phase !== previous) transitions.push(phase);
+    previous = phase;
+    const motion = clearingActivityFrame(state.clearing);
+    const frame = forestGardenVisualFrame(garden, { x: motion.x, y: motion.y, size: scene.actor.size }, motion);
+    if (frame?.pickedBerry) observedSpecies.add(frame.pickedBerry.itemId);
+  }
+  assert.deepEqual(garden.harvestEvent, { ...request, status: 'completed' });
+  for (const phase of ['approach-basket', 'take-basket', 'approach-bush', 'collect', 'return-basket', 'deposit'])
+    assert.equal(transitions.filter(value => value === phase).length, 1, `${phase} occurs once for all ready slots`);
+  assert.deepEqual([...observedSpecies], orders.map(order => order.itemId));
+  assert.equal(garden.basket.berries, 0, 'the visual batch does not invent three inventory rewards');
+  assert.deepEqual(garden.basket.position, garden.basket.homePosition);
+});
+
+test("mixed harvest rejects missing, unripe and differently accepted batch members", () => {
+  for (const invalid of ['missing', 'unripe', 'other-batch']) {
+    const scene = withPlacedBushArtwork(previewWorldScene(TILED_WORLD, { home: 5 }));
+    const session = connectForestSession(undefined, scene, "world", 60_000, 0, () => {}), state = session.state;
+    session.release();
+    const first = { jobId: 'first', itemId: 'berries', startedAt: new Date(0).toISOString(), finishesAt: new Date(60_000).toISOString(),
+      collection: { batchId: 'batch', startedAt: null, finishesAt: null } };
+    const second = { ...first, jobId: 'second', itemId: 'blueberries',
+      finishesAt: new Date(invalid === 'unripe' ? 120_000 : 60_000).toISOString(),
+      collection: { ...first.collection, batchId: invalid === 'other-batch' ? 'another' : 'batch' } };
+    const garden = state.life.garden;
+    syncForestGardenProduction(garden, { ...first, orders: invalid === 'missing' ? [first] : [first, second] }, 60_000);
+    requestForestGardenHarvest(state, { requestId: 1, jobId: first.jobId, jobIds: [first.jobId, second.jobId] }, calm);
+    assert.equal(garden.harvestEvent.status, 'unavailable');
+    assert.equal(garden.harvest, null); assert.equal(garden.routine, null);
+    assert.equal(garden.basket.berries, 0);
   }
 });

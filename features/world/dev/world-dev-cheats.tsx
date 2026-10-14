@@ -193,7 +193,7 @@ export function WorldDevCheats({ world, economy, previewBuildings = false, onSho
       {matchingJobs.length ? <ul className={styles.cheatJobs}>{matchingJobs.map(job => {
         const ready = Date.parse(job.finishesAt) <= (economy?.now ?? 0);
         return <li key={job.id}><div><strong>{jobName(job)}</strong><span>{ready ? "Готово к получению" : `Осталось ${Math.max(1, Math.ceil((Date.parse(job.finishesAt) - (economy?.now ?? 0)) / 60000))} мин.`}</span></div>
-          {ready && <button type="button" disabled={locked} onClick={() => { if (!locked) economy?.act("claim_job", job.id); }}>{job.kind === "construction" ? "Завершить стройку" : "Забрать"}</button>}</li>;
+          {ready && <button type="button" disabled={locked} onClick={() => { if (!locked) economy?.act(job.collection?.batchId ? "claim_garden_collection" : "claim_job", job.collection?.batchId ?? job.id); }}>{job.kind === "construction" ? "Завершить стройку" : "Забрать"}</button>}</li>;
       })}</ul> : <p className={styles.hint}>Таких заданий сейчас нет.</p>}
       </div>
     </details>

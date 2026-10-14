@@ -66,6 +66,7 @@ function RecipeCalculator({ recipe, onSelect }: { recipe: EconomyRecipe; onSelec
       <details className={styles.chain} open><summary>Вся цепочка до сырья</summary>
         <div className={styles.chainBody}>
           <p className={styles.hint}>Базовые рецепты раннего открытия, одно место каждого производства. Количество учитывает все промежуточные ингредиенты.</p>
+          {(recipe.collectionSeconds > 0 || plan.queues.some(queue => queue.collectionSeconds > 0)) && <p className={styles.hint}>Время сбора сложено для последовательных запусков на одном месте. Уже созревшие параллельные места собираются за один подход с общей серверной фазой не менее 8 секунд; перезагрузка её сохраняет.</p>}
           <h5>Собрать или добыть</h5><Ingredients items={plan.rawInputs} onSelect={onSelect} />
           {!!plan.miningSteps.length && <p className={styles.hint}>Единичная добыча шахтёра включена в очередь шахты.</p>}
           <h5>Запуски в производственной цепочке</h5>

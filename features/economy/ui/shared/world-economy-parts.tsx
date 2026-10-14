@@ -45,20 +45,21 @@ export function Work({ economy, job, openPantry, compact = false }: { economy: R
   const collection = useGardenCollection();
   const berry = berryCollectionStatus(job, economy.snapshot, economy.now, collection);
   const status = worldJobProgress(economy.snapshot, job, economy.now);
+  const storageShortfall = Math.max(status.storageShortfall, berry?.storageShortfall ?? 0);
   const outputs = Object.entries(job.rewards);
   const title = isMinerJob(job) ? economy.snapshot.catalog.explorations.find(route => route.id === job.targetId)?.name ?? "Добыча в шахте"
     : compact && job.kind === "production" && outputs.length === 1 ? `${itemName(economy.snapshot, outputs[0][0])} ×${number(outputs[0][1])}` : job.kind === "construction" ? `Обустройство · ур. ${job.targetLevel}` : economy.snapshot.catalog.recipes.find(recipe => recipe.id === job.recipeId)?.name ?? "Производство";
   const itemId = Object.keys(job.rewards)[0];
   const working = productionIsActive(job, economy.now);
   return <div className={`${styles.work} ${compact ? styles.compactWork : ""}`} data-job-id={job.id} data-ready={status.ready || undefined}>
-    <div className={styles.workTop}><span className={styles.workIcon} data-working={working || undefined}>{working ? <ProductionActivity job={job} now={economy.now} /> : job.kind === "construction" ? <Hammer size={21} aria-hidden="true" /> : <ProductIcon state={economy.snapshot} itemId={itemId ?? ""} size={22} />}</span><div><strong>{title}</strong><span>{berry && !berry.growing ? berry.label : status.ready ? "Готово к получению" : `Осталось ${status.seconds < 60 ? `${status.seconds} с` : worldDuration(status.seconds)}`}</span></div>{(!compact || status.ready || berry && !berry.growing) && <button type="button" className={styles.claim} disabled={locked(economy) || !status.ready || status.storageShortfall > 0 || berry?.disabled} onClick={() => {
-      if (locked(economy) || !status.ready || status.storageShortfall > 0 || berry?.disabled) return;
+    <div className={styles.workTop}><span className={styles.workIcon} data-working={working || undefined}>{working ? <ProductionActivity job={job} now={economy.now} /> : job.kind === "construction" ? <Hammer size={21} aria-hidden="true" /> : <ProductIcon state={economy.snapshot} itemId={itemId ?? ""} size={22} />}</span><div><strong>{title}</strong><span>{berry && !berry.growing ? berry.label : status.ready ? "Готово к получению" : `Осталось ${status.seconds < 60 ? `${status.seconds} с` : worldDuration(status.seconds)}`}</span></div>{(!compact || status.ready || berry && !berry.growing) && <button type="button" className={styles.claim} disabled={locked(economy) || !status.ready || storageShortfall > 0 || berry?.disabled} onClick={() => {
+      if (locked(economy) || !status.ready || storageShortfall > 0 || berry?.disabled) return;
       if (berry && collection) collection.start(job.id);
-      else economy.act(berry && !berry.started ? "start_collection" : "claim_job", job.id);
+      else economy.act(berry && !berry.started ? "start_garden_collection" : job.collection?.batchId ? "claim_garden_collection" : "claim_job", job.collection?.batchId ?? job.id);
     }} aria-label={`${berry?.button ?? (job.kind === "construction" ? "Завершить" : "Забрать")}: ${title}`}>{status.ready && !berry?.collecting ? <Check size={15} aria-hidden="true" /> : <Clock3 size={15} aria-hidden="true" />}{berry?.button ?? (status.ready ? job.kind === "construction" ? "Завершить" : "Забрать" : "В работе")}</button>}</div>
     {compact && outputs.length > 1 && <Rewards state={economy.snapshot} rewards={job.rewards} />}
     <progress className={styles.progress} value={berry?.collecting ? undefined : status.progress} max={1} aria-label={berry?.collecting ? "Сбор урожая" : `Готовность: ${title}`} />
     {berry?.away && status.ready && <p className={styles.hint}>{berry.awayReason}</p>}
-    {status.storageShortfall > 0 && status.ready && <p className={styles.hint}>Нужно освободить {number(status.storageShortfall)} мест.{openPantry && <button type="button" className={styles.textButton} onClick={openPantry}>К кладовой<ArrowRight size={12} aria-hidden="true" /></button>}</p>}
+    {storageShortfall > 0 && status.ready && <p className={styles.hint}>Нужно освободить {number(storageShortfall)} мест.{openPantry && <button type="button" className={styles.textButton} onClick={openPantry}>К кладовой<ArrowRight size={12} aria-hidden="true" /></button>}</p>}
   </div>;
 }

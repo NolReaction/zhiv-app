@@ -5,13 +5,17 @@ export type EconomySceneGardenOrder = {
   itemId?: string;
   startedAt: string;
   finishesAt: string;
-  collection?: { startedAt: string | null; finishesAt: string | null };
+  collection?: { startedAt: string | null; finishesAt: string | null; batchId?: string };
 };
 export type EconomySceneGarden = EconomySceneGardenOrder & {
   /** Parallel paid crops keep their own species and authoritative wall-clock dates. */
   orders?: EconomySceneGardenOrder[];
 };
-export type GardenHarvestRequest = { requestId: number; jobId: string };
+export type GardenHarvestRequest = {
+  requestId: number; jobId: string;
+  /** Exact confirmed collection members; one basket trip is purely cosmetic. */
+  jobIds?: string[];
+};
 export type GardenHarvestEvent = GardenHarvestRequest & {
   status: "started" | "completed" | "interrupted" | "unavailable";
   reason?: string;

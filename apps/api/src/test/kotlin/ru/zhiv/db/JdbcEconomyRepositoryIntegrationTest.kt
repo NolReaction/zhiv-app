@@ -704,6 +704,86 @@ class JdbcEconomyRepositoryIntegrationTest {
         assertEquals("1", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='claim_job'", p.id))
     }
 
+    @Test fun `garden baskets persist members across restart and concurrent retries deliver one revision receipt and ledger`() = runBlocking<Unit> {
+        val p = player(); val stranger = player()
+        economy.command(p.hash, command(p, economy.snapshot(p.hash), "start_production", "grow_berries"))
+        val initial = source.connection.use { readEconomyProfile(it, p.id).state }
+        val first = initial.jobs.single().copy(finishesAt = "2000-01-01T00:00:00Z")
+        val second = first.copy(id = UUID.randomUUID().toString(), recipeId = "grow_strawberries", rewards = mapOf("strawberries" to 1L))
+        val third = first.copy(id = UUID.randomUUID().toString(), recipeId = "grow_blueberries", rewards = mapOf("blueberries" to 1L))
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(initial.copy(jobs = listOf(first, second, third))), p.id)
+        val before = economy.snapshot(p.hash)
+        val start = command(p, before, "start_garden_collection", second.id)
+        val starts = coroutineScope { List(2) { async(Dispatchers.IO) { JdbcEconomyRepository(source).command(p.hash, start) } }.awaitAll() }
+        assertEquals(1, starts.count { it.replayed })
+        val started = JdbcEconomyRepository(source).snapshot(p.hash)
+        assertEquals(before.revision + 1, started.revision); assertEquals(before.inventory, started.inventory)
+        assertEquals(before.wallet, started.wallet)
+        assertEquals(listOf(first.id, second.id, third.id), started.jobs.map { it.id })
+        assertTrue(started.jobs.all { it.collection?.batchId == start.requestId })
+        assertEquals(1, started.jobs.map { it.collection?.startedAt }.distinct().size)
+        assertEquals(1, started.jobs.map { it.collection?.finishesAt }.distinct().size)
+        assertEquals("ECONOMY_OWNER_CHANGED", assertFailsWith<AuthFailure> { economy.command(stranger.hash, start) }.code)
+        assertEquals("ECONOMY_REVISION_CONFLICT", assertFailsWith<AuthFailure> {
+            economy.command(p.hash, start.copy(requestId = UUID.randomUUID().toString())) }.code)
+        assertEquals("ECONOMY_COLLECTION_NOT_READY", assertFailsWith<AuthFailure> {
+            economy.command(p.hash, command(p, started, "claim_garden_collection", start.requestId)) }.code)
+        assertEquals("ECONOMY_COLLECTION_BATCH_REQUIRED", assertFailsWith<AuthFailure> {
+            economy.command(p.hash, command(p, started, "claim_job", first.id)) }.code)
+        assertEquals("1", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='start_garden_collection'", p.id))
+        assertEquals("{}", scalar("SELECT items FROM economy_ledger WHERE user_id=? AND kind='start_garden_collection'", p.id))
+        assertEquals(listOf(first.id, second.id, third.id).joinToString(","), scalar(
+            "SELECT context->>'jobIds' FROM economy_ledger WHERE user_id=? AND kind='start_garden_collection'", p.id))
+        finish(p, started)
+        val claim = command(p, started, "claim_garden_collection", start.requestId)
+        val claims = coroutineScope { List(2) { async(Dispatchers.IO) { JdbcEconomyRepository(source).command(p.hash, claim) } }.awaitAll() }
+        assertEquals(1, claims.count { it.replayed })
+        val delivered = JdbcEconomyRepository(source).snapshot(p.hash)
+        assertEquals(started.revision + 1, delivered.revision); assertTrue(delivered.jobs.isEmpty())
+        assertEquals(before.inventory + mapOf("berries" to 1L, "strawberries" to 1L, "blueberries" to 1L), delivered.inventory)
+        for (recipe in listOf("grow_berries", "grow_strawberries", "grow_blueberries")) assertEquals(1L, delivered.progression.recipes[recipe])
+        assertEquals("1", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='claim_garden_collection'", p.id))
+        assertEquals(listOf(first.id, second.id, third.id).joinToString(","), scalar(
+            "SELECT context->>'jobIds' FROM economy_ledger WHERE user_id=? AND kind='claim_garden_collection'", p.id))
+        assertEquals("3", scalar("SELECT count(*) FROM economy_commands WHERE user_id=?", p.id))
+        assertTrue(economy.command(p.hash, claim).replayed)
+        val oldStart = economy.command(p.hash, start)
+        assertTrue(oldStart.replayed); assertTrue(oldStart.state.jobs.isEmpty()); assertEquals(delivered.inventory, oldStart.state.inventory)
+        assertFalse(economy.snapshot(stranger.hash).inventory.containsKey("blueberries"))
+    }
+
+    @Test fun `garden basket capacity failures roll back every timer reward receipt and ledger including escrow`() = runBlocking<Unit> {
+        val p = player(); economy.snapshot(p.hash)
+        val initial = source.connection.use { readEconomyProfile(it, p.id).state }
+        val jobs = List(3) { EconomyJob(UUID.randomUUID().toString(), "production", "garden", recipeId = "grow_berries",
+            startedAt = "1999-12-31T23:59:00Z", finishesAt = "2000-01-01T00:00:00Z", rewards = mapOf("berries" to 1L),
+            collection = EconomyCollection("berry_harvest", 8, null, null), catalogVersion = 10) }
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(initial.copy(jobs = jobs, inventory = mapOf("wood" to 46L))), p.id)
+        execute("INSERT INTO economy_market_listings(id,seller_id,item_id,quantity,total_price) VALUES (?,?,?,?,?)",
+            UUID.randomUUID(), p.id, "stone", 2L, 80L)
+        val full = economy.snapshot(p.hash); val start = command(p, full, "start_garden_collection", jobs.first().id)
+        assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> { economy.command(p.hash, start) }.code)
+        assertEquals(full, economy.snapshot(p.hash).copy(serverTime = full.serverTime))
+        assertEquals("0", scalar("SELECT count(*) FROM economy_commands WHERE user_id=? AND request_id=?", p.id, UUID.fromString(start.requestId)))
+        assertEquals("0", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='start_garden_collection'", p.id))
+        val freed = economy.command(p.hash, command(p, full, "sell", "wood", 1)).state
+        val started = economy.command(p.hash, start.copy(expectedRevision = freed.revision)).state
+        assertTrue(started.jobs.all { it.collection?.batchId == start.requestId })
+        finish(p, started)
+        val saved = source.connection.use { readEconomyProfile(it, p.id).state }
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(saved.copy(inventory = mapOf("wood" to 46L))), p.id)
+        val beforeClaim = economy.snapshot(p.hash); val claim = command(p, beforeClaim, "claim_garden_collection", start.requestId)
+        assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> { economy.command(p.hash, claim) }.code)
+        assertEquals(beforeClaim, economy.snapshot(p.hash).copy(serverTime = beforeClaim.serverTime))
+        assertEquals("0", scalar("SELECT count(*) FROM economy_commands WHERE user_id=? AND request_id=?", p.id, UUID.fromString(claim.requestId)))
+        assertEquals("0", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='claim_garden_collection'", p.id))
+        val room = economy.command(p.hash, command(p, beforeClaim, "sell", "wood", 1)).state
+        val delivered = economy.command(p.hash, claim.copy(expectedRevision = room.revision)).state
+        assertTrue(delivered.jobs.isEmpty()); assertEquals(3L, delivered.inventory["berries"])
+        assertEquals(45L, delivered.inventory["wood"]); assertEquals(2L, delivered.storage.reserved)
+        assertEquals(3L, delivered.progression.recipes["grow_berries"])
+    }
+
     @Test fun `collection preflight includes escrow and rolls back timer receipt revision and inventory when storage is full`() = runBlocking<Unit> {
         val p = player()
         val growing = economy.command(p.hash, command(p, economy.snapshot(p.hash), "start_production", "grow_berries")).state

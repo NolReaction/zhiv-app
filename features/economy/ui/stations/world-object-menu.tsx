@@ -24,6 +24,7 @@ import { WorldProductionSlots } from "@/features/economy/ui/production/world-pro
 import { productionStationSupported } from "@/features/economy/domain/production-slots";
 import type { ConstructionGoalController } from "@/features/economy/ui/construction/use-construction-goal";
 import { ConstructionGoalSummary } from "@/features/economy/ui/construction/construction-goal-summary";
+import { worldRecipeDuration, worldRecipeGroups } from "./world-recipe-groups";
 import styles from "./world-object-menu.module.css";
 
 export type WorldObjectMenuProps = {
@@ -55,27 +56,28 @@ function recipeTitle(state: EconomyView, recipe: WorldRecipe) {
   return outputs.length === 1 ? itemName(state, outputs[0]) : recipe.name.split(" · ")[0];
 }
 
-function RecipeCard({ state, recipe, onChoose }: { state: EconomyView; recipe: WorldRecipe; onChoose: (id: string) => void }) {
+function RecipeCard({ state, recipe, methodCount, onChoose }: { state: EconomyView; recipe: WorldRecipe; methodCount: number; onChoose: (id: string) => void }) {
   const results = Object.entries(recipe.rewards);
   const unlockReason = worldRecipeUnlockReason(state, recipe);
   return <button type="button" className={`${styles.product} ${styles.recipeCard}`} data-recipe={recipe.id}
-    aria-label={`${recipe.name}: ${results.map(([id, amount]) => `${itemName(state, id)} ×${number(amount)}`).join(", ")}, ${worldDuration(recipe.seconds)}`} onClick={() => onChoose(recipe.id)}>
+    aria-label={`${recipe.name}: ${results.map(([id, amount]) => `${itemName(state, id)} ×${number(amount)}`).join(", ")}, ${worldRecipeDuration(recipe.seconds)}${methodCount > 1 ? `, способов: ${methodCount}` : ""}`} onClick={() => onChoose(recipe.id)}>
     <span className={styles.recipeOutputs} aria-hidden="true">{results.map(([id, amount]) => <span key={id}><ProductIcon state={state} itemId={id} size={results.length > 1 ? 22 : 34} /><b>×{number(amount)}</b></span>)}</span>
     <strong>{recipeTitle(state, recipe)}</strong>
+    {methodCount > 1 && <span className={styles.small}>Способов: {methodCount}</span>}
     {unlockReason && <span className={styles.small}><LockKeyhole size={12} aria-hidden="true" />{unlockReason}</span>}
-    <span className={styles.recipeTime}><Clock3 size={12} aria-hidden="true" />{worldDuration(recipe.seconds)}<ArrowRight size={13} aria-hidden="true" /></span>
+    <span className={styles.recipeTime}><Clock3 size={12} aria-hidden="true" />{worldRecipeDuration(recipe.seconds)}<ArrowRight size={13} aria-hidden="true" /></span>
   </button>;
 }
 
 function RecipeCatalog({ state, recipes, onChoose }: { state: EconomyView; recipes: WorldRecipe[]; onChoose: (id: string) => void }) {
-  const available = recipes.filter(recipe => !worldMissingRequirements(state, worldRequirements(recipe, recipe)).length);
+  const available = worldRecipeGroups(state, recipes);
   return available.length ? <section className={styles.recipeGroup} aria-label="Доступные рецепты">
     <h3>Выберите рецепт</h3>
-    <div className={styles.recipeGrid}>{available.map(recipe => <RecipeCard key={recipe.id} state={state} recipe={recipe} onChoose={onChoose} />)}</div>
+    <div className={styles.recipeGrid}>{available.map(group => <RecipeCard key={group.key} state={state} recipe={group.recipe} methodCount={group.methods.length} onChoose={onChoose} />)}</div>
   </section> : <p className={styles.empty}>Сначала обустройте это место.</p>;
 }
 
-export function WorldRecipeDetail({ economy, recipe, navigation, onCollapse, onOpenHelp, onHelpContextChange }: { economy: ReadyEconomy; recipe: WorldRecipe; navigation?: StationNavigation; onCollapse: () => void; onOpenHelp?: (context: WorldHelpContext) => void; onHelpContextChange?: (context: WorldHelpContext) => void }) {
+export function WorldRecipeDetail({ economy, recipe, navigation, onCollapse, onChooseRecipe, onOpenHelp, onHelpContextChange }: { economy: ReadyEconomy; recipe: WorldRecipe; navigation?: StationNavigation; onCollapse: () => void; onChooseRecipe?: (id: string) => void; onOpenHelp?: (context: WorldHelpContext) => void; onHelpContextChange?: (context: WorldHelpContext) => void }) {
   const [requestedQuantity, setQuantity] = useState(1);
   const meal = economy.snapshot.catalog.food?.meals.find(entry => (recipe.rewards[entry.itemId] ?? 0) > 0);
   const backButton = useRef<HTMLButtonElement>(null);
@@ -88,6 +90,8 @@ export function WorldRecipeDetail({ economy, recipe, navigation, onCollapse, onO
   const output = Object.values(recipe.rewards).reduce((sum, amount) => sum + amount, 0) * quantity;
   const quantityId = useId();
   const helpBlocked = Boolean(reason) || economy.uncertain || economy.retryAt > economy.now;
+  const methods = worldRecipeGroups(economy.snapshot, economy.snapshot.catalog.recipes)
+    .find(group => group.methods.some(method => method.id === recipe.id))?.methods ?? [];
   useEffect(() => {
     onHelpContextChange?.({ intent: "production", stationId: recipe.buildingId, recipeId: recipe.id, quantity });
   }, [onHelpContextChange, recipe.buildingId, recipe.id, quantity]);
@@ -105,6 +109,14 @@ export function WorldRecipeDetail({ economy, recipe, navigation, onCollapse, onO
     <div className={styles.recipeScroll} data-recipe-scroll>
       <button ref={backButton} type="button" className={styles.recipeBack} onClick={onCollapse}><ArrowLeft size={14} aria-hidden="true" />Все рецепты</button>
       <div className={styles.resultCards} aria-label="Результат">{Object.entries(recipe.rewards).map(([id, amount]) => <div key={id}><span><ProductIcon state={economy.snapshot} itemId={id} size={24} /></span><strong>{itemName(economy.snapshot, id)}</strong><b>×{number(amount * quantity)}</b></div>)}</div>
+      {methods.length > 1 && onChooseRecipe && <div className={styles.recipeMethods} role="group" aria-label="Способ производства">
+        <h3>Способ производства</h3>
+        {methods.map(method => <button key={method.id} type="button" className={styles.recipeMethod} data-recipe-method={method.id} aria-pressed={method.id === recipe.id} disabled={locked(economy)} onClick={() => onChooseRecipe(method.id)}>
+          <strong>{method.name}</strong><span>{worldRecipeDuration(method.seconds)} · {Object.entries(method.rewards).map(([id, amount]) => `${itemName(economy.snapshot, id)} ×${number(amount)}`).join(", ")}</span>
+          <span>{[...(method.cost.coins > 0 ? [`${number(method.cost.coins)} монет`] : []), ...Object.entries(method.cost.items).map(([id, amount]) => `${itemName(economy.snapshot, id)} ×${number(amount)}`)].join(" · ") || "Без затрат"}</span>
+          {worldRecipeUnlockReason(economy.snapshot, method) && <span>{worldRecipeUnlockReason(economy.snapshot, method)}</span>}
+        </button>)}
+      </div>}
       {meal && <p className={styles.mealBenefits}>Вылазка +{number(meal.heroSpeedBps / 100)}% · стройка +{number(meal.builderSpeedBps / 100)}% к скорости</p>}
       <div className={styles.recipeIngredients}><h3>Понадобится</h3><Cost state={economy.snapshot} cost={recipe.cost} quantity={quantity} navigation={navigation} /></div>
       <Requirements state={economy.snapshot} required={worldRequirements(recipe, recipe)} navigation={navigation} />
@@ -120,7 +132,7 @@ export function WorldRecipeDetail({ economy, recipe, navigation, onCollapse, onO
         if (reason || locked(economy)) return;
         pendingOrder.current = { owner: economy.snapshot.ownerPublicId, jobIds: new Set(economy.snapshot.jobs.map(job => job.id)), started: false };
         void economy.act("start_production", recipe.id, quantity);
-      }}>Начать · {worldDuration(recipe.seconds * quantity)}</button>
+      }}>Начать · {worldRecipeDuration(recipe.seconds * quantity)}</button>
     </div>
   </section>;
 }
@@ -245,7 +257,7 @@ function ObjectMenuBody({ guide, guideRoot: guideRootRef, selection, economy, is
     else { const place = worldPlaceForStation(id); if (place && onNavigate) { navigating.current = true; setUpgradeStation(null); onNavigate(place, id, targetRecipeId); } }
   }
   function chooseRecipe(id: string) {
-    recipeTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (!selectedRecipe) recipeTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setRecipeId(id); setUpgradeStation(null);
     if (menuBody.current) menuBody.current.scrollTop = 0;
   }
@@ -311,7 +323,7 @@ function ObjectMenuBody({ guide, guideRoot: guideRootRef, selection, economy, is
           </>}
         </section> : stationId === "warehouse" ? <><div className={styles.inventoryHeading}><span>Кладовая</span><strong>{number(state.storage.used + state.storage.reserved)} / {number(state.storage.capacity)}</strong></div>{ownedItems.length ? <div className={styles.products} aria-label="Предметы в кладовой">{ownedItems.map(item => <button key={item.id} type="button" className={styles.product} aria-pressed={saleItem === item.id} onClick={() => { setSaleItem(value => value === item.id ? null : item.id); setUpgradeStation(null); }}><ProductIcon state={state} itemId={item.id} /><strong>{item.name}</strong><span>×{number(state.inventory[item.id])}</span></button>)}</div> : <p className={styles.empty}>Пока пусто. Урожай и находки появятся здесь после получения.</p>}{readyEconomy && saleItem && <WorldObjectSale key={saleItem} economy={readyEconomy} itemId={saleItem} onCollapse={() => setSaleItem(null)} />}{state.storage.reserved > 0 && <p className={styles.small}>На рынке зарезервировано {number(state.storage.reserved)} мест.</p>}</> : stationId !== "quarry" ? <>
           <div className={styles.recipeCatalog} data-section-guide-target="workshop-recipes" hidden={Boolean(selectedRecipe)} aria-label={`Продукция: ${building?.name ?? definition.label}`}><RecipeCatalog state={state} recipes={recipes} onChoose={chooseRecipe} /></div>
-          {readyEconomy && selectedRecipe && <WorldRecipeDetail key={selectedRecipe.id} economy={readyEconomy} recipe={selectedRecipe} navigation={navigation} onCollapse={closeRecipe} onOpenHelp={openHelp} onHelpContextChange={onHelpContextChange} />}
+          {readyEconomy && selectedRecipe && <WorldRecipeDetail key={selectedRecipe.id} economy={readyEconomy} recipe={selectedRecipe} navigation={navigation} onCollapse={closeRecipe} onChooseRecipe={chooseRecipe} onOpenHelp={openHelp} onHelpContextChange={onHelpContextChange} />}
         </> : null}
       </>}
     </div>

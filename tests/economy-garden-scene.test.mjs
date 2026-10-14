@@ -169,7 +169,8 @@ test("a hero outside the authored home clearing gathers at the server deadline w
     const input = { snapshot, now: finish, busy: false, uncertain: false, retryAt: 0, sceneAvailable: true };
     const update = patch => controller.update({ ...input, ...patch }, (action, targetId) => sent.push({ action, targetId }));
     update({}); assert.equal(controller.start(job.id), true);
-    job.collection.startedAt = new Date(finish).toISOString(); job.collection.finishesAt = new Date(finish + 8000).toISOString();
+    const batchId = "780be3c1-d920-491c-8ffc-11b66757b224";
+    job.collection.startedAt = new Date(finish).toISOString(); job.collection.finishesAt = new Date(finish + 8000).toISOString(); job.collection.batchId = batchId;
     update({});
     syncForestGardenProduction(garden, job, finish);
     requestForestGardenHarvest(state, controller.getSnapshot().request, calm);
@@ -183,7 +184,7 @@ test("a hero outside the authored home clearing gathers at the server deadline w
     assert.equal(controller.getSnapshot().phase, "waiting"); assert.equal(controller.getSnapshot().request, null);
     update({ now: finish + 7999 }); assert.equal(sent.length, 1, "no early reward before the authoritative eight seconds");
     update({ now: finish + 8000 });
-    assert.deepEqual(sent, [{ action: "start_collection", targetId: job.id }, { action: "claim_job", targetId: job.id }]);
+    assert.deepEqual(sent, [{ action: "start_garden_collection", targetId: job.id }, { action: "claim_garden_collection", targetId: batchId }]);
     assert.deepEqual(snapshot.inventory, {}, "only the later server receipt may change stock");
     controller.sceneEvent(garden.harvestEvent); update({ now: finish + 9000 });
     assert.equal(sent.length, 2, "fallback does not send duplicate claims");

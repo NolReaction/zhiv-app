@@ -218,6 +218,7 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       state.productionSlots = { ...state.productionSlots, [command.targetId]: offer.slots };
       return "Открыто новое место производства";
     }
+    case "start_garden_collection":
     case "start_collection": {
       const job = state.jobs.find(item => item.id === command.targetId);
       if (!job) return fail("ECONOMY_JOB_GONE", "Результат уже получен или задание не найдено");
@@ -227,11 +228,19 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       if (job.collection?.startedAt) return fail("ECONOMY_COLLECTION_STARTED", "Мохлик уже собирает этот урожай");
       if (now < Date.parse(job.finishesAt)) return fail("ECONOMY_JOB_NOT_READY", "Урожай ещё не созрел");
       requireActorAvailable(state, "collection", now);
+      const batch = command.action === "start_garden_collection";
+      const jobs = batch ? state.jobs.filter(item => item.kind === "production" && item.targetId === "garden" &&
+        hasGardenBerryReward(item.rewards) && !item.collection?.startedAt && now >= Date.parse(item.finishesAt) &&
+        (item.collection ?? economyCatalog.recipes.find(recipe => recipe.id === item.recipeId)?.collection)) : [job];
       const inventory = { ...state.inventory };
-      for (const [item, quantity] of Object.entries(job.rewards)) inventory[item] = (inventory[item] ?? 0) + quantity;
+      for (const current of jobs) for (const [item, quantity] of Object.entries(current.rewards)) inventory[item] = (inventory[item] ?? 0) + quantity;
       assertEconomyStorageTransition(state, { ...state, inventory }, reservedItems);
-      job.collection = { kind: spec.kind, seconds: spec.seconds,
-        startedAt: new Date(now).toISOString(), finishesAt: new Date(now + spec.seconds * 1000).toISOString() };
+      const seconds = batch ? Math.max(8, ...jobs.map(item => (item.collection ?? economyCatalog.recipes.find(recipe => recipe.id === item.recipeId)?.collection)!.seconds)) : spec.seconds;
+      for (const current of jobs) {
+        const saved = (current.collection ?? economyCatalog.recipes.find(recipe => recipe.id === current.recipeId)?.collection)!;
+        current.collection = { kind: saved.kind, seconds: saved.seconds, startedAt: new Date(now).toISOString(),
+          finishesAt: new Date(now + seconds * 1000).toISOString(), ...(batch ? { batchId: command.requestId } : {}) };
+      }
       return "Мохлик отправился собирать урожай";
     }
     case "start_fishing":
@@ -454,11 +463,32 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       state.jobs = state.jobs.filter(item => item.id !== job.id);
       return price > 0 ? "Строительство завершено за жемчуг" : "Постройка готова";
     }
+    case "claim_garden_collection": {
+      const jobs = state.jobs.filter(job => job.collection?.batchId === command.targetId);
+      if (!jobs.length) return fail("ECONOMY_JOB_GONE", "Урожай уже получен или сбор не найден");
+      for (const job of jobs) {
+        if (now < Date.parse(job.finishesAt)) return fail("ECONOMY_JOB_NOT_READY", "Урожай ещё не созрел");
+        if (!job.collection?.startedAt || !job.collection.finishesAt) return fail("ECONOMY_COLLECTION_REQUIRED", "Сначала отправьте Мохлика собрать урожай");
+        if (now < Date.parse(job.collection.finishesAt)) return fail("ECONOMY_COLLECTION_NOT_READY", "Мохлик ещё собирает урожай");
+      }
+      const rewards: Record<string, number> = {};
+      for (const job of jobs) for (const [item, quantity] of Object.entries(job.rewards)) rewards[item] = (rewards[item] ?? 0) + quantity;
+      const inventory = { ...state.inventory };
+      for (const [item, quantity] of Object.entries(rewards)) inventory[item] = (inventory[item] ?? 0) + quantity;
+      assertEconomyStorageTransition(state, { ...state, inventory }, reservedItems);
+      creditEconomyItems(state, rewards);
+      for (const job of jobs) state.progression = advanceEconomyProgression(state.progression, job);
+      const ids = new Set(jobs.map(job => job.id));
+      state.jobs = state.jobs.filter(job => !ids.has(job.id));
+      state.unlockedItems = [...new Set([...(state.unlockedItems ?? []), ...Object.entries(rewards).filter(([, quantity]) => quantity > 0).map(([item]) => item)])];
+      return "Весь собранный урожай доставлен на склад";
+    }
     case "claim_job": {
       const job = state.jobs.find(item => item.id === command.targetId);
       if (!job) return fail("ECONOMY_JOB_GONE", "Результат уже получен или задание не найдено");
       if (now < Date.parse(job.finishesAt)) fail("ECONOMY_JOB_NOT_READY", "Работа ещё не закончена");
       if (job.collection) {
+        if (job.collection.batchId) return fail("ECONOMY_COLLECTION_BATCH_REQUIRED", "Заберите весь собранный урожай вместе");
         if (!job.collection.startedAt || !job.collection.finishesAt) fail("ECONOMY_COLLECTION_REQUIRED", "Сначала отправьте Мохлика собрать урожай");
         if (now < Date.parse(job.collection.finishesAt!)) fail("ECONOMY_COLLECTION_NOT_READY", "Мохлик ещё собирает урожай");
       }

@@ -6,6 +6,7 @@ import { constructionCompletions, type ConstructionCompletion } from "@/features
 import { inventoryGainFromReceipt, INVENTORY_GAIN_HISTORY_LIMIT, type InventoryGain } from "@/features/economy/domain/inventory-gain";
 import { localSaleFromReceipt, type LocalSaleReceipt } from "@/features/economy/domain/local-sale-receipt";
 import { barterCommandSchema, type BarterCommand, type BarterIntent, type BarterResult, type BarterView } from "@/features/economy/domain/barter-model";
+import { hasGardenBerryReward } from "@/features/economy/domain/garden-berries";
 
 type Transport = {
   get: (signal: AbortSignal) => Promise<EconomyView>;
@@ -242,8 +243,9 @@ export function createEconomySession(owner: string | null, transport: Transport,
     },
     refresh, refreshSoft: () => refresh(false), refreshMarket, refreshBarter,
     act(action: EconomyCommand["action"], targetId: string, quantity = 1, totalPrice = 0) {
-      if (!owner || !view.snapshot || pending || !active || !available) return;
+      if (!owner || !view.snapshot || pending || !active || !available || view.busy || performance.now() < blockedUntil) return false;
       void execute({ kind: "economy", command: { requestId: createUuidV4(), ownerPublicId: owner, expectedRevision: view.snapshot.revision, action, targetId, quantity, totalPrice } });
+      return true;
     },
     actMarket(action: MarketCommand["action"], targetId: string, quantity = 1, totalPrice = 0) {
       if (!owner || !view.snapshot || pending || !active || !available) return;
@@ -260,5 +262,14 @@ export function createEconomySession(owner: string | null, transport: Transport,
       if (command.success) void execute({ kind: "dev", command: command.data });
     },
     retry: () => pending ? execute(pending) : refresh(),
+    retryGardenCollection() {
+      if (pending?.kind !== "economy" || !active || !available || view.busy || performance.now() < blockedUntil) return false;
+      const { action, targetId } = pending.command;
+      const gardenClaim = action === "claim_job" && view.snapshot?.jobs.some(job => job.id === targetId
+        && job.kind === "production" && job.targetId === "garden" && job.collection?.startedAt && hasGardenBerryReward(job.rewards));
+      if (!["start_collection", "start_garden_collection", "claim_garden_collection"].includes(action) && !gardenClaim) return false;
+      void execute(pending);
+      return true;
+    },
   };
 }

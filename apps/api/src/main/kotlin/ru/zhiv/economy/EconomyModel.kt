@@ -1,7 +1,10 @@
 package ru.zhiv.economy
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
+import ru.zhiv.http.parseCanonicalUuidV4
 import java.time.Instant
 
 internal val economyJson = Json { encodeDefaults = true; ignoreUnknownKeys = false }
@@ -15,12 +18,15 @@ internal val economyBerryItemIds = setOf("berries", "strawberries", "blueberries
 @Serializable data class EconomyCollectionSpec(val kind: String, val seconds: Long) {
     init { require(kind == "berry_harvest" && seconds in 1L..120L) }
 }
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable data class EconomyCollection(
     val kind: String, val seconds: Long, val startedAt: String?, val finishesAt: String?,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val batchId: String? = null,
 ) {
     init {
         require(kind == "berry_harvest" && seconds in 1L..120L)
         require((startedAt == null) == (finishesAt == null))
+        require(batchId == null || startedAt != null && parseCanonicalUuidV4(batchId) != null)
         if (startedAt != null && finishesAt != null)
             require(!Instant.parse(finishesAt).isBefore(Instant.parse(startedAt).plusSeconds(seconds)))
     }

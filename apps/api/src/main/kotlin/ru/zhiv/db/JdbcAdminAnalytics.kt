@@ -11,7 +11,7 @@ import java.time.OffsetDateTime
 import java.time.ZoneOffset
 
 private const val technicalKinds = "'legacy_conversion','starting_pack','account_merge','merged_receipt','dev_grant_currency','dev_grant_item','dev_set_building_level'"
-private const val jobKinds = "'claim_job','speedup_construction','start_collection','cancel_exploration'"
+private const val jobKinds = "'claim_job','claim_garden_collection','speedup_construction','start_collection','start_garden_collection','cancel_exploration'"
 private const val escrowKinds = "'market_create','market_cancel','barter_create','barter_cancel'"
 private const val passiveKinds = "'market_sell','barter_exchange'"
 private const val maxAnalyticsGroups = 1000

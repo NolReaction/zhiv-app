@@ -43,7 +43,8 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
         .replace('from "react";', `from "${hooksId}";`)
         .replace('from "@/features/economy/integration/garden-collection-context";', `from "${hooksId}";`) + "\nexport { ObjectMenuBody as TestSlotMenuBody };";
       if (id.endsWith("/features/economy/ui/economy-panel.tsx")) return source
-        .replace('from "react";', `from "${hooksId}";`) + "\nexport { Production as TestSlotProduction };";
+        .replace('from "react";', `from "${hooksId}";`)
+        .replace('from "@/features/economy/integration/garden-collection-context";', `from "${hooksId}";`) + "\nexport { Production as TestSlotProduction, JobCard as TestSlotJobCard };";
     },
   }],
 });
@@ -52,7 +53,7 @@ const hooks = await vite.ssrLoadModule(hooksId);
 const { WorldProductionSlots } = await vite.ssrLoadModule("/features/economy/ui/production/world-production-slots.tsx");
 const { Work } = await vite.ssrLoadModule("/features/economy/ui/shared/world-economy-parts.tsx");
 const { TestSlotMenuBody } = await vite.ssrLoadModule("/features/economy/ui/stations/world-object-menu.tsx");
-const { TestSlotProduction } = await vite.ssrLoadModule("/features/economy/ui/economy-panel.tsx");
+const { TestSlotProduction, TestSlotJobCard } = await vite.ssrLoadModule("/features/economy/ui/economy-panel.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const now = Date.parse("2026-10-14T19:00:00Z");
 function controller(overrides = {}) {
@@ -92,6 +93,37 @@ test("opening, cancelling and dismissing purchase confirmation never spends pear
   elements(tree).find(node => node.props.role === "dialog").props.onKeyDown(event);
   assert.equal(event.prevented, 1); assert.equal(event.stopped, 1); assert.deepEqual(calls, []);
   assert.equal(buy(render(economy)), undefined);
+});
+
+test("ripe slot and hub buttons gather all berries and explain the combined warehouse capacity", () => {
+  hooks.reset(); const calls = [], economy = controller({ act: (...args) => { calls.push(args); return true; } });
+  economy.snapshot.productionSlots.garden = 3;
+  economy.snapshot.jobs = ["berries", "strawberries", "blueberries"].map((itemId, index) => production(`berry-${index}`, "garden", {
+    finishesAt: new Date(now).toISOString(), rewards: { [itemId]: 1 }, collection: { kind: "berry_harvest", seconds: 8, startedAt: null, finishesAt: null },
+  }));
+  economy.snapshot.storage.available = 2;
+  for (const entry of [Work, TestSlotJobCard]) {
+    const tree = entry({ economy, job: economy.snapshot.jobs[0], compact: true, navigate() {} });
+    const button = elements(tree).find(node => node.type === "button");
+    assert.match(renderToStaticMarkup(tree), /Собрать всё \(3\)/); assert.equal(button.props.disabled, true);
+    click(button); assert.equal(calls.length, 0);
+    assert.match(renderToStaticMarkup(tree), entry === Work ? /Нужно освободить 1 мест/ : /Для результата нужно 3 мест, свободно 2/);
+  }
+  economy.snapshot.storage.available = 3;
+  let tree = Work({ economy, job: economy.snapshot.jobs[0], compact: true }); click(elements(tree).find(node => node.type === "button"));
+  assert.deepEqual(calls, [["start_garden_collection", "berry-0"]]);
+  const batchId = "aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa";
+  for (const crop of economy.snapshot.jobs) crop.collection = { ...crop.collection, batchId, startedAt: new Date(now).toISOString(), finishesAt: new Date(now + 8000).toISOString() };
+  hooks.setCollection({ jobId: "berry-0", jobIds: ["berry-0", "berry-1", "berry-2"], phase: "walking", start() { assert.fail("collecting neighbors must not launch another walk"); } });
+  for (const crop of economy.snapshot.jobs) {
+    tree = Work({ economy, job: crop, compact: true }); const button = elements(tree).find(node => node.type === "button");
+    assert.equal(button.props.disabled, true); assert.match(renderToStaticMarkup(tree), /Мохлик собирает урожай/); click(button);
+  }
+  hooks.setCollection(null); economy.now += 8000;
+  for (const entry of [Work, TestSlotJobCard]) {
+    tree = entry({ economy, job: economy.snapshot.jobs[1], compact: true, navigate() {} }); click(elements(tree).find(node => node.type === "button"));
+    assert.deepEqual(calls.at(-1), ["claim_garden_collection", batchId], "without a scene provider the saved batch still claims atomically");
+  }
 });
 
 test("confirmation focuses cancel first and a completed purchase returns focus to its production section", () => {
@@ -202,7 +234,7 @@ test("slot work retains the server collection sequence, actor lock and storage g
   const crop = production("crop", "garden", { finishesAt: new Date(now).toISOString() });
   economy.snapshot.jobs = [crop];
   let tree = Work({ economy, job: crop, compact: true });
-  click(elements(tree).find(node => node.type === "button")); assert.deepEqual(calls, [["start_collection", "crop"]]);
+  click(elements(tree).find(node => node.type === "button")); assert.deepEqual(calls, [["start_garden_collection", "crop"]]);
   crop.collection = { startedAt: new Date(now).toISOString(), finishesAt: new Date(now + 8000).toISOString() };
   tree = Work({ economy, job: crop, compact: true }); const collecting = elements(tree).find(node => node.type === "button");
   assert.equal(collecting.props.disabled, true); click(collecting); assert.equal(calls.length, 1);

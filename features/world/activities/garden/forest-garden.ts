@@ -4,7 +4,7 @@ import { compileWorldInteractions } from "@/features/world/navigation/interactio
 import { isForestGroundClear } from "@/features/world/environment/weather/forest-ground-weather";
 import { forestBushArtworkAvailable } from "./forest-bush-artwork";
 import { forestGardenBerryLayout } from "./forest-garden-layout";
-import { economyGardenGrowth, type EconomySceneGarden, type GardenHarvestEvent, type GardenHarvestRequest } from "@/features/world/state/economy/economy-garden-state";
+import { economyGardenGrowth, type EconomySceneGarden, type EconomySceneGardenOrder, type GardenHarvestEvent, type GardenHarvestRequest } from "@/features/world/state/economy/economy-garden-state";
 
 export type ForestGardenAction = "water-bush" | "harvest-berries";
 export type ForestGardenPhase = "approach-basket" | "take-basket" | "approach-bush" | "water" | "collect"
@@ -169,6 +169,23 @@ export function syncForestGardenProduction(state: ForestGardenState, crop: Econo
   for (const bush of state.bushes) bush.growth = growth;
 }
 
+/** Present only the exact accepted batch, with the primary crop first for the first pick. */
+export function gardenHarvestOrders(state: ForestGardenState, request = state.harvest?.request): EconomySceneGardenOrder[] {
+  const production = state.production;
+  if (!production) return [];
+  if (!request) return [production];
+  if (request.jobId !== production.jobId) return [];
+  const ids = request.jobIds?.length ? [...new Set(request.jobIds)] : [request.jobId];
+  if (!ids.includes(request.jobId)) return [];
+  const orders = production.orders?.length ? production.orders : [production];
+  const selected = ids.map(id => orders.find(order => order.jobId === id));
+  if (selected.some(order => !order)) return [];
+  const batchId = production.collection?.batchId;
+  if (batchId && selected.some(order => order?.collection?.batchId !== batchId)) return [];
+  if (state.productionNow !== undefined && selected.some(order => economyGardenGrowth(order!, state.productionNow!) < .98)) return [];
+  return [production, ...selected.filter((order): order is EconomySceneGardenOrder => Boolean(order && order.jobId !== production.jobId))];
+}
+
 /** DEV can resize only the rendered rig. Do not stretch it toward a stale work point. */
 export function gardenWorkReachable(bush: ForestBerryBush, size: number): boolean {
   const foot = bush.workPosition, cluster = forestGardenBerryLayout(bush, bush.position)[0];
@@ -189,7 +206,7 @@ export function gardenEligibleBushes(state: ForestGardenState, kind: ForestGarde
   if (kind === "harvest-berries") {
     if (!state.basket) return [];
     if (state.production !== undefined) {
-      if (!state.production || state.harvest?.request.jobId !== state.production.jobId || state.harvest.phase === "completed") return [];
+      if (!state.production || !state.harvest || !gardenHarvestOrders(state).length || state.harvest.phase === "completed") return [];
     } else if (state.basket.berries + FOREST_GARDEN_LIMITS.harvest > state.basket.capacity) return [];
   }
   return state.bushes.filter(bush => bush.workPosition && (kind === "water-bush"

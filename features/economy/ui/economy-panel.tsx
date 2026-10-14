@@ -27,10 +27,10 @@ import { worldConstructionReason, worldProductionReason, worldMissingRecipeRequi
 import { economyMarketUnlocked, marketDailyLimit, marketItemUnlocked, marketMinimumPrice, marketSaleFee, marketSlotCount } from "@/features/economy/domain/market-rules";
 import { BarterMarket } from "@/features/economy/ui/market/barter-market";
 import { WorldMarketSlots } from "@/features/economy/ui/market/world-market-slots";
+import { worldRecipeDuration, worldRecipeGroups, type WorldRecipeGroup } from "@/features/economy/ui/stations/world-recipe-groups";
 import styles from "./economy-panel.module.css";
 
 export type EconomyTab = "overview" | "buildings" | "production" | "exploration" | "market" | "barter" | "inventory";
-type Recipe = EconomyView["catalog"]["recipes"][number];
 type Item = EconomyView["catalog"]["items"][number];
 type Building = EconomyView["catalog"]["buildings"][number];
 type Navigate = (tab: EconomyTab, focusId?: string) => void;
@@ -136,7 +136,7 @@ function JobCard({ economy, job, navigate }: { economy: ReadyEconomy; job: Econo
   const progress = Math.min(1, Math.max(0, (now - start) / Math.max(1, end - start)));
   const Icon = job.kind === "construction" ? Hammer : isMinerJob(job) ? Mountain : job.kind === "exploration" ? Compass : Sprout;
   const caption = job.kind === "construction" ? "Строительство" : isMinerJob(job) ? "Шахта работает" : job.kind === "exploration" ? "Мохлик в пути" : buildingName(state, job.targetId);
-  const rewardCount = Object.values(job.rewards).reduce((sum, amount) => sum + amount, 0);
+  const rewardCount = berry?.rewardCount ?? Object.values(job.rewards).reduce((sum, amount) => sum + amount, 0);
   const storageBlocked = job.kind !== "construction" && rewardCount > state.storage.available;
   const working = productionIsActive(job, now);
   return <article className={styles.card} data-ready={ready}>
@@ -146,8 +146,9 @@ function JobCard({ economy, job, navigate }: { economy: ReadyEconomy; job: Econo
     <div className={styles.jobFooter}>
       <span className={styles.duration}>{ready && !berry?.collecting ? <Check size={15} aria-hidden /> : <Clock3 size={15} aria-hidden />}{ready ? berry?.label ?? "Можно забрать" : `Ещё ${economyDuration((end - now) / 1000)}`}</span>
       <button className={ready ? styles.primary : undefined} disabled={!ready || storageBlocked || busy || uncertain || berry?.disabled} onClick={() => {
+        if (!ready || storageBlocked || busy || uncertain || economy.retryAt > now || berry?.disabled) return;
         if (berry && collection) collection.start(job.id);
-        else economy.act(berry && !berry.started ? "start_collection" : "claim_job", job.id);
+        else economy.act(berry && !berry.started ? "start_garden_collection" : job.collection?.batchId ? "claim_garden_collection" : "claim_job", job.collection?.batchId ?? job.id);
       }}>
         {berry?.button ?? (job.kind === "construction" ? "Завершить" : "Забрать")}<span className={styles.sr}>: {jobTitle(state, job)}</span>
       </button>
@@ -246,10 +247,13 @@ function Buildings({ economy, navigate, focusId }: { economy: ReadyEconomy; navi
   </div>;
 }
 
-function RecipeCard({ economy, recipe, navigate }: { economy: ReadyEconomy; recipe: Recipe; navigate: Navigate }) {
+function RecipeCard({ economy, group, initialRecipeId, navigate }: { economy: ReadyEconomy; group: WorldRecipeGroup; initialRecipeId?: string; navigate: Navigate }) {
   const { snapshot: state, busy, uncertain } = economy;
+  const [methodId, setMethodId] = useState(initialRecipeId ?? group.recipe.id);
+  const recipe = group.methods.find(method => method.id === methodId) ?? group.recipe;
   const [requestedQuantity, setQuantity] = useState(1);
   const inputId = useId();
+  const methodInputId = useId();
   const rewardCount = Object.values(recipe.rewards).reduce((sum, amount) => sum + amount, 0);
   const maximum = Math.min(recipe.maxBatch ?? state.catalog.maxBatch, state.catalog.maxBatch, Math.floor(state.storage.capacity / Math.max(1, rewardCount)));
   const quantity = Math.max(1, Math.min(requestedQuantity, maximum));
@@ -257,15 +261,16 @@ function RecipeCard({ economy, recipe, navigate }: { economy: ReadyEconomy; reci
   const reason = worldProductionReason(state, recipe, quantity);
   const missingRecipes = worldMissingRecipeRequirements(state, recipe);
   const choices = Array.from({ length: maximum }, (_, index) => index + 1);
-  return <article className={styles.card}><div className={styles.cardHeader}><span className={styles.iconTile}><PlayerItemIcon state={state} itemId={Object.keys(recipe.rewards)[0] ?? ""} size={28} /></span><div><span className={styles.eyebrow}>{buildingName(state, recipe.buildingId)}</span><h3>{recipe.name}</h3></div></div>
+  return <article className={styles.card} data-production-product={Object.keys(recipe.rewards).sort().join(":")}><div className={styles.cardHeader}><span className={styles.iconTile}><PlayerItemIcon state={state} itemId={Object.keys(recipe.rewards)[0] ?? ""} size={28} /></span><div><span className={styles.eyebrow}>{buildingName(state, recipe.buildingId)}</span><h3>{recipe.name}</h3></div></div>
     <Rewards state={state} value={recipe.rewards} quantity={quantity} />
+    {group.methods.length > 1 && <label className={styles.field} htmlFor={methodInputId}>Способ производства<select id={methodInputId} value={recipe.id} disabled={busy || uncertain} onChange={event => { setMethodId(event.target.value); setQuantity(1); }}>{group.methods.map(method => <option key={method.id} value={method.id}>{method.name} · {worldRecipeDuration(method.seconds)}{unmetRequirement(state, requirements(method, method)) ? " · пока закрыто" : ""}</option>)}</select></label>}
     <RequirementList state={state} required={required} navigate={navigate} />
     <Cost state={state} cost={recipe.cost} quantity={quantity} />
-    {maximum > 1 ? <label className={styles.field} htmlFor={inputId}>Размер заказа<select id={inputId} value={quantity} disabled={busy || uncertain || maximum < 1} onChange={event => setQuantity(Number(event.target.value))}>{choices.map(count => <option key={count} value={count}>{count} {count === 1 ? "партия" : count < 5 ? "партии" : "партий"} · {economyDuration(recipe.seconds * count)}</option>)}</select></label> : <p className={styles.muted}>{rewardCount === 1 ? "1 предмет занимает 1 место производства до получения." : `Результат: ${number(rewardCount)} шт. Место занято до получения.`}</p>}
+    {maximum > 1 ? <label className={styles.field} htmlFor={inputId}>Размер заказа<select id={inputId} value={quantity} disabled={busy || uncertain || maximum < 1} onChange={event => setQuantity(Number(event.target.value))}>{choices.map(count => <option key={count} value={count}>{count} {count === 1 ? "партия" : count < 5 ? "партии" : "партий"} · {worldRecipeDuration(recipe.seconds * count)}</option>)}</select></label> : <p className={styles.muted}>{rewardCount === 1 ? "1 предмет занимает 1 место производства до получения." : `Результат: ${number(rewardCount)} шт. Место занято до получения.`}</p>}
     <p className={styles.muted}>Результат займёт {number(rewardCount * quantity)} мест. Сейчас свободно {number(state.storage.available)}; место понадобится при получении.</p>
-    <button className={`${styles.primary} ${styles.wide}`} disabled={Boolean(reason) || busy || uncertain} onClick={() => void economy.act("start_production", recipe.id, quantity)}>Начать · {economyDuration(recipe.seconds * quantity)}<span className={styles.sr}>: {recipe.name}</span></button>
+    <button className={`${styles.primary} ${styles.wide}`} disabled={Boolean(reason) || busy || uncertain} onClick={() => void economy.act("start_production", recipe.id, quantity)}>Начать · {worldRecipeDuration(recipe.seconds * quantity)}<span className={styles.sr}>: {recipe.name}</span></button>
     {reason && <p className={styles.hint}><LockKeyhole size={14} aria-hidden />{reason}</p>}
-    {missingRecipes.map(({ id, recipe: prerequisite }) => prerequisite ? <button key={id} className={styles.textButton} onClick={() => navigate("production", prerequisite.buildingId)}>Открыть рецепт: {recipeResultName(id, state.catalog)}<ArrowRight size={15} aria-hidden /></button> : null)}
+    {missingRecipes.map(({ id, recipe: prerequisite }) => prerequisite ? <button key={id} className={styles.textButton} onClick={() => navigate("production", prerequisite.id)}>Открыть рецепт: {recipeResultName(id, state.catalog)}<ArrowRight size={15} aria-hidden /></button> : null)}
     {maximum < 1 && <button className={styles.textButton} onClick={() => navigate("buildings", "warehouse")}>Расширить склад<ArrowRight size={15} aria-hidden /></button>}
     {Object.keys(recipe.cost.items).length > 0 && <button className={styles.textButton} onClick={() => navigate("inventory", Object.entries(recipe.cost.items).find(([id, amount]) => (state.inventory[id] ?? 0) < amount * quantity)?.[0] ?? Object.keys(recipe.cost.items)[0])}>Откуда брать ингредиенты?<ChevronRight size={14} aria-hidden /></button>}
   </article>;
@@ -274,20 +279,22 @@ function RecipeCard({ economy, recipe, navigate }: { economy: ReadyEconomy; reci
 function Production({ economy, navigate, focusId }: { economy: ReadyEconomy; navigate: Navigate; focusId?: string }) {
   const { snapshot: state } = economy;
   const stations = state.catalog.buildings.filter(building => state.catalog.recipes.some(recipe => recipe.buildingId === building.id));
-  const station = stations.find(building => building.id === focusId)?.id ?? stations.find(building => (state.buildings[building.id] ?? 0) > 0)?.id ?? stations[0]?.id ?? "";
+  const focusedRecipe = state.catalog.recipes.find(recipe => recipe.id === focusId);
+  const station = focusedRecipe?.buildingId ?? stations.find(building => building.id === focusId)?.id ?? stations.find(building => (state.buildings[building.id] ?? 0) > 0)?.id ?? stations[0]?.id ?? "";
   const selectId = useId();
   const jobs = state.jobs.filter(entry => entry.kind === "production" && entry.targetId === station);
   const recipes = state.catalog.recipes.filter(recipe => recipe.buildingId === station);
-  const open = recipes.filter(recipe => !unmetRequirement(state, requirements(recipe, recipe)));
-  const locked = recipes.filter(recipe => unmetRequirement(state, requirements(recipe, recipe)));
+  const groups = worldRecipeGroups(state, recipes, { includeFuture: true });
+  const open = groups.filter(group => group.methods.some(recipe => !unmetRequirement(state, requirements(recipe, recipe))));
+  const locked = groups.filter(group => group.methods.every(recipe => unmetRequirement(state, requirements(recipe, recipe))));
   return <div className={styles.stack}><div className={styles.heading}><div><h2>Лесное хозяйство</h2><p className={styles.muted}>До трёх заказов на каждом производстве. Каждый занимает своё место до получения результата.</p></div></div>
     <label className={styles.field} htmlFor={selectId}>Выберите место<select id={selectId} value={station} onChange={event => navigate("production", event.target.value)}>{stations.map(building => <option key={building.id} value={building.id}>{building.name} · {(state.buildings[building.id] ?? 0) > 0 ? `ур. ${state.buildings[building.id]}` : "не построено"}</option>)}</select></label>
     {state.buildings[station] > 0 && <button className={styles.textButton} onClick={() => navigate("buildings", station)}><House size={16} aria-hidden />Развитие: {buildingName(state, station)}<ArrowRight size={15} aria-hidden /></button>}
     {(state.buildings[station] > 0 || jobs.length > 0) && <WorldProductionSlots key={`${state.ownerPublicId}:${station}`} economy={economy} stationId={station} openPantry={() => navigate("inventory")} />}
     {!productionStationSupported(station) && jobs.map(job => <JobCard key={job.id} economy={economy} job={job} navigate={navigate} />)}
     {!(state.buildings[station] > 0) && <div className={styles.notice}><House size={18} aria-hidden /><div><p>Сначала обустройте это место.</p><button onClick={() => navigate("buildings", station)}>К постройке<ArrowRight size={15} aria-hidden /></button></div></div>}
-    {open.map(recipe => <RecipeCard key={recipe.id} economy={economy} recipe={recipe} navigate={navigate} />)}
-    {locked.length > 0 && <details className={styles.details} open={!open.length}><summary>Будущие рецепты · {locked.length}</summary><div className={styles.stack}>{locked.map(recipe => <RecipeCard key={recipe.id} economy={economy} recipe={recipe} navigate={navigate} />)}</div></details>}
+    {open.map(group => <RecipeCard key={`${group.key}:${focusedRecipe?.id ?? ""}`} economy={economy} group={group} initialRecipeId={focusedRecipe?.id} navigate={navigate} />)}
+    {locked.length > 0 && <details className={styles.details} open={!open.length}><summary>Будущие рецепты · {locked.length}</summary><div className={styles.stack}>{locked.map(group => <RecipeCard key={`${group.key}:${focusedRecipe?.id ?? ""}`} economy={economy} group={group} initialRecipeId={focusedRecipe?.id} navigate={navigate} />)}</div></details>}
   </div>;
 }
 

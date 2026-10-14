@@ -19,6 +19,62 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 function storage() { const data = new Map(); return { getItem: key => data.get(key) ?? null, setItem: (key, value) => data.set(key, value), removeItem: key => data.delete(key), data }; }
 
+test("act reports refusal before snapshot, while suspended or busy, and acceptance only for an issued request", async () => {
+  const wait = deferred(), sent = [];
+  const session = createEconomySession(owner, transport({ send: command => { sent.push(command); return wait.promise; } }), () => assert.fail());
+  assert.equal(session.act("start_garden_collection", "crop"), false);
+  const stop = session.activate(); await session.refresh();
+  session.setAvailable(false); assert.equal(session.act("start_garden_collection", "crop"), false);
+  session.setAvailable(true); assert.equal(session.act("start_garden_collection", "crop"), true);
+  assert.equal(session.act("start_garden_collection", "neighbor"), false); assert.equal(sent.length, 1);
+  wait.resolve(result(state(1))); await flush(); stop();
+  assert.equal(session.act("claim_garden_collection", crypto.randomUUID()), false); assert.equal(sent.length, 1);
+});
+
+test("garden receipt recovery replays the exact saved start and atomic claim after full session recreation", async () => {
+  for (const action of ["start_garden_collection", "claim_garden_collection"]) {
+    const cache = storage(), sent = [], batch = crypto.randomUUID(); let authoritative = state();
+    const t = transport({ get: async () => authoritative, send: async command => {
+      sent.push(structuredClone(command));
+      if (sent.length === 1) {
+        authoritative = state(1);
+        if (action === "start_garden_collection") authoritative.jobs = [{ id: "crop", kind: "production", targetId: "garden", recipeId: "grow_berries",
+          startedAt: new Date(now - 60_000).toISOString(), finishesAt: new Date(now).toISOString(), rewards: { berries: 1 },
+          collection: { kind: "berry_harvest", seconds: 8, batchId: command.requestId, startedAt: new Date(now).toISOString(), finishesAt: new Date(now + 8000).toISOString() } }];
+        else authoritative.inventory = { berries: 1, strawberries: 1, blueberries: 1 };
+        throw Error("Committed response lost before page reload");
+      }
+      return { ...result(authoritative), replayed: true };
+    } });
+    const original = createEconomySession(owner, t, () => assert.fail(), cache), stop = original.activate();
+    await original.refresh(); assert.equal(original.act(action, action === "start_garden_collection" ? "crop" : batch), true); await flush();
+    assert.equal(original.getSnapshot().uncertain, true); stop();
+    const restored = createEconomySession(owner, t, () => assert.fail(), cache); restored.activate();
+    assert.equal(restored.getSnapshot().snapshot, null);
+    assert.equal(restored.retryGardenCollection(), true, "known garden receipts can recover before the initial GET");
+    assert.equal(restored.retryGardenCollection(), false, "busy recovery is not accepted twice"); await flush();
+    assert.deepEqual(sent[1], sent[0], "requestId and expected revision survive the page reload");
+    assert.equal(restored.getSnapshot().uncertain, false); assert.equal(cache.data.size, 0);
+    assert.equal(restored.retryGardenCollection(), false, "completed recovery cannot issue a fresh command");
+    if (action === "start_garden_collection") assert.equal(restored.getSnapshot().snapshot.jobs[0].collection.batchId, sent[0].requestId);
+    else assert.deepEqual(restored.getSnapshot().snapshot.inventory, { berries: 1, strawberries: 1, blueberries: 1 });
+  }
+});
+
+test("garden receipt recovery leaves unrelated sales and rate-limited garden writes untouched", async () => {
+  for (const scenario of ["sale", "throttled"]) {
+    const sent = [];
+    const session = createEconomySession(owner, transport({ send: async command => {
+      sent.push(command);
+      if (scenario === "throttled") throw new ApiError("Подождите", 429, undefined, undefined, 60_000);
+      throw Error("Lost sale response");
+    } }), () => assert.fail(), storage());
+    session.activate(); await session.refresh(); session.act(scenario === "sale" ? "sell" : "start_garden_collection", scenario === "sale" ? "wood" : "crop"); await flush();
+    assert.equal(session.retryGardenCollection(), false); assert.equal(sent.length, 1);
+    assert.equal(session.getSnapshot().uncertain, true); assert.equal(session.act("start_garden_collection", "neighbor"), false);
+  }
+});
+
 test("uncertain purchase uses same receipt, blocks other writes and survives session recreation", async () => {
   const cache = storage(), sent = []; let wallet = state();
   const t = transport({ trade: async command => {

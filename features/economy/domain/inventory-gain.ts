@@ -1,5 +1,6 @@
 import { fishClassForItem, fishClassInventory } from "./fishing";
 import { isMinerJob } from "./actor-availability";
+import { hasGardenBerryReward } from "./garden-berries";
 import type { EconomyCommand, EconomyResult, EconomyView, MarketCommand } from "./model";
 
 export type InventoryGain = Readonly<{
@@ -20,7 +21,15 @@ export function inventoryGainFromReceipt(before: EconomyView | null, result: Eco
     || command.expectedRevision !== before.revision || result.acceptedRevision !== before.revision + 1
     || after.revision !== result.acceptedRevision || !before.inventory || !after.inventory) return null;
   let allowed: Record<string, number>, source: InventoryGain["source"], stationId: string | undefined;
-  if (command.action === "claim_job") {
+  if (command.action === "claim_garden_collection") {
+    const jobs = before.jobs.filter(job => job.collection?.batchId === command.targetId);
+    if (!jobs.length || jobs.some(job => job.kind !== "production" || job.targetId !== "garden" || !hasGardenBerryReward(job.rewards)
+      || after.jobs.some(item => item.id === job.id))) return null;
+    allowed = {};
+    for (const job of jobs) for (const [itemId, quantity] of Object.entries(job.rewards)) allowed[itemId] = (allowed[itemId] ?? 0) + quantity;
+    source = "claim";
+    if (after.catalog.buildings.some(station => station.id === "garden")) stationId = "garden";
+  } else if (command.action === "claim_job") {
     const job = before.jobs.find(item => item.id === command.targetId);
     if (!job || job.kind === "construction" || after.jobs.some(item => item.id === job.id)) return null;
     allowed = fishClassInventory(job.rewards); source = "claim";

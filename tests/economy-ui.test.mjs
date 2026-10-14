@@ -123,6 +123,22 @@ test("strawberry production explains its first-compote prerequisite and unlocks 
   assert.doesNotMatch(html, /Приготовьте и заберите:/);
 });
 
+test("production hub groups crop methods and honours exact prerequisite recipe navigation", () => {
+  const state = snapshot({ buildings: { home: 5, garden: 5, woodlot: 5, warehouse: 1 }, progression: { recipes: { cook_compote: 1, gather_hardwood: 10 } } });
+  const html = render("production", controller({ snapshot: state }), "garden");
+  assert.equal((html.match(/data-production-product="berries"/g) ?? []).length, 1);
+  assert.equal((html.match(/data-production-product="strawberries"/g) ?? []).length, 1);
+  assert.equal(disabled(button(html, "Начать · 30 с")), false);
+  assert.match(html, /<option value="garden_season" selected="">/);
+  assert.match(html, /Вырастить малину на ухоженном кусте · 45 с/);
+  assert.match(html, /Вырастить малину · 1 мин/);
+  const base = render("production", controller({ snapshot: state }), "gather_hardwood");
+  assert.equal((base.match(/data-production-product="hardwood"/g) ?? []).length, 1);
+  assert.match(base, /<option value="gather_hardwood" selected="">/);
+  assert.equal(disabled(button(base, "Начать · 10 мин")), false, "opening the required original method must not silently switch to the faster method");
+  assert.doesNotMatch(base, /Начать · 8 мин/);
+});
+
 test("berry production owns its station and collection opens only after the server deadline", () => {
   const state = snapshot({ jobs: [job()] });
   let html = render("production", controller({ snapshot: state }));

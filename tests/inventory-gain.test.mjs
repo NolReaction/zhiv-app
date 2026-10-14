@@ -75,6 +75,53 @@ test("harvest celebrates on the accepted claim, while rod ownership and resource
   assert.equal(inventoryGainFromReceipt(before, result(state(1, [], { berries: 1 })), command("sell", "berries")), null);
 });
 
+test("one atomic berry batch celebrates combined confirmed rewards only after every saved member is removed", () => {
+  const batchId = crypto.randomUUID();
+  const crops = [{ berries: 1 }, { berries: 1, strawberries: 1 }, { blueberries: 1 }].map(rewards => ({ ...job("production", rewards),
+    collection: { kind: "berry_harvest", seconds: 8, batchId, startedAt: "2026-10-04T00:01:00Z", finishesAt: "2026-10-04T00:01:08Z" } }));
+  const later = job("production", { cranberries: 1 }), previous = state(4, [...crops, later], { berries: 7, wood: 3 });
+  const after = state(5, [later], { berries: 9, strawberries: 1, blueberries: 1, wood: 20 });
+  const receipt = command("claim_garden_collection", batchId, 4), saved = structuredClone(previous);
+  const event = inventoryGainFromReceipt(previous, result(after), receipt);
+  assert.deepEqual(event, { id: receipt.requestId, ownerPublicId: owner, revision: 5, source: "claim", stationId: "garden",
+    items: [{ itemId: "berries", quantity: 2 }, { itemId: "strawberries", quantity: 1 }, { itemId: "blueberries", quantity: 1 }] });
+  assert.ok(Object.isFrozen(event) && Object.isFrozen(event.items) && event.items.every(Object.isFrozen));
+  assert.deepEqual(previous, saved, "feedback must not mutate saved jobs or stock");
+  for (const remaining of crops) assert.equal(inventoryGainFromReceipt(previous, result({ ...after, jobs: [later, remaining] }), receipt), null);
+  assert.equal(inventoryGainFromReceipt(previous, result(after), { ...receipt, targetId: crypto.randomUUID() }), null);
+  assert.equal(inventoryGainFromReceipt(previous, result(after), { ...receipt, action: "start_garden_collection" }), null);
+  assert.equal(inventoryGainFromReceipt(after, { ...result(after), replayed: true }, receipt), null, "a loaded receipt cannot celebrate again");
+});
+
+test("a pending batch shows one gain event; lost reply recovery stays silent after loading the applied receipt", async () => {
+  for (const reload of [false, true]) {
+    const batchId = crypto.randomUUID(), cache = storage(), sent = [];
+    const crops = [{ berries: 1 }, { strawberries: 1 }, { blueberries: 1 }].map(rewards => ({ ...job("production", rewards),
+      collection: { kind: "berry_harvest", seconds: 8, batchId, startedAt: "2026-10-04T00:01:00Z", finishesAt: "2026-10-04T00:01:08Z" } }));
+    let latest = state(0, crops);
+    const transport = { get: async () => latest, send: async receipt => {
+      sent.push(structuredClone(receipt)); latest = state(1, [], { berries: 1, strawberries: 1, blueberries: 1 });
+      if (sent.length === 1) throw Error("Batch claim committed before response loss");
+      return { ...result(latest), replayed: true };
+    } };
+    const session = createEconomySession(owner, transport, () => assert.fail(), cache), stop = session.activate();
+    await session.refresh(); session.act("claim_garden_collection", batchId); await flush();
+    assert.deepEqual(session.getSnapshot().inventoryGains, [], "uncertain writes do not issue optimistic gains");
+    if (reload) {
+      stop(); const restored = createEconomySession(owner, transport, () => assert.fail(), cache), stopRestored = restored.activate();
+      await restored.refresh(); assert.equal(restored.retryGardenCollection(), true); await flush();
+      assert.deepEqual(restored.getSnapshot().inventoryGains, []); stopRestored();
+    } else {
+      assert.equal(session.retryGardenCollection(), true); await flush(); await session.retry(); await session.refresh();
+      const gains = session.getSnapshot().inventoryGains;
+      assert.equal(gains.length, 1); assert.equal(gains[0].stationId, "garden");
+      assert.deepEqual(gains[0].items, [{ itemId: "berries", quantity: 1 }, { itemId: "strawberries", quantity: 1 }, { itemId: "blueberries", quantity: 1 }]);
+      stop();
+    }
+    assert.equal(sent.length, 2); assert.deepEqual(sent[1], sent[0]);
+  }
+});
+
 test("market purchases require the same sold listing and use its item and purchased lot quantity", () => {
   const listingId = crypto.randomUUID(), purchase = command("buy_listing", listingId);
   const answer = { ...result(state(1, [], { wood: 4, stone: 20 })), listing: { id: listingId, itemId: "wood", quantity: 4, status: "sold" } };

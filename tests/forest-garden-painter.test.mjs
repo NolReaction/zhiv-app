@@ -465,3 +465,60 @@ test('new berry overlays keep fixed centers across stages and use a fallback for
   syncForestGardenProduction(garden, null, 60_000);
   assert.deepEqual(forestGardenBerries(scene, garden), []);
 });
+
+test('one mixed batch takes each species from its visible slot and puts all three into the same basket', () => {
+  for (const itemIds of [berryIds.slice(0, 3), berryIds.slice(3)]) for (const primary of [0, 1, 2]) {
+    const { garden, actor } = setup('collect', 0);
+    const orders = itemIds.map((itemId, index) => ({ ...crop(`batch-${index}`, itemId),
+      collection: { batchId: 'accepted-batch', startedAt: new Date(60_000).toISOString(), finishesAt: new Date(68_000).toISOString() } }));
+    const selected = [orders[primary], ...orders.filter((_, index) => index !== primary)];
+    syncForestGardenProduction(garden, { ...orders[primary], orders }, 60_000);
+    garden.harvest = { request: { requestId: 7, jobId: orders[primary].jobId, jobIds: selected.map(order => order.jobId) }, phase: 'running' };
+    const initial = forestGardenBerries(scene, garden), saved = structuredClone(garden.production);
+    for (let index = 0; index < 3; index++) {
+      const chosen = selected[index], cluster = initial.find(berry => berry.jobId === chosen.jobId && berry.clusterIndex === 0);
+      const fruit = forestClusterFruit(cluster, 0, chosen.itemId);
+      garden.routine.elapsed = .85 + index + .300001;
+      const frame = forestGardenVisualFrame(garden, actor, motion);
+      assert.equal(frame.pickedBerry.jobId, chosen.jobId);
+      assert.equal(frame.pickedBerry.itemId, chosen.itemId);
+      assert.ok(Math.hypot(frame.pickedBerry.x - fruit.x, frame.pickedBerry.y - fruit.y) < 1e-10,
+        'each pick starts at the existing visible fruit of that slot');
+      assert.equal(forestGardenBerries(scene, garden).find(berry => berry.jobId === chosen.jobId && berry.clusterIndex === 0).picked, 1);
+      garden.routine.elapsed = .85 + index + .800001;
+      assert.deepEqual(forestGardenVisualFrame(garden, actor, motion).basket.itemIds,
+        selected.slice(0, index + 1).map(order => order.itemId), 'mixed contents appear only after the paw reaches the basket');
+    }
+    for (let time = 0; time <= 5; time += .025) {
+      garden.routine.elapsed = time;
+      for (const arm of forestGardenVisualFrame(garden, actor, motion).arms)
+        assert.ok(Math.hypot(arm.hand.x - arm.shoulder.x, arm.hand.y - arm.shoulder.y) <= actor.size * .29);
+    }
+    garden.routine.elapsed = 4.2;
+    assert.ok(forestGardenBerries(scene, garden).every(berry => berry.opacity === 0), 'the accepted batch leaves the bush together');
+    cancelForestGarden(garden, actor);
+    assert.deepEqual(forestGardenBerries(scene, garden), initial, 'an interrupted batch restores every fruit without a local reward');
+    assert.deepEqual(garden.production, saved);
+    assert.equal(garden.basket.berries, 0);
+  }
+});
+
+test('a two-crop batch leaves the unripe third slot and its fixed centers untouched', () => {
+  const { garden, actor } = setup('collect', 0);
+  const orders = [crop('raspberries', 'berries'), crop('blueberries', 'blueberries'), crop('later', 'cranberries', 180_000)];
+  for (const order of orders.slice(0, 2)) order.collection = { batchId: 'two', startedAt: null, finishesAt: null };
+  syncForestGardenProduction(garden, { ...orders[0], orders }, 60_000);
+  garden.harvest = { request: { requestId: 2, jobId: orders[0].jobId, jobIds: orders.slice(0, 2).map(order => order.jobId) }, phase: 'running' };
+  const untouched = forestGardenBerries(scene, garden).filter(berry => berry.jobId === 'later');
+  const pickedIds = [];
+  for (let index = 0; index < 3; index++) {
+    garden.routine.elapsed = .85 + index + .300001;
+    const frame = forestGardenVisualFrame(garden, actor, motion);
+    pickedIds.push(frame.pickedBerry.jobId);
+    assert.deepEqual(forestGardenBerries(scene, garden).filter(berry => berry.jobId === 'later'), untouched);
+  }
+  assert.deepEqual(pickedIds, ['raspberries', 'blueberries', 'raspberries']);
+  garden.routine.elapsed = 4.2;
+  assert.ok(forestGardenBerries(scene, garden).filter(berry => berry.jobId !== 'later').every(berry => berry.opacity === 0));
+  assert.deepEqual(forestGardenBerries(scene, garden).filter(berry => berry.jobId === 'later'), untouched);
+});

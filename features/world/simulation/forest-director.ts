@@ -17,7 +17,7 @@ import { advanceForestFauna, cancelFaunaInteraction, canRequestFaunaInteraction,
   interruptFaunaInteraction, requestFaunaInteraction, type FaunaVisitor } from "@/features/world/environment/wildlife/forest-fauna";
 import { findWorldPath } from "@/features/world/navigation/navigation";
 import { advanceForestGarden, cancelForestGarden, gardenActionAvailable, gardenEligibleBushes,
-  gardenRoutineStationary, gardenRoutineTarget, gardenWorkReachable, gardenBasketApproach, gardenBasketFootprint,
+  gardenRoutineStationary, gardenRoutineTarget, gardenWorkReachable, gardenBasketApproach, gardenBasketFootprint, gardenHarvestOrders,
   growForestBerries, parkForestGardenBasket, FOREST_GARDEN_LIMITS,
   type ForestGardenAction, type ForestGardenPhase } from "@/features/world/activities/garden/forest-garden";
 import { advanceForestMind, beginForestIntention, finishForestIntention, noticeForestMind, recordForestCandidates,
@@ -135,7 +135,7 @@ export function requestForestDirective(state: ForestSessionState, kind: ForestDi
     reason: "Завершает текущее действие перед новой встречей" });
 }
 
-/** Starts a cosmetic delivery for one already-authorized economic collection.
+/** Starts one cosmetic delivery for an already-authorized economic collection batch.
  * Only the caller can claim the server job after the eventual completion event. */
 export function requestForestGardenHarvest(state: ForestSessionState, request: GardenHarvestRequest,
   options: ForestDirectorOptions) {
@@ -145,7 +145,7 @@ export function requestForestGardenHarvest(state: ForestSessionState, request: G
     garden.harvest = null;
   };
   if (!Number.isSafeInteger(request.requestId) || request.requestId <= 0 || !request.jobId) return;
-  if (!garden.production || garden.production.jobId !== request.jobId || !garden.bushes.some(bush => bush.growth >= .98)) {
+  if (!gardenHarvestOrders(garden, request).length || !garden.bushes.some(bush => bush.growth >= .98)) {
     unavailable("Этот урожай пока недоступен для сбора"); return;
   }
   if (!isWithinHomeClearing(state.clearing)) {
@@ -155,9 +155,10 @@ export function requestForestGardenHarvest(state: ForestSessionState, request: G
     unavailable(options.reducedMotion ? "Сбор продолжается без анимации" : "Мохлик сейчас не может подойти к кусту"); return;
   }
   requestForestDirective(state, "harvest-berries", options);
-  garden.harvest = { request: { ...request }, phase: "pending" };
-  garden.harvestEvent = { ...request, status: "started" };
-  state.director.reason = "Идёт собрать выбранный урожай";
+  const accepted = { ...request, ...(request.jobIds ? { jobIds: [...request.jobIds] } : {}) };
+  garden.harvest = { request: accepted, phase: "pending" };
+  garden.harvestEvent = { ...accepted, status: "started" };
+  state.director.reason = "Идёт собрать спелый урожай";
 }
 
 function failRequest(state: ForestSessionState, reason: string) {
@@ -296,7 +297,7 @@ function advanceGardenRoutine(state: ForestSessionState, delta: number, options:
   } else if (routine.phase === "deposit" && routine.elapsed >= 1.5) {
     const basket = garden.basket;
     if (!basket || bush.growth < .98 || (economicHarvest
-      ? !garden.production || !garden.harvest || garden.harvest.request.jobId !== garden.production.jobId
+      ? !garden.harvest || !gardenHarvestOrders(garden).length
       : basket.berries + FOREST_GARDEN_LIMITS.harvest > basket.capacity)) {
       failGarden(state, "Урожай больше недоступен, корзинка не изменена"); return;
     }

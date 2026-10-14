@@ -1,6 +1,6 @@
 import type { PixelDirection, PixelPose, PixelRigOptions } from "@/features/mochlik/pixel-sprite";
 import type { FixedWorldScene, WorldPoint } from "@/features/world/tiled/types";
-import { FOREST_GARDEN_LIMITS, type ForestGardenState } from "./forest-garden";
+import { FOREST_GARDEN_LIMITS, gardenHarvestOrders, type ForestGardenState } from "./forest-garden";
 import { heroSourceAnchor, type FaunaActor, type HeroAnchorPose } from "@/features/world/scene/hero-anchors";
 import { forestBushArtworkAvailable } from "./forest-bush-artwork";
 import { forestFruitAppearance, forestFruitVisual } from "./forest-fruit-appearance";
@@ -17,13 +17,15 @@ type GardenBerry = WorldPoint & { radius: number; growth: number; picked: number
 const smooth = (value: number) => { const t = unit(value); return t * t * (3 - 2 * t); };
 const mixPoint = (a: WorldPoint, b: WorldPoint, progress: number) => blend(a, b, smooth(progress));
 const COLLECT = { lowerEnd: .65, pickStart: .85, cycle: 1, liftStart: 4.15, end: 5 } as const;
-type BasketVisual = WorldPoint & { size: number; berries: number; behind: boolean; grounded: boolean; itemId?: string };
+type BasketVisual = WorldPoint & { size: number; berries: number; behind: boolean; grounded: boolean; itemId?: string;
+  /** Cosmetic deposited fruit, including different species in the same basket. */
+  itemIds?: (string | undefined)[] };
 type GardenArm = { shoulder: WorldPoint; elbow: WorldPoint; hand: WorldPoint };
 export type ForestGardenVisualFrame = {
   pose: PixelPose; direction: PixelDirection; frame: number; rig?: PixelRigOptions;
   basket: BasketVisual | null;
   can: (WorldPoint & { size: number; side: number; tilt: number; spout: WorldPoint; target: WorldPoint; pouring: boolean }) | null;
-  pickedBerry: (WorldPoint & { size: number; itemId?: string }) | null;
+  pickedBerry: (WorldPoint & { size: number; itemId?: string; jobId?: string }) | null;
   arms: GardenArm[]; actor: FaunaActor;
   elapsed: number; still: boolean;
 };
@@ -61,6 +63,19 @@ function gardenCropSlots(garden: ForestGardenState): { crop: EconomySceneGardenO
   return visible;
 }
 
+/** Three hand motions cover the accepted species together, rather than three walks. */
+function gardenHarvestPicks(garden: ForestGardenState) {
+  const slots = gardenCropSlots(garden), orders = gardenHarvestOrders(garden);
+  const selected = orders.flatMap(crop => {
+    const entry = slots.find(slot => slot.crop.jobId === crop.jobId);
+    return entry ? [entry] : [];
+  });
+  if (!selected.length) return [];
+  return Array.from({ length: FOREST_GARDEN_LIMITS.harvest }, (_, index) => ({
+    ...selected[index % selected.length], fruitIndex: Math.floor(index / selected.length),
+  }));
+}
+
 /** All jobs have a reachable front subgroup; distant fruit stays in its own stable slot zone. */
 function gardenCropCluster(cluster: BerryLayout, slot: number): BerryLayout {
   return { ...cluster, x: cluster.x + (slot - 1) * Math.min(1.9, cluster.radius * 1.18), radius: cluster.radius * .82 };
@@ -69,7 +84,9 @@ function gardenCropCluster(cluster: BerryLayout, slot: number): BerryLayout {
 /** Fruit grows continuously from small green buds; no decorative flower stage. */
 export function forestGardenBerries(scene: FixedWorldScene, garden: ForestGardenState | undefined): GardenBerry[] {
   if (!garden) return [];
-  const result: GardenBerry[] = [], harvest = harvestProgress(garden);
+  const result: GardenBerry[] = [], harvest = harvestProgress(garden), picks = gardenHarvestPicks(garden);
+  const selectedIds = new Set(gardenHarvestOrders(garden).map(crop => crop.jobId));
+  const mixed = selectedIds.size > 1;
   for (const plant of garden.bushes) {
     const bush = scene.bushes?.find(item => item.id === plant.id);
     if (!bush || !forestBushArtworkAvailable(scene, bush)) continue;
@@ -85,12 +102,13 @@ export function forestGardenBerries(scene: FixedWorldScene, garden: ForestGarden
     for (const { crop, slot } of gardenCropSlots(garden)) {
       const growth = garden.productionNow === undefined ? unit(plant.growth) : economyGardenGrowth(crop, garden.productionNow);
       if (growth <= .01) continue;
-      const worked = selected && crop.jobId === (garden.harvest?.request.jobId ?? garden.production?.jobId);
+      const worked = selected && selectedIds.has(crop.jobId);
+      const picked = picks.slice(0, harvest.picked).filter(pick => pick.crop.jobId === crop.jobId).length;
       layout.forEach((berry, index) => {
         if (index && (index - 1) % 3 !== slot) return;
         result.push({ ...(index ? berry : gardenCropCluster(berry, slot)), growth, clusterIndex: index,
           foliage: bush.points, itemId: crop.itemId, jobId: crop.jobId,
-          picked: worked && index === 0 ? harvest.picked : 0, opacity: worked && index !== 0 ? 1 - harvest.fade : 1 });
+          picked: worked && index === 0 ? picked : 0, opacity: worked && (index !== 0 || mixed) ? 1 - harvest.fade : 1 });
       });
     }
   }
@@ -149,7 +167,8 @@ export function forestGardenVisualFrame(garden: ForestGardenState | undefined, a
   const stationary = ["take-basket", "water", "collect", "deposit"].includes(routine.phase);
   const carries = routine.carryingBasket || routine.phase === "take-basket" || routine.phase === "deposit";
   const plant = garden.bushes.find(item => item.id === routine.bushId);
-  const crop = gardenCropSlots(garden).find(entry => entry.crop.jobId === (garden.harvest?.request.jobId ?? garden.production?.jobId));
+  const picks = gardenHarvestPicks(garden), crop = picks[0];
+  const mixed = new Set(picks.map(pick => pick.crop.jobId)).size > 1;
   const crownX = plant?.points.length ? plant.points.reduce((sum, point) => sum + point.x, 0) / plant.points.length : actor.x;
   const side = crownX < actor.x ? -1 : 1;
   const pose: PixelPose = stationary ? "idle" : carries ? "carry" : motion.pose;
@@ -197,8 +216,10 @@ export function forestGardenVisualFrame(garden: ForestGardenState | undefined, a
         : t > COLLECT.liftStart ? mixPoint(ground, held, (t - COLLECT.liftStart) / (COLLECT.end - COLLECT.liftStart)) : ground;
       grounded = t >= COLLECT.lowerEnd && t <= COLLECT.liftStart;
     }
+    const putAway = harvestProgress(garden).putAway;
     basket = { ...position, size: basketSize, berries: Math.min(garden.basket.capacity,
-      (garden.production === undefined ? garden.basket.berries : 0) + harvestProgress(garden).putAway), itemId: crop?.crop.itemId,
+      (garden.production === undefined ? garden.basket.berries : 0) + putAway), itemId: crop?.crop.itemId,
+      ...(mixed ? { itemIds: picks.slice(0, putAway).map(pick => pick.crop.itemId) } : {}),
       behind: grounded ? position.y < actor.y : direction === "back", grounded };
     hands = basketHands(position);
     if (routine.phase === "take-basket" && t < .24) hands = rests.map((rest, index) => mixPoint(rest, hands[index], t / .24));
@@ -209,9 +230,9 @@ export function forestGardenVisualFrame(garden: ForestGardenState | undefined, a
       else if (t >= endPick) hands = rests.map((hand, index) => mixPoint(hand, groundGrip[index], (t - endPick) / (COLLECT.liftStart - endPick)));
       else {
         const elapsed = (t - COLLECT.pickStart) / COLLECT.cycle, index = Math.min(2, Math.floor(elapsed)), phase = elapsed - index;
-        const baseCluster = plant ? forestGardenBerryLayout(plant, plant.position)[0] : undefined;
-        const cluster = baseCluster && crop ? gardenCropCluster(baseCluster, crop.slot) : baseCluster;
-        const fruit = cluster ? forestClusterFruit(cluster, index, crop?.crop.itemId) : { ...rests[side < 0 ? 0 : 1], size: actor.size * .016 };
+        const pick = picks[index], baseCluster = plant ? forestGardenBerryLayout(plant, plant.position)[0] : undefined;
+        const cluster = baseCluster && pick ? gardenCropCluster(baseCluster, pick.slot) : baseCluster;
+        const fruit = cluster ? forestClusterFruit(cluster, pick?.fruitIndex ?? index, pick?.crop.itemId) : { ...rests[side < 0 ? 0 : 1], size: actor.size * .016 };
         const reaching = side < 0 ? 0 : 1, lowering = 1 - reaching;
         const center = { x: actor.x, y: actor.y - actor.size * .24 };
         const rim = { x: ground.x, y: ground.y - basketSize * 8 / 14 };
@@ -220,7 +241,8 @@ export function forestGardenVisualFrame(garden: ForestGardenState | undefined, a
           : phase < .6 ? mixPoint(fruit, center, (phase - .35) / .25) : mixPoint(center, rests[reaching], (phase - .6) / .2);
         hands[lowering] = phase < .35 ? rests[lowering] : phase < .6 ? mixPoint(rests[lowering], center, (phase - .35) / .25)
           : phase < .8 ? mixPoint(center, rim, (phase - .6) / .2) : mixPoint(rim, rests[lowering], (phase - .8) / .2);
-        if (phase >= .3 && phase < .8) pickedBerry = { ...hands[phase < .6 ? reaching : lowering], size: fruit.size, itemId: crop?.crop.itemId };
+        if (phase >= .3 && phase < .8) pickedBerry = { ...hands[phase < .6 ? reaching : lowering], size: fruit.size,
+          itemId: pick?.crop.itemId, ...(pick ? { jobId: pick.crop.jobId } : {}) };
       }
     }
   }
@@ -284,9 +306,10 @@ function drawBasket(ctx: CanvasRenderingContext2D, basket: BasketVisual) {
     ctx.fillRect(-6 + col * 2.4 + row % 2 * .5, -6 + row * 1.9, 1.6, .8);
   }
   ctx.fillStyle = "#694526"; ctx.fillRect(-7, -8, 14, 2);
-  const count = Math.max(0, Math.min(7, Math.ceil(basket.berries / 2)));
+  const count = Math.max(0, Math.min(7, basket.itemIds ? basket.itemIds.length : Math.ceil(basket.berries / 2)));
   for (let index = 0; index < count; index++) drawForestFruit(ctx,
-    { x: -4.8 + index % 4 * 3.1 + (index >= 4 ? 1.1 : 0), y: -8.2 - (index >= 4 ? 1.6 : 0) }, 1.2, 1, basket.itemId);
+    { x: -4.8 + index % 4 * 3.1 + (index >= 4 ? 1.1 : 0), y: -8.2 - (index >= 4 ? 1.6 : 0) }, 1.2, 1,
+    basket.itemIds ? basket.itemIds[index] : basket.itemId);
   ctx.fillStyle = "#d2ad6c"; ctx.fillRect(-7, -7, 14, 1);
   ctx.restore();
 }

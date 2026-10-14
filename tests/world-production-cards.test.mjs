@@ -11,6 +11,7 @@ const { WorldObjectMenu, WorldRecipeDetail } = await vite.ssrLoadModule("/featur
 const { WorldExpeditionSector, ExpeditionRouteDetails } = await vite.ssrLoadModule("/features/economy/ui/expeditions/world-expeditions-menu.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
+const { worldRecipeGroups } = await vite.ssrLoadModule("/features/economy/ui/stations/world-recipe-groups.ts");
 after(() => vite.close());
 
 const now = Date.parse("2026-10-03T12:00:00Z");
@@ -116,6 +117,94 @@ test("harvest cards distinguish quantity and time while keeping the result name 
   assert.match(cards[0][2], /1 мин/);
   assert.match(cards[1][2], /5 мин/);
   assert.doesNotMatch(catalogue, /grow_berries_overnight|8 ч/);
+});
+
+test("upgraded gardens keep one card per crop and show the fastest personally unlocked method", () => {
+  for (const [home, garden, raspberryId, strawberryId] of [
+    [1, 1, "grow_berries", "grow_strawberries"],
+    [3, 2, "grow_berries_large", "grow_strawberries"],
+    [3, 3, "garden_season", "grow_strawberries"],
+    [4, 4, "garden_season", "garden_supply"],
+    [5, 5, "garden_season", "garden_abundance"],
+  ]) {
+    const economy = controller({ buildings: { home, garden, warehouse: 1 }, progression: { recipes: { cook_compote: 1 } } });
+    const html = section(renderMenu("garden", economy), "Доступные рецепты");
+    const ids = [...html.matchAll(/data-recipe="([^"]+)"/g)].map(match => match[1]);
+    assert.equal((html.match(/<strong>Малина<\/strong>/g) ?? []).length, 1);
+    assert.equal((html.match(/<strong>Клубника<\/strong>/g) ?? []).length, 1);
+    assert.ok(ids.includes(raspberryId));
+    assert.ok(ids.includes(strawberryId));
+    if (garden >= 3) assert.match(html, /30 с/);
+    else if (garden === 2) assert.match(html, /45 с/);
+    if (garden === 4) assert.match(html, /2 мин 30 с/);
+  }
+});
+
+test("grouping retains meaningful methods, joint rewards and original catalog data", () => {
+  const economy = controller({ buildings: { home: 3, woodlot: 3, garden: 3, warehouse: 1 }, progression: { recipes: {} } });
+  const before = structuredClone(economy.snapshot);
+  const recipes = economy.snapshot.catalog.recipes;
+  const group = () => worldRecipeGroups(economy.snapshot, recipes).find(entry => entry.methods.some(method => method.id === "gather_hardwood"));
+  assert.equal(group().recipe.id, "gather_hardwood", "a faster recipe needing ten claimed base products is not selected prematurely");
+  assert.deepEqual(group().methods.map(method => method.id), ["gather_hardwood", "hardwood_shift"]);
+  assert.deepEqual(economy.snapshot, before);
+  economy.snapshot.progression.recipes.gather_hardwood = 10;
+  assert.equal(group().recipe.id, "hardwood_shift");
+  const base = recipes.find(recipe => recipe.id === "gather_hardwood");
+  const cheaper = { ...base, id: "alternative-cost", seconds: 700, cost: { coins: 2, items: { wood: 1 } }, rewards: { hardwood: 2 } };
+  const joint = { ...base, id: "joint-result", rewards: { hardwood: 1, resin: 1 } };
+  const otherStation = { ...base, id: "garden-hardwood", buildingId: "garden" };
+  const groups = worldRecipeGroups(economy.snapshot, [base, cheaper, joint, otherStation]);
+  assert.equal(groups.length, 3, "another station and a joint reward remain separate entries");
+  assert.deepEqual(groups[0].methods.map(method => method.id), [base.id, cheaper.id], "different cost and result quantity remain selectable methods");
+});
+
+test("method preparation preserves exact requested ids, prerequisites and visibly different times", () => {
+  const economy = controller({ buildings: { home: 3, garden: 3, woodlot: 3, warehouse: 1 }, progression: { recipes: {} } });
+  for (const [id, duration] of [["grow_berries", "1 мин"], ["grow_berries_large", "45 с"], ["garden_season", "30 с"]]) {
+    const html = renderMenu("garden", economy, { initialRecipeId: id });
+    assert.match(html, new RegExp(`data-recipe-preparation="${id}"`));
+    assert.match(html, new RegExp(`data-recipe-method="${id}" aria-pressed="true"`));
+    assert.match(html, new RegExp(`Начать · ${duration}`));
+    assert.equal((html.match(/data-recipe-method=/g) ?? []).length, 3);
+  }
+  const locked = renderMenu("woodlot", economy, { initialRecipeId: "hardwood_shift", onNavigate() {} });
+  assert.match(locked, /data-recipe-preparation="hardwood_shift"/);
+  assert.match(locked, /Произведите и заберите: Крепкое бревно \(0 \/ 10\)/);
+  assert.match(locked, /Открыть рецепт: Крепкое бревно/);
+  assert.equal(startDisabled(locked), true);
+  const base = renderMenu("woodlot", economy, { initialRecipeId: "gather_hardwood" });
+  assert.match(base, /data-recipe-preparation="gather_hardwood"/);
+  assert.equal(startDisabled(base), false);
+});
+
+test("choosing a method only changes preparation and starts its exact recipe when confirmed", () => {
+  const calls = [];
+  const economy = controller({ buildings: { home: 3, garden: 3, warehouse: 1 } }, { act(...args) { calls.push(args); } });
+  let recipeId = "garden_season";
+  const elements = [];
+  function walk(element) {
+    if (!isValidElement(element)) return;
+    elements.push(element);
+    Children.forEach(element.props.children, walk);
+  }
+  function Probe() {
+    const tree = WorldRecipeDetail({ economy, recipe: economy.snapshot.catalog.recipes.find(recipe => recipe.id === recipeId), onCollapse() {}, onChooseRecipe(id) { recipeId = id; } });
+    walk(tree);
+    return tree;
+  }
+  renderToStaticMarkup(createElement(Probe));
+  const original = elements.find(element => element.props["data-recipe-method"] === "grow_berries");
+  assert.ok(original);
+  original.props.onClick();
+  assert.equal(recipeId, "grow_berries");
+  assert.deepEqual(calls, []);
+  elements.length = 0;
+  renderToStaticMarkup(createElement(Probe));
+  const start = elements.find(element => element.type === "button" && element.props.children?.[0] === "Начать · ");
+  assert.ok(start);
+  start.props.onClick();
+  assert.deepEqual(calls, [["start_production", "grow_berries", 1]]);
 });
 
 test("selected current recipe shows its exact unit reward and only its own costs", () => {
