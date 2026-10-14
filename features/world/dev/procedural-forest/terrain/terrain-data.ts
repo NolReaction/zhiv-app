@@ -6,11 +6,14 @@ export const TERRAIN_CHUNK_SIZE = 512;
 export const MAX_TERRAIN_CELLS = 20_000;
 const WORLD_HEIGHT = 1600;
 const MAX_WIDTH = 3200;
-const FEATHER_AND_BLEED = CELL_SIZE + 1;
+/** Maximum soft blend, projected bank and tile bleed all share this guard band. */
+export const TERRAIN_DIRTY_HALO = 96;
 
 export type TerrainMaterial = "grass" | "path" | "sand" | "water";
 export type TerrainBrush = TerrainMaterial | "restore";
-export type TerrainState = { baseTrails: boolean; cells: Record<string, TerrainMaterial> };
+export type TerrainAppearance = { shoreStyle: "stone" | "natural" | "none"; shoreHeight: number; blendWidth: number; scatter: number };
+export const DEFAULT_TERRAIN_APPEARANCE: Readonly<TerrainAppearance> = Object.freeze({ shoreStyle: "stone", shoreHeight: 12, blendWidth: 24, scatter: .55 });
+export type TerrainState = { baseTrails: boolean; cells: Record<string, TerrainMaterial>; appearance?: TerrainAppearance };
 export type TerrainPreview = {
   cells: ReadonlyMap<string, TerrainMaterial | null>;
   chunkVersions: ReadonlyMap<string, number>;
@@ -37,14 +40,35 @@ export function initialTerrain(): TerrainState {
 }
 
 export function cloneTerrain(state: TerrainState): TerrainState {
-  return { baseTrails: state.baseTrails, cells: { ...state.cells } };
+  return { baseTrails: state.baseTrails, cells: { ...state.cells }, ...(state.appearance ? { appearance: { ...state.appearance } } : {}) };
+}
+
+export function terrainAppearance(state: TerrainState): Readonly<TerrainAppearance> {
+  return state.appearance ?? DEFAULT_TERRAIN_APPEARANCE;
+}
+
+export function validateTerrainAppearance(value: unknown): TerrainAppearance | null {
+  if (!record(value) || Reflect.ownKeys(value).length !== 4
+    || Reflect.ownKeys(value).some(key => !["shoreStyle", "shoreHeight", "blendWidth", "scatter"].includes(String(key)))
+    || typeof value.shoreStyle !== "string" || !["stone", "natural", "none"].includes(value.shoreStyle)) return null;
+  const inRange = (number: unknown, min: number, max: number): number is number => typeof number === "number" && Number.isFinite(number) && number >= min && number <= max;
+  if (!inRange(value.shoreHeight, 0, 24) || !inRange(value.blendWidth, 8, 64) || !inRange(value.scatter, 0, 1)) return null;
+  return { shoreStyle: value.shoreStyle as TerrainAppearance["shoreStyle"], shoreHeight: value.shoreHeight, blendWidth: value.blendWidth, scatter: value.scatter };
+}
+
+export function updateTerrainAppearance(state: TerrainState, patch: Partial<TerrainAppearance>): TerrainState {
+  const current = terrainAppearance(state), appearance = validateTerrainAppearance({ ...current, ...patch });
+  if (!appearance || Object.keys(appearance).every(key => appearance[key as keyof TerrainAppearance] === current[key as keyof TerrainAppearance])) return state;
+  return { ...state, appearance };
 }
 
 /** Import only canonical, bounded cells; never silently clip an imported edit. */
 export function validateTerrain(value: unknown, width: number): TerrainState | null {
   if (!Number.isInteger(width) || width <= 0 || width > MAX_WIDTH || width % CELL_SIZE !== 0
-    || !record(value) || Reflect.ownKeys(value).some(key => key !== "baseTrails" && key !== "cells")
+    || !record(value) || Reflect.ownKeys(value).some(key => key !== "baseTrails" && key !== "cells" && key !== "appearance")
     || typeof value.baseTrails !== "boolean" || !record(value.cells)) return null;
+  const appearance = value.appearance === undefined ? undefined : validateTerrainAppearance(value.appearance);
+  if (appearance === null) return null;
   const keys = Reflect.ownKeys(value.cells);
   if (keys.length > MAX_TERRAIN_CELLS) return null;
   const cells: Record<string, TerrainMaterial> = {};
@@ -55,7 +79,7 @@ export function validateTerrain(value: unknown, width: number): TerrainState | n
       || typeof material !== "string" || !materials.has(material)) return null;
     cells[key] = material as TerrainMaterial;
   }
-  return { baseTrails: value.baseTrails, cells };
+  return { baseTrails: value.baseTrails, cells, ...(appearance ? { appearance } : {}) };
 }
 
 export function terrainCellKey(xWorld: number, yWorld: number): string {
@@ -81,7 +105,7 @@ export function applyTerrainPatch(state: TerrainState, patch: ReadonlyMap<string
     if (material === null) delete cells[key];
     else cells[key] = material;
   }
-  return cells ? { baseTrails: state.baseTrails, cells } : state;
+  return cells ? { ...state, cells } : state;
 }
 
 /** Rasterize a continuous capsule so sparse pointer events cannot leave holes. */
@@ -114,10 +138,10 @@ export function dirtyTerrainChunks(cellKeys: Iterable<string>): Set<string> {
     const coordinates = cellCoordinates(key);
     if (!coordinates) continue;
     const x = coordinates[0] * CELL_SIZE, y = coordinates[1] * CELL_SIZE;
-    const x0 = Math.floor((x - FEATHER_AND_BLEED) / TERRAIN_CHUNK_SIZE);
-    const x1 = Math.floor((x + CELL_SIZE + FEATHER_AND_BLEED) / TERRAIN_CHUNK_SIZE);
-    const y0 = Math.floor((y - FEATHER_AND_BLEED) / TERRAIN_CHUNK_SIZE);
-    const y1 = Math.floor((y + CELL_SIZE + FEATHER_AND_BLEED) / TERRAIN_CHUNK_SIZE);
+    const x0 = Math.floor((x - TERRAIN_DIRTY_HALO) / TERRAIN_CHUNK_SIZE);
+    const x1 = Math.floor((x + CELL_SIZE + TERRAIN_DIRTY_HALO) / TERRAIN_CHUNK_SIZE);
+    const y0 = Math.floor((y - TERRAIN_DIRTY_HALO) / TERRAIN_CHUNK_SIZE);
+    const y1 = Math.floor((y + CELL_SIZE + TERRAIN_DIRTY_HALO) / TERRAIN_CHUNK_SIZE);
     for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) result.add(`${cx}:${cy}`);
   }
   return result;

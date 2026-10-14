@@ -10,6 +10,7 @@ const { createForestPainter } = await vite.ssrLoadModule("/features/world/dev/pr
 const { forestObjects, initialProps, objectCorners, objectDepth, INITIAL_SEED, INITIAL_WIDTH, WORLD_HEIGHT, MAX_WIDTH } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/scene/objects.ts");
 const { drawTerrain } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/terrain/terrain.ts");
 const { sampleGround, TRAILS } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/terrain/layout.ts");
+const { initialLighting } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/lighting/lighting-data.ts");
 const removed = new Set([...forestObjects(INITIAL_SEED, { x: 0, y: 0, width: INITIAL_WIDTH, height: WORLD_HEIGHT }), ...initialProps()].map(object => object.id));
 const options = (overrides = {}) => ({ seed: INITIAL_SEED, width: INITIAL_WIDTH, trees: true, grid: false, removed, planted: [], ...overrides });
 const asset = (id, overrides = {}) => ({ id, name: `${id}.png`, dataUrl: `data:image/png;base64,${id}`, width: 1200, height: 600, ...overrides });
@@ -19,7 +20,8 @@ const view = { x: 550, y: 600, width: 100, height: 100 };
 function context(calls = []) {
   return new Proxy({}, {
     get: (_, key) => key === "createRadialGradient" || key === "createLinearGradient"
-      ? () => ({ addColorStop() {} }) : (...args) => calls.push([key, ...args]),
+      ? () => ({ addColorStop() {} }) : key === "createImageData" ? (width, height) => ({ width, height, data: new Uint8ClampedArray(width * height * 4) })
+        : (...args) => calls.push([key, ...args]),
     set: (_, key, value) => { calls.push(["set", key, value]); return true; },
   });
 }
@@ -262,7 +264,7 @@ test("live preview replaces a base object, updates depth and culling, and leaves
   painter.dispose();
 });
 
-test("terrain edits and undo update only touched chunks while restoring the exact base canvas", () => {
+test("terrain edits and undo update only touched chunks while retaining base geometry and untouched composites", () => {
   const painter = createForestPainter(factory), calls = [], settings = options({ terrain: { baseTrails: true, cells: {} } });
   const visible = { x: 450, y: 50, width: 200, height: 300 };
   const tiles = () => calls.filter(call => call[0] === "drawImage" && call.length === 4).map(call => call[1]);
@@ -274,12 +276,15 @@ test("terrain edits and undo update only touched chunks while restoring the exac
   assert.notEqual(edited[0], base[0]); assert.equal(edited[1], base[1]);
   assert.equal(painter.diagnostics().baseTerrainBuilds, warm.baseTerrainBuilds);
   assert.equal(painter.diagnostics().sceneBuilds, warm.sceneBuilds, "painting ground does not regenerate or sort objects");
-  assert.equal(painter.diagnostics().terrainComposites, 1);
+  assert.equal(painter.diagnostics().terrainComposites, warm.terrainComposites + 1);
   painter.paint(context(), visible, settings);
-  assert.equal(painter.diagnostics().terrainComposites, 1, "camera movement reuses the edited chunk");
+  assert.equal(painter.diagnostics().terrainComposites, warm.terrainComposites + 1, "camera movement reuses the edited chunk");
   settings.terrain = { baseTrails: true, cells: {} }; calls.length = 0;
   painter.paint(context(calls), visible, settings);
-  assert.deepEqual(tiles(), base, "undo returns the original untouched chunk sources");
+  const restored = tiles();
+  assert.equal(restored[1], base[1], "undo leaves unrelated composites intact");
+  assert.deepEqual([restored[0].width, restored[0].height], [base[0].width, base[0].height]);
+  assert.equal(painter.diagnostics().baseTerrainBuilds, warm.baseTerrainBuilds, "restoration reuses the original cached base geometry");
   painter.dispose();
 });
 
@@ -288,16 +293,17 @@ test("terrain preview versions update neighbouring seam chunks and restore witho
   const settings = options({ terrain: { baseTrails: true, cells: {} }, terrainPreview: { cells, chunkVersions } });
   const visible = { x: 450, y: 50, width: 200, height: 300 };
   const tiles = () => calls.filter(call => call[0] === "drawImage" && call.length === 4).map(call => call[1]);
-  painter.paint(context(calls), visible, settings); const base = tiles();
+  painter.paint(context(calls), visible, settings); const base = tiles(), warm = painter.diagnostics();
   cells.set("31:10", "path"); chunkVersions.set("0:0", 1); chunkVersions.set("1:0", 1); calls.length = 0;
   painter.paint(context(calls), visible, settings); const painted = tiles();
-  assert.notEqual(painted[0], base[0]); assert.notEqual(painted[1], base[1], "the shared feather is composed on both sides of the seam");
-  assert.equal(painter.diagnostics().terrainComposites, 2);
+  assert.deepEqual(painted.map(canvas => [canvas.width, canvas.height]), base.map(canvas => [canvas.width, canvas.height]));
+  assert.equal(painter.diagnostics().terrainComposites, warm.terrainComposites + 2);
   assert.deepEqual(settings.terrain.cells, {});
-  painter.paint(context(), visible, settings); assert.equal(painter.diagnostics().terrainComposites, 2);
+  painter.paint(context(), visible, settings); assert.equal(painter.diagnostics().terrainComposites, warm.terrainComposites + 2);
   cells.set("31:10", null); chunkVersions.set("0:0", 2); chunkVersions.set("1:0", 2); calls.length = 0;
   painter.paint(context(calls), visible, settings);
-  assert.deepEqual(tiles(), base);
+  assert.deepEqual(tiles().map(canvas => [canvas.width, canvas.height]), base.map(canvas => [canvas.width, canvas.height]));
+  assert.equal(painter.diagnostics().baseTerrainBuilds, warm.baseTerrainBuilds);
   painter.dispose();
 });
 
@@ -410,5 +416,71 @@ test("committed object changes invalidate only their footprint and source readin
   settings.planted = [{ ...item, x: 710 }, ...settings.planted.slice(1)]; settings.objectRevision = 1;
   painter.paint(context(), visible, settings);
   assert.equal(painter.diagnostics().staticTileBuilds, ready + 1, "unrelated previously cached chunks remain valid after a position change");
+  painter.dispose();
+});
+
+test("lighting honors inherited folder visibility, shades before editor overlays and preserves decoded PNG sources", async () => {
+  const image = asset("lit-original"), native = { original: true }, calls = [], painter = createForestPainter(factory, undefined, async () => native);
+  await painter.prepareAssets([image]);
+  const item = imageObject(image, { shadowHeight: 120 });
+  const lighting = { ...initialLighting(), enabled: true, ambient: .4 };
+  const settings = options({ planted: [item], assets: new Map([[image.id, image]]), selectedId: item.id, lighting });
+  painter.paint(context(calls), view, settings);
+  assert.ok(calls.some(call => call[0] === "drawImage" && call[1] === native), "the original source still draws the object");
+  const illumination = calls.findIndex(call => call[0] === "set" && call[1] === "globalCompositeOperation" && call[2] === "multiply");
+  const handle = calls.findIndex(call => call[0] === "arc" && call[3] === 7);
+  assert.ok(illumination >= 0 && illumination < handle, "selection handles are drawn after the scene's lighting pass");
+  const warm = painter.diagnostics().lighting;
+  calls.length = 0;
+  painter.paint(context(calls), view, { ...settings, folders: [{ id: "images", name: "Images", parentId: null, visible: false, locked: false }] });
+  assert.ok(!calls.some(call => call[0] === "drawImage" && call[1] === native));
+  assert.ok(painter.diagnostics().lighting.sunBuilds > warm.sunBuilds, "hiding a folder erases the previous cast shadow");
+  assert.equal(image.dataUrl, settings.assets.get(image.id).dataUrl);
+  painter.dispose();
+});
+
+test("two restored PNGs decoded before the next frame both refresh their cached shadow alpha and export sources", async () => {
+  const images = [asset("restored-a"), asset("restored-b")], native = images.map(image => ({ name: image.id }));
+  const pending = new Map(), decoded = [], masks = [];
+  const painter = createForestPainter((width, height) => ({ width, height, getContext: () => context(masks) }), undefined, url => {
+    decoded.push(url); return new Promise(resolve => pending.set(url, resolve));
+  });
+  const items = images.map((image, index) => imageObject(image, { id: `planted:restored-${index}`, x: 700 + index * 80, shadowHeight: 100 }));
+  const lighting = { ...initialLighting(), enabled: true };
+  const settings = options({ planted: items, assets: new Map(images.map(image => [image.id, image])), lighting });
+  const fullView = { x: 0, y: 0, width: INITIAL_WIDTH, height: WORLD_HEIGHT };
+  painter.paint(context(), fullView, settings);
+  await Promise.resolve();
+  for (let index = 0; index < images.length; index++) pending.get(images[index].dataUrl)(native[index]);
+  // Both completions invalidate cache state without an intervening render, as during a reload.
+  await painter.prepareAssets(images); masks.length = 0;
+  painter.paint(context(), fullView, settings);
+  for (const source of native) assert.ok(masks.some(call => call[0] === "drawImage" && call[1] === source), "both ready PNGs must reach the alpha projection cache");
+  const ready = painter.diagnostics().lighting, exported = [];
+  painter.paint(context(exported), fullView, { ...settings, assets: new Map(settings.assets), lighting: { ...lighting }, interactiveCache: false, selectedId: null });
+  for (const source of native) assert.ok(exported.some(call => call[0] === "drawImage" && call[1] === source), "PNG export keeps each decoded original source");
+  assert.equal(painter.diagnostics().lighting.sunBuilds, ready.sunBuilds, "export reuses the complete, refreshed shadow masks");
+  assert.deepEqual(decoded, images.map(image => image.dataUrl));
+  painter.dispose();
+});
+
+test("a replaced asset with unchanged object identity refreshes its alpha after the new scene becomes active", async () => {
+  const original = asset("same-id"), replacement = { ...original, dataUrl: original.dataUrl + "replacement" };
+  const oldSource = { name: "old pixels" }, newSource = { name: "replacement pixels" }, masks = [], decoded = [];
+  const painter = createForestPainter((width, height) => ({ width, height, getContext: () => context(masks) }), undefined, async url => {
+    decoded.push(url); return url === original.dataUrl ? oldSource : newSource;
+  });
+  const item = imageObject(original), fullView = { x: 0, y: 0, width: INITIAL_WIDTH, height: WORLD_HEIGHT };
+  const settings = options({ planted: [item], assets: new Map([[original.id, original]]), lighting: { ...initialLighting(), enabled: true } });
+  await painter.prepareAssets([original]); painter.paint(context(), fullView, settings);
+  // Decoding occurs while the current scene still references the original source.
+  await painter.prepareAssets([replacement]); masks.length = 0;
+  const next = { ...settings, assets: new Map([[replacement.id, replacement]]) }, exported = [];
+  painter.paint(context(exported), fullView, next);
+  assert.ok(masks.some(call => call[0] === "drawImage" && call[1] === newSource), "the cached caster must use the active scene's alpha");
+  assert.ok(!masks.some(call => call[0] === "drawImage" && call[1] === oldSource));
+  assert.ok(exported.some(call => call[0] === "drawImage" && call[1] === newSource));
+  assert.ok(!exported.some(call => call[0] === "drawImage" && call[1] === oldSource));
+  assert.deepEqual(decoded, [original.dataUrl, replacement.dataUrl]);
   painter.dispose();
 });

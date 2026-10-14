@@ -91,7 +91,7 @@ test("v3 migration retains PNG bytes, layer order and every object edit while cr
     planted: [{ ...rock("planted:image"), kind: "image", assetId: asset.id, ...imageObjectSize(asset), name: "Дом", layerId: "foreground", stackOrder: [3, 2], hidden: false, locked: true }],
     removed: ["prop:jetty"], modified: [{ ...initialProps()[0], x: 750, rotation: 10, name: "Вход", layerId: "background", stackOrder: [4] }] };
   const before = structuredClone(legacy), migrated = parseScene(JSON.stringify(legacy));
-  assert.equal(migrated.version, 4); assert.deepEqual(migrated.folders, defaultFolders()); assert.deepEqual(migrated.terrain, initialTerrain());
+  assert.equal(migrated.version, 5); assert.deepEqual(migrated.folders, defaultFolders()); assert.deepEqual(migrated.terrain, initialTerrain());
   for (const field of ["layers", "planted", "removed", "modified", "assets"]) assert.deepEqual(migrated[field], legacy[field]);
   assert.deepEqual(Buffer.from(migrated.assets[0].dataUrl.split(",")[1], "base64"), bytes);
   assert.equal(migrated.planted[0].folderId, undefined); assert.deepEqual(parseScene(serializeScene(migrated)), migrated);
@@ -116,7 +116,7 @@ test("whole-group movement permits bounded generated overscan while planted obje
   for (const [x, y] of [[-320, -320], [scene.width + 320, WORLD_HEIGHT + 320]]) {
     const edited = { ...object, x, y, rotation: 0, folderId: "trees" };
     assert.ok(validateScene({ ...scene, modified: [edited] }));
-    const legacy = { ...scene, version: 3, modified: [{ ...edited }] }; delete legacy.folders; delete legacy.terrain; delete legacy.modified[0].folderId;
+    const legacy = { ...scene, version: 3, modified: [{ ...edited }] }; delete legacy.folders; delete legacy.terrain; delete legacy.lighting; delete legacy.modified[0].folderId;
     assert.equal(validateScene(legacy), null, "older schemas cannot introduce new out-of-world coordinates");
   }
   for (const [x, y] of [[-320.01, 0], [0, -320.01], [scene.width + 320.01, 0], [0, WORLD_HEIGHT + 320.01]]) {
@@ -126,7 +126,7 @@ test("whole-group movement permits bounded generated overscan while planted obje
   assert.equal(validateScene({ ...scene, modified: [{ ...initialProps()[0], x: -1, rotation: 0 }] }), null);
   const expanded = { ...scene, width: MAX_WIDTH }, far = generatedFor(expanded).find(entry => entry.x > MAX_WIDTH + 256);
   assert.ok(far, "the canonical generator really roots a few trees beyond the previous 256 px allowance");
-  const legacy = { ...expanded, version: 3, modified: [{ ...far, rotation: 0, name: "На краю" }] }; delete legacy.folders; delete legacy.terrain;
+  const legacy = { ...expanded, version: 3, modified: [{ ...far, rotation: 0, name: "На краю" }] }; delete legacy.folders; delete legacy.terrain; delete legacy.lighting;
   const migrated = validateScene(legacy); assert.ok(migrated); assert.deepEqual(parseScene(serializeScene(migrated)), migrated);
 });
 

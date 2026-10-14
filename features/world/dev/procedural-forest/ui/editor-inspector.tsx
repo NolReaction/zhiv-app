@@ -6,7 +6,7 @@ import styles from "./procedural-forest-preview.module.css";
 
 export const objectNames: Record<ObjectKind, string> = { tree: "Дерево", shrub: "Куст", rock: "Камень", ruins: "Руины", bridge: "Мост", jetty: "Причал", image: "PNG-картинка" };
 
-function NumberField({ label, value, min, max, step = 1, change }: { label: string; value: number; min: number; max: number; step?: number; change: (value: number) => void }) {
+export function NumberField({ label, value, min, max, step = 1, change }: { label: string; value: number; min: number; max: number; step?: number; change: (value: number) => void }) {
   const formatted = String(Math.round(value * 100) / 100);
   function commit(input: HTMLInputElement) {
     if (input.value === formatted) return;
@@ -14,7 +14,7 @@ function NumberField({ label, value, min, max, step = 1, change }: { label: stri
     if (Number.isFinite(parsed)) { const next = Math.max(min, Math.min(max, parsed)); input.value = String(next); change(next); }
     else input.value = formatted;
   }
-  return <label className={styles.field}><span>{label}</span><input key={formatted} aria-label={label} type="number" inputMode="decimal" min={min} max={max} step={step} defaultValue={formatted} onBlur={event => commit(event.currentTarget)} onKeyDown={event => { if (event.key === "Enter") event.currentTarget.blur(); }} /></label>;
+  return <label className={styles.field}><span>{label}</span><input key={formatted} aria-label={label} data-editor-number-field type="number" inputMode="decimal" min={min} max={max} step={step} defaultValue={formatted} onBlur={event => commit(event.currentTarget)} onKeyDown={event => { if (event.key === "Enter") event.currentTarget.blur(); else if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); event.currentTarget.value = formatted; } }} /></label>;
 }
 
 export function EditorInspector({ object, width, imageName, update, duplicate, remove }: {

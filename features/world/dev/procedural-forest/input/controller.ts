@@ -1,12 +1,13 @@
 import { createForestPainter, type ForestOptions, type ImageLoader } from "@/features/world/dev/procedural-forest/rendering/renderer";
-import { canPlant, compareObjects, INITIAL_SEED, MAX_WIDTH, objectBounds, objectCorners, OVERSCAN_EDIT_MARGIN, pickObject, WORLD_HEIGHT, type Bounds, type ForestObject, type ObjectKind } from "@/features/world/dev/procedural-forest/scene/objects";
+import { canPlant, compareObjects, getObjectShadowHeight, INITIAL_SEED, MAX_WIDTH, objectBounds, objectCorners, OVERSCAN_EDIT_MARGIN, pickObject, WORLD_HEIGHT, type Bounds, type ForestObject, type ObjectKind } from "@/features/world/dev/procedural-forest/scene/objects";
 import { createSceneHistory, parseScene, readStoredScene, serializeScene, validateScene, SCENE_STORAGE_KEY, type SceneStorage } from "@/features/world/dev/procedural-forest/scene/editor-scene";
 import { imageObjectSize, readPngFile, validateImageAsset, type ImageAsset } from "@/features/world/dev/procedural-forest/assets/image-assets";
 import { beginResize, findResizeHandle, MAX_OBJECT_SCALE, MIN_OBJECT_SCALE, resizedObject, type ResizeCorner, type ResizeSession } from "./transform";
 import { isObjectLocked, isObjectVisible, objectLayerId, stackKey, stackKeyBetween, type SceneLayer } from "@/features/world/dev/procedural-forest/scene/stacking";
 
 import { folderAncestors, folderContains, isFolderLocked, isFolderVisible, MAX_SCENE_FOLDERS, objectFolderId, type SceneFolder } from "@/features/world/dev/procedural-forest/scene/folders";
-import { applyTerrainPatch, CELL_SIZE, dirtyTerrainChunks, MAX_TERRAIN_CELLS, strokeTerrainCells, type TerrainBrush, type TerrainMaterial } from "@/features/world/dev/procedural-forest/terrain/terrain-data";
+import { applyTerrainPatch, CELL_SIZE, dirtyTerrainChunks, MAX_TERRAIN_CELLS, strokeTerrainCells, terrainAppearance, updateTerrainAppearance, type TerrainAppearance, type TerrainBrush, type TerrainMaterial, type TerrainState } from "@/features/world/dev/procedural-forest/terrain/terrain-data";
+import { MAX_POINT_LIGHTS, validateLighting, type LightingState, type ScenePointLight } from "@/features/world/dev/procedural-forest/lighting/lighting-data";
 import { createDeferredSave } from "./controller-autosave";
 
 export type ToolMode = "pan" | "select" | "plant" | "erase" | "terrain" | "area";
@@ -19,6 +20,7 @@ export type ForestStatus = {
   folders: SceneFolder[]; activeFolderId: string | null | undefined;
   selectedFolder: { folder: SceneFolder; count: number; bounds: Bounds | null; hidden: boolean; locked: boolean } | null;
   terrainBrush: TerrainBrush; terrainSize: number; terrainBaseTrails: boolean; clearVegetation: boolean;
+  lighting: LightingState; terrainAppearance: Readonly<TerrainAppearance>; selectedShadowHeight: number | null;
 };
 export type ForestControllerOptions = { requestPngImport?: () => void; requestLayersToggle?: () => void; requestTerrainTools?: () => void; loadImage?: ImageLoader };
 type ObjectPatch = Partial<Pick<ForestObject, "x" | "y" | "scale" | "rotation" | "variant">>;
@@ -42,7 +44,8 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
   let scene = history.getScene();
   const options: ForestOptions = { seed: scene.seed, width: scene.width, trees: true, grid: false,
     removed: new Set(scene.removed), planted: scene.planted, modified: new Map(scene.modified.map(object => [object.id, object])), selectedId: null,
-    assets: new Map(scene.assets.map(asset => [asset.id, asset])), selectionZoom: 1, interactiveCache: true, layers: scene.layers, folders: scene.folders, terrain: scene.terrain };
+    assets: new Map(scene.assets.map(asset => [asset.id, asset])), selectionZoom: 1, interactiveCache: true, layers: scene.layers, folders: scene.folders, terrain: scene.terrain, lighting: scene.lighting };
+  let settingsPreview: { lighting: LightingState; terrain: TerrainState; shadow?: ForestObject } | null = null;
   let storage: ForestStatus["storage"] = restored.available && !restored.invalid ? "saved" : "unavailable";
   let mode: ToolMode = "select", brush: ObjectKind = "tree", brushAssetId: string | null = null, selectedId: string | null = null;
   let screenWidth = 1, screenHeight = 1, zoom = .5, cameraX = 800, cameraY = 800;
@@ -94,7 +97,7 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
     options.seed = scene.seed; options.width = scene.width; options.planted = scene.planted; plantedIds = new Set(scene.planted.map(object => object.id));
     options.removed = new Set(scene.removed); options.modified = new Map(scene.modified.map(object => [object.id, object]));
     options.assets = new Map(scene.assets.map(asset => [asset.id, asset]));
-    options.layers = scene.layers; options.folders = scene.folders; options.terrain = scene.terrain; options.objectRevision = revision;
+    options.layers = scene.layers; options.folders = scene.folders; options.terrain = scene.terrain; options.lighting = scene.lighting; options.objectRevision = revision;
     if (previousAssets !== scene.assets || !cachedAssets.length) { cachedAssets = scene.assets.map(({ id, name }) => ({ id, name })); previousAssets = scene.assets; }
     if (activeFolderId && !scene.folders.some(folder => folder.id === activeFolderId)) activeFolderId = undefined;
     if (selectedFolderId && !scene.folders.some(folder => folder.id === selectedFolderId)) selectedFolderId = null;
@@ -245,7 +248,8 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
       selected: object, canUndo: history.canUndo, canRedo: history.canRedo, storage, brush, mode, temporaryPan: temporaryPan(), trees: options.trees, grid: options.grid,
       assets: cachedAssets, brushAssetId, layers: scene.layers, folders: scene.folders, activeLayerId, activeFolderId, objectList: objectList(),
       selectedHidden: !!object && !objectVisible(object), selectedLocked: !!object && isObjectLocked(object, scene.layers, scene.folders),
-      selectedFolder: folderSummary(), terrainBrush, terrainSize, terrainBaseTrails: scene.terrain.baseTrails, clearVegetation };
+      selectedFolder: folderSummary(), terrainBrush, terrainSize, terrainBaseTrails: scene.terrain.baseTrails, clearVegetation, lighting: options.lighting ?? scene.lighting,
+      terrainAppearance: terrainAppearance(options.terrain ?? scene.terrain), selectedShadowHeight: object ? getObjectShadowHeight(object) / object.scale : null };
     if (!lastStatus || Object.keys(status).some(key => status[key as keyof ForestStatus] !== lastStatus![key as keyof ForestStatus])) { lastStatus = status; report(status); }
     if (autoPanning) invalidate();
   }
@@ -280,11 +284,12 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
     if (terrainCells.size) { terrainCells.clear(); for (const [key, version] of terrainChunks) terrainChunks.set(key, version + 1); }
     options.terrainPreview = undefined; options.selectionArea = undefined; invalidate();
   }
-  function cancelGesture() {
+  function cancelPointerGesture() {
     rollbackDrag(); gesture = undefined; hoverResize = null; lastPanTime = null; cursor();
     for (const id of pointers.keys()) if (canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id);
     pointers.clear();
   }
+  function cancelGesture() { cancelSettingsEdit(); cancelPointerGesture(); }
   function updateDrag(p = gesture ? pointers.get(gesture.pointerId) : undefined) {
     if (!p || !gesture?.object || !gesture.moved || gesture.pinched || gesture.pan) return;
     const position = world(p);
@@ -371,6 +376,81 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
     }
     if (["x", "y", "scale", "rotation", "variant"].every(key => candidate[key as keyof ObjectPatch] === object[key as keyof ObjectPatch])) return;
     replaceObject(candidate); commit("Параметры объекта изменены.");
+  }
+  function sameLighting(a: LightingState, b: LightingState) {
+    return Object.keys(a).every(key => key === "points" || a[key as keyof LightingState] === b[key as keyof LightingState])
+      && a.points.length === b.points.length && a.points.every((point, index) => Object.keys(point).every(key => point[key as keyof ScenePointLight] === b.points[index][key as keyof ScenePointLight]));
+  }
+  function beginSettingsEdit() {
+    if (disposed || settingsPreview) return;
+    cancelPointerGesture(); settingsPreview = { lighting: scene.lighting, terrain: scene.terrain };
+  }
+  function cancelSettingsEdit() {
+    if (!settingsPreview) return;
+    if (settingsPreview.shadow) { previewObjects.delete(settingsPreview.shadow.id); options.previewRevision = (options.previewRevision ?? 0) + 1; }
+    settingsPreview = null; options.lighting = scene.lighting; options.terrain = scene.terrain; invalidate();
+  }
+  function commitSettingsEdit() {
+    if (!settingsPreview || disposed) return;
+    const staged = settingsPreview; let changed = false;
+    if (staged.shadow) {
+      objectList(); const original = objectLookup.get(staged.shadow.id);
+      if (original && !isObjectLocked(original, scene.layers, scene.folders) && original.shadowHeight !== staged.shadow.shadowHeight) { replaceObject(staged.shadow); changed = true; }
+    }
+    if (!sameLighting(scene.lighting, staged.lighting)) { scene.lighting = staged.lighting; changed = true; }
+    const before = terrainAppearance(scene.terrain), after = terrainAppearance(staged.terrain);
+    if (Object.keys(before).some(key => before[key as keyof TerrainAppearance] !== after[key as keyof TerrainAppearance])) { scene.terrain = staged.terrain; changed = true; }
+    cancelSettingsEdit(); if (changed) commit("Настройки карты изменены. Их можно отменить одним действием.");
+  }
+  function applyLighting(value: LightingState, text: string) {
+    const lighting = validateLighting(value, scene.width);
+    if (!lighting) { message = "Проверь параметры света: координаты внутри карты, допустимые яркость и радиус, цвет в формате #RRGGBB."; invalidate(); return false; }
+    if (settingsPreview) { if (!sameLighting(settingsPreview.lighting, lighting)) { settingsPreview.lighting = lighting; options.lighting = lighting; invalidate(); } }
+    else { cancelPointerGesture(); if (!sameLighting(scene.lighting, lighting)) { scene.lighting = lighting; commit(text); } }
+    return true;
+  }
+  function setLighting(patch: Partial<Omit<LightingState, "points">>) {
+    if (disposed || !patch || Object.hasOwn(patch, "points")) return false;
+    return applyLighting({ ...(settingsPreview?.lighting ?? scene.lighting), ...patch }, "Освещение изменено.");
+  }
+  function addPointLight() {
+    if (disposed) return null;
+    cancelGesture(); if (scene.lighting.points.length >= MAX_POINT_LIGHTS) { message = "В сцене может быть до 32 источников света."; invalidate(); return null; }
+    let number = 1; while (scene.lighting.points.some(point => point.id === `light:${number}`)) number++;
+    const object = selected(), id = `light:${number}`;
+    const point: ScenePointLight = { id, name: `Свет ${number}`, x: Math.max(0, Math.min(scene.width, object?.x ?? cameraX)),
+      y: Math.max(0, Math.min(WORLD_HEIGHT, object?.y ?? cameraY)), radius: 240, intensity: 1, color: "#ffe5ad", enabled: true };
+    return applyLighting({ ...scene.lighting, enabled: true, points: [...scene.lighting.points, point] }, "Добавлен источник света.") ? id : null;
+  }
+  function updatePointLight(id: string, patch: Partial<Omit<ScenePointLight, "id">>) {
+    if (disposed || !patch || Object.hasOwn(patch, "id")) return false;
+    const lighting = settingsPreview?.lighting ?? scene.lighting;
+    if (!lighting.points.some(point => point.id === id)) return false;
+    const changes = { ...patch }; if (typeof changes.name === "string") changes.name = cleanName(changes.name);
+    return applyLighting({ ...lighting, points: lighting.points.map(point => point.id === id ? { ...point, ...changes } : point) }, "Источник света изменён.");
+  }
+  function deletePointLight(id: string) {
+    if (disposed) return false;
+    cancelGesture(); if (!scene.lighting.points.some(point => point.id === id)) return false;
+    return applyLighting({ ...scene.lighting, points: scene.lighting.points.filter(point => point.id !== id) }, "Источник света удалён.");
+  }
+  function setSelectedShadowHeight(value: number | undefined) {
+    if (disposed || (value !== undefined && (!Number.isFinite(value) || value < 0 || value > 480))) return false;
+    if (!settingsPreview) cancelPointerGesture();
+    const object = selected(); if (!object || !unlocked(object)) return false;
+    const candidate = { ...object }; if (value === undefined) delete candidate.shadowHeight; else candidate.shadowHeight = value;
+    if (candidate.shadowHeight === object.shadowHeight) return true;
+    if (settingsPreview) { settingsPreview.shadow = candidate; previewObject(candidate); invalidate(); }
+    else { replaceObject(candidate); commit("Высота тени предмета изменена."); }
+    return true;
+  }
+  function setTerrainAppearance(patch: Partial<TerrainAppearance>) {
+    if (disposed || !patch) return false;
+    const current = settingsPreview?.terrain ?? scene.terrain, terrain = updateTerrainAppearance(current, patch);
+    if (terrain === current) return false;
+    if (settingsPreview) { settingsPreview.terrain = terrain; options.terrain = terrain; invalidate(); }
+    else { cancelPointerGesture(); scene.terrain = terrain; commit("Вид земли и берегов изменён."); }
+    return true;
   }
   function undo() {
     cancelGesture(); const previous = history.undo(); if (!previous) return;
@@ -651,6 +731,7 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
   }
   const down = (event: PointerEvent) => {
     if (event.button !== 0 && event.button !== 1) return;
+    cancelSettingsEdit();
     if (event.button === 1) event.preventDefault();
     canvas.focus({ preventScroll: true }); canvas.setPointerCapture(event.pointerId);
     const p = point(event.clientX, event.clientY); pointers.set(event.pointerId, p);
@@ -755,7 +836,7 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
     if (code === "Space") {
       event.preventDefault();
       if (!spaceHeld) {
-        rollbackDrag(); spaceHeld = true;
+        cancelSettingsEdit(); rollbackDrag(); spaceHeld = true;
         if (gesture) { gesture.object = undefined; gesture.grabOffset = undefined; gesture.resize = undefined; gesture.members = undefined; gesture.terrainLast = undefined; gesture.areaStart = undefined; gesture.pan = true; gesture.temporaryPan = true; lastPanTime = null; }
         hoverResize = null;
         cursor(); invalidate();
@@ -825,7 +906,9 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
     renameSelected, setSelectedLayer, setObjectHidden, setObjectLocked, setSelectedOrder, reorderObject, focusSelected,
     setActiveFolder, selectFolder, addFolder, renameFolder, reparentFolder, deleteFolder, moveObjectToFolder,
     setFolderVisibility, setFolderLocked, translateSelectedFolder, deleteFolderObjects, createFolderFromArea,
-    setTerrainBrush, setTerrainSize, setClearVegetation, setBaseTrails, flushPendingSave: autosave.flush,
+    setTerrainBrush, setTerrainSize, setClearVegetation, setBaseTrails,
+    setLighting, addPointLight, updatePointLight, deletePointLight, setSelectedShadowHeight, setTerrainAppearance,
+    beginSettingsEdit, commitSettingsEdit, cancelSettingsEdit, flushPendingSave: autosave.flush,
     clearSelection() { cancelGesture(); selectedId = null; selectedFolderId = null; invalidate(); },
     deleteSelected() { cancelGesture(); const object = selected(); if (object) removeObject(object); },
     setLayer(layer: "trees" | "grid", value: boolean) {
@@ -834,7 +917,7 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
     },
     expand() { cancelGesture(); if (scene.width >= MAX_WIDTH) return; scene.width += 800; commit("Добавлено 800 единиц справа. Все твои объекты сохранились."); fit(); },
     regenerate() {
-      cancelGesture(); scene = { version: 4, seed: (scene.seed + 137) % 2_147_483_648, width: scene.width, planted: [], removed: [], modified: [], assets: scene.assets, layers: scene.layers, folders: scene.folders, terrain: scene.terrain };
+      cancelGesture(); scene = { version: 5, seed: (scene.seed + 137) % 2_147_483_648, width: scene.width, planted: [], removed: [], modified: [], assets: scene.assets, layers: scene.layers, folders: scene.folders, terrain: scene.terrain, lighting: scene.lighting };
       selectedId = null; selectedFolderId = null; commit("Создан новый лес. Прежний вариант можно вернуть кнопкой «Отменить».");
     },
     resetEdits() { cancelGesture(); scene.planted = []; scene.removed = []; scene.modified = []; selectedId = null; selectedFolderId = null; commit("Все объекты возвращены к исходному состоянию. Действие можно отменить."); },
@@ -846,10 +929,10 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
       if (!imported) { message = "Не удалось открыть JSON: неверный формат сцены или параметры объектов. Текущая карта сохранена."; invalidate(); return false; }
       cancelGesture(); const token = ++sceneImportToken, before = revision;
       try { await painter.prepareAssets(imported.assets); } catch (error) {
-        if (!disposed && token === sceneImportToken && revision === before && !gesture) { message = `Не удалось открыть PNG из JSON: ${assetError(error)}. Текущая карта сохранена.`; invalidate(); } return false;
+        if (!disposed && token === sceneImportToken && revision === before && !gesture && !settingsPreview) { message = `Не удалось открыть PNG из JSON: ${assetError(error)}. Текущая карта сохранена.`; invalidate(); } return false;
       }
       if (disposed || token !== sceneImportToken) return false;
-      if (revision !== before || gesture) { message = "Во время загрузки сцена изменилась. Импорт отменён; попробуй открыть JSON ещё раз."; invalidate(); return false; }
+      if (revision !== before || gesture || settingsPreview) { message = "Во время загрузки сцена изменилась. Импорт отменён; попробуй открыть JSON ещё раз."; invalidate(); return false; }
       scene = imported; selectedId = null; selectedFolderId = null; hoverResize = null; commit("Сцена открыта из JSON. Импорт можно отменить."); cursor(); fit(); return true;
     },
     async exportPng(): Promise<void> {
@@ -859,7 +942,7 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
       const image = makeCanvas(committed.width, WORLD_HEIGHT), exportCtx = image.getContext("2d"); if (!exportCtx) return;
       painter.paint(exportCtx, { x: 0, y: 0, width: committed.width, height: WORLD_HEIGHT }, { ...options, seed: committed.seed, width: committed.width,
         trees, assets: new Map(committed.assets.map(asset => [asset.id, asset])), planted: committed.planted, removed: new Set(committed.removed),
-        modified: new Map(committed.modified.map(object => [object.id, object])), layers: committed.layers, folders: committed.folders, terrain: committed.terrain, grid: false, selectedId: null, selectedFolderId: null, selectionArea: undefined, brushCursor: undefined, previewObjects: undefined, terrainPreview: undefined, previewRevision: 0, interactiveCache: false, renderScale: 1, selectionZoom: 1 });
+        modified: new Map(committed.modified.map(object => [object.id, object])), layers: committed.layers, folders: committed.folders, terrain: committed.terrain, lighting: committed.lighting, grid: false, selectedId: null, selectedFolderId: null, selectionArea: undefined, brushCursor: undefined, previewObjects: undefined, terrainPreview: undefined, previewRevision: 0, interactiveCache: false, renderScale: 1, selectionZoom: 1 });
       const blob = await new Promise<Blob | null>(resolve => image.toBlob(resolve, "image/png"));
       if (blob) download(blob, `forest-${committed.seed}-${committed.width}.png`);
     },

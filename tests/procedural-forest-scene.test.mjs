@@ -39,7 +39,7 @@ test("versioned JSON round trips edited vegetation and all authored props withou
 test("validation rejects entire invalid scenes, duplicate IDs, unknown references, kind changes and unsafe keys", () => {
   const source = editedScene();
   const invalid = [
-    { ...source, version: 5 }, { ...source, seed: NaN }, { ...source, seed: 2.5 },
+    { ...source, version: 6 }, { ...source, seed: NaN }, { ...source, seed: 2.5 },
     { ...source, width: 2000 }, { ...source, width: Infinity },
     { ...source, planted: [source.planted[0], source.planted[0]] },
     { ...source, planted: [{ ...source.planted[0], id: source.modified[0].id }] },
@@ -124,7 +124,9 @@ function controllerHarness(initialJson = null, focusBody = false, settings = {})
   const install = (key, value) => { previousGlobals.set(key, Object.getOwnPropertyDescriptor(globalThis, key)); Object.defineProperty(globalThis, key, { value, configurable: true, writable: true }); };
   const frames = new Map(), handlers = new Map(), editorHandlers = new Map(), windowHandlers = new Map(), captured = new Set(), idle = new Map(), documentHandlers = new Map();
   let frameId = 0, idleId = 0, reports = 0, writes = 0, focuses = 0, pngRequests = 0, harnessDisposed = false, lastStatus;
-  const draws = [], translations = [], downloads = [];
+  const draws = [], translations = [], downloads = [], blobs = [];
+  const OriginalURL = globalThis.URL;
+  install("URL", class extends OriginalURL { static createObjectURL(blob) { blobs.push(blob); return "blob:controller-test"; } static revokeObjectURL() {} });
   const values = new Map(initialJson === null ? [] : [[SCENE_STORAGE_KEY, initialJson]]);
   const storage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => { if (settings.failWrites) throw new Error("quota"); writes++; values.set(key, value); } };
   const noop = () => {};
@@ -164,6 +166,7 @@ function controllerHarness(initialJson = null, focusBody = false, settings = {})
     get draws() { return draws; },
     get translations() { return translations; },
     get downloads() { return downloads; },
+    get blobs() { return blobs; },
     get inlineCursor() { return canvas.style.cursor; },
     get status() { return lastStatus; },
     get cursor() { return canvas.dataset.tool; },
@@ -1165,5 +1168,113 @@ test("explicit object/folder selection or folder creation leaves drawing tools a
     harness.controller.undo(); assert.equal(harness.scene().folders.length, fixture.folders.length);
     harness.key("у", { code: "KeyE" }); assert.equal(harness.controller.selectFolder("missing"), false); assert.equal(harness.controller.selectById("missing"), false); harness.flush();
     assert.equal(harness.status.mode, "erase", "invalid list selection never changes the tool");
+  } finally { harness.dispose(); }
+});
+
+test("lighting and point-light commands round trip, autoenable, preserve selection, validate atomically and undo once", () => {
+  const fixture = groupedScene(), harness = controllerHarness(serializeScene(fixture));
+  try {
+    harness.controller.selectById("planted:a"); const id = harness.controller.addPointLight(); harness.flush();
+    assert.equal(id, "light:1"); assert.equal(harness.status.selected.id, "planted:a"); assert.equal(harness.status.lighting.enabled, true); assert.equal(harness.writes, 1);
+    assert.equal(harness.scene().lighting.points[0].x, 700); assert.equal(harness.scene().lighting.points[0].y, 900);
+    assert.equal(harness.controller.updatePointLight(id, { name: "  Тёплая лампа  ", x: 1000, y: 950, radius: 320, intensity: 1.4, color: "#ffa040", enabled: false }), true);
+    const updated = harness.controller.getSceneJson(), writes = harness.writes; assert.ok(parseScene(updated));
+    assert.equal(harness.scene().lighting.points[0].name, "Тёплая лампа");
+    for (const patch of [{ x: -1 }, { radius: 31 }, { intensity: 2.1 }, { color: "orange" }, { name: "  " }, { id: "tamper" }]) assert.equal(harness.controller.updatePointLight(id, patch), false);
+    assert.equal(harness.controller.setLighting({ ambient: Infinity }), false); assert.equal(harness.controller.setLighting({ points: [] }), false);
+    assert.equal(harness.controller.getSceneJson(), updated); assert.equal(harness.writes, writes);
+    assert.equal(harness.controller.deletePointLight(id), true); assert.equal(harness.scene().lighting.points.length, 0);
+    harness.controller.undo(); assert.equal(harness.controller.getSceneJson(), updated); harness.controller.undo(); assert.equal(harness.scene().lighting.points[0].x, 700);
+    harness.controller.undo(); assert.deepEqual(harness.scene().lighting, fixture.lighting); assert.equal(harness.scene().planted.length, 3);
+    harness.controller.clearSelection(); const centerId = harness.controller.addPointLight(); assert.ok(centerId); assert.equal(harness.scene().lighting.points[0].x, 800); assert.equal(harness.scene().lighting.points[0].y, 800);
+  } finally { harness.dispose(); }
+});
+
+test("a multi-slider settings preview remains outside exports/history and commits lighting, shore and nominal shadow height once", async () => {
+  const fixture = groupedScene(); fixture.planted[0].scale = 2;
+  const harness = controllerHarness(serializeScene(fixture));
+  try {
+    harness.controller.selectById("planted:a"); harness.flush(); const before = harness.controller.getSceneJson(), list = harness.status.objectList;
+    assert.equal(harness.status.selectedShadowHeight, 24);
+    harness.controller.beginSettingsEdit(); harness.controller.setLighting({ enabled: true, ambient: .7 }); harness.controller.setLighting({ ambient: .5, sunAngle: 240 });
+    harness.controller.setTerrainAppearance({ shoreStyle: "natural", shoreHeight: 18, blendWidth: 48, scatter: .3 });
+    harness.controller.setSelectedShadowHeight(120); harness.controller.setSelectedShadowHeight(180); harness.flush();
+    assert.equal(harness.status.lighting.ambient, .5); assert.equal(harness.status.terrainAppearance.blendWidth, 48); assert.equal(harness.status.selectedShadowHeight, 180, "inspector height is nominal, not multiplied by scale");
+    assert.equal(harness.status.objectList, list); assert.equal(harness.status.canUndo, false); assert.equal(harness.writes, 0); assert.equal(harness.controller.getSceneJson(), before);
+    harness.controller.exportScene(); const exported = JSON.parse(await harness.blobs.at(-1).text()); assert.deepEqual(exported, fixture, "JSON export includes committed settings only");
+    harness.controller.commitSettingsEdit(); harness.flush(); assert.equal(harness.writes, 1); assert.equal(harness.status.canUndo, true);
+    assert.equal(harness.scene().lighting.ambient, .5); assert.equal(harness.scene().terrain.appearance.blendWidth, 48); assert.equal(harness.scene().planted[0].shadowHeight, 180); assert.ok(parseScene(harness.controller.getSceneJson()));
+    harness.controller.undo(); assert.equal(harness.controller.getSceneJson(), before); harness.controller.redo(); assert.equal(harness.scene().planted[0].shadowHeight, 180);
+  } finally { harness.dispose(); }
+});
+
+test("settings preview cancellation and other editing commands restore lighting/shore/shadow without saving previews", () => {
+  const fixture = groupedScene(), harness = controllerHarness(serializeScene(fixture));
+  try {
+    for (const stop of ["cancel", "blur", "Escape", "select", "mode", "pointer"]) {
+      harness.controller.selectById("planted:a"); const before = harness.controller.getSceneJson(), writes = harness.writes;
+      harness.controller.beginSettingsEdit(); harness.controller.setLighting({ ambient: .3 }); harness.controller.setTerrainAppearance({ blendWidth: 60 }); harness.controller.setSelectedShadowHeight(200);
+      if (stop === "cancel") harness.controller.cancelSettingsEdit(); else if (stop === "blur") harness.blur(); else if (stop === "Escape") harness.key("Escape");
+      else if (stop === "select") harness.controller.selectFolder("group:north"); else if (stop === "mode") harness.controller.setMode("terrain");
+      else { harness.controller.setMode("select"); const p = harness.screen(700, 880); harness.pointer("pointerdown", p.x, p.y); harness.pointer("pointercancel", p.x, p.y); }
+      harness.flush(); assert.equal(harness.controller.getSceneJson(), before, stop); assert.equal(harness.writes, writes);
+      assert.equal(harness.status.lighting.ambient, fixture.lighting.ambient); assert.equal(harness.status.terrainAppearance.blendWidth, 24); assert.equal(harness.status.selected?.shadowHeight, undefined);
+    }
+    harness.controller.selectById("planted:a"); harness.controller.beginSettingsEdit(); harness.controller.setLighting({ ambient: .4 }); harness.controller.setLighting({ ambient: 1 });
+    harness.controller.setTerrainAppearance({ blendWidth: 60 }); harness.controller.setTerrainAppearance({ blendWidth: 24 }); harness.controller.setSelectedShadowHeight(200); harness.controller.setSelectedShadowHeight(undefined);
+    const before = harness.controller.getSceneJson(), writes = harness.writes; harness.controller.commitSettingsEdit(); harness.flush();
+    assert.equal(harness.controller.getSceneJson(), before, "returned-to-start settings keep canonical committed JSON"); assert.equal(harness.writes, writes); assert.equal(harness.status.canUndo, false);
+  } finally { harness.dispose(); }
+});
+
+test("shadow height edits respect inherited locks, allow hidden authored preparation, reset automatic height and discard pending geometry", () => {
+  const fixture = groupedScene(), harness = controllerHarness(serializeScene(fixture));
+  try {
+    harness.controller.selectById("planted:b"); assert.equal(harness.controller.setSelectedShadowHeight(90), true); assert.equal(harness.scene().planted[1].shadowHeight, 90);
+    harness.controller.setFolderLocked("group:north", true); const locked = harness.controller.getSceneJson(); assert.equal(harness.controller.setSelectedShadowHeight(200), false); assert.equal(harness.controller.getSceneJson(), locked);
+    harness.controller.setFolderLocked("group:north", false); assert.equal(harness.controller.setSelectedShadowHeight(undefined), true); assert.equal(harness.scene().planted[1].shadowHeight, undefined);
+    for (const invalid of [-1, 481, NaN]) assert.equal(harness.controller.setSelectedShadowHeight(invalid), false);
+    harness.controller.selectById("planted:a"); const start = harness.screen(700, 880), writes = harness.writes;
+    harness.pointer("pointerdown", start.x, start.y); harness.pointer("pointermove", start.x + 40, start.y + 20); harness.flush(); assert.ok(harness.status.selected.x > 700);
+    assert.equal(harness.controller.setSelectedShadowHeight(0), true); harness.pointer("pointerup", start.x + 40, start.y + 20); harness.flush();
+    assert.equal(harness.scene().planted[0].x, 700); assert.equal(harness.scene().planted[0].y, 900); assert.equal(harness.scene().planted[0].shadowHeight, 0); assert.equal(harness.writes, writes + 1);
+  } finally { harness.dispose(); }
+});
+
+test("lighting/shore settings survive seed change, object reset and later brush edits, with validated import and undo", () => {
+  const harness = controllerHarness(serializeScene(groupedScene()));
+  try {
+    harness.controller.setLighting({ enabled: true, ambient: .65, sunAngle: 250, shadowSoftness: 14 }); harness.controller.addPointLight(); harness.controller.setTerrainAppearance({ shoreHeight: 20, blendWidth: 40, scatter: .8 });
+    const lighting = harness.scene().lighting, appearance = harness.scene().terrain.appearance, seed = harness.scene().seed;
+    harness.controller.regenerate(); assert.notEqual(harness.scene().seed, seed); assert.deepEqual(harness.scene().lighting, lighting); assert.deepEqual(harness.scene().terrain.appearance, appearance);
+    harness.controller.resetEdits(); assert.deepEqual(harness.scene().lighting, lighting); assert.deepEqual(harness.scene().terrain.appearance, appearance);
+    harness.controller.setMode("terrain"); harness.controller.setTerrainBrush("water"); const p = harness.screen(600, 600); harness.pointer("pointerdown", p.x, p.y); harness.pointer("pointerup", p.x, p.y);
+    assert.deepEqual(harness.scene().terrain.appearance, appearance); assert.ok(parseScene(harness.controller.getSceneJson()));
+    harness.controller.undo(); assert.deepEqual(harness.scene().terrain.cells, {}); assert.deepEqual(harness.scene().lighting, lighting);
+  } finally { harness.dispose(); }
+});
+
+test("point-light limits and settings no-ops never consume history or generate duplicate IDs", () => {
+  const fixture = groupedScene(); fixture.lighting.points = Array.from({ length: 32 }, (_, index) => ({ id: `light:${index + 1}`, name: `Свет ${index + 1}`, x: 800, y: 800, radius: 100, intensity: 1, color: "#ffffff", enabled: true }));
+  const harness = controllerHarness(serializeScene(fixture));
+  try {
+    const before = harness.controller.getSceneJson(); assert.equal(harness.controller.addPointLight(), null); assert.equal(harness.controller.getSceneJson(), before);
+    harness.controller.setLighting({ ambient: 1 }); harness.controller.updatePointLight("light:1", { radius: 100 }); harness.controller.beginSettingsEdit(); harness.controller.setLighting({ sunAngle: 135 }); harness.controller.commitSettingsEdit();
+    assert.equal(harness.writes, 0); assert.equal(harness.controller.getSceneJson(), before);
+    harness.controller.deletePointLight("light:17"); const id = harness.controller.addPointLight(); assert.equal(id, "light:17"); assert.equal(new Set(harness.scene().lighting.points.map(point => point.id)).size, 32);
+  } finally { harness.dispose(); }
+});
+
+test("staged PNG JSON import cannot replace newly started lighting settings and dispose never saves an unfinished preview", async () => {
+  const asset = await readPngFile(pngFile()), decode = deferred(), fixture = groupedScene();
+  const harness = controllerHarness(serializeScene(fixture), false, { loadImage: () => decode.promise, deferredSave: true });
+  try {
+    const imported = harness.controller.importScene(serializeScene(pngScene(asset))); await microtasks();
+    harness.controller.beginSettingsEdit(); harness.controller.setLighting({ enabled: true, ambient: .4 });
+    decode.resolve({ width: 2, height: 1 }); assert.equal(await imported, false); harness.flush();
+    assert.deepEqual(harness.scene(), fixture); assert.equal(harness.status.lighting.ambient, .4); assert.equal(harness.writes, 0);
+    harness.controller.commitSettingsEdit(); assert.equal(harness.pendingSaves, 1);
+    harness.controller.beginSettingsEdit(); harness.controller.setLighting({ ambient: .2 }); harness.controller.setTerrainAppearance({ shoreHeight: 22 });
+    harness.controller.dispose(); assert.equal(harness.writes, 1); assert.equal(harness.savedScene().lighting.ambient, .4); assert.equal(harness.savedScene().terrain.appearance, undefined);
   } finally { harness.dispose(); }
 });

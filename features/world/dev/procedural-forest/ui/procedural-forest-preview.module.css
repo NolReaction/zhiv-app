@@ -84,7 +84,7 @@
 .dockHeading { height: 42px; flex: 0 0 42px; display: flex; align-items: center; justify-content: space-between; padding: 0 15px; border-bottom: 1px solid #81956c25; }
 .dockHeading > span { font-size: 8px; letter-spacing: .16em; color: #8ea47a; }
 .dockHeading button { border: 0; background: transparent; display: grid; place-items: center; width: 24px; height: 24px; }
-.dockTabs { display: flex; padding: 5px 10px; gap: 3px; border-bottom: 1px solid #81956c25; }
+.dockTabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 5px 10px; gap: 3px; border-bottom: 1px solid #81956c25; }
 .dockTabs button { display: flex; justify-content: center; align-items: center; gap: 7px; flex: 1; height: 34px; font-size: 11px; background: transparent; border-color: transparent; }
 .dockTabs button[aria-selected="true"] { background: #2d3d26; color: #d7e6ba; border-color: #81956c40; }
 .dockBody { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
@@ -166,6 +166,35 @@
 .terrainInstructions { margin-top: 22px; padding-top: 16px; border-top: 1px solid #81956c30; }
 .terrainInstructions strong { font-size: 12px; font-weight: 500; color: #c5d7b0; }
 .terrainInstructions p { font-size: 11px; line-height: 1.7; color: #8f9e88; }
+.terrainAppearance, .lightingSection { margin-top: 20px; padding-top: 16px; border-top: 1px solid #81956c30; }
+.terrainAppearance h3, .lightingSection h3 { margin: 0 0 12px; color: #c5d7b0; font-size: 12px; font-weight: 500; }
+.lightingContent { padding: 16px; }
+.lightingContent > .terrainToggle:first-child { margin-top: 0; }
+.lightPresets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 16px; }
+.lightPresets button { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 3px; font-size: 11px; }
+.settingRange { display: flex; flex-direction: column; gap: 9px; margin-top: 15px; color: #a7bb96; font-size: 11px; }
+.settingRange > span { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.settingRange strong { color: #cbd9b5; font: 10px ui-monospace, monospace; flex-shrink: 0; }
+.settingRange input { width: 100%; border: 0; background: transparent; accent-color: #b0cc7f; }
+.settingColor { display: flex; flex-direction: column; gap: 8px; margin-top: 15px; color: #a7bb96; font-size: 11px; }
+.colorControls { display: grid; grid-template-columns: 40px minmax(0, 1fr) 88px; gap: 5px; align-items: center; }
+.colorControls input[type="color"] { width: 40px; height: 32px; padding: 2px; cursor: pointer; }
+.colorControls input[type="text"] { width: 100%; height: 32px; padding: 5px; font: 10px ui-monospace, monospace; }
+.colorControls button { height: 32px; padding: 0 5px; font-size: 10px; }
+.lightingSection .panelSectionHeading { margin-bottom: 9px; }
+.lightingSection .panelSectionHeading h3 { margin: 0; }
+.lightingSection .panelSectionHeading h3 span { margin-left: 6px; color: #81976f; font-size: 9px; }
+.pointLights { display: grid; max-height: 168px; overflow-y: auto; overscroll-behavior: contain; }
+.pointLightRow { display: grid; grid-template-columns: minmax(0, 1fr) 29px 29px; gap: 4px; padding: 4px 0; border-bottom: 1px solid #81956c22; }
+.pointLightRow[data-selected="true"] { background: #354a2955; }
+.pointLightRow button { display: grid; place-items: center; height: 32px; background: transparent; border: 0; }
+.pointLightRow .pointLightSelect { text-align: left; justify-items: start; padding: 0 7px; min-width: 0; font-size: 12px; }
+.pointLightSelect span { display: block; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pointLightFields { margin-top: 16px; }
+.pointLightFields > .fields { margin-top: 12px; }
+.lightingNote { margin: 24px 0 0; padding-top: 16px; border-top: 1px solid #81956c30; color: #8f9e88; font-size: 10px; line-height: 1.7; }
+.objectShadow { display: grid; grid-template-columns: minmax(0, 1fr) 54px; gap: 8px; align-items: end; margin-top: 20px; padding-top: 15px; border-top: 1px solid #81956c30; }
+.objectShadow button { height: 35px; font-size: 11px; }
 .layerRow { min-height: 44px; display: grid; grid-template-columns: 18px minmax(0, 1fr) 27px 27px 20px 25px; align-items: center; gap: 3px; border-bottom: 1px solid #81956c20; padding: 3px 0; }
 .layerRow[data-active="true"] { background: #35432b4d; }
 .layerRow > button { display: grid; place-items: center; height: 29px; background: transparent; border: 0; }

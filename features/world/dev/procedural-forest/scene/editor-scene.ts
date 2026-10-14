@@ -2,7 +2,8 @@ import { forestObjects, initialProps, INITIAL_SEED, INITIAL_WIDTH, MAX_WIDTH, OV
 import { MAX_IMAGE_ASSETS, sceneAssetsWithinLimits, validateImageAsset, type ImageAsset } from "@/features/world/dev/procedural-forest/assets/image-assets";
 import { MAX_SCENE_LAYERS, MAX_STACK_VALUE, defaultLayers, validStackKey, type SceneLayer } from "./stacking";
 import { MAX_SCENE_FOLDERS, defaultFolders, folderAncestors, type SceneFolder } from "./folders";
-import { cloneTerrain, initialTerrain, validateTerrain, type TerrainState } from "@/features/world/dev/procedural-forest/terrain/terrain-data";
+import { cloneTerrain, initialTerrain, terrainAppearance, validateTerrain, type TerrainState } from "@/features/world/dev/procedural-forest/terrain/terrain-data";
+import { cloneLighting, initialLighting, validateLighting, type LightingState } from "@/features/world/dev/procedural-forest/lighting/lighting-data";
 
 /** This namespace never reads or writes the actual game's saves. */
 export const SCENE_STORAGE_KEY = "zhiv:prototype:procedural-forest:scene:v1";
@@ -11,14 +12,17 @@ const MAX_OBJECTS = 5_000;
 const MAX_EDITS = 10_000;
 const kinds = new Set(["tree", "shrub", "rock", "ruins", "bridge", "jetty", "image"]);
 const metadataKeys = ["layerId", "hidden", "locked", "name", "stackOrder"] as const;
-const objectKeys = new Set(["id", "kind", "x", "y", "scale", "variant", "rotation", "assetId", "imageWidth", "imageHeight", "folderId", ...metadataKeys]);
+const objectKeys = new Set(["id", "kind", "x", "y", "scale", "variant", "rotation", "assetId", "imageWidth", "imageHeight", "folderId", "shadowHeight", ...metadataKeys]);
 const scalarObjectKeys = [...objectKeys].filter(key => key !== "stackOrder") as (keyof ForestObject)[];
-const sceneKeys = new Set(["version", "seed", "width", "planted", "removed", "modified", "assets", "layers", "folders", "terrain"]);
+const sceneKeys = new Set(["version", "seed", "width", "planted", "removed", "modified", "assets", "layers", "folders", "terrain", "lighting"]);
+const lightingScalarKeys = ["enabled", "ambient", "ambientColor", "sunAngle", "sunElevation", "sunIntensity", "sunColor", "shadowOpacity", "shadowSoftness"] as const;
+const pointLightKeys = ["id", "name", "x", "y", "radius", "intensity", "color", "enabled"] as const;
+const terrainAppearanceKeys = ["shoreStyle", "shoreHeight", "blendWidth", "scatter"] as const;
 const layerKeys = new Set(["id", "name", "visible", "locked"]);
 const folderKeys = new Set(["id", "name", "parentId", "visible", "locked"]);
 
 export type ForestScene = {
-  version: 4;
+  version: 5;
   seed: number;
   width: number;
   planted: ForestObject[];
@@ -28,17 +32,18 @@ export type ForestScene = {
   layers: SceneLayer[];
   folders: SceneFolder[];
   terrain: TerrainState;
+  lighting: LightingState;
 };
 
 export function initialScene(): ForestScene {
-  return { version: 4, seed: INITIAL_SEED, width: INITIAL_WIDTH, planted: [], removed: [], modified: [], assets: [], layers: defaultLayers(), folders: defaultFolders(), terrain: initialTerrain() };
+  return { version: 5, seed: INITIAL_SEED, width: INITIAL_WIDTH, planted: [], removed: [], modified: [], assets: [], layers: defaultLayers(), folders: defaultFolders(), terrain: initialTerrain(), lighting: initialLighting() };
 }
 
 export function cloneScene(scene: ForestScene): ForestScene {
   const cloneObject = (object: ForestObject) => ({ ...object, ...(object.stackOrder ? { stackOrder: [...object.stackOrder] } : {}) });
   return { ...scene, planted: scene.planted.map(cloneObject), removed: [...scene.removed], modified: scene.modified.map(cloneObject),
     assets: scene.assets.map(asset => ({ ...asset })), layers: scene.layers.map(layer => ({ ...layer })),
-    folders: scene.folders.map(folder => ({ ...folder })), terrain: cloneTerrain(scene.terrain) };
+    folders: scene.folders.map(folder => ({ ...folder })), terrain: cloneTerrain(scene.terrain), lighting: cloneLighting(scene.lighting) };
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -95,14 +100,15 @@ function readObject(value: unknown, width: number, assets: ReadonlyMap<string, I
   const onMap = value.x >= 0 && value.x <= width && value.y >= 0 && value.y <= WORLD_HEIGHT;
   const originalAnchor = !!original && value.x === original.x && value.y === original.y;
   const generated = !!original && !original.id.startsWith("planted:") && (original.kind === "tree" || original.kind === "shrub" || original.kind === "rock");
-  const buffered = version === 4 && generated && value.x >= -OVERSCAN_EDIT_MARGIN && value.x <= width + OVERSCAN_EDIT_MARGIN
+  const buffered = version >= 4 && generated && value.x >= -OVERSCAN_EDIT_MARGIN && value.x <= width + OVERSCAN_EDIT_MARGIN
     && value.y >= -OVERSCAN_EDIT_MARGIN && value.y <= WORLD_HEIGHT + OVERSCAN_EDIT_MARGIN;
   if (!onMap && !originalAnchor && !buffered) return null;
-  if ((version < 3 && metadataKeys.some(key => key in value)) || (version < 4 && "folderId" in value)) return null;
+  if ((version < 3 && metadataKeys.some(key => key in value)) || (version < 4 && "folderId" in value) || (version < 5 && "shadowHeight" in value)) return null;
   if ((value.layerId !== undefined && (!validId(value.layerId) || !layerIds.has(value.layerId)))
     || (value.folderId !== undefined && value.folderId !== null && (!validId(value.folderId) || !folderIds.has(value.folderId)))
     || (value.hidden !== undefined && typeof value.hidden !== "boolean") || (value.locked !== undefined && typeof value.locked !== "boolean")
-    || (value.name !== undefined && !validName(value.name)) || (value.stackOrder !== undefined && !validStackKey(value.stackOrder))) return null;
+    || (value.name !== undefined && !validName(value.name)) || (value.stackOrder !== undefined && !validStackKey(value.stackOrder))
+    || (value.shadowHeight !== undefined && !finite(value.shadowHeight, 0, 480))) return null;
   const object: SceneObject = { id: value.id, kind: value.kind as SceneObject["kind"], x: value.x, y: value.y,
     scale: value.scale, variant: value.variant, rotation: value.rotation === undefined ? 0 : value.rotation as number };
   if (object.kind === "image") {
@@ -118,22 +124,24 @@ function readObject(value: unknown, width: number, assets: ReadonlyMap<string, I
   if (value.locked !== undefined) object.locked = value.locked as boolean;
   if (value.name !== undefined) object.name = value.name as string;
   if (value.stackOrder !== undefined) object.stackOrder = [...value.stackOrder as number[]];
+  if (value.shadowHeight !== undefined) object.shadowHeight = value.shadowHeight as number;
   return object;
 }
 
 export function validateScene(value: unknown): ForestScene | null {
-  if (!record(value) || Object.keys(value).some(key => !sceneKeys.has(key)) || (value.version !== 1 && value.version !== 2 && value.version !== 3 && value.version !== 4)
+  if (!record(value) || Object.keys(value).some(key => !sceneKeys.has(key)) || (value.version !== 1 && value.version !== 2 && value.version !== 3 && value.version !== 4 && value.version !== 5)
     || (value.version === 1 && "assets" in value) || (value.version !== 1 && (!Array.isArray(value.assets) || value.assets.length > MAX_IMAGE_ASSETS))
-    || (value.version < 3 && "layers" in value) || (value.version !== 4 && ("folders" in value || "terrain" in value))
+    || (value.version < 3 && "layers" in value) || (value.version < 4 && ("folders" in value || "terrain" in value)) || (value.version < 5 && "lighting" in value)
     || !finite(value.seed, 0, 2_147_483_647) || !Number.isInteger(value.seed)
     || !finite(value.width, INITIAL_WIDTH, MAX_WIDTH) || (value.width - INITIAL_WIDTH) % 800 !== 0
     || !Array.isArray(value.planted) || !Array.isArray(value.removed) || !Array.isArray(value.modified)
     || value.planted.length > MAX_OBJECTS || value.removed.length > MAX_EDITS || value.modified.length > MAX_EDITS) return null;
   const layers = value.version >= 3 ? readLayers(value.layers) : defaultLayers();
   if (!layers) return null;
-  const folders = value.version === 4 ? readFolders(value.folders) : defaultFolders();
-  const terrain = value.version === 4 ? validateTerrain(value.terrain, value.width) : initialTerrain();
-  if (!folders || !terrain) return null;
+  const folders = value.version >= 4 ? readFolders(value.folders) : defaultFolders();
+  const terrain = value.version >= 4 ? validateTerrain(value.terrain, value.width) : initialTerrain();
+  const lighting = value.version === 5 ? validateLighting(value.lighting, value.width) : initialLighting();
+  if (!folders || !terrain || !lighting) return null;
   const layerIds = new Set(layers.map(layer => layer.id));
   const folderIds = new Set(folders.map(folder => folder.id));
   const assets: ImageAsset[] = [];
@@ -169,8 +177,8 @@ export function validateScene(value: unknown): ForestScene | null {
     if (object.kind !== "stump-house") modified.push(object);
     modifiedIds.add(object.id);
   }
-  return { version: 4, seed: value.seed, width: value.width, planted,
-    removed: [...removed].filter(id => known.get(id)?.kind !== "stump-house"), modified, assets, layers, folders, terrain };
+  return { version: 5, seed: value.seed, width: value.width, planted,
+    removed: [...removed].filter(id => known.get(id)?.kind !== "stump-house"), modified, assets, layers, folders, terrain, lighting };
 }
 
 export function parseScene(json: string): ForestScene | null {
@@ -184,6 +192,7 @@ export function serializeScene(scene: ForestScene): string {
 }
 
 function sameScene(a: ForestScene, b: ForestScene): boolean {
+  const appearanceA = terrainAppearance(a.terrain), appearanceB = terrainAppearance(b.terrain);
   const equalKeys = (left?: readonly number[], right?: readonly number[]) => left === right
     || (!!left && !!right && left.length === right.length && left.every((component, index) => component === right[index]));
   const equalObjects = (left: readonly ForestObject[], right: readonly ForestObject[]) => left.length === right.length
@@ -201,6 +210,9 @@ function sameScene(a: ForestScene, b: ForestScene): boolean {
     })
     && a.terrain.baseTrails === b.terrain.baseTrails && Object.keys(a.terrain.cells).length === Object.keys(b.terrain.cells).length
     && Object.keys(a.terrain.cells).every(key => a.terrain.cells[key] === b.terrain.cells[key])
+    && terrainAppearanceKeys.every(key => appearanceA[key] === appearanceB[key])
+    && lightingScalarKeys.every(key => a.lighting[key] === b.lighting[key])
+    && a.lighting.points.length === b.lighting.points.length && a.lighting.points.every((point, index) => pointLightKeys.every(key => point[key] === b.lighting.points[index][key]))
     && a.assets.length === b.assets.length && a.assets.every((asset, index) => {
       const other = b.assets[index];
       return asset.id === other.id && asset.name === other.name && asset.width === other.width && asset.height === other.height && asset.dataUrl === other.dataUrl;

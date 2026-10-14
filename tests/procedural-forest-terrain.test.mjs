@@ -10,6 +10,7 @@ const {
   initialTerrain, cloneTerrain, validateTerrain, terrainCellKey, readTerrainMaterial,
   applyTerrainPatch, strokeTerrainCells, dirtyTerrainChunks, sampleEditedGround,
   CELL_SIZE, TERRAIN_CHUNK_SIZE, MAX_TERRAIN_CELLS,
+  terrainAppearance, validateTerrainAppearance, updateTerrainAppearance,
 } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/terrain/terrain-data.ts");
 const { sampleGround } = await vite.ssrLoadModule("/features/world/dev/procedural-forest/terrain/layout.ts");
 const preview = cells => ({ cells: new Map(cells), chunkVersions: new Map() });
@@ -126,4 +127,26 @@ test("ground queries honour each explicit material, preview restore and base tra
     assert.deepEqual(sampleEditedGround(x, y, base, preview([[key, material]])), sample);
     assert.deepEqual(sampleEditedGround(x, y, edited, preview([[key, null]])), sampleGround(x, y));
   }
+});
+
+test("appearance is optional in old terrain and validates, clones and survives brush patches", () => {
+  const legacy = initialTerrain();
+  assert.deepEqual(terrainAppearance(legacy), { shoreStyle: "stone", shoreHeight: 12, blendWidth: 24, scatter: .55 });
+  assert.equal("appearance" in validateTerrain(legacy, 1600), false);
+  const appearance = { shoreStyle: "natural", shoreHeight: 24, blendWidth: 64, scatter: 1 };
+  const changed = updateTerrainAppearance(legacy, appearance);
+  assert.deepEqual(validateTerrain(changed, 1600), changed);
+  assert.equal("appearance" in legacy, false);
+  assert.equal(updateTerrainAppearance(changed, { shoreHeight: 24 }), changed);
+  assert.equal(updateTerrainAppearance(changed, { shoreHeight: 25 }), changed);
+  const cloned = cloneTerrain(changed); cloned.appearance.shoreHeight = 0;
+  assert.equal(changed.appearance.shoreHeight, 24);
+  assert.deepEqual(applyTerrainPatch(changed, new Map([["1:1", "grass"]])).appearance, appearance);
+  for (const value of [null, {}, { ...appearance, unknown: 0 }, { ...appearance, shoreStyle: "brick" },
+    { ...appearance, shoreHeight: -1 }, { ...appearance, shoreHeight: Infinity }, { ...appearance, blendWidth: 7 },
+    { ...appearance, blendWidth: 65 }, { ...appearance, scatter: -1 }, { ...appearance, scatter: 1.01 }]) {
+    assert.equal(validateTerrainAppearance(value), null);
+    assert.equal(validateTerrain({ ...legacy, appearance: value }, 1600), null);
+  }
+  assert.ok(dirtyTerrainChunks(["26:10"]).has("1:0"), "96px halo reaches neighbours before a wide blend or bank crosses the tile seam");
 });

@@ -5,7 +5,9 @@ import { compareObjects, forestObjects, initialProps, objectBounds, objectCorner
 import { assertPngDataUrl, type ImageAsset } from "@/features/world/dev/procedural-forest/assets/image-assets";
 import { DEFAULT_LAYERS, isObjectLocked, isObjectVisible, type SceneLayer } from "@/features/world/dev/procedural-forest/scene/stacking";
 import { DEFAULT_FOLDERS, folderContains, objectFolderId, type SceneFolder } from "@/features/world/dev/procedural-forest/scene/folders";
-import { dirtyTerrainChunks, type TerrainPreview, type TerrainState } from "@/features/world/dev/procedural-forest/terrain/terrain-data";
+import { dirtyTerrainChunks, terrainAppearance, type TerrainPreview, type TerrainState } from "@/features/world/dev/procedural-forest/terrain/terrain-data";
+import { createLightingRenderer, type CasterSource } from "@/features/world/dev/procedural-forest/lighting/lighting-renderer";
+import { initialLighting, type LightingState } from "@/features/world/dev/procedural-forest/lighting/lighting-data";
 
 export type CanvasFactory = (width: number, height: number) => HTMLCanvasElement;
 export type ImageLoader = (dataUrl: string) => Promise<CanvasImageSource>;
@@ -20,11 +22,13 @@ export type ForestOptions = {
   selectedFolderId?: string | null; brushCursor?: { x: number; y: number; diameter: number };
   selectionArea?: Bounds;
   interactiveCache?: boolean; renderScale?: number;
+  lighting?: LightingState;
 };
 const TILE = 512;
 const SOURCE_PIXEL_BUDGET = 64_000_000;
 const BUCKET = 256;
 const EMPTY_TERRAIN: TerrainState = { baseTrails: true, cells: Object.freeze({}) };
+const DISABLED_LIGHTING = initialLighting();
 
 async function decodeImage(dataUrl: string): Promise<CanvasImageSource> {
   await assertPngDataUrl(dataUrl);
@@ -43,9 +47,12 @@ export function createForestPainter(makeCanvas: CanvasFactory, onAssetsChanged?:
   const terrainComposer = createTerrainComposer(makeCanvas);
   const editedGround = new Map<string, { canvas: HTMLCanvasElement; baseTrails: boolean; previewCells: TerrainPreview["cells"] | undefined; previewVersion: number }>();
   let lastTerrainCells: TerrainState["cells"] | undefined;
+  let lastTerrainAppearanceRef: TerrainState["appearance"] | null = null, lastTerrainAppearanceKey = "";
   let terrainComposites = 0, baseTerrainBuilds = 0;
   const sprites = new Map<string, HTMLCanvasElement>();
   const shadows = new Map<string, HTMLCanvasElement>();
+  const casterArt = new Map<string, CasterSource>();
+  const lightingRenderer = createLightingRenderer(makeCanvas, casterSource);
   type Source = { promise: Promise<CanvasImageSource>; image?: CanvasImageSource; pixels: number; used: number; failed?: boolean };
   // Current scene and freshly prepared imports stay decoded; older undo entries use LRU.
   const sources = new Map<string, Map<string, Source>>();
@@ -57,6 +64,7 @@ export function createForestPainter(makeCanvas: CanvasFactory, onAssetsChanged?:
   let generated: ForestObject[] = [];
   let generatedWidth = 0;
   let lastPaintAssets: ReadonlyMap<string, ImageAsset> | undefined;
+  let activeAssets: ReadonlyMap<string, ImageAsset> | undefined;
   let boundsCache = new WeakMap<ForestObject, Bounds>();
   let sceneBuilds = 0, boundsComputed = 0, shadowBuilds = 0;
   type PreparedScene = { key: unknown[]; all: ForestObject[]; visible: ForestObject[]; byId: Map<string, ForestObject>;
@@ -118,6 +126,7 @@ export function createForestPainter(makeCanvas: CanvasFactory, onAssetsChanged?:
           source.image = image;
           // A restored source may have been represented by a loading placeholder in the bitmap.
           for (const object of staticScene?.visible ?? []) if (object.kind === "image" && object.assetId === asset.id) invalidateStatic(boundsFor(object));
+          lightingRenderer.invalidateAsset(asset.id);
           lastPaintAssets = undefined; pruneSources(); onAssetsChanged?.();
         }
         return image;
@@ -305,6 +314,11 @@ export function createForestPainter(makeCanvas: CanvasFactory, onAssetsChanged?:
   }
 
   function syncTerrain(state: TerrainState) {
+    if (lastTerrainAppearanceRef !== state.appearance) {
+      const key = JSON.stringify(terrainAppearance(state));
+      if (key !== lastTerrainAppearanceKey) editedGround.clear();
+      lastTerrainAppearanceRef = state.appearance; lastTerrainAppearanceKey = key;
+    }
     if (lastTerrainCells === state.cells) return;
     const changed = new Set<string>();
     for (const [key, material] of Object.entries(lastTerrainCells ?? {})) if (state.cells[key] !== material) changed.add(key);
@@ -329,16 +343,16 @@ export function createForestPainter(makeCanvas: CanvasFactory, onAssetsChanged?:
     const cached = editedGround.get(key);
     if (cached && cached.baseTrails === state.baseTrails && cached.previewVersion === previewVersion && cached.previewCells === previewCells) return cached.canvas;
     const canvas = terrainComposer.compose(base, bounds, state, options.terrainPreview, material => {
-      const materialKey = `${material}:${key}`;
+      const materialKey = `${state.baseTrails ? 1 : 0}:${material}:${key}`;
       let tile = materialGround.get(materialKey);
       if (!tile) {
         tile = makeCanvas(TILE + 2, TILE + 2);
         const ctx = tile.getContext("2d"); if (!ctx) throw new Error("Не удалось подготовить материал местности.");
-        ctx.translate(1 - tx * TILE, 1 - ty * TILE); drawTerrainMaterial(ctx, options.seed, bounds, material);
+        ctx.translate(1 - tx * TILE, 1 - ty * TILE); drawTerrainMaterial(ctx, options.seed, bounds, material, state.baseTrails);
         materialGround.set(materialKey, tile);
       }
       return tile;
-    }, cached?.canvas);
+    }, cached?.canvas, options.seed, options.width);
     if (canvas !== base) terrainComposites++;
     editedGround.set(key, { canvas, baseTrails: state.baseTrails, previewCells, previewVersion }); return canvas;
   }
@@ -357,6 +371,26 @@ export function createForestPainter(makeCanvas: CanvasFactory, onAssetsChanged?:
       sprites.set(key, canvas);
     }
     return canvas;
+  }
+
+  function casterSource(object: ForestObject): CasterSource {
+    if (object.kind === "image") {
+      const asset = object.assetId ? activeAssets?.get(object.assetId) : undefined;
+      return { image: asset && sources.get(asset.id)?.get(asset.dataUrl)?.image, bounds: objectLocalBounds(object) };
+    }
+    if (object.kind === "tree" || object.kind === "shrub" || object.kind === "rock") return { image: sprite(object), bounds: { x: -96, y: -172, width: 192, height: 192 } };
+    const key = object.kind;
+    let art = casterArt.get(key);
+    if (!art) {
+      const bounds = objectBounds({ ...object, x: 0, y: 0, scale: 1, rotation: 0 });
+      const image = makeCanvas(Math.ceil(bounds.width * 2) + 8, Math.ceil(bounds.height * 2) + 8), ctx = image.getContext("2d");
+      if (!ctx) throw new Error("Не удалось подготовить силуэт предмета.");
+      const padded = { x: bounds.x - 2, y: bounds.y - 2, width: image.width / 2, height: image.height / 2 };
+      ctx.scale(2, 2); ctx.translate(-padded.x, -padded.y);
+      if (object.kind === "ruins") drawRuins(ctx); else if (object.kind === "bridge") drawBridge(ctx); else drawJetty(ctx);
+      art = { image, bounds: padded }; casterArt.set(key, art);
+    }
+    return art;
   }
 
   function drawShadows(ctx: CanvasRenderingContext2D, items: readonly ForestObject[]) {
@@ -435,11 +469,23 @@ export function createForestPainter(makeCanvas: CanvasFactory, onAssetsChanged?:
     const items = visibleObjects(options, repair, scene).visible;
     // Opaque ground erases the cached composite in this patch before rebuilding every alpha layer.
     ctx.save(); ctx.beginPath(); ctx.rect(repair.x, repair.y, repair.width, repair.height); ctx.clip();
-    drawGroundChunks(ctx, repair, options); drawShadows(ctx, items); drawObjects(ctx, items, options); ctx.restore();
+    drawGroundChunks(ctx, repair, options);
+    if (options.lighting?.enabled) lightingRenderer.paintGroundShadows(ctx, repair);
+    drawShadows(ctx, items); drawObjects(ctx, items, options); ctx.restore();
   }
 
   function paint(ctx: CanvasRenderingContext2D, view: Bounds, options: ForestOptions) {
     if (disposed) return { objects: 0, chunks: 0 };
+    if (activeAssets !== options.assets) {
+      const previous = activeAssets; activeAssets = options.assets;
+      // Imports can replace a source before the first paint of the new scene. Refresh its alpha
+      // only after the lookup points at that scene, even if its object geometry did not change.
+      const changed = new Set<string>();
+      for (const [id, asset] of activeAssets ?? []) if (previous?.get(id)?.dataUrl !== asset.dataUrl) changed.add(id);
+      for (const id of previous?.keys() ?? []) if (!activeAssets?.has(id)) changed.add(id);
+      for (const id of changed) lightingRenderer.invalidateAsset(id);
+      for (const object of staticScene?.visible ?? []) if (object.kind === "image" && object.assetId && changed.has(object.assetId)) invalidateStatic(boundsFor(object));
+    }
     if (lastPaintAssets !== options.assets) {
       currentSources = new Set(); lastPaintAssets = options.assets;
       for (const asset of options.assets?.values() ?? []) {
@@ -453,11 +499,14 @@ export function createForestPainter(makeCanvas: CanvasFactory, onAssetsChanged?:
     }
     // The object list may include hidden records; drawing and image export always honor visibility.
     const scene = prepareScene(options), { visible, count } = visibleObjects(options, view, scene);
+    lightingRenderer.sync(options.width, options.lighting ?? DISABLED_LIGHTING, scene.visible, options.previewObjects, options.previewRevision, object => objectVisible(object, options));
     syncTerrain(options.terrain ?? EMPTY_TERRAIN);
     ctx.save(); ctx.beginPath(); ctx.rect(0, 0, options.width, WORLD_HEIGHT); ctx.clip();
     drawGroundChunks(ctx, view, options);
+    if (options.lighting?.enabled) lightingRenderer.paintGroundShadows(ctx, view);
     if (options.interactiveCache && (options.renderScale ?? Infinity) <= 1 && count >= 500) drawStatic(ctx, view, scene, options);
     else { drawShadows(ctx, visible); drawObjects(ctx, visible, options); }
+    if (options.lighting?.enabled) lightingRenderer.paintIllumination(ctx, view);
     if (options.grid) {
       ctx.strokeStyle = "#f3edb67a"; ctx.lineWidth = 1;
       ctx.setLineDash([6, 6]); ctx.beginPath();
@@ -502,6 +551,6 @@ export function createForestPainter(makeCanvas: CanvasFactory, onAssetsChanged?:
     return { objects: count, chunks: ground.size };
   }
 
-  return { paint, objects, prepareAssets, diagnostics: () => ({ sceneBuilds, boundsComputed, shadowBuilds, terrainComposites, baseTerrainBuilds, staticTileBuilds, staticPixels: staticWorld ? staticWorld.width * staticWorld.height + (TILE + 2) ** 2 : 0 }),
-    dispose() { disposed = true; ground.clear(); materialGround.clear(); editedGround.clear(); terrainComposer.dispose(); sprites.clear(); shadows.clear(); sources.clear(); currentSources.clear(); preparedSources.clear(); preparingSources.clear(); generated = []; prepared = undefined; previewCache = undefined; folderFrameCache = undefined; boundsCache = new WeakMap(); lastTerrainCells = undefined; staticWorld = undefined; staticScratch = undefined; staticScene = undefined; staticReady.clear(); staticExcluded.clear(); } };
+  return { paint, objects, prepareAssets, diagnostics: () => ({ sceneBuilds, boundsComputed, shadowBuilds, terrainComposites, baseTerrainBuilds, staticTileBuilds, staticPixels: staticWorld ? staticWorld.width * staticWorld.height + (TILE + 2) ** 2 : 0, lighting: lightingRenderer.diagnostics() }),
+    dispose() { disposed = true; ground.clear(); materialGround.clear(); editedGround.clear(); terrainComposer.dispose(); sprites.clear(); shadows.clear(); casterArt.clear(); lightingRenderer.dispose(); sources.clear(); currentSources.clear(); preparedSources.clear(); preparingSources.clear(); activeAssets = undefined; lastPaintAssets = undefined; generated = []; prepared = undefined; previewCache = undefined; folderFrameCache = undefined; boundsCache = new WeakMap(); lastTerrainCells = undefined; staticWorld = undefined; staticScratch = undefined; staticScene = undefined; staticReady.clear(); staticExcluded.clear(); } };
 }

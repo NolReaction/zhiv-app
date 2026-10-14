@@ -59,6 +59,17 @@ function segmentDistanceSquared(x: number, y: number, a: Point, b: Point): numbe
   return (x - a[0] - projection * dx) ** 2 + (y - a[1] - projection * dy) ** 2;
 }
 
+/** Coast-only queries avoid scanning every trail when rebuilding water contours. */
+export function sampleWaterSignedDistance(x: number, y: number): number {
+  let inside = false, coastDistance = Infinity;
+  for (let index = 0; index < SHORELINE.length; index++) {
+    const a = SHORELINE[index], b = SHORELINE[(index + 1) % SHORELINE.length];
+    if ((a[1] > y) !== (b[1] > y) && x < (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]) + a[0]) inside = !inside;
+    coastDistance = Math.min(coastDistance, segmentDistanceSquared(x, y, a, b));
+  }
+  return Math.sqrt(coastDistance) * (inside ? 1 : -1);
+}
+
 export function sampleGround(x: number, y: number, includeTrails = true): GroundSample {
   let path = 0;
   for (const trail of includeTrails ? TRAILS : []) {
@@ -71,17 +82,10 @@ export function sampleGround(x: number, y: number, includeTrails = true): Ground
     path = Math.max(path, Math.max(0, Math.min(1, (trail.width * 0.5 + 20 - Math.sqrt(closest)) / 25)));
   }
 
-  let inside = false, coastDistance = Infinity;
-  for (let index = 0; index < SHORELINE.length; index++) {
-    const a = SHORELINE[index], b = SHORELINE[(index + 1) % SHORELINE.length];
-    if ((a[1] > y) !== (b[1] > y) && x < (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]) + a[0]) inside = !inside;
-    coastDistance = Math.min(coastDistance, segmentDistanceSquared(x, y, a, b));
-  }
-
   let clearing = path;
   for (const [cx, cy, rx, ry] of CLEARINGS) {
     const distance = Math.sqrt(((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2);
     clearing = Math.max(clearing, Math.min(1, Math.max(0, (1.14 - distance) * 3.3)));
   }
-  return { path, water: Math.sqrt(coastDistance) * (inside ? 1 : -1), clearing };
+  return { path, water: sampleWaterSignedDistance(x, y), clearing };
 }

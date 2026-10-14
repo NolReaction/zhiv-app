@@ -48,7 +48,7 @@ test("default layers and new scenes are independently editable without changing 
   first.reverse(); first[0].visible = false; first[0].name = "Изменено";
   assert.deepEqual(second, expectedLayers); assert.deepEqual(DEFAULT_LAYERS, expectedLayers);
   const a = initialScene(), b = initialScene();
-  assert.equal(a.version, 4); assert.deepEqual(a.layers, expectedLayers);
+  assert.equal(a.version, 5); assert.deepEqual(a.layers, expectedLayers);
   a.layers[1].locked = true;
   assert.deepEqual(b.layers, expectedLayers); assert.deepEqual(defaultLayers(), expectedLayers);
   assert.equal(objectLayerId(rock()), "world");
@@ -60,7 +60,7 @@ test("v2 scenes migrate embedded PNG bytes and object edits with fresh default l
   const legacy = { version: 2, seed: initialScene().seed, width: 1600, planted: [image], removed: ["prop:jetty"],
     modified: [{ ...initialProps()[0], x: 700, rotation: 20 }], assets: [pngAsset] };
   const before = structuredClone(legacy), migrated = parseScene(JSON.stringify(legacy));
-  assert.ok(migrated); assert.equal(migrated.version, 4); assert.deepEqual(migrated.layers, expectedLayers);
+  assert.ok(migrated); assert.equal(migrated.version, 5); assert.deepEqual(migrated.layers, expectedLayers);
   assert.deepEqual(migrated.planted, [image]); assert.deepEqual(migrated.removed, legacy.removed); assert.deepEqual(migrated.modified, legacy.modified);
   assert.equal(migrated.assets[0].dataUrl, pngAsset.dataUrl);
   assert.deepEqual(Buffer.from(migrated.assets[0].dataUrl.split(",")[1], "base64"), originalPng);
@@ -227,7 +227,7 @@ test("history deeply isolates layer records and key arrays, detects semantic no-
 
 test("legacy v3 metadata-only edits preserve overscan anchors while arbitrary out-of-world moves remain rejected", () => {
   const source = initialScene();
-  const legacy = { ...source, version: 3 }; delete legacy.folders; delete legacy.terrain;
+  const legacy = { ...source, version: 3 }; delete legacy.folders; delete legacy.terrain; delete legacy.lighting;
   const overscan = forestObjects(source.seed, { x: 0, y: 0, width: source.width, height: WORLD_HEIGHT })
     .find(object => object.x < 0 || object.y < 0 || object.x > source.width || object.y > WORLD_HEIGHT);
   assert.ok(overscan, "fixture includes a genuine generated object beyond the canvas edge");

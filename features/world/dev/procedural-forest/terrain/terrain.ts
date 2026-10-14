@@ -1,9 +1,8 @@
-import { hash, sampleGround, SHORELINE, TRAILS } from "./layout";
-import type { Point } from "./layout";
-import { CELL_SIZE, readTerrainMaterial, type TerrainMaterial, type TerrainPreview, type TerrainState } from "./terrain-data";
+import { hash, sampleGround, TRAILS, type Point } from "./layout";
+import { CELL_SIZE, TERRAIN_DIRTY_HALO, readTerrainMaterial, terrainAppearance, type TerrainMaterial, type TerrainPreview, type TerrainState } from "./terrain-data";
+import { createWaterContourCache, type WaterContour } from "./contours";
 
 type Bounds = { x: number; y: number; width: number; height: number };
-
 function trace(ctx: CanvasRenderingContext2D, points: readonly Point[], closed = false, offsetY = 0) {
   ctx.beginPath();
   ctx.moveTo(points[0][0], points[0][1] + offsetY);
@@ -18,11 +17,11 @@ function ellipse(ctx: CanvasRenderingContext2D, x: number, y: number, rx: number
 }
 
 /** Every mark is addressed by world coordinates; the guard band preserves marks crossing chunks. */
-function drawGround(ctx: CanvasRenderingContext2D, seed: number, bounds: Bounds, baseTrails: boolean) {
-  ctx.fillStyle = "#536c34";
+function drawGround(ctx: CanvasRenderingContext2D, seed: number, bounds: Bounds, baseTrails: boolean, material?: Exclude<TerrainMaterial, "water">) {
+  ctx.fillStyle = material === "path" ? "#c0a368" : material === "sand" ? "#d2b17a" : "#536c34";
   ctx.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
 
-  for (let gy = Math.floor(bounds.y / 96) - 2; gy <= Math.ceil((bounds.y + bounds.height) / 96) + 2; gy++) {
+  if (material !== "path" && material !== "sand") for (let gy = Math.floor(bounds.y / 96) - 2; gy <= Math.ceil((bounds.y + bounds.height) / 96) + 2; gy++) {
     for (let gx = Math.floor(bounds.x / 96) - 2; gx <= Math.ceil((bounds.x + bounds.width) / 96) + 2; gx++) {
       const x = gx * 96 + hash(gx, gy, seed) * 48, y = gy * 96 + hash(gx, gy, seed + 1) * 48;
       const sample = sampleGround(x, y, baseTrails);
@@ -39,7 +38,7 @@ function drawGround(ctx: CanvasRenderingContext2D, seed: number, bounds: Bounds,
   ctx.lineJoin = "round";
   for (const [extra, color] of [[25, "#75833c70"], [15, "#99954c80"], [7, "#b59f61a8"], [0, "#c0a368"], [-10, "#c9ae76a0"]] as const) {
     ctx.strokeStyle = color;
-    for (const trail of baseTrails ? TRAILS : []) {
+    for (const trail of !material && baseTrails ? TRAILS : []) {
       trace(ctx, trail.points);
       ctx.lineWidth = trail.width + extra;
       ctx.stroke();
@@ -54,9 +53,8 @@ function drawGround(ctx: CanvasRenderingContext2D, seed: number, bounds: Bounds,
       const r = hash(gx, gy, seed + 11), r2 = hash(gx, gy, seed + 12);
       const x = gx * 11 + r * 11, y = gy * 11 + r2 * 11;
       const sample = sampleGround(x, y, baseTrails);
-      if (sample.water > 23) continue;
-      const onPath = sample.path > 0.45;
-      const palette = onPath ? soil : grass;
+      const onPath = material === "path" || material === "sand" || (!material && sample.path > 0.45);
+      const palette = material === "sand" ? ["#f2cf9499", "#bd9b696b", "#c19d6477", "#e7c48caa"] : onPath ? soil : grass;
       ctx.fillStyle = palette[Math.floor(hash(gx, gy, seed + 13) * palette.length)];
       ellipse(ctx, x, y, 0.9 + r * 2.4, 0.6 + r2 * 1.1, (r - 0.5) * 2.5);
       if (!onPath && r > 0.66) {
@@ -85,193 +83,188 @@ function drawGround(ctx: CanvasRenderingContext2D, seed: number, bounds: Bounds,
   }
 }
 
-function drawWater(ctx: CanvasRenderingContext2D, seed: number, bounds: Bounds) {
-  // Sand and eroded soil sit underneath one uninterrupted water outline.
-  trace(ctx, SHORELINE, true);
-  ctx.strokeStyle = "#b3a063";
-  ctx.lineWidth = 31;
-  ctx.stroke();
-  ctx.strokeStyle = "#d2b17a";
-  ctx.lineWidth = 18;
-  ctx.stroke();
+function waterPath(ctx: CanvasRenderingContext2D, contours: readonly WaterContour[], offsetY = 0) {
+  ctx.beginPath();
+  for (const contour of contours) {
+    const points = contour.points;
+    ctx.moveTo(points[0][0], points[0][1] + offsetY);
+    for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1] + offsetY);
+    ctx.closePath();
+  }
+}
 
+function drawWaterTexture(ctx: CanvasRenderingContext2D, seed: number, bounds: Bounds) {
   const water = ctx.createLinearGradient(0, 900, 0, 1900);
-  water.addColorStop(0, "#187d92");
-  water.addColorStop(0.35, "#12869b");
-  water.addColorStop(1, "#12617c");
-  ctx.fillStyle = water;
-  ctx.fill();
-
-  ctx.save();
-  trace(ctx, SHORELINE, true);
-  ctx.clip();
-  ctx.lineWidth = 33;
-  ctx.strokeStyle = "#42a8a52b";
-  ctx.stroke();
-  ctx.lineWidth = 11;
-  ctx.strokeStyle = "#71b4a53a";
-  ctx.stroke();
+  water.addColorStop(0, "#187d92"); water.addColorStop(.35, "#12869b"); water.addColorStop(1, "#12617c");
+  ctx.fillStyle = water; ctx.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
   for (let gy = Math.floor(bounds.y / 18) - 2; gy <= Math.ceil((bounds.y + bounds.height) / 18) + 2; gy++) {
     for (let gx = Math.floor(bounds.x / 37) - 2; gx <= Math.ceil((bounds.x + bounds.width) / 37) + 2; gx++) {
       const r = hash(gx, gy, seed + 30), x = gx * 37 + r * 22, y = gy * 18 + hash(gx, gy, seed + 31) * 12;
-      if (sampleGround(x, y).water < 0) continue;
-      ctx.strokeStyle = r > 0.55 ? "#6bb9bd45" : "#064d7042";
-      ctx.lineWidth = r > 0.75 ? 1.2 : 0.7;
-      ctx.beginPath();
-      ctx.moveTo(x - 13, y);
-      ctx.bezierCurveTo(x - 6, y - 3, x - 1, y + 3, x + 5, y);
-      ctx.bezierCurveTo(x + 12, y - 3, x + 14, y, x + 23, y - 1);
-      ctx.stroke();
-      if (r > 0.87) {
-        ctx.strokeStyle = "#a2d3c250";
-        ctx.beginPath();
-        ctx.moveTo(x - 6, y - 1);
-        ctx.lineTo(x + 1, y - 1);
-        ctx.stroke();
-      }
-    }
-  }
-  // Bank depth is projected down on the water plane; drawing only the front faces
-  // gives the top-down painting a small but tangible vertical dimension.
-  trace(ctx, SHORELINE, true, 11);
-  ctx.strokeStyle = "#123e4275";
-  ctx.lineWidth = 24;
-  ctx.stroke();
-  ctx.restore();
-
-  for (let index = 0; index < SHORELINE.length; index++) {
-    const a = SHORELINE[index], b = SHORELINE[(index + 1) % SHORELINE.length];
-    if (Math.max(a[0], b[0]) < bounds.x - 25 || Math.min(a[0], b[0]) > bounds.x + bounds.width + 25 || Math.max(a[1], b[1]) < bounds.y - 25 || Math.min(a[1], b[1]) > bounds.y + bounds.height + 25) continue;
-    const dx = b[0] - a[0], dy = b[1] - a[1], length = Math.hypot(dx, dy);
-    const subdivisions = Math.max(1, Math.ceil(length / 18));
-    for (let part = 0; part < subdivisions; part++) {
-      const x1 = a[0] + dx * part / subdivisions, y1 = a[1] + dy * part / subdivisions;
-      const x2 = a[0] + dx * (part + 1) / subdivisions, y2 = a[1] + dy * (part + 1) / subdivisions;
-      const r = hash(index, part, seed + 50), depth = 9 + r * 8;
-      // Front-facing banks cast a visible cliff; the opposite bank has a thin lip.
-      const front = sampleGround((x1 + x2) * 0.5, (y1 + y2) * 0.5 + 7).water > 0;
-      const drop = front ? depth : 3.5;
-      const face = ctx.createLinearGradient(x1, y1, x1, y1 + drop);
-      face.addColorStop(0, r > 0.5 ? "#929773" : "#839174");
-      face.addColorStop(1, "#435b51");
-      ctx.fillStyle = face;
-      ctx.strokeStyle = "#3d574c";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(x1, y1 - 2);
-      ctx.lineTo(x2, y2 - 2);
-      ctx.lineTo(x2 + 1, y2 + drop);
-      ctx.lineTo(x1 + 1, y1 + drop);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-      ctx.strokeStyle = "#c1b88aaa";
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(x1 + 1, y1 - 1);
-      ctx.lineTo(x2 - 1, y2 - 1);
-      ctx.stroke();
+      ctx.strokeStyle = r > .55 ? "#6bb9bd45" : "#064d7042"; ctx.lineWidth = r > .75 ? 1.2 : .7;
+      ctx.beginPath(); ctx.moveTo(x - 13, y); ctx.bezierCurveTo(x - 6, y - 3, x - 1, y + 3, x + 5, y);
+      ctx.bezierCurveTo(x + 12, y - 3, x + 14, y, x + 23, y - 1); ctx.stroke();
+      if (r > .87) { ctx.strokeStyle = "#a2d3c250"; ctx.beginPath(); ctx.moveTo(x - 6, y - 1); ctx.lineTo(x + 1, y - 1); ctx.stroke(); }
     }
   }
 }
 
-/** Paints terrain only. Objects are rendered separately in depth order. */
+function drawShore(ctx: CanvasRenderingContext2D, seed: number, bounds: Bounds, contours: readonly WaterContour[], state: TerrainState) {
+  const settings = terrainAppearance(state), stone = settings.shoreStyle === "stone", height = settings.shoreHeight;
+  if (settings.shoreStyle === "none") return;
+  ctx.save(); waterPath(ctx, contours); ctx.clip("evenodd");
+  if (height > 0) {
+    waterPath(ctx, contours, height * .8); ctx.strokeStyle = "#103f4b45"; ctx.lineWidth = height + 7; ctx.stroke();
+    for (const contour of contours) {
+      for (let i = 0; i < contour.points.length; i++) {
+        const a = contour.points[i], b = contour.points[(i + 1) % contour.points.length];
+        if (Math.max(a[0], b[0]) < bounds.x - 3 || Math.min(a[0], b[0]) > bounds.x + bounds.width + 3
+          || Math.max(a[1], b[1]) + height < bounds.y - 3 || Math.min(a[1], b[1]) > bounds.y + bounds.height + 3) continue;
+        const normal = (contour.normals[i][1] + contour.normals[(i + 1) % contour.normals.length][1]) * .5;
+        const light = Math.round(75 + Math.max(-1, Math.min(1, normal)) * 18);
+        ctx.fillStyle = stone ? `rgb(${light},${light + 21},${light + 9})` : `rgb(${light + 40},${light + 25},${light - 8})`;
+        // One shared vertical drop and shared vertices leave no cracks or random steps.
+        ctx.beginPath(); ctx.moveTo(a[0], a[1] - .7); ctx.lineTo(b[0], b[1] - .7);
+        ctx.lineTo(b[0], b[1] + height); ctx.lineTo(a[0], a[1] + height); ctx.closePath(); ctx.fill();
+      }
+    }
+  }
+  waterPath(ctx, contours); ctx.strokeStyle = stone ? "#71b4a52c" : "#83b9a43b"; ctx.lineWidth = stone ? 9 : 15; ctx.stroke();
+  if (stone && height > 0) {
+    ctx.strokeStyle = "#334f4999"; ctx.lineWidth = .8;
+    for (const contour of contours) {
+      // Arc distance is re-anchored at stable world regions, so a local edit does
+      // not shift mortar marks along the rest of a connected lake.
+      const zoneFor = (point: Point) => `${Math.floor(point[0] / 128)}:${Math.floor(point[1] / 128)}`;
+      let zone = zoneFor(contour.points[0]), distance = 0, count = 0;
+      // Include the wrapped prefix when the canonical loop start lies inside
+      // a region. Moving that start cannot move mortar marks in another chunk.
+      for (let i = contour.points.length - 1; i >= 0 && zoneFor(contour.points[i]) === zone; i--) {
+        const a = contour.points[i], b = contour.points[(i + 1) % contour.points.length];
+        distance += Math.hypot(b[0] - a[0], b[1] - a[1]); count++;
+      }
+      if (count === contour.points.length) distance = 0;
+      const [initialX, initialY] = zone.split(":").map(Number);
+      let next = 8 + hash(initialX, initialY, seed + 50) * 14;
+      if (next < distance) next += Math.ceil((distance - next) / 22) * 22;
+      for (let i = 0; i < contour.points.length; i++) {
+        const a = contour.points[i], b = contour.points[(i + 1) % contour.points.length];
+        const zx = Math.floor(a[0] / 128), zy = Math.floor(a[1] / 128), key = `${zx}:${zy}`;
+        if (key !== zone) { zone = key; distance = 0; next = 8 + hash(zx, zy, seed + 50) * 14; }
+        const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
+        while (next <= distance + length) {
+          const t = length ? (next - distance) / length : 0, x = a[0] + (b[0] - a[0]) * t, y = a[1] + (b[1] - a[1]) * t;
+          if (x >= bounds.x - 2 && x <= bounds.x + bounds.width + 2 && y + height >= bounds.y && y <= bounds.y + bounds.height) {
+            ctx.beginPath(); ctx.moveTo(x, y + 1); ctx.lineTo(x, y + height - .5); ctx.stroke();
+          }
+          next += 22;
+        }
+        distance += length;
+      }
+    }
+  }
+  ctx.restore();
+  waterPath(ctx, contours); ctx.strokeStyle = stone ? "#c1bd8ed0" : "#b9ae7b8c"; ctx.lineWidth = stone ? 3 : 5; ctx.lineJoin = "round"; ctx.stroke();
+  if (stone) { waterPath(ctx, contours); ctx.strokeStyle = "#405e4f99"; ctx.lineWidth = .7; ctx.stroke(); }
+}
+
+/** Base chunks contain no baked shoreline: the effective water field supplies it. */
 export function drawTerrain(ctx: CanvasRenderingContext2D, seed: number, bounds: Bounds, baseTrails = true): void {
-  ctx.save();
-  // The caller may also clip; keeping this local makes direct exports safe.
-  ctx.beginPath();
-  ctx.rect(bounds.x, bounds.y, bounds.width, bounds.height);
-  ctx.clip();
-  drawGround(ctx, seed, bounds, baseTrails);
-  drawWater(ctx, seed, bounds);
-  ctx.restore();
+  ctx.save(); ctx.beginPath(); ctx.rect(bounds.x, bounds.y, bounds.width, bounds.height); ctx.clip();
+  drawGround(ctx, seed, bounds, baseTrails); ctx.restore();
 }
 
-/** Opaque, world-addressed paint materials are prepared once and masked into edited chunks. */
-export function drawTerrainMaterial(ctx: CanvasRenderingContext2D, seed: number, bounds: Bounds, material: TerrainMaterial): void {
+/** Repainted grass shares gradients, clearing palette, blades and fleck shadows. */
+export function drawTerrainMaterial(ctx: CanvasRenderingContext2D, seed: number, bounds: Bounds, material: TerrainMaterial, baseTrails = true): void {
   ctx.save(); ctx.beginPath(); ctx.rect(bounds.x, bounds.y, bounds.width, bounds.height); ctx.clip();
-  if (material === "water") {
-    const water = ctx.createLinearGradient(0, 900, 0, 1900);
-    water.addColorStop(0, "#187d92"); water.addColorStop(.35, "#12869b"); water.addColorStop(1, "#12617c");
-    ctx.fillStyle = water; ctx.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
-    for (let gy = Math.floor(bounds.y / 18) - 2; gy <= Math.ceil((bounds.y + bounds.height) / 18) + 2; gy++) {
-      for (let gx = Math.floor(bounds.x / 37) - 2; gx <= Math.ceil((bounds.x + bounds.width) / 37) + 2; gx++) {
-        const r = hash(gx, gy, seed + 30), x = gx * 37 + r * 22, y = gy * 18 + hash(gx, gy, seed + 31) * 12;
-        ctx.strokeStyle = r > .55 ? "#6bb9bd45" : "#064d7042"; ctx.lineWidth = r > .75 ? 1.2 : .7;
-        ctx.beginPath(); ctx.moveTo(x - 13, y); ctx.bezierCurveTo(x - 6, y - 3, x - 1, y + 3, x + 5, y);
-        ctx.bezierCurveTo(x + 12, y - 3, x + 14, y, x + 23, y - 1); ctx.stroke();
-      }
-    }
-  } else {
-    ctx.fillStyle = material === "grass" ? "#536c34" : material === "path" ? "#c0a368" : "#d2b17a";
-    ctx.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
-    if (material === "grass") {
-      for (let gy = Math.floor(bounds.y / 96) - 2; gy <= Math.ceil((bounds.y + bounds.height) / 96) + 2; gy++) {
-        for (let gx = Math.floor(bounds.x / 96) - 2; gx <= Math.ceil((bounds.x + bounds.width) / 96) + 2; gx++) {
-          const x = gx * 96 + hash(gx, gy, seed) * 48, y = gy * 96 + hash(gx, gy, seed + 1) * 48;
-          const radius = 74 + hash(gx, gy, seed + 2) * 57, gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
-          gradient.addColorStop(0, hash(gx, gy, seed + 3) > .45 ? "#7787357c" : "#284e3470"); gradient.addColorStop(1, "#63753200");
-          ctx.fillStyle = gradient; ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
-        }
-      }
-    }
-    const palette = material === "grass" ? ["#8a984558", "#a1aa505e", "#364f3054", "#6c883a73", "#aec05d53"]
-      : material === "path" ? ["#e2c58d99", "#a588526b", "#9e8b5677", "#d4b97eaa"] : ["#f2cf9499", "#bd9b696b", "#c19d6477", "#e7c48caa"];
-    for (let gy = Math.floor(bounds.y / 11) - 2; gy <= Math.ceil((bounds.y + bounds.height) / 11) + 2; gy++) {
-      for (let gx = Math.floor(bounds.x / 11) - 2; gx <= Math.ceil((bounds.x + bounds.width) / 11) + 2; gx++) {
-        const r = hash(gx, gy, seed + 11), r2 = hash(gx, gy, seed + 12), x = gx * 11 + r * 11, y = gy * 11 + r2 * 11;
-        ctx.fillStyle = palette[Math.floor(hash(gx, gy, seed + 13) * palette.length)];
-        ellipse(ctx, x, y, .9 + r * 2.4, .6 + r2 * 1.1, (r - .5) * 2.5);
-        if (material === "grass" && r > .66) {
-          ctx.fillStyle = r2 > .55 ? "#a6b35380" : "#8b9e4680"; ctx.beginPath(); ctx.moveTo(x + 1, y + 1);
-          ctx.quadraticCurveTo(x - 2, y - 1, x - 2 - r * 1.5, y - 2 - r2 * 2); ctx.quadraticCurveTo(x + 1, y - 2, x + 2, y + 1); ctx.fill();
-        }
-      }
-    }
-  }
+  if (material === "water") drawWaterTexture(ctx, seed, bounds);
+  else drawGround(ctx, seed, bounds, baseTrails, material);
   ctx.restore();
 }
 
 type CanvasFactory = (width: number, height: number) => HTMLCanvasElement;
+const MASK_STEP = 4;
 
-/** Bilinear material masks use one shared world grid, including a halo on every chunk. */
+/** World-addressed soft masks and one connected water field serve every chunk. */
 export function createTerrainComposer(makeCanvas: CanvasFactory) {
+  const coast = createWaterContourCache();
   let mask: HTMLCanvasElement | undefined, scratch: HTMLCanvasElement | undefined;
   function compose(base: HTMLCanvasElement, bounds: Bounds, state: TerrainState, preview: TerrainPreview | undefined,
-    materialTile: (material: TerrainMaterial) => HTMLCanvasElement, reuse?: HTMLCanvasElement): HTMLCanvasElement {
-    const minX = Math.floor(bounds.x / CELL_SIZE) - 1, minY = Math.floor(bounds.y / CELL_SIZE) - 1;
-    const maxX = Math.ceil((bounds.x + bounds.width) / CELL_SIZE) + 1, maxY = Math.ceil((bounds.y + bounds.height) / CELL_SIZE) + 1;
-    const groups = new Map<TerrainMaterial, [number, number][]>();
-    for (let y = minY; y < maxY; y++) for (let x = minX; x < maxX; x++) {
-      // A low-resolution mask pixel is centered on the corresponding world cell.
-      if (x * CELL_SIZE + CELL_SIZE * 1.5 <= bounds.x || x * CELL_SIZE - CELL_SIZE * .5 >= bounds.x + bounds.width
-        || y * CELL_SIZE + CELL_SIZE * 1.5 <= bounds.y || y * CELL_SIZE - CELL_SIZE * .5 >= bounds.y + bounds.height) continue;
-      const material = readTerrainMaterial((x + .5) * CELL_SIZE, (y + .5) * CELL_SIZE, state, preview);
-      if (!material) continue;
-      const group = groups.get(material); if (group) group.push([x - minX, y - minY]); else groups.set(material, [[x - minX, y - minY]]);
-    }
-    if (!groups.size) return base;
-    const width = maxX - minX, height = maxY - minY;
-    if (!mask || mask.width !== width || mask.height !== height) mask = makeCanvas(width, height);
-    if (!scratch || scratch.width !== base.width || scratch.height !== base.height) scratch = makeCanvas(base.width, base.height);
-    const target = reuse && reuse !== base ? reuse : makeCanvas(base.width, base.height);
-    const targetCtx = target.getContext("2d"), maskCtx = mask.getContext("2d"), scratchCtx = scratch.getContext("2d");
-    if (!targetCtx || !maskCtx || !scratchCtx) throw new Error("Не удалось подготовить кисть местности.");
-    const dx = minX * CELL_SIZE - bounds.x, dy = minY * CELL_SIZE - bounds.y;
-    const drawMask = (ctx: CanvasRenderingContext2D) => { ctx.imageSmoothingEnabled = true; ctx.drawImage(mask!, dx, dy, width * CELL_SIZE, height * CELL_SIZE); };
+    materialTile: (material: TerrainMaterial) => HTMLCanvasElement, reuse?: HTMLCanvasElement, seed = 0, width = 3200): HTMLCanvasElement {
+    if (!Number.isFinite(width) || width <= 0 || width > 3200) throw new Error("Неверная ширина карты.");
+    const target = reuse && reuse !== base ? reuse : makeCanvas(base.width, base.height), targetCtx = target.getContext("2d");
+    if (!targetCtx) throw new Error("Не удалось подготовить землю.");
+    const contours = coast.read(state, preview), appearance = terrainAppearance(state);
     targetCtx.save(); targetCtx.setTransform(1, 0, 0, 1, 0, 0); targetCtx.globalCompositeOperation = "source-over";
     targetCtx.clearRect(0, 0, base.width, base.height); targetCtx.drawImage(base, 0, 0);
-    maskCtx.clearRect(0, 0, width, height); maskCtx.fillStyle = "#fff";
-    for (const group of groups.values()) for (const [x, y] of group) maskCtx.fillRect(x, y, 1, 1);
-    targetCtx.globalCompositeOperation = "destination-out"; drawMask(targetCtx);
-    for (const [material, group] of groups) {
-      maskCtx.clearRect(0, 0, width, height); for (const [x, y] of group) maskCtx.fillRect(x, y, 1, 1);
-      scratchCtx.save(); scratchCtx.setTransform(1, 0, 0, 1, 0, 0); scratchCtx.globalCompositeOperation = "source-over";
-      scratchCtx.clearRect(0, 0, base.width, base.height); scratchCtx.drawImage(materialTile(material), 0, 0);
-      scratchCtx.globalCompositeOperation = "destination-in"; drawMask(scratchCtx); scratchCtx.restore();
-      targetCtx.globalCompositeOperation = "lighter"; targetCtx.drawImage(scratch, 0, 0);
+    const minX = Math.floor((bounds.x - TERRAIN_DIRTY_HALO) / CELL_SIZE), minY = Math.floor((bounds.y - TERRAIN_DIRTY_HALO) / CELL_SIZE);
+    const maxX = Math.ceil((bounds.x + bounds.width + TERRAIN_DIRTY_HALO) / CELL_SIZE), maxY = Math.ceil((bounds.y + bounds.height + TERRAIN_DIRTY_HALO) / CELL_SIZE);
+    const columns = maxX - minX + 1, rows = maxY - minY + 1, cells = new Uint8Array(columns * rows), groups = new Set<number>();
+    const materialNames: TerrainMaterial[] = ["grass", "path", "sand"];
+    for (let y = minY; y <= maxY; y++) for (let x = minX; x <= maxX; x++) {
+      const material = readTerrainMaterial((x + .5) * CELL_SIZE, (y + .5) * CELL_SIZE, state, preview);
+      const index = material ? materialNames.indexOf(material) + 1 : 0;
+      cells[(y - minY) * columns + x - minX] = index; if (index) groups.add(index);
     }
-    targetCtx.restore(); return target;
+    if (groups.size) {
+      const ox = Math.floor((bounds.x - TERRAIN_DIRTY_HALO) / MASK_STEP) * MASK_STEP, oy = Math.floor((bounds.y - TERRAIN_DIRTY_HALO) / MASK_STEP) * MASK_STEP;
+      const width = Math.ceil((bounds.x + bounds.width + TERRAIN_DIRTY_HALO - ox) / MASK_STEP), height = Math.ceil((bounds.y + bounds.height + TERRAIN_DIRTY_HALO - oy) / MASK_STEP);
+      if (!mask || mask.width !== width || mask.height !== height) mask = makeCanvas(width, height);
+      if (!scratch || scratch.width !== base.width || scratch.height !== base.height) scratch = makeCanvas(base.width, base.height);
+      const maskCtx = mask.getContext("2d"), scratchCtx = scratch.getContext("2d");
+      if (!maskCtx || !scratchCtx) throw new Error("Не удалось подготовить кисть местности.");
+      const alphas = new Map<number, Uint8ClampedArray>([...groups].map(group => [group, new Uint8ClampedArray(width * height)]));
+      const total = new Uint8ClampedArray(width * height);
+      const weights = [0, 0, 0, 0], groupList = [...groups];
+      for (let py = 0; py < height; py++) for (let px = 0; px < width; px++) {
+        const x = ox + (px + .5) * MASK_STEP, y = oy + (py + .5) * MASK_STEP;
+        const gx = x / CELL_SIZE - .5, gy = y / CELL_SIZE - .5, ix = Math.floor(gx), iy = Math.floor(gy), fx = gx - ix, fy = gy - iy;
+        weights.fill(0);
+        const index = (iy - minY) * columns + ix - minX;
+        weights[cells[index] ?? 0] += (1 - fx) * (1 - fy);
+        weights[cells[index + 1] ?? 0] += fx * (1 - fy);
+        weights[cells[index + columns] ?? 0] += (1 - fx) * fy;
+        weights[cells[index + columns + 1] ?? 0] += fx * fy;
+        if (appearance.blendWidth < 16) {
+          let normalizer = 0;
+          for (let i = 0; i < weights.length; i++) { weights[i] **= 16 / appearance.blendWidth; normalizer += weights[i]; }
+          for (let i = 0; i < weights.length; i++) weights[i] /= normalizer || 1;
+        }
+        let sum = 0;
+        for (const group of groups) {
+          const w = weights[group], variation = w > 0 && w < 1 && appearance.scatter
+            ? (Math.sin(x * .117 + y * .071 + seed) + Math.sin(x * .047 - y * .139 + seed * .5)) * .5 : 0;
+          weights[group] = Math.max(0, Math.min(1, w + variation * appearance.scatter * w * (1 - w) * .8)); sum += weights[group];
+        }
+        for (const group of groups) alphas.get(group)![py * width + px] = Math.round(weights[group] / Math.max(1, sum) * 255);
+        total[py * width + px] = Math.min(255, groupList.reduce((sum, group) => sum + alphas.get(group)![py * width + px], 0));
+      }
+      const writeMask = (alpha: Uint8ClampedArray) => {
+        maskCtx!.clearRect(0, 0, width, height);
+        if (typeof maskCtx!.createImageData === "function" && typeof maskCtx!.putImageData === "function") {
+          const pixels = maskCtx!.createImageData(width, height);
+          for (let i = 0; i < alpha.length; i++) { pixels.data[i * 4] = 255; pixels.data[i * 4 + 1] = 255; pixels.data[i * 4 + 2] = 255; pixels.data[i * 4 + 3] = alpha[i]; }
+          maskCtx!.putImageData(pixels, 0, 0);
+        } else for (let i = 0; i < alpha.length; i++) if (alpha[i]) { maskCtx!.fillStyle = `rgba(255,255,255,${alpha[i] / 255})`; maskCtx!.fillRect(i % width, Math.floor(i / width), 1, 1); }
+      };
+      const drawMask = (ctx: CanvasRenderingContext2D) => {
+        ctx.save(); ctx.imageSmoothingEnabled = true; ctx.filter = `blur(${Math.max(0, (appearance.blendWidth - 16) / 3)}px)`;
+        ctx.drawImage(mask!, ox - bounds.x, oy - bounds.y, width * MASK_STEP, height * MASK_STEP); ctx.restore();
+      };
+      writeMask(total); targetCtx.globalCompositeOperation = "destination-out"; drawMask(targetCtx);
+      for (const group of groups) {
+        writeMask(alphas.get(group)!); scratchCtx.save(); scratchCtx.setTransform(1, 0, 0, 1, 0, 0); scratchCtx.globalCompositeOperation = "source-over";
+        scratchCtx.clearRect(0, 0, base.width, base.height); scratchCtx.drawImage(materialTile(materialNames[group - 1]), 0, 0);
+        scratchCtx.globalCompositeOperation = "destination-in"; drawMask(scratchCtx); scratchCtx.restore();
+        targetCtx.globalCompositeOperation = "lighter"; targetCtx.drawImage(scratch, 0, 0);
+      }
+    }
+    targetCtx.globalCompositeOperation = "source-over"; targetCtx.translate(-bounds.x, -bounds.y);
+    if (appearance.shoreStyle !== "none") {
+      waterPath(targetCtx, contours); targetCtx.strokeStyle = appearance.shoreStyle === "stone" ? "#a9a16b70" : "#b5a77088";
+      targetCtx.lineWidth = appearance.shoreStyle === "stone" ? 7 : 15; targetCtx.lineJoin = "round"; targetCtx.stroke();
+    }
+    targetCtx.save(); waterPath(targetCtx, contours); targetCtx.clip("evenodd"); drawWaterTexture(targetCtx, seed, bounds); targetCtx.restore();
+    drawShore(targetCtx, seed, bounds, contours, state); targetCtx.restore(); return target;
   }
-  return { compose, dispose() { mask = undefined; scratch = undefined; } };
+  return { compose, diagnostics: coast.diagnostics, dispose() { mask = undefined; scratch = undefined; coast.dispose(); } };
 }

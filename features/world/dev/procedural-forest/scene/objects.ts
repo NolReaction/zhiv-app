@@ -4,7 +4,7 @@ import { DEFAULT_FOLDERS, type SceneFolder } from "./folders";
 import { sampleEditedGround, type TerrainPreview, type TerrainState } from "@/features/world/dev/procedural-forest/terrain/terrain-data";
 export { objectDepth } from "./stacking";
 
-export type ForestObject = { id: string; x: number; y: number; scale: number; variant: number; kind: "tree" | "shrub" | "rock" | "ruins" | "bridge" | "jetty" | "image"; rotation?: number; assetId?: string; imageWidth?: number; imageHeight?: number; layerId?: string; folderId?: string | null; hidden?: boolean; locked?: boolean; name?: string; stackOrder?: number[] };
+export type ForestObject = { id: string; x: number; y: number; scale: number; variant: number; kind: "tree" | "shrub" | "rock" | "ruins" | "bridge" | "jetty" | "image"; rotation?: number; assetId?: string; imageWidth?: number; imageHeight?: number; layerId?: string; folderId?: string | null; hidden?: boolean; locked?: boolean; name?: string; stackOrder?: number[]; shadowHeight?: number };
 export type ObjectKind = ForestObject["kind"];
 export type Bounds = { x: number; y: number; width: number; height: number };
 export const INITIAL_WIDTH = 1600;
@@ -12,6 +12,12 @@ export const WORLD_HEIGHT = 1600;
 export const MAX_WIDTH = 3200;
 export const INITIAL_SEED = 7391;
 export const OVERSCAN_EDIT_MARGIN = 320;
+
+const shadowHeights: Record<ObjectKind, number> = { tree: 160, shrub: 44, rock: 24, ruins: 92, bridge: 20, jetty: 16, image: 140 };
+/** Stored heights are nominal; scaling an object scales its directional shadow too. */
+export function getObjectShadowHeight(object: ForestObject): number {
+  return (object.shadowHeight ?? shadowHeights[object.kind]) * object.scale;
+}
 
 /** Props use the same scene records as vegetation, with their original ground anchors. */
 export function initialProps(): ForestObject[] {

@@ -165,9 +165,9 @@ test("world image dimensions and corner transforms retain native aspect and bott
   assert.ok(Math.abs(corners[2].x - 800) < 1e-9 && Math.abs(corners[2].y - 1020) < 1e-9);
 });
 
-test("v4 JSON is portable with exact embedded PNG bytes and validates image references, shape and scales", () => {
+test("v5 JSON is portable with exact embedded PNG bytes and validates image references, shape and scales", () => {
   const source = sceneWithImage();
-  assert.equal(source.version, 4); assert.equal(MAX_SCENE_BYTES, 32 * 1024 * 1024);
+  assert.equal(source.version, 5); assert.equal(MAX_SCENE_BYTES, 32 * 1024 * 1024);
   const restored = parseScene(serializeScene(source));
   assert.deepEqual(restored, source); assert.equal(restored.assets[0].dataUrl, asset.dataUrl);
   assert.deepEqual(Buffer.from(restored.assets[0].dataUrl.split(",")[1], "base64"), original);
@@ -192,7 +192,7 @@ test("legacy scenes discard only retired stump houses and their own edits", () =
     planted: [house, { ...house, id: "planted:removed-house" }, rock],
     removed: ["planted:removed-house", "prop:jetty"], modified: [{ ...house, x: 600 }, { ...tree, x: 800, y: 600, rotation: 20 }] };
   const migrated = parseScene(JSON.stringify(legacy));
-  assert.deepEqual(migrated, { version: 4, seed: legacy.seed, width: legacy.width, assets: [], layers: initial.layers, folders: initial.folders, terrain: initial.terrain,
+  assert.deepEqual(migrated, { version: 5, seed: legacy.seed, width: legacy.width, assets: [], layers: initial.layers, folders: initial.folders, terrain: initial.terrain, lighting: initial.lighting,
     planted: [rock], removed: ["prop:jetty"], modified: [legacy.modified[1]] });
   assert.equal(legacy.planted.length, 3, "migration leaves the source unchanged");
   assert.equal(validateScene({ ...legacy, planted: [{ ...rock, kind: "unknown" }] }), null);
