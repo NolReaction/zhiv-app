@@ -44,6 +44,17 @@ class NotificationDispatcher(
         else "SELECT source_key,category,due_at,attempts FROM notification_events WHERE user_id=? AND state='sending' AND batch_id=? ORDER BY due_at",
         user,batch ?: now.notificationSqlTime()
     ) { Event(it.getString(1),it.getString(2),it.getObject(3,OffsetDateTime::class.java).toInstant(),it.getInt(4)) }
+    private fun mineOnly(c: Connection,user: UUID,ready: List<Event>): Boolean {
+        if(ready.isEmpty() || ready.any { it.category != "exploration" }) return false
+        // Identify the actor from confirmed jobs, never from route names or the
+        // presence of some other mine job outside this ready batch.
+        val mineSources=c.economyRows("""
+            SELECT 'job:' || (j->>'id') FROM economy_profiles p
+            CROSS JOIN LATERAL jsonb_array_elements(coalesce(p.state->'jobs','[]'::jsonb)) j
+            WHERE p.user_id=? AND j->>'kind'='exploration' AND j->>'actorId'='miner'
+        """,user) { it.getString(1) }.toSet()
+        return ready.all { it.key in mineSources }
+    }
     private fun budgetAfter(c: Connection,user: UUID,p: NotificationPreferences,now: Instant,excludeBatch: UUID?=null): Instant {
         if(!p.rateLimitsEnabled) return nextNotificationWindow(p,now)
         // A rolling 24-hour cap also prevents timezone changes or midnight from
@@ -109,8 +120,10 @@ class NotificationDispatcher(
             BrowserPushSubscription(it.getString(1),PushKeys(it.getString(2),it.getString(3)))
         }.singleOrNull()
         val categories=ready.map { it.category }.toSet()
-        val message=notificationMessage(categories)
+        val onlyMine=mineOnly(c,batch.user,ready)
+        val message=notificationMessage(categories,onlyMine)
         val target=when {
+            onlyMine -> "world&section=mine"
             "exploration" in categories -> "world&section=activities"
             "construction" in categories -> "world&section=construction"
             "production" in categories -> "world&section=production"

@@ -3,6 +3,7 @@ import { fishingBaitCompatible, fishingState, fishingTripCost } from "@/features
 import { recipeWithFish } from "@/features/economy/domain/food";
 import type { EconomyCost, EconomyJob, EconomyView } from "@/features/economy/domain/model";
 import { productionSlotCount } from "@/features/economy/domain/production-slots";
+import { recipeResultName } from "@/features/economy/domain/recipe-prerequisites";
 import { tutorialOrderProgress } from "@/features/economy/domain/tutorial-order";
 import { stageCourseRequired, stageOrderProgress } from "@/features/economy/domain/stage-orders";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
@@ -24,9 +25,12 @@ const itemCount = (items: Record<string, number>) => Object.values(items).reduce
 const freeCost = (cost: EconomyCost) => cost.coins === 0 && itemCount(cost.items) === 0;
 const sector = (routeId: string): "forest" | "coast" | "caves" => routeId.includes("shore") || routeId.includes("coastal") ? "coast"
   : routeId.includes("cave") || routeId.includes("quarry") ? "caves" : "forest";
+// Legacy underground jobs retain Mochlik as owner, but are received at the mine.
+const mineMenuJob = (job: EconomyJob) => isMinerJob(job) || job.targetId === "quarry"
+  || job.kind === "exploration" && sector(job.targetId) === "caves";
 const jobTarget = (job: EconomyJob): WorldHelpTarget => job.kind === "construction" ? { kind: "upgrade", stationId: job.targetId }
-  : isMinerJob(job) ? { kind: "station", stationId: "quarry" }
-  : job.kind === "exploration" || job.targetId === "quarry" ? { kind: "expeditions", sector: sector(job.targetId) }
+  : mineMenuJob(job) ? { kind: "station", stationId: "quarry" }
+  : job.kind === "exploration" ? { kind: "expeditions", sector: sector(job.targetId) }
     : { kind: "station", stationId: job.targetId };
 const ready = (job: EconomyJob, now: number) => now >= Date.parse(job.finishesAt)
   && (!job.collection?.startedAt || Boolean(job.collection.finishesAt && now >= Date.parse(job.collection.finishesAt)));
@@ -38,7 +42,7 @@ function jobAdvice(state: EconomyView, job: EconomyJob, now: number): WorldHelpS
     message: `Для готового результата нужно освободить ещё ${itemCount(job.rewards) - state.storage.available} мест. Он дождётся получения.`,
     action: { label: "Открыть кладовую", target: { kind: "pantry" } },
   };
-  const action = { label: isMinerJob(job) ? "Открыть шахту" : job.kind === "exploration" || job.targetId === "quarry" ? "Открыть вылазку" : job.kind === "construction" ? "Открыть стройку" : "Открыть производство", target };
+  const action = { label: job.kind === "construction" ? "Открыть стройку" : mineMenuJob(job) ? "Открыть шахту" : job.kind === "exploration" ? "Открыть вылазку" : "Открыть производство", target };
   if (job.kind === "construction") return {
     id: `job:${job.id}`, title: finished ? "Стройка готова" : "Строитель занят", topicId: "construction", severity: finished ? "next" : "problem", action,
     message: finished ? `${stationName(state, job.targetId)}: нажмите «Завершить», чтобы получить улучшение и освободить строителя.`
@@ -59,7 +63,12 @@ function jobAdvice(state: EconomyView, job: EconomyJob, now: number): WorldHelpS
     message: finished ? "Откройте шахту и заберите результат. После получения можно начать следующую добычу."
       : `До готовности ${worldDuration(Math.ceil((Date.parse(job.finishesAt) - now) / 1000))}. Работа шахты не мешает Мохлику гулять, рыбачить и собирать урожай.`,
   };
-  if (job.kind === "exploration" || job.targetId === "quarry") return {
+  if (mineMenuJob(job)) return {
+    id: `job:${job.id}`, title: finished ? "Добыча ждёт получения" : "Мохлик работает в шахте", topicId: "mining", severity: finished ? "next" : "problem", action,
+    message: finished ? "Откройте шахту на карте и заберите прежнюю добычу Мохлика. После получения он сможет отправиться в новую вылазку."
+      : `Мохлик занят прежней добычей. До готовности ${worldDuration(Math.ceil((Date.parse(job.finishesAt) - now) / 1000))}. Эта работа доступна в меню шахты на карте.`,
+  };
+  if (job.kind === "exploration") return {
     id: `job:${job.id}`, title: finished ? "Находки ждут получения" : "Мохлик ещё в пути", topicId: "journeys", severity: finished ? "next" : "problem", action,
     message: finished ? "Заберите результат во «В путь». Пока находки не получены, следующую вылазку начать нельзя."
       : `До возвращения ${worldDuration(Math.ceil((Date.parse(job.finishesAt) - now) / 1000))}. Отменяйте вылазку только если готовы потерять её награды и потраченные припасы.`,
@@ -194,8 +203,8 @@ function contextAdvice(state: EconomyView, context: WorldHelpContext | undefined
   if (requirement) return requirement;
   const unlock = worldMissingRecipeRequirements(state, recipe)[0];
   if (unlock) return {
-    id: `recipe:unlock:${unlock.id}`, title: "Сначала приготовьте новый предмет", topicId: "production", severity: "next",
-    message: `Получите результат рецепта «${unlock.recipe?.name ?? unlock.id}»: ${unlock.current} / ${unlock.count}. После этого откроется ${recipe.name.toLocaleLowerCase("ru-RU")}.`,
+    id: `recipe:unlock:${unlock.id}`, title: "Получите результат производства", topicId: "production", severity: "next",
+    message: `Произведите и заберите «${recipeResultName(unlock.id, state.catalog)}»: ${unlock.current} / ${unlock.count}. После этого откроется ${recipeResultName(recipe.id, state.catalog).toLocaleLowerCase("ru-RU")}.`,
     ...(unlock.recipe ? { action: { label: "Открыть рецепт", target: { kind: "station" as const, stationId: unlock.recipe.buildingId, recipeId: unlock.id } } } : {}),
   };
   const buildingWork = state.jobs.find(job => job.kind === "construction" && job.targetId === recipe.buildingId);

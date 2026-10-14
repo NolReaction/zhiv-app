@@ -1,7 +1,7 @@
 import { getNotificationSettings, saveNotificationSubscription, removeNotificationSubscription } from "./notification-api";
 import type { NotificationSnapshot } from "./notification-contract";
 
-export type NotificationTarget = "checkin" | "activities" | "production" | "construction";
+export type NotificationTarget = "checkin" | "activities" | "mine" | "production" | "construction";
 export type NotificationLink = { ownerPublicId: string; target: NotificationTarget };
 export function parseNotificationLink(value: string, origin: string): NotificationLink | null {
   try {
@@ -11,7 +11,7 @@ export function parseNotificationLink(value: string, origin: string): Notificati
     if (!ownerPublicId || ownerPublicId.length > 128) return null;
     if (url.searchParams.get("notification") === "checkin") return { ownerPublicId, target: "checkin" };
     const section = url.searchParams.get("section");
-    if (url.searchParams.get("notification") === "world" && (section === "activities" || section === "production" || section === "construction")) {
+    if (url.searchParams.get("notification") === "world" && (section === "activities" || section === "mine" || section === "production" || section === "construction")) {
       return { ownerPublicId, target: section };
     }
   } catch { /* Invalid or external notification targets never navigate. */ }

@@ -304,13 +304,13 @@ test("first-stage preparation produces one item and strawberry unlock shows the 
   }
   const recipe = state.catalog.recipes.find(entry => entry.id === "grow_strawberries");
   let html = render("garden", controller({ snapshot: state }), { initialRecipeId: recipe.id, onNavigate() {} });
-  assert.match(html, /Сначала приготовьте:.*компот/);
-  assert.match(html, /Приготовить:.*компот/);
+  assert.match(html, /Приготовьте и заберите: Малиновый компот \(0 \/ 1\)/);
+  assert.match(html, /Открыть рецепт: Малиновый компот/);
   assert.equal(disabled(button(html, "Начать ·")), true);
   assert.equal(helpers.worldRecipeUnlockReason(state, recipe).includes("0 / 1"), true);
   state.progression.recipes.cook_compote = 1;
   html = render("garden", controller({ snapshot: state }), { initialRecipeId: recipe.id });
-  assert.doesNotMatch(html, /Сначала приготовьте:|Приготовить:/);
+  assert.doesNotMatch(html, /Приготовьте и заберите:|Открыть рецепт:/);
   assert.equal(disabled(button(html, "Начать ·")), false);
 });
 

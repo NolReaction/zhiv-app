@@ -95,7 +95,8 @@ test("strawberry advice opens the compote recipe until its result has been colle
   const context = { intent: "production", stationId: "garden", recipeId: "grow_strawberries", quantity: 1 };
   const result = advice({}, { context });
   assert.equal(result[0].id, "recipe:unlock:cook_compote");
-  assert.match(result[0].message, /0 \/ 1/);
+  assert.match(result[0].message, /Произведите и заберите «Малиновый компот»: 0 \/ 1\. После этого откроется клубника\./);
+  assert.doesNotMatch(result[0].message, /Приготовить|вырастить/i);
   assert.deepEqual(result[0].action.target, { kind: "station", stationId: "dryer", recipeId: "cook_compote" });
   const running = job({ targetId: "dryer", recipeId: "cook_compote", rewards: { berry_compote: 1 } });
   assert.equal(advice({ jobs: [running] }, { context })[0].id, "recipe:unlock:cook_compote", "a started job does not unlock strawberries");
@@ -195,6 +196,30 @@ test("independent miner guidance stays at the mine and never occupies Mochlik or
   assert.match(result[0].title, /Добыча ждёт получения/);
   assert.deepEqual(result[0].action.target, { kind: "station", stationId: "quarry" });
   assert.doesNotMatch(JSON.stringify(result), /Мохлик ещё в пути|food|Сыт/);
+});
+
+test("legacy underground jobs direct Mochlik to the separate mine while forest and fishing remain journeys", () => {
+  for (const patch of [{ kind: "production", targetId: "quarry", recipeId: "extract_stone" },
+    { kind: "exploration", targetId: "cave", recipeId: null },
+    { kind: "exploration", targetId: "deep_cave", recipeId: null },
+    { kind: "exploration", targetId: "quarry_stone", recipeId: null }]) {
+    for (const finished of [false, true]) {
+      const oldJob = job({ ...patch, finishesAt: new Date(now + (finished ? 0 : 1000)).toISOString(), rewards: { stone: 1 } });
+      const result = advice({ jobs: [oldJob] }, { context: { intent: "expedition", routeId: "forest" } })[0];
+      assert.deepEqual(result.action.target, { kind: "station", stationId: "quarry" });
+      assert.equal(result.action.label, "Открыть шахту");
+      assert.equal(result.topicId, "mining");
+      assert.match(result.message, /Мохлик/);
+      assert.doesNotMatch(result.message, /«В путь»|Шахтёр/);
+      assert.equal(oldJob.actorId, undefined, "navigation never rewrites historical ownership");
+    }
+  }
+  for (const [targetId, expectedSector] of [["forest", "forest"], ["shore", "coast"]]) {
+    const trip = job({ kind: "exploration", targetId, recipeId: null, finishesAt: new Date(now).toISOString() });
+    const result = advice({ jobs: [trip] }, { context: { intent: "expedition", routeId: "forest" } })[0];
+    assert.deepEqual(result.action.target, { kind: "expeditions", sector: expectedSector });
+    assert.match(result.message, /«В путь»/);
+  }
 });
 
 test("ready jobs use the supplied server clock and never claim their result", () => {

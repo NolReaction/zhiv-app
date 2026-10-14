@@ -11,6 +11,7 @@ import type { MapObjectSelection, WorldPlace } from "@/features/world/scene/map-
 import type { WorldHelpContext } from "@/features/world/ui/help/world-help-types";
 import type { EconomyView } from "@/features/economy/domain/model";
 import { economyMarketUnlocked } from "@/features/economy/domain/market-rules";
+import { recipeResultName } from "@/features/economy/domain/recipe-prerequisites";
 import { economyLocalSellPrice, economyLocalSaleMinimumQuantity, economyLocalSaleLimit } from "@/features/economy/domain/local-sale";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import { worldBatchLimit, worldDuration, worldJobProgress, worldMenuDimensions, worldMenuPosition, worldStableMenuPosition, worldMissingRequirements, worldMissingRecipeRequirements, worldRecipeUnlockReason, worldPlaceForStation, worldProductionReason, worldRequirements, worldStations, type WorldMenuBounds, type WorldRecipe } from "@/features/economy/ui/shared/world-stations";
@@ -108,7 +109,7 @@ export function WorldRecipeDetail({ economy, recipe, navigation, onCollapse, onO
       <Requirements state={economy.snapshot} required={worldRequirements(recipe, recipe)} navigation={navigation} />
       {reason && !missingRequirements.length && <p className={styles.hint}>{reason}</p>}
       {missingRecipes.map(({ id, recipe: prerequisite }) => prerequisite && navigation?.canOpen(prerequisite.buildingId)
-        ? <button key={id} type="button" className={styles.textButton} onClick={() => navigation.open(prerequisite.buildingId, prerequisite.id)}>Приготовить: {prerequisite.name}<ArrowRight size={13} aria-hidden="true" /></button> : null)}
+        ? <button key={id} type="button" className={styles.textButton} onClick={() => navigation.open(prerequisite.buildingId, prerequisite.id)}>Открыть рецепт: {recipeResultName(id, economy.snapshot.catalog)}<ArrowRight size={13} aria-hidden="true" /></button> : null)}
       {helpBlocked && onOpenHelp && <button type="button" className={styles.contextHelp} onClick={() => onOpenHelp({ intent: "production", stationId: recipe.buildingId, recipeId: recipe.id, quantity })}><CircleHelp size={15} aria-hidden="true" />Как продолжить?</button>}
       {output > economy.snapshot.storage.available && !missingRequirements.length && <p className={styles.hint}>Для получения понадобится {number(output)} мест · свободно {number(economy.snapshot.storage.available)}.</p>}
     </div>

@@ -5,6 +5,7 @@ import { formatPearls } from "@/features/economy/domain/money";
 import { constructionTimePearlPrice } from "@/features/economy/domain/rules";
 import { progressionRewardsCatalog } from "@/features/game/progression-rewards";
 import { BARTER_HOME_LEVEL } from "@/features/economy/domain/barter-model";
+import { BASE_COINS_PER_PEARL, GOLD_SHOP_PACKAGES, HOME_BONUS_PERCENT, MAX_BUILDING_BONUS_PERCENT } from "@/features/economy/domain/currency-shop";
 import { TRAVEL_COLLECTION_SECONDS, QUARRY_COLLECTION_SECONDS } from "@/features/world/domain/collection-book";
 import type { WorldHelpTarget } from "./world-help-types";
 export { searchWorldHelp, searchWorldHelpWithStatus } from "./world-help-search";
@@ -349,7 +350,19 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
       ],
       note: "Для подарка с предметами понадобится место в кладовой. Покупка за реальные деньги и обмен жемчуга на золото пока недоступны.",
       action: { label: "К профилю и подаркам", target: { kind: "profile", tab: "profile" } },
-      relatedIds: ["rewards", "pearls", "production-slots"],
+      relatedIds: ["rewards", "pearls", "currency-shop-exchange"],
+    },
+    {
+      id: "currency-shop-exchange", group: "economy", title: "Как считается золото в магазине?", summary: "Курс зависит от дома и производств",
+      keywords: "магазин обмен золото монеты курс бонус дом производства постройки жемчуг пакет витрина",
+      paragraphs: [`Витрина показывает обмен для ${GOLD_SHOP_PACKAGES.map(pack => formatPearls(pack.pearls)).join(" / ")} жемчужин. Базовый курс: ${BASE_COINS_PER_PEARL * 2} монет за видимую жемчужину; большой пакет не даёт дополнительной скидки.`],
+      steps: [
+        `Дом 1-${HOME_BONUS_PERCENT.length} добавляет +${HOME_BONUS_PERCENT.join(" / ")}% к базовой сумме.`,
+        `Завершённые уровни куста, лесного участка, мастерской, каменоломни, костра и печи добавляют ещё до +${MAX_BUILDING_BONUS_PERCENT}%. Бонусы дома и производств складываются.`,
+        "Кладовая, мост, маяк и стройка до получения результата курс не увеличивают.",
+      ],
+      note: "Обмен пока недоступен. Монеты можно зарабатывать продажей NPC и заказами без жемчуга.",
+      relatedIds: ["currency-shop", "production-slots", "resident-orders"],
     },
     {
       id: "legacy-resources", group: "economy", title: "Куда пропали прежние искры?", summary: "Перенос старого прогресса",
@@ -358,11 +371,11 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
       relatedIds: ["resources", "check-in"],
     },
     {
-      id: "journeys", group: "travel", title: "Как отправиться в вылазку?", summary: "Припасы, рыбалка и шахта",
+      id: "journeys", group: "travel", title: "Как отправиться в вылазку?", summary: "Лесные припасы и рыбалка",
       keywords: "в путь путешествия прогулка исследование поход экспедиция маршрут сектор офлайн припасы отменить отозвать мохлик занят",
       steps: [
-        "Откройте «В путь» и выберите «За припасами» или «На рыбалку». Затем выберите маршрут и проверьте время, добычу и припасы. «Добыча в шахте» открывает отдельную очередь материалов.",
-        "Отправьте Мохлика. На рыбалку он идёт с текущего места, без захода домой. Он выполняет одну вылазку или собирает ягоды; производства и новая добыча шахты идут независимо.",
+        "Откройте «В путь» и выберите «За припасами» для лесных маршрутов или «На рыбалку» для улова. Затем выберите маршрут и проверьте время, добычу и припасы.",
+        "Отправьте Мохлика. На рыбалку он идёт с текущего места, без захода домой. Он выполняет одну вылазку или собирает ягоды; производства работают независимо.",
         "После таймера заберите результат, чтобы начать новую вылазку. Таймер идёт и с закрытой игрой.",
       ],
       note: "Отзыв теряет добычу этой вылазки; припасы, наживка и использованный обед не возвращаются. Старые незавершённые походы доступны отдельно в «Ещё» → «Старые походы».",
@@ -374,7 +387,7 @@ export function worldHelpTopics(_legacyRebuilding?: boolean): readonly WorldHelp
       keywords: "шахта каменоломня руда камень глина пещера добыча добыть кирка каска смена вход закрыт шахтёр независимо очередь",
       steps: [
         "Улучшите дом до уровня 2 и постройте шахту. Камни для её постройки можно принести из бесплатной лесной вылазки.",
-        "Нажмите шахту или «В путь» → «Добыча в шахте». Выберите камень: один предмет за три минуты. Шахта второго уровня также добывает одну глину за три минуты.",
+        "Нажмите объект шахты на карте, чтобы открыть её отдельное меню. Выберите камень: один предмет за три минуты. Шахта второго уровня также добывает одну глину за три минуты.",
         "Дождитесь готовности и заберите результат в кладовую. До получения очередь занята; новая добыча автоматически не начинается. Мохлик может гулять, рыбачить и собирать ягоды одновременно с этой работой.",
       ],
       note: "Добыча имеет одну отдельную очередь без платных слотов. Обед Мохлика не ускоряет шахту. При улучшении шахты сначала заберите добычу. Сохранённые старые походы Мохлика в шахту завершаются по прежним условиям. Внутренней карты шахты пока нет.",

@@ -2,6 +2,7 @@ import type { MapObjectSelection, WorldPlace } from "@/features/world/scene/map-
 import type { EconomyCatalog, EconomyCost, EconomyJob, EconomyView } from "@/features/economy/domain/model";
 import { fishClassForItem } from "@/features/economy/domain/fishing";
 import { productionSlotCount } from "@/features/economy/domain/production-slots";
+import { recipeResultName } from "@/features/economy/domain/recipe-prerequisites";
 import { tutorialOrderProgress } from "@/features/economy/domain/tutorial-order";
 import { stageCourseRequired, stageOrderProgress } from "@/features/economy/domain/stage-orders";
 import { explorationActorId, isMinerJob } from "@/features/economy/domain/actor-availability";
@@ -105,7 +106,9 @@ export function worldMissingRecipeRequirements(state: EconomyView, recipe: World
 }
 export function worldRecipeUnlockReason(state: EconomyView, recipe: WorldRecipe) {
   const first = worldMissingRecipeRequirements(state, recipe)[0];
-  return first ? `Сначала приготовьте: ${first.recipe?.name ?? first.id} (${first.current} / ${first.count})` : null;
+  if (!first) return null;
+  const action = first.recipe?.buildingId === "dryer" ? "Приготовьте" : "Произведите";
+  return `${action} и заберите: ${recipeResultName(first.id, state.catalog)} (${first.current} / ${first.count})`;
 }
 export function worldProductionReason(state: EconomyView, recipe: WorldRecipe, quantity = 1) {
   const required = worldMissingRequirements(state, worldRequirements(recipe, recipe));

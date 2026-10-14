@@ -172,7 +172,11 @@ test("beginner answers explain costs, receipt of results, blocked work and recov
   assert.match(answer("production"), /Забрать/);
   assert.match(answer("construction"), /подтвердите завершение.*новый уровень.*освободится/);
   assert.match(answer("journeys"), /одну вылазку или собирает ягоды/);
-  assert.match(answer("journeys"), /добыча шахты идут независимо/);
+  assert.match(answer("journeys"), /производства работают независимо/);
+  assert.equal(topic("journeys").summary, "Лесные припасы и рыбалка");
+  assert.doesNotMatch(answer("journeys"), /Добыча в шахте/);
+  assert.match(answer("mining"), /Нажмите объект шахты на карте, чтобы открыть её отдельное меню/);
+  assert.doesNotMatch(answer("mining"), /«В путь»/);
   assert.match(answer("journeys"), /Отзыв теряет добычу.*не возвращаются/);
   assert.match(answer("storage"), /Отмена лота не освобождает место/);
   assert.match(answer("storage"), /не пропадут/);

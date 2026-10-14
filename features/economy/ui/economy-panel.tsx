@@ -11,6 +11,7 @@ import type { EconomyCost, EconomyJob, EconomyMarketListing, EconomyView } from 
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import type { ReadyEconomy } from "@/features/economy/sync/controller-state";
 import { formatPearls } from "@/features/economy/domain/money";
+import { recipeResultName } from "@/features/economy/domain/recipe-prerequisites";
 import { canAffordEconomy } from "@/features/economy/domain/rules";
 import { economyActorConflict, economyMinerConflict, explorationActorId, isMinerJob } from "@/features/economy/domain/actor-availability";
 import { fishingTripCost } from "@/features/economy/domain/fishing";
@@ -263,7 +264,7 @@ function RecipeCard({ economy, recipe, navigate }: { economy: ReadyEconomy; reci
     <p className={styles.muted}>Результат займёт {number(rewardCount * quantity)} мест. Сейчас свободно {number(state.storage.available)}; место понадобится при получении.</p>
     <button className={`${styles.primary} ${styles.wide}`} disabled={Boolean(reason) || busy || uncertain} onClick={() => void economy.act("start_production", recipe.id, quantity)}>Начать · {economyDuration(recipe.seconds * quantity)}<span className={styles.sr}>: {recipe.name}</span></button>
     {reason && <p className={styles.hint}><LockKeyhole size={14} aria-hidden />{reason}</p>}
-    {missingRecipes.map(({ id, recipe: prerequisite }) => prerequisite ? <button key={id} className={styles.textButton} onClick={() => navigate("production", prerequisite.buildingId)}>Приготовить: {prerequisite.name}<ArrowRight size={15} aria-hidden /></button> : null)}
+    {missingRecipes.map(({ id, recipe: prerequisite }) => prerequisite ? <button key={id} className={styles.textButton} onClick={() => navigate("production", prerequisite.buildingId)}>Открыть рецепт: {recipeResultName(id, state.catalog)}<ArrowRight size={15} aria-hidden /></button> : null)}
     {maximum < 1 && <button className={styles.textButton} onClick={() => navigate("buildings", "warehouse")}>Расширить склад<ArrowRight size={15} aria-hidden /></button>}
     {Object.keys(recipe.cost.items).length > 0 && <button className={styles.textButton} onClick={() => navigate("inventory", Object.entries(recipe.cost.items).find(([id, amount]) => (state.inventory[id] ?? 0) < amount * quantity)?.[0] ?? Object.keys(recipe.cost.items)[0])}>Откуда брать ингредиенты?<ChevronRight size={14} aria-hidden /></button>}
   </article>;

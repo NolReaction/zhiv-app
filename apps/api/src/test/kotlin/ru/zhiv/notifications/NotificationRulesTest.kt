@@ -31,6 +31,14 @@ class NotificationRulesTest {
         assertEquals("Мохлик вернулся из путешествия. Стройка завершена. Ресурсы готовы. Можно отметиться: с последней отметки прошло больше суток.",message.body)
         assertEquals(message,notificationMessage(categories.reversed().toSet()))
     }
+    @Test fun `confirmed mine batch names the miner while mixed categories retain the summary`() {
+        val message=notificationMessage(setOf("exploration"),mineOnly=true)
+        assertEquals("Шахтёр завершил смену",message.title)
+        assertEquals("Работа в шахте завершена. Можно забрать добычу.",message.body)
+        val mixed=setOf("exploration","production")
+        assertEquals(notificationMessage(mixed),notificationMessage(mixed,mineOnly=true))
+        assertEquals(notificationMessage(setOf("production")),notificationMessage(setOf("production"),mineOnly=true))
+    }
     @Test fun `quiet hours cross midnight in user zone and end exactly at ten`() {
         val p=NotificationPreferences(timeZone="Europe/Moscow")
         assertEquals(Instant.parse("2026-10-12T07:00:00Z"),nextNotificationWindow(p,Instant.parse("2026-10-11T20:00:00Z")))

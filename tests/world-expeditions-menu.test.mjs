@@ -11,7 +11,6 @@ const { WorldExpeditionsMenu, WorldExpeditionSector, ExpeditionRouteDetails, Act
 const { getAudioRuntime } = await vite.ssrLoadModule("/features/audio/runtime/audio-service.ts");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
-const { Work } = await vite.ssrLoadModule("/features/economy/ui/shared/world-economy-parts.tsx");
 const { mealDuration } = await vite.ssrLoadModule("/features/economy/domain/food.ts");
 const { worldDuration } = await vite.ssrLoadModule("/features/economy/ui/shared/world-stations.ts");
 after(() => vite.close());
@@ -78,15 +77,15 @@ test("pending hero food quotes the same speed-adjusted time in route list, prepa
   }
 });
 
-test("travel starts with three decorated activities and no premature route form", () => {
+test("travel starts with two decorated hero activities and no mine or premature route form", () => {
   const html = render(controller(), { onUpgradeQuarry() {} });
   assert.match(html, /role="group" aria-label="Занятия леса"/);
-  for (const id of ["forest", "shore", "caves"]) {
+  for (const id of ["forest", "shore"]) {
     assert.match(html, new RegExp(`data-sector-select="${id}"`));
     assert.match(html, new RegExp(`data-activity-art="${id}"`));
   }
   assert.match(html, /За припасами/); assert.match(html, /На рыбалку/);
-  assert.match(button(html, "Открыть шахту").attributes, /aria-haspopup="dialog"/);
+  assert.doesNotMatch(html, /data-sector-select="caves"|data-activity-art="caves"|Открыть шахту|шахт[аеуы]/i);
   assert.doesNotMatch(html, /data-route=|<select\b|aria-label="Отправиться:/);
   const supplies = renderSector("forest");
   assert.equal([...supplies.matchAll(/<button\b[^>]*data-route=/g)].length, 2);
@@ -223,8 +222,8 @@ test("ongoing exploration shows real progress and seconds, and exposes no second
 });
 
 test("an active route from another sector stays above the sector picker", () => {
-  const html = render(controller({ snapshot: snapshot({ jobs: [job({ targetId: "deep_cave", rewards: { stone: 30, ore: 20 } })] }) }));
-  assert.match(html, /Текущая вылазка: Глубокий проход/);
+  const html = render(controller({ snapshot: snapshot({ jobs: [job({ targetId: "shore", rewards: { fish: 1 } })] }) }));
+  assert.match(html, /Текущая вылазка: Рыбалка на берегу/);
   assert.match(html, /data-sector-select="forest"/);
   assert.ok(html.indexOf("Текущая вылазка") < html.indexOf("Занятия леса"));
   assert.doesNotMatch(html, /aria-label="Отправиться:/);
@@ -252,12 +251,12 @@ test("legacy quarry work blocks Mochlik departures and leaves the independent mi
     const saved = job({ kind: "production", targetId: "quarry", recipeId: "quarry_stone", finishesAt: new Date(now + (finished ? 0 : 30_000)).toISOString() });
     const economy = controller({ snapshot: snapshot({ jobs: [saved], buildings: { home: 3, warehouse: 1, quarry: 1 } }) });
     const html = render(economy, { onNavigateStation() {} });
-    assert.match(html, finished ? /Сначала заберите добычу из каменоломни/ : /Мохлик работает в каменоломне/);
-    assert.equal(disabled(button(html, "Открыть шахту")), false);
+    assert.doesNotMatch(html, /шахт|каменоломн|data-sector-select="caves"/i);
     for (const [sector, id] of [["forest", "forest"], ["shore", "shore"]]) {
       const blocked = sectorView(sector, economy.snapshot, {}, { selectedRoute: id });
       assert.equal(blocked.depart(id), undefined);
-      assert.match(blocked.html, /Мохлик работает в каменоломне|Сначала заберите добычу из каменоломни/);
+      assert.match(blocked.html, /Завершите предыдущую работу Мохлика на карте/);
+      assert.doesNotMatch(blocked.html, /шахт|каменоломн/i);
       assert.deepEqual(blocked.calls, []);
     }
     const mine = sectorView("caves", economy.snapshot, {}, { selectedRoute: "quarry_stone" });
@@ -268,106 +267,58 @@ test("legacy quarry work blocks Mochlik departures and leaves the independent mi
   }
 });
 
-test("closed mine activity opens construction while a built mine keeps its routes", () => {
-  let tree, navigated = 0, upgraded = 0;
-  function Probe() { tree = WorldExpeditionsMenu({ economy: controller(), onOpenPantry() {}, onNavigateStation() { navigated++; }, onUpgradeQuarry() { upgraded++; } }); return tree; }
-  renderToStaticMarkup(createElement(Probe));
-  let caves;
-  function walk(element) {
-    if (!isValidElement(element)) return;
-    if (element.props["data-sector-select"] === "caves") caves = element;
-    Children.forEach(element.props.children, walk);
-  }
-  walk(tree);
-  assert.ok(caves); caves.props.onClick();
-  assert.equal(navigated, 0);
-  assert.equal(upgraded, 1, "the closed mine opens its real upgrade menu without an economic command");
-  const mine = render(controller({ snapshot: snapshot({ buildings: { home: 3, quarry: 1, warehouse: 1 } }) }), { initialSector: "caves", onUpgradeQuarry() {} });
-  assert.match(mine, /Все занятия/);
-  assert.match(mine, /data-sector="caves"/);
-  assert.match(mine, /Обустройство шахты/);
-  assert.doesNotMatch(mine, /data-sector="forest"|data-sector="shore"/);
-  const embedded = render(controller(), { embeddedCaves: true });
-  assert.match(embedded, /data-sector="caves"/);
-  assert.doesNotMatch(embedded, /Секторы вылазок|Обустройство шахты|data-sector="forest"|data-sector="shore"/);
-});
-
-function mineView(state = snapshot(), flags = {}) {
-  const calls = [], visits = [], elements = [];
-  const economy = controller({ snapshot: state, act: (...args) => calls.push(args), ...flags });
-  let tree;
-  function Probe() {
-    tree = WorldExpeditionsMenu({ economy, initialSector: "caves", onOpenPantry: () => visits.push("pantry"), onUpgradeQuarry: () => visits.push("upgrade") });
-    return tree;
-  }
-  const html = renderToStaticMarkup(createElement(Probe));
-  function walk(element) {
-    if (!isValidElement(element)) return;
-    elements.push(element);
-    if (element.type === Work) {
-      function Probe() { const work = Work(element.props); walk(work); return work; }
-      renderToStaticMarkup(createElement(Probe));
+test("general travel ignores old mine selections and leaves quarry content in its dedicated menu", () => {
+  for (const buildings of [{ home: 1, quarry: 0, warehouse: 1 }, { home: 3, quarry: 2, warehouse: 1 }]) {
+    let tree, navigated = 0, upgraded = 0;
+    const economy = controller({ snapshot: snapshot({ buildings }) });
+    function Probe() {
+      tree = WorldExpeditionsMenu({ economy, initialSector: "caves", onOpenPantry() {},
+        onNavigateStation() { navigated++; }, onUpgradeQuarry() { upgraded++; } });
+      return tree;
     }
-    Children.forEach(element.props.children, walk);
+    const html = renderToStaticMarkup(createElement(Probe));
+    assert.match(html, /Занятия леса|За припасами|На рыбалку/);
+    assert.doesNotMatch(html, /data-sector="caves"|data-sector-select="caves"|шахт|каменоломн|data-route=/i);
+    const sectors = [];
+    function walk(element) {
+      if (!isValidElement(element)) return;
+      if (element.props["data-sector-select"]) sectors.push(element);
+      Children.forEach(element.props.children, walk);
+    }
+    walk(tree);
+    assert.deepEqual(sectors.map(element => element.props["data-sector-select"]), ["forest", "shore"]);
+    for (const element of sectors) element.props.onClick();
+    assert.equal(navigated, 0);
+    assert.equal(upgraded, 0, "the hero chooser cannot restore or enter a mine");
+    const embedded = render(economy, { embeddedCaves: true });
+    assert.match(embedded, /data-sector="caves"|data-independent-mining/);
+    assert.doesNotMatch(embedded, /Секторы вылазок|Обустройство шахты|data-sector="forest"|data-sector="shore"|data-sector-select=/);
   }
-  walk(tree);
-  const control = label => elements.find(element => element.type === "button"
-    && (element.props["aria-label"] === label || Children.toArray(element.props.children).some(child => child === label)));
-  return { html, control, elements, calls, visits };
-}
-
-test("the mine sector opens construction deliberately and preserves paid construction completion", () => {
-  const unopened = mineView();
-  assert.match(unopened.html, /Не открыта/);
-  unopened.control("Открыть шахту").props.onClick();
-  assert.doesNotMatch(unopened.html, /data-route=/, "do not overwhelm a closed mine with locked route cards");
-  assert.deepEqual(unopened.visits, ["upgrade"]);
-  assert.deepEqual(unopened.calls, []);
-  const built = snapshot({ buildings: { home: 3, warehouse: 1, quarry: 2 } });
-  const mine = mineView(built);
-  assert.match(mine.html, /ур. 2/);
-  mine.control("Улучшить").props.onClick();
-  assert.deepEqual(mine.visits, ["upgrade"]);
-  const paid = job({ kind: "construction", targetId: "quarry", targetLevel: 3, rewards: {}, finishesAt: new Date(now).toISOString() });
-  const ready = mineView({ ...built, jobs: [paid] });
-  assert.equal(ready.control("Улучшить"), undefined);
-  ready.control("Ход улучшения шахты").props.onClick();
-  assert.deepEqual(ready.visits, ["upgrade"], "paid work keeps access to the existing speed-up dialog");
-  assert.deepEqual(ready.calls, []);
-  assert.notEqual(ready.control("Завершить: Обустройство · ур. 3").props.disabled, true);
-  ready.control("Завершить: Обустройство · ур. 3").props.onClick();
-  assert.deepEqual(ready.calls, [["claim_job", paid.id]]);
-  for (const flags of [{ busy: true }, { uncertain: true }, { retryAt: now + 5_000 }]) {
-    const locked = mineView({ ...built, jobs: [paid] }, flags);
-    const complete = locked.control("Завершить: Обустройство · ур. 3");
-    assert.equal(complete.props.disabled, true);
-    complete.props.onClick();
-    assert.deepEqual(locked.calls, []);
-  }
-  const max = mineView(snapshot({ buildings: { home: 5, warehouse: 5, quarry: 5 } }));
-  assert.match(max.html, /Макс. уровень/);
-  assert.equal(max.control("Улучшить"), undefined);
 });
 
-test("legacy mine production remains claimable inside travel with capacity and receipt guards", () => {
-  const saved = job({ kind: "production", targetId: "quarry", recipeId: "quarry_stone", rewards: { stone: 12 }, finishesAt: new Date(now).toISOString() });
-  const state = snapshot({ buildings: { home: 3, warehouse: 1, quarry: 1 }, jobs: [saved] });
-  const title = economyCatalog.recipes.find(recipe => recipe.id === saved.recipeId)?.name ?? "Производство";
-  const claimLabel = `Забрать: ${title}`;
-  const ready = mineView(state);
-  ready.control(claimLabel).props.onClick();
-  assert.deepEqual(ready.calls, [["claim_job", saved.id]]);
-  const full = mineView({ ...state, storage: { capacity: 200, available: 0, used: 200, reserved: 0, overflow: 0 } });
-  assert.equal(full.control(claimLabel).props.disabled, true);
-  full.control(claimLabel).props.onClick();
-  assert.deepEqual(full.calls, []);
-  full.control("К кладовой").props.onClick();
-  assert.deepEqual(full.visits, ["pantry"]);
-  for (const flags of [{ busy: true }, { uncertain: true }, { retryAt: now + 5_000 }, { now: now - 1 }]) {
-    const locked = mineView(state, flags);
-    assert.equal(locked.control(claimLabel).props.disabled, true);
-    locked.control(claimLabel).props.onClick();
-    assert.deepEqual(locked.calls, []);
+test("running and ready mining jobs stay out of general travel while saved cave trips remain claimable in the quarry", () => {
+  for (const finished of [false, true]) {
+    const finishesAt = new Date(now + (finished ? 0 : 30_000)).toISOString();
+    const mining = [
+      job({ id: "miner", targetId: "quarry_stone", actorId: "miner", rewards: { stone: 1 }, finishesAt }),
+      job({ id: "legacy-cave", targetId: "cave", rewards: { stone: 12 }, finishesAt }),
+      job({ id: "legacy-production", kind: "production", targetId: "quarry", recipeId: "quarry_stone", finishesAt }),
+      job({ id: "construction", kind: "construction", targetId: "quarry", targetLevel: 3, rewards: {}, finishesAt }),
+    ];
+    const economy = controller({ snapshot: snapshot({ buildings: { home: 3, quarry: 2, warehouse: 1 }, jobs: mining }) });
+    const html = render(economy);
+    assert.doesNotMatch(html, /Текущая добыча|Текущая вылазка|Шахта работает|Мохлик вернулся|Обустройство шахты|шахт|каменоломн/i);
+    assert.equal(render(economy, { activeOnly: true }), "", "a mining-only snapshot has no hero trip panel");
+    const embedded = render(economy, { embeddedCaves: true });
+    assert.match(embedded, /Текущая добыча: Добыть камень/);
+    assert.match(embedded, /Текущая вылазка: Вход в пещеру/);
+    assert.match(embedded, /Забрать находки: Добыть камень|Забрать находки: Вход в пещеру/);
+    assert.match(embedded, /Остановить добычу|Отказаться от находок/);
+    assert.doesNotMatch(embedded, /data-sector-select=/);
+    const hero = job({ id: "hero", finishesAt });
+    const withHero = render(controller({ snapshot: snapshot({ jobs: [...mining, hero] }) }));
+    assert.match(withHero, /Текущая вылазка: Лесная разведка/);
+    assert.doesNotMatch(withHero, /Текущая добыча|Вход в пещеру|Обустройство шахты|data-sector-select="caves"/);
   }
 });
 
@@ -562,7 +513,7 @@ test("miner and hero departures use independent queues while each ready result k
   const travel = render(controller({ snapshot: both }));
   assert.match(travel, /Текущая вылазка: Лесная разведка/);
   assert.doesNotMatch(travel, /Текущая добыча:/);
-  const mine = render(controller({ snapshot: both }), { initialSector: "caves" });
+  const mine = render(controller({ snapshot: both }), { embeddedCaves: true });
   assert.match(mine, /Текущая добыча: Добыть камень/);
   assert.doesNotMatch(mine, /Текущая вылазка: Лесная разведка/);
 });

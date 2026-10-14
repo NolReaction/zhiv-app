@@ -1,6 +1,7 @@
 import { wardrobeItems, wardrobeOwned, wardrobePurchaseTarget } from "@/features/world/domain/wardrobe";
 import { ECONOMY_MAX_BALANCE, ECONOMY_MAX_ITEMS, ECONOMY_CURRENCY_SCALE, ECONOMY_PEARL_SCALE, economyCatalog, type EconomyCommand, type EconomyCost, type EconomyJob, type EconomyState, type EconomyStorage } from "./model";
 import { productionSlotCount, productionSlotOffer, productionStationSupported } from "./production-slots";
+import { recipeResultName } from "./recipe-prerequisites";
 
 import { refreshFishingShop, fishingShopExpired, fishingShopRefreshPrice } from "./fishing-shop";
 import { fishingState, fishingTripCost, fishingCollectionDraws, selectFishingCatch, fishClassForItem, fishClassInventory, fishingClassItemId, fishingBaitCompatible } from "./fishing";
@@ -193,7 +194,7 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       requireHome(state, recipe.requiredHomeLevel);
       requireBuildings(state, recipe.requiredBuildings);
       const missingRecipes = Object.entries(recipe.requiredRecipes).filter(([recipeId, count]) => (state.progression.recipes[recipeId] ?? 0) < count);
-      if (missingRecipes.length) fail("ECONOMY_RECIPE_REQUIRED", `Сначала приготовьте: ${missingRecipes.map(([recipeId]) => economyCatalog.recipes.find(item => item.id === recipeId)?.name ?? recipeId).join(", ")}`);
+      if (missingRecipes.length) fail("ECONOMY_RECIPE_REQUIRED", `Произведите и заберите: ${missingRecipes.map(([recipeId]) => recipeResultName(recipeId, economyCatalog)).join(", ")}`);
       if (state.jobs.some(job => job.targetId === recipe.buildingId && job.kind === "construction"))
         fail("ECONOMY_BUILDING_BUSY", "Дождитесь улучшения здания и заберите результат");
       if (state.jobs.filter(job => job.targetId === recipe.buildingId && job.kind === "production").length >= productionSlotCount(state, recipe.buildingId))

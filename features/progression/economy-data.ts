@@ -2,6 +2,7 @@ import { economyCatalog, type EconomyCatalog, type EconomyCost } from "@/feature
 import { economyLocalSellPrice } from "@/features/economy/domain/local-sale";
 import { pearlDisplayAmount } from "@/features/economy/domain/money";
 import { constructionTimePearlPrice } from "@/features/economy/domain/rules";
+import { currencyShopGoldOffers, GOLD_SHOP_PACKAGES, MAX_BUILDING_BONUS_PERCENT, PEARL_SHOP_PACKAGES } from "@/features/economy/domain/currency-shop";
 import progressionRewards from "@/apps/api/src/main/resources/world/progression-rewards-catalog.json";
 
 export type EconomyItemSource = {
@@ -380,6 +381,14 @@ export function buildProgressionEconomy(catalog: EconomyCatalog = economyCatalog
       construction: { stepPearls: pearlDisplayAmount(step), curved: (catalog.constructionSpeedup.pricingPoints?.length ?? 0) >= 2,
         prices: [60, 3600, 6 * 3600, 12 * 3600, 86400, 2 * 86400, 7 * 86400].map(seconds => ({ seconds,
           pearls: pearlDisplayAmount(constructionTimePearlPrice(seconds, catalog.constructionSpeedup)) })) } },
+    currencyShop: { preview: true,
+      pearlPackages: PEARL_SHOP_PACKAGES.map(pack => ({ ...pack, pearls: pearlDisplayAmount(pack.pearls) })),
+      goldPrices: GOLD_SHOP_PACKAGES.map(pack => pearlDisplayAmount(pack.pearls)),
+      productionBonusPercent: MAX_BUILDING_BONUS_PERCENT,
+      goldByHome: (catalog.buildings.find(building => building.id === "home")?.levels ?? []).map(level => ({ homeLevel: level.level,
+        offers: currencyShopGoldOffers({ catalog, buildings: { home: level.level } }).map(pack => ({ pearls: pearlDisplayAmount(pack.pearls), coins: pack.coins })) })),
+      maximumGold: currencyShopGoldOffers({ catalog, buildings: Object.fromEntries(catalog.buildings.map(building => [building.id,
+        Math.max(0, ...building.levels.map(level => level.level))])) }).at(-1)?.coins ?? 0 },
     fishingShop: fish ? { refreshSeconds: fish.shop.refreshSeconds, maximumRefreshPearls: pearlDisplayAmount(fish.shop.refreshPricePearls) } : null,
     orderBoard: { templates: catalog.food?.orders.templates.length ?? 0, slots: catalog.food?.orders.slots ?? 0,
       refreshSeconds: catalog.food?.orders.refreshSeconds ?? 0, freeReplacements: catalog.food?.orders.freeReplacements ?? 0,

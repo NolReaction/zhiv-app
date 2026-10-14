@@ -113,11 +113,14 @@ test("strawberry production explains its first-compote prerequisite and unlocks 
   const state = snapshot();
   let html = render("production", controller({ snapshot: state }), "garden");
   assert.equal(disabled(button(html, "Начать · 5 мин")), true);
-  assert.match(html, /Сначала приготовьте: Приготовить малиновый компот \(0 \/ 1\)/);
+  assert.match(html, /Приготовьте и заберите: Малиновый компот \(0 \/ 1\)/);
+  state.inventory.berry_compote = 1;
+  assert.equal(disabled(button(render("production", controller({ snapshot: state }), "garden"), "Начать · 5 мин")), true, "a gifted compote is not personally claimed production");
+  assert.doesNotMatch(html, /Приготовьте[^<]*Приготовить/);
   state.progression = { recipes: { cook_compote: 1 }, routes: {}, collections: { finds: [], travelSeconds: 0, quarrySeconds: 0 } };
   html = render("production", controller({ snapshot: state }), "garden");
   assert.equal(disabled(button(html, "Начать · 5 мин")), false);
-  assert.doesNotMatch(html, /Сначала приготовьте:/);
+  assert.doesNotMatch(html, /Приготовьте и заберите:/);
 });
 
 test("berry production owns its station and collection opens only after the server deadline", () => {

@@ -16,7 +16,11 @@ vm.runInNewContext(ts.transpileModule(readFileSync(new URL("../features/economy/
 const timeContext = { exports: {} };
 vm.runInNewContext(ts.transpileModule(readFileSync(new URL("../features/economy/domain/time-price.ts", import.meta.url), "utf8"),
   { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText, timeContext);
+const prerequisiteContext = { exports: {} };
+vm.runInNewContext(ts.transpileModule(readFileSync(new URL("../features/economy/domain/recipe-prerequisites.ts", import.meta.url), "utf8"),
+  { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText, prerequisiteContext);
 const context = { exports: {}, require: specifier => {
+  if (specifier === "@/features/economy/domain/recipe-prerequisites") return prerequisiteContext.exports;
   if (specifier === "@/features/economy/domain/money") return moneyContext.exports;
   if (specifier === "@/features/economy/domain/rules") return { constructionTimePearlPrice: (seconds, config) => timeContext.exports.durationPearlPrice(seconds * 1000,
     config.secondsPerPearl, moneyContext.exports.ECONOMY_PEARL_SCALE, config.priceStepPearls, config.pricingPoints) };
@@ -37,6 +41,15 @@ const { buildProgressionLayout, NODE_WIDTH, NODE_HEIGHT } = layoutContext.export
 const plain = value => JSON.parse(JSON.stringify(value));
 const node = id => graph.nodes.find(value => value.id === id);
 const hasEdge = (source, target, kind) => graph.edges.some(edge => edge.source === source && edge.target === target && edge.kind === kind);
+
+test("recipe prerequisites name their claimed products without repeating action verbs", () => {
+  const strawberry = node("r:grow_strawberries");
+  assert.match(strawberry.description, /Для открытия произведите и заберите: Малиновый компот × 1/);
+  assert.doesNotMatch(strawberry.description, /приготовьте[^.]*Приготовить/i);
+  const parts = node("r:make_precision_parts");
+  const reinforced = catalog.items.find(item => item.id === "reinforced_parts");
+  assert.ok(parts.description.includes(`${reinforced.name} × 10`));
+});
 
 function reachableIds(currentGraph, accepts) {
   const outgoing = new Map();

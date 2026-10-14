@@ -391,6 +391,20 @@ test("stage and pearl summaries distinguish guaranteed project gates from chance
   assert.match(value, /Старт \+ вводные заказы − стройки: 100 \+ 330 − 380 = 50 монет/);
 });
 
+test("branch shop shows the disabled preview and current visible amounts alongside clean recipe prerequisites", () => {
+  const tree = harness(EconomyPanel).render();
+  const table = elements(tree).find(node => node.type === "table" && text(renderToStaticMarkup(node)).includes("Монеты за жемчуг"));
+  assert.ok(table);
+  assert.equal(elements(table).filter(node => node.type === "tbody").flatMap(node => elements(node).filter(entry => entry.type === "tr")).length, 5);
+  const value = text(renderToStaticMarkup(tree));
+  assert.match(value, /Покупка жемчуга и обмен на монеты пока недоступны/);
+  assert.match(value, /Горсть жемчуга: 500 жемчужин/);
+  assert.match(value, /Максимум: 8\s?500 монет за 100 жемчужин/);
+  const details = text(renderToStaticMarkup(harness(ItemDetails, { item: item("strawberries"), home: 0, onSelect() {} }).render()));
+  assert.match(details, /Сначала получить: Малиновый компот ×1/);
+  assert.doesNotMatch(details, /[Сс]начала получить[^·<]*Приготовить/);
+});
+
 test("house-four project displays one-time funding, actual restoration costs and the claimed ruin gate before home five", () => {
   const stage = data.stages.find(value => value.homeLevel === 4);
   const tree = harness(StageCard, { stage, onSelect() {} }).render();

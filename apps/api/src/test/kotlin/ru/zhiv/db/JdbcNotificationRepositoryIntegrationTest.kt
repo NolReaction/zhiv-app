@@ -95,6 +95,31 @@ class JdbcNotificationRepositoryIntegrationTest {
             VALUES (?,?,?,?,?,'Europe/Moscow',?)""",p.id,p.session,UUID.randomUUID(),at.notificationSqlTime(),at.plusSeconds(30).notificationSqlTime(),at.atOffset(ZoneOffset.UTC).toLocalDate())
     }
 
+    @Test fun `only ready confirmed miner sources open mine even with a future hero journey`() = runBlocking<Unit> {
+        val p=player(); connect(p); val now=Instant.now()
+        val mine=job(now,"exploration","unrelated-route-name").copy(actorId="miner")
+        val futureHero=job(now,"exploration","forest",now.plusSeconds(300)).copy(actorId="mochlik")
+        jobs(p,mine,futureHero)
+        val sent=CopyOnWriteArrayList<PushPayload>(); dispatcher({now},sent).tick()
+        assertEquals(1,sent.size)
+        assertEquals("/?notification=world&section=mine&owner=${p.owner}",sent.single().url)
+        assertEquals("Шахтёр завершил смену",sent.single().title)
+        assertEquals(p.owner,sent.single().ownerPublicId)
+    }
+    @Test fun `mine route names and mixed batches cannot redirect non miner work into mine`() = runBlocking<Unit> {
+        val now=Instant.now()
+        val mine=job(now,"exploration","quarry_shift").copy(actorId="miner")
+        val hero=job(now,"exploration","quarry_shift").copy(actorId="mochlik")
+        val legacy=job(now,"exploration","quarry_shift")
+        listOf(listOf(hero),listOf(legacy),listOf(mine,hero),listOf(mine,job(now))).forEach { batch ->
+            val p=player(); connect(p); jobs(p,*batch.toTypedArray())
+            val sent=CopyOnWriteArrayList<PushPayload>(); dispatcher({now},sent).tick()
+            assertEquals(1,sent.size)
+            assertEquals("/?notification=world&section=activities&owner=${p.owner}",sent.single().url)
+            assertNotEquals("Шахтёр завершил смену",sent.single().title)
+        }
+    }
+
     @Test fun `unconfigured server saves preferences but never pretends to subscribe`() = runBlocking<Unit> {
         val p=player(); val disabled=JdbcNotificationRepository(source)
         assertEquals("0",scalar("SELECT count(*) FROM notification_preferences WHERE user_id=?",p.id))

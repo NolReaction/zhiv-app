@@ -23,9 +23,11 @@ function load(path, dependencies = {}) {
 const money = load("../features/economy/domain/money.ts");
 const timePrice = load("../features/economy/domain/time-price.ts");
 const sale = load("../features/economy/domain/local-sale.ts", { "./model": money });
+const currencyShop = load("../features/economy/domain/currency-shop.ts");
 const model = load("../features/progression/economy-data.ts", {
   "@/features/economy/domain/model": { economyCatalog: catalog },
   "@/features/economy/domain/money": money,
+  "@/features/economy/domain/currency-shop": currencyShop,
   "@/features/economy/domain/rules": { constructionTimePearlPrice: (seconds, config) => timePrice.durationPearlPrice(seconds * 1000,
     config.secondsPerPearl, money.ECONOMY_PEARL_SCALE, config.priceStepPearls, config.pricingPoints) },
   "@/features/economy/domain/local-sale": sale,
@@ -195,6 +197,16 @@ test("pearl budgets respect visible denomination and distinguish repeat gifts fr
   assert.equal(economy.orderBoard.slots, 3);
   assert.equal(economy.orderBoard.replacementPricePearls, 5);
   assert.deepEqual(plain(economy.fishingShop), { refreshSeconds: 21600, maximumRefreshPearls: 50 });
+});
+
+test("currency shop reference uses visible pearls and home quotes, excluding storage from production bonuses", () => {
+  assert.equal(economy.currencyShop.preview, true);
+  assert.deepEqual(plain(economy.currencyShop.pearlPackages.map(pack => pack.pearls)), [500, 1200, 2500, 6500]);
+  assert.deepEqual(plain(economy.currencyShop.goldPrices), [20, 50, 100]);
+  assert.deepEqual(plain(economy.currencyShop.goldByHome.map(row => row.offers.map(offer => offer.coins))),
+    [[400, 1000, 2000], [600, 1500, 3000], [900, 2250, 4500], [1200, 3000, 6000], [1600, 4000, 8000]]);
+  assert.equal(economy.currencyShop.productionBonusPercent, 25);
+  assert.equal(economy.currencyShop.maximumGold, 8500);
 });
 
 test("house four has a separate twelve-delivery course, restored landmarks and guaranteed home-five relics", () => {
