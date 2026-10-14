@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, server: { middlewareMode: true, hmr: false, ws: false } });
+const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-simple-guides-sections-vite", server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { sectionGuideIds, sectionGuideLessons, sectionGuideCanOpen, parseSectionGuideProgress, transitionSectionGuide: move } = await vite.ssrLoadModule("/features/onboarding/section-guide-model.ts");
 const { sectionGuideStorageKey, createSectionGuideStore } = await vite.ssrLoadModule("/features/onboarding/section-guide-storage.ts");
@@ -28,6 +28,19 @@ test("each first-entry lesson is short and gating does not consume an unopened l
   assert.equal(sectionGuideCanOpen(false, true, null), false, "storage must be loaded first");
   assert.equal(sectionGuideCanOpen(true, false, null), false, "initial course, another device or hidden scope blocks auto-open");
   assert.equal(sectionGuideCanOpen(true, true, null), true, "still eligible when that blocker clears");
+});
+
+test("workshop lessons explain direct cards and same-cell cancellation without preparation controls", () => {
+  const [recipes, queue] = sectionGuideLessons.workshop;
+  assert.match(recipes.summary, /Нажатие сразу начнёт/);
+  assert.match(recipes.text, /недостающие материалы показаны прямо в карточке/);
+  assert.ok(queue.targets.includes("[data-recipe-order]"), "the one-tap card is itself the action target");
+  assert.match(queue.text, /ещё раз на «Отменить\?»/);
+  for (const step of [recipes, queue]) {
+    assert.doesNotMatch(`${step.summary} ${step.text}`, /«Начать»|количество партий/);
+    assert.ok(step.targets.every(selector => !selector.includes("recipe-preparation")));
+    assert.notEqual(step.revealOnOpen, true, "a workshop explanation must never activate a production card");
+  }
 });
 
 test("leaving the section without explicitly pausing its lesson resumes the exact step", () => {

@@ -103,7 +103,7 @@ function costAdvice(state: EconomyView, cost: EconomyCost, now: number, quantity
   let instruction = "Проверьте состав рецепта и доступные материалы.";
   if (source?.kind === "production") {
     target = { kind: "station", stationId: source.stationId, recipeId: source.targetId };
-    instruction = `Источник: ${stationName(state, source.stationId)}. Откройте рецепт, чтобы проверить его стоимость.`;
+    instruction = `Источник: ${stationName(state, source.stationId)}. В карточке предмета уже показаны материалы; нажатие на неё сразу начнёт работу.`;
   } else if (source?.kind === "exploration") {
     const mining = state.catalog.explorations.some(route => route.id === source.targetId && explorationActorId(route) === "miner");
     const conflict = mining ? economyMinerConflict(state.jobs, now) : economyActorConflict(state.jobs, "departure", now);

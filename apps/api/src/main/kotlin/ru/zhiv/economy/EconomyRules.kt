@@ -482,6 +482,20 @@ object EconomyRules {
                     minerRareDropState = if (mining) rare?.clock ?: state.minerRareDropState else state.minerRareDropState) to
                     if (mining) "Шахтёр начал работу" else if (special) "Мохлик отправился рыбачить. Снасти и наживка подготовлены" else "Мохлик отправился на исследование"
             }
+            "cancel_production" -> {
+                val job = state.jobs.find { it.id == command.targetId } ?: economyFailure("ECONOMY_JOB_GONE", "Результат уже получен или задание не найдено")
+                if (job.kind != "production" || !productionStationSupported(job.targetId))
+                    economyFailure("ECONOMY_CANCEL_KIND", "Можно отменить только обычное производство")
+                if (!now.isBefore(Instant.parse(job.finishesAt)) || job.collection?.startedAt != null)
+                    economyFailure("ECONOMY_CANCEL_READY", "Готовое производство уже нельзя отменить. Заберите результат")
+                if (job.cost.coins > ECONOMY_MAX_BALANCE - state.wallet.coins) economyFailure("ECONOMY_CAPACITY", "Кошелёк заполнен")
+                // Saved paid terms include the selected fish and survive catalog updates.
+                val refunded = state.copy(wallet = state.wallet.copy(coins = state.wallet.coins + job.cost.coins),
+                    inventory = addItems(state.inventory, job.cost.items), jobs = state.jobs.filterNot { it.id == job.id })
+                addItems(refunded.inventory, reservedItems)
+                assertStorageTransition(state, refunded, reservedItems)
+                refunded to "Производство отменено. Потраченные монеты и материалы возвращены"
+            }
             "cancel_exploration" -> {
                 val job = state.jobs.find { it.id == command.targetId } ?: economyFailure("ECONOMY_JOB_GONE", "Результат уже получен или задание не найдено")
                 if (job.kind != "exploration") economyFailure("ECONOMY_CANCEL_KIND", "Можно отменить только вылазку или работу в шахте")

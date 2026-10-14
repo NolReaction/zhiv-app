@@ -7,7 +7,7 @@ import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const hookModule = "virtual:inline-help-hooks";
-const vite = await createServer({ appType: "custom", configFile: false, root,
+const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-simple-guides-inline-vite",
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false },
   plugins: [{ name: "inline-help-hooks", enforce: "pre",
     resolveId(id) { if (id === hookModule) return `\0${id}`; },
@@ -25,12 +25,12 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
       }
     `; },
     transform(source, id) {
-      if (id.endsWith("/features/economy/ui/stations/world-object-menu.tsx") || id.endsWith("/features/economy/ui/construction/world-upgrade-dialog.tsx")) return source.replace('from "react";', `from "${hookModule}";`);
+      if (id.endsWith("/features/economy/ui/production/world-production-card.tsx") || id.endsWith("/features/economy/ui/construction/world-upgrade-dialog.tsx")) return source.replace('from "react";', `from "${hookModule}";`);
     },
   }],
 });
 const hooks = await vite.ssrLoadModule(hookModule);
-const { WorldRecipeDetail } = await vite.ssrLoadModule("/features/economy/ui/stations/world-object-menu.tsx");
+const { WorldProductionCard } = await vite.ssrLoadModule("/features/economy/ui/production/world-production-card.tsx");
 const { WorldUpgradeContent, WorldUpgradeDialog } = await vite.ssrLoadModule("/features/economy/ui/construction/world-upgrade-dialog.tsx");
 const { ExpeditionRouteDetails, WorldExpeditionSector, ActiveExpedition } = await vite.ssrLoadModule("/features/economy/ui/expeditions/world-expeditions-menu.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
@@ -58,43 +58,48 @@ function probe(component, props) {
   renderToStaticMarkup(createElement(Probe)); return nodes;
 }
 function recipeProps(economy, id = "make_planks", extra = {}) {
-  return { economy, recipe: economy.snapshot.catalog.recipes.find(recipe => recipe.id === id), onCollapse() {}, ...extra };
+  return { economy, recipe: economy.snapshot.catalog.recipes.find(recipe => recipe.id === id), ...extra };
 }
 
-test("recipe help appears for missing materials, locked stations and occupied slots, but not an available recipe or transient send", () => {
-  for (const [economy, expected] of [
-    [controller(), true],
-    [controller({ inventory: { wood: 2 } }), false],
-    [controller({ inventory: { wood: 2 }, buildings: { home: 1, warehouse: 1 } }), true],
-    [controller({ inventory: { wood: 2 }, jobs: [{ id: "paid", kind: "production", targetId: "workshop", recipeId: "make_planks" }] }), true],
-    [controller({ inventory: { wood: 2 } }, { busy: true }), false],
-    [controller({ inventory: { wood: 2 } }, { uncertain: true }), true],
-    [controller({ inventory: { wood: 2 } }, { retryAt: now + 1000 }), true],
+test("blocked one-tap cards explain the attempted item inline and keep its exact help context without sending a command", () => {
+  for (const economy of [
+    controller(),
+    controller({ inventory: { wood: 2 }, buildings: { home: 1, warehouse: 1 } }),
+    controller({ inventory: { wood: 2 }, jobs: [{ id: "paid", kind: "production", targetId: "workshop", recipeId: "make_planks" }] }),
+    controller({ inventory: { wood: 2 } }, { busy: true }),
+    controller({ inventory: { wood: 2 } }, { uncertain: true }),
+    controller({ inventory: { wood: 2 } }, { retryAt: now + 1000 }),
   ]) {
-    hooks.reset(); const opened = [], before = structuredClone(economy.snapshot);
-    const nodes = hooked(WorldRecipeDetail, recipeProps(economy, "make_planks", { onOpenHelp: context => opened.push(context) }));
-    assert.equal(Boolean(helpButton(nodes)), expected);
-    if (expected) {
-      helpButton(nodes).props.onClick();
-      assert.deepEqual(opened, [{ intent: "production", stationId: "workshop", recipeId: "make_planks", quantity: 1 }]);
-    }
+    hooks.reset(); const contexts = [], before = structuredClone(economy.snapshot);
+    const props = recipeProps(economy, "make_planks", { onHelpContextChange: context => contexts.push(context) });
+    let nodes = hooked(WorldProductionCard, props);
+    assert.deepEqual(contexts, [], "rendering another product cannot replace the currently selected help context");
+    const action = nodes.find(element => element.type === "button" && element.props["data-recipe"] === "make_planks");
+    assert.equal(action.props["data-recipe-product"], "planks");
+    assert.equal(Boolean(helpButton(nodes)), false, "there is no extra preparation or help action per product");
+    action.props.onClick();
+    nodes = hooked(WorldProductionCard, props);
+    assert.equal(nodes.filter(element => element.props.role === "status").length, 1);
+    assert.deepEqual(contexts, [{ intent: "production", stationId: "workshop", recipeId: "make_planks", quantity: 1 }]);
     assert.deepEqual(economy.snapshot, before);
   }
 });
 
-test("single-fish recipe context stays at one item without species or batch controls and repeat effects", () => {
-  hooks.reset(); const economy = controller(), contexts = [], opened = [];
-  const props = recipeProps(economy, "cook_grilled_fish", { onOpenHelp: value => opened.push(value), onHelpContextChange: value => contexts.push(value) });
-  const nodes = hooked(WorldRecipeDetail, props);
-  assert.equal(contexts.length, 1);
+test("single-fish card context stays at one item without species, batch controls or competing mount effects", () => {
+  hooks.reset(); const economy = controller(), contexts = [];
+  const props = recipeProps(economy, "cook_grilled_fish", { onHelpContextChange: value => contexts.push(value) });
+  const nodes = hooked(WorldProductionCard, props);
+  assert.equal(contexts.length, 0);
+  const action = nodes.find(element => element.type === "button" && element.props["data-recipe"] === "cook_grilled_fish");
+  action.props.onFocus();
+  assert.deepEqual(contexts[0], { intent: "production", stationId: "dryer", recipeId: "cook_grilled_fish", quantity: 1 });
   assert.equal(contexts[0].fishItemId, undefined);
   assert.equal(nodes.find(element => element.type === "select"), undefined);
   assert.equal(nodes.find(element => element.props["aria-label"] === "Увеличить партию"), undefined);
-  helpButton(nodes).props.onClick();
-  assert.deepEqual(opened, [{ intent: "production", stationId: "dryer", recipeId: "cook_grilled_fish", quantity: 1 }]);
-  assert.deepEqual(contexts.at(-1), opened[0]);
+  action.props.onClick();
+  assert.deepEqual(contexts.at(-1), contexts[0]);
   const count = contexts.length;
-  hooked(WorldRecipeDetail, props); hooked(WorldRecipeDetail, { ...props, economy: { ...economy, now: now + 1000 } });
+  hooked(WorldProductionCard, props); hooked(WorldProductionCard, { ...props, economy: { ...economy, now: now + 1000 } });
   assert.equal(contexts.length, count, "time ticks cannot repeat context callbacks and rerender the world");
 });
 

@@ -300,6 +300,24 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       }
       return miner ? "Шахтёр начал добывать материалы" : "Мохлик отправился исследовать мир";
     }
+    case "cancel_production": {
+      const job = state.jobs.find(item => item.id === command.targetId);
+      if (!job) return fail("ECONOMY_JOB_GONE", "Результат уже получен или задание не найдено");
+      if (job.kind !== "production" || !productionStationSupported(job.targetId))
+        return fail("ECONOMY_CANCEL_KIND", "Можно отменить только обычное производство");
+      if (now >= Date.parse(job.finishesAt) || job.collection?.startedAt != null)
+        return fail("ECONOMY_CANCEL_READY", "Готовое производство уже нельзя отменить. Заберите результат");
+      if (job.cost.coins > ECONOMY_MAX_BALANCE - state.wallet.coins) return fail("ECONOMY_CAPACITY", "Кошелёк заполнен");
+      // Refund the paid job, including its selected fish, never today's recipe.
+      // Check the complete return before changing the wallet or removing a slot.
+      const next = { ...state, inventory: { ...state.inventory } };
+      creditEconomyItems(next, job.cost.items);
+      assertEconomyStorageTransition(state, next, reservedItems);
+      state.inventory = next.inventory;
+      state.wallet.coins += job.cost.coins;
+      state.jobs = state.jobs.filter(item => item.id !== job.id);
+      return "Производство отменено. Потраченные монеты и материалы возвращены";
+    }
     case "cancel_exploration": {
       const job = state.jobs.find(item => item.id === command.targetId);
       if (!job) return fail("ECONOMY_JOB_GONE", "Результат уже получен или задание не найдено");

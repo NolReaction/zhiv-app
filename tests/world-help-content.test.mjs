@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
+const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-simple-guides-help-vite", resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { worldHelpTopics, worldHelpGroups, searchWorldHelp, searchWorldHelpWithStatus } = await vite.ssrLoadModule("/features/world/ui/help/world-help-content.ts");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
@@ -167,8 +167,12 @@ test("topic navigation points to existing buildings and valid destinations", () 
 
 test("beginner answers explain costs, receipt of results, blocked work and recovery without destructive advice", () => {
   assert.match(answer("start"), /урожай бесплатный/);
-  assert.match(answer("production"), /монеты и материалы спишутся сразу/);
-  assert.match(answer("production"), /красный материал.*получению/);
+  assert.match(answer("production"), /монеты и материалы спишутся/);
+  assert.match(answer("production"), /нехватка выделена рядом с количеством/);
+  assert.match(answer("production"), /одна работа начнётся сразу/);
+  assert.match(answer("production"), /ещё раз на «Отменить\?»/);
+  assert.match(answer("production"), /отмена возвращает потраченные монеты и материалы/);
+  assert.doesNotMatch(answer("production"), /«Начать»|выберите нужный в подготовке/);
   assert.match(answer("production"), /Забрать/);
   assert.match(answer("construction"), /подтвердите завершение.*новый уровень.*освободится/);
   assert.match(answer("journeys"), /одну вылазку или собирает ягоды/);

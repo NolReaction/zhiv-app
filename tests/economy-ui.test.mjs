@@ -6,7 +6,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
+const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: `/tmp/zhiv-simple-economy-ui-${process.pid}`, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 const { EconomyPanel, EconomyBalances, economyDuration } = await vite.ssrLoadModule("/features/economy/ui/economy-panel.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
@@ -33,6 +33,13 @@ const button = (html, text) => {
   assert.ok(found, `Missing button: ${text}`); return found;
 };
 const disabled = entry => /\bdisabled=/.test(entry.attributes);
+const productionBlocked = (html, itemId) => {
+  const match = html.match(new RegExp(`<button\\b([^>]*data-recipe-product="${itemId}"[^>]*)>`));
+  assert.ok(match, `Missing one-tap card: ${itemId}`);
+  assert.doesNotMatch(match[1], /\bdisabled=/, "blocked cards remain interactive to explain missing requirements");
+  return /data-blocked="true"/.test(match[1]);
+};
+
 
 test("standalone map market keeps trade actions without the old economy hub or repeated wallet", () => {
   const html = renderToStaticMarkup(createElement(EconomyPanel, {
@@ -53,9 +60,9 @@ function job(overrides = {}) {
 
 test("fresh players can grow and explore without coins; expensive buildings explain missing materials", () => {
   const production = render("production");
-  assert.equal(disabled(button(production, "Начать · 1 мин")), false);
-  assert.match(production, /Без затрат/);
-  assert.match(production, /1 предмет занимает 1 место производства до получения/);
+  assert.equal(productionBlocked(production, "berries"), false);
+  assert.match(production, /data-recipe-product="berries"/);
+  assert.match(production, /data-production-slots="garden"/);
   assert.doesNotMatch(production, /Размер заказа<select/);
   assert.equal(disabled(button(render("exploration"), "Отправиться: Лесная разведка")), false);
   const construction = render("buildings");
@@ -112,44 +119,42 @@ test("the economy construction hub shares house-three stage-order gates with the
 test("strawberry production explains its first-compote prerequisite and unlocks after a collected result", () => {
   const state = snapshot();
   let html = render("production", controller({ snapshot: state }), "garden");
-  assert.equal(disabled(button(html, "Начать · 5 мин")), true);
+  assert.equal(productionBlocked(html, "strawberries"), true);
   assert.match(html, /Приготовьте и заберите: Малиновый компот \(0 \/ 1\)/);
   state.inventory.berry_compote = 1;
-  assert.equal(disabled(button(render("production", controller({ snapshot: state }), "garden"), "Начать · 5 мин")), true, "a gifted compote is not personally claimed production");
+  assert.equal(productionBlocked(render("production", controller({ snapshot: state }), "garden"), "strawberries"), true, "a gifted compote is not personally claimed production");
   assert.doesNotMatch(html, /Приготовьте[^<]*Приготовить/);
   state.progression = { recipes: { cook_compote: 1 }, routes: {}, collections: { finds: [], travelSeconds: 0, quarrySeconds: 0 } };
   html = render("production", controller({ snapshot: state }), "garden");
-  assert.equal(disabled(button(html, "Начать · 5 мин")), false);
+  assert.equal(productionBlocked(html, "strawberries"), false);
   assert.doesNotMatch(html, /Приготовьте и заберите:/);
 });
 
-test("production hub groups crop methods and honours exact prerequisite recipe navigation", () => {
+test("production hub uses one automatic product per crop and focuses source links without method selectors", () => {
   const state = snapshot({ buildings: { home: 5, garden: 5, woodlot: 5, warehouse: 1 }, progression: { recipes: { cook_compote: 1, gather_hardwood: 10 } } });
   const html = render("production", controller({ snapshot: state }), "garden");
   assert.equal((html.match(/data-production-product="berries"/g) ?? []).length, 1);
   assert.equal((html.match(/data-production-product="strawberries"/g) ?? []).length, 1);
-  assert.equal(disabled(button(html, "Начать · 30 с")), false);
-  assert.match(html, /<option value="garden_season" selected="">/);
-  assert.match(html, /Вырастить малину на ухоженном кусте · 45 с/);
-  assert.match(html, /Вырастить малину · 1 мин/);
+  assert.equal(productionBlocked(html, "berries"), false);
+  assert.match(html, /data-recipe="garden_season"/);
+  assert.doesNotMatch(html, /Способ производства|Вырастить малину на ухоженном кусте|<option value="garden_season"/);
   const base = render("production", controller({ snapshot: state }), "gather_hardwood");
   assert.equal((base.match(/data-production-product="hardwood"/g) ?? []).length, 1);
-  assert.match(base, /<option value="gather_hardwood" selected="">/);
-  assert.equal(disabled(button(base, "Начать · 10 мин")), false, "opening the required original method must not silently switch to the faster method");
-  assert.doesNotMatch(base, /Начать · 8 мин/);
+  assert.match(base, /data-recipe="hardwood_shift"[^>]*data-recipe-focused="true"/);
+  assert.equal(productionBlocked(base, "hardwood"), false);
 });
 
 test("berry production owns its station and collection opens only after the server deadline", () => {
   const state = snapshot({ jobs: [job()] });
   let html = render("production", controller({ snapshot: state }));
-  assert.equal(disabled(button(html, "Начать · 1 мин")), true);
+  assert.equal(productionBlocked(html, "berries"), true);
   assert.match(html, /data-production-slot="1" data-state="working"/);
   assert.doesNotMatch(html, /aria-label="Собрать: Малина/);
   assert.match(html, /Все места заняты: сначала заберите результат/);
   state.jobs[0].finishesAt = new Date(now).toISOString();
   html = render("production", controller({ snapshot: state }));
   assert.equal(disabled(button(html, "Собрать")), false);
-  assert.equal(disabled(button(html, "Начать · 1 мин")), true);
+  assert.equal(productionBlocked(html, "berries"), true);
   assert.match(html, /Ягоды созрели/);
 });
 
@@ -166,11 +171,11 @@ test("an active house build keeps the current level and does not offer a second 
 test("uncertain commands and retry cooldown prevent duplicate actions while navigation remains usable", () => {
   const state = snapshot({ jobs: [job({ finishesAt: new Date(now - 1).toISOString() })] });
   let html = render("overview", controller({ snapshot: state, uncertain: true, error: "No response" }));
-  assert.equal(disabled(button(html, "Собрать: Вырастить малину")), true);
+  assert.equal(disabled(button(html, "Собрать")), true);
   assert.equal(disabled(button(html, "Проверить результат")), false);
   assert.equal(disabled(button(html, "Производство")), false);
   html = render("production", controller({ snapshot: snapshot(), retryAt: now + 15_000, error: "Повторите позже" }));
-  assert.equal(disabled(button(html, "Начать · 1 мин")), true);
+  assert.equal(productionBlocked(html, "berries"), true);
   assert.equal(disabled(button(html, "Повторить через 15 с")), true);
 });
 
@@ -286,28 +291,30 @@ test("full storage leaves ready rewards safe and offers recovery without prevent
   const readyJob = job({ finishesAt: new Date(now).toISOString() });
   const state = snapshot({ inventory: { wood: 47 }, jobs: [readyJob], storage: { capacity: 50, used: 47, reserved: 0, available: 3, overflow: 0 } });
   let html = render("overview", controller({ snapshot: state }));
-  assert.equal(disabled(button(html, "Собрать: Вырастить малину")), true);
-  assert.match(html, /нужно 6 мест, свободно 3/);
-  assert.match(html, /не портятся/);
-  assert.ok(button(html, "Освободить место"));
+  assert.equal(disabled(button(html, "Собрать")), true);
+  assert.match(html, /Нужно освободить 3 мест/);
+  assert.equal(state.jobs[0].id, readyJob.id, "a blocked collection keeps the saved reward waiting");
+  assert.ok(button(html, "К кладовой"));
   state.jobs = [];
   html = render("production", controller({ snapshot: state }));
-  assert.equal(disabled(button(html, "Начать · 1 мин")), false, "Production can finish while the player frees storage");
+  assert.equal(productionBlocked(html, "berries"), false, "Production can finish while the player frees storage");
   state.jobs = [job({ finishesAt: new Date(now).toISOString(), rewards: { berries: 250 }, catalogVersion: 1 })];
   html = render("overview", controller({ snapshot: state }));
-  assert.ok(button(html, "Расширить склад"));
+  assert.ok(button(html, "К кладовой"));
 });
 
-test("production batch options fit the entire result in warehouse capacity, even if current free space is lower", () => {
+test("one-tap production always starts one unit and keeps its whole-capacity guard", () => {
   const state = snapshot({ buildings: { home: 4, garden: 1, warehouse: 4 }, inventory: { wood: 195 },
     storage: { capacity: 200, used: 195, reserved: 0, available: 5, overflow: 0 } });
   Object.assign(state.catalog.recipes.find(recipe => recipe.id === "grow_berries"), { rewards: { berries: 70, fiber: 20 }, maxBatch: 10 });
-  state.catalog.maxBatch = 10; // A synthetic bulk quote retains the independent whole-capacity guard.
-  const html = render("production", controller({ snapshot: state }));
-  const size = html.match(/Размер заказа<select[^>]*>([\s\S]*?)<\/select>/)[1];
-  assert.deepEqual([...size.matchAll(/<option value="(\d+)"/g)].map(match => Number(match[1])), [1, 2]);
-  assert.match(html, /Результат займёт 90 мест/);
-  assert.equal(disabled(button(html, "Начать · 1 мин")), false);
+  state.catalog.maxBatch = 10;
+  let html = render("production", controller({ snapshot: state }));
+  assert.doesNotMatch(html, /Размер заказа|Увеличить партию/);
+  assert.match(html, /×70/);
+  assert.equal(productionBlocked(html, "berries"), false, "free warehouse space is required on delivery, not for starting a fitting result");
+  state.storage.capacity = 50;
+  html = render("production", controller({ snapshot: state }));
+  assert.equal(productionBlocked(html, "berries"), true);
 });
 
 test("player market cannot buy an unaffordable storage lot and offers the warehouse as a next action", () => {
@@ -351,8 +358,8 @@ test("days are readable and higher tier recipes explain their actual prerequisit
   assert.equal(economyDuration(90000), "1 д 1 ч");
   const html = render("production", controller(), "workshop");
   assert.match(html, /Будущие рецепты/);
-  assert.match(html, /Условия открытия/);
-  assert.ok(button(html, "Мастерская: 0 / 1 ур."));
+  assert.match(html, /Мастерская: нужен уровень 1/);
+  assert.doesNotMatch(html, /Способ производства|Размер заказа/);
   assert.ok(button(html, "К постройке"));
 });
 
@@ -479,13 +486,13 @@ test("economy production hub exposes every slot job and allows the remaining cap
     job({ id: "22222222-2222-4222-8222-222222222222" })];
   const state = snapshot({ buildings: { home: 4, garden: 1, warehouse: 1 }, productionSlots: { garden: 3 }, jobs });
   let html = render("production", controller({ snapshot: state }), "garden");
-  assert.equal(disabled(button(html, "Начать · 1 мин")), false);
+  assert.equal(productionBlocked(html, "berries"), false);
   for (const job of jobs) assert.equal((html.match(new RegExp(`data-job-id="${job.id}"`, "g")) ?? []).length, 1);
   assert.equal(buttons(html).filter(entry => /aria-label="Собрать: Малина/.test(entry.attributes)).length, 1);
   assert.match(html, /data-production-slots="garden"/);
   state.jobs.push(job({ id: "33333333-3333-4333-8333-333333333333" }));
   html = render("production", controller({ snapshot: state }), "garden");
-  assert.equal(disabled(button(html, "Начать · 1 мин")), true);
+  assert.equal(productionBlocked(html, "berries"), true);
   for (const job of state.jobs) assert.equal((html.match(new RegExp(`data-job-id="${job.id}"`, "g")) ?? []).length, 1);
   assert.equal(buttons(html).filter(entry => /aria-label="Собрать: Малина/.test(entry.attributes)).length, 1);
 });

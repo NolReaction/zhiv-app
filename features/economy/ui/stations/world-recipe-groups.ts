@@ -3,7 +3,7 @@ import { worldMissingRequirements, worldRecipeUnlockReason, worldRequirements, w
 
 export type WorldRecipeGroup = { key: string; recipe: WorldRecipe; methods: WorldRecipe[] };
 
-/** One product entry, with its existing production methods retained in preparation. */
+/** One product entry using the fastest personally unlocked recipe. Original IDs stay available for saved jobs and prerequisite navigation. */
 export function worldRecipeGroups(state: EconomyView, recipes: readonly WorldRecipe[], { includeFuture = false }: { includeFuture?: boolean } = {}): WorldRecipeGroup[] {
   const groups = new Map<string, WorldRecipeGroup>();
   for (const recipe of recipes) {

@@ -6,7 +6,7 @@ import { Children, createElement, isValidElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
+const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: `/tmp/zhiv-simple-food-menu-${process.pid}`, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 const { WorldFoodMenu, FoodMealCard, ResidentOrderCard, mealBlockedReason } = await vite.ssrLoadModule("/features/economy/ui/food/world-food-menu.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { residentOrderBoard, normalizedResidentOrders } = await vite.ssrLoadModule("/features/economy/domain/food.ts");
@@ -184,7 +184,7 @@ test("builder entry selects him and pending/active meal effects are visible", ()
 
 test("fish selection changes the visible cost and dispatched ingredient without automatically spending valuable stock", async () => {
   const hookModule = "virtual:food-menu-hooks";
-  const runtime = await createServer({ appType: "custom", configFile: false, root,
+  const runtime = await createServer({ appType: "custom", configFile: false, root, cacheDir: `/tmp/zhiv-simple-food-menu-${process.pid}`,
     resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false },
     plugins: [{ name: "food-menu-hooks", enforce: "pre",
       resolveId(id) { if (id === hookModule) return `\0${id}`; },
@@ -197,32 +197,31 @@ test("fish selection changes the visible cost and dispatched ingredient without 
         export function useState(initial) { const slot = useRef(typeof initial === 'function' ? initial() : initial); return [slot.current, value => { slot.current = typeof value === 'function' ? value(slot.current) : value; }]; }
         export function useEffect() {}
       `; },
-      transform(source, id) { if (/\/features\/economy\/ui\/(?:stations|food)\/world-(object|food)-menu\.tsx$/.test(id)) return source.replace('from "react";', `from "${hookModule}";`); },
+      transform(source, id) { if (/\/features\/economy\/ui\/(?:food\/world-food-menu|production\/world-production-card)\.tsx$/.test(id)) return source.replace('from "react";', `from "${hookModule}";`); },
     }],
   });
   try {
     const hooks = await runtime.ssrLoadModule(hookModule);
-    const { WorldRecipeDetail } = await runtime.ssrLoadModule("/features/economy/ui/stations/world-object-menu.tsx");
+    const { WorldProductionCard } = await runtime.ssrLoadModule("/features/economy/ui/production/world-production-card.tsx");
     const { WorldFoodMenu: Menu } = await runtime.ssrLoadModule("/features/economy/ui/food/world-food-menu.tsx");
     const calls = [], economy = controller({ inventory: { wood: 20, fish_common: 5, fish_legendary: 1 } }, { act(...args) { calls.push(args); } });
     const recipe = economy.snapshot.catalog.recipes.find(recipe => recipe.id === "cook_grilled_fish");
-    const prepare = () => { hooks.render(); return WorldRecipeDetail({ economy, recipe, onCollapse() {} }); };
+    const prepare = () => { hooks.render(); return WorldProductionCard({ economy, recipe }); };
     hooks.reset();
     let tree = prepare();
-    const start = tree => buttons(tree).find(button => Array.isArray(button.props.children) && button.props.children[0] === "Начать · ");
+    const start = tree => buttons(tree).find(button => button.props["data-recipe-order"]);
     assert.equal(elements(tree).some(element => element.type === "select"), false, "class recipes never ask for a species");
-    assert.equal(start(tree).props.disabled, false);
+    assert.equal(start(tree).props["data-blocked"], undefined);
     assert.match(renderToStaticMarkup(tree), /Обычная рыба/);
-    const ingredientCost = elements(tree).find(element => typeof element.type === "function" && element.type.name === "Cost").props.cost;
-    assert.equal(ingredientCost.items.fish_common, recipe.cost.items.fish_common);
-    assert.equal(ingredientCost.items.fish_legendary, undefined);
+    assert.match(renderToStaticMarkup(tree), /data-item-icon="fish_common"/);
+    assert.doesNotMatch(renderToStaticMarkup(tree), /data-item-icon="fish_legendary"/);
     start(tree).props.onClick();
     assert.deepEqual(calls, [["start_production", "cook_grilled_fish", 1]]);
     economy.uncertain = true;
-    assert.equal(start(prepare()).props.disabled, true);
+    assert.equal(start(prepare()).props["data-blocked"], true);
     economy.uncertain = false;
     economy.snapshot.inventory.fish_common = 0;
-    assert.equal(start(prepare()).props.disabled, true, "legendary stock cannot replace missing common fish");
+    assert.equal(start(prepare()).props["data-blocked"], true, "legendary stock cannot replace missing common fish");
 
     hooks.reset(); economy.uncertain = false;
     const menu = () => { hooks.render(); return Menu({ economy }); };

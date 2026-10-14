@@ -15,19 +15,11 @@
 .price { display: inline-flex; align-items: center; justify-content: center; gap: 3px; color: #625578; font-variant-numeric: tabular-nums; }
 .slots.slots .slot[data-state="working"] { border-color: #99ae7a; background: #e7e7c4; }
 .slots.slots .slot[data-state="ready"] { border-color: #96a071; background: #dce1b7; }
-/* Reuse the ordinary work controls so garden collection and stored job receipts
-   retain their existing behavior. Only their layout changes within a slot. */
+/* The product cell keeps its own claim/cancellation behavior in every station. */
 .job > div[data-job-id] { width: 100%; min-width: 0; padding: 0; border: 0; background: transparent; }
-.job > div[data-job-id] > div:first-child { flex-direction: column; align-items: stretch; gap: 4px; }
-.job > div[data-job-id] > div:first-child > span { flex: 0 0 auto; align-self: center; width: 100%; min-height: 32px; }
-.job > div[data-job-id] > div:first-child > span > svg { max-width: 100%; height: 34px; }
-.job > div[data-job-id] > div:first-child > div { flex: 0 0 auto; align-items: center; text-align: center; }
-.job > div[data-job-id] strong { font-size: 10px; line-height: 1.25; }
-.job > div[data-job-id] > div:first-child > div > span { font-size: 9px; }
-.slots.slots .job button { display: inline-flex; justify-content: center; align-items: center; width: 100%; min-height: 44px; padding: 5px 2px; border: 1px solid #728461; border-radius: 6px; background: #466347; color: #fff3d6; font: inherit; font-size: 10px; cursor: pointer; touch-action: manipulation; }
+.slots.slots .job button[data-production-control] { border: 0; background: transparent; color: #394d3e; }
+.slots.slots .job button[data-production-dismiss] { border: 0; background: transparent; color: #59624d; }
 .job progress { margin-top: 6px; }
-.job ul { justify-content: center; }
-.job li { gap: 2px; padding: 3px; font-size: 9px; }
 .job p { overflow-wrap: anywhere; text-align: left; }
 .hint { margin: 6px 0 0; color: #776044; font-size: 10px; overflow-wrap: anywhere; }
 .confirmation { margin-top: 8px; padding: 9px; border: 1px solid #aaa0bd; border-radius: 9px; background: #eee7e5; }

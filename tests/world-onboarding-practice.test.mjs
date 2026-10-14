@@ -5,7 +5,7 @@ import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const hookModule = "virtual:world-onboarding-practice-hooks";
-const vite = await createServer({ appType: "custom", configFile: false, root,
+const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-simple-guides-practice-vite",
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false },
   plugins: [{ name: "world-onboarding-practice-hooks", enforce: "pre",
     resolveId(id) { if (id === hookModule) return `\0${id}`; },
@@ -102,13 +102,12 @@ function harness(progress = started("grow"), jobs = []) {
     residentOpen: null, ordersOpen: false, workshopOpen: false,
     worldElement: { current: { querySelector(selector) {
       if (selector === '[data-place="garden"]') return surface.garden ? {} : null;
-      if (selector === '[data-recipe-preparation="grow_berries"]') return surface.recipe ? {} : null;
+      if (selector === '[data-place="garden"] [data-recipe-product="berries"]') return surface.garden && surface.recipe ? { click() {
+        assert.fail("Showing a production target must never press its one-tap action");
+      } } : null;
       const content = { '[data-guide-pantry-item]': "pantryItem", '[data-guide-pantry-sale]': "pantrySale",
         '[data-guide-pantry-relics]': "pantryRelics", '[data-route-preparation]': "routePreparation", '[data-tutorial-order="true"]': "tutorialOrder" }[selector];
       if (content) return surface[content] ? {} : null;
-      if (selector === '[data-recipe="grow_berries"]') return surface.garden ? { click() {
-        calls.push(["choose-recipe"]); surface.recipe = true; notifySurface();
-      } } : null;
       return null;
     } } },
     onStart() { calls.push(["start"]); change({ type: "start" }); },
@@ -146,7 +145,7 @@ function harness(progress = started("grow"), jobs = []) {
   };
 }
 
-test("practice points at the berry bush and waits for manual map and recipe actions", () => {
+test("practice points at the one-tap berry card without activating its production command", () => {
   const h = harness(started("garden"));
   let coach = h.render();
   assert.equal(coach.primary, undefined);
@@ -154,15 +153,46 @@ test("practice points at the berry bush and waits for manual map and recipe acti
   assert.deepEqual(h.calls, []);
   h.revealSurface(true, false);
   coach = h.render();
-  assert.equal(coach.target, '[data-recipe="grow_berries"]');
+  assert.equal(coach.target, '[data-place="garden"] [data-recipe-product="berries"]');
   assert.equal(coach.primary, undefined);
-  assert.equal(h.props.progress.stepId, "garden", "opening the bush alone does not count as choosing a recipe");
+  assert.equal(h.props.progress.stepId, "garden", "the guide waits until the real product card is mounted");
   h.revealSurface(true, true);
   coach = h.render();
   assert.equal(h.props.progress.stepId, "grow");
-  assert.equal(coach.primary, undefined, "the actual recipe button is the only start control");
+  assert.equal(coach.target, '[data-place="garden"] [data-recipe-product="berries"]');
+  assert.equal(coach.primary, undefined, "the actual product card is the only start control");
+  assert.match(coach.summary, /Нажми на карточку малины/);
+  assert.doesNotMatch(coach.text, /«Начать»|подготовк|открой рецепт/);
   assert.deepEqual(h.economy.snapshot.jobs, []);
-  assert.deepEqual(h.calls, [["step", "grow"]], "the guide observes the manual choice without clicking any target");
+  assert.deepEqual(h.calls, [["step", "grow"]], "the guide changes only its local lesson, never clicks the action target");
+});
+
+test("berry practice targets the same product after upgrades and explains the automatic recipe's exact time", () => {
+  for (const [gardenLevel, expected] of [[1, "1 мин"], [2, "45 с"], [3, "30 с"]]) {
+    const h = harness(started("grow"));
+    h.patchSnapshot({ buildings: { home: 3, warehouse: 1, garden: gardenLevel } });
+    h.revealSurface(true, true);
+    const coach = h.render();
+    assert.equal(coach.target, '[data-place="garden"] [data-recipe-product="berries"]');
+    assert.ok(coach.text.includes(`за ${expected}`), coach.text);
+    assert.equal(coach.primary, undefined);
+    assert.deepEqual(h.calls, []);
+  }
+});
+
+test("the one-tap practice keeps blockers readable without issuing a command or advancing on a refused action", () => {
+  for (const patch of [{ uncertain: true }, { isOnline: false }, { error: "Не хватает материалов" }]) {
+    const h = harness(started("grow"));
+    h.revealSurface(true, true);
+    if (patch.isOnline === false) h.props.isOnline = false;
+    else h.patchEconomy(patch);
+    const coach = h.render();
+    assert.equal(coach.target, '[data-place="garden"] [data-recipe-product="berries"]');
+    assert.ok(coach.status);
+    assert.equal(coach.primary, undefined);
+    assert.deepEqual(h.props.progress, started("grow"));
+    assert.deepEqual(h.calls, []);
+  }
 });
 
 test("a confirmed crop can grow in the background while the guide advances, preserving its exact ID", () => {
@@ -217,6 +247,26 @@ test("a real accepted berry receipt celebrates once and points to the pantry wit
   coach.primary.onClick();
   assert.deepEqual(h.calls.slice(offset), [["close-surface"], ["step", "neighbors"]]);
   assert.equal(h.props.quickMenu, null, "a continuation button must not open the pantry for the player");
+});
+
+test("an accepted mixed garden batch celebrates the tracked berry once after deleting all collected jobs", () => {
+  const tracked = { ...crop("crop-1", now), rewards: { berries: 1 }, collection: { kind: "berry_harvest", seconds: 8,
+    batchId: "06b215a9-17aa-4949-8282-f7b4942f552c", startedAt: new Date(now - 8000).toISOString(), finishesAt: new Date(now).toISOString() } };
+  const other = { ...tracked, id: "crop-2", recipeId: "grow_blueberries", rewards: { blueberries: 1 } };
+  const growing = crop("crop-3", now + 60_000);
+  const h = harness(started("grow", tracked.id), [tracked, other, growing]);
+  h.render();
+  h.patchSnapshot({ revision: 2, jobs: [growing], inventory: { berries: 1, blueberries: 1 } });
+  h.patchEconomy({ inventoryGains: [gain({ id: tracked.collection.batchId, items: [{ itemId: "berries", quantity: 1 }, { itemId: "blueberries", quantity: 1 }] })] });
+  const coach = h.render();
+  assert.equal(coach.title, "Урожай в кладовой!");
+  assert.equal(h.props.progress.cropJobId, undefined);
+  assert.deepEqual(h.economy.snapshot.jobs.map(job => job.id), [growing.id]);
+  coach.primary.onClick();
+  h.props.progress = transitionWorldOnboarding(h.props.progress, { type: "replay" });
+  h.render();
+  h.props.progress = started("grow");
+  assert.equal(h.render().title, "Ягоды уже растут", "the same batch receipt cannot celebrate the next growing crop");
 });
 
 test("replaying after a successful harvest cannot reuse the previous crop's success message", () => {

@@ -66,6 +66,70 @@ class JdbcEconomyRepositoryIntegrationTest {
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(ready), p.id)
     }
 
+    @Test fun `concurrent production cancellation refunds saved terms once and retains only safe recipe context`() = runBlocking<Unit> {
+        val p = player(); economy.snapshot(p.hash)
+        val original = source.connection.use { readEconomyProfile(it, p.id).state }
+        val initialized = original.copy(inventory = mapOf("berries" to 4L, "wood" to 2L, "fish_rare" to 1L),
+            buildings = original.buildings + mapOf("home" to 3, "dryer" to 3))
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(initialized), p.id)
+        val started = economy.command(p.hash, command(p, economy.snapshot(p.hash), "start_production", "cook_hearty_fish")).state
+        val persisted = source.connection.use { readEconomyProfile(it, p.id).state }
+        val job = persisted.jobs.single().copy(cost = persisted.jobs.single().cost.copy(coins = 7L), catalogVersion = 1)
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(persisted.copy(jobs = listOf(job))), p.id)
+        val before = economy.snapshot(p.hash)
+        val cancel = command(p, before, "cancel_production", started.jobs.single().id)
+        val responses = coroutineScope { List(2) { async(Dispatchers.IO) { JdbcEconomyRepository(source).command(p.hash, cancel) } }.awaitAll() }
+        assertEquals(1, responses.count { it.replayed })
+        val after = economy.snapshot(p.hash)
+        assertEquals(before.revision + 1, after.revision)
+        assertEquals(initialized.inventory, after.inventory)
+        assertEquals(before.wallet.coins + 7, after.wallet.coins)
+        assertEquals(before.wallet.pearls, after.wallet.pearls)
+        assertEquals(before.progression, after.progression)
+        assertEquals(before.food, after.food)
+        assertTrue(after.jobs.isEmpty())
+        assertEquals("1", scalar("SELECT count(*) FROM economy_commands WHERE user_id=? AND request_id=?", p.id, UUID.fromString(cancel.requestId)))
+        assertEquals("1", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='cancel_production'", p.id))
+        assertEquals("7", scalar("SELECT coins FROM economy_ledger WHERE user_id=? AND kind='cancel_production'", p.id))
+        assertEquals(job.cost.items, economyJson.decodeFromString<Map<String, Long>>(scalar("SELECT items FROM economy_ledger WHERE user_id=? AND kind='cancel_production'", p.id)))
+        assertEquals(mapOf("originAction" to "start_production", "targetId" to "cook_hearty_fish"),
+            economyJson.decodeFromString<Map<String, String>>(scalar("SELECT context::text FROM economy_ledger WHERE user_id=? AND kind='cancel_production'", p.id)))
+        assertTrue(economy.command(p.hash, cancel).replayed)
+        assertEquals(after.inventory, economy.snapshot(p.hash).inventory)
+        assertEquals("ECONOMY_REVISION_CONFLICT", assertFailsWith<AuthFailure> {
+            economy.command(p.hash, cancel.copy(requestId = UUID.randomUUID().toString())) }.code)
+        assertEquals("ECONOMY_JOB_GONE", assertFailsWith<AuthFailure> {
+            economy.command(p.hash, command(p, after, "cancel_production", job.id)) }.code)
+    }
+
+    @Test fun `failed production refund with escrow rolls back its receipt and can retry once space is freed`() = runBlocking<Unit> {
+        val p = player(); economy.snapshot(p.hash)
+        val original = source.connection.use { readEconomyProfile(it, p.id).state }
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(original.copy(
+            inventory = mapOf("wood" to 1L), buildings = original.buildings + ("workshop" to 1))), p.id)
+        val started = economy.command(p.hash, command(p, economy.snapshot(p.hash), "start_production", "make_planks")).state
+        val persisted = source.connection.use { readEconomyProfile(it, p.id).state }
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(persisted.copy(inventory = mapOf("wood" to 48L))), p.id)
+        execute("INSERT INTO economy_market_listings(id,seller_id,item_id,quantity,total_price) VALUES (?,?,?,?,?)",
+            UUID.randomUUID(), p.id, "wood", 2L, 80L)
+        val full = economy.snapshot(p.hash)
+        val cancel = command(p, full, "cancel_production", started.jobs.single().id)
+        assertEquals("ECONOMY_STORAGE_FULL", assertFailsWith<AuthFailure> { economy.command(p.hash, cancel) }.code)
+        assertEquals(full, economy.snapshot(p.hash).copy(serverTime = full.serverTime))
+        assertEquals("0", scalar("SELECT count(*) FROM economy_commands WHERE user_id=? AND request_id=?", p.id, UUID.fromString(cancel.requestId)))
+        assertEquals("0", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='cancel_production'", p.id))
+        execute("UPDATE economy_profiles SET state=jsonb_set(state,'{inventory,wood}','47'::jsonb) WHERE user_id=?", p.id)
+        val returned = economy.command(p.hash, cancel)
+        assertFalse(returned.replayed)
+        assertEquals(48L, returned.state.inventory["wood"])
+        assertEquals(2L, returned.state.storage.reserved)
+        assertTrue(returned.state.jobs.isEmpty())
+        assertEquals(full.revision + 1, returned.state.revision)
+        assertEquals(full.progression, returned.state.progression)
+        assertTrue(economy.command(p.hash, cancel).replayed)
+        assertEquals("1", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='cancel_production'", p.id))
+    }
+
     @Test fun `concurrent retired workshop requests mint nothing and leave no receipt or ledger`() = runBlocking<Unit> {
         val p = player()
         val before = economy.snapshot(p.hash)

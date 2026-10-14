@@ -9,7 +9,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const hooksId = "virtual:visible-production-slots-hooks";
 // Exercise the real purchase handlers and work/collection controls without a
 // browser dependency. Only the component's hook storage is substituted.
-const vite = await createServer({ appType: "custom", configFile: false, root,
+const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: `/tmp/zhiv-slot-ui-vite-${process.pid}`,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false },
   plugins: [{ name: "visible-production-slots-hooks", enforce: "pre",
     resolveId(id) { if (id === hooksId) return `\0${id}`; },
@@ -39,6 +39,9 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
     transform(source, id) {
       if (id.endsWith("/features/economy/ui/production/world-production-slots.tsx")) return source.replace('from "react";', `from "${hooksId}";`);
       if (id.endsWith("/features/economy/ui/shared/world-economy-parts.tsx")) return source.replace('from "@/features/economy/integration/garden-collection-context";', `from "${hooksId}";`);
+      if (id.endsWith("/features/economy/ui/production/production-work.tsx")) return source
+        .replace('from "react";', `from "${hooksId}";`)
+        .replace('from "@/features/economy/integration/garden-collection-context";', `from "${hooksId}";`);
       if (id.endsWith("/features/economy/ui/stations/world-object-menu.tsx")) return source
         .replace('from "react";', `from "${hooksId}";`)
         .replace('from "@/features/economy/integration/garden-collection-context";', `from "${hooksId}";`) + "\nexport { ObjectMenuBody as TestSlotMenuBody };";
@@ -52,6 +55,7 @@ after(() => vite.close());
 const hooks = await vite.ssrLoadModule(hooksId);
 const { WorldProductionSlots } = await vite.ssrLoadModule("/features/economy/ui/production/world-production-slots.tsx");
 const { Work } = await vite.ssrLoadModule("/features/economy/ui/shared/world-economy-parts.tsx");
+const { ProductionWork } = await vite.ssrLoadModule("/features/economy/ui/production/production-work.tsx");
 const { TestSlotMenuBody } = await vite.ssrLoadModule("/features/economy/ui/stations/world-object-menu.tsx");
 const { TestSlotProduction, TestSlotJobCard } = await vite.ssrLoadModule("/features/economy/ui/economy-panel.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
@@ -69,6 +73,15 @@ function elements(tree) {
 function render(economy, stationId = "woodlot") {
   hooks.render(); return WorldProductionSlots({ economy, stationId });
 }
+let workKey;
+function renderWork(entry, props) {
+  hooks.render(); let tree = entry(props);
+  while (isValidElement(tree) && typeof tree.type === "function") {
+    if (tree.key && tree.key !== workKey) { workKey = tree.key; hooks.restore([]); hooks.render(); }
+    tree = tree.type(tree.props);
+  }
+  return tree;
+}
 function card(tree, slot) { return elements(tree).find(node => node.type === "button" && node.props["data-production-slot"] === slot); }
 function buy(tree) { return elements(tree).find(node => node.type === "button" && Children.toArray(node.props.children).some(child => typeof child === "string" && child.includes("Купить за"))); }
 function cancel(tree) { return elements(tree).find(node => node.type === "button" && node.props.children === "Отмена"); }
@@ -76,7 +89,7 @@ function click(node, extra = {}) { assert.ok(node); node.props.onClick({ current
 function production(id, targetId = "woodlot", overrides = {}) {
   return { id, kind: "production", targetId, recipeId: targetId === "garden" ? "grow_berries" : "gather_wood",
     startedAt: new Date(now - 60_000).toISOString(), finishesAt: new Date(now + 120_000).toISOString(),
-    rewards: targetId === "garden" ? { berries: 1 } : { wood: 1 }, ...overrides };
+    rewards: targetId === "garden" ? { berries: 1 } : { wood: 1 }, cost: { coins: 0, items: {} }, ...overrides };
 }
 
 test("opening, cancelling and dismissing purchase confirmation never spends pearls", () => {
@@ -103,25 +116,25 @@ test("ripe slot and hub buttons gather all berries and explain the combined ware
   }));
   economy.snapshot.storage.available = 2;
   for (const entry of [Work, TestSlotJobCard]) {
-    const tree = entry({ economy, job: economy.snapshot.jobs[0], compact: true, navigate() {} });
+    const tree = renderWork(entry, { economy, job: economy.snapshot.jobs[0], compact: true, navigate() {} });
     const button = elements(tree).find(node => node.type === "button");
     assert.match(renderToStaticMarkup(tree), /Собрать всё \(3\)/); assert.equal(button.props.disabled, true);
     click(button); assert.equal(calls.length, 0);
-    assert.match(renderToStaticMarkup(tree), entry === Work ? /Нужно освободить 1 мест/ : /Для результата нужно 3 мест, свободно 2/);
+    assert.match(renderToStaticMarkup(tree), /Нужно освободить 1 мест/);
   }
   economy.snapshot.storage.available = 3;
-  let tree = Work({ economy, job: economy.snapshot.jobs[0], compact: true }); click(elements(tree).find(node => node.type === "button"));
+  let tree = renderWork(Work, { economy, job: economy.snapshot.jobs[0], compact: true }); click(elements(tree).find(node => node.type === "button"));
   assert.deepEqual(calls, [["start_garden_collection", "berry-0"]]);
   const batchId = "aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa";
   for (const crop of economy.snapshot.jobs) crop.collection = { ...crop.collection, batchId, startedAt: new Date(now).toISOString(), finishesAt: new Date(now + 8000).toISOString() };
   hooks.setCollection({ jobId: "berry-0", jobIds: ["berry-0", "berry-1", "berry-2"], phase: "walking", start() { assert.fail("collecting neighbors must not launch another walk"); } });
   for (const crop of economy.snapshot.jobs) {
-    tree = Work({ economy, job: crop, compact: true }); const button = elements(tree).find(node => node.type === "button");
+    tree = renderWork(Work, { economy, job: crop, compact: true }); const button = elements(tree).find(node => node.type === "button");
     assert.equal(button.props.disabled, true); assert.match(renderToStaticMarkup(tree), /Мохлик собирает урожай/); click(button);
   }
   hooks.setCollection(null); economy.now += 8000;
   for (const entry of [Work, TestSlotJobCard]) {
-    tree = entry({ economy, job: economy.snapshot.jobs[1], compact: true, navigate() {} }); click(elements(tree).find(node => node.type === "button"));
+    tree = renderWork(entry, { economy, job: economy.snapshot.jobs[1], compact: true, navigate() {} }); click(elements(tree).find(node => node.type === "button"));
     assert.deepEqual(calls.at(-1), ["claim_garden_collection", batchId], "without a scene provider the saved batch still claims atomically");
   }
 });
@@ -222,7 +235,8 @@ test("working and ready jobs replace free cards without duplicate work and prese
   const html = renderToStaticMarkup(render(economy));
   assert.match(html, /data-production-slot="1" data-state="working"/);
   assert.match(html, /data-production-slot="2" data-state="ready"/);
-  assert.match(html, /Осталось 2 мин/); assert.match(html, /data-production-activity="woodlot"/);
+  assert.match(html, /Осталось 2 мин/); assert.match(html, /data-item-icon="wood"/);
+  assert.doesNotMatch(html, /data-production-activity=/);
   assert.match(html, /Ранее запущенные заказы/);
   for (const id of ["first", "second", "third", "legacy"]) assert.equal((html.match(new RegExp(`data-job-id="${id}"`, "g")) ?? []).length, 1);
   assert.match(html, /Готово к получению/); assert.match(html, /Забрать: Бревно ×1/);
@@ -233,19 +247,150 @@ test("slot work retains the server collection sequence, actor lock and storage g
   hooks.reset(); const calls = [], economy = controller({ act: (...args) => calls.push(args) });
   const crop = production("crop", "garden", { finishesAt: new Date(now).toISOString() });
   economy.snapshot.jobs = [crop];
-  let tree = Work({ economy, job: crop, compact: true });
+  let tree = renderWork(Work, { economy, job: crop, compact: true });
   click(elements(tree).find(node => node.type === "button")); assert.deepEqual(calls, [["start_garden_collection", "crop"]]);
   crop.collection = { startedAt: new Date(now).toISOString(), finishesAt: new Date(now + 8000).toISOString() };
-  tree = Work({ economy, job: crop, compact: true }); const collecting = elements(tree).find(node => node.type === "button");
+  tree = renderWork(Work, { economy, job: crop, compact: true }); const collecting = elements(tree).find(node => node.type === "button");
   assert.equal(collecting.props.disabled, true); click(collecting); assert.equal(calls.length, 1);
   economy.now += 8000; economy.snapshot.storage.available = 0;
-  tree = Work({ economy, job: crop, compact: true }); const blocked = elements(tree).find(node => node.type === "button");
+  tree = renderWork(Work, { economy, job: crop, compact: true }); const blocked = elements(tree).find(node => node.type === "button");
   assert.equal(blocked.props.disabled, true); click(blocked); assert.equal(calls.length, 1);
   economy.snapshot.storage.available = 1;
-  tree = Work({ economy, job: crop, compact: true }); click(elements(tree).find(node => node.type === "button"));
+  tree = renderWork(Work, { economy, job: crop, compact: true }); click(elements(tree).find(node => node.type === "button"));
   assert.deepEqual(calls.at(-1), ["claim_job", "crop"]);
   crop.collection = null; let started = 0;
   hooks.setCollection({ jobId: null, phase: "idle", start(id) { assert.equal(id, "crop"); started++; } });
-  tree = Work({ economy, job: crop, compact: true }); click(elements(tree).find(node => node.type === "button"));
+  tree = renderWork(Work, { economy, job: crop, compact: true }); click(elements(tree).find(node => node.type === "button"));
   assert.equal(started, 1); assert.equal(calls.length, 2, "Map collection uses its existing scene controller");
+});
+
+test("working cells show their saved products in every manufacturing station", () => {
+  for (const [station, rewards] of [["garden", { strawberries: 1 }], ["woodlot", { wood: 1 }], ["workshop", { rope: 1 }], ["dryer", { compote: 1 }], ["kiln", { bricks: 1 }]]) {
+    hooks.reset();
+    const job = production(`working-${station}`, station, { rewards });
+    const economy = controller(); economy.snapshot.jobs = [job];
+    const tree = renderWork(ProductionWork, { economy, job, compact: true });
+    const html = renderToStaticMarkup(tree);
+    for (const itemId of Object.keys(rewards)) assert.match(html, new RegExp(`data-item-icon="${itemId}"`));
+    assert.doesNotMatch(html, /data-production-activity=|data-garden-item=|lucide-sprout/);
+    const main = elements(tree).find(node => node.props["data-production-control"]);
+    assert.equal(main.props.disabled, false);
+    assert.match(main.props["aria-label"], /Отменить производство/);
+  }
+});
+
+test("cancellation needs two deliberate clicks and shows the exact stored refund", () => {
+  hooks.reset(); const calls = [];
+  const job = production("paid", "workshop", { recipeId: "make_rope", rewards: { rope: 1 }, cost: { coins: 17, items: { fiber: 3, wood: 2 } }, catalogVersion: 1 });
+  const economy = controller({ act(...args) { calls.push(args); return true; } }); economy.snapshot.jobs = [job];
+  // Changing a current recipe never changes the refund for a job already paid.
+  economy.snapshot.catalog.recipes.find(recipe => recipe.id === "make_rope").cost = { coins: 999, items: { stone: 44 } };
+  const renderCell = () => renderWork(ProductionWork, { economy, job, compact: true });
+  const main = tree => elements(tree).find(node => node.props["data-production-control"]);
+  click(main(renderCell())); assert.deepEqual(calls, []);
+  const armed = renderCell(), html = renderToStaticMarkup(armed);
+  assert.match(html, /Отменить\?/); assert.match(html, /Вернётся:/); assert.match(html, /data-item-icon="coins"[^>]*>/);
+  assert.match(html, />17<\/span>/); assert.match(html, /data-item-icon="fiber"/); assert.match(html, /×3/); assert.match(html, /data-item-icon="wood"/); assert.match(html, /×2/);
+  assert.doesNotMatch(html, /999|×44|role="dialog"/);
+  assert.equal(elements(main(armed)).filter(node => node.type === "button").length, 1, "cell buttons must not be nested");
+  const confirmationButton = main(armed); click(confirmationButton); click(confirmationButton);
+  assert.deepEqual(calls, [["cancel_production", "paid"]]);
+  assert.equal(main(renderCell()).props.disabled, true, "the gap before busy publication also blocks repeats");
+});
+
+test("escape, leaving the cell and explicit dismissal discard consent without cancelling", () => {
+  for (const method of ["escape", "blur", "dismiss", "outside"]) {
+    hooks.reset(); const calls = [], job = production(`dismiss-${method}`), economy = controller({ act: (...args) => { calls.push(args); return true; } });
+    economy.snapshot.jobs = [job];
+    const listeners = new Map(), previousDocument = globalThis.document;
+    if (method === "outside") globalThis.document = { addEventListener(name, listener) { listeners.set(name, listener); }, removeEventListener(name) { listeners.delete(name); } };
+    try {
+      const renderCell = () => renderWork(ProductionWork, { economy, job });
+      click(elements(renderCell()).find(node => node.props["data-production-control"])); const armed = renderCell();
+      if (method === "escape") armed.props.onKeyDown({ key: "Escape", preventDefault() {}, stopPropagation() {} });
+      if (method === "blur") armed.props.onBlurCapture({ currentTarget: { contains: () => false }, relatedTarget: null });
+      if (method === "dismiss") click(elements(armed).find(node => node.props["data-production-dismiss"]));
+      if (method === "outside") { armed.props.ref.current = { contains: () => false }; hooks.flush(); listeners.get("pointerdown")({ target: {} }); }
+      assert.doesNotMatch(renderToStaticMarkup(renderCell()), /Отменить\?/);
+      click(elements(renderCell()).find(node => node.props["data-production-control"])); assert.deepEqual(calls, [], method);
+    } finally { globalThis.document = previousDocument; }
+  }
+});
+
+test("owner, revision and job changes reset inline cancellation rather than reusing consent", () => {
+  for (const change of ["owner", "revision", "job", "ready"]) {
+    hooks.reset(); const calls = [], first = production(`context-${change}`), economy = controller({ act: (...args) => { calls.push(args); return true; } });
+    let job = first; economy.snapshot.jobs = [job];
+    const renderCell = () => renderWork(ProductionWork, { economy, job });
+    click(elements(renderCell()).find(node => node.props["data-production-control"])); assert.match(renderToStaticMarkup(renderCell()), /Отменить\?/);
+    if (change === "owner") economy.snapshot.ownerPublicId = "OTHER";
+    if (change === "revision") economy.snapshot.revision++;
+    if (change === "job") { job = production("replacement"); economy.snapshot.jobs = [job]; }
+    if (change === "ready") economy.now = Date.parse(job.finishesAt);
+    const changed = renderCell(); assert.doesNotMatch(renderToStaticMarkup(changed), /Отменить\?/);
+    click(elements(changed).find(node => node.props["data-production-control"]));
+    assert.deepEqual(calls, change === "ready" ? [["claim_job", job.id]] : [], change);
+    if (change === "owner") { economy.snapshot.ownerPublicId = "ME"; assert.doesNotMatch(renderToStaticMarkup(renderCell()), /Отменить\?/); }
+  }
+});
+
+test("cancellation preflight blocks both initial and armed clicks when state becomes unsafe", () => {
+  for (const flag of ["busy", "uncertain", "cooldown", "storage", "collected", "ready", "unsupported"]) {
+    hooks.reset(); const calls = [], job = production(`guard-${flag}`, "workshop", { rewards: { rope: 1 }, cost: { coins: 0, items: { fiber: 3 } } });
+    const economy = controller({ act: (...args) => { calls.push(args); return true; } }); economy.snapshot.jobs = [job];
+    const renderCell = () => renderWork(ProductionWork, { economy, job });
+    click(elements(renderCell()).find(node => node.props["data-production-control"])); const armed = renderCell();
+    if (flag === "busy") economy.busy = true;
+    if (flag === "uncertain") economy.uncertain = true;
+    if (flag === "cooldown") economy.retryAt = now + 1000;
+    if (flag === "storage") economy.snapshot.storage.available = 2;
+    if (flag === "collected") job.collection = { kind: "berry_harvest", seconds: 8, startedAt: new Date(now).toISOString(), finishesAt: new Date(now + 8000).toISOString() };
+    if (flag === "ready") economy.now = Date.parse(job.finishesAt);
+    if (flag === "unsupported") job.targetId = "home";
+    click(elements(armed).find(node => node.props["data-production-control"]));
+    assert.deepEqual(calls, [], `even the handler already obtained before ${flag} rechecks the guard`);
+    if (!["ready", "collected"].includes(flag)) assert.equal(elements(renderCell()).find(node => node.props["data-production-control"]).props.disabled, true);
+    if (flag === "storage") assert.match(renderToStaticMarkup(renderCell()), /Освободите 1 мест для возврата материалов/);
+  }
+});
+
+test("a refused cancellation returns to a usable cell with explicit feedback", () => {
+  hooks.reset(); const calls = [], job = production("refused"), economy = controller({ act: (...args) => { calls.push(args); return false; } }); economy.snapshot.jobs = [job];
+  const renderCell = () => renderWork(ProductionWork, { economy, job });
+  const main = tree => elements(tree).find(node => node.props["data-production-control"]);
+  click(main(renderCell())); click(main(renderCell())); const retryable = renderCell();
+  assert.deepEqual(calls, [["cancel_production", "refused"]]); assert.equal(main(retryable).props.disabled, false);
+  assert.match(renderToStaticMarkup(retryable), /Отмена не отправлена/); assert.doesNotMatch(renderToStaticMarkup(retryable), /Отменяется/);
+  click(main(retryable)); assert.equal(calls.length, 1); click(main(renderCell())); assert.equal(calls.length, 2);
+});
+
+test("a definitive failed cancellation can be retried after an unchanged-revision refresh", () => {
+  hooks.reset(); const calls = [], job = production("failed-response"), economy = controller({ act: (...args) => { calls.push(args); return true; } }); economy.snapshot.jobs = [job];
+  const renderCell = () => renderWork(ProductionWork, { economy, job });
+  const main = tree => elements(tree).find(node => node.props["data-production-control"]);
+  click(main(renderCell())); click(main(renderCell())); assert.equal(main(renderCell()).props.disabled, true);
+  economy.busy = true; renderCell();
+  economy.busy = false; economy.error = "Server rejected cancellation"; renderCell(); hooks.flush();
+  economy.error = null; const recovered = renderCell();
+  assert.equal(economy.snapshot.revision, 2); assert.equal(main(recovered).props.disabled, false);
+  assert.doesNotMatch(renderToStaticMarkup(recovered), /Отменяется/);
+  click(main(recovered)); assert.equal(calls.length, 1); click(main(renderCell())); assert.equal(calls.length, 2);
+});
+
+test("an uncertain cancellation keeps receipt recovery in control and never sends a new cancellation", () => {
+  hooks.reset(); const calls = [], job = production("lost-response"), economy = controller({ act: (...args) => { calls.push(args); return true; } }); economy.snapshot.jobs = [job];
+  const renderCell = () => renderWork(ProductionWork, { economy, job });
+  const main = tree => elements(tree).find(node => node.props["data-production-control"]);
+  click(main(renderCell())); click(main(renderCell()));
+  economy.uncertain = true; economy.error = "Response lost"; const unknown = renderCell(); hooks.flush();
+  assert.equal(main(unknown).props.disabled, true); click(main(unknown)); assert.equal(calls.length, 1);
+  economy.error = null; const recovering = renderCell(); assert.equal(main(recovering).props.disabled, true); click(main(recovering)); assert.equal(calls.length, 1);
+});
+
+test("a ready-cell command refusal explains that obtaining the product was not sent", () => {
+  hooks.reset(); const job = production("claim-refused", "woodlot", { finishesAt: new Date(now).toISOString() });
+  const economy = controller({ act: () => false }); economy.snapshot.jobs = [job];
+  const renderCell = () => renderWork(ProductionWork, { economy, job });
+  click(elements(renderCell()).find(node => node.props["data-production-control"]));
+  assert.match(renderToStaticMarkup(renderCell()), /Действие не отправлено/);
 });

@@ -138,7 +138,7 @@ internal fun economyLedgerContext(before: EconomyState, command: EconomyCommand,
         val offer = EconomyFood.residentOrderBoard(before, now).offers.find { it.id == command.targetId }
         if (offer != null) return mapOf("targetId" to offer.templateId)
     }
-    if (command.action !in setOf("claim_job", "speedup_construction", "start_collection", "cancel_exploration"))
+    if (command.action !in setOf("claim_job", "speedup_construction", "start_collection", "cancel_production", "cancel_exploration"))
         return mapOf("targetId" to command.targetId)
     val job = before.jobs.find { it.id == command.targetId } ?: return emptyMap()
     val action = when (job.kind) {
