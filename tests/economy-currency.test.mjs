@@ -55,9 +55,13 @@ test("construction quotes the new tariff in stored units without redenominating 
   const now = Date.parse("2026-10-05T12:00:00Z"), interval = model.economyCatalog.constructionSpeedup.secondsPerPearl * 1000;
   assert.equal(interval, 15000000);
   assert.equal(model.economyCatalog.constructionSpeedup.priceStepPearls, 2);
-  assert.equal(money.formatPearls(rules.constructionSpeedupPrice({ kind: "construction", finishesAt: new Date(now + 600000).toISOString() }, now)), "1");
+  assert.equal(money.formatPearls(rules.constructionSpeedupPrice({ kind: "construction", finishesAt: new Date(now + 600000).toISOString() }, now)), "4");
+  for (const [remaining, price] of [[0, 0], [1, 2], [60000, 2], [3600000, 40], [86400000, 520], [172800000, 768]]) {
+    assert.equal(rules.constructionSpeedupPrice({ kind: "construction", finishesAt: new Date(now + remaining).toISOString() }, now), price);
+  }
+  const legacyPolicy = { secondsPerPearl: 15000, priceStepPearls: 2, pricingPoints: [] };
   for (const remaining of [0, 1, interval - 1, interval, interval + 1, 8 * 3600000, 72 * 3600000]) {
-    assert.equal(rules.constructionSpeedupPrice({ kind: "construction", finishesAt: new Date(now + remaining).toISOString() }, now), Math.ceil(remaining * 50 / interval / 2) * 2);
+    assert.equal(rules.constructionSpeedupPrice({ kind: "construction", finishesAt: new Date(now + remaining).toISOString() }, now, legacyPolicy), Math.ceil(remaining * 50 / interval / 2) * 2);
   }
 });
 
@@ -116,7 +120,7 @@ test("pre-change paid gift is projected in current units and stays consumed with
 });
 
 test("new market offers keep old price quantum and failed fractional-price orders leave escrow untouched", () => {
-  const p = player(), row = currentState(p); row.state.buildings.home = 2; row.state.completedExplorations = 1; row.state.inventory.wood = 4;
+  const p = player(), row = currentState(p); row.state.buildings.home = 2; row.state.buildings.bridge = 1; row.state.completedExplorations = 0; row.state.inventory.wood = 4;
   const revision = row.revision, command = request(p, "create_listing", "wood", revision, 41);
   assert.throws(() => economy.commandDevEconomyMarket(p.token, command), { code: "ECONOMY_MARKET_PRICE" });
   assert.equal(row.state.inventory.wood, 4); assert.equal(row.revision, revision);

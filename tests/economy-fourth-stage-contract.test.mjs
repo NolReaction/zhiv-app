@@ -35,7 +35,7 @@ function lastDelivery(player) {
 }
 
 test("fourth-stage source is a twelve-delivery project with claimed exploration proof and one guaranteed pair of relics", () => {
-  assert.equal(model.economyCatalog.version, 9); assert.equal(course.orders.length, 12); assert.equal(course.intervalSeconds, 86400);
+  assert.equal(model.economyCatalog.version, 10); assert.equal(course.orders.length, 12); assert.equal(course.intervalSeconds, 23 * 3600);
   assert.deepEqual(course.completionRewards, { ancient_core: 1, moon_crystal: 1 });
   assert.deepEqual(course.orders.at(-1).requiredExplorations, { ancient_ruins: 1 });
   assert.deepEqual(course.orders.at(-1).requiredBuildings, { bridge: 1, lighthouse: 1 });

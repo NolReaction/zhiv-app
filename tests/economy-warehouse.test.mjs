@@ -219,7 +219,7 @@ test("speedup finishes warehouse ten once for the current pearl tariff without r
   saved(p).inventory = { ...target.cost.items };
   const started = issue(p, "start_construction", "warehouse").state, job = started.jobs[0];
   const price = rules.constructionSpeedupPrice(job, now);
-  assert.equal(price, 288); assert.deepEqual(started.inventory, {});
+  assert.equal(price, 520); assert.deepEqual(started.inventory, {});
   const speedup = request(p, "speedup_construction", job.id, now, { totalPrice: price });
   const finished = economy.commandDevEconomy(p.token, speedup, now).state;
   assert.equal(finished.buildings.warehouse, 10); assert.equal(finished.storage.capacity, 500);

@@ -6,7 +6,7 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { createGardenCollectionController, economyGardenCrop, berryCollectionStatus } = await vite.ssrLoadModule("/features/economy/integration/garden-collection.ts");
+const { createGardenCollectionController, economyGardenCrop, berryCollectionStatus, isBerryProduction } = await vite.ssrLoadModule("/features/economy/integration/garden-collection.ts");
 const now = Date.UTC(2026, 9, 4), owner = "ABCD-EFGH-JKMP";
 const job = (id = "crop") => ({ id, kind: "production", targetId: "garden", recipeId: "grow_berries",
   startedAt: new Date(now - 600000).toISOString(), finishesAt: new Date(now).toISOString(), rewards: { berries: 6 },
@@ -60,6 +60,31 @@ test("normal harvest waits for both deposit and server deadline, retaining its s
   h.update({ snapshot: { ...snapshot([]), revision: 3, inventory: { berries: 6 } }, busy: false });
   assert.deepEqual(h.controller.getSnapshot(), { jobId: null, phase: "idle", request: null });
   assert.deepEqual(h.input.snapshot.inventory, { berries: 6 });
+});
+
+test("each new berry follows the same saved eight-second harvest while fiber remains an ordinary product", () => {
+  for (const itemId of ["blueberries", "currants", "blackberries", "cranberries"]) {
+    const crop = { ...job(), rewards: { [itemId]: 1 } };
+    const h = harness({ snapshot: snapshot([crop]), sceneAvailable: false });
+    assert.equal(isBerryProduction(crop), true);
+    assert.equal(economyGardenCrop(h.input.snapshot).jobId, "crop");
+    assert.equal(berryCollectionStatus(crop, h.input.snapshot, now, h.controller.getSnapshot()).button, "Собрать");
+    assert.equal(h.controller.start("crop"), true);
+    const accepted = { ...collecting(), rewards: crop.rewards };
+    h.update({ snapshot: snapshot([accepted]), busy: true });
+    h.update({ busy: false });
+    h.update({ now: now + 7999 });
+    assert.deepEqual(h.sent, [{ action: "start_collection", targetId: "crop" }]);
+    h.update({ now: now + 8000 });
+    assert.deepEqual(h.sent.at(-1), { action: "claim_job", targetId: "crop" });
+    assert.deepEqual(h.input.snapshot.inventory, {}, "the controller waits for the receipt instead of issuing local items");
+  }
+  const fiber = { ...job("fiber"), rewards: { fiber: 1 }, collection: null };
+  assert.equal(isBerryProduction(fiber), false);
+  const h = harness({ snapshot: snapshot([fiber]) });
+  assert.equal(economyGardenCrop(h.input.snapshot), null);
+  assert.equal(h.controller.start("fiber"), false);
+  assert.deepEqual(h.sent, []);
 });
 
 test("an acknowledged long walk never claims just because eight or fifteen seconds have passed", () => {

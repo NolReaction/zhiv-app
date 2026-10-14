@@ -10,6 +10,7 @@ const { worldHelpTopics, worldHelpGroups, searchWorldHelp, searchWorldHelpWithSt
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { fishingClassOdds } = await vite.ssrLoadModule("/features/economy/domain/fishing.ts");
 const { formatPearls } = await vite.ssrLoadModule("/features/economy/domain/money.ts");
+const { constructionTimePearlPrice } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const { CLICKER_IDLE_RESET_MS, CLICKER_LEVELS } = await vite.ssrLoadModule("/features/game/clicker-story.ts");
 const { progressionRewardsCatalog } = await vite.ssrLoadModule("/features/game/progression-rewards.ts");
 const topics = worldHelpTopics();
@@ -245,7 +246,10 @@ test("timers, production slots and prices derive from gameplay catalogs", () => 
   for (const upgrade of economyCatalog.productionSlots.upgrades) {
     assert.ok(answer("production-slots").includes(`${upgrade.slots}-е - за ${formatPearls(upgrade.pricePearls)} жемчужин с дома ${upgrade.requiredHomeLevel}`));
   }
-  assert.ok(answer("pearls").includes(`${economyCatalog.constructionSpeedup.secondsPerPearl * economyCatalog.constructionSpeedup.priceStepPearls / economyCatalog.pearlScale / 60} минут`));
+  for (const [label, seconds] of [["1 мин", 60], ["1 ч", 3600], ["24 ч", 86400], ["48 ч", 172800]]) {
+    assert.ok(answer("pearls").includes(`${label} - ${formatPearls(constructionTimePearlPrice(seconds))} жемчужин`));
+  }
+  assert.doesNotMatch(answer("pearls"), /Тариф: .* минут ожидания стоят/);
   assert.ok(answer("rewards").includes(`${progressionRewardsCatalog.dailyMinimumHours} часов`));
   assert.ok(answer("market").includes(`${economyCatalog.market.feeBps / 100}%`));
   assert.ok(answer("market").includes(`${economyCatalog.market.showcaseRefreshSeconds / 60} минут`));
@@ -288,12 +292,12 @@ test("second-house guidance quotes all seven permanent orders and independent st
 
 test("house-three guidance explains seven full waits, guaranteed resin and optional storage", () => {
   const course = economyCatalog.stageOrders.find(entry => entry.homeLevel === 3);
-  assert.equal(course.orders.length, 8); assert.equal(course.intervalSeconds, 86400);
+  assert.equal(course.orders.length, 8); assert.equal(course.intervalSeconds, 82800);
   assert.deepEqual(course.completionRewards, { living_resin: 1 });
   assert.match(answer("third-house-stage"), /Первая из 8.*доступна сразу/);
-  assert.match(answer("third-house-stage"), /через 24 ч/);
+  assert.match(answer("third-house-stage"), /через 23 ч/);
   assert.match(answer("third-house-stage"), /с передачи товаров.*не со смены суток UTC/);
-  assert.match(answer("third-house-stage"), /минимум 7 суток/);
+  assert.match(answer("third-house-stage"), /Без ускорений.*минимум 185 ч/);
   assert.match(answer("third-house-stage"), /гарантированно.*Живая смола × 1/);
   assert.match(answer("third-house-stage"), /Жемчуг и обеды не сокращают интервалы/);
   assert.match(answer("third-house-stage"), /не истекают и не заменяются/);
@@ -305,7 +309,7 @@ test("seller-slot and item-opening answers describe permanent rights and current
   assert.match(answer("market-slots"), /Бесплатно доступны 5.*максимум.*10/);
   const prices = [50, 80, 120, 180, 250];
   assert.deepEqual(economyCatalog.market.slotPricesPearls.map(price => Number(formatPearls(price))), prices);
-  for (const [index, price] of prices.entries()) assert.ok(answer("market-slots").includes(`${index + 6}-е — ${price} жемчужин`));
+  for (const [index, price] of prices.entries()) assert.ok(answer("market-slots").includes(`${index + 6}-е - ${price} жемчужин`));
   assert.match(answer("market-slots"), /по очереди/);
   assert.match(answer("market-slots"), /остаётся навсегда/);
   assert.match(answer("market-slots"), /не увеличивают кладовую.*не меняют общую витрину/);
@@ -326,4 +330,48 @@ test("fish-soup guidance uses the authored recipe and distinct hero/builder bonu
   assert.ok(answer("fish-soup").includes(`строителю +${meal.builderSpeedBps / 100}%`));
   assert.match(answer("fish-soup"), /Шахтёра не ускоряет/);
   assert.deepEqual(topic("fish-soup").action.target, { kind: "station", stationId: "dryer", recipeId: recipe.id });
+});
+
+test("current landmark answers separate early market restoration from later expeditions and planned boat orders", () => {
+  assert.match(answer("market"), /С дома 2 восстановите мост и получите готовую стройку/);
+  assert.match(answer("market"), /Вылазка для открытия не нужна/);
+  assert.doesNotMatch(answer("market"), /хотя бы .* завершённая вылазка/);
+  const landmarks = answer("future-world");
+  assert.match(landmarks, /С дома 2.*мост.*рынок игроков/);
+  assert.match(landmarks, /С дома 3 доступен маяк/);
+  assert.match(landmarks, /С дома 4.*тропу и рощу.*древним руинам/);
+  assert.match(landmarks, /Пароход с большими заказами.*ещё готовятся/);
+  assert.match(landmarks, /не запускает рейс парохода/);
+  assert.match(answer("relics"), /после восстановления моста.*«Обмен»/);
+});
+
+test("berry ladder describes each source tier, preparation time and hero or builder effect from the live catalog", () => {
+  const ladder = answer("berry-tiers");
+  for (const [home, cropId, dishId] of [[2, "grow_blueberries", "cook_blueberry_compote"], [3, "grow_currants", "cook_currant_jelly"],
+    [4, "grow_blackberries", "cook_blackberry_preserve"], [5, "grow_cranberries", "cook_cranberry_glaze"]]) {
+    const crop = economyCatalog.recipes.find(recipe => recipe.id === cropId);
+    const dish = economyCatalog.recipes.find(recipe => recipe.id === dishId);
+    const meal = economyCatalog.food.meals.find(meal => dish.rewards[meal.itemId]);
+    const cropName = economyCatalog.items.find(item => crop.rewards[item.id]).name;
+    const dishName = economyCatalog.items.find(item => item.id === meal.itemId).name;
+    assert.ok(ladder.includes(`Дом ${home}, куст ${crop.buildingLevel}: ${cropName}, ${crop.seconds / 60} мин`));
+    assert.ok(ladder.includes(`${dishName}: костёр ${dish.buildingLevel}, ${dish.seconds / 60} мин`));
+    assert.ok(ladder.includes(`вылазки +${meal.heroSpeedBps / 100}%, стройки +${meal.builderSpeedBps / 100}%`));
+  }
+  assert.match(ladder, /Дом 1.*малина.*клубника/);
+  assert.match(ladder, /Один слот даёт один предмет/);
+  assert.match(ladder, /Блюдо ускоряет одну работу/);
+});
+
+test("gift budgets and project timing remain distinct from build durations and all help avoids em dashes", () => {
+  const giftPearls = progressionRewardsCatalog.daily.reduce((sum, reward) => sum + reward.pearls, 0);
+  assert.ok(answer("rewards").includes(`Полный цикл даёт ${formatPearls(giftPearls)} жемчужин`));
+  assert.ok(answer("currency-shop").includes(`полный цикл даёт ${formatPearls(giftPearls)} жемчужин`));
+  assert.match(answer("rewards"), /новые сутки UTC.*20 часов/);
+  const fourth = economyCatalog.stageOrders.find(course => course.homeLevel === 4);
+  const fifthHome = economyCatalog.buildings.find(building => building.id === "home").levels.find(level => level.level === 5);
+  const minimumHours = ((fourth.orders.length - 1) * fourth.intervalSeconds + fifthHome.seconds) / 3600;
+  assert.ok(answer("fourth-house-stage").includes(`Между поставками ${fourth.intervalSeconds / 3600} ч`));
+  assert.ok(answer("fourth-house-stage").includes(`Без ускорений проект и дом 5 занимают минимум ${minimumHours} ч`));
+  for (const entry of topics) assert.ok(!answer(entry.id).includes("—"), entry.id);
 });

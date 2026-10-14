@@ -37,7 +37,7 @@ test("complete daily projection uses completed home tiers, the claim calendar an
       assert.equal(row.step, index % 7 + 1);
       assert.deepEqual(row.reward, loaded.progressionRewards.dailyRewardCycle(row.homeLevel)[row.step - 1]);
       assert.equal(row.reward.coins, [30, 30, 40, 40, 50, 50, 80][row.step - 1] * row.homeLevel);
-      assert.equal(row.reward.pearls, [0, 0, 2, 0, 0, 4, 8][row.step - 1]);
+      assert.equal(row.reward.pearls, [4, 4, 6, 6, 8, 8, 20][row.step - 1]);
       assert.deepEqual(row.reward.items, cycle[row.step - 1], "completed homes keep the same compact stock without advanced gifts");
       if (index > 0) {
         assert(Date.parse(row.at) - Date.parse(gifts.claimRows[index - 1].at) >= 20 * 3_600_000);

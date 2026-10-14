@@ -750,7 +750,7 @@ class JdbcEconomyRepositoryIntegrationTest {
         val stored = source.connection.use { readEconomyProfile(it, p.id).state }
         val job = EconomyJob(UUID.randomUUID().toString(), "construction", "home", targetLevel = 2,
             startedAt = Instant.now().minusSeconds(300).toString(),
-            finishesAt = if (ready) "2000-01-01T00:00:00Z" else Instant.now().plusSeconds(1190).toString(),
+            finishesAt = if (ready) "2000-01-01T00:00:00Z" else Instant.now().plusSeconds(1270).toString(),
             cost = EconomyCost(1500, mapOf("wood" to 20L)), catalogVersion = 2)
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(stored.copy(
             wallet = EconomyWallet(710, pearls), inventory = mapOf("berries" to 8L), jobs = listOf(job))), p.id)
@@ -763,13 +763,13 @@ class JdbcEconomyRepositoryIntegrationTest {
         val retries = coroutineScope { List(2) { async(Dispatchers.IO) { JdbcEconomyRepository(source).command(p.hash, speedup) } }.awaitAll() }
         assertEquals(1, retries.count { it.replayed })
         val after = economy.snapshot(p.hash)
-        assertEquals(EconomyWallet(710, 996), after.wallet)
+        assertEquals(EconomyWallet(710, 984), after.wallet)
         assertEquals(before.inventory, after.inventory)
         assertEquals(2, after.buildings["home"])
         assertTrue(after.jobs.isEmpty())
         assertEquals(before.revision + 1, after.revision)
         assertEquals("2", scalar("SELECT state->>'houseLevel' FROM world_profiles WHERE user_id=?", p.id))
-        assertEquals("-4", scalar("SELECT pearls FROM economy_ledger WHERE user_id=? AND source_key=?", p.id, "command:${speedup.requestId}"))
+        assertEquals("-16", scalar("SELECT pearls FROM economy_ledger WHERE user_id=? AND source_key=?", p.id, "command:${speedup.requestId}"))
         assertEquals("1", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='speedup_construction'", p.id))
         assertEquals("ECONOMY_REVISION_CONFLICT", assertFailsWith<AuthFailure> {
             economy.command(p.hash, speedup.copy(requestId = UUID.randomUUID().toString()))
@@ -787,7 +787,7 @@ class JdbcEconomyRepositoryIntegrationTest {
         } }.awaitAll() }
         assertEquals(1, attempts.count { it.isSuccess })
         assertEquals("ECONOMY_REVISION_CONFLICT", (attempts.single { it.isFailure }.exceptionOrNull() as AuthFailure).code)
-        assertEquals(996L, economy.snapshot(p.hash).wallet.pearls)
+        assertEquals(984L, economy.snapshot(p.hash).wallet.pearls)
         assertEquals("1", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='speedup_construction'", p.id))
     }
 

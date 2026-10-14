@@ -55,13 +55,26 @@ class EconomyMoneyTest {
         assertEquals(1_000_000_000L, ECONOMY_MAX_ITEMS)
     }
 
-    @Test fun `construction preserves the full duration tariff with whole visible pearl steps`() {
+    @Test fun `construction uses the remaining time curve with whole visible pearl steps`() {
         val now = Instant.parse("2026-10-05T00:00:00Z")
         val job = EconomyJob(UUID.randomUUID().toString(), "construction", "home", targetLevel = 2,
             startedAt = now.toString(), finishesAt = now.toString())
         for ((milliseconds, visiblePearls) in listOf(-1L to 0L, 0L to 0L, 1L to 1L,
-            599_999L to 1L, 600_000L to 1L, 600_001L to 2L, 900_000L to 2L))
+            59_999L to 1L, 60_000L to 1L, 60_001L to 2L, 900_000L to 6L,
+            3_600_000L to 20L, 86_400_000L to 260L, 172_800_000L to 384L, 604_800_000L to 1000L))
             assertEquals(visiblePearls * 2, EconomyRules.constructionSpeedupPrice(
                 job.copy(finishesAt = now.plusMillis(milliseconds).toString()), now))
+    }
+
+    @Test fun `curve extrapolates long paid jobs without overflow and leaves linear shop quotes unchanged`() {
+        val now = Instant.parse("2026-10-14T15:30:00Z")
+        val points = EconomyRules.catalog.constructionSpeedup.pricingPoints
+        assertEquals(3728L, remainingTimePearlPrice(now.plusSeconds(14 * 86400L).toString(), now, points, 2))
+        assertEquals(4L, remainingTimePearlPrice(now.plusSeconds(60).toString(), now.minusNanos(1), points, 2))
+        assertEquals(2L, remainingTimePearlPrice(now.toString(), now.minusNanos(1), points, 2))
+        assertEquals(2L, remainingTimePearlPrice(now.plusSeconds(600).toString(), now, 15000, 50, 2))
+        assertEquals(100L, remainingTimePearlPrice(now.plusSeconds(21600).toString(), now, 21600, 100, 2))
+        assertEquals(50L, remainingTimePearlPrice(now.plusSeconds(10800).toString(), now, 21600, 100, 2))
+        assertEquals(0L, remainingTimePearlPrice(now.toString(), now, points, 2))
     }
 }

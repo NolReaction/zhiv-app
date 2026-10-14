@@ -18,7 +18,7 @@ export function auditFoodEconomy(catalog) {
   assert(food?.meals.length >= 6, "The six-tier meal catalog is required");
   const items = new Map(catalog.items.map(item => [item.id, item]));
   const fish = new Map([...catalog.fishing.fish, ...catalog.fishing.classes].map(item => [item.itemId, item]));
-  const fishOptions = recipe => recipe.fishInput?.itemIds ?? Object.keys(recipe.cost.items).filter(id => fish.has(id));
+  const fishOptions = recipe => recipe?.fishInput?.itemIds ?? Object.keys(recipe?.cost.items ?? {}).filter(id => fish.has(id));
   const mealIds = new Set(food.meals.map(meal => meal.itemId));
   assert.equal(mealIds.size, food.meals.length, "Duplicate meal");
   const positiveInt = value => Number.isSafeInteger(value) && value > 0;
@@ -116,14 +116,16 @@ export function auditFoodEconomy(catalog) {
   const referenceCatch = math.catchPortfolio(), referenceRoute = catalog.explorations.find(route => route.id === "shore");
   const referenceFishingCoinsPerHour = (referenceCatch.expectedFishRevenue - referenceCatch.routeCoins
     - referenceCatch.baitPurchaseCoins - math.liquidation(referenceCatch.routeInputs)) * 3600 / referenceRoute.seconds;
-  const meals = food.meals.map((meal, index) => {
+  const fishMeals = food.meals.filter(meal => fishOptions(defaultProducer(meal.itemId)).length);
+  for (const [index, meal] of fishMeals.entries()) if (index) for (const consumer of ["hero", "builder"])
+    assert(meal[`${consumer}SpeedBps`] > fishMeals[index - 1][`${consumer}SpeedBps`], "Fish meal tiers must improve both consumers");
+  const meals = food.meals.map(meal => {
     assert(items.has(meal.itemId), `Unknown meal ${meal.itemId}`);
     for (const consumer of ["hero", "builder"]) {
       const bonus = meal[`${consumer}SpeedBps`];
       assert(Number.isInteger(bonus) && bonus > 0 && bonus <= 10000, `Unbounded ${consumer} meal bonus`);
-      if (index) assert(bonus > food.meals[index - 1][`${consumer}SpeedBps`], "Meal tiers must improve both consumers");
     }
-    const producer = defaultProducer(meal.itemId); assert(producer && fishOptions(producer).length, `${meal.itemId}: no fish recipe`);
+    const producer = defaultProducer(meal.itemId); assert(producer, `${meal.itemId}: no food recipe`);
     const mealValue = math.liquidation({ [meal.itemId]: 1 });
     const fishingReturn = catalog.fishing.routeIds.map(routeId => {
       const route = catalog.explorations.find(route => route.id === routeId);
@@ -183,7 +185,7 @@ export function auditFoodEconomy(catalog) {
       `${order.id}: permanent requests must pay 150% of actual NPC value rounded up to the coin quantum`);
   const thirdCourse = catalog.stageOrders?.find(stage => stage.homeLevel === 3);
   assert.equal(thirdCourse?.orders.length, 8, "Third stage needs eight guaranteed permanent requests");
-  assert.equal(thirdCourse.intervalSeconds, 86400, "Each next third-stage request waits 24 hours after its actual prior delivery");
+  assert.equal(thirdCourse.intervalSeconds, 23 * 3600, "Each next third-stage request waits 23 hours after its actual prior delivery");
   assert.deepEqual(thirdCourse.completionRewards, { living_resin: 1 }, "The course guarantees the house's required resin");
   assert.equal(sum(thirdCourse.orders.map(order => order.coins)), 14840, "Third-stage requests must pay 14840 coins");
   for (const order of thirdCourse.orders)
@@ -266,13 +268,13 @@ export function auditFoodEconomy(catalog) {
     const target = catalog.buildings.find(building => building.id === id).levels.find(row => row.level === level);
     if (level <= (levels[id] ?? 0)) continue;
     const possible = food.meals.filter(meal => hasRequirements(defaultProducer(meal.itemId), levels));
-    const meal = possible.at(-1);
+    const meal = possible.toSorted((a, b) => b.builderSpeedBps - a.builderSpeedBps)[0];
     baseBuildSeconds += target.seconds; stockedFoodBuildSeconds += duration(target.seconds, meal?.builderSpeedBps ?? 0);
     if (meal) { fedCounts[meal.itemId] = (fedCounts[meal.itemId] ?? 0) + 1; mealPreparationMinutes += defaultProducer(meal.itemId).seconds / 60; }
     levels[id] = level;
   }
   return { catalogVersion: catalog.version, currency: "visible coins, identical to catalog integer amounts; currencyScale is a historical denomination marker",
-    assumptions: ["Fish use full Pleska buyback price; first-stage goods use exact configured NPC prices; other local sales round each aggregate item stack down to a multiple of 10 coins",
+    assumptions: ["Fish use full Pleska buyback price; every current tradable good has an exact configured NPC price; the fallback for an unconfigured legacy item rounds its aggregate stack down to a multiple of 10 coins",
       "Actual merchant purchase is ceil(buyPrice*fishPriceBps/10000), not nominal buyPrice; only common class stock is sold",
       "Direct purchase-resale and pure raw-fish buy-to-order turnover lose money; cooking value requires real time and ingredients",
       "Four natural deliveries per steady day is not a strict rolling-day cap; old stock may straddle the interval, and paid merchant refresh restocks the common class offer",
@@ -290,7 +292,7 @@ export function auditFoodEconomy(catalog) {
       secondStageTemplates: secondStageOrders.length, completionCooldownSeconds: 0 },
     meals, recipes, templates, shopDeliveryBudgets,
     construction: { baseBuildSeconds, stockedFoodBuildSeconds, savedPercent: rounded((1 - stockedFoodBuildSeconds / baseBuildSeconds) * 100),
-      mealCounts: fedCounts, mealPreparationMinutes, absoluteAllLegendaryTheoreticalSeconds: duration(baseBuildSeconds, food.meals.at(-1).builderSpeedBps) } };
+      mealCounts: fedCounts, mealPreparationMinutes, absoluteAllLegendaryTheoreticalSeconds: duration(baseBuildSeconds, Math.max(...food.meals.map(meal => meal.builderSpeedBps))) } };
 }
 
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {

@@ -28,7 +28,7 @@ const now = Date.parse("2026-10-05T16:00:00Z"), owner = "AAAA-0000-0001", other 
 function offer(owned = false) { return { id: "00000000-0000-4000-8000-000000000001", sellerPublicId: owned ? owner : other, sellerName: "Сосед <лес>", offeredItemId: "ancient_core", requestedItemId: "moon_crystal", owned,
   status: "active", createdAt: new Date(now - 10_000).toISOString(), closedAt: null }; }
 function economy(owned = false) {
-  return { snapshot: { ownerPublicId: owner, revision: 1, wallet: { coins: 99, pearls: 0 }, inventory: { moon_crystal: 1, ancient_core: 1, living_resin: 0 }, buildings: { home: 3 }, catalog: structuredClone(economyCatalog), storage: { available: 0 } },
+  return { snapshot: { ownerPublicId: owner, revision: 1, wallet: { coins: 99, pearls: 0 }, inventory: { moon_crystal: 1, ancient_core: 1, living_resin: 0 }, buildings: { home: 3, bridge: 1 }, completedExplorations: 0, catalog: structuredClone(economyCatalog), storage: { available: 0 } },
     barter: { ownerPublicId: owner, offers: owned ? [] : [offer()], mine: owned ? [offer(true)] : [], showcase: { refreshAt: new Date(now + 1800_000).toISOString(), slots: 6, maxPerSeller: 1, refreshSeconds: 1800 } },
     now, busy: false, uncertain: false, retryAt: 0, notice: "", error: null, barterError: null, refreshBarter() {}, actBarter() { assert.fail("navigation cannot exchange items"); } };
 }
@@ -92,7 +92,7 @@ test("full own shelf and missing stock cannot create while own cancellation rema
 
 test("home unlock and six-slot thirty-minute shelf explain exchange without coin trade controls", () => {
   const e = economy(); e.snapshot.buildings.home = 2; let reads = 0; e.refreshBarter = () => reads++;
-  let h = harness(BarterMarket, { economy: e }), view = h.render(); assert.match(view.html, /домом 3 уровня/); assert.equal(reads, 0);
+  let h = harness(BarterMarket, { economy: e }), view = h.render(); assert.match(view.html, /дом 3 уровня и восстановленный мост/); assert.equal(reads, 0);
   e.snapshot.buildings.home = 3; h = harness(BarterMarket, { economy: e }); view = h.render();
   assert.equal(reads, 1); assert.match(view.html, /1 \/ 6/); assert.match(view.html, /30 минут/); assert.match(view.html, /Без монет и жемчуга/);
   assert.doesNotMatch(view.html, /Купить весь лот|Продать|type="number"/);
@@ -107,4 +107,25 @@ test("daily exchange quota disables spending but never traps the owner's escrow"
   const owned = economy(true); owned.barter.dailyLimit = { ...e.barter.dailyLimit };
   const own = harness(BarterOfferCard, { economy: owned, offer: offer(true), owned: true });
   assert.equal(button(own.render(), "Вернуть материал").props.disabled, false);
+});
+
+test("a closed bridge hides foreign exchanges while the old owner's escrow can still be returned", () => {
+  const e = economy(true), calls = []; let reads = 0;
+  e.snapshot.buildings.bridge = 0;
+  e.barter.offers = [offer()];
+  e.refreshBarter = () => reads++;
+  e.actBarter = command => calls.push(command);
+  const h = harness(BarterMarket, { economy: e }); let view = h.render();
+  assert.equal(reads, 1, "read the old owner's shelf after login even while new trade is closed");
+  assert.match(view.html, /восстановленный мост/);
+  assert.doesNotMatch(view.html, /aria-label="Предложения обмена"/);
+  view.nodes.find(node => node.type === "button" && renderToStaticMarkup(node).includes("Мои")).props.onClick();
+  const own = h.render().nodes.find(node => node.props["aria-label"] === "Ваши предложения обмена");
+  assert.equal(own.props.children.length, 1);
+  const card = harness(BarterOfferCard, own.props.children[0].props);
+  button(card.render(), "Вернуть материал").props.onClick();
+  button(card.render(), "Подтвердить возврат").props.onClick();
+  assert.deepEqual(calls, [{ action: "cancel_offer", offerId: offer().id }]);
+  const foreign = harness(BarterOfferCard, { economy: e, offer: offer() });
+  assert.equal(button(foreign.render(), "Обменять").props.disabled, true);
 });

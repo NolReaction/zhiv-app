@@ -20,7 +20,7 @@ data class DailyRewardsState(val step: Int = 1, val lastClaimAt: Instant? = null
     val lastClaimAt: String?, val lastClaimDate: String?, val reward: ProgressionReward, val cycle: List<DailyRewardCycle>, val homeLevel: Int = 1)
 @Serializable data class AchievementRewardView(val achievementId: String, val level: Int, val target: Long, val pearls: Long,
     val earnedAt: String?, val claimedAt: String?, val eligible: Boolean, val blockedReason: String?)
-@Serializable data class ProgressionRewardsView(val ownerPublicId: String, val serverTime: String, val catalogVersion: Int = 2,
+@Serializable data class ProgressionRewardsView(val ownerPublicId: String, val serverTime: String, val catalogVersion: Int = 3,
     val daily: DailyRewardsView, val achievementRewards: List<AchievementRewardView>)
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable data class ProgressionRewardClaim(val requestId: String, val ownerPublicId: String, val kind: String,
@@ -70,14 +70,14 @@ object ProgressionRewardRules {
     val daily = catalog.daily
     val achievementPearls = catalog.achievementPearls
     init {
-        require(catalog.version==2 && catalog.currencyScale==10 && catalog.pearlScale==50 && daily.size==7 && catalog.dailyMinimumHours==20L)
+        require(catalog.version==3 && catalog.currencyScale==10 && catalog.pearlScale==50 && daily.size==7 && catalog.dailyMinimumHours==20L)
         require(catalog.dailyByHomeLevel.keys==setOf("2","3","4","5"))
         require(achievementPearls.keys==GameRewards.tiers.keys && achievementPearls.all { (id,values) ->
             values.size==GameRewards.tiers.getValue(id).size && values.all { it in 0L..ECONOMY_MAX_PEARLS } })
         val itemIds=setOf("wood","stone","fiber","berries","fish","hardwood","resin","planks","rope","bricks","iron_ingot",
             "cloth","metal_parts","glass","beams","cut_stone","tools","reinforced_parts","ancient_core")
         for(cycle in listOf(daily)+catalog.dailyByHomeLevel.values) {
-            require(cycle.size==7 && cycle.sumOf { it.pearls }==14L && cycle.sumOf { it.items["ancient_core"] ?: 0L }==1L)
+            require(cycle.size==7 && cycle.sumOf { it.pearls }==56L && cycle.sumOf { it.items["ancient_core"] ?: 0L }==1L)
             require(cycle.withIndex().all { (index,reward) -> reward.coins in 0L..ECONOMY_MAX_BALANCE
                 && reward.pearls==daily[index].pearls && reward.pearls in 0L..ECONOMY_MAX_PEARLS
                 && reward.items.all { (id,quantity) -> id in itemIds && quantity in 1L..ECONOMY_MAX_ITEMS } })

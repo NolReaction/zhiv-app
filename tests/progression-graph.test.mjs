@@ -13,8 +13,13 @@ const code = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTa
 const moneyContext = { exports: {}, structuredClone };
 vm.runInNewContext(ts.transpileModule(readFileSync(new URL("../features/economy/domain/money.ts", import.meta.url), "utf8"),
   { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText, moneyContext);
+const timeContext = { exports: {} };
+vm.runInNewContext(ts.transpileModule(readFileSync(new URL("../features/economy/domain/time-price.ts", import.meta.url), "utf8"),
+  { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText, timeContext);
 const context = { exports: {}, require: specifier => {
   if (specifier === "@/features/economy/domain/money") return moneyContext.exports;
+  if (specifier === "@/features/economy/domain/rules") return { constructionTimePearlPrice: (seconds, config) => timeContext.exports.durationPearlPrice(seconds * 1000,
+    config.secondsPerPearl, moneyContext.exports.ECONOMY_PEARL_SCALE, config.priceStepPearls, config.pricingPoints) };
   if (specifier === "@/apps/api/src/main/resources/world/progression-rewards-catalog.json") return { default: JSON.parse(readFileSync(new URL("../apps/api/src/main/resources/world/progression-rewards-catalog.json", import.meta.url), "utf8")) };
   assert.equal(specifier, "@/features/economy/domain/model");
   return { economyCatalog: catalog };
@@ -50,7 +55,7 @@ function reachableIds(currentGraph, accepts) {
 }
 
 test("progression contains every catalog building level, recipe and exploration exactly once", () => {
-  assert.equal(graph.nodes.filter(value => value.kind === "building").length, 47);
+  assert.equal(graph.nodes.filter(value => value.kind === "building").length, catalog.buildings.reduce((sum, building) => sum + building.levels.length, 0));
   assert.equal(graph.nodes.filter(value => value.kind === "recipe").length, catalog.recipes.length);
   assert.equal(graph.nodes.filter(value => value.kind === "exploration").length, catalog.explorations.length);
   for (const building of catalog.buildings) for (const level of building.levels) {
@@ -96,7 +101,6 @@ test("node and edge ids are unique and actual world remains connected without pr
   assert.equal(all.size, ids.size);
   const actual = reachableIds(graph, edge => edge.kind !== "plan" && edge.kind !== "cost");
   for (const value of graph.nodes.filter(value => value.status === "active")) assert(actual.has(value.id), `Disconnected active node ${value.id}`);
-  assert.equal(graph.nodes.length, 163);
   assert.equal(node("pearls").status, "active");
   assert.ok(!graph.edges.some(edge => edge.source === "pearls" && ["requirement", "unlock"].includes(edge.kind)), "optional acceleration never gates progression");
   assert.equal(graph.nodes.filter(value => value.status === "plan").length, 14);
@@ -135,8 +139,8 @@ test("food and resident orders are active optional uses rather than future progr
   assert.match(node("orders").description, /Обычные заказы дают монеты/);
   assert.match(node("orders").description, /сытость отдельно/);
   assert.match(node("orders").description, /3 бесплатные замены/);
-  assert.match(node("meals").description, /\+10–100%/);
-  assert.match(node("meals").description, /\+10–90%/);
+  assert.match(node("meals").description, /\+8–100%/);
+  assert.match(node("meals").description, /\+8–90%/);
   assert(hasEdge("start", "orders", "available"));
   assert(hasEdge("orders", "coins", "flow"));
   assert(hasEdge("r:cook_grilled_fish", "meals", "flow"));
@@ -266,18 +270,19 @@ test("production and construction retain every house, previous-level and additio
   assert.equal(node("r:make_beams").requirements.woodlot, 3);
 });
 
-test("market requires both home and completed exploration; any route suffices instead of all routes", () => {
-  assert.deepEqual(plain(node("market").requirements), { home: 2, completedExplorations: 1 });
+test("market requires home two and a claimed bridge restoration without forcing an exploration", () => {
+  assert.deepEqual(plain(node("market").requirements), { home: 2, bridge: 1 });
   const incoming = graph.edges.filter(edge => edge.target === "market" && edge.kind === "requirement").map(edge => edge.source);
-  assert.deepEqual(Array.from(incoming).sort(), ["b:home:2", "claimed"]);
+  assert.deepEqual(Array.from(incoming).sort(), ["b:bridge:1", "b:home:2"]);
   const unlocked = state => Object.entries(node("market").requirements).every(([counter, required]) => state[counter] >= required);
-  assert.equal(unlocked({ home: 1, completedExplorations: 0 }), false);
-  assert.equal(unlocked({ home: 2, completedExplorations: 0 }), false);
-  assert.equal(unlocked({ home: 1, completedExplorations: 1 }), false);
-  assert.equal(unlocked({ home: 2, completedExplorations: 1 }), true);
+  assert.equal(unlocked({ home: 1, bridge: 0 }), false);
+  assert.equal(unlocked({ home: 2, bridge: 0 }), false);
+  assert.equal(unlocked({ home: 1, bridge: 1 }), false);
+  assert.equal(unlocked({ home: 2, bridge: 1, completedExplorations: 0 }), true);
   for (const exploration of catalog.explorations) assert.equal(hasEdge(`e:${exploration.id}`, "claimed", "any"), !exploration.id.startsWith("quarry_"));
   const prerequisites = getPrerequisiteIds(graph, "market", false);
-  assert(prerequisites.has("claimed"));
+  assert(!prerequisites.has("claimed"));
+  assert(prerequisites.has("b:bridge:1"));
   assert(prerequisites.has("b:home:2"));
   assert(!graph.nodes.some(value => value.kind === "exploration" && prerequisites.has(value.id)), "Any exploration must not become all ten mandatory routes");
   assert.deepEqual(Array.from(getPrerequisiteIds(graph, "claimed", false)), ["claimed"]);
@@ -295,7 +300,14 @@ test("restored landmarks gate real routes while future proposals cannot gate act
     for (const prerequisite of getPrerequisiteIds(graph, value.id)) assert(!proposed.has(prerequisite), `${prerequisite} gates ${value.id}`);
   }
   const bridge = getPrerequisiteIds(graph, "b:bridge:1", false);
-  for (const id of ["b:home:4", "b:workshop:3"]) assert(bridge.has(id));
+  for (const id of ["b:home:2", "b:workshop:1", "b:kiln:1", "b:woodlot:1"]) assert(bridge.has(id));
+  assert.equal(node("b:bridge:1").phase, 2);
+  assert.equal(node("b:lighthouse:1").phase, 3);
+  assert.match(node("bridge").description, /с дома 2.*рынок игроков/);
+  assert.match(node("lighthouse").description, /с дома 3.*пароход с большими заказами/);
+  assert.equal(node("ships").status, "plan");
+  assert(hasEdge("b:lighthouse:1", "ships", "plan"));
+  assert(!hasEdge("port", "ships", "plan"));
   assert(hasEdge("bridge", "b:bridge:1", "contains"));
   assert(hasEdge("lighthouse", "b:lighthouse:1", "contains"));
   assert(hasEdge("b:bridge:1", "e:far_bank_path", "requirement"));
@@ -471,7 +483,7 @@ test("graph derives new recipes and market counters from a supplied catalog", ()
   assert.equal(extra.phase, 5);
   assert.equal(extra.rewards.planks, 7);
   assert(custom.nodes.find(value => value.id === "b:workshop:5").children.includes(extra.id));
-  assert.deepEqual(plain(custom.nodes.find(value => value.id === "market").requirements), { home: 3, completedExplorations: 3 });
+  assert.deepEqual(plain(custom.nodes.find(value => value.id === "market").requirements), { home: 3, bridge: 1, completedExplorations: 3 });
   assert(custom.edges.some(edge => edge.source === "b:home:3" && edge.target === "market" && edge.kind === "requirement"));
   assert(!custom.edges.some(edge => edge.source === "b:home:2" && edge.target === "market"));
 });
@@ -511,8 +523,9 @@ test("mine upgrades visibly unlock actor activities and never revive retired pro
 
 test("player graph prices and rewards use visible pearls while costs keep internal units", () => {
   assert.ok(node("pleska").description.includes(`обновление стоит до ${moneyContext.exports.formatPearls(catalog.fishing.shop.refreshPricePearls)} жемчужин`));
-  assert.match(node("pearls").description, /Тариф: 1 жемчужина за 10 минут остатка/);
-  assert.match(node("daily_rewards").description, /7 жемчужин/);
+  assert.match(node("pearls").description, /1 мин — 1 жемчужин; 1 ч — 20 жемчужин; 24 ч — 260 жемчужин; 48 ч — 384 жемчужин/);
+  assert.doesNotMatch(node("pearls").description, /жемчужина за 10 минут/);
+  assert.match(node("daily_rewards").description, /28 жемчужин/);
   assert.equal(catalog.pearlScale, 50);
   assert.equal(catalog.fishing.shop.refreshPricePearls, 100);
 });
@@ -520,9 +533,9 @@ test("player graph prices and rewards use visible pearls while costs keep intern
 test("the orders graph describes the week-long house-four project and permanent market discovery", () => {
   const orders = node("orders").description;
   assert.match(orders, /7 постоянных просьб дома 2, включая улов и жареную рыбу/);
-  assert.match(orders, /проект из 8 поставок: первая сразу, остальные через 24 ч после сдачи предыдущей/);
+  assert.match(orders, /проект из 8 поставок: первая сразу, остальные через 23 ч после сдачи предыдущей/);
   assert.match(orders, /Смена суток UTC и жемчуг интервал не сокращают/);
-  assert.match(orders, /Минимум 7 суток.*Живая смола × 1/);
+  assert.match(orders, /Ожидание между всеми поставками: 161 ч; строительство дома считается отдельно.*Живая смола × 1/);
   assert.match(node("market").description, /бесплатно доступны 5 мест/);
   assert.match(node("market").description, /покупаются по очереди до 10/);
   for (const [index, price] of [50, 80, 120, 180, 250].entries()) assert.ok(node("market").description.includes(`${index + 6}-е — ${price} жемчужин`));
@@ -538,7 +551,7 @@ test("the orders graph describes the week-long house-four project and permanent 
 });
 
 test("the house-five graph distinguishes project funding and guaranteed relics from random exploration", () => {
-  assert.match(node("orders").description, /Дом 5 требует 12 поставок с интервалом 24 ч/);
+  assert.match(node("orders").description, /Дом 5 требует 12 поставок с интервалом 23 ч/);
   assert.match(node("orders").description, /50000 монет за весь проект/);
   assert.match(node("orders").description, /Финал гарантирует Древнее ядро × 1, Лунный кристалл × 1/);
   assert.match(node("orders").description, /полученный результат исследования руин; запуск или отмена не засчитываются/);

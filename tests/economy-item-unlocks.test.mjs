@@ -18,7 +18,7 @@ const read = p => economy.getDevEconomy(p.token, now);
 const row = p => globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
 function player(home = 3) {
   const p = identities.createDevIdentity("Открытия товаров", crypto.randomUUID()); read(p);
-  Object.assign(row(p).state.buildings, { home, warehouse: 1, garden: 1, woodlot: 0, workshop: 0, quarry: 0, kiln: 0, dryer: 0 });
+  Object.assign(row(p).state.buildings, { home, bridge: 1, warehouse: 1, garden: 1, woodlot: 0, workshop: 0, quarry: 0, kiln: 0, dryer: 0 });
   row(p).state.completedExplorations = 1; row(p).state.wallet.coins = 10000; row(p).state.inventory = {};
   return p;
 }

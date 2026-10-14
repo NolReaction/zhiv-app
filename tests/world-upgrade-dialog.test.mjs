@@ -18,14 +18,16 @@ function unlocks(stationId, level, catalog = economyCatalog) {
   return worldUpgradeUnlocks({ catalog }, stationId, target);
 }
 
-test("house two opens fiber, rope, the independent mine and kiln while metal and soup wait for house three", () => {
+test("house two opens blueberries, rope, the independent mine, kiln and bridge while metal and soup wait for house three", () => {
   const result = unlocks("home", 2);
   assert.ok(result.upgrades.some(target => target.stationId === "quarry" && target.level === 1));
   assert.ok(result.upgrades.some(target => target.stationId === "kiln" && target.level === 1));
-  assert.deepEqual(result.recipes.map(recipe => recipe.id), ["gather_fiber", "make_rope", "make_charcoal", "fire_bricks"]);
+  assert.deepEqual(result.recipes.map(recipe => recipe.id), ["gather_fiber", "make_rope", "make_charcoal", "fire_bricks", "grow_blueberries", "cook_blueberry_compote"]);
   assert.deepEqual(result.routes.map(route => route.id), ["quarry_stone", "quarry_clay"]);
   assert.ok(result.upgrades.some(target => target.stationId === "quarry" && target.level === 2));
   assert.equal(result.market, true);
+  assert.ok(result.upgrades.some(target => target.stationId === "bridge" && target.level === 1));
+  assert.equal(unlocks("bridge", 1).market, true);
   assert.ok(!result.upgrades.some(target => target.stationId === "home"));
   assert.ok(!result.upgrades.some(target => target.level === 3));
   assert.equal(unlocks("home", 3).market, false);
@@ -43,7 +45,7 @@ test("equipment upgrades include their recipes and dependent world progression",
   assert.ok(unlocks("workshop", 1).upgrades.some(target => target.stationId === "home" && target.level === 3));
   assert.ok(unlocks("quarry", 2).upgrades.some(target => target.stationId === "home" && target.level === 3));
   assert.equal(result.market, false);
-  assert.deepEqual(unlocks("garden", 2).recipes.map(recipe => recipe.id), ["grow_berries_large", "garden_fiber"]);
+  assert.deepEqual(unlocks("garden", 2).recipes.map(recipe => recipe.id), ["grow_berries_large", "garden_fiber", "grow_blueberries", "cook_blueberry_compote"]);
 });
 
 test("pantry development adds storage without gating production, expeditions or further houses", () => {

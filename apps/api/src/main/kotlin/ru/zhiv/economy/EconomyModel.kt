@@ -7,6 +7,7 @@ import java.time.Instant
 internal val economyJson = Json { encodeDefaults = true; ignoreUnknownKeys = false }
 const val ECONOMY_MAX_BALANCE = 10_000_000_000L
 const val ECONOMY_MAX_REVISION = 9_007_199_254_740_991L
+internal val economyBerryItemIds = setOf("berries", "strawberries", "blueberries", "currants", "blackberries", "cranberries")
 
 @Serializable data class EconomyWallet(val coins: Long = 0, val pearls: Long = 0)
 @Serializable data class EconomyCost(val coins: Long = 0, val items: Map<String, Long> = emptyMap())
@@ -92,7 +93,7 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     init {
         require(actorId == null || kind == "exploration" && actorId in setOf("mochlik", "miner"))
         require(collection == null || kind == "production" && targetId == "garden" &&
-            ((rewards["berries"] ?: 0L) > 0L || (rewards["strawberries"] ?: 0L) > 0L))
+            rewards.any { (id, quantity) -> id in economyBerryItemIds && quantity > 0L })
         require(rareDrop == null || kind == "exploration" && (rareDrop.itemId == null || rewards[rareDrop.itemId] == 1L))
         require(meal == null || (meal.consumer == "hero" && kind == "exploration" || meal.consumer == "builder" && kind == "construction"))
     }
@@ -132,7 +133,7 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     val requiredRecipes: Map<String, Long> = emptyMap(),
 ) {
     init { require(collection == null || buildingId == "garden" &&
-        ((rewards["berries"] ?: 0L) > 0L || (rewards["strawberries"] ?: 0L) > 0L)) }
+        rewards.any { (id, quantity) -> id in economyBerryItemIds && quantity > 0L }) }
 }
 @Serializable data class EconomyExploration(
     val id: String, val name: String, val description: String, val requiredHomeLevel: Int = 1,
@@ -142,7 +143,8 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
 @Serializable data class EconomyMarketConfig(val requiredHomeLevel: Int = 2, val requiredExplorations: Long = 1, val maxListings: Int = 10, val maxLotQuantity: Long = 99, val maxPriceMultiplier: Long = 2, val feeBps: Int = 500,
     val showcaseSlots: Int = 12, val showcasePerSeller: Int = 2, val showcaseRefreshSeconds: Long = 1800,
     val dailyTradeValueByHome: List<Long> = listOf(0, 2400, 4800, 9600, 14400),
-    val baseSlots: Int = 5, val slotPricesPearls: List<Long> = emptyList()) {
+    val baseSlots: Int = 5, val slotPricesPearls: List<Long> = emptyList(),
+    val requiredBuildings: Map<String, Int> = emptyMap()) {
     init {
         require(showcaseSlots in 1..12 && showcasePerSeller in 1..10 && showcaseRefreshSeconds in 1L..86400L)
         require(feeBps in 0..10000 && dailyTradeValueByHome.size == 5 && dailyTradeValueByHome.all { it in 0L..ECONOMY_MAX_BALANCE })
@@ -151,7 +153,9 @@ private fun fishingShopDefaultGearRarityBps() = listOf(
     }
 }
 @Serializable data class EconomyLocalBuyer(val payoutBps: Int = 10_000, val unitPrices: Map<String, Long> = emptyMap())
-@Serializable data class EconomyConstructionSpeedup(val secondsPerPearl: Long, val priceStepPearls: Long = 2)
+@Serializable data class EconomyTimePricePoint(val seconds: Long, val pearls: Long)
+@Serializable data class EconomyConstructionSpeedup(val secondsPerPearl: Long, val priceStepPearls: Long = 2,
+    val pricingPoints: List<EconomyTimePricePoint> = emptyList())
 @Serializable data class EconomyProductionSlotUpgrade(val slots: Int, val requiredHomeLevel: Int, val pricePearls: Long) {
     init { require(slots in 2..3 && requiredHomeLevel in 1..5 && pricePearls in 1L..ECONOMY_MAX_PEARLS) }
 }

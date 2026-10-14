@@ -26,15 +26,18 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
     transform(source, id) {
       if (!/\/features\/progression\/(?:economy-panel|branch-page)\.tsx$/.test(id)) return;
       let code = source.replace('from "react";', `from "${hookModule}";`);
-      if (id.endsWith("/economy-panel.tsx")) code += "\nexport { RecipeCalculator, SourceCalculator, ItemDetails, StageCard };\n";
+      if (id.endsWith("/economy-panel.tsx")) code += "\nexport { RecipeCalculator, SourceCalculator, ItemDetails, StageCard, HomeUnlockCard };\n";
       return code;
     },
   }],
 });
 after(() => vite.close());
-const { EconomyPanel, RecipeCalculator, SourceCalculator, ItemDetails, StageCard } = await vite.ssrLoadModule("/features/progression/economy-panel.tsx");
+const { EconomyPanel, RecipeCalculator, SourceCalculator, ItemDetails, StageCard, HomeUnlockCard } = await vite.ssrLoadModule("/features/progression/economy-panel.tsx");
 const { BranchPage } = await vite.ssrLoadModule("/features/progression/branch-page.tsx");
 const { progressionEconomy: data } = await vite.ssrLoadModule("/features/progression/economy-data.ts");
+const { constructionTimePearlPrice } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
+const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { pearlDisplayAmount } = await vite.ssrLoadModule("/features/economy/domain/money.ts");
 const hooks = await vite.ssrLoadModule(hookModule);
 const text = html => html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").replaceAll("&gt;", ">");
 const item = id => data.items.find(value => value.id === id);
@@ -80,8 +83,8 @@ test("branch tabs connect their panels and retain the full economy catalog in se
   }
   const html = renderToStaticMarkup(tree);
   assert.match(html, /Ингредиенты и расчёты/);
-  assert.equal((html.match(/data-item-id=/g) ?? []).length, 58);
-  assert.match(html, /Рецептов<\/dt><dd>41/);
+  assert.equal((html.match(/data-item-id=/g) ?? []).length, data.items.length);
+  assert.match(html, new RegExp(`Рецептов<\\/dt><dd>${data.recipes.length}`));
   assert.doesNotMatch(html, /\b(?:NaN|Infinity|undefined)\b/);
 });
 
@@ -140,7 +143,7 @@ test("ingredient browser contains every real item, filters without changing pric
   field(h.render(), "Категория ингредиентов").props.onChange({ target: { value: "special" } });
   tree = h.render(); assert.deepEqual(new Set(listItems(tree).map(node => node.props["data-item-id"])), new Set(["ancient_core", "living_resin", "moon_crystal"]));
   elements(tree).find(node => node.type === ItemDetails).props.onSelect("fiber");
-  tree = h.render(); assert.equal(listItems(tree).length, 58); assert.equal(elements(tree).find(node => node.type === ItemDetails).props.item.id, "fiber");
+  tree = h.render(); assert.equal(listItems(tree).length, data.items.length); assert.equal(elements(tree).find(node => node.type === ItemDetails).props.item.id, "fiber");
   assert.equal(field(tree, "Категория ингредиентов").props.value, "all");
 });
 
@@ -201,7 +204,7 @@ test("following an ingredient clears filters then scrolls and focuses the new ke
     assert.equal(field(updated, "Найти ингредиент").props.value, "");
     assert.equal(field(updated, "Категория ингредиентов").props.value, "all");
     assert.equal(field(updated, "Уровень дома для справочника").props.value, 0);
-    assert.equal(listItems(updated).length, 58);
+    assert.equal(listItems(updated).length, data.items.length);
     currentCard = { itemId: "planks", scrollIntoView(options) { calls.push(["scroll", options]); }, focus(options) { calls.push(["focus", options]); } };
     frames[0]();
     assert.deepEqual(lookups, [["economy-item-details", "planks"]]);
@@ -245,7 +248,7 @@ test("every current recipe is reachable from its item and choosing a variant sup
       assert.equal(calculator.key, option.props.value, "changing recipe resets the quantity calculator through its React key");
     }
   }
-  assert.equal(reachable.size, 41);
+  assert.equal(reachable.size, data.recipes.length);
   assert.deepEqual(reachable, new Set(data.recipes.map(value => value.id)));
 });
 
@@ -376,13 +379,13 @@ test("invalid quantities suppress calculations and recover with valid integral i
 
 test("stage and pearl summaries distinguish guaranteed project gates from chance rewards and optional warehouse", () => {
   const value = text(renderToStaticMarkup(harness(EconomyPanel).render()));
-  assert.match(value, /Всего обязательного ожидания: 7 дн\.; затем стройка дома 1 дн\./);
+  assert.match(value, /Всего обязательного ожидания: 6 дн\. 17 ч; затем стройка дома 1 дн\./);
   assert.match(value, /Жемчуг не сокращает интервалы поставок/);
   assert.match(value, /Гарантированная награда за весь проект Живая смола ×1/);
-  assert.match(value, /53 шаблонов · 3 активные карточки/);
+  assert.match(value, /63 шаблонов · 3 активные карточки/);
   assert.match(value, /5 бесплатных мест, максимум 10/);
   assert.match(value, /Все расширения вместе: 680 жемчужин/);
-  assert.match(value, /Ускорение стройки: 1 жемчужина за начатые 10 мин/);
+  assert.match(value, /Ускорение стройки считается по оставшемуся времени и кривой цен/);
   assert.doesNotMatch(value, /Предварительный баланс/);
   assert.match(value, /Кладовая не входит в обязательные стройки/);
   assert.match(value, /Старт \+ вводные заказы − стройки: 100 \+ 330 − 380 = 50 монет/);
@@ -393,15 +396,18 @@ test("house-four project displays one-time funding, actual restoration costs and
   const tree = harness(StageCard, { stage, onSelect() {} }).render();
   const value = text(renderToStaticMarkup(tree));
   assert.equal(stage.preliminary, false);
-  assert.match(value, /Обязательные стройки 73 300 монет/);
+  assert.match(value, /Обязательные стройки 70 500 монет/);
   assert.match(value, /Поставки этапа 12 · \+50 000 монет/);
-  assert.match(value, /Заказы минус стройки -23 300 монет/);
+  assert.match(value, /Заказы минус стройки -20 500 монет/);
   assert.match(value, /Очередь одного строителя 4 дн\./);
-  assert.match(value, /Между поставками: 1 дн\./);
-  assert.match(value, /Всего обязательного ожидания: 11 дн\.; затем стройка дома 2 дн\./);
-  assert.match(value, /разовое финансирование восстановления моста, маяка и хозяйства/);
+  assert.match(value, /Между поставками: 23 ч/);
+  assert.match(value, /Всего обязательного ожидания: 10 дн\. 13 ч; затем стройка дома 2 дн\./);
+  assert.match(value, /разовое финансирование развития дальнего берега и хозяйства/);
   assert.match(value, /Для покрытия разницы нужны повторяемые заказы или продажа товаров NPC/);
-  assert.match(value, /Мост на дальний берег 1 4 000 монет · 4 ч/);
+  assert.match(value, /Мост \(доступен с дома 2\) и Маяк \(доступен с дома 3\)/);
+  assert.match(value, /на этом этапе нужно на 6 200 монет и 10 ч стройки меньше/);
+  assert.match(value, /Повторной оплаты нет/);
+  assert.match(value, /Мост на дальний берег 1 1 200 монет · 4 ч/);
   assert.match(value, /Лесной маяк 1 5 000 монет · 6 ч/);
   const list = elements(tree).find(node => node.type === "ol");
   const deliveries = Children.toArray(list.props.children);
@@ -416,11 +422,49 @@ test("house-four project displays one-time funding, actual restoration costs and
   assert.doesNotMatch(value, /Предварительный баланс/);
 });
 
+test("every house's berry and processing unlock is visible and opens its actual ingredient reference", () => {
+  const h = harness(EconomyPanel), tree = h.render();
+  const cards = elements(tree).filter(node => node.type === HomeUnlockCard);
+  assert.deepEqual(cards.map(card => card.props.unlock.homeLevel), [1, 2, 3, 4, 5]);
+  const expected = ["strawberries", "blueberries", "currants", "blackberries", "cranberries"];
+  const html = renderToStaticMarkup(tree);
+  assert.equal((html.match(/data-home-unlocks=/g) ?? []).length, 5);
+  for (const [index, id] of expected.entries()) {
+    const card = HomeUnlockCard(cards[index].props);
+    const berry = elements(card).find(node => node.props["data-unlock-item"] === id);
+    assert.ok(berry, `${id} is a visible reward for home ${index + 1}`);
+    berry.props.onClick();
+    assert.equal(elements(h.render()).find(node => node.type === ItemDetails).props.item.id, id);
+  }
+  const bridge = text(renderToStaticMarkup(HomeUnlockCard(cards[1].props)));
+  const lighthouse = text(renderToStaticMarkup(HomeUnlockCard(cards[2].props)));
+  assert.match(bridge, /1 200 монет · 4 ч/);
+  assert.match(bridge, /После получения восстановления открывается рынок игроков/);
+  assert.match(lighthouse, /Пароход с большими заказами запланирован; сейчас его нет/);
+});
+
+test("new meals expose their real effects and premium examples agree with the live command price", () => {
+  const jelly = text(renderToStaticMarkup(harness(ItemDetails, { item: item("currant_jelly"), home: 0, onSelect() {} }).render()));
+  assert.match(jelly, /Характеристики обеда Мохлик: \+20% скорости одной вылазки/);
+  assert.match(jelly, /Строитель: \+30% скорости одной стройки/);
+  assert.match(jelly, /шахтёра обед не ускоряет/);
+  for (const quote of data.pearls.construction.prices) {
+    assert.equal(quote.pearls, pearlDisplayAmount(constructionTimePearlPrice(quote.seconds, economyCatalog.constructionSpeedup)));
+  }
+  const html = renderToStaticMarkup(harness(EconomyPanel).render()), value = text(html);
+  assert.match(html, /<caption>Примеры ускорения одной стройки<\/caption>/);
+  assert.match(value, /1 мин 1 1 ч 20/);
+  assert.match(value, /1 дн\. 260 2 дн\. 384 7 дн\. 1 000/);
+  assert.match(value, /Таймеры разных строек нельзя складывать для расчёта/);
+  assert.match(value, /Дом 2 · Мост 1/);
+  assert.doesNotMatch(value, /жемчужина за начатые 10 мин/);
+});
+
 test("inactive panels are actually hidden and narrow layouts have explicit single-column scroll containment", () => {
   const branch = readFileSync(new URL("../features/progression/branch-page.module.css", import.meta.url), "utf8");
   const economy = readFileSync(new URL("../features/progression/economy-panel.module.css", import.meta.url), "utf8");
   assert.match(branch, /\.viewPanel\[hidden\]\s*\{[^}]*display:\s*none/);
   assert.match(economy, /\.panel\s*\{[^}]*overflow:\s*auto/);
   assert.match(economy, /@media\s*\(max-width:\s*780px\)/);
-  assert.match(economy, /\.stageGrid,\s*\.pearlGrid\s*\{\s*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+  assert.match(economy, /\.stageGrid,\s*\.pearlGrid,\s*\.unlockGrid\s*\{\s*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
 });

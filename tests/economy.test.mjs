@@ -20,11 +20,12 @@ const command = (p, action, targetId, quantity = 1, totalPrice = 0, time = now) 
 const issue = (p, action, targetId, quantity = 1, time = now) => economy.commandDevEconomy(p.token, command(p, action, targetId, quantity, 0, time), time);
 const trade = (p, action, targetId, quantity = 1, totalPrice = 0, time = now) => economy.commandDevEconomyMarket(p.token, command(p, action, targetId, quantity, totalPrice, time), time);
 // Test fixture only: production routes deliberately have no balance or item grant command.
-function fixture(p, { coins = 5000, pearls = 0, items = { wood: 30, stone: 30, berries: 30 }, home = 2, completedExplorations = 1, buildings = {} } = {}) {
+function fixture(p, { coins = 5000, pearls = 0, items = { wood: 30, stone: 30, berries: 30 }, home = 2,
+  bridge = home >= 2 ? 1 : 0, completedExplorations = 1, buildings = {} } = {}) {
   read(p);
   const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
   row.state.wallet = { coins, pearls }; row.state.inventory = { ...items }; row.state.buildings.home = home; row.state.completedExplorations = completedExplorations;
-  Object.assign(row.state.buildings, { warehouse: 6 }, buildings);
+  Object.assign(row.state.buildings, { warehouse: 6, bridge }, buildings);
   return row;
 }
 
@@ -98,8 +99,9 @@ test("an empty account can rebuild its first stage from the free bush and forest
   assert.throws(() => trade(p, "create_listing", "fiber", 1, 2, clock), { code: "ECONOMY_MARKET_LOCKED" });
   const upgraded = complete("start_construction", "home"); assert.equal(upgraded.buildings.home, 2);
   assert.deepEqual(upgraded.productionSlots, {}); assert.equal(upgraded.wallet.pearls, 0); assert.ok(upgraded.storage.used <= 50);
-  const listing = trade(p, "create_listing", "fiber", 1, 2, clock).listing; assert.equal(listing.quantity, 1);
-  trade(p, "cancel_listing", listing.id, 1, 0, clock);
+  assert.equal(upgraded.buildings.bridge, 0, "Completing the first house stage does not gift a restored bridge");
+  assert.throws(() => trade(p, "create_listing", "fiber", 1, 2, clock), { code: "ECONOMY_MARKET_LOCKED" });
+  assert.deepEqual(economy.getDevEconomyMarket(p.token, {}, clock).listings, []);
   assert.throws(() => issue(p, "start_construction", "quarry", 1, clock), { code: "ECONOMY_RESOURCES" });
   assert.throws(() => issue(p, "start_construction", "kiln", 1, clock), { code: "ECONOMY_BUILDING_REQUIRED" });
 });
@@ -198,7 +200,7 @@ test("unit production snapshots ingredients, duration and output; another statio
   assert.equal(started.inventory.rope, 5 - recipe.cost.items.rope);
   assert.deepEqual(job.cost, recipe.cost);
   assert.equal(Date.parse(job.finishesAt) - now, recipe.seconds * 1000); assert.deepEqual(job.rewards, { cloth: 1 });
-  assert.equal(job.catalogVersion, 9);
+  assert.equal(job.catalogVersion, model.economyCatalog.version);
   assert.throws(() => issue(p, "start_production", "make_planks"), { code: "ECONOMY_BUILDING_BUSY" });
   assert.equal(issue(p, "start_production", "grow_berries").state.jobs.length, 2);
   assert.throws(() => issue(p, "start_production", "grow_berries", 11), { code: "INVALID_ECONOMY_COMMAND" });

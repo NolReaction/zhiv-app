@@ -36,10 +36,10 @@ test("rewards require session and expose no-store private state without issuing 
   const p = player(), before = economy.getDevEconomy(p.token), response = await GET(read());
   assert.equal(response.status, 200); assert.equal(response.headers.get("Cache-Control"), "no-store");
   const opened = await response.json();
-  assert.equal(opened.catalogVersion, 2);
+  assert.equal(opened.catalogVersion, 3);
   assert.equal(api.gameRewardsSchema.safeParse(opened).success, true);
   assert.deepEqual(opened.daily.cycle.map(row => row.reward.coins), [30, 30, 40, 40, 50, 50, 80]);
-  assert.equal(opened.daily.cycle.reduce((sum, row) => sum + row.reward.pearls, 0), 14);
+  assert.equal(opened.daily.cycle.reduce((sum, row) => sum + row.reward.pearls, 0), 56);
   assert.equal(opened.achievementRewards.reduce((sum, row) => sum + row.pearls, 0), 238);
   assert.deepEqual(economy.getDevEconomy(p.token).wallet, before.wallet);
   assert.equal((await GET(read("?step=7"))).status, 400);
@@ -49,7 +49,7 @@ test("manual HTTP claim echoes its key and a lost-response retry returns the sam
   assert.equal(response.status, 200); assert.equal(response.headers.get("Cache-Control"), "no-store");
   const first = await response.json(); assert.equal(api.gameRewardResultSchema.safeParse(first).success, true);
   assert.equal(first.requestId, request.requestId); assert.equal(first.claim.kind, "daily"); assert.equal(first.claim.step, 1);
-  assert.deepEqual(first.claim.reward, { coins: 30, pearls: 0, items: { wood: 2, stone: 1 } });
+  assert.deepEqual(first.claim.reward, { coins: 30, pearls: 4, items: { wood: 2, stone: 1 } });
   const repeat = await (await POST(post(request))).json(); assert.equal(repeat.replayed, true); assert.deepEqual(repeat.claim, first.claim);
   assert.equal(repeat.economy.wallet.coins, first.economy.wallet.coins);
   const duplicate = await POST(post(command(p))); assert.equal(duplicate.status, 409); assert.equal((await duplicate.json()).code, "DAILY_REWARD_COOLDOWN");

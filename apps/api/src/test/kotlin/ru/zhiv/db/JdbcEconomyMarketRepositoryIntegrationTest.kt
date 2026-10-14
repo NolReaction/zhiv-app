@@ -60,7 +60,8 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
         source.connection.use { c ->
             val row = readEconomyProfile(c, user.id)
             val state = row.state.copy(wallet = row.state.wallet.copy(coins = coins * 10), inventory = mapOf("berries" to berries),
-                buildings = row.state.buildings + ("home" to if (unlocked) 2 else 1), completedExplorations = if (unlocked) 1 else 0)
+                buildings = row.state.buildings + mapOf("home" to if (unlocked) 2 else 1,
+                    "bridge" to if (unlocked) 1 else 0), completedExplorations = if (unlocked) 1 else 0)
             c.economyUpdate("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(state), user.id)
             c.commit()
         }

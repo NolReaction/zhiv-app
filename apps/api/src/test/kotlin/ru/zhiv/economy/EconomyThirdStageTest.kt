@@ -19,8 +19,8 @@ class EconomyThirdStageTest {
             "quarry" to 2, "kiln" to 2, "dryer" to 1), tutorialOrder = EconomyTutorialOrder()) }
     private fun fails(code: String, block: () -> Unit) = assertEquals(code, assertFailsWith<AuthFailure>(block = block).code)
 
-    @Test fun `eight third stage requests take seven full days and deliver one final saved resin reward`() {
-        assertEquals(8, course.orders.size); assertEquals(86400L, course.intervalSeconds)
+    @Test fun `eight third stage requests follow the twenty three hour cadence and deliver one final saved resin reward`() {
+        assertEquals(8, course.orders.size); assertEquals(82800L, course.intervalSeconds)
         assertEquals(mapOf("living_resin" to 1L), course.completionRewards)
         var state = player()
         var at = now
@@ -38,9 +38,9 @@ class EconomyThirdStageTest {
             state = apply(state, "complete_resident_order", terms.id, at)
             assertEquals(index + 1, EconomyStageOrders.progress(state).step)
             assertEquals(if (index == 7) 1L else 0L, state.inventory["living_resin"] ?: 0L)
-            if (index < 7) at = at.plusSeconds(86400)
+            if (index < 7) at = at.plusSeconds(82800)
         }
-        assertEquals(now.plusSeconds(7 * 86400L), at)
+        assertEquals(now.plusSeconds(7 * 82800L), at)
         assertTrue(EconomyStageOrders.progress(state).completed)
         assertNull(EconomyStageOrders.offer(state))
         assertEquals(coins + course.orders.sumOf { it.coins }, state.wallet.coins)
@@ -60,8 +60,8 @@ class EconomyThirdStageTest {
         val late = now.plusSeconds(3 * 86400L)
         val completed = apply(pinned.copy(inventory = first.items), "complete_resident_order", first.id, late)
         val progress = EconomyStageOrders.progress(completed)
-        assertEquals(late.plusSeconds(86400).toString(), progress.availableAt)
-        assertEquals(86400L, progress.intervalSeconds)
+        assertEquals(late.plusSeconds(82800).toString(), progress.availableAt)
+        assertEquals(82800L, progress.intervalSeconds)
         assertEquals(mapOf("living_resin" to 1L), progress.completionRewards)
         fails("INVALID_ECONOMY_COMMAND") {
             EconomyRules.apply(completed, command("complete_resident_order", course.orders[1].id, 100), late) }

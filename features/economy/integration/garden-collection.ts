@@ -1,10 +1,11 @@
 import type { EconomyCommand, EconomyJob, EconomyView } from "@/features/economy/domain/model";
 import type { EconomySceneGarden, GardenHarvestEvent, GardenHarvestRequest } from "@/features/world/state/economy/economy-garden-state";
 import { economyActorConflict } from "@/features/economy/domain/actor-availability";
+import { hasGardenBerryReward } from "@/features/economy/domain/garden-berries";
 
 export function isBerryProduction(job: EconomyJob) {
   return job.kind === "production" && job.targetId === "garden"
-    && ((job.rewards.berries ?? 0) > 0 || (job.rewards.strawberries ?? 0) > 0);
+    && hasGardenBerryReward(job.rewards);
 }
 
 export function economyGardenCrop(snapshot: EconomyView | null, preferredJobId?: string | null): EconomySceneGarden | null | undefined {

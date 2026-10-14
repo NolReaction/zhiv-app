@@ -42,11 +42,17 @@ object EconomyRules {
     init {
         EconomyTutorialOrders.validateCatalog(catalog)
         EconomyStageOrders.validateCatalog(catalog)
-        require(catalog.version == 9 && catalog.currencyScale == 10 && catalog.pearlScale == 50 && catalog.maxBatch in 1..10)
+        require(catalog.version == 10 && catalog.currencyScale == 10 && catalog.pearlScale == 50 && catalog.maxBatch in 1..10)
         require(catalog.localBuyer.payoutBps in 1..10_000)
         require(catalog.localBuyer.unitPrices.all { (id, amount) -> amount in 1L..ECONOMY_MAX_BALANCE && catalog.items.any { it.id == id && it.tradable } })
         require(catalog.constructionSpeedup.secondsPerPearl in 1L..86_400L)
         require(catalog.constructionSpeedup.priceStepPearls in 1L..ECONOMY_PEARL_SCALE)
+        require(catalog.constructionSpeedup.pricingPoints.size >= 2 &&
+            catalog.constructionSpeedup.pricingPoints.all { it.seconds in 1L..31_536_000L && it.pearls in 1L..ECONOMY_MAX_PEARLS } &&
+            catalog.constructionSpeedup.pricingPoints.zipWithNext().all { (a, b) -> a.seconds < b.seconds && a.pearls <= b.pearls })
+        require(catalog.market.requiredBuildings.all { (id, level) -> catalog.buildings.any { building ->
+            building.id == id && building.levels.any { it.level == level }
+        } })
         require(catalog.market.maxListings in 1..10 && catalog.market.maxLotQuantity in 1L..99L &&
             catalog.market.maxPriceMultiplier in 1L..2L && catalog.market.feeBps == 500)
         require(catalog.market.baseSlots == 5 && catalog.market.slotPricesPearls.size == 5)
@@ -179,11 +185,14 @@ object EconomyRules {
         }
     }
 
-    /** Same full-duration tariff, rounded by the catalog's small price quantum. */
+    /** The remaining-time curve is rounded upwards to a whole visible pearl. */
     fun constructionSpeedupPrice(job: EconomyJob, now: Instant): Long {
         if (job.kind != "construction") return 0
-        return remainingTimePearlPrice(job.finishesAt, now, catalog.constructionSpeedup.secondsPerPearl,
-            ECONOMY_PEARL_SCALE, catalog.constructionSpeedup.priceStepPearls)
+        if (catalog.constructionSpeedup.pricingPoints.isEmpty())
+            return remainingTimePearlPrice(job.finishesAt, now, catalog.constructionSpeedup.secondsPerPearl,
+                ECONOMY_PEARL_SCALE, catalog.constructionSpeedup.priceStepPearls)
+        return remainingTimePearlPrice(job.finishesAt, now, catalog.constructionSpeedup.pricingPoints,
+            catalog.constructionSpeedup.priceStepPearls)
     }
 
     /** Rods define class odds; hooks and bait multiply those odds without opening zero-probability classes. */
@@ -363,7 +372,7 @@ object EconomyRules {
                 val spec = job.collection?.let { EconomyCollectionSpec(it.kind, it.seconds) }
                     ?: catalog.recipes.find { it.id == job.recipeId }?.collection
                 if (job.kind != "production" || job.targetId != "garden" ||
-                    ((job.rewards["berries"] ?: 0L) <= 0L && (job.rewards["strawberries"] ?: 0L) <= 0L) || spec == null)
+                    job.rewards.none { (id, quantity) -> id in economyBerryItemIds && quantity > 0L } || spec == null)
                     economyFailure("ECONOMY_COLLECTION_KIND", "Для этой работы сбор Мохликом не требуется")
                 if (job.collection?.startedAt != null) economyFailure("ECONOMY_COLLECTION_STARTED", "Мохлик уже собирает этот урожай")
                 if (now.isBefore(Instant.parse(job.finishesAt))) economyFailure("ECONOMY_JOB_NOT_READY", "Урожай ещё не созрел")
@@ -511,9 +520,8 @@ object EconomyRules {
                     if (job.kind == "construction") "Строительство завершено" else "Припасы доставлены на склад"
             }
             "buy_market_slot" -> {
-                if ((state.buildings["home"] ?: 1) < catalog.market.requiredHomeLevel ||
-                    state.completedExplorations < catalog.market.requiredExplorations)
-                    economyFailure("ECONOMY_MARKET_LOCKED", "Сначала завершите исследование и откройте рынок")
+                if (!EconomyMarketRules.unlocked(state))
+                    economyFailure("ECONOMY_MARKET_LOCKED", "Сначала улучшите дом до второго уровня и восстановите мост")
                 val offer = marketSlotOffer(state) ?: economyFailure("MARKET_SLOTS_MAX", "Все места рынка уже открыты")
                 if (command.targetId != offer.targetId) economyFailure("MARKET_SLOT_CHANGED", "Количество мест изменилось. Проверьте предложение")
                 if (command.totalPrice != offer.pricePearls) economyFailure("MARKET_SLOT_PRICE_CHANGED", "Цена места изменилась. Проверьте предложение")

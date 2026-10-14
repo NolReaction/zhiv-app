@@ -35,7 +35,7 @@ const { marketSlotOffer } = await vite.ssrLoadModule("/features/economy/domain/m
 const hooks = await vite.ssrLoadModule(hooksId);
 function controller() {
   return { snapshot: { ownerPublicId: "ME", revision: 4, marketSlots: 5,
-    wallet: { coins: 1000, pearls: 2000 }, buildings: { home: 2 }, completedExplorations: 1,
+    wallet: { coins: 1000, pearls: 2000 }, buildings: { home: 2, bridge: 1 }, completedExplorations: 1,
     catalog: structuredClone(economyCatalog) }, busy: false, uncertain: false, error: null,
     act() { assert.fail("inspection cannot purchase a place"); } };
 }
@@ -96,7 +96,7 @@ test("captured expansion callbacks recheck owner, revision, next place, price, w
     economy => { economy.snapshot.catalog.market.slotPricesPearls[0] += 2; },
     economy => { economy.snapshot.wallet.pearls = 98; },
     economy => { economy.snapshot.buildings.home = 1; },
-    economy => { economy.snapshot.completedExplorations = 0; },
+    economy => { economy.snapshot.buildings.bridge = 0; },
     economy => { economy.busy = true; },
     economy => { economy.uncertain = true; },
   ]) {

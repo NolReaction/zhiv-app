@@ -116,11 +116,11 @@ export function auditProjectCourses(catalog) {
       && Number.isSafeInteger(quantity) && quantity > 0), "Invalid project completion reward");
   }
   const third = courses.get(3), fourth = courses.get(4);
-  assert(third?.orders.length === 8 && third.intervalSeconds === 86400,
-    "Third stage project must keep eight deliveries and seven daily waits");
+  assert(third?.orders.length === 8 && third.intervalSeconds === 23 * 3600,
+    "Third stage project must keep eight deliveries and seven 23-hour waits");
   assert.deepEqual(third.completionRewards, { living_resin: 1 }, "Third stage must guarantee its home relic");
-  assert(fourth?.orders.length === 12 && fourth.intervalSeconds === 86400,
-    "Fourth stage project must keep twelve deliveries and eleven daily waits");
+  assert(fourth?.orders.length === 12 && fourth.intervalSeconds === 23 * 3600,
+    "Fourth stage project must keep twelve deliveries and eleven 23-hour waits");
   assert.equal(fourth.orders.reduce((sum, order) => sum + order.coins, 0), 50000,
     "Fourth stage one-time project financing must total 50000 coins");
   assert.deepEqual(fourth.completionRewards, { ancient_core: 1, moon_crystal: 1 }, "Fourth stage must guarantee both home relics");
@@ -155,7 +155,7 @@ export function auditProjectCourses(catalog) {
 export function auditFourthStageBudget(catalog, requiredConstruction) {
   const constructionCoins = requiredConstruction.reduce((sum, node) => sum + node.cost.coins, 0);
   const constructionSeconds = requiredConstruction.reduce((sum, node) => sum + node.seconds, 0);
-  assert.equal(constructionCoins, 73300, "Fourth stage mandatory construction must total 73300 coins");
+  assert.equal(constructionCoins, 70500, "Fourth stage mandatory construction must total 70500 coins (starting with unrestored landmarks)");
   assert.equal(constructionSeconds, 96 * 3600, "Fourth stage mandatory construction must total 96 hours");
   const stage = catalog.stageOrders.find(stage => stage.homeLevel === 4);
   const ruins = catalog.explorations.find(route => route.id === "ancient_ruins");

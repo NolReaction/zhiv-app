@@ -26,7 +26,7 @@ function view(token: string | undefined, owner: string, value: Profile, now: num
   const economy = getDevEconomy(token, now, owner);
   const result = getDevGameAchievements(token, now, 5);
   if (result.kind !== "ok") fail("UNAUTHORIZED", "Войдите в профиль ещё раз", 401);
-  return { ownerPublicId: owner, serverTime: new Date(now).toISOString(), catalogVersion: 2,
+  return { ownerPublicId: owner, serverTime: new Date(now).toISOString(), catalogVersion: 3,
     daily: dailyRewardView(value.daily, now, economy.buildings.home ?? 1),
     achievementRewards: achievementRewardRows((id, level) => ({
       at: result.value.achievements.find(row => row.id === id)?.tiers?.find(tier => tier.level === level)?.unlockedAt ?? null,

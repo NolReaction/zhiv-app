@@ -10,7 +10,7 @@ const identities = await vite.ssrLoadModule("/lib/dev/api-store.ts");
 const economy = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
 const model = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const stages = await vite.ssrLoadModule("/features/economy/domain/stage-orders.ts");
-const now = Date.parse("2026-10-14T09:00:00Z"), interval = 24 * 3600000;
+const now = Date.parse("2026-10-14T09:00:00Z"), interval = 23 * 3600000;
 beforeEach(() => { identities.resetDevStoreForTests(); economy.resetDevEconomyStoreForTests(); });
 after(() => vite.close());
 const read = (p, at = now) => economy.getDevEconomy(p.token, at);
@@ -34,21 +34,21 @@ const send = (p, action = "complete_resident_order", targetId, at = now, extra =
 
 test("the project quote opens immediately without persisting, and rejected attempts cannot freeze conditions or grant ingredients", () => {
   const p = player(), stored = structuredClone(row(p).state), first = quote(p);
-  assert.equal(course().orders.length, 8); assert.equal(course().intervalSeconds, 86400);
+  assert.equal(course().orders.length, 8); assert.equal(course().intervalSeconds, 82800);
   assert.deepEqual(course().completionRewards, { living_resin: 1 });
   assert.equal(first.id, course().orders[0].id); assert(Date.parse(first.availableAt) <= now);
-  assert.equal(first.intervalSeconds, 86400); assert.deepEqual(first.completionRewards, {});
+  assert.equal(first.intervalSeconds, 82800); assert.deepEqual(first.completionRewards, {});
   assert.deepEqual(row(p).state, stored);
   assert.throws(() => send(p), { code: "ECONOMY_RESOURCES" });
   assert.throws(() => send(p, "replace_resident_order", first.id), { code: "ECONOMY_STAGE_ORDER_UNAVAILABLE" });
   assert.deepEqual(row(p).state, stored);
   send(p, "start_production", "grow_berries");
   const progress = row(p).state.stageOrders.stages[3];
-  assert.equal(progress.intervalSeconds, 86400); assert.deepEqual(progress.completionRewards, { living_resin: 1 });
+  assert.equal(progress.intervalSeconds, 82800); assert.deepEqual(progress.completionRewards, { living_resin: 1 });
   assert.equal(progress.terms.id, first.id); assert.deepEqual(read(p).inventory, {});
 });
 
-test("eight pinned deliveries require seven real 24-hour fences and award one guaranteed resin exactly once", () => {
+test("eight newly pinned deliveries require seven real 23-hour fences and award one guaranteed resin exactly once", () => {
   const p = player(), receipts = []; let paid = 0;
   for (let step = 0; step < 8; step++) {
     const at = now + step * interval, offer = quote(p, at);
@@ -94,9 +94,29 @@ test("the next deadline is measured from actual delivery and frozen conditions s
   current.intervalSeconds = 0; current.completionRewards = { ancient_core: 50 };
   current.orders[1].coins = 999999; current.orders[1].items = { wood: 42 };
   const frozen = stages.stageResidentOrder(view);
-  assert.equal(frozen.intervalSeconds, 86400); assert.equal(Date.parse(frozen.availableAt), later + interval);
+  assert.equal(frozen.intervalSeconds, 82800); assert.equal(Date.parse(frozen.availableAt), later + interval);
   assert.deepEqual(frozen.items, course().orders[1].items); assert.equal(frozen.coins, course().orders[1].coins);
   assert.deepEqual(view.stageOrders.stages[3].completionRewards, { living_resin: 1 });
+});
+
+test("previously saved twenty four hour projects keep their exact cadence across the new twenty three hour catalog", () => {
+  const p = player(), first = structuredClone(course().orders[0]), oldInterval = 24 * 3600000;
+  row(p).state.stageOrders.stages[3] = { step: 0, completed: false, terms: first,
+    availableAt: new Date(now).toISOString(), intervalSeconds: 86400, completionRewards: { living_resin: 1 } };
+  row(p).state = JSON.parse(JSON.stringify(row(p).state));
+  assert.equal(quote(p).intervalSeconds, 86400);
+  row(p).state.inventory = { ...first.items };
+  const delivered = send(p).state;
+  assert.equal(delivered.stageOrders.stages[3].intervalSeconds, 86400);
+  assert.equal(Date.parse(delivered.stageOrders.stages[3].availableAt), now + oldInterval);
+  const second = quote(p, now + interval); row(p).state.inventory = { ...second.items };
+  const before = read(p, now + interval);
+  assert.throws(() => send(p, "complete_resident_order", second.id, now + interval), { code: "ECONOMY_STAGE_WAIT" });
+  assert.deepEqual(read(p, now + interval), before);
+  const completed = send(p, "complete_resident_order", second.id, now + oldInterval).state;
+  assert.equal(completed.stageOrders.stages[3].step, 2);
+  assert.equal(Date.parse(completed.stageOrders.stages[3].availableAt), now + 2 * oldInterval);
+  assert.deepEqual(completed.stageOrders.stages[3].completionRewards, { living_resin: 1 });
 });
 
 test("home four requires this project for every tutorial generation but an already paid home-four job still claims", () => {
@@ -108,7 +128,7 @@ test("home four requires this project for every tutorial generation but an alrea
   }
   const p = player(1), id = crypto.randomUUID();
   row(p).state.jobs.push({ id, kind: "construction", targetId: "home", recipeId: null, targetLevel: 4,
-    startedAt: new Date(now - interval).toISOString(), finishesAt: new Date(now).toISOString(), rewards: {},
+    startedAt: new Date(now - 24 * 3600000).toISOString(), finishesAt: new Date(now).toISOString(), rewards: {},
     cost: { coins: 180000, items: { beams: 45, bricks: 35 } }, catalogVersion: 7 });
   const before = read(p), claimed = send(p, "claim_job", id).state;
   assert.equal(claimed.buildings.home, 4); assert.deepEqual(claimed.wallet, before.wallet); assert.deepEqual(claimed.inventory, before.inventory);
@@ -132,14 +152,14 @@ test("final delivery is atomic at wallet and item limits and concurrent revision
 });
 
 test("course merges preserve the furthest frozen terms and the later same-step wait, without reopening completion", () => {
-  const orders = course().orders;
+  const orders = course().orders, oldInterval = 24 * 3600000;
   const first = { version: 1, stages: { 3: { step: 3, completed: false, terms: { ...orders[3], coins: 123 },
-    availableAt: new Date(now + interval).toISOString(), intervalSeconds: 86400, completionRewards: { living_resin: 1 } } } };
-  const second = { version: 1, stages: { 3: { ...first.stages[3], availableAt: new Date(now + 2 * interval).toISOString() } } };
+    availableAt: new Date(now + oldInterval).toISOString(), intervalSeconds: 86400, completionRewards: { living_resin: 1 } } } };
+  const second = { version: 1, stages: { 3: { ...first.stages[3], availableAt: new Date(now + 2 * oldInterval).toISOString() } } };
   const before = [structuredClone(first), structuredClone(second)];
   for (const pair of [[first, second], [second, first]]) {
     const merged = stages.mergeStageOrders(...pair);
-    assert.equal(merged.stages[3].terms.coins, 123); assert.equal(Date.parse(merged.stages[3].availableAt), now + 2 * interval);
+    assert.equal(merged.stages[3].terms.coins, 123); assert.equal(Date.parse(merged.stages[3].availableAt), now + 2 * oldInterval);
     assert.deepEqual(merged.stages[3].completionRewards, { living_resin: 1 });
   }
   const done = { version: 1, stages: { 3: { ...second.stages[3], step: 8, completed: true, terms: null } } };

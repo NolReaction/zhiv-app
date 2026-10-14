@@ -473,7 +473,7 @@ test("missing-navigation requirements remain honest text and landmarks offer act
     assert.match(upgrade, /Время восстановления/);
     assert.match(upgrade, /Новый маршрут/);
     assert.doesNotMatch(upgrade, /Следующий уровень постройки/);
-    assert.match(upgrade, /нужен ур. 4/);
+    assert.match(upgrade, new RegExp(`нужен ур. ${place === "bridge" ? 2 : 3}`));
     assert.equal(disabled(button(upgrade, "Начать восстановление")), true);
   }
 });
@@ -488,6 +488,18 @@ test("restored landmarks show expedition routes and their remaining prerequisite
     assert.doesNotMatch(html, /Выберите рецепт|Сначала обустройте|data-production-slots=|Место 2/);
     assert.doesNotMatch(html, /data-guide-station-upgrade=/);
   }
+});
+
+test("home two's restored bridge offers the peer market while home three's lighthouse labels the boat as future content", () => {
+  const bridge = render("bridge", controller({ snapshot: snapshot({ buildings: { home: 2, warehouse: 1, bridge: 1 }, completedExplorations: 0 }) }), { onOpenMarket() {} });
+  assert.match(bridge, /Открыть рынок игроков/);
+  assert.match(bridge, /Мост соединяет вашу поляну/);
+  assert.doesNotMatch(bridge, /Будущая ветка|data-production-slots=/);
+  const ruined = render("bridge", controller({ snapshot: snapshot({ buildings: { home: 2, warehouse: 1, bridge: 0 } }) }), { onOpenMarket() {} });
+  assert.doesNotMatch(ruined, /Открыть рынок игроков/);
+  const lighthouse = render("lighthouse", controller({ snapshot: snapshot({ buildings: { home: 3, warehouse: 1, bridge: 1, lighthouse: 1 } }) }));
+  assert.match(lighthouse, /Пароход с крупными заказами появится в будущем обновлении/);
+  assert.doesNotMatch(lighthouse, /Получить заказ парохода|Отправить пароход/);
 });
 
 test("house five names the project as a guaranteed relic source while restoration keeps the generic paid-job controls", () => {

@@ -53,6 +53,8 @@ class JdbcProgressionRewardsIntegrationTest {
         val both=List(2) { async(Dispatchers.IO) { rewards.claim(p.hash,request) } }.awaitAll()
         assertEquals(1,both.count { it.replayed }); assertEquals(both[0].claim,both[1].claim)
         assertEquals(initial.wallet.coins+30,economy.snapshot(p.hash).wallet.coins)
+        assertEquals(initial.wallet.pearls+4,economy.snapshot(p.hash).wallet.pearls)
+        assertEquals(3,rewards.snapshot(p.hash).catalogVersion)
         assertEquals(initial.revision+1,economy.snapshot(p.hash).revision)
         assertEquals("1",scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='daily_reward'",p.id))
         val conflict=assertFailsWith<AuthFailure> { rewards.claim(p.hash,request.copy(kind="achievement",achievementId="first_path",level=1)) }
@@ -124,7 +126,7 @@ class JdbcProgressionRewardsIntegrationTest {
         val paid=rewards.claim(p.hash,request); val repeated=rewards.claim(p.hash,request)
         assertEquals(1L,paid.economy.inventory["ancient_core"])
         assertEquals(before.wallet.coins+80,paid.economy.wallet.coins)
-        assertEquals(before.wallet.pearls+8,paid.economy.wallet.pearls)
+        assertEquals(before.wallet.pearls+20,paid.economy.wallet.pearls)
         assertEquals(capacity,paid.economy.storage.used)
         assertTrue(repeated.replayed); assertEquals(paid.claim,repeated.claim)
         assertEquals(paid.economy.wallet,repeated.economy.wallet)

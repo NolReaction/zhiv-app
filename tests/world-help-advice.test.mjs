@@ -152,10 +152,13 @@ test("house-four advice gates legacy tutorials on the eight supplies and disting
   const before = structuredClone(patch);
   result = advice(patch, { context });
   assert.equal(result[0].title, "Дождитесь следующей поставки");
-  assert.match(result[0].message, new RegExp(`1 из 8.*Следующая поставка через ${worldDuration(course.intervalSeconds)}`));
+  assert.match(result[0].message, /1 из 8.*Следующая поставка через 1 д/,
+    "an already accepted 24-hour deadline remains authoritative after the current course changes to 23 hours");
   assert.match(result[0].message, /Материалы можно подготовить заранее.*жемчуг не сокращает/);
   assert.deepEqual(result[0].action.target, { kind: "food", tab: "orders" });
   assert.deepEqual(patch, before, "waiting advice never moves the accepted deadline or the course");
+  patch.stageOrders.stages[3].availableAt = new Date(now + course.intervalSeconds * 1000).toISOString();
+  assert.match(advice(patch, { context })[0].message, new RegExp(`Следующая поставка через ${worldDuration(course.intervalSeconds)}`));
   assert.equal(advice({ ...patch, inventory: {} }, { context })[0].id, "construction:stage-orders",
     "the required project remains ahead of unrelated resource shortfalls");
   patch.stageOrders.stages[3] = { step: 8, completed: true, terms: null };

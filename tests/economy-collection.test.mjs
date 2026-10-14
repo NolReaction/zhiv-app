@@ -29,9 +29,9 @@ const grow = p => issue(p, "start_production", "grow_berries").state.jobs[0];
 
 test("only berry recipes opt in and each order keeps its collection rules alongside paid rewards", () => {
   const configured = model.economyCatalog.recipes.filter(recipe => recipe.collection);
-  assert.deepEqual(configured.map(recipe => recipe.id), ["grow_berries", "grow_berries_large", "garden_season", "garden_supply", "garden_abundance", "grow_strawberries"]);
+  assert.deepEqual(configured.map(recipe => recipe.id), ["grow_berries", "grow_berries_large", "garden_season", "garden_supply", "garden_abundance", "grow_strawberries", "grow_blueberries", "grow_currants", "grow_blackberries", "grow_cranberries"]);
   for (const recipe of configured) {
-    assert.equal(recipe.buildingId, "garden"); assert.ok((recipe.rewards.berries ?? 0) + (recipe.rewards.strawberries ?? 0) > 0);
+    assert.equal(recipe.buildingId, "garden"); assert.ok(Object.entries(recipe.rewards).some(([id, quantity]) => ["berries", "strawberries", "blueberries", "currants", "blackberries", "cranberries"].includes(id) && quantity > 0));
     assert.deepEqual(recipe.collection, { kind: "berry_harvest", seconds: 8 });
   }
   assert.equal(model.economyCatalog.recipes.find(recipe => recipe.id === "garden_fiber").collection, undefined);
@@ -61,6 +61,23 @@ test("server collection requires ripe fruit and elapsed work, then grants the sa
   assert.throws(() => issue(p, "claim_job", job.id, finish + 9000), { code: "ECONOMY_JOB_GONE" });
   const oldStart = economy.commandDevEconomy(p.token, start, finish + 10000);
   assert.equal(oldStart.replayed, true); assert.deepEqual(oldStart.state.inventory, result.state.inventory);
+});
+
+test("new house berries require their garden and deliver one item only after the shared eight second collection", () => {
+  for (const [home, itemId] of [[2, "blueberries"], [3, "currants"], [4, "blackberries"], [5, "cranberries"]]) {
+    const p = player(), state = fixture(p, { inventory: {} }).state;
+    state.buildings.home = home; state.buildings.garden = home - 1;
+    assert.throws(() => issue(p, "start_production", `grow_${itemId}`), { code: "ECONOMY_BUILDING_REQUIRED" });
+    state.buildings.garden = home;
+    const job = issue(p, "start_production", `grow_${itemId}`).state.jobs[0], readyAt = Date.parse(job.finishesAt);
+    assert.equal(job.catalogVersion, 10); assert.deepEqual(job.rewards, { [itemId]: 1 });
+    assert.throws(() => issue(p, "claim_job", job.id, readyAt), { code: "ECONOMY_COLLECTION_REQUIRED" });
+    issue(p, "start_collection", job.id, readyAt);
+    assert.throws(() => issue(p, "claim_job", job.id, readyAt + 7999), { code: "ECONOMY_COLLECTION_NOT_READY" });
+    const claimed = issue(p, "claim_job", job.id, readyAt + 8000).state;
+    assert.deepEqual(claimed.inventory, { [itemId]: 1 }); assert.equal(claimed.jobs.length, 0);
+    assert.ok(claimed.unlockedItems.includes(itemId));
+  }
 });
 
 test("repeated starts, stale devices and foreign owners cannot restart the clock or create another collector", () => {
@@ -93,7 +110,7 @@ test("market purchases during gathering may fill storage, but a failed delivery 
   const p = player(), seller = player();
   for (const [account, inventory] of [[p, { wood: 290 }], [seller, { wood: 10 }]]) {
     const row = fixture(account, { inventory, wallet: { coins: 1000, pearls: 0 }, completedExplorations: 1 });
-    row.state.buildings.home = 2; row.state.buildings.warehouse = 6;
+    row.state.buildings.home = 2; row.state.buildings.bridge = 1; row.state.buildings.warehouse = 6;
   }
   const job = grow(p), readyAt = Date.parse(job.finishesAt);
   const collecting = issue(p, "start_collection", job.id, readyAt).state.jobs[0];

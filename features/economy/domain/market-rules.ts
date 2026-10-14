@@ -2,6 +2,13 @@ import { fishClassForItem, fishingClassItemId, fishingIneligibility } from "./fi
 import { economyCatalog, type EconomyCatalog, type EconomyMarketListing, type EconomyState } from "./model";
 import { unlockedEconomyItems, type ItemUnlockSource } from "./item-unlocks";
 
+/** Only confirmed restoration opens trade; paid, ready and unclaimed jobs do not. */
+export function economyMarketUnlocked(state: Pick<EconomyState, "buildings" | "completedExplorations">, catalog: EconomyCatalog = economyCatalog): boolean {
+  return (state.buildings.home ?? 1) >= catalog.market.requiredHomeLevel
+    && state.completedExplorations >= catalog.market.requiredExplorations
+    && Object.entries(catalog.market.requiredBuildings).every(([id, level]) => (state.buildings[id] ?? 0) >= level);
+}
+
 /** Catalog source threshold for descriptions; permanent discovery controls actual trades. */
 export function marketRequiredHomeLevel(itemId: string, catalog: EconomyCatalog = economyCatalog): number {
   const buildingHome = (id: string, level: number, seen = new Set<string>()): number => {

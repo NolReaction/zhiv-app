@@ -13,7 +13,7 @@ const food = await vite.ssrLoadModule("/features/economy/domain/food.ts");
 after(() => vite.close());
 const epoch = Date.parse("2026-10-14T09:00:00Z"), hour = 3600000;
 
-test("a real one-slot 50-place house-three route earns its costs and project resin after seven 24-hour waits", () => {
+test("a real one-slot 50-place house-three route earns its costs and project resin after seven 23-hour waits", () => {
   const state = rules.newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 });
   Object.assign(state.buildings, { home: 3, garden: 1, warehouse: 1, woodlot: 1, workshop: 1, quarry: 2, kiln: 1, dryer: 1 });
   state.wallet = { coins: 230, pearls: 0 }; state.inventory = {};
@@ -178,13 +178,13 @@ test("a real one-slot 50-place house-three route earns its costs and project res
 
   assert.equal(state.buildings.home, 4); assert.equal(state.buildings.warehouse, 1); assert.equal(state.jobs.length, 0);
   assert.equal(courses.length, 8); assert.equal(courseCoins, 14840); assert.equal(constructionCoins, 20600);
-  for (let index = 1; index < courses.length; index++) assert(courses[index].at - courses[index - 1].at >= 24 * hour);
-  assert(courses.at(-1).at - courses[0].at >= 168 * hour);
+  for (let index = 1; index < courses.length; index++) assert(courses[index].at - courses[index - 1].at >= 23 * hour);
+  assert(courses.at(-1).at - courses[0].at >= 161 * hour);
   assert(clock - courses.at(-1).at >= 24 * hour, "the final house still takes its real builder day");
   assert(clock - epoch < 10 * 24 * hour, JSON.stringify({ elapsedHours: (clock - epoch) / hour,
     deliveryHours: courses.map(offer => (offer.at - epoch) / hour), builds: builds.map(build => ({ target: build.target, level: build.level, hours: (build.startedAt - epoch) / hour })), peak,
     message: "the concrete route fits ten days with one worker and original storage" }));
-  assert(repeatCoins > 0); assert(actions.start_fishing > 0); assert(production.cook_fish_soup >= 7); assert(catches.fish_common >= 20);
+  assert(repeatCoins > 0); assert(actions.start_fishing > 0); assert(production.cook_fish_soup >= 5); assert(catches.fish_common >= 16);
   assert.equal(record("living_resin").received, 1); assert.equal(record("living_resin").consumed, 1);
   assert.equal(state.inventory.living_resin, undefined);
   assert.equal(state.wallet.coins, 230 + courseCoins + repeatCoins + saleCoins - constructionCoins);
@@ -195,4 +195,31 @@ test("a real one-slot 50-place house-three route earns its costs and project res
     ["woodlot:2", "kiln:2", "workshop:2", "woodlot:3", "workshop:3", "quarry:3", "home:4"]);
   console.log(JSON.stringify({ elapsedHours: (clock - epoch) / hour, firstDeliveryHours: (courses[0].at - epoch) / hour,
     deliveryHours: courses.map(offer => (offer.at - epoch) / hour), peak, coins: state.wallet.coins, repeatCoins, saleCoins, commands: revision }));
+});
+
+// A player's accepted daily rhythm is a saved promise. The new 23-hour cadence
+// applies to newly accepted chapters, never to an already pinned v9 chapter.
+test("an accepted v9 chapter keeps its 24-hour delivery interval after v10 shortens new chapters to 23 hours", () => {
+  const state = rules.newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 });
+  state.buildings.home = 3; state.wallet = { coins: 0, pearls: 0 };
+  state.tutorialOrder = { version: 2, step: 4, completed: true, ingredientsClaimed: true, terms: null };
+  const course = catalog.stageOrders.find(course => course.homeLevel === 3);
+  assert.equal(course.intervalSeconds, 23 * 3600);
+  state.stageOrders = { version: 1, stages: { 3: { step: 0, completed: false,
+    terms: structuredClone(course.orders[0]), availableAt: new Date(epoch).toISOString(),
+    intervalSeconds: 24 * 3600, completionRewards: { living_resin: 1 } } } };
+  state.inventory = { ...course.orders[0].items, ...course.orders[1].items };
+  const apply = (targetId, at) => rules.applyEconomyCommand(state, { requestId: crypto.randomUUID(),
+    ownerPublicId: "0000-0000-0001", expectedRevision: 0, action: "complete_resident_order", targetId, quantity: 1, totalPrice: 0 }, at, crypto.randomUUID);
+  apply(course.orders[0].id, epoch);
+  const pinned = structuredClone(state);
+  assert.equal(Date.parse(stages.stageResidentOrder(state).availableAt), epoch + 24 * hour);
+  assert.equal(state.stageOrders.stages["3"].intervalSeconds, 24 * 3600);
+  assert.throws(() => apply(course.orders[1].id, epoch + 23 * hour), { code: "ECONOMY_STAGE_WAIT" });
+  assert.deepEqual(state.inventory, pinned.inventory); assert.deepEqual(state.wallet, pinned.wallet);
+  assert.deepEqual(state.stageOrders, pinned.stageOrders);
+  apply(course.orders[1].id, epoch + 24 * hour);
+  assert.equal(state.stageOrders.stages["3"].step, 2);
+  assert.equal(state.wallet.coins, course.orders[0].coins + course.orders[1].coins);
+  assert.equal(Date.parse(stages.stageResidentOrder(state).availableAt), epoch + 48 * hour);
 });

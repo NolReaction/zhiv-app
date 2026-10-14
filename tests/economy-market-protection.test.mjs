@@ -18,7 +18,7 @@ const shelf = (p, at = now) => economy.getDevEconomyMarket(p.token, {}, at);
 function player(home = 2, inventory = { wood: 100 }) {
   const p = identities.createDevIdentity("Лесник", crypto.randomUUID()); read(p);
   row(p).state.wallet.coins = 1000000; row(p).state.inventory = inventory;
-  row(p).state.buildings.home = home; row(p).state.buildings.warehouse = 6; row(p).state.completedExplorations = 1;
+  row(p).state.buildings.home = home; row(p).state.buildings.bridge = 1; row(p).state.buildings.warehouse = 6; row(p).state.completedExplorations = 1;
   return p;
 }
 const command = (p, action, targetId, quantity = 1, totalPrice = 0, at = now) => ({ requestId: crypto.randomUUID(), ownerPublicId: p.me.user.publicId,
@@ -157,7 +157,7 @@ test("profile reset does not refund daily volume and a house upgrade only change
   row(buyer).state.buildings.home = 3;
   assert.equal(shelf(buyer).tradeBudget.buysUsed, 2400); assert.equal(shelf(buyer).tradeBudget.limit, 4800);
   economy.removeDevEconomyOwner(buyer.me.user.publicId); read(buyer);
-  row(buyer).state.buildings.home = 2; row(buyer).state.completedExplorations = 1;
+  row(buyer).state.buildings.home = 2; row(buyer).state.buildings.bridge = 1; row(buyer).state.completedExplorations = 1;
   assert.equal(shelf(buyer).tradeBudget.buysUsed, 2400);
 });
 

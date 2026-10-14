@@ -1,5 +1,5 @@
 {
-  "version": 9,
+  "version": 10,
   "maxBatch": 10,
   "productionSlots": {
     "upgrades": [
@@ -17,7 +17,25 @@
   },
   "constructionSpeedup": {
     "secondsPerPearl": 15000,
-    "priceStepPearls": 2
+    "priceStepPearls": 2,
+    "pricingPoints": [
+      {
+        "seconds": 60,
+        "pearls": 2
+      },
+      {
+        "seconds": 3600,
+        "pearls": 40
+      },
+      {
+        "seconds": 86400,
+        "pearls": 520
+      },
+      {
+        "seconds": 604800,
+        "pearls": 2000
+      }
+    ]
   },
   "items": [
     {
@@ -425,6 +443,69 @@
       "category": "crafted",
       "baseSellPrice": 1600,
       "tradable": true
+    },
+    {
+      "id": "blueberries",
+      "name": "Черника",
+      "category": "produce",
+      "baseSellPrice": 20,
+      "tradable": true
+    },
+    {
+      "id": "currants",
+      "name": "Смородина",
+      "category": "produce",
+      "baseSellPrice": 70,
+      "tradable": true
+    },
+    {
+      "id": "blackberries",
+      "name": "Ежевика",
+      "category": "produce",
+      "baseSellPrice": 160,
+      "tradable": true
+    },
+    {
+      "id": "cranberries",
+      "name": "Клюква",
+      "category": "produce",
+      "baseSellPrice": 280,
+      "tradable": true
+    },
+    {
+      "id": "strawberry_compote",
+      "name": "Клубничный компот",
+      "category": "provisions",
+      "baseSellPrice": 110,
+      "tradable": true
+    },
+    {
+      "id": "blueberry_compote",
+      "name": "Черничный компот",
+      "category": "provisions",
+      "baseSellPrice": 70,
+      "tradable": true
+    },
+    {
+      "id": "currant_jelly",
+      "name": "Смородиновое желе",
+      "category": "provisions",
+      "baseSellPrice": 220,
+      "tradable": true
+    },
+    {
+      "id": "blackberry_preserve",
+      "name": "Ежевичное варенье",
+      "category": "provisions",
+      "baseSellPrice": 640,
+      "tradable": true
+    },
+    {
+      "id": "cranberry_glaze",
+      "name": "Клюквенный десерт",
+      "category": "provisions",
+      "baseSellPrice": 950,
+      "tradable": true
     }
   ],
   "buildings": [
@@ -486,12 +567,12 @@
           "cost": {
             "coins": 6000,
             "items": {
-              "beams": 6,
-              "cut_stone": 8,
-              "bricks": 10,
-              "cloth": 4,
-              "metal_parts": 4,
-              "fish_soup": 4,
+              "beams": 2,
+              "cut_stone": 2,
+              "bricks": 2,
+              "cloth": 2,
+              "metal_parts": 1,
+              "fish_soup": 2,
               "living_resin": 1
             }
           },
@@ -533,7 +614,7 @@
     {
       "id": "garden",
       "name": "Ягодный куст",
-      "description": "Ягоды и растительное волокно на домашней полянке. Каждый запуск даёт один предмет; готовый урожай занимает место до получения и не портится.",
+      "description": "Развивай ягодный куст вместе с домом: малина и клубника, черника, смородина, ежевика и клюква. У каждой ягоды свой таймер и цепочка блюд; один запуск даёт один предмет, урожай дождётся получения.",
       "levels": [
         {
           "level": 1,
@@ -547,30 +628,30 @@
         },
         {
           "level": 2,
-          "seconds": 10800,
+          "seconds": 1800,
           "cost": {
-            "coins": 1200,
+            "coins": 350,
             "items": {
-              "wood": 12,
-              "stone": 8,
-              "rope": 4
+              "wood": 4,
+              "stone": 4,
+              "rope": 2
             }
           },
-          "requiredHomeLevel": 3,
+          "requiredHomeLevel": 2,
           "requiredBuildings": {
             "workshop": 1
           }
         },
         {
           "level": 3,
-          "seconds": 43200,
+          "seconds": 7200,
           "cost": {
-            "coins": 8000,
+            "coins": 2000,
             "items": {
-              "planks": 11,
-              "clay": 11,
-              "rope": 12,
-              "cloth": 8
+              "planks": 4,
+              "clay": 4,
+              "rope": 3,
+              "cloth": 1
             }
           },
           "requiredHomeLevel": 3,
@@ -639,9 +720,9 @@
           "cost": {
             "coins": 1200,
             "items": {
-              "planks": 8,
-              "stone": 6,
-              "rope": 4
+              "planks": 4,
+              "stone": 4,
+              "rope": 2
             }
           },
           "requiredHomeLevel": 3,
@@ -651,13 +732,13 @@
         },
         {
           "level": 3,
-          "seconds": 64800,
+          "seconds": 21600,
           "cost": {
             "coins": 3200,
             "items": {
-              "planks": 8,
-              "iron_ingot": 4,
-              "rope": 6
+              "planks": 4,
+              "iron_ingot": 2,
+              "rope": 3
             }
           },
           "requiredHomeLevel": 3,
@@ -739,13 +820,13 @@
         },
         {
           "level": 3,
-          "seconds": 86400,
+          "seconds": 21600,
           "cost": {
             "coins": 2400,
             "items": {
-              "planks": 6,
-              "iron_ingot": 4,
-              "bricks": 8
+              "planks": 3,
+              "iron_ingot": 2,
+              "bricks": 4
             }
           },
           "requiredHomeLevel": 3,
@@ -810,13 +891,13 @@
         },
         {
           "level": 2,
-          "seconds": 43200,
+          "seconds": 21600,
           "cost": {
             "coins": 2200,
             "items": {
-              "planks": 8,
-              "bricks": 8,
-              "iron_ingot": 3
+              "planks": 4,
+              "bricks": 4,
+              "iron_ingot": 2
             }
           },
           "requiredHomeLevel": 3,
@@ -827,14 +908,14 @@
         },
         {
           "level": 3,
-          "seconds": 129600,
+          "seconds": 28800,
           "cost": {
             "coins": 4000,
             "items": {
-              "planks": 10,
-              "bricks": 10,
-              "iron_ingot": 4,
-              "cloth": 4
+              "planks": 4,
+              "bricks": 4,
+              "iron_ingot": 2,
+              "cloth": 2
             }
           },
           "requiredHomeLevel": 3,
@@ -992,13 +1073,13 @@
         },
         {
           "level": 2,
-          "seconds": 28800,
+          "seconds": 14400,
           "cost": {
             "coins": 1600,
             "items": {
-              "planks": 8,
-              "stone": 12,
-              "rope": 4
+              "planks": 4,
+              "stone": 6,
+              "rope": 2
             }
           },
           "requiredHomeLevel": 3,
@@ -1219,23 +1300,25 @@
     {
       "id": "bridge",
       "name": "Мост на дальний берег",
-      "description": "Восстанови существующий деревянный мост: он открывает дальний берег и новые походы. Текущий этап включает одно восстановление; новые уровни появятся позднее.",
+      "description": "Восстанови деревянный мост на втором уровне дома: он открывает торговлю с другими игроками. Более дальние походы появятся с развитием хозяйства.",
       "levels": [
         {
           "level": 1,
           "seconds": 14400,
           "cost": {
-            "coins": 4000,
+            "coins": 1200,
             "items": {
-              "beams": 1,
-              "planks": 2,
-              "rope": 2,
-              "metal_parts": 1
+              "planks": 8,
+              "rope": 6,
+              "bricks": 6,
+              "stone": 8
             }
           },
-          "requiredHomeLevel": 4,
+          "requiredHomeLevel": 2,
           "requiredBuildings": {
-            "workshop": 3
+            "quarry": 2,
+            "kiln": 1,
+            "workshop": 1
           }
         }
       ]
@@ -1243,7 +1326,7 @@
     {
       "id": "lighthouse",
       "name": "Лесной маяк",
-      "description": "Восстанови существующий маяк после моста. Его свет открывает путь к древним руинам. Текущий этап включает одно восстановление.",
+      "description": "Восстанови маяк на третьем уровне дома. Ночью он освещает берег; на четвёртом открывает путь к древним руинам. В будущем его свет приведёт пароход с большими заказами.",
       "levels": [
         {
           "level": 1,
@@ -1251,15 +1334,17 @@
           "cost": {
             "coins": 5000,
             "items": {
-              "cut_stone": 2,
-              "bricks": 2,
-              "glass": 2,
-              "tools": 1
+              "cut_stone": 4,
+              "bricks": 6,
+              "glass": 4,
+              "cloth": 2,
+              "iron_ingot": 2
             }
           },
-          "requiredHomeLevel": 4,
+          "requiredHomeLevel": 3,
           "requiredBuildings": {
             "bridge": 1,
+            "workshop": 3,
             "kiln": 3
           }
         }
@@ -2108,6 +2193,202 @@
         "research_gear": 1
       },
       "maxBatch": 1
+    },
+    {
+      "id": "grow_blueberries",
+      "name": "Вырастить чернику",
+      "buildingId": "garden",
+      "buildingLevel": 2,
+      "requiredHomeLevel": 2,
+      "requiredBuildings": {},
+      "seconds": 180,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "blueberries": 1
+      },
+      "collection": {
+        "kind": "berry_harvest",
+        "seconds": 8
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "grow_currants",
+      "name": "Вырастить смородину",
+      "buildingId": "garden",
+      "buildingLevel": 3,
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {},
+      "seconds": 720,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "currants": 1
+      },
+      "collection": {
+        "kind": "berry_harvest",
+        "seconds": 8
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "grow_blackberries",
+      "name": "Вырастить ежевику",
+      "buildingId": "garden",
+      "buildingLevel": 4,
+      "requiredHomeLevel": 4,
+      "requiredBuildings": {},
+      "seconds": 1800,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "blackberries": 1
+      },
+      "collection": {
+        "kind": "berry_harvest",
+        "seconds": 8
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "grow_cranberries",
+      "name": "Вырастить клюкву",
+      "buildingId": "garden",
+      "buildingLevel": 5,
+      "requiredHomeLevel": 5,
+      "requiredBuildings": {},
+      "seconds": 3600,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "cranberries": 1
+      },
+      "collection": {
+        "kind": "berry_harvest",
+        "seconds": 8
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "cook_strawberry_compote",
+      "name": "Сварить клубничный компот",
+      "buildingId": "dryer",
+      "buildingLevel": 1,
+      "requiredHomeLevel": 1,
+      "requiredBuildings": {
+        "garden": 1
+      },
+      "seconds": 360,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "strawberries": 2
+        }
+      },
+      "rewards": {
+        "strawberry_compote": 1
+      },
+      "maxBatch": 1,
+      "requiredRecipes": {
+        "cook_compote": 1
+      }
+    },
+    {
+      "id": "cook_blueberry_compote",
+      "name": "Сварить черничный компот",
+      "buildingId": "dryer",
+      "buildingLevel": 1,
+      "requiredHomeLevel": 2,
+      "requiredBuildings": {
+        "garden": 2
+      },
+      "seconds": 360,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "blueberries": 2
+        }
+      },
+      "rewards": {
+        "blueberry_compote": 1
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "cook_currant_jelly",
+      "name": "Приготовить смородиновое желе",
+      "buildingId": "dryer",
+      "buildingLevel": 2,
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {
+        "garden": 3
+      },
+      "seconds": 1200,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "currants": 2,
+          "berry_compote": 1
+        }
+      },
+      "rewards": {
+        "currant_jelly": 1
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "cook_blackberry_preserve",
+      "name": "Сварить ежевичное варенье",
+      "buildingId": "dryer",
+      "buildingLevel": 3,
+      "requiredHomeLevel": 4,
+      "requiredBuildings": {
+        "garden": 4,
+        "kiln": 3
+      },
+      "seconds": 2700,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "blackberries": 2,
+          "glass": 1
+        }
+      },
+      "rewards": {
+        "blackberry_preserve": 1
+      },
+      "maxBatch": 1
+    },
+    {
+      "id": "cook_cranberry_glaze",
+      "name": "Приготовить клюквенный десерт",
+      "buildingId": "dryer",
+      "buildingLevel": 4,
+      "requiredHomeLevel": 5,
+      "requiredBuildings": {
+        "garden": 5
+      },
+      "seconds": 5400,
+      "cost": {
+        "coins": 0,
+        "items": {
+          "cranberries": 2,
+          "currant_jelly": 1
+        }
+      },
+      "rewards": {
+        "cranberry_glaze": 1
+      },
+      "maxBatch": 1
     }
   ],
   "explorations": [
@@ -2540,7 +2821,7 @@
   ],
   "market": {
     "requiredHomeLevel": 2,
-    "requiredExplorations": 1,
+    "requiredExplorations": 0,
     "maxListings": 10,
     "maxLotQuantity": 99,
     "maxPriceMultiplier": 2,
@@ -2562,7 +2843,10 @@
       240,
       360,
       500
-    ]
+    ],
+    "requiredBuildings": {
+      "bridge": 1
+    }
   },
   "fishing": {
     "routeIds": [
@@ -3056,7 +3340,16 @@
       "fish_shark": 320,
       "fish_soup": 220,
       "trail_ration": 360,
-      "research_gear": 1600
+      "research_gear": 1600,
+      "blueberries": 20,
+      "currants": 70,
+      "blackberries": 160,
+      "cranberries": 280,
+      "strawberry_compote": 110,
+      "blueberry_compote": 70,
+      "currant_jelly": 220,
+      "blackberry_preserve": 640,
+      "cranberry_glaze": 950
     }
   },
   "rareDrops": {
@@ -3103,6 +3396,31 @@
         "itemId": "legendary_fish",
         "heroSpeedBps": 10000,
         "builderSpeedBps": 9000
+      },
+      {
+        "itemId": "strawberry_compote",
+        "heroSpeedBps": 800,
+        "builderSpeedBps": 1200
+      },
+      {
+        "itemId": "blueberry_compote",
+        "heroSpeedBps": 1200,
+        "builderSpeedBps": 800
+      },
+      {
+        "itemId": "currant_jelly",
+        "heroSpeedBps": 2000,
+        "builderSpeedBps": 3000
+      },
+      {
+        "itemId": "blackberry_preserve",
+        "heroSpeedBps": 4500,
+        "builderSpeedBps": 3000
+      },
+      {
+        "itemId": "cranberry_glaze",
+        "heroSpeedBps": 7500,
+        "builderSpeedBps": 5500
       }
     ],
     "orders": {
@@ -3902,6 +4220,162 @@
             "trail_ration": 1
           },
           "coins": 2940
+        },
+        {
+          "id": "starter_fresh_berries",
+          "residentId": "plesk",
+          "name": "Ягоды к первому пикнику",
+          "description": "Свежие ягоды и новые блюда делают хозяйство разнообразнее. Это обычная повторяемая просьба жителей.",
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {
+            "garden": 1,
+            "dryer": 1
+          },
+          "items": {
+            "berries": 3,
+            "strawberries": 2
+          },
+          "coins": 170
+        },
+        {
+          "id": "starter_strawberry_drink",
+          "residentId": "builder",
+          "name": "Клубничный компот для строителя",
+          "description": "Свежие ягоды и новые блюда делают хозяйство разнообразнее. Это обычная повторяемая просьба жителей.",
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {
+            "garden": 1,
+            "dryer": 1
+          },
+          "items": {
+            "strawberry_compote": 1
+          },
+          "coins": 170
+        },
+        {
+          "id": "blueberry_harvest",
+          "residentId": "plesk",
+          "name": "Черника с домашней полянки",
+          "description": "Свежие ягоды и новые блюда делают хозяйство разнообразнее. Это обычная повторяемая просьба жителей.",
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "garden": 2,
+            "dryer": 1
+          },
+          "items": {
+            "blueberries": 4,
+            "strawberries": 1
+          },
+          "coins": 180
+        },
+        {
+          "id": "blueberry_drink",
+          "residentId": "builder",
+          "name": "Черничный компот для перерыва",
+          "description": "Свежие ягоды и новые блюда делают хозяйство разнообразнее. Это обычная повторяемая просьба жителей.",
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "garden": 2,
+            "dryer": 1
+          },
+          "items": {
+            "blueberry_compote": 2
+          },
+          "coins": 210
+        },
+        {
+          "id": "currant_harvest",
+          "residentId": "plesk",
+          "name": "Смородина для берегового стола",
+          "description": "Свежие ягоды и новые блюда делают хозяйство разнообразнее. Это обычная повторяемая просьба жителей.",
+          "requiredHomeLevel": 3,
+          "requiredBuildings": {
+            "garden": 3,
+            "dryer": 1
+          },
+          "items": {
+            "currants": 3,
+            "blueberries": 2
+          },
+          "coins": 380
+        },
+        {
+          "id": "currant_jelly",
+          "residentId": "builder",
+          "name": "Желе для долгой стройки",
+          "description": "Свежие ягоды и новые блюда делают хозяйство разнообразнее. Это обычная повторяемая просьба жителей.",
+          "requiredHomeLevel": 3,
+          "requiredBuildings": {
+            "garden": 3,
+            "dryer": 2
+          },
+          "items": {
+            "currant_jelly": 1
+          },
+          "coins": 330
+        },
+        {
+          "id": "blackberry_harvest",
+          "residentId": "plesk",
+          "name": "Ежевика к лесному празднику",
+          "description": "Свежие ягоды и новые блюда делают хозяйство разнообразнее. Это обычная повторяемая просьба жителей.",
+          "requiredHomeLevel": 4,
+          "requiredBuildings": {
+            "garden": 4
+          },
+          "items": {
+            "blackberries": 2,
+            "currants": 2
+          },
+          "coins": 690
+        },
+        {
+          "id": "blackberry_preserve",
+          "residentId": "builder",
+          "name": "Варенье для похода",
+          "description": "Свежие ягоды и новые блюда делают хозяйство разнообразнее. Это обычная повторяемая просьба жителей.",
+          "requiredHomeLevel": 4,
+          "requiredBuildings": {
+            "garden": 4,
+            "dryer": 3,
+            "kiln": 3,
+            "quarry": 2,
+            "woodlot": 1
+          },
+          "items": {
+            "blackberry_preserve": 1
+          },
+          "coins": 960
+        },
+        {
+          "id": "cranberry_harvest",
+          "residentId": "plesk",
+          "name": "Клюква и ежевика нового сезона",
+          "description": "Свежие ягоды и новые блюда делают хозяйство разнообразнее. Это обычная повторяемая просьба жителей.",
+          "requiredHomeLevel": 5,
+          "requiredBuildings": {
+            "garden": 5
+          },
+          "items": {
+            "cranberries": 2,
+            "blackberries": 2
+          },
+          "coins": 1320
+        },
+        {
+          "id": "cranberry_glaze",
+          "residentId": "builder",
+          "name": "Десерт к праздничному столу",
+          "description": "Свежие ягоды и новые блюда делают хозяйство разнообразнее. Это обычная повторяемая просьба жителей.",
+          "requiredHomeLevel": 5,
+          "requiredBuildings": {
+            "garden": 5,
+            "dryer": 4
+          },
+          "items": {
+            "cranberry_glaze": 1
+          },
+          "coins": 1430
         }
       ],
       "progression": {
@@ -4069,7 +4543,7 @@
     },
     {
       "homeLevel": 3,
-      "intervalSeconds": 86400,
+      "intervalSeconds": 82800,
       "completionRewards": {
         "living_resin": 1
       },
@@ -4169,7 +4643,7 @@
     },
     {
       "homeLevel": 4,
-      "intervalSeconds": 86400,
+      "intervalSeconds": 82800,
       "completionRewards": {
         "ancient_core": 1,
         "moon_crystal": 1

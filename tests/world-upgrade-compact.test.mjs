@@ -89,7 +89,7 @@ test("a ready construction has one enabled completion action and reuses normal r
 test("active construction shows its real pearl quote without spending on first press", () => {
   const snapshot = state({ wallet: { coins: 1000, pearls: 400 }, jobs: [construction()] });
   const html = render("home", { snapshot });
-  const accelerate = buttons(html).find(button => /aria-label="Завершить сейчас за 1 жемчужину"/.test(button.attributes));
+  const accelerate = buttons(html).find(button => /aria-label="Завершить сейчас за 4 жемчужины"/.test(button.attributes));
   assert.ok(accelerate);
   assert.doesNotMatch(accelerate.attributes, /disabled/);
   assert.match(accelerate.attributes, /aria-expanded="false"/);
@@ -103,11 +103,11 @@ test("active construction shows its real pearl quote without spending on first p
 
 test("insufficient pearls explain the shortfall and the server catalog supplies pricing", () => {
   const snapshot = state({ jobs: [construction()] });
-  snapshot.catalog.constructionSpeedup.secondsPerPearl = 100;
+  snapshot.catalog.constructionSpeedup.pricingPoints = [{ seconds: 60, pearls: 2 }, { seconds: 500, pearls: 20 }];
   const html = render("home", { snapshot });
-  const button = buttons(html).find(button => /aria-label="Завершить сейчас за 125 жемчужин"/.test(button.attributes));
+  const button = buttons(html).find(button => /aria-label="Завершить сейчас за 10 жемчужин"/.test(button.attributes));
   assert.match(button.attributes, /disabled/);
-  assert.match(text(html), /Не хватает жемчужин: 125/);
+  assert.match(text(html), /Не хватает жемчужин: 10/);
 });
 
 test("a paid production order remains claimable before upgrading its station", () => {
@@ -239,8 +239,24 @@ test("home previews each opportunity in a labelled carousel without hiding the a
   assert.doesNotMatch(html, /data-upgrade-benefit="route:cave"|data-upgrade-benefit="route:quarry_stone_overnight"/);
   assert.match(buttons(html).find(button => /aria-label="Предыдущая возможность"/.test(button.attributes)).attributes, /disabled/);
   assert.doesNotMatch(buttons(html).find(button => /aria-label="Следующая возможность"/.test(button.attributes)).attributes, /disabled/);
-  assert.match(text(html), /Нужно завершить вылазок: 0 \/ 1/);
+  assert.match(text(html), /Мост на дальний берег 0\/1/);
+  assert.doesNotMatch(text(html), /Нужно завершить вылазок/);
   assert.doesNotMatch(html, /Развитие хозяйства|Новых рецептов|Выплавить железо/);
+});
+
+test("every next home tier previews its new berry and dish with the real station and distinct food effects", () => {
+  for (const [level, crop, dish] of [[2, "grow_blueberries", "cook_blueberry_compote"], [3, "grow_currants", "cook_currant_jelly"],
+    [4, "grow_blackberries", "cook_blackberry_preserve"], [5, "grow_cranberries", "cook_cranberry_glaze"]]) {
+    const html = render("home", { snapshot: state({ buildings: { home: level - 1, warehouse: 1 } }) });
+    assert.ok(html.includes(`data-upgrade-benefit="recipe:${crop}"`));
+    assert.ok(html.includes(`data-upgrade-benefit="recipe:${dish}"`));
+    const recipe = economyCatalog.recipes.find(entry => entry.id === dish);
+    const meal = economyCatalog.food.meals.find(entry => recipe.rewards[entry.itemId]);
+    assert.match(text(html), /Новый рецепт · Ягодный куст/);
+    assert.match(text(html), /Новый рецепт · Костёр/);
+    assert.ok(text(html).includes(`Вылазка +${meal.heroSpeedBps / 100}% · стройка +${meal.builderSpeedBps / 100}% скорости`));
+    assert.match(text(html), /Ещё условия/);
+  }
 });
 
 

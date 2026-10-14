@@ -55,7 +55,7 @@ class JdbcEconomyBarterRepositoryIntegrationTest {
         source.connection.use { c ->
             val old=readEconomyProfile(c,user.id).state
             c.economyUpdate("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(old.copy(
-                wallet=EconomyWallet(123,9), inventory=items, buildings=old.buildings + ("home" to home), completedExplorations=1)),user.id)
+                wallet=EconomyWallet(123,9), inventory=items, buildings=old.buildings + mapOf("home" to home,"bridge" to 1), completedExplorations=1)),user.id)
             c.commit()
         }
         return Player(user.id,user.publicId,token.hash,token.raw)
@@ -75,6 +75,32 @@ class JdbcEconomyBarterRepositoryIntegrationTest {
         if(command.action=="create_offer") { put("offeredItemId",command.offeredItemId);put("requestedItemId",command.requestedItemId) }
         else put("offerId",command.offerId)
     }.toString()
+
+    @Test fun `bridge gate hides locked barter sellers and allows old escrow cancellation and replay`() = runBlocking<Unit> {
+        val seller=player(); val buyer=player(mapOf("moon_crystal" to 2L))
+        val create=createCommand(seller)
+        val created=barter.command(seller.hash,create)
+        assertEquals(created.offer.id,barter.barter(buyer.hash).offers.single().id)
+        edit(seller) { it.copy(buildings=it.buildings-"bridge") }
+        assertTrue(barter.barter(buyer.hash).offers.isEmpty())
+        assertEquals(created.offer.id,barter.barter(seller.hash).mine.single().id)
+        assertTrue(barter.command(seller.hash,create).replayed)
+        assertEquals("ECONOMY_BARTER_LOCKED",assertFailsWith<AuthFailure> {
+            barter.command(seller.hash,createCommand(seller)) }.code)
+        assertEquals("ECONOMY_BARTER_LOCKED",assertFailsWith<AuthFailure> {
+            barter.command(buyer.hash,action(buyer,"accept_offer",created.offer.id)) }.code)
+        assertEquals(2L,economy.snapshot(buyer.hash).inventory["moon_crystal"])
+        barter.command(seller.hash,action(seller,"cancel_offer",created.offer.id))
+        assertEquals(3L,economy.snapshot(seller.hash).inventory["ancient_core"])
+        edit(seller) { it.copy(buildings=it.buildings+("bridge" to 1)) }
+        val next=offer(seller)
+        expire(buyer)
+        assertEquals(next.id,barter.barter(buyer.hash).offers.single().id)
+        edit(buyer) { it.copy(buildings=it.buildings+("bridge" to 0)) }
+        assertTrue(barter.barter(buyer.hash).offers.isEmpty())
+        assertEquals("ECONOMY_BARTER_LOCKED",assertFailsWith<AuthFailure> {
+            barter.command(buyer.hash,action(buyer,"accept_offer",next.id)) }.code)
+    }
 
     @Test fun `escrow consumes storage and cancel replay restores a finite item while create receipt stays immutable`() = runBlocking<Unit> {
         val p=player(); val command=createCommand(p); val created=barter.command(p.hash,command)

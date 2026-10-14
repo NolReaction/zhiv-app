@@ -85,9 +85,9 @@ test("advanced goals protect current unit recipe inputs even with the base wareh
   assert.equal(recipe.maxBatch, 1); assert.deepEqual(recipe.rewards, { beams: 1 });
   assert.deepEqual(recipe.cost.items, { hardwood: 4, rope: 1 });
   const details = constructionGoalDetails(view, { buildingId: "home", targetLevel: 4 });
-  assert.deepEqual(details.missing.items, { beams: 5 });
-  assert.equal(details.keepItems.hardwood, 20); assert.equal(details.keepItems.rope, 5);
-  assert.equal(details.excessItems.hardwood, 10); assert.equal(details.excessItems.rope, 15);
+  assert.deepEqual(details.missing.items, { beams: 1 });
+  assert.equal(details.keepItems.hardwood, 4); assert.equal(details.keepItems.rope, 1);
+  assert.equal(details.excessItems.hardwood, 26); assert.equal(details.excessItems.rope, 19);
   assert.equal(details.reservesComplete, true);
   assert.deepEqual(view, before);
 });

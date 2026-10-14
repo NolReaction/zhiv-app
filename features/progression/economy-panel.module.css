@@ -14,7 +14,22 @@
 .contents { display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: 28px; }
 .contents a { display: inline-flex; align-items: center; gap: 7px; min-height: 37px; padding: 8px 13px; border: 1px solid #a7c18b35; border-radius: 9px; color: #c4d6b0; text-decoration: none; font-size: 12px; background: #202d1c; }
 .contents a:hover { background: #314428; border-color: #bed69a75; }
-.library, .stages, .pearls { scroll-margin-top: 18px; margin-bottom: 36px; }
+.library, .stages, .pearls, .unlocks { scroll-margin-top: 18px; margin-bottom: 36px; }
+.unlockGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.unlockCard { min-width: 0; padding: 19px; border: 1px solid #a7c18b30; border-radius: 13px; background: #1b2619; }
+.unlockCard h3 { margin: 0 0 14px; font-size: 19px; font-weight: 600; color: #d9e8c9; }
+.unlockCard h4 { margin: 15px 0 9px; font-size: 11px; font-weight: 550; color: #a9c395; }
+.berryUnlocks { display: flex; flex-wrap: wrap; gap: 9px; }
+.berryUnlocks > button { flex: 1; min-width: 160px; display: flex; align-items: center; gap: 10px; border: 1px solid #b4cf8b3f; border-radius: 9px; background: #283723; color: #d9e8c8; padding: 11px; text-align: left; }
+.berryUnlocks > button:hover { border-color: #c8df9e88; background: #33462b; }
+.berryUnlocks span { display: grid; gap: 5px; min-width: 0; }
+.berryUnlocks strong { font-size: 13px; font-weight: 550; }
+.berryUnlocks small { color: #a9bf96; font-size: 10px; line-height: 1.4; }
+.unlockRecipes { display: grid; list-style: none; margin: 0; padding: 0; gap: 11px; }
+.unlockRecipes li { display: grid; gap: 4px; }
+.unlockRecipes button { display: inline-flex; align-items: center; gap: 6px; width: fit-content; max-width: 100%; text-align: left; padding: 0; border: 0; background: transparent; color: #cfdfb9; font-size: 11px; line-height: 1.5; }
+.unlockRecipes button:hover { text-decoration: underline; }
+.unlockRecipes small { color: #93aa83; font-size: 10px; line-height: 1.5; }
 .sectionHeading { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-bottom: 17px; }
 .sectionHeading h2 { margin: 0 0 7px; font-size: 21px; font-weight: 600; letter-spacing: -.025em; }
 .sectionHeading p { margin: 0; max-width: 840px; font-size: 12px; color: #a2b396; line-height: 1.65; }
@@ -153,6 +168,12 @@
 .slotPrices strong { display: flex; align-items: center; gap: 5px; color: #d8c19a; font-size: 12px; font-weight: 550; }
 .simpleList { padding-left: 16px; margin: 0; font-size: 12px; color: #a9bd99; line-height: 1.8; }
 .simpleList strong { font-weight: 500; color: #d5c197; }
+.priceTable { border-collapse: collapse; width: 100%; margin-top: 13px; color: #b4c9a4; font-size: 11px; }
+.priceTable caption { text-align: left; color: #a0b690; font-size: 10px; padding-bottom: 9px; }
+.priceTable th, .priceTable td { border-bottom: 1px solid #a7c18b24; padding: 7px 0; }
+.priceTable th { text-align: left; font-weight: 500; }
+.priceTable td, .priceTable th:nth-child(2) { text-align: right; font-variant-numeric: tabular-nums; }
+.priceTable td { color: #dcc691; }
 .footer { padding-top: 18px; border-top: 1px solid #a7c18b28; font-size: 10px; line-height: 1.75; color: #8fa37f; }
 @media (min-width: 1600px) { .panel { padding-left: max(32px, calc((100vw - 1480px) / 2)); padding-right: max(32px, calc((100vw - 1480px) / 2)); } }
 @media (max-width: 1000px) {
@@ -205,7 +226,7 @@
   .freeInput { justify-content: center; }
   .calculationStats dt, .queues dt { font-size: 10px; }
   .calculationStats dd, .queues dd { font-size: 11px; }
-  .stageGrid, .pearlGrid { grid-template-columns: minmax(0, 1fr); }
-  .stageCard, .pearlGrid article { padding: 16px 13px; }
+  .stageGrid, .pearlGrid, .unlockGrid { grid-template-columns: minmax(0, 1fr); }
+  .stageCard, .pearlGrid article, .unlockCard { padding: 16px 13px; }
 }
 @media (prefers-reduced-motion: reduce) { .panel { scroll-behavior: auto; } }

@@ -30,7 +30,7 @@ class EconomyFourthStageTest {
 
     @Test fun `twelve daily requests require claimed ruins and award both guaranteed relics only once`() {
         assertEquals(12, course.orders.size)
-        assertEquals(86400L, course.intervalSeconds)
+        assertEquals(82800L, course.intervalSeconds)
         assertEquals(mapOf("ancient_core" to 1L, "moon_crystal" to 1L), course.completionRewards)
         assertEquals(mapOf("ancient_ruins" to 1L), course.orders.last().requiredExplorations)
         assertEquals(1, course.orders.last().requiredBuildings["lighthouse"])
@@ -50,7 +50,7 @@ class EconomyFourthStageTest {
             assertEquals(if (index == course.orders.lastIndex) course.completionRewards else emptyMap(), state.inventory)
             if (index != course.orders.lastIndex) at = at.plusSeconds(course.intervalSeconds)
         }
-        assertEquals(now.plusSeconds(11 * 86400L), at)
+        assertEquals(now.plusSeconds(11 * 82800L), at)
         assertEquals(initialCoins + course.orders.sumOf { it.coins }, state.wallet.coins)
         assertTrue(EconomyStageOrders.progress(state).completed)
         assertTrue(state.unlockedItems.containsAll(course.completionRewards.keys))
@@ -108,16 +108,16 @@ class EconomyFourthStageTest {
             val building = EconomyRules.catalog.buildings.single { it.id == id }
             val upgrade = building.levels.single()
             assertEquals(1, upgrade.level)
-            assertEquals(4, upgrade.requiredHomeLevel)
+            assertEquals(if (id == "bridge") 2 else 3, upgrade.requiredHomeLevel)
             assertTrue(upgrade.seconds in 1L..86400L, "Restoration finishes within a day")
             assertTrue(upgrade.cost.items.values.sum() <= 50L)
             val supplied = player().copy(wallet = EconomyWallet(upgrade.cost.coins), inventory = upgrade.cost.items,
                 buildings = (player().buildings + upgrade.requiredBuildings) - id)
-            val early = supplied.copy(buildings = supplied.buildings + ("home" to 3))
+            val early = supplied.copy(buildings = supplied.buildings + ("home" to upgrade.requiredHomeLevel - 1))
             fails("ECONOMY_HOME_REQUIRED") { apply(early, "start_construction", id) }
             val started = apply(supplied, "start_construction", id)
             assertEquals(upgrade.cost, started.jobs.single().cost)
-            assertEquals(9, started.jobs.single().catalogVersion)
+            assertEquals(10, started.jobs.single().catalogVersion)
             assertEquals(EconomyWallet(), started.wallet)
             assertTrue(started.inventory.isEmpty())
             assertEquals(0, started.buildings[id] ?: 0)
@@ -154,7 +154,7 @@ class EconomyFourthStageTest {
         assertNull(EconomyStageOrders.offer(advanced))
         assertFalse(EconomyStageOrders.required(advanced, 5))
         assertEquals(5, EconomyStageOrders.pin(advanced, now = now).buildings["home"])
-        for (version in 1..8) {
+        for (version in 1..9) {
             val paid = EconomyJob(UUID.randomUUID().toString(), "construction", "home", targetLevel = 5,
                 startedAt = now.minusSeconds(864000).toString(), finishesAt = now.toString(),
                 cost = EconomyCost(220000, mapOf("beams" to 100L, "moon_crystal" to 1L)), catalogVersion = version)

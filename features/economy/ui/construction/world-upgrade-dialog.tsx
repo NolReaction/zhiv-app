@@ -43,7 +43,8 @@ export function worldUpgradeUnlocks(state: EconomyView, stationId: string, targe
     recipes: state.catalog.recipes.filter(recipe => usesLevel(recipe, recipe)),
     routes: state.catalog.explorations.filter(route => usesLevel(route)),
     upgrades: state.catalog.buildings.flatMap(building => building.id === stationId ? [] : building.levels.filter(level => usesLevel(level)).map(level => ({ stationId: building.id, name: building.name, level: level.level }))),
-    market: stationId === "home" && target.level === state.catalog.market.requiredHomeLevel,
+    market: stationId === "home" && target.level === state.catalog.market.requiredHomeLevel
+      || state.catalog.market.requiredBuildings[stationId] === target.level,
   };
 }
 
@@ -77,9 +78,9 @@ function UpgradeUnlocks({ state, stationId, target, navigation }: { state: Econo
   const [selectedRecipe, setSelectedRecipe] = useState<string | null>(null);
   const detailId = useId();
   const unlocks = worldUpgradeUnlocks(state, stationId, target);
-  // A recipe belonging to a different station is a dependency in /branch, not a
-  // new product of this upgrade. Keep that cascade out of the purchase dialog.
-  const recipes = unlocks.recipes.filter(recipe => recipe.buildingId === stationId);
+  // The home opens a new tier of crops and dishes. Other station previews show
+  // only their own products so their dependency cascade stays in /branch.
+  const recipes = unlocks.recipes.filter(recipe => stationId === "home" || recipe.buildingId === stationId);
   const recipe = recipes.find(entry => entry.id === selectedRecipe);
   const futureState = { ...state, buildings: { ...state.buildings, [stationId]: target.level } };
   const firstBuildings = stationId === "home" ? unlocks.upgrades.filter(upgrade => upgrade.level === 1) : [];
@@ -133,12 +134,14 @@ function UpgradeUnlocks({ state, stationId, target, navigation }: { state: Econo
     const rewards = Object.entries(entry.rewards);
     const missing = worldMissingRequirements(futureState, worldRequirements(entry, entry));
     const title = rewards.length === 1 ? itemName(state, rewards[0][0]) : `Набор · ${rewards.length} вида`;
+    const meal = state.catalog.food?.meals.find(meal => (entry.rewards[meal.itemId] ?? 0) > 0);
     cards.push({ id: `recipe:${entry.id}`, label: entry.name, content: <button type="button" className={`${styles.benefitCard} ${styles.benefitRecipe}`} aria-label={`Рецепт: ${entry.name}`}
       aria-expanded={selectedRecipe === entry.id} aria-controls={selectedRecipe === entry.id ? detailId : undefined} data-recipe={entry.id}
       onClick={() => setSelectedRecipe(selectedRecipe === entry.id ? null : entry.id)}>
       <span className={styles.benefitArt} data-kind="recipe">{rewards.slice(0, 3).map(([id]) => <ProductIcon state={state} key={id} itemId={id} size={44} />)}</span>
-      <span className={styles.benefitKind}>Новый рецепт</span><strong className={styles.benefitTitle}>{title}</strong>
+      <span className={styles.benefitKind}>Новый рецепт{stationId === "home" ? ` · ${stationName(state, entry.buildingId)}` : ""}</span><strong className={styles.benefitTitle}>{title}</strong>
       <span className={styles.benefitDescription}>{rewards.length === 1 ? `×${number(rewards[0][1])} · ` : ""}{worldDuration(entry.seconds)}</span>
+      {meal && <span className={styles.benefitDescription}>Вылазка +{meal.heroSpeedBps / 100}% · стройка +{meal.builderSpeedBps / 100}% скорости</span>}
       {missing.length > 0 && <span className={styles.benefitLocked}><LockKeyhole size={12} aria-hidden="true" />Ещё условия</span>}
       <span className={styles.benefitDetailLink}>{selectedRecipe === entry.id ? "Свернуть рецепт" : "Состав и условия"}<ArrowRight size={13} aria-hidden="true" /></span>
     </button> });
@@ -147,9 +150,10 @@ function UpgradeUnlocks({ state, stationId, target, navigation }: { state: Econo
   if (unlocks.market) cards.push({ id: "market", label: "Рынок между игроками", content: <div className={styles.benefitCard}>
     <div className={styles.benefitArt} data-kind="market"><Store size={43} strokeWidth={1.4} aria-hidden="true" /><ItemIcon itemId="coins" size={28} /></div>
     <span className={styles.benefitKind}>Торговля</span><h4>Рынок между игроками</h4><p className={styles.benefitDescription}>Покупайте материалы и продавайте свои запасы.</p>
+    {requirements(worldRequirements(state.catalog.market))}
     {state.completedExplorations < state.catalog.market.requiredExplorations
       ? <p className={styles.benefitLocked}><LockKeyhole size={13} aria-hidden="true" />Нужно завершить вылазок: {state.completedExplorations} / {state.catalog.market.requiredExplorations}</p>
-      : <span className={styles.benefitReady}><Check size={13} aria-hidden="true" />После этого улучшения</span>}
+      : null}
   </div> });
 
   if (stationId === "home" && state.catalog.fishing) {

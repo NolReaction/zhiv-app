@@ -291,14 +291,15 @@ function tradeBudget(owner: string, state: EconomyState, now: number): NonNullab
 }
 function compatibleMarketSeller(ownerHome: number, sellerId: string, minimumHome = 2): boolean {
   const seller = store().profiles.get(sellerId);
-  return !!seller && (seller.state.buildings.home ?? 1) >= minimumHome && marketSameHomeBand(ownerHome, seller.state.buildings.home ?? 1);
+  return !!seller && marketUnlocked(seller.state) && (seller.state.buildings.home ?? 1) >= minimumHome
+    && marketSameHomeBand(ownerHome, seller.state.buildings.home ?? 1);
 }
 function publicListing(listing: Listing, owner: string, token: string | undefined): EconomyMarketListing {
   const seller = lookupDevUser(token, listing.sellerPublicId);
   return { ...listing, totalPrice: nominalEconomyMoney(listing.totalPrice, listing.currencyScale ?? 1), sellerName: seller.kind === "ok" ? seller.value.user.displayName : "Житель леса", owned: listing.sellerPublicId === owner };
 }
 function requireMarket(state: EconomyState) {
-  if (!marketUnlocked(state)) fail("ECONOMY_MARKET_LOCKED", "Рынок откроется после улучшения дома до уровня 2 и возвращения из первого исследования");
+  if (!marketUnlocked(state)) fail("ECONOMY_MARKET_LOCKED", "Рынок откроется с домом уровня 2 после восстановления моста");
 }
 const compareListings = (a: Listing, b: Listing) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id);
 export function getDevEconomyMarket(token: string | undefined, options: { cursor?: string; limit?: number; ownerPublicId?: string } = {}, now = Date.now()): MarketView {
@@ -391,6 +392,7 @@ export function commandDevEconomyMarket(token: string | undefined, input: Market
   const seller = store().profiles.get(listing.sellerPublicId);
   if (!seller || lookupDevUser(token, listing.sellerPublicId).kind !== "ok") return fail("ECONOMY_MARKET_NOT_ACTIVE", "Продавец больше недоступен");
   normalizeCurrency(seller);
+  if (!marketUnlocked(seller.state)) return fail("ECONOMY_MARKET_LOCKED", "Продавец ещё не восстановил мост");
   if (!marketSameHomeBand(next.buildings.home ?? 1, seller.state.buildings.home ?? 1))
     return fail("ECONOMY_MARKET_HOME_BAND", "Уровень поселения изменился. Обновите витрину");
   const valueTraded = marketMinimumPrice(listing.itemId, listing.quantity);
@@ -429,7 +431,7 @@ export function getDevConfirmedMarketSales(owner: string): number {
   return [...store().listings.values()].some(listing => listing.sellerPublicId === owner && listing.status === "sold") ? 1 : 0;
 }
 
-const barterUnlocked = (state: EconomyState) => (state.buildings.home ?? 1) >= 3;
+const barterUnlocked = (state: EconomyState) => (state.buildings.home ?? 1) >= 3 && marketUnlocked(state);
 function barterItem(id: string) {
   return economyCatalog.items.some(item => item.id === id && item.category === "special" && !item.tradable);
 }
@@ -482,7 +484,7 @@ export function commandDevEconomyBarter(token: string | undefined, input: Barter
   if (value.receipts.has(requestId)) return fail("ECONOMY_REQUEST_CONFLICT", "Запрос уже использован для другого действия");
   if (value.revision !== command.expectedRevision) return fail("ECONOMY_REVISION_CONFLICT", "Хозяйство изменилось. Обновите его");
   if (value.revision >= Number.MAX_SAFE_INTEGER) return fail("ECONOMY_CAPACITY", "Состояние требует обслуживания");
-  if (command.action !== "cancel_offer" && !barterUnlocked(value.state)) return fail("ECONOMY_BARTER_LOCKED", "Обмен откроется на третьем уровне дома");
+  if (command.action !== "cancel_offer" && !barterUnlocked(value.state)) return fail("ECONOMY_BARTER_LOCKED", "Обмен откроется с домом уровня 3 и восстановленным мостом");
   const next = structuredClone(value.state), held = escrowItems(owner);
   let offer: BarterOffer, message: string;
   let sellerUpdate: { profile: Profile; state: EconomyState } | undefined;
@@ -514,6 +516,7 @@ export function commandDevEconomyBarter(token: string | undefined, input: Barter
       if (!barterItem(offer.offeredItemId) || !barterItem(offer.requestedItemId)) return fail("ECONOMY_BARTER_ITEM", "Обмен этим предметом приостановлен");
       const seller = store().profiles.get(offer.sellerPublicId);
       if (!seller || lookupDevUser(token, offer.sellerPublicId).kind !== "ok") return fail("ECONOMY_BARTER_NOT_ACTIVE", "Автор предложения недоступен");
+      if (!barterUnlocked(seller.state)) return fail("ECONOMY_BARTER_LOCKED", "Автор предложения ещё не открыл обмен");
       if (!marketSameHomeBand(next.buildings.home ?? 1, seller.state.buildings.home ?? 1) || (seller.state.buildings.home ?? 1) < 3)
         return fail("ECONOMY_BARTER_HOME_BAND", "Уровень поселения изменился. Обновите обмен");
       if (tradeTurnover(owner, now).barterUsed >= BARTER_DAILY_LIMIT || tradeTurnover(offer.sellerPublicId, now).barterUsed >= BARTER_DAILY_LIMIT)

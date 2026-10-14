@@ -3,13 +3,14 @@
 import { fishClassForItem } from "@/features/economy/domain/fishing";
 
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
-import { ArrowLeft, ArrowRight, Check, ChevronUp, CircleHelp, Clock3, Compass, Fence, Flame, Hammer, House, LockKeyhole, Minus, Package, Pickaxe, Plus, RefreshCw, Sprout, TowerControl, Trees, X, type LucideIcon } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, ChevronUp, CircleHelp, Clock3, Compass, Fence, Flame, Hammer, House, LockKeyhole, Minus, Package, Pickaxe, Plus, RefreshCw, Sprout, Store, TowerControl, Trees, X, type LucideIcon } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import type { MapObjectSelection, WorldPlace } from "@/features/world/scene/map-engine";
 import type { WorldHelpContext } from "@/features/world/ui/help/world-help-types";
 import type { EconomyView } from "@/features/economy/domain/model";
+import { economyMarketUnlocked } from "@/features/economy/domain/market-rules";
 import { economyLocalSellPrice, economyLocalSaleMinimumQuantity, economyLocalSaleLimit } from "@/features/economy/domain/local-sale";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import { worldBatchLimit, worldDuration, worldJobProgress, worldMenuDimensions, worldMenuPosition, worldStableMenuPosition, worldMissingRequirements, worldMissingRecipeRequirements, worldRecipeUnlockReason, worldPlaceForStation, worldProductionReason, worldRequirements, worldStations, type WorldMenuBounds, type WorldRecipe } from "@/features/economy/ui/shared/world-stations";
@@ -36,6 +37,7 @@ export type WorldObjectMenuProps = {
   initialStationId?: string;
   initialRecipeId?: string;
   onExplore?: () => void;
+  onOpenMarket?: () => void;
   onOpenPantry?: () => void;
   constructionGoal?: ConstructionGoalController;
   onOpenGoal?: () => void;
@@ -144,7 +146,7 @@ export function WorldObjectSale({ economy, itemId, onCollapse }: { economy: Read
   </section>;
 }
 
-function ObjectMenuBody({ guide, guideRoot: guideRootRef, selection, economy, isOnline, onClose, onReturnFocus, bounds, onNavigate, onExplore, onOpenPantry, initialStationId, initialRecipeId, constructionGoal, onOpenGoal, onOpenFood, onOpenHelp, onHelpContextChange }: WorldObjectMenuProps) {
+function ObjectMenuBody({ guide, guideRoot: guideRootRef, selection, economy, isOnline, onClose, onReturnFocus, bounds, onNavigate, onExplore, onOpenMarket, onOpenPantry, initialStationId, initialRecipeId, constructionGoal, onOpenGoal, onOpenFood, onOpenHelp, onHelpContextChange }: WorldObjectMenuProps) {
   const collection = useGardenCollection();
   const seenHarvest = useRef(collection?.request?.requestId);
   useEffect(() => {
@@ -291,8 +293,13 @@ function ObjectMenuBody({ guide, guideRoot: guideRootRef, selection, economy, is
         {stationId === "quarry" && <WorldExpeditionsMenu economy={economy} isOnline={isOnline} embeddedCaves onOpenHelp={openHelp} onOpenPantry={openPantry} onNavigateStation={(id, targetRecipeId) => id === "quarry" ? openUpgrade() : openStation(id, targetRecipeId)} onCancellationComplete={() => panel.current?.focus({ preventScroll: true })} />}
         {landmark ? <section className={styles.recipeGroup} aria-label="Возможности постройки">
           <p className={styles.small}>{building?.description}</p>
-          {!current && !construction && <p className={styles.empty}>Восстановите постройку, чтобы открыть новые маршруты.</p>}
+          {!current && !construction && <p className={styles.empty}>{stationId === "bridge" ? "Восстановите мост, чтобы открыть рынок игроков." : "Восстановите маяк, чтобы зажечь свет у причала."}</p>}
           {current > 0 && <>
+            {stationId === "bridge" && <>
+              <h3>Рынок игроков</h3><p className={styles.small}>Мост соединяет вашу поляну с соседскими прилавками.</p>
+              {onOpenMarket && economyMarketUnlocked(state, state.catalog) && <button type="button" className={styles.primary} onClick={() => { navigating.current = true; onOpenMarket(); }}><Store size={15} aria-hidden="true" />Открыть рынок игроков<ArrowRight size={13} aria-hidden="true" /></button>}
+            </>}
+            {stationId === "lighthouse" && <p className={styles.small}>Свет маяка отмечает причал. Пароход с крупными заказами появится в будущем обновлении.</p>}
             <h3>Маршруты экспедиций</h3>
             {state.catalog.explorations.filter(route => Boolean(route.requiredBuildings[stationId])).map(route => <section key={route.id} className={styles.detail}>
               <h4>{route.name}</h4><p className={styles.small}>{route.description} · {worldDuration(route.seconds)}</p>

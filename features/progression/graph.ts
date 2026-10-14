@@ -1,5 +1,6 @@
 import { economyCatalog, type EconomyCatalog, type EconomyCost } from "@/features/economy/domain/model";
 import { formatPearls } from "@/features/economy/domain/money";
+import { constructionTimePearlPrice } from "@/features/economy/domain/rules";
 import progressionRewards from "@/apps/api/src/main/resources/world/progression-rewards-catalog.json";
 
 export type ProgressionNodeKind = "location" | "building" | "recipe" | "exploration" | "acquisition" | "world" | "collection" | "equipment" | "milestone" | "market" | "project";
@@ -49,8 +50,8 @@ export const progressionLocations = [
   { id: "place:workshop", title: "Мастерская", icon: "🛠️", buildingIds: ["workshop", "kiln"], description: "Одно здание мастерской: внутри отдельно развиваются верстак и печь. У каждого оборудования свои условия обустройства и рецепты." },
   { id: "campfire", title: "Костёр", icon: "🏕️", buildingIds: ["dryer"], description: "Существующий костёр служит местом отдыха и приготовления запасов. Заготовки еды развиваются здесь, без отдельного здания сушилки." },
   { id: "place:quarry", title: "Шахта", icon: "⛏️", buildingIds: ["quarry"], description: "Заброшенная шахта уже есть на карте. Материалы добывает шахтёр в собственной очереди. Мохлик может гулять, рыбачить и собирать ягоды одновременно с добычей. Улучшения открывают новые материалы и длительные смены. Интерьер и его мини-карта относятся к будущему этапу." },
-  { id: "bridge", title: "Мост", icon: "🌉", buildingIds: ["bridge"], description: "Восстановление моста на доме 4 открывает вылазки другого берега. После получения стройки используется существующий рисунок уровня 1. Свободный проход через реку ещё требует разметки путей карты." },
-  { id: "lighthouse", title: "Маяк", icon: "🔦", buildingIds: ["lighthouse"], description: "Восстановление маяка на доме 4 открывает исследование древних руин. После получения стройки появляются существующий рисунок уровня 1 и ночной свет. Корабли и морские экспедиции остаются будущим направлением." },
+  { id: "bridge", title: "Мост", icon: "🌉", buildingIds: ["bridge"], description: "Восстановленный мост открывает рынок игроков. Вылазки другого берега имеют дополнительные требования. После получения стройки используется существующий рисунок уровня 1. Свободный проход через реку ещё требует разметки путей карты." },
+  { id: "lighthouse", title: "Маяк", icon: "🔦", buildingIds: ["lighthouse"], description: "Восстановление маяка включает ночной свет. По лору свет приглашает пароход с большими заказами; сам пароход ещё предстоит реализовать. Исследование древних руин открывается отдельно по условиям маршрута." },
 ] as const;
 const locationByBuilding = new Map<string, typeof progressionLocations[number]>(progressionLocations.flatMap(location => location.buildingIds.map(id => [id, location] as const)));
 const buildingIcons: Record<string, string> = { home: "🏠", garden: "🌱", woodlot: "🌲", quarry: "⛏️", kiln: "🔥", workshop: "🛠️", dryer: "♨️", warehouse: "📦", bridge: "🌉", lighthouse: "🔦" };
@@ -75,8 +76,8 @@ type WorldDefinition = [id: string, label: string, icon: string, description: st
 const worldDefinitions: WorldDefinition[] = [
   ["living", "Живая поляна", "🌿", "Мохлик выбирает занятия, отдыхает, спит, встречает живность и запоминает состояние полянки. Эта жизнь развивается отдельно от серверного хозяйства."],
   ["wildlife", "Птицы и живность", "🦋", "Птицы, бабочки и светлячки взаимодействуют с полянкой. Они не являются производством ресурсов."],
-  ["bridge_ruin", "Мост · уровень 0", "🌉", "Разрушенный мост на карте. Восстанавливается с дома 4 через обычную стройку: материалы и монеты списываются сервером, готовую работу нужно получить."],
-  ["lighthouse_ruin", "Маяк · уровень 0", "🔦", "Разрушенный маяк на карте. Восстанавливается с дома 4 после моста; готовую стройку нужно получить, чтобы открыть исследование руин и включить ночной свет."],
+  ["bridge_ruin", "Мост · уровень 0", "🌉", "Разрушенный мост на карте. Для восстановления нужны открытые условия стройки, материалы и монеты; готовую работу нужно получить. После этого становится доступен рынок игроков."],
+  ["lighthouse_ruin", "Маяк · уровень 0", "🔦", "Разрушенный маяк на карте. После восстановления и получения стройки включается ночной свет. Пароход с большими заказами относится к будущему продолжению этой ветки."],
   ["album", "Книга находок", "📖", "Три главы: путешествия, рыбалка и каменоломня. Находки отмечаются после получения результата занятия и остаются навсегда; продажа материалов не стирает страницы.", "collection"],
   ["travel_book", "Путешествия", "🍃", "Лесные вылазки пополняют книгу. Прежние лесные находки сохранены; зачтённое время открывает недостающие страницы без повторов.", "collection"],
   ["quarry_book", "Каменоломня", "💎", "Добыча шахтёра и исследования пещер открывают страницы с минералами. Это памятные находки, они не расходуются при строительстве и не занимают кладовую.", "collection"],
@@ -104,7 +105,7 @@ const projectDefinitions: WorldDefinition[] = [
   ["shore_site", "Личный берег", "🏖️", "Развитие собственного берега запланировано на будущее."],
   ["boat", "Лодка", "🛶", "Предлагаемое продолжение ветки берега."],
   ["port", "Порт", "⚓", "Предлагаемый следующий этап лодки и берегового хозяйства."],
-  ["ships", "Прибывающие корабли", "⛵", "Предлагаемая связь маяка и порта с прибытием кораблей."],
+  ["ships", "Пароход с большими заказами", "⛵", "Будущее продолжение маяка: его свет приглашает пароход с крупными поставками разных товаров. Прибытие, сроки, награды и сами заказы ещё не реализованы; восстановление маяка пока включает свет и выполняет условия поздних исследований."],
   ["sea_trips", "Морские экспедиции", "🌊", "Будущее направление экспедиций и маяка. Конкретные маршруты и награды ещё не утверждены."],
   ["new_fruits", "Новые плоды", "🍎", "Будущее расширение сада новыми плодами. Уровень сада для открытия ещё не выбран."],
   ["tackle", "Изготовление снастей", "🪝", "Будущее изготовление снастей в мастерской. Уровень верстака ещё не выбран; сейчас новые удочки, крючки и наживки появляются в лавке Плёски."],
@@ -126,6 +127,8 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
   const thirdStage = catalog.stageOrders?.find(stage => stage.homeLevel === 3);
   const fourthStage = catalog.stageOrders?.find(stage => stage.homeLevel === 4);
   const fullPriceBuyer = catalog.items.filter(item => item.tradable).every(item => catalog.localBuyer?.unitPrices?.[item.id] === item.baseSellPrice);
+  const constructionExamples = [60, 3600, 86400, 2 * 86400, 7 * 86400].map(seconds =>
+    `${shortTime(seconds)} — ${formatPearls(constructionTimePearlPrice(seconds, catalog.constructionSpeedup))} жемчужин`).join("; ");
 
   function add(node: ProgressionNode) {
     if (byId.has(node.id)) throw new Error(`Duplicate progression node: ${node.id}`);
@@ -147,7 +150,7 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
   fixed("start", "Начало", "🌱", 0, `Есть дом 1, ягодный куст 1 и кладовая 1. Старт: ${catalog.onboarding?.startingWallet.coins ?? 0} монет; ${Object.entries(catalog.onboarding?.startingItems ?? {}).map(([id, amount]) => `${items.get(id)?.name ?? id} × ${amount}`).join(", ")}. Выращивайте малину и выполняйте четыре учебных заказа, чтобы построить лесной участок, костёр, мастерскую и улучшить дом. Бесплатная лесная вылазка восстанавливает проданные материалы. Тапы не дают хозяйственную валюту.`);
   fixed("trader", "Быстрая продажа", "🧑‍🌾", 0, `Продажа из кладовой с начала игры: ${fullPriceBuyer ? "все продаваемые товары NPC выкупает по полной базовой цене за каждую единицу. Сырую рыбу Плёска покупает по той же полной цене её класса" : `для части товаров каталог задаёт фиксированные цены NPC. Остальные продаются с уценкой ${100 - (catalog.localBuyer?.payoutBps ?? 10000) / 100}% от базовой цены, итог стопки округляется вниз до кратного ${catalog.currencyScale} монетам. Плёска покупает сырую рыбу по полной базовой цене её класса`}. Рынок игроков открывается позднее; покупатель там не гарантирован.`);
   fixed("coins", "Монеты", "🪙", 0, "Выручка за товары идёт на строительство и улучшения. Монеты не занимают место на складе.");
-  fixed("pearls", "Жемчуг · ускорение", "◉", 0, `Можно сразу завершить текущую стройку. Тариф: ${formatPearls(catalog.constructionSpeedup.priceStepPearls)} жемчужина за ${catalog.constructionSpeedup.secondsPerPearl * catalog.constructionSpeedup.priceStepPearls / catalog.pearlScale / 60} минут остатка. Цена округляется вверх с шагом ${formatPearls(catalog.constructionSpeedup.priceStepPearls)}, убывает со временем и подтверждается перед списанием. Можно бесплатно дождаться таймера. Производство, вылазки и интервалы проектных поставок не ускоряются. Жемчуг также обновляет предложения Плёски и открывает места отдельно для каждого производства: ${catalog.productionSlots.upgrades.map(upgrade => `${upgrade.slots}-е — ${formatPearls(upgrade.pricePearls)} жемчужин с дома ${upgrade.requiredHomeLevel}`).join("; ")}. У шахтёра своя очередь без платных слотов. Дополнительные места продавца на рынке покупаются по очереди: ${catalog.market.slotPricesPearls.map((price, index) => `${catalog.market.baseSlots + index + 1}-е — ${formatPearls(price)} жемчужин`).join("; ")}. Источники: ${formatPearls(dailyPearls)} жемчужин за полный цикл ежедневных наград и до ${formatPearls(achievementPearls)} за самостоятельно полученные ступени достижений, однократно. В «Ещё» доступна витрина магазина жемчуга и золота без покупок. Торговец реликвиями ещё не реализован.`);
+  fixed("pearls", "Жемчуг · ускорение", "◉", 0, `Можно сразу завершить текущую стройку. Примеры цены по оставшемуся времени: ${constructionExamples}. Промежуточная цена рассчитывается по действующей кривой каталога. Цена округляется вверх с шагом ${formatPearls(catalog.constructionSpeedup.priceStepPearls)}, убывает со временем и подтверждается перед списанием. Можно бесплатно дождаться таймера. Производство, вылазки и интервалы проектных поставок не ускоряются. Жемчуг также обновляет предложения Плёски и открывает места отдельно для каждого производства: ${catalog.productionSlots.upgrades.map(upgrade => `${upgrade.slots}-е — ${formatPearls(upgrade.pricePearls)} жемчужин с дома ${upgrade.requiredHomeLevel}`).join("; ")}. У шахтёра своя очередь без платных слотов. Дополнительные места продавца на рынке покупаются по очереди: ${catalog.market.slotPricesPearls.map((price, index) => `${catalog.market.baseSlots + index + 1}-е — ${formatPearls(price)} жемчужин`).join("; ")}. Источники: ${formatPearls(dailyPearls)} жемчужин за полный цикл ежедневных наград и до ${formatPearls(achievementPearls)} за самостоятельно полученные ступени достижений, однократно. В «Ещё» доступна витрина магазина жемчуга и золота без покупок. Торговец реликвиями ещё не реализован.`);
   fixed("daily_rewards", "Ежедневные награды", "", 0, `Подарки в профиле «Мой Мохлик». Цикл из ${progressionRewards.daily.length} получений: монеты и материалы по завершённому уровню дома, древнее ядро в седьмом подарке и суммарно ${formatPearls(dailyPearls)} жемчужин. Следующая награда доступна в следующие сутки UTC и не ранее чем через ${progressionRewards.dailyMinimumHours} часов после предыдущей. Пропуск не сбрасывает шаг. Забрать нужно вручную; переполненная кладовая не расходует награду. Подарок можно открыть в профиле и получить вручную.`, "milestone");
   edge("start", "trader", "available");
   edge("start", "pearls", "available");
@@ -155,7 +158,9 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
   edge("daily_rewards", "pearls", "flow"); edge("daily_rewards", "coins", "flow");
   edge("trader", "coins", "flow");
   for (const location of progressionLocations) {
-    fixed(location.id, location.title, location.icon, 0, location.description, "location");
+    const home = catalog.buildings.find(building => building.id === location.id)?.levels[0]?.requiredHomeLevel;
+    fixed(location.id, location.title, location.icon, 0,
+      home && (location.id === "bridge" || location.id === "lighthouse") ? `Восстановление доступно с дома ${home}. ${location.description}` : location.description, "location");
     edge("start", location.id, "available");
   }
 
@@ -249,11 +254,15 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
     }
   }
 
-  fixed("claimed", `Любая ${catalog.market.requiredExplorations} вылазка`, "✅", 1, `Завершить исследование или рыбалку и получить награду. Для рынка нужно завершённых вылазок: ${catalog.market.requiredExplorations}. Рабочие смены в шахте этот счётчик не повышают.`, "milestone");
+  fixed("claimed", catalog.market.requiredExplorations > 0 ? `Любая ${catalog.market.requiredExplorations} вылазка` : "Завершённые вылазки", "✅", 1,
+    `Завершить исследование или рыбалку и получить награду. ${catalog.market.requiredExplorations > 0 ? `Для рынка нужно завершённых вылазок: ${catalog.market.requiredExplorations}.` : "Рынок открывается восстановлением моста, дополнительная вылазка для него не требуется."} Рабочие смены в шахте этот счётчик не повышают.`, "milestone");
   const market = fixed("market", "Рынок игроков", "⚖️", catalog.market.requiredHomeLevel, `Личная витрина: до ${catalog.market.showcaseSlots} лотов, до ${catalog.market.showcasePerSeller} от продавца, смена раз в ${catalog.market.showcaseRefreshSeconds / 60} минут. Купленные лоты не заменяются до смены. Продавцу бесплатно доступны ${catalog.market.baseSlots} мест; дополнительные покупаются по очереди до ${catalog.market.maxListings}: ${catalog.market.slotPricesPearls.map((price, index) => `${catalog.market.baseSlots + index + 1}-е — ${formatPearls(price)} жемчужин`).join("; ")}. Можно покупать открытые товары: одного уровня дома недостаточно, нужны условия источника. Открытие сохраняется после продажи запасов и недоступности источника. Цена от полной базовой стоимости до ${catalog.market.maxPriceMultiplier}×; комиссия новых лотов ${catalog.market.feeBps / 100}%. Дома 2–3 и 4–5 торгуют в своих группах. Суточные покупки и продажи отдельно ограничены базовой стоимостью товаров. Рынок дополняет собственное производство; покупатель не гарантирован.`, "market");
-  market.requirements = { home: catalog.market.requiredHomeLevel, completedExplorations: catalog.market.requiredExplorations };
+  market.requirements = { home: catalog.market.requiredHomeLevel, ...catalog.market.requiredBuildings,
+    ...(catalog.market.requiredExplorations > 0 ? { completedExplorations: catalog.market.requiredExplorations } : {}) };
+  market.description = `${Object.keys(catalog.market.requiredBuildings ?? {}).length ? `Сначала восстановите и получите: ${Object.entries(catalog.market.requiredBuildings).map(([id, level]) => `${buildingLabels[id] ?? id} ${level}`).join(", ")}. ` : ""}${market.description}`;
   market.description += " После дома 3 при открытом рынке доступен отдельный обмен реликвиями 1:1, без монет и жемчуга. Обычные объявления реликвии не принимают. Один успешный обмен в сутки UTC на каждого участника; дом 3 отдельно, дома 4–5 вместе.";
   edge(buildingNodeId("home", catalog.market.requiredHomeLevel), market.id);
+  for (const [id, level] of Object.entries(catalog.market.requiredBuildings ?? {})) edge(buildingNodeId(id, level), market.id);
   if (catalog.market.requiredExplorations > 0) edge("claimed", market.id);
 
   for (const node of nodes.filter(value => ["building", "recipe", "exploration"].includes(value.kind))) {
@@ -303,7 +312,7 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
     const orders = catalog.food.orders;
     const heroSpeeds = catalog.food.meals.map(meal => meal.heroSpeedBps / 100), builderSpeeds = catalog.food.meals.map(meal => meal.builderSpeedBps / 100);
     fixed("orders", "Доска заказов", "📜", 6,
-      `${orders.slots} обычные просьбы с именами заказчиков: Плёске нужен улов и блюда, Шишколапу — материалы. После сдачи новая карточка появляется сразу. Варианты разнообразны и используют постоянно открытые товары. Текущие просьбы различаются, недавно снятые откладываются. Каждые ${orders.replacementWindowSeconds / 3600} часов доступны ${orders.freeReplacements} бесплатные замены; следующие стоят по ${formatPearls(orders.replacementPricePearls)} жемчужин с подтверждением. Доска обновляется через ${orders.refreshSeconds / 3600} часов. Отдельно идут четыре учебных задания и ${secondStageCount} постоянных просьб дома 2, включая улов и жареную рыбу. Все нужны перед новым домом 3.${thirdStage ? ` Для дома 4 нужен проект из ${thirdStage.orders.length} поставок: первая сразу, остальные через ${thirdStage.intervalSeconds / 3600} ч после сдачи предыдущей. Смена суток UTC и жемчуг интервал не сокращают. Минимум ${(thirdStage.orders.length - 1) * thirdStage.intervalSeconds / 86400} суток; последняя поставка гарантирует ${Object.entries(thirdStage.completionRewards).map(([id, count]) => `${items.get(id)?.name ?? id} × ${count}`).join(", ")}.` : ""} Постоянные просьбы не истекают и не заменяются. Обычные заказы дают монеты; сытость отдельно.`);
+      `${orders.slots} обычные просьбы с именами заказчиков: Плёске нужен улов и блюда, Шишколапу — материалы. После сдачи новая карточка появляется сразу. Варианты разнообразны и используют постоянно открытые товары. Текущие просьбы различаются, недавно снятые откладываются. Каждые ${orders.replacementWindowSeconds / 3600} часов доступны ${orders.freeReplacements} бесплатные замены; следующие стоят по ${formatPearls(orders.replacementPricePearls)} жемчужин с подтверждением. Доска обновляется через ${orders.refreshSeconds / 3600} часов. Отдельно идут четыре учебных задания и ${secondStageCount} постоянных просьб дома 2, включая улов и жареную рыбу. Все нужны перед новым домом 3.${thirdStage ? ` Для дома 4 нужен проект из ${thirdStage.orders.length} поставок: первая сразу, остальные через ${thirdStage.intervalSeconds / 3600} ч после сдачи предыдущей. Смена суток UTC и жемчуг интервал не сокращают. Ожидание между всеми поставками: ${shortTime((thirdStage.orders.length - 1) * thirdStage.intervalSeconds)}; строительство дома считается отдельно; последняя поставка гарантирует ${Object.entries(thirdStage.completionRewards).map(([id, count]) => `${items.get(id)?.name ?? id} × ${count}`).join(", ")}.` : ""} Постоянные просьбы не истекают и не заменяются. Обычные заказы дают монеты; сытость отдельно.`);
     fixed("meals", "Еда и сытость", "🍲", 6,
       `Порцию можно съесть рядом с таймером вылазки или отдать строителю. Сила зависит от блюда: Мохлик +${Math.min(...heroSpeeds)}–${Math.max(...heroSpeeds)}%, строитель +${Math.min(...builderSpeeds)}–${Math.max(...builderSpeeds)}% скорости. Есть блюда из обычной, необычной, редкой, эпической и легендарной рыбы. В идущей стройке ускоряется только остаток. Эффекты не складываются, не убывают офлайн и не меняют шанс рыбы. Обед Мохлика не ускоряет независимую добычу шахтёра. Заказ жителя не кормит персонажа.`);
     edge("start", "orders", "available"); edge("campfire", "meals", "flow");
@@ -315,7 +324,7 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
   byId.get("achievements")!.description += ` За самостоятельно полученные ступени можно вручную забрать до ${formatPearls(achievementPearls)} жемчужин суммарно, каждую награду только один раз. Администраторская выдача достижения не создаёт валютную награду.`;
   if (fourthStage) {
     const orders = byId.get("orders");
-    if (orders) orders.description += ` Дом 5 требует ${fourthStage.orders.length} поставок с интервалом ${fourthStage.intervalSeconds / 3600} ч. Жители однократно финансируют восстановление моста, маяка и хозяйства: ${fourthStage.orders.reduce((sum, order) => sum + order.coins, 0)} монет за весь проект. Финал гарантирует ${Object.entries(fourthStage.completionRewards).map(([id, count]) => `${items.get(id)?.name ?? id} × ${count}`).join(", ")}. Для завершения нужны восстановленные объекты и полученный результат исследования руин; запуск или отмена не засчитываются.`;
+    if (orders) orders.description += ` Дом 5 требует ${fourthStage.orders.length} поставок с интервалом ${fourthStage.intervalSeconds / 3600} ч. Жители однократно финансируют развитие дальнего берега и хозяйства: ${fourthStage.orders.reduce((sum, order) => sum + order.coins, 0)} монет за весь проект. Финал гарантирует ${Object.entries(fourthStage.completionRewards).map(([id, count]) => `${items.get(id)?.name ?? id} × ${count}`).join(", ")}. Для завершения нужны восстановленные объекты и полученный результат исследования руин; запуск или отмена не засчитываются.`;
     const rare = byId.get("rare_materials");
     if (rare) rare.description += ` Проект дома 4 отдельно гарантирует ${Object.entries(fourthStage.completionRewards).map(([id, count]) => `${items.get(id)?.name ?? id} × ${count}`).join(", ")}; переход к дому 5 не зависит от случайного вида реликвии.`;
   }
@@ -357,7 +366,7 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
     ["r:make_planks", "bridge"], ["r:make_rope", "bridge"], ["r:make_tools", "bridge"], ["bridge", "far_bank"],
     ["far_bank", "regional_trips"], ["regional_trips", "new_finds"], ["new_finds", "album"], ["r:make_beams", "shore_site"],
     ["shore_site", "boat"], ["boat", "port"], ["r:make_beams", "lighthouse"], ["r:make_glass", "lighthouse"],
-    ["r:make_metal_parts", "lighthouse"], ["lighthouse", "ships"], ["port", "ships"], ["ships", "sea_trips"],
+    ["r:make_metal_parts", "lighthouse"], ["b:lighthouse:1", "ships"], ["ships", "sea_trips"],
     ["sea_trips", "new_finds"], ["r:grow_berries", "new_fruits"],
     ["r:make_rope", "tackle"], ["tackle", "sea_trips"],
   ]) edge(source, target, "plan");

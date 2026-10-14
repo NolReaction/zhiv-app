@@ -3,7 +3,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Plus, Store } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
-import { marketSlotCount, marketSlotOffer } from "@/features/economy/domain/market-rules";
+import { economyMarketUnlocked, marketSlotCount, marketSlotOffer } from "@/features/economy/domain/market-rules";
 import { formatPearls } from "@/features/economy/domain/money";
 import { locked, type ReadyEconomy } from "@/features/economy/sync/controller-state";
 import styles from "./world-market-slots.module.css";
@@ -18,7 +18,7 @@ export function marketSlotQuoteReason(economy: ReadyEconomy, quote: MarketSlotQu
     return "Данные обновились. Вернитесь и выберите место ещё раз.";
   if (offer.pricePearls !== quote.price) return "Цена изменилась. Проверьте её ещё раз.";
   if (offer.pricePearls > state.wallet.pearls) return `Не хватает жемчужин: ${formatPearls(offer.pricePearls - state.wallet.pearls)}.`;
-  if ((state.buildings.home ?? 1) < state.catalog.market.requiredHomeLevel || state.completedExplorations < state.catalog.market.requiredExplorations)
+  if (!economyMarketUnlocked(state, state.catalog))
     return "Сначала откройте рынок.";
   return null;
 }

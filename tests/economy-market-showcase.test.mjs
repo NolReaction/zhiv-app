@@ -18,7 +18,7 @@ const market = (p, at = now, options = {}) => economy.getDevEconomyMarket(p.toke
 function player(home = 2, inventory = { berries: 100 }, unlockedItems = Object.keys(inventory)) {
   const p = identities.createDevIdentity("Лесник", crypto.randomUUID()); read(p);
   const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
-  row.state.wallet.coins = 1000000; row.state.inventory = inventory; row.state.buildings.home = home; row.state.completedExplorations = 1;
+  row.state.wallet.coins = 1000000; row.state.inventory = inventory; row.state.buildings.home = home; row.state.buildings.bridge = 1; row.state.completedExplorations = 1;
   row.state.unlockedItems = [...unlockedItems]; row.state.itemUnlockVersion = 1;
   return p;
 }

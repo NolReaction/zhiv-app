@@ -171,7 +171,7 @@ test("first sale belongs to seller after confirmed payment, not NPC sales, listi
   for (const p of [seller, buyer]) {
     economy.getDevEconomy(p.token, now);
     const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
-    row.state.buildings.home = 2; row.state.completedExplorations = 1;
+    row.state.buildings.home = 2; row.state.buildings.bridge = 1; row.state.completedExplorations = 0;
     row.state.wallet.coins = 1000; row.state.inventory = { berries: 10 };
   }
   issue(seller, "sell", "berries", now, 1);

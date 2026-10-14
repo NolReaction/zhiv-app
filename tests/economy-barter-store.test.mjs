@@ -17,7 +17,7 @@ const shelf = (p, at = now) => economy.getDevEconomyBarter(p.token, at);
 function player(inventory = { [core]: 5, [resin]: 5, [crystal]: 5 }, home = 3) {
   const p = identities.createDevIdentity("Лесник", crypto.randomUUID()); read(p);
   const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
-  row.state.inventory = inventory; row.state.buildings.home = home; row.state.completedExplorations = 1;
+  row.state.inventory = inventory; row.state.buildings.home = home; row.state.buildings.bridge = 1; row.state.completedExplorations = 1;
   row.state.wallet = { coins: 100, pearls: 5 };
   return p;
 }

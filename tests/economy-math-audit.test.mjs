@@ -93,6 +93,33 @@ test("first-stage fixed NPC prices are exact and strawberry profiles retain thei
   assert.throws(() => economicMath(locked).sourceHome("strawberries"), /Recipe unlock cycle/);
 });
 
+test("new berry processing includes all crop collection and upstream station work", () => {
+  const catalog = readEconomyCatalog(), math = economicMath(catalog);
+  for (const [home, crop, product, seconds, margin] of [
+    [2, "blueberries", "blueberry_compote", 180, 30],
+    [3, "currants", "currant_jelly", 720, 50],
+    [4, "blackberries", "blackberry_preserve", 1800, 80],
+    [5, "cranberries", "cranberry_glaze", 3600, 170],
+  ]) {
+    const cropProfile = math.profile(crop), productProfile = math.profile(product);
+    near(cropProfile.slotMinutes.garden, (seconds + 8) / 60);
+    near(cropProfile.slotMinutes.mochlik, 8 / 60);
+    assert.equal(cropProfile.sourceHome, home); assert.equal(productProfile.referenceHome, home);
+    assert(productProfile.slotMinutes.garden >= 2 * cropProfile.slotMinutes.garden);
+    const recipe = catalog.recipes.find(row => row.rewards[product] > 0);
+    assert.equal(math.liquidation(recipe.rewards) - math.liquidation(recipe.cost.items), margin);
+    assert.equal(productProfile.producerLevels.garden, home);
+  }
+  const dessert = math.profile("cranberry_glaze");
+  assert.equal(dessert.producerLevels.dryer, 4);
+  assert.equal(dessert.rawInputs.cranberries, 2);
+  assert.equal(dessert.rawInputs.currants, 2);
+  assert.equal(dessert.rawInputs.berries, 2);
+  const jam = math.profile("blackberry_preserve");
+  assert.equal(jam.rawInputs.sand, 3);
+  assert(jam.slotMinutes.kiln > 0 && jam.slotMinutes.miner > 0, "A jar must include real glass and its mining inputs");
+});
+
 test("the longer catch gives eight class draws and consumes one bait per trip", () => {
   const catalog = readEconomyCatalog(), math = economicMath(catalog);
   const best = math.catchPortfolio("starfall_rod", "star_bait", "shore", "leviathan_hook");

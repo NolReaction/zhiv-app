@@ -1,5 +1,6 @@
 import { z } from "zod";
 import catalogJson from "@/apps/api/src/main/resources/world/economy-catalog.json";
+import { hasGardenBerryReward } from "./garden-berries";
 
 import { ECONOMY_MAX_BALANCE, ECONOMY_MAX_PEARLS, ECONOMY_MAX_ITEMS, ECONOMY_PEARL_SCALE } from "./money";
 export { ECONOMY_MAX_BALANCE, ECONOMY_MAX_PEARLS, ECONOMY_MAX_ITEMS, ECONOMY_CURRENCY_SCALE, ECONOMY_PEARL_SCALE } from "./money";
@@ -134,9 +135,15 @@ export const economyCatalogSchema = z.object({
   fishing: economyFishingCatalogSchema.optional(),
   food: economyFoodCatalogSchema.nullish(),
   localBuyer: z.object({ payoutBps: count.positive().max(10_000), unitPrices: z.record(id, balance.positive()).optional() }).optional(),
-  version: z.literal(9), currencyScale: z.literal(10), pearlScale: z.literal(50), maxBatch: z.number().int().min(1).max(100),
-  constructionSpeedup: z.object({ secondsPerPearl: count.positive().max(86400), priceStepPearls: balance.positive().max(ECONOMY_PEARL_SCALE).default(2) }),
-  market: z.object({ requiredHomeLevel: count.positive(), requiredExplorations: count, maxListings: z.literal(10), baseSlots: z.literal(5).default(5),
+  version: z.literal(10), currencyScale: z.literal(10), pearlScale: z.literal(50), maxBatch: z.number().int().min(1).max(100),
+  constructionSpeedup: z.object({ secondsPerPearl: count.positive().max(86400), priceStepPearls: balance.positive().max(ECONOMY_PEARL_SCALE).default(2),
+    pricingPoints: z.array(z.object({ seconds: count.positive(), pearls: count.positive().max(ECONOMY_MAX_PEARLS) })).max(32).default([])
+      .refine(points => points.length === 0 || points.length >= 2, "A pricing curve requires at least two points")
+      .refine(points => points.every((point, index) => index === 0 || point.seconds > points[index - 1].seconds && point.pearls >= points[index - 1].pearls),
+        "Pricing points must have increasing times and nondecreasing prices"),
+  }).refine(config => config.pricingPoints.every(point => point.pearls % config.priceStepPearls === 0), "Pricing points require whole price quanta"),
+  market: z.object({ requiredHomeLevel: count.positive(), requiredExplorations: count, requiredBuildings,
+    maxListings: z.literal(10), baseSlots: z.literal(5).default(5),
     slotPricesPearls: z.array(count.positive().max(ECONOMY_MAX_PEARLS)).length(5).default([100, 160, 240, 360, 500]),
     maxLotQuantity: count.positive(), maxPriceMultiplier: count.positive(), feeBps: count.max(10000), dailyTradeValueByHome: z.array(balance).length(5).default([0, 2400, 4800, 9600, 14400]),
     showcaseSlots: count.positive().max(12).default(12), showcasePerSeller: count.positive().max(10).default(2), showcaseRefreshSeconds: count.positive().max(86400).default(1800) }),
@@ -150,7 +157,7 @@ export const economyCatalogSchema = z.object({
     maxBatch: count.positive().max(100).nullish(),
     fishInput: z.object({ itemIds: z.array(id).min(1).max(100).refine(ids => new Set(ids).size === ids.length) }).nullish(),
     requiredBuildings, requiredRecipes: quantities.default({}), seconds: count.positive(), cost: economyCostSchema, rewards: quantities, collection: economyCollectionSpecSchema.nullish() })
-    .refine(recipe => !recipe.collection || recipe.buildingId === "garden" && ((recipe.rewards.berries ?? 0) > 0 || (recipe.rewards.strawberries ?? 0) > 0),
+    .refine(recipe => !recipe.collection || recipe.buildingId === "garden" && hasGardenBerryReward(recipe.rewards),
       "Berry collection requires a garden recipe with known berries")
     .refine(recipe => !recipe.fishInput || recipe.fishInput.itemIds.filter(itemId => (recipe.cost.items[itemId] ?? 0) > 0).length === 1,
       "Fish recipes require exactly one replaceable fish ingredient")).max(1000),
@@ -228,14 +235,14 @@ export const economyMigrationSchema = z.object({ version: z.literal(1), coinsGra
 export const economyJobSchema = z.object({
   id: uuid, kind: z.enum(["production", "exploration", "construction"]), targetId: id,
   recipeId: id.nullable(), targetLevel: count.nullable(), startedAt: z.string().datetime(), finishesAt: z.string().datetime(),
-  rewards: quantities, cost: economyCostSchema, catalogVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9)]),
+  rewards: quantities, cost: economyCostSchema, catalogVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10)]),
   actorId: z.enum(["mochlik", "miner"]).nullish(),
   collection: economyCollectionSchema.nullish(),
   fishing: z.object({ rodId: id, hookId: id.default("bare_hook"), baitId: id.nullable(), fishId: id }).nullish(),
   rareDrop: economyRareDropDeliverySchema.nullish(),
   meal: z.object({ itemId: id, consumer: z.enum(["hero", "builder"]), speedBps: count.max(10000) }).nullish(),
 }).refine(job => !job.actorId || job.kind === "exploration", "Only exploration jobs have a saved actor")
-  .refine(job => !job.collection || job.kind === "production" && job.targetId === "garden" && ((job.rewards.berries ?? 0) > 0 || (job.rewards.strawberries ?? 0) > 0),
+  .refine(job => !job.collection || job.kind === "production" && job.targetId === "garden" && hasGardenBerryReward(job.rewards),
   "Berry collection requires a garden production order")
   .refine(job => !job.rareDrop || job.kind === "exploration" && (!job.rareDrop.itemId || job.rewards[job.rareDrop.itemId] === 1),
     "Rare materials belong to a saved exploration delivery")

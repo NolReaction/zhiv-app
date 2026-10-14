@@ -31,7 +31,7 @@ const { fishDiscovered } = await vite.ssrLoadModule("/features/economy/ui/fishin
 const hooks = await vite.ssrLoadModule(hookModule);
 const now = Date.parse("2026-10-05T14:00:00Z");
 function economy() {
-  return { snapshot: { ownerPublicId: "ME", revision: 1, wallet: { coins: 10000, pearls: 0 }, inventory: { wood: 20 }, unlockedItems: ["wood"], buildings: { home: 5, warehouse: 5 }, completedExplorations: 1,
+  return { snapshot: { ownerPublicId: "ME", revision: 1, wallet: { coins: 10000, pearls: 0 }, inventory: { wood: 20 }, unlockedItems: ["wood"], buildings: { home: 5, warehouse: 5, bridge: 1 }, completedExplorations: 1,
     catalog: structuredClone(economyCatalog), storage: { capacity: 3000, used: 20, reserved: 12, available: 2968, overflow: 0 } },
     market: { listings: [offer("a"), offer("b")], mine: [offer("mine-a"), offer("mine-b")], showcase: { refreshAt: new Date(now + 1000).toISOString(), slots: 12, maxPerSeller: 2, refreshSeconds: 1800 } },
     busy: false, uncertain: false, now, retryAt: 0, refreshMarket() {}, actMarket() { assert.fail("navigation must not trade"); },
@@ -258,4 +258,29 @@ test("limits and reset countdown are available in collapsed market rules", () =>
   assert.match(renderToStaticMarkup(rules), /домами 2–3 и 4–5/);
   assert.match(renderToStaticMarkup(rules), /Покупки: 900/);
   assert.match(renderToStaticMarkup(rules), /Обновление через 1 ч/);
+});
+
+test("a restored bridge opens trade at home two without an exploration and closed bridges preserve own returns", () => {
+  const e = economy(), destinations = [], calls = [];
+  e.snapshot.buildings.home = 2;
+  e.snapshot.completedExplorations = 0;
+  e.actMarket = (...args) => calls.push(args);
+  let view = harness(Market, { economy: e, navigate: (...args) => destinations.push(args) }).render();
+  assert.ok(view.nodes.some(node => node.props["aria-label"] === "Предложения игроков"));
+  e.snapshot.buildings.bridge = 0;
+  const h = harness(Market, { economy: e, navigate: (...args) => destinations.push(args) });
+  view = h.render();
+  assert.match(view.html, /Восстановите мост/);
+  assert.doesNotMatch(view.html, /data-market-offer=|Завершённые вылазки/);
+  view.nodes.find(node => node.type === "button" && renderToStaticMarkup(node).includes("Продолжить обустройство")).props.onClick();
+  assert.deepEqual(destinations, [["buildings", "bridge"]]);
+  view.nodes.find(node => node.props["data-guide-market-tab"] === "mine").props.onClick();
+  const own = h.render().nodes.find(node => node.props["aria-label"] === "Ваши предложения");
+  assert.equal(own.props.children.length, 2);
+  const card = harness(OfferCard, own.props.children[0].props);
+  card.render().nodes.find(node => node.type === "button").props.onClick();
+  card.render().nodes.find(node => node.props["aria-label"]?.startsWith("Снять с продажи")).props.onClick();
+  assert.deepEqual(calls, [["cancel_listing", "mine-a"]]);
+  const foreign = harness(OfferCard, { economy: e, offer: offer("a"), navigate() {} }).render();
+  assert.equal(foreign.nodes.find(node => node.type === "button").props.disabled, true);
 });

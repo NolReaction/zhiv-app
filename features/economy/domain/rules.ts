@@ -8,12 +8,13 @@ import { advanceEconomyProgression, newEconomyProgression } from "./collection-p
 import { prepareRareDrop, settleRareDrop, secureRareInteger, type RareRandomInteger } from "./rare-drops";
 import { economyLocalSellPrice } from "./local-sale";
 import { economyActorConflict, economyMinerConflict, explorationActorId, isMinerJob } from "./actor-availability";
-import { remainingTimePearlPrice } from "./time-price";
+import { durationPearlPrice, remainingTimePearlPrice, type PearlPricePoint } from "./time-price";
+import { hasGardenBerryReward } from "./garden-berries";
 import { advanceResidentOrder, foodState, initialResidentOrders, mealDuration, normalizedResidentOrders, pendingMeal, recipeWithFish, residentOrderBoard } from "./food";
 import { isTutorialOrderId, newTutorialOrder, TUTORIAL_ORDER_ID, tutorialOrderProgress, tutorialResidentOrder } from "./tutorial-order";
 import { ensureStageOrders, isStageOrderId, stageCourseRequired, stageOrderProgress, stageOrdersProgress, stageResidentOrder } from "./stage-orders";
 import { persistEconomyItemUnlocks, unlockedEconomyItems } from "./item-unlocks";
-import { marketSlotOffer } from "./market-rules";
+import { economyMarketUnlocked, marketSlotOffer } from "./market-rules";
 export { economyLocalSellPrice, economyLocalSaleMinimumQuantity, economyLocalSaleLimit } from "./local-sale";
 
 export class EconomyRuleError extends Error {
@@ -21,9 +22,13 @@ export class EconomyRuleError extends Error {
 }
 /** A display quote only: the authoritative command recomputes this from its own clock. */
 export function constructionSpeedupPrice(job: Pick<EconomyJob, "kind" | "finishesAt">, now: number,
-  config = economyCatalog.constructionSpeedup): number {
+  config: ConstructionPriceConfig = economyCatalog.constructionSpeedup): number {
   if (job.kind !== "construction") return 0;
-  return remainingTimePearlPrice(job.finishesAt, now, config.secondsPerPearl, ECONOMY_PEARL_SCALE, config.priceStepPearls);
+  return remainingTimePearlPrice(job.finishesAt, now, config.secondsPerPearl, ECONOMY_PEARL_SCALE, config.priceStepPearls, config.pricingPoints);
+}
+type ConstructionPriceConfig = { secondsPerPearl: number; priceStepPearls: number; pricingPoints?: readonly PearlPricePoint[] };
+export function constructionTimePearlPrice(seconds: number, config: ConstructionPriceConfig = economyCatalog.constructionSpeedup): number {
+  return durationPearlPrice(seconds * 1000, config.secondsPerPearl, ECONOMY_PEARL_SCALE, config.priceStepPearls, config.pricingPoints);
 }
 const fail = (code: string, message: string): never => { throw new EconomyRuleError(code, message); };
 function normalizedInventory(items: Record<string, number>): Record<string, number> {
@@ -61,7 +66,7 @@ export function assertEconomyStorageTransition(previous: Pick<EconomyState, "bui
     fail("ECONOMY_STORAGE_FULL", "Склад заполнен. Продайте лишнее, используйте материалы или расширьте склад");
 }
 export function marketUnlocked(state: Pick<EconomyState, "buildings" | "completedExplorations">) {
-  return (state.buildings.home ?? 1) >= economyCatalog.market.requiredHomeLevel && state.completedExplorations >= economyCatalog.market.requiredExplorations;
+  return economyMarketUnlocked(state);
 }
 export function convertLegacyEconomy(resources: { sparks: number; wood: number; stone: number }) {
   const safe = (value: number) => Number.isSafeInteger(value) && value > 0 ? value : 0;
@@ -216,7 +221,7 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       const job = state.jobs.find(item => item.id === command.targetId);
       if (!job) return fail("ECONOMY_JOB_GONE", "Результат уже получен или задание не найдено");
       const spec = job.collection ?? economyCatalog.recipes.find(recipe => recipe.id === job.recipeId)?.collection;
-      if (job.kind !== "production" || job.targetId !== "garden" || !((job.rewards.berries ?? 0) > 0 || (job.rewards.strawberries ?? 0) > 0) || !spec)
+      if (job.kind !== "production" || job.targetId !== "garden" || !hasGardenBerryReward(job.rewards) || !spec)
         return fail("ECONOMY_COLLECTION_KIND", "Для этой работы сбор Мохликом не требуется");
       if (job.collection?.startedAt) return fail("ECONOMY_COLLECTION_STARTED", "Мохлик уже собирает этот урожай");
       if (now < Date.parse(job.finishesAt)) return fail("ECONOMY_JOB_NOT_READY", "Урожай ещё не созрел");

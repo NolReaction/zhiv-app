@@ -166,7 +166,7 @@ test("loading and failed initial reads never display a spend action or a made-up
 test("market shows real full-lot quotes, escapes seller text and applies catalog access requirements", () => {
   const market = { listings: [{ id: "offer", sellerPublicId: "OTHER", sellerName: "<script>seller</script>", itemId: "wood", quantity: 6, totalPrice: 300,
     status: "active", createdAt: new Date(now).toISOString(), closedAt: null, owned: false }], mine: [], nextCursor: null, serverTime: new Date(now).toISOString() };
-  const state = snapshot({ wallet: { coins: 300, pearls: 0 }, buildings: { home: 2, garden: 1 }, completedExplorations: 1 });
+  const state = snapshot({ wallet: { coins: 300, pearls: 0 }, buildings: { home: 2, garden: 1, bridge: 1 }, completedExplorations: 0 });
   let html = render("market", controller({ snapshot: state, market }));
   assert.match(html, /Бревно × 6/);
   assert.match(html, /за весь лот/);
@@ -177,12 +177,14 @@ test("market shows real full-lot quotes, escapes seller text and applies catalog
   assert.equal(disabled(button(render("market", controller({ snapshot: state, market })), "Не хватает монет")), true);
   state.catalog.market.requiredHomeLevel = 3;
   html = render("market", controller({ snapshot: state, market }));
-  assert.equal(disabled(button(html, "Рынок пока закрыт")), true);
+  assert.equal(buttons(html).some(entry => entry.text.includes("Купить весь лот")), false,
+    "a locked market hides trade actions until the required home and bridge are ready");
+  assert.ok(button(html, "Продолжить обустройство"));
   assert.match(html, /Дом: 2 \/ 3 ур/);
 });
 
 test("an empty player market is honest and offers a next action without fictional merchants", () => {
-  const html = render("market", controller({ snapshot: snapshot({ buildings: { home: 2, garden: 1 }, completedExplorations: 1 }),
+  const html = render("market", controller({ snapshot: snapshot({ buildings: { home: 2, garden: 1, bridge: 1 }, completedExplorations: 0 }),
     market: { listings: [], mine: [], nextCursor: null, serverTime: new Date(now).toISOString() } }));
   assert.match(html, /Прилавки пока свободны/);
   assert.ok(button(html, "Выставить товар"));
@@ -193,7 +195,7 @@ test("a personal showcase explains its fixed window and disables stale quotes un
   const market = { listings: [{ id: "offer", sellerPublicId: "OTHER", sellerName: "Лесник", itemId: "wood", quantity: 6, totalPrice: 300,
     status: "active", createdAt: new Date(now).toISOString(), closedAt: null, owned: false }], mine: [], nextCursor: null, serverTime: new Date(now).toISOString(),
     showcase: { refreshAt: new Date(now + 1800_000).toISOString(), slots: 12, maxPerSeller: 2, refreshSeconds: 1800 } };
-  const economy = controller({ snapshot: snapshot({ wallet: { coins: 10000, pearls: 0 }, buildings: { home: 2 }, completedExplorations: 1 }), market });
+  const economy = controller({ snapshot: snapshot({ wallet: { coins: 10000, pearls: 0 }, buildings: { home: 2, bridge: 1 }, completedExplorations: 0 }), market });
   let html = render("market", economy);
   assert.match(html, /Ваша витрина · 1 \/ 12/);
   assert.match(html, /До 2 лотов от одной лавки/);
@@ -209,7 +211,7 @@ test("a personal showcase explains its fixed window and disables stale quotes un
 test("stale offers stay hidden until personal discovery and cannot bypass the NPC resale price floor", () => {
   const market = { listings: [{ id: "offer", sellerPublicId: "OTHER", sellerName: "Лесник", itemId: "tools", quantity: 1, totalPrice: 1000,
     status: "active", createdAt: new Date(now).toISOString(), closedAt: null, owned: false }], mine: [], nextCursor: null, serverTime: new Date(now).toISOString() };
-  const state = snapshot({ wallet: { coins: 10000, pearls: 0 }, buildings: { home: 2 }, completedExplorations: 1 });
+  const state = snapshot({ wallet: { coins: 10000, pearls: 0 }, buildings: { home: 2, bridge: 1 }, completedExplorations: 0 });
   assert.equal(buttons(render("market", controller({ snapshot: state, market }))).some(entry => entry.text.includes("Купить весь лот")), false);
   state.buildings.home = 4;
   assert.equal(buttons(render("market", controller({ snapshot: state, market }))).some(entry => entry.text.includes("Купить весь лот")), false,
@@ -291,7 +293,7 @@ test("production batch options fit the entire result in warehouse capacity, even
 test("player market cannot buy an unaffordable storage lot and offers the warehouse as a next action", () => {
   const market = { listings: [{ id: "offer", sellerPublicId: "OTHER", sellerName: "Лесник", itemId: "wood", quantity: 6, totalPrice: 300,
     status: "active", createdAt: new Date(now).toISOString(), closedAt: null, owned: false }], mine: [], nextCursor: null, serverTime: new Date(now).toISOString() };
-  const state = snapshot({ wallet: { coins: 300, pearls: 0 }, buildings: { home: 2, garden: 1, warehouse: 1 }, completedExplorations: 1,
+  const state = snapshot({ wallet: { coins: 300, pearls: 0 }, buildings: { home: 2, garden: 1, warehouse: 1, bridge: 1 }, completedExplorations: 0,
     storage: { capacity: 50, used: 40, reserved: 5, available: 5, overflow: 0 } });
   const html = render("market", controller({ snapshot: state, market }));
   assert.equal(disabled(button(html, "Не хватает места на складе")), true);

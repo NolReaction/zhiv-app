@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 const rules = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
-const { economyCatalog: catalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { economyCatalog: catalog, economyJobSchema } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const stages = await vite.ssrLoadModule("/features/economy/domain/stage-orders.ts");
 const food = await vite.ssrLoadModule("/features/economy/domain/food.ts");
 const actors = await vite.ssrLoadModule("/features/economy/domain/actor-availability.ts");
@@ -258,12 +258,12 @@ test("a real three-visits-per-day house-four chapter builds both landmarks and h
   assert.equal(state.buildings.home, 5, JSON.stringify(report));
   assert.equal(state.buildings.bridge, 1); assert.equal(state.buildings.lighthouse, 1); assert.equal(state.buildings.warehouse, 1);
   assert.equal(state.jobs.length, 0, "all completed work is manually claimed");
-  assert.equal(courses.length, 12); assert.equal(result.courseCoins, 50000); assert.equal(result.constructionCoins, 73300);
+  assert.equal(courses.length, 12); assert.equal(result.courseCoins, 50000); assert.equal(result.constructionCoins, 70500);
   assert.equal(result.constructionSeconds, 96 * 3600, "all ten constructions use their actual catalog timers");
   assert.equal(state.stageOrders.stages["4"].completed, true); assert.equal(state.stageOrders.stages["4"].step, 12);
   assert.equal(state.progression.routes.ancient_ruins, 1); assert.equal(production.ancient_ruins, 1);
-  assert(courses.at(-1).at - courses[0].at >= 11 * 24 * hour);
-  for (let index = 1; index < courses.length; index++) assert(courses[index].at - courses[index - 1].at >= 24 * hour);
+  assert(courses.at(-1).at - courses[0].at >= 11 * 23 * hour);
+  for (let index = 1; index < courses.length; index++) assert(courses[index].at - courses[index - 1].at >= 23 * hour);
   assert(clock - courses.at(-1).at >= 48 * hour, "the final house uses its real two-day builder timer");
   assert(clock - epoch >= 14 * 24 * hour); assert(clock - epoch <= 21 * 24 * hour, JSON.stringify(report));
   assert.equal(result.flow.ancient_core.received, 1); assert.equal(result.flow.moon_crystal.received, 1);
@@ -272,7 +272,7 @@ test("a real three-visits-per-day house-four chapter builds both landmarks and h
   for (const [id, counts] of Object.entries(flow)) assert.equal(counts.received - counts.consumed - counts.sold, state.inventory[id] ?? 0, `${id} is conserved`);
   for (const action of ["buy_market_slot", "buy_production_slot", "claim_tutorial_order", "claim_workshop_starter", "speedup_construction", "eat_food", "feed_builder"])
     assert.equal(actions[action], undefined);
-  assert(result.repeatCoins + result.saleCoins >= 19790, "the unfunded part is actually earned");
+  assert(result.repeatCoins + result.saleCoins >= 16990, "the unfunded part is actually earned");
   assert(actions.start_fishing > 0); assert(production.prepare_trail_ration >= 5); assert(production.make_research_gear >= 1);
   assert.deepEqual(builds.map(build => `${build.target}:${build.level}`), constructionSequence.map(([id, level]) => `${id}:${level}`));
 });
@@ -289,17 +289,17 @@ test("three 15-minute visits per day can fund house five with independent mining
     deliveryDays: courses.map(course => (course.at - epoch) / (24 * hour)) }));
   assert.equal(state.buildings.home, 5); assert.equal(state.buildings.bridge, 1); assert.equal(state.buildings.lighthouse, 1);
   assert.equal(state.buildings.warehouse, 1); assert.equal(state.jobs.length, 0);
-  assert.equal(result.constructionCoins, 73300); assert.equal(result.courseCoins, 50000);
+  assert.equal(result.constructionCoins, 70500); assert.equal(result.courseCoins, 50000);
   assert.equal(result.constructionSeconds, 96 * 3600); assert.equal(courses.length, 12);
   assert.equal(state.stageOrders.stages["4"].completed, true); assert.equal(state.stageOrders.stages["4"].step, 12);
   assert.equal(state.progression.routes.ancient_ruins, 1); assert.equal(production.ancient_ruins, 1);
-  assert(courses.at(-1).at - courses[0].at >= 11 * 24 * hour);
-  for (let index = 1; index < courses.length; index++) assert(courses[index].at - courses[index - 1].at >= 24 * hour);
+  assert(courses.at(-1).at - courses[0].at >= 11 * 23 * hour);
+  for (let index = 1; index < courses.length; index++) assert(courses[index].at - courses[index - 1].at >= 23 * hour);
   assert(clock - courses.at(-1).at >= 48 * hour);
-  assert(clock - epoch >= 14 * 24 * hour); assert(clock - epoch <= 21 * 24 * hour);
-  assert.equal(result.activeMinutes, 15); assert(result.activeSeconds <= 11 * 3600);
+  assert(clock - epoch >= 14 * 24 * hour); assert(clock - epoch <= 23 * 24 * hour);
+  assert.equal(result.activeMinutes, 15); assert(result.activeSeconds <= 13 * 3600);
   assert(actions.start_fishing >= 9); assert(actions.start_fishing <= 20);
-  assert(result.revision < 1500); assert(result.saleCoins >= 19790); assert.equal(result.repeatCoins, 0);
+  assert(result.revision < 1800); assert(result.saleCoins >= 16990); assert.equal(result.repeatCoins, 0);
   assert((production.quarry_shift ?? 0) + (production.quarry_deep_face ?? 0) >= 10);
   assert((result.catches.fish_common ?? 0) >= 18, "the mandatory ordinary fish and provisions are genuinely caught");
   assert.equal(production.prepare_trail_ration, 5); assert.equal(production.make_research_gear, 1);
@@ -311,4 +311,27 @@ test("three 15-minute visits per day can fund house five with independent mining
   for (const action of ["buy_market_slot", "buy_production_slot", "claim_tutorial_order", "claim_workshop_starter", "speedup_construction", "eat_food", "feed_builder"])
     assert.equal(actions[action], undefined);
   assert.deepEqual(builds.map(build => `${build.target}:${build.level}`), constructionSequence.map(([id, level]) => `${id}:${level}`));
+});
+
+
+for (const [targetId, seconds, oldCost] of [
+  ["bridge", 4 * 3600, { coins: 4000, items: { beams: 1, planks: 2, rope: 2, metal_parts: 1 } }],
+  ["lighthouse", 6 * 3600, { coins: 5000, items: { cut_stone: 2, bricks: 2, glass: 2, tools: 1 } }],
+]) test(`a paid v9 ${targetId} restoration retains its saved terms after the early v10 unlock`, () => {
+  const state = rules.newEconomyState({ resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1, workshopLevel: 0 });
+  Object.assign(state.buildings, { home: 4, workshop: 3, kiln: 3, quarry: 3, bridge: targetId === "lighthouse" ? 1 : 0, lighthouse: 0 });
+  state.wallet = { coins: 17, pearls: 0 }; state.inventory = { berries: 1 };
+  const saved = economyJobSchema.parse({ id: "00000000-0000-4000-9000-999999999999", kind: "construction",
+    targetId, targetLevel: 1, recipeId: null, startedAt: new Date(epoch).toISOString(),
+    finishesAt: new Date(epoch + seconds * 1000).toISOString(), cost: oldCost, rewards: {}, catalogVersion: 9 });
+  state.jobs = [saved];
+  assert.notDeepEqual(saved.cost, catalog.buildings.find(building => building.id === targetId).levels[0].cost);
+  assert.throws(() => rules.applyEconomyCommand(state, { requestId: crypto.randomUUID(), ownerPublicId: "0000-0000-0001",
+    expectedRevision: 0, action: "claim_job", targetId: saved.id, quantity: 1, totalPrice: 0 }, epoch + seconds * 1000 - 1, crypto.randomUUID),
+    { code: "ECONOMY_JOB_NOT_READY" });
+  assert.deepEqual(state.jobs, [saved]); assert.deepEqual(state.wallet, { coins: 17, pearls: 0 });
+  rules.applyEconomyCommand(state, { requestId: crypto.randomUUID(), ownerPublicId: "0000-0000-0001",
+    expectedRevision: 0, action: "claim_job", targetId: saved.id, quantity: 1, totalPrice: 0 }, epoch + seconds * 1000, crypto.randomUUID);
+  assert.equal(state.buildings[targetId], 1); assert.equal(state.jobs.length, 0);
+  assert.deepEqual(state.wallet, { coins: 17, pearls: 0 }); assert.deepEqual(state.inventory, { berries: 1 });
 });

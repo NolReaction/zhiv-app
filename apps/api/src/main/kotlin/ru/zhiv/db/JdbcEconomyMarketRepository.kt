@@ -123,6 +123,7 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
         val config = EconomyRules.catalog.market
         val home = state.buildings["home"] ?: 1
         val band = EconomyMarketRules.homeBand(home)
+        val (accessSql, accessParameters) = economyMarketAccessPredicate()
         val unlockedItems = EconomyItemUnlocks.project(state).toSet()
         val items = EconomyRules.catalog.items.filter { it.tradable && it.id in unlockedItems }
         val ids = if (items.isEmpty()) emptyList() else {
@@ -131,6 +132,7 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
             parameters.add(user.toString() + at.toString())
             parameters.add(user)
             parameters.add(band.first); parameters.add(band.last)
+            parameters.addAll(accessParameters)
             parameters.add(config.maxPriceMultiplier)
             parameters.add(config.showcasePerSeller)
             parameters.add(config.showcaseSlots)
@@ -140,6 +142,7 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
                 JOIN economy_profiles ep ON ep.user_id=l.seller_id
                 WHERE l.status='active' AND l.seller_id<>? AND u.deleted_at IS NULL AND u.banned_at IS NULL
                   AND COALESCE((ep.state->'buildings'->>'home')::int,1) BETWEEN ? AND ?
+                  $accessSql
                   AND l.total_price / l.quantity >= p.minimum AND l.total_price <= p.minimum * l.quantity * ?
             ), diverse AS (
                 SELECT id,rank,row_number() OVER (PARTITION BY seller_id ORDER BY rank,id) AS seller_slot FROM candidates
@@ -170,14 +173,15 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
             val state = readEconomyProfile(c, user.id).state
             val config = EconomyRules.catalog.market
             val at = now(c)
-            val unlocked = (state.buildings["home"] ?: 1) >= config.requiredHomeLevel && state.completedExplorations >= config.requiredExplorations
+            val unlocked = EconomyMarketRules.unlocked(state)
             val band = EconomyMarketRules.homeBand(state.buildings["home"] ?: 1)
+            val (accessSql, accessParameters) = economyMarketAccessPredicate()
             val selection = if (unlocked) showcase(c, user.id, state, at) else Showcase(at.plusSeconds(config.showcaseRefreshSeconds), emptyList())
             val selected = if (selection.ids.isEmpty()) emptyList() else c.economyRows("""SELECT l.*,u.public_id,u.display_name FROM economy_market_listings l
                 JOIN app_users u ON u.id=l.seller_id JOIN economy_profiles ep ON ep.user_id=l.seller_id WHERE l.id IN (${selection.ids.joinToString(",") { "?" }})
                 AND l.status='active' AND u.deleted_at IS NULL AND u.banned_at IS NULL
-                AND COALESCE((ep.state->'buildings'->>'home')::int,1) BETWEEN ? AND ?""",
-                *(selection.ids + listOf(band.first, band.last)).toTypedArray<Any>()) { listing(it, user.id).listing }
+                AND COALESCE((ep.state->'buildings'->>'home')::int,1) BETWEEN ? AND ? $accessSql""",
+                *(selection.ids + listOf(band.first, band.last) + accessParameters).toTypedArray<Any>()) { listing(it, user.id).listing }
                 .filter { EconomyMarketRules.eligible(it.itemId, it.quantity, it.totalPrice, state) }
                 .sortedBy { selection.ids.indexOf(UUID.fromString(it.id)) }
             val mine = c.economyRows("""SELECT l.*,u.public_id,u.display_name FROM economy_market_listings l
@@ -223,10 +227,8 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
             val before = readEconomyProfile(c, user.id)
             if (before.revision != command.expectedRevision)
                 throw AuthFailure("ECONOMY_REVISION_CONFLICT", "Хозяйство уже изменилось. Обновите его и повторите действие.", 409)
-            val marketConfig = EconomyRules.catalog.market
-            if (command.action != "cancel_listing" &&
-                ((before.state.buildings["home"] ?: 1) < marketConfig.requiredHomeLevel || before.state.completedExplorations < marketConfig.requiredExplorations))
-                throw AuthFailure("ECONOMY_MARKET_LOCKED", "Для торговли нужен дом второго уровня и завершённое исследование", 409)
+            if (command.action != "cancel_listing" && !EconomyMarketRules.unlocked(before.state))
+                throw AuthFailure("ECONOMY_MARKET_LOCKED", "Для торговли нужен дом второго уровня и восстановленный мост", 409)
 
             val message = when (command.action) {
                 "create_listing" -> create(c, user.id, before.state, command)
@@ -290,6 +292,8 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
         if (state.wallet.coins < lot.totalPrice) throw AuthFailure("ECONOMY_RESOURCES", "Недостаточно монет", 409)
         ensureEconomyProfile(c, row.seller)
         val seller = readEconomyProfile(c, row.seller).state
+        if (!EconomyMarketRules.unlocked(seller))
+            throw AuthFailure("ECONOMY_MARKET_LOCKED", "Продавцу нужно восстановить мост. Обновите лавку.", 409)
         if (!EconomyMarketRules.sameHomeBand(state.buildings["home"] ?: 1, seller.buildings["home"] ?: 1))
             throw AuthFailure("ECONOMY_MARKET_HOME_BAND", "Предложение доступно в другой группе уровней дома. Обновите лавку.", 409)
         val item = EconomyRules.catalog.items.single { it.id == lot.itemId }

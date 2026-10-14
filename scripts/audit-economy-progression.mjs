@@ -27,7 +27,7 @@ export function auditEconomyProgression(catalog) {
   for (const route of catalog.explorations.filter(route => route.activity === "mining")) {
     assert(route.requiredBuildings?.quarry >= 1, `${route.id}: mining requires a built quarry`);
   }
-  assert.equal(catalog.version, 9);
+  assert.equal(catalog.version, 10);
   assert.equal(catalog.currencyScale, 10);
   const projects = auditProjectCourses(catalog);
   const rare = catalog.rareDrops;
@@ -213,6 +213,26 @@ export function auditEconomyProgression(catalog) {
     validateRequirements(order, order.id);
     validateQuantities(order.items, order.id, true);
   }
+  assert.equal(catalog.market.requiredHomeLevel, 2, "The player market opens at home two");
+  assert.equal(catalog.market.requiredExplorations, 0, "Market access follows a restored bridge, not an arbitrary trip count");
+  assert.deepEqual(catalog.market.requiredBuildings, { bridge: 1 }, "Market access must require the restored bridge");
+  assert.equal(buildings.get("bridge").levels[0].requiredHomeLevel, 2, "The bridge must be attainable at home two");
+  assert.equal(buildings.get("lighthouse").levels[0].requiredHomeLevel, 3, "The lighthouse must be attainable at home three");
+  const pricing = catalog.constructionSpeedup;
+  assert.equal(pricing.priceStepPearls, 2, "Construction prices must round to one visible pearl, stored as two units");
+  assert.deepEqual(pricing.pricingPoints, [
+    { seconds: 60, pearls: 2 }, { seconds: 3600, pearls: 40 },
+    { seconds: 86400, pearls: 520 }, { seconds: 604800, pearls: 2000 },
+  ], "Construction acceleration must retain the authored discount curve in stored pearl units");
+  const pearlPricing = pricing.pricingPoints.map((point, index, points) => {
+    if (index > 1) {
+      const previous = points[index - 1], before = points[index - 2];
+      assert((point.pearls - previous.pearls) * (previous.seconds - before.seconds)
+        <= (previous.pearls - before.pearls) * (point.seconds - previous.seconds),
+      "Longer construction acceleration must not increase the per-second pearl rate");
+    }
+    return { seconds: point.seconds, storedPearls: point.pearls, visiblePearls: point.pearls / 2 };
+  });
   for (const order of catalog.onboarding?.residentOrders ?? []) validateQuantities(order.items, order.id, true);
   for (const stage of catalog.stageOrders ?? []) for (const order of stage.orders) validateQuantities(order.items, order.id, true);
   assert.deepEqual([...items.keys()].filter(item => !itemUses.has(item)), [], "Every item must serve crafting, construction, exploration, fishing, meals or resident orders");
@@ -317,6 +337,28 @@ export function auditEconomyProgression(catalog) {
   assert(catalog.recipes.some(recipe => recipe.requiredHomeLevel === 3 && recipe.buildingId === "garden" && recipe.buildingLevel === 2
     && recipe.seconds < 60 && recipe.rewards.berries === 1 && recipe.maxBatch === 1
     && recipe.cost.coins === 0 && !Object.keys(recipe.cost.items).length), "Home three opens a faster free unit crop");
+  const berryProgression = [
+    [1, "strawberries", "strawberry_compote"], [2, "blueberries", "blueberry_compote"],
+    [3, "currants", "currant_jelly"], [4, "blackberries", "blackberry_preserve"], [5, "cranberries", "cranberry_glaze"],
+  ].map(([homeLevel, cropId, productId]) => {
+    const crop = [...recipes.values()].find(recipe => recipe.rewards[cropId] === 1 && recipe.requiredHomeLevel === homeLevel);
+    const product = [...recipes.values()].find(recipe => recipe.rewards[productId] === 1);
+    assert(crop?.buildingId === "garden" && crop.buildingLevel === homeLevel
+      && crop.collection?.kind === "berry_harvest" && crop.collection.seconds === 8,
+    `Home ${homeLevel}: its new berry must use one garden slot and a confirmed harvest`);
+    assert(product?.requiredHomeLevel === homeLevel && product.requiredBuildings?.garden === homeLevel
+      && product.cost.items[cropId] > 0 && product.buildingId === "dryer",
+    `Home ${homeLevel}: its berry needs a new reachable recipe and corresponding garden gate`);
+    assert(catalog.food.meals.some(meal => meal.itemId === productId), `Home ${homeLevel}: its berry product needs a food benefit`);
+    assert(catalog.food.orders.templates.some(order => order.requiredHomeLevel === homeLevel && order.items[cropId] > 0)
+      && catalog.food.orders.templates.some(order => order.requiredHomeLevel === homeLevel && order.items[productId] > 0),
+    `Home ${homeLevel}: new berries and products need repeatable earning opportunities`);
+    const garden = buildings.get("garden").levels.find(level => level.level === homeLevel);
+    assert.equal(garden.requiredHomeLevel, homeLevel, `Garden ${homeLevel}: an upgrade must become available with its home`);
+    return { homeLevel, cropId, cropSeconds: crop.seconds, harvestSeconds: crop.collection.seconds,
+      cropCoins: items.get(cropId).baseSellPrice, productId, productSeconds: product.seconds,
+      productCoins: items.get(productId).baseSellPrice, processingMarginCoins: npcValue(product.rewards) - npcValue(product.cost.items) };
+  });
   assert(catalog.explorations.some(route => route.requiredHomeLevel === 1 && route.seconds >= 8 * 3600 && route.cost.coins === 0 && !Object.keys(route.cost.items).length), "Starter needs a free overnight exploration");
   const duration = targets => [...targets].reduce((sum, key) => sum + nodes.get(key).seconds, 0);
   const homeStages = buildings.get("home").levels.map(level => ({ level: level.level, minimumSeconds: duration(closure(`home:${level.level}`)) }));
@@ -334,12 +376,25 @@ export function auditEconomyProgression(catalog) {
   assert(homeFive.requiredBuildings?.bridge === 1 && homeFive.requiredBuildings?.lighthouse === 1,
     "Final home must require restored bridge and lighthouse");
   const previousHome = closure("home:4");
+  const previousThirdHome = closure("home:3");
+  const thirdConstruction = [...previousHome].filter(key => !previousThirdHome.has(key)).map(key => nodes.get(key));
+  assert(thirdConstruction.every(node => Object.values(node.cost.items).reduce((sum, count) => sum + count, 0) <= 14),
+    "Third stage mandatory building materials must fit a compact fourteen-item bundle");
+  const thirdStage = { constructionCount: thirdConstruction.length,
+    constructionCoins: thirdConstruction.reduce((sum, node) => sum + node.cost.coins, 0),
+    constructionSeconds: thirdConstruction.reduce((sum, node) => sum + node.seconds, 0),
+    largestMaterialBundle: Math.max(...thirdConstruction.map(node => Object.values(node.cost.items).reduce((sum, count) => sum + count, 0))) };
   const fourthStage = auditFourthStageBudget(catalog, [...closure("home:5")].filter(key => !previousHome.has(key)).map(key => nodes.get(key)));
+  for (const id of ["garden", "woodlot", "quarry", "workshop", "dryer", "kiln"]) {
+    const levels = buildings.get(id).levels;
+    assert(levels.every((level, index) => !index || level.seconds >= levels[index - 1].seconds),
+      `${id}: later production upgrades must not take less construction time than earlier tiers`);
+  }
   return {
     catalogVersion: catalog.version, itemCount: items.size, buildingCount: buildings.size,
     recipeCount: catalog.recipes.length, explorationCount: catalog.explorations.length,
     homeStages, fiveTierBaseMinimumSeconds, fullBaseMinimumSeconds,
-    projects, fourthStage, timingBasis: "Home/base minimumSeconds count only one builder's construction queue; project waits and actual play duration are separate",
+    projects, thirdStage, fourthStage, berryProgression, pearlPricing, timingBasis: "Home/base minimumSeconds count only one builder's construction queue; project waits and actual play duration are separate",
     completionLevels: Object.fromEntries([...buildings.values()].map(building => [building.id, building.levels.at(-1).level])),
     totalConstructionCoins: [...allConstruction].reduce((sum, key) => sum + nodes.get(key).cost.coins, 0),
     constructionOrder,

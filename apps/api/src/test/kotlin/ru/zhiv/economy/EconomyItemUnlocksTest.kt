@@ -76,7 +76,7 @@ class EconomyItemUnlocksTest {
 
     @Test fun `market capacity upgrades are sequential exact quoted and bounded without changing stored goods`() {
         var state = EconomyRules.initial().let { it.copy(wallet = EconomyWallet(100, 5000), completedExplorations = 1,
-            buildings = it.buildings + ("home" to 2)) }
+            buildings = it.buildings + mapOf("home" to 2, "bridge" to 1)) }
         val inventory = state.inventory
         val initialPearls = state.wallet.pearls
         assertEquals(listOf(100L, 160L, 240L, 360L, 500L), EconomyRules.catalog.market.slotPricesPearls)

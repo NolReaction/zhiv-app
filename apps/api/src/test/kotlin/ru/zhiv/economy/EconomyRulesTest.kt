@@ -486,10 +486,12 @@ class EconomyRulesTest {
 
     @Test fun `construction quote uses one visible pearl steps with exact subsecond readiness`() {
         assertEquals(15000L, EconomyRules.catalog.constructionSpeedup.secondsPerPearl)
-        for ((milliseconds, price) in listOf(-1L to 0L, 0L to 0L, 1L to 1L, 599_999L to 1L, 600_000L to 1L,
-            600_001L to 2L, 900_000L to 2L, 15_000_000L to 25L, 15_000_001L to 26L))
+        for ((milliseconds, price) in listOf(-1L to 0L, 0L to 0L, 1L to 1L, 59_999L to 1L, 60_000L to 1L,
+            60_001L to 2L, 900_000L to 6L, 3_600_000L to 20L, 3_600_001L to 21L,
+            86_400_000L to 260L, 86_400_001L to 261L, 172_800_000L to 384L,
+            604_800_000L to 1000L, 604_800_001L to 1001L))
             assertEquals(price * 2, EconomyRules.constructionSpeedupPrice(construction(milliseconds), now))
-        assertEquals(4L, EconomyRules.constructionSpeedupPrice(construction(600_000), now.minusNanos(1)))
+        assertEquals(4L, EconomyRules.constructionSpeedupPrice(construction(60_000), now.minusNanos(1)))
         assertEquals(2L, EconomyRules.constructionSpeedupPrice(construction(0), now.minusNanos(1)))
         for (kind in listOf("production", "exploration"))
             assertEquals(0L, EconomyRules.constructionSpeedupPrice(construction().copy(kind = kind), now))
@@ -500,12 +502,12 @@ class EconomyRulesTest {
         val before = EconomyRules.initial().copy(wallet = EconomyWallet(710, 1000), inventory = mapOf("berries" to 8L), jobs = listOf(job))
         val request = command("speedup_construction", job.id).copy(totalPrice = 500)
         val result = EconomyRules.apply(before, request, now).first
-        assertEquals(EconomyWallet(710, 996), result.wallet)
+        assertEquals(EconomyWallet(710, 988), result.wallet)
         assertEquals(before.inventory, result.inventory)
         assertEquals(2, result.buildings["home"])
         assertTrue(result.jobs.isEmpty())
         assertEquals(0L, result.completedExplorations)
-        assertEquals(998L, EconomyRules.apply(before, request, now.plusSeconds(300)).first.wallet.pearls)
+        assertEquals(992L, EconomyRules.apply(before, request, now.plusSeconds(300)).first.wallet.pearls)
         // Waiting for readiness never costs pearls, even when a former nonzero quote is submitted.
         val ready = EconomyRules.apply(before.copy(wallet = EconomyWallet()), request, Instant.parse(job.finishesAt)).first
         assertEquals(0L, ready.wallet.pearls)
@@ -514,24 +516,24 @@ class EconomyRulesTest {
 
     @Test fun `speedup rejects inadequate quote insufficient currency and other job kinds without mutation`() {
         val job = construction()
-        val before = EconomyRules.initial().copy(wallet = EconomyWallet(710, 3), jobs = listOf(job))
-        val request = command("speedup_construction", job.id).copy(totalPrice = 4)
+        val before = EconomyRules.initial().copy(wallet = EconomyWallet(710, 11), jobs = listOf(job))
+        val request = command("speedup_construction", job.id).copy(totalPrice = 12)
         assertEquals("ECONOMY_PEARLS", assertFailsWith<AuthFailure> { EconomyRules.apply(before, request, now) }.code)
-        assertEquals("ECONOMY_SPEEDUP_PRICE_CHANGED", assertFailsWith<AuthFailure> { EconomyRules.apply(before, request.copy(totalPrice = 3), now) }.code)
+        assertEquals("ECONOMY_SPEEDUP_PRICE_CHANGED", assertFailsWith<AuthFailure> { EconomyRules.apply(before, request.copy(totalPrice = 11), now) }.code)
         assertEquals("ECONOMY_JOB_GONE", assertFailsWith<AuthFailure> { EconomyRules.apply(before, request.copy(targetId = UUID.randomUUID().toString()), now) }.code)
         assertEquals("INVALID_ECONOMY_COMMAND", assertFailsWith<AuthFailure> { EconomyRules.apply(before, request.copy(quantity = 2), now) }.code)
         for (kind in listOf("production", "exploration")) assertEquals("ECONOMY_SPEEDUP_KIND", assertFailsWith<AuthFailure> {
             EconomyRules.apply(before.copy(jobs = listOf(job.copy(kind = kind))), request, now)
         }.code)
-        assertEquals(EconomyWallet(710, 3), before.wallet)
+        assertEquals(EconomyWallet(710, 11), before.wallet)
         assertEquals(listOf(job), before.jobs)
         assertEquals(1, before.buildings["home"])
     }
 
     @Test fun `speedup preserves historic paid orders and allows warehouse expansion without dropping overflow`() {
         val job = construction().copy(targetId = "warehouse", catalogVersion = 1)
-        val before = EconomyRules.initial().copy(wallet = EconomyWallet(0, 4), inventory = mapOf("wood" to 90L), jobs = listOf(job))
-        val result = EconomyRules.apply(before, command("speedup_construction", job.id).copy(totalPrice = 4), now).first
+        val before = EconomyRules.initial().copy(wallet = EconomyWallet(0, 12), inventory = mapOf("wood" to 90L), jobs = listOf(job))
+        val result = EconomyRules.apply(before, command("speedup_construction", job.id).copy(totalPrice = 12), now).first
         EconomyRules.assertStorageTransition(before, result)
         assertEquals(before.inventory, result.inventory)
         assertEquals(EconomyStorage(100, 90, 0, 10, 0), EconomyRules.storage(result))

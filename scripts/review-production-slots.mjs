@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 import { loadJourneyRules, simulateJourney, DEFAULT_JOURNEY_RARE_SEED } from "./simulate-player-journey.mjs";
 import { jointPlanningPolicy } from "./simulate-player-joint.mjs";
 
-/** Gift count, not an assumed average income: payouts arrive on steps 3, 6, 7. */
+/** Count actual catalog gifts rather than assuming an average daily income. */
 export function dailyPearlThreshold(rewards, targetPearls) {
   assert(Number.isSafeInteger(targetPearls) && targetPearls > 0);
   assert(rewards.daily.some(reward => reward.pearls > 0));

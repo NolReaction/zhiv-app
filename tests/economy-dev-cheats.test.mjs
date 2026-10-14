@@ -184,6 +184,7 @@ test("instant building levels use catalog bounds, can bypass gates and preserve 
   assert.deepEqual(read(p), before); assert.deepEqual(read(p).jobs, [production]);
   assert.equal(cheat(p, "set_building_level", "quarry", 1).state.buildings.home, 1, "DEV may inspect locked scenery without changing the house");
   cheat(p, "set_building_level", "home", 2);
+  cheat(p, "set_building_level", "bridge", 1);
   const row = fixture(p); row.state.completedExplorations = 1;
   cheat(p, "grant_item", "wood", 3);
   const listing = economy.commandDevEconomyMarket(p.token, { ...command(p, "create_listing", "wood", 2), totalPrice: 80 }, now).listing;

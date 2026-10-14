@@ -144,11 +144,29 @@ test("empty inventory invites exploration, but reserved goods remain explained a
 test("player market shortcut requires navigation and the actual catalog unlock conditions", () => {
   const props = { onOpenMarket() {} };
   assert.doesNotMatch(render(controller(), props), /Рынок игроков/);
-  const state = snapshot({ buildings: { home: economyCatalog.market.requiredHomeLevel, warehouse: 1 }, completedExplorations: economyCatalog.market.requiredExplorations });
+  const state = snapshot({ buildings: { home: economyCatalog.market.requiredHomeLevel, warehouse: 1, bridge: 1 }, completedExplorations: 0 });
   assert.match(render(controller({ snapshot: state }), props), /Рынок игроков/);
   assert.doesNotMatch(render(controller({ snapshot: state })), /Рынок игроков/);
-  state.completedExplorations = economyCatalog.market.requiredExplorations - 1;
+  state.buildings.bridge = 0;
   assert.doesNotMatch(render(controller({ snapshot: state }), props), /Рынок игроков/);
+});
+
+test("fresh tier berries stay with supplies while their prepared dishes appear in the shared fridge", () => {
+  const berries = ["blueberries", "currants", "blackberries", "cranberries"];
+  const dishes = ["strawberry_compote", "blueberry_compote", "currant_jelly", "blackberry_preserve", "cranberry_glaze"];
+  const state = snapshot({ inventory: Object.fromEntries([...berries, ...dishes].map(id => [id, 1])) });
+  const e = controller({ snapshot: state });
+  const supplies = render(e), fridge = render(e, { initialTab: "fridge" });
+  for (const id of berries) {
+    const label = economyCatalog.items.find(item => item.id === id).name;
+    assert.ok(supplies.includes(`aria-label="${label}: 1"`));
+    assert.ok(!fridge.includes(`aria-label="${label}: 1"`));
+  }
+  for (const id of dishes) {
+    const label = economyCatalog.items.find(item => item.id === id).name;
+    assert.ok(fridge.includes(`aria-label="${label}: 1"`));
+    assert.ok(!supplies.includes(`aria-label="${label}: 1"`));
+  }
 });
 
 test("warehouse expansion shows its own server-clock progress and ready status", () => {

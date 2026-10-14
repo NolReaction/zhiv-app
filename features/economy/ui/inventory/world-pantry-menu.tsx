@@ -10,6 +10,7 @@ import { ItemIcon } from "@/features/items/item-icon";
 import { FISH_SPECIES_IDS } from "@/features/world/activities/fishing/fish-species";
 import { FishRarityBadge } from "@/features/economy/ui/fishing/fish-rarity";
 import { economyLocalSellPrice, economyLocalSaleMinimumQuantity, economyLocalSaleLimit } from "@/features/economy/domain/local-sale";
+import { economyMarketUnlocked } from "@/features/economy/domain/market-rules";
 import type { EconomyView } from "@/features/economy/domain/model";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import { locked, type ReadyEconomy } from "@/features/economy/sync/controller-state";
@@ -136,7 +137,7 @@ export function WorldPantryMenu({ economy, onUpgrade, onExplore, onOpenMarket, o
   const expansionRelics = Object.entries(target?.cost.items ?? {}).filter(([id]) => relics.some(item => item.id === id));
   const job = state.jobs.find(entry => entry.kind === "construction" && entry.targetId === "warehouse");
   const progress = job ? worldJobProgress(state, job, economy.now) : null;
-  const marketAvailable = onOpenMarket && (state.buildings.home ?? 1) >= state.catalog.market.requiredHomeLevel && state.completedExplorations >= state.catalog.market.requiredExplorations;
+  const marketAvailable = onOpenMarket && economyMarketUnlocked(state, state.catalog);
   const readyEconomy = { ...economy, snapshot: state };
   return <div className={styles.pantry} aria-busy={economy.busy || undefined}>
     {recovery}

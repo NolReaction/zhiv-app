@@ -23,7 +23,7 @@ afterEach(() => { globalThis.fetch = fetchOriginal; });
 const owner = "AAAA-0000-0001", other = "AAAA-0000-0002", at = "2026-10-05T12:00:00.000Z", clock = Date.parse(at);
 const reward = { coins: 10, pearls: 0, items: {} };
 function view(step = 1, claimable = true, ownerPublicId = owner) {
-  return { ownerPublicId, serverTime: at, catalogVersion: 2,
+  return { ownerPublicId, serverTime: at, catalogVersion: 3,
     daily: { step, claimable, nextClaimAt: new Date(clock + (claimable ? 0 : 86_400_000)).toISOString(), lastClaimAt: null, lastClaimDate: null,
       reward, cycle: Array.from({ length: 7 }, (_, index) => ({ step: index + 1, reward: index === 6 ? { ...reward, pearls: 2 } : reward })) },
     achievementRewards: Object.entries(GAME_ACHIEVEMENT_TARGETS).flatMap(([achievementId, targets]) => targets.map((target, index) => ({
@@ -293,6 +293,19 @@ test("client API uses private no-store reads and validates receipt echo payload"
   assert.equal(result.requestId, command.requestId); assert.equal(calls[0].path, "/api/v1/game/rewards");
   assert.equal(calls[0].options.credentials, "same-origin"); assert.equal(calls[0].options.cache, "no-store");
   assert.equal(calls[1].path, "/api/v1/game/rewards/claims"); assert.deepEqual(JSON.parse(calls[1].options.body), command);
+});
+
+test("the client accepts frozen v2 reward responses alongside current v3 previews without repricing their bundles", () => {
+  const current = view(), historical = structuredClone(current);
+  historical.catalogVersion = 2;
+  historical.daily.reward = { coins: 80, pearls: 8, items: { ancient_core: 1 } };
+  for (const snapshot of [historical, current]) {
+    const parsed = api.gameRewardsSchema.parse(snapshot);
+    assert.equal(parsed.catalogVersion, snapshot.catalogVersion);
+    assert.deepEqual(parsed.daily.reward, snapshot.daily.reward);
+  }
+  assert.equal(api.gameRewardsSchema.safeParse({ ...current, catalogVersion: 1 }).success, false);
+  assert.equal(api.gameRewardsSchema.safeParse({ ...current, catalogVersion: 4 }).success, false);
 });
 
 

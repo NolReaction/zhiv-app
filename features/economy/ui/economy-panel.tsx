@@ -22,7 +22,7 @@ import { berryCollectionStatus } from "@/features/economy/integration/garden-col
 import { ProductionActivity, productionIsActive } from "@/features/economy/ui/production/production-activity";
 import { WorldProductionSlots } from "@/features/economy/ui/production/world-production-slots";
 import { worldConstructionReason, worldProductionReason, worldMissingRecipeRequirements } from "@/features/economy/ui/shared/world-stations";
-import { marketDailyLimit, marketItemUnlocked, marketMinimumPrice, marketSaleFee, marketSlotCount } from "@/features/economy/domain/market-rules";
+import { economyMarketUnlocked, marketDailyLimit, marketItemUnlocked, marketMinimumPrice, marketSaleFee, marketSlotCount } from "@/features/economy/domain/market-rules";
 import { BarterMarket } from "@/features/economy/ui/market/barter-market";
 import { WorldMarketSlots } from "@/features/economy/ui/market/world-market-slots";
 import styles from "./economy-panel.module.css";
@@ -47,7 +47,7 @@ const categoryNames: Record<string, string> = { produce: "Урожай", raw: "�
 const itemName = (state: EconomyView, id: string) => state.catalog.items.find(item => item.id === id)?.name ?? "Предмет";
 const buildingName = (state: EconomyView, id: string) => state.catalog.buildings.find(building => building.id === id)?.name ?? "Постройка";
 const number = (value: number) => value.toLocaleString("ru-RU");
-const canTrade = (state: EconomyView) => (state.buildings.home ?? 1) >= state.catalog.market.requiredHomeLevel && state.completedExplorations >= state.catalog.market.requiredExplorations;
+const canTrade = (state: EconomyView) => economyMarketUnlocked(state, state.catalog);
 
 export function economyDuration(seconds: number) {
   const minutes = Math.max(1, Math.ceil(seconds / 60));
@@ -192,7 +192,7 @@ function Unlocks({ state, building, level, navigate }: { state: EconomyView; bui
       {recipes.map(recipe => <li key={`recipe:${recipe.id}`}><button className={styles.textButton} onClick={() => navigate("production", recipe.buildingId)}><Hammer size={15} aria-hidden />{recipe.name}<ChevronRight size={14} aria-hidden /></button></li>)}
       {routes.map(route => <li key={`route:${route.id}`}><button className={styles.textButton} onClick={() => navigate("exploration", route.id)}><Compass size={15} aria-hidden />{route.name}<ChevronRight size={14} aria-hidden /></button></li>)}
       {upgrades.map(target => <li key={`building:${target.building.id}:${target.level}`}><button className={styles.textButton} onClick={() => navigate("buildings", target.building.id)}><House size={15} aria-hidden />{target.building.name} · ур. {target.level}<ChevronRight size={14} aria-hidden /></button></li>)}
-      {building.id === "home" && level.level === state.catalog.market.requiredHomeLevel && <li><button className={styles.textButton} onClick={() => navigate("market")}><Store size={15} aria-hidden />Торговля с игроками<ChevronRight size={14} aria-hidden /></button></li>}
+      {(building.id === "home" && level.level === state.catalog.market.requiredHomeLevel || state.catalog.market.requiredBuildings[building.id] === level.level) && <li><button className={styles.textButton} onClick={() => navigate("market")}><Store size={15} aria-hidden />Торговля с игроками<ChevronRight size={14} aria-hidden /></button></li>}
     </ul>
     {(recipes.length + routes.length + upgrades.length > 0) && <p className={styles.muted}>Откроется, когда выполнены и остальные условия. Нажмите на цель, чтобы посмотреть их.</p>}
     {building.id === "home" && <p className={styles.muted}>Обновляет облик дома на поляне.</p>}
@@ -469,7 +469,8 @@ function Market({ economy, navigate }: { economy: ReadyEconomy; navigate: Naviga
   const { snapshot: state, market, marketError, busy, uncertain } = economy;
   const unlocked = canTrade(state), limits = state.catalog.market;
   const showcase = market?.showcase, budget = market?.tradeBudget;
-  const listings = market?.listings.filter(offer => marketItemUnlocked(state, offer.itemId, state.catalog)) ?? [];
+  const listings = unlocked ? market?.listings.filter(offer => marketItemUnlocked(state, offer.itemId, state.catalog)) ?? [] : [];
+  const missingBuilding = Object.entries(limits.requiredBuildings).find(([id, level]) => (state.buildings[id] ?? 0) < level);
   const refreshIn = showcase ? Math.max(0, Math.ceil((Date.parse(showcase.refreshAt) - economy.now) / 1000)) : null;
   const refreshLabel = refreshIn === 0 ? "Обновить витрину" : "Проверить наличие";
   const refreshMarket = economy.refreshMarket;
@@ -479,15 +480,15 @@ function Market({ economy, navigate }: { economy: ReadyEconomy; navigate: Naviga
     <StorageStatus state={state} navigate={navigate} compact condensed />
     <button type="button" className={styles.textButton} onClick={() => navigate("barter")}><ArrowLeftRight size={16} aria-hidden />Обмен особыми материалами<ArrowRight size={15} aria-hidden /></button>
     <nav className={styles.subnav} aria-label="Раздел рынка"><button data-guide-market-tab="buy" aria-pressed={section === "browse"} onClick={() => setSection("browse")}>Купить</button><button data-guide-market-tab="sell" aria-pressed={section === "sell"} onClick={() => setSection("sell")}>Продать</button><button data-guide-market-tab="mine" aria-pressed={section === "mine"} onClick={() => setSection("mine")}>Мои лоты{market?.mine.length ? ` · ${market.mine.length}` : ""}</button></nav>
-    {!unlocked && <div className={styles.notice}><LockKeyhole size={18} aria-hidden /><div><p>Торговля с игроками откроется после обустройства дома и первой разведки.</p><p className={styles.muted}>Дом: {state.buildings.home ?? 1} / {limits.requiredHomeLevel} ур. · Завершённые вылазки: {Math.min(state.completedExplorations, limits.requiredExplorations)} / {limits.requiredExplorations}</p><button onClick={() => navigate((state.buildings.home ?? 1) < limits.requiredHomeLevel ? "buildings" : "exploration")}>Продолжить обустройство<ArrowRight size={15} aria-hidden /></button><p className={styles.muted}>Для быстрой продажи открой кладовую и нажми на предмет.</p></div></div>}
+    {!unlocked && <div className={styles.notice}><LockKeyhole size={18} aria-hidden /><div><p>Восстановите мост, чтобы открыть торговлю с игроками.</p><p className={styles.muted}>Дом: {state.buildings.home ?? 1} / {limits.requiredHomeLevel} ур.{Object.entries(limits.requiredBuildings).map(([id, level]) => <span key={id}> · {buildingName(state, id)}: {state.buildings[id] ?? 0} / {level}</span>)}{limits.requiredExplorations > 0 && <> · Завершённые вылазки: {Math.min(state.completedExplorations, limits.requiredExplorations)} / {limits.requiredExplorations}</>}</p><button onClick={() => (state.buildings.home ?? 1) < limits.requiredHomeLevel ? navigate("buildings", "home") : missingBuilding ? navigate("buildings", missingBuilding[0]) : navigate("exploration")}>Продолжить обустройство<ArrowRight size={15} aria-hidden /></button><p className={styles.muted}>Для быстрой продажи откройте кладовую и нажмите на предмет.</p></div></div>}
     {marketError && <div role="alert" className={styles.notice} data-kind="error"><CircleHelp size={18} aria-hidden /><div><p>{marketError}</p><button disabled={busy || uncertain} onClick={() => void refreshMarket()}>Обновить рынок</button></div></div>}
     {market && unlocked && <details className={styles.marketRules}><summary>Правила торговли и дневной объём</summary>
       <p>Поселения с домами 2–3 и 4–5 торгуют в своих кругах. Цена партии: 1–{limits.maxPriceMultiplier} базовых стоимости. Сбор с новых продаж: {limits.feeBps / 100}%.</p>
       {budget && <><p>Покупки: {number(budget.buysUsed)} / {number(budget.limit)}. Продажи: {number(budget.salesUsed)} / {number(budget.limit)}.</p>
         <p>Объём считается по базовой стоимости предметов, независимо от цены лота. Обновление через {economyDuration(Math.max(0, Math.ceil((Date.parse(budget.resetsAt) - economy.now) / 1000)))}.</p></>}
     </details>}
-    {!market && !marketError && <p className={styles.muted} role="status">Открываем прилавки…</p>}
-    {market && section === "browse" && <>
+    {!market && !marketError && unlocked && <p className={styles.muted} role="status">Открываем прилавки…</p>}
+    {market && unlocked && section === "browse" && <>
       <div className={styles.showcaseInfo}><div><strong>Ваша витрина · {listings.length} / {showcase?.slots ?? limits.showcaseSlots}</strong>
         {unlocked && refreshIn !== null && <p className={styles.muted}>{refreshIn > 0 ? `Смена через ${economyDuration(refreshIn)}` : "Доступна новая витрина"}</p>}
       </div><button disabled={busy || uncertain} onClick={() => void refreshMarket()}><RefreshCw size={14} aria-hidden />{refreshLabel}</button></div>

@@ -38,8 +38,8 @@ const { BuilderConversation } = await vite.ssrLoadModule("/features/world/ui/cha
 const { WorldUpgradeContent } = await vite.ssrLoadModule("/features/economy/ui/construction/world-upgrade-dialog.tsx");
 const hooks = await vite.ssrLoadModule(hookModule);
 const now = Date.parse("2026-10-06T12:00:00Z");
-// The v8 tariff is one displayed pearl per ten minutes; exercise a quote with many steps.
-const constructionRemainingMs = 250 * 60_000;
+// The current curve quotes 25 visible pearls for this remaining duration.
+const constructionRemainingMs = 85 * 60_000;
 function harness(Component = PleskMerchantHeader) {
   hooks.reset();
   const state = { ownerPublicId: "ME", revision: 1, catalog: economyCatalog, wallet: { coins: 0, pearls: 100 },
@@ -231,7 +231,7 @@ test("resynchronized higher shop quote needs new consent and expired confirmatio
 test("construction quote counts down inside the open confirmation and uses the cheaper charge", () => {
   const h = harness(ConstructionSpeedup);
   h.render().button("Завершить сейчас за 25 жемчужин").props.onClick();
-  h.economy.now += 150 * 60_000;
+  h.economy.now += 57 * 60_000;
   const view = h.render(); assert.match(view.html, /Подтвердить завершение за 10 жемчужин/);
   view.button("Подтвердить завершение за 10 жемчужин").props.onClick();
   assert.deepEqual(h.calls, [["speedup_construction", "house-job", 1, 20]]);

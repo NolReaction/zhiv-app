@@ -52,6 +52,11 @@ object EconomyMarketRules {
     const val MAX_PRICE_MULTIPLIER = 2L
     const val MAX_PAGE_SIZE = 12
 
+    fun unlocked(state: EconomyState, config: EconomyMarketConfig = EconomyRules.catalog.market): Boolean =
+        (state.buildings["home"] ?: 1) >= config.requiredHomeLevel &&
+            state.completedExplorations >= config.requiredExplorations &&
+            config.requiredBuildings.all { (id, level) -> (state.buildings[id] ?: 0) >= level }
+
     fun homeBand(homeLevel: Int): IntRange = when (homeLevel) {
         2, 3 -> 2..3
         4, 5 -> 4..5

@@ -56,7 +56,7 @@ class JdbcMarketUnlocksSlotsIntegrationTest {
         val token = tokens.issue()
         val user = JdbcZhivRepository(source).bootstrap("Лавка", tokens.issue().hash, token.hash, 365)
         economy.snapshot(token.hash)
-        edit(user.id) { it.copy(buildings=it.buildings+("home" to 3), completedExplorations=1,
+        edit(user.id) { it.copy(buildings=it.buildings+mapOf("home" to 3,"bridge" to 1), completedExplorations=1,
             wallet=it.wallet.copy(coins=10000, pearls=2000), inventory=mapOf("berries" to 20), itemUnlockVersion=1) }
         return Player(user.id,user.publicId,token.hash)
     }
@@ -91,6 +91,42 @@ class JdbcMarketUnlocksSlotsIntegrationTest {
     }
 
     private fun readState(player: Player) = source.connection.use { readEconomyProfile(it,player.id).state }
+
+    @Test fun `missing bridge blocks both peers without losing paid places escrow or replay receipts`() = runBlocking<Unit> {
+        val seller=player(); val buyer=player()
+        val create=command(seller,"create_listing","berries",price=10)
+        market.command(seller.hash,create)
+        val lot=market.market(seller.hash).mine.single()
+        assertEquals(lot.id,market.market(buyer.hash).listings.single().id)
+        edit(seller.id) { it.copy(buildings=it.buildings-"bridge",marketSlots=10) }
+        val before=economy.snapshot(seller.hash)
+        assertEquals(10,before.marketSlots)
+        assertTrue(market.market(buyer.hash).listings.isEmpty(),"Cached showcase cannot expose a locked seller")
+        assertEquals(lot.id,market.market(seller.hash).mine.single().id)
+        assertTrue(market.command(seller.hash,create).replayed,"A bridge gate does not rewrite a committed receipt")
+        assertEquals("ECONOMY_MARKET_LOCKED",assertFailsWith<AuthFailure> {
+            market.command(seller.hash,command(seller,"create_listing","berries",price=10)) }.code)
+        assertEquals("ECONOMY_MARKET_LOCKED",assertFailsWith<AuthFailure> {
+            economy.command(seller.hash,command(seller,"buy_market_slot","market:11",price=500)) }.code)
+        assertEquals("ECONOMY_MARKET_LOCKED",assertFailsWith<AuthFailure> {
+            market.command(buyer.hash,command(buyer,"buy_listing",lot.id,lot.quantity,lot.totalPrice)) }.code)
+        assertEquals("active",scalar(source,"SELECT status FROM economy_market_listings WHERE id=?",UUID.fromString(lot.id)))
+        assertEquals(before.wallet,economy.snapshot(seller.hash).wallet)
+        market.command(seller.hash,command(seller,"cancel_listing",lot.id))
+        assertEquals(20L,economy.snapshot(seller.hash).inventory["berries"])
+        assertEquals(10,economy.snapshot(seller.hash).marketSlots)
+
+        edit(seller.id) { it.copy(buildings=it.buildings+("bridge" to 1),completedExplorations=0) }
+        market.command(seller.hash,command(seller,"create_listing","berries",price=10))
+        val restoredLot=market.market(seller.hash).mine.single()
+        execute(source,"UPDATE economy_market_showcases SET refresh_at=clock_timestamp()-interval '1 second' WHERE user_id=?",buyer.id)
+        assertEquals(restoredLot.id,market.market(buyer.hash).listings.single().id)
+        edit(buyer.id) { it.copy(buildings=it.buildings+("bridge" to 0),completedExplorations=999) }
+        assertTrue(market.market(buyer.hash).listings.isEmpty())
+        assertEquals("ECONOMY_MARKET_LOCKED",assertFailsWith<AuthFailure> {
+            market.command(buyer.hash,command(buyer,"buy_listing",restoredLot.id,restoredLot.quantity,restoredLot.totalPrice)) }.code)
+        assertEquals("active",scalar(source,"SELECT status FROM economy_market_listings WHERE id=?",UUID.fromString(restoredLot.id)))
+    }
 
     @Test fun `unopened gifted goods are hidden and forced buy or listing commands fail`() = runBlocking<Unit> {
         val seller=player(); val buyer=player()
