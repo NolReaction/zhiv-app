@@ -63,7 +63,7 @@ test("confirmed work shows its building, timer and pearl completion; navigation 
   assert.match(html, new RegExp(economyCatalog.buildings.find(building => building.id === "home").name));
   assert.match(html, /Уровень 2/);
   assert.match(html, /Осталось 2 мин/);
-  assert.match(html, /Завершить сейчас за 1 жемчужину/);
+  assert.match(html, /Завершить сейчас за 2 жемчужины/);
   assert.match(html, /data-construction-speedup="paid-home-upgrade"/);
   const buttons = elements(tree).filter(element => element.type === "button");
   assert.equal(buttons.length, 1); buttons[0].props.onClick();
@@ -92,7 +92,7 @@ test("a pending pearl command stays visible in the builder and retries respect t
   const retry = elements(view.tree).find(element => element.type === "button" && element.props.children === "Проверить результат");
   assert.equal(retry.props.disabled, true);
   retry.props.onClick(); assert.equal(retries, 0);
-  assert.match(view.html, /disabled=""[^>]*aria-label="Завершить сейчас за 1 жемчужину"/);
+  assert.match(view.html, /disabled=""[^>]*aria-label="Завершить сейчас за 2 жемчужины"/);
   controller.now += 1000;
   view = conversation(controller);
   elements(view.tree).find(element => element.type === "button" && element.props.children === "Проверить результат").props.onClick();
@@ -100,7 +100,9 @@ test("a pending pearl command stays visible in the builder and retries respect t
 });
 
 test("short remaining times count seconds and account changes do not retain a previous building", () => {
-  assert.match(conversation(economy([job], { now: now + 60_000 })).html, /Осталось 30 с/);
+  const shortlyReady = conversation(economy([job], { now: now + 60_000 })).html;
+  assert.match(shortlyReady, /Осталось 30 с/);
+  assert.match(shortlyReady, /Завершить сейчас за 1 жемчужину/);
   const other = { ...job, targetId: "warehouse", targetLevel: 3 };
   const { html } = conversation(economy([other]));
   assert.match(html, new RegExp(economyCatalog.buildings.find(building => building.id === "warehouse").name));

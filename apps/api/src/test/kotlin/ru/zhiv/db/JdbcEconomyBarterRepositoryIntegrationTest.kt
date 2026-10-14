@@ -398,6 +398,15 @@ class JdbcEconomyBarterRepositoryIntegrationTest {
                 val repository=JdbcEconomyBarterRepository(isolated)
                 val current=JdbcEconomyRepository(isolated).snapshot(token.hash)
                 assertEquals(11L,current.revision,"Current merchant stock is initialized once after both conversions and the knowledge fence")
+                assertTrue(repository.barter(token.hash).offers.isEmpty())
+                assertEquals(0,current.buildings["bridge"] ?: 0,"Schema upgrades do not restore a bridge")
+                // Keep the historical comparisons above exact; only this current trading fixture opens the bridge.
+                isolated.connection.use { c ->
+                    val state=readEconomyProfile(c,user.id).state
+                    c.economyUpdate("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",
+                        economyJson.encodeToString(state.copy(buildings=state.buildings+("bridge" to 1))),user.id)
+                    c.commit()
+                }
                 val command=EconomyBarterCommand(UUID.randomUUID().toString(),user.publicId,current.revision,"create_offer","ancient_core","moon_crystal")
                 val result=repository.command(token.hash,command)
                 assertEquals(2L,result.state.storage.reserved,"coin listing and barter share warehouse escrow")

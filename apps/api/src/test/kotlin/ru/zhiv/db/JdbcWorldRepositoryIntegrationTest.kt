@@ -105,7 +105,9 @@ class JdbcWorldRepositoryIntegrationTest {
         val journey=WorldJourney(UUID.randomUUID().toString(),"first_path","2000-01-01T00:00:00Z","2000-01-01T00:01:00Z",WorldResources(12,8,4),listOf("acorn"),true,3)
         execute("INSERT INTO world_profiles(user_id,state) VALUES (?,?::jsonb)",p.id,worldJson.encodeToString(WorldState(houseLevel=2,journeys=listOf(journey))))
         world.snapshot(p.hash)
-        val state=EconomyRules.initial(homeLevel=2).copy(inventory=mapOf("berries" to 30L,"fiber" to 20L),completedExplorations=1)
+        val initialState=EconomyRules.initial(homeLevel=2)
+        val state=initialState.copy(inventory=mapOf("berries" to 30L,"fiber" to 20L),
+            buildings=initialState.buildings+("bridge" to 1),completedExplorations=1)
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(state),p.id)
         val balance=economy.snapshot(p.hash)
         market.command(p.hash,EconomyCommand(UUID.randomUUID().toString(),p.publicId,balance.revision,"create_listing","berries",20,200))

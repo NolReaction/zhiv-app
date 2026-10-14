@@ -775,7 +775,8 @@ class JdbcAccountLifecycleIntegrationTest {
         val a=account();val b=account();val browser=tokens.issue().hash
         val economy=JdbcEconomyRepository(source);val market=JdbcEconomyMarketRepository(source)
         fun prepare(owner: Account, amount: Long) {
-            val state=EconomyRules.initial(homeLevel=2).copy(inventory=mapOf("berries" to amount),completedExplorations=1)
+            val initial=EconomyRules.initial(homeLevel=2)
+            val state=initial.copy(inventory=mapOf("berries" to amount),buildings=initial.buildings+("bridge" to 1),completedExplorations=1)
             execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(state),owner.id)
         }
         economy.snapshot(a.session);economy.snapshot(b.session);prepare(a,5);prepare(b,8)
@@ -813,7 +814,8 @@ class JdbcAccountLifecycleIntegrationTest {
         val economy=JdbcEconomyRepository(source);val market=JdbcEconomyMarketRepository(source)
         economy.snapshot(a.session);economy.snapshot(b.session)
         for((owner,amount) in listOf(a to 25L,b to 26L)) {
-            val state=EconomyRules.initial(homeLevel=2).copy(inventory=mapOf("berries" to amount),completedExplorations=1)
+            val initial=EconomyRules.initial(homeLevel=2)
+            val state=initial.copy(inventory=mapOf("berries" to amount),buildings=initial.buildings+("bridge" to 1),completedExplorations=1)
             execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(state),owner.id)
         }
         val before=economy.snapshot(b.session)
@@ -833,9 +835,10 @@ class JdbcAccountLifecycleIntegrationTest {
         val a=account();val b=account();val browser=tokens.issue().hash
         val economy=JdbcEconomyRepository(source);val market=JdbcEconomyMarketRepository(source)
         economy.snapshot(a.session);economy.snapshot(b.session)
-        val target=EconomyRules.initial(homeLevel=2).copy(inventory=mapOf("wood" to 35L),completedExplorations=1)
-        val sourceState=EconomyRules.initial(homeLevel=2).copy(inventory=mapOf("berries" to 55L,"stone" to 10L),
-            buildings=EconomyRules.initial(homeLevel=2).buildings + ("warehouse" to 2),completedExplorations=1)
+        val initial=EconomyRules.initial(homeLevel=2)
+        val target=initial.copy(inventory=mapOf("wood" to 35L),buildings=initial.buildings+("bridge" to 1),completedExplorations=1)
+        val sourceState=initial.copy(inventory=mapOf("berries" to 55L,"stone" to 10L),
+            buildings=initial.buildings + mapOf("warehouse" to 2,"bridge" to 1),completedExplorations=1)
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(target),a.id)
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(sourceState),b.id)
         val before=economy.snapshot(b.session)
@@ -858,8 +861,9 @@ class JdbcAccountLifecycleIntegrationTest {
         val a=account();val b=account();val browser=tokens.issue().hash
         val economy=JdbcEconomyRepository(source);val market=JdbcEconomyMarketRepository(source)
         economy.snapshot(a.session);economy.snapshot(b.session)
-        val target=EconomyRules.initial(homeLevel=2).copy(inventory=mapOf("wood" to 30L),completedExplorations=1)
-        val other=EconomyRules.initial(homeLevel=2).copy(inventory=mapOf("berries" to 15L,"stone" to 10L),completedExplorations=1)
+        val initial=EconomyRules.initial(homeLevel=2)
+        val target=initial.copy(inventory=mapOf("wood" to 30L),buildings=initial.buildings+("bridge" to 1),completedExplorations=1)
+        val other=initial.copy(inventory=mapOf("berries" to 15L,"stone" to 10L),buildings=initial.buildings+("bridge" to 1),completedExplorations=1)
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(target),a.id)
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(other),b.id)
         val snapshot=economy.snapshot(b.session)

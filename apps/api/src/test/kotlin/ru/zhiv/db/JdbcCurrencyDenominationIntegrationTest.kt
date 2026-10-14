@@ -89,6 +89,16 @@ class JdbcCurrencyDenominationIntegrationTest {
             assertEquals(originalGift.copy(reward = ProgressionReward(pearls = 50)), paid.claim)
             assertEquals(EconomyWallet(1230, 200), paid.economy.wallet)
             val market = JdbcEconomyMarketRepository(source)
+            assertTrue(market.market(buyerToken.hash).listings.isEmpty(), "Currency migrations do not gift a restored bridge")
+            // All frozen migration and receipt checks are complete; prepare current trade access explicitly.
+            source.connection.use { c ->
+                for (user in listOf(seller, buyer)) {
+                    val state = readEconomyProfile(c, user.id).state
+                    c.economyUpdate("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",
+                        economyJson.encodeToString(state.copy(buildings = state.buildings + ("bridge" to 1))), user.id)
+                }
+                c.commit()
+            }
             val visible = market.market(buyerToken.hash).listings.single()
             assertEquals(active.toString(), visible.id)
             assertEquals("wood", visible.itemId)

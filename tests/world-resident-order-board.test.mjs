@@ -150,29 +150,32 @@ test("house-four final project shows actual restoration and claimed expedition p
   ready.props.onClick(); assert.deepEqual(calls[2], ["complete_resident_order", terms.id, 1, 0]);
 });
 
-test("house-three supply stays pinned while waiting and explains the full interval after handover", () => {
+test("house-three supply keeps its saved deadline separate from current and historical intervals after handover", () => {
   const economy = controller({ buildings: { home: 3, warehouse: 1, workshop: 2, quarry: 2, kiln: 1 },
     tutorialOrder: { version: 1, ingredientsClaimed: true, completed: true } });
   const course = economy.snapshot.catalog.stageOrders.find(entry => entry.homeLevel === 3);
-  assert.equal(course.orders.length, 8); assert.equal(course.intervalSeconds, 86400);
-  const terms = course.orders[1], availableAt = new Date(now + 86400000).toISOString();
-  economy.snapshot.stageOrders = { version: 1, stages: { 3: { step: 1, completed: false, terms, availableAt,
-    intervalSeconds: course.intervalSeconds, completionRewards: course.completionRewards } } };
-  economy.snapshot.inventory = { ...terms.items };
-  const before = structuredClone(economy.snapshot), offer = stageResidentOrder(economy.snapshot);
-  const markup = render(ResidentOrderBoard, { economy });
-  assert.match(markup, /К дому 4 · 2 \/ 8/);
-  assert.ok(markup.indexOf(`data-order-id="${terms.id}"`) < markup.indexOf('aria-label="Заказчик"'));
-  assert.match(markup, /data-stage-order-wait/);
-  assert.match(markup, new RegExp(`Следующая поставка через <strong>${worldDuration(course.intervalSeconds)}<\\/strong>`));
-  assert.match(markup, new RegExp(`После сдачи этой поставки до следующей пройдёт ${worldDuration(course.intervalSeconds)}`));
-  assert.match(markup, /Материалы можно подготовить заранее/);
-  assert.match(markup, /Жемчуг не сокращает этот срок/);
-  const card = ResidentOrderCard({ economy, offer });
-  assert.equal(buttons(card).length, 1); assert.equal(buttons(card)[0].props.disabled, true);
-  buttons(card)[0].props.onClick();
-  assert.deepEqual(economy.snapshot, before, "waiting views cannot advance the project or award goods");
-  assert.doesNotMatch(render(ResidentOrderBoard, { economy, residentId: "plesk" }), /data-stage-order/);
+  assert.equal(course.orders.length, 8); assert.equal(course.intervalSeconds, 23 * 3600);
+  const terms = course.orders[1], deadlineSeconds = 24 * 3600, availableAt = new Date(now + deadlineSeconds * 1000).toISOString();
+  for (const acceptedInterval of [course.intervalSeconds, 24 * 3600]) {
+    economy.snapshot.stageOrders = { version: 1, stages: { 3: { step: 1, completed: false, terms, availableAt,
+      intervalSeconds: acceptedInterval, completionRewards: course.completionRewards } } };
+    economy.snapshot.inventory = { ...terms.items };
+    const before = structuredClone(economy.snapshot), offer = stageResidentOrder(economy.snapshot);
+    const markup = render(ResidentOrderBoard, { economy });
+    assert.equal(offer.intervalSeconds, acceptedInterval, "the current catalog cannot reprice a saved 24-hour course");
+    assert.match(markup, /К дому 4 · 2 \/ 8/);
+    assert.ok(markup.indexOf(`data-order-id="${terms.id}"`) < markup.indexOf('aria-label="Заказчик"'));
+    assert.match(markup, /data-stage-order-wait/);
+    assert.match(markup, new RegExp(`Следующая поставка через <strong>${worldDuration(deadlineSeconds)}<\\/strong>`));
+    assert.match(markup, new RegExp(`После сдачи этой поставки до следующей пройдёт ${worldDuration(acceptedInterval)}`));
+    assert.match(markup, /Материалы можно подготовить заранее/);
+    assert.match(markup, /Жемчуг не сокращает этот срок/);
+    const card = ResidentOrderCard({ economy, offer });
+    assert.equal(buttons(card).length, 1); assert.equal(buttons(card)[0].props.disabled, true);
+    buttons(card)[0].props.onClick();
+    assert.deepEqual(economy.snapshot, before, "waiting views cannot advance the project or award goods");
+    assert.doesNotMatch(render(ResidentOrderBoard, { economy, residentId: "plesk" }), /data-stage-order/);
+  }
 });
 
 test("a stale supply card rechecks the server due time and current goods before issuing a command", () => {
@@ -432,7 +435,9 @@ test("paid replacement needs deliberate confirmation, checks fresh state and rej
       economy.notice = "Заказ выполнен"; tree = board();
       assert.match(renderToStaticMarkup(tree), new RegExp(`Заказ этапа выполнен · \\+${terms.coins.toLocaleString("ru-RU")} монет`));
       if (step === 0) {
-        assert.match(renderToStaticMarkup(tree), new RegExp(`Следующая поставка через ${worldDuration(project.intervalSeconds)}`));
+        const savedDeadlineSeconds = (Date.parse(economy.snapshot.stageOrders.stages[3].availableAt) - economy.now) / 1000;
+        assert.equal(savedDeadlineSeconds, 24 * 3600, "the accepted snapshot supplies its own next deadline");
+        assert.match(renderToStaticMarkup(tree), new RegExp(`Следующая поставка через ${worldDuration(savedDeadlineSeconds)}`));
         assert.match(renderToStaticMarkup(tree), /data-stage-order-wait/);
         assert.doesNotMatch(renderToStaticMarkup(tree), /Следующая просьба уже на доске|Получено:/);
       } else {

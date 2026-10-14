@@ -1156,7 +1156,7 @@ class JdbcEconomyRepositoryIntegrationTest {
                 val user = JdbcZhivRepository(isolated).bootstrap("Старый строитель", tokens.issue().hash, token.hash, 365)
                 val repo = JdbcEconomyRepository(isolated)
                 val job = EconomyJob(UUID.randomUUID().toString(), "construction", "home", targetLevel = 2,
-                    startedAt = Instant.now().toString(), finishesAt = Instant.now().plusSeconds(1190).toString())
+                    startedAt = Instant.now().toString(), finishesAt = Instant.now().plusSeconds(1270).toString())
                 val requestId = UUID.randomUUID()
                 isolated.connection.use { c ->
                     c.economyRows("SELECT id FROM app_users WHERE id=? FOR NO KEY UPDATE", user.id) { true }
@@ -1193,7 +1193,7 @@ class JdbcEconomyRepositoryIntegrationTest {
                     assertEquals("preserved", c.economyRows("SELECT signature FROM economy_commands WHERE user_id=? AND request_id=?", user.id, requestId) { it.getString(1) }.single())
                 }
                 val speedup = EconomyCommand(UUID.randomUUID().toString(), user.publicId, migrated.revision, "speedup_construction", job.id, totalPrice = 200)
-                assertEquals(996L, repo.command(token.hash, speedup).state.wallet.pearls)
+                assertEquals(984L, repo.command(token.hash, speedup).state.wallet.pearls)
             }
         } finally {
             source.connection.use { c -> c.autoCommit = true; c.economyUpdate("DROP DATABASE $database WITH (FORCE)") }
