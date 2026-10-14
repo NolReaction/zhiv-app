@@ -12,3 +12,5 @@ export { initialTerrain } from "./terrain/terrain-data.ts";
 export type { LightingState, ScenePointLight } from "./lighting/lighting-data.ts";
 export { initialLighting } from "./lighting/lighting-data.ts";
 export type { ImageAsset } from "./assets/image-assets.ts";
+export type { SceneDocument, SceneDocumentValidationOptions } from "./scene/document.ts";
+export { SCENE_DOCUMENT_VERSION, MAX_PROJECT_DOCUMENT_BYTES, validateSceneDocument, cloneSceneDocument } from "./scene/document.ts";

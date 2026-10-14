@@ -3,7 +3,7 @@
 import { useRef } from "react";
 import { Eye, EyeOff, Focus, FolderPlus, LockKeyhole, Trash2, UnlockKeyhole } from "lucide-react";
 import type { ForestStatus } from "@/apps/engine/src/editor/input/controller";
-import { folderContains, isFolderLocked } from "@/apps/engine/examples/forest/scene/folders";
+import { folderContains, isFolderLocked } from "@/packages/engine/src/scene/folders";
 import { EditorButton } from "./editor-button";
 import styles from "./procedural-forest-preview.module.css";
 
@@ -23,7 +23,7 @@ export function WorkspaceFolderInspector({ status, controller }: { status: Fores
     <EditorButton type="button" className={styles.folderAction} disabled={selected.locked} aria-label="Добавить вложенную папку" onClick={() => { const id = controller?.addFolder(folder.id); if (id) controller?.selectFolder(id); }}><FolderPlus size={16} /> Вложенная папка</EditorButton>
     <p className={styles.small}>Папки объединяют предметы, не меняя их слой или перекрытие. Выбери папку и перетащи любой её предмет — вся группа сдвинется вместе.</p>
     <form className={styles.folderMove} onSubmit={event => { event.preventDefault(); const x = Number(deltaX.current?.value ?? 0), y = Number(deltaY.current?.value ?? 0); if (Number.isFinite(x) && Number.isFinite(y)) controller?.translateSelectedFolder(x, y); }}>
-      <fieldset className={styles.editableFields} disabled={selected.locked}><div className={styles.fields}><label className={styles.field}><span>Сдвиг X</span><input ref={deltaX} aria-label="Сдвиг папки X" type="number" step="any" min={-status.width} max={status.width} defaultValue={0} /></label><label className={styles.field}><span>Сдвиг Y</span><input ref={deltaY} aria-label="Сдвиг папки Y" type="number" step="any" min={-1600} max={1600} defaultValue={0} /></label></div><EditorButton type="submit" className={styles.folderAction}>Сдвинуть папку</EditorButton></fieldset>
+      <fieldset className={styles.editableFields} disabled={selected.locked}><div className={styles.fields}><label className={styles.field}><span>Сдвиг X</span><input ref={deltaX} aria-label="Сдвиг папки X" type="number" step="any" min={-status.width} max={status.width} defaultValue={0} /></label><label className={styles.field}><span>Сдвиг Y</span><input ref={deltaY} aria-label="Сдвиг папки Y" type="number" step="any" min={-(status.height ?? 1600)} max={status.height ?? 1600} defaultValue={0} /></label></div><EditorButton type="submit" className={styles.folderAction}>Сдвинуть папку</EditorButton></fieldset>
     </form>
     <p className={styles.small}>Перенос целиком отменяется одним действием. Если хотя бы один предмет или его слой заблокирован, перемещение не начнётся.</p>
     <div className={styles.folderDelete}><EditorButton type="button" disabled={selected.locked} aria-label="Удалить выбранную папку" onClick={() => controller?.deleteFolder(folder.id)}><Trash2 size={15} /> Удалить папку</EditorButton><p className={styles.small}>Предметы и вложенные папки сохранятся у её родителя.</p><EditorButton type="button" disabled={selected.locked || !selected.count} aria-label="Удалить предметы выбранной папки" onClick={() => controller?.deleteFolderObjects(folder.id)}><Trash2 size={15} /> Удалить все предметы</EditorButton></div>

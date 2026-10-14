@@ -279,3 +279,73 @@
 @media (max-width: 700px), (hover: none) and (pointer: coarse) {
   .page input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]):not([type="reset"]), .page textarea, .page select, .page [contenteditable="true"], .page [contenteditable="plaintext-only"] { font-size: max(16px, 1em) !important; }
 }
+
+/* Projects and diagnostics are editor surfaces, independent of host dialogs. */
+.page .projectsTrigger { display: flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 8px; font-size: 11px; }
+.page .saveIndicator { border: 0; background: transparent; padding: 0; }
+.saveIndicator[data-save-state="error"] { color: #e8ae94; }
+.saveIndicator[data-save-state="error"] i { background: #d9836b; }
+.projectOverlay { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 20px; background: #07110bc9; }
+.projectDialog { display: flex; flex-direction: column; width: min(960px, 100%); max-height: min(850px, calc(100dvh - 40px)); min-width: 0; border: 1px solid #81956c77; border-radius: 12px; background: #17251d; box-shadow: 0 20px 65px #0006; overflow: hidden; }
+.projectHeading { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-shrink: 0; padding: 18px 20px; border-bottom: 1px solid #81956c40; }
+.projectHeading h2 { font-size: 18px; color: #d5e3c3; }
+.projectHeading p { margin-top: 5px; color: #9baf8f; font-size: 11px; line-height: 1.5; }
+.projectHeading > button { display: grid; place-items: center; width: 34px; height: 34px; flex-shrink: 0; }
+.projectBody { display: grid; grid-template-columns: minmax(260px, .85fr) minmax(0, 1.15fr); min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.projectBody h3 { margin-bottom: 14px; color: #d0dfba; font-size: 13px; font-weight: 500; }
+.projectCreate { padding: 20px; border-right: 1px solid #81956c30; min-width: 0; }
+.projectCreate form { display: grid; gap: 12px; }
+.projectCreate form > button { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 38px; margin-top: 4px; font-size: 12px; }
+.projectActionRow { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-top: 10px; }
+.projectActionRow button { display: flex; align-items: center; justify-content: center; gap: 5px; min-height: 32px; padding: 5px 8px; font-size: 10px; }
+.projectCreate > .projectActionRow { margin-top: 18px; }
+.projectCreate > .projectActionRow > button { width: 100%; min-height: 36px; }
+.projectListSection { padding: 20px; min-width: 0; }
+.projectListHeading { display: flex; justify-content: space-between; gap: 8px; }
+.projectListHeading > button { display: grid; place-items: center; width: 30px; height: 30px; flex-shrink: 0; }
+.projectList { display: grid; gap: 9px; padding: 0; margin: 14px 0 0; list-style: none; }
+.projectList > li { min-width: 0; padding: 11px; border: 1px solid #81956c38; border-radius: 7px; background: #112018; }
+.projectList > li[data-active="true"] { border-color: #bed89177; background: #293923; }
+.projectRowHeading { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; overflow-wrap: anywhere; }
+.projectRowHeading strong { color: #d5e4c1; font-size: 12px; }
+.projectRowHeading small { color: #bfd19d; font-size: 9px; }
+.projectList li > p { margin-top: 5px; color: #91a382; font-size: 10px; line-height: 1.5; }
+.projectRename { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+.projectRename > input { width: 100%; min-height: 34px; padding: 7px; }
+.projectRename > button { min-height: 30px; padding: 4px 8px; font-size: 11px; }
+.projectNotice, .projectError, .projectConfirm { margin: 12px 20px 0; padding: 10px; border: 1px solid #9c875d77; border-radius: 7px; background: #3c322d; color: #f0d7b2; line-height: 1.5; font-size: 11px; overflow-wrap: anywhere; flex-shrink: 0; }
+.projectNotice { border-color: #829c6277; background: #283822; color: #d2e2bc; }
+.projectError { max-height: 180px; overflow: auto; overscroll-behavior: contain; }
+.projectError p + p { margin-top: 6px; }
+.projectFooter { flex-shrink: 0; margin: 0; padding: 12px 20px; color: #91a582; border-top: 1px solid #81956c30; font-size: 10px; line-height: 1.5; }
+.diagnosticsPanel { position: fixed; top: 65px; right: 16px; z-index: 40; width: 470px; max-width: calc(100vw - 32px); max-height: calc(100dvh - 84px); padding: 15px; border: 1px solid #81956c55; border-radius: 9px; background: #18281ff5; box-shadow: 0 12px 44px #06120977; overflow: auto; overscroll-behavior: contain; }
+.diagnosticsPanel h3 { margin: 20px 0 10px; color: #d2e0bd; font-size: 12px; font-weight: 500; }
+.diagnosticsPanel details { margin-top: 12px; }
+.diagnosticsPanel summary { cursor: pointer; color: #b7cda3; font-size: 11px; }
+.diagnosticsTable { table-layout: fixed; width: 100%; margin-top: 14px; border-collapse: collapse; font-size: 10px; font-variant-numeric: tabular-nums; }
+.diagnosticsTable th, .diagnosticsTable td { padding: 7px 3px; border-bottom: 1px solid #81956c30; text-align: right; overflow-wrap: anywhere; }
+.diagnosticsTable th:first-child { width: 28%; text-align: left; font-weight: 500; color: #b8cfa4; }
+.diagnosticsTable th:last-child { width: 9%; }
+.diagnosticsMemory { display: grid; gap: 5px; font-size: 10px; }
+.diagnosticsMemory > div { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.diagnosticsMemory dt { min-width: 0; overflow-wrap: anywhere; color: #91a783; }
+.diagnosticsMemory dd { flex-shrink: 0; color: #cee0b8; font-variant-numeric: tabular-nums; }
+.diagnosticsReset { display: flex; align-items: center; justify-content: center; gap: 5px; width: 100%; min-height: 32px; margin-top: 18px; font-size: 11px; }
+@media (max-width: 700px) {
+  .page .documentTrigger { padding: 0; width: 30px; height: 30px; justify-content: center; }
+  .documentTrigger > span, .documentTrigger > svg:last-child { display: none; }
+  .page .projectsTrigger { width: 30px; height: 30px; padding: 0; justify-content: center; }
+  .projectsTrigger > span { display: none; }
+  .projectOverlay { padding: 6px; }
+  .projectDialog { max-height: calc(100dvh - 12px); border-radius: 9px; }
+  .projectHeading { padding: 12px; }
+  .projectHeading h2 { font-size: 16px; }
+  .projectBody { grid-template-columns: minmax(0, 1fr); }
+  .projectCreate, .projectListSection { padding: 14px 12px; }
+  .projectCreate { border: 0; border-bottom: 1px solid #81956c30; }
+  .projectNotice, .projectError, .projectConfirm { margin: 8px 12px 0; padding: 8px; font-size: 10px; }
+  .projectError { max-height: 130px; }
+  .projectFooter { padding: 10px 12px; }
+  .diagnosticsPanel { top: 59px; right: 8px; width: 470px; max-width: calc(100vw - 16px); max-height: calc(100dvh - 75px); padding: 12px; }
+  .diagnosticsTable { font-size: 9px; }
+}

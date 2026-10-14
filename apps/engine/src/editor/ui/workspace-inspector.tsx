@@ -4,8 +4,8 @@ import { memo } from "react";
 import { ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpToLine, Eye, EyeOff, Focus, LockKeyhole, UnlockKeyhole } from "lucide-react";
 import type { ForestStatus } from "@/apps/engine/src/editor/input/controller";
 import { EditorButton } from "./editor-button";
-import { EditorInspector, NumberField, objectNames } from "./editor-inspector";
-import { isFolderLocked } from "@/apps/engine/examples/forest/scene/folders";
+import { EditorInspector, NumberField, editorObjectName } from "./editor-inspector";
+import { isFolderLocked } from "@/packages/engine/src/scene/folders";
 import { WorkspaceFolderInspector } from "./workspace-folder-inspector";
 import styles from "./procedural-forest-preview.module.css";
 
@@ -16,7 +16,7 @@ export const WorkspaceInspector = memo(function WorkspaceInspector({ status, con
   const object = status.selected;
   if (!object) return <div className={styles.emptySelection}><span className={styles.emptyIcon}><Focus size={28} strokeWidth={1.25} /></span><strong>Выбери предмет</strong><p>Нажми на карте или найди его во вкладке «Слои». Тяни за углы рамки, чтобы менять размер.</p></div>;
   const imageName = status.assets.find(asset => asset.id === object.assetId)?.name;
-  const fallbackName = imageName ?? objectNames[object.kind];
+  const fallbackName = imageName ?? editorObjectName(status, object.kind);
   const name = object.name ?? fallbackName;
   const orders = [{ id: "front", label: "На передний план", icon: ArrowUpToLine }, { id: "forward", label: "На шаг вперёд", icon: ArrowUp }, { id: "backward", label: "На шаг назад", icon: ArrowDown }, { id: "back", label: "На задний план", icon: ArrowDownToLine }] as const;
   return <div className={styles.inspectorContent}>
@@ -32,9 +32,9 @@ export const WorkspaceInspector = memo(function WorkspaceInspector({ status, con
       <label className={styles.field}><span>Слой</span><select aria-label="Слой предмета" value={object.layerId ?? "world"} onChange={event => controller?.setSelectedLayer(event.target.value)}>{[...status.layers].reverse().map(layer => <option key={layer.id} value={layer.id} disabled={layer.locked && layer.id !== (object.layerId ?? "world")}>{layer.name}</option>)}</select></label>
       <label className={styles.folderMembership}><span>Папка</span><select aria-label="Папка предмета" value={object.folderId === undefined ? "auto" : object.folderId === null ? "root" : "id:" + object.folderId} onChange={event => { const value = event.target.value; if (value === "auto") controller?.moveObjectToFolder(object.id, undefined); else controller?.moveObjectToFolder(object.id, value === "root" ? null : value.slice(3)); }}><option value="auto">По виду предмета</option><option value="root">Корень сцены</option>{status.folders.map(folder => <option key={folder.id} value={"id:" + folder.id} disabled={isFolderLocked(folder.id, status.folders)}>{folder.name}</option>)}</select></label>
       <div className={styles.orderControls} role="group" aria-label="Порядок предмета">{orders.map(({ id, label, icon: Icon }) => <EditorButton key={id} type="button" title={label} aria-label={label} onClick={() => controller?.setSelectedOrder(id)}><Icon size={16} /></EditorButton>)}<EditorButton type="button" title="Автоматический порядок по положению на карте" aria-label="Автоматический порядок" onClick={() => controller?.setSelectedOrder("auto")}>Авто</EditorButton></div>
-      <EditorInspector object={object} width={status.width} imageName={imageName} update={patch => controller?.updateSelected(patch)} duplicate={() => controller?.duplicateSelected()} remove={() => controller?.deleteSelected()} />
+      <EditorInspector object={object} width={status.width} height={status.height} catalog={status.catalog} imageName={imageName} update={patch => controller?.updateSelected(patch)} duplicate={() => controller?.duplicateSelected()} remove={() => controller?.deleteSelected()} />
       <div className={styles.objectShadow}><NumberField label="Высота для тени" value={status.selectedShadowHeight ?? 0} min={0} max={480} change={value => controller?.setSelectedShadowHeight(value)} /><EditorButton type="button" aria-label="Автоматическая высота тени" title="Вернуть высоту по виду предмета" disabled={object.shadowHeight === undefined} onClick={() => controller?.setSelectedShadowHeight(undefined)}>Авто</EditorButton></div><p className={styles.small}>Условная высота для освещения. Ноль отключает тень; размер предмета тоже влияет на её длину.</p>
     </fieldset>
     <p className={styles.objectId}>{object.id}</p>
   </div>;
-}, (previous, next) => previous.controller === next.controller && previous.status.width === next.status.width && previous.status.layers === next.status.layers && previous.status.folders === next.status.folders && previous.status.assets === next.status.assets && previous.status.selectedHidden === next.status.selectedHidden && previous.status.selectedLocked === next.status.selectedLocked && previous.status.selectedShadowHeight === next.status.selectedShadowHeight && JSON.stringify(previous.status.selected) === JSON.stringify(next.status.selected) && JSON.stringify(previous.status.selectedFolder) === JSON.stringify(next.status.selectedFolder));
+}, (previous, next) => previous.controller === next.controller && previous.status.width === next.status.width && previous.status.height === next.status.height && previous.status.catalog === next.status.catalog && previous.status.layers === next.status.layers && previous.status.folders === next.status.folders && previous.status.assets === next.status.assets && previous.status.selectedHidden === next.status.selectedHidden && previous.status.selectedLocked === next.status.selectedLocked && previous.status.selectedShadowHeight === next.status.selectedShadowHeight && JSON.stringify(previous.status.selected) === JSON.stringify(next.status.selected) && JSON.stringify(previous.status.selectedFolder) === JSON.stringify(next.status.selectedFolder));

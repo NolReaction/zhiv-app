@@ -1,6 +1,7 @@
 import { getObjectShadowHeight as defaultShadowHeight } from "../scene/objects.ts";
 import type { Bounds, EngineObject } from "../scene/contracts.ts";
 import type { LightingState, ScenePointLight } from "./lighting-data.ts";
+import { canvasMemoryResources, estimateCacheMemory } from "../rendering/cache-memory.ts";
 
 type CanvasFactory = (width: number, height: number) => HTMLCanvasElement;
 export type CasterSource = { image?: CanvasImageSource; bounds: Bounds };
@@ -377,8 +378,14 @@ export function createLightingRenderer(makeCanvas: CanvasFactory, sourceFor: (ob
     sunPatchKey = ""; fieldPatchKey = "";
   }
   return { sync, paintGroundShadows, paintIllumination, invalidateAsset,
-    diagnostics: () => ({ sunBuilds, fieldBuilds, casterUpdates, sunPatchBuilds, fieldPatchBuilds, pointStampBuilds, rawBytes, stampBytes,
-      pixels: [sunWorld, fieldWorld, sunScratch, sunBlur, fieldScratch, sunPatch, sunPatchBlur, fieldPatch, pointPatch, pointMask, pointMaskBlur].reduce((sum, canvas) => sum + (canvas ? canvas.width * canvas.height : 0), 0) + stampBytes / 4 }),
+    diagnostics: (seen?: Set<object>) => ({ sunBuilds, fieldBuilds, casterUpdates, sunPatchBuilds, fieldPatchBuilds, pointStampBuilds, rawBytes, stampBytes,
+      pixels: [sunWorld, fieldWorld, sunScratch, sunBlur, fieldScratch, sunPatch, sunPatchBlur, fieldPatch, pointPatch, pointMask, pointMaskBlur].reduce((sum, canvas) => sum + (canvas ? canvas.width * canvas.height : 0), 0) + stampBytes / 4,
+      memory: estimateCacheMemory({
+        lightingWorld: canvasMemoryResources([sunWorld, fieldWorld]),
+        lightingWorkspace: canvasMemoryResources([sunScratch, sunBlur, fieldScratch, sunPatch, sunPatchBlur, fieldPatch, pointPatch, pointMask, pointMaskBlur]),
+        lightingPointStamps: canvasMemoryResources(Array.from(pointStamps.values(), stamp => stamp.canvas)),
+      }, rawBytes, seen),
+      budgets: { rawBufferBytes: RAW_BUDGET, pointStampBytes: POINT_BUDGET } }),
     dispose() { disposed = true; lighting = undefined; base.clear(); overlays.clear(); effective.clear(); stationary.clear(); sunIndex.clear(); pointIndex.clear(); sunReady.clear(); fieldReady.clear(); rawTiles.clear(); pointStamps.clear(); rawBytes = 0; stampBytes = 0;
       sunWorld = undefined; fieldWorld = undefined; sunScratch = undefined; sunBlur = undefined; fieldScratch = undefined; sunPatch = undefined; sunPatchBlur = undefined; fieldPatch = undefined; pointPatch = undefined; pointMask = undefined; pointMaskBlur = undefined; baseObjects = undefined; previewMap = undefined; } };
 }

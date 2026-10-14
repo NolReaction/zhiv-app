@@ -8,6 +8,7 @@ import { dirtyTerrainChunks, terrainAppearance, type TerrainPreview, type Terrai
 import { createLightingRenderer, type CasterSource } from "../lighting/lighting-renderer.ts";
 import { initialLighting, type LightingState } from "../lighting/lighting-data.ts";
 import { validateSceneSize, type Bounds, type EngineObject, type EnginePreset } from "../scene/contracts.ts";
+import { canvasMemoryResources, estimateCacheMemory, mergeCacheMemory, type CacheMemoryResource } from "./cache-memory.ts";
 
 export type CanvasFactory = (width: number, height: number) => HTMLCanvasElement;
 export type ImageLoader = (dataUrl: string) => Promise<CanvasImageSource>;
@@ -565,6 +566,35 @@ export function createScenePainter(makeCanvas: CanvasFactory, preset: EnginePres
     return { objects: count, chunks: ground.size };
   }
 
-  return { paint, objects, prepareAssets, diagnostics: () => ({ sceneBuilds, boundsComputed, shadowBuilds, terrainComposites, baseTerrainBuilds, staticTileBuilds, staticPixels: staticWorld ? staticWorld.width * staticWorld.height + (TILE + 2) ** 2 : 0, lighting: lightingRenderer.diagnostics() }),
+  function diagnostics() {
+    const seen = new Set<object>(), decodedImages: CacheMemoryResource[] = [];
+    let sourceEntries = 0, pendingSources = 0, failedSources = 0;
+    for (const versions of sources.values()) for (const source of versions.values()) {
+      sourceEntries++;
+      if (source.image) decodedImages.push({ value: source.image, pixels: source.pixels, kind: "decoded-image" });
+      else if (source.failed) failedSources++;
+      else pendingSources++;
+    }
+    const ownMemory = estimateCacheMemory({
+      terrainBase: canvasMemoryResources(ground.values()),
+      terrainMaterials: canvasMemoryResources(materialGround.values()),
+      terrainComposites: canvasMemoryResources(Array.from(editedGround.values(), entry => entry.canvas)),
+      sprites: canvasMemoryResources(sprites.values()),
+      contactShadows: canvasMemoryResources(shadows.values()),
+      casterArt: canvasMemoryResources(Array.from(casterArt.values(), source => source.image as HTMLCanvasElement)),
+      staticWorld: canvasMemoryResources([staticWorld]),
+      staticWorkspace: canvasMemoryResources([staticScratch]),
+      decodedImages,
+    }, 0, seen);
+    const lighting = lightingRenderer.diagnostics(seen), terrain = terrainComposer?.diagnostics(seen);
+    return { sceneBuilds, boundsComputed, shadowBuilds, terrainComposites, baseTerrainBuilds, staticTileBuilds,
+      staticPixels: staticWorld ? staticWorld.width * staticWorld.height + (TILE + 2) ** 2 : 0,
+      lighting, terrain,
+      sourceCache: { entries: sourceEntries, pending: pendingSources, failed: failedSources, pixelBudget: SOURCE_PIXEL_BUDGET },
+      memory: mergeCacheMemory(ownMemory, lighting.memory, ...(terrain ? [terrain.memory] : [])),
+    };
+  }
+
+  return { paint, objects, prepareAssets, diagnostics,
     dispose() { disposed = true; ground.clear(); materialGround.clear(); editedGround.clear(); terrainComposer?.dispose(); sprites.clear(); shadows.clear(); casterArt.clear(); lightingRenderer.dispose(); sources.clear(); currentSources.clear(); preparedSources.clear(); preparingSources.clear(); activeAssets = undefined; lastPaintAssets = undefined; generated = []; prepared = undefined; previewCache = undefined; folderFrameCache = undefined; boundsCache = new WeakMap(); lastTerrainCells = undefined; staticWorld = undefined; staticScratch = undefined; staticScene = undefined; staticReady.clear(); staticExcluded.clear(); } };
 }

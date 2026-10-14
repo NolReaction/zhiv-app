@@ -3,14 +3,14 @@
 import { memo, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { ChevronDown, ChevronRight, Eye, EyeOff, Folder, FolderOpen, GripVertical, LockKeyhole, UnlockKeyhole } from "lucide-react";
 import type { ForestStatus } from "@/apps/engine/src/editor/input/controller";
-import type { ForestObject } from "@/apps/engine/examples/forest/scene/objects";
-import { folderAncestors, isFolderLocked, isFolderVisible, objectFolderId, type SceneFolder } from "@/apps/engine/examples/forest/scene/folders";
-import { objectNames } from "./editor-inspector";
+import type { EngineObject } from "@/packages/engine/src/scene/contracts";
+import { folderAncestors, isFolderLocked, isFolderVisible, objectFolderId, type SceneFolder } from "@/packages/engine/src/scene/folders";
+import { editorObjectName } from "./editor-inspector";
 import { EditorButton } from "./editor-button";
 import styles from "./procedural-forest-preview.module.css";
 
 type Controller = ReturnType<typeof import("@/apps/engine/src/editor/input/controller")["createForestController"]>;
-type Row = { type: "folder"; folder: SceneFolder; level: number; count: number; open: boolean } | { type: "object"; object: ForestObject; level: number };
+type Row = { type: "folder"; folder: SceneFolder; level: number; count: number; open: boolean } | { type: "object"; object: EngineObject; level: number };
 const objectDrag = "application/x-forest-object", folderDrag = "application/x-forest-folder", rowHeight = 44;
 
 export const WorkspaceFolders = memo(function WorkspaceFolders({ status, controller, query, layerFilter }: { status: ForestStatus; controller: Controller | null; query: string; layerFilter: string }) {
@@ -19,17 +19,18 @@ export const WorkspaceFolders = memo(function WorkspaceFolders({ status, control
   const [drop, setDrop] = useState<{ id: string; position: "before" | "after" | "inside" } | null>(null);
   const scroll = useRef<HTMLDivElement>(null);
   const dragging = useRef<{ type: "object" | "folder"; id: string } | null>(null);
+  const catalog = status.catalog;
   const names = useMemo(() => new Map(status.assets.map(asset => [asset.id, asset.name])), [status.assets]);
   const layers = useMemo(() => new Map(status.layers.map(layer => [layer.id, layer])), [status.layers]);
   const rows = useMemo(() => {
-    const children = new Map<string | null, SceneFolder[]>(), items = new Map<string | null, ForestObject[]>(), counts = new Map<string, number>(), matches = new Set<string>();
+    const children = new Map<string | null, SceneFolder[]>(), items = new Map<string | null, EngineObject[]>(), counts = new Map<string, number>(), matches = new Set<string>();
     const text = query.trim().toLocaleLowerCase("ru");
     for (const folder of status.folders) { const siblings = children.get(folder.parentId) ?? []; siblings.push(folder); children.set(folder.parentId, siblings); }
     for (const object of status.objectList) {
       if (layerFilter !== "all" && (object.layerId ?? "world") !== layerFilter) continue;
-      const folderId = objectFolderId(object, status.folders), ancestors = folderAncestors(folderId, status.folders) ?? [];
+      const folderId = objectFolderId(object, status.folders, kind => catalog?.[kind]?.defaultFolderId ?? ({ tree: "trees", shrub: "shrubs", rock: "rocks", ruins: "props", bridge: "props", jetty: "props", image: "images" } as Record<string, string>)[kind] ?? kind), ancestors = folderAncestors(folderId, status.folders) ?? [];
       for (const folder of ancestors) counts.set(folder.id, (counts.get(folder.id) ?? 0) + 1);
-      const searchable = [object.name, objectNames[object.kind], object.kind, object.id, object.assetId && names.get(object.assetId), ...ancestors.map(folder => folder.name)].filter(Boolean).join(" ").toLocaleLowerCase("ru");
+      const searchable = [object.name, editorObjectName({ catalog }, object.kind), object.kind, object.id, object.assetId && names.get(object.assetId), ...ancestors.map(folder => folder.name)].filter(Boolean).join(" ").toLocaleLowerCase("ru");
       if (text && !searchable.includes(text)) continue;
       const siblings = items.get(folderId) ?? []; siblings.push(object); items.set(folderId, siblings);
       for (const folder of ancestors) matches.add(folder.id);
@@ -46,12 +47,12 @@ export const WorkspaceFolders = memo(function WorkspaceFolders({ status, control
       for (const object of items.get(parentId) ?? []) result.push({ type: "object", object, level });
     }
     visit(null, 0); return result;
-  }, [status.objectList, status.folders, names, expanded, query, layerFilter]);
+  }, [status.objectList, status.folders, names, expanded, query, layerFilter, catalog]);
   useEffect(() => {
     const node = scroll.current; if (!node) return;
     const resize = () => setHeight(Math.max(rowHeight, node.clientHeight)); const observer = new ResizeObserver(resize); observer.observe(node); resize(); return () => observer.disconnect();
   }, []);
-  useEffect(() => { const reset = () => { if (scroll.current) scroll.current.scrollTop = 0; setScrollTop(0); }; reset(); }, [query, layerFilter]);
+  useEffect(() => { const reset = () => { if (scroll.current) scroll.current.scrollTop = 0; setScrollTop(0); }; reset(); }, [query, layerFilter, catalog]);
   function toggle(id: string) { setExpanded(current => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; }); }
   function endDrag() { dragging.current = null; setDrop(null); }
   function payload(event: DragEvent) { return dragging.current ?? (event.dataTransfer.getData(folderDrag) ? { type: "folder" as const, id: event.dataTransfer.getData(folderDrag) } : { type: "object" as const, id: event.dataTransfer.getData(objectDrag) }); }
@@ -69,9 +70,9 @@ export const WorkspaceFolders = memo(function WorkspaceFolders({ status, control
             <EditorButton type="button" aria-label={(folder.locked ? "Разблокировать папку " : "Заблокировать папку ") + folder.name} title={folder.locked ? "Разблокировать папку" : locked ? "Родительская папка заблокирована" : "Заблокировать папку"} onClick={() => controller?.setFolderLocked(folder.id, !folder.locked)}>{locked ? <LockKeyhole size={14} /> : <UnlockKeyhole size={14} />}</EditorButton>
           </div>;
         }
-        const object = row.object, name = object.name ?? (object.assetId ? names.get(object.assetId) : undefined) ?? objectNames[object.kind], layer = layers.get(object.layerId ?? "world"), folderId = objectFolderId(object, status.folders);
+        const object = row.object, name = object.name ?? (object.assetId ? names.get(object.assetId) : undefined) ?? editorObjectName({ catalog }, object.kind), layer = layers.get(object.layerId ?? "world"), folderId = objectFolderId(object, status.folders, kind => catalog?.[kind]?.defaultFolderId ?? ({ tree: "trees", shrub: "shrubs", rock: "rocks", ruins: "props", bridge: "props", jetty: "props", image: "images" } as Record<string, string>)[kind] ?? kind);
         const locked = !!object.locked || !!layer?.locked || isFolderLocked(folderId, status.folders);
-        const hidden = !!object.hidden || layer?.visible === false || !isFolderVisible(folderId, status.folders) || !status.trees && (object.kind === "tree" || object.kind === "shrub");
+        const hidden = !!object.hidden || layer?.visible === false || !isFolderVisible(folderId, status.folders) || !status.trees && (status.catalog?.[object.kind]?.tags.includes("vegetation") ?? (object.kind === "tree" || object.kind === "shrub"));
         return <div key={object.id} role="listitem" data-object-id={object.id} data-selected={status.selected?.id === object.id} data-hidden={hidden} data-drop={drop?.id === object.id ? drop.position : undefined} className={styles.objectRow} style={{ top, paddingLeft }} draggable={!locked} onDragStart={event => { dragging.current = { type: "object", id: object.id }; event.dataTransfer.setData(objectDrag, object.id); event.dataTransfer.effectAllowed = "move"; }} onDragEnd={endDrag} onDragOver={event => { if (!event.dataTransfer.types.includes(objectDrag) || layer?.locked || isFolderLocked(folderId, status.folders)) return; event.preventDefault(); const bounds = event.currentTarget.getBoundingClientRect(); setDrop({ id: object.id, position: event.clientY < bounds.top + bounds.height / 2 ? "before" : "after" }); }} onDrop={event => { event.preventDefault(); const source = payload(event); if (source.type === "object" && source.id && source.id !== object.id && !locked) controller?.reorderObject(source.id, object.id, drop?.id === object.id && drop.position === "after" ? "after" : "before"); endDrag(); }}>
           <GripVertical size={13} className={styles.grip} aria-hidden="true" />
           <EditorButton type="button" className={styles.objectSelect} aria-label={"Выбрать " + name + ": " + object.id} aria-pressed={status.selected?.id === object.id} title={name + " · " + object.id} onClick={() => controller?.selectById(object.id)}><span>{name}</span><small>{layer?.name ?? "Мир"} · {object.id}</small></EditorButton>
@@ -82,4 +83,4 @@ export const WorkspaceFolders = memo(function WorkspaceFolders({ status, control
     </div>
     {!rows.length && <p className={styles.emptyList}>Ничего не найдено. Измени запрос или слой.</p>}
   </div>;
-}, (previous, next) => previous.controller === next.controller && previous.query === next.query && previous.layerFilter === next.layerFilter && previous.status.objectList === next.status.objectList && previous.status.folders === next.status.folders && previous.status.layers === next.status.layers && previous.status.assets === next.status.assets && previous.status.trees === next.status.trees && previous.status.selected?.id === next.status.selected?.id && previous.status.selectedFolder?.folder.id === next.status.selectedFolder?.folder.id);
+}, (previous, next) => previous.controller === next.controller && previous.query === next.query && previous.layerFilter === next.layerFilter && previous.status.objectList === next.status.objectList && previous.status.folders === next.status.folders && previous.status.layers === next.status.layers && previous.status.assets === next.status.assets && previous.status.trees === next.status.trees && previous.status.catalog === next.status.catalog && previous.status.selected?.id === next.status.selected?.id && previous.status.selectedFolder?.folder.id === next.status.selectedFolder?.folder.id);

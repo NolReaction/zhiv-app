@@ -1,25 +1,32 @@
-import { createForestPainter, type CanvasFactory, type ForestOptions, type ImageLoader } from "@/apps/engine/examples/forest/rendering/renderer";
-import { canPlant, compareObjects, getObjectShadowHeight, INITIAL_SEED, MAX_WIDTH, objectBounds, objectCorners, OVERSCAN_EDIT_MARGIN, pickObject, WORLD_HEIGHT, type Bounds, type ForestObject, type ObjectKind } from "@/apps/engine/examples/forest/scene/objects";
-import { createSceneHistory, createSceneStorageAdapter, parseScene, serializeScene, validateScene, type SceneStorage } from "@/apps/engine/src/editor/scene/editor-scene";
+import { createScenePainter, type CanvasFactory, type SceneRenderOptions, type ImageLoader } from "@/packages/engine/src/rendering/renderer";
+import { MAX_SCENE_DIMENSION, MAX_SCENE_PIXELS, type EngineObject, type Bounds } from "@/packages/engine/src/scene/contracts";
+import type { SceneDocument } from "@/packages/engine/src/scene/document";
+import { createProjectDocument, parseProjectDocument, validateProjectDocument, serializeProjectDocument, cloneProjectDocument, createProjectHistory } from "../scene/project-document";
+import { getEditorPreset, getEditorCatalog, createDocumentRuntimePreset, type EditorCatalogEntry } from "../scene/editor-presets";
+import { createEditorCatalogTools } from "../scene/editor-catalog-tools";
+import { createEngineProfiler, type EngineProfiler } from "../diagnostics/engine-profiler";
+import { INITIAL_SEED, MAX_WIDTH, type ForestObject } from "@/apps/engine/examples/forest/scene/objects";
+import { createSceneStorageAdapter, serializeScene, validateScene, type ForestScene, type SceneStorage } from "@/apps/engine/src/editor/scene/editor-scene";
 import { imageObjectSize, readPngFile, validateImageAsset, type ImageAsset } from "@/packages/engine/src/assets/image-assets";
-import { beginResize, findResizeHandle, MAX_OBJECT_SCALE, MIN_OBJECT_SCALE, resizedObject, type ResizeCorner, type ResizeSession } from "@/apps/engine/examples/forest/input/transform";
-import { isObjectLocked, isObjectVisible, objectLayerId, stackKey, stackKeyBetween, type SceneLayer } from "@/apps/engine/examples/forest/scene/stacking";
+import { MAX_OBJECT_SCALE, MIN_OBJECT_SCALE, type ResizeCorner, type ResizeSession } from "@/packages/engine/src/input/transform";
+import { objectLayerId, stackKey as coreStackKey, stackKeyBetween, type SceneLayer } from "@/packages/engine/src/scene/stacking";
 
-import { folderAncestors, folderContains, isFolderLocked, isFolderVisible, MAX_SCENE_FOLDERS, objectFolderId, type SceneFolder } from "@/apps/engine/examples/forest/scene/folders";
-import { applyTerrainPatch, CELL_SIZE, dirtyTerrainChunks, MAX_TERRAIN_CELLS, strokeTerrainCells, terrainAppearance, updateTerrainAppearance, type TerrainAppearance, type TerrainBrush, type TerrainMaterial, type TerrainState } from "@/apps/engine/examples/forest/terrain/terrain-data";
-import { MAX_POINT_LIGHTS, validateLighting, type LightingState, type ScenePointLight } from "@/apps/engine/examples/forest/lighting/lighting-data";
+import { folderAncestors, folderContains, isFolderLocked, isFolderVisible, MAX_SCENE_FOLDERS, type SceneFolder } from "@/packages/engine/src/scene/folders";
+import { applyTerrainPatch, CELL_SIZE, dirtyTerrainChunks, MAX_TERRAIN_CELLS, strokeTerrainCells, terrainAppearance, updateTerrainAppearance, type TerrainAppearance, type TerrainBrush, type TerrainMaterial, type TerrainState } from "@/packages/engine/src/terrain/terrain-data";
+import { MAX_POINT_LIGHTS, validateLighting, type LightingState, type ScenePointLight } from "@/packages/engine/src/lighting/lighting-data";
 import { createDeferredSave } from "./controller-autosave";
 
 export type ToolMode = "pan" | "select" | "plant" | "erase" | "terrain" | "area";
 export type ForestStatus = {
   seed: number; width: number; objects: number; zoom: number; edited: number; message: string;
-  selected: ForestObject | null; canUndo: boolean; canRedo: boolean; storage: "saved" | "pending" | "unavailable"; brush: ObjectKind;
+  selected: EngineObject | null; canUndo: boolean; canRedo: boolean; storage: "saved" | "pending" | "unavailable"; brush: string;
   mode: ToolMode; temporaryPan: boolean; trees: boolean; grid: boolean;
   assets: { id: string; name: string }[]; brushAssetId: string | null;
-  layers: SceneLayer[]; activeLayerId: string; objectList: ForestObject[]; selectedHidden: boolean; selectedLocked: boolean;
+  layers: SceneLayer[]; activeLayerId: string; objectList: EngineObject[]; selectedHidden: boolean; selectedLocked: boolean;
   folders: SceneFolder[]; activeFolderId: string | null | undefined;
   selectedFolder: { folder: SceneFolder; count: number; bounds: Bounds | null; hidden: boolean; locked: boolean } | null;
   terrainBrush: TerrainBrush; terrainSize: number; terrainBaseTrails: boolean; clearVegetation: boolean;
+  height?: number; projectId?: string; projectName?: string; presetId?: string; presetVersion?: number; catalog?: Readonly<Record<string, EditorCatalogEntry>>;
   lighting: LightingState; terrainAppearance: Readonly<TerrainAppearance>; selectedShadowHeight: number | null;
 };
 export type ForestControllerOptions = {
@@ -32,36 +39,74 @@ export type ForestControllerOptions = {
   storage?: SceneStorage | null;
   /** Host-owned project key. Omitted keeps existing editor scenes in the same origin. */
   storageKey?: string;
+  profiler?: EngineProfiler;
 };
-type ObjectPatch = Partial<Pick<ForestObject, "x" | "y" | "scale" | "rotation" | "variant">>;
+type ObjectPatch = Partial<Pick<EngineObject, "x" | "y" | "scale" | "rotation" | "variant">>;
 type Point = { x: number; y: number };
 type Gesture = { start: Point; moved: boolean; pinched: boolean; pan: boolean; temporaryPan: boolean; pointerId: number;
-  object?: ForestObject; grabOffset?: Point; resize?: ResizeSession; members?: ForestObject[]; terrainLast?: Point; areaStart?: Point; blocked?: boolean; shift: boolean; lockAxis?: "x" | "y" };
-const names: Record<ObjectKind, string> = { tree: "дерево", shrub: "куст", rock: "камень", ruins: "руины", bridge: "мост", jetty: "причал", image: "PNG-объект" };
+  object?: EngineObject; grabOffset?: Point; resize?: ResizeSession; members?: EngineObject[]; terrainLast?: Point; areaStart?: Point; blocked?: boolean; shift: boolean; lockAxis?: "x" | "y" };
+export type EngineControllerOptions = Omit<ForestControllerOptions, "storage" | "storageKey"> & {
+  initialDocument: SceneDocument;
+  onDocumentChange?: (document: SceneDocument) => void;
+};
+type ControllerSceneOptions = SceneRenderOptions & { trees: boolean; grid: boolean };
 
+/** Compatibility entry point: existing forest callers keep v5 JSON and synchronous saves. */
 export function createForestController(canvas: HTMLCanvasElement, report: (status: ForestStatus) => void, controllerOptions: ForestControllerOptions = {}) {
+  return createController(canvas, report, controllerOptions);
+}
+
+/** The host owns project persistence; this entry point never accesses legacy localStorage. */
+export function createEngineController(canvas: HTMLCanvasElement, report: (status: ForestStatus) => void, controllerOptions: EngineControllerOptions) {
+  return createController(canvas, report, controllerOptions, controllerOptions);
+}
+
+function createController(canvas: HTMLCanvasElement, report: (status: ForestStatus) => void, controllerOptions: ForestControllerOptions, projectOptions?: EngineControllerOptions) {
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Не удалось открыть Canvas 2D.");
   const makeCanvas: CanvasFactory = controllerOptions.createCanvas ?? ((width, height) => {
     const surface = document.createElement("canvas"); surface.width = width; surface.height = height; return surface;
   });
-  const painter = createForestPainter(makeCanvas, () => invalidate(), controllerOptions.loadImage);
+  const profiler = controllerOptions.profiler ?? createEngineProfiler();
   const editor = canvas.closest<HTMLElement>("[data-forest-editor]") ?? canvas;
-  let projectStorage: SceneStorage | null = controllerOptions.storage ?? null;
-  if (controllerOptions.storage === undefined) {
-    try { projectStorage = window.localStorage; } catch { /* Private browsing can deny all storage access. */ }
+  let projectStorage: SceneStorage | null = null;
+  if (!projectOptions) {
+    projectStorage = controllerOptions.storage ?? null;
+    if (controllerOptions.storage === undefined) {
+      try { projectStorage = window.localStorage; } catch { /* Private browsing can deny all storage access. */ }
+    }
   }
   const persistence = createSceneStorageAdapter(projectStorage, controllerOptions.storageKey);
-  const restored = persistence.read();
-  const history = createSceneHistory(restored.scene);
+  const restored = projectOptions ? { available: false, invalid: false, scene: null } : persistence.read();
+  const initialDocument = projectOptions ? validateProjectDocument(projectOptions.initialDocument) : parseProjectDocument(serializeScene(restored.scene!));
+  if (!initialDocument) throw new Error("Проект повреждён или использует неизвестный шаблон сцены.");
+  const history = createProjectHistory(initialDocument);
   let scene = history.getScene();
-  const options: ForestOptions = { seed: scene.seed, width: scene.width, trees: true, grid: false,
+  let preset = getEditorPreset(scene.presetId, scene.presetVersion)!;
+  let tools = createEditorCatalogTools(preset, scene);
+  let painter = createPainter(scene);
+  let painterBaseline = scene.baseObjects, painterPreset = `${scene.presetId}:${scene.presetVersion}`, painterSize = `${scene.width}:${scene.height}`;
+  function createPainter(document: SceneDocument) {
+    const definition = getEditorPreset(document.presetId, document.presetVersion)!;
+    return createScenePainter(makeCanvas, projectOptions ? createDocumentRuntimePreset(definition, document.baseObjects, document) : definition.runtime, () => invalidate(), controllerOptions.loadImage);
+  }
+  function legacyScene(document: SceneDocument): ForestScene {
+    return { version: 5, seed: document.seed, width: document.width, planted: document.planted as ForestObject[], removed: document.removed,
+      modified: document.modified as ForestObject[], assets: document.assets, layers: document.layers, folders: document.folders, terrain: document.terrain, lighting: document.lighting };
+  }
+  function validateCurrent(value: SceneDocument): SceneDocument | null {
+    if (projectOptions) return validateProjectDocument(value);
+    const validated = validateScene(legacyScene(value));
+    return validated ? { ...value, ...validated, version: 6 } : null;
+  }
+  function serializeCurrent(document: SceneDocument) { return projectOptions ? serializeProjectDocument(document) : serializeScene(legacyScene(document)); }
+  const options: ControllerSceneOptions = { seed: scene.seed, width: scene.width, height: scene.height, trees: true, grid: false,
     removed: new Set(scene.removed), planted: scene.planted, modified: new Map(scene.modified.map(object => [object.id, object])), selectedId: null,
     assets: new Map(scene.assets.map(asset => [asset.id, asset])), selectionZoom: 1, interactiveCache: true, layers: scene.layers, folders: scene.folders, terrain: scene.terrain, lighting: scene.lighting };
-  let settingsPreview: { lighting: LightingState; terrain: TerrainState; shadow?: ForestObject } | null = null;
+  let settingsPreview: { lighting: LightingState; terrain: TerrainState; shadow?: EngineObject } | null = null;
   let storage: ForestStatus["storage"] = restored.available && !restored.invalid ? "saved" : "unavailable";
-  let mode: ToolMode = "select", brush: ObjectKind = "tree", brushAssetId: string | null = null, selectedId: string | null = null;
-  let screenWidth = 1, screenHeight = 1, zoom = .5, cameraX = 800, cameraY = 800;
+  let mode: ToolMode = "select", brush = Object.values(getEditorCatalog(preset)).find(item => item.kind !== "image")?.kind ?? "image", brushAssetId: string | null = null, selectedId: string | null = null;
+  let screenWidth = 1, screenHeight = 1, zoom = .5, cameraX = scene.width / 2, cameraY = scene.height / 2;
   let initialized = false, disposed = false, frame = 0, nextId = 0;
   let message = restored.invalid ? "Сохранённый файл повреждён. Открыта исходная карта; можно импортировать резервную копию JSON."
     : scene.planted.length || scene.removed.length || scene.modified.length || scene.seed !== INITIAL_SEED ? "Твои правки восстановлены. Выбери любой объект и перетащи его."
@@ -70,23 +115,36 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
   let gesture: Gesture | undefined;
   let spaceHeld = false, lastPanTime: number | null = null, revision = 0, sceneImportToken = 0;
   let hoverResize: ResizeCorner | null = null;
-  let activeLayerId = "world", objectListRevision = -1, cachedObjectList: ForestObject[] = [];
+  let activeLayerId = "world", objectListRevision = -1, cachedObjectList: EngineObject[] = [];
   let activeFolderId: string | null | undefined, selectedFolderId: string | null = null;
   let terrainBrush: TerrainBrush = "path", terrainSize = 80, clearVegetation = false;
-  const previewObjects = new Map<string, ForestObject>();
+  const previewObjects = new Map<string, EngineObject>();
   const terrainCells = new Map<string, TerrainMaterial | null>(), terrainChunks = new Map<string, number>();
   const terrainPreview = { cells: terrainCells, chunkVersions: terrainChunks };
   options.previewObjects = previewObjects; options.previewRevision = 0;
   let cachedAssets: ForestStatus["assets"] = [], previousAssets = scene.assets;
   let lastStatus: ForestStatus | undefined;
   let plantedIds = new Set<string>();
-  const objectLookup = new Map<string, ForestObject>();
-  const autosave = createDeferredSave(() => persistence.write(scene), value => { storage = value; invalidate(); }, callback => {
+  const objectLookup = new Map<string, EngineObject>();
+  const autosave = createDeferredSave(() => persistence.write(legacyScene(scene)), value => { storage = value; invalidate(); }, callback => {
     if (typeof window.requestIdleCallback === "function") {
       const id = window.requestIdleCallback(callback, { timeout: 800 }); return () => window.cancelIdleCallback(id);
     }
     const id = window.setTimeout(callback, 300); return () => window.clearTimeout?.(id);
   });
+  const objectBounds = (object: EngineObject) => tools.objectBounds(object);
+  const objectCorners = (object: EngineObject) => tools.objectCorners(object);
+  const getObjectShadowHeight = (object: EngineObject) => tools.getObjectShadowHeight(object);
+  const objectFolderId = (object: EngineObject, folders = scene.folders) => tools.objectFolderId(object, folders);
+  const isObjectLocked = (object: EngineObject, layers = scene.layers, folders = scene.folders) => tools.isObjectLocked(object, layers, folders);
+  const isObjectVisible = (object: EngineObject, layers = scene.layers, folders = scene.folders) => tools.isObjectVisible(object, layers, folders);
+  const compareObjects = (a: EngineObject, b: EngineObject, layers = scene.layers) => tools.compareObjects(a, b, layers);
+  const pickObject = (objects: readonly EngineObject[], x: number, y: number, layers = scene.layers, folders = scene.folders) => tools.pickObject(objects, x, y, layers, folders);
+  const findResizeHandle = (object: EngineObject, position: Point, scale: number, radius: number) => tools.findResizeHandle(object, position, scale, radius);
+  const beginResize = (object: EngineObject, corner: ResizeCorner, position: Point) => tools.beginResize(object, corner, position);
+  const resizedObject = (session: ResizeSession, position: Point, width: number, height: number) => tools.resizedObject(session, position, width, height);
+  const stackKey = (object: EngineObject) => coreStackKey(object, tools.objectDepth(object));
+  const objectName = (kind: string) => getEditorCatalog(preset)[kind]?.name ?? kind;
 
   function temporaryPan() { return spaceHeld || !!gesture?.temporaryPan; }
   function cursor() {
@@ -104,8 +162,27 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
     canvas.dataset.resizeDirection = value.replace("-resize", "");
   }
 
+  function sameBaseline(left: readonly EngineObject[], right: readonly EngineObject[]) {
+    if (left === right) return true;
+    return left.length === right.length && left.every((object, index) => {
+      const other = right[index];
+      const keys = Object.keys(object) as (keyof EngineObject)[];
+      return keys.length === Object.keys(other).length && keys.every(key => key === "stackOrder"
+        ? object.stackOrder === other.stackOrder || !!object.stackOrder && !!other.stackOrder && object.stackOrder.length === other.stackOrder.length && object.stackOrder.every((value, offset) => value === other.stackOrder![offset])
+        : object[key] === other[key]);
+    });
+  }
   function sync() {
-    options.seed = scene.seed; options.width = scene.width; options.planted = scene.planted; plantedIds = new Set(scene.planted.map(object => object.id));
+    const presetKey = `${scene.presetId}:${scene.presetVersion}`, sizeKey = `${scene.width}:${scene.height}`;
+    if (presetKey !== painterPreset || sizeKey !== painterSize) {
+      preset = getEditorPreset(scene.presetId, scene.presetVersion)!; tools = createEditorCatalogTools(preset, scene);
+    }
+    if (projectOptions && (presetKey !== painterPreset || sizeKey !== painterSize || !sameBaseline(painterBaseline, scene.baseObjects))) {
+      const previous = painter; painter = createPainter(scene); previous.dispose();
+    }
+    painterPreset = presetKey; painterSize = sizeKey; painterBaseline = scene.baseObjects;
+    options.objectFilter = options.trees ? undefined : object => !tools.isVegetation(object);
+    options.seed = scene.seed; options.width = scene.width; options.height = scene.height; options.planted = scene.planted; plantedIds = new Set(scene.planted.map(object => object.id));
     options.removed = new Set(scene.removed); options.modified = new Map(scene.modified.map(object => [object.id, object]));
     options.assets = new Map(scene.assets.map(asset => [asset.id, asset]));
     options.layers = scene.layers; options.folders = scene.folders; options.terrain = scene.terrain; options.lighting = scene.lighting; options.objectRevision = revision;
@@ -113,7 +190,8 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
     if (activeFolderId && !scene.folders.some(folder => folder.id === activeFolderId)) activeFolderId = undefined;
     if (selectedFolderId && !scene.folders.some(folder => folder.id === selectedFolderId)) selectedFolderId = null;
     if (!scene.layers.some(layer => layer.id === activeLayerId)) activeLayerId = "world";
-    if (brushAssetId && !options.assets.has(brushAssetId)) { brushAssetId = null; if (brush === "image") { brush = "tree"; mode = "select"; } }
+    if (brushAssetId && !options.assets.has(brushAssetId)) { brushAssetId = null; if (brush === "image") { brush = Object.values(getEditorCatalog(preset)).find(item => item.kind !== "image")?.kind ?? "image"; mode = "select"; } }
+    if (!Object.hasOwn(getEditorCatalog(preset), brush)) brush = Object.values(getEditorCatalog(preset)).find(item => item.kind !== "image")?.kind ?? "image";
     options.selectedId = selectedId;
     for (const object of scene.planted) {
       const number = /^planted:(\d+)$/.exec(object.id);
@@ -130,27 +208,27 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
   }
   function objectList() {
     if (objectListRevision !== revision) {
-      cachedObjectList = painter.objects({ ...options, trees: true, includeHidden: true, previewObjects: undefined, previewRevision: 0 }).reverse();
+      cachedObjectList = painter.objects({ ...options, objectFilter: undefined, includeHidden: true, previewObjects: undefined, previewRevision: 0 }).reverse();
       objectLookup.clear(); for (const object of cachedObjectList) objectLookup.set(object.id, object);
       objectListRevision = revision;
     }
     return cachedObjectList;
   }
-  function objectVisible(object: ForestObject) { return isObjectVisible(object, scene.layers, scene.folders) && (options.trees || (object.kind !== "tree" && object.kind !== "shrub")); }
-  function canvasEditable(object: ForestObject) { return objectVisible(object) && !isObjectLocked(object, scene.layers, scene.folders); }
-  function unlocked(object: ForestObject) {
+  function objectVisible(object: EngineObject) { return isObjectVisible(object, scene.layers, scene.folders) && (options.trees || !tools.isVegetation(object)); }
+  function canvasEditable(object: EngineObject) { return objectVisible(object) && !isObjectLocked(object, scene.layers, scene.folders); }
+  function unlocked(object: EngineObject) {
     if (!isObjectLocked(object, scene.layers, scene.folders)) return true;
     message = "Объект или его слой заблокирован. Сначала сними замок в списке слоёв."; invalidate(); return false;
   }
-  function placementAllowed(kind: ObjectKind = brush) {
+  function placementAllowed(kind: string = brush) {
     const layer = scene.layers.find(entry => entry.id === activeLayerId);
-    const folderId = objectFolderId({ kind, folderId: activeFolderId } as ForestObject, scene.folders);
+    const folderId = objectFolderId({ kind, folderId: activeFolderId } as EngineObject, scene.folders);
     if (layer?.visible && !layer.locked && isFolderVisible(folderId, scene.folders) && !isFolderLocked(folderId, scene.folders)) return true;
     message = "Активный слой или папка скрыты или заблокированы. Включи его или выбери другой слой."; invalidate(); return false;
   }
   let membershipRevision = -1;
   const folderLocks = new Map<string, boolean>();
-  const memberships = new Map<string, ForestObject[]>(), folderBoundsCache = new Map<string, Bounds | null>();
+  const memberships = new Map<string, EngineObject[]>(), folderBoundsCache = new Map<string, Bounds | null>();
   function folderObjects(id: string) {
     if (membershipRevision !== revision) {
       memberships.clear(); folderBoundsCache.clear(); folderLocks.clear();
@@ -161,7 +239,7 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
     }
     return memberships.get(id) ?? [];
   }
-  function committedFolderBounds(id: string, members: ForestObject[]) {
+  function committedFolderBounds(id: string, members: EngineObject[]) {
     if (folderBoundsCache.has(id)) return folderBoundsCache.get(id)!;
     let bounds: Bounds | null = null;
     for (const member of members) {
@@ -187,35 +265,34 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
       locked: folderLocks.get(folder.id)! };
     summaryCache = { key, value }; return value;
   }
-  function anchorLimits(object: ForestObject) {
-    const generated = !plantedIds.has(object.id) && ["tree", "shrub", "rock"].includes(object.kind);
-    const margin = generated ? OVERSCAN_EDIT_MARGIN : 0;
-    return { x0: -margin, x1: scene.width + margin, y0: -margin, y1: WORLD_HEIGHT + margin };
+  function anchorLimits(object: EngineObject) {
+    const margin = tools.anchorMargin(object, !plantedIds.has(object.id));
+    return { x0: -margin, x1: scene.width + margin, y0: -margin, y1: scene.height + margin };
   }
-  function withinObject(candidate: ForestObject, original?: ForestObject) {
+  function withinObject(candidate: EngineObject, original?: EngineObject) {
     if (original && candidate.x === original.x && candidate.y === original.y) return true;
     const limits = anchorLimits(candidate);
     return Number.isFinite(candidate.x) && Number.isFinite(candidate.y) && candidate.x >= limits.x0 && candidate.x <= limits.x1 && candidate.y >= limits.y0 && candidate.y <= limits.y1;
   }
-  function previewObject(object: ForestObject) { previewObjects.set(object.id, object); options.previewRevision = (options.previewRevision ?? 0) + 1; }
-  function translatedObjects(members: ForestObject[], dx: number, dy: number) {
+  function previewObject(object: EngineObject) { previewObjects.set(object.id, object); options.previewRevision = (options.previewRevision ?? 0) + 1; }
+  function translatedObjects(members: EngineObject[], dx: number, dy: number) {
     let x0 = -Infinity, x1 = Infinity, y0 = -Infinity, y1 = Infinity;
     for (const object of members) { const limits = anchorLimits(object); x0 = Math.max(x0, limits.x0 - object.x); x1 = Math.min(x1, limits.x1 - object.x); y0 = Math.max(y0, limits.y0 - object.y); y1 = Math.min(y1, limits.y1 - object.y); }
     dx = Math.max(x0, Math.min(x1, dx)); dy = Math.max(y0, Math.min(y1, dy));
     return members.map(object => ({ ...object, x: object.x + dx, y: object.y + dy }));
   }
-  function previewTranslation(members: ForestObject[], dx: number, dy: number) {
+  function previewTranslation(members: EngineObject[], dx: number, dy: number) {
     for (const object of translatedObjects(members, dx, dy)) previewObjects.set(object.id, object);
     options.previewRevision = (options.previewRevision ?? 0) + 1;
   }
-  function membersUnlocked(members: ForestObject[]) {
+  function membersUnlocked(members: EngineObject[]) {
     const locked = members.find(object => isObjectLocked(object, scene.layers, scene.folders));
     if (locked) return unlocked(locked);
     return true;
   }
   function paintTerrain(position: Point) {
     if (!gesture || !gesture.terrainLast) return;
-    const patch = strokeTerrainCells(gesture.terrainLast, position, terrainSize, terrainBrush, scene.width), changed: string[] = [];
+    const patch = strokeTerrainCells(gesture.terrainLast, position, terrainSize, terrainBrush, scene.width, scene.height), changed: string[] = [];
     for (const [key, material] of patch) if (!terrainCells.has(key) || terrainCells.get(key) !== material) { terrainCells.set(key, material); changed.push(key); }
     for (const key of dirtyTerrainChunks(changed)) terrainChunks.set(key, (terrainChunks.get(key) ?? 0) + 1);
     gesture.terrainLast = position; options.terrainPreview = terrainPreview;
@@ -223,10 +300,10 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
   }
   function commitGesture() {
     if (gesture?.terrainLast) {
-      const terrain = applyTerrainPatch(scene.terrain, terrainCells);
+      const terrain = applyTerrainPatch(scene.terrain, terrainCells, scene.width, scene.height);
       if (Object.keys(terrain.cells).length > MAX_TERRAIN_CELLS) { rollbackDrag(); message = "Достигнут предел правок земли. Уменьши мазок или восстанови часть карты."; invalidate(); return; }
       if (clearVegetation && terrainBrush !== "restore") {
-        const objects = allObjects().filter(object => (object.kind === "tree" || object.kind === "shrub")
+        const objects = allObjects().filter(object => tools.isVegetation(object)
           && objectVisible(object) && !isObjectLocked(object, scene.layers, scene.folders) && terrainCells.has(`${Math.floor(object.x / CELL_SIZE)}:${Math.floor(object.y / CELL_SIZE)}`));
         for (const object of objects) removeObjectRecord(object);
       }
@@ -240,10 +317,10 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
       rollbackDrag(); commit(gesture?.members ? "Папка перемещена." : gesture?.resize ? "Размер объекта изменён." : "Объект перемещён.");
     }
   }
-  function fit() { zoom = Math.min(screenWidth / options.width, screenHeight / WORLD_HEIGHT) * .94; cameraX = options.width / 2; cameraY = WORLD_HEIGHT / 2; invalidate(); }
+  function fit() { zoom = Math.min(screenWidth / options.width, screenHeight / scene.height) * .94; cameraX = options.width / 2; cameraY = scene.height / 2; invalidate(); }
   function clamp() {
-    zoom = Math.max(Math.min(screenWidth / options.width, screenHeight / WORLD_HEIGHT) * .65, Math.min(2.5, zoom));
-    cameraX = Math.max(0, Math.min(options.width, cameraX)); cameraY = Math.max(0, Math.min(WORLD_HEIGHT, cameraY));
+    zoom = Math.max(Math.min(screenWidth / options.width, screenHeight / scene.height) * .65, Math.min(2.5, zoom));
+    cameraX = Math.max(0, Math.min(options.width, cameraX)); cameraY = Math.max(0, Math.min(scene.height, cameraY));
   }
   function draw(now = performance.now()) {
     frame = 0; if (disposed || !ctx) return;
@@ -252,9 +329,9 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
     const dpr = Math.min(window.devicePixelRatio || 1, 2); options.renderScale = zoom * dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.fillStyle = "#11251e"; ctx.fillRect(0, 0, screenWidth, screenHeight);
     ctx.translate(screenWidth / 2, screenHeight / 2); ctx.scale(zoom, zoom); ctx.translate(-cameraX, -cameraY);
-    const stats = painter.paint(ctx, { x: cameraX - screenWidth / zoom / 2, y: cameraY - screenHeight / zoom / 2, width: screenWidth / zoom, height: screenHeight / zoom }, options);
+    const stats = profiler.measure("paint", () => painter.paint(ctx, { x: cameraX - screenWidth / zoom / 2, y: cameraY - screenHeight / zoom / 2, width: screenWidth / zoom, height: screenHeight / zoom }, options));
     const object = selected();
-    const status: ForestStatus = { seed: options.seed, width: options.width, objects: stats.objects, zoom,
+    const status: ForestStatus = { height: scene.height, projectId: scene.id, projectName: scene.name, presetId: scene.presetId, presetVersion: scene.presetVersion, catalog: getEditorCatalog(preset), seed: options.seed, width: options.width, objects: stats.objects, zoom,
       edited: scene.removed.length + scene.planted.length + scene.modified.length, message,
       selected: object, canUndo: history.canUndo, canRedo: history.canRedo, storage, brush, mode, temporaryPan: temporaryPan(), trees: options.trees, grid: options.grid,
       assets: cachedAssets, brushAssetId, layers: scene.layers, folders: scene.folders, activeLayerId, activeFolderId, objectList: objectList(),
@@ -277,9 +354,14 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
     const before = world(point); zoom *= factor; clamp();
     const after = world(point); cameraX += before.x - after.x; cameraY += before.y - after.y; clamp(); updateDrag(); invalidate();
   }
-  function save() { autosave.request(); }
-  function commit(text: string) { if (history.commit(scene)) { revision++; sync(); save(); } else sync(); message = text; invalidate(); }
-  function replaceObject(object: ForestObject) {
+  function save() { if (projectOptions) projectOptions.onDocumentChange?.(cloneProjectDocument(scene)); else autosave.request(); }
+  function commit(text: string) {
+    profiler.measure("commit", () => {
+      if (history.commit(scene)) { revision++; sync(); save(); } else sync();
+      message = text; invalidate();
+    });
+  }
+  function replaceObject(object: EngineObject) {
     const index = scene.planted.findIndex(entry => entry.id === object.id);
     if (index >= 0) {
       scene.planted[index] = { ...object };
@@ -305,7 +387,7 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
     if (!p || !gesture?.object || !gesture.moved || gesture.pinched || gesture.pan) return;
     const position = world(p);
     if (gesture.resize) {
-      const object = resizedObject(gesture.resize, position, options.width, WORLD_HEIGHT);
+      const object = resizedObject(gesture.resize, position, options.width, scene.height);
       const initial = gesture.object;
       if (!withinObject(object) || !Number.isFinite(object.scale) || object.scale < MIN_OBJECT_SCALE || object.scale > MAX_OBJECT_SCALE) return;
       if (Math.abs(object.x - initial.x) < 1e-10 && Math.abs(object.y - initial.y) < 1e-10 && Math.abs(object.scale - initial.scale) < 1e-10) {
@@ -320,7 +402,7 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
       if (gesture.lockAxis === "x") y = gesture.object.y; else x = gesture.object.x;
     } else gesture.lockAxis = undefined;
     if (gesture.members) previewTranslation(gesture.members, x - gesture.object.x, y - gesture.object.y);
-    else previewObject({ ...gesture.object, x: Math.max(0, Math.min(scene.width, x)), y: Math.max(0, Math.min(WORLD_HEIGHT, y)) });
+    else previewObject({ ...gesture.object, x: Math.max(0, Math.min(scene.width, x)), y: Math.max(0, Math.min(scene.height, y)) });
   }
   function edgePan(now: number) {
     const p = gesture ? pointers.get(gesture.pointerId) : undefined;
@@ -338,34 +420,35 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
     cameraX += dx * elapsed / zoom; cameraY += dy * elapsed / zoom; clamp(); updateDrag(p);
     return cameraX !== previousX || cameraY !== previousY;
   }
-  function within(position: Point) { return Number.isFinite(position.x) && Number.isFinite(position.y) && position.x >= 0 && position.y >= 0 && position.x <= options.width && position.y <= WORLD_HEIGHT; }
+  function within(position: Point) { return Number.isFinite(position.x) && Number.isFinite(position.y) && position.x >= 0 && position.y >= 0 && position.x <= options.width && position.y <= scene.height; }
   function newId() {
-    const ids = new Set(scene.planted.map(object => object.id));
+    const ids = new Set([...scene.baseObjects, ...scene.planted].map(object => object.id));
     let id: string;
     do { if (nextId >= 1_000_000_000) nextId = 0; id = `planted:${nextId++}`; } while (ids.has(id));
     return id;
   }
   function plant(position: Point) {
     if (!within(position) || !placementAllowed()) return;
-    if ((brush === "tree" || brush === "shrub") && !canPlant(position.x, position.y, options.width, scene.terrain)) {
+    if (!tools.canPlace(brush, position.x, position.y, scene.terrain)) {
       message = "Деревья и кусты можно добавить на свободную землю, вдали от воды и тропинок."; invalidate(); return;
     }
     if (scene.planted.length >= 5_000) { message = "Достигнут предел 5000 добавленных объектов."; invalidate(); return; }
     const asset = brush === "image" ? scene.assets.find(entry => entry.id === brushAssetId) : null;
     if (brush === "image" && !asset) { message = "Сначала добавь PNG через кнопку «Импорт PNG»."; invalidate(); return; }
-    const object: ForestObject = { id: newId(), ...position, layerId: activeLayerId, folderId: activeFolderId, scale: brush === "tree" ? .92 : 1, variant: asset ? 0 : nextId % 24, kind: brush, rotation: 0,
+    const definition = getEditorCatalog(preset)[brush];
+    const object: EngineObject = { id: newId(), ...position, layerId: activeLayerId, folderId: activeFolderId, scale: definition.defaultScale, variant: asset ? 0 : nextId % definition.variants, kind: brush, rotation: 0,
       ...(asset ? { assetId: asset.id, ...imageObjectSize(asset) } : {}) };
     scene.planted.push(object); selectedId = object.id; selectedFolderId = null;
-    commit(`Добавлен объект: ${names[brush]}. Его можно выбрать и переместить.`);
+    commit(`Добавлен объект: ${objectName(brush)}. Его можно выбрать и переместить.`);
   }
-  function removeObjectRecord(object: ForestObject) {
+  function removeObjectRecord(object: EngineObject) {
     const index = scene.planted.findIndex(entry => entry.id === object.id);
     if (index >= 0) scene.planted.splice(index, 1);
     else if (!scene.removed.includes(object.id)) scene.removed.push(object.id);
     scene.modified = scene.modified.filter(entry => entry.id !== object.id);
     if (selectedId === object.id) selectedId = null;
   }
-  function removeObject(object: ForestObject) {
+  function removeObject(object: EngineObject) {
     if (!unlocked(object)) return; removeObjectRecord(object); commit("Объект удалён. Можно вернуть его кнопкой «Отменить».");
   }
   function edit(p: Point) {
@@ -381,9 +464,9 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
     const object = selected(); if (!object || !unlocked(object)) return;
     const candidate = { ...object, ...patch };
     if (!withinObject(candidate, object) || !Number.isFinite(candidate.scale) || candidate.scale < MIN_OBJECT_SCALE || candidate.scale > MAX_OBJECT_SCALE
-      || !Number.isInteger(candidate.variant) || candidate.variant < 0 || candidate.variant > 23
+      || !Number.isInteger(candidate.variant) || candidate.variant < 0 || candidate.variant >= (getEditorCatalog(preset)[object.kind]?.variants ?? 1)
       || !Number.isFinite(candidate.rotation ?? 0) || (candidate.rotation ?? 0) < -180 || (candidate.rotation ?? 0) > 180) {
-      message = "Параметры вне диапазона: координаты внутри карты, масштаб 0,1–8, поворот −180°…180°, вариант 0–23."; invalidate(); return;
+      message = `Параметры вне диапазона: координаты внутри карты, масштаб 0,1–8, поворот −180°…180°, вариант 0–${(getEditorCatalog(preset)[object.kind]?.variants ?? 1) - 1}.`; invalidate(); return;
     }
     if (["x", "y", "scale", "rotation", "variant"].every(key => candidate[key as keyof ObjectPatch] === object[key as keyof ObjectPatch])) return;
     replaceObject(candidate); commit("Параметры объекта изменены.");
@@ -414,7 +497,7 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
     cancelSettingsEdit(); if (changed) commit("Настройки карты изменены. Их можно отменить одним действием.");
   }
   function applyLighting(value: LightingState, text: string) {
-    const lighting = validateLighting(value, scene.width);
+    const lighting = validateLighting(value, scene.width, scene.height);
     if (!lighting) { message = "Проверь параметры света: координаты внутри карты, допустимые яркость и радиус, цвет в формате #RRGGBB."; invalidate(); return false; }
     if (settingsPreview) { if (!sameLighting(settingsPreview.lighting, lighting)) { settingsPreview.lighting = lighting; options.lighting = lighting; invalidate(); } }
     else { cancelPointerGesture(); if (!sameLighting(scene.lighting, lighting)) { scene.lighting = lighting; commit(text); } }
@@ -430,7 +513,7 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
     let number = 1; while (scene.lighting.points.some(point => point.id === `light:${number}`)) number++;
     const object = selected(), id = `light:${number}`;
     const point: ScenePointLight = { id, name: `Свет ${number}`, x: Math.max(0, Math.min(scene.width, object?.x ?? cameraX)),
-      y: Math.max(0, Math.min(WORLD_HEIGHT, object?.y ?? cameraY)), radius: 240, intensity: 1, color: "#ffe5ad", enabled: true };
+      y: Math.max(0, Math.min(scene.height, object?.y ?? cameraY)), radius: 240, intensity: 1, color: "#ffe5ad", enabled: true };
     return applyLighting({ ...scene.lighting, enabled: true, points: [...scene.lighting.points, point] }, "Добавлен источник света.") ? id : null;
   }
   function updatePointLight(id: string, patch: Partial<Omit<ScenePointLight, "id">>) {
@@ -464,26 +547,30 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
     return true;
   }
   function undo() {
-    cancelGesture(); const previous = history.undo(); if (!previous) return;
-    scene = previous; revision++; sync(); if (!selected()) selectedId = null; save(); message = "Последнее изменение отменено."; prepareCurrentAssets(); cursor(); invalidate();
+    profiler.measure("undo", () => {
+      cancelGesture(); const previous = history.undo(); if (!previous) return;
+      scene = previous; revision++; sync(); if (!selected()) selectedId = null; save(); message = "Последнее изменение отменено."; prepareCurrentAssets(); cursor(); invalidate();
+    });
   }
   function redo() {
-    cancelGesture(); const next = history.redo(); if (!next) return;
-    scene = next; revision++; sync(); if (!selected()) selectedId = null; save(); message = "Изменение повторено."; prepareCurrentAssets(); cursor(); invalidate();
+    profiler.measure("undo", () => {
+      cancelGesture(); const next = history.redo(); if (!next) return;
+      scene = next; revision++; sync(); if (!selected()) selectedId = null; save(); message = "Изменение повторено."; prepareCurrentAssets(); cursor(); invalidate();
+    });
   }
   function setMode(value: ToolMode) {
-    cancelGesture(); mode = value; if (value !== "terrain") options.brushCursor = undefined; if (value === "plant" && (brush === "tree" || brush === "shrub")) options.trees = true; cursor();
+    cancelGesture(); mode = value; if (value !== "terrain") options.brushCursor = undefined; if (value === "plant" && tools.isVegetation(brush)) { options.trees = true; options.objectFilter = undefined; } cursor();
     message = value === "pan" ? "Перетаскивай карту или используй стрелки."
       : value === "select" ? "Нажми на любой объект, затем перетащи его или измени параметры."
-      : value === "plant" ? `Нажми на карту, чтобы добавить объект: ${names[brush]}.` : value === "area" ? "Обведи область, чтобы собрать предметы в новую папку." : value === "terrain" ? "Рисуй землю кистью. Отмена вернёт весь мазок." : "Нажми на любой объект, чтобы удалить его.";
+      : value === "plant" ? `Нажми на карту, чтобы добавить объект: ${objectName(brush)}.` : value === "area" ? "Обведи область, чтобы собрать предметы в новую папку." : value === "terrain" ? "Рисуй землю кистью. Отмена вернёт весь мазок." : "Нажми на любой объект, чтобы удалить его.";
     invalidate();
   }
-  function setBrush(value: ObjectKind) {
-    if (!Object.hasOwn(names, value)) return;
+  function setBrush(value: string) {
+    if (!Object.hasOwn(getEditorCatalog(preset), value)) return;
     if (value === "image" && !scene.assets.some(asset => asset.id === brushAssetId)) { controllerOptions.requestPngImport?.(); return; }
     brush = value; if (value !== "image") brushAssetId = null;
-    if (value === "tree" || value === "shrub") options.trees = true;
-    message = `Выбран объект для добавления: ${names[value]}.`; invalidate();
+    if (tools.isVegetation(value)) { options.trees = true; options.objectFilter = undefined; }
+    message = `Выбран объект для добавления: ${objectName(value)}.`; invalidate();
   }
   function setImageBrush(id: string) {
     const asset = scene.assets.find(entry => entry.id === id); if (!asset) return false;
@@ -506,18 +593,18 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
       return existing && existing.dataUrl !== asset.dataUrl ? null : existing ? scene.assets : [...scene.assets, asset];
     };
     const staged = mergeAssets();
-    if (!staged || !validateScene({ ...scene, assets: staged })) { message = "Не удалось добавить PNG: превышен размер сцены или лимит изображений."; invalidate(); return false; }
+    if (!staged || !validateCurrent({ ...scene, assets: staged })) { message = "Не удалось добавить PNG: превышен размер сцены или лимит изображений."; invalidate(); return false; }
     try { await painter.prepareAssets(staged); } catch (error) {
       if (!disposed && before === revision && token === sceneImportToken) { message = `Не удалось открыть PNG: ${assetError(error)}`; invalidate(); } return false;
     }
-    if (disposed || !placementAllowed("image")) return false;
+    if (disposed || token !== sceneImportToken || !placementAllowed("image")) return false;
     cancelGesture();
     const assets = mergeAssets();
     if (!assets || scene.planted.length >= 5_000) { message = "Не удалось добавить PNG: достигнут лимит объектов или изображений."; invalidate(); return false; }
     const size = imageObjectSize(asset);
-    const object: ForestObject = { id: newId(), kind: "image", assetId: asset.id, ...size, layerId: activeLayerId, folderId: activeFolderId,
-      x: Math.max(0, Math.min(scene.width, cameraX)), y: Math.max(0, Math.min(WORLD_HEIGHT, cameraY + size.imageHeight / 2)), scale: 1, rotation: 0, variant: 0 };
-    const appended = validateScene({ ...scene, assets, planted: [...scene.planted, object] });
+    const object: EngineObject = { id: newId(), kind: "image", assetId: asset.id, ...size, layerId: activeLayerId, folderId: activeFolderId,
+      x: Math.max(0, Math.min(scene.width, cameraX)), y: Math.max(0, Math.min(scene.height, cameraY + size.imageHeight / 2)), scale: 1, rotation: 0, variant: 0 };
+    const appended = validateCurrent({ ...scene, assets, planted: [...scene.planted, object] });
     if (!appended) { message = "Не удалось добавить PNG: превышен размер сцены или лимит изображений."; invalidate(); return false; }
     scene = appended; selectedId = object.id; selectedFolderId = null; brush = "image"; brushAssetId = asset.id; mode = "select"; cursor();
     commit(`Добавлен PNG: ${asset.name}. Перетаскивай картинку или тяни за угол.`); return true;
@@ -525,7 +612,7 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
   async function importPng(file: File): Promise<boolean> {
     const before = revision, token = sceneImportToken;
     if (disposed || !placementAllowed("image")) return false;
-    try { return await addPngAsset(await readPngFile(file)); } catch (error) {
+    try { const asset = await readPngFile(file); return !disposed && token === sceneImportToken ? await addPngAsset(asset) : false; } catch (error) {
       if (!disposed && before === revision && token === sceneImportToken) { message = `Не удалось добавить PNG: ${assetError(error)}`; invalidate(); } return false;
     }
   }
@@ -534,15 +621,15 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
     if (!isObjectVisible({ ...object, hidden: false }, scene.layers, scene.folders)) { message = "Сначала покажи слой, чтобы добавить на него копию."; invalidate(); return; }
     let position: Point | undefined;
     for (const offset of [40, -40, 80, -80, 120, -120]) {
-      const candidate = { x: Math.max(0, Math.min(options.width, object.x + offset)), y: Math.max(0, Math.min(WORLD_HEIGHT, object.y + 30)) };
-      if ((object.kind !== "tree" && object.kind !== "shrub") || canPlant(candidate.x, candidate.y, options.width, scene.terrain)) { position = candidate; break; }
+      const candidate = { x: Math.max(0, Math.min(options.width, object.x + offset)), y: Math.max(0, Math.min(scene.height, object.y + 30)) };
+      if (tools.canPlace(object.kind, candidate.x, candidate.y, scene.terrain)) { position = candidate; break; }
     }
     if (!position) { message = "Рядом нет свободной земли для копии. Добавь объект в другом месте."; invalidate(); return; }
     const copy = { ...object, ...position, id: newId(), hidden: false, locked: false }; delete copy.stackOrder;
     scene.planted.push(copy); selectedId = copy.id; activeLayerId = objectLayerId(copy); commit("Копия добавлена и выбрана.");
   }
   function layerObjects(id: string, excluded?: string) { return allObjects().filter(object => objectLayerId(object) === id && object.id !== excluded).sort((a, b) => compareObjects(a, b, scene.layers)); }
-  function orderAt(object: ForestObject, layerId: string, index: number, siblings: ForestObject[]) {
+  function orderAt(object: EngineObject, layerId: string, index: number, siblings: EngineObject[]) {
     const placed = { ...object, layerId };
     try {
       placed.stackOrder = stackKeyBetween(siblings[index - 1] ? stackKey(siblings[index - 1]) : undefined, siblings[index] ? stackKey(siblings[index]) : undefined);
@@ -601,6 +688,9 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
         merged.forEach((object, index) => replaceObject({ ...object, layerId: "world", stackOrder: [index] }));
       }
     }
+    // Deleted organizational metadata cannot remain as a dangling reference in a saved baseline.
+    const layerBinding = (object: EngineObject) => object.layerId === id ? { ...object, layerId: "world" } : object;
+    scene.baseObjects = scene.baseObjects.map(layerBinding); scene.planted = scene.planted.map(layerBinding); scene.modified = scene.modified.map(layerBinding);
     scene.layers = scene.layers.filter(layer => layer.id !== id); if (activeLayerId === id) activeLayerId = "world";
     commit("Слой удалён. Все его объекты перенесены в слой «Мир».");
   }
@@ -708,6 +798,8 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
     cancelGesture(); const folder = scene.folders.find(entry => entry.id === id); if (!folder) return;
     if (isFolderLocked(id, scene.folders) || subtreeLocked(id) || !folderDestinationAllowed(folder.parentId) || !membersUnlocked(folderObjects(id))) { message = "Сначала сними замки папки и её предметов."; invalidate(); return; }
     for (const object of allObjects()) if (objectFolderId(object, scene.folders) === id) replaceObject({ ...object, folderId: folder.parentId });
+    const folderBinding = (object: EngineObject) => object.folderId === id ? { ...object, folderId: folder.parentId } : object;
+    scene.baseObjects = scene.baseObjects.map(folderBinding); scene.planted = scene.planted.map(folderBinding); scene.modified = scene.modified.map(folderBinding);
     scene.folders = scene.folders.filter(entry => entry.id !== id).map(entry => entry.parentId === id ? { ...entry, parentId: folder.parentId } : entry);
     if (activeFolderId === id) activeFolderId = folder.parentId; if (selectedFolderId === id) selectedFolderId = null;
     commit("Папка удалена. Её предметы и вложенные папки сохранены.");
@@ -860,7 +952,7 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
     const digit = /^(?:Digit|Numpad)([1-6])$/.exec(code);
     if (digit) {
       event.preventDefault();
-      if (!event.repeat) { setBrush((["tree", "shrub", "rock", "ruins", "bridge", "jetty"] as const)[Number(digit[1]) - 1]); setMode("plant"); }
+      if (!event.repeat) { const item = Object.values(getEditorCatalog(preset)).filter(entry => entry.kind !== "image")[Number(digit[1]) - 1]; if (item) { setBrush(item.kind); setMode("plant"); } }
       return;
     }
     if (event.key === "Enter" && event.target !== canvas) return;
@@ -874,7 +966,7 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
     }
     if (object && event.key.startsWith("Arrow")) {
       updateSelected({ x: Math.max(0, Math.min(options.width, object.x + (event.key === "ArrowLeft" ? -delta : event.key === "ArrowRight" ? delta : 0))),
-        y: Math.max(0, Math.min(WORLD_HEIGHT, object.y + (event.key === "ArrowUp" ? -delta : event.key === "ArrowDown" ? delta : 0))) }); return;
+        y: Math.max(0, Math.min(scene.height, object.y + (event.key === "ArrowUp" ? -delta : event.key === "ArrowDown" ? delta : 0))) }); return;
     }
     if (event.key === "ArrowLeft") cameraX -= 80 / zoom;
     if (event.key === "ArrowRight") cameraX += 80 / zoom;
@@ -923,39 +1015,88 @@ export function createForestController(canvas: HTMLCanvasElement, report: (statu
     clearSelection() { cancelGesture(); selectedId = null; selectedFolderId = null; invalidate(); },
     deleteSelected() { cancelGesture(); const object = selected(); if (object) removeObject(object); },
     setLayer(layer: "trees" | "grid", value: boolean) {
-      cancelGesture(); options[layer] = value;
+      cancelGesture(); options[layer] = value; if (layer === "trees") options.objectFilter = value ? undefined : object => !tools.isVegetation(object);
       invalidate();
     },
-    expand() { cancelGesture(); if (scene.width >= MAX_WIDTH) return; scene.width += 800; commit("Добавлено 800 единиц справа. Все твои объекты сохранились."); fit(); },
+    expand() {
+      if (disposed) return false;
+      cancelGesture(); const width = Math.min(projectOptions ? MAX_SCENE_DIMENSION : MAX_WIDTH, scene.width + 800);
+      if (width === scene.width || width * scene.height > MAX_SCENE_PIXELS) return false;
+      try {
+        if (projectOptions) {
+          const generated = createProjectDocument({ id: scene.id, name: scene.name, presetId: scene.presetId, presetVersion: scene.presetVersion, seed: scene.seed, width, height: scene.height });
+          const known = new Set([...scene.baseObjects, ...scene.planted].map(object => object.id));
+          const expanded = validateProjectDocument({ ...scene, width, baseObjects: [...scene.baseObjects, ...generated.baseObjects.filter(object => !known.has(object.id))] });
+          if (!expanded) throw new Error("Достигнут предел содержимого проекта; правки сохранены.");
+          scene = expanded;
+        } else scene.width = width;
+        commit("Добавлено пространство справа. Все твои объекты сохранились."); fit(); return true;
+      } catch (error) { message = assetError(error); invalidate(); return false; }
+    },
     regenerate() {
-      cancelGesture(); scene = { version: 5, seed: (scene.seed + 137) % 2_147_483_648, width: scene.width, planted: [], removed: [], modified: [], assets: scene.assets, layers: scene.layers, folders: scene.folders, terrain: scene.terrain, lighting: scene.lighting };
-      selectedId = null; selectedFolderId = null; commit("Создан новый лес. Прежний вариант можно вернуть кнопкой «Отменить».");
+      if (disposed) return false;
+      cancelGesture();
+      try {
+        const generated = createProjectDocument({ id: scene.id, name: scene.name, presetId: scene.presetId, presetVersion: scene.presetVersion,
+          seed: (scene.seed + 137) % 2_147_483_648, width: scene.width, height: scene.height });
+        const regenerated = validateCurrent({ ...scene, seed: generated.seed, baseObjects: generated.baseObjects, planted: [], removed: [], modified: [] });
+        if (!regenerated) throw new Error("Не удалось создать новую сцену; текущий проект сохранён.");
+        scene = regenerated; selectedId = null; selectedFolderId = null; commit("Сцена создана заново. Прежний вариант можно вернуть кнопкой «Отменить»."); return true;
+      } catch (error) { message = assetError(error); invalidate(); return false; }
     },
     resetEdits() { cancelGesture(); scene.planted = []; scene.removed = []; scene.modified = []; selectedId = null; selectedFolderId = null; commit("Все объекты возвращены к исходному состоянию. Действие можно отменить."); },
-    getSceneJson() { return serializeScene(scene); },
-    exportScene() { autosave.flush(); download(new Blob([serializeScene(history.getScene())], { type: "application/json" }), `forest-scene-${scene.seed}-${scene.width}.json`); },
+    getDocument() { return cloneProjectDocument(scene); },
+    renameProject(value: string) {
+      if (!projectOptions || disposed || typeof value !== "string") return false;
+      cancelGesture(); const name = cleanName(value); if (!name) return false;
+      if (name !== scene.name) { scene.name = name; commit("Название проекта изменено."); } return true;
+    },
+    setDiagnosticsEnabled(value: boolean) { profiler.setEnabled(value); invalidate(); },
+    getDiagnostics() { return { profile: profiler.snapshot(), rendering: painter.diagnostics() }; },
+    getSceneJson() { return serializeCurrent(scene); },
+    exportScene() {
+      if (disposed) return false;
+      autosave.flush();
+      try {
+        profiler.measure("export", () => download(new Blob([serializeCurrent(history.getScene())], { type: "application/json" }), projectOptions ? `${scene.name.replace(/[\\/:*?"<>|]/g, "_") || "scene"}.json` : `forest-scene-${scene.seed}-${scene.width}.json`)); return true;
+      } catch (error) { message = `Не удалось экспортировать JSON: ${assetError(error)}`; invalidate(); return false; }
+    },
     async importScene(json: string): Promise<boolean> {
       if (disposed) return false;
-      const imported = parseScene(json);
+      let imported = parseProjectDocument(json);
+      if (!projectOptions && imported) {
+        const validated = validateScene(legacyScene(imported));
+        imported = validated && imported.presetId === "forest-v5" && imported.height === 1600 ? { ...scene, ...imported, id: scene.id, name: scene.name } : null;
+      }
       if (!imported) { message = "Не удалось открыть JSON: неверный формат сцены или параметры объектов. Текущая карта сохранена."; invalidate(); return false; }
       cancelGesture(); const token = ++sceneImportToken, before = revision;
-      try { await painter.prepareAssets(imported.assets); } catch (error) {
+      const pendingPainter = projectOptions ? createPainter(imported) : painter;
+      try { await pendingPainter.prepareAssets(imported.assets); } catch (error) {
+        if (pendingPainter !== painter) pendingPainter.dispose();
         if (!disposed && token === sceneImportToken && revision === before && !gesture && !settingsPreview) { message = `Не удалось открыть PNG из JSON: ${assetError(error)}. Текущая карта сохранена.`; invalidate(); } return false;
       }
-      if (disposed || token !== sceneImportToken) return false;
-      if (revision !== before || gesture || settingsPreview) { message = "Во время загрузки сцена изменилась. Импорт отменён; попробуй открыть JSON ещё раз."; invalidate(); return false; }
-      scene = imported; selectedId = null; selectedFolderId = null; hoverResize = null; commit("Сцена открыта из JSON. Импорт можно отменить."); cursor(); fit(); return true;
+      if (disposed || token !== sceneImportToken) { if (pendingPainter !== painter) pendingPainter.dispose(); return false; }
+      if (revision !== before || gesture || settingsPreview) { if (pendingPainter !== painter) pendingPainter.dispose(); message = "Во время загрузки сцена изменилась. Импорт отменён; попробуй открыть JSON ещё раз."; invalidate(); return false; }
+      if (pendingPainter !== painter) { painter.dispose(); painter = pendingPainter; painterBaseline = imported.baseObjects; painterPreset = `${imported.presetId}:${imported.presetVersion}`; painterSize = `${imported.width}:${imported.height}`; }
+      scene = imported; preset = getEditorPreset(scene.presetId, scene.presetVersion)!; tools = createEditorCatalogTools(preset, scene); selectedId = null; selectedFolderId = null; hoverResize = null; commit("Сцена открыта из JSON. Импорт можно отменить."); cursor(); fit(); return true;
     },
     async exportPng(): Promise<void> {
-      autosave.flush(); const committed = history.getScene(), trees = options.trees;
-      try { await painter.prepareAssets(committed.assets); } catch (error) { if (!disposed) { message = `Не удалось экспортировать PNG: ${assetError(error)}`; invalidate(); } return; }
-      if (disposed) return;
-      const image = makeCanvas(committed.width, WORLD_HEIGHT), exportCtx = image.getContext("2d"); if (!exportCtx) return;
-      painter.paint(exportCtx, { x: 0, y: 0, width: committed.width, height: WORLD_HEIGHT }, { ...options, seed: committed.seed, width: committed.width,
-        trees, assets: new Map(committed.assets.map(asset => [asset.id, asset])), planted: committed.planted, removed: new Set(committed.removed),
-        modified: new Map(committed.modified.map(object => [object.id, object])), layers: committed.layers, folders: committed.folders, terrain: committed.terrain, lighting: committed.lighting, grid: false, selectedId: null, selectedFolderId: null, selectionArea: undefined, brushCursor: undefined, previewObjects: undefined, terrainPreview: undefined, previewRevision: 0, interactiveCache: false, renderScale: 1, selectionZoom: 1 });
-      const blob = await new Promise<Blob | null>(resolve => image.toBlob(resolve, "image/png"));
-      if (blob) download(blob, `forest-${committed.seed}-${committed.width}.png`);
+      autosave.flush(); const committed = history.getScene(), trees = options.trees, token = sceneImportToken;
+      const exportPainter = createPainter(committed);
+      await profiler.measureAsync("export", async () => {
+        try {
+          await exportPainter.prepareAssets(committed.assets);
+          if (disposed || token !== sceneImportToken) return;
+          const image = makeCanvas(committed.width, committed.height), exportCtx = image.getContext("2d"); if (!exportCtx) return;
+          const exportTools = createEditorCatalogTools(getEditorPreset(committed.presetId, committed.presetVersion)!, committed);
+          exportPainter.paint(exportCtx, { x: 0, y: 0, width: committed.width, height: committed.height }, { ...options, seed: committed.seed, width: committed.width, height: committed.height,
+            objectFilter: trees ? undefined : object => !exportTools.isVegetation(object), assets: new Map(committed.assets.map(asset => [asset.id, asset])), planted: committed.planted, removed: new Set(committed.removed),
+            modified: new Map(committed.modified.map(object => [object.id, object])), layers: committed.layers, folders: committed.folders, terrain: committed.terrain, lighting: committed.lighting, grid: false, selectedId: null, selectedFolderId: null, selectionArea: undefined, brushCursor: undefined, previewObjects: undefined, terrainPreview: undefined, previewRevision: 0, interactiveCache: false, renderScale: 1, selectionZoom: 1 });
+          const blob = await new Promise<Blob | null>(resolve => image.toBlob(resolve, "image/png"));
+          if (blob && !disposed && token === sceneImportToken) download(blob, projectOptions ? `${committed.name.replace(/[\\/:*?"<>|]/g, "_") || "scene"}.png` : `forest-${committed.seed}-${committed.width}.png`);
+        } catch (error) { if (!disposed && token === sceneImportToken) { message = `Не удалось экспортировать PNG: ${assetError(error)}`; invalidate(); } }
+        finally { exportPainter.dispose(); }
+      });
     },
     dispose() {
       cancelGesture(); autosave.flush(); disposed = true; cancelAnimationFrame(frame); observer.disconnect(); painter.dispose();

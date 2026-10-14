@@ -2,6 +2,7 @@ import { type TerrainDefinition } from "./layout.ts";
 import { CELL_SIZE, TERRAIN_DIRTY_HALO, readTerrainMaterial, terrainAppearance, type TerrainMaterial, type TerrainPreview, type TerrainState } from "./terrain-data.ts";
 import { createWaterContourCache, type WaterContour } from "./contours.ts";
 import type { Bounds, SceneSize } from "../scene/contracts.ts";
+import { canvasMemoryResources, estimateCacheMemory } from "../rendering/cache-memory.ts";
 export type TerrainPainter = {
   drawBase: (ctx: CanvasRenderingContext2D, seed: number, bounds: Bounds, baseTrails: boolean) => void;
   drawMaterial: (ctx: CanvasRenderingContext2D, seed: number, bounds: Bounds, material: TerrainMaterial, baseTrails: boolean) => void;
@@ -93,5 +94,7 @@ export function createTerrainComposer(makeCanvas: CanvasFactory, definition: Ter
     targetCtx.globalCompositeOperation = "source-over"; targetCtx.translate(-bounds.x, -bounds.y);
     painter.drawWater?.(targetCtx, seed, bounds, contours, state); targetCtx.restore(); return target;
   }
-  return { compose, diagnostics: coast.diagnostics, dispose() { mask = undefined; scratch = undefined; coast.dispose(); } };
+  return { compose, diagnostics: (seen?: Set<object>) => ({ ...coast.diagnostics(),
+    memory: estimateCacheMemory({ terrainWorkspace: canvasMemoryResources([mask, scratch]) }, 0, seen) }),
+    dispose() { mask = undefined; scratch = undefined; coast.dispose(); } };
 }

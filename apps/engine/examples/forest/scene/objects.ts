@@ -31,7 +31,7 @@ export function initialProps(): ForestObject[] {
   ];
 }
 
-function reservedForProp(x: number, y: number): boolean {
+export function reservedForProp(x: number, y: number): boolean {
   return (Math.abs(x - 780) < 100 && Math.abs(y - 420) < 100)
     || (x > 1300 && x < 1480 && y > 1020 && y < 1170)
     || (x > 675 && x < 830 && y > 1200 && y < 1300);
