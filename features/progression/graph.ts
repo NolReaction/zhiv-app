@@ -56,19 +56,18 @@ const itemIcons: Record<string, string> = {
   berries: "🫐", wood: "🪵", stone: "🪨", ore: "⛏️", fiber: "🌾", fish: "🐟", planks: "🪵", rope: "🪢", metal_parts: "⚙️", dried_berries: "🫐", smoked_fish: "🐟", clay: "🏺", sand: "⌛", charcoal: "🔥", iron_ingot: "🔩", bricks: "🧱", glass: "💎", hardwood: "🌳", resin: "🍯", cloth: "🧵", beams: "🏗️", tools: "🛠️", reinforced_parts: "⚙️", cut_stone: "🪨",
 };
 export const itemLabels: Record<string, string> = {
-  berries: "Малина", wood: "Бревно", stone: "Камень", ore: "Руда", fiber: "Волокно", fish: "Рыба", planks: "Доска", rope: "Верёвка", metal_parts: "Метал. детали", dried_berries: "Сушёные ягоды", smoked_fish: "Копчёная рыба", clay: "Глина", sand: "Песок", charcoal: "Уголь", iron_ingot: "Слитки", bricks: "Кирпич", glass: "Стекло", hardwood: "Твёрдая древесина", resin: "Смола", cloth: "Полотно", beams: "Балки", tools: "Инструменты", reinforced_parts: "Усиленные узлы", cut_stone: "Тёсаный камень",
+  berries: "Малина", wood: "Бревно", stone: "Камень", ore: "Руда", fiber: "Волокно", fish: "Рыба", planks: "Доска", rope: "Верёвка", metal_parts: "Метал. деталь", dried_berries: "Сушёные ягоды", smoked_fish: "Копчёная рыба", clay: "Глина", sand: "Песок", charcoal: "Уголь", iron_ingot: "Железный слиток", bricks: "Кирпич", glass: "Стекло", hardwood: "Крепкое бревно", resin: "Смола", cloth: "Полотно", beams: "Балка", tools: "Инструменты", reinforced_parts: "Усиленные узлы", cut_stone: "Тёсаный камень",
 };
 export const progressionItemNames: Record<string, string> = Object.fromEntries(economyCatalog.items.map(item => [item.id, item.name]));
 
-const recipeLabels: Record<string, string> = {
-  garden_season: "Сад · 6ч", garden_supply: "Сад · 8ч", garden_abundance: "Сад · 8ч", woodlot_shift: "Лес · 6ч", hardwood_shift: "Лес · 8ч", woodland_shift: "Лес · 8ч", woodland_supply: "Лес · 8ч", workshop_overnight: "Материалы · 8ч", workshop_materials: "Материалы · 6ч", workshop_structures: "Строймат. · 8ч", workshop_assembly: "Сборка · 8ч", prepare_provisions: "Припасы · 6ч", prepare_expedition_provisions: "Припасы · 8ч", provisions_supply: "Припасы · 8ч", kiln_shift: "Плавка · 8ч", kiln_supply: "Печь · 12ч",
-};
-const routeLabels: Record<string, string> = { quarry_stone: "Камень · 3 мин", quarry_stone_overnight: "Камень · 8ч", quarry_ore: "Руда · 45 мин", quarry_clay: "Глина · 3 мин", quarry_sand: "Песок · 45 мин", quarry_shift: "Шахта · 8ч", quarry_deep_face: "Глубокий забой · 8ч", quarry_supply: "Большая смена · 8ч", forest: "Лесная разведка", shore: "Берег", forest_camp: "Лес · 8ч", shore_camp: "Берег · 8ч", cave: "Пещера", deep_cave: "Глубокий проход", old_woodland: "Старый лес", coastal_deposits: "Отложения", uplands: "Нагорье", abandoned_quarry: "Заброш. карьер" };
+const routeLabels: Record<string, string> = { quarry_stone: "Камень", quarry_stone_overnight: "Камень к утру", quarry_ore: "Руда", quarry_clay: "Глина", quarry_sand: "Песок", quarry_shift: "Шахта", quarry_deep_face: "Глубокий забой", quarry_supply: "Большая смена", forest: "Лесная разведка", shore: "Берег", forest_camp: "Лесной обход", shore_camp: "Стоянка на берегу", cave: "Пещера", deep_cave: "Глубокий проход", old_woodland: "Старый лес", coastal_deposits: "Отложения", uplands: "Нагорье", abandoned_quarry: "Заброш. карьер" };
 const productionOrder = ["garden", "woodlot", "quarry", "kiln", "workshop", "dryer", "warehouse"];
 const initialBuildings = new Set(["home", "garden", "warehouse"]);
 const buildingNodeId = (id: string, level: number) => `b:${id}:${level}`;
 const cloneCost = (cost: EconomyCost): EconomyCost => ({ coins: cost.coins, items: { ...cost.items } });
-const shortTime = (seconds: number) => seconds % 3600 === 0 ? `${seconds / 3600} ч` : `${seconds / 60} мин`;
+const shortTime = (seconds: number) => seconds < 60 ? `${seconds} с`
+  : seconds % 3600 === 0 ? `${seconds / 3600} ч`
+    : seconds % 60 === 0 ? `${seconds / 60} мин` : `${Math.floor(seconds / 60)} мин ${seconds % 60} с`;
 
 type WorldDefinition = [id: string, label: string, icon: string, description: string, kind?: ProgressionNodeKind];
 const worldDefinitions: WorldDefinition[] = [
@@ -125,6 +124,7 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
   const achievementPearls = Object.values(progressionRewards.achievementPearls).flat().reduce((sum, count) => sum + count, 0);
   const secondStageCount = catalog.stageOrders?.find(stage => stage.homeLevel === 2)?.orders.length ?? 0;
   const thirdStage = catalog.stageOrders?.find(stage => stage.homeLevel === 3);
+  const fullPriceBuyer = catalog.items.filter(item => item.tradable).every(item => catalog.localBuyer?.unitPrices?.[item.id] === item.baseSellPrice);
 
   function add(node: ProgressionNode) {
     if (byId.has(node.id)) throw new Error(`Duplicate progression node: ${node.id}`);
@@ -144,7 +144,7 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
   }
 
   fixed("start", "Начало", "🌱", 0, `Есть дом 1, ягодный куст 1 и кладовая 1. Старт: ${catalog.onboarding?.startingWallet.coins ?? 0} монет; ${Object.entries(catalog.onboarding?.startingItems ?? {}).map(([id, amount]) => `${items.get(id)?.name ?? id} × ${amount}`).join(", ")}. Выращивайте малину и выполняйте четыре учебных заказа, чтобы построить лесной участок, костёр, мастерскую и улучшить дом. Бесплатная лесная вылазка восстанавливает проданные материалы. Тапы не дают хозяйственную валюту.`);
-  fixed("trader", "Быстрая продажа", "🧑‍🌾", 0, `Продажа из кладовой с начала игры: для части товаров каталог задаёт фиксированные цены NPC. Остальные продаются с уценкой ${100 - (catalog.localBuyer?.payoutBps ?? 10000) / 100}% от базовой цены, итог стопки округляется вниз до кратного ${catalog.currencyScale} монетам. Сырую рыбу выгоднее продать Плёске по полной базовой цене. Рынок игроков открывается позднее; покупатель там не гарантирован.`);
+  fixed("trader", "Быстрая продажа", "🧑‍🌾", 0, `Продажа из кладовой с начала игры: ${fullPriceBuyer ? "все продаваемые товары NPC выкупает по полной базовой цене за каждую единицу. Сырую рыбу Плёска покупает по той же полной цене её класса" : `для части товаров каталог задаёт фиксированные цены NPC. Остальные продаются с уценкой ${100 - (catalog.localBuyer?.payoutBps ?? 10000) / 100}% от базовой цены, итог стопки округляется вниз до кратного ${catalog.currencyScale} монетам. Плёска покупает сырую рыбу по полной базовой цене её класса`}. Рынок игроков открывается позднее; покупатель там не гарантирован.`);
   fixed("coins", "Монеты", "🪙", 0, "Выручка за товары идёт на строительство и улучшения. Монеты не занимают место на складе.");
   fixed("pearls", "Жемчуг · ускорение", "◉", 0, `Можно сразу завершить текущую стройку. Тариф: ${formatPearls(catalog.constructionSpeedup.priceStepPearls)} жемчужина за ${catalog.constructionSpeedup.secondsPerPearl * catalog.constructionSpeedup.priceStepPearls / catalog.pearlScale / 60} минут остатка. Цена округляется вверх с шагом ${formatPearls(catalog.constructionSpeedup.priceStepPearls)}, убывает со временем и подтверждается перед списанием. Можно бесплатно дождаться таймера. Производство, вылазки и интервалы проектных поставок не ускоряются. Жемчуг также обновляет предложения Плёски и открывает места отдельно для каждого производства: ${catalog.productionSlots.upgrades.map(upgrade => `${upgrade.slots}-е — ${formatPearls(upgrade.pricePearls)} жемчужин с дома ${upgrade.requiredHomeLevel}`).join("; ")}. У шахтёра своя очередь без платных слотов. Дополнительные места продавца на рынке покупаются по очереди: ${catalog.market.slotPricesPearls.map((price, index) => `${catalog.market.baseSlots + index + 1}-е — ${formatPearls(price)} жемчужин`).join("; ")}. Источники: ${formatPearls(dailyPearls)} жемчужин за полный цикл ежедневных наград и до ${formatPearls(achievementPearls)} за самостоятельно полученные ступени достижений, однократно. В «Ещё» доступна витрина магазина жемчуга и золота без покупок. Торговец реликвиями ещё не реализован.`);
   fixed("daily_rewards", "Ежедневные награды", "", 0, `Подарки в профиле «Мой Мохлик». Цикл из ${progressionRewards.daily.length} получений: монеты и материалы по завершённому уровню дома, древнее ядро в седьмом подарке и суммарно ${formatPearls(dailyPearls)} жемчужин. Следующая награда доступна в следующие сутки UTC и не ранее чем через ${progressionRewards.dailyMinimumHours} часов после предыдущей. Пропуск не сбрасывает шаг. Забрать нужно вручную; переполненная кладовая не расходует награду. Подарок можно открыть в профиле и получить вручную.`, "milestone");
@@ -190,7 +190,7 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
         requirements[recipe.buildingId] = Math.max(requirements[recipe.buildingId] || 0, recipe.buildingLevel);
         const child = add({
           id: `r:${recipe.id}`, title: recipe.name,
-          label: recipeLabels[recipe.id] || (single ? outputLabel + (recipe.seconds >= 14400 ? ` · ${shortTime(recipe.seconds)}` : "") : "Партия"),
+          label: `${single ? outputLabel : "Партия"} · ${shortTime(recipe.seconds)}`,
           icon: single ? itemIcons[itemId] || "📦" : "📦", kind: "recipe", status: "active", phase: level,
           buildingId: recipe.buildingId, locationId: locationByBuilding.get(recipe.buildingId)?.id, level: recipe.buildingLevel, cost: cloneCost(recipe.cost), seconds: recipe.seconds,
           rewards: { ...recipe.rewards }, requirements, children: [],
@@ -203,7 +203,7 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
     for (const exploration of catalog.explorations.filter(value => value.requiredHomeLevel === level)) {
       const mineLevel = exploration.requiredBuildings.quarry;
       add({
-        id: `e:${exploration.id}`, title: exploration.name, label: routeLabels[exploration.id] || exploration.name,
+        id: `e:${exploration.id}`, title: exploration.name, label: `${routeLabels[exploration.id] || exploration.name} · ${shortTime(exploration.seconds)}`,
         icon: exploration.id.includes("shore") ? "🎣" : exploration.id.includes("cave") || exploration.id.includes("quarry") ? "⛏️" : exploration.id === "coastal_deposits" ? "🏖️" : "🧭",
         kind: "exploration", status: "active", phase: level,
         ...(mineLevel ? { buildingId: "quarry", locationId: "place:quarry", level: mineLevel } : {}), cost: cloneCost(exploration.cost), seconds: exploration.seconds,
@@ -269,7 +269,7 @@ export function buildProgressionGraph(catalog: EconomyCatalog = economyCatalog):
   if (catalog.rareDrops) {
     const rare = catalog.rareDrops, meanHours = (rare.minSeconds + rare.maxSeconds) / 7200;
     const source = fixed("rare_materials", "Реликвии исследований", "", rare.requiredHomeLevel,
-      `После дома ${rare.requiredHomeLevel} подтверждённые часы вылазок Мохлика, включая рыбалку, и работы шахтёра двигают два отдельных счётчика — по одному на персонажа. Типы реликвий используют общий счётчик внутри очереди своего персонажа. Сервер выбирает порог от ${rare.minSeconds / 3600} до ${rare.maxSeconds / 3600} часов, в среднем ${meanHours} часов, и один из ${rare.itemIds.length} равновероятных типов. Находка выдаётся при получении пересёкшей порог работы; перерасход переносится в очередь того же персонажа. Длинный маршрут учитывает свою длительность, короткий не даёт дополнительного розыгрыша. Отмена не двигает счётчик и не меняет результат. Конкретный тип не гарантирован. Реликвии можно обменивать между игроками, купить или продать за монеты нельзя.`, "acquisition");
+      `После дома ${rare.requiredHomeLevel} подтверждённые часы вылазок Мохлика, включая рыбалку, и работы шахтёра двигают два отдельных счётчика — по одному на персонажа. Типы реликвий используют общий счётчик внутри очереди своего персонажа. Сервер выбирает порог от ${rare.minSeconds / 3600} до ${rare.maxSeconds / 3600} часов, в среднем ${meanHours} часов, и один из ${rare.itemIds.length} равновероятных типов. Находка выдаётся при получении пересёкшей порог работы; перерасход переносится в очередь того же персонажа. Длинный маршрут учитывает свою длительность, короткий не даёт дополнительного розыгрыша. Отмена не двигает счётчик и не меняет результат. Конкретный тип не гарантирован случайной добычей.${thirdStage && Object.keys(thirdStage.completionRewards).length ? ` Отдельно завершение проекта дома 3 гарантирует ${Object.entries(thirdStage.completionRewards).map(([id, count]) => `${items.get(id)?.name ?? id} × ${count}`).join(", ")}; этот путь к дому 4 не зависит от случайной находки.` : ""} Седьмой ежедневный подарок даёт древнее ядро. Реликвии можно обменивать между игроками, купить или продать за монеты нельзя.`, "acquisition");
     source.requirements = { home: rare.requiredHomeLevel };
     source.rareDrops = { ...rare, itemIds: [...rare.itemIds] };
     edge(buildingNodeId("home", rare.requiredHomeLevel), source.id);

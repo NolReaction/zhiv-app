@@ -11,6 +11,12 @@
 .heading { display: grid; gap: 4px; min-width: 0; }
 .heading > span { text-transform: uppercase; font-size: 10px; letter-spacing: .15em; color: #a9c88e; font-weight: 650; }
 .heading h1 { margin: 0; font-size: 19px; font-weight: 650; line-height: 1.2; letter-spacing: -.035em; }
+.viewTabs { display: flex; align-items: center; gap: 7px; padding: 10px 22px; border-bottom: 1px solid var(--branch-line); background: #151f14; flex-shrink: 0; }
+.viewTabs button { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 9px 15px; border: 1px solid #aac28b38; border-radius: 9px; color: #b6c7a7; background: #202c1c; font-size: 12px; }
+.viewTabs button:hover { background: #30432a; }
+.viewTabs button[aria-selected='true'] { background: #c3d99d; border-color: #d9e9bb; color: #1d2a14; font-weight: 600; }
+.viewPanel { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
+.viewPanel[hidden] { display: none; }
 .search { display: flex; align-items: center; position: relative; gap: 9px; width: min(370px, 36vw); margin-left: auto; min-width: 140px; border: 1px solid var(--branch-line); border-radius: 11px; padding: 0 12px; background: #0d180e; }
 .search > svg { color: #aac29b; flex-shrink: 0; }
 .search input { min-width: 0; width: 100%; height: 43px; padding: 8px 0; border: 0; background: transparent; color: #edf3e5; font-size: 13px; }
@@ -63,6 +69,7 @@
 .node[data-status='plan'] .nodeIcon { color: #cdb5df; }
 .node[data-selected] .nodeIcon { color: #263e16; }
 .nodeLabel { display: block; font-size: 12px; line-height: 1.35; font-weight: 550; width: 100%; text-align: center; overflow-wrap: anywhere; }
+.node[data-kind='recipe'] .nodeLabel, .node[data-kind='exploration'] .nodeLabel { font-size: 11.5px; line-height: 1.25; }
 .node[data-kind='building'] { border-color: #d8bc6e8c; background: #2c2e1e; }
 .node[data-kind='location'] { border-color: #94bcc18c; background: #203034; }
 .node[data-kind='exploration'] { border-color: #87b6bb70; background: #1a2b28; }
@@ -135,6 +142,10 @@
   .heading { flex: 1; }
   .heading h1 { font-size: 16px; }
   .heading > span { font-size: 9px; }
+  .page[data-view='economy'] .header { min-height: 64px; }
+  .viewTabs { padding: 8px 10px; gap: 6px; }
+  .viewTabs button { padding: 8px 9px; font-size: 10px; gap: 6px; flex: 1; }
+  .viewTabs button > svg { width: 15px; height: 15px; flex-shrink: 0; }
   .mobileDetails { display: flex; align-items: center; justify-content: center; width: 37px; height: 37px; padding: 0; border: 1px solid var(--branch-line); border-radius: 9px; background: #263422; color: #cadfba; }
   .search { order: 4; width: 100%; margin: 0; flex: 0 0 100%; padding: 0 10px; border-radius: 8px; }
   .search input { height: 35px; font-size: 16px; }

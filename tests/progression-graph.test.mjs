@@ -168,12 +168,15 @@ test("rare materials share a real post-home-three exploration source without a f
   assert.match(source.description, /перерасход переносится в очередь того же персонажа/);
   assert.match(source.description, /48 до 144/);
   assert.match(source.description, /равновероятных/); assert.match(source.description, /Конкретный тип не гарантирован/);
+  assert.match(source.description, /завершение проекта дома 3 гарантирует Живая смола × 1/);
+  assert.match(source.description, /путь к дому 4 не зависит от случайной находки/);
+  assert.match(source.description, /Седьмой ежедневный подарок даёт древнее ядро/);
   assert.match(source.description, /купить или продать за монеты нельзя/);
   assert(hasEdge("b:home:3", source.id, "requirement"));
   for (const route of catalog.explorations) assert(hasEdge(`e:${route.id}`, source.id, "any"));
   for (const item of catalog.rareDrops.itemIds) {
     assert.equal(getProgressionResourceSource(graph, item).id, source.id, "Cost buttons resolve the earned source");
-    assert(!graph.nodes.some(value => value.rewards?.[item]), "No guaranteed trip, recipe or merchant reward");
+    assert(!graph.nodes.some(value => value.rewards?.[item]), "Chance-source metadata must not turn the separate project or gift guarantee into a guaranteed route or recipe reward");
   }
   assert(hasEdge(source.id, "b:home:4", "cost")); assert(hasEdge(source.id, "b:home:5", "cost"));
   assert(!hasEdge(source.id, "b:home:3", "cost"));
@@ -205,13 +208,38 @@ test("fishing and friend profiles are current while glade visits and Pleska's ho
   assert.equal(node("player_level").status, "active");
   assert.equal(node("achievements").status, "active");
   assert.match(node("willow_rod").description, /отдельная вещь/);
-  assert.match(node("trader").description, /40%/);
+  assert.match(node("trader").description, /все продаваемые товары NPC выкупает по полной базовой цене за каждую единицу/);
+  assert.doesNotMatch(node("trader").description, /уценкой|выгоднее продать Плёске/);
   assert.match(node("b:warehouse:1").description, /объявлениях рынка/);
   for (const recipe of catalog.recipes) {
     assert.equal(recipe.maxBatch, 1, recipe.id);
     assert.equal(Object.values(recipe.rewards).reduce((sum, count) => sum + count, 0), 1, recipe.id);
     assert.match(node(`r:${recipe.id}`).description, /Каждый запуск выпускает один предмет/);
   }
+});
+
+test("graph labels use current unit-production timers and actual mining durations", () => {
+  assert.equal(node("r:garden_season").label, "Малина · 30 с");
+  assert.equal(node("r:hardwood_shift").label, "Крепкое бревно · 8 мин");
+  assert.equal(node("r:smelt_iron").label, "Железный слиток · 30 мин");
+  assert.equal(node("r:make_beams").label, "Балка · 1 ч");
+  assert.equal(node("e:quarry_ore").label, "Руда · 9 мин");
+  assert.equal(node("e:quarry_sand").label, "Песок · 4 мин 30 с");
+  assert.equal(node("e:shore_camp").label, "Стоянка на берегу · 15 мин");
+  const changed = structuredClone(catalog);
+  changed.recipes.find(recipe => recipe.id === "hardwood_shift").seconds = 420;
+  changed.explorations.find(route => route.id === "quarry_ore").seconds = 600;
+  const custom = buildProgressionGraph(changed);
+  assert.equal(custom.nodes.find(value => value.id === "r:hardwood_shift").label, "Крепкое бревно · 7 мин");
+  assert.equal(custom.nodes.find(value => value.id === "e:quarry_ore").label, "Руда · 10 мин");
+});
+
+test("buyer description keeps discount rules only when the provided catalog actually uses them", () => {
+  const changed = structuredClone(catalog);
+  delete changed.localBuyer.unitPrices.berries;
+  const trader = buildProgressionGraph(changed).nodes.find(value => value.id === "trader");
+  assert.match(trader.description, /с уценкой 40%/);
+  assert.doesNotMatch(trader.description, /все продаваемые товары NPC выкупает по полной/);
 });
 
 test("production and construction retain every house, previous-level and additional building gate", () => {
