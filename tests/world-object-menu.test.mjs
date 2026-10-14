@@ -327,18 +327,18 @@ test("new house two requires the four confirmed tutorial requests even with enou
   assert.equal(helpers.worldConstructionReason(state, "home", target), null, "legacy profiles keep their previous building access");
 });
 
-test("new house three requires five stage requests and workshop one, quarry two and kiln one with warehouse one", () => {
+test("new house three requires seven stage requests and workshop one, quarry two and kiln one with warehouse one", () => {
   const target = economyCatalog.buildings.find(entry => entry.id === "home").levels.find(entry => entry.level === 3);
   assert.deepEqual(target.requiredBuildings, { workshop: 1, quarry: 2, kiln: 1 });
   const state = snapshot({ wallet: { coins: target.cost.coins, pearls: 0 }, inventory: { ...target.cost.items },
     buildings: { home: 2, warehouse: 1, garden: 1, woodlot: 1, dryer: 1, workshop: 1, quarry: 2, kiln: 1 },
     tutorialOrder: { ...newTutorialOrder(), step: 4, completed: true },
     stageOrders: { version: 1, stages: { 2: { step: 0, completed: false, terms: null } } } });
-  assert.match(helpers.worldConstructionReason(state, "home", target), /заказы.*0 \/ 5/i);
-  assert.match(renderUpgrade("home", controller({ snapshot: state })), /0 \/ 5/);
-  state.stageOrders.stages[2].step = 4;
-  assert.match(helpers.worldConstructionReason(state, "home", target), /заказы.*4 \/ 5/i);
-  state.stageOrders.stages[2] = { step: 5, completed: true, terms: null };
+  assert.match(helpers.worldConstructionReason(state, "home", target), /заказы.*0 \/ 7/i);
+  assert.match(renderUpgrade("home", controller({ snapshot: state })), /0 \/ 7/);
+  state.stageOrders.stages[2].step = 6;
+  assert.match(helpers.worldConstructionReason(state, "home", target), /заказы.*6 \/ 7/i);
+  state.stageOrders.stages[2] = { step: 7, completed: true, terms: null };
   assert.equal(helpers.worldConstructionReason(state, "home", target), null);
   assert.equal(state.storage.capacity, 50);
   assert.equal(disabled(button(renderUpgrade("home", controller({ snapshot: state })), "Улучшить до ур. 3")), false);
@@ -347,6 +347,8 @@ test("new house three requires five stage requests and workshop one, quarry two 
     assert.notEqual(helpers.worldConstructionReason(state, "home", target), null, id);
     state.buildings[id] = before;
   }
+  state.stageOrders.stages[2] = { step: 5, completed: true, terms: null };
+  assert.equal(helpers.worldConstructionReason(state, "home", target), null, "the completed previous five-request course does not reopen");
   delete state.tutorialOrder; delete state.stageOrders;
   assert.equal(helpers.worldConstructionReason(state, "home", target), null, "legacy accounts keep the previous course-free access");
 });

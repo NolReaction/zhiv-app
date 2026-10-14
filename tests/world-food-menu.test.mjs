@@ -10,6 +10,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
 const { WorldFoodMenu, FoodMealCard, ResidentOrderCard, mealBlockedReason } = await vite.ssrLoadModule("/features/economy/ui/food/world-food-menu.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { residentOrderBoard, normalizedResidentOrders } = await vite.ssrLoadModule("/features/economy/domain/food.ts");
+const { stageResidentOrder } = await vite.ssrLoadModule("/features/economy/domain/stage-orders.ts");
 const { ECONOMY_MAX_BALANCE } = await vite.ssrLoadModule("/features/economy/domain/money.ts");
 after(() => vite.close());
 const now = Date.parse("2026-10-07T14:00:00Z");
@@ -54,7 +55,12 @@ test("food and coin orders are separate panels with no implicit meal debit", () 
   assert.match(meals, /Съесть: Жареная рыба, 1 порция/);
   assert.doesNotMatch(meals, /data-order-id=|Отдать заказ/);
   const orders = render(WorldFoodMenu, { economy, initialTab: "orders" });
-  assert.equal((orders.match(/data-order-id=/g) ?? []).length, 3);
+  const ordinaryOffers = residentOrderBoard(economy.snapshot, now).offers;
+  const stageOffer = stageResidentOrder(economy.snapshot);
+  assert.equal(ordinaryOffers.length, 3);
+  assert.ok(stageOffer, "house three keeps its first project delivery beside the repeatable board");
+  assert.equal((orders.match(/data-order-id=/g) ?? []).length, 4);
+  for (const offer of [...ordinaryOffers, stageOffer]) assert.ok(orders.includes(`data-order-id="${offer.id}"`));
   assert.match(orders, /Обновление через/);
   assert.match(orders, /Бесплатных замен: <strong>3 \/ 3/);
   assert.match(orders, /новый заказ появится сразу/);

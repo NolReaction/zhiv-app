@@ -89,7 +89,7 @@ test("a ready construction has one enabled completion action and reuses normal r
 test("active construction shows its real pearl quote without spending on first press", () => {
   const snapshot = state({ wallet: { coins: 1000, pearls: 400 }, jobs: [construction()] });
   const html = render("home", { snapshot });
-  const accelerate = buttons(html).find(button => /aria-label="Завершить сейчас за 42 жемчужины"/.test(button.attributes));
+  const accelerate = buttons(html).find(button => /aria-label="Завершить сейчас за 1 жемчужину"/.test(button.attributes));
   assert.ok(accelerate);
   assert.doesNotMatch(accelerate.attributes, /disabled/);
   assert.match(accelerate.attributes, /aria-expanded="false"/);
@@ -194,21 +194,21 @@ test("pantry expansion shows only its real capacity gain, without dependent buil
   assert.match(text(html), /Верёвка 0 \/ 2/);
 });
 
-test("workshop upgrade presents only its own three products, with recipe details initially closed", () => {
+test("workshop upgrade presents only its two unit products, with recipe details initially closed", () => {
   const html = render("workshop", { snapshot: state({ buildings: { home: 3, warehouse: 1, workshop: 1, woodlot: 2, kiln: 2 } }) });
   const products = buttons(html).filter(button => /data-recipe=/.test(button.attributes));
-  assert.equal(products.length, 3);
+  assert.deepEqual(products.map(button => button.attributes.match(/data-recipe="([^"]+)"/)[1]), ["make_metal_parts", "weave_cloth"]);
   assert.ok(products.every(button => /aria-expanded="false"/.test(button.attributes)));
-  assert.match(text(html), /Металлические детали/);
-  assert.match(text(html), /Полотно/);
-  assert.match(text(html), /Набор · 3 вида/);
+  assert.match(text(html), /Металлическая деталь ×1 · 30 мин/);
+  assert.match(text(html), /Полотно ×1 · 40 мин/);
+  assert.doesNotMatch(html, /Набор · 3 вида|data-recipe="workshop_overnight"/);
   assert.doesNotMatch(html, /Развитие хозяйства|Дом Мохлика|Старый лес|Результат рецепта/);
 });
 
 test("a furnace upgrade does not claim that it manufactures workshop products unlocked by the furnace", () => {
   const html = render("kiln", { snapshot: state({ buildings: { home: 3, warehouse: 1, workshop: 1, quarry: 2, kiln: 1 } }) });
   assert.deepEqual(buttons(html).filter(button => /data-recipe=/.test(button.attributes)).map(button => button.attributes.match(/data-recipe="([^"]+)"/)[1]), ["smelt_iron"]);
-  assert.doesNotMatch(html, /Металлические детали|Сделать металлические детали/);
+  assert.doesNotMatch(html, /Металлическая деталь|Сделать металлические детали/);
 });
 
 test("the first furnace previews one charcoal and one brick per separate second-stage job", () => {
@@ -239,7 +239,7 @@ test("mine route cards retain actual yields, times and the additional home requi
   const html = render("quarry", { snapshot: state({ buildings: { home: 1, warehouse: 1 } }) });
   for (const id of ["cave", "deep_cave", "quarry_stone", "quarry_stone_overnight"]) assert.ok(html.includes(`data-upgrade-benefit="route:${id}"`));
   assert.match(text(html), /Новая добыча · 1 ч Вход в пещеру Камень ×8 Железная руда ×4 Ещё потребуется Дом Мохлика 1\/3/);
-  assert.match(text(html), /Новая добыча · 4 ч Глубокий проход Камень ×32 Железная руда ×16 Ещё потребуется Дом Мохлика 1\/3/);
+  assert.match(text(html), /Новая добыча · 4 ч Глубокий проход Камень ×30 Железная руда ×15 Ещё потребуется Дом Мохлика 1\/3/);
   assert.match(text(html), /Новая добыча · 3 мин Добыть камень Камень ×1 Ещё потребуется Дом Мохлика 1\/2/);
   assert.match(text(html), /Шахта работает независимо от Мохлика/);
   assert.match(html, /data-item-icon="stone"/);

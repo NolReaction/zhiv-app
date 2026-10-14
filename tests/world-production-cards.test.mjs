@@ -73,8 +73,9 @@ function prepareMineRoute(economy, routeId = "quarry_stone") {
 test("workshop presents one catalogue of unlocked recipes regardless of duration", () => {
   const html = renderMenu("workshop");
   const catalogue = section(html, "Доступные рецепты");
-  for (const id of ["make_planks", "make_rope", "weave_cloth", "workshop_overnight"]) assert.ok(catalogue.includes(`data-recipe="${id}"`));
-  assert.doesNotMatch(html, /data-recipe="make_metal_parts"|data-recipe="make_tools"|Обычные заказы|На несколько часов|Позже/);
+  assert.deepEqual([...catalogue.matchAll(/data-recipe="([^"]+)"/g)].map(match => match[1]), ["make_planks", "make_rope", "weave_cloth"]);
+  assert.equal((html.match(/aria-label="Доступные рецепты"/g) ?? []).length, 1);
+  assert.doesNotMatch(html, /data-recipe="workshop_overnight"|data-recipe="make_metal_parts"|data-recipe="make_tools"|Обычные заказы|На несколько часов|Позже/);
   assert.doesNotMatch(html, /aria-label="Стоимость"|Недостающие условия|Начать ·/);
 });
 
@@ -117,15 +118,21 @@ test("harvest cards distinguish quantity and time while keeping the result name 
   assert.doesNotMatch(catalogue, /grow_berries_overnight|8 ч/);
 });
 
-test("selected recipe shows actual multi-item rewards and only its own costs", () => {
-  const html = renderRecipe("workshop_overnight", controller({ inventory: { wood: 6, fiber: 20 } }));
+test("selected current recipe shows its exact unit reward and only its own costs", () => {
+  const recipe = economyCatalog.recipes.find(recipe => recipe.id === "weave_cloth");
+  assert.deepEqual(recipe.rewards, { cloth: 1 });
+  assert.deepEqual(recipe.cost, { coins: 0, items: { fiber: 5, rope: 1 } });
+  assert.equal(recipe.maxBatch, 1);
+  const html = renderRecipe(recipe.id, controller({ inventory: { wood: 6, fiber: 5, rope: 1 } }));
   assert.match(html, /Все рецепты/);
-  for (const amount of [6, 4, 1]) assert.match(html, new RegExp(`×${amount}</b>`));
+  assert.match(html, /data-item-icon="cloth"/);
+  assert.equal((html.match(/×1<\/b>/g) ?? []).length, 1);
+  assert.match(html, /1 предмет · 1 место производства/);
   assert.match(html, /Понадобится/);
-  assert.match(html, /6 \/ 6/);
-  assert.match(html, /20 \/ 20/);
+  assert.match(html, /5 \/ 5/);
+  assert.match(html, /1 \/ 1/);
   assert.equal(startDisabled(html), false);
-  assert.doesNotMatch(html, /Обычные заказы|На несколько часов|data-recipe=/);
+  assert.doesNotMatch(html, /data-item-icon="wood"|Обычные заказы|На несколько часов|data-recipe=|aria-label="Увеличить партию"/);
 });
 
 test("selection preserves missing-material navigation and all request locks", () => {
