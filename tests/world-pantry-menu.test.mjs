@@ -59,17 +59,18 @@ test("refrigerator separates all fish from materials while sharing the exact war
   const before = structuredClone(state), economy = controller({ snapshot: state });
   const supplies = render(economy);
   assert.match(supplies, /aria-label="Бревно: 20"/);
-  assert.match(supplies, /aria-label="Копчёная рыба: 3"/);
+  assert.doesNotMatch(supplies, /aria-label="Копчёная рыба: 3"/);
   assert.match(supplies, /aria-label="Лесной червячок: 2"/);
   assert.doesNotMatch(supplies, /aria-label="(?:Обычная рыба|Легендарная рыба|Речная рыба|Серебринка|Теневая акула):/);
   const fridge = render(economy, { initialTab: "fridge" });
   assert.match(fridge, /aria-label="Рыба и еда в холодильнике"/);
-  assert.match(fridge, /<small>87<\/small><span>Холодильник<\/span>/);
+  assert.match(fridge, /<small>90<\/small><span>Холодильник<\/span>/);
   for (const [name, quantity, id] of [["Обычная рыба", 85, "fish_common"], ["Легендарная рыба", 2, "fish_legendary"]]) {
     assert.ok(fridge.includes(`aria-label="${name}: ${quantity}"`));
     assert.ok(fridge.includes(`data-item-icon="${id}"`));
   }
-  assert.doesNotMatch(fridge, /data-hidden-fish|aria-label="(?:Бревно|Копчёная рыба|Лесной червячок):/);
+  assert.match(fridge, /aria-label="Копчёная рыба: 3"/);
+  assert.doesNotMatch(fridge, /data-hidden-fish|aria-label="(?:Бревно|Лесной червячок):/);
   assert.doesNotMatch(fridge, /data-item-icon="(?:fish|fish_silverfin|fish_shark)"/, "legacy species must coalesce into their class stocks");
   assert.match(fridge, /Места общие с кладовой/);
   for (const html of [supplies, fridge, render(economy, { initialTab: "relics" })]) {

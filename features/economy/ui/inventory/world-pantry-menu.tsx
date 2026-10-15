@@ -20,6 +20,7 @@ import { locked, type ReadyEconomy } from "@/features/economy/sync/controller-st
 import { ProductIcon, number, type StationNavigation } from "@/features/economy/ui/shared/world-economy-parts";
 import type { ConstructionGoalController } from "@/features/economy/ui/construction/use-construction-goal";
 import { ConstructionGoalSummary } from "@/features/economy/ui/construction/construction-goal-summary";
+import { groupPantryItems, pantryItemRarity, pantryRarities, pantryRarityNames } from "./pantry-item-presentation";
 import styles from "./world-pantry-menu.module.css";
 
 export type WorldPantryMenuProps = {
@@ -239,10 +240,13 @@ export function PantryFishClassRow({ economy, classId, selectedFishId, onSelectF
   }, [classId, contentKey]);
   if (!entries.length) return null;
   const name = state.catalog.items.find(item => item.id === classId)?.name ?? classId;
+  const rarity = fishClassForItem(classId, state.catalog.fishing)?.rarity ?? "common";
+  const rarityDescription = `Редкость: ${pantryRarityNames[rarity]}`;
   const total = entries.reduce((sum, entry) => sum + entry.quantity, 0);
   return <section className={styles.fishClassRow} data-pantry-fish-class={classId} data-fish-rarity={fishClassForItem(classId, state.catalog.fishing)?.rarity}
     aria-label={`${name}: ${number(total)}`}>
     <header className={styles.fishClassHeading}><span className={styles.fishClassArt}><ItemIcon itemId={classId} size={32} /></span><h3 id={headingId}>{name}</h3><strong aria-label={`Всего: ${number(total)}`}>×{number(total)}</strong></header>
+    <span hidden id={`${headingId}-rarity`}>{rarityDescription}</span>
     <div className={styles.fishRailFrame}>
       <div ref={rail} className={styles.fishRail} role="group" aria-labelledby={headingId} data-pantry-fish-rail={classId} onScroll={event => {
         const element = event.currentTarget, left = element.scrollLeft > 1, right = element.scrollWidth - element.clientWidth - element.scrollLeft > 1;
@@ -251,8 +255,8 @@ export function PantryFishClassRow({ economy, classId, selectedFishId, onSelectF
         {entries.map(entry => {
           const fishName = entry.itemId === classId ? "Без указания вида" : state.catalog.items.find(item => item.id === entry.itemId)?.name ?? entry.itemId;
           const card = <button type="button" className={styles.fishCard} data-guide-pantry-item={entry.itemId} data-pantry-fish-card={entry.itemId}
-            data-state={selectedFishId === entry.itemId ? "open" : "closed"} aria-expanded={selectedFishId === entry.itemId} aria-controls={selectedFishId === entry.itemId ? saleId : undefined} aria-haspopup="dialog"
-            aria-label={`${fishName}: ${number(entry.quantity)}`} title={fishName} onClick={event => onSelectFish?.(classId, entry.itemId, event.currentTarget)} onKeyDown={event => {
+            data-item-rarity={rarity} aria-describedby={`${headingId}-rarity`} data-state={selectedFishId === entry.itemId ? "open" : "closed"} aria-expanded={selectedFishId === entry.itemId} aria-controls={selectedFishId === entry.itemId ? saleId : undefined} aria-haspopup="dialog"
+            aria-label={`${fishName}: ${number(entry.quantity)}`} title={`${fishName} · ${rarityDescription}`} onClick={event => onSelectFish?.(classId, entry.itemId, event.currentTarget)} onKeyDown={event => {
               if (event.key === "ArrowDown" && selectedFishId === entry.itemId) { event.preventDefault(); onFocusSale?.(); }
             }}>
             <FishTapFeedbackArt feedback={feedback} itemId={entry.itemId}><ItemIcon itemId={entry.itemId} size={28} /></FishTapFeedbackArt><span>{fishName}</span><strong>×{number(entry.quantity)}</strong>
@@ -266,13 +270,14 @@ export function PantryFishClassRow({ economy, classId, selectedFishId, onSelectF
   </section>;
 }
 
-export function RelicPantrySection({ state, onExplore, onOpenMarket }: { state: EconomyView; onExplore: () => void; onOpenMarket?: () => void }) {
+export function RelicPantrySection({ state, onExplore, onOpenMarket, rarityDescriptionId }: { state: EconomyView; onExplore: () => void; onOpenMarket?: () => void; rarityDescriptionId?: string }) {
   const items = state.catalog.items.filter(item => item.category === "special");
   const requiredHome = state.catalog.rareDrops?.requiredHomeLevel;
   return <section className={styles.relics} data-guide-pantry-relics aria-label="Реликвии в кладовой">
     <div className={styles.relicList}>{items.map(item => {
       const stock = state.inventory[item.id] ?? 0;
-      return <article className={styles.relicCard} key={item.id} data-relic={item.id} data-owned={stock > 0}>
+      const rarity = pantryItemRarity(item, state.catalog), description = `Редкость: ${pantryRarityNames[rarity]}`;
+      return <article className={styles.relicCard} key={item.id} data-relic={item.id} data-owned={stock > 0} data-item-rarity={rarity} title={`${item.name} · ${description}`} aria-describedby={rarityDescriptionId}>
         <div className={styles.relicHeading}><span className={styles.relicArt}><ItemIcon itemId={item.id} size={48} /></span><div><h3>{item.name}</h3></div><strong aria-label={`В наличии: ${number(stock)}`}>×{number(stock)}</strong></div>
       </article>;
     })}</div>
@@ -300,13 +305,14 @@ export function WorldPantryMenu({ economy, onExplore, onOpenMarket, onOpenFishin
   const { used, reserved, capacity, available, overflow } = state.storage;
   const occupied = used + reserved;
   // This is a view of the same inventory, not another capacity or reward store.
-  const fishIds = new Set<string>([...FISH_SPECIES_IDS, ...(state.catalog.fishing?.classes.map(fish => fish.itemId) ?? []), ...(state.catalog.food?.meals.map(meal => meal.itemId) ?? [])]);
+  const fishIds = new Set<string>([...FISH_SPECIES_IDS, ...(state.catalog.fishing?.classes.map(fish => fish.itemId) ?? []), ...(state.catalog.food?.meals.map(meal => meal.itemId) ?? []), ...state.catalog.items.filter(item => item.category === "provisions").map(item => item.id)]);
   const ownedItems = state.catalog.items.filter(item => item.category !== "special" && (state.inventory[item.id] ?? 0) > 0);
   const supplies = ownedItems.filter(item => !fishIds.has(item.id));
   const fishItems = ownedItems.filter(item => fishIds.has(item.id));
   const preparedMeals = fishItems.filter(item => !fishClassForItem(item.id, state.catalog.fishing));
   const fishClasses = state.catalog.fishing?.classes.filter(fish => (state.inventory[fish.itemId] ?? 0) > 0) ?? [];
   const visibleItems = tab === "fridge" ? preparedMeals : supplies;
+  const itemGroups = groupPantryItems(visibleItems, state.catalog);
   const relics = state.catalog.items.filter(item => item.category === "special");
   const relicCount = relics.reduce((total, item) => total + (state.inventory[item.id] ?? 0), 0);
   const sections = [
@@ -317,6 +323,7 @@ export function WorldPantryMenu({ economy, onExplore, onOpenMarket, onOpenFishin
   const marketAvailable = onOpenMarket && economyMarketUnlocked(state, state.catalog);
   const readyEconomy = { ...economy, snapshot: state };
   return <div className={styles.pantry} aria-busy={economy.busy || undefined}>
+    {pantryRarities.map(rarity => <span key={rarity} hidden id={`${tabId}-rarity-${rarity}`}>Редкость: {pantryRarityNames[rarity]}</span>)}
     {recovery}
     {onReturnToGift && <button type="button" className={styles.giftReturn} onClick={onReturnToGift}><Gift size={17} aria-hidden="true" />Вернуться к подарку</button>}
     {constructionGoal && onOpenGoal && <ConstructionGoalSummary state={state} constructionGoal={constructionGoal} onOpenGoal={onOpenGoal} navigation={navigation} />}
@@ -336,7 +343,7 @@ export function WorldPantryMenu({ economy, onExplore, onOpenMarket, onOpenFishin
         event.preventDefault(); changeTab(sections[next].id); tabs.current[next]?.focus();
       }}><entry.icon size={14} aria-hidden="true" /><small>{number(entry.count)}</small><span>{entry.name}</span></button>)}</div>
     <div role="tabpanel" className={styles.pantryPanel} id={`${tabId}-panel`} aria-labelledby={`${tabId}-${tab}`}>
-      {tab === "relics" ? <RelicPantrySection state={state} onExplore={onExplore} onOpenMarket={marketAvailable ? onOpenMarket : undefined} /> : <>
+      {tab === "relics" ? <RelicPantrySection state={state} rarityDescriptionId={`${tabId}-rarity-epic`} onExplore={onExplore} onOpenMarket={marketAvailable ? onOpenMarket : undefined} /> : <>
     {tab === "fridge" && <div className={styles.fridgeHeading}><span><Snowflake size={16} aria-hidden="true" />Рыба и готовая еда</span><small>Места общие с кладовой</small></div>}
     {selectedItemId && !fishClassForItem(selectedItemId, state.catalog.fishing) && <PantrySale key={selectedItemId} economy={readyEconomy} itemId={selectedItemId} constructionGoal={constructionGoal} onClose={() => setSelectedItemId(null)} onOpenFishingShop={onOpenFishingShop} />}
     {visibleItems.length > 0 || tab === "fridge" && fishClasses.length > 0 ? <>
@@ -344,16 +351,22 @@ export function WorldPantryMenu({ economy, onExplore, onOpenMarket, onOpenFishin
         onOpenFishingShop={onOpenFishingShop} onFishSaleOpenChange={onFishSaleOpenChange} />}
       {visibleItems.length > 0 && <div className={tab === "fridge" ? styles.preparedMeals : undefined}>
       {tab === "fridge" && <h3>Готовая еда</h3>}
-      <div className={styles.items} aria-label={tab === "fridge" ? "Готовая еда в холодильнике" : "Предметы в кладовой"}>
-        {visibleItems.map(item => {
-          return <div key={item.id} className={styles.itemGroup}><button type="button" className={styles.item} data-guide-pantry-item={item.id} aria-label={`${item.name}: ${number(state.inventory[item.id])}`} aria-pressed={selectedItemId === item.id}
-            onClick={() => setSelectedItemId(current => current === item.id ? null : item.id)}>
-          <ProductIcon state={state} itemId={item.id} size={20} />
-          <span>{item.name}</span>
-          <span className={styles.itemStock}><strong>×{number(state.inventory[item.id])}</strong>
-          {(constructionGoal?.details?.keepItems[item.id] ?? 0) > 0 && <small className={styles.goalItem}>Для цели: {number(Math.min(state.inventory[item.id], constructionGoal!.details!.keepItems[item.id]))}</small>}</span>
-        </button></div>;
-        })}
+      <div className={styles.itemSections} aria-label={tab === "fridge" ? "Готовая еда в холодильнике" : "Предметы в кладовой"}>
+        {itemGroups.map(group => <section key={group.id} className={styles.itemSection} data-pantry-item-group={group.id} aria-label={group.name}>
+          {tab === "fridge" ? <h4>{group.name}</h4> : <h3>{group.name}</h3>}
+          <div className={styles.items}>{group.items.map(item => {
+            const rarity = pantryItemRarity(item, state.catalog), description = `Редкость: ${pantryRarityNames[rarity]}`;
+            return <div key={item.id} className={styles.itemGroup}><button type="button" className={styles.item} data-guide-pantry-item={item.id}
+              data-item-rarity={rarity} title={`${item.name} · ${description}`} aria-describedby={`${tabId}-rarity-${rarity}`}
+              aria-label={`${item.name}: ${number(state.inventory[item.id])}`} aria-pressed={selectedItemId === item.id}
+              onClick={() => setSelectedItemId(current => current === item.id ? null : item.id)}>
+              <ProductIcon state={state} itemId={item.id} size={20} />
+              <span>{item.name}</span>
+              <span className={styles.itemStock}><strong>×{number(state.inventory[item.id])}</strong>
+              {(constructionGoal?.details?.keepItems[item.id] ?? 0) > 0 && <small className={styles.goalItem}>Для цели: {number(Math.min(state.inventory[item.id], constructionGoal!.details!.keepItems[item.id]))}</small>}</span>
+            </button></div>;
+          })}</div>
+        </section>)}
       </div>
       </div>}
     </> : <div className={styles.empty}>{tab === "fridge" ? <Fish size={25} aria-hidden="true" /> : <Package size={23} aria-hidden="true" />}<p>{tab === "fridge" ? "Здесь будут рыба и готовые блюда." : reserved > 0 && !ownedItems.length ? "Все запасы сейчас на рынке." : "Здесь будут урожай, материалы и находки."}</p>{(tab === "fridge" || reserved === 0) && <button type="button" className={styles.textButton} onClick={onExplore}><Compass size={14} aria-hidden="true" />{tab === "fridge" ? "Выбрать вылазку" : "Отправиться за находками"}</button>}</div>}
