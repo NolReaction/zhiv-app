@@ -35,7 +35,16 @@ test("travel progress derives from absolute journey time and remains bounded aft
   assert.equal(journeyFraction(journey, start + 86400000), 1);
 });
 
-test("the fullscreen forest mounts raw modal content without centered-dialog geometry", () => {
+test("the fullscreen forest mounts raw modal content without centered-dialog geometry", t => {
+  const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
+  let activityGate = null;
+  Object.defineProperty(globalThis, "document", { configurable: true, value: {
+    querySelector(selector) { assert.equal(selector, "[data-activity-gate]"); return activityGate; },
+  } });
+  t.after(() => {
+    if (previousDocument) Object.defineProperty(globalThis, "document", previousDocument);
+    else delete globalThis.document;
+  });
   const origin = { "--portal-x": "180px", "--portal-y": "350px", "--portal-radius": "150px" };
   let dialog;
   function PortalProbe() { dialog = WorldPortal({ open: true, origin }); return null; }
@@ -59,6 +68,11 @@ test("the fullscreen forest mounts raw modal content without centered-dialog geo
   view.props.escapeHandlerRef.current = () => true;
   content.props.onEscapeKeyDown(event);
   assert.ok(prevented && stopped, "closing a local menu must not also dismiss the world");
+  prevented = false; stopped = false;
+  view.props.escapeHandlerRef.current = () => false;
+  activityGate = {};
+  content.props.onEscapeKeyDown(event);
+  assert.ok(prevented && stopped, "the activity gate owns Escape while the retained world is paused");
 });
 
 test("account-owned sibling dialogs have distinct keys and remount on account changes", async () => {

@@ -308,7 +308,8 @@ class JdbcAdminRepositoryIntegrationTest {
         assertEquals(setOf("make_planks", "cook_hearty_fish"), cancellations.map { it.targetId }.toSet())
         assertEquals(paid.cost.items, cancellations.single { it.targetId == "cook_hearty_fish" }.items)
         assertEquals("{}", scalar("SELECT context::text FROM economy_ledger WHERE user_id=? AND source_key=?", crafter.id, "command:$legacyCancel"))
-        assertEquals(context, economyJson.decodeFromString<Map<String, String>>(scalar("SELECT context::text FROM economy_ledger WHERE user_id=? AND source_key=?", crafter.id, "command:$cancelId")))
+        val savedContext = assertNotNull(scalar("SELECT context::text FROM economy_ledger WHERE user_id=? AND source_key=?", crafter.id, "command:$cancelId"))
+        assertEquals(context, economyJson.decodeFromString<Map<String, String>>(savedContext))
     }
 
     @Test fun `garden basket analytics attribute both actions and the first collected work without changing saved grouped context`() = runBlocking<Unit> {

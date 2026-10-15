@@ -8,7 +8,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 const { PleskConversation } = await vite.ssrLoadModule("/features/world/ui/characters/world-resident-dialog.tsx");
-const { FishCounter } = await vite.ssrLoadModule("/features/economy/ui/fishing/plesk-fishing-shop.tsx");
+const { FishCounter, PleskFishTrade } = await vite.ssrLoadModule("/features/economy/ui/fishing/plesk-fishing-shop.tsx");
 const { economyCatalog, economyFishingSchema } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 after(() => vite.close());
@@ -27,6 +27,9 @@ function render(economy = controller()) {
 }
 function renderCatch(economy) {
   return renderToStaticMarkup(createElement(FishCounter, { economy, state: economy.snapshot, catalog: economy.snapshot.catalog.fishing }));
+}
+function renderSale(economy, itemId = "fish_common") {
+  return renderToStaticMarkup(createElement(PleskFishTrade, { economy, state: economy.snapshot, itemId }));
 }
 function button(html, label) {
   const found = [...html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)].map(match => ({ attributes: match[1], text: match[2].replace(/<[^>]*>/g, "") })).find(entry => entry.text.includes(label));
@@ -47,12 +50,16 @@ test("Pleska opens current merchant offers, while the catch tab sells the player
   assert.match(html, /Книга/);
   assert.doesNotMatch(html, /Продажа: Обычная рыба|Свернуть продажу|Забрать улов|Бесплатно/);
   const catchTab = renderCatch(economy);
-  assert.match(catchTab, /Продажа: Обычная рыба/);
-  assert.match(catchTab, /В запасе <strong>5<\/strong>/);
-  assert.match(catchTab, /За штуку[\s\S]+17/);
-  assert.equal(disabled(button(catchTab, "Продать")), false);
-  assert.match(catchTab, /min="1" max="5"/);
-  assert.doesNotMatch(catchTab, /Купить/);
+  assert.match(catchTab, /Обычная рыба/);
+  assert.match(catchTab, /aria-expanded="false"/);
+  assert.match(catchTab, /×5/);
+  assert.doesNotMatch(catchTab, /Продажа:|Количество|Продать|Купить/);
+  const sale = renderSale(economy);
+  assert.match(sale, /Продажа: Обычная рыба/);
+  assert.match(sale, /В запасе <strong>5<\/strong>/);
+  assert.match(sale, /За штуку[\s\S]+17/);
+  assert.equal(disabled(button(sale, "Продать")), false);
+  assert.match(sale, /min="1" max="5"/);
 });
 
 test("missing or empty inventory cannot sell the resident's ambient catch", () => {
@@ -72,7 +79,7 @@ test("trading respects in-flight, uncertain and cooldown locks with receipt reco
   for (const change of [{ busy: true }, { uncertain: true }, { retryAt: now + 5_000 }]) {
     const economy = controller({ snapshot: snapshot({ wallet: { coins: 20000, pearls: 100 } }), ...change });
     assert.equal(disabled(button(render(economy), "Купить удочку")), true);
-    assert.equal(disabled(button(renderCatch(economy), "Продать")), true);
+    assert.equal(disabled(button(renderSale(economy), "Продать")), true);
   }
   const html = render(controller({ uncertain: true, retryAt: now + 5_000 }));
   assert.match(html, /role="alert"/);
@@ -85,8 +92,12 @@ test("purchased stock is visible in the sell tab without becoming a personal cat
   const purchased = renderCatch(economy);
   assert.match(purchased, /data-item-icon="fish_legendary"/);
   assert.doesNotMatch(purchased, /data-hidden-fish/);
-  assert.equal(disabled(button(purchased, "Продать")), false);
-  assert.match(purchased, /В запасе <strong>3<\/strong>/);
+  assert.match(purchased, /aria-expanded="false"/);
+  assert.match(purchased, /×3/);
+  assert.doesNotMatch(purchased, /Продажа:|Количество|Продать/);
+  const sale = renderSale(economy, "fish_legendary");
+  assert.equal(disabled(button(sale, "Продать")), false);
+  assert.match(sale, /В запасе <strong>3<\/strong>/);
   assert.doesNotMatch(purchased, /Теневая акула|data-item-icon="fish_shark"/);
   assert.deepEqual(state.inventory, { fish_shark: 1, fish_legendary: 2 }, "class aggregation is a read-only view");
   assert.deepEqual(state.fishing.catches, {});
