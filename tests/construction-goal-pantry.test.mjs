@@ -28,6 +28,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
       }
       export function useId() { return useState(() => 'pantry-test-' + cursor)[0]; }
       export function useEffect() {}
+      export function useLayoutEffect(effect) { effect(); }
     `; },
     transform(source, id) {
       if (id.endsWith("/features/economy/ui/inventory/world-pantry-menu.tsx")) return source.replace('from "react";', `from "${hookModule}";`);

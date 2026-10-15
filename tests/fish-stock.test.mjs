@@ -220,7 +220,7 @@ test("null selection is old-client automatic behavior and cannot attach choices 
   assert.equal(accepted.state.fishing.stock.fish_silverfin, 3);
   const absent = { ...request }; delete absent.fishSelection;
   assert.equal(economy.commandDevEconomy(p.token, absent, now).replayed, true);
-  assert.throws(() => issue(p, "sell_fish", "fish_epic", { fishSelection: { fish_sturgeon: 1 } }), { code: "INVALID_ECONOMY_COMMAND" });
+  assert.throws(() => issue(p, "equip_fishing_rod", "reed_rod", { fishSelection: { fish_sturgeon: 1 } }), { code: "INVALID_ECONOMY_COMMAND" });
 });
 
 test("market cancellation restores exact escrowed species without changing the catch book", () => {

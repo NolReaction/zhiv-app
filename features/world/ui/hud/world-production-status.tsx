@@ -17,19 +17,21 @@ export function WorldProductionStatus({ economy, groups, anchors, reserved = [],
   const state = economy.snapshot;
   if (!state || hidden) return null;
   const description = (work: MapProduction) => `${stationName(state, work.stationId)}: ${work.recipeName}, ${work.label}${work.remaining ? `, ${constructionCountdown(work.remaining)}` : ""}`;
-  const content = (entry: MapProduction, count: number, stationLabel?: string) => {
+  const content = (entry: MapProduction, count: number) => {
     const active = entry.phase === "working" || entry.phase === "collecting", construction = entry.kind === "construction";
-    return <>
+    const label = active ? entry.remaining ? constructionCountdown(entry.remaining) : "Сбор…"
+      : entry.phase === "ready" ? "Готово" : entry.phase === "storage-blocked" ? "Нет места"
+        : entry.phase === "paused" ? "Пауза" : entry.label === "Ждёт Мохлика" ? "Ждёт" : "Созрело";
+    return <span className={styles.pill} data-long-clock={active && label.length > 8 || undefined}>
       <span className={styles.icon} aria-hidden="true">
-        {construction ? <Hammer size={23} /> : entry.phase === "storage-blocked" ? <Package size={23} /> : entry.stationId === "quarry" && active ? <Pickaxe size={23} />
-          : entry.itemId ? <PlayerItemIcon state={state} itemId={entry.itemId} size={28} /> : <Hammer size={23} />}
-        {entry.phase === "ready" && <Check className={styles.check} size={12} />}
+        {construction ? <Hammer size={17} /> : entry.phase === "storage-blocked" ? <Package size={17} /> : entry.stationId === "quarry" && active ? <Pickaxe size={17} />
+          : entry.itemId ? <PlayerItemIcon state={state} itemId={entry.itemId} size={22} /> : <Hammer size={17} />}
+        {entry.phase === "ready" && <Check className={styles.check} size={10} />}
       </span>
-      <span className={styles.caption}><strong>{active && entry.remaining ? constructionCountdown(entry.remaining) : active ? "Собирает…" : entry.phase === "ready" ? "Готово" : entry.label}</strong>
-        <small>{stationLabel ?? (construction ? active ? "Строительство" : "Завершить" : active ? entry.label : entry.phase === "ready" ? "В кладовую" : entry.recipeName)}</small></span>
+      <strong className={styles.caption}>{label}</strong>
       {count > 1 && <span className={styles.count} aria-hidden="true">+{count - 1}</span>}
       <span className={styles.track} aria-hidden="true"><span style={{ width: `${entry.progress * 100}%` }} /></span>
-    </>;
+    </span>;
   };
   return <>{layoutProductionMarkers(groups, anchors, reserved).map(({ group, anchor }) => {
     const entry = group.primary, construction = entry.kind === "construction";
@@ -44,14 +46,14 @@ export function WorldProductionStatus({ economy, groups, anchors, reserved = [],
         data-production-status={section.primary.phase} data-production-target={section.stationId} data-work-kind={section.primary.kind}
         title={section.entries.map(description).join("\n")}
         aria-label={`${section.entries.map(description).join(". ")}. Открыть ${section.label.toLocaleLowerCase("ru-RU")}`}
-        onClick={() => onOpen(section.stationId)}>{content(section.primary, section.entries.length, section.label)}</button>)}
+        onClick={() => onOpen(section.stationId)}>{content(section.primary, section.entries.length)}</button>)}
     </div>;
     return <button key={group.place} type="button" className={styles.marker} data-production-status={entry.phase}
       data-production-target={entry.stationId} data-map-object={anchor.objectId} data-work-kind={entry.kind}
       style={position}
-      title={details.join("\n")} aria-label={`${details.join(". ")}. ${construction ? "Открыть улучшение" : "Открыть здание"}`}
+      title={details.join("\n")} aria-label={`${sections[0] ? `${sections[0].label}. ` : ""}${details.join(". ")}. ${construction ? "Открыть улучшение" : "Открыть здание"}`}
       onClick={() => construction && onOpenConstruction ? onOpenConstruction(entry.stationId) : onOpen(entry.stationId)}>
-      {content(entry, count, sections[0]?.label)}
+      {content(entry, count)}
     </button>;
   })}</>;
 }

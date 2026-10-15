@@ -407,10 +407,10 @@ test("inventory guide and sale consistently show the actual discounted payout", 
   assert.match(html, /Быстрая продажа с уценкой 40%/);
   assert.match(html, /Быстрая продажа торговцу: 60% базовой цены/);
   assert.match(html, /Плёска купит дороже: 40 монет за штуку/);
-  assert.equal(disabled(button(html, "Продать 1 шт. за 20 монет")), false);
-  assert.doesNotMatch(html, /Продать 1 шт. за 40 монет|Торговец покупает сразу по 40/);
+  assert.equal(disabled(button(html, "Выбрать рыбу 1 шт. за 20 монет")), false);
+  assert.doesNotMatch(html, /Выбрать рыбу 1 шт. за 40 монет|Торговец покупает сразу по 40/);
   state.wallet.coins = 10_000_000_000;
-  assert.equal(disabled(button(render("inventory", controller({ snapshot: state }), "fish_common"), "Продать - шт.")), true);
+  assert.equal(disabled(button(render("inventory", controller({ snapshot: state }), "fish_common"), "Выбрать рыбу - шт.")), true);
 });
 
 test("generic inventory quotes the fixed NPC price without discounting or rounding a single item", () => {

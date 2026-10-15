@@ -12,10 +12,11 @@ export function useFishingCommand({ economy, state }: { economy: EconomyControll
   useEffect(() => { if (!economy.busy) sent.current = false; }, [economy.busy, economy.error, economy.uncertain, state.ownerPublicId, state.revision]);
   const current = economy.snapshot?.ownerPublicId === state.ownerPublicId && economy.snapshot?.revision === state.revision;
   const blocked = locked(economy) || !current;
-  function send(action: EconomyCommand["action"], targetId: string, quantity = 1, totalPrice = 0, allowed = true) {
+  function send(action: EconomyCommand["action"], targetId: string, quantity = 1, totalPrice = 0, allowed = true, fishSelection?: Record<string, number>) {
     if (blocked || !allowed || sent.current) return false;
     sent.current = true;
-    const accepted = economy.act(action, targetId, quantity, totalPrice);
+    const accepted = fishSelection === undefined ? economy.act(action, targetId, quantity, totalPrice)
+      : economy.act(action, targetId, quantity, totalPrice, fishSelection);
     if (accepted === false) sent.current = false;
     return accepted !== false;
   }

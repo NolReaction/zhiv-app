@@ -75,7 +75,7 @@ function inspect(Component, props) {
 }
 function trade(overrides = {}, itemId = "fish_common", flags = {}) {
   const state = snapshot(overrides), calls = [], economy = controller(state, { act(...args) { calls.push(args); }, ...flags });
-  return { ...inspect(PleskFishTrade, { economy, state, itemId }), state, economy, calls };
+  return { ...inspect(PleskFishTrade, { economy, state, itemId, fishItemId: itemId }), state, economy, calls };
 }
 function merchantSelection(state = snapshot()) {
   merchantHooks.reset();
@@ -92,12 +92,12 @@ function merchantSelection(state = snapshot()) {
   return { state, economy, calls, focus, body, target, render, flush: merchantHooks.flushEffects };
 }
 
-test("selling a class uses its exact id, stock and catalog value, with no optimistic debit", () => {
+test("selling unidentified class stock uses its exact remainder and catalog value, with no optimistic debit", () => {
   const view = trade();
-  const sell = view.control("Продать Обычная рыба: 1");
+  const sell = view.control("Продать Без указания вида: 1");
   assert.equal(sell.props.disabled, false);
   sell.props.onClick(); sell.props.onClick();
-  assert.deepEqual(view.calls, [["sell_fish", "fish_common", 1, 0]]);
+  assert.deepEqual(view.calls, [["sell_fish", "fish_common", 1, 0, { fish_common: 1 }]]);
   assert.equal(view.state.inventory.fish_common, 7);
   assert.match(view.html, /В запасе <strong>7<\/strong>/);
 });
@@ -107,7 +107,8 @@ test("the catch counter shows only positive pantry stock and has no fish purchas
   const html = renderToStaticMarkup(createElement(FishCounter, { state, catalog: state.catalog.fishing, economy: controller(state) }));
   assert.match(html, /Обычная рыба/); assert.doesNotMatch(html, /Теневая акула|Купить|×0/);
   assert.match(html, /data-item-icon="fish_common"/); assert.doesNotMatch(html, /data-hidden-fish/);
-  assert.equal((html.match(/aria-pressed=/g) ?? []).length, 1);
+  assert.equal((html.match(/aria-expanded=/g) ?? []).length, 1);
+  assert.match(html, /Без указания вида/);
   const empty = snapshot({ inventory: {} });
   const emptyHtml = renderToStaticMarkup(createElement(FishCounter, { state: empty, catalog: empty.catalog.fishing, economy: controller(empty) }));
   assert.match(emptyHtml, /Улов ещё впереди/); assert.doesNotMatch(emptyHtml, /Количество|Продать|Теневая акула/);
@@ -118,7 +119,7 @@ test("in-flight, uncertain, cooling down, foreign and stale offers cannot buy or
   for (const flags of [{ busy: true }, { uncertain: true }, { retryAt: now + 5000 },
     { snapshot: { ...original, ownerPublicId: "OTHER" } }, { snapshot: { ...original, revision: 99 } }, { snapshot: null }]) {
     const view = trade({}, "fish_common", flags);
-    for (const label of ["Продать Обычная рыба: 1"]) {
+    for (const label of ["Продать Без указания вида: 1"]) {
       const action = view.control(label); assert.equal(action.props.disabled, true); action.props.onClick();
     }
     assert.deepEqual(view.calls, []);
@@ -141,9 +142,9 @@ test("trade limits respect purse overflow, inventory, storage and transaction ba
 
 test("selling requires stock but remains possible with no coins and a full pantry", () => {
   let view = trade({ inventory: {} });
-  view.control("Продать Обычная рыба: 1").props.onClick(); assert.deepEqual(view.calls, []);
+  view.control("Продать Без указания вида: 1").props.onClick(); assert.deepEqual(view.calls, []);
   view = trade({ wallet: { coins: 0, pearls: 0 }, storage: { available: 0, capacity: 200, used: 200, reserved: 0, overflow: 0 } });
-  assert.equal(view.control("Продать Обычная рыба: 1").props.disabled, false);
+  assert.equal(view.control("Продать Без указания вида: 1").props.disabled, false);
 });
 
 test("merchant rod purchase never equips or resells an owned rod", () => {

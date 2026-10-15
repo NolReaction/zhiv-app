@@ -18,7 +18,7 @@ import { explorationActorId } from "@/features/economy/domain/actor-availability
 import { stageOrderProgress } from "@/features/economy/domain/stage-orders";
 import { locked, type ReadyEconomy } from "@/features/economy/sync/controller-state";
 import { Requirements, Work, ProductIcon, itemName, stationIcons, stationName, number, type StationNavigation } from "@/features/economy/ui/shared/world-economy-parts";
-import { worldConstructionReason, worldDuration, worldMaterialSource, worldMissingRequirements, worldRequirements, type WorldBuildingLevel } from "@/features/economy/ui/shared/world-stations";
+import { worldConstructionReason, worldCountdown, worldDuration, worldMaterialSource, worldMissingRequirements, worldRequirements, type WorldBuildingLevel } from "@/features/economy/ui/shared/world-stations";
 import menuStyles from "@/features/economy/ui/stations/world-object-menu.module.css";
 import styles from "./world-upgrade-dialog.module.css";
 
@@ -228,7 +228,7 @@ export function WorldUpgradeContent({ stationId, economy, onClose, navigation, o
         {(economy.error || economy.uncertain) && <div className={menuStyles.error} role="alert"><p>{economy.uncertain ? "Проверяем последнее действие. Новые улучшения доступны после подтверждения." : economy.error}</p><button type="button" className={menuStyles.textButton} disabled={economy.busy || cooldown > 0} onClick={() => void economy.retry()}><RefreshCw size={13} aria-hidden="true" />{cooldown ? `Повторить через ${cooldown} с` : economy.uncertain ? "Проверить результат" : "Повторить"}</button></div>}
         {builderElsewhere && <section className={styles.builderBusy} data-builder-status={builderElsewhere.ready ? "ready" : "working"} aria-label="Строитель занят">
           <Hammer size={23} aria-hidden="true" />
-          <div><strong>Строитель занят</strong><span>{builderElsewhere.stationName} · ур. {builderElsewhere.job.targetLevel}</span><p>{builderElsewhere.ready ? "Работа готова, завершите улучшение" : builderElsewhere.seconds ? `Осталось ${builderElsewhere.seconds < 60 ? `${builderElsewhere.seconds} с` : worldDuration(builderElsewhere.seconds)}` : "Идёт работа"}</p></div>
+          <div><strong>Строитель занят</strong><span>{builderElsewhere.stationName} · ур. {builderElsewhere.job.targetLevel}</span><p>{builderElsewhere.ready ? "Работа готова, завершите улучшение" : worldCountdown(builderElsewhere.seconds)}</p></div>
           {navigation?.canOpen(builderElsewhere.stationId) && <button type="button" onClick={() => navigation.open(builderElsewhere.stationId)} aria-label={`К текущей стройке: ${builderElsewhere.stationName}`}>К постройке<ArrowRight size={13} aria-hidden="true" /></button>}
         </section>}
         {readyEconomy && production.length > 0 && <section className={styles.section} aria-label="Текущие заказы"><h3><Clock3 size={16} aria-hidden="true" />Сначала заберите {production.length === 1 ? "заказ" : "заказы"}</h3>{production.map(job => <Work key={job.id} economy={readyEconomy} job={job} openPantry={onOpenPantry} />)}</section>}

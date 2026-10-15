@@ -248,9 +248,11 @@ export function createEconomySession(owner: string | null, transport: Transport,
         ...(fishSelection === undefined ? {} : { fishSelection: { ...fishSelection } }) } });
       return true;
     },
-    actMarket(action: MarketCommand["action"], targetId: string, quantity = 1, totalPrice = 0) {
-      if (!owner || !view.snapshot || pending || !active || !available) return;
-      void execute({ kind: "market", command: { requestId: createUuidV4(), ownerPublicId: owner, expectedRevision: view.snapshot.revision, action, targetId, quantity, totalPrice } });
+    actMarket(action: MarketCommand["action"], targetId: string, quantity = 1, totalPrice = 0, fishSelection?: Record<string, number>) {
+      if (!owner || !view.snapshot || pending || !active || !available || view.busy || performance.now() < blockedUntil) return false;
+      void execute({ kind: "market", command: { requestId: createUuidV4(), ownerPublicId: owner, expectedRevision: view.snapshot.revision, action, targetId, quantity, totalPrice,
+        ...(fishSelection === undefined ? {} : { fishSelection: { ...fishSelection } }) } });
+      return true;
     },
     actBarter(intent: BarterIntent) {
       if (!owner || !view.snapshot || pending || !active || !available || !transport.barterTrade) return;

@@ -9,6 +9,7 @@ import { FishingRodIcon } from "@/features/world/activities/fishing/fishing-rod-
 import { ECONOMY_MAX_BALANCE, type EconomyView } from "@/features/economy/domain/model";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import { fishClassForItem, fishClassInventory, fishingClassOdds, fishingState } from "@/features/economy/domain/fishing";
+import { fishSelectionMatches, fishStockEntries, type FishSelection } from "@/features/economy/domain/fish-stock";
 import { canRefreshFishingShop, fishingShopRefreshPrice } from "@/features/economy/domain/fishing-shop";
 import { formatPearls } from "@/features/economy/domain/money";
 import { residentOrderBoard } from "@/features/economy/domain/food";
@@ -19,6 +20,8 @@ import { listenForSectionGuideNavigation } from "@/features/onboarding/section-g
 import { itemName, number } from "@/features/economy/ui/shared/world-economy-parts";
 import { useFishingCommand } from "./use-fishing-command";
 import { PleskFishingCollection } from "./plesk-fishing-book";
+import { WorldFishStockList } from "./world-fish-stock-list";
+import { WorldFishSelection } from "./world-fish-selection";
 import styles from "./plesk-fishing-shop.module.css";
 export { PleskFishingCollection } from "./plesk-fishing-book";
 
@@ -69,32 +72,76 @@ export function fishingTradeLimits(state: EconomyView, itemId: string) {
     sellPrice: item.baseSellPrice };
 }
 
-export function PleskFishTrade({ economy, state, itemId }: ReadyProps & { itemId: string }) {
+export function PleskFishTrade({ economy, state, itemId, fishItemId }: ReadyProps & { itemId: string; fishItemId?: string }) {
   const [quantityText, setQuantityText] = useState("1"), id = useId();
+  const [choosingFish, setChoosingFish] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
   const { blocked, send } = useFishingCommand({ economy, state });
   const classId = fishClassForItem(itemId, state.catalog.fishing)?.itemId ?? itemId;
-  const limits = fishingTradeLimits(state, classId), quantity = Number(quantityText), stock = fishClassInventory(state.inventory, state.catalog.fishing)[classId] ?? 0;
-  const valid = /^\d+$/.test(quantityText) && Number.isSafeInteger(quantity) && quantity > 0, canSell = valid && quantity <= limits.sell;
-  return <section className={styles.trade} data-guide-plesk-sale aria-label={`Продажа: ${itemName(state, classId)}`}>
+  const limits = fishingTradeLimits(state, classId), quantity = Number(quantityText);
+  const stock = fishItemId !== undefined ? fishStockEntries(state, classId).find(entry => entry.itemId === fishItemId)?.quantity ?? 0
+    : fishClassInventory(state.inventory, state.catalog.fishing)[classId] ?? 0;
+  const maximum = Math.min(limits.sell, stock), owner = state.ownerPublicId, revision = state.revision;
+  const name = fishItemId === classId ? "Без указания вида" : itemName(state, fishItemId ?? classId);
+  const valid = /^\d+$/.test(quantityText) && Number.isSafeInteger(quantity) && quantity > 0, canSell = valid && quantity <= maximum;
+  const total = canSell ? quantity * limits.sellPrice : 0;
+  const latest = useRef({ economy, state, itemId, fishItemId, quantityText, quantity, total, choosingFish });
+  useLayoutEffect(() => { latest.current = { economy, state, itemId, fishItemId, quantityText, quantity, total, choosingFish }; },
+    [economy, state, itemId, fishItemId, quantityText, quantity, total, choosingFish]);
+  function sell(selection?: FishSelection): boolean {
+    const current = latest.current, snapshot = current.economy.snapshot;
+    if (blocked || !canSell || !snapshot || locked(current.economy) || snapshot.ownerPublicId !== owner || snapshot.revision !== revision
+      || current.itemId !== itemId || current.fishItemId !== fishItemId || current.quantityText !== quantityText
+      || current.quantity !== quantity || current.total !== total || selection && !current.choosingFish) return false;
+    const currentLimits = fishingTradeLimits(snapshot, classId);
+    if (currentLimits.sell < quantity || currentLimits.sellPrice !== limits.sellPrice) return false;
+    const chosen = selection ?? (fishItemId !== undefined ? { [fishItemId]: quantity } : undefined);
+    if (!chosen) { setChoosingFish(true); return false; }
+    if (!fishSelectionMatches(snapshot, { [classId]: quantity }, chosen)) return false;
+    if (!send("sell_fish", classId, quantity, 0, true, chosen)) return false;
+    setChoosingFish(false); return true;
+  }
+  return <section className={styles.trade} data-guide-plesk-sale data-fish-sale-item={fishItemId} aria-label={`Продажа: ${name}`}>
+    {fishItemId !== undefined && <div className={styles.selectedFishHeading}><ItemIcon itemId={fishItemId} size={24} /><strong>{name}</strong></div>}
     <div className={styles.tradeHeading}><span>В запасе <strong>{number(stock)}</strong></span><span>За штуку <Price value={limits.sellPrice} /></span></div>
-    <div className={styles.quantity}><label htmlFor={id}>Количество</label><input id={id} type="number" inputMode="numeric" min={1} max={Math.max(1, limits.sell)} step={1} value={quantityText} disabled={blocked} onChange={event => setQuantityText(event.target.value)} /><button type="button" disabled={blocked || limits.sell === 0} onClick={() => setQuantityText(String(limits.sell))}>{limits.sell < stock ? `До ${number(limits.sell)}` : "Весь улов"}</button></div>
-    <button type="button" className={styles.primary} disabled={blocked || !canSell} onClick={() => send("sell_fish", classId, quantity, 0, canSell)} aria-label={`Продать ${itemName(state, classId)}: ${valid ? quantity : 0}`}><span>Продать</span>{canSell ? <Price value={quantity * limits.sellPrice} /> : <span>-</span>}</button>
+    <div className={styles.quantity}>
+      <label htmlFor={id}>Количество</label>
+      <input id={id} type="number" inputMode="numeric" min={1} max={Math.max(1, maximum)} step={1} value={quantityText} disabled={blocked} onChange={event => setQuantityText(event.target.value)} />
+      <button type="button" disabled={blocked || maximum === 0} onClick={() => setQuantityText(String(maximum))}>{maximum < stock ? `До ${number(maximum)}` : fishItemId !== undefined ? "Все" : "Весь улов"}</button>
+    </div>
+    <button ref={trigger} type="button" className={styles.primary} disabled={blocked || !canSell} onClick={() => sell()} aria-label={`Продать ${name}: ${valid ? quantity : 0}`}><span>Продать</span>{canSell ? <Price value={quantity * limits.sellPrice} /> : <span>-</span>}</button>
     {!valid && <p className={styles.hint}>Введите целое количество от 1.</p>}
     {valid && stock > 0 && !canSell && <p className={styles.hint}>{quantity > stock ? "Столько рыбы в запасе пока нет." : "Этот объём пока нельзя продать. Уменьшите количество."}</p>}
+    {choosingFish && economy.snapshot && <WorldFishSelection economy={{ ...economy, snapshot: economy.snapshot }} requiredItems={{ [classId]: quantity }} contextId={`plesk-sale:${classId}`} confirmLabel="Продать"
+      summary={`${number(quantity)} шт. · ${number(quantity * limits.sellPrice)} монет`}
+      onConfirm={sell} onClose={() => setChoosingFish(false)} onCloseAutoFocus={event => {
+        event.preventDefault();
+        const current = latest.current;
+        if (current.itemId === itemId && current.economy.snapshot?.ownerPublicId === owner && trigger.current?.isConnected && !trigger.current.disabled) trigger.current.focus({ preventScroll: true });
+      }} />}
   </section>;
 }
 
 export function FishCounter({ economy, state, catalog }: ReadyProps & { catalog: FishingCatalog }) {
   const inventory = fishClassInventory(state.inventory, catalog);
   const available = catalog.classes.filter(fish => (inventory[fish.itemId] ?? 0) > 0);
-  const [selection, setSelection] = useState(() => available[0]?.itemId);
-  const selected = available.find(fish => fish.itemId === selection) ?? available[0];
+  const [selection, setSelection] = useState<string | null>(() => available[0]?.itemId ?? null);
+  const [selectedFishId, setSelectedFishId] = useState<string | null>(null);
+  const selected = available.find(fish => fish.itemId === selection);
+  const stockId = useId();
   return <>
     <p className={styles.intro}>«Приноси улов, с радостью куплю!»</p>
-    {available.length ? <div className={styles.fishList} aria-label="Рыба в вашей кладовой">{available.map(fish => <button type="button" key={fish.itemId} className={styles.fishChoice} aria-pressed={fish === selected} onClick={() => setSelection(fish.itemId)}>
+    {available.length ? <div className={styles.fishList} aria-label="Рыба в вашей кладовой">{available.map(fish => {
+      const expanded = fish === selected, entries = fishStockEntries(state, fish.itemId);
+      const selectedFish = entries.find(entry => entry.itemId === selectedFishId)?.itemId ?? (entries.length === 1 ? entries[0].itemId : undefined);
+      return <div key={fish.itemId} className={styles.fishGroup}><button type="button" className={styles.fishChoice} aria-pressed={expanded} aria-expanded={expanded}
+        aria-controls={`${stockId}-${fish.itemId}`} onClick={() => { setSelection(current => current === fish.itemId ? null : fish.itemId); setSelectedFishId(null); }}>
       <ItemIcon itemId={fish.itemId} size={40} /><span><strong>{itemName(state, fish.itemId)}</strong><FishRarityBadge rarity={fish.rarity} /></span><span className={styles.stock}>×{number(inventory[fish.itemId])}</span>
-    </button>)}</div> : <div className={styles.emptyCatch}><Fish size={32} aria-hidden="true" /><strong>Улов ещё впереди</strong><p>Заберите рыбу после вылазки, и она появится здесь.</p></div>}
-    {selected && <PleskFishTrade key={selected.itemId} economy={economy} state={state} itemId={selected.itemId} />}
+      </button>{expanded && <div className={styles.fishDisclosure} id={`${stockId}-${fish.itemId}`} data-plesk-fish-stock={fish.itemId}>
+        <WorldFishStockList state={state} classId={fish.itemId} selectedItemId={selectedFish} onSelect={setSelectedFishId} disabled={locked(economy)} />
+        <PleskFishTrade key={`${fish.itemId}:${selectedFish ?? "all"}`} economy={economy} state={state} itemId={fish.itemId} fishItemId={selectedFish} />
+      </div>}</div>;
+    })}</div> : <div className={styles.emptyCatch}><Fish size={32} aria-hidden="true" /><strong>Улов ещё впереди</strong><p>Заберите рыбу после вылазки, и она появится здесь.</p></div>}
   </>;
 }
 

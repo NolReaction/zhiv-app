@@ -213,7 +213,7 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
             if (user.id != initial.id || user.publicId != command.ownerPublicId)
                 throw AuthFailure("ECONOMY_OWNER_CHANGED", "Открыт другой профиль. Обновите хозяйство.", 409)
             ensureEconomyProfile(c, user.id)
-            val signature = economyJson.encodeToString(command)
+            val signature = economyJson.encodeToString(command.copy(fishSelection = command.fishSelection?.toSortedMap()))
             val requestId = UUID.fromString(command.requestId)
             val receipt = c.economyRows("""SELECT signature,message,accepted_revision FROM economy_market_receipts
                 WHERE user_id=? AND request_id=?""", user.id, requestId) { Receipt(it.getString(1), it.getString(2), it.getLong(3)) }.firstOrNull()
@@ -266,8 +266,8 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
         if (active >= state.marketSlots) throw AuthFailure("ECONOMY_MARKET_LIMIT", "Все места вашей лавки заняты", 409)
         val available = state.inventory[item.id] ?: 0L
         if (available < command.quantity) throw AuthFailure("ECONOMY_RESOURCES", "Недостаточно предметов для этой партии", 409)
-        val paid = EconomyFishStock.debit(state, mapOf(item.id to command.quantity))
-        val spent = EconomyRules.spend(state, EconomyCost(items = mapOf(item.id to command.quantity)))
+        val paid = EconomyFishStock.debit(state, mapOf(item.id to command.quantity), command.fishSelection)
+        val spent = EconomyRules.spend(state, EconomyCost(items = mapOf(item.id to command.quantity)), command.fishSelection)
         val id = UUID.randomUUID()
         val reservedBefore = reservedEconomyMarketItems(c, user)
         c.economyUpdate("""INSERT INTO economy_market_listings(id,seller_id,item_id,quantity,total_price,seller_fee_bps)

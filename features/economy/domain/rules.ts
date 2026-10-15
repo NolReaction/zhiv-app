@@ -153,7 +153,7 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
 }
 
 function applyEconomyTransition(state: EconomyState, command: EconomyCommand, now: number, jobId: () => string, reservedItems: Record<string, number>, rareRandom: RareRandomInteger): string {
-  if (command.fishSelection != null && !["start_production", "complete_resident_order"].includes(command.action))
+  if (command.fishSelection != null && !["start_production", "complete_resident_order", "sell", "sell_fish"].includes(command.action))
     throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Выбор рыбы не используется в этом действии", 400);
   if (!["speedup_construction", "buy_market_slot", "buy_fishing_item", "buy_wardrobe_item", "refresh_fishing_shop", "sell", "replace_resident_order"].includes(command.action) && command.totalPrice !== 0) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Цена не используется в этом действии", 400);
   const createJob = (job: Pick<EconomyJob, "kind" | "targetId" | "recipeId" | "targetLevel" | "rewards" | "collection" | "fishing" | "rareDrop" | "meal" | "actorId">, seconds: number, cost: EconomyCost, id = jobId(), fishSelection?: FishSelection) => {
@@ -643,7 +643,7 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       if (command.action === "sell" && coins < command.totalPrice)
         return fail("ECONOMY_SALE_PRICE_CHANGED", "Выручка изменилась. Проверьте цену продажи и подтвердите снова");
       if (state.wallet.coins + coins > ECONOMY_MAX_BALANCE) fail("ECONOMY_CAPACITY", "Кошелёк заполнен");
-      debit(state, { coins: 0, items: { [item.id]: command.quantity } });
+      debit(state, { coins: 0, items: { [item.id]: command.quantity } }, command.fishSelection ?? undefined);
       state.wallet.coins += coins;
       return "Предметы проданы местному покупателю";
     }

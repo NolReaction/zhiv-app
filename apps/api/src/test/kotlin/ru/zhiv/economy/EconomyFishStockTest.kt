@@ -187,6 +187,57 @@ class EconomyFishStockTest {
         assertTrue(EconomyFishStock.escrow(state, id, items, legacyItems = items).isEmpty())
     }
 
+    @Test fun `local and Plesk sales spend chosen species while paying the unchanged class price`() {
+        val initial = stock(mapOf("fish_epic" to 5L), mapOf(epic[0].itemId to 3L, epic[1].itemId to 2L))
+        val price = EconomyRules.catalog.items.single { it.id == "fish_epic" }.baseSellPrice
+        for (action in listOf("sell", "sell_fish")) {
+            val request = command(action, "fish_epic", mapOf(epic[1].itemId to 2L)).copy(quantity = 2L)
+            val sold = EconomyRules.apply(initial, request, now).first
+            assertEquals(mapOf("fish_epic" to 3L), sold.inventory)
+            assertEquals(mapOf(epic[0].itemId to 3L), sold.fishing.stock)
+            val payment = if (action == "sell_fish") price * 2L else EconomyRules.localSellPrice(price, 2L, itemId = "fish_epic")
+            assertEquals(initial.wallet.coins + payment, sold.wallet.coins)
+            assertEquals(initial.fishing.catches, sold.fishing.catches)
+        }
+    }
+
+    @Test fun `invalid sale selections reject without consuming fish or changing money`() {
+        val initial = stock(mapOf("fish_epic" to 4L, "fish_common" to 1L), mapOf(epic[0].itemId to 1L, epic[1].itemId to 3L))
+        val originalJson = economyJson.encodeToString(initial)
+        for (action in listOf("sell", "sell_fish")) {
+            for (selection in listOf(emptyMap(), mapOf(epic[0].itemId to 2L), mapOf(common[0].itemId to 2L),
+                mapOf("fish_epic" to 2L), mapOf(epic[1].itemId to 1L), mapOf(epic[1].itemId to 3L))) {
+                failure { EconomyRules.apply(initial, command(action, "fish_epic", selection).copy(quantity = 2L), now) }
+                assertEquals(originalJson, economyJson.encodeToString(initial))
+            }
+        }
+    }
+
+    @Test fun `absent sale choices retain automatic behavior and empty choices stay valid for ordinary goods`() {
+        val initial = stock(mapOf("fish_common" to 5L, "wood" to 1L), mapOf(common[0].itemId to 1L, common[1].itemId to 3L))
+        val sold = EconomyRules.apply(initial, command("sell_fish", "fish_common").copy(quantity = 2L), now).first
+        assertEquals(mapOf(common[0].itemId to 1L, common[1].itemId to 2L), sold.fishing.stock)
+        val goods = EconomyRules.apply(initial, command("sell", "wood", emptyMap()), now).first
+        assertEquals(initial.fishing, goods.fishing)
+        failure { EconomyRules.apply(initial, command("sell", "wood", mapOf(common[0].itemId to 1L)), now) }
+    }
+
+    @Test fun `market only accepts a non-null fish selection when creating a listing`() {
+        val create = command("create_listing", "fish_common", mapOf(common[0].itemId to 1L)).copy(totalPrice = 40L)
+        EconomyMarketRules.validate(create)
+        val encoded = economyJson.encodeToJsonElement(create).jsonObject
+        assertEquals(create, decodeEconomyCommand(encoded))
+        for (action in listOf("buy_listing", "cancel_listing")) {
+            assertEquals("INVALID_ECONOMY_COMMAND", assertFailsWith<AuthFailure> {
+                EconomyMarketRules.validate(command(action, UUID.randomUUID().toString(), emptyMap()).copy(totalPrice = if (action == "buy_listing") 40L else 0L))
+            }.code)
+        }
+        val automatic = create.copy(fishSelection = null)
+        val decodedNull = decodeEconomyCommand(JsonObject(economyJson.encodeToJsonElement(automatic).jsonObject + ("fishSelection" to JsonNull)))
+        assertEquals(economyJson.encodeToString(automatic), economyJson.encodeToString(decodedNull))
+        assertFalse(economyJson.encodeToString(automatic).contains("fishSelection"))
+    }
+
     @Test fun `selection decoder accepts nullable automatic choice but rejects coercion and unsupported actions`() {
         val request = command("start_production", "cook_grilled_fish")
         val json = economyJson.encodeToJsonElement(request).jsonObject
@@ -200,7 +251,7 @@ class EconomyFishStockTest {
             }.code)
         }
         assertEquals("INVALID_ECONOMY_COMMAND", assertFailsWith<AuthFailure> {
-            validateEconomyCommand(command("sell_fish", "fish_epic", mapOf(epic[0].itemId to 1L)))
+            validateEconomyCommand(command("equip_fishing_rod", "reed_rod", mapOf(epic[0].itemId to 1L)))
         }.code)
     }
 }

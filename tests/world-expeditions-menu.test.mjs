@@ -219,7 +219,8 @@ test("departure compares reward size with total capacity; a full pantry can be c
 test("ongoing exploration shows real progress and seconds, and exposes no second departure", () => {
   const html = render(controller({ snapshot: snapshot({ jobs: [job()] }) }));
   assert.match(html, /Текущая вылазка: Лесная разведка/);
-  assert.match(html, /Ещё 29 с/);
+  assert.match(html, /0:29/);
+  assert.doesNotMatch(html, /Ещё 29|Осталось/);
   assert.match(html, /<progress[^>]*value="0\.033/);
   assert.equal(disabled(button(html, "Забрать находки: Лесная разведка")), true);
   assert.doesNotMatch(html, /aria-label="Отправиться:/);

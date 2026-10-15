@@ -278,6 +278,7 @@ export const economyCommandSchema = z.object({ ...commandBase,
 }).strict();
 export const marketCommandSchema = z.object({ ...commandBase,
   action: z.enum(["create_listing", "buy_listing", "cancel_listing"]),
+  fishSelection: quantities.nullish(),
 }).strict();
 export const economyMarketListingSchema = z.object({
   id: uuid, sellerPublicId: z.string().min(1), sellerName: z.string(), itemId: id,

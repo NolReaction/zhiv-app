@@ -87,6 +87,61 @@ class JdbcEconomyMarketRepositoryIntegrationTest {
     }
     private fun expireShowcase(player: Player) { execute("UPDATE economy_market_showcases SET refresh_at=clock_timestamp()-interval '1 second' WHERE user_id=?", player.id) }
 
+    @Test fun `listing debits the chosen species and cancellation restores that exact composition`() = runBlocking<Unit> {
+        val seller = player()
+        val fish = checkNotNull(EconomyRules.catalog.fishing).fish.filter { it.rarity == "common" }.take(2)
+        val known = mapOf(fish[0].itemId to 3L, fish[1].itemId to 2L)
+        editState(seller) { it.copy(inventory = mapOf("fish_common" to 5L), fishing = it.fishing.copy(stock = known)) }
+        val create = command(seller, "create_listing", "fish_common", 2L, 80L).copy(fishSelection = mapOf(fish[1].itemId to 2L))
+        val listed = market.command(seller.hash, create).state
+        val lot = market.market(seller.hash).mine.single()
+        assertEquals(mapOf("fish_common" to 3L), listed.inventory)
+        assertEquals(mapOf(fish[0].itemId to 3L), listed.fishing.stock)
+        assertEquals(mapOf(fish[1].itemId to 2L), listed.fishing.escrow?.get(lot.id))
+        val returned = market.command(seller.hash, command(seller, "cancel_listing", lot.id)).state
+        assertEquals(mapOf("fish_common" to 5L), returned.inventory)
+        assertEquals(known, returned.fishing.stock)
+        assertTrue(returned.fishing.escrow.orEmpty().isEmpty())
+    }
+
+    @Test fun `listing retry canonically signs species choices and rejects reusing it for other fish`() = runBlocking<Unit> {
+        val seller = player()
+        val fish = checkNotNull(EconomyRules.catalog.fishing).fish.filter { it.rarity == "common" }.take(2)
+        editState(seller) { it.copy(inventory = mapOf("fish_common" to 5L), fishing = it.fishing.copy(stock = mapOf(fish[0].itemId to 2L, fish[1].itemId to 3L))) }
+        val create = command(seller, "create_listing", "fish_common", 3L, 120L).copy(fishSelection = linkedMapOf(fish[0].itemId to 1L, fish[1].itemId to 2L))
+        val listed = market.command(seller.hash, create).state
+        val reversed = create.copy(fishSelection = linkedMapOf(fish[1].itemId to 2L, fish[0].itemId to 1L))
+        assertTrue(market.command(seller.hash, reversed).replayed)
+        assertEquals(listed.revision, economy.snapshot(seller.hash).revision)
+        assertEquals(1, market.market(seller.hash).mine.size)
+        assertEquals("ECONOMY_REQUEST_CONFLICT", assertFailsWith<AuthFailure> {
+            market.command(seller.hash, create.copy(fishSelection = mapOf(fish[0].itemId to 2L, fish[1].itemId to 1L)))
+        }.code)
+        assertEquals(listed.fishing.stock, economy.snapshot(seller.hash).fishing.stock)
+        assertEquals(1L, scalar("SELECT count(*) FROM economy_market_receipts WHERE user_id=? AND request_id=?", seller.id, UUID.fromString(create.requestId)))
+    }
+
+    @Test fun `invalid listing selection leaves fish money escrow listings and receipts untouched`() = runBlocking<Unit> {
+        val seller = player()
+        val fishing = checkNotNull(EconomyRules.catalog.fishing)
+        val fish = fishing.fish.filter { it.rarity == "common" }.take(2)
+        val epic = fishing.fish.first { it.rarity == "epic" }.itemId
+        editState(seller) { it.copy(inventory = mapOf("fish_common" to 4L), fishing = it.fishing.copy(stock = mapOf(fish[0].itemId to 1L, fish[1].itemId to 3L))) }
+        val before = economy.snapshot(seller.hash)
+        for (selection in listOf(emptyMap(), mapOf(fish[0].itemId to 2L), mapOf(fish[1].itemId to 1L), mapOf(epic to 2L), mapOf("fish_common" to 2L))) {
+            val create = command(seller, "create_listing", "fish_common", 2L, 80L).copy(fishSelection = selection)
+            assertEquals("ECONOMY_FISH_SELECTION_CHANGED", assertFailsWith<AuthFailure> { market.command(seller.hash, create) }.code)
+            val after = economy.snapshot(seller.hash)
+            assertEquals(before.revision, after.revision)
+            assertEquals(before.inventory, after.inventory)
+            assertEquals(before.wallet, after.wallet)
+            assertEquals(before.fishing, after.fishing)
+            assertTrue(market.market(seller.hash).mine.isEmpty())
+            assertEquals(0L, scalar("SELECT count(*) FROM economy_market_receipts WHERE user_id=? AND request_id=?", seller.id, UUID.fromString(create.requestId)))
+        }
+        assertEquals(0L, scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='market_create'", seller.id))
+    }
+
     @Test fun `fish lot escrow conserves known species and unidentified remainder on cancellation`() = runBlocking<Unit> {
         val seller = player()
         val fish = checkNotNull(EconomyRules.catalog.fishing).fish.filter { it.rarity == "common" }

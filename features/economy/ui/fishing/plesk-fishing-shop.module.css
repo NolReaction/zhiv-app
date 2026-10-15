@@ -11,7 +11,13 @@
 .description, .hint, .footnote { margin: 0; font-size: .75rem; line-height: 1.6; color: var(--forest-ink, #394d3e); }
 .hint { color: var(--forest-ink, #394d3e); }
 .footnote { color: var(--forest-ink, #394d3e); }
-.fishList { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.fishList { display: grid; grid-template-columns: minmax(0, 1fr); gap: 7px; }
+.fishGroup { display: grid; gap: 5px; min-width: 0; }
+.fishGroup > .fishChoice { width: 100%; min-height: 58px; }
+.fishDisclosure { display: grid; gap: 8px; min-width: 0; padding: 6px; border: 1px solid var(--forest-border, #c8bd98); border-radius: 11px; background: #e6e3c7; }
+.fishDisclosure > .trade { padding: 8px 2px 2px; gap: 8px; border: 0; border-top: 1px solid var(--forest-border, #c8bd98); border-radius: 0; background: transparent; }
+.selectedFishHeading { display: flex; align-items: center; gap: 7px; min-width: 0; font-size: 12px; }
+.selectedFishHeading strong { font-weight: 600; overflow-wrap: anywhere; }
 .fishChoice { display: flex; align-items: center; gap: 7px; min-width: 0; min-height: 76px; padding: 9px; text-align: left; border: 1px solid var(--forest-border, #c8bd98); border-radius: 13px; background: var(--forest-paper-light, #f0e6ca); color: var(--forest-ink, #394d3e); cursor: pointer; }
 .fishChoice[aria-pressed='true'] { border-color: var(--forest-primary, #466347); background: color-mix(in srgb, var(--forest-primary, #466347) 12%, var(--forest-paper-light, #f0e6ca)); box-shadow: inset 0 0 0 1px var(--forest-primary, #466347); }
 .fishChoice > svg { flex: 0 0 44px; }

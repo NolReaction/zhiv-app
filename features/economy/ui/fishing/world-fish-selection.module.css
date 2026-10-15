@@ -7,6 +7,7 @@
 .header h2 { flex: 1; margin: 0; font-size: 16px; font-weight: 650; }
 .header button { width: 44px; flex-shrink: 0; }
 .description { margin: 0; font-size: 11px; color: #626a50; line-height: 1.45; }
+.summary { margin: 0; font-size: 12px; font-weight: 650; font-variant-numeric: tabular-nums; }
 .tools { display: flex; flex-wrap: wrap; gap: 6px; }
 .tools button:first-child { flex: 1; }
 .tools button { padding: 4px 8px; }

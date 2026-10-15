@@ -154,3 +154,10 @@ export function worldDuration(seconds: number) {
   if (minutes < 1440) return `${Math.floor(minutes / 60)} ч${minutes % 60 ? ` ${minutes % 60} мин` : ""}`;
   return `${Math.floor(minutes / 1440)} д${minutes % 1440 ? ` ${Math.floor(minutes % 1440 / 60)} ч` : ""}`;
 }
+
+/** Live jobs keep seconds visible; catalogue durations use worldDuration. */
+export function worldCountdown(seconds: number) {
+  const remaining = Number.isFinite(seconds) ? Math.max(0, Math.ceil(seconds)) : 0;
+  const minutes = Math.floor(remaining / 60), secondsPart = String(remaining % 60).padStart(2, "0");
+  return minutes < 60 ? `${minutes}:${secondsPart}` : `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}:${secondsPart}`;
+}

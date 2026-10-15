@@ -9,8 +9,9 @@ export type MapObjectScreenAnchor = {
   pointerOffset: number;
 };
 
-/** Screen-pixel dimensions keep a timer readable at every map zoom. */
-export const CONSTRUCTION_MARKER = { width: 124, height: 44, gap: 10, margin: 8 } as const;
+/** The compact 80px pill sits within a real 98 × 44px touch target.
+ * Project/cull the touch target, so invisible padding cannot cover the HUD. */
+export const CONSTRUCTION_MARKER = { width: 98, height: 44, gap: 10, margin: 8 } as const;
 
 const constructionPlaces: Readonly<Record<string, MapObjectPlace>> = {
   home: "house", warehouse: "house", workshop: "workshop", kiln: "workshop",

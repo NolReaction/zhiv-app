@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-fish-stock-guides-sections-vite", server: { middlewareMode: true, hmr: false, ws: false } });
+const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-fish-commerce-guides-sections-vite", server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { sectionGuideIds, sectionGuideLessons, sectionGuideCanOpen, parseSectionGuideProgress, transitionSectionGuide: move } = await vite.ssrLoadModule("/features/onboarding/section-guide-model.ts");
 const { sectionGuideStorageKey, createSectionGuideStore } = await vite.ssrLoadModule("/features/onboarding/section-guide-storage.ts");
@@ -125,6 +125,22 @@ test("order and travel lessons separate fish selection from consumption and owne
   assert.match(preparation.text, /твою снасть без покупки и отправления/);
   assert.match(preparation.text, /Наживка уйдёт только при выходе/);
   for (const step of [requirements, reward, preparation]) assert.notEqual(step.revealOnOpen, true);
+});
+
+test("pantry, Plesk and market lessons show species without automatically selling or listing", () => {
+  const items = sectionGuideLessons.pantry.find(step => step.id === "items");
+  const sale = sectionGuideLessons.pantry.find(step => step.id === "sale");
+  const sell = sectionGuideLessons.market.find(step => step.id === "sell");
+  const fish = sectionGuideLessons.plesk.find(step => step.id === "catch");
+  assert.match(items.text, /«Холодильнике» класс рыбы сначала раскрывает оставшиеся виды/);
+  assert.match(items.text, /Просмотр ничего не продаёт/);
+  assert.match(sale.text, /только после нажатия кнопки «Продать торговцу»/);
+  assert.match(sale.text, /«Без указания вида»/);
+  assert.match(sell.text, /выбор оставшихся видов.*«Выставить лот»/);
+  assert.match(sell.text, /Просмотр ничего не выставляет/);
+  assert.match(fish.summary, /Продажу подтверждает кнопка «Продать»/);
+  assert.match(sectionGuideLessons.workshop.find(step => step.id === "queue").text, /Таймер меняется по секундам/);
+  for (const step of [items, sale, sell, fish]) assert.notEqual(step.revealOnOpen, true);
 });
 
 test("explicit pause survives reopening until deliberately resumed", () => {

@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-fish-stock-guides-help-vite", resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
+const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-fish-commerce-guides-help-vite", resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { worldHelpTopics, worldHelpGroups, searchWorldHelp, searchWorldHelpWithStatus } = await vite.ssrLoadModule("/features/world/ui/help/world-help-content.ts");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
@@ -270,7 +270,7 @@ test("fishing guidance distinguishes an authoritative catch, class stock art and
   assert.match(answer("fishing-result"), /Нажмите «Забрать».*текущие запасы по видам и классам.*навсегда откроются в вашей книге/);
   assert.match(answer("fishing-result"), /прежних вылазок могут остаться общие классы рыб/);
   assert.match(answer("fishing-result"), /Книга помнит прежние поимки, даже если рыба потрачена/);
-  assert.match(answer("fishing-result"), /выбор показывает только оставшуюся рыбу/);
+  assert.match(answer("fishing-result"), /В холодильнике, у Плёски и в выборе ингредиентов показана только оставшаяся рыба/);
   assert.deepEqual(topic("fishing-result").action.target, { kind: "expeditions", sector: "coast" });
   assert.ok(topic("collection").relatedIds.includes("fishing-result"));
 });
@@ -279,13 +279,26 @@ test("fish selection guidance preserves current species, unknown stock and expli
   assert.match(answer("fish-selection"), /Выбор уже заполнен.*из текущих запасов/);
   assert.match(answer("fish-selection"), /добавить его или заменить одну выбранную рыбу/);
   assert.match(answer("fish-selection"), /минусом убирает одну.*«Сбросить».*«Автозаполнение»/);
-  assert.match(answer("fish-selection"), /«Готовить» или «Отдать заказ». Только эта кнопка тратит выбранные виды/);
+  assert.match(answer("fish-selection"), /«Готовить», «Отдать заказ» или «Продать» подтвердит расход выбранных видов/);
   assert.match(answer("fish-selection"), /Закрытие выбора ничего не расходует/);
   assert.match(answer("fish-selection"), /обычных, учебных и этапных заказов/);
   assert.match(answer("fish-selection"), /«Без указания вида».*своего класса/);
   assert.match(answer("production"), /Отмена рыбной готовки возвращает выбранные виды/);
   assert.match(answer("resident-orders"), /сначала выберите виды, затем подтвердите сдачу/);
   assert.equal(searchWorldHelp(topics, "выбрать рыбу")[0]?.id, "fish-selection");
+});
+
+test("fish commerce answers require an explicit sale and keep market reservation distinct", () => {
+  assert.match(answer("resources"), /В «Холодильнике» нажмите класс рыбы: раскроются оставшиеся виды/);
+  assert.match(answer("resources"), /Нажмите вид, выберите количество и подтвердите продажу/);
+  assert.match(answer("resources"), /Просмотр запаса ничего не тратит/);
+  assert.match(answer("plesk"), /В «Улове» выберите класс и оставшиеся виды.*«Продать»/);
+  assert.match(answer("plesk"), /Цена едина внутри класса/);
+  assert.match(answer("market"), /Для рыбы проверьте виды и нажмите «Выставить лот»/);
+  assert.match(answer("market"), /Монеты поступят, когда другой игрок купит ваш лот/);
+  assert.match(answer("fish-selection"), /«Выставить лот» поместит их на рынок/);
+  assert.match(answer("production"), /Таймер меняется по секундам: 4:30 или 1:02:03/);
+  assert.match(answer("production"), /Одно место даёт один предмет/);
 });
 
 test("campfire and mining guidance matches compact categories, duration filters and safe equipment choices", () => {

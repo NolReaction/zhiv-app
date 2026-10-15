@@ -51,6 +51,41 @@ test("a lost fish order receipt keeps the exact chosen species across session re
   deactivate();
 });
 
+test("fish listings copy their selection, reject double submission and preserve old commands without a selection", async () => {
+  const pending = deferred(), sent = [];
+  const session = createEconomySession(owner, transport({ trade: command => { sent.push(command); return pending.promise; } }), () => assert.fail());
+  assert.equal(session.actMarket("create_listing", "fish_epic", 1, 200), false);
+  const stop = session.activate(); await session.refresh();
+  const selection = { fish_mirror_koi: 1 };
+  assert.equal(session.actMarket("create_listing", "fish_epic", 1, 200, selection), true);
+  selection.fish_mirror_koi = 99;
+  assert.deepEqual(sent[0].fishSelection, { fish_mirror_koi: 1 });
+  assert.equal(session.actMarket("create_listing", "fish_epic", 1, 200, { fish_sturgeon: 1 }), false);
+  assert.equal(sent.length, 1);
+  pending.resolve(result(state(1))); await flush();
+  assert.equal(session.actMarket("create_listing", "wood", 1, 40), true);
+  assert.equal(Object.hasOwn(sent[1], "fishSelection"), false);
+  await flush(); stop();
+});
+
+test("a lost fish listing receipt restores the original market command with its exact species", async () => {
+  const cache = storage(), sent = []; let authoritative = state();
+  const t = transport({ get: async () => authoritative, trade: async command => {
+    sent.push(structuredClone(command));
+    if (sent.length === 1) { authoritative = state(1); throw Error("Committed fish listing response lost"); }
+    return { ...result(authoritative), replayed: true };
+  } });
+  const original = createEconomySession(owner, t, () => assert.fail(), cache), stop = original.activate();
+  await original.refresh();
+  assert.equal(original.actMarket("create_listing", "fish_common", 2, 80, { fish_silverfin: 1, fish_rudd: 1 }), true);
+  await flush(); assert.equal(original.getSnapshot().uncertain, true); stop();
+  const restored = createEconomySession(owner, t, () => assert.fail(), cache), deactivate = restored.activate();
+  await restored.refresh(); await restored.retry();
+  assert.deepEqual(sent[1], sent[0], "market namespace, request ID, revision, price and fish selection survive together");
+  assert.equal(restored.getSnapshot().uncertain, false); assert.equal(cache.data.size, 0);
+  deactivate();
+});
+
 test("act reports refusal before snapshot, while suspended or busy, and acceptance only for an issued request", async () => {
   const wait = deferred(), sent = [];
   const session = createEconomySession(owner, transport({ send: command => { sent.push(command); return wait.promise; } }), () => assert.fail());

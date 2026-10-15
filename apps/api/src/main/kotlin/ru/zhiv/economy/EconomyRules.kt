@@ -19,7 +19,7 @@ fun validateEconomyCommand(command: EconomyCommand) {
         command.expectedRevision !in 0L until ECONOMY_MAX_REVISION || command.targetId.length !in 1..80 ||
         command.action.length !in 1..40 || command.quantity !in 1L..10_000L || command.totalPrice !in 0L..ECONOMY_MAX_BALANCE) invalidEconomy()
     command.fishSelection?.let { selection ->
-        if (command.action !in setOf("start_production", "complete_resident_order") || selection.size > 100 ||
+        if (command.action !in setOf("start_production", "complete_resident_order", "sell", "sell_fish", "create_listing") || selection.size > 100 ||
             selection.keys.any { it.length !in 1..80 }) invalidEconomy()
     }
 }
@@ -676,7 +676,7 @@ object EconomyRules {
                 if (command.action == "sell" && amount < command.totalPrice)
                     economyFailure("ECONOMY_SALE_PRICE_CHANGED", "Выручка изменилась. Проверьте цену продажи и подтвердите снова")
                 if (amount > ECONOMY_MAX_BALANCE - state.wallet.coins) economyFailure("ECONOMY_CAPACITY", "Кошелёк достиг предела")
-                val spent = spend(state, EconomyCost(items = mapOf(item.id to command.quantity)))
+                val spent = spend(state, EconomyCost(items = mapOf(item.id to command.quantity)), command.fishSelection)
                 spent.copy(wallet = spent.wallet.copy(coins = spent.wallet.coins + amount)) to "Товары проданы за $amount монет"
             }
             else -> invalidEconomy()

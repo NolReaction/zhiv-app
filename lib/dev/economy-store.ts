@@ -14,7 +14,7 @@ import { inheritEconomyCollection } from "@/features/economy/domain/collection-p
 import { economyCommandUsesActor } from "@/features/economy/domain/actor-availability";
 import { createFishingShop, fishingShopExpired } from "@/features/economy/domain/fishing-shop";
 import { fishingState, fishClassInventory, fishingClassItemId } from "@/features/economy/domain/fishing";
-import { creditFishStock, debitFishStock, fishStockWithinItems, normalizeFishStockInventory, reconcileFishStock } from "@/features/economy/domain/fish-stock";
+import { creditFishStock, debitFishStock, FishSelectionChangedError, fishStockWithinItems, normalizeFishStockInventory, reconcileFishStock } from "@/features/economy/domain/fish-stock";
 import { publicEconomyJob } from "@/features/economy/domain/public-jobs";
 import { tutorialOrderProgress } from "@/features/economy/domain/tutorial-order";
 import { ensureStageOrders, stageOrdersProgress } from "@/features/economy/domain/stage-orders";
@@ -354,7 +354,10 @@ export function getDevEconomyMarket(token: string | undefined, options: { cursor
 export function commandDevEconomyMarket(token: string | undefined, input: MarketCommand, now = Date.now()): EconomyResult {
   const parsed = marketCommandSchema.safeParse(input);
   if (!parsed.success) return fail("INVALID_ECONOMY_COMMAND", "Некорректный запрос рынка", 400);
-  const command = parsed.data, { owner, value } = profile(token, now);
+  const command = parsed.data;
+  if (command.fishSelection != null && command.action !== "create_listing")
+    return fail("INVALID_ECONOMY_COMMAND", "Выбор рыбы используется только при создании лота", 400);
+  const { owner, value } = profile(token, now);
   if (command.action !== "create_listing" && !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(command.targetId))
     return fail("INVALID_ECONOMY_COMMAND", "Некорректное объявление", 400);
   if (command.action === "cancel_listing") {
@@ -379,7 +382,9 @@ export function commandDevEconomyMarket(token: string | undefined, input: Market
     if (marketMinimumPrice(item.id, command.quantity) > marketDailyLimit(next.buildings.home ?? 1))
       return fail("ECONOMY_MARKET_DAILY_LOT_LIMIT", "Разделите партию: её базовая стоимость превышает дневной объём продаж");
     if ((next.inventory[item.id] ?? 0) < command.quantity) return fail("ECONOMY_RESOURCES", "Не хватает предметов для лота");
-    const fishStockCost = debitFishStock(next, { [item.id]: command.quantity });
+    let fishStockCost: Record<string, number>;
+    try { fishStockCost = debitFishStock(next, { [item.id]: command.quantity }, command.fishSelection ?? undefined); }
+    catch (error) { if (error instanceof FishSelectionChangedError) return fail("ECONOMY_FISH_SELECTION_CHANGED", error.message); throw error; }
     next.inventory[item.id] -= command.quantity;
     if (!next.inventory[item.id]) delete next.inventory[item.id];
     const reserved = escrowItems(owner);

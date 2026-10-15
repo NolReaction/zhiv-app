@@ -8,7 +8,7 @@ import { productionStationSupported } from "@/features/economy/domain/production
 import { locked, type ReadyEconomy } from "@/features/economy/sync/controller-state";
 import { useGardenCollection } from "@/features/economy/integration/garden-collection-context";
 import { berryCollectionStatus } from "@/features/economy/integration/garden-collection";
-import { worldDuration, worldJobProgress } from "@/features/economy/ui/shared/world-stations";
+import { worldCountdown, worldJobProgress } from "@/features/economy/ui/shared/world-stations";
 import styles from "./production-work.module.css";
 
 type Confirmation = { owner: string; revision: number; jobId: string; deadline: number };
@@ -59,7 +59,7 @@ function ProductionWorkCell({ economy, job, openPantry, compact }: { economy: Re
   const descriptionId = useId();
   const outputs = Object.entries(job.rewards);
   const name = (id: string) => state.catalog.items.find(item => item.id === id)?.name ?? id;
-  const title = outputs.map(([id, amount]) => `${name(id)} ×${number(amount)}`).join(" + ") || state.catalog.recipes.find(recipe => recipe.id === job.recipeId)?.name || "Производство";
+  const title = outputs.map(([id, amount]) => `${name(id)}${amount === 1 && outputs.length === 1 ? "" : ` ×${number(amount)}`}`).join(" + ") || state.catalog.recipes.find(recipe => recipe.id === job.recipeId)?.name || "Производство";
   const cancellationReason = productionCancellationReason(economy, job);
   const confirming = Boolean(confirmation && countdown > 0 && confirmation.owner === state.ownerPublicId && confirmation.revision === state.revision && confirmation.jobId === job.id && !status.ready && !job.collection?.startedAt);
   const pendingMatches = submitted && !economy.error;
@@ -129,7 +129,7 @@ function ProductionWorkCell({ economy, job, openPantry, compact }: { economy: Re
     <button ref={button} type="button" className={styles.main} data-production-control="true" disabled={disabled} aria-expanded={confirming} aria-describedby={confirming ? descriptionId : undefined}
       aria-label={`${confirming ? "Подтвердить отмену" : status.ready ? berry?.button ?? "Забрать" : "Отменить производство"}: ${title}`} title={confirming ? refund : undefined} onClick={interact}>
       <span className={styles.products}>{outputs.map(([id]) => <PlayerItemIcon key={id} state={state} itemId={id} size={compact ? 32 : 38} />)}</span>
-      <strong>{title}</strong><span className={styles.time}>{berry && !berry.growing ? berry.label : status.ready ? "Готово к получению" : `Осталось ${status.seconds < 60 ? `${status.seconds} с` : worldDuration(status.seconds)}`}</span>
+      <strong>{title}</strong><span className={styles.time} data-job-countdown={!status.ready && (!berry || berry.growing) || undefined}>{berry && !berry.growing ? berry.label : status.ready ? "Готово к получению" : worldCountdown(status.seconds)}</span>
       <span className={`${styles.actionLine} ${confirming ? styles.confirmLabel : status.ready ? styles.action : styles.cancelHint}`} data-production-action="true">
         {confirming ? <>{label}<span className={styles.countdown} aria-hidden="true">{countdown} с</span></> : <>{status.ready && (berry?.collecting ? <Clock3 size={13} aria-hidden="true" /> : <Check size={13} aria-hidden="true" />)}{label}</>}
       </span>

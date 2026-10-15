@@ -1,13 +1,17 @@
 import assert from "node:assert/strict";
 import test, { after } from "node:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Children, isValidElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
+const cacheDir = await mkdtemp(join(tmpdir(), "zhiv-market-ui-"));
 const hookModule = "virtual:market-ui-hooks";
-const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false },
+const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false },
   plugins: [{ name: "market-ui-handlers", enforce: "pre",
     resolveId(id) { if (id === hookModule) return `\0${id}`; },
     load(id) { if (id === `\0${hookModule}`) return `
@@ -20,13 +24,15 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
       export function useEffect(callback) { effects.push(callback); }
       export function useId() { return 'market-' + cursor++; }
     `; },
-    transform(source, id) { if (id.endsWith("/features/economy/ui/economy-panel.tsx")) return source.replace('from "react";', `from "${hookModule}";`).replace("function OfferCard(", "export function OfferCard(").replace("function Market(", "export function Market(").replace("function ListingForm(", "export function ListingForm(").replace("function ListingPriceForm(", "export function ListingPriceForm("); },
+    transform(source, id) { if (id.endsWith("/features/economy/ui/economy-panel.tsx")) return source.replace('from "react";', `from "${hookModule}";`).replace("function OfferCard(", "export function OfferCard(").replace("function Market(", "export function Market(").replace("function ListingForm(", "export function ListingForm(").replace("function ListingPriceForm(", "export function ListingPriceForm(").replace("function SellForm(", "export function SellForm("); },
   }],
 });
-after(() => vite.close());
-const { OfferCard, Market, ListingForm, ListingPriceForm } = await vite.ssrLoadModule("/features/economy/ui/economy-panel.tsx");
+after(async () => { await vite.close(); await rm(cacheDir, { recursive: true, force: true }); });
+const { OfferCard, Market, ListingForm, ListingPriceForm, SellForm } = await vite.ssrLoadModule("/features/economy/ui/economy-panel.tsx");
 const { economyCatalog, economyFishingSchema } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { marketMinimumPrice } = await vite.ssrLoadModule("/features/economy/domain/market-rules.ts");
+const { economyLocalSellPrice } = await vite.ssrLoadModule("/features/economy/domain/local-sale.ts");
+const { ECONOMY_MAX_BALANCE } = await vite.ssrLoadModule("/features/economy/domain/money.ts");
 const { fishDiscovered } = await vite.ssrLoadModule("/features/economy/ui/fishing/fish-discovery.tsx");
 const hooks = await vite.ssrLoadModule(hookModule);
 const now = Date.parse("2026-10-05T14:00:00Z");
@@ -190,6 +196,232 @@ test("a permanently opened bait stays listable after its source becomes unavaila
   e.snapshot.unlockedItems = ["wood"];
   const submit = h.render().nodes.find(node => node.type === "button");
   assert.equal(submit.props.disabled, true); submit.props.onClick(); assert.deepEqual(calls, []);
+});
+
+function fishListing() {
+  const e = economy(), calls = [];
+  e.snapshot.inventory.fish_epic = 5;
+  e.snapshot.fishing = economyFishingSchema.parse({ catches: { fish_eel: 99 }, stock: { fish_sturgeon: 1, fish_mirror_koi: 3 } });
+  e.snapshot.unlockedItems.push("fish_epic");
+  e.actMarket = (...args) => { calls.push(args); return true; };
+  const item = e.snapshot.catalog.items.find(entry => entry.id === "fish_epic");
+  return { e, calls, item };
+}
+const fishPicker = view => view.nodes.find(node => node.type?.name === "WorldFishSelection");
+
+test("creating a fish lot opens an exact class picker and sends only the explicitly selected species", () => {
+  const { e, calls, item } = fishListing(), before = structuredClone(e.snapshot);
+  const h = harness(ListingPriceForm, { economy: e, item });
+  let view = h.render();
+  view.nodes.find(node => node.type === "input").props.onChange({ target: { value: "2" } });
+  view = h.render();
+  assert.match(view.html, /Выбрать рыбу для продажи/);
+  view.nodes.find(node => node.type === "button").props.onClick();
+  assert.deepEqual(calls, []);
+  view = h.render();
+  const picker = fishPicker(view);
+  assert.deepEqual(picker.props.requiredItems, { fish_epic: 2 });
+  assert.equal(picker.props.confirmLabel, "Выставить лот");
+  assert.equal(picker.props.summary, `2 шт. · ${(item.baseSellPrice * 2).toLocaleString("ru-RU")} монет`);
+  assert.ok(view.nodes.filter(node => node.type === "input").every(node => node.props.disabled));
+  assert.equal(picker.props.onConfirm({ fish_sturgeon: 1, fish_mirror_koi: 1 }), true);
+  assert.deepEqual(calls, [["create_listing", "fish_epic", 2, item.baseSellPrice * 2, { fish_sturgeon: 1, fish_mirror_koi: 1 }]]);
+  assert.equal(picker.props.onConfirm({ fish_sturgeon: 1, fish_mirror_koi: 1 }), false, "a repeated callback cannot create a second lot");
+  assert.equal(calls.length, 1);
+  assert.deepEqual(e.snapshot, before, "the form cannot debit economic or species stock itself");
+  assert.equal(fishPicker(h.render()), undefined);
+});
+
+test("closing fish lot selection does not spend, and restores the initiating keyboard focus", () => {
+  const { e, calls, item } = fishListing(), h = harness(ListingPriceForm, { economy: e, item });
+  let view = h.render(), focused = 0;
+  const button = view.nodes.find(node => node.type === "button"), origin = { isConnected: true, disabled: false, focus() { focused++; } };
+  button.props.ref.current = origin;
+  button.props.onClick();
+  view = h.render();
+  view.nodes.find(node => node.type === "button").props.ref.current = origin;
+  const picker = fishPicker(view);
+  picker.props.onClose();
+  let prevented = false;
+  picker.props.onCloseAutoFocus({ preventDefault() { prevented = true; } });
+  assert.equal(prevented, true); assert.equal(focused, 1);
+  assert.deepEqual(calls, []);
+  assert.equal(fishPicker(h.render()), undefined);
+});
+
+test("fish lot selection rejects the wrong rarity, unavailable species and excess or missing quantities", () => {
+  const { e, calls, item } = fishListing(), h = harness(ListingPriceForm, { economy: e, item });
+  h.render().nodes.find(node => node.type === "button").props.onClick();
+  const picker = fishPicker(h.render());
+  for (const selection of [{}, { fish_eel: 1 }, { fish_sturgeon: 2 }, { fish_mirror_koi: 4 }, { fish_shark: 1 }, { fish_epic: 2 }])
+    assert.equal(picker.props.onConfirm(selection), false);
+  assert.deepEqual(calls, []);
+  assert.equal(picker.props.onConfirm({ fish_epic: 1 }), true, "the single unidentified remainder is still available");
+  assert.equal(calls.length, 1);
+});
+
+test("a fish lot picker cannot post a changed owner, revision, bridge, stock, slots or pending command", () => {
+  for (const invalidate of [
+    e => { e.snapshot.ownerPublicId = "OTHER"; },
+    e => { e.snapshot.revision++; },
+    e => { e.snapshot.buildings.bridge = 0; },
+    e => { e.snapshot.inventory.fish_epic = 0; },
+    e => { e.snapshot.catalog.market.maxPriceMultiplier = 1; },
+    e => { e.snapshot.catalog.market.maxLotQuantity = 0; },
+    e => { e.market.mine = Array.from({ length: 10 }, (_, i) => offer(`full-${i}`)); },
+    e => { e.busy = true; },
+    e => { e.uncertain = true; },
+    e => { e.retryAt = e.now + 1000; },
+  ]) {
+    const { e, calls, item } = fishListing(), h = harness(ListingPriceForm, { economy: e, item });
+    h.render().nodes.find(node => node.type === "button").props.onClick();
+    const picker = fishPicker(h.render());
+    invalidate(e);
+    assert.equal(picker.props.onConfirm({ fish_sturgeon: 1 }), false);
+    assert.deepEqual(calls, []);
+  }
+});
+
+test("a fish lot cannot choose fish already covered by another class balance or market escrow", () => {
+  const { e, calls, item } = fishListing();
+  e.snapshot.inventory.fish_epic = 1;
+  e.snapshot.fishing.escrow = { "00000000-0000-4000-8000-000000000001": { fish_mirror_koi: 3 } };
+  const h = harness(ListingPriceForm, { economy: e, item });
+  h.render().nodes.find(node => node.type === "button").props.onClick();
+  const picker = fishPicker(h.render());
+  assert.equal(picker.props.onConfirm({ fish_mirror_koi: 1 }), false);
+  assert.equal(picker.props.onConfirm({ fish_epic: 1 }), false);
+  assert.deepEqual(calls, []);
+  assert.equal(picker.props.onConfirm({ fish_sturgeon: 1 }), true);
+});
+
+test("a rejected fish listing can retry without closing selection and cannot restore focus for another owner", () => {
+  const { e, calls, item } = fishListing(); let accepted = false;
+  e.actMarket = (...args) => { calls.push(args); return accepted; };
+  const h = harness(ListingPriceForm, { economy: e, item });
+  let view = h.render(), focused = 0;
+  const origin = { isConnected: true, disabled: false, focus() { focused++; } };
+  view.nodes.find(node => node.type === "button").props.ref.current = origin;
+  view.nodes.find(node => node.type === "button").props.onClick();
+  view = h.render(); view.nodes.find(node => node.type === "button").props.ref.current = origin;
+  const picker = fishPicker(view);
+  assert.equal(picker.props.onConfirm({ fish_mirror_koi: 1 }), false);
+  assert.ok(fishPicker(h.render()));
+  accepted = true;
+  assert.equal(picker.props.onConfirm({ fish_mirror_koi: 1 }), true);
+  assert.equal(calls.length, 2);
+  e.snapshot.ownerPublicId = "OTHER";
+  picker.props.onCloseAutoFocus({ preventDefault() {} });
+  assert.equal(focused, 0);
+});
+
+test("local fish sales choose species without changing their class quantity or local sale quote", () => {
+  const { e, item } = fishListing(), calls = [], before = structuredClone(e.snapshot);
+  e.act = (...args) => { calls.push(args); return true; };
+  const h = harness(SellForm, { economy: e, item });
+  let view = h.render();
+  view.nodes.find(node => node.type === "input").props.onChange({ target: { value: "2" } });
+  view = h.render(); view.nodes.find(node => node.type === "button").props.onClick();
+  assert.deepEqual(calls, []);
+  view = h.render();
+  const picker = fishPicker(view);
+  assert.deepEqual(picker.props.requiredItems, { fish_epic: 2 });
+  assert.equal(picker.props.confirmLabel, "Продать");
+  assert.equal(picker.props.summary, `2 шт. · ${economyLocalSellPrice(item.baseSellPrice, 2, e.snapshot.catalog.localBuyer, item.id).toLocaleString("ru-RU")} монет`);
+  assert.equal(picker.props.onConfirm({ fish_sturgeon: 1, fish_mirror_koi: 1 }), true);
+  assert.deepEqual(calls, [["sell", "fish_epic", 2, economyLocalSellPrice(item.baseSellPrice, 2, e.snapshot.catalog.localBuyer, item.id),
+    { fish_sturgeon: 1, fish_mirror_koi: 1 }]]);
+  assert.equal(picker.props.onConfirm({ fish_sturgeon: 1, fish_mirror_koi: 1 }), false);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(e.snapshot, before);
+  assert.equal(fishPicker(h.render()), undefined);
+});
+
+test("ordinary local goods still sell in one click with their unchanged rounded payout", () => {
+  const e = economy(), calls = [], item = e.snapshot.catalog.items.find(entry => entry.id === "wood");
+  e.act = (...args) => { calls.push(args); return true; };
+  const h = harness(SellForm, { economy: e, item });
+  let view = h.render();
+  view.nodes.find(node => node.type === "input").props.onChange({ target: { value: "3" } });
+  view = h.render();
+  const submit = view.nodes.find(node => node.type === "button");
+  submit.props.onClick(); submit.props.onClick();
+  assert.equal(fishPicker(h.render()), undefined);
+  assert.deepEqual(calls, [["sell", "wood", 3, economyLocalSellPrice(item.baseSellPrice, 3, e.snapshot.catalog.localBuyer, item.id)]]);
+});
+
+test("an open local fish sale cannot debit changed stock, wallet space, prices, owner, revision or pending action", () => {
+  for (const invalidate of [
+    e => { e.snapshot.inventory.fish_epic = 0; },
+    e => { e.snapshot.fishing.stock.fish_sturgeon = 0; },
+    e => { e.snapshot.wallet.coins = ECONOMY_MAX_BALANCE; },
+    e => { e.snapshot.catalog.localBuyer.unitPrices.fish_epic++; },
+    e => { e.snapshot.ownerPublicId = "OTHER"; },
+    e => { e.snapshot.revision++; },
+    e => { e.busy = true; },
+    e => { e.uncertain = true; },
+    e => { e.retryAt = e.now + 1000; },
+  ]) {
+    const { e, item } = fishListing(), calls = [];
+    e.act = (...args) => { calls.push(args); return true; };
+    const h = harness(SellForm, { economy: e, item });
+    h.render().nodes.find(node => node.type === "button").props.onClick();
+    const picker = fishPicker(h.render());
+    invalidate(e);
+    assert.equal(picker.props.onConfirm({ fish_sturgeon: 1 }), false);
+    assert.deepEqual(calls, []);
+  }
+});
+
+test("local fish sale rejects invalid selections and preserves the explicit picker on transport refusal", () => {
+  const { e, item } = fishListing(), calls = []; let accepted = false;
+  e.act = (...args) => { calls.push(args); return accepted; };
+  const h = harness(SellForm, { economy: e, item });
+  h.render().nodes.find(node => node.type === "button").props.onClick();
+  const picker = fishPicker(h.render());
+  for (const selection of [{}, { fish_eel: 1 }, { fish_sturgeon: 2 }, { fish_epic: 2 }, { fish_shark: 1 }])
+    assert.equal(picker.props.onConfirm(selection), false);
+  assert.deepEqual(calls, []);
+  assert.equal(picker.props.onConfirm({ fish_mirror_koi: 1 }), false);
+  assert.ok(fishPicker(h.render()));
+  accepted = true;
+  assert.equal(picker.props.onConfirm({ fish_mirror_koi: 1 }), true);
+  assert.equal(calls.length, 2);
+});
+
+test("local fish sale cancellation preserves stock and restores focus only in the same owner context", () => {
+  for (const changedOwner of [false, true]) {
+    const { e, item } = fishListing(), calls = [], before = structuredClone(e.snapshot.inventory);
+    e.act = (...args) => { calls.push(args); return true; };
+    const h = harness(SellForm, { economy: e, item }); let focused = 0;
+    const origin = { isConnected: true, disabled: false, focus() { focused++; } };
+    let view = h.render(), submit = view.nodes.find(node => node.type === "button");
+    submit.props.ref.current = origin; submit.props.onClick();
+    view = h.render(); view.nodes.find(node => node.type === "button").props.ref.current = origin;
+    const picker = fishPicker(view);
+    picker.props.onClose();
+    if (changedOwner) e.snapshot.ownerPublicId = "OTHER";
+    picker.props.onCloseAutoFocus({ preventDefault() {} });
+    assert.equal(focused, changedOwner ? 0 : 1);
+    assert.deepEqual(calls, []); assert.deepEqual(e.snapshot.inventory, before);
+  }
+});
+
+test("a declined server response releases the synchronous sale and listing guard for an explicit retry", () => {
+  for (const component of [SellForm, ListingPriceForm]) {
+    const { e, item } = fishListing(), calls = [];
+    e.act = e.actMarket = (...args) => { calls.push(args); return true; };
+    const h = harness(component, { economy: e, item });
+    h.render().nodes.find(node => node.type === "button").props.onClick();
+    assert.equal(fishPicker(h.render()).props.onConfirm({ fish_sturgeon: 1 }), true);
+    e.error = "Состав рыбы изменился. Выберите рыбу ещё раз";
+    let view = h.render();
+    view.nodes.find(node => node.type === "button").props.onClick();
+    view = h.render();
+    assert.ok(fishPicker(view));
+    assert.equal(fishPicker(view).props.onConfirm({ fish_mirror_koi: 1 }), true);
+    assert.equal(calls.length, 2);
+  }
 });
 
 test("browse and seller selections use permanent known items rather than high home level or gifted stock", () => {

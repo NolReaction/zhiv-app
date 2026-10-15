@@ -60,6 +60,7 @@ const hooks = await vite.ssrLoadModule(hooksId);
 const { WorldProductionSlots } = await vite.ssrLoadModule("/features/economy/ui/production/world-production-slots.tsx");
 const { Work } = await vite.ssrLoadModule("/features/economy/ui/shared/world-economy-parts.tsx");
 const { ProductionWork } = await vite.ssrLoadModule("/features/economy/ui/production/production-work.tsx");
+const { worldCountdown, worldDuration } = await vite.ssrLoadModule("/features/economy/ui/shared/world-stations.ts");
 const { TestSlotMenuBody } = await vite.ssrLoadModule("/features/economy/ui/stations/world-object-menu.tsx");
 const { TestSlotProduction, TestSlotJobCard } = await vite.ssrLoadModule("/features/economy/ui/economy-panel.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
@@ -261,11 +262,12 @@ test("working and ready jobs replace free cards without duplicate work and prese
   const html = renderToStaticMarkup(render(economy));
   assert.match(html, /data-production-slot="1" data-state="working"/);
   assert.match(html, /data-production-slot="2" data-state="ready"/);
-  assert.match(html, /Осталось 2 мин/); assert.match(html, /data-item-icon="wood"/);
+  assert.match(html, /data-job-countdown="true">2:00/); assert.match(html, /data-item-icon="wood"/);
   assert.doesNotMatch(html, /data-production-activity=/);
   assert.match(html, /Ранее запущенные заказы/);
   for (const id of ["first", "second", "third", "legacy"]) assert.equal((html.match(new RegExp(`data-job-id="${id}"`, "g")) ?? []).length, 1);
-  assert.match(html, /Готово к получению/); assert.match(html, /Забрать: Бревно ×1/);
+  assert.match(html, /Готово к получению/); assert.match(html, /Забрать: Бревно/);
+  assert.doesNotMatch(html, /×1|Осталось/);
   assert.equal(economy.snapshot.jobs.length, 4); assert.equal(economy.snapshot.productionSlots.woodlot, undefined);
 });
 
@@ -305,6 +307,65 @@ test("working cells show their saved products in every manufacturing station", (
   }
 });
 
+test("live countdown preserves seconds at minute and hour boundaries without changing recipe durations", () => {
+  for (const [seconds, expected] of [[0, "0:00"], [-5, "0:00"], [0.1, "0:01"], [9, "0:09"], [59, "0:59"], [60, "1:00"], [61, "1:01"], [2699, "44:59"], [2700, "45:00"], [3599, "59:59"], [3600, "1:00:00"], [3601, "1:00:01"], [129601, "36:00:01"]]) {
+    assert.equal(worldCountdown(seconds), expected);
+  }
+  for (const seconds of [NaN, Infinity, -Infinity]) assert.equal(worldCountdown(seconds), "0:00");
+  assert.equal(worldDuration(2700), "45 мин");
+  assert.equal(worldDuration(3601), "1 ч 1 мин");
+});
+
+test("production cells count exact confirmed seconds and switch to claim only at their saved deadline", () => {
+  hooks.reset();
+  const job = production("timed-food", "dryer", { rewards: { compote: 1 }, finishesAt: new Date(now + 2_700_000).toISOString() });
+  const economy = controller(); economy.snapshot.jobs = [job];
+  for (const [elapsed, expected] of [[0, "45:00"], [1_000, "44:59"], [2_640_000, "1:00"], [2_641_000, "0:59"], [2_699_999, "0:01"]]) {
+    economy.now = now + elapsed;
+    const tree = renderWork(ProductionWork, { economy, job, compact: true });
+    const timer = elements(tree).find(node => node.props["data-job-countdown"]);
+    assert.equal(timer.props.children, expected);
+    assert.doesNotMatch(renderToStaticMarkup(tree), /Осталось|×1|Готово к получению/);
+  }
+  economy.now = Date.parse(job.finishesAt);
+  const ready = renderWork(ProductionWork, { economy, job, compact: true });
+  assert.equal(elements(ready).find(node => node.props["data-job-countdown"]), undefined);
+  assert.match(renderToStaticMarkup(ready), /Готово к получению/);
+  assert.equal(job.finishesAt, new Date(now + 2_700_000).toISOString());
+});
+
+test("saved batch and mixed result quantities stay explicit while ordinary cells omit one", () => {
+  for (const [rewards, expected] of [[{ wood: 1 }, "Бревно"], [{ wood: 7 }, "Бревно ×7"], [{ wood: 1, planks: 3 }, "Бревно ×1 + Доска ×3"]]) {
+    hooks.reset(); const job = production("saved-outputs", "workshop", { rewards });
+    const economy = controller(); economy.snapshot.jobs = [job];
+    const tree = renderWork(ProductionWork, { economy, job, compact: true });
+    const control = elements(tree).find(node => node.props["data-production-control"]);
+    assert.equal(elements(control).find(node => node.type === "strong").props.children, expected);
+    assert.equal(control.props["aria-label"], `Отменить производство: ${expected}`);
+  }
+});
+
+test("shared and hub job timers retain the real deadline and do not unlock nonproduction claims early", () => {
+  for (const entry of [Work, TestSlotJobCard]) for (const kind of ["construction", "exploration"]) {
+    hooks.reset(); const calls = [];
+    const job = production("other-work", kind === "construction" ? "home" : "forest", { kind, targetLevel: kind === "construction" ? 2 : null,
+      rewards: kind === "construction" ? {} : { wood: 2 }, finishesAt: new Date(now + 61_000).toISOString() });
+    const economy = controller({ act(...args) { calls.push(args); } }); economy.snapshot.jobs = [job];
+    for (const [elapsed, expected] of [[0, "1:01"], [1000, "1:00"], [60_999, "0:01"]]) {
+      economy.now = now + elapsed;
+      const tree = renderWork(entry, { economy, job, navigate() {} });
+      const html = renderToStaticMarkup(tree);
+      assert.ok(html.includes(expected)); assert.doesNotMatch(html, /Осталось|Ещё /);
+      const claim = elements(tree).find(node => node.type === "button");
+      assert.equal(claim.props.disabled, true);
+    }
+    assert.deepEqual(calls, []);
+    economy.now = Date.parse(job.finishesAt);
+    const ready = renderWork(entry, { economy, job, navigate() {} });
+    assert.equal(Boolean(elements(ready).find(node => node.type === "button").props.disabled), false);
+  }
+});
+
 test("long saved product names fit the reserved slot frame and keep their full accessible label", async () => {
   hooks.reset();
   const economy = controller();
@@ -315,9 +376,9 @@ test("long saved product names fit the reserved slot frame and keep their full a
   economy.snapshot.jobs = [job];
   const tree = renderWork(ProductionWork, { economy, job, compact: true });
   const control = elements(tree).find(node => node.props["data-production-control"]);
-  assert.equal(control.props["aria-label"], `Отменить производство: ${fullName} ×1`);
+  assert.equal(control.props["aria-label"], `Отменить производство: ${fullName}`);
   assert.match(renderToStaticMarkup(tree), /data-item-icon="charcoal"/);
-  assert.equal(elements(control).find(node => node.type === "strong").props.children, `${fullName} ×1`);
+  assert.equal(elements(control).find(node => node.type === "strong").props.children, fullName);
   assert.equal(elements(control).filter(node => node.props["data-production-action"]).length, 1);
 
   const css = await readFile(new URL("../features/economy/ui/production/world-production-slots.module.css", import.meta.url), "utf8");
@@ -400,7 +461,7 @@ test("arming and expiry retain the same visible product, timer, action row and s
     assert.equal(Children.toArray(original.props.children).length, Children.toArray(armed.props.children).length);
     assert.equal(elements(armed).filter(node => node.type === "button").length, 1);
     assert.equal(elements(armed).filter(node => node.props["data-production-action"]).length, 1);
-    assert.match(renderToStaticMarkup(armed), /data-item-icon="rope"/); assert.match(renderToStaticMarkup(armed), /Осталось 2 мин/);
+    assert.match(renderToStaticMarkup(armed), /data-item-icon="rope"/); assert.match(renderToStaticMarkup(armed), /data-job-countdown="true">2:00/);
     hooks.flush(); clock.advance(5000); const expired = renderCell(); assert.deepEqual(visibleShape(expired), before);
   });
   const css = await readFile(new URL("../features/economy/ui/production/production-work.module.css", import.meta.url), "utf8");

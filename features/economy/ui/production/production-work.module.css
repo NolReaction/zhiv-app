@@ -6,6 +6,7 @@
 .work[data-confirm-cancel] .products::after { position: absolute; content: ""; top: 50%; left: 0; right: 0; height: 1px; background: #945b3e; opacity: .75; transform: rotate(-25deg); pointer-events: none; }
 .work[data-confirm-cancel] .main > strong { text-decoration: line-through; text-decoration-color: #945b3e; text-decoration-thickness: 1px; }
 .time { font-size: 11px; color: #59624d; }
+.time[data-job-countdown] { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .actionLine { display: inline-flex; flex: 0 0 26px; min-width: 0; height: 26px; max-width: 100%; box-sizing: border-box; justify-content: center; align-items: center; gap: 4px; font-size: 11px; line-height: 1.2; }
 .cancelHint { color: #70765b; font-size: 10px; }
 .action { padding: 5px 9px; border-radius: 6px; background: #466347; color: #fff3d6; }

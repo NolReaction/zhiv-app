@@ -66,6 +66,34 @@ class JdbcEconomyRepositoryIntegrationTest {
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(ready), p.id)
     }
 
+    @Test fun `fish sales sign explicit species canonically and invalid choices leave no receipt`() = runBlocking<Unit> {
+        for (action in listOf("sell", "sell_fish")) {
+            val p = player(); economy.snapshot(p.hash)
+            val initial = source.connection.use { readEconomyProfile(it, p.id).state }
+            val fish = checkNotNull(EconomyRules.catalog.fishing).fish.filter { it.rarity == "common" }.take(2)
+            val seeded = initial.copy(inventory = mapOf("fish_common" to 5L), fishing = initial.fishing.copy(stock = mapOf(fish[0].itemId to 2L, fish[1].itemId to 3L)))
+            execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(seeded), p.id)
+            val before = economy.snapshot(p.hash)
+            val bad = command(p, before, action, "fish_common", 3L).copy(fishSelection = emptyMap())
+            assertEquals("ECONOMY_FISH_SELECTION_CHANGED", assertFailsWith<AuthFailure> { economy.command(p.hash, bad) }.code)
+            val unchanged = economy.snapshot(p.hash)
+            assertEquals(before.revision, unchanged.revision)
+            assertEquals(before.inventory, unchanged.inventory)
+            assertEquals(before.fishing, unchanged.fishing)
+            assertEquals(before.wallet, unchanged.wallet)
+            assertEquals("0", scalar("SELECT count(*) FROM economy_commands WHERE user_id=? AND request_id=?", p.id, UUID.fromString(bad.requestId)))
+            val request = command(p, unchanged, action, "fish_common", 3L).copy(fishSelection = linkedMapOf(fish[0].itemId to 1L, fish[1].itemId to 2L))
+            val sold = economy.command(p.hash, request).state
+            assertEquals(mapOf("fish_common" to 2L), sold.inventory)
+            assertEquals(fish.associate { it.itemId to 1L }, sold.fishing.stock)
+            assertTrue(economy.command(p.hash, request.copy(fishSelection = linkedMapOf(fish[1].itemId to 2L, fish[0].itemId to 1L))).replayed)
+            assertEquals("ECONOMY_REQUEST_CONFLICT", assertFailsWith<AuthFailure> {
+                economy.command(p.hash, request.copy(fishSelection = mapOf(fish[1].itemId to 3L)))
+            }.code)
+            assertEquals(sold.revision, economy.snapshot(p.hash).revision)
+        }
+    }
+
     @Test fun `species order selection is signed canonically and stale retry never consumes another fish`() = runBlocking<Unit> {
         val p = player(); economy.snapshot(p.hash)
         val initial = source.connection.use { readEconomyProfile(it, p.id).state }

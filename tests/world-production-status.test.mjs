@@ -109,7 +109,7 @@ test("each shared queue keeps its own saved countdown, progress and extra paid j
   assert.deepEqual(sections.map(section => [section.stationId, section.primary.remaining, section.entries.length]), [["workshop", 60, 1], ["kiln", 240, 5]]);
   assert.equal(sections[0].primary.progress, .5); assert.equal(sections[1].primary.progress, .2);
   const html = renderToStaticMarkup(WorldProductionStatus({ economy: { snapshot: saved, now }, groups: [group], anchors: [anchor("workshop")], onOpen() {} }));
-  assert.match(html, /<strong>1:00<\/strong>/); assert.match(html, /<strong>4:00<\/strong>/);
+  assert.match(html, /<strong[^>]*>1:00<\/strong>/); assert.match(html, /<strong[^>]*>4:00<\/strong>/);
   assert.match(html, /width:50%/); assert.match(html, /width:20%/); assert.match(html, /\+4/);
   for (const id of jobs.map(value => value.id)) assert.ok(group.entries.some(entry => entry.jobId === id));
   assert.deepEqual(saved, before, "the split badge never truncates or rewrites old paid queues");
@@ -122,7 +122,7 @@ test("a lone workbench or kiln keeps a single 44px button and names its equipmen
     const component = WorldProductionStatus({ economy: { snapshot: saved, now: start }, groups, anchors: [anchor("workshop")], onOpen: id => calls.push(id) });
     const html = renderToStaticMarkup(component);
     assert.equal((html.match(/data-production-status=/g) ?? []).length, 1);
-    assert.match(html, new RegExp(`<small>${label}<\\/small>`)); assert.doesNotMatch(html, /data-production-host=/);
+    assert.match(html, new RegExp(`aria-label="${label}\\.`)); assert.doesNotMatch(html, /<small>/); assert.doesNotMatch(html, /data-production-host=/);
     component.props.children[0].props.onClick(); assert.deepEqual(calls, [stationId]);
   }
 });
@@ -153,7 +153,7 @@ test("a finished kiln upgrade takes the shared host shortcut and keeps the works
   const html = renderToStaticMarkup(component);
   assert.match(html, /data-work-kind="construction"/); assert.match(html, /Строительство завершено/);
   assert.match(html, /Распилить доску, Изготовление, 59:30/); assert.match(html, /Уровень 2/);
-  assert.match(html, /Открыть улучшение/); assert.match(html, /Завершить/); assert.match(html, /\+1/);
+  assert.match(html, /Открыть улучшение/); assert.doesNotMatch(html, /<small>/); assert.match(html, /\+1/);
   component.props.children[0].props.onClick(); assert.deepEqual(calls, ["upgrade:kiln"]);
   const overlapping = [anchor("campfire", 200, 250), anchor("workshop", 205, 252)];
   assert.equal(layoutProductionMarkers(groups, overlapping)[0].group.place, "workshop", "a ready construction wins the shared screen footprint too");
@@ -165,7 +165,7 @@ test("working construction competes by finish time and all shared timers remain 
   const saved = state([job("workshop"), construction]), now = start + 30_000, groups = mapProductionGroups(saved, now);
   assert.equal(groups[0].primary.kind, "construction"); assert.equal(groups[0].primary.remaining, 270);
   const html = renderToStaticMarkup(WorldProductionStatus({ economy: { snapshot: saved, now }, groups, anchors: [anchor("workshop")], onOpen() {}, onOpenConstruction() {} }));
-  assert.match(html, /<strong>4:30<\/strong>/); assert.match(html, /Уровень 2, Строительство, 4:30/);
+  assert.match(html, /<strong[^>]*>4:30<\/strong>/); assert.match(html, /Уровень 2, Строительство, 4:30/);
   assert.match(html, /Распилить доску, Изготовление, 59:30/); assert.match(html, /\+1/);
   const soonerProduction = mapProductionGroups(state([job("workshop", { finishesAt: iso(start + 60_000) }), construction]), now);
   assert.equal(soonerProduction[0].primary.kind, "production");
@@ -207,10 +207,44 @@ test("badges retain 44px targets, accessible detail, hidden modal state and serv
   const saved = state([job("quarry")]), economy = { snapshot: saved, now: start + 30_000 };
   const props = { economy, groups: mapProductionGroups(saved, economy.now), anchors: [anchor("quarry")], onOpen() {} };
   const html = renderToStaticMarkup(WorldProductionStatus(props));
-  assert.match(html, /<strong>59:30<\/strong>/); assert.match(html, /Открыть здание/);
+  assert.match(html, /<strong[^>]*>59:30<\/strong>/); assert.match(html, /Открыть здание/);
   assert.match(html, /data-production-status="working"/); assert.match(html, /data-map-object="quarry"/);
   assert.equal(renderToStaticMarkup(WorldProductionStatus({ ...props, hidden: true })), "");
   assert.equal(renderToStaticMarkup(WorldProductionStatus({ ...props, anchors: [] })), "");
+  const later = { ...economy, now: economy.now + 1000 };
+  assert.match(renderToStaticMarkup(WorldProductionStatus({ ...props, economy: later, groups: mapProductionGroups(saved, later.now) })), /<strong[^>]*>59:29<\/strong>/);
+});
+
+test("compact pills retain complete phase details without a second visible action line", () => {
+  const crop = job("garden"), collection = { ...crop.collection, startedAt: iso(finish), finishesAt: iso(finish + 8000) };
+  const cases = [
+    { saved: state([job("dryer")], 0), at: finish, visible: "Нет места", detail: "Нет места" },
+    { saved: state([crop]), at: finish, visible: "Созрело", detail: "Созрело" },
+    { saved: state([job("dryer")]), at: finish, visible: "Готово", detail: "Можно забрать" },
+    { saved: state([{ ...crop, collection }]), at: finish + 9000, garden: { jobId: crop.id, phase: "paused" }, visible: "Пауза", detail: "Сбор прерван" },
+  ];
+  for (const { saved, at, visible, detail, garden } of cases) {
+    const before = structuredClone(saved), groups = mapProductionGroups(saved, at, garden);
+    const html = renderToStaticMarkup(WorldProductionStatus({ economy: { snapshot: saved, now: at }, groups,
+      anchors: [anchor(groups[0].place)], onOpen() { assert.fail("rendering a marker must not start or claim work"); } }));
+    assert.match(html, new RegExp(`<strong[^>]*>${visible}<\\/strong>`));
+    assert.match(html, new RegExp(`aria-label="[^"]*${detail}`));
+    assert.doesNotMatch(html, /<small>|В кладовую<|Строительство<|Готовится</);
+    assert.deepEqual(saved, before);
+  }
+});
+
+test("smaller map targets show adjacent hosts while still reserving the entire touch area", () => {
+  const groups = mapProductionGroups(state([job("dryer"), job("quarry")]), start + 1000);
+  assert.equal(layoutProductionMarkers(groups, [anchor("campfire", 150, 250), anchor("quarry", 254, 250)]).length, 2,
+    "98px targets with the existing 6px gap fit where the old 124px panels collided");
+  assert.equal(layoutProductionMarkers(groups, [anchor("campfire", 150, 250), anchor("quarry", 253, 250)]).length, 1);
+  assert.equal(layoutProductionMarkers(groups, [anchor("campfire", 150, 250)], [anchor("house", 247, 250)]).length, 0,
+    "the invisible touch padding cannot cover a construction action");
+  const object = { id: "quarry", place: "quarry", hitArea: [{ x: 100, y: 200 }, { x: 220, y: 280 }] };
+  const camera = { x: 160, y: 240, zoom: 1 };
+  assert.equal(projectConstructionAnchor(object, camera, { width: 113, height: 480 }), null);
+  assert.equal(projectConstructionAnchor(object, camera, { width: 114, height: 480 }).x, 57);
 });
 
 test("only production receipt effects attach to an existing host, always initially hidden", () => {
@@ -237,10 +271,12 @@ test("shared receipt playback does not replay production effects after mount, hi
 
 test("map-local feedback stays under object menus and disables decorative motion", async () => {
   const files = await Promise.all(["ui/hud/world-production-status.module.css", "ui/feedback/world-production-effects.module.css", "scene/world-scene.tsx"].map(name => readFile(`${root}features/world/${name}`, "utf8")));
-  assert.match(files[0], /width: 124px; height: 44px; min-height: 44px/);
+  assert.match(files[0], /width: 98px; height: 44px; min-height: 44px/);
   assert.match(files[0], /markerSplit\.markerSplit \{ height: 88px; min-height: 88px/);
   assert.match(files[0], /sectionButton\.sectionButton[\s\S]*height: 44px; min-height: 44px/);
   assert.match(files[0], /sectionButton\.sectionButton:focus-visible/);
+  assert.match(files[0], /width: 80px; height: 30px/);
+  assert.match(files[0], /border: 0; border-radius: 16px; background: transparent/);
   assert.match(files[0], /prefers-reduced-motion: reduce/);
   assert.match(files[1], /z-index: 3; pointer-events: none/);
   assert.match(files[1], /prefers-reduced-motion: reduce[\s\S]*animation: none/);

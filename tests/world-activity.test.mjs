@@ -69,20 +69,21 @@ test("berries distinguish growing, ripe and confirmed gathering, including delay
 });
 
 test("compact activity time stays readable across seconds, minutes, hours and days", () => {
-  assert.equal(activityTime(5), "5 с"); assert.equal(activityTime(59.1), "1 мин");
-  assert.equal(activityTime(61), "2 мин"); assert.equal(activityTime(3600), "1 ч");
-  assert.equal(activityTime(3660), "1 ч 1 мин"); assert.equal(activityTime(90000), "1 д 1 ч");
+  assert.equal(activityTime(5), "0:05"); assert.equal(activityTime(59.1), "1:00");
+  assert.equal(activityTime(61), "1:01"); assert.equal(activityTime(3600), "1:00:00");
+  assert.equal(activityTime(3660), "1:01:00"); assert.equal(activityTime(90000), "25:00:00");
+  assert.equal(activityTime(-1), "0:00"); assert.equal(activityTime(NaN), "0:00");
 });
 
 test("circle shows an item or route dial and exposes a separate accessible progress description", () => {
   const status = worldActivity(activity({ routeId: "shore" }), undefined, now);
   const badge = renderToStaticMarkup(createElement(WorldActivityBadge, { activity: status }));
-  assert.match(badge, /data-world-activity="fishing"/); assert.match(badge, /stroke-dashoffset="50"/); assert.match(badge, /Ещё 30 с/);
+  assert.match(badge, /data-world-activity="fishing"/); assert.match(badge, /stroke-dashoffset="50"/); assert.match(badge, /0:30/);
   assert.doesNotMatch(badge, /<button|<canvas/);
   const work = worldActivity(economySceneActivity(economy([production()])), undefined, now);
   assert.match(renderToStaticMarkup(createElement(WorldActivityBadge, { activity: work })), /data-item-icon="berries"/);
   const description = renderToStaticMarkup(createElement(WorldActivityDescription, { activity: status, id: "activity" }));
-  assert.match(description, /role="progressbar" aria-label="Лесная разведка"/); assert.match(description, /aria-valuenow="50"/); assert.match(description, /aria-valuetext="Ещё 30 с"/);
+  assert.match(description, /role="progressbar" aria-label="Лесная разведка"/); assert.match(description, /aria-valuenow="50"/); assert.match(description, /aria-valuetext="0:30"/);
   const html = renderToStaticMarkup(createElement(MochlikTerrarium, { wakeSignal: 0, nowMs: now, timeZone: "UTC", activity: status }));
   assert.match(html, /aria-hidden="true"[\s\S]*data-world-activity="fishing"[\s\S]*<\/div><span id="mochlik-activity-status"/);
 });

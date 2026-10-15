@@ -22,12 +22,14 @@ import { berryCollectionStatus } from "@/features/economy/integration/garden-col
 import { ProductionWork } from "@/features/economy/ui/production/production-work";
 import { WorldProductionSlots } from "@/features/economy/ui/production/world-production-slots";
 import { productionStationSupported } from "@/features/economy/domain/production-slots";
-import { worldConstructionReason } from "@/features/economy/ui/shared/world-stations";
+import { worldConstructionReason, worldCountdown } from "@/features/economy/ui/shared/world-stations";
 import { economyMarketUnlocked, marketDailyLimit, marketItemUnlocked, marketMinimumPrice, marketSaleFee, marketSlotCount } from "@/features/economy/domain/market-rules";
 import { BarterMarket } from "@/features/economy/ui/market/barter-market";
 import { WorldMarketSlots } from "@/features/economy/ui/market/world-market-slots";
 import { worldRecipeGroups } from "@/features/economy/ui/stations/world-recipe-groups";
 import { WorldProductionCard } from "@/features/economy/ui/production/world-production-card";
+import { fishSelectionMatches, type FishSelection } from "@/features/economy/domain/fish-stock";
+import { WorldFishSelection } from "@/features/economy/ui/fishing/world-fish-selection";
 import styles from "./economy-panel.module.css";
 
 export type EconomyTab = "overview" | "buildings" | "production" | "exploration" | "market" | "barter" | "inventory";
@@ -144,7 +146,7 @@ function JobCard({ economy, job, navigate }: { economy: ReadyEconomy; job: Econo
     {Object.keys(job.rewards).length > 0 && <Rewards state={state} value={job.rewards} />}
     {!ready && <progress className={styles.progress} value={progress} max={1} aria-label={`${jobTitle(state, job)}: выполнено ${Math.floor(progress * 100)}%`} />}
     <div className={styles.jobFooter}>
-      <span className={styles.duration}>{ready && !berry?.collecting ? <Check size={15} aria-hidden /> : <Clock3 size={15} aria-hidden />}{ready ? berry?.label ?? "Можно забрать" : `Ещё ${economyDuration((end - now) / 1000)}`}</span>
+      <span className={styles.duration}>{ready && !berry?.collecting ? <Check size={15} aria-hidden /> : <Clock3 size={15} aria-hidden />}{ready ? berry?.label ?? "Можно забрать" : worldCountdown((end - now) / 1000)}</span>
       <button className={ready ? styles.primary : undefined} disabled={!ready || storageBlocked || busy || uncertain || berry?.disabled} onClick={() => {
         if (!ready || storageBlocked || busy || uncertain || economy.retryAt > now || berry?.disabled) return;
         if (berry && collection) collection.start(job.id);
@@ -304,6 +306,10 @@ function SellForm({ economy, item }: { economy: ReadyEconomy; item: Item }) {
   const { snapshot: state } = economy;
   const buyer = state.catalog.localBuyer, minimum = economyLocalSaleMinimumQuantity(item.baseSellPrice, buyer, item.id);
   const [value, setValue] = useState(() => String(minimum));
+  const [choosingFish, setChoosingFish] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const focusOrigin = useRef<{ element: HTMLButtonElement | null; owner: string; itemId: string } | null>(null);
+  const pending = useRef<{ owner: string; revision: number; busySeen: boolean; previousError: string | null } | null>(null);
   const inputId = useId(), stock = state.inventory[item.id] ?? 0;
   const maximum = economyLocalSaleLimit(item.baseSellPrice, stock, state.wallet.coins, buyer, item.id);
   const parsed = integer(value, maximum), quantity = parsed && parsed >= minimum ? parsed : null;
@@ -311,11 +317,55 @@ function SellForm({ economy, item }: { economy: ReadyEconomy; item: Item }) {
   const fixedPrice = buyer?.unitPrices?.[item.id];
   const discount = fixedPrice !== undefined ? 0 : (10_000 - (buyer?.payoutBps ?? 10_000)) / 100;
   const unavailable = economy.busy || economy.uncertain || economy.retryAt > economy.now;
+  const fishClass = fishClassForItem(item.id, state.catalog.fishing);
+  const latest = useRef({ economy, item, quantity, total });
+  useEffect(() => {
+    latest.current = { economy, item, quantity, total };
+    const request = pending.current;
+    if (!request) return;
+    if (request.owner !== state.ownerPublicId || request.revision !== state.revision || request.busySeen && !economy.busy && !economy.uncertain
+      || economy.error && economy.error !== request.previousError) pending.current = null;
+    else if (economy.busy || economy.uncertain) request.busySeen = true;
+  }, [economy, item, quantity, total, state.ownerPublicId, state.revision]);
+  const acceptedOwner = state.ownerPublicId, acceptedRevision = state.revision;
+  function sell(selection?: FishSelection): boolean {
+    const current = latest.current, snapshot = current.economy.snapshot;
+    const currentItem = snapshot.catalog.items.find(entry => entry.id === item.id), localBuyer = snapshot.catalog.localBuyer;
+    if (current.economy !== economy || current.item.id !== item.id || current.quantity !== quantity || current.total !== total
+      || snapshot.ownerPublicId !== acceptedOwner || snapshot.revision !== acceptedRevision || pending.current
+      || current.economy.busy || current.economy.uncertain || current.economy.retryAt > current.economy.now || !quantity || !currentItem?.tradable
+      || quantity < economyLocalSaleMinimumQuantity(currentItem.baseSellPrice, localBuyer, item.id)
+      || quantity > economyLocalSaleLimit(currentItem.baseSellPrice, snapshot.inventory[item.id] ?? 0, snapshot.wallet.coins, localBuyer, item.id)
+      || economyLocalSellPrice(currentItem.baseSellPrice, quantity, localBuyer, item.id) !== total) return false;
+    if (fishClass && (!selection || !fishSelectionMatches(snapshot, { [fishClass.itemId]: quantity }, selection))) return false;
+    const accepted = selection ? current.economy.act("sell", item.id, quantity, localBuyer ? total : 0, selection)
+      : current.economy.act("sell", item.id, quantity, localBuyer ? total : 0);
+    if (accepted === false) return false;
+    pending.current = { owner: snapshot.ownerPublicId, revision: snapshot.revision, busySeen: false, previousError: current.economy.error };
+    setChoosingFish(false);
+    return true;
+  }
   return <div className={styles.card}><h3>Продать торговцу: {item.name.toLocaleLowerCase("ru-RU")}</h3>
     <p className={styles.muted}>{discount > 0 ? `Быстрая продажа с уценкой ${number(discount)}%. Итог за всё количество округляется вниз до целой монеты.` : `Торговец покупает сразу по ${number(fixedPrice ?? item.baseSellPrice)} монет за штуку.`} На прилавке можно предложить свою цену другим игрокам.</p>
     {discount > 0 && fishClassForItem(item.id, state.catalog.fishing) && <p className={styles.muted}>Плёска купит дороже: {number(item.baseSellPrice)} монет за штуку. Её лавка открывается на карте.</p>}
-    <label className={styles.field} htmlFor={inputId}>Количество · на складе {number(stock)}<input id={inputId} type="number" inputMode="numeric" min={minimum} max={Math.max(minimum, maximum)} step={1} value={value} disabled={unavailable || maximum < minimum} onChange={event => setValue(event.target.value)} /></label>
-    <button className={styles.primary} disabled={!quantity || unavailable} onClick={() => { if (quantity && !unavailable) void economy.act("sell", item.id, quantity, buyer ? total : 0); }}><ItemIcon itemId="coins" size={16} />Продать {quantity ?? "-"} шт. за {quantity ? number(total) : "-"} монет</button>
+    <label className={styles.field} htmlFor={inputId}>Количество · на складе {number(stock)}<input id={inputId} type="number" inputMode="numeric" min={minimum} max={Math.max(minimum, maximum)} step={1} value={value} disabled={unavailable || choosingFish || maximum < minimum} onChange={event => setValue(event.target.value)} /></label>
+    <button ref={trigger} className={styles.primary} disabled={!quantity || unavailable || !item.tradable} onClick={() => {
+      if (!quantity || unavailable || pending.current || !item.tradable) return;
+      if (fishClass) {
+        focusOrigin.current = { element: trigger.current, owner: state.ownerPublicId, itemId: item.id };
+        setChoosingFish(true);
+      } else sell();
+    }}><ItemIcon itemId="coins" size={16} />{fishClass ? "Выбрать рыбу" : "Продать"} {quantity ?? "-"} шт. за {quantity ? number(total) : "-"} монет</button>
+    {choosingFish && fishClass && quantity && <WorldFishSelection economy={economy} requiredItems={{ [fishClass.itemId]: quantity }}
+      contextId={`local-sale:${item.id}:${quantity}:${total}`} confirmLabel="Продать" summary={`${number(quantity)} шт. · ${number(total)} монет`}
+      onClose={() => setChoosingFish(false)} onConfirm={sell}
+      onCloseAutoFocus={event => {
+        event.preventDefault();
+        const origin = focusOrigin.current, current = latest.current;
+        focusOrigin.current = null;
+        if (origin?.element && origin.element === trigger.current && origin.element.isConnected && !origin.element.disabled
+          && origin.owner === current.economy.snapshot.ownerPublicId && origin.itemId === current.item.id) origin.element.focus({ preventScroll: true });
+      }} />}
     {maximum < minimum ? <p className={styles.hint}>{stock < minimum ? `Для продажи нужно хотя бы ${number(minimum)} шт., чтобы получить целую монету.` : "В кошельке нет места для продажи."}</p>
       : !quantity && <p className={styles.hint}>Укажите целое количество от {number(minimum)} до {number(maximum)}.</p>}
   </div>;
@@ -419,6 +469,10 @@ function ListingForm({ economy }: { economy: ReadyEconomy }) {
 function ListingPriceForm({ economy, item }: { economy: ReadyEconomy; item: Item }) {
   const { snapshot: state, busy, uncertain } = economy;
   const [amount, setAmount] = useState("1"), [price, setPrice] = useState(String(item.baseSellPrice * 2));
+  const [choosingFish, setChoosingFish] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const focusOrigin = useRef<{ element: HTMLButtonElement | null; owner: string; itemId: string } | null>(null);
+  const pending = useRef<{ owner: string; revision: number; busySeen: boolean; previousError: string | null } | null>(null);
   const quantityId = useId(), priceId = useId();
   const limits = state.catalog.market;
   const quantityMax = Math.min(limits.maxLotQuantity, state.inventory[item.id] ?? 0, Math.floor(marketDailyLimit(state.buildings.home ?? 1, state.catalog) / item.baseSellPrice));
@@ -431,16 +485,65 @@ function ListingPriceForm({ economy, item }: { economy: ReadyEconomy; item: Item
   const valid = Boolean(quantity && totalPrice && totalPrice >= minimum && totalPrice % quantum === 0);
   const slots = marketSlotCount(state, state.catalog);
   const full = (economy.market?.mine.length ?? 0) >= slots;
-  const disabled = !valid || full || busy || uncertain || !canTrade(state) || !marketItemUnlocked(state, item.id, state.catalog);
+  const disabled = !valid || full || busy || uncertain || economy.retryAt > economy.now || !canTrade(state) || !marketItemUnlocked(state, item.id, state.catalog);
+  const fishClass = fishClassForItem(item.id, state.catalog.fishing);
+  const latest = useRef({ economy, item, quantity, totalPrice, disabled });
+  useEffect(() => {
+    latest.current = { economy, item, quantity, totalPrice, disabled };
+    const request = pending.current;
+    if (!request) return;
+    if (request.owner !== state.ownerPublicId || request.revision !== state.revision || request.busySeen && !busy && !uncertain
+      || economy.error && economy.error !== request.previousError) pending.current = null;
+    else if (busy || uncertain) request.busySeen = true;
+  }, [economy, item, quantity, totalPrice, disabled, state.ownerPublicId, state.revision, busy, uncertain]);
+  const acceptedOwner = state.ownerPublicId, acceptedRevision = state.revision;
+  function submit(selection?: FishSelection): boolean {
+    const current = latest.current, snapshot = current.economy.snapshot;
+    const currentItem = snapshot.catalog.items.find(entry => entry.id === item.id), currentLimits = snapshot.catalog.market;
+    const scale = snapshot.catalog.currencyScale;
+    const currentMinimum = quantity ? Math.ceil(marketMinimumPrice(item.id, quantity, snapshot.catalog) / scale) * scale : 0;
+    const currentMaximum = quantity && currentItem ? Math.floor(currentItem.baseSellPrice * currentLimits.maxPriceMultiplier * quantity / scale) * scale : 0;
+    if (current.economy !== economy || current.item.id !== item.id || current.quantity !== quantity || current.totalPrice !== totalPrice
+      || snapshot.ownerPublicId !== acceptedOwner || snapshot.revision !== acceptedRevision || current.disabled || pending.current
+      || current.economy.busy || current.economy.uncertain || current.economy.retryAt > current.economy.now || !quantity || !totalPrice
+      || !currentItem?.tradable || !canTrade(snapshot) || !marketItemUnlocked(snapshot, item.id, snapshot.catalog)
+      || (snapshot.inventory[item.id] ?? 0) < quantity || quantity > currentLimits.maxLotQuantity
+      || quantity * currentItem.baseSellPrice > marketDailyLimit(snapshot.buildings.home ?? 1, snapshot.catalog)
+      || totalPrice < currentMinimum || totalPrice > currentMaximum || totalPrice % scale !== 0
+      || (current.economy.market?.mine.length ?? 0) >= marketSlotCount(snapshot, snapshot.catalog)) return false;
+    if (fishClass && (!selection || !fishSelectionMatches(snapshot, { [fishClass.itemId]: quantity }, selection))) return false;
+    const accepted = selection ? current.economy.actMarket("create_listing", item.id, quantity, totalPrice, selection)
+      : current.economy.actMarket("create_listing", item.id, quantity, totalPrice);
+    if (accepted === false) return false;
+    pending.current = { owner: snapshot.ownerPublicId, revision: snapshot.revision, busySeen: false, previousError: current.economy.error };
+    setChoosingFish(false);
+    return true;
+  }
   return <div className={styles.card}>
     <div className={styles.fields}>
-      <label className={styles.field} htmlFor={quantityId}>Количество<input id={quantityId} type="number" inputMode="numeric" min={1} max={quantityMax} step={1} value={amount} disabled={busy || uncertain} onChange={event => setAmount(event.target.value)} /></label>
-      <label className={styles.field} htmlFor={priceId}>Цена всего лота<input id={priceId} type="number" inputMode="numeric" min={minimum} max={maximum || undefined} step={quantum} value={price} disabled={busy || uncertain} onChange={event => setPrice(event.target.value)} /></label>
+      <label className={styles.field} htmlFor={quantityId}>Количество<input id={quantityId} type="number" inputMode="numeric" min={1} max={quantityMax} step={1} value={amount} disabled={busy || uncertain || choosingFish} onChange={event => setAmount(event.target.value)} /></label>
+      <label className={styles.field} htmlFor={priceId}>Цена всего лота<input id={priceId} type="number" inputMode="numeric" min={minimum} max={maximum || undefined} step={quantum} value={price} disabled={busy || uncertain || choosingFish} onChange={event => setPrice(event.target.value)} /></label>
     </div>
     <p className={styles.muted}>{quantity ? `Допустимая цена: ${number(minimum)}–${number(maximum)} монет за ${number(quantity)} шт.` : `До ${quantityMax} предметов в этом предложении.`}</p>
     {valid && <p className={styles.muted}>Получите {number(totalPrice! - marketSaleFee(totalPrice!, limits.feeBps))} монет после сбора {limits.feeBps / 100}%.</p>}
     <p className={styles.hint}><Package size={15} aria-hidden />Выставленные предметы сохраняют место на складе до продажи. Отмена вернёт их; выставление лота само по себе не освобождает склад.</p>
-    <button className={styles.primary} disabled={disabled} onClick={() => { if (!disabled && quantity && totalPrice) void economy.actMarket("create_listing", item.id, quantity, totalPrice); }}><Store size={17} aria-hidden />{full ? `Все ${slots} мест заняты` : `Выставить за ${valid ? number(totalPrice!) : "-"} монет`}</button>
+    <button ref={trigger} className={styles.primary} disabled={disabled} onClick={() => {
+      if (disabled || pending.current) return;
+      if (fishClass) {
+        focusOrigin.current = { element: trigger.current, owner: state.ownerPublicId, itemId: item.id };
+        setChoosingFish(true);
+      } else submit();
+    }}><Store size={17} aria-hidden />{full ? `Все ${slots} мест заняты` : fishClass ? "Выбрать рыбу для продажи" : `Выставить за ${valid ? number(totalPrice!) : "-"} монет`}</button>
+    {choosingFish && fishClass && quantity && totalPrice && <WorldFishSelection economy={economy} requiredItems={{ [fishClass.itemId]: quantity }}
+      contextId={`listing:${item.id}:${quantity}:${totalPrice}`} confirmLabel="Выставить лот" summary={`${number(quantity)} шт. · ${number(totalPrice)} монет`}
+      onClose={() => setChoosingFish(false)} onConfirm={submit}
+      onCloseAutoFocus={event => {
+        event.preventDefault();
+        const origin = focusOrigin.current, current = latest.current;
+        focusOrigin.current = null;
+        if (origin?.element && origin.element === trigger.current && origin.element.isConnected && !origin.element.disabled
+          && origin.owner === current.economy.snapshot.ownerPublicId && origin.itemId === current.item.id) origin.element.focus({ preventScroll: true });
+      }} />}
   </div>;
 }
 

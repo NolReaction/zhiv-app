@@ -73,7 +73,8 @@ test("paid construction stays above the unlocks with one timer and one claim; it
   const claims = buttons(html).filter(button => /aria-label="Завершить:/.test(button.attributes));
   assert.equal(claims.length, 1);
   assert.match(claims[0].attributes, /disabled/);
-  assert.match(text(html), /Осталось/);
+  assert.match(text(html), /\d+:\d{2}/);
+  assert.doesNotMatch(text(html), /Осталось/);
   assert.doesNotMatch(html, /Подготовка к улучшению|Улучшить до ур\./);
 });
 

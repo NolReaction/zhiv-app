@@ -175,7 +175,7 @@ test("warehouse expansion shows its own server-clock progress and ready status",
   const state = snapshot({ jobs: [job] });
   let html = render(controller({ snapshot: state }));
   assert.match(html, /Кладовая расширяется/);
-  assert.match(html, /Ещё 45 с/);
+  assert.match(html, /<small>0:45<\/small>/);
   assert.doesNotMatch(html, /Расширить кладовую/);
   html = render(controller({ snapshot: state, now: now + 45_000 }));
   assert.match(html, /Расширение готово/);

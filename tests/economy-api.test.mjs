@@ -112,6 +112,83 @@ test("HTTP fishSelection cooks exact owned species, binds its receipt and keeps 
   assert.equal(automatic.state.jobs.length, 2);
 });
 
+test("HTTP fish commerce sales spend the chosen species at the original price and bind the receipt", async () => {
+  const { economyLocalSellPrice } = await vite.ssrLoadModule("/features/economy/domain/local-sale.ts");
+  const price = model.economyCatalog.items.find(item => item.id === "fish_epic").baseSellPrice;
+  for (const action of ["sell", "sell_fish"]) {
+    const p = player(); economy.getDevEconomy(p.token);
+    const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
+    row.state.inventory = { fish_sturgeon: 1, fish_mirror_koi: 2 };
+    const before = await (await GET(read())).json();
+    const cmd = { ...command(p), action, targetId: "fish_epic", quantity: 2,
+      fishSelection: { fish_sturgeon: 1, fish_mirror_koi: 1 } };
+    const response = await POST(post(cmd)); assert.equal(response.status, 200);
+    const sold = await response.json();
+    assert.deepEqual(sold.state.inventory, { fish_epic: 1 });
+    assert.deepEqual(sold.state.fishing.stock, { fish_mirror_koi: 1 });
+    assert.deepEqual(sold.state.fishing.catches, before.fishing.catches);
+    const coins = action === "sell_fish" ? price * 2 : economyLocalSellPrice(price, 2, model.economyCatalog.localBuyer, "fish_epic");
+    assert.equal(sold.state.wallet.coins, before.wallet.coins + coins);
+    const repeated = await POST(post({ ...cmd, fishSelection: { fish_mirror_koi: 1, fish_sturgeon: 1 } }));
+    assert.equal(repeated.status, 200); assert.equal((await repeated.json()).replayed, true);
+    const changed = await POST(post({ ...cmd, fishSelection: { fish_mirror_koi: 2 } }));
+    assert.equal(changed.status, 409); assert.equal((await changed.json()).code, "ECONOMY_REQUEST_CONFLICT");
+    for (const fishSelection of [{}, { fish_sturgeon: 1 }, { fish_shark: 1 }]) {
+      const invalid = await POST(post({ ...command(p), action, targetId: "fish_epic", fishSelection }));
+      assert.equal(invalid.status, 409); assert.equal((await invalid.json()).code, "ECONOMY_FISH_SELECTION_CHANGED");
+      const unchanged = await (await GET(read())).json();
+      assert.equal(unchanged.revision, sold.state.revision);
+      assert.deepEqual(unchanged.wallet, sold.state.wallet); assert.deepEqual(unchanged.inventory, sold.state.inventory);
+      assert.deepEqual(unchanged.fishing, sold.state.fishing);
+    }
+    const legacy = await POST(post({ ...command(p), action, targetId: "fish_epic" }));
+    assert.equal(legacy.status, 200);
+    assert.deepEqual((await legacy.json()).state.fishing.stock, {});
+  }
+});
+
+test("HTTP fish commerce listings keep the chosen species in escrow and reject choices on buy or cancel", async () => {
+  const p = player(); economy.getDevEconomy(p.token);
+  const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
+  Object.assign(row.state.buildings, { home: 4, bridge: 1, warehouse: 10 });
+  row.state.unlockedItems = ["fish_epic"];
+  row.state.inventory = { fish_sturgeon: 1, fish_mirror_koi: 2 };
+  const before = await (await GET(read())).json();
+  const price = model.economyCatalog.items.find(item => item.id === "fish_epic").baseSellPrice * 2;
+  const marketCommand = extra => ({ ...command(p), action: "create_listing", targetId: "fish_epic", quantity: 2, totalPrice: price, ...extra });
+  for (const fishSelection of [{}, { fish_sturgeon: 2 }, { fish_mirror_koi: 1 }, { fish_shark: 2 }]) {
+    const invalid = await marketPOST(post(marketCommand({ fishSelection }), {}, "/market/commands"));
+    assert.equal(invalid.status, 409); assert.equal((await invalid.json()).code, "ECONOMY_FISH_SELECTION_CHANGED");
+    const unchanged = await (await GET(read())).json();
+    assert.equal(unchanged.revision, before.revision);
+    assert.deepEqual(unchanged.wallet, before.wallet); assert.deepEqual(unchanged.inventory, before.inventory);
+    assert.deepEqual(unchanged.fishing, before.fishing); assert.equal(unchanged.storage.reserved, 0);
+  }
+  const cmd = marketCommand({ fishSelection: { fish_sturgeon: 1, fish_mirror_koi: 1 } });
+  const response = await marketPOST(post(cmd, {}, "/market/commands")); assert.equal(response.status, 200);
+  const listed = await response.json(), lot = listed.listing;
+  assert.equal(lot.itemId, "fish_epic"); assert.equal(lot.totalPrice, price);
+  assert.deepEqual(listed.state.fishing.stock, { fish_mirror_koi: 1 });
+  assert.deepEqual(listed.state.fishing.escrow[lot.id], cmd.fishSelection);
+  const repeated = await marketPOST(post({ ...cmd, fishSelection: { fish_mirror_koi: 1, fish_sturgeon: 1 } }, {}, "/market/commands"));
+  assert.equal(repeated.status, 200); assert.equal((await repeated.json()).replayed, true);
+  const changed = await marketPOST(post({ ...cmd, fishSelection: { fish_mirror_koi: 2 } }, {}, "/market/commands"));
+  assert.equal(changed.status, 409); assert.equal((await changed.json()).code, "ECONOMY_REQUEST_CONFLICT");
+  for (const action of ["buy_listing", "cancel_listing"]) for (const fishSelection of [{}, { fish_sturgeon: 1 }]) {
+    const invalid = await marketPOST(post({ ...command(p), action, targetId: lot.id,
+      ...(action === "buy_listing" ? { quantity: 2, totalPrice: price } : {}), fishSelection }, {}, "/market/commands"));
+    assert.equal(invalid.status, 400); assert.equal((await invalid.json()).code, "INVALID_ECONOMY_COMMAND");
+    const unchanged = await (await GET(read())).json();
+    assert.equal(unchanged.revision, listed.state.revision); assert.deepEqual(unchanged.fishing, listed.state.fishing);
+  }
+  const returned = await marketPOST(post({ ...command(p), action: "cancel_listing", targetId: lot.id }, {}, "/market/commands"));
+  assert.equal(returned.status, 200);
+  const restored = await returned.json();
+  assert.deepEqual(restored.state.inventory, before.inventory);
+  assert.deepEqual(restored.state.fishing.stock, before.fishing.stock);
+  assert.deepEqual(restored.state.fishing.catches, before.fishing.catches);
+});
+
 test("HTTP obsolete starter gift remains owner-bound and repeated requests cannot mint any cost", async () => {
   const p = player(), before = economy.getDevEconomy(p.token);
   const cmd = { ...command(p), action: "claim_workshop_starter", targetId: "workshop" };

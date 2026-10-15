@@ -4,16 +4,12 @@ import { Check, Hammer } from "lucide-react";
 import type { CSSProperties } from "react";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import { stationName } from "@/features/economy/ui/shared/world-economy-parts";
+import { worldCountdown } from "@/features/economy/ui/shared/world-stations";
 import { constructionMapPlace, type MapObjectScreenAnchor } from "@/features/world/scene/construction-map-anchor";
 import styles from "./world-construction-status.module.css";
 
 export function constructionCountdown(seconds: number) {
-  const value = Math.max(0, Math.ceil(seconds));
-  const days = Math.floor(value / 86400);
-  const hours = Math.floor(value % 86400 / 3600);
-  const minutes = Math.floor(value % 3600 / 60);
-  const rest = value % 60;
-  return `${days ? `${days} д ` : ""}${hours || days ? `${hours}:` : ""}${hours || days ? String(minutes).padStart(2, "0") : minutes}:${String(rest).padStart(2, "0")}`;
+  return worldCountdown(seconds);
 }
 
 /** The server-owned job follows its map host until the ordinary completion claim. */
@@ -31,14 +27,17 @@ export function WorldConstructionStatus({ economy, onOpen, anchors = [], hidden 
   const duration = Math.max(1, Date.parse(job.finishesAt) - Date.parse(job.startedAt));
   const progress = Math.min(1, Math.max(0, 1 - remaining * 1000 / duration));
   const name = stationName(state, job.targetId);
+  const countdown = constructionCountdown(remaining);
   return <button type="button" className={styles.marker} data-construction-status data-construction-target={job.targetId}
     data-map-object={anchor.objectId} data-ready={remaining === 0 || undefined}
     style={{ left: anchor.x, top: anchor.y, "--pointer-offset": `${anchor.pointerOffset}px` } as CSSProperties}
-    aria-label={`${name}: ${remaining ? "идёт строительство" : "строительство завершено"}. Открыть улучшение`}
+    aria-label={`${name}: ${remaining ? `идёт строительство, ${countdown}` : "строительство завершено"}. Открыть улучшение`}
     title={`${name} · Уровень ${job.targetLevel}`}
     onClick={() => onOpen(job.targetId)}>
-    {remaining ? <Hammer size={14} aria-hidden="true" /> : <Check size={14} aria-hidden="true" />}
-    <strong>{remaining ? constructionCountdown(remaining) : "Готово"}</strong>
-    <span className={styles.track} aria-hidden="true"><span style={{ width: `${progress * 100}%` }} /></span>
+    <span className={styles.pill} data-long-clock={remaining > 0 && countdown.length > 8 || undefined}>
+      {remaining ? <Hammer size={16} aria-hidden="true" /> : <Check size={16} aria-hidden="true" />}
+      <strong>{remaining ? countdown : "Готово"}</strong>
+      <span className={styles.track} aria-hidden="true"><span style={{ width: `${progress * 100}%` }} /></span>
+    </span>
   </button>;
 }

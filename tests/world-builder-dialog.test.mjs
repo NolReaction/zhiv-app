@@ -62,7 +62,8 @@ test("confirmed work shows its building, timer and pearl completion; navigation 
   assert.match(html, /Занят улучшением/);
   assert.match(html, new RegExp(economyCatalog.buildings.find(building => building.id === "home").name));
   assert.match(html, /Уровень 2/);
-  assert.match(html, /Осталось 2 мин/);
+  assert.match(html, /1:30/);
+  assert.doesNotMatch(html, /Осталось/);
   assert.match(html, /Завершить сейчас за 2 жемчужины/);
   assert.match(html, /data-construction-speedup="paid-home-upgrade"/);
   const buttons = elements(tree).filter(element => element.type === "button");
@@ -101,7 +102,8 @@ test("a pending pearl command stays visible in the builder and retries respect t
 
 test("short remaining times count seconds and account changes do not retain a previous building", () => {
   const shortlyReady = conversation(economy([job], { now: now + 60_000 })).html;
-  assert.match(shortlyReady, /Осталось 30 с/);
+  assert.match(shortlyReady, /0:30/);
+  assert.doesNotMatch(shortlyReady, /Осталось/);
   assert.match(shortlyReady, /Завершить сейчас за 1 жемчужину/);
   const other = { ...job, targetId: "warehouse", targetLevel: 3 };
   const { html } = conversation(economy([other]));

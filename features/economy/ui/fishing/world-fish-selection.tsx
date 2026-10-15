@@ -14,7 +14,8 @@ export type WorldFishSelectionProps = {
   economy: ReadyEconomy;
   requiredItems: Record<string, number>;
   contextId: string;
-  confirmLabel: "Готовить" | "Отдать заказ";
+  confirmLabel: "Готовить" | "Отдать заказ" | "Выставить лот" | "Продать";
+  summary?: string;
   onConfirm: (selection: FishSelection) => boolean;
   onClose: () => void;
   onCloseAutoFocus?: (event: Event) => void;
@@ -76,6 +77,7 @@ export function WorldFishSelection(props: WorldFishSelectionProps) {
         onPointerDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()}>
         <header className={styles.header}><Dialog.Title id={titleId}>Выберите рыбу</Dialog.Title><Dialog.Close asChild><button type="button" aria-label="Закрыть выбор рыбы"><X size={18} aria-hidden="true" /></button></Dialog.Close></header>
         <Dialog.Description id={descriptionId} className={styles.description}>Подойдёт любой вид нужной редкости. Нажмите на рыбу, чтобы добавить или заменить её.</Dialog.Description>
+        {props.summary && <p className={styles.summary} data-fish-summary>{props.summary}</p>}
         <div className={styles.tools}><button type="button" data-fish-autofill disabled={locked(economy) || submitting} onClick={() => {
           const current = currentChoice(); if (!current) return;
           setChoice(previous => ({ ...previous, selection: autoFillFishSelection(current.props.economy.snapshot, current.props.requiredItems) })); setNotice(null);
