@@ -65,6 +65,7 @@ async function modules(override) {
       ...await vite.ssrLoadModule("/features/world/state/economy/economy-scene-state.ts"),
       ...await vite.ssrLoadModule("/features/world/state/economy/economy-production-state.ts"),
       ...await vite.ssrLoadModule("/features/world/state/forest-observer.ts"),
+      ...await vite.ssrLoadModule("/features/activity/transport-state.ts"),
       ...await vite.ssrLoadModule("/features/world/activities/journeys/forest-journey-travel.ts"),
       ...await vite.ssrLoadModule("/features/world/activities/fishing/forest-fishing-painter.ts"),
       ...await vite.ssrLoadModule("/features/world/dev/forest-cooking-preview.ts"),
@@ -4635,6 +4636,63 @@ function builderMemoryServer(owner, ApiError) {
     },
   };
 }
+
+test("returning to a visible map resumes its single world clock after gameplay presence is renewed", async () => {
+  const { mountHabitat, connectForestSession, forgetForestSession, TILED_WORLD, ApiError, setGamePresence } = await modules(builderFixture());
+  const env = browser(), views = []; let probe;
+  const owner = "3234-ABCD-EFGH", key = `zhiv:mochlik:presence:${owner}`, server = builderMemoryServer(owner, ApiError);
+  let inactive = false, rejected = 0;
+  const requirePresence = () => {
+    if (!inactive) return;
+    rejected++;
+    throw new ApiError("GAME_SESSION_INACTIVE", 409, { code: "GAME_SESSION_INACTIVE", message: "GAME_SESSION_INACTIVE" });
+  };
+  const transport = {
+    async read(...args) { requirePresence(); return server.transport.read(...args); },
+    async command(...args) { requirePresence(); return server.transport.command(...args); },
+  };
+  try {
+    setGamePresence("before-window-switch");
+    probe = connectForestSession(key, TILED_WORLD, "circle", server.now(), 0, () => {},
+      { sync: { environment: server.environment, transport }, awaitBuilderConstruction: true });
+    const initial = { ...options, reducedMotion: false, serverNow: server.now(), presenceKey: key,
+      economyConstruction: confirmedConstruction(owner) };
+    const callbacks = { activity() {}, ready() {}, failure: assert.fail };
+    const circle = mountHabitat(env.surface(), { ...initial, backgrounded: true }, callbacks); views.push(circle);
+    const world = mountHabitat(env.surface(), { ...initial, view: "world" }, callbacks); views.push(world);
+    env.finishPath("/test-ground.webp"); env.finishPath("/test-builder-workshop.webp");
+    await flush(); await server.pump();
+    const state = probe.state, clock = sceneClock(env); clock.advance(.5);
+    assert.equal(state.memory.sync.mode, "synced");
+    assert.ok(state.elapsed > 0); assert.ok(state.builderMind.elapsed > 0); assert.ok(state.pleskMind.elapsed > 0);
+    assert.equal(env.frames.size, 1, "the map owns the clock while the mounted circle stays in the background");
+
+    env.visibility(true); await server.pump();
+    assert.equal(env.frames.size, 0, "a hidden window stops the scene clock");
+    setGamePresence(null); inactive = true;
+    env.visibility(false); await server.pump();
+    assert.ok(rejected > 0, "the scene returns before the gameplay session has reconnected");
+    assert.equal(state.memory.sync.mode, "offline");
+    const frozen = state.elapsed; clock.step(60_000);
+    assert.equal(state.elapsed, frozen);
+    world.configure({ ...initial, view: "world", serverNow: server.now() }); await server.pump();
+    assert.equal(env.frames.size, 0, "an economic snapshot does not bypass the missing authoritative lease");
+
+    inactive = false; setGamePresence("after-window-switch"); await server.pump();
+    assert.equal(state.memory.sync.mode, "synced", "new gameplay presence wakes the retained scene without remounting it");
+    assert.equal(env.frames.size, 1, "lease recovery restarts exactly one simulation RAF");
+    const resumed = { world: state.elapsed, builder: state.builderMind.elapsed, plesk: state.pleskMind.elapsed };
+    clock.step(); assert.equal(state.elapsed, resumed.world, "the first frame reanchors time instead of simulating the hidden minute");
+    clock.advance(.3);
+    assert.ok(state.elapsed > resumed.world, "the world clock runs again");
+    assert.ok(state.builderMind.elapsed > resumed.builder, "the builder resumes");
+    assert.ok(state.pleskMind.elapsed > resumed.plesk, "Pleska resumes");
+    assert.equal(env.frames.size, 1);
+  } finally {
+    views.forEach(view => view.dispose()); probe?.release(); forgetForestSession(key); await server.pump();
+    setGamePresence(null); env.restore();
+  }
+});
 
 test("cold reentry restores confirmed builder work at its site before delayed forest memory, including ready and reduced motion", async () => {
   const { mountHabitat, connectForestSession, forgetForestSession, TILED_WORLD, ApiError } = await modules(builderFixture());

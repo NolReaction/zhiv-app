@@ -1,4 +1,4 @@
-import { gamePresenceHeaders, reportInactivePresence } from "@/features/activity/transport-state";
+import { gamePresenceHeaders, reportInactivePresence, subscribeGamePresence } from "@/features/activity/transport-state";
 import { ApiError } from "@/lib/check-in-api";
 import { forestMemoryResultSchema, forestMemoryViewSchema,
   type ForestMemoryCommand, type ForestMemoryPayload, type ForestMemoryResult, type ForestMemoryView } from "./forest-memory-model";
@@ -89,6 +89,7 @@ export function createForestMemorySync(options: ForestMemorySyncOptions) {
   let timer: ReturnType<typeof setTimeout> | null = null, requestController: AbortController | null = null;
   let needsRead = true, takeOverRequested = false, failures = 0, lastAppliedRevision: number | null = null;
   let due = 0, leaseDeadline = 0, finalSnapshot: ForestMemoryPayload | null = null;
+  let waitingForPresence = false, rejectedPresence: string | undefined;
   let preserveLiveScene = false;
   // A visible UI tab can park its full in-memory scene while releasing the
   // writer. Only our acknowledged release revision can bridge a later acquire.
@@ -108,8 +109,16 @@ export function createForestMemorySync(options: ForestMemorySyncOptions) {
   }
   function clearTimer() { if (timer !== null) env.clearTimeout(timer); timer = null; }
   function schedule(delay: number) {
-    clearTimer(); if (!isLive() || !active && !retiring) return;
+    clearTimer(); if (!isLive() || waitingForPresence || !active && !retiring) return;
     timer = env.setTimeout(() => { timer = null; void pump(); }, Math.max(0, delay));
+  }
+  function resumeAfterPresence() {
+    const presence = gamePresenceHeaders()["X-Game-Presence"];
+    if (!isLive() || !waitingForPresence || !presence || presence === rejectedPresence) return;
+    waitingForPresence = false;
+    if (!active) return;
+    retiring = false; finalSnapshot = null; needsRead = true; lastAppliedRevision = null;
+    publish("loading"); schedule(0);
   }
   function accept(state: ForestMemoryView, apply: boolean, requestStarted = env.now()) {
     if (state.ownerPublicId !== options.ownerPublicId) throw new ApiError("Аккаунт изменился", 409, { code: "FOREST_MEMORY_ACCOUNT_CHANGED", message: "Аккаунт изменился" });
@@ -140,8 +149,8 @@ export function createForestMemorySync(options: ForestMemorySyncOptions) {
     try { return await perform(controller.signal); }
     finally { env.clearTimeout(timeout); if (requestController === controller) requestController = null; }
   }
-  function stopWithError() { disabled = true; pending = null; retiring = false; clearTimer(); publish("error"); }
-  function handleError(error: unknown) {
+  function stopWithError() { disabled = true; pending = null; retiring = false; clearTimer(); unsubscribePresence(); publish("error"); }
+  function handleError(error: unknown, sentPresence: string | undefined) {
     if (!isLive()) return;
     preserveLiveScene = false; forgetParkedScene();
     const api = error instanceof ApiError ? error : null;
@@ -149,9 +158,13 @@ export function createForestMemorySync(options: ForestMemorySyncOptions) {
     if (api?.status === 401 || api?.status === 403 || code === "FOREST_MEMORY_ACCOUNT_CHANGED") { stopWithError(); return; }
     if (api?.status === 400 || code === "FOREST_MEMORY_REQUEST_CONFLICT") { stopWithError(); return; }
     if (code === "GAME_SESSION_INACTIVE") {
-      // Keep the exact save receipt through AFK/network suspension; the scene
-      // remount resumes synchronization only after the app reacquires presence.
-      publish("offline"); retiring = false; clearTimer(); return;
+      // The retained canvas can resume before account presence does. Its
+      // active flag need not change again, so wake this same writer explicitly.
+      // Keep an uncertain command intact until the new presence can retry it.
+      waitingForPresence = true; rejectedPresence = sentPresence;
+      publish("offline"); retiring = false; clearTimer();
+      // A replacement may already exist when an older request fails.
+      resumeAfterPresence(); return;
     }
     if (api?.status === 409) {
       pending = null; needsRead = true; finalSnapshot = null;
@@ -168,11 +181,13 @@ export function createForestMemorySync(options: ForestMemorySyncOptions) {
     schedule(Math.max(Math.min(MAX_RETRY_MS, 1000 * 2 ** Math.min(failures - 1, 6)), api?.retryAfterMs ?? 0));
   }
   async function pump() {
-    if (!isLive() || busy || !active && !retiring) return;
+    if (!isLive() || waitingForPresence || busy || !active && !retiring) return;
     busy = true;
+    let sentPresence: string | undefined;
     try {
       if (!pending && needsRead) {
         const requestStarted = env.now();
+        sentPresence = gamePresenceHeaders()["X-Game-Presence"];
         const remote = await timed(signal => transport.read(options.ownerPublicId, clientId, signal));
         if (!isLive()) return;
         const unchangedPark = preserveLiveScene && parkedRevision !== null && remote.revision === parkedRevision
@@ -194,6 +209,7 @@ export function createForestMemorySync(options: ForestMemorySyncOptions) {
         } else { publish("synced"); schedule(due - env.now()); return; }
       }
       const sent = pending, requestStarted = env.now();
+      sentPresence = gamePresenceHeaders()["X-Game-Presence"];
       const result = await timed(signal => transport.command(sent, signal, retiring));
       if (!isLive()) {
         // Unmount can race a server-accepted acquire. Its late acknowledgement
@@ -229,7 +245,7 @@ export function createForestMemorySync(options: ForestMemorySyncOptions) {
         needsRead = true; publish(foreign ? "other-device" : "loading"); schedule(foreign ? POLL_MS : 250); return;
       }
       publish("synced"); schedule(SAVE_MS);
-    } catch (error) { handleError(error); }
+    } catch (error) { handleError(error, sentPresence); }
     finally {
       busy = false;
       // A hidden document may freeze timers after the save acknowledgement.
@@ -261,6 +277,7 @@ export function createForestMemorySync(options: ForestMemorySyncOptions) {
         expectedRevision: state.revision, action: "release", leaseToken: state.lease.token }, controller.signal, true);
     }).catch(() => { /* The lease expires if the page has already gone away. */ }).finally(() => env.clearTimeout(timeout));
   }
+  const unsubscribePresence = subscribeGamePresence(resumeAfterPresence);
   return {
     getStatus: () => status,
     isSimulationAllowed: () => disabled && status.mode === "disabled" || active && ownsLease() && (status.mode === "synced" || status.mode === "saving"),
@@ -288,7 +305,7 @@ export function createForestMemorySync(options: ForestMemorySyncOptions) {
     },
     flush() { if (!isLive() || !active) return; due = 0; if (!busy) schedule(0); },
     takeOver() { forgetParkedScene(); if (!isLive() || !active || status.mode !== "other-device") return; takeOverRequested = true; needsRead = true; if (!busy) schedule(0); },
-    suspend() { forgetParkedScene(); if (!isLive()) return; leave(); disabled = true; retiring = false; publish("disabled"); },
-    release() { forgetParkedScene(); if (disposed) return; if (!disabled) leave(); disposed = true; disabled = true; retiring = false; clearTimer(); },
+    suspend() { forgetParkedScene(); if (!isLive()) return; leave(); disabled = true; retiring = false; unsubscribePresence(); publish("disabled"); },
+    release() { forgetParkedScene(); if (disposed) return; if (!disabled) leave(); disposed = true; disabled = true; retiring = false; clearTimer(); unsubscribePresence(); },
   };
 }
