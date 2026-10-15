@@ -27,6 +27,7 @@ import { ForestSessionNotice } from "@/features/world/ui/feedback/forest-session
 import { WorldOrderJournal } from "@/features/economy/ui/orders/world-order-journal";
 import { orderJournalSummary } from "@/features/economy/ui/orders/order-journal-summary";
 import { WorldPantryMenu } from "@/features/economy/ui/inventory/world-pantry-menu";
+import { WorldPantryUpgrade } from "@/features/economy/ui/inventory/world-pantry-upgrade";
 import { WorldExpeditionsMenu, type SectorId } from "@/features/economy/ui/expeditions/world-expeditions-menu";
 import { WorldUpgradeDialog } from "@/features/economy/ui/construction/world-upgrade-dialog";
 import { worldPlaceForStation } from "@/features/economy/ui/shared/world-stations";
@@ -74,6 +75,12 @@ export default function WorldView({ open, world, economy, ownerPublicId, timeZon
   const requestedObjectReturn = useRef<HTMLElement | null>(null);
   const [openObjectRequest, setOpenObjectRequest] = useState<{ id: number; place: WorldPlace }>();
   const [quickMenu, setQuickMenu] = useState<QuickMenu | null>(null);
+  const [pantryFishSale, setPantryFishSale] = useState<{ owner: string; open: boolean } | null>(null);
+  const pantryFishSaleOpen = quickMenu === "pantry" && pantryFishSale?.owner === ownerPublicId && pantryFishSale.open;
+  const onFishSaleOpenChange = useCallback((value: boolean) => {
+    setPantryFishSale(previous => value ? previous?.owner === ownerPublicId && previous.open ? previous : { owner: ownerPublicId, open: true }
+      : previous?.owner === ownerPublicId ? null : previous);
+  }, [ownerPublicId]);
   const [orderEntry, setOrderEntry] = useState<{ residentId?: "plesk" | "builder"; request: number }>({ request: 0 });
   const [helpEntry, setHelpEntry] = useState<{ context?: WorldHelpContext; topicId?: string; request: number }>({ request: 0 });
   const [profileEntry, setProfileEntry] = useState<{ tab: WorldProfileDestination; request: number }>({ tab: "profile", request: 0 });
@@ -102,6 +109,7 @@ export default function WorldView({ open, world, economy, ownerPublicId, timeZon
   const panelReturnKind = useRef<Panel | null>(null);
   const quickReturn = useRef<HTMLElement | null>(null);
   const upgradeReturn = useRef<HTMLElement | null>(null);
+  const upgradeReturnOwner = useRef(ownerPublicId);
   const navigatingUpgrade = useRef(false);
   const openingPinnedGoal = useRef(false);
   const completedQuickUpgrade = useRef(false);
@@ -181,11 +189,13 @@ export default function WorldView({ open, world, economy, ownerPublicId, timeZon
     const outside = (event: PointerEvent) => {
       if (quickUpgrade || dailyOpen || !(event.target instanceof Element) || quickFrame.current?.contains(event.target)
         || event.target.closest('[data-world-quick], [data-guide-coach="world"], [data-meal-picker], [data-audio-settings], [data-audio-settings-overlay], [data-world-mood], [data-world-mood-overlay]')) return;
+      const pantryPopup = quickMenu === "pantry" ? event.target.closest<HTMLElement>("[data-pantry-fish-popover]") : null;
+      if (pantryPopup?.dataset.pantryFishOwner === ownerPublicId) return;
       setQuickMenu(null);
     };
     document.addEventListener("pointerdown", outside);
     return () => document.removeEventListener("pointerdown", outside);
-  }, [quickMenu, quickUpgrade, dailyOpen]);
+  }, [quickMenu, quickUpgrade, dailyOpen, ownerPublicId]);
   useEffect(() => { if (quickMenu) quickFrame.current?.focus({ preventScroll: true }); }, [quickMenu]);
   const restoreObjectFocus = useCallback(() => {
     if (objectReturn.current?.isConnected) objectReturn.current.focus({ preventScroll: true });
@@ -207,12 +217,17 @@ export default function WorldView({ open, world, economy, ownerPublicId, timeZon
       const mealClose = document.querySelector<HTMLButtonElement>("[data-meal-picker] [data-meal-picker-close]");
       if (mealClose) { mealClose.click(); return true; }
       if (dailyOpen) { setDailyOpen(false); return true; }
+      if (quickMenu === "pantry") {
+        const fishClose = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-pantry-fish-popover] [data-pantry-fish-close]"))
+          .find(button => button.closest<HTMLElement>("[data-pantry-fish-popover]")?.dataset.pantryFishOwner === ownerPublicId);
+        if (fishClose) { fishClose.click(); return true; }
+      }
       if (quickMenu) { closeQuick(); return true; }
       if (selection) { closeObject(); return true; }
       return false;
     };
     return () => { escapeHandlerRef.current = null; };
-  }, [escapeHandlerRef, quickMenu, selection, closeObject, closeQuick, dailyOpen]);
+  }, [escapeHandlerRef, quickMenu, selection, closeObject, closeQuick, dailyOpen, ownerPublicId]);
   const onObjectSelection = useCallback((next: MapObjectSelection | null) => {
     if (next === null) { selectedId.current = null; setSelection(null); }
     else if (selectedId.current === next.objectId) setSelection(next);
@@ -330,6 +345,7 @@ export default function WorldView({ open, world, economy, ownerPublicId, timeZon
   const openUpgrade = (stationId: string) => {
     openingPinnedGoal.current = false;
     upgradeReturn.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    upgradeReturnOwner.current = ownerPublicId;
     navigatingUpgrade.current = false;
     setQuickUpgrade(stationId);
   };
@@ -400,6 +416,7 @@ export default function WorldView({ open, world, economy, ownerPublicId, timeZon
   const quickSection = quickMenu === "pantry" || quickMenu === "expeditions" ? quickMenu : null;
   const orders = economy.snapshot?.ownerPublicId === ownerPublicId ? orderJournalSummary(economy.snapshot, economy.now) : { total: 0, ready: 0 };
   const quickGuideEnabled = sectionsReady && !mainCourseActive && !panel && !quickUpgrade && !residentOpen && !charactersOpen && !dailyOpen;
+  const warehouseState = economy.snapshot?.ownerPublicId === ownerPublicId ? economy.snapshot : null;
   const quickTitle = quickMenu === "profile" ? "Мой Мохлик" : quickMenu === "pantry" ? "Кладовая" : quickMenu === "expeditions" ? "Вылазки" : "Ещё";
   const QuickIcon = quickMenu === "profile" ? Leaf : quickMenu === "pantry" ? Package : quickMenu === "expeditions" ? Compass : MoreHorizontal;
   const SheetIcon = panel === "help" ? Info : panel === "orders" ? BookOpenCheck : panel === "economy" ? Store : panel === "shop" ? ShoppingBag : panel === "wardrobe" ? Shirt : panel === "collection" ? BookOpen : panel === "customize" ? Leaf : Compass;
@@ -454,14 +471,16 @@ export default function WorldView({ open, world, economy, ownerPublicId, timeZon
     </div>
     {quickMenu && <section ref={quickFrame} id="world-quick-menu" className={`${hudStyles.quickMenu} ${styles.quickMenu}`} data-kind={quickMenu} role="dialog" aria-modal="false" aria-labelledby="world-quick-title" tabIndex={-1}
       onPointerDown={event => event.stopPropagation()} onWheel={event => event.stopPropagation()} onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeQuick(); } }}>
-      <header className={`${hudStyles.quickHeader} ${styles.quickHeader}`}><h2 id="world-quick-title"><QuickIcon size={17} aria-hidden="true" />{quickTitle}</h2><button type="button" aria-label={`Закрыть: ${quickTitle}`} onClick={closeQuick} data-audio-cue="ui.close"><X size={18} aria-hidden="true" /></button></header>
+      <header className={`${hudStyles.quickHeader} ${styles.quickHeader}`}><h2 id="world-quick-title"><QuickIcon size={17} aria-hidden="true" />{quickMenu === "pantry" ? <span>{quickTitle}{warehouseState && <small>Ур. {warehouseState.buildings.warehouse ?? 1}</small>}</span> : quickTitle}</h2>
+        {quickMenu === "pantry" && <WorldPantryUpgrade state={warehouseState} now={economy.now} onUpgrade={() => openUpgrade("warehouse")} className={hudStyles.headerUpgrade} />}
+        <button type="button" aria-label={`Закрыть: ${quickTitle}`} onClick={closeQuick} data-audio-cue="ui.close"><X size={18} aria-hidden="true" /></button></header>
       <div data-guide-coach-slot />
-      {quickSection && <SectionGuide key={`${ownerPublicId}:${quickSection}`} owner={ownerPublicId} section={quickSection} enabled={quickGuideEnabled} targetRoot={quickFrame} />}
+      {quickSection && <SectionGuide key={`${ownerPublicId}:${quickSection}`} owner={ownerPublicId} section={quickSection} enabled={quickGuideEnabled && !pantryFishSaleOpen} targetRoot={quickFrame} />}
       <div className={`${hudStyles.quickBody} ${styles.quickBody}`}>
         {quickMenu === "expeditions" && economy.snapshot && <ConstructionGoalSummary state={economy.snapshot} constructionGoal={constructionGoal} onOpenGoal={openPinnedGoal} compact />}
         {quickMenu === "profile" && <WorldProfileMenu key={`${ownerPublicId}:${profileEntry.request}`} initialTab={profileEntry.tab} onOpenOnboarding={replayOnboarding} onboardingStatus={onboarding.progress?.status ?? null} friends={friends} onOpenPeople={onOpenPeople} onOpenHelp={() => openContextHelp(undefined, "mochlik-life")} onOpenExpeditions={() => openExpeditions()} world={world} economy={economy} presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`} displayName={displayName} level={level} bestStreakDays={bestStreakDays} onCall={() => setLocalNotice(value => value + 1)}
           rewards={<DailyRewardsButton ownerPublicId={ownerPublicId} isOnline={isOnline} onSessionLost={onSessionLost} open={dailyOpen} onRequestOpen={openDailyRewards} triggerRef={dailyTrigger} />} />}
-        {quickMenu === "pantry" && <WorldPantryMenu economy={economy} constructionGoal={constructionGoal} onOpenGoal={openPinnedGoal} navigation={{ canOpen: id => Boolean(worldPlaceForStation(id)), open: openStation, explore: () => openQuick("expeditions") }} onReturnToGift={giftPantryOwner === ownerPublicId ? returnToGift : undefined} onUpgrade={() => openUpgrade("warehouse")} onExplore={() => openQuick("expeditions")} onOpenMarket={() => openEconomy("market")} onOpenFishingShop={() => openResident("plesk")} />}
+        {quickMenu === "pantry" && <WorldPantryMenu economy={economy} onFishSaleOpenChange={onFishSaleOpenChange} constructionGoal={constructionGoal} onOpenGoal={openPinnedGoal} navigation={{ canOpen: id => Boolean(worldPlaceForStation(id)), open: openStation, explore: () => openQuick("expeditions") }} onReturnToGift={giftPantryOwner === ownerPublicId ? returnToGift : undefined} onExplore={() => openQuick("expeditions")} onOpenMarket={() => openEconomy("market")} onOpenFishingShop={() => openResident("plesk")} />}
         {quickMenu === "expeditions" && <WorldExpeditionsMenu key={`${expeditionSector}:${expeditionOpenRequest}`} initialSector={expeditionSector} isOnline={isOnline} onOpenHelp={openContextHelp} economy={economy} onOpenPantry={() => openQuick("pantry")} onNavigateStation={openStation} onOpenFishingShop={() => openResident("plesk")} />}
         {quickMenu === "more" && <div className={`${hudStyles.moreActions} ${styles.moreActions}`}>
           <button type="button" data-world-characters-trigger aria-haspopup="dialog" onClick={openCharacters}><PawPrint size={18} aria-hidden="true" /><span className={styles.moreLabel}>Персонажи<small>Жители леса</small></span></button>
@@ -517,6 +536,9 @@ export default function WorldView({ open, world, economy, ownerPublicId, timeZon
       onOpenPantry={() => leaveUpgrade(() => openQuick("pantry"))}
       onCloseAutoFocus={event => {
         event.preventDefault();
+        if (upgradeReturnOwner.current !== ownerPublicId) {
+          openingPinnedGoal.current = false; completedQuickUpgrade.current = false; navigatingUpgrade.current = false; return;
+        }
         const wasPinnedGoal = openingPinnedGoal.current;
         openingPinnedGoal.current = false;
         if (completedQuickUpgrade.current) {
@@ -579,7 +601,7 @@ export default function WorldView({ open, world, economy, ownerPublicId, timeZon
     <ForestSessionNotice presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`} onExit={onClose} />
     <WorldOnboardingSession presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`} open={Boolean(open && economy.snapshot && onboarding.loaded && !onboarding.isPaused)}
       modalBlocked={Boolean(panel && !(panel === "orders" && guideStep === "orders") || quickUpgrade || residentOpen || charactersOpen || dailyOpen || !mainCourseActive && (quickSection || selection))}
-      progress={onboarding.progress} worldElement={worldElement} economy={economy} quickMenu={quickMenu} helpOpen={panel === "help"} isOnline={isOnline}
+      progress={onboarding.progress} fishSaleOpen={Boolean(pantryFishSaleOpen)} worldElement={worldElement} economy={economy} quickMenu={quickMenu} helpOpen={panel === "help"} isOnline={isOnline}
       onStart={onboarding.start} onStep={onboarding.step} onCrop={onboarding.setCrop}
       onSkip={onboarding.skip} onComplete={onboarding.complete} onPause={onboarding.pause}
       residentOpen={residentOpen ? residentId : null} charactersOpen={charactersOpen}

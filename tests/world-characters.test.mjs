@@ -914,3 +914,198 @@ test("closing a customer journal returns to the dock when the resident's source 
     } finally { nav.restore(); }
   }
 });
+
+function pantryHeaderUpgrade(nav) {
+  const menu = nav.find(element => element.props.id === "world-quick-menu");
+  const header = elements(menu).find(element => element.type === "header");
+  const control = elements(header).find(element => typeof element.type === "function" && element.type.name === "WorldPantryUpgrade");
+  return { header, button: control ? control.type(control.props) : null };
+}
+
+function pointerNavigation() {
+  const nav = guideNavigation();
+  const names = ["Element", "window", "ResizeObserver", "requestAnimationFrame", "cancelAnimationFrame"];
+  const saved = new Map(names.map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
+  const listeners = new Map();
+  Object.defineProperty(globalThis, "Element", { value: HTMLElement, configurable: true });
+  Object.defineProperty(globalThis, "window", { value: { addEventListener() {}, removeEventListener() {} }, configurable: true });
+  Object.defineProperty(globalThis, "ResizeObserver", { value: class { observe() {} disconnect() {} }, configurable: true });
+  Object.defineProperty(globalThis, "requestAnimationFrame", { value: callback => { callback(); return 1; }, configurable: true });
+  Object.defineProperty(globalThis, "cancelAnimationFrame", { value() {}, configurable: true });
+  document.addEventListener = (type, callback) => {
+    if (!listeners.has(type)) listeners.set(type, new Set());
+    listeners.get(type).add(callback);
+  };
+  document.removeEventListener = (type, callback) => listeners.get(type)?.delete(callback);
+  hooks.captureEffects();
+  const render = () => {
+    const nodes = nav.render();
+    const frame = nodes.find(element => element.props.id === "world-quick-menu");
+    if (frame) frame.props.ref.current.contains = target => target.quickMenu === frame.props["data-kind"];
+    hooks.flushEffects();
+    return nodes;
+  };
+  return { nav, render,
+    pointerDown(target) { for (const listener of [...(listeners.get("pointerdown") ?? [])]) listener({ target }); },
+    restore() {
+      hooks.reset(); nav.restore();
+      for (const [name, descriptor] of saved) {
+        if (descriptor) Object.defineProperty(globalThis, name, descriptor); else delete globalThis[name];
+      }
+    },
+  };
+}
+
+function pantryPopupTarget(nav, owner = nav.props.ownerPublicId) {
+  const popup = nav.createElement("fish-sale-popup"), child = nav.createElement("fish-sale-control");
+  popup.dataset.pantryFishOwner = owner;
+  popup.getAttribute = name => name === "data-pantry-fish-owner" ? owner : null;
+  child.closest = selector => selector.split(",").some(part => part.trim() === "[data-pantry-fish-popover]") ? popup : null;
+  return child;
+}
+
+test("the pantry header offers expansion and its paid progress while maximum or foreign storage has no upgrade action", () => {
+  const maximum = Math.max(...economyCatalog.buildings.find(building => building.id === "warehouse").levels.map(level => level.level));
+  for (const scenario of ["next", "running", "ready", "maximum", "foreign", "loading"]) {
+    const nav = guideNavigation();
+    try {
+      const now = nav.props.economy.now;
+      if (scenario === "maximum") nav.props.economy.snapshot.buildings.warehouse = maximum;
+      if (scenario === "foreign") nav.props.economy.snapshot.ownerPublicId = "previous-owner";
+      if (scenario === "loading") nav.props.economy.snapshot = null;
+      if (scenario === "running" || scenario === "ready") nav.props.economy.snapshot.jobs = [{
+        id: "b804170f-fb93-4320-bf76-972e3693bba0", kind: "construction", targetId: "warehouse", recipeId: null, targetLevel: 2,
+        startedAt: new Date(now - 300_000).toISOString(), finishesAt: new Date(now + (scenario === "ready" ? -1000 : 300_000)).toISOString(), rewards: {},
+      }];
+      nav.find(element => element.props["data-world-quick"] === "pantry").props.onClick();
+      const { header, button } = pantryHeaderUpgrade(nav);
+      if (["maximum", "foreign", "loading"].includes(scenario)) assert.equal(button, null, scenario);
+      else {
+        assert.ok(header); assert.equal(button.type, "button");
+        assert.notEqual(button.props["data-guide-pantry-upgrade"], undefined);
+        assert.equal(button.props["aria-haspopup"], "dialog");
+        const html = renderToStaticMarkup(button);
+        assert.match(html, scenario === "running" ? /Стройка/ : scenario === "ready" ? /Готово/ : /Улучшить/);
+      }
+      assert.equal(nav.component("WorldPantryMenu").props.onUpgrade, undefined, "the pantry content cannot retain the old footer expansion action");
+      assert.equal(nav.refreshes, 0);
+    } finally { nav.restore(); }
+  }
+});
+
+test("the header expansion opens the existing warehouse dialog and returns focus without closing or mutating the pantry", () => {
+  const nav = guideNavigation();
+  try {
+    nav.find(element => element.props["data-world-quick"] === "pantry").props.onClick();
+    const source = nav.createElement("pantry-header-upgrade");
+    document.activeElement = source;
+    pantryHeaderUpgrade(nav).button.props.onClick({ currentTarget: source });
+    let dialog = nav.component("WorldUpgradeDialog");
+    assert.equal(dialog.props.stationId, "warehouse");
+    assert.ok(nav.component("WorldPantryMenu"), "requirements open above the same stock view");
+    dialog.props.onClose();
+    dialog = nav.component("WorldUpgradeDialog");
+    assert.equal(dialog.props.stationId, null);
+    dialog.props.onCloseAutoFocus({ preventDefault() {} });
+    assert.deepEqual(nav.focused, ["pantry-header-upgrade"]);
+    assert.ok(nav.component("WorldPantryMenu"));
+    assert.equal(nav.refreshes, 0);
+  } finally { nav.restore(); }
+});
+
+test("warehouse dialog focus cannot return to a previous owner's header button", () => {
+  const nav = guideNavigation();
+  try {
+    nav.find(element => element.props["data-world-quick"] === "pantry").props.onClick();
+    const source = nav.createElement("old-pantry-header");
+    document.activeElement = source;
+    pantryHeaderUpgrade(nav).button.props.onClick({ currentTarget: source });
+    nav.props.ownerPublicId = "new-owner";
+    nav.props.economy.snapshot = { ...nav.props.economy.snapshot, ownerPublicId: "new-owner" };
+    nav.component("WorldUpgradeDialog").props.onClose();
+    nav.component("WorldUpgradeDialog").props.onCloseAutoFocus({ preventDefault() {} });
+    assert.deepEqual(nav.focused, []);
+    assert.equal(nav.refreshes, 0);
+  } finally { nav.restore(); }
+});
+
+test("owned fish sale controls and switching fish preserve the pantry until a genuine outside pointerdown", () => {
+  const pointer = pointerNavigation(), { nav } = pointer;
+  try {
+    nav.find(element => element.props["data-world-quick"] === "pantry").props.onClick();
+    pointer.render();
+    const popupControl = pantryPopupTarget(nav);
+    pointer.pointerDown(popupControl);
+    assert.equal(pointer.render().find(element => element.props.id === "world-quick-menu").props["data-kind"], "pantry");
+    const anotherFish = nav.createElement("another-fish-card");
+    anotherFish.quickMenu = "pantry"; anotherFish.closest = () => null;
+    pointer.pointerDown(anotherFish);
+    assert.ok(pointer.render().find(element => element.props.id === "world-quick-menu"), "the new card gets its click before the pantry can unmount");
+    const outside = nav.createElement("outside-map"); outside.closest = () => null;
+    pointer.pointerDown(outside);
+    assert.equal(pointer.render().find(element => element.props.id === "world-quick-menu"), undefined);
+    assert.equal(nav.refreshes, 0);
+  } finally { pointer.restore(); }
+});
+
+test("a foreign fish popup and fish controls beside other quick menus receive no pantry outside-click exemption", () => {
+  for (const [menu, foreign] of [["pantry", true], ["profile", false], ["expeditions", false], ["more", false]]) {
+    const pointer = pointerNavigation(), { nav } = pointer;
+    try {
+      nav.find(element => element.props["data-world-quick"] === menu).props.onClick();
+      pointer.render();
+      pointer.pointerDown(pantryPopupTarget(nav, foreign ? "previous-owner" : nav.props.ownerPublicId));
+      assert.equal(pointer.render().find(element => element.props.id === "world-quick-menu"), undefined, `${menu}: no blanket popup exemption`);
+      assert.equal(nav.refreshes, 0);
+    } finally { pointer.restore(); }
+  }
+});
+
+test("the pantry introduction yields to its fish sale and returns when the sale closes", () => {
+  const nav = guideNavigation();
+  try {
+    nav.find(element => element.props["data-world-quick"] === "pantry").props.onClick();
+    assert.equal(nav.component("SectionGuide").props.enabled, true);
+    nav.component("WorldPantryMenu").props.onFishSaleOpenChange(true);
+    assert.equal(nav.component("SectionGuide").props.enabled, false, "the nonmodal sale stays usable without a coach covering it");
+    nav.component("WorldPantryMenu").props.onFishSaleOpenChange(false);
+    assert.equal(nav.component("SectionGuide").props.enabled, true);
+    assert.equal(nav.refreshes, 0);
+  } finally { nav.restore(); }
+});
+
+test("Escape closes only the owned fish sale before the pantry and never intercepts foreign or unrelated popups", () => {
+  for (const scenario of ["owned", "foreign", "other-menu", "changed-owner"]) {
+    const pointer = pointerNavigation(), { nav } = pointer;
+    try {
+      nav.props.escapeHandlerRef = { current: null };
+      const originalOwner = nav.props.ownerPublicId;
+      nav.find(element => element.props["data-world-quick"] === (scenario === "other-menu" ? "profile" : "pantry")).props.onClick();
+      pointer.render();
+      const popup = nav.createElement("fish-sale-popup"), close = nav.createElement("fish-sale-close");
+      popup.dataset.pantryFishOwner = scenario === "foreign" ? "previous-owner" : originalOwner;
+      popup.querySelector = selector => selector.includes("data-pantry-fish-close") ? close : null;
+      close.closest = selector => selector.includes("data-pantry-fish-popover") ? popup : null;
+      let closed = 0, popupOpen = true;
+      close.click = () => { closed++; popupOpen = false; };
+      document.activeElement.closest = () => null;
+      document.querySelector = selector => popupOpen && selector.includes("data-pantry-fish-close") ? close : popupOpen && selector === "[data-pantry-fish-popover]" ? popup : null;
+      document.querySelectorAll = selector => popupOpen && selector.includes("data-pantry-fish-close") ? [close] : [];
+      if (scenario === "changed-owner") {
+        nav.props.ownerPublicId = "new-owner";
+        nav.props.economy.snapshot = { ...nav.props.economy.snapshot, ownerPublicId: "new-owner" };
+        pointer.render();
+      }
+      assert.equal(typeof nav.props.escapeHandlerRef.current, "function");
+      assert.equal(nav.props.escapeHandlerRef.current(), true);
+      assert.equal(closed, scenario === "owned" ? 1 : 0, scenario);
+      const menu = pointer.render().find(element => element.props.id === "world-quick-menu");
+      if (scenario === "owned") {
+        assert.equal(menu.props["data-kind"], "pantry", "the first Escape leaves the refrigerator visible");
+        assert.equal(nav.props.escapeHandlerRef.current(), true);
+        assert.equal(pointer.render().find(element => element.props.id === "world-quick-menu"), undefined, "the next Escape closes the pantry normally");
+      } else assert.equal(menu, undefined, "foreign controls do not replace normal quick-menu Escape");
+      assert.equal(nav.refreshes, 0);
+    } finally { pointer.restore(); }
+  }
+});

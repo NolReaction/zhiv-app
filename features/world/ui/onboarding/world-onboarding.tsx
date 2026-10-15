@@ -24,6 +24,8 @@ export type WorldOnboardingProps = {
   residentOpen: string | null;
   charactersOpen?: boolean;
   ordersOpen: boolean;
+  /** A nonmodal fish sale owns the controls while the lesson stays mounted. */
+  fishSaleOpen?: boolean;
   workshopOpen: boolean;
   isOnline?: boolean;
   onStart: () => void;
@@ -82,7 +84,7 @@ export function WorldOnboardingSession(props: WorldOnboardingProps & { presenceK
     observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["data-ready", "aria-hidden"] });
     return () => { cancelAnimationFrame(frame); observer.disconnect(); };
   }, [props.worldElement, props.ordersElement, props.ordersOpen]);
-  return <WorldOnboarding {...props} open={props.open && sceneReady && !blocked && !covered} />;
+  return <WorldOnboarding {...props} open={props.open && sceneReady && !blocked && !covered && !props.fishSaleOpen} />;
 }
 
 export function WorldOnboarding(props: WorldOnboardingProps) {
@@ -400,5 +402,6 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
     base.primary = { advance: true, label: "Готово, буду играть", onClick: finish };
     base.secondary = undefined;
   }
+  if (props.fishSaleOpen) base.open = false;
   return <GuideCoach {...base} />;
 }

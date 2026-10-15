@@ -5,7 +5,7 @@ import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const hookModule = "virtual:world-onboarding-practice-hooks";
-const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-orders-portal-practice-vite",
+const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-nonmodal-pantry-practice-vite",
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false },
   plugins: [{ name: "world-onboarding-practice-hooks", enforce: "pre",
     resolveId(id) { if (id === hookModule) return `\0${id}`; },
@@ -662,6 +662,63 @@ test("expedition guidance changes after opening route details and never starts t
 });
 
 const saleReceipt = (patch = {}) => ({ id: "sale-1", ownerPublicId: owner, revision: 2, itemId: "wood", quantity: 1, coins: 2, ...patch });
+
+test("a controlled nonmodal fish sale yields both coaches without changing the lesson or crop", () => {
+  for (const session of [false, true]) {
+    const h = harness(started("pantry", "held-crop"), [crop("held-crop")], { session });
+    h.props.onOpenQuick("pantry");
+    const progress = structuredClone(h.props.progress);
+    assert.equal(h.render().open, true);
+    h.props.fishSaleOpen = true;
+    for (let index = 0; index < 3; index++) assert.equal(h.render().open, false, "yield does not depend on aria-hidden or a modal");
+    assert.deepEqual(h.props.progress, progress);
+    h.props.fishSaleOpen = false;
+    const coach = h.render();
+    assert.equal(coach.open, true);
+    if (!session) assert.equal(coach.primary.label, "Попробуем вырастить ягоды", "closing restores the normal keyboard continuation");
+    assert.deepEqual(h.props.progress, progress);
+    assert.deepEqual(h.calls, [["quick", "pantry"]], "opening and closing must not sell, pause, skip or advance");
+  }
+});
+
+test("an accepted fish sale is remembered while the coach yields and celebrated only after the panel closes", () => {
+  const h = harness(started("pantry"));
+  h.props.onOpenQuick("pantry");
+  h.patchSnapshot({ inventory: { fish: 2 } });
+  h.render();
+  h.props.fishSaleOpen = true;
+  h.patchSnapshot({ revision: 2, inventory: { fish: 1 }, wallet: { coins: 1040, pearls: 0 } });
+  h.patchEconomy({ localSale: saleReceipt({ itemId: "fish", coins: 40 }), busy: true });
+  assert.equal(h.render().open, false);
+  h.patchEconomy({ busy: false });
+  assert.equal(h.render().open, false);
+  assert.equal(h.props.progress.stepId, "pantry");
+  h.props.fishSaleOpen = false;
+  const coach = h.render();
+  assert.equal(coach.open, true);
+  assert.match(coach.summary, /Продажа прошла.*Одной продажи достаточно/);
+  assert.deepEqual(h.calls, [["quick", "pantry"]]);
+  coach.primary.onClick();
+  assert.deepEqual(h.calls.slice(-2), [["close-surface"], ["step", "garden"]]);
+});
+
+test("closing a nonmodal fish sale never fabricates success from an old, foreign or missing receipt", () => {
+  for (const localSale of [undefined, saleReceipt({ revision: 1 }), saleReceipt({ ownerPublicId: "another-player" })]) {
+    const h = harness(started("pantry"));
+    h.props.onOpenQuick("pantry");
+    h.render();
+    h.props.fishSaleOpen = true;
+    h.patchSnapshot({ revision: 2, wallet: { coins: 1040, pearls: 0 } });
+    h.patchEconomy({ localSale });
+    assert.equal(h.render().open, false);
+    h.props.fishSaleOpen = false;
+    const coach = h.render();
+    assert.equal(coach.open, true);
+    assert.doesNotMatch(coach.summary, /Продажа прошла/);
+    assert.equal(h.props.progress.stepId, "pantry");
+    assert.deepEqual(h.calls, [["quick", "pantry"]]);
+  }
+});
 
 test("one confirmed pantry sale clearly offers next, survives closing the pantry, and waits for the player's choice", () => {
   const h = harness(started("pantry"));

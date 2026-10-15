@@ -6,7 +6,7 @@ import { Children, createElement, isValidElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
+const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: `/tmp/zhiv-pantry-menu-${process.pid}`, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 const { WorldPantryMenu, PantrySale } = await vite.ssrLoadModule("/features/economy/ui/inventory/world-pantry-menu.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
@@ -41,7 +41,7 @@ test("pantry content contains compact stock without a second frame, house tabs o
   assert.doesNotMatch(html, /aria-label="Камень: 0"/);
   assert.match(html, /width="20" height="20"/);
   assert.doesNotMatch(html, /role="dialog"|<h[12]\b|Оборудование:|Запасы дома|Выданы тестовые материалы|482[\s\S]?910|9[\s\S]?170/);
-  assert.match(button(html, "Расширить кладовую").attributes, /aria-haspopup="dialog"/);
+  assert.doesNotMatch(html, /Расширить кладовую|Чтобы продать запасы за монеты/);
 });
 
 test("occupancy includes reserved market stock and full storage preserves item selection", () => {
@@ -110,7 +110,6 @@ test("overflow reports actual occupancy while the capacity meter stays bounded",
   assert.match(html, /Сверх вместимости: 50/);
   assert.match(html, /Запасы сохранены/);
   assert.equal(disabled(button(html, "Бревно")), false);
-  assert.equal(disabled(button(html, "Расширить кладовую")), false);
 });
 
 test("loading and failed initial requests do not invent inventory or capacity", () => {
@@ -169,52 +168,22 @@ test("fresh tier berries stay with supplies while their prepared dishes appear i
   }
 });
 
-test("warehouse expansion shows its own server-clock progress and ready status", () => {
-  const job = { id: "da818fb4-6c9e-4b42-9b78-60669b234f0a", kind: "construction", targetId: "warehouse", recipeId: null, targetLevel: 2,
+test("pantry content retains real capacity and relic stock without duplicating the header upgrade action", () => {
+  const job = { id: "da818fb4-6c9e-4b42-9b78-60669b234f0a", kind: "construction", targetId: "warehouse", recipeId: null, targetLevel: 10,
     startedAt: new Date(now - 60_000).toISOString(), finishesAt: new Date(now + 45_000).toISOString(), rewards: {}, cost: { coins: 200, items: {} }, catalogVersion: 2 };
-  const state = snapshot({ jobs: [job] });
-  let html = render(controller({ snapshot: state }));
-  assert.match(html, /Кладовая расширяется/);
-  assert.match(html, /<small>0:45<\/small>/);
-  assert.doesNotMatch(html, /Расширить кладовую/);
-  html = render(controller({ snapshot: state, now: now + 45_000 }));
-  assert.match(html, /Расширение готово/);
-  assert.match(html, /Можно получить уровень 2/);
-  assert.equal(disabled(button(html, "Расширение готово")), false);
-  job.targetId = "home";
-  assert.doesNotMatch(render(controller({ snapshot: state })), /Кладовая расширяется|Расширение готово/);
-});
-
-test("maximum warehouse level has no further expansion action", () => {
-  const maximum = Math.max(...economyCatalog.buildings.find(entry => entry.id === "warehouse").levels.map(entry => entry.level));
-  const html = render(controller({ snapshot: snapshot({ buildings: { home: 5, warehouse: maximum } }) }));
-  assert.match(html, /Максимальная вместимость/);
-  assert.doesNotMatch(html, /Расширить кладовую/);
-});
-
-test("late pantry footer previews only the next capacity and its three relic counters", () => {
-  const state = snapshot({ buildings: { home: 1, warehouse: 9 }, inventory: { ancient_core: 10, moon_crystal: 1, living_resin: 3 } });
-  const before = structuredClone(state);
-  const html = render(controller({ snapshot: state }));
-  assert.match(html, /Ур\. 9 → 10 · 450 → 500 мест/);
-  assert.match(html, /aria-label="Реликвии для следующего расширения"/);
-  assert.match(html, /aria-label="Древнее ядро: есть 10, нужно 10"/);
-  assert.match(html, /aria-label="Лунный кристалл: есть 1, нужно 3"/);
-  assert.match(html, /aria-label="Живая смола: есть 3, нужно 3"/);
-  assert.match(html, /data-relic="moon_crystal" data-missing="true"/);
-  assert.doesNotMatch(html, /data-relic="(?:ancient_core|living_resin)" data-missing="true"/);
-  assert.equal(disabled(button(html, "Расширить кладовую")), false, "the dialog must stay reachable to explain missing relics");
-  assert.doesNotMatch(html, /Купить.*жемч|Список улучшений|ур\. 4|ур\. 5/);
-  assert.deepEqual(state, before, "the preview must neither spend nor reserve relics");
-});
-
-test("the first ordinary pantry upgrade and paid expansion do not duplicate relic requirements", () => {
-  assert.doesNotMatch(render(), /aria-label="Реликвии для следующего расширения"/);
-  const nowJob = { id: "da818fb4-6c9e-4b42-9b78-60669b234f0a", kind: "construction", targetId: "warehouse", recipeId: null, targetLevel: 4,
-    startedAt: new Date(now - 60_000).toISOString(), finishesAt: new Date(now + 60_000).toISOString(), rewards: {}, cost: { coins: 0, items: { ancient_core: 2, moon_crystal: 1, living_resin: 1 } }, catalogVersion: 3 };
-  const html = render(controller({ snapshot: snapshot({ buildings: { home: 3, warehouse: 3 }, jobs: [nowJob] }) }));
-  assert.match(html, /Кладовая расширяется/);
-  assert.doesNotMatch(html, /aria-label="Реликвии для следующего расширения"/);
+  for (const [level, jobs] of [[1, []], [9, []], [9, [job]], [10, []]]) {
+    const state = snapshot({ buildings: { home: 5, warehouse: level }, jobs, inventory: { wood: 4, ancient_core: 10, moon_crystal: 1, living_resin: 3 } });
+    const before = structuredClone(state), economy = controller({ snapshot: state });
+    const html = render(economy);
+    assert.ok(html.includes(`aria-label="Кладовая: занято ${state.storage.used} из ${state.storage.capacity} мест"`));
+    assert.match(html, /aria-label="Бревно: 4"/);
+    assert.doesNotMatch(html, /Расширить кладовую|Кладовая расширяется|Расширение готово|Максимальная вместимость|Реликвии для следующего расширения/);
+    const relics = render(economy, { initialTab: "relics" });
+    for (const [id, quantity] of [["ancient_core", 10], ["moon_crystal", 1], ["living_resin", 3]]) {
+      assert.ok(relics.includes(`data-relic="${id}"`)); assert.ok(relics.includes(`В наличии: ${quantity}`));
+    }
+    assert.deepEqual(state, before, "header-only upgrade access must never move or reserve supplies");
+  }
 });
 
 function inspectSale(state, props = {}, flags = {}) {

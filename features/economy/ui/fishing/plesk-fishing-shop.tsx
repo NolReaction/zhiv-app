@@ -22,6 +22,7 @@ import { useFishingCommand } from "./use-fishing-command";
 import { PleskFishingCollection } from "./plesk-fishing-book";
 import { WorldFishStockList } from "./world-fish-stock-list";
 import { WorldFishSelection } from "./world-fish-selection";
+import { FishTapFeedbackQuantity, useFishTapFeedback, type FishTapFeedback } from "./fish-tap-feedback";
 import styles from "./plesk-fishing-shop.module.css";
 export { PleskFishingCollection } from "./plesk-fishing-book";
 
@@ -72,10 +73,11 @@ export function fishingTradeLimits(state: EconomyView, itemId: string) {
     sellPrice: item.baseSellPrice };
 }
 
-export function PleskFishTrade({ economy, state, itemId, fishItemId, quantityControl }: ReadyProps & {
+export function PleskFishTrade({ economy, state, itemId, fishItemId, quantityControl, quantityFeedback }: ReadyProps & {
   itemId: string; fishItemId?: string;
   /** The catch counter's row taps and form controls edit the same draft. */
   quantityControl?: { value: string; onChange: (value: string) => void };
+  quantityFeedback?: FishTapFeedback | null;
 }) {
   const [localQuantityText, setLocalQuantityText] = useState("1"), id = useId();
   const quantityText = quantityControl?.value ?? localQuantityText;
@@ -112,7 +114,9 @@ export function PleskFishTrade({ economy, state, itemId, fishItemId, quantityCon
     <div className={styles.tradeHeading}><span>В запасе <strong>{number(stock)}</strong></span><span>За штуку <Price value={limits.sellPrice} /></span></div>
     <div className={styles.quantity}>
       <label htmlFor={id}>Количество</label>
-      <input id={id} type="number" inputMode="numeric" min={1} max={Math.max(1, maximum)} step={1} value={quantityText} disabled={blocked} onChange={event => setQuantityText(event.target.value)} />
+      <FishTapFeedbackQuantity feedback={quantityFeedback} itemId={fishItemId ?? classId}>
+        <input id={id} type="number" inputMode="numeric" min={1} max={Math.max(1, maximum)} step={1} value={quantityText} disabled={blocked} onChange={event => setQuantityText(event.target.value)} />
+      </FishTapFeedbackQuantity>
       <button type="button" disabled={blocked || maximum === 0} onClick={() => setQuantityText(String(maximum))}>{maximum < stock ? `До ${number(maximum)}` : fishItemId !== undefined ? "Все" : "Весь улов"}</button>
     </div>
     <button ref={trigger} type="button" className={styles.primary} disabled={blocked || !canSell} onClick={() => sell()} aria-label={`Продать ${name}: ${valid ? quantity : 0}`}><span>Продать</span>{canSell ? <Price value={quantity * limits.sellPrice} /> : <span>-</span>}</button>
@@ -134,11 +138,18 @@ export function FishCounter({ economy, state, catalog }: ReadyProps & { catalog:
   const [selection, setSelection] = useState<string | null>(null);
   const [fishChoice, setFishChoice] = useState<{ owner: string; classId: string; itemId: string | null; quantityText: string } | null>(null);
   const owner = state.ownerPublicId, revision = state.revision;
+  const choiceDraft = useRef(fishChoice);
+  const taps = useFishTapFeedback(`${owner}:${selection ?? "closed"}`);
   const latest = useRef({ economy, state, selection });
   useLayoutEffect(() => { latest.current = { economy, state, selection }; }, [economy, state, selection]);
+  useLayoutEffect(() => { choiceDraft.current = fishChoice; }, [fishChoice]);
   const rowsBlocked = locked(economy) || economy.snapshot?.ownerPublicId !== owner || economy.snapshot?.revision !== revision;
   const selected = available.find(fish => fish.itemId === selection);
   const stockId = useId();
+  function updateChoice(choice: typeof fishChoice) {
+    choiceDraft.current = choice;
+    setFishChoice(choice);
+  }
   function currentStock(classId: string) {
     const current = latest.current, snapshot = current.economy.snapshot;
     if (!snapshot || locked(current.economy) || current.selection !== classId || snapshot.ownerPublicId !== owner || snapshot.revision !== revision
@@ -153,27 +164,30 @@ export function FishCounter({ economy, state, catalog }: ReadyProps & { catalog:
       const selectedFish = entries.find(entry => entry.itemId === choice?.itemId)?.itemId ?? (entries.length === 1 ? entries[0].itemId : undefined);
       const quantityText = choice?.itemId === (selectedFish ?? null) ? choice.quantityText : "1";
       return <div key={fish.itemId} className={styles.fishGroup}><button type="button" className={styles.fishChoice} aria-pressed={expanded} aria-expanded={expanded}
-        aria-controls={`${stockId}-${fish.itemId}`} onClick={() => { setSelection(current => current === fish.itemId ? null : fish.itemId); setFishChoice(null); }}>
+        aria-controls={`${stockId}-${fish.itemId}`} onClick={() => { setSelection(current => current === fish.itemId ? null : fish.itemId); updateChoice(null); taps.clear(); }}>
       <ItemIcon itemId={fish.itemId} size={40} /><span><strong>{itemName(state, fish.itemId)}</strong><FishRarityBadge rarity={fish.rarity} /></span><span className={styles.stock}>×{number(inventory[fish.itemId])}</span>
       </button>{expanded && <div className={styles.fishDisclosure} id={`${stockId}-${fish.itemId}`} data-plesk-fish-stock={fish.itemId}>
-        <WorldFishStockList state={state} classId={fish.itemId} selectedItemId={selectedFish} disabled={rowsBlocked} onSelect={itemId => {
+        <WorldFishStockList state={state} classId={fish.itemId} selectedItemId={selectedFish} disabled={rowsBlocked} feedback={taps.feedback} onSelect={itemId => {
           const snapshot = currentStock(fish.itemId);
           if (!snapshot) return;
-          if (itemId === null) { setFishChoice({ owner, classId: fish.itemId, itemId: null, quantityText: "1" }); return; }
+          if (itemId === null) { updateChoice({ owner, classId: fish.itemId, itemId: null, quantityText: "1" }); taps.clear(); return; }
           const stock = fishStockEntries(snapshot, fish.itemId).find(entry => entry.itemId === itemId)?.quantity ?? 0;
+          if (stock <= 0) return;
           const maximum = Math.min(stock, fishingTradeLimits(snapshot, fish.itemId).sell);
-          if (maximum <= 0) return;
-          setFishChoice(current => {
-            const same = current?.owner === owner && current.classId === fish.itemId && current.itemId === itemId;
-            const amount = same && /^\d+$/.test(current.quantityText) && Number.isSafeInteger(Number(current.quantityText)) ? Number(current.quantityText) : 0;
-            return { owner, classId: fish.itemId, itemId, quantityText: String(Math.min(maximum, same ? Math.max(0, amount) + 1 : 1)) };
-          });
+          const current = choiceDraft.current;
+          const same = current?.owner === owner && current.classId === fish.itemId && current.itemId === itemId;
+          const amount = same && /^\d+$/.test(current.quantityText) && Number.isSafeInteger(Number(current.quantityText)) ? Number(current.quantityText) : 0;
+          if (maximum <= 0) { taps.show(itemId, "limit", same ? amount : undefined); return; }
+          const quantity = Math.min(maximum, same ? Math.max(0, amount) + 1 : 1);
+          updateChoice({ owner, classId: fish.itemId, itemId, quantityText: String(quantity) });
+          taps.show(itemId, !same || quantity > amount ? "added" : "limit", quantity);
         }} />
         <p className={styles.hint}>Повторное нажатие на вид добавит ещё одну рыбу.</p>
         <PleskFishTrade key={fish.itemId} economy={economy} state={state} itemId={fish.itemId} fishItemId={selectedFish}
+          quantityFeedback={taps.feedback}
           quantityControl={{ value: quantityText, onChange: value => {
             if (!currentStock(fish.itemId)) return;
-            setFishChoice({ owner, classId: fish.itemId, itemId: selectedFish ?? null, quantityText: value });
+            updateChoice({ owner, classId: fish.itemId, itemId: selectedFish ?? null, quantityText: value });
           } }} />
       </div>}</div>;
     })}</div> : <div className={styles.emptyCatch}><Fish size={32} aria-hidden="true" /><strong>Улов ещё впереди</strong><p>Заберите рыбу после вылазки, и она появится здесь.</p></div>}

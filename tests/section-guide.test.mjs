@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-orders-journal-guides-sections-vite", server: { middlewareMode: true, hmr: false, ws: false } });
+const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-nonmodal-pantry-guides-sections-vite", server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { sectionGuideIds, sectionGuideLessons, sectionGuideCanOpen, parseSectionGuideProgress, transitionSectionGuide: move } = await vite.ssrLoadModule("/features/onboarding/section-guide-model.ts");
 const { sectionGuideStorageKey, createSectionGuideStore } = await vite.ssrLoadModule("/features/onboarding/section-guide-storage.ts");
@@ -155,8 +155,9 @@ test("pantry, Plesk and market lessons show species without automatically sellin
   assert.match(items.text, /«Холодильнике» листай горизонтальные ряды рыб: у каждого класса виден общий запас/);
   assert.match(items.text, /Нажми вид - компактное окно уже выберет его для продажи/);
   assert.match(items.text, /Готовая еда стоит отдельно/);
-  assert.match(items.text, /Просмотр ничего не продаёт/);
-  assert.match(items.text, /Escape или нажатие вне окна вернут к карточке без продажи/);
+  assert.match(items.text, /Повторный тап добавит 1, другой вид сменится в том же окне/);
+  assert.match(items.text, /Только кнопка продажи тратит запас/);
+  assert.match(items.text, /Escape или нажатие вне окна закроют его без продажи/);
   assert.match(sale.text, /только после нажатия кнопки «Продать торговцу»/);
   assert.match(sale.text, /«Без указания вида»/);
   assert.match(sell.text, /выбор оставшихся видов.*«Выставить лот»/);

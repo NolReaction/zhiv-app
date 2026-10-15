@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-orders-journal-guides-help-vite", resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
+const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-nonmodal-pantry-guides-help-vite", resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { worldHelpTopics, worldHelpGroups, searchWorldHelp, searchWorldHelpWithStatus } = await vite.ssrLoadModule("/features/world/ui/help/world-help-content.ts");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
@@ -312,10 +312,11 @@ test("fish selection guidance preserves current species, unknown stock and expli
 });
 
 test("fish commerce answers require an explicit sale and keep market reservation distinct", () => {
-  assert.match(answer("resources"), /В «Холодильнике» листайте горизонтальные ряды рыб по классам/);
-  assert.match(answer("resources"), /Нажмите вид: компактное окно уже выберет его; проверьте количество и подтвердите продажу/);
-  assert.match(answer("resources"), /Готовая еда стоит отдельно/);
-  assert.match(answer("resources"), /Просмотр запаса ничего не тратит/);
+  assert.match(answer("resources"), /Листайте рыбные ряды «Холодильника»/);
+  assert.match(answer("resources"), /Тап по виду открывает его продажу, повторный добавляет 1/);
+  assert.match(answer("resources"), /Другой вид меняется в том же окне/);
+  assert.match(answer("resources"), /Еда стоит отдельно; только кнопка продажи тратит запас/);
+  assert.match(answer("storage"), /улучшение в шапке кладовой/);
   assert.match(answer("plesk"), /В «Улове» классы сначала свёрнуты. Нажмите класс и вид/);
   assert.match(answer("plesk"), /Повторный тап прибавляет 1 до доступного лимита; другой вид начинает с 1/);
   assert.match(answer("plesk"), /Поле и «Все» меняют количество. Только «Продать» спишет рыбу/);

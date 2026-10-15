@@ -1,0 +1,18 @@
+.art.art { display: inline-grid; place-items: center; position: relative; flex: 0 0 auto; min-width: 0; overflow: visible; vertical-align: middle; }
+.art > svg { display: block; transform-origin: center; }
+.art[data-fish-tap-kind="added"][data-flash="odd"] > svg { animation: fishTapPressOdd 300ms ease-out; }
+.art[data-fish-tap-kind="added"][data-flash="even"] > svg { animation: fishTapPressEven 300ms ease-out; }
+.badge { position: absolute; z-index: 2; top: -5px; right: -12px; display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 17px; box-sizing: border-box; padding: 1px 4px; border: 1px solid #8ba56a; border-radius: 7px; background: #f1f4cf; color: #395f32; font-size: 10px; line-height: 1; font-weight: 700; white-space: nowrap; pointer-events: none; animation: fishTapBadge 620ms ease-out both; }
+.art[data-fish-tap-kind="limit"] .badge { border-color: #bda36c; background: #f3e6c4; color: #7b5b28; font-size: 9px; }
+.quantity { display: inline-flex; position: relative; flex: 0 0 auto; min-width: 0; vertical-align: middle; }
+.quantityPulse { position: absolute; inset: 0; z-index: 1; border: 2px solid #6d9754; border-radius: 9px; pointer-events: none; animation: fishQuantityPulse 620ms ease-out both; }
+.quantityPulse[data-fish-quantity-pulse="limit"] { border-color: #aa8846; }
+.srOnly { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+@keyframes fishTapPressOdd { 0% { transform: scale(.88); } 55% { transform: scale(1.13); } 100% { transform: scale(1); } }
+@keyframes fishTapPressEven { 0% { transform: scale(.88); } 55% { transform: scale(1.13); } 100% { transform: scale(1); } }
+@keyframes fishTapBadge { 0% { opacity: .8; transform: translateY(3px) scale(.9); } 24% { opacity: 1; transform: translateY(0) scale(1); } 82% { opacity: 1; } 100% { opacity: 0; transform: translateY(-5px); } }
+@keyframes fishQuantityPulse { 0% { opacity: .9; box-shadow: 0 0 0 0 #789c5966; } 36% { opacity: 1; box-shadow: 0 0 0 3px #789c591f; } 100% { opacity: 0; box-shadow: 0 0 0 4px #789c5900; } }
+@media (prefers-reduced-motion: reduce) {
+  .art[data-fish-tap-kind][data-flash] > svg, .badge, .quantityPulse { animation: none; transform: none; }
+}
+@media (forced-colors: active) { .badge { border-color: ButtonText; } .quantityPulse { border-color: Highlight; } }

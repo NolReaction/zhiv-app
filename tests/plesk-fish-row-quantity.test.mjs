@@ -23,7 +23,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, ca
       export function useEffect(effect, dependencies) { const old = useRef(null); if (!old.current || dependencies.some((value, i) => !Object.is(value, old.current[i]))) { old.current = dependencies; effects.push(effect); } }
       export const useLayoutEffect = useEffect;
     `; },
-    transform(source, id) { if (["/ui/fishing/plesk-fishing-shop.tsx", "/ui/fishing/use-fishing-command.ts"].some(path => id.endsWith(path))) return source.replace('from "react";', `from "${hookId}";`); },
+    transform(source, id) { if (["/ui/fishing/plesk-fishing-shop.tsx", "/ui/fishing/use-fishing-command.ts", "/ui/fishing/fish-tap-feedback.tsx"].some(path => id.endsWith(path))) return source.replace('from "react";', `from "${hookId}";`); },
   }] });
 after(async () => { await vite.close(); await rm(cacheDir, { recursive: true, force: true }); });
 const hooks = await vite.ssrLoadModule(hookId);
@@ -170,4 +170,55 @@ test("a disappeared selected species never transfers its amount to another remai
   view.economy.snapshot.fishing.stock = { fish_sturgeon: 3 }; view.economy.snapshot.inventory.fish_epic = 3;
   assert.equal(child(view.draw(), PleskFishTrade).props.fishItemId, "fish_sturgeon");
   assert.equal(input(view.trade()).props.value, "1"); assert.deepEqual(view.economy.calls, []);
+});
+
+test("every genuine species increment gets a fresh plus-one event shared by its artwork and quantity", () => {
+  const view = counter(); view.open();
+  for (let quantity = 1; quantity <= 3; quantity++) {
+    view.tap("fish_mirror_koi");
+    const event = child(view.draw(), WorldFishStockList).props.feedback;
+    assert.equal(event.kind, "added"); assert.equal(event.quantity, quantity); assert.equal(event.itemId, "fish_mirror_koi");
+    assert.equal(event.sequence, quantity);
+    assert.equal(child(view.draw(), PleskFishTrade).props.quantityFeedback, event);
+    assert.equal(input(view.trade()).props.value, String(quantity));
+  }
+  assert.deepEqual(view.economy.calls, []);
+});
+
+test("stock and wallet caps produce limit feedback instead of a fake increment", () => {
+  for (const maximum of [2, 6]) {
+    const economy = controller(), price = economy.snapshot.catalog.items.find(item => item.id === "fish_epic").baseSellPrice;
+    if (maximum === 2) economy.snapshot.wallet.coins = ECONOMY_MAX_BALANCE - 2 * price;
+    const view = counter(economy); view.open();
+    for (let index = 0; index < maximum; index++) view.tap("fish_mirror_koi");
+    const before = child(view.draw(), WorldFishStockList).props.feedback;
+    view.tap("fish_mirror_koi");
+    const capped = child(view.draw(), WorldFishStockList).props.feedback;
+    assert.equal(capped.kind, "limit"); assert.equal(capped.sequence, before.sequence + 1); assert.equal(capped.quantity, maximum);
+    assert.equal(input(view.trade()).props.value, String(maximum));
+    view.tap("fish_mirror_koi"); assert.equal(child(view.draw(), WorldFishStockList).props.feedback.sequence, capped.sequence + 1);
+    assert.deepEqual(economy.calls, []);
+  }
+});
+
+test("manual values feed genuine row feedback while a typed over-limit quantity is clamped without plus one", () => {
+  const view = counter(); view.open(); view.tap("fish_mirror_koi");
+  input(view.trade()).props.onChange({ target: { value: "3" } }); view.tap("fish_mirror_koi");
+  assert.equal(child(view.draw(), WorldFishStockList).props.feedback.kind, "added");
+  assert.equal(child(view.draw(), WorldFishStockList).props.feedback.quantity, 4);
+  input(view.trade()).props.onChange({ target: { value: "20" } }); view.tap("fish_mirror_koi");
+  assert.equal(input(view.trade()).props.value, "6"); assert.equal(child(view.draw(), WorldFishStockList).props.feedback.kind, "limit");
+  view.tap("fish_sturgeon"); const changed = child(view.draw(), WorldFishStockList).props.feedback;
+  assert.equal(changed.kind, "added"); assert.equal(changed.quantity, 1); assert.equal(changed.itemId, "fish_sturgeon");
+});
+
+test("opening, all-species navigation, stale taps and foreign owners never create an added event", () => {
+  const view = counter(); view.open(); assert.equal(child(view.draw(), WorldFishStockList).props.feedback, null);
+  view.tap("fish_mirror_koi");
+  attr(view.rows(), "data-fish-stock-all").props.onClick(); assert.equal(child(view.draw(), WorldFishStockList).props.feedback, null);
+  const stale = child(view.draw(), WorldFishStockList); view.economy.uncertain = true; stale.props.onSelect("fish_mirror_koi");
+  assert.equal(child(view.draw(), WorldFishStockList).props.feedback, null);
+  view.economy.uncertain = false; view.tap("fish_mirror_koi");
+  view.economy.snapshot = { ...view.economy.snapshot, ownerPublicId: "NEW_OWNER" }; view.props.state = view.economy.snapshot;
+  assert.equal(child(view.draw(), WorldFishStockList).props.feedback, null); assert.deepEqual(view.economy.calls, []);
 });

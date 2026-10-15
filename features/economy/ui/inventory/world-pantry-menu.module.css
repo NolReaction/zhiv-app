@@ -48,29 +48,14 @@
 .pantry .iconButton { min-width: 30px; min-height: 30px; padding: 5px; color: #546a47; }
 .saleControls { display: grid; grid-template-columns: minmax(0, 1fr) 68px auto; align-items: center; gap: 7px; }
 .saleControls > label { color: #59624d; font-size: 11px; }
-.saleControls > input { width: 100%; min-height: 34px; padding: 5px 7px; border: 1px solid #a8af80; border-radius: 7px; background: #fcf2da; font-size: 13px; }
+.saleControls input { width: 100%; min-height: 34px; padding: 5px 7px; border: 1px solid #a8af80; border-radius: 7px; background: #fcf2da; font-size: 16px; }
+.saleControls > [data-fish-tap-quantity] { min-width: 0; width: 100%; }
 .pantry .sellButton { width: 100%; min-height: 36px; border-color: #a7bd705c; background: #466347; color: #fff3d6; font-size: 11px; font-weight: 600; }
 .pantry .sellButton:hover:not(:disabled) { background: #36553b; }
 .pantry .textButton { min-height: 30px; padding: 4px 0; color: #446440; font-size: 11px; text-align: left; }
 .pantry .textButton:hover:not(:disabled) { text-decoration: underline; background: transparent; }
 .empty { display: flex; align-items: center; flex-direction: column; gap: 8px; padding: 16px 8px 10px; text-align: center; color: #59624d; }
 .empty > p { max-width: 230px; font-size: 11px; }
-.footer { display: flex; flex-direction: column; gap: 4px; padding-top: 6px; border-top: 1px solid #c8bd98; }
-.pantry .expand { justify-content: flex-start; width: 100%; padding: 6px 2px; min-height: 43px; text-align: left; }
-.expand > span:not(.expandIcon) { flex: 1; min-width: 0; }
-.expand strong { display: block; font-size: 11px; font-weight: 600; }
-.expand small { display: block; margin-top: 2px; color: #59624d; font-size: 10px; }
-.expandIcon { display: grid; place-items: center; width: 26px; color: #586f43; }
-.expansion { display: grid; gap: 5px; }
-.expansionRelics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; margin: 0; padding: 0; list-style: none; }
-.expansionRelics > li { display: flex; align-items: center; justify-content: center; gap: 5px; min-width: 0; padding: 5px 3px; border: 1px solid #acb38a; border-radius: 8px; background: #ebe6ca; }
-.expansionRelics > li[data-relic="moon_crystal"] { background: #e9e4dc; }
-.expansionRelics > li[data-relic="living_resin"] { background: #e2e7c9; }
-.expansionRelics > li[data-missing="true"] { border-color: #baa06f; }
-.expansionRelics strong { color: #426140; font-size: 11px; line-height: 1.2; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.expansionRelics strong > span { color: #59624d; font-size: 10px; font-weight: 400; }
-.expansionRelics > li[data-missing="true"] strong { color: #80582d; }
-.maximum { display: flex; align-items: center; gap: 5px; padding: 7px 0; color: #59624d; font-size: 10px; }
 .pantry .market { justify-content: flex-start; min-height: 33px; padding: 4px 2px; color: #4b6642; font-size: 11px; }
 .error { display: grid; gap: 3px; padding: 9px; border: 1px solid #caa17c; border-radius: 9px; color: #834731; background: #edd3b7; font-size: 11px; }
 .error .textButton { justify-self: start; }
@@ -83,7 +68,6 @@
 .item > svg { width: 27px; height: 27px; }
 .pantry .sellButton { box-shadow: inset 0 1px #8da07980, 0 2px 0 #30472e; }
 .pantry .sellButton:disabled { box-shadow: none; }
-.pantry .expand { padding-inline: 8px; border: 1px solid #b4ba8c; background: #e0e3bd; }
 .pantry .market { padding-inline: 8px; }
 @media (max-width: 360px) { .items { grid-template-columns: repeat(3, minmax(0, 1fr)); }.pantry .item { min-height: 73px; } }
 
@@ -98,20 +82,25 @@
 .fridgeHeading > span { display:inline-flex; align-items:center; gap:6px; font-size:11px; }
 .fridgeHeading > small { align-self:center; color:#607766; font-size:10px; }
 .fridgeFish { display: grid; gap: 10px; min-width: 0; }
-.fishClassRow { display: grid; gap: 3px; min-width: 0; }
-.fishClassHeading { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.fishClassRow { --fish-tone: #535e4c; --fish-edge: #b4b6aa; --fish-wash: #e9e8dd; --fish-paper: #f3efdf; --fish-selected: #dcded0; display: grid; gap: 3px; min-width: 0; }
+.fishClassRow[data-fish-rarity="uncommon"] { --fish-tone: #315f43; --fish-edge: #94b49b; --fish-wash: #dde8d6; --fish-paper: #eff3e3; --fish-selected: #d1e4c8; }
+.fishClassRow[data-fish-rarity="rare"] { --fish-tone: #315b72; --fish-edge: #93b2c8; --fish-wash: #dce7ed; --fish-paper: #edf2ed; --fish-selected: #cfdfea; }
+.fishClassRow[data-fish-rarity="epic"] { --fish-tone: #684e7c; --fish-edge: #b5a2c8; --fish-wash: #e7dfed; --fish-paper: #f2edf3; --fish-selected: #ddd0e8; }
+.fishClassRow[data-fish-rarity="legendary"] { --fish-tone: #74521f; --fish-edge: #c5aa6a; --fish-wash: #eee2bf; --fish-paper: #f7eed5; --fish-selected: #ead5a1; }
+.fishClassHeading { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 2px 6px 2px 3px; border: 1px solid var(--fish-edge); border-radius: 8px; background: var(--fish-wash); }
+.fishClassArt { display: grid; place-items: center; flex: 0 0 32px; width: 32px; height: 32px; }
 .fishClassHeading > h3 { flex: 1; min-width: 0; font-size: 11px; font-weight: 600; line-height: 1.3; }
-.fishClassHeading > strong { color: #607453; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.pantry .fishClassAll { min-height: 32px; padding: 3px 5px; color: #4f6c44; font-size: 10px; }
+.fishClassHeading > strong { color: var(--fish-tone); font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .fishRailFrame { position: relative; min-width: 0; }
-.fishRail { display: flex; gap: 6px; min-width: 0; overflow-x: auto; overflow-y: hidden; padding: 2px 1px 6px; scroll-snap-type: x proximity; scroll-padding-inline: 1px; overscroll-behavior-x: contain; scrollbar-width: thin; scrollbar-color: #a1ae83 transparent; }
-.pantry .fishCard { display: grid; grid-template-rows: 28px 24px 12px; align-items: center; justify-items: center; gap: 4px; flex: 0 0 90px; width: 90px; height: 84px; min-height: 84px; padding: 5px; border: 1px solid #b6c1a6; border-radius: 9px; background: linear-gradient(145deg, #f0ecd7, #e1e8d2); scroll-snap-align: start; }
-.fishCard > span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; min-width: 0; width: 100%; font-size: 10px; line-height: 12px; text-align: center; overflow-wrap: anywhere; }
-.fishCard > strong { color: #506b3f; font-size: 11px; line-height: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.pantry .fishCard[data-state="open"] { border-color: #7c925c; background: #d9dfb4; box-shadow: inset 0 0 0 1px #849764; }
-.pantry .fishCard:focus-visible { outline-offset: -2px; }
-.railHint { position: absolute; z-index: 1; inset: 0 0 6px auto; display: flex; align-items: center; justify-content: flex-end; width: 22px; pointer-events: none; color: #49623d; background: linear-gradient(90deg, transparent, #e6e5cc 75%); }
-.railHintLeft { left: 0; right: auto; justify-content: flex-start; background: linear-gradient(270deg, transparent, #e6e5cc 75%); }
+.fishRail { display: flex; gap: 6px; min-width: 0; overflow-x: auto; overflow-y: hidden; padding: 2px 1px 6px; scroll-snap-type: x proximity; scroll-padding-inline: 1px; overscroll-behavior-x: contain; scrollbar-width: thin; scrollbar-color: var(--fish-edge) transparent; }
+.pantry .fishCard { display: grid; grid-template-rows: 28px 24px 12px; align-items: center; justify-items: center; gap: 4px; flex: 0 0 90px; width: 90px; height: 84px; min-height: 84px; padding: 5px; border: 1px solid var(--fish-edge); border-radius: 9px; background: linear-gradient(145deg, var(--fish-paper), var(--fish-wash)); scroll-snap-align: start; }
+.fishCard > span:not([data-fish-tap-art]) { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; min-width: 0; width: 100%; font-size: 10px; line-height: 12px; text-align: center; overflow-wrap: anywhere; }
+.fishCard > strong { color: var(--fish-tone); font-size: 11px; line-height: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.pantry .fishCard:hover:not(:disabled), .pantry .fishCard[data-state="open"] { border-color: var(--fish-tone); background: var(--fish-selected); }
+.pantry .fishCard[data-state="open"] { box-shadow: inset 0 0 0 1px var(--fish-tone); }
+.pantry .fishCard:focus-visible { outline-color: var(--fish-tone); outline-offset: -2px; }
+.railHint { position: absolute; z-index: 1; inset: 0 0 6px auto; display: flex; align-items: center; justify-content: flex-end; width: 22px; pointer-events: none; color: var(--fish-tone); background: linear-gradient(90deg, transparent, var(--fish-wash) 75%); }
+.railHintLeft { left: 0; right: auto; justify-content: flex-start; background: linear-gradient(270deg, transparent, var(--fish-wash) 75%); }
 .preparedMeals { display: grid; gap: 5px; min-width: 0; }
 .preparedMeals > h3 { font-size: 11px; font-weight: 600; }
 .preparedMeals .items { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -139,14 +128,13 @@
 .pantry .excessButton, .pantry .giftReturn { min-height: 44px; padding: 8px 10px; font-size: 12px; border-radius: 10px; gap: 6px; }
 .pantry .excessButton[aria-pressed="true"] { border-color: var(--forest-primary); background: #d7dfb9; color: var(--forest-ink); }
 .pantry .giftReturn { align-self: flex-start; justify-content: flex-start; padding: 4px 6px; font-size: 11px; color: var(--forest-ink); }
-.fishPopover { z-index: 160; width: min(292px, calc(100vw - 24px)); max-height: min(490px, var(--radix-popover-content-available-height, calc(100dvh - 24px))); overflow: hidden; box-sizing: border-box; gap: 6px; padding: 9px; border: 1px solid #a5b481; border-radius: 13px; background: #f1e9cf; box-shadow: 0 9px 30px #142c2145; }
+.fishPopover { z-index: 160; display: flex; flex-direction: column; width: min(292px, calc(100vw - 24px)); max-height: min(490px, var(--radix-popover-content-available-height, calc(100dvh - 24px))); overflow: hidden; box-sizing: border-box; gap: 6px; padding: 9px; border: 1px solid #a5b481; border-radius: 13px; background: #f1e9cf; box-shadow: 0 9px 30px #142c2145; }
 .fishPopoverHeading { display: flex; flex: 0 0 auto; align-items: center; gap: 5px; min-width: 0; }
 .fishPopoverHeading > strong { flex: 1; min-width: 0; font-size: 12px; font-weight: 650; line-height: 1.3; overflow-wrap: anywhere; }
-.fishPopoverHeading > button { flex: 0 0 36px; min-height: 36px; padding: 5px; }
+.fishPopoverHeading > button { flex: 0 0 44px; min-height: 44px; padding: 5px; }
 .fishPopoverBody { display: grid; gap: 7px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 .fishPopover .compactSale { gap: 6px; padding: 7px 0 0; border: 0; border-top: 1px solid #a5b48188; border-radius: 0; background: transparent; }
 .compactSale .saleHeading > h3 { font-size: 11px; }
 .compactSale .saleControls { grid-template-columns: minmax(0, 1fr) 60px 44px; gap: 5px; }
-.compactSale .saleControls > input, .compactSale .sellButton { min-height: 40px; }
-.compactSale .saleControls > input { font-size: 16px; }
-@media (forced-colors: active) { .fishPopover { border-color: ButtonText; } }
+.compactSale .saleControls input, .compactSale .sellButton { min-height: 44px; }
+@media (forced-colors: active) { .fishPopover, .fishClassHeading, .pantry .fishCard { border-color: ButtonText; } .pantry .fishCard[data-state="open"] { outline: 2px solid Highlight; outline-offset: -3px; box-shadow: none; } }
