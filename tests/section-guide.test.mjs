@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-mini-pantry-guides-sections-vite", server: { middlewareMode: true, hmr: false, ws: false } });
+const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-fish-rails-guides-sections-vite", server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { sectionGuideIds, sectionGuideLessons, sectionGuideCanOpen, parseSectionGuideProgress, transitionSectionGuide: move } = await vite.ssrLoadModule("/features/onboarding/section-guide-model.ts");
 const { sectionGuideStorageKey, createSectionGuideStore } = await vite.ssrLoadModule("/features/onboarding/section-guide-storage.ts");
@@ -132,7 +132,9 @@ test("pantry, Plesk and market lessons show species without automatically sellin
   const sale = sectionGuideLessons.pantry.find(step => step.id === "sale");
   const sell = sectionGuideLessons.market.find(step => step.id === "sell");
   const fish = sectionGuideLessons.plesk.find(step => step.id === "catch");
-  assert.match(items.text, /«Холодильнике» нажми класс рыбы: компактное окно с видами и продажей появится поверх сетки/);
+  assert.match(items.text, /«Холодильнике» листай горизонтальные ряды рыб: у каждого класса виден общий запас/);
+  assert.match(items.text, /Нажми вид - компактное окно уже выберет его для продажи/);
+  assert.match(items.text, /Готовая еда стоит отдельно/);
   assert.match(items.text, /Просмотр ничего не продаёт/);
   assert.match(items.text, /Escape или нажатие вне окна вернут к карточке без продажи/);
   assert.match(sale.text, /только после нажатия кнопки «Продать торговцу»/);
@@ -142,6 +144,8 @@ test("pantry, Plesk and market lessons show species without automatically sellin
   assert.match(fish.summary, /Продажу подтверждает кнопка «Продать»/);
   assert.match(fish.summary, /В «Улове» классы сначала свёрнуты/);
   assert.match(fish.text, /Открой класс вручную/);
+  assert.match(fish.text, /Повторный тап добавит 1 до доступного лимита; другой вид начнёт с 1/);
+  assert.match(fish.text, /Поле и «Все» меняют количество. Только «Продать» спишет рыбу/);
   assert.match(sectionGuideLessons.workshop.find(step => step.id === "queue").text, /Таймер меняется по секундам/);
   for (const step of [items, sale, sell, fish]) assert.notEqual(step.revealOnOpen, true);
 });

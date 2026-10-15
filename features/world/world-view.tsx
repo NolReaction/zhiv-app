@@ -38,7 +38,7 @@ import { WorldBuilderDialog } from "@/features/world/ui/characters/world-builder
 import type { WorldResidentId } from "@/features/world/characters/world-characters-model";
 import { WorldCharacters } from "@/features/world/ui/characters/world-characters";
 import { DailyRewardsButton, DailyRewardsDialog } from "@/features/game/daily-rewards";
-import { CurrencyShopPanel } from "@/features/economy/ui/market/currency-shop-panel";
+import { CurrencyShopPanel, type CurrencyShopPage } from "@/features/economy/ui/market/currency-shop-panel";
 import { useConstructionGoal } from "@/features/economy/ui/construction/use-construction-goal";
 import { ConstructionGoalSummary } from "@/features/economy/ui/construction/construction-goal-summary";
 import { SectionGuide } from "@/features/onboarding/section-guide";
@@ -59,6 +59,7 @@ export default function WorldView({ open, world, economy, ownerPublicId, timeZon
   const sectionsReady = Boolean(open && economy.snapshot && onboarding.loaded && observation?.memory.sync?.mode !== "other-device");
   const mainCourseActive = !onboarding.isPaused && (!onboarding.progress || onboarding.progress.status === "started");
   const [panel, setPanel] = useState<Panel | null>(null);
+  const [shopPage, setShopPage] = useState<CurrencyShopPage>("pearls");
   const [economyTab, setEconomyTab] = useState<EconomyTab>("overview");
   const [economyFocusId, setEconomyFocusId] = useState<string | undefined>();
   const [selection, setSelection] = useState<MapObjectSelection | null>(null);
@@ -96,6 +97,7 @@ export default function WorldView({ open, world, economy, ownerPublicId, timeZon
   const marketGuideRoot = useRef<HTMLDivElement>(null), pleskGuideRoot = useRef<HTMLDivElement>(null), builderGuideRoot = useRef<HTMLDivElement>(null);
   const workshopGuideRoot = useRef<HTMLElement>(null);
   const panelReturn = useRef<HTMLElement | null>(null);
+  const panelReturnOwner = useRef(ownerPublicId);
   const quickReturn = useRef<HTMLElement | null>(null);
   const upgradeReturn = useRef<HTMLElement | null>(null);
   const navigatingUpgrade = useRef(false);
@@ -240,10 +242,20 @@ export default function WorldView({ open, world, economy, ownerPublicId, timeZon
   const confirming = (id: string) => { claim.current = { id, owner: ownerPublicId }; };
   const openPanel = useCallback((next: Panel) => {
     if (!WORLD_PRESENTATION.streakDecor && next === "customize") return;
-    if (panel === null) panelReturn.current = quickMenu ? quickReturn.current : document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (panel === null) {
+      panelReturn.current = quickMenu ? quickReturn.current : document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      panelReturnOwner.current = ownerPublicId;
+    }
     clearObject(); setQuickMenu(null);
     setPanel(next);
-  }, [panel, quickMenu, clearObject]);
+  }, [panel, quickMenu, clearObject, ownerPublicId]);
+  const openCurrencyShop = (kind: "coins" | "pearls", trigger: HTMLButtonElement) => {
+    if (economy.snapshot?.ownerPublicId !== ownerPublicId) return;
+    setShopPage(kind === "coins" ? "gold" : "pearls");
+    openPanel("shop");
+    panelReturn.current = trigger;
+    panelReturnOwner.current = ownerPublicId;
+  };
   const openContextHelp = (context?: WorldHelpContext, topicId?: string) => {
     setHelpEntry(value => ({ context, topicId, request: value.request + 1 }));
     if (quickUpgrade) { navigatingUpgrade.current = true; setQuickUpgrade(null); }
@@ -397,7 +409,7 @@ export default function WorldView({ open, world, economy, ownerPublicId, timeZon
           </button>
         </div>
         <div className={hudStyles.rightControls}>
-          {economy.snapshot ? <WorldWallet key={ownerPublicId} {...economy.snapshot.wallet} /> : <button className={hudStyles.loadingWallet} onClick={() => void economy.retry()} disabled={economy.busy || economy.retryAt > economy.now}>{economy.error ? "Повторить загрузку" : "Загрузка…"}</button>}
+          {economy.snapshot ? <WorldWallet key={ownerPublicId} {...economy.snapshot.wallet} onOpenShop={economy.snapshot.ownerPublicId === ownerPublicId ? openCurrencyShop : undefined} /> : <button className={hudStyles.loadingWallet} onClick={() => void economy.retry()} disabled={economy.busy || economy.retryAt > economy.now}>{economy.error ? "Повторить загрузку" : "Загрузка…"}</button>}
           <button data-world-onboarding-help data-audio-cue="ui.open" className={`${hudStyles.iconButton} ${hudStyles.helpButton}`} onClick={() => openContextHelp(quickUpgrade ? { stationId: quickUpgrade, intent: "construction" } : selection ? lastHelpContext.current : undefined)} aria-label="Справка по игре" title="Справка по игре"><Info size={20} aria-hidden="true" /></button>
         </div>
       </div>
@@ -437,7 +449,6 @@ export default function WorldView({ open, world, economy, ownerPublicId, timeZon
           <button type="button" data-world-food-entry aria-haspopup="dialog" onClick={() => openFood()}><Soup size={18} aria-hidden="true" /><span className={styles.moreLabel}>Еда и заказы<small>Накормить героев · заработать монеты</small></span></button>
           <button type="button" data-world-characters-trigger aria-haspopup="dialog" onClick={openCharacters}><PawPrint size={18} aria-hidden="true" /><span className={styles.moreLabel}>Персонажи<small>Жители леса</small></span></button>
           <button type="button" aria-haspopup="dialog" onClick={() => openEconomy("market")}><Store size={18} aria-hidden="true" /><span className={styles.moreLabel}>Рынок<small>Покупки и свой прилавок</small></span></button>
-          <button type="button" aria-haspopup="dialog" onClick={() => openPanel("shop")}><ShoppingBag size={18} aria-hidden="true" /><span className={styles.moreLabel}>Магазин<small>Промокоды и витрина</small></span></button>
           <button type="button" aria-haspopup="dialog" onClick={() => openPanel("wardrobe")}><Shirt size={18} aria-hidden="true" /><span className={styles.moreLabel}>Гардероб<small>Одежда и оттенки мха</small></span></button>
           <button type="button" aria-haspopup="dialog" onClick={() => openPanel("collection")}><BookOpen size={18} aria-hidden="true" /><span className={styles.moreLabel}>Коллекции<small>Книга личных находок</small></span></button>
           {state.journeys.length > 0 && <button type="button" aria-haspopup="dialog" onClick={() => openPanel("journeys")}><Compass size={18} aria-hidden="true" /><span className={styles.moreLabel}>Старые походы<small>Забрать прежние награды</small></span></button>}
@@ -514,7 +525,7 @@ export default function WorldView({ open, world, economy, ownerPublicId, timeZon
       <DialogOverlay className={styles.sheetScrim} />
       <DialogPrimitive.Content ref={marketGuideRoot} data-slot="dialog-content" className={styles.sheet} data-help={panel === "help" || undefined} data-market={panel === "economy" && economyTab === "market" || undefined} data-book={panel === "collection" || undefined} data-shop={panel === "shop" || undefined}
         onEscapeKeyDown={event => { if (pauseFocusedGuide()) { event.preventDefault(); event.stopPropagation(); } }}
-        onCloseAutoFocus={event => { event.preventDefault(); if (navigatingHelp.current) { navigatingHelp.current = false; return; } if (quickMenu) quickFrame.current?.focus({ preventScroll: true }); else if (selectedId.current) worldElement.current?.querySelector<HTMLElement>('[role="dialog"][data-place]')?.focus({ preventScroll: true }); else if (panelReturn.current?.isConnected) panelReturn.current.focus(); else worldElement.current?.querySelector<HTMLElement>('[aria-label="Справка по игре"]')?.focus({ preventScroll: true }); }}>
+        onCloseAutoFocus={event => { event.preventDefault(); if (navigatingHelp.current) { navigatingHelp.current = false; return; } if (quickMenu) quickFrame.current?.focus({ preventScroll: true }); else if (selectedId.current) worldElement.current?.querySelector<HTMLElement>('[role="dialog"][data-place]')?.focus({ preventScroll: true }); else if (panelReturnOwner.current === ownerPublicId && panelReturn.current?.isConnected) panelReturn.current.focus({ preventScroll: true }); else worldElement.current?.querySelector<HTMLElement>('[aria-label="Справка по игре"]')?.focus({ preventScroll: true }); }}>
         <div className={styles.sheetHeader}>
           <DialogTitle><SheetIcon size={20} aria-hidden="true" />{panel === "help" ? "Справка по игре" : panel === "economy" ? "Лесной рынок" : panel === "shop" ? "Магазин" : panel === "customize" ? "Украшения" : panel === "wardrobe" ? "Гардероб" : panel === "collection" ? "Книга находок" : "Путешествия"}</DialogTitle>
           <button type="button" onClick={() => setPanel(null)} aria-label="Закрыть панель"><X size={21} aria-hidden="true" /></button>
@@ -523,7 +534,7 @@ export default function WorldView({ open, world, economy, ownerPublicId, timeZon
         {panel === "economy" && economyTab === "market" && <SectionGuide key={`${ownerPublicId}:market`} owner={ownerPublicId} section="market" enabled={sectionsReady} targetRoot={marketGuideRoot} />}
         <div className={styles.sheetBody}>
           {panel === "help" && <WorldHelp key={`${ownerPublicId}:${helpEntry.request}`} economy={economy} world={world} presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`} isOnline={isOnline} context={helpEntry.context} initialTopicId={helpEntry.topicId} onNavigate={navigateHelp} onReplayTutorial={replayOnboarding} />}
-          {panel === "shop" && <CurrencyShopPanel key={ownerPublicId} state={economy.snapshot} onRedeemed={economy.reconcile} />}
+          {panel === "shop" && <CurrencyShopPanel key={`${ownerPublicId}:${shopPage}`} state={economy.snapshot} initialPage={shopPage} onRedeemed={economy.reconcile} />}
           {panel === "economy" && <EconomyPanel key={`${economyTab}:${economyFocusId ?? ""}`} economy={economy} initialTab={economyTab} initialFocusId={economyFocusId} standalone onNavigate={openEconomy} />}
           {WORLD_PRESENTATION.streakDecor && panel === "customize" && <div className={styles.panel}>
             <div className={styles.panelHeading}><span className={styles.eyebrow}>ДОМИК ПО ТВОЕМУ ВКУСУ</span><p>Выбирай, что оставить у дома. Подарки сохраняются, даже когда выключены.</p></div>

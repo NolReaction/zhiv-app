@@ -12,7 +12,7 @@ import { formatPearls } from "@/features/economy/domain/money";
 import styles from "./currency-shop-panel.module.css";
 
 const pages = [{ id: "pearls", label: "Жемчуг", icon: Gem }, { id: "gold", label: "Золото", icon: Coins }] as const;
-type ShopPage = typeof pages[number]["id"];
+export type CurrencyShopPage = typeof pages[number]["id"];
 const number = (value: number) => value.toLocaleString("ru-RU");
 
 function CurrencyPile({ kind, tier }: { kind: "pearls" | "coins"; tier: number }) {
@@ -22,11 +22,11 @@ function CurrencyPile({ kind, tier }: { kind: "pearls" | "coins"; tier: number }
 }
 
 /** Purchases remain a preview; the separate promo form redeems a server-confirmed gift. */
-export function CurrencyShopPanel({ state, onRedeemed }: { state: EconomyView | null; onRedeemed?: () => void | Promise<unknown> }) {
-  const [page, setPage] = useState<ShopPage>("pearls");
+export function CurrencyShopPanel({ state, onRedeemed, initialPage = "pearls" }: { state: EconomyView | null; onRedeemed?: () => void | Promise<unknown>; initialPage?: CurrencyShopPage }) {
+  const [page, setPage] = useState<CurrencyShopPage>(initialPage);
   const id = useId(), tabs = useRef<Array<HTMLButtonElement | null>>([]);
   const development = state ? currencyShopDevelopment(state) : null;
-  function changePage(next: ShopPage) {
+  function changePage(next: CurrencyShopPage) {
     if (next === page) return;
     playUiCue(getAudioRuntime(), "ui.tab");
     setPage(next);

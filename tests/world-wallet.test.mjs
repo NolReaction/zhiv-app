@@ -55,3 +55,16 @@ test("legacy economy wallet agrees with the world wallet without changing source
   assert.match(html, /Жемчуг: 50,5/); assert.match(html, /Монеты: 150/);
   assert.deepEqual(wallet, { coins: 150, pearls: 101 });
 });
+
+test("currency shop shortcuts live inside their balance rows and remain optional for a read-only wallet", () => {
+  const balances = { coins: 2_000_000_000, pearls: 101 };
+  const html = renderToStaticMarkup(createElement(WorldWallet, { ...balances, onOpenShop() { assert.fail("rendering cannot open or buy anything"); } }));
+  assert.equal((html.match(/data-world-currency-shop=/g) ?? []).length, 2);
+  assert.match(html, /aria-label="Магазин монет"/);
+  assert.match(html, /aria-label="Магазин жемчуга"/);
+  assert.equal((html.match(/aria-haspopup="dialog"/g) ?? []).length, 2);
+  assert.match(html, /Жемчуг: 50,5/);
+  assert.deepEqual(balances, { coins: 2_000_000_000, pearls: 101 });
+  const readOnly = renderToStaticMarkup(createElement(WorldWallet, balances));
+  assert.doesNotMatch(readOnly, /<button|data-world-currency-shop=/);
+});

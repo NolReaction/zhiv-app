@@ -308,6 +308,21 @@ test("prepared meals share refrigerator capacity and cannot leak into the materi
   assert.deepEqual(state, before, "opening the refrigerator never moves food or creates a second capacity");
 });
 
+test("the fridge shows owned species in class rails and prepared meals in a separate following grid", () => {
+  const state = snapshot({ inventory: { fish_common: 5, fish_epic: 7, grilled_fish: 2 }, fishing: {
+    catches: { fish_shark: 999 }, stock: { fish: 1, fish_silverfin: 2, fish_sturgeon: 2, fish_mirror_koi: 3 } } });
+  const before = structuredClone(state), html = render(controller({ snapshot: state }), { initialTab: "fridge" });
+  assert.deepEqual([...html.matchAll(/data-pantry-fish-class="([^"]+)"/g)].map(match => match[1]), ["fish_common", "fish_epic"]);
+  assert.deepEqual([...html.matchAll(/data-pantry-fish-card="([^"]+)"/g)].map(match => match[1]), ["fish", "fish_silverfin", "fish_common", "fish_sturgeon", "fish_mirror_koi", "fish_epic"]);
+  assert.match(html, /aria-label="Речная рыба: 1"/); assert.match(html, /aria-label="Серебринка: 2"/);
+  assert.equal((html.match(/aria-label="Без указания вида: 2"/g) ?? []).length, 2);
+  assert.match(html, /aria-label="Обычная рыба: 5"/); assert.match(html, /aria-label="Эпическая рыба: 7"/);
+  assert.ok(html.indexOf('data-pantry-fish-class="fish_epic"') < html.indexOf("Готовая еда</h3>"));
+  assert.match(html, /aria-label="Готовая еда в холодильнике"/); assert.match(html, /aria-label="Жареная рыба: 2"/);
+  assert.doesNotMatch(html, /data-pantry-fish-card="fish_shark"|data-pantry-fish-class="fish_legendary"|data-guide-pantry-sale/);
+  assert.deepEqual(state, before);
+});
+
 test("pantry meal action only opens food selection; raw fish and materials cannot be eaten there", () => {
   const state = snapshot({ inventory: { grilled_fish: 3, fish: 2, wood: 5 } });
   let opened = 0;

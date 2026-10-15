@@ -72,7 +72,7 @@ test("species visibility and ordinary item artwork retain their previous rules",
   assert.equal(render(ItemIcon, { itemId: "wood", fishSpecies: "fish_shark" }), render(ItemIcon, { itemId: "wood" }));
 });
 
-test("fridge reports class stock and sale targets even when its illustration comes from the collection", () => {
+test("fridge draws remaining species and unidentified stock without borrowing lifetime collection illustrations", () => {
   const value = state({ fish_epic: 9, fish_legendary: 2 }, { fish_sturgeon: 40, fish_shark: 7 });
   const before = structuredClone(value);
   const economy = { snapshot: value, now: Date.now(), busy: false, uncertain: false, retryAt: 0, error: null,
@@ -80,11 +80,21 @@ test("fridge reports class stock and sale targets even when its illustration com
   const html = render(WorldPantryMenu, { economy, initialTab: "fridge", onUpgrade() {}, onExplore() {} });
   assert.match(html, /data-guide-pantry-item="fish_epic"/);
   assert.match(html, /aria-label="Эпическая рыба: 9"/);
-  assert.match(html, /data-fish-illustration="fish_sturgeon"/);
   assert.match(html, /aria-label="Легендарная рыба: 2"/);
-  assert.match(html, /data-fish-illustration="fish_shark"/);
+  assert.match(html, /aria-label="Без указания вида: 9"/);
+  assert.match(html, /aria-label="Без указания вида: 2"/);
+  assert.match(html, /data-fish-illustration="fish"/);
+  assert.doesNotMatch(html, /data-fish-illustration="(?:fish_sturgeon|fish_shark)"/);
   assert.doesNotMatch(html, /data-guide-pantry-item="fish_sturgeon"|data-guide-pantry-item="fish_shark"/);
   assert.deepEqual(value, before);
+  value.fishing.stock = { fish_mirror_koi: 3, fish_shark: 1 };
+  const trackedBefore = structuredClone(value);
+  const tracked = render(WorldPantryMenu, { economy, initialTab: "fridge", onUpgrade() {}, onExplore() {} });
+  assert.match(tracked, /data-pantry-fish-card="fish_mirror_koi"/); assert.match(tracked, /aria-label="Зеркальный кои: 3"/);
+  assert.match(tracked, /data-pantry-fish-card="fish_shark"/); assert.match(tracked, /aria-label="Теневая акула: 1"/);
+  assert.match(tracked, /aria-label="Без указания вида: 6"/); assert.match(tracked, /aria-label="Без указания вида: 1"/);
+  assert.doesNotMatch(tracked, /data-pantry-fish-card="fish_sturgeon"/);
+  assert.deepEqual(value, trackedBefore);
 });
 
 test("tracked stocks use a fish still owned instead of an exhausted lifetime favourite", () => {

@@ -31,7 +31,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, ca
   }] });
 after(async () => { await vite.close(); await rm(cacheDir, { recursive: true, force: true }); });
 const hooks = await vite.ssrLoadModule(hooksId);
-const { WorldPantryMenu, PantrySale, PantryFishPopover } = await vite.ssrLoadModule("/features/economy/ui/inventory/world-pantry-menu.tsx");
+const { WorldPantryMenu, PantrySale, PantryFishPopover, PantryFishClassRow } = await vite.ssrLoadModule("/features/economy/ui/inventory/world-pantry-menu.tsx");
 const { FishCounter, PleskFishTrade } = await vite.ssrLoadModule("/features/economy/ui/fishing/plesk-fishing-shop.tsx");
 const { WorldFishStockList } = await vite.ssrLoadModule("/features/economy/ui/fishing/world-fish-stock-list.tsx");
 const { WorldFishSelection } = await vite.ssrLoadModule("/features/economy/ui/fishing/world-fish-selection.tsx");
@@ -71,23 +71,27 @@ test("owned stock rows show real species, exact counts and unidentified remainde
   assert.deepEqual(economy.calls, []); assert.deepEqual(economy.snapshot, before);
 });
 
-test("a refrigerator class keeps its grid card and opens a separate compact species-sale layer", () => {
+test("refrigerator class rails open a selected species directly and retain a separate group-sale action", () => {
   hooks.reset(); const economy = controller(), before = structuredClone(economy.snapshot), props = { economy, initialTab: "fridge", onUpgrade() {}, onExplore() {} };
   let view = render(WorldPantryMenu, props); assert.equal(child(view, WorldFishStockList), undefined);
-  const cards = view.nodes.filter(node => node.props["data-guide-pantry-item"]).map(node => node.props["data-guide-pantry-item"]);
-  const popup = view.nodes.find(node => node.type === PantryFishPopover && node.props.classId === "fish_epic"); assert.ok(popup);
+  const classes = view.nodes.filter(node => node.type === PantryFishClassRow);
+  assert.deepEqual(classes.map(node => node.props.classId), ["fish_common", "fish_epic"]);
+  const row = render(PantryFishClassRow, classes[1].props);
+  assert.deepEqual(row.nodes.filter(node => node.props["data-pantry-fish-card"]).map(node => node.props["data-pantry-fish-card"]), ["fish_sturgeon", "fish_mirror_koi", "fish_epic"]);
+  const popup = row.nodes.find(node => node.type === PantryFishPopover && node.props.initialFishId === "fish_sturgeon"); assert.ok(popup);
   let popupView = render(PantryFishPopover, popup.props); assert.equal(popupView.tree.props.open, false); assert.equal(popupView.tree.props.modal, true);
   popupView.tree.props.onOpenChange(true); popupView = render(PantryFishPopover, popup.props);
   const content = attr(popupView, "data-pantry-fish-popover"); assert.equal(content.props["data-pantry-fish-popover"], "fish_epic");
   assert.equal(content.props.collisionPadding, 12); assert.equal(content.props.sideOffset, 8);
-  const list = child(popupView, WorldFishStockList); assert.equal(list.props.classId, "fish_epic");
-  const rows = render(WorldFishStockList, list.props); attr(rows, "data-fish-stock-item", "fish_sturgeon").props.onClick();
-  popupView = render(PantryFishPopover, popup.props); const sale = child(popupView, PantrySale);
+  assert.equal(child(popupView, WorldFishStockList), undefined, "the clicked species is already chosen without a second selection list");
+  const sale = child(popupView, PantrySale);
   assert.equal(sale.props.itemId, "fish_epic"); assert.equal(sale.props.fishItemId, "fish_sturgeon"); assert.equal(sale.props.compact, true);
-  attr(render(WorldFishStockList, child(popupView, WorldFishStockList).props), "data-fish-stock-all").props.onClick();
-  popupView = render(PantryFishPopover, popup.props); assert.equal(child(popupView, PantrySale).props.fishItemId, undefined, "All species returns directly to group sale");
+  const group = row.nodes.find(node => node.type === PantryFishPopover && node.props.initialFishId === undefined);
+  let groupView = render(PantryFishPopover, group.props, "group"); groupView.tree.props.onOpenChange(true); groupView = render(PantryFishPopover, group.props, "group");
+  assert.equal(child(groupView, WorldFishStockList).props.classId, "fish_epic");
+  assert.equal(child(groupView, PantrySale).props.fishItemId, undefined, "All species opens the independent group choice");
   view = render(WorldPantryMenu, props);
-  assert.deepEqual(view.nodes.filter(node => node.props["data-guide-pantry-item"]).map(node => node.props["data-guide-pantry-item"]), cards);
+  assert.deepEqual(view.nodes.filter(node => node.type === PantryFishClassRow).map(node => node.props.classId), ["fish_common", "fish_epic"]);
   assert.equal(child(view, PantrySale), undefined, "fish sales never create an inline inventory section");
   assert.equal(view.nodes.some(node => node.props["data-expanded"]), false);
   popupView.tree.props.onOpenChange(false); assert.equal(child(render(PantryFishPopover, popup.props), WorldFishStockList), undefined);
@@ -243,7 +247,7 @@ test("compact fish sales never scroll the inventory and omit repeated class expl
 });
 
 test("popover dismissal never focuses a removed trigger or another owner or fish class", () => {
-  for (const change of ["unmounted", "detached", "owner", "class"]) {
+  for (const change of ["unmounted", "detached", "owner", "class", "species"]) {
     hooks.reset(); const economy = controller(), focuses = [], props = { economy, classId: "fish_epic", children: createElement("button", null, "Рыба") };
     let view = render(PantryFishPopover, props); const trigger = view.nodes.find(node => node.props.asChild && node.props.ref);
     const element = { isConnected: true, disabled: false, focus: options => focuses.push(options) }; trigger.props.ref.current = element;
@@ -252,7 +256,33 @@ test("popover dismissal never focuses a removed trigger or another owner or fish
     if (change === "detached") element.isConnected = false;
     if (change === "owner") economy.snapshot.ownerPublicId = "another-owner";
     if (change === "class") { props.classId = "fish_common"; render(PantryFishPopover, props); }
+    if (change === "species") { props.initialFishId = "fish_mirror_koi"; render(PantryFishPopover, props); }
     content.props.onCloseAutoFocus({ preventDefault() {} });
     assert.deepEqual(focuses, [], change); assert.deepEqual(economy.calls, []);
   }
+});
+
+test("horizontal rail hints follow actual clipped edges without intercepting vertical scrolling or selling", () => {
+  hooks.reset(); const economy = controller(), props = { economy, classId: "fish_epic" };
+  let view = render(PantryFishClassRow, props), rail = attr(view, "data-pantry-fish-rail");
+  const element = { scrollLeft: 0, scrollWidth: 282, clientWidth: 220 };
+  rail.props.ref.current = element; rail.props.onScroll({ currentTarget: element }); view = render(PantryFishClassRow, props);
+  assert.deepEqual(view.nodes.filter(node => node.props["data-rail-edge"]).map(node => node.props["data-rail-edge"]), ["right"]);
+  element.scrollLeft = 30; attr(view, "data-pantry-fish-rail").props.onScroll({ currentTarget: element }); view = render(PantryFishClassRow, props);
+  assert.deepEqual(view.nodes.filter(node => node.props["data-rail-edge"]).map(node => node.props["data-rail-edge"]), ["left", "right"]);
+  element.scrollLeft = 62; attr(view, "data-pantry-fish-rail").props.onScroll({ currentTarget: element }); view = render(PantryFishClassRow, props);
+  assert.deepEqual(view.nodes.filter(node => node.props["data-rail-edge"]).map(node => node.props["data-rail-edge"]), ["left"]);
+  element.scrollLeft = 0; element.clientWidth = 400; attr(view, "data-pantry-fish-rail").props.onScroll({ currentTarget: element }); view = render(PantryFishClassRow, props);
+  assert.equal(view.nodes.some(node => node.props["data-rail-edge"]), false); assert.deepEqual(economy.calls, []);
+});
+
+test("a selected species disappearing never silently substitutes another fish in its sale popover", () => {
+  hooks.reset(); const economy = controller(), props = { economy, classId: "fish_epic", initialFishId: "fish_sturgeon", children: createElement("button", null, "Золотой осётр") };
+  let view = render(PantryFishPopover, props); view.tree.props.onOpenChange(true); view = render(PantryFishPopover, props);
+  assert.equal(child(view, PantrySale).props.fishItemId, "fish_sturgeon");
+  economy.snapshot.fishing.stock.fish_sturgeon = 0; view = render(PantryFishPopover, props);
+  const sale = child(view, PantrySale); assert.equal(sale.props.fishItemId, "fish_sturgeon");
+  const form = render(PantrySale, sale.props); assert.equal(button(form, "Продать").props.disabled, true);
+  button(form, "Продать").props.onClick(); assert.deepEqual(economy.calls, []);
+  assert.equal(economy.snapshot.fishing.stock.fish_mirror_koi, 3);
 });

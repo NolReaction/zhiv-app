@@ -97,11 +97,26 @@
 .fridgeHeading { display:flex; flex-wrap:wrap; justify-content:space-between; gap:2px 8px; padding:2px 0; color:#476455; }
 .fridgeHeading > span { display:inline-flex; align-items:center; gap:6px; font-size:11px; }
 .fridgeHeading > small { align-self:center; color:#607766; font-size:10px; }
-.fishItems { grid-template-columns:repeat(3,minmax(0,1fr)); }
-.pantry .fishItems .item { min-height:100px; padding:9px 5px; border-color:#b6c1a6; background:linear-gradient(145deg,#f0ecd7,#e1e8d2); }
-.fishItems .item > svg { width:38px; height:38px; }
-.fishItems .item > span { font-size:11px; }
-@media (max-width:360px) { .fishItems { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+.fridgeFish { display: grid; gap: 10px; min-width: 0; }
+.fishClassRow { display: grid; gap: 3px; min-width: 0; }
+.fishClassHeading { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.fishClassHeading > h3 { flex: 1; min-width: 0; font-size: 11px; font-weight: 600; line-height: 1.3; }
+.fishClassHeading > strong { color: #607453; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.pantry .fishClassAll { min-height: 32px; padding: 3px 5px; color: #4f6c44; font-size: 10px; }
+.fishRailFrame { position: relative; min-width: 0; }
+.fishRail { display: flex; gap: 6px; min-width: 0; overflow-x: auto; overflow-y: hidden; padding: 2px 1px 6px; scroll-snap-type: x proximity; scroll-padding-inline: 1px; overscroll-behavior-x: contain; scrollbar-width: thin; scrollbar-color: #a1ae83 transparent; }
+.pantry .fishCard { display: grid; grid-template-rows: 28px 24px 12px; align-items: center; justify-items: center; gap: 4px; flex: 0 0 90px; width: 90px; height: 84px; min-height: 84px; padding: 5px; border: 1px solid #b6c1a6; border-radius: 9px; background: linear-gradient(145deg, #f0ecd7, #e1e8d2); scroll-snap-align: start; }
+.fishCard > span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; min-width: 0; width: 100%; font-size: 10px; line-height: 12px; text-align: center; overflow-wrap: anywhere; }
+.fishCard > strong { color: #506b3f; font-size: 11px; line-height: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.pantry .fishCard[data-state="open"] { border-color: #7c925c; background: #d9dfb4; box-shadow: inset 0 0 0 1px #849764; }
+.pantry .fishCard:focus-visible { outline-offset: -2px; }
+.railHint { position: absolute; z-index: 1; inset: 0 0 6px auto; display: flex; align-items: center; justify-content: flex-end; width: 22px; pointer-events: none; color: #49623d; background: linear-gradient(90deg, transparent, #e6e5cc 75%); }
+.railHintLeft { left: 0; right: auto; justify-content: flex-start; background: linear-gradient(270deg, transparent, #e6e5cc 75%); }
+.preparedMeals { display: grid; gap: 5px; min-width: 0; }
+.preparedMeals > h3 { font-size: 11px; font-weight: 600; }
+.preparedMeals .items { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.pantry .preparedMeals .item { height: 84px; min-height: 84px; padding: 5px 3px; }
+.preparedMeals .item > svg { width: 28px; height: 28px; }
 .relics { display:grid; gap:10px; }
 .relicList { display:grid; gap:8px; }
 .relicCard { --relic-border:#b7ab78; --relic-glow:#c9b97930; border:1px solid var(--relic-border); border-radius:12px; padding:10px; background:linear-gradient(115deg,#f5ead1,#e7e3c7); box-shadow:0 0 12px var(--relic-glow),inset 0 1px #fff6dc; }
@@ -119,7 +134,6 @@
 .relicGuard { display:flex; align-items:center; gap:9px; padding:10px; border:1px solid #b3b689; border-radius:10px; background:#ebe3c7; }
 .relicGuard h3 { font-size:12px; margin-bottom:3px; }
 .relicGuard p { font-size:10px; color:#687455; line-height:1.5; }
-.pantry .item .itemRarity { flex:0 0 auto; font-size:9px; padding:2px 3px; }
 .goalNote { margin: 0; color: var(--forest-muted, #59624d); font-size: 10px; line-height: 1.35; overflow-wrap: anywhere; }
 .goalItem { color: var(--forest-muted, #59624d); font-size: 9px; line-height: 1.2; white-space: nowrap; }
 .pantry .excessButton, .pantry .giftReturn { min-height: 44px; padding: 8px 10px; font-size: 12px; border-radius: 10px; gap: 6px; }

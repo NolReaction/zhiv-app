@@ -6,10 +6,9 @@ import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Popover } from "radix-ui";
-import { Check, ChevronUp, Clock3, Compass, Fish, Gift, Hammer, Package, RefreshCw, Snowflake, Soup, Store, Sparkles, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, ChevronUp, Clock3, Compass, Fish, Gift, Hammer, Package, RefreshCw, Snowflake, Soup, Store, Sparkles, X } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
 import { FISH_SPECIES_IDS } from "@/features/world/activities/fishing/fish-species";
-import { FishRarityBadge } from "@/features/economy/ui/fishing/fish-rarity";
 import { fishSelectionMatches, fishStockEntries, type FishSelection } from "@/features/economy/domain/fish-stock";
 import { WorldFishSelection } from "@/features/economy/ui/fishing/world-fish-selection";
 import { WorldFishStockList } from "@/features/economy/ui/fishing/world-fish-stock-list";
@@ -128,48 +127,99 @@ export function PantrySale({ economy, itemId, fishItemId, compact = false, onClo
 }
 
 /** The stock stays in its grid; only this separate layer changes while choosing fish. */
-export function PantryFishPopover({ economy, classId, children, constructionGoal, onOpenFishingShop }: {
-  economy: ReadyEconomy; classId: string; children: ReactNode; constructionGoal?: ConstructionGoalController; onOpenFishingShop?: () => void;
+export function PantryFishPopover({ economy, classId, initialFishId, children, constructionGoal, onOpenFishingShop }: {
+  economy: ReadyEconomy; classId: string; initialFishId?: string; children: ReactNode; constructionGoal?: ConstructionGoalController; onOpenFishingShop?: () => void;
 }) {
   const state = economy.snapshot;
-  const [quote, setQuote] = useState<{ owner: string; classId: string } | null>(null);
+  const [quote, setQuote] = useState<{ owner: string; classId: string; initialFishId?: string } | null>(null);
   const [selectedFishId, setSelectedFishId] = useState<string | null>(null);
   const trigger = useRef<HTMLButtonElement>(null), close = useRef<HTMLButtonElement>(null);
-  const origin = useRef<{ element: HTMLButtonElement | null; owner: string; classId: string } | null>(null);
-  const nestedPickerOpen = useRef(false), latest = useRef({ economy, classId });
+  const origin = useRef<{ element: HTMLButtonElement | null; owner: string; classId: string; initialFishId?: string } | null>(null);
+  const nestedPickerOpen = useRef(false), latest = useRef({ economy, classId, initialFishId });
   const headingId = useId();
-  useLayoutEffect(() => { latest.current = { economy, classId }; }, [economy, classId]);
-  const open = quote?.owner === state.ownerPublicId && quote.classId === classId;
+  useLayoutEffect(() => { latest.current = { economy, classId, initialFishId }; }, [economy, classId, initialFishId]);
+  const open = quote?.owner === state.ownerPublicId && quote.classId === classId && quote.initialFishId === initialFishId;
   const entries = fishStockEntries(state, classId);
-  const selectedFish = entries.find(entry => entry.itemId === selectedFishId)?.itemId ?? (entries.length === 1 ? entries[0].itemId : undefined);
+  const selectedFish = initialFishId ?? entries.find(entry => entry.itemId === selectedFishId)?.itemId ?? (entries.length === 1 ? entries[0].itemId : undefined);
   return <Popover.Root modal open={open} onOpenChange={value => {
     if (!value) { setQuote(null); return; }
     const current = latest.current;
-    origin.current = { element: trigger.current, owner: current.economy.snapshot.ownerPublicId, classId: current.classId };
+    origin.current = { element: trigger.current, owner: current.economy.snapshot.ownerPublicId, classId: current.classId, initialFishId: current.initialFishId };
     nestedPickerOpen.current = false;
-    setSelectedFishId(null); setQuote({ owner: current.economy.snapshot.ownerPublicId, classId: current.classId });
+    setSelectedFishId(null); setQuote({ owner: current.economy.snapshot.ownerPublicId, classId: current.classId, initialFishId: current.initialFishId });
   }}>
     <Popover.Trigger ref={trigger} asChild>{children}</Popover.Trigger>
     {open && <Popover.Portal><Popover.Content className={`${styles.pantry} ${styles.fishPopover}`} side="top" align="center" sideOffset={8} collisionPadding={12}
-      aria-labelledby={headingId} data-pantry-fish-popover={classId} onOpenAutoFocus={event => { event.preventDefault(); close.current?.focus({ preventScroll: true }); }}
+      aria-labelledby={headingId} data-pantry-fish-popover={classId} data-pantry-fish-species={initialFishId} onOpenAutoFocus={event => { event.preventDefault(); close.current?.focus({ preventScroll: true }); }}
       onEscapeKeyDown={event => { event.stopPropagation(); if (nestedPickerOpen.current) event.preventDefault(); }} onPointerDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()}
       onInteractOutside={event => { if (nestedPickerOpen.current) event.preventDefault(); }} onCloseAutoFocus={event => {
         event.preventDefault();
         const source = origin.current, current = latest.current;
         origin.current = null;
         if (source?.element && source.element === trigger.current && source.element.isConnected && !source.element.disabled
-          && source.owner === current.economy.snapshot.ownerPublicId && source.classId === current.classId) source.element.focus({ preventScroll: true });
+          && source.owner === current.economy.snapshot.ownerPublicId && source.classId === current.classId && source.initialFishId === current.initialFishId) source.element.focus({ preventScroll: true });
       }}>
       <header className={styles.fishPopoverHeading}><strong id={headingId}>{state.catalog.items.find(item => item.id === classId)?.name ?? classId}</strong>
         <Popover.Close asChild><button ref={close} type="button" aria-label="Закрыть выбор рыбы"><X size={16} aria-hidden="true" /></button></Popover.Close>
       </header>
       <div className={styles.fishPopoverBody}>
-        <WorldFishStockList state={state} classId={classId} selectedItemId={selectedFish} onSelect={setSelectedFishId} disabled={locked(economy)} />
+        {initialFishId === undefined && <WorldFishStockList state={state} classId={classId} selectedItemId={selectedFish} onSelect={setSelectedFishId} disabled={locked(economy)} />}
         <PantrySale key={`${classId}:${selectedFish ?? "all"}`} compact economy={economy} itemId={classId} fishItemId={selectedFish} constructionGoal={constructionGoal}
           onOpenFishingShop={onOpenFishingShop} onFishPickerOpenChange={value => { nestedPickerOpen.current = value; }} />
       </div>
     </Popover.Content></Popover.Portal>}
   </Popover.Root>;
+}
+
+/** A native horizontal rail leaves vertical page scrolling and inventory counts alone. */
+export function PantryFishClassRow({ economy, classId, constructionGoal, onOpenFishingShop }: {
+  economy: ReadyEconomy; classId: string; constructionGoal?: ConstructionGoalController; onOpenFishingShop?: () => void;
+}) {
+  const state = economy.snapshot, entries = fishStockEntries(state, classId), headingId = useId();
+  const rail = useRef<HTMLDivElement>(null);
+  const [edges, setEdges] = useState({ left: false, right: false });
+  const contentKey = entries.map(entry => `${entry.itemId}:${entry.quantity}`).join(":");
+  useLayoutEffect(() => {
+    const element = rail.current;
+    if (!element) return;
+    const measure = () => {
+      const left = element.scrollLeft > 1, right = element.scrollWidth - element.clientWidth - element.scrollLeft > 1;
+      setEdges(previous => previous.left === left && previous.right === right ? previous : { left, right });
+    };
+    measure();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(element);
+    return () => observer?.disconnect();
+  }, [classId, contentKey]);
+  if (!entries.length) return null;
+  const name = state.catalog.items.find(item => item.id === classId)?.name ?? classId;
+  const total = entries.reduce((sum, entry) => sum + entry.quantity, 0);
+  return <section className={styles.fishClassRow} data-pantry-fish-class={classId} data-fish-rarity={fishClassForItem(classId, state.catalog.fishing)?.rarity}
+    aria-label={`${name}: ${number(total)}`}>
+    <header className={styles.fishClassHeading}><h3 id={headingId}>{name}</h3><strong aria-label={`Всего: ${number(total)}`}>×{number(total)}</strong>
+      {entries.length > 1 && <PantryFishPopover economy={economy} classId={classId} constructionGoal={constructionGoal} onOpenFishingShop={onOpenFishingShop}>
+        <button type="button" className={styles.fishClassAll}>Все виды</button>
+      </PantryFishPopover>}
+    </header>
+    <div className={styles.fishRailFrame}>
+      <div ref={rail} className={styles.fishRail} role="group" aria-labelledby={headingId} data-pantry-fish-rail={classId} onScroll={event => {
+        const element = event.currentTarget, left = element.scrollLeft > 1, right = element.scrollWidth - element.clientWidth - element.scrollLeft > 1;
+        setEdges(previous => previous.left === left && previous.right === right ? previous : { left, right });
+      }}>
+        {entries.map(entry => {
+          const fishName = entry.itemId === classId ? "Без указания вида" : state.catalog.items.find(item => item.id === entry.itemId)?.name ?? entry.itemId;
+          return <PantryFishPopover key={entry.itemId} economy={economy} classId={classId} initialFishId={entry.itemId} constructionGoal={constructionGoal} onOpenFishingShop={onOpenFishingShop}>
+            <button type="button" className={styles.fishCard} data-guide-pantry-item={entry.itemId} data-pantry-fish-card={entry.itemId}
+              aria-label={`${fishName}: ${number(entry.quantity)}`} title={fishName}>
+              <ItemIcon itemId={entry.itemId} size={28} /><span>{fishName}</span><strong>×{number(entry.quantity)}</strong>
+            </button>
+          </PantryFishPopover>;
+        })}
+      </div>
+      {edges.left && <span className={`${styles.railHint} ${styles.railHintLeft}`} data-rail-edge="left" aria-hidden="true"><ChevronLeft size={14} /></span>}
+      {edges.right && <span className={styles.railHint} data-rail-edge="right" aria-hidden="true"><ChevronRight size={14} /></span>}
+    </div>
+  </section>;
 }
 
 export function RelicPantrySection({ state, onExplore, onOpenMarket }: { state: EconomyView; onExplore: () => void; onOpenMarket?: () => void }) {
@@ -210,7 +260,9 @@ export function WorldPantryMenu({ economy, onUpgrade, onExplore, onOpenMarket, o
   const ownedItems = state.catalog.items.filter(item => item.category !== "special" && (state.inventory[item.id] ?? 0) > 0);
   const supplies = ownedItems.filter(item => !fishIds.has(item.id));
   const fishItems = ownedItems.filter(item => fishIds.has(item.id));
-  const visibleItems = tab === "fridge" ? fishItems : supplies;
+  const preparedMeals = fishItems.filter(item => !fishClassForItem(item.id, state.catalog.fishing));
+  const fishClasses = state.catalog.fishing?.classes.filter(fish => (state.inventory[fish.itemId] ?? 0) > 0) ?? [];
+  const visibleItems = tab === "fridge" ? preparedMeals : supplies;
   const relics = state.catalog.items.filter(item => item.category === "special");
   const relicCount = relics.reduce((total, item) => total + (state.inventory[item.id] ?? 0), 0);
   const sections = [
@@ -248,22 +300,25 @@ export function WorldPantryMenu({ economy, onUpgrade, onExplore, onOpenMarket, o
       {tab === "relics" ? <RelicPantrySection state={state} onExplore={onExplore} onOpenMarket={marketAvailable ? onOpenMarket : undefined} /> : <>
     {tab === "fridge" && <div className={styles.fridgeHeading}><span><Snowflake size={16} aria-hidden="true" />Рыба и готовая еда</span><small>Места общие с кладовой</small></div>}
     {selectedItemId && !fishClassForItem(selectedItemId, state.catalog.fishing) && <PantrySale key={selectedItemId} economy={readyEconomy} itemId={selectedItemId} constructionGoal={constructionGoal} onClose={() => setSelectedItemId(null)} onOpenFishingShop={onOpenFishingShop} onOpenFood={onOpenFood} />}
-    {visibleItems.length > 0 ? <>
+    {visibleItems.length > 0 || tab === "fridge" && fishClasses.length > 0 ? <>
       {!selectedItemId && <p className={styles.muted}>Чтобы продать запасы за монеты, нажми на предмет и проверь условия.</p>}
-      <div className={`${styles.items} ${tab === "fridge" ? styles.fishItems : ""}`} aria-label={tab === "fridge" ? "Рыба и еда в холодильнике" : "Предметы в кладовой"}>
+      {tab === "fridge" && <div className={styles.fridgeFish} aria-label="Рыба и еда в холодильнике">
+        {fishClasses.map(fish => <PantryFishClassRow key={fish.itemId} economy={readyEconomy} classId={fish.itemId} constructionGoal={constructionGoal} onOpenFishingShop={onOpenFishingShop} />)}
+      </div>}
+      {visibleItems.length > 0 && <div className={tab === "fridge" ? styles.preparedMeals : undefined}>
+      {tab === "fridge" && <h3>Готовая еда</h3>}
+      <div className={styles.items} aria-label={tab === "fridge" ? "Готовая еда в холодильнике" : "Предметы в кладовой"}>
         {visibleItems.map(item => {
-          const fish = fishClassForItem(item.id, state.catalog.fishing);
-          const card = <button type="button" className={styles.item} data-guide-pantry-item={item.id} aria-label={`${item.name}: ${number(state.inventory[item.id])}`} aria-pressed={fish ? undefined : selectedItemId === item.id}
-            onClick={() => { if (!fish) setSelectedItemId(current => current === item.id ? null : item.id); }}>
+          return <div key={item.id} className={styles.itemGroup}><button type="button" className={styles.item} data-guide-pantry-item={item.id} aria-label={`${item.name}: ${number(state.inventory[item.id])}`} aria-pressed={selectedItemId === item.id}
+            onClick={() => setSelectedItemId(current => current === item.id ? null : item.id)}>
           <ProductIcon state={state} itemId={item.id} size={20} />
           <span>{item.name}</span>
           <span className={styles.itemStock}><strong>×{number(state.inventory[item.id])}</strong>
           {(constructionGoal?.details?.keepItems[item.id] ?? 0) > 0 && <small className={styles.goalItem}>Для цели: {number(Math.min(state.inventory[item.id], constructionGoal!.details!.keepItems[item.id]))}</small>}</span>
-          {fish && <FishRarityBadge className={styles.itemRarity} rarity={fish.rarity} />}
-        </button>;
-          return <div key={item.id} className={styles.itemGroup}>{fish ? <PantryFishPopover economy={readyEconomy} classId={fish.itemId} constructionGoal={constructionGoal} onOpenFishingShop={onOpenFishingShop}>{card}</PantryFishPopover> : card}</div>;
+        </button></div>;
         })}
       </div>
+      </div>}
     </> : <div className={styles.empty}>{tab === "fridge" ? <Fish size={25} aria-hidden="true" /> : <Package size={23} aria-hidden="true" />}<p>{tab === "fridge" ? "Здесь будут рыба и готовые блюда." : reserved > 0 && !ownedItems.length ? "Все запасы сейчас на рынке." : "Здесь будут урожай, материалы и находки."}</p>{(tab === "fridge" || reserved === 0) && <button type="button" className={styles.textButton} onClick={onExplore}><Compass size={14} aria-hidden="true" />{tab === "fridge" ? "Выбрать вылазку" : "Отправиться за находками"}</button>}</div>}
 
       </>}

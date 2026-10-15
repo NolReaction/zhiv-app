@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-mini-pantry-guides-help-vite", resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
+const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-fish-rails-guides-help-vite", resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { worldHelpTopics, worldHelpGroups, searchWorldHelp, searchWorldHelpWithStatus } = await vite.ssrLoadModule("/features/world/ui/help/world-help-content.ts");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
@@ -207,6 +207,15 @@ test("food guidance names the choice tile and makes spending an explicit second 
   assert.match(answer("journeys"), /У начатой работы показаны оставшееся время и находки/);
 });
 
+test("premium shop guidance uses wallet currency buttons while keeping checkout unavailable", () => {
+  assert.match(answer("currency-shop"), /«\+» рядом с монетами.*«Золото».*рядом с жемчугом - «Жемчуг»/);
+  assert.match(answer("currency-shop"), /Витрина находится у кошелька, а не в меню «Ещё»/);
+  assert.match(answer("currency-shop"), /вверху магазина нажмите «Ввести промокод»/);
+  assert.match(answer("currency-shop"), /Покупка за реальные деньги и обмен жемчуга на золото пока недоступны/);
+  assert.match(answer("currency-shop-exchange"), /«\+» рядом с монетами.*вкладку «Золото». Обмен пока недоступен/);
+  assert.doesNotMatch(answer("currency-shop"), /«Ещё» → «Магазин»/);
+});
+
 test("food, building speed and orders are distinct and use current catalog numbers", () => {
   const food = economyCatalog.food;
   for (const meal of food.meals) {
@@ -289,10 +298,13 @@ test("fish selection guidance preserves current species, unknown stock and expli
 });
 
 test("fish commerce answers require an explicit sale and keep market reservation distinct", () => {
-  assert.match(answer("resources"), /В «Холодильнике» нажмите класс рыбы: компактное окно покажет оставшиеся виды и продажу поверх сетки/);
-  assert.match(answer("resources"), /Нажмите вид, выберите количество и подтвердите продажу/);
+  assert.match(answer("resources"), /В «Холодильнике» листайте горизонтальные ряды рыб по классам/);
+  assert.match(answer("resources"), /Нажмите вид: компактное окно уже выберет его; проверьте количество и подтвердите продажу/);
+  assert.match(answer("resources"), /Готовая еда стоит отдельно/);
   assert.match(answer("resources"), /Просмотр запаса ничего не тратит/);
-  assert.match(answer("plesk"), /В «Улове» классы сначала свёрнуты. Нажмите нужный класс, выберите оставшиеся виды.*«Продать»/);
+  assert.match(answer("plesk"), /В «Улове» классы сначала свёрнуты. Нажмите класс и вид/);
+  assert.match(answer("plesk"), /Повторный тап прибавляет 1 до доступного лимита; другой вид начинает с 1/);
+  assert.match(answer("plesk"), /Поле и «Все» меняют количество. Только «Продать» спишет рыбу/);
   assert.match(answer("resources"), /Escape или нажатие вне окна закроют его без продажи и вернут к карточке/);
   assert.match(answer("plesk"), /Цена едина внутри класса/);
   assert.match(answer("market"), /Для рыбы проверьте виды и нажмите «Выставить лот»/);

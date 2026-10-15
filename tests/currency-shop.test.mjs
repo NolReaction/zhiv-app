@@ -112,11 +112,11 @@ test("unknown, unfinished and future uncatalogued buildings cannot boost the quo
   for (const invalid of [NaN, Infinity, -1, 2.5]) assert.equal(firstQuote({ home: invalid, garden: invalid }).coins, 400);
 });
 
-function harness(snapshot = state({ home: 3, garden: 2 })) {
+function harness(snapshot = state({ home: 3, garden: 2 }), initialPage) {
   hooks.reset();
   const focused = [];
   const render = () => {
-    hooks.render(); const tree = CurrencyShopPanel({ state: snapshot }), nodes = [];
+    hooks.render(); const tree = CurrencyShopPanel({ state: snapshot, initialPage }), nodes = [];
     function visit(element) { if (!isValidElement(element)) return; nodes.push(element); Children.forEach(element.props.children, visit); }
     visit(tree);
     nodes.filter(node => node.props.role === "tab").forEach((node, index) => node.props.ref?.({ focus() { focused.push(index); } }));
@@ -125,6 +125,24 @@ function harness(snapshot = state({ home: 3, garden: 2 })) {
   return { render, focused };
 }
 const tabs = view => view.nodes.filter(node => node.props.role === "tab");
+
+test("wallet entry selects the requested currency page while preserving the preview and keyboard tabs", () => {
+  for (const initialPage of ["gold", "pearls"]) {
+    const h = harness(state({ home: 3 }), initialPage);
+    let view = h.render();
+    const selected = tabs(view).find(node => node.props["aria-selected"]);
+    assert.equal(selected.props.id.endsWith(`-${initialPage}`), true);
+    assert.equal(selected.props.tabIndex, 0);
+    assert.equal(view.nodes.filter(node => node.props["data-shop-offer"]).length, initialPage === "gold" ? 3 : 4);
+    for (const action of view.nodes.filter(node => node.type === "button" && node.props.role !== "tab")) {
+      assert.equal(action.props.disabled, true);
+      assert.equal(action.props.onClick, undefined);
+    }
+    tabs(view).find(node => !node.props["aria-selected"]).props.onClick(); view = h.render();
+    assert.equal(tabs(view).filter(node => node.props["aria-selected"]).length, 1);
+    assert.equal(tabs(view).find(node => node.props["aria-selected"]).props.id.endsWith(`-${initialPage}`), false);
+  }
+});
 
 test("preview tabs show compact distinct currencies and cannot spend or grant either balance", () => {
   const snapshot = state({ home: 3, garden: 2 });

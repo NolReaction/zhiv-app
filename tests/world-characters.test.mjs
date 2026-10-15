@@ -184,6 +184,54 @@ function guideNavigation(context = {}) {
   return nav;
 }
 
+test("wallet shortcuts replace the More shop entry and open the intended preview even while offline", () => {
+  const nav = guideNavigation(); nav.props.isOnline = false;
+  try {
+    const wallet = nav.component("WorldWallet");
+    assert.equal(typeof wallet.props.onOpenShop, "function");
+    for (const [kind, initialPage] of [["coins", "gold"], ["pearls", "pearls"]]) {
+      let focused = 0;
+      const trigger = { isConnected: true, focus(options) { assert.equal(options.preventScroll, true); focused++; } };
+      wallet.props.onOpenShop(kind, trigger);
+      const panel = nav.component("CurrencyShopPanel");
+      assert.equal(panel.props.initialPage, initialPage);
+      assert.equal(panel.props.state, nav.props.economy.snapshot);
+      const content = nav.find(node => node.props["data-shop"] === true);
+      nav.find(node => node.props["aria-label"] === "Закрыть панель").props.onClick();
+      assert.equal(nav.component("CurrencyShopPanel"), undefined);
+      let prevented = false;
+      content.props.onCloseAutoFocus({ preventDefault() { prevented = true; } });
+      assert.equal(prevented, true); assert.equal(focused, 1, "close returns to the actual plus, including pointer users");
+    }
+    nav.find(node => node.props["data-world-quick"] === "more").props.onClick();
+    const menu = nav.find(node => node.props.id === "world-quick-menu");
+    const labels = elements(menu).filter(node => node.type === "button").map(node => renderToStaticMarkup(node)).join(" ");
+    assert.doesNotMatch(labels, /Промокоды и витрина|>Магазин</);
+    assert.match(labels, />Рынок</, "the player market remains in More");
+    elements(menu).find(node => node.type === "button" && renderToStaticMarkup(node).includes(">Рынок<")).props.onClick();
+    assert.equal(nav.component("EconomyPanel").props.initialTab, "market");
+    assert.equal(nav.refreshes, 0, "opening preview never refreshes or issues an economic command");
+  } finally { nav.restore(); }
+});
+
+test("wallet shop shortcuts reject a stale account snapshot and never restore focus to another owner", () => {
+  const nav = guideNavigation();
+  try {
+    const openShop = nav.component("WorldWallet").props.onOpenShop;
+    let oldFocus = 0;
+    openShop("pearls", { isConnected: true, focus() { oldFocus++; } });
+    nav.props.ownerPublicId = "different-owner";
+    assert.equal(nav.component("WorldWallet").props.onOpenShop, undefined, "old snapshot is read-only during an account change");
+    const content = nav.find(node => node.props["data-shop"] === true);
+    content.props.onCloseAutoFocus({ preventDefault() {} });
+    assert.equal(oldFocus, 0);
+    nav.find(node => node.props["aria-label"] === "Закрыть панель").props.onClick();
+    nav.props.economy.snapshot = { ...nav.props.economy.snapshot, ownerPublicId: "different-owner" };
+    openShop("coins", { isConnected: true, focus() { oldFocus++; } });
+    assert.equal(nav.component("CurrencyShopPanel"), undefined, "old callbacks cannot open the new owner's shop");
+  } finally { nav.restore(); }
+});
+
 test("the world course exposes real menu targets without destination-opening callbacks", () => {
   const nav = guideNavigation({ onboarding: { progress: { version: 2, status: "started", stepId: "orders" } } });
   try {

@@ -5,7 +5,7 @@ import { builderDirection, builderLocalPlaces, builderRoute, builderWorkStops,
 import { forestConstructionJob, type EconomySceneConstruction, type SceneConstructionJob } from "@/features/world/state/economy/economy-construction-state";
 import { canTraverse, isWalkable } from "@/features/world/navigation/navigation";
 import { desiredSteeringSpeed, type SteeringPath } from "@/features/world/navigation/steering";
-import { canTraverseResidents, residentTrafficDetour, residentRequestingPassage, residentPassageClear, residentYieldPoint,
+import { canTraverseResidents, residentClearance, residentWalkingStep, residentRequestingPassage, residentPassageClear, residentYieldPoint,
   RESIDENT_TRAFFIC_LIMITS, type ResidentOccupant } from "@/features/world/navigation/resident-traffic";
 import type { FixedWorldScene, WorldPoint } from "@/features/world/tiled/types";
 
@@ -85,6 +85,9 @@ function yieldRequestedPassage(mind: BuilderMind, places: BuilderPlaces, occupan
   if (mind.sleepPhase !== "awake" || mind.socialVisit || mind.action === "finish" || passageYields.has(mind)) return false;
   const requester = residentRequestingPassage(mind.position, BUILDER.size, occupants, BUILDER.id, mind.job ? 2 : mind.route ? 1 : 0);
   if (!requester || mind.elapsed < (idleYieldAfter.get(mind) ?? 0)) return false;
+  // Passing walkers keep their destinations. Only an actually occupied held
+  // goal may interrupt a route; an idle/work pose can still step aside.
+  if (mind.route && mind.target && length(mind.target.position, requester.position) > residentClearance(BUILDER.size, requester.size)) return false;
   idleYieldAfter.set(mind, mind.elapsed + RESIDENT_TRAFFIC_LIMITS.retry);
   if (mind.job) {
     const candidates = builderWorkStops(mind.scene, mind.job)
@@ -164,15 +167,16 @@ function walk(mind: BuilderMind, places: BuilderPlaces, dt: number, occupants?: 
       mind.blocked = true; mind.route = null; mind.speed = 0; action(mind, "idle"); return;
     }
   }
-  if (!canTraverseResidents(mind.position, next.position, BUILDER.size, occupants, BUILDER.id)) {
+  const traffic = residentWalkingStep({ owner: mind, navigation: places.navigation, from: mind.position,
+    target: path.points.at(-1)!, size: BUILDER.size, occupants, selfId: BUILDER.id, time: mind.elapsed }, next.position);
+  if (!traffic.clear) {
     let stall = trafficStalls.get(mind);
     if (!stall) {
       stall = { startedAt: mind.elapsed, position: { ...mind.position } };
       trafficStalls.set(mind, stall);
     }
     if (yieldIdleDestination(mind, places, occupants)) return;
-    const detour = residentTrafficDetour({ owner: mind, navigation: places.navigation, from: mind.position,
-      target: path.points.at(-1)!, size: BUILDER.size, occupants, selfId: BUILDER.id, time: mind.elapsed });
+    const detour = traffic.path;
     // A stopped neighbour can seal a narrow passage even when our final goal is
     // empty. Try the usual detour first; a free builder eventually walks aside
     // instead of retrying this cosmetic journey forever. Tiny braking steps at
