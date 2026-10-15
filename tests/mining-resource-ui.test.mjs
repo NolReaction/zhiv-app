@@ -54,7 +54,7 @@ test("resource groups keep each route once, sort by duration and do not mutate c
   const routes = economyCatalog.explorations.filter(route => route.activity === "mining"), before = structuredClone(routes);
   const groups = miningResourceGroups(routes, "all", route => route.seconds);
   assert.deepEqual(groups.map(group => group.id), ["stone", "ore", "clay", "sand", "mixed"]);
-  assert.deepEqual(groups.find(group => group.id === "stone").routes.map(route => route.id), ["quarry_stone", "quarry_stone_overnight"]);
+  assert.deepEqual(groups.find(group => group.id === "stone").routes.map(route => route.id), ["quarry_stone", "quarry_stone_hour", "quarry_stone_overnight"]);
   assert.ok(groups.find(group => group.id === "mixed").routes.every(route => Object.keys(route.rewards).length > 1));
   assert.deepEqual(groups.flatMap(group => group.routes.map(route => route.id)).sort(), routes.map(route => route.id).sort());
   assert.deepEqual(routes, before);
@@ -81,9 +81,9 @@ test("actual filter handlers reveal compact resource cards without starting or s
   view.filter("short").props.onClick(); view = sector(snapshot, {}, calls);
   assert.deepEqual(view.ids.sort(), ["quarry_stone", "quarry_ore", "quarry_clay", "quarry_sand"].sort());
   view.filter("medium").props.onClick(); view = sector(snapshot, {}, calls);
-  assert.deepEqual(view.ids, ["cave"]);
+  assert.deepEqual(view.ids.sort(), ["cave", "quarry_stone_hour", "quarry_clay_hour", "quarry_sand_hour", "quarry_ore_hour"].sort());
   view.filter("long").props.onClick(); view = sector(snapshot, {}, calls);
-  assert.deepEqual(view.ids.sort(), ["quarry_stone_overnight", "deep_cave", "abandoned_quarry", "quarry_supply"].sort());
+  assert.deepEqual(view.ids.sort(), ["quarry_stone_overnight", "quarry_clay_overnight", "quarry_sand_overnight", "quarry_ore_overnight", "deep_cave", "abandoned_quarry", "quarry_supply"].sort());
   view.filter("all").props.onClick(); view = sector(snapshot, {}, calls);
   assert.equal(new Set(view.ids).size, view.ids.length);
   assert.deepEqual(calls, []); assert.deepEqual(snapshot, before);
@@ -120,38 +120,55 @@ test("mine yields name every resource and retain real multi-item amounts without
   assert.deepEqual(view.selections, view.ids); assert.deepEqual(calls, []);
 });
 
-test("mine rows lead with their actual result and separate mixed mission names from yield", () => {
-  hooks.reset(); const view = sector(state());
-  for (const routeId of ["quarry_stone", "quarry_ore", "quarry_stone_overnight"]) {
-    const card = view.nodes.find(node => node.type === "button" && node.props["data-route"] === routeId);
-    const children = Children.toArray(card.props.children), main = children[0];
-    assert.equal(card.props["data-mixed"], undefined);
-    assert.equal(elements(main).filter(node => node.props["data-mining-yield"]).length, 1);
-    assert.doesNotMatch(renderToStaticMarkup(main), /Добыть камень|Добыть руду|Камень к утру/);
-    assert.ok(children[1].props.id.endsWith("-duration"));
-    assert.equal(String(children[2].props["aria-hidden"]), "true");
-    assert.ok(children.at(-1).props.children.some(node => node?.props?.children === (routeId === "quarry_stone_overnight" ? "К утру" : "Быстрая добыча")));
+test("focused resources share one heading and compact time/quantity variants without repeating artwork", () => {
+  hooks.reset(); const snapshot = state(), view = sector(snapshot), groups = view.nodes.filter(node => node.props["data-mining-resource"]);
+  const focused = groups.filter(node => node.props["data-mining-resource"] !== "mixed");
+  assert.equal(focused.length, 4);
+  for (const group of focused) {
+    const itemId = group.props["data-mining-resource"], nodes = elements(group);
+    assert.equal(group.type, "section");
+    const heading = nodes.find(node => node.type === "h4");
+    assert.ok(renderToStaticMarkup(heading).includes(snapshot.catalog.items.find(item => item.id === itemId).name));
+    const choices = nodes.filter(node => node.type === "button" && node.props["data-route"]);
+    assert.ok(choices.length >= 2 && choices.length <= 4);
+    for (const choice of choices) {
+      const children = Children.toArray(choice.props.children), duration = children[0], findings = children[1];
+      assert.ok(duration.props.id.endsWith("-duration"));
+      assert.equal(elements(findings).filter(node => node.props["data-mining-yield"]).length, 1);
+      assert.equal(elements(findings).filter(node => node.type?.name === "ProductIcon").length, 0, "the group owns the resource artwork");
+      assert.equal(choice.props["data-mixed"], undefined);
+      assert.doesNotMatch(renderToStaticMarkup(choice), /Быстрая добыча|Короткая смена|Длинная смена|К утру|lucide-arrow-right/);
+      assert.ok(choice.props["aria-describedby"].includes(duration.props.id));
+      assert.ok(choice.props["aria-describedby"].includes(findings.props.id));
+    }
   }
-  const mixed = view.nodes.find(node => node.type === "button" && node.props["data-route"] === "cave");
-  const children = Children.toArray(mixed.props.children);
-  assert.equal(mixed.props["data-mixed"], true);
-  assert.match(renderToStaticMarkup(children[0]), /Вход в пещеру/);
-  assert.equal(elements(children[0]).filter(node => node.props["data-mining-yield"]).length, 0);
-  assert.equal(children[3].props["data-mixed"], true);
-  assert.equal(elements(children[3]).filter(node => node.props["data-mining-yield"]).length, 2);
 });
 
-test("compact mine metadata retains accessible real blockers and has no empty lock rows", () => {
+test("mixed missions start collapsed with an accessible native summary and retain every saved reward", () => {
+  hooks.reset(); const view = sector(state()), mixed = view.nodes.find(node => node.props["data-mining-resource"] === "mixed");
+  assert.equal(mixed.type, "details"); assert.equal(mixed.props.open, undefined);
+  const children = Children.toArray(mixed.props.children);
+  assert.equal(children[0].type, "summary"); assert.match(renderToStaticMarkup(children[0]), /Смешанная добыча/);
+  for (const card of elements(mixed).filter(node => node.type === "button" && node.props["data-route"])) {
+    const children = Children.toArray(card.props.children);
+    assert.equal(card.props["data-mixed"], true);
+    assert.equal(children[0].type, "strong", "mixed missions retain their own names");
+    assert.ok(children[1].props.id.endsWith("-duration"));
+    assert.equal(children[3].props["data-mixed"], true);
+    const rewards = state().catalog.explorations.find(route => route.id === card.props["data-route"]).rewards;
+    assert.equal(elements(children[3]).filter(node => node.props["data-mining-yield"]).length, Object.keys(rewards).length);
+  }
+});
+
+test("compact mine metadata retains accessible real blockers without empty rows", () => {
   hooks.reset(); const view = sector(state());
   for (const routeId of ["cave", "deep_cave"]) {
     const card = view.nodes.find(node => node.type === "button" && node.props["data-route"] === routeId);
-    const children = Children.toArray(card.props.children), duration = children[1], metadata = children.at(-1);
+    const duration = elements(card).find(node => node.props.id?.endsWith("-duration"));
     assert.match(renderToStaticMarkup(duration), routeId === "cave" ? /1 ч/ : /4 ч/);
-    const note = elements(metadata).find(node => node.props.id?.endsWith("-reason"));
-    if (routeId === "cave") {
-      assert.equal(note, undefined);
-      assert.equal(elements(metadata).filter(node => node.type === "small").length, 1);
-    } else {
+    const note = elements(card).find(node => node.props.id?.endsWith("-reason"));
+    if (routeId === "cave") assert.equal(note, undefined);
+    else {
       assert.match(renderToStaticMarkup(note), /Нужны припасы/);
       assert.equal(note.props.title, "Нужны припасы");
       assert.ok(card.props["aria-describedby"].includes(note.props.id));
@@ -161,7 +178,7 @@ test("compact mine metadata retains accessible real blockers and has no empty lo
 
 test("filtered-empty state explains recovery and the all chip restores routes", () => {
   hooks.reset(); const snapshot = state({ buildings: { home: 2, quarry: 1, warehouse: 1 } });
-  let view = sector(snapshot); view.filter("medium").props.onClick(); view = sector(snapshot);
+  let view = sector(snapshot); view.filter("long").props.onClick(); view = sector(snapshot);
   assert.deepEqual(view.ids, []); assert.match(view.html, /Нет добычи с таким временем/);
   view.filter("all").props.onClick(); assert.ok(sector(snapshot).ids.includes("quarry_stone"));
 });
@@ -230,13 +247,27 @@ test("an active help target stays closed after claiming while a new help target 
 test("help preview focuses its heading and back restores focus to the same route card", () => {
   hooks.reset(); const snapshot = state(), calls = [], economy = controller(snapshot, calls), focused = [];
   const heading = { focus: () => focused.push("heading") };
-  const origin = { dataset: { route: "quarry_stone_overnight" }, focus: () => focused.push("card") };
+  const origin = { dataset: { route: "quarry_stone_overnight" }, closest: () => null, focus: () => focused.push("card") };
   const content = { querySelector: selector => selector === "[data-route-heading]" ? heading : null, querySelectorAll: () => [origin] };
   function menu() {
     hooks.render(); const tree = WorldExpeditionsMenu({ economy, embeddedCaves: true, initialRouteId: "quarry_stone_overnight", onOpenPantry() {} });
     renderToStaticMarkup(tree); tree.props.ref.current = content; hooks.flush(); return tree;
   }
   const tree = menu(); assert.deepEqual(focused, ["heading"]);
+  elements(tree).find(node => node.type === WorldExpeditionSector).props.onSelectRoute(null);
+  menu(); assert.deepEqual(focused, ["heading", "card"]); assert.deepEqual(calls, []);
+});
+
+test("returning from a mixed preview opens its group before restoring keyboard focus", () => {
+  hooks.reset(); const snapshot = state(), calls = [], economy = controller(snapshot, calls), focused = [], details = { open: false };
+  const heading = { focus: () => focused.push("heading") };
+  const origin = { dataset: { route: "cave" }, closest(selector) { assert.equal(selector, "details[data-mining-resource]"); return details; }, focus() { assert.equal(details.open, true); focused.push("card"); } };
+  const content = { querySelector: selector => selector === "[data-route-heading]" ? heading : null, querySelectorAll: () => [origin] };
+  function menu() {
+    hooks.render(); const tree = WorldExpeditionsMenu({ economy, embeddedCaves: true, initialRouteId: "cave", onOpenPantry() {} });
+    renderToStaticMarkup(tree); tree.props.ref.current = content; hooks.flush(); return tree;
+  }
+  const tree = menu(); assert.deepEqual(focused, ["heading"]); assert.equal(details.open, false);
   elements(tree).find(node => node.type === WorldExpeditionSector).props.onSelectRoute(null);
   menu(); assert.deepEqual(focused, ["heading", "card"]); assert.deepEqual(calls, []);
 });
@@ -261,7 +292,7 @@ test("running and ready independent and legacy mine jobs remain above every dura
 test("miner times ignore hero food while saved hero route quotes drive the filter", () => {
   hooks.reset(); const snapshot = state({ food: { heroMeal: "hearty_fish", builderMeal: null } });
   let view = sector(snapshot); view.filter("medium").props.onClick(); view = sector(snapshot);
-  assert.deepEqual(view.ids, ["cave"]); assert.match(view.html, /1 ч/);
+  assert.deepEqual(view.ids.sort(), ["cave", "quarry_stone_hour", "quarry_clay_hour", "quarry_sand_hour", "quarry_ore_hour"].sort()); assert.match(view.html, /1 ч/);
   // Catalog ownership, not the caves sector alone, governs a legacy route.
   snapshot.catalog.explorations.find(route => route.id === "cave").activity = "hero";
   snapshot.catalog.explorations.find(route => route.id === "cave").seconds = 4000;

@@ -296,7 +296,7 @@ export function WorldPantryMenu({ economy, onExplore, onOpenMarket, onOpenFishin
   };
   const state = economy.snapshot ? { ...economy.snapshot, inventory: fishClassInventory(economy.snapshot.inventory, economy.snapshot.catalog.fishing) } : null;
   const cooldown = Math.max(0, Math.ceil((economy.retryAt - economy.now) / 1000));
-  const recovery = (economy.error || economy.uncertain) && <div className={styles.error} role="alert">
+  const recovery = !economy.syncError && (economy.error || economy.uncertain) && <div className={styles.error} role="alert">
     <p>{economy.uncertain ? "Проверяем последнее действие. Продажа станет доступна после подтверждения." : economy.error}</p>
     <button type="button" className={styles.textButton} disabled={economy.busy || cooldown > 0} onClick={() => void economy.retry()}><RefreshCw size={12} aria-hidden="true" />{cooldown ? `Повторить через ${cooldown} с` : economy.uncertain ? "Проверить результат" : "Попробовать ещё раз"}</button>
   </div>;

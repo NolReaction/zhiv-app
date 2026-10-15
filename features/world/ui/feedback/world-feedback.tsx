@@ -19,6 +19,6 @@ function TimedFeedback({ world }: { world: WorldController }) {
   </div>;
 }
 export function WorldFeedback({ world }: { world: WorldController }) {
-  if (world.busy || !world.error && !world.notice) return null;
+  if (world.busy || world.syncError || !world.error && !world.notice) return null;
   return <TimedFeedback key={`${world.feedbackAt}:${world.error ?? world.notice}`} world={world} />;
 }

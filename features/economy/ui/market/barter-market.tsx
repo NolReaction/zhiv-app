@@ -107,7 +107,7 @@ export function BarterMarket({ economy, onMarket, onHome }: { economy: ReadyEcon
     {!unlocked && <div className={styles.empty}><LockKeyhole size={28} aria-hidden /><h3>Откройте соседские прилавки</h3><p>Для обмена нужны дом {BARTER_HOME_LEVEL} уровня и восстановленный мост.</p>{(state.buildings.home ?? 1) < BARTER_HOME_LEVEL && onHome && <button type="button" onClick={onHome}>Обустройство дома</button>}</div>}
     <>
       <nav className={styles.tabs} aria-label="Разделы обмена"><button type="button" aria-pressed={section === "browse"} onClick={() => setSection("browse")}>Витрина</button><button type="button" aria-pressed={section === "create"} onClick={() => setSection("create")}>Предложить</button><button type="button" aria-pressed={section === "mine"} onClick={() => setSection("mine")}>Мои{validShelf?.mine.length ? ` · ${validShelf.mine.length}` : ""}</button></nav>
-      {barterError && <div className={styles.error} role="alert"><p>{barterError}</p><button type="button" disabled={locked(economy)} onClick={() => void refreshBarter()}>Обновить обмен</button></div>}
+      {barterError && !economy.barterSyncError && <div className={styles.error} role="alert"><p>{barterError}</p><button type="button" disabled={locked(economy)} onClick={() => void refreshBarter()}>Обновить обмен</button></div>}
       {economy.notice && !economy.error && !economy.uncertain && <p role="status" className={styles.success}><Check size={16} aria-hidden />{economy.notice}</p>}
       {!validShelf && !barterError && unlocked && <p role="status" className={styles.note}>Открываем соседские прилавки…</p>}
       {validShelf && unlocked && section === "browse" && <>

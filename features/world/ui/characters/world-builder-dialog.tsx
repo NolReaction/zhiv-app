@@ -27,7 +27,7 @@ export function BuilderConversation({ economy, onOpenConstruction, onNavigateSta
     <p role={economy.error ? "alert" : "status"}>{economy.error ?? "Смотрим, как идут дела…"}</p>
     {economy.error && <button type="button" className={styles.action} disabled={retryBlocked} onClick={retry}>Попробовать ещё раз</button>}
   </section>;
-  const feedback = (economy.error || economy.uncertain) && <div className={styles.feedback} role="alert">
+  const feedback = !economy.syncError && (economy.error || economy.uncertain) && <div className={styles.feedback} role="alert">
     <p>{economy.uncertain ? "Проверяем последнее действие." : economy.error}</p>
     <button type="button" disabled={retryBlocked} onClick={retry}>{economy.uncertain ? "Проверить результат" : "Попробовать ещё раз"}</button>
   </div>;

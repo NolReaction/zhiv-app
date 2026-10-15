@@ -193,12 +193,12 @@ test("the restored bridge gates the market while the lighthouse and its material
 test("pearl rewards provide regular free progress while permanent slots retain distinct prices", () => {
   const catalog = readEconomyCatalog();
   const rewards = JSON.parse(readFileSync(new URL("../apps/api/src/main/resources/world/progression-rewards-catalog.json", import.meta.url), "utf8"));
-  assert.equal(rewards.version, 3);
+  assert.equal(rewards.version, 4);
   for (const cycle of [rewards.daily, ...Object.values(rewards.dailyByHomeLevel)]) {
-    assert.deepEqual(cycle.map(reward => reward.pearls / 2), [2, 2, 3, 3, 4, 4, 10]);
-    assert.equal(cycle.reduce((sum, reward) => sum + reward.pearls / 2, 0), 28);
+    assert.deepEqual(cycle.map(reward => reward.pearls / 2), [40, 50, 60, 70, 80, 90, 110]);
+    assert.equal(cycle.reduce((sum, reward) => sum + reward.pearls / 2, 0), 500);
   }
-  assert.equal(Object.values(rewards.achievementPearls).flat().reduce((sum, amount) => sum + amount / 2, 0), 119);
+  assert.equal(Object.values(rewards.achievementPearls).flat().reduce((sum, amount) => sum + amount / 2, 0), 1500);
   assert.deepEqual(catalog.productionSlots.upgrades.map(upgrade => upgrade.pricePearls / 2), [100, 250]);
   assert.equal(catalog.market.baseSlots, 5);
   assert.deepEqual(catalog.market.slotPricesPearls.map(price => price / 2), [50, 80, 120, 180, 250]);

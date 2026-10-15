@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { Clock3, LockKeyhole } from "lucide-react";
-import type { ReadyEconomy } from "@/features/economy/sync/controller-state";
+import { locked, productionLocked, type ReadyEconomy } from "@/features/economy/sync/controller-state";
 import type { WorldHelpContext } from "@/features/world/ui/help/world-help-types";
 import { worldCostShortfalls, worldProductionReason, type WorldRecipe } from "@/features/economy/ui/shared/world-stations";
 import { ProductIcon, itemName, number } from "@/features/economy/ui/shared/world-economy-parts";
@@ -17,7 +17,7 @@ export function WorldProductionCard({ economy, recipe, focused = false, onHelpCo
   focused?: boolean;
   onHelpContextChange?: (context: WorldHelpContext) => void;
 }) {
-  const state = economy.snapshot;
+  const state = economy.productionSnapshot ?? economy.snapshot;
   const owner = state.ownerPublicId, revision = state.revision;
   const button = useRef<HTMLButtonElement>(null);
   const fishFocusOrigin = useRef<{ element: HTMLButtonElement | null; owner: string; recipeId: string } | null>(null);
@@ -34,6 +34,7 @@ export function WorldProductionCard({ economy, recipe, focused = false, onHelpCo
   const reason = worldProductionReason(state, recipe, 1);
   const costs = [...(recipe.cost.coins > 0 ? [["coins", recipe.cost.coins] as const] : []), ...Object.entries(recipe.cost.items)];
   const hasFish = Object.keys(fishStockRequirements(recipe.cost.items, state.catalog.fishing)).length > 0;
+  const durableProduction = economy.productionQueueAvailable && !hasFish && !recipe.fishInput;
   const meal = state.catalog.food?.meals.find(entry => (recipe.rewards[entry.itemId] ?? 0) > 0);
   const restriction = reason && reason !== "Не хватает материалов или монет" ? reason : null;
   const description = [
@@ -68,12 +69,13 @@ export function WorldProductionCard({ economy, recipe, focused = false, onHelpCo
   }, [state.ownerPublicId, state.revision, economy.busy, economy.uncertain, economy.error]);
   function start(selection?: FishSelection): boolean {
     context();
-    const current = latest.current, snapshot = current.economy.snapshot;
+    const current = latest.current, snapshot = current.economy.productionSnapshot ?? current.economy.snapshot;
     if (snapshot.ownerPublicId !== owner || snapshot.revision !== revision || current.recipe.id !== recipe.id) return false;
     const currentReason = worldProductionReason(snapshot, current.recipe, 1);
-    const wait = current.economy.uncertain ? "Проверяем последнее действие. Дождитесь подтверждения."
-      : current.economy.retryAt > current.economy.now ? `Повторите через ${Math.ceil((current.economy.retryAt - current.economy.now) / 1000)} с.`
-        : current.economy.busy || pending.current ? "Дождитесь завершения действия." : null;
+    const wait = !durableProduction && current.economy.directActionsAvailable === false ? "Восстанавливаем соединение. Дождитесь подтверждения."
+      : current.economy.uncertain ? "Проверяем последнее действие. Дождитесь подтверждения."
+      : !durableProduction && current.economy.retryAt > current.economy.now ? `Повторите через ${Math.ceil((current.economy.retryAt - current.economy.now) / 1000)} с.`
+        : current.economy.busy || !durableProduction && (pending.current || (current.economy.pendingProductionCount ?? 0) > 0) ? "Дождитесь завершения действия." : null;
     const missing = currentReason === "Не хватает материалов или монет" ? worldCostShortfalls(snapshot, current.recipe.cost)
       .map(entry => `${entry.id === "coins" ? "Монеты" : itemName(snapshot, entry.id)} ×${number(entry.required - entry.available)}`).join(", ") : "";
     const blocked = wait ?? (missing ? `Не хватает: ${missing}.` : currentReason);
@@ -91,12 +93,12 @@ export function WorldProductionCard({ economy, recipe, focused = false, onHelpCo
     }
     pending.current = { owner: snapshot.ownerPublicId, revision: snapshot.revision, busySeen: false, previousError: current.economy.error };
     setChoosingFish(false);
-    setNotice("Запускаем…");
+    setNotice(durableProduction ? "Сохранено" : "Запускаем…");
     return true;
   }
   return <div className={styles.entry} data-production-product={Object.keys(recipe.rewards).sort().join(":")}>
     <button ref={button} type="button" className={styles.card} data-recipe={recipe.id} data-recipe-product={results[0]?.[0]}
-      data-recipe-order data-recipe-focused={focused || undefined} data-blocked={Boolean(reason) || economy.busy || economy.uncertain || economy.retryAt > economy.now || undefined}
+      data-recipe-order data-recipe-focused={focused || undefined} data-blocked={Boolean(reason) || (durableProduction ? productionLocked(economy) : locked(economy)) || undefined}
       aria-label={`Произвести: ${title}, ${worldRecipeDuration(recipe.seconds)}`}
       aria-describedby={[description ? detailId : "", notice ? noticeId : ""].filter(Boolean).join(" ") || undefined}
       title={restriction ?? undefined} onFocus={context} onClick={() => start()}>

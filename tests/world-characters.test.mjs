@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
-import { Children, isValidElement } from "react";
+import { Children, createElement, isValidElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createServer } from "vite";
 
@@ -65,7 +65,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
       export function useForestObservation() { return guideContext.observation ?? null; }
     `; },
     transform(source, id) {
-      if (id.endsWith("/features/world/world-view.tsx") || id.endsWith("/features/economy/ui/construction/use-construction-goal.ts")) {
+      if (id.endsWith("/features/world/world-view.tsx") || id.endsWith("/features/world/world-portal.tsx") || id.endsWith("/features/economy/ui/construction/use-construction-goal.ts")) {
         return source.replace('from "react";', `from "${hookModule}";`)
           .replace('from "@/features/world/state/use-world-onboarding";', `from "${hookModule}";`)
           .replace('from "@/features/world/state/use-forest-observation";', `from "${hookModule}";`)
@@ -78,6 +78,7 @@ after(() => vite.close());
 const { WORLD_CHARACTERS, worldCharacterResident } = await vite.ssrLoadModule("/features/world/characters/world-characters-model.ts");
 const { WorldCharacters } = await vite.ssrLoadModule("/features/world/ui/characters/world-characters.tsx");
 const { default: WorldView } = await vite.ssrLoadModule("/features/world/world-view.tsx");
+const { default: WorldPortal } = await vite.ssrLoadModule("/features/world/world-portal.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const hooks = await vite.ssrLoadModule(hookModule);
 
@@ -147,7 +148,7 @@ function navigation() {
   class Element { constructor(name) { this.name = name; this.isConnected = true; this.dataset = {}; } focus() { focused.push(this.name); } }
   const trigger = new Element("more"), characterTrigger = new Element("characters"), card = new Element("plesk"), map = new Element("map"), ordersTrigger = new Element("orders");
   Object.defineProperty(globalThis, "HTMLElement", { value: Element, configurable: true });
-  Object.defineProperty(globalThis, "document", { value: { activeElement: map }, configurable: true });
+  Object.defineProperty(globalThis, "document", { value: { activeElement: map, querySelector: () => null, querySelectorAll: () => [] }, configurable: true });
   const state = { resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1,
     workshop: false, journeys: [], collection: [], inventory: [], equipment: {}, completedJourneys: 0 };
   const world = { snapshot: { state, gifts: [] }, now: Date.parse("2026-10-05T12:00:00Z"), act() { assert.fail("navigation cannot mutate world"); } };
@@ -1134,5 +1135,102 @@ test("Escape closes only the owned fish sale before the pantry and never interce
       } else assert.equal(menu, undefined, "foreign controls do not replace normal quick-menu Escape");
       assert.equal(nav.refreshes, 0);
     } finally { pointer.restore(); }
+  }
+});
+
+test("network changes and a temporary activity suspension preserve the same pantry or selected production menu", () => {
+  for (const surface of ["pantry", "workshop"]) {
+    const nav = guideNavigation();
+    try {
+      const selection = { place: "workshop", objectId: "workshop.position", x: 195, y: 380, viewportWidth: 390, viewportHeight: 844 };
+      if (surface === "pantry") nav.find(node => node.props["data-world-quick"] === "pantry").props.onClick();
+      else nav.component("WorldScene").props.onPlace("workshop", selection);
+      const menuName = surface === "pantry" ? "WorldPantryMenu" : "WorldObjectMenu", original = nav.component(menuName);
+      assert.ok(original); assert.equal(nav.component("WorldScene").props.suspended, false);
+      for (const [online, suspended] of [[false, false], [false, true], [true, true], [true, false]]) {
+        nav.props.isOnline = online; nav.props.suspended = suspended;
+        const retained = nav.component(menuName);
+        assert.ok(retained, `${surface}: a transport or pause update cannot discard the active menu`);
+        assert.equal(retained.type, original.type); assert.equal(retained.key, original.key);
+        assert.equal(nav.component("WorldScene").props.suspended, suspended);
+        assert.equal(nav.props.open, true, "pausing the scene does not close its world dialog");
+        if (surface === "workshop") {
+          assert.equal(retained.props.selection, selection);
+          assert.equal(nav.component("WorldScene").props.selectedObjectId, selection.objectId);
+        }
+      }
+      assert.equal(nav.refreshes, 0, "a retained navigation surface cannot mutate or refresh economy");
+    } finally { nav.restore(); }
+  }
+});
+
+test("the activity gate owns Escape and pointer input without closing the retained pantry", () => {
+  const pointer = pointerNavigation(), { nav } = pointer;
+  try {
+    nav.props.escapeHandlerRef = { current: null };
+    nav.find(node => node.props["data-world-quick"] === "pantry").props.onClick();
+    let gateOpen = false;
+    document.querySelector = selector => gateOpen && selector === "[data-activity-gate]" ? {} : null;
+    document.querySelectorAll = () => [];
+    document.activeElement.closest = () => null;
+    pointer.render();
+    gateOpen = true; nav.props.suspended = true; pointer.render();
+    assert.equal(nav.props.escapeHandlerRef.current(), true);
+    const resume = nav.createElement("activity-resume"); resume.closest = selector => selector.includes("data-activity-gate") ? {} : null;
+    pointer.pointerDown(resume);
+    const retained = pointer.render().find(node => node.props.id === "world-quick-menu");
+    assert.equal(retained?.props["data-kind"], "pantry", "the resume button receives its click without dismissing the pantry underneath");
+    assert.equal(nav.component("WorldScene").props.suspended, true);
+    gateOpen = false; nav.props.suspended = false; pointer.render();
+    const map = nav.createElement("map-after-resume"); map.closest = () => null;
+    pointer.pointerDown(map);
+    assert.equal(pointer.render().find(node => node.props.id === "world-quick-menu"), undefined, "ordinary outside dismissal resumes after the gate closes");
+    assert.equal(nav.refreshes, 0);
+  } finally { pointer.restore(); }
+});
+
+test("connection indicator and detail controls preserve each live quick menu while real outside clicks still close it", () => {
+  for (const menu of ["pantry", "profile", "expeditions"]) {
+    const pointer = pointerNavigation(), { nav } = pointer;
+    try {
+      nav.find(node => node.props["data-world-quick"] === menu).props.onClick(); pointer.render();
+      for (const marker of ["[data-connection-status]", "[data-connection-details]"]) {
+        const control = nav.createElement("connection-control");
+        control.closest = selector => selector.split(",").some(part => part.trim() === marker) ? {} : null;
+        pointer.pointerDown(control);
+        assert.equal(pointer.render().find(node => node.props.id === "world-quick-menu")?.props["data-kind"], menu,
+          "checking transport status cannot discard the live inventory or preparation surface");
+      }
+      const map = nav.createElement("map-outside-connection"); map.closest = () => null;
+      pointer.pointerDown(map);
+      assert.equal(pointer.render().find(node => node.props.id === "world-quick-menu"), undefined);
+      assert.equal(nav.refreshes, 0);
+    } finally { pointer.restore(); }
+  }
+});
+
+test("the world portal yields Escape to an activity gate and keeps its existing open state while suspended", () => {
+  const savedDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
+  try {
+    for (const [suspended, gate] of [[true, false], [false, true], [false, false]]) {
+      hooks.reset(); hooks.render();
+      Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: () => gate ? {} : null } });
+      let closes = 0, innerEscapes = 0, prevented = false, stopped = false;
+      const badge = createElement("button", { "data-test-connection-indicator": true });
+      const portal = WorldPortal({ open: true, suspended, connectionStatus: badge, onClose() { closes++; }, origin: {}, returnFocus() { assert.fail("a retained dialog cannot return focus before closing"); } });
+      const nodes = elements(portal), content = nodes.find(node => node.props["data-slot"] === "dialog-content");
+      const view = nodes.find(node => node.type === WorldView);
+      assert.ok(elements(content).some(node => node === badge), "the indicator belongs inside the world modal's accessible focus layer");
+      view.props.escapeHandlerRef.current = () => { innerEscapes++; return false; };
+      content.props.onEscapeKeyDown({ preventDefault() { prevented = true; }, stopPropagation() { stopped = true; } });
+      if (!prevented) portal.props.onOpenChange(false);
+      assert.equal(portal.props.open, true); assert.equal(view.props.open, true); assert.equal(view.props.suspended, suspended);
+      assert.equal(prevented, suspended || gate); assert.equal(stopped, suspended || gate);
+      assert.equal(innerEscapes, suspended || gate ? 0 : 1, "the pause layer must precede pantry and selection escape handlers");
+      assert.equal(closes, suspended || gate ? 0 : 1);
+    }
+  } finally {
+    hooks.reset();
+    if (savedDocument) Object.defineProperty(globalThis, "document", savedDocument); else delete globalThis.document;
   }
 });

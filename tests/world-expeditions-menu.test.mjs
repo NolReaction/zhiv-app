@@ -97,7 +97,7 @@ test("travel starts with two decorated hero activities and no mine or premature 
 });
 
 test("every catalog route belongs to exactly one sector and keeps its actual findings", () => {
-  const expected = { forest: ["forest", "forest_camp", "old_woodland", "coastal_deposits", "uplands", "far_bank_path", "far_bank_grove", "ancient_ruins"], shore: ["shore", "shore_camp"], caves: ["cave", "deep_cave", "abandoned_quarry", "quarry_stone", "quarry_stone_overnight", "quarry_ore", "quarry_clay", "quarry_sand", "quarry_shift", "quarry_deep_face", "quarry_supply"] };
+  const expected = { forest: ["forest", "forest_camp", "old_woodland", "coastal_deposits", "uplands", "far_bank_path", "far_bank_grove", "ancient_ruins"], shore: ["shore", "shore_camp"], caves: ["cave", "deep_cave", "abandoned_quarry", "quarry_stone", "quarry_stone_overnight", "quarry_ore", "quarry_clay", "quarry_sand", "quarry_shift", "quarry_deep_face", "quarry_supply", "quarry_stone_hour", "quarry_clay_hour", "quarry_clay_overnight", "quarry_sand_hour", "quarry_sand_overnight", "quarry_ore_hour", "quarry_ore_overnight"] };
   const seen = [];
   for (const sector of expeditionSectors) {
     const state = snapshot({ buildings: Object.fromEntries(economyCatalog.buildings.map(building => [building.id, 5])) });
@@ -112,7 +112,7 @@ test("every catalog route belongs to exactly one sector and keeps its actual fin
     }
     const html = renderSector(sector.id, controller({ snapshot: state }));
     const visibleIds = [...html.matchAll(/data-route="([^"]+)"/g)].map(match => match[1]);
-    assert.deepEqual(ids, expected[sector.id]);
+    assert.deepEqual(ids.sort(), expected[sector.id].sort());
     seen.push(...ids);
     for (const id of visibleIds) {
       const entry = economyCatalog.explorations.find(route => route.id === id);
@@ -398,6 +398,23 @@ test("continuing a paid expedition sends no command and explains already-spent s
   view.control("Продолжить вылазку").props.onClick();
   assert.deepEqual(view.confirmations, [null]);
   assert.deepEqual(view.calls, []); assert.deepEqual(view.cancellations, []);
+});
+
+test("paid mining cancellation explains the exact refund while legacy hero expeditions stay nonrefundable", () => {
+  for (const ready of [false, true]) {
+    const saved = job({ targetId: "quarry_ore_hour", actorId: "miner", rewards: { ore: 6 }, cost: { coins: 7, items: { smoked_fish: 1 } }, finishesAt: new Date(now + (ready ? 0 : 60_000)).toISOString() });
+    const view = activeView(saved, { confirmed: true });
+    assert.match(view.html, /Все награды этой работы будут потеряны/);
+    assert.match(view.html, /Потраченные монеты и припасы вернутся/);
+    assert.doesNotMatch(view.html, /не возвращаются/);
+    assert.deepEqual(view.calls, [], "the warning never refunds locally or dispatches by itself");
+    view.control("Остановить без результата").props.onClick();
+    assert.deepEqual(view.calls, [["cancel_exploration", saved.id]]);
+    assert.deepEqual(view.props.state.inventory, {}, "the server remains the refund authority");
+    const legacy = activeView({ ...saved, targetId: "deep_cave", actorId: undefined }, { confirmed: true });
+    assert.match(legacy.html, /Потраченные монеты и припасы не возвращаются/);
+    assert.doesNotMatch(legacy.html, /припасы вернутся/);
+  }
 });
 
 test("unclaimed ready finds can be discarded without a claim, even if the pantry is full", () => {

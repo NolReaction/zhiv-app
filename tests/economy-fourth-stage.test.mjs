@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root,
+const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-fourth-stage-mining-planner-vite",
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 const rules = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const { economyCatalog: catalog, economyJobSchema } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
@@ -26,7 +26,7 @@ function fourthStageJourney(activeMinutes = 30, miningIncome = false) {
   state.stageOrders = { version: 1, stages: { 2: { step: 7, completed: true, terms: null }, 3: { step: 8, completed: true, terms: null } } };
   let clock = epoch, sequence = 0, revision = 0, peak = 0, constructionCoins = 0, courseCoins = 0, repeatCoins = 0, saleCoins = 0, visitCount = 0;
   let constructionSeconds = 0, activeStart = epoch, activeEnd = epoch, activeSeconds = 0;
-  const courses = [], builds = [], actions = {}, flow = {}, production = {}, catches = {}, repeatOrders = [];
+  const courses = [], builds = [], actions = {}, flow = {}, production = {}, catches = {}, repeatOrders = [], miningDeliveries = [];
   const requiredIncome = constructionSequence.reduce((sum, [id, level]) => sum + catalog.buildings.find(building => building.id === id)
     .levels.find(entry => entry.level === level).cost.coins, 0)
     - catalog.stageOrders.find(course => course.homeLevel === 4).orders.reduce((sum, order) => sum + order.coins, 0) - state.wallet.coins;
@@ -59,6 +59,13 @@ function fourthStageJourney(activeMinutes = 30, miningIncome = false) {
       else { repeatCoins += coins; repeatOrders.push({ id: targetId, coins, at: clock }); }
     }
     if (["sell", "sell_fish"].includes(action)) saleCoins += state.wallet.coins - before.wallet.coins;
+    const receivedMine = action === "claim_job" && before.jobs.find(job => job.id === targetId && job.actorId === "miner");
+    if (receivedMine) {
+      for (const [id, count] of Object.entries(receivedMine.rewards))
+        assert.equal((state.inventory[id] ?? 0) - (before.inventory[id] ?? 0), count, `${receivedMine.targetId}: the complete saved batch is credited`);
+      miningDeliveries.push({ route: receivedMine.targetId, rewards: receivedMine.rewards,
+        seconds: (Date.parse(receivedMine.finishesAt) - Date.parse(receivedMine.startedAt)) / 1000 });
+    }
     for (const id of new Set([...Object.keys(before.inventory), ...Object.keys(state.inventory)])) {
       const delta = (state.inventory[id] ?? 0) - (before.inventory[id] ?? 0);
       if (delta > 0) record(id).received += delta;
@@ -91,9 +98,16 @@ function fourthStageJourney(activeMinutes = 30, miningIncome = false) {
     // Guaranteed project relics are kept for the house; random resin is optional.
     const goods = Object.keys(state.inventory).filter(id => !catalog.rareDrops.itemIds.includes(id))
       .sort((a, b) => catalog.items.find(item => item.id === a).baseSellPrice - catalog.items.find(item => item.id === b).baseSellPrice);
+    const reserve = ingredientReserve();
     for (const id of goods) {
-      const count = Math.min(left, state.inventory[id]); sell(id, count); left -= count;
+      const count = Math.min(left, Math.max(0, state.inventory[id] - (reserve[id] ?? 0)));
+      if (count) { sell(id, count); left -= count; }
       if (!left) break;
+    }
+    for (const id of goods) {
+      if (!left) break;
+      const count = Math.min(left, state.inventory[id] ?? 0);
+      if (count) { sell(id, count); left -= count; }
     }
     assert.equal(left, 0, "original storage has enough sellable goods to make room for the complete delivery");
   }
@@ -111,9 +125,10 @@ function fourthStageJourney(activeMinutes = 30, miningIncome = false) {
       makeRoom(Object.values(job.rewards).reduce((sum, count) => sum + count, 0));
       apply("claim_job", job.id); changed = true;
       if (miningIncome && ["quarry_shift", "quarry_deep_face"].includes(job.targetId)) {
-        // Keep eight useful raw materials and sell the rest by actual NPC
-        // commands. A fresh 42/43-item shift fits without buying storage.
+        // Keep a small working stock and ingredients for the current project;
+        // sell surplus through real NPC commands after receiving the full batch.
         const reserve = { stone: 3, ore: 3, clay: 1, sand: 1 };
+        for (const [id, count] of Object.entries(ingredientReserve())) reserve[id] = Math.max(reserve[id] ?? 0, count);
         for (const id of Object.keys(job.rewards).filter(id => !catalog.rareDrops.itemIds.includes(id))) {
           const surplus = Math.max(0, (state.inventory[id] ?? 0) - (reserve[id] ?? 0));
           if (surplus) sell(id, surplus);
@@ -131,6 +146,27 @@ function fourthStageJourney(activeMinutes = 30, miningIncome = false) {
   const sources = id => [...catalog.recipes, ...catalog.explorations.filter(route => !catalog.fishing.routeIds.includes(route.id))]
     .filter(source => source.rewards[id] > 0 && sourceOpen(source))
     .sort((a, b) => a.seconds / a.rewards[id] - b.seconds / b.rewards[id]);
+  function ingredientReserve() {
+    const reserve = {};
+    const protect = items => { for (const [id, count] of Object.entries(items ?? {})) reserve[id] = Math.max(reserve[id] ?? 0, count); };
+    protect(currentCourse()?.items); protect(buildDefinition(nextConstruction())?.cost.items);
+    for (const recipe of catalog.recipes.filter(sourceOpen)) protect(recipe.cost.items);
+    return reserve;
+  }
+  function acquisitionSource(id, count) {
+    const choices = sources(id), quickest = choices[0];
+    if (!quickest || quickest.activity !== "mining" || clock + quickest.seconds * 1000 <= activeEnd) return quickest;
+    // Once the short extraction cannot be collected during this visit, choose
+    // a useful focused batch that will be ready at the next eight-hour visit.
+    const missing = count - (state.inventory[id] ?? 0) - pending(id), reserve = ingredientReserve();
+    const protectedCount = Object.entries(state.inventory).reduce((sum, [item, held]) => sum +
+      (catalog.rareDrops.itemIds.includes(item) ? held : Math.min(held, reserve[item] ?? 0)), 0);
+    const offline = choices.filter(source => source.activity === "mining" && source.seconds >= 3600 && Object.keys(source.rewards).length === 1
+      && clock + source.seconds * 1000 <= activeStart + 8 * hour + activeMinutes * 60000
+      && protectedCount + Object.values(source.rewards).reduce((sum, amount) => sum + amount, 0) + 1 <= 50);
+    return offline.sort((a, b) => Math.min(b.rewards[id], missing) - Math.min(a.rewards[id], missing)
+      || a.rewards[id] - b.rewards[id] || a.seconds - b.seconds)[0] ?? quickest;
+  }
   function run(source, ancestors = []) {
     if (ancestors.includes(source.id)) throw new Error(`Acquisition cycle: ${ancestors.join(" -> ")} -> ${source.id}`);
     const path = [...ancestors, source.id];
@@ -155,7 +191,7 @@ function fourthStageJourney(activeMinutes = 30, miningIncome = false) {
       apply("start_fishing", "shore"); production.shore = (production.shore ?? 0) + 1; return true;
     }
     if (catalog.rareDrops.itemIds.includes(id)) return false;
-    const source = sources(id)[0];
+    const source = acquisitionSource(id, count);
     return source ? run(source, ancestors) : false;
   }
   function bundle(items) {
@@ -243,7 +279,7 @@ function fourthStageJourney(activeMinutes = 30, miningIncome = false) {
     activeSeconds += (clock - begin) / 1000;
   }
   return { state, clock, revision, peak, constructionCoins, courseCoins, repeatCoins, saleCoins, courses, builds,
-    actions, flow, production, catches, repeatOrders, visitCount, activeMinutes, activeSeconds, constructionSeconds };
+    actions, flow, production, catches, repeatOrders, miningDeliveries, visitCount, activeMinutes, activeSeconds, constructionSeconds };
 }
 
 test("a real three-visits-per-day house-four chapter builds both landmarks and house five with one slot and 50-place storage", t => {
@@ -279,6 +315,9 @@ test("a real three-visits-per-day house-four chapter builds both landmarks and h
 
 test("three 15-minute visits per day can fund house five with independent mining instead of hundreds of fish casts", t => {
   const result = fourthStageJourney(15, true), { state, clock, courses, builds, flow, actions, production } = result;
+  const minedItems = {};
+  for (const delivery of result.miningDeliveries) for (const [id, count] of Object.entries(delivery.rewards))
+    minedItems[id] = (minedItems[id] ?? 0) + count;
   t.diagnostic(JSON.stringify({ elapsedDays: (clock - epoch) / (24 * hour), visits: result.visitCount,
     activeMinutesPerVisit: result.activeMinutes, activeTimerHours: result.activeSeconds / 3600,
     builderHours: result.constructionSeconds / 3600, peak: result.peak, coins: state.wallet.coins,
@@ -286,6 +325,8 @@ test("three 15-minute visits per day can fund house five with independent mining
     repeatCoins: result.repeatCoins, saleCoins: result.saleCoins, repeatOrders: result.repeatOrders.length,
     commands: result.revision, fishCasts: actions.start_fishing,
     miningShifts: (production.quarry_shift ?? 0) + (production.quarry_deep_face ?? 0),
+    miningDeliveries: result.miningDeliveries.length, minedItems,
+    focusedBatches: Object.fromEntries(Object.entries(production).filter(([id]) => id.endsWith("_hour") || id.endsWith("_overnight"))),
     deliveryDays: courses.map(course => (course.at - epoch) / (24 * hour)) }));
   assert.equal(state.buildings.home, 5); assert.equal(state.buildings.bridge, 1); assert.equal(state.buildings.lighthouse, 1);
   assert.equal(state.buildings.warehouse, 1); assert.equal(state.jobs.length, 0);
@@ -300,7 +341,16 @@ test("three 15-minute visits per day can fund house five with independent mining
   assert.equal(result.activeMinutes, 15); assert(result.activeSeconds <= 13 * 3600);
   assert(actions.start_fishing >= 9); assert(actions.start_fishing <= 20);
   assert(result.revision < 1800); assert(result.saleCoins >= 16990); assert.equal(result.repeatCoins, 0);
-  assert((production.quarry_shift ?? 0) + (production.quarry_deep_face ?? 0) >= 10);
+  assert(result.miningDeliveries.length > 0, "independent mining really delivers the goods that fund the project");
+  assert(result.miningDeliveries.some(delivery => delivery.route.endsWith("_hour")), "focused offline batches are really received between visits");
+  assert.equal(result.miningDeliveries.length, Object.entries(production).filter(([id]) => catalog.explorations
+    .some(route => route.id === id && route.activity === "mining")).reduce((sum, [, count]) => sum + count, 0),
+    "every started mining batch is received exactly once");
+  for (const delivery of result.miningDeliveries) {
+    const route = catalog.explorations.find(route => route.id === delivery.route);
+    assert.equal(delivery.seconds, route.seconds, "mining keeps its actual catalog duration");
+    for (const [id, count] of Object.entries(route.rewards)) assert.equal(delivery.rewards[id], count);
+  }
   assert((result.catches.fish_common ?? 0) >= 18, "the mandatory ordinary fish and provisions are genuinely caught");
   assert.equal(production.prepare_trail_ration, 5); assert.equal(production.make_research_gear, 1);
   for (const id of ["ancient_core", "moon_crystal"]) {

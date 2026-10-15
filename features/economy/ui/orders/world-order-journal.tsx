@@ -19,7 +19,7 @@ export function WorldOrderJournal({ economy, residentId, ...navigation }: WorldO
   const state = economy.snapshot;
   const summary = state ? orderJournalSummary(state, economy.now, customer) : { total: 0, ready: 0 };
   const retrySeconds = Math.max(0, Math.ceil((economy.retryAt - economy.now) / 1000));
-  const recovery = (economy.error || economy.uncertain) && <div className={styles.recovery} role="alert">
+  const recovery = !economy.syncError && (economy.error || economy.uncertain) && <div className={styles.recovery} role="alert">
     <p>{economy.uncertain ? "Проверяем последнее действие. Дождись подтверждения." : economy.error}</p>
     <button type="button" disabled={economy.busy || retrySeconds > 0} onClick={() => {
       if (!economy.busy && retrySeconds <= 0) void economy.retry();

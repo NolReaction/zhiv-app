@@ -242,6 +242,15 @@ test("graph labels use current unit-production timers and actual mining duration
   assert.equal(node("r:make_beams").label, "Балка · 1 ч");
   assert.equal(node("e:quarry_ore").label, "Руда · 9 мин");
   assert.equal(node("e:quarry_sand").label, "Песок · 4 мин 30 с");
+  assert.equal(node("e:quarry_stone_hour").label, "Камень · 1 ч");
+  assert.equal(node("e:quarry_ore_hour").label, "Руда · 1 ч");
+  assert.equal(node("e:quarry_clay_hour").label, "Глина · 1 ч");
+  assert.equal(node("e:quarry_sand_hour").label, "Песок · 1 ч");
+  assert.equal(node("e:quarry_ore_overnight").label, "Руда к утру · 8 ч");
+  assert.equal(node("e:quarry_clay_overnight").label, "Глина к утру · 8 ч");
+  assert.equal(node("e:quarry_sand_overnight").label, "Песок к утру · 8 ч");
+  assert.equal(node("e:abandoned_quarry").label, "Дальний рудный пласт · 16 ч");
+  assert.match(node("e:quarry_ore_hour").description, /одну работу.*собственной очереди.*шестнадцатичасовая/);
   assert.equal(node("e:shore_camp").label, "Стоянка на берегу · 15 мин");
   const changed = structuredClone(catalog);
   changed.recipes.find(recipe => recipe.id === "hardwood_shift").seconds = 420;

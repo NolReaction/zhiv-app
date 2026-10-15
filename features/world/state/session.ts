@@ -7,11 +7,11 @@ type Transport = {
   get: (signal: AbortSignal) => Promise<WorldSnapshot>;
   send: (command: WorldCommand, signal: AbortSignal) => Promise<{ snapshot: WorldSnapshot; message: string }>;
 };
-type View = { snapshot: WorldSnapshot | null; error: string | null; notice: string; busy: boolean; uncertain: boolean; feedbackAt: number };
+type View = { snapshot: WorldSnapshot | null; error: string | null; syncError: string | null; notice: string; busy: boolean; uncertain: boolean; feedbackAt: number; directActionsAvailable: boolean };
 
 /** One account session survives opening/closing the map; receipts never belong to a renderer. */
 export function createWorldSession(owner: string | null, transport: Transport, onSessionLost: () => void, storage?: Pick<Storage, "getItem" | "setItem" | "removeItem">) {
-  let view: View = { snapshot: null, error: null, notice: "", busy: false, uncertain: false, feedbackAt: 0 };
+  let view: View = { snapshot: null, error: null, syncError: null, notice: "", busy: false, uncertain: false, feedbackAt: 0, directActionsAvailable: true };
   let pending: WorldCommand | null = null;
   let active = false, available = true, epoch = 0, readSequence = 0;
   let rateLimitedUntil = 0;
@@ -28,7 +28,9 @@ export function createWorldSession(owner: string | null, transport: Transport, o
       const raw = storage?.getItem(storageKey); if (!raw) return;
       const parsed = worldCommandSchema.safeParse(JSON.parse(raw));
       if (parsed.success && parsed.data.ownerPublicId === owner) {
-        pending = parsed.data; publish({ uncertain: true, error: "Остался неподтверждённый запрос. Проверим его перед продолжением." });
+        pending = parsed.data;
+        const message = "Остался неподтверждённый запрос. Проверим его перед продолжением.";
+        publish({ uncertain: true, error: message, syncError: message });
       } else storage?.removeItem(storageKey);
     } catch { /* Invalid cache is never executed. */ }
   }
@@ -60,7 +62,7 @@ export function createWorldSession(owner: string | null, transport: Transport, o
       const snapshot = await transport.get(request.signal);
       if (valid(generation) && sequence === readSequence && adopt(snapshot)) {
         failures = 0; blockedUntil = 0;
-        if (!pending) publish({ error: null });
+        if (!pending) publish({ error: null, syncError: null });
       }
     } catch (error) {
       if (!valid(generation) || sequence !== readSequence) return;
@@ -70,7 +72,12 @@ export function createWorldSession(owner: string | null, transport: Transport, o
       if (error instanceof ApiError && error.status === 429) rateLimitedUntil = blockedUntil;
       if (owner) reportIncident(owner, "world", incidentCode(error), 0, error);
       if (error instanceof ApiError && error.status === 401) onSessionLost();
-      else if (!pending) publish({ error: error instanceof ApiError ? error.message : "Нет связи. Сохранённый мир появится после подключения." });
+      else if (!pending) {
+        const message = error instanceof ApiError ? error.message : "Нет связи. Сохранённый мир появится после подключения.";
+        const transportFailure = !(error instanceof ApiError) || error.status >= 500 || [408, 425, 429].includes(error.status)
+          || error.body?.code === "GAME_SESSION_INACTIVE";
+        publish({ error: message, syncError: transportFailure ? message : null });
+      }
     } finally { requests.delete(request); }
   }
   async function execute(command: WorldCommand) {
@@ -81,7 +88,7 @@ export function createWorldSession(owner: string | null, transport: Transport, o
     try {
       const result = await transport.send(command, request.signal);
       if (!valid(generation)) return;
-      if (adopt(result.snapshot)) { remember(null); publish({ notice: result.message, uncertain: false }); }
+      if (adopt(result.snapshot)) { remember(null); publish({ notice: result.message, uncertain: false, syncError: null }); }
     } catch (error) {
       if (!valid(generation)) return;
       if (owner) reportIncident(owner, "world", incidentCode(error), 0, error);
@@ -90,7 +97,8 @@ export function createWorldSession(owner: string | null, transport: Transport, o
         && ![401, 408, 425, 429].includes(error.status) && error.body?.code !== "GAME_SESSION_INACTIVE";
       if (throttled) blockedUntil = rateLimitedUntil = performance.now() + Math.max(1000, error.retryAfterMs ?? 60_000);
       if (definitive) remember(null);
-      publish({ uncertain: !definitive, error: error instanceof ApiError ? error.message : "Ответ не пришёл. Проверьте результат тем же запросом." });
+      const message = error instanceof ApiError ? error.message : "Ответ не пришёл. Проверьте результат тем же запросом.";
+      publish({ uncertain: !definitive, error: message, syncError: definitive ? null : message });
       if (error instanceof ApiError && error.status === 401) onSessionLost();
       else if (definitive) {
         const snapshot = await transport.get(request.signal).catch(() => null);
@@ -120,6 +128,7 @@ export function createWorldSession(owner: string | null, transport: Transport, o
   }
   return {
     setAvailable, reconcile,
+    setDirectActionsAvailable(value: boolean) { if (view.directActionsAvailable !== value) publish({ directActionsAvailable: value }); },
     setSessionLost(callback: () => void) { onSessionLost = callback; },
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     getSnapshot: () => view,
@@ -136,7 +145,7 @@ export function createWorldSession(owner: string | null, transport: Transport, o
     refresh,
     refreshSoft: () => refresh(false),
     act(action: WorldCommand["action"], target = "") {
-      if (!owner || !view.snapshot || pending || !active || !available) return;
+      if (!owner || !view.snapshot || !view.directActionsAvailable || pending || !active || !available) return;
       void execute({ requestId: createUuidV4(), ownerPublicId: owner, expectedRevision: view.snapshot.revision, action, target });
     },
     retry: () => pending ? execute(pending) : refresh(),

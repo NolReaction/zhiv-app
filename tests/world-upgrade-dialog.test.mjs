@@ -23,7 +23,8 @@ test("house two opens blueberries, rope, the independent mine, kiln and bridge w
   assert.ok(result.upgrades.some(target => target.stationId === "quarry" && target.level === 1));
   assert.ok(result.upgrades.some(target => target.stationId === "kiln" && target.level === 1));
   assert.deepEqual(result.recipes.map(recipe => recipe.id), ["gather_fiber", "make_rope", "make_charcoal", "fire_bricks", "grow_blueberries", "cook_blueberry_compote"]);
-  assert.deepEqual(result.routes.map(route => route.id), ["quarry_stone", "quarry_clay"]);
+  assert.deepEqual(result.routes.map(route => route.id), ["quarry_stone", "quarry_clay", "quarry_stone_hour", "quarry_clay_hour"]);
+  assert.deepEqual(result.routes.filter(route => route.seconds === 3600).map(route => route.rewards), [{ stone: 16 }, { clay: 16 }]);
   assert.ok(result.upgrades.some(target => target.stationId === "quarry" && target.level === 2));
   assert.equal(result.market, true);
   assert.ok(result.upgrades.some(target => target.stationId === "bridge" && target.level === 1));

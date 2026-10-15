@@ -2569,28 +2569,20 @@
     },
     {
       "id": "abandoned_quarry",
-      "name": "Заброшенный карьер · 16 ч",
-      "description": "Шахтёр работает в собственной очереди. Мохлик свободен; добычу нужно получить, освободив место в кладовой.",
+      "name": "Дальний рудный пласт · 16 ч",
+      "description": "Долгая добыча большого запаса руды без частых возвращений. Шахтёр работает отдельно, Мохлик свободен.",
       "requiredHomeLevel": 5,
       "requiredBuildings": {
         "workshop": 4,
-        "quarry": 4
+        "quarry": 5
       },
       "seconds": 57600,
       "cost": {
         "coins": 0,
-        "items": {
-          "tools": 1,
-          "rope": 1,
-          "dried_berries": 1,
-          "smoked_fish": 1
-        }
+        "items": {}
       },
       "rewards": {
-        "stone": 17,
-        "ore": 11,
-        "sand": 8,
-        "clay": 7
+        "ore": 48
       },
       "activity": "mining"
     },
@@ -2627,7 +2619,7 @@
         "items": {}
       },
       "rewards": {
-        "stone": 40
+        "stone": 48
       }
     },
     {
@@ -2699,10 +2691,10 @@
         "items": {}
       },
       "rewards": {
-        "stone": 20,
-        "ore": 6,
-        "clay": 8,
-        "sand": 8
+        "stone": 12,
+        "ore": 12,
+        "clay": 12,
+        "sand": 12
       }
     },
     {
@@ -2720,10 +2712,10 @@
         "items": {}
       },
       "rewards": {
-        "stone": 21,
-        "ore": 6,
-        "clay": 8,
-        "sand": 8
+        "stone": 10,
+        "ore": 20,
+        "clay": 9,
+        "sand": 9
       }
     },
     {
@@ -2741,10 +2733,136 @@
         "items": {}
       },
       "rewards": {
-        "stone": 20,
-        "ore": 8,
-        "clay": 8,
-        "sand": 8
+        "stone": 8,
+        "ore": 28,
+        "clay": 6,
+        "sand": 6
+      }
+    },
+    {
+      "id": "quarry_stone_hour",
+      "name": "Запас камня · 1 ч",
+      "description": "Выберите время работы шахтёра: добыча идёт в собственной очереди, Мохлик свободен. Готовый запас нужно получить.",
+      "activity": "mining",
+      "requiredHomeLevel": 2,
+      "requiredBuildings": {
+        "quarry": 2
+      },
+      "seconds": 3600,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "stone": 16
+      }
+    },
+    {
+      "id": "quarry_ore_hour",
+      "name": "Рудная жила · 1 ч",
+      "description": "Выберите время работы шахтёра: добыча идёт в собственной очереди, Мохлик свободен. Готовый запас нужно получить.",
+      "activity": "mining",
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {
+        "quarry": 3
+      },
+      "seconds": 3600,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "ore": 6
+      }
+    },
+    {
+      "id": "quarry_ore_overnight",
+      "name": "Руда к утру · 8 ч",
+      "description": "Выберите время работы шахтёра: добыча идёт в собственной очереди, Мохлик свободен. Готовый запас нужно получить.",
+      "activity": "mining",
+      "requiredHomeLevel": 4,
+      "requiredBuildings": {
+        "quarry": 4
+      },
+      "seconds": 28800,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "ore": 36
+      }
+    },
+    {
+      "id": "quarry_clay_hour",
+      "name": "Запас глины · 1 ч",
+      "description": "Выберите время работы шахтёра: добыча идёт в собственной очереди, Мохлик свободен. Готовый запас нужно получить.",
+      "activity": "mining",
+      "requiredHomeLevel": 2,
+      "requiredBuildings": {
+        "quarry": 2
+      },
+      "seconds": 3600,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "clay": 16
+      }
+    },
+    {
+      "id": "quarry_clay_overnight",
+      "name": "Глина к утру · 8 ч",
+      "description": "Выберите время работы шахтёра: добыча идёт в собственной очереди, Мохлик свободен. Готовый запас нужно получить.",
+      "activity": "mining",
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {
+        "quarry": 3
+      },
+      "seconds": 28800,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "clay": 48
+      }
+    },
+    {
+      "id": "quarry_sand_hour",
+      "name": "Запас песка · 1 ч",
+      "description": "Выберите время работы шахтёра: добыча идёт в собственной очереди, Мохлик свободен. Готовый запас нужно получить.",
+      "activity": "mining",
+      "requiredHomeLevel": 3,
+      "requiredBuildings": {
+        "quarry": 3
+      },
+      "seconds": 3600,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "sand": 10
+      }
+    },
+    {
+      "id": "quarry_sand_overnight",
+      "name": "Песок к утру · 8 ч",
+      "description": "Выберите время работы шахтёра: добыча идёт в собственной очереди, Мохлик свободен. Готовый запас нужно получить.",
+      "activity": "mining",
+      "requiredHomeLevel": 4,
+      "requiredBuildings": {
+        "quarry": 4
+      },
+      "seconds": 28800,
+      "cost": {
+        "coins": 0,
+        "items": {}
+      },
+      "rewards": {
+        "sand": 40
       }
     },
     {

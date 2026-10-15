@@ -18,12 +18,15 @@ function fixture(overrides = {}) {
 }
 test("five minutes without input ends only the game lease and requires explicit return", async () => {
   const f = fixture(); f.session.start(true, true); await flush(); assert.equal(f.session.getSnapshot().mode, "active");
+  assert.equal(f.session.getSnapshot().resumeRequired, false);
   for (let second = 30; second < 300; second += 30) { f.setTime(second * 1000); f.session.check(); await flush(); }
   assert.ok(f.sent.filter(c => c.kind === "heartbeat").every(c => c.active === false));
   f.setTime(300_000); f.session.check(); await flush(); assert.equal(f.session.getSnapshot().mode, "away");
+  assert.equal(f.session.getSnapshot().resumeRequired, true);
   const previous = f.sent[0].presenceId;
   f.session.input(); f.session.environment(true, true); await flush(); assert.equal(f.session.getSnapshot().mode, "away");
   await f.session.resume(); assert.equal(f.session.getSnapshot().mode, "active");
+  assert.equal(f.session.getSnapshot().resumeRequired, false);
   assert.notEqual(f.sent.at(-1).presenceId, previous);
   assert.equal(isDevPresenceActive(f.owner, previous, instant + 300_000), false);
 });
@@ -63,8 +66,94 @@ test("late resume response after offline cannot restart the game", async () => {
 });
 test("rate limits keep their retry deadline and input cannot bypass it", async () => {
   let sent = 0; const f = fixture({ send: async () => { sent++; throw new ApiError("Wait", 429, undefined, undefined, 60_000); } });
-  f.session.start(true, true); await flush(); f.setTime(30_000); await f.session.resume(); assert.equal(sent, 1);
-  f.setTime(60_000); await f.session.retry(); assert.equal(sent, 2);
+  f.session.start(true, true); await flush(); f.setTime(30_000); f.session.check(); await f.session.resume();
+  f.session.environment(false, true); f.session.environment(true, true); f.session.check(); await flush(); assert.equal(sent, 1);
+  f.setTime(60_000); f.session.check(); await flush(); assert.equal(sent, 2);
+});
+test("visible offline input keeps local play active without creating a presence", async () => {
+  const f = fixture(); f.session.start(false, true);
+  f.setTime(240_000); f.session.input();
+  f.setTime(480_000); f.session.input(); f.session.check(); await flush();
+  assert.equal(f.session.getSnapshot().mode, "offline");
+  assert.equal(f.session.getSnapshot().resumeRequired, false); assert.equal(f.sent.length, 0);
+  f.session.environment(true, true); await flush(); assert.equal(f.session.getSnapshot().mode, "active");
+});
+test("the first offline tap after the idle deadline cannot resume AFK", async () => {
+  const f = fixture(); f.session.start(false, true);
+  f.setTime(300_000); f.session.input();
+  assert.equal(f.session.getSnapshot().mode, "away"); assert.equal(f.session.getSnapshot().resumeRequired, true);
+  f.session.environment(true, true); f.session.check(); await f.session.retry();
+  assert.equal(f.session.getSnapshot().mode, "away"); assert.equal(f.sent.length, 0);
+});
+test("failed heartbeats reconnect automatically after backoff with one request in flight", async () => {
+  let time = instant, attempts = 0, release;
+  const owner = crypto.randomUUID();
+  const f = fixture({ now: () => time, send: async command => {
+    attempts++;
+    if (command.kind === "heartbeat") throw new Error("Connection lost");
+    if (attempts === 3) return new Promise(resolve => { release = () => resolve(commandDevPresence(owner, command, time)); });
+    return commandDevPresence(owner, command, time);
+  } });
+  f.session.start(true, true); await flush(); time += 30_000; f.session.check(); await flush();
+  assert.equal(f.session.getSnapshot().mode, "error"); assert.equal(attempts, 2);
+  time += 2999; f.session.check(); await flush(); assert.equal(attempts, 2);
+  time++; f.session.check(); f.session.check(); await flush();
+  assert.equal(attempts, 3); assert.equal(f.session.getSnapshot().mode, "connecting");
+  release(); await flush(); assert.equal(f.session.getSnapshot().mode, "active");
+});
+test("explicit AFK return stays paused across errors and offline until reconciliation succeeds", async () => {
+  let calls = 0, release;
+  const f = fixture({ reconcile: () => {
+    calls++;
+    if (calls === 1) return Promise.resolve(true);
+    if (calls === 2) return Promise.resolve(false);
+    return new Promise(resolve => { release = resolve; });
+  } });
+  f.session.start(true, true); await flush(); f.setTime(300_000); f.session.check();
+  await f.session.resume(); assert.equal(f.session.getSnapshot().mode, "error");
+  assert.equal(f.session.getSnapshot().resumeRequired, true);
+  f.session.environment(false, true); assert.equal(f.session.getSnapshot().mode, "offline");
+  assert.equal(f.session.getSnapshot().resumeRequired, true);
+  f.setTime(304_000); f.session.environment(true, true); await flush();
+  assert.equal(f.session.getSnapshot().mode, "connecting"); assert.equal(f.session.getSnapshot().resumeRequired, true);
+  release(true); await flush(); assert.equal(f.session.getSnapshot().mode, "active");
+  assert.equal(f.session.getSnapshot().resumeRequired, false);
+});
+test("input during connection errors and reconciliation counts without bypassing retry deadlines", async () => {
+  let calls = 0, release;
+  const f = fixture({ reconcile: () => ++calls === 1 ? Promise.resolve(false) : new Promise(resolve => { release = resolve; }) });
+  f.session.start(true, true); await flush();
+  f.setTime(240_000); f.session.input(); f.session.check(); await flush();
+  assert.equal(f.session.getSnapshot().mode, "connecting");
+  f.setTime(480_000); f.session.input(); f.session.check();
+  assert.equal(f.session.getSnapshot().mode, "connecting");
+  release(true); await flush(); assert.equal(f.session.getSnapshot().mode, "active");
+});
+test("an explicitly requested AFK return retries automatically while keeping the overlay paused", async () => {
+  let calls = 0, release;
+  const f = fixture({ reconcile: () => {
+    calls++;
+    if (calls === 1) return Promise.resolve(true);
+    if (calls === 2) return Promise.resolve(false);
+    return new Promise(resolve => { release = resolve; });
+  } });
+  f.session.start(true, true); await flush(); f.setTime(300_000); f.session.check(); await f.session.resume();
+  f.setTime(302_999); f.session.check(); await flush(); assert.equal(calls, 2);
+  f.setTime(303_000); f.session.check(); await flush();
+  assert.equal(calls, 3); assert.equal(f.session.getSnapshot().mode, "connecting");
+  assert.equal(f.session.getSnapshot().resumeRequired, true);
+  release(true); await flush(); assert.equal(f.session.getSnapshot().resumeRequired, false);
+});
+test("hidden input and failed AFK return do not grant an automatic return after another idle period", async () => {
+  let calls = 0;
+  const f = fixture({ reconcile: async () => ++calls === 1 });
+  f.session.start(true, true); await flush(); f.setTime(300_000); f.session.check();
+  await f.session.resume(); assert.equal(f.session.getSnapshot().mode, "error");
+  f.session.environment(true, false); f.setTime(540_000); f.session.input(); f.session.check();
+  assert.equal(calls, 2); assert.equal(f.session.getSnapshot().mode, "hidden");
+  f.setTime(600_000); f.session.check(); f.session.environment(true, true); await f.session.retry();
+  assert.equal(f.session.getSnapshot().mode, "away"); assert.equal(calls, 2);
+  assert.equal(f.session.getSnapshot().resumeRequired, true);
 });
 test("server dev presence unions tabs, excludes disconnected gaps and splits UTC days", () => {
   const owner = crypto.randomUUID(), a = crypto.randomUUID(), b = crypto.randomUUID();

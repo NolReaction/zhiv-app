@@ -181,10 +181,11 @@ test("order instructions point to the standalone journal and meal help stays bes
 
 test("beginner answers explain costs, receipt of results, blocked work and recovery without destructive advice", () => {
   assert.match(answer("start"), /урожай бесплатный/);
-  assert.match(answer("production"), /монеты и материалы спишутся/);
+  assert.match(answer("production"), /монеты и материалы зарезервируются/);
   assert.match(answer("production"), /нехватка выделена рядом с количеством/);
   assert.match(answer("production"), /Рядом с рисунком указано название предмета, ниже - время и материалы/);
-  assert.match(answer("production"), /одна работа начнётся сразу/);
+  assert.match(answer("production"), /ячейка займётся сразу/);
+  assert.match(answer("production"), /Время начнётся после подтверждения сервера/);
   assert.match(answer("production"), /«Удалить\?» и таймер 5 секунд/);
   assert.match(answer("production"), /Второе нажатие за это время отменит работу и вернёт монеты и материалы/);
   assert.match(answer("production"), /Без второго нажатия работа продолжится/);
@@ -202,9 +203,12 @@ test("beginner answers explain costs, receipt of results, blocked work and recov
   assert.match(answer("storage"), /Отмена лота не освобождает место/);
   assert.match(answer("storage"), /не пропадут/);
   assert.match(answer("saving"), /не очищайте данные браузера и не выходите из аккаунта/);
-  assert.match(answer("saving"), /сверит прежнее действие с сервером/);
-  assert.match(answer("saving"), /5 минут.*Вернуться в игру/);
-  assert.match(answer("saving"), /таймеры уже начатых работ продолжаются/);
+  assert.match(answer("saving"), /повтор не создаст вторую покупку или награду/);
+  assert.match(answer("saving"), /5 минут.*Продолжить.*поверх карты/);
+  assert.match(answer("saving"), /Уже начатые работы продолжаются по серверным таймерам/);
+  assert.match(answer("saving"), /до 12 действий/);
+  assert.match(answer("saving"), /очередь восстанавливается после перезагрузки/);
+  assert.match(answer("saving"), /покупки, продажи и получение наград требуют подтверждённой связи/);
   assert.match(answer("saving"), /Продолжить здесь/);
   assert.match(answer("currency-shop"), /Покупка за реальные деньги.*недоступны/);
 });
@@ -336,7 +340,9 @@ test("campfire and mining guidance matches compact categories, duration filters 
     assert.ok(answer("campfire").includes(`«${label}»`));
   assert.match(answer("campfire"), /работы остаются видны при любом фильтре/);
   assert.match(answer("campfire"), /Рыбный рецепт сначала откроет выбор видов.*«Готовить»/);
-  assert.match(answer("mining"), /компактных строках видны добыча, количество и время/);
+  assert.match(answer("mining"), /В блоке каждого ресурса выберите время и количество/);
+  assert.match(answer("mining"), /короткие, часовые и длинные смены/);
+  assert.match(answer("mining"), /Смешанные смены раскрываются отдельно/);
   assert.match(answer("fishing"), /три ячейки: удочка, крючок, наживка/);
   assert.match(answer("fishing"), /Тап по снасти выбирает её, без покупки и отправления/);
 });
@@ -392,7 +398,7 @@ test("second-house guidance quotes all seven permanent orders and independent st
   assert.match(answer("mining"), /одну отдельную очередь без платных слотов/);
   assert.match(answer("mining"), /Мохлик может гулять, рыбачить и собирать ягоды одновременно/);
   assert.match(answer("mining"), /Обед Мохлика не ускоряет шахту/);
-  assert.match(answer("mining"), /блок ресурса или «Несколько ресурсов»/);
+  assert.match(answer("mining"), /В блоке каждого ресурса выберите время и количество/);
   for (const label of ["Все", "До 15 мин", "15 мин - 1 ч", "Дольше 1 ч"]) assert.ok(answer("mining").includes(`«${label}»`));
   assert.match(answer("mining"), /Текущая добыча видна при любом фильтре/);
   assert.match(answer("mining"), /проверить припасы перед запуском/);

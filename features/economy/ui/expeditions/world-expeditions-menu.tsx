@@ -3,7 +3,7 @@
 import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { useEffect, useId, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, CircleHelp, Clock3, Compass, Fish, LockKeyhole, Mountain, Package, RefreshCw, Trees, type LucideIcon } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, ChevronDown, CircleHelp, Clock3, Compass, Fish, LockKeyhole, Mountain, Package, RefreshCw, Trees, type LucideIcon } from "lucide-react";
 import type { WorldHelpContext } from "@/features/world/ui/help/world-help-types";
 import { WorldMealBoost } from "@/features/economy/ui/food/world-meal-boost";
 import { mealDuration, pendingMeal } from "@/features/economy/domain/food";
@@ -141,7 +141,7 @@ export function ActiveExpedition({ economy, state, job, onOpenPantry, onOpenHelp
       onClick={() => { if (!blocked) onConfirmation(confirming ? null : key); }}>{status.ready ? "Отказаться от находок" : mining ? "Остановить добычу" : "Вернуть Мохлика"}</button>
     {confirming && <div className={styles.cancelConfirmation} id={`${id}-cancel`} role="group" aria-labelledby={`${id}-cancel-title`} aria-describedby={`${id}-cancel-cost`}>
       <strong id={`${id}-cancel-title`}>{status.ready ? "Отказаться от этой добычи?" : mining ? "Прервать добычу?" : "Прервать вылазку?"}</strong>
-      <p id={`${id}-cancel-cost`}>Все награды этой {mining ? "работы" : "вылазки"} будут потеряны.{paid ? " Потраченные монеты и припасы не возвращаются." : mining ? " Новую добычу можно будет начать сразу." : " Мохлик вернётся без добычи."}</p>
+      <p id={`${id}-cancel-cost`}>Все награды этой {mining ? "работы" : "вылазки"} будут потеряны.{mining ? paid ? " Потраченные монеты и припасы вернутся." : " Новую добычу можно будет начать сразу." : paid ? " Потраченные монеты и припасы не возвращаются." : " Мохлик вернётся без добычи."}</p>
       <div className={styles.cancelActions}>
         <button ref={keep} type="button" className={styles.keepExpedition} onClick={() => onConfirmation(null)}>{status.ready ? "Оставить находки" : mining ? "Продолжить добычу" : "Продолжить вылазку"}</button>
         <button type="button" className={styles.cancelExpedition} disabled={blocked} onClick={cancel}>{mining ? "Остановить без результата" : "Вернуться без добычи"}</button>
@@ -209,29 +209,33 @@ export function WorldExpeditionSector({ sectorId, selectedRoute, onSelectRoute, 
     const groups = miningResourceGroups(routes, durationFilter, route => routeSeconds(state, route));
     return <section className={`${styles.routes} ${styles.miningRoutes}`} data-section-guide-target="expedition-routes" aria-label="Добыча по ресурсам" data-sector="caves">
       <div className={styles.miningFilters} role="group" aria-label="Время добычи">{miningDurationFilters.map(filter => <button type="button" key={filter.id} aria-pressed={durationFilter === filter.id} data-mining-duration={filter.id} onClick={() => setDurationFilter(filter.id)}>{filter.label}</button>)}</div>
-      {groups.map(group => <section className={styles.miningGroup} key={group.id} data-mining-resource={group.id} aria-label={group.itemId ? itemName(state, group.itemId) : "Несколько ресурсов"}>
-        <h4 className={styles.miningGroupTitle}>{group.itemId && <ProductIcon state={state} itemId={group.itemId} size={19} />}<span>{group.itemId ? itemName(state, group.itemId) : "Несколько ресурсов"}</span><small>{group.routes.length}</small></h4>
-        <div className={styles.miningCards}>{group.routes.map(route => {
+      {groups.map(group => {
+        const mixed = group.itemId === null;
+        const title = group.itemId ? itemName(state, group.itemId) : "Смешанная добыча";
+        const heading = <>{group.itemId ? <ProductIcon state={state} itemId={group.itemId} size={24} /> : <Package size={19} aria-hidden="true" />}<span>{title}</span>{mixed && <ChevronDown className={styles.miningToggle} size={15} aria-hidden="true" />}</>;
+        const cards = <div className={styles.miningCards} data-variants={mixed ? undefined : group.routes.length}>{group.routes.map(route => {
           const missing = worldMissingRequirements(state, worldRequirements(route));
           const tooLarge = countRewards(route.rewards) > state.storage.capacity;
           const needsProvisions = worldCostShortfalls(state, expeditionCost(state, route)).length > 0;
           const reason = missing.length ? `${stationName(state, missing[0].id)} · ур. ${missing[0].level}${missing.length > 1 ? ` +${missing.length - 1}` : ""}` : tooLarge ? "Расширьте кладовую" : needsProvisions ? "Нужны припасы" : null;
           const descriptionId = `${descriptionPrefix}-${route.id}`;
-          const mixed = group.itemId === null;
-          const seconds = routeSeconds(state, route);
-          const label = route.id === "quarry_stone_overnight" ? "К утру" : seconds <= 900 ? "Быстрая добыча" : seconds <= 3600 ? "Короткая смена" : "Длинная смена";
           const findings = <span id={`${descriptionId}-rewards`} className={styles.miningFindings} role="list" aria-label="Добыча" data-mixed={mixed || undefined}>{Object.entries(route.rewards).filter(([, quantity]) => quantity > 0).map(([itemId, quantity]) => <span key={itemId} role="listitem" className={styles.miningYield} data-mining-yield={itemId}>
-            <ProductIcon state={state} itemId={itemId} size={mixed ? 18 : 24} /><span title={itemName(state, itemId)}>{itemName(state, itemId)}</span>{quantity !== 1 && <strong>×{number(quantity)}</strong>}
+            {mixed && <ProductIcon state={state} itemId={itemId} size={18} />}<span className={styles.miningResourceName} title={itemName(state, itemId)}>{itemName(state, itemId)}</span>{quantity !== 1 ? <strong>×{number(quantity)}</strong> : !mixed && <span className={styles.miningSingle}>1</span>}
           </span>)}</span>;
           return <button type="button" key={route.id} className={styles.miningCard} data-route={route.id} data-mixed={mixed || undefined} data-locked={Boolean(reason) || undefined} aria-label={`Подготовиться: ${route.name}`} aria-describedby={`${descriptionId}-duration ${descriptionId}-rewards${reason ? ` ${descriptionId}-reason` : ""}`} onClick={() => onSelectRoute(route.id)}>
-            <span className={styles.miningMain}>{mixed ? <strong className={styles.miningName}>{routeName(route.name)}</strong> : findings}</span>
+            {mixed && <strong className={styles.miningName}>{routeName(route.name)}</strong>}
             <span id={`${descriptionId}-duration`} className={styles.routeDuration}><Clock3 size={11} aria-hidden="true" />{displayedRouteDuration(state, route)}</span>
-            <ArrowRight className={styles.miningChevron} size={13} aria-hidden="true" />
-            {mixed && findings}
-            <span className={styles.miningMeta}><small className={styles.miningTag}>{label}</small>{reason && <small id={`${descriptionId}-reason`} className={styles.miningLocked} title={reason}><LockKeyhole size={10} aria-hidden="true" /><span>{reason}</span></small>}</span>
+            {mixed && <ArrowRight className={styles.miningChevron} size={13} aria-hidden="true" />}
+            {findings}
+            {reason && <small id={`${descriptionId}-reason`} className={styles.miningLocked} title={reason}><LockKeyhole size={10} aria-hidden="true" /><span>{reason}</span></small>}
           </button>;
-        })}</div>
-      </section>)}
+        })}</div>;
+        return mixed ? <details className={`${styles.miningGroup} ${styles.miningMixed}`} key={group.id} data-mining-resource={group.id} aria-label={title}>
+          <summary className={styles.miningGroupTitle}>{heading}</summary>{cards}
+        </details> : <section className={styles.miningGroup} key={group.id} data-mining-resource={group.id} aria-label={title}>
+          <h4 className={styles.miningGroupTitle}>{heading}</h4>{cards}
+        </section>;
+      })}
       {!groups.length && <p className={styles.miningEmpty} role="status">{routes.length ? "Нет добычи с таким временем. Выберите другой фильтр." : "Добыча откроется после улучшения дома."}</p>}
     </section>;
   }
@@ -293,6 +297,8 @@ export function WorldExpeditionsMenu({ economy, onOpenPantry, onNavigateStation,
       // Find by dataset rather than interpolating catalog IDs into CSS selectors.
       const cards = content.current?.querySelectorAll<HTMLButtonElement>("button[data-route]");
       const origin = Array.from(cards ?? []).find(card => card.dataset.route === previousRoute.current);
+      const collapsedGroup = origin?.closest<HTMLDetailsElement>("details[data-mining-resource]");
+      if (collapsedGroup) collapsedGroup.open = true;
       (origin ?? selectedSectorButton.current ?? content.current)?.focus();
     }
     previousRoute.current = visibleRoute;
@@ -323,7 +329,7 @@ export function WorldExpeditionsMenu({ economy, onOpenPantry, onNavigateStation,
   if (activeOnly && !jobs.length) return null;
   return <div ref={content} className={styles.content} tabIndex={-1} data-embedded={embeddedCaves || undefined}>
     {!state ? <div className={styles.loading}><Compass size={18} aria-hidden="true" /><p>{economy.error ?? "Открываем маршруты…"}</p>{economy.error && retry}</div> : <>
-      {!embeddedCaves && (economy.error || economy.uncertain || cooldown > 0) && <div className={styles.warning} role="alert"><p>{economy.uncertain ? "Проверяем последнее действие. Дождитесь подтверждения, прежде чем продолжать." : economy.error ?? "Подождите перед следующим действием."}</p>{retry}</div>}
+      {!embeddedCaves && !economy.syncError && (economy.error || economy.uncertain || cooldown > 0) && <div className={styles.warning} role="alert"><p>{economy.uncertain ? "Проверяем последнее действие. Дождитесь подтверждения, прежде чем продолжать." : economy.error ?? "Подождите перед следующим действием."}</p>{retry}</div>}
       {jobs.map(job => <ActiveExpedition key={job.id} economy={economy} state={state} job={job} onOpenPantry={onOpenPantry} onOpenHelp={onOpenHelp} isOnline={isOnline}
         confirmationKey={confirmationKey} onConfirmation={setConfirmationKey} onCancellationSent={jobId => { cancellationSent.current = jobId; }} />)}
       {!embeddedCaves && !activeOnly && !currentSector && <>

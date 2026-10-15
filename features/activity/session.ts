@@ -2,7 +2,7 @@ import { ApiError } from "@/lib/check-in-api";
 import { createUuidV4 } from "@/lib/browser-uuid";
 import { ACTIVITY_HEARTBEAT_MS, ACTIVITY_IDLE_MS, type PresenceCommand, type PresenceView } from "./model";
 export type ActivityMode = "connecting" | "active" | "offline" | "away" | "hidden" | "error";
-export type ActivityView = { mode: ActivityMode; error: string | null; retryAt: number; online: boolean };
+export type ActivityView = { mode: ActivityMode; error: string | null; retryAt: number; online: boolean; resumeRequired?: boolean };
 type Options = {
   send: (command: PresenceCommand, signal: AbortSignal) => Promise<PresenceView>;
   reconcile: () => Promise<boolean>;
@@ -13,19 +13,24 @@ type Options = {
 /** Input, server lease and reconciliation are separate: timers or AI never count as player input. */
 export function createActivitySession(options: Options) {
   const now = options.now ?? Date.now;
-  let view: ActivityView = { mode: "connecting", error: null, retryAt: 0, online: true };
+  let view: ActivityView = { mode: "connecting", error: null, retryAt: 0, online: true, resumeRequired: false };
   let running = false, online = true, visible = true, generation = 0;
+  // A failed explicit return may retry, but a fresh AFK boundary revokes that intent.
+  let explicitResumeAttempt = false;
   let lastInput = now(), acknowledgedInput = lastInput - 1, lastBeat = -Infinity;
   let presenceId: string | null = null, sequence = 0, pendingResume: PresenceCommand | null = null;
   let request: AbortController | null = null;
   const listeners = new Set<() => void>();
-  const publish = (patch: Partial<ActivityView>) => { view = { ...view, ...patch }; listeners.forEach(listener => listener()); };
+  const publish = (patch: Partial<ActivityView>) => {
+    if (patch.mode === "away") { patch.resumeRequired = true; explicitResumeAttempt = false; }
+    view = { ...view, ...patch }; listeners.forEach(listener => listener());
+  };
   const idle = () => now() - lastInput >= ACTIVITY_IDLE_MS;
   function disconnect(mode: ActivityMode, notify = true) {
     const previous = presenceId;
     ++generation; request?.abort(); request = null; presenceId = null; pendingResume = null;
     options.connected(null);
-    publish({ mode, error: null, retryAt: 0 });
+    publish({ mode, error: null, retryAt: Math.max(view.retryAt, mode === "error" ? now() + 3000 : 0) });
     if (previous && notify && online) {
       const controller = new AbortController();
       void options.send({ kind: "suspend", presenceId: previous, sequence: ++sequence, active: false }, controller.signal).catch(() => {});
@@ -33,8 +38,8 @@ export function createActivitySession(options: Options) {
   }
   async function connect(explicit: boolean) {
     if (!running || request || !online || !visible || now() < view.retryAt) return;
-    if (explicit) lastInput = now();
-    else if (view.mode === "away" || idle()) { disconnect("away"); return; }
+    if (explicit) { lastInput = now(); explicitResumeAttempt = true; }
+    else if (view.mode === "away" || idle() || view.resumeRequired && !explicitResumeAttempt) { disconnect("away"); return; }
     const epoch = ++generation, controller = new AbortController(); request = controller;
     const command = pendingResume ?? { kind: "resume" as const, presenceId: createUuidV4(), sequence: 0, active: true };
     pendingResume = command;
@@ -45,7 +50,7 @@ export function createActivitySession(options: Options) {
       if (answer.presenceId !== command.presenceId) throw new Error("Presence owner mismatch");
       if (answer.status !== "active") {
         pendingResume = null;
-        publish({ mode: answer.status === "idle" ? "away" : "error", error: answer.status === "idle" ? null : "Подключение истекло. Повторите вход в игру.", retryAt: 0 });
+        publish({ mode: answer.status === "idle" ? "away" : "error", error: answer.status === "idle" ? null : "Подключение истекло. Повторите вход в игру.", retryAt: answer.status === "idle" ? 0 : now() + 3000 });
         return;
       }
       presenceId = command.presenceId; sequence = 0; pendingResume = null;
@@ -54,7 +59,8 @@ export function createActivitySession(options: Options) {
       if (!running || epoch !== generation) return;
       if (idle()) { disconnect("away"); return; }
       if (!ready) throw new Error("Не удалось сверить сохранённые действия. Повторите проверку.");
-      publish({ mode: "active", error: null, retryAt: 0 });
+      explicitResumeAttempt = false;
+      publish({ mode: "active", error: null, retryAt: 0, resumeRequired: false });
     } catch (error) {
       if (!running || epoch !== generation) return;
       if (presenceId) {
@@ -95,11 +101,13 @@ export function createActivitySession(options: Options) {
       if (!online) publish({ mode: "offline" }); else if (!visible) publish({ mode: "hidden" }); else void connect(false);
       return () => { running = false; disconnect("hidden"); };
     },
-    input() { if (!running || !online || !visible || view.mode !== "active") return;
+    input() { if (!running || !visible || view.mode === "away" || view.mode === "hidden") return;
       if (idle()) disconnect("away"); else { lastInput = now(); if (lastInput - acknowledgedInput >= ACTIVITY_IDLE_MS - 60_000) void heartbeat(); }
     },
     check() { if (!running) return; if (view.mode !== "away" && idle()) { disconnect("away"); return; }
       if (view.mode === "active" && now() - lastBeat >= ACTIVITY_HEARTBEAT_MS) void heartbeat();
+      else if (online && visible && (view.mode === "error" || view.mode === "offline")
+        && (!view.resumeRequired || explicitResumeAttempt)) void connect(false);
     },
     environment(isOnline: boolean, isVisible: boolean) {
       online = isOnline; visible = isVisible; publish({ online });

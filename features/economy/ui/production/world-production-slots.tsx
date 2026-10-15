@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { LockKeyhole, Plus } from "lucide-react";
+import { CloudUpload, LockKeyhole, Plus } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
 import { productionSlotCount, productionSlotOffer, productionStationSupported } from "@/features/economy/domain/production-slots";
 import { locked, type ReadyEconomy } from "@/features/economy/sync/controller-state";
 import { formatPearls } from "@/features/economy/domain/money";
-import { Work } from "@/features/economy/ui/shared/world-economy-parts";
+import { ProductIcon, itemName, Work } from "@/features/economy/ui/shared/world-economy-parts";
 import { worldJobProgress } from "@/features/economy/ui/shared/world-stations";
 import styles from "./world-production-slots.module.css";
 
@@ -21,7 +21,7 @@ export function WorldProductionSlots({ economy, stationId, compact = false, open
   const purchaseTrigger = useRef<HTMLButtonElement | null>(null);
   const wasConfirming = useRef(false);
   const purchasePending = useRef<{ owner: string; revision: number } | null>(null);
-  const state = economy.snapshot;
+  const state = economy.productionSnapshot ?? economy.snapshot;
   const capacity = productionSlotCount(state, stationId), offer = productionSlotOffer(state, stationId);
   const jobs = state.jobs.filter(job => job.kind === "production" && job.targetId === stationId);
   const construction = state.jobs.some(job => job.kind === "construction" && job.targetId === stationId);
@@ -53,15 +53,16 @@ export function WorldProductionSlots({ economy, stationId, compact = false, open
   }
   const free = Math.max(0, capacity - jobs.length);
   return <section ref={slotsSection} tabIndex={-1} className={`${styles.slots} ${compact ? styles.compact : ""}`} aria-label="Места производства" data-production-slots={stationId}
-    data-section-guide-target="workshop-queue" data-running-orders={jobs.some(job => !worldJobProgress(state, job, economy.now).ready) ? stationId : undefined}>
+    data-section-guide-target="workshop-queue" data-running-orders={jobs.some(job => !economy.pendingProductionIds?.includes(job.id) && !worldJobProgress(state, job, economy.now).ready) ? stationId : undefined}>
     <header className={styles.heading}><h3>Производство</h3><span aria-live="polite" aria-atomic="true">Свободно {free} из {capacity}</span></header>
     <div className={styles.track}>{Array.from({ length: 3 }, (_, index) => {
       const job = jobs[index], opened = index < capacity;
+      const queued = Boolean(job && economy.pendingProductionIds?.includes(job.id));
       const tier = state.catalog.productionSlots.upgrades.find(entry => entry.slots === index + 1);
       const nextLocked = !opened && index === capacity;
-      const slotState = job ? worldJobProgress(state, job, economy.now).ready ? "ready" : "working" : !opened ? "locked" : "free";
+      const slotState = queued ? "pending" : job ? worldJobProgress(state, job, economy.now).ready ? "ready" : "working" : !opened ? "locked" : "free";
       return job ? <div key={index} className={`${styles.slot} ${styles.job}`} data-production-slot={index + 1} data-state={slotState}>
-        <span className={styles.slotNumber}>Место {index + 1}</span><Work economy={economy} job={job} openPantry={openPantry} compact />
+        <span className={styles.slotNumber}>Место {index + 1}</span>{queued ? <div className={styles.pending} role="status" data-production-pending={job.id}><ProductIcon state={state} itemId={Object.keys(job.rewards)[0]} size={28} /><strong title={itemName(state, Object.keys(job.rewards)[0])}>{itemName(state, Object.keys(job.rewards)[0])}</strong><span><CloudUpload size={12} aria-hidden="true" /> Сохранено</span></div> : <Work economy={economy} job={job} openPantry={openPantry} compact />}
       </div> : opened ? <div key={index} className={styles.slot} data-production-slot={index + 1} data-state={slotState}>
         <span className={styles.slotNumber}>Место {index + 1}</span><Plus size={25} aria-hidden="true" /><strong>{unavailable ? "Недоступно" : "Свободно"}</strong><span>{unavailable ? construction ? "Идёт улучшение" : "Нужно обустроить" : "Выберите рецепт"}</span>
       </div> : <button key={index} type="button" className={`${styles.slot} ${styles.closed}`} data-production-slot={index + 1} data-state="locked"

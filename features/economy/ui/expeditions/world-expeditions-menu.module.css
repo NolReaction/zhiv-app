@@ -122,34 +122,47 @@
 .contextHelp:hover { background: #edf3e5; }
 .contextHelp:focus-visible { outline: 2px solid #55774c; outline-offset: 2px; }
 
-/* Mine resource cards retain their size when a route is locked or filtered. */
-.miningRoutes { container-type: inline-size; gap: 14px; }
+/* One resource heading, with equal time/quantity choices instead of repeated cards. */
+.miningRoutes { container-type: inline-size; gap: 10px; }
 .miningFilters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
 .content.content .miningFilters button { min-height: 44px; padding: 4px; border: 1px solid var(--forest-border, #c8bd98); border-radius: 8px; background: var(--forest-paper-light, #f0e6ca); font-size: 10px; }
 .content.content .miningFilters button[aria-pressed="true"] { color: var(--forest-paper-light, #f0e6ca); border-color: var(--forest-primary, #466347); background: var(--forest-primary, #466347); }
-.miningGroup { min-width: 0; display: grid; gap: 6px; }
-.miningGroupTitle { min-width: 0; display: flex; align-items: center; gap: 5px; margin: 0; color: var(--forest-ink, #394d3e); font-size: 11px; font-weight: 600; }
+.miningGroup { min-width: 0; display: grid; gap: 8px; padding: 10px; border: 1px solid var(--forest-border, #c8bd98); border-radius: 12px; background: color-mix(in srgb, #b09180 5%, var(--forest-paper-light, #f0e6ca)); }
+.miningGroupTitle { min-width: 0; display: flex; align-items: center; gap: 7px; margin: 0; color: var(--forest-ink, #394d3e); font-size: 12px; font-weight: 600; }
 .miningGroupTitle > span { flex: 1; }
-.miningGroupTitle small { color: var(--forest-muted, #59624d); font-size: 10px; font-weight: 400; }
-.miningCards { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
-.content.content .miningCard { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto 13px; align-items: center; justify-items: stretch; gap: 4px 7px; width: 100%; min-height: 58px; padding: 8px 9px; border: 1px solid var(--forest-border, #c8bd98); border-radius: 9px; background: var(--forest-paper-light, #f0e6ca); text-align: left; }
-.content.content .miningCard:hover { border-color: var(--forest-primary, #466347); }
-.miningMain { min-width: 0; }
-.miningName { display: block; min-width: 0; overflow-wrap: anywhere; font-size: 11px; font-weight: 600; line-height: 1.25; }
+.miningGroupTitle > svg { flex-shrink: 0; }
+.miningCards { min-width: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+.miningCards[data-variants="1"] { grid-template-columns: minmax(0, 1fr); }
+.miningCards[data-variants="2"], .miningCards[data-variants="4"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.content.content .miningCard { min-width: 0; display: grid; align-content: start; align-items: center; justify-items: center; gap: 5px; width: 100%; min-height: 66px; padding: 8px 5px; border: 1px solid var(--forest-border, #c8bd98); border-radius: 8px; background: var(--forest-paper-light, #f0e6ca); text-align: center; }
+.content.content .miningCard:hover { border-color: var(--forest-primary, #466347); background: color-mix(in srgb, var(--forest-primary, #466347) 7%, var(--forest-paper-light, #f0e6ca)); }
+.content.content .miningCard:focus-visible { outline: 2px solid var(--forest-focus, #355e48); outline-offset: 2px; }
+.miningCard .routeDuration { justify-self: center; font-size: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .miningFindings { min-width: 0; display: grid; align-content: start; gap: 4px 8px; }
-.miningFindings[data-mixed="true"] { grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.miningYield { min-width: 0; display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; line-height: 1.2; }
-.miningYield > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.miningYield strong { font-size: 10px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.miningFindings[data-mixed="true"] .miningYield { grid-template-columns: 18px minmax(0, 1fr) auto; gap: 3px; font-size: 10px; font-weight: 400; }
-.miningCard .routeDuration { justify-self: end; font-size: 10px; font-variant-numeric: tabular-nums; }
-.miningChevron { color: var(--forest-muted, #59624d); }
-.miningMeta { grid-column: 1 / -1; min-width: 0; display: flex; align-items: center; gap: 6px; min-height: 12px; }
-.miningTag { flex: 0 0 auto; color: var(--forest-muted, #59624d); font-size: 9px; line-height: 1.25; }
-.miningLocked { min-width: 0; display: flex; align-items: center; gap: 3px; margin-left: auto; color: var(--forest-accent-ink, #785021); font-size: 9px; line-height: 1.25; }
+.miningYield { min-width: 0; display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 11px; font-weight: 600; line-height: 1.2; }
+.miningYield strong, .miningSingle { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--forest-ink, #394d3e); }
+.miningYield .miningResourceName { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.miningLocked { min-width: 0; display: flex; align-items: center; justify-content: center; gap: 3px; width: 100%; color: var(--forest-accent-ink, #785021); font-size: 9px; line-height: 1.25; }
+.miningLocked > svg { flex-shrink: 0; }
 .miningLocked > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.miningMixed { display: block; padding: 0; }
+.miningMixed > summary { padding: 10px; min-height: 44px; cursor: pointer; list-style: none; }
+.miningMixed > summary::-webkit-details-marker { display: none; }
+.miningMixed > summary:focus-visible { outline: 2px solid var(--forest-focus, #355e48); outline-offset: 2px; border-radius: 10px; }
+.miningMixed[open] .miningToggle { transform: rotate(180deg); }
+.miningMixed > .miningCards { grid-template-columns: minmax(0, 1fr); padding: 0 8px 8px; gap: 6px; }
+.content.content .miningCard[data-mixed="true"] { grid-template-columns: minmax(0, 1fr) auto 13px; justify-items: stretch; gap: 6px 7px; min-height: 62px; padding: 9px; text-align: left; }
+.miningName { min-width: 0; overflow-wrap: anywhere; font-size: 11px; font-weight: 600; line-height: 1.25; }
+.miningChevron { color: var(--forest-muted, #59624d); }
+.miningFindings[data-mixed="true"] { grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.miningFindings[data-mixed="true"] .miningYield { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; justify-content: start; gap: 3px; font-size: 10px; font-weight: 400; }
+.miningFindings[data-mixed="true"] .miningResourceName { position: static; width: auto; height: auto; clip-path: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.miningFindings[data-mixed="true"] .miningYield strong { font-size: 10px; }
+.miningCard[data-mixed="true"] .routeDuration { justify-self: end; }
+.miningCard[data-mixed="true"] .miningLocked { grid-column: 1 / -1; justify-content: flex-start; }
 .miningEmpty { padding: 4px 0; color: var(--forest-muted, #59624d); font-size: 11px; }
-@container (max-width: 250px) { .miningFilters { grid-template-columns: repeat(2, minmax(0, 1fr)); } .miningFindings[data-mixed="true"] { grid-template-columns: minmax(0, 1fr); } }
+@container (min-width: 320px) { .miningCards[data-variants="4"] { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@container (max-width: 250px) { .miningFilters { grid-template-columns: repeat(2, minmax(0, 1fr)); } .miningCards { grid-template-columns: repeat(2, minmax(0, 1fr)); } .miningFindings[data-mixed="true"] { grid-template-columns: minmax(0, 1fr); } }
 
 /* Activities are drawn as small pages of the same forest field guide. */
 .chooserHeading { margin: 2px 2px 16px; }

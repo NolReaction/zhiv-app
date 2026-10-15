@@ -34,7 +34,14 @@
       "quarry_sand",
       "quarry_shift",
       "quarry_deep_face",
-      "quarry_supply"
+      "quarry_supply",
+      "quarry_stone_hour",
+      "quarry_ore_hour",
+      "quarry_ore_overnight",
+      "quarry_clay_hour",
+      "quarry_clay_overnight",
+      "quarry_sand_hour",
+      "quarry_sand_overnight"
     ],
     "productionBuilding": "quarry",
     "finds": [
