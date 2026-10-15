@@ -94,7 +94,7 @@ function costAdvice(state: EconomyView, cost: EconomyCost, now: number, quantity
   if (missing.id === "coins") return {
     id: "missing:coins", title: "Не хватает монет", topicId: "resident-orders", severity: "problem",
     message: `Нужно ещё ${(missing.required - missing.available).toLocaleString("ru-RU")}. Монеты можно получить за заказы жителей; состав и награда видны до сдачи.`,
-    action: { label: "Посмотреть заказы", target: { kind: "food", tab: "orders" } },
+    action: { label: "Посмотреть заказы", target: { kind: "orders" } },
   };
   const incoming = state.jobs.find(job => (job.rewards[missing.id] ?? 0) > 0 && ready(job, now));
   if (incoming) return jobAdvice(state, incoming, now);
@@ -172,7 +172,7 @@ function contextAdvice(state: EconomyView, context: WorldHelpContext | undefined
     if (stationId === "home" && next.level === 2 && tutorial.version === 2 && !tutorial.completed) return {
       id: "construction:tutorial", title: "Завершите учебные заказы", topicId: "resident-orders", severity: "next",
       message: `Выполнено ${tutorial.step} из 4. Соберите товары для текущей просьбы: награды помогут оплатить улучшение дома.`,
-      action: { label: "Открыть заказы", target: { kind: "food", tab: "orders" } },
+      action: { label: "Открыть заказы", target: { kind: "orders" } },
     };
     if (stationId === "home" && stageCourseRequired(state, next.level)) {
       const home = state.buildings.home ?? 1;
@@ -181,7 +181,7 @@ function contextAdvice(state: EconomyView, context: WorldHelpContext | undefined
       const wait = progress.availableAt ? Math.max(0, Math.ceil((Date.parse(progress.availableAt) - now) / 1000)) : 0;
       return { id: "construction:stage-orders", title: wait > 0 ? "Дождитесь следующей поставки" : "Завершите заказы этапа", topicId: "resident-orders", severity: "next",
         message: `Выполнено ${progress.step} из ${count}. ${wait > 0 ? `Следующая поставка через ${worldDuration(wait)}. Материалы можно подготовить заранее; жемчуг не сокращает этот срок.` : `Соберите товары для следующей постоянной просьбы, чтобы открыть дом ${next.level}.`}`,
-        action: { label: "Открыть заказы", target: { kind: "food", tab: "orders" } } };
+        action: { label: "Открыть заказы", target: { kind: "orders" } } };
     }
     const construction = state.jobs.find(job => job.kind === "construction");
     if (construction) return jobAdvice(state, construction, now);

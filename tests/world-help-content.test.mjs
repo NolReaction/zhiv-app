@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-fish-rails-guides-help-vite", resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
+const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-orders-journal-guides-help-vite", resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { worldHelpTopics, worldHelpGroups, searchWorldHelp, searchWorldHelpWithStatus } = await vite.ssrLoadModule("/features/world/ui/help/world-help-content.ts");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
@@ -157,12 +157,26 @@ test("topic navigation points to existing buildings and valid destinations", () 
     }
     if (target.kind === "profile") assert.ok(["profile", "mood", "friends", "settings"].includes(target.tab));
     if (target.kind === "expeditions" && target.sector) assert.ok(["forest", "coast", "caves"].includes(target.sector));
+    assert.notEqual(target.kind, "food", `${entry.id}: released help uses real orders or contextual boost surfaces`);
+    if (target.kind === "orders" && target.residentId) assert.ok(["plesk", "builder"].includes(target.residentId));
   }
   assert.deepEqual(topic("start").action.target, { kind: "station", stationId: "garden" });
   assert.deepEqual(topic("storage").action.target, { kind: "pantry" });
   assert.deepEqual(topic("mochlik-life").action.target, { kind: "profile", tab: "mood" });
   assert.deepEqual(topic("friend-profile").action.target, { kind: "profile", tab: "friends" });
   assert.deepEqual(topic("mining").action.target, { kind: "station", stationId: "quarry" });
+  assert.deepEqual(topic("resident-orders").action.target, { kind: "orders" });
+  assert.deepEqual(topic("food").action.target, { kind: "expeditions" });
+  assert.deepEqual(topic("builder-food").action.target, { kind: "resident", residentId: "builder" });
+});
+
+test("order instructions point to the standalone journal and meal help stays beside the relevant work", () => {
+  for (const id of ["tutorial-order", "second-stage-orders", "third-house-stage", "fourth-house-stage", "resident-orders"]) {
+    assert.match(answer(id), /«Заказы» внизу/);
+    assert.doesNotMatch(answer(id), /«Еда и заказы»|«Ещё» → «Еда/);
+  }
+  assert.equal(worldHelpGroups.find(group => group.id === "food").title, "Готовка и заказы");
+  assert.match(answer("builder-food"), /или в разговоре с Шишколапом/);
 });
 
 test("beginner answers explain costs, receipt of results, blocked work and recovery without destructive advice", () => {
@@ -397,7 +411,7 @@ test("house-three guidance explains seven full waits, guaranteed resin and optio
   assert.match(answer("third-house-stage"), /Жемчуг и обеды не сокращают интервалы/);
   assert.match(answer("third-house-stage"), /не истекают и не заменяются/);
   assert.match(answer("third-house-stage"), /Расширять кладовую необязательно/);
-  assert.deepEqual(topic("third-house-stage").action.target, { kind: "food", tab: "orders" });
+  assert.deepEqual(topic("third-house-stage").action.target, { kind: "orders" });
 });
 
 test("seller-slot and item-opening answers describe permanent rights and current pearl prices", () => {

@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-compact-guides-advice-vite", resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
+const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-orders-journal-guides-advice-vite", resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { worldHelpAdvice } = await vite.ssrLoadModule("/features/world/ui/help/world-help-advice.ts");
 const { economyCatalog, economyViewSchema } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
@@ -109,7 +109,7 @@ test("house two advice opens the four-step tutorial before suggesting money or s
   let result = advice(patch, { context });
   assert.equal(result[0].id, "construction:tutorial");
   assert.match(result[0].message, /0 из 4/);
-  assert.deepEqual(result[0].action.target, { kind: "food", tab: "orders" });
+  assert.deepEqual(result[0].action.target, { kind: "orders" });
   patch.tutorialOrder.step = 3;
   assert.match(advice(patch, { context })[0].message, /3 из 4/);
   patch.tutorialOrder.step = 4; patch.tutorialOrder.completed = true;
@@ -127,7 +127,7 @@ test("house-three advice prioritizes the seven current stage requests and keeps 
   let result = advice(patch, { context });
   assert.equal(result[0].id, "construction:stage-orders");
   assert.match(result[0].message, /0 из 7/);
-  assert.deepEqual(result[0].action.target, { kind: "food", tab: "orders" });
+  assert.deepEqual(result[0].action.target, { kind: "orders" });
   patch.stageOrders.stages[2].step = 6;
   assert.match(advice(patch, { context })[0].message, /6 из 7/);
   patch.stageOrders.stages[2] = { step: 5, completed: true, terms: null };
@@ -148,7 +148,7 @@ test("house-four advice gates legacy tutorials on the eight supplies and disting
   assert.equal(result[0].id, "construction:stage-orders");
   assert.equal(result[0].title, "Завершите заказы этапа");
   assert.match(result[0].message, /0 из 8/);
-  assert.deepEqual(result[0].action.target, { kind: "food", tab: "orders" });
+  assert.deepEqual(result[0].action.target, { kind: "orders" });
   patch.stageOrders.stages[3] = { ...patch.stageOrders.stages[3], step: 1, terms: course.orders[1], availableAt: new Date(now + 86400000).toISOString() };
   const before = structuredClone(patch);
   result = advice(patch, { context });
@@ -156,7 +156,7 @@ test("house-four advice gates legacy tutorials on the eight supplies and disting
   assert.match(result[0].message, /1 из 8.*Следующая поставка через 1 д/,
     "an already accepted 24-hour deadline remains authoritative after the current course changes to 23 hours");
   assert.match(result[0].message, /Материалы можно подготовить заранее.*жемчуг не сокращает/);
-  assert.deepEqual(result[0].action.target, { kind: "food", tab: "orders" });
+  assert.deepEqual(result[0].action.target, { kind: "orders" });
   assert.deepEqual(patch, before, "waiting advice never moves the accepted deadline or the course");
   patch.stageOrders.stages[3].availableAt = new Date(now + course.intervalSeconds * 1000).toISOString();
   assert.match(advice(patch, { context })[0].message, new RegExp(`Следующая поставка через ${worldDuration(course.intervalSeconds)}`));
@@ -260,7 +260,7 @@ test("coin shortfall uses the same integer amount shown by construction and orde
   assert.equal(result[0].id, "missing:coins");
   assert.match(result[0].message, /Нужно ещё 47\./);
   assert.doesNotMatch(result[0].message, /4,7/);
-  assert.deepEqual(result[0].action.target, { kind: "food", tab: "orders" });
+  assert.deepEqual(result[0].action.target, { kind: "orders" });
 });
 
 test("ripe berries are not treated as collected while the separate harvest timer runs", () => {

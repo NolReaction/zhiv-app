@@ -20,7 +20,6 @@ export type WorldMealBoostProps = {
   stationId?: string;
   isOnline?: boolean;
   onNavigateStation?: (stationId: string, recipeId?: string) => void;
-  onOpenMeals?: () => void;
 };
 type Quote = { owner: string; revision: number; consumer: MealConsumer; jobId?: string; stationId?: string };
 
@@ -54,7 +53,7 @@ const duration = (seconds: number) => seconds < 60 ? `${seconds} с` : worldDura
 
 /** A meal is chosen deliberately. Opening and previewing never spend or start a job. */
 export function WorldMealBoost(props: WorldMealBoostProps) {
-  const { economy, consumer, jobId, stationId, onNavigateStation, onOpenMeals } = props;
+  const { economy, consumer, jobId, stationId, onNavigateStation } = props;
   const [quote, setQuote] = useState<Quote | null>(null);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
   const sent = useRef<Quote | null>(null), navigating = useRef(false);
@@ -129,7 +128,7 @@ export function WorldMealBoost(props: WorldMealBoostProps) {
         const speed = consumer === "hero" ? meal.heroSpeedBps : meal.builderSpeedBps;
         const result = mealBoostSeconds(props, speed);
         const recipe = availableMealRecipe(state, meal.itemId);
-        const cook = recipe && onNavigateStation ? () => onNavigateStation(recipe.buildingId, recipe.id) : onOpenMeals;
+        const cook = recipe && onNavigateStation ? () => onNavigateStation(recipe.buildingId, recipe.id) : null;
         return <article key={meal.itemId} className={styles.meal} data-boost-meal={meal.itemId}>
           <ProductIcon state={state} itemId={meal.itemId} size={28} />
           <div className={styles.description}><strong>{itemName(state, meal.itemId)}</strong><span>Скорость +{speed / 100}% · есть {stock}</span>{result !== null && baseSeconds !== null && <small><Clock3 size={11} aria-hidden="true" />{duration(baseSeconds)}<ArrowRight size={10} aria-hidden="true" /><b>{duration(result)}</b></small>}</div>

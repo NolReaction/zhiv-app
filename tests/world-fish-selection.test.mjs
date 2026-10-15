@@ -24,7 +24,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, ca
       export const useLayoutEffect = useEffect;
     `; },
     transform(source, id) {
-      if (["/ui/fishing/world-fish-selection.tsx", "/ui/production/world-production-card.tsx", "/ui/food/world-resident-order-board.tsx"].some(path => id.endsWith(path)))
+      if (["/ui/fishing/world-fish-selection.tsx", "/ui/production/world-production-card.tsx", "/ui/orders/world-resident-order-board.tsx"].some(path => id.endsWith(path)))
         return source.replace('from "react";', `from "${hooksId}";`);
     },
   }] });
@@ -32,7 +32,7 @@ after(async () => { await vite.close(); await rm(cacheDir, { recursive: true, fo
 const hooks = await vite.ssrLoadModule(hooksId);
 const { WorldFishSelection } = await vite.ssrLoadModule("/features/economy/ui/fishing/world-fish-selection.tsx");
 const { WorldProductionCard } = await vite.ssrLoadModule("/features/economy/ui/production/world-production-card.tsx");
-const { ResidentOrderCard, ResidentOrderBoard, FishOrderAction } = await vite.ssrLoadModule("/features/economy/ui/food/world-resident-order-board.tsx");
+const { ResidentOrderCard, ResidentOrderBoard, FishOrderAction } = await vite.ssrLoadModule("/features/economy/ui/orders/world-resident-order-board.tsx");
 const { economyCatalog, economyFishingSchema } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const { normalizedResidentOrders, residentOrderBoard } = await vite.ssrLoadModule("/features/economy/domain/food.ts");

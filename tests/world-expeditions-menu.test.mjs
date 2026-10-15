@@ -485,7 +485,7 @@ test("stage-two mining keeps one-item unboosted timers and no meal or paid-slot 
     const before = structuredClone(state), selected = state.catalog.explorations.find(entry => entry.id === selectedRoute);
     const list = route(renderSector("caves", controller({ snapshot: state })), selectedRoute);
     assert.match(list, /3 мин/); assert.ok(list.includes(economyCatalog.items.find(item => item.id === Object.keys(selected.rewards)[0]).name)); assert.doesNotMatch(list, /×1/);
-    const view = sectorView("caves", state, {}, { selectedRoute, onOpenMeals() { assert.fail("mining has no food chooser"); } });
+    const view = sectorView("caves", state, {}, { selectedRoute });
     assert.match(view.html, /aria-label="Находки"/);
     assert.doesNotMatch(view.html, /Результат одной добычи|Условия маршрута|Без затрат/);
     assert.equal(view.depart(selectedRoute).props.disabled, false);

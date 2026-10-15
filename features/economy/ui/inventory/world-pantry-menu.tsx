@@ -6,7 +6,7 @@ import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Popover } from "radix-ui";
-import { Check, ChevronLeft, ChevronRight, ChevronUp, Clock3, Compass, Fish, Gift, Hammer, Package, RefreshCw, Snowflake, Soup, Store, Sparkles, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, ChevronUp, Clock3, Compass, Fish, Gift, Hammer, Package, RefreshCw, Snowflake, Store, Sparkles, X } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
 import { FISH_SPECIES_IDS } from "@/features/world/activities/fishing/fish-species";
 import { fishSelectionMatches, fishStockEntries, type FishSelection } from "@/features/economy/domain/fish-stock";
@@ -29,7 +29,6 @@ export type WorldPantryMenuProps = {
   onExplore: () => void;
   onOpenMarket?: () => void;
   onOpenFishingShop?: () => void;
-  onOpenFood?: () => void;
   constructionGoal?: ConstructionGoalController;
   onOpenGoal?: () => void;
   navigation?: StationNavigation;
@@ -37,7 +36,7 @@ export type WorldPantryMenuProps = {
   initialTab?: "supplies" | "fridge" | "relics";
 };
 
-export function PantrySale({ economy, itemId, fishItemId, compact = false, onClose, onOpenFishingShop, onOpenFood, constructionGoal, onFishPickerOpenChange }: { economy: ReadyEconomy; itemId: string; fishItemId?: string; compact?: boolean; onClose?: () => void; onOpenFishingShop?: () => void; onOpenFood?: () => void; constructionGoal?: ConstructionGoalController; onFishPickerOpenChange?: (open: boolean) => void }) {
+export function PantrySale({ economy, itemId, fishItemId, compact = false, onClose, onOpenFishingShop, constructionGoal, onFishPickerOpenChange }: { economy: ReadyEconomy; itemId: string; fishItemId?: string; compact?: boolean; onClose?: () => void; onOpenFishingShop?: () => void; constructionGoal?: ConstructionGoalController; onFishPickerOpenChange?: (open: boolean) => void }) {
   const state = economy.snapshot, buyer = state.catalog.localBuyer;
   const item = state.catalog.items.find(entry => entry.id === itemId);
   const fishClass = fishClassForItem(itemId, state.catalog.fishing);
@@ -102,7 +101,6 @@ export function PantrySale({ economy, itemId, fishItemId, compact = false, onClo
     <p className={styles.muted}>В запасе {number(stock)} · {compact ? `${number(economyLocalSellPrice(item.baseSellPrice, 1, buyer, item.id))} монет/шт.` : discount > 0 ? `Быстрая продажа с уценкой ${number(discount)}%` : `${number(fixedPrice ?? item.baseSellPrice)} монет за штуку`}</p>
     {!compact && discount > 0 && <p className={styles.muted}>Сумма за всё количество округляется вниз до целой монеты.</p>}
     {betterFishPrice && (!compact || onOpenFishingShop) && <p className={styles.fishBuyer}>{!compact && <>Плёска купит дороже: {number(item.baseSellPrice)} монет за штуку.</>}{onOpenFishingShop && <button type="button" className={styles.textButton} onClick={onOpenFishingShop}>{compact ? `Плёска · ${number(item.baseSellPrice)} монет/шт.` : "К Плёске"}</button>}</p>}
-    {onOpenFood && state.catalog.food?.meals.some(meal => meal.itemId === itemId) && <button type="button" className={styles.textButton} onClick={onOpenFood}><Soup size={16} aria-hidden="true" />Подать еду</button>}
     {goal && needed > 0 && <p className={styles.goalNote}>Для цели «{goal.name}» нужно оставить {number(Math.min(stock, needed))} шт., включая сырьё для изготовления.</p>}
     {item.tradable ? <>
       <div className={styles.saleControls}>
@@ -237,7 +235,7 @@ export function RelicPantrySection({ state, onExplore, onOpenMarket }: { state: 
 }
 
 /** Content only: the map provides the shared menu frame, heading and focus handling. */
-export function WorldPantryMenu({ economy, onUpgrade, onExplore, onOpenMarket, onOpenFishingShop, onOpenFood, constructionGoal, onOpenGoal, navigation, onReturnToGift, initialTab = "supplies" }: WorldPantryMenuProps) {
+export function WorldPantryMenu({ economy, onUpgrade, onExplore, onOpenMarket, onOpenFishingShop, constructionGoal, onOpenGoal, navigation, onReturnToGift, initialTab = "supplies" }: WorldPantryMenuProps) {
   const [tab, setTab] = useState(initialTab);
   const tabId = useId(), tabs = useRef<(HTMLButtonElement | null)[]>([]);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
@@ -299,7 +297,7 @@ export function WorldPantryMenu({ economy, onUpgrade, onExplore, onOpenMarket, o
     <div role="tabpanel" className={styles.pantryPanel} id={`${tabId}-panel`} aria-labelledby={`${tabId}-${tab}`}>
       {tab === "relics" ? <RelicPantrySection state={state} onExplore={onExplore} onOpenMarket={marketAvailable ? onOpenMarket : undefined} /> : <>
     {tab === "fridge" && <div className={styles.fridgeHeading}><span><Snowflake size={16} aria-hidden="true" />Рыба и готовая еда</span><small>Места общие с кладовой</small></div>}
-    {selectedItemId && !fishClassForItem(selectedItemId, state.catalog.fishing) && <PantrySale key={selectedItemId} economy={readyEconomy} itemId={selectedItemId} constructionGoal={constructionGoal} onClose={() => setSelectedItemId(null)} onOpenFishingShop={onOpenFishingShop} onOpenFood={onOpenFood} />}
+    {selectedItemId && !fishClassForItem(selectedItemId, state.catalog.fishing) && <PantrySale key={selectedItemId} economy={readyEconomy} itemId={selectedItemId} constructionGoal={constructionGoal} onClose={() => setSelectedItemId(null)} onOpenFishingShop={onOpenFishingShop} />}
     {visibleItems.length > 0 || tab === "fridge" && fishClasses.length > 0 ? <>
       {!selectedItemId && <p className={styles.muted}>Чтобы продать запасы за монеты, нажми на предмет и проверь условия.</p>}
       {tab === "fridge" && <div className={styles.fridgeFish} aria-label="Рыба и еда в холодильнике">

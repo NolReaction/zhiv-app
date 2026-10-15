@@ -20,11 +20,11 @@ type Props = {
   onCall?: () => void;
   callPulse?: number;
   onOpenHelp?: () => void;
-  onOpenFood?: () => void;
+  onOpenExpeditions?: () => void;
 };
 
 /** Keep private decision diagnostics out of the player-facing mood module. */
-export function WorldMoodModule({ observation, economy, onCall, callPulse = 0, onOpenHelp, onOpenFood }: Props) {
+export function WorldMoodModule({ observation, economy, onCall, callPulse = 0, onOpenHelp, onOpenExpeditions }: Props) {
   const snapshot = economy.snapshot;
   const meal = snapshot ? pendingMeal(snapshot, "hero") : null;
   const jobMeal = snapshot?.jobs.find(job => job.kind === "exploration" && !isMinerJob(job) && job.meal?.consumer === "hero")?.meal;
@@ -52,7 +52,7 @@ export function WorldMoodModule({ observation, economy, onCall, callPulse = 0, o
       <Soup size={18} aria-hidden="true" />
       <div><h3>{speedBps ? `Еда: +${speedBps / 100}% к скорости` : "Еда для вылазки"}</h3>
         <p>{meal ? "Бонус ждёт следующую вылазку." : jobMeal ? "Бонус учтён в текущей вылазке." : "Блюдо ускоряет одну вылазку. Силы восстанавливаются во время отдыха."}</p></div>
-      {onOpenFood && <button type="button" className={styles.foodAction} onClick={onOpenFood}>Еда</button>}
+      {onOpenExpeditions && <button type="button" className={styles.foodAction} onClick={onOpenExpeditions}>К вылазкам</button>}
     </section>}
 
     {(onCall || onOpenHelp) && <div className={styles.actions}>

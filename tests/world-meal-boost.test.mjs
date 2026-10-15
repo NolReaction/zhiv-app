@@ -169,7 +169,7 @@ test("confirmed feeding closes the picker and exposes the saved bonus without au
 });
 
 test("meal choice is wired to route duration, construction preparation and the builder's active timer", () => {
-  const economy = controller(), callbacks = { onNavigateStation() {}, onOpenMeals() {}, isOnline: true };
+  const economy = controller(), callbacks = { onNavigateStation() {}, isOnline: true };
   let routeNodes;
   function Probe() { const tree = WorldExpeditionSector({ economy, state: economy.snapshot, sectorId: "forest", selectedRoute: "forest", onSelectRoute() {}, exploring: false, onOpenPantry() {}, ...callbacks }); routeNodes = elements(tree); return tree; }
   hooks.reset(); renderToStaticMarkup(createElement(Probe));
@@ -182,6 +182,16 @@ test("meal choice is wired to route duration, construction preparation and the b
   economy.snapshot.jobs = [job()];
   const builder = elements(BuilderConversation({ economy, onOpenConstruction() {}, ...callbacks })).find(node => node.type === WorldMealBoost);
   assert.equal(builder.props.jobId, "construction-1"); assert.equal(builder.props.onNavigateStation, callbacks.onNavigateStation);
+});
+
+test("a missing meal without a recipe navigation stays unavailable instead of linking to a removed food page", () => {
+  const economy = controller({ inventory: {} });
+  const view = open({ economy, consumer: "hero", seconds: 3600 });
+  const meal = row(view, "grilled_fish");
+  assert.ok(meal);
+  assert.equal(action(view, "grilled_fish"), undefined);
+  assert.match(renderToStaticMarkup(meal), /Нет/);
+  assert.deepEqual(economy.calls, []);
 });
 
 test("closed selector names the food boost and explicit choice for both workers without spending", () => {

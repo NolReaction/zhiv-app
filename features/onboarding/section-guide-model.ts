@@ -1,8 +1,11 @@
 import type { PixelPose } from "@/features/mochlik/pixel-sprite";
 import type { NavigableGuideSection } from "./section-guide-navigation";
 
-export const sectionGuideIds = ["pantry", "market", "plesk", "orders", "meals", "expeditions", "workshop", "builder"] as const;
+export const sectionGuideIds = ["pantry", "market", "plesk", "orders", "expeditions", "workshop", "builder"] as const;
 export type SectionGuideId = typeof sectionGuideIds[number];
+/** Retired lessons keep their saved preferences without remaining navigable sections. */
+export type SectionGuideStorageId = SectionGuideId | "meals";
+const retiredMealStepIds = ["hero", "builder", "portion"] as const;
 export type SectionGuideStep = {
   id: string; title: string; summary: string; text: string; pose: PixelPose;
   /** First mounted, visible candidate wins; later candidates are navigation controls. */
@@ -63,21 +66,10 @@ export const sectionGuideLessons: Record<SectionGuideId, readonly SectionGuideSt
       summary: "В «Улове» классы сначала свёрнуты: нажми нужный и выбери рыбу. Продажу подтверждает кнопка «Продать».",
       text: "После возвращения увидишь виды и редкость. Нажми «Забрать»: рыба пополнит текущий запас, виды откроются в книге навсегда. Открой класс вручную и выбери из оставшихся видов. Повторный тап добавит 1 до доступного лимита; другой вид начнёт с 1. Поле и «Все» меняют количество. Только «Продать» спишет рыбу. Книга помнит и уже потраченные поимки." },
   ],
-  meals: [
-    { id: "hero", title: "Обед - это бонус скорости", pose: "hold", navigation: "meals", showLabel: "Еда для Мохлика", targets: ['[data-guide-meal-list="hero"] [data-meal]', '[data-guide-meal-consumer="hero"]'],
-      summary: "Накорми Мохлика перед вылазкой или рыбалкой - он вернётся быстрее. Процент бонуса указан у каждого блюда.",
-      text: "Это бафф: готовая еда временно ускоряет действие. Нажми «Съесть», когда решишь потратить одну порцию. Бонус дождётся следующей вылазки и не исчезнет вне игры. Во время похода накормить Мохлика уже нельзя; улов и шансы рыбы от обеда не меняются." },
-    { id: "builder", title: "Шишколап тоже любит поесть", pose: "present", navigation: "meals", showLabel: "Еда для строителя", targets: ['[data-guide-meal-list="builder"] [data-meal]', '[data-guide-meal-consumer="builder"]'],
-      summary: "Переключись на Шишколапа: его обед ускоряет следующую стройку или остаток уже начатой.",
-      text: "У каждого блюда свой бонус для строителя - смотри процент в карточке. «Угостить» расходует одну порцию. Повторный обед не складывает бонусы, а готовую стройку ускорять уже не нужно." },
-    { id: "portion", title: "Одна порция - один бонус", pose: "wonder", navigation: "meals", showLabel: "Показать блюда", targets: ["[data-guide-meal-action]", "[data-guide-meal-note]"],
-      summary: "«Съесть» или «Угостить» тратит 1 блюдо. Нет готовой еды? «Готовить» откроет нужный рецепт.",
-      text: "Сначала приготовь блюдо и забери его в кладовую, затем выбери получателя. Один подготовленный обед сохраняется до использования, два бонуса одновременно не складываются. У таймера вылазки или стройки есть блок «Ускорение едой»: «Выбрать блюдо» покажет бонус и новое время, не потратив порцию." },
-  ],
   orders: [
     { id: "requirements", title: "Разберём один заказ", pose: "wonder", targets: ["[data-guide-order-requirements]", "[data-order-id]"],
-      summary: "В списке под заказом: сколько вещей у тебя / сколько нужно. Нажми на недостающее, чтобы узнать, где взять.",
-      text: "Плёска и Шишколап просят припасы и материалы. Рядом видны твой запас и нужное количество. Рыбный заказ перед сдачей откроет выбор оставшихся видов: он уже заполнен, но рыбу можно заменить. Недостающие предметы ведут к источнику без запуска работы." },
+      summary: "В журнале заказов рядом с предметом: сколько вещей у тебя / сколько нужно. Нажми на недостающее, чтобы узнать, где взять.",
+      text: "Журнал открывается кнопкой «Заказы» внизу карты. Плёска и Шишколап просят припасы и материалы. Рыбный заказ перед сдачей откроет выбор оставшихся видов: он уже заполнен, но рыбу можно заменить. Недостающие предметы ведут к источнику без запуска работы." },
     { id: "reward", title: "Припасы в обмен на монеты", pose: "present", targets: ["[data-guide-order-reward]", "[data-order-id]"],
       summary: "Награда указана в карточке. «Отдать заказ» потратит нужные вещи и выдаст монеты.",
       text: "Кнопка станет доступна, когда собраны все припасы. У рыбного заказа проверь выбор: тап заменяет рыбу, минус убирает одну, «Сбросить» и «Автозаполнение» помогают собрать состав. Только «Отдать заказ» в этом окне потратит рыбу. Закрытие ничего не расходует. Сложную просьбу можно заменить бесплатно или за жемчуг." },
@@ -104,11 +96,11 @@ export const sectionGuideLessons: Record<SectionGuideId, readonly SectionGuideSt
       text: "Выбери здание на карте и открой его улучшение: там указаны материалы, монеты и время стройки. Когда условия выполнены, можно начать работу. Шишколапу нужно закончить текущую стройку прежде, чем взяться за следующую." },
     { id: "actions", title: "Помоги мастеру", pose: "present", targets: ["[data-guide-builder-actions]"],
       summary: "В заказах Шишколапа можно обменять нужные ему материалы на монеты.",
-      text: "Кнопки рядом ведут к текущей работе и просьбам строителя. Перед сдачей заказа посмотри, какие запасы нужны тебе для собственной стройки. Обустройство зданий открывает новые возможности поселения." },
+      text: "Кнопки рядом ведут к работе и журналу заказов строителя. В разговоре с Шишколапом есть «Ускорение едой»: выбери блюдо и проверь бонус. Только «Угостить 1» тратит порцию. Перед сдачей заказа посмотри, какие запасы нужны для твоей стройки." },
   ],
 };
 
-export function parseSectionGuideProgress(raw: string | null, section: SectionGuideId): SectionGuideProgress | null {
+export function parseSectionGuideProgress(raw: string | null, section: SectionGuideStorageId): SectionGuideProgress | null {
   if (!raw) return null;
   try {
     const value: unknown = JSON.parse(raw);
@@ -116,7 +108,8 @@ export function parseSectionGuideProgress(raw: string | null, section: SectionGu
     const data = value as Record<string, unknown>;
     if (data.version !== 1 || !["started", "paused", "completed", "skipped"].includes(String(data.status))) return null;
     // Keep a deliberate completion/skip when copy is updated; resume unknown steps from the start.
-    const stepId = sectionGuideLessons[section].find(step => step.id === data.stepId)?.id ?? sectionGuideLessons[section][0].id;
+    const stepIds: readonly string[] = section === "meals" ? retiredMealStepIds : sectionGuideLessons[section].map(step => step.id);
+    const stepId = stepIds.find(id => id === data.stepId) ?? stepIds[0];
     return { version: 1, status: data.status as SectionGuideProgress["status"], stepId };
   } catch { return null; }
 }

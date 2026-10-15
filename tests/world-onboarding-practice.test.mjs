@@ -5,15 +5,15 @@ import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const hookModule = "virtual:world-onboarding-practice-hooks";
-const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-simple-guides-practice-vite",
+const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-orders-portal-practice-vite",
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false },
   plugins: [{ name: "world-onboarding-practice-hooks", enforce: "pre",
     resolveId(id) { if (id === hookModule) return `\0${id}`; },
     load(id) { if (id === `\0${hookModule}`) return `
-      let slots = [], cursor = 0, changed = false, pending = new Map(), collection = null;
+      let slots = [], cursor = 0, changed = false, pending = new Map(), collection = null, observation = null;
       export function reset() {
         for (const slot of slots) slot?.cleanup?.();
-        slots = []; cursor = 0; changed = false; pending.clear(); collection = null;
+        slots = []; cursor = 0; changed = false; pending.clear(); collection = null; observation = null;
       }
       export function begin() { cursor = 0; changed = false; }
       export function invalidate() { changed = true; }
@@ -43,32 +43,48 @@ const vite = await createServer({ appType: "custom", configFile: false, root, ca
       }
       export function setCollection(value) { collection = value; }
       export function useGardenCollection() { return collection; }
+      export function setObservation(value) { observation = value; }
+      export function useForestObservation() { return observation; }
     `; },
     transform(source, id) {
       if (id.endsWith("/features/world/ui/onboarding/world-onboarding.tsx")) return source
         .replace('from "react";', `from "${hookModule}";`)
+        .replace('import { useForestObservation } from "@/features/world/state/use-forest-observation";',
+          `import { useForestObservation } from "${hookModule}";`)
         .replace('import { useGardenCollection } from "@/features/economy/integration/garden-collection-context";',
           `import { useGardenCollection } from "${hookModule}";`);
     },
   }],
 });
 const hooks = await vite.ssrLoadModule(hookModule);
-const { WorldOnboarding } = await vite.ssrLoadModule("/features/world/ui/onboarding/world-onboarding.tsx");
+const { WorldOnboarding, WorldOnboardingSession } = await vite.ssrLoadModule("/features/world/ui/onboarding/world-onboarding.tsx");
 const { WorkshopRetry, WorkshopConstructionContents, TutorialOrderContents } = await vite.ssrLoadModule("/features/world/ui/onboarding/world-onboarding-cards.tsx");
 const { tutorialResidentOrder, newTutorialOrder } = await vite.ssrLoadModule("/features/economy/domain/tutorial-order.ts");
 const { transitionWorldOnboarding } = await vite.ssrLoadModule("/features/world/domain/world-onboarding.ts");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const originalObserver = globalThis.MutationObserver;
+const originalDocument = globalThis.document;
+const originalRequestAnimationFrame = globalThis.requestAnimationFrame;
+const originalCancelAnimationFrame = globalThis.cancelAnimationFrame;
 const observers = new Set();
+globalThis.document = { body: {} };
+globalThis.requestAnimationFrame = callback => { callback(); return 1; };
+globalThis.cancelAnimationFrame = () => {};
 globalThis.MutationObserver = class {
   constructor(callback) { this.callback = callback; }
-  observe() { observers.add(this); }
+  observe(target) { this.target = target; observers.add(this); }
   disconnect() { observers.delete(this); }
 };
 after(async () => {
   hooks.reset();
   if (originalObserver) globalThis.MutationObserver = originalObserver;
   else delete globalThis.MutationObserver;
+  if (originalDocument) globalThis.document = originalDocument;
+  else delete globalThis.document;
+  if (originalRequestAnimationFrame) globalThis.requestAnimationFrame = originalRequestAnimationFrame;
+  else delete globalThis.requestAnimationFrame;
+  if (originalCancelAnimationFrame) globalThis.cancelAnimationFrame = originalCancelAnimationFrame;
+  else delete globalThis.cancelAnimationFrame;
   await vite.close();
 });
 
@@ -80,9 +96,11 @@ const started = (stepId, jobId) => ({ version: 2, status: "started", stepId, ...
 const gain = (patch = {}) => ({ id: "claim-receipt", ownerPublicId: owner, revision: 2, source: "claim", stationId: "garden",
   items: [{ itemId: "berries", quantity: 6 }], ...patch });
 
-function harness(progress = started("grow"), jobs = []) {
+function harness(progress = started("grow"), jobs = [], { ordersPortal = false, session = false } = {}) {
   hooks.reset();
   const calls = [], surface = { garden: false, recipe: false, pantryItem: false, pantrySale: false, pantryRelics: false, routePreparation: false, tutorialOrder: false };
+  const portal = { tutorialOrder: false }, visibility = { sceneReady: true, worldCovered: false, ordersCovered: false };
+  const queries = { world: [], orders: [] };
   const notifySurface = () => { for (const observer of observers) observer.callback([]); };
   const snapshot = { ownerPublicId: owner, revision: 1, catalog: structuredClone(economyCatalog),
     wallet: { coins: 1000, pearls: 0 }, inventory: {}, buildings: { home: 3, warehouse: 1, garden: 1 }, jobs, workshopStarterClaimed: false,
@@ -101,6 +119,8 @@ function harness(progress = started("grow"), jobs = []) {
   const props = { open: true, modalBlocked: false, progress, economy, quickMenu: null, helpOpen: false, isOnline: true,
     residentOpen: null, ordersOpen: false, workshopOpen: false,
     worldElement: { current: { querySelector(selector) {
+      queries.world.push(selector);
+      if (selector === '[data-ready="true"] > canvas[role="img"]') return visibility.sceneReady ? {} : null;
       if (selector === '[data-place="garden"]') return surface.garden ? {} : null;
       if (selector === '[data-place="garden"] [data-recipe-product="berries"]') return surface.garden && surface.recipe ? { click() {
         assert.fail("Showing a production target must never press its one-tap action");
@@ -109,7 +129,11 @@ function harness(progress = started("grow"), jobs = []) {
         '[data-guide-pantry-relics]': "pantryRelics", '[data-route-preparation]': "routePreparation", '[data-tutorial-order="true"]': "tutorialOrder" }[selector];
       if (content) return surface[content] ? {} : null;
       return null;
-    } } },
+    }, closest(selector) { assert.equal(selector, '[aria-hidden="true"]'); return visibility.worldCovered ? {} : null; } } },
+    ...(ordersPortal ? { ordersElement: { current: { querySelector(selector) {
+      queries.orders.push(selector);
+      return selector === '[data-tutorial-order="true"]' && portal.tutorialOrder ? {} : null;
+    }, closest(selector) { assert.equal(selector, '[aria-hidden="true"]'); return visibility.ordersCovered ? {} : null; } } } } : {}),
     onStart() { calls.push(["start"]); change({ type: "start" }); },
     onStep(stepId) { calls.push(["step", stepId]); change({ type: "step", stepId }); },
     onCrop(jobId) { calls.push(["crop", jobId]); change({ type: "crop", jobId }); },
@@ -120,7 +144,8 @@ function harness(progress = started("grow"), jobs = []) {
     onOpenGarden(recipe) { calls.push(["garden", recipe]); surface.garden = true; surface.recipe = Boolean(recipe); notifySurface(); },
     onOpenHelp() { calls.push(["help"]); props.helpOpen = true; props.modalBlocked = true; },
     onOpenResident(id) { calls.push(["resident", id]); props.residentOpen = id; props.modalBlocked = true; },
-    onOpenOrders() { calls.push(["orders"]); props.ordersOpen = true; props.quickMenu = "food"; surface.tutorialOrder = Boolean(economy.snapshot.tutorialOrder?.ingredientsClaimed && !economy.snapshot.tutorialOrder?.completed); notifySurface(); },
+    onOpenOrders() { calls.push(["orders"]); props.ordersOpen = true; props.quickMenu = null;
+      (ordersPortal ? portal : surface).tutorialOrder = Boolean(economy.snapshot.tutorialOrder?.ingredientsClaimed && !economy.snapshot.tutorialOrder?.completed); notifySurface(); },
     onOpenWorkshop(view) { calls.push(view ? ["workshop", view] : ["workshop"]); props.workshopOpen = true; props.modalBlocked = true; },
     onCloseSurface() { calls.push(["close-surface"]); props.quickMenu = null; props.helpOpen = false;
       props.residentOpen = null; props.ordersOpen = false; props.workshopOpen = false; props.modalBlocked = false;
@@ -129,7 +154,7 @@ function harness(progress = started("grow"), jobs = []) {
   const render = () => {
     for (let pass = 0; pass < 20; pass++) {
       hooks.begin();
-      const tree = WorldOnboarding(props);
+      const tree = session ? WorldOnboardingSession({ ...props, presenceKey: `practice:${owner}` }) : WorldOnboarding(props);
       if (hooks.dirty()) continue;
       hooks.flush();
       if (!hooks.dirty()) return tree?.props ?? null;
@@ -138,9 +163,12 @@ function harness(progress = started("grow"), jobs = []) {
   };
   const patchEconomy = patch => { Object.assign(economy, patch); };
   const patchSnapshot = patch => { economy.snapshot = { ...economy.snapshot, ...patch }; };
-  return { props, economy, surface, calls, render, patchEconomy, patchSnapshot,
+  return { props, economy, surface, calls, queries, render, patchEconomy, patchSnapshot,
     revealSurface(garden, recipe) { surface.garden = garden; surface.recipe = recipe; notifySurface(); },
     revealContent(patch) { Object.assign(surface, patch); notifySurface(); },
+    revealPortal(patch) { Object.assign(portal, patch); notifySurface(); },
+    setVisibility(patch) { Object.assign(visibility, patch); notifySurface(); },
+    setObservation(value) { hooks.setObservation(value); },
     setCollection(value) { hooks.setCollection(value); },
   };
 }
@@ -348,12 +376,11 @@ test("legacy order activation pins terms without a grant, then teaches manual na
   h.patchEconomy({ busy: false });
   coach = h.render();
   assert.equal(coach.primary, undefined);
-  assert.equal(coach.target, '[data-world-quick="more"]');
+  assert.equal(coach.target, '[data-world-orders-entry]');
   assert.match(coach.status, /Припасов пока не хватает/);
-  for (const [menu, target] of [["more", '[data-world-food-entry]'], ["food", '[data-world-food-tab="orders"]']]) {
-    h.props.quickMenu = menu;
-    assert.equal(h.render().target, target);
-  }
+  h.props.quickMenu = "more";
+  assert.equal(h.render().target, '[data-world-orders-entry]', "orders have their own entry even while another menu is open");
+  assert.doesNotMatch(coach.text, /Еда и заказы|«Ещё»|вкладк/);
   h.props.ordersOpen = true; h.revealContent({ tutorialOrder: true });
   coach = h.render();
   assert.equal(coach.target, '[data-order-id="tutorial_first_order"]');
@@ -366,6 +393,83 @@ test("legacy order activation pins terms without a grant, then teaches manual na
   assert.equal(coach.title, "Учебный заказ выполнен!");
   coach.primary.onClick();
   assert.equal(h.props.progress.stepId, "workshop");
+});
+
+test("the journal lesson scopes its actual order and compact dock to the portal outside the map", () => {
+  const h = harness(started("orders"), [], { ordersPortal: true });
+  h.patchSnapshot({ tutorialOrder: newTutorialOrder(h.economy.snapshot.catalog) });
+  let coach = h.render();
+  assert.equal(coach.target, '[data-world-orders-entry]');
+  assert.equal(coach.targetRoot, h.props.worldElement);
+  assert.equal(coach.compact, false);
+  assert.equal(coach.dock, undefined);
+  assert.deepEqual(h.calls, []);
+
+  // A stale order elsewhere on the map cannot count as content in the journal.
+  h.revealContent({ tutorialOrder: true });
+  h.props.ordersOpen = true;
+  coach = h.render();
+  assert.equal(coach.target, '[data-order-filter="all"]');
+  assert.equal(coach.targetRoot, h.props.ordersElement);
+  assert.equal(coach.compact, true);
+  assert.equal(coach.dock, '[data-guide-coach-slot]');
+  assert.ok(h.queries.orders.includes('[data-tutorial-order="true"]'));
+
+  h.revealPortal({ tutorialOrder: true });
+  coach = h.render();
+  assert.equal(coach.target, '[data-order-id="tutorial_first_order"]');
+  assert.match(coach.summary, /есть \/ нужно/);
+  assert.equal(coach.primary, undefined, "only the real order card can submit inventory");
+  assert.deepEqual(h.calls, []);
+
+  h.patchSnapshot({ revision: 2, tutorialOrder: { ...h.economy.snapshot.tutorialOrder, step: 1,
+    terms: h.economy.snapshot.catalog.onboarding.residentOrders[1] } });
+  coach = h.render();
+  assert.equal(coach.primary.label, "К мастерской");
+  coach.primary.onClick();
+  assert.deepEqual(h.calls, [["close-surface"], ["step", "workshop"]]);
+  assert.equal(h.props.ordersOpen, false);
+  assert.equal(h.render().targetRoot, h.props.worldElement);
+});
+
+test("a journal portal keeps the ready scene coach visible and yields to a nested fish dialog", () => {
+  const h = harness(started("orders"), [], { ordersPortal: true, session: true });
+  h.props.ordersOpen = true;
+  h.setVisibility({ worldCovered: true });
+  let child = h.render();
+  assert.equal(child.open, true, "the journal may hide the map without hiding its own coach");
+  assert.equal(child.ordersElement, h.props.ordersElement);
+  assert.ok(h.queries.world.includes('[data-ready="true"] > canvas[role="img"]'));
+  assert.deepEqual(h.queries.orders, [], "scene readiness is always measured on the map, not the journal");
+
+  h.setVisibility({ ordersCovered: true });
+  assert.equal(h.render().open, false, "the child modal owns its focus scope until it closes");
+  h.setVisibility({ ordersCovered: false });
+  assert.equal(h.render().open, true, "closing the picker restores the journal lesson without reopening it");
+  h.setVisibility({ sceneReady: false });
+  assert.equal(h.render().open, false, "a journal cannot make an unloaded map ready");
+  h.setVisibility({ sceneReady: true });
+  assert.equal(h.render().open, true);
+  h.setObservation({ memory: { sync: { mode: "other-device" } } });
+  assert.equal(h.render().open, false, "other-device ownership still pauses the whole lesson");
+  assert.deepEqual(h.calls, [], "modal changes and readiness never spend inventory or start work");
+});
+
+test("closing the journal restores map coverage and hosts without a portal ref keep their scoped fallback", () => {
+  const h = harness(started("orders"), [], { ordersPortal: true, session: true });
+  h.props.ordersOpen = true;
+  h.setVisibility({ worldCovered: true });
+  assert.equal(h.render().open, true);
+  h.props.ordersOpen = false;
+  assert.equal(h.render().open, false, "after closing, coverage follows the map again");
+  h.setVisibility({ worldCovered: false });
+  assert.equal(h.render().open, true);
+
+  const legacy = harness(started("orders"), [], { session: true });
+  legacy.props.ordersOpen = true;
+  assert.equal(legacy.render().open, true);
+  legacy.setVisibility({ worldCovered: true });
+  assert.equal(legacy.render().open, false, "without an orders ref the existing world ref remains authoritative");
 });
 
 test("a new player's first order advances the guide while the remaining three stay on the board", () => {

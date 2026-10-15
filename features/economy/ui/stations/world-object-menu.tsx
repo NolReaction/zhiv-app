@@ -44,7 +44,6 @@ export type WorldObjectMenuProps = {
   onOpenPantry?: () => void;
   constructionGoal?: ConstructionGoalController;
   onOpenGoal?: () => void;
-  onOpenFood?: () => void;
   onOpenHelp?: (context: WorldHelpContext) => void;
   isOnline?: boolean;
   onHelpContextChange?: (context: WorldHelpContext) => void;
@@ -107,7 +106,7 @@ export function WorldObjectSale({ economy, itemId, onCollapse }: { economy: Read
   </section>;
 }
 
-function ObjectMenuBody({ guide, guideRoot: guideRootRef, selection, economy, isOnline, onClose, onReturnFocus, bounds, onNavigate, onExplore, onOpenMarket, onOpenPantry, initialStationId, initialRecipeId, constructionGoal, onOpenGoal, onOpenFood, onOpenHelp, onHelpContextChange }: WorldObjectMenuProps) {
+function ObjectMenuBody({ guide, guideRoot: guideRootRef, selection, economy, isOnline, onClose, onReturnFocus, bounds, onNavigate, onExplore, onOpenMarket, onOpenPantry, initialStationId, initialRecipeId, constructionGoal, onOpenGoal, onOpenHelp, onHelpContextChange }: WorldObjectMenuProps) {
   const collection = useGardenCollection();
   const seenHarvest = useRef(collection?.request?.requestId);
   useEffect(() => {
@@ -234,7 +233,6 @@ function ObjectMenuBody({ guide, guideRoot: guideRootRef, selection, economy, is
       {state && constructionGoal && onOpenGoal && <ConstructionGoalSummary state={state} constructionGoal={constructionGoal} onOpenGoal={onOpenGoal} navigation={navigation} compact />}
       {definition.future ? <div className={styles.future}><LockKeyhole size={22} aria-hidden="true" /><p>{definition.future}</p></div> : !state ? <div className={styles.loading}><RefreshCw size={17} aria-hidden="true" /><p>{economy.error ?? "Открываем ваше хозяйство…"}</p>{economy.error && <button type="button" className={styles.textButton} disabled={economy.busy || cooldown > 0} onClick={() => void economy.retry()}>{cooldown ? `Повторить через ${cooldown} с` : "Попробовать ещё раз"}</button>}</div> : <>
         {(economy.error || economy.uncertain) && <div className={styles.error} role="alert"><p>{economy.uncertain ? "Проверяем последнее действие. Новые заказы доступны после подтверждения." : economy.error}</p><button type="button" className={styles.textButton} disabled={economy.busy || cooldown > 0} onClick={() => void economy.retry()}><RefreshCw size={12} aria-hidden="true" />{cooldown ? `Повторить через ${cooldown} с` : economy.uncertain ? "Проверить результат" : "Повторить"}</button></div>}
-        {stationId === "dryer" && onOpenFood && <button type="button" className={styles.foodEntry} onClick={() => { navigating.current = true; onOpenFood(); }}><Flame size={16} aria-hidden="true" /><strong>Еда и заказы</strong><span>Угостить · заработать</span></button>}
         {readyEconomy && construction && <Work economy={readyEconomy} job={construction} openPantry={openJobPantry} compact />}
         {readyEconomy && !productionStationSupported(stationId) && (readyJobs.length > 0 || runningJobs.length > 0) && <section className={styles.activeOrders} data-section-guide-target="workshop-queue" data-running-orders={runningJobs.length ? stationId : undefined} aria-label="Текущая работа">
           <h3>Сейчас <span>{readyJobs.length + runningJobs.length}</span></h3>

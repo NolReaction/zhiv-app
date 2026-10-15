@@ -1,0 +1,18 @@
+.journal { container-type: inline-size; display: grid; gap: 18px; min-width: 0; padding: 6px 2px 14px; color: #354b38; }
+.cover { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 12px 2px 19px; border-bottom: 1px solid #b8b48c; }
+.emblem { display: grid; place-items: center; width: 48px; height: 56px; color: #e7dfb7; background: #3f5c43; border: 1px solid #71815a; border-radius: 5px 12px 12px 5px; box-shadow: inset 3px 0 #bdba8690, 2px 3px 0 #a59c6730; transform: rotate(-4deg); }
+.coverTitle { min-width: 0; }
+.coverTitle p { margin: 0 0 3px; color: #78805b; font-size: 10px; font-weight: 650; letter-spacing: .12em; text-transform: uppercase; }
+.coverTitle h2 { margin: 0; color: #354e3b; font-family: Georgia, "Times New Roman", serif; font-size: clamp(21px, 4cqi, 29px); font-weight: 600; line-height: 1.15; }
+.status { display: grid; justify-items: end; align-content: center; gap: 3px; min-width: 76px; color: #506543; }
+.status strong { display: inline-flex; align-items: center; gap: 4px; font-size: 20px; font-variant-numeric: tabular-nums; }
+.status strong > span { font-size: 11px; font-weight: 600; }
+.status small { color: #78775b; font-size: 10px; font-variant-numeric: tabular-nums; }
+.recovery { display: grid; gap: 8px; padding: 12px; color: #87533c; background: #f0e4cf; border: 1px solid #cdb894; border-radius: 10px; font-size: 12px; }
+.recovery p { margin: 0; }
+.recovery button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: fit-content; min-height: 44px; padding: 8px 12px; border: 1px solid #acb18b; border-radius: 8px; background: #ebe9d3; color: #42553d; font: inherit; cursor: pointer; }
+.recovery button:disabled { cursor: default; opacity: .55; }
+.recovery button:focus-visible { outline: 2px solid #4c764a; outline-offset: 2px; }
+.placeholder { margin: 0; padding: 20px 8px; text-align: center; color: #74775d; font-size: 13px; }
+@container (max-width: 390px) { .cover { grid-template-columns: 36px minmax(0, 1fr) auto; gap: 8px; } .emblem { width: 34px; height: 44px; } .emblem svg { width: 23px; } .status { min-width: 58px; } .status strong { font-size: 18px; gap: 3px; } .status strong > svg { display: none; } .status strong > span { font-size: 10px; } }
+@media (forced-colors: active) { .emblem, .cover, .recovery, .recovery button { border-color: ButtonText; } }

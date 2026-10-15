@@ -144,3 +144,24 @@ test("the builder dialog has animated code art and preserves back, close and foc
   const direct = WorldBuilderDialog({ open: true, economy: economy(), onOpenConstruction() {}, onClose() {}, onCloseAutoFocus() {} });
   assert.equal(elements(direct).filter(element => element.type === "button").length, 1, "direct map entry has only its close control");
 });
+
+test("builder conversation keeps its contextual meal picker and a single separate orders entry", () => {
+  const controller = economy();
+  controller.snapshot.inventory.grilled_fish = 2;
+  let orders = 0;
+  const navigation = () => assert.fail("rendering cannot start cooking");
+  const tree = WorldBuilderDialog({ open: true, economy: controller, onOpenConstruction() {}, onNavigateStation: navigation,
+    onOpenOrders() { orders++; }, onClose() {}, onCloseAutoFocus() {} });
+  const nodes = elements(tree), actions = nodes.find(node => node.props["data-guide-builder-actions"]);
+  assert.equal(actions.props["aria-label"], "Заказы Шишколапа");
+  const buttons = elements(actions).filter(node => node.type === "button");
+  assert.equal(buttons.length, 1);
+  buttons[0].props.onClick(); assert.equal(orders, 1);
+  assert.doesNotMatch(renderToStaticMarkup(actions), /Угостить|Еда и заказы/);
+  const body = nodes.find(node => node.type === BuilderConversation);
+  const boost = elements(BuilderConversation(body.props)).find(node => node.type.name === "WorldMealBoost");
+  assert.equal(boost.props.consumer, "builder");
+  assert.equal(boost.props.onNavigateStation, navigation);
+  assert.equal(boost.props.onOpenMeals, undefined);
+  assert.equal(controller.snapshot.inventory.grilled_fish, 2);
+});

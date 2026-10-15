@@ -32,7 +32,6 @@ export type WorldUpgradeDialogProps = {
   onOpenPantry?: () => void;
   onOpenHelp?: (context: WorldHelpContext) => void;
   isOnline?: boolean;
-  onOpenMeals?: () => void;
   onCloseAutoFocus?: (event: Event) => void;
 };
 
@@ -185,7 +184,7 @@ function UpgradeUnlocks({ state, stationId, target, navigation }: { state: Econo
 }
 
 /** Kept separate from the portal so loading, locks and paid jobs can be rendered in tests. */
-export function WorldUpgradeContent({ stationId, economy, onClose, navigation, onOpenPantry, constructionGoal, onOpenHelp, isOnline, onOpenMeals }: Omit<WorldUpgradeDialogProps, "stationId" | "onCloseAutoFocus"> & { stationId: string }) {
+export function WorldUpgradeContent({ stationId, economy, onClose, navigation, onOpenPantry, constructionGoal, onOpenHelp, isOnline }: Omit<WorldUpgradeDialogProps, "stationId" | "onCloseAutoFocus"> & { stationId: string }) {
   const state = economy.snapshot;
   const building = (state?.catalog ?? economyCatalog).buildings.find(entry => entry.id === stationId);
   const name = state ? stationName(state, stationId) : building?.name ?? "Улучшение";
@@ -223,7 +222,7 @@ export function WorldUpgradeContent({ stationId, economy, onClose, navigation, o
       <button type="button" className={styles.close} aria-label="Закрыть окно улучшения" onClick={onClose}><X size={19} aria-hidden="true" /></button>
     </header>
     <div className={styles.body}>
-      {readyEconomy && construction && <section className={styles.activeWork} aria-label="Ход улучшения"><div className={styles.activeWorkTop}><Work economy={readyEconomy} job={construction} openPantry={onOpenPantry} /><WorldMealBoost economy={economy} consumer="builder" jobId={construction.id} isOnline={isOnline} onNavigateStation={navigation?.open} onOpenMeals={onOpenMeals} /></div><ConstructionSpeedup key={construction.id} economy={readyEconomy} job={construction} /><p className={styles.muted}>Материалы оплачены. Работа продолжится после выхода.</p></section>}
+      {readyEconomy && construction && <section className={styles.activeWork} aria-label="Ход улучшения"><div className={styles.activeWorkTop}><Work economy={readyEconomy} job={construction} openPantry={onOpenPantry} /><WorldMealBoost economy={economy} consumer="builder" jobId={construction.id} isOnline={isOnline} onNavigateStation={navigation?.open} /></div><ConstructionSpeedup key={construction.id} economy={readyEconomy} job={construction} /><p className={styles.muted}>Материалы оплачены. Работа продолжится после выхода.</p></section>}
       {!state ? <div className={styles.loading} role="status"><RefreshCw size={24} aria-hidden="true" /><p>{economy.error ?? "Открываем ваше хозяйство…"}</p>{economy.error && <button type="button" className={menuStyles.textButton} disabled={economy.busy || cooldown > 0} onClick={() => void economy.retry()}>{cooldown ? `Повторить через ${cooldown} с` : "Попробовать ещё раз"}</button>}</div> : <>
         {(economy.error || economy.uncertain) && <div className={menuStyles.error} role="alert"><p>{economy.uncertain ? "Проверяем последнее действие. Новые улучшения доступны после подтверждения." : economy.error}</p><button type="button" className={menuStyles.textButton} disabled={economy.busy || cooldown > 0} onClick={() => void economy.retry()}><RefreshCw size={13} aria-hidden="true" />{cooldown ? `Повторить через ${cooldown} с` : economy.uncertain ? "Проверить результат" : "Повторить"}</button></div>}
         {builderElsewhere && <section className={styles.builderBusy} data-builder-status={builderElsewhere.ready ? "ready" : "working"} aria-label="Строитель занят">
@@ -247,7 +246,7 @@ export function WorldUpgradeContent({ stationId, economy, onClose, navigation, o
     {!construction && <footer className={styles.footer}>
       {state && target ? <>
         {visibleReason && <p className={styles.reason} role="status"><LockKeyhole size={14} aria-hidden="true" />{visibleReason}</p>}
-        <div className={styles.confirmRow}><div className={styles.durationWithMeal}><span className={styles.duration}><Clock3 size={16} aria-hidden="true" /><span>{restoration ? "Время восстановления" : "Время улучшения"}<strong>{worldDuration(mealDuration(target.seconds, meal?.builderSpeedBps ?? 0))}</strong>{meal && <small>{`Сыт · скорость +${meal.builderSpeedBps / 100}%`}</small>}</span></span><WorldMealBoost economy={economy} consumer="builder" stationId={stationId} seconds={target.seconds} isOnline={isOnline} onNavigateStation={navigation?.open} onOpenMeals={onOpenMeals} /></div><button type="button" className={styles.confirm} disabled={Boolean(reason) || locked(economy)} onClick={startConstruction}><Hammer size={17} aria-hidden="true" />{restoration ? "Начать восстановление" : current ? `Улучшить до ур. ${target.level}` : "Начать обустройство"}</button></div>
+        <div className={styles.confirmRow}><div className={styles.durationWithMeal}><span className={styles.duration}><Clock3 size={16} aria-hidden="true" /><span>{restoration ? "Время восстановления" : "Время улучшения"}<strong>{worldDuration(mealDuration(target.seconds, meal?.builderSpeedBps ?? 0))}</strong>{meal && <small>{`Сыт · скорость +${meal.builderSpeedBps / 100}%`}</small>}</span></span><WorldMealBoost economy={economy} consumer="builder" stationId={stationId} seconds={target.seconds} isOnline={isOnline} onNavigateStation={navigation?.open} /></div><button type="button" className={styles.confirm} disabled={Boolean(reason) || locked(economy)} onClick={startConstruction}><Hammer size={17} aria-hidden="true" />{restoration ? "Начать восстановление" : current ? `Улучшить до ур. ${target.level}` : "Начать обустройство"}</button></div>
       </> : <button type="button" className={styles.done} onClick={onClose}>{state ? "Готово" : "Вернуться на карту"}</button>}
     </footer>}
   </>;

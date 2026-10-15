@@ -248,9 +248,6 @@
 .fishIngredient > select { box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px; padding: 8px; border: 1px solid #a8af80; border-radius: 8px; background: #fcf2da; color: #394d3e; font: inherit; font-size: 12px; }
 .fishIngredient > select:focus-visible { outline: 2px solid var(--forest-focus, #355e48); outline-offset: 2px; }
 .fishIngredient > select:disabled { opacity: .6; }
-.menu .foodEntry { display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; min-height: 44px; margin-bottom: 7px; padding: 7px 8px; border: 1px solid #a6b182; border-radius: 9px; background: #e2e5c2; color: #425d3c; font-size: 11px; text-align: left; }
-.foodEntry > strong { flex: 1; }
-.foodEntry > span { color: #59624d; font-size: 10px; }
 
 .contextHelp {
   display: inline-flex;

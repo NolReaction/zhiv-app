@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-fish-rails-guides-sections-vite", server: { middlewareMode: true, hmr: false, ws: false } });
+const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-orders-journal-guides-sections-vite", server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { sectionGuideIds, sectionGuideLessons, sectionGuideCanOpen, parseSectionGuideProgress, transitionSectionGuide: move } = await vite.ssrLoadModule("/features/onboarding/section-guide-model.ts");
 const { sectionGuideStorageKey, createSectionGuideStore } = await vite.ssrLoadModule("/features/onboarding/section-guide-storage.ts");
@@ -55,19 +55,39 @@ test("expedition lessons keep safe route selectors and direct mining to its sepa
   }
 });
 
-test("travel and meal lessons explain a named optional boost without automatic eating", () => {
+test("travel and builder lessons explain contextual boosts without automatic eating", () => {
   const preparation = sectionGuideLessons.expeditions.find(step => step.id === "preparation");
-  const portion = sectionGuideLessons.meals.find(step => step.id === "portion");
+  const builder = sectionGuideLessons.builder.find(step => step.id === "actions");
   assert.match(preparation.summary, /«Ускорение едой» под таймером/);
   assert.match(preparation.summary, /он необязателен/);
   assert.match(preparation.text, /«Выбрать блюдо».*не тратя еду/);
   assert.match(preparation.text, /только после «Съесть 1»/);
-  assert.match(portion.text, /блок «Ускорение едой».*«Выбрать блюдо»/);
-  assert.match(portion.text, /не потратив порцию/);
-  for (const step of [preparation, portion]) {
+  assert.match(builder.text, /разговоре с Шишколапом есть «Ускорение едой»/);
+  assert.match(builder.text, /Только «Угостить 1» тратит порцию/);
+  for (const step of [preparation, builder]) {
     assert.doesNotMatch(step.text, /Кнопка «Еда» рядом/);
     assert.notEqual(step.revealOnOpen, true, "opening a lesson must not choose or consume a dish");
   }
+});
+
+test("retired meals lessons retain stored progress without an active guide or navigation route", () => {
+  assert.equal(sectionGuideIds.includes("meals"), false);
+  assert.equal(sectionGuideLessons.meals, undefined);
+  const disk = storage(), key = sectionGuideStorageKey("legacy-meals-owner", "meals");
+  assert.equal(key, "zhiv.section-guide.v1:legacy-meals-owner:meals");
+  for (const status of ["started", "paused", "completed", "skipped"]) {
+    const saved = { version: 1, status, stepId: "portion" };
+    const raw = JSON.stringify(saved);
+    disk.setItem(key, raw);
+    assert.deepEqual(parseSectionGuideProgress(raw, "meals"), saved);
+    const oldStore = createSectionGuideStore("legacy-meals-owner", "meals", disk);
+    oldStore.restore();
+    assert.deepEqual(oldStore.getSnapshot().progress, saved);
+    assert.equal(disk.getItem(key), raw, "reading retired progress must not replace or erase it");
+  }
+  const oldMeals = new EventTarget();
+  oldMeals.addEventListener("zhiv:section-guide-show", () => assert.fail("a retired section cannot receive show requests"));
+  assert.equal(requestSectionGuideNavigation({ querySelector() { return oldMeals; } }, "meals", "hero"), false);
 });
 
 test("leaving the section without explicitly pausing its lesson resumes the exact step", () => {
@@ -228,13 +248,13 @@ test("malformed values fail safely and copy updates preserve deliberate skips", 
 });
 
 test("show navigation is confined to its own open section and detached handlers cannot intercept it", () => {
-  const plesk = new EventTarget(), meals = new EventTarget(), visited = [];
-  const root = { querySelector(selector) { return selector.includes('"plesk"') ? plesk : selector.includes('"meals"') ? meals : null; } };
+  const plesk = new EventTarget(), orders = new EventTarget(), visited = [];
+  const root = { querySelector(selector) { return selector.includes('"plesk"') ? plesk : selector.includes('"orders"') ? orders : null; } };
   const off = listenForSectionGuideNavigation(plesk, "plesk", stepId => {
     if (!["rods", "bait", "catch"].includes(stepId)) return false;
     visited.push(stepId); return true;
   });
-  listenForSectionGuideNavigation(meals, "meals", () => { assert.fail("fishing guidance must not affect another section"); });
+  orders.addEventListener("zhiv:section-guide-show", () => { assert.fail("fishing guidance must not affect the orders journal"); });
   assert.equal(requestSectionGuideNavigation(root, "plesk", "bait"), true);
   assert.deepEqual(visited, ["bait"]);
   assert.equal(requestSectionGuideNavigation(root, "plesk", "purchase"), false, "unknown actions are not handled");

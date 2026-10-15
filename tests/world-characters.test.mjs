@@ -145,7 +145,7 @@ function navigation() {
   const savedElement = Object.getOwnPropertyDescriptor(globalThis, "HTMLElement");
   const focused = [];
   class Element { constructor(name) { this.name = name; this.isConnected = true; this.dataset = {}; } focus() { focused.push(this.name); } }
-  const trigger = new Element("more"), characterTrigger = new Element("characters"), card = new Element("plesk"), map = new Element("map");
+  const trigger = new Element("more"), characterTrigger = new Element("characters"), card = new Element("plesk"), map = new Element("map"), ordersTrigger = new Element("orders");
   Object.defineProperty(globalThis, "HTMLElement", { value: Element, configurable: true });
   Object.defineProperty(globalThis, "document", { value: { activeElement: map }, configurable: true });
   const state = { resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1,
@@ -158,7 +158,7 @@ function navigation() {
   let view;
   const render = () => {
     hooks.render(); view = WorldView(props);
-    view.props.ref.current = { querySelector(selector) { return selector.includes("data-world-characters-trigger") ? characterTrigger : selector.includes("data-world-character=") ? card : trigger; } };
+    view.props.ref.current = { querySelector(selector) { return selector.includes("data-world-orders-entry") ? ordersTrigger : selector.includes("data-world-characters-trigger") ? characterTrigger : selector.includes("data-world-character=") ? card : trigger; } };
     const nodes = elements(view), quickFrame = nodes.find(element => element.props.id === "world-quick-menu");
     if (quickFrame) quickFrame.props.ref.current = new Element(`quick-${quickFrame.props["data-kind"]}`);
     return nodes;
@@ -169,7 +169,7 @@ function navigation() {
     if (savedDocument) Object.defineProperty(globalThis, "document", savedDocument); else delete globalThis.document;
     if (savedElement) Object.defineProperty(globalThis, "HTMLElement", savedElement); else delete globalThis.HTMLElement;
   };
-  return { find, component, render, focused, restore, props, get refreshes() { return refreshes; } };
+  return { find, component, render, focused, restore, props, ordersTrigger, createElement: name => new Element(name), get refreshes() { return refreshes; } };
 }
 
 function guideNavigation(context = {}) {
@@ -232,23 +232,29 @@ test("wallet shop shortcuts reject a stale account snapshot and never restore fo
   } finally { nav.restore(); }
 });
 
-test("the world course exposes real menu targets without destination-opening callbacks", () => {
+test("the orders lesson opens the real journal dock entry without blocking its own course", () => {
   const nav = guideNavigation({ onboarding: { progress: { version: 2, status: "started", stepId: "orders" } } });
   try {
     const guide = nav.component("WorldOnboardingSession").props;
     for (const key of ["onOpenOrders", "onOpenWorkshop", "onOpenGarden", "onOpenQuick", "onOpenResident", "onOpenHelp"]) {
       assert.equal(guide[key], undefined, `${key} must not let the coach bypass the real path`);
     }
-    assert.equal(nav.component("WorldFoodMenu"), undefined);
-    nav.find(element => element.props["data-world-quick"] === "more").props.onClick();
-    const entry = nav.find(element => element.props["data-world-food-entry"] !== undefined);
-    assert.ok(entry, "the course highlights the same food-and-orders action the player normally uses");
-    entry.props.onClick();
-    const food = nav.component("WorldFoodMenu");
-    assert.equal(food.props.initialTab, "meals", "the real menu does not skip directly to Orders");
-    assert.equal(nav.component("WorldOnboardingSession").props.ordersOpen, false);
-    food.props.onTabChange("orders");
+    assert.equal(nav.component("WorldOrderJournal"), undefined);
+    const entry = nav.find(element => element.props["data-world-orders-entry"] !== undefined);
+    assert.equal(entry.type, "button"); assert.equal(entry.props["aria-haspopup"], "dialog");
+    assert.equal(entry.props["aria-expanded"], false);
+    entry.props.onClick({ currentTarget: nav.ordersTrigger });
+    const journal = nav.component("WorldOrderJournal");
+    assert.ok(journal); assert.equal(journal.props.residentId, undefined);
+    const content = nav.find(element => element.props["data-orders"] === true);
+    assert.equal(content.props.id, "world-order-journal");
+    assert.equal(nav.component("WorldOnboardingSession").props.ordersElement, content.props.ref,
+      "the coach targets the live portal content instead of the hidden map behind it");
     assert.equal(nav.component("WorldOnboardingSession").props.ordersOpen, true);
+    assert.equal(nav.component("WorldOnboardingSession").props.modalBlocked, false, "the journal is the orders lesson's own surface");
+    assert.equal(nav.component("SectionGuide").props.enabled, false, "the section introduction yields to the active initial course");
+    assert.equal(nav.find(element => element.props.id === "world-quick-menu"), undefined);
+    assert.equal(nav.refreshes, 0);
   } finally { nav.restore(); }
 });
 
@@ -329,27 +335,21 @@ test("another device owning the forest suppresses quick and modal section introd
   } finally { nav.restore(); }
 });
 
-test("switching the live food tab selects the relevant meals or orders guide without remounting its menu", () => {
+test("the standalone journal has its own lesson and preserves filters through ordinary snapshots", () => {
   const nav = guideNavigation();
   try {
-    nav.find(element => element.props["data-world-quick"] === "pantry").props.onClick();
-    nav.component("WorldPantryMenu").props.onOpenFood();
-    const food = nav.component("WorldFoodMenu"), key = food.key;
-    assert.equal(food.props.initialTab, "meals");
-    assert.equal(nav.component("SectionGuide").props.section, "meals");
+    nav.find(element => element.props["data-world-orders-entry"] !== undefined).props.onClick({ currentTarget: nav.ordersTrigger });
+    const journal = nav.component("WorldOrderJournal"), key = journal.key;
+    assert.equal(nav.component("SectionGuide").props.section, "orders");
     assert.equal(nav.component("SectionGuide").props.enabled, true);
-    assert.equal(nav.component("WorldOnboardingSession").props.ordersOpen, false);
-    food.props.onTabChange("orders");
-    assert.equal(nav.component("WorldFoodMenu").key, key);
     assert.equal(nav.component("WorldOnboardingSession").props.ordersOpen, true);
-    const guide = nav.component("SectionGuide");
-    assert.equal(guide.props.section, "orders");
-    assert.equal(guide.props.enabled, true);
-    nav.component("WorldFoodMenu").props.onTabChange("meals");
-    assert.equal(nav.component("WorldFoodMenu").key, key);
+    assert.equal(nav.component("WorldOnboardingSession").props.modalBlocked, true);
+    nav.props.economy.snapshot = { ...nav.props.economy.snapshot, revision: 2 };
+    assert.equal(nav.component("WorldOrderJournal").key, key, "stock refreshes preserve the live journal's selection");
+    nav.find(element => ["Закрыть панель", "Закрыть журнал заказов"].includes(element.props["aria-label"])).props.onClick();
+    assert.equal(nav.component("WorldOrderJournal"), undefined);
     assert.equal(nav.component("WorldOnboardingSession").props.ordersOpen, false);
-    assert.equal(nav.component("SectionGuide").props.section, "meals");
-    assert.equal(nav.component("SectionGuide").props.enabled, true);
+    assert.equal(nav.component("SectionGuide"), undefined);
   } finally { nav.restore(); }
 });
 
@@ -364,7 +364,7 @@ test("foreground resident and market lessons temporarily replace an active initi
     assert.equal(nav.component("SectionGuide").props.section, "market");
     assert.equal(nav.component("SectionGuide").props.enabled, true);
     assert.equal(nav.component("WorldResidentDialog").props.guide.props.enabled, false);
-    nav.find(element => element.props["aria-label"] === "Закрыть панель").props.onClick();
+    nav.find(element => ["Закрыть панель", "Закрыть журнал заказов"].includes(element.props["aria-label"])).props.onClick();
     assert.equal(nav.component("WorldOnboardingSession").props.modalBlocked, false);
     nav.component("WorldScene").props.onResident("plesk");
     assert.equal(nav.component("SectionGuide"), undefined, "market and quick lessons unmount behind the resident");
@@ -701,24 +701,24 @@ test("a repeated mine entry resets its local route while camera anchor updates p
   } finally { nav.restore(); }
 });
 
-test("food and legacy cave help links open the dedicated mine and preserve source focus", () => {
-  for (const source of ["food", "help"]) {
+test("journal and legacy cave help links open the dedicated mine and preserve source focus", () => {
+  for (const source of ["orders", "help"]) {
     const nav = navigation();
     try {
-      nav.find(element => element.props["data-world-quick"] === "more").props.onClick();
-      const text = element => Children.toArray(element.props.children).map(child => typeof child === "string" ? child : isValidElement(child) ? text(child) : "").join("");
-      if (source === "food") {
-        nav.find(element => element.type === "button" && text(element).includes("Еда и заказы")).props.onClick();
-        nav.component("WorldFoodMenu").props.onNavigateExpeditions("caves");
-        assert.equal(nav.component("WorldFoodMenu"), undefined);
+      if (source === "orders") {
+        document.activeElement = nav.ordersTrigger;
+        nav.find(element => element.props["data-world-orders-entry"] !== undefined).props.onClick({ currentTarget: nav.ordersTrigger });
+        nav.component("WorldOrderJournal").props.onNavigateExpeditions("caves");
+        assert.equal(nav.component("WorldOrderJournal"), undefined);
       } else {
+        nav.find(element => element.props["data-world-quick"] === "more").props.onClick();
         nav.find(element => element.props["aria-label"] === "Справка по игре").props.onClick();
         nav.component("WorldHelp").props.onNavigate({ kind: "expeditions", sector: "caves" });
         assert.equal(nav.component("WorldHelp"), undefined);
       }
       const mine = completeMineRequest(nav);
       mine.props.onClose();
-      assert.deepEqual(nav.focused, ["more"]);
+      assert.deepEqual(nav.focused, [source === "orders" ? "orders" : "more"]);
       assert.equal(nav.refreshes, 0);
     } finally { nav.restore(); }
   }
@@ -768,61 +768,149 @@ test("an explicit mine notification activates quarry once while generic or forei
   }
 });
 
-test("More, pantry and campfire open food without adding another permanent HUD button", () => {
-  const text = element => Children.toArray(element.props.children).map(child => typeof child === "string" ? child : isValidElement(child) ? text(child) : "").join("");
-  for (const source of ["more", "pantry", "campfire"]) {
-    const nav = navigation();
-    try {
-      assert.equal(nav.find(element => element.props["data-world-quick"] === "food"), undefined);
-      if (source === "more") {
-        nav.find(element => element.props["data-world-quick"] === "more").props.onClick();
-        nav.find(element => element.type === "button" && text(element).includes("Еда и заказы")).props.onClick();
-      } else if (source === "pantry") {
-        nav.find(element => element.props["data-world-quick"] === "pantry").props.onClick();
-        nav.component("WorldPantryMenu").props.onOpenFood();
-      } else {
-        nav.component("WorldScene").props.onPlace("campfire", { place: "campfire", objectId: "campfire.position", x: 195, y: 380, viewportWidth: 390, viewportHeight: 844 });
-        nav.component("WorldObjectMenu").props.onOpenFood();
-      }
-      const food = nav.component("WorldFoodMenu");
-      assert.ok(food); assert.equal(food.props.initialTab, "meals"); assert.equal(food.props.residentId, undefined);
-      assert.equal(nav.component("WorldObjectMenu"), undefined);
-      assert.equal(nav.component("WorldPantryMenu"), undefined);
-      assert.equal(nav.find(element => element.props.id === "world-quick-menu").props["data-kind"], "food");
-      nav.find(element => element.props["aria-label"] === "Закрыть: Еда и заказы").props.onClick();
-      assert.equal(nav.component("WorldFoodMenu"), undefined);
-      assert.deepEqual(nav.focused, ["more"]);
-      assert.equal(nav.refreshes, 0);
-    } finally { nav.restore(); }
-  }
+test("the four dock entries include a standalone journal while food stays in its action context", () => {
+  const nav = navigation();
+  try {
+    const dock = nav.find(element => element.type === "nav" && element.props["aria-label"] === "Действия в игре");
+    const entries = elements(dock).filter(element => element.type === "button");
+    assert.equal(entries.length, 4);
+    assert.ok(entries.some(element => element.props["data-world-orders-entry"] !== undefined));
+    nav.find(element => element.props["data-world-quick"] === "more").props.onClick();
+    const menu = nav.find(element => element.props.id === "world-quick-menu");
+    const labels = elements(menu).filter(element => element.type === "button").map(element => renderToStaticMarkup(element)).join(" ");
+    assert.doesNotMatch(labels, /Еда и заказы|data-world-food-entry/);
+    nav.find(element => element.props["data-world-quick"] === "pantry").props.onClick();
+    assert.equal(nav.component("WorldPantryMenu").props.onOpenFood, undefined);
+    nav.component("WorldScene").props.onPlace("campfire", { place: "campfire", objectId: "campfire.position", x: 195, y: 380, viewportWidth: 390, viewportHeight: 844 });
+    assert.equal(nav.component("WorldObjectMenu").props.onOpenFood, undefined);
+    assert.equal(nav.component("WorldFoodMenu"), undefined);
+    assert.equal(nav.refreshes, 0);
+  } finally { nav.restore(); }
 });
 
-test("resident food actions select the intended tab and person, then recipes open on the campfire", () => {
-  for (const [resident, action, tab] of [["plesk", "onOpenOrders", "orders"], ["builder", "onOpenOrders", "orders"], ["builder", "onOpenMeals", "meals"]]) {
+test("resident orders open the journal with the intended customer and exact recipe links preserve navigation", () => {
+  for (const resident of ["plesk", "builder"]) {
     const nav = navigation();
     try {
       nav.component("WorldScene").props.onResident(resident);
       const dialogName = resident === "builder" ? "WorldBuilderDialog" : "WorldResidentDialog";
-      nav.component(dialogName).props[action]();
-      const food = nav.component("WorldFoodMenu");
-      assert.equal(food.props.initialTab, tab); assert.equal(food.props.residentId, resident);
+      nav.component(dialogName).props.onOpenOrders();
+      const journal = nav.component("WorldOrderJournal");
+      assert.equal(journal.props.residentId, resident);
       assert.equal(nav.component(dialogName).props.open, false);
       assert.equal(nav.component("WorldCharacters").props.open, false);
-      const beforeKey = food.key;
-      assert.equal(nav.component("WorldFoodMenu").key, beforeKey, "ordinary snapshots preserve food selection");
-      food.props.onNavigateStation("dryer", "cook_fish_soup");
-      assert.equal(nav.component("WorldFoodMenu"), undefined);
+      const beforeKey = journal.key;
+      assert.equal(nav.component("WorldOrderJournal").key, beforeKey);
+      journal.props.onNavigateStation("dryer", "cook_fish_soup");
+      assert.equal(nav.component("WorldOrderJournal"), undefined);
       const scene = nav.component("WorldScene");
       assert.equal(scene.props.openObjectRequest.place, "campfire");
       scene.props.onPlace("campfire", { place: "campfire", objectId: "campfire.position", x: 195, y: 380, viewportWidth: 390, viewportHeight: 844 });
       const campfire = nav.component("WorldObjectMenu");
       assert.equal(campfire.props.initialStationId, "dryer");
       assert.equal(campfire.props.initialRecipeId, "cook_fish_soup");
-      campfire.props.onOpenFood();
-      const reopened = nav.component("WorldFoodMenu");
-      assert.notEqual(reopened.key, beforeKey, "explicit entry clears a previously selected resident/tab");
-      assert.equal(reopened.props.initialTab, "meals"); assert.equal(reopened.props.residentId, undefined);
-      assert.equal(nav.refreshes, 0, "these entries navigate without spending meals or redeeming orders");
+      nav.find(element => element.props["data-world-orders-entry"] !== undefined).props.onClick({ currentTarget: nav.ordersTrigger });
+      const reopened = nav.component("WorldOrderJournal");
+      assert.notEqual(reopened.key, beforeKey, "a new dock visit resets the previous customer filter");
+      assert.equal(reopened.props.residentId, undefined);
+      assert.equal(nav.refreshes, 0, "navigation never consumes food or completes an order");
+    } finally { nav.restore(); }
+  }
+});
+
+
+test("the journal opens from a native dock button and modal close restores its actual source or connected dock fallback", () => {
+  for (const exit of ["close", "modal"]) for (const connected of [true, false]) {
+    const nav = navigation();
+    try {
+      const source = nav.createElement("journal-source");
+      document.activeElement = source;
+      const entry = nav.find(element => element.props["data-world-orders-entry"] !== undefined);
+      assert.equal(entry.type, "button"); assert.notEqual(entry.props.tabIndex, -1);
+      assert.equal(entry.props["aria-expanded"], false);
+      entry.props.onClick({ currentTarget: source });
+      const expanded = nav.find(element => element.props["data-world-orders-entry"] !== undefined);
+      assert.equal(expanded.props["aria-expanded"], true); assert.equal(expanded.props["aria-controls"], "world-order-journal");
+      const content = nav.find(element => element.props["data-orders"] === true);
+      assert.equal(content.props.id, "world-order-journal");
+      source.isConnected = connected;
+      if (exit === "close") nav.find(element => ["Закрыть панель", "Закрыть журнал заказов"].includes(element.props["aria-label"])).props.onClick();
+      else nav.find(element => element.props.open === true && typeof element.props.onOpenChange === "function").props.onOpenChange(false);
+      assert.equal(nav.component("WorldOrderJournal"), undefined);
+      let prevented = false;
+      content.props.onCloseAutoFocus({ preventDefault() { prevented = true; } });
+      assert.equal(prevented, true);
+      assert.deepEqual(nav.focused, [connected ? "journal-source" : "orders"]);
+      assert.equal(nav.refreshes, 0);
+    } finally { nav.restore(); }
+  }
+});
+
+test("journal focus never returns to a previous owner's trigger and other initial lessons remain blocked behind it", () => {
+  const nav = guideNavigation({ onboarding: { progress: { version: 2, status: "started", stepId: "workshop" } } });
+  try {
+    document.activeElement = nav.ordersTrigger;
+    nav.find(element => element.props["data-world-orders-entry"] !== undefined).props.onClick({ currentTarget: nav.ordersTrigger });
+    assert.equal(nav.component("WorldOnboardingSession").props.ordersOpen, true);
+    assert.equal(nav.component("WorldOnboardingSession").props.modalBlocked, true, "only the orders step may use this modal as its own surface");
+    nav.props.ownerPublicId = "another-player";
+    const content = nav.find(element => element.props["data-orders"] === true);
+    nav.find(element => ["Закрыть панель", "Закрыть журнал заказов"].includes(element.props["aria-label"])).props.onClick();
+    content.props.onCloseAutoFocus({ preventDefault() {} });
+    assert.deepEqual(nav.focused, []);
+    assert.equal(nav.refreshes, 0);
+  } finally { nav.restore(); }
+});
+
+test("canonical order help and legacy food-order help open the same customer-filtered journal", () => {
+  for (const target of [{ kind: "orders" }, { kind: "orders", residentId: "builder" }, { kind: "food", tab: "orders", residentId: "plesk" }]) {
+    const nav = navigation();
+    try {
+      nav.find(element => element.props["data-world-quick"] === "more").props.onClick();
+      nav.find(element => element.props["aria-label"] === "Справка по игре").props.onClick();
+      nav.component("WorldHelp").props.onNavigate(target);
+      assert.equal(nav.component("WorldHelp"), undefined);
+      assert.equal(nav.component("WorldOrderJournal").props.residentId, target.residentId);
+      assert.equal(nav.component("WorldFoodMenu"), undefined);
+      assert.equal(nav.find(element => element.props.id === "world-quick-menu"), undefined);
+      assert.equal(nav.refreshes, 0);
+    } finally { nav.restore(); }
+  }
+});
+
+test("legacy meal help goes to actual expedition or builder food controls without restoring the old combined menu", () => {
+  for (const residentId of [undefined, "builder"]) {
+    const nav = navigation();
+    try {
+      nav.find(element => element.props["data-world-quick"] === "more").props.onClick();
+      nav.find(element => element.props["aria-label"] === "Справка по игре").props.onClick();
+      nav.component("WorldHelp").props.onNavigate({ kind: "food", tab: "meals", residentId });
+      assert.equal(nav.component("WorldHelp"), undefined);
+      assert.equal(nav.component("WorldFoodMenu"), undefined);
+      assert.equal(nav.component("WorldOrderJournal"), undefined);
+      if (residentId === "builder") assert.equal(nav.component("WorldBuilderDialog").props.open, true);
+      else assert.ok(nav.component("WorldExpeditionsMenu"));
+      assert.equal(nav.refreshes, 0);
+    } finally { nav.restore(); }
+  }
+});
+
+
+test("closing a customer journal returns to the dock when the resident's source button has unmounted", () => {
+  for (const resident of ["builder", "plesk"]) {
+    const nav = navigation();
+    try {
+      nav.component("WorldScene").props.onResident(resident);
+      const source = nav.createElement(`${resident}-orders`);
+      document.activeElement = source;
+      nav.component(resident === "builder" ? "WorldBuilderDialog" : "WorldResidentDialog").props.onOpenOrders();
+      const content = nav.find(element => element.props["data-orders"] === true);
+      source.isConnected = false;
+      nav.find(element => ["Закрыть панель", "Закрыть журнал заказов"].includes(element.props["aria-label"])).props.onClick();
+      content.props.onCloseAutoFocus({ preventDefault() {} });
+      assert.deepEqual(nav.focused, ["orders"]);
+      assert.equal(nav.component("WorldCharacters").props.open, false);
+      assert.equal(nav.refreshes, 0);
     } finally { nav.restore(); }
   }
 });

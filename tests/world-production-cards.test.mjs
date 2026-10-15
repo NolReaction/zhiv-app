@@ -35,6 +35,21 @@ function cardBlocked(html) {
   assert.ok(match, "Missing one-tap product card");
   return /data-blocked="true"/.test(match[1]);
 }
+
+test("fish cooking retains its catalog class cost and never substitutes a more valuable rarity", () => {
+  const calls = [], economy = controller({ buildings: { home: 5, dryer: 5, warehouse: 1 }, inventory: { fish_common: 2, fish_legendary: 1 } },
+    { act: (...args) => { calls.push(args); return true; } });
+  const before = structuredClone(economy.snapshot), initial = renderCard("cook_grilled_fish", economy);
+  assert.equal(cardBlocked(initial), false); assert.match(initial, /data-item-icon="fish_common"/);
+  assert.doesNotMatch(initial, /data-item-icon="fish_legendary"|<select\b/);
+  assert.deepEqual(economy.snapshot, before); economy.snapshot.inventory.fish_common = 0;
+  const recipe = economy.snapshot.catalog.recipes.find(recipe => recipe.id === "cook_grilled_fish");
+  let tree;
+  function Probe() { tree = WorldProductionCard({ economy, recipe }); return tree; }
+  const blocked = renderToStaticMarkup(createElement(Probe)); assert.equal(cardBlocked(blocked), true);
+  const action = elements(tree).find(element => element.props["data-recipe-order"] !== undefined);
+  action.props.onClick(); assert.deepEqual(calls, [], "legendary stock cannot pay a missing common-fish cost");
+});
 function elements(tree) {
   const found = [];
   const walk = element => { if (isValidElement(element)) { found.push(element); Children.forEach(element.props.children, walk); } };

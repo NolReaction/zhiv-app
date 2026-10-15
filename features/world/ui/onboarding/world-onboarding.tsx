@@ -17,6 +17,7 @@ export type WorldOnboardingProps = {
   modalBlocked: boolean;
   progress: WorldOnboardingProgress | null;
   worldElement: RefObject<HTMLElement | null>;
+  ordersElement?: RefObject<HTMLElement | null>;
   economy: EconomyController;
   quickMenu: string | null;
   helpOpen: boolean;
@@ -71,21 +72,23 @@ export function WorldOnboardingSession(props: WorldOnboardingProps & { presenceK
     if (!element) return;
     const measure = () => {
       setSceneReady(Boolean(element.querySelector('[data-ready="true"] > canvas[role="img"]')));
-      // Radix hides the map's ancestor when any nested modal (including audio
-      // or a meal picker) owns focus. The guide must yield to that modal too.
-      setCovered(Boolean(element.closest('[aria-hidden="true"]')));
+      // The journal lives in a portal that intentionally hides the map. Its
+      // coach belongs to that dialog and yields when a nested picker hides it.
+      const activeElement = props.ordersOpen ? props.ordersElement?.current ?? element : element;
+      setCovered(Boolean(activeElement.closest('[aria-hidden="true"]')));
     };
     const frame = requestAnimationFrame(measure);
     const observer = new MutationObserver(measure);
     observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["data-ready", "aria-hidden"] });
     return () => { cancelAnimationFrame(frame); observer.disconnect(); };
-  }, [props.worldElement]);
+  }, [props.worldElement, props.ordersElement, props.ordersOpen]);
   return <WorldOnboarding {...props} open={props.open && sceneReady && !blocked && !covered} />;
 }
 
 export function WorldOnboarding(props: WorldOnboardingProps) {
   const { progress, economy, worldElement, onStep, onCrop } = props;
-  const surface = usePracticeSurface(worldElement);
+  const practiceRoot = props.ordersOpen ? props.ordersElement ?? worldElement : worldElement;
+  const surface = usePracticeSurface(practiceRoot);
   const collection = useGardenCollection();
   const current = progress?.status === "started" ? progress.stepId : null;
   const [visited, setVisited] = useState<string | null>(null);
@@ -164,9 +167,9 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
     title: "Привет! Это наш лес", text: "Я Мохлик. За 3-5 минут посадим ягоды, познакомимся с соседями и заглянем в мастерскую. Всё можно открывать и пробовать.",
     summary: "Посадим ягоды и познакомимся с лесом за несколько минут.",
     hint: "Ждать урожай и стройку не придётся. Любой шаг можно отложить. Когда объяснение закончено, нажми на меня или на реплику.",
-    pose: "greet", welcome: !progress, targetRoot: worldElement,
-    compact: Boolean(props.quickMenu || surface.garden || props.workshopOpen),
-    dock: props.quickMenu ? "#world-quick-menu [data-guide-coach-slot]" : surface.garden || props.workshopOpen ? "[data-place] [data-guide-coach-slot]" : undefined,
+    pose: "greet", welcome: !progress, targetRoot: practiceRoot,
+    compact: Boolean(props.ordersOpen || props.quickMenu || surface.garden || props.workshopOpen),
+    dock: props.ordersOpen ? "[data-guide-coach-slot]" : props.quickMenu ? "#world-quick-menu [data-guide-coach-slot]" : surface.garden || props.workshopOpen ? "[data-place] [data-guide-coach-slot]" : undefined,
     onPause: props.onPause, onSkip: props.onSkip,
     primary: { label: "Давай попробуем", onClick: props.onStart },
   };
@@ -322,13 +325,10 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
       base.summary = props.ordersOpen ? surface.tutorialOrder
         ? "Сравни «есть / нужно». Собери недостающие припасы, затем нажми «Отдать заказ»."
         : "Нажми фильтр «Все»: над обычными просьбами появится учебный заказ."
-        : props.quickMenu === "food" ? "Теперь нажми вкладку «Заказы» сверху. Там соседи оставляют просьбы за монеты."
-        : props.quickMenu === "more" ? "В меню «Ещё» нажми «Еда и заказы». Дальше покажу просьбы соседей."
-        : "Нажми «Ещё» внизу: через это меню будем находить заказы.";
-      base.text = "Путь к заказам: «Ещё», затем «Еда и заказы», затем «Заказы». Учебная просьба стоит первой в фильтре «Все». Первый заказ требует две малины: вырасти и забери их с куста отдельными запусками. Затем нажми «Отдать заказ».";
+        : "Нажми «Заказы» внизу карты: откроется журнал просьб соседей.";
+      base.text = "Кнопка «Заказы» внизу карты открывает журнал. Учебная просьба стоит первой в фильтре «Все». Первый заказ требует две малины: вырасти и забери их с куста отдельными запусками. Затем нажми «Отдать заказ».";
       base.target = props.ordersOpen ? surface.tutorialOrder && order ? `[data-order-id="${order.id}"]` : '[data-order-filter="all"]'
-        : props.quickMenu === "food" ? '[data-world-food-tab="orders"]'
-        : props.quickMenu === "more" ? '[data-world-food-entry]' : '[data-world-quick="more"]';
+        : '[data-world-orders-entry]';
       base.primary = undefined;
       base.status ??= missing ? "Припасов пока не хватает. Нажми недостающий товар на доске, чтобы найти его источник." : undefined;
     }

@@ -8,7 +8,7 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const options = { appType: "custom", configFile: false, root, cacheDir: `/tmp/zhiv-resident-orders-${process.pid}`, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } };
 const vite = await createServer(options);
-const { ResidentOrderBoard, ResidentOrderCard, ResidentOrderReplacement, residentOrderQuoteReason, residentOrderSaleValue } = await vite.ssrLoadModule("/features/economy/ui/food/world-resident-order-board.tsx");
+const { ResidentOrderBoard, ResidentOrderCard, ResidentOrderReplacement, residentOrderQuoteReason, residentOrderSaleValue } = await vite.ssrLoadModule("/features/economy/ui/orders/world-resident-order-board.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { residentOrderBoard, normalizedResidentOrders, advanceResidentOrder } = await vite.ssrLoadModule("/features/economy/domain/food.ts");
 const { economyLocalSellPrice } = await vite.ssrLoadModule("/features/economy/domain/local-sale.ts");
@@ -71,7 +71,7 @@ test("educational order appears only after its activation, respects the resident
   const markup = render(ResidentOrderBoard, { economy });
   assert.match(markup, /data-tutorial-order="true"/);
   assert.equal((markup.match(/data-order-id=/g) ?? []).length, 4);
-  assert.ok(markup.indexOf(`data-order-id="${TUTORIAL_ORDER_ID}"`) < markup.indexOf('aria-label="Заказчик"'), "the practice request is easy to find before normal filters");
+  assert.ok(markup.indexOf(`data-order-id="${TUTORIAL_ORDER_ID}"`) < markup.indexOf('data-order-chapter="repeatable"'), "the practice request has its own chapter before repeatable requests");
   assert.doesNotMatch(render(ResidentOrderBoard, { economy, residentId: "plesk" }), /data-tutorial-order/);
   assert.match(render(ResidentOrderBoard, { economy, residentId: "builder" }), /data-tutorial-order/);
   const card = ResidentOrderCard({ economy, offer: terms });
@@ -83,7 +83,7 @@ test("educational order appears only after its activation, respects the resident
   buttons(card)[0].props.onClick(); // Stale callback is rejected by the current confirmed marker.
 });
 
-test("house-two course pins one nonreplaceable request before normal filters with frozen accepted terms", () => {
+test("house-two course pins one nonreplaceable request before repeatable requests with frozen accepted terms", () => {
   const economy = controller({ buildings: { home: 2, warehouse: 1, workshop: 1, quarry: 2, kiln: 1 },
     tutorialOrder: { ...newTutorialOrder(), step: 4, completed: true } });
   const course = economy.snapshot.catalog.stageOrders.find(entry => entry.homeLevel === 2);
@@ -96,7 +96,7 @@ test("house-two course pins one nonreplaceable request before normal filters wit
   assert.match(markup, /К дому 3 · 1 \/ 7/);
   assert.equal((markup.match(/data-stage-order=/g) ?? []).length, 1);
   assert.equal((markup.match(/data-order-id=/g) ?? []).length, 4);
-  assert.ok(markup.indexOf(`data-order-id="${terms.id}"`) < markup.indexOf('aria-label="Заказчик"'));
+  assert.ok(markup.indexOf(`data-order-id="${terms.id}"`) < markup.indexOf('data-order-chapter="repeatable"'));
   assert.doesNotMatch(render(ResidentOrderBoard, { economy, residentId: "plesk" }), /data-stage-order/);
   assert.match(render(ResidentOrderBoard, { economy, residentId: "builder" }), /data-stage-order/);
   const offer = stageResidentOrder(economy.snapshot), card = ResidentOrderCard({ economy, offer });
@@ -165,7 +165,7 @@ test("house-three supply keeps its saved deadline separate from current and hist
     const markup = render(ResidentOrderBoard, { economy });
     assert.equal(offer.intervalSeconds, acceptedInterval, "the current catalog cannot reprice a saved 24-hour course");
     assert.match(markup, /К дому 4 · 2 \/ 8/);
-    assert.ok(markup.indexOf(`data-order-id="${terms.id}"`) < markup.indexOf('aria-label="Заказчик"'));
+    assert.ok(markup.indexOf(`data-order-id="${terms.id}"`) < markup.indexOf('data-order-chapter="repeatable"'));
     assert.match(markup, /data-stage-order-wait/);
     assert.match(markup, new RegExp(`Следующая поставка через <strong>${worldDuration(deadlineSeconds)}<\\/strong>`));
     assert.match(markup, new RegExp(`После сдачи этой поставки до следующей пройдёт ${worldDuration(acceptedInterval)}`));
@@ -281,11 +281,11 @@ test("paid replacement needs deliberate confirmation, checks fresh state and rej
       export function useEffect() {}
       export function useLayoutEffect(effect) { effect(); }
     `; },
-    transform(source, id) { if (id.endsWith("/features/economy/ui/food/world-resident-order-board.tsx")) return source.replace('from "react";', `from "${hooksId}";`); },
+    transform(source, id) { if (id.endsWith("/features/economy/ui/orders/world-resident-order-board.tsx")) return source.replace('from "react";', `from "${hooksId}";`); },
   }] });
   try {
     const hooks = await runtime.ssrLoadModule(hooksId);
-    const { ResidentOrderBoard: Board, ResidentOrderCard: Card } = await runtime.ssrLoadModule("/features/economy/ui/food/world-resident-order-board.tsx");
+    const { ResidentOrderBoard: Board, ResidentOrderCard: Card } = await runtime.ssrLoadModule("/features/economy/ui/orders/world-resident-order-board.tsx");
     const calls = [], economy = paid(controller({}, { act: (...args) => calls.push(args) }));
     const board = () => { hooks.render(); return Board({ economy }); };
     const cards = tree => elements(tree).filter(element => element.type === Card);

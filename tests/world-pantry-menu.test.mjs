@@ -323,15 +323,14 @@ test("the fridge shows owned species in class rails and prepared meals in a sepa
   assert.deepEqual(state, before);
 });
 
-test("pantry meal action only opens food selection; raw fish and materials cannot be eaten there", () => {
+test("pantry keeps meals as inventory and sales without another global food menu", () => {
   const state = snapshot({ inventory: { grilled_fish: 3, fish: 2, wood: 5 } });
-  let opened = 0;
-  const view = inspectSale(state, { itemId: "grilled_fish", onOpenFood() { opened++; } });
-  assert.ok(view.control("Подать еду"));
-  view.control("Подать еду").props.onClick();
-  assert.equal(opened, 1); assert.deepEqual(view.calls, []); assert.equal(state.inventory.grilled_fish, 3);
-  for (const itemId of ["fish", "wood"]) {
-    const other = inspectSale(state, { itemId, onOpenFood() { assert.fail("non-meals cannot feed a resident"); } });
-    assert.equal(other.control("Подать еду"), undefined);
+  const before = structuredClone(state);
+  for (const itemId of ["grilled_fish", "fish", "wood"]) {
+    const view = inspectSale(state, { itemId });
+    assert.equal(view.control("Подать еду"), undefined);
+    assert.deepEqual(view.calls, []);
+    assert.doesNotMatch(view.html, /Съесть|Угостить|Еда и заказы/);
   }
+  assert.deepEqual(state, before);
 });
