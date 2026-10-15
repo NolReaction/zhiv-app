@@ -72,7 +72,6 @@ export function WorldProductionSlots({ economy, stationId, compact = false, open
         <span className={styles.slotNumber}>Место {index + 1}</span><span className={styles.lock}><LockKeyhole size={24} aria-hidden="true" /></span><strong>{nextLocked ? "Открыть" : "Закрыто"}</strong>{nextLocked && <span className={styles.price}>{formatPearls(tier?.pricePearls ?? 0)}<ItemIcon itemId="pearls" size={16} /></span>}
       </button>;
     })}</div>
-    {reason && !confirming && <p className={styles.hint}>{reason}</p>}
     {confirming && currentConfirmation && selectedOffer && <div className={styles.confirmation} role="dialog" id={dialogId} aria-labelledby={`${dialogId}-title`} aria-describedby={`${dialogId}-description`}
       onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); cancelPurchase(); } }}>
       <h4 id={`${dialogId}-title`}>Открыть место {currentConfirmation.slot}?</h4>

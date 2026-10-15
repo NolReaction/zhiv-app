@@ -72,6 +72,11 @@ function ProductionWorkCell({ economy, job, openPantry, compact }: { economy: Re
 
   useEffect(() => { if (economy.error && !economy.busy) pending.current = null; }, [economy.error, economy.busy]);
   useEffect(() => {
+    if (!feedback) return;
+    const timer = setTimeout(() => setFeedback(null), 4000);
+    return () => clearTimeout(timer);
+  }, [feedback]);
+  useEffect(() => {
     if (!confirmation) return;
     const update = () => {
       if (armed.current !== confirmation) return;
@@ -136,8 +141,8 @@ function ProductionWorkCell({ economy, job, openPantry, compact }: { economy: Re
       {confirming && <span id={descriptionId} className={styles.sr}>{refund}. Нажмите ещё раз в течение {countdown} секунд, чтобы отменить производство.</span>}
       <progress className={styles.progress} value={berry?.collecting ? undefined : status.progress} max={1} aria-label={berry?.collecting ? "Сбор урожая" : `Готовность: ${title}`} />
     </button>
-    {feedback && <p className={styles.hint} role="status">{feedback}</p>}
-    {berry?.away && status.ready && <p className={styles.hint}>{berry.awayReason}</p>}
-    {((status.ready && storageShortfall > 0) || !status.ready && cancellationReason?.startsWith("Освободите")) && <p className={styles.hint}>{status.ready ? `Нужно освободить ${number(storageShortfall)} мест.` : cancellationReason}{openPantry && <button type="button" className={styles.pantry} onClick={openPantry}>К кладовой<ArrowRight size={12} aria-hidden="true" /></button>}</p>}
+    {feedback && <p className={styles.notice} role="status">{feedback}</p>}
+    {berry?.away && status.ready && <p className={styles.hint} data-production-blocking>{berry.awayReason}</p>}
+    {((status.ready && storageShortfall > 0) || !status.ready && cancellationReason?.startsWith("Освободите")) && <p className={styles.hint} data-production-blocking>{status.ready ? `Нужно освободить ${number(storageShortfall)} мест.` : cancellationReason}{openPantry && <button type="button" className={styles.pantry} onClick={openPantry}>К кладовой<ArrowRight size={12} aria-hidden="true" /></button>}</p>}
   </div>;
 }

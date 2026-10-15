@@ -385,7 +385,7 @@ test("long saved product names fit the reserved slot frame and keep their full a
   assert.match(css, /\.slots\.slots \.slot\s*\{[^}]*height: 118px;[^}]*min-height: 118px;/);
   assert.match(css, /button\[data-production-control\]\s*\{[^}]*grid-template-rows:[^}]*height: 84px;[^}]*min-height: 0;/);
   assert.match(css, /button\[data-production-control\] > strong\s*\{[^}]*-webkit-line-clamp: 2;/);
-  assert.match(css, /\.job:has\(p\)\s*\{\s*height: auto;/, "blocking messages and pantry controls remain readable");
+  assert.match(css, /\.job:has\(\[data-production-blocking\]\)\s*\{\s*height: auto;/, "only persistent blocking messages and pantry controls expand the cell");
 });
 
 test("cancellation uses one compact action row and describes the exact stored refund accessibly", () => {

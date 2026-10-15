@@ -26,7 +26,7 @@
 .slots.slots .job [data-production-action] { flex: 0 0 20px; height: 20px; max-width: 100%; padding: 2px 4px; font-size: 9px; }
 .job progress { width: 100%; height: 3px; margin: 0; }
 /* A blocking explanation must stay readable, including its pantry action. */
-.slots.slots .job:has(p) { height: auto; }
+.slots.slots .job:has([data-production-blocking]) { height: auto; }
 .job p { overflow-wrap: anywhere; text-align: left; }
 .hint { margin: 6px 0 0; color: #776044; font-size: 10px; overflow-wrap: anywhere; }
 .confirmation { margin-top: 8px; padding: 9px; border: 1px solid #aaa0bd; border-radius: 9px; background: #eee7e5; }

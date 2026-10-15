@@ -118,7 +118,7 @@ test("production slots are available at home one with pearl gates and keep all o
   state.wallet.pearls = 199;
   html = render("garden", controller({ snapshot: state }));
   assert.equal(disabled(button(html, "Место 2")), false, "A locked place still opens the explanation without charging pearls");
-  assert.match(html, /Не хватает жемчужин: 0,5/);
+  assert.doesNotMatch(html, /Не хватает жемчужин: 0,5/, "purchase restrictions appear only after opening its confirmation");
   state.wallet.pearls = 10000; state.productionSlots = { garden: 2 };
   html = render("garden", controller({ snapshot: state }));
   assert.doesNotMatch(html, /Нужен дом 4 уровня/);
