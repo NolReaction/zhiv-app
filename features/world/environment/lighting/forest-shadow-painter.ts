@@ -30,7 +30,7 @@ export type ForestShadowFrame = {
   geometryRevision?: number;
 };
 type Surface = { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D };
-type Pool = Surface & { x: number; y: number; width: number; height: number; light: PointShadowLight;
+type Pool = Surface & { key: string; x: number; y: number; width: number; height: number; light: PointShadowLight;
   dynamic?: Surface; actorSignature?: string };
 type DirectionalMask = Surface & { light: ShadowLight };
 type ReceiverGroup = { height: number; polygons: WorldPoint[][]; holes: WorldPoint[][]; bounds: WorldBounds; path?: Path2D };
@@ -229,13 +229,19 @@ function nearbyActors(source: ForestShadowSource, actors: readonly ShadowActor[]
   }).map(actor => actor.caster);
 }
 function pool(cache: SceneCache, source: ForestShadowSource, key = sourceKey(source)): Pool | undefined {
-  const existing = cache.pools.get(key); if (existing) return existing;
+  const existing = cache.pools.get(source.id); if (existing?.key === key) return existing;
   const x = Math.max(0, source.position.x - source.radius), y = Math.max(0, source.position.y - source.radius);
   const width = Math.min(cache.width / cache.scale, source.position.x + source.radius) - x;
   const height = Math.min(cache.height / cache.scale, source.position.y + source.radius) - y;
   if (width <= 0 || height <= 0) return;
-  const target = surface(Math.max(1, Math.ceil(width * cache.scale)), Math.max(1, Math.ceil(height * cache.scale)));
+  const pixelWidth = Math.max(1, Math.ceil(width * cache.scale)), pixelHeight = Math.max(1, Math.ceil(height * cache.scale));
+  // A dragged source has one reusable pool, not sixteen previous positions and
+  // their actor masks. Only the edited lamp is repainted; other lamps stay cached.
+  const target = existing ?? surface(pixelWidth, pixelHeight);
   if (!target) return;
+  if (target.canvas.width !== pixelWidth) target.canvas.width = pixelWidth;
+  if (target.canvas.height !== pixelHeight) target.canvas.height = pixelHeight;
+  if (existing) reset(target);
   const ctx = target.ctx; ctx.setTransform(cache.scale, 0, 0, cache.scale, -x * cache.scale, -y * cache.scale);
   const gradient = ctx.createRadialGradient(source.position.x, source.position.y, 0,
     source.position.x, source.position.y, source.radius);
@@ -247,7 +253,11 @@ function pool(cache: SceneCache, source: ForestShadowSource, key = sourceKey(sou
   ctx.globalCompositeOperation = "destination-out";
   const light: PointShadowLight = { kind: "point", position: { ...source.position }, height: source.height, radius: source.radius };
   shadows(ctx, cache, light, cache.casters, false, source.ownerSiteId);
-  return remember(cache.pools, key, { ...target, x, y, width, height, light }, 16);
+  const result: Pool = Object.assign(target, { key, x, y, width, height, light, actorSignature: undefined });
+  // Refresh insertion order so invisible old lamps are evicted before an active
+  // edited source. Preserve its dynamic canvas, invalidating the old projection.
+  cache.pools.delete(source.id);
+  return remember(cache.pools, source.id, result, 16);
 }
 function directionalActors(cache: SceneCache, light: ShadowLight, actors: readonly WorldShadowCaster[], view: WorldBounds | null) {
   if (!view || light.kind !== "directional") return actors.filter(actor => clamp(actor.opacity) > 0);

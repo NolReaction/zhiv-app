@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { createServer } from "vite";
+import { createWorldStudioProjectFiles } from "../lib/dev/world-studio-project-files.mjs";
+import { serializeTiledWorld } from "../scripts/lib/tiled-world.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } },
@@ -9,6 +14,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, re
 after(() => vite.close());
 const { createWorldStudioProjectSave, createWorldStudioIncrementalPatch, createWorldStudioRequestId, retainWorldStudioProjectSave } = await vite.ssrLoadModule("/features/world/dev/world-studio-project-save.ts");
 const { createWorldLightingEditorStore } = await vite.ssrLoadModule("/features/world/dev/world-lighting-editor-store.ts");
+const { acceptWorldLightingRefresh } = await vite.ssrLoadModule("/features/world/scene/lighting-refresh.ts");
 const clone = value => structuredClone(value);
 const revision = number => number.toString(16).padStart(64, "0");
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -95,6 +101,64 @@ test("confirmed project connection autosaves only committed gesture with debounc
   assert.equal(backend.getDisk().scene.shadowCasters[0].height, 27);
   assert.equal(manager.getSnapshot().status, "saved");
   assert.equal(manager.getSnapshot().pending, false);
+});
+
+test("real project POST accepts lighting-only HMR before ACK, follows external Tiled and cleans up on dispose", async t => {
+  const directory = await mkdtemp(path.join(tmpdir(), "zhiv-studio-refresh-api-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await mkdir(path.join(directory, "world/tiled"), { recursive: true });
+  await mkdir(path.join(directory, "features/world/tiled"), { recursive: true });
+  await symlink(path.join(root, "public"), path.join(directory, "public"), "dir");
+  await writeFile(path.join(directory, "world/tiled/forest.tmj"), await readFile(path.join(root, "world/tiled/forest.tmj")));
+  const files = createWorldStudioProjectFiles({ root: directory }), initial = await files.read();
+  await writeFile(path.join(directory, "features/world/tiled/forest.generated.json"), serializeTiledWorld(initial.scene));
+  const liveScene = clone(initial.scene), store = createWorldLightingEditorStore(true, liveScene);
+  let posts = 0, heldResponse, release;
+  const fetcher = async (_url, options) => {
+    const post = options.method === "POST";
+    const response = await files.handle(new Request("http://localhost:3000/api/dev/world-studio", { method: options.method,
+      headers: { host: "localhost:3000", ...(post ? { origin: "http://localhost:3000", "content-type": "application/json" } : {}) },
+      ...(post ? { body: options.body } : {}) }), "development");
+    if (post) {
+      posts++;
+      assert.equal(response.status, 200);
+      heldResponse = await response.clone().json();
+      // Filesystem HMR can arrive before fetch has delivered the POST response.
+      assert.equal(acceptWorldLightingRefresh(liveScene, heldResponse.scene), true);
+      await new Promise(resolve => { release = resolve; });
+    }
+    return response;
+  };
+  const manager = createWorldStudioProjectSave({ editor: store, available: true, fetcher });
+  t.after(() => manager.dispose());
+  await manager.connect(); manager.setPaused(true);
+  const light = store.getSnapshot().lights[0]; store.selectLight(light.id);
+  store.patchLight({ intensity: light.intensity === .73 ? .71 : .73 });
+  const saving = manager.requestSave();
+  for (let attempt = 0; !release && attempt < 2000; attempt++) await wait(5);
+  assert.equal(typeof release, "function");
+  assert.equal(manager.getSnapshot().status, "saving");
+  assert.equal(store.getSnapshot().canUndo, true);
+  release(); await saving; await manager.recheck();
+  assert.equal(posts, 1); assert.equal(manager.getSnapshot().status, "saved");
+  assert.equal(store.getSnapshot().canUndo, true); assert.equal(store.getSnapshot().selectedId, light.id);
+  const external = async () => {
+    const disk = await files.read(), before = disk.scene.lights[0];
+    const next = await files.save({ requestId: `external-${disk.revision.slice(0, 12)}`, expectedRevision: disk.revision,
+      patch: { schemaVersion: 3, sceneId: disk.scene.id, casters: [], receivers: [],
+        lights: [{ id: before.id, before, after: { ...before, intensity: before.intensity === .51 ? .52 : .51 } }] } });
+    assert.equal(acceptWorldLightingRefresh(liveScene, next.scene), true);
+    await manager.recheck(); return next;
+  };
+  const cleanExternal = await external();
+  assert.equal(manager.getSnapshot().status, "ready");
+  assert.equal(store.getSnapshot().lights[0].intensity, cleanExternal.scene.lights[0].intensity);
+  store.selectLight(light.id); store.patchLight({ intensity: .9 });
+  await external();
+  assert.equal(manager.getSnapshot().status, "conflict"); assert.equal(store.getSnapshot().lights[0].intensity, .9);
+  assert.equal(posts, 1);
+  manager.dispose();
+  assert.equal(acceptWorldLightingRefresh(liveScene, heldResponse.scene), false);
 });
 
 test("second edit, deletion and Undo save against acknowledged disk, never original page baseline", async t => {

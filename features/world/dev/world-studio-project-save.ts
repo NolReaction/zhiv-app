@@ -5,6 +5,7 @@ import type { FixedWorldScene, WorldLight, WorldShadowCaster, WorldShadowReceive
 import { WORLD_DEV_ENABLED } from "./world-dev-store";
 import { worldLightingEditorStore } from "./world-lighting-editor-store";
 import { retainWorldDevClientState } from "./world-dev-hmr-cache";
+import { subscribeWorldLightingRefresh } from "@/features/world/scene/lighting-refresh";
 
 export type WorldStudioProjectSaveSnapshot = Readonly<{
   status: "probing" | "unavailable" | "ready" | "saving" | "saved" | "error" | "conflict";
@@ -101,6 +102,7 @@ export function createWorldStudioProjectSave({ editor, available, fetcher = fetc
     paused: false, savedAt: null, error: null, revision: null, pending: false });
   let state = initial, connected = false, connecting: Promise<void> | null = null;
   let disk: Disk | null = null, unsubscribe: (() => void) | null = null;
+  let unsubscribeRefresh: (() => void) | null = null;
   let deferredBaseline: FixedWorldScene | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null, running: Promise<void> | null = null, failedRequest: SaveRequest | null = null;
   let loadingProject: Promise<boolean> | null = null;
@@ -192,6 +194,7 @@ export function createWorldStudioProjectSave({ editor, available, fetcher = fetc
         if (!diskResponse(data, editor.getSceneBaseline())) throw new Error("Локальный сервер вернул другую карту.");
         disk = data;
         publish({ available: true, revision: data.revision });
+        unsubscribeRefresh ??= subscribeWorldLightingRefresh(() => { void recheck(); });
         if (hydrationConflict) {
           if (fingerprint(editor.getSnapshot()) !== beforeProbe || editor.restoreProjectDraft(data.scene) !== "restored") {
             publish({ status: "conflict", pending: true, error: "Сохранённый черновик не соответствует карте проекта. Он сохранён отдельно и не будет перезаписан." }); return;
@@ -220,7 +223,10 @@ export function createWorldStudioProjectSave({ editor, available, fetcher = fetc
     if (disposed) return;
     await checkingProject;
     if (disposed) return;
-    if (state.status === "conflict" || !state.available) { connected = false; unsubscribe?.(); unsubscribe = null; await connect(); return; }
+    if (state.status === "conflict" || !state.available) {
+      connected = false; unsubscribe?.(); unsubscribe = null; unsubscribeRefresh?.(); unsubscribeRefresh = null;
+      await connect(); return;
+    }
     publish({ status: "ready", error: null });
     await save(true);
   };
@@ -279,6 +285,7 @@ export function createWorldStudioProjectSave({ editor, available, fetcher = fetc
         if (!editor.adoptProjectScene(data.scene, { discardConflictedDraft: true })) throw new Error("Версию проекта не удалось прочитать. Черновик сохранён.");
         disk = data; deferredBaseline = null; failedRequest = null; checked = null;
         if (!unsubscribe) unsubscribe = editor.subscribe(schedule);
+        unsubscribeRefresh ??= subscribeWorldLightingRefresh(() => { void recheck(); });
         connected = true;
         publish({ available: true, status: "ready", revision: data.revision, error: null, pending: false, savedAt: null });
         return true;
@@ -293,12 +300,15 @@ export function createWorldStudioProjectSave({ editor, available, fetcher = fetc
     getSnapshot: () => state, getServerSnapshot: () => initial,
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     connect, requestSave, retry, setPaused, loadProjectVersion, recheck,
-    dispose() { disposed = true; cancelTimer(); unsubscribe?.(); unsubscribe = null; listeners.clear(); connected = false; },
+    dispose() {
+      disposed = true; cancelTimer(); unsubscribe?.(); unsubscribe = null;
+      unsubscribeRefresh?.(); unsubscribeRefresh = null; listeners.clear(); connected = false;
+    },
   };
 }
 
 export function retainWorldStudioProjectSave(options: Parameters<typeof createWorldStudioProjectSave>[0]) {
-  const retained = retainWorldDevClientState("world-studio-project-save", "1", () => createWorldStudioProjectSave(options), {
+  const retained = retainWorldDevClientState("world-studio-project-save", "2", () => createWorldStudioProjectSave(options), {
     identity: options.editor, dispose: previous => previous.dispose(),
   });
   if (retained.reused) void retained.value.recheck();

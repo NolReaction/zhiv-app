@@ -110,10 +110,12 @@ test("bright flame pulses add light energy without rebuilding their shadow textu
 test("moving a source rebuilds its projection while unchanged sources remain cached", () => withCanvas(surfaces => {
   const map = scene(), options = { ...frame(), sources: [lamp("left"), lamp("right", 150)] }, paint = context();
   drawForestOccludedLighting(paint.ctx, map, options); const count = surfaces.length;
-  const before = pools(surfaces)[0].calls.filter(call => call.method === "lineTo").map(call => call.args);
+  const [left, right] = pools(surfaces), previousCalls = left.calls.length, rightCalls = right.calls.length;
+  const before = left.calls.filter(call => call.method === "lineTo").map(call => call.args);
   drawForestOccludedLighting(paint.ctx, map, { ...options, sources: [{ ...lamp("left"), position: { x: 55, y: 60 } }, lamp("right", 150)] });
-  assert.equal(surfaces.length, count + 1);
-  const after = pools(surfaces).at(-1).calls.filter(call => call.method === "lineTo").map(call => call.args);
+  assert.equal(surfaces.length, count, "moving a source repaints the existing buffer");
+  assert.equal(right.calls.length, rightCalls, "the other source stays cached");
+  const after = left.calls.slice(previousCalls).filter(call => call.method === "lineTo").map(call => call.args);
   assert.notDeepEqual(after, before);
 }));
 
@@ -297,19 +299,38 @@ test("actor opacity, body height, jump lift and contour edits invalidate cached 
   }
 }));
 
-test("lamp-only scene clones share geometry caches and source edits rebuild their independent pools", () => withCanvas(surfaces => {
+test("lamp-only scene clones share geometry caches and source edits repaint their own reusable pools", () => withCanvas(surfaces => {
   const map = scene(), paint = context(), options = { ...frame(), geometryRevision: 0 };
   drawForestDirectionalShadows(paint.ctx, map, options); drawForestOccludedLighting(paint.ctx, map, options);
   const count = surfaces.length;
   const cloned = { ...map, lights: [] };
   drawForestDirectionalShadows(paint.ctx, cloned, options); drawForestOccludedLighting(paint.ctx, cloned, options);
   assert.equal(surfaces.length, count, "unchanged immutable geometry shares masks through a lamp draft scene clone");
-  let previous = count;
+  const poolCanvas = surfaces.at(-1).canvas;
   for (const change of [{ height: 35 }, { radius: 180 }, { color: "#ffaa22" }, { ownerSiteId: "home" },
     { position: { x: 50, y: 70 } }]) {
     drawForestOccludedLighting(paint.ctx, cloned, { ...options, sources: [{ ...lamp(), ...change }] });
-    assert.equal(surfaces.length, ++previous, "each source geometry/color property selects a new static pool");
+    assert.equal(surfaces.length, count, "editing a source reuses its canvas rather than retaining previous positions");
+    assert.equal(surfaces.at(-1).canvas, poolCanvas);
   }
+}));
+
+test("a dragged lamp reuses static and actor buffers while invalidating both masks for every new position", () => withCanvas(surfaces => {
+  const map = scene(), paint = context(), body = caster("near-light", 110),
+    options = { ...frame(), geometryRevision: 0, actors: [body] };
+  drawForestOccludedLighting(paint.ctx, map, options);
+  const count = surfaces.length, light = surfaces.at(-1), moving = surfaces[2];
+  const staticFills = fills(light).length, dynamicFills = fills(moving).length;
+  for (let step = 1; step <= 120; step++) {
+    const source = { ...lamp(), position: { x: 40 + step / 2, y: 90 + step / 4 } };
+    drawForestOccludedLighting(paint.ctx, { ...map, lights: [] }, { ...options, sources: [source] });
+  }
+  assert.equal(surfaces.length, count, "120 drag frames allocate no additional canvas, including moving actor masks");
+  assert.equal(fills(light).length, staticFills + 120, "static occlusion follows every accepted source position");
+  assert.equal(fills(moving).length, dynamicFills + 120, "an unchanged actor still needs a new projection from the moving light");
+  const clears = moving.calls.filter(call => call.method === "clearRect").length;
+  drawForestOccludedLighting(paint.ctx, map, { ...options, sources: [{ ...lamp(), position: { x: 100, y: 120 } }] });
+  assert.equal(moving.calls.filter(call => call.method === "clearRect").length, clears, "the final unchanged frame remains cached");
 }));
 
 test("geometry sharing retains only two recent contour variants instead of every editor undo state", () => withCanvas(surfaces => {

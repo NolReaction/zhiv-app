@@ -5481,6 +5481,7 @@ test("lighting studio map capture cancels a vertex on pinch, hidden page and Esc
     const send = (type, event) => canvas.events.get(type)({ ...event, type });
     let first = pointer(); send("pointerdown", first); assert.equal(canvas.hasPointerCapture(1), true);
     send("pointermove", { ...first, clientX: first.clientX - 5 });
+    canvas.flushFrame();
     assert.notDeepEqual(worldLightingEditorStore.getSnapshot().casters[0].points[0], caster.points[0]);
     const second = { ...first, pointerId: 2, clientX: first.clientX + 40 };
     send("pointerdown", second); assert.deepEqual(worldLightingEditorStore.getSnapshot().casters[0].points[0], caster.points[0]);
@@ -5502,6 +5503,42 @@ test("lighting studio map capture cancels a vertex on pinch, hidden page and Esc
     send("pointerup", { ...first, clientX: first.clientX + 30 }); canvas.flushFrame();
     assert.notDeepEqual(mapProjection(canvas), cameraBefore, "ordinary camera dragging resumes when the studio closes");
     assert.deepEqual(worldLightingEditorStore.getSnapshot().casters[0].points, caster.points);
+  } finally {
+    engine?.dispose(); worldLightingEditorStore.resetAll(); worldLightingEditorStore.setEnabled(false); worldDevStore.reset(); env.restore();
+  }
+});
+
+test("studio light pointer bursts update geometry once per frame and commit the exact release position", async () => {
+  const light = { id: "dragged-glow", kind: "glow", position: { x: 660, y: 660 }, radius: 100,
+    height: 24, intensity: 1, color: "#ffd28a", flicker: 0, manualPosition: true };
+  const { createMapEngine, worldDevStore, worldLightingEditorStore } = await modules({ lights: [light] });
+  const env = browser(); let engine;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false });
+    worldLightingEditorStore.setEnabled(true); worldLightingEditorStore.setTool("move");
+    const canvas = env.surface(700), loading = createMapEngine(canvas, options, assert.fail, []);
+    env.finish(); await flush(); engine = await loading; engine.control("home"); canvas.flushFrame();
+    const projection = mapProjection(canvas);
+    const send = (type, x, y) => canvas.events.get(type)({ type, pointerId: 1, pointerType: "mouse", button: 0,
+      clientX: projection.left + x * projection.zoom, clientY: projection.top + y * projection.zoom });
+    send("pointerdown", 660, 660);
+    const before = worldLightingEditorStore.getSnapshot().lightRevision;
+    for (let step = 1; step <= 120; step++) send("pointermove", 660 + step / 4, 660 + step / 8);
+    assert.equal(worldLightingEditorStore.getSnapshot().lightRevision, before,
+      "high-rate input does not rebuild the store, scene or React property panels for each packet");
+    canvas.flushFrame();
+    assert.equal(worldLightingEditorStore.getSnapshot().lightRevision, before + 1);
+    assert.deepEqual(worldLightingEditorStore.getSnapshot().lights[0].position, { x: 690, y: 675 });
+    send("pointermove", 692, 676); send("pointerup", 693, 677);
+    assert.equal(worldLightingEditorStore.getSnapshot().lightRevision, before + 2, "release flushes one final update before committing");
+    assert.deepEqual(worldLightingEditorStore.getSnapshot().lights[0].position, { x: 693, y: 677 });
+    canvas.flushFrame();
+    assert.equal(worldLightingEditorStore.getSnapshot().lightRevision, before + 2, "no stale packet runs after pointerup");
+    worldLightingEditorStore.undo(); assert.deepEqual(worldLightingEditorStore.getSnapshot().lights[0].position, light.position);
+    worldLightingEditorStore.redo(); assert.deepEqual(worldLightingEditorStore.getSnapshot().lights[0].position, { x: 693, y: 677 });
+    send("pointerdown", 693, 677); send("pointermove", 703, 687);
+    canvas.events.get("keydown")({ key: "Escape", preventDefault() {} }); send("pointerup", 703, 687); canvas.flushFrame();
+    assert.deepEqual(worldLightingEditorStore.getSnapshot().lights[0].position, { x: 693, y: 677 }, "Escape discards even an unpresented final packet");
   } finally {
     engine?.dispose(); worldLightingEditorStore.resetAll(); worldLightingEditorStore.setEnabled(false); worldDevStore.reset(); env.restore();
   }
