@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-fish-commerce-guides-sections-vite", server: { middlewareMode: true, hmr: false, ws: false } });
+const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-mini-pantry-guides-sections-vite", server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { sectionGuideIds, sectionGuideLessons, sectionGuideCanOpen, parseSectionGuideProgress, transitionSectionGuide: move } = await vite.ssrLoadModule("/features/onboarding/section-guide-model.ts");
 const { sectionGuideStorageKey, createSectionGuideStore } = await vite.ssrLoadModule("/features/onboarding/section-guide-storage.ts");
@@ -111,7 +111,7 @@ test("Plesk lessons compare class odds without buying and keep representative ar
   assert.match(lesson("catch").text, /оставшихся видов.*Книга помнит и уже потраченные поимки/);
   const queue = sectionGuideLessons.workshop.find(step => step.id === "queue");
   assert.match(queue.text, /Ячейки остаются одинакового размера/);
-  assert.match(queue.text, /обе очереди мастерской, «Верстак» и «Печь»/);
+  assert.match(queue.text, /обе очереди мастерской, «Верстак» и «Печь» собраны в одной плашке: каждая строка открывает своё производство/);
 });
 
 test("order and travel lessons separate fish selection from consumption and owned gear from buying", () => {
@@ -132,13 +132,16 @@ test("pantry, Plesk and market lessons show species without automatically sellin
   const sale = sectionGuideLessons.pantry.find(step => step.id === "sale");
   const sell = sectionGuideLessons.market.find(step => step.id === "sell");
   const fish = sectionGuideLessons.plesk.find(step => step.id === "catch");
-  assert.match(items.text, /«Холодильнике» класс рыбы сначала раскрывает оставшиеся виды/);
+  assert.match(items.text, /«Холодильнике» нажми класс рыбы: компактное окно с видами и продажей появится поверх сетки/);
   assert.match(items.text, /Просмотр ничего не продаёт/);
+  assert.match(items.text, /Escape или нажатие вне окна вернут к карточке без продажи/);
   assert.match(sale.text, /только после нажатия кнопки «Продать торговцу»/);
   assert.match(sale.text, /«Без указания вида»/);
   assert.match(sell.text, /выбор оставшихся видов.*«Выставить лот»/);
   assert.match(sell.text, /Просмотр ничего не выставляет/);
   assert.match(fish.summary, /Продажу подтверждает кнопка «Продать»/);
+  assert.match(fish.summary, /В «Улове» классы сначала свёрнуты/);
+  assert.match(fish.text, /Открой класс вручную/);
   assert.match(sectionGuideLessons.workshop.find(step => step.id === "queue").text, /Таймер меняется по секундам/);
   for (const step of [items, sale, sell, fish]) assert.notEqual(step.revealOnOpen, true);
 });

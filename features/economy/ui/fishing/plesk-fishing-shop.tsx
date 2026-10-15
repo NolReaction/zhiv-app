@@ -125,7 +125,7 @@ export function PleskFishTrade({ economy, state, itemId, fishItemId }: ReadyProp
 export function FishCounter({ economy, state, catalog }: ReadyProps & { catalog: FishingCatalog }) {
   const inventory = fishClassInventory(state.inventory, catalog);
   const available = catalog.classes.filter(fish => (inventory[fish.itemId] ?? 0) > 0);
-  const [selection, setSelection] = useState<string | null>(() => available[0]?.itemId ?? null);
+  const [selection, setSelection] = useState<string | null>(null);
   const [selectedFishId, setSelectedFishId] = useState<string | null>(null);
   const selected = available.find(fish => fish.itemId === selection);
   const stockId = useId();

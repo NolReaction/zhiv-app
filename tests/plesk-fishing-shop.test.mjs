@@ -108,7 +108,8 @@ test("the catch counter shows only positive pantry stock and has no fish purchas
   assert.match(html, /Обычная рыба/); assert.doesNotMatch(html, /Теневая акула|Купить|×0/);
   assert.match(html, /data-item-icon="fish_common"/); assert.doesNotMatch(html, /data-hidden-fish/);
   assert.equal((html.match(/aria-expanded=/g) ?? []).length, 1);
-  assert.match(html, /Без указания вида/);
+  assert.match(html, /aria-expanded="false"/);
+  assert.doesNotMatch(html, /data-plesk-fish-stock|Без указания вида|Количество|Продать/);
   const empty = snapshot({ inventory: {} });
   const emptyHtml = renderToStaticMarkup(createElement(FishCounter, { state: empty, catalog: empty.catalog.fishing, economy: controller(empty) }));
   assert.match(emptyHtml, /Улов ещё впереди/); assert.doesNotMatch(emptyHtml, /Количество|Продать|Теневая акула/);

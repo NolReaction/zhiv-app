@@ -12,22 +12,39 @@
   box-shadow: 0 2px 0 #0b170e66, 0 3px 8px #07130755, inset 0 1px #f7e7b31f;
 }
 .pill[data-long-clock="true"] { width: 96px; flex: 0 0 96px; }
-.marker.marker:hover .pill, .sectionButton.sectionButton:hover .pill { border-color: #f5dd9e; background: #43563a; }
 .marker.marker:focus-visible, .sectionButton.sectionButton:focus-visible { outline: none; }
-.marker.marker:focus-visible > .pill, .sectionButton.sectionButton:focus-visible > .pill { outline: 2px solid #ffebaf; outline-offset: 3px; }
+.marker.marker:focus-visible > .pill { outline: 2px solid #ffebaf; outline-offset: 3px; }
 .markerSplit.markerSplit { height: 88px; min-height: 88px; padding: 0; display: grid; gap: 0; }
+.markerSplit::before {
+  content: ""; position: absolute; inset: 11px 9px; z-index: -1;
+  border: 1px solid #dbc485a8; border-radius: 16px;
+  background: linear-gradient(160deg, #40503af5, #202f22ef);
+  box-shadow: 0 2px 0 #0b170e66, 0 3px 8px #07130755, inset 0 1px #f7e7b31f;
+}
+.markerSplit[data-wide-host="true"]::before { left: 1px; right: 1px; }
+.markerSplit::after {
+  content: ""; position: absolute; top: calc(100% - 14px);
+  left: clamp(17px, calc(50% + var(--pointer-offset, 0px)), calc(100% - 17px));
+  width: 5px; height: 5px; border-right: 1px solid #dbc485a8; border-bottom: 1px solid #dbc485a8;
+  background: #243626; transform: translateX(-50%) rotate(45deg); z-index: -1;
+}
 .sectionButton.sectionButton {
   position: relative; width: 100%; height: 44px; min-height: 44px; min-width: 0;
-  padding: 7px 9px; display: flex; align-items: center; justify-content: center;
+  padding: 0 10px 12px; display: flex; align-items: center; justify-content: center;
   box-sizing: border-box; border: 0; border-radius: 16px; background: transparent; color: inherit;
 }
+.sectionButton.sectionButton:first-child { padding-top: 12px; padding-bottom: 0; }
+.sectionButton > .pill { width: 78px; height: 32px; border: 0; border-radius: 0 0 14px 14px; background: transparent; box-shadow: none; }
+.sectionButton:first-child > .pill { border-bottom: 1px solid #d9c58b44; border-radius: 14px 14px 0 0; }
+.markerSplit[data-wide-host="true"] .pill { width: 94px; flex: 0 0 94px; }
+.sectionButton .count { position: static; padding: 0; border: 0; background: transparent; font-size: .5rem; flex-shrink: 0; color: #d8c99e; }
 .pill::after {
   content: ""; position: absolute; top: calc(100% - 3px);
   left: clamp(8px, calc(50% + var(--pointer-offset, 0px)), calc(100% - 8px));
   width: 5px; height: 5px; border-right: 1px solid #dbc485a8; border-bottom: 1px solid #dbc485a8;
   background: #243626; transform: translateX(-50%) rotate(45deg); z-index: -1;
 }
-.markerSplit .sectionButton:first-child .pill::after { display: none; }
+.sectionButton .pill::after { display: none; }
 .icon { width: 20px; height: 22px; flex: 0 0 20px; display: grid; place-items: center; position: relative; }
 .caption { min-width: 0; font-size: .67rem; line-height: 1.1; font-variant-numeric: tabular-nums; white-space: nowrap; letter-spacing: -.02em; }
 .check { position: absolute; right: -1px; bottom: 0; border-radius: 50%; background: #36582b; color: #e3f5b8; }
@@ -38,6 +55,9 @@
 .sectionButton[data-production-status="ready"] .pill { border-color: #d4efa5; background: linear-gradient(160deg, #4a5e38f5, #2c4028ef); }
 .marker[data-production-status="storage-blocked"] .pill, .marker[data-production-status="paused"] .pill,
 .sectionButton[data-production-status="storage-blocked"] .pill { border-color: #e6bc83; color: #ffdda9; }
+.marker.marker:hover > .pill { border-color: #f5dd9e; background: #43563a; }
+.sectionButton.sectionButton:hover > .pill { background: #5e75465c; }
+.sectionButton.sectionButton:focus-visible > .pill { outline: 2px solid #ffebaf; outline-offset: -2px; background: #5e75465c; }
 .marker[data-production-status="collecting"] .track > span { background: #e9d3a1; }
 .marker[data-production-target="quarry"][data-production-status="working"] .icon > svg { transform-origin: 50% 75%; animation: pick 1.8s ease-in-out infinite; }
 @keyframes pick { 0%, 70%, 100% { transform: rotate(-9deg); } 38% { transform: rotate(12deg); } 48% { transform: rotate(-14deg); } }

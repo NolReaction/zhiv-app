@@ -41,6 +41,7 @@ export function WorldProductionStatus({ economy, groups, anchors, reserved = [],
     const position = { left: anchor.x, top: anchor.y, "--pointer-offset": `${anchor.pointerOffset}px` } as CSSProperties;
     if (sections.length > 1) return <div key={group.place} className={`${styles.marker} ${styles.markerSplit}`} style={position}
       role="group" aria-label={`Верстак и печь${group.construction ? `. ${description(group.construction)}` : ""}`}
+      data-wide-host={sections.some(section => section.entries.length > 1 || constructionCountdown(section.primary.remaining).length > 8) || undefined}
       data-production-host={group.place} data-map-object={anchor.objectId} title={details.join("\n")}>
       {sections.map(section => <button key={section.stationId} type="button" className={styles.sectionButton}
         data-production-status={section.primary.phase} data-production-target={section.stationId} data-work-kind={section.primary.kind}

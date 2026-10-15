@@ -111,8 +111,28 @@ test("each shared queue keeps its own saved countdown, progress and extra paid j
   const html = renderToStaticMarkup(WorldProductionStatus({ economy: { snapshot: saved, now }, groups: [group], anchors: [anchor("workshop")], onOpen() {} }));
   assert.match(html, /<strong[^>]*>1:00<\/strong>/); assert.match(html, /<strong[^>]*>4:00<\/strong>/);
   assert.match(html, /width:50%/); assert.match(html, /width:20%/); assert.match(html, /\+4/);
+  assert.match(html, /data-wide-host="true"/);
   for (const id of jobs.map(value => value.id)) assert.ok(group.entries.some(entry => entry.jobId === id));
   assert.deepEqual(saved, before, "the split badge never truncates or rewrites old paid queues");
+});
+
+test("shared workshop uses one frame with a divider and highlights only the hovered or focused row", async () => {
+  const saved = state([job("workshop"), job("kiln")]), now = start + 30_000;
+  const component = WorldProductionStatus({ economy: { snapshot: saved, now }, groups: mapProductionGroups(saved, now), anchors: [anchor("workshop")], onOpen() {} });
+  const host = component.props.children[0];
+  assert.equal(host.type, "div"); assert.equal(host.props.role, "group");
+  assert.equal(host.props["data-wide-host"], undefined, "ordinary clocks keep the same compact width as a single badge");
+  assert.equal(host.props.children.length, 2);
+  assert.ok(host.props.children.every(child => child.type === "button"), "each queue retains its own keyboard and touch action");
+  const css = await readFile(`${root}features/world/ui/hud/world-production-status.module.css`, "utf8");
+  assert.match(css, /\.markerSplit::before\s*\{[^}]*inset: 11px 9px[^}]*border:[^}]*background:/);
+  assert.match(css, /\.sectionButton > \.pill\s*\{[^}]*border: 0[^}]*background: transparent[^}]*box-shadow: none/);
+  assert.match(css, /\.sectionButton:first-child > \.pill\s*\{[^}]*border-bottom: 1px/);
+  assert.match(css, /\.marker\.marker:hover > \.pill/);
+  assert.doesNotMatch(css, /\.marker\.marker:hover\s+\.pill|\.markerSplit[^,{]*:hover/,
+    "hovering the shared parent must not style the other queue");
+  assert.match(css, /\.sectionButton\.sectionButton:hover > \.pill\s*\{[^}]*background:/);
+  assert.match(css, /\.sectionButton\.sectionButton:focus-visible > \.pill\s*\{[^}]*outline:[^}]*outline-offset: -2px/);
 });
 
 test("a lone workbench or kiln keeps a single 44px button and names its equipment", () => {

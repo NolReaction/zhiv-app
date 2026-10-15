@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-fish-commerce-guides-help-vite", resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
+const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-mini-pantry-guides-help-vite", resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { worldHelpTopics, worldHelpGroups, searchWorldHelp, searchWorldHelpWithStatus } = await vite.ssrLoadModule("/features/world/ui/help/world-help-content.ts");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
@@ -289,10 +289,11 @@ test("fish selection guidance preserves current species, unknown stock and expli
 });
 
 test("fish commerce answers require an explicit sale and keep market reservation distinct", () => {
-  assert.match(answer("resources"), /В «Холодильнике» нажмите класс рыбы: раскроются оставшиеся виды/);
+  assert.match(answer("resources"), /В «Холодильнике» нажмите класс рыбы: компактное окно покажет оставшиеся виды и продажу поверх сетки/);
   assert.match(answer("resources"), /Нажмите вид, выберите количество и подтвердите продажу/);
   assert.match(answer("resources"), /Просмотр запаса ничего не тратит/);
-  assert.match(answer("plesk"), /В «Улове» выберите класс и оставшиеся виды.*«Продать»/);
+  assert.match(answer("plesk"), /В «Улове» классы сначала свёрнуты. Нажмите нужный класс, выберите оставшиеся виды.*«Продать»/);
+  assert.match(answer("resources"), /Escape или нажатие вне окна закроют его без продажи и вернут к карточке/);
   assert.match(answer("plesk"), /Цена едина внутри класса/);
   assert.match(answer("market"), /Для рыбы проверьте виды и нажмите «Выставить лот»/);
   assert.match(answer("market"), /Монеты поступят, когда другой игрок купит ваш лот/);
@@ -322,7 +323,7 @@ test("timers, production slots and prices derive from gameplay catalogs", () => 
   }
   assert.match(answer("production-slots"), /Третье до покупки второго показывает только замок/);
   assert.match(answer("production-slots"), /три одинаковых места/);
-  assert.match(answer("production-slots"), /обе очереди.*«Верстак» и «Печь».*откроет нужное производство/);
+  assert.match(answer("production-slots"), /обе очереди.*в общей плашке видны «Верстак» и «Печь».*нажатие строки откроет нужное производство/);
   for (const [label, seconds] of [["1 мин", 60], ["1 ч", 3600], ["24 ч", 86400], ["48 ч", 172800]]) {
     assert.ok(answer("pearls").includes(`${label} - ${formatPearls(constructionTimePearlPrice(seconds))} жемчужин`));
   }
