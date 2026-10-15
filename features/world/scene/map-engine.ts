@@ -1,7 +1,7 @@
 import { drawForestSpeech } from "@/features/world/characters/social/forest-speech-painter";
 import { mountHabitat, type SceneOptions } from "@/features/mochlik/scene";
 import type { WorldResidentId } from "@/features/world/characters/world-characters-model";
-import { clampCamera, homeCamera, worldCamera, overviewCamera, HOME_AREA, MAP_SIZE, isMapTap, screenToWorld, viewportPoint, worldToScreen, zoomAt, type Point, type VerticalCameraInsets } from "./camera";
+import { clampCamera, homeCamera, worldCamera, overviewCamera, HOME_AREA, MAP_SIZE, isMapTap, screenToWorld, viewportPoint, worldToScreen, zoomAt, type Point, type Camera, type VerticalCameraInsets } from "./camera";
 import { loadHabitatImage } from "@/features/mochlik/assets";
 import { WORLD_ART } from "./art";
 import { mapPlaceAt, worldToHome } from "@/features/world/legacy/map-layout";
@@ -10,8 +10,10 @@ import { drawRouteProps } from "@/features/world/legacy/route-props";
 import { drawBoatWreck, prepareBoatWreck } from "@/features/world/legacy/boat-wreck";
 import { NEW_MAP_BOUNDS, NEW_MAP_FOCUS, TILED_WORLD, WORLD_PRESENTATION } from "./presentation";
 import { WORLD_DEV_ENABLED, worldDevStore } from "@/features/world/dev/world-dev-store";
+import { retainWorldDevClientState } from "@/features/world/dev/world-dev-hmr-cache";
 import { WORLD_LIGHTING_EDITOR_CANCEL_EVENT, worldLightingEditorStore } from "@/features/world/dev/world-lighting-editor-store";
-import { createWorldLightingEditorMap } from "@/features/world/dev/world-lighting-editor-map";
+import { createWorldLightingEditorMap, WORLD_LIGHTING_EDITOR_FOCUS_EVENT, takeWorldLightingEditorFocus, WORLD_STUDIO_CREATE_EVENT, takeWorldStudioCreate, type WorldStudioCreateKind, type WorldLightingEditorFocus } from "@/features/world/dev/world-lighting-editor-map";
+import { WORLD_STUDIO_MAP_KEY_EVENT, type WorldStudioMapKeyRequest } from "@/features/world/dev/world-studio-keyboard";
 import { mapObjectAt, type MapObjectPlace, type MapInteractiveObject } from "./site-interactions";
 import { projectConstructionAnchor, type MapObjectScreenAnchor } from "./construction-map-anchor";
 import { drawMapGuideTarget, mapGuideCamera } from "./map-guide-target";
@@ -28,6 +30,13 @@ export type MapInteractionCallbacks = {
 };
 export type MapAction = "home" | "pet" | "overview" | "in" | "out" | "plesk" | "builder" | "fishing";
 export type CameraHudElements = { top?: HTMLElement | null; bottom?: HTMLElement | null };
+type MapFraming = "world" | "home" | "overview" | "manual" | "guide";
+type StudioViewport = { camera: Camera; framing: MapFraming };
+// A refresh reuses the DOM canvas; closing the world creates a new one. Weak
+// keys retain neither discarded canvases nor production/account state.
+const studioViewports = WORLD_DEV_ENABLED ? retainWorldDevClientState("studio-map-viewports",
+  `v1:1:${TILED_WORLD.id}:${TILED_WORLD.width}:${TILED_WORLD.height}`,
+  () => new WeakMap<HTMLCanvasElement, StudioViewport>()).value : null;
 export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneOptions, onPlace: (place: WorldPlace, selection?: MapObjectSelection) => void, anchors: HTMLElement[], signal?: AbortSignal, cameraHud: CameraHudElements = {}, interactions: MapInteractionCallbacks = {}, speechCanvas?: HTMLCanvasElement | null) {
   let ground: HTMLImageElement;
   const rebuilding = WORLD_PRESENTATION.rebuilding;
@@ -44,6 +53,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   let options = initial, disposed = false, raf = 0, last = 0, redrawPending = false;
   let viewportRect: DOMRect | null = null;
   let dev = WORLD_DEV_ENABLED ? worldDevStore.getSnapshot() : undefined;
+  const initialCameraEventId = dev?.cameraEvent?.id;
   const motionReduced = () => dev?.reducedMotion === "on" || dev?.reducedMotion !== "off" && options.reducedMotion;
   const paused = () => options.paused || Boolean(dev?.paused);
   let boatArt: HTMLCanvasElement | null = null;
@@ -53,13 +63,16 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       zoom: close ? Math.min(viewport.width / NEW_MAP_FOCUS.width, viewport.height / NEW_MAP_FOCUS.height)
         : Math.min(viewport.width / bounds.width, viewport.height / bounds.height) }, viewport, bounds, cameraInsets)
     : close ? homeCamera(viewport) : worldCamera(viewport);
-  let view = { width: 1, height: 1 }, camera = focusCamera(view, false);
-  let framing: "world" | "home" | "overview" | "manual" | "guide" = "world";
+  let studioWasActive = WORLD_DEV_ENABLED && worldLightingEditorStore.getSnapshot().enabled;
+  const retainedViewport = studioWasActive ? studioViewports?.get(canvas) : undefined;
+  let restoreStudioViewport = Boolean(retainedViewport);
+  let view = { width: 1, height: 1 }, camera = retainedViewport ? { ...retainedViewport.camera } : focusCamera(view, false);
+  let framing: MapFraming = retainedViewport?.framing ?? "world";
   let guidePlace: MapObjectPlace | null = null, guideBottomInset = 0;
   const guideInsets = () => ({ ...cameraInsets, bottom: Math.max(cameraInsets.bottom, guideBottomInset) });
   let inView = true;
   const home = document.createElement("canvas");
-  type Touch = { initial: Point; position: Point; objectId?: string; capture: HTMLElement; editor?: boolean };
+  type Touch = { initial: Point; position: Point; objectId?: string; capture: HTMLElement; editor?: boolean; additive?: boolean };
   const pointers = new Map<number, Touch>();
   let travelled = 0, multiTouch = false, cancelled = false;
   let selectedObjectId: string | null = null, selectionKey: string | null = null;
@@ -71,8 +84,61 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     activity() {}, ready: readyResolve, failure: error => readyReject(new MapLoadError("character", error)),
     rendered: () => { if (motionReduced() || paused()) { if (pointers.size) requestDraw(); else draw(); } else updateSelection(); },
   });
-  const lightingEditor = createWorldLightingEditorMap(() => habitat.lightingCasters?.() ?? []);
+  const lightingEditor = createWorldLightingEditorMap(() => habitat.lightingCasters?.() ?? [], worldLightingEditorStore,
+    { getLights: () => habitat.lightingLights?.() ?? [], getReceivers: () => habitat.lightingReceivers?.() ?? [], onFocus: focusLighting });
   const editingLight = () => WORLD_DEV_ENABLED && rebuilding && worldLightingEditorStore.getSnapshot().enabled;
+  function studioUsableRectangle() {
+    type Rectangle = { left: number; right: number; top: number; bottom: number };
+    const safe: Rectangle = { left: 20, right: view.width - 20, top: cameraInsets.top + 16, bottom: view.height - cameraInsets.bottom - 16 };
+    const selector = "[data-world-lighting-studio-panel],[data-world-studio-panel]";
+    const single = document.querySelector?.<HTMLElement>(selector);
+    const panels = document.querySelectorAll ? [...document.querySelectorAll<HTMLElement>(selector)] : single ? [single] : [];
+    if (!panels.length) return safe;
+    const viewport = canvas.getBoundingClientRect();
+    let candidates = [safe];
+    for (const node of panels) {
+      const panel = node.getBoundingClientRect();
+      if (!(panel.width > 0 && panel.height > 0)) continue;
+      const left = (panel.left - viewport.left) * view.width / Math.max(1, viewport.width) - 16;
+      const right = left + panel.width * view.width / Math.max(1, viewport.width) + 32;
+      const top = (panel.top - viewport.top) * view.height / Math.max(1, viewport.height) - 16;
+      const bottom = top + panel.height * view.height / Math.max(1, viewport.height) + 32;
+      candidates = candidates.flatMap(rect => {
+        if (left >= rect.right || right <= rect.left || top >= rect.bottom || bottom <= rect.top) return [rect];
+        return [
+          { ...rect, right: Math.min(rect.right, left) }, { ...rect, left: Math.max(rect.left, right) },
+          { ...rect, bottom: Math.min(rect.bottom, top) }, { ...rect, top: Math.max(rect.top, bottom) },
+        ].filter(part => part.right > part.left && part.bottom > part.top);
+      });
+    }
+    return candidates.sort((a, b) => (b.right - b.left) * (b.bottom - b.top) - (a.right - a.left) * (a.bottom - a.top))[0] ?? safe;
+  }
+  function createStudioElement(kind: WorldStudioCreateKind | null) {
+    if (!kind || disposed || !editingLight() || !worldLightingEditorStore.getSnapshot().previewDraft) return;
+    lightingEditor.cancel();
+    const safe = studioUsableRectangle();
+    const point = screenToWorld({ x: (safe.left + safe.right) / 2, y: (safe.top + safe.bottom) / 2 }, camera, view);
+    const created = kind === "receiver-hole" ? lightingEditor.createReceiverHole(point)
+      : kind === "caster" ? worldLightingEditorStore.addCaster(point) : worldLightingEditorStore.addReceiver(point);
+    if (created) { if (kind !== "receiver-hole") worldLightingEditorStore.setTool("move"); requestDraw(); canvas.focus?.({ preventScroll: true }); }
+  }
+  function focusLighting(request: WorldLightingEditorFocus) {
+    if (disposed || !editingLight() || !Number.isFinite(request.point?.x) || !Number.isFinite(request.point?.y)) return;
+    const safe = studioUsableRectangle();
+    const width = Math.max(100, safe.right - safe.left), height = Math.max(100, safe.bottom - safe.top);
+    const box = request.bounds;
+    const zoom = box && Number.isFinite(box.width) && Number.isFinite(box.height)
+      ? Math.min(width / Math.max(50, box.width + 40), height / Math.max(50, box.height + 40)) : Math.max(camera.zoom, 2);
+    const bounded = clampCamera({ ...camera, zoom }, view, bounds, cameraInsets);
+    // Constrain the world to the usable rectangle, not to the hidden area under
+    // the studio. Near map edges the full-viewport clamp would hide the target.
+    const focused = clampCamera({ x: request.point.x, y: request.point.y, zoom: bounded.zoom }, { width, height }, bounds);
+    framing = "manual";
+    camera = { zoom: focused.zoom,
+      x: focused.x + (view.width / 2 - safe.left - width / 2) / focused.zoom,
+      y: focused.y + (view.height / 2 - safe.top - height / 2) / focused.zoom };
+    draw(); canvas.focus?.({ preventScroll: true });
+  }
   const abort = () => { disposed = true; habitat.dispose(); readyReject(signal?.reason ?? new DOMException("Aborted", "AbortError")); };
   signal?.addEventListener("abort", abort, { once: true });
   try { await habitatReady; signal?.throwIfAborted(); }
@@ -247,7 +313,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   }
   function visibility() {
     if (document.hidden) {
-      lightingEditor.cancel();
+      lightingEditor.blur();
       cancelled = true;
       for (const [id, touch] of pointers) if (touch.capture.hasPointerCapture(id)) touch.capture.releasePointerCapture(id);
       pointers.clear();
@@ -269,7 +335,17 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     canvas.width = Math.round(view.width * scale); canvas.height = Math.round(view.height * scale);
     if (speechCanvas) { speechCanvas.width = canvas.width; speechCanvas.height = canvas.height; }
     const guideTarget = framing === "guide" ? habitat.mapObjects?.().find(object => object.place === guidePlace) : undefined;
-    camera = guideTarget ? mapGuideCamera(guideTarget, view, bounds, guideInsets()) : framing === "world" ? focusCamera(view, false) : framing === "home" ? focusCamera(view, true) : framing === "overview" ? overviewCamera(view, bounds) : clampCamera(camera, view, bounds, cameraInsets); draw();
+    if (restoreStudioViewport && editingLight()) {
+      // Selection focus may extend the full camera beyond a world edge to keep
+      // the target in the gap between studio panels. Clamp that usable area,
+      // just as focusLighting does, rather than moving it under a sidebar.
+      const safe = studioUsableRectangle(), width = Math.max(100, safe.right - safe.left), height = Math.max(100, safe.bottom - safe.top);
+      const zoom = clampCamera(camera, view, bounds, cameraInsets).zoom;
+      const offset = { x: (view.width / 2 - safe.left - width / 2) / zoom, y: (view.height / 2 - safe.top - height / 2) / zoom };
+      const focused = clampCamera({ x: camera.x - offset.x, y: camera.y - offset.y, zoom }, { width, height }, bounds);
+      camera = { zoom: focused.zoom, x: focused.x + offset.x, y: focused.y + offset.y };
+    } else camera = guideTarget ? mapGuideCamera(guideTarget, view, bounds, guideInsets()) : framing === "world" ? focusCamera(view, false) : framing === "home" ? focusCamera(view, true) : framing === "overview" ? overviewCamera(view, bounds) : clampCamera(camera, view, bounds, cameraInsets);
+    restoreStudioViewport = false; draw();
   }
   const resizeObserver = new ResizeObserver(resize); resizeObserver.observe(canvas);
   if (cameraHud.top) resizeObserver.observe(cameraHud.top, { box: "border-box" });
@@ -307,17 +383,25 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       for (const touch of pointers.values()) touch.editor = false;
       cancelled = true;
     }
-    const editor = !pointers.size && editingLight() && lightingEditor.down(screenToWorld(p, camera, view), 11 / camera.zoom);
+    const editor = !pointers.size && editingLight() && lightingEditor.down(screenToWorld(p, camera, view), 11 / camera.zoom,
+      { ctrlKey: event.ctrlKey, metaKey: event.metaKey, shiftKey: event.shiftKey });
     // Large touch targets overlap in the phone overview. Resolve the closest
     // rendered marker, independently of which DOM button received the press.
     // Keep capture on the original button on touch devices: transferring it to
     // a sibling canvas competes with the browser's implicit touch capture.
     const capture = typeof target.setPointerCapture === "function" ? target : canvas;
-    pointers.set(event.pointerId, { initial: p, position: p, objectId: objectId ? nearestMarkerObject(p) : undefined, capture, editor });
+    pointers.set(event.pointerId, { initial: p, position: p, objectId: objectId ? nearestMarkerObject(p) : undefined, capture, editor, additive: event.ctrlKey || event.metaKey });
     multiTouch ||= pointers.size > 1; capture.setPointerCapture(event.pointerId); capture.focus?.({ preventScroll: true });
+    if (editingLight()) requestDraw();
   }
   function move(event: PointerEvent) {
-    const touch = pointers.get(event.pointerId); if (!touch) return;
+    const touch = pointers.get(event.pointerId);
+    if (!touch) {
+      if (editingLight() && worldLightingEditorStore.getSnapshot().tool === "light") {
+        lightingEditor.hover(screenToWorld(point(event), camera, view)); requestDraw();
+      }
+      return;
+    }
     const p = point(event), before = touch.position, oldDistance = separation();
     if (touch.editor) { lightingEditor.move(screenToWorld(p, camera, view)); touch.position = p; requestDraw(); return; }
     const oldCenter = pointers.size >= 2 ? midpoint() : null;
@@ -343,7 +427,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       requestDraw(); return;
     }
     if (editingLight()) {
-      if (!pointers.size && isMapTap(travelled, multiTouch, cancelled)) worldLightingEditorStore.select(null);
+      if (!touch.additive && !lightingEditor.isPanning() && !pointers.size && isMapTap(travelled, multiTouch, cancelled)) worldLightingEditorStore.clearSelection();
       if (touch.capture.hasPointerCapture(event.pointerId)) touch.capture.releasePointerCapture(event.pointerId);
       requestDraw(); return;
     }
@@ -382,7 +466,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     if (touch.capture.hasPointerCapture(event.pointerId)) touch.capture.releasePointerCapture(event.pointerId);
     requestDraw();
   }
-  function wheel(event: WheelEvent) { event.preventDefault(); framing = "manual"; camera = zoomAt(camera, view, point(event), Math.exp(-event.deltaY * .0015), bounds, cameraInsets); requestDraw(); }
+  function wheel(event: WheelEvent) { event.preventDefault(); lightingEditor.cancel(); framing = "manual"; camera = zoomAt(camera, view, point(event), Math.exp(-event.deltaY * .0015), bounds, cameraInsets); requestDraw(); }
   function control(action: MapAction) {
     framing = action === "home" || action === "overview" ? action : "manual";
     if (action === "plesk" || action === "builder" || action === "fishing") {
@@ -394,27 +478,56 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       : action === "home" ? focusCamera(view, true) : action === "overview" ? overviewCamera(view, bounds) : zoomAt(camera, view, { x: view.width / 2, y: view.height / 2 }, action === "in" ? 1.25 : .8, bounds, cameraInsets); draw();
   }
   function key(event: KeyboardEvent) {
+    const target = event.target as HTMLElement | null;
+    if (event.isComposing || target?.isContentEditable || target?.closest?.("input,textarea,select,[contenteditable=true]")) return;
     if (WORLD_DEV_ENABLED && lightingEditor.key(event)) { event.preventDefault(); requestDraw(); return; }
     const delta = { ArrowUp: [0, -40], ArrowDown: [0, 40], ArrowLeft: [-40, 0], ArrowRight: [40, 0] }[event.key];
     if (delta) { event.preventDefault(); framing = "manual"; camera = clampCamera({ ...camera, x: camera.x + delta[0] / camera.zoom, y: camera.y + delta[1] / camera.zoom }, view, bounds, cameraInsets); draw(); }
     else if (["+", "=", "-", "Home"].includes(event.key)) { event.preventDefault(); control(event.key === "Home" ? "pet" : event.key === "-" ? "out" : "in"); }
   }
+  function keyUp(event: KeyboardEvent) { if (lightingEditor.keyUp(event)) { event.preventDefault(); requestDraw(); } }
+  function editorBlur() { lightingEditor.blur(); requestDraw(); }
+  function editorLeave() { lightingEditor.hover(null); if (editingLight()) requestDraw(); }
+  function editorFocus(event: Event) {
+    const request = takeWorldLightingEditorFocus() ?? (event as CustomEvent<WorldLightingEditorFocus | "selection">).detail;
+    const target = request === "selection" ? lightingEditor.focus() : request;
+    if (target) focusLighting(target);
+  }
+  function editorCreate(event: Event) {
+    const kind = takeWorldStudioCreate() ?? (event as CustomEvent<WorldStudioCreateKind>).detail;
+    if (kind === "caster" || kind === "receiver" || kind === "receiver-hole") createStudioElement(kind);
+  }
+  if (WORLD_DEV_ENABLED) {
+    window.addEventListener?.(WORLD_LIGHTING_EDITOR_FOCUS_EVENT, editorFocus);
+    window.addEventListener?.(WORLD_STUDIO_CREATE_EVENT, editorCreate);
+  }
+  function editorMapKey(event: Event) {
+    if (!editingLight()) return;
+    const request = (event as CustomEvent<WorldStudioMapKeyRequest>).detail;
+    if (!request || request.handled) return;
+    if (request.phase === "cancel") { lightingEditor.blur(); request.handled = true; }
+    else request.handled = request.phase === "up" ? lightingEditor.keyUp(request.input) : lightingEditor.key(request.input);
+    if (request.handled) requestDraw();
+  }
+  if (WORLD_DEV_ENABLED) window.addEventListener?.(WORLD_STUDIO_MAP_KEY_EVENT, editorMapKey);
   // DEV and the enclosing world dialog both capture Escape. Handle a map drag
   // first, while leaving keyboard input in the panel to its own controls.
   function editorEscape(event: KeyboardEvent) {
     if (event.key !== "Escape" || event.isComposing || event.target !== canvas || !editingLight()) return;
+    if (document.querySelector?.("[data-world-lighting-studio-panel]")) return;
     lightingEditor.key(event); event.preventDefault(); event.stopImmediatePropagation(); requestDraw();
   }
   window.addEventListener?.("keydown", editorEscape, true);
   function editorCancel(event: Event) {
     const key = (event as CustomEvent<KeyboardEvent>).detail;
     if (!editingLight() || key?.key !== "Escape") return;
-    lightingEditor.key(key); requestDraw();
+    lightingEditor.blur(); requestDraw();
   }
   window.addEventListener?.(WORLD_LIGHTING_EDITOR_CANCEL_EVENT, editorCancel);
   canvas.addEventListener("pointerdown", down); canvas.addEventListener("pointermove", move);
   for (const name of ["pointerup", "pointercancel", "lostpointercapture"] as const) canvas.addEventListener(name, end);
   canvas.addEventListener("wheel", wheel, { passive: false }); canvas.addEventListener("keydown", key);
+  canvas.addEventListener("keyup", keyUp); canvas.addEventListener("blur", editorBlur); canvas.addEventListener("pointerleave", editorLeave);
   // Markers are real touch targets as well as keyboard buttons. Native touch
   // capture keeps their move/up events on the marker, so handle the whole
   // gesture there. React's detail=0 click remains the keyboard/AT fallback.
@@ -432,8 +545,13 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   // Controls may have changed while the scene's selected artwork was loading.
   if (WORLD_DEV_ENABLED) dev = worldDevStore.getSnapshot();
   document.addEventListener("visibilitychange", visibility); visibility();
+  const pendingLightingFocus = WORLD_DEV_ENABLED ? takeWorldLightingEditorFocus() : null;
+  const pendingLightingTarget = pendingLightingFocus === "selection" ? lightingEditor.focus() : pendingLightingFocus;
+  if (pendingLightingTarget) focusLighting(pendingLightingTarget);
+  if (WORLD_DEV_ENABLED) createStudioElement(takeWorldStudioCreate());
   // An absolute DEV target chosen in the circle survives opening the full map.
-  if (dev?.cameraEvent?.action === "plesk" || dev?.cameraEvent?.action === "builder" || dev?.cameraEvent?.action === "fishing") control(dev.cameraEvent.action);
+  if ((!retainedViewport || dev?.cameraEvent?.id !== initialCameraEventId)
+    && (dev?.cameraEvent?.action === "plesk" || dev?.cameraEvent?.action === "builder" || dev?.cameraEvent?.action === "fishing")) control(dev.cameraEvent.action);
   const unsubscribeDev = WORLD_DEV_ENABLED ? worldDevStore.subscribe(() => {
     if (disposed) return;
     const previousCamera = dev?.cameraEvent?.id;
@@ -446,7 +564,8 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     }
   }) : () => {};
   const unsubscribeLightingEditor = WORLD_DEV_ENABLED ? worldLightingEditorStore.subscribe(() => {
-    if (!editingLight()) lightingEditor.cancel();
+    studioWasActive ||= editingLight();
+    if (!editingLight()) lightingEditor.blur();
     if (editingLight()) setSelectedObject(null);
     requestDraw();
   }) : () => {};
@@ -469,7 +588,9 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     notice() { habitat.notice(); draw(); },
     visitBush() { habitat.invite("bush"); draw(); },
     dispose() {
-      disposed = true; lightingEditor.cancel(); cancelAnimationFrame(raf); unsubscribeDev(); unsubscribeLightingEditor(); habitat.dispose(); resizeObserver.disconnect(); observer.disconnect();
+      if (studioWasActive) studioViewports?.set(canvas, { camera: { ...camera }, framing });
+      else studioViewports?.delete(canvas);
+      disposed = true; lightingEditor.blur(); cancelAnimationFrame(raf); unsubscribeDev(); unsubscribeLightingEditor(); habitat.dispose(); resizeObserver.disconnect(); observer.disconnect();
       if (speechCanvas && speechContext !== ctx) {
         speechContext.setTransform(1, 0, 0, 1, 0, 0); speechContext.clearRect(0, 0, speechCanvas.width, speechCanvas.height);
       }
@@ -481,6 +602,10 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       canvas.removeEventListener("pointerdown", down); canvas.removeEventListener("pointermove", move);
       for (const name of ["pointerup", "pointercancel", "lostpointercapture"] as const) canvas.removeEventListener(name, end);
       canvas.removeEventListener("wheel", wheel); canvas.removeEventListener("keydown", key); document.removeEventListener("visibilitychange", visibility);
+      canvas.removeEventListener("keyup", keyUp); canvas.removeEventListener("blur", editorBlur); canvas.removeEventListener("pointerleave", editorLeave);
+      window.removeEventListener?.(WORLD_LIGHTING_EDITOR_FOCUS_EVENT, editorFocus);
+      window.removeEventListener?.(WORLD_STUDIO_CREATE_EVENT, editorCreate);
+      window.removeEventListener?.(WORLD_STUDIO_MAP_KEY_EVENT, editorMapKey);
       window.removeEventListener?.("keydown", editorEscape, true);
       window.removeEventListener?.(WORLD_LIGHTING_EDITOR_CANCEL_EVENT, editorCancel);
     },

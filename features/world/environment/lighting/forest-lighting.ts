@@ -22,10 +22,17 @@ export function forestLightSources(scene: FixedWorldScene, options: Pick<ForestL
   const sources: ForestLightSource[] = [...(scene.lights ?? [])];
   for (const light of buildingLights) {
     const index = sources.findIndex(source => source.id === light.id);
-    // Keep authored colour/intensity/radius controls (including intensity=0),
-    // while the glass position always follows its active building image.
-    if (index >= 0) sources[index] = { ...light, ...sources[index], position: light.position };
-    else sources.push(light);
+    // Authored sources can mute their automatic counterpart. Moving a bound
+    // source explicitly detaches it; its old glass clip/beam must not follow.
+    if (index >= 0) {
+      const authored = sources[index];
+      const merged: ForestLightSource = { ...light, ...authored,
+        position: authored.manualPosition ? authored.position : light.position };
+      if (authored.manualPosition) {
+        delete merged.glass; delete merged.beamLength; delete merged.siteId;
+      }
+      sources[index] = merged;
+    } else sources.push(light);
   }
   for (const site of scene.sites) {
     if (buildingLights.some(light => light.siteId === site.id)) continue;
@@ -34,10 +41,10 @@ export function forestLightSources(scene: FixedWorldScene, options: Pick<ForestL
     sources.push({ id: `site:${site.id}`, position: site.light, kind: "lantern", radius: 70,
       intensity: 1, color: "#ffd28a", flicker: .04 });
   }
-  return sources.filter(light => options.showBuildings !== false || !light.siteId && !scene.sites.some(site => {
+  return sources.filter(light => light.enabled !== false && (options.showBuildings !== false || light.manualPosition || !light.siteId && !scene.sites.some(site => {
     const p = light.position, b = site.bounds;
     return p.x >= b.x && p.x <= b.x + b.width && p.y >= b.y && p.y <= b.y + b.height;
-  }));
+  })));
 }
 
 function seed(id: string) {

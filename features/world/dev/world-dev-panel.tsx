@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { ChevronDown, FlaskConical, RotateCcw, X } from "lucide-react";
+import { ChevronDown, FlaskConical, RotateCcw, Sun, X } from "lucide-react";
 import type { PixelPose } from "@/features/mochlik/pixel-sprite";
 import type { PleskAction } from "@/features/world/characters/plesk/plesk-resident";
 import type { BuilderAction } from "@/features/world/characters/builder/builder-types";
@@ -15,6 +15,8 @@ import { interactiveMapObjects, type MapObjectPlace } from "@/features/world/sce
 import type { WorldController } from "@/features/world/state/use-world";
 import { WorldAiDiagnostics } from "./world-ai-diagnostics";
 import { WorldDevLighting } from "./world-dev-lighting";
+import { activateWorldLightingStudio, WorldLightingStudio } from "./world-lighting-studio";
+import { claimWorldLightingStudio, hasWorldLightingStudioOwner, releaseWorldLightingStudio } from "./world-lighting-studio-session";
 import { WORLD_LIGHTING_EDITOR_CANCEL_EVENT, worldLightingEditorStore } from "./world-lighting-editor-store";
 import { ForestGardenDiagnostics } from "./forest-ai-diagnostics";
 import { WorldDevCheats } from "./world-dev-cheats";
@@ -22,6 +24,7 @@ import { WorldDevFishing } from "./world-dev-fishing";
 import { AudioDiagnosticsPanel } from "@/features/audio/dev/audio-diagnostics";
 import { WorldDevBuilderPoints } from "./world-dev-builder-points";
 import { useForestObservation } from "@/features/world/state/use-forest-observation";
+import { accountSceneLevels } from "@/features/world/state/economy/economy-scene-state";
 import type { ForestGardenObservation, ForestObservation } from "@/features/world/state/forest-observer";
 import { WORLD_DEV_DEFAULTS, WORLD_DEV_ENABLED, WORLD_DEV_POSES, WORLD_DEV_RESIDENT_ACTIONS, WORLD_DEV_BUILDER_ACTIONS, WORLD_DEV_COOKING_ACTIONS, WORLD_DEV_SCENARIOS, worldDevStore, type WorldDevLifeAction, type WorldDevState, type WorldDevScenario, type WorldDevCookingPreview } from "./world-dev-store";
 import styles from "./world-dev-panel.module.css";
@@ -31,6 +34,7 @@ export type WorldDevPanelProps = {
   economy?: EconomyController;
   active?: boolean;
   initiallyOpen?: boolean;
+  initialLightingStudio?: boolean;
   worldView?: boolean;
   presenceKey?: string;
   onOpenWorld?: () => void;
@@ -181,10 +185,11 @@ export function WorldDevPanel(props: WorldDevPanelProps) {
   return WORLD_DEV_ENABLED ? <DevelopmentPanel {...props} /> : null;
 }
 
-function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false, worldView = false, presenceKey, onOpenWorld, onOpenCalendar, onOpenGame, onOpenStatus, onOpenWardrobe, onOpenCollection, onOpenObject }: WorldDevPanelProps) {
+function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false, initialLightingStudio = false, worldView = false, presenceKey, onOpenWorld, onOpenCalendar, onOpenGame, onOpenStatus, onOpenWardrobe, onOpenCollection, onOpenObject }: WorldDevPanelProps) {
   const state = useSyncExternalStore(worldDevStore.subscribe, worldDevStore.getSnapshot, worldDevStore.getServerSnapshot);
+  const lighting = useSyncExternalStore(worldLightingEditorStore.subscribe, worldLightingEditorStore.getSnapshot, worldLightingEditorStore.getServerSnapshot);
   const prefersReducedMotion = useSyncExternalStore(subscribeMotion, systemMotion, serverMotion);
-  const [open, setOpen] = useState(initiallyOpen);
+  const [open, setOpen] = useState(initiallyOpen && !initialLightingStudio);
   const [tab, setTab] = useState<DevTab>("cheats");
   const [mochlikTab, setMochlikTab] = useState<MochlikTab>("scenes");
   const [sceneTab, setSceneTab] = useState<SceneTab>("scenarios");
@@ -198,8 +203,39 @@ function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false
     && ["water-bush", "harvest-berries", "grow-berries"].includes(lastAction.action)) ? presenceKey : undefined);
   const trigger = useRef<HTMLButtonElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
+  const lightingTrigger = useRef<HTMLButtonElement>(null);
+  const startedLighting = useRef(false);
+  const lightingOwner = useRef<object>({});
+  const wantsLighting = useRef(false);
   const id = useId();
   const titleId = `${id}-title`, drawerId = `${id}-drawer`;
+
+  useEffect(() => {
+    if (!active || !initialLightingStudio || startedLighting.current) return;
+    startedLighting.current = true;
+    wantsLighting.current = true;
+    claimWorldLightingStudio(lightingOwner.current);
+    activateWorldLightingStudio(worldView, onOpenWorld);
+  }, [active, initialLightingStudio, worldView, onOpenWorld]);
+
+  useEffect(() => {
+    if (active && lighting.enabled && worldLightingEditorStore.getSnapshot().enabled && !hasWorldLightingStudioOwner()) {
+      wantsLighting.current = true;
+      claimWorldLightingStudio(lightingOwner.current);
+    }
+  }, [active, lighting.enabled]);
+
+  useEffect(() => {
+    const owner = lightingOwner.current;
+    const release = () => {
+      if (releaseWorldLightingStudio(owner)) { worldLightingEditorStore.commitGesture(); worldLightingEditorStore.setEnabled(false); }
+    };
+    if (!active) { wantsLighting.current = false; release(); }
+    else if (wantsLighting.current) { claimWorldLightingStudio(owner); worldLightingEditorStore.setEnabled(true); }
+    return () => {
+      release();
+    };
+  }, [active, worldView]);
 
   useEffect(() => {
     if (!active || !open) return;
@@ -266,6 +302,15 @@ function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false
     worldDevStore.patch(patch); setFeedback(message);
   }
   function close() { setOpen(false); trigger.current?.focus({ preventScroll: true }); }
+  function openLighting() {
+    setOpen(false); wantsLighting.current = true; claimWorldLightingStudio(lightingOwner.current);
+    activateWorldLightingStudio(worldView, onOpenWorld);
+  }
+  function closeLighting() {
+    wantsLighting.current = false;
+    if (releaseWorldLightingStudio(lightingOwner.current)) { worldLightingEditorStore.commitGesture(); worldLightingEditorStore.setEnabled(false); }
+    lightingTrigger.current?.focus({ preventScroll: true });
+  }
   function shortcut(callback: () => void) { setOpen(false); callback(); }
   function outfit(slot: "palette" | "head" | "neck", value: string) {
     change({ equipment: { palette: appearance.palette, head: appearance.head, neck: appearance.neck, [slot]: value || null } }, "Примерка включена. Инвентарь сохранён");
@@ -303,11 +348,15 @@ function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false
     <div className={styles.toolbar}>
       {lastAction && <button type="button" className={styles.repeat} disabled={Boolean(repeatUnavailable)}
         aria-label={`Повторить: ${repeatLabel}`} title={repeatUnavailable ?? repeatLabel} onClick={() => play(lastAction)}><RotateCcw size={15} aria-hidden />Повторить</button>}
+      <button ref={lightingTrigger} type="button" className={styles.lightingTrigger} aria-pressed={lighting.enabled}
+        aria-label="Студия" onClick={() => lighting.enabled ? closeLighting() : openLighting()}><Sun size={16} aria-hidden /><strong>Студия</strong></button>
       <button ref={trigger} type="button" className={styles.trigger} aria-expanded={open} aria-controls={drawerId}
-        aria-label={`Панель разработчика${overrides ? `, изменений: ${overrides}` : ""}`} onClick={() => setOpen(value => !value)}>
+        aria-label={`Панель разработчика${overrides ? `, изменений: ${overrides}` : ""}`} onClick={() => { closeLighting(); setOpen(value => !value); }}>
         <FlaskConical size={16} aria-hidden /><strong>DEV</strong>{overrides > 0 && <span className={styles.count}>{overrides}</span>}
       </button>
     </div>
+    {lighting.enabled && <WorldLightingStudio state={state} change={change} worldView={worldView} onOpenWorld={onOpenWorld} onClose={closeLighting}
+      levels={accountSceneLevels(TILED_WORLD, world.snapshot?.state.houseLevel, state, economy?.snapshot?.buildings)} />}
     {!open && lastAction && <p className={styles.closedFeedback} role="status">{repeatUnavailable ?? feedback}</p>}
     {open && <section id={drawerId} className={styles.drawer} aria-labelledby={titleId}>
       <header className={styles.header}>
@@ -343,7 +392,7 @@ function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false
               onOpenObject={onOpenObject}
               state={state} observation={observation} page={page} id={id} selectedPose={selectedPose} onSelectPose={setSelectedPose}
               heroUnavailable={heroUnavailable} birdsUnavailable={birdsUnavailable} unavailable={unavailable}
-              change={change} play={play} outfit={outfit} shortcut={shortcut} onFeedback={setFeedback} prefersReducedMotion={prefersReducedMotion} />}
+              change={change} play={play} outfit={outfit} shortcut={shortcut} onFeedback={setFeedback} prefersReducedMotion={prefersReducedMotion} onOpenLighting={openLighting} />}
           </div>)}
         </>}
       </div>)}
@@ -357,13 +406,14 @@ function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false
 
 /** Stateless controls: navigation never patches the world or launches a scene. */
 export function WorldDevPanelContent({ world, economy, worldView, presenceKey, onOpenWorld, onOpenCalendar, onOpenGame, onOpenStatus, onOpenWardrobe, onOpenCollection, onOpenObject,
-  state, observation, page, id, selectedPose, onSelectPose, heroUnavailable, birdsUnavailable, unavailable, change, play, outfit, shortcut, onFeedback, prefersReducedMotion,
+  state, observation, page, id, selectedPose, onSelectPose, heroUnavailable, birdsUnavailable, unavailable, change, play, outfit, shortcut, onFeedback, prefersReducedMotion, onOpenLighting,
 }: WorldDevPanelProps & {
   state: WorldDevState; observation?: ForestObservation | null; page: DevPage; id: string; selectedPose: PixelPose; onSelectPose: (pose: PixelPose) => void;
   heroUnavailable: string | null; birdsUnavailable: string | null; unavailable: (action: ManualAction) => string | null;
   change: (patch: Partial<WorldDevState>, message?: string) => void; play: (action: ManualAction) => void;
   outfit: (slot: "palette" | "head" | "neck", value: string) => void; shortcut: (callback: () => void) => void;
   onFeedback: (message: string) => void; prefersReducedMotion: boolean;
+  onOpenLighting?: () => void;
 }) {
   const appearance = state.equipment ?? world.snapshot?.state.equipment ?? { palette: "moss", head: null, neck: null };
   const previewScene = page === "routes" ? previewWorldScene(TILED_WORLD, state.levels) : null;
@@ -377,7 +427,7 @@ export function WorldDevPanelContent({ world, economy, worldView, presenceKey, o
   return <div className={styles.pageContent}>
     {page === "lighting" && <>
       <h3 className={styles.pageTitle}>Свет и тени</h3>
-      <WorldDevLighting state={state} change={change} worldView={worldView} onOpenWorld={onOpenWorld} onNightCampfire={() => {
+      <WorldDevLighting state={state} change={change} worldView={worldView} onOpenWorld={onOpenWorld} onOpenStudio={onOpenLighting} onNightCampfire={() => {
         change({ lightShadows: true, lightTestLamp: false });
         play({ kind: "scenario", scenario: "campfire" });
       }} />

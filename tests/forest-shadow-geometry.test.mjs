@@ -210,3 +210,12 @@ test('prepared concave topology stays equivalent and mutable light coordinates i
   assert.deepEqual(second, project(building, { ...light, position: { ...light.position } }, 4));
   assertConvexFinite(second);
 });
+
+test('editing generated actor vertices invalidates its affine shortcut and preserves the edited contour', () => {
+  const body = actor({ x: 50, y: 80 }, 6, 'edited');
+  body.points[0].x -= 8;
+  const plain = { ...body, points: body.points.map(point => ({ ...point })) };
+  for (const source of [sun(-1, 1, 40), lamp(20, 70, 9)]) {
+    assert.deepEqual(project(body, source), project(plain, source), 'edited actor geometry uses the same general projection as authored contours');
+  }
+});

@@ -489,3 +489,24 @@ test("builder previews validate inputs, retain the playback clock on turns, and 
   assert.ok(store.getSnapshot().builderPreview.id > previous);
   assert.equal(store.getSnapshot().builderPreview.repeat, false);
 });
+
+test("DEV client module reevaluation retains the exact visual controls and existing listeners", async () => {
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window"), previousMode = process.env.NODE_ENV;
+  const hot = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
+  Object.defineProperty(globalThis, "window", { configurable: true, value: {} }); process.env.NODE_ENV = "development";
+  try {
+    const first = await hot.ssrLoadModule("/features/world/dev/world-dev-store.ts?studio-hmr=first"), controls = first.worldDevStore;
+    controls.patch({ timeOfDay: "night", lightAzimuth: 132, lightElevation: 55, lightQuality: "high", previewBuildings: true, levels: { ...controls.getSnapshot().levels, home: 3 } });
+    const configured = controls.getSnapshot(); let updates = 0; const unsubscribe = controls.subscribe(() => updates++);
+    const refreshed = await hot.ssrLoadModule("/features/world/dev/world-dev-store.ts?studio-hmr=second");
+    assert.notEqual(refreshed.createWorldDevStore, first.createWorldDevStore, "The control module was reevaluated");
+    assert.equal(refreshed.worldDevStore, controls); assert.equal(refreshed.worldDevStore.getSnapshot(), configured);
+    assert.equal(configured.timeOfDay, "night"); assert.equal(configured.lightAzimuth, 132); assert.equal(configured.lightElevation, 55);
+    assert.equal(configured.lightQuality, "high"); assert.equal(configured.levels.home, 3);
+    refreshed.worldDevStore.patch({ lightAzimuth: 145 }); assert.equal(updates, 1); assert.equal(controls.getSnapshot().lightAzimuth, 145); unsubscribe();
+  } finally {
+    await hot.close();
+    if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow); else delete globalThis.window;
+    if (previousMode === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = previousMode;
+  }
+});
