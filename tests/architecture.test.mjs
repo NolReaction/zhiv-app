@@ -119,6 +119,90 @@ test("runtime feature cycles include dynamic imports but not erased types or loc
   assert.match(diagnostics[0].message, /features\/world\/state\/a\.ts/);
 });
 
+test("engine core, editor, examples and product hosts preserve independent dependency direction", () => {
+  assert.deepEqual(inspect({
+    "app/engine/page.tsx": 'export { Editor as default } from "@/apps/engine/src/editor";',
+    "features/app/engine-route.tsx": 'export const load = () => import("@/apps/engine/src/editor");',
+    "apps/engine/src/editor/index.tsx": 'import { useState } from "react"; import type { Root } from "react-dom/client"; import { Leaf } from "lucide-react"; import { scene } from "../../examples/forest"; import type { Scene } from "@/packages/engine/src/index"; export const Editor = useState;',
+    "apps/engine/examples/forest.ts": 'import type { Scene } from "@/packages/engine/src/index"; export const scene: Scene = {};',
+    "examples/minimal/main.ts": 'import type { Scene } from "@/packages/engine/src/index"; export const scene: Scene = {};',
+    "packages/engine/src/index.ts": 'export type { Scene } from "./scene/model.js"; export { render } from "./rendering/index.js";',
+    "packages/engine/src/scene/model.ts": 'export type Scene = {};',
+    "packages/engine/src/rendering/index.ts": 'import type { Scene } from "../scene/model.js"; export const render = (scene: Scene) => scene;',
+  }), []);
+});
+
+test("engine core rejects UI, editor, examples and product dependencies including erased types", () => {
+  const localTargets = ["apps/engine/src/editor.ts", "apps/engine/examples/forest.ts", "examples/minimal.ts",
+    "features/world/types.ts", "app/page.tsx", "lib/session.ts", "components/panel.tsx"];
+  for (const target of localTargets) {
+    for (const statement of [
+      `import type { Value } from "@/${target.replace(/\.[^.]+$/, "")}";`,
+      `export type { Value } from "@/${target.replace(/\.[^.]+$/, "")}";`,
+      `export type Value = import("@/${target.replace(/\.[^.]+$/, "")}");`,
+    ]) {
+      const findings = inspect({ "packages/engine/src/scene/model.ts": statement, [target]: "export type Value = {};" });
+      assert.ok(findings.some(item => item.rule === "engine-core-dependency"), statement);
+    }
+  }
+  for (const statement of ['import type { ReactNode } from "react";', 'export type { Root } from "react-dom/client";',
+    'type Router = import("next/navigation");', 'export { Leaf } from "lucide-react";', 'import "@radix-ui/react-dialog";']) {
+    const findings = inspect({ "packages/engine/src/scene/model.ts": statement });
+    assert.equal(findings[0].rule, "engine-core-dependency", statement);
+  }
+  assert.equal(inspect({ "packages/engine/src/types.d.ts": 'import type { ReactNode } from "react";' })[0].rule, "engine-core-dependency");
+  assert.equal(inspect({ "packages/engine/src/view.tsx": "export const View = () => <div />;" })[0].rule, "engine-core-dependency", "automatic JSX imports cannot bypass the framework boundary");
+});
+
+test("engine relative source references are portable while product aliases are rejected inside core", () => {
+  const entries = { "packages/engine/src/index.ts": 'import type { Scene } from "@/packages/engine/src/scene/model";',
+    "packages/engine/src/scene/model.ts": "export type Scene = {};" };
+  assert.equal(inspect(entries)[0].rule, "engine-core-portability");
+  entries["packages/engine/src/index.ts"] = 'import type { Scene } from "./scene/model.js"; import "./math.mjs";';
+  entries["packages/engine/src/math.mts"] = "export {};";
+  assert.deepEqual(inspect(entries), []);
+});
+
+test("engine editor permits only its app, core, own examples and declared UI packages", () => {
+  for (const target of ["features/world/state.ts", "lib/session.ts", "components/panel.tsx", "app/page.tsx", "examples/other.ts", "apps/other/src/index.ts"]) {
+    const findings = inspect({ "apps/engine/src/editor/controller.ts": `import type { Value } from "@/${target.replace(/\.[^.]+$/, "")}";`,
+      [target]: "export type Value = {};" });
+    assert.ok(findings.some(item => item.rule === "engine-editor-dependency"), target);
+  }
+  for (const statement of ['import type { LinkProps } from "next/link";', 'import "next/navigation";', 'import { z } from "zod";']) {
+    assert.equal(inspect({ "apps/engine/src/editor/ui/panel.tsx": statement })[0].rule, "engine-editor-dependency", statement);
+  }
+});
+
+test("examples consume core without depending on product or editor types", () => {
+  for (const example of ["apps/engine/examples/forest.ts", "examples/minimal/scene.ts"]) {
+    for (const target of ["features/world/state.ts", "lib/session.ts", "apps/engine/src/editor/controller.ts"]) {
+      const findings = inspect({ [example]: `import type { Value } from "@/${target.replace(/\.[^.]+$/, "")}";`,
+        [target]: "export type Value = {};" });
+      assert.ok(findings.some(item => item.rule === "engine-example-dependency"), `${example}: ${target}`);
+    }
+  }
+});
+
+test("runtime cycles include core, editor, examples and product hosts while type cycles stay erased", () => {
+  const findings = inspect({
+    "packages/engine/src/a.ts": 'export const load = () => import("./b.js");',
+    "packages/engine/src/b.ts": 'export * from "./a.js";',
+    "apps/engine/src/a.ts": 'import "../examples/forest";',
+    "apps/engine/examples/forest.ts": 'import "../src/a";',
+    "app/engine/page.tsx": 'import "@/apps/engine/src/host";',
+    "apps/engine/src/host.ts": 'import "@/app/engine/page";',
+    "packages/engine/src/types-a.ts": 'import type { B } from "./types-b.js"; export type A = B;',
+    "packages/engine/src/types-b.ts": 'import type { A } from "./types-a.js"; export type B = A;',
+  });
+  const cycles = findings.filter(item => item.rule === "engine-cycle");
+  assert.equal(cycles.length, 3);
+  assert.ok(cycles.some(item => item.message.includes("packages/engine/src/a.ts")));
+  assert.ok(cycles.some(item => item.message.includes("apps/engine/examples/forest.ts")));
+  assert.ok(cycles.some(item => item.message.includes("app/engine/page.tsx")));
+  assert.equal(findings.some(item => item.file.includes("types-")), false);
+});
+
 test("module parser distinguishes type-only declarations, mixed imports and empty side-effect imports", () => {
   const references = moduleReferences("fixture.ts", `
     import type { A } from "./types";
@@ -151,4 +235,33 @@ test("CLI fails a broken checkout with actionable paths and succeeds after corre
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("CLI scans engine and example sources but ignores generated output and the server API", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "zhiv-engine-architecture-"));
+  const script = fileURLToPath(new URL("../scripts/check-architecture.mjs", import.meta.url));
+  try {
+    const files = {
+      "packages/engine/src/model.ts": 'import type { ReactNode } from "react";',
+      "apps/engine/src/editor.ts": 'import type { Game } from "@/features/missing";',
+      "apps/engine/examples/forest.ts": 'import "@/lib/missing";',
+      "examples/minimal/main.ts": 'import "@/features/missing";',
+      "apps/api/src/main/problem.ts": 'import "@/features/missing";',
+      "packages/engine/dist/problem.js": 'import "@/features/missing";',
+      "apps/engine/src/dist/problem.js": 'import "@/features/missing";',
+      "examples/minimal/node_modules/problem.js": 'import "@/features/missing";',
+    };
+    for (const [file, source] of Object.entries(files)) {
+      await mkdir(path.dirname(path.join(root, file)), { recursive: true });
+      await writeFile(path.join(root, file), source);
+    }
+    const broken = spawnSync(process.execPath, [script, root], { encoding: "utf8" });
+    assert.equal(broken.status, 1);
+    for (const file of Object.keys(files).slice(0, 4)) assert.ok(broken.stderr.includes(`${file}:`), file);
+    for (const file of Object.keys(files).slice(4)) assert.equal(broken.stderr.includes(`${file}:`), false, file);
+    for (const file of Object.keys(files).slice(0, 4)) await writeFile(path.join(root, file), "export {};");
+    const fixed = spawnSync(process.execPath, [script, root], { encoding: "utf8" });
+    assert.equal(fixed.status, 0, fixed.stderr);
+    assert.match(fixed.stdout, /Architecture check passed: 4 modules/);
+  } finally { await rm(root, { recursive: true, force: true }); }
 });

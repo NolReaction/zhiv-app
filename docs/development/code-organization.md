@@ -19,8 +19,13 @@
 | [`features/startup/`](../../features/startup/), [`features/updates/`](../../features/updates/) | Заставка и готовность ресурсов; новости и сведения о версии |
 | [`features/admin/`](../../features/admin/) | Закрытые инструменты поддержки |
 | [`apps/api/`](../../apps/api/) | Ktor, серверные правила, транзакции и PostgreSQL-миграции |
+| [`packages/engine/src/`](../../packages/engine/src/) | Независимая библиотека Canvas 2D: предметы, земля, PNG и свет без React/Next/API |
+| [`apps/engine/src/editor/`](../../apps/engine/src/editor/) | Самостоятельный React-редактор: документ, контроллер, история, browser storage и интерфейс |
+| [`apps/engine/examples/forest/`](../../apps/engine/examples/forest/) | Начальная лесная сцена и настройки примера для движка |
 
 `app/` содержит точки входа Next/Vinext, layout, manifest и маршруты локального API. Само приложение собирает `features/app/app-shell.tsx`. Общие визуальные элементы принадлежат `components/`, контракты и помощники общего назначения — `lib/`. Функция, нужная одному экрану, остаётся рядом с ним: наличие двух вызовов ещё не делает её общей библиотекой.
+
+Engine отделён по владению: общая геометрия и Canvas принадлежат `packages/engine`, редакторский документ и React — `apps/engine/src/editor`, конкретная карта — `apps/engine/examples/forest`. Ядро не импортирует пример, редактор, `features/world`, API или аккаунт. Основные `/engine` и `/prototype/procedural-forest` — страницы-хосты общего редактора; Tiled-игра пока не использует новое ядро. [Контракты и направления зависимостей](../engine/architecture.md).
 
 ## Игровой мир
 

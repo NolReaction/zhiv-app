@@ -4,8 +4,15 @@ import ts from "typescript";
 const sourceExtension = /\.[cm]?[jt]sx?$/;
 const domainPath = /^features\/(?:economy|world|audio)\/domain\//;
 const sourceSuffixes = [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".d.ts", ".json", ".css"];
+const engineCorePath = /^packages\/engine\/src\//;
+const engineEditorPath = /^apps\/engine\/src\//;
+const engineExamplePath = /^(?:apps\/engine\/examples|examples)\//;
+const engineUiPackage = /^(?:react|react-dom|next|lucide-react)(?:\/|$)|^@radix-ui\//;
+const editorExternalPackage = /^(?:react|react-dom|lucide-react)(?:\/|$)/;
+const enginePath = file => engineCorePath.test(file) || engineEditorPath.test(file) || engineExamplePath.test(file);
+const runtimePath = file => file.startsWith("features/") || file.startsWith("app/") || enginePath(file);
 
-/** Parse actual module references, keeping erased type imports out of runtime boundaries. */
+/** Parse actual module references; callers can distinguish type dependencies from runtime edges. */
 export function moduleReferences(file, text) {
   const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
   const references = [];
@@ -68,17 +75,41 @@ export function inspectArchitecture(sources, { hasFile = file => sources.has(fil
     diagnostics.push({ file, line: reference.line, column: reference.column, rule, message });
   }
   for (const [file, text] of sources) {
-    if (!sourceExtension.test(file) || file.endsWith(".d.ts")) continue;
-    if (file.startsWith("features/")) graph.set(file, []);
+    if (!sourceExtension.test(file) || file.endsWith(".d.ts") && !enginePath(file)) continue;
+    if (engineCorePath.test(file) && /\.[jt]sx$/.test(file)) {
+      report(file, { line: 1, column: 1 }, "engine-core-dependency", "Engine core cannot contain JSX/TSX UI modules. Keep framework views in apps/engine/src.");
+    }
+    if (runtimePath(file) && !file.endsWith(".d.ts")) graph.set(file, []);
     for (const reference of moduleReferences(file, text)) {
       const resolved = resolveLocalReference(file, reference.specifier, hasFile);
+      const dependency = resolved?.target ?? resolved?.expected;
+      // The standalone engine must not depend on the product or its editor,
+      // even through erased type imports. The editor can consume its forest
+      // example without making that example part of the core library.
+      if (engineCorePath.test(file)) {
+        if ((dependency && !engineCorePath.test(dependency)) || engineUiPackage.test(reference.specifier)) {
+          report(file, reference, "engine-core-dependency", `Engine core cannot import ${reference.specifier}, including types. Keep dependencies inside packages/engine/src and independent of editor, examples, product and UI frameworks.`);
+        } else if (reference.specifier.startsWith("@/")) {
+          report(file, reference, "engine-core-portability", `Engine core cannot use the product alias ${reference.specifier}. Use a relative import so the package builds independently.`);
+        }
+      } else if (engineEditorPath.test(file)) {
+        const ownSource = dependency && (engineEditorPath.test(dependency) || engineCorePath.test(dependency) || /^apps\/engine\/examples\//.test(dependency));
+        if (dependency ? !ownSource : !editorExternalPackage.test(reference.specifier)) {
+          report(file, reference, "engine-editor-dependency", `Engine editor cannot import ${reference.specifier}, including types. Use its own app, engine core, own examples, or React/react-dom/lucide-react; compose product routes outside the editor.`);
+        }
+      } else if (engineExamplePath.test(file)) {
+        if ((dependency && !engineCorePath.test(dependency) && !engineExamplePath.test(dependency))
+          || /^next(?:\/|$)/.test(reference.specifier)) {
+          report(file, reference, "engine-example-dependency", `Engine examples cannot import ${reference.specifier}, including types. Keep examples independent of product and editor code and consume engine core.`);
+        }
+      }
       if (resolved && !resolved.target) {
         report(file, reference, "missing-local-import", `Cannot resolve ${reference.specifier}. Update the reference after moving a file.`);
         continue;
       }
       if (reference.typeOnly) continue;
       const target = resolved?.target;
-      if (target?.startsWith("features/") && graph.has(file)) graph.get(file).push({ target, reference });
+      if (target && runtimePath(target) && graph.has(file)) graph.get(file).push({ target, reference });
       if (domainPath.test(file)) {
         const uiPackage = /^(?:react|react-dom|next|lucide-react)(?:\/|$)/.test(reference.specifier);
         const clientLayer = target && (isUi(target) || target.endsWith(".tsx")
@@ -104,7 +135,8 @@ export function inspectArchitecture(sources, { hasFile = file => sources.has(fil
     }
   }
 
-  // Feature modules currently form a runtime DAG. Local API stores in lib/dev are outside this rule.
+  // Product features, route composition and the engine layers form a runtime DAG.
+  // Existing local API stores in lib/dev remain outside this rule.
   const visited = new Set(), active = new Set(), stack = [];
   function visit(file) {
     visited.add(file); active.add(file); stack.push(file);
@@ -112,7 +144,8 @@ export function inspectArchitecture(sources, { hasFile = file => sources.has(fil
       if (!graph.has(target)) continue;
       if (active.has(target)) {
         const cycle = [...stack.slice(stack.indexOf(target)), target];
-        report(file, reference, "feature-cycle", `Runtime feature dependency cycle: ${cycle.join(" -> ")}. Extract shared data or invert the dependency.`);
+        const engineCycle = cycle.some(enginePath);
+        report(file, reference, engineCycle ? "engine-cycle" : "feature-cycle", `Runtime ${engineCycle ? "engine" : "feature"} dependency cycle: ${cycle.join(" -> ")}. Extract shared data or invert the dependency.`);
       } else if (!visited.has(target)) visit(target);
     }
     stack.pop(); active.delete(file);
