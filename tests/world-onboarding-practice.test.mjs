@@ -5,7 +5,7 @@ import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const hookModule = "virtual:world-onboarding-practice-hooks";
-const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-nonmodal-pantry-practice-vite",
+const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-main-course-audit-practice-vite",
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false },
   plugins: [{ name: "world-onboarding-practice-hooks", enforce: "pre",
     resolveId(id) { if (id === hookModule) return `\0${id}`; },
@@ -98,7 +98,8 @@ const gain = (patch = {}) => ({ id: "claim-receipt", ownerPublicId: owner, revis
 
 function harness(progress = started("grow"), jobs = [], { ordersPortal = false, session = false } = {}) {
   hooks.reset();
-  const calls = [], surface = { garden: false, recipe: false, pantryItem: false, pantrySale: false, pantryRelics: false, routePreparation: false, tutorialOrder: false };
+  const calls = [], surface = { garden: false, recipe: false, pantryItem: false, pantrySale: false, pantryRelics: false,
+    routeActivities: false, routes: false, routePreparation: false, tutorialOrder: false, workshopSelected: false };
   const portal = { tutorialOrder: false }, visibility = { sceneReady: true, worldCovered: false, ordersCovered: false };
   const queries = { world: [], orders: [] };
   const notifySurface = () => { for (const observer of observers) observer.callback([]); };
@@ -126,7 +127,10 @@ function harness(progress = started("grow"), jobs = [], { ordersPortal = false, 
         assert.fail("Showing a production target must never press its one-tap action");
       } } : null;
       const content = { '[data-guide-pantry-item]': "pantryItem", '[data-guide-pantry-sale]': "pantrySale",
-        '[data-guide-pantry-relics]': "pantryRelics", '[data-route-preparation]': "routePreparation", '[data-tutorial-order="true"]': "tutorialOrder" }[selector];
+        '[data-guide-pantry-relics]': "pantryRelics", '[data-section-guide-target="expedition-activities"]': "routeActivities",
+        '[data-section-guide-target="expedition-routes"]': "routes", '[data-route-preparation]': "routePreparation",
+        '[data-tutorial-order="true"]': "tutorialOrder",
+        '[data-place="workshop"] [role="tab"][aria-selected="true"][id$="-workshop"]': "workshopSelected" }[selector];
       if (content) return surface[content] ? {} : null;
       return null;
     }, closest(selector) { assert.equal(selector, '[aria-hidden="true"]'); return visibility.worldCovered ? {} : null; } } },
@@ -172,6 +176,19 @@ function harness(progress = started("grow"), jobs = [], { ordersPortal = false, 
     setCollection(value) { hooks.setCollection(value); },
   };
 }
+
+test("a fresh main course still welcomes the player and starts only its local introduction", () => {
+  const h = harness(null);
+  const coach = h.render();
+  assert.equal(coach.open, true);
+  assert.equal(coach.welcome, true);
+  assert.equal(coach.primary.label, "Давай попробуем");
+  assert.equal(h.props.progress, null);
+  assert.deepEqual(h.calls, []);
+  coach.primary.onClick();
+  assert.deepEqual(h.props.progress, started("profile"));
+  assert.deepEqual(h.calls, [["start"]]);
+});
 
 test("practice points at the one-tap berry card without activating its production command", () => {
   const h = harness(started("garden"));
@@ -233,6 +250,53 @@ test("a confirmed crop can grow in the background while the guide advances, pres
   coach.primary.onClick();
   assert.deepEqual(h.props.progress, started("neighbors", "first"));
   assert.deepEqual(jobs.map(job => job.id), ["later", "first"], "the guide cannot reorder server jobs");
+});
+
+test("replayed raspberry practice never adopts another berry or celebrates its receipt", () => {
+  const blueberry = { ...crop("blueberry", now), recipeId: "grow_blueberries", rewards: { blueberries: 1 } };
+  const h = harness(started("grow"), [blueberry]);
+  h.revealSurface(true, true);
+  let coach = h.render();
+  assert.equal(coach.title, "Посади первые ягоды");
+  assert.equal(h.props.progress.cropJobId, undefined);
+  assert.equal(coach.target, '[data-place="garden"] [data-recipe-product="berries"]');
+  assert.deepEqual(h.calls, []);
+
+  h.patchSnapshot({ revision: 2, jobs: [], inventory: { blueberries: 1 } });
+  h.patchEconomy({ inventoryGains: [gain({ items: [{ itemId: "blueberries", quantity: 1 }] })] });
+  assert.equal(h.render().title, "Посади первые ягоды");
+
+  h.patchSnapshot({ revision: 3, jobs: [blueberry, crop("raspberry", now + 60_000)] });
+  coach = h.render();
+  assert.equal(h.props.progress.cropJobId, "raspberry", "an earlier blueberry cannot hide the actual raspberry practice");
+  assert.equal(coach.title, "Ягоды уже растут");
+  assert.deepEqual(h.economy.snapshot.jobs.map(job => job.id), ["blueberry", "raspberry"]);
+});
+
+test("an obsolete saved non-raspberry crop cannot show a completed-course harvest reminder", () => {
+  const blueberry = { ...crop("blueberry", now), recipeId: "grow_blueberries", rewards: { blueberries: 1 } };
+  const h = harness({ version: 2, status: "completed", cropJobId: blueberry.id }, [blueberry]);
+  assert.equal(h.render(), null);
+  assert.deepEqual(h.props.progress, { version: 2, status: "completed" });
+  assert.deepEqual(h.economy.snapshot.jobs, [blueberry]);
+  assert.deepEqual(h.calls, [["crop", undefined]], "only the obsolete tutorial reference is cleared");
+});
+
+test("ready mixed berries teach the real collect-all action and yield to a saved running harvest", () => {
+  const raspberry = { ...crop("raspberry", now), rewards: { berries: 1 } };
+  const blueberry = { ...crop("blueberry", now), recipeId: "grow_blueberries", rewards: { blueberries: 1 } };
+  const h = harness(started("grow", raspberry.id), [raspberry, blueberry]);
+  h.revealSurface(true, true);
+  let coach = h.render();
+  assert.match(coach.summary, /«Собрать всё \(2\)»/);
+  assert.match(coach.text, /Все созревшие ягоды.*за один подход/);
+  assert.equal(coach.target, '[data-job-id="raspberry"] button');
+  h.setCollection({ jobId: raspberry.id, jobIds: [raspberry.id, blueberry.id], phase: "walking", request: null });
+  coach = h.render();
+  assert.match(coach.summary, /Сбор уже начат/);
+  assert.equal(coach.target, undefined, "the guide must not ask for another click on a disabled collection button");
+  assert.equal(coach.status, "Мохлик собирает урожай");
+  assert.deepEqual(h.calls, []);
 });
 
 test("removing a crop without an accepted receipt never announces that the berries were received", () => {
@@ -542,9 +606,10 @@ test("workshop introduction quotes real construction cost and never issues a gif
   h.patchSnapshot({ workshopStarterClaimed: true });
   assert.equal(h.render().title, "Построим мастерскую", "an old grant marker does not promise a new gift");
   h.props.workshopOpen = true;
+  h.revealContent({ workshopSelected: true });
   coach = h.render();
   assert.equal(coach.target, '[data-guide-station-upgrade="workshop"]');
-  assert.match(coach.summary, /«Обустроить»/);
+  assert.match(coach.summary, /«Открыть» в шапке/);
   h.props.modalBlocked = true;
   assert.equal(h.render().open, false);
   assert.deepEqual(h.calls, []);
@@ -586,9 +651,11 @@ test("built workshops show their recipes and ongoing construction can continue i
   built.patchSnapshot({ buildings: { ...built.economy.snapshot.buildings, workshop: 1 } });
   assert.equal(built.render().title, "Мастерская уже есть");
   built.props.workshopOpen = true;
+  built.revealContent({ workshopSelected: true });
   let coach = built.render();
-  assert.equal(coach.target, '[data-section-guide-target="workshop-recipes"]');
+  assert.equal(coach.target, '[data-place="workshop"] [data-recipe-product="planks"]');
   assert.match(coach.summary, /одно бревно.*одну доску.*две минуты/);
+  assert.match(coach.hint, /мастерской и печи отдельные очереди/);
   assert.deepEqual(built.calls, []);
   const pending = harness(started("workshop"), [{ id: "build-1", kind: "construction", targetId: "workshop", targetLevel: 1,
     finishesAt: new Date(now + 300000).toISOString() }]);
@@ -597,6 +664,24 @@ test("built workshops show their recipes and ongoing construction can continue i
   assert.match(coach.text, /5 мин/);
   coach.primary.onClick();
   assert.equal(pending.props.progress.stepId, "expeditions");
+});
+
+test("the shared kiln view teaches selecting the workshop before its plan or plank action", () => {
+  for (const level of [0, 1]) {
+    const h = harness(started("workshop"));
+    h.patchSnapshot({ buildings: { ...h.economy.snapshot.buildings, workshop: level, kiln: 1 } });
+    h.props.workshopOpen = true;
+    let coach = h.render();
+    assert.equal(coach.target, '[data-place="workshop"] [role="tab"][id$="-workshop"]');
+    assert.match(coach.summary, /Выбери вкладку «Мастерская» в шапке/);
+    assert.doesNotMatch(coach.summary, /Карточка доски сразу/);
+    h.revealContent({ workshopSelected: true });
+    coach = h.render();
+    assert.equal(coach.target, level > 0 ? '[data-place="workshop"] [data-recipe-product="planks"]' : '[data-guide-station-upgrade="workshop"]');
+    h.revealContent({ workshopSelected: false });
+    assert.equal(h.render().target, '[data-place="workshop"] [role="tab"][id$="-workshop"]');
+    assert.deepEqual(h.calls, [], "the coach must not change equipment, build or start the plank recipe");
+  }
 });
 
 test("workshop costs and build time follow the catalog on replay without any grant", () => {
@@ -635,12 +720,14 @@ test("opened sections highlight their contents, and pantry guidance follows the 
   pantry.revealContent({ pantryItem: true });
   let coach = pantry.render();
   assert.equal(coach.target, '[data-guide-pantry-item]');
-  assert.match(coach.summary, /продажи/);
+  assert.match(coach.summary, /продажу/);
   assert.match(coach.text, /«Рынок».*игроками/);
+  assert.match(coach.text, /по горизонтали.*небольшую панель.*повторное добавляет одну рыбу/);
+  assert.match(coach.hint, /кнопка улучшения.*в шапке/);
   pantry.revealContent({ pantrySale: true });
   coach = pantry.render();
   assert.equal(coach.target, '[data-guide-pantry-sale]');
-  assert.match(coach.summary, /количество.*итог.*Продать торговцу/);
+  assert.match(coach.summary, /количество.*итог.*кнопкой продажи/);
   pantry.revealContent({ pantryItem: false, pantrySale: false, pantryRelics: true });
   coach = pantry.render();
   assert.equal(coach.target, '[data-guide-pantry-relics]');
@@ -648,16 +735,28 @@ test("opened sections highlight their contents, and pantry guidance follows the 
   assert.deepEqual(pantry.calls, [["quick", "pantry"]], "explaining a sale must not trigger any transaction");
 });
 
-test("expedition guidance changes after opening route details and never starts the route", () => {
+test("expedition guidance follows activity, route list and preparation without choosing or starting for the player", () => {
   const h = harness(started("expeditions"));
   assert.equal(h.render().primary, undefined);
   h.props.onOpenQuick("expeditions");
   let coach = h.render();
-  assert.equal(coach.target, '[data-route]');
+  assert.equal(coach.target, undefined, "loading must not highlight a nonexistent route card");
+  h.revealContent({ routeActivities: true });
+  coach = h.render();
+  assert.equal(coach.target, '[data-section-guide-target="expedition-activities"]');
+  assert.match(coach.summary, /Сначала выбери занятие/);
+  h.revealContent({ routeActivities: false, routes: true });
+  coach = h.render();
+  assert.equal(coach.target, '[data-section-guide-target="expedition-routes"]');
   assert.match(coach.summary, /Нажми на маршрут/);
   h.revealContent({ routePreparation: true });
   coach = h.render();
+  assert.equal(coach.target, '[data-route-preparation]');
   assert.match(coach.summary, /только по кнопке «Отправиться»/);
+  assert.match(coach.text, /«Ускорение едой».*только по отдельной кнопке/);
+  assert.match(coach.text, /Каменоломня.*отдельно/);
+  h.revealContent({ routePreparation: false, routes: false, routeActivities: true });
+  assert.equal(h.render().target, '[data-section-guide-target="expedition-activities"]', "back navigation follows the actual surface");
   assert.deepEqual(h.calls, [["quick", "expeditions"]]);
 });
 
@@ -802,5 +901,10 @@ test("ninth lesson always explains the highlighted i button without opening deta
     assert.equal(coach.target, '[data-world-onboarding-help]');
     assert.match(coach.summary, /Кнопка i вверху открывает справку/);
     assert.match(coach.summary, /поиском/);
+    assert.match(coach.summary, /«Что здесь делать\?»/);
+    assert.match(coach.text, /профиль.*«\?».*«Повторить обучение»/);
+    assert.match(coach.text, /«Продолжить обучение»/);
+    assert.doesNotMatch(coach.hint, /В новых разделах я/);
+    assert.deepEqual(h.calls.filter(call => !["crop"].includes(call[0])), []);
   }
 });

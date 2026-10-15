@@ -94,7 +94,7 @@ export function ProfileSettings({ ownerPublicId, isOnline, onSessionLost, simple
         <Switch id="simple-view" checked={simpleView} onCheckedChange={onSimpleViewChange} data-audio-cue="ui.click" />
       </div>
       <div className={styles.appearanceSetting}>
-        <label htmlFor="section-guide-launcher"><strong>Кнопка «Что здесь делать?»</strong><span>Повтор коротких подсказок в разделах игры. Новые знакомства и продолжение подсказки останутся доступны.</span></label>
+        <label htmlFor="section-guide-launcher"><strong>Кнопка «Что здесь делать?»</strong><span>Кнопка ручного запуска подсказок в разделах игры. Продолжение приостановленной подсказки доступно и со скрытой кнопкой.</span></label>
         <Switch id="section-guide-launcher" checked={showSectionGuideLauncher} onCheckedChange={setShowSectionGuideLauncher} data-audio-cue="ui.click" />
       </div>
       <p className={styles.hint}>Настройки сохраняются на этом устройстве.</p>

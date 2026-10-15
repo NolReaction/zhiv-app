@@ -273,11 +273,13 @@ test("the workshop lesson requests only camera focus until a real map selection 
   } finally { nav.restore(); }
 });
 
-test("map guide focus respects pause, modal surfaces and the gift boundary", () => {
+test("map guide focus respects pause and modal surfaces without requiring the retired workshop gift", () => {
   const nav = guideNavigation({ onboarding: { progress: { version: 2, status: "started", stepId: "workshop" } } });
   try {
     nav.props.economy.snapshot.buildings.workshop = 0;
-    assert.equal(nav.component("WorldScene").props.guidePlace, null, "first show the explicit starter gift");
+    nav.props.economy.snapshot.workshopStarterClaimed = false;
+    assert.equal(nav.component("WorldScene").props.guidePlace, "workshop", "an unbuilt workshop still has a safe map target");
+    assert.equal(nav.component("WorldObjectMenu"), undefined, "the lesson does not open or build it automatically");
     nav.props.economy.snapshot.workshopStarterClaimed = true;
     assert.equal(nav.component("WorldScene").props.guidePlace, "workshop");
     hooks.setGuideContext({ onboarding: { progress: { version: 2, status: "started", stepId: "workshop" }, isPaused: true } });
@@ -309,7 +311,7 @@ test("section introductions wait for loaded state and yield to the active initia
       if (expected) assert.equal(nav.component("WorldOnboardingSession").props.modalBlocked, true,
         "the completed-course harvest reminder must not overlap a section lesson");
       nav.props.open = false;
-      assert.equal(nav.component("SectionGuide").props.enabled, false, "a closed map cannot consume the first visit");
+      assert.equal(nav.component("SectionGuide"), undefined, "closing the map immediately ends the manual section session, including its exit animation");
       nav.props.open = true;
       nav.props.economy.snapshot = null;
       assert.equal(nav.component("SectionGuide").props.enabled, false, "wait for actual economy content");
@@ -333,6 +335,31 @@ test("another device owning the forest suppresses quick and modal section introd
     assert.equal(nav.component("WorldBuilderDialog").props.guide.props.enabled, true,
       "returning ownership restores eligibility without consuming the introduction");
   } finally { nav.restore(); }
+});
+
+test("world exit immediately unmounts all seven manual guides even before the closing animation ends", () => {
+  for (const section of ["pantry", "expeditions", "orders", "market", "workshop", "plesk", "builder"]) {
+    const nav = guideNavigation();
+    const guide = () => section === "plesk" ? nav.component("WorldResidentDialog").props.guide
+      : section === "builder" ? nav.component("WorldBuilderDialog").props.guide
+        : section === "workshop" ? nav.component("WorldObjectMenu").props.guide : nav.component("SectionGuide");
+    try {
+      if (section === "plesk" || section === "builder") nav.component("WorldScene").props.onResident(section);
+      else if (section === "workshop") nav.component("WorldScene").props.onPlace("workshop",
+        { place: "workshop", objectId: "workshop", x: 100, y: 150, viewportWidth: 390, viewportHeight: 700 });
+      else if (section === "orders") nav.find(element => element.props["data-world-orders-entry"] !== undefined).props.onClick({ currentTarget: nav.ordersTrigger });
+      else {
+        nav.find(element => element.props["data-world-quick"] === (section === "market" ? "pantry" : section)).props.onClick();
+        if (section === "market") nav.component("WorldPantryMenu").props.onOpenMarket();
+      }
+      assert.equal(guide().props.section, section);
+      nav.props.open = false;
+      assert.equal(guide(), undefined, section);
+      nav.props.open = true;
+      assert.equal(guide().props.section, section, "a quick re-entry mounts a fresh help controller");
+      assert.equal(nav.refreshes, 0);
+    } finally { nav.restore(); }
+  }
 });
 
 test("the standalone journal has its own lesson and preserves filters through ordinary snapshots", () => {

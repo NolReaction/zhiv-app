@@ -5,7 +5,7 @@ import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({
-  appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-orders-portal-world-vite",
+  appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-main-course-audit-model-vite",
   resolve: { alias: { "@": root } },
   server: { middlewareMode: true, hmr: false, ws: false },
 });
@@ -56,6 +56,11 @@ test("the introduction includes berry practice, neighbors, orders and workshop w
   const orders = WORLD_ONBOARDING_STEPS.find(step => step.id === "orders");
   assert.equal(orders.selector, '[data-world-orders-entry]');
   assert.match(orders.text, /«Заказы» внизу карты.*журнал/);
+  const expedition = WORLD_ONBOARDING_STEPS.find(step => step.id === "expeditions");
+  assert.match(expedition.text, /выбери занятие, затем маршрут/);
+  const help = WORLD_ONBOARDING_STEPS.find(step => step.id === "help");
+  assert.match(help.text, /«Что здесь делать\?»/);
+  assert.match(help.hint, /профиль.*«\?».*«Повторить обучение».*«Продолжить обучение»/);
 });
 
 test("every saved step resumes at the same place with its real crop reference", () => {

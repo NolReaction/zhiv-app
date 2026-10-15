@@ -19,15 +19,21 @@ function finished(section) {
   return progress;
 }
 
-test("each first-entry lesson is short and gating does not consume an unopened lesson", () => {
+test("section lessons are short and require an explicit request and started progress", () => {
   for (const section of sectionGuideIds) {
     const steps = sectionGuideLessons[section];
     assert.ok(steps.length >= 2 && steps.length <= (section === "plesk" ? 6 : 3));
     assert.equal(new Set(steps.map(step => step.id)).size, steps.length);
   }
   assert.equal(sectionGuideCanOpen(false, true, null), false, "storage must be loaded first");
-  assert.equal(sectionGuideCanOpen(true, false, null), false, "initial course, another device or hidden scope blocks auto-open");
-  assert.equal(sectionGuideCanOpen(true, true, null), true, "still eligible when that blocker clears");
+  assert.equal(sectionGuideCanOpen(true, false, null), false, "initial course, another device or hidden scope blocks help");
+  assert.equal(sectionGuideCanOpen(true, true, null), false, "ordinary first entry never starts a lesson");
+  const progress = move("pantry", null, "start");
+  assert.equal(sectionGuideCanOpen(true, true, progress), false, "stored progress is not a manual request");
+  assert.equal(sectionGuideCanOpen(false, true, progress, true), false);
+  assert.equal(sectionGuideCanOpen(true, false, progress, true), false);
+  assert.equal(sectionGuideCanOpen(true, true, null, true), false, "a request must also start the lesson");
+  assert.equal(sectionGuideCanOpen(true, true, progress, true), true);
 });
 
 test("workshop lessons explain direct cards and same-cell cancellation without preparation controls", () => {
@@ -90,7 +96,7 @@ test("retired meals lessons retain stored progress without an active guide or na
   assert.equal(requestSectionGuideNavigation({ querySelector() { return oldMeals; } }, "meals", "hero"), false);
 });
 
-test("leaving the section without explicitly pausing its lesson resumes the exact step", () => {
+test("leaving a section saves its exact step but reopening waits for the help button", () => {
   const disk = storage(), first = createSectionGuideStore("resume-owner", "plesk", disk);
   first.restore();
   first.save(move("plesk", move("plesk", null, "start"), "next"));
@@ -98,7 +104,8 @@ test("leaving the section without explicitly pausing its lesson resumes the exac
   assert.equal(reopened.getSnapshot().loaded, false);
   reopened.restore();
   assert.equal(reopened.getSnapshot().progress.stepId, "hook-intro");
-  assert.equal(sectionGuideCanOpen(true, true, reopened.getSnapshot().progress), true);
+  assert.equal(sectionGuideCanOpen(true, true, reopened.getSnapshot().progress), false);
+  assert.equal(sectionGuideCanOpen(true, true, reopened.getSnapshot().progress, true), true);
 });
 
 test("Plesk explains permanent tackle and consumable bait before automatically revealing odds", () => {
@@ -137,7 +144,7 @@ test("Plesk lessons compare class odds without buying and keep representative ar
 test("order and travel lessons separate fish selection from consumption and owned gear from buying", () => {
   const [requirements, reward] = sectionGuideLessons.orders;
   assert.match(requirements.text, /выбор оставшихся видов: он уже заполнен/);
-  assert.match(reward.text, /тап заменяет рыбу, минус убирает одну/);
+  assert.match(reward.text, /тап добавляет рыбу или заменяет одну в заполненном классе, минус убирает одну/);
   assert.match(reward.text, /Только «Отдать заказ».*потратит рыбу/);
   assert.match(reward.text, /Закрытие ничего не расходует/);
   const preparation = sectionGuideLessons.expeditions.find(step => step.id === "preparation");
@@ -158,7 +165,7 @@ test("pantry, Plesk and market lessons show species without automatically sellin
   assert.match(items.text, /Повторный тап добавит 1, другой вид сменится в том же окне/);
   assert.match(items.text, /Только кнопка продажи тратит запас/);
   assert.match(items.text, /Escape или нажатие вне окна закроют его без продажи/);
-  assert.match(sale.text, /только после нажатия кнопки «Продать торговцу»/);
+  assert.match(sale.text, /запасы продаёт кнопка «Продать торговцу», рыбу - «Продать»/);
   assert.match(sale.text, /«Без указания вида»/);
   assert.match(sell.text, /выбор оставшихся видов.*«Выставить лот»/);
   assert.match(sell.text, /Просмотр ничего не выставляет/);
@@ -180,9 +187,11 @@ test("explicit pause survives reopening until deliberately resumed", () => {
   const paused = reopened.getSnapshot().progress;
   assert.equal(paused.status, "paused");
   assert.equal(sectionGuideCanOpen(true, true, paused), false);
+  assert.equal(sectionGuideCanOpen(true, true, paused, true), false);
   const resumed = move("market", paused, "resume");
   assert.equal(resumed.stepId, "sell");
-  assert.equal(sectionGuideCanOpen(true, true, resumed), true);
+  assert.equal(sectionGuideCanOpen(true, true, resumed), false);
+  assert.equal(sectionGuideCanOpen(true, true, resumed, true), true);
 });
 
 test("completed and skipped lessons never auto-open and replay starts at first step", () => {
@@ -195,6 +204,7 @@ test("completed and skipped lessons never auto-open and replay starts at first s
       const reopened = createSectionGuideStore(`complete-${section}`, section, disk);
       reopened.restore();
       assert.equal(sectionGuideCanOpen(true, true, reopened.getSnapshot().progress), false);
+      assert.equal(sectionGuideCanOpen(true, true, reopened.getSnapshot().progress, true), false);
       assert.deepEqual(move(section, reopened.getSnapshot().progress, "start"), progress, "ordinary entry must preserve the terminal choice");
       const replay = move(section, progress, "replay");
       assert.equal(replay.stepId, sectionGuideLessons[section][0].id);
