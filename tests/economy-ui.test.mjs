@@ -356,11 +356,27 @@ test("days are readable and higher tier recipes explain their actual prerequisit
   assert.equal(economyDuration(60), "1 мин");
   assert.equal(economyDuration(604800), "7 д");
   assert.equal(economyDuration(90000), "1 д 1 ч");
-  const html = render("production", controller(), "workshop");
+  const unbuilt = render("production", controller(), "workshop");
+  assert.match(unbuilt, /data-station-setup="workshop"/);
+  assert.match(unbuilt, /Сначала постройте это место/);
+  assert.doesNotMatch(unbuilt, /Будущие рецепты|data-recipe=|data-production-slots=/);
+  assert.ok(button(unbuilt, "Построить"));
+  const recipe = economyCatalog.recipes.find(recipe => recipe.id === "make_metal_parts");
+  const state = snapshot({ buildings: { home: 3, workshop: 1, kiln: 1, warehouse: 1 },
+    inventory: { ...recipe.cost.items }, wallet: { coins: recipe.cost.coins, pearls: 0 } });
+  let html = render("production", controller({ snapshot: state }), "workshop");
   assert.match(html, /Будущие рецепты/);
-  assert.match(html, /Мастерская: нужен уровень 1/);
+  assert.match(html, /Мастерская: нужен уровень 2/);
+  assert.match(html, /Печь: нужен уровень 2/);
+  assert.equal(productionBlocked(html, "metal_parts"), true);
   assert.doesNotMatch(html, /Способ производства|Размер заказа/);
-  assert.ok(button(html, "К постройке"));
+  state.buildings.workshop = 2;
+  html = render("production", controller({ snapshot: state }), "workshop");
+  assert.equal(productionBlocked(html, "metal_parts"), true, "the workstation level alone cannot satisfy its furnace prerequisite");
+  assert.match(html, /Печь: нужен уровень 2/);
+  state.buildings.kiln = 2;
+  html = render("production", controller({ snapshot: state }), "workshop");
+  assert.equal(productionBlocked(html, "metal_parts"), false, "production opens only after its actual station prerequisites are satisfied");
 });
 
 test("placed workshop opens production while the mine keeps activity unlocks and upgrade details", () => {

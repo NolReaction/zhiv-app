@@ -609,7 +609,7 @@ test("workshop introduction quotes real construction cost and never issues a gif
   h.revealContent({ workshopSelected: true });
   coach = h.render();
   assert.equal(coach.target, '[data-guide-station-upgrade="workshop"]');
-  assert.match(coach.summary, /«Открыть» в шапке/);
+  assert.match(coach.summary, /«Построить» в шапке/);
   h.props.modalBlocked = true;
   assert.equal(h.render().open, false);
   assert.deepEqual(h.calls, []);

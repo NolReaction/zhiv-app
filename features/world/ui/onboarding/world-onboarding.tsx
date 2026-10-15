@@ -387,8 +387,8 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
       base.primary = visited === "workshop" ? { advance: true, label: "Дальше, к вылазкам", onClick: () => advance("expeditions") } : undefined;
     } else {
       base.title = "Построим мастерскую";
-      base.summary = props.workshopOpen ? surface.workshopSelected ? "Нажми «Открыть» в шапке меню. В плане проверь стоимость и начни стройку."
-        : "Выбери вкладку «Мастерская» в шапке, затем нажми «Открыть», чтобы посмотреть план стройки."
+      base.summary = props.workshopOpen ? surface.workshopSelected ? "Нажми «Построить» в шапке меню. В плане проверь стоимость и начни стройку."
+        : "Выбери вкладку «Мастерская» в шапке, затем нажми «Построить», чтобы посмотреть план стройки."
         : "Нажми на выделенную мастерскую на карте, чтобы открыть её план.";
       base.pose = "present";
       base.text = `Сначала обустрой лесной участок и костёр, выполни первые просьбы соседей. Накопленных монет и материалов хватит на мастерскую. Стройка занимает ${worldDuration(first.seconds)}.`;

@@ -12,7 +12,7 @@ import styles from "./world-production-slots.module.css";
 
 type SlotConfirmation = { stationId: string; owner: string; slot: number; pricePearls: number };
 
-/** Slots stay visible; finished orders keep their place until the ordinary claim. */
+/** Built places expose slots; finished orders keep their place until the ordinary claim. */
 export function WorldProductionSlots({ economy, stationId, compact = false, openPantry }: { economy: ReadyEconomy; stationId: string; compact?: boolean; openPantry?: () => void }) {
   const dialogId = useId();
   const [confirmation, setConfirmation] = useState<SlotConfirmation | null>(null);
@@ -46,7 +46,7 @@ export function WorldProductionSlots({ economy, stationId, compact = false, open
     const pending = purchasePending.current;
     if (pending && (pending.owner !== state.ownerPublicId || pending.revision !== state.revision || economy.error)) purchasePending.current = null;
   }, [state.ownerPublicId, state.revision, economy.error]);
-  if (!productionStationSupported(stationId)) return null;
+  if (!productionStationSupported(stationId) || unavailable) return null;
   function cancelPurchase() {
     setConfirmation(null);
     (purchaseTrigger.current?.isConnected ? purchaseTrigger.current : slotsSection.current)?.focus({ preventScroll: true });

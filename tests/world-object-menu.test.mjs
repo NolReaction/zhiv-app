@@ -149,7 +149,10 @@ test("a second recipe uses the remaining station slot while ready results and co
   assert.match(helpers.worldProductionReason(state, recipe), /Все места заняты/);
   state.jobs.pop(); state.jobs[0].kind = "construction";
   assert.match(helpers.worldProductionReason(state, recipe), /завершите улучшение/);
-  assert.equal(disabled(button(render("workshop", controller({ snapshot: state })), "Место 3")), false, "The explanation remains reachable during construction");
+  const html = render("workshop", controller({ snapshot: state }));
+  assert.match(html, /Идёт улучшение|Идёт строительство/);
+  assert.doesNotMatch(html, /data-production-slot=|data-recipe=/);
+  assert.equal(disabled(button(html, "Ход строительства")), false);
 });
 
 test("idle production shows three places and reveals each expansion price only after the previous place opens", () => {
@@ -173,6 +176,50 @@ test("idle production shows three places and reveals each expansion price only a
     assert.match(expanded, /Открыть место 3 за 250 жемчужин/);
     assert.equal(disabled(button(expanded, "Место 3")), false);
     assert.equal(state.productionSlots[stationId], 2);
+  }
+});
+
+test("all unfinished production places show construction without slots, products or filters at phone and desktop widths", () => {
+  const buildings = { home: 5, workshop: 5, kiln: 5, garden: 5, woodlot: 5, dryer: 5, quarry: 5, warehouse: 5 };
+  for (const viewportWidth of [320, 1280]) {
+    for (const [place, stationId] of [["garden", "garden"], ["woodlot", "woodlot"], ["campfire", "dryer"], ["workshop", "workshop"], ["workshop", "kiln"], ["quarry", "quarry"]]) {
+      const state = snapshot({ buildings: { ...buildings, [stationId]: 0 } });
+      const economy = controller({ snapshot: state, act() { assert.fail("Reviewing an unbuilt place cannot send an economic command"); } });
+      const extra = { initialStationId: stationId, initialRecipeId: state.catalog.recipes.find(recipe => recipe.buildingId === stationId)?.id,
+        selection: { place, objectId: `${place}.position`, x: 195, y: 380, viewportWidth, viewportHeight: 844 } };
+      let html = render(place, economy, extra);
+      assert.ok(html.includes(`data-station-setup="${stationId}"`), `${stationId} at ${viewportWidth}`);
+      assert.match(html, /Сначала постройте это место/);
+      assert.doesNotMatch(html, /data-production-slot=|data-production-slots=|data-recipe=|data-cooking-duration=|data-mining-duration=|data-route=/);
+      assert.equal(disabled(button(html, "Построить")), false);
+      state.jobs = [job({ id: `build-${stationId}`, kind: "construction", targetId: stationId, recipeId: null, targetLevel: 1, rewards: {} })];
+      html = render(place, economy, extra);
+      assert.match(html, /Идёт строительство/);
+      assert.ok(html.includes(`data-job-id="build-${stationId}"`));
+      assert.doesNotMatch(html, /data-production-slot=|data-recipe=|data-cooking-duration=|data-mining-duration=|data-route=/);
+      state.jobs[0].finishesAt = new Date(now).toISOString();
+      assert.equal(disabled(button(render(place, economy, extra), "Завершить")), false, "completed construction stays claimable");
+      state.jobs = []; state.buildings[stationId] = 1;
+      html = render(place, economy, extra);
+      assert.doesNotMatch(html, /data-station-setup=/);
+      assert.match(html, stationId === "quarry" ? /data-mining-duration=/ : /data-production-slots=/);
+      if (stationId === "dryer") assert.match(html, /data-cooking-duration=/);
+    }
+  }
+});
+
+test("workshop and furnace availability stay independent inside their shared place", () => {
+  for (const [built, unbuilt] of [["workshop", "kiln"], ["kiln", "workshop"]]) {
+    const state = snapshot({ buildings: { home: 5, warehouse: 5, [built]: 1, [unbuilt]: 0 } });
+    const economy = controller({ snapshot: state });
+    const operating = render("workshop", economy, { initialStationId: built });
+    assert.ok(operating.includes(`data-production-slots="${built}"`));
+    assert.doesNotMatch(operating, /data-station-setup=/);
+    const closed = render("workshop", economy, { initialStationId: unbuilt });
+    assert.ok(closed.includes(`data-station-setup="${unbuilt}"`));
+    assert.doesNotMatch(closed, /data-production-slots=|data-recipe=/);
+    state.jobs = [job({ kind: "construction", targetId: unbuilt, recipeId: null, targetLevel: 1, rewards: {} })];
+    assert.ok(render("workshop", economy, { initialStationId: built }).includes(`data-production-slots="${built}"`));
   }
 });
 
@@ -428,17 +475,18 @@ test("the mine has one independent route picker without production tabs or paid 
   }));
   const initialState = snapshot();
   const initial = render("quarry", controller({ snapshot: initialState }));
-  assert.match(initial, /data-sector="caves"/);
+  assert.match(initial, /data-station-setup="quarry"/);
   assert.doesNotMatch(initial, /data-quarry-tab|data-recipe=|Секторы вылазок|data-production-slots/);
-  assert.doesNotMatch(initial, /data-route=|aria-label="Начать добычу:|data-route-preparation=/);
+  assert.doesNotMatch(initial, /data-route=|aria-label="Начать добычу:|data-route-preparation=|data-mining-duration=/);
+  assert.match(initial, /Нужен дом 2 уровня/);
   assert.doesNotMatch(prepareMine(initialState), /data-route=|aria-label="Начать добычу:/);
-  assert.equal(disabled(button(initial, "Открыть")), false);
+  assert.equal(disabled(button(initial, "Построить")), false);
   const unbuiltState = snapshot({ buildings: { home: 2, warehouse: 1, quarry: 0 } });
   const unbuilt = render("quarry", controller({ snapshot: unbuiltState }));
-  assert.match(unbuilt, /data-route="quarry_stone"/);
+  assert.match(unbuilt, /data-station-setup="quarry"/);
   assert.doesNotMatch(unbuilt, /Вход в пещеру|Просеять песок|data-production-slots/);
-  assert.match(prepareMine(unbuiltState), /Каменоломня · нужен ур. 1/);
-  assert.equal(disabled(button(prepareMine(unbuiltState), "Начать добычу")), true);
+  assert.match(prepareMine(unbuiltState), /Сначала постройте это место/);
+  assert.doesNotMatch(prepareMine(unbuiltState), /data-route=|data-mining-duration=|Начать добычу/);
   assert.match(renderUpgrade("quarry", controller({ snapshot: unbuiltState })), /Добыть камень/,
     "the first mine level shows its actual stone route");
   const builtState = snapshot({ buildings: { home: 2, warehouse: 1, quarry: 1 } });
@@ -456,8 +504,8 @@ test("the mine has one independent route picker without production tabs or paid 
   for (const finishesAt of [new Date(now + 500_000).toISOString(), new Date(now).toISOString()]) {
     const upgradingState = snapshot({ buildings: builtState.buildings, jobs: [job({ kind: "construction", targetId: "quarry", recipeId: null, targetLevel: 2, rewards: {}, finishesAt })] });
     const upgradingPreparation = prepareMine(upgradingState);
-    assert.equal(disabled(button(upgradingPreparation, "Начать добычу")), true, "the site remains occupied until its construction result is claimed");
-    assert.match(upgradingPreparation, /Дождитесь улучшения шахты и заберите результат/);
+    assert.doesNotMatch(upgradingPreparation, /Начать добычу|data-route=|data-mining-duration=/);
+    assert.match(upgradingPreparation, /Идёт улучшение/);
     assert.equal(disabled(button(render("quarry", controller({ snapshot: upgradingState })), "Стройка")), false);
   }
   const fullMine = render("quarry", controller({ snapshot: snapshot({ buildings: { home: 5, warehouse: 5, quarry: 5 } }) }));

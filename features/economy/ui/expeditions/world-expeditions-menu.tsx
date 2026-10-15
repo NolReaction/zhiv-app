@@ -6,6 +6,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Check, ChevronDown, CircleHelp, Clock3, Compass, Fish, LockKeyhole, Mountain, Package, RefreshCw, Trees, type LucideIcon } from "lucide-react";
 import type { WorldHelpContext } from "@/features/world/ui/help/world-help-types";
 import { WorldMealBoost } from "@/features/economy/ui/food/world-meal-boost";
+import { WorldStationSetup } from "@/features/economy/ui/construction/world-station-setup";
 import { mealDuration, pendingMeal } from "@/features/economy/domain/food";
 import { ItemIcon } from "@/features/items/item-icon";
 import type { EconomyJob, EconomyView } from "@/features/economy/domain/model";
@@ -197,6 +198,7 @@ export function WorldExpeditionSector({ sectorId, selectedRoute, onSelectRoute, 
   const readyRoutes = routes.filter(route => canPrepare(state, route));
   const laterRoutes = routes.filter(route => !canPrepare(state, route));
   const sector = expeditionSectors.find(entry => entry.id === sectorId)!;
+  if (sectorId === "caves" && (!(state.buildings.quarry > 0) || state.jobs.some(job => job.kind === "construction" && job.targetId === "quarry"))) return <WorldStationSetup economy={{ ...economy, snapshot: state }} stationId="quarry" onOpenPantry={onOpenPantry} onOpenConstruction={onUpgradeQuarry ?? (onNavigateStation ? () => onNavigateStation("quarry") : undefined)} />;
   const selected = routes.find(route => route.id === selectedRoute && !hasActiveRoute(state, route.id));
   const selectedSeconds = selected ? routeSeconds(state, selected) : 0;
   if (selected) return <section className={styles.preparation} data-section-guide-target="expedition-preparation" aria-label={`Подготовка: ${routeName(selected.name)}`} data-sector={sectorId} data-route={selected.id} data-route-preparation="true">

@@ -63,6 +63,8 @@ const { ProductionWork } = await vite.ssrLoadModule("/features/economy/ui/produc
 const { worldCountdown, worldDuration } = await vite.ssrLoadModule("/features/economy/ui/shared/world-stations.ts");
 const { TestSlotMenuBody } = await vite.ssrLoadModule("/features/economy/ui/stations/world-object-menu.tsx");
 const { TestSlotProduction, TestSlotJobCard } = await vite.ssrLoadModule("/features/economy/ui/economy-panel.tsx");
+const { WorldStationSetup } = await vite.ssrLoadModule("/features/economy/ui/construction/world-station-setup.tsx");
+const { WorldUpgradeDialog } = await vite.ssrLoadModule("/features/economy/ui/construction/world-upgrade-dialog.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const now = Date.parse("2026-10-14T19:00:00Z");
 function controller(overrides = {}) {
@@ -193,7 +195,7 @@ test("the third place is inert without a visible or accessible price until the s
 });
 
 test("insufficient funds or unconfirmed state block purchase confirmation", () => {
-  for (const scenario of ["poor", "busy", "uncertain", "cooldown", "error", "unbuilt", "construction"]) {
+  for (const scenario of ["poor", "busy", "uncertain", "cooldown", "error"]) {
     hooks.reset(); const calls = [], economy = controller({ act: (...args) => calls.push(args) });
     let slot = 2;
     if (scenario === "poor") economy.snapshot.wallet.pearls = 199;
@@ -201,12 +203,43 @@ test("insufficient funds or unconfirmed state block purchase confirmation", () =
     if (scenario === "uncertain") economy.uncertain = true;
     if (scenario === "cooldown") economy.retryAt = now + 1000;
     if (scenario === "error") economy.error = "Network failure";
-    if (scenario === "unbuilt") economy.snapshot.buildings.woodlot = 0;
-    if (scenario === "construction") economy.snapshot.jobs = [{ kind: "construction", targetId: "woodlot" }];
     click(card(render(economy), slot)); const tree = render(economy);
     const confirmationButton = buy(tree); assert.equal(confirmationButton.props.disabled, true, scenario);
     click(confirmationButton); assert.deepEqual(calls, [], scenario);
     if (scenario === "poor") assert.match(renderToStaticMarkup(tree), /Не хватает жемчужин: 0,5/);
+  }
+});
+
+test("unfinished stations expose construction instead of slot purchases in the map and production hub", () => {
+  for (const phase of ["unbuilt", "construction", "upgrade"]) {
+    hooks.reset(); const calls = [], economy = controller({ act: (...args) => calls.push(args) });
+    economy.snapshot.buildings.woodlot = phase === "upgrade" ? 1 : 0;
+    if (phase !== "unbuilt") economy.snapshot.jobs = [{ id: "build-woodlot", kind: "construction", targetId: "woodlot", targetLevel: phase === "upgrade" ? 2 : 1,
+      startedAt: new Date(now).toISOString(), finishesAt: new Date(now + 60_000).toISOString(), rewards: {}, cost: { coins: 0, items: {} } }];
+    assert.equal(render(economy), null, phase);
+    for (const entry of ["map", "hub"]) {
+      hooks.reset(); const navigations = [];
+      function enter() {
+        hooks.render();
+        return entry === "map" ? TestSlotMenuBody({ economy, onClose() {}, selection: { place: "woodlot", objectId: "woodlot.position", x: 195, y: 380, viewportWidth: 390, viewportHeight: 844 } })
+          : TestSlotProduction({ economy, focusId: "woodlot", navigate: (...args) => navigations.push(args) });
+      }
+      let tree = enter(), nodes = elements(tree);
+      assert.equal(nodes.some(node => node.type === WorldProductionSlots), false, `${phase}: ${entry}`);
+      const notice = nodes.find(node => node.type === WorldStationSetup);
+      assert.ok(notice, `${phase}: ${entry} must lead to construction`);
+      const previousDocument = globalThis.document, previousHTMLElement = globalThis.HTMLElement;
+      try {
+        globalThis.document = { activeElement: null };
+        globalThis.HTMLElement = class {};
+        notice.props.onOpenConstruction();
+      } finally { globalThis.document = previousDocument; globalThis.HTMLElement = previousHTMLElement; }
+      if (entry === "map") {
+        tree = enter();
+        assert.equal(elements(tree).find(node => node.type === WorldUpgradeDialog).props.stationId, "woodlot", "the existing construction dialog opens");
+      } else assert.deepEqual(navigations, [["buildings", "woodlot"]]);
+      assert.deepEqual(calls, [], "reviewing construction cannot spend pearls or start work");
+    }
   }
 });
 
