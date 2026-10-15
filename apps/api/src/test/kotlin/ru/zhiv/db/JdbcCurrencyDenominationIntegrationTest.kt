@@ -24,7 +24,7 @@ class JdbcCurrencyDenominationIntegrationTest {
     @Test fun `V40 converts operational money once and replays old receipts without another credit`() = runBlocking<Unit> {
         val config = AppConfig(postgres.jdbcUrl, postgres.username, postgres.password, false, setOf("http://localhost"))
         DatabaseFactory.create(config).use { source ->
-            Flyway.configure().dataSource(source).locations("classpath:db/migration").target("39").load().migrate()
+            Flyway.configure().dataSource(source).locations("classpath:db/migration/history").target("39").load().migrate()
             val tokens = TokenCodec(); val sellerToken = tokens.issue(); val buyerToken = tokens.issue()
             val identities = JdbcZhivRepository(source)
             val seller = identities.bootstrap("Прежний номинал", tokens.issue().hash, sellerToken.hash, 365)
@@ -39,7 +39,7 @@ class JdbcCurrencyDenominationIntegrationTest {
             val rewardRequest = ProgressionRewardClaim(UUID.randomUUID().toString(), seller.publicId, "achievement", "thousand_taps", 1)
             val originalGift = ProgressionRewardReceipt("achievement", ProgressionReward(pearls = 1),
                 "2026-10-01T00:00:00Z", achievementId = "thousand_taps", level = 1)
-            val active = UUID.randomUUID(); val closed = UUID.randomUUID()
+            val active = UUID.randomUUID(); val overpriced = UUID.randomUUID(); val closed = UUID.randomUUID()
             source.connection.use { c ->
                 c.economyUpdate("INSERT INTO economy_profiles(user_id,state,revision) VALUES (?,?::jsonb,7)", seller.id, economyJson.encodeToString(old))
                 c.economyUpdate("INSERT INTO economy_profiles(user_id,state) VALUES (?,?::jsonb)", buyer.id,
@@ -52,16 +52,18 @@ class JdbcCurrencyDenominationIntegrationTest {
                 c.economyUpdate("""INSERT INTO game_reward_claims(user_id,origin_user_id,request_id,signature,kind,claim,accepted_revision,claimed_at)
                     VALUES (?,?,?,?,'achievement',?::jsonb,7,'2026-10-01T00:00:00Z')""", seller.id, seller.id,
                     UUID.fromString(rewardRequest.requestId), progressionRewardsJson.encodeToString(rewardRequest), progressionRewardsJson.encodeToString(originalGift))
-                c.economyUpdate("INSERT INTO economy_market_listings(id,seller_id,item_id,quantity,total_price) VALUES (?,?,'berries',2,6)", active, seller.id)
+                c.economyUpdate("INSERT INTO economy_market_listings(id,seller_id,item_id,quantity,total_price) VALUES (?,?,'wood',2,6)", active, seller.id)
+                c.economyUpdate("INSERT INTO economy_market_listings(id,seller_id,item_id,quantity,total_price) VALUES (?,?,'berries',2,6)", overpriced, seller.id)
                 c.economyUpdate("""INSERT INTO economy_market_listings(id,seller_id,item_id,quantity,total_price,status,closed_at)
                     VALUES (?,?,'berries',2,6,'cancelled','2026-10-01T00:00:00Z')""", closed, seller.id)
                 c.commit()
             }
             DatabaseFactory.migrate(source); DatabaseFactory.migrate(source)
             val persisted = source.connection.use { readEconomyProfile(it, seller.id) }
-            assertEquals(9L, persisted.revision)
-            val expected = EconomyMoney.redenominate(old)
-            assertEquals(expected.copy(wardrobe = expected.wardrobe.sorted()), persisted.state)
+            assertEquals(10L, persisted.revision)
+            val expected = EconomyMoney.redenominate(old).copy(marketSlots = 5,
+                unlockedItems = listOf("berries", "wood"), itemUnlockVersion = 1)
+            assertEquals(EconomyItemUnlocks.persist(expected).copy(wardrobe = expected.wardrobe.sorted()), persisted.state)
             source.connection.use { c ->
                 // Migration preserves the stored wardrobe; the repository orders ownership on read.
                 assertEquals(expected, c.economyRows("SELECT state FROM economy_profiles WHERE user_id=?", seller.id) {
@@ -72,6 +74,7 @@ class JdbcCurrencyDenominationIntegrationTest {
                 assertEquals(originalGift, c.economyRows("SELECT claim FROM game_reward_claims WHERE user_id=? AND request_id=?", seller.id, UUID.fromString(rewardRequest.requestId)) {
                     progressionRewardsJson.decodeFromString<ProgressionRewardReceipt>(it.getString(1)) }.single())
                 assertEquals(60L to 10, c.economyRows("SELECT total_price,currency_scale FROM economy_market_listings WHERE id=?", active) { it.getLong(1) to it.getInt(2) }.single())
+                assertEquals(60L to 10, c.economyRows("SELECT total_price,currency_scale FROM economy_market_listings WHERE id=?", overpriced) { it.getLong(1) to it.getInt(2) }.single())
                 assertEquals(6L to 1, c.economyRows("SELECT total_price,currency_scale FROM economy_market_listings WHERE id=?", closed) { it.getLong(1) to it.getInt(2) }.single())
             }
             val economy = JdbcEconomyRepository(source)
@@ -86,13 +89,33 @@ class JdbcCurrencyDenominationIntegrationTest {
             assertEquals(originalGift.copy(reward = ProgressionReward(pearls = 50)), paid.claim)
             assertEquals(EconomyWallet(1230, 200), paid.economy.wallet)
             val market = JdbcEconomyMarketRepository(source)
+            assertTrue(market.market(buyerToken.hash).listings.isEmpty(), "Currency migrations do not gift a restored bridge")
+            // All frozen migration and receipt checks are complete; prepare current trade access explicitly.
+            source.connection.use { c ->
+                for (user in listOf(seller, buyer)) {
+                    val state = readEconomyProfile(c, user.id).state
+                    c.economyUpdate("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",
+                        economyJson.encodeToString(state.copy(buildings = state.buildings + ("bridge" to 1))), user.id)
+                }
+                c.commit()
+            }
             val visible = market.market(buyerToken.hash).listings.single()
+            assertEquals(active.toString(), visible.id)
+            assertEquals("wood", visible.itemId)
             assertEquals(60L, visible.totalPrice)
             val bought = market.command(buyerToken.hash, EconomyCommand(UUID.randomUUID().toString(), buyer.publicId,
                 economy.snapshot(buyerToken.hash).revision, "buy_listing", visible.id, 2, visible.totalPrice))
             assertEquals(940L, bought.state.wallet.coins)
-            assertEquals(2L, bought.state.inventory["berries"])
+            assertEquals(2L, bought.state.inventory["wood"])
             assertEquals(1290L, economy.snapshot(sellerToken.hash).wallet.coins)
+            val ownerLot = market.market(sellerToken.hash).mine.single()
+            assertEquals(overpriced.toString(), ownerLot.id)
+            assertEquals(60L, ownerLot.totalPrice, "The old berry quote is preserved but exceeds the current public price range")
+            val refund = market.command(sellerToken.hash, EconomyCommand(UUID.randomUUID().toString(), seller.publicId,
+                economy.snapshot(sellerToken.hash).revision, "cancel_listing", ownerLot.id))
+            assertEquals(2L, refund.state.inventory["berries"])
+            assertEquals(1290L, refund.state.wallet.coins)
+            assertTrue(market.market(sellerToken.hash).mine.isEmpty())
         }
     }
 }

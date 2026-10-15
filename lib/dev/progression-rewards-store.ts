@@ -4,7 +4,7 @@ import { getDevGameAchievements } from "./game-store";
 import { creditDevProgressionReward, getDevEconomy, DevEconomyError } from "./economy-store";
 import { gameRewardClaimSchema, type GameRewardClaim, type GameRewardResult, type GameRewards } from "@/features/game/game-rewards-api";
 import { ECONOMY_CURRENCY_SCALE, ECONOMY_PEARL_SCALE, nominalEconomyMoney, nominalEconomyPearls } from "@/features/economy/domain/money";
-import { achievementRewardRows, afterDailyClaim, dailyRewardView, initialDailyRewardState, type DailyRewardState } from "@/features/game/progression-rewards";
+import { achievementRewardRows, afterDailyClaim, dailyRewardView, initialDailyRewardState, progressionRewardsCatalog, type DailyRewardState } from "@/features/game/progression-rewards";
 
 type Receipt = { signature: string; claim: GameRewardResult["claim"]; acceptedRevision: number; currencyScale?: 1 | 10; pearlScale?: 1 | 10 | 50 };
 type Profile = { daily: DailyRewardState; claims: Map<string, string>; receipts: Map<string, Receipt> };
@@ -26,7 +26,7 @@ function view(token: string | undefined, owner: string, value: Profile, now: num
   const economy = getDevEconomy(token, now, owner);
   const result = getDevGameAchievements(token, now, 5);
   if (result.kind !== "ok") fail("UNAUTHORIZED", "Войдите в профиль ещё раз", 401);
-  return { ownerPublicId: owner, serverTime: new Date(now).toISOString(), catalogVersion: 1,
+  return { ownerPublicId: owner, serverTime: new Date(now).toISOString(), catalogVersion: progressionRewardsCatalog.version,
     daily: dailyRewardView(value.daily, now, economy.buildings.home ?? 1),
     achievementRewards: achievementRewardRows((id, level) => ({
       at: result.value.achievements.find(row => row.id === id)?.tiers?.find(tier => tier.level === level)?.unlockedAt ?? null,

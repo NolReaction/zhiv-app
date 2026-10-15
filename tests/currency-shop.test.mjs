@@ -30,23 +30,24 @@ const state = buildings => ({ catalog: economyCatalog, buildings, jobs: [] });
 const firstQuote = buildings => shop.currencyShopGoldOffers(state(buildings))[0];
 
 test("shop quotes use current currency units and fixed packages without volume discounts", () => {
-  assert.deepEqual(shop.PEARL_SHOP_PACKAGES.map(pack => pack.pearls), [500, 1500, 4000, 10000]);
-  assert.deepEqual(shop.GOLD_SHOP_PACKAGES.map(pack => pack.pearls), [100, 300, 750]);
-  for (const pack of [...shop.PEARL_SHOP_PACKAGES, ...shop.GOLD_SHOP_PACKAGES]) assert.equal(pack.pearls % 50, 0);
+  assert.deepEqual(shop.PEARL_SHOP_PACKAGES.map(pack => pack.pearls), [1000, 2400, 5000, 13000]);
+  assert.deepEqual(shop.GOLD_SHOP_PACKAGES.map(pack => pack.pearls), [40, 100, 200]);
+  for (const pack of [...shop.PEARL_SHOP_PACKAGES, ...shop.GOLD_SHOP_PACKAGES]) assert.equal(pack.pearls % 2, 0);
   const offers = shop.currencyShopGoldOffers(state({ home: 1 }));
-  assert.deepEqual(offers.map(pack => [pack.baseCoins, pack.bonusCoins, pack.coins]), [[10000, 0, 10000], [30000, 0, 30000], [75000, 0, 75000]]);
-  assert.deepEqual([1, 2, 3, 4, 5].map(home => firstQuote({ home }).coins), [10000, 15000, 25000, 40000, 70000]);
+  assert.deepEqual(offers.map(pack => [pack.baseCoins, pack.bonusCoins, pack.coins]), [[400, 0, 400], [1000, 0, 1000], [2000, 0, 2000]]);
+  assert.deepEqual([1, 2, 3, 4, 5].map(home => firstQuote({ home }).coins), [400, 600, 900, 1200, 1600]);
 });
 
 test("completed house and catalog buildings contribute separate additive percentages", () => {
   const middle = state({ home: 3, workshop: 3, warehouse: 3, garden: 2, woodlot: 2 });
-  assert.deepEqual(shop.currencyShopDevelopment(middle), { homeLevel: 3, completedLevels: 10, totalLevels: 35,
-    homeBonusPercent: 150, buildingBonusPercent: 28, bonusPercent: 178 });
-  assert.deepEqual(shop.currencyShopGoldOffers(middle).map(pack => pack.coins), [27800, 83400, 208500]);
-  assert.equal(firstQuote({ home: 1, garden: 1 }).coins, 10200, "one of 35 completed levels floors the bonus to two percent");
-  const full = state(Object.fromEntries(economyCatalog.buildings.map(building => [building.id, 5])));
-  assert.equal(shop.currencyShopDevelopment(full).bonusPercent, 700);
-  assert.deepEqual(shop.currencyShopGoldOffers(full).map(pack => pack.coins), [80000, 240000, 600000]);
+  assert.deepEqual(shop.currencyShopDevelopment(middle), { homeLevel: 3, completedLevels: 7, totalLevels: 30,
+    homeBonusPercent: 125, buildingBonusPercent: 5, bonusPercent: 130 });
+  assert.deepEqual(shop.currencyShopGoldOffers(middle).map(pack => pack.coins), [920, 2300, 4600]);
+  assert.equal(firstQuote({ home: 1, garden: 1 }).coins, 400, "one of thirty productive levels stays below one percent");
+  const full = state({ home: 5, workshop: 5, warehouse: 10, garden: 5, woodlot: 5, quarry: 5, dryer: 5, kiln: 5, bridge: 1, lighthouse: 1 });
+  assert.equal(shop.currencyShopDevelopment(full).completedLevels, 30, "only the six production stations contribute completed levels");
+  assert.equal(shop.currencyShopDevelopment(full).bonusPercent, 325);
+  assert.deepEqual(shop.currencyShopGoldOffers(full).map(pack => pack.coins), [1700, 4250, 8500]);
 });
 
 test("optional warehouse expansions preserve every original gold quote and never add a gold bonus", () => {
@@ -54,7 +55,8 @@ test("optional warehouse expansions preserve every original gold quote and never
   originalCatalog.buildings.find(building => building.id === "warehouse").levels =
     originalCatalog.buildings.find(building => building.id === "warehouse").levels.filter(level => level.level <= 5);
   for (const home of [1, 2, 3, 4, 5]) for (const warehouse of [0, 1, 2, 3, 4, 5]) for (const other of [0, 2, 5]) {
-    const buildings = Object.fromEntries(economyCatalog.buildings.map(building => [building.id, other]));
+    const buildings = Object.fromEntries(economyCatalog.buildings.map(building => [building.id,
+      ["bridge", "lighthouse"].includes(building.id) ? Math.min(1, other) : other]));
     Object.assign(buildings, { home, warehouse });
     const original = { catalog: originalCatalog, buildings };
     assert.deepEqual(shop.currencyShopGoldOffers(state(buildings)), shop.currencyShopGoldOffers(original));
@@ -69,23 +71,29 @@ test("optional warehouse expansions preserve every original gold quote and never
       assert.deepEqual(shop.currencyShopDevelopment(state({ ...buildings, warehouse })), baselineDevelopment);
     }
   }
+  const baseline = state({ home: 3, garden: 2, workshop: 3 });
+  for (const warehouse of [0, 1, 2, 5, 10]) for (const bridge of [0, 1]) for (const lighthouse of [0, 1]) {
+    const comfort = state({ ...baseline.buildings, warehouse, bridge, lighthouse });
+    assert.deepEqual(shop.currencyShopDevelopment(comfort), shop.currencyShopDevelopment(baseline));
+    assert.deepEqual(shop.currencyShopGoldOffers(comfort), shop.currencyShopGoldOffers(baseline));
+  }
 });
 
 test("development is monotonic, finite and bounded for every current completed level", () => {
   const buildings = { home: 1 };
-  let previous = 10000;
+  let previous = 400;
   for (const building of economyCatalog.buildings) for (const entry of building.levels) {
     buildings[building.id] = entry.level;
     const offers = shop.currencyShopGoldOffers(state(buildings));
     assert.ok(offers[0].coins >= previous);
     for (const quote of offers) {
       assert.ok(Number.isSafeInteger(quote.coins));
-      assert.ok(quote.coins <= quote.baseCoins * 8);
+      assert.ok(quote.coins <= quote.baseCoins * 4.25);
       assert.equal(quote.coins / quote.pearls, offers[0].coins / offers[0].pearls);
     }
     previous = offers[0].coins;
   }
-  assert.equal(previous, 80000);
+  assert.equal(previous, 1700);
 });
 
 test("unknown, unfinished and future uncatalogued buildings cannot boost the quote or mutate state", () => {
@@ -100,15 +108,15 @@ test("unknown, unfinished and future uncatalogued buildings cannot boost the quo
   assert.deepEqual(initial, frozen);
   assert.equal(shop.currencyShopDevelopment({ catalog: { buildings: [] }, buildings: { home: 100 } }).bonusPercent, 0);
   const impossible = Object.fromEntries(economyCatalog.buildings.map(building => [building.id, 100]));
-  assert.equal(firstQuote(impossible).coins, 80000, "saved levels cannot exceed the catalog cap");
-  for (const invalid of [NaN, Infinity, -1, 2.5]) assert.equal(firstQuote({ home: invalid, garden: invalid }).coins, 10000);
+  assert.equal(firstQuote(impossible).coins, 1700, "saved levels cannot exceed the catalog cap");
+  for (const invalid of [NaN, Infinity, -1, 2.5]) assert.equal(firstQuote({ home: invalid, garden: invalid }).coins, 400);
 });
 
-function harness(snapshot = state({ home: 3, garden: 2 })) {
+function harness(snapshot = state({ home: 3, garden: 2 }), initialPage) {
   hooks.reset();
   const focused = [];
   const render = () => {
-    hooks.render(); const tree = CurrencyShopPanel({ state: snapshot }), nodes = [];
+    hooks.render(); const tree = CurrencyShopPanel({ state: snapshot, initialPage }), nodes = [];
     function visit(element) { if (!isValidElement(element)) return; nodes.push(element); Children.forEach(element.props.children, visit); }
     visit(tree);
     nodes.filter(node => node.props.role === "tab").forEach((node, index) => node.props.ref?.({ focus() { focused.push(index); } }));
@@ -117,6 +125,24 @@ function harness(snapshot = state({ home: 3, garden: 2 })) {
   return { render, focused };
 }
 const tabs = view => view.nodes.filter(node => node.props.role === "tab");
+
+test("wallet entry selects the requested currency page while preserving the preview and keyboard tabs", () => {
+  for (const initialPage of ["gold", "pearls"]) {
+    const h = harness(state({ home: 3 }), initialPage);
+    let view = h.render();
+    const selected = tabs(view).find(node => node.props["aria-selected"]);
+    assert.equal(selected.props.id.endsWith(`-${initialPage}`), true);
+    assert.equal(selected.props.tabIndex, 0);
+    assert.equal(view.nodes.filter(node => node.props["data-shop-offer"]).length, initialPage === "gold" ? 3 : 4);
+    for (const action of view.nodes.filter(node => node.type === "button" && node.props.role !== "tab")) {
+      assert.equal(action.props.disabled, true);
+      assert.equal(action.props.onClick, undefined);
+    }
+    tabs(view).find(node => !node.props["aria-selected"]).props.onClick(); view = h.render();
+    assert.equal(tabs(view).filter(node => node.props["aria-selected"]).length, 1);
+    assert.equal(tabs(view).find(node => node.props["aria-selected"]).props.id.endsWith(`-${initialPage}`), false);
+  }
+});
 
 test("preview tabs show compact distinct currencies and cannot spend or grant either balance", () => {
   const snapshot = state({ home: 3, garden: 2 });
@@ -138,8 +164,8 @@ test("preview tabs show compact distinct currencies and cannot spend or grant ei
   }
   assert.match(view.html, /Золото за жемчуг/);
   assert.match(view.html, /Дом 3 ур\./);
-  assert.match(view.html, /\+155%/);
-  assert.match(view.html, /25[^\d]?500/);
+  assert.match(view.html, /\+126%/);
+  assert.match(view.html, /904/);
 });
 
 test("shop tabs support arrows, Home and End with one focusable tab and connected panel", () => {
@@ -168,14 +194,14 @@ test("a missing economy snapshot never invents a gold quote", () => {
 });
 
 
-test("pearl packages and gold exchange prices display half while gold outputs and raw quotes stay unchanged", () => {
+test("recalculated package prices display stored units as whole visible pearls", () => {
   const h = harness(state({ home: 1 })); let view = h.render();
   const amounts = () => [...view.html.matchAll(/<strong[^>]*>[\s\S]*?<\/strong>/g)].map(match => match[0].replace(/<[^>]*>/g, "").replace(/\s/g, ""));
-  assert.deepEqual(amounts(), ["250", "750", "2000", "5000"]);
+  assert.deepEqual(amounts(), ["500", "1200", "2500", "6500"]);
   tabs(view)[1].props.onClick(); view = h.render();
+  assert.match(view.html, /<span>20<\/span>/);
   assert.match(view.html, /<span>50<\/span>/);
-  assert.match(view.html, /<span>150<\/span>/);
-  assert.match(view.html, /<span>375<\/span>/);
-  assert.deepEqual(shop.currencyShopGoldOffers(state({ home: 1 })).map(pack => [pack.pearls, pack.coins]), [[100, 10000], [300, 30000], [750, 75000]]);
-  assert.deepEqual(amounts().slice(1), ["10000", "30000", "75000"]);
+  assert.match(view.html, /<span>100<\/span>/);
+  assert.deepEqual(shop.currencyShopGoldOffers(state({ home: 1 })).map(pack => [pack.pearls, pack.coins]), [[40, 400], [100, 1000], [200, 2000]]);
+  assert.deepEqual(amounts().slice(1), ["400", "1000", "2000"]);
 });

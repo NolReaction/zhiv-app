@@ -90,12 +90,12 @@ object AdminEconomyGrants {
         val pearlUnits = request.pearls * 2L
         if (request.coins > ECONOMY_MAX_BALANCE - state.wallet.coins || pearlUnits > ECONOMY_MAX_PEARLS - state.wallet.pearls)
             conflict("ECONOMY_CAPACITY", "Выдача превышает предельный баланс кошелька. Уменьшите количество валюты.")
-        val next = state.copy(
+        val next = EconomyFishStock.credit(state.copy(
             wallet = state.wallet.copy(coins = state.wallet.coins + request.coins, pearls = state.wallet.pearls + pearlUnits),
             inventory = EconomyRules.addItems(state.inventory, request.items), buildings = buildings, productionSlots = slots,
             fishing = state.fishing.copy(ownedRods = (state.fishing.ownedRods + request.rods).distinct(),
                 ownedHooks = (state.fishing.ownedHooks + request.hooks).distinct()),
-        )
+        ), request.items)
         EconomyRules.assertStorageTransition(state, next, reserved)
         return if (next == state) state else next.copy(residentOrders = EconomyFood.normalizedOrders(state, now))
     }

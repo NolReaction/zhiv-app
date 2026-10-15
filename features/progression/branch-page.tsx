@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type PointerEvent } from "react";
 import { Anchor, Apple, ArrowLeft, ArrowRight, Binoculars, Bird, BookOpen, Box, CalendarDays, Check, CircleCheck, Clock3, Compass, CookingPot, Droplets, Expand, Fence, Fish, FishingHook, FishingRod, Flame, Gift, Hammer, Hand, Heart, Home, Info, Leaf, MapPinned, Medal, Minus, Mountain, Package, Pickaxe, Plus, Sailboat, ScrollText, Search, Ship, Shirt, Sprout, Star, Store, TentTree, TowerControl, TreePine, Trees, Trophy, Warehouse, Waves, X, Zap, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { CollectionIcon } from "@/features/items/item-icon";
@@ -8,16 +8,25 @@ import { formatPearls } from "@/features/economy/domain/money";
 import { PlayerItemIcon } from "@/features/economy/ui/fishing/fish-discovery";
 import { getPrerequisiteIds, getProgressionResourceSource, progressionGraph, progressionItemNames, type ProgressionNode } from "./graph";
 import { buildProgressionLayout, COLUMN_WIDTH, NODE_HEIGHT, NODE_WIDTH, phaseTitles } from "./layout";
+import { EconomyPanel } from "./economy-panel";
 import styles from "./branch-page.module.css";
 
 type Point = { x: number; y: number };
 type Camera = Point & { scale: number };
 type Gesture = { start: Point; camera: Camera; distance?: number; moved: boolean };
+type BranchView = "world" | "economy";
+
+const readBranchView = (): BranchView => window.location.hash.startsWith("#economy") ? "economy" : "world";
+const serverBranchView = (): BranchView => "world";
+function subscribeBranchView(listener: () => void) {
+  window.addEventListener("hashchange", listener);
+  return () => window.removeEventListener("hashchange", listener);
+}
 
 const MIN_SCALE = 0.04;
 const MAX_SCALE = 1.8;
 const kindNames: Record<string, string> = { location: "Место на карте", building: "Улучшение хозяйства", recipe: "Производство", exploration: "Вылазка", acquisition: "Получение ресурсов", world: "Мир", collection: "Коллекция", equipment: "Снаряжение", milestone: "Прогресс", market: "Торговля", project: "Будущее мира" };
-const buildingIcons: Record<string, LucideIcon> = { home: Home, garden: Sprout, woodlot: Trees, quarry: Pickaxe, workshop: Hammer, dryer: CookingPot, kiln: Flame, warehouse: Warehouse };
+const buildingIcons: Record<string, LucideIcon> = { home: Home, garden: Sprout, woodlot: Trees, quarry: Pickaxe, workshop: Hammer, dryer: CookingPot, kiln: Flame, warehouse: Warehouse, bridge: Fence, lighthouse: TowerControl };
 const worldIcons: Record<string, LucideIcon> = {
   daily_rewards: Gift, pearl_trader: Store,
   start: Sprout, trader: Store, claimed: CircleCheck, market: Store, "place:home": Home, "place:workshop": Hammer, "place:woodlot": Trees, "place:quarry": Pickaxe, living: Leaf, bush: Droplets, campfire: TentTree, wildlife: Bird, bridge_ruin: Fence, lighthouse_ruin: TowerControl, album: BookOpen, travel_book: Leaf, quarry_book: Pickaxe, wardrobe: Shirt, life_marks: Heart, day_streak: CalendarDays, calendar_gifts: Gift, taps: Hand, player_level: Star, tap_streak: Zap, leaderboard: Trophy, achievements: Medal, pleska: FishingRod, fishing_catches: Fish, public_profiles: Star, pleska_home: Home, mine_interior: Pickaxe, bridge: Fence, far_bank: MapPinned, regional_trips: Compass, new_finds: Binoculars, shore_site: Waves, boat: Sailboat, port: Anchor, lighthouse: TowerControl, ships: Ship, sea_trips: Waves, orders: ScrollText, new_fruits: Apple, tackle: FishingHook,
@@ -71,6 +80,8 @@ function connectionPath(sourceId: string, targetId: string, index: number) {
 const itemSources = new Map(Object.keys(progressionItemNames).map(itemId => [itemId, getProgressionResourceSource(progressionGraph, itemId)?.id]));
 
 export function BranchPage() {
+  const view = useSyncExternalStore(subscribeBranchView, readBranchView, serverBranchView);
+  const tabsId = useId();
   const canvasRef = useRef<HTMLDivElement>(null);
   const detailRef = useRef<HTMLElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -98,6 +109,23 @@ export function BranchPage() {
   const location = selected.locationId ? nodeById.get(selected.locationId) : undefined;
 
   useEffect(() => { if (detailRef.current) detailRef.current.scrollTop = 0; }, [selected.id]);
+  useEffect(() => {
+    if (view === "economy" && window.location.hash !== "#economy") document.getElementById(window.location.hash.slice(1))?.scrollIntoView({ block: "start" });
+  }, [view]);
+
+  function selectView(next: BranchView) {
+    window.history.replaceState(window.history.state, "", `${window.location.pathname}${window.location.search}#${next}`);
+    window.dispatchEvent(new Event("hashchange"));
+  }
+
+  function tabsKeys(event: KeyboardEvent<HTMLElement>) {
+    const next = event.key === "Home" ? "world" : event.key === "End" ? "economy"
+      : event.key === "ArrowRight" || event.key === "ArrowLeft" ? view === "world" ? "economy" : "world" : null;
+    if (!next) return;
+    event.preventDefault();
+    selectView(next);
+    event.currentTarget.querySelector<HTMLButtonElement>(`[data-branch-tab="${next}"]`)?.focus();
+  }
 
   const updateCamera = useCallback((next: Camera) => {
     cameraRef.current = next;
@@ -160,6 +188,7 @@ export function BranchPage() {
     const observer = new ResizeObserver(() => {
       const width = viewport.clientWidth;
       const height = viewport.clientHeight;
+      if (width <= 0 || height <= 0) return;
       if (width === previousWidth && height === previousHeight) return;
       const current = cameraRef.current;
       updateCamera({ ...current, x: current.x + (width - previousWidth) / 2, y: current.y + (height - previousHeight) / 2 });
@@ -234,27 +263,32 @@ export function BranchPage() {
   const relatedButton = (node: ProgressionNode) => <button type="button" className={styles.relatedButton} onClick={() => selectNode(node.id, true)}><span aria-hidden="true"><NodeIcon node={node} size={21} /></span><span>{node.title}{node.status === "plan" && <small>План</small>}</span><ArrowRight size={14} aria-hidden="true" /></button>;
   const requirementNodes = Object.entries(selected.requirements).map(([buildingId, level]) => ({ node: nodeById.get(`b:${buildingId}:${level}`) ?? (buildingId === "completedExplorations" ? nodeById.get("claimed") : undefined), buildingId, level }));
 
-  return <main className={styles.page} onPointerDownCapture={() => { inputMode.current = "pointer"; }} onKeyDownCapture={event => {
+  return <main className={styles.page} data-view={view} onPointerDownCapture={() => { inputMode.current = "pointer"; }} onKeyDownCapture={event => {
     if (event.key === "Tab") inputMode.current = "keyboard";
     if (event.key === "Escape") {
       setQuery("");
       setDetailOpen(false);
-      if (detailRef.current?.contains(event.target as Node)) canvasRef.current?.focus();
+      if (view === "world" && detailRef.current?.contains(event.target as Node)) canvasRef.current?.focus();
     }
   }}>
     <header className={styles.header}>
       <Link href="/" className={styles.back} aria-label="Вернуться в Я живой"><ArrowLeft size={18} aria-hidden="true" /></Link>
       <div className={styles.heading}><span>Схема правил и возможностей</span><h1>Ветка развития мира</h1></div>
-      <div className={styles.search}>
+      {view === "world" && <div className={styles.search}>
         <Search size={17} aria-hidden="true" />
         <input ref={searchRef} type="search" value={query} placeholder="Мост, верстак, доски…" aria-label="Найти в ветке развития" aria-controls={query.trim() ? "branch-search-results" : undefined} onChange={event => setQuery(event.target.value)} onKeyDown={event => {
           if (event.key === "Enter" && searchResults[0]) { event.preventDefault(); selectNode(searchResults[0].id, true); setQuery(""); }
         }} />
         {query && <button type="button" aria-label="Очистить поиск" onClick={() => { setQuery(""); searchRef.current?.focus(); }}><X size={16} aria-hidden="true" /></button>}
         {query.trim() && <div className={styles.searchResults} id="branch-search-results"><p>{searchResults.length ? "Перейти к узлу" : "Ничего не найдено"}</p><ul>{searchResults.map(node => <li key={node.id}><button type="button" onClick={() => { selectNode(node.id, true); setQuery(""); searchRef.current?.focus(); }}><span aria-hidden="true"><NodeIcon node={node} size={24} /></span><span>{node.title}<small>{kindNames[node.kind]}{node.status === "plan" ? " · План" : ""}</small></span><ArrowRight size={15} aria-hidden="true" /></button></li>)}</ul></div>}
-      </div>
-      <button type="button" className={styles.mobileDetails} aria-label="Подробности выбранного узла" aria-expanded={detailOpen} onClick={() => setDetailOpen(value => !value)}><Info size={18} aria-hidden="true" /></button>
+      </div>}
+      {view === "world" && <button type="button" className={styles.mobileDetails} aria-label="Подробности выбранного узла" aria-expanded={detailOpen} onClick={() => setDetailOpen(value => !value)}><Info size={18} aria-hidden="true" /></button>}
     </header>
+    <nav className={styles.viewTabs} role="tablist" aria-label="Представление развития" onKeyDown={tabsKeys}>
+      <button type="button" role="tab" id={`${tabsId}-world-tab`} aria-controls={`${tabsId}-world-panel`} aria-selected={view === "world"} tabIndex={view === "world" ? 0 : -1} data-branch-tab="world" onClick={() => selectView("world")}><Trees size={17} aria-hidden="true" />Дерево мира</button>
+      <button type="button" role="tab" id={`${tabsId}-economy-tab`} aria-controls={`${tabsId}-economy-panel`} aria-selected={view === "economy"} tabIndex={view === "economy" ? 0 : -1} data-branch-tab="economy" onClick={() => selectView("economy")}><Package size={17} aria-hidden="true" />Ингредиенты и расчёты</button>
+    </nav>
+    <div className={styles.viewPanel} role="tabpanel" id={`${tabsId}-world-panel`} aria-labelledby={`${tabsId}-world-tab`} hidden={view !== "world"}>
     <div className={styles.workspace}>
       <section className={styles.board} aria-label="Связанное дерево развития">
         <div className={styles.toolbar}>
@@ -303,7 +337,7 @@ export function BranchPage() {
           {selected.seconds !== undefined && <p className={styles.duration}><Clock3 size={16} aria-hidden="true" /><span>{selected.kind === "building" ? "Обустройство" : "Один цикл"}</span><strong>{duration(selected.seconds)}</strong></p>}
           {selected.warehouseCapacity && <section><h3>Вместимость кладовой</h3><p className={styles.capacity}>{number(selected.warehouseCapacity)} <span>предметов</span></p></section>}
           {selected.rewards && Object.keys(selected.rewards).length > 0 && <section><h3>Получишь</h3><ul className={styles.itemList}>{Object.entries(selected.rewards).map(([id, count]) => <li key={id}><span><PlayerItemIcon itemId={id} size={18} />{progressionItemNames[id] ?? id}</span><strong>×{id === "pearls" ? formatPearls(count) : number(count)}</strong></li>)}</ul></section>}
-          {selected.fishingSource && <><section><h3>Возможные виды улова</h3><ul className={styles.itemList}>{selected.fishingSource.itemIds.map(id => <li key={id}><span><PlayerItemIcon itemId={id} size={18} />{progressionItemNames[id] ?? id}</span></li>)}</ul><p className={styles.sectionHint}>Конкретный вид не гарантирован. Шансы зависят от выбранных снастей; легендарная рыба требует легендарных удочки и крючка.</p></section><section><h3>Где рыбачить</h3><ul className={styles.relatedList}>{selected.fishingSource.routeIds.map(id => nodeById.get(`e:${id}`)).filter((node): node is ProgressionNode => !!node).map(node => <li key={node.id}>{relatedButton(node)}</li>)}</ul></section></>}
+          {selected.fishingSource && <><section><h3>Возможные классы улова</h3><ul className={styles.itemList}>{selected.fishingSource.itemIds.map(id => <li key={id}><span><PlayerItemIcon itemId={id} size={18} />{progressionItemNames[id] ?? id}</span></li>)}</ul><p className={styles.sectionHint}>Класс определяется снастями для каждой рыбы. Вид внутри класса выбирается равновероятно и сохраняется в коллекции. Легендарный класс открывает легендарная удочка; крючок и наживка усиливают свой класс.</p></section><section><h3>Где рыбачить</h3><ul className={styles.relatedList}>{selected.fishingSource.routeIds.map(id => nodeById.get(`e:${id}`)).filter((node): node is ProgressionNode => !!node).map(node => <li key={node.id}>{relatedButton(node)}</li>)}</ul></section></>}
           {selected.rareDrops && <><section><h3>Может выпасть один из типов</h3><ul className={styles.itemList}>{selected.rareDrops.itemIds.map(id => <li key={id}><span><PlayerItemIcon itemId={id} size={18} />{progressionItemNames[id] ?? id}</span><strong>1/{selected.rareDrops!.itemIds.length}</strong></li>)}</ul><p className={styles.sectionHint}>Доли относятся к типу очередной находки, а не к шансу каждой поездки. Отдельного производственного таймера нет.</p></section><section><h3>Подходит любой маршрут</h3><ul className={styles.relatedList}>{incoming.filter(node => node.kind === "exploration").map(node => <li key={node.id}>{relatedButton(node)}</li>)}</ul></section></>}
           {openedNodes.length > 0 && <section><h3>{selected.kind === "building" ? "Открывает и помогает открыть" : "Продолжение ветки"}</h3>{selected.kind === "building" && <p className={styles.sectionHint}>Для связанных улучшений могут понадобиться другие уровни хозяйства. Рецепты прошлых уровней остаются доступны.</p>}<ul className={styles.relatedList}>{openedNodes.map(node => <li key={node.id}>{relatedButton(node)}</li>)}</ul></section>}
           {(selected.rewards || selected.rareDrops || selected.fishingSource) && <section><h3>Где нужны эти ресурсы</h3><ul className={styles.relatedList}>{progressionGraph.nodes.filter(node => node.id !== selected.id && Object.keys(node.cost?.items ?? {}).some(id => selected.rewards?.[id] || selected.rareDrops?.itemIds.includes(id) || selected.fishingSource?.itemIds.includes(id))).map(node => <li key={node.id}>{relatedButton(node)}</li>)}</ul></section>}
@@ -311,5 +345,7 @@ export function BranchPage() {
         </div>
       </aside>
     </div>
+    </div>
+    <div className={styles.viewPanel} role="tabpanel" id={`${tabsId}-economy-panel`} aria-labelledby={`${tabsId}-economy-tab`} hidden={view !== "economy"}><EconomyPanel /></div>
   </main>;
 }

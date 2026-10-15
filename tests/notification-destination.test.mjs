@@ -27,6 +27,18 @@ test("stale notification falls back when another device already collected the re
   assert.deepEqual(worldNotificationDestination("construction", state, now), { kind: "builder" });
 });
 
+test("explicit mine notifications open quarry even after a claim while mixed activities retain their original destination", () => {
+  const miner = { ...job("mine", "exploration", "quarry_shift", -1000), actorId: "miner" };
+  const hero = job("hero", "exploration", "forest_gathering", -1000);
+  for (const jobs of [[], [miner], [miner, hero], [hero]]) {
+    const state = { jobs };
+    const before = structuredClone(state);
+    assert.deepEqual(worldNotificationDestination("mine", state, now), { kind: "station", stationId: "quarry" });
+    assert.deepEqual(worldNotificationDestination("activities", state, now), { kind: "activities" }, "generic notifications never guess an actor from remaining jobs");
+    assert.deepEqual(state, before, "notification navigation does not claim or mutate any work");
+  }
+});
+
 test("production notification ignores ripe berries until Mochlik finishes gathering", () => {
   const berries = job("berries", "production", "garden", -20_000, "grow_berries");
   const workshop = job("workshop", "production", "workshop", -1000, "rope");

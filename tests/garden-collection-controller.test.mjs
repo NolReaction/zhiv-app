@@ -6,7 +6,7 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
-const { createGardenCollectionController, economyGardenCrop, berryCollectionStatus } = await vite.ssrLoadModule("/features/economy/integration/garden-collection.ts");
+const { createGardenCollectionController, economyGardenCrop, berryCollectionStatus, isBerryProduction } = await vite.ssrLoadModule("/features/economy/integration/garden-collection.ts");
 const now = Date.UTC(2026, 9, 4), owner = "ABCD-EFGH-JKMP";
 const job = (id = "crop") => ({ id, kind: "production", targetId: "garden", recipeId: "grow_berries",
   startedAt: new Date(now - 600000).toISOString(), finishesAt: new Date(now).toISOString(), rewards: { berries: 6 },
@@ -28,10 +28,42 @@ test("parallel garden beds show the earliest crop but preserve one actor's reque
   assert.equal(berryCollectionStatus(ripe, saved, now, h.controller.getSnapshot()).disabled, true);
   assert.deepEqual(h.sent, []);
 });
+
+test("scene crops project every berry from confirmed rewards, independently of recipe names and unlocked levels", () => {
+  const ids = ["berries", "strawberries", "blueberries", "currants", "blackberries", "cranberries"];
+  const jobs = ids.map((itemId, index) => ({ ...job(`crop-${index}`), recipeId: "legacy_berry_recipe",
+    startedAt: new Date(now - 60_000 * (index + 1)).toISOString(),
+    finishesAt: new Date(now + 60_000 * index).toISOString(), rewards: { unknown_future_item: 1, [itemId]: 1 } }));
+  const ignored = [{ ...job("fiber"), rewards: { fiber: 1 } },
+    { ...job("workshop"), targetId: "workshop", rewards: { strawberries: 1 } },
+    { ...job("walk"), kind: "exploration", rewards: { blueberries: 1 } },
+    { ...job("empty"), rewards: { cranberries: 0 } }];
+  const saved = snapshot([...jobs, ...ignored]), before = structuredClone(saved);
+  const projected = economyGardenCrop(saved, "crop-4");
+  assert.equal(projected.itemId, "blackberries");
+  assert.deepEqual(projected.orders.map(order => order.itemId), ids);
+  assert.deepEqual(projected.orders.map(order => [order.startedAt, order.finishesAt]), jobs.map(entry => [entry.startedAt, entry.finishesAt]));
+  assert.deepEqual(saved, before, "visual metadata must not rewrite confirmed jobs or inventory");
+  assert.equal(economyGardenCrop(snapshot(ignored)), null);
+});
+
+test("large historical garden queues remain bounded while the explicitly collected crop is included", () => {
+  const jobs = Array.from({ length: 40 }, (_, index) => ({ ...job(`legacy-${String(index).padStart(2, "0")}`),
+    finishesAt: new Date(now + index * 1000).toISOString(), rewards: { strawberries: 1 } }));
+  const projected = economyGardenCrop(snapshot(jobs), "legacy-39");
+  assert.equal(projected.jobId, "legacy-39");
+  assert.equal(projected.orders.length, 32);
+  assert.equal(new Set(projected.orders.map(order => order.jobId)).size, 32);
+  assert.ok(projected.orders.some(order => order.jobId === "legacy-39"));
+  assert.equal(jobs.length, 40, "already paid jobs remain in the authoritative queue");
+});
 function harness(initial = {}, boundOwner = owner) {
   const controller = createGardenCollectionController(boundOwner), sent = [];
   let input = { snapshot: snapshot(), now, busy: false, uncertain: false, retryAt: 0, error: null, sceneAvailable: true, ...initial };
-  const update = patch => { input = { ...input, ...patch }; controller.update(input, (action, targetId) => sent.push({ action, targetId })); };
+  const update = patch => { input = { ...input, ...patch }; controller.update(input, (action, targetId) => {
+    if (input.refuse) return false;
+    sent.push({ action, targetId }); return true;
+  }, input.recoverPending); };
   update({});
   const event = (status, patch = {}) => controller.sceneEvent({ ...controller.getSnapshot().request, status, ...patch });
   function begin() {
@@ -45,7 +77,7 @@ function harness(initial = {}, boundOwner = owner) {
 
 test("normal harvest waits for both deposit and server deadline, retaining its scene request until confirmation", () => {
   const h = harness(), request = h.begin();
-  assert.deepEqual(h.sent, [{ action: "start_collection", targetId: "crop" }]);
+  assert.deepEqual(h.sent, [{ action: "start_garden_collection", targetId: "crop" }]);
   assert.equal(h.controller.start("crop"), false);
   h.update({ now: now + 1000 }); h.event("completed");
   assert.equal(h.controller.getSnapshot().phase, "waiting");
@@ -58,8 +90,124 @@ test("normal harvest waits for both deposit and server deadline, retaining its s
   for (let i = 0; i < 5; i++) { h.event("completed"); h.update({ busy: true, now: now + 8000 + i }); }
   assert.equal(h.sent.length, 2);
   h.update({ snapshot: { ...snapshot([]), revision: 3, inventory: { berries: 6 } }, busy: false });
-  assert.deepEqual(h.controller.getSnapshot(), { jobId: null, phase: "idle", request: null });
+  assert.deepEqual(h.controller.getSnapshot(), { jobId: null, jobIds: [], phase: "idle", request: null });
   assert.deepEqual(h.input.snapshot.inventory, { berries: 6 });
+});
+
+const batchId = "aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa";
+function batchJobs() {
+  return ["berries", "strawberries", "blueberries"].map((itemId, index) => ({
+    ...collecting(`batch-${index}`), rewards: { [itemId]: 1 },
+    collection: { ...collecting().collection, batchId },
+  }));
+}
+function ripeJobs() { return batchJobs().map(entry => ({ ...entry, collection: { ...entry.collection, batchId: undefined, startedAt: null, finishesAt: null } })); }
+
+test("one confirmed batch owns every ripe berry, one walk and one atomic claim while later crops stay growing", () => {
+  const ripe = ripeJobs(), later = { ...job("later"), rewards: { cranberries: 1 }, finishesAt: new Date(now + 4000).toISOString() };
+  const unrelated = { ...job("board"), targetId: "workshop", rewards: { plank: 1 }, collection: null };
+  const h = harness({ snapshot: snapshot([...ripe, later, unrelated]) });
+  for (const crop of ripe) assert.equal(berryCollectionStatus(crop, h.input.snapshot, now, h.controller.getSnapshot()).button, "Собрать всё (3)");
+  assert.equal(h.controller.start("batch-1"), true);
+  assert.deepEqual(h.sent, [{ action: "start_garden_collection", targetId: "batch-1" }]);
+  assert.equal(h.controller.start("batch-0"), false, "a neighboring button shares the same pending operation");
+  h.update({ busy: true }); h.update({ busy: false, snapshot: snapshot([...batchJobs(), later, unrelated]) });
+  const request = h.controller.getSnapshot().request;
+  assert.deepEqual(request.jobIds, ["batch-1", "batch-0", "batch-2"]);
+  assert.equal(request.jobId, "batch-1"); h.event("started");
+  for (const crop of batchJobs()) {
+    const status = berryCollectionStatus(crop, h.input.snapshot, now, h.controller.getSnapshot());
+    assert.equal(status.collecting, true); assert.equal(status.button, "Собирает…"); assert.equal(status.disabled, true);
+  }
+  h.update({ now: now + 9000 });
+  assert.equal(h.sent.length, 1, "an acknowledged scene keeps the one basket deposit");
+  assert.equal(berryCollectionStatus(later, h.input.snapshot, now + 9000, h.controller.getSnapshot()).away, true);
+  h.event("completed");
+  assert.deepEqual(h.sent.at(-1), { action: "claim_garden_collection", targetId: batchId });
+  assert.equal(h.sent.length, 2);
+  h.update({ busy: true }); h.update({ busy: false, snapshot: { ...snapshot([later, unrelated]), inventory: { berries: 1, strawberries: 1, blueberries: 1 } } });
+  assert.equal(h.controller.getSnapshot().phase, "idle"); assert.deepEqual(h.input.snapshot.jobs, [later, unrelated]);
+  assert.equal(h.controller.start("later"), true, "a crop ripening during the walk requires its own next harvest");
+});
+
+test("batch capacity is checked together before start and after a warehouse race without partial delivery", () => {
+  const state = { ...snapshot(ripeJobs()), storage: { available: 2 } };
+  const full = harness({ snapshot: state });
+  assert.equal(full.controller.start("batch-0"), false); assert.equal(full.sent.length, 0);
+  assert.equal(berryCollectionStatus(state.jobs[0], state, now, null).storageShortfall, 1);
+  const h = harness({ snapshot: snapshot(batchJobs()), now: now + 9000, sceneAvailable: false, refuse: true });
+  assert.equal(h.controller.getSnapshot().phase, "claim-ready", "a refused act cannot leave claiming stuck forever");
+  h.update({ refuse: false, snapshot: { ...snapshot(batchJobs()), storage: { available: 2 } } });
+  assert.equal(h.controller.start("batch-2"), false); assert.equal(h.sent.length, 0);
+  h.update({ snapshot: snapshot(batchJobs()) }); assert.equal(h.sent.length, 0, "storage recovery waits for a deliberate retry");
+  assert.equal(h.controller.start("batch-2"), true); assert.equal(h.sent.length, 1);
+  h.update({ busy: true }); h.update({ busy: false, error: "Кладовая заполнилась на другом устройстве" });
+  for (let index = 0; index < 4; index++) h.update({ now: now + 10000 + index });
+  assert.equal(h.controller.getSnapshot().phase, "claim-ready"); assert.equal(h.sent.length, 1);
+  assert.equal(h.input.snapshot.jobs.length, 3, "a rejected claim retains the entire authoritative batch");
+});
+
+test("a full page reload adopts batch deadlines both before and after completion without a lost animation event", () => {
+  for (const offset of [4000, 10000]) {
+    const restored = harness({ snapshot: snapshot(batchJobs()), now: now + offset });
+    assert.equal(restored.controller.getSnapshot().request, null);
+    assert.deepEqual(restored.controller.getSnapshot().jobIds, ["batch-0", "batch-1", "batch-2"]);
+    if (offset < 8000) {
+      assert.equal(restored.controller.getSnapshot().phase, "waiting"); assert.equal(restored.sent.length, 0);
+      restored.update({ now: now + 8000 });
+    }
+    assert.equal(restored.controller.getSnapshot().phase, "claiming");
+    assert.deepEqual(restored.sent, [{ action: "claim_garden_collection", targetId: batchId }]);
+    restored.update({ snapshot: { ...snapshot([]), inventory: { berries: 1, strawberries: 1, blueberries: 1 } } });
+    assert.equal(restored.controller.getSnapshot().phase, "idle");
+  }
+});
+
+test("refused starts return to idle, uncertain garden receipts recover once and wait through backoff", () => {
+  const refused = harness({ refuse: true }); assert.equal(refused.controller.start("crop"), false);
+  assert.equal(refused.controller.getSnapshot().phase, "idle"); assert.deepEqual(refused.sent, []);
+  let retries = 0;
+  const h = harness({ snapshot: null, uncertain: true, retryAt: now + 1000, recoverPending() { retries++; return true; } });
+  assert.equal(retries, 0); h.update({ now: now + 1000 }); assert.equal(retries, 1);
+  h.update({ snapshot: snapshot(batchJobs()), busy: true }); h.update({ busy: false, error: "Ответ потерян" });
+  for (let index = 0; index < 5; index++) h.update({ now: now + 2000 + index });
+  assert.equal(retries, 1, "the same unresolved receipt is not retried in a loop"); assert.equal(h.sent.length, 0);
+  h.update({ uncertain: false, error: null }); assert.equal(h.controller.getSnapshot().phase, "waiting");
+  h.update({ now: now + 8000 }); assert.deepEqual(h.sent, [{ action: "claim_garden_collection", targetId: batchId }]);
+});
+
+test("retired berry jobs without a saved harvest stage remain ordinary direct claims", () => {
+  const retired = { ...job("retired"), recipeId: "retired_garden_recipe", rewards: { berries: 13 }, collection: null };
+  const state = snapshot([retired, ...ripeJobs()]); const h = harness({ snapshot: state });
+  assert.equal(berryCollectionStatus(retired, state, now, null), null);
+  assert.equal(h.controller.start("retired"), false);
+  assert.equal(h.controller.start("batch-0"), true);
+  assert.deepEqual(h.controller.getSnapshot().jobIds, ["batch-0", "batch-1", "batch-2"]);
+});
+
+test("each new berry follows the same saved eight-second harvest while fiber remains an ordinary product", () => {
+  for (const itemId of ["blueberries", "currants", "blackberries", "cranberries"]) {
+    const crop = { ...job(), rewards: { [itemId]: 1 } };
+    const h = harness({ snapshot: snapshot([crop]), sceneAvailable: false });
+    assert.equal(isBerryProduction(crop), true);
+    assert.equal(economyGardenCrop(h.input.snapshot).jobId, "crop");
+    assert.equal(berryCollectionStatus(crop, h.input.snapshot, now, h.controller.getSnapshot()).button, "Собрать");
+    assert.equal(h.controller.start("crop"), true);
+    const accepted = { ...collecting(), rewards: crop.rewards };
+    h.update({ snapshot: snapshot([accepted]), busy: true });
+    h.update({ busy: false });
+    h.update({ now: now + 7999 });
+    assert.deepEqual(h.sent, [{ action: "start_garden_collection", targetId: "crop" }]);
+    h.update({ now: now + 8000 });
+    assert.deepEqual(h.sent.at(-1), { action: "claim_job", targetId: "crop" });
+    assert.deepEqual(h.input.snapshot.inventory, {}, "the controller waits for the receipt instead of issuing local items");
+  }
+  const fiber = { ...job("fiber"), rewards: { fiber: 1 }, collection: null };
+  assert.equal(isBerryProduction(fiber), false);
+  const h = harness({ snapshot: snapshot([fiber]) });
+  assert.equal(economyGardenCrop(h.input.snapshot), null);
+  assert.equal(h.controller.start("fiber"), false);
+  assert.deepEqual(h.sent, []);
 });
 
 test("an acknowledged long walk never claims just because eight or fifteen seconds have passed", () => {
@@ -199,5 +347,5 @@ test("active quarry blocks starting a harvest but returned unclaimed quarry free
   h.update({ now: now + 1000 });
   assert.equal(berryCollectionStatus(job(), h.input.snapshot, now + 1000, null).away, false);
   assert.equal(h.controller.start("crop"), true);
-  assert.deepEqual(h.sent, [{ action: "start_collection", targetId: "crop" }]);
+  assert.deepEqual(h.sent, [{ action: "start_garden_collection", targetId: "crop" }]);
 });

@@ -112,8 +112,9 @@ test("DEV preference persistence is authenticated, owner-bound, isolated and hon
 test("notification links permit only read-only app views and require an owner", () => {
   const origin = "https://zhiv.example";
   assert.deepEqual(browser.parseNotificationLink(`/?notification=world&section=activities&owner=${owner}`, origin), { ownerPublicId: owner, target: "activities" });
+  assert.deepEqual(browser.parseNotificationLink(`/?notification=world&section=mine&owner=${owner}`, origin), { ownerPublicId: owner, target: "mine" });
   assert.deepEqual(browser.parseNotificationLink(`/?notification=checkin&owner=${owner}`, origin), { ownerPublicId: owner, target: "checkin" });
-  for (const value of ["https://evil.example/?notification=checkin&owner=a", "/api/v1/check-ins?notification=checkin&owner=a", "/?notification=world&section=sell&owner=a", "/?notification=checkin", "javascript:alert(1)"]) assert.equal(browser.parseNotificationLink(value, origin), null, value);
+  for (const value of ["https://evil.example/?notification=checkin&owner=a", "/api/v1/check-ins?notification=checkin&owner=a", "/?notification=world&section=sell&owner=a", "/?notification=world&section=mine", "/?notification=checkin", "javascript:alert(1)"]) assert.equal(browser.parseNotificationLink(value, origin), null, value);
 });
 
 test("opening support detection never prompts; iOS installation and insecure context are explained", () => {

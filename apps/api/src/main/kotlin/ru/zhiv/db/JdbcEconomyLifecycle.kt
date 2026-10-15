@@ -7,11 +7,15 @@ import ru.zhiv.economy.ECONOMY_MAX_BALANCE
 import ru.zhiv.economy.ECONOMY_MAX_ITEMS
 import ru.zhiv.economy.EconomyState
 import ru.zhiv.economy.EconomyTutorialOrders
+import ru.zhiv.economy.EconomyStageOrders
 import ru.zhiv.economy.EconomyRules
 import ru.zhiv.economy.EconomyCollectionProgress
 import ru.zhiv.economy.EconomyRareDrops
 import ru.zhiv.economy.EconomyFood
 import ru.zhiv.economy.EconomyFoodState
+import ru.zhiv.economy.EconomyFishStock
+import ru.zhiv.economy.EconomyFishInventory
+import ru.zhiv.economy.EconomyItemUnlocks
 import ru.zhiv.world.WorldState
 import ru.zhiv.world.worldJson
 import ru.zhiv.economy.economyJson
@@ -29,7 +33,7 @@ private fun economyStateForReview(c: Connection, user: UUID): EconomyState {
         statement.setObject(1, user)
         statement.executeQuery().use { if (it.next()) economyJson.decodeFromString<EconomyState>(it.getString(1)) else null }
     }
-    if (current != null) return current
+    if (current != null) return EconomyFishInventory.state(current)
     val old = c.prepareStatement("SELECT state FROM world_profiles WHERE user_id=?").use { statement ->
         statement.setObject(1, user)
         statement.executeQuery().use { if (it.next()) worldJson.decodeFromString<WorldState>(it.getString(1)) else WorldState() }
@@ -53,8 +57,9 @@ internal fun economyMergeConflicts(c: Connection, target: UUID, source: UUID): L
         statement.setObject(3,target); statement.setObject(4,source)
         statement.executeQuery().use { rows -> buildMap<String, Long> { while (rows.next()) put(rows.getString(1),rows.getLong(2)) } }
     }
-    val combinedInventory = (states.flatMap { it.inventory.keys } + escrow.keys).distinct().associateWith { item ->
-        states.sumOf { it.inventory[item] ?: 0L } + (escrow[item] ?: 0L)
+    val canonicalEscrow = EconomyFishInventory.items(escrow)
+    val combinedInventory = (states.flatMap { it.inventory.keys } + canonicalEscrow.keys).distinct().associateWith { item ->
+        states.sumOf { it.inventory[item] ?: 0L } + (canonicalEscrow[item] ?: 0L)
     }
     val combinedBuildings = states.flatMap { it.buildings.keys }.distinct().associateWith { building ->
         states.maxOf { it.buildings[building] ?: 0 }
@@ -85,14 +90,19 @@ internal fun mergeEconomyProfiles(c: Connection, target: UUID, source: UUID) {
     val inventory = (a.inventory.keys + b.inventory.keys).associateWith { add(a.inventory[it] ?: 0, b.inventory[it] ?: 0,ECONOMY_MAX_ITEMS) }
     val buildings = (a.buildings.keys + b.buildings.keys).associateWith { maxOf(a.buildings[it] ?: 0, b.buildings[it] ?: 0) }
     val now = c.economyRows("SELECT clock_timestamp()") { it.getObject(1, OffsetDateTime::class.java).toInstant() }.single()
-    saveEconomyProfile(c, target, a.copy(wallet=a.wallet.copy(coins=add(a.wallet.coins,b.wallet.coins), pearls=add(a.wallet.pearls,b.wallet.pearls,ECONOMY_MAX_PEARLS)),
+    saveEconomyProfile(c, target, EconomyStageOrders.pin(a.copy(wallet=a.wallet.copy(coins=add(a.wallet.coins,b.wallet.coins), pearls=add(a.wallet.pearls,b.wallet.pearls,ECONOMY_MAX_PEARLS)),
         wardrobe=(a.wardrobe+b.wardrobe).distinct().sorted(), inventory=inventory, buildings=buildings, completedExplorations=add(a.completedExplorations,b.completedExplorations,ECONOMY_MAX_ITEMS),
         fishing=a.fishing.copy(ownedRods=(a.fishing.ownedRods+b.fishing.ownedRods).distinct(),
             ownedHooks=(a.fishing.ownedHooks+b.fishing.ownedHooks).distinct(),
+            stock=EconomyFishStock.merge(a,b),
+            escrow=if (a.fishing.escrow == null && b.fishing.escrow == null) null else a.fishing.escrow.orEmpty() + b.fishing.escrow.orEmpty(),
             catches=(a.fishing.catches.keys+b.fishing.catches.keys).associateWith {
                 minOf(ECONOMY_MAX_ITEMS,(a.fishing.catches[it] ?: 0)+(b.fishing.catches[it] ?: 0)) }),
         fishingCastSeed=a.fishingCastSeed ?: b.fishingCastSeed,
         fishingShop=a.fishingShop ?: b.fishingShop,
+        marketSlots=maxOf(a.marketSlots,b.marketSlots),
+        unlockedItems=(EconomyItemUnlocks.project(a)+EconomyItemUnlocks.project(b)).distinct().sorted(),
+        itemUnlockVersion=1,
         productionSlots=(a.productionSlots.keys+b.productionSlots.keys).associateWith {
             maxOf(EconomyRules.productionSlotCount(a,it),EconomyRules.productionSlotCount(b,it)) },
         progression=EconomyCollectionProgress.merge(a.progression,b.progression),
@@ -100,7 +110,9 @@ internal fun mergeEconomyProfiles(c: Connection, target: UUID, source: UUID) {
         residentOrders=EconomyFood.mergeOrders(a.copy(buildings=buildings),b.copy(buildings=buildings),now),
         workshopStarterClaimed=a.workshopStarterClaimed || b.workshopStarterClaimed,
         tutorialOrder=EconomyTutorialOrders.merge(a.tutorialOrder,b.tutorialOrder),
-        rareDropState=EconomyRareDrops.merge(a.rareDropState,b.rareDropState)), recordAwards=false)
+        stageOrders=EconomyStageOrders.merge(a.stageOrders,b.stageOrders),
+        rareDropState=EconomyRareDrops.merge(a.rareDropState,b.rareDropState),
+        minerRareDropState=EconomyRareDrops.merge(a.minerRareDropState,b.minerRareDropState)), now=now), recordAwards=false)
     // Preserve original signatures: an old source browser cannot reuse a consumed request ID.
     c.lifecycleEconomyUpdate("""INSERT INTO economy_commands(user_id,request_id,signature,message,accepted_revision)
         SELECT ?,request_id,signature,message,accepted_revision FROM economy_commands WHERE user_id=? ON CONFLICT DO NOTHING""", target, source)

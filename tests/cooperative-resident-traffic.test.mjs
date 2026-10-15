@@ -168,7 +168,7 @@ test("idle Mochlik yields to another resident's approach without inventing a com
   assert.equal(clearing.behavior.mind.intention, null); assert.deepEqual(clearing.behavior.mind.recent, []);
 });
 
-test("reciprocal held goals use one yielding resident and resume the same queued trade", () => {
+test("reciprocal held goals keep the same queued trade while passing locally", () => {
   const world = scene(); world.destinations[1].position = { ...world.actor.spawn };
   const clearing = createClearingActivity(world), plesk = createPleskMind(world), goal = { ...plesk.position };
   const state = { clearing, builderMind: null, pleskMind: plesk };
@@ -176,17 +176,15 @@ test("reciprocal held goals use one yielding resident and resume the same queued
   advancePleskMind(plesk, world, 1, { rain: 0, dusk: 0 });
   assert.equal(plesk.stage.action, "walk");
   assert.equal(requestClearingPoint(clearing, goal), true);
-  let yielded = false;
   for (let time = 0; time < 45 && (plesk.stage.action !== "trade" || !isClearingAtPoint(clearing, goal)); time += .025) {
     let others = snapshot(state, world), before = { ...plesk.position };
     advancePleskMind(plesk, world, .025, { rain: 0, dusk: 0, occupants: others });
     safeStep(before, plesk.position, 16, .025, pleskLocalPlaces(world).nav, others, "plesk", 36);
-    yielded ||= plesk.stage.target.id === "plesk-yield";
     others = snapshot(state, world); before = { ...clearing.position };
     advanceClearingActivity(clearing, .025, { ...conditions, occupants: others });
     safeStep(before, clearing.position, 18, .025, clearing.navigation, others, "mochlik", 50);
   }
-  assert.ok(yielded); assert.ok(isClearingAtPoint(clearing, goal)); assert.equal(plesk.stage.action, "trade");
+  assert.ok(isClearingAtPoint(clearing, goal)); assert.equal(plesk.stage.action, "trade");
   assert.deepEqual(plesk.position, world.destinations[1].position); assert.equal(plesk.catchCount, 2);
 });
 

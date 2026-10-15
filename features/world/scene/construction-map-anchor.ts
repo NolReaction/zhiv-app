@@ -9,12 +9,14 @@ export type MapObjectScreenAnchor = {
   pointerOffset: number;
 };
 
-/** Screen-pixel dimensions keep a timer readable at every map zoom. */
-export const CONSTRUCTION_MARKER = { width: 124, height: 44, gap: 10, margin: 8 } as const;
+/** The compact 80px pill sits within a real 98 × 44px touch target.
+ * Project/cull the touch target, so invisible padding cannot cover the HUD. */
+export const CONSTRUCTION_MARKER = { width: 98, height: 44, gap: 10, margin: 8 } as const;
 
 const constructionPlaces: Readonly<Record<string, MapObjectPlace>> = {
   home: "house", warehouse: "house", workshop: "workshop", kiln: "workshop",
   garden: "garden", woodlot: "woodlot", quarry: "quarry", dryer: "campfire",
+  bridge: "bridge", lighthouse: "lighthouse",
 };
 
 /** Interior stations belong to their real map host; no invented coordinates. */
@@ -24,11 +26,12 @@ export function constructionMapPlace(stationId: string): MapObjectPlace | null {
 
 /** The active Tiled contour follows rotations and selected artwork levels. */
 export function projectConstructionAnchor(object: MapInteractiveObject, camera: Camera, view: Viewport,
-  insets: VerticalCameraInsets = { top: 0, bottom: 0 }): MapObjectScreenAnchor | null {
+  insets: VerticalCameraInsets = { top: 0, bottom: 0 }, markerHeight: number = CONSTRUCTION_MARKER.height): MapObjectScreenAnchor | null {
   if (!object.hitArea.length) return null;
   const xs = object.hitArea.map(point => point.x), ys = object.hitArea.map(point => point.y);
   const roof = worldToScreen({ x: (Math.min(...xs) + Math.max(...xs)) / 2, y: Math.min(...ys) }, camera, view);
-  const { width, height, gap, margin } = CONSTRUCTION_MARKER;
+  const { width, gap, margin } = CONSTRUCTION_MARKER;
+  const height = Number.isFinite(markerHeight) ? Math.max(CONSTRUCTION_MARKER.height, markerHeight) : CONSTRUCTION_MARKER.height;
   const y = Math.round(roof.y - gap);
   // Do not pin an offscreen building's timer to the HUD or to another building.
   if (![roof.x, roof.y, view.width, view.height].every(Number.isFinite) || view.width < width + margin * 2

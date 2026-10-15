@@ -168,7 +168,10 @@ class NotificationDispatcher(
             NotificationMessageEvent(source.event.category,source.job,source.readiness.phase,
                 storageBlocked=source.event.category=="production" && storageBlocked)
         })
+        // Only the ready confirmed batch determines the actor and destination.
+        val onlyMine=readySources.all { it.job?.let(EconomyRules::isMinerJob)==true }
         val target=when {
+            onlyMine -> "world&section=mine"
             "exploration" in categories -> "world&section=activities"
             "construction" in categories -> "world&section=construction"
             "production" in categories -> "world&section=production"

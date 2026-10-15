@@ -7,12 +7,12 @@ import { ItemIcon } from "@/features/items/item-icon";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import type { EconomyView } from "@/features/economy/domain/model";
-import { currencyShopDevelopment, currencyShopGoldOffers, PEARL_SHOP_PACKAGES } from "@/features/economy/domain/currency-shop";
+import { currencyShopDevelopment, currencyShopGoldOffers, HOME_BONUS_PERCENT, MAX_BUILDING_BONUS_PERCENT, PEARL_SHOP_PACKAGES } from "@/features/economy/domain/currency-shop";
 import { formatPearls } from "@/features/economy/domain/money";
 import styles from "./currency-shop-panel.module.css";
 
 const pages = [{ id: "pearls", label: "Жемчуг", icon: Gem }, { id: "gold", label: "Золото", icon: Coins }] as const;
-type ShopPage = typeof pages[number]["id"];
+export type CurrencyShopPage = typeof pages[number]["id"];
 const number = (value: number) => value.toLocaleString("ru-RU");
 
 function CurrencyPile({ kind, tier }: { kind: "pearls" | "coins"; tier: number }) {
@@ -22,11 +22,11 @@ function CurrencyPile({ kind, tier }: { kind: "pearls" | "coins"; tier: number }
 }
 
 /** Purchases remain a preview; the separate promo form redeems a server-confirmed gift. */
-export function CurrencyShopPanel({ state, onRedeemed }: { state: EconomyView | null; onRedeemed?: () => void | Promise<unknown> }) {
-  const [page, setPage] = useState<ShopPage>("pearls");
+export function CurrencyShopPanel({ state, onRedeemed, initialPage = "pearls" }: { state: EconomyView | null; onRedeemed?: () => void | Promise<unknown>; initialPage?: CurrencyShopPage }) {
+  const [page, setPage] = useState<CurrencyShopPage>(initialPage);
   const id = useId(), tabs = useRef<Array<HTMLButtonElement | null>>([]);
   const development = state ? currencyShopDevelopment(state) : null;
-  function changePage(next: ShopPage) {
+  function changePage(next: CurrencyShopPage) {
     if (next === page) return;
     playUiCue(getAudioRuntime(), "ui.tab");
     setPage(next);
@@ -49,7 +49,7 @@ export function CurrencyShopPanel({ state, onRedeemed }: { state: EconomyView | 
         else return;
         event.preventDefault(); changePage(pages[next].id); tabs.current[next]?.focus();
       }}><entry.icon size={18} aria-hidden="true" />{entry.label}</button>)}</div>
-    <p className={styles.preview} id={`${id}-preview`}>Витрина готовится к открытию. Покупки и обмен пока недоступны. Пакеты и бонусы ещё уточняются.</p>
+    <p className={styles.preview} id={`${id}-preview`}>Витрина готовится к открытию. Покупки и обмен пока недоступны.</p>
     <div className={styles.page} role="tabpanel" id={`${id}-page`} aria-labelledby={`${id}-${page}`} tabIndex={0}>
       {page === "pearls" ? <>
         <div className={styles.heading}><h3>Жемчуг</h3><p>Для ускорений, новых слотов и особенных вещей</p></div>
@@ -64,8 +64,8 @@ export function CurrencyShopPanel({ state, onRedeemed }: { state: EconomyView | 
           <div className={styles.development}>
             <strong>Ваш бонус <span>+{development.bonusPercent}%</span></strong>
             <div><span><House size={15} aria-hidden="true" />Дом {development.homeLevel} ур. <b>+{development.homeBonusPercent}%</b></span>
-              <span><Sprout size={15} aria-hidden="true" />Постройки <b>+{development.buildingBonusPercent}%</b></span></div>
-            <details><summary>Как растёт бонус</summary><p>За дом: +0 / 50 / 150 / 300 / 600% на уровнях 1-5. За завершённые уровни остальных построек: ещё до +100%. Сейчас {development.completedLevels} из {development.totalLevels}. Бонусы складываются; стройка в процессе пока не учитывается.</p></details>
+              <span><Sprout size={15} aria-hidden="true" />Производства <b>+{development.buildingBonusPercent}%</b></span></div>
+            <details><summary>Как растёт бонус</summary><p>За дом: +{HOME_BONUS_PERCENT.join(" / ")}% на уровнях 1-{HOME_BONUS_PERCENT.length}. За завершённые уровни производств: ещё до +{MAX_BUILDING_BONUS_PERCENT}%. Сейчас {development.completedLevels} из {development.totalLevels}. Кладовая, мост и маяк бонус не увеличивают. Бонусы складываются; стройка в процессе пока не учитывается.</p></details>
           </div>
           <div className={styles.packages} data-gold="true">{currencyShopGoldOffers(state).map((pack, index) => <article className={styles.package} key={pack.id} data-shop-offer={`gold-${pack.id}`}>
             <CurrencyPile kind="coins" tier={index + 1} /><h4>{pack.name}</h4>

@@ -9,7 +9,7 @@ export type ResidentOccupant = {
 };
 export type ResidentRouteIntent = { readonly points: readonly WorldPoint[]; readonly target: WorldPoint; readonly priority: number };
 export const RESIDENT_TRAFFIC_LIMITS = { clearanceRatio: .28, occupants: 8, retry: .8, priorityWait: .35,
-  searches: 4, polygonSides: 12, intentPoints: 16, lookAheadRatio: 2.5 } as const;
+  searches: 4, polygonSides: 12, intentPoints: 16, lookAheadRatio: 2.5, localDetourRatio: 2 } as const;
 const finite = (point: WorldPoint) => Number.isFinite(point?.x) && Number.isFinite(point?.y);
 const distance = (a: WorldPoint, b: WorldPoint) => Math.hypot(a.x - b.x, a.y - b.y);
 const EPS = 1e-7;
@@ -58,8 +58,8 @@ export function residentPassageClear(position: WorldPoint, size: number, other: 
     || segmentDistance(position, intent.points[index - 1], point) >= gap);
 }
 
-/** Higher-value work gets the passage; equal priorities have one stable winner.
- * Nobody acquires permission to step through occupied feet. */
+/** Higher-value work may ask an idle pose to clear the passage; equal priorities
+ * have one stable winner. Walking pairs use residentWalkingStep separately. */
 export function residentRequestingPassage(position: WorldPoint, size: number, occupants: readonly ResidentOccupant[] | undefined,
   selfId: string, priority: number): ResidentOccupant | undefined {
   return neighbours(occupants, selfId).filter(other => other.moving && other.intent
@@ -103,10 +103,39 @@ export function canTraverseResidents(from: WorldPoint, to: WorldPoint, size: num
   });
 }
 
-type Attempt = { base: WorldNavigation; key: string; navigation: WorldNavigation | null; retryAt: number; waited: boolean };
+type Attempt = { base: WorldNavigation; key: string; navigation: WorldNavigation | null; retryAt: number; waited: boolean; failed: boolean };
 const attempts = new WeakMap<object, Attempt>();
 type DetourOptions = { owner: object; navigation: WorldNavigation; from: WorldPoint; target: WorldPoint; size: number;
   occupants: readonly ResidentOccupant[] | undefined; selfId: string; time: number };
+const passing = new WeakMap<object, { navigation: WorldNavigation; target: string; ids: Set<string> }>();
+
+/** Preserve a walking route in a tight passage instead of sending both walkers
+ * around the whole map. Only moving neighbours with a real route can start a
+ * soft pass, and it stays latched until their feet have separated. Fixed work,
+ * props and scene geometry never receive that exception. */
+export function residentWalkingStep(options: DetourOptions, to: WorldPoint): { clear: boolean; path?: WorldPoint[] } {
+  const { owner, navigation, from, target, size, occupants, selfId } = options;
+  if (!canTraverse(navigation, from, to)) return { clear: false };
+  const targetKey = `${target.x}:${target.y}`, others = neighbours(occupants, selfId);
+  let pass = passing.get(owner);
+  if (pass?.navigation !== navigation || pass.target !== targetKey) { passing.delete(owner); pass = undefined; }
+  if (pass) for (const id of pass.ids) {
+    const other = others.find(item => item.id === id);
+    if (!other || distance(from, other.position) > residentClearance(size, other.size) * 1.6) pass.ids.delete(id);
+  }
+  const blockers = others.filter(other => !canTraverseResidents(from, to, size, [other], selfId));
+  if (!blockers.length) return { clear: true };
+  if (canTraverse(navigation, from, to) && blockers.every(other => pass?.ids.has(other.id))) return { clear: true };
+  const path = residentTrafficDetour(options);
+  if (path) return { clear: false, path };
+  if (attempts.get(owner)?.failed && canTraverse(navigation, from, to)
+    && blockers.every(other => pass?.ids.has(other.id) || other.moving && other.intent && other.intent.priority > 0)) {
+    pass ??= { navigation, target: targetKey, ids: new Set() };
+    blockers.forEach(other => pass!.ids.add(other.id)); passing.set(owner, pass);
+    return { clear: true };
+  }
+  return { clear: false };
+}
 
 /** Called only after a blocked walking step. One cached variant per mover and
  * a bounded retry rate; the shared scene grid and parked basket stay immutable. */
@@ -120,17 +149,26 @@ export function residentTrafficDetour(options: DetourOptions): WorldPoint[] | nu
   if (previous?.base === navigation && time < previous.retryAt) return null;
   const key = `${size};${others.map(other => `${other.id}:${other.position.x}:${other.position.y}:${other.size}`).join(";")}`;
   if (!previous || previous.base !== navigation || previous.key !== key) {
-    previous = { base: navigation, key, navigation: null, retryAt: time, waited: false };
+    previous = { base: navigation, key, navigation: null, retryAt: time, waited: false, failed: false };
     attempts.set(owner, previous);
   }
   previous.retryAt = time + RESIDENT_TRAFFIC_LIMITS.retry;
-  // A deterministic winner initially holds its line; the other mover takes the
-  // detour. Nobody is allowed through occupied feet, including the winner.
-  if (!previous.waited && others.some(other => other.moving && selfId < other.id
+  previous.failed = false;
+  const fail = () => { previous.failed = true; return null; };
+  // Legacy snapshots without route intent retain their brief priority wait.
+  // Live walking pairs can start a soft pass after a bounded detour fails.
+  if (!previous.waited && others.some(other => other.moving && !other.intent && selfId < other.id
     && distance(from, other.position) < residentClearance(size, other.size) * 1.6)) {
     previous.waited = true; previous.retryAt = time + RESIDENT_TRAFFIC_LIMITS.priorityWait; return null;
   }
-  if (others.some(other => distance(target, other.position) < residentClearance(size, other.size))) return null;
+  if (others.some(other => distance(target, other.position) < residentClearance(size, other.size))) return fail();
+  const baseline = findWorldPath(navigation, from, target);
+  if (!baseline) return fail();
+  const pathLength = (points: WorldPoint[]) => points.reduce((sum, point, index) => sum + (index ? distance(points[index - 1], point) : 0), 0);
+  const localBudget = Math.max(...others.map(other => residentClearance(size, other.size))) * RESIDENT_TRAFFIC_LIMITS.localDetourRatio;
+  const baselineLength = pathLength(baseline);
+  const local = (points: WorldPoint[]) => pathLength(points) <= baselineLength + localBudget
+    && points.every(point => baseline.some((end, index) => index > 0 && segmentDistance(point, baseline[index - 1], end) <= localBudget));
   let dynamic = previous.navigation;
   if (!dynamic) {
     dynamic = navigation;
@@ -142,7 +180,7 @@ export function residentTrafficDetour(options: DetourOptions): WorldPoint[] | nu
         return { x: other.position.x + Math.cos(angle) * radius, y: other.position.y + Math.sin(angle) * radius };
       });
       dynamic = withWorldNavigationObstacle(dynamic, polygon);
-      if (!dynamic) return null;
+      if (!dynamic) return fail();
     }
     previous.navigation = dynamic;
   }
@@ -151,7 +189,7 @@ export function residentTrafficDetour(options: DetourOptions): WorldPoint[] | nu
       && canTraverseResidents(points[index - 1], point, size, occupants, selfId));
   if (isWalkable(dynamic, from)) {
     const path = findWorldPath(dynamic, from, target);
-    return path && safe(path) ? path : null;
+    return path && local(path) && safe(path) ? path : fail();
   }
   // Hydration or a newly visible neighbour can leave overlapping initial feet.
   // Escape along a checked ground segment, then join a normal safe detour.
@@ -167,9 +205,9 @@ export function residentTrafficDetour(options: DetourOptions): WorldPoint[] | nu
       if (!canTraverse(navigation, from, point) || !canTraverseResidents(from, point, size, occupants, selfId)
         || !isWalkable(dynamic, point)) continue;
       const rest = findWorldPath(dynamic, point, target); searches++;
-      if (rest) { const path = [from, ...rest]; if (safe(path)) return path; }
-      if (searches >= RESIDENT_TRAFFIC_LIMITS.searches) return null;
+      if (rest) { const path = [from, ...rest]; if (local(path) && safe(path)) return path; }
+      if (searches >= RESIDENT_TRAFFIC_LIMITS.searches) return fail();
     }
   }
-  return null;
+  return fail();
 }

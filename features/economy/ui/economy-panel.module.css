@@ -28,6 +28,7 @@
 .heading > div { display: grid; gap: 5px; min-width: 0; }
 .eyebrow { color: #5b673c; font-size: .65rem; font-weight: 700; text-transform: uppercase; letter-spacing: .12em; }
 .stack { display: grid; gap: 12px; min-width: 0; }
+.productionGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; gap: 8px; min-width: 0; }
 .card { display: grid; gap: 11px; padding: 14px; border: 1px solid var(--economy-line); border-radius: 18px; background: linear-gradient(135deg, #f4ebd4, #eadebd); min-width: 0; }
 .card[data-ready='true'] { border-color: #839466; background: linear-gradient(135deg, #e1e3bd, #eae4c8); }
 .cardHeader { display: flex; align-items: flex-start; gap: 11px; }

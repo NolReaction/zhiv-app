@@ -18,6 +18,10 @@ test("a simulated new player reaches home two from starting supplies using actua
     assert.equal(report.actions.buy_fishing_item, undefined);
     assert.equal(report.actions.speedup_construction, undefined);
     assert.equal(report.actions.cancel_exploration, undefined);
+    assert.equal(report.actions.complete_resident_order, 12);
+    assert.equal(report.coinFlow.orders, 2890);
+    assert.equal(report.actions.claim_tutorial_order, undefined);
+    assert.equal(report.actions.claim_workshop_starter, undefined);
     assert(report.actions.start_fishing > 0, "The current fishing UI path is exercised");
     assert.equal(report.completionGoal, "base-tier-5");
     assert.equal(report.targetBuildingLevels.warehouse, 5);
@@ -28,7 +32,9 @@ test("the comparison base, final home and all current upgrades are distinct repr
   const catalog = readEconomyCatalog();
   assert.deepEqual(journeyConstructionOrder(catalog), journeyOrder);
   const full = journeyConstructionOrder(catalog, "all-current-buildings");
-  assert.deepEqual(full.slice(journeyOrder.length), ["warehouse:6", "warehouse:7", "warehouse:8", "warehouse:9", "warehouse:10"]);
+  assert.deepEqual(full.slice(full.indexOf("warehouse:5") + 1, full.indexOf("garden:5")),
+    ["warehouse:6", "warehouse:7", "warehouse:8", "warehouse:9", "warehouse:10"]);
+  assert(full.indexOf("warehouse:10") < full.indexOf("quarry:5"));
   const home = journeyConstructionOrder(catalog, "home-5");
   assert.equal(home.at(-1), "home:5");
   assert(!home.some(key => key.startsWith("warehouse:") && Number(key.split(":")[1]) > 4));
@@ -45,10 +51,17 @@ test("the comparison base, final home and all current upgrades are distinct repr
   } finally { await loaded.close(); }
 });
 
-test("an automated player can complete all current buildings including storage ten with earned relics", async () => {
+test("an automated player visiting three times daily can complete all current buildings and storage ten with earned relics", async () => {
   const loaded = await loadJourneyRules();
   try {
-    const report = simulateJourney(loaded, "active16h", 1600,
+    let firstCommandAt = null;
+    const observed = { ...loaded, rules: { ...loaded.rules, applyEconomyCommand: (state, command, now, ...args) => {
+      firstCommandAt ??= now;
+      if (now - firstCommandAt >= 50 * 86400000)
+        assert(state.buildings.warehouse >= 3, "Crowded storage must not trap the planner replacing needed ore instead of making upgrade materials");
+      return loaded.rules.applyEconomyCommand(state, command, now, ...args);
+    } } };
+    const report = simulateJourney(observed, "visits3", 500,
       { ...jointPlanningPolicy, dailyRewards: true, completionGoal: "all-current-buildings" });
     assert.equal(report.complete, true);
     assert.equal(report.stoppedAt, null);
@@ -57,7 +70,8 @@ test("an automated player can complete all current buildings including storage t
     for (const id of loaded.catalog.rareDrops.itemIds) {
       const required = loaded.catalog.buildings.reduce((sum, building) => sum + building.levels.reduce((total, level) => total + (level.cost.items[id] ?? 0), 0), 0);
       assert.equal(report.rareMaterials.spentOnConstruction[id], required);
-      assert.equal(report.rareMaterials.received[id] + (report.dailyRewards.itemsReceived[id] ?? 0) - required, report.rareMaterials.inventory[id]);
+      assert.equal(report.rareMaterials.received[id] + report.rareMaterials.stageRewards[id]
+        + (report.dailyRewards.itemsReceived[id] ?? 0) - required, report.rareMaterials.inventory[id]);
     }
     assert(report.milestones.some(milestone => milestone.building === "warehouse:10"));
     assert(report.dailyRewards.claims > 7);
@@ -93,17 +107,33 @@ test("lookahead prepares later upgrades with real commands while omitted options
 test("an explicit research pearl balance pays only actual construction speedups and cannot create materials", async () => {
   const loaded = await loadJourneyRules();
   try {
-    const casts = [];
+    const casts = [], fishSales = [];
     const observed = { ...loaded, rules: { ...loaded.rules, applyEconomyCommand: (state, command, now, jobId, reserved, rareRandom) => {
+      const beforeCoins = state.wallet.coins;
       const result = loaded.rules.applyEconomyCommand(state, command, now, jobId, reserved, rareRandom);
       if (command.action === "start_fishing") casts.push(state.fishingCastSeed);
+      const group = loaded.fishing.fishClassForItem(command.targetId, loaded.catalog.fishing);
+      if (group && ["sell", "sell_fish"].includes(command.action)) {
+        assert.equal(command.action, "sell_fish", "The simulated player sells class stock to Pleska at the specialist price");
+        const price = loaded.catalog.items.find(item => item.id === group.itemId).baseSellPrice;
+        assert.equal(state.wallet.coins - beforeCoins, price * command.quantity);
+        fishSales.push(group.itemId);
+      }
       return result;
     } } };
-    simulateJourney(observed, "visits3", 40, lookaheadPolicy);
+    // Minute-scale fishing needs an active visit schedule. At three visits per
+    // day, a rational construction policy prefers long forest/mining outings.
+    const baselineReport = simulateJourney(observed, "active16h", 2, lookaheadPolicy);
     const baseline = casts.splice(0);
-    const result = simulateJourney(observed, "visits3", 40, { ...lookaheadPolicy, pearlBudget: 1000 });
+    assert(fishSales.length > 0 && fishSales.every(id => id.startsWith("fish_")));
+    const result = simulateJourney(observed, "active16h", 2, { ...lookaheadPolicy, pearlBudget: 1000 });
     const pairedCasts = Math.min(casts.length, baseline.length);
-    assert(pairedCasts >= 20, "Both policies exercise repeated fishing despite competing quarry work");
+    const secondCourse = loaded.catalog.stageOrders.find(course => course.homeLevel === 2);
+    const requiredFish = secondCourse.orders.reduce((sum, order) => sum + (order.items.fish_common ?? 0)
+      + (order.items.grilled_fish ?? 0) * loaded.catalog.recipes.find(recipe => recipe.id === "cook_grilled_fish").cost.items.fish_common, 0);
+    const minimumCasts = Math.ceil(requiredFish / loaded.catalog.fishing.collectionDrawsByRoute.shore);
+    assert(baselineReport.homeDays[3] > 0 && result.homeDays[3] > 0);
+    assert(pairedCasts >= minimumCasts, "Both policies execute the entire mandatory fishing course before their paired seeds are compared");
     assert.deepEqual(casts.slice(0, pairedCasts), baseline.slice(0, pairedCasts), "The paired scenarios share the same nth-cast seeds");
     assert(result.actions.speedup_construction > 0);
     assert(result.pearlsSpent > 0 && result.pearlsSpent <= 1000);
@@ -141,7 +171,7 @@ test("the current simulator earns relics only from completed home-three explorat
       const claimedJob = command.action === "claim_job" ? structuredClone(state.jobs.find(job => job.id === command.targetId)) : null;
       const result = loaded.rules.applyEconomyCommand(state, command, now, jobId, reserved, rareRandom);
       if (command.action === "start_fishing" || command.action === "start_exploration") {
-        const job = state.jobs.find(job => job.kind === "exploration");
+        const job = state.jobs.find(job => job.kind === "exploration" && job.targetId === command.targetId && Date.parse(job.startedAt) === now);
         starts.push({ home, rare: job.rareDrop });
       }
       if (claimedJob?.rareDrop) claims.push(claimedJob);
@@ -158,7 +188,8 @@ test("the current simulator earns relics only from completed home-three explorat
     assert.equal(report.rareMaterials.finds.length, claims.filter(job => job.rareDrop.itemId).length);
     for (const id of loaded.catalog.rareDrops.itemIds) {
       assert.equal(report.rareMaterials.received[id], claims.reduce((sum, job) => sum + (job.rewards[id] ?? 0), 0));
-      assert.equal(report.rareMaterials.received[id] - report.rareMaterials.spentOnConstruction[id], report.rareMaterials.inventory[id]);
+      assert.equal(report.rareMaterials.received[id] + report.rareMaterials.stageRewards[id]
+        - report.rareMaterials.spentOnConstruction[id], report.rareMaterials.inventory[id]);
     }
     assert.deepEqual(simulateJourney(loaded, "visits3", 40, jointPlanningPolicy), report, "The complete current-catalog sample path is reproducible");
     assert(report.excludedIncome.includes("daily_rewards") && report.excludedIncome.includes("achievement_rewards"));
@@ -167,11 +198,17 @@ test("the current simulator earns relics only from completed home-three explorat
   } finally { await loaded.close(); }
 });
 
-test("joint planning actually starts multi-output orders without unlocking stations or granting their inputs", async () => {
+test("joint planning uses only current unit production without reviving retired bulk work or granting its inputs", async () => {
   const loaded = await loadJourneyRules();
   try {
     const result = simulateJourney(loaded, "visits3", 40, jointPlanningPolicy);
-    assert(result.productionRecipes.workshop_overnight > 0);
+    assert.equal(result.productionRecipes.workshop_overnight, undefined);
+    assert(result.productionRecipes.make_planks > 0 && result.productionRecipes.make_rope > 0);
+    for (const id of Object.keys(result.productionRecipes)) {
+      const recipe = loaded.catalog.recipes.find(recipe => recipe.id === id);
+      assert(recipe, `current recipe ${id}`); assert.equal(recipe.maxBatch, 1);
+      assert.equal(Object.values(recipe.rewards).reduce((sum, amount) => sum + amount, 0), 1);
+    }
     assert(result.homeDays[3] > 0);
     assert.equal(result.failures.ECONOMY_BUILDING_REQUIRED, undefined);
     assert.equal(result.actions.speedup_construction, undefined);
@@ -180,22 +217,24 @@ test("joint planning actually starts multi-output orders without unlocking stati
   } finally { await loaded.close(); }
 });
 
-test("the player policy shares Mochlik between mining, trips and harvesting without starving required relic trips", async () => {
+test("the player policy schedules the independent miner and Mochlik without overlapping either actor or starving relic work", async () => {
   const loaded = await loadJourneyRules();
   try {
-    const actorSeconds = { quarry: 0, exploration: 0, collection: 0 };
+    const actorSeconds = { miner: 0, exploration: 0, collection: 0 }; let parallelActors = false;
     const observed = { ...loaded, rules: { ...loaded.rules, applyEconomyCommand: (state, command, now, jobId, reserved, rareRandom) => {
       const claimed = command.action === "claim_job" ? structuredClone(state.jobs.find(job => job.id === command.targetId)) : null;
       const result = loaded.rules.applyEconomyCommand(state, command, now, jobId, reserved, rareRandom);
       const active = state.jobs.filter(job =>
         ((job.kind === "exploration" || loaded.actorAvailability.isQuarryProduction(job)) && Date.parse(job.finishesAt) > now)
         || (job.collection?.startedAt && Date.parse(job.collection.finishesAt) > now));
-      assert(active.length <= 1, "An observed confirmed state must not schedule the same actor twice");
+      const miners = active.filter(job => job.actorId === "miner");
+      const heroes = active.filter(job => job.actorId !== "miner");
+      assert(miners.length <= 1 && heroes.length <= 1, "An observed confirmed state must not schedule the same actor twice");
+      parallelActors ||= miners.length === 1 && heroes.length === 1;
       if (claimed) {
-        const mining = loaded.catalog.explorations.find(route => route.id === claimed.targetId)?.activity === "mining";
         const seconds = (Date.parse(claimed.finishesAt) - Date.parse(claimed.startedAt)) / 1000;
-        if (claimed.kind === "exploration") actorSeconds[mining ? "quarry" : "exploration"] += seconds;
-        if (loaded.actorAvailability.isQuarryProduction(claimed)) actorSeconds.quarry += seconds;
+        if (claimed.kind === "exploration") actorSeconds[claimed.actorId === "miner" ? "miner" : "exploration"] += seconds;
+        if (loaded.actorAvailability.isQuarryProduction(claimed)) actorSeconds.exploration += seconds;
         if (claimed.collection?.startedAt) actorSeconds.collection += claimed.collection.seconds;
       }
       return result;
@@ -205,10 +244,12 @@ test("the player policy shares Mochlik between mining, trips and harvesting with
       assert(actorSeconds[kind] > 0);
       assert.equal(report.actorWorkHours[kind], Number((actorSeconds[kind] / 3600).toFixed(4)));
     }
-    assert(Object.values(actorSeconds).reduce((sum, seconds) => sum + seconds, 0) <= report.elapsedDays * 86400);
-    for (const code of ["ECONOMY_QUARRY_BUSY", "ECONOMY_EXPLORER_BUSY", "ECONOMY_COLLECTOR_BUSY"])
+    assert(parallelActors, "A genuine confirmed state exercises simultaneous mining and hero activity");
+    assert(actorSeconds.miner <= report.elapsedDays * 86400);
+    assert(actorSeconds.exploration + actorSeconds.collection <= report.elapsedDays * 86400);
+    for (const code of ["ECONOMY_MINER_BUSY", "ECONOMY_QUARRY_BUSY", "ECONOMY_EXPLORER_BUSY", "ECONOMY_COLLECTOR_BUSY"])
       assert.equal(report.failures[code], undefined, "Policy availability matches the authoritative rule");
-    assert(report.rareMaterials.finds.length > 0, "Completed mining and other routes earn the shared relic clock");
+    assert(report.rareMaterials.finds.length > 0, "Completed mining and other routes earn relics on their own actor clocks");
   } finally { await loaded.close(); }
 });
 
@@ -220,9 +261,11 @@ test("the scenario conserves crafted inputs and exposes sales separately from pr
     assert(Object.entries(report.explorationRoutes).some(([id, count]) => id.startsWith("quarry_") && count > 0));
     assert.equal(report.productionRecipes.quarry_stone, undefined);
     for (const [id, flow] of Object.entries(report.itemFlow))
-      assert.equal(flow.initial + flow.received, flow.sold + flow.productionInputs + flow.expeditionInputs + flow.constructionInputs + flow.remaining, id);
+      assert.equal(flow.initial + flow.received, flow.sold + flow.productionInputs + flow.expeditionInputs + flow.constructionInputs + flow.orderInputs + flow.remaining, id);
     assert(report.itemFlow.fiber.productionInputs > 0, "Fiber serves actual crafting demand");
     assert(report.itemFlow.rope.constructionInputs > 0, "Rope serves actual construction demand");
-    assert(report.itemFlow.berries.sold > 0, "Passive surplus pays progression coin costs");
+    assert(report.saleRevenue > 0);
+    assert(Object.entries(report.itemFlow).some(([id, flow]) => flow.sold > 0
+      && loaded.catalog.items.find(item => item.id === id)?.category === "raw"), "Passive raw surplus pays progression coin costs");
   } finally { await loaded.close(); }
 });

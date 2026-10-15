@@ -18,7 +18,7 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 function state(revision = 0, ownerPublicId = owner) {
   return economyViewSchema.parse({ ownerPublicId, revision, serverTime: new Date(now).toISOString(), wallet: { coins: 50, pearls: 0 },
-    inventory: { ancient_core: 1, moon_crystal: 1, living_resin: 1 }, buildings: { home: 3, warehouse: 3 },
+    inventory: { ancient_core: 1, moon_crystal: 1, living_resin: 1 }, buildings: { home: 3, bridge: 1, warehouse: 3 },
     storage: { capacity: 300, used: 3, reserved: 0, available: 297, overflow: 0 }, jobs: [], completedExplorations: 0,
     migration: { version: 1, coinsGranted: 0, woodGranted: 0, stoneGranted: 0 }, catalog: structuredClone(economyCatalog) });
 }

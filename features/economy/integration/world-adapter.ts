@@ -1,4 +1,5 @@
 import type { EconomyView } from "@/features/economy/domain/model";
+import { isMinerJob } from "@/features/economy/domain/actor-availability";
 import type { WorldState } from "@/features/world/domain/model";
 import type { EconomySceneActivity, EconomySceneJourney } from "@/features/world/state/economy/economy-scene-state";
 import type { EconomySceneProduction } from "@/features/world/state/economy/economy-production-state";
@@ -22,10 +23,13 @@ export function economyWorldState(state: WorldState | undefined, economy: Econom
 }
 
 export function economySceneJourney(economy: EconomyView | null | undefined): EconomySceneJourney | null {
-  const job = economy?.jobs.find(job => job.kind === "exploration");
+  // The miner owns a separate queue. Only Mochlik's saved or legacy journey
+  // drives his departure, travel animation and home-circle status.
+  const job = economy?.jobs.find(job => job.kind === "exploration" && !isMinerJob(job));
   return job ? { id: job.id, startedAt: job.startedAt, finishesAt: job.finishesAt, routeId: job.targetId,
     rewards: { ...job.rewards },
-    ...(job.fishing ? { fishing: { rodId: job.fishing.rodId, fishId: job.fishing.fishId } } : {}),
+    ...(job.fishing ? { fishing: { rodId: job.fishing.rodId, fishId: job.fishing.fishId,
+      ...(job.fishing.catchRevealed == null ? {} : { catchRevealed: job.fishing.catchRevealed }) } } : {}),
     label: economy?.catalog.explorations.find(route => route.id === job.targetId)?.name ?? "Исследование" } : null;
 }
 

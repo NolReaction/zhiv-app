@@ -33,6 +33,7 @@ class JdbcAdminEconomyGrantsIntegrationTest {
     private lateinit var identities: JdbcZhivRepository
     private lateinit var config: AppConfig
     private val tokens = TokenCodec()
+    private val secondHouseBuildings = mapOf("home" to 2, "woodlot" to 1, "dryer" to 1, "workshop" to 1)
     private data class User(val id: UUID, val publicId: String, val hash: ByteArray, val raw: String)
     @BeforeAll fun setup() {
         config = AppConfig(postgres.jdbcUrl, postgres.username, postgres.password, false, setOf("http://localhost"))
@@ -67,7 +68,7 @@ class JdbcAdminEconomyGrantsIntegrationTest {
         val admin = user(); val peer = user(); val target = user(); val stranger = user()
         val repo = repository(admin, peer)
         val command = request(target).copy(coins = 145, pearls = 7, items = mapOf("stone" to 3L),
-            buildings = mapOf("home" to 2, "workshop" to 1), productionSlots = mapOf("garden" to 2),
+            buildings = secondHouseBuildings, productionSlots = mapOf("garden" to 2),
             rods = listOf("river_rod"), hooks = listOf("barbed_hook"))
         assertEquals(403, assertFailsWith<AuthFailure> { grant(repo, stranger, target, command) }.status)
         assertEquals("0", scalar("SELECT count(*) FROM economy_profiles"))
@@ -109,7 +110,8 @@ class JdbcAdminEconomyGrantsIntegrationTest {
         assertEquals("INVALID_ADMIN_QUERY", assertFailsWith<AuthFailure> {
             grant(repo, admin, target, command.copy(confirmationPublicId = admin.publicId))
         }.code)
-        val repaired = grant(repo, admin, target, command.copy(items = mapOf("wood" to 350L), buildings = mapOf("warehouse" to 2)))
+        val repaired = grant(repo, admin, target, command.copy(items = mapOf("wood" to 75L),
+            buildings = secondHouseBuildings + ("warehouse" to 2)))
         assertTrue(repaired.changed)
         assertEquals(2, repo.economyPlayer(admin.hash, target.publicId).economy!!.buildings["warehouse"])
     }
@@ -117,7 +119,7 @@ class JdbcAdminEconomyGrantsIntegrationTest {
     @Test fun `escrow cannot be displaced and no-op unlocks do not mint inventory or revisions`() = runBlocking<Unit> {
         val admin = user(); val target = user(); val repo = repository(admin)
         JdbcEconomyRepository(source).snapshot(target.hash)
-        val state = EconomyRules.initial(includeStartingPack = false).copy(inventory = mapOf("wood" to 295L))
+        val state = EconomyRules.initial(includeStartingPack = false).copy(inventory = mapOf("wood" to 45L))
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(state), target.id)
         execute("INSERT INTO economy_market_listings(id,seller_id,item_id,quantity,total_price) VALUES (?,?,?,?,?)",
             UUID.randomUUID(), target.id, "wood", 5, 10)
@@ -128,7 +130,8 @@ class JdbcAdminEconomyGrantsIntegrationTest {
         assertFalse(noOp.changed); assertEquals(0L, noOp.acceptedRevision)
         assertEquals("0", scalar("SELECT count(*) FROM economy_ledger WHERE kind='grant_economy'"))
         assertEquals(0L, repo.economyPlayer(admin.hash, target.publicId).economy!!.wallet.coins)
-        val expanded = grant(repo, admin, target, request(target).copy(items = mapOf("stone" to 1L), buildings = mapOf("warehouse" to 2)))
+        val expanded = grant(repo, admin, target, request(target).copy(items = mapOf("stone" to 1L),
+            buildings = secondHouseBuildings + ("warehouse" to 2)))
         assertTrue(expanded.changed)
         assertEquals(5L, repo.economyPlayer(admin.hash, target.publicId).economy!!.storage.reserved)
     }

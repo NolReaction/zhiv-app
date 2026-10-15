@@ -43,4 +43,20 @@ class PromoRulesTest {
             "PROMO_EXPIRED" to entry.copy(endsAt = now.toString())))
             assertEquals(code, assertFailsWith<AuthFailure> { PromoRules.available(parse(value), entry.code, now) }.code)
     }
+
+    @Test fun `specific fish gifts preserve species without adding catches knowledge or losing stage progress`() {
+        val before = EconomyRules.initial(includeStartingPack = false).copy(inventory = mapOf("fish_epic" to 1L),
+            fishing = EconomyFishing(stock = mapOf("fish_mirror_koi" to 1L)), marketSlots = 8,
+            stageOrders = EconomyStageOrderState(stages = mapOf("2" to EconomyStageOrderProgress(step = 1))),
+            unlockedItems = listOf("wood"))
+        val next = PromoRules.apply(before, PromoReward(items = mapOf("fish_sturgeon" to 2L, "fish_epic" to 3L)))
+        assertEquals(6L, next.inventory["fish_epic"])
+        assertFalse("fish_sturgeon" in next.inventory)
+        assertEquals(mapOf("fish_mirror_koi" to 1L, "fish_sturgeon" to 2L), next.fishing.stock)
+        assertEquals(before.fishing.catches, next.fishing.catches)
+        assertEquals(before.progression, next.progression)
+        assertEquals(before.unlockedItems, next.unlockedItems)
+        assertEquals(before.marketSlots, next.marketSlots)
+        assertEquals(before.stageOrders, next.stageOrders)
+    }
 }

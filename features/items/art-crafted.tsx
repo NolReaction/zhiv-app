@@ -56,13 +56,11 @@ export const craftedItemArt: Record<string, ReactNode> = {
   ),
   bricks: (
     <>
-      <path d="m5 27 24-8 14 8-24 9Z" fill="#dc9b70" />
-      <path d="m5 27 14 9v8L5 36Z" fill="#b66e4e" />
-      <path d="m19 36 24-9v8l-24 9Z" fill="#c68158" />
-      <path d="m11 14 17-6 12 7-17 7Z" fill="#e6aa7f" />
-      <path d="m11 14 12 8v10l-12-7Z" fill="#b66e4e" />
-      <path d="m23 22 17-7v10l-17 7Z" fill="#c68158" />
-      <path d="m31 32 1 7M12 32v8m6-26 9-3m0 14 8-3" fill="none" stroke="#86523d" strokeWidth="1.5" />
+      <path d="m5 20 25-9 13 8-25 10Z" fill="#e6aa7f" />
+      <path d="m5 20 13 9v12L5 32Z" fill="#b66e4e" />
+      <path d="m18 29 25-10v12L18 41Z" fill="#c68158" />
+      <path d="m12 21 15-6m-5 19 15-6" fill="none" stroke="#f2c49a" strokeWidth="1.8" />
+      <path d="m8 27 3 2m17 4 3-1m-9 7 2-1" fill="none" stroke="#965b43" strokeWidth="1.2" />
     </>
   ),
   glass: (

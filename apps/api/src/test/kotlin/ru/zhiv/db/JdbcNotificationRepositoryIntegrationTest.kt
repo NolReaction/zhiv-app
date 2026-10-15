@@ -106,6 +106,31 @@ class JdbcNotificationRepositoryIntegrationTest {
             VALUES (?,?,?,?,?,'Europe/Moscow',?)""",p.id,p.session,UUID.randomUUID(),at.notificationSqlTime(),at.plusSeconds(30).notificationSqlTime(),at.atZone(ZoneId.of("Europe/Moscow")).toLocalDate())
     }
 
+    @Test fun `only ready confirmed miner sources open mine even with a future hero journey`() = runBlocking<Unit> {
+        val p=player(); connect(p); val now=Instant.now()
+        val mine=job(now,"exploration","unrelated-route-name").copy(actorId="miner")
+        val futureHero=job(now,"exploration","forest",now.plusSeconds(300)).copy(actorId="mochlik")
+        jobs(p,mine,futureHero)
+        val sent=CopyOnWriteArrayList<PushPayload>(); dispatcher({now},sent).tick()
+        assertEquals(1,sent.size)
+        assertEquals("/?notification=world&section=mine&owner=${p.owner}",sent.single().url)
+        assertEquals("Шахтёр завершил смену",sent.single().title)
+        assertEquals(p.owner,sent.single().ownerPublicId)
+    }
+    @Test fun `mine route names and mixed batches cannot redirect non miner work into mine`() = runBlocking<Unit> {
+        val now=Instant.now()
+        val mine=job(now,"exploration","quarry_shift").copy(actorId="miner")
+        val hero=job(now,"exploration","quarry_shift").copy(actorId="mochlik")
+        val legacy=job(now,"exploration","quarry_shift")
+        listOf(listOf(hero),listOf(legacy),listOf(mine,hero),listOf(mine,job(now))).forEach { batch ->
+            val p=player(); connect(p); jobs(p,*batch.toTypedArray())
+            val sent=CopyOnWriteArrayList<PushPayload>(); dispatcher({now},sent).tick()
+            assertEquals(1,sent.size)
+            assertEquals("/?notification=world&section=activities&owner=${p.owner}",sent.single().url)
+            assertNotEquals("Шахтёр завершил смену",sent.single().title)
+        }
+    }
+
     @Test fun `unconfigured server saves preferences but never pretends to subscribe`() = runBlocking<Unit> {
         val p=player(); val disabled=JdbcNotificationRepository(source)
         assertEquals("0",scalar("SELECT count(*) FROM notification_preferences WHERE user_id=?",p.id))
@@ -151,6 +176,18 @@ class JdbcNotificationRepositoryIntegrationTest {
         assertContains(sent.single().url,"owner=${p.owner}")
         jobs(p,a,b); repository.preferences(p.hash,p.owner,noQuiet.copy(maxPerDay=1)); worker.tick()
         assertEquals(1,sent.size)
+    }
+    @Test fun `independent miner does not postpone ripe crop sources in database or dispatcher`() = runBlocking<Unit> {
+        val p=player(); connect(p); val now=Instant.now()
+        val crop=job(now,target="garden").copy(rewards=mapOf("blueberries" to 2),collection=EconomyCollection("berry_harvest",8,null,null))
+        val mine=job(now,"exploration","quarry_shift",now.plusSeconds(3600)).copy(actorId="miner")
+        jobs(p,crop,mine)
+        assertEquals("false",scalar("SELECT waiting_for_actor::text FROM notification_events WHERE user_id=? AND source_key=?",p.id,"job:${crop.id}"))
+        val sent=CopyOnWriteArrayList<PushPayload>(); dispatcher({now},sent).tick()
+        assertEquals(1,sent.size)
+        assertEquals("Ресурсы готовы",sent.single().title)
+        assertContains(sent.single().body,"2 ягоды черники готовы к сбору")
+        assertEquals("pending",scalar("SELECT state FROM notification_events WHERE user_id=? AND source_key=?",p.id,"job:${mine.id}"))
     }
     @Test fun `ripe berries notify before collection and collection never repeats the same source`() = runBlocking<Unit> {
         val p=player(); connect(p); var now=Instant.now()

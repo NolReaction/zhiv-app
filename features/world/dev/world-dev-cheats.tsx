@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { economyCatalog, type EconomyJob } from "@/features/economy/domain/model";
 import { formatPearls } from "@/features/economy/domain/money";
+import { isMinerJob } from "@/features/economy/domain/actor-availability";
 import { economyDevSettlement } from "@/features/economy/dev/dev-presets";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import type { WorldController } from "@/features/world/state/use-world";
@@ -40,9 +41,9 @@ export function WorldDevCheats({ world, economy, previewBuildings = false, onSho
   const quantity = Number(amount);
   const validQuantity = /^\d+$/.test(amount) && Number.isSafeInteger(quantity) && quantity >= 1 && quantity <= 1_000_000;
   const items = useMemo(() => {
-    const fishIds = new Set(catalog.fishing?.fish.map(fish => fish.itemId));
+    const fishIds = new Set(catalog.fishing?.classes.map(group => group.itemId));
     return [
-      ...catalog.items.map(item => ({ id: item.id, name: item.name, category: fishIds.has(item.id) ? "fish" : item.category === "fishing" ? "bait"
+      ...catalog.items.filter(item => !catalog.fishing?.fish.some(fish => fish.itemId === item.id)).map(item => ({ id: item.id, name: item.name, category: fishIds.has(item.id) ? "fish" : item.category === "fishing" ? "bait"
         : item.category === "special" ? "relics" : ["produce", "provisions"].includes(item.category) ? "food" : "materials", action: "grant_item" as const })),
       ...(catalog.fishing?.rods ?? []).map(rod => ({ id: rod.id, name: rod.name, category: "rods", action: "grant_fishing_gear" as const })),
       ...(catalog.fishing?.hooks ?? []).map(hook => ({ id: hook.id, name: hook.name, category: "hooks", action: "grant_fishing_gear" as const })),
@@ -76,7 +77,7 @@ export function WorldDevCheats({ world, economy, previewBuildings = false, onSho
   function jobName(job: EconomyJob) {
     return job.kind === "construction" ? `${catalog.buildings.find(entry => entry.id === job.targetId)?.name ?? job.targetId} · ур. ${job.targetLevel}`
       : job.kind === "production" ? catalog.recipes.find(entry => entry.id === job.recipeId)?.name ?? job.targetId
-      : catalog.explorations.find(entry => entry.id === job.targetId)?.name ?? job.targetId;
+      : `${isMinerJob(job) ? "Шахтёр" : "Мохлик"} · ${catalog.explorations.find(entry => entry.id === job.targetId)?.name ?? job.targetId}`;
   }
 
   return <div className={styles.cheats}>
@@ -192,7 +193,7 @@ export function WorldDevCheats({ world, economy, previewBuildings = false, onSho
       {matchingJobs.length ? <ul className={styles.cheatJobs}>{matchingJobs.map(job => {
         const ready = Date.parse(job.finishesAt) <= (economy?.now ?? 0);
         return <li key={job.id}><div><strong>{jobName(job)}</strong><span>{ready ? "Готово к получению" : `Осталось ${Math.max(1, Math.ceil((Date.parse(job.finishesAt) - (economy?.now ?? 0)) / 60000))} мин.`}</span></div>
-          {ready && <button type="button" disabled={locked} onClick={() => { if (!locked) economy?.act("claim_job", job.id); }}>{job.kind === "construction" ? "Завершить стройку" : "Забрать"}</button>}</li>;
+          {ready && <button type="button" disabled={locked} onClick={() => { if (!locked) economy?.act(job.collection?.batchId ? "claim_garden_collection" : "claim_job", job.collection?.batchId ?? job.id); }}>{job.kind === "construction" ? "Завершить стройку" : "Забрать"}</button>}</li>;
       })}</ul> : <p className={styles.hint}>Таких заданий сейчас нет.</p>}
       </div>
     </details>

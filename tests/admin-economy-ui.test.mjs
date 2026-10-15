@@ -151,7 +151,7 @@ test("resident orders explain occupied builder and ready expeditions using only 
   let markup = renderToStaticMarkup(AdminEconomyDetailContent({ detail: value }));
   assert.match(markup, /Поручения жителей на момент снимка/);
   assert.match(markup, /Положение и анимация персонажей здесь не отслеживаются/);
-  assert.match(markup, /Ускорение на момент снимка: 10 жемчуга/);
+  assert.match(markup, /Ускорение на момент снимка: 2 жемчуга/);
   assert.match(markup, /Награда готова, но для неё не хватает места на складе/);
   assert.match(markup, /Доступные крючки/);
   assert.ok(markup.includes(economyCatalog.fishing.hooks.at(-1).name));

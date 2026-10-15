@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 import { loadJourneyRules, simulateJourney, DEFAULT_JOURNEY_RARE_SEED } from "./simulate-player-journey.mjs";
 import { jointPlanningPolicy } from "./simulate-player-joint.mjs";
 
-/** Gift count, not an assumed average income: payouts arrive on steps 3, 6, 7. */
+/** Count actual catalog gifts rather than assuming an average daily income. */
 export function dailyPearlThreshold(rewards, targetPearls) {
   assert(Number.isSafeInteger(targetPearls) && targetPearls > 0);
   assert(rewards.daily.some(reward => reward.pearls > 0));
@@ -69,7 +69,7 @@ export function reviewProductionSlots(loaded, onScenario = () => {}) {
     ].map(file => [file, createHash("sha256").update(readFileSync(new URL(file, import.meta.url))).digest("hex")])),
     method: {
       rules: "Real TypeScript production, buy_production_slot, claims, construction, actor locks, stock and coin accounting through Vite SSR",
-      completion: "Home level 5 and separately all eight progression buildings level 5; not all collections, legendary fishing, social goals or a final game ending",
+      completion: "Home level 5 and separately the current comparison base: ordinary stations through tier 5, bridge/lighthouse at their authored restored tier, and storage through tier 5; not all collections, legendary fishing, social goals or a final game ending",
       policies: {
         one_slot: "Same parallel-aware planning policy, no slot purchases and no initial pearls",
         slots_from_daily_pearls: "Start with zero pearls. Project only daily gifts' pearl component using real dailyRewardView/afterDailyClaim UTC and minimum-hours rules; purchases use ordinary commands",

@@ -388,6 +388,22 @@ test("DEV wallet and grant labels halve pearls while currency commands keep thei
   assert.deepEqual(view.props.economy.snapshot.wallet, { coins: 17, pearls: 7 });
 });
 
+test("DEV distinguishes the independent miner and keeps missing-actor saved mining owned by Mochlik", () => {
+  const saved = { id: "mining", kind: "exploration", targetId: "quarry_stone", recipeId: null, targetLevel: null,
+    startedAt: new Date(cheatNow - 1_000).toISOString(), finishesAt: new Date(cheatNow + 180_000).toISOString(),
+    rewards: { stone: 1 }, cost: { coins: 0, items: {} }, catalogVersion: economyCatalog.version };
+  const miner = cheats({}, { jobs: [{ ...saved, actorId: "miner" }] });
+  assert.match(miner.markup, /Шахтёр · Добыть камень/);
+  assert.doesNotMatch(miner.markup, /Мохлик · Добыть камень/);
+  assert.deepEqual(miner.commands, []); assert.deepEqual(miner.claims, []);
+  for (const actorId of [undefined, null]) {
+    const legacy = cheats({}, { jobs: [{ ...saved, actorId }] });
+    assert.match(legacy.markup, /Мохлик · Добыть камень/);
+    assert.doesNotMatch(legacy.markup, /Шахтёр · Добыть камень/);
+    assert.deepEqual(legacy.commands, []); assert.deepEqual(legacy.claims, []);
+  }
+});
+
 test("unpermitted servers, unloaded accounts, pending receipts and cooldowns prevent cheat dispatch", () => {
   for (const [patch, props] of [[{}, { world: { snapshot: { devTools: false } } }], [{ snapshot: null }, {}],
     [{ uncertain: true }, {}], [{ busy: true }, {}], [{ retryAt: cheatNow + 5000 }, {}], [{ devAvailable: false }, {}]]) {
@@ -521,8 +537,9 @@ test("DEV inventory browser exposes fish, consumable bait and permanent tackle a
     ["all", "materials", "food", "fish", "rods", "hooks", "bait", "relics", "wardrobe"]);
   const items = view.elements.find(element => element.type === "select" && element.props.value === "wood");
   const ids = Children.toArray(items.props.children).map(option => option.props.value);
-  for (const id of ["fish_shark", "fish", "firefly_bait", "leviathan_hook", "starfall_rod", "ancient_core"]) assert.ok(ids.includes(id), id);
+  for (const id of ["fish_common", "fish_uncommon", "fish_rare", "fish_epic", "fish_legendary", "firefly_bait", "star_bait", "leviathan_hook", "starfall_rod", "ancient_core"]) assert.ok(ids.includes(id), id);
   assert.equal(new Set(ids).size, ids.length);
+  for (const species of ["fish", "fish_silverfin", "fish_shark"]) assert.ok(!ids.includes(species), "collection species cannot be granted as separate stock");
   assert.match(view.markup, /data-item-icon="wood"/);
   assert.deepEqual(view.commands, []);
 });

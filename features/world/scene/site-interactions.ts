@@ -3,7 +3,7 @@ import { previewPointInPolygon } from "@/features/world/tiled/preview-state";
 import { forestBushArtworkAvailable } from "@/features/world/activities/garden/forest-bush-artwork";
 
 /** Only places with an implemented account action get a map shortcut. */
-const places = { home: "house", workshop: "workshop", quarry: "quarry", woodlot: "woodlot" } as const;
+const places = { home: "house", workshop: "workshop", quarry: "quarry", woodlot: "woodlot", bridge: "bridge", lighthouse: "lighthouse" } as const;
 export type BuildingPlace = typeof places[keyof typeof places];
 
 export function sitePlace(siteId: string | null | undefined): BuildingPlace | null {
@@ -17,7 +17,7 @@ export function interactiveSites(scene: FixedWorldScene) {
   });
 }
 
-export type MapObjectPlace = BuildingPlace | "garden" | "campfire" | "bridge" | "lighthouse" | "plesk-shop" | "builder-home";
+export type MapObjectPlace = BuildingPlace | "garden" | "campfire" | "plesk-shop" | "builder-home";
 export type MapInteractiveObject = {
   id: string;
   place: MapObjectPlace;
@@ -26,10 +26,10 @@ export type MapInteractiveObject = {
   anchor: WorldPoint;
   hitArea: readonly WorldPoint[];
 };
-const objectPlaces = { ...places, bridge: "bridge", lighthouse: "lighthouse", "plesk-shop": "plesk-shop", "builder-home": "builder-home" } as const;
+const objectPlaces = { ...places, "plesk-shop": "plesk-shop", "builder-home": "builder-home" } as const;
 const objectCache = new WeakMap<FixedWorldScene, readonly MapInteractiveObject[]>();
 
-/** Existing world geometry supplies every shortcut, including planned landmarks. */
+/** Existing world geometry supplies every shortcut, including restored landmarks. */
 export function interactiveMapObjects(scene: FixedWorldScene, options: { showBuildings?: boolean } = {}): readonly MapInteractiveObject[] {
   let objects = objectCache.get(scene);
   if (!objects) {

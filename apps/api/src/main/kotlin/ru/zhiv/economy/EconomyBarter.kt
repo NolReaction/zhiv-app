@@ -76,6 +76,9 @@ object EconomyBarterRules {
     const val SHOWCASE_SECONDS = 1800L
     const val DAILY_LIMIT = 1
 
+    fun unlocked(state: EconomyState): Boolean =
+        (state.buildings["home"] ?: 1) >= REQUIRED_HOME_LEVEL && EconomyMarketRules.unlocked(state)
+
     fun sameHomeBand(buyerHome: Int, sellerHome: Int): Boolean =
         buyerHome >= REQUIRED_HOME_LEVEL && sellerHome >= REQUIRED_HOME_LEVEL && EconomyMarketRules.sameHomeBand(buyerHome, sellerHome)
 

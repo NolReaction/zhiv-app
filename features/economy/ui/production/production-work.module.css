@@ -1,0 +1,32 @@
+.work { position: relative; min-width: 0; padding: 8px; border: 1px solid #b3bb8c; border-radius: 10px; background: #ece4c7; color: #394d3e; }
+.work[data-ready] { border-color: #96a071; background: #dce1b7; }
+.work .main { display: flex; flex-direction: column; align-items: center; gap: 5px; width: 100%; min-width: 0; min-height: 110px; padding: 4px; border: 0; background: transparent; color: inherit; font: inherit; text-align: center; cursor: pointer; touch-action: manipulation; }
+.main > strong { font-size: 12px; font-weight: 600; overflow-wrap: anywhere; line-height: 1.3; }
+.products { position: relative; display: flex; justify-content: center; flex-wrap: wrap; gap: 3px; }
+.work[data-confirm-cancel] .products::after { position: absolute; content: ""; top: 50%; left: 0; right: 0; height: 1px; background: #945b3e; opacity: .75; transform: rotate(-25deg); pointer-events: none; }
+.work[data-confirm-cancel] .main > strong { text-decoration: line-through; text-decoration-color: #945b3e; text-decoration-thickness: 1px; }
+.time { font-size: 11px; color: #59624d; }
+.time[data-job-countdown] { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.actionLine { display: inline-flex; flex: 0 0 26px; min-width: 0; height: 26px; max-width: 100%; box-sizing: border-box; justify-content: center; align-items: center; gap: 4px; font-size: 11px; line-height: 1.2; }
+.cancelHint { color: #70765b; font-size: 10px; }
+.action { padding: 5px 9px; border-radius: 6px; background: #466347; color: #fff3d6; }
+.confirmLabel { color: #945b3e; font-weight: 600; white-space: nowrap; }
+.countdown { font-size: 10px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.progress { display: block; flex: 0 0 auto; width: 100%; height: 3px; margin-top: auto; border: 0; border-radius: 8px; overflow: hidden; background: #c8bea0; accent-color: #658454; }
+.progress::-webkit-progress-bar { background: #c8bea0; }
+.progress::-webkit-progress-value { background: #658454; border-radius: 8px; }
+.progress::-moz-progress-bar { background: #658454; }
+.work .pantry { display: inline-flex; align-items: center; justify-content: center; gap: 3px; min-height: 32px; padding: 4px; border: 0; background: transparent; color: #59624d; font: inherit; font-size: 10px; cursor: pointer; touch-action: manipulation; }
+.work button:disabled { cursor: default; opacity: .7; }
+.work button:focus-visible { outline: 2px solid #62658d; outline-offset: 2px; border-radius: 5px; }
+.hint { margin: 5px 0 0; font-size: 10px; overflow-wrap: anywhere; }
+.notice { position: absolute; z-index: 3; top: calc(100% + 4px); left: 0; right: 0; margin: 0; padding: 7px 8px; border: 1px solid #c49e7e; border-radius: 8px; background: #f7edd8; color: #8a492d; box-shadow: 0 3px 9px #51432c26; font-size: 10px; line-height: 1.35; overflow-wrap: anywhere; pointer-events: none; }
+.compact { padding: 0; border: 0; background: transparent; }
+.compact .main { min-height: 96px; padding: 0; gap: 4px; }
+.compact .main > strong { font-size: 10px; }
+.compact .time, .compact .cancelHint { font-size: 9px; }
+.compact .action { padding: 3px 5px; font-size: 10px; }
+.compact .confirmLabel { font-size: 9px; }
+.compact .countdown { font-size: 9px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) { .work * { animation: none !important; transition: none !important; } }

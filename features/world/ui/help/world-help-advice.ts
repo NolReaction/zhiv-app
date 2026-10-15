@@ -1,10 +1,13 @@
-import { economyActorConflict } from "@/features/economy/domain/actor-availability";
-import { fishingState, fishingTripCost } from "@/features/economy/domain/fishing";
+import { economyActorConflict, economyMinerConflict, explorationActorId, isMinerJob } from "@/features/economy/domain/actor-availability";
+import { fishingBaitCompatible, fishingState, fishingTripCost } from "@/features/economy/domain/fishing";
 import { recipeWithFish } from "@/features/economy/domain/food";
 import type { EconomyCost, EconomyJob, EconomyView } from "@/features/economy/domain/model";
 import { productionSlotCount } from "@/features/economy/domain/production-slots";
+import { recipeResultName } from "@/features/economy/domain/recipe-prerequisites";
+import { tutorialOrderProgress } from "@/features/economy/domain/tutorial-order";
+import { stageCourseRequired, stageOrderProgress } from "@/features/economy/domain/stage-orders";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
-import { worldBatchLimit, worldConstructionReason, worldCostShortfalls, worldDuration, worldMaterialSource, worldMissingRequirements, worldProductionReason, worldRequirements } from "@/features/economy/ui/shared/world-stations";
+import { worldBatchLimit, worldConstructionReason, worldCostShortfalls, worldDuration, worldMaterialSource, worldMissingRecipeRequirements, worldMissingRequirements, worldProductionReason, worldRequirements } from "@/features/economy/ui/shared/world-stations";
 import type { ForestObservation } from "@/features/world/state/forest-observer";
 import type { WorldController } from "@/features/world/state/use-world";
 import type { WorldHelpContext, WorldHelpSuggestion, WorldHelpTarget } from "./world-help-types";
@@ -22,8 +25,12 @@ const itemCount = (items: Record<string, number>) => Object.values(items).reduce
 const freeCost = (cost: EconomyCost) => cost.coins === 0 && itemCount(cost.items) === 0;
 const sector = (routeId: string): "forest" | "coast" | "caves" => routeId.includes("shore") || routeId.includes("coastal") ? "coast"
   : routeId.includes("cave") || routeId.includes("quarry") ? "caves" : "forest";
+// Legacy underground jobs retain Mochlik as owner, but are received at the mine.
+const mineMenuJob = (job: EconomyJob) => isMinerJob(job) || job.targetId === "quarry"
+  || job.kind === "exploration" && sector(job.targetId) === "caves";
 const jobTarget = (job: EconomyJob): WorldHelpTarget => job.kind === "construction" ? { kind: "upgrade", stationId: job.targetId }
-  : job.kind === "exploration" || job.targetId === "quarry" ? { kind: "expeditions", sector: sector(job.targetId) }
+  : mineMenuJob(job) ? { kind: "station", stationId: "quarry" }
+  : job.kind === "exploration" ? { kind: "expeditions", sector: sector(job.targetId) }
     : { kind: "station", stationId: job.targetId };
 const ready = (job: EconomyJob, now: number) => now >= Date.parse(job.finishesAt)
   && (!job.collection?.startedAt || Boolean(job.collection.finishesAt && now >= Date.parse(job.collection.finishesAt)));
@@ -35,7 +42,7 @@ function jobAdvice(state: EconomyView, job: EconomyJob, now: number): WorldHelpS
     message: `Для готового результата нужно освободить ещё ${itemCount(job.rewards) - state.storage.available} мест. Он дождётся получения.`,
     action: { label: "Открыть кладовую", target: { kind: "pantry" } },
   };
-  const action = { label: job.kind === "exploration" || job.targetId === "quarry" ? "Открыть вылазку" : job.kind === "construction" ? "Открыть стройку" : "Открыть производство", target };
+  const action = { label: job.kind === "construction" ? "Открыть стройку" : mineMenuJob(job) ? "Открыть шахту" : job.kind === "exploration" ? "Открыть вылазку" : "Открыть производство", target };
   if (job.kind === "construction") return {
     id: `job:${job.id}`, title: finished ? "Стройка готова" : "Строитель занят", topicId: "construction", severity: finished ? "next" : "problem", action,
     message: finished ? `${stationName(state, job.targetId)}: нажмите «Завершить», чтобы получить улучшение и освободить строителя.`
@@ -51,7 +58,17 @@ function jobAdvice(state: EconomyView, job: EconomyJob, now: number): WorldHelpS
     return { id: `job:${job.id}`, title: "Ягоды созрели", topicId: "production", severity: "next", action,
       message: "Откройте ягодный куст и отправьте Мохлика собрать урожай. Ягоды попадут в кладовую после сбора." };
   }
-  if (job.kind === "exploration" || job.targetId === "quarry") return {
+  if (isMinerJob(job)) return {
+    id: `job:${job.id}`, title: finished ? "Добыча ждёт получения" : "Шахтёр занят", topicId: "mining", severity: finished ? "next" : "problem", action,
+    message: finished ? "Откройте шахту и заберите результат. После получения можно начать следующую добычу."
+      : `До готовности ${worldDuration(Math.ceil((Date.parse(job.finishesAt) - now) / 1000))}. Работа шахты не мешает Мохлику гулять, рыбачить и собирать урожай.`,
+  };
+  if (mineMenuJob(job)) return {
+    id: `job:${job.id}`, title: finished ? "Добыча ждёт получения" : "Мохлик работает в шахте", topicId: "mining", severity: finished ? "next" : "problem", action,
+    message: finished ? "Откройте шахту на карте и заберите прежнюю добычу Мохлика. После получения он сможет отправиться в новую вылазку."
+      : `Мохлик занят прежней добычей. До готовности ${worldDuration(Math.ceil((Date.parse(job.finishesAt) - now) / 1000))}. Эта работа доступна в меню шахты на карте.`,
+  };
+  if (job.kind === "exploration") return {
     id: `job:${job.id}`, title: finished ? "Находки ждут получения" : "Мохлик ещё в пути", topicId: "journeys", severity: finished ? "next" : "problem", action,
     message: finished ? "Заберите результат во «В путь». Пока находки не получены, следующую вылазку начать нельзя."
       : `До возвращения ${worldDuration(Math.ceil((Date.parse(job.finishesAt) - now) / 1000))}. Отменяйте вылазку только если готовы потерять её награды и потраченные припасы.`,
@@ -77,7 +94,7 @@ function costAdvice(state: EconomyView, cost: EconomyCost, now: number, quantity
   if (missing.id === "coins") return {
     id: "missing:coins", title: "Не хватает монет", topicId: "resident-orders", severity: "problem",
     message: `Нужно ещё ${(missing.required - missing.available).toLocaleString("ru-RU")}. Монеты можно получить за заказы жителей; состав и награда видны до сдачи.`,
-    action: { label: "Посмотреть заказы", target: { kind: "food", tab: "orders" } },
+    action: { label: "Посмотреть заказы", target: { kind: "orders" } },
   };
   const incoming = state.jobs.find(job => (job.rewards[missing.id] ?? 0) > 0 && ready(job, now));
   if (incoming) return jobAdvice(state, incoming, now);
@@ -86,31 +103,33 @@ function costAdvice(state: EconomyView, cost: EconomyCost, now: number, quantity
   let instruction = "Проверьте состав рецепта и доступные материалы.";
   if (source?.kind === "production") {
     target = { kind: "station", stationId: source.stationId, recipeId: source.targetId };
-    instruction = `Источник: ${stationName(state, source.stationId)}. Откройте рецепт, чтобы проверить его стоимость.`;
+    instruction = `Источник: ${stationName(state, source.stationId)}. В карточке предмета уже показаны материалы; нажатие на неё сразу начнёт работу.`;
   } else if (source?.kind === "exploration") {
-    const conflict = economyActorConflict(state.jobs, "departure", now);
+    const mining = state.catalog.explorations.some(route => route.id === source.targetId && explorationActorId(route) === "miner");
+    const conflict = mining ? economyMinerConflict(state.jobs, now) : economyActorConflict(state.jobs, "departure", now);
     if (conflict) return jobAdvice(state, conflict.job, now);
-    target = { kind: "expeditions", sector: sector(source.targetId) };
-    instruction = "Этот материал есть в наградах доступной вылазки. Откройте маршрут и проверьте припасы.";
-  } else if (state.catalog.fishing?.fish.some(fish => fish.itemId === missing.id)) {
+    target = mining ? { kind: "station", stationId: "quarry", recipeId: source.targetId } : { kind: "expeditions", sector: sector(source.targetId) };
+    instruction = mining ? "Этот материал добывает шахта. Откройте её и выберите работу; Мохлик может заниматься другими делами."
+      : "Этот материал есть в наградах доступной вылазки. Откройте маршрут и проверьте припасы.";
+  } else if (state.catalog.fishing?.classes.some(group => group.itemId === missing.id)) {
     const conflict = economyActorConflict(state.jobs, "departure", now);
     if (conflict) return jobAdvice(state, conflict.job, now);
     target = { kind: "expeditions", sector: "coast" };
-    instruction = "Рыбу можно поймать на побережье. Особый вид выпадает с шансом: проверьте снасти перед отправлением.";
+    instruction = "Рыбу этого класса можно поймать на побережье. Проверьте шансы класса с выбранными снастями перед отправлением.";
   }
   return { id: `missing:${missing.id}`, title: `Не хватает: ${itemName(state, missing.id)}`, topicId: "production", severity: "problem",
     message: `Есть ${missing.available}, нужно ${missing.required}. ${instruction}`,
-    ...(target ? { action: { label: source?.kind === "production" ? "Открыть рецепт" : "Выбрать вылазку", target } } : {}),
+    ...(target ? { action: { label: source?.kind === "production" ? "Открыть рецепт" : target.kind === "station" ? "Открыть шахту" : "Выбрать вылазку", target } } : {}),
   };
 }
 
 function contextAdvice(state: EconomyView, context: WorldHelpContext | undefined, now: number): WorldHelpSuggestion | null {
   if (!context) return null;
   if (context.intent === "expedition") {
-    const conflict = economyActorConflict(state.jobs, "departure", now);
-    if (conflict) return jobAdvice(state, conflict.job, now);
     const route = state.catalog.explorations.find(route => route.id === context.routeId);
     if (!route) return null;
+    const conflict = explorationActorId(route) === "miner" ? economyMinerConflict(state.jobs, now) : economyActorConflict(state.jobs, "departure", now);
+    if (conflict) return jobAdvice(state, conflict.job, now);
     const requirement = requirementAdvice(state, worldRequirements(route), now);
     if (requirement) return requirement;
     const mineWork = route.requiredBuildings.quarry && state.jobs.find(job => job.kind === "construction" && job.targetId === "quarry");
@@ -129,6 +148,11 @@ function contextAdvice(state: EconomyView, context: WorldHelpContext | undefined
         message: "Перед отправлением выберите имеющиеся удочку и крючок. Наживку можно отключить.",
         action: { label: "Открыть рыбалку", target: { kind: "expeditions", sector: "coast" } },
       };
+      if (gear.equippedBaitId && !fishingBaitCompatible(gear.equippedRodId, gear.equippedBaitId, fishing)) return {
+        id: "fishing:bait-incompatible", title: "Нужна подходящая удочка", topicId: "fishing", severity: "problem",
+        message: "Эта наживка усиливает класс, который выбранная удочка не ловит. Смените удочку или выберите «Без наживки»; запас наживки сохранится.",
+        action: { label: "Выбрать снасти", target: { kind: "expeditions", sector: "coast" } },
+      };
       if (gear.equippedBaitId && (state.inventory[gear.equippedBaitId] ?? 0) < 1) return {
         id: "fishing:bait", title: "Выбранная наживка закончилась", topicId: "journeys", severity: "problem",
         message: "В подготовке к рыбалке выберите «Без наживки» или другой вид из запасов. Для вылазки расходуется одна наживка.",
@@ -144,10 +168,25 @@ function contextAdvice(state: EconomyView, context: WorldHelpContext | undefined
     if (!next || !worldConstructionReason(state, stationId, next)) return null;
     const requirement = requirementAdvice(state, worldRequirements(next), now);
     if (requirement) return requirement;
+    const tutorial = tutorialOrderProgress(state);
+    if (stationId === "home" && next.level === 2 && tutorial.version === 2 && !tutorial.completed) return {
+      id: "construction:tutorial", title: "Завершите учебные заказы", topicId: "resident-orders", severity: "next",
+      message: `Выполнено ${tutorial.step} из 4. Соберите товары для текущей просьбы: награды помогут оплатить улучшение дома.`,
+      action: { label: "Открыть заказы", target: { kind: "orders" } },
+    };
+    if (stationId === "home" && stageCourseRequired(state, next.level)) {
+      const home = state.buildings.home ?? 1;
+      const count = state.catalog.stageOrders?.find(course => course.homeLevel === home)?.orders.length ?? 0;
+      const progress = stageOrderProgress(state, home);
+      const wait = progress.availableAt ? Math.max(0, Math.ceil((Date.parse(progress.availableAt) - now) / 1000)) : 0;
+      return { id: "construction:stage-orders", title: wait > 0 ? "Дождитесь следующей поставки" : "Завершите заказы этапа", topicId: "resident-orders", severity: "next",
+        message: `Выполнено ${progress.step} из ${count}. ${wait > 0 ? `Следующая поставка через ${worldDuration(wait)}. Материалы можно подготовить заранее; жемчуг не сокращает этот срок.` : `Соберите товары для следующей постоянной просьбы, чтобы открыть дом ${next.level}.`}`,
+        action: { label: "Открыть заказы", target: { kind: "orders" } } };
+    }
     const construction = state.jobs.find(job => job.kind === "construction");
     if (construction) return jobAdvice(state, construction, now);
     const stationWork = state.jobs.find(job => job.kind === "production" && job.targetId === stationId
-      || stationId === "quarry" && job.kind === "exploration" && state.catalog.explorations.some(route => route.id === job.targetId && route.requiredBuildings.quarry));
+      || stationId === "quarry" && (isMinerJob(job) || job.kind === "exploration" && state.catalog.explorations.some(route => route.id === job.targetId && route.requiredBuildings.quarry)));
     return stationWork ? jobAdvice(state, stationWork, now) : costAdvice(state, next.cost, now);
   }
   if (!context.recipeId || context.intent === "construction") return null;
@@ -162,6 +201,12 @@ function contextAdvice(state: EconomyView, context: WorldHelpContext | undefined
   if (!worldProductionReason(state, recipe, quantity)) return null;
   const requirement = requirementAdvice(state, worldRequirements(recipe, recipe), now);
   if (requirement) return requirement;
+  const unlock = worldMissingRecipeRequirements(state, recipe)[0];
+  if (unlock) return {
+    id: `recipe:unlock:${unlock.id}`, title: "Получите результат производства", topicId: "production", severity: "next",
+    message: `Произведите и заберите «${recipeResultName(unlock.id, state.catalog)}»: ${unlock.current} / ${unlock.count}. После этого откроется ${recipeResultName(recipe.id, state.catalog).toLocaleLowerCase("ru-RU")}.`,
+    ...(unlock.recipe ? { action: { label: "Открыть рецепт", target: { kind: "station" as const, stationId: unlock.recipe.buildingId, recipeId: unlock.id } } } : {}),
+  };
   const buildingWork = state.jobs.find(job => job.kind === "construction" && job.targetId === recipe.buildingId);
   if (buildingWork) return jobAdvice(state, buildingWork, now);
   const jobs = state.jobs.filter(job => job.kind === "production" && job.targetId === recipe.buildingId);
@@ -172,14 +217,6 @@ function contextAdvice(state: EconomyView, context: WorldHelpContext | undefined
       ? { label: "Изменить партию", target: { kind: "station", stationId: recipe.buildingId, recipeId: recipe.id } }
       : { label: "Улучшение кладовой", target: { kind: "upgrade", stationId: "warehouse" } },
   };
-  // A recipe's default fish is a placeholder. An owned alternative is useful,
-  // but help must never select it or spend a rarer species on the player's behalf.
-  const placeholder = recipe.fishInput?.itemIds.find(id => recipe.cost.items[id] > 0);
-  const alternate = placeholder && (state.inventory[placeholder] ?? 0) < recipe.cost.items[placeholder] * quantity
-    ? recipe.fishInput?.itemIds.find(id => id !== placeholder && (state.inventory[id] ?? 0) >= recipe.cost.items[placeholder] * quantity) : null;
-  if (alternate) return { id: `recipe:fish-choice:${recipe.id}`, title: "Подойдёт другая рыба", topicId: "food", severity: "next",
-    message: `У вас есть ${itemName(state, alternate)}. В рецепте можно выбрать этот вид; сначала проверьте остальные ингредиенты.`,
-    action: { label: "Выбрать рыбу в рецепте", target: { kind: "station", stationId: recipe.buildingId, recipeId: recipe.id } } };
   return costAdvice(state, recipe.cost, now, quantity);
 }
 

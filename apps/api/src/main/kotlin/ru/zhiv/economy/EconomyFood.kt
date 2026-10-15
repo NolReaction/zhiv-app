@@ -1,6 +1,8 @@
 package ru.zhiv.economy
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import java.math.BigInteger
@@ -22,10 +24,12 @@ import java.time.Instant
     val version: Int = 1, val recentTemplateIds: List<String> = emptyList(),
     val replacementCycle: Long = -1, val freeReplacementsUsed: Int = 0,
 )
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable data class EconomyResidentOrderTemplate(
     val id: String, val residentId: String, val name: String, val requiredHomeLevel: Int = 1,
     val requiredBuildings: Map<String, Int> = emptyMap(), val items: Map<String, Long>, val coins: Long,
     val description: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val requiredExplorations: Map<String, Long> = emptyMap(),
 )
 @Serializable data class EconomyResidentOrderProgression(
     val rawBpsByHome: List<Int>, val fishBpsByHome: List<Int>, val craftedBpsByHome: List<Int>,
@@ -79,6 +83,8 @@ object EconomyFood {
                     template.items.all { (id, quantity) -> id in itemIds && quantity in 1L..100L } &&
                     template.coins in 1L..ECONOMY_MAX_BALANCE && template.requiredBuildings.all { (id, level) ->
                         catalog.buildings.any { it.id == id && it.levels.any { spec -> spec.level == level } }
+                    } && template.requiredExplorations.all { (id, count) ->
+                        count in 1L..ECONOMY_MAX_ITEMS && catalog.explorations.any { it.id == id }
                     }
             })
             require(orders.templates.any { it.requiredHomeLevel == 1 && it.requiredBuildings.isEmpty() })
@@ -123,7 +129,7 @@ object EconomyFood {
             if (state.food.heroMeal != null) economyFailure("ECONOMY_ALREADY_FED", "Мохлик уже сыт. Блюдо сохранено в кладовой")
             if (state.jobs.any { it.collection?.startedAt != null })
                 economyFailure("ECONOMY_COLLECTOR_BUSY", "Сначала завершите сбор припасов")
-            if (state.jobs.any { it.kind == "exploration" })
+            if (state.jobs.any { it.kind == "exploration" && !EconomyRules.isMinerJob(it) })
                 economyFailure("ECONOMY_EXPLORER_BUSY", "Сначала дождитесь Мохлика и заберите результат работы")
             if (state.jobs.any { it.kind == "production" && it.targetId == "quarry" })
                 economyFailure("ECONOMY_QUARRY_BUSY", "Сначала дождитесь Мохлика и заберите добычу из каменоломни")
@@ -158,19 +164,22 @@ object EconomyFood {
             val before = reachable.size
             catalog.explorations.forEach { route ->
                 if (unlocked(route.requiredHomeLevel, route.requiredBuildings) && route.cost.items.keys.all { it in reachable }) {
-                    reachable += route.rewards.filterValues { it > 0 }.keys
-                    if (route.id in (catalog.fishing?.routeIds ?: emptyList())) catalog.fishing?.fish?.forEach { fish ->
-                        val hookAvailable = catalog.fishing.hooks.any { hook -> hook.id in state.fishing.ownedHooks &&
-                            (fish.requiredHookId == null || hook.id == fish.requiredHookId) && (fish.rarity != "legendary" || hook.rarity == "legendary") }
-                        val rodAvailable = catalog.fishing.rods.any { rod -> rod.id in state.fishing.ownedRods &&
-                            (fish.rarity != "legendary" || rod.rarity == "legendary") }
-                        if (hookAvailable && rodAvailable) reachable += fish.itemId
+                    reachable += if (route.id in (catalog.fishing?.routeIds ?: emptyList())) route.rewards.filter { (id, count) -> id != "fish" && count > 0 }.keys
+                        else EconomyFishInventory.items(route.rewards, catalog).filterValues { it > 0 }.keys
+                    if (route.id in (catalog.fishing?.routeIds ?: emptyList())) catalog.fishing?.let { fishing ->
+                        if (fishing.hooks.any { it.id in state.fishing.ownedHooks }) {
+                            fishing.rods.filter { it.id in state.fishing.ownedRods }.forEach { rod ->
+                                reachable += EconomyRules.fishingClassWeights(rod.id, null, spec = fishing)
+                                    .filter { it.second > 0 }.map { it.first.itemId }
+                            }
+                        }
                     }
                 }
             }
             catalog.recipes.forEach { recipe ->
                 val options = recipe.fishInput?.itemIds
                 if (unlocked(recipe.requiredHomeLevel, recipe.requiredBuildings) && (state.buildings[recipe.buildingId] ?: 0) >= recipe.buildingLevel &&
+                    recipe.requiredRecipes.all { (id, amount) -> (state.progression.recipes[id] ?: 0L) >= amount } &&
                     recipe.cost.items.keys.all { it in reachable || it in (options ?: emptyList()) } &&
                     (options == null || options.any { it in reachable })) reachable += recipe.rewards.filterValues { it > 0 }.keys
             }
@@ -183,7 +192,7 @@ object EconomyFood {
         val progression = catalog.food?.orders?.progression ?: return template
         val level = (homeLevel - 1).coerceIn(0, 4)
         val byId = catalog.items.associateBy { it.id }
-        val fishIds = catalog.fishing?.fish?.map { it.itemId }?.toSet() ?: emptySet()
+        val fishIds = catalog.fishing?.classes?.map { it.itemId }?.toSet() ?: emptySet()
         val items = template.items.mapValues { (id, quantity) ->
             val bps = when {
                 id in fishIds -> progression.fishBpsByHome[level]
@@ -231,7 +240,7 @@ object EconomyFood {
     }
 
     fun normalizedOrders(state: EconomyState, now: Instant, catalog: EconomyCatalog = EconomyRules.catalog): EconomyResidentOrders {
-        val previous = state.residentOrders
+        val previous = EconomyFishInventory.state(state, catalog).residentOrders
         val config = catalog.food?.orders ?: return EconomyResidentOrders(completed = previous.completed, earnedCoins = previous.earnedCoins)
         val cycle = Math.floorDiv(now.epochSecond, config.refreshSeconds)
         val replacementCycle = Math.floorDiv(now.epochSecond, config.replacementWindowSeconds)
@@ -315,7 +324,7 @@ object EconomyFood {
     }
 
     fun order(state: EconomyState, targetId: String, replace: Boolean, now: Instant, quotedPrice: Long = 0,
-        catalog: EconomyCatalog = EconomyRules.catalog): Pair<EconomyState, String> {
+        catalog: EconomyCatalog = EconomyRules.catalog, fishSelection: Map<String, Long>? = null): Pair<EconomyState, String> {
         val config = catalog.food?.orders ?: economyFailure("ECONOMY_ORDER_CHANGED", "Заказы пока недоступны")
         val current = residentOrderBoard(state, now, catalog)
         val offer = current.offers.find { it.id == targetId }
@@ -334,7 +343,7 @@ object EconomyFood {
             if (replacement == null || replacement.id == offer.templateId || replacement.items == offer.items)
                 economyFailure("ECONOMY_ORDER_NO_ALTERNATIVE", "Других подходящих заказов пока нет. Замена не потрачена")
         }
-        val spent = if (replace) state else spendItems(state, offer.items)
+        val spent = if (replace) state else EconomyRules.spend(state, EconomyCost(items = offer.items), fishSelection)
         return spent.copy(wallet = if (replace) spent.wallet.copy(pearls = spent.wallet.pearls - price)
             else spent.wallet.copy(coins = spent.wallet.coins + offer.coins), residentOrders = nextBoard.copy(
                 freeReplacementsUsed = if (replace && current.freeReplacementsRemaining > 0)
@@ -347,6 +356,6 @@ object EconomyFood {
     private fun spendItems(state: EconomyState, items: Map<String, Long>): EconomyState {
         if (items.any { (id, quantity) -> (state.inventory[id] ?: 0L) < quantity })
             economyFailure("ECONOMY_RESOURCES", "Не хватает припасов в кладовой")
-        return state.copy(inventory = state.inventory.mapValues { (id, quantity) -> quantity - (items[id] ?: 0L) }.filterValues { it > 0 })
+        return EconomyRules.spend(state, EconomyCost(items = items))
     }
 }

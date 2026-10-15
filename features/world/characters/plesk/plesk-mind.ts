@@ -4,7 +4,7 @@ import { FISHING_PACK_RELEASE, type FishingMotion } from "@/features/world/activ
 import type { ForestTrail } from "@/features/world/navigation/forest-trails";
 import type { FishSpeciesId } from "@/features/world/activities/fishing/fish-species";
 import { canTraverse, isWalkable } from "@/features/world/navigation/navigation";
-import { canTraverseResidents, residentTrafficDetour, residentRequestingPassage, residentYieldPoint, residentPassageClear,
+import { canTraverseResidents, residentClearance, residentWalkingStep, residentTrafficDetour, residentRequestingPassage, residentYieldPoint, residentPassageClear,
   RESIDENT_TRAFFIC_LIMITS, type ResidentOccupant } from "@/features/world/navigation/resident-traffic";
 import { PLESK, measurePleskTrail, pleskLocalPlaces, pleskTravelTime, reversePleskTrail, samplePleskTrail,
   type PleskAction, type PleskPlaces, type PleskResidentFrame, type PleskStop } from "./plesk-resident";
@@ -44,6 +44,8 @@ function beginPassageYield(mind: PleskMind, places: PleskPlaces, occupants?: rea
   const requester = residentRequestingPassage(mind.position, PLESK.size, occupants, PLESK.id,
     mind.stage.action === "walk" ? mind.intent === "trade" ? 2 : 1 : 0);
   if (!requester) return;
+  if (mind.stage.action === "walk" && Math.hypot(mind.stage.target.position.x - requester.position.x,
+    mind.stage.target.position.y - requester.position.y) > residentClearance(PLESK.size, requester.size)) return;
   yieldRetryAt.set(mind, mind.elapsed + RESIDENT_TRAFFIC_LIMITS.retry);
   const position = residentYieldPoint(places.nav, mind.position, PLESK.size, occupants, PLESK.id, requester);
   if (!position) return;
@@ -287,11 +289,14 @@ export function advancePleskMind(mind: PleskMind | null, scene: FixedWorldScene,
     const slice = Math.min(remaining, Math.max(0, mind.stage.duration - mind.age)), action = mind.stage.action;
     if (mind.stage.trail) {
       const next = samplePleskTrail(mind.stage.trail, mind.age + slice);
+      const traffic = residentWalkingStep({ owner: mind, navigation: places.nav, from: mind.position,
+        target: mind.stage.target.position, size: PLESK.size, occupants: environment.occupants,
+        selfId: PLESK.id, time: mind.elapsed }, next);
       if (!canTraverse(places.nav, mind.position, next)
-        || !canTraverseResidents(mind.position, next, PLESK.size, environment.occupants, PLESK.id)) {
-        const detour = residentTrafficDetour({ owner: mind, navigation: places.nav, from: mind.position,
+        || !traffic.clear) {
+        const detour = traffic.path ?? (!canTraverse(places.nav, mind.position, next) ? residentTrafficDetour({ owner: mind, navigation: places.nav, from: mind.position,
           target: mind.stage.target.position, size: PLESK.size, occupants: environment.occupants,
-          selfId: PLESK.id, time: mind.elapsed });
+          selfId: PLESK.id, time: mind.elapsed }) : null);
         mind.trafficWaiting = true;
         if (detour && detour.length > 1) {
           const trail = measurePleskTrail(detour);

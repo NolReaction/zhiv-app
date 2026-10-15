@@ -1,6 +1,7 @@
 package ru.zhiv.notifications
 
 import ru.zhiv.economy.EconomyJob
+import ru.zhiv.economy.EconomyRules
 import java.time.Instant
 
 internal data class NotificationJobReadiness(
@@ -25,7 +26,7 @@ internal fun notificationJobReadiness(
         return NotificationJobReadiness(maxOf(finishesAt, Instant.parse(it)), phase = "collected")
     }
     val actorFinishesAt = jobs.asSequence().filter {
-        it.kind == "exploration" || it.kind == "production" && it.targetId == "quarry"
+        it.kind == "exploration" && !EconomyRules.isMinerJob(it) || it.kind == "production" && it.targetId == "quarry"
     }.map { Instant.parse(it.finishesAt) }.maxOrNull()
     val dueAt = maxOf(finishesAt, actorFinishesAt ?: finishesAt)
     val otherCollection = jobs.filter { it.id != job.id && it.collection?.startedAt != null }

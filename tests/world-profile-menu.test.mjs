@@ -50,7 +50,7 @@ const namedButton = (view, name) => view.elements.find(element => element.type =
 function mood(overrides = {}) {
   const calls = [];
   return { ...inspect(WorldMoodModule({ observation, economy: { snapshot: freshEconomy() },
-    onCall: () => calls.push("call"), onOpenHelp: () => calls.push("help"), onOpenFood: () => calls.push("food"), ...overrides })), calls };
+    onCall: () => calls.push("call"), onOpenHelp: () => calls.push("help"), onOpenExpeditions: () => calls.push("expeditions"), ...overrides })), calls };
 }
 
 test("profile keeps authoritative progress compact and leaves the full mood outside its three navigation tabs", () => {
@@ -188,8 +188,9 @@ test("mood module keeps missing and paused character controls safe, and offers a
   const sleeping = mood({ observation: { ...observation, sleeping: true } });
   namedButton(sleeping, "Разбудить Мохлика").props.onClick();
   namedButton(sleeping, "Как заботиться о Мохлике").props.onClick();
-  namedButton(sleeping, "Еда").props.onClick();
-  assert.deepEqual(sleeping.calls, ["call", "help", "food"]);
+  namedButton(sleeping, "К вылазкам").props.onClick();
+  assert.equal(namedButton(sleeping, "Еда"), undefined);
+  assert.deepEqual(sleeping.calls, ["call", "help", "expeditions"]);
 });
 
 test("the meal card uses saved pending or active work bonuses independently of mood energy", () => {
@@ -209,6 +210,12 @@ test("the meal card uses saved pending or active work bonuses independently of m
   const builderOnly = mood({ economy: { snapshot: state } });
   assert.doesNotMatch(builderOnly.markup, /Еда: \+/);
   assert.match(builderOnly.markup, /Силы восстанавливаются во время отдыха/);
+  state.jobs = [{ kind: "exploration", actorId: "miner", targetId: "quarry_stone",
+    meal: { itemId: recipeMeal.itemId, consumer: "hero", speedBps: 2500 } }];
+  assert.doesNotMatch(mood({ economy: { snapshot: state } }).markup, /Еда: \+|Бонус учтён в текущей вылазке/,
+    "a miner's stale meal metadata never becomes Mochlik's active food bonus");
+  state.food.heroMeal = recipeMeal.itemId;
+  assert.match(mood({ economy: { snapshot: state } }).markup, /Бонус ждёт следующую вылазку/);
   assert.doesNotMatch(mood({ economy: { snapshot: null } }).markup, /Бонус от еды/);
 });
 

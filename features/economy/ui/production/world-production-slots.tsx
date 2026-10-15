@@ -1,48 +1,91 @@
 "use client";
 
-import { useId } from "react";
-import { Check, ChevronDown, Clock3, LockKeyhole, Plus } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
+import { CloudUpload, LockKeyhole, Plus } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
 import { productionSlotCount, productionSlotOffer, productionStationSupported } from "@/features/economy/domain/production-slots";
 import { locked, type ReadyEconomy } from "@/features/economy/sync/controller-state";
 import { formatPearls } from "@/features/economy/domain/money";
+import { ProductIcon, itemName, Work } from "@/features/economy/ui/shared/world-economy-parts";
+import { worldJobProgress } from "@/features/economy/ui/shared/world-stations";
 import styles from "./world-production-slots.module.css";
 
-/** Slots are permanent station capacity; a finished, unclaimed order still uses one. */
-export function WorldProductionSlots({ economy, stationId, compact = false }: { economy: ReadyEconomy; stationId: string; compact?: boolean }) {
-  const hintId = useId();
-  const state = economy.snapshot;
-  if (!productionStationSupported(stationId)) return null;
+type SlotConfirmation = { stationId: string; owner: string; slot: number; pricePearls: number };
+
+/** Slots stay visible; finished orders keep their place until the ordinary claim. */
+export function WorldProductionSlots({ economy, stationId, compact = false, openPantry }: { economy: ReadyEconomy; stationId: string; compact?: boolean; openPantry?: () => void }) {
+  const dialogId = useId();
+  const [confirmation, setConfirmation] = useState<SlotConfirmation | null>(null);
+  const cancelButton = useRef<HTMLButtonElement>(null);
+  const slotsSection = useRef<HTMLElement>(null);
+  const purchaseTrigger = useRef<HTMLButtonElement | null>(null);
+  const wasConfirming = useRef(false);
+  const purchasePending = useRef<{ owner: string; revision: number } | null>(null);
+  const state = economy.productionSnapshot ?? economy.snapshot;
   const capacity = productionSlotCount(state, stationId), offer = productionSlotOffer(state, stationId);
   const jobs = state.jobs.filter(job => job.kind === "production" && job.targetId === stationId);
   const construction = state.jobs.some(job => job.kind === "construction" && job.targetId === stationId);
+  const unavailable = construction || !(state.buildings[stationId] > 0);
+  const currentConfirmation = confirmation?.stationId === stationId && confirmation.owner === state.ownerPublicId && confirmation.slot === capacity + 1 ? confirmation : null;
+  const selectedOffer = state.catalog.productionSlots.upgrades.find(entry => entry.slots === currentConfirmation?.slot);
   const reason = !(state.buildings[stationId] > 0) ? "Сначала обустройте это место"
     : construction ? "Дождитесь завершения улучшения"
-      : offer && (state.buildings.home ?? 1) < offer.requiredHomeLevel ? `Нужен дом ${offer.requiredHomeLevel} уровня`
-        : offer && state.wallet.pearls < offer.pricePearls ? `Не хватает жемчужин: ${formatPearls(offer.pricePearls - state.wallet.pearls)}` : null;
-  const unavailable = construction || !(state.buildings[stationId] > 0);
-  const slots = Array.from({ length: 3 }, (_, index) => {
-    const job = jobs[index], opened = index < capacity, ready = job && Date.parse(job.finishesAt) <= economy.now;
-    return { state: !opened ? "locked" : !job ? "free" : ready ? "ready" : "working",
-      label: !opened ? "Закрыто" : !job ? unavailable ? "Недоступно" : "Свободно" : ready ? "К сбору" : "В работе",
-      Icon: !opened ? LockKeyhole : !job ? Plus : ready ? Check : Clock3 };
-  });
-  return <details key={stationId} className={`${styles.slots} ${compact ? styles.compact : ""}`} aria-label="Места производства" data-production-slots={stationId}>
-    <summary className={styles.summary} aria-label={`Места производства: занято ${jobs.length} из ${capacity}. ${offer ? "Расширить" : "Подробнее"}`}>
-      <strong>{compact ? unavailable ? "Места" : "Свободно" : "Места"} <span aria-live="polite" aria-atomic="true">{compact ? unavailable ? construction ? "на улучшении" : "пока недоступны" : `${Math.max(0, capacity - jobs.length)} из ${capacity}` : `${jobs.length} / ${capacity}`}</span></strong>
-      {!compact && <span className={styles.markers} aria-hidden="true">{slots.map(({ state: slotState, label, Icon }, index) => <span key={index} className={styles.marker} data-state={slotState} title={`Место ${index + 1}: ${label}`}><Icon size={12} /></span>)}</span>}
-      <span className={styles.action}>{offer ? "Расширить" : "Подробнее"}<ChevronDown size={13} aria-hidden="true" /></span>
-    </summary>
-    <div className={styles.content}>
-    <div className={styles.track}>{slots.map(({ state: slotState, label, Icon }, index) => <span key={index} className={styles.slot} data-state={slotState}><Icon size={13} aria-hidden="true" /><span>{label}</span></span>)}</div>
-    {offer && <>
-      <button type="button" className={styles.buy} disabled={Boolean(reason) || locked(economy)} aria-describedby={reason ? hintId : undefined}
-        aria-label={`Открыть место ${offer.slots} за ${formatPearls(offer.pricePearls)} жемчужин`}
-        onClick={() => { if (!reason && !locked(economy)) void economy.act("buy_production_slot", stationId); }}>
-        <span><Plus size={14} aria-hidden="true" />Место {offer.slots}</span><strong>{formatPearls(offer.pricePearls)}<ItemIcon itemId="pearls" size={17} /></strong>
-      </button>
-      {reason && <p id={hintId} className={styles.hint}>{reason}</p>}
-    </>}
-    </div>
-  </details>;
+      : economy.error ? "Проверьте результат последнего действия перед покупкой"
+        : currentConfirmation && offer?.slots !== currentConfirmation.slot ? `Сначала откройте место ${capacity + 1}`
+          : currentConfirmation && (selectedOffer?.pricePearls !== currentConfirmation.pricePearls || offer?.pricePearls !== currentConfirmation.pricePearls) ? "Цена изменилась. Откройте место снова, чтобы подтвердить новую цену"
+          : offer && (state.buildings.home ?? 1) < offer.requiredHomeLevel ? `Нужен дом ${offer.requiredHomeLevel} уровня`
+            : offer && state.wallet.pearls < offer.pricePearls ? `Не хватает жемчужин: ${formatPearls(offer.pricePearls - state.wallet.pearls)}`
+              : locked(economy) ? "Дождитесь подтверждения последнего действия" : null;
+  const confirming = Boolean(currentConfirmation && selectedOffer);
+  useEffect(() => {
+    if (confirming) cancelButton.current?.focus({ preventScroll: true });
+    else if (wasConfirming.current) (purchaseTrigger.current?.isConnected ? purchaseTrigger.current : slotsSection.current)?.focus({ preventScroll: true });
+    wasConfirming.current = confirming;
+  }, [confirming, currentConfirmation?.slot]);
+  useEffect(() => {
+    const pending = purchasePending.current;
+    if (pending && (pending.owner !== state.ownerPublicId || pending.revision !== state.revision || economy.error)) purchasePending.current = null;
+  }, [state.ownerPublicId, state.revision, economy.error]);
+  if (!productionStationSupported(stationId)) return null;
+  function cancelPurchase() {
+    setConfirmation(null);
+    (purchaseTrigger.current?.isConnected ? purchaseTrigger.current : slotsSection.current)?.focus({ preventScroll: true });
+  }
+  const free = Math.max(0, capacity - jobs.length);
+  return <section ref={slotsSection} tabIndex={-1} className={`${styles.slots} ${compact ? styles.compact : ""}`} aria-label="Места производства" data-production-slots={stationId}
+    data-section-guide-target="workshop-queue" data-running-orders={jobs.some(job => !economy.pendingProductionIds?.includes(job.id) && !worldJobProgress(state, job, economy.now).ready) ? stationId : undefined}>
+    <header className={styles.heading}><h3>Производство</h3><span aria-live="polite" aria-atomic="true">Свободно {free} из {capacity}</span></header>
+    <div className={styles.track}>{Array.from({ length: 3 }, (_, index) => {
+      const job = jobs[index], opened = index < capacity;
+      const queued = Boolean(job && economy.pendingProductionIds?.includes(job.id));
+      const tier = state.catalog.productionSlots.upgrades.find(entry => entry.slots === index + 1);
+      const nextLocked = !opened && index === capacity;
+      const slotState = queued ? "pending" : job ? worldJobProgress(state, job, economy.now).ready ? "ready" : "working" : !opened ? "locked" : "free";
+      return job ? <div key={index} className={`${styles.slot} ${styles.job}`} data-production-slot={index + 1} data-state={slotState}>
+        <span className={styles.slotNumber}>Место {index + 1}</span>{queued ? <div className={styles.pending} role="status" data-production-pending={job.id}><ProductIcon state={state} itemId={Object.keys(job.rewards)[0]} size={28} /><strong title={itemName(state, Object.keys(job.rewards)[0])}>{itemName(state, Object.keys(job.rewards)[0])}</strong><span><CloudUpload size={12} aria-hidden="true" /> Сохранено</span></div> : <Work economy={economy} job={job} openPantry={openPantry} compact />}
+      </div> : opened ? <div key={index} className={styles.slot} data-production-slot={index + 1} data-state={slotState}>
+        <span className={styles.slotNumber}>Место {index + 1}</span><Plus size={25} aria-hidden="true" /><strong>{unavailable ? "Недоступно" : "Свободно"}</strong><span>{unavailable ? construction ? "Идёт улучшение" : "Нужно обустроить" : "Выберите рецепт"}</span>
+      </div> : <button key={index} type="button" className={`${styles.slot} ${styles.closed}`} data-production-slot={index + 1} data-state="locked"
+        disabled={!nextLocked} aria-label={nextLocked ? `Открыть место ${index + 1} за ${formatPearls(tier?.pricePearls ?? 0)} жемчужин` : `Место ${index + 1}: закрыто`}
+        aria-haspopup={nextLocked ? "dialog" : undefined} aria-expanded={nextLocked ? currentConfirmation?.slot === index + 1 : undefined} aria-controls={confirming && currentConfirmation?.slot === index + 1 ? dialogId : undefined}
+        onClick={event => { if (index !== productionSlotCount(economy.snapshot, stationId)) return; purchaseTrigger.current = event.currentTarget; setConfirmation({ stationId, owner: state.ownerPublicId, slot: index + 1, pricePearls: tier?.pricePearls ?? 0 }); }}>
+        <span className={styles.slotNumber}>Место {index + 1}</span><span className={styles.lock}><LockKeyhole size={24} aria-hidden="true" /></span><strong>{nextLocked ? "Открыть" : "Закрыто"}</strong>{nextLocked && <span className={styles.price}>{formatPearls(tier?.pricePearls ?? 0)}<ItemIcon itemId="pearls" size={16} /></span>}
+      </button>;
+    })}</div>
+    {confirming && currentConfirmation && selectedOffer && <div className={styles.confirmation} role="dialog" id={dialogId} aria-labelledby={`${dialogId}-title`} aria-describedby={`${dialogId}-description`}
+      onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); cancelPurchase(); } }}>
+      <h4 id={`${dialogId}-title`}>Открыть место {currentConfirmation.slot}?</h4>
+      <p id={`${dialogId}-description`}>За {formatPearls(currentConfirmation.pricePearls)} жемчужин вы навсегда получите ещё одно место только на этом производстве.</p>
+      {reason && <p className={styles.hint} role="status">{reason}</p>}
+      <div className={styles.confirmActions}><button ref={cancelButton} type="button" className={styles.cancel} onClick={cancelPurchase}>Отмена</button>
+        <button type="button" className={styles.buy} disabled={Boolean(reason) || locked(economy) || selectedOffer.slots !== offer?.slots} onClick={() => {
+          if (reason || locked(economy) || economy.error || selectedOffer.slots !== offer?.slots || selectedOffer.pricePearls !== currentConfirmation.pricePearls || offer?.pricePearls !== currentConfirmation.pricePearls || purchasePending.current) return;
+          purchasePending.current = { owner: state.ownerPublicId, revision: state.revision };
+          setConfirmation(null);
+          void economy.act("buy_production_slot", stationId);
+        }}>Купить за {formatPearls(currentConfirmation.pricePearls)}<ItemIcon itemId="pearls" size={16} /></button>
+      </div>
+    </div>}
+    {jobs.length > 3 && <div className={styles.legacy} aria-label="Ранее запущенные заказы"><h4>Ранее запущенные заказы</h4>{jobs.slice(3).map(job => <Work key={job.id} economy={economy} job={job} openPantry={openPantry} compact />)}</div>}
+  </section>;
 }

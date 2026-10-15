@@ -5,15 +5,15 @@ import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const hookModule = "virtual:world-onboarding-practice-hooks";
-const vite = await createServer({ appType: "custom", configFile: false, root,
+const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "/tmp/zhiv-main-course-audit-practice-vite",
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false },
   plugins: [{ name: "world-onboarding-practice-hooks", enforce: "pre",
     resolveId(id) { if (id === hookModule) return `\0${id}`; },
     load(id) { if (id === `\0${hookModule}`) return `
-      let slots = [], cursor = 0, changed = false, pending = new Map(), collection = null;
+      let slots = [], cursor = 0, changed = false, pending = new Map(), collection = null, observation = null;
       export function reset() {
         for (const slot of slots) slot?.cleanup?.();
-        slots = []; cursor = 0; changed = false; pending.clear(); collection = null;
+        slots = []; cursor = 0; changed = false; pending.clear(); collection = null; observation = null;
       }
       export function begin() { cursor = 0; changed = false; }
       export function invalidate() { changed = true; }
@@ -43,32 +43,48 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
       }
       export function setCollection(value) { collection = value; }
       export function useGardenCollection() { return collection; }
+      export function setObservation(value) { observation = value; }
+      export function useForestObservation() { return observation; }
     `; },
     transform(source, id) {
       if (id.endsWith("/features/world/ui/onboarding/world-onboarding.tsx")) return source
         .replace('from "react";', `from "${hookModule}";`)
+        .replace('import { useForestObservation } from "@/features/world/state/use-forest-observation";',
+          `import { useForestObservation } from "${hookModule}";`)
         .replace('import { useGardenCollection } from "@/features/economy/integration/garden-collection-context";',
           `import { useGardenCollection } from "${hookModule}";`);
     },
   }],
 });
 const hooks = await vite.ssrLoadModule(hookModule);
-const { WorldOnboarding } = await vite.ssrLoadModule("/features/world/ui/onboarding/world-onboarding.tsx");
-const { WorkshopRetry, WorkshopStarterContents, TutorialOrderContents } = await vite.ssrLoadModule("/features/world/ui/onboarding/world-onboarding-cards.tsx");
-const { tutorialResidentOrder } = await vite.ssrLoadModule("/features/economy/domain/tutorial-order.ts");
+const { WorldOnboarding, WorldOnboardingSession } = await vite.ssrLoadModule("/features/world/ui/onboarding/world-onboarding.tsx");
+const { WorkshopRetry, WorkshopConstructionContents, TutorialOrderContents } = await vite.ssrLoadModule("/features/world/ui/onboarding/world-onboarding-cards.tsx");
+const { tutorialResidentOrder, newTutorialOrder } = await vite.ssrLoadModule("/features/economy/domain/tutorial-order.ts");
 const { transitionWorldOnboarding } = await vite.ssrLoadModule("/features/world/domain/world-onboarding.ts");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const originalObserver = globalThis.MutationObserver;
+const originalDocument = globalThis.document;
+const originalRequestAnimationFrame = globalThis.requestAnimationFrame;
+const originalCancelAnimationFrame = globalThis.cancelAnimationFrame;
 const observers = new Set();
+globalThis.document = { body: {} };
+globalThis.requestAnimationFrame = callback => { callback(); return 1; };
+globalThis.cancelAnimationFrame = () => {};
 globalThis.MutationObserver = class {
   constructor(callback) { this.callback = callback; }
-  observe() { observers.add(this); }
+  observe(target) { this.target = target; observers.add(this); }
   disconnect() { observers.delete(this); }
 };
 after(async () => {
   hooks.reset();
   if (originalObserver) globalThis.MutationObserver = originalObserver;
   else delete globalThis.MutationObserver;
+  if (originalDocument) globalThis.document = originalDocument;
+  else delete globalThis.document;
+  if (originalRequestAnimationFrame) globalThis.requestAnimationFrame = originalRequestAnimationFrame;
+  else delete globalThis.requestAnimationFrame;
+  if (originalCancelAnimationFrame) globalThis.cancelAnimationFrame = originalCancelAnimationFrame;
+  else delete globalThis.cancelAnimationFrame;
   await vite.close();
 });
 
@@ -80,9 +96,12 @@ const started = (stepId, jobId) => ({ version: 2, status: "started", stepId, ...
 const gain = (patch = {}) => ({ id: "claim-receipt", ownerPublicId: owner, revision: 2, source: "claim", stationId: "garden",
   items: [{ itemId: "berries", quantity: 6 }], ...patch });
 
-function harness(progress = started("grow"), jobs = []) {
+function harness(progress = started("grow"), jobs = [], { ordersPortal = false, session = false } = {}) {
   hooks.reset();
-  const calls = [], surface = { garden: false, recipe: false, pantryItem: false, pantrySale: false, pantryRelics: false, routePreparation: false, tutorialOrder: false };
+  const calls = [], surface = { garden: false, recipe: false, pantryItem: false, pantrySale: false, pantryRelics: false,
+    routeActivities: false, routes: false, routePreparation: false, tutorialOrder: false, workshopSelected: false };
+  const portal = { tutorialOrder: false }, visibility = { sceneReady: true, worldCovered: false, ordersCovered: false };
+  const queries = { world: [], orders: [] };
   const notifySurface = () => { for (const observer of observers) observer.callback([]); };
   const snapshot = { ownerPublicId: owner, revision: 1, catalog: structuredClone(economyCatalog),
     wallet: { coins: 1000, pearls: 0 }, inventory: {}, buildings: { home: 3, warehouse: 1, garden: 1 }, jobs, workshopStarterClaimed: false,
@@ -91,7 +110,7 @@ function harness(progress = started("grow"), jobs = []) {
   const economy = { snapshot, now, busy: false, uncertain: false, error: null, retryAt: 0, inventoryGains: [],
     act(action, target) {
       if (action === "claim_tutorial_order") { assert.equal(target, "tutorial_first_order"); calls.push(["claim-order", target]); }
-      else { assert.equal(action, "claim_workshop_starter"); assert.equal(target, "workshop"); calls.push(["claim-starter", target]); }
+      else assert.fail(`The coach cannot issue ${action}`);
     },
     actMarket: forbidden, refresh() { calls.push(["refresh"]); }, retry() { calls.push(["retry"]); } };
   const change = event => {
@@ -101,16 +120,24 @@ function harness(progress = started("grow"), jobs = []) {
   const props = { open: true, modalBlocked: false, progress, economy, quickMenu: null, helpOpen: false, isOnline: true,
     residentOpen: null, ordersOpen: false, workshopOpen: false,
     worldElement: { current: { querySelector(selector) {
+      queries.world.push(selector);
+      if (selector === '[data-ready="true"] > canvas[role="img"]') return visibility.sceneReady ? {} : null;
       if (selector === '[data-place="garden"]') return surface.garden ? {} : null;
-      if (selector === '[data-recipe-preparation="grow_berries"]') return surface.recipe ? {} : null;
-      const content = { '[data-guide-pantry-item]': "pantryItem", '[data-guide-pantry-sale]': "pantrySale",
-        '[data-guide-pantry-relics]': "pantryRelics", '[data-route-preparation]': "routePreparation", '[data-order-id="tutorial_first_order"]': "tutorialOrder" }[selector];
-      if (content) return surface[content] ? {} : null;
-      if (selector === '[data-recipe="grow_berries"]') return surface.garden ? { click() {
-        calls.push(["choose-recipe"]); surface.recipe = true; notifySurface();
+      if (selector === '[data-place="garden"] [data-recipe-product="berries"]') return surface.garden && surface.recipe ? { click() {
+        assert.fail("Showing a production target must never press its one-tap action");
       } } : null;
+      const content = { '[data-guide-pantry-item]': "pantryItem", '[data-guide-pantry-sale]': "pantrySale",
+        '[data-guide-pantry-relics]': "pantryRelics", '[data-section-guide-target="expedition-activities"]': "routeActivities",
+        '[data-section-guide-target="expedition-routes"]': "routes", '[data-route-preparation]': "routePreparation",
+        '[data-tutorial-order="true"]': "tutorialOrder",
+        '[data-place="workshop"] [role="tab"][aria-selected="true"][id$="-workshop"]': "workshopSelected" }[selector];
+      if (content) return surface[content] ? {} : null;
       return null;
-    } } },
+    }, closest(selector) { assert.equal(selector, '[aria-hidden="true"]'); return visibility.worldCovered ? {} : null; } } },
+    ...(ordersPortal ? { ordersElement: { current: { querySelector(selector) {
+      queries.orders.push(selector);
+      return selector === '[data-tutorial-order="true"]' && portal.tutorialOrder ? {} : null;
+    }, closest(selector) { assert.equal(selector, '[aria-hidden="true"]'); return visibility.ordersCovered ? {} : null; } } } } : {}),
     onStart() { calls.push(["start"]); change({ type: "start" }); },
     onStep(stepId) { calls.push(["step", stepId]); change({ type: "step", stepId }); },
     onCrop(jobId) { calls.push(["crop", jobId]); change({ type: "crop", jobId }); },
@@ -121,7 +148,8 @@ function harness(progress = started("grow"), jobs = []) {
     onOpenGarden(recipe) { calls.push(["garden", recipe]); surface.garden = true; surface.recipe = Boolean(recipe); notifySurface(); },
     onOpenHelp() { calls.push(["help"]); props.helpOpen = true; props.modalBlocked = true; },
     onOpenResident(id) { calls.push(["resident", id]); props.residentOpen = id; props.modalBlocked = true; },
-    onOpenOrders() { calls.push(["orders"]); props.ordersOpen = true; props.quickMenu = "food"; surface.tutorialOrder = Boolean(economy.snapshot.tutorialOrder?.ingredientsClaimed && !economy.snapshot.tutorialOrder?.completed); notifySurface(); },
+    onOpenOrders() { calls.push(["orders"]); props.ordersOpen = true; props.quickMenu = null;
+      (ordersPortal ? portal : surface).tutorialOrder = Boolean(economy.snapshot.tutorialOrder?.ingredientsClaimed && !economy.snapshot.tutorialOrder?.completed); notifySurface(); },
     onOpenWorkshop(view) { calls.push(view ? ["workshop", view] : ["workshop"]); props.workshopOpen = true; props.modalBlocked = true; },
     onCloseSurface() { calls.push(["close-surface"]); props.quickMenu = null; props.helpOpen = false;
       props.residentOpen = null; props.ordersOpen = false; props.workshopOpen = false; props.modalBlocked = false;
@@ -130,7 +158,7 @@ function harness(progress = started("grow"), jobs = []) {
   const render = () => {
     for (let pass = 0; pass < 20; pass++) {
       hooks.begin();
-      const tree = WorldOnboarding(props);
+      const tree = session ? WorldOnboardingSession({ ...props, presenceKey: `practice:${owner}` }) : WorldOnboarding(props);
       if (hooks.dirty()) continue;
       hooks.flush();
       if (!hooks.dirty()) return tree?.props ?? null;
@@ -139,14 +167,30 @@ function harness(progress = started("grow"), jobs = []) {
   };
   const patchEconomy = patch => { Object.assign(economy, patch); };
   const patchSnapshot = patch => { economy.snapshot = { ...economy.snapshot, ...patch }; };
-  return { props, economy, surface, calls, render, patchEconomy, patchSnapshot,
+  return { props, economy, surface, calls, queries, render, patchEconomy, patchSnapshot,
     revealSurface(garden, recipe) { surface.garden = garden; surface.recipe = recipe; notifySurface(); },
     revealContent(patch) { Object.assign(surface, patch); notifySurface(); },
+    revealPortal(patch) { Object.assign(portal, patch); notifySurface(); },
+    setVisibility(patch) { Object.assign(visibility, patch); notifySurface(); },
+    setObservation(value) { hooks.setObservation(value); },
     setCollection(value) { hooks.setCollection(value); },
   };
 }
 
-test("practice points at the berry bush and waits for manual map and recipe actions", () => {
+test("a fresh main course still welcomes the player and starts only its local introduction", () => {
+  const h = harness(null);
+  const coach = h.render();
+  assert.equal(coach.open, true);
+  assert.equal(coach.welcome, true);
+  assert.equal(coach.primary.label, "Давай попробуем");
+  assert.equal(h.props.progress, null);
+  assert.deepEqual(h.calls, []);
+  coach.primary.onClick();
+  assert.deepEqual(h.props.progress, started("profile"));
+  assert.deepEqual(h.calls, [["start"]]);
+});
+
+test("practice points at the one-tap berry card without activating its production command", () => {
   const h = harness(started("garden"));
   let coach = h.render();
   assert.equal(coach.primary, undefined);
@@ -154,15 +198,46 @@ test("practice points at the berry bush and waits for manual map and recipe acti
   assert.deepEqual(h.calls, []);
   h.revealSurface(true, false);
   coach = h.render();
-  assert.equal(coach.target, '[data-recipe="grow_berries"]');
+  assert.equal(coach.target, '[data-place="garden"] [data-recipe-product="berries"]');
   assert.equal(coach.primary, undefined);
-  assert.equal(h.props.progress.stepId, "garden", "opening the bush alone does not count as choosing a recipe");
+  assert.equal(h.props.progress.stepId, "garden", "the guide waits until the real product card is mounted");
   h.revealSurface(true, true);
   coach = h.render();
   assert.equal(h.props.progress.stepId, "grow");
-  assert.equal(coach.primary, undefined, "the actual recipe button is the only start control");
+  assert.equal(coach.target, '[data-place="garden"] [data-recipe-product="berries"]');
+  assert.equal(coach.primary, undefined, "the actual product card is the only start control");
+  assert.match(coach.summary, /Нажми на карточку малины/);
+  assert.doesNotMatch(coach.text, /«Начать»|подготовк|открой рецепт/);
   assert.deepEqual(h.economy.snapshot.jobs, []);
-  assert.deepEqual(h.calls, [["step", "grow"]], "the guide observes the manual choice without clicking any target");
+  assert.deepEqual(h.calls, [["step", "grow"]], "the guide changes only its local lesson, never clicks the action target");
+});
+
+test("berry practice targets the same product after upgrades and explains the automatic recipe's exact time", () => {
+  for (const [gardenLevel, expected] of [[1, "1 мин"], [2, "45 с"], [3, "30 с"]]) {
+    const h = harness(started("grow"));
+    h.patchSnapshot({ buildings: { home: 3, warehouse: 1, garden: gardenLevel } });
+    h.revealSurface(true, true);
+    const coach = h.render();
+    assert.equal(coach.target, '[data-place="garden"] [data-recipe-product="berries"]');
+    assert.ok(coach.text.includes(`за ${expected}`), coach.text);
+    assert.equal(coach.primary, undefined);
+    assert.deepEqual(h.calls, []);
+  }
+});
+
+test("the one-tap practice keeps blockers readable without issuing a command or advancing on a refused action", () => {
+  for (const patch of [{ uncertain: true }, { isOnline: false }, { error: "Не хватает материалов" }]) {
+    const h = harness(started("grow"));
+    h.revealSurface(true, true);
+    if (patch.isOnline === false) h.props.isOnline = false;
+    else h.patchEconomy(patch);
+    const coach = h.render();
+    assert.equal(coach.target, '[data-place="garden"] [data-recipe-product="berries"]');
+    assert.ok(coach.status);
+    assert.equal(coach.primary, undefined);
+    assert.deepEqual(h.props.progress, started("grow"));
+    assert.deepEqual(h.calls, []);
+  }
 });
 
 test("a confirmed crop can grow in the background while the guide advances, preserving its exact ID", () => {
@@ -175,6 +250,53 @@ test("a confirmed crop can grow in the background while the guide advances, pres
   coach.primary.onClick();
   assert.deepEqual(h.props.progress, started("neighbors", "first"));
   assert.deepEqual(jobs.map(job => job.id), ["later", "first"], "the guide cannot reorder server jobs");
+});
+
+test("replayed raspberry practice never adopts another berry or celebrates its receipt", () => {
+  const blueberry = { ...crop("blueberry", now), recipeId: "grow_blueberries", rewards: { blueberries: 1 } };
+  const h = harness(started("grow"), [blueberry]);
+  h.revealSurface(true, true);
+  let coach = h.render();
+  assert.equal(coach.title, "Посади первые ягоды");
+  assert.equal(h.props.progress.cropJobId, undefined);
+  assert.equal(coach.target, '[data-place="garden"] [data-recipe-product="berries"]');
+  assert.deepEqual(h.calls, []);
+
+  h.patchSnapshot({ revision: 2, jobs: [], inventory: { blueberries: 1 } });
+  h.patchEconomy({ inventoryGains: [gain({ items: [{ itemId: "blueberries", quantity: 1 }] })] });
+  assert.equal(h.render().title, "Посади первые ягоды");
+
+  h.patchSnapshot({ revision: 3, jobs: [blueberry, crop("raspberry", now + 60_000)] });
+  coach = h.render();
+  assert.equal(h.props.progress.cropJobId, "raspberry", "an earlier blueberry cannot hide the actual raspberry practice");
+  assert.equal(coach.title, "Ягоды уже растут");
+  assert.deepEqual(h.economy.snapshot.jobs.map(job => job.id), ["blueberry", "raspberry"]);
+});
+
+test("an obsolete saved non-raspberry crop cannot show a completed-course harvest reminder", () => {
+  const blueberry = { ...crop("blueberry", now), recipeId: "grow_blueberries", rewards: { blueberries: 1 } };
+  const h = harness({ version: 2, status: "completed", cropJobId: blueberry.id }, [blueberry]);
+  assert.equal(h.render(), null);
+  assert.deepEqual(h.props.progress, { version: 2, status: "completed" });
+  assert.deepEqual(h.economy.snapshot.jobs, [blueberry]);
+  assert.deepEqual(h.calls, [["crop", undefined]], "only the obsolete tutorial reference is cleared");
+});
+
+test("ready mixed berries teach the real collect-all action and yield to a saved running harvest", () => {
+  const raspberry = { ...crop("raspberry", now), rewards: { berries: 1 } };
+  const blueberry = { ...crop("blueberry", now), recipeId: "grow_blueberries", rewards: { blueberries: 1 } };
+  const h = harness(started("grow", raspberry.id), [raspberry, blueberry]);
+  h.revealSurface(true, true);
+  let coach = h.render();
+  assert.match(coach.summary, /«Собрать всё \(2\)»/);
+  assert.match(coach.text, /Все созревшие ягоды.*за один подход/);
+  assert.equal(coach.target, '[data-job-id="raspberry"] button');
+  h.setCollection({ jobId: raspberry.id, jobIds: [raspberry.id, blueberry.id], phase: "walking", request: null });
+  coach = h.render();
+  assert.match(coach.summary, /Сбор уже начат/);
+  assert.equal(coach.target, undefined, "the guide must not ask for another click on a disabled collection button");
+  assert.equal(coach.status, "Мохлик собирает урожай");
+  assert.deepEqual(h.calls, []);
 });
 
 test("removing a crop without an accepted receipt never announces that the berries were received", () => {
@@ -217,6 +339,26 @@ test("a real accepted berry receipt celebrates once and points to the pantry wit
   coach.primary.onClick();
   assert.deepEqual(h.calls.slice(offset), [["close-surface"], ["step", "neighbors"]]);
   assert.equal(h.props.quickMenu, null, "a continuation button must not open the pantry for the player");
+});
+
+test("an accepted mixed garden batch celebrates the tracked berry once after deleting all collected jobs", () => {
+  const tracked = { ...crop("crop-1", now), rewards: { berries: 1 }, collection: { kind: "berry_harvest", seconds: 8,
+    batchId: "06b215a9-17aa-4949-8282-f7b4942f552c", startedAt: new Date(now - 8000).toISOString(), finishesAt: new Date(now).toISOString() } };
+  const other = { ...tracked, id: "crop-2", recipeId: "grow_blueberries", rewards: { blueberries: 1 } };
+  const growing = crop("crop-3", now + 60_000);
+  const h = harness(started("grow", tracked.id), [tracked, other, growing]);
+  h.render();
+  h.patchSnapshot({ revision: 2, jobs: [growing], inventory: { berries: 1, blueberries: 1 } });
+  h.patchEconomy({ inventoryGains: [gain({ id: tracked.collection.batchId, items: [{ itemId: "berries", quantity: 1 }, { itemId: "blueberries", quantity: 1 }] })] });
+  const coach = h.render();
+  assert.equal(coach.title, "Урожай в кладовой!");
+  assert.equal(h.props.progress.cropJobId, undefined);
+  assert.deepEqual(h.economy.snapshot.jobs.map(job => job.id), [growing.id]);
+  coach.primary.onClick();
+  h.props.progress = transitionWorldOnboarding(h.props.progress, { type: "replay" });
+  h.render();
+  h.props.progress = started("grow");
+  assert.equal(h.render().title, "Ягоды уже растут", "the same batch receipt cannot celebrate the next growing crop");
 });
 
 test("replaying after a successful harvest cannot reuse the previous crop's success message", () => {
@@ -283,68 +425,144 @@ test("neighbors are learned through the real More and Characters path without sh
   assert.ok(!skippedVisits.calls.some(call => call[0] === "resident"));
 });
 
-test("tutorial order grants on explicit click, then teaches More, food menu, Orders and manual submission", () => {
+test("legacy order activation pins terms without a grant, then teaches manual navigation and submission", () => {
   const h = harness(started("orders"));
   let coach = h.render();
-  assert.equal(coach.primary.label, "Получить ингредиенты");
-  assert.equal(coach.target, undefined);
+  assert.equal(coach.primary.label, "Открыть учебный заказ");
   assert.deepEqual(h.calls, []);
   const terms = tutorialResidentOrder(h.economy.snapshot);
-  assert.match(coach.summary, new RegExp(`${terms.coins} монет`));
-  coach.primary.onClick();
-  coach.primary.onClick();
-  assert.deepEqual(h.calls, [["claim-order", "tutorial_first_order"]], "two taps cannot enqueue two grants");
-  assert.deepEqual(h.economy.snapshot.inventory, {}, "the coach never credits an optimistic inventory");
+  coach.primary.onClick(); coach.primary.onClick();
+  assert.deepEqual(h.calls, [["claim-order", "tutorial_first_order"]], "two taps cannot enqueue two activations");
+  assert.deepEqual(h.economy.snapshot.inventory, {});
   h.patchEconomy({ busy: true });
-  coach = h.render();
-  assert.equal(coach.primary.disabled, true);
-  assert.doesNotMatch(coach.summary, /Ингредиенты получены/);
-  h.patchSnapshot({ revision: 2, tutorialOrder: { ingredientsClaimed: true, completed: false, terms }, inventory: { ...terms.items } });
+  assert.equal(h.render().primary.disabled, true);
+  h.patchSnapshot({ revision: 2, tutorialOrder: { ingredientsClaimed: true, completed: false, terms } });
   h.patchEconomy({ busy: false });
   coach = h.render();
   assert.equal(coach.primary, undefined);
-  assert.equal(coach.target, '[data-world-quick="more"]');
+  assert.equal(coach.target, '[data-world-orders-entry]');
+  assert.match(coach.status, /Припасов пока не хватает/);
   h.props.quickMenu = "more";
-  coach = h.render();
-  assert.equal(coach.target, '[data-world-food-entry]');
-  assert.match(coach.summary, /«Еда и заказы»/);
-  h.props.quickMenu = "food";
-  coach = h.render();
-  assert.equal(coach.target, '[data-world-food-tab="orders"]');
-  assert.match(coach.summary, /нажми вкладку «Заказы»/);
+  assert.equal(h.render().target, '[data-world-orders-entry]', "orders have their own entry even while another menu is open");
+  assert.doesNotMatch(coach.text, /Еда и заказы|«Ещё»|вкладк/);
   h.props.ordersOpen = true; h.revealContent({ tutorialOrder: true });
   coach = h.render();
   assert.equal(coach.target, '[data-order-id="tutorial_first_order"]');
-  assert.match(coach.summary, /Есть \/ нужно/);
-  assert.match(coach.text, /«Ещё».*«Еда и заказы».*«Заказы»/);
-  assert.equal(coach.primary, undefined, "submission must happen on the real order card");
-  assert.doesNotMatch(coach.title, /выполнен/);
+  assert.match(coach.summary, /есть \/ нужно/);
+  assert.equal(coach.primary, undefined, "submission remains on the real order card");
   h.revealContent({ tutorialOrder: false });
-  coach = h.render();
-  assert.equal(coach.target, '[data-order-filter="all"]', "a filtered-out card points to the actual filter");
-  assert.equal(coach.primary, undefined);
-  assert.deepEqual(h.calls, [["claim-order", "tutorial_first_order"]], "no menu, tab or filter is activated by the guide");
-  h.revealContent({ tutorialOrder: true });
-  assert.equal(h.render().target, '[data-order-id="tutorial_first_order"]');
-  h.patchSnapshot({ revision: 3, tutorialOrder: { ingredientsClaimed: true, completed: true, terms }, inventory: {}, wallet: { coins: 1100, pearls: 0 } });
+  assert.equal(h.render().target, '[data-order-filter="all"]');
+  h.patchSnapshot({ revision: 3, tutorialOrder: { ingredientsClaimed: true, completed: true, terms } });
   coach = h.render();
   assert.equal(coach.title, "Учебный заказ выполнен!");
-  assert.match(coach.summary, /100 монет получено/);
-  assert.equal(coach.pose, "jump");
+  coach.primary.onClick();
+  assert.equal(h.props.progress.stepId, "workshop");
+});
+
+test("the journal lesson scopes its actual order and compact dock to the portal outside the map", () => {
+  const h = harness(started("orders"), [], { ordersPortal: true });
+  h.patchSnapshot({ tutorialOrder: newTutorialOrder(h.economy.snapshot.catalog) });
+  let coach = h.render();
+  assert.equal(coach.target, '[data-world-orders-entry]');
+  assert.equal(coach.targetRoot, h.props.worldElement);
+  assert.equal(coach.compact, false);
+  assert.equal(coach.dock, undefined);
+  assert.deepEqual(h.calls, []);
+
+  // A stale order elsewhere on the map cannot count as content in the journal.
+  h.revealContent({ tutorialOrder: true });
+  h.props.ordersOpen = true;
+  coach = h.render();
+  assert.equal(coach.target, '[data-order-filter="all"]');
+  assert.equal(coach.targetRoot, h.props.ordersElement);
+  assert.equal(coach.compact, true);
+  assert.equal(coach.dock, '[data-guide-coach-slot]');
+  assert.ok(h.queries.orders.includes('[data-tutorial-order="true"]'));
+
+  h.revealPortal({ tutorialOrder: true });
+  coach = h.render();
+  assert.equal(coach.target, '[data-order-id="tutorial_first_order"]');
+  assert.match(coach.summary, /есть \/ нужно/);
+  assert.equal(coach.primary, undefined, "only the real order card can submit inventory");
+  assert.deepEqual(h.calls, []);
+
+  h.patchSnapshot({ revision: 2, tutorialOrder: { ...h.economy.snapshot.tutorialOrder, step: 1,
+    terms: h.economy.snapshot.catalog.onboarding.residentOrders[1] } });
+  coach = h.render();
+  assert.equal(coach.primary.label, "К мастерской");
+  coach.primary.onClick();
+  assert.deepEqual(h.calls, [["close-surface"], ["step", "workshop"]]);
+  assert.equal(h.props.ordersOpen, false);
+  assert.equal(h.render().targetRoot, h.props.worldElement);
+});
+
+test("a journal portal keeps the ready scene coach visible and yields to a nested fish dialog", () => {
+  const h = harness(started("orders"), [], { ordersPortal: true, session: true });
+  h.props.ordersOpen = true;
+  h.setVisibility({ worldCovered: true });
+  let child = h.render();
+  assert.equal(child.open, true, "the journal may hide the map without hiding its own coach");
+  assert.equal(child.ordersElement, h.props.ordersElement);
+  assert.ok(h.queries.world.includes('[data-ready="true"] > canvas[role="img"]'));
+  assert.deepEqual(h.queries.orders, [], "scene readiness is always measured on the map, not the journal");
+
+  h.setVisibility({ ordersCovered: true });
+  assert.equal(h.render().open, false, "the child modal owns its focus scope until it closes");
+  h.setVisibility({ ordersCovered: false });
+  assert.equal(h.render().open, true, "closing the picker restores the journal lesson without reopening it");
+  h.setVisibility({ sceneReady: false });
+  assert.equal(h.render().open, false, "a journal cannot make an unloaded map ready");
+  h.setVisibility({ sceneReady: true });
+  assert.equal(h.render().open, true);
+  h.setObservation({ memory: { sync: { mode: "other-device" } } });
+  assert.equal(h.render().open, false, "other-device ownership still pauses the whole lesson");
+  assert.deepEqual(h.calls, [], "modal changes and readiness never spend inventory or start work");
+});
+
+test("closing the journal restores map coverage and hosts without a portal ref keep their scoped fallback", () => {
+  const h = harness(started("orders"), [], { ordersPortal: true, session: true });
+  h.props.ordersOpen = true;
+  h.setVisibility({ worldCovered: true });
+  assert.equal(h.render().open, true);
+  h.props.ordersOpen = false;
+  assert.equal(h.render().open, false, "after closing, coverage follows the map again");
+  h.setVisibility({ worldCovered: false });
+  assert.equal(h.render().open, true);
+
+  const legacy = harness(started("orders"), [], { session: true });
+  legacy.props.ordersOpen = true;
+  assert.equal(legacy.render().open, true);
+  legacy.setVisibility({ worldCovered: true });
+  assert.equal(legacy.render().open, false, "without an orders ref the existing world ref remains authoritative");
+});
+
+test("a new player's first order advances the guide while the remaining three stay on the board", () => {
+  const h = harness(started("orders"));
+  h.patchSnapshot({ tutorialOrder: newTutorialOrder(h.economy.snapshot.catalog) });
+  let coach = h.render();
+  assert.equal(coach.primary, undefined, "the first request is already available without a claim");
+  assert.match(coach.text, /две малины/);
+  assert.deepEqual(h.calls, []);
+  h.patchSnapshot({ revision: 2, tutorialOrder: { ...h.economy.snapshot.tutorialOrder, step: 1,
+    terms: h.economy.snapshot.catalog.onboarding.residentOrders[1] } });
+  h.patchEconomy({ uncertain: true });
+  coach = h.render();
+  assert.equal(coach.primary.disabled, true);
+  assert.notEqual(coach.pose, "jump");
+  h.patchEconomy({ uncertain: false });
+  coach = h.render();
+  assert.match(coach.summary, /1 \/ 4.*Следующая/);
   assert.equal(coach.primary.label, "К мастерской");
   coach.primary.onClick();
   assert.equal(h.props.progress.stepId, "workshop");
-  const skip = harness(started("orders"));
-  skip.render().secondary.onClick();
-  assert.equal(skip.props.progress.stepId, "workshop");
-  assert.ok(!skip.calls.some(call => call[0] === "claim-order"));
+  assert.equal(h.economy.snapshot.tutorialOrder.completed, false);
+  assert.deepEqual(h.calls.filter(call => call[0] === "claim-order"), []);
 });
 
-test("order practice respects offline, storage and uncertain states and retains the one-time progress on replay", () => {
-  for (const blocked of ["offline", "storage", "uncertain"]) {
+test("order activation respects offline and uncertain state, and full storage does not block a non-grant", () => {
+  for (const blocked of ["offline", "uncertain"]) {
     const h = harness(started("orders"));
     if (blocked === "offline") h.props.isOnline = false;
-    else if (blocked === "storage") h.patchSnapshot({ storage: { ...h.economy.snapshot.storage, available: 4 } });
     else h.patchEconomy({ uncertain: true });
     const coach = h.render();
     assert.equal(coach.primary.disabled, true, blocked);
@@ -354,80 +572,58 @@ test("order practice respects offline, storage and uncertain states and retains 
     assert.equal(h.props.progress.stepId, "workshop");
   }
   const h = harness(started("orders"));
-  const terms = tutorialResidentOrder(h.economy.snapshot);
-  h.patchSnapshot({ tutorialOrder: { ingredientsClaimed: true, completed: false, terms } });
-  let coach = h.render();
-  assert.match(coach.status, /уже потрачена/);
-  assert.equal(coach.primary, undefined, "spent gifts cannot be claimed again");
-  assert.equal(coach.target, '[data-world-quick="more"]');
-  h.patchSnapshot({ tutorialOrder: { ingredientsClaimed: true, completed: true, terms } });
-  h.patchEconomy({ uncertain: true });
-  coach = h.render();
-  assert.doesNotMatch(coach.title, /выполнен/);
-  assert.notEqual(coach.pose, "jump");
-  h.patchEconomy({ uncertain: false });
-  coach = h.render();
+  h.patchSnapshot({ storage: { ...h.economy.snapshot.storage, available: 0 } });
+  const coach = h.render();
+  assert.equal(coach.primary.disabled, false);
   coach.primary.onClick();
-  h.props.progress = started("orders");
-  assert.equal(h.render().title, "Учебный заказ выполнен!");
-  assert.deepEqual(h.calls.filter(call => call[0] === "claim-order"), []);
+  assert.deepEqual(h.calls, [["claim-order", "tutorial_first_order"]]);
 });
 
-test("order ingredient card uses the current quoted terms and never grants from rendering", () => {
+test("order ingredient card uses pinned terms without granting from rendering", () => {
   const h = harness(started("orders"));
-  const catalog = structuredClone(h.economy.snapshot.catalog);
-  catalog.onboarding.residentOrder.items = { berries: 4, stone: 2 };
-  h.patchSnapshot({ catalog });
-  const visibleText = node => typeof node === "string" || typeof node === "number" ? String(node)
-    : Array.isArray(node) ? node.map(visibleText).join("") : node?.props ? visibleText(node.props.children) : "";
+  const terms = { ...tutorialResidentOrder(h.economy.snapshot), items: { berries: 4, stone: 2 } };
+  h.patchSnapshot({ tutorialOrder: { ingredientsClaimed: true, completed: false, terms } });
   const text = visibleText(TutorialOrderContents({ economy: h.economy }));
-  assert.match(text, /ягоды: 4/);
+  assert.match(text, /Малина: 4/);
   assert.match(text, /Камень: 2/);
   assert.deepEqual(h.calls, []);
 });
 
-test("starter gift is explicit and celebrates only the server marker, with construction left to its real dialog", () => {
+function visibleText(node) {
+  return typeof node === "string" || typeof node === "number" ? String(node)
+    : Array.isArray(node) ? node.map(visibleText).join("") : node?.props ? visibleText(node.props.children) : "";
+}
+
+test("workshop introduction quotes real construction cost and never issues a gift or build command", () => {
   const h = harness(started("workshop"));
   let coach = h.render();
-  assert.equal(coach.primary.label, "Получить набор");
-  assert.equal(coach.primary.disabled, false);
-  assert.deepEqual(h.calls, [], "rendering a tutorial cannot issue economy commands");
-  coach.primary.onClick();
-  assert.deepEqual(h.calls, [["claim-starter", "workshop"]]);
-  assert.equal(h.economy.snapshot.wallet.coins, 1000);
-  assert.deepEqual(h.economy.snapshot.inventory, {});
-  h.patchEconomy({ busy: true });
-  assert.doesNotMatch(h.render().title, /получен/);
-  h.patchSnapshot({ revision: 2, workshopStarterClaimed: true, wallet: { coins: 2200, pearls: 0 }, inventory: { wood: 10, stone: 8 } });
-  h.patchEconomy({ busy: false });
-  coach = h.render();
-  assert.equal(coach.title, "Набор для мастерской получен");
-  assert.match(coach.text, /20 мин/);
-  assert.equal(coach.pose, "jump");
+  assert.equal(coach.title, "Построим мастерскую");
   assert.equal(coach.primary, undefined);
-  assert.match(coach.summary, /Нажми на выделенную мастерскую/);
+  assert.match(coach.text, /5 мин/);
+  assert.match(coach.text, /лесной участок и костёр/);
+  assert.deepEqual(h.calls, []);
+  assert.match(visibleText(WorkshopConstructionContents({ economy: h.economy })), /60 монет.*Бревно: 2.*Камень: 1/);
+  h.patchSnapshot({ workshopStarterClaimed: true });
+  assert.equal(h.render().title, "Построим мастерскую", "an old grant marker does not promise a new gift");
   h.props.workshopOpen = true;
+  h.revealContent({ workshopSelected: true });
   coach = h.render();
   assert.equal(coach.target, '[data-guide-station-upgrade="workshop"]');
-  assert.match(coach.summary, /«Обустроить».*«Начать обустройство»/);
-  assert.equal(coach.primary, undefined);
-  assert.deepEqual(h.calls, [["claim-starter", "workshop"]], "only the explicit grant is sent, navigation is manual");
+  assert.match(coach.summary, /«Открыть» в шапке/);
   h.props.modalBlocked = true;
-  assert.equal(h.render().open, false, "construction has the screen and focus");
-  assert.deepEqual(h.economy.snapshot.jobs, [], "the tutorial never constructs automatically");
-  h.props.modalBlocked = false; h.props.workshopOpen = false;
+  assert.equal(h.render().open, false);
+  assert.deepEqual(h.calls, []);
+  assert.deepEqual(h.economy.snapshot.jobs, []);
+  h.props.modalBlocked = false;
   h.render().secondary.onClick();
   assert.equal(h.props.progress.stepId, "expeditions");
 });
 
-test("gift waits through an uncertain request and exposes the existing exact-receipt retry", () => {
+test("uncertain workshop state offers the existing receipt retry without a grant control", () => {
   const h = harness(started("workshop"));
   h.patchEconomy({ uncertain: true, error: "Сеть прервалась" });
   const coach = h.render();
-  assert.equal(coach.primary.disabled, true);
-  coach.primary.onClick();
-  assert.deepEqual(h.calls, []);
-  assert.doesNotMatch(coach.title, /получен/);
+  assert.equal(coach.primary, undefined);
   assert.match(coach.status, /не подтверждён/);
   const retry = WorkshopRetry({ economy: h.economy, isOnline: true });
   assert.equal(retry.props.disabled, false);
@@ -437,68 +633,69 @@ test("gift waits through an uncertain request and exposes the existing exact-rec
   assert.equal(WorkshopRetry({ economy: h.economy, isOnline: true }).props.disabled, true);
 });
 
-test("offline and full storage block starter claims while leaving the next lesson available", () => {
+test("offline and full storage leave the workshop introduction and next lesson available", () => {
   for (const blocked of ["offline", "storage"]) {
     const h = harness(started("workshop"));
     if (blocked === "offline") h.props.isOnline = false;
-    else h.patchSnapshot({ storage: { ...h.economy.snapshot.storage, available: 17 } });
+    else h.patchSnapshot({ storage: { ...h.economy.snapshot.storage, available: 0 } });
     const coach = h.render();
-    assert.equal(coach.primary.disabled, true);
-    coach.primary.onClick();
-    assert.deepEqual(h.calls, []);
+    assert.equal(coach.primary, undefined);
     coach.secondary.onClick();
     assert.equal(h.props.progress.stepId, "expeditions");
+    assert.deepEqual(h.calls.filter(call => call[0].startsWith("claim")), []);
   }
 });
 
-test("existing workshops offer upgrades and existing construction proceeds without a second starter gift", () => {
+test("built workshops show their recipes and ongoing construction can continue in the background", () => {
   const built = harness(started("workshop"));
   built.patchSnapshot({ buildings: { ...built.economy.snapshot.buildings, workshop: 1 } });
+  assert.equal(built.render().title, "Мастерская уже есть");
+  built.props.workshopOpen = true;
+  built.revealContent({ workshopSelected: true });
   let coach = built.render();
-  assert.equal(coach.title, "Мастерская уже есть");
-  assert.equal(coach.primary, undefined);
-  assert.match(coach.summary, /Нажми на выделенную мастерскую/);
-  built.props.workshopOpen = true;
-  coach = built.render();
-  assert.equal(coach.target, '[data-guide-station-upgrade="workshop"]');
-  assert.match(coach.summary, /Нажми «Улучшить»/);
-  assert.deepEqual(built.calls, []);
-  built.props.modalBlocked = false; built.props.workshopOpen = false;
-  const maxLevel = Math.max(...built.economy.snapshot.catalog.buildings.find(building => building.id === "workshop").levels.map(level => level.level));
-  built.patchSnapshot({ buildings: { ...built.economy.snapshot.buildings, workshop: maxLevel } });
-  coach = built.render();
-  built.props.workshopOpen = true;
-  coach = built.render();
-  assert.equal(coach.target, '[data-section-guide-target="workshop-recipes"]');
+  assert.equal(coach.target, '[data-place="workshop"] [data-recipe-product="planks"]');
+  assert.match(coach.summary, /одно бревно.*одну доску.*две минуты/);
+  assert.match(coach.hint, /мастерской и печи отдельные очереди/);
   assert.deepEqual(built.calls, []);
   const pending = harness(started("workshop"), [{ id: "build-1", kind: "construction", targetId: "workshop", targetLevel: 1,
-    finishesAt: new Date(now + 1200000).toISOString() }]);
+    finishesAt: new Date(now + 300000).toISOString() }]);
   coach = pending.render();
   assert.equal(coach.title, "Шишколап уже строит!");
-  assert.match(coach.text, /20 мин/);
-  assert.deepEqual(pending.calls, []);
+  assert.match(coach.text, /5 мин/);
   coach.primary.onClick();
   assert.equal(pending.props.progress.stepId, "expeditions");
 });
 
-test("gift quantities and build time follow the current catalog, and replay cannot grant again", () => {
+test("the shared kiln view teaches selecting the workshop before its plan or plank action", () => {
+  for (const level of [0, 1]) {
+    const h = harness(started("workshop"));
+    h.patchSnapshot({ buildings: { ...h.economy.snapshot.buildings, workshop: level, kiln: 1 } });
+    h.props.workshopOpen = true;
+    let coach = h.render();
+    assert.equal(coach.target, '[data-place="workshop"] [role="tab"][id$="-workshop"]');
+    assert.match(coach.summary, /Выбери вкладку «Мастерская» в шапке/);
+    assert.doesNotMatch(coach.summary, /Карточка доски сразу/);
+    h.revealContent({ workshopSelected: true });
+    coach = h.render();
+    assert.equal(coach.target, level > 0 ? '[data-place="workshop"] [data-recipe-product="planks"]' : '[data-guide-station-upgrade="workshop"]');
+    h.revealContent({ workshopSelected: false });
+    assert.equal(h.render().target, '[data-place="workshop"] [role="tab"][id$="-workshop"]');
+    assert.deepEqual(h.calls, [], "the coach must not change equipment, build or start the plank recipe");
+  }
+});
+
+test("workshop costs and build time follow the catalog on replay without any grant", () => {
   const h = harness(started("workshop"));
   const catalog = structuredClone(h.economy.snapshot.catalog);
   const first = catalog.buildings.find(building => building.id === "workshop").levels[0];
   first.cost = { coins: 1500, items: { wood: 12, stone: 9 } }; first.seconds = 1500;
-  h.patchSnapshot({ catalog });
-  const contents = WorkshopStarterContents({ economy: h.economy });
-  const visibleText = node => typeof node === "string" || typeof node === "number" ? String(node)
-    : Array.isArray(node) ? node.map(visibleText).join("") : node?.props ? visibleText(node.props.children) : "";
-  const serialized = visibleText(contents);
-  assert.match(serialized, /1\s500 монет/);
-  assert.match(serialized, /Древесина: 12/);
-  assert.match(serialized, /Камень: 9/);
-  h.patchSnapshot({ workshopStarterClaimed: true });
-  const coach = h.render();
-  assert.match(coach.text, /25 мин/);
-  assert.equal(coach.primary, undefined);
-  assert.match(coach.summary, /Нажми на выделенную мастерскую/);
+  h.patchSnapshot({ catalog, workshopStarterClaimed: true });
+  const text = visibleText(WorkshopConstructionContents({ economy: h.economy }));
+  assert.match(text, /1\s500 монет/);
+  assert.match(text, /Бревно: 12/);
+  assert.match(text, /Камень: 9/);
+  assert.match(h.render().text, /25 мин/);
+  assert.equal(h.render().primary, undefined);
   assert.deepEqual(h.calls, []);
 });
 
@@ -523,12 +720,14 @@ test("opened sections highlight their contents, and pantry guidance follows the 
   pantry.revealContent({ pantryItem: true });
   let coach = pantry.render();
   assert.equal(coach.target, '[data-guide-pantry-item]');
-  assert.match(coach.summary, /продажи/);
+  assert.match(coach.summary, /продажу/);
   assert.match(coach.text, /«Рынок».*игроками/);
+  assert.match(coach.text, /по горизонтали.*небольшую панель.*повторное добавляет одну рыбу/);
+  assert.match(coach.hint, /кнопка улучшения.*в шапке/);
   pantry.revealContent({ pantrySale: true });
   coach = pantry.render();
   assert.equal(coach.target, '[data-guide-pantry-sale]');
-  assert.match(coach.summary, /количество.*итог.*Продать торговцу/);
+  assert.match(coach.summary, /количество.*итог.*кнопкой продажи/);
   pantry.revealContent({ pantryItem: false, pantrySale: false, pantryRelics: true });
   coach = pantry.render();
   assert.equal(coach.target, '[data-guide-pantry-relics]');
@@ -536,20 +735,89 @@ test("opened sections highlight their contents, and pantry guidance follows the 
   assert.deepEqual(pantry.calls, [["quick", "pantry"]], "explaining a sale must not trigger any transaction");
 });
 
-test("expedition guidance changes after opening route details and never starts the route", () => {
+test("expedition guidance follows activity, route list and preparation without choosing or starting for the player", () => {
   const h = harness(started("expeditions"));
   assert.equal(h.render().primary, undefined);
   h.props.onOpenQuick("expeditions");
   let coach = h.render();
-  assert.equal(coach.target, '[data-route]');
+  assert.equal(coach.target, undefined, "loading must not highlight a nonexistent route card");
+  h.revealContent({ routeActivities: true });
+  coach = h.render();
+  assert.equal(coach.target, '[data-section-guide-target="expedition-activities"]');
+  assert.match(coach.summary, /Сначала выбери занятие/);
+  h.revealContent({ routeActivities: false, routes: true });
+  coach = h.render();
+  assert.equal(coach.target, '[data-section-guide-target="expedition-routes"]');
   assert.match(coach.summary, /Нажми на маршрут/);
   h.revealContent({ routePreparation: true });
   coach = h.render();
+  assert.equal(coach.target, '[data-route-preparation]');
   assert.match(coach.summary, /только по кнопке «Отправиться»/);
+  assert.match(coach.text, /«Ускорение едой».*только по отдельной кнопке/);
+  assert.match(coach.text, /Каменоломня.*отдельно/);
+  h.revealContent({ routePreparation: false, routes: false, routeActivities: true });
+  assert.equal(h.render().target, '[data-section-guide-target="expedition-activities"]', "back navigation follows the actual surface");
   assert.deepEqual(h.calls, [["quick", "expeditions"]]);
 });
 
 const saleReceipt = (patch = {}) => ({ id: "sale-1", ownerPublicId: owner, revision: 2, itemId: "wood", quantity: 1, coins: 2, ...patch });
+
+test("a controlled nonmodal fish sale yields both coaches without changing the lesson or crop", () => {
+  for (const session of [false, true]) {
+    const h = harness(started("pantry", "held-crop"), [crop("held-crop")], { session });
+    h.props.onOpenQuick("pantry");
+    const progress = structuredClone(h.props.progress);
+    assert.equal(h.render().open, true);
+    h.props.fishSaleOpen = true;
+    for (let index = 0; index < 3; index++) assert.equal(h.render().open, false, "yield does not depend on aria-hidden or a modal");
+    assert.deepEqual(h.props.progress, progress);
+    h.props.fishSaleOpen = false;
+    const coach = h.render();
+    assert.equal(coach.open, true);
+    if (!session) assert.equal(coach.primary.label, "Попробуем вырастить ягоды", "closing restores the normal keyboard continuation");
+    assert.deepEqual(h.props.progress, progress);
+    assert.deepEqual(h.calls, [["quick", "pantry"]], "opening and closing must not sell, pause, skip or advance");
+  }
+});
+
+test("an accepted fish sale is remembered while the coach yields and celebrated only after the panel closes", () => {
+  const h = harness(started("pantry"));
+  h.props.onOpenQuick("pantry");
+  h.patchSnapshot({ inventory: { fish: 2 } });
+  h.render();
+  h.props.fishSaleOpen = true;
+  h.patchSnapshot({ revision: 2, inventory: { fish: 1 }, wallet: { coins: 1040, pearls: 0 } });
+  h.patchEconomy({ localSale: saleReceipt({ itemId: "fish", coins: 40 }), busy: true });
+  assert.equal(h.render().open, false);
+  h.patchEconomy({ busy: false });
+  assert.equal(h.render().open, false);
+  assert.equal(h.props.progress.stepId, "pantry");
+  h.props.fishSaleOpen = false;
+  const coach = h.render();
+  assert.equal(coach.open, true);
+  assert.match(coach.summary, /Продажа прошла.*Одной продажи достаточно/);
+  assert.deepEqual(h.calls, [["quick", "pantry"]]);
+  coach.primary.onClick();
+  assert.deepEqual(h.calls.slice(-2), [["close-surface"], ["step", "garden"]]);
+});
+
+test("closing a nonmodal fish sale never fabricates success from an old, foreign or missing receipt", () => {
+  for (const localSale of [undefined, saleReceipt({ revision: 1 }), saleReceipt({ ownerPublicId: "another-player" })]) {
+    const h = harness(started("pantry"));
+    h.props.onOpenQuick("pantry");
+    h.render();
+    h.props.fishSaleOpen = true;
+    h.patchSnapshot({ revision: 2, wallet: { coins: 1040, pearls: 0 } });
+    h.patchEconomy({ localSale });
+    assert.equal(h.render().open, false);
+    h.props.fishSaleOpen = false;
+    const coach = h.render();
+    assert.equal(coach.open, true);
+    assert.doesNotMatch(coach.summary, /Продажа прошла/);
+    assert.equal(h.props.progress.stepId, "pantry");
+    assert.deepEqual(h.calls, [["quick", "pantry"]]);
+  }
+});
 
 test("one confirmed pantry sale clearly offers next, survives closing the pantry, and waits for the player's choice", () => {
   const h = harness(started("pantry"));
@@ -616,7 +884,7 @@ test("completion reports actual crop and workshop progress without opening their
   const starter = harness(started("help"));
   starter.patchSnapshot({ workshopStarterClaimed: true });
   coach = starter.render();
-  assert.match(coach.text, /Набор.*получен, стройка ещё не запущена/);
+  assert.match(coach.text, /Мастерскую можно построить за монеты и материалы/);
   assert.equal(coach.secondary, undefined);
   coach.primary.onClick();
   assert.equal(starter.props.progress.status, "completed");
@@ -633,5 +901,10 @@ test("ninth lesson always explains the highlighted i button without opening deta
     assert.equal(coach.target, '[data-world-onboarding-help]');
     assert.match(coach.summary, /Кнопка i вверху открывает справку/);
     assert.match(coach.summary, /поиском/);
+    assert.match(coach.summary, /«Что здесь делать\?»/);
+    assert.match(coach.text, /профиль.*«\?».*«Повторить обучение»/);
+    assert.match(coach.text, /«Продолжить обучение»/);
+    assert.doesNotMatch(coach.hint, /В новых разделах я/);
+    assert.deepEqual(h.calls.filter(call => !["crop"].includes(call[0])), []);
   }
 });

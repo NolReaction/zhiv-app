@@ -27,7 +27,7 @@ test("basket sends visible currency units with every selected kind in one reques
 });
 
 test("preflight accounts for market reservation and a warehouse upgrade in the same package", () => {
-  const state = { buildings: { home: 1, warehouse: 1 }, jobs: [], storage: { used: 285, reserved: 10, capacity: 300 } };
+  const state = { buildings: { home: 2, warehouse: 1 }, jobs: [], storage: { used: 35, reserved: 10, capacity: 50 } };
   assert.match(grantBasketIssue([entry("item", "wood", 10)], state, economyCatalog), /Не хватает места/);
   assert.equal(grantBasketIssue([entry("item", "wood", 10), entry("building", "warehouse", 2)], state, economyCatalog), null);
   assert.match(grantBasketIssue([entry("item", "wood", 8000), entry("item", "stone", 8000)], state, economyCatalog), /10 000/);
@@ -35,9 +35,9 @@ test("preflight accounts for market reservation and a warehouse upgrade in the s
 });
 
 test("preflight catches active construction, missing home requirements and insufficient production prerequisites", () => {
-  const state = { buildings: { home: 1, warehouse: 1 }, jobs: [{ kind: "construction", targetId: "home" }], storage: { used: 0, reserved: 0, capacity: 300 } };
+  const state = { buildings: { home: 1, warehouse: 1 }, jobs: [{ kind: "construction", targetId: "home" }], storage: { used: 0, reserved: 0, capacity: 50 } };
   assert.match(grantBasketIssue([entry("building", "home", 2)], state, economyCatalog), /сейчас строится/);
-  assert.match(grantBasketIssue([entry("building", "workshop", 2)], state, economyCatalog), /дом уровня 2/);
+  assert.match(grantBasketIssue([entry("building", "workshop", 2)], state, economyCatalog), /дом уровня 3/);
   assert.match(grantBasketIssue([entry("slots", "workshop", 2)], state, economyCatalog), /построенная станция/);
 });
 

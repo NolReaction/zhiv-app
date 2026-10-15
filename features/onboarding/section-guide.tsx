@@ -40,6 +40,8 @@ export function SectionGuide({ owner, section, enabled, targetRoot, inline = tru
   const { showSectionGuideLauncher } = useSectionGuideLauncherPreference(owner);
   const host = useRef<HTMLDivElement>(null), scope = useRef<HTMLElement | null>(null), launcher = useRef<HTMLButtonElement>(null);
   const store = useMemo(() => createSectionGuideStore(owner, section, browserStorage()), [owner, section]);
+  // Persist the step, never permission to interrupt the next visit or account.
+  const [requestedStore, setRequestedStore] = useState<typeof store | null>(null);
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot);
   const steps = sectionGuideLessons[section];
   const index = Math.max(0, steps.findIndex(step => step.id === state.progress?.stepId));
@@ -49,7 +51,11 @@ export function SectionGuide({ owner, section, enabled, targetRoot, inline = tru
   const presentationKey = `${scopeKey}:${step.id}`;
   useEffect(() => {
     store.restore();
-    const restore = (event: StorageEvent) => { if (event.key === store.storageKey || event.key === null) store.restore(); };
+    const restore = (event: StorageEvent) => {
+      if (event.key !== store.storageKey && event.key !== null) return;
+      setRequestedStore(null);
+      store.restore();
+    };
     window.addEventListener("storage", restore);
     return () => window.removeEventListener("storage", restore);
   }, [store]);
@@ -83,7 +89,7 @@ export function SectionGuide({ owner, section, enabled, targetRoot, inline = tru
     return () => { cancelAnimationFrame(frame); mutation.disconnect(); ancestors.disconnect(); modals.disconnect(); window.removeEventListener("resize", schedule); };
   }, [enabled, targetRoot, step, presentationKey, scopeKey]);
   const eligible = Boolean(owner) && enabled && presentation.scope === scopeKey && presentation.visible;
-  const open = sectionGuideCanOpen(state.loaded, eligible, state.progress);
+  const open = sectionGuideCanOpen(state.loaded, eligible, state.progress, requestedStore === store);
   const currentTarget = presentation.key === presentationKey ? presentation.target : undefined;
   const revealedStep = useRef<string | null>(null);
   useEffect(() => {
@@ -97,13 +103,18 @@ export function SectionGuide({ owner, section, enabled, targetRoot, inline = tru
     });
     return () => cancelAnimationFrame(frame);
   }, [open, step, presentationKey, targetRoot, currentTarget]);
-  useEffect(() => {
-    if (open && store.getSnapshot().progress === null) store.save(transitionSectionGuide(section, null, "start"));
-  }, [open, state.progress, section, store]);
   const apply = (event: SectionGuideEvent) => {
     const progress = transitionSectionGuide(section, store.getSnapshot().progress, event);
     store.save(progress);
-    if (progress.status !== "started") requestAnimationFrame(() => launcher.current?.focus({ preventScroll: true }));
+    if (progress.status !== "started") {
+      setRequestedStore(null);
+      requestAnimationFrame(() => launcher.current?.focus({ preventScroll: true }));
+    }
+  };
+  const start = () => {
+    const progress = store.getSnapshot().progress;
+    apply(progress?.status === "started" || progress?.status === "paused" ? "resume" : progress ? "replay" : "start");
+    setRequestedStore(store);
   };
   const showTarget = () => {
     const root = targetRoot?.current ?? host.current?.parentElement;
@@ -119,6 +130,6 @@ export function SectionGuide({ owner, section, enabled, targetRoot, inline = tru
       primary={{ advance: true, label: index === steps.length - 1 ? "Понятно" : "Дальше", onClick: () => apply("next") }}
       secondaryVisible={section === "plesk"}
       secondary={currentTarget || step.navigation ? { label: step.showLabel ?? "Показать", onClick: showTarget } : undefined} />
-      : (showSectionGuideLauncher || state.progress?.status === "paused") && <button ref={launcher} type="button" className={styles.launcher} onClick={() => apply(state.progress?.status === "paused" ? "resume" : "replay")}><CircleHelp size={15} aria-hidden="true" />{state.progress?.status === "paused" ? "Продолжить подсказку" : "Что здесь делать?"}</button>)}
+      : (showSectionGuideLauncher || state.progress?.status === "paused") && <button ref={launcher} type="button" className={styles.launcher} onClick={start}><CircleHelp size={15} aria-hidden="true" />Что здесь делать?</button>)}
   </div>;
 }

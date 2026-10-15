@@ -5,6 +5,7 @@ import type { EconomyView } from "@/features/economy/domain/model";
 import type { ConstructionGoalController } from "./use-construction-goal";
 import { ProductIcon, itemName, number, type StationNavigation } from "@/features/economy/ui/shared/world-economy-parts";
 import { worldMaterialSource } from "@/features/economy/ui/shared/world-stations";
+import { explorationActorId } from "@/features/economy/domain/actor-availability";
 import styles from "./construction-goal-summary.module.css";
 
 type ConstructionGoalSummaryProps = {
@@ -36,7 +37,9 @@ export function ConstructionGoalSummary({ state, constructionGoal, onOpenGoal, n
       const lockedRecipe = !source && id !== "coins" ? state.catalog.recipes.find(recipe => (recipe.rewards[id] ?? 0) > 0) : undefined;
       const rareFind = state.catalog.rareDrops?.itemIds.includes(id) && (state.buildings.home ?? 1) >= state.catalog.rareDrops.requiredHomeLevel;
       const production = source?.kind === "production" ? { stationId: source.stationId, recipeId: source.targetId } : lockedRecipe ? { stationId: lockedRecipe.buildingId, recipeId: lockedRecipe.id } : undefined;
-      const openSource = production && navigation?.canOpen(production.stationId) ? () => navigation.open(production.stationId, production.recipeId) : source?.kind === "exploration" || rareFind ? navigation?.explore : undefined;
+      const mining = source?.kind === "exploration" && state.catalog.explorations.some(route => route.id === source.targetId && explorationActorId(route) === "miner");
+      const openSource = production && navigation?.canOpen(production.stationId) ? () => navigation.open(production.stationId, production.recipeId)
+        : mining && navigation?.canOpen("quarry") ? () => navigation.open("quarry") : source?.kind === "exploration" || rareFind ? navigation?.explore : undefined;
       const label = `${name}: не хватает ${number(amount)}`;
       const content = <><ProductIcon state={state} itemId={id} size={20} /><strong>{number(amount)}</strong></>;
       return <li key={id}>{openSource ? <button type="button" className={styles.item} title={label} aria-label={`Где получить: ${label}`} onClick={openSource}>{content}</button> : <span className={styles.item} title={label} aria-label={label}>{content}</span>}</li>;

@@ -1,13 +1,13 @@
-import { parseSectionGuideProgress, type SectionGuideId, type SectionGuideProgress } from "./section-guide-model";
+import { parseSectionGuideProgress, type SectionGuideStorageId, type SectionGuideProgress } from "./section-guide-model";
 
 type GuideStorage = Pick<Storage, "getItem" | "setItem">;
 type Snapshot = { loaded: boolean; progress: SectionGuideProgress | null };
 const serverSnapshot: Snapshot = { loaded: false, progress: null };
 const memory = new Map<string, SectionGuideProgress>();
-export const sectionGuideStorageKey = (owner: string, section: SectionGuideId) => `zhiv.section-guide.v1:${encodeURIComponent(owner)}:${section}`;
+export const sectionGuideStorageKey = (owner: string, section: SectionGuideStorageId) => `zhiv.section-guide.v1:${encodeURIComponent(owner)}:${section}`;
 
 /** Local presentation preference only. A blocked browser store still remembers within this session. */
-export function createSectionGuideStore(owner: string, section: SectionGuideId, storage?: GuideStorage) {
+export function createSectionGuideStore(owner: string, section: SectionGuideStorageId, storage?: GuideStorage) {
   const storageKey = sectionGuideStorageKey(owner, section);
   let snapshot = serverSnapshot;
   const listeners = new Set<() => void>();

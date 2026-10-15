@@ -22,7 +22,7 @@ class JdbcTapHistoryMigrationIntegrationTest {
     @Test fun `V28 keeps populated V27 data aggregates remaining seconds and accepts new awards`() = runBlocking<Unit> {
         val config = AppConfig(postgres.jdbcUrl, postgres.username, postgres.password, false, setOf("http://localhost"))
         DatabaseFactory.create(config).use { source ->
-            Flyway.configure().dataSource(source).locations("classpath:db/migration").target("27").cleanDisabled(true).load().migrate()
+            Flyway.configure().dataSource(source).locations("classpath:db/migration/history").target("27").cleanDisabled(true).load().migrate()
             val admin = UUID.randomUUID(); val target = UUID.randomUUID()
             val key = ByteArray(32) { 8 }; val oldAudit = UUID.randomUUID()
             val oldAwardAt = OffsetDateTime.parse("2026-08-01T12:00:00Z")

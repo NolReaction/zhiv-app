@@ -2,6 +2,13 @@ import type { ReactNode } from "react";
 
 /** Natural materials and food, drawn on the shared 48 × 48 item canvas. */
 export const naturalItemArt: Record<string, ReactNode> = {
+  strawberries: <>
+    <path d="M10 19c1-8 25-9 28-1 3 8-7 21-14 24-7-2-17-14-14-23Z" fill="#cf6263" />
+    <path d="M13 20c2-6 7-6 10-3 3-5 8-4 12 0" stroke="#eea083" strokeWidth="2.5" />
+    <path d="m24 8-4 8-10-3 6 7-4 5 11-4 8 4-2-8 7-5-10 2Z" fill="#8faa65" />
+    <path d="M24 12c-1-5 2-7 5-9" stroke="#668154" />
+    <path d="m15 27 1 2m7-4 1 2m8-3-1 2m-11 7 1 2m8-4-1 2m-4 3 1 2" stroke="#f5d4a1" strokeWidth="1.7" />
+  </>,
   berries: (
     <>
       <path d="M24 21c-1-7 2-12 6-16" fill="none" />

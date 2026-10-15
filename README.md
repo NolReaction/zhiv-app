@@ -13,7 +13,7 @@
 - **Свет:** первый участок 2.5D-теней от объектов и жителей на центральной поляне, оптимизация расчётов и гибридный DEV-редактор контуров/высот с переносом в Tiled. [Свет и инструменты разработчика](docs/game/world-lighting.md).
 - **Уведомления:** конкретные результаты и следующее действие; ягодное напоминание ждёт свободного сборщика, готовые ресурсы учитывают вместимость кладовой. Для новых установок системное имя PWA — «Я Живой».
 
-Подробности и состояние проверок — в [описании 0.7.0](docs/releases/release-0.7.0.md). Выпуск объединяет `0.6.9-update` и `0.6.9-light`, сохраняет прогресс и применяет миграцию V50. Каталог хозяйства остаётся прежним. Публикация релиза и обновление сервера выполняются отдельно.
+Ветка `work/0.7.0` объединяет опубликованный [выпуск 0.7.0](docs/releases/release-0.7.0.md), админку, [Engine](docs/engine/README.md), [студию освещения](docs/game/world-lighting.md) и [обновлённую экономику](docs/game/fishing-economy-0.6.9.md). Обычное обновление сохраняет данные; публикация ветки, сброс игрового прогресса и обновление сервера — отдельные действия.
 
 ## Что умеет приложение
 
@@ -40,7 +40,7 @@
 | Совместимый контур Sites | Vite, Vinext, Cloudflare Workers |
 | Отдельный Engine | TypeScript и Canvas 2D в `packages/engine`; React/Vite-редактор в `apps/engine` |
 
-Точные зависимости — в [package.json](package.json) и [сборке API](apps/api/build.gradle.kts). Основная схема PostgreSQL задаётся [миграциями Ktor V1–V52](apps/api/src/main/resources/db/migration/). У двух контуров сборки общие игровые компоненты; их границы описаны в [архитектуре](docs/architecture.md).
+Точные зависимости — в [package.json](package.json) и [сборке API](apps/api/build.gradle.kts). Новая PostgreSQL создаётся из [B49__current_schema.sql](apps/api/src/main/resources/db/migration/B49__current_schema.sql), затем применяет V50–V56; [V1–V49](apps/api/src/main/resources/db/migration/history/) сохранены для обновления существующих БД. [Правила baseline и следующих миграций](docs/development/database-baseline.md). У двух контуров сборки общие игровые компоненты; их границы описаны в [архитектуре](docs/architecture.md).
 
 ## Где искать код
 

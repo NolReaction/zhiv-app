@@ -158,6 +158,8 @@ test("upgrade cost grants only the missing cost and leave prerequisite buildings
   const before = read(p), granted = cheat(p, "grant_upgrade_cost", "home").state;
   assert.deepEqual(granted.inventory, expected); assert.equal(granted.wallet.coins, before.wallet.coins);
   assert.deepEqual(granted.buildings, before.buildings);
+  assert.throws(() => normal(p, "start_construction", "home"), { code: "ECONOMY_TUTORIAL_REQUIRED" });
+  row.state.tutorialOrder = { version: 2, step: 4, ingredientsClaimed: true, completed: true, terms: null };
   assert.throws(() => normal(p, "start_construction", "home"), { code: "ECONOMY_BUILDING_REQUIRED" });
   assert.deepEqual(cheat(p, "grant_upgrade_cost", "home").state.inventory, expected, "repeated grants do not accumulate ingredients");
   cheat(p, "set_building_level", "home", 5);
@@ -182,6 +184,7 @@ test("instant building levels use catalog bounds, can bypass gates and preserve 
   assert.deepEqual(read(p), before); assert.deepEqual(read(p).jobs, [production]);
   assert.equal(cheat(p, "set_building_level", "quarry", 1).state.buildings.home, 1, "DEV may inspect locked scenery without changing the house");
   cheat(p, "set_building_level", "home", 2);
+  cheat(p, "set_building_level", "bridge", 1);
   const row = fixture(p); row.state.completedExplorations = 1;
   cheat(p, "grant_item", "wood", 3);
   const listing = economy.commandDevEconomyMarket(p.token, { ...command(p, "create_listing", "wood", 2), totalPrice: 80 }, now).listing;
@@ -193,6 +196,7 @@ test("instant building levels use catalog bounds, can bypass gates and preserve 
 test("DEV storage controls fund every independent upgrade through level 10 without changing home or other buildings", () => {
   const p = player(), warehouse = model.economyCatalog.buildings.find(building => building.id === "warehouse");
   assert.equal(Math.max(...warehouse.levels.map(level => level.level)), 10);
+  cheat(p, "set_building_level", "home", 2);
   const ordinaryBuildings = structuredClone(read(p).buildings);
   for (const target of warehouse.levels.filter(level => level.level >= 2)) {
     const previous = cheat(p, "set_building_level", "warehouse", target.level - 1).state;
@@ -327,7 +331,7 @@ test("individual DEV gear grants preserve paid trips and fish grants do not fake
   assert.deepEqual(granted.jobs[0], trip, "granting better tackle does not rewrite an already paid draw");
   for (const id of ["fish_shark", "fish", "firefly_bait"]) cheat(p, "grant_item", id, 3);
   const state = read(p);
-  assert.equal(state.inventory.fish_shark, 3); assert.equal(state.inventory.fish, before.inventory.fish + 3); assert.equal(state.inventory.firefly_bait, 3);
+  assert.equal(state.inventory.fish_legendary, 3); assert.equal(state.inventory.fish_common, (before.inventory.fish_common ?? 0) + 3); assert.equal(state.inventory.firefly_bait, 3);
   assert.deepEqual(state.fishing.catches, {});
   assert.equal(state.completedExplorations, 0);
 });

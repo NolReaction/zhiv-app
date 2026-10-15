@@ -11,10 +11,10 @@ export function useGardenCollectionController(economy: EconomyController, owner:
   useEffect(() => () => controller.deactivate(), [controller]);
   useEffect(() => {
     const update = () => controller.update({ snapshot: economy.snapshot, now: economy.now, busy: economy.busy,
-      uncertain: economy.uncertain, retryAt: economy.retryAt, error: economy.error, sceneAvailable: sceneAvailable && !document.hidden }, economy.act);
+      uncertain: economy.uncertain, retryAt: economy.retryAt, error: economy.error, sceneAvailable: sceneAvailable && !document.hidden }, economy.act, economy.retryGardenCollection);
     update(); document.addEventListener("visibilitychange", update);
     return () => document.removeEventListener("visibilitychange", update);
-  }, [controller, economy.snapshot, economy.now, economy.busy, economy.uncertain, economy.retryAt, economy.error, economy.act, sceneAvailable]);
+  }, [controller, economy.snapshot, economy.now, economy.busy, economy.uncertain, economy.retryAt, economy.error, economy.act, economy.retryGardenCollection, sceneAvailable]);
   return useMemo(() => ({ ...view, crop, start: controller.start, sceneEvent: controller.sceneEvent }), [view, crop, controller]);
 }
 

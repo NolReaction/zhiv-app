@@ -6,13 +6,15 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const options = { appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } };
+const options = { appType: "custom", configFile: false, root, cacheDir: `/tmp/zhiv-resident-orders-${process.pid}`, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } };
 const vite = await createServer(options);
-const { ResidentOrderBoard, ResidentOrderCard, ResidentOrderReplacement, residentOrderQuoteReason, residentOrderSaleValue } = await vite.ssrLoadModule("/features/economy/ui/food/world-resident-order-board.tsx");
+const { ResidentOrderBoard, ResidentOrderCard, ResidentOrderReplacement, residentOrderQuoteReason, residentOrderSaleValue } = await vite.ssrLoadModule("/features/economy/ui/orders/world-resident-order-board.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { residentOrderBoard, normalizedResidentOrders, advanceResidentOrder } = await vite.ssrLoadModule("/features/economy/domain/food.ts");
 const { economyLocalSellPrice } = await vite.ssrLoadModule("/features/economy/domain/local-sale.ts");
-const { TUTORIAL_ORDER_ID, tutorialResidentOrder } = await vite.ssrLoadModule("/features/economy/domain/tutorial-order.ts");
+const { TUTORIAL_ORDER_ID, tutorialResidentOrder, newTutorialOrder } = await vite.ssrLoadModule("/features/economy/domain/tutorial-order.ts");
+const { stageResidentOrder } = await vite.ssrLoadModule("/features/economy/domain/stage-orders.ts");
+const { worldDuration } = await vite.ssrLoadModule("/features/economy/ui/shared/world-stations.ts");
 after(() => vite.close());
 const now = Date.parse("2026-10-07T14:00:00Z");
 function controller(overrides = {}, flags = {}) {
@@ -34,6 +36,7 @@ function elements(tree) {
   visit(tree); return result;
 }
 const buttons = tree => elements(tree).filter(element => element.type === "button");
+const submissionControls = tree => elements(tree).filter(element => element.props["data-guide-order-submit"] !== undefined || element.type?.name === "FishOrderAction");
 
 test("board offers three real portraits and an initial NPC filter without mixing meals into feeding", () => {
   const economy = controller({}, { act() { assert.fail("rendering cannot change an order"); } });
@@ -59,7 +62,7 @@ test("missing raw fish opens the shore and missing crafted materials open the ex
   assert.deepEqual(calls, [["shore"], ["workshop", "make_planks"]]);
 });
 
-test("educational order appears only after its grant, respects the resident filter, and cannot be replaced", () => {
+test("educational order appears only after its activation, respects the resident filter, and cannot be replaced", () => {
   const economy = controller({}, { act() { assert.fail("inspection or a stale callback cannot issue a command"); } });
   const terms = tutorialResidentOrder(economy.snapshot);
   assert.doesNotMatch(render(ResidentOrderBoard, { economy }), /data-tutorial-order/);
@@ -68,7 +71,7 @@ test("educational order appears only after its grant, respects the resident filt
   const markup = render(ResidentOrderBoard, { economy });
   assert.match(markup, /data-tutorial-order="true"/);
   assert.equal((markup.match(/data-order-id=/g) ?? []).length, 4);
-  assert.ok(markup.indexOf(`data-order-id="${TUTORIAL_ORDER_ID}"`) < markup.indexOf('aria-label="Заказчик"'), "the practice request is easy to find before normal filters");
+  assert.ok(markup.indexOf(`data-order-id="${TUTORIAL_ORDER_ID}"`) < markup.indexOf('data-order-chapter="repeatable"'), "the practice request has its own chapter before repeatable requests");
   assert.doesNotMatch(render(ResidentOrderBoard, { economy, residentId: "plesk" }), /data-tutorial-order/);
   assert.match(render(ResidentOrderBoard, { economy, residentId: "builder" }), /data-tutorial-order/);
   const card = ResidentOrderCard({ economy, offer: terms });
@@ -80,12 +83,159 @@ test("educational order appears only after its grant, respects the resident filt
   buttons(card)[0].props.onClick(); // Stale callback is rejected by the current confirmed marker.
 });
 
+test("house-two course pins one nonreplaceable request before repeatable requests with frozen accepted terms", () => {
+  const economy = controller({ buildings: { home: 2, warehouse: 1, workshop: 1, quarry: 2, kiln: 1 },
+    tutorialOrder: { ...newTutorialOrder(), step: 4, completed: true } });
+  const course = economy.snapshot.catalog.stageOrders.find(entry => entry.homeLevel === 2);
+  assert.equal(course.orders.length, 7);
+  const terms = { ...course.orders[0], items: { rope: 3 }, coins: 125 };
+  economy.snapshot.stageOrders = { version: 1, stages: { 2: { step: 0, completed: false, terms } } };
+  economy.snapshot.inventory = { rope: 3 };
+  const before = structuredClone(economy.snapshot), markup = render(ResidentOrderBoard, { economy });
+  assert.match(markup, /data-stage-order="true"/);
+  assert.match(markup, /К дому 3 · 1 \/ 7/);
+  assert.equal((markup.match(/data-stage-order=/g) ?? []).length, 1);
+  assert.equal((markup.match(/data-order-id=/g) ?? []).length, 4);
+  assert.ok(markup.indexOf(`data-order-id="${terms.id}"`) < markup.indexOf('data-order-chapter="repeatable"'));
+  assert.doesNotMatch(render(ResidentOrderBoard, { economy, residentId: "plesk" }), /data-stage-order/);
+  assert.match(render(ResidentOrderBoard, { economy, residentId: "builder" }), /data-stage-order/);
+  const offer = stageResidentOrder(economy.snapshot), card = ResidentOrderCard({ economy, offer });
+  assert.deepEqual(offer.items, { rope: 3 }); assert.equal(offer.coins, 125);
+  assert.equal(buttons(card).length, 1); assert.equal(buttons(card)[0].props.disabled, false);
+  assert.doesNotMatch(render(ResidentOrderCard, { economy, offer }), /Заменить заказ:|монет больше продажи/);
+  assert.deepEqual(economy.snapshot, before, "rendering cannot freeze, pay or advance the course");
+  economy.snapshot.tutorialOrder.completed = false;
+  assert.doesNotMatch(render(ResidentOrderBoard, { economy }), /data-stage-order/);
+  economy.snapshot.tutorialOrder.completed = true;
+  economy.snapshot.buildings.home = 3;
+  economy.snapshot.stageOrders.stages[3] = { step: 8, completed: true, terms: null };
+  assert.doesNotMatch(render(ResidentOrderBoard, { economy }), /data-stage-order/);
+});
+
+test("a completed legacy five-request course stays closed while the current house-two course has seven requests", () => {
+  const economy = controller({ buildings: { home: 2, warehouse: 1, workshop: 1, quarry: 2, kiln: 1 },
+    tutorialOrder: { ...newTutorialOrder(), step: 4, completed: true },
+    stageOrders: { version: 1, stages: { 2: { step: 5, completed: true, terms: null } } } });
+  assert.equal(economy.snapshot.catalog.stageOrders.find(entry => entry.homeLevel === 2).orders.length, 7);
+  assert.doesNotMatch(render(ResidentOrderBoard, { economy }), /data-stage-order/);
+  assert.equal(stageResidentOrder(economy.snapshot), null);
+});
+
+test("house-four final project shows actual restoration and claimed expedition prerequisites and rechecks stale callbacks", () => {
+  const economy = controller({ buildings: { home: 4, warehouse: 1, bridge: 1, lighthouse: 0, workshop: 3 },
+    progression: { routes: {}, recipes: {}, collections: { finds: [], travelSeconds: 0, quarrySeconds: 0 } } });
+  const course = economy.snapshot.catalog.stageOrders.find(entry => entry.homeLevel === 4);
+  const terms = structuredClone(course.orders.at(-1));
+  economy.snapshot.stageOrders = { version: 1, stages: { 4: { step: course.orders.length - 1, completed: false,
+    terms, availableAt: new Date(now).toISOString(), intervalSeconds: course.intervalSeconds, completionRewards: course.completionRewards } } };
+  economy.snapshot.inventory = { ...terms.items };
+  const calls = [], navigation = { onNavigateStation: id => calls.push(["station", id]), onNavigateExpeditions: sector => calls.push(["explore", sector]) };
+  let offer = stageResidentOrder(economy.snapshot), card = ResidentOrderCard({ economy, offer, ...navigation });
+  const markup = render(ResidentOrderCard, { economy, offer, ...navigation });
+  assert.match(markup, /Условия поставки|Маяк/);
+  assert.match(markup, /Нужные экспедиции/);
+  assert.match(markup, /забрано 0 \/ 1/);
+  assert.match(markup, /Награда за завершение этапа/);
+  const find = (tree, text) => buttons(tree).find(button => button.props.children === text);
+  assert.equal(find(card, "Отдать заказ").props.disabled, true);
+  find(card, "К постройке").props.onClick(); find(card, "В путь").props.onClick();
+  assert.deepEqual(calls, [["station", "lighthouse"], ["explore", "forest"]]);
+  economy.snapshot.buildings.lighthouse = 1;
+  economy.snapshot.progression.routes.ancient_ruins = 1;
+  offer = stageResidentOrder(economy.snapshot); card = ResidentOrderCard({ economy, offer });
+  const ready = find(card, "Отдать заказ"); assert.equal(ready.props.disabled, false);
+  economy.act = (...args) => calls.push(args);
+  economy.snapshot.progression.routes.ancient_ruins = 0;
+  ready.props.onClick(); assert.equal(calls.length, 2, "the ready callback cannot bypass a changed expedition proof");
+  economy.snapshot.progression.routes.ancient_ruins = 1;
+  ready.props.onClick(); assert.deepEqual(calls[2], ["complete_resident_order", terms.id, 1, 0]);
+});
+
+test("house-three supply keeps its saved deadline separate from current and historical intervals after handover", () => {
+  const economy = controller({ buildings: { home: 3, warehouse: 1, workshop: 2, quarry: 2, kiln: 1 },
+    tutorialOrder: { version: 1, ingredientsClaimed: true, completed: true } });
+  const course = economy.snapshot.catalog.stageOrders.find(entry => entry.homeLevel === 3);
+  assert.equal(course.orders.length, 8); assert.equal(course.intervalSeconds, 23 * 3600);
+  const terms = course.orders[1], deadlineSeconds = 24 * 3600, availableAt = new Date(now + deadlineSeconds * 1000).toISOString();
+  for (const acceptedInterval of [course.intervalSeconds, 24 * 3600]) {
+    economy.snapshot.stageOrders = { version: 1, stages: { 3: { step: 1, completed: false, terms, availableAt,
+      intervalSeconds: acceptedInterval, completionRewards: course.completionRewards } } };
+    economy.snapshot.inventory = { ...terms.items };
+    const before = structuredClone(economy.snapshot), offer = stageResidentOrder(economy.snapshot);
+    const markup = render(ResidentOrderBoard, { economy });
+    assert.equal(offer.intervalSeconds, acceptedInterval, "the current catalog cannot reprice a saved 24-hour course");
+    assert.match(markup, /К дому 4 · 2 \/ 8/);
+    assert.ok(markup.indexOf(`data-order-id="${terms.id}"`) < markup.indexOf('data-order-chapter="repeatable"'));
+    assert.match(markup, /data-stage-order-wait/);
+    assert.match(markup, new RegExp(`Следующая поставка через <strong>${worldDuration(deadlineSeconds)}<\\/strong>`));
+    assert.match(markup, new RegExp(`После сдачи этой поставки до следующей пройдёт ${worldDuration(acceptedInterval)}`));
+    assert.match(markup, /Материалы можно подготовить заранее/);
+    assert.match(markup, /Жемчуг не сокращает этот срок/);
+    const card = ResidentOrderCard({ economy, offer });
+    assert.equal(buttons(card).length, 1); assert.equal(buttons(card)[0].props.disabled, true);
+    buttons(card)[0].props.onClick();
+    assert.deepEqual(economy.snapshot, before, "waiting views cannot advance the project or award goods");
+    assert.doesNotMatch(render(ResidentOrderBoard, { economy, residentId: "plesk" }), /data-stage-order/);
+  }
+});
+
+test("a stale supply card rechecks the server due time and current goods before issuing a command", () => {
+  for (const patch of [
+    economy => { economy.snapshot.stageOrders.stages[3].availableAt = new Date(now + 86400000).toISOString(); },
+    economy => { economy.snapshot.inventory = {}; },
+  ]) {
+    const calls = [], economy = controller({ buildings: { home: 3, warehouse: 1 } }, { act: (...args) => calls.push(args) });
+    const course = economy.snapshot.catalog.stageOrders.find(entry => entry.homeLevel === 3), terms = course.orders[0];
+    economy.snapshot.stageOrders = { version: 1, stages: { 3: { step: 0, completed: false, terms,
+      availableAt: new Date(now).toISOString(), intervalSeconds: course.intervalSeconds, completionRewards: course.completionRewards } } };
+    economy.snapshot.inventory = { ...terms.items };
+    const accept = buttons(ResidentOrderCard({ economy, offer: stageResidentOrder(economy.snapshot) }))[0];
+    assert.equal(accept.props.disabled, false);
+    patch(economy); accept.props.onClick(); assert.deepEqual(calls, []);
+  }
+});
+
+test("the final supply previews its guaranteed resin and counts consumed goods when checking reward space", () => {
+  const economy = controller({ buildings: { home: 3, warehouse: 1 } });
+  const course = economy.snapshot.catalog.stageOrders.find(entry => entry.homeLevel === 3), terms = course.orders.at(-1);
+  assert.deepEqual(course.completionRewards, { living_resin: 1 });
+  economy.snapshot.stageOrders = { version: 1, stages: { 3: { step: 7, completed: false, terms,
+    availableAt: new Date(now).toISOString(), intervalSeconds: course.intervalSeconds, completionRewards: course.completionRewards } } };
+  economy.snapshot.inventory = { ...terms.items };
+  const consumed = Object.values(terms.items).reduce((total, count) => total + count, 0);
+  economy.snapshot.storage = { capacity: 50, used: 50, reserved: 0, available: 0, overflow: 0 };
+  const before = structuredClone(economy.snapshot), offer = stageResidentOrder(economy.snapshot);
+  const markup = render(ResidentOrderCard, { economy, offer });
+  assert.match(markup, /aria-label="Дополнительная награда за этап"/);
+  assert.match(markup, /Живая смола × 1/);
+  assert.doesNotMatch(markup, /После сдачи этой поставки|Получено:/);
+  assert.equal(submissionControls(ResidentOrderCard({ economy, offer }))[0].props.disabled, false);
+  assert.deepEqual(economy.snapshot, before, "the reward preview never creates inventory");
+  economy.snapshot.storage.reserved = consumed;
+  assert.equal(submissionControls(ResidentOrderCard({ economy, offer }))[0].props.disabled, true);
+  assert.match(render(ResidentOrderCard, { economy, offer }), /Освободите место в кладовой/);
+});
+
+test("stage request material shortcuts prefer the independent mine and retain first-house forest recovery", () => {
+  const calls = [], economy = controller({ buildings: { home: 2, warehouse: 1, workshop: 1, quarry: 1 } });
+  const offer = { ...residentOrderBoard(economy.snapshot, now).offers[0], items: { stone: 6, clay: 4 } };
+  const card = () => ResidentOrderCard({ economy, offer, onNavigateStation: (...args) => calls.push(args),
+    onNavigateExpeditions: sector => calls.push([sector]) });
+  buttons(card()).filter(button => button.props["aria-label"]?.startsWith("Где получить для заказа:")).forEach(button => button.props.onClick());
+  assert.deepEqual(calls, [["quarry"], ["quarry"]], "clay points to the mine upgrade even before level two");
+  calls.length = 0; economy.snapshot.buildings = { home: 1, warehouse: 1 };
+  const first = ResidentOrderCard({ economy, offer: { ...offer, items: { stone: 1 } },
+    onNavigateStation: (...args) => calls.push(args), onNavigateExpeditions: sector => calls.push([sector]) });
+  buttons(first).find(button => button.props["aria-label"]?.startsWith("Где получить для заказа:")).props.onClick();
+  assert.deepEqual(calls, [["forest"]]);
+});
+
 test("order premium compares real fish and rounded local sale proceeds, not the nominal catalogue base", () => {
   const economy = controller();
   const fish = economyCatalog.items.find(item => item.id === "fish");
   const planks = economyCatalog.items.find(item => item.id === "planks");
   const offer = { ...residentOrderBoard(economy.snapshot, now).offers[0], items: { fish: 3, planks: 2 }, coins: 3000 };
-  const sale = 3 * fish.baseSellPrice + economyLocalSellPrice(planks.baseSellPrice, 2, economyCatalog.localBuyer);
+  const sale = 3 * fish.baseSellPrice + economyLocalSellPrice(planks.baseSellPrice, 2, economyCatalog.localBuyer, planks.id);
   assert.equal(residentOrderSaleValue(economy, offer), sale);
   assert.match(render(ResidentOrderCard, { economy, offer }), new RegExp(`На ${(3000 - sale).toLocaleString("ru-RU")} монет больше продажи`));
   assert.equal(residentOrderSaleValue(economy, { ...offer, items: { unknown_item: 1 } }), null);
@@ -119,7 +269,7 @@ test("free budget reset can lower the price without spending a previously quoted
 
 test("paid replacement needs deliberate confirmation, checks fresh state and rejects duplicate presses", async () => {
   const hooksId = "virtual:order-board-hooks";
-  const runtime = await createServer({ ...options, plugins: [{ name: "order-board-hooks", enforce: "pre",
+  const runtime = await createServer({ ...options, cacheDir: `/tmp/zhiv-resident-order-hooks-${process.pid}`, plugins: [{ name: "order-board-hooks", enforce: "pre",
     resolveId(id) { if (id === hooksId) return `\0${id}`; },
     load(id) { if (id === `\0${hooksId}`) return `
       let slots = [], cursor = 0;
@@ -131,11 +281,11 @@ test("paid replacement needs deliberate confirmation, checks fresh state and rej
       export function useEffect() {}
       export function useLayoutEffect(effect) { effect(); }
     `; },
-    transform(source, id) { if (id.endsWith("/features/economy/ui/food/world-resident-order-board.tsx")) return source.replace('from "react";', `from "${hooksId}";`); },
+    transform(source, id) { if (id.endsWith("/features/economy/ui/orders/world-resident-order-board.tsx")) return source.replace('from "react";', `from "${hooksId}";`); },
   }] });
   try {
     const hooks = await runtime.ssrLoadModule(hooksId);
-    const { ResidentOrderBoard: Board, ResidentOrderCard: Card } = await runtime.ssrLoadModule("/features/economy/ui/food/world-resident-order-board.tsx");
+    const { ResidentOrderBoard: Board, ResidentOrderCard: Card } = await runtime.ssrLoadModule("/features/economy/ui/orders/world-resident-order-board.tsx");
     const calls = [], economy = paid(controller({}, { act: (...args) => calls.push(args) }));
     const board = () => { hooks.render(); return Board({ economy }); };
     const cards = tree => elements(tree).filter(element => element.type === Card);
@@ -194,8 +344,111 @@ test("paid replacement needs deliberate confirmation, checks fresh state and rej
     economy.notice = "Учебный заказ выполнен";
     tree = board();
     assert.equal(cards(tree).length, 3);
-    assert.match(renderToStaticMarkup(tree), /Учебный заказ выполнен · \+100 монет/);
+    assert.match(renderToStaticMarkup(tree), new RegExp(`Учебный заказ выполнен · \\+${terms.coins} монет`));
     economy.uncertain = true;
     assert.doesNotMatch(renderToStaticMarkup(board()), /Учебный заказ выполнен ·/);
+
+    for (let step = 0; step < 4; step++) {
+      hooks.reset(); calls.length = 0; economy.uncertain = false; economy.notice = "";
+      const terms = economy.snapshot.catalog.onboarding.residentOrders[step];
+      economy.snapshot.tutorialOrder = { ...newTutorialOrder(economy.snapshot.catalog), step, terms };
+      economy.snapshot.inventory = { ...terms.items };
+      tree = board(); first = cards(tree)[0];
+      assert.equal(first.props.offer.id, terms.id);
+      assert.match(renderToStaticMarkup(tree), new RegExp(`Учебный заказ · ${step + 1} / 4`));
+      assert.equal(buttons(ResidentOrderCard({ economy, offer: first.props.offer })).length, 1, "every tutorial request has no replacement control");
+      first.props.onComplete(first.props.offer); first.props.onComplete(first.props.offer);
+      assert.deepEqual(calls, [["complete_resident_order", terms.id, 1, 0]]);
+      assert.doesNotMatch(renderToStaticMarkup(board()), /Учебный заказ выполнен ·/);
+      economy.snapshot = { ...economy.snapshot, revision: economy.snapshot.revision + 1, inventory: {},
+        tutorialOrder: { ...economy.snapshot.tutorialOrder, step: step + 1, completed: step === 3,
+          terms: economy.snapshot.catalog.onboarding.residentOrders[step + 1] ?? terms } };
+      economy.notice = "Учебный заказ выполнен";
+      tree = board();
+      assert.match(renderToStaticMarkup(tree), new RegExp(`Учебный заказ выполнен · \\+${terms.coins} монет`));
+      assert.equal(cards(tree).length, step === 3 ? 3 : 4);
+      if (step < 3) assert.equal(cards(tree)[0].props.offer.id, economy.snapshot.catalog.onboarding.residentOrders[step + 1].id);
+      first.props.onComplete(first.props.offer);
+      assert.equal(calls.length, 1, "a stale tutorial card cannot submit the next pinned request");
+    }
+
+    const course = economy.snapshot.catalog.stageOrders.find(entry => entry.homeLevel === 2);
+    economy.snapshot.buildings = { home: 2, warehouse: 1, workshop: 1, quarry: 2, kiln: 1 };
+    for (let step = 0; step < course.orders.length; step++) {
+      hooks.reset(); calls.length = 0; economy.uncertain = false; economy.notice = "";
+      const terms = course.orders[step];
+      economy.snapshot.stageOrders = { version: 1, stages: { 2: { step, completed: false, terms } } };
+      economy.snapshot.inventory = { ...terms.items };
+      tree = board(); first = cards(tree)[0];
+      assert.equal(first.props.offer.id, terms.id);
+      assert.match(renderToStaticMarkup(tree), new RegExp(`К дому 3 · ${step + 1} / 7`));
+      assert.equal(submissionControls(Card(first.props)).length, 1);
+      first.props.onComplete(first.props.offer); first.props.onComplete(first.props.offer);
+      assert.deepEqual(calls, [["complete_resident_order", terms.id, 1, 0]]);
+      assert.doesNotMatch(renderToStaticMarkup(board()), /Заказ этапа выполнен ·/);
+      economy.snapshot = { ...economy.snapshot, revision: economy.snapshot.revision + 1 };
+      economy.notice = "Фоновый снимок обновлён";
+      assert.doesNotMatch(renderToStaticMarkup(board()), /Заказ этапа выполнен ·/, "revision and a notice alone do not confirm payment");
+      economy.snapshot.stageOrders.stages[2] = { step: step + 1, completed: step === course.orders.length - 1, terms: course.orders[step + 1] ?? null };
+      economy.snapshot.inventory = {};
+      economy.notice = "Заказ выполнен";
+      tree = board();
+      assert.match(renderToStaticMarkup(tree), new RegExp(`Заказ этапа выполнен · \\+${terms.coins.toLocaleString("ru-RU")} монет`));
+      assert.equal(cards(tree).length, step === course.orders.length - 1 ? 3 : 4);
+      if (step < course.orders.length - 1) assert.equal(cards(tree)[0].props.offer.id, course.orders[step + 1].id);
+      else assert.match(renderToStaticMarkup(tree), /Все просьбы этого этапа выполнены/);
+      first.props.onComplete(first.props.offer);
+      const staleControl = submissionControls(Card(first.props))[0];
+      if (staleControl.type === "button") staleControl.props.onClick(); else staleControl.props.onSubmit({});
+      assert.equal(calls.length, 1, "the saved previous card cannot submit the next stage request");
+      economy.uncertain = true;
+      assert.doesNotMatch(renderToStaticMarkup(board()), /Заказ этапа выполнен ·/);
+      economy.uncertain = false;
+      const owner = economy.snapshot.ownerPublicId; economy.snapshot.ownerPublicId = "OTHER";
+      assert.doesNotMatch(renderToStaticMarkup(board()), /Заказ этапа выполнен ·/);
+      economy.snapshot.ownerPublicId = owner;
+    }
+
+    const project = economy.snapshot.catalog.stageOrders.find(entry => entry.homeLevel === 3);
+    economy.snapshot.buildings = { home: 3, warehouse: 1, workshop: 2, quarry: 2, kiln: 1 };
+    for (const step of [0, 7]) {
+      hooks.reset(); calls.length = 0; economy.uncertain = false; economy.notice = "";
+      const terms = project.orders[step];
+      economy.snapshot.stageOrders = { version: 1, stages: { 3: { step, completed: false, terms,
+        availableAt: new Date(now).toISOString(), intervalSeconds: project.intervalSeconds, completionRewards: project.completionRewards } } };
+      economy.snapshot.inventory = { ...terms.items };
+      tree = board(); first = cards(tree)[0];
+      assert.equal(first.props.offer.id, terms.id);
+      if (step === 0) {
+        economy.snapshot.stageOrders.stages[3].availableAt = new Date(now + 86400000).toISOString();
+        first.props.onComplete(first.props.offer); assert.deepEqual(calls, [], "a captured board callback rechecks the latest due time");
+        economy.snapshot.stageOrders.stages[3].availableAt = new Date(now).toISOString();
+      }
+      first.props.onComplete(first.props.offer); first.props.onComplete(first.props.offer);
+      assert.deepEqual(calls, [["complete_resident_order", terms.id, 1, 0]]);
+      assert.doesNotMatch(renderToStaticMarkup(board()), /Заказ этапа выполнен ·|Получено:/);
+      economy.snapshot.revision += 1; economy.notice = "Фоновый снимок обновлён";
+      assert.doesNotMatch(renderToStaticMarkup(board()), /Заказ этапа выполнен ·|Получено:/,
+        "a higher revision without accepted progress cannot confirm the supply or reward");
+      economy.snapshot.stageOrders.stages[3] = { step: step + 1, completed: step === 7, terms: project.orders[step + 1] ?? null,
+        availableAt: step === 7 ? null : new Date(now + 86400000).toISOString(), intervalSeconds: project.intervalSeconds,
+        completionRewards: project.completionRewards };
+      economy.snapshot.inventory = step === 7 ? { living_resin: 1 } : {};
+      economy.notice = "Заказ выполнен"; tree = board();
+      assert.match(renderToStaticMarkup(tree), new RegExp(`Заказ этапа выполнен · \\+${terms.coins.toLocaleString("ru-RU")} монет`));
+      if (step === 0) {
+        const savedDeadlineSeconds = (Date.parse(economy.snapshot.stageOrders.stages[3].availableAt) - economy.now) / 1000;
+        assert.equal(savedDeadlineSeconds, 24 * 3600, "the accepted snapshot supplies its own next deadline");
+        assert.match(renderToStaticMarkup(tree), new RegExp(`Следующая поставка через ${worldDuration(savedDeadlineSeconds)}`));
+        assert.match(renderToStaticMarkup(tree), /data-stage-order-wait/);
+        assert.doesNotMatch(renderToStaticMarkup(tree), /Следующая просьба уже на доске|Получено:/);
+      } else {
+        assert.equal(cards(tree).length, 3);
+        assert.match(renderToStaticMarkup(tree), /Все просьбы этого этапа выполнены/);
+        assert.match(renderToStaticMarkup(tree), /Получено: Живая смола × 1/);
+        economy.uncertain = true;
+        assert.doesNotMatch(renderToStaticMarkup(board()), /Получено:/);
+      }
+    }
   } finally { await runtime.close(); }
 });

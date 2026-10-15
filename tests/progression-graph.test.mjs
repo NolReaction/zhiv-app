@@ -5,13 +5,25 @@ import vm from "node:vm";
 import ts from "typescript";
 
 const catalog = JSON.parse(readFileSync(new URL("../apps/api/src/main/resources/world/economy-catalog.json", import.meta.url), "utf8"));
+// The real model schema supplies this default before graph construction.
+for (const recipe of catalog.recipes) recipe.requiredRecipes ??= {};
+const progressionRewards = JSON.parse(readFileSync(new URL("../apps/api/src/main/resources/world/progression-rewards-catalog.json", import.meta.url), "utf8"));
 const source = readFileSync(new URL("../features/progression/graph.ts", import.meta.url), "utf8");
 const code = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
 const moneyContext = { exports: {}, structuredClone };
 vm.runInNewContext(ts.transpileModule(readFileSync(new URL("../features/economy/domain/money.ts", import.meta.url), "utf8"),
   { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText, moneyContext);
+const timeContext = { exports: {} };
+vm.runInNewContext(ts.transpileModule(readFileSync(new URL("../features/economy/domain/time-price.ts", import.meta.url), "utf8"),
+  { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText, timeContext);
+const prerequisiteContext = { exports: {} };
+vm.runInNewContext(ts.transpileModule(readFileSync(new URL("../features/economy/domain/recipe-prerequisites.ts", import.meta.url), "utf8"),
+  { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText, prerequisiteContext);
 const context = { exports: {}, require: specifier => {
+  if (specifier === "@/features/economy/domain/recipe-prerequisites") return prerequisiteContext.exports;
   if (specifier === "@/features/economy/domain/money") return moneyContext.exports;
+  if (specifier === "@/features/economy/domain/rules") return { constructionTimePearlPrice: (seconds, config) => timeContext.exports.durationPearlPrice(seconds * 1000,
+    config.secondsPerPearl, moneyContext.exports.ECONOMY_PEARL_SCALE, config.priceStepPearls, config.pricingPoints) };
   if (specifier === "@/apps/api/src/main/resources/world/progression-rewards-catalog.json") return { default: JSON.parse(readFileSync(new URL("../apps/api/src/main/resources/world/progression-rewards-catalog.json", import.meta.url), "utf8")) };
   assert.equal(specifier, "@/features/economy/domain/model");
   return { economyCatalog: catalog };
@@ -30,6 +42,15 @@ const plain = value => JSON.parse(JSON.stringify(value));
 const node = id => graph.nodes.find(value => value.id === id);
 const hasEdge = (source, target, kind) => graph.edges.some(edge => edge.source === source && edge.target === target && edge.kind === kind);
 
+test("recipe prerequisites name their claimed products without repeating action verbs", () => {
+  const strawberry = node("r:grow_strawberries");
+  assert.match(strawberry.description, /Для открытия произведите и заберите: Малиновый компот × 1/);
+  assert.doesNotMatch(strawberry.description, /приготовьте[^.]*Приготовить/i);
+  const parts = node("r:make_precision_parts");
+  const reinforced = catalog.items.find(item => item.id === "reinforced_parts");
+  assert.ok(parts.description.includes(`${reinforced.name} × 10`));
+});
+
 function reachableIds(currentGraph, accepts) {
   const outgoing = new Map();
   for (const edge of currentGraph.edges.filter(accepts)) {
@@ -47,7 +68,7 @@ function reachableIds(currentGraph, accepts) {
 }
 
 test("progression contains every catalog building level, recipe and exploration exactly once", () => {
-  assert.equal(graph.nodes.filter(value => value.kind === "building").length, 45);
+  assert.equal(graph.nodes.filter(value => value.kind === "building").length, catalog.buildings.reduce((sum, building) => sum + building.levels.length, 0));
   assert.equal(graph.nodes.filter(value => value.kind === "recipe").length, catalog.recipes.length);
   assert.equal(graph.nodes.filter(value => value.kind === "exploration").length, catalog.explorations.length);
   for (const building of catalog.buildings) for (const level of building.levels) {
@@ -93,10 +114,9 @@ test("node and edge ids are unique and actual world remains connected without pr
   assert.equal(all.size, ids.size);
   const actual = reachableIds(graph, edge => edge.kind !== "plan" && edge.kind !== "cost");
   for (const value of graph.nodes.filter(value => value.status === "active")) assert(actual.has(value.id), `Disconnected active node ${value.id}`);
-  assert.equal(graph.nodes.length, 164);
   assert.equal(node("pearls").status, "active");
   assert.ok(!graph.edges.some(edge => edge.source === "pearls" && ["requirement", "unlock"].includes(edge.kind)), "optional acceleration never gates progression");
-  assert.equal(graph.nodes.filter(value => value.status === "plan").length, 16);
+  assert.equal(graph.nodes.filter(value => value.status === "plan").length, 14);
 });
 
 test("fish ingredients resolve to a real chance source without inventing guaranteed species rewards", () => {
@@ -106,17 +126,18 @@ test("fish ingredients resolve to a real chance source without inventing guarant
   assert.equal(source.rewards, undefined);
   assert.equal(source.seconds, undefined);
   assert.equal(source.cost, undefined);
-  assert.deepEqual(plain(source.fishingSource.itemIds), catalog.fishing.fish.map(fish => fish.itemId));
+  assert.deepEqual(plain(source.fishingSource.itemIds), catalog.fishing.classes.map(group => group.itemId));
   assert.deepEqual(plain(source.fishingSource.routeIds), catalog.fishing.routeIds);
-  assert.match(source.description, /конкретная рыба не гарантирована/);
+  assert.match(source.description, /конкретный класс не гарантирован/);
   assert.match(source.description, /легендарная удочка/);
   assert(hasEdge("b:home:1", source.id, "requirement"));
   for (const route of catalog.fishing.routeIds) assert(hasEdge(`e:${route}`, source.id, "any"));
-  for (const recipe of catalog.recipes.filter(recipe => recipe.fishInput)) {
-    for (const id of recipe.fishInput.itemIds) {
+  const classIds = new Set(catalog.fishing.classes.map(group => group.itemId));
+  for (const recipe of catalog.recipes.filter(recipe => Object.keys(recipe.cost.items).some(id => classIds.has(id)))) {
+    for (const id of Object.keys(recipe.cost.items).filter(id => classIds.has(id))) {
       assert(getProgressionResourceSource(graph, id), `${recipe.id}: no ingredient source for ${id}`);
       assert(node(`r:${recipe.id}`).description.includes(catalog.items.find(item => item.id === id).name));
-      if (id !== "fish") assert.equal(getProgressionResourceSource(graph, id).id, source.id);
+      assert.equal(getProgressionResourceSource(graph, id).id, source.id);
     }
   }
   for (const recipe of ["cook_berry_fish", "cook_hearty_fish"]) assert(hasEdge(source.id, `r:${recipe}`, "cost"));
@@ -128,11 +149,11 @@ test("fish ingredients resolve to a real chance source without inventing guarant
 test("food and resident orders are active optional uses rather than future progression gates", () => {
   assert.equal(node("orders").status, "active");
   assert.equal(node("meals").status, "active");
-  assert.match(node("orders").description, /Награда: монеты с надбавкой/);
+  assert.match(node("orders").description, /Обычные заказы дают монеты/);
   assert.match(node("orders").description, /сытость отдельно/);
   assert.match(node("orders").description, /3 бесплатные замены/);
-  assert.match(node("meals").description, /\+10–100%/);
-  assert.match(node("meals").description, /\+10–90%/);
+  assert.match(node("meals").description, /\+8–100%/);
+  assert.match(node("meals").description, /\+8–90%/);
   assert(hasEdge("start", "orders", "available"));
   assert(hasEdge("orders", "coins", "flow"));
   assert(hasEdge("r:cook_grilled_fish", "meals", "flow"));
@@ -142,9 +163,11 @@ test("food and resident orders are active optional uses rather than future progr
 
 test("daily and earned achievements explain current pearl sources while the future merchant cannot gate upgrades", () => {
   assert.equal(node("daily_rewards").status, "active");
-  assert.match(node("daily_rewards").description, /7 получений/); assert.match(node("daily_rewards").description, /225 жемчужин/);
+  const dailyPearls = moneyContext.exports.formatPearls(progressionRewards.daily.reduce((sum, reward) => sum + reward.pearls, 0));
+  const achievementPearls = moneyContext.exports.formatPearls(Object.values(progressionRewards.achievementPearls).flat().reduce((sum, reward) => sum + reward, 0));
+  assert.match(node("daily_rewards").description, /7 получений/); assert.ok(node("daily_rewards").description.includes(`${dailyPearls} жемчужин`));
   assert.match(node("daily_rewards").description, /20 часов/); assert.match(node("daily_rewards").description, /Пропуск не сбрасывает/);
-  assert.match(node("pearls").description, /до 1\s075/); assert.match(node("achievements").description, /до 1\s075/);
+  assert.ok(node("pearls").description.includes(`до ${achievementPearls}`)); assert.ok(node("achievements").description.includes(`до ${achievementPearls}`));
   assert(hasEdge("daily_rewards", "pearls", "flow")); assert(hasEdge("achievements", "pearls", "flow"));
   assert.equal(node("pearl_trader").status, "plan");
   assert(graph.edges.filter(edge => edge.source === "pearl_trader" || edge.target === "pearl_trader").every(edge => edge.kind === "plan"));
@@ -158,14 +181,19 @@ test("rare materials share a real post-home-three exploration source without a f
   assert.deepEqual(plain(source.requirements), { home: 3 });
   assert.deepEqual(plain(source.rareDrops), catalog.rareDrops);
   assert.equal(source.rewards, undefined); assert.equal(source.seconds, undefined); assert.equal(source.cost, undefined);
-  assert.match(source.description, /один общий счётчик/); assert.match(source.description, /48 до 144/);
+  assert.match(source.description, /два отдельных счётчика — по одному на персонажа/);
+  assert.match(source.description, /перерасход переносится в очередь того же персонажа/);
+  assert.match(source.description, /48 до 144/);
   assert.match(source.description, /равновероятных/); assert.match(source.description, /Конкретный тип не гарантирован/);
+  assert.match(source.description, /завершение проекта дома 3 гарантирует Живая смола × 1/);
+  assert.match(source.description, /путь к дому 4 не зависит от случайной находки/);
+  assert.match(source.description, /Седьмой ежедневный подарок даёт древнее ядро/);
   assert.match(source.description, /купить или продать за монеты нельзя/);
   assert(hasEdge("b:home:3", source.id, "requirement"));
   for (const route of catalog.explorations) assert(hasEdge(`e:${route.id}`, source.id, "any"));
   for (const item of catalog.rareDrops.itemIds) {
     assert.equal(getProgressionResourceSource(graph, item).id, source.id, "Cost buttons resolve the earned source");
-    assert(!graph.nodes.some(value => value.rewards?.[item]), "No guaranteed trip, recipe or merchant reward");
+    assert(!graph.nodes.some(value => value.rewards?.[item]), "Chance-source metadata must not turn the separate project or gift guarantee into a guaranteed route or recipe reward");
   }
   assert(hasEdge(source.id, "b:home:4", "cost")); assert(hasEdge(source.id, "b:home:5", "cost"));
   assert(!hasEdge(source.id, "b:home:3", "cost"));
@@ -197,9 +225,47 @@ test("fishing and friend profiles are current while glade visits and Pleska's ho
   assert.equal(node("player_level").status, "active");
   assert.equal(node("achievements").status, "active");
   assert.match(node("willow_rod").description, /отдельная вещь/);
-  assert.match(node("trader").description, /40%/);
+  assert.match(node("trader").description, /все продаваемые товары NPC выкупает по полной базовой цене за каждую единицу/);
+  assert.doesNotMatch(node("trader").description, /уценкой|выгоднее продать Плёске/);
   assert.match(node("b:warehouse:1").description, /объявлениях рынка/);
-  assert.match(node("r:grow_berries").description, /Партия: до 1/);
+  for (const recipe of catalog.recipes) {
+    assert.equal(recipe.maxBatch, 1, recipe.id);
+    assert.equal(Object.values(recipe.rewards).reduce((sum, count) => sum + count, 0), 1, recipe.id);
+    assert.match(node(`r:${recipe.id}`).description, /Каждый запуск выпускает один предмет/);
+  }
+});
+
+test("graph labels use current unit-production timers and actual mining durations", () => {
+  assert.equal(node("r:garden_season").label, "Малина · 30 с");
+  assert.equal(node("r:hardwood_shift").label, "Крепкое бревно · 8 мин");
+  assert.equal(node("r:smelt_iron").label, "Железный слиток · 30 мин");
+  assert.equal(node("r:make_beams").label, "Балка · 1 ч");
+  assert.equal(node("e:quarry_ore").label, "Руда · 9 мин");
+  assert.equal(node("e:quarry_sand").label, "Песок · 4 мин 30 с");
+  assert.equal(node("e:quarry_stone_hour").label, "Камень · 1 ч");
+  assert.equal(node("e:quarry_ore_hour").label, "Руда · 1 ч");
+  assert.equal(node("e:quarry_clay_hour").label, "Глина · 1 ч");
+  assert.equal(node("e:quarry_sand_hour").label, "Песок · 1 ч");
+  assert.equal(node("e:quarry_ore_overnight").label, "Руда к утру · 8 ч");
+  assert.equal(node("e:quarry_clay_overnight").label, "Глина к утру · 8 ч");
+  assert.equal(node("e:quarry_sand_overnight").label, "Песок к утру · 8 ч");
+  assert.equal(node("e:abandoned_quarry").label, "Дальний рудный пласт · 16 ч");
+  assert.match(node("e:quarry_ore_hour").description, /одну работу.*собственной очереди.*шестнадцатичасовая/);
+  assert.equal(node("e:shore_camp").label, "Стоянка на берегу · 15 мин");
+  const changed = structuredClone(catalog);
+  changed.recipes.find(recipe => recipe.id === "hardwood_shift").seconds = 420;
+  changed.explorations.find(route => route.id === "quarry_ore").seconds = 600;
+  const custom = buildProgressionGraph(changed);
+  assert.equal(custom.nodes.find(value => value.id === "r:hardwood_shift").label, "Крепкое бревно · 7 мин");
+  assert.equal(custom.nodes.find(value => value.id === "e:quarry_ore").label, "Руда · 10 мин");
+});
+
+test("buyer description keeps discount rules only when the provided catalog actually uses them", () => {
+  const changed = structuredClone(catalog);
+  delete changed.localBuyer.unitPrices.berries;
+  const trader = buildProgressionGraph(changed).nodes.find(value => value.id === "trader");
+  assert.match(trader.description, /с уценкой 40%/);
+  assert.doesNotMatch(trader.description, /все продаваемые товары NPC выкупает по полной/);
 });
 
 test("production and construction retain every house, previous-level and additional building gate", () => {
@@ -220,41 +286,59 @@ test("production and construction retain every house, previous-level and additio
     for (const [other, minimum] of Object.entries(exploration.requiredBuildings)) assert(hasEdge(`b:${other}:${minimum}`, id, "requirement"));
   }
   const finalHouse = getPrerequisiteIds(graph, "b:home:5", false);
-  for (const id of ["b:workshop:4", "b:quarry:4", "b:warehouse:4", "b:kiln:4", "b:dryer:3", "b:woodlot:4"]) assert(finalHouse.has(id), id);
+  for (const id of ["b:workshop:4", "b:quarry:4", "b:kiln:4", "b:dryer:3"]) assert(finalHouse.has(id), id);
+  assert(!graph.nodes.some(value => value.buildingId === "warehouse" && finalHouse.has(value.id)), "storage remains optional for the final house");
   assert.equal(node("r:make_reinforced_parts").requirements.woodlot, 4);
   assert.equal(node("r:make_beams").requirements.woodlot, 3);
 });
 
-test("market requires both home and completed exploration; any route suffices instead of all routes", () => {
-  assert.deepEqual(plain(node("market").requirements), { home: 2, completedExplorations: 1 });
+test("market requires home two and a claimed bridge restoration without forcing an exploration", () => {
+  assert.deepEqual(plain(node("market").requirements), { home: 2, bridge: 1 });
   const incoming = graph.edges.filter(edge => edge.target === "market" && edge.kind === "requirement").map(edge => edge.source);
-  assert.deepEqual(Array.from(incoming).sort(), ["b:home:2", "claimed"]);
+  assert.deepEqual(Array.from(incoming).sort(), ["b:bridge:1", "b:home:2"]);
   const unlocked = state => Object.entries(node("market").requirements).every(([counter, required]) => state[counter] >= required);
-  assert.equal(unlocked({ home: 1, completedExplorations: 0 }), false);
-  assert.equal(unlocked({ home: 2, completedExplorations: 0 }), false);
-  assert.equal(unlocked({ home: 1, completedExplorations: 1 }), false);
-  assert.equal(unlocked({ home: 2, completedExplorations: 1 }), true);
+  assert.equal(unlocked({ home: 1, bridge: 0 }), false);
+  assert.equal(unlocked({ home: 2, bridge: 0 }), false);
+  assert.equal(unlocked({ home: 1, bridge: 1 }), false);
+  assert.equal(unlocked({ home: 2, bridge: 1, completedExplorations: 0 }), true);
   for (const exploration of catalog.explorations) assert.equal(hasEdge(`e:${exploration.id}`, "claimed", "any"), !exploration.id.startsWith("quarry_"));
   const prerequisites = getPrerequisiteIds(graph, "market", false);
-  assert(prerequisites.has("claimed"));
+  assert(!prerequisites.has("claimed"));
+  assert(prerequisites.has("b:bridge:1"));
   assert(prerequisites.has("b:home:2"));
   assert(!graph.nodes.some(value => value.kind === "exploration" && prerequisites.has(value.id)), "Any exploration must not become all ten mandatory routes");
   assert.deepEqual(Array.from(getPrerequisiteIds(graph, "claimed", false)), ["claimed"]);
 });
 
-test("future bridge and lighthouse proposals cannot gate actual production, collections or market", () => {
+test("restored landmarks gate real routes while future proposals cannot gate active progression", () => {
   const proposed = new Set(graph.nodes.filter(value => value.status === "plan").map(value => value.id));
   assert.equal(node("bridge_ruin").status, "active");
   assert.equal(node("lighthouse_ruin").status, "active");
-  assert.equal(node("bridge").status, "plan");
-  assert.equal(node("lighthouse").status, "plan");
+  assert.equal(node("bridge").status, "active");
+  assert.equal(node("lighthouse").status, "active");
   assert.equal(node("mine_interior").status, "plan");
   for (const edge of graph.edges.filter(edge => proposed.has(edge.source) || proposed.has(edge.target))) assert.equal(edge.kind, "plan", edge.id);
   for (const value of graph.nodes.filter(value => value.status === "active")) {
     for (const prerequisite of getPrerequisiteIds(graph, value.id)) assert(!proposed.has(prerequisite), `${prerequisite} gates ${value.id}`);
   }
-  const bridge = getPrerequisiteIds(graph, "bridge", false);
-  for (const id of ["bridge_ruin", "r:make_planks", "r:make_rope", "r:make_tools"]) assert(bridge.has(id));
+  const bridge = getPrerequisiteIds(graph, "b:bridge:1", false);
+  for (const id of ["b:home:2", "b:workshop:1", "b:kiln:1", "b:woodlot:1"]) assert(bridge.has(id));
+  assert.equal(node("b:bridge:1").phase, 2);
+  assert.equal(node("b:lighthouse:1").phase, 3);
+  assert.match(node("bridge").description, /с дома 2.*рынок игроков/);
+  assert.match(node("lighthouse").description, /с дома 3.*пароход с большими заказами/);
+  assert.equal(node("ships").status, "plan");
+  assert(hasEdge("b:lighthouse:1", "ships", "plan"));
+  assert(!hasEdge("port", "ships", "plan"));
+  assert(hasEdge("bridge", "b:bridge:1", "contains"));
+  assert(hasEdge("lighthouse", "b:lighthouse:1", "contains"));
+  assert(hasEdge("b:bridge:1", "e:far_bank_path", "requirement"));
+  assert(hasEdge("b:bridge:1", "e:far_bank_grove", "requirement"));
+  assert(hasEdge("b:lighthouse:1", "e:ancient_ruins", "requirement"));
+  assert.deepEqual(plain(node("e:ancient_ruins").requirements), { home: 4, bridge: 1, lighthouse: 1, workshop: 3 });
+  const finalHouse = getPrerequisiteIds(graph, "b:home:5", false);
+  assert(finalHouse.has("b:bridge:1"));
+  assert(finalHouse.has("b:lighthouse:1"));
   assert(!getPrerequisiteIds(graph, "album").has("new_finds"));
   assert(!getPrerequisiteIds(graph, "leaderboard").has("taps"), "Rating flow is not an unlock gate");
 });
@@ -262,7 +346,7 @@ test("future bridge and lighthouse proposals cannot gate actual production, coll
 test("existing places contain improvements without becoming construction or recipe gates", () => {
   const expected = {
     "place:home": ["home", "warehouse"], "place:workshop": ["workshop", "kiln"],
-    bush: ["garden"], campfire: ["dryer"], "place:woodlot": ["woodlot"], "place:quarry": ["quarry"],
+    bush: ["garden"], campfire: ["dryer"], "place:woodlot": ["woodlot"], "place:quarry": ["quarry"], bridge: ["bridge"], lighthouse: ["lighthouse"],
   };
   assert.equal(graph.nodes.filter(value => value.kind === "location").length, Object.keys(expected).length);
   for (const [locationId, buildingIds] of Object.entries(expected)) {
@@ -286,14 +370,15 @@ test("existing places contain improvements without becoming construction or reci
   assert.doesNotMatch(node("b:woodlot:1").description, /Есть на старте/);
 });
 
-test("new quarry and kiln construction follow home 2 while grandfathered low-level recipes keep their catalog requirements", () => {
+test("new quarry and kiln construction follow home 2 while longer mining routes keep their later catalog requirements", () => {
   assert.equal(node("b:quarry:1").requirements.home, 2);
   assert.equal(node("b:kiln:1").requirements.home, 2);
   assert.equal(node("b:kiln:1").requirements.workshop, 1);
-  assert.equal(node("b:kiln:1").requirements.quarry, 1);
+  assert.equal(node("b:kiln:1").requirements.quarry, 2);
   assert(!("quarry" in node("b:home:2").requirements));
   assert(!getPrerequisiteIds(graph, "b:home:2", false).has("b:quarry:1"));
-  for (const id of ["b:quarry:1", "b:kiln:1", "e:quarry_stone", "e:quarry_stone_overnight", "r:make_charcoal"]) assert.equal(node(id).phase, 2, id);
+  for (const id of ["b:quarry:1", "b:kiln:1", "e:quarry_stone", "e:quarry_clay", "r:make_charcoal"]) assert.equal(node(id).phase, 2, id);
+  assert.equal(node("e:quarry_stone_overnight").phase, 3);
   for (const [prefix, recipe] of [["e", catalog.explorations.find(value => value.id === "quarry_stone")], ["r", catalog.recipes.find(value => value.id === "make_charcoal")]]) {
     assert.equal(node(`${prefix}:${recipe.id}`).requirements.home, recipe.requiredHomeLevel, "Display phase must not invent a stronger server requirement");
   }
@@ -303,9 +388,13 @@ test("display phases follow transitive catalog gates without moving unrelated pl
   const changed = structuredClone(catalog);
   changed.buildings.find(value => value.id === "garden").levels[0].requiredHomeLevel = 2;
   changed.buildings.find(value => value.id === "dryer").levels[0].requiredBuildings = { garden: 1 };
+  assert.throws(() => buildProgressionGraph(changed), /Cyclic progression requirements/,
+    "home 2 requires the first campfire, so moving its prerequisite behind home 2 creates a real cycle");
+  changed.buildings.find(value => value.id === "home").levels[1].requiredBuildings = {};
   const custom = buildProgressionGraph(changed);
   const find = id => custom.nodes.find(value => value.id === id);
-  for (const id of ["b:garden:1", "b:dryer:1", "r:grow_berries", "r:dry_berries"]) assert.equal(find(id).phase, 2, id);
+  for (const id of ["b:garden:1", "b:dryer:1", "r:grow_berries"]) assert.equal(find(id).phase, 2, id);
+  assert.equal(find("r:dry_berries").phase, 3, "an existing higher recipe gate remains authoritative");
   assert.equal(find("bush").phase, 0, "The existing object itself is not a late-game unlock");
   assert.equal(find("b:home:2").phase, 2);
   assert.equal(find("b:woodlot:1").phase, 1);
@@ -320,20 +409,21 @@ test("ten storage levels stay visible in economic sections with their true seque
     const id = `b:warehouse:${level.level}`, storage = node(id), position = layout.positions.get(id);
     assert.equal(storage.status, "active");
     assert.equal(storage.locationId, "place:home");
-    assert.equal(storage.phase, 1, "independent storage stays in the initial economic section");
+    assert.equal(storage.phase, level.level === 1 ? 1 : 2, "the second upgrade's home 2 gate also applies to its successors");
     assert.deepEqual(plain(storage.cost), level.cost);
     assert.equal(storage.warehouseCapacity, level.warehouseCapacity);
     assert(position, `storage ${level.level} must not disappear beyond the five home tiers`);
     const group = layout.groups.find(value => value.phase === storage.phase && value.locationId === "place:home");
     assert(position.x >= group.x && position.x + NODE_WIDTH <= group.x + group.width);
     assert(position.y >= group.y && position.y + NODE_HEIGHT <= group.y + group.height);
-    assert.deepEqual(plain(storage.requirements), level.level === 1 ? { home: 1 } : { home: 1, warehouse: level.level - 1 });
+    assert.deepEqual(plain(storage.requirements), level.level === 1 ? { home: 1 }
+      : { home: level.level === 2 ? 2 : 1, warehouse: level.level - 1 });
     const gates = getPrerequisiteIds(graph, id, false);
-    assert(!gates.has("b:home:2"));
+    assert.equal(gates.has("b:home:2"), level.level >= 2);
     assert(!gates.has("b:home:3"));
     assert(!gates.has("b:home:4"));
     assert(!gates.has("b:home:5"));
-    assert(!Array.from(gates).some(id => /^b:workshop:/.test(id)), "ordinary storage cannot acquire a hidden workbench requirement");
+    assert(!("workshop" in storage.requirements), "storage has no direct workbench requirement beyond the home course");
     if (level.level >= 4) {
       for (const relic of Object.keys(level.cost.items)) {
         assert.equal(getProgressionResourceSource(graph, relic).id, "rare_materials");
@@ -354,14 +444,19 @@ test("workbench layout places every node once and groups equipment in one map lo
     assert(Number.isFinite(position.x) && Number.isFinite(position.y), value.id);
     assert(position.x >= section.x && position.x + NODE_WIDTH <= section.x + section.width, value.id);
     assert(position.y >= section.y && position.y + NODE_HEIGHT <= section.y + section.height, value.id);
-    if (value.kind === "building" || value.kind === "recipe") {
+    const producer = value.kind === "recipe" ? node(`b:${value.buildingId}:${value.level}`) : value;
+    if (value.kind === "building" || value.kind === "recipe" && producer.phase === value.phase) {
       const group = layout.groups.find(group => group.phase === value.phase && group.locationId === value.locationId);
       assert(group, `No map location group for ${value.id}`);
       assert(position.y >= group.y && position.y + NODE_HEIGHT <= group.y + group.height, value.id);
+    } else if (value.kind === "recipe") {
+      assert(producer.phase < value.phase, `${value.id} keeps its later gate in a separate section`);
     }
   }
-  for (const location of progressionLocations) {
-    assert.equal(layout.groups.filter(group => group.phase === 2 && group.locationId === location.id).length, 1, location.id);
+  for (const section of layout.sections) for (const location of progressionLocations) {
+    const hasBuildings = graph.nodes.some(value => value.kind === "building" && value.phase === section.phase && value.locationId === location.id);
+    assert.equal(layout.groups.filter(group => group.phase === section.phase && group.locationId === location.id).length,
+      hasBuildings ? 1 : 0, `${location.id} phase ${section.phase}`);
   }
   const placed = Array.from(layout.positions.entries());
   for (let index = 0; index < placed.length; index += 1) for (let other = index + 1; other < placed.length; other += 1) {
@@ -374,9 +469,9 @@ test("workbench layout places every node once and groups equipment in one map lo
   for (let index = 0; index < 5; index += 1) expanded.recipes.push({ ...structuredClone(recipe), id: `extra_planks_${index}` });
   const extraGraph = buildProgressionGraph(expanded), extraLayout = buildProgressionLayout(extraGraph);
   assert.equal(extraLayout.positions.size, extraGraph.nodes.length);
-  const section = extraLayout.sections.find(value => value.phase === 1);
   for (const value of extraGraph.nodes.filter(value => value.kind === "recipe" && value.buildingId === "workshop" && value.level === 1)) {
     const point = extraLayout.positions.get(value.id);
+    const section = extraLayout.sections.find(section => section.phase === value.phase);
     assert(point.x >= section.x && point.x + NODE_WIDTH <= section.x + section.width, value.id);
   }
 });
@@ -410,7 +505,7 @@ test("graph derives new recipes and market counters from a supplied catalog", ()
   assert.equal(extra.phase, 5);
   assert.equal(extra.rewards.planks, 7);
   assert(custom.nodes.find(value => value.id === "b:workshop:5").children.includes(extra.id));
-  assert.deepEqual(plain(custom.nodes.find(value => value.id === "market").requirements), { home: 3, completedExplorations: 3 });
+  assert.deepEqual(plain(custom.nodes.find(value => value.id === "market").requirements), { home: 3, bridge: 1, completedExplorations: 3 });
   assert(custom.edges.some(edge => edge.source === "b:home:3" && edge.target === "market" && edge.kind === "requirement"));
   assert(!custom.edges.some(edge => edge.source === "b:home:2" && edge.target === "market"));
 });
@@ -449,9 +544,42 @@ test("mine upgrades visibly unlock actor activities and never revive retired pro
 
 
 test("player graph prices and rewards use visible pearls while costs keep internal units", () => {
-  assert.match(node("pleska").description, /обновление стоит до 50 жемчужин/);
-  assert.match(node("pearls").description, /25 жемчужин за полные 5 минут/);
-  assert.match(node("daily_rewards").description, /225 жемчужин/);
+  assert.ok(node("pleska").description.includes(`обновление стоит до ${moneyContext.exports.formatPearls(catalog.fishing.shop.refreshPricePearls)} жемчужин`));
+  assert.match(node("pearls").description, /1 мин — 1 жемчужин; 1 ч — 20 жемчужин; 24 ч — 260 жемчужин; 48 ч — 384 жемчужин/);
+  assert.doesNotMatch(node("pearls").description, /жемчужина за 10 минут/);
+  assert.match(node("daily_rewards").description, /500 жемчужин/);
   assert.equal(catalog.pearlScale, 50);
   assert.equal(catalog.fishing.shop.refreshPricePearls, 100);
+});
+
+test("the orders graph describes the week-long house-four project and permanent market discovery", () => {
+  const orders = node("orders").description;
+  assert.match(orders, /7 постоянных просьб дома 2, включая улов и жареную рыбу/);
+  assert.match(orders, /проект из 8 поставок: первая сразу, остальные через 23 ч после сдачи предыдущей/);
+  assert.match(orders, /Смена суток UTC и жемчуг интервал не сокращают/);
+  assert.match(orders, /Ожидание между всеми поставками: 161 ч; строительство дома считается отдельно.*Живая смола × 1/);
+  assert.match(node("market").description, /бесплатно доступны 5 мест/);
+  assert.match(node("market").description, /покупаются по очереди до 10/);
+  for (const [index, price] of [50, 80, 120, 180, 250].entries()) assert.ok(node("market").description.includes(`${index + 6}-е — ${price} жемчужин`));
+  assert.match(node("market").description, /одного уровня дома недостаточно/);
+  assert.match(node("market").description, /Открытие сохраняется после продажи запасов и недоступности источника/);
+  const soup = catalog.food.meals.find(meal => meal.itemId === "fish_soup");
+  assert.match(node("r:cook_fish_soup").description,
+    new RegExp(`Рыбный суп даёт Мохлику \\+${soup.heroSpeedBps / 100}%.*строителю \\+${soup.builderSpeedBps / 100}%.*шахтёра не ускоряет`));
+  for (const building of catalog.buildings.filter(entry => entry.id !== "warehouse")) for (const level of building.levels)
+    assert(!("warehouse" in node(`b:${building.id}:${level.level}`).requirements), `${building.id}:${level.level}: storage is optional`);
+  for (const recipe of catalog.recipes) assert(!("warehouse" in node(`r:${recipe.id}`).requirements), recipe.id);
+  for (const route of catalog.explorations) assert(!("warehouse" in node(`e:${route.id}`).requirements), route.id);
+});
+
+test("the house-five graph distinguishes project funding and guaranteed relics from random exploration", () => {
+  assert.match(node("orders").description, /Дом 5 требует 12 поставок с интервалом 23 ч/);
+  assert.match(node("orders").description, /50000 монет за весь проект/);
+  assert.match(node("orders").description, /Финал гарантирует Древнее ядро × 1, Лунный кристалл × 1/);
+  assert.match(node("orders").description, /полученный результат исследования руин; запуск или отмена не засчитываются/);
+  assert.match(node("rare_materials").description, /Проект дома 4 отдельно гарантирует Древнее ядро × 1, Лунный кристалл × 1/);
+  assert.match(node("rare_materials").description, /переход к дому 5 не зависит от случайного вида реликвии/);
+  assert.equal(node("e:ancient_ruins").rewards.ancient_core, undefined);
+  assert.equal(node("e:ancient_ruins").rewards.moon_crystal, undefined);
+  for (const relic of ["ancient_core", "moon_crystal"]) assert.equal(getProgressionResourceSource(graph, relic).id, "rare_materials");
 });

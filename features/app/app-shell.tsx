@@ -2,6 +2,8 @@
 
 import { useActivity } from "@/features/activity/use-activity";
 import { ActivityGate } from "@/features/activity/activity-gate";
+import { ConnectionStatus } from "@/features/activity/connection-status";
+import { gameplayPresentation } from "@/features/activity/gameplay-presentation";
 import { AudioProvider } from "@/features/audio/ui/audio-provider";
 import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
@@ -22,7 +24,7 @@ import type {
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
 } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Flame, Copy, Trophy, Map } from "lucide-react";
 import type {
   DailyStreak,
@@ -629,15 +631,20 @@ function CheckInContent() {
 
   const world = useWorld(screen === "home" ? me?.user.publicId ?? null : null, loseSession);
   const economy = useEconomy(screen === "home" ? me?.user.publicId ?? null : null, loseSession);
-  const { reconcile: reconcileWorld, setAvailable: setWorldAvailable } = world;
-  const { reconcile: reconcileEconomy, setAvailable: setEconomyAvailable } = economy;
+  const { reconcile: reconcileWorld, setAvailable: setWorldAvailable, setDirectActionsAvailable: setWorldDirectActions } = world;
+  const { reconcile: reconcileEconomy, setAvailable: setEconomyAvailable, setDirectActionsAvailable: setEconomyDirectActions, setLocalActionsAvailable: setLocalEconomyActions } = economy;
   const reconcileGameplay = useCallback(async () => {
     const results = await Promise.all([reconcileWorld(), reconcileEconomy()]);
     return results.every(Boolean);
   }, [reconcileWorld, reconcileEconomy]);
+  const [activityPauseVersion, setActivityPauseVersion] = useState(0);
   const pauseGameplay = useCallback(() => {
+    setWorldDirectActions(false); setEconomyDirectActions(false);
+    setLocalEconomyActions(false);
     setWorldAvailable(false); setEconomyAvailable(false);
-  }, [setWorldAvailable, setEconomyAvailable]);
+    // Reapply the new activity mode even when a repeated network pause keeps the same mode.
+    setActivityPauseVersion(value => value + 1);
+  }, [setWorldAvailable, setEconomyAvailable, setWorldDirectActions, setEconomyDirectActions, setLocalEconomyActions]);
   const activity = useActivity(screen === "home" ? me?.user.publicId ?? null : null, reconcileGameplay, loseSession, pauseGameplay);
   useEconomyAudioFeedback(economy, screen === "home" && activity.active);
   const game = useGameProgress({ ownerPublicId: screen === "home" ? me?.user.publicId ?? null : null, isOnline: isOnline && activity.active, enabled: activity.active, onSessionLost: loseSession });
@@ -652,6 +659,12 @@ function CheckInContent() {
   const currentActivity = worldActivity(economicActivity, renderedWorldState, economy.snapshot ? economy.now : world.now);
   const gameStartupReady = Boolean(game.progress) || game.errorCode === "STORAGE_FAILED" || game.status === "blocked";
   const sceneCanMount = Boolean(world.snapshot && economy.snapshot && gameStartupReady);
+  const gameplay = gameplayPresentation(activity, sceneCanMount);
+  useLayoutEffect(() => {
+    setWorldDirectActions(screen === "home" && gameplay.directActions);
+    setEconomyDirectActions(screen === "home" && gameplay.directActions);
+    setLocalEconomyActions(screen === "home" && gameplay.localActions);
+  }, [screen, activityPauseVersion, gameplay.directActions, gameplay.localActions, setWorldDirectActions, setEconomyDirectActions, setLocalEconomyActions]);
   const terrariumAudible = activeView === "check-in" && mochlikVisible && sceneCanMount
     && !calendarOpen && !gameOpen && !statusOpen;
   const appAudioActive = screen === "home" && activity.active && appearanceReady && !startupActive;
@@ -1518,11 +1531,24 @@ function CheckInContent() {
     );
   }
 
-  if (screen === "home" && !activity.active) return <ActivityGate activity={activity} />;
+  const connectionStatus = !startupActive && !gameplay.showGate && activity.mode !== "hidden" ? <ConnectionStatus key={`connection:${me?.user.publicId}`} online={isOnline}
+    reconnecting={activity.mode === "connecting"}
+    queuedCount={economy.pendingProductionCount} pending={economy.syncPending || world.uncertain}
+    error={activity.error || economy.storageError || economy.syncError || economy.marketSyncError || economy.barterSyncError || world.syncError || (activity.mode === "error" ? "Не удалось восстановить соединение" : null) || (economy.uncertain || economy.retryAt > economy.now ? economy.error : null) || (world.uncertain ? world.error : null)}
+    retrySeconds={Math.max(activity.retrySeconds, Math.ceil(Math.max(0, economy.retryAt - economy.now) / 1000))}
+    busy={activity.mode === "connecting" || economy.busy || world.busy}
+    onRetry={async () => {
+      if (activity.active) await Promise.all([economy.retry(), world.retry()]);
+      else await activity.retry();
+      await Promise.all([
+        economy.marketSyncError ? economy.refreshMarket() : Promise.resolve(),
+        economy.barterSyncError ? economy.refreshBarter() : Promise.resolve(),
+      ]);
+    }} /> : null;
 
   return (
     <GardenCollectionContext.Provider value={gardenCollection}>
-    <main className={styles.shell} data-active-view={activeView}>
+    <main className={styles.shell} data-active-view={activeView} inert={gameplay.showGate || activity.mode === "hidden" || undefined}>
       {!startupActive && <AuthReturnNotice />}
       <TransientNotice message={notice} />
       <header className={styles.header}>
@@ -1545,7 +1571,7 @@ function CheckInContent() {
         </div>
       </header>
       {me && <AppOnboarding key={`app-guide:${me.user.publicId}`} owner={me.user.publicId} entryRef={appOnboardingEntry}
-        ready={!startupActive && screen === "home"} suspended={gameOpen || statusOpen}
+        ready={!startupActive && screen === "home"} suspended={gameOpen || statusOpen || !activity.active}
         activeView={activeView} lastCheckInAt={lastCheckInAt} nextAllowedAt={nextAllowedAt}
         nowMs={adjustedNow} unconfirmed={checkInUnconfirmed} isSending={isSending} isOnline={isOnline}
         calendarOpen={calendarOpen} calendarAvailable={Boolean(streak)} worldOpen={worldPortal.open}
@@ -1600,7 +1626,7 @@ function CheckInContent() {
             >
             <div className={styles.buttonOrbit} ref={buttonOrbit}>
             {mochlikVisible && <div className={styles.habitatSurface} style={buttonStyle} hidden={!mochlikVisible}>
-              {sceneCanMount && <MochlikTerrarium key={me?.user.publicId} suspended={!mochlikVisible || (worldPortal.open && worldPortal.sceneReady) || calendarOpen || gameOpen || statusOpen}
+              {sceneCanMount && <MochlikTerrarium key={me?.user.publicId} suspended={gameplay.suspended || !mochlikVisible || (worldPortal.open && worldPortal.sceneReady) || calendarOpen || gameOpen || statusOpen}
                 onLoadState={handleSceneLoadState} retrySignal={startupRetry}
                 wakeSignal={mochlikWakeSignal} nowMs={economy.snapshot ? economy.now : world.now} timeZone={me?.profile.timeZone ?? "UTC"} userId={me?.user.publicId}
                 bestStreakDays={me?.streak.longestDays ?? 0} items={game.progress?.items} worldState={renderedWorldState} worldGifts={world.snapshot?.gifts} economyJourney={economicJourney} cancelledExplorations={economy.cancelledExplorations} economyBuildings={economy.snapshot?.buildings} economyProduction={economicProduction} economyConstruction={economicConstruction} activity={currentActivity} />}
@@ -1828,7 +1854,7 @@ function CheckInContent() {
         onOpenWorld={() => worldEntryButton.current?.click()}
         onOpenCalendar={streak ? () => setCalendarOpen(true) : undefined}
         onOpenGame={() => setGameOpen(true)} />}
-      {worldMounted && me && <WorldPortal key={`world:${me.user.publicId}`} open={worldPortal.open} onClose={worldPortal.close} onSceneReady={worldPortal.reportSceneReady}
+      {worldMounted && me && <WorldPortal key={`world:${me.user.publicId}`} suspended={gameplay.suspended} connectionStatus={worldPortal.open ? connectionStatus : null} open={worldPortal.open} onClose={worldPortal.close} onSceneReady={worldPortal.reportSceneReady}
         sceneReady={worldPortal.sceneReady} notificationEntry={notificationEntry?.ownerPublicId === me.user.publicId ? notificationEntry : undefined} onNotificationHandled={notificationHandled}
         origin={worldPortal.origin} returnFocus={() => {
           if (worldPeopleReturn.current) {
@@ -1855,6 +1881,8 @@ function CheckInContent() {
         }}
       />}
     </main>
+    {!startupActive && gameplay.showGate && <ActivityGate key={`activity:${me?.user.publicId}`} activity={activity} retained={sceneCanMount} />}
+    {!worldPortal.open && connectionStatus}
     </GardenCollectionContext.Provider>
   );
 }

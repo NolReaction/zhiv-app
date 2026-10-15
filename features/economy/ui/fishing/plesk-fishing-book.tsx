@@ -19,7 +19,7 @@ export type FishingBookChapter = "fish" | "rods" | "hooks" | "baits";
 type BookEntry = { id: string; name: string; known: boolean; rarity: FishingCatalog["fish"][number]["rarity"]; status: string; description?: string };
 export const FISHING_BOOK_PAGE_SIZE = 6;
 const chapters = [
-  { id: "fish", name: "Рыбы", icon: Fish, title: "Рыбацкая коллекция", progress: "Виды рыб", note: "Забирайте улов, чтобы открывать виды. Проданная рыба остаётся в коллекции." },
+  { id: "fish", name: "Рыбы", icon: Fish, title: "Рыбацкая коллекция", progress: "Виды рыб", note: "Забирайте улов, чтобы открывать виды. В запасах рыба объединена по классам; продажа и готовка не стирают коллекцию." },
   { id: "rods", name: "Удочки", icon: FishingRod, title: "Мои удочки", progress: "Собрано удочек", note: "У каждой удочки свой характер. Выбирайте снасти перед рыбалкой." },
   { id: "hooks", name: "Снасти", icon: Anchor, title: "Мои крючки", progress: "Собрано крючков", note: "Небольшая деталь для большого улова. Крючки остаются с вами навсегда." },
   { id: "baits", name: "Наживки", icon: Bug, title: "Запас наживок", progress: "Видов в запасе", note: "Здесь ваш текущий запас. На одну рыбалку расходуется одна наживка." },

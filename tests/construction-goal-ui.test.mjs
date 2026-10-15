@@ -13,7 +13,7 @@ const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/mo
 after(() => vite.close());
 
 function state() {
-  return { catalog: economyCatalog, buildings: { home: 1, warehouse: 1, workshop: 1, woodlot: 1 }, jobs: [], inventory: {}, wallet: { coins: 0, pearls: 0 }, storage: { capacity: 100, used: 0 } };
+  return { catalog: economyCatalog, buildings: { home: 1, warehouse: 1, workshop: 1, woodlot: 1 }, jobs: [], inventory: {}, wallet: { coins: 0, pearls: 0 }, storage: { capacity: 50, used: 0 } };
 }
 function elements(tree) {
   const found = [];
@@ -98,7 +98,20 @@ test("gathered materials route to expeditions and unavailable navigation is rend
   assert.match(material.props.title, /Камень: не хватает 7/);
   material.props.onClick();
   assert.deepEqual(calls, ["explore"]);
-  assert.equal(nodes.find(element => element.props["aria-label"] === "Доски: не хватает 6").type, "span");
+  assert.equal(nodes.find(element => element.props["aria-label"] === "Доска: не хватает 6").type, "span");
+});
+
+test("advanced crafted material navigation uses the current single-output recipe", () => {
+  const snapshot = state();
+  snapshot.buildings = { home: 3, warehouse: 1, workshop: 3, woodlot: 3, kiln: 2 };
+  const calls = [];
+  const details = { goal: { buildingId: "home", targetLevel: 4 }, name: "Дом Мохлика", missing: { coins: 0, items: { beams: 5 } } };
+  const tree = ConstructionGoalSummary({ state: snapshot, constructionGoal: { goal: details.goal, details, clear() {} }, onOpenGoal() {},
+    navigation: { canOpen: id => id === "workshop", open: (...args) => calls.push(args) } });
+  const material = elements(tree).find(element => element.props["aria-label"]?.startsWith("Где получить:"));
+  assert.match(material.props.title, /не хватает 5/);
+  material.props.onClick();
+  assert.deepEqual(calls, [["workshop", "make_beams"]]);
 });
 
 test("fully collected materials do not promise construction readiness while the builder is busy", () => {

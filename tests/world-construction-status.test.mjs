@@ -36,7 +36,7 @@ test("saved construction shows its target level and server-clock countdown and o
   assert.match(html, /data-map-object="home"/);
   assert.match(html, /left:190px;top:240px/);
   assert.match(html, /<strong>30:00<\/strong>/);
-  assert.match(html, /aria-label="Дом Мохлика: идёт строительство\. Открыть улучшение"/);
+  assert.match(html, /aria-label="Дом Мохлика: идёт строительство, 30:00\. Открыть улучшение"/);
   assert.doesNotMatch(html, /data-ready|Готово/);
   button.props.onClick();
   assert.deepEqual(calls, ["home"]);
@@ -54,9 +54,9 @@ test("a hidden or offscreen host cannot leave a floating construction marker beh
 });
 
 test("every economy construction maps to its existing map host including interior stations", () => {
-  const places = { home: "house", warehouse: "house", workshop: "workshop", kiln: "workshop", garden: "garden", woodlot: "woodlot", quarry: "quarry", dryer: "campfire" };
+  const places = { home: "house", warehouse: "house", workshop: "workshop", kiln: "workshop", garden: "garden", woodlot: "woodlot", quarry: "quarry", dryer: "campfire", bridge: "bridge", lighthouse: "lighthouse" };
   for (const station of economyCatalog.buildings) assert.equal(constructionMapPlace(station.id), places[station.id]);
-  for (const unknown of ["bridge", "lighthouse", "constructor", "unknown"]) assert.equal(constructionMapPlace(unknown), null);
+  for (const unknown of ["constructor", "unknown"]) assert.equal(constructionMapPlace(unknown), null);
 });
 
 test("construction marker follows roof geometry through pan zoom resize and authored visual levels", () => {
@@ -87,7 +87,7 @@ test("construction marker clears measured HUD bounds and disappears when its roo
   assert.equal(projectConstructionAnchor(object, { ...camera, y: 500 }, view), null);
   assert.equal(projectConstructionAnchor(object, { ...camera, y: -300 }, view), null);
   const nearEdge = projectConstructionAnchor(object, { ...camera, x: 300 }, view);
-  assert.equal(nearEdge.x, 70, "keep the fixed-size button fully inside the viewport");
+  assert.equal(nearEdge.x, 57, "keep the fixed-size button fully inside the viewport");
   assert.equal(nearEdge.x + nearEdge.pointerOffset, 20, "its pointer still identifies the visible roof");
 });
 
@@ -103,7 +103,7 @@ test("finished construction remains visible and ready without applying its level
 });
 
 test("construction countdown preserves seconds and long build durations without negative output", () => {
-  for (const [seconds, expected] of [[-2, "0:00"], [.1, "0:01"], [59, "0:59"], [60, "1:00"], [3600, "1:00:00"], [90061, "1 д 1:01:01"], [604800, "7 д 0:00:00"]]) {
+  for (const [seconds, expected] of [[-2, "0:00"], [.1, "0:01"], [59, "0:59"], [60, "1:00"], [3600, "1:00:00"], [90061, "25:01:01"], [604800, "168:00:00"], [NaN, "0:00"], [Infinity, "0:00"]]) {
     assert.equal(constructionCountdown(seconds), expected);
   }
 });

@@ -49,8 +49,8 @@ class EconomyMarketRulesTest {
         assertEquals(2L, EconomyMarketRules.sellerFee(30,500))
         assertEquals(3L, EconomyMarketRules.sellerFee(60,500))
         assertEquals(500_000_000L, EconomyMarketRules.sellerFee(ECONOMY_MAX_BALANCE,500))
-        assertTrue(EconomyMarketRules.eligible("berries",2,120,2))
-        assertFalse(EconomyMarketRules.eligible("berries",2,130,2))
+        assertTrue(EconomyMarketRules.eligible("berries",2,40,2))
+        assertFalse(EconomyMarketRules.eligible("berries",2,50,2))
         assertTrue(EconomyBarterRules.sameHomeBand(3,3))
         assertTrue(EconomyBarterRules.sameHomeBand(4,5))
         assertFalse(EconomyBarterRules.sameHomeBand(2,3))
@@ -61,6 +61,7 @@ class EconomyMarketRulesTest {
 
     @Test fun `home tiers include producer dependencies and fishing without requiring workshop ownership`() {
         assertEquals(2, EconomyMarketRules.requiredHomeLevel("charcoal"))
+        assertEquals(3, EconomyMarketRules.requiredHomeLevel("ore"))
         assertEquals(3, EconomyMarketRules.requiredHomeLevel("resin"))
         assertEquals(4, EconomyMarketRules.requiredHomeLevel("tools"))
         assertEquals(4, EconomyMarketRules.requiredHomeLevel("reinforced_parts"))
@@ -76,8 +77,9 @@ class EconomyMarketRulesTest {
         assertFalse(EconomyMarketRules.eligible("fish_mooncarp", 1, 31, 4))
         for (item in EconomyRules.catalog.items.filter { it.tradable }) {
             assertTrue(EconomyMarketRules.requiredHomeLevel(item.id) in 1..5, item.id)
-            EconomyMarketRules.validatePrice(99, item.baseSellPrice * 99, item.baseSellPrice)
-            assertFailsWith<AuthFailure> { EconomyMarketRules.validatePrice(99, item.baseSellPrice * 99 - 1, item.baseSellPrice) }
+            val minimum = (item.baseSellPrice * 99 + 9) / 10 * 10
+            EconomyMarketRules.validatePrice(99, minimum, item.baseSellPrice)
+            assertFailsWith<AuthFailure> { EconomyMarketRules.validatePrice(99, minimum - 1, item.baseSellPrice) }
         }
     }
 }

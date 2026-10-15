@@ -2,92 +2,110 @@ package ru.zhiv.economy
 
 import org.junit.jupiter.api.Test
 import kotlin.test.*
-import kotlin.math.pow
 
 class EconomyFishingTackleOddsTest {
-    @Test fun `shared UUID vectors exercise legendary tackle gate and match TypeScript`() {
-        val seeds = listOf("00000000-0000-4000-8000-000000000001", "a2f6bce4-1d99-4c0f-a910-656320724833", "ffffffff-ffff-4fff-bfff-ffffffffffff",
-            "00000000-0000-4000-8000-00000000000f", "00000000-0000-4000-8000-00000000014a", "00000000-0000-4000-8000-000000000376")
-        assertEquals(listOf("fish", "fish", "fish_silverfin", "fish_shark", "fish_shark", "fish_shark"),
-            seeds.map { EconomyRules.selectFishingCatch(it, "starfall_rod", "firefly_bait", "leviathan_hook") })
-        assertEquals(listOf("fish", "fish", "fish_silverfin", "fish_mirror_koi", "fish_mirror_koi", "fish_mirror_koi"),
-            seeds.map { EconomyRules.selectFishingCatch(it, "starfall_rod", "firefly_bait", "tide_hook") })
+    private val spec = checkNotNull(EconomyRules.catalog.fishing)
+    private val rarities = listOf("common", "uncommon", "rare", "epic", "legendary")
+    private fun chance(rod: String, hook: String, bait: String?, rarity: String): Double {
+        val weights = EconomyRules.fishingClassWeights(rod, bait, hook)
+        return weights.single { it.first.rarity == rarity }.second.toDouble() / weights.sumOf { it.second }
     }
 
-    @Test fun `every legendary fish requires legendary rod and legendary hook before normalization`() {
-        val catalog = checkNotNull(EconomyRules.catalog.fishing)
-        for (rod in catalog.rods) for (hook in catalog.hooks) for (bait in listOf<String?>(null) + catalog.baits.map { it.itemId }) {
-            val weights = EconomyRules.fishingWeights(rod.id, bait, hook.id)
-            for ((fish, weight) in weights.filter { it.first.rarity == "legendary" }) {
-                val eligible = rod.rarity == "legendary" && hook.rarity == "legendary" && (fish.requiredHookId == null || fish.requiredHookId == hook.id)
-                assertEquals(eligible, weight > 0, "${rod.id}/${hook.id}/$bait/${fish.itemId}")
+    @Test fun `unmodified rods expose the exact five class probabilities`() {
+        val expected = mapOf(
+            "reed_rod" to listOf(8500, 1200, 300, 0, 0),
+            "brook_rod" to listOf(3500, 5500, 900, 100, 0),
+            "river_rod" to listOf(2500, 6500, 900, 100, 0),
+            "willow_rod" to listOf(1500, 2000, 6000, 500, 0),
+            "tide_rod" to listOf(1000, 1000, 1500, 6500, 0),
+            "starfall_rod" to listOf(500, 1000, 1000, 1500, 6000),
+        )
+        assertEquals(expected.keys, spec.rods.map { it.id }.toSet())
+        for (rod in spec.rods) {
+            assertEquals(expected.getValue(rod.id), rarities.map { checkNotNull(rod.classOddsBps)[it] })
+            assertEquals(expected.getValue(rod.id), EconomyRules.fishingClassWeights(rod.id, null).map { it.second })
+        }
+    }
+
+    @Test fun `rod probability model rejects missing extra negative oversized and unnormalised classes`() {
+        val rod = spec.rods.first()
+        val odds = checkNotNull(rod.classOddsBps)
+        for (invalid in listOf(odds - "epic", odds + ("mythic" to 0), odds + ("epic" to -1),
+            odds + ("common" to 10001), odds + ("common" to 8499)))
+            assertFailsWith<IllegalArgumentException> { rod.copy(classOddsBps = invalid) }
+        assertEquals(odds, rod.copy(classOddsBps = odds).classOddsBps)
+        assertNull(rod.copy(classOddsBps = null).classOddsBps, "Legacy standalone rod records remain readable")
+    }
+
+    @Test fun `zero rod probabilities stay zero and legendary rod works with every hook`() {
+        for (rod in spec.rods) for (hook in spec.hooks) for (bait in listOf<String?>(null) + spec.baits.map { it.itemId }) {
+            val weights = EconomyRules.fishingClassWeights(rod.id, bait, hook.id)
+            for ((tier, weight) in weights) {
+                val eligible = checkNotNull(rod.classOddsBps).getValue(tier.rarity) > 0 &&
+                    (tier.rarity != "legendary" || rod.rarity == "legendary")
+                assertEquals(eligible, weight > 0, "${rod.id}/${hook.id}/$bait/${tier.rarity}")
             }
             assertTrue(weights.sumOf { it.second } > 0)
         }
-        for (index in 0..5000) {
-            val seed = "00000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}"
-            assertNotEquals("fish_shark", EconomyRules.selectFishingCatch(seed, "reed_rod", "firefly_bait", "leviathan_hook"))
-        }
-        val weights = EconomyRules.fishingWeights("starfall_rod", "firefly_bait", "leviathan_hook")
-        assertEquals(504, weights.single { it.first.itemId == "fish_shark" }.second)
-        assertEquals(5047, weights.sumOf { it.second })
+        for (hook in spec.hooks) assertTrue(chance("starfall_rod", hook.id, null, "legendary") > 0)
+        assertEquals(0.0, chance("reed_rod", "tide_hook", "firefly_bait", "epic"))
+        assertEquals(0.0, chance("tide_rod", "leviathan_hook", "star_bait", "legendary"))
     }
 
-    @Test fun `every lower hook excludes the shark even with the strongest rod and bait`() {
-        val catalog = checkNotNull(EconomyRules.catalog.fishing)
-        val bestHook = catalog.hooks.maxBy { it.rareBonus }
-        assertEquals("leviathan_hook", bestHook.id)
-        assertEquals(bestHook.id, catalog.fish.single { it.itemId == "fish_shark" }.requiredHookId)
-        for (index in 0..5000) {
-            val seed = "00000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}"
-            for (hook in catalog.hooks.filter { it.id != bestHook.id })
-                assertNotEquals("fish_shark", EconomyRules.selectFishingCatch(seed, "starfall_rod", "firefly_bait", hook.id))
+    @Test fun `matching hook and bait make the target class dominant without reducing its rivals raw weights`() {
+        val kits = listOf(
+            listOf("river_rod", "barbed_hook", "worm_bait", "uncommon"),
+            listOf("willow_rod", "silver_hook", "glow_bait", "rare"),
+            listOf("tide_rod", "tide_hook", "firefly_bait", "epic"),
+            listOf("starfall_rod", "leviathan_hook", "star_bait", "legendary"),
+        )
+        for ((rod, hook, bait, rarity) in kits) {
+            val base = EconomyRules.fishingClassWeights(rod, null).associate { it.first.rarity to it.second }
+            val boosted = EconomyRules.fishingClassWeights(rod, bait, hook).associate { it.first.rarity to it.second }
+            for (other in rarities.filter { it != rarity }) assertEquals(base[other], boosted[other])
+            assertEquals(base.getValue(rarity) * 225 / 100, boosted.getValue(rarity))
+            assertTrue(chance(rod, hook, bait, rarity) > 0.75, rod)
         }
+        assertEquals(listOf(500, 1000, 1000, 1500, 13500),
+            EconomyRules.fishingClassWeights("starfall_rod", "star_bait", "leviathan_hook").map { it.second })
+        assertEquals(13500.0 / 17500, chance("starfall_rod", "leviathan_hook", "star_bait", "legendary"))
     }
 
-    private fun chance(rod: String, hook: String, bait: String?, rarity: String): Double {
-        val weights = EconomyRules.fishingWeights(rod, bait, hook)
-        return weights.filter { it.first.rarity == rarity }.sumOf { it.second }.toDouble() / weights.sumOf { it.second }
+    @Test fun `epic species split their class equally with every hook and no species bonus`() {
+        for (hook in spec.hooks) for (bait in listOf<String?>(null) + spec.baits.map { it.itemId }) {
+            val weights = EconomyRules.fishingWeights("tide_rod", bait, hook.id).filter { it.first.rarity == "epic" }
+            assertEquals(2, weights.size)
+            assertTrue(weights.all { it.second > 0 })
+            assertEquals(weights[0].second, weights[1].second)
+        }
+        val changed = spec.copy(fish = spec.fish.map { it.copy(weight = 9999, affinity = 10, requiredHookId = "nonexistent_legacy_hook") },
+            classes = spec.classes.map { it.copy(weight = 1) }, rods = spec.rods.map { it.copy(rareBonus = 100) })
+        assertEquals(EconomyRules.fishingClassWeights("tide_rod", "firefly_bait", "bare_hook"),
+            EconomyRules.fishingClassWeights("tide_rod", "firefly_bait", "bare_hook", changed).mapIndexed { i, (_, weight) -> spec.classes[i] to weight })
     }
 
-    @Test fun `targeted fish are attainable and every loadout stays below ten percent legendary per attempt`() {
-        val catalog = checkNotNull(EconomyRules.catalog.fishing)
-        val rare = chance("willow_rod", "silver_hook", "glow_bait", "rare")
-        val epic = chance("tide_rod", "tide_hook", "firefly_bait", "epic")
-        val legendary = chance("starfall_rod", "leviathan_hook", "firefly_bait", "legendary")
-        assertTrue(rare in 0.38..0.40)
-        assertTrue(epic in 0.24..0.25)
-        assertTrue(legendary in 0.099..0.10)
-        assertTrue(1 - (1 - legendary).pow(6) in 0.46..0.47)
-        for (rod in catalog.rods) for (hook in catalog.hooks) for (bait in listOf<String?>(null) + catalog.baits.map { it.itemId }) {
-            assertTrue(chance(rod.id, hook.id, bait, "legendary") <= legendary)
-            assertTrue(chance(rod.id, hook.id, bait, "rare") <= rare)
-            assertTrue(chance(rod.id, hook.id, bait, "epic") <= epic)
-        }
+    @Test fun `legacy rod fallback is isolated from direct odds`() {
+        val legacy = spec.copy(rods = spec.rods.map { it.copy(classOddsBps = null, rarityWeights = null) })
+        assertEquals(spec.classes.map { if (it.rarity == "legendary") 0 else it.weight },
+            EconomyRules.fishingClassWeights("reed_rod", null, spec = legacy).map { it.second })
+        val fractional = spec.copy(rods = spec.rods.map { rod -> if (rod.id == "reed_rod")
+            rod.copy(classOddsBps = checkNotNull(rod.classOddsBps) + mapOf("common" to 8401, "uncommon" to 1299)) else rod },
+            hooks = spec.hooks.map { hook -> if (hook.id == "round_hook")
+                hook.copy(rarityWeights = rarities.associateWith { if (it == "uncommon") 101 else 100 }) else hook })
+        assertEquals(1311, EconomyRules.fishingClassWeights("reed_rod", null, "round_hook", fractional)
+            .single { it.first.rarity == "uncommon" }.second)
     }
 
-    @Test fun `every rod and hook has its own strongest rarity target`() {
-        val catalog = checkNotNull(EconomyRules.catalog.fishing)
-        val roles = mapOf("reed_rod" to "common", "river_rod" to "uncommon", "willow_rod" to "rare", "tide_rod" to "epic", "starfall_rod" to "legendary",
-            "bare_hook" to "common", "barbed_hook" to "uncommon", "silver_hook" to "rare", "tide_hook" to "epic", "leviathan_hook" to "legendary")
-        val baits = listOf<String?>(null) + catalog.baits.map { it.itemId }
-        for (hook in catalog.hooks) for (bait in baits) for (rod in catalog.rods.filter { roles.containsKey(it.id) }) {
-            val rarity = checkNotNull(roles[rod.id])
-            if (rarity == "legendary" && hook.rarity != "legendary") continue
-            for (other in catalog.rods.filter { it.id != rod.id })
-                assertTrue(chance(rod.id, hook.id, bait, rarity) > chance(other.id, hook.id, bait, rarity), rod.id)
-        }
-        for (rod in catalog.rods) for (bait in baits) for (hook in catalog.hooks.filter { roles.containsKey(it.id) }) {
-            val rarity = checkNotNull(roles[hook.id])
-            if (rarity == "legendary" && rod.rarity != "legendary") continue
-            for (other in catalog.hooks.filter { it.id != hook.id })
-                assertTrue(chance(rod.id, hook.id, bait, rarity) > chance(rod.id, other.id, bait, rarity), hook.id)
-        }
+    @Test fun `shared UUID vectors match TypeScript class and species draws`() {
+        val seeds = listOf("00000000-0000-4000-8000-000000000001", "a2f6bce4-1d99-4c0f-a910-656320724833", "ffffffff-ffff-4fff-bfff-ffffffffffff",
+            "00000000-0000-4000-8000-00000000000f", "00000000-0000-4000-8000-00000000014a", "00000000-0000-4000-8000-000000000376")
+        assertEquals(listOf("fish_shark", "fish_shark", "fish_shark", "fish_shark", "fish_shark", "fish_shark"), seeds.map { EconomyRules.selectFishingCatch(it, "starfall_rod", "star_bait", "leviathan_hook") })
+        assertEquals(listOf("fish_mirror_koi", "fish_shark", "fish_sturgeon", "fish_shark", "fish_mirror_koi", "fish_shark"), seeds.map { EconomyRules.selectFishingCatch(it, "starfall_rod", "firefly_bait", "tide_hook") })
     }
 
-    @Test fun `camp draw sequence matches TypeScript and is not six correlated adjacent hashes`() {
-        assertEquals(listOf("fish", "fish_dace", "fish_reedperch", "fish_silverfin", "fish_bream", "fish_pike"),
-            (0 until 6).map { EconomyRules.selectFishingCatch("00000000-0000-4000-8000-000000000001", "river_rod", "worm_bait", "barbed_hook", it) })
-        assertEquals(6, checkNotNull(EconomyRules.catalog.fishing).collectionDrawsByRoute["shore_camp"])
+    @Test fun `camp draw sequence matches TypeScript with eight independent class and species domains`() {
+        assertEquals(listOf("fish_bream", "fish_bream", "fish_bream", "fish_dace", "fish_bream", "fish_dace", "fish_dace", "fish_dace"),
+            (0 until 8).map { EconomyRules.selectFishingCatch("00000000-0000-4000-8000-000000000001", "river_rod", "worm_bait", "barbed_hook", it) })
+        assertEquals(8, spec.collectionDrawsByRoute["shore_camp"])
     }
 }

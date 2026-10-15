@@ -19,7 +19,7 @@ const ledgerLabels: Record<string, string> = {
   eat_food: "Еда для Мохлика", feed_builder: "Еда для строителя",
   complete_resident_order: "Сдача заказа жителя", replace_resident_order: "Замена заказа жителя",
   legacy_conversion: "Перенос прежних ресурсов", legacy_journey: "Прежнее путешествие", start_production: "Начало производства",
-  buy_production_slot: "Открытие места производства", start_collection: "Начало сбора", start_exploration: "Начало вылазки", cancel_exploration: "Отмена вылазки",
+  buy_production_slot: "Открытие места производства", buy_market_slot: "Открытие места прилавка", start_collection: "Начало сбора", start_exploration: "Начало вылазки", cancel_exploration: "Отмена вылазки",
   start_construction: "Начало стройки", speedup_construction: "Ускорение стройки", claim_job: "Получение результата",
   sell: "Продажа припасов", buy_fishing_item: "Покупка снастей", buy_wardrobe_item: "Покупка одежды", sell_fish: "Продажа рыбы", equip_fishing_rod: "Выбор удочки",
   equip_fishing_bait: "Выбор наживки", equip_fishing_hook: "Выбор крючка", refresh_fishing_shop: "Обновление лавки Плёски",

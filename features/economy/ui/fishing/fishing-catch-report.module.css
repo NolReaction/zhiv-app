@@ -1,0 +1,9 @@
+.report { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: 6px; min-width: 0; }
+.catch { display: grid; grid-template-columns: 37px minmax(0, 1fr) auto; gap: 5px; align-items: center; min-width: 0; padding: 6px; border: 1px solid var(--forest-border, #c8bd98); border-radius: 9px; background: var(--forest-paper-light, #f0e6ca); }
+.icon { display: grid; place-items: center; width: 37px; height: 37px; }
+.description { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; }
+.description > strong { color: var(--forest-ink, #394d3e); font-size: 10px; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.quantity { color: var(--forest-ink, #394d3e); font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pending { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 8px; border-radius: 8px; background: var(--forest-paper-light, #f0e6ca); color: var(--forest-ink, #394d3e); font-size: 11px; }
+.pending > svg { flex: 0 0 auto; }
+.pending strong { font-weight: 600; font-variant-numeric: tabular-nums; }

@@ -9,7 +9,7 @@ const identities = await vite.ssrLoadModule("/lib/dev/api-store.ts");
 const economy = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
 const model = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { createFishingShop } = await vite.ssrLoadModule("/features/economy/domain/fishing-shop.ts");
-const { fishingTripCost, fishingWeights, fishingOdds, selectFishingCatch } = await vite.ssrLoadModule("/features/economy/domain/fishing.ts");
+const { fishingTripCost, fishingWeights, fishingOdds, fishingClassWeights, fishClassInventory, fishingBaitCompatible, selectFishingCatch } = await vite.ssrLoadModule("/features/economy/domain/fishing.ts");
 const now = Date.parse("2026-10-04T20:00:00Z");
 beforeEach(() => { identities.resetDevStoreForTests(); economy.resetDevEconomyStoreForTests(); });
 after(() => vite.close());
@@ -32,20 +32,21 @@ test("old snapshots and profiles receive a free starter rod, never retroactive c
   assert.deepEqual(parsed.fishing, { ownedRods: ["reed_rod"], equippedRodId: "reed_rod", ownedHooks: ["bare_hook"], equippedHookId: "bare_hook", equippedBaitId: null, catches: {} });
   assert.equal(parsed.catalog.fishing, undefined);
   delete stored(p).fishing; stored(p).inventory.fish = 50;
-  assert.deepEqual(read(p).fishing, parsed.fishing);
+  assert.deepEqual(read(p).fishing, { ...parsed.fishing, stock: { fish: 50 } });
+  assert.deepEqual(read(p).fishing.catches, {}, "raw owned fish are not retroactive collection catches");
 });
 
-test("Pleska catalog has no buy-sell arbitrage and upgrades visibly improve uncommon catch odds", () => {
+test("Pleska catalog has no buy-sell arbitrage and upgrades visibly improve their target class odds", () => {
   const config = model.economyCatalog.fishing;
   for (const fish of config.fish) assert.ok(fish.buyPrice > model.economyCatalog.items.find(item => item.id === fish.itemId).baseSellPrice);
   for (const bait of config.baits) assert.ok(bait.price > model.economyCatalog.items.find(item => item.id === bait.itemId).baseSellPrice);
   const base = fishingWeights("reed_rod", null), upgraded = fishingWeights("willow_rod", "worm_bait");
   const chance = weights => weights.find(fish => fish.itemId === "fish_mooncarp").weight / weights.reduce((total, fish) => total + fish.weight, 0);
   assert.ok(chance(upgraded) > chance(base));
-  assert.equal(base.reduce((sum, fish) => sum + fish.weight, 0), 15515);
+  assert.equal(fishingClassWeights("reed_rod", null).reduce((sum, fish) => sum + fish.weight, 0), 10000);
   // Same UUID vectors are asserted in Kotlin to keep weighted drawing identical.
   assert.deepEqual(["00000000-0000-4000-8000-000000000001", "a2f6bce4-1d99-4c0f-a910-656320724833", "ffffffff-ffff-4fff-bfff-ffffffffffff"]
-    .map(id => selectFishingCatch(id, "willow_rod", "worm_bait")), ["fish", "fish", "fish_silverfin"]);
+    .map(id => selectFishingCatch(id, "willow_rod", "worm_bait")), ["fish_bream", "fish_pike", "fish_reedperch"]);
 });
 
 test("specialized tackle keeps a stable private draw for identical gear", () => {
@@ -54,29 +55,66 @@ test("specialized tackle keeps a stable private draw for identical gear", () => 
       selectFishingCatch("00000000-0000-4000-8000-000000000038", rod.id, bait));
 });
 
+test("bait compatibility rejects impossible classes, removes bait on rod changes and preserves stock", () => {
+  const p = player(); fund(p);
+  stored(p).fishing.ownedRods.push("starfall_rod");
+  stored(p).inventory.star_bait = 2;
+  stored(p).inventory.firefly_bait = 1;
+  assert.equal(fishingBaitCompatible("unknown_rod", null), true);
+  assert.equal(fishingBaitCompatible("unknown_rod", "star_bait"), false);
+  assert.equal(fishingBaitCompatible("starfall_rod", "unknown_bait"), false);
+  assert.equal(fishingBaitCompatible("reed_rod", "glow_bait"), true);
+  for (const baitId of ["star_bait", "firefly_bait"]) {
+    const before = read(p);
+    assert.throws(() => issue(p, "equip_fishing_bait", baitId), { code: "ECONOMY_FISHING_BAIT", message: "Эта удочка не ловит рыбу для выбранной наживки" });
+    assert.deepEqual(read(p), before);
+  }
+  issue(p, "equip_fishing_rod", "starfall_rod");
+  issue(p, "equip_fishing_bait", "star_bait");
+  const before = read(p);
+  const changed = issue(p, "equip_fishing_rod", "reed_rod");
+  assert.equal(changed.fishing.equippedBaitId, null);
+  assert.deepEqual(changed.inventory, before.inventory);
+  assert.deepEqual(changed.wallet, before.wallet);
+  issue(p, "equip_fishing_bait", "none");
+});
+
+test("stale incompatible bait cannot start either fishing command or spend stock or create a private seed", () => {
+  const p = player(); fund(p);
+  stored(p).inventory.star_bait = 2;
+  stored(p).fishing.equippedBaitId = "star_bait";
+  for (const action of ["start_fishing", "start_exploration"]) {
+    const before = read(p), persisted = structuredClone(stored(p));
+    assert.throws(() => issue(p, action, "shore"), { code: "ECONOMY_FISHING_BAIT", message: "Эта удочка не ловит рыбу для выбранной наживки" });
+    assert.deepEqual(read(p), before);
+    assert.deepEqual(stored(p), persisted);
+    assert.equal(stored(p).fishingCastSeed, persisted.fishingCastSeed);
+  }
+});
+
 test("purchases charge authoritative prices once, durable rods are unique and inventory alone never opens collection", () => {
   const p = player(); fund(p);
   const before = read(p);
-  const buy = command(p, "buy_fishing_item", "river_rod", { totalPrice: 13550 });
+  const buy = command(p, "buy_fishing_item", "river_rod", { totalPrice: 1850 });
   const result = economy.commandDevEconomy(p.token, buy, now);
-  assert.equal(result.state.wallet.coins, 86500);
+  assert.equal(result.state.wallet.coins, 98200);
   assert.deepEqual(result.state.fishing.ownedRods, ["reed_rod", "river_rod"]);
   assert.equal(result.state.storage.used, before.storage.used, "durable rods are not warehouse stacks");
   assert.equal(economy.commandDevEconomy(p.token, buy, now).replayed, true);
-  assert.throws(() => issue(p, "buy_fishing_item", "river_rod", { totalPrice: 13500 }), { code: "ECONOMY_FISHING_OWNED" });
+  assert.throws(() => issue(p, "buy_fishing_item", "river_rod", { totalPrice: 1800 }), { code: "ECONOMY_FISHING_OWNED" });
   assert.throws(() => issue(p, "buy_fishing_item", "fish_mooncarp", { quantity: 2, totalPrice: 1280 }), { code: "ECONOMY_FISHING_SHOP_CHANGED" });
   stored(p).inventory.fish_mooncarp = 2;
   assert.deepEqual(read(p).fishing.catches, {});
   const sold = issue(p, "sell_fish", "fish_mooncarp", { quantity: 2 });
-  assert.equal(sold.wallet.coins, 87140);
+  assert.equal(sold.wallet.coins, 98420);
   assert.deepEqual(sold.fishing.catches, {});
 });
 
 test("stale quotes, unsupported items, bulk rods, full escrow storage and insufficient coins leave snapshots unchanged", () => {
   const p = player(); fund(p);
   const before = read(p);
-  for (const [target, extra, code] of [["river_rod", { totalPrice: 13490 }, "ECONOMY_FISHING_PRICE_CHANGED"],
-    ["wood", { totalPrice: 1000 }, "ECONOMY_FISHING_SHOP_CHANGED"], ["river_rod", { quantity: 2, totalPrice: 27000 }, "INVALID_ECONOMY_COMMAND"],
+  for (const [target, extra, code] of [["river_rod", { totalPrice: 1790 }, "ECONOMY_FISHING_PRICE_CHANGED"],
+    ["wood", { totalPrice: 1000 }, "ECONOMY_FISHING_SHOP_CHANGED"], ["river_rod", { quantity: 2, totalPrice: 3600 }, "INVALID_ECONOMY_COMMAND"],
     ["crumb_bait", { quantity: 11, totalPrice: 330 }, "INVALID_ECONOMY_COMMAND"]]) {
     assert.throws(() => issue(p, "buy_fishing_item", target, extra), { code });
     assert.deepEqual(read(p), before);
@@ -88,10 +126,10 @@ test("stale quotes, unsupported items, bulk rods, full escrow storage and insuff
   const full = read(p);
   assert.throws(() => issue(p, "buy_fishing_item", "crumb_bait", { totalPrice: 30 }), { code: "ECONOMY_STORAGE_FULL" });
   assert.deepEqual(read(p), full);
-  assert.equal(issue(p, "buy_fishing_item", "river_rod", { totalPrice: 13500 }).storage.available, 0, "a rod does not consume storage");
+  assert.equal(issue(p, "buy_fishing_item", "river_rod", { totalPrice: 1800 }).storage.available, 0, "a rod does not consume storage");
   stored(p).wallet.coins = 0;
   const poor = read(p);
-  assert.throws(() => issue(p, "buy_fishing_item", "barbed_hook", { totalPrice: 9000 }), { code: "ECONOMY_RESOURCES" });
+  assert.throws(() => issue(p, "buy_fishing_item", "barbed_hook", { totalPrice: 1200 }), { code: "ECONOMY_RESOURCES" });
   assert.deepEqual(read(p), poor);
 });
 
@@ -100,16 +138,17 @@ test("loadout is validated, fishing spends one bait and locks catch before later
   stored(p).fishingShop = createFishingShop(stored(p), now, max => max === 160 ? max - 1 : 0);
   assert.throws(() => issue(p, "equip_fishing_rod", "willow_rod"), { code: "ECONOMY_FISHING_ROD" });
   assert.throws(() => issue(p, "equip_fishing_bait", "worm_bait"), { code: "ECONOMY_RESOURCES" });
-  issue(p, "buy_fishing_item", "river_rod", { totalPrice: 13500 }); issue(p, "equip_fishing_rod", "river_rod");
-  issue(p, "buy_fishing_item", "worm_bait", { quantity: 2, totalPrice: 140 }); issue(p, "equip_fishing_bait", "worm_bait");
+  issue(p, "buy_fishing_item", "river_rod", { totalPrice: 1800 }); issue(p, "equip_fishing_rod", "river_rod");
+  const baitOffer = read(p).fishingShop.offers.find(offer => offer.itemId === "worm_bait");
+  issue(p, "buy_fishing_item", "worm_bait", { quantity: 1, totalPrice: baitOffer.unitPrice }); issue(p, "equip_fishing_bait", "worm_bait");
   assert.deepEqual(fishingTripCost({ coins: 0, items: {} }, read(p)), { coins: 0, items: { worm_bait: 1 } });
   assert.throws(() => issue(p, "start_fishing", "forest"), { code: "ECONOMY_FISHING_ROUTE" });
   const start = command(p, "start_fishing", "shore");
   const active = economy.commandDevEconomy(p.token, start, now).state, job = active.jobs[0];
   assert.notEqual(job.id, start.requestId, "client request IDs cannot choose the draw");
-  assert.equal(active.inventory.worm_bait, 1);
+  assert.equal(active.inventory.worm_bait ?? 0, 0);
   assert.equal(job.fishing.rodId, "river_rod"); assert.equal(job.fishing.baitId, "worm_bait");
-  assert.equal(Object.values(job.rewards).reduce((a, b) => a + b, 0), 4, "species replaces one original fish");
+  assert.equal(Object.values(job.rewards).reduce((a, b) => a + b, 0), 2, "every fish is an independent class draw");
   assert.equal(active.fishingCastSeed, undefined, "internal draw state is not a public field");
   assert.notEqual(stored(p).fishingCastSeed, job.id, "the public job UUID does not reveal the draw seed");
   const replay = economy.commandDevEconomy(p.token, start, now);
@@ -120,7 +159,8 @@ test("loadout is validated, fishing spends one bait and locks catch before later
   const claimed = issue(p, "claim_job", job.id, {}, Date.parse(job.finishesAt));
   for (const [id, quantity] of Object.entries(savedRewards)) assert.equal(claimed.fishing.catches[id], quantity);
   assert.equal(stored(p).fishingCastSeed, null);
-  issue(p, "sell_fish", "fish", { quantity: savedRewards.fish }, Date.parse(job.finishesAt));
+  const [soldId, soldQuantity] = Object.entries(fishClassInventory(savedRewards))[0];
+  issue(p, "sell_fish", soldId, { quantity: soldQuantity }, Date.parse(job.finishesAt));
   assert.deepEqual(read(p).fishing.catches, claimed.fishing.catches);
 });
 
@@ -162,16 +202,17 @@ test("legacy shore claims count actual fish, whereas a forged metadata payload o
   assert.deepEqual(read(p).fishing.catches, { fish: 4 });
 });
 
-test("twelve species cover five rarities, with the shark available to the legendary rod and hook pair", () => {
+test("twelve species cover five rarities, with the shark available to the legendary rod alone", () => {
   const config = model.economyCatalog.fishing;
   assert.equal(config.fish.length, 12);
   assert.deepEqual([...new Set(config.fish.map(fish => fish.rarity))], ['common', 'uncommon', 'rare', 'epic', 'legendary']);
   const base = fishingOdds({}, config);
   assert.equal(base.find(fish => fish.itemId === 'fish_shark').probability, 0);
-  const strongest = fishingOdds({}, config, { rodId: 'starfall_rod', hookId: 'leviathan_hook', baitId: 'firefly_bait' });
-  assert.equal(strongest.find(fish => fish.itemId === 'fish_shark').probability, 504 / 5047);
+  const strongest = fishingOdds({}, config, { rodId: 'starfall_rod', hookId: 'leviathan_hook', baitId: 'star_bait' });
+  assert.equal(strongest.find(fish => fish.itemId === 'fish_shark').probability, 13500 / 17500);
   const value = odds => odds.reduce((sum, fish) => sum + fish.probability * model.economyCatalog.items.find(item => item.id === fish.itemId).baseSellPrice, 0);
-  assert.ok(value(base) > 110 && value(base) < 115);
+  assert.ok(Math.abs(value(base) - 45.7) < 1e-9);
+  assert.equal(fishingOdds({}, config, { rodId: "starfall_rod", hookId: "bare_hook", baitId: null }).find(fish => fish.itemId === "fish_shark").probability, 0.6);
   for (const rod of config.rods) for (const hook of config.hooks) for (const bait of config.baits) {
     const noBait = value(fishingOdds({}, config, { rodId: rod.id, hookId: hook.id, baitId: null }));
     const withBait = value(fishingOdds({}, config, { rodId: rod.id, hookId: hook.id, baitId: bait.itemId }));
@@ -185,18 +226,18 @@ test("hooks are unique durable purchases, validated loadout and saved trip metad
   stored(p).fishingShop = createFishingShop(stored(p), now, max => max - 1);
   const before = read(p);
   assert.throws(() => issue(p, 'equip_fishing_hook', 'silver_hook'), { code: 'ECONOMY_FISHING_HOOK' });
-  assert.throws(() => issue(p, 'buy_fishing_item', 'silver_hook', { quantity: 2, totalPrice: 84000 }), { code: 'INVALID_ECONOMY_COMMAND' });
-  const buy = command(p, 'buy_fishing_item', 'silver_hook', { totalPrice: 42000 });
+  assert.throws(() => issue(p, 'buy_fishing_item', 'silver_hook', { quantity: 2, totalPrice: 12000 }), { code: 'INVALID_ECONOMY_COMMAND' });
+  const buy = command(p, 'buy_fishing_item', 'silver_hook', { totalPrice: 6000 });
   const purchased = economy.commandDevEconomy(p.token, buy, now);
-  assert.equal(purchased.state.wallet.coins, 58000); assert.equal(purchased.state.storage.used, before.storage.used);
+  assert.equal(purchased.state.wallet.coins, 94000); assert.equal(purchased.state.storage.used, before.storage.used);
   assert.deepEqual(purchased.state.fishing.ownedHooks, ['bare_hook', 'silver_hook']);
   assert.equal(economy.commandDevEconomy(p.token, buy, now).replayed, true);
-  assert.throws(() => issue(p, 'buy_fishing_item', 'silver_hook', { totalPrice: 42000 }), { code: 'ECONOMY_FISHING_OWNED' });
+  assert.throws(() => issue(p, 'buy_fishing_item', 'silver_hook', { totalPrice: 6000 }), { code: 'ECONOMY_FISHING_OWNED' });
   issue(p, 'equip_fishing_hook', 'silver_hook');
   const job = issue(p, 'start_fishing', 'shore').jobs[0];
   assert.equal(job.fishing.hookId, 'silver_hook');
-  assert.equal(Object.values(job.rewards).reduce((a, b) => a + b, 0), 4);
-  assert.equal(Date.parse(job.finishesAt) - Date.parse(job.startedAt), 45 * 60 * 1000);
+  assert.equal(Object.values(job.rewards).reduce((a, b) => a + b, 0), 2);
+  assert.equal(Date.parse(job.finishesAt) - Date.parse(job.startedAt), 3 * 60 * 1000);
   issue(p, 'equip_fishing_hook', 'bare_hook');
   assert.deepEqual(read(p).jobs[0], job);
   issue(p, 'cancel_exploration', job.id); issue(p, 'equip_fishing_hook', 'silver_hook');
@@ -232,14 +273,14 @@ test("Ktor's explicit nullable hook requirements parse without hiding the econom
   wire.catalog.fishing.fish = wire.catalog.fishing.fish.map(fish => ({ ...fish, requiredHookId: fish.requiredHookId ?? null }));
   const parsed = model.economyViewSchema.parse(wire);
   assert.equal(parsed.catalog.fishing.fish.find(fish => fish.itemId === "fish").requiredHookId, null);
-  assert.equal(parsed.catalog.fishing.fish.find(fish => fish.itemId === "fish_shark").requiredHookId, "leviathan_hook");
+  assert.equal(parsed.catalog.fishing.fish.find(fish => fish.itemId === "fish_shark").requiredHookId, null);
   assert.deepEqual(fishingWeights("reed_rod", null, parsed.catalog.fishing, "bare_hook"),
     fishingWeights("reed_rod", null, snapshot.catalog.fishing, "bare_hook"));
   const result = model.economyResultSchema.safeParse({ state: wire, message: "Готово", acceptedRevision: wire.revision, replayed: false });
   assert.equal(result.success, true);
 });
 
-test("overnight fishing snapshots six actual species and claims all24 fish exactly once", () => {
+test("longer fishing snapshots eight actual species draws and claims classes exactly once", () => {
   const p = player(); fund(p);
   const initial = stored(p);
   initial.fishing = { ...initial.fishing, ownedRods: ["reed_rod", "river_rod"], equippedRodId: "river_rod", ownedHooks: ["bare_hook", "barbed_hook"], equippedHookId: "barbed_hook", equippedBaitId: "worm_bait" };
@@ -247,7 +288,7 @@ test("overnight fishing snapshots six actual species and claims all24 fish exact
   initial.fishingCastSeed = "00000000-0000-4000-8000-000000000001";
   const publicJob = issue(p, "start_fishing", "shore_camp").jobs[0];
   const saved = structuredClone(stored(p).jobs[0]);
-  assert.deepEqual(saved.rewards, { fish: 19, fish_dace: 1, fish_reedperch: 1, fish_silverfin: 1, fish_bream: 1, fish_pike: 1 });
+  assert.deepEqual(saved.rewards, { fish_bream: 4, fish_dace: 4 });
   assert.equal(stored(p).inventory.worm_bait, 1);
   issue(p, "equip_fishing_rod", "reed_rod");
   assert.deepEqual(stored(p).jobs[0], saved);
@@ -257,7 +298,9 @@ test("overnight fishing snapshots six actual species and claims all24 fish exact
   assert.deepEqual(stored(p).jobs[0].rewards, saved.rewards);
   const completed = issue(p, "claim_job", retry.id, {}, Date.parse(retry.finishesAt));
   assert.deepEqual(completed.fishing.catches, saved.rewards);
-  assert.equal(completed.inventory.fish_bream, 1);
+  assert.equal(completed.inventory.fish_common, model.economyCatalog.onboarding.startingItems.fish_common);
+  assert.equal(completed.inventory.fish_uncommon, 8);
+  assert.equal(completed.inventory.fish_bream, undefined);
   assert.equal(completed.inventory.worm_bait, undefined);
   assert.equal(completed.completedExplorations, 1);
 });

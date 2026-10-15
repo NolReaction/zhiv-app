@@ -1,18 +1,28 @@
 /** Confirmed crop dates; the scene owns presentation, never stock or job completion. */
-export type EconomySceneGarden = {
+export type EconomySceneGardenOrder = {
   jobId: string;
+  /** Canonical reward item; missing on older scene DTOs. Never persisted as artwork. */
+  itemId?: string;
   startedAt: string;
   finishesAt: string;
-  collection?: { startedAt: string | null; finishesAt: string | null };
+  collection?: { startedAt: string | null; finishesAt: string | null; batchId?: string };
 };
-export type GardenHarvestRequest = { requestId: number; jobId: string };
+export type EconomySceneGarden = EconomySceneGardenOrder & {
+  /** Parallel paid crops keep their own species and authoritative wall-clock dates. */
+  orders?: EconomySceneGardenOrder[];
+};
+export type GardenHarvestRequest = {
+  requestId: number; jobId: string;
+  /** Exact confirmed collection members; one basket trip is purely cosmetic. */
+  jobIds?: string[];
+};
 export type GardenHarvestEvent = GardenHarvestRequest & {
   status: "started" | "completed" | "interrupted" | "unavailable";
   reason?: string;
 };
 
 /** Uses server wall time, including time spent off-screen. Rain cannot change a job deadline. */
-export function economyGardenGrowth(crop: EconomySceneGarden | null, now: number): number {
+export function economyGardenGrowth(crop: EconomySceneGardenOrder | null, now: number): number {
   if (!crop || !Number.isFinite(now)) return 0;
   const start = Date.parse(crop.startedAt), finish = Date.parse(crop.finishesAt);
   if (!Number.isFinite(start) || !Number.isFinite(finish) || finish <= start) return 0;

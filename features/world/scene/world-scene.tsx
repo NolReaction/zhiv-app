@@ -19,12 +19,13 @@ import { MAP_PLACES } from "@/features/world/legacy/map-layout";
 import { TILED_WORLD, WORLD_PRESENTATION } from "./presentation";
 import { interactiveMapObjects, type MapObjectPlace } from "./site-interactions";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
+import { isMinerJob } from "@/features/economy/domain/actor-availability";
 import { WorldConstructionStatus } from "@/features/world/ui/hud/world-construction-status";
 import { WorldUpgradeEffects, UPGRADE_CELEBRATION_MS } from "@/features/world/ui/feedback/world-upgrade-effects";
 import { WorldProductionStatus } from "@/features/world/ui/hud/world-production-status";
 import { WorldProductionEffects } from "@/features/world/ui/feedback/world-production-effects";
-import { mapProductionGroups } from "@/features/world/ui/hud/world-production-state";
-import { constructionMapPlace } from "./construction-map-anchor";
+import { mapProductionGroups, productionMarkerHeight } from "@/features/world/ui/hud/world-production-state";
+import { CONSTRUCTION_MARKER, constructionMapPlace } from "./construction-map-anchor";
 import { INVENTORY_GAIN_MS, INVENTORY_GAIN_QUEUE_LIMIT } from "@/features/world/ui/feedback/inventory-gain-playback";
 import { createMapAnchorStore } from "./map-anchor-store";
 import { observeMapGuideInset } from "./map-guide-inset";
@@ -61,8 +62,17 @@ export function WorldScene({ suspended = false, hideJourneyStatus = false, const
   }, []);
   const [ready, setReady] = useState(false), [error, setError] = useState<string | null>(null);
   const [anchorStore] = useState(createMapAnchorStore);
+  const markerHeights = useRef<ReadonlyMap<MapObjectPlace, number>>(new Map());
+  useLayoutEffect(() => {
+    const heights = new Map(mapProductionGroups(constructionEconomy?.snapshot ?? null, constructionEconomy?.now ?? NaN, garden)
+      .map(group => [group.place, productionMarkerHeight(group)]));
+    const changed = heights.size !== markerHeights.current.size
+      || [...heights].some(([place, height]) => markerHeights.current.get(place) !== height);
+    markerHeights.current = heights;
+    if (changed) engine.current?.refreshObjectAnchors();
+  }, [constructionEconomy, garden]);
   const constructionActive = Boolean(constructionEconomy?.snapshot?.jobs.some(job => job.kind === "construction"));
-  const productionActive = Boolean(constructionEconomy?.snapshot?.jobs.some(job => job.kind === "production"));
+  const productionActive = Boolean(constructionEconomy?.snapshot?.jobs.some(job => job.kind === "production" || isMinerJob(job)));
   const completions = constructionEconomy?.completedConstructions;
   const gains = constructionEconomy?.inventoryGains;
   const anchorTracking = useRef({ enabled: constructionActive || productionActive, production: productionActive, seen: new Set(completions?.map(event => event.id)), gains: new Set(gains?.map(event => event.id)), until: 0 });
@@ -120,6 +130,7 @@ export function WorldScene({ suspended = false, hideJourneyStatus = false, const
             onSelectionChange: value => selection.current.onObjectSelection?.(value),
             onResident: id => latest.current.onResident?.(id),
             objectAnchorsEnabled: anchorTracking.current.enabled,
+            objectMarkerHeight: place => markerHeights.current.get(place) ?? CONSTRUCTION_MARKER.height,
             onObjectAnchorsChange: values => { if (!disposed) anchorStore.publish(values); },
           }, speechCanvas.current);
       },

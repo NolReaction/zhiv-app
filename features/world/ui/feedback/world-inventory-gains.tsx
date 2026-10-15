@@ -3,7 +3,9 @@
 import { useEffect, useLayoutEffect, useRef, useSyncExternalStore, type CSSProperties, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { PackageCheck } from "lucide-react";
+import { ItemIcon } from "@/features/items/item-icon";
 import { PlayerItemIcon } from "@/features/economy/ui/fishing/fish-discovery";
+import { FishRarityBadge } from "@/features/economy/ui/fishing/fish-rarity";
 import type { EconomyView } from "@/features/economy/domain/model";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import type { InventoryGain } from "@/features/economy/domain/inventory-gain";
@@ -18,17 +20,21 @@ const serverSnapshot = () => false;
 
 export function InventoryGainContents({ event, names, state }: { event: InventoryGain; names: Readonly<Record<string, string>>; state?: EconomyView | null }) {
   const itemName = (itemId: string) => names[itemId] ?? itemId;
+  const items = event.displayItems ?? event.items;
   return <>
     <span className={styles.heading}><PackageCheck size={14} aria-hidden="true" />В кладовую</span>
     <div className={styles.items}>
-      {event.items.slice(0, VISIBLE_ITEMS).map((item, index) => <span key={item.itemId} className={styles.item}
+      {items.slice(0, VISIBLE_ITEMS).map((item, index) => {
+        const catchSpecies = event.displayItems ? state?.catalog?.fishing?.fish.find(fish => fish.itemId === item.itemId) : undefined;
+        return <span key={item.itemId} className={styles.item}
         data-inventory-item={item.itemId} data-quantity={item.quantity} style={{ "--gain-delay": `${index * 75}ms` } as CSSProperties}>
-        <span className={styles.icon}><PlayerItemIcon state={state} itemId={item.itemId} size={27} /></span>
-        <span className={styles.name}>{itemName(item.itemId)}</span><strong>+{item.quantity.toLocaleString("ru-RU")}</strong>
-      </span>)}
+        <span className={styles.icon}>{catchSpecies ? <ItemIcon itemId={item.itemId} size={27} /> : <PlayerItemIcon state={state} itemId={item.itemId} size={27} />}</span>
+        <span className={styles.description}><span className={styles.name}>{itemName(item.itemId)}</span>{catchSpecies && <FishRarityBadge rarity={catchSpecies.rarity} className={styles.rarity} />}</span><strong>+{item.quantity.toLocaleString("ru-RU")}</strong>
+      </span>;
+      })}
     </div>
-    {event.items.length > VISIBLE_ITEMS && <span className={styles.more}>Ещё предметов: {event.items.length - VISIBLE_ITEMS}
-      <span className={styles.sr}>. {event.items.slice(VISIBLE_ITEMS).map(item => `${itemName(item.itemId)} +${item.quantity}`).join(", ")}</span>
+    {items.length > VISIBLE_ITEMS && <span className={styles.more}>Ещё предметов: {items.length - VISIBLE_ITEMS}
+      <span className={styles.sr}>. {items.slice(VISIBLE_ITEMS).map(item => `${itemName(item.itemId)} +${item.quantity}`).join(", ")}</span>
     </span>}
     <span className={styles.glints} aria-hidden="true"><i /><i /><i /></span>
   </>;

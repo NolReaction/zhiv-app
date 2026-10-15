@@ -180,4 +180,10 @@
 .durationWithMeal { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .activeWorkTop { display: flex; align-items: center; gap: 7px; min-width: 0; }
 .activeWorkTop > :first-child { flex: 1; min-width: 0; }
+@media (max-width: 430px) {
+  .activeWorkTop, .durationWithMeal { flex-wrap: wrap; }
+  .activeWorkTop > [data-meal-boost], .durationWithMeal > [data-meal-boost] { flex: 1 1 100%; }
+  .durationWithMeal { width: 100%; }
+  .confirmRow { flex-wrap: wrap; }
+}
 @media (max-width: 380px) { .confirmRow { flex-wrap: wrap; } .confirmRow > .confirm { margin-left: auto; } .durationWithMeal .duration > svg { display: none; } }

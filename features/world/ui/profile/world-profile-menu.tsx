@@ -34,7 +34,7 @@ type Props = {
   onOpenHelp?: () => void;
   onOpenOnboarding?: () => void;
   onboardingStatus?: "started" | "completed" | "skipped" | null;
-  onOpenFood?: () => void;
+  onOpenExpeditions?: () => void;
 };
 
 const tabs = [
@@ -89,7 +89,7 @@ function WorldProfileSession({ presenceKey, ...props }: Props) {
       onOpenOnboarding={props.onOpenOnboarding ? () => { setGuideOpen(false); props.onOpenOnboarding?.(); } : undefined} />
     <WorldMoodDialog open={moodOpen} onOpenChange={setMoodOpen} returnFocusRef={moodTrigger}
       observation={observation} economy={props.economy} onCall={call} callPulse={callPulse}
-      onOpenHelp={props.onOpenHelp} onOpenFood={props.onOpenFood} />
+      onOpenHelp={props.onOpenHelp} onOpenExpeditions={props.onOpenExpeditions} />
   </>;
 }
 

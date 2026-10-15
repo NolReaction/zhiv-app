@@ -39,17 +39,26 @@ class JdbcAdminMigrationCompatibilityIntegrationTest {
     private fun installedAdminHistory(source: DataSource): String = scalar(source, """SELECT coalesce(
         jsonb_agg(to_jsonb(h)-'version'-'script' ORDER BY installed_rank),'[]'::jsonb)::text
         FROM flyway_schema_history h WHERE script LIKE '%admin_economy_grants.sql' OR script LIKE '%managed_promo_codes.sql'""")
+    private fun economyRevisions(source: DataSource): Map<String, Long> = source.connection.use { c ->
+        c.economyRows("SELECT user_id::text,revision FROM economy_profiles") { it.getString(1) to it.getLong(2) }.toMap()
+    }
     private fun population(source: DataSource): Map<String, String> = listOf(
         "app_users", "app_sessions", "economy_profiles", "economy_ledger", "admin_actions", "managed_promo_codes", "promo_redemptions",
-    ).associateWith { table -> scalar(source,
-        "SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb)::text FROM $table t") }
+    ).associateWith { table ->
+        // V55 alone adds permanent knowledge and advances the profile fence.
+        // All balances, jobs, identities, receipts and admin data remain exact.
+        val row = if (table == "economy_profiles")
+            "((to_jsonb(t)-'revision'-'updated_at') || jsonb_build_object('state',t.state-'marketSlots'-'unlockedItems'-'itemUnlockVersion'))"
+        else "to_jsonb(t)"
+        scalar(source, "SELECT coalesce(jsonb_agg($row ORDER BY ($row)::text),'[]'::jsonb)::text FROM $table t")
+    }
     private fun legacy(source: DataSource, target: Int = 51) {
-        Flyway.configure().dataSource(source).locations("classpath:db/migration").target("49").load().migrate()
+        Flyway.configure().dataSource(source).locations("classpath:db/migration/history").target("49").load().migrate()
         val scripts = source.connection.use { c ->
             c.economyRows("SELECT script FROM flyway_schema_history ORDER BY installed_rank") { it.getString(1) }
         }
         scripts.forEach { script ->
-            checkNotNull(javaClass.getResourceAsStream("/db/migration/$script")).use {
+            checkNotNull(javaClass.getResourceAsStream("/db/migration/history/$script")).use {
                 Files.copy(it, legacyDirectory.resolve(script))
             }
         }
@@ -78,24 +87,27 @@ class JdbcAdminMigrationCompatibilityIntegrationTest {
             PromoRequest(UUID.randomUUID().toString(), player.publicId, beforeClaim.revision, gift.code))
     }
 
-    @Test fun `deployed admin V50 and V51 normalize metadata and apply notification V50 without changing player data`() = runBlocking<Unit> {
+    @Test fun `deployed admin V50 and V51 normalize metadata and apply notification V50 preserving balances jobs accounts and admin data`() = runBlocking<Unit> {
         DatabaseFactory.create(config()).use { source ->
             legacy(source); seed(source)
             assertEquals("1968638817", scalar(source, "SELECT checksum::text FROM flyway_schema_history WHERE version='50'"))
             assertEquals("1403371834", scalar(source, "SELECT checksum::text FROM flyway_schema_history WHERE version='51'"))
             val before = population(source); val base = history(source, "version::integer<=49")
+            val revisions = economyRevisions(source)
             val adminHistory = installedAdminHistory(source)
             migrateWithLegacyAdminHistory(source)
             assertEquals(before, population(source)); assertEquals(base, history(source, "version::integer<=49"))
+            assertEquals(revisions.mapValues { it.value + 1 }, economyRevisions(source), "V55 advances each profile exactly once")
             assertEquals(adminHistory, installedAdminHistory(source), "Only version and script may change in historical admin rows")
-            assertEquals("52", scalar(source, "SELECT max(version::integer)::text FROM flyway_schema_history"))
-            assertEquals("V50__actionable_notification_sources.sql", scalar(source,
+            assertEquals("56", scalar(source, "SELECT max(version::integer)::text FROM flyway_schema_history"))
+            assertEquals("V56__independent_miner_notification_readiness.sql", scalar(source,
                 "SELECT script FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             assertEquals("3", scalar(source, "SELECT count(*) FROM flyway_schema_history WHERE version IN ('50','51','52') AND success"))
             val after = history(source)
             DatabaseFactory.migrate(source)
             migrateWithLegacyAdminHistory(source)
             assertEquals(after, history(source)); assertEquals(before, population(source))
+            assertEquals(revisions.mapValues { it.value + 1 }, economyRevisions(source), "Restart never repeats the V55 fence")
         }
     }
 
@@ -149,15 +161,32 @@ class JdbcAdminMigrationCompatibilityIntegrationTest {
         }
     }
 
-    @Test fun `canonical notification V50 history is a no-op and migrates normally to V52`() {
+    @Test fun `canonical notification V50 history is a no-op and migrates normally to V56`() {
         DatabaseFactory.create(config()).use { source ->
             Flyway.configure().dataSource(source).locations("classpath:db/migration").target("50").load().migrate()
             val before = history(source)
             assertFalse(normalizeLegacyAdminMigrationHistory(source)); assertEquals(before, history(source))
             migrateWithLegacyAdminHistory(source)
-            assertEquals("52", scalar(source, "SELECT max(version::integer)::text FROM flyway_schema_history"))
+            assertEquals("56", scalar(source, "SELECT max(version::integer)::text FROM flyway_schema_history"))
             val after = history(source)
             assertFalse(normalizeLegacyAdminMigrationHistory(source)); assertEquals(after, history(source))
+        }
+    }
+
+    @Test fun `fresh baseline and subsequent canonical migrations need no history normalization`() {
+        DatabaseFactory.create(config()).use { source ->
+            migrateWithLegacyAdminHistory(source)
+            assertEquals("8", scalar(source, "SELECT count(*) FROM flyway_schema_history"))
+            assertEquals("B49__current_schema.sql", scalar(source,
+                "SELECT script FROM flyway_schema_history WHERE type='SQL_BASELINE'"))
+            val before = history(source)
+            assertFalse(normalizeLegacyAdminMigrationHistory(source))
+            migrateWithLegacyAdminHistory(source)
+            assertEquals(before, history(source), "The baseline and all original checksums remain exact on restart")
+            execute(source, "UPDATE flyway_schema_history SET checksum=checksum+1 WHERE type='SQL_BASELINE'")
+            val altered = history(source)
+            assertFailsWith<IllegalStateException> { normalizeLegacyAdminMigrationHistory(source) }
+            assertEquals(altered, history(source), "An unknown baseline is never silently repaired")
         }
     }
 

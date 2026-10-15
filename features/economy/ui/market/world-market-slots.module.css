@@ -1,0 +1,11 @@
+.slots { display: grid; gap: 6px; min-width: 0; padding: 10px; border: 1px solid #c8bd98; border-radius: 12px; background: #edf0d8; }
+.summary { display: flex; align-items: center; gap: 6px; font-size: .8rem; }
+.hint, .reason { font-size: .72rem; color: #626a50; line-height: 1.45; }
+.reason { color: #925633; }
+.slots .buy { width: fit-content; max-width: 100%; background: #466347; color: #fff3d6; border-color: #506e44; font-size: .75rem; }
+.slots .buy:hover:not(:disabled) { background: #36553b; }
+.confirmation { display: grid; gap: 7px; border-top: 1px solid #c8bd98; padding-top: 9px; font-size: .75rem; }
+.confirmation h3 { font-size: .85rem; outline: none; }
+.actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.actions button { font-size: .75rem; }
+@media (forced-colors: active) { .slots, .confirmation { border-color: ButtonText; } }

@@ -6,16 +6,16 @@ import { Children, createElement, isValidElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
+const vite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "node_modules/.vite-plesk-shop", resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 const { PleskFishingShop, PleskFishTrade, PleskRodOffer, PleskHookOffer, PleskBaitOffer, PleskFishOffer, PleskTackleCounter, PleskFishingCollection, PleskCatchOdds, PleskMerchantHeader, FishCounter, fishingTradeLimits } = await vite.ssrLoadModule("/features/economy/ui/fishing/plesk-fishing-shop.tsx");
 const { PleskFishingBookPage, fishingBookEntries, fishingBookPage, FISHING_BOOK_PAGE_SIZE } = await vite.ssrLoadModule("/features/economy/ui/fishing/plesk-fishing-book.tsx");
 const { economyCatalog, economyFishingSchema, ECONOMY_MAX_BALANCE } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
-const { fishingOdds, fishingState } = await vite.ssrLoadModule("/features/economy/domain/fishing.ts");
+const { fishingClassOdds, fishingState } = await vite.ssrLoadModule("/features/economy/domain/fishing.ts");
 const { normalizedResidentOrders } = await vite.ssrLoadModule("/features/economy/domain/food.ts");
 after(() => vite.close());
 const merchantHookModule = "virtual:merchant-selection-hooks";
-const merchantVite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } },
+const merchantVite = await createServer({ appType: "custom", configFile: false, root, cacheDir: "node_modules/.vite-plesk-shop-hooks", resolve: { alias: { "@": root } },
   server: { middlewareMode: true, hmr: false, ws: false }, plugins: [{ name: "merchant-selection-handlers", enforce: "pre",
     resolveId(id) { if (id === merchantHookModule) return `\0${id}`; },
     load(id) { if (id === `\0${merchantHookModule}`) return `
@@ -46,11 +46,11 @@ function merchant() {
     { kind: "rod", itemId: "river_rod", unitPrice: catalog.rods.find(entry => entry.id === "river_rod").price, remaining: 1 },
     { kind: "hook", itemId: "silver_hook", unitPrice: catalog.hooks.find(entry => entry.id === "silver_hook").price, remaining: 1 },
     { kind: "bait", itemId: "worm_bait", unitPrice: catalog.baits.find(entry => entry.itemId === "worm_bait").price, remaining: 5 },
-    { kind: "fish", itemId: "fish", unitPrice: 128, remaining: 3 }
+    { kind: "fish", itemId: "fish_common", unitPrice: 48, remaining: 3 }
   ].map(entry => ({ ...entry, id: `shop-one:${entry.itemId}` })) };
 }
 function snapshot(overrides = {}) {
-  const state = { ownerPublicId: "ME", revision: 3, serverTime: new Date(now).toISOString(), wallet: { coins: 10000, pearls: 0 }, inventory: { fish: 5, fish_silverfin: 2, worm_bait: 3 },
+  const state = { ownerPublicId: "ME", revision: 3, serverTime: new Date(now).toISOString(), wallet: { coins: 10000, pearls: 0 }, inventory: { fish_common: 7, worm_bait: 3 },
     fishingShop: merchant(), buildings: { home: 1, warehouse: 1 }, jobs: [], completedExplorations: 0, fishing: economyFishingSchema.parse(undefined),
     migration: { version: 1, coinsGranted: 0, woodGranted: 0, stoneGranted: 0 }, catalog: structuredClone(economyCatalog), ...overrides };
   return { ...state, storage: overrides.storage ?? economyStorage(state) };
@@ -73,9 +73,9 @@ function inspect(Component, props) {
   };
   return { html, elements, control };
 }
-function trade(overrides = {}, itemId = "fish_silverfin", flags = {}) {
+function trade(overrides = {}, itemId = "fish_common", flags = {}) {
   const state = snapshot(overrides), calls = [], economy = controller(state, { act(...args) { calls.push(args); }, ...flags });
-  return { ...inspect(PleskFishTrade, { economy, state, itemId }), state, economy, calls };
+  return { ...inspect(PleskFishTrade, { economy, state, itemId, fishItemId: itemId }), state, economy, calls };
 }
 function merchantSelection(state = snapshot()) {
   merchantHooks.reset();
@@ -92,22 +92,24 @@ function merchantSelection(state = snapshot()) {
   return { state, economy, calls, focus, body, target, render, flush: merchantHooks.flushEffects };
 }
 
-test("selling a species uses its exact id, stock and catalog value, with no optimistic debit", () => {
+test("selling unidentified class stock uses its exact remainder and catalog value, with no optimistic debit", () => {
   const view = trade();
-  const sell = view.control("Продать Серебринка: 1");
+  const sell = view.control("Продать Без указания вида: 1");
   assert.equal(sell.props.disabled, false);
   sell.props.onClick(); sell.props.onClick();
-  assert.deepEqual(view.calls, [["sell_fish", "fish_silverfin", 1, 0]]);
-  assert.equal(view.state.inventory.fish_silverfin, 2);
-  assert.match(view.html, /В запасе <strong>2<\/strong>/);
+  assert.deepEqual(view.calls, [["sell_fish", "fish_common", 1, 0, { fish_common: 1 }]]);
+  assert.equal(view.state.inventory.fish_common, 7);
+  assert.match(view.html, /В запасе <strong>7<\/strong>/);
 });
 
 test("the catch counter shows only positive pantry stock and has no fish purchase action", () => {
-  const state = snapshot({ inventory: { fish_silverfin: 2, fish_shark: 0, wood: 10 } });
+  const state = snapshot({ inventory: { fish_common: 2, fish_shark: 0, wood: 10 } });
   const html = renderToStaticMarkup(createElement(FishCounter, { state, catalog: state.catalog.fishing, economy: controller(state) }));
-  assert.match(html, /Серебринка/); assert.doesNotMatch(html, /Теневая акула|Купить|×0/);
-  assert.match(html, /data-item-icon="fish_silverfin"/); assert.doesNotMatch(html, /data-hidden-fish/);
-  assert.equal((html.match(/aria-pressed=/g) ?? []).length, 1);
+  assert.match(html, /Обычная рыба/); assert.doesNotMatch(html, /Теневая акула|Купить|×0/);
+  assert.match(html, /data-item-icon="fish_common"/); assert.doesNotMatch(html, /data-hidden-fish/);
+  assert.equal((html.match(/aria-expanded=/g) ?? []).length, 1);
+  assert.match(html, /aria-expanded="false"/);
+  assert.doesNotMatch(html, /data-plesk-fish-stock|Без указания вида|Количество|Продать/);
   const empty = snapshot({ inventory: {} });
   const emptyHtml = renderToStaticMarkup(createElement(FishCounter, { state: empty, catalog: empty.catalog.fishing, economy: controller(empty) }));
   assert.match(emptyHtml, /Улов ещё впереди/); assert.doesNotMatch(emptyHtml, /Количество|Продать|Теневая акула/);
@@ -117,8 +119,8 @@ test("in-flight, uncertain, cooling down, foreign and stale offers cannot buy or
   const original = snapshot();
   for (const flags of [{ busy: true }, { uncertain: true }, { retryAt: now + 5000 },
     { snapshot: { ...original, ownerPublicId: "OTHER" } }, { snapshot: { ...original, revision: 99 } }, { snapshot: null }]) {
-    const view = trade({}, "fish_silverfin", flags);
-    for (const label of ["Продать Серебринка: 1"]) {
+    const view = trade({}, "fish_common", flags);
+    for (const label of ["Продать Без указания вида: 1"]) {
       const action = view.control(label); assert.equal(action.props.disabled, true); action.props.onClick();
     }
     assert.deepEqual(view.calls, []);
@@ -126,24 +128,24 @@ test("in-flight, uncertain, cooling down, foreign and stale offers cannot buy or
 });
 
 test("trade limits respect purse overflow, inventory, storage and transaction batch", () => {
-  const state = snapshot({ inventory: { fish_silverfin: 9999 } });
+  const state = snapshot({ inventory: { fish_common: 9999 } });
   state.storage.available = 7;
-  assert.equal(fishingTradeLimits(state, "fish_silverfin").buy, 0);
-  assert.equal(fishingTradeLimits(state, "fish_silverfin").sell, state.catalog.maxBatch);
-  state.wallet.coins = ECONOMY_MAX_BALANCE - state.catalog.items.find(item => item.id === "fish_silverfin").baseSellPrice;
-  assert.equal(fishingTradeLimits(state, "fish_silverfin").sell, 1);
+  assert.equal(fishingTradeLimits(state, "fish_common").buy, 0);
+  assert.equal(fishingTradeLimits(state, "fish_common").sell, state.catalog.maxBatch);
+  state.wallet.coins = ECONOMY_MAX_BALANCE - state.catalog.items.find(item => item.id === "fish_common").baseSellPrice;
+  assert.equal(fishingTradeLimits(state, "fish_common").sell, 1);
   state.wallet.coins = ECONOMY_MAX_BALANCE;
-  assert.equal(fishingTradeLimits(state, "fish_silverfin").sell, 0);
+  assert.equal(fishingTradeLimits(state, "fish_common").sell, 0);
   state.wallet.coins = 0;
-  assert.equal(fishingTradeLimits(state, "fish_silverfin").buy, 0);
+  assert.equal(fishingTradeLimits(state, "fish_common").buy, 0);
   assert.deepEqual(fishingTradeLimits(state, "wood"), { buy: 0, sell: 0, buyPrice: 0, sellPrice: 0 });
 });
 
 test("selling requires stock but remains possible with no coins and a full pantry", () => {
   let view = trade({ inventory: {} });
-  view.control("Продать Серебринка: 1").props.onClick(); assert.deepEqual(view.calls, []);
+  view.control("Продать Без указания вида: 1").props.onClick(); assert.deepEqual(view.calls, []);
   view = trade({ wallet: { coins: 0, pearls: 0 }, storage: { available: 0, capacity: 200, used: 200, reserved: 0, overflow: 0 } });
-  assert.equal(view.control("Продать Серебринка: 1").props.disabled, false);
+  assert.equal(view.control("Продать Без указания вида: 1").props.disabled, false);
 });
 
 test("merchant rod purchase never equips or resells an owned rod", () => {
@@ -210,7 +212,7 @@ test("collection counts confirmed catches independently of purchased, sold or am
   assert.doesNotMatch(html, /Поймано: 90/);
   assert.equal((html.match(/data-discovered="false"/g) ?? []).length, FISHING_BOOK_PAGE_SIZE - 1);
   assert.match(html, /Удочки/); assert.match(html, /Снасти/); assert.match(html, /Наживки/);
-  assert.match(html, /Проданная рыба остаётся в коллекции/);
+  assert.match(html, /продажа и готовка не стирают коллекцию/);
 });
 
 test("book chapters expose actual gear ownership and bait stock without revealing missing items", () => {
@@ -256,6 +258,7 @@ test("book chapter tabs have keyboard navigation and bounded accessible paginati
   assert.match(view.html, /Страница 1 из 2/); assert.match(view.html, /aria-live="polite"/); assert.match(view.html, /<progress/);
 });
 
+
 test("fish of the day links to a matching resident request without buying or completing it", () => {
   const state = snapshot(), calls = [];
   state.residentOrders = normalizedResidentOrders(state, now);
@@ -263,7 +266,7 @@ test("fish of the day links to a matching resident request without buying or com
   state.residentOrders.slots[0] = { ...state.residentOrders.slots[0], templateId: request.id, terms: structuredClone(request) };
   const original = structuredClone(state), economy = controller(state, { act(...args) { calls.push(args); } });
   let opened = 0;
-  const view = inspect(PleskFishOffer, { economy, state, fish: state.catalog.fishing.fish.find(fish => fish.itemId === "fish"), onOpenOrders() { opened++; } });
+  const view = inspect(PleskFishOffer, { economy, state, fish: state.catalog.fishing.classes.find(fish => fish.itemId === "fish_common"), onOpenOrders() { opened++; } });
   assert.match(view.html, /Плёске нужно ×3/);
   view.control("К заказам").props.onClick();
   assert.equal(opened, 1);
@@ -272,26 +275,26 @@ test("fish of the day links to a matching resident request without buying or com
 });
 
 test("discount fish is purchased through its live offer with server price and an honest preview", () => {
-  const state = snapshot(), calls = [], fish = state.catalog.fishing.fish.find(entry => entry.itemId === "fish_silverfin");
-  const offer = { id: "shop-one:fish_silverfin", kind: "fish", itemId: fish.itemId, unitPrice: 192, remaining: 3 };
+  const state = snapshot(), calls = [], fish = state.catalog.fishing.classes.find(entry => entry.itemId === "fish_common");
+  const offer = { id: "shop-one:fish_common", kind: "fish", itemId: fish.itemId, unitPrice: 48, remaining: 3 };
   state.fishingShop.offers[3] = offer;
   const props = { state, fish, economy: controller(state, { act(...args) { calls.push(args); } }) };
   const view = inspect(PleskFishOffer, props);
-  assert.match(view.html, /Обычная цена: 240 монет/); assert.match(view.html, /data-item-icon="fish_silverfin"/); assert.doesNotMatch(view.html, /data-hidden-fish/);
-  view.control("Купить рыбу: Серебринка").props.onClick(); view.control("Купить рыбу: Серебринка").props.onClick();
-  assert.deepEqual(calls, [["buy_fishing_item", offer.id, 1, 192]]); assert.deepEqual(state.fishing.catches, {});
+  assert.ok(view.html.includes(`Обычная цена: ${fish.buyPrice} монет`)); assert.match(view.html, /data-item-icon="fish_common"/); assert.doesNotMatch(view.html, /data-hidden-fish/);
+  view.control("Купить рыбу: Обычная рыба").props.onClick(); view.control("Купить рыбу: Обычная рыба").props.onClick();
+  assert.deepEqual(calls, [["buy_fishing_item", offer.id, 1, 48]]); assert.deepEqual(state.fishing.catches, {});
 });
 
 test("fish offer rejects full storage, insufficient coins and guarded controller states", () => {
   for (const flags of [{ busy: true }, { uncertain: true }, { retryAt: now + 5000 }, { snapshot: null }]) {
-    const state = snapshot(), calls = [], fish = state.catalog.fishing.fish.find(entry => entry.itemId === "fish");
+    const state = snapshot(), calls = [], fish = state.catalog.fishing.classes.find(entry => entry.itemId === "fish_common");
     const view = inspect(PleskFishOffer, { state, fish, economy: controller(state, { ...flags, act(...args) { calls.push(args); } }) });
-    const button = view.control("Купить рыбу: Речная рыба"); assert.equal(button.props.disabled, true); button.props.onClick(); assert.deepEqual(calls, []);
+    const button = view.control("Купить рыбу: Обычная рыба"); assert.equal(button.props.disabled, true); button.props.onClick(); assert.deepEqual(calls, []);
   }
-  for (const patch of [{ storage: { available: 0 } }, { wallet: { coins: 127, pearls: 0 } }]) {
-    const state = snapshot(patch), calls = [], fish = state.catalog.fishing.fish.find(entry => entry.itemId === "fish");
+  for (const patch of [{ storage: { available: 0 } }, { wallet: { coins: 47, pearls: 0 } }]) {
+    const state = snapshot(patch), calls = [], fish = state.catalog.fishing.classes.find(entry => entry.itemId === "fish_common");
     const view = inspect(PleskFishOffer, { state, fish, economy: controller(state, { act(...args) { calls.push(args); } }) });
-    const button = view.control("Купить рыбу: Речная рыба"); assert.equal(button.props.disabled, true); button.props.onClick(); assert.deepEqual(calls, []);
+    const button = view.control("Купить рыбу: Обычная рыба"); assert.equal(button.props.disabled, true); button.props.onClick(); assert.deepEqual(calls, []);
   }
 });
 
@@ -304,17 +307,17 @@ test("merchant keeps one category per slot with legacy duplicate stock still ava
 
 test("fish offers disclose their real art and name before payment, without opening a book entry", () => {
   const state = snapshot({ inventory: {}, fishing: economyFishingSchema.parse(undefined) });
-  const offer = { id: "shop-one:fish_silverfin", kind: "fish", itemId: "fish_silverfin", unitPrice: 192, remaining: 3 };
-  const fish = state.catalog.fishing.fish.find(entry => entry.itemId === offer.itemId);
+  const offer = { id: "shop-one:fish_common", kind: "fish", itemId: "fish_common", unitPrice: 48, remaining: 3 };
+  const fish = state.catalog.fishing.classes.find(entry => entry.itemId === offer.itemId);
   state.fishingShop.offers[3] = offer;
-  state.fishingShop.offers.push({ ...offer, id: "old-fish:fish_mooncarp", itemId: "fish_mooncarp" });
+  state.fishingShop.offers.push({ ...offer, id: "old-fish:fish_rare", itemId: "fish_rare" });
   const before = structuredClone(state), calls = [], economy = controller(state, { act(...args) { calls.push(args); } });
   const counter = inspect(PleskTackleCounter, { state, catalog: state.catalog.fishing, economy });
-  assert.match(counter.html, /Серебринка/); assert.match(counter.html, /data-item-icon="fish_silverfin"/);
-  assert.match(counter.html, /Лунный карасик/); assert.doesNotMatch(counter.html, /Незнакомая рыба|data-hidden-fish/);
+  assert.match(counter.html, /Обычная рыба/); assert.match(counter.html, /data-item-icon="fish_common"/);
+  assert.match(counter.html, /Редкая рыба/); assert.doesNotMatch(counter.html, /Незнакомая рыба|data-hidden-fish/);
   const detail = inspect(PleskFishOffer, { state, fish, economy });
-  assert.match(detail.html, /data-item-icon="fish_silverfin"/); assert.match(detail.html, /В книгу попадёт только ваш собственный улов/);
-  detail.control("Купить рыбу: Серебринка").props.onClick();
+  assert.match(detail.html, /data-item-icon="fish_common"/); assert.match(detail.html, /Покупка не открывает виды в книге/);
+  detail.control("Купить рыбу: Обычная рыба").props.onClick();
   assert.deepEqual(calls, [["buy_fishing_item", offer.id, 1, offer.unitPrice]]);
   assert.deepEqual(state, before, "preview and purchase dispatch never create catches or alter stock");
   assert.equal(fishingBookEntries(state, state.catalog.fishing, "fish").filter(entry => entry.known).length, 0);
@@ -322,14 +325,14 @@ test("fish offers disclose their real art and name before payment, without openi
 
 test("shop provides keyboard tab navigation and fishing/pantry navigation without account mutations", () => {
   const state = snapshot(), calls = [], nav = [];
-  const view = inspect(PleskFishingShop, { economy: controller(state, { act(...args) { calls.push(args); } }), onFishing() { nav.push("fish"); }, onOpenPantry() { nav.push("pantry"); } });
+  const view = inspect(PleskFishingShop, { economy: controller(state, { act(...args) { calls.push(args); } }), onFishing() { nav.push("fish_common"); }, onOpenPantry() { nav.push("pantry"); } });
   const buttons = view.elements.filter(element => element.props.role === "tab");
   assert.deepEqual(buttons.map(button => button.props.tabIndex), [0, -1, -1]);
   for (const key of ["ArrowRight", "ArrowLeft", "Home", "End"]) {
     let prevented = false; buttons[0].props.onKeyDown({ key, preventDefault() { prevented = true; } }); assert.equal(prevented, true);
   }
   view.control("На рыбалку").props.onClick(); view.control("Другие запасы").props.onClick();
-  assert.deepEqual(nav, ["fish", "pantry"]); assert.deepEqual(calls, []);
+  assert.deepEqual(nav, ["fish_common", "pantry"]); assert.deepEqual(calls, []);
   assert.match(view.html, /role="tabpanel"/);
   assert.match(view.html, /Новые товары через/);
   assert.doesNotMatch(view.html, /Ежедневные|Бесплатный улов/);
@@ -408,18 +411,17 @@ test("unaffordable stale foreign busy uncertain and cooling-down hooks cannot di
 
 test("odds previews use authoritative loadout weights and show every rarity target without a universal upgrade score", () => {
   const state = snapshot(), catalog = state.catalog.fishing, before = structuredClone(state);
-  const override = { rodId: "starfall_rod", hookId: "leviathan_hook", baitId: "firefly_bait" };
-  const expected = fishingOdds(state, catalog, override);
+  const override = { rodId: "starfall_rod", hookId: "leviathan_hook", baitId: "star_bait" };
+  const expected = fishingClassOdds(state, catalog, override);
   const html = renderToStaticMarkup(createElement(PleskCatchOdds, { state, catalog, override, preview: true }));
   const percent = value => `${new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 4 }).format(value * 100)}%`;
-  assert.match(html, /Каждый особый улов проверяется отдельно/);
-  assert.match(html, /остальная партия состоит из обычной рыбы/);
-  assert.match(html, /после выбора снасти перед отправлением/);
-  assert.equal((html.match(/data-fish-odds=/g) ?? []).length, 12);
-  for (const odd of expected) assert.ok(html.includes(`<dd>${percent(odd.probability)}</dd>`));
-  const baseShark = fishingOdds(state, catalog).find(odd => odd.itemId === "fish_shark").probability;
-  const betterShark = expected.find(odd => odd.itemId === "fish_shark").probability;
-  assert.equal(baseShark, 0); assert(betterShark >= .099 && betterShark <= .10);
+  assert.match(html, /Шансы улова|Сейчас → с этой снастью/);
+  assert.doesNotMatch(html, /Сначала определяется класс|Легендарную рыбу открывает|Сначала выберите|после выбора снасти перед отправлением/);
+  assert.equal((html.match(/data-fish-class-odds=/g) ?? []).length, 5);
+  for (const odd of expected) assert.ok(html.includes(`data-catch-probability="${odd.itemId}" aria-hidden="true">${percent(odd.probability)}</strong>`));
+  const baseShark = fishingClassOdds(state, catalog).find(odd => odd.rarity === "legendary").probability;
+  const betterShark = expected.find(odd => odd.rarity === "legendary").probability;
+  assert.equal(baseShark, 0); assert(betterShark > .55 && betterShark < 1);
   assert.doesNotMatch(html, /Теневая акула/); assert.match(html, /data-fish-rarity="legendary"/);
   assert.deepEqual(state, before, "Previewing gear cannot buy, equip or rewrite current odds");
 });
@@ -488,6 +490,7 @@ test("owned fish remain visible goods without falsely opening the catch book", a
 });
 
 
+
 test("merchant disables paid replacement when there are not enough different eligible goods", () => {
   const state = snapshot({ wallet: { coins: 0, pearls: 1000 } }), calls = [];
   state.fishing.ownedRods.push("brook_rod");
@@ -499,4 +502,98 @@ test("merchant disables paid replacement when there are not enough different eli
   assert.equal(button.props.disabled, true);
   button.props.onClick();
   assert.deepEqual(calls, []);
+});
+
+
+test("an old species offer keeps its exact quote while showing the class it supplies", () => {
+  const state = snapshot({ inventory: {} }), calls = [];
+  const selectedOffer = { id: "old:fish_silverfin", kind: "fish", itemId: "fish_silverfin", unitPrice: 150, remaining: 2 };
+  state.fishingShop.offers = [selectedOffer];
+  const fish = state.catalog.fishing.classes.find(entry => entry.rarity === "common");
+  const view = inspect(PleskFishOffer, { state, fish, selectedOffer, economy: controller(state, { act(...args) { calls.push(args); } }) });
+  assert.match(view.html, /Обычная рыба/);
+  assert.doesNotMatch(view.html, /Серебринка|Нет на прилавке/);
+  view.control("Купить рыбу: Обычная рыба").props.onClick();
+  assert.deepEqual(calls, [["buy_fishing_item", selectedOffer.id, 1, selectedOffer.unitPrice]]);
+  assert.deepEqual(state.fishing.catches, {});
+});
+
+
+test("matching hook preview highlights its target class and actual current-to-preview probabilities", () => {
+  const state = snapshot();
+  state.fishing = { ...state.fishing, equippedRodId: "willow_rod", equippedHookId: "bare_hook", equippedBaitId: null };
+  const hook = state.catalog.fishing.hooks.find(entry => entry.id === "silver_hook");
+  const before = structuredClone(state);
+  const html = renderToStaticMarkup(createElement(PleskHookOffer, { state, hook, economy: controller(state) }));
+  const format = probability => new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 4 }).format(probability * 100) + "%";
+  const current = fishingClassOdds(state, state.catalog.fishing).find(row => row.rarity === hook.rarity).probability;
+  const target = fishingClassOdds(state, state.catalog.fishing, { hookId: hook.id }).find(row => row.rarity === hook.rarity).probability;
+  assert.ok(target > current);
+  assert.match(html, /data-fishing-target="fish_rare"/);
+  assert.ok(html.includes(`Сейчас ${format(current)} → с этой снастью ${format(target)}`));
+  assert.doesNotMatch(html, /bps|floor|rarityWeights/);
+  assert.deepEqual(state, before);
+});
+
+test("star bait has visible artwork, a purchasable class preview and an owned book entry", async () => {
+  const state = snapshot();
+  state.fishing.equippedRodId = "starfall_rod";
+  state.inventory.star_bait = 2;
+  const bait = state.catalog.fishing.baits.find(entry => entry.itemId === "star_bait");
+  const offer = { id: "shop:star_bait", kind: "bait", itemId: "star_bait", unitPrice: bait.price, remaining: 3 };
+  state.fishingShop.offers = [offer];
+  const calls = [], view = inspect(PleskBaitOffer, { state, bait, economy: controller(state, { act(...args) { calls.push(args); } }) });
+  assert.match(view.html, /data-item-icon="star_bait"/);
+  assert.match(view.html, /data-fishing-target="fish_legendary"/);
+  view.control("Купить наживку: Звёздная наживка").props.onClick();
+  assert.deepEqual(calls, [["buy_fishing_item", offer.id, 1, bait.price]]);
+  const entry = fishingBookEntries(state, state.catalog.fishing, "baits").find(entry => entry.id === "star_bait");
+  assert.equal(entry.known, true); assert.equal(entry.name, "Звёздная наживка");
+  const { itemIconIds } = await vite.ssrLoadModule("/features/items/item-icon.tsx");
+  assert.ok(itemIconIds.includes("star_bait"));
+});
+
+test("bait for a zero-base class shows honest zero chances without unrelated rod warnings", () => {
+  const state = snapshot(), bait = state.catalog.fishing.baits.find(entry => entry.itemId === "star_bait");
+  const html = renderToStaticMarkup(createElement(PleskBaitOffer, { state, bait, economy: controller(state) }));
+  assert.match(html, /aria-label="Легендарная рыба: 0%"/);
+  assert.match(html, /data-fishing-target="fish_legendary"/);
+  assert.doesNotMatch(html, /Выбранной удочке недоступен|Легендарную рыбу открывает|Крючок и наживка|Сначала выберите/);
+  const legendary = renderToStaticMarkup(createElement(PleskCatchOdds, { state, catalog: state.catalog.fishing, override: { rodId: "starfall_rod", hookId: "bare_hook" } }));
+  assert.doesNotMatch(legendary, /Нужны легендарные|Крючок и наживка сами её не открывают/);
+});
+
+test("the odds compare every changed class against the saved loadout including decreases", () => {
+  const state = snapshot();
+  state.fishing = { ...state.fishing, equippedRodId: "willow_rod", equippedHookId: "bare_hook", equippedBaitId: "glow_bait" };
+  const before = structuredClone(state), override = { hookId: "silver_hook" };
+  const current = fishingClassOdds(state, state.catalog.fishing);
+  const next = fishingClassOdds(state, state.catalog.fishing, override);
+  const view = inspect(PleskCatchOdds, { state, catalog: state.catalog.fishing, override, preview: true, targetRarity: "rare" });
+  const format = probability => new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 4 }).format(probability * 100) + "%";
+  for (const odd of next) {
+    const row = view.elements.find(element => element.props["data-fish-class-odds"] === odd.itemId);
+    const currentChance = current.find(item => item.rarity === odd.rarity).probability;
+    const changed = Math.abs(currentChance - odd.probability) > 1e-10;
+    assert.equal(row.props["data-odds-change"], changed ? odd.probability > currentChance ? "increase" : "decrease" : undefined);
+    const value = Children.toArray(row.props.children).find(element => element.type === "dd");
+    assert.ok(value.props["aria-label"].includes(format(odd.probability)));
+    if (changed) assert.ok(value.props["aria-label"].includes(`Сейчас ${format(currentChance)} → с этой снастью ${format(odd.probability)}`));
+    else assert.doesNotMatch(value.props["aria-label"], /Сейчас|с этой снастью/);
+  }
+  assert.equal(next.find(item => item.rarity === "legendary").probability, 0);
+  assert.deepEqual(state, before);
+});
+
+test("current and unchanged tackle odds have one probability per class with no false changes", () => {
+  const state = snapshot(), before = structuredClone(state);
+  const owned = state.catalog.fishing.rods.find(rod => rod.id === state.fishing.equippedRodId);
+  const html = renderToStaticMarkup(createElement(PleskRodOffer, { state, rod: owned, economy: controller(state) }));
+  assert.match(html, /Шансы улова|На одну рыбу/);
+  assert.equal((html.match(/data-catch-probability=/g) ?? []).length, state.catalog.fishing.classes.length);
+  assert.doesNotMatch(html, /data-odds-change=|Сейчас → с этой снастью|Сначала определяется класс/);
+  assert.ok(!html.includes(owned.description), "authored percentage copy does not duplicate the real odds");
+  const preview = inspect(PleskCatchOdds, { state, catalog: state.catalog.fishing, override: { rodId: owned.id }, preview: true });
+  assert.equal(preview.elements.filter(element => element.props["data-odds-change"]).length, 0);
+  assert.deepEqual(state, before);
 });

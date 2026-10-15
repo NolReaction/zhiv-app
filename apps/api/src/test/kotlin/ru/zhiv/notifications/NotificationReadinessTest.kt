@@ -29,6 +29,17 @@ class NotificationReadinessTest {
             assertEquals(now, returned.dueAt); assertNull(returned.blockedUntil); assertEquals("harvest", returned.phase)
         }
     }
+    @Test fun `independent miner never delays collection while legacy and explicit hero jobs still do`() {
+        val crop = berries()
+        val mine = job("mine", "exploration", "quarry_shift", now.plusSeconds(3600))
+        val ready = notificationJobReadiness(crop, listOf(crop, mine.copy(actorId = "miner")), false, now)
+        assertEquals(Instant.parse(crop.finishesAt), ready.dueAt)
+        assertNull(ready.blockedUntil)
+        assertEquals("harvest", ready.phase)
+        listOf(null, "mochlik").forEach { actor ->
+            assertEquals(now.plusSeconds(3600), notificationJobReadiness(crop, listOf(crop, mine.copy(actorId = actor)), false, now).dueAt)
+        }
+    }
     @Test fun `another started collection owns actor until claim even after its timer`() {
         val crop = berries()
         val collecting = berries("other").copy(collection = EconomyCollection("berry_harvest", 8,

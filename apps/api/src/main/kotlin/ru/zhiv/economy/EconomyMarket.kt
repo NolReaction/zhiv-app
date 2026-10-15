@@ -22,6 +22,8 @@ data class EconomyMarketListing(
 @Serializable
 data class EconomyMarketShowcase(val refreshAt: String, val slots: Int, val maxPerSeller: Int, val refreshSeconds: Long)
 
+data class EconomyMarketSlotOffer(val targetId: String, val slots: Int, val pricePearls: Long)
+
 @Serializable
 data class EconomyMarketTradeBudget(
     val buysUsed: Long, val salesUsed: Long, val limit: Long, val resetsAt: String,
@@ -49,6 +51,11 @@ object EconomyMarketRules {
     const val MAX_QUANTITY = 99L
     const val MAX_PRICE_MULTIPLIER = 2L
     const val MAX_PAGE_SIZE = 12
+
+    fun unlocked(state: EconomyState, config: EconomyMarketConfig = EconomyRules.catalog.market): Boolean =
+        (state.buildings["home"] ?: 1) >= config.requiredHomeLevel &&
+            state.completedExplorations >= config.requiredExplorations &&
+            config.requiredBuildings.all { (id, level) -> (state.buildings[id] ?: 0) >= level }
 
     fun homeBand(homeLevel: Int): IntRange = when (homeLevel) {
         2, 3 -> 2..3
@@ -123,12 +130,14 @@ object EconomyMarketRules {
             .map { requirements(it.requiredHomeLevel, it.requiredBuildings) }).toMutableList()
         catalog.fishing?.let { fishing ->
             fishing.baits.find { it.itemId == itemId }?.let { sources += it.requiredHomeLevel }
-            fishing.fish.find { it.itemId == itemId }?.let { fish ->
-                val hookHome = fish.requiredHookId?.let { id ->
-                    fishing.hooks.find { it.id == id }?.requiredHomeLevel ?: Int.MAX_VALUE
-                } ?: 1
+            val tier = fishing.classes.find { it.itemId == EconomyFishInventory.itemId(itemId, catalog) }
+            if (tier != null) {
+                val hookHome = fishing.hooks.minOfOrNull { it.requiredHomeLevel } ?: Int.MAX_VALUE
+                val rodHome = fishing.rods.filter { rod -> EconomyRules.fishingClassWeights(rod.id, null, spec = fishing)
+                    .any { it.first.rarity == tier.rarity && it.second > 0 } }
+                    .minOfOrNull { it.requiredHomeLevel } ?: Int.MAX_VALUE
                 sources += catalog.explorations.filter { it.id in fishing.routeIds }.map {
-                    maxOf(hookHome, requirements(it.requiredHomeLevel, it.requiredBuildings))
+                    maxOf(hookHome, rodHome, requirements(it.requiredHomeLevel, it.requiredBuildings))
                 }
             }
         }
@@ -141,4 +150,14 @@ object EconomyMarketRules {
             totalPrice <= item.baseSellPrice * quantity * EconomyRules.catalog.market.maxPriceMultiplier &&
             homeLevel >= requiredHomeLevel(itemId)
     }
+
+    fun eligible(itemId: String, quantity: Long, totalPrice: Long, state: EconomyState): Boolean {
+        val item = EconomyRules.catalog.items.firstOrNull { it.id == itemId && it.tradable } ?: return false
+        return quantity in 1L..MAX_QUANTITY && totalPrice / quantity >= item.baseSellPrice &&
+            totalPrice <= item.baseSellPrice * quantity * EconomyRules.catalog.market.maxPriceMultiplier &&
+            itemUnlocked(state, itemId)
+    }
+
+    fun itemUnlocked(state: EconomyState, itemId: String): Boolean =
+        EconomyFishInventory.itemId(itemId) in EconomyItemUnlocks.project(state)
 }

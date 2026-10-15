@@ -38,6 +38,8 @@ const { BuilderConversation } = await vite.ssrLoadModule("/features/world/ui/cha
 const { WorldUpgradeContent } = await vite.ssrLoadModule("/features/economy/ui/construction/world-upgrade-dialog.tsx");
 const hooks = await vite.ssrLoadModule(hookModule);
 const now = Date.parse("2026-10-06T12:00:00Z");
+// The current curve quotes 25 visible pearls for this remaining duration.
+const constructionRemainingMs = 85 * 60_000;
 function harness(Component = PleskMerchantHeader) {
   hooks.reset();
   const state = { ownerPublicId: "ME", revision: 1, catalog: economyCatalog, wallet: { coins: 0, pearls: 100 },
@@ -47,7 +49,7 @@ function harness(Component = PleskMerchantHeader) {
     } };
   const calls = [], economy = { snapshot: state, busy: false, uncertain: false, error: null, now, retryAt: 0,
     act(...args) { calls.push(args); }, refresh() {} };
-  const job = { id: "house-job", kind: "construction", targetId: "home", targetLevel: 2, finishesAt: new Date(now + 300000).toISOString() };
+  const job = { id: "house-job", kind: "construction", targetId: "home", targetLevel: 2, finishesAt: new Date(now + constructionRemainingMs).toISOString() };
   state.jobs = [job];
   function render() {
     hooks.render(); const tree = Component({ state, economy, job }), nodes = [];
@@ -118,7 +120,7 @@ test("construction confirmation rechecks the job, owner, revision, wallet, time 
     h => { h.economy.snapshot = { ...h.state, jobs: [] }; },
     h => { h.job.kind = "production"; },
     h => { h.state.wallet.pearls = 0; },
-    h => { h.economy.now += 300000; },
+    h => { h.economy.now += constructionRemainingMs; },
     h => { h.economy.now -= 300000; },
     h => { h.economy.busy = true; },
     h => { h.economy.uncertain = true; },
@@ -143,7 +145,7 @@ test("construction quotes cannot cross rendered revisions or replaced jobs, and 
   h.job.id = "another-house-job";
   view = h.render(); assert.doesNotMatch(view.html, /Подтвердить завершение/);
   previous.props.onClick(); assert.deepEqual(h.calls, []);
-  h.economy.now += 300000;
+  h.economy.now += constructionRemainingMs;
   assert.equal(h.render().html, "");
 });
 
@@ -229,7 +231,7 @@ test("resynchronized higher shop quote needs new consent and expired confirmatio
 test("construction quote counts down inside the open confirmation and uses the cheaper charge", () => {
   const h = harness(ConstructionSpeedup);
   h.render().button("Завершить сейчас за 25 жемчужин").props.onClick();
-  h.economy.now += 180000;
+  h.economy.now += 57 * 60_000;
   const view = h.render(); assert.match(view.html, /Подтвердить завершение за 10 жемчужин/);
   view.button("Подтвердить завершение за 10 жемчужин").props.onClick();
   assert.deepEqual(h.calls, [["speedup_construction", "house-job", 1, 20]]);

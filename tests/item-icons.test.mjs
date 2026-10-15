@@ -79,3 +79,9 @@ test("prepared meals have distinct silhouettes from raw fish, provisions and the
   const silhouettes = [...mealIds, "fish", "smoked_fish", "unknown"].map(geometry);
   assert.equal(new Set(silhouettes).size, silhouettes.length, "food remains distinguishable without relying on color");
 });
+
+test("berry tiers have separate silhouettes from older berries and from their processed dishes", () => {
+  const ids = ["berries", "strawberries", "blueberries", "currants", "blackberries", "cranberries", "strawberry_compote", "blueberry_compote", "currant_jelly", "blackberry_preserve", "cranberry_glaze"];
+  const geometry = id => render(ItemIcon, { itemId: id }).replace(/data-item-icon="[^"]+"/, "").replace(/(?:fill|stroke)="[^"]+"/g, "");
+  assert.equal(new Set(ids.map(geometry)).size, ids.length, "shapes remain different even when color is removed");
+});

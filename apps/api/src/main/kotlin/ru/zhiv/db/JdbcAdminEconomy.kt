@@ -95,14 +95,18 @@ internal fun readAdminEconomyPlayer(c: Connection, target: String, now: OffsetDa
     val profile = c.economyRows("""SELECT u.id,u.display_name,e.revision,e.updated_at,e.state FROM app_users u
         LEFT JOIN economy_profiles e ON e.user_id=u.id WHERE u.public_id=? AND u.deleted_at IS NULL""", target) { r ->
         Profile(r.getObject("id",UUID::class.java),r.getString("display_name"),r.getLong("revision"),r.adminTime("updated_at"),
-            r.getString("state")?.let { economyJson.decodeFromString<EconomyState>(it) })
+            r.getString("state")?.let { EconomyFishInventory.state(economyJson.decodeFromString<EconomyState>(it)) })
     }.firstOrNull() ?: return null
     val state = profile.state
     val time = now.toInstant()
-    val view = state?.let {
-        EconomyView(target,profile.revision,time.toString(),it.wallet,it.inventory,it.buildings,it.jobs.map(EconomyPublicJobs::project),it.migration,
+    val view = state?.let { raw ->
+        val history = if (raw.itemUnlockVersion == 0) legacyEconomyItemHistory(c, profile.id) else emptySet()
+        val it = EconomyStageOrders.pin(raw.copy(unlockedItems=EconomyItemUnlocks.project(raw,history)), now=time)
+        EconomyView(target,profile.revision,time.toString(),it.wallet,it.inventory,it.buildings,it.jobs.map { job -> EconomyPublicJobs.project(job, time) },it.migration,
             EconomyRules.catalog,EconomyRules.storage(it,reservedEconomyMarketItems(c,profile.id)),it.completedExplorations,it.fishing,
-            wardrobe=it.wardrobe, productionSlots=it.productionSlots, food=it.food, residentOrders=it.residentOrders)
+            wardrobe=it.wardrobe, productionSlots=it.productionSlots, food=it.food, residentOrders=it.residentOrders,
+            stageOrders=it.stageOrders, tutorialOrder=it.tutorialOrder, workshopStarterClaimed=it.workshopStarterClaimed,
+            marketSlots=it.marketSlots, unlockedItems=it.unlockedItems)
     }
     val ledger = c.economyRows("""SELECT kind,coins,pearls,currency_scale,pearl_scale,items,created_at FROM economy_ledger
         WHERE user_id=? ORDER BY created_at DESC,source_key DESC LIMIT 30""", profile.id) { r ->

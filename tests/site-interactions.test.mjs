@@ -22,12 +22,13 @@ const issue = (state, action, targetId, now) => applyEconomyCommand(state, {
 }, now, () => crypto.randomUUID());
 const clickDestination = (id, state) => economyBuildingDestination(sitePlace(id), { ...state, catalog: economyCatalog });
 
-test("only implemented economic sites receive map shortcuts, including the forest shelter", () => {
+test("only implemented economic sites receive map shortcuts, including restored landmarks", () => {
   const sites = ["home", "woodlot", "workshop", "quarry", "bridge", "lighthouse", "plesk-shop"].map(id => ({ id }));
   assert.deepEqual(interactiveSites({ sites }).map(({ site, place }) => [site.id, place]), [
     ["home", "house"], ["woodlot", "woodlot"], ["workshop", "workshop"], ["quarry", "quarry"],
+    ["bridge", "bridge"], ["lighthouse", "lighthouse"],
   ]);
-  for (const id of ["bridge", "lighthouse", "plesk-shop", "unknown", "constructor", null, undefined]) assert.equal(sitePlace(id), null);
+  for (const id of ["plesk-shop", "unknown", "constructor", null, undefined]) assert.equal(sitePlace(id), null);
 });
 
 test("object menus use the existing authored polygons and anchors for every map station", () => {
@@ -63,7 +64,7 @@ test("hidden buildings remove their menus while garden and campfire remain on th
   assert.deepEqual(interactiveMapObjects(world, { showBuildings: false }).map(object => object.place), ["garden", "campfire"]);
   assert.equal(interactiveMapObjects(world), objects, "DEV visibility cannot mutate the saved registry");
   for (const place of ["bridge", "lighthouse", "quarry"]) assert.ok(objects.some(object => object.place === place),
-    "planned and locked objects stay visible and can explain their requirements");
+    "locked objects stay visible and can explain their requirements");
 });
 
 test("pending or misplaced explicit bush artwork cannot create a garden on empty ground", () => {

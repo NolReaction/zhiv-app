@@ -1,9 +1,9 @@
 import { ECONOMY_MAX_BALANCE, economyCatalog, economyResidentOrdersSchema, type EconomyCatalog, type EconomyFood, type EconomyResidentOrders, type EconomyState } from "./model";
 
-import { fishingIneligibility, fishingState } from "./fishing";
+import { fishingIneligibility, fishingState, fishClassInventory, fishingClassItemId, fishClassForItem } from "./fishing";
 
 type FoodSource = Pick<EconomyState, "food"> & { catalog?: EconomyCatalog };
-type OrderSource = Pick<EconomyState, "residentOrders" | "buildings"> & Partial<Pick<EconomyState, "fishing">> & { catalog?: EconomyCatalog };
+type OrderSource = Pick<EconomyState, "residentOrders" | "buildings"> & Partial<Pick<EconomyState, "fishing" | "progression">> & { catalog?: EconomyCatalog };
 type Recipe = EconomyCatalog["recipes"][number];
 export type ResidentOrderOffer = {
   id: string; slot: number; templateId: string; residentId: "plesk" | "builder"; name: string; description?: string;
@@ -65,7 +65,7 @@ const composition = (template: Pick<OrderTemplate, "items">) => JSON.stringify(i
 const acceptsResident = (slot: number, template: Pick<OrderTemplate, "residentId">) => slot === 0 ? template.residentId === "plesk" : slot === 1 ? template.residentId === "builder" : true;
 type OrderTerms = NonNullable<EconomyResidentOrders["slots"][number]["terms"]>;
 const terms = (template: OrderTerms): OrderTerms => ({ id: template.id, residentId: template.residentId, name: template.name,
-  ...(template.description ? { description: template.description } : {}), items: { ...template.items }, coins: template.coins });
+  ...(template.description ? { description: template.description } : {}), items: fishClassInventory(template.items), coins: template.coins });
 
 /** Reachability is a fixed point over all unlocked production and expedition
  * inputs. Inventory and unfinished buildings cannot unlock an unsustainable chain. */
@@ -79,12 +79,13 @@ export function obtainableResidentOrderItems(state: OrderSource, catalog = state
     const before = reachable.size;
     for (const source of [...catalog.explorations, ...catalog.recipes]) {
       if (!unlocked(source) || "buildingId" in source && (state.buildings[source.buildingId] ?? 0) < source.buildingLevel) continue;
+      if ("requiredRecipes" in source && Object.entries(source.requiredRecipes).some(([id, count]) => (state.progression?.recipes[id] ?? 0) < count)) continue;
       const fishInput = "fishInput" in source ? source.fishInput?.itemIds : undefined;
       if (Object.keys(source.cost.items).some(id => !reachable.has(id) && !fishInput?.includes(id))) continue;
       if (fishInput && !fishInput.some(id => reachable.has(id))) continue;
-      for (const [id, quantity] of Object.entries(source.rewards)) if (quantity > 0) reachable.add(id);
+      for (const [id, quantity] of Object.entries(source.rewards)) if (quantity > 0 && !catalog.fishing?.routeIds.includes(source.id)) reachable.add(fishingClassItemId(id, catalog.fishing));
       if (catalog.fishing?.routeIds.includes(source.id)) for (const fish of catalog.fishing.fish)
-        if (tackle.ownedRods.some(rodId => tackle.ownedHooks.some(hookId => !fishingIneligibility(fish, rodId, hookId, catalog.fishing)))) reachable.add(fish.itemId);
+        if (tackle.ownedRods.some(rodId => tackle.ownedHooks.some(hookId => !fishingIneligibility(fish, rodId, hookId, catalog.fishing)))) reachable.add(fishingClassItemId(fish.itemId, catalog.fishing));
     }
     changed = reachable.size > before;
   }
@@ -99,7 +100,7 @@ export function progressedResidentOrderTemplate(template: OrderTemplate, homeLev
   const level = Math.max(0, Math.min(4, homeLevel - 1));
   const items = Object.fromEntries(Object.entries(template.items).map(([id, count]) => {
     const spec = catalog.items.find(item => item.id === id);
-    const bps = catalog.fishing?.fish.some(fish => fish.itemId === id) ? progression.fishBpsByHome[level]
+    const bps = catalog.fishing && fishClassForItem(id, catalog.fishing) ? progression.fishBpsByHome[level]
       : spec?.category === "crafted" || spec?.category === "provisions" ? progression.craftedBpsByHome[level] : progression.rawBpsByHome[level];
     return [id, Math.max(count, Math.floor(count * bps / 10000))];
   }));
@@ -164,7 +165,8 @@ export function normalizedResidentOrders(state: OrderSource, now: number, catalo
   const slots = Array.from({ length: config.slots }, (_, index): EconomyResidentOrders["slots"][number] => {
     const saved = keep ? previous.slots[index] : undefined;
     // Legacy v2 cards used fixed catalog quantities; retain those exact terms.
-    const template = saved?.templateId ? saved.terms ?? config.templates.find(template => template.id === saved.templateId) : undefined;
+    const savedTemplate = saved?.templateId ? saved.terms ?? config.templates.find(template => template.id === saved.templateId) : undefined;
+    const template = savedTemplate ? terms(savedTemplate) : undefined;
     const valid = template && template.id === saved?.templateId && acceptsResident(index, template) && !usedIds.has(template.id) && !usedCompositions.has(composition(template));
     if (valid) { usedIds.add(template.id); usedCompositions.add(composition(template)); }
     else if (saved?.templateId) recentTemplateIds = retire(recentTemplateIds, saved.templateId, config.recentLimit);
@@ -212,7 +214,7 @@ export function residentOrderBoard(state: OrderSource, now: number, catalog = st
     const template = slot.terms;
     return template ? [{ id: `order2_${current.cycle}_${index}_${slot.sequence}_${residentOrderFingerprint(template)}`, slot: index, templateId: template.id,
       residentId: template.residentId, name: template.name, ...(template.description ? { description: template.description } : {}),
-      items: { ...template.items }, coins: template.coins, availableAt: slot.readyAt }] : [];
+      items: fishClassInventory(template.items), coins: template.coins, availableAt: slot.readyAt }] : [];
   });
   const freeReplacementsRemaining = Math.max(0, config.freeReplacements - current.freeReplacementsUsed);
   return { refreshAt: new Date((current.cycle + 1) * config.refreshSeconds * 1000).toISOString(), offers,

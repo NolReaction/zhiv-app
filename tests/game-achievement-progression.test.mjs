@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test, { after, beforeEach } from "node:test";
 import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -13,6 +14,7 @@ const api = await vite.ssrLoadModule("/features/game/game-api.ts");
 const math = await vite.ssrLoadModule("/features/game/achievement-progress.ts");
 const model = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const collection = await vite.ssrLoadModule("/features/economy/domain/collection-progress.ts");
+const achievementCatalog = JSON.parse(readFileSync(new URL("../apps/api/src/main/resources/world/achievements-catalog.json", import.meta.url), "utf8"));
 beforeEach(() => { identities.resetDevStoreForTests(); game.resetDevGameStoreForTests(); });
 after(() => vite.close());
 const player = () => identities.createDevIdentity("Исследователь", crypto.randomUUID());
@@ -39,6 +41,8 @@ test("catalog5 keeps all15 stable cards and legacy catalog4 remains unchanged", 
 
 test("successful claim persists first path and each explorer tier once, start cancel and replay cannot award", () => {
   const p = player(); let now = Date.now();
+  economy.getDevEconomy(p.token, now);
+  globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId).state.buildings.warehouse = 3;
   const canceled = issue(p, "start_exploration", "forest", now).state.jobs[0];
   assert.equal(card(p, "first_path", now).unlockedAt, null);
   issue(p, "cancel_exploration", canceled.id, now + 1000);
@@ -92,11 +96,23 @@ test("biomes cover exactly the menu directions and known recipe/catch IDs preven
   assert.equal(math.economyAchievementProgress(economy.getDevEconomy(player().token)).explorer, 0);
 });
 
+test("achievement biomes cover every economy route once and recognize the restored far bank", () => {
+  const routes = Object.values(achievementCatalog.biomes).flat();
+  assert.deepEqual(new Set(routes), new Set(model.economyCatalog.explorations.map(route => route.id)));
+  assert.equal(routes.length, new Set(routes).size, "A route belongs to exactly one achievement biome");
+  const initial = economy.getDevEconomy(player().token);
+  for (const id of ["far_bank_path", "far_bank_grove", "ancient_ruins"]) {
+    assert.ok(achievementCatalog.biomes.forest.includes(id));
+    const visited = { ...initial, progression: { ...collection.newEconomyProgression(), routes: { [id]: 1 } } };
+    assert.equal(math.economyAchievementProgress(visited).familiar_trails, 1);
+  }
+});
+
 test("known retired quarry recipes retain historic achievement progress without counting new mining as crafting", () => {
   const p = player(); let now = Date.now();
   const initial = economy.getDevEconomy(p.token, now);
   const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
-  row.state.buildings = { ...initial.buildings, home: 2, quarry: 2 };
+  row.state.buildings = { ...initial.buildings, home: 3, quarry: 2 };
   const paid = { id: crypto.randomUUID(), kind: "production", targetId: "quarry", recipeId: "quarry_stone", targetLevel: null,
     startedAt: new Date(now - 1_800_000).toISOString(), finishesAt: new Date(now).toISOString(),
     rewards: { stone: 8 }, cost: { coins: 0, items: {} }, catalogVersion: 3 };
@@ -155,21 +171,21 @@ test("first sale belongs to seller after confirmed payment, not NPC sales, listi
   for (const p of [seller, buyer]) {
     economy.getDevEconomy(p.token, now);
     const row = globalThis.__zhivDevEconomyStore.profiles.get(p.me.user.publicId);
-    row.state.buildings.home = 2; row.state.completedExplorations = 1;
+    row.state.buildings.home = 2; row.state.buildings.bridge = 1; row.state.completedExplorations = 0;
     row.state.wallet.coins = 1000; row.state.inventory = { berries: 10 };
   }
   issue(seller, "sell", "berries", now, 1);
   assert.equal(card(seller, "first_sale", now).unlockedAt, null);
-  const create = command(seller, "create_listing", "berries", now, 2, 60);
+  const create = command(seller, "create_listing", "berries", now, 2, 20);
   economy.commandDevEconomyMarket(seller.token, create, now);
   const canceled = economy.getDevEconomyMarket(seller.token, now).mine[0];
   economy.commandDevEconomyMarket(seller.token, command(seller, "cancel_listing", canceled.id, now), now);
   assert.equal(card(seller, "first_sale", now).unlockedAt, null);
-  economy.commandDevEconomyMarket(seller.token, command(seller, "create_listing", "berries", now, 2, 60), now);
+  economy.commandDevEconomyMarket(seller.token, command(seller, "create_listing", "berries", now, 2, 20), now);
   const lot = economy.getDevEconomyMarket(seller.token, now).mine[0];
   assert.equal(card(seller, "first_sale", now).unlockedAt, null);
   economy.getDevEconomyMarket(buyer.token, now);
-  const buy = command(buyer, "buy_listing", lot.id, now, 2, 60);
+  const buy = command(buyer, "buy_listing", lot.id, now, 2, 20);
   economy.commandDevEconomyMarket(buyer.token, buy, now);
   economy.commandDevEconomyMarket(buyer.token, buy, now + 1000);
   assert.equal(card(seller, "first_sale", now + 5000).unlockedAt, new Date(now).toISOString());

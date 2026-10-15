@@ -276,6 +276,88 @@ class JdbcAdminRepositoryIntegrationTest {
         assertEquals(before,scalar("SELECT jsonb_agg(to_jsonb(e) ORDER BY user_id)::text FROM economy_profiles e"))
     }
 
+    @Test fun `production cancellation attributes its recipe and refund without counting a collected work milestone`() = runBlocking<Unit> {
+        val admin = user("Администратор"); val crafter = user("Мастер")
+        created(crafter, LocalDate.parse("2020-01-02"))
+        val sourceId = analyticsEntry(crafter, "start_production", "2020-01-02T12:20:00Z", items = mapOf("wood" to -1L), target = "make_planks")
+        // Older rows can recover the originating recipe from the command UUID.
+        val legacyCancel = analyticsEntry(crafter, "cancel_production", "2020-01-02T12:20:01Z", items = mapOf("wood" to 1L), target = sourceId.toString())
+        val paidId = analyticsEntry(crafter, "start_production", "2020-01-02T12:21:00Z", coins = -7,
+            items = mapOf("fish_rare" to -1L, "berries" to -4L, "wood" to -2L), target = "cook_hearty_fish")
+        val at = Instant.parse("2020-01-02T12:21:01Z")
+        val paid = EconomyJob(paidId.toString(), "production", "dryer", recipeId = "cook_hearty_fish",
+            startedAt = at.minusSeconds(1).toString(), finishesAt = at.plusSeconds(3599).toString(),
+            rewards = mapOf("hearty_fish" to 1L), cost = EconomyCost(7L, mapOf("fish_rare" to 1L, "berries" to 4L, "wood" to 2L)), catalogVersion = 1)
+        val cancelId = analyticsEntry(crafter, "cancel_production", at.toString(), coins = 7, items = paid.cost.items, target = paid.id)
+        val cancel = EconomyCommand(cancelId.toString(), crafter.publicId, 0, "cancel_production", paid.id)
+        val context = economyLedgerContext(EconomyRules.initial().copy(jobs = listOf(paid)), cancel, at)
+        assertEquals(mapOf("originAction" to "start_production", "targetId" to "cook_hearty_fish"), context)
+        execute("UPDATE economy_ledger SET context=?::jsonb WHERE user_id=? AND source_key=?", economyJson.encodeToString(context), crafter.id, "command:$cancelId")
+        val repo = repository(admin)
+        val query = AdminAnalyticsQuery(from = "2020-01-02", to = "2020-01-02", q = crafter.publicId)
+        val report = repo.analytics(admin.hash, query)
+        assertEquals(4L, report.summary.events)
+        assertEquals(0L, report.coverage.unattributedEvents)
+        val stages = assertNotNull(report.progression).cohort.stages.associateBy { it.id }
+        assertEquals(1L, stages.getValue("first_work_started").players)
+        assertEquals(0L, stages.getValue("first_work_claimed").players)
+        val events = repo.analyticsEvents(admin.hash, AdminAnalyticsEventsQuery(query = query, limit = 100)).events
+        val cancellations = events.filter { it.kind == "cancel_production" }
+        assertEquals(2, cancellations.size)
+        assertTrue(cancellations.all { it.contextKnown && it.category == "gameplay" })
+        assertEquals(setOf("make_planks", "cook_hearty_fish"), cancellations.map { it.targetId }.toSet())
+        assertEquals(paid.cost.items, cancellations.single { it.targetId == "cook_hearty_fish" }.items)
+        assertEquals("{}", scalar("SELECT context::text FROM economy_ledger WHERE user_id=? AND source_key=?", crafter.id, "command:$legacyCancel"))
+        assertEquals(context, economyJson.decodeFromString<Map<String, String>>(scalar("SELECT context::text FROM economy_ledger WHERE user_id=? AND source_key=?", crafter.id, "command:$cancelId")))
+    }
+
+    @Test fun `garden basket analytics attribute both actions and the first collected work without changing saved grouped context`() = runBlocking<Unit> {
+        val admin = user("Администратор"); val gardener = user("Садовник")
+        created(gardener, LocalDate.parse("2020-01-02"))
+        val startAt = Instant.parse("2020-01-02T12:21:00Z")
+        val seed = analyticsEntry(gardener, "start_production", "2020-01-02T12:20:00Z", target = "grow_berries")
+        val jobs = listOf("grow_berries" to "berries", "grow_strawberries" to "strawberries", "grow_blueberries" to "blueberries").mapIndexed { index, (recipe, item) ->
+            EconomyJob(if (index == 0) seed.toString() else UUID.randomUUID().toString(), "production", "garden", recipeId = recipe,
+                startedAt = startAt.minusSeconds(60).toString(), finishesAt = startAt.toString(), rewards = mapOf(item to 1L),
+                collection = EconomyCollection("berry_harvest", 8, null, null), catalogVersion = 10)
+        }
+        val before = EconomyRules.initial().copy(inventory = emptyMap(), jobs = jobs,
+            buildings = EconomyRules.initial().buildings + mapOf("home" to 5, "garden" to 5))
+        val basket = analyticsEntry(gardener, "start_garden_collection", startAt.toString(), target = seed.toString())
+        val start = EconomyCommand(basket.toString(), gardener.publicId, 0, "start_garden_collection", seed.toString())
+        val collecting = EconomyRules.apply(before, start, startAt).first
+        val startContext = economyLedgerContext(before, start, startAt, collecting)
+        execute("UPDATE economy_ledger SET context=?::jsonb WHERE user_id=? AND source_key=?", economyJson.encodeToString(startContext), gardener.id, "command:$basket")
+        val claimedAt = startAt.plusSeconds(8)
+        val claimId = analyticsEntry(gardener, "claim_garden_collection", claimedAt.toString(),
+            items = mapOf("berries" to 1L, "strawberries" to 1L, "blueberries" to 1L), target = basket.toString())
+        val claim = EconomyCommand(claimId.toString(), gardener.publicId, 1, "claim_garden_collection", basket.toString())
+        val delivered = EconomyRules.apply(collecting, claim, claimedAt).first
+        val claimContext = economyLedgerContext(collecting, claim, claimedAt, delivered)
+        execute("UPDATE economy_ledger SET context=?::jsonb WHERE user_id=? AND source_key=?", economyJson.encodeToString(claimContext), gardener.id, "command:$claimId")
+        assertEquals(startContext, claimContext)
+        assertEquals(jobs.joinToString(",") { it.id }, startContext["jobIds"])
+        assertEquals(jobs.joinToString(",") { checkNotNull(it.recipeId) }, startContext["recipeIds"])
+        val saved = scalar("SELECT jsonb_agg(context ORDER BY created_at)::text FROM economy_ledger WHERE user_id=?", gardener.id)
+        val repo = repository(admin)
+        val query = AdminAnalyticsQuery(from = "2020-01-02", to = "2020-01-02", q = gardener.publicId)
+        val report = repo.analytics(admin.hash, query)
+        assertEquals(3L, report.summary.events)
+        val stages = assertNotNull(report.progression).cohort.stages.associateBy { it.id }
+        assertEquals(1L, stages.getValue("first_work_claimed").players)
+        assertEquals(1_268L, stages.getValue("first_work_claimed").medianSeconds)
+        assertEquals(0L, report.coverage.unattributedEvents)
+        val events = repo.analyticsEvents(admin.hash, AdminAnalyticsEventsQuery(query = query, limit = 100)).events
+        for (kind in listOf("start_garden_collection", "claim_garden_collection")) {
+            val event = events.single { it.kind == kind }
+            assertEquals("garden", event.targetId); assertTrue(event.contextKnown)
+            assertEquals(1L, event.quantity)
+        }
+        assertEquals(mapOf("berries" to 1L, "strawberries" to 1L, "blueberries" to 1L), events.single { it.kind == "claim_garden_collection" }.items)
+        assertEquals(saved, scalar("SELECT jsonb_agg(context ORDER BY created_at)::text FROM economy_ledger WHERE user_id=?", gardener.id))
+        assertEquals(jobs.joinToString(",") { it.id }, scalar("SELECT context->>'jobIds' FROM economy_ledger WHERE user_id=? AND source_key=?", gardener.id, "command:$claimId"))
+    }
+
     @Test fun `progression follows registered cohorts beyond their registration window without inventing missing milestones`() = runBlocking<Unit> {
         val admin = user("Администратор"); val active = user("Развивается"); val unknown = user("Старая история")
         val never = user("Только отметки"); val old = user("Ранее зарегистрирован"); val deleted = user("Удалённый")
@@ -565,7 +647,7 @@ class JdbcAdminRepositoryIntegrationTest {
         val collecting = ready.copy(id=UUID.randomUUID().toString(),targetId="garden",recipeId="grow_berries",rewards=mapOf("berries" to 4L),
             collection=EconomyCollection("berry_harvest",8,null,null))
         val future = ready.copy(id=UUID.randomUUID().toString(),finishesAt="2100-01-01T00:00:00Z")
-        val state = EconomyRules.initial().copy(wallet=EconomyWallet(321,7),inventory=mapOf("wood" to 290L),jobs=listOf(ready,collecting,future),completedExplorations=5)
+        val state = EconomyRules.initial().copy(wallet=EconomyWallet(321,7),inventory=mapOf("wood" to 40L),jobs=listOf(ready,collecting,future),completedExplorations=5)
         execute("INSERT INTO economy_profiles(user_id,state) VALUES (?,?::jsonb)",target.id,economyJson.encodeToString(state))
         execute("INSERT INTO economy_profiles(user_id,state) VALUES (?,?::jsonb)",retired.id,economyJson.encodeToString(state))
         execute("UPDATE app_users SET deleted_at=clock_timestamp() WHERE id=?",retired.id)

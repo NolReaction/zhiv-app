@@ -9,7 +9,7 @@ import { prepareSteeringPath, desiredSteeringSpeed, type SteeringPath } from "@/
 import { compileWorldInteractions, findInteractionApproach, WORLD_INTERACTION_LIMITS, type WorldInteraction } from "@/features/world/navigation/interaction-navigation";
 import { chooseForestGoal, createForestBehavior, type ForestBehaviorMemory, type ForestInterest } from "./forest-behavior";
 import { beginForestIntention, finishForestIntention, noticeForestMind, recordForestCandidates, scoreForestAction } from "./forest-mind";
-import { canTraverseResidents, residentRouteIntent, residentTrafficDetour, residentRequestingPassage, residentYieldPoint,
+import { canTraverseResidents, residentRouteIntent, residentWalkingStep, residentRequestingPassage, residentYieldPoint,
   RESIDENT_TRAFFIC_LIMITS, type ResidentOccupant } from "@/features/world/navigation/resident-traffic";
 
 type ClearingAction = "look" | "sniff" | "groom" | "rest" | "bush";
@@ -710,15 +710,13 @@ export function noticeClearingActivity(state: ClearingActivityState, options: { 
 }
 /** Replan only ordinary ground. The final home threshold and the departure
  * corridor keep their authored geometry; held goals and action clocks survive. */
-function detourResidents(state: ClearingActivityState, route: ClearingRoute, options: ClearingActivityOptions) {
+function detourResidents(state: ClearingActivityState, route: ClearingRoute, options: ClearingActivityOptions, points?: WorldPoint[]) {
   if (!state.navigation || !state.navigationEnabled || options.navigationMode === "routes") return false;
   const free = state.stage === "free-walk" && state.freePurpose !== "interaction-exit";
   const approach = Boolean(state.activeInteraction && ["homebound", "outbound"].includes(state.stage));
   const groundEnd = route.navigationLength;
   if ((!free && !approach) || groundEnd === undefined || state.distance >= groundEnd - .001) return false;
   const target = sampleWalk(route, groundEnd).position;
-  const points = residentTrafficDetour({ owner: state, navigation: state.navigation, from: state.position,
-    target, size: options.residentSize ?? state.size, occupants: options.occupants, selfId: "mochlik", time: state.elapsed });
   if (!points) return false;
   // Steering against the static map could round a safe detour through a
   // resident. Keep these short chords exact and check them on every step.
@@ -748,11 +746,10 @@ export function clearingResidentIntent(state: ClearingActivityState, size = stat
 function yieldClearingPassage(state: ClearingActivityState, options: ClearingActivityOptions) {
   if (!state.navigation || !state.navigationEnabled || options.idleEligible === false || state.requestedPoint || state.retiring
     || state.activeInteraction || state.routeIndex >= 0 || state.pendingBush !== null || state.pendingInteractionBush !== null
-    || !["home", "clearing", "free-walk"].includes(state.stage)
-    || state.stage === "free-walk" && (state.freePurpose !== "roam" || state.freeRoute?.id === "resident-yield")
+    || !["home", "clearing"].includes(state.stage)
     || state.elapsed < (passageYieldAfter.get(state) ?? 0)) return;
   const size = options.residentSize ?? state.size;
-  const requester = residentRequestingPassage(state.position, size, options.occupants, "mochlik", state.stage === "free-walk" ? 1 : 0);
+  const requester = residentRequestingPassage(state.position, size, options.occupants, "mochlik", 0);
   if (!requester) return;
   passageYieldAfter.set(state, state.elapsed + RESIDENT_TRAFFIC_LIMITS.retry);
   const point = residentYieldPoint(state.navigation, state.position, size, options.occupants, "mochlik", requester);
@@ -816,9 +813,14 @@ function advanceWalk(state: ClearingActivityState, dt: number, options: Clearing
       state.speed = 0; state.behavior.reason = "steering-blocked"; return;
     }
   }
-  if (!canTraverseResidents(state.position, sample.position, options.residentSize ?? state.size, options.occupants, "mochlik")) {
+  const traffic = state.navigation && navigationLength !== undefined && nextDistance <= navigationLength && !returning
+    ? residentWalkingStep({ owner: state, navigation: state.navigation, from: state.position,
+      target: sampleWalk(route, navigationLength).position, size: options.residentSize ?? state.size,
+      occupants: options.occupants, selfId: "mochlik", time: state.elapsed }, sample.position)
+    : { clear: canTraverseResidents(state.position, sample.position, options.residentSize ?? state.size, options.occupants, "mochlik"), path: undefined };
+  if (!traffic.clear) {
     state.speed = 0;
-    if (!detourResidents(state, route, options)) state.behavior.reason = "waiting-for-resident";
+    if (!detourResidents(state, route, options, traffic.path)) state.behavior.reason = "waiting-for-resident";
     return;
   }
   const step = Math.abs(nextDistance - state.distance);

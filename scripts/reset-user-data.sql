@@ -40,13 +40,19 @@ BEGIN
     IF actual_tables IS DISTINCT FROM expected_tables THEN
         RAISE EXCEPTION 'Unexpected application tables. Reset cancelled; review the schema first.';
     END IF;
+    -- V55 adds item knowledge and market capacity, leaving the reviewed table inventory intact.
     -- Keep this explicit: every new schema must be reviewed before destructive reset.
-    -- A known admin-history upgrade can apply notification V50 after V51/V52;
-    -- installed_rank therefore does not identify the highest schema version.
-    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 52
-        OR (SELECT count(DISTINCT version::integer) FROM public.flyway_schema_history) <> 52
+    -- A known admin-history upgrade can install V50 after V51/V52.
+    -- Verify either complete history by version, independently of install order.
+    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 56
+        OR NOT (
+            ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
+                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,56) AS expected(version))
+            OR ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
+                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL']
+        )
         OR EXISTS (SELECT 1 FROM public.flyway_schema_history WHERE NOT success) THEN
-        RAISE EXCEPTION 'Expected successfully applied migrations through V52. Reset cancelled.';
+        RAISE EXCEPTION 'Expected successfully applied migrations through V56. Reset cancelled.';
     END IF;
     SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank) INTO migration_history
     FROM public.flyway_schema_history h;

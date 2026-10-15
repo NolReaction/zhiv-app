@@ -17,7 +17,7 @@
         "requiredHomeLevel": 1,
         "requiredBuildings": {},
         "items": {
-          "fish": 1
+          "fish_common": 1
         },
         "coins": 100
       },
@@ -28,7 +28,7 @@
         "requiredHomeLevel": 1,
         "requiredBuildings": {},
         "items": {
-          "fish": 2
+          "fish_common": 2
         },
         "coins": 200
       },
@@ -39,7 +39,7 @@
         "requiredHomeLevel": 1,
         "requiredBuildings": {},
         "items": {
-          "fish": 3
+          "fish_common": 3
         },
         "coins": 300
       },
@@ -51,7 +51,7 @@
         "requiredBuildings": {},
         "items": {
           "wood": 1,
-          "fish": 4
+          "fish_common": 4
         },
         "coins": 400
       },
@@ -62,7 +62,7 @@
         "requiredHomeLevel": 1,
         "requiredBuildings": {},
         "items": {
-          "fish": 5
+          "fish_common": 5
         },
         "coins": 500
       },
@@ -73,7 +73,7 @@
         "requiredHomeLevel": 1,
         "requiredBuildings": {},
         "items": {
-          "fish": 6
+          "fish_common": 6
         },
         "coins": 600
       },
@@ -84,7 +84,7 @@
         "requiredHomeLevel": 1,
         "requiredBuildings": {},
         "items": {
-          "fish": 7
+          "fish_common": 7
         },
         "coins": 700
       },
@@ -95,7 +95,7 @@
         "requiredHomeLevel": 1,
         "requiredBuildings": {},
         "items": {
-          "fish": 8
+          "fish_common": 8
         },
         "coins": 800
       },
@@ -193,7 +193,7 @@
     {
       "label": "initial",
       "ids": [
-        "order2_41467_0_0_1327887599",
+        "order2_41467_0_0_166287091",
         "order2_41467_1_0_3302792249",
         "order2_41467_2_0_1151633770"
       ],
@@ -208,7 +208,7 @@
     {
       "label": "advance-0",
       "ids": [
-        "order2_41467_0_1_2925810560",
+        "order2_41467_0_1_3250132598",
         "order2_41467_1_0_3302792249",
         "order2_41467_2_0_1151633770"
       ],
@@ -225,7 +225,7 @@
     {
       "label": "advance-1",
       "ids": [
-        "order2_41467_0_1_2925810560",
+        "order2_41467_0_1_3250132598",
         "order2_41467_1_1_1819464620",
         "order2_41467_2_0_1151633770"
       ],
@@ -243,7 +243,7 @@
     {
       "label": "advance-2",
       "ids": [
-        "order2_41467_0_1_2925810560",
+        "order2_41467_0_1_3250132598",
         "order2_41467_1_1_1819464620",
         "order2_41467_2_1_2463192616"
       ],
@@ -262,7 +262,7 @@
     {
       "label": "advance-0",
       "ids": [
-        "order2_41467_0_2_2032336429",
+        "order2_41467_0_2_486204649",
         "order2_41467_1_1_1819464620",
         "order2_41467_2_1_2463192616"
       ],
@@ -282,7 +282,7 @@
     {
       "label": "advance-0",
       "ids": [
-        "order2_41467_0_3_3731082010",
+        "order2_41467_0_3_1687654688",
         "order2_41467_1_1_1819464620",
         "order2_41467_2_1_2463192616"
       ],
@@ -303,7 +303,7 @@
     {
       "label": "advance-0",
       "ids": [
-        "order2_41467_0_4_3161287231",
+        "order2_41467_0_4_3473783027",
         "order2_41467_1_1_1819464620",
         "order2_41467_2_1_2463192616"
       ],
@@ -325,7 +325,7 @@
     {
       "label": "advance-1",
       "ids": [
-        "order2_41467_0_4_3161287231",
+        "order2_41467_0_4_3473783027",
         "order2_41467_1_2_2252585183",
         "order2_41467_2_1_2463192616"
       ],
@@ -347,7 +347,7 @@
     {
       "label": "advance-2",
       "ids": [
-        "order2_41467_0_4_3161287231",
+        "order2_41467_0_4_3473783027",
         "order2_41467_1_2_2252585183",
         "order2_41467_2_2_4142777222"
       ],
@@ -369,9 +369,9 @@
   ],
   "refresh": {
     "ids": [
-      "order2_41468_0_0_2255331636",
+      "order2_41468_0_0_1978415258",
       "order2_41468_1_0_2168365659",
-      "order2_41468_2_0_1224507003"
+      "order2_41468_2_0_2874276807"
     ],
     "templates": [
       "plesk_2",

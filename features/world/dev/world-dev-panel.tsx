@@ -6,6 +6,7 @@ import type { PixelPose } from "@/features/mochlik/pixel-sprite";
 import type { PleskAction } from "@/features/world/characters/plesk/plesk-resident";
 import type { BuilderAction } from "@/features/world/characters/builder/builder-types";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
+import { isMinerJob } from "@/features/economy/domain/actor-availability";
 import { worldCatalog } from "@/features/world/domain/model";
 import { TILED_WORLD } from "@/features/world/scene/presentation";
 import { clearingRouteDiagnostics } from "@/features/world/simulation/clearing-activity";
@@ -275,7 +276,7 @@ function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false
     if (action.kind === "resident" || action.kind === "builder") return motionUnavailable;
     if (action.kind === "birds") return birdsUnavailable;
     if (action.kind === "cooking") return heroUnavailable ?? (economy?.snapshot?.jobs.some(job =>
-      job.kind === "exploration" && economy.now < Date.parse(job.finishesAt) || job.collection?.startedAt)
+      job.kind === "exploration" && !isMinerJob(job) && economy.now < Date.parse(job.finishesAt) || job.collection?.startedAt)
       ? "Мохлик занят поручением. Дождитесь его возвращения и доставки припасов." : null);
     if (action.kind === "pose") return heroUnavailable;
     if (action.action === "idle") return null;

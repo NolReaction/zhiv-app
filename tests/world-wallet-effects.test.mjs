@@ -67,3 +67,22 @@ test("wallet animation halves pearl counts and deltas through gains, spending an
     }
   }
 });
+
+test("each wallet plus opens its own shop and stops map or profile click propagation", () => {
+  for (const kind of ["coins", "pearls"]) {
+    hooks.reset(); hooks.render();
+    const calls = [], nodes = [];
+    const tree = Currency({ kind, amount: 101, onOpenShop: (...args) => calls.push(args) });
+    function visit(element) { if (!isValidElement(element)) return; nodes.push(element); Children.forEach(element.props.children, visit); }
+    visit(tree);
+    const button = nodes.find(node => node.type === "button"), trigger = { name: `${kind}-plus` };
+    let stopped = 0;
+    button.props.onPointerDown({ stopPropagation() { stopped++; } });
+    assert.equal(calls.length, 0, "pointerdown must not navigate or spend");
+    button.props.onClick({ currentTarget: trigger, stopPropagation() { stopped++; } });
+    assert.equal(stopped, 2);
+    assert.deepEqual(calls, [[kind, trigger]]);
+    assert.equal(button.props.type, "button");
+    assert.equal(button.props.disabled, undefined);
+  }
+});
