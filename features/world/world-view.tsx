@@ -1,7 +1,7 @@
 "use client";
 import { WorldDevEntry } from "./dev/world-dev-entry";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
-import { ArrowLeft, BookOpen, BookOpenCheck, Check, Compass, X, Info, Leaf, MoreHorizontal, Package, PawPrint, Pin, Shirt, ShoppingBag, Store } from "lucide-react";
+import { ArrowLeft, BookOpen, BookOpenCheck, Check, Compass, X, Info, Leaf, MoreHorizontal, Package, PawPrint, Pin, Shirt, ShoppingBag, Newspaper } from "lucide-react";
 import { GAME_ITEMS, naturalItems } from "@/features/game/game-rewards";
 import { DecorationPreview } from "@/features/world/ui/collections/decoration-preview";
 import { formatDayCount } from "@/lib/daily-streak";
@@ -420,7 +420,7 @@ export default function WorldView({ open, suspended = false, world, economy, own
   const warehouseState = economy.snapshot?.ownerPublicId === ownerPublicId ? economy.snapshot : null;
   const quickTitle = quickMenu === "profile" ? "Мой Мохлик" : quickMenu === "pantry" ? "Кладовая" : quickMenu === "expeditions" ? "Вылазки" : "Ещё";
   const QuickIcon = quickMenu === "profile" ? Leaf : quickMenu === "pantry" ? Package : quickMenu === "expeditions" ? Compass : MoreHorizontal;
-  const SheetIcon = panel === "help" ? Info : panel === "orders" ? BookOpenCheck : panel === "economy" ? Store : panel === "shop" ? ShoppingBag : panel === "wardrobe" ? Shirt : panel === "collection" ? BookOpen : panel === "customize" ? Leaf : Compass;
+  const SheetIcon = panel === "help" ? Info : panel === "orders" ? BookOpenCheck : panel === "economy" ? Newspaper : panel === "shop" ? ShoppingBag : panel === "wardrobe" ? Shirt : panel === "collection" ? BookOpen : panel === "customize" ? Leaf : Compass;
   return <section ref={worldElement} className={styles.world} aria-label="Лес Мохлика" data-quick-open={quickMenu ?? undefined} style={{ "--quick-top": `${menuBounds.top + 6}px`, "--quick-bottom": `${menuBounds.bottom + 6}px` } as CSSProperties}>
     <WorldScene suspended={!open || suspended} onReady={onSceneReady} economyJourney={economicJourney} cancelledExplorations={economy.cancelledExplorations} economyBuildings={economy.snapshot?.buildings} economyProduction={economicProduction} economyConstruction={economicConstruction} state={state} gifts={snapshot.gifts} items={items} owner={ownerPublicId} now={economy.snapshot ? economy.now : world.now} timeZone={timeZone}
       hideJourneyStatus onPlace={onPlace} onResident={openResident} selectedObjectId={selection?.objectId ?? null} onObjectSelection={onObjectSelection} openObjectRequest={openObjectRequest} guidePlace={guidePlace}
@@ -467,6 +467,13 @@ export default function WorldView({ open, suspended = false, world, economy, own
           aria-label={orders.ready > 0 ? `Журнал заказов. Можно выполнить: ${orders.ready}` : "Журнал заказов"} onClick={event => openOrders(undefined, event.currentTarget)}>
           <span className={hudStyles.orderIcon}><BookOpenCheck size={18} aria-hidden="true" />{orders.ready > 0 && <span className={hudStyles.orderCount} aria-hidden="true">{orders.ready}</span>}</span><span>Заказы</span>
         </button>
+        <button type="button" data-world-market-entry data-audio-cue="ui.open" aria-haspopup="dialog"
+          aria-expanded={panel === "economy" && economyTab === "market"} aria-controls={panel === "economy" && economyTab === "market" ? "world-market-announcements" : undefined}
+          aria-label="Объявления игроков. Торговля между игроками" onClick={event => {
+            openEconomy("market");
+            panelReturn.current = event.currentTarget;
+            panelReturnOwner.current = ownerPublicId;
+          }}><Newspaper size={18} aria-hidden="true" /><span>Объявления</span></button>
         <button data-audio-cue={quickMenu === "more" ? "ui.close" : "ui.open"} data-world-quick="more" aria-haspopup="dialog" aria-expanded={quickMenu === "more"} aria-controls={quickMenu === "more" ? "world-quick-menu" : undefined} onClick={() => toggleQuick("more")}><MoreHorizontal size={19} aria-hidden="true" /><span>Ещё</span></button>
       </nav>
     </div>
@@ -485,7 +492,6 @@ export default function WorldView({ open, suspended = false, world, economy, own
         {quickMenu === "expeditions" && <WorldExpeditionsMenu key={`${expeditionSector}:${expeditionOpenRequest}`} initialSector={expeditionSector} isOnline={isOnline} onOpenHelp={openContextHelp} economy={economy} onOpenPantry={() => openQuick("pantry")} onNavigateStation={openStation} onOpenFishingShop={() => openResident("plesk")} />}
         {quickMenu === "more" && <div className={`${hudStyles.moreActions} ${styles.moreActions}`}>
           <button type="button" data-world-characters-trigger aria-haspopup="dialog" onClick={openCharacters}><PawPrint size={18} aria-hidden="true" /><span className={styles.moreLabel}>Персонажи<small>Жители леса</small></span></button>
-          <button type="button" aria-haspopup="dialog" onClick={() => openEconomy("market")}><Store size={18} aria-hidden="true" /><span className={styles.moreLabel}>Рынок<small>Торговля между игроками</small></span></button>
           <button type="button" aria-haspopup="dialog" onClick={() => openPanel("wardrobe")}><Shirt size={18} aria-hidden="true" /><span className={styles.moreLabel}>Гардероб<small>Одежда и оттенки мха</small></span></button>
           <button type="button" aria-haspopup="dialog" onClick={() => openPanel("collection")}><BookOpen size={18} aria-hidden="true" /><span className={styles.moreLabel}>Коллекции<small>Книга личных находок</small></span></button>
           {state.journeys.length > 0 && <button type="button" aria-haspopup="dialog" onClick={() => openPanel("journeys")}><Compass size={18} aria-hidden="true" /><span className={styles.moreLabel}>Старые походы<small>Забрать прежние награды</small></span></button>}
@@ -562,14 +568,14 @@ export default function WorldView({ open, suspended = false, world, economy, own
     <Dialog open={panel !== null} onOpenChange={open => { if (!open) setPanel(null); }}>
       <DialogPortal>
       <DialogOverlay className={styles.sheetScrim} />
-      <DialogPrimitive.Content ref={panelRoot} id={panel === "orders" ? "world-order-journal" : undefined} data-slot="dialog-content" className={styles.sheet} data-orders={panel === "orders" || undefined} data-help={panel === "help" || undefined} data-market={panel === "economy" && economyTab === "market" || undefined} data-book={panel === "collection" || undefined} data-shop={panel === "shop" || undefined}
+      <DialogPrimitive.Content ref={panelRoot} id={panel === "orders" ? "world-order-journal" : panel === "economy" && economyTab === "market" ? "world-market-announcements" : undefined} data-slot="dialog-content" className={styles.sheet} data-orders={panel === "orders" || undefined} data-help={panel === "help" || undefined} data-market={panel === "economy" && economyTab === "market" || undefined} data-book={panel === "collection" || undefined} data-shop={panel === "shop" || undefined}
         onEscapeKeyDown={event => { if (pauseFocusedGuide()) { event.preventDefault(); event.stopPropagation(); } }}
-        onCloseAutoFocus={event => { event.preventDefault(); if (panelReturnOwner.current !== ownerPublicId) { navigatingHelp.current = false; return; } if (navigatingHelp.current) { navigatingHelp.current = false; return; } if (quickMenu) quickFrame.current?.focus({ preventScroll: true }); else if (selectedId.current) worldElement.current?.querySelector<HTMLElement>('[role="dialog"][data-place]')?.focus({ preventScroll: true }); else if (panelReturnOwner.current === ownerPublicId && panelReturn.current?.isConnected) panelReturn.current.focus({ preventScroll: true }); else worldElement.current?.querySelector<HTMLElement>(panelReturnKind.current === "orders" ? '[data-world-orders-entry]' : '[aria-label="Справка по игре"]')?.focus({ preventScroll: true }); }}>
+        onCloseAutoFocus={event => { event.preventDefault(); if (panelReturnOwner.current !== ownerPublicId) { navigatingHelp.current = false; return; } if (navigatingHelp.current) { navigatingHelp.current = false; return; } if (quickMenu) quickFrame.current?.focus({ preventScroll: true }); else if (selectedId.current) worldElement.current?.querySelector<HTMLElement>('[role="dialog"][data-place]')?.focus({ preventScroll: true }); else if (panelReturnOwner.current === ownerPublicId && panelReturn.current?.isConnected) panelReturn.current.focus({ preventScroll: true }); else worldElement.current?.querySelector<HTMLElement>(panelReturnKind.current === "orders" ? '[data-world-orders-entry]' : panelReturnKind.current === "economy" && economyTab === "market" ? '[data-world-market-entry]' : '[aria-label="Справка по игре"]')?.focus({ preventScroll: true }); }}>
         <div className={styles.sheetHeader}>
-          <DialogTitle><SheetIcon size={20} aria-hidden="true" />{panel === "help" ? "Справка по игре" : panel === "orders" ? "Журнал заказов" : panel === "economy" ? "Лесной рынок" : panel === "shop" ? "Магазин" : panel === "customize" ? "Украшения" : panel === "wardrobe" ? "Гардероб" : panel === "collection" ? "Книга находок" : "Путешествия"}</DialogTitle>
+          <DialogTitle><SheetIcon size={20} aria-hidden="true" />{panel === "help" ? "Справка по игре" : panel === "orders" ? "Журнал заказов" : panel === "economy" ? "Объявления" : panel === "shop" ? "Магазин" : panel === "customize" ? "Украшения" : panel === "wardrobe" ? "Гардероб" : panel === "collection" ? "Книга находок" : "Путешествия"}</DialogTitle>
           <button type="button" onClick={() => setPanel(null)} aria-label={panel === "orders" ? "Закрыть журнал заказов" : "Закрыть панель"}><X size={21} aria-hidden="true" /></button>
         </div>
-        <DialogDescription className={styles.sr}>{panel === "help" ? "Правила игры, управление картой и ответы на частые вопросы. Найдите короткий ответ через поиск или выберите раздел." : panel === "orders" ? "Просьбы жителей и путь хозяйства. Проверьте припасы и награду, затем отдайте выбранный заказ." : panel === "shop" ? "Предварительная витрина жемчуга и золота. Покупки и обмен пока недоступны." : "Управление домом и путешествиями Мохлика"}</DialogDescription>
+        <DialogDescription className={styles.sr}>{panel === "help" ? "Правила игры, управление картой и ответы на частые вопросы. Найдите короткий ответ через поиск или выберите раздел." : panel === "orders" ? "Просьбы жителей и путь хозяйства. Проверьте припасы и награду, затем отдайте выбранный заказ." : panel === "economy" && economyTab === "market" ? "Объявления других игроков и ваш прилавок. Покупка и продажа товаров между игроками." : panel === "shop" ? "Предварительная витрина жемчуга и золота. Покупки и обмен пока недоступны." : "Управление домом и путешествиями Мохлика"}</DialogDescription>
         {panel === "orders" && <div data-guide-coach-slot />}
         {open && panel === "orders" && <SectionGuide key={`${ownerPublicId}:orders`} owner={ownerPublicId} section="orders" enabled={sectionsReady && !mainCourseActive} targetRoot={panelRoot} />}
         {open && panel === "economy" && economyTab === "market" && <SectionGuide key={`${ownerPublicId}:market`} owner={ownerPublicId} section="market" enabled={sectionsReady} targetRoot={panelRoot} />}

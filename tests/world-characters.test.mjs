@@ -146,7 +146,7 @@ function navigation() {
   const savedElement = Object.getOwnPropertyDescriptor(globalThis, "HTMLElement");
   const focused = [];
   class Element { constructor(name) { this.name = name; this.isConnected = true; this.dataset = {}; } focus() { focused.push(this.name); } }
-  const trigger = new Element("more"), characterTrigger = new Element("characters"), card = new Element("plesk"), map = new Element("map"), ordersTrigger = new Element("orders");
+  const trigger = new Element("more"), characterTrigger = new Element("characters"), card = new Element("plesk"), map = new Element("map"), ordersTrigger = new Element("orders"), marketTrigger = new Element("market");
   Object.defineProperty(globalThis, "HTMLElement", { value: Element, configurable: true });
   Object.defineProperty(globalThis, "document", { value: { activeElement: map, querySelector: () => null, querySelectorAll: () => [] }, configurable: true });
   const state = { resources: { sparks: 0, wood: 0, stone: 0 }, houseLevel: 1,
@@ -159,7 +159,7 @@ function navigation() {
   let view;
   const render = () => {
     hooks.render(); view = WorldView(props);
-    view.props.ref.current = { querySelector(selector) { return selector.includes("data-world-orders-entry") ? ordersTrigger : selector.includes("data-world-characters-trigger") ? characterTrigger : selector.includes("data-world-character=") ? card : trigger; } };
+    view.props.ref.current = { querySelector(selector) { return selector.includes("data-world-orders-entry") ? ordersTrigger : selector.includes("data-world-market-entry") ? marketTrigger : selector.includes("data-world-characters-trigger") ? characterTrigger : selector.includes("data-world-character=") ? card : trigger; } };
     const nodes = elements(view), quickFrame = nodes.find(element => element.props.id === "world-quick-menu");
     if (quickFrame) quickFrame.props.ref.current = new Element(`quick-${quickFrame.props["data-kind"]}`);
     return nodes;
@@ -170,7 +170,7 @@ function navigation() {
     if (savedDocument) Object.defineProperty(globalThis, "document", savedDocument); else delete globalThis.document;
     if (savedElement) Object.defineProperty(globalThis, "HTMLElement", savedElement); else delete globalThis.HTMLElement;
   };
-  return { find, component, render, focused, restore, props, ordersTrigger, createElement: name => new Element(name), get refreshes() { return refreshes; } };
+  return { find, component, render, focused, restore, props, ordersTrigger, marketTrigger, createElement: name => new Element(name), get refreshes() { return refreshes; } };
 }
 
 function guideNavigation(context = {}) {
@@ -207,9 +207,8 @@ test("wallet shortcuts replace the More shop entry and open the intended preview
     nav.find(node => node.props["data-world-quick"] === "more").props.onClick();
     const menu = nav.find(node => node.props.id === "world-quick-menu");
     const labels = elements(menu).filter(node => node.type === "button").map(node => renderToStaticMarkup(node)).join(" ");
-    assert.doesNotMatch(labels, /Промокоды и витрина|>Магазин</);
-    assert.match(labels, />Рынок</, "the player market remains in More");
-    elements(menu).find(node => node.type === "button" && renderToStaticMarkup(node).includes(">Рынок<")).props.onClick();
+    assert.doesNotMatch(labels, /Промокоды и витрина|>Магазин<|>Рынок<|>Объявления</);
+    nav.find(node => node.props["data-world-market-entry"] !== undefined).props.onClick({ currentTarget: nav.marketTrigger });
     assert.equal(nav.component("EconomyPanel").props.initialTab, "market");
     assert.equal(nav.refreshes, 0, "opening preview never refreshes or issues an economic command");
   } finally { nav.restore(); }
@@ -814,17 +813,20 @@ test("an explicit mine notification activates quarry once while generic or forei
   }
 });
 
-test("the four dock entries include a standalone journal while food stays in its action context", () => {
+test("the five dock entries place player announcements beside the journal while food stays in its action context", () => {
   const nav = navigation();
   try {
     const dock = nav.find(element => element.type === "nav" && element.props["aria-label"] === "Действия в игре");
     const entries = elements(dock).filter(element => element.type === "button");
-    assert.equal(entries.length, 4);
-    assert.ok(entries.some(element => element.props["data-world-orders-entry"] !== undefined));
+    assert.equal(entries.length, 5);
+    assert.deepEqual(entries.map(element => renderToStaticMarkup(element).replace(/<[^>]*>/g, "")),
+      ["Кладовая", "В путь", "Заказы", "Объявления", "Ещё"]);
+    const orderIndex = entries.findIndex(element => element.props["data-world-orders-entry"] !== undefined);
+    assert.equal(entries[orderIndex + 1].props["data-world-market-entry"], true);
     nav.find(element => element.props["data-world-quick"] === "more").props.onClick();
     const menu = nav.find(element => element.props.id === "world-quick-menu");
     const labels = elements(menu).filter(element => element.type === "button").map(element => renderToStaticMarkup(element)).join(" ");
-    assert.doesNotMatch(labels, /Еда и заказы|data-world-food-entry/);
+    assert.doesNotMatch(labels, /Еда и заказы|data-world-food-entry|>Рынок<|>Объявления</);
     nav.find(element => element.props["data-world-quick"] === "pantry").props.onClick();
     assert.equal(nav.component("WorldPantryMenu").props.onOpenFood, undefined);
     nav.component("WorldScene").props.onPlace("campfire", { place: "campfire", objectId: "campfire.position", x: 195, y: 380, viewportWidth: 390, viewportHeight: 844 });
@@ -890,6 +892,58 @@ test("the journal opens from a native dock button and modal close restores its a
       assert.equal(nav.refreshes, 0);
     } finally { nav.restore(); }
   }
+});
+
+test("player announcements open from a native dock button and return focus to the actual source or connected dock fallback", () => {
+  for (const exit of ["close", "modal"]) for (const connected of [true, false]) {
+    const nav = navigation();
+    try {
+      const source = nav.createElement("market-source");
+      const entry = nav.find(element => element.props["data-world-market-entry"] !== undefined);
+      assert.equal(entry.type, "button"); assert.equal(entry.props.type, "button");
+      assert.notEqual(entry.props.tabIndex, -1); assert.notEqual(entry.props.disabled, true);
+      assert.equal(entry.props["aria-haspopup"], "dialog");
+      assert.equal(entry.props["aria-label"], "Объявления игроков. Торговля между игроками");
+      assert.equal(entry.props["aria-expanded"], false); assert.equal(entry.props["aria-controls"], undefined);
+      assert.notEqual(document.activeElement, source, "pointer activation need not focus a button before its handler runs");
+      entry.props.onClick({ currentTarget: source });
+      assert.equal(nav.component("EconomyPanel").props.initialTab, "market");
+      assert.equal(nav.component("EconomyPanel").props.standalone, true);
+      const expanded = nav.find(element => element.props["data-world-market-entry"] !== undefined);
+      assert.equal(expanded.props["aria-expanded"], true);
+      assert.equal(expanded.props["aria-controls"], "world-market-announcements");
+      const content = nav.find(element => element.props["data-market"] === true);
+      assert.equal(content.props.id, "world-market-announcements");
+      source.isConnected = connected;
+      if (exit === "close") nav.find(element => element.props["aria-label"] === "Закрыть панель").props.onClick();
+      else nav.find(element => element.props.open === true && typeof element.props.onOpenChange === "function").props.onOpenChange(false);
+      assert.equal(nav.component("EconomyPanel"), undefined);
+      const collapsed = nav.find(element => element.props["data-world-market-entry"] !== undefined);
+      assert.equal(collapsed.props["aria-expanded"], false); assert.equal(collapsed.props["aria-controls"], undefined);
+      let prevented = false;
+      content.props.onCloseAutoFocus({ preventDefault() { prevented = true; } });
+      assert.equal(prevented, true);
+      assert.deepEqual(nav.focused, [connected ? "market-source" : "market"]);
+      assert.equal(nav.refreshes, 0, "opening and closing the navigation entry never issues economy commands");
+    } finally { nav.restore(); }
+  }
+});
+
+test("announcements stay discoverable before bridge restoration and closing never focuses the previous owner's button", () => {
+  const nav = guideNavigation();
+  try {
+    nav.props.economy.snapshot.buildings = { home: 1, warehouse: 1, bridge: 0 };
+    const entry = nav.find(element => element.props["data-world-market-entry"] !== undefined);
+    assert.notEqual(entry.props.disabled, true, "the market body explains its progression requirements");
+    entry.props.onClick({ currentTarget: nav.marketTrigger });
+    assert.equal(nav.component("EconomyPanel").props.initialTab, "market");
+    nav.props.ownerPublicId = "another-player";
+    const content = nav.find(element => element.props["data-market"] === true);
+    nav.find(element => element.props["aria-label"] === "Закрыть панель").props.onClick();
+    content.props.onCloseAutoFocus({ preventDefault() {} });
+    assert.deepEqual(nav.focused, []);
+    assert.equal(nav.refreshes, 0);
+  } finally { nav.restore(); }
 });
 
 test("journal focus never returns to a previous owner's trigger and other initial lessons remain blocked behind it", () => {
