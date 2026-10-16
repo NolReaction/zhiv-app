@@ -83,6 +83,26 @@ test("the development launcher enables DEV even when the shell exports productio
   }
 });
 
+test("the launcher prepares a matching development status on clean and previously built checkouts", async t => {
+  const root = await fixture(t, {}, `console.log(JSON.stringify({
+    mode: process.env.NODE_ENV, build: process.env.APP_BUILD_ID, embedded: process.env.NEXT_PUBLIC_APP_BUILD_ID,
+    status: JSON.parse(require("node:fs").readFileSync("public/app-status.json", "utf8"))
+  }));`);
+  const expected = { mode: "development", build: "development", embedded: "development",
+    status: { schemaVersion: 1, buildId: "development", maintenance: false } };
+  for (const previous of [null, { schemaVersion: 1, buildId: "old-release", maintenance: true }]) {
+    if (previous) await writeFile(join(root, "public/app-status.json"), JSON.stringify(previous));
+    const result = spawnSync(process.execPath, [launcher], { cwd: root,
+      env: { ...process.env, NODE_ENV: "production", APP_BUILD_ID: "inherited-release", NEXT_PUBLIC_APP_BUILD_ID: "another-release" },
+      encoding: "utf8", timeout: 10_000 });
+    assert.ifError(result.error);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stderr, "");
+    assert.deepEqual(JSON.parse(result.stdout), expected, "status exists before Next starts and inherited release IDs cannot trigger dev reloads");
+    assert.deepEqual(JSON.parse(await readFile(join(root, "public/app-status.json"), "utf8")), expected.status);
+  }
+});
+
 test("the launcher rejects mismatched dependencies before starting Next", async t => {
   const root = await fixture(t, { next: "16.3.4" }, `console.log("NEXT_STARTED");`);
   const result = spawnSync(process.execPath, [launcher], { cwd: root, encoding: "utf8", timeout: 10_000 });

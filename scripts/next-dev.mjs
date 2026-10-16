@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { writeAppBuildStatus } from "./app-build.mjs";
 
 const DEVELOPMENT_PACKAGES = ["next", "react", "react-dom"];
 const RESTART_INSTRUCTIONS = "Stop the running development server, run npm ci, then start it again with npm run dev:local or npm run dev:lan.";
@@ -37,11 +38,12 @@ export function nextDevArguments(args = []) {
   return ["dev", "--webpack", ...args];
 }
 
-function main() {
+async function main() {
   const projectRoot = process.cwd();
   const { nextBin } = checkNextDevDependencies(projectRoot);
+  await writeAppBuildStatus(projectRoot, "development");
   const child = spawn(process.execPath, [nextBin, ...nextDevArguments(process.argv.slice(2))], {
-    cwd: projectRoot, env: { ...process.env, NODE_ENV: "development" }, stdio: "inherit",
+    cwd: projectRoot, env: { ...process.env, NODE_ENV: "development", APP_BUILD_ID: "development", NEXT_PUBLIC_APP_BUILD_ID: "development" }, stdio: "inherit",
   });
   const forwardInterrupt = () => child.kill("SIGINT");
   const forwardTermination = () => child.kill("SIGTERM");
@@ -64,10 +66,8 @@ function main() {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  try {
-    main();
-  } catch (error) {
+  main().catch(error => {
     console.error(error.message);
     process.exitCode = 1;
-  }
+  });
 }

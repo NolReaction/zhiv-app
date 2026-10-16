@@ -11,7 +11,7 @@ after(() => vite.close());
 const identities = await vite.ssrLoadModule("/lib/dev/api-store.ts");
 const economy = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
 const { createEconomySession } = await vite.ssrLoadModule("/features/economy/sync/session.ts");
-const { productionJournalKey } = await vite.ssrLoadModule("/features/economy/sync/production-journal.ts");
+const { productionJournalKey, browserJournalCoordinator } = await vite.ssrLoadModule("/features/economy/sync/production-journal.ts");
 const { ApiError } = await vite.ssrLoadModule("/lib/check-in-api.ts");
 const instant = Date.parse("2026-10-15T12:00:00Z");
 beforeEach(() => { identities.resetDevStoreForTests(); economy.resetDevEconomyStoreForTests(); });
@@ -144,6 +144,36 @@ test("two live sessions sharing an owner journal cannot both accept offline work
   const next = f.create({ coordinate }), stopNext = next.activate(); await next.refresh();
   assert.equal(f.read().jobs.length, 1); assert.equal(f.read().inventory.wood, 3);
   assert.equal(f.row.receipts.size, 1); stopNext();
+});
+
+for (const [reason, browser] of [
+  ["missing Web Locks on an insecure LAN origin", {}],
+  ["the journal lock belonging to another tab", { locks: { request: async (_name, _options, callback) => callback(null) } }],
+]) test(`${reason} disables offline work without reporting a broken connection`, async () => {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  Object.defineProperty(globalThis, "navigator", { configurable: true, value: browser });
+  const f = fixture(), session = f.create({ coordinate: browserJournalCoordinator }), stop = session.activate();
+  try {
+    await session.refresh();
+    const view = session.getSnapshot();
+    assert.equal(view.snapshotConfirmed, true, "a successful API response remains authoritative");
+    assert.equal(view.productionQueueAvailable, false, "no lock means no durable offline ownership");
+    for (const field of ["storageError", "syncError", "error"]) assert.equal(view[field], null, `${field} must not keep the WiFi warning visible`);
+    assert.equal(view.syncPending, false);
+    assert.equal(session.act("start_production", "make_planks"), true, "online production uses the existing direct server path");
+    await flush();
+    assert.equal(f.sent.length, 1);
+    assert.equal(f.read().jobs.length, 1);
+    assert.equal(session.getSnapshot().syncPending, false, "the confirmed direct command clears its receipt");
+    assert.equal(session.getSnapshot().uncertain, false);
+    assert.equal(f.cache.getItem(productionJournalKey(f.owner)), null, "a tab without ownership never writes the shared journal");
+    session.setAvailable(false);
+    assert.equal(session.act("start_production", "make_planks"), false, "offline work still requires durable ownership");
+    assert.equal(f.sent.length, 1);
+  } finally {
+    stop();
+    if (previous) Object.defineProperty(globalThis, "navigator", previous); else delete globalThis.navigator;
+  }
 });
 
 test("failed durable writes refuse new work and a failed ACK checkpoint recovers the original server receipt", async () => {

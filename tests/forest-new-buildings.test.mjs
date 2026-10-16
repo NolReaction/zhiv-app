@@ -4,14 +4,18 @@ import path from "node:path";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
+import { compileTiledWorld } from "../scripts/lib/tiled-world.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const mapPath = path.join(root, "world/tiled/forest.tmj");
 const map = JSON.parse(await readFile(mapPath, "utf8"));
+// Geometry checks must use the current authoring source even when its runtime
+// export was accidentally left behind after a Tiled save.
+const TILED_WORLD = await compileTiledWorld(map, { mapPath, publicDir: path.join(root, "public") });
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
+const { TILED_WORLD: exportedWorld } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
 const { initialPreviewLevels, previewWorldScene, previewSiteVisual, previewPointInPolygon, previewSiteAt }
   = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
 const { createWorldNavigation, isWalkable, canTraverse, findWorldPath }
@@ -53,6 +57,10 @@ function interiorPoint(polygon) {
   }
   assert.fail("authored footprint needs a non-empty interior");
 }
+
+test("the runtime world export matches the current Tiled source", () => {
+  assert.deepEqual(exportedWorld, TILED_WORLD, "Run npm run world:export after saving the Tiled map");
+});
 
 test("new buildings are registered once with their intended independent visual levels", () => {
   for (const [id, levels] of Object.entries(expectedSites)) {

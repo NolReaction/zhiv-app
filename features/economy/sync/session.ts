@@ -92,10 +92,10 @@ export function createEconomySession(owner: string | null, transport: Transport,
     try {
       const release = await journalOptions.coordinate(owner, signal);
       if (!active || generation !== lifetime || signal.aborted) { release?.(); return; }
-      if (!release) {
-        publish({ storageError: "Локальная очередь недоступна в этой вкладке. Для действий требуется соединение." });
-        return;
-      }
+      // Web Locks may be unsupported (for example over LAN HTTP) or held by
+      // another tab. Only the optional offline queue is unavailable; ordinary
+      // server-confirmed actions still work and the connection is not broken.
+      if (!release) return;
       journalRelease = release;
       const key = productionJournalKey(owner), raw = journalOptions.storage.getItem(key);
       const restored = parseProductionJournal(raw, owner);
