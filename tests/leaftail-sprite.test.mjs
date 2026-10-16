@@ -59,12 +59,49 @@ test("his leaf-tail, warm face and tied goods remain distinct from all four dire
 
 test("walking plants alternating feet and carries goods without a sliding tail or face", () => {
   for (const direction of directions) {
-    const poses = Array.from({ length: 8 }, (_, frame) => leaftailSprite("walk", direction, frame));
+    const poses = Array.from({ length: 16 }, (_, frame) => leaftailSprite("walk", direction, frame));
     assert.ok(new Set(poses.map(signature)).size >= 5);
     assert.ok(new Set(poses.map(sprite => JSON.stringify(leaftailSpriteRig(sprite).feet))).size >= 3);
   }
   assert.notEqual(signature(leaftailSprite("idle", "front", 0)), signature(leaftailSprite("idle", "front", 10)));
   assert.notEqual(signature(leaftailSprite("idle", "front", 0)), signature(leaftailSprite("idle", "front", 30)));
+});
+
+test("the merchant's eyes sit above two cream cheeks instead of inside a white mask", () => {
+  const creams = new Set(["#f0dcac", "#fff0ca", "#d4b57e"]);
+  for (const direction of ["front", "left", "right"]) for (const action of ["idle", "walk", "greet", "trade"]) {
+    const sprite = leaftailSprite(action, direction, 3, .5), { head } = leaftailSpriteRig(sprite);
+    const facingLeft = direction === "left";
+    const sourceX = x => facingLeft ? 47 - x : x;
+    const headX = facingLeft ? 47 - head.x : head.x;
+    for (const eyeX of direction === "front" ? [headX - 5, headX + 5] : [headX + 3]) {
+      assert.equal(sprite.pixels.get(`${sourceX(eyeX + 1)}:${head.y - 1}`), "#352e24", "the dark eye has a complete pupil");
+      assert.equal(creams.has(sprite.pixels.get(`${sourceX(eyeX - 1)}:${head.y - 1}`)), false,
+        "russet fur separates the eye from the muzzle");
+    }
+    const noseX = sourceX(headX + (direction === "front" ? 0 : 8));
+    assert.equal(sprite.pixels.get(`${noseX}:${head.y + 3}`), "#352e24", "the small dark nose stays below the eyes");
+    if (direction === "front") {
+      assert.equal(sprite.pixels.get(`${head.x - 4}:${head.y + 4}`), "#fff0ca");
+      assert.equal(sprite.pixels.get(`${head.x + 4}:${head.y + 4}`), "#fff0ca");
+      assert.equal(sprite.pixels.get(`${head.x}:${head.y + 1}`), "#c77139", "the two cheeks leave a warm central nose bridge");
+    }
+  }
+});
+
+test("sixteen walking poses keep the head, feet, leaf-tail and goods within one pixel at the loop seam", () => {
+  for (const direction of directions) {
+    const rigs = Array.from({ length: 16 }, (_, frame) => leaftailSpriteRig(leaftailSprite("walk", direction, frame)));
+    for (let frame = 0; frame < 16; frame++) {
+      const a = rigs[frame], b = rigs[(frame + 1) % 16];
+      const anchors = rig => [rig.head, ...rig.feet, rig.tail, rig.tool.grip, rig.tool.bundle];
+      anchors(a).forEach((p, i) => {
+        const q = anchors(b)[i];
+        assert.ok(Math.abs(p.x - q.x) <= 1 && Math.abs(p.y - q.y) <= 1, `${direction}/${frame}: no source-pixel jump`);
+      });
+      assert.equal(a.contact.bottom, b.contact.bottom);
+    }
+  }
 });
 
 test("an offer lifts a parcel once below the face, then settles without replaying", () => {

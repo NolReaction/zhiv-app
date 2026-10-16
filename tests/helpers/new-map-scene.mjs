@@ -72,6 +72,10 @@ async function modules(override) {
       ...await vite.ssrLoadModule("/features/world/characters/builder/builder-sprite.ts"),
       ...await vite.ssrLoadModule("/features/world/characters/builder/builder-mind.ts"),
       ...await vite.ssrLoadModule("/features/world/characters/builder/builder-navigation.ts"),
+      ...await vite.ssrLoadModule("/features/world/characters/villagers/villager-mind.ts"),
+      ...await vite.ssrLoadModule("/features/world/characters/villagers/villager-navigation.ts"),
+      ...await vite.ssrLoadModule("/features/world/characters/villagers/villager-wildlife.ts"),
+      ...await vite.ssrLoadModule("/features/world/environment/wildlife/forest-fauna.ts"),
       ...await vite.ssrLoadModule("/lib/check-in-api.ts"),
     };
     builderRigForHero.set(loaded.pixelSprite, loaded.builderSpriteRig);

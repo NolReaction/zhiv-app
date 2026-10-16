@@ -9,7 +9,8 @@ import { canTraverseResidents, residentClearance, residentWalkingStep, residentR
   RESIDENT_TRAFFIC_LIMITS, type ResidentOccupant } from "@/features/world/navigation/resident-traffic";
 import type { FixedWorldScene, WorldPoint } from "@/features/world/tiled/types";
 
-export type BuilderEnvironment = { now: number; construction?: EconomySceneConstruction | null; occupants?: readonly ResidentOccupant[]; night?: boolean };
+export type BuilderEnvironment = { now: number; construction?: EconomySceneConstruction | null; occupants?: readonly ResidentOccupant[];
+  night?: boolean; socialHold?: boolean };
 export type BuilderMind = {
   scene: FixedWorldScene; available: boolean; position: WorldPoint; direction: PixelDirection;
   elapsed: number; age: number; action: BuilderAction; ready: boolean;
@@ -364,6 +365,9 @@ export function advanceBuilderMind(mind: BuilderMind | null, scene: FixedWorldSc
   if (mind.noticePending && mind.elapsed >= mind.greetAfter) {
     mind.noticePending = false; mind.greetAfter = mind.elapsed + 15; mind.direction = "front"; action(mind, "greet"); return;
   }
+  // A host waits for the neighbour he agreed to meet. Work, doorways,
+  // passage requests and a player's greeting keep their earlier priority.
+  if (environment.socialHold) return;
   mind.wait -= step;
   if (mind.wait > 0 || places.wander.length < 2) return;
   // A failed idle destination is skipped on the next slow decision; no loops of

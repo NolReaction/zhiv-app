@@ -48,3 +48,25 @@ export const FOREST_ANIMAL_LINES = {
   firefly: ["У тебя свой маленький фонарик.", "Спасибо за огонёк.", "Звёздочка спустилась в гости.", "Как уютно ты светишь."],
   bird: ["И тебе доброго дня, певунья.", "Слышу-слышу. Красиво поёшь.", "У леса сегодня новый припев.", "Садись рядом, места хватит."],
 } as const;
+
+const residentAnimalLines: Partial<Record<ForestSpeaker, Record<keyof typeof FOREST_ANIMAL_LINES, readonly string[]>>> = {
+  lopukh: {
+    butterfly: ["Щепки подождут. Садись на лапку.", "Твои крылья тише моих ушей."],
+    firefly: ["Фонарик! Теперь сучки все видно.", "Маленький огонёк, большие чудеса."],
+    bird: ["Я тебе подпою. Только тихонько.", "Спой ещё, я топор пока отложил."],
+  },
+  kamneshmyg: {
+    butterfly: ["Кирку убрал. Лапка свободна.", "Отряхнул пыль. Можно садиться."],
+    firefly: ["У тебя фонарь легче моего.", "В пещере такой свет пригодился бы."],
+    bird: ["Камни молчат, а ты рассказываешь.", "Послушаю лес, пока кирка отдыхает."],
+  },
+  leaftail: {
+    butterfly: ["Таких узоров ни в одной лавке нет.", "За знакомство монет не надо."],
+    firefly: ["Этот огонёк точно не продаётся.", "Заглянул на свет? Устраивайся."],
+    bird: ["Лавка подождёт. Хорошая песня!", "Вот тебе место, пернатый сосед."],
+  },
+};
+
+export function forestAnimalLines(speaker: ForestSpeaker, kind: keyof typeof FOREST_ANIMAL_LINES): readonly string[] {
+  return residentAnimalLines[speaker]?.[kind] ?? FOREST_ANIMAL_LINES[kind];
+}

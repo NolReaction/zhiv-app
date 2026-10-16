@@ -8,12 +8,12 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { createForestSocial, noticeForestSocial, advanceForestSocial, forestSocialFrames,
-  forestSocialHolding, forestSocialPartner, cancelForestSocial, FOREST_SOCIAL_LIMITS } = await vite.ssrLoadModule("/features/world/characters/social/forest-social.ts");
+  forestSocialHolding, forestSocialPartner, forestSocialWaitingHost, cancelForestSocial, FOREST_SOCIAL_LIMITS } = await vite.ssrLoadModule("/features/world/characters/social/forest-social.ts");
 const { createBuilderMind, advanceBuilderMind, requestBuilderVisit, cancelBuilderVisit } = await vite.ssrLoadModule("/features/world/characters/builder/builder-mind.ts");
 const { builderLocalPlaces } = await vite.ssrLoadModule("/features/world/characters/builder/builder-navigation.ts");
 const { canTraverse } = await vite.ssrLoadModule("/features/world/navigation/navigation.ts");
 const { residentClearance } = await vite.ssrLoadModule("/features/world/navigation/resident-traffic.ts");
-const { FOREST_ANIMAL_LINES, forestClickLines } = await vite.ssrLoadModule("/features/world/characters/social/forest-social-dialogue.ts");
+const { FOREST_ANIMAL_LINES, forestClickLines, forestAnimalLines } = await vite.ssrLoadModule("/features/world/characters/social/forest-social-dialogue.ts");
 const { FOREST_CONVERSATIONS } = await vite.ssrLoadModule("/features/world/characters/social/forest-conversations.ts");
 const now = Date.parse("2026-10-06T18:00:00Z");
 const rect = (x, y, width, height) => [{ x, y }, { x: x + width, y }, { x: x + width, y: y + height }, { x, y: y + height }];
@@ -302,13 +302,46 @@ test("villager visitors use their own callback route and hold only their actual 
     assert.equal(value.state.meeting.guest, id); assert.equal(value.state.current, null);
     assert.equal(forestSocialHolding(value.state), null);
     assert.equal(forestSocialPartner(value.state, "plesk"), null);
+    assert.equal(forestSocialWaitingHost(value.state), "plesk", "the host can wait at the agreed place during approach");
     assert.equal(value.calls[0][3], value.env.occupants);
     value.arrive(); advanceForestSocial(value.state, 0, value.env);
     assert.equal(value.state.meeting.phase, "talk");
     assert.equal(forestSocialPartner(value.state, "plesk"), id);
+    assert.equal(forestSocialWaitingHost(value.state), null);
     assert.equal(forestSocialHolding(value.state), null);
     cancelForestSocial(value.state, value.env);
     assert.equal(value.status.size, 0); assert.deepEqual(value.calls.at(-1), ["cancel", id]);
+  }
+});
+
+test("an approaching visitor never reserves the player hero and busy hosts release their waiting promise immediately", () => {
+  const hero = visitorFixture("lopukh", "mochlik");
+  advanceForestSocial(hero.state, .1, hero.env);
+  assert.equal(hero.state.meeting?.phase, "approach");
+  assert.equal(forestSocialWaitingHost(hero.state), null); assert.equal(forestSocialHolding(hero.state), null);
+  const value = visitorFixture("kamneshmyg", "leaftail");
+  advanceForestSocial(value.state, .1, value.env); assert.equal(forestSocialWaitingHost(value.state), "leaftail");
+  value.host.available = false; value.host.context = "trade";
+  advanceForestSocial(value.state, 0, value.env);
+  assert.equal(forestSocialWaitingHost(value.state), null); assert.equal(value.state.meeting, null);
+});
+
+test("new neighbours answer actual animals in their own roles without increasing the shared chatter budget", () => {
+  for (const id of ["lopukh", "kamneshmyg", "leaftail"]) for (const kind of ["butterfly", "firefly", "bird"]) {
+    const value = visitorFixture(id, "plesk"); value.host.available = false;
+    value.state.nextEncounterAt = Infinity; value.state.nextAnimalAt = 0;
+    value.env.animalEvents = [{ id: "actual-individual-1", speaker: id, kind }];
+    advanceForestSocial(value.state, .1, value.env);
+    assert.ok(forestAnimalLines(id, kind).includes(value.state.current.text));
+    assert.ok(forestAnimalLines(id, kind).every(line => line.length <= 42));
+    assert.equal(value.state.nextAnimalAt, value.state.elapsed + FOREST_SOCIAL_LIMITS.animal);
+    const first = value.state.current.id;
+    for (let age = 0; age < 10; age++) {
+      value.env.animalEvents = [{ id: `actual-individual-${age + 2}`, speaker: id, kind }];
+      advanceForestSocial(value.state, 1, value.env);
+      assert.ok(!value.state.current || value.state.current.id === first);
+    }
+    assert.equal(value.state.queue.length, 0);
   }
 });
 

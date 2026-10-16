@@ -1,5 +1,5 @@
 import { cancelBuilderVisit, requestBuilderVisit, type BuilderMind } from "@/features/world/characters/builder/builder-mind";
-import { FOREST_ANIMAL_LINES, forestClickLines } from "./forest-social-dialogue";
+import { forestAnimalLines, forestClickLines } from "./forest-social-dialogue";
 import { FOREST_CONVERSATIONS, type ForestConversation } from "./forest-conversations";
 import { canTraverse, createWorldNavigation } from "@/features/world/navigation/navigation";
 import type { ResidentOccupant } from "@/features/world/navigation/resident-traffic";
@@ -245,7 +245,7 @@ export function advanceForestSocial(state: ForestSocialState, dt: number, env: F
     if (state.meeting) return;
   }
   if (animalEvent && state.elapsed >= state.nextAnimalAt && state.elapsed >= state.nextManualAt) {
-    speak(state, { speaker: animalEvent.speaker, text: choose(state, FOREST_ANIMAL_LINES[animalEvent.kind]) });
+    speak(state, { speaker: animalEvent.speaker, text: choose(state, forestAnimalLines(animalEvent.speaker, animalEvent.kind)) });
     state.nextAnimalAt = state.elapsed + FOREST_SOCIAL_LIMITS.animal;
     state.nextManualAt = state.elapsed + FOREST_SOCIAL_LIMITS.manualGlobal;
     state.nextEncounterAt = Math.max(state.nextEncounterAt, state.elapsed + 45);
@@ -262,6 +262,12 @@ export function forestSocialPartner(state: ForestSocialState, speaker: ForestSpe
   const meeting = state.meeting;
   if (meeting?.phase !== "talk") return null;
   return meeting.host === speaker ? meeting.guest : meeting.guest === speaker ? meeting.host : null;
+}
+/** A neighbour who agreed to receive a visitor waits briefly at the promised
+ * spot. The player-controlled hero keeps choosing his own actions until talk. */
+export function forestSocialWaitingHost(state: ForestSocialState): Exclude<ForestSpeaker, "mochlik"> | null {
+  const meeting = state.meeting;
+  return meeting?.phase === "approach" && meeting.host !== "mochlik" ? meeting.host : null;
 }
 export function forestSocialFrames(state: ForestSocialState): ForestSpeechFrame[] {
   return state.current ? [{ ...state.current }] : [];

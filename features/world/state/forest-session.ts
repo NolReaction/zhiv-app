@@ -17,6 +17,7 @@ import type { ForestJourneyTravel } from "@/features/world/activities/journeys/f
 import type { EconomySceneProduction } from "@/features/world/state/economy/economy-production-state";
 import type { ForestWaterDynamics } from "@/features/world/environment/water/forest-water-dynamics";
 import { createForestVillagers, type ForestVillagersState } from "@/features/world/characters/villagers/villager-mind";
+import { createVillagerWildlife, type VillagerWildlifeState } from "@/features/world/characters/villagers/villager-wildlife";
 import type { EconomySceneResidents } from "@/features/world/state/economy/economy-residents-state";
 
 type View = "circle" | "world";
@@ -35,6 +36,7 @@ export type ForestSessionState = {
   pleskMind: PleskMind | null;
   builderMind: BuilderMind | null;
   villagers?: ForestVillagersState;
+  villagerWildlife?: VillagerWildlifeState;
   economyResidents?: EconomySceneResidents;
   economyConstruction?: EconomySceneConstruction;
   birdReactions: ReturnType<typeof createBirdReactions>;
@@ -99,7 +101,7 @@ export function connectForestSession(key: string | undefined, scene: FixedWorldS
   if (!shared) {
     const state: ForestSessionState = { elapsed: 0, timestamp, dusk, wetness: 0, life: createForestLife(scene), clearing: createClearingActivity(scene),
       social: createForestSocial(`${key ?? "guest"}:${timestamp}`), fauna: createForestFauna(scene), pleskMind: createPleskMind(scene), builderMind: createBuilderMind(scene, { awaitConstruction: options.awaitBuilderConstruction }), director: createForestDirector(), birdReactions: createBirdReactions(), lastBirdStimulus: 0,
-      villagers: createForestVillagers(scene), pendingLife: null, pendingAttention: false,
+      villagers: createForestVillagers(scene), villagerWildlife: createVillagerWildlife(), pendingLife: null, pendingAttention: false,
       reaction: 0, animation: null, birdStarted: null, birdSeed: -1,
       memory: { mode: "ephemeral", restored: false, reconciled: false, lastSavedAt: null, enabled: false } };
     // A remembered outdoor position must also be clear of the parked basket.
@@ -119,7 +121,7 @@ export function connectForestSession(key: string | undefined, scene: FixedWorldS
           Object.assign(state, { elapsed: 0, wetness: 0, water: undefined,
             clearing: createClearingActivity(scene), life: createForestLife(scene),
             social: createForestSocial(`${key ?? "guest"}:${timestamp}`), fauna: createForestFauna(scene), pleskMind: createPleskMind(scene), builderMind: rehydrateBuilderMind(scene, state.builderMind), director: createForestDirector(), birdReactions: createBirdReactions(),
-            villagers: createForestVillagers(scene), lastBirdStimulus: 0, pendingLife: null, pendingAttention: false, explorationId: undefined, journeyTravel: undefined, cookingPreview: undefined, builderPreview: undefined, reaction: 0, animation: null,
+            villagers: createForestVillagers(scene), villagerWildlife: createVillagerWildlife(), lastBirdStimulus: 0, pendingLife: null, pendingAttention: false, explorationId: undefined, journeyTravel: undefined, cookingPreview: undefined, builderPreview: undefined, reaction: 0, animation: null,
             birdStarted: null, birdSeed: -1 });
           setClearingNavigationObstacle(state.clearing, gardenBasketFootprint(state.life.garden));
           memory.apply(payload);

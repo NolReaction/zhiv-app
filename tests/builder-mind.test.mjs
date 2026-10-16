@@ -330,3 +330,20 @@ test("a confirmed woodlot job remains authoritative while its deferred map host 
   assert.deepEqual(mind.job, construction.jobs[0], "the display does not cancel the server's construction job");
   assert.deepEqual(construction, original);
 });
+
+test("a host waits for his neighbour but a real construction or player greeting interrupts the wait", () => {
+  const scene = fixture(), mind = createBuilderMind(scene), empty = snapshot([], 1);
+  advanceBuilderMind(mind, scene, 0, { now: start, construction: empty });
+  mind.wait = 0;
+  const feet = { ...mind.position }, decisions = mind.decisions;
+  for (let tick = 0; tick < 120; tick++) advanceBuilderMind(mind, scene, .1,
+    { now: start, construction: empty, socialHold: true });
+  assert.deepEqual(mind.position, feet); assert.equal(mind.route, null); assert.equal(mind.decisions, decisions);
+  noticeBuilderMind(mind);
+  advanceBuilderMind(mind, scene, .1, { now: start, construction: empty, socialHold: true });
+  assert.equal(mind.action, "greet", "an intentional greeting outranks the optional social wait");
+  const active = snapshot([job()], 2);
+  advanceBuilderMind(mind, scene, 0, { now: start, construction: active, socialHold: true });
+  assert.equal(mind.job.id, "home"); assert.equal(mind.action, "walk");
+  assert.ok(mind.route, "confirmed construction takes its ordinary checked path");
+});

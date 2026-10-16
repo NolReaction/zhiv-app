@@ -26,7 +26,7 @@ export function startLeaftailPortraitAnimation(draw: (pose: LeaftailPortraitPose
     if (stopped || page.hidden || reduced.matches) return;
     if (previous !== undefined) elapsed += Math.max(0, Math.min(250, now - previous)) / 1000;
     previous = now;
-    if (elapsed - painted >= 1 / 8) { draw(leaftailPortraitPose(elapsed)); painted = elapsed; }
+    if (elapsed - painted >= 1 / 12) { draw(leaftailPortraitPose(elapsed)); painted = elapsed; }
     request = host.requestAnimationFrame(tick);
   };
   const sync = () => {

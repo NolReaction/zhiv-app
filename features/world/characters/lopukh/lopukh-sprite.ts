@@ -1,4 +1,5 @@
 import type { PixelDirection } from "@/features/mochlik/pixel-sprite";
+import { forestVillagerGait } from "../forest-villager-gait";
 import type { WorldPoint } from "@/features/world/tiled/types";
 import type { ForestVillagerAction } from "../forest-villager-types";
 
@@ -34,7 +35,7 @@ export function lopukhSprite(action: ForestVillagerAction, direction: PixelDirec
   action = actions.includes(action) ? action : "idle";
   direction = directions.includes(direction) ? direction : "front";
   const clock = still || !Number.isFinite(frame) ? 0 : ((Math.trunc(frame) % 32) + 32) % 32;
-  const stride = action === "walk" || action === "carry" ? clock % 8 : 0;
+  const stride = action === "walk" || action === "carry" ? clock % 16 : 0;
   const stage = !still && ["work", "inspect", "greet", "trade"].includes(action)
     ? Math.round(Math.max(0, Math.min(1, Number.isFinite(phase) ? phase : 0)) * 16) : 0;
   const breathe = !still && ["idle", "rest"].includes(action) && clock >= 8 && clock < 20 ? 1 : 0;
@@ -62,21 +63,21 @@ export function lopukhSprite(action: ForestVillagerAction, direction: PixelDirec
       const at = mix(a, b, i / steps); rect(at.x - half, at.y - half, width, width, color);
     }
   };
-  const step = [0, 1, 2, 1, 0, -1, -2, -1][stride];
-  const bob = (action === "walk" || action === "carry") && [1, 2, 5, 6].includes(stride) ? -1 : 0;
+  const gait = forestVillagerGait(stride), step = gait.step;
+  const bob = action === "walk" || action === "carry" ? gait.bob : 0;
   const rise = bob - breathe + (action === "rest" ? 1 : 0), p = stage / 16;
-  const gesture = Math.sin(p * Math.PI);
+  const gesture = (1 - Math.cos(p * Math.PI * 2)) / 2;
   const head = point(side ? 27 : 24, 23 + rise + (action === "inspect" ? Math.round(gesture) : 0));
-  const feet = side ? [point(20 + step, 43 - (step < 0 ? 1 : 0)), point(30 - step, 43 - (step > 0 ? 1 : 0))]
-    : [point(18, 43 - (step < 0 ? 2 : 0)), point(30, 43 - (step > 0 ? 2 : 0))];
+  const feet = side ? [point(20 + step, 43 - Math.min(1, gait.leftLift)), point(30 - step, 43 - Math.min(1, gait.rightLift))]
+    : [point(18, 43 - gait.leftLift), point(30, 43 - gait.rightLift)];
   const shoulder = point(side ? 32 : back ? 31 : 16, 32 + rise);
   const farShoulder = point(side ? mirrored && action !== "carry" ? 32 : 24 : back ? 16 : 32, 32 + rise);
   const rest = point(side ? 35 : back ? 34 : 13, 36 + rise);
   const restHead = point(side ? 38 : back ? 35 : 12, 41 + rise);
   const toolBehind = back || mirrored, carry = action === "carry";
-  let palm = point(rest.x, rest.y + Math.round(step / 2));
-  let axeHead = point(restHead.x, restHead.y + Math.round(step / 2));
-  let farPalm = point(side ? mirrored && !carry ? 35 : 27 : back ? 15 : 34, 36 + rise - Math.round(step / 2));
+  let palm = point(rest.x, rest.y + gait.swing);
+  let axeHead = point(restHead.x, restHead.y + gait.swing);
+  let farPalm = point(side ? mirrored && !carry ? 35 : 27 : back ? 15 : 34, 36 + rise - gait.swing);
   if (action === "work") {
     const lifted = point(side ? 37 : back ? 37 : 11, 32 + rise);
     const liftedHead = point(side ? 42 : back ? 41 : 6, 34 + rise);

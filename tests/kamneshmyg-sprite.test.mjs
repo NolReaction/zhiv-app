@@ -55,13 +55,29 @@ test("four directions are distinct, with a lamp facing forward and no eyes on th
 
 test("walk and loaded walk have several grounded steps while idle breathing and blinking stay subtle", () => {
   for (const action of ["walk", "carry"]) for (const direction of directions) {
-    const poses = Array.from({ length: 8 }, (_, frame) => kamneshmygSprite(action, direction, frame));
+    const poses = Array.from({ length: 16 }, (_, frame) => kamneshmygSprite(action, direction, frame));
     assert.ok(new Set(poses.map(signature)).size >= 5);
     assert.ok(new Set(poses.map(sprite => JSON.stringify(kamneshmygSpriteRig(sprite).feet))).size >= 3);
   }
   assert.notEqual(signature(kamneshmygSprite("idle", "front", 0)), signature(kamneshmygSprite("idle", "front", 8)));
   assert.notEqual(signature(kamneshmygSprite("idle", "front", 0)), signature(kamneshmygSprite("idle", "front", 30)));
   assert.notEqual(signature(kamneshmygSprite("carry", "front", 0)), signature(kamneshmygSprite("walk", "front", 0)));
+});
+
+test("the sixteen-pose miner gait never jumps a head, paw or pickaxe joint, including the wrap", () => {
+  for (const action of ["walk", "carry"]) for (const direction of directions) {
+    const rigs = Array.from({ length: 16 }, (_, frame) => kamneshmygSpriteRig(kamneshmygSprite(action, direction, frame)));
+    const anchors = rig => [rig.head, ...rig.feet, ...rig.arms.map(arm => arm.palm), rig.tool.grip, rig.tool.head];
+    for (let frame = 0; frame < 16; frame++) {
+      const a = rigs[frame], b = rigs[(frame + 1) % 16];
+      anchors(a).forEach((p, i) => {
+        const q = anchors(b)[i];
+        assert.ok(Math.abs(p.x - q.x) <= 1 && Math.abs(p.y - q.y) <= 1,
+          `${action}/${direction}/${frame}: a heavy miner takes a continuous short step`);
+      });
+      assert.equal(a.contact.bottom, b.contact.bottom);
+    }
+  }
 });
 
 test("the pickaxe lifts once and returns, keeping two hands on its shaft and both feet planted", () => {

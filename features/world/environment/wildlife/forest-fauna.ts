@@ -27,13 +27,19 @@ export type FaunaEncounterPhase = "notice" | "raise" | "approach" | "perch" | "r
 export type FaunaEncounter = {
   token: number; entityId: string; kind: FaunaSpecies; phase: FaunaEncounterPhase;
   elapsed: number; phaseElapsed: number; direction: PixelDirection; actor: FaunaActor;
-  visitorId?: string; hand?: WorldPoint;
+  visitorId?: string; hand?: WorldPoint; maxDuration?: number;
 };
-export type FaunaVisitor = FaunaActor & { id: string; hand: WorldPoint; available: boolean };
+export type FaunaVisitor = FaunaActor & { id: string; hand: WorldPoint; available: boolean;
+  /** Legacy Pleska can wait for her distant authored population; other residents
+   * prefer a nearby short visit rather than standing with a raised paw. */
+  reach?: number; maxDuration?: number };
 export type ForestFaunaState = {
   elapsed: number; entities: ForestFaunaEntity[]; habitats: WorldHabitat[];
   encounter: FaunaEncounter | null; nextEncounterAt: number; sequence: number;
   visitorEncounters: FaunaEncounter[]; nextVisitorAt: number;
+  /** Optional for older in-memory sessions; a nearby first visitor cannot
+   * monopolise every quiet meeting when more neighbours are outside. */
+  lastVisitorId?: string; visitorCooldowns?: Record<string, number>;
   visibility: { butterflies: boolean; fireflies: boolean }; width: number; height: number;
   dusk: number; firefliesForced: boolean; lastReason: string | null;
 };
@@ -60,6 +66,7 @@ export type FaunaStimulus = WorldPoint & {
 
 const TAU = Math.PI * 2;
 const LIMITS = { butterfly: 6, firefly: 12 };
+export const FOREST_FAUNA_VISITOR_LIMITS = { reach: 160, duration: 16, cooldown: 60, quiet: 24 } as const;
 const clamp = (v: number, lo = 0, hi = 1) => Math.max(lo, Math.min(hi, v));
 const finite = (v: number) => Number.isFinite(v) ? v : 0;
 const distance = (a: WorldPoint, b: WorldPoint) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -206,10 +213,10 @@ function visitorHabitat(state: ForestFaunaState, habitat: WorldHabitat): WorldHa
   return field;
 }
 function candidate(state: ForestFaunaState, kind: FaunaSpecies, actor: FaunaActor, options: ForestFaunaConditions, forced: boolean,
-  hand?: WorldPoint) {
+  hand?: WorldPoint, visitorReach = 600) {
   if (!hand && (state.encounter || state.elapsed < state.nextEncounterAt) || !permitted(kind, options)
     || ![actor.x, actor.y, actor.size].every(Number.isFinite) || actor.size <= 0) return null;
-  const reach = hand ? 600 : forced ? Math.min(140, actor.size * 2.4) : Math.min(95, actor.size * 1.55);
+  const reach = hand ? clamp(finite(visitorReach), 0, 600) : forced ? Math.min(140, actor.size * 2.4) : Math.min(95, actor.size * 1.55);
   let best: ForestFaunaEntity | null = null, nearest = reach;
   for (const e of state.entities) {
     if (e.species !== kind || e.interactionToken !== null || e.cooldownUntil > state.elapsed || e.alertness > .4
@@ -554,6 +561,23 @@ function advanceEntity(state: ForestFaunaState, e: ForestFaunaEntity, dt: number
 
 /** Residents reserve real individuals independently of Mochlik. A busy/moving
  * resident releases the same animal from its last actual point, never a copy. */
+export function reconcileResidentFaunaEncounters(state: ForestFaunaState, visitors: readonly FaunaVisitor[],
+  conditions?: ForestFaunaConditions): void {
+  for (const visit of state.visitorEncounters ?? []) {
+    if (visit.phase === "release" || visit.phase === "interrupt") continue;
+    const visitor = visitors.find(actor => actor.id === visit.visitorId);
+    const entity = state.entities.find(item => item.id === visit.entityId);
+    if (visitor?.available && entity && [visitor.x, visitor.y, visitor.size, visitor.hand.x, visitor.hand.y].every(Number.isFinite)
+      && distance(visitor, visit.actor) <= .5 && Math.abs(visitor.size - visit.actor.size) <= .01
+      && (!visit.hand || distance(visitor.hand, visit.hand) <= .5)
+      && (!conditions || permitted(visit.kind, { ...conditions, blocked: false }))) continue;
+    // Authority/touch may preempt on a still frame. Only the contract changes:
+    // keep the individual's exact coordinates, velocity, phase and identity.
+    visit.phase = "interrupt"; visit.phaseElapsed = 0;
+    if (entity) depart(state, entity);
+  }
+}
+
 function advanceVisitorEncounters(state: ForestFaunaState, dt: number, options: ForestFaunaOptions) {
   const visits = state.visitorEncounters ?? (state.visitorEncounters = []);
   const visitors = options.visitors ?? [];
@@ -565,7 +589,7 @@ function advanceVisitorEncounters(state: ForestFaunaState, dt: number, options: 
     const released = visit.phase === "release" || visit.phase === "interrupt";
     if (!released && (!visitor?.available || !e || !permitted(visit.kind, conditions)
       || distance(visitor, visit.actor) > .5 || Math.abs(visitor.size - visit.actor.size) > .01
-      || visit.hand && distance(visitor.hand, visit.hand) > .5 || visit.elapsed > 55)) {
+      || visit.hand && distance(visitor.hand, visit.hand) > .5 || visit.elapsed > (visit.maxDuration ?? 55))) {
       visit.phase = "interrupt"; visit.phaseElapsed = 0;
       if (e) depart(state, e);
     } else if (visit.phase === "notice" && visit.phaseElapsed >= .65) {
@@ -573,20 +597,33 @@ function advanceVisitorEncounters(state: ForestFaunaState, dt: number, options: 
     } else if (visit.phase === "perch" && visit.phaseElapsed >= 2.5) {
       visit.phase = "release"; visit.phaseElapsed = 0; if (e) { e.familiarity = Math.min(1, e.familiarity + .15); depart(state, e); }
     } else if (released && visit.phaseElapsed >= .6) {
-      visits.splice(visits.indexOf(visit), 1); state.nextVisitorAt = state.elapsed + 24;
+      visits.splice(visits.indexOf(visit), 1); state.nextVisitorAt = state.elapsed + FOREST_FAUNA_VISITOR_LIMITS.quiet;
     }
   }
   if (state.elapsed < state.nextVisitorAt || visits.length) return;
   state.nextVisitorAt = state.elapsed + 3;
   const kind: FaunaSpecies = options.dusk >= .55 ? "firefly" : "butterfly";
-  for (const visitor of visitors.slice(0, 8)) {
-    if (!visitor.available || ![visitor.hand.x, visitor.hand.y].every(Number.isFinite)) continue;
-    const e = candidate(state, kind, visitor, conditions, false, visitor.hand);
+  const ordered = visitors.slice(0, 8).filter(visitor => visitor.available
+    && [visitor.hand.x, visitor.hand.y].every(Number.isFinite)
+    && (state.visitorCooldowns?.[visitor.id] ?? 0) <= state.elapsed)
+    .sort((a, b) => a.id.localeCompare(b.id));
+  const last = ordered.findIndex(visitor => visitor.id === state.lastVisitorId);
+  const candidates = last < 0 ? ordered : [...ordered.slice(last + 1), ...ordered.slice(0, last + 1)];
+  for (const visitor of candidates) {
+    const e = candidate(state, kind, visitor, conditions, false, visitor.hand, visitor.reach);
     if (!e) continue;
     const visit: FaunaEncounter = { token: ++state.sequence, entityId: e.id, kind, phase: "notice",
       elapsed: 0, phaseElapsed: 0, direction: visitor.direction ?? "front", actor: { ...visitor },
-      visitorId: visitor.id, hand: { ...visitor.hand } };
+      visitorId: visitor.id, hand: { ...visitor.hand }, maxDuration: visitor.maxDuration === undefined ? 55
+        : clamp(finite(visitor.maxDuration), 1, 55) };
     visits.push(visit); e.visitingResident = true; e.interactionToken = visit.token; e.anchorId = null; setMode(e, "approach");
+    state.lastVisitorId = visitor.id;
+    const cooldowns = state.visitorCooldowns ?? (state.visitorCooldowns = {});
+    cooldowns[visitor.id] = state.elapsed + FOREST_FAUNA_VISITOR_LIMITS.cooldown;
+    // The current game has four insect visitors. Keep malformed/dynamic caller
+    // IDs bounded as well, without tying memory to either camera's lifetime.
+    for (const id of Object.keys(cooldowns)) if (cooldowns[id] <= state.elapsed) delete cooldowns[id];
+    for (const id of Object.keys(cooldowns).slice(0, Math.max(0, Object.keys(cooldowns).length - 8))) delete cooldowns[id];
     break;
   }
 }

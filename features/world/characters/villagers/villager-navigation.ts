@@ -3,6 +3,7 @@ import { prepareSteeringPath, type SteeringPath } from "@/features/world/navigat
 import { residentClearance } from "@/features/world/navigation/resident-traffic";
 import type { FixedWorldScene, WorldPoint } from "@/features/world/tiled/types";
 import type { ForestVillagerId } from "@/features/world/characters/forest-villager-types";
+import { forestVillagerDoor } from "./villager-doorway-navigation";
 
 export const FOREST_VILLAGER_PROFILES = {
   lopukh: { size: 44, speed: 39, home: "lopukh-home", work: "woodlot", diligence: .72, sociability: .92, fatigue: .4 },
@@ -10,7 +11,10 @@ export const FOREST_VILLAGER_PROFILES = {
   leaftail: { size: 44, speed: 32, home: "leaftail-caravan", work: "leaftail-caravan", diligence: .8, sociability: .78, fatigue: .32 },
 } as const;
 export type VillagerStop = { id: string; position: WorldPoint; lookAt: WorldPoint };
-export type VillagerPlaces = { navigation: WorldNavigation; home: VillagerStop; work: VillagerStop[]; wander: VillagerStop[] };
+export type VillagerDoor = { id: string; kind: "threshold" | "concealment"; approach: VillagerStop;
+  points: readonly WorldPoint[]; distances: readonly number[]; length: number; fadeAt: number; navigation: WorldNavigation };
+export type VillagerPlaces = { navigation: WorldNavigation; home: VillagerStop; work: VillagerStop[]; wander: VillagerStop[];
+  door: VillagerDoor | null };
 export const villagerDistance = (a: WorldPoint, b: WorldPoint) => Math.hypot(a.x - b.x, a.y - b.y);
 const finite = (p: WorldPoint | undefined): p is WorldPoint => !!p && Number.isFinite(p.x) && Number.isFinite(p.y);
 const cache = new WeakMap<FixedWorldScene, Map<ForestVillagerId, VillagerPlaces | null>>();
@@ -51,16 +55,17 @@ export function forestVillagerPlaces(scene: FixedWorldScene, id: ForestVillagerI
   const wander = [...homes.slice(1, 4), ...(scene.navigation?.interests ?? [])
     .filter(point => finite(point.position) && isWalkable(navigation, point.position))
     .map(point => ({ id: point.id, position: { ...point.position }, lookAt: { x: point.position.x, y: point.position.y + 10 } }))];
-  const result = { navigation, home, work: work.length ? work : [home], wander };
+  const result = { navigation, home, work: work.length ? work : [home], wander,
+    door: forestVillagerDoor(scene, id, navigation, homes) };
   residents.set(id, result); return result;
 }
 
-export function forestVillagerRoute(places: VillagerPlaces, from: WorldPoint, candidates: readonly VillagerStop[], size: number):
+export function forestVillagerRoute(places: VillagerPlaces, from: WorldPoint, candidates: readonly VillagerStop[], size: number, maxLength = Infinity):
   { target: VillagerStop; route: SteeringPath } | null {
   for (const target of candidates.slice(0, 4)) {
     const points = findWorldPath(places.navigation, from, target.position);
     const route = points && prepareSteeringPath(places.navigation, points, size);
-    if (route) return { target, route };
+    if (route && route.length <= maxLength) return { target, route };
   }
   return null;
 }

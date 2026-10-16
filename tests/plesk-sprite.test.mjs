@@ -338,8 +338,11 @@ test("the round face keeps its short muzzle inside the skull and its clip on one
   }
   const right = pleskSpriteRig(pleskSprite("idle", "right", 0));
   const left = pleskSpriteRig(pleskSprite("idle", "left", 0));
-  assert.ok(right.flower.x < right.head.x && left.flower.x < left.head.x,
-    "the clip moves to the far side when she turns, rather than mirroring to the other anatomical temple");
+  assert.ok(right.flower.x < right.head.x && left.flower.x > left.head.x,
+    "both profiles keep the clip behind the same anatomical left ear, mirrored with the rear temple");
+  const petals = new Set(["#efb5bb", "#ffe1d7", "#bd858f", "#e9c371"]);
+  const petalCount = direction => [...pleskSprite("idle", direction, 0).pixels.values()].filter(color => petals.has(color)).length;
+  assert.ok(petalCount("right") < petalCount("left"), "the right view puts the far left-ear flower behind the skull");
 });
 
 test("raising a paw bends two short arm segments instead of stretching a low elbow to the face", () => {

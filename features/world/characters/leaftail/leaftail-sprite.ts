@@ -1,5 +1,6 @@
 import type { PixelDirection } from "@/features/mochlik/pixel-sprite";
 import type { ForestVillagerAction } from "@/features/world/characters/forest-villager-types";
+import { forestVillagerGait } from "../forest-villager-gait";
 import type { WorldPoint } from "@/features/world/tiled/types";
 
 export const LEAFTAIL_SPRITE_SIZE = 48;
@@ -32,7 +33,7 @@ export function leaftailSprite(action: ForestVillagerAction, direction: PixelDir
   action = actions.includes(action) ? action : "idle";
   direction = directions.includes(direction) ? direction : "front";
   const clock = still ? 0 : Number.isFinite(frame) ? ((Math.trunc(frame) % 32) + 32) % 32 : 0;
-  const index = action === "walk" ? clock % 8 : 0;
+  const index = action === "walk" ? clock % 16 : 0;
   const staged = ["work", "trade", "inspect", "greet"].includes(action);
   const stage = still || !staged ? 0 : Math.round(Math.max(0, Math.min(1, Number.isFinite(phase) ? phase : 0)) * 16);
   const breath = !still && action === "idle" && clock >= 9 && clock < 21 ? 1 : 0;
@@ -73,21 +74,22 @@ export function leaftailSprite(action: ForestVillagerAction, direction: PixelDir
     const steps = Math.max(Math.abs(b.x - a.x), Math.abs(b.y - a.y), 1);
     for (let step = 0; step <= steps; step++) { const p = mix(a, b, step / steps); rect(p.x, p.y, width, width, color); }
   };
-  const stride = action === "walk" ? [0, 1, 2, 1, 0, -1, -2, -1][index] : 0;
-  const rise = (action === "walk" && [1, 2, 5, 6].includes(index) ? -1 : 0) - breath;
+  const gait = forestVillagerGait(index), stride = gait.step;
+  const rise = (action === "walk" ? gait.bob : 0) - breath;
   const resting = action === "rest", progress = stage / 16;
   // Each deliberate action performs one gesture and settles before its end.
-  const gesture = progress < .2 ? progress / .2 : progress < .5 ? 1 : progress < .8 ? ( .8 - progress) / .3 : 0;
+  const gesture = progress < .2 ? (1 - Math.cos(Math.PI * progress / .2)) / 2 : progress < .5 ? 1
+    : progress < .8 ? (1 + Math.cos(Math.PI * (progress - .5) / .3)) / 2 : 0;
   const nod = action === "inspect" || action === "trade" ? Math.round(gesture) : 0;
   const head = point(side ? 29 : 27, 20 + rise + nod + (resting ? 2 : 0));
   const feet = side
-    ? [point(23 + stride, 43 - (stride < 0 ? 1 : 0)), point(33 - stride, 43 - (stride > 0 ? 1 : 0))]
-    : [point(21, 43 - (stride < 0 ? 2 : 0)), point(33, 43 - (stride > 0 ? 2 : 0))];
+    ? [point(23 + stride, 43 - Math.min(1, gait.leftLift)), point(33 - stride, 43 - Math.min(1, gait.rightLift))]
+    : [point(21, 43 - gait.leftLift), point(33, 43 - gait.rightLift)];
   const shoulder = point(side ? 33 : back ? 34 : 20, 32 + rise);
   const farShoulder = point(side ? 26 : back ? 20 : 34, 32 + rise);
   const restPalm = point(side ? 36 : back ? 36 : 18, 36 + rise);
-  let palm = point(restPalm.x, restPalm.y + Math.round(stride / 2));
-  let farPalm = point(side ? 27 : back ? 18 : 36, 36 + rise - Math.round(stride / 2));
+  let palm = point(restPalm.x, restPalm.y + gait.swing);
+  let farPalm = point(side ? 27 : back ? 18 : 36, 36 + rise - gait.swing);
   if (action === "trade") palm = mix(restPalm, point(side ? 38 : back ? 37 : 16, 33 + rise), gesture);
   if (action === "work") {
     palm = mix(restPalm, point(side ? 35 : back ? 35 : 19, 35 + rise), gesture);
@@ -99,8 +101,8 @@ export function leaftailSprite(action: ForestVillagerAction, direction: PixelDir
   const bundle = point(palm.x + (side || back ? 1 : -1), palm.y + 3);
   const coin = point(palm.x + (side ? 4 : back ? 2 : -2), palm.y - 1);
   const toolBehind = back || mirrored;
-  const tail = point(14, 24);
-  const tailShift = action === "walk" ? Math.round(stride / 2) : 0;
+  const tailShift = action === "walk" ? gait.swing : 0;
+  const tail = point(14 + tailShift, 24);
   const leaf = (coordinates: readonly [number, number][]) => coordinates.map(([x, y]) => point(x + tailShift, y));
   polygon(leaf([[19,41],[11,38],[6,33],[3,24],[4,16],[8,10],[15,3],[20,8],[24,16],[24,25],[21,34]]), colors.outline);
   polygon(leaf([[18,39],[12,36],[8,31],[5,24],[6,17],[10,11],[15,6],[18,10],[22,17],[22,25],[19,33]]), colors.tail);
@@ -140,13 +142,31 @@ export function leaftailSprite(action: ForestVillagerAction, direction: PixelDir
   oval(head.x, head.y - 1, side ? 8 : 10, 9, colors.fur);
   oval(head.x - 2, head.y - 4, side ? 5 : 7, 4, colors.light);
   if (!back) {
-    oval(head.x + (side ? 3 : 0), head.y + 4, side ? 7 : 9, 5, colors.cream);
-    oval(head.x + (side ? 5 : 0), head.y + 5, side ? 4 : 6, 3, colors.pale);
+    // Keep the russet brow between the eyes and two little cream cheeks.
+    // A single high oval used to put both eyes inside a flat white band.
+    if (side) {
+      oval(head.x + 4, head.y + 5, 6, 4, colors.cream);
+      oval(head.x + 5, head.y + 5, 3, 2, colors.pale);
+    } else {
+      for (const offset of [-4, 4]) {
+        oval(head.x + offset, head.y + 5, 5, 3, colors.cream);
+        oval(head.x + offset, head.y + 4, 3, 2, colors.pale);
+      }
+    }
     const eyes = side ? [head.x + 3] : [head.x - 5, head.x + 5];
-    for (const x of eyes) { rect(x, head.y, 2, blink || resting ? 1 : 3, colors.eye); if (!blink && !resting) rect(x, head.y, 1, 1, colors.pale); }
-    rect(head.x + (side ? 8 : -1), head.y + 4, side ? 2 : 3, 2, colors.deep);
-    rect(head.x + (side ? 6 : 0), head.y + 7, side ? 2 : 1, 1, colors.outline);
-    if (!side) { rect(head.x - 3, head.y + 6, 1, 1, colors.shade); rect(head.x + 3, head.y + 6, 1, 1, colors.shade); }
+    for (const x of eyes) {
+      rect(x, head.y - 2, 2, blink || resting ? 1 : 3, colors.eye);
+      if (!blink && !resting) rect(x, head.y - 2, 1, 1, colors.pale);
+    }
+    rect(head.x + (side ? 8 : -1), head.y + 3, side ? 2 : 3, 2, colors.eye);
+    rect(head.x + (side ? 8 : 0), head.y + 5, 1, 2, colors.deep);
+    if (side) rect(head.x + 6, head.y + 7, 2, 1, colors.outline);
+    else {
+      rect(head.x - 2, head.y + 7, 2, 1, colors.deep);
+      rect(head.x + 1, head.y + 7, 2, 1, colors.deep);
+      rect(head.x - 6, head.y + 5, 1, 1, colors.shade);
+      rect(head.x + 6, head.y + 5, 1, 1, colors.shade);
+    }
   } else {
     oval(head.x, head.y - 3, 6, 5, colors.light);
     rect(head.x - 1, head.y + 2, 3, 4, colors.glow);

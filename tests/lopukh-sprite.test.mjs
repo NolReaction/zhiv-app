@@ -60,12 +60,27 @@ test("folded ears, cream muzzle and the little round tail distinguish the four v
 
 test("walking alternates planted feet without stretching limbs or hiding the ears", () => {
   for (const direction of directions) for (const action of ["walk", "carry"]) {
-    const poses = Array.from({ length: 8 }, (_, frame) => lopukhSprite(action, direction, frame));
+    const poses = Array.from({ length: 16 }, (_, frame) => lopukhSprite(action, direction, frame));
     assert.ok(new Set(poses.map(signature)).size >= 5);
     assert.ok(new Set(poses.map(sprite => JSON.stringify(lopukhSpriteRig(sprite).feet))).size >= 3);
   }
   assert.notEqual(signature(lopukhSprite("idle", "front", 0)), signature(lopukhSprite("idle", "front", 8)));
   assert.notEqual(signature(lopukhSprite("idle", "front", 0)), signature(lopukhSprite("idle", "front", 30)));
+});
+
+test("the rabbit's sixteen-pose step moves each foot, head and held tool by at most one source pixel", () => {
+  for (const action of ["walk", "carry"]) for (const direction of directions) {
+    const rigs = Array.from({ length: 16 }, (_, frame) => lopukhSpriteRig(lopukhSprite(action, direction, frame)));
+    const anchors = rig => [rig.head, ...rig.feet, ...rig.arms.map(arm => arm.palm), rig.axe.grip, rig.axe.head];
+    for (let frame = 0; frame < 16; frame++) {
+      const a = rigs[frame], b = rigs[(frame + 1) % 16];
+      anchors(a).forEach((p, i) => {
+        const q = anchors(b)[i];
+        assert.ok(Math.abs(p.x - q.x) <= 1 && Math.abs(p.y - q.y) <= 1, `${action}/${direction}/${frame}: no jump at a gait boundary`);
+      });
+      assert.equal(a.contact.bottom, b.contact.bottom);
+    }
+  }
 });
 
 test("the axe lifts once, strikes below the face, then returns to a calm resting grip", () => {
