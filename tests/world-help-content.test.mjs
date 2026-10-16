@@ -67,6 +67,7 @@ test("search understands normal Russian questions, endings, ё and one-letter mi
     ["магазин удочек", "plesk"],
     ["как варить уху", "campfire"],
     ["расскажи про заказы", "resident-orders"],
+    ["объявления", "market"],
     ["проект полянки", "third-house-stage"],
     ["как выставить больше лотов", "market-slots"],
     ["что значит открыть товар", "item-unlocks"],
