@@ -77,6 +77,9 @@ import { drawForestSpeech, type ForestSpeechCanvasFrame } from "@/features/world
 import { loadForestSpeechFont } from "@/features/world/characters/social/forest-speech-font";
 import { builderDirection } from "@/features/world/characters/builder/builder-navigation";
 import { forestResidentOccupants } from "@/features/world/characters/forest-resident-occupancy";
+import { createForestVillagers, rehydrateForestVillagers, configureForestVillagers, advanceForestVillagers, forestVillagerFrames,
+  noticeForestVillager, requestForestVillagerVisit, cancelForestVillagerVisit, settleForestVillagerArrival } from "@/features/world/characters/villagers/villager-mind";
+import { syncForestResidentAccess } from "@/features/world/state/economy/economy-residents-state";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { audioDevStore } from "@/features/audio/dev/audio-dev-store";
 import { createWorldAudioController } from "@/features/world/audio/world-audio-controller";
@@ -446,6 +449,39 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     const owner = options.presenceKey?.startsWith("zhiv:mochlik:presence:") ? options.presenceKey.slice("zhiv:mochlik:presence:".length) : undefined;
     syncForestProduction(state, options.economyProduction, owner);
   }
+  const announcedArrivals = new WeakSet<object>();
+  function syncVillagers() {
+    const owner = options.presenceKey?.startsWith("zhiv:mochlik:presence:") ? options.presenceKey.slice("zhiv:mochlik:presence:".length) : undefined;
+    syncForestResidentAccess(state, options.economyResidents, owner);
+    if (!session.isOwner()) return;
+    const villagers = state.villagers ??= createForestVillagers(world), access = state.economyResidents;
+    const presentingArrival = Boolean(options.view === "world" && active() && options.residentArrival?.enabled);
+    // A completed construction also changes its collision silhouette. Wait for
+    // the matching artwork before planning any resident's first approach.
+    const quarryReady = (access?.buildings.quarry ?? 0) < 1 || (visuals.quarry?.level ?? 0) > 0;
+    configureForestVillagers(villagers, world, { buildings: access?.buildings ?? {}, confirmed: Boolean(access && quarryReady),
+      production: access?.production, now: explorationNow(), arrivalSeen: options.residentArrival?.seen ?? villagers.arrivalCompleted,
+      allowArrival: presentingArrival && quarryReady });
+    if (reducedMotion(options, dev) && presentingArrival) settleForestVillagerArrival(villagers, residentOccupants());
+    if (villagers.arrivalCompleted && presentingArrival && options.residentArrival && !options.residentArrival.seen && !announcedArrivals.has(villagers)) {
+      const presenceKey = options.presenceKey;
+      announcedArrivals.add(villagers);
+      queueMicrotask(() => {
+        if (!disposed && options.presenceKey === presenceKey && state.villagers === villagers && active() && session.isOwner()
+          && options.view === "world" && options.residentArrival?.enabled) options.residentArrival.onComplete();
+        else announcedArrivals.delete(villagers);
+      });
+    }
+  }
+  function advanceVillagers(dt: number, rain: number, dusk: number) {
+    syncVillagers();
+    if (!state.villagers) return;
+    advanceForestVillagers(state.villagers, world, dt, { rain, dusk, now: explorationNow(),
+      production: state.economyResidents?.production, occupants: residentOccupants(),
+      arrivalActive: Boolean(options.view === "world" && options.residentArrival?.enabled && active() && session.isOwner()),
+      socialHolds: (["lopukh", "kamneshmyg", "leaftail"] as const).filter(id => Boolean(forestSocialPartner(state.social, id))) });
+    syncVillagers();
+  }
   function syncConstruction() {
     const owner = options.presenceKey?.startsWith("zhiv:mochlik:presence:") ? options.presenceKey.slice("zhiv:mochlik:presence:".length) : undefined;
     syncForestConstruction(state, options.economyConstruction, owner);
@@ -469,7 +505,8 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     // Even an unclaimed expedition keeps its own return animation. Ordinary
     // quarry production borrows the worker only when that slot is empty.
     if (options.economyJourney) return { journey: options.economyJourney, now };
-    const mining = forestProductionJourney(state.economyProduction, now);
+    const mining = state.economyResidents && (state.economyResidents.buildings.quarry ?? 0) >= 1
+      ? null : forestProductionJourney(state.economyProduction, now);
     if (mining) return { journey: mining, now };
     if (!WORLD_DEV_ENABLED || !state.fishingPreview) return { journey: null, now };
     const rehearsal = state.fishingPreview;
@@ -502,12 +539,16 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     const builder = previewForestBuilder(builderMindFrame(state.builderMind, world, reducedMotion(options, dev)),
       state.elapsed, reducedMotion(options, dev), builderRehearsal ?? null,
       builderRehearsal && builderRehearsal.id === state.builderPreview?.id ? state.builderPreview.startedAt : state.elapsed);
-    return [...plesk, ...(builder ? [builder] : [])];
+    const villagers = state.villagers ? forestVillagerFrames(state.villagers, reducedMotion(options, dev)).map(resident => {
+      const partner = socialPartnerPosition(resident.id);
+      return partner ? { ...resident, direction: builderDirection(partner.x - resident.x, partner.y - resident.y) } : resident;
+    }) : [];
+    return [...plesk, ...(builder ? [builder] : []), ...villagers];
   }
   function socialPartnerPosition(speaker: ForestSpeaker): WorldPoint | undefined {
     const partner = forestSocialPartner(state.social, speaker);
     return partner === "mochlik" ? state.clearing.position : partner === "builder" ? state.builderMind?.position
-      : partner === "plesk" ? state.pleskMind?.position : undefined;
+      : partner === "plesk" ? state.pleskMind?.position : partner ? state.villagers?.residents[partner]?.position : undefined;
   }
   function residentOccupants() {
     return forestResidentOccupants(state, world, { heroVisible: dev?.showHero !== false && !actorAway(), heroScale: dev?.heroScale,
@@ -541,6 +582,15 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
         available: state.builderMind?.sleepPhase === "awake" && !state.builderMind?.job && !state.builderMind?.constructionPending && !state.builderMind?.blocked
           && !state.builderMind?.noticePending && state.builderMind?.action !== "finish",
         context: occupant.moving ? "walk" : state.builderMind?.job ? state.builderMind.ready ? "ready" : state.builderMind.blocked ? "busy" : "build" : "idle" };
+      if (occupant.id === "lopukh" || occupant.id === "kamneshmyg" || occupant.id === "leaftail") {
+        const mind = state.villagers?.residents[occupant.id], arriving = occupant.id === "kamneshmyg" && state.villagers?.arrivalPhase !== "complete";
+        return { ...occupant, id: occupant.id, visible: Boolean(mind?.available), canSpeak: !arriving,
+          available: Boolean(mind?.available && !mind.job && !mind.noticePending && !arriving
+            && (mind.socialVisit || forestSocialPartner(state.social, occupant.id) || ["idle", "rest", "inspect"].includes(mind.action))),
+          context: arriving ? "arrive" : occupant.moving ? "walk" : mind?.action === "work"
+            ? occupant.id === "kamneshmyg" ? "mine" : occupant.id === "lopukh" ? "chop" : "trade"
+            : mind?.action === "trade" ? "trade" : "idle" };
+      }
       const action = state.pleskMind?.stage.action;
       return { ...occupant, id: "plesk", visible: true,
         available: (action === "idle" || action === "rest") && !state.pleskMind?.noticePending && !state.pleskMind?.tradePending
@@ -556,6 +606,13 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     const bird = state.director.birdwatch;
     if (bird) animalEvents.push({ id: `${bird.birdId}:${Math.round((state.elapsed - bird.elapsed) * 10)}`, speaker: "mochlik", kind: "bird" });
     return { scene: world, builder: state.builderMind, actors, occupants, animalEvents,
+      requestVisit: (guest, host, nearby) => Boolean(state.villagers && (guest === "lopukh" || guest === "kamneshmyg" || guest === "leaftail")
+        && requestForestVillagerVisit(state.villagers, world, guest, host, nearby)),
+      cancelVisit: guest => { if (state.villagers && (guest === "lopukh" || guest === "kamneshmyg" || guest === "leaftail")) cancelForestVillagerVisit(state.villagers, guest); },
+      visitStatus: guest => {
+        const mind = guest === "lopukh" || guest === "kamneshmyg" || guest === "leaftail" ? state.villagers?.residents[guest] : null;
+        return mind?.socialVisit ? mind.route ? "approach" : "arrived" : null;
+      },
       enabled: active() && !manual, ambient: !reducedMotion(options, dev) && dev?.autoLife !== false,
       rain: environment.rain, dusk: environment.dusk };
   }
@@ -702,6 +759,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   function preview(): NewMapPaintPreview {
     syncProduction();
     syncConstruction();
+    syncVillagers();
     const path = dev?.debugNavigation ? clearingNavigationFrame(state.clearing) : null;
     const cooking = cookingPreviewFrame(state, dev?.cookingPreview, reducedMotion(options, dev));
     const partner = socialPartnerPosition("mochlik");
@@ -784,7 +842,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       }
       if (dev?.scenarioEvent?.kind === "fishing" && !dev.lifeEvent) startFishingPreview(dev.scenarioEvent.id);
     }
-    syncExploration(); syncGarden(); syncCooking(); syncProduction(); syncConstruction();
+    syncProduction(); syncConstruction(); syncVillagers(); syncExploration(); syncGarden(); syncCooking();
     if (session.isOwner()) advanceForestSocial(state.social, 0, socialEnvironment());
     updateObservation(true);
     updateAudio();
@@ -811,8 +869,9 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       state.reaction = Math.max(0, state.reaction - step);
       const environment = forestAtmosphereState(world, atmosphereOptions(options, state.timestamp, state.dusk, { state: dev }));
       state.wetness = updateForestWetness(state.wetness, environment.rain, step);
-      syncConstruction(); syncExploration(); syncGarden(); syncCooking();
+      syncConstruction(); syncVillagers(); syncExploration(); syncGarden(); syncCooking();
       advanceForestSocial(state.social, step, socialEnvironment());
+      advanceVillagers(step, environment.rain, environment.dusk);
       advanceBuilder(step);
       if (state.pleskMind) {
         const resident = pleskMindFrame(state.pleskMind, world, false);
@@ -831,6 +890,8 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
         ...(actorAway() || dev?.showHero === false || clearingActivityFrame(state.clearing).residing ? []
           : [{ ...state.clearing.position, size: state.clearing.size * (dev?.heroScale ?? 1), moving: clearingActivityFrame(state.clearing).pose === "walk" }]),
         ...(resident ? [{ x: resident.x, y: resident.y, size: resident.size, moving: resident.action === "walk" }] : []),
+        ...(state.villagers ? forestVillagerFrames(state.villagers).map(frame => ({ x: frame.x, y: frame.y,
+          size: frame.size, moving: Boolean(state.villagers?.residents[frame.id].route) })) : []),
       ];
       advanceBirdReactions(state.birdReactions, birdBase(), step, stimulus && stimulus.id !== state.lastBirdStimulus
         ? { kind: stimulus.kind === "rustle" ? "bush-rustle" : "footstep", position: stimulus, intensity: stimulus.strength,
@@ -928,15 +989,19 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
           const persistence = !forestPersistenceOverridden(dev, levels);
           stop();
           if (persistence) session.saveMemory(); else session.suspendPersistence();
-          const production = state.economyProduction, construction = state.economyConstruction, builder = state.builderMind;
+          const production = state.economyProduction, construction = state.economyConstruction, builder = state.builderMind,
+            residents = state.economyResidents, villagers = state.villagers;
           session.release();
           session = connect(timestamp, persistence); state = session.state;
           const freshBuilder = !state.economyConstruction && (!state.builderMind
             || state.builderMind.elapsed === 0 && !state.builderMind.jobKey);
+          const freshVillagers = !state.villagers?.confirmed;
           // Loaded geometry changes the forest fingerprint, not the economic
           // revision fence. Preserve removals across artwork/camera handoffs.
           syncForestProduction(state, production);
           syncForestConstruction(state, construction);
+          syncForestResidentAccess(state, residents);
+          if (villagers && freshVillagers) state.villagers = rehydrateForestVillagers(world, villagers, explorationNow());
           // Seed only a new session. Never replace a live camera's builder or
           // share mutable feet/clocks with a background view of old geometry.
           // Targets and route geometry are immutable; progress lives on mind.
@@ -1160,11 +1225,16 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
         (y - NEW_MAP_FOCUS.y) / NEW_MAP_FOCUS.height)) return null;
       return id;
     },
+    residentArrivalPoint() {
+      const resident = residentFrames().find(resident => resident.id === "kamneshmyg" && "arriving" in resident && resident.arriving);
+      return resident ? { x: resident.x, y: resident.y, size: resident.size } : null;
+    },
     noticeResident(id) {
       if (disposed || !session.isOwner()) return;
       noticeSpeech(id);
       if (id === "builder") noticeBuilderMind(state.builderMind);
-      else if (state.pleskMind && ["idle", "rest"].includes(state.pleskMind.stage.action)) noticePleskMind(state.pleskMind);
+      else if (id === "plesk" && state.pleskMind && ["idle", "rest"].includes(state.pleskMind.stage.action)) noticePleskMind(state.pleskMind);
+      else if (state.villagers && (id === "lopukh" || id === "kamneshmyg" || id === "leaftail")) noticeForestVillager(state.villagers, id);
       updateObservation(true); session.publish(); resume();
     },
     visitTradingPlace(id) {

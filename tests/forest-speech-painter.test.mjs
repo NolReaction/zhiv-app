@@ -26,6 +26,14 @@ test("small parchment bubbles wrap Cyrillic inside narrow and wide screen insets
   }
 });
 
+test("every new resident has its own canvas caption and safe ink", () => {
+  for (const [speaker, label] of [["lopukh", "Лопоух"], ["kamneshmyg", "Камнешмыг"], ["leaftail", "Листохвост"]]) {
+    const box = layoutForestSpeech({ ...base, speaker, text: "Привет!" }, { width: 320, height: 320 }, measure);
+    assert.equal(box.label, label);
+    assert.equal(box.speaker, speaker);
+  }
+});
+
 test("long words and messages are bounded, whitespace normalizes, short phrases remain compact", () => {
   const viewport = { width: 200, height: 320 };
   const long = layoutForestSpeech({ ...base, text: "Сверхдлинноесловобезпробелов".repeat(18) }, viewport, measure);

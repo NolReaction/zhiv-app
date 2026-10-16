@@ -8,12 +8,17 @@ import { locked } from "@/features/economy/sync/controller-state";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import styles from "./world-leaftail-market.module.css";
 
-type Quote = { owner: string; revision: number; targetId: string; itemId: string; price: number };
+type Quote = { owner: string; revision: number; targetId: string; itemId: string; price: number; quantity: number };
+type ShopSection = "finds" | "supplies";
+const sections: ReadonlyArray<{ id: ShopSection; label: string }> = [{ id: "finds", label: "Находки" }, { id: "supplies", label: "Припасы" }];
 const number = (value: number) => value.toLocaleString("ru-RU");
 const descriptions: Record<string, string> = {
   ancient_core: "Для больших построек и расширения кладовой.",
   moon_crystal: "Для развития поселения и расширения кладовой.",
   living_resin: "Для улучшения дома и расширения кладовой.",
+  wood: "Запас для строительства и мастерской.",
+  stone: "Для построек и каменных изделий.",
+  fiber: "Для верёвок и работы в мастерской.",
 };
 const resetDate = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Moscow" });
 
@@ -28,9 +33,9 @@ export function leaftailPurchaseReason(economy: EconomyController, quote: Quote,
   if (!shop) return "Листохвост пока не открыл лавку.";
   if (!shop.unlocked) return `Лавка откроется с домом уровня ${shop.requiredHomeLevel}.`;
   const offer = shop.offers.find(item => item.targetId === quote.targetId && item.itemId === quote.itemId);
-  if (!offer || offer.priceCoins !== quote.price) return "Поставка изменилась. Выберите предмет ещё раз.";
+  if (!offer || offer.priceCoins !== quote.price || offer.quantity !== quote.quantity) return "Поставка изменилась. Выберите предмет ещё раз.";
   if (offer.remaining < 1) return "Сегодня уже куплено. Дождитесь новой поставки.";
-  if (state.storage.available < 1) return "Освободите одно место в кладовой.";
+  if (state.storage.available < offer.quantity) return `Не хватает места в кладовой: ещё ${number(offer.quantity - state.storage.available)}.`;
   if (state.wallet.coins < offer.priceCoins) return `Не хватает ${number(offer.priceCoins - state.wallet.coins)} монет.`;
   return null;
 }
@@ -38,6 +43,8 @@ export function leaftailPurchaseReason(economy: EconomyController, quote: Quote,
 /** Ordinary receipt-based economy action; the browser never grants an item. */
 export function WorldLeaftailMarket({ economy, isOnline }: { economy: EconomyController; isOnline: boolean }) {
   const [quote, setQuote] = useState<Quote | null>(null);
+  const [section, setSection] = useState<ShopSection>("finds");
+  const tabsId = useId(), tabButtons = useRef<Array<HTMLButtonElement | null>>([]);
   const latest = useRef({ economy, quote, isOnline }), sent = useRef<Quote | null>(null);
   const shopElement = useRef<HTMLDivElement>(null), triggerItem = useRef<string | null>(null), heading = useRef<HTMLHeadingElement>(null);
   const wasConfirming = useRef(false), headingId = useId();
@@ -56,6 +63,7 @@ export function WorldLeaftailMarket({ economy, isOnline }: { economy: EconomyCon
   useEffect(() => { if (!economy.busy && !economy.uncertain) sent.current = null; },
     [economy.busy, economy.uncertain, economy.error, state?.ownerPublicId, state?.revision]);
   const cooldown = Math.max(0, Math.ceil((economy.retryAt - economy.now) / 1000));
+  function changeSection(next: ShopSection) { wasConfirming.current = false; setQuote(null); setSection(next); }
   const recovery = !economy.syncError && (economy.error || economy.uncertain) && <div className={styles.recovery} role="alert">
     <p>{economy.uncertain ? "Проверяем покупку. Дождитесь подтверждения, прежде чем покупать снова." : economy.error}</p>
     <button type="button" disabled={economy.busy || cooldown > 0} onClick={() => void economy.retry()}><RefreshCw size={13} aria-hidden="true" />{cooldown ? `Повторить через ${cooldown} с` : economy.uncertain ? "Проверить покупку" : "Повторить"}</button>
@@ -79,20 +87,28 @@ export function WorldLeaftailMarket({ economy, isOnline }: { economy: EconomyCon
     {!state ? <p role="status">Проверяем ваши запасы…</p> : !shop ? <p>Листохвост готовит свой прилавок. Обновите игру немного позже.</p> : <>
       <div className={styles.wallet}><span>Ваши монеты</span><strong><ItemIcon itemId="coins" size={18} />{number(state.wallet.coins)}</strong></div>
       {!shop.unlocked && <p className={styles.locked}><LockKeyhole size={17} aria-hidden="true" />Лавка откроется с домом уровня {shop.requiredHomeLevel}.</p>}
-      <p className={styles.hint}>По одному предмету каждого вида на игрока за поставку.</p>
-      {confirming && quote ? <section className={styles.confirmation} aria-labelledby={headingId}>
+      <p className={styles.hint}>Одна покупка каждого товара на игрока за поставку.</p>
+      <div className={styles.tabs} role="tablist" aria-label="Товары Листохвоста">{sections.map((entry, index) => <button key={entry.id}
+        type="button" role="tab" ref={node => { tabButtons.current[index] = node; }} id={`${tabsId}-${entry.id}`} aria-controls={`${tabsId}-offers`}
+        aria-selected={section === entry.id} tabIndex={section === entry.id ? 0 : -1} onClick={() => changeSection(entry.id)} onKeyDown={event => {
+          const nextIndex = event.key === "ArrowRight" ? (index + 1) % sections.length : event.key === "ArrowLeft" ? (index + sections.length - 1) % sections.length
+            : event.key === "Home" ? 0 : event.key === "End" ? sections.length - 1 : null;
+          if (nextIndex === null) return;
+          event.preventDefault(); changeSection(sections[nextIndex].id); tabButtons.current[nextIndex]?.focus();
+        }}>{entry.label}</button>)}</div>
+      {confirming && quote ? <section className={styles.confirmation} role="tabpanel" id={`${tabsId}-offers`} aria-labelledby={headingId}>
         <h3 id={headingId} ref={heading} tabIndex={-1}>Купить {state.catalog.items.find(item => item.id === quote.itemId)?.name ?? quote.itemId}?</h3>
-        <p>1 шт. в кладовую за <strong>{number(quote.price)} монет</strong>.</p>
+        <p>{number(quote.quantity)} шт. в кладовую за <strong>{number(quote.price)} монет</strong>.</p>
         <p>Монеты: {number(state.wallet.coins)} → {number(Math.max(0, state.wallet.coins - quote.price))}</p>
         {reason && <p className={styles.reason} role="status">{reason}</p>}
         <div className={styles.actions}><button type="button" onClick={() => setQuote(null)}>Назад</button><button className={styles.buy} type="button" disabled={Boolean(reason)} onClick={confirm}>Подтвердить<ItemIcon itemId="coins" size={16} />{number(quote.price)}</button></div>
-      </section> : <div className={styles.offers}>{shop.offers.map(offer => {
-        const nextQuote = { owner: state.ownerPublicId, revision: state.revision, targetId: offer.targetId, itemId: offer.itemId, price: offer.priceCoins };
+      </section> : <div className={styles.offers} role="tabpanel" id={`${tabsId}-offers`} aria-labelledby={`${tabsId}-${section}`} data-leaftail-section={section}>{shop.offers.filter(offer => offer.section === section).map(offer => {
+        const nextQuote = { owner: state.ownerPublicId, revision: state.revision, targetId: offer.targetId, itemId: offer.itemId, price: offer.priceCoins, quantity: offer.quantity };
         const disabledReason = leaftailPurchaseReason(economy, nextQuote, isOnline);
         const name = state.catalog.items.find(item => item.id === offer.itemId)?.name ?? offer.itemId;
-        return <article className={styles.offer} key={offer.id} data-leaftail-item={offer.itemId}>
-          <div className={styles.item}><ItemIcon itemId={offer.itemId} size={36} /><div><strong>{name}</strong><small>{descriptions[offer.itemId] ?? "Для развития поселения."}</small></div><span className={styles.stock}>{offer.remaining}/{offer.stock}</span></div>
-          <div className={styles.offerBottom}><small>В кладовой: {number(state.inventory[offer.itemId] ?? 0)}</small><button type="button" className={styles.buy} data-leaftail-purchase={offer.itemId} disabled={Boolean(disabledReason)} aria-label={`Купить ${name} за ${number(offer.priceCoins)} монет`} onClick={() => {
+        return <article className={styles.offer} key={offer.id} data-leaftail-item={offer.itemId} data-leaftail-quantity={offer.quantity}>
+          <div className={styles.item}><ItemIcon itemId={offer.itemId} size={36} /><div><strong>{name}</strong><small>{descriptions[offer.itemId] ?? "Для развития поселения."}</small></div><span className={styles.stock} aria-label={`${offer.quantity} шт. в покупке. Осталось покупок: ${offer.remaining}`}>×{number(offer.quantity)}</span></div>
+          <div className={styles.offerBottom}><small>В кладовой: {number(state.inventory[offer.itemId] ?? 0)}</small><button type="button" className={styles.buy} data-leaftail-purchase={offer.itemId} disabled={Boolean(disabledReason)} aria-label={`Купить ${name}: ${number(offer.quantity)} шт. за ${number(offer.priceCoins)} монет`} onClick={() => {
             const current = latest.current;
             if (leaftailPurchaseReason(current.economy, nextQuote, current.isOnline)) return;
             triggerItem.current = offer.itemId; setQuote(nextQuote);

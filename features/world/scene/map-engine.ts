@@ -16,7 +16,7 @@ import { createWorldLightingEditorMap, WORLD_LIGHTING_EDITOR_FOCUS_EVENT, takeWo
 import { WORLD_STUDIO_MAP_KEY_EVENT, type WorldStudioMapKeyRequest } from "@/features/world/dev/world-studio-keyboard";
 import { mapObjectAt, type MapObjectPlace, type MapInteractiveObject } from "./site-interactions";
 import { projectConstructionAnchor, type MapObjectScreenAnchor } from "./construction-map-anchor";
-import { drawMapGuideTarget, mapGuideCamera } from "./map-guide-target";
+import { drawMapGuideTarget, mapGuideCamera, minerArrivalGuideTarget } from "./map-guide-target";
 export class MapLoadError extends Error {
   constructor(public stage: "map" | "character", public cause: unknown) { super("Не удалось загрузить лес"); }
 }
@@ -70,6 +70,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   let view = { width: 1, height: 1 }, camera = retainedViewport ? { ...retainedViewport.camera } : focusCamera(view, false);
   let framing: MapFraming = retainedViewport?.framing ?? "world";
   let guidePlace: MapObjectPlace | null = null, guideBottomInset = 0;
+  let followedArrival = false;
   const guideInsets = () => ({ ...cameraInsets, bottom: Math.max(cameraInsets.bottom, guideBottomInset) });
   let inView = true;
   const home = document.createElement("canvas");
@@ -191,12 +192,20 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     if (disposed || place === guidePlace && bottomInset === guideBottomInset) return;
     const changed = place !== guidePlace;
     guidePlace = place; guideBottomInset = bottomInset;
-    const object = place ? habitat.mapObjects?.().find(object => object.place === place) : undefined;
+    const object = currentGuideTarget();
     if (object && (changed || framing === "guide")) {
       framing = "guide";
       camera = mapGuideCamera(object, view, bounds, guideInsets());
     } else if (!place && framing === "guide") framing = "manual";
     draw();
+  }
+  function arrivalTarget() {
+    if (guidePlace !== "quarry" || !options.residentArrival?.enabled || options.residentArrival.seen || editingLight()) return;
+    const point = habitat.residentArrivalPoint?.();
+    return point ? minerArrivalGuideTarget(point) : undefined;
+  }
+  function currentGuideTarget(objects = habitat.mapObjects?.() ?? []) {
+    return arrivalTarget() ?? (guidePlace ? objects.find(object => object.place === guidePlace) : undefined);
   }
   function updateObjectAnchors(objects: readonly MapInteractiveObject[]) {
     if (disposed || !objectAnchorsEnabled || !interactions.onObjectAnchorsChange) return;
@@ -239,6 +248,12 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   function draw() {
     if (disposed || !ctx) return;
     redrawPending = false;
+    const arriving = arrivalTarget();
+    if (framing === "guide" && (arriving || followedArrival)) {
+      const target = arriving ?? currentGuideTarget();
+      if (target) camera = mapGuideCamera(target, view, bounds, guideInsets());
+    }
+    followedArrival = Boolean(arriving && framing === "guide");
     habitat.setAudioCamera?.({ x: camera.x, y: camera.y, zoom: camera.zoom, viewportWidth: view.width, viewportHeight: view.height });
     if (!pointers.size) viewportRect = null;
     const ratio = canvas.width / view.width;
@@ -269,7 +284,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       lightingEditor.draw(ctx, p => worldToScreen(p, camera, view));
     }
     const objects = habitat.mapObjects?.() ?? [];
-    const guideTarget = guidePlace ? objects.find(object => object.place === guidePlace) : undefined;
+    const guideTarget = currentGuideTarget(objects);
     if (guideTarget) {
       ctx.setTransform(ratio, 0, 0, canvas.height / view.height, 0, 0);
       drawMapGuideTarget(ctx, guideTarget, camera, view);
@@ -341,7 +356,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     const scale = Math.min(window.devicePixelRatio || 1, 2, 2200 / Math.max(view.width, view.height));
     canvas.width = Math.round(view.width * scale); canvas.height = Math.round(view.height * scale);
     if (speechCanvas) { speechCanvas.width = canvas.width; speechCanvas.height = canvas.height; }
-    const guideTarget = framing === "guide" ? habitat.mapObjects?.().find(object => object.place === guidePlace) : undefined;
+    const guideTarget = framing === "guide" ? currentGuideTarget() : undefined;
     if (restoreStudioViewport && editingLight()) {
       // Selection focus may extend the full camera beyond a world edge to keep
       // the target in the gap between studio panels. Clamp that usable area,

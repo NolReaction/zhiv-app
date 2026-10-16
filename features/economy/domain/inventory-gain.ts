@@ -90,7 +90,7 @@ export function inventoryGainFromReceipt(before: EconomyView | null, result: Eco
   } else if (command.action === "buy_leaftail_item") {
     const offer = before.catalog.leaftailShop?.offers.find(item => command.targetId === `${after.leaftailShop.cycle}:${item.id}`);
     if (!offer || command.quantity !== 1) return null;
-    allowed = { [offer.itemId]: 1 }; source = "purchase";
+    allowed = { [offer.itemId]: offer.quantity ?? 1 }; source = "purchase";
   } else if (command.action === "buy_listing") {
     const listing = result.listing;
     if (!listing || listing.id !== command.targetId || listing.status !== "sold") return null;

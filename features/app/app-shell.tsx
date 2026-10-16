@@ -95,7 +95,7 @@ import { useWorld } from "@/features/world/state/use-world";
 import { useEconomy } from "@/features/economy/sync/use-economy";
 import { useEconomyAudioFeedback } from "@/features/economy/integration/use-economy-audio-feedback";
 import { GardenCollectionContext, useGardenCollectionController } from "@/features/economy/integration/garden-collection-context";
-import { economySceneActivity, economySceneJourney, economySceneProduction, economySceneConstruction, economyWorldState } from "@/features/economy/integration/world-adapter";
+import { economySceneActivity, economySceneJourney, economySceneProduction, economySceneConstruction, economySceneResidents, economyWorldState } from "@/features/economy/integration/world-adapter";
 import { worldActivity } from "@/features/world/ui/hud/world-activity";
 import { WORLD_DEV_ENABLED, worldDevStore } from "@/features/world/dev/world-dev-store";
 import { MochlikTerrarium } from "@/features/mochlik/mochlik-terrarium";
@@ -655,6 +655,7 @@ function CheckInContent() {
   const economicJourney = useMemo(() => economySceneJourney(economy.snapshot), [economy.snapshot]);
   const economicProduction = useMemo(() => economySceneProduction(economy.snapshot), [economy.snapshot]);
   const economicConstruction = useMemo(() => economySceneConstruction(economy.snapshot), [economy.snapshot]);
+  const economicResidents = useMemo(() => economySceneResidents(economy.snapshot, economy.snapshotConfirmed, me?.user.publicId), [economy.snapshot, economy.snapshotConfirmed, me?.user.publicId]);
   const economicActivity = useMemo(() => economySceneActivity(economy.snapshot), [economy.snapshot]);
   const currentActivity = worldActivity(economicActivity, renderedWorldState, economy.snapshot ? economy.now : world.now);
   const gameStartupReady = Boolean(game.progress) || game.errorCode === "STORAGE_FAILED" || game.status === "blocked";
@@ -1629,7 +1630,7 @@ function CheckInContent() {
               {sceneCanMount && <MochlikTerrarium key={me?.user.publicId} suspended={gameplay.suspended || !mochlikVisible || (worldPortal.open && worldPortal.sceneReady) || calendarOpen || gameOpen || statusOpen}
                 onLoadState={handleSceneLoadState} retrySignal={startupRetry}
                 wakeSignal={mochlikWakeSignal} nowMs={economy.snapshot ? economy.now : world.now} timeZone={me?.profile.timeZone ?? "UTC"} userId={me?.user.publicId}
-                bestStreakDays={me?.streak.longestDays ?? 0} items={game.progress?.items} worldState={renderedWorldState} worldGifts={world.snapshot?.gifts} economyJourney={economicJourney} cancelledExplorations={economy.cancelledExplorations} economyBuildings={economy.snapshot?.buildings} economyProduction={economicProduction} economyConstruction={economicConstruction} activity={currentActivity} />}
+                bestStreakDays={me?.streak.longestDays ?? 0} items={game.progress?.items} worldState={renderedWorldState} worldGifts={world.snapshot?.gifts} economyJourney={economicJourney} cancelledExplorations={economy.cancelledExplorations} economyBuildings={economy.snapshot?.buildings} economyProduction={economicProduction} economyConstruction={economicConstruction} economyResidents={economicResidents} activity={currentActivity} />}
             </div>}
             <button
               type="button"

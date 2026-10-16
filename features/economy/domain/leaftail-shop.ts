@@ -18,5 +18,7 @@ export function leaftailShopView(state: ShopState, now: number, catalog: Economy
   return { cycle: stock.cycle, refreshAt: (stock.cycle + 1) * spec.refreshSeconds * 1000,
     requiredHomeLevel: spec.requiredHomeLevel, unlocked: (state.buildings.home ?? 1) >= spec.requiredHomeLevel,
     offers: spec.offers.map(offer => ({ ...offer, targetId: `${stock.cycle}:${offer.id}`,
+      quantity: offer.quantity ?? 1,
+      section: catalog.items.find(item => item.id === offer.itemId)?.category === "special" ? "finds" as const : "supplies" as const,
       remaining: Math.max(0, offer.stock - (stock.purchased[offer.id] ?? 0)) })) };
 }

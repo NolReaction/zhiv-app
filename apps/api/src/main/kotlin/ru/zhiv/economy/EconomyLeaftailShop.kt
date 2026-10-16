@@ -28,15 +28,18 @@ object EconomyLeaftailShops {
         val stock = normalized(state.leaftailShop, now, spec)
         val offer = spec.offers.find { command.targetId == "${stock.cycle}:${it.id}" }
             ?: economyFailure("ECONOMY_LEAFTAIL_SHOP_CHANGED", "Поставка обновилась. Проверьте товары Листохвоста")
-        if (EconomyRules.catalog.items.none { it.id == offer.itemId && it.category == "special" && !it.tradable })
-            economyFailure("ECONOMY_LEAFTAIL_SHOP_CHANGED", "Этот товар пока недоступен")
+        val item = EconomyRules.catalog.items.find { it.id == offer.itemId }
+            ?: economyFailure("ECONOMY_LEAFTAIL_SHOP_CHANGED", "Этот товар пока недоступен")
+        val eligible = if (item.category == "special") !item.tradable && offer.quantity == 1L
+            else item.id in setOf("wood", "stone", "fiber") && item.tradable && offer.priceCoins == 2L * item.baseSellPrice * offer.quantity
+        if (!eligible) economyFailure("ECONOMY_LEAFTAIL_SHOP_CHANGED", "Этот товар пока недоступен")
         if (command.totalPrice != offer.priceCoins)
             economyFailure("ECONOMY_LEAFTAIL_PRICE_CHANGED", "Цена изменилась. Проверьте стоимость товара")
         if ((stock.purchased[offer.id] ?: 0) >= offer.stock)
             economyFailure("ECONOMY_LEAFTAIL_STOCK", "Сегодня этот товар уже куплен. Дождитесь новой поставки")
         if (state.wallet.coins < offer.priceCoins)
             economyFailure("ECONOMY_RESOURCES", "Не хватает монет")
-        val inventory = EconomyRules.addItems(state.inventory, mapOf(offer.itemId to 1L))
+        val inventory = EconomyRules.addItems(state.inventory, mapOf(offer.itemId to offer.quantity))
         EconomyRules.addItems(inventory, reservedItems)
         val next = state.copy(inventory = inventory,
             wallet = state.wallet.copy(coins = state.wallet.coins - offer.priceCoins),

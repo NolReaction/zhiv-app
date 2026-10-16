@@ -9,6 +9,7 @@ import { residentRouteIntent, type ResidentOccupant } from "@/features/world/nav
 import { pleskTrailDistance } from "@/features/world/characters/plesk/plesk-resident";
 import { residentFaunaEncounter } from "@/features/world/environment/wildlife/forest-fauna";
 import type { FixedWorldScene } from "@/features/world/tiled/types";
+import { forestVillagerOccupants } from "@/features/world/characters/villagers/villager-mind";
 
 type OccupancyOptions = {
   heroVisible: boolean; heroScale?: number; heroManual?: boolean;
@@ -47,5 +48,6 @@ export function forestResidentOccupants(state: ForestSessionState, scene: FixedW
       intent: moving && mind.route ? residentRouteIntent(mind.route, mind.position, mind.distance, builder.size,
         mind.job || mind.socialVisit ? 2 : mind.target?.id === "builder-yield" ? 0 : 1) : undefined });
   }
+  if (state.villagers) occupants.push(...forestVillagerOccupants(state.villagers));
   return occupants;
 }

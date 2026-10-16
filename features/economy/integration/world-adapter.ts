@@ -4,6 +4,7 @@ import type { WorldState } from "@/features/world/domain/model";
 import type { EconomySceneActivity, EconomySceneJourney } from "@/features/world/state/economy/economy-scene-state";
 import type { EconomySceneProduction } from "@/features/world/state/economy/economy-production-state";
 import type { EconomySceneConstruction } from "@/features/world/state/economy/economy-construction-state";
+import type { EconomySceneResidents } from "@/features/world/state/economy/economy-residents-state";
 
 /** A scene click selects existing economy UI; it never upgrades a local site. */
 export function economyBuildingDestination(buildingId: string, economy: EconomyView | null | undefined): { tab: "buildings" | "production"; focusId: string } {
@@ -46,6 +47,18 @@ export function economySceneProduction(economy: EconomyView | null | undefined):
     return recipe ? [{ id: job.id, stationId: recipe.buildingId, stationLevel: economy.buildings[recipe.buildingId] ?? 0,
       recipeId: recipe.id, startedAt: job.startedAt, finishesAt: job.finishesAt }] : [];
   }) };
+}
+
+/** Independent quarry orders belong to Kamneshmyg, never to Mochlik's journey. */
+export function economySceneResidents(economy: EconomyView | null | undefined, confirmed: boolean,
+  expectedOwner?: string): EconomySceneResidents | null {
+  if (!economy || !confirmed || expectedOwner && economy.ownerPublicId !== expectedOwner) return null;
+  const production = economySceneProduction(economy)!;
+  return { ownerPublicId: economy.ownerPublicId, revision: economy.revision, buildings: { ...economy.buildings },
+    production: { ...production, jobs: [...production.jobs, ...economy.jobs.filter(isMinerJob).map(job => ({
+      id: job.id, stationId: "quarry", stationLevel: economy.buildings.quarry ?? 0,
+      recipeId: job.recipeId ?? job.targetId, startedAt: job.startedAt, finishesAt: job.finishesAt,
+    }))] } };
 }
 
 /** Only confirmed construction reaches the builder; a completed timer still reserves him until claim. */

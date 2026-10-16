@@ -45,9 +45,9 @@ test("help keeps durable topic links and separates concise answers into six usef
 
 test("Leaftail help explains the catalog prices, personal daily stock and both shop entrances", () => {
   const spec = economyCatalog.leaftailShop, text = answer("leaftail-shop");
-  assert.match(text, new RegExp(`С дома ${spec.requiredHomeLevel}`));
+  assert.match(text, new RegExp(`с дома ${spec.requiredHomeLevel}`, "i"));
   assert.match(text, /на карте.*Персонажи/);
-  for (const offer of spec.offers) assert.ok(text.includes(`${economyCatalog.items.find(item => item.id === offer.itemId).name}: ${offer.priceCoins.toLocaleString("ru-RU")} монет`));
+  for (const offer of spec.offers) assert.ok(text.includes(`${economyCatalog.items.find(item => item.id === offer.itemId).name}${offer.quantity > 1 ? ` × ${offer.quantity}` : ""}: ${offer.priceCoins.toLocaleString("ru-RU")} монет`));
   assert.match(text, /Остаток личный/);
   assert.match(text, /00:00 UTC \(03:00 МСК\)/);
   assert.match(text, /подтвердите покупку/);
@@ -209,7 +209,8 @@ test("beginner answers explain costs, receipt of results, blocked work and recov
   assert.match(answer("journeys"), /производства работают независимо/);
   assert.equal(topic("journeys").summary, "Лесные припасы и рыбалка");
   assert.doesNotMatch(answer("journeys"), /Добыча в шахте/);
-  assert.match(answer("mining"), /Нажмите объект шахты на карте, чтобы открыть её отдельное меню/);
+  assert.match(answer("mining"), /Нажмите его или шахту, чтобы открыть добычу/);
+  assert.match(answer("mining"), /После подтверждения постройки с северной тропы придёт шахтёр Камнешмыг/);
   assert.doesNotMatch(answer("mining"), /«В путь»/);
   assert.match(answer("journeys"), /Отзыв теряет добычу.*не возвращаются/);
   assert.match(answer("storage"), /Отмена лота не освобождает место/);

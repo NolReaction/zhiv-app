@@ -6,12 +6,27 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { mapGuideCamera } = await vite.ssrLoadModule("/features/world/scene/map-guide-target.ts");
+const { mapGuideCamera, minerArrivalGuideTarget } = await vite.ssrLoadModule("/features/world/scene/map-guide-target.ts");
 const { observeMapGuideInset } = await vite.ssrLoadModule("/features/world/scene/map-guide-inset.ts");
 const { worldToScreen } = await vite.ssrLoadModule("/features/world/scene/camera.ts");
 const { interactiveMapObjects } = await vite.ssrLoadModule("/features/world/scene/site-interactions.ts");
 const { previewWorldScene, initialPreviewLevels } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
 const { default: authored } = await vite.ssrLoadModule("/features/world/tiled/forest.generated.json");
+
+test("miner arrival frames the moving helmet and feet above the coach without changing the quarry", () => {
+  const point = { x: 650, y: 250, size: 42 }, before = { ...point };
+  for (const view of [{ width: 393, height: 665, top: 120, bottom: 220 }, { width: 1280, height: 900, top: 100, bottom: 250 }]) {
+    const target = minerArrivalGuideTarget(point), camera = mapGuideCamera(target, view, authored, view);
+    assert.equal(target.place, "quarry"); assert.equal(target.id, "kamneshmyg-arrival");
+    for (const corner of target.hitArea) {
+      const screen = worldToScreen(corner, camera, view);
+      assert.ok(screen.x >= 0 && screen.x <= view.width);
+      assert.ok(screen.y >= view.top && screen.y <= view.height - view.bottom);
+    }
+    assert.deepEqual(point, before);
+  }
+  for (const bad of [{ ...point, x: NaN }, { ...point, size: 0 }]) assert.equal(minerArrivalGuideTarget(bad), undefined);
+});
 
 test("real garden, workshop, orders board and market fit between HUD and coach on phone, landscape and desktop", () => {
   const cases = [

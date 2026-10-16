@@ -140,7 +140,7 @@ export const economyCatalogSchema = z.object({
     slots: z.number().int().min(2).max(3), requiredHomeLevel: z.number().int().min(1).max(5), pricePearls: count.positive().max(ECONOMY_MAX_PEARLS),
   })).max(2).refine(upgrades => upgrades.every((upgrade, index) => upgrade.slots === index + 2)) }).default({ upgrades: [] }),
   leaftailShop: z.object({ requiredHomeLevel: count.min(1).max(5), refreshSeconds: z.literal(86400),
-    offers: z.array(z.object({ id: id.max(60), itemId: id, priceCoins: balance.positive(), stock: z.literal(1) })).min(1).max(12),
+    offers: z.array(z.object({ id: id.max(60), itemId: id, priceCoins: balance.positive(), stock: z.literal(1), quantity: count.min(1).max(100).default(1) })).min(1).max(12),
   }).optional(),
   rareDrops: economyRareDropsSchema.optional(),
   fishing: economyFishingCatalogSchema.optional(),
@@ -182,8 +182,9 @@ export const economyCatalogSchema = z.object({
   const leafOffers = catalog.leaftailShop?.offers ?? [];
   if (new Set(leafOffers.map(offer => offer.id)).size !== leafOffers.length
     || new Set(leafOffers.map(offer => offer.itemId)).size !== leafOffers.length
-    || leafOffers.some(offer => !catalog.items.some(item => item.id === offer.itemId && item.category === "special")))
-    invalid("Leaftail offers require distinct special catalog items");
+    || leafOffers.some(offer => !catalog.items.some(item => item.id === offer.itemId && (item.category === "special" ? offer.quantity === 1
+      : ["wood", "stone", "fiber"].includes(item.id) && item.tradable && offer.priceCoins === 2 * item.baseSellPrice * offer.quantity))))
+    invalid("Leaftail offers require distinct special items or base-material bundles at twice their catalog value");
   if (catalog.fishing) {
     const fishing = catalog.fishing;
     if (fishing.classes.some(group => !itemIds.has(group.itemId) || fishIds.has(group.itemId)

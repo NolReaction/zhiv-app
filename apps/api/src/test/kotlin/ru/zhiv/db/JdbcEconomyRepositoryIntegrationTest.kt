@@ -56,6 +56,21 @@ class JdbcEconomyRepositoryIntegrationTest {
     }
     private fun command(p: Player, state: EconomyView, action: String, target: String, quantity: Long = 1) =
         EconomyCommand(UUID.randomUUID().toString(), p.publicId, state.revision, action, target, quantity)
+    /** Construction fixtures start after the separate intro and first-house course. */
+    private fun afterFirstHouseOrders(state: EconomyState): EconomyState {
+        assertEquals(1, state.buildings["home"])
+        val course = EconomyRules.catalog.stageOrders.single { it.homeLevel == 1 }
+        return state.copy(
+            tutorialOrder = state.tutorialOrder.copy(version = 3, step = 1, completed = true),
+            stageOrders = state.stageOrders.copy(stages = state.stageOrders.stages +
+                ("1" to EconomyStageOrderProgress(step = course.orders.size, completed = true,
+                    terms = course.orders.last(), intervalSeconds = course.intervalSeconds,
+                    completionRewards = course.completionRewards))),
+        ).also {
+            assertFalse(EconomyStageOrders.required(it, 2), "The fixture has earned the house-two stage gate")
+            assertNull(EconomyStageOrders.offer(it), "No first-house delivery remains unfinished")
+        }
+    }
     private fun finish(p: Player, state: EconomyView) {
         val persisted = source.connection.use { readEconomyProfile(it, p.id).state }
         val finishedAt = Instant.parse("2000-01-01T00:00:00Z")
@@ -938,9 +953,9 @@ class JdbcEconomyRepositoryIntegrationTest {
         val initialRaw = economy.snapshot(p.hash)
         val homeUpgrade = EconomyRules.catalog.buildings.single { it.id == "home" }.levels.single { it.level == 2 }
         val stored = source.connection.use { readEconomyProfile(it, p.id).state }
-        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(stored.copy(
-            tutorialOrder = stored.tutorialOrder.copy(step = 4, completed = true),
-            buildings = initialRaw.buildings + homeUpgrade.requiredBuildings + ("home" to homeUpgrade.requiredHomeLevel))), p.id)
+        val supplied = afterFirstHouseOrders(stored.copy(
+            buildings = initialRaw.buildings + homeUpgrade.requiredBuildings + ("home" to homeUpgrade.requiredHomeLevel)))
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(supplied), p.id)
         val initial = economy.snapshot(p.hash)
         assertEquals("ECONOMY_RESOURCES", assertFailsWith<AuthFailure> { economy.command(p.hash, command(p, initial, "start_construction", "home")) }.code)
         assertEquals(initial.revision, economy.snapshot(p.hash).revision)
@@ -1056,9 +1071,8 @@ class JdbcEconomyRepositoryIntegrationTest {
         economy.snapshot(p.hash)
         val homeUpgrade = EconomyRules.catalog.buildings.single { it.id == "home" }.levels.single { it.level == 2 }
         val stored = source.connection.use { readEconomyProfile(it, p.id).state }
-        val supplied = stored.copy(wallet = EconomyWallet(100_000), inventory = homeUpgrade.cost.items,
-            tutorialOrder = stored.tutorialOrder.copy(step = 4, completed = true),
-            buildings = stored.buildings + homeUpgrade.requiredBuildings + ("home" to 1))
+        val supplied = afterFirstHouseOrders(stored.copy(wallet = EconomyWallet(100_000), inventory = homeUpgrade.cost.items,
+            buildings = stored.buildings + homeUpgrade.requiredBuildings + ("home" to 1)))
         execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(supplied), p.id)
         val initial = economy.snapshot(p.hash)
         val started = economy.command(p.hash, command(p, initial, "start_construction", "home")).state

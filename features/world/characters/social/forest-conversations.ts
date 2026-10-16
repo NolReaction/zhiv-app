@@ -1,8 +1,9 @@
 import type { ForestSpeaker } from "./forest-social";
+import { FOREST_VILLAGER_CONVERSATIONS } from "./forest-villager-conversations";
 
 export type ForestConversation = {
   id: string;
-  pair: "builder-mochlik" | "builder-plesk" | "mochlik-plesk";
+  pair: `${ForestSpeaker}-${ForestSpeaker}`;
   weather?: "rain" | "night" | "day";
   place?: "river" | "home" | "garden" | "workshop" | "campfire" | "quarry";
   lines: readonly { speaker: ForestSpeaker; text: string }[];
@@ -10,6 +11,7 @@ export type ForestConversation = {
 
 /** Complete exchanges: the setup and its reply always travel together. */
 export const FOREST_CONVERSATIONS: readonly ForestConversation[] = [
+  ...FOREST_VILLAGER_CONVERSATIONS,
   {
     id: "bm-berry-accounting", pair: "builder-mochlik", place: "garden", lines: [
       { speaker: "builder", text: "Ягоды с куста считай до того, как ешь." },

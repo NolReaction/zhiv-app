@@ -20,18 +20,19 @@ class EconomyLeaftailShopTest {
     @Test fun `shared catalog sells exactly one of each special item per UTC day for coins`() {
         assertEquals(3, spec.requiredHomeLevel)
         assertEquals(86400L, spec.refreshSeconds)
-        assertEquals(setOf("ancient_core", "moon_crystal", "living_resin"), spec.offers.map { it.itemId }.toSet())
-        assertTrue(spec.offers.all { it.stock == 1 && it.priceCoins == 2400L })
+        val finds = spec.offers.filter { it.itemId in setOf("ancient_core", "moon_crystal", "living_resin") }
+        assertEquals(setOf("ancient_core", "moon_crystal", "living_resin"), finds.map { it.itemId }.toSet())
+        assertTrue(finds.all { it.stock == 1 && it.quantity == 1L && it.priceCoins == 2400L })
         var current = ready()
         val original = current
-        for (offer in spec.offers) {
+        for (offer in finds) {
             current = EconomyRules.apply(current, command(offer.id), now).first
             assertEquals(1L, current.inventory[offer.itemId])
             failure("ECONOMY_LEAFTAIL_STOCK") { EconomyRules.apply(current, command(offer.id), now) }
         }
         assertEquals(original.wallet.coins - 7200L, current.wallet.coins)
         assertEquals(original.wallet.pearls, current.wallet.pearls)
-        assertEquals(spec.offers.associate { it.id to 1 }, current.leaftailShop.purchased)
+        assertEquals(finds.associate { it.id to 1 }, current.leaftailShop.purchased)
         assertEquals(original.progression, current.progression)
         assertEquals(original.completedExplorations, current.completedExplorations)
         assertEquals(original.rareDropState, current.rareDropState)
@@ -97,10 +98,10 @@ class EconomyLeaftailShopTest {
         val legacy = economyJson.parseToJsonElement(economyJson.encodeToString(initial)).jsonObject
             .filterKeys { it != "leaftailShop" }.let { kotlinx.serialization.json.JsonObject(it).toString() }
         assertEquals(EconomyLeaftailShopState(), economyJson.decodeFromString<EconomyState>(legacy).leaftailShop)
-        val exhausted = spec.offers.fold(initial) { state, offer -> EconomyRules.apply(state, command(offer.id), now).first }
+        val exhausted = spec.offers.fold(initial) { state, offer -> EconomyRules.apply(state, command(offer.id, price = offer.priceCoins), now).first }
         val restored = economyJson.decodeFromString<EconomyState>(economyJson.encodeToString(exhausted))
         assertEquals(exhausted.leaftailShop, restored.leaftailShop)
-        for (offer in spec.offers) failure("ECONOMY_LEAFTAIL_STOCK") { EconomyRules.apply(restored, command(offer.id), now) }
+        for (offer in spec.offers) failure("ECONOMY_LEAFTAIL_STOCK") { EconomyRules.apply(restored, command(offer.id, price = offer.priceCoins), now) }
     }
 
     @Test fun `account merge keeps newest cycle and union of consumed daily stock`() {
@@ -113,6 +114,61 @@ class EconomyLeaftailShopTest {
         assertEquals(next, EconomyLeaftailShops.merge(first, next))
         assertEquals(next, EconomyLeaftailShops.merge(next, first))
         assertEquals(first, EconomyLeaftailShops.merge(first, EconomyLeaftailShopState()))
+    }
+
+    @Test fun `ordinary supplies buy exactly one fixed bundle at twice catalog value without opening collections`() {
+        val supplies = spec.offers.filter { it.itemId in setOf("wood", "stone", "fiber") }
+        assertEquals(mapOf("wood" to 10L, "stone" to 10L, "fiber" to 5L), supplies.associate { it.itemId to it.quantity })
+        assertEquals(mapOf("wood" to 600L, "stone" to 800L, "fiber" to 100L), supplies.associate { it.itemId to it.priceCoins })
+        var current = ready()
+        val original = current
+        for (offer in supplies) {
+            val item = EconomyRules.catalog.items.first { it.id == offer.itemId }
+            assertEquals(2L * item.baseSellPrice * offer.quantity, offer.priceCoins)
+            current = EconomyRules.apply(current, command(offer.id, price = offer.priceCoins), now).first
+            assertEquals(offer.quantity, current.inventory[offer.itemId])
+            assertEquals(1, current.leaftailShop.purchased[offer.id])
+            failure("ECONOMY_LEAFTAIL_STOCK") { EconomyRules.apply(current, command(offer.id, price = offer.priceCoins), now) }
+            failure("INVALID_ECONOMY_COMMAND") {
+                EconomyRules.apply(original, command(offer.id, price = offer.priceCoins, quantity = offer.quantity), now)
+            }
+        }
+        assertEquals(original.wallet.coins - 1500L, current.wallet.coins)
+        assertEquals(original.wallet.pearls, current.wallet.pearls)
+        assertEquals(original.progression, current.progression)
+        val midnight = Instant.parse("2026-10-17T00:00:00Z")
+        val fiber = supplies.first { it.itemId == "fiber" }
+        val next = EconomyRules.apply(current, command(fiber.id, at = midnight, price = fiber.priceCoins), midnight).first
+        assertEquals(10L, next.inventory["fiber"])
+    }
+
+    @Test fun `bundle capacity validates full grant including escrow and item caps before consuming coins or stock`() {
+        val initial = ready()
+        val stone = spec.offers.first { it.itemId == "stone" }
+        val capacity = EconomyRules.storage(initial).capacity
+        val buyStone = command(stone.id, price = stone.priceCoins)
+        failure("ECONOMY_STORAGE_FULL") {
+            EconomyRules.apply(initial.copy(inventory = mapOf("wood" to capacity - stone.quantity + 1)), buyStone, now)
+        }
+        failure("ECONOMY_STORAGE_FULL") {
+            EconomyRules.apply(initial.copy(inventory = mapOf("wood" to capacity - stone.quantity)), buyStone, now, mapOf("fiber" to 1L))
+        }
+        failure("ECONOMY_CAPACITY") {
+            EconomyRules.apply(initial.copy(inventory = mapOf("stone" to ECONOMY_MAX_ITEMS - stone.quantity + 1)), buyStone, now)
+        }
+        val fits = EconomyRules.apply(initial.copy(inventory = mapOf("wood" to capacity - stone.quantity)), buyStone, now).first
+        assertEquals(0L, EconomyRules.storage(fits).available)
+        assertEquals(stone.quantity, fits.inventory["stone"])
+        assertEquals(EconomyLeaftailShopState(), initial.leaftailShop)
+    }
+
+    @Test fun `old offer JSON defaults to one item and bundle quantity is bounded`() {
+        val old = economyJson.decodeFromString<EconomyLeaftailOffer>(
+            """{"id":"living_resin","itemId":"living_resin","priceCoins":2400,"stock":1}""")
+        assertEquals(1L, old.quantity)
+        for (quantity in listOf(0L, 101L)) assertFailsWith<IllegalArgumentException> {
+            EconomyLeaftailOffer("wood_bundle", "wood", 600, quantity = quantity)
+        }
     }
 
     @Test fun `clock rollback cannot replenish a consumed delivery`() {

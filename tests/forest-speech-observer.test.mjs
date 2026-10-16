@@ -76,3 +76,12 @@ test("the short reply is readable, polite, safely escaped and adds no controls",
   assert.match(announcement, /aria-live="polite"/);
   assert.doesNotMatch(announcement, /Мохлик:|Плёска:|Шишколап:/);
 });
+
+test("new residents keep their names in accessible direct replies", () => {
+  for (const [speaker, name] of [["lopukh", "Лопоух"], ["kamneshmyg", "Камнешмыг"], ["leaftail", "Листохвост"]]) {
+    const html = renderToStaticMarkup(createElement(ForestSpeechBubble, { speech: { id: speaker, speaker, text: "Привет!" } }));
+    assert.ok(html.includes(`${name}: `));
+    assert.ok(html.includes(`data-forest-speaker="${speaker}"`));
+    assert.doesNotMatch(html, /undefined/);
+  }
+});

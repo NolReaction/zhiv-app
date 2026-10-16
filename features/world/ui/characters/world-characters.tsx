@@ -1,31 +1,21 @@
 "use client";
 
-import { ArrowRight, PawPrint, X } from "lucide-react";
+import { ArrowRight, LockKeyhole, PawPrint, X } from "lucide-react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { Dialog, DialogPortal, DialogOverlay, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { PleskPortrait } from "@/features/world/characters/plesk/plesk-portrait";
 import { BuilderPortrait } from "@/features/world/characters/builder/builder-portrait";
-import { WORLD_CHARACTERS, worldCharacterResident, type WorldCharacter, type WorldCharacterId, type WorldResidentId } from "@/features/world/characters/world-characters-model";
+import { LopukhPortrait } from "@/features/world/characters/lopukh/lopukh-portrait";
+import { KamneshmygPortrait } from "@/features/world/characters/kamneshmyg/kamneshmyg-portrait";
+import { LeaftailPortrait } from "@/features/world/characters/leaftail/leaftail-portrait";
+import { WORLD_CHARACTERS, worldResidentAvailable, type WorldCharacterId, type WorldResidentId } from "@/features/world/characters/world-characters-model";
 import styles from "./world-characters.module.css";
 
-const silhouettes = {
-  spines: "M17 74 10 64 14 57 8 46 16 44 13 31 26 34 27 22 38 27 46 17 53 27 65 24 67 35C79 38 88 47 88 62C88 72 81 77 75 79L79 86H62L57 81H39L34 86H18L23 80Z",
-  ears: "M32 42C24 31 20 13 25 6C31 1 38 19 40 33C47 15 58 11 68 17L75 28C68 29 60 22 57 28L51 40C66 43 74 52 73 64C70 71 65 73 63 78L71 85H51L46 80L38 84H21L26 77C18 73 18 66 23 61C21 54 24 46 32 42Z",
-  round: "M19 73C12 63 14 49 20 38C25 27 38 21 50 22C63 22 74 29 78 40L87 46L81 52C84 64 80 73 71 79L76 85H59L54 81H38L31 85H16L22 79Z",
-  tail: "M37 75C11 68 4 43 10 16C19 9 37 17 40 33C43 42 42 50 40 58L48 47L48 27L60 34L71 27L72 41C86 45 89 58 79 66L74 77L84 85H65L58 79L47 85H30Z",
-} as const;
+const portraits = { builder: BuilderPortrait, plesk: PleskPortrait, lopukh: LopukhPortrait, kamneshmyg: KamneshmygPortrait, leaftail: LeaftailPortrait };
 
-function CharacterSilhouette({ character }: { character: Extract<WorldCharacter, { available: false }> }) {
-  return <span className={styles.hiddenPortrait} aria-hidden="true">
-    <svg className={styles.silhouette} viewBox="0 0 96 96"><path d={silhouettes[character.silhouette]} /></svg>
-    <span className={styles.question}>?</span>
-  </span>;
-}
-
-/** A full gallery, separate from the compact More menu. The modal owns keyboard
- * focus; residents open conversations and LeafTail opens his existing map shop. */
-export function WorldCharacters({ open, onClose, onResident, onShop, onCloseAutoFocus, focusedCharacter }: {
-  open: boolean; onClose: () => void; onResident: (id: WorldResidentId) => void; onShop: () => void;
+/** Each card opens its resident conversation directly; locked residents explain their arrival. */
+export function WorldCharacters({ open, onClose, onResident, quarryBuilt = false, onCloseAutoFocus, focusedCharacter }: {
+  open: boolean; onClose: () => void; onResident: (id: WorldResidentId) => void; quarryBuilt?: boolean;
   onCloseAutoFocus: (event: Event) => void; focusedCharacter?: WorldCharacterId;
 }) {
   return <Dialog open={open} onOpenChange={next => { if (!next) onClose(); }}>
@@ -44,18 +34,19 @@ export function WorldCharacters({ open, onClose, onResident, onShop, onCloseAuto
           <button type="button" className={styles.close} onClick={onClose} aria-label="Закрыть персонажей"><X size={22} aria-hidden="true" /></button>
         </header>
         <ul className={styles.grid} aria-label="Персонажи леса">
-          {[...WORLD_CHARACTERS].sort((a, b) => Number(b.available) - Number(a.available)).map(character => <li key={character.id}>
-            {character.available ? <button type="button" className={`${styles.card} ${styles.available}`} data-world-character={character.id}
-              aria-label={`${character.name}, ${character.role}. ${character.kind === "shop" ? "Открыть лавку" : "Открыть разговор"}`} aria-haspopup="dialog"
-              onClick={() => { if (character.kind === "shop") onShop(); else { const resident = worldCharacterResident(character.id); if (resident) onResident(resident); } }}>
-              <span className={styles.stage}>{character.kind === "shop" ? <span className={styles.shopPortrait} role="img" aria-label="Иллюстрация лавки Листохвоста" /> : character.id === "builder" ? <BuilderPortrait animated className={styles.portrait} /> : <PleskPortrait animated className={styles.portrait} />}</span>
-              <strong>{character.name}</strong><small>{character.role}</small>
-              <span className={styles.visit}>{character.kind === "shop" ? "Открыть лавку" : "Заглянуть"} <ArrowRight size={15} aria-hidden="true" /></span>
-            </button> : <div className={`${styles.card} ${styles.locked}`} aria-label="Неизвестный персонаж, пока недоступен">
-              <span className={styles.stage}><CharacterSilhouette character={character} /></span>
-              <strong>Неизвестный житель</strong><small>Пока недоступен</small>
-            </div>}
-          </li>)}
+          {WORLD_CHARACTERS.map(character => {
+            const available = worldResidentAvailable(character.id, quarryBuilt), Portrait = portraits[character.id];
+            return <li key={character.id}>
+              <button type="button" className={`${styles.card} ${available ? styles.available : styles.locked}`} data-world-character={character.id}
+                aria-label={`${character.name}, ${character.role}. ${available ? "Открыть разговор" : "Придёт после постройки каменоломни"}`}
+                aria-haspopup={available ? "dialog" : undefined} aria-disabled={!available || undefined}
+                onClick={() => { if (available) onResident(character.id); }}>
+                <span className={styles.stage}><Portrait animated={available} className={styles.portrait} /></span>
+                <strong>{character.name}</strong><small>{character.role}</small>
+                <span className={styles.visit}>{available ? <>Заглянуть <ArrowRight size={15} aria-hidden="true" /></> : <><LockKeyhole size={15} aria-hidden="true" />Постройте каменоломню</>}</span>
+              </button>
+            </li>;
+          })}
         </ul>
       </DialogPrimitive.Content>
     </DialogPortal>

@@ -5,8 +5,8 @@ import { canTraverse, createWorldNavigation } from "@/features/world/navigation/
 import type { ResidentOccupant } from "@/features/world/navigation/resident-traffic";
 import type { FixedWorldScene, WorldPoint } from "@/features/world/tiled/types";
 
-export type ForestSpeaker = "mochlik" | "plesk" | "builder";
-export type ForestSpeechContext = "idle" | "walk" | "build" | "ready" | "fish" | "cook" | "trade" | "sleep" | "busy" | "animal";
+export type ForestSpeaker = "mochlik" | "plesk" | "builder" | "lopukh" | "kamneshmyg" | "leaftail";
+export type ForestSpeechContext = "idle" | "walk" | "build" | "ready" | "fish" | "cook" | "trade" | "sleep" | "busy" | "animal" | "chop" | "mine" | "arrive";
 export type ForestSpeechFrame = { id: string; speaker: ForestSpeaker; text: string; elapsed: number; duration: number;
   /** A direct reply addresses the player; autonomous chatter stays in the world. */
   origin: "interaction" | "ambient" };
@@ -18,10 +18,14 @@ export type ForestSocialEnvironment = { scene: FixedWorldScene; builder: Builder
   actors: readonly ForestSocialActor[]; occupants?: readonly ResidentOccupant[]; enabled?: boolean;
   /** Still presentation may answer a tap without starting autonomous visits. */
   ambient?: boolean;
+  /** The scene adapts its resident minds; this director never owns their feet. */
+  requestVisit?: (guest: ForestSpeaker, host: ForestSocialActor, occupants?: readonly ResidentOccupant[]) => boolean;
+  cancelVisit?: (guest: ForestSpeaker) => void;
+  visitStatus?: (guest: ForestSpeaker) => "approach" | "arrived" | null;
   dusk?: number; rain?: number; animalEvents?: readonly ForestAnimalEvent[] };
 type Line = { speaker: ForestSpeaker; text: string };
-type Meeting = { anchor: WorldPoint; guestAnchor: WorldPoint; host: "mochlik" | "plesk";
-  guest: "builder" | "mochlik"; phase: "approach" | "talk"; age: number };
+type Meeting = { anchor: WorldPoint; guestAnchor: WorldPoint; host: ForestSpeaker;
+  guest: ForestSpeaker; visit: "builder" | "resident" | null; phase: "approach" | "talk"; age: number };
 export type ForestSocialState = {
   elapsed: number; seed: number; sequence: number;
   nextEncounterAt: number; nextAnimalAt: number; nextManualAt: number;
@@ -33,6 +37,7 @@ export type ForestSocialState = {
 export const FOREST_SOCIAL_LIMITS = { maxDelta: 1, manualGlobal: 5, manualCharacter: 18,
   firstEncounter: 30, firstEncounterVariation: 20, encounter: 110, encounterVariation: 70,
   approach: 18, conversation: 32, retry: 25, animal: 150,
+  navigationAttempts: 4,
   historyTopics: 12, historyLines: 48, historyEvents: 16, gap: .4 } as const;
 const distance = (a: WorldPoint, b: WorldPoint) => Math.hypot(a.x - b.x, a.y - b.y);
 const speechDuration = (text: string) => Math.min(4.4, 2.8 + text.length * .027);
@@ -64,7 +69,7 @@ function actor(env: ForestSocialEnvironment, id: ForestSpeaker): ForestSocialAct
 export function createForestSocial(seed: string | number = "forest"): ForestSocialState {
   const state: ForestSocialState = { elapsed: 0, seed: hash(String(seed)), sequence: 0,
     nextEncounterAt: 0, nextAnimalAt: 45, nextManualAt: 0,
-    manualAfter: { mochlik: 0, plesk: 0, builder: 0 }, topicHistory: [], lineHistory: [], seenEvents: [],
+    manualAfter: { mochlik: 0, plesk: 0, builder: 0, lopukh: 0, kamneshmyg: 0, leaftail: 0 }, topicHistory: [], lineHistory: [], seenEvents: [],
     current: null, queue: [], gapUntil: 0, meeting: null };
   state.nextEncounterAt = FOREST_SOCIAL_LIMITS.firstEncounter + random(state) * FOREST_SOCIAL_LIMITS.firstEncounterVariation;
   return state;
@@ -81,7 +86,8 @@ function endMeeting(state: ForestSocialState, env: ForestSocialEnvironment): voi
   // A neighbour who walks away has not had a conversation yet. Retry quietly
   // later instead of consuming several minutes of the successful-chat budget.
   if (state.meeting?.phase === "approach") state.nextEncounterAt = state.elapsed + FOREST_SOCIAL_LIMITS.retry + random(state) * 20;
-  if (state.meeting?.guest === "builder") cancelBuilderVisit(env.builder);
+  if (state.meeting?.visit === "builder") cancelBuilderVisit(env.builder);
+  if (state.meeting?.visit === "resident") env.cancelVisit?.(state.meeting.guest);
   state.meeting = null; state.current = null; state.queue = [];
 }
 /** Explicit control/visibility changes can release the pair even at dt=0. */
@@ -114,7 +120,7 @@ function nearbyTopic(topic: ForestConversation, env: ForestSocialEnvironment, an
 }
 function beginConversation(state: ForestSocialState, env: ForestSocialEnvironment): void {
   const meeting = state.meeting!;
-  const eligible = FOREST_CONVERSATIONS.filter(topic => topic.pair === `${meeting.guest}-${meeting.host}`
+  const eligible = FOREST_CONVERSATIONS.filter(topic => pairMatches(topic.pair, meeting.guest, meeting.host)
     && nearbyTopic(topic, env, meeting.anchor) && (!topic.weather
       || topic.weather === "night" && (env.dusk ?? 0) > .55
       || topic.weather === "day" && (env.dusk ?? 0) <= .55 && (env.rain ?? 0) <= .35
@@ -140,49 +146,67 @@ function advanceMeeting(state: ForestSocialState, env: ForestSocialEnvironment, 
   const host = actor(env, meeting.host), guest = actor(env, meeting.guest), mind = env.builder;
   meeting.age += step;
   if (!host?.available || host.context !== "idle" || !guest?.available
-    || meeting.guest === "builder" && (!mind?.socialVisit || mind.job || !mind.available || mind.blocked || mind.scene !== env.scene)
+    || meeting.visit === "builder" && (!mind?.socialVisit || mind.job || !mind.available || mind.blocked || mind.scene !== env.scene)
+    || meeting.visit === "resident" && !env.visitStatus?.(meeting.guest)
     || distance(host.position, meeting.anchor) > Math.max(10, host.size * .3)
     || meeting.phase === "talk" && (guest.context !== "idle" || distance(guest.position, meeting.guestAnchor) > Math.max(10, guest.size * .3))
     || meeting.age > (meeting.phase === "approach" ? FOREST_SOCIAL_LIMITS.approach : FOREST_SOCIAL_LIMITS.conversation)) {
     endMeeting(state, env); return false;
   }
-  if (meeting.phase === "approach" && mind && !mind.route && mind.action !== "walk") {
+  const arrived = meeting.visit === "builder" ? Boolean(mind && !mind.route && mind.action !== "walk")
+    : meeting.visit === "resident" && env.visitStatus?.(meeting.guest) === "arrived";
+  if (meeting.phase === "approach" && arrived) {
     const gap = (host.size + guest.size) * .56;
-    if (distance(host.position, guest.position) > gap + 12) { endMeeting(state, env); return false; }
+    const navigation = createWorldNavigation(env.scene);
+    if (guest.context !== "idle" || distance(host.position, guest.position) > gap + 12
+      || !navigation || !canTraverse(navigation, guest.position, host.position)) { endMeeting(state, env); return false; }
     beginConversation(state, env);
   }
   return true;
 }
 
+function pairMatches(pair: string, guest: ForestSpeaker, host: ForestSpeaker): boolean {
+  return pair === `${guest}-${host}` || pair === `${host}-${guest}`;
+}
 function inviteNeighbours(state: ForestSocialState, env: ForestSocialEnvironment): void {
-  const hero = actor(env, "mochlik"), builder = actor(env, "builder"), plesk = actor(env, "plesk");
-  const idle = (item: ForestSocialActor | undefined): item is ForestSocialActor => Boolean(item?.available && item.context === "idle");
-  const candidates: { guest: ForestSocialActor; host: ForestSocialActor }[] = [];
-  if (builder?.available && env.builder && !env.builder.job) {
-    for (const host of [hero, plesk]) if (idle(host) && distance(host.position, builder.position) < 300)
-      candidates.push({ guest: builder, host });
+  const residents = env.actors.map(item => actor(env, item.id)).filter((item): item is ForestSocialActor => Boolean(item));
+  const idle = (item: ForestSocialActor) => item.available && item.context === "idle";
+  const candidates: { guest: ForestSocialActor; host: ForestSocialActor; visit: Meeting["visit"] }[] = [];
+  for (const guest of residents) {
+    const visit = guest.id === "builder" && env.builder && !env.builder.job ? "builder"
+      : ["lopukh", "kamneshmyg", "leaftail"].includes(guest.id) && env.requestVisit && env.cancelVisit && env.visitStatus ? "resident" : null;
+    if (!guest.available || !visit || visit === "resident" && !idle(guest)) continue;
+    for (const host of residents) if (host.id !== guest.id && idle(host) && distance(host.position, guest.position) < 300)
+      candidates.push({ guest, host, visit });
   }
-  // These neighbours greet only when already together. No fishing trip, trade
-  // route or player destination is borrowed to manufacture a conversation.
-  if (idle(hero) && idle(plesk) && distance(hero.position, plesk.position) <= Math.max(75, (hero.size + plesk.size) * 1.1))
-    candidates.push({ guest: hero, host: plesk });
+  // A pair without a visiting mind may greet only when already together. No
+  // player destination, fishing trip or work route is borrowed for a chat.
+  for (let index = 0; index < residents.length; index++) for (const host of residents.slice(index + 1)) {
+    const guest = residents[index];
+    if (!idle(guest) || !idle(host) || candidates.some(item => pairMatches(`${item.guest.id}-${item.host.id}`, guest.id, host.id))) continue;
+    if (distance(guest.position, host.position) <= Math.max(75, (guest.size + host.size) * 1.1))
+      candidates.push({ guest, host, visit: null });
+  }
   if (!candidates.length) return;
   const previousPair = FOREST_CONVERSATIONS.find(topic => topic.id === state.topicHistory.at(-1))?.pair;
   const start = Math.floor(random(state) * candidates.length);
   const ordered = [...candidates.slice(start), ...candidates.slice(0, start)]
-    .sort((a, b) => Number(`${a.guest.id}-${a.host.id}` === previousPair) - Number(`${b.guest.id}-${b.host.id}` === previousPair));
+    .sort((a, b) => Number(Boolean(previousPair && pairMatches(previousPair, a.guest.id, a.host.id)))
+      - Number(Boolean(previousPair && pairMatches(previousPair, b.guest.id, b.host.id))));
   // Busy time does not consume a quiet opportunity. Bounded navigation attempts
   // do have a retry delay, even when the selected nearby bank is inaccessible.
   state.nextEncounterAt = state.elapsed + FOREST_SOCIAL_LIMITS.retry;
-  for (const { guest, host } of ordered) {
-    if (guest.id === "builder") {
+  for (const { guest, host, visit } of ordered.slice(0, FOREST_SOCIAL_LIMITS.navigationAttempts)) {
+    if (visit === "builder") {
       if (!requestBuilderVisit(env.builder, env.scene, host, env.occupants)) continue;
+    } else if (visit === "resident") {
+      if (!env.requestVisit?.(guest.id, host, env.occupants)) continue;
     } else {
       const navigation = createWorldNavigation(env.scene);
       if (!navigation || !canTraverse(navigation, guest.position, host.position)) continue;
     }
     state.meeting = { anchor: { ...host.position }, guestAnchor: { ...guest.position },
-      host: host.id as Meeting["host"], guest: guest.id as Meeting["guest"], phase: guest.id === "builder" ? "approach" : "talk", age: 0 };
+      host: host.id, guest: guest.id, visit, phase: visit ? "approach" : "talk", age: 0 };
     if (state.meeting.phase === "talk") beginConversation(state, env);
     return;
   }

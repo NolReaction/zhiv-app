@@ -1,6 +1,17 @@
 import { clampCamera, worldToScreen, type Camera, type VerticalCameraInsets, type Viewport } from "./camera";
 import type { MapInteractiveObject } from "./site-interactions";
 
+/** The arrival highlight follows the resident's full body, including his helmet. */
+export function minerArrivalGuideTarget(point: { x: number; y: number; size: number }): MapInteractiveObject | undefined {
+  if (![point.x, point.y, point.size].every(Number.isFinite) || point.size <= 0) return;
+  const radius = point.size * .7, top = point.y - point.size * 1.1, bottom = point.y + point.size * .12;
+  return { id: "kamneshmyg-arrival", place: "quarry", kind: "site", label: "Камнешмыг",
+    anchor: { x: point.x, y: point.y - point.size * .5 }, hitArea: [
+      { x: point.x - radius, y: top }, { x: point.x + radius, y: top },
+      { x: point.x + radius, y: bottom }, { x: point.x - radius, y: bottom },
+    ] };
+}
+
 /** Frame the current artwork's authored contour without selecting or opening it. */
 export function mapGuideCamera(object: MapInteractiveObject, view: Viewport, bounds: Viewport,
   insets: VerticalCameraInsets): Camera {

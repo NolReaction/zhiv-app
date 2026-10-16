@@ -21,7 +21,10 @@
     "offers": [
       { "id": "ancient_core", "itemId": "ancient_core", "priceCoins": 2400, "stock": 1 },
       { "id": "moon_crystal", "itemId": "moon_crystal", "priceCoins": 2400, "stock": 1 },
-      { "id": "living_resin", "itemId": "living_resin", "priceCoins": 2400, "stock": 1 }
+      { "id": "living_resin", "itemId": "living_resin", "priceCoins": 2400, "stock": 1 },
+      { "id": "wood_bundle", "itemId": "wood", "quantity": 10, "priceCoins": 600, "stock": 1 },
+      { "id": "stone_bundle", "itemId": "stone", "quantity": 10, "priceCoins": 800, "stock": 1 },
+      { "id": "fiber_bundle", "itemId": "fiber", "quantity": 5, "priceCoins": 100, "stock": 1 }
     ]
   },
   "constructionSpeedup": {

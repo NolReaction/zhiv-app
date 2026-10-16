@@ -74,7 +74,9 @@ object EconomyRules {
         require(catalog.items.map { it.id }.distinct().size == catalog.items.size)
         require(catalog.items.all { if (it.category == "special") it.baseSellPrice == 0L && !it.tradable else it.baseSellPrice > 0L })
         catalog.leaftailShop?.let { shop ->
-            require(shop.offers.all { offer -> catalog.items.any { it.id == offer.itemId && it.category == "special" && !it.tradable } })
+            require(shop.offers.all { offer -> catalog.items.any { item -> item.id == offer.itemId &&
+                (if (item.category == "special") !item.tradable && offer.quantity == 1L
+                else item.id in setOf("wood", "stone", "fiber") && item.tradable && offer.priceCoins == 2L * item.baseSellPrice * offer.quantity) } })
         }
         require(catalog.buildings.map { it.id }.distinct().size == catalog.buildings.size)
         require(catalog.recipes.map { it.id }.distinct().size == catalog.recipes.size)

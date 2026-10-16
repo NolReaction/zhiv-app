@@ -570,13 +570,15 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       if (!shop) return fail("ECONOMY_LEAFTAIL_UNAVAILABLE", "Листохвост пока не открыл лавку");
       requireHome(state, shop.requiredHomeLevel);
       const offer = shop.offers.find(item => item.targetId === command.targetId);
-      if (!offer || !economyCatalog.items.some(item => item.id === offer.itemId && item.category === "special"))
+      const item = offer && economyCatalog.items.find(item => item.id === offer.itemId);
+      if (!offer || !item || (item.category === "special" ? offer.quantity !== 1 : !["wood", "stone", "fiber"].includes(item.id)
+        || !item.tradable || offer.priceCoins !== 2 * item.baseSellPrice * offer.quantity))
         return fail("ECONOMY_LEAFTAIL_SHOP_CHANGED", "Поставка Листохвоста изменилась. Проверьте прилавок");
       if (command.totalPrice !== offer.priceCoins)
         return fail("ECONOMY_LEAFTAIL_PRICE_CHANGED", "Цена изменилась. Проверьте предложение Листохвоста");
       if (offer.remaining < 1) return fail("ECONOMY_LEAFTAIL_STOCK", "Сегодня этот предмет уже куплен. Дождитесь новой поставки");
       if (state.wallet.coins < offer.priceCoins) return fail("ECONOMY_RESOURCES", "Не хватает монет");
-      const inventory = { ...state.inventory, [offer.itemId]: (state.inventory[offer.itemId] ?? 0) + 1 };
+      const inventory = { ...state.inventory, [offer.itemId]: (state.inventory[offer.itemId] ?? 0) + offer.quantity };
       assertEconomyStorageTransition(state, { ...state, inventory }, reservedItems);
       const stock = leaftailShopStock(state, now);
       // Every validation precedes the debit; the caller commits state and its receipt atomically.

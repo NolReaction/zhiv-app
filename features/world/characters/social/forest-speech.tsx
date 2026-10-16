@@ -6,7 +6,8 @@ import type { ForestSpeaker } from "./forest-social";
 import { BUILDER } from "@/features/world/characters/builder/builder-types";
 import styles from "./forest-speech.module.css";
 
-const names: Record<ForestSpeaker, string> = { mochlik: "Мохлик", plesk: "Плёска", builder: BUILDER.name };
+const names: Record<ForestSpeaker, string> = { mochlik: "Мохлик", plesk: "Плёска", builder: BUILDER.name,
+  lopukh: "Лопоух", kamneshmyg: "Камнешмыг", leaftail: "Листохвост" };
 const noSpeech = (): null => null;
 
 /** React only reads the active scene line; it cannot start or advance a conversation. */

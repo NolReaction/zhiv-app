@@ -24,8 +24,10 @@ export type ForestSpeechLayout = {
 
 export const FOREST_SPEECH_FONT = '14px "Zhiv Residents", ui-rounded, "SF Pro Rounded", system-ui, sans-serif';
 const LABEL_FONT = '600 8.5px ui-rounded, "SF Pro Rounded", system-ui, sans-serif';
-const LABELS = { mochlik: "Мохлик", plesk: "Плёска", builder: "Шишколап" } as const;
-const INK = { mochlik: "#667847", plesk: "#417d86", builder: "#987044" } as const;
+const LABELS = { mochlik: "Мохлик", plesk: "Плёска", builder: "Шишколап",
+  lopukh: "Лопоух", kamneshmyg: "Камнешмыг", leaftail: "Листохвост" } as const;
+const INK = { mochlik: "#667847", plesk: "#417d86", builder: "#987044",
+  lopukh: "#94714b", kamneshmyg: "#657887", leaftail: "#947047" } as const;
 const PADDING = 10, VERTICAL_PADDING = 8, LINE_HEIGHT = 17, LABEL_HEIGHT = 13, MAX_LINES = 2;
 const clamp = (value: number, low: number, high: number) => Math.max(low, Math.min(high, value));
 
