@@ -41,15 +41,16 @@ const productionBlocked = (html, itemId) => {
 };
 
 
-test("standalone map market keeps trade actions without the old economy hub or repeated wallet", () => {
+test("standalone map market explains closure without the old economy hub or repeated wallet", () => {
   const html = renderToStaticMarkup(createElement(EconomyPanel, {
     initialTab: "market", standalone: true, onNavigate() {},
     economy: controller({ notice: "DEV: Дом Мохлика: уровень 2" }),
   }));
   assert.match(html, /aria-label="Рынок между игроками"/);
   assert.doesNotMatch(html, /Разделы хозяйства|aria-label="Кошелёк"|DEV: Дом Мохлика/);
-  assert.ok(button(html, "Продолжить обустройство"));
-  assert.match(html, /Лесной рынок/);
+  assert.ok(button(html, "Улучшить дом"));
+  assert.match(html, /Рынок закрыт/);
+  assert.doesNotMatch(html, /data-guide-market-tab|Выставить товар/);
 });
 
 function job(overrides = {}) {
@@ -205,7 +206,7 @@ test("market shows real full-lot quotes, escapes seller text and applies catalog
   html = render("market", controller({ snapshot: state, market }));
   assert.equal(buttons(html).some(entry => entry.text.includes("Купить весь лот")), false,
     "a locked market hides trade actions until the required home and bridge are ready");
-  assert.ok(button(html, "Продолжить обустройство"));
+  assert.ok(button(html, "Улучшить дом"));
   assert.match(html, /Дом: 2 \/ 3 ур/);
 });
 

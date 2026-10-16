@@ -54,8 +54,9 @@ test("the introduction includes berry practice, neighbors, orders and workshop w
   assert.ok(WORLD_ONBOARDING_STEPS.every(Object.isFrozen));
   assert.equal(new Set(WORLD_ONBOARDING_STEPS.map(step => step.pose)).size, stepIds.length);
   const orders = WORLD_ONBOARDING_STEPS.find(step => step.id === "orders");
-  assert.equal(orders.selector, '[data-world-orders-entry]');
-  assert.match(orders.text, /«Заказы» внизу карты.*журнал/);
+  assert.equal(orders.selector, undefined, "the authored board contour is highlighted on the canvas");
+  assert.match(orders.text, /Доска заказов на карте открывает журнал/);
+  assert.match(orders.summary, /выделенную доску/);
   const expedition = WORLD_ONBOARDING_STEPS.find(step => step.id === "expeditions");
   assert.match(expedition.text, /выбери занятие, затем маршрут/);
   const help = WORLD_ONBOARDING_STEPS.find(step => step.id === "help");

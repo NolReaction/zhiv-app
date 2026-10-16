@@ -26,7 +26,7 @@ const fresh = (inventory = {}) => {
 };
 const controller = state => ({ snapshot: state, market: null, marketError: null, busy: false, uncertain: false, error: null,
   notice: "", now: Date.now(), retryAt: 0, act() {}, actMarket() {}, refresh() {}, refreshMarket() {}, retry() {} });
-const pantry = (state, initialTab = "supplies") => render(WorldPantryMenu, { economy: controller(state), initialTab, onUpgrade() {}, onExplore() {}, onOpenMarket() {} });
+const pantry = (state, initialTab = "supplies") => render(WorldPantryMenu, { economy: controller(state), initialTab, onUpgrade() {}, onExplore() {} });
 
 test("relic masters are distinct native illustrations without external artwork or shared SVG IDs", () => {
   const drawings = ["ancient_core", "moon_crystal", "living_resin"].map(itemId => render(ItemIcon, { itemId, size: 48 }));

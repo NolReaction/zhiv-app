@@ -312,7 +312,16 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
     base.status = offline ? "Сейчас нет связи. Можно вернуться к заказу позже."
       : economy.uncertain ? "Результат ещё не подтверждён. Проверим его перед следующим действием."
       : economy.busy ? "Жду подтверждения хозяйства…" : economy.error ?? undefined;
-    if (!snapshot || !practice || !order && !lessonDone) {
+    if (!props.ordersOpen && !lessonDone) {
+      base.title = "Доска заказов жителей";
+      base.summary = "Нажми на выделенную доску на карте. Жители оставляют здесь просьбы и платят монеты за припасы.";
+      base.text = "Доска заказов на карте открывает журнал. В нём видны нужные товары и награда: собери припасы, затем нажми «Отдать заказ». Первый учебный заказ просит одну малину из первого урожая. Дальше появятся просьбы для улучшения дома и обычные заказы жителей.";
+      base.hint = "Камера показывает доску, а светлая обводка помогает найти её. Нажми на саму доску.";
+      // The authored map contour is highlighted by WorldScene, just like the bush.
+      // Only a real tap on the board opens the journal; no detached HUD shortcut.
+      base.target = undefined;
+      base.primary = undefined;
+    } else if (!snapshot || !practice || !order && !lessonDone) {
       base.summary = "Загружаю учебную просьбу и её условия.";
       base.text = "Соседи платят за припасы. Проверим, сколько товаров нужно собрать для первой просьбы.";
       base.primary = { label: "Обновить хозяйство", disabled: locked, onClick: () => void economy.refresh() };
@@ -334,11 +343,11 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
       base.summary = props.ordersOpen ? surface.tutorialOrder
         ? "Сравни «есть / нужно». Собери недостающие припасы, затем нажми «Отдать заказ»."
         : "Нажми фильтр «Все»: над обычными просьбами появится учебный заказ."
-        : "Нажми «Заказы» внизу карты: откроется журнал просьб соседей.";
+        : "Нажми на выделенную доску заказов на карте: откроется журнал просьб соседей.";
       const firstHarvest = order?.items.berries === 1 && Object.keys(order.items).length === 1;
-      base.text = `Кнопка «Заказы» внизу карты открывает журнал. Учебный заказ находится в «Пути хозяйства», в фильтре «Все». ${firstHarvest ? "Нужна одна малина: забери первый урожай с куста." : "Состав сохранённого заказа указан в карточке: собери недостающие припасы."} Затем нажми «Отдать заказ».`;
+      base.text = `Доска заказов на карте открывает журнал. Учебный заказ находится в «Пути хозяйства», в фильтре «Все». ${firstHarvest ? "Нужна одна малина: забери первый урожай с куста." : "Состав сохранённого заказа указан в карточке: собери недостающие припасы."} Затем нажми «Отдать заказ».`;
       base.target = props.ordersOpen ? surface.tutorialOrder && order ? `[data-order-id="${order.id}"]` : '[data-order-filter="all"]'
-        : '[data-world-orders-entry]';
+        : undefined;
       base.primary = undefined;
       base.status ??= missing ? "Припасов пока не хватает. Нажми недостающий товар на доске, чтобы найти его источник." : undefined;
     }

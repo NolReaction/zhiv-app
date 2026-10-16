@@ -6,14 +6,13 @@ import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Popover } from "radix-ui";
-import { ChevronLeft, ChevronRight, ChevronUp, Compass, Fish, Gift, Package, RefreshCw, Snowflake, Store, Sparkles, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronUp, Compass, Fish, Gift, Package, RefreshCw, Snowflake, Sparkles, X } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
 import { FISH_SPECIES_IDS } from "@/features/world/activities/fishing/fish-species";
 import { fishSelectionMatches, fishStockEntries, type FishSelection } from "@/features/economy/domain/fish-stock";
 import { WorldFishSelection } from "@/features/economy/ui/fishing/world-fish-selection";
 import { FishTapFeedbackArt, FishTapFeedbackQuantity, useFishTapFeedback } from "@/features/economy/ui/fishing/fish-tap-feedback";
 import { economyLocalSellPrice, economyLocalSaleMinimumQuantity, economyLocalSaleLimit } from "@/features/economy/domain/local-sale";
-import { economyMarketUnlocked } from "@/features/economy/domain/market-rules";
 import type { EconomyView } from "@/features/economy/domain/model";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import { locked, type ReadyEconomy } from "@/features/economy/sync/controller-state";
@@ -26,7 +25,6 @@ import styles from "./world-pantry-menu.module.css";
 export type WorldPantryMenuProps = {
   economy: EconomyController;
   onExplore: () => void;
-  onOpenMarket?: () => void;
   onOpenFishingShop?: () => void;
   constructionGoal?: ConstructionGoalController;
   onOpenGoal?: () => void;
@@ -270,7 +268,7 @@ export function PantryFishClassRow({ economy, classId, selectedFishId, onSelectF
   </section>;
 }
 
-export function RelicPantrySection({ state, onExplore, onOpenMarket, rarityDescriptionId }: { state: EconomyView; onExplore: () => void; onOpenMarket?: () => void; rarityDescriptionId?: string }) {
+export function RelicPantrySection({ state, onExplore, rarityDescriptionId }: { state: EconomyView; onExplore: () => void; rarityDescriptionId?: string }) {
   const items = state.catalog.items.filter(item => item.category === "special");
   const requiredHome = state.catalog.rareDrops?.requiredHomeLevel;
   return <section className={styles.relics} data-guide-pantry-relics aria-label="Реликвии в кладовой">
@@ -281,12 +279,12 @@ export function RelicPantrySection({ state, onExplore, onOpenMarket, rarityDescr
         <div className={styles.relicHeading}><span className={styles.relicArt}><ItemIcon itemId={item.id} size={48} /></span><div><h3>{item.name}</h3></div><strong aria-label={`В наличии: ${number(stock)}`}>×{number(stock)}</strong></div>
       </article>;
     })}</div>
-    {items.length === 0 ? <p className={styles.muted}>Реликвии появятся вместе с новыми маршрутами.</p> : <><p className={styles.muted}>{requiredHome ? `Находки в вылазках с домом ур. ${requiredHome}. ` : "Находки из вылазок. "}Их также можно получить по обмену с другими игроками.</p><div className={styles.relicActions}><button type="button" className={styles.textButton} onClick={onExplore}><Compass size={14} aria-hidden="true" />В путь</button>{onOpenMarket && <button type="button" className={styles.textButton} onClick={onOpenMarket}><Store size={14} aria-hidden="true" />Лавки игроков</button>}</div></>}
+    {items.length === 0 ? <p className={styles.muted}>Реликвии появятся вместе с новыми маршрутами.</p> : <><p className={styles.muted}>{requiredHome ? `Находки в вылазках с домом ур. ${requiredHome}. ` : "Находки из вылазок. "}Их также можно получить у Листохвоста или обменять на рынке на карте.</p><div className={styles.relicActions}><button type="button" className={styles.textButton} onClick={onExplore}><Compass size={14} aria-hidden="true" />В путь</button></div></>}
   </section>;
 }
 
 /** Content only: the map provides the shared menu frame, heading and focus handling. */
-export function WorldPantryMenu({ economy, onExplore, onOpenMarket, onOpenFishingShop, constructionGoal, onOpenGoal, navigation, onReturnToGift, onFishSaleOpenChange, initialTab = "supplies" }: WorldPantryMenuProps) {
+export function WorldPantryMenu({ economy, onExplore, onOpenFishingShop, constructionGoal, onOpenGoal, navigation, onReturnToGift, onFishSaleOpenChange, initialTab = "supplies" }: WorldPantryMenuProps) {
   const [tab, setTab] = useState(initialTab);
   const tabId = useId(), tabs = useRef<(HTMLButtonElement | null)[]>([]);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
@@ -320,7 +318,6 @@ export function WorldPantryMenu({ economy, onExplore, onOpenMarket, onOpenFishin
     { id: "fridge", name: "Холодильник", count: fishItems.reduce((total, item) => total + state.inventory[item.id], 0), icon: Snowflake },
     { id: "relics", name: "Реликвии", count: relicCount, icon: Sparkles },
   ] as const;
-  const marketAvailable = onOpenMarket && economyMarketUnlocked(state, state.catalog);
   const readyEconomy = { ...economy, snapshot: state };
   return <div className={styles.pantry} aria-busy={economy.busy || undefined}>
     {pantryRarities.map(rarity => <span key={rarity} hidden id={`${tabId}-rarity-${rarity}`}>Редкость: {pantryRarityNames[rarity]}</span>)}
@@ -343,7 +340,7 @@ export function WorldPantryMenu({ economy, onExplore, onOpenMarket, onOpenFishin
         event.preventDefault(); changeTab(sections[next].id); tabs.current[next]?.focus();
       }}><entry.icon size={14} aria-hidden="true" /><small>{number(entry.count)}</small><span>{entry.name}</span></button>)}</div>
     <div role="tabpanel" className={styles.pantryPanel} id={`${tabId}-panel`} aria-labelledby={`${tabId}-${tab}`}>
-      {tab === "relics" ? <RelicPantrySection state={state} rarityDescriptionId={`${tabId}-rarity-epic`} onExplore={onExplore} onOpenMarket={marketAvailable ? onOpenMarket : undefined} /> : <>
+      {tab === "relics" ? <RelicPantrySection state={state} rarityDescriptionId={`${tabId}-rarity-epic`} onExplore={onExplore} /> : <>
     {tab === "fridge" && <div className={styles.fridgeHeading}><span><Snowflake size={16} aria-hidden="true" />Рыба и готовая еда</span><small>Места общие с кладовой</small></div>}
     {selectedItemId && !fishClassForItem(selectedItemId, state.catalog.fishing) && <PantrySale key={selectedItemId} economy={readyEconomy} itemId={selectedItemId} constructionGoal={constructionGoal} onClose={() => setSelectedItemId(null)} onOpenFishingShop={onOpenFishingShop} />}
     {visibleItems.length > 0 || tab === "fridge" && fishClasses.length > 0 ? <>
@@ -374,6 +371,5 @@ export function WorldPantryMenu({ economy, onExplore, onOpenMarket, onOpenFishin
       </>}
     </div>
 
-    {marketAvailable && <button type="button" className={styles.market} data-guide-pantry-market onClick={onOpenMarket}><Store size={14} aria-hidden="true" />Рынок игроков</button>}
   </div>;
 }

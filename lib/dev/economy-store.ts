@@ -89,7 +89,7 @@ function view(owner: string, value: Profile, now: number): EconomyView {
   return { ownerPublicId: owner, revision: value.revision, serverTime: new Date(now).toISOString(), ...state, currencyScale: ECONOMY_CURRENCY_SCALE, pearlScale: ECONOMY_PEARL_SCALE,
     tutorialOrder: tutorialOrderProgress(state), stageOrders: stageOrdersProgress(state), food: foodState(state), residentOrders: economyResidentOrdersSchema.parse(state.residentOrders),
     marketSlots: marketSlotCount(state), unlockedItems,
-    productionSlots: state.productionSlots ?? {}, workshopStarterClaimed: state.workshopStarterClaimed ?? false, wardrobe: wardrobeOwned(state.wardrobe), fishingShop: state.fishingShop ?? null, storage: economyStorage(value.state, escrowItems(owner)), catalog: structuredClone(economyCatalog) };
+    productionSlots: state.productionSlots ?? {}, workshopStarterClaimed: state.workshopStarterClaimed ?? false, wardrobe: wardrobeOwned(state.wardrobe), fishingShop: state.fishingShop ?? null, leaftailShop: state.leaftailShop ?? { cycle: -1, purchased: {} }, storage: economyStorage(value.state, escrowItems(owner)), catalog: structuredClone(economyCatalog) };
 }
 function bump(value: Profile) {
   if (value.revision >= Number.MAX_SAFE_INTEGER) fail("ECONOMY_CAPACITY", "Состояние требует обслуживания");

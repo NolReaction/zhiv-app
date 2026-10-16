@@ -31,12 +31,15 @@ test("only implemented economic sites receive map shortcuts, including restored 
   for (const id of ["plesk-shop", "market", "leaftail-caravan", "bulletin-board", "lopukh-home", "unknown", "constructor", null, undefined]) assert.equal(sitePlace(id), null);
 });
 
-test("placed markets, caravan, order board and Lopukh home expose their own authored map targets", () => {
+test("placed markets, LeafTail shop, order board and Lopukh home expose their own authored map targets", () => {
   const hitArea = [{ x: 20, y: 20 }, { x: 40, y: 20 }, { x: 40, y: 40 }, { x: 20, y: 40 }];
   const ids = ["market", "leaftail-caravan", "bulletin-board", "lopukh-home"];
   const sites = ids.map(id => ({ id, label: id, anchor: { x: 30, y: 40 }, hitArea }));
   const objects = interactiveMapObjects({ sites, terrain: [] });
   assert.deepEqual(objects.map(object => [object.id, object.place]), ids.map(id => [id, id]));
+  assert.equal(objects.find(object => object.id === "leaftail-caravan").label, "Лавка Листохвоста");
+  assert.equal(objects.find(object => object.id === "bulletin-board").label, "Доска заказов");
+  assert.deepEqual(sites.map(site => site.label), ids, "visible role labels do not rename or modify the authoring source");
   for (const [index, object] of objects.entries()) {
     assert.equal(object.hitArea, sites[index].hitArea);
     assert.equal(object.anchor, sites[index].anchor);

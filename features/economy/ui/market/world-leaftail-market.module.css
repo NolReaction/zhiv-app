@@ -1,0 +1,31 @@
+.shop { display: flex; flex-direction: column; gap: 9px; min-width: 0; color: #394d3e; }
+.shop:focus { outline: none; }
+.intro { display: flex; gap: 8px; align-items: flex-start; padding: 9px; border-radius: 10px; color: #456044; background: #d6ddba; font-size: 11px; }
+.wallet, .offerBottom { display: flex; align-items: center; justify-content: space-between; gap: 7px; min-width: 0; }
+.wallet { font-size: 11px; }
+.wallet strong { display: inline-flex; align-items: center; gap: 4px; color: #795723; }
+.locked { display: flex; align-items: center; gap: 6px; padding: 8px; background: #ded4b7; border-radius: 8px; }
+.hint, .delivery, .offerBottom > small { color: #656c51; font-size: 10px; }
+.offers { display: flex; flex-direction: column; gap: 7px; }
+.offer { padding: 9px; border: 1px solid #b8be98; border-radius: 11px; background: #ede5c9; }
+.item { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.item > div { display: flex; flex: 1; flex-direction: column; gap: 3px; min-width: 0; }
+.item strong { font-size: 12px; overflow-wrap: anywhere; }
+.item small { font-size: 10px; color: #656c51; }
+.stock { flex-shrink: 0; color: #64724a; font-size: 10px; }
+.offerBottom { margin-top: 7px; }
+.shop.shop .buy { min-height: 40px; padding: 7px 9px; border: 1px solid #738561; background: #466347; color: #fff3cc; font-weight: 600; }
+.shop.shop .buy:hover:not(:disabled) { background: #355439; }
+.shop.shop button { min-height: 40px; }
+.shop.shop button:focus-visible { outline: 2px solid #294f35; outline-offset: 2px; }
+.shop.shop button:disabled { opacity: .5; cursor: default; }
+.reason { margin-top: 5px !important; font-size: 10px; color: #865735; }
+.confirmation { display: flex; flex-direction: column; gap: 8px; padding: 11px; border-radius: 10px; border: 1px solid #95a379; background: #eee6c8; font-size: 11px; }
+.confirmation h3 { font-size: 13px; }
+.confirmation h3:focus { outline: none; }
+.actions { display: flex; flex-wrap: wrap; gap: 5px; justify-content: flex-end; }
+.delivery { display: flex; align-items: flex-start; gap: 6px; }
+.delivery small { display: block; margin-top: 2px; font-size: 9px; }
+.success { display: flex; align-items: center; gap: 5px; color: #476b3c; font-size: 11px; }
+.recovery { padding: 9px; border-radius: 8px; background: #ead1b2; color: #86432d; font-size: 11px; }
+@media (max-width: 360px) { .offerBottom { flex-wrap: wrap; } .offerBottom > small { flex: 1 1 100%; } .shop.shop .buy { min-height: 44px; } }

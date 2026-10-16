@@ -73,6 +73,9 @@ object EconomyRules {
             catalog.market.dailyTradeValueByHome.zipWithNext().all { (a,b) -> a <= b })
         require(catalog.items.map { it.id }.distinct().size == catalog.items.size)
         require(catalog.items.all { if (it.category == "special") it.baseSellPrice == 0L && !it.tradable else it.baseSellPrice > 0L })
+        catalog.leaftailShop?.let { shop ->
+            require(shop.offers.all { offer -> catalog.items.any { it.id == offer.itemId && it.category == "special" && !it.tradable } })
+        }
         require(catalog.buildings.map { it.id }.distinct().size == catalog.buildings.size)
         require(catalog.recipes.map { it.id }.distinct().size == catalog.recipes.size)
         require(catalog.recipes.all { it.maxBatch == null || it.maxBatch in 1..catalog.maxBatch })
@@ -364,7 +367,7 @@ object EconomyRules {
 
     private fun applyCurrent(state: EconomyState, command: EconomyCommand, now: Instant, reservedItems: Map<String, Long>): Pair<EconomyState, String> {
         validateEconomyCommand(command)
-        if (command.action !in setOf("speedup_construction", "buy_fishing_item", "buy_wardrobe_item", "refresh_fishing_shop", "replace_resident_order", "sell", "buy_market_slot") && command.totalPrice != 0L) invalidEconomy()
+        if (command.action !in setOf("speedup_construction", "buy_fishing_item", "buy_wardrobe_item", "buy_leaftail_item", "refresh_fishing_shop", "replace_resident_order", "sell", "buy_market_slot") && command.totalPrice != 0L) invalidEconomy()
         if (command.action !in setOf("start_production", "sell", "sell_fish", "buy_fishing_item") && command.quantity != 1L) invalidEconomy()
         return when (command.action) {
             "claim_tutorial_order" -> EconomyTutorialOrders.claim(state, command, reservedItems)
@@ -590,6 +593,7 @@ object EconomyRules {
                 state.copy(marketSlots = offer.slots, wallet = state.wallet.copy(pearls = state.wallet.pearls - offer.pricePearls)) to
                     "Новое место рынка открыто"
             }
+            "buy_leaftail_item" -> EconomyLeaftailShops.buy(state, command, now, reservedItems)
             "refresh_fishing_shop" -> {
                 val shop = state.fishingShop
                 val spec = catalog.fishing?.shop

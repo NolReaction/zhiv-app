@@ -5,7 +5,7 @@ import { Dialog as DialogPrimitive } from "radix-ui";
 import { Dialog, DialogPortal, DialogOverlay, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { PleskPortrait } from "@/features/world/characters/plesk/plesk-portrait";
 import { BuilderPortrait } from "@/features/world/characters/builder/builder-portrait";
-import { WORLD_CHARACTERS, worldCharacterResident, type WorldCharacter, type WorldResidentId } from "@/features/world/characters/world-characters-model";
+import { WORLD_CHARACTERS, worldCharacterResident, type WorldCharacter, type WorldCharacterId, type WorldResidentId } from "@/features/world/characters/world-characters-model";
 import styles from "./world-characters.module.css";
 
 const silhouettes = {
@@ -23,10 +23,10 @@ function CharacterSilhouette({ character }: { character: Extract<WorldCharacter,
 }
 
 /** A full gallery, separate from the compact More menu. The modal owns keyboard
- * focus; only implemented residents can open a conversation. */
-export function WorldCharacters({ open, onClose, onResident, onCloseAutoFocus, focusedResident }: {
-  open: boolean; onClose: () => void; onResident: (id: WorldResidentId) => void;
-  onCloseAutoFocus: (event: Event) => void; focusedResident?: WorldResidentId;
+ * focus; residents open conversations and LeafTail opens his existing map shop. */
+export function WorldCharacters({ open, onClose, onResident, onShop, onCloseAutoFocus, focusedCharacter }: {
+  open: boolean; onClose: () => void; onResident: (id: WorldResidentId) => void; onShop: () => void;
+  onCloseAutoFocus: (event: Event) => void; focusedCharacter?: WorldCharacterId;
 }) {
   return <Dialog open={open} onOpenChange={next => { if (!next) onClose(); }}>
     <DialogPortal>
@@ -34,7 +34,7 @@ export function WorldCharacters({ open, onClose, onResident, onCloseAutoFocus, f
       <DialogPrimitive.Content data-slot="dialog-content" className={styles.dialog}
         onCloseAutoFocus={onCloseAutoFocus} onOpenAutoFocus={event => {
           const gallery = event.target as HTMLElement;
-          const card = (focusedResident && gallery.querySelector<HTMLButtonElement>(`button[data-world-character="${focusedResident}"]`))
+          const card = (focusedCharacter && gallery.querySelector<HTMLButtonElement>(`button[data-world-character="${focusedCharacter}"]`))
             || gallery.querySelector<HTMLButtonElement>("button[data-world-character]");
           if (card) { event.preventDefault(); card.focus({ preventScroll: true }); }
         }}>
@@ -46,11 +46,11 @@ export function WorldCharacters({ open, onClose, onResident, onCloseAutoFocus, f
         <ul className={styles.grid} aria-label="Персонажи леса">
           {[...WORLD_CHARACTERS].sort((a, b) => Number(b.available) - Number(a.available)).map(character => <li key={character.id}>
             {character.available ? <button type="button" className={`${styles.card} ${styles.available}`} data-world-character={character.id}
-              aria-label={`${character.name}, ${character.role}. Открыть разговор`} aria-haspopup="dialog"
-              onClick={() => { const resident = worldCharacterResident(character.id); if (resident) onResident(resident); }}>
-              <span className={styles.stage}>{character.id === "builder" ? <BuilderPortrait animated className={styles.portrait} /> : <PleskPortrait animated className={styles.portrait} />}</span>
+              aria-label={`${character.name}, ${character.role}. ${character.kind === "shop" ? "Открыть лавку" : "Открыть разговор"}`} aria-haspopup="dialog"
+              onClick={() => { if (character.kind === "shop") onShop(); else { const resident = worldCharacterResident(character.id); if (resident) onResident(resident); } }}>
+              <span className={styles.stage}>{character.kind === "shop" ? <span className={styles.shopPortrait} role="img" aria-label="Иллюстрация лавки Листохвоста" /> : character.id === "builder" ? <BuilderPortrait animated className={styles.portrait} /> : <PleskPortrait animated className={styles.portrait} />}</span>
               <strong>{character.name}</strong><small>{character.role}</small>
-              <span className={styles.visit}>Заглянуть <ArrowRight size={15} aria-hidden="true" /></span>
+              <span className={styles.visit}>{character.kind === "shop" ? "Открыть лавку" : "Заглянуть"} <ArrowRight size={15} aria-hidden="true" /></span>
             </button> : <div className={`${styles.card} ${styles.locked}`} aria-label="Неизвестный персонаж, пока недоступен">
               <span className={styles.stage}><CharacterSilhouette character={character} /></span>
               <strong>Неизвестный житель</strong><small>Пока недоступен</small>

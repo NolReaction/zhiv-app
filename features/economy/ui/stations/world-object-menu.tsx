@@ -3,13 +3,12 @@
 import { fishClassForItem } from "@/features/economy/domain/fishing";
 
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
-import { ArrowRight, Backpack, BookOpenCheck, Check, Cherry, ChevronUp, Compass, CupSoda, Fence, Fish, Flame, Hammer, House, Leaf, LockKeyhole, Package, Pickaxe, RefreshCw, Sprout, Store, TowerControl, Trees, X, type LucideIcon } from "lucide-react";
+import { ArrowLeft, ArrowRight, Backpack, Check, Cherry, ChevronUp, Compass, CupSoda, Fence, Fish, Flame, Hammer, House, Leaf, LockKeyhole, Package, Pickaxe, RefreshCw, Sprout, TowerControl, Trees, X, type LucideIcon } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import type { MapObjectSelection, WorldPlace } from "@/features/world/scene/map-engine";
 import type { WorldHelpContext } from "@/features/world/ui/help/world-help-types";
-import { economyMarketUnlocked } from "@/features/economy/domain/market-rules";
 import { economyLocalSellPrice, economyLocalSaleMinimumQuantity, economyLocalSaleLimit } from "@/features/economy/domain/local-sale";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import { worldDuration, worldJobProgress, worldMenuDimensions, worldMenuPosition, worldStableMenuPosition, worldPlaceForStation, worldRequirements, worldStations, type WorldMenuBounds, type WorldRecipe } from "@/features/economy/ui/shared/world-stations";
@@ -19,6 +18,7 @@ import { WorldUpgradeDialog } from "@/features/economy/ui/construction/world-upg
 import { WorldStationSetup } from "@/features/economy/ui/construction/world-station-setup";
 import { useGardenCollection } from "@/features/economy/integration/garden-collection-context";
 import { WorldExpeditionsMenu } from "@/features/economy/ui/expeditions/world-expeditions-menu";
+import { WorldLeaftailMarket } from "@/features/economy/ui/market/world-leaftail-market";
 import { WorldProductionSlots } from "@/features/economy/ui/production/world-production-slots";
 import { productionStationSupported } from "@/features/economy/domain/production-slots";
 import type { ConstructionGoalController } from "@/features/economy/ui/construction/use-construction-goal";
@@ -34,6 +34,7 @@ export type WorldObjectMenuProps = {
   selection: MapObjectSelection;
   economy: EconomyController;
   onClose: () => void;
+  onBack?: () => void;
   onReturnFocus?: () => void;
   /** Safe insets in CSS pixels, in the same map viewport as selection.x/y. */
   bounds?: WorldMenuBounds;
@@ -41,8 +42,6 @@ export type WorldObjectMenuProps = {
   initialStationId?: string;
   initialRecipeId?: string;
   onExplore?: () => void;
-  onOpenMarket?: () => void;
-  onOpenOrders?: () => void;
   onOpenPantry?: () => void;
   constructionGoal?: ConstructionGoalController;
   onOpenGoal?: () => void;
@@ -110,7 +109,7 @@ export function WorldObjectSale({ economy, itemId, onCollapse }: { economy: Read
   </section>;
 }
 
-function ObjectMenuBody({ guide, guideRoot: guideRootRef, selection, economy, isOnline, onClose, onReturnFocus, bounds, onNavigate, onExplore, onOpenMarket, onOpenOrders, onOpenPantry, initialStationId, initialRecipeId, constructionGoal, onOpenGoal, onOpenHelp, onHelpContextChange }: WorldObjectMenuProps) {
+function ObjectMenuBody({ guide, guideRoot: guideRootRef, selection, economy, isOnline, onClose, onBack, onReturnFocus, bounds, onNavigate, onExplore, onOpenPantry, initialStationId, initialRecipeId, constructionGoal, onOpenGoal, onOpenHelp, onHelpContextChange }: WorldObjectMenuProps) {
   const collection = useGardenCollection();
   const seenHarvest = useRef(collection?.request?.requestId);
   useEffect(() => {
@@ -157,7 +156,7 @@ function ObjectMenuBody({ guide, guideRoot: guideRootRef, selection, economy, is
   const cooldown = Math.max(0, Math.ceil((economy.retryAt - economy.now) / 1000));
 
   useEffect(() => {
-    if (definition.future) return;
+    if (definition.future || !stationId) return;
     if (upgradeStation) onHelpContextChange?.({ stationId: upgradeStation, intent: "construction" });
     else if (focusedRecipeId) onHelpContextChange?.({ stationId, intent: "production", recipeId: focusedRecipeId, quantity: 1 });
     else onHelpContextChange?.({ stationId });
@@ -215,6 +214,7 @@ function ObjectMenuBody({ guide, guideRoot: guideRootRef, selection, economy, is
 
   return <>{showMenu && <section ref={element => { panel.current = element; if (guideRootRef) guideRootRef.current = element; }} className={styles.menu} role="dialog" aria-modal="false" aria-labelledby={hasStationTabs ? `${headingId}-${stationId}` : headingId} tabIndex={-1} data-place={selection.place} data-side={position.side} style={{ left: position.x, top: fitOverview ? undefined : position.y, bottom: fitOverview ? selection.viewportHeight - position.y - position.height : undefined, width, height: definition.future || fitOverview ? undefined : position.height, maxHeight, "--menu-anchor-x": `${position.anchorX}px`, "--menu-anchor-y": `${position.anchorY}px` } as CSSProperties} onPointerDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()} onWheel={event => event.stopPropagation()} onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); } }}>
     <header className={`${styles.header} ${hasStationTabs ? styles.tabbedHeader : ""}`}>
+      {onBack && <button type="button" className={styles.back} aria-label="Назад к персонажам" onClick={onBack}><ArrowLeft size={18} aria-hidden="true" /></button>}
       {hasStationTabs ? <nav className={styles.stations} role="tablist" aria-label={`Оборудование: ${definition.label}`}>
         {definition.stationIds.map((id, index) => {
           const StationIcon = stationIcons[id] ?? Package;
@@ -236,10 +236,9 @@ function ObjectMenuBody({ guide, guideRoot: guideRootRef, selection, economy, is
     <div data-guide-coach-slot />
     {guide}
     <div ref={menuBody} className={styles.body} id={hasStationTabs ? `${headingId}-content` : undefined} role={hasStationTabs ? "tabpanel" : undefined} aria-labelledby={hasStationTabs ? `${headingId}-${stationId}` : undefined}>
-      {state && !definition.future && constructionGoal && onOpenGoal && <ConstructionGoalSummary state={state} constructionGoal={constructionGoal} onOpenGoal={onOpenGoal} navigation={navigation} compact />}
-      {definition.future ? <>
+      {state && !definition.future && selection.place !== "leaftail-caravan" && constructionGoal && onOpenGoal && <ConstructionGoalSummary state={state} constructionGoal={constructionGoal} onOpenGoal={onOpenGoal} navigation={navigation} compact />}
+      {selection.place === "leaftail-caravan" ? <WorldLeaftailMarket economy={economy} isOnline={isOnline !== false} /> : definition.future ? <>
         <div className={styles.future}><LockKeyhole size={22} aria-hidden="true" /><p>{definition.future}</p></div>
-        {selection.place === "leaftail-caravan" && onOpenOrders && <button type="button" className={styles.primary} onClick={() => { navigating.current = true; onOpenOrders(); }}><BookOpenCheck size={16} aria-hidden="true" />Заказы жителей<ArrowRight size={14} aria-hidden="true" /></button>}
       </> : !state ? <div className={styles.loading}><RefreshCw size={17} aria-hidden="true" /><p>{economy.error ?? "Открываем ваше хозяйство…"}</p>{economy.error && <button type="button" className={styles.textButton} disabled={economy.busy || cooldown > 0} onClick={() => void economy.retry()}>{cooldown ? `Повторить через ${cooldown} с` : "Попробовать ещё раз"}</button>}</div> : <>
         {!economy.syncError && (economy.error || economy.uncertain) && <div className={styles.error} role="alert"><p>{economy.uncertain ? "Проверяем последнее действие. Новые заказы доступны после подтверждения." : economy.error}</p><button type="button" className={styles.textButton} disabled={economy.busy || cooldown > 0} onClick={() => void economy.retry()}><RefreshCw size={12} aria-hidden="true" />{cooldown ? `Повторить через ${cooldown} с` : economy.uncertain ? "Проверить результат" : "Повторить"}</button></div>}
         {readyEconomy && needsSetup ? <WorldStationSetup economy={readyEconomy} stationId={stationId} onOpenConstruction={openUpgrade} onOpenPantry={openJobPantry} /> : <>
@@ -255,8 +254,7 @@ function ObjectMenuBody({ guide, guideRoot: guideRootRef, selection, economy, is
           {!current && !construction && <p className={styles.empty}>{stationId === "bridge" ? "Восстановите мост, чтобы открыть рынок игроков." : "Восстановите маяк, чтобы зажечь свет у причала."}</p>}
           {current > 0 && <>
             {stationId === "bridge" && <>
-              <h3>Рынок игроков</h3><p className={styles.small}>Мост соединяет вашу поляну с соседскими прилавками.</p>
-              {onOpenMarket && economyMarketUnlocked(state, state.catalog) && <button type="button" className={styles.primary} onClick={() => { navigating.current = true; onOpenMarket(); }}><Store size={15} aria-hidden="true" />Открыть рынок игроков<ArrowRight size={13} aria-hidden="true" /></button>}
+              <h3>Рынок игроков</h3><p className={styles.small}>Мост восстановлен. Торговля с игроками открывается нажатием на рынок на карте.</p>
             </>}
             {stationId === "lighthouse" && <p className={styles.small}>Свет маяка отмечает причал. Пароход с крупными заказами появится в будущем обновлении.</p>}
             <h3>Маршруты экспедиций</h3>
@@ -272,7 +270,7 @@ function ObjectMenuBody({ guide, guideRoot: guideRootRef, selection, economy, is
         </>}
       </>}
     </div>
-    {state && !definition.future && !target && !jobs.length && !recipes.length && <footer className={styles.footer}><span className={styles.maximum}><Check size={12} aria-hidden="true" />{landmark ? "Восстановление завершено" : "Все уровни оборудования открыты"}</span></footer>}
+    {state && !definition.future && selection.place !== "leaftail-caravan" && !target && !jobs.length && !recipes.length && <footer className={styles.footer}><span className={styles.maximum}><Check size={12} aria-hidden="true" />{landmark ? "Восстановление завершено" : "Все уровни оборудования открыты"}</span></footer>}
   </section>}
     <WorldUpgradeDialog stationId={upgradeStation} economy={economy} isOnline={isOnline} onOpenHelp={openHelp} constructionGoal={constructionGoal} onClose={closeUpgrade} onCompleted={() => { completedUpgrade.current = true; onClose(); }} navigation={navigation}
       onOpenPantry={onOpenPantry ? () => { navigating.current = true; setUpgradeStation(null); onOpenPantry(); } : selection.place === "house" ? () => chooseStation("warehouse") : onNavigate ? () => { navigating.current = true; setUpgradeStation(null); onNavigate("house", "warehouse"); } : undefined}

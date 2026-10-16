@@ -503,10 +503,11 @@ test("a restored bridge opens trade at home two without an exploration and close
   const h = harness(Market, { economy: e, navigate: (...args) => destinations.push(args) });
   view = h.render();
   assert.match(view.html, /Восстановите мост/);
-  assert.doesNotMatch(view.html, /data-market-offer=|Завершённые вылазки/);
-  view.nodes.find(node => node.type === "button" && renderToStaticMarkup(node).includes("Продолжить обустройство")).props.onClick();
+  assert.doesNotMatch(view.html, /data-market-offer="[ab]"|Завершённые вылазки/);
+  view.nodes.find(node => node.type === "button" && renderToStaticMarkup(node).includes("Восстановить мост")).props.onClick();
   assert.deepEqual(destinations, [["buildings", "bridge"]]);
-  view.nodes.find(node => node.props["data-guide-market-tab"] === "mine").props.onClick();
+  assert.match(view.html, /Рынок закрыт/);
+  assert.doesNotMatch(view.html, /data-guide-market-tab|Выставить товар|Обмен особыми материалами/);
   const own = h.render().nodes.find(node => node.props["aria-label"] === "Ваши предложения");
   assert.equal(own.props.children.length, 2);
   const card = harness(OfferCard, own.props.children[0].props);
@@ -515,4 +516,24 @@ test("a restored bridge opens trade at home two without an exploration and close
   assert.deepEqual(calls, [["cancel_listing", "mine-a"]]);
   const foreign = harness(OfferCard, { economy: e, offer: offer("a"), navigate() {} }).render();
   assert.equal(foreign.nodes.find(node => node.type === "button").props.disabled, true);
+});
+
+
+test("closed market distinguishes bridge work from unclaimed completion and never requests a trade showcase", () => {
+  for (const phase of ["ruins", "building", "ready"]) {
+    const e = economy(), destinations = [], refreshes = [];
+    e.snapshot.buildings.home = 2; e.snapshot.buildings.bridge = 0;
+    e.market = null;
+    e.refreshMarket = () => { refreshes.push(true); };
+    e.snapshot.jobs = phase === "ruins" ? [] : [{ id: "bridge-work", kind: "construction", targetId: "bridge", finishesAt: new Date(now + (phase === "building" ? 60_000 : 0)).toISOString() }];
+    const h = harness(Market, { economy: e, navigate: (...args) => destinations.push(args) });
+    const view = h.render();
+    assert.match(view.html, /Рынок закрыт/);
+    assert.doesNotMatch(view.html, /data-guide-market-tab|Выставить товар|Открываем прилавки|data-market-offer/);
+    assert.deepEqual(refreshes, []);
+    const action = view.nodes.find(node => node.type === "button");
+    assert.match(renderToStaticMarkup(action), new RegExp(phase === "ruins" ? "Восстановить мост" : phase === "building" ? "К стройке моста" : "Получить мост"));
+    action.props.onClick();
+    assert.deepEqual(destinations, [["buildings", "bridge"]]);
+  }
 });

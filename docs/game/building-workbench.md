@@ -39,7 +39,7 @@
 | `quarry` | 0–1 | Заброшенная / открытая шахта: `quarry-lvl-0.png`, `quarry-lvl-1.png` |
 | `woodlot` | Нет рисунка | Старый навес снят; экономика сохранена, анимируемое рабочее место отложено |
 | `market` | 1 | `market.png`, открытый двор и ворота |
-| `leaftail-caravan` | 1 | Караван Листохвоста без улучшений |
+| `leaftail-caravan` | 1 | Лавка Листохвоста без улучшений (совместимый ID прежнего рисунка каравана) |
 | `bulletin-board` | 1 | Доска заказов |
 | `lopukh-home` | 1–2 | Два визуальных состояния дома Лопоуха, без экономического улучшения |
 | `plesk-shop` | 1 | Лавка Плёски |
@@ -56,7 +56,7 @@
 | Рынок | `Market/Market-lvl-1` | `Market-image`, `Market-tracing`, `Market-anchors` |
 | Дом Шишколапа | `Shishkolap/House-lvl-1` | `House-image`, `House-tracing`, `House-anchors` |
 | Лавка Плёски | `Pleska/Shop-lvl-1` | `Shop-image`, `Shop-tracing`, `Shop-anchors` |
-| Караван Листохвоста | `Leaftail/Caravan-lvl-1` | `Caravan-image`, `Caravan-tracing`, `Caravan-anchors` |
+| Лавка Листохвоста | `Leaftail/Caravan-lvl-1` | `Caravan-image`, `Caravan-tracing`, `Caravan-anchors` |
 | Доска заказов | `Leaftail/Board-lvl-1` | `Board-image`, `Board-tracing`, `Board-anchors` |
 | Дом Лопоуха | `Lopukh/House-lvl-1`, `Lopukh/House-lvl-2` | `House-image`, `House-tracing`, `House-anchors` для каждого уровня |
 

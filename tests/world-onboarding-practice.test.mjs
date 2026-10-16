@@ -47,7 +47,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, ca
       export function useForestObservation() { return observation; }
     `; },
     transform(source, id) {
-      if (id.endsWith("/features/world/ui/onboarding/world-onboarding.tsx")) return source
+      if (id.endsWith("/features/world/ui/onboarding/world-onboarding.tsx") || id.endsWith("/features/world/ui/onboarding/market-unlock-onboarding.tsx")) return source
         .replace('from "react";', `from "${hookModule}";`)
         .replace('import { useForestObservation } from "@/features/world/state/use-forest-observation";',
           `import { useForestObservation } from "${hookModule}";`)
@@ -58,6 +58,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root, ca
 });
 const hooks = await vite.ssrLoadModule(hookModule);
 const { WorldOnboarding, WorldOnboardingSession } = await vite.ssrLoadModule("/features/world/ui/onboarding/world-onboarding.tsx");
+const { MarketUnlockOnboarding } = await vite.ssrLoadModule("/features/world/ui/onboarding/market-unlock-onboarding.tsx");
 const { WorkshopRetry, WorkshopConstructionContents, TutorialOrderContents } = await vite.ssrLoadModule("/features/world/ui/onboarding/world-onboarding-cards.tsx");
 const { tutorialResidentOrder, newTutorialOrder } = await vite.ssrLoadModule("/features/economy/domain/tutorial-order.ts");
 const { transitionWorldOnboarding } = await vite.ssrLoadModule("/features/world/domain/world-onboarding.ts");
@@ -95,6 +96,44 @@ const crop = (id = "crop-1", finishesAt = now + 60000) => ({ id, kind: "producti
 const started = (stepId, jobId) => ({ version: 2, status: "started", stepId, ...(jobId ? { cropJobId: jobId } : {}) });
 const gain = (patch = {}) => ({ id: "claim-receipt", ownerPublicId: owner, revision: 2, source: "claim", stationId: "garden",
   items: [{ itemId: "berries", quantity: 6 }], ...patch });
+
+test("market discovery waits for a ready visible scene and explains trading without starting an action", () => {
+  hooks.reset();
+  const visibility = { ready: false, covered: false }, calls = [];
+  const props = { open: true, worldElement: { current: {
+    querySelector(selector) { assert.equal(selector, '[data-ready="true"] > canvas[role="img"]'); return visibility.ready ? {} : null; },
+    closest(selector) { assert.equal(selector, '[aria-hidden="true"]'); return visibility.covered ? {} : null; },
+  } }, onOpenMarket() { calls.push("market"); }, onDismiss() { calls.push("dismiss"); } };
+  const render = () => {
+    let coach;
+    for (let index = 0; index < 10; index++) {
+      hooks.begin(); coach = MarketUnlockOnboarding(props).props; hooks.flush();
+      if (!hooks.dirty()) return coach;
+    }
+    assert.fail("market coach did not settle");
+  };
+  assert.equal(render().open, false);
+  visibility.ready = true;
+  for (const observer of observers) observer.callback([]);
+  let coach = render();
+  assert.equal(coach.open, true);
+  assert.match(coach.summary, /Мост восстановлен.*у других игроков.*выделенный рынок/);
+  assert.match(coach.text, /другой игрок купит твой лот/);
+  assert.equal(coach.flow, "world", "the shared inset observer reserves space for this coach");
+  assert.equal(coach.targetRoot, props.worldElement);
+  assert.deepEqual(calls, [], "appearing never opens the market or starts a purchase");
+  coach.primary.onClick(); assert.deepEqual(calls, ["market"]);
+  coach.secondary.onClick(); coach.onPause(); coach.onSkip();
+  assert.deepEqual(calls, ["market", "dismiss", "dismiss", "dismiss"]);
+  visibility.covered = true;
+  for (const observer of observers) observer.callback([]);
+  assert.equal(render().open, false);
+  props.open = false;
+  visibility.covered = false;
+  for (const observer of observers) observer.callback([]);
+  coach = render(); assert.equal(coach.open, false);
+  hooks.reset();
+});
 
 function harness(progress = started("grow"), jobs = [], { ordersPortal = false, session = false } = {}) {
   hooks.reset();
@@ -432,9 +471,16 @@ test("neighbors are learned through the real More and Characters path without sh
   assert.ok(!skippedVisits.calls.some(call => call[0] === "resident"));
 });
 
-test("legacy order activation pins terms without a grant, then teaches manual navigation and submission", () => {
+test("orders first require a real map board tap, then legacy activation pins terms without a grant", () => {
   const h = harness(started("orders"));
   let coach = h.render();
+  assert.equal(coach.primary, undefined, "the coach cannot bypass the highlighted board");
+  assert.equal(coach.target, undefined, "the canvas guide draws the board outline");
+  assert.match(coach.summary, /выделенную доску на карте/);
+  assert.match(coach.text, /Жители|жителей/);
+  assert.deepEqual(h.calls, []);
+  h.props.ordersOpen = true;
+  coach = h.render();
   assert.equal(coach.primary.label, "Открыть учебный заказ");
   assert.deepEqual(h.calls, []);
   const terms = tutorialResidentOrder(h.economy.snapshot);
@@ -445,12 +491,13 @@ test("legacy order activation pins terms without a grant, then teaches manual na
   assert.equal(h.render().primary.disabled, true);
   h.patchSnapshot({ revision: 2, tutorialOrder: { ingredientsClaimed: true, completed: false, terms } });
   h.patchEconomy({ busy: false });
+  h.props.ordersOpen = false;
   coach = h.render();
   assert.equal(coach.primary, undefined);
-  assert.equal(coach.target, '[data-world-orders-entry]');
-  assert.match(coach.status, /Припасов пока не хватает/);
+  assert.equal(coach.target, undefined);
+  assert.match(coach.summary, /выделенную доску на карте/);
   h.props.quickMenu = "more";
-  assert.equal(h.render().target, '[data-world-orders-entry]', "orders have their own entry even while another menu is open");
+  assert.equal(h.render().target, undefined, "the tutorial no longer points to a removed HUD shortcut");
   assert.doesNotMatch(coach.text, /Еда и заказы|«Ещё»|вкладк/);
   h.props.ordersOpen = true; h.revealContent({ tutorialOrder: true });
   coach = h.render();
@@ -470,7 +517,8 @@ test("the journal lesson scopes its actual order and compact dock to the portal 
   const h = harness(started("orders"), [], { ordersPortal: true });
   h.patchSnapshot({ tutorialOrder: newTutorialOrder(h.economy.snapshot.catalog) });
   let coach = h.render();
-  assert.equal(coach.target, '[data-world-orders-entry]');
+  assert.equal(coach.target, undefined);
+  assert.match(coach.summary, /выделенную доску/);
   assert.equal(coach.targetRoot, h.props.worldElement);
   assert.equal(coach.compact, false);
   assert.equal(coach.dock, undefined);
@@ -547,7 +595,7 @@ test("one raspberry finishes the single tutorial and the guide never waits for h
   h.patchSnapshot({ tutorialOrder: newTutorialOrder(h.economy.snapshot.catalog) });
   let coach = h.render();
   assert.equal(coach.primary, undefined, "the first request is already available without a claim");
-  assert.match(coach.text, /одна малина/);
+  assert.match(coach.text, /одн[ау] малин[ау]/);
   assert.doesNotMatch(coach.text, /две малины|отдельными запусками/);
   assert.deepEqual(h.calls, []);
   h.patchSnapshot({ revision: 2, tutorialOrder: { ...h.economy.snapshot.tutorialOrder, step: 1, completed: true } });
@@ -570,6 +618,7 @@ test("one raspberry finishes the single tutorial and the guide never waits for h
 test("order activation respects offline and uncertain state, and full storage does not block a non-grant", () => {
   for (const blocked of ["offline", "uncertain"]) {
     const h = harness(started("orders"));
+    h.props.ordersOpen = true;
     if (blocked === "offline") h.props.isOnline = false;
     else h.patchEconomy({ uncertain: true });
     const coach = h.render();
@@ -580,6 +629,7 @@ test("order activation respects offline and uncertain state, and full storage do
     assert.equal(h.props.progress.stepId, "workshop");
   }
   const h = harness(started("orders"));
+  h.props.ordersOpen = true;
   h.patchSnapshot({ storage: { ...h.economy.snapshot.storage, available: 0 } });
   const coach = h.render();
   assert.equal(coach.primary.disabled, false);

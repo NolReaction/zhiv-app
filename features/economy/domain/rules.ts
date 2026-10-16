@@ -16,6 +16,7 @@ import { isTutorialOrderId, newTutorialOrder, TUTORIAL_ORDER_ID, tutorialOrderPr
 import { ensureStageOrders, isStageOrderId, stageCourseRequired, stageOrderProgress, stageOrdersProgress, stageResidentOrder } from "./stage-orders";
 import { persistEconomyItemUnlocks, unlockedEconomyItems } from "./item-unlocks";
 import { economyMarketUnlocked, marketSlotOffer } from "./market-rules";
+import { leaftailShopStock, leaftailShopView } from "./leaftail-shop";
 import { creditFishStock, debitFishStock, FishSelectionChangedError, fishStockWithinItems, normalizeFishStockInventory, reconcileFishStock, type FishSelection } from "./fish-stock";
 export { economyLocalSellPrice, economyLocalSaleMinimumQuantity, economyLocalSaleLimit } from "./local-sale";
 
@@ -156,7 +157,7 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
 function applyEconomyTransition(state: EconomyState, command: EconomyCommand, now: number, jobId: () => string, reservedItems: Record<string, number>, rareRandom: RareRandomInteger): string {
   if (command.fishSelection != null && !["start_production", "complete_resident_order", "sell", "sell_fish"].includes(command.action))
     throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Выбор рыбы не используется в этом действии", 400);
-  if (!["speedup_construction", "buy_market_slot", "buy_fishing_item", "buy_wardrobe_item", "refresh_fishing_shop", "sell", "replace_resident_order"].includes(command.action) && command.totalPrice !== 0) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Цена не используется в этом действии", 400);
+  if (!["speedup_construction", "buy_market_slot", "buy_fishing_item", "buy_wardrobe_item", "buy_leaftail_item", "refresh_fishing_shop", "sell", "replace_resident_order"].includes(command.action) && command.totalPrice !== 0) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Цена не используется в этом действии", 400);
   const createJob = (job: Pick<EconomyJob, "kind" | "targetId" | "recipeId" | "targetLevel" | "rewards" | "collection" | "fishing" | "rareDrop" | "meal" | "actorId">, seconds: number, cost: EconomyCost, id = jobId(), fishSelection?: FishSelection) => {
     if (state.jobs.length >= 18) fail("ECONOMY_JOBS_CAPACITY", "Сначала заберите результат одной из текущих работ");
     if (Object.values(job.rewards).reduce((total, quantity) => total + quantity, 0) > economyStorage(state).capacity)
@@ -563,6 +564,26 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       state.wallet.pearls -= price;
       state.fishingShop = next;
       return "Плёска подготовила новые предложения";
+    }
+    case "buy_leaftail_item": {
+      const shop = leaftailShopView(state, now);
+      if (!shop) return fail("ECONOMY_LEAFTAIL_UNAVAILABLE", "Листохвост пока не открыл лавку");
+      requireHome(state, shop.requiredHomeLevel);
+      const offer = shop.offers.find(item => item.targetId === command.targetId);
+      if (!offer || !economyCatalog.items.some(item => item.id === offer.itemId && item.category === "special"))
+        return fail("ECONOMY_LEAFTAIL_SHOP_CHANGED", "Поставка Листохвоста изменилась. Проверьте прилавок");
+      if (command.totalPrice !== offer.priceCoins)
+        return fail("ECONOMY_LEAFTAIL_PRICE_CHANGED", "Цена изменилась. Проверьте предложение Листохвоста");
+      if (offer.remaining < 1) return fail("ECONOMY_LEAFTAIL_STOCK", "Сегодня этот предмет уже куплен. Дождитесь новой поставки");
+      if (state.wallet.coins < offer.priceCoins) return fail("ECONOMY_RESOURCES", "Не хватает монет");
+      const inventory = { ...state.inventory, [offer.itemId]: (state.inventory[offer.itemId] ?? 0) + 1 };
+      assertEconomyStorageTransition(state, { ...state, inventory }, reservedItems);
+      const stock = leaftailShopStock(state, now);
+      // Every validation precedes the debit; the caller commits state and its receipt atomically.
+      state.wallet.coins -= offer.priceCoins;
+      state.inventory = inventory;
+      state.leaftailShop = { cycle: stock.cycle, purchased: { ...stock.purchased, [offer.id]: (stock.purchased[offer.id] ?? 0) + 1 } };
+      return "Покупка у Листохвоста отправлена в кладовую";
     }
     case "buy_wardrobe_item": {
       const item = wardrobeItems.find(item => item.purchase && wardrobePurchaseTarget(item) === command.targetId);

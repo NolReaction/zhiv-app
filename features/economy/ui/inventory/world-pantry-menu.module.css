@@ -56,7 +56,6 @@
 .pantry .textButton:hover:not(:disabled) { text-decoration: underline; background: transparent; }
 .empty { display: flex; align-items: center; flex-direction: column; gap: 8px; padding: 16px 8px 10px; text-align: center; color: #59624d; }
 .empty > p { max-width: 230px; font-size: 11px; }
-.pantry .market { justify-content: flex-start; min-height: 33px; padding: 4px 2px; color: #4b6642; font-size: 11px; }
 .error { display: grid; gap: 3px; padding: 9px; border: 1px solid #caa17c; border-radius: 9px; color: #834731; background: #edd3b7; font-size: 11px; }
 .error .textButton { justify-self: start; }
 .loading { display: flex; align-items: center; gap: 8px; padding: 12px 0; color: #59624d; }
@@ -68,7 +67,6 @@
 .item > svg { width: 27px; height: 27px; }
 .pantry .sellButton { box-shadow: inset 0 1px #8da07980, 0 2px 0 #30472e; }
 .pantry .sellButton:disabled { box-shadow: none; }
-.pantry .market { padding-inline: 8px; }
 @media (max-width: 360px) { .items { grid-template-columns: repeat(3, minmax(0, 1fr)); }.pantry .item { min-height: 73px; } }
 
 .pantry .pantryTabs { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) minmax(0,1.12fr); gap:2px; padding:2px; border:1px solid #c5bc98; border-radius:11px; background:#ded6b6; }

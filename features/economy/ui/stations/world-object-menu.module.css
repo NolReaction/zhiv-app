@@ -298,3 +298,5 @@
   .headerUpgrade > span { font-size: 8px; }
   .menu .recipeCard { padding: 9px; }
 }
+
+.menu .back { display: grid; place-items: center; flex: 0 0 32px; width: 32px; min-height: 32px; padding: 5px; border: 1px solid var(--forest-border, #c8bd98); border-radius: 9px; background: transparent; }

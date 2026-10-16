@@ -37,7 +37,7 @@ export function interactiveMapObjects(scene: FixedWorldScene, options: { showBui
   if (!objects) {
     objects = [
       ...scene.sites.flatMap(site => Object.hasOwn(objectPlaces, site.id) ? [{
-        id: site.id, place: objectPlaces[site.id as keyof typeof objectPlaces], label: site.label,
+        id: site.id, place: objectPlaces[site.id as keyof typeof objectPlaces], label: site.id === "leaftail-caravan" ? "Лавка Листохвоста" : site.id === "bulletin-board" ? "Доска заказов" : site.label,
         kind: "site" as const, anchor: site.anchor, hitArea: site.hitArea,
       }] : []),
       ...(scene.bushes ?? []).filter(bush => forestBushArtworkAvailable(scene, bush)).map(bush => ({

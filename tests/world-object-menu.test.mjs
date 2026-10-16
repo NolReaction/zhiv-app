@@ -73,16 +73,16 @@ function renderUpgrade(stationId, economy = controller(), extra = {}) {
   return renderToStaticMarkup(createElement(Dialog.Root, { open: true }, createElement(WorldUpgradeContent, { stationId, economy, onClose() {}, onOpenPantry() {}, ...extra })));
 }
 
-test("caravan opens existing resident orders while its future rare shop has no invented purchases", () => {
-  const economy = controller({ act() { assert.fail("a caravan preview cannot change the economy"); } });
-  const html = render("leaftail-caravan", economy, { onOpenOrders() {} });
-  assert.match(html, /Караван Листохвоста/);
-  assert.match(html, /Торговец и заказы/);
-  assert.match(html, /Редкие товары за монеты появятся/);
-  assert.equal(disabled(button(html, "Заказы жителей")), false);
-  assert.doesNotMatch(html, /data-production-slot|data-guide-station-upgrade|Все уровни оборудования открыты|Будущая ветка|Купить|Продать/);
+test("LeafTail is a separate shop without a resident-orders shortcut or future placeholder", () => {
+  const economy = controller({ act() { assert.fail("viewing a shop cannot change the economy"); } });
+  const html = render("leaftail-caravan", economy);
+  assert.match(html, /Лавка Листохвоста/);
+  assert.match(html, /Торговец находками/);
+  assert.doesNotMatch(html, /Заказы жителей|появятся в одном из следующих обновлений|data-production-slot|data-guide-station-upgrade|Все уровни оборудования открыты|Будущая ветка/);
   assert.deepEqual(helpers.worldStations["leaftail-caravan"].stationIds, []);
+  assert.equal(helpers.worldStations["leaftail-caravan"].future, undefined);
   assert.equal(helpers.worldPlaceForStation("leaftail-caravan"), null);
+  assert.match(render("leaftail-caravan", economy, { onBack() {} }), /aria-label="Назад к персонажам"/);
 });
 
 test("Lopukh home explains the separate future workplace without build or workbench controls", () => {
@@ -609,12 +609,12 @@ test("restored landmarks show expedition routes and their remaining prerequisite
   }
 });
 
-test("home two's restored bridge offers the peer market while home three's lighthouse labels the boat as future content", () => {
-  const bridge = render("bridge", controller({ snapshot: snapshot({ buildings: { home: 2, warehouse: 1, bridge: 1 }, completedExplorations: 0 }) }), { onOpenMarket() {} });
-  assert.match(bridge, /Открыть рынок игроков/);
-  assert.match(bridge, /Мост соединяет вашу поляну/);
+test("restored bridge explains the map market without a second trade launcher and lighthouse labels future content", () => {
+  const bridge = render("bridge", controller({ snapshot: snapshot({ buildings: { home: 2, warehouse: 1, bridge: 1 }, completedExplorations: 0 }) }));
+  assert.doesNotMatch(bridge, /Открыть рынок игроков/);
+  assert.match(bridge, /Торговля с игроками открывается нажатием на рынок на карте/);
   assert.doesNotMatch(bridge, /Будущая ветка|data-production-slots=/);
-  const ruined = render("bridge", controller({ snapshot: snapshot({ buildings: { home: 2, warehouse: 1, bridge: 0 } }) }), { onOpenMarket() {} });
+  const ruined = render("bridge", controller({ snapshot: snapshot({ buildings: { home: 2, warehouse: 1, bridge: 0 } }) }));
   assert.doesNotMatch(ruined, /Открыть рынок игроков/);
   const lighthouse = render("lighthouse", controller({ snapshot: snapshot({ buildings: { home: 3, warehouse: 1, bridge: 1, lighthouse: 1 } }) }));
   assert.match(lighthouse, /Пароход с крупными заказами появится в будущем обновлении/);

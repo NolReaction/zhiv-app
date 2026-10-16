@@ -13,7 +13,7 @@ const { interactiveMapObjects } = await vite.ssrLoadModule("/features/world/scen
 const { previewWorldScene, initialPreviewLevels } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
 const { default: authored } = await vite.ssrLoadModule("/features/world/tiled/forest.generated.json");
 
-test("real garden and workshop levels fit between HUD and coach on phone, landscape and desktop", () => {
+test("real garden, workshop, orders board and market fit between HUD and coach on phone, landscape and desktop", () => {
   const cases = [
     { width: 320, height: 568, top: 110, bottom: 200 },
     { width: 393, height: 665, top: 120, bottom: 220 },
@@ -22,7 +22,7 @@ test("real garden and workshop levels fit between HUD and coach on phone, landsc
   ];
   for (const level of [0, 1, 2]) {
     const scene = previewWorldScene(authored, { ...initialPreviewLevels(authored), workshop: level });
-    for (const place of ["garden", "workshop"]) {
+    for (const place of ["garden", "workshop", "bulletin-board", "market"]) {
       const object = interactiveMapObjects(scene).find(object => object.place === place);
       assert.ok(object);
       for (const view of cases) {

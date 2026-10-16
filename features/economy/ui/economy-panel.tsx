@@ -198,7 +198,7 @@ function Unlocks({ state, building, level, navigate }: { state: EconomyView; bui
       {recipes.map(recipe => <li key={`recipe:${recipe.id}`}><button className={styles.textButton} onClick={() => navigate("production", recipe.buildingId)}><Hammer size={15} aria-hidden />{recipe.name}<ChevronRight size={14} aria-hidden /></button></li>)}
       {routes.map(route => <li key={`route:${route.id}`}><button className={styles.textButton} onClick={() => navigate("exploration", route.id)}><Compass size={15} aria-hidden />{route.name}<ChevronRight size={14} aria-hidden /></button></li>)}
       {upgrades.map(target => <li key={`building:${target.building.id}:${target.level}`}><button className={styles.textButton} onClick={() => navigate("buildings", target.building.id)}><House size={15} aria-hidden />{target.building.name} · ур. {target.level}<ChevronRight size={14} aria-hidden /></button></li>)}
-      {(building.id === "home" && level.level === state.catalog.market.requiredHomeLevel || state.catalog.market.requiredBuildings[building.id] === level.level) && <li><button className={styles.textButton} onClick={() => navigate("market")}><Store size={15} aria-hidden />Торговля с игроками<ChevronRight size={14} aria-hidden /></button></li>}
+      {(building.id === "home" && level.level === state.catalog.market.requiredHomeLevel || state.catalog.market.requiredBuildings[building.id] === level.level) && <li><Store size={15} aria-hidden />Торговля с игроками на рынке на карте</li>}
     </ul>
     {(recipes.length + routes.length + upgrades.length > 0) && <p className={styles.muted}>Откроется, когда выполнены и остальные условия. Нажмите на цель, чтобы посмотреть их.</p>}
     {building.id === "home" && <p className={styles.muted}>Обновляет облик дома на поляне.</p>}
@@ -560,13 +560,31 @@ function Market({ economy, navigate }: { economy: ReadyEconomy; navigate: Naviga
   const refreshIn = showcase ? Math.max(0, Math.ceil((Date.parse(showcase.refreshAt) - economy.now) / 1000)) : null;
   const refreshLabel = refreshIn === 0 ? "Обновить витрину" : "Проверить наличие";
   const refreshMarket = economy.refreshMarket;
-  useEffect(() => { void refreshMarket(); }, [refreshMarket]);
-  return <div className={`${styles.stack} ${styles.market}`} aria-label="Лесной рынок">
+  useEffect(() => { if (unlocked) void refreshMarket(); }, [refreshMarket, unlocked]);
+  if (!unlocked) {
+    const bridgeJob = state.jobs?.find(job => job.kind === "construction" && job.targetId === "bridge");
+    const bridgeReady = bridgeJob && Date.parse(bridgeJob.finishesAt) <= economy.now;
+    const bridgeMissing = (state.buildings.bridge ?? 0) < (limits.requiredBuildings.bridge ?? 1);
+    const homeMissing = (state.buildings.home ?? 1) < limits.requiredHomeLevel;
+    const bridgeMessage = !bridgeMissing
+      ? homeMissing ? `Мост восстановлен. Для торговли нужен дом уровня ${limits.requiredHomeLevel}.` : "Выполните условия открытия торговли между игроками."
+      : bridgeJob
+      ? bridgeReady ? "Мост готов. Получите результат стройки, чтобы открыть торговлю между игроками." : "Мост восстанавливается. Дождитесь окончания стройки и получите результат."
+      : "Восстановите мост и получите результат стройки, чтобы открыть торговлю между игроками.";
+    const destination = homeMissing ? "home" : bridgeMissing ? "bridge" : missingBuilding?.[0];
+    return <div className={`${styles.stack} ${styles.market}`} aria-label="Рынок игроков" data-market-closed>
+      <div className={styles.empty}><LockKeyhole size={32} aria-hidden /><h3>Рынок закрыт</h3><p className={styles.muted}>{bridgeMessage}</p>
+        <p className={styles.muted}>Дом: {state.buildings.home ?? 1} / {limits.requiredHomeLevel} ур.{Object.entries(limits.requiredBuildings).map(([id, level]) => <span key={id}> · {buildingName(state, id)}: {state.buildings[id] ?? 0} / {level}</span>)}</p>
+        <button type="button" onClick={() => destination ? navigate("buildings", destination) : navigate("exploration")}>{destination === "home" ? "Улучшить дом" : bridgeReady ? "Получить мост" : bridgeJob ? "К стройке моста" : "Восстановить мост"}<ArrowRight size={15} aria-hidden /></button>
+      </div>
+      {Boolean(market?.mine.length) && <section className={styles.stack} aria-label="Возврат прежних лотов"><h3>Ваши прежние лоты</h3><p className={styles.muted}>Можно снять лот и вернуть свои вещи в кладовую.</p><div className={styles.shopGrid} role="list" aria-label="Ваши предложения">{market!.mine.map(offer => <OfferCard key={offer.id} economy={economy} offer={offer} navigate={navigate} owned />)}</div></section>}
+    </div>;
+  }
+  return <div className={`${styles.stack} ${styles.market}`} aria-label="Рынок игроков">
     <p className={styles.muted}>На рынке торгуют игроки. Здесь покупают чужие товары и выставляют свои; монеты придут после покупки лота. Быстрая продажа торговцу доступна в кладовой.</p>
     <StorageStatus state={state} navigate={navigate} compact condensed />
     <button type="button" className={styles.textButton} onClick={() => navigate("barter")}><ArrowLeftRight size={16} aria-hidden />Обмен особыми материалами<ArrowRight size={15} aria-hidden /></button>
     <nav className={styles.subnav} aria-label="Раздел рынка"><button data-guide-market-tab="buy" aria-pressed={section === "browse"} onClick={() => setSection("browse")}>Купить</button><button data-guide-market-tab="sell" aria-pressed={section === "sell"} onClick={() => setSection("sell")}>Продать</button><button data-guide-market-tab="mine" aria-pressed={section === "mine"} onClick={() => setSection("mine")}>Мои лоты{market?.mine.length ? ` · ${market.mine.length}` : ""}</button></nav>
-    {!unlocked && <div className={styles.notice}><LockKeyhole size={18} aria-hidden /><div><p>Восстановите мост, чтобы открыть торговлю с игроками.</p><p className={styles.muted}>Дом: {state.buildings.home ?? 1} / {limits.requiredHomeLevel} ур.{Object.entries(limits.requiredBuildings).map(([id, level]) => <span key={id}> · {buildingName(state, id)}: {state.buildings[id] ?? 0} / {level}</span>)}{limits.requiredExplorations > 0 && <> · Завершённые вылазки: {Math.min(state.completedExplorations, limits.requiredExplorations)} / {limits.requiredExplorations}</>}</p><button onClick={() => (state.buildings.home ?? 1) < limits.requiredHomeLevel ? navigate("buildings", "home") : missingBuilding ? navigate("buildings", missingBuilding[0]) : navigate("exploration")}>Продолжить обустройство<ArrowRight size={15} aria-hidden /></button><p className={styles.muted}>Для быстрой продажи откройте кладовую и нажмите на предмет.</p></div></div>}
     {marketError && !economy.marketSyncError && <div role="alert" className={styles.notice} data-kind="error"><CircleHelp size={18} aria-hidden /><div><p>{marketError}</p><button disabled={busy || uncertain} onClick={() => void refreshMarket()}>Обновить рынок</button></div></div>}
     {market && unlocked && <details className={styles.marketRules}><summary>Правила торговли и дневной объём</summary>
       <p>Поселения с домами 2–3 и 4–5 торгуют в своих кругах. Цена партии: 1–{limits.maxPriceMultiplier} базовых стоимости. Сбор с новых продаж: {limits.feeBps / 100}%.</p>

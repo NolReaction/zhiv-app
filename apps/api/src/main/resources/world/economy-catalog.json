@@ -15,6 +15,15 @@
       }
     ]
   },
+  "leaftailShop": {
+    "requiredHomeLevel": 3,
+    "refreshSeconds": 86400,
+    "offers": [
+      { "id": "ancient_core", "itemId": "ancient_core", "priceCoins": 2400, "stock": 1 },
+      { "id": "moon_crystal", "itemId": "moon_crystal", "priceCoins": 2400, "stock": 1 },
+      { "id": "living_resin", "itemId": "living_resin", "priceCoins": 2400, "stock": 1 }
+    ]
+  },
   "constructionSpeedup": {
     "secondsPerPearl": 15000,
     "priceStepPearls": 2,

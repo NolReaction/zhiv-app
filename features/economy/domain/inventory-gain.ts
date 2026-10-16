@@ -87,6 +87,10 @@ export function inventoryGainFromReceipt(before: EconomyView | null, result: Eco
     const offer = before.fishingShop?.offers.find(item => item.id === command.targetId && (item.kind === "bait" || item.kind === "fish"));
     if (!offer || !before.catalog.fishing || !before.catalog.fishing.baits.some(item => item.itemId === offer.itemId) && !fishClassForItem(offer.itemId, before.catalog.fishing)) return null;
     allowed = { [offer.itemId]: command.quantity }; source = "purchase";
+  } else if (command.action === "buy_leaftail_item") {
+    const offer = before.catalog.leaftailShop?.offers.find(item => command.targetId === `${after.leaftailShop.cycle}:${item.id}`);
+    if (!offer || command.quantity !== 1) return null;
+    allowed = { [offer.itemId]: 1 }; source = "purchase";
   } else if (command.action === "buy_listing") {
     const listing = result.listing;
     if (!listing || listing.id !== command.targetId || listing.status !== "sold") return null;

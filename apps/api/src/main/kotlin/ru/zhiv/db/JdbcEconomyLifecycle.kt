@@ -16,6 +16,7 @@ import ru.zhiv.economy.EconomyFoodState
 import ru.zhiv.economy.EconomyFishStock
 import ru.zhiv.economy.EconomyFishInventory
 import ru.zhiv.economy.EconomyItemUnlocks
+import ru.zhiv.economy.EconomyLeaftailShops
 import ru.zhiv.world.WorldState
 import ru.zhiv.world.worldJson
 import ru.zhiv.economy.economyJson
@@ -100,6 +101,7 @@ internal fun mergeEconomyProfiles(c: Connection, target: UUID, source: UUID) {
                 minOf(ECONOMY_MAX_ITEMS,(a.fishing.catches[it] ?: 0)+(b.fishing.catches[it] ?: 0)) }),
         fishingCastSeed=a.fishingCastSeed ?: b.fishingCastSeed,
         fishingShop=a.fishingShop ?: b.fishingShop,
+        leaftailShop=EconomyLeaftailShops.merge(a.leaftailShop,b.leaftailShop),
         marketSlots=maxOf(a.marketSlots,b.marketSlots),
         unlockedItems=(EconomyItemUnlocks.project(a)+EconomyItemUnlocks.project(b)).distinct().sorted(),
         itemUnlockVersion=1,

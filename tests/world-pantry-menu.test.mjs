@@ -141,14 +141,12 @@ test("empty inventory invites exploration, but reserved goods remain explained a
   assert.doesNotMatch(html, /Отправиться за находками/);
 });
 
-test("player market shortcut requires navigation and the actual catalog unlock conditions", () => {
-  const props = { onOpenMarket() {} };
-  assert.doesNotMatch(render(controller(), props), /Рынок игроков/);
+test("pantry keeps inventory actions while player trading opens at the map market", () => {
   const state = snapshot({ buildings: { home: economyCatalog.market.requiredHomeLevel, warehouse: 1, bridge: 1 }, completedExplorations: 0 });
-  assert.match(render(controller({ snapshot: state }), props), /Рынок игроков/);
-  assert.doesNotMatch(render(controller({ snapshot: state })), /Рынок игроков/);
-  state.buildings.bridge = 0;
-  assert.doesNotMatch(render(controller({ snapshot: state }), props), /Рынок игроков/);
+  for (const initialTab of ["supplies", "relics"]) {
+    const html = render(controller({ snapshot: state }), { initialTab });
+    assert.doesNotMatch(html, /data-guide-pantry-market|Рынок игроков|Лавки игроков/);
+  }
 });
 
 test("fresh tier berries stay with supplies while their prepared dishes appear in the shared fridge", () => {

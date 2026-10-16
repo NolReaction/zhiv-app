@@ -17,8 +17,7 @@ export const worldStations: Partial<Record<WorldPlace, WorldStationDefinition>> 
   quarry: { label: "Шахта", stationIds: ["quarry"] },
   bridge: { label: "Мост", stationIds: ["bridge"] },
   lighthouse: { label: "Маяк", stationIds: ["lighthouse"] },
-  "leaftail-caravan": { label: "Караван Листохвоста", stationIds: [], status: "Торговец и заказы",
-    future: "Листохвост собирает заказы жителей. Редкие товары за монеты появятся в одном из следующих обновлений." },
+  "leaftail-caravan": { label: "Лавка Листохвоста", stationIds: [], status: "Торговец находками" },
   "lopukh-home": { label: "Дом Лопоуха", stationIds: [], status: "Дом жителя",
     future: "Здесь будет жить Лопоух. Его отдельное рабочее место и заказы на изготовление появятся позже." },
 };
