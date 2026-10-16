@@ -385,17 +385,18 @@ export function noticeBuilderMind(mind: BuilderMind | null): void {
 /** Reserve a nearby exterior conversation spot through the usual bounded path
  * finder. Feet still advance only in advanceBuilderMind and use resident traffic. */
 export function requestBuilderVisit(mind: BuilderMind | null, scene: FixedWorldScene,
-  target: { id: string; position: WorldPoint; size: number }, occupants?: readonly ResidentOccupant[]): boolean {
+  target: { id: string; position: WorldPoint; size: number; approach?: WorldPoint }, occupants?: readonly ResidentOccupant[]): boolean {
   if (!mind?.available || mind.scene !== scene || mind.constructionPending || mind.job || mind.socialVisit || mind.sleepPhase !== "awake"
     || mind.action === "finish" || !Number.isFinite(target.position.x) || !Number.isFinite(target.position.y)
     || !Number.isFinite(target.size) || target.size <= 0) return false;
   const places = builderLocalPlaces(scene); if (!places) return false;
   const gap = (BUILDER.size + target.size) * .56;
   const heading = Math.atan2(mind.position.y - target.position.y, mind.position.x - target.position.x);
-  const candidates = [0, Math.PI / 4, -Math.PI / 4, Math.PI / 2, -Math.PI / 2, Math.PI, Math.PI * .75, -Math.PI * .75]
+  const candidates = (target.approach ? [{ id: `builder-social-${target.id}`, position: { ...target.approach }, lookAt: { ...target.position } }]
+    : [0, Math.PI / 4, -Math.PI / 4, Math.PI / 2, -Math.PI / 2, Math.PI, Math.PI * .75, -Math.PI * .75]
     .map(offset => ({ id: `builder-social-${target.id}`,
       position: { x: target.position.x + Math.cos(heading + offset) * gap,
-        y: target.position.y + Math.sin(heading + offset) * gap }, lookAt: { ...target.position } }))
+        y: target.position.y + Math.sin(heading + offset) * gap }, lookAt: { ...target.position } })))
     .filter(stop => isWalkable(places.navigation, stop.position)
       && canTraverseResidents(stop.position, stop.position, BUILDER.size, occupants, BUILDER.id));
   const selected = builderRoute(places, mind.position, candidates);

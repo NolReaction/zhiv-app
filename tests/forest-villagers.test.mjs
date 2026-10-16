@@ -10,6 +10,8 @@ after(() => vite.close());
 const { createForestVillagers, rehydrateForestVillagers, configureForestVillagers, advanceForestVillagers, forestVillagerFrames,
   forestVillagerOccupants, requestForestVillagerVisit, cancelForestVillagerVisit, noticeForestVillager,
   settleForestVillagerArrival, FOREST_VILLAGER_LIMITS } = await vite.ssrLoadModule("/features/world/characters/villagers/villager-mind.ts");
+const { beginWoodcutterCycle, WOODCUTTER_CYCLE_LIMITS } = await vite.ssrLoadModule("/features/world/characters/villagers/woodcutter-cycle.ts");
+const { selectVillagerRoute } = await vite.ssrLoadModule("/features/world/characters/villagers/villager-movement.ts");
 const { forestVillagerPlaces, forestVillagerNorthernArrival, FOREST_VILLAGER_PROFILES } = await vite.ssrLoadModule("/features/world/characters/villagers/villager-navigation.ts");
 const { prepareSteeringPath } = await vite.ssrLoadModule("/features/world/navigation/steering.ts");
 const { villagerShelterWeather } = await vite.ssrLoadModule("/features/world/characters/villagers/villager-state.ts");
@@ -18,6 +20,7 @@ const { canTraverseResidents, residentPassageClear } = await vite.ssrLoadModule(
 const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
 const { previewWorldScene, initialPreviewLevels } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
 const now = Date.parse("2026-10-16T12:00:00Z");
+const distanceBetween = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const rect = (x, y, width, height) => [{ x, y }, { x: x + width, y }, { x: x + width, y: y + height }, { x, y: y + height }];
 function fixture() {
   const sites = [["quarry", 290, 250], ["lopukh-home", 470, 200], ["leaftail-caravan", 440, 340]].map(([id, x, y]) => ({
@@ -138,10 +141,12 @@ test("confirmed worker jobs interrupt social plans, preserve server deadlines, a
   assert.equal(mind.socialVisit, null); assert.equal(mind.job, true);
   assert.equal(requestForestVillagerVisit(state, scene, "lopukh", { id: "friend", position: { x: 380, y: 300 }, size: 40 }), false);
   run(state, scene, 15, { production });
-  assert.equal(mind.action, "work"); assert.equal(mind.intent, "work");
+  assert.equal(mind.action, "rest"); assert.equal(mind.woodwork.phase, "rest");
+  assert.equal(mind.job, true, "visual delivery and rest do not end the server job");
   assert.deepEqual(production, saved); assert.equal("inventory" in state, false);
+  const restingFeet = { ...mind.position };
   advanceForestVillagers(state, scene, 0, { now: now + 601000, production });
-  assert.equal(mind.job, false); assert.equal(mind.action, "inspect");
+  assert.equal(mind.job, false); assert.equal(mind.action, "rest"); assert.deepEqual(mind.position, restingFeet);
 });
 
 test("social visits move real feet, hold a greeting, cancel safely, and notices do not interrupt real work", () => {
@@ -173,7 +178,9 @@ test("invalid deltas never catch up offline; rain/rest utility and rabbit carry 
   assert.equal(state.residents.lopukh.elapsed, FOREST_VILLAGER_LIMITS.maxDelta);
   const mind = state.residents.lopukh;
   mind.wait = 0; mind.workNeed = 1; mind.socialNeed = 0; mind.fatigue = 0;
-  run(state, scene, 20); assert.ok(["carry", "inspect", "work", "walk"].includes(mind.action));
+  const phases = new Set();
+  for (let step = 0; step < 200; step++) { run(state, scene, .1); phases.add(mind.action); }
+  for (const action of ["work", "carry", "unload", "rest"]) assert.ok(phases.has(action), `the visual cycle includes ${action}`);
   mind.wait = 0; mind.fatigue = 1; run(state, scene, 12, { rain: true, dusk: true });
   assert.equal(mind.action, "rest");
 });
@@ -542,4 +549,124 @@ for (const role of ["host", "guest"]) test(`social ${role} waits for its own pri
   for (let tick = 0; tick < 20; tick++) advanceForestVillagers(state, scene, .1, environment);
   assert.deepEqual(mind.position, before); assert.equal(mind.route, null);
   assert.equal(mind.socialVisit, visit); assert.equal(mind.action, "greet"); assert.notEqual(mind.intent, "yield");
+});
+
+
+test("the actual Tiled rabbit cuts a tree, delivers in front of the facade, unloads promptly and rests without changing geometry", () => {
+  const levels = { ...initialPreviewLevels(TILED_WORLD), quarry: 1 };
+  const scene = previewWorldScene(TILED_WORLD, levels), saved = structuredClone(scene), state = setup(scene, { buildings: levels });
+  const mind = state.residents.lopukh, places = forestVillagerPlaces(scene, "lopukh"), plan = places.woodcutting;
+  const house = scene.sites.find(site => site.id === "lopukh-home"), front = house.bounds.y + house.bounds.height + 44 * 45 / 48 + 2;
+  assert.ok(plan); assert.ok(plan.work[0].id.startsWith("lopukh-tree:"), "the authored tree replaces the missing woodlot image");
+  for (const stop of [...plan.work, ...plan.delivery, ...plan.rest]) {
+    assert.ok(isWalkable(places.navigation, stop.position)); assert.ok(stop.position.y >= front);
+  }
+  for (const id of ["kamneshmyg", "leaftail"]) state.residents[id].available = false;
+  assert.equal(beginWoodcutterCycle(mind, places), true);
+  const actions = [], beforeCycles = mind.woodwork.completedCycles;
+  let unloadAt = null, restAt = null;
+  for (let elapsed = 0; elapsed < 60 && mind.woodwork.completedCycles === beforeCycles; elapsed += .05) {
+    const previous = { ...mind.position };
+    advanceForestVillagers(state, scene, .05, { now });
+    assert.ok(canTraverse(places.navigation, previous, mind.position), "every real footstep keeps all authored blockers");
+    assert.ok(Math.hypot(mind.position.x - previous.x, mind.position.y - previous.y) <= 39 * .05 + 1e-6);
+    if (actions.at(-1) !== mind.action) actions.push(mind.action);
+    if (mind.action === "carry" || mind.action === "unload") assert.ok(mind.position.y >= front);
+    if (mind.action === "unload") {
+      unloadAt ??= elapsed;
+      assert.equal(mind.route, null); assert.ok(plan.delivery.some(stop => distanceBetween(stop.position, mind.position) < .1));
+      const frame = forestVillagerFrames(state).find(frame => frame.id === "lopukh");
+      assert.ok(frame.phase >= 0 && frame.phase <= 1); assert.equal(frame.frame, 0);
+    }
+    if (mind.action === "rest") restAt ??= elapsed;
+  }
+  assert.equal(mind.woodwork.completedCycles, beforeCycles + 1);
+  assert.deepEqual(actions.filter(action => action !== "walk"), ["work", "carry", "unload", "rest", "inspect"]);
+  assert.ok(restAt - unloadAt <= WOODCUTTER_CYCLE_LIMITS.unload + .1, "a delivered log is not held for the old nine-second idle timer");
+  assert.equal(mind.doorPhase, "outside"); assert.deepEqual(scene, saved);
+});
+
+test("old roof-side rabbit feet walk out safely to the repaired cycle instead of being teleported", () => {
+  const scene = previewWorldScene(TILED_WORLD, { ...initialPreviewLevels(TILED_WORLD), quarry: 1 });
+  const state = setup(scene), mind = state.residents.lopukh, places = forestVillagerPlaces(scene, "lopukh");
+  for (const id of ["kamneshmyg", "leaftail"]) state.residents[id].available = false;
+  const old = { x: 944.3975917210292, y: 191.65888721903897 };
+  assert.ok(isWalkable(places.navigation, old)); mind.position = { ...old };
+  assert.equal(beginWoodcutterCycle(mind, places, [], { chopSeconds: 0 }), true); assert.deepEqual(mind.position, old);
+  for (let tick = 0; tick < 1800 && !mind.woodwork.completedCycles; tick++) {
+    const from = { ...mind.position }; advanceForestVillagers(state, scene, .05, { now });
+    assert.ok(canTraverse(places.navigation, from, mind.position));
+    assert.ok(distanceBetween(from, mind.position) <= 39 * .05 + 1e-6);
+  }
+  assert.equal(mind.woodwork.completedCycles, 1); assert.notDeepEqual(mind.position, old);
+  assert.equal(mind.action, "inspect"); assert.equal(mind.doorPhase, "outside");
+});
+
+test("a blocked delivery uses bounded retries and a safe outdoor set-down, keeping the visible log while waiting", () => {
+  const scene = fixture(), state = setup(scene), mind = state.residents.lopukh, places = forestVillagerPlaces(scene, "lopukh");
+  for (const id of ["kamneshmyg", "leaftail"]) state.residents[id].available = false;
+  assert.equal(beginWoodcutterCycle(mind, places, [], { chopSeconds: 0 }), true);
+  for (let tick = 0; tick < 200 && mind.action !== "work"; tick++) advanceForestVillagers(state, scene, .05, { now });
+  assert.equal(mind.action, "work");
+  const blockers = places.woodcutting.delivery.map((stop, index) => ({ id: `yard-worker-${index}`, position: { ...stop.position }, size: 40 }));
+  const atWork = { ...mind.position }, decisions = mind.decisions;
+  let sawUnload = false, sawRest = false;
+  for (let tick = 0; tick < 500 && !mind.woodwork.completedCycles; tick++) {
+    const before = { ...mind.position }; advanceForestVillagers(state, scene, .05, { now, occupants: blockers });
+    assert.ok(canTraverse(places.navigation, before, mind.position));
+    if (mind.woodwork.phase === "haul") {
+      assert.equal(mind.action, "carry");
+      assert.equal(forestVillagerFrames(state).find(frame => frame.id === "lopukh").action, "carry");
+    }
+    if (mind.action === "unload") { sawUnload = true; assert.deepEqual(mind.position, atWork); }
+    if (mind.action === "rest") sawRest = true;
+  }
+  assert.ok(sawUnload && sawRest); assert.equal(mind.woodwork.completedCycles, 1);
+  assert.ok(mind.decisions - decisions <= WOODCUTTER_CYCLE_LIMITS.attempts, "an occupied yard cannot request a path each frame");
+});
+
+test("a passing social hold pauses a cosmetic route and resumes the same path, while carried wood refuses an optional visit", () => {
+  const scene = fixture(), state = setup(scene), mind = state.residents.lopukh, places = forestVillagerPlaces(scene, "lopukh");
+  assert.equal(selectVillagerRoute(mind, places, [{ id: "passing", position: { x: 350, y: 350 }, lookAt: { x: 350, y: 360 } }], "wander", "inspect"), true);
+  advanceForestVillagers(state, scene, .1, { now });
+  const feet = { ...mind.position }, route = mind.route, progress = mind.distance;
+  for (let tick = 0; tick < 30; tick++) advanceForestVillagers(state, scene, .1, { now, socialHolds: ["lopukh"] });
+  assert.deepEqual(mind.position, feet); assert.equal(mind.route, route); assert.equal(mind.distance, progress); assert.equal(mind.action, "greet");
+  advanceForestVillagers(state, scene, .1, { now });
+  assert.equal(mind.route, route); assert.ok(mind.distance > progress); assert.equal(mind.action, "walk");
+  mind.route = null; mind.woodwork.phase = "haul"; mind.action = "carry";
+  assert.equal(requestForestVillagerVisit(state, scene, "lopukh", { id: "friend", position: { x: 380, y: 300 }, size: 44 }), false);
+  assert.equal(mind.action, "carry");
+});
+
+test("a caravan window holds the indoor trader and accepts an exact safe outdoor visitor approach", () => {
+  const scene = fixture(), state = setup(scene), trader = state.residents.leaftail, guest = state.residents.lopukh;
+  for (let tick = 0; tick < 30 && trader.doorPhase !== "inside"; tick++) advanceForestVillagers(state, scene, .1, { now });
+  assert.equal(trader.doorPhase, "inside");
+  const feet = { ...trader.position }, remaining = trader.wait, elapsed = trader.elapsed;
+  const approach = { x: 380, y: 350 }, window = { x: 440, y: 315 };
+  assert.equal(requestForestVillagerVisit(state, scene, "lopukh", { id: "leaftail", position: window, size: 44, approach }), true);
+  for (let tick = 0; tick < 800; tick++) advanceForestVillagers(state, scene, .1, { now, socialHolds: ["leaftail"] });
+  assert.equal(trader.doorPhase, "inside"); assert.deepEqual(trader.position, feet); assert.equal(trader.wait, remaining);
+  assert.ok(trader.elapsed > elapsed + 79); assert.equal(guest.route, null); assert.ok(distanceBetween(guest.position, approach) < .1);
+  noticeForestVillager(state, "leaftail"); advanceForestVillagers(state, scene, .1, { now, socialHolds: ["leaftail"] });
+  assert.equal(trader.doorPhase, "exit");
+});
+
+test("an artwork handoff preserves a loaded wood cycle without sharing its mutable phase clock", () => {
+  const scene = fixture(), state = setup(scene), mind = state.residents.lopukh, places = forestVillagerPlaces(scene, "lopukh");
+  for (const id of ["kamneshmyg", "leaftail"]) state.residents[id].available = false;
+  beginWoodcutterCycle(mind, places, [], { chopSeconds: 0 });
+  for (let tick = 0; tick < 300 && !(mind.woodwork.phase === "haul" && mind.route); tick++)
+    advanceForestVillagers(state, scene, .05, { now });
+  assert.equal(mind.woodwork.phase, "haul"); assert.ok(mind.route);
+  const old = structuredClone(state), nextScene = structuredClone(scene);
+  nextScene.terrain.push({ id: "different-art", image: "/test.webp", bounds: { x: 0, y: 0, width: 1, height: 1 } });
+  const next = rehydrateForestVillagers(nextScene, state, now), carried = next.residents.lopukh;
+  assert.deepEqual(carried.position, mind.position); assert.equal(carried.woodwork.phase, "haul");
+  assert.equal(carried.woodwork.elapsed, mind.woodwork.elapsed); assert.notEqual(carried.woodwork, mind.woodwork);
+  assert.equal(forestVillagerFrames(next).find(frame => frame.id === "lopukh").action, "carry");
+  for (let tick = 0; tick < 500 && !carried.woodwork.completedCycles; tick++)
+    advanceForestVillagers(next, nextScene, .05, { now });
+  assert.equal(carried.woodwork.completedCycles, 1); assert.deepEqual(state, old);
 });

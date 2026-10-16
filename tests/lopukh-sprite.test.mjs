@@ -25,7 +25,7 @@ after(async () => {
   if (previousDocument) Object.defineProperty(globalThis, "document", previousDocument); else delete globalThis.document;
   await vite.close();
 });
-const directions = ["front", "back", "left", "right"], actions = ["idle", "walk", "work", "carry", "inspect", "greet", "rest", "trade"];
+const directions = ["front", "back", "left", "right"], actions = ["idle", "walk", "work", "carry", "unload", "inspect", "greet", "rest", "trade"];
 const signature = sprite => JSON.stringify([...sprite.pixels].sort(([a], [b]) => a.localeCompare(b)));
 
 test("every rabbit direction and gesture fits the pixel grid with a planted foot and short arms", () => {
@@ -55,6 +55,50 @@ test("folded ears, cream muzzle and the little round tail distinguish the four v
   for (const [key, color] of lopukhSprite("idle", "right", 0).pixels) {
     const [x, y] = key.split(":").map(Number);
     if (y < 28) assert.equal(lopukhSprite("idle", "left", 0).pixels.get(`${47 - x}:${y}`), color);
+  }
+});
+
+test("the rabbit has matching front cheeks and centred nose and teeth in every expression", () => {
+  const cream = new Set(["#f1dbad", "#ffebc5"]);
+  for (const action of actions) for (const frame of [0, 8, 24, 30]) {
+    const sprite = lopukhSprite(action, "front", frame, .5), { head } = lopukhSpriteRig(sprite);
+    for (let dy = 1; dy <= 6; dy++) for (let dx = 0; dx <= 9; dx++) {
+      assert.equal(cream.has(sprite.pixels.get(`${head.x - dx}:${head.y + dy}`)),
+        cream.has(sprite.pixels.get(`${head.x + dx}:${head.y + dy}`)), `${action}/${frame}/${dx}/${dy}: cheeks and chin share the nose axis`);
+    }
+    assert.equal(sprite.pixels.get(`${head.x}:${head.y + 2}`), "#cc957c", "the little pink nose is centred");
+    assert.equal(sprite.pixels.get(`${head.x}:${head.y + 4}`), "#967044", "the mouth starts directly below the nose");
+    const row = head.y - 1;
+    if (action !== "rest" && !(action === "idle" && frame === 30)) {
+      for (const x of [head.x - 5, head.x + 4]) assert.equal(sprite.pixels.get(`${x}:${row}`), "#382e28",
+        "both pupils use the same height above the cheeks");
+    }
+  }
+});
+
+test("a small ear twitch has its own finite idle/greeting poses and stays within one pixel while walking", () => {
+  for (const direction of directions) {
+    const base = lopukhSprite("idle", direction, 0), twitch = lopukhSprite("idle", direction, 24);
+    const a = lopukhSpriteRig(base), b = lopukhSpriteRig(twitch);
+    assert.deepEqual(a.head, b.head, "the ear moves independently from breathing");
+    assert.deepEqual(a.feet, b.feet);
+    assert.notEqual(signature(base), signature(twitch));
+    a.ears.forEach((ear, index) => {
+      assert.ok(Math.abs(ear.x - b.ears[index].x) <= 1 && Math.abs(ear.y - b.ears[index].y) <= 1);
+      assert.notDeepEqual(ear, b.ears[index]);
+    });
+    const greetingStart = lopukhSpriteRig(lopukhSprite("greet", direction, 0, 0));
+    const greetingPeak = lopukhSpriteRig(lopukhSprite("greet", direction, 0, .5));
+    const greetingEnd = lopukhSpriteRig(lopukhSprite("greet", direction, 0, 1));
+    assert.notDeepEqual(greetingStart.ears, greetingPeak.ears);
+    assert.deepEqual(greetingStart.ears, greetingEnd.ears, "ears return rather than snapping at a repeated greeting");
+    const cycle = Array.from({ length: 16 }, (_, frame) => lopukhSpriteRig(lopukhSprite("walk", direction, frame)));
+    cycle.forEach((rig, frame) => rig.ears.forEach((ear, index) => {
+      const next = cycle[(frame + 1) % 16].ears[index];
+      assert.ok(Math.abs(ear.x - next.x) <= 1 && Math.abs(ear.y - next.y) <= 1, "both ear tips follow a continuous walk loop");
+    }));
+    assert.deepEqual(lopukhSpriteRig(lopukhSprite("idle", direction, 24, .5, true)).ears,
+      lopukhSpriteRig(lopukhSprite("idle", direction, 0, 0, true)).ears);
   }
 });
 
@@ -113,6 +157,40 @@ test("carrying uses both paws on the log and puts the axe away", () => {
     for (const palm of [rig.log.leftGrip, rig.log.rightGrip]) {
       assert.ok(Math.abs(palm.x - rig.log.center.x) <= 10); assert.equal(palm.y, rig.log.center.y + 1);
     }
+  }
+});
+
+test("unloading lowers the log onto the ground once, releases both paws and keeps every sole planted", () => {
+  for (const direction of directions) {
+    const startSprite = lopukhSprite("unload", direction, 0, 0), start = lopukhSpriteRig(startSprite);
+    const carry = lopukhSpriteRig(lopukhSprite("carry", direction, 0));
+    assert.deepEqual(start.log, carry.log);
+    assert.deepEqual(start.arms, carry.arms);
+    let previous;
+    for (let step = 0; step <= 32; step++) {
+      const sprite = lopukhSprite("unload", direction, 0, step / 32), rig = lopukhSpriteRig(sprite);
+      assert.equal(rig.axe.visible, false);
+      assert.equal(rig.contact.bottom, 45);
+      assert.deepEqual(rig.feet, start.feet);
+      const bottom = Math.max(...[...sprite.pixels.keys()].map(key => Number(key.split(":")[1]))) + 1;
+      assert.equal(bottom, 45, "the lowered log does not sink below the feet");
+      if (previous) {
+        assert.ok(rig.log.center.y >= previous.log.center.y, "delivery only lowers the log");
+        for (const [a, b] of [[rig.head, previous.head], [rig.log.center, previous.log.center],
+          ...rig.arms.map((arm, index) => [arm.palm, previous.arms[index].palm])])
+          assert.ok(Math.abs(a.x - b.x) <= 1 && Math.abs(a.y - b.y) <= 1, "one small pixel step per pose");
+      }
+      previous = rig;
+    }
+    assert.equal(previous.log.center.y, 40, "the visible end of the log settles on source row 44");
+    assert.equal(previous.log.center.y - start.log.center.y, 4);
+    assert.ok(previous.head.y > start.head.y, "a small crouch follows the weight down");
+    for (const arm of previous.arms) {
+      const held = arm.hand === "left" ? previous.log.leftGrip : previous.log.rightGrip;
+      assert.ok(Math.hypot(arm.palm.x - held.x, arm.palm.y - held.y) >= 3, "the paws let go after contact");
+    }
+    assert.equal(lopukhSpriteRig(lopukhSprite("rest", direction, 0)).log, undefined, "rest has no phantom carried load");
+    assert.equal(lopukhSprite("unload", direction, 32, 1, true), lopukhSprite("unload", direction, 0, 0, true));
   }
 });
 

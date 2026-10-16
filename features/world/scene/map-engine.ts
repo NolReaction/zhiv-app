@@ -17,6 +17,7 @@ import { WORLD_STUDIO_MAP_KEY_EVENT, type WorldStudioMapKeyRequest } from "@/fea
 import { mapObjectAt, type MapObjectPlace, type MapInteractiveObject } from "./site-interactions";
 import { projectConstructionAnchor, type MapObjectScreenAnchor } from "./construction-map-anchor";
 import { drawMapGuideTarget, mapGuideCamera, minerArrivalGuideTarget } from "./map-guide-target";
+import { createMapSceneRehearsal } from "./map-scene-rehearsal";
 export class MapLoadError extends Error {
   constructor(public stage: "map" | "character", public cause: unknown) { super("Не удалось загрузить лес"); }
 }
@@ -83,7 +84,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   let objectAnchorsEnabled = interactions.objectAnchorsEnabled ?? true;
   let readyResolve!: () => void, readyReject!: (error: unknown) => void;
   const habitatReady = new Promise<void>((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
-  const habitat = mountHabitat(home, { ...initial, view: "world", backgrounded: Boolean(initial.backgrounded || document.hidden) }, {
+  let habitat = mountHabitat(home, { ...initial, view: "world", backgrounded: Boolean(initial.backgrounded || document.hidden) }, {
     activity() {}, ready: readyResolve, failure: error => readyReject(new MapLoadError("character", error)),
     rendered: () => { if (motionReduced() || paused()) { if (pointers.size) requestDraw(); else draw(); } else updateSelection(); },
   });
@@ -147,6 +148,24 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   try { await habitatReady; signal?.throwIfAborted(); }
   catch (error) { habitat.dispose(); throw error; }
   finally { signal?.removeEventListener("abort", abort); }
+  const naturalHabitat = habitat;
+  let naturalViewport: { camera: Camera; framing: MapFraming } | null = null;
+  const rehearsal = createMapSceneRehearsal({ natural: naturalHabitat, mount: mountHabitat,
+    select(scene, request) {
+      if (disposed) return;
+      if (request && habitat === naturalHabitat) naturalViewport = { camera: { ...camera }, framing };
+      habitat = scene;
+      if (request) {
+        const point = request.actor === "mochlik" ? habitat.position() : habitat.inspectPoint?.(request.actor);
+        if (point) { framing = "manual"; camera = clampCamera({ ...camera, ...point, zoom: Math.max(camera.zoom, 2) }, view, bounds, cameraInsets); }
+      } else if (naturalViewport) {
+        camera = naturalViewport.camera; framing = naturalViewport.framing; naturalViewport = null;
+      }
+      draw();
+    },
+    rendered: () => { if (!disposed) requestDraw(); },
+    failed: id => worldDevStore.reportScene(id, "blocked", "Не удалось загрузить репетицию. Попробуй ещё раз."),
+  });
   let fullGround = rebuilding, upgradingGround = false;
   async function upgradeGround() {
     if (disposed || fullGround || upgradingGround) return;
@@ -342,7 +361,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     }
     cancelAnimationFrame(raf); raf = 0;
     const backgrounded = Boolean(options.backgrounded || document.hidden || !inView);
-    habitat.configure({ ...options, view: "world", backgrounded });
+    rehearsal.configure(options, dev?.scenePreview, backgrounded);
     if (!disposed && !backgrounded) { draw(); if (!motionReduced() && !paused() && !raf) raf = requestAnimationFrame(tick); }
   }
   function resize() {
@@ -468,8 +487,8 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
         // Explicit production/status markers remain their own visible controls.
         const visibleSite = habitat.hitSite?.(world);
         const object = mapObjectAt(habitat.hitSite ? objects.filter(object => object.kind !== "site" || object.id === visibleSite) : objects, world);
-        const resident = interactions.onResident ? habitat.hitResident?.(world.x, world.y) : null;
-        if (resident) { setSelectedObject(null); habitat.noticeResident?.(resident); interactions.onResident?.(resident); }
+        const resident = habitat.hitResident?.(world.x, world.y);
+        if (resident) { setSelectedObject(null); habitat.noticeResident?.(resident); }
         else if (habitat.hitVisiblePet?.(petPoint.x, petPoint.y)) { setSelectedObject(null); habitat.notice(); }
         else if (markerObject) activateObject(markerObject.id);
         else if (object) activateObject(object.id);
@@ -585,7 +604,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     cancelAnimationFrame(raf); raf = 0;
     if (!document.hidden && !options.backgrounded && inView) {
       if (dev.cameraEvent && dev.cameraEvent.id !== previousCamera) control(dev.cameraEvent.action);
-      else draw();
+      else visibility();
       if (!motionReduced() && !paused() && !raf) raf = requestAnimationFrame(tick);
     }
   }) : () => {};
@@ -609,7 +628,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
       if (enabled) requestDraw();
       else interactions.onObjectAnchorsChange?.([]);
     },
-    setTime(now: number) { habitat.setTime(now); },
+    setTime(now: number) { naturalHabitat.setTime(now); },
     update(next: SceneOptions) {
       options = next;
       visibility();
@@ -619,7 +638,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     dispose() {
       if (studioWasActive) studioViewports?.set(canvas, { camera: { ...camera }, framing });
       else studioViewports?.delete(canvas);
-      disposed = true; pendingEditorMove = null; lightingEditor.blur(); cancelAnimationFrame(raf); unsubscribeDev(); unsubscribeLightingEditor(); habitat.dispose(); resizeObserver.disconnect(); observer.disconnect();
+      disposed = true; pendingEditorMove = null; lightingEditor.blur(); cancelAnimationFrame(raf); unsubscribeDev(); unsubscribeLightingEditor(); rehearsal.dispose(); resizeObserver.disconnect(); observer.disconnect();
       if (speechCanvas && speechContext !== ctx) {
         speechContext.setTransform(1, 0, 0, 1, 0, 0); speechContext.clearRect(0, 0, speechCanvas.width, speechCanvas.height);
       }

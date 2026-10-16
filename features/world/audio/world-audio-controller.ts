@@ -71,7 +71,8 @@ export function createWorldAudioController(runtime: AudioRuntime) {
         preparation = new AbortController();
         // Short contact files cover fishing, the mine and tree taps. Warm them before
         // contact; a slow first decode must never queue an out-of-time impact.
-        void runtime.prepare?.(["action.fish.bobber", "action.mine.strike", "action.tree.rustle"], { signal: preparation.signal }).catch(() => {});
+        void runtime.prepare?.(["action.fish.bobber", "action.mine.strike", "action.tree.rustle",
+          "actor.lopukh.greeting", "actor.kamneshmyg.greeting", "actor.leaftail.greeting"], { signal: preparation.signal }).catch(() => {});
       }
       // The circle renders the live forest but is still a menu surface. Only
       // the full map requests spatial layers; both reuse the same music keys.

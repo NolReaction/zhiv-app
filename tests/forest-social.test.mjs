@@ -8,7 +8,8 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { createForestSocial, noticeForestSocial, advanceForestSocial, forestSocialFrames,
-  forestSocialHolding, forestSocialPartner, forestSocialWaitingHost, cancelForestSocial, FOREST_SOCIAL_LIMITS } = await vite.ssrLoadModule("/features/world/characters/social/forest-social.ts");
+  forestSocialHolding, forestSocialPartner, forestSocialWaitingHost, cancelForestSocial, requestForestSocialVisit,
+  FOREST_SOCIAL_LIMITS } = await vite.ssrLoadModule("/features/world/characters/social/forest-social.ts");
 const { createBuilderMind, advanceBuilderMind, requestBuilderVisit, cancelBuilderVisit } = await vite.ssrLoadModule("/features/world/characters/builder/builder-mind.ts");
 const { builderLocalPlaces } = await vite.ssrLoadModule("/features/world/characters/builder/builder-navigation.ts");
 const { canTraverse } = await vite.ssrLoadModule("/features/world/navigation/navigation.ts");
@@ -49,8 +50,9 @@ function tick(value, seconds = .1, onTick) {
   }
 }
 function startMeeting(value) {
-  value.state.nextEncounterAt = value.state.elapsed;
-  tick(value);
+  const target = value.hero.available ? "mochlik" : "plesk";
+  assert.equal(requestForestSocialVisit(value.state, "builder", target, value.env()), true,
+    "targeted test request preserves path safety while bypassing autonomous pair cooldown");
   assert.equal(value.state.meeting?.phase, "approach");
   assert.equal(forestSocialHolding(value.state), null, "Mochlik remains free during approach");
 }
@@ -131,7 +133,10 @@ test("a due invitation waits for the next quiet moment instead of missing short 
   assert.equal(value.state.nextEncounterAt, 0); assert.equal(value.state.meeting, null);
   assert.equal(value.mind.decisions, decisions, "busy frames never run social pathfinding");
   value.hero.available = true; value.hero.context = "idle"; tick(value);
-  assert.equal(value.state.meeting?.phase, "approach", "the next genuine idle window can accept a visit");
+  assert.equal(value.state.meeting?.phase, "talk", "already nearby neighbours use the next genuine idle window immediately");
+  assert.equal(value.state.meeting?.visit, null, "an idle window does not invent a circular approach at speaking distance");
+  assert.ok(Math.hypot(value.mind.position.x - value.hero.position.x, value.mind.position.y - value.hero.position.y)
+    <= Math.max(75, (40 + value.hero.size) * 1.1));
 });
 
 test("history varies complete subjects and bounds all dialogue memory", () => {
@@ -219,19 +224,21 @@ test("still-mode expiry updates cooldowns without autonomous conversations or pe
 });
 
 test("authored scripts stay whole, alternate real participants and fit a finite meeting", () => {
-  assert.equal(FOREST_CONVERSATIONS.length, 78);
-  assert.equal(new Set(FOREST_CONVERSATIONS.map(topic => topic.id)).size, 78);
+  assert.equal(FOREST_CONVERSATIONS.length, 108);
+  assert.equal(new Set(FOREST_CONVERSATIONS.map(topic => topic.id)).size, 108);
+  const base = FOREST_CONVERSATIONS.filter(topic => !topic.purpose);
+  assert.equal(base.length, 78, "all original complete stories remain present");
   const lines = Object.values(FOREST_ANIMAL_LINES).flat();
   for (const pair of ["builder-mochlik", "builder-plesk", "mochlik-plesk"])
-    assert.equal(FOREST_CONVERSATIONS.filter(topic => topic.pair === pair).length, 14);
+    assert.equal(base.filter(topic => topic.pair === pair).length, 14);
   const allSpeakers = ["builder", "mochlik", "plesk", "lopukh", "kamneshmyg", "leaftail"];
   for (let index = 0; index < allSpeakers.length; index++) for (const other of allSpeakers.slice(index + 1)) {
     const pair = [allSpeakers[index], other];
     if (!pair.some(id => ["lopukh", "kamneshmyg", "leaftail"].includes(id))) continue;
-    assert.equal(FOREST_CONVERSATIONS.filter(topic => pair.every(id => topic.pair.split("-").includes(id))).length, 3, pair.join("-"));
+    assert.equal(base.filter(topic => pair.every(id => topic.pair.split("-").includes(id))).length, 3, pair.join("-"));
   }
   for (const topic of FOREST_CONVERSATIONS) {
-    assert.ok(topic.lines.length >= 4 && topic.lines.length <= 6);
+    assert.ok(topic.purpose === "passing" ? topic.lines.length === 2 : topic.lines.length >= 4 && topic.lines.length <= 6);
     assert.deepEqual([...new Set(topic.lines.map(line => line.speaker))].sort(), topic.pair.split("-").sort());
     topic.lines.forEach((line, index) => {
       assert.notEqual(line.speaker, topic.lines[index - 1]?.speaker);

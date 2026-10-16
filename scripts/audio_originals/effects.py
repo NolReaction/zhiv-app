@@ -2,7 +2,7 @@
 
 No recordings, sample packs, speech models or third-party melodies are used.
 All excitation signals are analytic oscillators or locally seeded noise. The
-three creatures have their own harmonic/formant profiles and gesture rhythms;
+six creatures have their own harmonic/formant profiles and gesture rhythms;
 they intentionally make nonverbal sounds rather than pronounce dialogue.
 
 ``render(asset_id, sample_rate)`` returns mono float32 PCM and mastering notes.
@@ -236,6 +236,33 @@ _CREATURES = {
     "mochlik": (182, (540, 1120, 1850), .055, .2),
     "plesk": (263, (760, 1530, 2450), .04, .08),
     "builder": (126, (390, 860, 1510), .075, .3),
+    "lopukh": (302, (920, 1720, 2640), .025, .1),
+    "kamneshmyg": (102, (335, 710, 1310), .045, .36),
+    "leaftail": (219, (650, 1320, 2240), .032, .14),
+}
+
+# The neighbours have their own short phrases as well as their own timbres.
+# These are analytically generated gestures, never reused character recordings.
+_CREATURE_GREETINGS = {
+    "lopukh": [
+        [(0, .16, [1, 1.18, 1.1], .7), (.21, .20, [1.14, 1.29, 1.19], .9),
+         (.47, .18, [1.21, 1.16, 1.06], .65)],
+        [(0, .22, [.94, 1.11, 1.2], .85), (.29, .14, [1.23, 1.3, 1.21], .65),
+         (.50, .19, [1.18, 1.25, 1.08], .8)],
+        [(0, .13, [1.03, 1.14, 1.08], .65), (.18, .17, [1.12, 1.25, 1.2], .75),
+         (.42, .24, [1.24, 1.3, 1.12], .9)],
+    ],
+    "kamneshmyg": [
+        [(0, .31, [.88, .97, 1.03], .85), (.40, .24, [1.01, 1.1, .96], .8)],
+        [(0, .37, [.91, 1.03, 1.09, 1.01], .9), (.47, .17, [.98, 1.03, .91], .6)],
+        [(0, .23, [.87, .96, 1.01], .7), (.32, .33, [.98, 1.12, 1.05, .94], .9)],
+    ],
+    "leaftail": [
+        [(0, .19, [.97, 1.09, 1.03], .75), (.27, .31, [1.07, 1.22, 1.13, 1.02], .95)],
+        [(0, .26, [.93, 1.11, 1.18], .85), (.34, .18, [1.16, 1.23, 1.13], .7),
+         (.58, .15, [1.1, 1.06, .98], .65)],
+        [(0, .15, [1.03, 1.14, 1.07], .65), (.22, .35, [1.08, 1.21, 1.17, 1.02], .9)],
+    ],
 }
 
 # Each event has three independently phrased alternatives: start, duration,
@@ -278,7 +305,8 @@ def _vocal_gesture(duration: float, contour: list[float], character: str,
     fundamental = base * np.interp(progress, np.linspace(0, 1, len(contour)), contour)
     fundamental *= 1 + .009 * np.sin(2 * math.pi * (4.2 + rng.uniform(0, 1.1)) * t)
     # The Plesk has a watery burble, the builder a slower chesty flutter.
-    flutter_rate = {"mochlik": 13, "plesk": 18, "builder": 9}[character]
+    flutter_rate = {"mochlik": 13, "plesk": 18, "builder": 9,
+                    "lopukh": 21, "kamneshmyg": 7, "leaftail": 15}[character]
     flutter = 1 + (.008 if emotion == "sleep" else .021) * np.sin(2 * math.pi * flutter_rate * t)
     fundamental *= flutter
     phase = 2 * math.pi * np.cumsum(fundamental) / sample_rate
@@ -310,8 +338,10 @@ def _actor(character: str, emotion: str, variant: int, sample_rate: int,
            rng: np.random.Generator) -> tuple[np.ndarray, dict]:
     if character not in _CREATURES or emotion not in _GESTURES:
         raise ValueError(f"Unknown creature gesture: {character}.{emotion}")
-    gestures = _GESTURES[emotion][variant - 1]
-    pace = {"mochlik": 1, "plesk": .9, "builder": 1.11}[character]
+    gestures = (_CREATURE_GREETINGS[character] if emotion == "greeting" and character in _CREATURE_GREETINGS
+                else _GESTURES[emotion])[variant - 1]
+    pace = {"mochlik": 1, "plesk": .9, "builder": 1.11,
+            "lopukh": .88, "kamneshmyg": 1.1, "leaftail": .96}[character]
     length = max(start + duration for start, duration, _, _ in gestures) * pace + .14
     audio = np.zeros(round(length * sample_rate))
     for start, duration, contour, amplitude in gestures:
@@ -320,12 +350,18 @@ def _actor(character: str, emotion: str, variant: int, sample_rate: int,
         # Very short enclosure reflection keeps these close and intimate.
         _add(audio, note, start * pace + .031, sample_rate, .065)
     tone = {"mochlik": "warm hollow forest hum", "plesk": "light rounded watery burble",
-            "builder": "low soft chesty rumble"}[character]
+            "builder": "low soft chesty rumble", "lopukh": "bright soft woody chuckle",
+            "kamneshmyg": "deep rounded gravel-free hum", "leaftail": "nimble warm dry chatter"}[character]
     gestures_text = {"greeting": "curious rising greeting", "joy": "bouncing happy phrase",
                      "effort": "brief breathy effort", "sleep": "slow sleepy sigh"}[emotion]
-    return _finish(audio, sample_rate, f"{character.title()} {emotion} {variant}",
-                   f"An original nonverbal {tone}, shaped into a {gestures_text}. No voice recordings.",
-                   -22 if emotion == "sleep" else -20)
+    output, info = _finish(audio, sample_rate, f"{character.title()} {emotion} {variant}",
+                           f"An original nonverbal {tone}, shaped into a {gestures_text}. No voice recordings.",
+                           -22 if emotion == "sleep" or character in _CREATURE_GREETINGS else -20)
+    if character in _CREATURE_GREETINGS:
+        info.update({"creature": character, "gesture": emotion, "variant": variant,
+                     "fundamentalHz": _CREATURES[character][0], "formantsHz": list(_CREATURES[character][1]),
+                     "syllables": len(gestures), "phrasePace": pace})
+    return output, info
 
 
 def _bubble(duration: float, frequency: float, sample_rate: int,

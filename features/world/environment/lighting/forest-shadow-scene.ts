@@ -39,8 +39,12 @@ export function createForestShadowFrame(scene: FixedWorldScene, options: ShadowS
     const phase = fire.position.x * .073 + fire.position.y * .041;
     const pulse = options.reducedMotion ? 1 : 1 + Math.sin(options.elapsed * 2.3 + phase) * .035
       + Math.sin(options.elapsed * 4.7 + phase * .7) * .018;
+    // An open flame illuminates the nearby clearing more strongly than the
+    // shielded house lantern. With a lantern-sized energy and a short pool,
+    // its sideways actor shadow was filled by the house's much larger pool,
+    // leaving only that lamp's downward shadow visible beside the fire.
     sources.push({ id: `fire:${fire.id}`, position: { ...fire.position }, height: Math.max(4, fire.radius * .8),
-      radius: fire.radius * 6.5, color: "#ffa449", intensity: (fire.flame * 1.05 + fire.embers * .06) * pulse });
+      radius: fire.radius * 10, color: "#ffa449", intensity: (fire.flame * 1.8 + fire.embers * .06) * pulse });
   }
   if (options.testLamp) sources.push({ id: "dev:test-lamp", position: { x: options.testLamp.x, y: options.testLamp.y },
     height: options.testLamp.height, radius: 170, intensity: 1.1, color: "#ffda9d" });

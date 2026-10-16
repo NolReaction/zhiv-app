@@ -10,7 +10,6 @@ export type KamneshmygSpriteRig = {
   head: WorldPoint;
   feet: readonly WorldPoint[];
   arms: readonly { hand: "left" | "right"; shoulder: WorldPoint; palm: WorldPoint }[];
-  tool: { grip: WorldPoint; head: WorldPoint; tip: WorldPoint; behindBody: boolean; held: boolean };
 };
 
 const cache = new Map<string, HTMLCanvasElement>();
@@ -20,8 +19,7 @@ const colors = {
   outline: "#35414b", furDark: "#4b5b69", fur: "#687e8b", furLight: "#8ca3aa", furPale: "#a6b8ba",
   creamShade: "#bcb9a5", cream: "#e0d8b7", pale: "#f4e9c8", nose: "#805f54", eye: "#29343a",
   helmetDark: "#8e7041", helmet: "#bd9c59", helmetLight: "#dfc17a", lampRim: "#786348", lamp: "#fff1b4",
-  strap: "#72694d", strapLight: "#938763", wood: "#9e7b53", woodLight: "#c0a175",
-  ironDark: "#4b6269", iron: "#8fa8ac", ironLight: "#c4d4ce", rock: "#86938f", rockLight: "#aebbb0",
+  strap: "#72694d", strapLight: "#938763", ironLight: "#c4d4ce", rock: "#86938f", rockLight: "#aebbb0",
 };
 const point = (x: number, y: number): WorldPoint => ({ x: Math.round(x), y: Math.round(y) });
 const mix = (a: WorldPoint, b: WorldPoint, t: number) => point(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
@@ -29,7 +27,7 @@ const actions: readonly ForestVillagerAction[] = ["idle", "walk", "work", "carry
 const directions: readonly PixelDirection[] = ["front", "back", "left", "right"];
 
 /** A round slate-furred miner. Every visible pixel is opaque and integral; the
- * lamp, stone and pickaxe are part of the same tiny source grid as the paws. */
+ * lamp, stone and empty paws share the same tiny source grid. */
 export function kamneshmygSprite(action: ForestVillagerAction, direction: PixelDirection, frame: number,
   phase = 0, still = false): HTMLCanvasElement {
   action = actions.includes(action) ? action : "idle";
@@ -71,51 +69,26 @@ export function kamneshmygSprite(action: ForestVillagerAction, direction: PixelD
     ? [point(17 + step, 43 - Math.min(1, gait.leftLift)), point(30 - step, 43 - Math.min(1, gait.rightLift))]
     : [point(17, 43 - gait.leftLift), point(30, 43 - gait.rightLift)];
   const shoulder = point(side ? 32 : back ? 32 : 15, 32 + rise);
-  const farShoulder = point(action === "work" ? side || back ? 25 : 29 : side ? 25 : back ? 15 : 32, 32 + rise);
-  const restGrip = point(side ? 35 : back ? 35 : 12, 36 + rise);
-  const restHead = point(side ? 40 : back ? 40 : 7, 39 + rise);
-  let grip = point(restGrip.x, restGrip.y + gait.swing);
-  let pickHead = point(restHead.x, restHead.y + gait.swing);
-  let palm = grip, farPalm = point(side ? 29 : back ? 14 : 34, 36 + rise - gait.swing);
-  const toolHeld = action !== "carry" && action !== "rest";
-  const toolBehind = back || mirrored || !toolHeld;
+  const farShoulder = point(side ? 25 : back ? 15 : 32, 32 + rise);
+  const restPalm = point(side ? 34 : back ? 32 : 17, 36 + rise);
+  let palm = point(restPalm.x, restPalm.y + gait.swing);
+  let farPalm = point(side ? 29 : back ? 16 : 31, 36 + rise - gait.swing);
   if (action === "work") {
-    const readyGrip = point(side || back ? 35 : 17, 36 + rise);
-    const readyHead = point(side || back ? 40 : 10, 39 + rise);
-    const highGrip = point(side || back ? 35 : 17, 33 + rise);
-    const highHead = point(side || back ? 40 : 10, 32 + rise);
-    const tapGrip = point(side || back ? 35 : 17, 37 + rise);
-    const tapHead = point(side || back ? 41 : 10, 38 + rise);
-    const pose = (restPoint: WorldPoint, highPoint: WorldPoint, tapPoint: WorldPoint) =>
-      p < .25 ? mix(restPoint, highPoint, p / .25) : p < .4375 ? mix(highPoint, tapPoint, (p - .25) / .1875)
-        : p < .6875 ? mix(tapPoint, restPoint, (p - .4375) / .25) : restPoint;
-    grip = pose(readyGrip, highGrip, tapGrip); pickHead = pose(readyHead, highHead, tapHead);
-    // The second hand holds the butt of the shaft, beyond the dominant hand;
-    // it never reaches across the entire belly to the metal head.
-    palm = grip; farPalm = mix(pickHead, grip, 1.55);
+    // Quiet empty-paw gestures suit the hidden mining shift and its portrait;
+    // the miner carries no protruding pickaxe, including on his back.
+    palm = mix(restPalm, point(side ? 33 : back ? 30 : 19, 33 + rise), gesture);
+    farPalm = mix(farPalm, point(side ? 30 : back ? 18 : 29, 34 + rise), gesture);
   } else if (action === "carry") {
-    // The tool is strapped to the back; both broad paws carry the actual stone.
-    grip = point(side ? 15 : back ? 18 : 18, 31 + rise); pickHead = point(grip.x - 3, 25 + rise);
     palm = point(side ? 32 : back ? 31 : 16, 36 + rise);
     farPalm = point(side ? 37 : back ? 17 : 32, 36 + rise);
   } else if (action === "rest") {
-    grip = point(side ? 15 : 18, 32 + rise); pickHead = point(grip.x - 3, 26 + rise);
-    palm = point(side ? 32 : back ? 29 : 19, 38 + rise); farPalm = point(side ? 28 : back ? 19 : 29, 38 + rise);
+    palm = point(side ? 32 : back ? 29 : 19, 38 + rise);
+    farPalm = point(side ? 28 : back ? 19 : 29, 38 + rise);
   } else if (action === "greet") {
     farPalm = point(farPalm.x + Math.round(Math.sin(p * Math.PI * 3)), farPalm.y - Math.round(gesture * 7));
   } else if (action === "inspect" || action === "trade") {
     farPalm = mix(farPalm, point(side ? 34 : back ? 20 : 28, action === "trade" ? 34 + rise : 32 + rise), gesture);
   }
-  const pickTip = point(pickHead.x + (side || back ? 4 : -4), pickHead.y + 2);
-  const drawPickaxe = () => {
-    const butt = action === "work" ? farPalm : grip;
-    segment(butt, pickHead, colors.outline, 3); segment(butt, pickHead, colors.wood);
-    segment(point(pickHead.x - 4, pickHead.y + 2), point(pickHead.x, pickHead.y - 1), colors.ironDark, 3);
-    segment(point(pickHead.x, pickHead.y - 1), point(pickHead.x + 4, pickHead.y + 2), colors.ironDark, 3);
-    segment(point(pickHead.x - 3, pickHead.y + 1), point(pickHead.x, pickHead.y - 1), colors.iron);
-    segment(point(pickHead.x, pickHead.y - 1), point(pickHead.x + 3, pickHead.y + 1), colors.ironLight);
-    rect(grip.x - 1, grip.y - 1, 2, 2, colors.woodLight);
-  };
   const drawPaw = (from: WorldPoint, to: WorldPoint, near: boolean) => {
     const elbow = mix(from, to, .4);
     segment(elbow, to, colors.outline, 4); segment(elbow, to, near ? colors.fur : colors.furDark, 3);
@@ -133,14 +106,13 @@ export function kamneshmygSprite(action: ForestVillagerAction, direction: PixelD
     oval(foot.x, foot.y - 1, 4, 1, index === 0 && side ? colors.furDark : colors.fur);
     for (const x of [-2, 0, 2]) rect(foot.x + x, foot.y, 1, 1, colors.creamShade);
   }
-  if (toolBehind) drawPickaxe();
   if (back) { if (action === "carry") drawStone(); drawPaw(farShoulder, farPalm, false); drawPaw(shoulder, palm, false); }
   oval(side ? 22 : 24, 30 + rise, side ? 13 : 15, 13, colors.outline);
   oval(side ? 22 : 24, 29 + rise, side ? 12 : 14, 13, colors.furDark);
   oval(side ? 24 : 23, 28 + rise, side ? 10 : 12, 12, colors.fur);
   oval(side ? 22 : 20, 25 + rise, 7, 7, colors.furLight);
   if (back) {
-    // Warm worn helmet and a diagonal tool strap make the back readable.
+    // A warm worn helmet and diagonal apron strap make the back readable.
     oval(side ? 25 : 24, 17 + rise, 11, 9, colors.fur);
     segment(point(16, 23 + rise), point(31, 39 + rise), colors.strap, 3);
     rect(28, 34 + rise, 5, 5, colors.strapLight);
@@ -190,7 +162,6 @@ export function kamneshmygSprite(action: ForestVillagerAction, direction: PixelD
     }
     if (action === "carry") drawStone();
     drawPaw(farShoulder, farPalm, mirrored);
-    if (!toolBehind) drawPickaxe();
     drawPaw(shoulder, palm, !mirrored);
   }
   const planted = feet.filter(foot => foot.y === 43).map(mirror);
@@ -199,7 +170,6 @@ export function kamneshmygSprite(action: ForestVillagerAction, direction: PixelD
     head: mirror(head), feet: feet.map(mirror),
     arms: [{ hand: "left", shoulder: mirror(farShoulder), palm: mirror(farPalm) },
       { hand: "right", shoulder: mirror(shoulder), palm: mirror(palm) }],
-    tool: { grip: mirror(grip), head: mirror(pickHead), tip: mirror(pickTip), behindBody: toolBehind, held: toolHeld },
   });
   cache.set(key, canvas);
   if (cache.size > KAMNESHMYG_SPRITE_CACHE_LIMIT) cache.delete(cache.keys().next().value!);

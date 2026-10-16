@@ -31,7 +31,7 @@ export function villagerDoorOpacity(mind: ForestVillagerMind): number {
 /** The state is owned by the shared scene clock, including time inside. A
  * closed tab does not wake a trader or finish walking into the mine. */
 export function advanceVillagerDoor(mind: ForestVillagerMind, places: VillagerPlaces, dt: number,
-  occupants: readonly ResidentOccupant[], weather: boolean): boolean {
+  occupants: readonly ResidentOccupant[], weather: boolean, socialHold = false): boolean {
   if (mind.doorPhase === "outside") return false;
   if (mind.doorPhase === "approach") {
     if (mind.route) return false;
@@ -45,6 +45,7 @@ export function advanceVillagerDoor(mind: ForestVillagerMind, places: VillagerPl
   if (mind.doorPhase === "inside") {
     mind.fatigue = Math.max(0, mind.fatigue - dt * .035);
     if (mind.id === "kamneshmyg" && mind.job) { setVillagerAction(mind, "work"); return true; }
+    if (mind.id === "leaftail" && socialHold && !mind.noticePending) return true;
     mind.wait -= dt;
     if (mind.id === "kamneshmyg" || mind.noticePending || !weather && mind.wait <= 0) {
       mind.doorPhase = "exit"; setVillagerAction(mind, "walk");

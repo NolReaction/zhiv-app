@@ -193,7 +193,7 @@ test("Plesk taps use world coordinates, respect foreground masks and never trigg
         clientX: projection.left + tapPoint.x * projection.zoom, clientY: projection.top + tapPoint.y * projection.zoom };
       canvas.events.get("pointerdown")({ ...event, type: "pointerdown" });
       canvas.events.get("pointerup")({ ...event, type: "pointerup" });
-      assert.deepEqual(residents, hidden ? [] : ["plesk"]);
+      assert.deepEqual(residents, [], "touching a resident never opens a character panel");
       assert.deepEqual(places, []);
       assert.equal(env.timers.size, hidden ? 0 : 1, "only a visible resident's own speech gets a finite expiry");
       assert.equal([...env.timers.values()].some(timer => timer.ms <= 1000), false,
@@ -405,7 +405,7 @@ test("only a completed resident tap reaches her AI, while drags, pinch and cance
     assert.deepEqual(residents, []);
     assert.deepEqual(mind, original, "camera gestures cannot queue social attention or advance resident AI");
     first = touch(); send("pointerdown", first); send("pointerup", first);
-    assert.deepEqual(residents, ["plesk"]);
+    assert.deepEqual(residents, [], "a body tap speaks without navigating to the character");
     assert.equal(mind.noticePending, true);
     const clock = sceneClock(env); clock.advance(.1);
     assert.equal(mind.stage.action, "greet");
@@ -1118,7 +1118,7 @@ test("reduced motion and hidden views freeze builder feet while confirmed comple
   } finally { scene?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
 });
 
-test("builder taps open his conversation without touching Pleska or Mochlik; camera gestures stay inert", async () => {
+test("builder taps speak without opening his panel or touching Pleska or Mochlik; camera gestures stay inert", async () => {
   const { createMapEngine, connectForestSession, TILED_WORLD, worldDevStore } = await modules(residentFixture());
   const env = browser(); let engine, probe;
   try {
@@ -1140,7 +1140,7 @@ test("builder taps open his conversation without touching Pleska or Mochlik; cam
     send("pointerup", point); send("pointerup", { ...second, clientX: second.clientX + 10 }); engine.control("overview");
     assert.deepEqual(residents, []); assert.deepEqual(builder, before);
     point = touch(); send("pointerdown", point); send("pointerup", point);
-    assert.deepEqual(residents, ["builder"]); assert.equal(builder.noticePending, true);
+    assert.deepEqual(residents, [], "a builder body tap never opens a character panel"); assert.equal(builder.noticePending, true);
     assert.deepEqual(probe.state.pleskMind, seller); assert.equal(probe.state.reaction, 0);
     const clock = sceneClock(env); clock.advance(.1); assert.equal(builder.action, "greet");
     assert.deepEqual(probe.state.pleskMind.position, seller.position, "a builder greeting cannot move the merchant");
@@ -1675,7 +1675,9 @@ test("a delayed speech font repaints static glyph metrics once without advancing
 
 test("an optional builder visit walks from real feet and yields immediately to construction or explicit controls", async () => {
   const authored = builderFixture();
-  authored.destinations.push({ id: "builder-rest", position: { x: 700, y: 640 }, pauseSeconds: 10 });
+  // Keep this a real approach test: at the former (700,640) stop neighbours
+  // were already close enough for the newly supported direct exchange.
+  authored.destinations.push({ id: "builder-rest", position: { x: 710, y: 620 }, pauseSeconds: 10 });
   const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore, forgetForestSession } = await modules(authored);
   const env = browser(), views = [], probes = [];
   try {
@@ -1688,6 +1690,7 @@ test("an optional builder visit walks from real feet and yields immediately to c
       if (mode === "construction") { env.finishPath("/test-ground.webp"); env.finishPath("/test-builder-workshop.webp"); }
       await flush();
       const probe = connectForestSession(key, TILED_WORLD, "circle", 100_000, 0, () => {}); probes.push(probe);
+      probe.state.pleskMind = null; // This scenario exercises the builder's visit to Mochlik, not guest selection among three residents.
       const mind = probe.state.builderMind, social = probe.state.social, feet = { ...mind.position }, hero = { ...probe.state.clearing.position };
       social.nextEncounterAt = social.elapsed;
       const clock = sceneClock(env);
@@ -1750,6 +1753,7 @@ test("a voluntary map conversation preserves a complete script and releases both
     probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 100_000, 0, () => {});
     // Isolate the neighbour encounter from unrelated random walks. The social
     // director still uses real navigation, occupancy, shared clocks and paint.
+    probe.state.pleskMind = null;
     probe.state.clearing.waitSeconds = 60; probe.state.director.nextDecisionAt = 60;
     probe.state.social.nextEncounterAt = probe.state.social.elapsed;
     const social = probe.state.social, hero = { ...probe.state.clearing.position }, clock = sceneClock(env);
@@ -1805,6 +1809,10 @@ test("Mochlik and Plesk hold only their live conversation and a manual shop visi
     // rather than toggling the social state or calling its cancellation helper.
     plesk.intent = "look"; plesk.stage = { ...plesk.stage, action: "idle", duration: 60 }; plesk.age = 0; plesk.queue = [];
     state.clearing.waitSeconds = 60; state.director.nextDecisionAt = state.elapsed + 60;
+    assert.ok(social.pairAfter["mochlik:plesk"] > social.elapsed, "the completed exchange sets a real pair quiet period");
+    // This test intentionally requests another opportunity immediately; align
+    // its new pair deadline with the already-forced global invitation timer.
+    social.pairAfter["mochlik:plesk"] = social.elapsed;
     social.nextEncounterAt = social.elapsed;
     clock.until(() => social.meeting?.phase === "talk", "the next requested quiet opportunity starts", 20);
     scene.visitTradingPlace("plesk");
@@ -1830,12 +1838,14 @@ test("Plesk and the builder finish their live exchange while uninvolved Mochlik 
     const state = probe.state, plesk = state.pleskMind, builder = state.builderMind, social = state.social;
     state.director.nextDecisionAt = 120;
     builder.position = { x: 660, y: 680 }; builder.route = null; builder.target = null; builder.wait = 60; builder.action = "idle";
-    plesk.intent = "look"; plesk.stage = { ...plesk.stage, action: "idle", duration: 60 }; plesk.age = 0; plesk.queue = [];
+    // A stationary fisher receives a question while retaining her real rod and
+    // stage; she does not compete with the intended visiting builder as guest.
+    plesk.intent = "fish"; plesk.stage = { ...plesk.stage, action: "fish", duration: 60 }; plesk.age = 2; plesk.queue = [];
     const heroFeet = { ...state.clearing.position }, pleskFeet = { ...plesk.position };
     assert.equal(requestClearingPoint(state.clearing, { x: 590, y: 660 }), true);
     social.nextEncounterAt = social.elapsed;
     const clock = sceneClock(env);
-    clock.until(() => social.meeting?.phase === "talk", "the real builder visits idle Plesk while Mochlik has his own route", 160);
+    clock.until(() => social.meeting?.phase === "talk", "the real builder visits a stationary fisher while Mochlik has his own route", 160);
     assert.equal(social.meeting.guest, "builder"); assert.equal(social.meeting.host, "plesk");
     const heldAge = plesk.age, builderFeet = { ...builder.position }, heroAtTalk = { ...state.clearing.position }, spoken = [], seen = new Set();
     plesk.stage.duration = heldAge + .1;

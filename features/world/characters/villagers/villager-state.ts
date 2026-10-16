@@ -9,6 +9,10 @@ import type { VillagerDoor, VillagerStop } from "./villager-navigation";
 export const FOREST_VILLAGER_LIMITS = { maxDelta: .5, greeting: 2.8, arrivalSpeed: 3, decisionSeconds: 9,
   trafficRetry: .8, visitSeconds: 18, movementSteps: 512 } as const;
 export const FOREST_VILLAGER_IDS: readonly ForestVillagerId[] = ["lopukh", "kamneshmyg", "leaftail"];
+export type WoodcutterCycle = { phase: "idle" | "chop" | "haul" | "unload" | "rest"; elapsed: number;
+  failures: number; retryAt: number; completedCycles: number; chopSeconds: number };
+export const createWoodcutterCycle = (): WoodcutterCycle => ({ phase: "idle", elapsed: 0, failures: 0,
+  retryAt: 0, completedCycles: 0, chopSeconds: 8 });
 export type ForestVillagerMind = {
   id: ForestVillagerId; available: boolean; initialized: boolean; position: WorldPoint; direction: PixelDirection;
   action: ForestVillagerAction; age: number; elapsed: number; walked: number; wait: number;
@@ -17,6 +21,7 @@ export type ForestVillagerMind = {
   fatigue: number; socialNeed: number; workNeed: number; decisions: number; trafficWaiting: boolean; retryAt: number; stalledAt: number | null;
   doorPhase: "outside" | "approach" | "enter" | "inside" | "exit"; doorProgress: number; door: VillagerDoor | null;
   outdoorUntil: number; recentStops: string[];
+  woodwork: WoodcutterCycle | null;
   job: boolean; jobKey: string; socialVisit: { targetId: string; anchor: WorldPoint } | null; noticePending: boolean;
 };
 export type ForestVillagersState = {

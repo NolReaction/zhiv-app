@@ -5,6 +5,9 @@ import type { CookingAction } from "@/features/world/activities/cooking/forest-c
 import { TILED_WORLD } from "@/features/world/scene/presentation";
 import { initialPreviewLevels } from "../tiled/preview-state";
 import { retainWorldDevClientState } from "./world-dev-hmr-cache";
+import { normalizeWorldDevSceneFeedback, normalizeWorldDevSceneRequest,
+  type WorldDevSceneActor, type WorldDevSceneFeedback, type WorldDevScenePhase, type WorldDevSceneRequest,
+  type WorldDevSceneScenario } from "./forest-scene-preview";
 
 export const WORLD_DEV_ENABLED = process.env.NODE_ENV === "development";
 export type WorldDevCameraAction = "in" | "out" | "overview" | "pet" | "plesk" | "builder" | "fishing";
@@ -90,6 +93,7 @@ export type WorldDevState = Readonly<{
   birdEvent: number;
   scenarioEvent: Readonly<{ id: number; kind: WorldDevScenario }> | null;
   cameraEvent: Readonly<{ id: number; action: WorldDevCameraAction }> | null;
+  scenePreview: WorldDevSceneRequest | null;
   artError: string | null;
 }>;
 
@@ -106,7 +110,7 @@ export const WORLD_DEV_DEFAULTS: WorldDevState = Object.freeze({
   previewBuildings: false,
   debug: false, debugWater: false, debugNavigation: false, debugFauna: false,
   levels: Object.freeze(initialPreviewLevels(TILED_WORLD)), equipment: null,
-  animation: null, lifeEvent: null, birdEvent: 0, scenarioEvent: null, cameraEvent: null, artError: null,
+  animation: null, lifeEvent: null, birdEvent: 0, scenarioEvent: null, cameraEvent: null, scenePreview: null, artError: null,
 });
 
 const enumValues = {
@@ -136,17 +140,37 @@ const isLifeAction = (value: unknown): value is WorldDevLifeAction => ["butterfl
 /** Ephemeral visual overrides only; this store never touches player progress or storage. */
 export function createWorldDevStore(enabled: boolean) {
   let state = WORLD_DEV_DEFAULTS;
-  let animationId = 0, lifeEventId = 0, birdEventId = 0, cameraEventId = 0, scenarioEventId = 0, residentEventId = 0, cookingEventId = 0, builderEventId = 0;
+  let animationId = 0, lifeEventId = 0, birdEventId = 0, cameraEventId = 0, scenarioEventId = 0, residentEventId = 0, cookingEventId = 0, builderEventId = 0, sceneEventId = 0;
+  let sceneFeedback: WorldDevSceneFeedback | null = null;
   const listeners = new Set<() => void>();
+  const sceneListeners = new Set<() => void>();
+  const feedbackTerminal = (value: WorldDevSceneFeedback | null) => value && ["complete", "blocked", "stopped"].includes(value.phase);
+  const publishSceneFeedback = (feedback: WorldDevSceneFeedback | null) => {
+    if (!enabled || feedback === sceneFeedback || feedback?.id === sceneFeedback?.id
+      && feedback?.phase === sceneFeedback?.phase && feedback?.message === sceneFeedback?.message) return;
+    sceneFeedback = feedback;
+    for (const listener of [...sceneListeners]) listener();
+  };
   const publish = (next: WorldDevState) => {
     if (!enabled || next === state) return;
+    const previousScene = state.scenePreview;
     state = Object.freeze(next);
+    if (previousScene && !state.scenePreview && !feedbackTerminal(sceneFeedback)) {
+      publishSceneFeedback(Object.freeze({ id: previousScene.id, phase: "stopped", message: "Репетиция остановлена. Обычный мир восстановлен." }));
+    }
     for (const listener of [...listeners]) listener();
   };
 
   return {
     getSnapshot: () => state,
     getServerSnapshot: () => WORLD_DEV_DEFAULTS,
+    getSceneFeedback: () => sceneFeedback,
+    getServerSceneFeedback: (): WorldDevSceneFeedback | null => null,
+    subscribeSceneFeedback(listener: () => void) {
+      if (!enabled) return () => {};
+      sceneListeners.add(listener);
+      return () => { sceneListeners.delete(listener); };
+    },
     subscribe(listener: () => void) {
       if (!enabled) return () => {};
       listeners.add(listener);
@@ -169,6 +193,7 @@ export function createWorldDevStore(enabled: boolean) {
       if (patch.residentPreview === null) next.residentPreview = null;
       if (patch.builderPreview === null) next.builderPreview = null;
       if (patch.cookingPreview === null || isPose(patch.pose)) next.cookingPreview = null;
+      if (patch.scenePreview === null || isPose(patch.pose)) next.scenePreview = null;
       if (next.residentPreview && next.residentDirection !== state.residentDirection) {
         next.residentPreview = Object.freeze({ ...next.residentPreview, direction: next.residentDirection });
       }
@@ -198,25 +223,25 @@ export function createWorldDevStore(enabled: boolean) {
       }
       if ((Object.keys(next) as (keyof WorldDevState)[]).some(key => next[key] !== state[key])) publish(next);
     },
-    reset() { publish(WORLD_DEV_DEFAULTS); },
+    reset() { publish(WORLD_DEV_DEFAULTS); publishSceneFeedback(null); },
     triggerPose(pose: PixelPose) {
-      if (enabled && isPose(pose)) publish({ ...state, lifeEvent: null, cookingPreview: null, animation: Object.freeze({ id: ++animationId, pose }) });
+      if (enabled && isPose(pose)) publish({ ...state, scenePreview: null, lifeEvent: null, cookingPreview: null, animation: Object.freeze({ id: ++animationId, pose }) });
     },
     triggerLife(kind: WorldDevLifeAction) {
-      if (enabled && isLifeAction(kind)) publish({ ...state, animation: null, pose: "auto", cookingPreview: null,
+      if (enabled && isLifeAction(kind)) publish({ ...state, scenePreview: null, animation: null, pose: "auto", cookingPreview: null,
         autoLife: kind === "idle" ? false : kind === "home-sleep" ? true : state.autoLife,
         lifeEvent: Object.freeze({ id: ++lifeEventId, kind }) });
     },
     triggerScenario(kind: WorldDevScenario) {
       if (!enabled || !WORLD_DEV_SCENARIOS.some(item => item.id === kind)) return;
       if (kind === "plesk") {
-        publish({ ...state, paused: false, weather: "clear", timeOfDay: "day",
+        publish({ ...state, scenePreview: null, paused: false, weather: "clear", timeOfDay: "day",
           residentPreview: Object.freeze({ id: ++residentEventId, action: "routine", direction: state.residentDirection, repeat: true }),
           scenarioEvent: Object.freeze({ id: ++scenarioEventId, kind }),
           cameraEvent: Object.freeze({ id: ++cameraEventId, action: "plesk" }) });
         return;
       }
-      publish({ ...state, paused: false, pose: "auto", animation: null, lifeEvent: null, cookingPreview: null,
+      publish({ ...state, scenePreview: null, paused: false, pose: "auto", animation: null, lifeEvent: null, cookingPreview: null,
         autoLife: true, navigationMode: "auto", showHero: true, showBuildings: true,
         weather: kind === "rain" ? "downpour" : "clear", timeOfDay: kind === "birds" || kind === "ground-birds" || kind === "fishing" ? "day" : "night",
         butterflies: "auto", fireflies: "auto", birds: "auto",
@@ -225,24 +250,43 @@ export function createWorldDevStore(enabled: boolean) {
     },
     triggerResident(action: "routine" | PleskAction, repeat = false) {
       if (!enabled || !isResidentAction(action) || typeof repeat !== "boolean") return;
-      publish({ ...state,
+      publish({ ...state, scenePreview: null,
         residentPreview: Object.freeze({ id: ++residentEventId, action, direction: state.residentDirection, repeat }),
         cameraEvent: Object.freeze({ id: ++cameraEventId, action: "plesk" }) });
     },
     triggerCooking(action: WorldDevCookingPreview["action"], repeat = false) {
       if (!enabled || !WORLD_DEV_COOKING_ACTIONS.some(value => value === action) || typeof repeat !== "boolean") return;
-      publish({ ...state, pose: "auto", animation: null, lifeEvent: null, scenarioEvent: null,
+      publish({ ...state, scenePreview: null, pose: "auto", animation: null, lifeEvent: null, scenarioEvent: null,
         cookingPreview: Object.freeze({ id: ++cookingEventId, action, repeat }),
         cameraEvent: Object.freeze({ id: ++cameraEventId, action: "pet" }) });
     },
     triggerBuilder(action: BuilderAction, repeat = false) {
       if (!enabled || !WORLD_DEV_BUILDER_ACTIONS.some(value => value === action) || typeof repeat !== "boolean") return;
-      publish({ ...state,
+      publish({ ...state, scenePreview: null,
         builderPreview: Object.freeze({ id: ++builderEventId, action, direction: state.builderDirection, repeat }),
         cameraEvent: Object.freeze({ id: ++cameraEventId, action: "builder" }) });
     },
     triggerBirds() {
       if (enabled) publish({ ...state, birdEvent: ++birdEventId });
+    },
+    triggerScene(scenario: WorldDevSceneScenario, actor: WorldDevSceneActor, target?: WorldDevSceneActor) {
+      if (!enabled) return;
+      const request = normalizeWorldDevSceneRequest({ id: sceneEventId + 1, scenario, actor, target });
+      if (!request) return;
+      sceneEventId++;
+      publishSceneFeedback(Object.freeze({ id: request.id, phase: "queued", message: "Подготовка репетиции…" }));
+      publish({ ...state, scenePreview: request, pose: "auto", animation: null, lifeEvent: null,
+        residentPreview: null, builderPreview: null, cookingPreview: null, scenarioEvent: null });
+    },
+    stopScene() {
+      if (enabled && state.scenePreview) publish({ ...state, scenePreview: null });
+    },
+    /** Separate subscribers keep runtime feedback from re-entering the scene's
+     * configure/resume listener; only the active request may report progress. */
+    reportScene(id: number, phase: WorldDevScenePhase, message: string) {
+      if (!enabled || state.scenePreview?.id !== id || feedbackTerminal(sceneFeedback)) return;
+      const feedback = normalizeWorldDevSceneFeedback(id, phase, message);
+      if (feedback) publishSceneFeedback(feedback);
     },
     triggerCamera(action: WorldDevCameraAction) {
       if (enabled && ["in", "out", "overview", "pet", "plesk", "builder", "fishing"].some(option => option === action)) {
@@ -256,5 +300,5 @@ export function createWorldDevStore(enabled: boolean) {
 }
 
 export const worldDevStore = retainWorldDevClientState("world-controls",
-  `v1:1:${TILED_WORLD.id}:${TILED_WORLD.width}:${TILED_WORLD.height}:${JSON.stringify(TILED_WORLD.sites.map(site => [site.id, site.initialLevel, site.states.map(state => state.level)]))}`,
+  `v1:2:${TILED_WORLD.id}:${TILED_WORLD.width}:${TILED_WORLD.height}:${JSON.stringify(TILED_WORLD.sites.map(site => [site.id, site.initialLevel, site.states.map(state => state.level)]))}`,
   () => createWorldDevStore(WORLD_DEV_ENABLED)).value;

@@ -28,7 +28,7 @@ export function selectVillagerRoute(mind: ForestVillagerMind, places: VillagerPl
   mind.intent = intent; mind.afterWalk = afterWalk;
   mind.recentStops = [...mind.recentStops.filter(id => id !== selected.target.id), selected.target.id].slice(-3);
   if (mind.route.length < .001) stopVillager(mind, afterWalk);
-  else setVillagerAction(mind, afterWalk === "carry" ? "carry" : "walk");
+  else setVillagerAction(mind, afterWalk === "carry" || afterWalk === "unload" ? "carry" : "walk");
   return true;
 }
 /** Optional conversations and fauna poses never reserve a work corridor. A
@@ -36,7 +36,7 @@ export function selectVillagerRoute(mind: ForestVillagerMind, places: VillagerPl
  * the old hold on reconciliation; stale hold snapshots cannot cancel yielding. */
 export function yieldForestVillagerPassage(mind: ForestVillagerMind, places: VillagerPlaces,
   occupants: readonly ResidentOccupant[], options: { optionalHold?: boolean; partnerId?: string } = {}): boolean {
-  if (mind.route || mind.doorPhase !== "outside" || mind.elapsed < mind.retryAt) return false;
+  if (mind.route || mind.doorPhase !== "outside" || mind.woodwork?.phase === "unload" || mind.elapsed < mind.retryAt) return false;
   const profile = FOREST_VILLAGER_PROFILES[mind.id];
   // An ordinary stroll finds its own way around a conversation or perched
   // animal. A real work/arrival route may interrupt; the agreed partner may not.
@@ -47,8 +47,9 @@ export function yieldForestVillagerPassage(mind: ForestVillagerMind, places: Vil
   mind.retryAt = mind.elapsed + FOREST_VILLAGER_LIMITS.trafficRetry;
   const position = residentYieldPoint(places.navigation, mind.position, profile.size, occupants, mind.id, requester);
   if (!position || !selectVillagerRoute(mind, places, [{ id: `${mind.id}:yield`, position, lookAt: requester.position }],
-    "yield", "idle", occupants)) return false;
+    "yield", mind.woodwork?.phase === "haul" ? "carry" : "idle", occupants)) return false;
   mind.socialVisit = null;
+  if (mind.woodwork) mind.woodwork.retryAt = mind.elapsed + 3;
   return true;
 }
 function segment(path: SteeringPath, at: number): number {
@@ -93,8 +94,10 @@ export function walkForestVillager(mind: ForestVillagerMind, places: VillagerPla
         target: path.points.at(-1)!, size: profile.size, occupants, selfId: mind.id, time: mind.elapsed }, position);
       if (!traffic.clear) {
         mind.trafficWaiting = true; mind.speed = 0; mind.stalledAt ??= mind.elapsed;
-        if (!running && !mind.job && !mind.socialVisit && mind.elapsed - mind.stalledAt > 2.4) {
-          stopVillager(mind, "idle"); mind.wait = 3; return;
+        const woodCycle = mind.woodwork && mind.woodwork.phase !== "idle";
+        if (!running && !mind.socialVisit && (!mind.job || woodCycle) && mind.elapsed - mind.stalledAt > 2.4) {
+          if (woodCycle) { mind.woodwork!.failures++; mind.woodwork!.retryAt = mind.elapsed + 3; }
+          stopVillager(mind, mind.woodwork?.phase === "haul" ? "carry" : "idle"); mind.wait = 3; return;
         }
         const detour = traffic.path && prepareSteeringPath(places.navigation, traffic.path, profile.size);
         if (detour) { mind.route = detour; mind.distance = 0; }

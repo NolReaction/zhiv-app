@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
+import { readFile } from "node:fs/promises";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -9,7 +10,11 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
 after(() => vite.close());
 const { drawForestDirectionalShadows, drawForestOccludedLighting, drawForestShadowDebug }
   = await vite.ssrLoadModule("/features/world/environment/lighting/forest-shadow-painter.ts");
-const { createForestActorShadow } = await vite.ssrLoadModule("/features/world/environment/lighting/forest-shadow-geometry.ts");
+const { createForestActorShadow, projectForestShadow } = await vite.ssrLoadModule("/features/world/environment/lighting/forest-shadow-geometry.ts");
+const { createForestShadowFrame } = await vite.ssrLoadModule("/features/world/environment/lighting/forest-shadow-scene.ts");
+const { forestLightSources } = await vite.ssrLoadModule("/features/world/environment/lighting/forest-lighting.ts");
+const { previewWorldScene } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
+const authoredForest = JSON.parse(await readFile(new URL("../features/world/tiled/forest.generated.json", import.meta.url), "utf8"));
 const square = (x, y, size) => [{ x, y }, { x: x + size, y }, { x: x + size, y: y + size }, { x, y: y + size }];
 const caster = (id = "oak", x = 80) => ({ id, points: square(x, 80, 15), height: 45, baseHeight: 0, opacity: .6, softness: 3 });
 const scene = () => ({ schemaVersion: 1, id: "shadow-test", width: 1254, height: 1254, terrain: [], sites: [], paths: [],
@@ -460,3 +465,101 @@ for (const native of [false, true]) test(`receiver holes clip lamp/sun/body shad
     if (previous === undefined) delete globalThis.Path2D; else globalThis.Path2D = previous;
   }
 }));
+
+// Sample the actual commands sent to Canvas rather than a second lighting
+// implementation: recorded gradient stops, screen strengths, projected paths
+// and receiver clips all come from the production painter.
+function erasedAt(surface, point) {
+  const receiver = receiverContours(surface);
+  if (!windingAt(point, receiver)) return 1;
+  let contours = [], current = [], transmission = 1;
+  for (const call of surface.calls) {
+    if (call.method === "beginPath") { contours = []; current = []; }
+    if (call.method === "moveTo") current = [{ x: call.args[0], y: call.args[1] }];
+    if (call.method === "lineTo") current.push({ x: call.args[0], y: call.args[1] });
+    if (call.method === "closePath") { contours.push(current); current = []; }
+    if (call.method === "fill" && call.globalCompositeOperation === "destination-out" && windingAt(point, contours)) {
+      transmission *= 1 - call.globalAlpha;
+    }
+  }
+  return transmission;
+}
+function sampledPoolRed(surfaces, surface, point) {
+  const gradient = surface.calls.find(call => call.method === "gradient");
+  let red;
+  if (gradient) {
+    const [x, y, , , , radius] = gradient.args, distance = Math.hypot(point.x - x, point.y - y) / radius;
+    if (distance >= 1) return 0;
+    const stops = gradient.gradient.stops.map(([at, color]) => ({ at, channels: color.match(/[\d.]+/g).map(Number) }));
+    const upper = stops.findIndex(stop => stop.at >= distance), before = stops[Math.max(0, upper - 1)], after = stops[upper];
+    const ratio = after.at === before.at ? 0 : (distance - before.at) / (after.at - before.at);
+    const alpha = before.channels[3] + (after.channels[3] - before.channels[3]) * ratio;
+    red = before.channels[0] / 255 * alpha;
+  } else {
+    const copy = surface.calls.find(call => call.method === "drawImage");
+    assert.ok(copy, "dynamic actor mask starts from its source's static pool");
+    red = sampledPoolRed(surfaces, surfaces.find(value => value.canvas === copy.args[0]), point);
+  }
+  return surface.calls.some(call => call.method === "clip") ? red * erasedAt(surface, point) : red;
+}
+function sampledFieldRed(surfaces, field, point) {
+  let remaining = 1;
+  for (const call of field.calls) if (call.method === "drawImage" && call.globalCompositeOperation === "screen") {
+    const source = surfaces.find(value => value.canvas === call.args[0]);
+    remaining *= 1 - sampledPoolRed(surfaces, source, point) * call.globalAlpha;
+  }
+  return 1 - remaining;
+}
+for (const quality of ["low", "high"]) test(`the real clearing's open fire casts the leading shadow away from the hearth (${quality})`, () => withCanvas(surfaces => {
+  const levels = Object.fromEntries(authoredForest.sites.map(site => [site.id, 1]));
+  const map = previewWorldScene(structuredClone(authoredForest), levels), fire = map.campfires[0];
+  const actor = { ...fire.seat, id: "mochlik", size: 36 }, original = structuredClone(map);
+  const options = { night: 1, elapsed: 0, reducedMotion: true, quality,
+    lights: forestLightSources(map, { levels, night: 1, elapsed: 0, reducedMotion: true }),
+    fires: [{ ...fire, flame: 1, embers: 1 }], actors: [actor] };
+  const active = createForestShadowFrame(map, options);
+  drawForestOccludedLighting(context().ctx, map, active);
+  const actorField = surfaces[1], controlIndex = surfaces.length;
+  drawForestOccludedLighting(context().ctx, { ...map }, { ...active, actors: [] });
+  const controlField = surfaces[controlIndex + 1];
+  function loss(angle, bodyField = actorField, baseField = controlField) {
+    let difference = 0;
+    for (let distance = 9; distance <= 24; distance++) {
+      const point = { x: actor.x + Math.cos(angle * Math.PI / 180) * distance,
+        y: actor.y + Math.sin(angle * Math.PI / 180) * distance };
+      difference += sampledFieldRed(surfaces, baseField, point) - sampledFieldRed(surfaces, bodyField, point);
+    }
+    return difference;
+  }
+  assert.ok(loss(150) > loss(90), "fire on the right produces a stronger leftward shadow than the house lantern's downward shadow");
+  assert.ok(loss(150) > .25, "the local shadow has visible contrast, rather than merely rotating a negligible mask");
+  const embers = createForestShadowFrame(map, { ...options, fires: [{ ...fire, flame: 0, embers: .4 }] });
+  const emberIndex = surfaces.length;
+  drawForestOccludedLighting(context().ctx, { ...map }, embers);
+  const emberControlIndex = surfaces.length;
+  drawForestOccludedLighting(context().ctx, { ...map }, { ...embers, actors: [] });
+  assert.ok(loss(90, surfaces[emberIndex + 1], surfaces[emberControlIndex + 1])
+    > loss(150, surfaces[emberIndex + 1], surfaces[emberControlIndex + 1]), "after the flame goes out the house lantern naturally becomes the leading source");
+  const day = context();
+  drawForestOccludedLighting(day.ctx, map, { ...active, night: 0 });
+  assert.equal(day.calls.length, 0, "daylight retains its existing lighting path without an extra night overlay");
+  assert.deepEqual(map, original, "drawing and frame construction do not mutate authored geometry or advance campfires");
+  assert.ok(surfaces.every(surface => surface.canvas.width <= (quality === "low" ? 512 : 768)
+    && surface.canvas.height <= (quality === "low" ? 512 : 768)), "larger fire pool stays in the existing bounded allocation budget");
+}));
+
+test("the real hearth's shadow follows actors around the flame without reversing or moving their feet", () => {
+  const map = previewWorldScene(structuredClone(authoredForest), { home: 1 }), fire = map.campfires[0];
+  for (const offset of [{ x: -32, y: 10 }, { x: 32, y: 10 }, { x: 0, y: -32 }, { x: 0, y: 32 }]) {
+    const actor = { x: fire.position.x + offset.x, y: fire.position.y + offset.y, size: 36, id: "mochlik" };
+    const lightFrame = createForestShadowFrame(map, { night: 1, elapsed: 12, reducedMotion: false,
+      lights: [], fires: [{ ...fire, flame: 1, embers: 1 }], actors: [actor] });
+    const source = lightFrame.sources[0], caster = lightFrame.actors[0];
+    const pieces = projectForestShadow(caster, { kind: "point", ...source });
+    const length = Math.hypot(offset.x, offset.y), ray = { x: offset.x / length * 16, y: offset.y / length * 16 };
+    assert.ok(windingAt({ x: actor.x + ray.x, y: actor.y + ray.y }, pieces) > 0, "shadow continues away from the ground anchor of the flame");
+    assert.equal(windingAt({ x: actor.x - ray.x, y: actor.y - ray.y }, pieces), 0, "the lit space between actor and fire stays outside the shadow");
+    assert.ok(Math.abs(caster.points.reduce((sum, point) => sum + point.x, 0) / caster.points.length - actor.x) < 1e-9);
+    assert.ok(Math.abs(caster.points.reduce((sum, point) => sum + point.y, 0) / caster.points.length - actor.y) < 1e-9);
+  }
+});

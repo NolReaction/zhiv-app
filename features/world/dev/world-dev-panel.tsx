@@ -24,6 +24,8 @@ import { WorldDevCheats } from "./world-dev-cheats";
 import { WorldDevFishing } from "./world-dev-fishing";
 import { AudioDiagnosticsPanel } from "@/features/audio/dev/audio-diagnostics";
 import { WorldDevBuilderPoints } from "./world-dev-builder-points";
+import { WorldDevScene, type WorldDevSceneChoice } from "./world-dev-scene";
+import { WORLD_DEV_SCENES } from "./forest-scene-preview";
 import { useForestObservation } from "@/features/world/state/use-forest-observation";
 import { accountSceneLevels } from "@/features/world/state/economy/economy-scene-state";
 import type { ForestGardenObservation, ForestObservation } from "@/features/world/state/forest-observer";
@@ -47,6 +49,7 @@ export type WorldDevPanelProps = {
   onOpenObject?: (place: MapObjectPlace) => void;
 };
 type ManualAction = { kind: "scenario"; scenario: WorldDevScenario } | { kind: "pose"; pose: PixelPose }
+  | ({ kind: "rehearsal" } & WorldDevSceneChoice)
   | { kind: "builder"; action: BuilderAction; repeat?: boolean }
   | { kind: "cooking"; action: WorldDevCookingPreview["action"]; repeat?: boolean }
   | { kind: "resident"; action: "routine" | PleskAction; repeat?: boolean } | { kind: "birds" } | { kind: "life"; action: WorldDevLifeAction };
@@ -150,7 +153,7 @@ function Section({ title, children, initiallyOpen = false }: { title: string; ch
 
 const DEV_TABS = [["cheats", "Читы"], ["mochlik", "Герои"], ["scene", "Сцена"], ["debug", "Отладка"]] as const;
 const MOCHLIK_TABS = [["scenes", "Мохлик"], ["animation", "Анимации"], ["appearance", "Внешность"], ["plesk", "Плёска"], ["builder", "Шишколап"]] as const;
-const SCENE_TABS = [["scenarios", "Сценарии"], ["world", "Погода"], ["lighting", "Свет"], ["activities", "Сад"], ["buildings", "Здания"]] as const;
+const SCENE_TABS = [["actors", "Жители"], ["scenarios", "Сценарии"], ["world", "Погода"], ["lighting", "Свет"], ["activities", "Сад"], ["buildings", "Здания"]] as const;
 const DEBUG_TABS = [["ai", "Мышление"], ["overlays", "Разметка"], ["routes", "Пути"], ["fishing", "Рыбалка"], ["audio", "Звук"], ["app", "Приложение"]] as const;
 type DevTab = typeof DEV_TABS[number][0];
 type MochlikTab = typeof MOCHLIK_TABS[number][0];
@@ -193,7 +196,7 @@ function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false
   const [open, setOpen] = useState(initiallyOpen && !initialLightingStudio);
   const [tab, setTab] = useState<DevTab>("cheats");
   const [mochlikTab, setMochlikTab] = useState<MochlikTab>("scenes");
-  const [sceneTab, setSceneTab] = useState<SceneTab>("scenarios");
+  const [sceneTab, setSceneTab] = useState<SceneTab>("actors");
   const [debugTab, setDebugTab] = useState<DebugTab>("overlays");
   const [selectedPose, setSelectedPose] = useState<PixelPose>("greet");
   const scrollPositions = useRef<Partial<Record<DevPage, number>>>({});
@@ -273,6 +276,7 @@ function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false
   const birdsUnavailable = motionUnavailable ?? (state.birds === "off" ? "Птицы выключены. Выберите «Авто» или «Включить»." : null);
   function unavailable(action: ManualAction) {
     if (action.kind === "scenario") return null;
+    if (action.kind === "rehearsal") return motionUnavailable;
     if (action.kind === "resident" || action.kind === "builder") return motionUnavailable;
     if (action.kind === "birds") return birdsUnavailable;
     if (action.kind === "cooking") return heroUnavailable ?? (economy?.snapshot?.jobs.some(job =>
@@ -293,7 +297,8 @@ function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false
     return null;
   }
   const repeatUnavailable = lastAction ? unavailable(lastAction) : null;
-  const repeatLabel = lastAction?.kind === "scenario" ? WORLD_DEV_SCENARIOS.find(item => item.id === lastAction.scenario)!.label : lastAction?.kind === "pose" ? POSE_LABELS[lastAction.pose]
+  const repeatLabel = lastAction?.kind === "rehearsal" ? WORLD_DEV_SCENES.find(item => item.id === lastAction.scenario)!.label
+    : lastAction?.kind === "scenario" ? WORLD_DEV_SCENARIOS.find(item => item.id === lastAction.scenario)!.label : lastAction?.kind === "pose" ? POSE_LABELS[lastAction.pose]
     : lastAction?.kind === "cooking" ? COOKING_LABELS[lastAction.action]
     : lastAction?.kind === "resident" ? `Плёска: ${RESIDENT_LABELS[lastAction.action]}`
     : lastAction?.kind === "builder" ? `Шишколап: ${BUILDER_LABELS[lastAction.action]}`
@@ -318,7 +323,10 @@ function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false
   }
   function play(action: ManualAction) {
     if (unavailable(action)) return;
-    if (action.kind === "scenario") {
+    if (action.kind === "rehearsal") {
+      worldDevStore.triggerScene(action.scenario, action.actor, action.target);
+      setFeedback("Репетиция запущена на копии мира. Результат показан во вкладке «Сцена → Жители».");
+    } else if (action.kind === "scenario") {
       worldDevStore.triggerScenario(action.scenario);
       setFeedback(`${WORLD_DEV_SCENARIOS.find(item => item.id === action.scenario)!.label}: условия применены. Память аккаунта отключена для тестовой сессии.`);
     } else if (action.kind === "resident") {
@@ -452,6 +460,11 @@ export function WorldDevPanelContent({ world, economy, worldView, presenceKey, o
       </button>)}</div>
       <button type="button" onClick={() => play({ kind: "life", action: "idle" })}>Остановить тестовую рыбалку Мохлика</button>
       <p className={styles.hint}>Уменьшенное движение сохраняется: для анимаций проверьте эту настройку в разделе «Мир». Сценарии отключают сохранение тестовой сессии; после проверки перезагрузите страницу для обычной игры.</p>
+    </>}
+    {page === "actors" && <>
+      <h3 className={styles.pageTitle}>Репетиции жителей</h3>
+      <WorldDevScene state={state} prefersReducedMotion={prefersReducedMotion}
+        onStart={choice => play({ kind: "rehearsal", ...choice })} onStop={() => worldDevStore.stopScene()} />
     </>}
     {page === "plesk" && <>
       <h3 className={styles.pageTitle}>Плёска · рыбачка и торговка</h3>

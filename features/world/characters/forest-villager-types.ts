@@ -1,7 +1,7 @@
 import type { PixelDirection } from "@/features/mochlik/pixel-sprite";
 
 export type ForestVillagerId = "lopukh" | "kamneshmyg" | "leaftail";
-export type ForestVillagerAction = "idle" | "walk" | "work" | "carry" | "inspect" | "greet" | "rest" | "trade";
+export type ForestVillagerAction = "idle" | "walk" | "work" | "carry" | "unload" | "inspect" | "greet" | "rest" | "trade";
 
 /** Presentation only; inventory and job completion remain server-authoritative. */
 export type ForestVillagerFrame = {

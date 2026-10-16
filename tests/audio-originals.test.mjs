@@ -34,7 +34,7 @@ function pcmWave(bytes) {
 
 test("original pack fills the catalog, documents source and verifies every shipped byte", () => {
   assert.deepEqual(inspectAudioCatalog(catalog, { root, requireReady: true }).errors, []);
-  assert.equal(manifest.assets.length, 102);
+  assert.equal(manifest.assets.length, 111);
   assert.deepEqual(new Set(manifest.assets.map(item => item.id)), new Set(catalog.assets.map(item => item.id)));
   const hashes = new Set();
   for (const source of manifest.sources) assert.equal(sha(readFileSync(path.join(root, source.path))), source.sha256, source.path);
@@ -50,6 +50,40 @@ test("original pack fills the catalog, documents source and verifies every shipp
     assert.ok(!hashes.has(item.masterSha256), `distinct variation: ${item.id}`);
     hashes.add(item.masterSha256);
   }
+});
+
+test("three new neighbours have distinct original greeting timbres with three short quiet variants each", () => {
+  const voices = [["lopukh", 302], ["kamneshmyg", 102], ["leaftail", 219]];
+  const sources = new Set();
+  let deliveryBytes = 0;
+  for (const [actor, fundamental] of voices) {
+    const cue = catalog.cues.find(item => item.id === `actor.${actor}.greeting`);
+    assert.equal(cue.bus, "characters", "speech obeys the character volume and mute");
+    assert.equal(cue.mode, "one-shot");
+    assert.equal(cue.maxInstances, 1, "repeated markers do not layer one neighbour's voice");
+    assert.ok(cue.gainDb <= -3 && cue.cooldownMs >= 2500 && cue.pitchVariation <= .012);
+    assert.equal(cue.assets.length, 3);
+    for (const [index, id] of cue.assets.entries()) {
+      assert.equal(id, `actor.${actor}.greeting.${String(index + 1).padStart(2, "0")}`);
+      const item = manifest.assets.find(entry => entry.id === id);
+      assert.equal(item.channels, 1);
+      assert.ok(item.durationSeconds > .5 && item.durationSeconds < .9, "a short nonverbal line leaves room for dialogue");
+      assert.ok(Math.abs(item.measurements.rmsDb + 22) <= .01 && item.measurements.peakDb <= -8,
+        "soft source level with measured peak headroom");
+      assert.equal(item.composition.creature, actor);
+      assert.equal(item.composition.gesture, "greeting");
+      assert.equal(item.composition.variant, index + 1);
+      assert.equal(item.composition.fundamentalHz, fundamental);
+      assert.equal(item.composition.formantsHz.length, 3);
+      assert.ok(item.composition.syllables >= 2 && item.composition.syllables <= 3);
+      sources.add(item.masterSha256);
+      deliveryBytes += item.files[0].bytes;
+      assert.match(item.description, /original nonverbal/i);
+      assert.match(catalog.assets.find(asset => asset.id === id).license.sourceUrl, /manifest\.json$/);
+    }
+  }
+  assert.equal(sources.size, 9, "all greetings are original variants, rather than shared old audio");
+  assert.ok(deliveryBytes < 700 * 1024, "nine short mono responses stay lightweight");
 });
 
 test("weather noise and overlapping close footsteps keep headroom even at full player volume", () => {

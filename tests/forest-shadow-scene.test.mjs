@@ -64,9 +64,9 @@ test('flames and remaining embers light their ground anchor; cold hearths create
   assert.deepEqual(sources.map(source => source.id), ['fire:camp', 'fire:embers']);
   assert.deepEqual(sources[0].position, fires[0].position, 'fire coordinates already describe the ground, not its flame tip');
   assert.notEqual(sources[0].position, fires[0].position);
-  near(sources[0].height, 7.2); near(sources[0].radius, 58.5);
+  near(sources[0].height, 7.2); near(sources[0].radius, 90);
   assert.ok(sources[0].intensity > sources[1].intensity * 10, 'embers retain only a subdued pool');
-  near(sources[0].intensity, .654); near(sources[1].intensity, .024);
+  near(sources[0].intensity, 1.104); near(sources[1].intensity, .024);
   assert.deepEqual(fires, original, 'rendering does not advance or relight a campfire');
 });
 

@@ -92,14 +92,18 @@ test("the live resident chooses occupations from needs, stock and weather rather
 
 test("long autonomous life stays on personal routes, reacts to fatigue and returns to fishing after rest", () => {
   const mind = createPleskMind(world), nav = createWorldNavigation(world), places = pleskLocalPlaces(world);
-  const intents = new Set(), actions = new Set(); let previous = pleskMindFrame(mind, world, false), rested = false, fishedAfterRest = false;
-  for (let t = 0; t < 1600; t += .25) {
-    advancePleskMind(mind, world, .25, day);
+  const intents = new Set(), actions = new Set(); let previous = { ...mind.position }, previousHome = "outside", rested = false, fishedAfterRest = false;
+  for (let t = 0; t < 1600; t += 1 / 60) {
+    advancePleskMind(mind, world, 1 / 60, day);
     const frame = pleskMindFrame(mind, world, false);
-    assert.ok(frame); assert.ok(isWalkable(nav, frame)); assert.ok(canTraverse(nav, previous, frame));
-    assert.ok(Math.hypot(frame.x - previous.x, frame.y - previous.y) <= PLESK.speed * .25 + 1e-6);
+    const activeNav = [mind.home.phase, previousHome].some(phase => ["enter", "inside", "exit"].includes(phase)) ? mind.home.door.navigation : nav;
+    assert.ok(isWalkable(activeNav, mind.position)); assert.ok(canTraverse(activeNav, previous, mind.position));
+    assert.ok(Math.hypot(mind.position.x - previous.x, mind.position.y - previous.y) <= PLESK.speed / 60 + 1e-6);
+    previous = { ...mind.position }; previousHome = mind.home.phase;
+    if (!frame) { assert.equal(mind.home.phase, "inside"); assert.equal(mind.stage.action, "rest");
+      rested = true; intents.add(mind.intent); actions.add("rest"); continue; }
     if (frame.action !== "walk") {
-      const stop = [places.base, places.trade, places.rest].find(stop => stop?.id === frame.destinationId);
+      const stop = [places.base, places.trade, places.rest, mind.home.door?.stop].find(stop => stop?.id === frame.destinationId);
       assert.deepEqual({ x: frame.x, y: frame.y }, stop.position, "stationary activities use their exact authored destination");
     }
     assert.ok(frame.destinationId.startsWith("plesk-"));
@@ -112,7 +116,7 @@ test("long autonomous life stays on personal routes, reacts to fatigue and retur
     assert.ok(mind.recent.length <= PLESK_MIND_LIMITS.recent);
     if (frame.action === "rest") rested = true;
     if (rested && frame.action === "fish") fishedAfterRest = true;
-    intents.add(mind.intent); actions.add(frame.action); previous = frame;
+    intents.add(mind.intent); actions.add(frame.action);
   }
   for (const intent of ["fish", "trade", "rest"]) assert.ok(intents.has(intent), intent);
   for (const action of ["walk", "cast", "fish", "bite", "reel", "catch", "pack", "trade", "rest"]) assert.ok(actions.has(action), action);
@@ -332,8 +336,8 @@ test("every live packing stage belongs to one new catch and never repeats from s
       }
       previousStage = mind.stage;
     }
-    if (frame.action === "cast") assert(t - lastDeposit >= 4 - .11, "a completed transfer is followed by a quiet pause");
-    if (frame.action === "pack") {
+    if (frame?.action === "cast") assert(t - lastDeposit >= 4 - .11, "a completed transfer is followed by a quiet pause");
+    if (frame?.action === "pack") {
       assert.equal(mind.stage.deposit, true, "preparation and tackle checks never pack an old basket fish");
       assert.equal(mind.stage.caught, true);
       assert.equal(frame.carryingFish, frame.phase < FISHING_PACK_RELEASE);
@@ -346,8 +350,9 @@ test("every live packing stage belongs to one new catch and never repeats from s
     const before = snapshot();
     for (let camera = 0; camera < 3; camera++) {
       const still = pleskMindFrame(mind, world, true);
-      assert.equal(still.phase, frame.phase); assert.equal(still.basketFilled, frame.basketFilled);
-      assert.equal(still.carryingFish, frame.carryingFish);
+      if (!frame) assert.equal(still, null);
+      else { assert.equal(still.phase, frame.phase); assert.equal(still.basketFilled, frame.basketFilled);
+        assert.equal(still.carryingFish, frame.carryingFish); }
     }
     assert.equal(snapshot(), before, "sampling either camera cannot change catch, seed, queue or progress");
   }
@@ -385,7 +390,7 @@ test("read-only camera sampling, reduced motion and paused steps preserve the ac
   for (const dt of [0, -1, NaN, Infinity]) advancePleskMind(mind, world, dt, day);
   assert.deepEqual({ elapsed: mind.elapsed, position: mind.position, needs: mind.needs, decisions: mind.decisions, age: mind.age }, snapshot);
   advancePleskMind(mind, world, 24 * 3600, day);
-  assert.equal(mind.elapsed, snapshot.elapsed + PLESK_MIND_LIMITS.maxDelta, "a hidden-tab time gap cannot simulate an offline day");
+  assert.ok(Math.abs(mind.elapsed - snapshot.elapsed - PLESK_MIND_LIMITS.maxDelta) < 1e-8, "a hidden-tab time gap cannot simulate an offline day");
 });
 
 test("personal markers, missing water and unreachable local shops fail safely without shared hero fallbacks or repeated path searches", () => {

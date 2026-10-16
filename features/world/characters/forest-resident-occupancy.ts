@@ -33,7 +33,7 @@ export function forestResidentOccupants(state: ForestSessionState, scene: FixedW
       moving, intent: moving ? clearingResidentIntent(state.clearing, state.clearing.size * (options.heroScale ?? 1)) : undefined });
   }
   const plesk = pleskMindFrame(state.pleskMind, scene, false);
-  if (plesk) {
+  if (plesk && (plesk.opacity ?? 1) > .05) {
     const mind = state.pleskMind!, trail = mind.stage.trail, encounter = state.fauna && residentFaunaEncounter(state.fauna, "plesk");
     const wildlife = encounter && !["interrupt", "release"].includes(encounter.phase) && !mind.noticePending && !mind.tradePending;
     const moving = mind.stage.action === "walk" && !wildlife;

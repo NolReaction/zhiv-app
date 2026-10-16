@@ -15,7 +15,7 @@ globalThis.document = { createElement(tag) {
   const ctx = { fillStyle: "#000000", fillRect(x, y, width, height) {
     assert.ok([x, y, width, height].every(Number.isInteger), "opaque integer source pixels only");
     assert.match(this.fillStyle, /^#[\da-f]{6}$/i);
-    assert.ok(x >= 0 && y >= 0 && x + width <= sprite.width && y + height <= sprite.height, "no clipped pickaxe, ears or feet");
+    assert.ok(x >= 0 && y >= 0 && x + width <= sprite.width && y + height <= sprite.height, "no clipped helmet, ears or feet");
     for (let yy = y; yy < y + height; yy++) for (let xx = x; xx < x + width; xx++) sprite.pixels.set(`${xx}:${yy}`, this.fillStyle);
   }, drawImage() { assert.fail("the miner is code-drawn, without raster assets"); }, getImageData() { assert.fail("contact comes from the rig without readback"); } };
   sprite.getContext = () => ctx; return sprite;
@@ -64,10 +64,10 @@ test("walk and loaded walk have several grounded steps while idle breathing and 
   assert.notEqual(signature(kamneshmygSprite("carry", "front", 0)), signature(kamneshmygSprite("walk", "front", 0)));
 });
 
-test("the sixteen-pose miner gait never jumps a head, paw or pickaxe joint, including the wrap", () => {
+test("the sixteen-pose miner gait never jumps a head or empty paw, including the wrap", () => {
   for (const action of ["walk", "carry"]) for (const direction of directions) {
     const rigs = Array.from({ length: 16 }, (_, frame) => kamneshmygSpriteRig(kamneshmygSprite(action, direction, frame)));
-    const anchors = rig => [rig.head, ...rig.feet, ...rig.arms.map(arm => arm.palm), rig.tool.grip, rig.tool.head];
+    const anchors = rig => [rig.head, ...rig.feet, ...rig.arms.map(arm => arm.palm)];
     for (let frame = 0; frame < 16; frame++) {
       const a = rigs[frame], b = rigs[(frame + 1) % 16];
       anchors(a).forEach((p, i) => {
@@ -80,51 +80,53 @@ test("the sixteen-pose miner gait never jumps a head, paw or pickaxe joint, incl
   }
 });
 
-test("the pickaxe lifts once and returns, keeping two hands on its shaft and both feet planted", () => {
-  for (const direction of directions) {
-    const start = kamneshmygSpriteRig(kamneshmygSprite("work", direction, 0, 0));
-    const raised = kamneshmygSpriteRig(kamneshmygSprite("work", direction, 0, .25));
-    const struck = kamneshmygSpriteRig(kamneshmygSprite("work", direction, 0, .4375));
-    assert.ok(raised.tool.head.y < start.tool.head.y - 5);
-    assert.ok(struck.tool.head.y > raised.tool.head.y + 5);
-    assert.deepEqual(start.feet, struck.feet, "work does not drift across the quarry");
-    let previous;
-    for (let step = 0; step <= 16; step++) {
-      const rig = kamneshmygSpriteRig(kamneshmygSprite("work", direction, 0, step / 16));
-      const right = rig.arms.find(arm => arm.hand === "right").palm;
-      const left = rig.arms.find(arm => arm.hand === "left").palm;
-      assert.equal(rig.tool.held, true); assert.deepEqual(right, rig.tool.grip);
-      const dx = right.x - rig.tool.head.x, dy = right.y - rig.tool.head.y;
-      const distanceFromShaft = Math.abs(dx * (left.y - right.y) - dy * (left.x - right.x)) / Math.hypot(dx, dy);
-      assert.ok(distanceFromShaft <= .7, "the second paw holds the same shaft, not empty air");
-      assert.ok(Math.hypot(right.x - left.x, right.y - left.y) <= 5);
-      if (previous) assert.ok(Math.hypot(rig.tool.head.x - previous.x, rig.tool.head.y - previous.y) <= 4, "short continuous arc");
-      if (direction === "left" || direction === "right") assert.ok(rig.tool.head.y - 2 >= rig.head.y + 8, "no pickaxe across the muzzle");
-      previous = rig.tool.head;
-    }
-    for (const phase of [.6875, .75, .875, 1]) {
-      const rested = kamneshmygSpriteRig(kamneshmygSprite("work", direction, 25000, phase));
-      assert.deepEqual(rested.tool, start.tool); assert.deepEqual(rested.arms, start.arms);
-    }
+test("the miner has no protruding pickaxe or shaft in any action, facing or phase", () => {
+  const toolColors = new Set(["#9e7b53", "#c0a175", "#4b6269", "#8fa8ac"]);
+  for (const action of actions) for (const direction of directions) for (let frame = 0; frame < 32; frame++) {
+    const sprite = kamneshmygSprite(action, direction, frame, frame / 31), rig = kamneshmygSpriteRig(sprite);
+    assert.equal("tool" in rig, false, "there is no phantom tool anchor behind the body");
+    assert.equal([...sprite.pixels.values()].some(color => toolColors.has(color)), false,
+      `${action}/${direction}: no pickaxe metal or wooden shaft is painted`);
   }
 });
 
-test("turning keeps the right hand on its tool, and carrying stows it instead of adding a third hand", () => {
-  for (const action of actions) for (const direction of directions) {
-    const rig = kamneshmygSpriteRig(kamneshmygSprite(action, direction, 2, .5));
-    if (action === "carry" || action === "rest") {
-      assert.equal(rig.tool.held, false); assert.equal(rig.tool.behindBody, true);
-      assert.notDeepEqual(rig.tool.grip, rig.arms[1].palm);
-    } else {
-      assert.equal(rig.tool.held, true); assert.deepEqual(rig.tool.grip, rig.arms.find(arm => arm.hand === "right").palm);
-      assert.equal(rig.tool.behindBody, direction === "left" || direction === "back");
+test("empty-paw work is a small finite gesture below the face and returns to rest", () => {
+  for (const direction of directions) {
+    const start = kamneshmygSpriteRig(kamneshmygSprite("work", direction, 0, 0));
+    const peak = kamneshmygSpriteRig(kamneshmygSprite("work", direction, 0, .5));
+    assert.notDeepEqual(peak.arms, start.arms);
+    assert.deepEqual(start.feet, peak.feet);
+    let previous;
+    for (let phase = 0; phase <= 16; phase++) {
+      const rig = kamneshmygSpriteRig(kamneshmygSprite("work", direction, 0, phase / 16));
+      for (const arm of rig.arms) {
+        assert.ok(arm.palm.y >= rig.head.y + 9, "the small gesture leaves the muzzle clear");
+        assert.ok(Math.hypot(arm.palm.x - arm.shoulder.x, arm.palm.y - arm.shoulder.y) <= 8,
+          "working has compact empty paws");
+      }
+      if (previous) rig.arms.forEach((arm, index) => {
+        const other = previous.arms[index];
+        assert.ok(Math.abs(arm.palm.x - other.palm.x) <= 1 && Math.abs(arm.palm.y - other.palm.y) <= 1);
+      });
+      previous = rig;
     }
+    const end = kamneshmygSpriteRig(kamneshmygSprite("work", direction, 25000, 1));
+    assert.deepEqual(end.arms, start.arms);
   }
+});
+
+test("free greetings preserve the lowered opposite paw and carrying uses exactly two stone supports", () => {
   for (const direction of directions) for (const action of ["inspect", "greet", "trade"]) {
     const start = kamneshmygSpriteRig(kamneshmygSprite(action, direction, 0, 0));
     const middle = kamneshmygSpriteRig(kamneshmygSprite(action, direction, 0, .5));
-    assert.deepEqual(start.tool, middle.tool, "the free hand gestures, while the pickaxe stays lowered");
-    assert.deepEqual(start.feet, middle.feet); assert.notDeepEqual(start.arms[0].palm, middle.arms[0].palm);
+    assert.deepEqual(start.arms[1], middle.arms[1], "the opposite paw stays tucked beside his body");
+    assert.deepEqual(start.feet, middle.feet);
+    assert.notDeepEqual(start.arms[0].palm, middle.arms[0].palm);
+  }
+  for (const direction of directions) {
+    const rig = kamneshmygSpriteRig(kamneshmygSprite("carry", direction, 0));
+    assert.equal(rig.arms.length, 2);
+    assert.ok(rig.arms.every(arm => arm.palm.y >= rig.head.y + 12));
   }
 });
 

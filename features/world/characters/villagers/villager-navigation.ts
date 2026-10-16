@@ -4,6 +4,7 @@ import { residentClearance } from "@/features/world/navigation/resident-traffic"
 import type { FixedWorldScene, WorldPoint } from "@/features/world/tiled/types";
 import type { ForestVillagerId } from "@/features/world/characters/forest-villager-types";
 import { forestVillagerDoor } from "./villager-doorway-navigation";
+import { woodcutterPlaces, type WoodcutterPlaces } from "./woodcutter-navigation";
 
 export const FOREST_VILLAGER_PROFILES = {
   lopukh: { size: 44, speed: 39, home: "lopukh-home", work: "woodlot", diligence: .72, sociability: .92, fatigue: .4 },
@@ -14,7 +15,7 @@ export type VillagerStop = { id: string; position: WorldPoint; lookAt: WorldPoin
 export type VillagerDoor = { id: string; kind: "threshold" | "concealment"; approach: VillagerStop;
   points: readonly WorldPoint[]; distances: readonly number[]; length: number; fadeAt: number; navigation: WorldNavigation };
 export type VillagerPlaces = { navigation: WorldNavigation; home: VillagerStop; work: VillagerStop[]; wander: VillagerStop[];
-  door: VillagerDoor | null };
+  door: VillagerDoor | null; woodcutting: WoodcutterPlaces | null };
 export const villagerDistance = (a: WorldPoint, b: WorldPoint) => Math.hypot(a.x - b.x, a.y - b.y);
 const finite = (p: WorldPoint | undefined): p is WorldPoint => !!p && Number.isFinite(p.x) && Number.isFinite(p.y);
 const cache = new WeakMap<FixedWorldScene, Map<ForestVillagerId, VillagerPlaces | null>>();
@@ -45,17 +46,20 @@ export function forestVillagerPlaces(scene: FixedWorldScene, id: ForestVillagerI
   if (!scene.sites.some(site => site.id === profile.home)) { residents.set(id, null); return null; }
   const navigation = createWorldNavigation(scene, profile.size * .1);
   if (!navigation) { residents.set(id, null); return null; }
-  const homes = siteStops(scene, navigation, profile.home, profile.size);
+  // Marker-only compatibility scenes have no visible wall/roof to clear.
+  const woodcutting = id === "lopukh" ? woodcutterPlaces(scene, navigation, profile.size) : null;
+  if (id === "lopukh" && !woodcutting && scene.sites.find(site => site.id === profile.home)!.collision.length >= 3) { residents.set(id, null); return null; }
+  const homes = woodcutting?.rest ?? siteStops(scene, navigation, profile.home, profile.size);
   if (!homes.length) { residents.set(id, null); return null; }
   const home = homes[0];
-  const work = siteStops(scene, navigation, profile.work, profile.size);
+  const work = woodcutting?.work ?? siteStops(scene, navigation, profile.work, profile.size);
   // Older maps removed the woodlot art. Its existing economic worker uses the
   // rabbit's own outdoor workbench instead of inventing a tree/walking polygon.
   if (!work.length && id === "lopukh") work.push(...homes.slice(1));
   const wander = [...homes.slice(1, 4), ...(scene.navigation?.interests ?? [])
     .filter(point => finite(point.position) && isWalkable(navigation, point.position))
     .map(point => ({ id: point.id, position: { ...point.position }, lookAt: { x: point.position.x, y: point.position.y + 10 } }))];
-  const result = { navigation, home, work: work.length ? work : [home], wander,
+  const result = { navigation, home, work: work.length ? work : [home], wander, woodcutting,
     door: forestVillagerDoor(scene, id, navigation, homes) };
   residents.set(id, result); return result;
 }

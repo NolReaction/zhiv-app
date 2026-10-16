@@ -11,6 +11,7 @@ export type PleskAction = "walk" | "idle" | "cast" | "fish" | "bite" | "reel" | 
 export type PleskResidentFrame = WorldPoint & FishingMotion & {
   id: "plesk";
   size: number;
+  opacity?: number;
   direction: PixelDirection;
   action: PleskAction;
   /** Progress through this action, independent of the sprite's animation frame. */

@@ -2,7 +2,7 @@ import type { ForestVillagerAction } from "@/features/world/characters/forest-vi
 
 export type KamneshmygPortraitPose = { action: ForestVillagerAction; frame: number; phase: number; still: boolean };
 
-/** A cheerful hello, one careful pickaxe tap and a look at a discovered stone. */
+/** A cheerful hello, a quiet empty-paw gesture and a look at a discovered stone. */
 export function kamneshmygPortraitPose(seconds: number, still = false): KamneshmygPortraitPose {
   if (still) return { action: "idle", frame: 0, phase: 0, still: true };
   const time = Math.max(0, Number.isFinite(seconds) ? seconds : 0) % 26;
