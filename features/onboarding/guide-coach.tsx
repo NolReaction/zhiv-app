@@ -28,7 +28,7 @@ export type GuideCoachProps = {
   dock?: string;
   welcome?: boolean;
   status?: string;
-  primary?: { label: string; onClick: () => void; disabled?: boolean; advance?: boolean };
+  primary?: { label: string; shortLabel?: string; onClick: () => void; disabled?: boolean; advance?: boolean };
   secondary?: { label: string; onClick: () => void };
   /** Keep essential read-only navigation outside the details disclosure. */
   secondaryVisible?: boolean;
@@ -177,6 +177,7 @@ export function GuideCoach(props: GuideCoachProps) {
   const position: CSSProperties | undefined = placement ? { left: placement.left, top: placement.top, width: placement.width, maxHeight: placement.maxHeight, right: "auto", bottom: "auto" } : undefined;
   const current = progress ? Math.min(progress.total, Math.max(1, progress.current)) : 0;
   const next = canAdvance ? primary!.onClick : undefined;
+  const nextLabel = primary?.shortLabel ?? "Дальше";
   const message = <span className={styles.text}>{reply}</span>;
   const coach = <section ref={card} className={styles.coach} style={position} role="region" aria-labelledby={headingId} aria-describedby={textId}
     data-guide-coach={flow} data-guide-step={stepId} data-compact={Boolean(compact)} data-welcome={Boolean(welcome)} data-inline={embedded} data-expanded={expanded}
@@ -211,7 +212,7 @@ export function GuideCoach(props: GuideCoachProps) {
         {progress && <span className={styles.counter} aria-label={`Шаг ${current} из ${progress.total}`}>{current}<span> / {progress.total}</span></span>}
         <button type="button" className={styles.pause} data-guide-pause onClick={onPause} title="Свернуть обучение, сохранив шаг" aria-label="Свернуть обучение, сохранив шаг"><Minus size={18} aria-hidden="true" /></button>
         <button type="button" className={styles.more} aria-label="Подробнее и действия обучения" title="Подробнее и действия" aria-expanded={expanded} aria-controls={detailsId} onClick={() => setExpandedStep(expanded ? null : replyKey)}><Ellipsis size={19} aria-hidden="true" /></button>
-        {canAdvance && <button type="button" className={styles.continue} data-guide-next onClick={next} aria-label={primary!.label.startsWith("Дальше") ? primary!.label : `Дальше: ${primary!.label}`} title={primary!.label}>Дальше<ArrowRight size={18} aria-hidden="true" /></button>}
+        {canAdvance && <button type="button" className={styles.continue} data-guide-next onClick={next} aria-label={primary!.shortLabel || primary!.label.startsWith("Дальше") ? primary!.label : `Дальше: ${primary!.label}`} title={primary!.label}>{nextLabel}<ArrowRight size={18} aria-hidden="true" /></button>}
       </div>}
       {(welcome || primary && !canAdvance) && <div className={styles.actions}>
         {primary && <button type="button" className={styles.primary} onClick={primary.onClick} disabled={primary.disabled}>{primary.label}<ArrowRight size={17} aria-hidden="true" /></button>}

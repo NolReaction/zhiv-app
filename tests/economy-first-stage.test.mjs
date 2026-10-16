@@ -10,6 +10,7 @@ const identities = await vite.ssrLoadModule("/lib/dev/api-store.ts");
 const economy = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
 const rules = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const model = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const stages = await vite.ssrLoadModule("/features/economy/domain/stage-orders.ts");
 const tutorial = await vite.ssrLoadModule("/features/economy/domain/tutorial-order.ts");
 const now = Date.parse("2026-10-13T20:00:00Z");
 beforeEach(() => { identities.resetDevStoreForTests(); economy.resetDevEconomyStoreForTests(); });
@@ -51,7 +52,7 @@ test("new players have exactly the affordable one-slot starting settlement and n
   for (const id of ["home", "garden", "warehouse"]) assert.equal(state.buildings[id], 1);
   for (const id of ["woodlot", "dryer", "workshop", "quarry", "kiln"]) assert.equal(state.buildings[id], 0);
   assert.deepEqual(state.productionSlots ?? {}, {}); assert.equal(rules.economyStorage(state).capacity, 50);
-  assert.equal(state.tutorialOrder.version, 2); assert.equal(state.tutorialOrder.step, 0);
+  assert.equal(state.tutorialOrder.version, 3); assert.equal(state.tutorialOrder.step, 0);
   assert.equal(state.tutorialOrder.ingredientsClaimed, true); assert.equal(state.workshopStarterClaimed, false);
   const p = player(), before = read(p);
   assert.throws(() => send(p, "claim_workshop_starter", "workshop"), { code: "ECONOMY_WORKSHOP_STARTER_UNAVAILABLE" });
@@ -83,17 +84,16 @@ test("a controlled clock completes the whole first stage in 42 minutes with one 
     assert.ok(job); const state = act(seconds, "start_collection", job.id);
     assert.equal(Date.parse(state.jobs.find(entry => entry.id === job.id).collection.finishesAt) - (now + seconds * 1000), 8000);
   };
-  const order = seconds => act(seconds, "complete_resident_order", tutorial.tutorialResidentOrder(read(p, seconds)).id);
+  const order = seconds => act(seconds, "complete_resident_order", (tutorial.tutorialResidentOrder(read(p, seconds)) ?? stages.stageResidentOrder(read(p, seconds))).id);
 
   act(0, "start_construction", "woodlot"); start(0, "grow_berries");
-  collect(60); claim(68, "grow_berries"); start(68, "grow_berries");
+  collect(60); claim(68, "grow_berries"); order(68); start(68, "grow_berries");
   claim(120, "woodlot"); act(120, "start_construction", "dryer"); start(120, "gather_wood");
-  collect(128); claim(136, "grow_berries"); order(136); start(136, "grow_berries");
+  collect(128); claim(136, "grow_berries"); start(136, "grow_berries");
   collect(196); claim(204, "grow_berries"); start(204, "grow_berries");
   collect(264); claim(272, "grow_berries"); start(272, "grow_berries");
   claim(300, "dryer"); claim(300, "gather_wood"); order(300); start(300, "gather_wood"); start(300, "cook_compote");
-  collect(332); claim(340, "grow_berries"); start(340, "grow_berries");
-  collect(400); claim(408, "grow_berries");
+  collect(332); claim(340, "grow_berries");
   claim(480, "gather_wood"); start(480, "gather_wood"); claim(480, "cook_compote"); start(480, "cook_compote");
   claim(660, "gather_wood"); start(660, "gather_wood"); claim(660, "cook_compote"); order(660);
   act(660, "start_construction", "workshop");
@@ -111,12 +111,13 @@ test("a controlled clock completes the whole first stage in 42 minutes with one 
   assert.equal(read(p, 1920).buildings.home, 1);
   const finish = claim(2520, "home");
   assert.equal(elapsed, 42 * 60); assert.equal(finish.buildings.home, 2);
-  assert.deepEqual(finish.wallet, { coins: 50, pearls: 0 }); assert.deepEqual(finish.inventory, {});
-  assert.deepEqual(produced, { berries: 6, wood: 10, berry_compote: 2, planks: 4 });
-  assert.equal(finish.tutorialOrder.step, 4); assert.equal(finish.tutorialOrder.completed, true);
-  assert.equal(finish.residentOrders.completed, 4); assert.equal(finish.residentOrders.earnedCoins, 330);
+  assert.deepEqual(finish.wallet, { coins: 35, pearls: 0 }); assert.deepEqual(finish.inventory, {});
+  assert.deepEqual(produced, { berries: 5, wood: 10, berry_compote: 2, planks: 4 });
+  assert.equal(finish.tutorialOrder.step, 1); assert.equal(finish.tutorialOrder.completed, true);
+  assert.equal(finish.stageOrders.stages["1"].step, 3); assert.equal(finish.stageOrders.stages["1"].completed, true);
+  assert.equal(finish.residentOrders.completed, 4); assert.equal(finish.residentOrders.earnedCoins, 315);
   assert.equal(peak, 8); assert.equal(finish.jobs.length, 0);
-  assert.ok(starts.every(id => !id.includes("fish"))); assert.equal(claimed.length, 26);
+  assert.ok(starts.every(id => !id.includes("fish"))); assert.equal(claimed.length, 25);
 });
 
 test("fresh-stage one-slot commands reject batches atomically and strawberry unlock requires a claimed compote", () => {

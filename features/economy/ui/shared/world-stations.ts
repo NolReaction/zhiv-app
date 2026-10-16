@@ -126,8 +126,8 @@ export function worldConstructionReason(state: EconomyView, stationId: string, t
   const required = worldMissingRequirements(state, worldRequirements(target));
   if (required.length) return `${state.catalog.buildings.find(building => building.id === required[0].id)?.name ?? "Постройка"}: нужен уровень ${required[0].level}`;
   const tutorial = tutorialOrderProgress(state);
-  if (stationId === "home" && target.level === 2 && tutorial.version === 2 && !tutorial.completed)
-    return `Выполните учебные заказы: ${tutorial.step} / 4`;
+  if (stationId === "home" && target.level === 2 && tutorial.version !== 1 && !tutorial.completed)
+    return "Выполните первый учебный заказ: 1 малина";
   if (stationId === "home" && stageCourseRequired(state, target.level)) {
     const home = state.buildings.home ?? 1;
     const count = state.catalog.stageOrders?.find(course => course.homeLevel === home)?.orders.length ?? 0;

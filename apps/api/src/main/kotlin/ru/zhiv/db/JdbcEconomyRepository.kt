@@ -50,7 +50,7 @@ internal fun readEconomyProfile(c: Connection, user: UUID): EconomyProfileRow {
     val row = c.economyRows(
         """SELECT e.revision,e.state,coalesce(w.state->'collection','[]'::jsonb),coalesce(w.state->'inventory','[]'::jsonb)
             FROM economy_profiles e LEFT JOIN world_profiles w ON w.user_id=e.user_id WHERE e.user_id=?""", user) {
-        val state = EconomyFishInventory.state(economyJson.decodeFromString<EconomyState>(it.getString(2)))
+        val state = EconomyTutorialOrders.normalize(EconomyFishInventory.state(economyJson.decodeFromString<EconomyState>(it.getString(2))))
         val inherited = economyJson.decodeFromString<List<String>>(it.getString(3))
         val legacyWardrobe = economyJson.decodeFromString<List<String>>(it.getString(4))
         val clothing = WorldRules.catalog.items.filter { item -> item.slot != "rod" }.map { item -> item.id }.toSet()

@@ -491,3 +491,14 @@ test("gift budgets and project timing remain distinct from build durations and a
   assert.ok(answer("fourth-house-stage").includes(`Без ускорений проект и дом 5 занимают минимум ${minimumHours} ч`));
   for (const entry of topics) assert.ok(!answer(entry.id).includes("—"), entry.id);
 });
+
+
+test("intro help separates its only raspberry order from the house-two course", () => {
+  const intro = answer("tutorial-order"), construction = answer("construction");
+  assert.match(intro, /Учебный заказ один/);
+  assert.match(intro, /Малина × 1/);
+  assert.match(intro, /15 монет/);
+  assert.match(intro, /3 небольшие просьбы для дома 2/);
+  assert.match(construction, /один учебный заказ и 3 просьбы этапа/);
+  assert.doesNotMatch([intro, answer("start"), construction, answer("workshop-starter")].join(" "), /четыре учебных|четвёртого заказа|трёх учебных/);
+});

@@ -1,5 +1,6 @@
 import type { ConstructionCompletion } from "@/features/economy/domain/construction-completion";
 import type { InventoryGain } from "@/features/economy/domain/inventory-gain";
+import type { ProductionStart } from "@/features/economy/domain/production-start";
 
 /** Only accepted local receipts are rewards. Polling inventory or reading a notice
  * cannot establish that the player just performed an action. */
@@ -10,17 +11,19 @@ export type EconomyAudioFeedbackView = {
   notice: string;
   error: string | null;
   inventoryGains?: readonly InventoryGain[];
+  productionStarts?: readonly ProductionStart[];
   completedConstructions: readonly ConstructionCompletion[];
 };
 
 export type EconomyAudioFeedbackEvent = {
   id: string;
-  cueId: "ui.reward" | "ui.construction-complete" | "ui.confirm" | "ui.error";
+  cueId: "ui.reward" | "ui.construction-complete" | "ui.confirm" | "ui.error" | "ui.click";
   occurredAt: number;
+  maxAgeMs?: number;
 };
 
 type RewardFeedback = Pick<EconomyAudioFeedbackEvent, "id"> & { cueId: "ui.reward" | "ui.construction-complete" };
-type PendingFeedback = { startRevision: number; id: string; suppressed: boolean; reward: RewardFeedback | null };
+type PendingFeedback = { startRevision: number; id: string; suppressed: boolean; reward: RewardFeedback | null; productionStart: boolean };
 export const ECONOMY_AUDIO_RECEIPT_LIMIT = 128;
 let trackerSequence = 0;
 
@@ -47,6 +50,7 @@ export function createEconomyAudioFeedbackTracker() {
   function seed(view: EconomyAudioFeedbackView) {
     for (const receipt of view.inventoryGains ?? []) remember(`gain:${receipt.id}`);
     for (const receipt of view.completedConstructions) remember(`construction:${receipt.id}`);
+    for (const receipt of view.productionStarts ?? []) remember(`production-start:${receipt.id}`);
   }
 
   function reset() {
@@ -77,6 +81,7 @@ export function createEconomyAudioFeedbackTracker() {
           id: `economy:${owner}:${trackerId}:command:${++commandSequence}`,
           suppressed: suppressUntilIdle || view.uncertain,
           reward: null,
+          productionStart: false,
         };
       }
       if (view.uncertain) {
@@ -85,6 +90,18 @@ export function createEconomyAudioFeedbackTracker() {
       }
 
       const events: EconomyAudioFeedbackEvent[] = [];
+      // This quiet input cue confirms only that a new intent was accepted on
+      // this device. The queue has no busy edge, and an ACK is not a new click.
+      for (const receipt of view.productionStarts ?? []) {
+        const key = `production-start:${receipt.id}`;
+        if (!seen.has(key) && receipt.ownerPublicId === owner) {
+          if (pending) pending.productionStart = true;
+          if (!view.uncertain && !suppressUntilIdle && !pending?.suppressed) events.push({
+            id: `economy:${owner}:${key}`, cueId: "ui.click", occurredAt: receipt.occurredAt, maxAgeMs: 180,
+          });
+        }
+        remember(key);
+      }
       const revisionFloor = pending?.startRevision ?? highestRevision;
       const allowReward = !view.uncertain && !suppressUntilIdle && !pending?.suppressed;
       const rewards: RewardFeedback[] = [];
@@ -108,7 +125,7 @@ export function createEconomyAudioFeedbackTracker() {
         if (!view.busy) {
           if (!pending.suppressed && !view.uncertain && !suppressUntilIdle) {
             const cueId = view.error ? "ui.error" : pending.reward ? pending.reward.cueId
-              : view.notice && snapshot.revision > pending.startRevision ? "ui.confirm" : null;
+              : !pending.productionStart && view.notice && snapshot.revision > pending.startRevision ? "ui.confirm" : null;
             if (cueId) events.push({ id: pending.reward && cueId !== "ui.error"
               ? `economy:${owner}:${pending.reward.id}` : pending.id, cueId, occurredAt });
           }

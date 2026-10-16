@@ -54,7 +54,7 @@ object EconomyRules {
     init {
         EconomyTutorialOrders.validateCatalog(catalog)
         EconomyStageOrders.validateCatalog(catalog)
-        require(catalog.version == 10 && catalog.currencyScale == 10 && catalog.pearlScale == 50 && catalog.maxBatch in 1..10)
+        require(catalog.version == 11 && catalog.currencyScale == 10 && catalog.pearlScale == 50 && catalog.maxBatch in 1..10)
         require(catalog.localBuyer.payoutBps in 1..10_000)
         require(catalog.localBuyer.unitPrices.all { (id, amount) -> amount in 1L..ECONOMY_MAX_BALANCE && catalog.items.any { it.id == id && it.tradable } })
         require(catalog.constructionSpeedup.secondsPerPearl in 1L..86_400L)
@@ -133,7 +133,7 @@ object EconomyRules {
                 "workshop" to workshopLevel.coerceIn(0, 3), "dryer" to 0, "warehouse" to 1, "kiln" to 0,
                 "bridge" to 0, "lighthouse" to 0), migration = grant,
             tutorialOrder = if (starting == null) EconomyTutorialOrder() else EconomyTutorialOrder(
-                version = 2, step = 0, ingredientsClaimed = true, terms = EconomyTutorialOrders.orders(starting).first()))
+                version = 3, step = 0, ingredientsClaimed = true, terms = EconomyTutorialOrders.orders(starting).first()))
     }
 
     /** Escrow keeps its space until sold, so putting goods on the market cannot expand the warehouse. */
@@ -536,8 +536,8 @@ object EconomyRules {
                 val next = (state.buildings[building.id] ?: 0) + 1
                 val upgrade = building.levels.find { it.level == next } ?: economyFailure("ECONOMY_MAX_LEVEL", "Доступные улучшения уже завершены")
                 requireHome(state, upgrade.requiredHomeLevel)
-                if (building.id == "home" && next == 2 && state.tutorialOrder.version == 2 && !state.tutorialOrder.completed)
-                    economyFailure("ECONOMY_TUTORIAL_REQUIRED", "Сначала выполните четыре учебных заказа")
+                if (building.id == "home" && next == 2 && state.tutorialOrder.version != 1 && !state.tutorialOrder.completed)
+                    economyFailure("ECONOMY_TUTORIAL_REQUIRED", "Сначала выполните первый заказ с Шишколапом")
                 if (building.id == "home" && EconomyStageOrders.required(state, next))
                     economyFailure("ECONOMY_STAGE_REQUIRED", "Сначала выполните заказы текущего этапа")
                 requireBuildings(state, upgrade.requiredBuildings)

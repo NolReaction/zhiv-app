@@ -117,7 +117,7 @@ class EconomyFourthStageTest {
             fails("ECONOMY_HOME_REQUIRED") { apply(early, "start_construction", id) }
             val started = apply(supplied, "start_construction", id)
             assertEquals(upgrade.cost, started.jobs.single().cost)
-            assertEquals(10, started.jobs.single().catalogVersion)
+            assertEquals(11, started.jobs.single().catalogVersion)
             assertEquals(EconomyWallet(), started.wallet)
             assertTrue(started.inventory.isEmpty())
             assertEquals(0, started.buildings[id] ?: 0)

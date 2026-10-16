@@ -52,8 +52,14 @@ class JdbcOnboardingEconomyIntegrationTest {
                     assertFalse(initialized.inventory.containsKey("fish_common"))
                     val expected = EconomyRules.initial(100, 81, 49, 4, 2, includeStartingPack = include)
                     // Published SQL initializers omit later optional building keys; absence is level zero.
-                    assertEquals(expected.copy(itemUnlockVersion = 0, buildings = expected.buildings - setOf("bridge", "lighthouse")),
-                        EconomyFishInventory.state(initialized))
+                    val publishedTutorial = if (include) EconomyTutorialOrder(
+                        version = 2, ingredientsClaimed = true,
+                        terms = EconomyResidentOrderTemplate("tutorial_first_order", "builder", "Первая малина",
+                            description = "Вырасти и собери две малины для первого заказа. Учебная просьба не исчезнет.",
+                            items = mapOf("berries" to 2L), coins = 30L),
+                    ) else expected.tutorialOrder
+                    assertEquals(expected.copy(itemUnlockVersion = 0, tutorialOrder = publishedTutorial,
+                        buildings = expected.buildings - setOf("bridge", "lighthouse")), EconomyFishInventory.state(initialized))
                 }
             }
             DatabaseFactory.migrate(source); DatabaseFactory.migrate(source)
@@ -67,7 +73,7 @@ class JdbcOnboardingEconomyIntegrationTest {
                         economyJson.decodeFromString<EconomyState>(it.getString(1)) }.single()
                     val expected = EconomyRules.initial(100, 81, 49, 4, 2, includeStartingPack = include)
                     assertEquals(expected.copy(buildings = expected.buildings - setOf("bridge", "lighthouse")),
-                        EconomyFishInventory.state(initialized), "The current initializer adds the item knowledge marker and five market slots")
+                        EconomyFishInventory.state(initialized), "The current initializer adds one introductory berry order, the knowledge marker and five market slots")
                 }
             }
             val newToken = tokens.issue(); val newPlayer = identities.bootstrap("Новичок", tokens.issue().hash, newToken.hash, 365)
@@ -136,43 +142,110 @@ class JdbcOnboardingEconomyIntegrationTest {
         }
     }
 
-    @Test fun `fresh four-order course persists sequential progress and racing receipts pay once per step`() = runBlocking<Unit> {
+    @Test fun `saved second request is projected without a GET write and its original receipt still pays once`() = runBlocking<Unit> {
         val config = AppConfig(postgres.jdbcUrl, postgres.username, postgres.password, false, setOf("http://localhost"))
         DatabaseFactory.create(config).use { source ->
             DatabaseFactory.migrate(source)
             val tokens = TokenCodec(); val token = tokens.issue()
-            val player = JdbcZhivRepository(source).bootstrap("Четыре заказа", tokens.issue().hash, token.hash, 365)
+            val player = JdbcZhivRepository(source).bootstrap("Старый курс", tokens.issue().hash, token.hash, 365)
+            val repository = JdbcEconomyRepository(source)
+            repository.snapshot(token.hash)
+            val terms = EconomyResidentOrderTemplate("tutorial_wood_order", "builder", "Сохранённые брёвна",
+                items = mapOf("wood" to 2L), coins = 97L)
+            source.connection.use { c ->
+                val stored = readEconomyProfile(c, player.id).state
+                c.economyUpdate("UPDATE economy_profiles SET revision=9,state=?::jsonb WHERE user_id=?",
+                    economyJson.encodeToString(stored.copy(wallet = EconomyWallet(123, 7), inventory = terms.items,
+                        tutorialOrder = EconomyTutorialOrder(version = 2, step = 1, ingredientsClaimed = true, terms = terms),
+                        stageOrders = EconomyStageOrderState())), player.id)
+                c.commit()
+            }
+            fun savedRow() = source.connection.use { c ->
+                c.economyRows("SELECT to_jsonb(p)::text FROM economy_profiles p WHERE user_id=?", player.id) { it.getString(1) }.single()
+            }
+            val before = savedRow()
+            val projected = repository.snapshot(token.hash)
+            assertEquals(9L, projected.revision)
+            assertEquals(3, projected.tutorialOrder.version)
+            assertTrue(projected.tutorialOrder.completed)
+            assertEquals(0, projected.stageOrders.stages.getValue("1").step)
+            assertEquals(terms, projected.stageOrders.stages.getValue("1").terms)
+            assertEquals(EconomyWallet(123, 7), projected.wallet)
+            assertEquals(before, savedRow(), "Reading a v2 course must not rewrite its state, timestamp or revision")
+            val request = EconomyCommand(UUID.randomUUID().toString(), player.publicId, projected.revision,
+                "complete_resident_order", terms.id)
+            val accepted = repository.command(token.hash, request)
+            val replayed = repository.command(token.hash, request)
+            assertTrue(replayed.replayed)
+            assertEquals(accepted.acceptedRevision, replayed.acceptedRevision)
+            val after = repository.snapshot(token.hash)
+            assertEquals(10L, after.revision)
+            assertEquals(EconomyWallet(220, 7), after.wallet)
+            assertTrue(after.inventory.isEmpty())
+            assertEquals(1, after.stageOrders.stages.getValue("1").step)
+            assertEquals("stage1_compote_order", after.stageOrders.stages.getValue("1").terms?.id)
+            source.connection.use { c ->
+                assertEquals(3, readEconomyProfile(c, player.id).state.tutorialOrder.version)
+                assertEquals(1L, c.economyRows("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='complete_resident_order'", player.id) { it.getLong(1) }.single())
+            }
+        }
+    }
+
+    @Test fun `one intro and three first-stage requests persist independently and racing receipts pay once`() = runBlocking<Unit> {
+        val config = AppConfig(postgres.jdbcUrl, postgres.username, postgres.password, false, setOf("http://localhost"))
+        DatabaseFactory.create(config).use { source ->
+            DatabaseFactory.migrate(source)
+            val tokens = TokenCodec(); val token = tokens.issue()
+            val player = JdbcZhivRepository(source).bootstrap("Первый этап", tokens.issue().hash, token.hash, 365)
             val repository = JdbcEconomyRepository(source)
             repository.snapshot(token.hash)
             source.connection.use { c ->
                 val stored = readEconomyProfile(c, player.id).state
                 c.economyUpdate("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",
-                    economyJson.encodeToString(stored.copy(inventory = mapOf("berries" to 2L, "wood" to 2L, "berry_compote" to 2L, "planks" to 2L))), player.id)
+                    economyJson.encodeToString(stored.copy(inventory = mapOf("berries" to 1L, "wood" to 2L,
+                        "berry_compote" to 2L, "planks" to 2L))), player.id)
                 c.commit()
             }
             var current = repository.snapshot(token.hash)
             val initialCoins = current.wallet.coins
-            for ((index, terms) in EconomyTutorialOrders.orders(EconomyRules.catalog.onboarding!!).withIndex()) {
-                assertEquals(index, current.tutorialOrder.step); assertEquals(terms, current.tutorialOrder.terms)
+            val intro = EconomyTutorialOrders.orders(EconomyRules.catalog.onboarding!!).single()
+            assertEquals(mapOf("berries" to 1L), intro.items)
+            val requests = listOf(intro) + EconomyRules.catalog.stageOrders.single { it.homeLevel == 1 }.orders
+            for ((index, terms) in requests.withIndex()) {
+                if (index == 0) {
+                    assertEquals(0, current.tutorialOrder.step)
+                    assertFalse(current.tutorialOrder.completed)
+                    assertEquals(terms, current.tutorialOrder.terms)
+                } else {
+                    assertEquals(1, current.tutorialOrder.step)
+                    assertTrue(current.tutorialOrder.completed)
+                    assertEquals(index - 1, current.stageOrders.stages.getValue("1").step)
+                    assertEquals(terms, current.stageOrders.stages.getValue("1").terms)
+                }
                 val request = EconomyCommand(UUID.randomUUID().toString(), player.publicId, current.revision,
                     "complete_resident_order", terms.id)
                 val responses = coroutineScope { List(2) { async(Dispatchers.IO) {
                     JdbcEconomyRepository(source).command(token.hash, request) } }.awaitAll() }
                 assertEquals(1, responses.count { it.replayed })
                 current = repository.snapshot(token.hash)
-                assertEquals(index + 1, current.tutorialOrder.step)
-                assertEquals(index == 3, current.tutorialOrder.completed)
+                assertTrue(current.tutorialOrder.completed)
                 assertEquals(current.wallet, repository.command(token.hash, request).state.wallet)
-                assertEquals("ECONOMY_TUTORIAL_ORDER_UNAVAILABLE", assertFailsWith<AuthFailure> {
-                    repository.command(token.hash, request.copy(requestId = UUID.randomUUID().toString(), expectedRevision = current.revision)) }.code)
+                val code = if (index == 0) "ECONOMY_TUTORIAL_ORDER_UNAVAILABLE" else "ECONOMY_STAGE_ORDER_UNAVAILABLE"
+                assertEquals(code, assertFailsWith<AuthFailure> {
+                    repository.command(token.hash, request.copy(requestId = UUID.randomUUID().toString(),
+                        expectedRevision = current.revision)) }.code)
             }
-            assertEquals(initialCoins + 330, current.wallet.coins); assertTrue(current.inventory.isEmpty())
+            assertEquals(initialCoins + 315, current.wallet.coins)
+            assertTrue(current.inventory.isEmpty())
+            assertEquals(3, current.stageOrders.stages.getValue("1").step)
+            assertTrue(current.stageOrders.stages.getValue("1").completed)
             source.connection.use { c ->
                 assertEquals(4L, c.economyRows("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='complete_resident_order'", player.id) { it.getLong(1) }.single())
                 assertEquals(4L, c.economyRows("SELECT count(*) FROM economy_commands WHERE user_id=?", player.id) { it.getLong(1) }.single())
-                assertEquals(current.tutorialOrder, readEconomyProfile(c, player.id).state.tutorialOrder)
+                val stored = readEconomyProfile(c, player.id).state
+                assertEquals(current.tutorialOrder, stored.tutorialOrder)
+                assertEquals(current.stageOrders, stored.stageOrders)
             }
         }
     }
-
 }

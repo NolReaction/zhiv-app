@@ -485,7 +485,7 @@ export default function WorldView({ open, suspended = false, world, economy, own
         {quickMenu === "expeditions" && <WorldExpeditionsMenu key={`${expeditionSector}:${expeditionOpenRequest}`} initialSector={expeditionSector} isOnline={isOnline} onOpenHelp={openContextHelp} economy={economy} onOpenPantry={() => openQuick("pantry")} onNavigateStation={openStation} onOpenFishingShop={() => openResident("plesk")} />}
         {quickMenu === "more" && <div className={`${hudStyles.moreActions} ${styles.moreActions}`}>
           <button type="button" data-world-characters-trigger aria-haspopup="dialog" onClick={openCharacters}><PawPrint size={18} aria-hidden="true" /><span className={styles.moreLabel}>Персонажи<small>Жители леса</small></span></button>
-          <button type="button" aria-haspopup="dialog" onClick={() => openEconomy("market")}><Store size={18} aria-hidden="true" /><span className={styles.moreLabel}>Рынок<small>Покупки и свой прилавок</small></span></button>
+          <button type="button" aria-haspopup="dialog" onClick={() => openEconomy("market")}><Store size={18} aria-hidden="true" /><span className={styles.moreLabel}>Рынок<small>Торговля между игроками</small></span></button>
           <button type="button" aria-haspopup="dialog" onClick={() => openPanel("wardrobe")}><Shirt size={18} aria-hidden="true" /><span className={styles.moreLabel}>Гардероб<small>Одежда и оттенки мха</small></span></button>
           <button type="button" aria-haspopup="dialog" onClick={() => openPanel("collection")}><BookOpen size={18} aria-hidden="true" /><span className={styles.moreLabel}>Коллекции<small>Книга личных находок</small></span></button>
           {state.journeys.length > 0 && <button type="button" aria-haspopup="dialog" onClick={() => openPanel("journeys")}><Compass size={18} aria-hidden="true" /><span className={styles.moreLabel}>Старые походы<small>Забрать прежние награды</small></span></button>}
@@ -604,7 +604,7 @@ export default function WorldView({ open, suspended = false, world, economy, own
       modalBlocked={Boolean(panel && !(panel === "orders" && guideStep === "orders") || quickUpgrade || residentOpen || charactersOpen || dailyOpen || !mainCourseActive && (quickSection || selection))}
       progress={onboarding.progress} fishSaleOpen={Boolean(pantryFishSaleOpen)} worldElement={worldElement} economy={economy} quickMenu={quickMenu} helpOpen={panel === "help"} isOnline={isOnline}
       onStart={onboarding.start} onStep={onboarding.step} onCrop={onboarding.setCrop}
-      onSkip={onboarding.skip} onComplete={onboarding.complete} onPause={onboarding.pause}
+      onSkip={onboarding.skip} onComplete={onboarding.complete} onOpenHelp={() => openContextHelp()} onPause={onboarding.pause}
       residentOpen={residentOpen ? residentId : null} charactersOpen={charactersOpen}
       ordersOpen={panel === "orders"} ordersElement={panelRoot}
       workshopOpen={quickUpgrade === "workshop" || selection?.place === "workshop"}

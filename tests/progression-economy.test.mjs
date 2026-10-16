@@ -162,10 +162,10 @@ test("unit mining is counted independently without choosing a multi-output exped
 test("stage budgets derive only required new buildings and preserve the seven daily gates", () => {
   const first = economy.stages.find(stage => stage.homeLevel === 1);
   assert.equal(first.buildingCoins, 380);
-  assert.equal(first.orderCoins, 330);
+  assert.equal(first.orderCoins, 315);
   assert.equal(first.orders.length, 4);
   assert.deepEqual(plain(economy.starter), { coins: 100, pearls: 0, items: { wood: 3, stone: 5 } });
-  assert.equal(economy.starter.coins + first.orderCoins - first.buildingCoins, 50);
+  assert.equal(economy.starter.coins + first.orderCoins - first.buildingCoins, 35);
   assert.deepEqual(plain(economy.storage.map(level => level.capacity)), [50, 100, 150, 200, 250, 300, 350, 400, 450, 500]);
   const second = economy.stages.find(stage => stage.homeLevel === 2);
   assert.equal(second.buildingCoins, 1050);
@@ -322,7 +322,7 @@ test("changing a catalog price or timer flows into recipe values, stage rewards 
   const updated = buildProgressionEconomy(changed);
   assert.equal(updated.recipes.find(value => value.id === "make_planks").inputNpcValue, 100);
   assert.equal(updated.recipes.find(value => value.id === "make_planks").addedNpcValue, -60);
-  const timberOrder = updated.stages[0].orders.find(value => value.id === "tutorial_wood_order");
+  const timberOrder = updated.stages[0].orders.find(value => value.id === "stage1_wood_order");
   assert.equal(timberOrder.inputNpcValue, 200);
   assert.equal(timberOrder.addedNpcValue, -110);
   assert.equal(queue(calculateRecipePlan("make_planks", 2, changed), "woodlot").seconds, 642);

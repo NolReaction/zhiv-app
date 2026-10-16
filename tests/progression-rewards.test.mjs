@@ -101,8 +101,13 @@ test("an unfinished home upgrade cannot unlock a higher daily tier", () => {
   const value = profile(p);
   const target = model.economyCatalog.buildings.find(building => building.id === "home").levels.find(level => level.level === 2);
   value.state.buildings = { ...value.state.buildings, ...target.requiredBuildings };
-  value.state.tutorialOrder = { ...value.state.tutorialOrder, step: 4, completed: true,
+  value.state.tutorialOrder = { ...value.state.tutorialOrder, step: 1, completed: true,
     terms: structuredClone(model.economyCatalog.onboarding.residentOrders.at(-1)) };
+  const firstStage = model.economyCatalog.stageOrders.find(stage => stage.homeLevel === 1);
+  // This exercise starts after the separate house-one requests, not just the introduction.
+  value.state.stageOrders = model.economyStageOrdersSchema.parse({ ...value.state.stageOrders, stages: {
+    ...value.state.stageOrders.stages, "1": { step: firstStage.orders.length, completed: true },
+  } });
   value.state.wallet.coins = target.cost.coins;
   value.state.inventory = { ...target.cost.items };
   const start = economy.commandDevEconomy(p.token, { requestId: crypto.randomUUID(), ownerPublicId: p.me.user.publicId,

@@ -18,11 +18,14 @@ class EconomyRulesTest {
     private fun stocked(): EconomyState = EconomyRules.initial().copy(wallet = EconomyWallet(100_000),
         inventory = EconomyFishInventory.items(EconomyRules.catalog.items.associate { it.id to 100L }),
         buildings = EconomyRules.initial().buildings + ("warehouse" to 5),
-        tutorialOrder = EconomyRules.initial().tutorialOrder.copy(completed = true, step = 4))
+        tutorialOrder = EconomyRules.initial().tutorialOrder.copy(completed = true, step = 1),
+        stageOrders = EconomyStageOrderState(stages = mapOf("1" to EconomyStageOrderProgress(step = 3, completed = true))))
     private fun requirements(state: EconomyState, home: Int, buildings: Map<String, Int>) = state.copy(
         buildings = state.buildings + buildings.mapValues { (id, level) -> maxOf(state.buildings[id] ?: 0, level) } +
             ("home" to maxOf(state.buildings["home"] ?: 1, home)),
-        tutorialOrder = state.tutorialOrder.copy(completed = true, step = 4))
+        tutorialOrder = state.tutorialOrder.copy(completed = true, step = 1),
+        stageOrders = state.stageOrders.copy(stages = state.stageOrders.stages +
+            ("1" to EconomyStageOrderProgress(step = 3, completed = true))))
 
     @Test fun `new players receive fixed supplies and retain renewable gathering without spending`() {
         val start = EconomyRules.initial()
@@ -245,12 +248,15 @@ class EconomyRulesTest {
             }
         }
         fun order() {
-            state = apply(state, "complete_resident_order", checkNotNull(state.tutorialOrder.terms).id, at = at)
+            val terms = if (state.tutorialOrder.completed) checkNotNull(EconomyStageOrders.offer(state))
+                else checkNotNull(state.tutorialOrder.terms)
+            state = apply(state, "complete_resident_order", terms.id, at = at)
         }
 
         complete("start_exploration", "forest")
-        collect("grow_berries", "berries", 2)
+        collect("grow_berries", "berries", 1)
         order()
+        earn(30)
         complete("start_construction", "woodlot")
         collect("gather_wood", "wood", 2)
         order()
@@ -264,7 +270,8 @@ class EconomyRulesTest {
         repeat(2) { complete("start_production", "make_planks") }
         order()
         assertTrue(state.tutorialOrder.completed)
-        assertEquals(4, state.tutorialOrder.step)
+        assertEquals(1, state.tutorialOrder.step)
+        assertTrue(state.stageOrders.stages.getValue("1").completed)
         complete("start_exploration", "forest")
         collect("gather_wood", "wood", 5)
         repeat(2) { complete("start_production", "make_planks") }

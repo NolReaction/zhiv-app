@@ -7,6 +7,7 @@ import { inventoryGainFromReceipt, INVENTORY_GAIN_HISTORY_LIMIT, type InventoryG
 import { localSaleFromReceipt, type LocalSaleReceipt } from "@/features/economy/domain/local-sale-receipt";
 import { barterCommandSchema, type BarterCommand, type BarterIntent, type BarterResult, type BarterView } from "@/features/economy/domain/barter-model";
 import { hasGardenBerryReward } from "@/features/economy/domain/garden-berries";
+import type { ProductionStart } from "@/features/economy/domain/production-start";
 import { parseProductionJournal, productionJournalKey, productionProjection, reserveProduction, safeProductionRecipe,
   PRODUCTION_JOURNAL_LIMIT, type ProductionIntent, type JournalStorage, type JournalCoordinator } from "./production-journal";
 
@@ -40,6 +41,8 @@ type View = {
   cancelledExplorations?: readonly string[];
   /** Local accepted inventory additions only; never inferred by polling. */
   inventoryGains?: readonly InventoryGain[];
+  /** Accepted local input only; never persisted or reconstructed from an ACK. */
+  productionStarts?: readonly ProductionStart[];
   /** Latest confirmed local sale; transient, never reconstructed from a GET. */
   localSale?: LocalSaleReceipt;
 };
@@ -181,6 +184,9 @@ export function createEconomySession(owner: string | null, transport: Transport,
   const valid = (generation: number) => active && generation === epoch;
   const now = () => serverClock + performance.now() - localClock;
   const controller = () => { const request = new AbortController(); requests.add(request); return request; };
+  const productionStarts = (id: string): readonly ProductionStart[] => Object.freeze([
+    ...(view.productionStarts ?? []), Object.freeze({ id, ownerPublicId: owner!, occurredAt: Date.now() }),
+  ].slice(-16));
   function remember(value: Pending | null) {
     pending = value;
     try { if (value) storage?.setItem(storageKey, JSON.stringify(value)); else storage?.removeItem(storageKey); } catch { /* Receipt remains in memory if browser storage is unavailable. */ }
@@ -295,11 +301,12 @@ export function createEconomySession(owner: string | null, transport: Transport,
       }
     } finally { requests.delete(request); }
   }
-  async function execute(value: Pending) {
+  async function execute(value: Pending, localProductionStart = false) {
     if (!active || !available || view.busy || value.command.ownerPublicId !== owner || performance.now() < blockedUntil || (value.kind === "dev" && !transport.dev) || (value.kind === "barter" && !transport.barterTrade)) return;
     const generation = epoch, request = controller(), before = view.snapshot;
     ++readSequence; ++marketSequence; ++barterSequence; reading = null; marketReading = null; barterReading = null; remember(value);
-    publish({ busy: true, error: null, notice: "", retryAt: 0 });
+    publish({ busy: true, error: null, notice: "", retryAt: 0,
+      ...(localProductionStart ? { productionStarts: productionStarts(value.command.requestId) } : {}) });
     let reloadMarket = false, reloadBarter = false;
     try {
       const result = value.kind === "economy" ? await transport.send(value.command, request.signal)
@@ -409,13 +416,13 @@ export function createEconomySession(owner: string | null, transport: Transport,
         const next = [...productionEntries, entry];
         if (!persistProduction(next)) return false;
         productionEntries = next;
-        publish({ notice: "Сохранено на устройстве" });
+        publish({ notice: "Сохранено на устройстве", productionStarts: productionStarts(entry.requestId) });
         void drainProduction();
         return true;
       }
       if (!owner || !view.snapshot || !view.snapshotConfirmed || !view.directActionsAvailable || pending || productionEntries.length || !active || !localActionsAvailable || !available || view.busy || performance.now() < blockedUntil) return false;
       void execute({ kind: "economy", command: { requestId: createUuidV4(), ownerPublicId: owner, expectedRevision: view.snapshot.revision, action, targetId, quantity, totalPrice,
-        ...(fishSelection === undefined ? {} : { fishSelection: { ...fishSelection } }) } });
+        ...(fishSelection === undefined ? {} : { fishSelection: { ...fishSelection } }) } }, action === "start_production");
       return true;
     },
     actMarket(action: MarketCommand["action"], targetId: string, quantity = 1, totalPrice = 0, fishSelection?: Record<string, number>) {

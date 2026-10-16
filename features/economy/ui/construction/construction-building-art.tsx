@@ -1,5 +1,6 @@
 import { Hammer } from "lucide-react";
 import { stationIcons } from "@/features/economy/ui/shared/world-economy-parts";
+import { CampfireIcon } from "./campfire-icon";
 import styles from "./construction-requirements.module.css";
 
 /** Reuse the map artwork; older economic tiers keep the latest authored appearance. */
@@ -14,6 +15,6 @@ export function ConstructionBuildingArt({ stationId, level = 1 }: { stationId: s
   const Icon = stationIcons[stationId] ?? Hammer;
   return <span className={styles.art} data-building-art={stationId} data-building-level={level} aria-hidden="true"
     style={source ? { backgroundImage: `url(/world/prototype/${source})` } : undefined}>
-    {!source && <Icon size={27} strokeWidth={1.6} />}
+    {stationId === "dryer" ? <CampfireIcon size={34} /> : !source && <Icon size={27} strokeWidth={1.6} />}
   </span>;
 }

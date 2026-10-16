@@ -230,7 +230,7 @@ test("the first furnace previews one charcoal and one brick per separate second-
   assert.doesNotMatch(html, /data-recipe="smelt_iron"/);
 });
 
-test("home previews each opportunity in a labelled carousel without hiding the additional requirements", () => {
+test("home previews each opportunity with explicit collapsed disclosures for additional requirements", () => {
   const html = render("home");
   assert.match(text(html), /Новый облик дома Можно развивать постройки до ур\. 2/);
   assert.match(html, /aria-roledescription="карусель"/);
@@ -241,7 +241,7 @@ test("home previews each opportunity in a labelled carousel without hiding the a
   assert.match(buttons(html).find(button => /aria-label="Предыдущая возможность"/.test(button.attributes)).attributes, /disabled/);
   assert.doesNotMatch(buttons(html).find(button => /aria-label="Следующая возможность"/.test(button.attributes)).attributes, /disabled/);
   assert.match(text(html), /Торговля Рынок между игроками Покупайте материалы и продавайте свои запасы\. Ещё условия/);
-  assert.doesNotMatch(html, /aria-label="Подробнее: Рынок между игроками"/, "only the currently viewed opportunity expands its prerequisites");
+  assert.doesNotMatch(html, /<section[^>]*aria-label="Подробнее: Рынок между игроками"/, "prerequisites open only on an explicit card press");
   assert.doesNotMatch(text(html), /Нужно завершить вылазок/);
   assert.doesNotMatch(html, /Развитие хозяйства|Новых рецептов|Выплавить железо/);
 });
@@ -268,8 +268,9 @@ test("mine route cards retain actual yields, times and the additional home requi
   assert.match(text(html), /Новая добыча · 1 ч Вход в пещеру Камень ×8 Железная руда ×4 Ещё условия/);
   assert.match(text(html), /Новая добыча · 4 ч Глубокий проход Камень ×30 Железная руда ×15 Ещё условия/);
   assert.match(text(html), /Новая добыча · 3 мин Добыть камень Камень ×1 Ещё условия/);
-  assert.match(html, /aria-label="Подробнее: Вход в пещеру"/);
-  assert.match(text(html), /Для этой добычи Дом Мохлика Сейчас ур\. 1 Нужен ур\. 3/);
+  assert.match(html, /aria-label="Подробнее: Вход в пещеру" aria-expanded="false"/);
+  assert.doesNotMatch(html, /<section[^>]*aria-label="Подробнее:/);
+  assert.doesNotMatch(text(html), /Для этой добычи/);
   assert.match(text(html), /Шахта работает независимо от Мохлика/);
   assert.match(html, /data-item-icon="stone"/);
 });
@@ -283,5 +284,18 @@ test("fishing cards preview only gear unlocked by this home level and never prom
     assert.deepEqual(ids, expected);
     for (const rod of economyCatalog.fishing.rods.filter(item => item.requiredHomeLevel === level)) assert.ok(html.includes(`data-fishing-rod="${rod.id}"`));
     if (expected.length) assert.match(text(html), /Сможет появиться в новых поставках/);
+  }
+});
+
+
+test("home, bridge and lighthouse keep future conditions closed while their actual building cost remains visible", () => {
+  for (const stationId of ["home", "bridge", "lighthouse"]) {
+    const html = render(stationId);
+    assert.match(html, /aria-label="Что изменится"/);
+    assert.match(html, /aria-expanded="false"/);
+    assert.doesNotMatch(html, /<section[^>]*aria-label="Подробнее:/);
+    assert.match(html, /aria-label="Подготовка к улучшению"/);
+    assert.match(html, /aria-label="Стоимость"/);
+    assert.match(text(html), /Потребуется/);
   }
 });

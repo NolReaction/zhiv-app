@@ -33,6 +33,7 @@ export type WorldOnboardingProps = {
   onCrop: (jobId: string | undefined) => void;
   onSkip: () => void;
   onComplete: () => void;
+  onOpenHelp: () => void;
   onPause: () => void;
   onCloseSurface: () => void;
 };
@@ -303,15 +304,15 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
     const offline = props.isOnline === false;
     const locked = offline || economy.busy || economy.uncertain || economy.retryAt > economy.now;
     const missing = Boolean(snapshot && order && Object.entries(order.items).some(([id, count]) => (snapshot.inventory[id] ?? 0) < count));
-    const lessonDone = Boolean(practice && (practice.completed || practice.version === 2 && practice.step > 0));
+    const lessonDone = Boolean(practice && (practice.completed || practice.step > 0));
     base.title = "Выполним учебный заказ";
     base.secondary = { label: "Этот шаг позже", onClick: () => advance("workshop") };
-    base.hint = "Собирай и готовь припасы сам. Учебные просьбы не исчезнут после паузы.";
+    base.hint = "Учебный заказ всего один. Следующие просьбы будут частью пути к улучшению дома.";
     base.children = <>{!lessonDone && <TutorialOrderContents economy={economy} />}<WorkshopRetry economy={economy} isOnline={props.isOnline} /></>;
     base.status = offline ? "Сейчас нет связи. Можно вернуться к заказу позже."
       : economy.uncertain ? "Результат ещё не подтверждён. Проверим его перед следующим действием."
       : economy.busy ? "Жду подтверждения хозяйства…" : economy.error ?? undefined;
-    if (!snapshot || !practice || !order && !practice.completed) {
+    if (!snapshot || !practice || !order && !lessonDone) {
       base.summary = "Загружаю учебную просьбу и её условия.";
       base.text = "Соседи платят за припасы. Проверим, сколько товаров нужно собрать для первой просьбы.";
       base.primary = { label: "Обновить хозяйство", disabled: locked, onClick: () => void economy.refresh() };
@@ -319,12 +320,9 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
       const confirmed = !economy.busy && !economy.uncertain;
       base.title = confirmed ? "Учебный заказ выполнен!" : "Проверяю результат заказа";
       base.pose = confirmed ? "jump" : "hold";
-      base.summary = confirmed ? practice.version === 2 && !practice.completed
-        ? `Выполнено учебных просьб: ${practice.step} / 4. Следующая уже на доске. Можно продолжать знакомство!`
-        : "Припасы переданы, награда получена. Так работают заказы соседей!"
+      base.summary = confirmed ? "Припасы переданы, награда получена. Так работают заказы соседей!"
         : "Дождёмся подтверждения, прежде чем отмечать заказ выполненным.";
-      base.text = practice.version === 2 ? "Продолжай выполнять просьбы по очереди: два бревна, два компота и две доски. Они помогут обустроить лесной участок, костёр и мастерскую. Все четыре нужны для улучшения дома. Недостающий товар можно нажать на доске, чтобы узнать, где его взять."
-        : "Ты передал припасы соседу и получил монеты. У обычных заказов так же: сравни «есть / нужно», проверь награду и нажми «Отдать заказ».";
+      base.text = "Ты передал припасы и получил монеты. Учебный заказ завершён. Дальше в «Пути хозяйства» появятся небольшие просьбы для улучшения дома. «Просьбы жителей» можно выполнять ради дополнительного заработка. Недостающий товар подскажет, где его взять.";
       base.hint = "Дальше заглянем в мастерскую. К заказам можно вернуться в любое время.";
       base.primary = { advance: true, label: "К мастерской", disabled: !confirmed, onClick: () => advance("workshop") };
       base.secondary = undefined;
@@ -337,7 +335,8 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
         ? "Сравни «есть / нужно». Собери недостающие припасы, затем нажми «Отдать заказ»."
         : "Нажми фильтр «Все»: над обычными просьбами появится учебный заказ."
         : "Нажми «Заказы» внизу карты: откроется журнал просьб соседей.";
-      base.text = "Кнопка «Заказы» внизу карты открывает журнал. Учебная просьба стоит первой в фильтре «Все». Первый заказ требует две малины: вырасти и забери их с куста отдельными запусками. Затем нажми «Отдать заказ».";
+      const firstHarvest = order?.items.berries === 1 && Object.keys(order.items).length === 1;
+      base.text = `Кнопка «Заказы» внизу карты открывает журнал. Учебный заказ находится в «Пути хозяйства», в фильтре «Все». ${firstHarvest ? "Нужна одна малина: забери первый урожай с куста." : "Состав сохранённого заказа указан в карточке: собери недостающие припасы."} Затем нажми «Отдать заказ».`;
       base.target = props.ordersOpen ? surface.tutorialOrder && order ? `[data-order-id="${order.id}"]` : '[data-order-filter="all"]'
         : '[data-world-orders-entry]';
       base.primary = undefined;
@@ -380,7 +379,7 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
         : "Выбери вкладку «Мастерская» в шапке: там находится рецепт доски."
         : "Нажми на выделенную мастерскую на карте. В её меню находятся рецепты и улучшение.";
       base.pose = "present";
-      base.text = `У тебя мастерская ${level}-го уровня. Доски нужны для учебного заказа и улучшения дома. Загляни в рецепт: материалы, время и результат видны до запуска.`;
+      base.text = `У тебя мастерская ${level}-го уровня. Доски нужны для просьб хозяйства и улучшения дома. Загляни в рецепт: материалы, время и результат видны до запуска.`;
       base.hint = "Первое место производства бесплатное. Готовую доску нужно забрать перед следующим запуском. У мастерской и печи отдельные очереди.";
       base.target = props.workshopOpen ? surface.workshopSelected ? '[data-place="workshop"] [data-recipe-product="planks"]'
         : '[data-place="workshop"] [role="tab"][id$="-workshop"]' : undefined;
@@ -412,7 +411,7 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
     base.text = `${cropResult} ${workshopResult} Кнопка i открывает темы и поиск по справке. Для повтора открой мой профиль, нажми «?» рядом с шестерёнкой, затем «Повторить обучение». Если знакомство ещё идёт, там будет «Продолжить обучение».`;
     base.hint = "В разделе нажми «Что здесь делать?», когда нужна подсказка. Выращивание и стройка продолжаются в фоне.";
     base.pose = "greet";
-    base.primary = { advance: true, label: "Готово, буду играть", onClick: finish };
+    base.primary = { advance: true, label: "Открыть справку", shortLabel: "Открыть", onClick: () => { finish(); props.onOpenHelp(); } };
     base.secondary = undefined;
   }
   if (props.fishSaleOpen) base.open = false;

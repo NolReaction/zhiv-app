@@ -9,6 +9,7 @@ const identities = await vite.ssrLoadModule("/lib/dev/api-store.ts");
 const economy = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
 const model = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const rules = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
+const stages = await vite.ssrLoadModule("/features/economy/domain/stage-orders.ts");
 const now = Date.now();
 beforeEach(() => identities.resetDevStoreForTests());
 after(() => vite.close());
@@ -80,12 +81,14 @@ test("an empty account can rebuild its first stage from the free bush and forest
     return issue(p, "claim_job", job.id, 1, clock).state;
   };
   const tutorial = () => {
-    const state = read(p, clock), target = state.tutorialOrder.terms.id;
+    const state = read(p, clock), target = state.tutorialOrder.completed
+      ? stages.stageResidentOrder(state).id : state.tutorialOrder.terms.id;
     return issue(p, "complete_resident_order", target, 1, clock).state;
   };
   const berries = count => { for (let i = 0; i < count; i++) complete("start_production", "grow_berries"); };
   assert.deepEqual(read(p).inventory, {});
-  berries(2); tutorial(); complete("start_exploration", "forest"); complete("start_construction", "woodlot");
+  berries(1); tutorial(); berries(2); issue(p, "sell", "berries", 2, clock);
+  complete("start_exploration", "forest"); complete("start_construction", "woodlot");
   complete("start_production", "gather_wood"); complete("start_production", "gather_wood"); tutorial();
   complete("start_construction", "dryer"); berries(4);
   complete("start_production", "cook_compote"); complete("start_production", "cook_compote"); tutorial();
@@ -95,7 +98,8 @@ test("an empty account can rebuild its first stage from the free bush and forest
   berries(5); issue(p, "sell", "berries", 5, clock); complete("start_exploration", "forest");
   const beforeHome = read(p, clock);
   assert.equal(beforeHome.buildings.home, 1); assert.equal(beforeHome.buildings.quarry, 0); assert.equal(beforeHome.buildings.kiln, 0);
-  assert.equal(beforeHome.tutorialOrder.step, 4); assert.equal(beforeHome.wallet.coins, 250);
+  assert.equal(beforeHome.tutorialOrder.step, 1); assert.equal(beforeHome.stageOrders.stages["1"].completed, true);
+  assert.equal(beforeHome.wallet.coins, 255);
   assert.throws(() => trade(p, "create_listing", "fiber", 1, 2, clock), { code: "ECONOMY_MARKET_LOCKED" });
   const upgraded = complete("start_construction", "home"); assert.equal(upgraded.buildings.home, 2);
   assert.deepEqual(upgraded.productionSlots, {}); assert.equal(upgraded.wallet.pearls, 0); assert.ok(upgraded.storage.used <= 50);

@@ -31,7 +31,7 @@ export type OrderNavigation = {
 };
 export type ResidentOrderQuote = { owner: string; revision: number; offerId: string; price: number };
 const residents = {
-  plesk: { name: "Плёска", role: "Рыба и припасы для рыбалки", Portrait: PleskPortrait },
+  plesk: { name: "Плёска", role: "Улов, блюда и припасы", Portrait: PleskPortrait },
   builder: { name: "Шишколап", role: "Материалы и инструменты", Portrait: BuilderPortrait },
 };
 const remaining = (at: string, now: number) => Math.max(0, Math.ceil((Date.parse(at) - now) / 1000));
@@ -113,7 +113,6 @@ export function ResidentOrderCard({ economy, offer, onComplete, onReplace, confi
   const tutorial = isTutorialOrderId(offer.id, state.catalog);
   const stageOrder = isStageOrderId(offer.id, state.catalog);
   const permanent = tutorial || stageOrder;
-  const practice = tutorialOrderProgress(state);
   const stage = stageOrderProgress(state);
   const stageTotal = state.catalog.stageOrders?.find(course => course.homeLevel === (state.buildings.home ?? 1))?.orders.length ?? 0;
   const waitSeconds = stageOrder ? remaining(offer.availableAt, economy.now) : 0;
@@ -146,7 +145,7 @@ export function ResidentOrderCard({ economy, offer, onComplete, onReplace, confi
       : economy.act("complete_resident_order", active.id, 1, 0)) !== false;
   };
   return <article className={styles.order} data-order-letter data-order-id={offer.id} data-resident={offer.residentId} data-tutorial-order={tutorial || undefined} data-stage-order={stageOrder || undefined} data-order-ready={orderOfferReady(state, offer, economy.now) || undefined}>
-    {tutorial && <p className={styles.tutorialLabel}>Учебный заказ · {practice.version === 2 ? `${practice.step + 1} / 4` : "один раз"}</p>}
+    {tutorial && <p className={styles.tutorialLabel}>Учебный заказ · знакомство</p>}
     {stageOrder && <p className={styles.tutorialLabel}>К дому {(state.buildings.home ?? 2) + 1} · {stage.step + 1} / {stageTotal}</p>}
     <div className={styles.letterLayout}>
       <div className={styles.letterMessage}>
@@ -305,7 +304,7 @@ export function ResidentOrderBoard({ economy, residentId, onFilterChange, ...nav
   return <div className={styles.board} ref={container}>
     <div className={styles.filters} role="group" aria-label="Заказчик">{(["all", "plesk", "builder"] as const).map(value => <button key={value} type="button" data-order-filter={value} aria-pressed={filter === value} onClick={() => changeFilter(value)}>{value === "all" ? <Mail size={15} aria-hidden="true" /> : value === "plesk" ? <Fish size={15} aria-hidden="true" /> : <Hammer size={15} aria-hidden="true" />}{value === "all" ? "Все" : residents[value].name}<span>{value === "all" ? offers.length : offers.filter(offer => offer.residentId === value).length}</span></button>)}</div>
     <p className={styles.lore}>{filter === "all" ? "Помогай соседям, получай монеты и готовь припасы к новым просьбам." : residents[filter].role}</p>
-    {confirmed && <p className={styles.success} role="status" ref={success} tabIndex={-1}><Check size={15} aria-hidden="true" /><span>{isTutorialOrderId(attempt.offerId, economy.snapshot.catalog) ? `Учебный заказ выполнен · +${number(attempt.coins)} монет. ${tutorialOrderProgress(economy.snapshot).completed ? "Все учебные просьбы выполнены." : "Следующая учебная просьба уже на доске."}`
+    {confirmed && <p className={styles.success} role="status" ref={success} tabIndex={-1}><Check size={15} aria-hidden="true" /><span>{isTutorialOrderId(attempt.offerId, economy.snapshot.catalog) ? `Учебный заказ выполнен · +${number(attempt.coins)} монет. Теперь можно выполнять просьбы для улучшения дома.`
       : isStageOrderId(attempt.offerId, economy.snapshot.catalog) ? `Заказ этапа выполнен · +${number(attempt.coins)} монет. ${acceptedStage?.completed ? "Все просьбы этого этапа выполнены." : nextStageWait > 0 ? `Следующая поставка через ${waiting(nextStageWait)}.` : "Следующая просьба уже на доске."}${Object.entries(attempt.completionRewards).map(([id, count]) => ` Получено: ${itemName(economy.snapshot, id)} × ${number(count)}.`).join("")}`
       : attempt.action === "complete_resident_order" ? `Заказ выполнен · +${number(attempt.coins)} монет. Новая просьба уже на доске.` : "Заказ заменён. Новая просьба уже на доске."}</span><button type="button" aria-label="Скрыть результат заказа" onClick={() => setAttempt(null)}><X size={14} aria-hidden="true" /></button></p>}
     {(tutorialVisible || stageVisible) && <section className={styles.chapter} data-order-chapter="progression" aria-labelledby={`${headingId}-progression`}>

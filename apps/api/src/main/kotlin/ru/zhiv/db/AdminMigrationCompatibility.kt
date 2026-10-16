@@ -21,6 +21,7 @@ private val canonicalTailScripts = mapOf(
     55 to "V55__market_capacity_and_item_knowledge.sql",
     56 to "V56__independent_miner_notification_readiness.sql",
     57 to "V57__garden_collection_ledger_context.sql",
+    58 to "V58__single_intro_order_initial_state.sql",
 )
 
 private data class AdminMigrationHistoryRow(

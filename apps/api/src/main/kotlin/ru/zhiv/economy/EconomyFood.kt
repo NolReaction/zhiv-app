@@ -158,22 +158,24 @@ object EconomyFood {
      * unfinished construction do not make a resource sustainably obtainable. */
     fun obtainableOrderItems(state: EconomyState, catalog: EconomyCatalog = EconomyRules.catalog): Set<String> {
         val reachable = mutableSetOf<String>()
+        val fishing = catalog.fishing
+        val catchable = fishing?.let { spec ->
+            spec.rods.filter { it.id in state.fishing.ownedRods }.flatMap { rod ->
+                spec.hooks.filter { it.id in state.fishing.ownedHooks }.flatMap { hook ->
+                    EconomyRules.fishingClassWeights(rod.id, null, hook.id, spec)
+                        .filter { it.second > 0 }.map { it.first.itemId }
+                }
+            }.toSet()
+        } ?: emptySet()
         fun unlocked(home: Int, buildings: Map<String, Int>) = (state.buildings["home"] ?: 1) >= home &&
             buildings.all { (id, level) -> (state.buildings[id] ?: 0) >= level }
         do {
             val before = reachable.size
             catalog.explorations.forEach { route ->
                 if (unlocked(route.requiredHomeLevel, route.requiredBuildings) && route.cost.items.keys.all { it in reachable }) {
-                    reachable += if (route.id in (catalog.fishing?.routeIds ?: emptyList())) route.rewards.filter { (id, count) -> id != "fish" && count > 0 }.keys
+                    reachable += if (route.id in (fishing?.routeIds ?: emptyList())) route.rewards.filter { (id, count) -> id != "fish" && count > 0 }.keys
                         else EconomyFishInventory.items(route.rewards, catalog).filterValues { it > 0 }.keys
-                    if (route.id in (catalog.fishing?.routeIds ?: emptyList())) catalog.fishing?.let { fishing ->
-                        if (fishing.hooks.any { it.id in state.fishing.ownedHooks }) {
-                            fishing.rods.filter { it.id in state.fishing.ownedRods }.forEach { rod ->
-                                reachable += EconomyRules.fishingClassWeights(rod.id, null, spec = fishing)
-                                    .filter { it.second > 0 }.map { it.first.itemId }
-                            }
-                        }
-                    }
+                    if (route.id in (fishing?.routeIds ?: emptyList())) reachable += catchable
                 }
             }
             catalog.recipes.forEach { recipe ->

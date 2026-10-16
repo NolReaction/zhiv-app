@@ -382,7 +382,7 @@ test("stage and pearl summaries distinguish guaranteed project gates from chance
   assert.match(value, /Всего обязательного ожидания: 6 дн\. 17 ч; затем стройка дома 1 дн\./);
   assert.match(value, /Жемчуг не сокращает интервалы поставок/);
   assert.match(value, /Гарантированная награда за весь проект Живая смола ×1/);
-  assert.match(value, /63 шаблонов · 3 активные карточки/);
+  assert.ok(value.includes(`${economyCatalog.food.orders.templates.length} шаблонов · 3 активные карточки`));
   assert.match(value, /5 бесплатных мест, максимум 10/);
   assert.match(value, /Все расширения вместе: 680 жемчужин/);
   assert.match(value, /За 7 полученных подарков 500/);
@@ -392,7 +392,7 @@ test("stage and pearl summaries distinguish guaranteed project gates from chance
   assert.match(value, /Ускорение стройки считается по оставшемуся времени и кривой цен/);
   assert.doesNotMatch(value, /Предварительный баланс/);
   assert.match(value, /Кладовая не входит в обязательные стройки/);
-  assert.match(value, /Старт \+ вводные заказы − стройки: 100 \+ 330 − 380 = 50 монет/);
+  assert.match(value, /Старт \+ вводные заказы − стройки: 100 \+ 315 − 380 = 35 монет/);
 });
 
 test("branch shop shows the disabled preview and current visible amounts alongside clean recipe prerequisites", () => {

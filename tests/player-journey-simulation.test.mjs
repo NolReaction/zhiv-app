@@ -19,7 +19,8 @@ test("a simulated new player reaches home two from starting supplies using actua
     assert.equal(report.actions.speedup_construction, undefined);
     assert.equal(report.actions.cancel_exploration, undefined);
     assert.equal(report.actions.complete_resident_order, 12);
-    assert.equal(report.coinFlow.orders, 2890);
+    // One 15-coin introduction, 300 from home-one requests, 1990 from home two, and the first 570-coin home-three request.
+    assert.equal(report.coinFlow.orders, 2875);
     assert.equal(report.actions.claim_tutorial_order, undefined);
     assert.equal(report.actions.claim_workshop_starter, undefined);
     assert(report.actions.start_fishing > 0, "The current fishing UI path is exercised");

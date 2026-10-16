@@ -169,9 +169,9 @@ function contextAdvice(state: EconomyView, context: WorldHelpContext | undefined
     const requirement = requirementAdvice(state, worldRequirements(next), now);
     if (requirement) return requirement;
     const tutorial = tutorialOrderProgress(state);
-    if (stationId === "home" && next.level === 2 && tutorial.version === 2 && !tutorial.completed) return {
+    if (stationId === "home" && next.level === 2 && tutorial.version !== 1 && !tutorial.completed) return {
       id: "construction:tutorial", title: "Завершите учебные заказы", topicId: "resident-orders", severity: "next",
-      message: `Выполнено ${tutorial.step} из 4. Соберите товары для текущей просьбы: награды помогут оплатить улучшение дома.`,
+      message: "Отдайте одну малину Шишколапу в первом учебном заказе. После него появятся просьбы для улучшения дома.",
       action: { label: "Открыть заказы", target: { kind: "orders" } },
     };
     if (stationId === "home" && stageCourseRequired(state, next.level)) {

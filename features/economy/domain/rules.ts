@@ -134,6 +134,7 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
   catch (error) { if (error instanceof RangeError) return fail("ECONOMY_CAPACITY", "Сначала освободите место для этого материала"); throw error; }
   const previousOrders = state.residentOrders;
   const previousStageOrders = state.stageOrders;
+  const previousTutorial = state.tutorialOrder;
   const previousUnlocks = unlockedEconomyItems(state);
   const boardBefore = economyCatalog.food ? normalizedResidentOrders(state, now) : undefined;
   let message: string;
@@ -141,7 +142,7 @@ export function applyEconomyCommand(state: EconomyState, command: EconomyCommand
     ensureStageOrders(state, economyCatalog, now);
     message = applyEconomyTransition(state, command, now, jobId, reservedItems, rareRandom);
     ensureStageOrders(state, economyCatalog, now);
-  } catch (error) { state.inventory = previousInventory; state.fishing = previousFishing; state.stageOrders = previousStageOrders; throw error; }
+  } catch (error) { state.inventory = previousInventory; state.fishing = previousFishing; state.stageOrders = previousStageOrders; state.tutorialOrder = previousTutorial; throw error; }
   reconcileFishStock(state);
   // Pin the board before this command unlocks a new building. Failed commands
   // never migrate it, and an order command already supplied its next board.
@@ -357,8 +358,8 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       if (!target) return fail("ECONOMY_MAX_LEVEL", "Доступные улучшения уже завершены");
       requireHome(state, target.requiredHomeLevel);
       const tutorial = tutorialOrderProgress(state);
-      if (building.id === "home" && target.level === 2 && tutorial.version === 2 && !tutorial.completed)
-        fail("ECONOMY_TUTORIAL_REQUIRED", "Сначала выполните четыре учебных заказа на доске жителей");
+      if (building.id === "home" && target.level === 2 && tutorial.version !== 1 && !tutorial.completed)
+        fail("ECONOMY_TUTORIAL_REQUIRED", "Сначала выполните первый заказ с Шишколапом");
       if (building.id === "home" && stageCourseRequired(state, target.level))
         fail("ECONOMY_STAGE_REQUIRED", "Сначала выполните постоянные заказы этого этапа на доске жителей");
       requireBuildings(state, target.requiredBuildings);
@@ -437,11 +438,11 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       }
       if (isTutorialOrderId(command.targetId)) {
         const progress = tutorialOrderProgress(state), offer = tutorialResidentOrder(state);
-        if (command.action !== "complete_resident_order" || !progress.ingredientsClaimed || progress.completed || progress.version === 2 && progress.step >= 4 || !progress.terms || !offer || offer.id !== command.targetId)
+        if (command.action !== "complete_resident_order" || !progress.ingredientsClaimed || progress.completed || progress.version === 3 && progress.step >= 1 || !progress.terms || !offer || offer.id !== command.targetId)
           return fail("ECONOMY_TUTORIAL_ORDER_UNAVAILABLE", "Учебный заказ недоступен или уже выполнен");
-        const nextStep = progress.version === 2 ? progress.step + 1 : progress.step;
-        const completed = progress.version === 1 || nextStep === 4;
-        const nextTerms = completed ? progress.terms : economyCatalog.onboarding?.residentOrders?.[nextStep];
+        const nextStep = progress.version === 1 ? progress.step : 1;
+        const completed = true;
+        const nextTerms = progress.terms;
         if (!nextTerms) return fail("ECONOMY_TUTORIAL_ORDER_UNAVAILABLE", "Следующий учебный заказ пока недоступен");
         const orders = normalizedResidentOrders(state, now);
         if (offer.coins > ECONOMY_MAX_BALANCE - state.wallet.coins || !Number.isSafeInteger(orders.earnedCoins + offer.coins)
@@ -450,7 +451,7 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
         state.wallet.coins += offer.coins;
         state.residentOrders = { ...orders, completed: orders.completed + 1, earnedCoins: orders.earnedCoins + offer.coins };
         state.tutorialOrder = { ...progress, step: nextStep, completed, terms: { ...nextTerms, items: { ...nextTerms.items } } };
-        return completed ? "Все учебные заказы выполнены. Монеты получены" : "Учебный заказ выполнен. Монеты получены, следующая просьба открыта";
+        return "Первый заказ выполнен. Теперь доступны просьбы для улучшения дома";
       }
       const config = economyCatalog.food?.orders;
       const board = residentOrderBoard(state, now);

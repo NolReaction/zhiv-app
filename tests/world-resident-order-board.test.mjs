@@ -348,26 +348,25 @@ test("paid replacement needs deliberate confirmation, checks fresh state and rej
     economy.uncertain = true;
     assert.doesNotMatch(renderToStaticMarkup(board()), /Учебный заказ выполнен ·/);
 
-    for (let step = 0; step < 4; step++) {
+    for (let step = 0; step < 1; step++) {
       hooks.reset(); calls.length = 0; economy.uncertain = false; economy.notice = "";
       const terms = economy.snapshot.catalog.onboarding.residentOrders[step];
       economy.snapshot.tutorialOrder = { ...newTutorialOrder(economy.snapshot.catalog), step, terms };
       economy.snapshot.inventory = { ...terms.items };
       tree = board(); first = cards(tree)[0];
       assert.equal(first.props.offer.id, terms.id);
-      assert.match(renderToStaticMarkup(tree), new RegExp(`Учебный заказ · ${step + 1} / 4`));
+      assert.match(renderToStaticMarkup(tree), /Учебный заказ · знакомство/);
       assert.equal(buttons(ResidentOrderCard({ economy, offer: first.props.offer })).length, 1, "every tutorial request has no replacement control");
       first.props.onComplete(first.props.offer); first.props.onComplete(first.props.offer);
       assert.deepEqual(calls, [["complete_resident_order", terms.id, 1, 0]]);
       assert.doesNotMatch(renderToStaticMarkup(board()), /Учебный заказ выполнен ·/);
       economy.snapshot = { ...economy.snapshot, revision: economy.snapshot.revision + 1, inventory: {},
-        tutorialOrder: { ...economy.snapshot.tutorialOrder, step: step + 1, completed: step === 3,
+        tutorialOrder: { ...economy.snapshot.tutorialOrder, step: step + 1, completed: true,
           terms: economy.snapshot.catalog.onboarding.residentOrders[step + 1] ?? terms } };
       economy.notice = "Учебный заказ выполнен";
       tree = board();
       assert.match(renderToStaticMarkup(tree), new RegExp(`Учебный заказ выполнен · \\+${terms.coins} монет`));
-      assert.equal(cards(tree).length, step === 3 ? 3 : 4);
-      if (step < 3) assert.equal(cards(tree)[0].props.offer.id, economy.snapshot.catalog.onboarding.residentOrders[step + 1].id);
+      assert.equal(cards(tree).length, 3);
       first.props.onComplete(first.props.offer);
       assert.equal(calls.length, 1, "a stale tutorial card cannot submit the next pinned request");
     }

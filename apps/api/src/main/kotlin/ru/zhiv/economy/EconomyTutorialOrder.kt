@@ -9,11 +9,37 @@ import kotlinx.serialization.Serializable
 @Serializable data class EconomyTutorialOrder(
     val ingredientsClaimed: Boolean = false, val completed: Boolean = false, val terms: EconomyResidentOrderTemplate? = null,
     val version: Int = 1, val step: Int = 0,
-) { init { require(version in 1..2 && step in 0..4) } }
+) { init { require(version in 1..3 && step in 0..4) } }
 
-/** Saved v1 requests keep their terms; fresh v2 profiles complete four sequential requests. */
+/** A single teaching request, followed by the separate first-house course. */
 object EconomyTutorialOrders {
     const val ID = "tutorial_first_order"
+    val legacyStageIds = setOf("tutorial_wood_order", "tutorial_compote_order", "tutorial_planks_order")
+
+    /** Read projection only; the next successful mutation persists it without another payout. */
+    fun normalize(state: EconomyState, catalog: EconomyCatalog = EconomyRules.catalog): EconomyState {
+        val previous = state.tutorialOrder
+        if (previous.version != 2) return state
+        if (previous.step == 0 && !previous.completed) {
+            val terms = previous.terms ?: catalog.onboarding?.residentOrder
+            val reduced = if (terms?.id == ID && terms.items == mapOf("berries" to 2L))
+                terms.copy(description = terms.description?.replace("две малины", "одну малину"), items = mapOf("berries" to 1L)) else terms
+            return state.copy(tutorialOrder = previous.copy(version = 3, terms = reduced))
+        }
+        val course = catalog.stageOrders.find { it.homeLevel == 1 }
+        val completed = previous.completed || previous.step >= 4
+        val step = if (completed) course?.orders?.size ?: 3 else maxOf(0, previous.step - 1)
+        val saved = state.stageOrders.stages["1"] ?: EconomyStageOrderProgress()
+        val projected = saved.copy(step = step, completed = completed,
+            terms = previous.terms ?: course?.orders?.getOrNull(step),
+            availableAt = if (completed) null else saved.availableAt ?: "1970-01-01T00:00:00.000Z",
+            intervalSeconds = saved.intervalSeconds ?: course?.intervalSeconds ?: 0,
+            completionRewards = saved.completionRewards ?: course?.completionRewards ?: emptyMap())
+        val stages = if (!saved.completed && (step > saved.step || step == saved.step && saved.terms == null || completed))
+            state.stageOrders.copy(stages = state.stageOrders.stages + ("1" to projected)) else state.stageOrders
+        return state.copy(tutorialOrder = previous.copy(version = 3, step = 1, completed = true,
+            terms = catalog.onboarding?.residentOrder), stageOrders = stages)
+    }
     fun orders(config: EconomyOnboardingCatalog): List<EconomyResidentOrderTemplate> =
         config.residentOrders.ifEmpty { listOf(config.residentOrder) }
     fun isTutorialId(id: String): Boolean = id == ID ||
@@ -26,7 +52,7 @@ object EconomyTutorialOrders {
             require(config.startingItems.all { (id, amount) -> id in known && amount in 1L..ECONOMY_MAX_ITEMS })
             require(config.residentOrder.id == ID)
             val requests = orders(config)
-            require(requests.size == 4 && requests.first() == config.residentOrder && requests.map { it.id }.distinct().size == requests.size)
+            require(requests.size == 1 && requests.first() == config.residentOrder && requests.map { it.id }.distinct().size == requests.size)
             require(requests.all { terms -> terms.id.startsWith("tutorial_") && terms.residentId in setOf("builder", "plesk") &&
                 terms.items.isNotEmpty() && terms.items.all { (id, amount) -> id in known && amount in 1L..ECONOMY_MAX_ITEMS } &&
                 terms.coins in 1L..ECONOMY_MAX_BALANCE })
@@ -49,23 +75,16 @@ object EconomyTutorialOrders {
         val progress = state.tutorialOrder
         val terms = progress.terms
         if (command.action != "complete_resident_order" || !progress.ingredientsClaimed || progress.completed ||
-            progress.version == 2 && progress.step >= 4 || terms == null || command.targetId != terms.id)
+            progress.version == 3 && progress.step >= 1 || terms == null || command.targetId != terms.id)
             economyFailure("ECONOMY_TUTORIAL_ORDER_UNAVAILABLE", "Учебный заказ недоступен или уже выполнен")
         val board = state.residentOrders
         if (terms.coins > ECONOMY_MAX_BALANCE - state.wallet.coins || terms.coins > ECONOMY_MAX_REVISION - board.earnedCoins || board.completed >= ECONOMY_MAX_REVISION)
             economyFailure("ECONOMY_CAPACITY", "Кошелёк заполнен")
         val spent = EconomyRules.spend(state, EconomyCost(items = terms.items), command.fishSelection)
-        val nextProgress = if (progress.version == 1) progress.copy(completed = true) else {
-            val requests = EconomyRules.catalog.onboarding?.let(::orders)
-                ?: economyFailure("ECONOMY_TUTORIAL_ORDER_UNAVAILABLE", "Учебные заказы пока недоступны")
-            val nextStep = progress.step + 1
-            if (nextStep >= requests.size) progress.copy(step = requests.size, completed = true)
-            else progress.copy(step = nextStep, terms = requests[nextStep])
-        }
+        val nextProgress = progress.copy(step = if (progress.version == 1) progress.step else 1, completed = true)
         return spent.copy(wallet = spent.wallet.copy(coins = spent.wallet.coins + terms.coins),
             residentOrders = board.copy(completed = board.completed + 1, earnedCoins = board.earnedCoins + terms.coins),
-            tutorialOrder = nextProgress) to if (nextProgress.completed)
-            "Учебные заказы выполнены. Можно улучшить дом" else "Учебный заказ выполнен. На доске появилась следующая просьба"
+            tutorialOrder = nextProgress) to "Первый заказ выполнен. Теперь доступны просьбы для улучшения дома"
     }
 
     /** Merging never reopens rewarded progress, including an already accepted legacy request. */
@@ -76,8 +95,8 @@ object EconomyTutorialOrders {
             return chosen.copy(ingredientsClaimed = true, completed = legacy.any { it.completed },
                 terms = chosen.terms ?: legacy.firstNotNullOfOrNull { it.terms })
         }
-        if (a.version == 2 || b.version == 2) {
-            val current = listOf(a, b).filter { it.version == 2 }
+        if (a.version >= 2 || b.version >= 2) {
+            val current = listOf(a, b).filter { it.version >= 2 }
             val chosen = current.maxWith(compareBy<EconomyTutorialOrder> { it.completed }.thenBy { it.step })
             return chosen.copy(ingredientsClaimed = true, completed = current.any { it.completed })
         }

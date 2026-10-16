@@ -175,8 +175,13 @@ export function auditFoodEconomy(catalog) {
   });
   const earlyOrders = orders.templates.filter(order => hasRequirements(order, { home: 1, garden: 1, warehouse: 1 }));
   const tutorials = catalog.onboarding?.residentOrders ?? [];
-  assert.equal(tutorials.length, 4, "First stage needs four guaranteed tutorial requests");
-  assert.equal(sum(tutorials.map(order => order.coins)), 330, "First-stage tutorial requests must pay the planned 330 coins");
+  assert.equal(tutorials.length, 1, "The tutorial teaches one request");
+  assert.deepEqual(tutorials[0].items, { berries: 1 }, "A single ripe raspberry must finish the teaching request");
+  assert.equal(tutorials[0].coins, 15, "The teaching request pays 1.5 times its NPC value");
+  const firstCourse = catalog.stageOrders?.find(stage => stage.homeLevel === 1);
+  assert.equal(firstCourse?.orders.length, 3, "The first house needs three small permanent requests");
+  assert.equal(firstCourse.intervalSeconds, 0, "Beginner requests never wait behind a daily gate");
+  assert.equal(sum([...tutorials, ...firstCourse.orders].map(order => order.coins)), 315, "The first stage must keep its 35-coin surplus");
   const secondCourse = catalog.stageOrders?.find(stage => stage.homeLevel === 2);
   assert.equal(secondCourse?.orders.length, 7, "Second stage needs seven guaranteed permanent requests");
   assert.equal(sum(secondCourse.orders.map(order => order.coins)), 1990, "Second-stage requests must pay 1990 coins");

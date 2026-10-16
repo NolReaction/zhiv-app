@@ -237,9 +237,11 @@ test("the orders lesson opens the real journal dock entry without blocking its o
   const nav = guideNavigation({ onboarding: { progress: { version: 2, status: "started", stepId: "orders" } } });
   try {
     const guide = nav.component("WorldOnboardingSession").props;
-    for (const key of ["onOpenOrders", "onOpenWorkshop", "onOpenGarden", "onOpenQuick", "onOpenResident", "onOpenHelp"]) {
+    for (const key of ["onOpenOrders", "onOpenWorkshop", "onOpenGarden", "onOpenQuick", "onOpenResident"]) {
       assert.equal(guide[key], undefined, `${key} must not let the coach bypass the real path`);
     }
+    assert.equal(typeof guide.onOpenHelp, "function", "the final lesson has its explicit read-only help action");
+    assert.equal(nav.component("WorldHelp"), undefined, "providing the action must not open help during the order exercise");
     assert.equal(nav.component("WorldOrderJournal"), undefined);
     const entry = nav.find(element => element.props["data-world-orders-entry"] !== undefined);
     assert.equal(entry.type, "button"); assert.equal(entry.props["aria-haspopup"], "dialog");
@@ -256,6 +258,22 @@ test("the orders lesson opens the real journal dock entry without blocking its o
     assert.equal(nav.component("SectionGuide").props.enabled, false, "the section introduction yields to the active initial course");
     assert.equal(nav.find(element => element.props.id === "world-quick-menu"), undefined);
     assert.equal(nav.refreshes, 0);
+  } finally { nav.restore(); }
+});
+
+
+test("the final lesson help callback opens the real help panel without an economic action", () => {
+  const nav = guideNavigation({ onboarding: { progress: { version: 2, status: "started", stepId: "help" } } });
+  try {
+    assert.equal(nav.component("WorldHelp"), undefined);
+    nav.component("WorldOnboardingSession").props.onOpenHelp();
+    assert.ok(nav.component("WorldHelp"), "the final lesson is connected to WorldView's actual help panel");
+    assert.equal(nav.component("WorldOnboardingSession").props.helpOpen, true);
+    assert.equal(nav.component("WorldOnboardingSession").props.modalBlocked, true, "the coach yields focus to help");
+    assert.equal(nav.component("WorldOrderJournal"), undefined);
+    assert.equal(nav.refreshes, 0);
+    nav.find(element => element.props["aria-label"] === "Закрыть панель").props.onClick();
+    assert.equal(nav.component("WorldHelp"), undefined);
   } finally { nav.restore(); }
 });
 

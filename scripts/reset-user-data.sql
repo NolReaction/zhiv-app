@@ -40,19 +40,19 @@ BEGIN
     IF actual_tables IS DISTINCT FROM expected_tables THEN
         RAISE EXCEPTION 'Unexpected application tables. Reset cancelled; review the schema first.';
     END IF;
-    -- V57 only bounds public garden ledger context; the reviewed table inventory is unchanged.
+    -- V58 only replaces the future-profile initializer; the reviewed table inventory is unchanged.
     -- Keep this explicit: every new schema must be reviewed before destructive reset.
     -- A known admin-history upgrade can install V50 after V51/V52.
     -- Verify either complete history by version, independently of install order.
-    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 57
+    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 58
         OR NOT (
             ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
-                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,57) AS expected(version))
+                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,58) AS expected(version))
             OR ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
-                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL']
+                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL','58:SQL']
         )
         OR EXISTS (SELECT 1 FROM public.flyway_schema_history WHERE NOT success) THEN
-        RAISE EXCEPTION 'Expected successfully applied migrations through V57. Reset cancelled.';
+        RAISE EXCEPTION 'Expected successfully applied migrations through V58. Reset cancelled.';
     END IF;
     SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank) INTO migration_history
     FROM public.flyway_schema_history h;

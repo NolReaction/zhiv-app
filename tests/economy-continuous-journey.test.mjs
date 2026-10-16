@@ -313,7 +313,9 @@ function completeJourney(regularActiveMinutes) {
 }
 
 
-for (const [minutes, maximumDays] of [[30, 45], [15, 57]]) test(`a single fresh free account with ${minutes}-minute visits earns every house and berry product without resetting its stock`, t => {
+// Visits happen eight hours apart; the smaller introductory payout can move a
+// later material purchase to the following visit without adding a new time gate.
+for (const [minutes, maximumDays] of [[30, 46], [15, 57]]) test(`a single fresh free account with ${minutes}-minute visits earns every house and berry product without resetting its stock`, t => {
   const result = completeJourney(minutes), { state, clock, flow, courses, builds, berryClaims, checkpoints, actions } = result;
   t.diagnostic(JSON.stringify({ elapsedDays: (clock - epoch) / (24 * hour), visits: result.visitCount,
     firstVisitMinutes: 60, laterVisitMinutes: result.regularActiveMinutes, activeTimerHours: result.activeSeconds / 3600,
@@ -340,13 +342,20 @@ for (const [minutes, maximumDays] of [[30, 45], [15, 57]]) test(`a single fresh 
   assert.equal(checkpoints.find(point => point.target === "lighthouse").home, 3);
   assert.equal(state.progression.routes.ancient_ruins, 1);
   assert.equal(state.tutorialOrder.completed, true);
-  assert.equal(courses.length, 4 + 7 + 8 + 12);
-  assert.equal(result.courseCoins, 330 + 1990 + 14840 + 50000);
-  for (const [home, count] of [[2, 7], [3, 8], [4, 12]]) {
+  const teaching = courses.filter(course => course.id === tutorial.TUTORIAL_ORDER_ID);
+  assert.equal(teaching.length, 1, "only the first ripe raspberry is an instructional request");
+  assert.deepEqual(teaching[0].items, { berries: 1 }); assert.equal(teaching[0].coins, 15);
+  const firstProject = courses.filter(course => course.id.startsWith("stage1_"));
+  assert.deepEqual(firstProject.map(course => [course.id, course.items, course.coins]), [
+    ["stage1_wood_order", { wood: 2 }, 90], ["stage1_compote_order", { berry_compote: 2 }, 90], ["stage1_planks_order", { planks: 2 }, 120],
+  ]);
+  assert.equal(courses.length, 1 + 3 + 7 + 8 + 12);
+  assert.equal(result.courseCoins, 315 + 1990 + 14840 + 50000);
+  for (const [home, count] of [[1, 3], [2, 7], [3, 8], [4, 12]]) {
     assert.equal(state.stageOrders.stages[String(home)].step, count); assert.equal(state.stageOrders.stages[String(home)].completed, true);
     const chapter = courses.filter(course => course.id.startsWith(`stage${home}_`));
     for (let index = 1; index < chapter.length; index++)
-      assert(chapter[index].at - chapter[index - 1].at >= (home === 2 ? 0 : 23 * hour));
+      assert(chapter[index].at - chapter[index - 1].at >= (home <= 2 ? 0 : 23 * hour));
   }
   assert.deepEqual(builds.map(build => `${build.target}:${build.level}`), constructionSequence.map(([id, level]) => `${id}:${level}`));
   for (const action of ["buy_market_slot", "buy_production_slot", "claim_tutorial_order", "claim_workshop_starter", "speedup_construction", "eat_food", "feed_builder", "buy", "buy_fish"])

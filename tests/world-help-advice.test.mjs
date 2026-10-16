@@ -103,16 +103,18 @@ test("strawberry advice opens the compote recipe until its result has been colle
   assert.deepEqual(advice({ progression: { recipes: { cook_compote: 1 } } }, { context }), []);
 });
 
-test("house two advice opens the four-step tutorial before suggesting money or sale sources", () => {
+test("house two advice separates its single intro from three stage requests before sale suggestions", () => {
   const patch = { inventory: { wood: 3, stone: 2, planks: 2 }, wallet: { coins: 250, pearls: 0 }, tutorialOrder: newTutorialOrder() };
   const context = { intent: "construction", stationId: "home" };
   let result = advice(patch, { context });
   assert.equal(result[0].id, "construction:tutorial");
-  assert.match(result[0].message, /0 из 4/);
+  assert.match(result[0].message, /одну малину/);
   assert.deepEqual(result[0].action.target, { kind: "orders" });
-  patch.tutorialOrder.step = 3;
-  assert.match(advice(patch, { context })[0].message, /3 из 4/);
-  patch.tutorialOrder.step = 4; patch.tutorialOrder.completed = true;
+  patch.tutorialOrder.step = 1; patch.tutorialOrder.completed = true;
+  result = advice(patch, { context });
+  assert.equal(result[0].id, "construction:stage-orders");
+  assert.match(result[0].message, /0 из 3/);
+  patch.stageOrders = { version: 1, stages: { 1: { step: 3, completed: true, terms: null } } };
   result = advice(patch, { context });
   assert.deepEqual(result, []);
 });

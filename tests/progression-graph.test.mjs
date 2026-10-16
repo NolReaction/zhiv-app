@@ -554,7 +554,8 @@ test("player graph prices and rewards use visible pearls while costs keep intern
 
 test("the orders graph describes the week-long house-four project and permanent market discovery", () => {
   const orders = node("orders").description;
-  assert.match(orders, /7 постоянных просьб дома 2, включая улов и жареную рыбу/);
+  assert.match(orders, /один учебный заказ на малину, 3 просьбы к дому 2/);
+  assert.match(orders, /7 просьб дома 2, включая улов и жареную рыбу/);
   assert.match(orders, /проект из 8 поставок: первая сразу, остальные через 23 ч после сдачи предыдущей/);
   assert.match(orders, /Смена суток UTC и жемчуг интервал не сокращают/);
   assert.match(orders, /Ожидание между всеми поставками: 161 ч; строительство дома считается отдельно.*Живая смола × 1/);

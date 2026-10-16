@@ -394,16 +394,19 @@ test("first-stage cards offer one item directly and strawberry explains its real
   assert.equal(helpers.worldRecipeUnlockReason(state, recipe), null);
 });
 
-test("new house two requires the four confirmed tutorial requests even with enough stock and coins", () => {
+test("new house two requires one introduction and three house requests even with enough stock and coins", () => {
   const state = snapshot({ wallet: { coins: 250, pearls: 0 }, inventory: { wood: 3, stone: 2, planks: 2 },
     buildings: { home: 1, warehouse: 1, garden: 1, woodlot: 1, dryer: 1, workshop: 1 }, tutorialOrder: newTutorialOrder() });
   const target = state.catalog.buildings.find(entry => entry.id === "home").levels.find(entry => entry.level === 2);
-  assert.match(helpers.worldConstructionReason(state, "home", target), /учебные заказы: 0 \/ 4/);
-  state.tutorialOrder.step = 3;
-  assert.match(renderUpgrade("home", controller({ snapshot: state })), /учебные заказы: 3 \/ 4/);
-  state.tutorialOrder.step = 4; state.tutorialOrder.completed = true;
+  assert.match(helpers.worldConstructionReason(state, "home", target), /первый учебный заказ: 1 малина/);
+  state.tutorialOrder.step = 1; state.tutorialOrder.completed = true;
+  assert.match(helpers.worldConstructionReason(state, "home", target), /заказы для дома 2: 0 \/ 3/);
+  assert.match(renderUpgrade("home", controller({ snapshot: state })), /заказы для дома 2: 0 \/ 3/);
+  state.stageOrders = { version: 1, stages: { "1": { step: 2, completed: false, terms: null } } };
+  assert.match(helpers.worldConstructionReason(state, "home", target), /заказы для дома 2: 2 \/ 3/);
+  state.stageOrders.stages["1"] = { step: 3, completed: true, terms: null };
   assert.equal(helpers.worldConstructionReason(state, "home", target), null);
-  delete state.tutorialOrder;
+  delete state.tutorialOrder; delete state.stageOrders;
   assert.equal(helpers.worldConstructionReason(state, "home", target), null, "legacy profiles keep their previous building access");
 });
 

@@ -387,7 +387,7 @@ test("completed introductions retain a ready-crop reminder until harvesting or a
   assert.equal(h.render(), null);
 });
 
-test("help remains fully interactive while its modal owns focus, then returns the guide's completion action", () => {
+test("final help action opens the real help after completion and never closes it again", () => {
   const h = harness(started("help"));
   let coach = h.render();
   assert.equal(coach.secondary, undefined);
@@ -397,9 +397,16 @@ test("help remains fully interactive while its modal owns focus, then returns th
   assert.equal(coach.open, false, "the ordinary coach yields to the actual help modal");
   h.props.helpOpen = false; h.props.modalBlocked = false;
   coach = h.render();
-  assert.equal(coach.primary.label, "Готово, буду играть");
+  assert.equal(coach.primary.label, "Открыть справку");
+  assert.equal(coach.primary.shortLabel, "Открыть");
+  assert.deepEqual(h.calls, [], "merely viewing or manually opening help sends no action");
   coach.primary.onClick();
   assert.equal(h.props.progress.status, "completed");
+  assert.equal(h.props.helpOpen, true);
+  assert.deepEqual(h.calls, [["close-surface"], ["complete"], ["help"]], "complete before opening; a late surface close would hide help again");
+  assert.equal(h.render(), null, "the completed coach does not cover help or resume on closing it");
+  h.props.helpOpen = false; h.props.modalBlocked = false;
+  assert.equal(h.render(), null);
 });
 
 test("neighbors are learned through the real More and Characters path without shortcut cards", () => {
@@ -486,8 +493,7 @@ test("the journal lesson scopes its actual order and compact dock to the portal 
   assert.equal(coach.primary, undefined, "only the real order card can submit inventory");
   assert.deepEqual(h.calls, []);
 
-  h.patchSnapshot({ revision: 2, tutorialOrder: { ...h.economy.snapshot.tutorialOrder, step: 1,
-    terms: h.economy.snapshot.catalog.onboarding.residentOrders[1] } });
+  h.patchSnapshot({ revision: 2, tutorialOrder: { ...h.economy.snapshot.tutorialOrder, step: 1, completed: true } });
   coach = h.render();
   assert.equal(coach.primary.label, "К мастерской");
   coach.primary.onClick();
@@ -536,26 +542,28 @@ test("closing the journal restores map coverage and hosts without a portal ref k
   assert.equal(legacy.render().open, false, "without an orders ref the existing world ref remains authoritative");
 });
 
-test("a new player's first order advances the guide while the remaining three stay on the board", () => {
+test("one raspberry finishes the single tutorial and the guide never waits for house stage orders", () => {
   const h = harness(started("orders"));
   h.patchSnapshot({ tutorialOrder: newTutorialOrder(h.economy.snapshot.catalog) });
   let coach = h.render();
   assert.equal(coach.primary, undefined, "the first request is already available without a claim");
-  assert.match(coach.text, /две малины/);
+  assert.match(coach.text, /одна малина/);
+  assert.doesNotMatch(coach.text, /две малины|отдельными запусками/);
   assert.deepEqual(h.calls, []);
-  h.patchSnapshot({ revision: 2, tutorialOrder: { ...h.economy.snapshot.tutorialOrder, step: 1,
-    terms: h.economy.snapshot.catalog.onboarding.residentOrders[1] } });
+  h.patchSnapshot({ revision: 2, tutorialOrder: { ...h.economy.snapshot.tutorialOrder, step: 1, completed: true } });
   h.patchEconomy({ uncertain: true });
   coach = h.render();
   assert.equal(coach.primary.disabled, true);
   assert.notEqual(coach.pose, "jump");
   h.patchEconomy({ uncertain: false });
   coach = h.render();
-  assert.match(coach.summary, /1 \/ 4.*Следующая/);
+  assert.match(coach.summary, /Припасы переданы, награда получена/);
+  assert.doesNotMatch(coach.summary, /1 \/ 4|учебных просьб/);
+  assert.match(coach.text, /Учебный заказ завершён.*Пути хозяйства/);
   assert.equal(coach.primary.label, "К мастерской");
   coach.primary.onClick();
   assert.equal(h.props.progress.stepId, "workshop");
-  assert.equal(h.economy.snapshot.tutorialOrder.completed, false);
+  assert.equal(h.economy.snapshot.tutorialOrder.completed, true);
   assert.deepEqual(h.calls.filter(call => call[0] === "claim-order"), []);
 });
 
@@ -699,11 +707,12 @@ test("workshop costs and build time follow the catalog on replay without any gra
   assert.deepEqual(h.calls, []);
 });
 
-test("the final lesson can finish immediately without another modal detour", () => {
+test("the final lesson opens help from a single explicit click without economic commands", () => {
   const h = harness(started("help"));
   h.render().primary.onClick();
   assert.equal(h.props.progress.status, "completed");
-  assert.ok(!h.calls.some(call => call[0] === "help"));
+  assert.equal(h.props.helpOpen, true);
+  assert.deepEqual(h.calls, [["close-surface"], ["complete"], ["help"]]);
 });
 
 test("opened sections highlight their contents, and pantry guidance follows the actual sale or relic surface", () => {
@@ -867,7 +876,7 @@ test("pantry practice never infers success from failed sales, changed wallets, o
   assert.doesNotMatch(h.render().summary, /Продажа прошла/, "changing accounts clears the previous owner's practice result");
 });
 
-test("completion reports actual crop and workshop progress without opening their destinations", () => {
+test("completion reports actual crop and workshop progress while opening only help", () => {
   const untouched = harness(started("help"));
   assert.match(untouched.render().text, /Ягоды можно посадить/);
   assert.doesNotMatch(untouched.render().text, /Ягоды растут|Набор.*получен|Мастерская работает/);
@@ -879,7 +888,7 @@ test("completion reports actual crop and workshop progress without opening their
   assert.equal(coach.secondary, undefined);
   coach.primary.onClick();
   assert.equal(growing.props.progress.status, "completed");
-  assert.deepEqual(growing.calls.slice(-2), [["close-surface"], ["complete"]]);
+  assert.deepEqual(growing.calls, [["close-surface"], ["complete"], ["help"]]);
 
   const starter = harness(started("help"));
   starter.patchSnapshot({ workshopStarterClaimed: true });
@@ -888,7 +897,7 @@ test("completion reports actual crop and workshop progress without opening their
   assert.equal(coach.secondary, undefined);
   coach.primary.onClick();
   assert.equal(starter.props.progress.status, "completed");
-  assert.deepEqual(starter.calls.slice(-2), [["close-surface"], ["complete"]]);
+  assert.deepEqual(starter.calls, [["close-surface"], ["complete"], ["help"]]);
   assert.deepEqual(starter.economy.snapshot.jobs, []);
 });
 

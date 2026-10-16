@@ -175,3 +175,23 @@ test("changing the customer keeps the contextual heading and readiness in sync w
     assert.ok(elements(tree).some(entry => entry.type === "h2" && entry.props.children === "Все просьбы"));
   } finally { await runtime.close(); }
 });
+
+
+test("the journal labels one introductory order then a separate short house-two course", () => {
+  const economy = controller({ buildings: { home: 1, warehouse: 1, garden: 1 }, tutorialOrder: newTutorialOrder(economyCatalog) });
+  let html = render(WorldOrderJournal, { economy });
+  assert.match(html, /Учебный заказ · знакомство/);
+  assert.doesNotMatch(html, /К дому 2|1 \/ 4/);
+  economy.snapshot.tutorialOrder = { ...economy.snapshot.tutorialOrder, completed: true, step: 1 };
+  html = render(WorldOrderJournal, { economy });
+  assert.doesNotMatch(html, /data-tutorial-order/);
+  assert.match(html, /К дому 2 · 1 \/ 3/);
+  const first = stageResidentOrder(economy.snapshot);
+  assert.deepEqual(first.items, { wood: 2 });
+  const calls = [];
+  economy.snapshot.inventory = { wood: 2 };
+  economy.act = (...args) => { calls.push(args); return true; };
+  const card = ResidentOrderCard({ economy, offer: first });
+  elements(card).find(node => node.props["data-guide-order-submit"] !== undefined).props.onClick();
+  assert.deepEqual(calls, [["complete_resident_order", first.id, 1, 0]]);
+});

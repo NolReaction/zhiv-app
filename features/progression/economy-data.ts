@@ -258,7 +258,7 @@ function buildStages(catalog: EconomyCatalog): EconomyStage[] {
       .map(level => ({ id: building.id, name: building.name, level: level.level, cost: copyCost(level.cost), seconds: level.seconds,
         availableHomeLevel: level.requiredHomeLevel })));
     const course = catalog.stageOrders?.find(stage => stage.homeLevel === homeLevel);
-    const terms = homeLevel === 1 ? catalog.onboarding?.residentOrders ?? (catalog.onboarding ? [catalog.onboarding.residentOrder] : []) : course?.orders ?? [];
+    const terms = homeLevel === 1 ? [...(catalog.onboarding?.residentOrders ?? (catalog.onboarding ? [catalog.onboarding.residentOrder] : [])), ...(course?.orders ?? [])] : course?.orders ?? [];
     const orders: EconomyStageOrder[] = terms.map(order => ({ id: order.id, name: order.name, items: { ...order.items }, coins: order.coins,
       inputNpcValue: npcValue(catalog, order.items), addedNpcValue: order.coins - npcValue(catalog, order.items),
       requiredBuildings: { ...order.requiredBuildings }, requiredExplorations: { ...order.requiredExplorations } }));

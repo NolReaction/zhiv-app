@@ -198,7 +198,7 @@ export function ProfileView({
         <div className={styles.navigation}>
         <TabsPrimitive.List className={styles.tabs} aria-label="Разделы профиля">
           <TabsPrimitive.Trigger value="profile"><UserRound size={17} aria-hidden="true" />Профиль</TabsPrimitive.Trigger>
-          <TabsPrimitive.Trigger value="settings" className={styles.settingsTab} aria-label="Настройки" title="Настройки"><Settings size={19} aria-hidden="true" /></TabsPrimitive.Trigger>
+          <TabsPrimitive.Trigger value="settings" className={styles.settingsTab} data-app-onboarding="profile-settings" aria-label="Настройки" title="Настройки"><Settings size={19} aria-hidden="true" /></TabsPrimitive.Trigger>
         </TabsPrimitive.List>
         {onOpenOnboarding && <button type="button" className={styles.guideEntry} data-app-onboarding-entry
           aria-label="О профиле" title="О профиле" aria-expanded={guideOpen} aria-controls="app-profile-guide"
@@ -241,7 +241,7 @@ export function ProfileView({
         </div>
         <Accordion type="single" collapsible value={panel} onValueChange={setPanel} className={styles.settingsList}>
           <AccordionItem value="name" className={styles.settingsItem}>
-            <AccordionTrigger className={styles.settingsTrigger} data-app-onboarding="profile-content"><span><UserRound size={20} aria-hidden="true" /><span>Личные данные<small>Имя и часовой пояс</small></span></span></AccordionTrigger>
+            <AccordionTrigger className={styles.settingsTrigger}><span><UserRound size={20} aria-hidden="true" /><span>Личные данные<small>Имя и часовой пояс</small></span></span></AccordionTrigger>
             <AccordionContent forceMount hidden={panel !== "name"} className={styles.settingsContent}>
               <form className={styles.formCard} onSubmit={handleSubmit} noValidate>
             <div className={styles.formHeading}>

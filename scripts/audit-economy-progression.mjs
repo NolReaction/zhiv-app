@@ -27,7 +27,7 @@ export function auditEconomyProgression(catalog) {
   for (const route of catalog.explorations.filter(route => route.activity === "mining")) {
     assert(route.requiredBuildings?.quarry >= 1, `${route.id}: mining requires a built quarry`);
   }
-  assert.equal(catalog.version, 10);
+  assert.equal(catalog.version, 11);
   assert.equal(catalog.currencyScale, 10);
   const projects = auditProjectCourses(catalog);
   const rare = catalog.rareDrops;
@@ -323,7 +323,7 @@ export function auditEconomyProgression(catalog) {
       if (!next || !hasRequirements(next) || !hasMaterials(next.cost)) continue;
       if (building.id === "home" && next.level === 2
         && (catalog.onboarding?.residentOrders ?? []).some(order => Object.keys(order.items).some(id => !obtainable.has(id)))) continue;
-      if (building.id === "home" && next.level >= 3 && catalog.stageOrders?.some(stage => stage.homeLevel === next.level - 1)
+      if (building.id === "home" && next.level >= 2 && catalog.stageOrders?.some(stage => stage.homeLevel === next.level - 1)
         && !completedProjects.has(next.level - 1)) continue;
       completed[building.id] = next.level;
       constructionOrder.push(`${building.id}:${next.level}`);

@@ -84,18 +84,19 @@ test("construction checks materials together with coins and only opens when the 
   assert.equal(disabled(button(render("buildings", controller({ snapshot: state })), "Улучшить до ур. 2: Дом Мохлика")), false);
 });
 
-test("the first house upgrade requires all four server tutorial orders while legacy profiles retain access", () => {
+test("the first house upgrade requires one teaching order then three small house deliveries while legacy profiles retain access", () => {
   const target = economyCatalog.buildings.find(building => building.id === "home").levels[1];
   const state = snapshot({ wallet: { coins: target.cost.coins, pearls: 0 }, inventory: { ...target.cost.items },
     buildings: { home: 1, garden: 1, ...target.requiredBuildings }, tutorialOrder: newTutorialOrder() });
   let html = render("buildings", controller({ snapshot: state }));
   assert.equal(disabled(button(html, "Улучшить до ур. 2: Дом Мохлика")), true);
-  assert.match(html, /Выполните учебные заказы: 0 \/ 4/);
-  state.tutorialOrder = { ...state.tutorialOrder, step: 3, terms: state.catalog.onboarding.residentOrders[3] };
+  assert.match(html, /Выполните первый учебный заказ: 1 малина/);
+  state.tutorialOrder = { ...state.tutorialOrder, step: 1, completed: true };
+  state.stageOrders = { version: 1, stages: { 1: { step: 2, completed: false, terms: null } } };
   html = render("buildings", controller({ snapshot: state }));
   assert.equal(disabled(button(html, "Улучшить до ур. 2: Дом Мохлика")), true);
-  assert.match(html, /Выполните учебные заказы: 3 \/ 4/);
-  state.tutorialOrder = { ...state.tutorialOrder, step: 4, completed: true };
+  assert.match(html, /Выполните заказы для дома 2: 2 \/ 3/);
+  state.stageOrders.stages[1] = { step: 3, completed: true, terms: null };
   assert.equal(disabled(button(render("buildings", controller({ snapshot: state })), "Улучшить до ур. 2: Дом Мохлика")), false);
   state.tutorialOrder = { version: 1, step: 0, ingredientsClaimed: true, completed: true, terms: state.catalog.onboarding.residentOrder };
   assert.equal(disabled(button(render("buildings", controller({ snapshot: state })), "Улучшить до ур. 2: Дом Мохлика")), false);
@@ -105,7 +106,7 @@ test("the economy construction hub shares house-three stage-order gates with the
   const target = economyCatalog.buildings.find(building => building.id === "home").levels.find(entry => entry.level === 3);
   const state = snapshot({ wallet: { coins: target.cost.coins, pearls: 0 }, inventory: { ...target.cost.items },
     buildings: { home: 2, warehouse: 1, workshop: 1, quarry: 2, kiln: 1 },
-    tutorialOrder: { ...newTutorialOrder(), step: 4, completed: true },
+    tutorialOrder: { ...newTutorialOrder(), step: 1, completed: true },
     stageOrders: { version: 1, stages: { 2: { step: 4, completed: false, terms: null } } } });
   let html = render("buildings", controller({ snapshot: state }), "home");
   assert.equal(disabled(button(html, "Улучшить до ур. 3: Дом Мохлика")), true);

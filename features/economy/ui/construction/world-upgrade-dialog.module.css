@@ -51,10 +51,12 @@
 .benefitTrack:focus-visible { outline: 2px solid #355e48; outline-offset: 2px; }
 .benefitSlide { display: flex; flex: 0 0 calc(100% - 24px); min-width: 0; scroll-snap-align: start; scroll-snap-stop: always; }
 .benefitTrack[data-single] .benefitSlide { flex-basis: 100%; }
-.benefitCard, .dialog.dialog .benefitRecipe { display: grid; grid-template-columns: 58px minmax(0, 1fr); align-content: start; align-items: start; gap: 5px 10px; width: 100%; min-width: 0; min-height: 136px; padding: 11px; border: 1px solid #c0bc96; border-radius: 12px; background: #f8efd9; color: #394d3e; text-align: left; box-shadow: inset 0 1px #fff9ea; }
-.benefitCard > *, .dialog.dialog .benefitRecipe > * { grid-column: 2; min-width: 0; }
-.dialog.dialog .benefitRecipe:hover, .dialog.dialog .benefitRecipe[aria-expanded="true"] { border-color: #85956c; background: #ecedcf; }
-.benefitCard > .benefitArt, .dialog.dialog .benefitRecipe > .benefitArt { display: flex; position: relative; grid-column: 1; grid-row: 1 / span 3; align-items: center; justify-content: center; gap: 0; width: 58px; height: 58px; min-height: 0; margin: 0; border-radius: 10px; background: radial-gradient(ellipse at 50% 100%, #c5d09e99, #e4e9cd55); color: #526d45; }
+.benefitCard, .dialog.dialog .benefitDisclosure { display: grid; grid-template-columns: 58px minmax(0, 1fr); align-content: start; align-items: start; gap: 5px 10px; width: 100%; min-width: 0; min-height: 136px; padding: 11px; border: 1px solid #c0bc96; border-radius: 12px; background: #f8efd9; color: #394d3e; text-align: left; box-shadow: inset 0 1px #fff9ea; }
+.benefitCard > *, .dialog.dialog .benefitDisclosure > * { grid-column: 2; min-width: 0; }
+.benefitDisclosure { cursor: pointer; touch-action: pan-x pan-y; }
+.benefitDisclosure:focus-visible { outline: 2px solid #3f6544; outline-offset: 2px; }
+.dialog.dialog .benefitDisclosure:hover, .dialog.dialog .benefitDisclosure[aria-expanded="true"] { border-color: #85956c; background: #ecedcf; }
+.benefitCard > .benefitArt, .dialog.dialog .benefitDisclosure > .benefitArt { display: flex; position: relative; grid-column: 1; grid-row: 1 / span 3; align-items: center; justify-content: center; gap: 0; width: 58px; height: 58px; min-height: 0; margin: 0; border-radius: 10px; background: radial-gradient(ellipse at 50% 100%, #c5d09e99, #e4e9cd55); color: #526d45; }
 .benefitArt > [data-building-art] { flex-basis: 52px; width: 52px; height: 52px; }
 .benefitArt[data-kind="route"] { flex-wrap: wrap; padding: 4px; }
 .benefitArt[data-kind="route"] > [data-item-icon] { width: 25px; height: 25px; }
@@ -72,6 +74,9 @@
 .benefitShopHint { color: #5c7469; }
 .benefitRewards { display: flex; flex-wrap: wrap; gap: 2px 9px; color: #616b53; font-size: 11px; line-height: 1.5; }
 .benefitRewards b { color: #425a3c; font-weight: 600; white-space: nowrap; }
+.benefitDetailLink > svg { transition: transform .16s ease; }
+.benefitDisclosure[aria-expanded="true"] .benefitDetailLink > svg { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { .benefitDetailLink > svg { transition: none; } }
 .benefitDetailLink { display: inline-flex; align-items: center; gap: 5px; margin-top: 0; padding-top: 3px; color: #416643; font-size: 11px; font-weight: 600; }
 .capacityNumbers { display: flex; align-items: center; gap: 12px; font-variant-numeric: tabular-nums; }
 .capacityNumbers strong { color: #35563b; font-size: 19px; font-weight: 650; }
@@ -136,7 +141,7 @@
   .body { padding: 13px 12px; gap: 14px; }
   .benefitHeading { gap: 3px; }
   .benefitHeading h3 { max-width: 135px; }
-  .benefitCard, .dialog.dialog .benefitRecipe { gap: 4px 8px; padding: 10px; }
+  .benefitCard, .dialog.dialog .benefitDisclosure { gap: 4px 8px; padding: 10px; }
   .costGrid { gap: 5px; }
   .footer { padding: 11px 12px 12px; }
   .confirmRow { gap: 8px; }
@@ -150,7 +155,7 @@
   .body { padding-top: 12px; padding-bottom: 12px; }
   .footer { padding-top: 9px; padding-bottom: 10px; gap: 5px; }
 }
-@media (forced-colors: active) { .dialog.dialog, .benefitCard, .dialog.dialog .benefitRecipe, .dialog.dialog .benefitNavigation button, .costGrid > li, .dialog.dialog .confirm { border-color: ButtonText; } }
+@media (forced-colors: active) { .dialog.dialog, .benefitCard, .dialog.dialog .benefitDisclosure, .dialog.dialog .benefitNavigation button, .costGrid > li, .dialog.dialog .confirm { border-color: ButtonText; } }
 
 .dialog.dialog .contextHelp {
   align-self: flex-start;

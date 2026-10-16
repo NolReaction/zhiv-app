@@ -8,6 +8,7 @@ import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
+const { ConstructionBuildingArt } = await vite.ssrLoadModule("/features/economy/ui/construction/construction-building-art.tsx");
 const { ConstructionRequirements } = await vite.ssrLoadModule("/features/economy/ui/construction/construction-requirements.tsx");
 const { WorldStationSetup } = await vite.ssrLoadModule("/features/economy/ui/construction/world-station-setup.tsx");
 const { WorldUpgradeContent } = await vite.ssrLoadModule("/features/economy/ui/construction/world-upgrade-dialog.tsx");
@@ -64,4 +65,13 @@ test("construction help is the final preparation control below missing building 
   assert.ok(preparation.indexOf("Закрепить цель") < preparation.indexOf('data-building-requirement="home"'));
   assert.ok(preparation.indexOf('data-building-requirement="home"') < preparation.indexOf("Как продолжить?"));
   assert.match(preparation, /Как продолжить\?<\/button>$/);
+});
+
+
+test("campfire building art uses the small cooking fire illustration instead of a cooking pot", () => {
+  const html = renderToStaticMarkup(createElement(ConstructionBuildingArt, { stationId: "dryer", level: 1 }));
+  assert.match(html, /data-building-art="dryer"/);
+  assert.match(html, /data-campfire-icon="true"/);
+  assert.doesNotMatch(html, /lucide-cooking-pot/);
+  assert.match(html, /viewBox="0 0 64 64"/);
 });

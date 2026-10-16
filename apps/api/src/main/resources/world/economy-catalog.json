@@ -1,5 +1,5 @@
 {
-  "version": 10,
+  "version": 11,
   "maxBatch": 10,
   "productionSlots": {
     "upgrades": [
@@ -4494,6 +4494,351 @@
             "cranberry_glaze": 1
           },
           "coins": 1430
+        },
+        {
+          "id": "plesk_berry_break",
+          "residentId": "plesk",
+          "name": "Ягодный перерыв",
+          "description": "Пока поплавок отдыхает, угощу соседей свежей малиной.",
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {
+            "garden": 1
+          },
+          "items": {
+            "berries": 4
+          },
+          "coins": 60
+        },
+        {
+          "id": "plesk_catch_and_berries",
+          "residentId": "plesk",
+          "name": "Улов и сладкое к чаю",
+          "description": "Одну рыбку оставлю к ужину, а ягодами угощу гостей на берегу.",
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {
+            "garden": 1
+          },
+          "items": {
+            "fish_common": 1,
+            "berries": 2
+          },
+          "coins": 90
+        },
+        {
+          "id": "plesk_compote_break",
+          "residentId": "plesk",
+          "name": "Компот после рыбалки",
+          "description": "Налью прохладный компот и добавлю к столу несколько свежих ягод.",
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {
+            "dryer": 1,
+            "garden": 1
+          },
+          "items": {
+            "berry_compote": 1,
+            "berries": 2
+          },
+          "coins": 80
+        },
+        {
+          "id": "plesk_picnic_lunch",
+          "residentId": "plesk",
+          "name": "Небольшой пикник",
+          "description": "Возьму готовую рыбу и компот. Хочется спокойно пообедать у воды.",
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {
+            "dryer": 1
+          },
+          "items": {
+            "grilled_fish": 1,
+            "berry_compote": 1
+          },
+          "coins": 130
+        },
+        {
+          "id": "plesk_evening_basket",
+          "residentId": "plesk",
+          "name": "Корзинка к вечернему столу",
+          "description": "Приготовлю ужин из свежего улова, а компот уже можно поставить на стол.",
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {
+            "dryer": 1
+          },
+          "items": {
+            "fish_common": 2,
+            "berry_compote": 1
+          },
+          "coins": 170
+        },
+        {
+          "id": "plesk_strawberry_lunch",
+          "residentId": "plesk",
+          "name": "Обед с клубничным компотом",
+          "description": "Горячая рыба и сладкий клубничный компот: хороший обед после прохладного утра.",
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {
+            "dryer": 1,
+            "garden": 1
+          },
+          "items": {
+            "grilled_fish": 1,
+            "strawberry_compote": 1
+          },
+          "coins": 250
+        },
+        {
+          "id": "builder_small_repair",
+          "residentId": "builder",
+          "name": "Маленький ремонт",
+          "description": "Подправлю ступеньку и укреплю край дорожки. Большая поставка не понадобится.",
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {},
+          "items": {
+            "wood": 2,
+            "stone": 1
+          },
+          "coins": 150
+        },
+        {
+          "id": "builder_bench_repair",
+          "residentId": "builder",
+          "name": "Починить садовую скамейку",
+          "description": "Одна ровная доска и крепкий кусок дерева вернут скамейке прежний вид.",
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {
+            "workshop": 1
+          },
+          "items": {
+            "planks": 1,
+            "wood": 1
+          },
+          "coins": 110
+        },
+        {
+          "id": "builder_drink_and_firewood",
+          "residentId": "builder",
+          "name": "Перерыв у костра",
+          "description": "Подброшу дров и выпью компот перед следующей работой.",
+          "requiredHomeLevel": 1,
+          "requiredBuildings": {
+            "dryer": 1
+          },
+          "items": {
+            "berry_compote": 1,
+            "wood": 1
+          },
+          "coins": 90
+        },
+        {
+          "id": "plesk_blueberry_lunch",
+          "residentId": "plesk",
+          "name": "Черничный обед у воды",
+          "description": "Принесёшь готовую рыбу и черничный компот? Сегодня хочется нового вкуса.",
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "dryer": 1,
+            "garden": 2
+          },
+          "items": {
+            "grilled_fish": 1,
+            "blueberry_compote": 1
+          },
+          "coins": 190
+        },
+        {
+          "id": "plesk_berry_assortment",
+          "residentId": "plesk",
+          "name": "Две ягоды к чаю",
+          "description": "Смешаю малину с черникой и угощу тех, кто заглянет на берег.",
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "garden": 2
+          },
+          "items": {
+            "berries": 3,
+            "blueberries": 2
+          },
+          "coins": 110
+        },
+        {
+          "id": "builder_blueberry_snack",
+          "residentId": "builder",
+          "name": "Ягодный перекус на стройке",
+          "description": "На обед хватит одной готовой рыбки и горсточки черники.",
+          "requiredHomeLevel": 2,
+          "requiredBuildings": {
+            "dryer": 1,
+            "garden": 2
+          },
+          "items": {
+            "grilled_fish": 1,
+            "blueberries": 2
+          },
+          "coins": 150
+        },
+        {
+          "id": "plesk_soup_and_compote",
+          "residentId": "plesk",
+          "name": "Тёплый обед с компотом",
+          "description": "После ветреного утра хочется ухи, а компот оставлю к вечернему чаю.",
+          "requiredHomeLevel": 3,
+          "requiredBuildings": {
+            "dryer": 1,
+            "kiln": 1
+          },
+          "items": {
+            "fish_soup": 1,
+            "berry_compote": 1
+          },
+          "coins": 380
+        },
+        {
+          "id": "plesk_berry_sauce_lunch",
+          "residentId": "plesk",
+          "name": "Ягодный вкус",
+          "description": "Попробую рыбу с ягодным соусом и домашний черничный компот.",
+          "requiredHomeLevel": 3,
+          "requiredBuildings": {
+            "dryer": 2,
+            "garden": 2
+          },
+          "items": {
+            "berry_fish": 1,
+            "blueberry_compote": 1
+          },
+          "coins": 560
+        },
+        {
+          "id": "plesk_smoked_currants",
+          "residentId": "plesk",
+          "name": "Припасы к дальнему забросу",
+          "description": "Копчёная рыба останется к вечеру, а смородину съем по дороге.",
+          "requiredHomeLevel": 3,
+          "requiredBuildings": {
+            "dryer": 2,
+            "garden": 3
+          },
+          "items": {
+            "smoked_fish": 1,
+            "currants": 2
+          },
+          "coins": 450
+        },
+        {
+          "id": "plesk_catch_and_jelly",
+          "residentId": "plesk",
+          "name": "Ужин со смородиновым желе",
+          "description": "Свежий улов пригодится к ужину. Домашнее желе будет маленьким десертом.",
+          "requiredHomeLevel": 3,
+          "requiredBuildings": {
+            "dryer": 2,
+            "garden": 3
+          },
+          "items": {
+            "fish_common": 2,
+            "currant_jelly": 1
+          },
+          "coins": 450
+        },
+        {
+          "id": "builder_trail_snack",
+          "residentId": "builder",
+          "name": "Припасы для обхода",
+          "description": "Проверю лесные подпорки: возьму сушёные ягоды и запасную верёвку.",
+          "requiredHomeLevel": 3,
+          "requiredBuildings": {
+            "dryer": 1,
+            "workshop": 1
+          },
+          "items": {
+            "dried_berries": 1,
+            "rope": 1
+          },
+          "coins": 180
+        },
+        {
+          "id": "plesk_blackberry_feast",
+          "residentId": "plesk",
+          "name": "Праздник на берегу",
+          "description": "Поставлю праздничную рыбу в центр стола, а ежевику подам отдельно.",
+          "requiredHomeLevel": 4,
+          "requiredBuildings": {
+            "dryer": 4,
+            "garden": 4,
+            "woodlot": 3,
+            "kiln": 1
+          },
+          "items": {
+            "epic_fish": 1,
+            "blackberries": 1
+          },
+          "coins": 1440
+        },
+        {
+          "id": "plesk_preserve_and_catch",
+          "residentId": "plesk",
+          "name": "Угощение для соседей",
+          "description": "Приберегу свежий улов к ужину и открою баночку ежевичного варенья для гостей.",
+          "requiredHomeLevel": 4,
+          "requiredBuildings": {
+            "dryer": 3,
+            "garden": 4,
+            "kiln": 3,
+            "quarry": 2
+          },
+          "items": {
+            "blackberry_preserve": 1,
+            "fish_common": 2
+          },
+          "coins": 1080
+        },
+        {
+          "id": "plesk_path_provisions",
+          "residentId": "plesk",
+          "name": "Перекус перед дорогой",
+          "description": "Одного пайка и черничного компота хватит для спокойной прогулки вдоль реки.",
+          "requiredHomeLevel": 4,
+          "requiredBuildings": {
+            "dryer": 2,
+            "garden": 2
+          },
+          "items": {
+            "trail_ration": 1,
+            "blueberry_compote": 1
+          },
+          "coins": 650
+        },
+        {
+          "id": "plesk_cranberry_dinner",
+          "residentId": "plesk",
+          "name": "Клюква к домашнему ужину",
+          "description": "Закажу рыбу с ягодным соусом, а свежей клюквой украшу стол.",
+          "requiredHomeLevel": 5,
+          "requiredBuildings": {
+            "dryer": 2,
+            "garden": 5
+          },
+          "items": {
+            "berry_fish": 1,
+            "cranberries": 1
+          },
+          "coins": 870
+        },
+        {
+          "id": "plesk_winter_table",
+          "residentId": "plesk",
+          "name": "Ужин с клюквенным десертом",
+          "description": "Из свежего улова приготовлю ужин, а клюквенный десерт разделю с гостями.",
+          "requiredHomeLevel": 5,
+          "requiredBuildings": {
+            "dryer": 4,
+            "garden": 5
+          },
+          "items": {
+            "fish_common": 2,
+            "cranberry_glaze": 1
+          },
+          "coins": 1550
         }
       ],
       "progression": {
@@ -4534,52 +4879,22 @@
       "id": "tutorial_first_order",
       "residentId": "builder",
       "name": "Первая малина",
-      "description": "Вырасти и собери две малины для первого заказа. Учебная просьба не исчезнет.",
+      "description": "Вырасти и собери одну малину. Шишколап покажет, как выполнять просьбы жителей.",
       "items": {
-        "berries": 2
+        "berries": 1
       },
-      "coins": 30
+      "coins": 15
     },
     "residentOrders": [
       {
         "id": "tutorial_first_order",
         "residentId": "builder",
         "name": "Первая малина",
-        "description": "Вырасти и собери две малины для первого заказа. Учебная просьба не исчезнет.",
+        "description": "Вырасти и собери одну малину. Шишколап покажет, как выполнять просьбы жителей.",
         "items": {
-          "berries": 2
+          "berries": 1
         },
-        "coins": 30
-      },
-      {
-        "id": "tutorial_wood_order",
-        "residentId": "builder",
-        "name": "Брёвна для первых построек",
-        "description": "Принеси два бревна. Одно можно взять из стартового запаса, другое заготовить на лесном участке.",
-        "items": {
-          "wood": 2
-        },
-        "coins": 90
-      },
-      {
-        "id": "tutorial_compote_order",
-        "residentId": "plesk",
-        "name": "Малиновый компот",
-        "description": "Приготовь на костре два компота. Для каждого нужны две малины.",
-        "items": {
-          "berry_compote": 2
-        },
-        "coins": 90
-      },
-      {
-        "id": "tutorial_planks_order",
-        "residentId": "builder",
-        "name": "Первые доски",
-        "description": "Изготовь в мастерской две доски. Каждая доска получается из одного бревна.",
-        "items": {
-          "planks": 2
-        },
-        "coins": 120
+        "coins": 15
       }
     ]
   },
@@ -4924,6 +5239,43 @@
           }
         }
       ]
+    },
+    {
+      "homeLevel": 1,
+      "orders": [
+        {
+          "id": "stage1_wood_order",
+          "residentId": "builder",
+          "name": "Брёвна для первых построек",
+          "description": "Принеси два бревна. Одно можно взять из стартового запаса, другое заготовить на лесном участке.",
+          "items": {
+            "wood": 2
+          },
+          "coins": 90
+        },
+        {
+          "id": "stage1_compote_order",
+          "residentId": "plesk",
+          "name": "Малиновый компот",
+          "description": "Приготовь на костре два компота. Для каждого нужны две малины.",
+          "items": {
+            "berry_compote": 2
+          },
+          "coins": 90
+        },
+        {
+          "id": "stage1_planks_order",
+          "residentId": "builder",
+          "name": "Первые доски",
+          "description": "Изготовь в мастерской две доски. Каждая доска получается из одного бревна.",
+          "items": {
+            "planks": 2
+          },
+          "coins": 120
+        }
+      ],
+      "intervalSeconds": 0,
+      "completionRewards": {}
     }
   ]
 }

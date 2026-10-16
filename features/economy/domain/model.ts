@@ -80,7 +80,7 @@ export const economyResidentOrderTermsSchema = z.object({
   requiredExplorations: z.record(id, count.positive().max(ECONOMY_MAX_ITEMS)).nullish(),
 });
 export const economyTutorialOrderSchema = z.object({
-  version: z.union([z.literal(1), z.literal(2)]).default(1), step: count.max(4).default(0),
+  version: z.union([z.literal(1), z.literal(2), z.literal(3)]).default(1), step: count.max(4).default(0),
   ingredientsClaimed: z.boolean().default(false), completed: z.boolean().default(false),
   terms: economyResidentOrderTermsSchema.nullable().default(null),
 }).default({ version: 1, step: 0, ingredientsClaimed: false, completed: false, terms: null });
@@ -92,7 +92,7 @@ export const economyStageOrderProgressSchema = z.object({
   completionRewards: quantities.nullable().default(null),
 });
 export const economyStageOrdersSchema = z.object({
-  version: z.literal(1).default(1), stages: z.record(z.string().regex(/^[234]$/), economyStageOrderProgressSchema).default({}),
+  version: z.literal(1).default(1), stages: z.record(z.string().regex(/^[1234]$/), economyStageOrderProgressSchema).default({}),
 }).default({ version: 1, stages: {} });
 export type EconomyStageOrders = z.infer<typeof economyStageOrdersSchema>;
 export type EconomyStageOrderProgress = z.infer<typeof economyStageOrderProgressSchema>;
@@ -123,13 +123,14 @@ export const economyFoodCatalogSchema = z.object({
   }).refine(orders => orders.replacementSeconds <= orders.refreshSeconds && orders.completionSeconds <= orders.refreshSeconds),
 });
 export const economyCatalogSchema = z.object({
-  stageOrders: z.array(z.object({ homeLevel: count.min(2).max(4), orders: z.array(economyResidentOrderTermsSchema).min(1).max(100),
+  stageOrders: z.array(z.object({ homeLevel: count.min(1).max(4), orders: z.array(economyResidentOrderTermsSchema).min(1).max(100),
     intervalSeconds: count.max(31_536_000).default(0), completionRewards: quantities.default({}) }))
-    .max(3).refine(stages => new Set(stages.map(stage => stage.homeLevel)).size === stages.length, "Stage courses require distinct home levels").optional(),
+    .max(4).refine(stages => new Set(stages.map(stage => stage.homeLevel)).size === stages.length, "Stage courses require distinct home levels").optional(),
   onboarding: z.object({
     startingWallet: z.object({ coins: balance, pearls: count.max(ECONOMY_MAX_PEARLS) }),
     startingItems: quantities, residentOrder: economyResidentOrderTermsSchema,
-    residentOrders: z.array(economyResidentOrderTermsSchema).length(4).optional(),
+    residentOrders: z.array(economyResidentOrderTermsSchema).min(1).max(4)
+      .refine(orders => orders.length === 1 || orders.length === 4, "Current and legacy tutorial catalogs must remain readable").optional(),
   }).optional(),
   productionSlots: z.object({ upgrades: z.array(z.object({
     slots: z.number().int().min(2).max(3), requiredHomeLevel: z.number().int().min(1).max(5), pricePearls: count.positive().max(ECONOMY_MAX_PEARLS),
@@ -138,7 +139,7 @@ export const economyCatalogSchema = z.object({
   fishing: economyFishingCatalogSchema.optional(),
   food: economyFoodCatalogSchema.nullish(),
   localBuyer: z.object({ payoutBps: count.positive().max(10_000), unitPrices: z.record(id, balance.positive()).optional() }).optional(),
-  version: z.literal(10), currencyScale: z.literal(10), pearlScale: z.literal(50), maxBatch: z.number().int().min(1).max(100),
+  version: z.union([z.literal(10), z.literal(11)]), currencyScale: z.literal(10), pearlScale: z.literal(50), maxBatch: z.number().int().min(1).max(100),
   constructionSpeedup: z.object({ secondsPerPearl: count.positive().max(86400), priceStepPearls: balance.positive().max(ECONOMY_PEARL_SCALE).default(2),
     pricingPoints: z.array(z.object({ seconds: count.positive(), pearls: count.positive().max(ECONOMY_MAX_PEARLS) })).max(32).default([])
       .refine(points => points.length === 0 || points.length >= 2, "A pricing curve requires at least two points")
@@ -190,10 +191,10 @@ export const economyCatalogSchema = z.object({
     || Object.keys(catalog.onboarding.residentOrder.items).some(item => !itemIds.has(item))
     || !Object.keys(catalog.onboarding.residentOrder.items).length
     || catalog.onboarding.residentOrder.id !== "tutorial_first_order")) invalid("Onboarding requires known goods and a stable tutorial order");
-  if (catalog.onboarding?.residentOrders && (new Set(catalog.onboarding.residentOrders.map(order => order.id)).size !== 4
+  if (catalog.onboarding?.residentOrders && (new Set(catalog.onboarding.residentOrders.map(order => order.id)).size !== catalog.onboarding.residentOrders.length
     || catalog.onboarding.residentOrders[0].id !== catalog.onboarding.residentOrder.id
     || catalog.onboarding.residentOrders.some(order => !Object.keys(order.items).length || Object.keys(order.items).some(item => !itemIds.has(item)))))
-    invalid("Tutorial sequence requires four distinct orders with known goods");
+    invalid("Tutorial requires distinct orders with known goods");
   const stageOrders = catalog.stageOrders?.flatMap(stage => stage.orders) ?? [];
   if (catalog.stageOrders?.some(stage => stage.orders.some(order => !order.id.startsWith(`stage${stage.homeLevel}_`)))
     || new Set(stageOrders.map(order => order.id)).size !== stageOrders.length || stageOrders.some(order =>
@@ -238,7 +239,7 @@ export const economyMigrationSchema = z.object({ version: z.literal(1), coinsGra
 export const economyJobSchema = z.object({
   id: uuid, kind: z.enum(["production", "exploration", "construction"]), targetId: id,
   recipeId: id.nullable(), targetLevel: count.nullable(), startedAt: z.string().datetime(), finishesAt: z.string().datetime(),
-  rewards: quantities, cost: economyCostSchema, catalogVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10)]),
+  rewards: quantities, cost: economyCostSchema, catalogVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11)]),
   actorId: z.enum(["mochlik", "miner"]).nullish(),
   collection: economyCollectionSchema.nullish(),
   fishing: z.object({ rodId: id, hookId: id.default("bare_hook"), baitId: id.nullable(), fishId: id,

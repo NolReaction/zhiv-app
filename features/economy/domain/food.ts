@@ -1,6 +1,6 @@
 import { ECONOMY_MAX_BALANCE, economyCatalog, economyResidentOrdersSchema, type EconomyCatalog, type EconomyFood, type EconomyResidentOrders, type EconomyState } from "./model";
 
-import { fishingIneligibility, fishingState, fishClassInventory, fishingClassItemId, fishClassForItem } from "./fishing";
+import { fishingClassWeights, fishingState, fishClassInventory, fishingClassItemId, fishClassForItem } from "./fishing";
 
 type FoodSource = Pick<EconomyState, "food"> & { catalog?: EconomyCatalog };
 type OrderSource = Pick<EconomyState, "residentOrders" | "buildings"> & Partial<Pick<EconomyState, "fishing" | "progression">> & { catalog?: EconomyCatalog };
@@ -72,6 +72,11 @@ const terms = (template: OrderTerms): OrderTerms => ({ id: template.id, resident
 export function obtainableResidentOrderItems(state: OrderSource, catalog = state.catalog ?? economyCatalog): Set<string> {
   const reachable = new Set<string>();
   const tackle = fishingState(state);
+  const fishing = catalog.fishing;
+  const catchable = new Set<string>();
+  if (fishing) for (const rod of fishing.rods.filter(rod => tackle.ownedRods.includes(rod.id)))
+    for (const hook of fishing.hooks.filter(hook => tackle.ownedHooks.includes(hook.id)))
+      for (const group of fishingClassWeights(rod.id, null, fishing, hook.id)) if (group.weight > 0) catchable.add(group.itemId);
   const unlocked = (source: { requiredHomeLevel: number; requiredBuildings: Record<string, number> }) =>
     (state.buildings.home ?? 1) >= source.requiredHomeLevel && Object.entries(source.requiredBuildings).every(([id, level]) => (state.buildings[id] ?? 0) >= level);
   let changed = true;
@@ -83,9 +88,10 @@ export function obtainableResidentOrderItems(state: OrderSource, catalog = state
       const fishInput = "fishInput" in source ? source.fishInput?.itemIds : undefined;
       if (Object.keys(source.cost.items).some(id => !reachable.has(id) && !fishInput?.includes(id))) continue;
       if (fishInput && !fishInput.some(id => reachable.has(id))) continue;
-      for (const [id, quantity] of Object.entries(source.rewards)) if (quantity > 0 && !catalog.fishing?.routeIds.includes(source.id)) reachable.add(fishingClassItemId(id, catalog.fishing));
-      if (catalog.fishing?.routeIds.includes(source.id)) for (const fish of catalog.fishing.fish)
-        if (tackle.ownedRods.some(rodId => tackle.ownedHooks.some(hookId => !fishingIneligibility(fish, rodId, hookId, catalog.fishing)))) reachable.add(fishingClassItemId(fish.itemId, catalog.fishing));
+      const fishingRoute = fishing?.routeIds.includes(source.id);
+      for (const [id, quantity] of Object.entries(source.rewards)) if (quantity > 0 && (!fishingRoute || id !== "fish"))
+        reachable.add(fishing ? fishingClassItemId(id, fishing) : id);
+      if (fishingRoute) for (const itemId of catchable) reachable.add(itemId);
     }
     changed = reachable.size > before;
   }

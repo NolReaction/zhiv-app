@@ -48,25 +48,26 @@ test("buying raw fish and immediately submitting orders cannot mint coins", () =
 });
 
 test("cooking ceilings account for extra inventory, real production and full NPC opportunity value", () => {
-  assert.deepEqual(report.shopDeliveryBudgets.map(row => row.matchingCookedOrdersWithOrdinaryMaterialsCeiling.netCoins), [60]);
+  assert.deepEqual(report.shopDeliveryBudgets.map(row => row.matchingCookedOrdersWithOrdinaryMaterialsCeiling.netCoins), [120]);
   const cooked = report.shopDeliveryBudgets[0].matchingCookedOrdersWithOrdinaryMaterialsCeiling;
-  assert.deepEqual(cooked.otherOwnedInputs, { berries: 2, charcoal: 2 });
-  assert.equal(cooked.otherOwnedInputsSaleCoins, 120);
-  assert.equal(cooked.productionMinutes, 60);
+  assert.deepEqual(cooked.orderCounts, { plesk_smoked_currants: 3 });
+  assert.deepEqual(cooked.otherOwnedInputs, { wood: 3, currants: 6 });
+  assert.equal(cooked.otherOwnedInputsSaleCoins, 510);
+  assert.equal(cooked.productionMinutes, 90);
   assert.equal(cooked.netCoins, cooked.rewardCoins - cooked.purchaseCoins - cooked.productionCoinCost - cooked.otherOwnedInputsSaleCoins);
   const expanded = report.shopDeliveryBudgets[0].matchingOrdersWithAdditionalRawIngredientsCeiling;
-  assert.deepEqual(expanded.orderCounts, { plesk_trail_table: 3 });
-  assert.deepEqual(expanded.otherOwnedInputs, { wood: 6, fish_common: 12, berries: 48 });
-  assert.equal(expanded.otherOwnedInputsSaleCoins, 1140);
-  assert.equal(expanded.productionMinutes, 828);
-  assert.equal(expanded.netCoins, 1740);
+  assert.deepEqual(expanded.orderCounts, { plesk_winter_table: 3 });
+  assert.deepEqual(expanded.otherOwnedInputs, { cranberries: 6, currants: 6, berries: 6 });
+  assert.equal(expanded.otherOwnedInputsSaleCoins, 2160);
+  assert.equal(expanded.productionMinutes, 339);
+  assert.equal(expanded.netCoins, 1770);
   assert.equal(expanded.netCoins, expanded.rewardCoins - expanded.purchaseCoins - expanded.productionCoinCost - expanded.otherOwnedInputsSaleCoins);
 });
 
 test("a fresh account has diverse themed orders with unique compositions and no completion delay", () => {
   assert.equal(report.boardPolicy.completionCooldownSeconds, 0);
   assert(report.boardPolicy.starterTemplates >= 5);
-  assert.equal(report.boardPolicy.tutorialTemplates, 4);
+  assert.equal(report.boardPolicy.tutorialTemplates, 1);
   assert(report.boardPolicy.secondStageTemplates >= 10);
   const data = catalog(), builders = data.food.orders.templates.filter(order => order.residentId === "builder");
   const foods = new Set(data.food.meals.map(meal => meal.itemId));

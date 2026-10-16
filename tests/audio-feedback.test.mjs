@@ -172,8 +172,8 @@ test("real session definitive failure has one error; timeout and reads do not", 
     const stop = session.activate();
     try {
       await session.refresh(); session.act("start_production", "planks"); await flush();
-      assert.deepEqual(events.map(event => event.cueId), failure instanceof ApiError ? ["ui.error"] : []);
-      await session.refresh(); assert.equal(events.length, failure instanceof ApiError ? 1 : 0);
+      assert.deepEqual(events.map(event => event.cueId), failure instanceof ApiError ? ["ui.click", "ui.error"] : ["ui.click"]);
+      await session.refresh(); assert.equal(events.length, failure instanceof ApiError ? 2 : 1);
     } finally { stop(); unsubscribe(); }
   }
 });

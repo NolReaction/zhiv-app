@@ -140,9 +140,9 @@ test("unit production, bounded unattended mining and ingredient value cannot sil
   }
 });
 
-test("the authored v10 catalog keeps every current production unit-sized and every storage gate optional", () => {
+test("the authored v11 catalog keeps every current production unit-sized and every storage gate optional", () => {
   const catalog = readEconomyCatalog();
-  assert.equal(catalog.version, 10); assert.equal(catalog.recipes.length, 50);
+  assert.equal(catalog.version, 11); assert.equal(catalog.recipes.length, 50);
   for (const recipe of catalog.recipes) {
     assert.equal(recipe.maxBatch, 1, recipe.id);
     assert.equal(Object.values(recipe.rewards).reduce((sum, count) => sum + count, 0), 1, recipe.id);

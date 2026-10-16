@@ -273,7 +273,7 @@ test("opened app sections highlight their own content and every task has a conci
   for (const step of ["people", "profile"]) {
     assert.equal(view(step).props.target, `[data-app-onboarding="nav-${step}"]`);
     const result = view(step, { activeView: step }, [step]);
-    assert.equal(result.props.target, `[data-app-onboarding="${step}-content"]`);
+    assert.equal(result.props.target, `[data-app-onboarding="${step === "profile" ? "profile-settings" : "people-content"}"]`);
     assert.ok(result.props.summary.length > 0 && result.props.summary.length < 160);
     assert.deepEqual(result.calls, []);
   }
@@ -322,4 +322,12 @@ test("finished app courses expose a replay label without resetting until the exp
     entryRef.current.open();
     assert.deepEqual(calls, ["replay"]);
   }
+});
+
+test("the profile lesson points at settings and introduces the gear without requiring personal data", () => {
+  const lesson = view("profile", { activeView: "profile" }, ["profile"]);
+  assert.equal(lesson.props.target, '[data-app-onboarding="profile-settings"]');
+  assert.match(lesson.props.summary, /Нажми шестерёнку/);
+  assert.doesNotMatch(lesson.props.summary, /Нажми «Личные данные»/);
+  assert.deepEqual(lesson.calls, [], "the real tab remains a user action");
 });

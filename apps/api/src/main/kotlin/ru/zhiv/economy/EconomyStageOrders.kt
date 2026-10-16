@@ -15,7 +15,7 @@ import java.time.Instant
 } }
 @Serializable data class EconomyStageOrderState(
     val version: Int = 1, val stages: Map<String, EconomyStageOrderProgress> = emptyMap(),
-) { init { require(version == 1 && stages.keys.all { it in setOf("2", "3", "4") }) } }
+) { init { require(version == 1 && stages.keys.all { it in setOf("1", "2", "3", "4") }) } }
 
 /** A once-per-stage sequence with saved terms and no free ingredients. */
 object EconomyStageOrders {
@@ -25,7 +25,7 @@ object EconomyStageOrders {
         require(ids.distinct().size == ids.size)
         val known = catalog.items.map { it.id }.toSet()
         catalog.stageOrders.forEach { course ->
-            require(course.homeLevel in 2..4 && course.orders.size in 1..100)
+            require(course.homeLevel in 1..4 && course.orders.size in 1..100)
             require(course.intervalSeconds in 0L..31_536_000L && course.completionRewards.all { (id, amount) ->
                 id in known && amount in 1L..ECONOMY_MAX_ITEMS })
             require(course.orders.all { terms -> terms.id.startsWith("stage${course.homeLevel}_") &&
@@ -42,22 +42,25 @@ object EconomyStageOrders {
     }
 
     fun isStageId(id: String, catalog: EconomyCatalog = EconomyRules.catalog): Boolean =
-        Regex("^stage[234]_").containsMatchIn(id) || catalog.stageOrders.any { course -> course.orders.any { it.id == id } }
+        Regex("^stage[1234]_").containsMatchIn(id) || id in EconomyTutorialOrders.legacyStageIds || catalog.stageOrders.any { course -> course.orders.any { it.id == id } }
 
     private fun eligible(state: EconomyState, homeLevel: Int): Boolean =
         (state.buildings["home"] ?: 1) == homeLevel &&
-            (homeLevel >= 3 || state.tutorialOrder.version == 1 || state.tutorialOrder.completed)
+            (if (homeLevel == 1) state.tutorialOrder.version == 3 && state.tutorialOrder.completed
+                else homeLevel >= 3 || state.tutorialOrder.version == 1 || state.tutorialOrder.completed)
 
     fun progress(state: EconomyState, homeLevel: Int = state.buildings["home"] ?: 1): EconomyStageOrderProgress =
         state.stageOrders.stages[homeLevel.toString()] ?: EconomyStageOrderProgress()
 
-    fun required(state: EconomyState, targetHomeLevel: Int, catalog: EconomyCatalog = EconomyRules.catalog): Boolean {
+    fun required(input: EconomyState, targetHomeLevel: Int, catalog: EconomyCatalog = EconomyRules.catalog): Boolean {
+        val state = EconomyTutorialOrders.normalize(input, catalog)
         val home = state.buildings["home"] ?: 1
-        return (home >= 3 || state.tutorialOrder.version == 2) && targetHomeLevel == home + 1 &&
+        return (home >= 3 || home == 1 && state.tutorialOrder.version == 3 || home == 2 && state.tutorialOrder.version != 1) && targetHomeLevel == home + 1 &&
             catalog.stageOrders.any { it.homeLevel == home } && !progress(state, home).completed
     }
 
-    fun offer(state: EconomyState, catalog: EconomyCatalog = EconomyRules.catalog): EconomyResidentOrderTemplate? {
+    fun offer(input: EconomyState, catalog: EconomyCatalog = EconomyRules.catalog): EconomyResidentOrderTemplate? {
+        val state = EconomyTutorialOrders.normalize(input, catalog)
         val home = state.buildings["home"] ?: 1
         val course = catalog.stageOrders.find { it.homeLevel == home } ?: return null
         if (!eligible(state, home)) return null
@@ -67,7 +70,8 @@ object EconomyStageOrders {
     }
 
     /** Pin as part of a successful command, including the claim which unlocks a new house stage. */
-    fun pin(state: EconomyState, catalog: EconomyCatalog = EconomyRules.catalog, now: Instant? = null): EconomyState {
+    fun pin(input: EconomyState, catalog: EconomyCatalog = EconomyRules.catalog, now: Instant? = null): EconomyState {
+        val state = EconomyTutorialOrders.normalize(input, catalog)
         val home = state.buildings["home"] ?: 1
         val terms = offer(state, catalog) ?: return state
         val progress = progress(state, home)
