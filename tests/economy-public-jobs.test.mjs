@@ -61,7 +61,7 @@ test("invalid job or server timestamps never reveal a private unfinished draw", 
 });
 
 test("the reveal marker distinguishes a real all river fish catch from an older masked snapshot", () => {
-  const saved = job(); saved.rewards = { fish: 3 }; saved.fishing.fishId = "fish";
+  const saved = job(); saved.rewards = { fish: 3 }; saved.fishing.fishId = "fish"; saved.rareDrop = null;
   const hidden = publicEconomyJob(saved, now), revealed = publicEconomyJob(saved, Date.parse(saved.finishesAt));
   assert.deepEqual(hidden.rewards, revealed.rewards);
   assert.equal(hidden.fishing.catchRevealed, undefined);

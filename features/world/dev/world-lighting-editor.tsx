@@ -36,7 +36,7 @@ export function LightingNumberField({ label, value, min, max, step = .1, range =
     window.addEventListener(WORLD_STUDIO_UI_EVENT, command);
     return () => window.removeEventListener(WORLD_STUDIO_UI_EVENT, command);
   }, []);
-  return <div className={styles.numberField}>
+  return <div className={styles.numberField} data-studio-field={label}>
     <label htmlFor={id}>{label}</label>
     <input ref={input} id={id} type="number" min={min} max={max} step={step}
       value={entry ?? displayLightingNumber(value)} aria-invalid={invalid || undefined}
@@ -96,8 +96,7 @@ export function WorldLightingEditor({ state, change, levels = state.levels }: Ed
   const activeLevel = selected.when ? levels[selected.when.siteId] : undefined;
   return <section className={styles.editor} aria-label="Свойства объекта" data-world-lighting-editor>
     <h3>{selected.studioName ?? lightingCasterName(selected)}</h3>
-    <WorldStudioMetadata key={`caster:${selected.id}`} kind="caster" element={selected} automaticName={lightingCasterName(selected)} levels={levels} />
-    <WorldStudioElementControls kind="caster" id={selected.id} />
+    <details className={styles.details}><summary>Имя, папка и защита</summary><div className={styles.detailsBody}><WorldStudioMetadata key={`caster:${selected.id}`} kind="caster" element={selected} automaticName={lightingCasterName(selected)} levels={levels} /><WorldStudioElementControls kind="caster" id={selected.id} /></div></details>
     <p className={styles.kindLabel}>Объём, отбрасывающий тень</p>
     <details className={styles.details}><summary>Как устроена тень</summary><div className={styles.detailsBody}><p className={styles.hint}>Фиолетовый контур — форма объёма для расчёта тени. Контур и высота меняют тень; PNG здания или дерева редактируются отдельно.</p><p className={styles.hint}>Основание 0 — на земле. Поднимите основание для кроны. Рисунок объекта сохраняет свой размер.</p></div></details>
     {selected.when && <div className={styles.levelHint}>
@@ -169,8 +168,7 @@ export function WorldLightingReceiverInspector({ levels }: { levels?: Readonly<R
   if (!selected) return <p className={styles.hint}>Выберите поверхность на карте или в списке.</p>;
   return <section className={styles.editor} aria-label="Свойства поверхности" data-world-lighting-editor>
     <h3>{selected.studioName ?? studioReceiverName(selected.id)}</h3>
-    <WorldStudioMetadata key={`receiver:${selected.id}`} kind="receiver" element={selected} automaticName={studioReceiverName(selected.id)} levels={levels} />
-    <WorldStudioElementControls kind="receiver" id={selected.id} />
+    <details className={styles.details}><summary>Имя, папка и защита</summary><div className={styles.detailsBody}><WorldStudioMetadata key={`receiver:${selected.id}`} kind="receiver" element={selected} automaticName={studioReceiverName(selected.id)} levels={levels} /><WorldStudioElementControls kind="receiver" id={selected.id} /></div></details>
     <p className={styles.kindLabel}>Поверхность, принимающая тень</p>
     <details className={styles.details}><summary>Как разметить землю</summary><div className={styles.detailsBody}>
       <p className={styles.hint}>Синий контур ограничивает землю, на которой видны рассчитанные тени. Это не часть дома и не препятствие. Обычно соседние поверхности должны покрывать землю без разрывов.</p>

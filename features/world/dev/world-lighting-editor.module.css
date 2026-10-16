@@ -2,13 +2,13 @@
 .editor h3 { margin: 0; color: #eef2dc; font-size: 14px; line-height: 1.45; }
 .kindLabel { margin: -4px 0 0; color: #d5bfee; font-size: 11px; }
 .editor .danger { color: #ffd4b6; border-color: #7d5d48; }
-.controls { display: grid; gap: 11px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.controls { display: grid; gap: 9px; margin: 0; padding: 0; border: 0; min-width: 0; }
 .controls:disabled { opacity: .6; }
 .controls:disabled :is(input, select, button) { cursor: default; }
 .heightFields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: 10px; }
 .numberField { display: grid; grid-template-columns: minmax(0, 1fr) 84px; align-items: center; gap: 4px 7px; min-width: 0; }
 .numberField label { color: var(--dev-muted); font-size: 12px; }
-.numberField input[type='number'] { width: 100%; min-width: 0; min-height: 38px; box-sizing: border-box; padding: 6px; color: var(--dev-ink); background: #15281e; border: 1px solid var(--dev-line); border-radius: 7px; font-variant-numeric: tabular-nums; }
+.numberField input[type='number'] { width: 100%; min-width: 0; min-height: 33px; box-sizing: border-box; padding: 6px; color: var(--dev-ink); background: #15281e; border: 1px solid var(--dev-line); border-radius: 7px; font-variant-numeric: tabular-nums; }
 .heightFields .numberField { grid-template-columns: minmax(0, 1fr); }
 .numberField input[aria-invalid='true'] { border-color: #e5b383; }
 .numberField input[type='range'] { grid-column: 1 / -1; width: 100%; min-height: 32px; margin: 0; accent-color: #dfcc8b; cursor: pointer; }
@@ -16,11 +16,11 @@
 .actions { display: flex; flex-wrap: wrap; gap: 7px; min-width: 0; }
 .actions button { flex: 1 1 100px; min-width: 0; }
 .details { min-width: 0; border-top: 1px solid var(--dev-line); }
-.details summary { min-height: 40px; box-sizing: border-box; padding-block: 10px; color: var(--dev-muted); cursor: pointer; }
+.details summary { min-height: 31px; box-sizing: border-box; padding-block: 7px; color: var(--dev-muted); cursor: pointer; }
 .detailsBody { display: grid; gap: 10px; min-width: 0; padding-bottom: 5px; }
 .field { display: grid; gap: 5px; min-width: 0; color: var(--dev-muted); font-size: 12px; }
-.field select { min-width: 0; width: 100%; min-height: 40px; padding: 6px; border: 1px solid var(--dev-line); border-radius: 7px; background: #15281e; color: var(--dev-ink); }
-.field input[type='text'] { box-sizing: border-box; min-width: 0; width: 100%; min-height: 40px; padding: 6px; border: 1px solid var(--dev-line); border-radius: 7px; background: #15281e; color: var(--dev-ink); }
+.field select { min-width: 0; width: 100%; min-height: 33px; padding: 5px; border: 1px solid var(--dev-line); border-radius: 7px; background: #15281e; color: var(--dev-ink); }
+.field input[type='text'] { box-sizing: border-box; min-width: 0; width: 100%; min-height: 33px; padding: 5px; border: 1px solid var(--dev-line); border-radius: 7px; background: #15281e; color: var(--dev-ink); }
 .field input[aria-invalid='true'] { border-color: #e5b383; }
 .metadata { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 9px; margin: 0; padding: 0 0 10px; border: 0; border-bottom: 1px solid var(--dev-line); min-width: 0; }
 .metadata > .details { grid-column: 1 / -1; }

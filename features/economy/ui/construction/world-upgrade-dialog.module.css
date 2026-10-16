@@ -46,36 +46,37 @@
 .dialog.dialog .benefitNavigation button { width: 44px; height: 44px; padding: 7px; border: 1px solid #b8b28c; border-radius: 12px; background: #f6edda; color: #456144; }
 .dialog.dialog .benefitNavigation button:disabled { opacity: .38; }
 .benefitCounter { min-width: 30px; color: #627058; font-size: 11px; text-align: center; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.benefitHint { color: #64705a; font-size: 11px; line-height: 1.4; }
-.benefitTrack { display: flex; position: relative; gap: 10px; min-width: 0; margin: 0 -3px; padding: 3px 3px 9px; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding-inline: 3px; overscroll-behavior-x: contain; scrollbar-width: thin; scrollbar-color: #929f77 #c3bb952b; border-radius: 14px; }
+.benefitHint { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.benefitTrack { display: flex; align-items: flex-start; position: relative; gap: 10px; min-width: 0; margin: 0 -3px; padding: 3px 3px 9px; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding-inline: 3px; overscroll-behavior-x: contain; scrollbar-width: thin; scrollbar-color: #929f77 #c3bb952b; border-radius: 14px; }
 .benefitTrack:focus-visible { outline: 2px solid #355e48; outline-offset: 2px; }
-.benefitSlide { display: flex; flex: 0 0 calc(100% - 30px); min-width: 0; scroll-snap-align: start; scroll-snap-stop: always; }
+.benefitSlide { display: flex; flex: 0 0 calc(100% - 24px); min-width: 0; scroll-snap-align: start; scroll-snap-stop: always; }
 .benefitTrack[data-single] .benefitSlide { flex-basis: 100%; }
-.benefitCard, .dialog.dialog .benefitRecipe { display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 7px; width: 100%; min-width: 0; min-height: 225px; padding: 14px; border: 1px solid #c0bc96; border-radius: 14px; background: #f8efd9; color: #394d3e; text-align: left; box-shadow: inset 0 1px #fff9ea; }
+.benefitCard, .dialog.dialog .benefitRecipe { display: grid; grid-template-columns: 58px minmax(0, 1fr); align-content: start; align-items: start; gap: 5px 10px; width: 100%; min-width: 0; min-height: 136px; padding: 11px; border: 1px solid #c0bc96; border-radius: 12px; background: #f8efd9; color: #394d3e; text-align: left; box-shadow: inset 0 1px #fff9ea; }
+.benefitCard > *, .dialog.dialog .benefitRecipe > * { grid-column: 2; min-width: 0; }
 .dialog.dialog .benefitRecipe:hover, .dialog.dialog .benefitRecipe[aria-expanded="true"] { border-color: #85956c; background: #ecedcf; }
-.benefitArt { display: flex; position: relative; align-items: center; justify-content: center; gap: 9px; width: 100%; min-height: 76px; margin-bottom: 3px; border-radius: 9px; background: radial-gradient(ellipse at 50% 100%, #c5d09e99, #e4e9cd55); color: #526d45; }
+.benefitCard > .benefitArt, .dialog.dialog .benefitRecipe > .benefitArt { display: flex; position: relative; grid-column: 1; grid-row: 1 / span 3; align-items: center; justify-content: center; gap: 0; width: 58px; height: 58px; min-height: 0; margin: 0; border-radius: 10px; background: radial-gradient(ellipse at 50% 100%, #c5d09e99, #e4e9cd55); color: #526d45; }
+.benefitArt > [data-building-art] { flex-basis: 52px; width: 52px; height: 52px; }
+.benefitArt[data-kind="route"] { flex-wrap: wrap; padding: 4px; }
+.benefitArt[data-kind="route"] > [data-item-icon] { width: 25px; height: 25px; }
+.benefitArt[data-kind="fishing"] > svg { max-width: 52px; max-height: 52px; }
 .benefitArt[data-kind="route"] { background: radial-gradient(ellipse at 50% 100%, #c6b89599, #eae1c755); }
 .benefitArt[data-kind="fishing"] { background: radial-gradient(ellipse at 50% 100%, #a5c8bc99, #dfebde55); }
 .benefitArt[data-kind="home"] { background: radial-gradient(ellipse at 50% 100%, #dbbd8699, #f0e3be55); }
-.benefitArt > span { position: absolute; right: 8px; bottom: 8px; padding: 3px 7px; border: 1px solid #d5cba8; border-radius: 7px; background: #f9f0d8; font-size: 10px; font-weight: 600; }
-.benefitArtBadge { position: absolute; right: 9px; bottom: 9px; color: #86754a; }
+.benefitArt > span:not([data-building-art]) { position: absolute; right: -3px; bottom: -3px; padding: 2px 4px; border: 1px solid #d5cba8; border-radius: 7px; background: #f9f0d8; font-size: 10px; font-weight: 600; }
+.benefitArtBadge { position: absolute; right: 1px; bottom: 1px; width: 13px; height: 13px; color: #86754a; }
 .benefitKind { color: #6a745d; font-size: 10px; font-weight: 550; line-height: 1.3; }
-.benefitCard h4, .benefitTitle { margin: 0; color: #344d3c; font-size: 15px; font-weight: 650; line-height: 1.25; overflow-wrap: anywhere; }
-.benefitDescription { color: #606953; font-size: 12px; line-height: 1.5; }
-.benefitReady, .benefitLocked, .benefitShopHint { display: flex; align-items: center; gap: 5px; margin-top: auto; padding-top: 6px; color: #537147; font-size: 11px; line-height: 1.4; }
+.benefitCard h4, .benefitTitle { margin: 0; color: #344d3c; font-size: 13px; font-weight: 650; line-height: 1.3; overflow-wrap: anywhere; }
+.benefitDescription { color: #606953; font-size: 11px; line-height: 1.4; }
+.benefitReady, .benefitLocked, .benefitShopHint { display: flex; align-items: center; gap: 5px; margin-top: 0; padding-top: 2px; color: #537147; font-size: 11px; line-height: 1.4; }
 .benefitLocked { color: #805c32; }
 .benefitShopHint { color: #5c7469; }
-.benefitRequirements { display: grid; gap: 4px; width: 100%; margin-top: auto; padding-top: 8px; border-top: 1px solid #d8ceb0; }
-.benefitRequirements > span { color: #83704a; font-size: 10px; }
-.dialog.dialog .benefitRequirements button { justify-content: flex-start; min-height: 44px; padding: 3px 0; text-align: left; }
-.benefitRequirements li { flex-wrap: wrap; font-size: 11px; line-height: 1.4; }
-.benefitRewards { display: flex; flex-wrap: wrap; gap: 5px 12px; color: #616b53; font-size: 11px; line-height: 1.5; }
+.benefitRewards { display: flex; flex-wrap: wrap; gap: 2px 9px; color: #616b53; font-size: 11px; line-height: 1.5; }
 .benefitRewards b { color: #425a3c; font-weight: 600; white-space: nowrap; }
-.benefitDetailLink { display: inline-flex; align-items: center; gap: 6px; margin-top: auto; padding-top: 8px; color: #416643; font-size: 11px; font-weight: 600; }
+.benefitDetailLink { display: inline-flex; align-items: center; gap: 5px; margin-top: 0; padding-top: 3px; color: #416643; font-size: 11px; font-weight: 600; }
 .capacityNumbers { display: flex; align-items: center; gap: 12px; font-variant-numeric: tabular-nums; }
-.capacityNumbers strong { color: #35563b; font-size: 24px; font-weight: 650; }
-.capacityNumbers strong:first-child { color: #7c8068; font-size: 19px; font-weight: 500; }
-.benefitGain { color: #46613b; font-size: 13px; font-weight: 600; }
+.capacityNumbers strong { color: #35563b; font-size: 19px; font-weight: 650; }
+.capacityNumbers strong:first-child { color: #7c8068; font-size: 15px; font-weight: 500; }
+.benefitGain { color: #46613b; font-size: 11px; font-weight: 600; }
 .recipeDetail { display: grid; gap: 9px; padding: 11px; border: 1px solid #c8bd98; border-radius: 9px; background: #f4ebd1; }
 .recipeDetail > strong { color: var(--forest-ink, #394d3e); font-size: 12px; font-weight: 550; }
 .recipeDetail > ul { display: grid; gap: 6px; }
@@ -112,10 +113,6 @@
 .relicCostGrid .costTile .costNeeded { font-size: 13px; }
 .conditions { padding-top: 5px; }
 .conditions h4 { display: flex; align-items: center; gap: 5px; margin: 0 0 7px; color: var(--forest-accent, #765322); font-size: 11px; font-weight: 500; }
-.conditions > ul { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
-.conditions > ul > li { min-width: 0; padding: 5px 7px; border: 1px solid #c4ad80; border-radius: 7px; background: #efdfbd; font-size: 11px; line-height: 1.4; }
-.conditions > ul > li > svg { display: none; }
-.dialog.dialog .conditions button { justify-content: flex-start; flex-wrap: wrap; gap: 4px; min-height: 25px; padding: 0; text-align: left; font-size: 11px; }
 .loading { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 12px; min-height: 100px; padding: 20px; text-align: center; color: var(--forest-muted, #59624d); }
 .complete { align-items: center; justify-content: center; gap: 11px; padding: 14px 8px; text-align: center; }
 .completeIcon { display: grid; place-items: center; width: 42px; height: 42px; border: 1px solid #91a279; border-radius: 50%; background: #dce3c4; color: var(--forest-muted, #59624d); }
@@ -139,7 +136,7 @@
   .body { padding: 13px 12px; gap: 14px; }
   .benefitHeading { gap: 3px; }
   .benefitHeading h3 { max-width: 135px; }
-  .benefitCard, .dialog.dialog .benefitRecipe { padding: 12px; }
+  .benefitCard, .dialog.dialog .benefitRecipe { gap: 4px 8px; padding: 10px; }
   .costGrid { gap: 5px; }
   .footer { padding: 11px 12px 12px; }
   .confirmRow { gap: 8px; }
@@ -153,9 +150,10 @@
   .body { padding-top: 12px; padding-bottom: 12px; }
   .footer { padding-top: 9px; padding-bottom: 10px; gap: 5px; }
 }
-@media (forced-colors: active) { .dialog.dialog, .benefitCard, .dialog.dialog .benefitRecipe, .dialog.dialog .benefitNavigation button, .costGrid > li, .conditions > ul > li, .dialog.dialog .confirm { border-color: ButtonText; } }
+@media (forced-colors: active) { .dialog.dialog, .benefitCard, .dialog.dialog .benefitRecipe, .dialog.dialog .benefitNavigation button, .costGrid > li, .dialog.dialog .confirm { border-color: ButtonText; } }
 
-.contextHelp {
+.dialog.dialog .contextHelp {
+  align-self: flex-start;
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
@@ -163,9 +161,9 @@
   min-height: 44px;
   max-width: 100%;
   padding: 8px 10px;
-  border: 1px solid #d4dccd;
+  border: 1px solid #c6b88f;
   border-radius: 10px;
-  background: #f7f9f1;
+  background: #f6ecd2;
   color: #3d5d40;
   font: inherit;
   font-size: 12px;
@@ -174,7 +172,7 @@
   cursor: pointer;
 }
 .contextHelp svg { flex-shrink: 0; }
-.contextHelp:hover { background: #edf3e5; }
+.dialog.dialog .contextHelp:hover { background: #ebe6c8; }
 .contextHelp:focus-visible { outline: 2px solid #55774c; outline-offset: 2px; }
 
 .durationWithMeal { display: flex; align-items: center; gap: 6px; min-width: 0; }

@@ -478,7 +478,11 @@ test("the mine has one independent route picker without production tabs or paid 
   assert.match(initial, /data-station-setup="quarry"/);
   assert.doesNotMatch(initial, /data-quarry-tab|data-recipe=|Секторы вылазок|data-production-slots/);
   assert.doesNotMatch(initial, /data-route=|aria-label="Начать добычу:|data-route-preparation=|data-mining-duration=/);
-  assert.match(initial, /Нужен дом 2 уровня/);
+  const homeRequirement = initial.match(/<li[^>]*data-building-requirement="home"[^>]*>[\s\S]*?<\/li>/)?.[0];
+  assert.ok(homeRequirement, "the unbuilt mine explains its home prerequisite in a separate row");
+  assert.match(homeRequirement, /Дом Мохлика/);
+  assert.match(homeRequirement, /Сейчас ур\. 1/);
+  assert.match(homeRequirement, /Нужен ур\. 2/);
   assert.doesNotMatch(prepareMine(initialState), /data-route=|aria-label="Начать добычу:/);
   assert.equal(disabled(button(initial, "Построить")), false);
   const unbuiltState = snapshot({ buildings: { home: 2, warehouse: 1, quarry: 0 } });
@@ -551,7 +555,9 @@ test("busy, uncertain and retry cooldown block claims while closing remains avai
 
 test("missing-navigation requirements remain honest text and landmarks offer actual restoration with home gates", () => {
   const html = renderUpgrade("quarry");
-  assert.match(html, /нужен ур. 2/);
+  assert.match(html, /data-building-requirement="home"/);
+  assert.match(html, /Нужен ур\. 2/);
+  assert.doesNotMatch(html, /aria-label="Дом Мохлика:[^"]*Открыть постройку/);
   assert.equal(disabled(button(html, "Начать обустройство")), true);
   for (const place of ["bridge", "lighthouse"]) {
     const landmark = render(place);
@@ -562,7 +568,7 @@ test("missing-navigation requirements remain honest text and landmarks offer act
     assert.match(upgrade, /Время восстановления/);
     assert.match(upgrade, /Новый маршрут/);
     assert.doesNotMatch(upgrade, /Следующий уровень постройки/);
-    assert.match(upgrade, new RegExp(`нужен ур. ${place === "bridge" ? 2 : 3}`));
+    assert.match(upgrade, new RegExp(`Нужен ур\\. ${place === "bridge" ? 2 : 3}`));
     assert.equal(disabled(button(upgrade, "Начать восстановление")), true);
   }
 });

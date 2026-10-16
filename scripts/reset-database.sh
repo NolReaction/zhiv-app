@@ -111,7 +111,7 @@ BEGIN
                 -- baseline plus later migrations, not an arbitrary history.
                 (ARRAY(SELECT h.version || ':' || h.type || ':' || h.success::text
                     FROM public.flyway_schema_history h ORDER BY h.installed_rank)
-                    = ARRAY['49:SQL_BASELINE:true','50:SQL:true','51:SQL:true','52:SQL:true','53:SQL:true','54:SQL:true','55:SQL:true','56:SQL:true']
+                    = ARRAY['49:SQL_BASELINE:true','50:SQL:true','51:SQL:true','52:SQL:true','53:SQL:true','54:SQL:true','55:SQL:true','56:SQL:true','57:SQL:true']
                     AND m.started_at BETWEEN migration_started_at AND clock_timestamp())
             )
         ) THEN

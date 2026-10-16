@@ -61,7 +61,7 @@ class EconomyPublicJobsTest {
     }
 
     @Test fun `a reveal marker distinguishes a genuine all river catch from an old masked snapshot`() {
-        val saved = job().let { it.copy(rewards = mapOf("fish" to 3L), fishing = it.fishing?.copy(fishId = "fish")) }
+        val saved = job().let { it.copy(rewards = mapOf("fish" to 3L), fishing = it.fishing?.copy(fishId = "fish"), rareDrop = null) }
         val hidden = EconomyPublicJobs.project(saved, now)
         val revealed = EconomyPublicJobs.project(saved, Instant.parse(saved.finishesAt))
         assertEquals(hidden.rewards, revealed.rewards)

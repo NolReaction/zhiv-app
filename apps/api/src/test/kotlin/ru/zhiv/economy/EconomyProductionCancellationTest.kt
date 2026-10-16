@@ -58,7 +58,8 @@ class EconomyProductionCancellationTest {
             saved.copy(kind = "exploration", targetId = "mine_stone", actorId = "miner") to "ECONOMY_CANCEL_KIND",
             saved.copy(targetId = "quarry") to "ECONOMY_CANCEL_KIND",
             saved.copy(targetId = "retired_station") to "ECONOMY_CANCEL_KIND",
-            saved.copy(collection = EconomyCollection("berry_harvest", 8, now.toString(), now.plusSeconds(8).toString())) to "ECONOMY_CANCEL_READY",
+            saved.copy(targetId = "garden", recipeId = "grow_berries", rewards = mapOf("berries" to 1L),
+                collection = EconomyCollection("berry_harvest", 8, now.toString(), now.plusSeconds(8).toString())) to "ECONOMY_CANCEL_READY",
         )
         for ((job, code) in variants) assertEquals(code, assertFailsWith<AuthFailure> {
             apply(started.copy(jobs = listOf(job)), "cancel_production", saved.id)

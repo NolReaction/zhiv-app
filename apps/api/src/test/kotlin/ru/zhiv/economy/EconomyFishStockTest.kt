@@ -145,7 +145,7 @@ class EconomyFishStockTest {
 
     @Test fun `legacy literal species refund is known while explicit empty proof remains unidentified`() {
         val species = common[1].itemId
-        val job = EconomyJob(UUID.randomUUID().toString(), "production", "campfire", "legacy_fish_recipe",
+        val job = EconomyJob(UUID.randomUUID().toString(), "production", "dryer", "legacy_fish_recipe",
             startedAt = now.toString(), finishesAt = now.plusSeconds(300).toString(), cost = EconomyCost(items = mapOf(species to 2L)))
         val initial = stock(emptyMap(), null).copy(jobs = listOf(job))
         val refunded = EconomyRules.apply(initial, command("cancel_production", job.id), now.plusSeconds(1)).first

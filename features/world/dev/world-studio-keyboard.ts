@@ -2,7 +2,7 @@ import type { WorldLightingEditorTool } from "./world-lighting-editor-store";
 
 export const WORLD_STUDIO_UI_EVENT = "world-studio:ui-command";
 export const WORLD_STUDIO_MAP_KEY_EVENT = "world-studio:map-key";
-export type WorldStudioUIAction = "rename" | "select-all" | "help" | "history" | "save" | "cancel-input";
+export type WorldStudioUIAction = "rename" | "select-all" | "help" | "history" | "save" | "search" | "cancel-input";
 export type WorldStudioUICommand = { action: WorldStudioUIAction; target?: EventTarget | null };
 export type WorldStudioKeyboardInput = Pick<KeyboardEvent, "key" | "code" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey" | "isComposing" | "target">;
 export type WorldStudioMapKeyRequest = { phase: "down" | "up" | "cancel"; input: WorldStudioKeyboardInput; handled: boolean };
@@ -52,6 +52,9 @@ export function createWorldStudioKeyboard(options: KeyboardOptions) {
       if (!state.enabled || input.isComposing) return false;
       const key = worldStudioKey(input), command = input.ctrlKey || input.metaKey;
       const { control, text } = controlTarget(input.target);
+      if (command && !input.altKey && key === "k") {
+        options.ui({ action: "search" }); return true;
+      }
       if (command && !input.altKey && key === "s") {
         control?.blur?.();
         options.store.commitGesture(); options.store.saveDraft(); options.ui({ action: "save" });

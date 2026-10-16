@@ -112,3 +112,12 @@ test("tools and focus still work while the map mounts asynchronously", () => {
   assert.equal(keyboard.down(key({ key: "а", code: "KeyF" })), true);
   assert.equal(calls.at(-1), "focus");
 });
+
+
+test("keyword search uses physical Ctrl/Cmd+K in either layout and can be reopened from text entry", () => {
+  for (const overrides of [{ key: "k", ctrlKey: true }, { key: "л", metaKey: true }, { key: "л", ctrlKey: true, target: field("INPUT", "search") }]) {
+    const { keyboard, calls } = rig();
+    assert.equal(keyboard.down(key({ code: "KeyK", ...overrides })), true);
+    assert.deepEqual(calls, ["ui:search"]);
+  }
+});

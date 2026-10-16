@@ -14,6 +14,7 @@ const { worldLightingEditorStore: store } = await vite.ssrLoadModule("/features/
 const { activateWorldLightingStudio, WorldLightingStudio, WorldLightingSourceInspector, focusLightingSelection } = await vite.ssrLoadModule("/features/world/dev/world-lighting-studio.tsx");
 const { WorldLightingEditor, WorldLightingReceiverInspector, previewLightingCasterLevel } = await vite.ssrLoadModule("/features/world/dev/world-lighting-editor.tsx");
 const { buildWorldStudioOutliner, filterWorldStudioOutliner, studioDefaultFolders, studioFolderAncestors, studioFolderOptions, studioVisibleObjects, studioSelectionRange } = await vite.ssrLoadModule("/features/world/dev/world-studio-outliner.ts");
+const { searchWorldStudioActions, studioSearchMatches, revealStudioSearchField } = await vite.ssrLoadModule("/features/world/dev/world-studio-search.ts");
 const { accountSceneLevels } = await vite.ssrLoadModule("/features/world/state/economy/economy-scene-state.ts");
 const { takeWorldLightingEditorFocus } = await vite.ssrLoadModule("/features/world/dev/world-lighting-editor-map.ts");
 const { claimWorldLightingStudio, releaseWorldLightingStudio, hasWorldLightingStudioOwner, takeWorldLightingStudioHandoff } = await vite.ssrLoadModule("/features/world/dev/world-lighting-studio-session.ts");
@@ -242,11 +243,12 @@ test("visible selection and Shift ranges follow expanded filtered rows and skip 
   assert.deepEqual(studioVisibleObjects([removed], new Set()), []);
 });
 
-test("undo and redo arrows name their next action instead of presenting unexplained icons", () => {
+test("compact undo and redo announce their next action through accessible names", () => {
   activateWorldLightingStudio(true); store.select("home-shadow-1"); store.patchSelected({ height: 76 });
   const label = store.getSnapshot().undoLabel; assert.ok(label);
   let html = markup(WorldLightingStudio, props());
-  assert.match(html, />Назад<small>/); assert.match(html, />Вперёд<small>/);
+  assert.match(html, />Назад<\/span>/); assert.match(html, />Вперёд<\/span>/);
+  assert.ok(html.includes(`aria-label="Отменить изменение: ${label}"`));
   assert.ok(html.includes(label)); assert.ok(html.includes("История")); assert.ok(html.includes("Клавиши · ?"));
   store.undo(); assert.equal(store.getSnapshot().redoLabel, label);
   html = markup(WorldLightingStudio, props()); assert.ok(html.includes(`Повторить изменение: ${label}`));
@@ -292,4 +294,44 @@ test("receiver inspector selects exclusion vertices and explains clipping of ove
   assert.match(html, /value="610"/); assert.match(html, /value="590"/);
   assert.match(html, /другая земля, перекрывающая это место/);
   assert.match(html, /вместе со всеми исключениями/);
+});
+
+
+test("semantic search finds light kinds after renaming and retains folder and multiword lookup", () => {
+  activateWorldLightingStudio(true);
+  const id = store.addLight({ x: 400, y: 500 }, "glow");
+  store.setElementMetadata("light", id, { studioName: "Тёплый уголок", studioFolder: "custom:Поляна/Дом" });
+  const roots = buildWorldStudioOutliner(store.getSnapshot(), WORLD_DEV_DEFAULTS.levels);
+  const matches = query => studioVisibleObjects(filterWorldStudioOutliner(roots, query, "all"), new Set(), true);
+  assert.deepEqual(matches("свечение").map(node => node.id), [id]);
+  assert.deepEqual(matches("дом яркость").filter(node => node.id === id).map(node => node.id), [id]);
+  assert.deepEqual(matches("уголок теплый").map(node => node.id), [id]);
+  assert.ok(matches("мерцание").every(node => node.kind === "light"));
+  assert.deepEqual(matches("несуществующий объект"), []);
+});
+
+test("search distinguishes property navigation, new source placement and selection requirements", () => {
+  const brightness = searchWorldStudioActions("яркость", null).find(action => action.id === "brightness");
+  assert.equal(brightness.disabled, true);
+  assert.equal(searchWorldStudioActions("яркость", "caster").find(action => action.id === "brightness").disabled, true);
+  assert.equal(searchWorldStudioActions("яркость", "light").find(action => action.id === "brightness").disabled, false);
+  assert.deepEqual(searchWorldStudioActions("свечение", null).find(action => action.id === "glow").target, { type: "create", kind: "glow" });
+  assert.deepEqual(searchWorldStudioActions("производительность", null).find(action => action.id === "quality").target, { type: "field", pane: "preview", field: "Качество" });
+  assert.equal(searchWorldStudioActions("откат", null).find(action => action.id === "history").target.pane, "history");
+  assert.equal(studioSearchMatches(" ТЁПЛЫЙ, уголок ", "Уголок · теплый"), true);
+  assert.deepEqual(searchWorldStudioActions(" ", "light"), []);
+});
+
+test("a search jump opens nested property sections before scrolling and focusing without editing", () => {
+  const calls = [], container = { querySelectorAll: () => [control] };
+  const outer = { tagName: "DETAILS", open: false, parentElement: container };
+  const inner = { tagName: "DETAILS", open: false, parentElement: outer };
+  const input = { focus: options => { assert.equal(inner.open, true); assert.equal(outer.open, true); calls.push(["focus", options]); } };
+  const control = { dataset: { studioField: "Мерцание" }, tagName: "DIV", parentElement: inner,
+    matches: () => false, querySelector: () => input, scrollIntoView: options => calls.push(["scroll", options]) };
+  assert.equal(revealStudioSearchField(container, "Мерцание"), true);
+  assert.deepEqual(calls, [["scroll", { block: "nearest", behavior: "auto" }], ["focus", { preventScroll: true }]]);
+  calls.length = 0;
+  assert.equal(revealStudioSearchField(container, "Неизвестное свойство"), false);
+  assert.deepEqual(calls, []);
 });

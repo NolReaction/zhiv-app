@@ -67,7 +67,8 @@ test("finished, collecting, nonproduction and quarry jobs cannot be cancelled th
     [{ kind: "exploration", targetId: "mine_stone", actorId: "miner" }, "ECONOMY_CANCEL_KIND"],
     [{ targetId: "quarry" }, "ECONOMY_CANCEL_KIND"],
     [{ targetId: "retired_station" }, "ECONOMY_CANCEL_KIND"],
-    [{ collection: { kind: "berry_harvest", seconds: 8, startedAt: new Date(now).toISOString(), finishesAt: new Date(now + 8000).toISOString() } }, "ECONOMY_CANCEL_READY"],
+    [{ targetId: "garden", recipeId: "grow_berries", rewards: { berries: 1 },
+      collection: { kind: "berry_harvest", seconds: 8, startedAt: new Date(now).toISOString(), finishesAt: new Date(now + 8000).toISOString() } }, "ECONOMY_CANCEL_READY"],
   ];
   for (const [patch, code] of variants) {
     row(p).state.jobs = [{ ...job, ...patch }];

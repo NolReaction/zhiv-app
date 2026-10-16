@@ -99,8 +99,8 @@ class JdbcAdminMigrationCompatibilityIntegrationTest {
             assertEquals(before, population(source)); assertEquals(base, history(source, "version::integer<=49"))
             assertEquals(revisions.mapValues { it.value + 1 }, economyRevisions(source), "V55 advances each profile exactly once")
             assertEquals(adminHistory, installedAdminHistory(source), "Only version and script may change in historical admin rows")
-            assertEquals("56", scalar(source, "SELECT max(version::integer)::text FROM flyway_schema_history"))
-            assertEquals("V56__independent_miner_notification_readiness.sql", scalar(source,
+            assertEquals("57", scalar(source, "SELECT max(version::integer)::text FROM flyway_schema_history"))
+            assertEquals("V57__garden_collection_ledger_context.sql", scalar(source,
                 "SELECT script FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             assertEquals("3", scalar(source, "SELECT count(*) FROM flyway_schema_history WHERE version IN ('50','51','52') AND success"))
             val after = history(source)
@@ -161,13 +161,13 @@ class JdbcAdminMigrationCompatibilityIntegrationTest {
         }
     }
 
-    @Test fun `canonical notification V50 history is a no-op and migrates normally to V56`() {
+    @Test fun `canonical notification V50 history is a no-op and migrates normally to V57`() {
         DatabaseFactory.create(config()).use { source ->
             Flyway.configure().dataSource(source).locations("classpath:db/migration").target("50").load().migrate()
             val before = history(source)
             assertFalse(normalizeLegacyAdminMigrationHistory(source)); assertEquals(before, history(source))
             migrateWithLegacyAdminHistory(source)
-            assertEquals("56", scalar(source, "SELECT max(version::integer)::text FROM flyway_schema_history"))
+            assertEquals("57", scalar(source, "SELECT max(version::integer)::text FROM flyway_schema_history"))
             val after = history(source)
             assertFalse(normalizeLegacyAdminMigrationHistory(source)); assertEquals(after, history(source))
         }
@@ -176,7 +176,7 @@ class JdbcAdminMigrationCompatibilityIntegrationTest {
     @Test fun `fresh baseline and subsequent canonical migrations need no history normalization`() {
         DatabaseFactory.create(config()).use { source ->
             migrateWithLegacyAdminHistory(source)
-            assertEquals("8", scalar(source, "SELECT count(*) FROM flyway_schema_history"))
+            assertEquals("9", scalar(source, "SELECT count(*) FROM flyway_schema_history"))
             assertEquals("B49__current_schema.sql", scalar(source,
                 "SELECT script FROM flyway_schema_history WHERE type='SQL_BASELINE'"))
             val before = history(source)

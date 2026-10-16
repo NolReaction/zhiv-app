@@ -22,7 +22,11 @@ export function WorldStudioMetadata({ kind, element, automaticName, levels = {} 
     const command = (event: Event) => {
       const detail = (event as CustomEvent).detail, target = detail?.target;
       if (detail?.action === "rename" && !nameInput.current?.disabled && !nameInput.current?.closest("fieldset:disabled")) {
-        requestAnimationFrame(() => { nameInput.current?.focus(); nameInput.current?.select(); }); return;
+        requestAnimationFrame(() => {
+          let parent = nameInput.current?.parentElement;
+          while (parent) { if (parent.tagName === "DETAILS") (parent as HTMLDetailsElement).open = true; parent = parent.parentElement; }
+          nameInput.current?.focus(); nameInput.current?.select();
+        }); return;
       }
       if (detail?.action !== "cancel-input") return;
       if (target === nameInput.current) { pendingName.current = null; setNameEntry(null); nameInput.current?.blur(); }

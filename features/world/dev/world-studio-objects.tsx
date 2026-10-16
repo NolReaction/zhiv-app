@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, Eye, EyeOff, Folder, Lightbulb, Lock, LockOp
 import { worldLightingEditorStore, type WorldLightingEditorSnapshot, type WorldLightingElementSelection } from "./world-lighting-editor-store";
 import { requestWorldLightingEditorFocus, requestWorldStudioCreate } from "./world-lighting-editor-map";
 import { WORLD_STUDIO_UI_EVENT } from "./world-studio-keyboard";
+import { searchWorldStudioActions, type StudioSearchTarget } from "./world-studio-search";
 import { buildWorldStudioOutliner, filterWorldStudioOutliner, studioDefaultFolders, studioFolderAncestors, studioFolderOptions, studioSelectionRange, studioVisibleObjects, type StudioNode, type StudioObject, type StudioObjectFilter } from "./world-studio-outliner";
 import styles from "./world-lighting-studio.module.css";
 
@@ -77,16 +78,21 @@ function StudioBatchActions({ snapshot, roots }: { snapshot: WorldLightingEditor
   </section>;
 }
 
-export function WorldStudioObjects({ levels, onSelect }: { levels: Readonly<Record<string, number>>; onSelect: () => void }) {
+export function WorldStudioObjects({ levels, onSelect, onNavigate, searchRequest = 0 }: { levels: Readonly<Record<string, number>>; onSelect: () => void; onNavigate?: (target: StudioSearchTarget) => void; searchRequest?: number }) {
   const snapshot = useSyncExternalStore(worldLightingEditorStore.subscribe, worldLightingEditorStore.getSnapshot, worldLightingEditorStore.getServerSnapshot);
   const { casters, receivers, lights, dirtyIds, dirtyLightIds, dirtyReceiverIds, deletedCasters, deletedReceivers } = snapshot;
   const roots = useMemo(() => buildWorldStudioOutliner({ casters, receivers, lights, dirtyIds, dirtyLightIds, dirtyReceiverIds, deletedCasters, deletedReceivers }, levels), [casters, receivers, lights, dirtyIds, dirtyLightIds, dirtyReceiverIds, deletedCasters, deletedReceivers, levels]);
   const [query, setQuery] = useState(""), [filter, setFilter] = useState<StudioObjectFilter>("all");
   const [expanded, setExpanded] = useState(() => new Set(studioDefaultFolders(roots)));
   const [dragged, setDragged] = useState<StudioObject | null>(null), [dropTarget, setDropTarget] = useState<string | null>(null);
-  const list = useRef<HTMLDivElement>(null), addMenu = useRef<HTMLDetailsElement>(null), rangeAnchor = useRef<WorldLightingElementSelection | null>(null);
+  const list = useRef<HTMLDivElement>(null), searchInput = useRef<HTMLInputElement>(null), addMenu = useRef<HTMLDetailsElement>(null), rangeAnchor = useRef<WorldLightingElementSelection | null>(null);
+  const searchActions = searchWorldStudioActions(query, snapshot.selectedId ? snapshot.selectedKind : null);
   const filtered = useMemo(() => filterWorldStudioOutliner(roots, query, filter), [roots, query, filter]);
   const visible = useMemo(() => studioVisibleObjects(filtered, expanded, Boolean(query.trim())), [filtered, expanded, query]);
+  useEffect(() => {
+    // The parent first reveals its collapsed/mobile pane in the same React commit.
+    if (searchRequest) { searchInput.current?.focus(); searchInput.current?.select(); }
+  }, [searchRequest]);
   useEffect(() => {
     const selectionMetadata = (state: WorldLightingEditorSnapshot) => {
       const element = (state.selectedKind === "light" ? state.lights : state.selectedKind === "receiver" ? state.receivers : state.casters).find(item => item.id === state.selectedId);
@@ -105,7 +111,8 @@ export function WorldStudioObjects({ levels, onSelect }: { levels: Readonly<Reco
   }, [levels]);
   useEffect(() => {
     const command = (event: Event) => {
-      if ((event as CustomEvent).detail?.action === "select-all") worldLightingEditorStore.selectElements(visible);
+      const action = (event as CustomEvent).detail?.action;
+      if (action === "select-all") worldLightingEditorStore.selectElements(visible);
     };
     window.addEventListener(WORLD_STUDIO_UI_EVENT, command);
     return () => window.removeEventListener(WORLD_STUDIO_UI_EVENT, command);
@@ -146,13 +153,15 @@ export function WorldStudioObjects({ levels, onSelect }: { levels: Readonly<Reco
   };
   return <div className={styles.outlinerContent}>
     <div className={styles.outlinerControls}>
-      <label className={styles.search}><Search size={15} aria-hidden /><input type="search" aria-label="Найти объект или источник" placeholder="Поиск по имени, папке или ID" value={query} onChange={event => setQuery(event.target.value)} /></label>
+      <label className={styles.search}><Search size={15} aria-hidden /><input ref={searchInput} type="search" aria-label="Найти объект или источник" placeholder="Свет, тени, яркость…" title="Объекты, настройки и действия · Ctrl/Cmd+K" value={query} onChange={event => setQuery(event.target.value)} /></label>
       <div className={styles.filters}>{([["all", "Все"], ["casters", "Объёмы"], ["lights", "Свет"], ["receivers", "Земля"], ["changed", "Правки"]] as const).map(([id, label]) => <button type="button" key={id} aria-pressed={filter === id} onClick={() => setFilter(id)}>{label}</button>)}</div>
-      <div className={styles.folderActions}><button type="button" disabled={!snapshot.selectedId} onClick={revealSelection}>Показать выбранное</button><button type="button" onClick={() => setExpanded(new Set(folderIds(roots)))}>Раскрыть всё</button><button type="button" onClick={() => setExpanded(new Set())}>Свернуть всё</button><button type="button" disabled={!visible.length} onClick={() => worldLightingEditorStore.selectElements(visible)}>Выделить видимые</button></div>
-      <details className={styles.selectionHelp}><summary>Выбор и перенос</summary><p>Ctrl/Cmd добавляет элемент, Shift выбирает диапазон. На телефоне используйте флажки. Ctrl/Cmd+A выбирает видимые строки. Двойной щелчок находит элемент на карте. Перетащите выбранное на папку.</p><p>Глаз скрывает только разметку, замок защищает от правок. Свет и рисунки на карте сохраняются. Эти настройки запоминаются в браузере.</p></details>
+      <details className={styles.organize}><summary>Папки и выделение</summary><div className={styles.folderActions}><button type="button" disabled={!snapshot.selectedId} onClick={revealSelection}>Показать выбранное</button><button type="button" onClick={() => setExpanded(new Set(folderIds(roots)))}>Раскрыть всё</button><button type="button" onClick={() => setExpanded(new Set())}>Свернуть всё</button><button type="button" disabled={!visible.length} onClick={() => worldLightingEditorStore.selectElements(visible)}>Выделить видимые</button></div><details className={styles.selectionHelp}><summary>Выбор и перенос</summary><p>Ctrl/Cmd добавляет элемент, Shift выбирает диапазон. На телефоне используйте флажки. Ctrl/Cmd+A выбирает видимые строки. Двойной щелчок находит элемент на карте. Перетащите выбранное на папку.</p><p>Глаз скрывает только разметку, замок защищает от правок. Свет и рисунки на карте сохраняются. Эти настройки запоминаются в браузере.</p></details></details>
     </div>
     <StudioBatchActions snapshot={snapshot} roots={roots} />
-    <div ref={list} className={styles.outlinerScroll} data-studio-outliner-scroll><StudioTree nodes={filtered} expanded={expanded} searching={Boolean(query.trim())} snapshot={snapshot} toggle={id => setExpanded(previous => { const next = new Set(previous); if (next.has(id)) next.delete(id); else next.add(id); return next; })} select={select} focus={focus} dragged={dragged} dropTarget={dropTarget} setDragged={setDragged} setDropTarget={setDropTarget} move={move} />{!filtered.length && <p className={styles.notice}>Ничего не найдено.</p>}</div>
+    <div ref={list} className={styles.outlinerScroll} data-studio-outliner-scroll>
+      {onNavigate && searchActions.length > 0 && <section className={styles.searchActions} aria-label="Настройки и действия"><h4>Настройки и действия</h4>{searchActions.map(action => <button key={action.id} type="button" disabled={action.disabled || !snapshot.previewDraft && (action.target.type === "create" || action.target.type === "tool")} onClick={() => onNavigate(action.target)}><span>{action.label}<small>{action.disabled ? `Сначала выберите ${action.target.type === "field" && action.target.kind === "light" ? "источник света" : action.target.type === "field" && action.target.kind === "receiver" ? "поверхность земли" : "объём тени"}` : action.detail}</small></span><ChevronRight size={13} aria-hidden /></button>)}</section>}
+      {query.trim() && filtered.length > 0 && <h4 className={styles.searchHeading}>Объекты</h4>}<StudioTree nodes={filtered} expanded={expanded} searching={Boolean(query.trim())} snapshot={snapshot} toggle={id => setExpanded(previous => { const next = new Set(previous); if (next.has(id)) next.delete(id); else next.add(id); return next; })} select={select} focus={focus} dragged={dragged} dropTarget={dropTarget} setDragged={setDragged} setDropTarget={setDropTarget} move={move} />{!filtered.length && (!onNavigate || !searchActions.length) && <p className={styles.notice}>Ничего не найдено. Попробуйте «свечение», «тень» или имя объекта.</p>}
+    </div>
     <details ref={addMenu} className={styles.presets}><summary>Добавить элемент</summary><div>
       <button type="button" disabled={!snapshot.previewDraft} onClick={() => { requestWorldStudioCreate("caster"); if (addMenu.current) addMenu.current.open = false; }}>Объём тени</button>
       <button type="button" disabled={!snapshot.previewDraft} onClick={() => { requestWorldStudioCreate("receiver"); if (addMenu.current) addMenu.current.open = false; }}>Поверхность земли</button>

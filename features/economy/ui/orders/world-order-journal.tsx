@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { BookOpen, Check, RefreshCw } from "lucide-react";
+import { Check, Leaf, Mail, RefreshCw } from "lucide-react";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import { number } from "@/features/economy/ui/shared/world-economy-parts";
 import { ResidentOrderBoard, type OrderNavigation } from "./world-resident-order-board";
@@ -27,10 +27,10 @@ export function WorldOrderJournal({ economy, residentId, ...navigation }: WorldO
   </div>;
   return <div className={styles.journal} data-order-journal data-section-guide-content="orders" aria-busy={economy.busy || undefined}>
     <header className={styles.cover}>
-      <span className={styles.emblem} aria-hidden="true"><BookOpen size={27} strokeWidth={1.5} /></span>
+      <span className={styles.emblem} aria-hidden="true"><Mail size={27} strokeWidth={1.5} /><Leaf className={styles.leaf} size={16} strokeWidth={1.5} /></span>
       <div className={styles.coverTitle}><p>Лесная почта</p><h2>{customer === "plesk" ? "Просьбы Плёски" : customer === "builder" ? "Просьбы Шишколапа" : "Все просьбы"}</h2></div>
       {state?.catalog.food && <div className={styles.status} data-order-journal-summary aria-label={`Можно сдать: ${summary.ready}. Всего заказов: ${summary.total}.`}>
-        <strong><Check size={14} aria-hidden="true" />{number(summary.ready)} <span>готово</span></strong><small>из {number(summary.total)} заказов</small>
+        <strong><Check size={13} aria-hidden="true" />{number(summary.ready)} <span>готово</span></strong><small>из {number(summary.total)} заказов</small>
       </div>}
     </header>
     {recovery}

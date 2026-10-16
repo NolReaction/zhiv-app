@@ -4,7 +4,7 @@ import { useId, useRef, useState, type ReactNode } from "react";
 import { ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
 import styles from "./world-upgrade-dialog.module.css";
 
-export type UpgradeBenefitCard = { id: string; label: string; content: ReactNode };
+export type UpgradeBenefitCard = { id: string; label: string; content: ReactNode; details?: ReactNode };
 
 /** Native scrolling keeps touch, trackpad and keyboard navigation on the same cards. */
 export function UpgradeBenefitCarousel({ cards, onCardChange }: { cards: UpgradeBenefitCard[]; onCardChange: (id: string) => void }) {
@@ -29,7 +29,7 @@ export function UpgradeBenefitCarousel({ cards, onCardChange }: { cards: Upgrade
     if (nearest !== active) { setActive(nearest); onCardChange(cards[nearest].id); }
   };
 
-  return <section className={`${styles.section} ${styles.benefits}`} aria-label="Что изменится">
+  return <><section className={`${styles.section} ${styles.benefits}`} aria-label="Что изменится">
     <div className={styles.benefitHeading}>
       <h3 id={`${id}-heading`}><Sparkles size={15} aria-hidden="true" />После улучшения</h3>
       {multiple && <div className={styles.benefitNavigation}>
@@ -55,5 +55,5 @@ export function UpgradeBenefitCarousel({ cards, onCardChange }: { cards: Upgrade
         onFocusCapture={event => { if (index !== active && event.target.matches(":focus-visible")) moveTo(index, false); }}
         onClickCapture={() => { if (index !== active) moveTo(index); }}>{card.content}</div>)}
     </div>
-  </section>;
+  </section>{cards[active]?.details && <section aria-label={`Подробнее: ${cards[active].label}`}>{cards[active].details}</section>}</>;
 }

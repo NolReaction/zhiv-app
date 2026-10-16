@@ -51,7 +51,7 @@ test("warehouse expansion respects its authored home tier without extra building
   const locked = render("warehouse", { snapshot: state({ buildings: { home: 1, warehouse: 1 },
     inventory: { ...first.cost.items }, wallet: { coins: first.cost.coins, pearls: 0 } }) });
   assert.match(locked, /aria-label="Недостающие условия"/);
-  assert.match(text(locked), /Дом Мохлика 1\/2/);
+  assert.match(text(locked), /Дом Мохлика Сейчас ур\. 1 Нужен ур\. 2/);
   assert.match(buttons(locked).find(button => /Улучшить до ур\. 2/.test(button.text)).attributes, /disabled/);
 });
 
@@ -240,7 +240,8 @@ test("home previews each opportunity in a labelled carousel without hiding the a
   assert.doesNotMatch(html, /data-upgrade-benefit="route:cave"|data-upgrade-benefit="route:quarry_stone_overnight"/);
   assert.match(buttons(html).find(button => /aria-label="Предыдущая возможность"/.test(button.attributes)).attributes, /disabled/);
   assert.doesNotMatch(buttons(html).find(button => /aria-label="Следующая возможность"/.test(button.attributes)).attributes, /disabled/);
-  assert.match(text(html), /Мост на дальний берег 0\/1/);
+  assert.match(text(html), /Торговля Рынок между игроками Покупайте материалы и продавайте свои запасы\. Ещё условия/);
+  assert.doesNotMatch(html, /aria-label="Подробнее: Рынок между игроками"/, "only the currently viewed opportunity expands its prerequisites");
   assert.doesNotMatch(text(html), /Нужно завершить вылазок/);
   assert.doesNotMatch(html, /Развитие хозяйства|Новых рецептов|Выплавить железо/);
 });
@@ -264,9 +265,11 @@ test("every next home tier previews its new berry and dish with the real station
 test("mine route cards retain actual yields, times and the additional home requirements", () => {
   const html = render("quarry", { snapshot: state({ buildings: { home: 1, warehouse: 1 } }) });
   for (const id of ["cave", "deep_cave", "quarry_stone", "quarry_stone_overnight"]) assert.ok(html.includes(`data-upgrade-benefit="route:${id}"`));
-  assert.match(text(html), /Новая добыча · 1 ч Вход в пещеру Камень ×8 Железная руда ×4 Ещё потребуется Дом Мохлика 1\/3/);
-  assert.match(text(html), /Новая добыча · 4 ч Глубокий проход Камень ×30 Железная руда ×15 Ещё потребуется Дом Мохлика 1\/3/);
-  assert.match(text(html), /Новая добыча · 3 мин Добыть камень Камень ×1 Ещё потребуется Дом Мохлика 1\/2/);
+  assert.match(text(html), /Новая добыча · 1 ч Вход в пещеру Камень ×8 Железная руда ×4 Ещё условия/);
+  assert.match(text(html), /Новая добыча · 4 ч Глубокий проход Камень ×30 Железная руда ×15 Ещё условия/);
+  assert.match(text(html), /Новая добыча · 3 мин Добыть камень Камень ×1 Ещё условия/);
+  assert.match(html, /aria-label="Подробнее: Вход в пещеру"/);
+  assert.match(text(html), /Для этой добычи Дом Мохлика Сейчас ур\. 1 Нужен ур\. 3/);
   assert.match(text(html), /Шахта работает независимо от Мохлика/);
   assert.match(html, /data-item-icon="stone"/);
 });

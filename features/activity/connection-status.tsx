@@ -27,6 +27,13 @@ const serverBrowserAvailable = () => false;
 /** A single movable host keeps both the indicator and its details inside the active focus scope. */
 export function connectConnectionStatusHost(host: HTMLElement, fallback: HTMLElement, onMove: () => void) {
   const document = host.ownerDocument;
+  // Keep the DOM inside Radix's active focus scope, but paint in the browser's
+  // top layer so transformed/clipped sheets cannot move the viewport indicator.
+  const topLayer = typeof host.showPopover === "function";
+  if (topLayer) {
+    host.setAttribute("popover", "manual");
+    host.setAttribute("data-connection-layer", "");
+  }
   let disposed = false, blocked = false;
   const place = () => {
     if (disposed) return;
@@ -41,6 +48,7 @@ export function connectConnectionStatusHost(host: HTMLElement, fallback: HTMLEle
       target.appendChild(host);
       if (moving) onMove();
     }
+    if (topLayer && host.isConnected && !host.matches(":popover-open")) host.showPopover();
   };
   place();
   // The host moves in the DOM, not the React tree. Radix's non-bubbling outside
@@ -59,6 +67,7 @@ export function connectConnectionStatusHost(host: HTMLElement, fallback: HTMLEle
     disposed = true; observer?.disconnect();
     host.removeEventListener("dismissableLayer.pointerDownOutside", keepInside, true);
     host.removeEventListener("dismissableLayer.focusOutside", keepInside, true);
+    if (topLayer && host.matches(":popover-open")) host.hidePopover();
     host.remove();
   };
 }
@@ -97,10 +106,18 @@ export function ConnectionStatus(props: ConnectionStatusProps) {
     return () => clearTimeout(timeout);
   }, [display]);
   const visible = transportIssue || hasPending && display.visible;
+  const interactive = !portalHost || typeof portalHost.showPopover === "function";
   useEffect(() => {
     if (!visible || !portalHost || !fallback.current) return;
+    // Older WebViews cannot escape a transformed/clipped modal. Keep their
+    // passive status in the viewport; automatic reconnection remains owned by
+    // the activity controller, without introducing an outside-focus control.
+    if (!interactive) {
+      portalHost.ownerDocument.body.appendChild(portalHost);
+      return () => { portalHost.remove(); };
+    }
     return connectConnectionStatusHost(portalHost, fallback.current, () => { restoreFocus.current = false; setOpen(false); });
-  }, [portalHost, visible]);
+  }, [interactive, portalHost, visible]);
   if (!visible) { if (open) setOpen(false); return null; }
   const label = !online ? "Нет связи" : reconnecting ? "Восстанавливаем связь" : count > 0 ? `Ожидают подтверждения: ${count}` : pending ? "Действие ждёт подтверждения" : "Нужно проверить соединение";
   const disabled = !online || reconnecting || busy || retrying || retrySeconds > 0;
@@ -115,14 +132,16 @@ export function ConnectionStatus(props: ConnectionStatusProps) {
     finally { requested.current = false; if (mounted.current) setRetrying(false); }
   }
   const content = <>
-    <span className={`${styles.anchor} ${className ?? ""}`} data-connection-status data-online={online} data-connection-pending={pending || count > 0 || undefined}>
-      <Popover.Trigger asChild><button ref={trigger} type="button" className={styles.indicator} aria-label={label} title={label}
-        data-connection-toggle data-unstable={!online || reconnecting || Boolean(error) || undefined}>
-        <Icon size={19} aria-hidden="true" />{count > 0 && <span className={styles.count} aria-hidden="true">{count > 9 ? "9+" : count}</span>}
-      </button></Popover.Trigger>
-      <span className={styles.srOnly} role="status" aria-live="polite">{label}</span>
+    <span className={`${styles.anchor} ${className ?? ""}`} aria-live="polite" data-connection-status data-online={online} data-connection-pending={pending || count > 0 || undefined}>
+      {interactive ? <Popover.Trigger asChild><button ref={trigger} type="button" className={styles.indicator} aria-label={label} title={label}
+        data-connection-toggle data-unstable={transportIssue || hasPending || undefined}>
+        <Icon size={25} aria-hidden="true" />{count > 0 && <span className={styles.count} aria-hidden="true">{count > 9 ? "9+" : count}</span>}
+      </button></Popover.Trigger> : <span className={styles.indicator} data-connection-passive data-passive data-unstable role="img" aria-label={label}>
+        <Icon size={25} aria-hidden="true" />{count > 0 && <span className={styles.count} aria-hidden="true">{count > 9 ? "9+" : count}</span>}
+      </span>}
+      <span className={styles.srOnly}>{label}</span>
     </span>
-    {open && <Popover.Portal container={portalHost ?? undefined}><Popover.Content className={styles.details} side="bottom" align="end" sideOffset={7} collisionPadding={12}
+    {open && interactive && <Popover.Portal container={portalHost ?? undefined}><Popover.Content className={styles.details} side="bottom" align="center" sideOffset={10} collisionPadding={12}
       aria-labelledby={titleId} data-connection-details onEscapeKeyDown={event => event.stopPropagation()}
       onPointerDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()}
       onCloseAutoFocus={event => { event.preventDefault(); if (restoreFocus.current && trigger.current?.isConnected && !trigger.current.closest("[inert], [aria-hidden=\"true\"]")) trigger.current.focus({ preventScroll: true }); }}>

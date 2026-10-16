@@ -38,7 +38,7 @@ const deferred = () => { let resolve; const promise = new Promise(done => { reso
 const tick = () => new Promise(resolve => setImmediate(resolve));
 function activity(patch = {}) { return { mode: "away", online: true, active: false, resumeRequired: false, retrySeconds: 0, error: null, resume() { assert.fail("opening a pause notice must not resume"); }, retry() { assert.fail("opening a pause notice must not retry"); }, ...patch }; }
 
-function connectionDOM({ observer = true } = {}) {
+function connectionDOM({ observer = true, popover = false } = {}) {
   const observers = [], document = {};
   class Element {
     constructor(attributes = {}) { this.nodeType = 1; this.ownerDocument = document; this.attributes = new Map(Object.entries(attributes)); this.children = []; this.parentElement = null; this.rects = [{}]; this.visibility = "visible"; this.listeners = new Map(); }
@@ -46,13 +46,17 @@ function connectionDOM({ observer = true } = {}) {
     setAttribute(key, value) { this.attributes.set(key, String(value)); }
     removeAttribute(key) { this.attributes.delete(key); }
     getClientRects() { return this.rects; }
-    matches(selector) { return selector.split(",").some(part => [...part.matchAll(/\[([^=\]]+)(?:="([^"]*)")?\]/g)].every(([, name, value]) => this.attributes.has(name) && (value === undefined || this.attributes.get(name) === value))); }
+    matches(selector) { if (selector === ":popover-open") return this.popoverOpen === true; return selector.split(",").some(part => [...part.matchAll(/\[([^=\]]+)(?:="([^"]*)")?\]/g)].every(([, name, value]) => this.attributes.has(name) && (value === undefined || this.attributes.get(name) === value))); }
     closest(selector) { return this.matches(selector) ? this : this.parentElement?.closest(selector) ?? null; }
     contains(node) { for (; node; node = node.parentElement) if (node === this) return true; return false; }
     appendChild(child) { child.remove(); this.children.push(child); child.parentElement = this; return child; }
     remove() { if (this.parentElement) this.parentElement.children = this.parentElement.children.filter(child => child !== this); this.parentElement = null; }
     addEventListener(name, callback, capture) { this.listeners.set(name, { callback, capture }); }
     removeEventListener(name, callback, capture) { const entry = this.listeners.get(name); if (entry?.callback === callback && entry.capture === capture) this.listeners.delete(name); }
+  }
+  if (popover) {
+    Element.prototype.showPopover = function () { assert.equal(this.isConnected, true); this.popoverOpen = true; this.popoverShows = (this.popoverShows ?? 0) + 1; };
+    Element.prototype.hidePopover = function () { this.popoverOpen = false; this.popoverHides = (this.popoverHides ?? 0) + 1; };
   }
   document.body = new Element(); document.createElement = () => new Element();
   document.querySelectorAll = selector => { const result = []; const visit = node => { if (node.matches(selector)) result.push(node); node.children.forEach(visit); }; document.body.children.forEach(visit); return result; };
@@ -154,7 +158,7 @@ test("real unconfirmed work becomes visible after its delay and growing the same
   t.mock.timers.tick(100); const view = render(ConnectionStatus, props);
   assert.equal(view.tree.props.open, false); assert.match(attr(view, "data-connection-toggle").props["aria-label"], /13/);
   assert.match(text(view.tree), /9\+/); assert.equal(attr(view, "data-connection-status").props["data-connection-pending"], true);
-  assert.equal(attr(view, "data-connection-toggle").props["data-unstable"], undefined);
+  assert.equal(attr(view, "data-connection-toggle").props["data-unstable"], true);
 });
 
 test("a later pending batch gets a fresh delay while offline pending remains visible after connection recovery", t => {
@@ -206,9 +210,21 @@ test("compact overlays leave the scene visible and network animations honor redu
   const gate = await readFile(new URL("../features/activity/activity.module.css", import.meta.url), "utf8");
   const status = await readFile(new URL("../features/activity/connection-status.module.css", import.meta.url), "utf8");
   assert.match(gate, /width:min\(320px/); assert.doesNotMatch(gate, /blur\(/); assert.match(gate, /background:rgb\(8 18 12 \/ 14%\)/);
-  assert.match(status, /safe-area-inset-top/); assert.match(status, /connection-pulse/);
+  assert.match(status, /top:50%; left:50%; transform:translate\(-50%,-50%\)/); assert.match(status, /background:#f1ebdb9c/); assert.match(status, /connection-pulse/);
   assert.match(status, /prefers-reduced-motion:reduce[^}]*animation:none/);
   assert.match(gate, /prefers-reduced-motion:reduce[^}]*animation:none/);
+});
+
+test("the centered network indicator uses the top layer while retaining modal focus ownership", () => {
+  const dom = connectionDOM({ popover: true }), fallback = dom.append(), host = dom.document.createElement("span"), outer = dom.dialog();
+  const stop = connectConnectionStatusHost(host, fallback, () => {});
+  assert.equal(host.parentElement, outer); assert.equal(host.attributes.get("popover"), "manual");
+  assert.equal(host.attributes.has("data-connection-layer"), true); assert.equal(host.popoverOpen, true); assert.equal(host.popoverShows, 1);
+  dom.observers[0].deliver(); assert.equal(host.popoverShows, 1, "ordinary DOM mutations do not reopen the indicator");
+  const nested = dom.dialog(); outer.setAttribute("aria-hidden", "true"); host.popoverOpen = false;
+  dom.observers[0].deliver(); assert.equal(host.parentElement, nested); assert.equal(host.popoverOpen, true); assert.equal(host.popoverShows, 2);
+  stop(); assert.equal(host.popoverOpen, false); assert.equal(host.popoverHides, 1); assert.equal(host.parentElement, null);
+  dom.observers[0].deliver(); assert.equal(host.popoverShows, 2);
 });
 
 
@@ -281,7 +297,7 @@ test("Radix outside events from the moved indicator cannot dismiss its modal whi
 });
 
 test("indicator and details share one browser host; modal moves close details without retry or later automatic reopening", () => {
-  hooks.reset(); const previous = globalThis.document, dom = connectionDOM(), fallback = dom.append(), outer = dom.dialog(), calls = [];
+  hooks.reset(); const previous = globalThis.document, dom = connectionDOM({ popover: true }), fallback = dom.append(), outer = dom.dialog(), calls = [];
   globalThis.document = dom.document;
   try {
     const props = { online: false, onRetry() { calls.push("retry"); } };
@@ -298,5 +314,20 @@ test("indicator and details share one browser host; modal moves close details wi
     assert.deepEqual(calls, []); props.online = true; assert.equal(render(ConnectionStatus, props).tree, null);
     assert.equal(host.parentElement, null); assert.equal(dom.observers[0].disconnected, true);
     props.online = false; view = draw(); assert.equal(view.tree.props.open, false); assert.equal(attr(view, "data-connection-details"), undefined); assert.deepEqual(calls, []);
+  } finally { hooks.reset(); if (previous === undefined) delete globalThis.document; else globalThis.document = previous; }
+});
+
+test("a browser without top-layer popovers gets one passive viewport status without an outside-modal focus target", () => {
+  hooks.reset(); const previous = globalThis.document, dom = connectionDOM(), fallback = dom.append(), outer = dom.dialog();
+  globalThis.document = dom.document;
+  try {
+    const props = { online: false, onRetry() { assert.fail("passive fallback cannot send a retry"); } };
+    const draw = () => render(ConnectionStatus, props, tree => { attr({ nodes: nodes(tree) }, "data-connection-placement").props.ref.current = fallback; });
+    const view = draw(), host = dom.document.body.children.find(node => node.attributes.has("data-connection-status-host"));
+    assert.ok(host); assert.equal(host.parentElement, dom.document.body); assert.equal(outer.children.length, 0);
+    assert.equal(attr(view, "data-connection-passive").props.role, "img");
+    assert.equal(attr(view, "data-connection-status").props["aria-live"], "polite");
+    assert.equal(attr(view, "data-connection-toggle"), undefined); assert.equal(view.nodes.some(node => node.type === "button"), false);
+    props.online = true; assert.equal(render(ConnectionStatus, props).tree, null); assert.equal(host.parentElement, null);
   } finally { hooks.reset(); if (previous === undefined) delete globalThis.document; else globalThis.document = previous; }
 });

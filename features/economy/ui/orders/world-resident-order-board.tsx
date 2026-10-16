@@ -3,7 +3,7 @@
 import { fishClassForItem } from "@/features/economy/domain/fishing";
 
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
-import { Check, ClipboardList, Clock3, RefreshCw, X } from "lucide-react";
+import { Check, ClipboardList, Clock3, Fish, Hammer, Mail, RefreshCw, X } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
 import { BuilderPortrait } from "@/features/world/characters/builder/builder-portrait";
 import { PleskPortrait } from "@/features/world/characters/plesk/plesk-portrait";
@@ -145,27 +145,33 @@ export function ResidentOrderCard({ economy, offer, onComplete, onReplace, confi
     return (onComplete ? onComplete(active, selection) : selection ? economy.act("complete_resident_order", active.id, 1, 0, selection)
       : economy.act("complete_resident_order", active.id, 1, 0)) !== false;
   };
-  return <article className={styles.order} data-order-id={offer.id} data-resident={offer.residentId} data-tutorial-order={tutorial || undefined} data-stage-order={stageOrder || undefined} data-order-ready={orderOfferReady(state, offer, economy.now) || undefined}>
+  return <article className={styles.order} data-order-letter data-order-id={offer.id} data-resident={offer.residentId} data-tutorial-order={tutorial || undefined} data-stage-order={stageOrder || undefined} data-order-ready={orderOfferReady(state, offer, economy.now) || undefined}>
     {tutorial && <p className={styles.tutorialLabel}>Учебный заказ · {practice.version === 2 ? `${practice.step + 1} / 4` : "один раз"}</p>}
     {stageOrder && <p className={styles.tutorialLabel}>К дому {(state.buildings.home ?? 2) + 1} · {stage.step + 1} / {stageTotal}</p>}
-    <header className={styles.heading}>
-      <resident.Portrait className={styles.portrait} />
-      <div className={styles.title}><span>{resident.name}</span><h3>{offer.name}</h3></div>
-      <strong className={styles.payout} data-guide-order-reward aria-label={`Награда: ${number(offer.coins)} монет`}><ItemIcon itemId="coins" size={19} />{number(offer.coins)}</strong>
-    </header>
-    {orderOfferReady(state, offer, economy.now) && <p className={styles.ready}><Check size={13} aria-hidden="true" />Можно сдать</p>}
-    {offer.description && <p className={styles.description}>{offer.description}</p>}
-    {requiredBuildings.length > 0 && <ul className={styles.ingredients} aria-label="Условия поставки">{requiredBuildings.map(([id, level]) => <li key={id} data-missing><div><span>{state.catalog.buildings.find(building => building.id === id)?.name ?? id} · нужен ур. {level}</span>{navigation.onNavigateStation && <button type="button" onClick={() => navigation.onNavigateStation?.(id)}>К постройке</button>}</div></li>)}</ul>}
-    {requiredExplorations.length > 0 && <ul className={styles.ingredients} aria-label="Нужные экспедиции">{requiredExplorations.map(([id, count]) => <li key={id} data-missing><div><span>{state.catalog.explorations.find(route => route.id === id)?.name ?? id}: забрано {number(state.progression?.routes[id] ?? 0)} / {number(count)}</span>{navigation.onNavigateExpeditions && <button type="button" onClick={() => navigation.onNavigateExpeditions?.("forest")}>В путь</button>}</div></li>)}</ul>}
-    {waitSeconds > 0 && <p className={styles.wait} data-stage-order-wait><Clock3 size={15} aria-hidden="true" /><span>Следующая поставка через <strong>{waiting(waitSeconds)}</strong>. Материалы можно подготовить заранее.</span></p>}
-    {stageOrder && intervalSeconds > 0 && stage.step + 1 < stageTotal && <p className={styles.description}>После сдачи этой поставки до следующей пройдёт {waiting(intervalSeconds)}. Жемчуг не сокращает этот срок.</p>}
-    <ul className={styles.ingredients} data-guide-order-requirements aria-label="Для заказа">{Object.entries(offer.items).map(([id, quantity]) => {
-      const owned = state.inventory[id] ?? 0, short = owned < quantity;
-      const source = short ? materialAction(economy, id, navigation) : null;
-      const label = <><ProductIcon state={state} itemId={id} size={23} /><span>{itemName(state, id)}</span><strong>{number(owned)} / {number(quantity)}</strong></>;
-      return <li key={id} data-missing={short || undefined}>{source ? <button type="button" aria-label={`Где получить для заказа: ${itemName(state, id)}`} onClick={source}>{label}</button> : <div>{label}</div>}</li>;
-    })}</ul>
-    {completionRewards.length > 0 && <div className={styles.completionReward}><p>Награда за завершение этапа</p><ul aria-label="Дополнительная награда за этап">{completionRewards.map(([id, amount]) => <li key={id}><ProductIcon state={state} itemId={id} size={21} /><span>{itemName(state, id)} × {number(amount)}</span></li>)}</ul></div>}
+    <div className={styles.letterLayout}>
+      <div className={styles.letterMessage}>
+        <header className={styles.heading}>
+          <resident.Portrait className={styles.portrait} />
+          <div className={styles.title}><span>От: {resident.name}</span><h3>{offer.name}</h3></div>
+          <strong className={styles.payout} data-guide-order-reward aria-label={`Награда: ${number(offer.coins)} монет`}><ItemIcon itemId="coins" size={19} />{number(offer.coins)}</strong>
+        </header>
+        {orderOfferReady(state, offer, economy.now) && <p className={styles.ready}><Check size={13} aria-hidden="true" />Можно сдать</p>}
+        {offer.description && <p className={styles.description}>{offer.description}</p>}
+        {waitSeconds > 0 && <p className={styles.wait} data-stage-order-wait><Clock3 size={15} aria-hidden="true" /><span>Следующая поставка через <strong>{waiting(waitSeconds)}</strong>. Материалы можно подготовить заранее.</span></p>}
+        {stageOrder && intervalSeconds > 0 && stage.step + 1 < stageTotal && <p className={styles.description}>После сдачи этой поставки до следующей пройдёт {waiting(intervalSeconds)}. Жемчуг не сокращает этот срок.</p>}
+      </div>
+      <div className={styles.letterContents}>
+        {requiredBuildings.length > 0 && <ul className={styles.ingredients} aria-label="Условия поставки">{requiredBuildings.map(([id, level]) => <li key={id} data-missing><div><span>{state.catalog.buildings.find(building => building.id === id)?.name ?? id} · нужен ур. {level}</span>{navigation.onNavigateStation && <button type="button" onClick={() => navigation.onNavigateStation?.(id)}>К постройке</button>}</div></li>)}</ul>}
+        {requiredExplorations.length > 0 && <ul className={styles.ingredients} aria-label="Нужные экспедиции">{requiredExplorations.map(([id, count]) => <li key={id} data-missing><div><span>{state.catalog.explorations.find(route => route.id === id)?.name ?? id}: забрано {number(state.progression?.routes[id] ?? 0)} / {number(count)}</span>{navigation.onNavigateExpeditions && <button type="button" onClick={() => navigation.onNavigateExpeditions?.("forest")}>В путь</button>}</div></li>)}</ul>}
+        <ul className={styles.ingredients} data-guide-order-requirements aria-label="Для заказа">{Object.entries(offer.items).map(([id, quantity]) => {
+          const owned = state.inventory[id] ?? 0, short = owned < quantity;
+          const source = short ? materialAction(economy, id, navigation) : null;
+          const label = <><ProductIcon state={state} itemId={id} size={23} /><span>{itemName(state, id)}</span><strong>{number(owned)} / {number(quantity)}</strong></>;
+          return <li key={id} data-missing={short || undefined}>{source ? <button type="button" aria-label={`Где получить для заказа: ${itemName(state, id)}`} onClick={source}>{label}</button> : <div>{label}</div>}</li>;
+        })}</ul>
+        {completionRewards.length > 0 && <div className={styles.completionReward}><p>Награда за завершение этапа</p><ul aria-label="Дополнительная награда за этап">{completionRewards.map(([id, amount]) => <li key={id}><ProductIcon state={state} itemId={id} size={21} /><span>{itemName(state, id)} × {number(amount)}</span></li>)}</ul></div>}
+      </div>
+    </div>
     {bonus > 0 && !permanent && <p className={styles.premium} title="Рыбу можно продать Плёске, другие товары местному скупщику.">На {number(bonus)} монет больше продажи</p>}
     {confirmation ?? <div className={styles.actions}>
       {hasFish ? <FishOrderAction economy={economy} offer={offer} disabled={submitDisabled} onSubmit={complete} />
@@ -297,7 +303,7 @@ export function ResidentOrderBoard({ economy, residentId, onFilterChange, ...nav
   const acceptedStage = attempt ? stageOrderProgress(economy.snapshot, attempt.stageHome) : null;
   const nextStageWait = acceptedStage?.availableAt ? remaining(acceptedStage.availableAt, economy.now) : 0;
   return <div className={styles.board} ref={container}>
-    <div className={styles.filters} role="group" aria-label="Заказчик">{(["all", "plesk", "builder"] as const).map(value => <button key={value} type="button" data-order-filter={value} aria-pressed={filter === value} onClick={() => changeFilter(value)}>{value === "all" ? "Все" : residents[value].name}<span>{value === "all" ? offers.length : offers.filter(offer => offer.residentId === value).length}</span></button>)}</div>
+    <div className={styles.filters} role="group" aria-label="Заказчик">{(["all", "plesk", "builder"] as const).map(value => <button key={value} type="button" data-order-filter={value} aria-pressed={filter === value} onClick={() => changeFilter(value)}>{value === "all" ? <Mail size={15} aria-hidden="true" /> : value === "plesk" ? <Fish size={15} aria-hidden="true" /> : <Hammer size={15} aria-hidden="true" />}{value === "all" ? "Все" : residents[value].name}<span>{value === "all" ? offers.length : offers.filter(offer => offer.residentId === value).length}</span></button>)}</div>
     <p className={styles.lore}>{filter === "all" ? "Помогай соседям, получай монеты и готовь припасы к новым просьбам." : residents[filter].role}</p>
     {confirmed && <p className={styles.success} role="status" ref={success} tabIndex={-1}><Check size={15} aria-hidden="true" /><span>{isTutorialOrderId(attempt.offerId, economy.snapshot.catalog) ? `Учебный заказ выполнен · +${number(attempt.coins)} монет. ${tutorialOrderProgress(economy.snapshot).completed ? "Все учебные просьбы выполнены." : "Следующая учебная просьба уже на доске."}`
       : isStageOrderId(attempt.offerId, economy.snapshot.catalog) ? `Заказ этапа выполнен · +${number(attempt.coins)} монет. ${acceptedStage?.completed ? "Все просьбы этого этапа выполнены." : nextStageWait > 0 ? `Следующая поставка через ${waiting(nextStageWait)}.` : "Следующая просьба уже на доске."}${Object.entries(attempt.completionRewards).map(([id, count]) => ` Получено: ${itemName(economy.snapshot, id)} × ${number(count)}.`).join("")}`
@@ -318,6 +324,6 @@ export function ResidentOrderBoard({ economy, residentId, onFilterChange, ...nav
       {!matching.length && <p className={styles.repeatableEmpty}>У этого жителя пока нет новых просьб.</p>}
     </section>
     {!matching.length && !tutorialVisible && !stageVisible && <p className={styles.empty}><ClipboardList size={20} aria-hidden="true" />{offers.length ? "Сейчас просьб от этого жителя нет. Посмотрите все заказы." : "Просьбы жителей пока недоступны."}{offers.length > 0 && <button type="button" onClick={() => changeFilter("all")}>Все заказы</button>}</p>}
-    <p className={styles.footnote}>После сдачи обычной просьбы новый заказ появится сразу. Ещё {board.freeReplacementsRemaining} замен бесплатно, затем {formatPearls(config.replacementPricePearls)} жемчужин за замену. Бесплатные замены восстановятся через {waiting(remaining(board.replacementsResetAt, economy.now))}.</p>
+    <details className={styles.rules}><summary>Обновление и замена просьб</summary><p className={styles.footnote}>После сдачи обычной просьбы новый заказ появится сразу. Ещё {board.freeReplacementsRemaining} замен бесплатно, затем {formatPearls(config.replacementPricePearls)} жемчужин за замену. Бесплатные замены восстановятся через {waiting(remaining(board.replacementsResetAt, economy.now))}.</p></details>
   </div>;
 }

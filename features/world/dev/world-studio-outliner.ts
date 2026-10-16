@@ -1,8 +1,9 @@
 import { TILED_WORLD } from "@/features/world/scene/presentation";
 import type { WorldLightingEditorSnapshot, WorldLightingElementKind } from "./world-lighting-editor-store";
+import { studioSearchMatches } from "./world-studio-search";
 
 export type StudioObjectFilter = "all" | "casters" | "lights" | "receivers" | "changed";
-export type StudioObject = { type: "object"; kind: WorldLightingElementKind; id: string; label: string; detail: string; dirty: boolean; removed: boolean };
+export type StudioObject = { type: "object"; kind: WorldLightingElementKind; id: string; label: string; detail: string; dirty: boolean; removed: boolean; searchWords?: string };
 export type StudioFolder = { type: "folder"; id: string; label: string; children: StudioNode[]; active?: boolean };
 export type StudioNode = StudioObject | StudioFolder;
 
@@ -67,7 +68,7 @@ export function buildWorldStudioOutliner(snapshot: Pick<WorldLightingEditorSnaps
   for (const receiver of snapshot.receivers) destination(receiver.studioFolder ?? "surfaces").children.push({ type: "object", kind: "receiver", id: receiver.id, label: receiver.studioName ?? studioReceiverName(receiver.id), detail: "Принимает тени", dirty: snapshot.dirtyReceiverIds.includes(receiver.id), removed: false });
   for (const light of snapshot.lights) {
     const removed = light.enabled === false;
-    destination(removed ? "removed" : light.studioFolder ?? "lights").children.push({ type: "object", kind: "light", id: light.id, label: light.studioName ?? studioSourceName(light.id, light.kind), detail: removed ? "Источник выключен" : "Источник света", dirty: snapshot.dirtyLightIds.includes(light.id), removed });
+    destination(removed ? "removed" : light.studioFolder ?? "lights").children.push({ type: "object", kind: "light", id: light.id, label: light.studioName ?? studioSourceName(light.id, light.kind), detail: removed ? "Источник выключен" : "Источник света", searchWords: light.kind === "glow" ? "свечение glow" : light.kind === "torch" ? "факел огонь torch" : "фонарь лампа lantern", dirty: snapshot.dirtyLightIds.includes(light.id), removed });
   }
   for (const [kind, deleted] of [["caster", snapshot.deletedCasters], ["receiver", snapshot.deletedReceivers]] as const) {
     for (const element of deleted) destination("removed").children.push({ type: "object", kind, id: element.id, label: element.studioName ?? (kind === "receiver" ? studioReceiverName(element.id) : element.id), detail: kind === "receiver" ? "Поверхность удалена" : "Объём тени удалён", dirty: true, removed: true });
@@ -99,7 +100,8 @@ export function filterWorldStudioOutliner(nodes: readonly StudioNode[], query: s
     return items.flatMap<StudioNode>(node => {
       if (node.type === "folder") { const children = visit(node.children, `${ancestors} ${node.label}`); return children.length || !needle && filter === "all" ? [{ ...node, children }] : []; }
       const matchesKind = filter === "all" || filter === "changed" && node.dirty || filter === "casters" && node.kind === "caster" || filter === "lights" && node.kind === "light" || filter === "receivers" && node.kind === "receiver";
-      return matchesKind && (!needle || `${ancestors} ${node.label} ${node.id} ${node.detail}`.toLocaleLowerCase("ru").includes(needle)) ? [node] : [];
+      const keywords = node.kind === "light" ? "свет освещение источник яркость радиус цвет мерцание" : node.kind === "caster" ? "объем тень контур высота плотность мягкость" : "земля поверхность тени контур исключение вырез";
+      return matchesKind && (!needle || studioSearchMatches(needle, `${ancestors} ${node.label} ${node.id} ${node.detail} ${keywords} ${node.searchWords ?? ""}`)) ? [node] : [];
     });
   }
   return visit(nodes, "");
