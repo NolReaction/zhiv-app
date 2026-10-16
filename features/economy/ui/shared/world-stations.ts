@@ -7,7 +7,7 @@ import { tutorialOrderProgress } from "@/features/economy/domain/tutorial-order"
 import { stageCourseRequired, stageOrderProgress } from "@/features/economy/domain/stage-orders";
 import { explorationActorId, isMinerJob } from "@/features/economy/domain/actor-availability";
 
-export type WorldStationDefinition = { label: string; stationIds: readonly string[]; future?: string };
+export type WorldStationDefinition = { label: string; stationIds: readonly string[]; future?: string; status?: string };
 export const worldStations: Partial<Record<WorldPlace, WorldStationDefinition>> = {
   house: { label: "Дом", stationIds: ["home", "warehouse"] },
   garden: { label: "Ягодный куст", stationIds: ["garden"] },
@@ -17,6 +17,10 @@ export const worldStations: Partial<Record<WorldPlace, WorldStationDefinition>> 
   quarry: { label: "Шахта", stationIds: ["quarry"] },
   bridge: { label: "Мост", stationIds: ["bridge"] },
   lighthouse: { label: "Маяк", stationIds: ["lighthouse"] },
+  "leaftail-caravan": { label: "Караван Листохвоста", stationIds: [], status: "Торговец и заказы",
+    future: "Листохвост собирает заказы жителей. Редкие товары за монеты появятся в одном из следующих обновлений." },
+  "lopukh-home": { label: "Дом Лопоуха", stationIds: [], status: "Дом жителя",
+    future: "Здесь будет жить Лопоух. Его отдельное рабочее место и заказы на изготовление появятся позже." },
 };
 export function worldPlaceForStation(stationId: string): WorldPlace | null {
   const result = Object.entries(worldStations).find(([, value]) => value.stationIds.includes(stationId));

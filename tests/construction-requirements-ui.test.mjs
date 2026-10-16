@@ -75,3 +75,10 @@ test("campfire building art uses the small cooking fire illustration instead of 
   assert.doesNotMatch(html, /lucide-cooking-pot/);
   assert.match(html, /viewBox="0 0 64 64"/);
 });
+
+test("woodlot requirement art uses its tree fallback after the shelter drawing was removed", () => {
+  const html = renderToStaticMarkup(createElement(ConstructionBuildingArt, { stationId: "woodlot", level: 1 }));
+  assert.match(html, /data-building-art="woodlot"/);
+  assert.match(html, /lucide-trees/);
+  assert.doesNotMatch(html, /background-image|shelter\.png|lopukh-house/);
+});

@@ -28,7 +28,21 @@ test("only implemented economic sites receive map shortcuts, including restored 
     ["home", "house"], ["woodlot", "woodlot"], ["workshop", "workshop"], ["quarry", "quarry"],
     ["bridge", "bridge"], ["lighthouse", "lighthouse"],
   ]);
-  for (const id of ["plesk-shop", "unknown", "constructor", null, undefined]) assert.equal(sitePlace(id), null);
+  for (const id of ["plesk-shop", "market", "leaftail-caravan", "bulletin-board", "lopukh-home", "unknown", "constructor", null, undefined]) assert.equal(sitePlace(id), null);
+});
+
+test("placed markets, caravan, order board and Lopukh home expose their own authored map targets", () => {
+  const hitArea = [{ x: 20, y: 20 }, { x: 40, y: 20 }, { x: 40, y: 40 }, { x: 20, y: 40 }];
+  const ids = ["market", "leaftail-caravan", "bulletin-board", "lopukh-home"];
+  const sites = ids.map(id => ({ id, label: id, anchor: { x: 30, y: 40 }, hitArea }));
+  const objects = interactiveMapObjects({ sites, terrain: [] });
+  assert.deepEqual(objects.map(object => [object.id, object.place]), ids.map(id => [id, id]));
+  for (const [index, object] of objects.entries()) {
+    assert.equal(object.hitArea, sites[index].hitArea);
+    assert.equal(object.anchor, sites[index].anchor);
+    assert.equal(mapObjectAt([object], { x: 30, y: 30 }), object);
+  }
+  assert.deepEqual(interactiveMapObjects({ sites, terrain: [] }, { showBuildings: false }), []);
 });
 
 test("object menus use the existing authored polygons and anchors for every map station", () => {

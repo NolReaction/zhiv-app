@@ -185,6 +185,133 @@ function guideNavigation(context = {}) {
   return nav;
 }
 
+test("new market and bulletin board open their existing account panels directly from the map", () => {
+  const nav = guideNavigation();
+  try {
+    nav.component("WorldScene").props.onPlace("market", { place: "market", objectId: "market", x: 100, y: 150, viewportWidth: 390, viewportHeight: 700 });
+    assert.equal(nav.component("EconomyPanel").props.initialTab, "market");
+    assert.equal(nav.component("WorldObjectMenu"), undefined);
+    nav.find(node => node.props["aria-label"] === "Закрыть панель").props.onClick();
+    nav.component("WorldScene").props.onPlace("bulletin-board", { place: "bulletin-board", objectId: "bulletin-board", x: 100, y: 150, viewportWidth: 390, viewportHeight: 700 });
+    assert.equal(nav.component("WorldOrderJournal").props.residentId, undefined);
+    assert.equal(nav.component("EconomyPanel"), undefined);
+    assert.equal(nav.component("WorldObjectMenu"), undefined);
+  } finally { nav.restore(); }
+});
+
+test("caravan and Lopukh home keep independent map menus and caravan orders return focus to the map", () => {
+  const nav = guideNavigation();
+  try {
+    const map = nav.createElement("caravan-map-trigger");
+    document.activeElement = map;
+    nav.component("WorldScene").props.onPlace("leaftail-caravan", { place: "leaftail-caravan", objectId: "leaftail-caravan", x: 100, y: 150, viewportWidth: 390, viewportHeight: 700 });
+    const caravan = nav.component("WorldObjectMenu");
+    assert.equal(caravan.props.selection.objectId, "leaftail-caravan");
+    document.activeElement = nav.createElement("temporary-caravan-order-button");
+    caravan.props.onOpenOrders();
+    assert.equal(nav.component("WorldOrderJournal").props.residentId, undefined);
+    const content = nav.find(node => node.props["data-orders"] === true);
+    nav.find(node => node.props["aria-label"] === "Закрыть журнал заказов").props.onClick();
+    content.props.onCloseAutoFocus({ preventDefault() {} });
+    assert.deepEqual(nav.focused, ["caravan-map-trigger"]);
+    nav.component("WorldScene").props.onPlace("lopukh-home", { place: "lopukh-home", objectId: "lopukh-home", x: 100, y: 150, viewportWidth: 390, viewportHeight: 700 });
+    assert.equal(nav.component("WorldObjectMenu").props.selection.objectId, "lopukh-home");
+    assert.equal(nav.component("WorldOrderJournal"), undefined);
+  } finally { nav.restore(); }
+});
+
+test("the deferred woodlot keeps station, recipe and construction access through the existing account panel", () => {
+  const nav = guideNavigation();
+  try {
+    const source = nav.createElement("woodlot-pantry-source");
+    document.activeElement = source;
+    nav.find(node => node.props["data-world-quick"] === "pantry").props.onClick();
+    nav.component("WorldPantryMenu").props.navigation.open("woodlot", "gather_wood");
+    let account = nav.component("EconomyPanel");
+    assert.equal(account.props.initialTab, "buildings", "an unbuilt station opens its actual preparation");
+    assert.equal(account.props.initialFocusId, "woodlot");
+    assert.equal(nav.component("WorldObjectMenu"), undefined);
+    assert.equal(nav.component("WorldScene").props.openObjectRequest, undefined, "no request or invented anchor for an absent site");
+
+    account.props.onNavigate("production", "gather_wood");
+    account = nav.component("EconomyPanel");
+    assert.equal(account.props.initialTab, "production");
+    assert.equal(account.props.initialFocusId, "gather_wood", "a recipe remains selected even while its station needs setup");
+    account.props.onNavigate("buildings", "woodlot");
+    assert.equal(nav.component("EconomyPanel").props.initialTab, "buildings", "tab navigation must not cycle back through missing map activation");
+    nav.find(node => node.props["aria-label"] === "Закрыть панель").props.onClick();
+
+    nav.props.economy.snapshot.buildings.woodlot = 1;
+    nav.find(node => node.props["data-world-orders-entry"] === true).props.onClick({ currentTarget: nav.ordersTrigger });
+    nav.component("WorldOrderJournal").props.onNavigateStation("woodlot", "gather_wood");
+    account = nav.component("EconomyPanel");
+    assert.equal(account.props.initialTab, "production", "existing production remains available after only its drawing is deferred");
+    assert.equal(account.props.initialFocusId, "gather_wood");
+    const content = nav.find(node => node.props["data-slot"] === "dialog-content" && node.props.onCloseAutoFocus && node.props.className);
+    nav.find(node => node.props["aria-label"] === "Закрыть панель").props.onClick();
+    content.props.onCloseAutoFocus({ preventDefault() {} });
+    assert.deepEqual(nav.focused, ["orders"], "closing returns to the real original journal source");
+  } finally { nav.restore(); }
+});
+
+test("the absent-site fallback leaves existing workshop map activation and its recipe intact", () => {
+  const nav = guideNavigation();
+  try {
+    const recipeId = economyCatalog.recipes.find(entry => entry.buildingId === "workshop").id;
+    nav.find(node => node.props["data-world-orders-entry"] === true).props.onClick({ currentTarget: nav.ordersTrigger });
+    nav.component("WorldOrderJournal").props.onNavigateStation("workshop", recipeId);
+    assert.equal(nav.component("EconomyPanel"), undefined);
+    assert.equal(nav.component("WorldScene").props.openObjectRequest.place, "workshop");
+    nav.component("WorldScene").props.onPlace("workshop", { place: "workshop", objectId: "workshop", x: 100, y: 150, viewportWidth: 390, viewportHeight: 700 });
+    const menu = nav.component("WorldObjectMenu");
+    assert.equal(menu.props.initialStationId, "workshop");
+    assert.equal(menu.props.initialRecipeId, recipeId);
+    const requestId = nav.component("WorldScene").props.openObjectRequest.id;
+    menu.props.onNavigate("woodlot", "woodlot", "gather_wood");
+    nav.component("EconomyPanel").props.onNavigate("production", recipeId);
+    assert.equal(nav.component("WorldScene").props.openObjectRequest.place, "workshop");
+    assert.ok(nav.component("WorldScene").props.openObjectRequest.id > requestId, "returning from an unplaced station cannot reuse an already handled map request");
+  } finally { nav.restore(); }
+});
+
+test("an unplaced station cancels pending map activation before a slow scene can apply it", () => {
+  const nav = guideNavigation(); nav.props.sceneReady = false;
+  try {
+    nav.find(node => node.props["data-world-orders-entry"] === true).props.onClick({ currentTarget: nav.ordersTrigger });
+    nav.component("WorldOrderJournal").props.onNavigateStation("workshop");
+    const pendingId = nav.component("WorldScene").props.openObjectRequest.id;
+    assert.equal(nav.component("WorldScene").props.openObjectRequest.place, "workshop");
+    nav.find(node => node.props["data-world-quick"] === "pantry").props.onClick();
+    nav.component("WorldPantryMenu").props.navigation.open("woodlot", "gather_wood");
+    assert.equal(nav.component("WorldScene").props.openObjectRequest, undefined,
+      "late scene readiness must not reactivate the older workshop request over the woodlot panel");
+    assert.equal(nav.component("EconomyPanel").props.initialFocusId, "woodlot");
+    nav.component("EconomyPanel").props.onNavigate("production", "workshop");
+    assert.ok(nav.component("WorldScene").props.openObjectRequest.id > pendingId,
+      "cancelling a pending request must not reuse its identity");
+  } finally { nav.restore(); }
+});
+
+test("the absent-site fallback rejects a previous owner's snapshot without adopting its focus", () => {
+  const nav = guideNavigation();
+  try {
+    nav.find(node => node.props["data-world-orders-entry"] === true).props.onClick({ currentTarget: nav.ordersTrigger });
+    nav.component("WorldOrderJournal").props.onNavigateStation("woodlot");
+    assert.equal(nav.component("EconomyPanel").props.initialTab, "buildings");
+    nav.props.ownerPublicId = "different-owner";
+    nav.component("EconomyPanel").props.onNavigate("production", "gather_wood");
+    assert.equal(nav.component("EconomyPanel").props.initialTab, "buildings", "foreign account data cannot open a new station tab");
+    const content = nav.find(node => node.props["data-slot"] === "dialog-content" && node.props.onCloseAutoFocus && node.props.className);
+    nav.find(node => node.props["aria-label"] === "Закрыть панель").props.onClick();
+    content.props.onCloseAutoFocus({ preventDefault() {} });
+    assert.deepEqual(nav.focused, [], "a rejected fallback must not rebind the old source to the new owner");
+    nav.find(node => node.props["data-world-quick"] === "pantry").props.onClick();
+    nav.component("WorldPantryMenu").props.navigation.open("woodlot", "gather_wood");
+    assert.equal(nav.component("EconomyPanel"), undefined);
+    assert.ok(nav.component("WorldPantryMenu"), "foreign snapshot fallback leaves the current surface unchanged");
+  } finally { nav.restore(); }
+});
+
 test("wallet shortcuts replace the More shop entry and open the intended preview even while offline", () => {
   const nav = guideNavigation(); nav.props.isOnline = false;
   try {

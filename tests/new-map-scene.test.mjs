@@ -510,7 +510,9 @@ test("authored buildings and planned ruins open their place without selecting du
       anchor: { x: x + 60, y: y + 100 }, entry: { x: x + 60, y: y + 110 }, hitArea: points, collision: [],
       states: [{ level: 0, label: id, image: `/click-${id}.webp` }] };
   });
-  const { createMapEngine, worldDevStore } = await modules({ sites });
+  // These four synthetic rectangles do not share the real map's tree positions.
+  // Its current crowns must not consume taps intended for the fixture's ruins.
+  const { createMapEngine, worldDevStore } = await modules({ sites, occluders: [], treeInteractions: [] });
   const env = browser(); let engine;
   try {
     const canvas = env.surface(400), places = [];

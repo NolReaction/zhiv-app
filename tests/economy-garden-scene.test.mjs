@@ -155,9 +155,11 @@ test("reduced motion and stale requests report unavailable without inventing a p
 });
 
 test("a hero outside the authored home clearing gathers at the server deadline without returning or waiting for a watchdog", () => {
-  for (const view of ["circle", "world"]) for (const destination of ["workshop", "quarry", "fishing", "woodlot"]) {
+  for (const view of ["circle", "world"]) for (const destination of ["workshop", "quarry", "fishing", "lopukh-home-visit"]) {
     const { state, scene } = setup(view), garden = state.life.garden;
-    state.clearing.position = { ...scene.destinations.find(item => item.id === destination).position };
+    const marker = scene.destinations.find(item => item.id === destination);
+    assert.ok(marker, `${destination} remains an authored destination in the current map`);
+    state.clearing.position = { ...marker.position };
     state.clearing.stage = "clearing";
     const before = structuredClone(state.clearing), basketBefore = structuredClone(garden.basket);
     assert.equal(isWithinHomeClearing(state.clearing), false, `${view}: ${destination} is outside the main clearing`);

@@ -288,7 +288,7 @@ test("actual Tiled hosts and all authored building levels have safe work routes 
     const scene = previewWorldScene(TILED_WORLD, levels), places = builderLocalPlaces(scene);
     assert.ok(places, `rest exists at ${JSON.stringify(levels)}`);
     assert.ok(Math.hypot(places.rest.position.x - scene.actor.spawn.x, places.rest.position.y - scene.actor.spawn.y) >= 45);
-    for (const stationId of ["home", "warehouse", "workshop", "kiln", "garden", "woodlot", "quarry", "dryer"]) {
+    for (const stationId of ["home", "warehouse", "workshop", "kiln", "garden", "quarry", "dryer"]) {
       const active = { ...job(stationId), targetLevel: Math.min(5, (levels[stationId] ?? 1) + 1) };
       const stops = builderWorkStops(scene, active), route = builderRoute(places, places.rest.position, stops);
       assert.ok(route, `${stationId} is reachable at ${JSON.stringify(levels)}`);
@@ -303,7 +303,7 @@ test("actual Tiled hosts and all authored building levels have safe work routes 
 
 test("actual map worker completes each host approach and remains continuous when claimed artwork changes", () => {
   const initial = initialPreviewLevels(TILED_WORLD), scene = previewWorldScene(TILED_WORLD, initial);
-  for (const stationId of ["home", "warehouse", "workshop", "kiln", "garden", "woodlot", "quarry", "dryer"]) {
+  for (const stationId of ["home", "warehouse", "workshop", "kiln", "garden", "quarry", "dryer"]) {
     const mind = createBuilderMind(scene), construction = snapshot([job(stationId)]);
     for (let elapsed = 0; elapsed < 180 && mind.action !== "work"; elapsed += .25)
       advance(mind, scene, construction, .25, start, .25);
@@ -316,4 +316,17 @@ test("actual map worker completes each host approach and remains continuous when
       assert.ok(mind.available); assert.notDeepEqual(mind.position, position);
     }
   }
+});
+
+test("a confirmed woodlot job remains authoritative while its deferred map host cannot start cosmetic work", () => {
+  const scene = previewWorldScene(TILED_WORLD, initialPreviewLevels(TILED_WORLD)), mind = createBuilderMind(scene);
+  assert.equal(scene.sites.some(site => site.id === "woodlot"), false);
+  const construction = snapshot([job("woodlot")]), original = structuredClone(construction), position = { ...mind.position };
+  advance(mind, scene, construction, 50);
+  assert.equal(mind.blocked, true);
+  assert.equal(mind.action, "idle");
+  assert.equal(mind.decisions, 1, "an absent exterior does not trigger a fresh path search on every frame");
+  assert.deepEqual(mind.position, position);
+  assert.deepEqual(mind.job, construction.jobs[0], "the display does not cancel the server's construction job");
+  assert.deepEqual(construction, original);
 });

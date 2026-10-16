@@ -23,6 +23,20 @@ const shop = TILED_WORLD.sites.find(site => site.id === "plesk-shop");
 const destination = (scene, id) => scene.destinations.find(point => point.id === id).position;
 const centroid = points => ({ x: points.reduce((sum, point) => sum + point.x, 0) / points.length,
   y: points.reduce((sum, point) => sum + point.y, 0) / points.length });
+const silhouettes = scene => scene.occluders.filter(mask => mask.when?.siteId === "plesk-shop" && mask.when.level === 1);
+function imagePoint(x, y) {
+  const placement = shop.imagePlacement ?? { ...shop.bounds, rotation: 0 }, angle = placement.rotation * Math.PI / 180;
+  const dx = x / 1254 * placement.width, dy = y / 1254 * placement.height;
+  return { x: placement.x + dx * Math.cos(angle) - dy * Math.sin(angle),
+    y: placement.y + dx * Math.sin(angle) + dy * Math.cos(angle) };
+}
+function distanceToContour(point, points) {
+  return Math.min(...points.map((a, index) => {
+    const b = points[(index + 1) % points.length], dx = b.x - a.x, dy = b.y - a.y;
+    const t = Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / (dx * dx + dy * dy || 1)));
+    return Math.hypot(point.x - a.x - dx * t, point.y - a.y - dy * t);
+  }));
+}
 function assertPath(nav, start, end) {
   const route = findWorldPath(nav, start, end);
   assert.ok(route, `path unavailable: ${nav.stats.lastSearch?.reason}`);
@@ -39,17 +53,24 @@ function assertTranslatedPoints(actual, expected, label) {
   });
 }
 
-test("Tiled exports the placed stall as a clickable site with separate walkable ground", () => {
+test("Tiled exports the rotated fishing shop as a clickable site with independent walkable ground", () => {
   const authored = shopLayer.objects.find(object => object.name === "plesk-shop");
   assert.ok(shop);
-  assert.deepEqual(shop.bounds, { x: authored.x, y: authored.y, width: authored.width, height: authored.height });
-  assert.match(shop.states[0].image, /^\/world\/prototype\/Pleska_FishingShop\.png\?v=/);
-  assert.ok(TILED_WORLD.terrain.some(image => image.id === "plesk-shop-ground"));
-  assert.ok(!TILED_WORLD.terrain.some(image => image.image.includes("Pleska_FishingShop.png")), "the stall keeps its own interaction and collision contract instead of becoming terrain-only artwork");
+  assert.deepEqual(shop.imagePlacement, { x: authored.x, y: authored.y, width: authored.width, height: authored.height,
+    rotation: authored.rotation });
+  const corners = [[0, 0], [1254, 0], [1254, 1254], [0, 1254]].map(([x, y]) => imagePoint(x, y));
+  const x = Math.min(...corners.map(point => point.x)), y = Math.min(...corners.map(point => point.y));
+  assert.deepEqual(shop.bounds, { x, y, width: Math.max(...corners.map(point => point.x)) - x,
+    height: Math.max(...corners.map(point => point.y)) - y });
+  assert.match(shop.states[0].image, /^\/world\/prototype\/pleska-market\.png\?v=/);
+  assert.ok(TILED_WORLD.navigation.areas.some(area => area.id === "pleska-cleaning"));
+  assert.ok(!TILED_WORLD.terrain.some(image => image.image.includes("pleska-market.png")), "the shop keeps its own interaction and collision contract instead of becoming terrain-only artwork");
   const center = centroid(shop.collision);
   assert.equal(previewSiteAt(TILED_WORLD, center)?.id, "plesk-shop");
-  assert.equal(isWalkable(createWorldNavigation(TILED_WORLD), center), false, "actors cannot cross the counter");
-  assert.deepEqual(shop.entry, destination(TILED_WORLD, "plesk-customer"));
+  const navigation = createWorldNavigation(TILED_WORLD);
+  assert.equal(isWalkable(navigation, center), false, "actors cannot cross the counter");
+  assert.ok(isWalkable(navigation, shop.entry), "the shop door has its own safe approach");
+  assert.ok(isWalkable(navigation, destination(TILED_WORLD, "plesk-customer")), "the separate customer stop stays safe");
 });
 
 test("the authored clearing contour is exported without replacing its vertices by a rectangle", () => {
@@ -76,10 +97,13 @@ test("seller and customer are reachable from their existing starts through safe 
 
 test("trade stops leave room for both characters and keep the seller beside the counter", () => {
   const seller = destination(TILED_WORLD, "plesk-trade"), customer = destination(TILED_WORLD, "plesk-customer");
-  assert.ok(seller.x > shop.bounds.x + shop.bounds.width, "seller's face is beside the stall artwork");
+  assert.ok(distanceToContour(seller, shop.collision) <= TILED_WORLD.actor.size * .8, "the seller stays beside the actual counter footprint");
+  assert.ok(seller.y > shop.anchor.y, "the seller stands in front of the enlarged shop's solid artwork");
   assert.ok(customer.y > shop.anchor.y, "customer approaches the front");
   assert.ok(Math.hypot(customer.x - seller.x, customer.y - seller.y) >= TILED_WORLD.actor.size * .6, "two actors have separate stops");
   assert.ok(customer.y > seller.y, "seller faces toward the viewer while serving");
+  assert.equal(forestPointOccluded(TILED_WORLD, seller.y, { x: seller.x, y: seller.y - 30 }), false,
+    "the seller's face is not hidden by either the shop or nearby trees");
 });
 
 test("moving the Pleska group keeps the bitmap, clearance, collision and both trade stops together", async () => {
@@ -93,10 +117,14 @@ test("moving the Pleska group keeps the bitmap, clearance, collision and both tr
   const shift = point => ({ x: point.x - 4, y: point.y + 2 });
   assertTranslatedPoints(site.collision, shop.collision.map(shift), "stall collision");
   assertTranslatedPoints(site.hitArea, shop.hitArea.map(shift), "stall hit area");
-  const silhouette = TILED_WORLD.occluders.find(mask => mask.id === "plesk-shop-silhouette");
-  const movedSilhouette = moved.occluders.find(mask => mask.id === silhouette.id);
-  assertTranslatedPoints(movedSilhouette.points, silhouette.points.map(shift), "stall silhouette");
-  assert.equal(movedSilhouette.frontY, silhouette.frontY + 2);
+  const masks = silhouettes(TILED_WORLD);
+  assert.ok(masks.length);
+  for (const silhouette of masks) {
+    const movedSilhouette = moved.occluders.find(mask => mask.id === silhouette.id);
+    assert.ok(movedSilhouette);
+    assertTranslatedPoints(movedSilhouette.points, silhouette.points.map(shift), "shop silhouette");
+    assert.equal(movedSilhouette.frontY, silhouette.frontY + 2);
+  }
   assert.deepEqual(site.entry, shift(shop.entry));
   for (const id of ["plesk-trade", "plesk-customer"]) assert.deepEqual(destination(moved, id), shift(destination(TILED_WORLD, id)));
   const currentArea = TILED_WORLD.navigation.areas.find(area => area.id === "pleska-cleaning");
@@ -104,18 +132,17 @@ test("moving the Pleska group keeps the bitmap, clearance, collision and both tr
 });
 
 
-test("the counter hides actors behind solid artwork while its open top and front approach remain visible", () => {
-  const silhouette = TILED_WORLD.occluders.find(mask => mask.id === "plesk-shop-silhouette");
-  assert.ok(silhouette, "site artwork alone does not depth-mask NPCs drawn in a later pass");
-  assert.deepEqual(silhouette.when, { siteId: "plesk-shop", level: 1 });
-  const scene = { ...TILED_WORLD, occluders: [silhouette] };
-  const inImage = (x, y) => ({ x: shop.bounds.x + x / 1254 * shop.bounds.width,
-    y: shop.bounds.y + y / 1254 * shop.bounds.height });
-  const body = inImage(650, 920), emptyCenter = inImage(650, 250), openUnderLeg = inImage(510, 1120);
-  assert.equal(forestPointOccluded(scene, silhouette.frontY - 10, body), true);
-  assert.equal(forestPointOccluded(scene, silhouette.frontY - 10, emptyCenter), false, "transparent upper half must not erase the passing character");
-  assert.equal(forestPointOccluded(scene, silhouette.frontY - 10, openUnderLeg), false, "the irregular outline keeps transparent space below the counter");
-  assert.equal(forestPointOccluded(scene, silhouette.frontY, body), false);
+test("the roof and counter hide actors behind solid artwork while transparent padding and the front stay visible", () => {
+  const masks = silhouettes(TILED_WORLD);
+  assert.ok(masks.length, "site artwork alone does not depth-mask NPCs drawn in a later pass");
+  for (const silhouette of masks) assert.deepEqual(silhouette.when, { siteId: "plesk-shop", level: 1 });
+  const frontY = Math.max(...masks.map(mask => mask.frontY)), scene = { ...TILED_WORLD, occluders: masks };
+  const body = imagePoint(650, 920), roof = imagePoint(600, 550), emptyCorner = imagePoint(1100, 200), belowSteps = imagePoint(1080, 1150);
+  assert.equal(forestPointOccluded(scene, frontY - 10, body), true);
+  assert.equal(forestPointOccluded(scene, frontY - 10, roof), true, "the new shop's roof is solid artwork");
+  assert.equal(forestPointOccluded(scene, frontY - 10, emptyCorner), false, "transparent image padding must not erase the passing character");
+  assert.equal(forestPointOccluded(scene, frontY - 10, belowSteps), false, "the irregular outline keeps transparent space below the steps");
+  assert.equal(forestPointOccluded(scene, frontY, body), false);
   assert.equal(forestPointOccluded(scene, destination(TILED_WORLD, "plesk-customer").y, body), false, "the customer in front is never hidden by the counter");
   const seller = destination(TILED_WORLD, "plesk-trade");
   assert.equal(forestPointOccluded(scene, seller.y, { x: seller.x, y: seller.y - 30 }), false, "seller's face remains visible at the side");

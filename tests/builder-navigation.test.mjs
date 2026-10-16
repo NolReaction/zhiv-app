@@ -98,9 +98,9 @@ test("all five actual houses and their interior upgrades leave Mochlik's doorway
   }
 });
 
-test("actual selected stops leave each of the eight hosts' interaction points free and remain reachable", () => {
+test("actual selected stops leave each of the seven placed hosts' interaction points free and remain reachable", () => {
   const scene = previewWorldScene(TILED_WORLD, initialPreviewLevels(TILED_WORLD)), clearance = builderWorkClearance(scene);
-  const hosts = { home: "home", warehouse: "home", workshop: "workshop", kiln: "workshop", woodlot: "woodlot", quarry: "quarry" };
+  const hosts = { home: "home", warehouse: "home", workshop: "workshop", kiln: "workshop", quarry: "quarry" };
   for (const stationId of [...Object.keys(hosts), "garden", "dryer"]) {
     const { route } = checkedRoute(scene, job(stationId)), point = route.target.position;
     for (const destination of scene.destinations.filter(destination => !destination.id.startsWith("builder-")))
@@ -134,7 +134,7 @@ test("actual selected stops leave each of the eight hosts' interaction points fr
 test("each actual Tiled work marker keeps its exact position across its host's exterior levels", () => {
   const initial = initialPreviewLevels(TILED_WORLD);
   const hosts = { home: "home", warehouse: "home", workshop: "workshop", kiln: "workshop",
-    quarry: "quarry", woodlot: "woodlot", garden: "garden", dryer: "dryer" };
+    quarry: "quarry", garden: "garden", dryer: "dryer" };
   for (const [stationId, host] of Object.entries(hosts)) {
     const site = TILED_WORLD.sites.find(site => site.id === host), levels = site?.states.map(state => state.level) ?? [1];
     for (const level of levels) {
@@ -145,6 +145,22 @@ test("each actual Tiled work marker keeps its exact position across its host's e
       const { route } = checkedRoute(scene, job(stationId, targetLevel));
       assert.deepEqual(route.target.position, marker.position, `${stationId}, exterior ${level} keeps the valid authored foot position`);
     }
+  }
+});
+
+test("the deferred woodlot host rejects construction visits even when a stale work marker is reachable", () => {
+  const scene = structuredClone(previewWorldScene(TILED_WORLD, initialPreviewLevels(TILED_WORLD)));
+  assert.equal(scene.sites.some(site => site.id === "woodlot"), false, "the removed workbench artwork stays absent");
+  const places = builderLocalPlaces(scene);
+  assert.ok(places);
+  const marker = { id: "builder-work-woodlot", position: { ...places.rest.position }, pauseSeconds: 4 };
+  scene.destinations = [...scene.destinations.filter(destination => destination.id !== marker.id), marker];
+  assert.ok(isWalkable(places.navigation, marker.position), "refusal is caused by the absent host, rather than unsafe feet");
+  for (let level = 1; level <= 5; level++) {
+    const order = job("woodlot", level), stops = builderWorkStops(scene, order);
+    assert.deepEqual(stops, [], `woodlot ${level} does not borrow a nearby building or visitor point`);
+    assert.equal(builderRoute(places, places.rest.position, stops), null);
+    assert.deepEqual(builderWorkMarkerChecks(scene, order), [{ id: marker.id, position: marker.position, issues: ["missing-host"] }]);
   }
 });
 

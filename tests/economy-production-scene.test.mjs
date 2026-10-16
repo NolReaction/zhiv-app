@@ -27,13 +27,14 @@ const actual = previewWorldScene(TILED_WORLD, levels);
 const visuals = Object.fromEntries(TILED_WORLD.sites.map(site => [site.id, previewSiteVisual(site, levels)]));
 
 test("ready slots do not stop another order's workshop and cooking animation", () => {
-  const jobs = ["dryer", "workshop", "woodlot"].flatMap(station => [
+  const jobs = ["dryer", "workshop", "quarry"].flatMap(station => [
     { ...job(station, `${station}-ready`), finishesAt: new Date(start + 1000).toISOString() },
     job(station, `${station}-working`), job(station, `${station}-also-working`),
   ]);
   const saved = snapshot(jobs), before = structuredClone(saved);
   const frames = forestProductionFrames(saved, actual, visuals, start + 2000, 3);
-  assert.equal(frames.length, 3, "one physical station, regardless of the number of concurrent jobs");
+  assert.deepEqual(frames.map(frame => frame.stationId).sort(), ["dryer", "quarry", "workshop"],
+    "one frame per authored physical station, regardless of the number of concurrent jobs");
   assert.ok(frames.every(frame => frame.phase === "working" && frame.jobId.endsWith("-working")));
   assert.ok(forestProductionFrames(saved, actual, visuals, finish, 4).every(frame => frame.phase === "ready"));
   assert.deepEqual(saved, before);
@@ -90,6 +91,7 @@ test("actual loaded geometry owns effects and moved or removed markers do not le
   const kitchen = frames.find(frame => frame.stationId === "dryer"), fire = actual.campfires.find(fire => fire.id === kitchen.fireId);
   assert.deepEqual([kitchen.x, kitchen.y, kitchen.size], [fire.position.x, fire.position.y, fire.radius * 4]);
   assert.ok(frames.every(frame => frame.stationId !== "kiln"), "no invented site for absent art");
+  assert.ok(frames.every(frame => frame.stationId !== "woodlot"), "the deferred workbench host does not acquire fallback props");
   for (const frame of frames.filter(frame => frame.stationId !== "dryer")) {
     const site = actual.sites.find(site => site.id === frame.stationId);
     assert.deepEqual([frame.x, frame.y], [site.entry.x, site.entry.y]);

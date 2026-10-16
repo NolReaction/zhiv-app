@@ -8,7 +8,7 @@ export function ConstructionBuildingArt({ stationId, level = 1 }: { stationId: s
   const sources: Record<string, string> = {
     home: `home-level-${Math.min(5, Math.max(1, level))}.png`,
     workshop: `forest-workshop-level-${Math.min(2, Math.max(1, level))}.png`,
-    quarry: "quarry-lvl-1.png", woodlot: "shelter.png", garden: "bushv1.png",
+    quarry: "quarry-lvl-1.png", garden: "bushv1.png",
     bridge: "bridge-level-1.png", lighthouse: "lighthouse-level-1.png",
   };
   const source = sources[stationId];

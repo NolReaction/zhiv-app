@@ -56,7 +56,7 @@ try {
   const terrainInfo = await sharp(terrainBytes).metadata();
   // Show an early homestead: later bridge/lighthouse restorations retain their
   // authored ruins here, while the game selects each confirmed account level.
-  const levels = { ...runtime.initialPreviewLevels(source), home: 2, workshop: 1, quarry: 1, woodlot: 1 };
+  const levels = { ...runtime.initialPreviewLevels(source), home: 2, workshop: 1, quarry: 1 };
   const scene = runtime.previewWorldScene(source, levels);
   const mapPlaces = Object.fromEntries([["home", "home"], ["workshop", "workshop"], ["neighbors", "plesk-shop"]].map(([key, siteId]) => {
     const site = scene.sites.find(item => item.id === siteId);

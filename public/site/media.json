@@ -3,9 +3,12 @@
   "description": "Иллюстрации текущей полянки, подготовленные игровым рендерером без аккаунта и действий игрока.",
   "scene": "forest",
   "levels": {
-    "builder-home": 1,
+    "lopukh-home": 1,
+    "leaftail-caravan": 1,
+    "bulletin-board": 1,
     "plesk-shop": 1,
-    "woodlot": 1,
+    "market": 1,
+    "builder-home": 1,
     "quarry": 1,
     "bridge": 0,
     "lighthouse": 0,
@@ -22,8 +25,8 @@
       "y": 43.49370167464115
     },
     "neighbors": {
-      "x": 84.92822966507177,
-      "y": 43.46092503987241
+      "x": 85.2732663476874,
+      "y": 45.44189529505582
     }
   },
   "artwork": {
@@ -32,80 +35,80 @@
     "height": 2560
   },
   "poster": {
-    "src": "/site/poster.webp?v=d9c08aebccc8",
+    "src": "/site/poster.webp?v=e71c9e4e8cb5",
     "width": 1440,
     "height": 900,
-    "bytes": 295022,
+    "bytes": 295292,
     "alt": "Мохлик у дома-пня и ягодного куста на лесной полянке",
-    "srcSet": "/site/poster-960.webp?v=780c6717b89e 960w, /site/poster.webp?v=d9c08aebccc8 1440w",
+    "srcSet": "/site/poster-960.webp?v=c5cf8a5fefa9 960w, /site/poster.webp?v=e71c9e4e8cb5 1440w",
     "variants": [
       {
-        "src": "/site/poster-960.webp?v=780c6717b89e",
+        "src": "/site/poster-960.webp?v=c5cf8a5fefa9",
         "width": 960,
         "height": 600,
-        "bytes": 172232
+        "bytes": 172312
       },
       {
-        "src": "/site/poster.webp?v=d9c08aebccc8",
+        "src": "/site/poster.webp?v=e71c9e4e8cb5",
         "width": 1440,
         "height": 900,
-        "bytes": 295022
+        "bytes": 295292
       }
     ]
   },
   "map": {
-    "src": "/site/map.webp?v=b78380615791",
+    "src": "/site/map.webp?v=e84e758f3720",
     "width": 1600,
     "height": 1600,
-    "bytes": 900002,
+    "bytes": 922366,
     "alt": "Карта лесного мира с полянкой, мастерской, шахтой, рекой и домами жителей",
-    "srcSet": "/site/map-800.webp?v=1d6609d7e320 800w, /site/map.webp?v=b78380615791 1600w, /site/map-2560.webp?v=7d292614ad7e 2560w",
+    "srcSet": "/site/map-800.webp?v=6518af961134 800w, /site/map.webp?v=e84e758f3720 1600w, /site/map-2560.webp?v=57f2bf18509a 2560w",
     "variants": [
       {
-        "src": "/site/map-800.webp?v=1d6609d7e320",
+        "src": "/site/map-800.webp?v=6518af961134",
         "width": 800,
         "height": 800,
-        "bytes": 281084
+        "bytes": 283534
       },
       {
-        "src": "/site/map.webp?v=b78380615791",
+        "src": "/site/map.webp?v=e84e758f3720",
         "width": 1600,
         "height": 1600,
-        "bytes": 900002
+        "bytes": 922366
       },
       {
-        "src": "/site/map-2560.webp?v=7d292614ad7e",
+        "src": "/site/map-2560.webp?v=57f2bf18509a",
         "width": 2560,
         "height": 2560,
-        "bytes": 1895910
+        "bytes": 1916194
       }
     ]
   },
   "nightMap": {
-    "src": "/site/map-night.webp?v=8edcde97f9cd",
+    "src": "/site/map-night.webp?v=929c987c457f",
     "width": 1600,
     "height": 1600,
-    "bytes": 477112,
+    "bytes": 485898,
     "alt": "Тот же лес вечером: свет в окнах домов и фонари вдоль дорожек",
-    "srcSet": "/site/map-night-800.webp?v=4d5ddef2a6e1 800w, /site/map-night.webp?v=8edcde97f9cd 1600w, /site/map-night-2560.webp?v=f22478e5de64 2560w",
+    "srcSet": "/site/map-night-800.webp?v=49d53793ad29 800w, /site/map-night.webp?v=929c987c457f 1600w, /site/map-night-2560.webp?v=559152719b11 2560w",
     "variants": [
       {
-        "src": "/site/map-night-800.webp?v=4d5ddef2a6e1",
+        "src": "/site/map-night-800.webp?v=49d53793ad29",
         "width": 800,
         "height": 800,
-        "bytes": 152550
+        "bytes": 154936
       },
       {
-        "src": "/site/map-night.webp?v=8edcde97f9cd",
+        "src": "/site/map-night.webp?v=929c987c457f",
         "width": 1600,
         "height": 1600,
-        "bytes": 477112
+        "bytes": 485898
       },
       {
-        "src": "/site/map-night-2560.webp?v=f22478e5de64",
+        "src": "/site/map-night-2560.webp?v=559152719b11",
         "width": 2560,
         "height": 2560,
-        "bytes": 910462
+        "bytes": 930068
       }
     ]
   },

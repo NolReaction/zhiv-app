@@ -72,6 +72,27 @@ function render(place, economy = controller(), extra = {}) {
 function renderUpgrade(stationId, economy = controller(), extra = {}) {
   return renderToStaticMarkup(createElement(Dialog.Root, { open: true }, createElement(WorldUpgradeContent, { stationId, economy, onClose() {}, onOpenPantry() {}, ...extra })));
 }
+
+test("caravan opens existing resident orders while its future rare shop has no invented purchases", () => {
+  const economy = controller({ act() { assert.fail("a caravan preview cannot change the economy"); } });
+  const html = render("leaftail-caravan", economy, { onOpenOrders() {} });
+  assert.match(html, /Караван Листохвоста/);
+  assert.match(html, /Торговец и заказы/);
+  assert.match(html, /Редкие товары за монеты появятся/);
+  assert.equal(disabled(button(html, "Заказы жителей")), false);
+  assert.doesNotMatch(html, /data-production-slot|data-guide-station-upgrade|Все уровни оборудования открыты|Будущая ветка|Купить|Продать/);
+  assert.deepEqual(helpers.worldStations["leaftail-caravan"].stationIds, []);
+  assert.equal(helpers.worldPlaceForStation("leaftail-caravan"), null);
+});
+
+test("Lopukh home explains the separate future workplace without build or workbench controls", () => {
+  const html = render("lopukh-home", controller({ act() { assert.fail("a house preview cannot change the economy"); } }));
+  assert.match(html, /Дом Лопоуха/);
+  assert.match(html, /отдельное рабочее место и заказы на изготовление появятся позже/);
+  assert.doesNotMatch(html, /data-production-slot|data-guide-station-upgrade|Все уровни оборудования открыты|Купить|Построить|Заказы жителей/);
+  assert.deepEqual(helpers.worldStations["lopukh-home"].stationIds, []);
+  assert.equal(helpers.worldPlaceForStation("lopukh-home"), null);
+});
 function button(html, text) {
   const found = [...html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)].map(match => ({ attributes: match[1], text: match[2].replace(/<[^>]*>/g, "") })).find(entry => entry.text.includes(text));
   assert.ok(found, `Missing button: ${text}`);

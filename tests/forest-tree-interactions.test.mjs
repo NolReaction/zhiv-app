@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test, { after } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
@@ -14,6 +15,13 @@ const { drawForestTreeCrownMotion: drawCrowns, drawForestTreeLeaves: drawLeaves 
   = await vite.ssrLoadModule('/features/world/environment/trees/forest-tree-interactions-painter.ts');
 const { previewPointInPolygon: contains } = await vite.ssrLoadModule('/features/world/tiled/preview-state.ts');
 const { TILED_WORLD: scene } = await vite.ssrLoadModule('/features/world/scene/presentation.ts');
+const authoredMap = JSON.parse(await readFile(new URL('../world/tiled/forest.tmj', import.meta.url), 'utf8'));
+function authoredCrowns(layers, inside = false) {
+  return layers.flatMap(layer => {
+    const active = inside || layer.name === 'TreeInteractions';
+    return [...(active ? layer.objects ?? [] : []), ...authoredCrowns(layer.layers ?? [], active)];
+  });
+}
 const rect = (x, y, width, height) => [{ x, y }, { x: x + width, y }, { x: x + width, y: y + height }, { x, y: y + height }];
 const crown = (id, x = 10, frontY = 90) => ({ id, points: rect(x, 10, 60, 70), frontY });
 const simple = { ...scene, treeInteractions: [crown('west-tree'), crown('east-canopy', 100)] };
@@ -25,9 +33,12 @@ function inner(crown) {
   throw new Error(`No inside point for ${crown.id}`);
 }
 
-test('all 15 independent interaction crowns react without consulting occluders', () => {
+test('every authored independent interaction crown reacts without consulting occluders', () => {
   const state = create(scene);
-  assert.equal(state.crowns.length, 15);
+  const expected = authoredCrowns(authoredMap.layers).map(object => object.name).sort();
+  assert.ok(expected.length > 0, 'the actual authoring map has independent touch crowns');
+  assert.deepEqual(state.crowns.map(crown => crown.id).sort(), expected,
+    'every current Tiled crown is interactive, including editor changes to their number');
   assert.ok(state.crowns.some(crown => crown.id === 'shishkolap-tree-touch'));
   for (const crown of state.crowns) assert.equal(hit(state, inner(crown)).id, crown.id);
   assert.deepEqual(create({ ...scene, occluders: [] }).crowns, state.crowns);
