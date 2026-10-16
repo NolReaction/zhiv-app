@@ -18,7 +18,15 @@ const { createWorldNavigation, isWalkable, canTraverse, findWorldPath } = await 
 const { previewWorldScene, initialPreviewLevels, previewSiteAt } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
 const { forestPointOccluded } = await vite.ssrLoadModule("/features/world/scene/forest-occlusion.ts");
 const layers = items => items.flatMap(layer => [layer, ...layers(layer.layers ?? [])]);
-const shopLayer = layers(map.layers).find(layer => layer.name === "Shop");
+function objects(items, offset = { x: 0, y: 0 }) {
+  return items.flatMap(layer => {
+    const position = { x: offset.x + (layer.offsetx ?? 0), y: offset.y + (layer.offsety ?? 0) };
+    return [...(layer.objects ?? []).map(object => ({ ...object, x: object.x + position.x, y: object.y + position.y })),
+      ...objects(layer.layers ?? [], position)];
+  });
+}
+const authoredObjects = objects(map.layers);
+const property = (object, name) => object.properties?.find(value => value.name === name)?.value;
 const shop = TILED_WORLD.sites.find(site => site.id === "plesk-shop");
 const destination = (scene, id) => scene.destinations.find(point => point.id === id).position;
 const centroid = points => ({ x: points.reduce((sum, point) => sum + point.x, 0) / points.length,
@@ -54,7 +62,8 @@ function assertTranslatedPoints(actual, expected, label) {
 }
 
 test("Tiled exports the rotated fishing shop as a clickable site with independent walkable ground", () => {
-  const authored = shopLayer.objects.find(object => object.name === "plesk-shop");
+  const authored = authoredObjects.find(object => property(object, "role") === "site" && property(object, "siteId") === "plesk-shop");
+  assert.ok(authored, "the nested shop image remains a registered authored site");
   assert.ok(shop);
   assert.deepEqual(shop.imagePlacement, { x: authored.x, y: authored.y, width: authored.width, height: authored.height,
     rotation: authored.rotation });
@@ -74,8 +83,10 @@ test("Tiled exports the rotated fishing shop as a clickable site with independen
 });
 
 test("the authored clearing contour is exported without replacing its vertices by a rectangle", () => {
-  const authored = shopLayer.objects.find(object => object.name === "pleska-cleaning");
+  const authored = authoredObjects.find(object => object.name === "pleska-cleaning" && property(object, "role") === "walk-area");
+  assert.ok(authored, "the nested shop tracing retains its authored ground contour");
   const area = TILED_WORLD.navigation.areas.find(item => item.id === authored.name);
+  assert.ok(area);
   assert.deepEqual(area.points, authored.polygon.map(point => ({ x: authored.x + point.x, y: authored.y + point.y })));
   assert.ok(area.points.length > 4);
 });
