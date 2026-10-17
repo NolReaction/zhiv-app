@@ -7,7 +7,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
 const { createPleskMind, advancePleskMind, pleskMindFrame, requestPleskTrade, requestPleskHome, requestPleskWalk,
-  requestPleskSocialVisit, cancelPleskSocialVisit, pleskAvailableForLeisure, pleskCanPausePassing, pleskCanReceiveVisit } = await vite.ssrLoadModule("/features/world/characters/plesk/plesk-mind.ts");
+  noticePleskMind, requestPleskSocialVisit, cancelPleskSocialVisit, pleskAvailableForLeisure, pleskCanPausePassing, pleskCanReceiveVisit } = await vite.ssrLoadModule("/features/world/characters/plesk/plesk-mind.ts");
 const { pleskPersonalHome } = await vite.ssrLoadModule("/features/world/characters/plesk/plesk-home.ts");
 const { pleskLocalPlaces, PLESK } = await vite.ssrLoadModule("/features/world/characters/plesk/plesk-resident.ts");
 const { createWorldNavigation, canTraverse } = await vite.ssrLoadModule("/features/world/navigation/navigation.ts");
@@ -144,6 +144,38 @@ test("Plesk visits a neighbour and walks back to the exact paused harmless route
   assert.equal(mind.stage, saved.stage);
   assert.ok(Math.abs(mind.age - saved.age) <= .1 + 1e-6); assert.deepEqual(mind.queue, saved.queue);
   tick(mind, .1); assert.equal(mind.home.phase, "outside"); assert.ok(mind.age > saved.age);
+});
+
+test("visible taps preserve Plesk's accepted visit but an explicit cancellation still returns her", () => {
+  const mind = createPleskMind(world), places = pleskLocalPlaces(world);
+  requestPleskWalk(mind, world, places.rest); tick(mind, 1);
+  const target = { id: "builder", position: places.trade.position, size: 38 };
+  assert.equal(requestPleskSocialVisit(mind, world, target), true);
+  const visit = mind.socialVisit, stage = mind.stage;
+  for (let tap = 0; tap < 100; tap++) noticePleskMind(mind, { preserveActivity: true });
+  assert.equal(mind.socialVisit, visit); assert.equal(mind.stage, stage); assert.equal(mind.noticePending, false);
+  until(mind, item => item.socialVisit?.phase === "wait", 60);
+  const feet = { ...mind.position };
+  for (let tap = 0; tap < 30; tap++) {
+    noticePleskMind(mind, { preserveActivity: true }); tick(mind, .1, { ...day, socialHold: true });
+    assert.equal(mind.socialVisit, visit); assert.equal(mind.socialVisit.phase, "wait");
+    assert.deepEqual(mind.position, feet);
+  }
+  cancelPleskSocialVisit(mind); assert.equal(mind.socialVisit.phase, "return");
+});
+
+test("visible taps preserve Plesk's home approach and threshold while an explicit call still wakes her", () => {
+  const mind = createPleskMind(world);
+  assert.equal(requestPleskHome(mind), true);
+  for (let count = 0; count < 1200 && mind.home.phase !== "inside"; count++) {
+    const home = mind.home, stage = mind.stage;
+    noticePleskMind(mind, { preserveActivity: true });
+    assert.equal(mind.noticePending, false); assert.equal(mind.home, home); assert.equal(mind.stage, stage);
+    tick(mind, .1); assert.notEqual(mind.home.phase, "exit");
+  }
+  assert.equal(mind.home.phase, "inside");
+  noticePleskMind(mind, { preserveActivity: true }); assert.equal(mind.noticePending, false);
+  noticePleskMind(mind); tick(mind, .1); assert.equal(mind.home.phase, "exit");
 });
 
 test("a conversation or real insect visit ignores its partner and ordinary walkers but yields to work", () => {

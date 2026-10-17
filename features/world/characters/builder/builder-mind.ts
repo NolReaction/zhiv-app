@@ -404,7 +404,11 @@ export function advanceBuilderMind(mind: BuilderMind | null, scene: FixedWorldSc
   beginRoute(mind, places, candidates);
 }
 
-export function noticeBuilderMind(mind: BuilderMind | null): void {
+/** A visible tap may add a greeting only to a free pose. Explicit calls retain
+ * their separate ability to interrupt optional activity. */
+export function noticeBuilderMind(mind: BuilderMind | null, options: { preserveActivity?: boolean } = {}): void {
+  if (mind && options.preserveActivity && (mind.route || mind.socialVisit || mind.constructionPending
+    || mind.action !== "idle" || mind.elapsed < mind.greetAfter)) return;
   if (mind?.available && !mind.job && mind.sleepPhase === "awake") mind.noticePending = true;
 }
 

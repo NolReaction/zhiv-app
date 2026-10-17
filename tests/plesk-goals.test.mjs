@@ -117,3 +117,50 @@ test("personal shore walks rotate tackle rest, the pier and the stall without fa
   }
   assert.equal(new Set(seen).size, 3); assert.equal(new Set(pauses).size, 3);
 });
+
+test("visible taps retain Plesk's exact optional route and reach the real destination", () => {
+  const scene = sceneFixture(), mind = createPleskMind(scene, 9), places = pleskLocalPlaces(scene);
+  assert.equal(requestPleskWalk(mind, scene, places.trade), true);
+  const stage = mind.stage, queue = mind.queue, target = stage.target;
+  let ticks = 0;
+  while (mind.stopId !== target.id && ticks++ < 600) {
+    const feet = { ...mind.position }, age = mind.age;
+    for (let tap = 0; tap < 5; tap++) noticePleskMind(mind, { preserveActivity: true });
+    assert.equal(mind.noticePending, false); assert.equal(mind.stage, stage); assert.equal(mind.queue, queue);
+    assert.deepEqual(mind.position, feet); assert.equal(mind.age, age);
+    step(mind, scene, day, Math.min(.1, mind.stage.duration - mind.age));
+    if (mind.stage === stage) assert.ok(mind.age > age);
+  }
+  assert.ok(ticks < 600); assert.equal(mind.stopId, target.id); assert.deepEqual(mind.position, target.position);
+  assert.equal(mind.catchCount, 0); assert.equal(mind.avoidStopId, null);
+});
+
+test("visible taps cannot discard Plesk's fishing queue, miss a real catch or replay a deposit", () => {
+  const scene = TILED_WORLD, mind = createPleskMind(scene, 9), control = createPleskMind(scene, 9);
+  for (let tick = 0; tick < 1800 && control.stage.action !== "fish"; tick++) { step(mind, scene); step(control, scene); }
+  assert.equal(mind.stage.action, "fish");
+  let seenFishing = false, seenDeposit = false;
+  for (let tick = 0; tick < 600 && !seenDeposit; tick++) {
+    noticePleskMind(mind, { preserveActivity: true });
+    step(mind, scene); step(control, scene);
+    assert.deepEqual(mind, control, "a busy tap has exactly the same timeline as untouched fishing");
+    seenFishing ||= mind.stage.action === "fish";
+    seenDeposit ||= mind.catchCount > 0;
+  }
+  assert.ok(seenFishing && seenDeposit);
+  assert.equal(mind.catchCount, 1);
+});
+
+test("repeated visible taps give a free Plesk one finite greeting and resume her original idle stage", () => {
+  const scene = sceneFixture(), mind = createPleskMind(scene, 9);
+  mind.stage.duration = 100;
+  noticePleskMind(mind, { preserveActivity: true }); step(mind, scene);
+  assert.equal(mind.stage.action, "greet");
+  const deadline = mind.greetAfter, feet = { ...mind.position };
+  for (let tick = 0; tick < 40; tick++) {
+    noticePleskMind(mind, { preserveActivity: true }); step(mind, scene);
+    assert.equal(mind.greetAfter, deadline); assert.equal(mind.noticePending, false);
+  }
+  assert.equal(mind.stage.action, "idle"); assert.equal(mind.queue.length, 0);
+  assert.deepEqual(mind.position, feet);
+});

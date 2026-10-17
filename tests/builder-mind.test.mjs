@@ -349,3 +349,37 @@ test("a host waits for his neighbour but a real construction or player greeting 
   assert.equal(mind.job.id, "home"); assert.equal(mind.action, "walk");
   assert.ok(mind.route, "confirmed construction takes its ordinary checked path");
 });
+
+test("visible taps keep a builder's checked destination and walking progress until real arrival", () => {
+  const scene = fixture(), mind = createBuilderMind(scene), empty = snapshot([], 1);
+  advanceBuilderMind(mind, scene, 0, { now: start, construction: empty });
+  mind.wait = 0;
+  advanceBuilderMind(mind, scene, .1, { now: start, construction: empty });
+  assert.ok(mind.route);
+  const route = mind.route, target = mind.target;
+  let ticks = 0;
+  while (mind.route && ticks++ < 600) {
+    const feet = { ...mind.position }, progress = mind.distance;
+    for (let tap = 0; tap < 5; tap++) noticeBuilderMind(mind, { preserveActivity: true });
+    assert.equal(mind.noticePending, false); assert.equal(mind.route, route); assert.equal(mind.target, target);
+    assert.deepEqual(mind.position, feet); assert.equal(mind.distance, progress);
+    advance(mind, scene, empty, .1);
+    if (mind.route) assert.ok(mind.distance > progress, "a tap never pauses or restarts walking");
+  }
+  assert.equal(mind.route, null); assert.ok(ticks < 600);
+  assert.deepEqual(mind.position, target.position); assert.equal(mind.job, null);
+});
+
+test("repeated visible taps give an idle builder one finite greeting and no delayed greeting queue", () => {
+  const scene = fixture(), mind = createBuilderMind(scene), empty = snapshot([], 1);
+  advanceBuilderMind(mind, scene, 0, { now: start, construction: empty });
+  mind.wait = 100;
+  noticeBuilderMind(mind, { preserveActivity: true }); advance(mind, scene, empty, .1);
+  assert.equal(mind.action, "greet");
+  const deadline = mind.greetAfter, feet = { ...mind.position };
+  for (let tick = 0; tick < 40; tick++) {
+    noticeBuilderMind(mind, { preserveActivity: true }); advance(mind, scene, empty, .1);
+    assert.equal(mind.greetAfter, deadline); assert.equal(mind.noticePending, false);
+  }
+  assert.equal(mind.action, "idle"); assert.equal(mind.route, null); assert.deepEqual(mind.position, feet);
+});

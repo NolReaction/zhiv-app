@@ -776,9 +776,8 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   function noticeSpeech(speaker: ForestSpeaker) {
     if (!active() || !session.isOwner()) return;
     advanceStaticSpeech();
-    // An explicit tap can end an optional visit. Repeated taps never replace or
-    // extend an existing line, nor do they queue a backlog of greetings.
-    if (state.social.meeting) cancelForestSocial(state.social, socialEnvironment());
+    // A greeting never cancels a meeting, visit or promised followup. The speech
+    // director already protects the current line and bounds repeated taps.
     noticeForestSocial(state.social, speaker, socialEnvironment());
     updateAudio(true);
   }
@@ -1301,9 +1300,9 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       resume(); return;
     }
     const still = reducedMotion(options, dev), manualPose = Boolean(state.animation || dev?.pose && dev.pose !== "auto");
-    noticeForestDirector(state, still || manualPose);
+    const preservedActivity = noticeForestDirector(state, still || manualPose, { preserveActivity: true });
     // Static accessibility / explicit DEV poses use a bounded feedback timer.
-    if ((still || manualPose) && state.reaction <= 0) state.reaction = REACTION_SECONDS;
+    if (!preservedActivity && (still || manualPose) && state.reaction <= 0) state.reaction = REACTION_SECONDS;
     if (active()) session.publish(); resume();
   }
   function hitVisiblePet(x: number, y: number) {
@@ -1417,9 +1416,18 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     noticeResident(id) {
       if (disposed || !session.isOwner()) return;
       noticeSpeech(id);
-      if (id === "builder") noticeBuilderMind(state.builderMind);
-      else if (id === "plesk" && state.pleskMind && ["idle", "rest"].includes(state.pleskMind.stage.action)) noticePleskMind(state.pleskMind);
-      else if (state.villagers && (id === "lopukh" || id === "kamneshmyg" || id === "leaftail")) noticeForestVillager(state.villagers, id);
+      const encounter = residentFaunaEncounter(state.fauna, id);
+      const meeting = state.social.meeting, followup = state.social.followup;
+      const held = socialResidentHeld(id) || Boolean(meeting && (meeting.guest === id || meeting.host === id))
+        || Boolean(followup && (followup.speaker === id || followup.host === id))
+        || Boolean(encounter && !["interrupt", "release"].includes(encounter.phase))
+        || Boolean((id === "lopukh" || id === "kamneshmyg" || id === "leaftail")
+          && villagerWildlifeHolds(state.villagerWildlife, state.fauna).includes(id));
+      if (!held) {
+        if (id === "builder") noticeBuilderMind(state.builderMind, { preserveActivity: true });
+        else if (id === "plesk") noticePleskMind(state.pleskMind, { preserveActivity: true });
+        else if (state.villagers && (id === "lopukh" || id === "kamneshmyg" || id === "leaftail")) noticeForestVillager(state.villagers, id, { preserveActivity: true });
+      }
       reconcileWildlife();
       updateObservation(true); session.publish(); resume();
     },

@@ -27,11 +27,11 @@ function setup(id, production = null) {
   state.residents[id].outdoorUntil = 1e6;
   return state;
 }
-function step(state, id, env = {}) {
+function step(state, id, env = {}, dt = .1) {
   const mind = state.residents[id], feet = { ...mind.position }, oldDoor = ["enter", "inside", "exit"].includes(mind.doorPhase) ? mind.door : null;
-  advanceForestVillagers(state, state.scene, .1, { now, ...env });
+  advanceForestVillagers(state, state.scene, dt, { now, ...env });
   const door = ["enter", "inside", "exit"].includes(mind.doorPhase) ? mind.door : oldDoor;
-  assert.ok(distance(feet, mind.position) <= FOREST_VILLAGER_PROFILES[id].speed * .1 + .001, "all transitions preserve the walking speed budget");
+  assert.ok(distance(feet, mind.position) <= FOREST_VILLAGER_PROFILES[id].speed * dt + .001, "all transitions preserve the walking speed budget");
   assert.ok(canTraverse(door?.navigation ?? forestVillagerPlaces(state.scene, id).navigation, feet, mind.position), "every step uses ordinary ground or the validated private doorway");
 }
 function until(state, id, predicate, seconds = 120) {
@@ -118,4 +118,90 @@ test("confirmed work interrupts an unfinished woodpile inspection without granti
   assert.deepEqual(mind.position, feet); assert.equal(mind.job, true); assert.equal(mind.habit, null);
   assert.equal(mind.checkedDelivery, 0); assert.equal(mind.habitCycles, 0); assert.deepEqual(mind.woodwork.lastDelivery, delivery);
   step(state, mind.id); assert.ok(["work", "walk"].includes(mind.action));
+});
+
+for (const id of ["lopukh", "kamneshmyg", "leaftail"]) {
+  test(`visible taps leave ${id}'s route and original goal intact through actual arrival`, () => {
+    const state = setup(id), mind = state.residents[id], places = forestVillagerPlaces(scene, id);
+    if (id === "leaftail") {
+      noticeForestVillager(state, id);
+      until(state, id, mind => mind.doorPhase === "outside" && !mind.noticePending);
+    }
+    mind.habitAfter = Infinity; mind.fatigue = 0;
+    const candidates = places.wander.filter(stop => distance(stop.position, mind.position) > 40);
+    assert.equal(selectVillagerRoute(mind, places, candidates, "home", "inspect", []), true);
+    const target = mind.target, route = mind.route, goal = mind.goal;
+    assert.ok(route);
+    let ticks = 0;
+    while (mind.route && ticks++ < 9000) {
+      const feet = { ...mind.position }, progress = mind.distance;
+      for (let tap = 0; tap < 5; tap++) noticeForestVillager(state, id, { preserveActivity: true });
+      assert.equal(mind.noticePending, false); assert.equal(mind.route, route);
+      assert.equal(mind.target, target); assert.equal(mind.goal, goal);
+      assert.deepEqual(mind.position, feet); assert.equal(mind.distance, progress);
+      // Inspect each real integration step through bends, rather than a chord
+      // that would shortcut six movement slices around the authored obstacles.
+      step(state, id, {}, 1 / 60);
+      if (mind.route) assert.ok(mind.distance > progress, "a tap never restarts or pauses the original walk");
+    }
+    assert.ok(ticks < 9000); assert.equal(mind.route, null);
+    assert.ok(distance(mind.position, target.position) < .01); assert.equal(mind.job, false);
+  });
+}
+
+test("visible taps let a real woodpile inspection finish once instead of discarding its habit", () => {
+  const state = inspectWoodpile(), mind = state.residents.lopukh, habit = mind.habit;
+  const delivery = structuredClone(mind.woodwork.lastDelivery), feet = { ...mind.position };
+  for (let tick = 0; tick < 100 && mind.habit; tick++) {
+    noticeForestVillager(state, mind.id, { preserveActivity: true });
+    assert.equal(mind.habit, habit); assert.equal(mind.noticePending, false);
+    step(state, mind.id); assert.deepEqual(mind.position, feet);
+  }
+  assert.equal(mind.habit, null); assert.equal(mind.checkedDelivery, delivery.sequence);
+  assert.equal(mind.habitCycles, 1); assert.deepEqual(mind.woodwork.lastDelivery, delivery);
+});
+
+test("visible taps preserve the complete chop, carry and single log unload cycle", () => {
+  const state = setup("lopukh"), mind = state.residents.lopukh, phases = new Set();
+  assert.equal(beginWoodcutterCycle(mind, forestVillagerPlaces(scene, mind.id)), true);
+  for (let tick = 0; tick < 1200 && mind.woodwork.completedCycles === 0; tick++) {
+    phases.add(mind.woodwork.phase);
+    const cycle = structuredClone(mind.woodwork), route = mind.route, target = mind.target;
+    noticeForestVillager(state, mind.id, { preserveActivity: true });
+    assert.equal(mind.noticePending, false); assert.equal(mind.route, route); assert.equal(mind.target, target);
+    assert.deepEqual(mind.woodwork, cycle); step(state, mind.id);
+  }
+  assert.equal(mind.woodwork.completedCycles, 1); assert.equal(mind.woodwork.lastDelivery.sequence, 1);
+  assert.deepEqual([...phases].sort(), ["chop", "haul", "rest", "unload"]);
+});
+
+test("visible doorway taps keep the home route while an explicit call still wakes the resident", () => {
+  const state = setup("lopukh"), mind = state.residents.lopukh;
+  assert.equal(requestForestVillagerHome(state, scene, mind.id), true);
+  for (let tick = 0; tick < 900 && mind.doorPhase !== "inside"; tick++) {
+    const phase = mind.doorPhase, progress = mind.doorProgress, route = mind.route;
+    noticeForestVillager(state, mind.id, { preserveActivity: true });
+    assert.equal(mind.noticePending, false); assert.equal(mind.doorPhase, phase);
+    assert.equal(mind.doorProgress, progress); assert.equal(mind.route, route);
+    step(state, mind.id);
+    assert.notEqual(mind.doorPhase, "exit", "tapping an entering resident never reverses the doorway");
+  }
+  assert.equal(mind.doorPhase, "inside");
+  noticeForestVillager(state, mind.id, { preserveActivity: true });
+  assert.equal(mind.noticePending, false);
+  noticeForestVillager(state, mind.id); step(state, mind.id);
+  assert.equal(mind.doorPhase, "exit", "explicit home calls retain their separate wake behavior");
+});
+
+test("repeated visible taps give a free villager a finite greeting without a delayed queue", () => {
+  const state = setup("kamneshmyg"), mind = state.residents.kamneshmyg;
+  mind.wait = 100; mind.habitAfter = Infinity;
+  noticeForestVillager(state, mind.id, { preserveActivity: true }); step(state, mind.id);
+  assert.equal(mind.action, "greet");
+  const deadline = mind.greetAfter;
+  for (let tick = 0; tick < 40; tick++) {
+    noticeForestVillager(state, mind.id, { preserveActivity: true }); step(state, mind.id);
+    assert.equal(mind.noticePending, false); assert.equal(mind.greetAfter, deadline);
+  }
+  assert.notEqual(mind.action, "greet");
 });

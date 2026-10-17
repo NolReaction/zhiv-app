@@ -33,7 +33,7 @@ export function createForestVillagers(scene: FixedWorldScene): ForestVillagersSt
     fatigue: .08 + index * .07, socialNeed: .2, workNeed: .4, decisions: 0, trafficWaiting: false, retryAt: 0, stalledAt: null,
     doorPhase: "outside", doorProgress: 0, door: null, doorPurpose: "rest", outdoorUntil: id === "leaftail" ? 0 : 145 + index * 30, recentStops: [],
     woodwork: id === "lopukh" ? createWoodcutterCycle() : null,
-    job: false, jobKey: "", socialVisit: null, noticePending: false,
+    job: false, jobKey: "", socialVisit: null, noticePending: false, greetAfter: 0,
     goal: null, failedStops: [], habit: null, habitAfter: 24 + index * 9, habitCycles: 0, checkedDelivery: 0, postWorkWalk: false,
   }])) as Record<ForestVillagerId, ForestVillagerMind>;
   return { scene, confirmed: false, buildings: {}, residents, production: null,
@@ -332,9 +332,18 @@ export function forestVillagerOccupants(state: ForestVillagersState): ResidentOc
   });
 }
 
-export function noticeForestVillager(state: ForestVillagersState, id: ForestVillagerId): void {
+/** A tap keeps the current purpose and work intact; an explicit home call may
+ * still wake the resident through the usual checked doorway. */
+export function noticeForestVillager(state: ForestVillagersState, id: ForestVillagerId,
+  options: { preserveActivity?: boolean } = {}): void {
   const mind = state.residents[id];
-  if (mind.available && !mind.job && !(id === "kamneshmyg" && state.arrivalPhase !== "complete")) mind.noticePending = true;
+  if (options.preserveActivity && (mind.route || mind.goal || mind.habit || mind.socialVisit || mind.doorPhase !== "outside"
+    || mind.woodwork && mind.woodwork.phase !== "idle" || !["idle", "rest", "inspect"].includes(mind.action)
+    || mind.elapsed < mind.greetAfter)) return;
+  if (mind.available && !mind.job && !(id === "kamneshmyg" && state.arrivalPhase !== "complete")) {
+    mind.noticePending = true;
+    if (options.preserveActivity) mind.greetAfter = mind.elapsed + 15;
+  }
 }
 
 export function requestForestVillagerVisit(state: ForestVillagersState, scene: FixedWorldScene, id: ForestVillagerId,

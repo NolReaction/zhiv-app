@@ -94,21 +94,37 @@ export function cancelForestDirector(state: ForestSessionState, reason = "Зан
   state.director.nextDecisionAt = state.director.elapsed + 10;
   releaseClearingPoint(state.clearing);
 }
-export function noticeForestDirector(state: ForestSessionState, still = false) {
+/** A body tap can acknowledge the player without transferring route ownership.
+ * Explicit DEV wake/cancel controls keep their separate interruption behavior. */
+export function noticeForestDirector(state: ForestSessionState, still = false, options: { preserveActivity?: boolean } = {}): boolean {
+  const { clearing, director, life } = state;
+  const sleeping = ["sleep", "drowsy", "yawn"].includes(clearingActivityFrame(clearing).pose);
+  const walking = ["free-walk", "outbound", "return", "homebound", "home-return", "entering", "exiting"].includes(clearing.stage);
+  const meeting = state.social.meeting;
+  const social = meeting && (meeting.guest === "mochlik" || meeting.host === "mochlik");
+  if (options.preserveActivity && !sleeping && (social || walking || clearing.requestedPoint || clearing.activeInteraction
+    || state.pendingLife || state.pendingAttention || director.activeKey || director.tradeVisit || director.birdwatch
+    || director.campfireVisit || life.routine || life.garden.routine || life.garden.harvest || life.garden.basket?.held || state.fauna.encounter)) {
+    // The scene owns the finite speech bubble. Do not insert an attention stage:
+    // garden/trade owners require their real path and must keep their own clocks.
+    noticeForestMind(clearing.behavior.mind, { preserveIntention: true });
+    return true;
+  }
   cancelForestTradeVisit(state, "Мохлика позвали");
   noticeForestMind(state.clearing.behavior.mind, { rested: state.clearing.stage === "home-sleep" && state.clearing.stageElapsed >= 5 });
   state.director.birdwatch = null; state.director.campfireVisit = null;
   clearRequest(state); state.director.nextDecisionAt = state.director.elapsed + 12;
   if (still) {
-    cancelForestDirector(state); noticeClearingActivity(state.clearing, { still: true, mindNoticed: true }); return;
+    cancelForestDirector(state); noticeClearingActivity(state.clearing, { still: true, mindNoticed: true }); return false;
   }
-  if (state.pendingAttention) return;
+  if (state.pendingAttention) return false;
   cancelGarden(state);
   const prop = interruptForestLife(state.life), insect = interruptFaunaInteraction(state.fauna);
   state.pendingAttention = prop || insect;
   if (!state.pendingAttention) {
     releaseClearingPoint(state.clearing); noticeClearingActivity(state.clearing, { mindNoticed: true });
   }
+  return false;
 }
 
 /** Requests use the same physical participants and paths as autonomous actions. */

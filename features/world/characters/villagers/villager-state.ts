@@ -31,7 +31,7 @@ export type ForestVillagerMind = {
   doorPurpose: "rest" | "work";
   outdoorUntil: number; recentStops: string[];
   woodwork: WoodcutterCycle | null;
-  job: boolean; jobKey: string; socialVisit: { targetId: string; anchor: WorldPoint } | null; noticePending: boolean;
+  job: boolean; jobKey: string; socialVisit: { targetId: string; anchor: WorldPoint } | null; noticePending: boolean; greetAfter: number;
   /** Finite voluntary plans never own work, conversations or doorway travel. */
   goal: VillagerGoal | null; failedStops: { id: string; until: number }[];
   habit: VillagerHabit | null; habitAfter: number; habitCycles: number; checkedDelivery: number; postWorkWalk: boolean;

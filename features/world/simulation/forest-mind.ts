@@ -206,9 +206,10 @@ export function finishForestIntention(mind: ForestMindState, outcome: ForestMind
   }
   event(mind, outcome, intention.action, reason); mind.intention = null;
 }
-export function noticeForestMind(mind: ForestMindState, options: { rested?: boolean } = {}) {
+export function noticeForestMind(mind: ForestMindState, options: { rested?: boolean; preserveIntention?: boolean } = {}) {
   const wasSleeping = mind.intention?.action === "home-sleep" && options.rested;
-  finishForestIntention(mind, wasSleeping ? "completed" : "interrupted", wasSleeping ? "Отдохнул и услышал игрока" : "Услышал игрока");
+  if (!options.preserveIntention)
+    finishForestIntention(mind, wasSleeping ? "completed" : "interrupted", wasSleeping ? "Отдохнул и услышал игрока" : "Услышал игрока");
   const log = mind.needs.attention < .9 || mind.elapsed - (mind.events.at(-1)?.at ?? -10) >= 2;
   mind.needs.attention = 1; mind.attentionUntil = mind.elapsed + 30;
   mind.arousal = Math.max(forestMindMotives(mind).arousal, .7);

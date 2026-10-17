@@ -97,10 +97,10 @@ test("a still or busy scene keeps the merchant accessible without starting a cus
   }
 });
 
-test("stopping a shop walk with a hero greeting releases a free builder in a narrow passage", async () => {
+test("a hero greeting preserves the shop walk while a free builder shares the narrow passage", async () => {
   const rectangle = (x, y, width, height) => [{ x, y }, { x: x + width, y },
     { x: x + width, y: y + height }, { x, y: y + height }];
-  const customer = { x: 810, y: 690 }, start = { x: 630, y: 690 };
+  const customer = { x: 810, y: 690 }, start = { x: 520, y: 690 };
   const authored = {
     actor: { spawn: { x: 680, y: 690 }, size: 50 },
     sites: [{ id: "plesk-shop", label: "Лавка Плёски", initialLevel: 1,
@@ -115,7 +115,7 @@ test("stopping a shop walk with a hero greeting releases a free builder in a nar
       { id: "room", points: rectangle(500, 600, 105, 180) },
       { id: "passage", points: rectangle(580, 670, 280, 40) }], obstacles: [], interests: [] },
   };
-  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore, forgetForestSession, canTraverse, canStartClearingLife,
+  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore, forgetForestSession, canTraverse,
     residentClearance } = await modules(authored);
   const env = browser(), key = "shop-greeting-passage"; let scene, probe;
   try {
@@ -129,7 +129,9 @@ test("stopping a shop walk with a hero greeting releases a free builder in a nar
     // owner clock must handle his transient route, rather than a mock occupant.
     builder.position = { ...start }; builder.action = "walk";
     builder.target = { id: "idle-shopward", position: { ...customer }, lookAt: { x: 810, y: 680 } };
-    builder.route = { points: [{ ...start }, { ...customer }], distances: [0, 180], length: 180,
+    // Leave enough initial room for the faster builder: this checks ordinary
+    // personal space, rather than the separate moving-pair soft-pass policy.
+    builder.route = { points: [{ ...start }, { ...customer }], distances: [0, 290], length: 290,
       speedLimits: [1, 0], roundedCorners: 0, checks: 0 };
     const step = () => {
       const heroBefore = { ...state.clearing.position }, builderBefore = { ...builder.position };
@@ -139,35 +141,28 @@ test("stopping a shop walk with a hero greeting releases a free builder in a nar
       assert.ok(canTraverse(state.clearing.navigation, heroBefore, state.clearing.position));
       assert.ok(canTraverse(state.clearing.navigation, builderBefore, builder.position));
       assert.ok(distanceBetween(builder.position, state.clearing.position) >= residentClearance(40, 50) - 1e-7,
-        "the owner clock preserves visible personal space");
+        `the owner clock preserves visible personal space: ${JSON.stringify({ hero: state.clearing.position, builder: builder.position, gap: distanceBetween(builder.position, state.clearing.position), expected: residentClearance(40, 50), heroStage: state.clearing.stage, builderTarget: builder.target?.id })}`);
     };
     scene.visitTradingPlace("plesk");
     assert.equal(state.director.tradeVisit?.phase, "outbound");
     const heroStart = { ...state.clearing.position }; step();
     assert.notDeepEqual(state.clearing.position, heroStart, "the shop walk begins before the player interrupts it");
+    const visit = state.director.tradeVisit, route = state.clearing.freeRoute;
+    const intention = state.clearing.behavior.mind.intention, goal = state.clearing.requestedPoint;
+    const builderBeforeGreeting = { ...builder.position };
     scene.notice();
-    const stoppedHero = { ...state.clearing.position };
-    assert.equal(state.director.tradeVisit, null); assert.equal(state.clearing.requestedPoint, null);
+    assert.strictEqual(state.director.tradeVisit, visit);
+    assert.strictEqual(state.clearing.freeRoute, route);
+    assert.strictEqual(state.clearing.requestedPoint, goal);
+    assert.strictEqual(state.clearing.behavior.mind.intention, intention);
     assert.equal(state.social.current?.speaker, "mochlik");
-    for (let frame = 0; frame < 100 && !builder.trafficWaiting; frame++) step();
-    assert.equal(builder.trafficWaiting, true, "the cancelled shop walk now blocks the middle of the builder route");
-    assert.ok(distanceBetween(builder.target.position, stoppedHero) > residentClearance(40, 50),
-      "the idle goal is free, so giving up only occupied goals cannot release this pair");
-    const blockedFeet = { ...builder.position };
-    for (let frame = 0; frame < 160 && distanceBetween(builder.position, blockedFeet) < 8; frame++) {
-      step(); assert.deepEqual(state.clearing.position, stoppedHero, "the waiting player is never pushed aside");
+    for (let frame = 0; frame < 800 && distanceBetween(state.clearing.position, customer) > .5; frame++) {
+      scene.notice(); step();
+      assert.strictEqual(state.director.tradeVisit, visit, "tap spam cannot replace or cancel the original visit");
     }
-    assert.ok(distanceBetween(builder.position, blockedFeet) >= 8, "a free builder must step back from a blocked passage within eight seconds");
-    assert.equal(builder.job, null); assert.equal(state.social.meeting, null);
-    const resumedBuilder = { ...builder.position };
-    worldDevStore.patch({ autoLife: true });
-    for (let frame = 0; frame < 100 && !canStartClearingLife(state.clearing); frame++) step();
-    assert.ok(canStartClearingLife(state.clearing), "the bounded greeting releases the hero after its quiet interval");
-    scene.visitTradingPlace("plesk");
-    assert.equal(state.director.tradeVisit?.phase, "outbound", "a later public shop request can use the released hero");
-    for (let frame = 0; frame < 400 && distanceBetween(state.clearing.position, customer) > .5; frame++) step();
-    assert.ok(distanceBetween(state.clearing.position, customer) <= .5, "the hero resumes the requested shop route");
-    assert.ok(distanceBetween(builder.position, resumedBuilder) > 8, "the other resident completes his escape while the hero resumes walking");
+    assert.ok(distanceBetween(state.clearing.position, customer) <= .5, "the original requested shop route arrives without a second invitation");
+    assert.ok(distanceBetween(builder.position, builderBeforeGreeting) > 8, "the free builder keeps a physical route or checked yielding escape");
+    assert.equal(builder.job, null);
   } finally { scene?.dispose(); probe?.release(); forgetForestSession(key); worldDevStore.reset(); env.restore(); }
 });
 

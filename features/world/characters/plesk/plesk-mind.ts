@@ -250,7 +250,17 @@ function acceptScene(mind: PleskMind, scene: FixedWorldScene, places: PleskPlace
   return mind.available;
 }
 
-export function noticePleskMind(mind: PleskMind | null): void { if (mind) mind.noticePending = true; }
+/** Tapping a busy resident only shows scene speech. It must not replace a
+ * checked route, a fishing transfer, a doorway or an accepted neighbour visit.
+ * Explicit calls (including the home rehearsal) keep their normal priority. */
+export function noticePleskMind(mind: PleskMind | null, options: { preserveActivity?: boolean } = {}): void {
+  if (!mind) return;
+  if (options.preserveActivity && (!mind.available || mind.home.phase !== "outside" || mind.socialVisit
+    || passageYields.has(mind) || mind.tradePending || ["fish", "trade"].includes(mind.intent)
+    || !["idle", "rest"].includes(mind.stage.action) || mind.stage.trail || mind.stage.deposit || mind.stage.sell
+    || mind.stage.caught || mind.stage.outcome || mind.elapsed < mind.greetAfter)) return;
+  mind.noticePending = true;
+}
 
 /** A visual invitation, never an economic operation. Finish the current walk or
  * fishing cycle (including its deposit) before taking the prepared safe route.

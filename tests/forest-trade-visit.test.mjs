@@ -141,7 +141,7 @@ test("missing or unreachable markers do not move the hero", () => {
   }
 });
 
-test("cancellation, attention and reduced motion release only the cosmetic visit", () => {
+test("explicit cancellation, wake and reduced motion release only the cosmetic visit", () => {
   for (const cancel of [state => cancelForestDirector(state), state => noticeForestDirector(state),
     state => advanceForestDirector(state, .05, { ...calm, reducedMotion: true })]) {
     const { state, scene } = create(); requestForestTradeVisit(state, scene, calm); advance(state, 1);
@@ -156,6 +156,36 @@ test("cancellation, attention and reduced motion release only the cosmetic visit
   advanceForestDirector(state, .05, { ...calm, explicitTravel: true, blocked: true });
   assert.equal(state.director.tradeVisit, null);
   assert.deepEqual(state.clearing.requestedPoint, newTarget, "a new economic departure keeps its own destination");
+});
+
+test("safe body attention preserves the actual visit, route and intention through arrival and return", () => {
+  for (const still of [false, true]) {
+    const { state, scene } = create(); seller(state);
+    assert.equal(requestForestTradeVisit(state, scene, calm), true);
+    advance(state, 1);
+    const visit = state.director.tradeVisit, path = state.clearing.freeRoute;
+    const target = state.clearing.requestedPoint, intention = state.clearing.behavior.mind.intention;
+    const before = { ...state.clearing.position };
+    assert.equal(noticeForestDirector(state, still, { preserveActivity: true }), true);
+    assert.strictEqual(state.director.tradeVisit, visit);
+    assert.strictEqual(state.clearing.freeRoute, path);
+    assert.strictEqual(state.clearing.requestedPoint, target);
+    assert.strictEqual(state.clearing.behavior.mind.intention, intention);
+    assert.deepEqual(state.clearing.position, before);
+    advance(state, 3, calm, () => noticeForestDirector(state, still, { preserveActivity: true }));
+    assert.notDeepEqual(state.clearing.position, before, "repeated attention cannot hold or restart a walking actor");
+    until(state, () => state.director.tradeVisit?.phase === "visiting");
+    const atCounter = { ...state.clearing.position };
+    advance(state, 1, calm, () => noticeForestDirector(state, still, { preserveActivity: true }));
+    assert.deepEqual(state.clearing.position, atCounter);
+    assert.strictEqual(state.director.tradeVisit, visit);
+    until(state, () => state.director.tradeVisit?.phase === "returning");
+    advance(state, 1, calm, () => noticeForestDirector(state, still, { preserveActivity: true }));
+    until(state, () => state.director.tradeVisit === null);
+    assert.ok(distance(state.clearing.position, visit.home) < .01);
+    assert.equal(state.clearing.behavior.mind.events.some(event => event.type === "interrupted" && event.action === "look"), false);
+    assert.ok(state.clearing.behavior.mind.events.some(event => event.type === "completed" && event.action === "look"));
+  }
 });
 
 test("the authored stall supports a complete meeting and return with both real character clocks", async () => {
