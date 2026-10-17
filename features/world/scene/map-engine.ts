@@ -16,7 +16,7 @@ import { createWorldLightingEditorMap, WORLD_LIGHTING_EDITOR_FOCUS_EVENT, takeWo
 import { WORLD_STUDIO_MAP_KEY_EVENT, type WorldStudioMapKeyRequest } from "@/features/world/dev/world-studio-keyboard";
 import { mapObjectAt, type MapObjectPlace, type MapInteractiveObject } from "./site-interactions";
 import { projectConstructionAnchor, type MapObjectScreenAnchor } from "./construction-map-anchor";
-import { drawMapGuideTarget, mapGuideCamera, minerArrivalGuideTarget } from "./map-guide-target";
+import { drawMapGuideTarget, mapGuideCamera, minerArrivalGuideTarget, leaftailArrivalGuideTarget } from "./map-guide-target";
 import { createMapSceneRehearsal } from "./map-scene-rehearsal";
 export class MapLoadError extends Error {
   constructor(public stage: "map" | "character", public cause: unknown) { super("Не удалось загрузить лес"); }
@@ -219,6 +219,10 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     draw();
   }
   function arrivalTarget() {
+    if (guidePlace === "leaftail-caravan" && options.merchantArrival?.enabled && !options.merchantArrival.seen && !editingLight()) {
+      const point = habitat.merchantArrivalPoint?.();
+      return point ? leaftailArrivalGuideTarget(point) : undefined;
+    }
     if (guidePlace !== "quarry" || !options.residentArrival?.enabled || options.residentArrival.seen || editingLight()) return;
     const point = habitat.residentArrivalPoint?.();
     return point ? minerArrivalGuideTarget(point) : undefined;

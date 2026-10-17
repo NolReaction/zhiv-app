@@ -26,7 +26,11 @@ export function accountSceneLevels(scene: FixedWorldScene, houseLevel: number | 
   preview?: { levels: PreviewLevels; previewBuildings?: boolean }, buildings?: EconomySceneBuildings | null): PreviewLevels {
   const authored = initialPreviewLevels(scene), levels = { ...authored };
   for (const site of scene.sites) {
-    const confirmed = buildings?.[site.id];
+    // The authored rabbit home hosts the saved woodlot station. Its second
+    // exterior starts at station tier 3; neither artwork nor account keys change.
+    const station = site.id === "lopukh-home" ? buildings?.woodlot : undefined;
+    const confirmed = site.id === "lopukh-home" && Number.isInteger(station) && station! >= 0
+      ? station! >= 3 ? 2 : 1 : buildings?.[site.id];
     const level = Number.isInteger(confirmed) && confirmed! >= 0 ? confirmed
       : site.id === "home" && Number.isInteger(houseLevel) && houseLevel! > 0 ? houseLevel : undefined;
     if (level === undefined) continue;

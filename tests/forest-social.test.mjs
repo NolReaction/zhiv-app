@@ -15,6 +15,7 @@ const { builderLocalPlaces } = await vite.ssrLoadModule("/features/world/charact
 const { canTraverse } = await vite.ssrLoadModule("/features/world/navigation/navigation.ts");
 const { residentClearance } = await vite.ssrLoadModule("/features/world/navigation/resident-traffic.ts");
 const { FOREST_ANIMAL_LINES, forestClickLines, forestAnimalLines } = await vite.ssrLoadModule("/features/world/characters/social/forest-social-dialogue.ts");
+const { FOREST_CONTEXT_CONVERSATIONS } = await vite.ssrLoadModule("/features/world/characters/social/forest-context-conversations.ts");
 const { FOREST_CONVERSATIONS } = await vite.ssrLoadModule("/features/world/characters/social/forest-conversations.ts");
 const now = Date.parse("2026-10-06T18:00:00Z");
 const rect = (x, y, width, height) => [{ x, y }, { x: x + width, y }, { x: x + width, y: y + height }, { x, y: y + height }];
@@ -224,9 +225,9 @@ test("still-mode expiry updates cooldowns without autonomous conversations or pe
 });
 
 test("authored scripts stay whole, alternate real participants and fit a finite meeting", () => {
-  assert.equal(FOREST_CONVERSATIONS.length, 108);
-  assert.equal(new Set(FOREST_CONVERSATIONS.map(topic => topic.id)).size, 108);
-  const base = FOREST_CONVERSATIONS.filter(topic => !topic.purpose);
+  assert.equal(FOREST_CONVERSATIONS.length, 190);
+  assert.equal(new Set(FOREST_CONVERSATIONS.map(topic => topic.id)).size, 190);
+  const base = FOREST_CONVERSATIONS.filter(topic => !topic.purpose && !FOREST_CONTEXT_CONVERSATIONS.includes(topic));
   assert.equal(base.length, 78, "all original complete stories remain present");
   const lines = Object.values(FOREST_ANIMAL_LINES).flat();
   for (const pair of ["builder-mochlik", "builder-plesk", "mochlik-plesk"])

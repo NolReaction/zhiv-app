@@ -158,6 +158,10 @@ function finishStage(mind: PleskMind) {
   const stage = mind.stage;
   if (stage.trail) { mind.position = { ...stage.target.position }; mind.stopId = stage.target.id; }
   if (stage.deposit) { mind.catchCount = Math.min(PLESK_MIND_LIMITS.basket, mind.catchCount + 1); mind.basketSpecies = stage.species; mind.needs.patience = clamp(mind.needs.patience + .25); }
+  // A waiting customer owns the next safe departure after the actual transfer.
+  // The optional post-catch pause must not make her miss a bounded shop visit.
+  if (stage.deposit && mind.tradePending && mind.queue.every(next => next.action === "idle"
+    && !next.trail && !next.deposit && !next.sell && !next.caught && !next.outcome)) mind.queue = [];
   if (stage.sell) {
     mind.catchCount = 0; mind.basketSpecies = undefined; mind.needs.social = clamp(mind.needs.social - .65);
     mind.tradeAfter = mind.elapsed + PLESK_MIND_LIMITS.tradeInterval;

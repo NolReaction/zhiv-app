@@ -6,6 +6,7 @@ import { browser, distanceBetween, finishVillagerArtwork, modules, options, quie
 const authored = JSON.parse(await readFile(new URL("../features/world/tiled/forest.generated.json", import.meta.url), "utf8"));
 const scenarios = [
   { scenario: "walk", actor: "lopukh" },
+  { scenario: "walk", actor: "lopukh", shortStop: true },
   { scenario: "work", actor: "builder" },
   { scenario: "work", actor: "kamneshmyg" },
   { scenario: "work", actor: "lopukh" },
@@ -17,9 +18,11 @@ const scenarios = [
   { scenario: "watch-birds", actor: "mochlik" },
 ];
 
-for (const [index, selection] of scenarios.entries()) test(`isolated DEV ${selection.scenario} for ${selection.actor} finishes through the actual Tiled controllers`, async () => {
+for (const [index, selection] of scenarios.entries()) test(`isolated DEV ${selection.scenario} for ${selection.actor} finishes through the actual Tiled controllers${selection.shortStop ? " with a tempting short stop" : ""}`, async () => {
   const { mountHabitat, connectForestSession, forgetForestSession, TILED_WORLD, worldDevStore,
     rehearsalSceneOptions, normalizeWorldDevSceneRequest, previewWorldScene, accountSceneLevels } = await modules(structuredClone(authored));
+  if (selection.shortStop) TILED_WORLD.navigation.interests.unshift({ id: "short-stop-beside-rabbit-home",
+    position: { x: 931.009924572991, y: 303.6982678867423 }, activity: "look" });
   const env = browser(); let scene, probe;
   const request = normalizeWorldDevSceneRequest({ id: 1000 + index, ...selection });
   const original = { ...options, reducedMotion: false, serverNow: 100_000, presenceKey: "real-account-presence",
@@ -81,7 +84,9 @@ for (const [index, selection] of scenarios.entries()) test(`isolated DEV ${selec
       clearingStage: state.clearing.stage, encounter: state.fauna.encounter,
       position: selection.actor === "mochlik" ? state.clearing.position : selection.actor === "builder" ? state.builderMind.position
         : selection.actor === "plesk" ? state.pleskMind.position : state.villagers.residents[selection.actor].position }));
-    if (selection.scenario === "walk") assert.ok(distanceBetween(start, state.villagers.residents.lopukh.position) > 20);
+    if (selection.scenario === "walk") assert.ok(distanceBetween(start, state.villagers.residents.lopukh.position) > 20,
+      JSON.stringify({ start, target: runtime.target, final: state.villagers.residents.lopukh.position,
+        displacement: distanceBetween(start, state.villagers.residents.lopukh.position), selection }));
     if (selection.scenario === "work" && selection.actor === "kamneshmyg") assert.equal(state.villagers.residents.kamneshmyg.doorPhase, "inside");
     if (selection.scenario === "carry") {
       assert.ok(actions.has("carry")); assert.ok(actions.has("unload"));

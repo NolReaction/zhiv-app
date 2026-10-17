@@ -91,11 +91,13 @@ test("actual loaded geometry owns effects and moved or removed markers do not le
   const kitchen = frames.find(frame => frame.stationId === "dryer"), fire = actual.campfires.find(fire => fire.id === kitchen.fireId);
   assert.deepEqual([kitchen.x, kitchen.y, kitchen.size], [fire.position.x, fire.position.y, fire.radius * 4]);
   assert.ok(frames.every(frame => frame.stationId !== "kiln"), "no invented site for absent art");
-  assert.ok(frames.every(frame => frame.stationId !== "woodlot"), "the deferred workbench host does not acquire fallback props");
+  assert.ok(frames.some(frame => frame.stationId === "woodlot"), "the saved woodlot station uses its real rabbit-home host");
   for (const frame of frames.filter(frame => frame.stationId !== "dryer")) {
-    const site = actual.sites.find(site => site.id === frame.stationId);
+    const site = actual.sites.find(site => site.id === (frame.stationId === "woodlot" ? "lopukh-home" : frame.stationId));
     assert.deepEqual([frame.x, frame.y], [site.entry.x, site.entry.y]);
   }
+  assert.ok(forestProductionFrames(state, { ...actual, sites: actual.sites.filter(site => site.id !== "lopukh-home") }, visuals, start, 3)
+    .every(frame => frame.stationId !== "woodlot"), "removing the actual home cannot leave fallback props on empty ground");
   assert.deepEqual(forestProductionFrames(state, actual, visuals, start, 3, false), []);
   const moved = structuredClone(actual); moved.campfires[0].position.x += 70;
   assert.equal(forestProductionFrames(snapshot(), moved, visuals, start, 3)[0].x, moved.campfires[0].position.x);

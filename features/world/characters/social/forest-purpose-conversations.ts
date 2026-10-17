@@ -14,7 +14,7 @@ const fishQuestions: readonly [ForestSpeaker, string, string, string, string][] 
 const windowQuestions: readonly [ForestSpeaker, string, string, string, string][] = [
   ["mochlik", "Листохвост, ты дома? Есть минутка?", "Я у окна. Что присматриваешь?", "Хочу понять, что в лавке появилось.", "Находки и припасы. Загляни спокойно."],
   ["plesk", "Не выходи. Я только про ящики.", "Слушаю из окна. Рыбу несёшь?", "Пока нет. Нужны сухие под снасти.", "Посмотрю, где крышка держит плотно."],
-  ["builder", "Окошко не заедает после дождя?", "Чуть цепляет край. Отсюда слышно.", "Обмерю снаружи. Ты оставайся дома.", "Спасибо. Уберу вещи от рамы."],
+  ["builder", "Окошко не заедает после дождя?", "Чуть цепляет край. Отсюда слышно.", "Осмотрю снаружи. Ты оставайся дома.", "Спасибо. Уберу вещи от рамы."],
   ["lopukh", "Я у окошка. Тебе дров отложить?", "Да, только сухих. Сырые дымят.", "Проверю поленницу после прогулки.", "А я освобожу место под навесом."],
   ["kamneshmyg", "В окно слышно? Вижу камень в лавке.", "Слышно. С узором, я его отложил.", "Потом сравним с камнем из пещеры.", "Заглядывай. Весы тоже проверим."],
 ];
@@ -22,7 +22,7 @@ const tradeQuestions: readonly [ForestSpeaker, string, string, string, string][]
   ["mochlik", "Что лучше взять для маленьких дел?", "Сначала посмотри, чего не хватает.", "Тогда сверю со складом и вернусь.", "Хороший план. Лавка подождёт."],
   ["plesk", "Хрупкие вещи во что заворачиваешь?", "В сухой мох. И кладу отдельно.", "Для снастей тоже удобно было бы.", "Посмотри, только крючки закрой."],
   ["builder", "Эти доски сухие? Хочу проверить.", "Проверяй. Я храню их над землёй.", "Хорошо. Сырость ведёт древесину.", "Вот зачем у ящиков ножки."],
-  ["lopukh", "Древесину у тебя быстро разбирают?", "Когда для дела берут, а не про запас.", "Пойду ровнее уложу поленницу.", "И оставь проход. С мешком удобнее."],
+  ["lopukh", "Древесину у тебя быстро разбирают?", "Когда для дела берут, а не про запас.", "Пойду проверю поленницу.", "И оставь проход. С мешком удобнее."],
   ["kamneshmyg", "Камень в мешке не пробил дно?", "Нет, подложил плотную ткань.", "Правильно. Острые края режут узел.", "Спасибо, ещё раз проверю перед темнотой."],
 ];
 const passing: readonly [ForestSpeaker, ForestSpeaker, string, string][] = [
@@ -45,6 +45,8 @@ const passing: readonly [ForestSpeaker, ForestSpeaker, string, string][] = [
 function questions(purpose: "fish" | "window" | "trade", host: "plesk" | "leaftail",
   rows: readonly [ForestSpeaker, string, string, string, string][]): ForestPurposeConversation[] {
   return rows.map(([guest, first, second, third, fourth]) => ({ id: `${purpose}-${guest}-${host}`, pair: `${guest}-${host}`, purpose,
+    ...(purpose === "window" && guest === "builder" ? { followup: { speaker: "builder" as const, kind: "inspect-window" as const, host: "leaftail" as const } }
+      : (purpose === "window" || purpose === "trade") && guest === "lopukh" ? { followup: { speaker: "lopukh" as const, kind: "check-woodpile" as const, host: "leaftail" as const } } : {}),
     lines: [{ speaker: guest, text: first }, { speaker: host, text: second }, { speaker: guest, text: third }, { speaker: host, text: fourth }] }));
 }
 export const FOREST_PURPOSE_CONVERSATIONS: readonly ForestPurposeConversation[] = [

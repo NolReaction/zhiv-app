@@ -2,6 +2,9 @@ import { economyCatalog, type EconomyCatalog, type EconomyLeaftailShop, type Eco
 
 type ShopState = Pick<EconomyState, "buildings" | "leaftailShop">;
 
+export const leaftailTravelMessage = (requiredHomeLevel: number) =>
+  `Листохвост в путешествии. Вернётся, когда дом достигнет ${requiredHomeLevel}-го уровня.`;
+
 /** Account stock uses the server day. Opening or reopening a window never rerolls it. */
 export function leaftailShopStock(state: Pick<EconomyState, "leaftailShop">, now: number,
   catalog: EconomyCatalog = economyCatalog): EconomyLeaftailShop {

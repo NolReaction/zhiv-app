@@ -166,7 +166,8 @@ function builderWorkPlan(scene: FixedWorldScene, job: SceneConstructionJob): Bui
   const key = `${job.stationId}:${job.targetLevel}`, cached = jobs.get(key);
   if (cached) return cached;
   const places = builderLocalPlaces(scene), place = constructionMapPlace(job.stationId);
-  const siteId = place === "house" ? "home" : place;
+  const siteId = place === "house" ? "home" : job.stationId === "woodlot"
+    && !scene.sites.some(site => site.id === "lopukh-home") ? "woodlot" : place;
   const markers = [job.stationId, siteId].filter((id, index, ids) => !!id && ids.indexOf(id) === index)
     .flatMap(id => {
       const marker = scene.destinations?.find(destination => destination.id === `builder-work-${id}`);
@@ -193,8 +194,11 @@ function builderWorkPlan(scene: FixedWorldScene, job: SceneConstructionJob): Bui
       for (const path of scene.paths.filter(path => path.siteId === siteId && path.behavior === "home"))
         if (path.points.length) access.push({ id: path.id, points: [...path.points, site.entry] });
     }
-    // Warehouse and kiln levels do not select a different exterior house/art.
-    const next = job.stationId === site.id && site.states.find(state => state.level === job.targetLevel)?.geometry;
+    // Interior stations keep their exterior. Woodlot tier 3 selects the
+    // rabbit home's second authored exterior, with its own larger footprint.
+    const visualLevel = job.stationId === "woodlot" && site.id === "lopukh-home"
+      ? job.targetLevel >= 3 ? 2 : 1 : job.stationId === site.id ? job.targetLevel : undefined;
+    const next = site.states.find(state => state.level === visualLevel)?.geometry;
     if (next) {
       const nextId = `${site.id}:future:${job.targetLevel}`;
       contours.push({ id: nextId, points: exterior(next.collision, next.hitArea, next.entry, next.anchor) });

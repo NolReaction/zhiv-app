@@ -1,3 +1,5 @@
+import { FOREST_CONTEXT_CONVERSATIONS } from "./forest-context-conversations";
+import type { ForestConversationCondition, ForestSocialFollowupRequest } from "./forest-social-context";
 import type { ForestSpeaker } from "./forest-social";
 import { FOREST_VILLAGER_CONVERSATIONS } from "./forest-villager-conversations";
 import { FOREST_PURPOSE_CONVERSATIONS, type ForestSocialPurpose } from "./forest-purpose-conversations";
@@ -8,12 +10,15 @@ export type ForestConversation = {
   weather?: "rain" | "night" | "day";
   place?: "river" | "home" | "garden" | "workshop" | "campfire" | "quarry";
   purpose?: Exclude<ForestSocialPurpose, "neighbour">;
+  condition?: ForestConversationCondition; siteId?: string;
+  followup?: Omit<ForestSocialFollowupRequest, "id">;
   lines: readonly { speaker: ForestSpeaker; text: string }[];
 };
 
 /** Complete exchanges: the setup and its reply always travel together. */
 export const FOREST_CONVERSATIONS: readonly ForestConversation[] = [
   ...FOREST_PURPOSE_CONVERSATIONS,
+  ...FOREST_CONTEXT_CONVERSATIONS,
   ...FOREST_VILLAGER_CONVERSATIONS,
   {
     id: "bm-berry-accounting", pair: "builder-mochlik", place: "garden", lines: [

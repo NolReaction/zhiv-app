@@ -1,7 +1,13 @@
 import { cancelBuilderVisit, requestBuilderVisit, type BuilderMind } from "@/features/world/characters/builder/builder-mind";
 import { forestAnimalLines, forestClickLines } from "./forest-social-dialogue";
 import { FOREST_CONVERSATIONS, type ForestConversation } from "./forest-conversations";
-import { FOREST_PURPOSE_CONVERSATIONS, type ForestSocialPurpose } from "./forest-purpose-conversations";
+import type { ForestSocialPurpose } from "./forest-purpose-conversations";
+import { eligibleForestConversations, rememberForestConversation, observeForestSocialContext,
+  type ForestSocialContext, type ForestSocialFact, type ForestSocialFollowupRequest, type ForestSocialFollowupKind } from "./forest-social-context";
+import { advanceForestSocialFollowup, finishForestSocialFollowup, queueForestSocialFollowup,
+  type ForestSocialFollowup } from "./forest-social-followup";
+export { forestSocialFollowupHolding } from "./forest-social-followup";
+export type { ForestSocialContext, ForestSocialContextEvent, ForestSocialFollowupRequest } from "./forest-social-context";
 import { canTraverse, createWorldNavigation } from "@/features/world/navigation/navigation";
 import type { ResidentOccupant } from "@/features/world/navigation/resident-traffic";
 import type { FixedWorldScene, WorldPoint } from "@/features/world/tiled/types";
@@ -30,11 +36,17 @@ export type ForestSocialEnvironment = { scene: FixedWorldScene; builder: Builder
   requestVisit?: (guest: ForestSpeaker, host: ForestSocialActor, occupants?: readonly ResidentOccupant[]) => boolean;
   cancelVisit?: (guest: ForestSpeaker) => void;
   visitStatus?: (guest: ForestSpeaker) => "approach" | "arrived" | null;
+  context?: ForestSocialContext;
+  /** The scene resolves semantic destinations through existing checked routes.
+   * No job, item, purchase or reward is issued by a followup. */
+  requestFollowup?: (request: ForestSocialFollowupRequest) => boolean;
+  cancelFollowup?: (speaker: "builder" | "lopukh") => void;
+  followupStatus?: (speaker: "builder" | "lopukh") => "approach" | "arrived" | null;
   dusk?: number; rain?: number; animalEvents?: readonly ForestAnimalEvent[] };
 type Line = { speaker: ForestSpeaker; text: string };
 type Meeting = { anchor: WorldPoint; guestAnchor: WorldPoint; host: ForestSpeaker;
   guest: ForestSpeaker; visit: "builder" | "resident" | null; phase: "approach" | "talk"; age: number;
-  purpose?: ForestSocialPurpose; approach?: WorldPoint; hostContext?: ForestSpeechContext };
+  purpose?: ForestSocialPurpose; approach?: WorldPoint; hostContext?: ForestSpeechContext; topicId?: string };
 export type ForestSocialState = {
   elapsed: number; seed: number; sequence: number;
   nextEncounterAt: number; nextAnimalAt: number; nextManualAt: number;
@@ -44,6 +56,12 @@ export type ForestSocialState = {
   meeting: Meeting | null;
   passingPairs?: string[]; passingAfter?: Partial<Record<ForestSpeaker, number>>; pairAfter?: Record<string, number>;
   nextPassingAt?: number;
+  contextFacts?: ForestSocialFact[]; seenContextFacts?: string[]; eventStoryHistory?: string[];
+  pairMemories?: { pair: string; at: number; topics: string[] }[];
+  followup?: ForestSocialFollowup | null; followupHistory?: string[];
+  followupAfter?: Partial<Record<"builder" | "lopukh", number>>;
+  lastFollowupResult?: { speaker: "builder" | "lopukh"; kind: ForestSocialFollowupKind;
+    status: "completed" | "interrupted" | "blocked"; at: number };
   lastMeetingResult?: { guest: ForestSpeaker; host: ForestSpeaker; purpose: ForestSocialPurpose;
     status: "completed" | "interrupted" | "blocked"; at: number };
 };
@@ -98,7 +116,8 @@ export function createForestSocial(seed: string | number = "forest"): ForestSoci
   const state: ForestSocialState = { elapsed: 0, seed: hash(String(seed)), sequence: 0,
     nextEncounterAt: 0, nextAnimalAt: 45, nextManualAt: 0,
     manualAfter: { mochlik: 0, plesk: 0, builder: 0, lopukh: 0, kamneshmyg: 0, leaftail: 0 }, topicHistory: [], lineHistory: [], seenEvents: [],
-    current: null, queue: [], gapUntil: 0, meeting: null };
+    current: null, queue: [], gapUntil: 0, meeting: null, contextFacts: [], seenContextFacts: [], eventStoryHistory: [],
+    pairMemories: [], followup: null, followupHistory: [], followupAfter: {} };
   state.nextEncounterAt = FOREST_SOCIAL_LIMITS.firstEncounter + random(state) * FOREST_SOCIAL_LIMITS.firstEncounterVariation;
   return state;
 }
@@ -112,6 +131,7 @@ function postponeMeeting(state: ForestSocialState): void {
 }
 function endMeeting(state: ForestSocialState, env: ForestSocialEnvironment,
   status: NonNullable<ForestSocialState["lastMeetingResult"]>["status"] = "interrupted"): void {
+  const topic = status === "completed" ? FOREST_CONVERSATIONS.find(item => item.id === state.meeting?.topicId) : undefined;
   if (state.meeting) state.lastMeetingResult = { guest: state.meeting.guest, host: state.meeting.host,
     purpose: state.meeting.purpose ?? "neighbour", status, at: state.elapsed };
   // A neighbour who walks away has not had a conversation yet. Retry quietly
@@ -120,10 +140,12 @@ function endMeeting(state: ForestSocialState, env: ForestSocialEnvironment,
   if (state.meeting?.visit === "builder") cancelBuilderVisit(env.builder);
   if (state.meeting?.visit === "resident") env.cancelVisit?.(state.meeting.guest);
   state.meeting = null; state.current = null; state.queue = [];
+  if (status === "completed") queueForestSocialFollowup(state, topic);
 }
 /** Explicit control/visibility changes can release the pair even at dt=0. */
 export function cancelForestSocial(state: ForestSocialState, env: ForestSocialEnvironment): void {
   endMeeting(state, env);
+  finishForestSocialFollowup(state, env, "interrupted");
 }
 
 export function noticeForestSocial(state: ForestSocialState, speaker: ForestSpeaker, env: ForestSocialEnvironment): boolean {
@@ -152,19 +174,27 @@ function nearbyTopic(topic: ForestConversation, env: ForestSocialEnvironment, an
 }
 function beginConversation(state: ForestSocialState, env: ForestSocialEnvironment): void {
   const meeting = state.meeting!;
-  const purposeful = FOREST_PURPOSE_CONVERSATIONS.filter(topic => topic.purpose === meeting.purpose
-    && pairMatches(topic.pair, meeting.guest, meeting.host));
-  const pool: readonly ForestConversation[] = purposeful.length ? purposeful : FOREST_CONVERSATIONS.filter(topic => !topic.purpose);
-  const eligible = pool.filter(topic => pairMatches(topic.pair, meeting.guest, meeting.host)
-    && nearbyTopic(topic, env, meeting.anchor) && (!topic.weather
+  const guest = actor(env, meeting.guest)!, host = actor(env, meeting.host)!;
+  const eligible = eligibleForestConversations(FOREST_CONVERSATIONS, state, guest, host,
+    meeting.purpose ?? "neighbour", Boolean(env.requestFollowup && env.cancelFollowup && env.followupStatus))
+    .filter(topic => nearbyTopic(topic, env, meeting.anchor) && (!topic.weather
       || topic.weather === "night" && (env.dusk ?? 0) > .55
       || topic.weather === "day" && (env.dusk ?? 0) <= .55 && (env.rain ?? 0) <= .35
       || topic.weather === "rain" && (env.rain ?? 0) > .35));
   if (!eligible.length) { endMeeting(state, env, "blocked"); return; }
-  const fresh = eligible.filter(topic => !state.topicHistory.includes(topic.id));
-  // If a small contextual pool is exhausted, replay its oldest complete story.
-  const choices = fresh.length ? fresh : eligible.slice().sort((a, b) => state.topicHistory.lastIndexOf(a.id) - state.topicHistory.lastIndexOf(b.id)).slice(0, 1);
+  const memory = state.pairMemories?.find(item => item.pair === pairKey(guest.id, host.id));
+  const fresh = eligible.filter(topic => !state.topicHistory.includes(topic.id) && !memory?.topics.includes(topic.id));
+  let choices = fresh.length ? fresh : eligible.slice().sort((a, b) =>
+    state.topicHistory.lastIndexOf(a.id) - state.topicHistory.lastIndexOf(b.id)).slice(0, 1);
+  // Fresh facts/weather usually lead the exchange; purposeful visits still
+  // have room for ordinary complete stories rather than one permanent script.
+  const contextual = choices.filter(topic => topic.condition || topic.weather === "rain" || topic.weather === "night");
+  const purposeful = choices.filter(topic => topic.purpose === meeting.purpose);
+  if (contextual.length && random(state) < .8) choices = contextual;
+  else if (purposeful.length && random(state) < .65) choices = purposeful;
   const topic = choices[Math.floor(random(state) * choices.length)];
+  meeting.topicId = topic.id;
+  rememberForestConversation(state, topic, guest.id, host.id);
   remember(state.topicHistory, topic.id, FOREST_SOCIAL_LIMITS.historyTopics);
   state.queue = topic.lines.slice(1).map(line => ({ ...line }));
   meeting.phase = "talk"; meeting.age = 0;
@@ -238,7 +268,7 @@ function startVisit(state: ForestSocialState, guest: ForestSocialActor, host: Fo
  * It still needs real availability, callback ownership and a safe approach. */
 export function requestForestSocialVisit(state: ForestSocialState, guestId: ForestSpeaker, hostId: ForestSpeaker,
   env: ForestSocialEnvironment): boolean {
-  if (guestId === hostId || env.enabled === false || env.ambient === false || state.current || state.queue.length || state.meeting) return false;
+  if (guestId === hostId || env.enabled === false || env.ambient === false || state.current || state.queue.length || state.meeting || state.followup) return false;
   const guest = actor(env, guestId), host = actor(env, hostId);
   if (!guest || !host || !(passingReady(guest) || guest.id === "builder" && guest.available && guest.context === "walk")
     || !receiving(host)) return false;
@@ -251,10 +281,10 @@ function inviteNeighbours(state: ForestSocialState, env: ForestSocialEnvironment
   const residents = env.actors.map(item => actor(env, item.id)).filter((item): item is ForestSocialActor => Boolean(item));
   const candidates: { guest: ForestSocialActor; host: ForestSocialActor; visit: Meeting["visit"] }[] = [];
   for (const guest of residents) {
-    if (!guest.available || guest.window || guest.id !== "builder" && !passingReady(guest)) continue;
+    if (state.followup?.speaker === guest.id || !guest.available || guest.window || guest.id !== "builder" && !passingReady(guest)) continue;
     for (const host of residents) {
       const visit = visitKind(guest, host, env);
-      if (host.id !== guest.id && visit && receiving(host) && distance(host.approach ?? host.position, guest.position) < 420
+      if (state.followup?.speaker !== host.id && host.id !== guest.id && visit && receiving(host) && distance(host.approach ?? host.position, guest.position) < 420
         && (state.pairAfter?.[pairKey(guest.id, host.id)] ?? 0) <= state.elapsed) candidates.push({ guest, host, visit });
     }
   }
@@ -262,7 +292,7 @@ function inviteNeighbours(state: ForestSocialState, env: ForestSocialEnvironment
   // destination, fishing trip or work route is borrowed just to make a circle.
   for (let index = 0; index < residents.length; index++) for (const host of residents.slice(index + 1)) {
     const guest = residents[index];
-    if (!idle(guest) || !receiving(host) || host.window || (state.pairAfter?.[pairKey(guest.id, host.id)] ?? 0) > state.elapsed
+    if (state.followup?.speaker === guest.id || state.followup?.speaker === host.id || !idle(guest) || !receiving(host) || host.window || (state.pairAfter?.[pairKey(guest.id, host.id)] ?? 0) > state.elapsed
       || distance(guest.position, host.position) > Math.max(75, (guest.size + host.size) * 1.1)) continue;
     const navigation = createWorldNavigation(env.scene);
     if (!navigation || !canTraverse(navigation, guest.position, host.position)) continue;
@@ -314,22 +344,25 @@ function passingNeighbours(state: ForestSocialState, env: ForestSocialEnvironmen
 }
 
 export function advanceForestSocial(state: ForestSocialState, dt: number, env: ForestSocialEnvironment): void {
-  if (env.enabled === false) { endMeeting(state, env); return; }
-  if (env.ambient === false && state.meeting) endMeeting(state, env);
+  if (env.enabled === false) { cancelForestSocial(state, env); return; }
+  if (env.ambient === false && (state.meeting || state.followup)) cancelForestSocial(state, env);
   // A still-mode one-shot expiry can account for real quiet time without an
   // animation loop. It never starts a visit or replays intermediate dialogue.
   const step = Number.isFinite(dt) ? Math.max(0, Math.min(env.ambient === false ? 30 : FOREST_SOCIAL_LIMITS.maxDelta, dt)) : 0;
   // Availability and job preemption remain immediate even on a still frame.
   if (state.meeting) advanceMeeting(state, env, step);
   if (state.current && !actor(env, state.current.speaker)) endMeeting(state, env);
+  advanceForestSocialFollowup(state, 0, env);
   if (!step) return;
   state.elapsed += step;
+  observeForestSocialContext(state, env.context);
   if (state.current) {
     state.current.elapsed += step;
     if (state.current.elapsed >= state.current.duration) { state.current = null; state.gapUntil = state.elapsed + FOREST_SOCIAL_LIMITS.gap; }
   }
   if (!state.current && state.queue.length && state.elapsed >= state.gapUntil) speak(state, state.queue.shift()!);
   if (state.meeting?.phase === "talk" && !state.current && !state.queue.length) endMeeting(state, env, "completed");
+  advanceForestSocialFollowup(state, step, env);
 
   // Events are consumed even while a bubble is visible: there is no backlog of
   // old animal greetings waiting to flood the next quiet moment.
@@ -340,9 +373,9 @@ export function advanceForestSocial(state: ForestSocialState, dt: number, env: F
     remember(state.seenEvents, key, FOREST_SOCIAL_LIMITS.historyEvents);
     if (!animalEvent && actor(env, event.speaker)) animalEvent = event;
   }
-  passingNeighbours(state, env, !state.current && !state.queue.length && !state.meeting && env.ambient !== false
+  passingNeighbours(state, env, !state.current && !state.queue.length && !state.meeting && !state.followup && env.ambient !== false
     && state.elapsed >= state.nextManualAt && (env.rain ?? 0) < .35 && (env.dusk ?? 0) < .65);
-  if (state.current || state.queue.length || state.meeting || env.ambient === false) return;
+  if (state.current || state.queue.length || state.meeting || state.followup || env.ambient === false) return;
   if (state.elapsed >= state.nextEncounterAt) {
     inviteNeighbours(state, env);
     if (state.meeting) return;

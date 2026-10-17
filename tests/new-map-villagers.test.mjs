@@ -224,7 +224,8 @@ test("new villagers keep a new resident host available when the real social loop
   try {
     worldDevStore.patch({ ...quietClearing, autoLife: true });
     const initial = { ...options, reducedMotion: false, view: "world", serverNow: 100_000, presenceKey: key,
-      economyResidents: confirmedVillagers(owner, 1, 0) };
+      economyBuildings: { home: 3 }, economyResidents: { ...confirmedVillagers(owner, 1, 0), buildings: { home: 3, quarry: 0 } },
+      merchantArrival: { seen: true, enabled: false, onComplete: assert.fail } };
     scene = mountHabitat(env.surface(), initial, { activity() {}, ready() {}, failure: assert.fail }); await finishVillagerArtwork(env);
     probe = connectForestSession(key, TILED_WORLD, "circle", 100_000, 0, () => {});
     const state = probe.state, social = state.social, guest = state.villagers.residents.lopukh, host = state.villagers.residents.leaftail;
@@ -335,9 +336,10 @@ test("the actual Tiled quarry and caravan preserve private entrances, indoor hit
     worldDevStore.patch({ ...quietClearing, autoLife: false });
     const job = { id: "authored-quarry-work", stationId: "quarry", stationLevel: 1, recipeId: "quarry_stone",
       startedAt: new Date(100_000).toISOString(), finishesAt: new Date(700_000).toISOString() };
-    const confirmed = confirmedVillagers(owner, 1, 1, [job]), originalEconomy = structuredClone(confirmed);
+    const confirmed = { ...confirmedVillagers(owner, 1, 1, [job]), buildings: { home: 3, quarry: 1 } }, originalEconomy = structuredClone(confirmed);
     const initial = { ...options, reducedMotion: false, view: "world", serverNow: 100_000, presenceKey: key,
-      economyBuildings: { quarry: 1 }, economyResidents: confirmed,
+      economyBuildings: { home: 3, quarry: 1 }, economyResidents: confirmed,
+      merchantArrival: { seen: true, enabled: false, onComplete: assert.fail },
       residentArrival: { seen: true, enabled: false, onComplete: assert.fail } };
     const callbacks = { activity() {}, ready() {}, failure: assert.fail }, canvas = env.surface();
     const world = mountHabitat(canvas, initial, callbacks); views.push(world); await finishVillagerArtwork(env);
@@ -398,7 +400,7 @@ test("the actual Tiled quarry and caravan preserve private entrances, indoor hit
     assert.ok(isWalkable(merchantPlaces.navigation, merchant.position));
     assert.ok(world.inspectPoint("leaftail"));
 
-    const cancelled = confirmedVillagers(owner, 2, 1);
+    const cancelled = { ...confirmedVillagers(owner, 2, 1), buildings: { home: 3, quarry: 1 } };
     world.configure({ ...initial, economyResidents: cancelled });
     clock.until(() => { canvas.calls.length = 0; return miner.doorPhase === "outside"; }, "the miner also exits the actual quarry after the job disappears", 200);
     assert.ok(isWalkable(miningPlaces.navigation, miner.position)); assert.equal(miner.job, false);

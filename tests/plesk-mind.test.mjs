@@ -174,6 +174,36 @@ test("a shop invitation completes the cast and one deposit before leaving the pi
   assert.equal(mind.stage.action, "walk"); assert.equal(mind.stage.target.id, "plesk-trade");
 });
 
+for (const step of [.025, .1]) test(`a waiting shop guest owns the safe departure immediately after one completed deposit at dt=${step}`, () => {
+  let mind;
+  for (let seed = 1; seed < 50; seed++) {
+    const candidate = createPleskMind(world, seed); advance(candidate, 1, day, step);
+    if (candidate.queue.find(stage => stage.action === "fish").outcome !== "miss") { mind = candidate; break; }
+  }
+  until(mind, item => item.stage.action === "fish" && item.age > 2);
+  const cast = mind.stage, queue = [...mind.queue], feet = { ...mind.position };
+  requestPleskTrade(mind);
+  assert.strictEqual(mind.stage, cast); assert.deepEqual(mind.queue, queue); assert.equal(mind.catchCount, 0);
+  for (let at = 0; at < 60 && mind.stage.action !== "pack"; at += step) {
+    advancePleskMind(mind, world, step, day);
+    assert.deepEqual(mind.position, feet); assert.equal(mind.catchCount, 0, "the original cast still owns its one uncompleted deposit");
+  }
+  assert.equal(mind.stage.action, "pack");
+  const packing = mind.stage, remaining = packing.duration - mind.age, elapsed = mind.elapsed;
+  assert.ok(mind.queue.length && mind.queue.every(item => item.action === "idle" && !item.deposit && !item.sell && !item.trail));
+  const paused = structuredClone(mind);
+  advancePleskMind(mind, world, 0, day); assert.deepEqual(mind, paused, "a pause cannot finish the pending transfer");
+  mind.home.nextAt = 0;
+  for (let at = 0; at < remaining + step * 2 && mind.stage === packing; at += step) advancePleskMind(mind, world, step, day);
+  assert.equal(mind.catchCount, 1); assert.equal(mind.intent, "trade");
+  assert.equal(mind.home.phase, "outside"); assert.equal(mind.stage.action, "walk");
+  assert.equal(mind.stage.target.id, "plesk-trade");
+  assert.ok(mind.elapsed - elapsed <= remaining + step + 1e-7, "no discretionary idle is inserted before the promised visit");
+  assert.ok(distanceFrom(feet, mind.position) <= PLESK.speed * step + .001, "the invitation starts an ordinary continuous walk");
+  assert.equal(mind.queue.some(item => item.deposit), false, "the already stored catch is never packed twice");
+});
+const distanceFrom = (first, second) => Math.hypot(first.x - second.x, first.y - second.y);
+
 test("tapping the trader defers greeting until the finite trading gesture is complete", () => {
   const mind = createPleskMind(world, 9); mind.catchCount = 2;
   requestPleskTrade(mind);

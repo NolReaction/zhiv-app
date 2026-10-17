@@ -15,7 +15,7 @@ export const CONSTRUCTION_MARKER = { width: 98, height: 44, gap: 10, margin: 8 }
 
 const constructionPlaces: Readonly<Record<string, MapObjectPlace>> = {
   home: "house", warehouse: "house", workshop: "workshop", kiln: "workshop",
-  garden: "garden", woodlot: "woodlot", quarry: "quarry", dryer: "campfire",
+  garden: "garden", woodlot: "lopukh-home", quarry: "quarry", dryer: "campfire",
   bridge: "bridge", lighthouse: "lighthouse",
 };
 

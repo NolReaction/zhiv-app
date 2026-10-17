@@ -6,7 +6,7 @@ import { WORLD_DEV_SCENE_ACTORS, WORLD_DEV_SCENES, normalizeWorldDevSceneRequest
 import { worldDevStore, type WorldDevState } from "./world-dev-store";
 import styles from "./world-dev-scene.module.css";
 
-export type WorldDevSceneChoice = { actor: WorldDevSceneActor; scenario: WorldDevSceneScenario; target: WorldDevSceneActor };
+export type WorldDevSceneChoice = { actor: WorldDevSceneActor; scenario: WorldDevSceneScenario; target: WorldDevSceneActor; seed?: number };
 const actorLabel = (id: WorldDevSceneActor) => WORLD_DEV_SCENE_ACTORS.find(actor => actor.id === id)!.label;
 const phaseLabels = { queued: "Подготовка", running: "Идёт репетиция", complete: "Завершена", blocked: "Не началась", stopped: "Остановлена" };
 
@@ -26,7 +26,7 @@ export function WorldDevScene({ state, prefersReducedMotion, onStart, onStop }: 
   state: WorldDevState; prefersReducedMotion: boolean;
   onStart: (choice: WorldDevSceneChoice) => void; onStop: () => void;
 }) {
-  const [choice, setChoice] = useState<WorldDevSceneChoice>({ actor: "lopukh", scenario: "walk", target: "leaftail" });
+  const [choice, setChoice] = useState<WorldDevSceneChoice>({ actor: "lopukh", scenario: "walk", target: "leaftail", seed: 17 });
   const feedback = useSyncExternalStore(worldDevStore.subscribeSceneFeedback, worldDevStore.getSceneFeedback, worldDevStore.getServerSceneFeedback);
   return <WorldDevSceneControls state={state} choice={choice} feedback={feedback} prefersReducedMotion={prefersReducedMotion}
     onChange={patch => setChoice(current => {
@@ -63,6 +63,11 @@ export function WorldDevSceneControls({ state, choice, feedback, prefersReducedM
       </label>}
     </div>
     <p className={styles.description}>{selected.description}</p>
+    <label className={styles.seed}>Повторяемый вариант
+      <input aria-label="Номер варианта сцены" type="number" min={1} max={4294967295} step={1} value={choice.seed ?? 17}
+        onChange={event => onChange({ seed: Number(event.target.value) })} />
+      <span>Одинаковый номер повторяет начальный выбор AI. «Запустить» создаёт новую копию мира.</span>
+    </label>
     <div className={styles.actions}>
       <button type="button" data-scene-run disabled={Boolean(reason)} title={reason ?? undefined} onClick={onStart}>Запустить</button>
       <button type="button" data-scene-stop disabled={!active} onClick={onStop}>{finished ? "Вернуться в мир" : "Остановить"}</button>

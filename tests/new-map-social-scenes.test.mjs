@@ -33,13 +33,15 @@ const stateOfPlesk = mind => ({ elapsed: mind.elapsed, age: mind.age, stage: min
 // injected speech queue replaces the natural invitation and owner clock.
 test("a free neighbour walks to Leaftail's actual window and completes the exchange while the host remains indoors", async () => {
   const { mountHabitat, connectForestSession, forgetForestSession, TILED_WORLD, worldDevStore,
-    forestLeaftailWindow, forestVillagerPlaces, forestResidentOccupants, canTraverse, previewWorldScene, accountSceneLevels } = await modules(structuredClone(authored));
+    forestLeaftailWindow, forestVillagerPlaces, forestResidentOccupants, canTraverse, previewWorldScene, accountSceneLevels,
+    FOREST_CONVERSATIONS } = await modules(structuredClone(authored));
   const env = browser(), owner = "social-window-runtime", key = `zhiv:mochlik:presence:${owner}`;
   let scene, probe;
   try {
     worldDevStore.patch({ ...quietClearing, autoLife: true });
     const initial = { ...options, reducedMotion: false, view: "world", serverNow: 100_000, presenceKey: key,
-      economyResidents: confirmedVillagers(owner, 1, 0) };
+      economyBuildings: { home: 3 }, economyResidents: { ...confirmedVillagers(owner, 1, 0), buildings: { home: 3, quarry: 0 } },
+      merchantArrival: { seen: true, enabled: false, onComplete() {} } };
     scene = mountHabitat(env.surface(), initial, { activity() {}, ready() {}, failure: assert.fail });
     await finishVillagerArtwork(env);
     const effective = previewWorldScene(TILED_WORLD, accountSceneLevels(TILED_WORLD, undefined, worldDevStore.getSnapshot(), initial.economyBuildings));
@@ -87,15 +89,18 @@ test("a free neighbour walks to Leaftail's actual window and completes the excha
     }, "all real lines finish within the finite exchange", 700);
     assert.equal(state.social.lastMeetingResult?.status, "completed");
     assert.equal(state.social.lastMeetingResult?.purpose, "window");
-    assert.equal(heard.size, 4, "the complete authored four-line dialogue survives runtime availability checks");
-    assert.equal([...heard.values()].filter(line => line.speaker === "leaftail").length, 2);
-    assert.equal([...heard.values()].filter(line => line.speaker === "lopukh").length, 2);
+    const script = FOREST_CONVERSATIONS.find(topic => topic.id === state.social.topicHistory.at(-1));
+    assert.ok(script, "a complete authored script was chosen");
+    assert.deepEqual([...heard.values()].map(({ speaker, text }) => ({ speaker, text })), script.lines,
+      "every authored line survives runtime availability checks, in order and without duplicates");
+    assert.ok(script.lines.some(line => line.speaker === "leaftail") && script.lines.some(line => line.speaker === "lopukh"));
   } finally { scene?.dispose(); probe?.release(); forgetForestSession(key); worldDevStore.reset(); env.restore(); }
 });
 
 test("a neighbour asks the real fishing Plesk about fish without consuming her paused cast or creating a catch", async () => {
   const { mountHabitat, connectForestSession, forgetForestSession, TILED_WORLD, worldDevStore,
-    forestVillagerPlaces, findWorldPath, pleskLocalPlaces, requestPleskWalk, previewWorldScene, accountSceneLevels } = await modules(structuredClone(authored));
+    forestVillagerPlaces, findWorldPath, pleskLocalPlaces, requestPleskWalk, previewWorldScene, accountSceneLevels,
+    FOREST_CONVERSATIONS } = await modules(structuredClone(authored));
   const env = browser(), owner = "social-fisher-runtime", key = `zhiv:mochlik:presence:${owner}`;
   let scene, probe;
   try {
@@ -132,8 +137,11 @@ test("a neighbour asks the real fishing Plesk about fish without consuming her p
     }, "the fish conversation finishes with no invented catch or lost fishing stage", 800);
     assert.equal(state.social.lastMeetingResult?.status, "completed");
     assert.equal(state.social.lastMeetingResult?.purpose, "fish");
-    assert.equal(heard.size, 4);
-    assert.ok([...heard.values()].some(line => /рыб|улов|кл[её]в|удоч|снаст|леск/i.test(line.text)), "the exchange relates to the actual fisher's role");
+    const script = FOREST_CONVERSATIONS.find(topic => topic.id === state.social.topicHistory.at(-1));
+    assert.ok(script, "the fishing question chooses one complete authored script");
+    assert.deepEqual([...heard.values()].map(({ speaker, text }) => ({ speaker, text })), script.lines);
+    assert.ok([...heard.values()].some(line => /рыб|улов|кл[её]в|удоч|снаст|леск|поплав|нажив|крюч/i.test(line.text)),
+      `the fish exchange relates to the actual fisher's role; selected ${script.id}: ${script.lines.map(line => line.text).join(" / ")}`);
     assert.equal(mind.stage, saved.stage); assert.ok(mind.age >= saved.age && mind.age <= saved.age + .051,
       "finishing the conversation resumes the same waiting cast on the owner tick");
     clock.advance(.1); assert.ok(mind.age > saved.age);

@@ -28,6 +28,7 @@ export type BuilderMind = {
   /** Position on the authored entry -> doorway segment, also used by its fade. */
   sleepProgress: number;
   sleepHome: BuilderHome | null;
+  homeNextAt: number; homeUntil: number; homeReason: "night" | "break" | null;
 };
 export const BUILDER_MIND_LIMITS = { maxDelta: 1, workCycle: 2.2, workRoutine: 8.8, finish: 1.4,
   greeting: 2, trafficPatience: 2.4, doorSeconds: 1.2, acceleration: BUILDER.size * 1.6 } as const;
@@ -44,7 +45,7 @@ export function createBuilderMind(scene: FixedWorldScene, options: { awaitConstr
     action: "idle", ready: false, job: null, jobKey: "", target: places.rest,
     route: null, distance: 0, speed: 0, walked: 0, wait: 8, wanderIndex: 0, decisions: 0, blocked: false,
     noticePending: false, greetAfter: 0, constructionPending: options.awaitConstruction === true, trafficWaiting: false, socialVisit: null,
-    sleepPhase: "awake", sleepProgress: 0, sleepHome: null };
+    sleepPhase: "awake", sleepProgress: 0, sleepHome: null, homeNextAt: 180, homeUntil: 0, homeReason: null };
 }
 
 function action(mind: BuilderMind, value: BuilderAction) {
@@ -219,10 +220,12 @@ function validDoorState(mind: BuilderMind, home: BuilderHome | null): boolean {
 }
 function wake(mind: BuilderMind) {
   mind.sleepPhase = "awake"; mind.sleepProgress = 0; mind.sleepHome = null;
+  mind.homeNextAt = mind.elapsed + 180 + mind.decisions % 4 * 12; mind.homeUntil = 0; mind.homeReason = null;
 }
-function approachHome(mind: BuilderMind, places: BuilderPlaces) {
+function approachHome(mind: BuilderMind, places: BuilderPlaces, reason: "night" | "break" = "night") {
   if (!places.home) return;
   mind.sleepHome = places.home; mind.sleepPhase = "approach"; mind.sleepProgress = 0;
+  mind.homeReason = reason;
   mind.noticePending = false; mind.socialVisit = null;
   beginRoute(mind, places, [places.home.approach]);
 }
@@ -248,7 +251,7 @@ function advanceDoor(mind: BuilderMind, places: BuilderPlaces, step: number, occ
   mind.trafficWaiting = false;
   mind.walked += length(mind.position, position); mind.position = position; mind.sleepProgress = progress;
   mind.direction = builderDirection((home.doorway.x - home.entry.x) * direction, (home.doorway.y - home.entry.y) * direction);
-  if (entering && progress >= 1) { mind.sleepPhase = "sleep"; action(mind, "idle"); }
+  if (entering && progress >= 1) { mind.sleepPhase = "sleep"; mind.homeUntil = mind.elapsed + 30 + mind.decisions % 4 * 5; action(mind, "idle"); }
   else if (!entering && progress <= 0) departHome(mind, places, occupants);
 }
 
@@ -257,6 +260,8 @@ function advanceDoor(mind: BuilderMind, places: BuilderPlaces, step: number, occ
 export function rehydrateBuilderMind(scene: FixedWorldScene, previous: BuilderMind | null): BuilderMind | null {
   const next = createBuilderMind(scene, { awaitConstruction: previous?.constructionPending }), places = builderLocalPlaces(scene);
   if (!next || !previous || !places) return next;
+  next.elapsed = previous.elapsed; next.homeNextAt = previous.homeNextAt;
+  next.homeUntil = previous.homeUntil; next.homeReason = previous.homeReason;
   if (indoors(previous)) {
     next.position = { ...previous.position }; next.direction = previous.direction;
     next.sleepPhase = previous.sleepPhase; next.sleepProgress = previous.sleepProgress; next.sleepHome = previous.sleepHome;
@@ -299,11 +304,12 @@ function synchronize(mind: BuilderMind, scene: FixedWorldScene, env: BuilderEnvi
   mind.available = true;
   if (atDoor) {
     mind.sleepHome = places.home; mind.blocked = false; mind.socialVisit = null; mind.noticePending = false;
-    if ((job || !env.night) && mind.sleepPhase !== "exit") mind.sleepPhase = "exit";
+    if ((job || !env.night && (mind.homeReason !== "break" || mind.sleepPhase === "sleep" && mind.elapsed >= mind.homeUntil))
+      && mind.sleepPhase !== "exit") mind.sleepPhase = "exit";
     action(mind, mind.sleepPhase === "sleep" ? "idle" : "walk");
     return places;
   }
-  const cancelApproach = mind.sleepPhase === "approach" && (!!job || !env.night || !places.home);
+  const cancelApproach = mind.sleepPhase === "approach" && (!!job || mind.homeReason !== "break" && !env.night || !places.home);
   if (cancelApproach) wake(mind);
   if (changedJob || changedScene || recovered || cancelApproach) {
     mind.socialVisit = null;
@@ -349,11 +355,13 @@ export function advanceBuilderMind(mind: BuilderMind | null, scene: FixedWorldSc
     }
     return;
   }
+  if (!mind.job && !mind.socialVisit && !environment.socialHold && !mind.noticePending
+    && mind.sleepPhase === "awake" && mind.elapsed >= mind.homeNextAt && places.home) approachHome(mind, places, "break");
   yieldRequestedPassage(mind, places, environment.occupants);
   if (mind.route) { walk(mind, places, step, environment.occupants); return; }
   if (mind.sleepPhase === "approach") {
     mind.wait -= step;
-    if (mind.wait <= 0) approachHome(mind, places);
+    if (mind.wait <= 0) approachHome(mind, places, mind.homeReason ?? "night");
     return;
   }
   if (mind.job) return; // Including a finished order awaiting confirmed collection.
@@ -380,6 +388,20 @@ export function advanceBuilderMind(mind: BuilderMind | null, scene: FixedWorldSc
 
 export function noticeBuilderMind(mind: BuilderMind | null): void {
   if (mind?.available && !mind.job && mind.sleepPhase === "awake") mind.noticePending = true;
+}
+
+/** DEV and explicit home calls share the natural break's authored route. */
+export function requestBuilderHome(mind: BuilderMind | null, scene: FixedWorldScene,
+  occupants?: readonly ResidentOccupant[]): boolean {
+  if (!mind?.available || mind.scene !== scene || mind.constructionPending || mind.job || mind.socialVisit || mind.noticePending
+    || mind.sleepPhase !== "awake" || mind.action === "finish") return false;
+  const places = builderLocalPlaces(scene);
+  if (!places?.home || !canTraverseResidents(places.home.entry, places.home.entry, BUILDER.size, occupants, BUILDER.id)) return false;
+  const selected = builderRoute(places, mind.position, [places.home.approach]);
+  if (!selected) return false;
+  mind.sleepHome = places.home; mind.sleepPhase = "approach"; mind.sleepProgress = 0; mind.homeReason = "break";
+  assignRoute(mind, selected);
+  return true;
 }
 
 /** Reserve a nearby exterior conversation spot through the usual bounded path

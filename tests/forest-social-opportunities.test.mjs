@@ -142,7 +142,7 @@ test("a window visit uses an exact exterior approach without inventing a physica
   assert.equal(value.calls[0].target.approach, value.host.approach);
   assert.equal(value.calls[0].occupants.length, 1); assert.equal(value.calls[0].occupants[0].id, "lopukh");
   assert.equal(value.state.meeting.purpose, "window"); value.arrive();
-  assert.equal(value.state.meeting.phase, "talk"); assert.equal(value.state.topicHistory.at(-1), "window-lopukh-leaftail");
+  assert.equal(value.state.meeting.phase, "talk"); assert.equal(value.state.topicHistory.at(-1), "window-lopukh-leaftail-care", "without a followup adapter, the window story makes no unfulfillable promise");
   const window = structuredClone(value.host);
   for (let age = 0; age < 25; age++) advanceForestSocial(value.state, 1, value.env);
   assert.deepEqual(value.host, window, "the merchant keeps his indoor/window presentation and never walks outside");

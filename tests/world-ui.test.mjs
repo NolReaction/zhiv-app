@@ -218,7 +218,7 @@ test("map keeps focused actions and retains collection of saved legacy journeys"
     "plesk-shop", "builder-home", "market", "leaftail-caravan", "bulletin-board", "lopukh-home"]) {
     assert.match(markup, new RegExp(`data-kind="${place}"`), "production and upgrades are reached through map objects");
   }
-  assert.doesNotMatch(markup, /data-(?:kind|object-id)="woodlot"/, "the deferred workbench has no phantom map control");
+  assert.doesNotMatch(markup, /data-(?:kind|object-id)="woodlot"/, "woodlot uses the rabbit home's actual target instead of a phantom old workbench");
   assert.doesNotMatch(markup, /Строить|Первая прогулка|Обустроить дом/);
   state.journeys = [{ id: "saved", routeId: "first_path", startedAt: "2026-09-20T12:00:00Z", finishesAt: "2026-09-20T12:01:00Z" }];
   const pending = renderToStaticMarkup(createElement(WorldJourneys, { world, destination: "trail" }));

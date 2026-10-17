@@ -20,6 +20,8 @@ const { initialPreviewLevels, previewWorldScene, previewSiteVisual, previewPoint
   = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
 const { createWorldNavigation, isWalkable, canTraverse, findWorldPath }
   = await vite.ssrLoadModule("/features/world/navigation/navigation.ts");
+const { accountSceneLevels } = await vite.ssrLoadModule("/features/world/state/economy/economy-scene-state.ts");
+const { forestProductionFrames } = await vite.ssrLoadModule("/features/world/state/economy/economy-production-state.ts");
 
 const expectedSites = {
   market: [1], "leaftail-caravan": [1], "bulletin-board": [1], "lopukh-home": [1, 2], "plesk-shop": [1], "builder-home": [1],
@@ -86,9 +88,34 @@ test("new buildings are registered once with their intended independent visual l
   assert.equal(TILED_WORLD.sites.some(site => /lopukh.*(?:workbench|workshop)|(?:workbench|workshop).*lopukh/.test(site.id)), false,
     "Lopukh's animated workbench remains deferred; the existing economy workshop stays separate");
   assert.equal(TILED_WORLD.sites.some(site => site.id === "woodlot"), false,
-    "the woodlot raster removed by the author is not resurrected while workbenches are deferred");
+    "the original woodlot raster stays removed; its economic station is hosted by the rabbit home");
   assert.equal(TILED_WORLD.terrain.some(image => /woodlot/i.test(imagePath(image.image))), false,
     "the removed work plot does not reappear as a permanent terrain image");
+});
+
+test("the saved woodlot station selects rabbit home 2 only from its third claimed tier", () => {
+  const initial = initialPreviewLevels(TILED_WORLD), rabbit = TILED_WORLD.sites.find(site => site.id === "lopukh-home");
+  for (const level of [0, 1, 2, 3, 4, 5]) {
+    const buildings = { home: 5, woodlot: level }, before = structuredClone(buildings);
+    const levels = accountSceneLevels(TILED_WORLD, 5, { levels: initial }, buildings);
+    const wanted = level >= 3 ? 2 : 1;
+    assert.equal(levels["lopukh-home"], wanted, `woodlot ${level}`);
+    const selected = previewWorldScene(TILED_WORLD, levels).sites.find(site => site.id === "lopukh-home");
+    const authored = rabbit.states.find(state => state.level === wanted).geometry;
+    assert.deepEqual(selected.collision, authored.collision);
+    assert.deepEqual(selected.entry, authored.entry);
+    assert.deepEqual(selected.hitArea, authored.hitArea);
+    assert.deepEqual(buildings, before, "visual projection does not upgrade, rename or downgrade account stations");
+  }
+  const dev = { levels: { ...initial, "lopukh-home": 1 }, previewBuildings: true };
+  assert.equal(accountSceneLevels(TILED_WORLD, 5, dev, { woodlot: 5 })["lopukh-home"], 1);
+  const scene = previewWorldScene(TILED_WORLD, initial), now = Date.parse("2026-10-17T00:00:00Z");
+  const jobs = { ownerPublicId: "woodcutter", revision: 1, jobs: [{ id: "saved-woodlot-order", stationId: "woodlot", stationLevel: 1,
+    recipeId: "gather_wood", startedAt: new Date(now - 1000).toISOString(), finishesAt: new Date(now + 1000).toISOString() }] };
+  const frames = forestProductionFrames(jobs, scene, { "lopukh-home": { level: 1 } }, now, 1);
+  assert.equal(frames.length, 1); assert.equal(frames[0].stationId, "woodlot");
+  assert.equal(frames[0].jobId, "saved-woodlot-order"); assert.equal(frames[0].phase, "working");
+  assert.deepEqual({ x: frames[0].x, y: frames[0].y }, scene.sites.find(site => site.id === "lopukh-home").entry);
 });
 
 test("registered artwork keeps the author's exact tile placement and rotations", () => {

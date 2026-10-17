@@ -20,6 +20,8 @@ import { createForestVillagers, type ForestVillagersState } from "@/features/wor
 import { createVillagerWildlife, type VillagerWildlifeState } from "@/features/world/characters/villagers/villager-wildlife";
 import type { EconomySceneResidents } from "@/features/world/state/economy/economy-residents-state";
 import type { ForestSceneRehearsal } from "@/features/world/dev/forest-scene-rehearsal";
+import type { ResidentSceneFacts } from "@/features/world/scene/resident-scene-social";
+import type { LeaftailBoatArrivalState } from "@/features/world/characters/leaftail/leaftail-boat-arrival";
 
 type View = "circle" | "world";
 type Member = { view: View; active: boolean; retain: boolean; changed: (ownerChanged: boolean) => void };
@@ -56,6 +58,8 @@ export type ForestSessionState = {
   fishingPreview?: { id: number; startedAt: number };
   cookingPreview?: { id: number; startedAt: number | null; requestedAt: number; attentionAt?: number };
   devSceneRehearsal?: ForestSceneRehearsal;
+  residentSceneFacts?: ResidentSceneFacts;
+  leaftailBoat?: LeaftailBoatArrivalState;
   reaction: number; animation: { pose: PixelPose; elapsed: number } | null; birdStarted: number | null; birdSeed: number;
 };
 type Session = { state: ForestSessionState; memory: ReturnType<typeof createForestMemory>;
@@ -123,7 +127,7 @@ export function connectForestSession(key: string | undefined, scene: FixedWorldS
           Object.assign(state, { elapsed: 0, wetness: 0, water: undefined,
             clearing: createClearingActivity(scene), life: createForestLife(scene),
             social: createForestSocial(`${key ?? "guest"}:${timestamp}`), fauna: createForestFauna(scene), pleskMind: createPleskMind(scene), builderMind: rehydrateBuilderMind(scene, state.builderMind), director: createForestDirector(), birdReactions: createBirdReactions(),
-            villagers: createForestVillagers(scene), villagerWildlife: createVillagerWildlife(), devSceneRehearsal: undefined,
+            villagers: createForestVillagers(scene), villagerWildlife: createVillagerWildlife(), devSceneRehearsal: undefined, residentSceneFacts: undefined, leaftailBoat: undefined,
             lastBirdStimulus: 0, pendingLife: null, pendingAttention: false, explorationId: undefined, journeyTravel: undefined, cookingPreview: undefined, builderPreview: undefined, reaction: 0, animation: null,
             birdStarted: null, birdSeed: -1 });
           setClearingNavigationObstacle(state.clearing, gardenBasketFootprint(state.life.garden));

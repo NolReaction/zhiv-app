@@ -1522,8 +1522,10 @@ test("water physics yields taps to visible characters buildings and explicit mar
     };
     tap(630, 642);
     assert.equal(probe.state.clearing.stage, "attention", "the visible hero receives his own tap");
+    assert.equal(probe.state.pleskMind.noticePending, false);
     tap(690, 682);
-    assert.deepEqual(residents, ["plesk"]);
+    assert.deepEqual(residents, [], "a resident body tap keeps the map open without invoking the character menu");
+    assert.equal(probe.state.pleskMind.noticePending, true, "the visible resident receives her own tap before the water behind her");
     tap(675, 600);
     assert.deepEqual(places, ["house"]);
     tap(650, 690, marker);

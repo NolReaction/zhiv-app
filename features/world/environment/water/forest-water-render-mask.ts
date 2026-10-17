@@ -44,17 +44,33 @@ export function getForestWaterRenderMask(scene: FixedWorldScene): ForestWaterRen
   const result = { water, exclusions, bounds: area }; masks.set(scene.water, result); return result;
 }
 
-export function isWaterBoundsVisible(ctx: CanvasRenderingContext2D, box: WorldBounds) {
-  const transform = ctx.getTransform?.();
-  if (!transform || transform.b || transform.c) return true;
+type AxisTransform = Pick<DOMMatrix, "a" | "d" | "e" | "f">;
+function axisBoundsVisible(box: WorldBounds, transform: AxisTransform, width: number, height: number) {
   const x1 = box.x * transform.a + transform.e, x2 = (box.x + box.width) * transform.a + transform.e;
   const y1 = box.y * transform.d + transform.f, y2 = (box.y + box.height) * transform.d + transform.f;
-  return Math.max(x1, x2) >= 0 && Math.min(x1, x2) <= ctx.canvas.width
-    && Math.max(y1, y2) >= 0 && Math.min(y1, y2) <= ctx.canvas.height;
+  return Math.max(x1, x2) >= 0 && Math.min(x1, x2) <= width
+    && Math.max(y1, y2) >= 0 && Math.min(y1, y2) <= height;
+}
+
+export function isWaterBoundsVisible(ctx: CanvasRenderingContext2D, box: WorldBounds) {
+  const transform = ctx.getTransform?.();
+  return !transform || transform.b || transform.c ? true : axisBoundsVisible(box, transform, ctx.canvas.width, ctx.canvas.height);
+}
+
+/** Snapshot only for a single unchanged paint transform. Hundreds of tiny
+ * refraction patches then share one browser DOMMatrix read, including clips.
+ * Never retain this predicate across a camera move or a canvas resize. */
+export function createForestWaterBoundsVisibility(ctx: CanvasRenderingContext2D): (box: WorldBounds) => boolean {
+  const transform = ctx.getTransform?.();
+  if (!transform || transform.b || transform.c) return () => true;
+  const { a, d, e, f } = transform, { width, height } = ctx.canvas;
+  const snapshot = { a, d, e, f };
+  return box => axisBoundsVisible(box, snapshot, width, height);
 }
 
 /** Apply the exact Water union and subtract every exclusion. Caller owns save/restore. */
-export function clipForestWaterRenderMask(ctx: CanvasRenderingContext2D, mask: ForestWaterRenderMask) {
+export function clipForestWaterRenderMask(ctx: CanvasRenderingContext2D, mask: ForestWaterRenderMask,
+  visible: (box: WorldBounds) => boolean = box => isWaterBoundsVisible(ctx, box)) {
   ctx.clip(mask.water, "nonzero");
-  for (const exclusion of mask.exclusions) if (isWaterBoundsVisible(ctx, exclusion.bounds)) ctx.clip(exclusion.outside, "evenodd");
+  for (const exclusion of mask.exclusions) if (visible(exclusion.bounds)) ctx.clip(exclusion.outside, "evenodd");
 }

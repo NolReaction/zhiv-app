@@ -148,19 +148,21 @@ test("each actual Tiled work marker keeps its exact position across its host's e
   }
 });
 
-test("the deferred woodlot host rejects construction visits even when a stale work marker is reachable", () => {
-  const scene = structuredClone(previewWorldScene(TILED_WORLD, initialPreviewLevels(TILED_WORLD)));
-  assert.equal(scene.sites.some(site => site.id === "woodlot"), false, "the removed workbench artwork stays absent");
-  const places = builderLocalPlaces(scene);
-  assert.ok(places);
-  const marker = { id: "builder-work-woodlot", position: { ...places.rest.position }, pauseSeconds: 4 };
-  scene.destinations = [...scene.destinations.filter(destination => destination.id !== marker.id), marker];
-  assert.ok(isWalkable(places.navigation, marker.position), "refusal is caused by the absent host, rather than unsafe feet");
-  for (let level = 1; level <= 5; level++) {
-    const order = job("woodlot", level), stops = builderWorkStops(scene, order);
-    assert.deepEqual(stops, [], `woodlot ${level} does not borrow a nearby building or visitor point`);
-    assert.equal(builderRoute(places, places.rest.position, stops), null);
-    assert.deepEqual(builderWorkMarkerChecks(scene, order), [{ id: marker.id, position: marker.position, issues: ["missing-host"] }]);
+test("woodlot construction visits the rabbit home and respects its upgraded exterior", () => {
+  const initial = initialPreviewLevels(TILED_WORLD);
+  for (const exterior of [1, 2]) for (const target of [1, 2, 3, 4, 5]) {
+    const scene = previewWorldScene(TILED_WORLD, { ...initial, "lopukh-home": exterior });
+    const next = previewWorldScene(TILED_WORLD, { ...initial, "lopukh-home": target >= 3 ? 2 : 1 });
+    const nextNavigation = createWorldNavigation(next, BUILDER_NAVIGATION_LIMITS.radius);
+    assert.equal(scene.sites.some(site => site.id === "woodlot"), false, "the removed workbench artwork stays absent");
+    const order = job("woodlot", target), { stops } = checkedRoute(scene, order);
+    const home = scene.sites.find(site => site.id === "lopukh-home");
+    for (const stop of stops) {
+      assert.equal(stop.id, "woodlot", "the job keeps its saved economic station ID");
+      assert.deepEqual(stop.lookAt, home.anchor);
+      assert.ok(isWalkable(nextNavigation, stop.position), "claiming the upgrade cannot place the builder inside the future house");
+      assertClear(stop.position, [home.entry, home.doorway ?? home.entry], builderWorkClearance(scene), "rabbit doorway stays free");
+    }
   }
 });
 

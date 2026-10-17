@@ -76,9 +76,15 @@ test("campfire building art uses the small cooking fire illustration instead of 
   assert.match(html, /viewBox="0 0 64 64"/);
 });
 
-test("woodlot requirement art uses its tree fallback after the shelter drawing was removed", () => {
-  const html = renderToStaticMarkup(createElement(ConstructionBuildingArt, { stationId: "woodlot", level: 1 }));
-  assert.match(html, /data-building-art="woodlot"/);
-  assert.match(html, /lucide-trees/);
-  assert.doesNotMatch(html, /background-image|shelter\.png|lopukh-house/);
+test("woodlot requirement art uses the rabbit house and selects its second illustration from station tier 3", () => {
+  for (const level of [1, 2, 3, 4, 5]) {
+    const html = renderToStaticMarkup(createElement(ConstructionBuildingArt, { stationId: "woodlot", level }));
+    assert.match(html, /data-building-art="woodlot"/);
+    assert.match(html, new RegExp(`data-building-level="${level}"`), "the requirement retains its real economic tier");
+    assert.match(html, new RegExp(`background-image:url\\(/world/prototype/lopukh-house-lvl-${level >= 3 ? 2 : 1}\\.png\\)`));
+    assert.doesNotMatch(html, /lucide-trees|shelter\.png/);
+  }
+  const unknown = renderToStaticMarkup(createElement(ConstructionBuildingArt, { stationId: "unplaced-station", level: 3 }));
+  assert.match(unknown, /lucide-hammer/);
+  assert.doesNotMatch(unknown, /background-image|lopukh-house|shelter\.png/);
 });

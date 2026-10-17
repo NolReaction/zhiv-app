@@ -269,9 +269,9 @@ export function createWorldDevStore(enabled: boolean) {
     triggerBirds() {
       if (enabled) publish({ ...state, birdEvent: ++birdEventId });
     },
-    triggerScene(scenario: WorldDevSceneScenario, actor: WorldDevSceneActor, target?: WorldDevSceneActor) {
+    triggerScene(scenario: WorldDevSceneScenario, actor: WorldDevSceneActor, target?: WorldDevSceneActor, seed?: number) {
       if (!enabled) return;
-      const request = normalizeWorldDevSceneRequest({ id: sceneEventId + 1, scenario, actor, target });
+      const request = normalizeWorldDevSceneRequest({ id: sceneEventId + 1, scenario, actor, target, seed });
       if (!request) return;
       sceneEventId++;
       publishSceneFeedback(Object.freeze({ id: request.id, phase: "queued", message: "Подготовка репетиции…" }));
@@ -300,5 +300,5 @@ export function createWorldDevStore(enabled: boolean) {
 }
 
 export const worldDevStore = retainWorldDevClientState("world-controls",
-  `v1:2:${TILED_WORLD.id}:${TILED_WORLD.width}:${TILED_WORLD.height}:${JSON.stringify(TILED_WORLD.sites.map(site => [site.id, site.initialLevel, site.states.map(state => state.level)]))}`,
+  `v1:3:${TILED_WORLD.id}:${TILED_WORLD.width}:${TILED_WORLD.height}:${JSON.stringify(TILED_WORLD.sites.map(site => [site.id, site.initialLevel, site.states.map(state => state.level)]))}`,
   () => createWorldDevStore(WORLD_DEV_ENABLED)).value;

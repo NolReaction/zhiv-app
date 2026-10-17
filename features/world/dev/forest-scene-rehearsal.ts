@@ -1,15 +1,14 @@
-import type { SceneOptions } from "@/features/mochlik/scene";
 import type { ForestSessionState } from "@/features/world/state/forest-session";
 import type { FixedWorldScene, WorldPoint } from "@/features/world/tiled/types";
 import { createWorldNavigation, isWalkable } from "@/features/world/navigation/navigation";
 import { canTraverseResidents, residentClearance, type ResidentOccupant } from "@/features/world/navigation/resident-traffic";
-import { requestClearingPoint, isClearingAtPoint, clearingActivityFrame } from "@/features/world/simulation/clearing-activity";
+import { requestClearingPoint, requestClearingSleep, isClearingAtPoint, clearingActivityFrame } from "@/features/world/simulation/clearing-activity";
 import { requestForestDirective, type ForestDirectorOptions } from "@/features/world/simulation/forest-director";
-import { requestBuilderVisit } from "@/features/world/characters/builder/builder-mind";
+import { requestBuilderHome, requestBuilderVisit } from "@/features/world/characters/builder/builder-mind";
 import { builderLocalPlaces } from "@/features/world/characters/builder/builder-navigation";
 import { noticePleskMind, requestPleskHome, requestPleskWalk } from "@/features/world/characters/plesk/plesk-mind";
 import { pleskLocalPlaces } from "@/features/world/characters/plesk/plesk-resident";
-import { noticeForestVillager } from "@/features/world/characters/villagers/villager-mind";
+import { noticeForestVillager, requestForestVillagerHome } from "@/features/world/characters/villagers/villager-mind";
 import { forestVillagerPlaces } from "@/features/world/characters/villagers/villager-navigation";
 import { selectVillagerRoute, stopVillager } from "@/features/world/characters/villagers/villager-movement";
 import { beginWoodcutterCycle } from "@/features/world/characters/villagers/woodcutter-cycle";
@@ -18,8 +17,10 @@ import { chooseForestBirdwatchTarget } from "@/features/world/activities/forest-
 import type { ForestBird } from "@/features/world/environment/wildlife/forest-wildlife";
 import { requestForestSocialVisit, type ForestSocialEnvironment } from "@/features/world/characters/social/forest-social";
 import { WORLD_DEV_SCENES, createForestScenePreview, advanceForestScenePreview, forestScenePreviewFeedback,
-  normalizeWorldDevSceneRequest, setForestScenePreviewStatus, type ForestScenePreview, type WorldDevSceneActor,
+  setForestScenePreviewStatus, type ForestScenePreview, type WorldDevSceneActor,
   type WorldDevSceneFeedback, type WorldDevSceneRequest } from "./forest-scene-preview";
+
+import { advanceResidentStress, isResidentStress, type ResidentStress } from "./forest-resident-stress";
 
 export type ForestSceneRehearsalEnvironment = {
   social: ForestSocialEnvironment; occupants: readonly ResidentOccupant[]; birds: readonly ForestBird[]; now: number;
@@ -29,38 +30,16 @@ export type ForestSceneRehearsal = {
   preview: ForestScenePreview; accepted: boolean; wakeRequested: boolean;
   stage: "prepare" | "moving" | "activity" | "social" | "animal";
   target?: WorldPoint; socialAt?: number; animalToken?: number; birdId?: string; sawAction: boolean;
-  actionAt?: number; initialCycles: number;
+  actionAt?: number; initialCycles: number; stress?: ResidentStress;
 };
 type Holder = ForestSessionState & { devSceneRehearsal?: ForestSceneRehearsal };
 const distance = (a: WorldPoint, b: WorldPoint) => Math.hypot(a.x - b.x, a.y - b.y);
 const terminal = (runtime: ForestSceneRehearsal) => ["complete", "blocked", "stopped"].includes(runtime.preview.phase);
 const villager = (actor: WorldDevSceneActor): actor is "lopukh" | "kamneshmyg" | "leaftail" => ["lopukh", "kamneshmyg", "leaftail"].includes(actor);
-const optionTimes = new WeakMap<WorldDevSceneRequest, number>();
-
-/** A separate DEV presence owns synthetic presentation DTOs. No callback,
- * inventory, command transport or real player's worker enters this session. */
-export function rehearsalSceneOptions(original: SceneOptions, request: WorldDevSceneRequest): SceneOptions {
-  const normalized = normalizeWorldDevSceneRequest(request);
-  if (!normalized) return original;
-  let now = optionTimes.get(request);
-  if (now === undefined) {
-    now = Number.isFinite(original.serverNow) ? original.serverNow! : Date.now(); optionTimes.set(request, now);
-  }
-  const ownerPublicId = `dev-scene-${request.id}`, revision = request.id;
-  const buildings = { ...original.economyBuildings, quarry: 1, workshop: Math.max(1, original.economyBuildings?.workshop ?? 0) };
-  const jobs = request.scenario === "work" && (request.actor === "kamneshmyg" || request.actor === "lopukh")
-    ? [{ id: `dev-work-${request.id}`, stationId: request.actor === "kamneshmyg" ? "quarry" : "woodlot", stationLevel: 1,
-      recipeId: request.actor === "kamneshmyg" ? "quarry_stone" : "woodlot_wood",
-      startedAt: new Date(now).toISOString(), finishesAt: new Date(now + 120_000).toISOString() }] : [];
-  const production = { ownerPublicId, revision, jobs };
-  return { ...original, serverNow: now, presenceKey: `dev:scene:${request.id}`, view: "world", devRehearsal: normalized,
-    economyBuildings: buildings, economyProduction: production, economyResidents: { ownerPublicId, revision, buildings, production },
-    economyConstruction: { ownerPublicId, revision, jobs: request.scenario === "work" && request.actor === "builder"
-      ? [{ id: `dev-build-${request.id}`, stationId: "workshop", targetLevel: 2,
-        startedAt: new Date(now).toISOString(), finishesAt: new Date(now + 120_000).toISOString() }] : [] },
-    economyJourney: null, cancelledExplorations: [], economyGarden: null, gardenHarvestRequest: null, onGardenHarvestEvent: undefined,
-    residentArrival: { seen: true, enabled: false, onComplete() {} } };
-}
+// A walk must remain visibly longer than a small idle adjustment even when
+// the normal controller finishes within one world unit of its destination.
+const WALK_MINIMUM_DISPLACEMENT = 30;
+export { rehearsalSceneOptions } from "./forest-scene-rehearsal-options";
 
 function directorOptions(environment: ForestSceneRehearsalEnvironment): ForestDirectorOptions {
   return environment.director ?? { autoLife: false, blocked: false, rain: environment.social.rain ?? 0,
@@ -102,25 +81,25 @@ function beginWalk(state: ForestSessionState, scene: FixedWorldScene, runtime: F
   if (villager(actor)) {
     const mind = state.villagers!.residents[actor], places = forestVillagerPlaces(scene, actor);
     if (!places) return false;
-    const stops = places.wander.filter(stop => distance(mind.position, stop.position) > 20)
+    const stops = places.wander.filter(stop => distance(mind.position, stop.position) > WALK_MINIMUM_DISPLACEMENT)
       .sort((a, b) => distance(a.position, mind.position) - distance(b.position, mind.position));
     if (!selectVillagerRoute(mind, places, stops, "wander", "inspect", environment.occupants)) return false;
     mind.outdoorUntil = mind.elapsed + 90; runtime.target = { ...mind.target!.position };
   } else if (actor === "builder") {
     const mind = state.builderMind!, places = builderLocalPlaces(scene);
-    const stop = places?.wander.filter(stop => distance(stop.position, mind.position) > 30)
+    const stop = places?.wander.filter(stop => distance(stop.position, mind.position) > WALK_MINIMUM_DISPLACEMENT)
       .sort((a, b) => distance(a.position, mind.position) - distance(b.position, mind.position))
       .find(stop => requestBuilderVisit(mind, scene, { id: "dev-walk", position: stop.position, size: 1 }, environment.occupants));
     if (!stop || !mind.target) return false;
     runtime.target = { ...mind.target.position };
   } else if (actor === "plesk") {
     const mind = state.pleskMind!, places = pleskLocalPlaces(scene);
-    const candidates = [places?.trade, places?.rest, places?.base].filter(stop => stop && distance(stop.position, mind.position) > 15);
+    const candidates = [places?.trade, places?.rest, places?.base].filter(stop => stop && distance(stop.position, mind.position) > WALK_MINIMUM_DISPLACEMENT);
     const stop = candidates.find(stop => requestPleskWalk(mind, scene, stop!));
     if (!stop) return false;
     runtime.target = { ...stop.position };
   } else {
-    const stops = (scene.navigation?.interests ?? []).filter(stop => distance(stop.position, state.clearing.position) > 20)
+    const stops = (scene.navigation?.interests ?? []).filter(stop => distance(stop.position, state.clearing.position) > WALK_MINIMUM_DISPLACEMENT)
       .sort((a, b) => distance(a.position, state.clearing.position) - distance(b.position, state.clearing.position));
     const stop = stops.find(stop => requestClearingPoint(state.clearing, stop.position));
     if (!stop) return false;
@@ -186,12 +165,31 @@ function beginAnimal(state: ForestSessionState, runtime: ForestSceneRehearsal, e
 function tryStart(state: ForestSessionState, scene: FixedWorldScene, runtime: ForestSceneRehearsal, environment: ForestSceneRehearsalEnvironment) {
   const request = runtime.preview.request;
   if (runtime.accepted || terminal(runtime)) return;
+  if (request.scenario === "leaftail-arrival") {
+    runtime.accepted = true; runtime.stage = "activity"; running(runtime, "Листохвост приплывает, сходит на берег и идёт к фургону."); return;
+  }
   if (request.scenario === "plesk-home" && state.pleskMind?.home.phase === "inside") {
     finish(runtime, "Плёска дома; вход и скрытие жительницы проверены."); return;
   }
   if (request.scenario === "work") {
     const ready = request.actor === "builder" ? Boolean(state.builderMind?.job) : Boolean(state.villagers?.residents[request.actor as "lopukh" | "kamneshmyg"].job);
     if (ready) { runtime.accepted = true; runtime.stage = "activity"; running(runtime, "Идёт к рабочему месту тестового поручения."); }
+    return;
+  }
+  if (isResidentStress(request.scenario)) {
+    runtime.accepted = true; runtime.stage = "activity";
+    runtime.stress ??= { phase: "prepare", since: state.elapsed, sawCarry: false, sawBlockedDoor: false, initialCycles: 0, workStarted: false };
+    return;
+  }
+  if (request.scenario === "home") {
+    const inside = request.actor === "mochlik" ? state.clearing.stage === "home-sleep" : request.actor === "builder"
+      ? state.builderMind?.sleepPhase === "sleep" : request.actor === "plesk" ? state.pleskMind?.home.phase === "inside"
+        : state.villagers?.residents[request.actor].doorPhase === "inside";
+    if (inside) { finish(runtime, "Житель дома; вход и скрытие проверены."); return; }
+    const accepted = request.actor === "mochlik" ? requestClearingSleep(state.clearing) : request.actor === "builder"
+      ? requestBuilderHome(state.builderMind, scene, environment.occupants) : request.actor === "plesk" ? requestPleskHome(state.pleskMind)
+        : Boolean(state.villagers && requestForestVillagerHome(state.villagers, scene, request.actor, environment.occupants));
+    if (accepted) { runtime.accepted = true; runtime.stage = "activity"; running(runtime, "Житель идёт к своему дому через настоящий порог."); }
     return;
   }
   if (!prepareActor(state, runtime)) return;
@@ -217,6 +215,10 @@ export function syncForestSceneRehearsal(state: ForestSessionState, scene: Fixed
     const preview = createForestScenePreview(request);
     if (!preview) return null;
     holder.devSceneRehearsal = { preview, accepted: false, wakeRequested: false, stage: "prepare", sawAction: false, initialCycles: 0 };
+    const seed = request.seed ?? 17;
+    state.clearing.seed = seed; state.director.seed = seed ^ 0x646972; state.social.seed = seed ^ 0x736f63;
+    if (state.pleskMind) state.pleskMind.seed = seed ^ 0x706c65;
+    if (state.builderMind) state.builderMind.wanderIndex = seed % 3;
     state.director.nextDecisionAt = state.director.elapsed + 3600; state.clearing.waitSeconds = 3600;
     state.social.nextEncounterAt = state.social.elapsed + 3600; state.social.nextPassingAt = state.social.elapsed + 3600;
     // The selected actor waits for the explicit request, instead of starting
@@ -239,10 +241,18 @@ export function syncForestSceneRehearsal(state: ForestSessionState, scene: Fixed
 function inspectProgress(state: ForestSessionState, runtime: ForestSceneRehearsal) {
   const request = runtime.preview.request;
   if (!runtime.accepted) return;
-  if (request.scenario === "walk" && runtime.target) {
+  if (request.scenario === "leaftail-arrival") {
+    if (state.leaftailBoat?.completed) finish(runtime, "Листохвост приплыл по воде, сошёл на берег и дошёл до своего фургона.");
+    else if (state.leaftailBoat?.phase === "blocked") block(runtime, "Для лодки не найден безопасный водный путь и выход на берег.");
+  } else if (request.scenario === "walk" && runtime.target) {
     const position = request.actor === "mochlik" ? state.clearing.position : request.actor === "builder" ? state.builderMind?.position
       : request.actor === "plesk" ? state.pleskMind?.position : state.villagers?.residents[request.actor].position;
     if (position && distance(position, runtime.target) <= 1) finish(runtime, "Прогулка завершена: житель дошёл до выбранного места.");
+  } else if (request.scenario === "home") {
+    const inside = request.actor === "mochlik" ? state.clearing.stage === "home-sleep" : request.actor === "builder"
+      ? state.builderMind?.sleepPhase === "sleep" : request.actor === "plesk" ? state.pleskMind?.home.phase === "inside"
+        : state.villagers?.residents[request.actor].doorPhase === "inside";
+    if (inside) finish(runtime, "Житель вошёл в свой дом и остаётся внутри.");
   } else if (request.scenario === "carry") {
     const cycle = state.villagers?.residents.lopukh.woodwork;
     if (cycle && cycle.completedCycles > runtime.initialCycles) finish(runtime, "Лопоух принёс бревно, разгрузил его перед домом и отдохнул.");
@@ -292,7 +302,13 @@ export function advanceForestSceneRehearsal(state: ForestSessionState, scene: Fi
   if (!runtime) return null;
   if (terminal(runtime) || environment.paused || environment.reducedMotion || !Number.isFinite(delta) || delta <= 0)
     return forestScenePreviewFeedback(runtime.preview);
-  inspectProgress(state, runtime);
+  if (runtime.stress) {
+    if (state.elapsed >= (runtime.stress.nextAt ?? 0)) {
+      runtime.stress.nextAt = state.elapsed + .8;
+      const result = advanceResidentStress(state, scene, runtime.preview.request, runtime.stress, environment);
+      setForestScenePreviewStatus(runtime.preview, result.status, result.message);
+    }
+  } else inspectProgress(state, runtime);
   if (!terminal(runtime)) {
     const limit = WORLD_DEV_SCENES.find(scene => scene.id === runtime.preview.request.scenario)!.seconds;
     if (runtime.preview.elapsed + Math.min(.5, delta) >= limit) block(runtime, "Репетиция не закончилась вовремя. Проверьте путь, занятие и доступность жителя.");

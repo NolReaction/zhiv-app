@@ -85,13 +85,26 @@ test("LeafTail is a separate shop without a resident-orders shortcut or future p
   assert.match(render("leaftail-caravan", economy, { onBack() {} }), /aria-label="Назад к персонажам"/);
 });
 
-test("Lopukh home explains the separate future workplace without build or workbench controls", () => {
-  const html = render("lopukh-home", controller({ act() { assert.fail("a house preview cannot change the economy"); } }));
-  assert.match(html, /Дом Лопоуха/);
-  assert.match(html, /отдельное рабочее место и заказы на изготовление появятся позже/);
-  assert.doesNotMatch(html, /data-production-slot|data-guide-station-upgrade|Все уровни оборудования открыты|Купить|Построить|Заказы жителей/);
-  assert.deepEqual(helpers.worldStations["lopukh-home"].stationIds, []);
-  assert.equal(helpers.worldPlaceForStation("lopukh-home"), null);
+test("Lopukh home opens the preserved woodlot production, setup and upgrade controls", () => {
+  const action = () => assert.fail("viewing the rabbit's home cannot change the economy");
+  const empty = render("lopukh-home", controller({ act: action }));
+  assert.match(empty, /Дом Лопоуха/);
+  assert.match(empty, /data-station-setup="woodlot"/);
+  assert.match(empty, /data-guide-station-upgrade="woodlot"/);
+  assert.doesNotMatch(empty, /Будущая ветка|появятся позже|Заказы жителей/);
+  assert.deepEqual(helpers.worldStations["lopukh-home"].stationIds, ["woodlot"]);
+  assert.equal(helpers.worldPlaceForStation("woodlot"), "lopukh-home");
+  const state = snapshot({ buildings: { home: 3, woodlot: 3, warehouse: 1 },
+    wallet: { coins: 10000, pearls: 1000 } });
+  const active = job({ targetId: "woodlot", recipeId: "gather_wood", rewards: { wood: 1 } });
+  state.jobs = [active];
+  const before = structuredClone(state), html = render("lopukh-home", controller({ snapshot: state, act: action }));
+  assert.match(html, /data-production-slot="1" data-state="working"/);
+  assert.match(html, /data-guide-station-upgrade="woodlot"/);
+  assert.match(html, /data-recipe="gather_wood"/);
+  assert.match(html, /data-recipe="gather_hardwood"/);
+  assert.doesNotMatch(html, /Сначала постройте|появятся позже/);
+  assert.deepEqual(state, before, "old station IDs, orders and account levels remain unchanged");
 });
 function button(html, text) {
   const found = [...html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)].map(match => ({ attributes: match[1], text: match[2].replace(/<[^>]*>/g, "") })).find(entry => entry.text.includes(text));

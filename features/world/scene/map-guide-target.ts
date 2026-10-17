@@ -12,6 +12,11 @@ export function minerArrivalGuideTarget(point: { x: number; y: number; size: num
     ] };
 }
 
+export function leaftailArrivalGuideTarget(point: { x: number; y: number; size: number }): MapInteractiveObject | undefined {
+  const target = minerArrivalGuideTarget(point);
+  return target ? { ...target, id: "leaftail-arrival", place: "leaftail-caravan", label: "Листохвост" } : undefined;
+}
+
 /** Frame the current artwork's authored contour without selecting or opening it. */
 export function mapGuideCamera(object: MapInteractiveObject, view: Viewport, bounds: Viewport,
   insets: VerticalCameraInsets): Camera {

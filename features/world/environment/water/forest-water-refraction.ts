@@ -2,7 +2,7 @@ import type { FixedWorldScene, WorldBounds, WorldImage } from "@/features/world/
 import type { ForestWaterDynamics } from "./forest-water-dynamics";
 import { sampleForestWater } from "./forest-water-dynamics";
 import { dynamicsFootprintFits, type WaterDynamicsGeometry } from "./water-dynamics-geometry";
-import { clipForestWaterRenderMask, getForestWaterRenderMask, isWaterBoundsVisible } from "./forest-water-render-mask";
+import { clipForestWaterRenderMask, createForestWaterBoundsVisibility, getForestWaterRenderMask } from "./forest-water-render-mask";
 
 type Patch = WorldBounds & { centerX: number; centerY: number };
 const patches = new WeakMap<WaterDynamicsGeometry, Patch[]>();
@@ -34,14 +34,15 @@ export function drawForestWaterRefraction(ctx: CanvasRenderingContext2D, scene: 
   const imageHeight = "naturalHeight" in image ? image.naturalHeight : image.height;
   if (!state?.active.length || options.reducedMotion || !imageWidth || !imageHeight
     || terrain.imagePlacement && terrain.imagePlacement.rotation % 360 !== 0) return;
-  const mask = getForestWaterRenderMask(scene); if (!mask || !isWaterBoundsVisible(ctx, mask.bounds)) return;
+  const mask = getForestWaterRenderMask(scene); if (!mask) return;
+  const visible = createForestWaterBoundsVisibility(ctx); if (!visible(mask.bounds)) return;
   const source = terrain.imagePlacement ?? terrain.bounds;
   if (source.width <= 0 || source.height <= 0) return;
   const sx = imageWidth / source.width, sy = imageHeight / source.height;
-  ctx.save(); clipForestWaterRenderMask(ctx, mask);
+  ctx.save(); clipForestWaterRenderMask(ctx, mask, visible);
   ctx.imageSmoothingEnabled = true; ctx.globalAlpha *= .72;
   for (const patch of waterPatches(state)) {
-    if (!isWaterBoundsVisible(ctx, patch)) continue;
+    if (!visible(patch)) continue;
     const x = patch.centerX / state.scale, y = patch.centerY / state.scale;
     const wave = sampleForestWater(state, { x: patch.centerX, y: patch.centerY });
     const dx = Math.max(-1.2, Math.min(1.2, Math.sin(x * .026 + y * .035 - state.elapsed * .72) * .42

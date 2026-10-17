@@ -12,7 +12,8 @@ test("visible villager body taps greet their own resident without opening a menu
     worldDevStore.patch({ ...quietClearing, autoLife: false });
     const canvas = env.surface(460), places = [], menus = [], interactions = {};
     const initial = { ...options, reducedMotion: false, view: "world", serverNow: 100_000, presenceKey: key,
-      economyBuildings: { quarry: 1 }, economyResidents: confirmedVillagers(owner),
+      economyBuildings: { home: 3, quarry: 1 }, economyResidents: { ...confirmedVillagers(owner), buildings: { home: 3, quarry: 1 } },
+      merchantArrival: { seen: true, enabled: false, onComplete() { assert.fail("a saved merchant arrival does not replay on a body tap"); } },
       residentArrival: { seen: true, enabled: false, onComplete() { assert.fail("a saved arrival does not replay on a body tap"); } } };
     const loading = createMapEngine(canvas, initial, place => places.push(place), [], undefined, {}, interactions);
     await finishVillagerArtwork(env); engine = await loading;

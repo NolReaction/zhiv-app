@@ -25,6 +25,8 @@ import { WorldDevFishing } from "./world-dev-fishing";
 import { AudioDiagnosticsPanel } from "@/features/audio/dev/audio-diagnostics";
 import { WorldDevBuilderPoints } from "./world-dev-builder-points";
 import { WorldDevScene, type WorldDevSceneChoice } from "./world-dev-scene";
+import { WorldDevAnimationStand } from "./world-dev-animation-stand";
+import { WorldDevResidentDiagnostics } from "./world-dev-resident-diagnostics";
 import { WORLD_DEV_SCENES } from "./forest-scene-preview";
 import { useForestObservation } from "@/features/world/state/use-forest-observation";
 import { accountSceneLevels } from "@/features/world/state/economy/economy-scene-state";
@@ -324,7 +326,7 @@ function DevelopmentPanel({ world, economy, active = true, initiallyOpen = false
   function play(action: ManualAction) {
     if (unavailable(action)) return;
     if (action.kind === "rehearsal") {
-      worldDevStore.triggerScene(action.scenario, action.actor, action.target);
+      worldDevStore.triggerScene(action.scenario, action.actor, action.target, action.seed);
       setFeedback("Репетиция запущена на копии мира. Результат показан во вкладке «Сцена → Жители».");
     } else if (action.kind === "scenario") {
       worldDevStore.triggerScenario(action.scenario);
@@ -465,6 +467,8 @@ export function WorldDevPanelContent({ world, economy, worldView, presenceKey, o
       <h3 className={styles.pageTitle}>Репетиции жителей</h3>
       <WorldDevScene state={state} prefersReducedMotion={prefersReducedMotion}
         onStart={choice => play({ kind: "rehearsal", ...choice })} onStop={() => worldDevStore.stopScene()} />
+      <WorldDevResidentDiagnostics />
+      <WorldDevAnimationStand />
     </>}
     {page === "plesk" && <>
       <h3 className={styles.pageTitle}>Плёска · рыбачка и торговка</h3>

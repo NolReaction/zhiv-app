@@ -3,7 +3,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Check, Clock3, Leaf, LockKeyhole, RefreshCw } from "lucide-react";
 import { ItemIcon } from "@/features/items/item-icon";
-import { leaftailShopView } from "@/features/economy/domain/leaftail-shop";
+import { leaftailShopView, leaftailTravelMessage } from "@/features/economy/domain/leaftail-shop";
 import { locked } from "@/features/economy/sync/controller-state";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import styles from "./world-leaftail-market.module.css";
@@ -31,7 +31,7 @@ export function leaftailPurchaseReason(economy: EconomyController, quote: Quote,
     return "Запасы обновились. Выберите предмет ещё раз.";
   const shop = leaftailShopView(state, economy.now, state.catalog);
   if (!shop) return "Листохвост пока не открыл лавку.";
-  if (!shop.unlocked) return `Лавка откроется с домом уровня ${shop.requiredHomeLevel}.`;
+  if (!shop.unlocked) return leaftailTravelMessage(shop.requiredHomeLevel);
   const offer = shop.offers.find(item => item.targetId === quote.targetId && item.itemId === quote.itemId);
   if (!offer || offer.priceCoins !== quote.price || offer.quantity !== quote.quantity) return "Поставка изменилась. Выберите предмет ещё раз.";
   if (offer.remaining < 1) return "Сегодня уже куплено. Дождитесь новой поставки.";
@@ -81,12 +81,12 @@ export function WorldLeaftailMarket({ economy, isOnline }: { economy: EconomyCon
   const deliveryDate = shop ? new Date(shop.refreshAt) : null;
   const deliveryLabel = deliveryDate && Number.isFinite(deliveryDate.getTime())
     ? `Новая поставка ${resetDate.format(deliveryDate)} МСК.` : "Проверяем время новой поставки.";
-  return <div ref={shopElement} tabIndex={-1} className={styles.shop} aria-label="Находки Листохвоста" aria-busy={economy.busy || undefined} data-leaftail-shop>
-    <p className={styles.intro}><Leaf size={18} aria-hidden="true" /><span>«Собрал кое-что для твоего поселения. Выбирай, пока не разобрали!»</span></p>
-    {recovery}
-    {!state ? <p role="status">Проверяем ваши запасы…</p> : !shop ? <p>Листохвост готовит свой прилавок. Обновите игру немного позже.</p> : <>
+  return <div ref={shopElement} tabIndex={-1} className={styles.shop} aria-label="Лавка Листохвоста" aria-busy={economy.busy || undefined} data-leaftail-shop>
+    {!state ? <>{recovery}<p role="status">Проверяем ваши запасы…</p></> : !shop ? <p>Листохвост готовит свой прилавок. Обновите игру немного позже.</p>
+      : !shop.unlocked ? <p className={styles.locked} role="status" data-leaftail-away><LockKeyhole size={18} aria-hidden="true" /><span>{leaftailTravelMessage(shop.requiredHomeLevel)}</span></p> : <>
+      <p className={styles.intro}><Leaf size={18} aria-hidden="true" /><span>«Собрал кое-что для твоего поселения. Выбирай, пока не разобрали!»</span></p>
+      {recovery}
       <div className={styles.wallet}><span>Ваши монеты</span><strong><ItemIcon itemId="coins" size={18} />{number(state.wallet.coins)}</strong></div>
-      {!shop.unlocked && <p className={styles.locked}><LockKeyhole size={17} aria-hidden="true" />Лавка откроется с домом уровня {shop.requiredHomeLevel}.</p>}
       <p className={styles.hint}>Одна покупка каждого товара на игрока за поставку.</p>
       <div className={styles.tabs} role="tablist" aria-label="Товары Листохвоста">{sections.map((entry, index) => <button key={entry.id}
         type="button" role="tab" ref={node => { tabButtons.current[index] = node; }} id={`${tabsId}-${entry.id}`} aria-controls={`${tabsId}-offers`}

@@ -18,6 +18,7 @@ import type { SceneLoadState } from "@/features/startup/scene-load-state";
 import { habitatLighting } from "@/features/mochlik/lighting";
 import type { HabitatScene, SceneOptions } from "@/features/mochlik/scene";
 import styles from "./mochlik-terrarium.module.css";
+import { useLeaftailArrival } from "@/features/world/state/use-leaftail-arrival";
 import { useGardenCollection } from "@/features/economy/integration/garden-collection-context";
 
 type Props = { wakeSignal: number; suspended?: boolean; nowMs: number; timeZone: string; userId?: string; bestStreakDays?: number; items?: readonly GameItemId[]; worldState?: WorldState; worldGifts?: readonly string[]; economyJourney?: EconomySceneJourney | null; cancelledExplorations?: readonly string[]; economyBuildings?: EconomySceneBuildings | null; economyProduction?: EconomySceneProduction | null; economyConstruction?: EconomySceneConstruction | null; economyResidents?: EconomySceneResidents | null; activity?: WorldActivity | null; onLoadState?: (state: SceneLoadState) => void; retrySignal?: number };
@@ -25,6 +26,10 @@ type Props = { wakeSignal: number; suspended?: boolean; nowMs: number; timeZone:
 // Decorative content of the same native check-in button; it never records taps.
 export function MochlikTerrarium({ wakeSignal, suspended = false, nowMs, timeZone, userId, bestStreakDays = 0, items, worldState, worldGifts, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, economyResidents, activity, onLoadState, retrySignal = 0 }: Props) {
   const garden = useGardenCollection();
+  const merchant = useLeaftailArrival(userId ?? "guest", {
+    unlocked: (economyResidents?.buildings.home ?? 0) >= 3, enabled: false,
+    onboarding: { loaded: false, isPaused: false, progress: null },
+  });
   const canvas = useRef<HTMLCanvasElement>(null);
   const time = useRef(nowMs);
   useEffect(() => { time.current = nowMs; scene.current?.setTime(nowMs); }, [nowMs]);
@@ -33,7 +38,7 @@ export function MochlikTerrarium({ wakeSignal, suspended = false, nowMs, timeZon
   const scene = useRef<HabitatScene | null>(null);
   const { lampOn, dusk } = habitatLighting(nowMs, timeZone);
   const presenceKey = userId ? `zhiv:mochlik:presence:${userId}` : undefined;
-  const options = useRef<SceneOptions>({ lampOn, dusk, paused: false, backgrounded: suspended, reducedMotion: false, presenceKey, bestStreakDays, items, worldState, worldGifts, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, economyResidents, economyGarden: garden?.crop, gardenHarvestRequest: garden?.request, onGardenHarvestEvent: garden?.sceneEvent });
+  const options = useRef<SceneOptions>({ lampOn, dusk, paused: false, backgrounded: suspended, reducedMotion: false, presenceKey, bestStreakDays, items, worldState, worldGifts, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, economyResidents, merchantArrival: { seen: merchant.seen, enabled: false, onComplete: merchant.complete }, economyGarden: garden?.crop, gardenHarvestRequest: garden?.request, onGardenHarvestEvent: garden?.sceneEvent });
   const [loadState, setLoadState] = useState<SceneLoadState>("loading");
   const ready = loadState === "ready", failed = loadState === "error";
   const loader = useRef<ReturnType<typeof createSceneLoader<HabitatScene>> | null>(null);
@@ -46,7 +51,7 @@ export function MochlikTerrarium({ wakeSignal, suspended = false, nowMs, timeZon
   useEffect(() => {
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
     const refresh = () => {
-      options.current = { lampOn, dusk, paused: false, backgrounded: suspended || document.hidden || !inView.current, reducedMotion: media.matches, presenceKey, bestStreakDays, items, worldState, worldGifts, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, economyResidents, economyGarden: garden?.crop, gardenHarvestRequest: garden?.request, onGardenHarvestEvent: garden?.sceneEvent };
+      options.current = { lampOn, dusk, paused: false, backgrounded: suspended || document.hidden || !inView.current, reducedMotion: media.matches, presenceKey, bestStreakDays, items, worldState, worldGifts, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, economyResidents, merchantArrival: { seen: merchant.seen, enabled: false, onComplete: merchant.complete }, economyGarden: garden?.crop, gardenHarvestRequest: garden?.request, onGardenHarvestEvent: garden?.sceneEvent };
       scene.current?.configure(options.current);
     };
     const observer = new IntersectionObserver(entries => { inView.current = entries.some(entry => entry.isIntersecting); refresh(); });
@@ -58,7 +63,7 @@ export function MochlikTerrarium({ wakeSignal, suspended = false, nowMs, timeZon
       observer.disconnect(); document.removeEventListener("visibilitychange", refresh); media.removeEventListener("change", refresh);
       window.removeEventListener("pagehide", pageHide); window.removeEventListener("pageshow", refresh);
     };
-  }, [lampOn, dusk, suspended, presenceKey, bestStreakDays, items, worldState, worldGifts, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, economyResidents, garden]);
+  }, [lampOn, dusk, suspended, presenceKey, bestStreakDays, items, worldState, worldGifts, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, economyResidents, merchant.seen, merchant.complete, garden]);
 
   // Reconcile visibility/absence first, so a tap on the returning render is not reset.
   useEffect(() => {

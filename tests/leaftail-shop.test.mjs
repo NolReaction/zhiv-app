@@ -151,6 +151,22 @@ test('purchase UI revalidates the displayed account revision, cycle, funds, onli
   assert.doesNotMatch(html, /жемчуг|Заказы жителей|Редкие товары появятся/);
 });
 
+test('the travelling merchant shows no stock, tabs, purchase copy or delivery before home 3', () => {
+  for (const level of [1, 2]) {
+    const p = player(level), state = read(p), original = structuredClone(state);
+    const economy = { ...controller(state), error: "Проверяем покупку", uncertain: true,
+      notice: "Покупка у Листохвоста отправлена в кладовую", act() { assert.fail("an absent merchant cannot buy anything"); } };
+    const html = renderToStaticMarkup(React.createElement(WorldLeaftailMarket, { economy, isOnline: true }));
+    assert.match(html, /data-leaftail-away/);
+    assert.match(html, /Листохвост в путешествии\. Вернётся, когда дом достигнет 3-го уровня\./);
+    assert.doesNotMatch(html, /data-leaftail-item|data-leaftail-purchase|role="tab|Купить|покупк|Собрал кое-что|Ваши монеты|поставка|поставку|Поставка|Припасы|Находки|2400/);
+    assert.deepEqual(state, original);
+    assert.match(leaftailPurchaseReason(controller(state), quote(state), true), /Листохвост в путешествии/);
+    assert.throws(() => buy(p, "wood"), { code: "ECONOMY_HOME_REQUIRED" });
+    assert.deepEqual(read(p), original, "the existing command fence also rejects supply bundles");
+  }
+});
+
 
 test('a schema-valid cached far-future delivery cannot crash the merchant or replenish its stock', () => {
   const p = player(), state = structuredClone(read(p));

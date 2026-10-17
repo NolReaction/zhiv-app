@@ -18,10 +18,10 @@ export const worldStations: Partial<Record<WorldPlace, WorldStationDefinition>> 
   bridge: { label: "Мост", stationIds: ["bridge"] },
   lighthouse: { label: "Маяк", stationIds: ["lighthouse"] },
   "leaftail-caravan": { label: "Лавка Листохвоста", stationIds: [], status: "Торговец находками" },
-  "lopukh-home": { label: "Дом Лопоуха", stationIds: [], status: "Дом жителя",
-    future: "Здесь будет жить Лопоух. Его отдельное рабочее место и заказы на изготовление появятся позже." },
+  "lopukh-home": { label: "Дом Лопоуха", stationIds: ["woodlot"] },
 };
 export function worldPlaceForStation(stationId: string): WorldPlace | null {
+  if (stationId === "woodlot") return "lopukh-home";
   const result = Object.entries(worldStations).find(([, value]) => value.stationIds.includes(stationId));
   return result ? result[0] as WorldPlace : null;
 }

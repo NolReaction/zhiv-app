@@ -21,6 +21,8 @@ export function validVillagerDoor(mind: ForestVillagerMind, door: VillagerDoor |
 export function approachVillagerDoor(mind: ForestVillagerMind, places: VillagerPlaces, occupants?: readonly ResidentOccupant[]): boolean {
   if (!places.door || !selectVillagerRoute(mind, places, [places.door.approach], mind.job ? "work" : "home", "idle", occupants)) return false;
   mind.door = places.door; mind.doorPhase = "approach"; mind.doorProgress = 0; mind.socialVisit = null;
+  mind.doorPurpose = mind.job ? "work" : "rest";
+  if (mind.woodwork) mind.woodwork.phase = "idle";
   return true;
 }
 export function villagerDoorOpacity(mind: ForestVillagerMind): number {
@@ -44,17 +46,17 @@ export function advanceVillagerDoor(mind: ForestVillagerMind, places: VillagerPl
   if (!door) return true;
   if (mind.doorPhase === "inside") {
     mind.fatigue = Math.max(0, mind.fatigue - dt * .035);
-    if (mind.id === "kamneshmyg" && mind.job) { setVillagerAction(mind, "work"); return true; }
+    if (mind.id === "kamneshmyg" && mind.job) { mind.doorPurpose = "work"; setVillagerAction(mind, "work"); return true; }
     if (mind.id === "leaftail" && socialHold && !mind.noticePending) return true;
     mind.wait -= dt;
-    if (mind.id === "kamneshmyg" || mind.noticePending || !weather && mind.wait <= 0) {
+    if (mind.job || mind.doorPurpose === "work" || mind.noticePending || !weather && mind.wait <= 0) {
       mind.doorPhase = "exit"; setVillagerAction(mind, "walk");
     } else return true;
   }
   // A job ending or being cancelled reverses the actual in-flight crossing.
-  if (mind.id === "kamneshmyg" && !mind.job && mind.doorPhase === "enter") mind.doorPhase = "exit";
-  if (mind.id === "kamneshmyg" && mind.job && mind.doorPhase === "exit") mind.doorPhase = "enter";
-  if (mind.id === "leaftail" && mind.noticePending && mind.doorPhase === "enter") mind.doorPhase = "exit";
+  if (mind.id === "kamneshmyg" && !mind.job && mind.doorPurpose === "work" && mind.doorPhase === "enter") mind.doorPhase = "exit";
+  if (mind.id === "kamneshmyg" && mind.job && mind.doorPhase === "exit") { mind.doorPhase = "enter"; mind.doorPurpose = "work"; }
+  if ((mind.noticePending || mind.id === "lopukh" && mind.job) && mind.doorPhase === "enter") mind.doorPhase = "exit";
   const entering = mind.doorPhase === "enter", profile = FOREST_VILLAGER_PROFILES[mind.id];
   const sign = entering ? 1 : -1, seconds = Math.max(1.1, door.length / (profile.speed * .8));
   const progress = Math.max(0, Math.min(1, mind.doorProgress + sign * dt / seconds));
@@ -80,7 +82,8 @@ export function advanceVillagerDoor(mind: ForestVillagerMind, places: VillagerPl
     mind.doorPhase = "inside"; setVillagerAction(mind, mind.job ? "work" : "rest");
     mind.wait = 42 + mind.decisions % 4 * 8; mind.workNeed = .4;
   } else if (!entering && progress <= 0) {
-    mind.doorPhase = "outside"; mind.door = null; mind.outdoorUntil = mind.elapsed + 28;
+    mind.doorPhase = "outside"; mind.door = null;
+    mind.outdoorUntil = mind.elapsed + (mind.id === "leaftail" ? 28 : 140 + mind.decisions % 5 * 9);
     mind.fatigue = Math.min(mind.fatigue, .25); setVillagerAction(mind, "inspect"); mind.wait = .2;
   }
   return true;

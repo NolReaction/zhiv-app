@@ -1,4 +1,4 @@
-import { canTraverse, createWorldNavigation, type WorldNavigation } from "@/features/world/navigation/navigation";
+import { canTraverse, createWorldNavigation, isWalkable, type WorldNavigation } from "@/features/world/navigation/navigation";
 import type { FixedWorldScene, WorldPoint } from "@/features/world/tiled/types";
 import type { ForestVillagerId } from "@/features/world/characters/forest-villager-types";
 import type { VillagerDoor, VillagerStop } from "./villager-navigation";
@@ -29,8 +29,7 @@ function door(id: string, kind: VillagerDoor["kind"], points: WorldPoint[], fade
  * ground strip never changes ordinary paths; water and every other collider stay. */
 export function forestVillagerDoor(scene: FixedWorldScene, id: ForestVillagerId, navigation: WorldNavigation,
   stops: readonly VillagerStop[]): VillagerDoor | null {
-  if (id === "lopukh") return null;
-  const site = scene.sites.find(site => site.id === (id === "kamneshmyg" ? "quarry" : "leaftail-caravan"));
+  const site = scene.sites.find(site => site.id === (id === "lopukh" ? "lopukh-home" : id === "kamneshmyg" ? "quarry" : "leaftail-caravan"));
   if (!site || !finite(site.entry) || !finite(site.anchor)) return null;
   if (id === "leaftail" && !finite(site.doorway)) {
     // The wagon has no authored doorway. Walk behind its actual silhouette,
@@ -45,7 +44,9 @@ export function forestVillagerDoor(scene: FixedWorldScene, id: ForestVillagerId,
   }
   if (!finite(site.doorway) || site.collision.length < 3 || !inside(site.doorway, site.collision)
     || distance(site.entry, site.doorway) < 1 || distance(site.entry, site.doorway) > 52 || !scene.navigation) return null;
-  for (const stop of [...stops].sort((a, b) => distance(a.position, site.entry) - distance(b.position, site.entry)).slice(0, 4)) {
+  const approaches = isWalkable(navigation, site.entry)
+    ? [{ id: `${site.id}:entry`, position: site.entry, lookAt: site.doorway }, ...stops] : [...stops];
+  for (const stop of approaches.sort((a, b) => distance(a.position, site.entry) - distance(b.position, site.entry)).slice(0, 4)) {
     const approach = distance(stop.position, site.entry), length = approach + distance(site.entry, site.doorway);
     if (approach > 55 || length > 90) continue;
     const points = [stop.position, site.entry, site.doorway].filter((point, index, all) => !index || distance(point, all[index - 1]) > .01);

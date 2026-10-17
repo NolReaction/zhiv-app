@@ -38,19 +38,23 @@ function fixture() {
 }
 function setup(scene = fixture(), config = {}) {
   const state = createForestVillagers(scene);
-  configureForestVillagers(state, scene, { confirmed: true, buildings: { quarry: 1, woodlot: 1 }, arrivalSeen: true, now, ...config });
+  configureForestVillagers(state, scene, { confirmed: true, buildings: { home: 3, quarry: 1, woodlot: 1 }, leaftailReady: true, arrivalSeen: true, now, ...config });
   return state;
 }
 function run(state, scene, seconds, environment = {}) {
   for (let elapsed = 0; elapsed < seconds - 1e-7; elapsed += .1) {
     const before = forestVillagerFrames(state), occupants = forestVillagerOccupants(state);
+    const crossings = new Map(Object.values(state.residents).filter(mind => ["enter", "exit"].includes(mind.doorPhase))
+      .map(mind => [mind.id, mind.door.navigation]));
     advanceForestVillagers(state, scene, .1, { now, ...environment });
     for (const frame of forestVillagerFrames(state)) {
       const previous = before.find(value => value.id === frame.id);
       const profile = FOREST_VILLAGER_PROFILES[frame.id], places = forestVillagerPlaces(scene, frame.id);
-      assert.ok(isWalkable(places.navigation, frame), `${frame.id} stays on actual safe ground`);
+      const mind = state.residents[frame.id], navigation = ["enter", "exit"].includes(mind.doorPhase)
+        ? mind.door.navigation : crossings.get(frame.id) ?? places.navigation;
+      assert.ok(isWalkable(navigation, frame), `${frame.id} stays on actual safe ground or its validated personal threshold`);
       if (!previous) continue;
-      assert.ok(canTraverse(places.navigation, previous, frame), `${frame.id} does not cut an obstacle`);
+      assert.ok(canTraverse(navigation, previous, frame), `${frame.id} does not cut an obstacle`);
       assert.ok(Math.hypot(frame.x - previous.x, frame.y - previous.y) <= profile.speed * .1 * FOREST_VILLAGER_LIMITS.arrivalSpeed + .001,
         `${frame.id} has no teleported movement`);
       assert.ok(canTraverseResidents(previous, frame, profile.size,
@@ -69,14 +73,14 @@ function wakeTrader(state, scene) {
 
 test("miner remains hidden until confirmed quarry unlock and explicit free-world arrival permission", () => {
   const scene = fixture(), state = createForestVillagers(scene);
-  configureForestVillagers(state, scene, { confirmed: false, buildings: { quarry: 9 }, allowArrival: true, now });
+  configureForestVillagers(state, scene, { confirmed: false, buildings: { home: 3, quarry: 9 }, allowArrival: true, now });
   assert.deepEqual(forestVillagerFrames(state), []); assert.equal(state.arrivalPending, false);
-  configureForestVillagers(state, scene, { confirmed: true, buildings: { quarry: 0 }, allowArrival: true, now });
+  configureForestVillagers(state, scene, { confirmed: true, buildings: { home: 3, quarry: 0 }, allowArrival: true, now });
   assert.deepEqual(forestVillagerFrames(state).map(frame => frame.id), ["lopukh", "leaftail"]);
-  configureForestVillagers(state, scene, { confirmed: true, buildings: { quarry: 1 }, now });
+  configureForestVillagers(state, scene, { confirmed: true, buildings: { home: 3, quarry: 1 }, now });
   assert.equal(state.arrivalPending, true); assert.equal(state.arrivalPhase, "waiting");
   run(state, scene, 3); assert.equal(state.residents.kamneshmyg.available, false);
-  configureForestVillagers(state, scene, { confirmed: true, buildings: { quarry: 1 }, allowArrival: true, now });
+  configureForestVillagers(state, scene, { confirmed: true, buildings: { home: 3, quarry: 1 }, allowArrival: true, now });
   assert.equal(state.arrivalPhase, "running");
   const first = forestVillagerFrames(state).find(frame => frame.id === "kamneshmyg");
   assert.ok(first.y >= 80, "disconnected northern island is not an arrival point");
@@ -95,17 +99,17 @@ test("an unconfirmed account and a map without resident homes do not require nav
     return Reflect.get(target, key, receiver);
   } });
   const state = createForestVillagers(scene);
-  assert.doesNotThrow(() => configureForestVillagers(state, scene, { confirmed: false, buildings: { quarry: 1 }, now }));
+  assert.doesNotThrow(() => configureForestVillagers(state, scene, { confirmed: false, buildings: { home: 3, quarry: 1 }, now }));
   assert.doesNotThrow(() => advanceForestVillagers(state, scene, .5, { now }));
   assert.deepEqual(forestVillagerFrames(state), []);
-  assert.throws(() => configureForestVillagers(state, scene, { confirmed: true, buildings: { quarry: 1 }, now }), /navigation is not ready/);
+  assert.throws(() => configureForestVillagers(state, scene, { confirmed: true, buildings: { home: 3, quarry: 1 }, now }), /navigation is not ready/);
 
   const legacy = new Proxy({ ...fixture(), sites: [] }, { get(target, key, receiver) {
     if (key === "navigation") throw new Error("legacy navigation must remain unused");
     return Reflect.get(target, key, receiver);
   } });
   const unsupported = createForestVillagers(legacy);
-  assert.doesNotThrow(() => configureForestVillagers(unsupported, legacy, { confirmed: true, buildings: { quarry: 1 }, allowArrival: true, now }));
+  assert.doesNotThrow(() => configureForestVillagers(unsupported, legacy, { confirmed: true, buildings: { home: 3, quarry: 1 }, allowArrival: true, now }));
   assert.doesNotThrow(() => advanceForestVillagers(unsupported, legacy, .5, { now }));
   assert.deepEqual(forestVillagerFrames(unsupported), []);
 });
@@ -137,7 +141,7 @@ test("confirmed worker jobs interrupt social plans, preserve server deadlines, a
   const production = { ownerPublicId: "owner", revision: 1, jobs: [{ id: "timber", stationId: "woodlot", stationLevel: 1,
     recipeId: "log", startedAt: new Date(now - 1000).toISOString(), finishesAt: new Date(now + 600000).toISOString() }] };
   const saved = structuredClone(production);
-  configureForestVillagers(state, scene, { confirmed: true, buildings: { quarry: 1, woodlot: 1 }, production, now });
+  configureForestVillagers(state, scene, { confirmed: true, buildings: { home: 3, quarry: 1, woodlot: 1 }, production, now });
   assert.equal(mind.socialVisit, null); assert.equal(mind.job, true);
   assert.equal(requestForestVillagerVisit(state, scene, "lopukh", { id: "friend", position: { x: 380, y: 300 }, size: 40 }), false);
   run(state, scene, 15, { production });
@@ -189,7 +193,7 @@ test("changed artwork invalidates unsafe visible feet without moving them throug
   const scene = fixture(), state = setup(scene), mind = state.residents.leaftail, before = { ...mind.position };
   const next = structuredClone(scene);
   next.navigation.obstacles.push({ id: "new-art", points: rect(before.x - 12, before.y - 12, 24, 24) });
-  configureForestVillagers(state, next, { confirmed: true, buildings: { quarry: 1 }, arrivalSeen: true, now });
+  configureForestVillagers(state, next, { confirmed: true, buildings: { home: 3, quarry: 1 }, arrivalSeen: true, now });
   assert.equal(mind.available, false); assert.deepEqual(mind.position, before); assert.equal(mind.route, null);
   assert.ok(!forestVillagerFrames(state).some(frame => frame.id === "leaftail"));
 });
@@ -197,7 +201,7 @@ test("changed artwork invalidates unsafe visible feet without moving them throug
 test("reduced motion settles only explicitly allowed unlocked introductions", () => {
   const scene = fixture(), state = setup(scene, { arrivalSeen: false });
   assert.equal(settleForestVillagerArrival(state), false); assert.equal(state.arrivalCompleted, false);
-  configureForestVillagers(state, scene, { confirmed: true, buildings: { quarry: 1 }, allowArrival: true, now });
+  configureForestVillagers(state, scene, { confirmed: true, buildings: { home: 3, quarry: 1 }, allowArrival: true, now });
   assert.equal(settleForestVillagerArrival(state), true); assert.equal(state.arrivalCompleted, true);
   assert.equal(state.residents.kamneshmyg.route, null);
   assert.ok(isWalkable(forestVillagerPlaces(scene, "kamneshmyg").navigation, state.residents.kamneshmyg.position));
@@ -287,7 +291,7 @@ test("artwork handoff retains confirmed jobs against the supplied corrected serv
   const scene = fixture(), state = setup(scene);
   const production = { ownerPublicId: "owner", revision: 5, jobs: [{ id: "server-clock-job", stationId: "woodlot", stationLevel: 1,
     recipeId: "logs", startedAt: new Date(0).toISOString(), finishesAt: new Date(60000).toISOString() }] };
-  configureForestVillagers(state, scene, { confirmed: true, buildings: { quarry: 1, woodlot: 1 }, production, now: 1000 });
+  configureForestVillagers(state, scene, { confirmed: true, buildings: { home: 3, quarry: 1, woodlot: 1 }, production, now: 1000 });
   assert.equal(state.residents.lopukh.job, true);
   const next = rehydrateForestVillagers(structuredClone(scene), state, 2000);
   assert.equal(next.residents.lopukh.job, true); assert.equal(next.residents.lopukh.jobKey, state.residents.lopukh.jobKey);
@@ -295,7 +299,7 @@ test("artwork handoff retains confirmed jobs against the supplied corrected serv
 });
 
 test("published Tiled geometry supports all residents and an actual northern miner arrival", () => {
-  const levels = { ...initialPreviewLevels(TILED_WORLD), quarry: 1 };
+  const levels = { ...initialPreviewLevels(TILED_WORLD), home: 3, quarry: 1 };
   const scene = previewWorldScene(TILED_WORLD, levels), state = setup(scene, { buildings: levels, arrivalSeen: false, allowArrival: true });
   assert.deepEqual(forestVillagerFrames(state).map(frame => frame.id), ["lopukh", "kamneshmyg", "leaftail"]);
   assert.ok(state.residents.kamneshmyg.position.y < 50);
@@ -334,7 +338,7 @@ test("idle miner walks and rests outside; only a confirmed live job enters the c
   assert.ok(mind.walked > 30, "the miner has a life outside extraction");
   const production = { ownerPublicId: "owner", revision: 1, jobs: [{ id: "stone", stationId: "quarry", stationLevel: 1,
     startedAt: new Date(now - 1000).toISOString(), finishesAt: new Date(now + 60000).toISOString(), recipeId: "stone" }] };
-  configureForestVillagers(state, scene, { confirmed: true, buildings: { quarry: 1 }, production, now });
+  configureForestVillagers(state, scene, { confirmed: true, buildings: { home: 3, quarry: 1 }, production, now });
   for (let tick = 0; tick < 800 && mind.doorPhase !== "inside"; tick++) advanceForestVillagers(state, scene, .1, { now });
   assert.equal(mind.doorPhase, "inside"); assert.equal(mind.action, "work");
   assert.equal(forestVillagerFrames(state).some(frame => frame.id === "kamneshmyg"), false);
@@ -392,10 +396,10 @@ test("a blocked doorway prevents revealing a resident and a cancelled extraction
   const miner = state.residents.kamneshmyg;
   const production = { ownerPublicId: "owner", revision: 1, jobs: [{ id: "stone", stationId: "quarry", stationLevel: 1,
     startedAt: new Date(now - 1).toISOString(), finishesAt: new Date(now + 1000).toISOString() }] };
-  configureForestVillagers(state, scene, { confirmed: true, buildings: { quarry: 1 }, production, now });
+  configureForestVillagers(state, scene, { confirmed: true, buildings: { home: 3, quarry: 1 }, production, now });
   for (let tick = 0; tick < 800 && miner.doorPhase !== "enter"; tick++) advanceForestVillagers(state, scene, .1, { now });
   assert.equal(miner.doorPhase, "enter"); const entering = { ...miner.position };
-  configureForestVillagers(state, scene, { confirmed: true, buildings: { quarry: 1 }, production: { ...production, revision: 2, jobs: [] }, now });
+  configureForestVillagers(state, scene, { confirmed: true, buildings: { home: 3, quarry: 1 }, production: { ...production, revision: 2, jobs: [] }, now });
   assert.deepEqual(miner.position, entering);
   advanceForestVillagers(state, scene, .1, { now });
   assert.ok(["exit", "outside"].includes(miner.doorPhase)); assert.notEqual(miner.action, "work");
@@ -466,11 +470,11 @@ test("replacement mining work reverses an exit in place instead of walking out a
   const miner = state.residents.kamneshmyg;
   for (let tick = 0; tick < 40; tick++) advanceForestVillagers(state, scene, .1, { now });
   assert.equal(miner.doorPhase, "inside");
-  configureForestVillagers(state, scene, { confirmed: true, buildings: { quarry: 1 }, production: { ...production, revision: 2, jobs: [] }, now });
+  configureForestVillagers(state, scene, { confirmed: true, buildings: { home: 3, quarry: 1 }, production: { ...production, revision: 2, jobs: [] }, now });
   advanceForestVillagers(state, scene, .2, { now });
   assert.equal(miner.doorPhase, "exit"); const position = { ...miner.position }, progress = miner.doorProgress;
   const opacity = forestVillagerFrames(state).find(frame => frame.id === "kamneshmyg").opacity;
-  configureForestVillagers(state, scene, { confirmed: true, buildings: { quarry: 1 }, production: { ...production, revision: 3,
+  configureForestVillagers(state, scene, { confirmed: true, buildings: { home: 3, quarry: 1 }, production: { ...production, revision: 3,
     jobs: [{ ...job, id: "replacement" }] }, now });
   advanceForestVillagers(state, scene, 0, { now });
   assert.deepEqual(miner.position, position); assert.equal(miner.doorProgress, progress);

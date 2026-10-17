@@ -318,15 +318,17 @@ test("actual map worker completes each host approach and remains continuous when
   }
 });
 
-test("a confirmed woodlot job remains authoritative while its deferred map host cannot start cosmetic work", () => {
+test("a confirmed woodlot job works beside the rabbit home without changing its saved authority", () => {
   const scene = previewWorldScene(TILED_WORLD, initialPreviewLevels(TILED_WORLD)), mind = createBuilderMind(scene);
   assert.equal(scene.sites.some(site => site.id === "woodlot"), false);
   const construction = snapshot([job("woodlot")]), original = structuredClone(construction), position = { ...mind.position };
   advance(mind, scene, construction, 50);
-  assert.equal(mind.blocked, true);
-  assert.equal(mind.action, "idle");
-  assert.equal(mind.decisions, 1, "an absent exterior does not trigger a fresh path search on every frame");
-  assert.deepEqual(mind.position, position);
+  assert.equal(mind.blocked, false);
+  assert.equal(mind.action, "work");
+  assert.notDeepEqual(mind.position, position);
+  const home = scene.sites.find(site => site.id === "lopukh-home");
+  assert.deepEqual(mind.target.lookAt, home.anchor);
+  assert.ok(builderWorkStops(scene, construction.jobs[0]).some(stop => Math.hypot(stop.position.x - mind.position.x, stop.position.y - mind.position.y) < .01));
   assert.deepEqual(mind.job, construction.jobs[0], "the display does not cancel the server's construction job");
   assert.deepEqual(construction, original);
 });

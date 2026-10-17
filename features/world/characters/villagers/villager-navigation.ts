@@ -56,7 +56,15 @@ export function forestVillagerPlaces(scene: FixedWorldScene, id: ForestVillagerI
   // Older maps removed the woodlot art. Its existing economic worker uses the
   // rabbit's own outdoor workbench instead of inventing a tree/walking polygon.
   if (!work.length && id === "lopukh") work.push(...homes.slice(1));
-  const wander = [...homes.slice(1, 4), ...(scene.navigation?.interests ?? [])
+  // The quarry is far from the clearing's authored leisure points. Give its
+  // resident a few bounded exterior walks on real ground instead of repeatedly
+  // rejecting a 600+ unit journey and inspecting the same doorstep forever.
+  const vicinity = id === "kamneshmyg" ? [0, 1, -1, 2, -2, 3, -3, 4].map(index => {
+    const angle = index * Math.PI / 4, reach = profile.size * 1.45;
+    return { id: `${id}:neighbourhood:${index}`, position: { x: home.position.x + Math.cos(angle) * reach,
+      y: home.position.y + Math.sin(angle) * reach }, lookAt: { ...home.lookAt } };
+  }).filter(stop => isWalkable(navigation, stop.position)) : [];
+  const wander = [...homes.slice(1, 4), ...vicinity, ...(scene.navigation?.interests ?? [])
     .filter(point => finite(point.position) && isWalkable(navigation, point.position))
     .map(point => ({ id: point.id, position: { ...point.position }, lookAt: { x: point.position.x, y: point.position.y + 10 } }))];
   const result = { navigation, home, work: work.length ? work : [home], wander, woodcutting,

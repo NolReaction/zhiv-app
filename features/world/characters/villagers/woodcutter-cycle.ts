@@ -11,14 +11,15 @@ const rotate = (stops: readonly VillagerStop[], index: number) => [...stops.slic
 
 /** A visual work cycle owns no stock, reward, server job or independent clock. */
 export function beginWoodcutterCycle(mind: ForestVillagerMind, places: VillagerPlaces, occupants?: readonly ResidentOccupant[],
-  options: { chopSeconds?: number } = {}): boolean {
+  options: { chopSeconds?: number; workIndex?: number } = {}): boolean {
   const cycle = mind.woodwork, plan = places.woodcutting;
   if (mind.id !== "lopukh" || !mind.available || mind.doorPhase !== "outside" || mind.socialVisit
     || !cycle || !plan || woodcutterLoaded(mind)) return false;
   cycle.phase = "chop"; cycle.elapsed = 0; cycle.failures = 0; cycle.retryAt = mind.elapsed;
   cycle.chopSeconds = options.chopSeconds === 0 ? 0 : WOODCUTTER_CYCLE_LIMITS.chop;
   mind.socialVisit = null;
-  const started = selectVillagerRoute(mind, places, rotate(plan.work, cycle.completedCycles), "work", "work", occupants);
+  const workIndex = Number.isSafeInteger(options.workIndex) && options.workIndex! >= 0 ? options.workIndex! : cycle.completedCycles;
+  const started = selectVillagerRoute(mind, places, rotate(plan.work, workIndex), "work", "work", occupants);
   if (!started) { cycle.failures++; cycle.retryAt = mind.elapsed + WOODCUTTER_CYCLE_LIMITS.retry; setVillagerAction(mind, "inspect"); }
   return true;
 }
@@ -75,7 +76,12 @@ export function advanceWoodcutterCycle(mind: ForestVillagerMind, scene: FixedWor
   cycle.elapsed += dt;
   if (cycle.phase === "unload") {
     setVillagerAction(mind, "unload");
-    if (cycle.elapsed + 1e-7 >= WOODCUTTER_CYCLE_LIMITS.unload) resting(mind);
+    if (cycle.elapsed + 1e-7 >= WOODCUTTER_CYCLE_LIMITS.unload) {
+      const delivery = { position: { ...mind.position }, sequence: (cycle.lastDelivery?.sequence ?? 0) + 1 };
+      cycle.deliveries = [...(cycle.deliveries ?? (cycle.lastDelivery ? [cycle.lastDelivery] : [])), delivery].slice(-3);
+      cycle.lastDelivery = delivery;
+      resting(mind);
+    }
     return true;
   }
   setVillagerAction(mind, "rest"); mind.fatigue = Math.max(0, mind.fatigue - dt * .045);

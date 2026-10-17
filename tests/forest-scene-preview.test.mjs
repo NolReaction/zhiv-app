@@ -10,7 +10,7 @@ const preview = await vite.ssrLoadModule("/features/world/dev/forest-scene-previ
 const { createWorldDevStore, WORLD_DEV_DEFAULTS } = await vite.ssrLoadModule("/features/world/dev/world-dev-store.ts");
 
 test("scene requests accept only supported real actors, fixed trader targets and a different conversational partner", () => {
-  assert.equal(preview.WORLD_DEV_SCENES.length, 8);
+  assert.equal(preview.WORLD_DEV_SCENES.length, 14);
   assert.deepEqual(preview.normalizeWorldDevSceneRequest({ id: 1, scenario: "conversation", actor: "lopukh" }),
     { id: 1, scenario: "conversation", actor: "lopukh", target: "leaftail" });
   assert.deepEqual(preview.normalizeWorldDevSceneRequest({ id: 2, scenario: "trade-visit", actor: "plesk", target: "mochlik", balance: 999 }),
@@ -79,4 +79,15 @@ test("disabled stores, direct patching and unrelated manual actions cannot leave
     store.triggerScene("walk", "lopukh"); action(); assert.equal(store.getSnapshot().scenePreview, null);
     assert.equal(store.getSceneFeedback().phase, "stopped");
   }
+});
+
+
+test("repeatable DEV requests retain a bounded seed while fresh IDs isolate every run", () => {
+  for (const seed of [0, -1, 1.2, NaN, Infinity, 4294967296, "17"]) assert.equal(preview.normalizeWorldDevSceneRequest({ id: 1, actor: "lopukh", scenario: "narrow-passing", seed }), null);
+  const store = createWorldDevStore(true);
+  store.triggerScene("narrow-passing", "lopukh", undefined, 17); const first = store.getSnapshot().scenePreview;
+  store.triggerScene("narrow-passing", "lopukh", undefined, 17); const second = store.getSnapshot().scenePreview;
+  assert.ok(second.id > first.id); assert.equal(first.seed, second.seed); assert.equal(second.seed, 17);
+  store.triggerScene("work-interruption", "kamneshmyg", "leaftail", 18);
+  assert.equal(store.getSnapshot().scenePreview.target, "lopukh");
 });
