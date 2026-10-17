@@ -96,6 +96,31 @@ test("travel starts with two decorated hero activities and no mine or premature 
   assert.equal(disabled(button(route(supplies, "forest"), "Подготовиться: Лесная разведка")), false);
 });
 
+test("activity and route spotlights belong to actual cards instead of headings or list wrappers", () => {
+  const activities = render();
+  assert.match(activities, /data-section-guide-target="expedition-activities" data-guide-spotlight-group="true"/);
+  const controls = [...activities.matchAll(/<([^\s>]+)\b[^>]*data-guide-spotlight-item="true"[^>]*>/g)];
+  assert.equal(controls.length, 2);
+  assert.ok(controls.every(match => match[1] === "button" && /data-sector-select=/.test(match[0])));
+  for (const sector of ["forest", "shore", "caves"]) {
+    const state = snapshot({ buildings: { home: 5, warehouse: 5, quarry: 5, workshop: 5, dryer: 5 } });
+    const html = renderSector(sector, controller({ snapshot: state }));
+    assert.match(html, /data-section-guide-target="expedition-routes" data-guide-spotlight-group="true"/);
+    const items = [...html.matchAll(/<([^\s>]+)\b[^>]*data-guide-spotlight-item="true"[^>]*>/g)];
+    assert.ok(items.length > 0, sector);
+    assert.ok(items.every(match => match[1] === "button" && /data-route=/.test(match[0])), sector);
+    assert.equal(items.length, [...html.matchAll(/<button\b[^>]*data-route=/g)].length);
+  }
+  const preparation = renderPreparation("forest");
+  assert.doesNotMatch(preparation, /data-section-guide-target="expedition-routes"/,
+    "preparation cannot retain a stale route-list ring");
+  const launch = [...preparation.matchAll(/<([^\s>]+)\b[^>]*data-guide-spotlight-item="true"[^>]*>/g)];
+  assert.equal(launch.length, 1);
+  assert.equal(launch[0][1], "button");
+  assert.match(launch[0][0], /aria-label="Отправиться:/,
+    "the preparation ring belongs to departure rather than the full form behind its gear and costs");
+});
+
 test("every catalog route belongs to exactly one sector and keeps its actual findings", () => {
   const expected = { forest: ["forest", "forest_camp", "old_woodland", "coastal_deposits", "uplands", "far_bank_path", "far_bank_grove", "ancient_ruins"], shore: ["shore", "shore_camp"], caves: ["cave", "deep_cave", "abandoned_quarry", "quarry_stone", "quarry_stone_overnight", "quarry_ore", "quarry_clay", "quarry_sand", "quarry_shift", "quarry_deep_face", "quarry_supply", "quarry_stone_hour", "quarry_clay_hour", "quarry_clay_overnight", "quarry_sand_hour", "quarry_sand_overnight", "quarry_ore_hour", "quarry_ore_overnight"] };
   const seen = [];

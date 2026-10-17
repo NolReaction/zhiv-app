@@ -1440,9 +1440,10 @@
   grid-template-rows: auto minmax(0, 1fr) auto;
 }
 .shell:has(> [data-guide-coach="app"]) > .header { display: none; }
-.shell > [data-guide-coach="app"] {
+.shell > [data-guide-coach="app"][data-inline="true"] {
   justify-self: center;
-  width: min(100%, 520px);
+  width: 100%;
+  max-width: 520px;
   margin-bottom: 8px;
   border-radius: 16px;
 }

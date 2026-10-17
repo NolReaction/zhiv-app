@@ -7,6 +7,7 @@ export const analyticsActions: Record<string, string> = {
   claim_tutorial_order: "Ингредиенты учебного заказа",
   claim_workshop_starter: "Подарок для первой мастерской",
   start_tutorial_workshop: "Учебная стройка мастерской",
+  onboarding_reward: "Награда за основное обучение",
   eat_food: "Еда для Мохлика", feed_builder: "Еда для строителя",
   complete_resident_order: "Сдача заказа жителя", replace_resident_order: "Замена заказа жителя",
   start_production: "Начало производства", cancel_production: "Отмена производства", buy_production_slot: "Место производства", buy_market_slot: "Место прилавка", start_collection: "Начало сбора",

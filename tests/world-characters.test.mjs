@@ -76,7 +76,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   }],
 });
 after(() => vite.close());
-const { WORLD_CHARACTERS, worldCharacterResident } = await vite.ssrLoadModule("/features/world/characters/world-characters-model.ts");
+const { WORLD_CHARACTERS, worldCharacterResident, worldResidentAvailable } = await vite.ssrLoadModule("/features/world/characters/world-characters-model.ts");
 const { WorldCharacters } = await vite.ssrLoadModule("/features/world/ui/characters/world-characters.tsx");
 const { default: WorldView } = await vite.ssrLoadModule("/features/world/world-view.tsx");
 const { default: WorldPortal } = await vite.ssrLoadModule("/features/world/world-portal.tsx");
@@ -103,36 +103,57 @@ test("the immutable gallery has five real residents with safe identifiers", () =
   for (const id of ["unknown", "unknown-1", "home", "mochlik", "", "__proto__"]) assert.equal(worldCharacterResident(id), null);
 });
 
-test("the modal shows five actual portraits and locks the miner with an explicit construction condition", () => {
+test("the modal reveals only available residents and gives the others anonymous silhouettes without opening them", () => {
   const residents = []; let closed = 0;
   const gallery = WorldCharacters({ open: true, onClose() { closed++; }, onCloseAutoFocus() {}, onResident: id => residents.push(id) });
   gallery.props.onOpenChange(false); assert.equal(closed, 1);
   const nodes = elements(gallery), list = nodes.find(element => element.type === "ul");
   const html = renderToStaticMarkup(list);
-  assert.equal((html.match(/<canvas/g) ?? []).length, 5);
-  for (const name of ["Шишколап", "Лопоух", "Камнешмыг", "Плёска", "Листохвост"]) assert.match(html, new RegExp(name));
-  assert.doesNotMatch(html, /Неизвестный житель|Иллюстрация лавки/);
+  assert.equal((html.match(/<canvas/g) ?? []).length, 3, "locked portraits are not mounted, even invisibly");
+  assert.equal((html.match(/<strong>Незнакомый житель<\/strong>/g) ?? []).length, 2);
+  for (const name of ["Шишколап", "Лопоух", "Плёска"]) assert.match(html, new RegExp(name));
+  assert.doesNotMatch(html, /Камнешмыг|Листохвост|Шахтёр и знаток камня|Торговец находками/);
   for (const character of WORLD_CHARACTERS) {
     const card = nodes.find(element => element.props["data-world-character"] === character.id);
     card.props.onClick();
-    if (character.id === "kamneshmyg") {
+    if (character.id === "kamneshmyg" || character.id === "leaftail") {
       assert.equal(card.props["aria-disabled"], true);
       assert.equal(card.props["aria-haspopup"], undefined);
-      assert.match(card.props["aria-label"], /после постройки каменоломни/);
+      assert.match(card.props["aria-label"], character.id === "kamneshmyg" ? /Постройте каменоломню/ : /Дом 3-го уровня/);
+      assert.doesNotMatch(card.props["aria-label"], new RegExp(character.name));
     } else assert.equal(card.props["aria-haspopup"], "dialog");
   }
-  assert.deepEqual(residents, ["builder", "lopukh", "plesk", "leaftail"]);
-  const unlocked = WorldCharacters({ open: true, quarryBuilt: true, onClose() {}, onCloseAutoFocus() {}, onResident: id => residents.push(id) });
+  assert.deepEqual(residents, ["builder", "lopukh", "plesk"]);
+  const unlocked = WorldCharacters({ open: true, quarryBuilt: true, leaftailAvailable: true, leaftailUnlocked: true, onClose() {}, onCloseAutoFocus() {}, onResident: id => residents.push(id) });
+  const revealed = renderToStaticMarkup(elements(unlocked).find(element => element.type === "ul"));
+  assert.equal((revealed.match(/<canvas/g) ?? []).length, 5);
+  assert.match(revealed, /Камнешмыг/); assert.match(revealed, /Листохвост/);
   elements(unlocked).find(element => element.props["data-world-character"] === "kamneshmyg").props.onClick();
   assert.equal(residents.at(-1), "kamneshmyg");
+  elements(unlocked).find(element => element.props["data-world-character"] === "leaftail").props.onClick();
+  assert.equal(residents.at(-1), "leaftail");
   for (const id of WORLD_CHARACTERS.map(item => item.id)) {
-    const returning = WorldCharacters({ open: true, quarryBuilt: true, onClose() {}, onCloseAutoFocus() {}, onResident() {}, focusedCharacter: id });
+    const returning = WorldCharacters({ open: true, quarryBuilt: true, leaftailAvailable: true, onClose() {}, onCloseAutoFocus() {}, onResident() {}, focusedCharacter: id });
     const content = elements(returning).find(element => element.props["data-slot"] === "dialog-content");
     let focused = false;
     content.props.onOpenAutoFocus({ target: { querySelector(selector) {
       assert.equal(selector, `button[data-world-character="${id}"]`); return { focus() { focused = true; } };
     } }, preventDefault() {} });
     assert.equal(focused, true);
+  }
+});
+
+test("house level eligibility alone keeps the merchant anonymous while his physical arrival is pending", () => {
+  const gallery = WorldCharacters({ open: true, quarryBuilt: true, leaftailUnlocked: true, onClose() {}, onCloseAutoFocus() {}, onResident() { assert.fail("an unintroduced resident cannot open"); } });
+  const card = elements(gallery).find(element => element.props["data-world-character"] === "leaftail");
+  assert.match(card.props["aria-label"], /Незнакомый житель\. Дождитесь прибытия/);
+  assert.doesNotMatch(renderToStaticMarkup(card), /<canvas|Листохвост|Торговец находками/);
+  card.props.onClick();
+  for (const quarry of [false, true]) {
+    assert.equal(worldResidentAvailable("leaftail", quarry), false);
+    assert.equal(worldResidentAvailable("leaftail", quarry, false), false);
+    assert.equal(worldResidentAvailable("leaftail", quarry, true), true);
+    assert.equal(worldResidentAvailable("kamneshmyg", quarry, true), quarry);
   }
 });
 
@@ -180,6 +201,38 @@ function guideNavigation(context = {}) {
   hooks.setGuideContext(context);
   return nav;
 }
+
+test("WorldView keeps every explicit key unique among its real siblings across loaded surfaces", () => {
+  const nav = guideNavigation();
+  const assertSiblingKeys = phase => {
+    const nodes = nav.render();
+    for (const parent of nodes) {
+      const keys = new Map();
+      Children.forEach(parent.props.children, child => {
+        if (!isValidElement(child) || child.key === null) return;
+        const describe = element => typeof element.type === "string" ? element.type : element.type.name ?? String(element.type);
+        assert.equal(keys.has(child.key), false,
+          `${phase}: ${describe(parent)} repeats key ${child.key} for ${keys.get(child.key)} and ${describe(child)}`);
+        keys.set(child.key, describe(child));
+      });
+    }
+  };
+  try {
+    assertSiblingKeys("cached map");
+    nav.props.economy.snapshotConfirmed = true;
+    assertSiblingKeys("confirmed map");
+    nav.find(element => element.props["data-world-quick"] === "profile").props.onClick();
+    assertSiblingKeys("profile");
+    nav.find(element => element.props["data-world-quick"] === "pantry").props.onClick();
+    assertSiblingKeys("pantry");
+    nav.find(element => element.props["data-world-quick"] === "more").props.onClick();
+    assertSiblingKeys("more");
+    nav.find(element => element.props["data-world-characters-trigger"] !== undefined).props.onClick();
+    assertSiblingKeys("characters");
+    nav.component("WorldCharacters").props.onResident("plesk");
+    assertSiblingKeys("resident conversation");
+  } finally { nav.restore(); }
+});
 
 test("new market and bulletin board open their existing account panels directly from the map", () => {
   const nav = guideNavigation();
@@ -674,7 +727,7 @@ test("gifts open manually from My Mochlik while call and reward closing preserve
   try {
     const original = nav.component("DailyRewardsDialog");
     assert.equal(original.props.open, false);
-    assert.equal(original.key, "characters-test", "the persistent reward controller is keyed to its owner");
+    assert.equal(original.key, "daily-rewards:characters-test", "the persistent reward controller keeps a role-specific key for its owner");
     assert.equal(nav.component("DailyRewardsButton"), undefined, "there is no standalone map gift button");
     nav.find(element => element.props["data-world-quick"] === "profile").props.onClick();
     let profile = nav.component("WorldProfileMenu");
@@ -738,7 +791,7 @@ test("another account never inherits a pantry return to the previous account's g
     nav.props.ownerPublicId = "another-player";
     assert.equal(nav.component("WorldPantryMenu").props.onReturnToGift, undefined);
     const otherGift = nav.component("DailyRewardsDialog");
-    assert.equal(otherGift.key, "another-player"); assert.equal(otherGift.props.open, false);
+    assert.equal(otherGift.key, "daily-rewards:another-player"); assert.equal(otherGift.props.open, false);
     assert.equal(nav.refreshes, 0);
   } finally { nav.restore(); }
 });
@@ -1524,9 +1577,11 @@ test("the manual market lesson waits for canonical confirmed access instead of c
 
 test("all three new residents open their own useful conversation and return to the same gallery card", () => {
   for (const resident of ["lopukh", "kamneshmyg", "leaftail"]) for (const exit of ["onBack", "onClose"]) {
-    const nav = guideNavigation();
+    const pointer = pointerNavigation(), { nav } = pointer;
+    window.localStorage = { getItem: key => key.startsWith("zhiv.leaftail-arrival.v1:") ? '{"version":1,"arrived":true,"dismissed":true}' : null, setItem() {} };
     nav.props.economy.snapshotConfirmed = true; nav.props.economy.snapshot.buildings.quarry = 1;
     try {
+      pointer.render(); pointer.render();
       nav.find(element => element.props["data-world-quick"] === "more").props.onClick();
       nav.find(element => element.props["data-world-characters-trigger"] !== undefined).props.onClick();
       document.activeElement = nav.createElement(`${resident}-card`);
@@ -1543,7 +1598,7 @@ test("all three new residents open their own useful conversation and return to t
       assert.equal(nav.component("WorldCharacters").props.open, true);
       assert.equal(nav.component("WorldCharacters").props.focusedCharacter, resident);
       assert.equal(nav.refreshes, 0);
-    } finally { nav.restore(); }
+    } finally { pointer.restore(); }
   }
 });
 
@@ -1567,10 +1622,90 @@ test("miner map and gallery activation require a claimed quarry in the confirmed
   } finally { nav.restore(); }
 });
 
+test("merchant map and gallery activation wait for physical arrival and ignore a dismissed arrival coach", () => {
+  const pointer = pointerNavigation(), { nav } = pointer;
+  const values = new Map();
+  window.localStorage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
+  nav.props.ownerPublicId = "merchant-gallery-physical";
+  nav.props.economy.snapshot.ownerPublicId = nav.props.ownerPublicId;
+  nav.props.economy.snapshotConfirmed = true;
+  try {
+    pointer.render(); pointer.render();
+    assert.equal(nav.component("WorldCharacters").props.leaftailUnlocked, true);
+    assert.equal(nav.component("WorldCharacters").props.leaftailAvailable, false);
+    assert.equal(nav.component("WorldScene").props.merchantArrival.enabled, true);
+    const attempt = () => {
+      nav.component("WorldScene").props.onResident("leaftail");
+      nav.component("WorldCharacters").props.onResident("leaftail");
+      assert.equal(nav.component("WorldVillagerDialog"), undefined);
+    };
+    attempt();
+    nav.component("LeaftailArrivalOnboarding").props.onMeet();
+    assert.equal(nav.component("WorldScene").props.openObjectRequest, undefined, "Meet cannot open the shop before arrival");
+    const caravan = { place: "leaftail-caravan", objectId: "leaftail-caravan", x: 195, y: 380, viewportWidth: 390, viewportHeight: 844 };
+    nav.component("WorldScene").props.onPlace("leaftail-caravan", caravan);
+    assert.equal(nav.component("WorldObjectMenu").props.leaftailAvailable, false, "the closed caravan can explain its arrival condition without exposing a shop");
+    nav.component("WorldObjectMenu").props.onClose(); pointer.render();
+    nav.component("LeaftailArrivalOnboarding").props.onDismiss(); pointer.render();
+    assert.equal(nav.component("LeaftailArrivalOnboarding").props.open, false);
+    assert.equal(nav.component("WorldScene").props.merchantArrival.seen, false);
+    assert.equal(nav.component("WorldCharacters").props.leaftailAvailable, false);
+    attempt();
+    nav.component("WorldScene").props.merchantArrival.onComplete(); pointer.render();
+    assert.equal(nav.component("WorldCharacters").props.leaftailAvailable, true);
+    nav.component("LeaftailArrivalOnboarding").props.onMeet();
+    assert.equal(nav.component("WorldScene").props.openObjectRequest.place, "leaftail-caravan");
+    nav.component("WorldScene").props.onPlace("leaftail-caravan", caravan);
+    assert.equal(nav.component("WorldObjectMenu").props.leaftailAvailable, true, "the physical introduction opens the actual caravan stock");
+    nav.component("WorldObjectMenu").props.onClose();
+    nav.component("WorldCharacters").props.onResident("leaftail");
+    assert.equal(nav.component("WorldVillagerDialog").props.id, "leaftail");
+    assert.equal(nav.component("WorldVillagerDialog").props.open, true);
+    assert.deepEqual([...values.values()].map(value => JSON.parse(value)), [{ version: 1, arrived: true, dismissed: true }]);
+    assert.equal(nav.refreshes, 0, "discovery and conversation cannot grant or buy anything");
+  } finally { pointer.restore(); }
+});
+
+test("restoring a known merchant keeps his card openable only for the confirmed eligible account", () => {
+  const pointer = pointerNavigation(), { nav } = pointer;
+  window.localStorage = { getItem: key => key === "zhiv.leaftail-arrival.v1:merchant-gallery-restore"
+    ? '{"version":1,"arrived":true,"dismissed":true}' : null, setItem() {} };
+  nav.props.ownerPublicId = "merchant-gallery-restore";
+  nav.props.economy.snapshot.ownerPublicId = nav.props.ownerPublicId;
+  try {
+    pointer.render(); pointer.render();
+    const card = () => nav.component("WorldCharacters");
+    const attempt = () => {
+      card().props.onResident("leaftail");
+      assert.equal(nav.component("WorldVillagerDialog"), undefined);
+    };
+    assert.equal(card().props.leaftailAvailable, false, "a cached level cannot reveal the already seen merchant"); attempt();
+    nav.props.economy.snapshotConfirmed = true;
+    nav.props.economy.snapshot.ownerPublicId = "previous-owner";
+    assert.equal(card().props.leaftailAvailable, false); attempt();
+    nav.props.economy.snapshot.ownerPublicId = nav.props.ownerPublicId;
+    nav.props.economy.snapshot.buildings.home = 2;
+    nav.props.economy.snapshot.jobs = [{ kind: "construction", targetId: "home", targetLevel: 3, finishesAt: "2000-01-01T00:00:00Z" }];
+    assert.equal(card().props.leaftailAvailable, false, "a finished timer still needs the real building claim"); attempt();
+    nav.props.economy.snapshot.buildings.home = 3;
+    assert.equal(card().props.leaftailAvailable, true);
+    card().props.onResident("leaftail");
+    assert.equal(nav.component("WorldVillagerDialog").props.open, true);
+    hooks.reset(); hooks.captureEffects(); pointer.render(); pointer.render();
+    assert.equal(card().props.leaftailAvailable, true, "restoring this account does not replay a completed boat route");
+    assert.equal(nav.component("WorldScene").props.merchantArrival.enabled, false);
+    nav.props.ownerPublicId = "merchant-gallery-new-owner";
+    nav.props.economy.snapshot = { ...nav.props.economy.snapshot, ownerPublicId: nav.props.ownerPublicId };
+    pointer.render(); pointer.render();
+    assert.equal(card().props.leaftailAvailable, false, "the next account has its own unseen arrival");
+    attempt();
+  } finally { pointer.restore(); }
+});
+
 test("new resident callbacks reject stale owners and do not restore foreign focus", () => {
   const nav = guideNavigation();
   try {
-    nav.component("WorldScene").props.onResident("leaftail");
+    nav.component("WorldScene").props.onResident("lopukh");
     const previous = nav.component("WorldVillagerDialog");
     nav.props.ownerPublicId = "new-owner";
     assert.equal(nav.component("WorldVillagerDialog").props.open, false);

@@ -50,6 +50,8 @@ export type ClearingActivityState = {
 };
 export type ClearingActivityOptions = {
   enabled: boolean; blocked: boolean; dusk: number; rain: number;
+  /** The active lesson defers voluntary naps without changing saved needs/clocks. */
+  keepAwake?: boolean;
   /** Set only while the target home visual is available. Missing routes remain harmless. */
   homeAvailable?: boolean;
   idleEligible?: boolean;
@@ -315,14 +317,14 @@ function startActivity(state: ClearingActivityState, options: ClearingActivityOp
   if (!activity) {
     const candidates = (["look", "sniff", "groom", "rest"] as const).map(action =>
       scoreForestAction(state.behavior.mind, action, `nearby-${action}`, { rain: wet, dusk: night, noise: random(state) * .6 }));
-    for (const candidate of candidates) if (candidate.action === "rest" && (wet > .35 || state.elapsed < state.awakeUntil)) {
+    for (const candidate of candidates) if (candidate.action === "rest" && (options.keepAwake || wet > .35 || state.elapsed < state.awakeUntil)) {
       candidate.available = false; candidate.score = null; candidate.reasons = ["Сейчас лучше оставаться бодрым"];
     }
     const selected = candidates.filter(item => item.available).sort((a, b) => b.score! - a.score!)[0];
     activity = (selected?.action ?? "look") as ClearingAction;
     recordForestCandidates(state.behavior.mind, candidates, selected?.key ?? null);
   }
-  if (activity === "rest" && state.elapsed < state.awakeUntil) activity = "look";
+  if (activity === "rest" && (options.keepAwake || state.elapsed < state.awakeUntil)) activity = "look";
   if (activity === "rest" && wet > .35) activity = "groom";
   if (!state.behavior.mind.intention || state.behavior.mind.intention.action !== activity)
     beginForestIntention(state.behavior.mind, activity, route?.id ?? `nearby-${activity}`,
@@ -923,6 +925,18 @@ export function advanceClearingActivity(state: ClearingActivityState, delta: num
   state.homeEnabled = Boolean(options.homeAvailable && (state.navigationEnabled ? state.interactions.home : state.homeRoute));
   if (!state.homeEnabled) state.retiring = false;
   if (state.frozen) return;
+  if (options.keepAwake) {
+    state.retiring = false;
+    const sleepy = state.stage === "activity" && state.lastActivity === "rest"
+      && ["yawn", "drowsy", "sleep"].includes(clearingActivityFrame(state).pose);
+    if (sleepy || ["homebound", "entering", "home-sleep"].includes(state.stage)) {
+      if (["home-sleep", "rest"].includes(state.behavior.mind.intention?.action ?? ""))
+        finishForestIntention(state.behavior.mind, "interrupted", "Остаётся рядом на время обучения");
+      // Keep the authored doorway and normal walking clock, including when the
+      // course resumes indoors. Awake work/routes never enter this branch.
+      noticeClearingActivity(state, { mindNoticed: true });
+    }
+  }
   state.elapsed += dt; state.stageElapsed += dt;
   if (state.bushEffect) {
     state.bushEffect.elapsed += dt;
@@ -939,7 +953,7 @@ export function advanceClearingActivity(state: ClearingActivityState, delta: num
     if (state.behavior.mind.intention?.action === "home-sleep") finishForestIntention(state.behavior.mind, "interrupted", "Домик недоступен, выходит на полянку");
     state.retiring = false; retrace(state);
   }
-  if (state.homeEnabled && !state.retiring && state.idleSeconds >= CLEARING_HOME_IDLE_SECONDS
+  if (!options.keepAwake && state.homeEnabled && !state.retiring && state.idleSeconds >= CLEARING_HOME_IDLE_SECONDS
     && state.stage !== "attention" && state.routeKind !== "home" && state.elapsed >= state.navigationRetryAt) {
     state.retiring = true;
     if (!state.navigationEnabled || state.activeInteraction || state.routeIndex >= 0) retrace(state);
@@ -994,7 +1008,7 @@ export function advanceClearingActivity(state: ClearingActivityState, delta: num
     if (state.stageElapsed < state.waitSeconds) return;
     if (state.navigationEnabled && state.navigation) {
       const goal = chooseForestGoal(state.navigation, state.interests, state.behavior, {
-        position: state.position, size: state.size, elapsed: state.elapsed, awakeUntil: state.awakeUntil,
+        position: state.position, size: state.size, elapsed: state.elapsed, awakeUntil: options.keepAwake ? Infinity : state.awakeUntil,
         dusk: options.dusk, rain: options.rain, random: () => random(state),
         avoidIds: deferredRoamingGoals(state),
       });

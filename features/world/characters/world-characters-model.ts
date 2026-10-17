@@ -15,7 +15,10 @@ export function worldCharacterResident(id: string): WorldResidentId | null {
   return WORLD_CHARACTERS.find(character => character.id === id)?.id ?? null;
 }
 
-/** A timer or a local preview cannot introduce the miner before the building claim. */
-export function worldResidentAvailable(id: WorldResidentId, quarryBuilt: boolean) {
-  return id !== "kamneshmyg" || quarryBuilt;
+/** Pass only confirmed access for this account. The merchant also needs his
+ * completed physical arrival; a house timer or closing the coach does not introduce him. */
+export function worldResidentAvailable(id: WorldResidentId, quarryBuilt: boolean, leaftailAvailable = false) {
+  if (id === "kamneshmyg") return quarryBuilt;
+  if (id === "leaftail") return leaftailAvailable;
+  return true;
 }

@@ -7,7 +7,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
-const { NeighborIntroduction, WorkshopConstructionContents, WorkshopTutorialConstruction } =
+const { NeighborIntroduction, WorkshopConstructionContents, WorkshopTutorialConstruction, tutorialWorkshopAction } =
   await vite.ssrLoadModule("/features/world/ui/onboarding/world-onboarding-cards.tsx");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { WORLD_CHARACTERS } = await vite.ssrLoadModule("/features/world/characters/world-characters-model.ts");
@@ -21,21 +21,27 @@ const controller = () => {
   };
 };
 
-test("the introduction names every resident and explains later arrivals without advertising them as already available", () => {
+test("the optional detailed introduction shows only met residents and requires their actual arrival state", () => {
   const economy = controller();
   const html = renderToStaticMarkup(NeighborIntroduction({ economy }));
-  for (const character of WORLD_CHARACTERS) {
+  for (const character of WORLD_CHARACTERS.filter(character => ["builder", "plesk", "lopukh"].includes(character.id))) {
     assert.ok(html.includes(`data-guide-neighbor="${character.id}"`));
     assert.ok(html.includes(character.name));
   }
-  assert.match(html, /Камнешмыг.*придёт после постройки каменоломни/);
-  assert.match(html, /Листохвост.*вернётся на лодке.*3-го уровня/);
+  assert.doesNotMatch(html, /Камнешмыг|Листохвост|data-guide-neighbor="kamneshmyg"|data-guide-neighbor="leaftail"|лодк|3-го/);
   assert.doesNotMatch(html, /<button/);
   economy.snapshot.buildings = { home: 3, quarry: 1, workshop: 0 };
-  const later = renderToStaticMarkup(NeighborIntroduction({ economy }));
-  assert.match(later, /приходит к построенной каменоломне/);
-  assert.match(later, /прибывает на лодке/);
-  assert.doesNotMatch(later, /все.*доступны/);
+  const beforeArrival = renderToStaticMarkup(NeighborIntroduction({ economy }));
+  assert.doesNotMatch(beforeArrival, /Камнешмыг|Листохвост/, "a house level alone does not reveal a resident who has not arrived");
+  const quarry = renderToStaticMarkup(NeighborIntroduction({ economy, quarryBuilt: true }));
+  assert.match(quarry, /Камнешмыг.*шахтёр, работает в каменоломне/);
+  assert.doesNotMatch(quarry, /Листохвост/);
+  const later = renderToStaticMarkup(NeighborIntroduction({ economy, quarryBuilt: true, leaftailAvailable: true }));
+  for (const character of WORLD_CHARACTERS) {
+    assert.ok(later.includes(`data-guide-neighbor="${character.id}"`));
+    assert.ok(later.includes(character.name));
+  }
+  assert.equal(NeighborIntroduction({ economy: { ...economy, snapshot: null } }), null);
 });
 
 test("a spent starting inventory still shows the real earmarked quote and starts only on an explicit click", () => {
@@ -47,6 +53,9 @@ test("a spent starting inventory still shows the real earmarked quote and starts
   for (const amount of Object.values(cost.items)) assert.ok(html.includes(`: ${amount}`));
   assert.match(html, /прямо в стройку/);
   const button = WorkshopTutorialConstruction({ economy, isOnline: true });
+  const action = tutorialWorkshopAction(economy, true);
+  assert.equal(action.label, "Построить с учебным набором");
+  assert.equal(action.disabled, button.props.disabled, "the footer and retained standalone button share their actual dispatch guard");
   assert.equal(button.props.disabled, false);
   assert.deepEqual(economy.calls, []);
   button.props.onClick();
@@ -63,8 +72,11 @@ test("offline, uncertain, pending, cooldown and another build cannot dispatch th
     Object.assign(economy, rest);
     if (snapshot) Object.assign(economy.snapshot, snapshot);
     const button = WorkshopTutorialConstruction({ economy, isOnline });
+    const action = tutorialWorkshopAction(economy, isOnline);
     assert.equal(button.props.disabled, true);
+    assert.equal(action.disabled, true);
     button.props.onClick();
+    action.onClick();
     assert.deepEqual(economy.calls, []);
   }
 });
@@ -75,6 +87,22 @@ test("already used, started or built workshops cannot offer another tutorial kit
     const economy = controller();
     Object.assign(economy.snapshot, patch);
     assert.equal(WorkshopTutorialConstruction({ economy, isOnline: true }), null);
+    assert.equal(tutorialWorkshopAction(economy, true), undefined);
     assert.deepEqual(economy.calls, []);
   }
+});
+
+test("accepted construction and a completed workshop remove the teaching cost quote", () => {
+  for (const patch of [{ buildings: { workshop: 1 } }, { jobs: [{ id: "paid-workshop", kind: "construction", targetId: "workshop" }] }]) {
+    const economy = controller();
+    Object.assign(economy.snapshot, patch);
+    const before = structuredClone(economy.snapshot);
+    assert.equal(WorkshopConstructionContents({ economy }), null);
+    assert.deepEqual(economy.snapshot, before);
+    assert.deepEqual(economy.calls, []);
+  }
+  assert.equal(WorkshopConstructionContents({ economy: { ...controller(), snapshot: null } }), null);
+  const spent = controller(); spent.snapshot.workshopStarterClaimed = true;
+  assert.match(renderToStaticMarkup(WorkshopConstructionContents({ economy: spent })), /Стоимость первой мастерской/,
+    "a cancelled or old kit keeps the honest ordinary cost until real work starts");
 });

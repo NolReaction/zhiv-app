@@ -26,6 +26,8 @@ import { advanceForestMind, beginForestIntention, finishForestIntention, noticeF
 export type ForestDirective = ForestLifeAction | ForestGardenAction | "grow-berries" | "bush" | "home-sleep" | "wake" | "watch-birds" | "campfire";
 export type ForestDirectorOptions = {
   autoLife: boolean; blocked: boolean; dusk: number; rain: number; homeAvailable: boolean; actorAway?: boolean;
+  /** Transient owner option, never persisted across cameras/accounts. */
+  tutorialActive?: boolean;
   /** Server-confirmed departure owns only the existing clearing walk, not life decisions. */
   explicitTravel?: boolean;
   butterflies?: "auto" | "on" | "off"; fireflies?: "auto" | "on" | "off";
@@ -525,7 +527,7 @@ function chooseAction(state: ForestSessionState, options: ForestDirectorOptions)
     "Кусту пока не нужен полив, погода не подходит или Мохлик устал");
   candidate("harvest-berries", canGarden && gardenActionAvailable(state.life.garden, "harvest-berries") && gardenWithinReach("harvest-berries"),
     "Ягоды ещё растут, корзинка полна или сейчас лучше отдохнуть");
-  candidate("home-sleep", options.homeAvailable && Boolean(clearing.navigationEnabled ? clearing.interactions.home : clearing.homeRoute)
+  candidate("home-sleep", !options.tutorialActive && options.homeAvailable && Boolean(clearing.navigationEnabled ? clearing.interactions.home : clearing.homeRoute)
     && clearing.elapsed >= clearing.awakeUntil && (mind.needs.energy < .32 || options.rain > .55 && mind.needs.comfort < .45),
     clearing.elapsed < clearing.awakeUntil ? "Недавно проснулся, остаётся с игроком" : "Пока достаточно сил для жизни на полянке");
   const selected = candidates.filter(item => item.available).sort((a, b) => b.score! - a.score!)[0];
@@ -570,6 +572,10 @@ export function advanceForestDirector(state: ForestSessionState, dt: number, opt
   if (options.reducedMotion) { cancelForestTradeVisit(state); return; }
   syncGardenObstacle(state);
   const director = state.director; director.elapsed += Math.min(dt, .1);
+  if (options.tutorialActive && !options.blocked && state.pendingLife === "home-sleep") {
+    clearRequest(state);
+    finishForestIntention(state.clearing.behavior.mind, "interrupted", "Остаётся рядом на время обучения");
+  }
   if (options.autoLife && !options.blocked) {
     const frame = clearingActivityFrame(state.clearing), pose = frame.pose;
     advanceForestMind(state.clearing.behavior.mind, dt, {
@@ -635,6 +641,7 @@ export function advanceForestDirector(state: ForestSessionState, dt: number, opt
     blocked: options.blocked && !options.explicitTravel || Boolean(director.tradeVisit && ["waiting", "visiting"].includes(director.tradeVisit.phase) || director.birdwatch || director.campfireVisit || state.life.routine || state.fauna.encounter) || gardenRoutineStationary(state.life.garden.routine),
     idleEligible: !options.blocked && !director.tradeVisit && !director.birdwatch && !director.campfireVisit && !state.pendingLife && !state.pendingAttention && !state.life.garden.routine && !state.life.garden.basket?.held,
     homeAvailable: options.homeAvailable && !state.life.garden.basket?.held, dusk: options.dusk, rain: options.rain,
+    keepAwake: options.tutorialActive,
     navigationMode: state.life.garden.basket?.held ? "auto" : options.navigationMode,
     occupants: options.occupants,
     residentSize: state.clearing.size * (options.heroScale ?? 1),

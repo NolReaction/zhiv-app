@@ -62,7 +62,9 @@ class JdbcProgressionRewardsRepository(private val source: DataSource) : Progres
             AchievementRewardView(id,level,target,pearls,ownership?.at,claimedAt,ownership!=null && ownership.eligible && pearls>0 && claimedAt==null,blocked)
         } }
         val homeLevel=readEconomyProfile(c,actor.id).state.buildings["home"] ?: 1
-        return ProgressionRewardsView(actor.publicId,now.toString(),daily=ProgressionRewardRules.dailyView(daily(c,actor.id),now,homeLevel),achievementRewards=rows)
+        val onboarding=c.economyRows("SELECT onboarding_claimed_at FROM game_daily_rewards WHERE user_id=?",actor.id) {
+            OnboardingRewardView(it.getObject(1,OffsetDateTime::class.java)?.toInstant()?.toString()) }.single()
+        return ProgressionRewardsView(actor.publicId,now.toString(),daily=ProgressionRewardRules.dailyView(daily(c,actor.id),now,homeLevel),achievementRewards=rows,onboarding=onboarding)
     }
     override suspend fun snapshot(sessionHash: ByteArray): ProgressionRewardsView = transaction(sessionHash) { c,a,now -> view(c,a,now) }
     override suspend fun claim(sessionHash: ByteArray,command: ProgressionRewardClaim): ProgressionRewardResult {
@@ -85,6 +87,9 @@ class JdbcProgressionRewardsRepository(private val source: DataSource) : Progres
             val claim=if(command.kind=="daily") {
                 if(!current.daily.claimable) rewardFailure("DAILY_REWARD_COOLDOWN","Следующая награда пока недоступна")
                 ProgressionRewardReceipt("daily",current.daily.reward,now.toString(),step=current.daily.step)
+            } else if(command.kind=="onboarding") {
+                if(current.onboarding.claimedAt!=null) rewardFailure("ONBOARDING_REWARD_CLAIMED","Награда за обучение уже получена")
+                ProgressionRewardReceipt("onboarding",ProgressionRewardRules.onboarding,now.toString())
             } else {
                 val row=current.achievementRewards.single { it.achievementId==command.achievementId && it.level==command.level }
                 if(row.claimedAt!=null) rewardFailure("ACHIEVEMENT_REWARD_CLAIMED","Награда за эту ступень уже получена")
@@ -98,11 +103,12 @@ class JdbcProgressionRewardsRepository(private val source: DataSource) : Progres
             val economic=economyView(c,a.id,a.publicId,now)
             val date=if(claim.kind=="daily") now.atOffset(ZoneOffset.UTC).toLocalDate() else null
             if(claim.kind=="daily") c.economyUpdate("UPDATE game_daily_rewards SET next_step=?,last_claim_at=?,last_claim_date=? WHERE user_id=?",claim.step!!%7+1,now.atOffset(ZoneOffset.UTC),date,a.id)
+            else if(claim.kind=="onboarding") c.economyUpdate("UPDATE game_daily_rewards SET onboarding_claimed_at=? WHERE user_id=?",now.atOffset(ZoneOffset.UTC),a.id)
             else c.economyUpdate("INSERT INTO game_achievement_reward_claims(user_id,achievement_id,level,pearls,claimed_at) VALUES (?,?,?,?,?)",a.id,claim.achievementId,claim.level,claim.reward.pearls,now.atOffset(ZoneOffset.UTC))
             c.economyUpdate("""INSERT INTO game_reward_claims(user_id,origin_user_id,request_id,signature,kind,daily_date,claim,accepted_revision,claimed_at)
                 VALUES (?,?,?,?,?,?,?::jsonb,?,?)""",a.id,a.id,key,signature,claim.kind,date,progressionRewardsJson.encodeToString(claim),economic.revision,now.atOffset(ZoneOffset.UTC))
             c.economyUpdate("INSERT INTO economy_ledger(user_id,source_key,kind,coins,pearls,items,created_at) VALUES (?,?,?,?,?,?::jsonb,?)",
-                a.id,"reward:$key",if(claim.kind=="daily") "daily_reward" else "achievement_reward",claim.reward.coins,claim.reward.pearls,
+                a.id,"reward:$key",when(claim.kind) { "daily" -> "daily_reward"; "onboarding" -> "onboarding_reward"; else -> "achievement_reward" },claim.reward.coins,claim.reward.pearls,
                 economyJson.encodeToString(claim.reward.items),now.atOffset(ZoneOffset.UTC))
             ProgressionRewardResult(command.requestId,view(c,a,now),economic,economic.revision,false,claim)
         }

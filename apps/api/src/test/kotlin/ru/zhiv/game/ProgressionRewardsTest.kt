@@ -77,4 +77,18 @@ class ProgressionRewardsTest {
             decodeRewardClaim(Json.parseToJsonElement("{$base,\"kind\":\"achievement\",\"achievementId\":\"first_path\",\"level\":$level}")) }
         assertFailsWith<AuthFailure> { validateRewardClaim(ProgressionRewardClaim("00000000-0000-1000-8000-000000000001","1234-5678-ABCD","daily")) }
     }
+    @Test fun `onboarding has one fixed visible gift and accepts no client reward or progress flags`() {
+        assertEquals(ProgressionReward(1_000,200),ProgressionRewardRules.onboarding)
+        val base="\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"ownerPublicId\":\"1234-5678-ABCD\",\"kind\":\"onboarding\""
+        assertEquals("onboarding",decodeRewardClaim(Json.parseToJsonElement("{$base}")).kind)
+        for(extra in listOf(",\"reward\":{\"pearls\":100}",",\"completed\":true",",\"skipped\":false",",\"now\":1",
+            ",\"achievementId\":\"first_path\",\"level\":1")) assertFailsWith<AuthFailure> {
+            decodeRewardClaim(Json.parseToJsonElement("{$base$extra}")) }
+        val before=EconomyRules.initial(0,0,0)
+        val paid=ProgressionRewardRules.credit(before,ProgressionRewardRules.onboarding)
+        assertEquals(before.wallet.coins+1_000,paid.wallet.coins)
+        assertEquals(before.wallet.pearls+200,paid.wallet.pearls)
+        assertEquals(before.inventory,paid.inventory)
+        assertEquals(before.progression,paid.progression)
+    }
 }

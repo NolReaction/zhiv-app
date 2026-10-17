@@ -41,16 +41,16 @@ export function leaftailPurchaseReason(economy: EconomyController, quote: Quote,
 }
 
 /** Ordinary receipt-based economy action; the browser never grants an item. */
-export function WorldLeaftailMarket({ economy, isOnline }: { economy: EconomyController; isOnline: boolean }) {
+export function WorldLeaftailMarket({ economy, isOnline, introduced = false }: { economy: EconomyController; isOnline: boolean; introduced?: boolean }) {
   const [quote, setQuote] = useState<Quote | null>(null);
   const [section, setSection] = useState<ShopSection>("finds");
   const tabsId = useId(), tabButtons = useRef<Array<HTMLButtonElement | null>>([]);
-  const latest = useRef({ economy, quote, isOnline }), sent = useRef<Quote | null>(null);
+  const latest = useRef({ economy, quote, isOnline, introduced }), sent = useRef<Quote | null>(null);
   const shopElement = useRef<HTMLDivElement>(null), triggerItem = useRef<string | null>(null), heading = useRef<HTMLHeadingElement>(null);
   const wasConfirming = useRef(false), headingId = useId();
-  useLayoutEffect(() => { latest.current = { economy, quote, isOnline }; }, [economy, quote, isOnline]);
+  useLayoutEffect(() => { latest.current = { economy, quote, isOnline, introduced }; }, [economy, quote, isOnline, introduced]);
   const state = economy.snapshot, shop = state ? leaftailShopView(state, economy.now, state.catalog) : null;
-  const confirming = Boolean(quote);
+  const confirming = Boolean(introduced && quote);
   useEffect(() => {
     if (confirming) heading.current?.focus({ preventScroll: true });
     else if (wasConfirming.current) {
@@ -70,7 +70,7 @@ export function WorldLeaftailMarket({ economy, isOnline }: { economy: EconomyCon
   </div>;
   function confirm() {
     const current = latest.current;
-    if (!quote || current.quote !== quote || sent.current === quote || leaftailPurchaseReason(current.economy, quote, current.isOnline)) return;
+    if (!current.introduced || !quote || current.quote !== quote || sent.current === quote || leaftailPurchaseReason(current.economy, quote, current.isOnline)) return;
     sent.current = quote;
     if (current.economy.act("buy_leaftail_item", quote.targetId, 1, quote.price) === false) sent.current = null;
     else setQuote(null);
@@ -81,8 +81,12 @@ export function WorldLeaftailMarket({ economy, isOnline }: { economy: EconomyCon
   const deliveryDate = shop ? new Date(shop.refreshAt) : null;
   const deliveryLabel = deliveryDate && Number.isFinite(deliveryDate.getTime())
     ? `Новая поставка ${resetDate.format(deliveryDate)} МСК.` : "Проверяем время новой поставки.";
-  return <div ref={shopElement} tabIndex={-1} className={styles.shop} aria-label="Лавка Листохвоста" aria-busy={economy.busy || undefined} data-leaftail-shop>
-    {!state ? <>{recovery}<p role="status">Проверяем ваши запасы…</p></> : !shop ? <p>Листохвост готовит свой прилавок. Обновите игру немного позже.</p>
+  const arrivalMessage = !economy.snapshotConfirmed || !state ? "Проверяем возвращение путника…"
+    : !shop?.unlocked ? `Путник в дороге. Он вернётся, когда дом достигнет ${shop?.requiredHomeLevel ?? 3}-го уровня.`
+      : "Путник ещё в дороге. Дождитесь прибытия.";
+  return <div ref={shopElement} tabIndex={-1} className={styles.shop} aria-label={introduced ? "Лавка Листохвоста" : "Домик путника"} aria-busy={economy.busy || undefined} data-leaftail-shop>
+    {!introduced ? <p className={styles.locked} role="status" data-leaftail-away><LockKeyhole size={18} aria-hidden="true" /><span>{arrivalMessage}</span></p>
+      : !state ? <>{recovery}<p role="status">Проверяем ваши запасы…</p></> : !shop ? <p>Листохвост готовит свой прилавок. Обновите игру немного позже.</p>
       : !shop.unlocked ? <p className={styles.locked} role="status" data-leaftail-away><LockKeyhole size={18} aria-hidden="true" /><span>{leaftailTravelMessage(shop.requiredHomeLevel)}</span></p> : <>
       <p className={styles.intro}><Leaf size={18} aria-hidden="true" /><span>«Собрал кое-что для твоего поселения. Выбирай, пока не разобрали!»</span></p>
       {recovery}
@@ -110,7 +114,7 @@ export function WorldLeaftailMarket({ economy, isOnline }: { economy: EconomyCon
           <div className={styles.item}><ItemIcon itemId={offer.itemId} size={36} /><div><strong>{name}</strong><small>{descriptions[offer.itemId] ?? "Для развития поселения."}</small></div><span className={styles.stock} aria-label={`${offer.quantity} шт. в покупке. Осталось покупок: ${offer.remaining}`}>×{number(offer.quantity)}</span></div>
           <div className={styles.offerBottom}><small>В кладовой: {number(state.inventory[offer.itemId] ?? 0)}</small><button type="button" className={styles.buy} data-leaftail-purchase={offer.itemId} disabled={Boolean(disabledReason)} aria-label={`Купить ${name}: ${number(offer.quantity)} шт. за ${number(offer.priceCoins)} монет`} onClick={() => {
             const current = latest.current;
-            if (leaftailPurchaseReason(current.economy, nextQuote, current.isOnline)) return;
+            if (!current.introduced || leaftailPurchaseReason(current.economy, nextQuote, current.isOnline)) return;
             triggerItem.current = offer.itemId; setQuote(nextQuote);
           }}>{offer.remaining ? <><span>Купить</span><ItemIcon itemId="coins" size={16} />{number(offer.priceCoins)}</> : <><Check size={15} aria-hidden="true" />Сегодня куплено</>}</button></div>
           {disabledReason && shop.unlocked && offer.remaining > 0 && <p className={styles.reason}>{disabledReason}</p>}

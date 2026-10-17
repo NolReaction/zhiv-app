@@ -8,7 +8,8 @@ import styles from "./world-onboarding.module.css";
 /** A quote from the shared catalog, never a receipt or an optimistic balance. */
 export function WorkshopConstructionContents({ economy }: { economy: EconomyController }) {
   const snapshot = economy.snapshot;
-  if (!snapshot) return null;
+  if (!snapshot || (snapshot.buildings.workshop ?? 0) > 0
+    || snapshot.jobs.some(job => job.kind === "construction" && job.targetId === "workshop")) return null;
   const cost = workshopStarterCost(snapshot.catalog);
   return <div className={styles.starter} data-guide-workshop-cost>
     <Hammer size={18} aria-hidden="true" />
@@ -20,30 +21,40 @@ export function WorkshopConstructionContents({ economy }: { economy: EconomyCont
   </div>;
 }
 
-/** One explicit construction command; the server earmarks the kit for this job. */
-export function WorkshopTutorialConstruction({ economy, isOnline }: { economy: EconomyController; isOnline?: boolean }) {
+/** The same explicit action can live in the coach footer without being clipped by its copy. */
+export function tutorialWorkshopAction(economy: EconomyController, isOnline?: boolean) {
   const snapshot = economy.snapshot;
-  if (!snapshot || !canStartTutorialWorkshop(snapshot)) return null;
+  if (!snapshot || !canStartTutorialWorkshop(snapshot)) return undefined;
   const locked = isOnline === false || economy.busy || economy.uncertain || economy.retryAt > economy.now
     || snapshot.jobs.some(job => job.kind === "construction");
-  return <button type="button" className={styles.build} data-guide-workshop-start disabled={locked}
-    onClick={() => { if (!locked) void economy.act("start_tutorial_workshop", "workshop"); }}>
+  return { label: "Построить с учебным набором", disabled: locked,
+    onClick: () => { if (!locked) void economy.act("start_tutorial_workshop", "workshop"); } };
+}
+
+/** One explicit construction command; the server earmarks the kit for this job. */
+export function WorkshopTutorialConstruction({ economy, isOnline }: { economy: EconomyController; isOnline?: boolean }) {
+  const action = tutorialWorkshopAction(economy, isOnline);
+  if (!action) return null;
+  return <button type="button" className={styles.build} data-guide-workshop-start disabled={action.disabled} onClick={action.onClick}>
     <Hammer size={16} aria-hidden="true" />Построить с учебным набором
   </button>;
 }
 
-/** Name every resident without suggesting that later arrivals are already here. */
-export function NeighborIntroduction({ economy }: { economy: EconomyController }) {
-  const buildings = economy.snapshot?.buildings;
+/** Reusable detailed introduction only lists residents the player has already met. */
+export function NeighborIntroduction({ economy, quarryBuilt = false, leaftailAvailable = false }: {
+  economy: EconomyController; quarryBuilt?: boolean; leaftailAvailable?: boolean;
+}) {
+  if (!economy.snapshot) return null;
   const roles = {
     builder: "строит и улучшает здания",
     plesk: "помогает с рыбалкой и торгует снастями",
     lopukh: "лесоруб, у его дома получают брёвна",
-    kamneshmyg: (buildings?.quarry ?? 0) > 0 ? "шахтёр, приходит к построенной каменоломне" : "шахтёр, придёт после постройки каменоломни",
-    leaftail: (buildings?.home ?? 0) >= 3 ? "торговец находками, прибывает на лодке" : "торговец находками, вернётся на лодке после улучшения дома до 3-го уровня",
+    kamneshmyg: "шахтёр, работает в каменоломне",
+    leaftail: "торговец находками",
   };
   return <ul className={styles.neighbors} aria-label="Жители леса и знакомство с ними">
-    {WORLD_CHARACTERS.map(character => <li key={character.id} data-guide-neighbor={character.id}>
+    {WORLD_CHARACTERS.filter(character => character.id !== "kamneshmyg" || quarryBuilt)
+      .filter(character => character.id !== "leaftail" || leaftailAvailable).map(character => <li key={character.id} data-guide-neighbor={character.id}>
       <strong>{character.name}</strong> - {roles[character.id]}.
     </li>)}
   </ul>;

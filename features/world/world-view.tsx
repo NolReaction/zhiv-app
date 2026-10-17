@@ -58,6 +58,7 @@ import { worldOnboardingNeedsHarvest } from "@/features/world/domain/world-onboa
 import { tutorialOrderProgress, tutorialResidentOrder } from "@/features/economy/domain/tutorial-order";
 import { useWorldRewardPromptGate } from "@/features/world/state/onboarding-reward-gate";
 import { WorldOnboardingSession } from "@/features/world/ui/onboarding/world-onboarding";
+import { WorldOnboardingReward } from "@/features/world/ui/onboarding/world-onboarding-reward";
 import { useMarketUnlockOnboarding } from "@/features/world/state/use-market-unlock-onboarding";
 import { MarketUnlockOnboarding } from "@/features/world/ui/onboarding/market-unlock-onboarding";
 
@@ -72,7 +73,7 @@ export default function WorldView({ open, suspended = false, world, economy, own
   const onboarding = useWorldOnboarding(ownerPublicId);
   const observation = useForestObservation(`zhiv:mochlik:presence:${ownerPublicId}`);
   const sectionsReady = Boolean(open && economy.snapshot && onboarding.loaded && observation?.memory.sync?.mode !== "other-device");
-  const mainCourseActive = !onboarding.isPaused && (!onboarding.progress || onboarding.progress.status === "started");
+  const mainCourseActive = onboarding.loaded && !onboarding.isPaused && (!onboarding.progress || onboarding.progress.status === "started");
   const [panel, setPanel] = useState<Panel | null>(null);
   const [shopPage, setShopPage] = useState<CurrencyShopPage>("pearls");
   const [economyTab, setEconomyTab] = useState<EconomyTab>("overview");
@@ -162,6 +163,7 @@ export default function WorldView({ open, suspended = false, world, economy, own
       && observation?.memory.sync?.mode !== "other-device"),
     onboarding,
   });
+  const leaftailAvailable = Boolean(merchantUnlocked && merchantArrival.loaded && merchantArrival.seen);
   const dailyAutoPromptAllowed = useWorldRewardPromptGate(ownerPublicId, onboarding,
     Boolean(!open || panel || quickMenu || selection || quickUpgrade || residentOpen || charactersOpen
       || marketGuide.open || minerArrival.open || minerArrival.enabled || merchantArrival.open || merchantArrival.enabled || economy.busy || economy.uncertain || world.busy || world.uncertain), worldElement);
@@ -211,14 +213,14 @@ export default function WorldView({ open, suspended = false, world, economy, own
   }, [clearObject]);
   const openResident = useCallback((id: WorldResidentId = "plesk") => {
     if (currentOwner.current !== ownerPublicId || economy.snapshot && economy.snapshot.ownerPublicId !== ownerPublicId
-      || !worldResidentAvailable(id, quarryBuilt)) return false;
+      || !worldResidentAvailable(id, quarryBuilt, leaftailAvailable)) return false;
     setResidentOwner(ownerPublicId);
     residentReturn.current = quickMenu ? quickReturn.current : document.activeElement instanceof HTMLElement ? document.activeElement : null;
     leavingResident.current = false;
     setResidentFromCharacters(false);
     clearObject(); setPanel(null); setQuickMenu(null); setResidentId(id); setResidentOpen(true);
     return true;
-  }, [clearObject, quickMenu, economy.snapshot, ownerPublicId, quarryBuilt]);
+  }, [clearObject, quickMenu, economy.snapshot, ownerPublicId, quarryBuilt, leaftailAvailable]);
   const closeResident = useCallback(() => {
     if (currentOwner.current !== ownerPublicId || residentOwner !== ownerPublicId) return;
     setResidentOpen(false);
@@ -497,14 +499,14 @@ export default function WorldView({ open, suspended = false, world, economy, own
   const locked = busy || uncertain;
   const ownedGifts = new Set([...snapshot.gifts, ...(items ?? []), ...naturalItems(bestStreakDays)]);
   const quickSection = quickMenu === "pantry" || quickMenu === "expeditions" ? quickMenu : null;
-  const orders = economy.snapshot?.ownerPublicId === ownerPublicId ? orderJournalSummary(economy.snapshot, economy.now) : { total: 0, ready: 0 };
+  const orders = economy.snapshot?.ownerPublicId === ownerPublicId ? orderJournalSummary(economy.snapshot, economy.now, undefined, mainCourseActive) : { total: 0, ready: 0 };
   const quickGuideEnabled = sectionsReady && !mainCourseActive && !panel && !quickUpgrade && !residentOpen && !charactersOpen && !dailyOpen;
   const warehouseState = economy.snapshot?.ownerPublicId === ownerPublicId ? economy.snapshot : null;
   const quickTitle = quickMenu === "profile" ? "Мой Мохлик" : quickMenu === "pantry" ? "Кладовая" : quickMenu === "expeditions" ? "Вылазки" : "Ещё";
   const QuickIcon = quickMenu === "profile" ? Leaf : quickMenu === "pantry" ? Package : quickMenu === "expeditions" ? Compass : MoreHorizontal;
   const SheetIcon = panel === "help" ? Info : panel === "orders" ? BookOpenCheck : panel === "economy" ? economyTab === "market" ? Store : Package : panel === "shop" ? ShoppingBag : panel === "wardrobe" ? Shirt : panel === "collection" ? BookOpen : panel === "customize" ? Leaf : Compass;
   return <section ref={worldElement} className={styles.world} aria-label="Лес Мохлика" data-quick-open={quickMenu ?? undefined} style={{ "--quick-top": `${menuBounds.top + 6}px`, "--quick-bottom": `${menuBounds.bottom + 6}px` } as CSSProperties}>
-    <WorldScene suspended={!open || suspended} onReady={onSceneReady} economyJourney={economicJourney} cancelledExplorations={economy.cancelledExplorations} economyBuildings={economy.snapshot?.buildings} economyResidents={economicResidents} residentArrival={{ seen: minerArrival.seen, enabled: minerArrival.enabled, onComplete: minerArrival.complete }} merchantArrival={{ seen: merchantArrival.seen, enabled: merchantArrival.enabled, onComplete: merchantArrival.complete }} economyProduction={economicProduction} economyConstruction={economicConstruction} state={state} gifts={snapshot.gifts} items={items} owner={ownerPublicId} now={economy.snapshot ? economy.now : world.now} timeZone={timeZone}
+    <WorldScene tutorialActive={Boolean(open && !suspended && mainCourseActive && onboarding.progress?.status === "started" && observation?.memory.sync?.mode !== "other-device")} suspended={!open || suspended} onReady={onSceneReady} economyJourney={economicJourney} cancelledExplorations={economy.cancelledExplorations} economyBuildings={economy.snapshot?.buildings} economyResidents={economicResidents} residentArrival={{ seen: minerArrival.seen, enabled: minerArrival.enabled, onComplete: minerArrival.complete }} merchantArrival={{ seen: merchantArrival.seen, enabled: merchantArrival.enabled, onComplete: merchantArrival.complete }} economyProduction={economicProduction} economyConstruction={economicConstruction} state={state} gifts={snapshot.gifts} items={items} owner={ownerPublicId} now={economy.snapshot ? economy.now : world.now} timeZone={timeZone}
       hideJourneyStatus onPlace={onPlace} onResident={openResident} selectedObjectId={selection?.objectId ?? null} onObjectSelection={onObjectSelection} openObjectRequest={openObjectRequest} guidePlace={guidePlace}
       constructionEconomy={economy} hideConstructionStatus={quickMenu !== null || panel !== null || selection !== null || quickUpgrade !== null || residentOpen || charactersOpen || dailyOpen}
       onOpenConstruction={stationId => { clearObject(); setPanel(null); setQuickMenu(null); openUpgrade(stationId); }}
@@ -523,15 +525,15 @@ export default function WorldView({ open, suspended = false, world, economy, own
           </button>
         </div>
         <div className={hudStyles.rightControls}>
-          {economy.snapshot ? <WorldWallet key={ownerPublicId} {...economy.snapshot.wallet} onOpenShop={economy.snapshot.ownerPublicId === ownerPublicId ? openCurrencyShop : undefined} /> : <button className={hudStyles.loadingWallet} onClick={() => void economy.retry()} disabled={economy.busy || economy.retryAt > economy.now}>{economy.error ? "Повторить загрузку" : "Загрузка…"}</button>}
+          {economy.snapshot ? <WorldWallet key={`wallet:${ownerPublicId}`} {...economy.snapshot.wallet} onOpenShop={economy.snapshot.ownerPublicId === ownerPublicId ? openCurrencyShop : undefined} /> : <button className={hudStyles.loadingWallet} onClick={() => void economy.retry()} disabled={economy.busy || economy.retryAt > economy.now}>{economy.error ? "Повторить загрузку" : "Загрузка…"}</button>}
           <button data-world-onboarding-help data-audio-cue="ui.open" className={`${hudStyles.iconButton} ${hudStyles.helpButton}`} onClick={() => openContextHelp(quickUpgrade ? { stationId: quickUpgrade, intent: "construction" } : selection ? lastHelpContext.current : undefined)} aria-label="Справка по игре" title="Справка по игре"><Info size={20} aria-hidden="true" /></button>
         </div>
       </div>
-      <WorldInventoryGains key={ownerPublicId} economy={economy} hud={topHud} />
+      <WorldInventoryGains key={`inventory-gains:${ownerPublicId}`} economy={economy} hud={topHud} />
     </header>
     {constructionGoal.details && panel === null && !selection && !quickMenu && !quickUpgrade && !dailyOpen && !residentOpen && !charactersOpen && <div className={styles.goalHud}><button type="button" className={styles.goalPin} data-construction-goal-open aria-haspopup="dialog" aria-label={`Открыть цель: ${constructionGoal.details.name} · ур. ${constructionGoal.details.goal.targetLevel}`} title={`${constructionGoal.details.name} · ур. ${constructionGoal.details.goal.targetLevel}`} onClick={openPinnedGoal}><Pin size={20} aria-hidden="true" /></button></div>}
     {panel === null && quickMenu === null && <WorldFeedback world={world} />}
-    {panel === null && selection && <div className={styles.objectLayer}><WorldObjectMenu guideRoot={workshopGuideRoot} guide={open && selection.place === "workshop" && (economy.snapshot?.buildings.workshop ?? 0) > 0 ? <SectionGuide key={`${ownerPublicId}:workshop`} owner={ownerPublicId} section="workshop" enabled={quickGuideEnabled} targetRoot={workshopGuideRoot} /> : undefined} key={`${selection.objectId}:${objectStation ?? ""}:${objectRecipe ?? ""}:${objectOpenRequest}`} initialStationId={objectStation} initialRecipeId={objectRecipe} isOnline={isOnline} onOpenHelp={openContextHelp} onHelpContextChange={rememberHelpContext} selection={selection} economy={economy} constructionGoal={constructionGoal} onOpenGoal={openPinnedGoal} bounds={menuBounds} onClose={closeObject} onBack={selection.place === "leaftail-caravan" && shopGalleryOwner === ownerPublicId ? closeObject : undefined} onReturnFocus={restoreObjectFocus} onNavigate={openObject} onOpenPantry={() => openQuick("pantry")} onExplore={() => openQuick("expeditions")} /></div>}
+    {panel === null && selection && <div className={styles.objectLayer}><WorldObjectMenu leaftailAvailable={leaftailAvailable} tutorialWorkshop={Boolean(open && mainCourseActive && guideStep === "workshop")} guideRoot={workshopGuideRoot} guide={open && selection.place === "workshop" && (economy.snapshot?.buildings.workshop ?? 0) > 0 ? <SectionGuide key={`${ownerPublicId}:workshop`} owner={ownerPublicId} section="workshop" enabled={quickGuideEnabled} targetRoot={workshopGuideRoot} /> : undefined} key={`${selection.objectId}:${objectStation ?? ""}:${objectRecipe ?? ""}:${objectOpenRequest}`} initialStationId={objectStation} initialRecipeId={objectRecipe} isOnline={isOnline} onOpenHelp={openContextHelp} onHelpContextChange={rememberHelpContext} selection={selection} economy={economy} constructionGoal={constructionGoal} onOpenGoal={openPinnedGoal} bounds={menuBounds} onClose={closeObject} onBack={selection.place === "leaftail-caravan" && shopGalleryOwner === ownerPublicId ? closeObject : undefined} onReturnFocus={restoreObjectFocus} onNavigate={openObject} onOpenPantry={() => openQuick("pantry")} onExplore={() => openQuick("expeditions")} /></div>}
     <div ref={bottomHud} className={hudStyles.bottomHud} data-world-hud="bottom">
       <nav className={hudStyles.dock} aria-label="Действия в игре">
         <button data-audio-cue={quickMenu === "pantry" ? "ui.close" : "ui.open"} data-world-quick="pantry" aria-haspopup="dialog" aria-expanded={quickMenu === "pantry"} aria-controls={quickMenu === "pantry" ? "world-quick-menu" : undefined}
@@ -573,14 +575,14 @@ export default function WorldView({ open, suspended = false, world, economy, own
         </div>}
       </div>
     </section>}
-    <DailyRewardsDialog key={ownerPublicId} ownerPublicId={ownerPublicId} economy={economy} isOnline={isOnline} onSessionLost={onSessionLost}
+    <DailyRewardsDialog key={`daily-rewards:${ownerPublicId}`} ownerPublicId={ownerPublicId} economy={economy} isOnline={isOnline} onSessionLost={onSessionLost}
       autoPromptAllowed={dailyAutoPromptAllowed}
       open={dailyOpen} onOpenChange={setDailyOpen} onOpenPantry={openGiftPantry} onReturnFocus={() => {
         if (leavingDaily.current) { leavingDaily.current = false; quickFrame.current?.focus({ preventScroll: true }); return; }
         if (dailyTrigger.current?.isConnected) dailyTrigger.current.focus({ preventScroll: true });
         else worldElement.current?.querySelector<HTMLElement>('[data-world-quick="profile"]')?.focus({ preventScroll: true });
       }} />
-    <WorldCharacters open={charactersOpen} onClose={closeCharacters} onResident={openCharacterResident} quarryBuilt={quarryBuilt} focusedCharacter={focusedCharacter}
+    <WorldCharacters open={charactersOpen} onClose={closeCharacters} onResident={openCharacterResident} quarryBuilt={quarryBuilt} leaftailAvailable={leaftailAvailable} leaftailUnlocked={merchantUnlocked} focusedCharacter={focusedCharacter}
       onCloseAutoFocus={event => {
         event.preventDefault();
         if (leavingCharacters.current) { leavingCharacters.current = false; return; }
@@ -672,7 +674,7 @@ export default function WorldView({ open, suspended = false, world, economy, own
         {open && panel === "orders" && <SectionGuide key={`${ownerPublicId}:orders`} owner={ownerPublicId} section="orders" enabled={sectionsReady && !mainCourseActive} targetRoot={panelRoot} />}
         {open && panel === "economy" && economyTab === "market" && <SectionGuide key={`${ownerPublicId}:market`} owner={ownerPublicId} section="market" enabled={sectionsReady && playerMarketUnlocked} targetRoot={panelRoot} />}
         <div className={styles.sheetBody}>
-          {panel === "orders" && <WorldOrderJournal key={`${ownerPublicId}:${orderEntry.request}`} economy={economy} residentId={orderEntry.residentId} onNavigateExpeditions={openExpeditions} onNavigateStation={openStation} />}
+          {panel === "orders" && <WorldOrderJournal tutorialOnly={mainCourseActive} key={`${ownerPublicId}:${orderEntry.request}`} economy={economy} residentId={orderEntry.residentId} onNavigateExpeditions={openExpeditions} onNavigateStation={openStation} />}
           {panel === "help" && <WorldHelp key={`${ownerPublicId}:${helpEntry.request}`} economy={economy} world={world} presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`} isOnline={isOnline} context={helpEntry.context} initialTopicId={helpEntry.topicId} onNavigate={navigateHelp} onReplayTutorial={replayOnboarding} />}
           {panel === "shop" && <CurrencyShopPanel key={`${ownerPublicId}:${shopPage}`} state={economy.snapshot} initialPage={shopPage} onRedeemed={economy.reconcile} />}
           {panel === "economy" && <EconomyPanel key={`${economyTab}:${economyFocusId ?? ""}`} economy={economy} initialTab={economyTab} initialFocusId={economyFocusId} standalone onNavigate={openEconomy} />}
@@ -689,7 +691,7 @@ export default function WorldView({ open, suspended = false, world, economy, own
             })}
           </div>}
           {panel === "journeys" && <WorldJourneys world={world} destination="trail" onClaim={confirming} allowStart={false} />}
-        {panel === "wardrobe" && <WorldWardrobe key={ownerPublicId} world={world} economy={economy} />}
+        {panel === "wardrobe" && <WorldWardrobe key={`wardrobe:${ownerPublicId}`} world={world} economy={economy} />}
         {panel === "collection" && <WorldCollections state={state} economy={economy.snapshot} gifts={snapshot.gifts} />}
 
           {panel !== "help" && panel !== "orders" && <WorldFeedback world={world} />}
@@ -703,8 +705,12 @@ export default function WorldView({ open, suspended = false, world, economy, own
     <MinerArrivalOnboarding open={minerArrival.open} arrived={minerArrival.seen} worldElement={worldElement}
       onMeet={() => { if (openResident("kamneshmyg")) minerArrival.dismiss(); }} onDismiss={minerArrival.dismiss} />
     <LeaftailArrivalOnboarding open={merchantArrival.open} arrived={merchantArrival.seen} worldElement={worldElement}
-      onMeet={() => { openObject("leaftail-caravan"); merchantArrival.dismiss(); }} onDismiss={merchantArrival.dismiss} />
-    <WorldOnboardingSession key={ownerPublicId} presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`} open={Boolean(open && economy.snapshot && onboarding.loaded && !onboarding.isPaused && !marketGuide.open && !minerArrival.open && !minerArrival.enabled && !merchantArrival.open && !merchantArrival.enabled)}
+      onMeet={() => { if (leaftailAvailable) { openObject("leaftail-caravan"); merchantArrival.dismiss(); } }} onDismiss={merchantArrival.dismiss} />
+    <WorldOnboardingReward key={`onboarding-reward:${ownerPublicId}`} owner={ownerPublicId} progress={onboarding.progress}
+      economy={economy} isOnline={isOnline !== false} onSessionLost={onSessionLost} onAcknowledged={onboarding.acknowledgeReward}
+      open={Boolean(open && !suspended && !panel && !quickMenu && !selection && !quickUpgrade && !residentOpen && !charactersOpen && !dailyOpen
+        && !marketGuide.open && !minerArrival.open && !merchantArrival.open && observation?.memory.sync?.mode !== "other-device")} />
+    <WorldOnboardingSession key={`world-onboarding:${ownerPublicId}`} presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`} open={Boolean(open && economy.snapshot && onboarding.loaded && !onboarding.isPaused && !marketGuide.open && !minerArrival.open && !minerArrival.enabled && !merchantArrival.open && !merchantArrival.enabled)}
       modalBlocked={Boolean(panel && !(panel === "orders" && guideStep === "orders") || quickUpgrade || residentOpen || charactersOpen || dailyOpen || !mainCourseActive && (quickSection || selection))}
       progress={onboarding.progress} fishSaleOpen={Boolean(pantryFishSaleOpen)} worldElement={worldElement} economy={economy} quickMenu={quickMenu} helpOpen={panel === "help"} isOnline={isOnline}
       onStart={onboarding.start} onStep={onboarding.step} onCrop={onboarding.setCrop} onHarvest={onboarding.confirmHarvest}

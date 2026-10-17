@@ -5,6 +5,7 @@ import { economyDevCommandSchema, type EconomyDevCommand } from "@/features/econ
 import { constructionCompletions, type ConstructionCompletion } from "@/features/economy/domain/construction-completion";
 import { inventoryGainFromReceipt, INVENTORY_GAIN_HISTORY_LIMIT, type InventoryGain } from "@/features/economy/domain/inventory-gain";
 import { localSaleFromReceipt, type LocalSaleReceipt } from "@/features/economy/domain/local-sale-receipt";
+import { localExplorationFromReceipt, type LocalExplorationReceipt } from "@/features/economy/domain/local-exploration-receipt";
 import { barterCommandSchema, type BarterCommand, type BarterIntent, type BarterResult, type BarterView } from "@/features/economy/domain/barter-model";
 import { hasGardenBerryReward } from "@/features/economy/domain/garden-berries";
 import type { ProductionStart } from "@/features/economy/domain/production-start";
@@ -45,6 +46,8 @@ type View = {
   productionStarts?: readonly ProductionStart[];
   /** Latest confirmed local sale; transient, never reconstructed from a GET. */
   localSale?: LocalSaleReceipt;
+  /** Exact locally initiated departure, including its same-session retry. */
+  localExploration?: LocalExplorationReceipt;
 };
 type ReceiptStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
@@ -54,6 +57,9 @@ export function createEconomySession(owner: string | null, transport: Transport,
   let view: View = { snapshot: null, market: null, marketError: null, barter: null, barterError: null, marketSyncError: null, barterSyncError: null, error: null, notice: "", busy: false, uncertain: false, retryAt: 0, completedConstructions: [], inventoryGains: [],
     directActionsAvailable: true, snapshotConfirmed: false, productionSnapshot: null, pendingProductionIds: [], pendingProductionCount: 0, productionQueueAvailable: false, syncPending: false, storageError: null, syncError: null };
   let pending: Pending | null = null, active = false, available = true, epoch = 0, readSequence = 0, marketSequence = 0, barterSequence = 0;
+  // A reload may recover the command, but must not pretend the player just
+  // started it in this course. Keep this intent out of receipt persistence.
+  let localExplorationIntent: { requestId: string; before: EconomyView } | null = null;
   let reading: Promise<void> | null = null, marketReading: Promise<void> | null = null, barterReading: Promise<void> | null = null;
   let barterBlockedUntil = 0, rateLimitedUntil = 0;
   let lastReadAt = -Infinity, blockedUntil = 0, marketBlockedUntil = 0, failures = 0;
@@ -189,6 +195,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
   ].slice(-16));
   function remember(value: Pending | null) {
     pending = value;
+    if (!value) localExplorationIntent = null;
     try { if (value) storage?.setItem(storageKey, JSON.stringify(value)); else storage?.removeItem(storageKey); } catch { /* Receipt remains in memory if browser storage is unavailable. */ }
   }
   function restore() {
@@ -327,12 +334,17 @@ export function createEconomySession(owner: string | null, transport: Transport,
           && !inventoryReceipts.has(value.command.requestId) ? inventoryGainFromReceipt(before, result, value.command) : null;
         const sale = value.kind === "economy" && view.snapshot?.revision === result.state.revision
           && view.localSale?.id !== value.command.requestId ? localSaleFromReceipt(before, result, value.command) : null;
+        const departure = value.kind === "economy"
+          && localExplorationIntent?.requestId === value.command.requestId && view.localExploration?.id !== value.command.requestId
+          ? localExplorationFromReceipt(localExplorationIntent.before, result, value.command) : null;
+        const exploration = departure && view.snapshot?.jobs.some(job => job.id === departure.jobId) ? departure : null;
         if (gain) {
           inventoryReceipts.add(gain.id);
           if (inventoryReceipts.size > 64) inventoryReceipts.delete(inventoryReceipts.values().next().value!);
         }
         remember(null); publish({ notice: result.message, uncertain: false, syncError: null,
           ...(sale ? { localSale: sale } : {}),
+          ...(exploration ? { localExploration: exploration } : {}),
           ...(completed.length ? { completedConstructions: [...view.completedConstructions, ...completed].slice(-8) } : {}),
           ...(cancelled ? { cancelledExplorations: Object.freeze([...(view.cancelledExplorations ?? []), cancelled].slice(-8)) } : {}),
           ...(gain ? { inventoryGains: Object.freeze([...(view.inventoryGains ?? []), gain].slice(-INVENTORY_GAIN_HISTORY_LIMIT)) } : {}) });
@@ -421,8 +433,11 @@ export function createEconomySession(owner: string | null, transport: Transport,
         return true;
       }
       if (!owner || !view.snapshot || !view.snapshotConfirmed || !view.directActionsAvailable || pending || productionEntries.length || !active || !localActionsAvailable || !available || view.busy || performance.now() < blockedUntil) return false;
-      void execute({ kind: "economy", command: { requestId: createUuidV4(), ownerPublicId: owner, expectedRevision: view.snapshot.revision, action, targetId, quantity, totalPrice,
-        ...(fishSelection === undefined ? {} : { fishSelection: { ...fishSelection } }) } }, action === "start_production");
+      const command: EconomyCommand = { requestId: createUuidV4(), ownerPublicId: owner, expectedRevision: view.snapshot.revision, action, targetId, quantity, totalPrice,
+        ...(fishSelection === undefined ? {} : { fishSelection: { ...fishSelection } }) };
+      if (action === "start_exploration" || action === "start_fishing")
+        localExplorationIntent = { requestId: command.requestId, before: view.snapshot };
+      void execute({ kind: "economy", command }, action === "start_production");
       return true;
     },
     actMarket(action: MarketCommand["action"], targetId: string, quantity = 1, totalPrice = 0, fishSelection?: Record<string, number>) {

@@ -13,15 +13,17 @@ import java.util.UUID
 internal val progressionRewardsJson = Json { encodeDefaults = true; ignoreUnknownKeys = false }
 @Serializable data class ProgressionReward(val coins: Long = 0, val pearls: Long = 0, val items: Map<String,Long> = emptyMap())
 @Serializable private data class ProgressionRewardsCatalog(val version: Int, val currencyScale: Int, val pearlScale: Int, val dailyMinimumHours: Long,
-    val daily: List<ProgressionReward>, val dailyByHomeLevel: Map<String,List<ProgressionReward>>, val achievementPearls: Map<String,List<Long>>)
+    val daily: List<ProgressionReward>, val dailyByHomeLevel: Map<String,List<ProgressionReward>>, val achievementPearls: Map<String,List<Long>>,
+    val onboarding: ProgressionReward)
 @Serializable data class DailyRewardCycle(val step: Int, val reward: ProgressionReward)
 data class DailyRewardsState(val step: Int = 1, val lastClaimAt: Instant? = null)
 @Serializable data class DailyRewardsView(val step: Int, val claimable: Boolean, val nextClaimAt: String,
     val lastClaimAt: String?, val lastClaimDate: String?, val reward: ProgressionReward, val cycle: List<DailyRewardCycle>, val homeLevel: Int = 1)
 @Serializable data class AchievementRewardView(val achievementId: String, val level: Int, val target: Long, val pearls: Long,
     val earnedAt: String?, val claimedAt: String?, val eligible: Boolean, val blockedReason: String?)
+@Serializable data class OnboardingRewardView(val claimedAt: String? = null)
 @Serializable data class ProgressionRewardsView(val ownerPublicId: String, val serverTime: String, val catalogVersion: Int = 4,
-    val daily: DailyRewardsView, val achievementRewards: List<AchievementRewardView>)
+    val daily: DailyRewardsView, val achievementRewards: List<AchievementRewardView>, val onboarding: OnboardingRewardView = OnboardingRewardView())
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable data class ProgressionRewardClaim(val requestId: String, val ownerPublicId: String, val kind: String,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val achievementId: String? = null,
@@ -44,7 +46,7 @@ fun validateRewardClaim(value: ProgressionRewardClaim) {
     if (id.version()!=4 || id.variant()!=2 || value.requestId!=id.toString()
         || !Regex("^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$").matches(value.ownerPublicId)) invalidRewardClaim()
     when(value.kind) {
-        "daily" -> if(value.achievementId!=null || value.level!=null) invalidRewardClaim()
+        "daily", "onboarding" -> if(value.achievementId!=null || value.level!=null) invalidRewardClaim()
         "achievement" -> if(value.achievementId !in GameRewards.tiers || value.level == null
             || value.level !in 1..GameRewards.tiers.getValue(value.achievementId!!).size) invalidRewardClaim()
         else -> invalidRewardClaim()
@@ -53,7 +55,7 @@ fun validateRewardClaim(value: ProgressionRewardClaim) {
 fun decodeRewardClaim(input: JsonElement): ProgressionRewardClaim {
     val obj = input as? JsonObject ?: invalidRewardClaim()
     val kind = (obj["kind"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: invalidRewardClaim()
-    val keys = if (kind=="daily") setOf("requestId","ownerPublicId","kind") else if(kind=="achievement")
+    val keys = if (kind=="daily" || kind=="onboarding") setOf("requestId","ownerPublicId","kind") else if(kind=="achievement")
         setOf("requestId","ownerPublicId","kind","achievementId","level") else invalidRewardClaim()
     if(obj.keys != keys) invalidRewardClaim()
     for(key in keys-"level") if((obj[key] as? JsonPrimitive)?.isString!=true) invalidRewardClaim()
@@ -68,9 +70,12 @@ object ProgressionRewardRules {
     private val catalog = progressionRewardsJson.decodeFromString<ProgressionRewardsCatalog>(checkNotNull(ProgressionRewardRules::class.java
         .getResourceAsStream("/world/progression-rewards-catalog.json")).bufferedReader().use { it.readText() })
     val daily = catalog.daily
+    val onboarding = catalog.onboarding
     val achievementPearls = catalog.achievementPearls
     init {
         require(catalog.version==4 && catalog.currencyScale==10 && catalog.pearlScale==50 && daily.size==7 && catalog.dailyMinimumHours==20L)
+        // One visible pearl is two integral wallet units; this is 100 visible pearls.
+        require(onboarding == ProgressionReward(coins=1_000,pearls=200))
         require(catalog.dailyByHomeLevel.keys==setOf("2","3","4","5"))
         require(achievementPearls.keys==GameRewards.tiers.keys && achievementPearls.all { (id,values) ->
             values.size==GameRewards.tiers.getValue(id).size && values.all { it in 0L..ECONOMY_MAX_PEARLS } })

@@ -46,6 +46,47 @@ test("v4 catalog grants 1500 visible lifetime achievement pearls and 500 visible
   ]);
 });
 
+test("onboarding catalog credits exactly 100 visible pearls and 1000 coins with one account fence", () => {
+  const p = player(), now = at("2026-10-18T00:00:00Z");
+  const reward = rules.progressionRewardsCatalog.onboarding;
+  assert.deepEqual(reward, { coins: 1000, pearls: 200, items: {} });
+  assert.equal(money.pearlDisplayAmount(reward.pearls), 100);
+  const opened = rewards.getDevProgressionRewards(p.token, now), before = economy.getDevEconomy(p.token, now);
+  assert.equal(opened.onboarding.claimedAt, null);
+  const command = request(p, { kind: "onboarding" }), paid = claim(p, command, now);
+  assert.deepEqual(paid.claim.reward, reward); assert.equal(paid.claim.kind, "onboarding");
+  assert.equal(paid.economy.wallet.coins, before.wallet.coins + reward.coins);
+  assert.equal(paid.economy.wallet.pearls, before.wallet.pearls + reward.pearls);
+  assert.deepEqual(paid.economy.inventory, before.inventory);
+  assert.equal(paid.acceptedRevision, before.revision + 1);
+  assert.deepEqual(paid.rewards.daily, opened.daily);
+  assert.equal(paid.rewards.onboarding.claimedAt, paid.claim.claimedAt);
+  const replay = claim(p, command, now + 5000);
+  assert.equal(replay.replayed, true); assert.deepEqual(replay.claim, paid.claim);
+  assert.deepEqual(replay.economy.wallet, paid.economy.wallet);
+  assert.throws(() => claim(p, request(p, { kind: "onboarding" }), now + 6000), error => error.code === "ONBOARDING_REWARD_CLAIMED");
+  assert.throws(() => claim(p, { ...command, kind: "daily" }, now + 6000), error => error.code === "REWARD_REQUEST_CONFLICT");
+});
+
+test("onboarding wallet failure consumes neither completion nor UUID and full pantry accepts currency only", () => {
+  const p = player(), now = at("2026-10-18T00:00:00Z");
+  rewards.getDevProgressionRewards(p.token, now);
+  const value = profile(p), command = request(p, { kind: "onboarding" });
+  value.state.wallet.pearls = money.ECONOMY_MAX_PEARLS - 100;
+  const before = economy.getDevEconomy(p.token, now);
+  assert.throws(() => claim(p, command, now), error => error.code === "ECONOMY_CAPACITY");
+  assert.deepEqual(economy.getDevEconomy(p.token, now).wallet, before.wallet);
+  assert.equal(value.revision, before.revision);
+  assert.equal(rewards.getDevProgressionRewards(p.token, now).onboarding.claimedAt, null);
+  value.state.wallet.pearls = 0;
+  value.state.inventory = { wood: economy.getDevEconomy(p.token, now).storage.capacity };
+  const paid = claim(p, command, now + 1000);
+  assert.equal(paid.replayed, false); assert.equal(paid.economy.wallet.pearls, 200);
+  assert.equal(paid.economy.storage.used, paid.economy.storage.capacity);
+  value.state.inventory.wood -= 3;
+  assert.equal(claim(p, request(p), now + 2000).claim.kind, "daily", "separate daily remains available after freeing room");
+});
+
 test("completed home tiers scale only coins and keep compact gifts within unlocked production", () => {
   const base = rules.dailyRewardCycle(1);
   for (let home = 1; home <= 5; home++) {

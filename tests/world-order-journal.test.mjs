@@ -160,7 +160,7 @@ test("changing the customer keeps the contextual heading and readiness in sync w
     const { ResidentOrderBoard: Board } = await runtime.ssrLoadModule("/features/economy/ui/orders/world-resident-order-board.tsx");
     const economy = controller(); economy.snapshot.tutorialOrder = newTutorialOrder(economy.snapshot.catalog);
     economy.snapshot.inventory = { ...tutorialResidentOrder(economy.snapshot).items };
-    const journal = () => { hooks.frame("journal"); return Journal({ economy }); };
+    const journal = (extra = {}) => { hooks.frame("journal"); return Journal({ economy, ...extra }); };
     const board = tree => { hooks.frame("board"); return Board(elements(tree).find(entry => entry.type === Board).props); };
     let tree = journal();
     let boardTree = board(tree);
@@ -173,6 +173,20 @@ test("changing the customer keeps the contextual heading and readiness in sync w
     filter("all"); tree = journal(); boardTree = board(tree);
     assert.ok(elements(boardTree).some(entry => entry.props["data-order-chapter"] === "progression"));
     assert.ok(elements(tree).some(entry => entry.type === "h2" && entry.props.children === "Все просьбы"));
+    const introId = tutorialResidentOrder(economy.snapshot).id;
+    const previousCard = elements(boardTree).find(entry => entry.props.offer?.id !== introId && entry.props.onComplete);
+    assert.ok(previousCard);
+    const calls = [];
+    economy.act = (...args) => { calls.push(args); return true; };
+    tree = journal({ tutorialOnly: true }); boardTree = board(tree);
+    const lessonCards = elements(boardTree).filter(entry => entry.props.offer && entry.props.onComplete);
+    assert.equal(lessonCards.length, 1);
+    assert.equal(lessonCards[0].props.offer.id, introId);
+    assert.equal(previousCard.props.onComplete(previousCard.props.offer), false, "a detached ordinary handover cannot act after the main lesson resumes");
+    previousCard.props.onReplace(previousCard.props.offer);
+    assert.deepEqual(calls, []);
+    assert.equal(lessonCards[0].props.onComplete(lessonCards[0].props.offer), true);
+    assert.deepEqual(calls, [["complete_resident_order", introId, 1, 0]], "the actual pinned tutorial request remains usable");
   } finally { await runtime.close(); }
 });
 
@@ -194,4 +208,46 @@ test("the journal labels one introductory order then a separate short house-two 
   const card = ResidentOrderCard({ economy, offer: first });
   elements(card).find(node => node.props["data-guide-order-submit"] !== undefined).props.onClick();
   assert.deepEqual(calls, [["complete_resident_order", first.id, 1, 0]]);
+});
+
+test("the active main course shows only its one order and restores all later requests on exit", () => {
+  const economy = controller({ buildings: { home: 1, warehouse: 1, garden: 1 }, tutorialOrder: newTutorialOrder(economyCatalog) });
+  const state = economy.snapshot;
+  state.inventory = { berries: 1, wood: 20, stone: 20 };
+  const before = structuredClone(state);
+  let html = render(WorldOrderJournal, { economy, tutorialOnly: true, residentId: "plesk" });
+  assert.match(html, /Учебный заказ · знакомство/);
+  assert.equal((html.match(/data-order-id=/g) ?? []).length, 1, "the main lesson cannot be filtered away by an earlier customer selection");
+  assert.match(html, /Можно сдать: 1\. Всего заказов: 1\./);
+  assert.doesNotMatch(html, /data-stage-order|data-order-filter|data-order-chapter="repeatable"|Заменить заказ:|Обновление и замена/);
+  assert.deepEqual(orderJournalSummary(state, now, undefined, true), { total: 1, ready: 1 });
+  assert.deepEqual(state, before, "hiding requests does not change their saved availability");
+
+  state.tutorialOrder = { ...state.tutorialOrder, completed: true, step: 1 };
+  const completed = structuredClone(state);
+  html = render(WorldOrderJournal, { economy, tutorialOnly: true });
+  assert.match(html, /Учебный заказ выполнен\. Продолжай обучение/);
+  assert.match(html, /data-order-tutorial-result/);
+  assert.doesNotMatch(html, /data-order-id=|data-stage-order|data-guide-order-submit|data-order-filter|data-order-chapter="repeatable"/);
+  assert.deepEqual(orderJournalSummary(state, now, undefined, true), { total: 0, ready: 0 });
+  html = render(WorldOrderJournal, { economy, tutorialOnly: false });
+  assert.match(html, /data-stage-order="true"/);
+  assert.match(html, /data-order-chapter="repeatable"/);
+  assert.match(html, /data-guide-order-submit/);
+  assert.ok(orderJournalSummary(state, now).total > 1);
+  assert.deepEqual(state, completed, "pausing, skipping or completing the lesson reveals the same requests without awarding anything");
+});
+
+test("main-course order isolation preserves uncertain actions and recovery", () => {
+  const economy = controller({ buildings: { home: 1, warehouse: 1, garden: 1 }, tutorialOrder: newTutorialOrder(economyCatalog), inventory: { berries: 1 } }, { uncertain: true });
+  let html = render(WorldOrderJournal, { economy, tutorialOnly: true });
+  assert.match(html, /Проверяем последнее действие/);
+  assert.match(html, /Проверить результат/);
+  assert.match(html, /data-tutorial-order="true"/);
+  assert.match(html, /data-guide-order-submit="true" disabled=""/);
+  assert.doesNotMatch(html, /data-order-chapter="repeatable"/);
+  economy.uncertain = false; economy.error = "Связь прервалась";
+  html = render(WorldOrderJournal, { economy, tutorialOnly: true });
+  assert.match(html, /Связь прервалась|Попробовать ещё раз/);
+  assert.match(html, /data-tutorial-order="true"/);
 });

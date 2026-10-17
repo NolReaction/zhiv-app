@@ -51,6 +51,36 @@ test("a real harvest preserves basket position through pickup, walking, collecti
   }
 });
 
+test("a long active lesson keeps the real hero awake for the first authorized berry collection", () => {
+  const scene = withPlacedBushArtwork(previewWorldScene(TILED_WORLD, { home: 1 }));
+  const session = connectForestSession(undefined, scene, "world", 0, 0, () => {}), state = session.state;
+  session.release();
+  const options = { ...calm, autoLife: true, tutorialActive: true }, garden = state.life.garden;
+  const crop = { jobId: "intro-raspberries", itemId: "berries", startedAt: new Date(0).toISOString(),
+    finishesAt: new Date(600_000).toISOString() };
+  syncForestGardenProduction(garden, crop, 0);
+  for (let tick = 0; tick < 2400; tick++) {
+    advanceForestDirector(state, .1, options);
+    const motion = clearingActivityFrame(state.clearing);
+    assert.equal(motion.homeSleeping, false);
+    assert.equal(["sleep", "drowsy", "yawn"].includes(motion.pose), false);
+  }
+  assert.ok(state.clearing.idleSeconds >= 180, "reading a lesson does not simulate user movement or refresh inactivity");
+  syncForestGardenProduction(garden, { ...crop, collection: { batchId: "intro-batch",
+    startedAt: new Date(600_000).toISOString(), finishesAt: new Date(608_000).toISOString() } }, 600_000);
+  const request = { requestId: 1, jobId: crop.jobId };
+  requestForestGardenHarvest(state, request, options);
+  assert.equal(garden.harvestEvent?.status, "started", "the real collection does not fall back because the hero slept");
+  const phases = new Set();
+  for (let tick = 0; tick < 4800 && garden.harvestEvent?.status !== "completed"; tick++) {
+    advanceForestDirector(state, .025, options);
+    if (garden.routine) phases.add(garden.routine.phase);
+  }
+  assert.deepEqual(garden.harvestEvent, { ...request, status: "completed" });
+  for (const phase of ["take-basket", "approach-bush", "collect", "return-basket", "deposit"])
+    assert.ok(phases.has(phase), `the first tutorial crop visibly performs ${phase}`);
+});
+
 test("one authorized mixed harvest makes one basket trip and emits one completion for the exact batch", () => {
   const scene = withPlacedBushArtwork(previewWorldScene(TILED_WORLD, { home: 5 }));
   const session = connectForestSession(undefined, scene, "world", 60_000, 0, () => {}), state = session.state;

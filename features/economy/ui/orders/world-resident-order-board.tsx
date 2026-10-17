@@ -213,23 +213,23 @@ export function ResidentOrderReplacement({ economy, quote, offer, headingRef, on
 }
 
 type Attempt = { owner: string; revision: number; offerId: string; action: "complete_resident_order" | "replace_resident_order"; coins: number; completed: number; tutorialStep: number; stageHome: number; stageStep: number; completionRewards: Record<string, number> };
-export function ResidentOrderBoard({ economy, residentId, onFilterChange, ...navigation }: OrderNavigation & { economy: ReadyEconomy; residentId?: ResidentId; onFilterChange?: (residentId?: ResidentId) => void }) {
+export function ResidentOrderBoard({ economy, residentId, tutorialOnly = false, onFilterChange, ...navigation }: OrderNavigation & { economy: ReadyEconomy; residentId?: ResidentId; tutorialOnly?: boolean; onFilterChange?: (residentId?: ResidentId) => void }) {
   const [filter, setFilter] = useState<Filter>(residentId ?? "all");
   const [quote, setQuote] = useState<ResidentOrderQuote | null>(null);
   const [attempt, setAttempt] = useState<Attempt | null>(null);
-  const latest = useRef({ economy, quote });
-  useLayoutEffect(() => { latest.current = { economy, quote }; }, [economy, quote]);
+  const latest = useRef({ economy, quote, tutorialOnly });
+  useLayoutEffect(() => { latest.current = { economy, quote, tutorialOnly }; }, [economy, quote, tutorialOnly]);
   const sent = useRef(false), heading = useRef<HTMLHeadingElement>(null), container = useRef<HTMLDivElement>(null), success = useRef<HTMLParagraphElement>(null);
   const board = residentOrderBoard(economy.snapshot, economy.now, economy.snapshot.catalog);
   const tutorial = tutorialOrderProgress(economy.snapshot).ingredientsClaimed ? tutorialResidentOrder(economy.snapshot) : null;
-  const tutorialVisible = Boolean(tutorial && (filter === "all" || filter === tutorial.residentId));
-  const stage = stageResidentOrder(economy.snapshot);
+  const tutorialVisible = Boolean(tutorial && (tutorialOnly || filter === "all" || filter === tutorial.residentId));
+  const stage = tutorialOnly ? null : stageResidentOrder(economy.snapshot);
   const stageVisible = Boolean(stage && (filter === "all" || filter === stage.residentId));
   const permanentOffers = [tutorial, stage].filter((entry): entry is ResidentOrderOffer => Boolean(entry));
-  const offers = [...permanentOffers, ...board.offers];
+  const offers = [...permanentOffers, ...(tutorialOnly ? [] : board.offers)];
   const config = economy.snapshot.catalog.food!.orders;
-  const matching = board.offers.filter(offer => filter === "all" || offer.residentId === filter);
-  const quoteOffer = quote && board.offers.find(offer => offer.id === quote.offerId);
+  const matching = tutorialOnly ? [] : board.offers.filter(offer => filter === "all" || offer.residentId === filter);
+  const quoteOffer = tutorialOnly || !quote ? null : board.offers.find(offer => offer.id === quote.offerId);
   const confirming = Boolean(quoteOffer);
   const headingId = useId();
   const changeFilter = (value: Filter) => { setFilter(value); setQuote(null); onFilterChange?.(value === "all" ? undefined : value); };
@@ -243,6 +243,7 @@ export function ResidentOrderBoard({ economy, residentId, onFilterChange, ...nav
   const send = (offer: ResidentOrderOffer, action: Attempt["action"], price: number, selection?: FishSelection): boolean => {
     const current = latest.current.economy;
     if (sent.current || locked(current)) return false;
+    if (latest.current.tutorialOnly && (!isTutorialOrderId(offer.id, current.snapshot.catalog) || action !== "complete_resident_order")) return false;
     const currentBoard = residentOrderBoard(current.snapshot, current.now, current.snapshot.catalog);
     const active: BoardOrderOffer | null | undefined = isTutorialOrderId(offer.id, current.snapshot.catalog) && action === "complete_resident_order" && tutorialOrderProgress(current.snapshot).ingredientsClaimed
       ? tutorialResidentOrder(current.snapshot) : isStageOrderId(offer.id, current.snapshot.catalog) && action === "complete_resident_order"
@@ -266,7 +267,7 @@ export function ResidentOrderBoard({ economy, residentId, onFilterChange, ...nav
   };
   const replace = (offer: ResidentOrderOffer) => {
     const current = latest.current.economy;
-    if (locked(current) || sent.current) return;
+    if (latest.current.tutorialOnly || locked(current) || sent.current) return;
     const fresh = residentOrderBoard(current.snapshot, current.now, current.snapshot.catalog);
     if (!fresh.offers.some(entry => entry.id === offer.id) || fresh.replacementPricePearls > current.snapshot.wallet.pearls) return;
     if (fresh.replacementPricePearls === 0) send(offer, "replace_resident_order", 0);
@@ -302,9 +303,9 @@ export function ResidentOrderBoard({ economy, residentId, onFilterChange, ...nav
   const acceptedStage = attempt ? stageOrderProgress(economy.snapshot, attempt.stageHome) : null;
   const nextStageWait = acceptedStage?.availableAt ? remaining(acceptedStage.availableAt, economy.now) : 0;
   return <div className={styles.board} ref={container}>
-    <div className={styles.filters} role="group" aria-label="Заказчик">{(["all", "plesk", "builder"] as const).map(value => <button key={value} type="button" data-order-filter={value} aria-pressed={filter === value} onClick={() => changeFilter(value)}>{value === "all" ? <Mail size={15} aria-hidden="true" /> : value === "plesk" ? <Fish size={15} aria-hidden="true" /> : <Hammer size={15} aria-hidden="true" />}{value === "all" ? "Все" : residents[value].name}<span>{value === "all" ? offers.length : offers.filter(offer => offer.residentId === value).length}</span></button>)}</div>
-    <p className={styles.lore}>{filter === "all" ? "Помогай соседям, получай монеты и готовь припасы к новым просьбам." : residents[filter].role}</p>
-    {confirmed && <p className={styles.success} role="status" ref={success} tabIndex={-1}><Check size={15} aria-hidden="true" /><span>{isTutorialOrderId(attempt.offerId, economy.snapshot.catalog) ? `Учебный заказ выполнен · +${number(attempt.coins)} монет. Теперь можно выполнять просьбы для улучшения дома.`
+    {!tutorialOnly && <><div className={styles.filters} role="group" aria-label="Заказчик">{(["all", "plesk", "builder"] as const).map(value => <button key={value} type="button" data-order-filter={value} aria-pressed={filter === value} onClick={() => changeFilter(value)}>{value === "all" ? <Mail size={15} aria-hidden="true" /> : value === "plesk" ? <Fish size={15} aria-hidden="true" /> : <Hammer size={15} aria-hidden="true" />}{value === "all" ? "Все" : residents[value].name}<span>{value === "all" ? offers.length : offers.filter(offer => offer.residentId === value).length}</span></button>)}</div>
+    <p className={styles.lore}>{filter === "all" ? "Помогай соседям, получай монеты и готовь припасы к новым просьбам." : residents[filter].role}</p></>}
+    {confirmed && <p className={styles.success} role="status" ref={success} tabIndex={-1}><Check size={15} aria-hidden="true" /><span>{isTutorialOrderId(attempt.offerId, economy.snapshot.catalog) ? `Учебный заказ выполнен · +${number(attempt.coins)} монет. ${tutorialOnly ? "Продолжай обучение, к остальным просьбам можно вернуться позже." : "Теперь можно выполнять просьбы для улучшения дома."}`
       : isStageOrderId(attempt.offerId, economy.snapshot.catalog) ? `Заказ этапа выполнен · +${number(attempt.coins)} монет. ${acceptedStage?.completed ? "Все просьбы этого этапа выполнены." : nextStageWait > 0 ? `Следующая поставка через ${waiting(nextStageWait)}.` : "Следующая просьба уже на доске."}${Object.entries(attempt.completionRewards).map(([id, count]) => ` Получено: ${itemName(economy.snapshot, id)} × ${number(count)}.`).join("")}`
       : attempt.action === "complete_resident_order" ? `Заказ выполнен · +${number(attempt.coins)} монет. Новая просьба уже на доске.` : "Заказ заменён. Новая просьба уже на доске."}</span><button type="button" aria-label="Скрыть результат заказа" onClick={() => setAttempt(null)}><X size={14} aria-hidden="true" /></button></p>}
     {(tutorialVisible || stageVisible) && <section className={styles.chapter} data-order-chapter="progression" aria-labelledby={`${headingId}-progression`}>
@@ -314,15 +315,16 @@ export function ResidentOrderBoard({ economy, residentId, onFilterChange, ...nav
         {stageVisible && stage && <ResidentOrderCard economy={economy} offer={stage} {...navigation} onComplete={(entry, selection) => send(entry, "complete_resident_order", 0, selection)} />}
       </div>
     </section>}
-    <section className={styles.chapter} data-order-chapter="repeatable" aria-labelledby={headingId}>
+    {!tutorialOnly && <section className={styles.chapter} data-order-chapter="repeatable" aria-labelledby={headingId}>
       <header className={styles.chapterHeading}><span className={styles.chapterNumber} aria-hidden="true">{tutorialVisible || stageVisible ? "II" : "I"}</span><div><h3 id={headingId}>Просьбы жителей</h3><p>После сдачи появится новая просьба</p></div><span className={styles.chapterCount}>{matching.length}</span></header>
       <div className={styles.boardSummary}><p><Clock3 size={13} aria-hidden="true" />Обновление через <strong>{waiting(remaining(board.refreshAt, economy.now))}</strong></p><p>Бесплатных замен: <strong>{board.freeReplacementsRemaining} / {config.freeReplacements}</strong></p></div>
       {board.replacementPricePearls > economy.snapshot.wallet.pearls && <p className={styles.warning}>На замену не хватает {formatPearls(board.replacementPricePearls - economy.snapshot.wallet.pearls)} жемчужин.</p>}
       <div className={styles.orders}>{matching.map(offer => <ResidentOrderCard key={offer.id} economy={economy} offer={offer} {...navigation} onComplete={(entry, selection) => send(entry, "complete_resident_order", 0, selection)} onReplace={replace}
         confirmation={quoteOffer?.id === offer.id && quote ? <ResidentOrderReplacement economy={economy} quote={quote} offer={offer} headingRef={heading} onCancel={cancel} onConfirm={confirm} /> : undefined} />)}</div>
       {!matching.length && <p className={styles.repeatableEmpty}>У этого жителя пока нет новых просьб.</p>}
-    </section>
-    {!matching.length && !tutorialVisible && !stageVisible && <p className={styles.empty}><ClipboardList size={20} aria-hidden="true" />{offers.length ? "Сейчас просьб от этого жителя нет. Посмотрите все заказы." : "Просьбы жителей пока недоступны."}{offers.length > 0 && <button type="button" onClick={() => changeFilter("all")}>Все заказы</button>}</p>}
-    <details className={styles.rules}><summary>Обновление и замена просьб</summary><p className={styles.footnote}>После сдачи обычной просьбы новый заказ появится сразу. Ещё {board.freeReplacementsRemaining} замен бесплатно, затем {formatPearls(config.replacementPricePearls)} жемчужин за замену. Бесплатные замены восстановятся через {waiting(remaining(board.replacementsResetAt, economy.now))}.</p></details>
+    </section>}
+    {tutorialOnly && !tutorial && !confirmed && <p className={styles.empty} role="status" data-order-tutorial-result>{tutorialOrderProgress(economy.snapshot).completed ? "Учебный заказ выполнен. Продолжай обучение, к остальным просьбам можно вернуться позже." : "Здесь появится учебный заказ. Продолжай по подсказке."}</p>}
+    {!tutorialOnly && !matching.length && !tutorialVisible && !stageVisible && <p className={styles.empty}><ClipboardList size={20} aria-hidden="true" />{offers.length ? "Сейчас просьб от этого жителя нет. Посмотрите все заказы." : "Просьбы жителей пока недоступны."}{offers.length > 0 && <button type="button" onClick={() => changeFilter("all")}>Все заказы</button>}</p>}
+    {!tutorialOnly && <details className={styles.rules}><summary>Обновление и замена просьб</summary><p className={styles.footnote}>После сдачи обычной просьбы новый заказ появится сразу. Ещё {board.freeReplacementsRemaining} замен бесплатно, затем {formatPearls(config.replacementPricePearls)} жемчужин за замену. Бесплатные замены восстановятся через {waiting(remaining(board.replacementsResetAt, economy.now))}.</p></details>}
   </div>;
 }

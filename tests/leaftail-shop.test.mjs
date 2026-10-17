@@ -144,7 +144,7 @@ test('purchase UI revalidates the displayed account revision, cycle, funds, onli
   assert.match(leaftailPurchaseReason({ ...ready, now: midnight }, q, true), /Поставка изменилась/);
   assert.match(leaftailPurchaseReason({ ...ready, snapshot: { ...state, wallet: { ...state.wallet, coins: 0 } } }, q, true), /Не хватает/);
   assert.match(leaftailPurchaseReason({ ...ready, snapshot: { ...state, storage: { ...state.storage, available: 0 } } }, q, true), /мест[оа]/);
-  const html = renderToStaticMarkup(React.createElement(WorldLeaftailMarket, { economy: ready, isOnline: true }));
+  const html = renderToStaticMarkup(React.createElement(WorldLeaftailMarket, { economy: ready, isOnline: true, introduced: true }));
   assert.equal((html.match(/data-leaftail-item=/g) ?? []).length, 3); assert.match(html, /03:00 МСК/);
   assert.match(html, /role="tab"[^>]*aria-selected="true"[^>]*>Находки/);
   assert.match(html, />Припасы<\/button>/);
@@ -158,13 +158,24 @@ test('the travelling merchant shows no stock, tabs, purchase copy or delivery be
       notice: "Покупка у Листохвоста отправлена в кладовую", act() { assert.fail("an absent merchant cannot buy anything"); } };
     const html = renderToStaticMarkup(React.createElement(WorldLeaftailMarket, { economy, isOnline: true }));
     assert.match(html, /data-leaftail-away/);
-    assert.match(html, /Листохвост в путешествии\. Вернётся, когда дом достигнет 3-го уровня\./);
-    assert.doesNotMatch(html, /data-leaftail-item|data-leaftail-purchase|role="tab|Купить|покупк|Собрал кое-что|Ваши монеты|поставка|поставку|Поставка|Припасы|Находки|2400/);
+    assert.match(html, /Путник в дороге\. Он вернётся, когда дом достигнет 3-го уровня\./);
+    assert.doesNotMatch(html, /Листохвост|data-leaftail-item|data-leaftail-purchase|role="tab|Купить|покупк|Собрал кое-что|Ваши монеты|поставка|поставку|Поставка|Припасы|Находки|2400/);
     assert.deepEqual(state, original);
     assert.match(leaftailPurchaseReason(controller(state), quote(state), true), /Листохвост в путешествии/);
     assert.throws(() => buy(p, "wood"), { code: "ECONOMY_HOME_REQUIRED" });
     assert.deepEqual(read(p), original, "the existing command fence also rejects supply bundles");
   }
+});
+
+test('an eligible house does not expose the merchant identity, stock or actions before his physical arrival', () => {
+  const p = player(), state = read(p), original = structuredClone(state);
+  const economy = { ...controller(state), error: "Проверяем покупку", uncertain: true,
+    notice: "Покупка у Листохвоста отправлена в кладовую", act() { assert.fail("the pending arrival cannot buy anything"); } };
+  const html = renderToStaticMarkup(React.createElement(WorldLeaftailMarket, { economy, isOnline: true, introduced: false }));
+  assert.match(html, /Домик путника/);
+  assert.match(html, /Путник ещё в дороге\. Дождитесь прибытия\./);
+  assert.doesNotMatch(html, /Листохвост|<button|<canvas|data-leaftail-item|data-leaftail-purchase|role="tab|2400|Купить|покупк|Ваши монеты|Находки|Припасы/);
+  assert.deepEqual(state, original);
 });
 
 
@@ -174,13 +185,54 @@ test('a schema-valid cached far-future delivery cannot crash the merchant or rep
   assert.equal(model.economyViewSchema.safeParse(state).success, true);
   const savedStock = structuredClone(state.leaftailShop);
   const unconfirmed = { ...controller(state), snapshotConfirmed: false };
-  const html = renderToStaticMarkup(React.createElement(WorldLeaftailMarket, { economy: unconfirmed, isOnline: true }));
+  const html = renderToStaticMarkup(React.createElement(WorldLeaftailMarket, { economy: unconfirmed, isOnline: true, introduced: true }));
   assert.match(html, /Проверяем время новой поставки/);
   assert.equal((html.match(/disabled=""/g) ?? []).length, 3);
   assert.equal(shop.leaftailShopView(state, now).cycle, Number.MAX_SAFE_INTEGER);
   assert.equal(shop.leaftailShopView(state, now).offers.find(item => item.itemId === 'living_resin').remaining, 0);
   assert.match(leaftailPurchaseReason(unconfirmed, quote(state), true), /подтверждения/);
   assert.deepEqual(state.leaftailShop, savedStock);
+});
+
+test('retained stock and confirmation callbacks cannot buy after the current resident introduction is withdrawn', async () => {
+  const hooksId = 'virtual:leaftail-introduction-hooks';
+  const runtime = await createServer({ appType: 'custom', configFile: false, root, cacheDir: `/tmp/zhiv-leaftail-quote-hooks-${process.pid}`,
+    resolve: { alias: { '@': root } }, server: { middlewareMode: true, hmr: false, ws: false },
+    plugins: [{ name: 'leaftail-introduction-hooks', enforce: 'pre',
+      resolveId(id) { if (id === hooksId) return `\0${id}`; },
+      load(id) { if (id === `\0${hooksId}`) return `
+        let slots = [], cursor = 0;
+        export function render() { cursor = 0; }
+        export function useRef(initial) { const i = cursor++; return slots[i] ??= { current: initial }; }
+        export function useState(initial) { const slot = useRef(initial); return [slot.current, value => { slot.current = typeof value === 'function' ? value(slot.current) : value; }]; }
+        export function useId() { return useRef('leaftail-quote').current; }
+        export function useEffect() {}
+        export function useLayoutEffect(effect) { effect(); }
+      `; },
+      transform(source, id) { if (id.endsWith('/features/economy/ui/market/world-leaftail-market.tsx')) return source.replace('from "react";', `from "${hooksId}";`); },
+    }] });
+  try {
+    const hooks = await runtime.ssrLoadModule(hooksId);
+    const { WorldLeaftailMarket: Market } = await runtime.ssrLoadModule('/features/economy/ui/market/world-leaftail-market.tsx');
+    const p = player(), calls = [], economy = { ...controller(read(p)), act: (...args) => { calls.push(args); return true; } };
+    const render = introduced => {
+      hooks.render(); const tree = Market({ economy, isOnline: true, introduced }), nodes = [];
+      const visit = element => { if (React.isValidElement(element)) { nodes.push(element); React.Children.forEach(element.props.children, visit); } };
+      visit(tree); return { tree, nodes };
+    };
+    const purchase = render(true).nodes.find(element => element.props['data-leaftail-purchase'] === 'living_resin');
+    purchase.props.onClick();
+    const confirm = render(true).nodes.find(element => element.type === 'button' && element.props.children?.[0] === 'Подтвердить');
+    assert.ok(confirm, 'a deliberate item selection opens the real quote confirmation');
+    const hidden = render(false);
+    assert.doesNotMatch(renderToStaticMarkup(hidden.tree), /Листохвост|<button|data-leaftail-item/);
+    purchase.props.onClick(); confirm.props.onClick();
+    assert.deepEqual(calls, [], 'neither a retained stock button nor its quote can act after the introduction closes');
+    const restored = render(true).nodes.find(element => element.type === 'button' && element.props.children?.[0] === 'Подтвердить');
+    restored.props.onClick(); restored.props.onClick();
+    const q = quote(economy.snapshot);
+    assert.deepEqual(calls, [['buy_leaftail_item', q.targetId, 1, q.price]], 'the introduced merchant still accepts one ordinary confirmed purchase');
+  } finally { await runtime.close(); }
 });
 
 

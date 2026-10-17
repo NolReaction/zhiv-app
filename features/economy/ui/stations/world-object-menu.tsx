@@ -10,6 +10,7 @@ import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import type { MapObjectSelection, WorldPlace } from "@/features/world/scene/map-engine";
 import type { WorldHelpContext } from "@/features/world/ui/help/world-help-types";
 import { economyLocalSellPrice, economyLocalSaleMinimumQuantity, economyLocalSaleLimit } from "@/features/economy/domain/local-sale";
+import { canStartTutorialWorkshop } from "@/features/economy/domain/workshop-starter";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import { worldDuration, worldJobProgress, worldMenuDimensions, worldMenuPosition, worldStableMenuPosition, worldPlaceForStation, worldRequirements, worldStations, type WorldMenuBounds, type WorldRecipe } from "@/features/economy/ui/shared/world-stations";
 import { locked, type ReadyEconomy } from "@/features/economy/sync/controller-state";
@@ -30,6 +31,10 @@ import styles from "./world-object-menu.module.css";
 
 export type WorldObjectMenuProps = {
   guide?: ReactNode;
+  /** The active main workshop lesson supplies the first construction button. */
+  tutorialWorkshop?: boolean;
+  /** Confirmed house access and the completed introduction of this account. */
+  leaftailAvailable?: boolean;
   guideRoot?: RefObject<HTMLElement | null>;
   selection: MapObjectSelection;
   economy: EconomyController;
@@ -109,7 +114,7 @@ export function WorldObjectSale({ economy, itemId, onCollapse }: { economy: Read
   </section>;
 }
 
-function ObjectMenuBody({ guide, guideRoot: guideRootRef, selection, economy, isOnline, onClose, onBack, onReturnFocus, bounds, onNavigate, onExplore, onOpenPantry, initialStationId, initialRecipeId, constructionGoal, onOpenGoal, onOpenHelp, onHelpContextChange }: WorldObjectMenuProps) {
+function ObjectMenuBody({ guide, tutorialWorkshop = false, leaftailAvailable = false, guideRoot: guideRootRef, selection, economy, isOnline, onClose, onBack, onReturnFocus, bounds, onNavigate, onExplore, onOpenPantry, initialStationId, initialRecipeId, constructionGoal, onOpenGoal, onOpenHelp, onHelpContextChange }: WorldObjectMenuProps) {
   const collection = useGardenCollection();
   const seenHarvest = useRef(collection?.request?.requestId);
   useEffect(() => {
@@ -118,6 +123,9 @@ function ObjectMenuBody({ guide, guideRoot: guideRootRef, selection, economy, is
     if (fresh && selection.place === "garden" && collection?.phase === "walking") onClose();
   }, [collection?.request, collection?.phase, selection.place, onClose]);
   const definition = worldStations[selection.place] ?? { label: selection.objectId, stationIds: [] };
+  const unknownMerchant = selection.place === "leaftail-caravan" && !leaftailAvailable;
+  const placeLabel = unknownMerchant ? "Домик путника" : definition.label;
+  const placeStatus = unknownMerchant ? "Пока не знакомы" : definition.status;
   const initialStation = initialStationId && definition.stationIds.includes(initialStationId) ? initialStationId : definition.stationIds[0] ?? "";
   const [stationId, setStationId] = useState(initialStation);
   const [recipeId, setRecipeId] = useState<string | null>(initialRecipeId ?? null);
@@ -148,6 +156,8 @@ function ObjectMenuBody({ guide, guideRoot: guideRootRef, selection, economy, is
   const focusedRecipeId = focusedRecipe?.id;
   const jobs = state?.jobs.filter(entry => ["production", "construction"].includes(entry.kind) && entry.targetId === stationId) ?? [];
   const construction = jobs.find(entry => entry.kind === "construction");
+  const guidedWorkshopSetup = tutorialWorkshop && stationId === "workshop" && !current && state
+    && canStartTutorialWorkshop(state);
   const needsSetup = (productionStationSupported(stationId) || stationId === "quarry") && (!current || Boolean(construction));
   const fitOverview = position.side === "sheet" && (needsSetup || ["garden", "dryer", "woodlot", "workshop", "kiln"].includes(stationId));
   const readyJobs = state ? jobs.filter(job => job.kind === "production" && worldJobProgress(state, job, economy.now).ready) : [];
@@ -229,19 +239,19 @@ function ObjectMenuBody({ guide, guideRoot: guideRootRef, selection, economy, is
             event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>("[role=tab]")[nextIndex]?.focus({ preventScroll: true });
           }}><StationIcon size={15} aria-hidden="true" /><span>{title}<small>{level ? `ур. ${level}` : "закрыто"}</small></span></button>;
         })}
-      </nav> : <><span className={styles.placeIcon}><Icon size={23} strokeWidth={1.8} aria-hidden="true" /></span><div><span>{definition.status ?? (definition.future ? "Будущая ветка" : stationId === "warehouse" ? "Запасы дома" : landmark ? current ? "Восстановлено" : "Требует восстановления" : current ? `Уровень ${current}` : "Пока не обустроено")}</span><h2 id={headingId}>{stationId === "warehouse" ? "Кладовая" : definition.label}</h2></div></>}
-      {state && !definition.future && target && <button type="button" data-guide-station-upgrade={stationId} className={styles.headerUpgrade} aria-haspopup="dialog" aria-label={`${construction ? "Ход улучшения" : landmark ? "Восстановить" : current ? stationId === "warehouse" ? "Расширить кладовую" : "Улучшить" : "Обустроить"}: ${current} → ${target.level} уровень`} onClick={openUpgrade}><Hammer size={17} aria-hidden="true" /><span>{construction ? "Стройка" : landmark ? "Восстановить" : current ? "Улучшить" : "Построить"}</span></button>}
+      </nav> : <><span className={styles.placeIcon}><Icon size={23} strokeWidth={1.8} aria-hidden="true" /></span><div><span>{placeStatus ?? (definition.future ? "Будущая ветка" : stationId === "warehouse" ? "Запасы дома" : landmark ? current ? "Восстановлено" : "Требует восстановления" : current ? `Уровень ${current}` : "Пока не обустроено")}</span><h2 id={headingId}>{stationId === "warehouse" ? "Кладовая" : placeLabel}</h2></div></>}
+      {state && !definition.future && target && !guidedWorkshopSetup && <button type="button" data-guide-station-upgrade={stationId} className={styles.headerUpgrade} aria-haspopup="dialog" aria-label={`${construction ? "Ход улучшения" : landmark ? "Восстановить" : current ? stationId === "warehouse" ? "Расширить кладовую" : "Улучшить" : "Обустроить"}: ${current} → ${target.level} уровень`} onClick={openUpgrade}><Hammer size={17} aria-hidden="true" /><span>{construction ? "Стройка" : landmark ? "Восстановить" : current ? "Улучшить" : "Построить"}</span></button>}
       <button type="button" className={styles.close} aria-label="Закрыть меню объекта" onClick={onClose}><X size={17} aria-hidden="true" /></button>
     </header>
     <div data-guide-coach-slot />
     {guide}
     <div ref={menuBody} className={styles.body} id={hasStationTabs ? `${headingId}-content` : undefined} role={hasStationTabs ? "tabpanel" : undefined} aria-labelledby={hasStationTabs ? `${headingId}-${stationId}` : undefined}>
       {state && !definition.future && selection.place !== "leaftail-caravan" && constructionGoal && onOpenGoal && <ConstructionGoalSummary state={state} constructionGoal={constructionGoal} onOpenGoal={onOpenGoal} navigation={navigation} compact />}
-      {selection.place === "leaftail-caravan" ? <WorldLeaftailMarket economy={economy} isOnline={isOnline !== false} /> : definition.future ? <>
+      {selection.place === "leaftail-caravan" ? <WorldLeaftailMarket economy={economy} isOnline={isOnline !== false} introduced={leaftailAvailable} /> : definition.future ? <>
         <div className={styles.future}><LockKeyhole size={22} aria-hidden="true" /><p>{definition.future}</p></div>
       </> : !state ? <div className={styles.loading}><RefreshCw size={17} aria-hidden="true" /><p>{economy.error ?? "Открываем ваше хозяйство…"}</p>{economy.error && <button type="button" className={styles.textButton} disabled={economy.busy || cooldown > 0} onClick={() => void economy.retry()}>{cooldown ? `Повторить через ${cooldown} с` : "Попробовать ещё раз"}</button>}</div> : <>
         {!economy.syncError && (economy.error || economy.uncertain) && <div className={styles.error} role="alert"><p>{economy.uncertain ? "Проверяем последнее действие. Новые заказы доступны после подтверждения." : economy.error}</p><button type="button" className={styles.textButton} disabled={economy.busy || cooldown > 0} onClick={() => void economy.retry()}><RefreshCw size={12} aria-hidden="true" />{cooldown ? `Повторить через ${cooldown} с` : economy.uncertain ? "Проверить результат" : "Повторить"}</button></div>}
-        {readyEconomy && needsSetup ? <WorldStationSetup economy={readyEconomy} stationId={stationId} onOpenConstruction={openUpgrade} onOpenPantry={openJobPantry} /> : <>
+        {readyEconomy && needsSetup ? !guidedWorkshopSetup && <WorldStationSetup economy={readyEconomy} stationId={stationId} onOpenConstruction={openUpgrade} onOpenPantry={openJobPantry} /> : <>
         {readyEconomy && construction && <Work economy={readyEconomy} job={construction} openPantry={openJobPantry} compact />}
         {readyEconomy && !productionStationSupported(stationId) && (readyJobs.length > 0 || runningJobs.length > 0) && <section className={styles.activeOrders} data-section-guide-target="workshop-queue" data-running-orders={runningJobs.length ? stationId : undefined} aria-label="Текущая работа">
           <h3>Сейчас <span>{readyJobs.length + runningJobs.length}</span></h3>

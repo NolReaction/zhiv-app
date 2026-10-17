@@ -98,6 +98,10 @@ export function DailyRewardsDialog({ ownerPublicId, economy, isOnline = true, on
   }, [open]);
   const entryPrompt = useRef<ReturnType<typeof createDailyRewardEntryPrompt> | null>(null);
   if (entryPrompt.current === null) { entryPrompt.current = createDailyRewardEntryPrompt(ownerPublicId, controller.readVersion); }
+  const refresh = controller.refresh;
+  // A world entry needs a fresh receipt even when another panel already owns
+  // this account's shared polling lifecycle.
+  useEffect(() => { if (isOnline) void refresh(); }, [ownerPublicId, isOnline, refresh]);
   useEffect(() => {
     if (open) entryPrompt.current?.dismiss();
     if (entryPrompt.current?.shouldOpen(controller, isOnline, autoPromptAllowed)) onOpenChange(true);

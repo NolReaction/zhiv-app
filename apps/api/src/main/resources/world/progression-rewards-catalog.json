@@ -1,6 +1,11 @@
 {
   "version": 4,
   "dailyMinimumHours": 20,
+  "onboarding": {
+    "coins": 1000,
+    "pearls": 200,
+    "items": {}
+  },
   "daily": [
     {
       "coins": 30,

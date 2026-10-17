@@ -65,3 +65,39 @@ test("cross-site wrong content-type forged gift and excessive bodies leave walle
   assert.deepEqual(economy.getDevEconomy(p.token).wallet, before.wallet);
   assert.equal((await (await GET(read())).json()).daily.step, 1);
 });
+
+test("intentional onboarding completion credits 100 visible pearls and 1000 coins once without consuming daily", async () => {
+  const p = player(), before = economy.getDevEconomy(p.token);
+  const request = { ...command(p), kind: "onboarding" };
+  for (let visit = 0; visit < 3; visit++) {
+    const preview = await (await GET(read())).json();
+    assert.deepEqual(preview.onboarding, { claimedAt: null });
+    assert.deepEqual(economy.getDevEconomy(p.token).wallet, before.wallet, "opening or restoring the game never awards old local completion");
+  }
+  const response = await POST(post(request)), first = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(api.gameRewardResultSchema.safeParse(first).success, true);
+  assert.deepEqual(first.claim.reward, { coins: 1000, pearls: 200, items: {} });
+  assert.equal(first.economy.wallet.coins - before.wallet.coins, 1000);
+  assert.equal(first.economy.wallet.pearls - before.wallet.pearls, 200);
+  assert.equal(first.rewards.onboarding.claimedAt, first.claim.claimedAt);
+  assert.equal(first.rewards.daily.claimable, true);
+  assert.equal(first.rewards.daily.step, 1);
+  const retry = await (await POST(post(request))).json();
+  assert.equal(retry.replayed, true); assert.deepEqual(retry.claim, first.claim);
+  assert.deepEqual(retry.economy.wallet, first.economy.wallet);
+  const duplicate = await POST(post({ ...request, requestId: crypto.randomUUID() }));
+  assert.equal(duplicate.status, 409); assert.equal((await duplicate.json()).code, "ONBOARDING_REWARD_CLAIMED");
+  assert.deepEqual(economy.getDevEconomy(p.token).wallet, first.economy.wallet);
+});
+
+test("onboarding reward trusts no client sums skipped states clocks or other owner", async () => {
+  const p = player(), before = economy.getDevEconomy(p.token), request = { ...command(p), kind: "onboarding" };
+  for (const extra of [{ reward: { coins: 100000 } }, { pearls: 100 }, { skipped: true }, { completed: true }, { now: 0 }, { achievementId: "explorer", level: 1 }]) {
+    assert.equal((await POST(post({ ...request, ...extra }))).status, 400);
+  }
+  const other = enterGame(identities.createDevIdentity("Друг", crypto.randomUUID()));
+  assert.equal((await POST(post({ ...request, ownerPublicId: other.me.user.publicId }))).status, 409);
+  assert.deepEqual(economy.getDevEconomy(p.token).wallet, before.wallet);
+  assert.equal((await (await GET(read())).json()).onboarding.claimedAt, null);
+});

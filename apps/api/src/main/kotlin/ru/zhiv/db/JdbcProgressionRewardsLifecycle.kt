@@ -11,6 +11,13 @@ internal fun mergeProgressionRewards(c: Connection,target: UUID,source: UUID) {
         ON CONFLICT(user_id) DO UPDATE SET next_step=EXCLUDED.next_step,last_claim_at=EXCLUDED.last_claim_at,last_claim_date=EXCLUDED.last_claim_date
         WHERE game_daily_rewards.last_claim_at IS NULL OR EXCLUDED.last_claim_at>game_daily_rewards.last_claim_at
     """.trimIndent(),target,source)
+    // This fence is independent of which account has the latest daily claim.
+    c.economyUpdate("""
+        INSERT INTO game_daily_rewards(user_id,onboarding_claimed_at)
+        SELECT ?,onboarding_claimed_at FROM game_daily_rewards WHERE user_id=? AND onboarding_claimed_at IS NOT NULL
+        ON CONFLICT(user_id) DO UPDATE SET onboarding_claimed_at=
+            LEAST(game_daily_rewards.onboarding_claimed_at,EXCLUDED.onboarding_claimed_at)
+    """.trimIndent(),target,source)
     c.economyUpdate("""
         INSERT INTO game_achievement_reward_claims(user_id,achievement_id,level,pearls,claimed_at,currency_scale,pearl_scale)
         SELECT ?,achievement_id,level,pearls,claimed_at,currency_scale,pearl_scale FROM game_achievement_reward_claims WHERE user_id=?

@@ -895,6 +895,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       explicitTravel: !blocked && (forestJourneyWalking(state) || Boolean(cooking && cooking.startedAt === null)
         || Boolean(options.devRehearsal && state.clearing.requestedPoint)), dusk: environment.dusk, rain: environment.rain,
       homeAvailable: dev?.showBuildings !== false, butterflies: dev?.butterflies, fireflies: dev?.fireflies,
+      tutorialActive: Boolean(options.tutorialActive && !options.devRehearsal),
       reducedMotion: reducedMotion(options, dev), navigationMode: dev?.navigationMode, heroScale: dev?.heroScale,
       birds: visibleBirds().filter(bird => !watchedBird || bird.id !== watchedBird), visitors,
       occupants: residentOccupants() };

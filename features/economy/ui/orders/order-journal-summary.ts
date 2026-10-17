@@ -22,11 +22,11 @@ export function orderOfferReady(state: EconomyView, offer: OrderJournalOffer, no
 }
 
 /** One readiness definition serves the journal heading, card markers and dock badge. */
-export function orderJournalSummary(state: EconomyView, now: number, residentId?: "plesk" | "builder"): { total: number; ready: number } {
+export function orderJournalSummary(state: EconomyView, now: number, residentId?: "plesk" | "builder", tutorialOnly = false): { total: number; ready: number } {
   if (!state.catalog.food) return { total: 0, ready: 0 };
   const tutorial = tutorialOrderProgress(state).ingredientsClaimed ? tutorialResidentOrder(state) : null;
-  const stage = stageResidentOrder(state);
-  const offers = [tutorial, stage, ...residentOrderBoard(state, now, state.catalog).offers]
+  const offers = tutorialOnly ? [tutorial] : [tutorial, stageResidentOrder(state), ...residentOrderBoard(state, now, state.catalog).offers];
+  const matching = offers
     .filter((offer): offer is OrderJournalOffer => Boolean(offer && (!residentId || offer.residentId === residentId)));
-  return { total: offers.length, ready: offers.filter(offer => orderOfferReady(state, offer, now)).length };
+  return { total: matching.length, ready: matching.filter(offer => orderOfferReady(state, offer, now)).length };
 }

@@ -46,7 +46,7 @@ export function WorldVillagerDialog({ id, open, ownerPublicId, economy, isOnline
           <ResidentSpeech owner={ownerPublicId} speaker={id} />
           {!available ? <p className={styles.greeting}>Камнешмыг придёт, когда вы построите каменоломню и подтвердите завершение у Шишколапа.</p> : <>
             <p className={styles.greeting}>«{greeting}»</p>
-            {id === "leaftail" ? currentOwner ? <WorldLeaftailMarket key={ownerPublicId} economy={economy} isOnline={isOnline} /> : <p role="status">Проверяем запасы текущего игрока…</p> : <>
+            {id === "leaftail" ? currentOwner ? <WorldLeaftailMarket key={ownerPublicId} economy={economy} isOnline={isOnline} introduced /> : <p role="status">Проверяем запасы текущего игрока…</p> : <>
               <p className={styles.description}>{description}</p>
               <button type="button" className={styles.action} disabled={!currentOwner} onClick={() => onOpenStation(id === "lopukh" ? "woodlot" : "quarry")}>
                 {id === "lopukh" ? <Axe size={18} aria-hidden="true" /> : <Pickaxe size={18} aria-hidden="true" />}

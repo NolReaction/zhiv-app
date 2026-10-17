@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { GuideCoach, type GuideCoachProps } from "@/features/onboarding/guide-coach";
+import { progressionRewardsCatalog } from "@/features/game/progression-rewards";
+import { formatPearls } from "@/features/economy/domain/money";
 import { worldOnboardingNeedsHarvest, WORLD_ONBOARDING_STEPS, type WorldOnboardingProgress, type WorldOnboardingStepId } from "@/features/world/domain/world-onboarding";
 import { useForestObservation } from "@/features/world/state/use-forest-observation";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
@@ -11,7 +13,7 @@ import { canStartTutorialWorkshop } from "@/features/economy/domain/workshop-sta
 import { TUTORIAL_ORDER_ID, tutorialOrderProgress, tutorialResidentOrder } from "@/features/economy/domain/tutorial-order";
 import { worldConstructionReason, worldDuration, worldProductionReason } from "@/features/economy/ui/shared/world-stations";
 import { worldRecipeDuration, worldRecipeGroups } from "@/features/economy/ui/stations/world-recipe-groups";
-import { NeighborIntroduction, TutorialOrderContents, WorkshopRetry, WorkshopConstructionContents, WorkshopTutorialConstruction } from "./world-onboarding-cards";
+import { TutorialOrderContents, WorkshopRetry, WorkshopConstructionContents, tutorialWorkshopAction } from "./world-onboarding-cards";
 
 export type WorldOnboardingProps = {
   open: boolean;
@@ -30,7 +32,7 @@ export type WorldOnboardingProps = {
   workshopOpen: boolean;
   isOnline?: boolean;
   onStart: () => void;
-  onStep: (stepId: WorldOnboardingStepId) => void;
+  onStep: (stepId: WorldOnboardingStepId, completeCurrent?: boolean) => void;
   onCrop: (jobId: string | undefined) => void;
   onHarvest: (jobId: string) => void;
   onSkip: () => void;
@@ -95,7 +97,7 @@ export function WorldOnboardingSession(props: WorldOnboardingProps & { presenceK
 }
 
 export function WorldOnboarding(props: WorldOnboardingProps) {
-  const { progress, economy, worldElement, onStep, onCrop, onHarvest } = props;
+  const { progress, economy, worldElement, onStep, onCrop, onHarvest, onCloseSurface } = props;
   const practiceRoot = props.ordersOpen ? props.ordersElement ?? worldElement : worldElement;
   const surface = usePracticeSurface(practiceRoot);
   const collection = useGardenCollection();
@@ -107,6 +109,8 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
     id: economy.localSale?.id, revision: economy.snapshot?.revision ?? -1 });
   const previous = useRef<{ owner?: string; jobId?: string; revision: number; gainIds: Set<string> }>({ revision: -1, gainIds: new Set() });
   const orderPinSent = useRef(false);
+  const previousDeparture = useRef({ owner: economy.snapshot?.ownerPublicId, step: current,
+    id: economy.localExploration?.id, revision: economy.snapshot?.revision ?? -1 });
   const snapshot = economy.snapshot;
   const harvested = progress?.status === "started" && progress.harvested === true || Boolean(harvestOwner && harvestOwner === snapshot?.ownerPublicId);
   const order = snapshot ? tutorialResidentOrder(snapshot) : null;
@@ -122,9 +126,9 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
     .find(group => (group.recipe.rewards.berries ?? 0) > 0)?.recipe : undefined;
   const reason = recipe && snapshot ? worldProductionReason(snapshot, recipe, 1) : null;
   const cropReady = Boolean(tracked && economy.now >= Date.parse(tracked.finishesAt));
-  const reminder = progress?.status === "completed" && (cropReady || harvested);
-  const advance = (next: WorldOnboardingStepId) => { props.onCloseSurface(); setVisited(null); setSaleOwner(null); props.onStep(next); };
-  const finish = () => { setHarvestOwner(null); props.onCloseSurface(); props.onComplete(); };
+  const reminder = progress?.status === "completed" && (cropReady || Boolean(harvestOwner && harvestOwner === snapshot?.ownerPublicId));
+  const advance = (next: WorldOnboardingStepId, completeCurrent = true) => { onCloseSurface(); setVisited(null); setSaleOwner(null); props.onStep(next, completeCurrent); };
+  const finish = () => { setHarvestOwner(null); onCloseSurface(); props.onComplete(); };
   const pinOrder = () => {
     if (orderPinSent.current) return;
     orderPinSent.current = true;
@@ -155,9 +159,9 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
     || current === "neighbors" && (props.charactersOpen || props.residentOpen))) setVisited(current);
   if (current === "profile" && harvestOwner) setHarvestOwner(null);
   useEffect(() => {
-    if (current === "garden" && surface.recipe) onStep("grow");
+    if (props.open && current === "garden" && surface.recipe) onStep("grow", true);
     if ((current === "grow" || harvestForOrder) && crop && crop.id !== progress?.cropJobId) onCrop(crop.id);
-  }, [current, harvestForOrder, surface.recipe, crop, progress?.cropJobId, onStep, onCrop]);
+  }, [props.open, current, harvestForOrder, surface.recipe, crop, progress?.cropJobId, onStep, onCrop]);
   useEffect(() => {
     if (!snapshot || economy.busy || economy.uncertain) return;
     const jobId = progress?.cropJobId;
@@ -174,14 +178,31 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
     previous.current = { owner: snapshot.ownerPublicId, jobId: tracked?.id, revision: snapshot.revision, gainIds: new Set((economy.inventoryGains ?? []).map(gain => gain.id)) };
   }, [snapshot, economy.busy, economy.uncertain, economy.inventoryGains, progress?.cropJobId, tracked, onCrop, onHarvest]);
 
+  useEffect(() => {
+    const before = previousDeparture.current, departure = economy.localExploration;
+    if (before.owner !== snapshot?.ownerPublicId || before.step !== current) {
+      previousDeparture.current = { owner: snapshot?.ownerPublicId, step: current,
+        id: departure?.id, revision: snapshot?.revision ?? -1 };
+      return;
+    }
+    if (economy.busy || economy.uncertain || !snapshot || !departure || departure.id === before.id
+      || departure.ownerPublicId !== snapshot.ownerPublicId || departure.revision > snapshot.revision) return;
+    if (props.open && current === "expeditions" && departure.revision > before.revision
+      && snapshot.jobs.some(job => job.id === departure.jobId && job.kind === "exploration")) {
+      onCloseSurface(); onStep("help", true);
+    }
+    previousDeparture.current = { ...before, id: departure.id, revision: Math.max(before.revision, departure.revision) };
+  }, [props.open, current, snapshot, economy.localExploration, economy.busy, economy.uncertain, onStep, onCloseSurface]);
+
   if (progress?.status === "skipped" || progress?.status === "completed" && !reminder) return null;
   const index = WORLD_ONBOARDING_STEPS.findIndex(step => step.id === current);
   const step = WORLD_ONBOARDING_STEPS[index];
+  const completionGift = `${formatPearls(progressionRewardsCatalog.onboarding.pearls)} жемчуга и ${progressionRewardsCatalog.onboarding.coins.toLocaleString("ru-RU")} монет`;
   const base: GuideCoachProps = {
     open: props.open && !props.modalBlocked, flow: "world", stepId: current ?? (reminder ? "harvest" : "welcome"),
     title: "Привет! Это наш лес", text: "Я Мохлик. За 3-5 минут посадим ягоды, познакомимся с соседями и заглянем в мастерскую. Всё можно открывать и пробовать.",
     summary: "Посадим ягоды и познакомимся с лесом за несколько минут.",
-    hint: "Пока ягоды растут, познакомимся с соседями. Перед первым заказом соберём урожай. Любой шаг можно отложить, а ждать стройку не обязательно.",
+    hint: `За полное обучение получишь ${completionGift}. Любой шаг можно отложить и пройти позже: возможность получить подарок сохранится.`,
     pose: "greet", welcome: !progress, targetRoot: practiceRoot,
     compact: Boolean(props.ordersOpen || props.quickMenu || surface.garden || props.workshopOpen),
     dock: props.ordersOpen ? "[data-guide-coach-slot]" : props.quickMenu ? "#world-quick-menu [data-guide-coach-slot]" : surface.garden || props.workshopOpen ? "[data-place] [data-guide-coach-slot]" : undefined,
@@ -192,8 +213,8 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
     base.title = step.title; base.summary = step.summary; base.text = step.text; base.hint = step.hint; base.pose = step.pose;
     base.progress = { current: index + 1, total: WORLD_ONBOARDING_STEPS.length };
     base.primary = undefined;
-    base.onBack = index > 0 ? () => advance(WORLD_ONBOARDING_STEPS[index - 1].id) : undefined;
-    base.secondary = { label: "Этот шаг позже", onClick: index < WORLD_ONBOARDING_STEPS.length - 1 ? () => advance(WORLD_ONBOARDING_STEPS[index + 1].id) : finish };
+    base.onBack = index > 0 ? () => advance(WORLD_ONBOARDING_STEPS[index - 1].id, false) : undefined;
+    base.secondary = { label: "Этот шаг позже", onClick: index < WORLD_ONBOARDING_STEPS.length - 1 ? () => advance(WORLD_ONBOARDING_STEPS[index + 1].id, false) : finish };
   }
   if (current === "profile" || current === "pantry" || current === "expeditions") {
     const next = { profile: "pantry", pantry: "garden", expeditions: "help" } as const;
@@ -291,7 +312,7 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
     }
     if (harvestForOrder) {
       base.title = crop ? berry?.growing ? "Малина для первого заказа растёт" : "Соберём малину для заказа" : "Вырастим малину для заказа";
-      base.secondary = { label: "Пропустить сбор и заказ", onClick: () => advance("workshop") };
+      base.secondary = { label: "Пропустить сбор и заказ", onClick: () => advance("workshop", false) };
       base.hint = "Посадить и собрать - два разных действия. Заказ пока не выполнен: сначала урожай должен попасть в кладовую.";
       base.children = <WorkshopRetry economy={economy} isOnline={props.isOnline} />;
       if (crop && berry?.growing) {
@@ -312,12 +333,12 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
   }
   if (current === "neighbors") {
     const seen = visited === "neighbors";
-    base.summary = seen ? "Шишколап строит, Плёска помогает с рыбалкой, Лопоух - лесоруб. Камнешмыг и Листохвост присоединяются позже."
-      : props.quickMenu === "more" ? "Нажми «Персонажи» в меню «Ещё». Познакомимся со всеми: часть жителей приходит по мере развития хозяйства."
-      : "В лесу пять жителей, но не все появляются сразу. Нажми «Ещё» внизу, затем «Персонажи».";
-    base.text = "Шишколап строит и улучшает здания, Плёска помогает с рыбалкой и снастями, Лопоух - лесоруб: у его дома получают брёвна. Камнешмыг приходит после постройки каменоломни, Листохвост приплывает на лодке после улучшения дома до 3-го уровня. Открой «Ещё», затем «Персонажи» и выбери доступного соседа.";
-    base.hint = "Соседи также доступны через их домики. Знакомство не требует покупок или строительства.";
-    base.children = <NeighborIntroduction economy={economy} />;
+    base.summary = seen ? "Здесь можно поговорить со знакомыми жителями. Новые соседи появятся позже."
+      : props.quickMenu === "more" ? "Нажми «Персонажи», чтобы познакомиться с жителями, которые уже здесь."
+      : "Нажми «Ещё» внизу, затем «Персонажи». Там собраны знакомые жители леса.";
+    base.text = "Шишколап строит, Плёска помогает с рыбалкой, а Лопоух заготавливает древесину. Выбери знакомого соседа. Новые жители откроются по мере развития хозяйства; пока их нет, виден только силуэт.";
+    base.hint = "Для знакомства не нужно ничего покупать или строить.";
+    base.children = undefined;
     base.target = seen ? undefined : props.quickMenu === "more" ? '[data-world-characters-trigger]' : '[data-world-quick="more"]';
     base.primary = seen ? { advance: true, label: "Дальше, к заказам", onClick: () => advance("orders") } : undefined;
     // A resident conversation owns its own controls and focus until it closes.
@@ -328,7 +349,7 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
     const locked = offline || economy.busy || economy.uncertain || economy.retryAt > economy.now;
     const missing = Boolean(snapshot && order && Object.entries(order.items).some(([id, count]) => (snapshot.inventory[id] ?? 0) < count));
     base.title = "Выполним учебный заказ";
-    base.secondary = { label: "Этот шаг позже", onClick: () => advance("workshop") };
+    base.secondary = { label: "Этот шаг позже", onClick: () => advance("workshop", false) };
     base.hint = "Учебный заказ всего один. Следующие просьбы будут частью пути к улучшению дома.";
     base.children = <>{!lessonDone && <TutorialOrderContents economy={economy} />}<WorkshopRetry economy={economy} isOnline={props.isOnline} /></>;
     base.status = offline ? "Сейчас нет связи. Можно вернуться к заказу позже."
@@ -387,9 +408,9 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
     const constructionReason = snapshot && next && !tutorialWorkshop ? worldConstructionReason(snapshot, "workshop", next) : undefined;
     base.hint = tutorialWorkshop ? "Учебный набор идёт прямо в мастерскую и не тратит твои запасы. Стройка начнётся только по твоему нажатию."
       : "Стройка оплачивается твоими запасами и запускается по твоему нажатию. Ждать здесь не нужно.";
-    base.secondary = { label: "К вылазкам", onClick: () => advance("expeditions") };
+    base.secondary = { label: "Этот шаг позже", onClick: () => advance("expeditions", false) };
     base.target = undefined;
-    base.children = <>{level === 0 && <WorkshopConstructionContents economy={economy} />}<WorkshopRetry economy={economy} isOnline={props.isOnline} /></>;
+    base.children = <>{level === 0 && !construction && <WorkshopConstructionContents economy={economy} />}<WorkshopRetry economy={economy} isOnline={props.isOnline} /></>;
     base.status = offline ? "Сейчас нет связи. Можно продолжить знакомство и вернуться позже."
       : economy.uncertain ? "Ответ ещё не подтверждён. Проверим результат прежде, чем продолжить."
       : economy.busy ? "Жду подтверждения хозяйства…" : economy.error ?? undefined;
@@ -431,10 +452,8 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
       base.text = `Шишколап один раз даст все монеты и материалы для первой мастерской. Набор используется прямо в стройке: твои запасы не расходуются, даже если раньше ты потратил их на другое здание. Стройка занимает ${worldDuration(first.seconds)}. Нажми «Построить с учебным набором», когда будешь готов.`;
       base.target = props.workshopOpen ? surface.workshopSelected ? undefined
         : '[data-place="workshop"] [role="tab"][id$="-workshop"]' : undefined;
-      base.children = <><WorkshopConstructionContents economy={economy} />
-        {props.workshopOpen && surface.workshopSelected && <WorkshopTutorialConstruction economy={economy} isOnline={props.isOnline} />}
-        <WorkshopRetry economy={economy} isOnline={props.isOnline} /></>;
-      base.primary = undefined;
+      base.children = <><WorkshopConstructionContents economy={economy} /><WorkshopRetry economy={economy} isOnline={props.isOnline} /></>;
+      base.primary = props.workshopOpen && surface.workshopSelected ? tutorialWorkshopAction(economy, props.isOnline) : undefined;
       base.status ??= snapshot.jobs.some(job => job.kind === "construction") ? "Шишколап сейчас строит другое здание. Дождись завершения, затем начни мастерскую с учебным набором." : undefined;
     } else {
       base.title = "Построим мастерскую";
@@ -450,6 +469,7 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
     }
   }
   if (current === "help") {
+    const fullCourse = WORLD_ONBOARDING_STEPS.every(item => item.id === "help" || progress?.completedSteps?.includes(item.id));
     const construction = snapshot?.jobs.find(job => job.kind === "construction" && job.targetId === "workshop");
     const workshopLevel = snapshot?.buildings.workshop ?? 0;
     const cropResult = tracked ? cropReady ? "Ягоды готовы к сбору." : "Ягоды растут."
@@ -462,9 +482,11 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
     base.target = '[data-world-onboarding-help]';
     base.summary = "Кнопка i вверху открывает справку: выбери тему или воспользуйся поиском. Подсказки раздела запускаются по «Что здесь делать?».";
     base.text = `${cropResult} ${workshopResult} Кнопка i открывает темы и поиск по справке. Для повтора открой мой профиль, нажми «?» рядом с шестерёнкой, затем «Повторить обучение». Если знакомство ещё идёт, там будет «Продолжить обучение».`;
-    base.hint = "В разделе нажми «Что здесь делать?», когда нужна подсказка. Выращивание и стройка продолжаются в фоне.";
+    base.hint = fullCourse ? `Заверши обучение и получи ${completionGift}. Подарок выдаётся один раз на аккаунт.`
+      : `Некоторые шаги отложены. Когда пройдёшь весь курс, получишь ${completionGift}. Повтор доступен в профиле.`;
+    if (!fullCourse) base.summary = `Некоторые шаги отложены. Их можно пройти позже и получить ${completionGift}. Справка всегда под кнопкой i.`;
     base.pose = "greet";
-    base.primary = { advance: true, label: "Открыть справку", shortLabel: "Открыть", onClick: () => { finish(); props.onOpenHelp(); } };
+    base.primary = { advance: true, label: "Завершить обучение", shortLabel: "Готово", onClick: finish };
     base.secondary = undefined;
   }
   if (props.fishSaleOpen) base.open = false;

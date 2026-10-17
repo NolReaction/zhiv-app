@@ -11,13 +11,15 @@ import styles from "./world-order-journal.module.css";
 export type WorldOrderJournalProps = OrderNavigation & {
   economy: EconomyController;
   residentId?: "plesk" | "builder";
+  /** The active main course shows its single pinned request, without later work. */
+  tutorialOnly?: boolean;
 };
 
 /** The world supplies the dialog frame and its single scroll area. */
-export function WorldOrderJournal({ economy, residentId, ...navigation }: WorldOrderJournalProps) {
+export function WorldOrderJournal({ economy, residentId, tutorialOnly = false, ...navigation }: WorldOrderJournalProps) {
   const [customer, setCustomer] = useState(residentId);
   const state = economy.snapshot;
-  const summary = state ? orderJournalSummary(state, economy.now, customer) : { total: 0, ready: 0 };
+  const summary = state ? orderJournalSummary(state, economy.now, tutorialOnly ? undefined : customer, tutorialOnly) : { total: 0, ready: 0 };
   const retrySeconds = Math.max(0, Math.ceil((economy.retryAt - economy.now) / 1000));
   const recovery = !economy.syncError && (economy.error || economy.uncertain) && <div className={styles.recovery} role="alert">
     <p>{economy.uncertain ? "Проверяем последнее действие. Дождись подтверждения." : economy.error}</p>
@@ -28,7 +30,7 @@ export function WorldOrderJournal({ economy, residentId, ...navigation }: WorldO
   return <div className={styles.journal} data-order-journal data-section-guide-content="orders" aria-busy={economy.busy || undefined}>
     <header className={styles.cover}>
       <span className={styles.emblem} aria-hidden="true"><Mail size={27} strokeWidth={1.5} /><Leaf className={styles.leaf} size={16} strokeWidth={1.5} /></span>
-      <div className={styles.coverTitle}><p>Лесная почта</p><h2>{customer === "plesk" ? "Просьбы Плёски" : customer === "builder" ? "Просьбы Шишколапа" : "Все просьбы"}</h2></div>
+      <div className={styles.coverTitle}><p>Лесная почта</p><h2>{tutorialOnly ? "Учебный заказ" : customer === "plesk" ? "Просьбы Плёски" : customer === "builder" ? "Просьбы Шишколапа" : "Все просьбы"}</h2></div>
       {state?.catalog.food && <div className={styles.status} data-order-journal-summary aria-label={`Можно сдать: ${summary.ready}. Всего заказов: ${summary.total}.`}>
         <strong><Check size={13} aria-hidden="true" />{number(summary.ready)} <span>готово</span></strong><small>из {number(summary.total)} заказов</small>
       </div>}
@@ -36,6 +38,6 @@ export function WorldOrderJournal({ economy, residentId, ...navigation }: WorldO
     {recovery}
     {!state ? !recovery && <p className={styles.placeholder} role="status">Открываем журнал…</p>
       : !state.catalog.food ? <p className={styles.placeholder}>Журнал пока недоступен.</p>
-      : <ResidentOrderBoard economy={{ ...economy, snapshot: state }} residentId={residentId} onFilterChange={setCustomer} {...navigation} />}
+      : <ResidentOrderBoard economy={{ ...economy, snapshot: state }} residentId={residentId} tutorialOnly={tutorialOnly} onFilterChange={setCustomer} {...navigation} />}
   </div>;
 }

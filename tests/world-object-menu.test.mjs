@@ -74,15 +74,29 @@ function renderUpgrade(stationId, economy = controller(), extra = {}) {
 }
 
 test("LeafTail is a separate shop without a resident-orders shortcut or future placeholder", () => {
-  const economy = controller({ act() { assert.fail("viewing a shop cannot change the economy"); } });
-  const html = render("leaftail-caravan", economy);
+  const economy = controller({ snapshot: snapshot({ buildings: { home: 3, warehouse: 1 } }), snapshotConfirmed: true,
+    act() { assert.fail("viewing a shop cannot change the economy"); } });
+  const html = render("leaftail-caravan", economy, { leaftailAvailable: true });
   assert.match(html, /Лавка Листохвоста/);
   assert.match(html, /Торговец находками/);
   assert.doesNotMatch(html, /Заказы жителей|появятся в одном из следующих обновлений|data-production-slot|data-guide-station-upgrade|Все уровни оборудования открыты|Будущая ветка/);
   assert.deepEqual(helpers.worldStations["leaftail-caravan"].stationIds, []);
   assert.equal(helpers.worldStations["leaftail-caravan"].future, undefined);
   assert.equal(helpers.worldPlaceForStation("leaftail-caravan"), null);
-  assert.match(render("leaftail-caravan", economy, { onBack() {} }), /aria-label="Назад к персонажам"/);
+  assert.match(render("leaftail-caravan", economy, { onBack() {}, leaftailAvailable: true }), /aria-label="Назад к персонажам"/);
+});
+
+test("an unintroduced traveller keeps the caravan anonymous and empty before the house unlock and physical arrival", () => {
+  for (const home of [1, 2, 3]) {
+    const state = snapshot({ buildings: { home, warehouse: 1 } });
+    const economy = controller({ snapshot: state, snapshotConfirmed: true,
+      act() { assert.fail("an unknown traveller cannot issue a purchase"); } });
+    const original = structuredClone(state), html = render("leaftail-caravan", economy);
+    assert.match(html, /Домик путника/); assert.match(html, /Пока не знакомы/);
+    assert.match(html, home < 3 ? /дом достигнет 3-го уровня/ : /Дождитесь прибытия/);
+    assert.doesNotMatch(html, /Листохвост|Торговец находками|<canvas|data-leaftail-item|data-leaftail-purchase|Купить|Ваши монеты|2400|role="tablist/);
+    assert.deepEqual(state, original);
+  }
 });
 
 test("Lopukh home opens the preserved woodlot production, setup and upgrade controls", () => {
@@ -239,6 +253,53 @@ test("all unfinished production places show construction without slots, products
       assert.match(html, stationId === "quarry" ? /data-mining-duration=/ : /data-production-slots=/);
       if (stationId === "dryer") assert.match(html, /data-cooking-duration=/);
     }
+  }
+});
+
+test("the main workshop lesson owns one build button while paid work and recovery stay available", () => {
+  for (const viewportWidth of [320, 1280]) {
+    const state = snapshot();
+    const economy = controller({ snapshot: state, act() { assert.fail("reading the workshop lesson cannot start or claim work"); } });
+    const before = structuredClone(state);
+    const extra = { tutorialWorkshop: true,
+      guide: createElement("button", { type: "button", "data-guide-workshop-start": true }, "Построить с учебным набором"),
+      selection: { place: "workshop", objectId: "workshop.position", x: 195, y: 380, viewportWidth, viewportHeight: 844 } };
+    let html = render("workshop", economy, extra);
+    assert.equal((html.match(/Построить/g) ?? []).length, 1, "only the actual teaching action is visible");
+    assert.match(html, /data-guide-workshop-start/);
+    assert.doesNotMatch(html, /data-guide-station-upgrade="workshop"|data-station-setup="workshop"|Сначала постройте это место/);
+    assert.deepEqual(state, before);
+    const kiln = render("workshop", economy, { ...extra, guide: undefined, initialStationId: "kiln" });
+    assert.match(kiln, /data-guide-station-upgrade="kiln"/);
+    assert.match(kiln, /data-station-setup="kiln"/, "the lesson does not hide another tab's construction");
+
+    economy.uncertain = true;
+    html = render("workshop", economy, extra);
+    assert.match(html, /Проверяем последнее действие|Проверить результат/);
+    economy.uncertain = false; economy.error = "Не удалось подтвердить стройку";
+    assert.match(render("workshop", economy, extra), /Не удалось подтвердить стройку/);
+    economy.error = null;
+    state.workshopStarterClaimed = true;
+    state.jobs = [job({ id: "tutorial-workshop", kind: "construction", targetId: "workshop", recipeId: null, targetLevel: 1, rewards: {}, cost: { coins: 0, items: {} } })];
+    html = render("workshop", economy, { ...extra, guide: undefined });
+    assert.match(html, /data-job-id="tutorial-workshop"/);
+    assert.match(html, /Ход строительства/);
+    assert.match(html, /data-guide-station-upgrade="workshop"/, "accepted work keeps the ordinary construction progress controls");
+    state.jobs[0].finishesAt = new Date(now).toISOString();
+    assert.equal(disabled(button(render("workshop", economy, { ...extra, guide: undefined }), "Завершить")), false, "the paid job remains claimable during the lesson");
+
+    state.jobs = [];
+    html = render("workshop", economy, { ...extra, guide: undefined });
+    assert.match(html, /data-guide-station-upgrade="workshop"/);
+    assert.match(html, /data-station-setup="workshop"/, "a spent or cancelled teaching kit keeps the regular recovery route");
+    state.workshopStarterClaimed = false;
+    html = render("workshop", economy, { ...extra, guide: undefined, tutorialWorkshop: false });
+    assert.match(html, /data-guide-station-upgrade="workshop"/);
+    assert.match(html, /data-station-setup="workshop"/, "pausing, skipping or completing the lesson restores ordinary construction");
+    state.buildings.workshop = 1;
+    html = render("workshop", economy, { ...extra, guide: undefined });
+    assert.match(html, /data-production-slots="workshop"/);
+    assert.match(html, /data-guide-station-upgrade="workshop"/, "replaying the lesson does not hide an existing workshop's next upgrade");
   }
 });
 

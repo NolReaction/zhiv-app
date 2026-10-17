@@ -59,9 +59,9 @@ const vite = await createServer({ appType: "custom", configFile: false, root, ca
 const hooks = await vite.ssrLoadModule(hookModule);
 const { WorldOnboarding, WorldOnboardingSession } = await vite.ssrLoadModule("/features/world/ui/onboarding/world-onboarding.tsx");
 const { MarketUnlockOnboarding } = await vite.ssrLoadModule("/features/world/ui/onboarding/market-unlock-onboarding.tsx");
-const { WorkshopRetry, WorkshopConstructionContents, WorkshopTutorialConstruction, NeighborIntroduction, TutorialOrderContents } = await vite.ssrLoadModule("/features/world/ui/onboarding/world-onboarding-cards.tsx");
+const { WorkshopRetry, WorkshopConstructionContents, WorkshopTutorialConstruction, TutorialOrderContents } = await vite.ssrLoadModule("/features/world/ui/onboarding/world-onboarding-cards.tsx");
 const { tutorialResidentOrder, newTutorialOrder } = await vite.ssrLoadModule("/features/economy/domain/tutorial-order.ts");
-const { transitionWorldOnboarding } = await vite.ssrLoadModule("/features/world/domain/world-onboarding.ts");
+const { transitionWorldOnboarding, WORLD_ONBOARDING_STEPS } = await vite.ssrLoadModule("/features/world/domain/world-onboarding.ts");
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const originalObserver = globalThis.MutationObserver;
 const originalDocument = globalThis.document;
@@ -95,6 +95,9 @@ const crop = (id = "crop-1", finishesAt = now + 60000) => ({ id, kind: "producti
   collection: { kind: "berry_harvest", seconds: 8, startedAt: null, finishesAt: null } });
 const started = (stepId, jobId) => ({ version: 2, status: "started", stepId, ...(jobId ? { cropJobId: jobId } : {}) });
 const afterHarvest = (stepId = "orders") => ({ ...started(stepId), harvested: true });
+const completeBeforeHelp = () => ({ ...started("help"), completedSteps: WORLD_ONBOARDING_STEPS.filter(step => step.id !== "help").map(step => step.id) });
+const trip = (id = "first-trip") => ({ id, kind: "exploration", targetId: "forest", recipeId: null, targetLevel: null,
+  startedAt: new Date(now).toISOString(), finishesAt: new Date(now + 60000).toISOString(), rewards: { wood: 1 }, cost: { coins: 0, items: {} } });
 const gain = (patch = {}) => ({ id: "claim-receipt", ownerPublicId: owner, revision: 2, source: "claim", stationId: "garden",
   items: [{ itemId: "berries", quantity: 6 }], ...patch });
 
@@ -138,7 +141,7 @@ test("market discovery waits for a ready visible scene and explains trading with
 
 function harness(progress = started("grow"), jobs = [], { ordersPortal = false, session = false } = {}) {
   hooks.reset();
-  const calls = [], surface = { garden: false, recipe: false, pantryItem: false, pantrySale: false, pantryRelics: false,
+  const calls = [], stepEvents = [], surface = { garden: false, recipe: false, pantryItem: false, pantrySale: false, pantryRelics: false,
     routeActivities: false, routes: false, routePreparation: false, tutorialOrder: false, workshopSelected: false };
   const portal = { tutorialOrder: false }, visibility = { sceneReady: true, worldCovered: false, ordersCovered: false };
   const queries = { world: [], orders: [] };
@@ -180,7 +183,7 @@ function harness(progress = started("grow"), jobs = [], { ordersPortal = false, 
       return selector === '[data-tutorial-order="true"]' && portal.tutorialOrder ? {} : null;
     }, closest(selector) { assert.equal(selector, '[aria-hidden="true"]'); return visibility.ordersCovered ? {} : null; } } } } : {}),
     onStart() { calls.push(["start"]); change({ type: "start" }); },
-    onStep(stepId) { calls.push(["step", stepId]); change({ type: "step", stepId }); },
+    onStep(stepId, completeCurrent) { calls.push(["step", stepId]); stepEvents.push({ stepId, completeCurrent }); change({ type: "step", stepId, completeCurrent }); },
     onCrop(jobId) { calls.push(["crop", jobId]); change({ type: "crop", jobId }); },
     onHarvest(jobId) { calls.push(["harvest", jobId]); change({ type: "harvest", jobId }); },
     onSkip() { calls.push(["skip"]); change({ type: "skip" }); },
@@ -209,7 +212,7 @@ function harness(progress = started("grow"), jobs = [], { ordersPortal = false, 
   };
   const patchEconomy = patch => { Object.assign(economy, patch); };
   const patchSnapshot = patch => { economy.snapshot = { ...economy.snapshot, ...patch }; };
-  return { props, economy, surface, calls, queries, render, patchEconomy, patchSnapshot,
+  return { props, economy, surface, calls, stepEvents, queries, render, patchEconomy, patchSnapshot,
     revealSurface(garden, recipe) { surface.garden = garden; surface.recipe = recipe; notifySurface(); },
     revealContent(patch) { Object.assign(surface, patch); notifySurface(); },
     revealPortal(patch) { Object.assign(portal, patch); notifySurface(); },
@@ -290,7 +293,7 @@ test("a confirmed crop can grow in the background while the guide advances, pres
   assert.equal(coach.title, "Ягоды уже растут");
   assert.equal(coach.primary.label, "Продолжить знакомство");
   coach.primary.onClick();
-  assert.deepEqual(h.props.progress, started("neighbors", "first"));
+  assert.deepEqual(h.props.progress, { ...started("neighbors", "first"), completedSteps: ["grow"] });
   assert.deepEqual(jobs.map(job => job.id), ["later", "first"], "the guide cannot reorder server jobs");
 });
 
@@ -429,7 +432,33 @@ test("completed introductions retain a ready-crop reminder until harvesting or a
   assert.equal(h.render(), null);
 });
 
-test("final help action opens the real help after completion and never closes it again", () => {
+test("a saved completed harvest never resurrects the coach but a fresh late receipt can celebrate once", () => {
+  const saved = { version: 2, status: "completed", harvested: true };
+  const restored = harness(saved);
+  assert.equal(restored.render(), null);
+  assert.equal(restored.render(), null);
+  assert.deepEqual(restored.props.progress, saved, "persisted collection proof is not a new reminder event");
+  assert.deepEqual(restored.calls, []);
+
+  const late = harness({ version: 2, status: "completed", cropJobId: "crop-1" }, [crop("crop-1", now + 1000)]);
+  assert.equal(late.render(), null);
+  late.patchSnapshot({ revision: 2, jobs: [], inventory: { berries: 6 } });
+  late.patchEconomy({ now: now + 1000, inventoryGains: [gain()] });
+  const coach = late.render();
+  assert.equal(coach.stepId, "harvest");
+  assert.equal(coach.title, "Урожай в кладовой!");
+  assert.equal(late.props.progress.status, "completed");
+  assert.equal(late.props.progress.harvested, true);
+  assert.equal(late.props.progress.cropJobId, undefined);
+  assert.equal(coach.primary.label, "Готово");
+  coach.primary.onClick();
+  assert.equal(late.render(), null, "dismissing the transient celebration does not retrigger from its saved harvested flag");
+  assert.deepEqual(late.calls, [["harvest", "crop-1"]]);
+  const remounted = harness(structuredClone(late.props.progress));
+  assert.equal(remounted.render(), null, "a later mount cannot recreate the already dismissed celebration");
+});
+
+test("the final action completes the lesson without opening help or sending an economy command", () => {
   const h = harness(started("help"));
   let coach = h.render();
   assert.equal(coach.secondary, undefined);
@@ -439,14 +468,15 @@ test("final help action opens the real help after completion and never closes it
   assert.equal(coach.open, false, "the ordinary coach yields to the actual help modal");
   h.props.helpOpen = false; h.props.modalBlocked = false;
   coach = h.render();
-  assert.equal(coach.primary.label, "Открыть справку");
-  assert.equal(coach.primary.shortLabel, "Открыть");
+  assert.equal(coach.primary.label, "Завершить обучение");
+  assert.equal(coach.primary.shortLabel, "Готово");
   assert.deepEqual(h.calls, [], "merely viewing or manually opening help sends no action");
   coach.primary.onClick();
   assert.equal(h.props.progress.status, "completed");
-  assert.equal(h.props.helpOpen, true);
-  assert.deepEqual(h.calls, [["close-surface"], ["complete"], ["help"]], "complete before opening; a late surface close would hide help again");
-  assert.equal(h.render(), null, "the completed coach does not cover help or resume on closing it");
+  assert.equal(h.props.helpOpen, false);
+  assert.deepEqual(h.calls, [["close-surface"], ["complete"]], "finishing is independent from the optional reference window");
+  assert.equal(h.props.progress.rewardReady, undefined, "arriving at the last page without completing earlier lessons cannot create a reward intent");
+  assert.equal(h.render(), null, "the completed coach does not resume on closing a reference window");
   h.props.helpOpen = false; h.props.modalBlocked = false;
   assert.equal(h.render(), null);
 });
@@ -455,7 +485,9 @@ test("neighbors are learned through the real More and Characters path without sh
   const h = harness(started("neighbors"));
   let coach = h.render();
   assert.equal(coach.progress.total, 9);
-  assert.equal(coach.children.type, NeighborIntroduction);
+  assert.equal(coach.children, undefined, "the compact coach has no long residents list");
+  assert.match(coach.text, /Шишколап.*Плёска.*Лопоух/);
+  assert.doesNotMatch(`${coach.summary} ${coach.text} ${coach.hint}`, /Камнешмыг|Листохвост|лодк|3-го/);
   assert.equal(coach.primary, undefined);
   assert.equal(coach.target, '[data-world-quick="more"]');
   h.props.quickMenu = "more";
@@ -615,6 +647,8 @@ test("one raspberry finishes the single tutorial and the guide never waits for h
   coach.primary.onClick();
   assert.equal(h.props.progress.stepId, "workshop");
   assert.equal(h.economy.snapshot.tutorialOrder.completed, true);
+  assert.ok(h.props.progress.completedSteps.includes("orders"), "the confirmed order's explicit continuation marks its lesson complete");
+  assert.deepEqual(h.stepEvents.at(-1), { stepId: "workshop", completeCurrent: true });
   assert.deepEqual(h.calls.filter(call => call[0] === "claim-order"), []);
 });
 
@@ -760,12 +794,14 @@ test("workshop costs and build time follow the catalog on replay without any gra
   assert.deepEqual(h.calls, []);
 });
 
-test("the final lesson opens help from a single explicit click without economic commands", () => {
-  const h = harness(started("help"));
+test("explicit completion of all lessons records one reward intent without paying in the coach", () => {
+  const h = harness(completeBeforeHelp());
   h.render().primary.onClick();
   assert.equal(h.props.progress.status, "completed");
-  assert.equal(h.props.helpOpen, true);
-  assert.deepEqual(h.calls, [["close-surface"], ["complete"], ["help"]]);
+  assert.deepEqual(h.props.progress.completedSteps, WORLD_ONBOARDING_STEPS.map(step => step.id));
+  assert.equal(h.props.progress.rewardReady, true);
+  assert.equal(h.props.helpOpen, false);
+  assert.deepEqual(h.calls, [["close-surface"], ["complete"]]);
 });
 
 test("opened sections highlight their contents, and pantry guidance follows the actual sale or relic surface", () => {
@@ -820,6 +856,100 @@ test("expedition guidance follows activity, route list and preparation without c
   h.revealContent({ routePreparation: false, routes: false, routeActivities: true });
   assert.equal(h.render().target, '[data-section-guide-target="expedition-activities"]', "back navigation follows the actual surface");
   assert.deepEqual(h.calls, [["quick", "expeditions"]]);
+});
+
+test("only explicit forward completion marks a lesson while back, later and pause preserve unfinished work", () => {
+  const h = harness(started("profile"));
+  h.props.quickMenu = "profile";
+  let coach = h.render();
+  assert.equal(coach.primary.advance, true);
+  coach.primary.onClick();
+  assert.equal(h.props.progress.stepId, "pantry");
+  assert.deepEqual(h.props.progress.completedSteps, ["profile"]);
+  assert.deepEqual(h.stepEvents.at(-1), { stepId: "pantry", completeCurrent: true });
+  h.render().secondary.onClick();
+  assert.equal(h.props.progress.stepId, "garden");
+  assert.deepEqual(h.props.progress.completedSteps, ["profile"], "later does not mark the skipped pantry lesson complete");
+  assert.deepEqual(h.stepEvents.at(-1), { stepId: "garden", completeCurrent: false });
+  h.render().onBack();
+  assert.equal(h.props.progress.stepId, "pantry");
+  assert.deepEqual(h.props.progress.completedSteps, ["profile"], "going back does not complete the garden either");
+  assert.deepEqual(h.stepEvents.at(-1), { stepId: "pantry", completeCurrent: false });
+  const beforePause = structuredClone(h.props.progress);
+  coach = h.render(); coach.onPause();
+  assert.deepEqual(h.props.progress, beforePause);
+  const skip = harness({ ...started("neighbors"), completedSteps: ["profile"] });
+  skip.render().onSkip();
+  assert.equal(skip.props.progress.status, "skipped");
+  assert.deepEqual(skip.props.progress.completedSteps, ["profile"]);
+  assert.equal(skip.props.progress.rewardReady, undefined);
+});
+
+const explorationReceipt = (patch = {}) => ({ id: "accepted-local-trip", ownerPublicId: owner, revision: 2, jobId: "first-trip", ...patch });
+
+test("an accepted local expedition advances its active lesson once without waiting for the journey", () => {
+  const h = harness(started("expeditions"));
+  h.props.quickMenu = "expeditions";
+  h.revealContent({ routePreparation: true });
+  h.render();
+  h.patchSnapshot({ revision: 2, jobs: [trip()] });
+  h.patchEconomy({ localExploration: explorationReceipt(), busy: true });
+  assert.equal(h.render().stepId, "expeditions", "a pending start is not an accepted route");
+  h.patchEconomy({ busy: false, uncertain: true });
+  assert.equal(h.render().stepId, "expeditions", "an uncertain receipt cannot finish the lesson");
+  assert.deepEqual(h.calls, []);
+  h.patchEconomy({ uncertain: false });
+  const coach = h.render();
+  assert.equal(coach.stepId, "help");
+  assert.deepEqual(h.props.progress.completedSteps, ["expeditions"]);
+  assert.deepEqual(h.stepEvents, [{ stepId: "help", completeCurrent: true }]);
+  assert.deepEqual(h.calls, [["close-surface"], ["step", "help"]]);
+  assert.equal(h.economy.snapshot.jobs[0].id, "first-trip", "the actual journey continues after the local guide advances");
+  h.render();
+  assert.equal(h.stepEvents.length, 1, "rerenders cannot replay the accepted route continuation");
+});
+
+test("polling, old routes and hidden or foreign receipts cannot automatically complete expedition guidance", () => {
+  const incoming = harness(started("expeditions"));
+  incoming.render();
+  incoming.patchSnapshot({ revision: 2, jobs: [trip()] });
+  assert.equal(incoming.render().stepId, "expeditions", "incoming jobs from polling or another device carry no local action proof");
+  assert.deepEqual(incoming.calls, []);
+
+  const mounted = harness(started("expeditions"), [trip()]);
+  assert.equal(mounted.render().stepId, "expeditions", "an already running route on entry does not skip the lesson");
+  assert.deepEqual(mounted.calls, []);
+  const oldReceipt = harness(started("expeditions"), [trip()]);
+  oldReceipt.patchSnapshot({ revision: 2 });
+  oldReceipt.patchEconomy({ localExploration: explorationReceipt() });
+  assert.equal(oldReceipt.render().stepId, "expeditions", "a receipt already present when this lesson mounts is not a new departure");
+  assert.deepEqual(oldReceipt.calls, []);
+
+  const paused = harness(started("expeditions"));
+  paused.render(); paused.props.open = false;
+  paused.patchSnapshot({ revision: 2, jobs: [trip()] });
+  paused.patchEconomy({ localExploration: explorationReceipt() });
+  assert.equal(paused.render().open, false);
+  assert.equal(paused.props.progress.stepId, "expeditions");
+  paused.props.open = true;
+  assert.equal(paused.render().stepId, "expeditions", "a receipt accepted while paused is not replayed on resume");
+  assert.deepEqual(paused.calls, []);
+
+  const previous = harness(started("workshop"), [trip()]);
+  previous.patchEconomy({ localExploration: explorationReceipt() });
+  previous.render().secondary.onClick();
+  assert.equal(previous.render().stepId, "expeditions", "a receipt observed on the previous lesson is already consumed");
+  assert.deepEqual(previous.calls, [["close-surface"], ["step", "expeditions"]]);
+
+  for (const receipt of [explorationReceipt({ ownerPublicId: "another-player" }), explorationReceipt({ revision: 3 }),
+    explorationReceipt({ revision: 1 }), explorationReceipt({ jobId: "absent-trip" })]) {
+    const invalid = harness(started("expeditions"));
+    invalid.render();
+    invalid.patchSnapshot({ revision: 2, jobs: [trip()] });
+    invalid.patchEconomy({ localExploration: receipt });
+    assert.equal(invalid.render().stepId, "expeditions", "advancing requires the current owner's new confirmed receipt and its actual exploration job");
+    assert.deepEqual(invalid.calls, []);
+  }
 });
 
 const saleReceipt = (patch = {}) => ({ id: "sale-1", ownerPublicId: owner, revision: 2, itemId: "wood", quantity: 1, coins: 2, ...patch });
@@ -929,7 +1059,7 @@ test("pantry practice never infers success from failed sales, changed wallets, o
   assert.doesNotMatch(h.render().summary, /Продажа прошла/, "changing accounts clears the previous owner's practice result");
 });
 
-test("completion reports actual crop and workshop progress while opening only help", () => {
+test("completion reports actual crop and workshop progress without opening another surface", () => {
   const untouched = harness(started("help"));
   assert.match(untouched.render().text, /Ягоды можно посадить/);
   assert.doesNotMatch(untouched.render().text, /Ягоды растут|Набор.*получен|Мастерская работает/);
@@ -941,7 +1071,7 @@ test("completion reports actual crop and workshop progress while opening only he
   assert.equal(coach.secondary, undefined);
   coach.primary.onClick();
   assert.equal(growing.props.progress.status, "completed");
-  assert.deepEqual(growing.calls, [["close-surface"], ["complete"], ["help"]]);
+  assert.deepEqual(growing.calls, [["close-surface"], ["complete"]]);
 
   const starter = harness(started("help"));
   starter.patchSnapshot({ workshopStarterClaimed: true });
@@ -950,13 +1080,13 @@ test("completion reports actual crop and workshop progress while opening only he
   assert.equal(coach.secondary, undefined);
   coach.primary.onClick();
   assert.equal(starter.props.progress.status, "completed");
-  assert.deepEqual(starter.calls, [["close-surface"], ["complete"], ["help"]]);
+  assert.deepEqual(starter.calls, [["close-surface"], ["complete"]]);
   assert.deepEqual(starter.economy.snapshot.jobs, []);
 });
 
 test("ninth lesson always explains the highlighted i button without opening details", () => {
   for (const jobs of [[], [crop("crop-1", now + 10000)], [{ id: "build-1", kind: "construction", targetId: "workshop", finishesAt: new Date(now + 60000).toISOString() }]]) {
-    const h = harness(started("help", "crop-1"), jobs);
+    const h = harness({ ...completeBeforeHelp(), cropJobId: "crop-1" }, jobs);
     const coach = h.render();
     assert.equal(coach.progress.current, 9);
     assert.equal(coach.progress.total, 9);
@@ -1102,21 +1232,22 @@ test("spent starter resources cannot strand the workshop lesson and an explicit 
   assert.equal(findComponent(coach.children, WorkshopTutorialConstruction).length, 0, "the kiln tab must not offer the workshop action");
   h.revealContent({ workshopSelected: true });
   coach = h.render();
-  const [action] = findComponent(coach.children, WorkshopTutorialConstruction);
-  assert.ok(action);
+  assert.equal(findComponent(coach.children, WorkshopTutorialConstruction).length, 0, "the coach body has no second construction control");
+  const action = coach.primary;
+  assert.equal(action.label, "Построить с учебным набором", "the sole build action lives in the visible coach footer");
   assert.equal(coach.target, undefined, "a coach must not chase its own button as a spotlight target");
-  const button = WorkshopTutorialConstruction(action.props);
-  assert.equal(button.props.disabled, false);
+  assert.equal(action.disabled, false);
   assert.deepEqual(h.calls, []);
-  button.props.onClick();
+  action.onClick();
   assert.deepEqual(h.calls, [["tutorial-workshop", "workshop"]]);
   assert.equal(h.render().title, "Построим мастерскую с Шишколапом", "a click alone is not a receipt");
   h.patchEconomy({ busy: true });
-  assert.equal(WorkshopTutorialConstruction(action.props).props.disabled, true);
+  assert.equal(h.render().primary.disabled, true);
   h.patchSnapshot({ revision: 2, workshopStarterClaimed: true, jobs: [{ id: "tutorial-workshop-job", kind: "construction", targetId: "workshop", targetLevel: 1,
     startedAt: new Date(now).toISOString(), finishesAt: new Date(now + 300_000).toISOString() }] });
   coach = h.render();
   assert.equal(coach.title, "Проверяю начало стройки");
+  assert.equal(findComponent(coach.children, WorkshopConstructionContents).length, 0, "a paid job has no stale cost quote in the coach");
   assert.equal(coach.primary.disabled, true);
   assert.notEqual(coach.pose, "jump");
   h.patchEconomy({ busy: false, uncertain: true });
@@ -1140,10 +1271,11 @@ test("the workshop kit waits for connection and builder availability without spe
     if (blocked === "cooldown") h.patchEconomy({ retryAt: now + 5000 });
     if (blocked === "builder") h.patchSnapshot({ jobs: [{ id: "other-job", kind: "construction", targetId: "woodlot", targetLevel: 1,
       startedAt: new Date(now).toISOString(), finishesAt: new Date(now + 60_000).toISOString() }] });
-    const coach = h.render(), [action] = findComponent(coach.children, WorkshopTutorialConstruction);
-    const button = WorkshopTutorialConstruction(action.props);
-    assert.equal(button.props.disabled, true, blocked);
-    button.props.onClick();
+    const coach = h.render(), action = coach.primary;
+    assert.equal(findComponent(coach.children, WorkshopTutorialConstruction).length, 0);
+    assert.equal(action.label, "Построить с учебным набором");
+    assert.equal(action.disabled, true, blocked);
+    action.onClick();
     assert.deepEqual(h.calls, [], blocked);
     if (blocked === "builder") assert.match(coach.status, /строит другое здание/);
   }

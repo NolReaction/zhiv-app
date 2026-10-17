@@ -48,6 +48,64 @@ class JdbcProgressionRewardsIntegrationTest {
     private fun command(p: Player,id: String=UUID.randomUUID().toString(),achievement: String?=null,level: Int?=null)=
         ProgressionRewardClaim(id,p.publicId,if(achievement==null) "daily" else "achievement",achievement,level)
 
+    @Test fun `onboarding concurrent same and distinct UUIDs pay one fixed gift independently of daily`()=runBlocking<Unit> {
+        val p=player(); val before=economy.snapshot(p.hash)
+        assertEquals(null,rewards.snapshot(p.hash).onboarding.claimedAt)
+        assertEquals(before.wallet,economy.snapshot(p.hash).wallet,"A snapshot does not reward historical local tutorial state")
+        val request=command(p).copy(kind="onboarding")
+        val same=List(2) { async(Dispatchers.IO) { rewards.claim(p.hash,request) } }.awaitAll()
+        assertEquals(1,same.count { it.replayed }); assertEquals(same[0].claim,same[1].claim)
+        val paid=same.first()
+        assertEquals(ProgressionRewardRules.onboarding,paid.claim.reward)
+        assertEquals(before.wallet.coins+1_000,paid.economy.wallet.coins)
+        assertEquals(before.wallet.pearls+200,paid.economy.wallet.pearls)
+        assertEquals(before.inventory,paid.economy.inventory)
+        assertEquals(before.revision+1,paid.economy.revision)
+        assertEquals(paid.claim.claimedAt,rewards.snapshot(p.hash).onboarding.claimedAt)
+        assertEquals("1",scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='onboarding_reward'",p.id))
+        assertTrue(paid.rewards.daily.claimable); assertEquals(1,paid.rewards.daily.step)
+        assertEquals("REWARD_REQUEST_CONFLICT",assertFailsWith<AuthFailure> { rewards.claim(p.hash,request.copy(kind="daily")) }.code)
+        assertEquals("ONBOARDING_REWARD_CLAIMED",assertFailsWith<AuthFailure> { rewards.claim(p.hash,command(p).copy(kind="onboarding")) }.code)
+        val other=player(); val different=List(2) { async(Dispatchers.IO) {
+            runCatching { rewards.claim(other.hash,command(other).copy(kind="onboarding")) }
+        } }.awaitAll()
+        assertEquals(1,different.count { it.isSuccess })
+        assertEquals("ONBOARDING_REWARD_CLAIMED",(different.single { it.isFailure }.exceptionOrNull() as AuthFailure).code)
+    }
+
+    @Test fun `onboarding wallet failure rolls back the marker and same UUID succeeds later with full pantry`()=runBlocking<Unit> {
+        val p=player(); economy.snapshot(p.hash)
+        val original=source.connection.use { readEconomyProfile(it,p.id).state }
+        val capacity=EconomyRules.storage(original).capacity
+        val full=original.copy(wallet=original.wallet.copy(pearls=ECONOMY_MAX_PEARLS-100),inventory=mapOf("wood" to capacity))
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(full),p.id)
+        val request=command(p).copy(kind="onboarding"); val before=economy.snapshot(p.hash)
+        assertEquals("ECONOMY_CAPACITY",assertFailsWith<AuthFailure> { rewards.claim(p.hash,request) }.code)
+        assertEquals(before.wallet,economy.snapshot(p.hash).wallet); assertEquals(before.revision,economy.snapshot(p.hash).revision)
+        assertEquals(null,rewards.snapshot(p.hash).onboarding.claimedAt)
+        assertEquals("0",scalar("SELECT count(*) FROM game_reward_claims WHERE user_id=?",p.id))
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?",economyJson.encodeToString(full.copy(wallet=original.wallet)),p.id)
+        val paid=rewards.claim(p.hash,request)
+        assertFalse(paid.replayed); assertEquals(capacity,paid.economy.storage.used)
+        assertEquals(original.wallet.pearls+200,paid.economy.wallet.pearls)
+        assertEquals(paid.claim,rewards.claim(p.hash,request).claim)
+    }
+
+    @Test fun `onboarding merge preserves source fence despite target newer daily and retains both paid origins`()=runBlocking<Unit> {
+        val target=player(); val origin=player()
+        val sourcePaid=rewards.claim(origin.hash,command(origin).copy(kind="onboarding"))
+        rewards.claim(target.hash,command(target))
+        val before=economy.snapshot(target.hash)
+        source.connection.use { c -> c.autoCommit=false; mergeProgressionRewards(c,target.id,origin.id); c.commit() }
+        assertEquals(sourcePaid.claim.claimedAt,rewards.snapshot(target.hash).onboarding.claimedAt)
+        assertEquals(before.wallet,economy.snapshot(target.hash).wallet,"Merging payout fences never credits currencies")
+        assertEquals("ONBOARDING_REWARD_CLAIMED",assertFailsWith<AuthFailure> { rewards.claim(target.hash,command(target).copy(kind="onboarding")) }.code)
+        val second=player(); rewards.claim(second.hash,command(second).copy(kind="onboarding"))
+        source.connection.use { c -> c.autoCommit=false; mergeProgressionRewards(c,target.id,second.id); c.commit() }
+        assertEquals("2",scalar("SELECT count(*) FROM game_reward_claims WHERE user_id=? AND kind='onboarding'",target.id))
+        assertEquals("ONBOARDING_REWARD_CLAIMED",assertFailsWith<AuthFailure> { rewards.claim(target.hash,command(target).copy(kind="onboarding")) }.code)
+    }
+
     @Test fun `same key concurrency credits once and replay retains immutable receipt`()=runBlocking<Unit> {
         val p=player(); val initial=economy.snapshot(p.hash); val request=command(p)
         val both=List(2) { async(Dispatchers.IO) { rewards.claim(p.hash,request) } }.awaitAll()

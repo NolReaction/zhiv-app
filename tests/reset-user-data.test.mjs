@@ -15,7 +15,7 @@ test("the destructive reset explicitly reviews the latest migration", () => {
   assert.equal(reviewedVersion, latestVersion, "Review the new schema and update reset-user-data.sql before release");
   assert.doesNotMatch(reset, /ORDER BY installed_rank DESC LIMIT 1/,
     "An admin compatibility upgrade can apply V50 after V52; installation order cannot identify the schema version");
-  assert.match(reset, /generate_series\(1,58\)/);
+  assert.match(reset, /generate_series\(1,59\)/);
   assert.match(reset, /49:SQL_BASELINE/);
   assert.match(reset, /WHERE NOT success/);
 });
