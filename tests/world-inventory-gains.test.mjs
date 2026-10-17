@@ -87,7 +87,7 @@ test("the fixed upper overlay clears modal stacks, never catches input and remov
   assert.match(css, /pointer-events: none/);
   assert.ok(interactiveLayers.every(level => overlayLevel > level), "claim/purchase feedback remains above the open expedition card, shop and its scrim");
   assert.match(component, /createPortal\([\s\S]*document\.body\)/, "the HUD's stacking context must not trap the receipt effect under an open menu");
-  assert.match(world, /<WorldInventoryGains\s+key=\{ownerPublicId\}\s+economy=\{economy\}\s+hud=\{topHud\}\s*\/>/);
+  assert.match(world, /<WorldInventoryGains\s+key=\{`inventory-gains:\$\{ownerPublicId\}`\}\s+economy=\{economy\}\s+hud=\{topHud\}\s*\/>/);
   assert.match(css, /\.effect\[hidden\] \{ display: none; \}/);
   assert.match(css, /prefers-reduced-motion: reduce[\s\S]*animation: none[\s\S]*\.glints \{ display: none/);
 });

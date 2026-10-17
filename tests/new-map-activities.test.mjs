@@ -895,15 +895,17 @@ test("visible body taps preserve the same insect until its natural finite depart
 });
 
 test("DEV navigation comparison and independent living overlays redraw a paused scene without advancing it", async () => {
-  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore } =
+  const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore, requestClearingPoint } =
     await modules({ navigation: livingNavigation, habitats: livingHabitats, paths: [clearingPath], mushrooms: [] });
   const env = browser(); let scene, probe;
   try {
     worldDevStore.patch(quietClearing);
-    const initial = { ...options, reducedMotion: false, presenceKey: "living-overlays" };
+    const initial = { ...options, reducedMotion: false, presenceKey: "living-overlays", serverNow: 100_000 };
     scene = mountHabitat(env.surface(), initial, { activity() {}, ready() {}, failure: assert.fail });
     env.finish(); await flush(); probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 0, 0, () => {});
     probe.state.life.leaf = null;
+    // Exercise mode switching on a real known path, independently of optional random AI goals.
+    assert.equal(requestClearingPoint(probe.state.clearing, livingNavigation.interests[0].position), true);
     const clock = sceneClock(env), home = scene.position();
     clock.until(() => probe.state.clearing.stage === "free-walk" && distanceBetween(scene.position(), home) > 3, "free movement begins");
     const beforeSwitch = scene.position(); worldDevStore.patch({ navigationMode: "routes" });
