@@ -5,3 +5,8 @@
 .starter > svg { flex: 0 0 auto; }
 .retry { display: inline-flex; align-items: center; gap: 6px; border: 1px solid #bbc79d; border-radius: 10px; padding: 7px 10px; background: #f4f5e7; color: #3d482f; font: inherit; font-size: 12px; cursor: pointer; }
 .retry:disabled { opacity: .55; cursor: default; }
+.neighbors { margin: 8px 0; padding-left: 17px; font-size: 12px; line-height: 1.4; color: #46543e; }
+.neighbors li + li { margin-top: 4px; }
+.build { display: inline-flex; align-items: center; justify-content: center; gap: 7px; width: 100%; min-height: 42px; margin: 4px 0; padding: 9px 10px; border: 1px solid #426b3f; border-radius: 11px; background: #497546; color: #fffdf2; font: inherit; font-size: 12px; font-weight: 650; cursor: pointer; }
+.build:focus-visible { outline: 3px solid #6c8245; outline-offset: 3px; }
+.build:disabled { opacity: .55; cursor: default; }

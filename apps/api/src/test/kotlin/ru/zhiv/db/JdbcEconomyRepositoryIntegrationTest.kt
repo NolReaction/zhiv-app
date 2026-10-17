@@ -198,6 +198,35 @@ class JdbcEconomyRepositoryIntegrationTest {
         assertEquals("1", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='cancel_production'", p.id))
     }
 
+    @Test fun `concurrent tutorial workshop starts persist one job one marker and one receipt without personal debit`() = runBlocking<Unit> {
+        val p = player(); economy.snapshot(p.hash)
+        val initial = source.connection.use { readEconomyProfile(it, p.id).state }
+        execute("UPDATE economy_profiles SET state=?::jsonb WHERE user_id=?", economyJson.encodeToString(initial.copy(
+            wallet = EconomyWallet(0, 7), inventory = mapOf("berries" to 49L))), p.id)
+        execute("INSERT INTO economy_market_listings(id,seller_id,item_id,quantity,total_price) VALUES (?,?,?,?,?)",
+            UUID.randomUUID(), p.id, "wood", 1L, 40L)
+        val before = economy.snapshot(p.hash)
+        val requests = List(2) { command(p, before, "start_tutorial_workshop", "workshop") }
+        val attempts = coroutineScope { requests.map { request -> async(Dispatchers.IO) {
+            runCatching { JdbcEconomyRepository(source).command(p.hash, request) }
+        } }.awaitAll() }
+        assertEquals(1, attempts.count { it.isSuccess })
+        assertEquals("ECONOMY_REVISION_CONFLICT", (attempts.single { it.isFailure }.exceptionOrNull() as AuthFailure).code)
+        val accepted = requests[attempts.indexOfFirst { it.isSuccess }]
+        val after = economy.snapshot(p.hash)
+        assertTrue(after.workshopStarterClaimed); assertEquals(1, after.jobs.size)
+        assertEquals("workshop", after.jobs.single().targetId); assertEquals(EconomyCost(), after.jobs.single().cost)
+        assertEquals(before.wallet, after.wallet); assertEquals(before.inventory, after.inventory); assertEquals(before.storage, after.storage)
+        val replay = economy.command(p.hash, accepted)
+        assertTrue(replay.replayed); assertEquals(after, replay.state.copy(serverTime = after.serverTime))
+        assertEquals("ECONOMY_WORKSHOP_STARTER_UNAVAILABLE", assertFailsWith<AuthFailure> {
+            economy.command(p.hash, command(p, after, "start_tutorial_workshop", "workshop")) }.code)
+        assertEquals("1", scalar("SELECT count(*) FROM economy_commands WHERE user_id=?", p.id))
+        assertEquals("1", scalar("SELECT count(*) FROM economy_ledger WHERE user_id=? AND kind='start_tutorial_workshop' AND coins=0 AND items='{}'::jsonb", p.id))
+        val saved = source.connection.use { readEconomyProfile(it, p.id).state }
+        assertTrue(saved.workshopStarterClaimed); assertEquals(1, saved.jobs.size)
+    }
+
     @Test fun `concurrent retired workshop requests mint nothing and leave no receipt or ledger`() = runBlocking<Unit> {
         val p = player()
         val before = economy.snapshot(p.hash)

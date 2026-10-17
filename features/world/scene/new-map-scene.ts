@@ -57,7 +57,7 @@ import { accountSceneLevels, economyJourneyAway, type EconomySceneJourney } from
 import { interactiveMapObjects } from "./site-interactions";
 import { forestJourneyActorAway, forestJourneyEnding, forestJourneyFishingFrame, forestJourneyWalking, syncForestJourneyTravel } from "@/features/world/activities/journeys/forest-journey-travel";
 
-import { advancePleskMind, pleskMindFrame, noticePleskMind, requestPleskTrade, pleskAvailableForLeisure,
+import { advancePleskMind, rehydratePleskMind, pleskMindFrame, noticePleskMind, requestPleskTrade, pleskAvailableForLeisure,
   pleskCanPausePassing, pleskCanReceiveVisit, requestPleskSocialVisit, cancelPleskSocialVisit } from "@/features/world/characters/plesk/plesk-mind";
 import { advanceBuilderMind, builderMindFrame, builderSleepIndicator, noticeBuilderMind,
   requestBuilderVisit, cancelBuilderVisit } from "@/features/world/characters/builder/builder-mind";
@@ -1164,7 +1164,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
           const persistence = !forestPersistenceOverridden(dev, levels);
           stop();
           if (persistence) session.saveMemory(); else session.suspendPersistence();
-          const production = state.economyProduction, construction = state.economyConstruction, builder = state.builderMind,
+          const production = state.economyProduction, construction = state.economyConstruction, builder = state.builderMind, plesk = state.pleskMind,
             residents = state.economyResidents, villagers = state.villagers, merchant = state.leaftailBoat, facts = state.residentSceneFacts;
           session.release();
           session = connect(timestamp, persistence); state = session.state;
@@ -1176,6 +1176,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
           syncForestProduction(state, production);
           syncForestConstruction(state, construction);
           syncForestResidentAccess(state, residents);
+          if (plesk && session.created) state.pleskMind = rehydratePleskMind(world, plesk);
           if (villagers && freshVillagers) {
             state.villagers = rehydrateForestVillagers(world, villagers, explorationNow());
             if (merchant && !state.leaftailBoat) state.leaftailBoat = { ...merchant, position: { ...merchant.position } };

@@ -31,6 +31,7 @@ export function useWorldOnboarding(owner: string) {
     start: () => { apply({ type: "start" }); store.setPaused(false); },
     step: (stepId: WorldOnboardingStepId) => apply({ type: "step", stepId }),
     setCrop: (jobId: string | undefined) => apply({ type: "crop", jobId }),
+    confirmHarvest: (jobId: string) => apply({ type: "harvest", jobId }),
     skip: () => apply({ type: "skip", now: Date.now() }),
     complete: () => apply({ type: "complete", now: Date.now() }),
     pause: () => store.setPaused(true),

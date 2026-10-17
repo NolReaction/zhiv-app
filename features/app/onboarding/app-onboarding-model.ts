@@ -46,6 +46,12 @@ export function observeAppOnboarding(progress: AppOnboardingProgress | null, evi
   if (progress?.status !== "started") return progress;
   const { stepId } = progress;
   if (stepId === "world" && evidence.worldOpen) return { version: 2, status: "completed" };
+  // The confirmed check-in already points at the flame. Its real opening can
+  // start the calendar exercise directly, without a second explanatory click.
+  if (stepId === "check-in" && progress.completedSteps.includes("check-in") && evidence.calendarOpen) {
+    return { ...progress, stepId: "calendar", completedSteps: progress.completedSteps.includes("calendar")
+      ? progress.completedSteps : [...progress.completedSteps, "calendar"] };
+  }
   if (progress.completedSteps.includes(stepId)) return progress;
   const confirmedCheckIn = Boolean(evidence.lastCheckInAt && Number.isFinite(Date.parse(evidence.lastCheckInAt))
     && !evidence.unconfirmed && !evidence.isSending

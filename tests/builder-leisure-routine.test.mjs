@@ -111,6 +111,27 @@ test("a completely enclosed free builder defers the optional goal at his current
   assert.deepEqual(mind.position, parked); assert.equal(mind.route, null);
 });
 
+test("a checked optional escape that becomes occupied also defers, retaining its original goal and cooldown", () => {
+  const scene = world(), mind = nearGoal(scene), target = structuredClone(mind.target);
+  const neighbour = { id: "parked-goal", position: { ...target.position }, size: 40 };
+  for (let at = 0; at < 12 && mind.target?.id !== "builder-yield"; at += .05) step(mind, scene, { occupants: [neighbour] });
+  assert.equal(mind.target?.id, "builder-yield"); assert.ok(mind.route, "the first blockage selects an actual checked escape");
+  const centre = { ...mind.position }, originalCooldown = structuredClone(mind.idleAvoid);
+  assert.equal(originalCooldown.id, target.id);
+  const occupants = Array.from({ length: 8 }, (_, index) => ({ id: `newly-parked-${index}`, size: 40,
+    position: { x: centre.x + Math.cos(index * Math.PI / 4) * 24.5, y: centre.y + Math.sin(index * Math.PI / 4) * 24.5 } }));
+  const startedAt = mind.elapsed;
+  for (let at = 0; at < 6 && mind.route; at += .05) {
+    const before = { ...mind.position }; step(mind, scene, { occupants });
+    if (!mind.route) assert.deepEqual(mind.position, before, "the second deferral remains at actual feet");
+  }
+  assert.equal(mind.route, null, "a newly blocked escape has the same bounded patience as the original optional walk");
+  assert.ok(mind.elapsed - startedAt < 4);
+  assert.equal(mind.target, null); assert.equal(mind.action, "idle"); assert.equal(mind.trafficWaiting, false);
+  assert.deepEqual(mind.idleAvoid, originalCooldown, "do not overwrite either original goal ID or original expiry with builder-yield");
+  assert.equal(mind.job, null); assert.equal(mind.socialVisit, null); assert.equal(mind.sleepPhase, "awake");
+});
+
 test("facade stops remain in the bounded actual place list and finish with a short inspection", () => {
   const scene = world(), places = builderLocalPlaces(scene), mind = nearGoal(scene, true);
   const facades = places.wander.filter(stop => stop.id.startsWith("builder-look-"));
@@ -155,6 +176,29 @@ test("an agreed social hold and a player greeting pause an optional walk and res
   for (let at = 0; at < 2.2; at += .05) step(mind, scene);
   assert.deepEqual(mind.target, target); assert.ok(distance(mind.position, feet) > 0);
   assert.equal(mind.route, route);
+});
+
+test("a naturally due daytime home break waits for the full greeting, while construction and night still interrupt", () => {
+  const scene = world(), mind = createBuilderMind(scene);
+  while (mind.elapsed < 179.9 - 1e-7) step(mind, scene, {}, .1);
+  assert.equal(mind.homeNextAt, 180); assert.equal(mind.sleepPhase, "awake");
+  noticeBuilderMind(mind); step(mind, scene, {}, .1);
+  assert.equal(mind.action, "greet"); const greetingAt = mind.elapsed, feet = { ...mind.position };
+  const working = { ...mind, position: { ...feet } }, night = { ...mind, position: { ...feet } };
+  for (let at = 0; at < BUILDER_MIND_LIMITS.greeting - .05; at += .1) {
+    step(mind, scene, {}, .1);
+    assert.equal(mind.sleepPhase, "awake", "the due optional break cannot cancel the player's active greeting");
+    assert.deepEqual(mind.position, feet);
+  }
+  for (let at = 0; at < 1 && mind.sleepPhase === "awake"; at += .1) step(mind, scene, {}, .1);
+  assert.equal(mind.sleepPhase, "approach"); assert.equal(mind.target.id, "builder-home");
+  assert.ok(mind.elapsed - greetingAt >= BUILDER_MIND_LIMITS.greeting, "home starts only after the complete greeting");
+  const order = { id: "urgent-construction", stationId: "home", targetLevel: 4,
+    startedAt: new Date(now).toISOString(), finishesAt: new Date(now + 3600_000).toISOString() };
+  step(working, scene, { construction: construction([order]) });
+  assert.equal(working.job.id, order.id); assert.equal(working.action, "walk"); assert.equal(working.target.id, "home");
+  step(night, scene, { night: true });
+  assert.equal(night.sleepPhase, "approach"); assert.equal(night.homeReason, "night"); assert.equal(night.target.id, "builder-home");
 });
 
 test("a reserved visit replaces an optional inspection without disturbing the current feet", () => {

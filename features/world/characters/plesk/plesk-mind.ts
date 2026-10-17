@@ -11,6 +11,7 @@ import { beginPassageYield, advancePassageYield, passageYields } from "./plesk-t
 import { advancePleskHome, beginPleskHome, pleskHomeFrame, pleskHomeGeometryMatches, pleskPersonalHome, pleskRouteFrom, reachPleskHome,
   type PleskHomeState } from "./plesk-home";
 import { cancelPleskSocialVisit, finishPleskSocialStage, pleskCanPausePassing, pleskCanReceiveVisit, type PleskSocialVisit } from "./plesk-social-visit";
+import { rehydratePleskState } from "./plesk-rehydrate";
 export { requestPleskSocialVisit, cancelPleskSocialVisit, pleskAvailableForLeisure, pleskCanPausePassing, pleskCanReceiveVisit } from "./plesk-social-visit";
 import type { FixedWorldScene, WorldPoint } from "@/features/world/tiled/types";
 
@@ -60,6 +61,11 @@ export function createPleskMind(scene: FixedWorldScene, seed = 0x706c6573): Ples
     avoidStopId: null, avoidStopUntil: 0, leisureStep: 0,
     scene, available: true, observation: {} as PleskObservation };
   observe(mind); return mind;
+}
+
+/** Preserve this page's visible resident across a checked artwork replacement. */
+export function rehydratePleskMind(scene: FixedWorldScene, previous: PleskMind | null): PleskMind | null {
+  return previous ? rehydratePleskState(scene, previous) : createPleskMind(scene);
 }
 
 function routeBetween(places: PleskPlaces, from: string, target: PleskStop): ForestTrail | undefined {

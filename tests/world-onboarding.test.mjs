@@ -16,6 +16,7 @@ const {
   WORLD_ONBOARDING_STEPS,
   parseWorldOnboarding,
   transitionWorldOnboarding,
+  worldOnboardingNeedsHarvest,
 } = await vite.ssrLoadModule("/features/world/domain/world-onboarding.ts");
 const {
   createWorldOnboardingStore,
@@ -406,4 +407,55 @@ test("an update preserves existing players' terminal decisions and does not rewr
       assert.equal(storage.getItem(store.pauseStorageKey), null, "restoring does not invent a new preference");
     }
   }
+});
+
+
+test("only an actual tracked crop receipt persists harvest proof across steps and reload", () => {
+  const before = { ...started("orders"), cropJobId };
+  const harvested = transitionWorldOnboarding(before, { type: "harvest", jobId: cropJobId });
+  assert.deepEqual(harvested, { ...started("orders"), harvested: true });
+  assert.deepEqual(parse(harvested), harvested);
+  for (const stepId of stepIds) {
+    assert.deepEqual(transitionWorldOnboarding(harvested, { type: "step", stepId }), { ...started(stepId), harvested: true });
+  }
+  assert.deepEqual(transitionWorldOnboarding(harvested, { type: "complete", now }), { ...finished("completed"), harvested: true });
+  assert.deepEqual(transitionWorldOnboarding(harvested, { type: "replay" }), started("profile"));
+  assert.deepEqual(transitionWorldOnboarding(harvested, { type: "start" }), started("profile"));
+  for (const invalid of [undefined, null, false, "true", 1, {}, []]) {
+    assert.deepEqual(parse({ ...started("orders"), harvested: invalid }), started("orders"));
+  }
+});
+
+test("a stale harvest callback cannot complete another crop or a new replay", () => {
+  for (const progress of [null, started("profile"), { ...started("grow"), cropJobId: "new-crop" }]) {
+    assert.deepEqual(transitionWorldOnboarding(progress, { type: "harvest", jobId: cropJobId }), progress);
+  }
+  const order = { items: { berries: 1 } };
+  assert.equal(worldOnboardingNeedsHarvest(started("orders"), order), true);
+  assert.equal(worldOnboardingNeedsHarvest({ ...started("orders"), harvested: true }, order), false);
+  assert.equal(worldOnboardingNeedsHarvest(started("orders"), order, true), false);
+  assert.equal(worldOnboardingNeedsHarvest(started("orders"), { items: { berries: 2 } }), false);
+  assert.equal(worldOnboardingNeedsHarvest(started("orders"), { items: { berries: 1, stone: 1 } }), false);
+  assert.equal(worldOnboardingNeedsHarvest(started("neighbors"), order), false);
+  assert.equal(worldOnboardingNeedsHarvest(terminal("completed"), order), false);
+});
+
+
+test("harvest proof survives the account store and pause without unlocking another player's lesson", () => {
+  const storage = memoryStorage(), first = createWorldOnboardingStore("HARVEST-OWNER", storage);
+  first.restore();
+  first.save({ ...started("orders"), cropJobId });
+  advance(first, { type: "harvest", jobId: cropJobId });
+  first.setPaused(true);
+  const reopened = createWorldOnboardingStore("HARVEST-OWNER", storage);
+  reopened.restore();
+  assert.deepEqual(reopened.getSnapshot(), { loaded: true, paused: true, progress: { ...started("orders"), harvested: true } });
+  const second = createWorldOnboardingStore("NO-HARVEST-OWNER", storage);
+  second.restore();
+  second.save(started("orders"));
+  assert.equal(worldOnboardingNeedsHarvest(second.getSnapshot().progress, { items: { berries: 1 } }), true);
+  assert.equal(second.getSnapshot().paused, false);
+  advance(reopened, { type: "replay" });
+  assert.deepEqual(reopened.getSnapshot().progress, started("profile"));
+  assert.deepEqual(second.getSnapshot().progress, started("orders"));
 });

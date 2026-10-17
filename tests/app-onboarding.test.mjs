@@ -89,6 +89,28 @@ test("calendar opening is remembered across closure and reload", () => {
   assert.equal(result.stepId, "calendar");
 });
 
+test("the first calendar opening after a confirmed check-in needs no intermediate Next", () => {
+  let state = observeAppOnboarding(started(), evidence({ lastCheckInAt: newCheckIn }));
+  assert.equal(state.stepId, "check-in", "keep the confirmation visible while already pointing at the flame");
+  assert.equal(observeAppOnboarding(state, evidence()), state, "showing the explanation does not claim a calendar visit");
+  state = observeAppOnboarding(state, evidence({ calendarOpen: true }));
+  assert.equal(state.stepId, "calendar");
+  assert.deepEqual(state.completedSteps, ["check-in", "calendar"]);
+  state = parseAppOnboarding(JSON.stringify(state));
+  assert.equal(observeAppOnboarding(state, evidence()), state, "closing or reloading preserves the actual visit");
+  assert.equal(advanceAppOnboarding(state).stepId, "people", "one Next after the visit moves on to people");
+  const pending = started();
+  assert.equal(observeAppOnboarding(pending, evidence({ calendarOpen: true })), pending,
+    "opening a calendar before a confirmed mark cannot skip the first exercise");
+});
+
+test("returning to a completed check-in does not duplicate the remembered calendar visit", () => {
+  const state = { ...started(), completedSteps: ["check-in", "calendar"] };
+  const result = observeAppOnboarding(state, evidence({ calendarOpen: true }));
+  assert.equal(result.stepId, "calendar");
+  assert.deepEqual(result.completedSteps, state.completedSteps);
+});
+
 test("visiting the requested app section satisfies only the active exercise", () => {
   for (const step of ["people", "profile"]) {
     assert.deepEqual(observeAppOnboarding(started(step), evidence()).completedSteps, []);
@@ -236,6 +258,19 @@ test("calendar and world lessons wait for the real highlighted controls", () => 
   }
 });
 
+test("the first calendar explanation immediately highlights the real flame without a Next action", () => {
+  const lesson = view("check-in", {}, ["check-in"]);
+  assert.equal(lesson.props.target, '[data-app-onboarding="calendar"]');
+  assert.equal(lesson.props.primary, undefined);
+  assert.match(lesson.props.summary, /Нажми подсвеченный огонёк/);
+  assert.match(lesson.props.text, /закрой его/);
+  assert.deepEqual(lesson.calls, [], "describing the calendar must never open it for the user");
+  const away = view("check-in", { activeView: "people" }, ["check-in"]);
+  assert.equal(away.props.target, '[data-app-onboarding="nav-check-in"]');
+  assert.match(away.props.summary, /«Я живой» внизу/);
+  assert.equal(away.props.primary, undefined);
+});
+
 test("wrong-screen lessons highlight real navigation without switching tabs for the user", () => {
   for (const step of ["check-in", "calendar", "world"]) {
     const lesson = view(step, { activeView: "people" });
@@ -298,11 +333,13 @@ test("profile question entry resumes the saved app step and replays only a finis
 });
 
 test("only completed-step advancement can run from the small speech and character", () => {
-  for (const step of ["check-in", "calendar", "people", "profile"]) {
+  for (const step of ["calendar", "people", "profile"]) {
     const currentView = ["people", "profile"].includes(step) ? step : "check-in";
     assert.equal(view(step, { activeView: currentView }, [step]).props.primary.advance, true);
     assert.notEqual(view(step).props.primary?.advance, true);
   }
+  assert.equal(view("check-in", {}, ["check-in"]).props.primary, undefined,
+    "the completed mark points directly at the real calendar instead of advancing the speech");
   assert.equal(view("world").props.primary, undefined);
   assert.notEqual(view(null).props.primary.advance, true);
 });

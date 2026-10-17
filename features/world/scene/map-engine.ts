@@ -310,7 +310,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     const guideTarget = currentGuideTarget(objects);
     if (guideTarget) {
       ctx.setTransform(ratio, 0, 0, canvas.height / view.height, 0, 0);
-      drawMapGuideTarget(ctx, guideTarget, camera, view);
+      drawMapGuideTarget(ctx, guideTarget, camera, view, habitat.ambience().elapsed, motionReduced() || paused());
     }
     speechContext.setTransform(ratio, 0, 0, canvas.height / view.height, 0, 0);
     if (speechContext !== ctx) speechContext.clearRect(0, 0, view.width, view.height);

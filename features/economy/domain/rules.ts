@@ -18,6 +18,7 @@ import { persistEconomyItemUnlocks, unlockedEconomyItems } from "./item-unlocks"
 import { economyMarketUnlocked, marketSlotOffer } from "./market-rules";
 import { leaftailShopStock, leaftailShopView } from "./leaftail-shop";
 import { creditFishStock, debitFishStock, FishSelectionChangedError, fishStockWithinItems, normalizeFishStockInventory, reconcileFishStock, type FishSelection } from "./fish-stock";
+import { canStartTutorialWorkshop } from "./workshop-starter";
 export { economyLocalSellPrice, economyLocalSaleMinimumQuantity, economyLocalSaleLimit } from "./local-sale";
 
 export class EconomyRuleError extends Error {
@@ -158,12 +159,14 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
   if (command.fishSelection != null && !["start_production", "complete_resident_order", "sell", "sell_fish"].includes(command.action))
     throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Выбор рыбы не используется в этом действии", 400);
   if (!["speedup_construction", "buy_market_slot", "buy_fishing_item", "buy_wardrobe_item", "buy_leaftail_item", "refresh_fishing_shop", "sell", "replace_resident_order"].includes(command.action) && command.totalPrice !== 0) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Цена не используется в этом действии", 400);
-  const createJob = (job: Pick<EconomyJob, "kind" | "targetId" | "recipeId" | "targetLevel" | "rewards" | "collection" | "fishing" | "rareDrop" | "meal" | "actorId">, seconds: number, cost: EconomyCost, id = jobId(), fishSelection?: FishSelection) => {
+  const createJob = (job: Pick<EconomyJob, "kind" | "targetId" | "recipeId" | "targetLevel" | "rewards" | "collection" | "fishing" | "rareDrop" | "meal" | "actorId">, seconds: number, cost: EconomyCost | null, id = jobId(), fishSelection?: FishSelection) => {
     if (state.jobs.length >= 18) fail("ECONOMY_JOBS_CAPACITY", "Сначала заберите результат одной из текущих работ");
     if (Object.values(job.rewards).reduce((total, quantity) => total + quantity, 0) > economyStorage(state).capacity)
       fail("ECONOMY_STORAGE_FULL", "Вся партия не поместится на складе. Уменьшите её или расширьте склад");
-    const fishStockCost = debit(state, cost, fishSelection);
-    state.jobs.push({ ...job, ...(Object.keys(fishStockCost).length ? { fishStockCost } : {}), id, startedAt: new Date(now).toISOString(), finishesAt: new Date(now + seconds * 1000).toISOString(), cost, catalogVersion: economyCatalog.version });
+    // A null cost is the one-time tutorial construction aid, paid straight to
+    // the builder. It never credits or debits spendable stock or legacy debt.
+    const fishStockCost = cost === null ? {} : debit(state, cost, fishSelection);
+    state.jobs.push({ ...job, ...(Object.keys(fishStockCost).length ? { fishStockCost } : {}), id, startedAt: new Date(now).toISOString(), finishesAt: new Date(now + seconds * 1000).toISOString(), cost: cost ?? { coins: 0, items: {} }, catalogVersion: economyCatalog.version });
   };
   if (!["start_production", "sell", "sell_fish", "buy_fishing_item"].includes(command.action) && command.quantity !== 1) throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Для этого действия количество должно быть равно одному", 400);
   switch (command.action) {
@@ -352,7 +355,13 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       state.jobs = state.jobs.filter(item => item.id !== job.id);
       return "Вылазка отменена. Добыча потеряна, потраченные припасы не возвращаются";
     }
+    case "start_tutorial_workshop":
     case "start_construction": {
+      const tutorialWorkshop = command.action === "start_tutorial_workshop";
+      if (tutorialWorkshop && command.targetId !== "workshop")
+        throw new EconomyRuleError("INVALID_ECONOMY_COMMAND", "Учебные материалы предназначены для первой мастерской", 400);
+      if (tutorialWorkshop && !canStartTutorialWorkshop(state))
+        return fail("ECONOMY_WORKSHOP_STARTER_UNAVAILABLE", "Помощь для первой мастерской уже использована или стройка началась");
       const building = economyCatalog.buildings.find(item => item.id === command.targetId);
       if (!building) return fail("ECONOMY_BUILDING", "Постройка не найдена");
       const target = building.levels.find(level => level.level === (state.buildings[building.id] ?? 0) + 1);
@@ -372,9 +381,10 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       const meal = pendingMeal(state, "builder");
       createJob({ kind: "construction", targetId: building.id, recipeId: null, targetLevel: target.level, rewards: {},
         ...(meal ? { meal: { itemId: meal.itemId, consumer: "builder", speedBps: meal.builderSpeedBps } } : {}) },
-      meal ? mealDuration(target.seconds, meal.builderSpeedBps) : target.seconds, target.cost);
+      meal ? mealDuration(target.seconds, meal.builderSpeedBps) : target.seconds, tutorialWorkshop ? null : target.cost);
+      if (tutorialWorkshop) state.workshopStarterClaimed = true;
       if (meal) state.food = { ...foodState(state), builderMeal: null };
-      return "Строительство началось";
+      return tutorialWorkshop ? "Учебные материалы переданы Шишколапу, строительство мастерской началось" : "Строительство началось";
     }
     case "eat_food":
     case "feed_builder": {

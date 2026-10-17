@@ -19,6 +19,11 @@ export { FOREST_VILLAGER_LIMITS } from "./villager-state";
 export { requestForestVillagerHome } from "./villager-home-routine";
 export type { ForestVillagerMind, ForestVillagersState, ForestVillagerConfiguration, ForestVillagerEnvironment } from "./villager-state";
 
+function releaseSocialIntent(mind: ForestVillagerMind) {
+  mind.socialVisit = null; mind.target = null; mind.intent = "wander"; mind.afterWalk = "inspect";
+  mind.goal = null; mind.habit = null; stop(mind, "idle"); mind.wait = 3;
+}
+
 /** Shared-session, presentation-only minds. No timers, networking, command
  * callbacks, inventory or offline simulation are owned by these residents. */
 export function createForestVillagers(scene: FixedWorldScene): ForestVillagersState {
@@ -57,6 +62,13 @@ export function rehydrateForestVillagers(scene: FixedWorldScene, previous?: Fore
     production: previous.production ? { ...previous.production, jobs: previous.production.jobs.map(job => ({ ...job })) } : null };
   configureForestVillagers(state, scene, { confirmed: state.confirmed, buildings: state.buildings,
     arrivalSeen: state.arrivalCompleted, now });
+  // Restoring against the same immutable geometry does not enter configure's
+  // changedScene branch, but still belongs to a new social director.
+  for (const id of ids) {
+    const mind = state.residents[id], old = previous.residents[id];
+    if ((old.socialVisit || old.intent === "social") && !mind.job && mind.doorPhase === "outside"
+      && (!mind.woodwork || mind.woodwork.phase === "idle")) releaseSocialIntent(mind);
+  }
   return state;
 }
 
@@ -167,6 +179,11 @@ export function configureForestVillagers(state: ForestVillagersState, scene: Fix
         continue;
       }
       const arriving = id === "kamneshmyg" && state.arrivalPhase === "running";
+      if (previousIntent === "social" && !mind.job && !arriving) {
+        // The new director did not accept the old promise. Retaining its
+        // exterior stop would recreate a visit after releasing its reservation.
+        releaseSocialIntent(mind); continue;
+      }
       const target = mind.job || arriving ? places.work
         : previousTarget && isWalkable(places.navigation, previousTarget.position) ? [previousTarget] : [places.home];
       select(mind, places, target, mind.job ? "work" : arriving ? "work" : previousIntent,

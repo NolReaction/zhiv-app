@@ -101,8 +101,8 @@ export const FOREST_CONTEXT_CONVERSATIONS: readonly ForestConversation[] = [
   ] },
   { id: "window-woodpile-lopukh-unfinished", pair: "lopukh-leaftail", purpose: "window",
     continuation: { kind: "check-woodpile", result: "unfinished" }, lines: [
-    { speaker: "leaftail", text: "Поленницу осмотреть получилось?" }, { speaker: "lopukh", text: "Пока нет. Пришлось отложить." },
-    { speaker: "leaftail", text: "Тогда не буду считать дело готовым." }, { speaker: "lopukh", text: "Верно. Сначала нужно дойти." },
+    { speaker: "leaftail", text: "С поленницей тогда не вышло?" }, { speaker: "lopukh", text: "Тот осмотр пришлось отложить." },
+    { speaker: "leaftail", text: "Ничего. Не каждый план сбывается." }, { speaker: "lopukh", text: "Особенно если у плана длинные уши." },
   ] },
   { id: "woodpile-lopukh-remembered", pair: "lopukh-leaftail", purpose: "trade", condition: "woodpile-checked", lines: [
     { speaker: "leaftail", text: "У поленницы всё спокойно?" }, { speaker: "lopukh", text: "Осмотрел место, где кладу брёвна." },

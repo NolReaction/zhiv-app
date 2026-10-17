@@ -132,9 +132,11 @@ test("the rabbit checks a real completed wood delivery once, then has a more soc
   assert.equal(beginWoodcutterCycle(mind, places, undefined, { chopSeconds: 0 }), true);
   until(state, mind.id, mind => mind.habit?.kind === "woodpile" && mind.habit.phase === "inspect");
   const delivery = structuredClone(mind.woodwork.lastDelivery), duration = mind.habit.until - mind.elapsed, social = mind.socialNeed;
-  assert.equal(mind.checkedDelivery, delivery.sequence); assert.deepEqual(mind.target.lookAt, delivery.position);
+  assert.ok(mind.checkedDelivery < delivery.sequence, "arriving starts the inspection without claiming it finished");
+  assert.deepEqual(mind.target.lookAt, delivery.position);
   assert.ok(duration >= 3 && duration <= 7);
   until(state, mind.id, mind => mind.habitCycles === 1);
+  assert.equal(mind.checkedDelivery, delivery.sequence);
   assert.ok(mind.socialNeed > social + .19); assert.deepEqual(mind.woodwork.lastDelivery, delivery);
   assert.ok(mind.habitAfter > mind.elapsed + 30); assert.equal(state.production, null); assert.equal("inventory" in state, false);
   mind.wait = 1e6;

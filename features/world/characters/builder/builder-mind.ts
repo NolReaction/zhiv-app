@@ -130,16 +130,17 @@ function sample(path: SteeringPath, at: number) {
 /** Short traffic waits retain the original goal. Only a continuous failed
  * approach gives up optional ownership, with a cooldown before choosing it again. */
 function yieldIdleDestination(mind: BuilderMind, places: BuilderPlaces, occupants?: readonly ResidentOccupant[]): boolean {
-  if (mind.job || mind.socialVisit || mind.sleepPhase !== "awake" || !mind.target || mind.target.id === "builder-yield"
+  if (mind.job || mind.socialVisit || mind.sleepPhase !== "awake" || !mind.target
     || mind.elapsed < (idleYieldAfter.get(mind) ?? 0)) return false;
   idleYieldAfter.set(mind, mind.elapsed + RESIDENT_TRAFFIC_LIMITS.retry);
   const nearest = (occupants ?? []).slice(0, RESIDENT_TRAFFIC_LIMITS.occupants)
     .filter(other => other.id !== BUILDER.id && Number.isFinite(other.position.x) && Number.isFinite(other.position.y))
     .sort((a, b) => length(mind.position, a.position) - length(mind.position, b.position))[0];
   if (!nearest) return false;
+  const yielding = mind.target.id === "builder-yield";
   const away = Math.atan2(mind.position.y - nearest.position.y, mind.position.x - nearest.position.x);
   const step = BUILDER.size * .85;
-  for (const offset of [0, Math.PI / 3, -Math.PI / 3, Math.PI / 2, -Math.PI / 2, Math.PI, Math.PI * .75, -Math.PI * .75]) {
+  for (const offset of yielding ? [] : [0, Math.PI / 3, -Math.PI / 3, Math.PI / 2, -Math.PI / 2, Math.PI, Math.PI * .75, -Math.PI * .75]) {
     const position = { x: mind.position.x + Math.cos(away + offset) * step,
       y: mind.position.y + Math.sin(away + offset) * step };
     if (!canTraverse(places.navigation, mind.position, position)
@@ -150,7 +151,9 @@ function yieldIdleDestination(mind: BuilderMind, places: BuilderPlaces, occupant
   }
   // A fully occupied pocket may have no legal escape at all. Defer this
   // voluntary goal where the feet actually are; this is no arrival or work.
-  mind.idleAvoid = { id: mind.target.id, until: mind.elapsed + BUILDER_MIND_LIMITS.idleRetry };
+  // An escape can itself become occupied. Stop that finite escape without
+  // inventing another yield goal or replacing the original destination's clock.
+  if (!yielding) mind.idleAvoid = { id: mind.target.id, until: mind.elapsed + BUILDER_MIND_LIMITS.idleRetry };
   mind.route = null; mind.target = null; mind.distance = 0; mind.speed = 0;
   mind.trafficWaiting = false; mind.blocked = false; mind.wait = 3;
   trafficStalls.delete(mind); passageYields.delete(mind); action(mind, "idle");
@@ -361,7 +364,7 @@ export function advanceBuilderMind(mind: BuilderMind | null, scene: FixedWorldSc
     }
     return;
   }
-  if (!mind.job && !mind.socialVisit && !environment.socialHold && !mind.noticePending
+  if (!mind.job && !mind.socialVisit && !environment.socialHold && !mind.noticePending && mind.action !== "greet"
     && mind.sleepPhase === "awake" && mind.elapsed >= mind.homeNextAt && places.home) approachHome(mind, places, "break");
   yieldRequestedPassage(mind, places, environment.occupants);
   if (!mind.job && mind.sleepPhase === "awake") {

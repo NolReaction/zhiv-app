@@ -54,6 +54,8 @@ import { SectionGuide } from "@/features/onboarding/section-guide";
 import { pauseFocusedGuide } from "@/features/onboarding/guide-keyboard";
 import { useForestObservation } from "@/features/world/state/use-forest-observation";
 import { useWorldOnboarding } from "@/features/world/state/use-world-onboarding";
+import { worldOnboardingNeedsHarvest } from "@/features/world/domain/world-onboarding";
+import { tutorialOrderProgress, tutorialResidentOrder } from "@/features/economy/domain/tutorial-order";
 import { useWorldRewardPromptGate } from "@/features/world/state/onboarding-reward-gate";
 import { WorldOnboardingSession } from "@/features/world/ui/onboarding/world-onboarding";
 import { useMarketUnlockOnboarding } from "@/features/world/state/use-market-unlock-onboarding";
@@ -477,9 +479,13 @@ export default function WorldView({ open, suspended = false, world, economy, own
   const guideStep = onboarding.progress?.status === "started" ? onboarding.progress.stepId : null;
   const guideCrop = economy.snapshot?.jobs.find(job => job.id === onboarding.progress?.cropJobId);
   const guideCropReady = Boolean(guideCrop && economy.now >= Date.parse(guideCrop.finishesAt));
+  const guideOrder = economy.snapshot ? tutorialResidentOrder(economy.snapshot) : null;
+  const guideOrderProgress = economy.snapshot ? tutorialOrderProgress(economy.snapshot) : null;
+  const guideNeedsHarvest = worldOnboardingNeedsHarvest(onboarding.progress, guideOrder,
+    Boolean(guideOrderProgress && (guideOrderProgress.completed || guideOrderProgress.step > 0)));
   const guideMapAvailable = open && onboarding.loaded && !onboarding.isPaused && !panel && !quickMenu && !selection
     && !quickUpgrade && !residentOpen && !charactersOpen && !dailyOpen && observation?.memory.sync?.mode !== "other-device";
-  const guideWantsGarden = guideStep === "garden" || guideStep === "grow" && (!guideCrop || guideCropReady)
+  const guideWantsGarden = guideNeedsHarvest || guideStep === "garden" || guideStep === "grow" && (!guideCrop || guideCropReady)
     || onboarding.progress?.status === "completed" && guideCropReady;
   const guideWantsWorkshop = guideStep === "workshop";
   const guidePlace = marketGuide.open ? "market" : minerArrival.open || minerArrival.enabled ? "quarry" : merchantArrival.open || merchantArrival.enabled ? "leaftail-caravan" : guideMapAvailable ? guideWantsGarden ? "garden"
@@ -698,10 +704,10 @@ export default function WorldView({ open, suspended = false, world, economy, own
       onMeet={() => { if (openResident("kamneshmyg")) minerArrival.dismiss(); }} onDismiss={minerArrival.dismiss} />
     <LeaftailArrivalOnboarding open={merchantArrival.open} arrived={merchantArrival.seen} worldElement={worldElement}
       onMeet={() => { openObject("leaftail-caravan"); merchantArrival.dismiss(); }} onDismiss={merchantArrival.dismiss} />
-    <WorldOnboardingSession presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`} open={Boolean(open && economy.snapshot && onboarding.loaded && !onboarding.isPaused && !marketGuide.open && !minerArrival.open && !minerArrival.enabled && !merchantArrival.open && !merchantArrival.enabled)}
+    <WorldOnboardingSession key={ownerPublicId} presenceKey={`zhiv:mochlik:presence:${ownerPublicId}`} open={Boolean(open && economy.snapshot && onboarding.loaded && !onboarding.isPaused && !marketGuide.open && !minerArrival.open && !minerArrival.enabled && !merchantArrival.open && !merchantArrival.enabled)}
       modalBlocked={Boolean(panel && !(panel === "orders" && guideStep === "orders") || quickUpgrade || residentOpen || charactersOpen || dailyOpen || !mainCourseActive && (quickSection || selection))}
       progress={onboarding.progress} fishSaleOpen={Boolean(pantryFishSaleOpen)} worldElement={worldElement} economy={economy} quickMenu={quickMenu} helpOpen={panel === "help"} isOnline={isOnline}
-      onStart={onboarding.start} onStep={onboarding.step} onCrop={onboarding.setCrop}
+      onStart={onboarding.start} onStep={onboarding.step} onCrop={onboarding.setCrop} onHarvest={onboarding.confirmHarvest}
       onSkip={onboarding.skip} onComplete={onboarding.complete} onOpenHelp={() => openContextHelp()} onPause={onboarding.pause}
       residentOpen={residentOpen ? residentId : null} charactersOpen={charactersOpen}
       ordersOpen={panel === "orders"} ordersElement={panelRoot}

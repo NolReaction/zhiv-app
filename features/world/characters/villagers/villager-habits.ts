@@ -6,7 +6,10 @@ import type { ForestVillagerMind, VillagerHabit } from "./villager-state";
 
 const variation = (mind: ForestVillagerMind, spread: number) => (mind.decisions * 17 + mind.habitCycles * 31) % spread;
 function finishHabit(mind: ForestVillagerMind) {
-  if (mind.habit?.kind === "woodpile") mind.socialNeed = Math.min(1, mind.socialNeed + .2);
+  if (mind.habit?.kind === "woodpile" && mind.habit.phase === "inspect") {
+    mind.checkedDelivery = mind.woodwork?.lastDelivery?.sequence ?? mind.checkedDelivery;
+    mind.socialNeed = Math.min(1, mind.socialNeed + .2);
+  }
   mind.habit = null; mind.habitCycles++;
   mind.habitAfter = mind.elapsed + (mind.id === "leaftail" ? 48 : 32) + variation(mind, 25);
   mind.wait = 3 + variation(mind, 5);
@@ -37,7 +40,6 @@ export function advanceVillagerHabit(mind: ForestVillagerMind, places: VillagerP
     if (mind.habit.phase === "walk") {
       if (!mind.target || villagerDistance(mind.position, mind.target.position) > .1) { finishHabit(mind); return false; }
       mind.habit.phase = "inspect"; mind.habit.until = mind.elapsed + 3 + variation(mind, 5);
-      if (mind.habit.kind === "woodpile") mind.checkedDelivery = mind.woodwork?.lastDelivery?.sequence ?? mind.checkedDelivery;
     }
     setVillagerAction(mind, "inspect");
     if (mind.elapsed < mind.habit.until) return true;

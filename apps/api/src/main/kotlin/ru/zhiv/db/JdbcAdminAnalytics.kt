@@ -14,6 +14,7 @@ private const val technicalKinds = "'legacy_conversion','starting_pack','account
 private const val jobKinds = "'claim_job','claim_garden_collection','speedup_construction','start_collection','start_garden_collection','cancel_production','cancel_exploration'"
 private const val escrowKinds = "'market_create','market_cancel','barter_create','barter_cancel'"
 private const val passiveKinds = "'market_sell','barter_exchange'"
+private const val constructionStartKinds = "'start_construction','start_tutorial_workshop'"
 private const val maxAnalyticsGroups = 1000
 
 private fun ResultSet.analyticsTime(column: String): String? = getObject(column, OffsetDateTime::class.java)?.toInstant()?.toString()
@@ -50,13 +51,13 @@ private fun periodEvents(materialize: Boolean = false, cohort: Boolean = false) 
     ), attributed AS (
         SELECT l.*,
           coalesce(nullif(l.context->>'targetId',''),
-            CASE WHEN l.kind IN ($jobKinds) THEN CASE WHEN original->>'action' IN ('start_construction','start_production','start_exploration','start_fishing')
+            CASE WHEN l.kind IN ($jobKinds) THEN CASE WHEN original->>'action' IN ($constructionStartKinds,'start_production','start_exploration','start_fishing')
               THEN nullif(original->>'targetId','') END ELSE nullif(command->>'targetId','') END) AS raw_target,
           CASE WHEN l.kind IN ($escrowKinds) THEN 'escrow'
                WHEN l.kind IN ('market_buy','market_sell','barter_accept','barter_exchange') THEN 'trade' ELSE 'gameplay' END AS category,
-          (l.kind='speedup_construction' OR (l.kind='claim_job' AND coalesce(l.context->>'originAction',original->>'action')='start_construction')) IS TRUE AS construction_claim,
+          (l.kind='speedup_construction' OR (l.kind='claim_job' AND coalesce(l.context->>'originAction',original->>'action') IN ($constructionStartKinds))) IS TRUE AS construction_claim,
           l.kind NOT IN ($passiveKinds) AS active,
-          left(l.source_key,8)='command:' OR l.kind IN ($jobKinds,'start_construction','start_production','start_exploration','start_fishing') AS needs_context
+          left(l.source_key,8)='command:' OR l.kind IN ($jobKinds,$constructionStartKinds,'start_production','start_exploration','start_fishing') AS needs_context
         FROM job_context l
     ), events AS ${if (materialize) "MATERIALIZED " else ""}(
         SELECT user_id,public_id,display_name,source_key,kind,created_at,items,category,construction_claim,active,needs_context,
@@ -110,7 +111,7 @@ internal fun readAdminAnalytics(c: Connection, window: AdminAnalyticsWindow, adm
             daily_counts AS (
                 SELECT (created_at AT TIME ZONE 'UTC')::date AS day,
                   count(DISTINCT user_id) FILTER (WHERE active) AS players,count(*) AS events,
-                  count(*) FILTER (WHERE kind='start_construction') AS starts FROM events GROUP BY 1
+                  count(*) FILTER (WHERE kind IN ($constructionStartKinds)) AS starts FROM events GROUP BY 1
             ), daily_totals AS (
                 SELECT d.day::text AS date,coalesce(c.players,0) AS players,coalesce(c.events,0) AS events,
                   coalesce(c.starts,0) AS "constructionStarts" FROM days d LEFT JOIN daily_counts c USING(day)
@@ -144,18 +145,18 @@ internal fun readAdminAnalytics(c: Connection, window: AdminAnalyticsWindow, adm
                   count(DISTINCT user_id) AS players FROM events WHERE kind IN ('complete_resident_order','replace_resident_order') GROUP BY target_id
                 ORDER BY count(*) FILTER (WHERE kind='complete_resident_order') DESC,target_id NULLS LAST LIMIT 1001
             ), construction_totals AS (
-                SELECT target_id AS "buildingId",count(*) FILTER (WHERE kind='start_construction') AS starts,
+                SELECT target_id AS "buildingId",count(*) FILTER (WHERE kind IN ($constructionStartKinds)) AS starts,
                   count(*) FILTER (WHERE construction_claim) AS claims,count(DISTINCT user_id) AS players
-                FROM events WHERE target_id IS NOT NULL AND (kind='start_construction' OR construction_claim) GROUP BY target_id
+                FROM events WHERE target_id IS NOT NULL AND (kind IN ($constructionStartKinds) OR construction_claim) GROUP BY target_id
             )
             SELECT jsonb_build_object(
                 'summary',(SELECT to_jsonb(s) FROM (
                     SELECT count(DISTINCT user_id) FILTER (WHERE active) AS "activePlayers",count(*) AS events,
                       count(DISTINCT user_id) FILTER (WHERE category<>'escrow' AND
                         (coins<0 OR pearls<0 OR EXISTS(SELECT 1 FROM jsonb_each_text(items) WHERE value::bigint<0))) AS "spendingPlayers",
-                      count(*) FILTER (WHERE kind='start_construction') AS "constructionStarts",
+                      count(*) FILTER (WHERE kind IN ($constructionStartKinds)) AS "constructionStarts",
                       count(*) FILTER (WHERE construction_claim) AS "constructionClaims",
-                      count(DISTINCT user_id) FILTER (WHERE kind='start_construction' OR construction_claim) AS "constructionPlayers"
+                      count(DISTINCT user_id) FILTER (WHERE kind IN ($constructionStartKinds) OR construction_claim) AS "constructionPlayers"
                     FROM events
                 ) s),
                 'gameplay',(SELECT to_jsonb(g) FROM (
@@ -184,7 +185,7 @@ internal fun readAdminAnalytics(c: Connection, window: AdminAnalyticsWindow, adm
         val firstConstructions = reads.scoped("""
             , first_starts AS (
                 SELECT DISTINCT ON(l.user_id) l.user_id,l.source_key,l.created_at,l.context FROM economy_ledger l
-                JOIN scoped_users u ON u.id=l.user_id WHERE l.kind='start_construction' AND l.created_at<?
+                JOIN scoped_users u ON u.id=l.user_id WHERE l.kind IN ($constructionStartKinds) AND l.created_at<?
                 ORDER BY l.user_id,l.created_at,l.source_key
             ), first_choices AS (
                 SELECT coalesce(nullif(f.context->>'targetId',''),

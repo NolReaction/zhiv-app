@@ -104,6 +104,7 @@ export function connectForestSession(key: string | undefined, scene: FixedWorldS
     discardSession(parkedIdentity, parked);
   }
   let shared = identity === undefined ? undefined : sessions.get(identity);
+  const created = !shared;
   if (!shared) {
     const state: ForestSessionState = { elapsed: 0, timestamp, dusk, wetness: 0, life: createForestLife(scene), clearing: createClearingActivity(scene),
       social: createForestSocial(`${key ?? "guest"}:${timestamp}`), fauna: createForestFauna(scene), pleskMind: createPleskMind(scene), builderMind: createBuilderMind(scene, { awaitConstruction: options.awaitBuilderConstruction }), director: createForestDirector(), birdReactions: createBirdReactions(), lastBirdStimulus: 0,
@@ -176,6 +177,8 @@ export function connectForestSession(key: string | undefined, scene: FixedWorldS
   session.members.add(member);
   return {
     state: session.state,
+    /** Geometry handoffs may seed a new session, never overwrite a joined one. */
+    created,
     isOwner: () => !disposed && session.owner === member && (session.sync?.isSimulationAllowed() ?? true),
     isSimulationAllowed: () => !disposed && (session.sync?.isSimulationAllowed() ?? true),
     isObservationOwner: () => !disposed && (session.owner === member || session.owner === null),

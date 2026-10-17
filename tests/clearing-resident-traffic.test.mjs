@@ -8,7 +8,7 @@ const vite = await createServer({ appType: "custom", configFile: false, root,
   resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false } });
 after(() => vite.close());
 const { createClearingActivity, advanceClearingActivity, requestClearingPoint, isClearingAtPoint,
-  setClearingNavigationObstacle, baseClearingNavigation, requestClearingSleep } =
+  setClearingNavigationObstacle, baseClearingNavigation, requestClearingSleep, noticeClearingActivity } =
   await vite.ssrLoadModule("/features/world/simulation/clearing-activity.ts");
 const { canTraverse, canTraverseWorldObstacle, isWalkable } = await vite.ssrLoadModule("/features/world/navigation/navigation.ts");
 const { canTraverseResidents, residentClearance } = await vite.ssrLoadModule("/features/world/navigation/resident-traffic.ts");
@@ -182,6 +182,23 @@ test("a brief occupied roaming goal preserves its exact plan through a pause and
   assert.ok(!state.behavior.mind.recent.some(item => item.key === intention.key && item.outcome === "interrupted"));
 });
 
+test("greeting the player pauses an occupied roaming goal's patience without forgetting the goal", () => {
+  const state = beginNaturalRoam(roamingScene()), route = state.freeRoute;
+  const worker = { ...builder, position: { ...route.points.at(-1) } }, options = { ...conditions, occupants: [worker] };
+  for (let time = 0; time < 5.5; time += .025) step(state, options);
+  const feet = { ...state.position };
+  assert.equal(noticeClearingActivity(state), true);
+  assert.equal(state.stage, "attention");
+  for (let time = 0; time < 2 && state.stage === "attention"; time += .025) step(state, options);
+  for (let time = 0; time < .2; time += .025) step(state, options);
+  assert.equal(state.stage, "free-walk", "greeting time is not time spent trying a blocked walk");
+  assert.equal(state.freeRoute, route); assert.deepEqual(state.position, feet);
+  for (let time = 0; time < 1 && state.stage === "free-walk"; time += .025) step(state, options);
+  assert.equal(state.stage, "clearing", "the same wait still expires after its remaining active patience");
+  assert.deepEqual(state.position, feet);
+  assert.equal(state.behavior.mind.recent.at(-1)?.outcome, "interrupted");
+});
+
 test("a voluntary walk also defers a sealed mid-route passage while explicit held destinations remain protected", () => {
   const source = scene();
   source.navigation.areas = [{ id: "room", points: rect(100, 100, 100, 220) },
@@ -199,4 +216,28 @@ test("a voluntary walk also defers a sealed mid-route passage while explicit hel
   assert.equal(state.stage, "clearing"); assert.equal(state.behavior.reason, "roaming-passage-deferred");
   assert.equal(state.freeRoute, null); assert.equal(state.behavior.mind.recent.at(-1)?.outcome, "interrupted");
   assert.deepEqual(worker, savedWorker);
+});
+
+test("a player greeting also pauses patience at a sealed mid-route passage", () => {
+  const source = scene();
+  source.navigation.areas = [{ id: "room", points: rect(100, 100, 100, 220) },
+    { id: "passage", points: rect(180, 200, 140, 40) }];
+  const state = createClearingActivity(source, 11), target = point(300, 220);
+  assert.equal(requestClearingPoint(state, target), true);
+  state.requestedPoint = null; state.freePurpose = "roam"; state.freeRoute.id = "far-look";
+  state.behavior.mind.intention = { key: "far-look", action: "look", reason: "Осмотреть тропу", startedAt: 0, source: "clearing" };
+  const worker = { ...builder, position: point(240, 220) }, options = { ...conditions, occupants: [worker] };
+  for (let time = 0; time < 10 && state.behavior.reason !== "waiting-for-resident"; time += .025) step(state, options);
+  assert.equal(state.behavior.reason, "waiting-for-resident");
+  for (let time = 0; time < 11; time += .025) step(state, options);
+  assert.equal(state.stage, "free-walk");
+  const route = state.freeRoute, feet = { ...state.position };
+  assert.equal(noticeClearingActivity(state), true);
+  for (let time = 0; time < 2 && state.stage === "attention"; time += .025) step(state, options);
+  for (let time = 0; time < .2; time += .025) step(state, options);
+  assert.equal(state.stage, "free-walk"); assert.equal(state.freeRoute, route);
+  assert.deepEqual(state.position, feet);
+  for (let time = 0; time < 2 && state.stage === "free-walk"; time += .025) step(state, options);
+  assert.equal(state.stage, "clearing"); assert.equal(state.behavior.reason, "roaming-passage-deferred");
+  assert.deepEqual(state.position, feet);
 });

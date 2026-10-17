@@ -1,11 +1,15 @@
 package ru.zhiv.economy
 
-/** The saved marker remains compatible; the first-stage economy retires the material gift. */
+/** The legacy loose gift stays retired; the tutorial pays the first build directly. */
 object EconomyWorkshopStarter {
     fun cost(catalog: EconomyCatalog = EconomyRules.catalog): EconomyCost =
         catalog.buildings.single { it.id == "workshop" }.levels.single { it.level == 1 }.cost
 
     fun canClaim(state: EconomyState): Boolean = false
+
+    fun canStartTutorialWorkshop(state: EconomyState): Boolean = !state.workshopStarterClaimed &&
+        (state.buildings["workshop"] ?: 0) == 0 &&
+        state.jobs.none { it.kind == "construction" && it.targetId == "workshop" }
 
     fun claim(state: EconomyState, command: EconomyCommand,
         reservedItems: Map<String, Long> = emptyMap()): Pair<EconomyState, String> {

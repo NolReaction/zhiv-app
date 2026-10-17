@@ -69,8 +69,8 @@ export type ClearingActivityFrame = WorldPoint & {
 const temporaryNavigation = new WeakMap<ClearingActivityState, { base: WorldNavigation; key: string; current: WorldNavigation }>();
 const parkedPropWait = new WeakMap<ClearingActivityState, { navigation: WorldNavigation; route: ClearingRoute; stage: ClearingStage }>();
 const passageYieldAfter = new WeakMap<ClearingActivityState, number>();
-const roamingWait = new WeakMap<ClearingActivityState, { id: string; since: number }>();
-const roamingTrafficStall = new WeakMap<ClearingActivityState, { id: string; since: number; position: WorldPoint }>();
+const roamingWait = new WeakMap<ClearingActivityState, { id: string; waited: number }>();
+const roamingTrafficStall = new WeakMap<ClearingActivityState, { id: string; waited: number; position: WorldPoint }>();
 const roamingDeferred = new WeakMap<ClearingActivityState, { id: string; until: number }[]>();
 export const CLEARING_ROAM_LIMITS = { occupiedWait: 6, passageWait: 12, deferred: 24, memories: 8 } as const;
 
@@ -791,9 +791,14 @@ function advanceWalk(state: ClearingActivityState, dt: number, options: Clearing
       // A neighbour can occupy an already chosen destination for a moment.
       // Keep this exact intention before deferring it; no path search or reward
       // runs while waiting, and player/work reservations use their own owner.
-      const waiting = roamingWait.get(state);
-      if (!waiting || waiting.id !== route.id) roamingWait.set(state, { id: route.id, since: state.elapsed });
-      if (state.elapsed - (roamingWait.get(state)!.since) < CLEARING_ROAM_LIMITS.occupiedWait) {
+      let waiting = roamingWait.get(state);
+      if (!waiting || waiting.id !== route.id) {
+        waiting = { id: route.id, waited: 0 }; roamingWait.set(state, waiting);
+      }
+      // Greetings and other temporary owners pause the attempt itself, even
+      // while the actor's general active clock continues advancing.
+      waiting.waited += dt;
+      if (waiting.waited < CLEARING_ROAM_LIMITS.occupiedWait) {
         state.speed = 0; state.behavior.reason = "roaming-place-waiting"; return;
       }
       deferRoamingGoal(state, route.id);
@@ -855,10 +860,11 @@ function advanceWalk(state: ClearingActivityState, dt: number, options: Clearing
       && !state.requestedPoint && !state.activeInteraction) {
       let stalled = roamingTrafficStall.get(state);
       if (!stalled || stalled.id !== route.id || distance(stalled.position, state.position) > state.size * .1) {
-        stalled = { id: route.id, since: state.elapsed, position: { ...state.position } };
+        stalled = { id: route.id, waited: 0, position: { ...state.position } };
         roamingTrafficStall.set(state, stalled);
       }
-      if (state.elapsed - stalled.since >= CLEARING_ROAM_LIMITS.passageWait) {
+      stalled.waited += dt;
+      if (stalled.waited >= CLEARING_ROAM_LIMITS.passageWait) {
         deferRoamingGoal(state, route.id); releaseOccupiedRoamingGoal(state, route.id);
         state.behavior.reason = "roaming-passage-deferred"; return;
       }
@@ -868,6 +874,8 @@ function advanceWalk(state: ClearingActivityState, dt: number, options: Clearing
   }
   const step = Math.abs(nextDistance - state.distance);
   state.distance = nextDistance; state.walked += step; state.position = sample.position;
+  const stalled = roamingTrafficStall.get(state);
+  if (stalled && distance(stalled.position, state.position) > state.size * .1) roamingTrafficStall.delete(state);
   const { a, b } = sample;
   const dx = (b.x - a.x) * (returning ? -1 : 1), dy = (b.y - a.y) * (returning ? -1 : 1);
   state.direction = route.steering ? walkDirection(state.direction, dx, dy)

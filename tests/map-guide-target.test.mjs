@@ -6,7 +6,7 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { mapGuideCamera, minerArrivalGuideTarget } = await vite.ssrLoadModule("/features/world/scene/map-guide-target.ts");
+const { mapGuideCamera, minerArrivalGuideTarget, drawMapGuideTarget } = await vite.ssrLoadModule("/features/world/scene/map-guide-target.ts");
 const { observeMapGuideInset } = await vite.ssrLoadModule("/features/world/scene/map-guide-inset.ts");
 const { worldToScreen } = await vite.ssrLoadModule("/features/world/scene/camera.ts");
 const { interactiveMapObjects } = await vite.ssrLoadModule("/features/world/scene/site-interactions.ts");
@@ -51,6 +51,38 @@ test("real garden, workshop, orders board and market fit between HUD and coach o
       }
     }
   }
+});
+
+function paintedGuide(elapsed, reducedMotion = false) {
+  const path = [], strokes = [];
+  const context = { globalAlpha: .8, saved: null,
+    save() { this.saved = this.globalAlpha; }, restore() { this.globalAlpha = this.saved; },
+    beginPath() {}, closePath() {}, moveTo(x, y) { path.push([x, y]); }, lineTo(x, y) { path.push([x, y]); },
+    stroke() { strokes.push({ alpha: this.globalAlpha, width: this.lineWidth, color: this.strokeStyle }); },
+  };
+  const target = minerArrivalGuideTarget({ x: 650, y: 250, size: 42 });
+  const original = structuredClone(target);
+  drawMapGuideTarget(context, target, { x: 650, y: 250, zoom: 2 }, { width: 393, height: 665 }, elapsed, reducedMotion);
+  assert.deepEqual(target, original, "the authored click and framing geometry is never animated");
+  assert.equal(context.globalAlpha, .8, "guide paint restores the caller's canvas state");
+  return { path, strokes };
+}
+
+test("map guide slowly pulses bright paint on the existing active clock with stable geometry", () => {
+  const bright = paintedGuide(0), dim = paintedGuide(.9), next = paintedGuide(1.8);
+  assert.deepEqual(dim.path, bright.path);
+  assert.deepEqual(next, bright, "the slow pulse completes one smooth cycle in 1.8 active seconds");
+  assert.deepEqual(dim.strokes.map(stroke => stroke.width), bright.strokes.map(stroke => stroke.width));
+  assert.equal(dim.strokes[0].alpha, bright.strokes[0].alpha, "the dark backing stays legible");
+  assert.ok(dim.strokes[1].alpha < bright.strokes[1].alpha);
+  assert.ok(dim.strokes[1].alpha >= .8 * .5, "the highlighted contour never disappears");
+});
+
+test("reduced motion keeps the map guide fully visible and static at any clock value", () => {
+  const first = paintedGuide(0, true);
+  assert.deepEqual(paintedGuide(.9, true), first);
+  assert.deepEqual(paintedGuide(100, true), first);
+  assert.ok(first.strokes.every(stroke => stroke.alpha === .8));
 });
 
 function observeEnvironment(run) {

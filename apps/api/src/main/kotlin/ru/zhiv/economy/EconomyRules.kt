@@ -536,7 +536,11 @@ object EconomyRules {
                 state.copy(jobs = state.jobs.filterNot { it.id == job.id }) to
                     "Вылазка отменена. Добыча потеряна, потраченные припасы не возвращаются"
             }
-            "start_construction" -> {
+            "start_tutorial_workshop", "start_construction" -> {
+                val tutorialWorkshop = command.action == "start_tutorial_workshop"
+                if (tutorialWorkshop && command.targetId != "workshop") invalidEconomy()
+                if (tutorialWorkshop && !EconomyWorkshopStarter.canStartTutorialWorkshop(state))
+                    economyFailure("ECONOMY_WORKSHOP_STARTER_UNAVAILABLE", "Помощь для первой мастерской уже использована или стройка началась")
                 val building = catalog.buildings.find { it.id == command.targetId } ?: economyFailure("ECONOMY_BUILDING", "Здание не найдено")
                 val next = (state.buildings[building.id] ?: 0) + 1
                 val upgrade = building.levels.find { it.level == next } ?: economyFailure("ECONOMY_MAX_LEVEL", "Доступные улучшения уже завершены")
@@ -552,11 +556,16 @@ object EconomyRules {
                 if (state.jobs.any { it.kind == "production" && it.targetId == building.id }) economyFailure("ECONOMY_BUILDING_BUSY", "Получите результат производства перед улучшением")
                 requireJobCapacity(state)
                 val meal = EconomyFood.pendingMeal(state, "builder")
+                val cost = if (tutorialWorkshop) EconomyCost(0, emptyMap()) else upgrade.cost
                 val job = EconomyJob(command.requestId, "construction", building.id, targetLevel = next,
                     startedAt = now.toString(), finishesAt = now.plusSeconds(EconomyFood.mealDuration(upgrade.seconds, meal?.speedBps ?: 0)).toString(),
-                    cost = upgrade.cost, catalogVersion = catalog.version, meal = meal)
-                spend(state, upgrade.cost).copy(jobs = state.jobs + job,
-                    food = if (meal == null) state.food else state.food.copy(builderMeal = null)) to "Материалы внесены, строительство началось"
+                    cost = cost, catalogVersion = catalog.version, meal = meal)
+                // The aid is earmarked for this job, without changing inventory,
+                // reserved market stock or a legacy negative coin balance.
+                val funded = if (tutorialWorkshop) state else spend(state, cost)
+                funded.copy(jobs = state.jobs + job, workshopStarterClaimed = state.workshopStarterClaimed || tutorialWorkshop,
+                    food = if (meal == null) state.food else state.food.copy(builderMeal = null)) to
+                    if (tutorialWorkshop) "Учебные материалы переданы Шишколапу, строительство мастерской началось" else "Материалы внесены, строительство началось"
             }
             "speedup_construction" -> {
                 val job = state.jobs.find { it.id == command.targetId } ?: economyFailure("ECONOMY_JOB_GONE", "Результат уже получен или задание не найдено")

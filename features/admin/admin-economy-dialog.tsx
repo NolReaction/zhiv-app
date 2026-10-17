@@ -16,6 +16,7 @@ import styles from "./admin-economy.module.css";
 const ledgerLabels: Record<string, string> = {
   starting_pack: "Стартовый набор новичка", claim_tutorial_order: "Ингредиенты учебного заказа",
   claim_workshop_starter: "Подарок для первой мастерской",
+  start_tutorial_workshop: "Учебная стройка мастерской",
   eat_food: "Еда для Мохлика", feed_builder: "Еда для строителя",
   complete_resident_order: "Сдача заказа жителя", replace_resident_order: "Замена заказа жителя",
   legacy_conversion: "Перенос прежних ресурсов", legacy_journey: "Прежнее путешествие", start_production: "Начало производства",

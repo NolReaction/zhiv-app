@@ -17,7 +17,7 @@ internal fun readAdminProgression(reads: AnalyticsReads, now: Instant): AdminAna
               min(e.created_at) FILTER (WHERE e.active) AS first_action,
               min(e.created_at) FILTER (WHERE e.kind IN ('start_production','start_exploration','start_fishing')) AS first_work_started,
               min(e.created_at) FILTER (WHERE e.kind IN ('claim_job','claim_garden_collection') AND e.origin_action IN ('start_production','start_exploration','start_fishing')) AS first_work_claimed,
-              min(e.created_at) FILTER (WHERE e.kind='start_construction') AS first_construction_started,
+              min(e.created_at) FILTER (WHERE e.kind IN ('start_construction','start_tutorial_workshop')) AS first_construction_started,
               min(e.created_at) FILTER (WHERE e.construction_claim) AS first_construction_claimed
             FROM cohort_users u LEFT JOIN events e ON e.user_id=u.id GROUP BY u.id,u.created_at
         ), milestones AS (

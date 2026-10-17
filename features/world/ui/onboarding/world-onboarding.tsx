@@ -2,15 +2,16 @@
 
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { GuideCoach, type GuideCoachProps } from "@/features/onboarding/guide-coach";
-import { WORLD_ONBOARDING_STEPS, type WorldOnboardingProgress, type WorldOnboardingStepId } from "@/features/world/domain/world-onboarding";
+import { worldOnboardingNeedsHarvest, WORLD_ONBOARDING_STEPS, type WorldOnboardingProgress, type WorldOnboardingStepId } from "@/features/world/domain/world-onboarding";
 import { useForestObservation } from "@/features/world/state/use-forest-observation";
 import type { EconomyController } from "@/features/economy/sync/use-economy";
 import { isBerryProduction, berryCollectionStatus } from "@/features/economy/integration/garden-collection";
 import { useGardenCollection } from "@/features/economy/integration/garden-collection-context";
+import { canStartTutorialWorkshop } from "@/features/economy/domain/workshop-starter";
 import { TUTORIAL_ORDER_ID, tutorialOrderProgress, tutorialResidentOrder } from "@/features/economy/domain/tutorial-order";
 import { worldConstructionReason, worldDuration, worldProductionReason } from "@/features/economy/ui/shared/world-stations";
 import { worldRecipeDuration, worldRecipeGroups } from "@/features/economy/ui/stations/world-recipe-groups";
-import { TutorialOrderContents, WorkshopRetry, WorkshopConstructionContents } from "./world-onboarding-cards";
+import { NeighborIntroduction, TutorialOrderContents, WorkshopRetry, WorkshopConstructionContents, WorkshopTutorialConstruction } from "./world-onboarding-cards";
 
 export type WorldOnboardingProps = {
   open: boolean;
@@ -31,6 +32,7 @@ export type WorldOnboardingProps = {
   onStart: () => void;
   onStep: (stepId: WorldOnboardingStepId) => void;
   onCrop: (jobId: string | undefined) => void;
+  onHarvest: (jobId: string) => void;
   onSkip: () => void;
   onComplete: () => void;
   onOpenHelp: () => void;
@@ -93,23 +95,28 @@ export function WorldOnboardingSession(props: WorldOnboardingProps & { presenceK
 }
 
 export function WorldOnboarding(props: WorldOnboardingProps) {
-  const { progress, economy, worldElement, onStep, onCrop } = props;
+  const { progress, economy, worldElement, onStep, onCrop, onHarvest } = props;
   const practiceRoot = props.ordersOpen ? props.ordersElement ?? worldElement : worldElement;
   const surface = usePracticeSurface(practiceRoot);
   const collection = useGardenCollection();
   const current = progress?.status === "started" ? progress.stepId : null;
   const [visited, setVisited] = useState<string | null>(null);
-  const [harvested, setHarvested] = useState(false);
+  const [harvestOwner, setHarvestOwner] = useState<string | null>(null);
   const [saleOwner, setSaleOwner] = useState<string | null>(null);
   const previousSale = useRef({ owner: economy.snapshot?.ownerPublicId, step: current,
     id: economy.localSale?.id, revision: economy.snapshot?.revision ?? -1 });
-  const previous = useRef<{ jobId?: string; revision: number; gainIds: Set<string> }>({ revision: -1, gainIds: new Set() });
+  const previous = useRef<{ owner?: string; jobId?: string; revision: number; gainIds: Set<string> }>({ revision: -1, gainIds: new Set() });
   const orderPinSent = useRef(false);
   const snapshot = economy.snapshot;
+  const harvested = progress?.status === "started" && progress.harvested === true || Boolean(harvestOwner && harvestOwner === snapshot?.ownerPublicId);
+  const order = snapshot ? tutorialResidentOrder(snapshot) : null;
+  const practice = snapshot ? tutorialOrderProgress(snapshot) : null;
+  const lessonDone = Boolean(practice && (practice.completed || practice.step > 0));
+  const harvestForOrder = worldOnboardingNeedsHarvest(progress, order, lessonDone);
   const tracked = snapshot?.jobs.find(job => job.id === progress?.cropJobId && isBerryProduction(job) && (job.rewards.berries ?? 0) > 0);
   const existing = snapshot?.jobs.filter(job => isBerryProduction(job) && (job.rewards.berries ?? 0) > 0)
     .sort((a, b) => Date.parse(a.finishesAt) - Date.parse(b.finishesAt))[0];
-  const crop = tracked ?? (current === "grow" && !harvested ? existing : undefined);
+  const crop = tracked ?? (!progress?.cropJobId && (current === "grow" || harvestForOrder) && !harvested ? existing : undefined);
   const berry = crop && snapshot ? berryCollectionStatus(crop, snapshot, economy.now, collection) : null;
   const recipe = snapshot ? worldRecipeGroups(snapshot, snapshot.catalog.recipes.filter(item => item.buildingId === "garden"))
     .find(group => (group.recipe.rewards.berries ?? 0) > 0)?.recipe : undefined;
@@ -117,7 +124,7 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
   const cropReady = Boolean(tracked && economy.now >= Date.parse(tracked.finishesAt));
   const reminder = progress?.status === "completed" && (cropReady || harvested);
   const advance = (next: WorldOnboardingStepId) => { props.onCloseSurface(); setVisited(null); setSaleOwner(null); props.onStep(next); };
-  const finish = () => { setHarvested(false); props.onCloseSurface(); props.onComplete(); };
+  const finish = () => { setHarvestOwner(null); props.onCloseSurface(); props.onComplete(); };
   const pinOrder = () => {
     if (orderPinSent.current) return;
     orderPinSent.current = true;
@@ -146,11 +153,11 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
   if (current && visited !== current && (props.quickMenu === current || current === "help" && props.helpOpen
     || current === "orders" && props.ordersOpen || current === "workshop" && props.workshopOpen
     || current === "neighbors" && (props.charactersOpen || props.residentOpen))) setVisited(current);
-  if (current === "profile" && harvested) setHarvested(false);
+  if (current === "profile" && harvestOwner) setHarvestOwner(null);
   useEffect(() => {
     if (current === "garden" && surface.recipe) onStep("grow");
-    if (current === "grow" && crop && crop.id !== progress?.cropJobId) onCrop(crop.id);
-  }, [current, surface.recipe, crop, progress?.cropJobId, onStep, onCrop]);
+    if ((current === "grow" || harvestForOrder) && crop && crop.id !== progress?.cropJobId) onCrop(crop.id);
+  }, [current, harvestForOrder, surface.recipe, crop, progress?.cropJobId, onStep, onCrop]);
   useEffect(() => {
     if (!snapshot || economy.busy || economy.uncertain) return;
     const jobId = progress?.cropJobId;
@@ -158,14 +165,14 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
     if (jobId && !tracked) {
       // A vanished job alone is not proof of a harvest (reload, another device,
       // developer reset). Celebrate only a new accepted garden inventory receipt.
-      const accepted = before.jobId === jobId && (economy.inventoryGains ?? []).some(gain =>
-        !before.gainIds.has(gain.id) && gain.ownerPublicId === snapshot.ownerPublicId && gain.revision > before.revision
+      const accepted = before.owner === snapshot.ownerPublicId && before.jobId === jobId && (economy.inventoryGains ?? []).some(gain =>
+        !before.gainIds.has(gain.id) && gain.ownerPublicId === snapshot.ownerPublicId && gain.revision > before.revision && gain.revision <= snapshot.revision
         && gain.source === "claim" && gain.stationId === "garden" && gain.items.some(item => item.itemId === "berries" && item.quantity > 0));
-      if (accepted) setHarvested(true);
-      onCrop(undefined);
+      if (accepted) { setHarvestOwner(snapshot.ownerPublicId); onHarvest(jobId); }
+      else onCrop(undefined);
     }
-    previous.current = { jobId: tracked?.id, revision: snapshot.revision, gainIds: new Set((economy.inventoryGains ?? []).map(gain => gain.id)) };
-  }, [snapshot, economy.busy, economy.uncertain, economy.inventoryGains, progress?.cropJobId, tracked, onCrop]);
+    previous.current = { owner: snapshot.ownerPublicId, jobId: tracked?.id, revision: snapshot.revision, gainIds: new Set((economy.inventoryGains ?? []).map(gain => gain.id)) };
+  }, [snapshot, economy.busy, economy.uncertain, economy.inventoryGains, progress?.cropJobId, tracked, onCrop, onHarvest]);
 
   if (progress?.status === "skipped" || progress?.status === "completed" && !reminder) return null;
   const index = WORLD_ONBOARDING_STEPS.findIndex(step => step.id === current);
@@ -174,7 +181,7 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
     open: props.open && !props.modalBlocked, flow: "world", stepId: current ?? (reminder ? "harvest" : "welcome"),
     title: "Привет! Это наш лес", text: "Я Мохлик. За 3-5 минут посадим ягоды, познакомимся с соседями и заглянем в мастерскую. Всё можно открывать и пробовать.",
     summary: "Посадим ягоды и познакомимся с лесом за несколько минут.",
-    hint: "Ждать урожай и стройку не придётся. Любой шаг можно отложить. Когда объяснение закончено, нажми на меня или на реплику.",
+    hint: "Пока ягоды растут, познакомимся с соседями. Перед первым заказом соберём урожай. Любой шаг можно отложить, а ждать стройку не обязательно.",
     pose: "greet", welcome: !progress, targetRoot: practiceRoot,
     compact: Boolean(props.ordersOpen || props.quickMenu || surface.garden || props.workshopOpen),
     dock: props.ordersOpen ? "[data-guide-coach-slot]" : props.quickMenu ? "#world-quick-menu [data-guide-coach-slot]" : surface.garden || props.workshopOpen ? "[data-place] [data-guide-coach-slot]" : undefined,
@@ -243,8 +250,8 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
     base.summary = surface.garden ? "Нажми на карточку малины: она сразу начнёт расти." : "Нажми на выделенный ягодный куст на карте. Затем нажми на малину.";
     base.primary = undefined;
   }
-  if (current === "grow" || reminder) {
-    base.stepId = reminder ? "harvest" : "grow";
+  if (current === "grow" || reminder || harvestForOrder) {
+    base.stepId = reminder ? "harvest" : harvestForOrder ? "orders-harvest" : "grow";
     base.title = harvested ? "Урожай в кладовой!" : crop ? berry?.growing ? "Ягоды уже растут" : "Пора собрать ягоды" : "Посади первые ягоды";
     base.pose = harvested ? "jump" : crop ? "present" : "wonder";
     base.summary = harvested ? "Ягоды получены в кладовую. Первый урожай твой!"
@@ -267,44 +274,59 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
     if (harvested) {
       base.target = '[data-world-quick="pantry"]';
       base.summary = "Ягоды получены! Их можно посмотреть, нажав «Кладовая» внизу, или продолжить знакомство.";
-      base.primary = { advance: true, label: reminder ? "Готово" : "Продолжить знакомство", onClick: () => { if (reminder) setHarvested(false); else advance("neighbors"); } };
+      base.primary = { advance: true, label: reminder ? "Готово" : "Продолжить знакомство", onClick: () => { if (reminder) setHarvestOwner(null); else advance("neighbors"); } };
     } else if (crop && berry?.growing) {
-      base.primary = { advance: true, label: "Продолжить знакомство", onClick: () => advance("neighbors") };
+      base.primary = harvestForOrder ? undefined : { advance: true, label: "Продолжить знакомство", onClick: () => advance("neighbors") };
     } else if (crop) {
       base.primary = undefined;
       if (!surface.garden && !berry?.collecting) base.summary = `Ягоды готовы. Нажми на выделенный куст на карте, затем на «${berry?.button ?? "Собрать"}» в его меню.`;
-      base.status = berry?.collecting ? berry.label : berry?.awayReason ?? (snapshot && Object.values(crop.rewards).reduce((sum, amount) => sum + amount, 0) > snapshot.storage.available ? "В кладовой мало места. Освободи его и вернись к сбору." : undefined);
+      base.status = props.isOnline === false ? "Сейчас нет связи. Сбор продолжим после подключения."
+        : economy.uncertain ? "Получение урожая ещё не подтверждено. Проверим результат запроса."
+        : economy.busy ? "Жду подтверждения хозяйства…" : economy.error ?? (berry?.collecting ? berry.label : berry?.awayReason ?? (snapshot && Object.values(crop.rewards).reduce((sum, amount) => sum + amount, 0) > snapshot.storage.available ? "В кладовой мало места. Освободи его и вернись к сбору." : undefined));
     } else {
       base.primary = undefined;
       if (!surface.recipe) base.summary = surface.garden ? "Нажми на малину в меню куста, чтобы сразу начать выращивание."
         : "Нажми на выделенный ягодный куст на карте, затем на карточку малины.";
       base.status = props.isOnline === false ? "Сейчас нет связи. Запустить выращивание можно после подключения." : economy.uncertain ? "Запрос ещё не подтверждён. Проверь его результат в хозяйстве." : economy.error ?? reason ?? undefined;
     }
+    if (harvestForOrder) {
+      base.title = crop ? berry?.growing ? "Малина для первого заказа растёт" : "Соберём малину для заказа" : "Вырастим малину для заказа";
+      base.secondary = { label: "Пропустить сбор и заказ", onClick: () => advance("workshop") };
+      base.hint = "Посадить и собрать - два разных действия. Заказ пока не выполнен: сначала урожай должен попасть в кладовую.";
+      base.children = <WorkshopRetry economy={economy} isOnline={props.isOnline} />;
+      if (crop && berry?.growing) {
+        base.summary = "Малина ещё растёт. Когда созреет, нажми на куст, затем «Собрать». К заказу перейдём после получения урожая.";
+        base.text = `До созревания ещё ${worldDuration(Math.max(1, Math.ceil((Date.parse(crop.finishesAt) - economy.now) / 1000)))}. Ягода остаётся на кусте, пока ты не начнёшь сбор. Мохлик отнесёт её в кладовую; только после подтверждения покажу сдачу заказа.`;
+      }
+      if (props.ordersOpen) {
+        base.summary = "Для заказа нужна собранная малина. Вернись к ягодному кусту: растущий урожай ещё не находится в кладовой.";
+        base.target = undefined;
+        base.primary = { label: "Вернуться к кусту", onClick: props.onCloseSurface };
+      }
+    }
     if (reminder) {
       base.progress = undefined; base.onBack = undefined;
       base.secondary = undefined;
-      base.onSkip = () => { setHarvested(false); props.onCrop(undefined); };
+      base.onSkip = () => { setHarvestOwner(null); props.onCrop(undefined); };
     }
   }
   if (current === "neighbors") {
     const seen = visited === "neighbors";
-    base.summary = seen ? "Плёска помогает с рыбалкой, Шишколап - со стройкой. Теперь ты знаешь, где найти соседей."
-      : props.quickMenu === "more" ? "Нажми «Персонажи» в меню «Ещё». В списке можно выбрать Плёску или Шишколапа."
-      : "Плёска помогает с рыбалкой, Шишколап - со стройкой. Нажми «Ещё» внизу, чтобы найти соседей.";
-    base.text = "Обычный путь к жителям: «Ещё», затем «Персонажи». В списке нажми на Плёску или Шишколапа, чтобы открыть разговор. Покупать ничего не нужно.";
-    base.hint = "Соседи также доступны при нажатии на их домики на карте.";
+    base.summary = seen ? "Шишколап строит, Плёска помогает с рыбалкой, Лопоух - лесоруб. Камнешмыг и Листохвост присоединяются позже."
+      : props.quickMenu === "more" ? "Нажми «Персонажи» в меню «Ещё». Познакомимся со всеми: часть жителей приходит по мере развития хозяйства."
+      : "В лесу пять жителей, но не все появляются сразу. Нажми «Ещё» внизу, затем «Персонажи».";
+    base.text = "Шишколап строит и улучшает здания, Плёска помогает с рыбалкой и снастями, Лопоух - лесоруб: у его дома получают брёвна. Камнешмыг приходит после постройки каменоломни, Листохвост приплывает на лодке после улучшения дома до 3-го уровня. Открой «Ещё», затем «Персонажи» и выбери доступного соседа.";
+    base.hint = "Соседи также доступны через их домики. Знакомство не требует покупок или строительства.";
+    base.children = <NeighborIntroduction economy={economy} />;
     base.target = seen ? undefined : props.quickMenu === "more" ? '[data-world-characters-trigger]' : '[data-world-quick="more"]';
     base.primary = seen ? { advance: true, label: "Дальше, к заказам", onClick: () => advance("orders") } : undefined;
     // A resident conversation owns its own controls and focus until it closes.
     base.open = props.open && !props.modalBlocked && !props.residentOpen;
   }
-  if (current === "orders") {
-    const order = snapshot ? tutorialResidentOrder(snapshot) : null;
-    const practice = snapshot ? tutorialOrderProgress(snapshot) : null;
+  if (current === "orders" && !harvestForOrder) {
     const offline = props.isOnline === false;
     const locked = offline || economy.busy || economy.uncertain || economy.retryAt > economy.now;
     const missing = Boolean(snapshot && order && Object.entries(order.items).some(([id, count]) => (snapshot.inventory[id] ?? 0) < count));
-    const lessonDone = Boolean(practice && (practice.completed || practice.step > 0));
     base.title = "Выполним учебный заказ";
     base.secondary = { label: "Этот шаг позже", onClick: () => advance("workshop") };
     base.hint = "Учебный заказ всего один. Следующие просьбы будут частью пути к улучшению дома.";
@@ -313,8 +335,9 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
       : economy.uncertain ? "Результат ещё не подтверждён. Проверим его перед следующим действием."
       : economy.busy ? "Жду подтверждения хозяйства…" : economy.error ?? undefined;
     if (!props.ordersOpen && !lessonDone) {
-      base.title = "Доска заказов жителей";
-      base.summary = "Нажми на выделенную доску на карте. Жители оставляют здесь просьбы и платят монеты за припасы.";
+      base.title = progress?.harvested ? "Урожай получен. Теперь выполним заказ" : "Доска заказов жителей";
+      base.summary = progress?.harvested ? "Малина получена в кладовую. Нажми на выделенную доску заказов на карте, чтобы передать её Шишколапу."
+        : "Нажми на выделенную доску на карте. Жители оставляют здесь просьбы и платят монеты за припасы.";
       base.text = "Доска заказов на карте открывает журнал. В нём видны нужные товары и награда: собери припасы, затем нажми «Отдать заказ». Первый учебный заказ просит одну малину из первого урожая. Дальше появятся просьбы для улучшения дома и обычные заказы жителей.";
       base.hint = "Камера показывает доску, а светлая обводка помогает найти её. Нажми на саму доску.";
       // The authored map contour is highlighted by WorldScene, just like the bush.
@@ -340,13 +363,13 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
       base.text = "Нажми «Открыть учебный заказ». Товары для него нужно собрать или приготовить самому: они не выдаются бесплатно.";
       base.primary = { label: "Открыть учебный заказ", disabled: locked, onClick: () => { if (!locked) pinOrder(); } };
     } else {
+      const firstHarvest = order?.items.berries === 1 && Object.keys(order.items).length === 1;
       base.summary = props.ordersOpen ? surface.tutorialOrder
-        ? "Сравни «есть / нужно». Собери недостающие припасы, затем нажми «Отдать заказ»."
+        ? missing ? "Сравни «есть / нужно». Собери недостающие припасы, затем нажми «Отдать заказ»." : firstHarvest ? "Малина в кладовой. Нажми «Отдать заказ»: спишется одна малина, а ты получишь монеты." : "Припасы в кладовой. Сравни «есть / нужно» и нажми «Отдать заказ», чтобы передать их за награду."
         : "Нажми фильтр «Все»: над обычными просьбами появится учебный заказ."
         : "Нажми на выделенную доску заказов на карте: откроется журнал просьб соседей.";
-      const firstHarvest = order?.items.berries === 1 && Object.keys(order.items).length === 1;
-      base.text = `Доска заказов на карте открывает журнал. Учебный заказ находится в «Пути хозяйства», в фильтре «Все». ${firstHarvest ? "Нужна одна малина: забери первый урожай с куста." : "Состав сохранённого заказа указан в карточке: собери недостающие припасы."} Затем нажми «Отдать заказ».`;
-      base.target = props.ordersOpen ? surface.tutorialOrder && order ? `[data-order-id="${order.id}"]` : '[data-order-filter="all"]'
+      base.text = `Доска заказов на карте открывает журнал. Учебный заказ находится в «Пути хозяйства», в фильтре «Все». ${firstHarvest ? progress?.harvested ? "Сбор урожая подтверждён. Сдача заказа - отдельное действие: одна малина спишется из кладовой, а награда поступит в кошелёк." : "Нужна одна малина: забери первый урожай с куста." : "Состав сохранённого заказа указан в карточке: собери недостающие припасы."} Затем нажми «Отдать заказ».`;
+      base.target = props.ordersOpen ? surface.tutorialOrder && order ? `[data-order-id="${order.id}"] [data-guide-order-submit]` : '[data-order-filter="all"]'
         : undefined;
       base.primary = undefined;
       base.status ??= missing ? "Припасов пока не хватает. Нажми недостающий товар на доске, чтобы найти его источник." : undefined;
@@ -360,8 +383,10 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
     const next = building?.levels.find(item => item.level === level + 1);
     const offline = props.isOnline === false;
     const locked = offline || economy.busy || economy.uncertain || economy.retryAt > economy.now;
-    const constructionReason = snapshot && next ? worldConstructionReason(snapshot, "workshop", next) : undefined;
-    base.hint = "Стройка оплачивается твоими запасами и запускается по твоему нажатию. Ждать здесь не нужно.";
+    const tutorialWorkshop = Boolean(snapshot && canStartTutorialWorkshop(snapshot));
+    const constructionReason = snapshot && next && !tutorialWorkshop ? worldConstructionReason(snapshot, "workshop", next) : undefined;
+    base.hint = tutorialWorkshop ? "Учебный набор идёт прямо в мастерскую и не тратит твои запасы. Стройка начнётся только по твоему нажатию."
+      : "Стройка оплачивается твоими запасами и запускается по твоему нажатию. Ждать здесь не нужно.";
     base.secondary = { label: "К вылазкам", onClick: () => advance("expeditions") };
     base.target = undefined;
     base.children = <>{level === 0 && <WorkshopConstructionContents economy={economy} />}<WorkshopRetry economy={economy} isOnline={props.isOnline} /></>;
@@ -374,13 +399,16 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
       base.text = "Здесь бревно превращается в доску. Загружаю хозяйство, чтобы показать следующий шаг.";
       base.primary = { label: "Обновить хозяйство", onClick: () => void economy.refresh(), disabled: locked };
     } else if (construction) {
+      const confirmed = !economy.busy && !economy.uncertain;
       const remaining = Math.max(0, Math.ceil((Date.parse(construction.finishesAt) - economy.now) / 1000));
-      base.title = remaining ? "Шишколап уже строит!" : "Мастерская почти готова";
-      base.summary = remaining ? "Стройка началась. Можно идти дальше, ждать у здания не нужно." : "Открой мастерскую и заверши строительство.";
-      base.pose = "jump";
-      base.text = remaining ? `Заказ принят. До готовности ещё ${worldDuration(remaining)}. Другие производства продолжают работать.`
+      base.title = confirmed ? remaining ? "Шишколап уже строит!" : "Мастерская почти готова" : "Проверяю начало стройки";
+      base.summary = confirmed ? remaining ? "Стройка началась. Можно идти дальше, ждать у здания не нужно." : "Открой мастерскую и заверши строительство."
+        : "Дождёмся подтверждения, прежде чем отмечать начало стройки.";
+      base.pose = confirmed ? "jump" : "hold";
+      base.text = !confirmed ? "Проверяем ответ хозяйства. После подтверждения покажем срок стройки; повторно нажимать строительство не нужно."
+        : remaining ? `Заказ принят. До готовности ещё ${worldDuration(remaining)}. Другие производства продолжают работать.`
         : "Время стройки закончилось. Открой мастерскую и заверши строительство; дальше появится рецепт доски.";
-      base.primary = { advance: true, label: "Продолжить знакомство", onClick: () => advance("expeditions") };
+      base.primary = { advance: true, label: "Продолжить знакомство", disabled: !confirmed, onClick: () => { if (confirmed) advance("expeditions"); } };
       base.secondary = undefined;
     } else if (level > 0) {
       base.title = "Мастерская уже есть";
@@ -393,6 +421,21 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
       base.target = props.workshopOpen ? surface.workshopSelected ? '[data-place="workshop"] [data-recipe-product="planks"]'
         : '[data-place="workshop"] [role="tab"][id$="-workshop"]' : undefined;
       base.primary = visited === "workshop" ? { advance: true, label: "Дальше, к вылазкам", onClick: () => advance("expeditions") } : undefined;
+    } else if (tutorialWorkshop) {
+      base.title = "Построим мастерскую с Шишколапом";
+      base.summary = props.workshopOpen ? surface.workshopSelected
+        ? "Нажми «Построить с учебным набором». Шишколап даст всё необходимое прямо на эту стройку."
+        : "Выбери вкладку «Мастерская» в шапке: там сможем начать стройку с учебным набором."
+        : "Нажми на выделенную мастерскую на карте. Шишколап приготовил для неё учебный набор.";
+      base.pose = "present";
+      base.text = `Шишколап один раз даст все монеты и материалы для первой мастерской. Набор используется прямо в стройке: твои запасы не расходуются, даже если раньше ты потратил их на другое здание. Стройка занимает ${worldDuration(first.seconds)}. Нажми «Построить с учебным набором», когда будешь готов.`;
+      base.target = props.workshopOpen ? surface.workshopSelected ? undefined
+        : '[data-place="workshop"] [role="tab"][id$="-workshop"]' : undefined;
+      base.children = <><WorkshopConstructionContents economy={economy} />
+        {props.workshopOpen && surface.workshopSelected && <WorkshopTutorialConstruction economy={economy} isOnline={props.isOnline} />}
+        <WorkshopRetry economy={economy} isOnline={props.isOnline} /></>;
+      base.primary = undefined;
+      base.status ??= snapshot.jobs.some(job => job.kind === "construction") ? "Шишколап сейчас строит другое здание. Дождись завершения, затем начни мастерскую с учебным набором." : undefined;
     } else {
       base.title = "Построим мастерскую";
       base.summary = props.workshopOpen ? surface.workshopSelected ? "Нажми «Построить» в шапке меню. В плане проверь стоимость и начни стройку."
@@ -414,6 +457,7 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
     const workshopResult = !snapshot ? "Хозяйство ещё загружается." : construction ? economy.now >= Date.parse(construction.finishesAt)
       ? "Время стройки мастерской закончилось - проверь результат." : workshopLevel > 0 ? "Мастерская улучшается." : "Мастерская строится."
       : workshopLevel > 0 ? `Мастерская работает: уровень ${workshopLevel}.`
+      : canStartTutorialWorkshop(snapshot) ? "Для первой мастерской Шишколап приготовил учебный набор. Его можно использовать в шаге обучения мастерской."
       : "Мастерскую можно построить за монеты и материалы, заработанные на первых просьбах.";
     base.target = '[data-world-onboarding-help]';
     base.summary = "Кнопка i вверху открывает справку: выбери тему или воспользуйся поиском. Подсказки раздела запускаются по «Что здесь делать?».";

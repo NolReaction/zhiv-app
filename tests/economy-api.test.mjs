@@ -204,6 +204,21 @@ test("HTTP obsolete starter gift remains owner-bound and repeated requests canno
   assert.equal(loaded.workshopStarterClaimed, false); assert.deepEqual(loaded.wallet, before.wallet); assert.deepEqual(loaded.inventory, before.inventory);
 });
 
+test("HTTP tutorial workshop starts one earmarked build with normal owner checks and receipt replay", async () => {
+  const p = player(), before = economy.getDevEconomy(p.token);
+  const cmd = { ...command(p), action: "start_tutorial_workshop", targetId: "workshop" };
+  const other = identities.createDevIdentity("Other", crypto.randomUUID());
+  assert.equal((await POST(post({ ...cmd, ownerPublicId: other.me.user.publicId }))).status, 409);
+  assert.equal((await POST(post({ ...cmd, targetId: "home" }))).status, 400);
+  const response = await POST(post(cmd)); assert.equal(response.status, 200);
+  const started = await response.json();
+  assert.equal(started.state.workshopStarterClaimed, true); assert.equal(started.state.jobs.at(-1).targetId, "workshop");
+  assert.deepEqual(started.state.wallet, before.wallet); assert.deepEqual(started.state.inventory, before.inventory);
+  const replay = await POST(post(cmd)); assert.equal(replay.status, 200); assert.equal((await replay.json()).replayed, true);
+  const repeat = await POST(post({ ...cmd, requestId: crypto.randomUUID(), expectedRevision: started.state.revision }));
+  assert.equal(repeat.status, 409); assert.equal((await repeat.json()).code, "ECONOMY_WORKSHOP_STARTER_UNAVAILABLE");
+});
+
 test("gameplay requires a live session even for receipt replay and explicit return preserves the original command", async () => {
   const p = player(), cmd = command(p), before = economy.getDevEconomy(p.token);
   for (const id of ["", crypto.randomUUID()]) {

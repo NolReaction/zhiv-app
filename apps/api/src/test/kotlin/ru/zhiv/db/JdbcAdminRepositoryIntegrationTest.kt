@@ -276,6 +276,33 @@ class JdbcAdminRepositoryIntegrationTest {
         assertEquals(before,scalar("SELECT jsonb_agg(to_jsonb(e) ORDER BY user_id)::text FROM economy_profiles e"))
     }
 
+    @Test fun `earmarked tutorial workshop counts as first construction without inventing resource spending`() = runBlocking<Unit> {
+        val admin = user("Администратор"); val learner = user("Ученик")
+        created(learner, LocalDate.parse("2020-01-02"))
+        val started = analyticsEntry(learner, "start_tutorial_workshop", "2020-01-02T12:05:00Z", target = "workshop")
+        analyticsEntry(learner, "claim_job", "2020-01-02T12:10:00Z", target = started.toString())
+        val repo = repository(admin)
+        val query = AdminAnalyticsQuery(from = "2020-01-02", to = "2020-01-02", q = learner.publicId)
+        val before = scalar("SELECT jsonb_agg(to_jsonb(e) ORDER BY source_key)::text FROM economy_ledger e WHERE user_id=?", learner.id)
+        val report = repo.analytics(admin.hash, query)
+        assertEquals(1L, report.summary.constructionStarts); assertEquals(1L, report.summary.constructionClaims)
+        assertEquals(1L, report.summary.constructionPlayers); assertEquals(0L, report.summary.spendingPlayers)
+        assertEquals(1L, report.daily.single().constructionStarts)
+        val workshop = report.construction.single { it.buildingId == "workshop" }
+        assertEquals(1L, workshop.starts); assertEquals(1L, workshop.claims)
+        assertEquals("workshop", report.firstConstructions.single().buildingId)
+        assertTrue(report.resources.isEmpty()); assertTrue(report.flows.isEmpty())
+        assertEquals(0L, report.coverage.unattributedEvents)
+        val stages = assertNotNull(report.progression).cohort.stages.associateBy { it.id }
+        assertEquals(1L, stages.getValue("first_construction_started").players)
+        assertEquals(300L, stages.getValue("first_construction_started").medianSeconds)
+        assertEquals(1L, stages.getValue("first_construction_claimed").players)
+        assertEquals(600L, stages.getValue("first_construction_claimed").medianSeconds)
+        val events = repo.analyticsEvents(admin.hash, AdminAnalyticsEventsQuery(query = query, limit = 100)).events
+        assertEquals(2, events.size); assertTrue(events.all { it.targetId == "workshop" && it.contextKnown })
+        assertEquals(before, scalar("SELECT jsonb_agg(to_jsonb(e) ORDER BY source_key)::text FROM economy_ledger e WHERE user_id=?", learner.id))
+    }
+
     @Test fun `production cancellation attributes its recipe and refund without counting a collected work milestone`() = runBlocking<Unit> {
         val admin = user("Администратор"); val crafter = user("Мастер")
         created(crafter, LocalDate.parse("2020-01-02"))

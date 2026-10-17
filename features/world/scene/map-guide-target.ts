@@ -31,7 +31,7 @@ export function mapGuideCamera(object: MapInteractiveObject, view: Viewport, bou
 
 /** Paint in screen pixels so the contour stays legible while the player pans or pinches. */
 export function drawMapGuideTarget(context: CanvasRenderingContext2D, object: MapInteractiveObject,
-  camera: Camera, view: Viewport) {
+  camera: Camera, view: Viewport, elapsedSeconds = 0, reducedMotion = false) {
   if (object.hitArea.length < 3) return;
   const points = object.hitArea.map(point => worldToScreen(point, camera, view));
   context.save();
@@ -40,6 +40,9 @@ export function drawMapGuideTarget(context: CanvasRenderingContext2D, object: Ma
   context.closePath();
   context.lineJoin = "round";
   context.strokeStyle = "#183d27"; context.lineWidth = 9; context.stroke();
+  // Reuse the scene's active clock and paint loop. The authored path and its
+  // dark backing remain stable; only the two bright strokes gently pulse.
+  if (!reducedMotion) context.globalAlpha *= .775 + .225 * Math.cos((Number.isFinite(elapsedSeconds) ? elapsedSeconds : 0) * Math.PI * 2 / 1.8);
   context.strokeStyle = "#f7ffcb"; context.lineWidth = 5; context.stroke();
   context.strokeStyle = "#72ab4c"; context.lineWidth = 2; context.stroke();
   context.restore();
