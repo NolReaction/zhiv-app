@@ -1,0 +1,15 @@
+.panel { display: grid; gap: .65rem; padding-top: 1rem; border-top: 1px solid #d6dfcb; }
+.panel h4, .panel p { margin: 0; }
+.panel p { font-size: .78rem; line-height: 1.5; color: #58654e; }
+.actions { display: flex; flex-wrap: wrap; gap: .45rem; }
+.actions button { border: 1px solid #c8d3bb; border-radius: .55rem; padding: .45rem .6rem; background: #f5f7ef; color: #31432b; font: inherit; font-size: .75rem; cursor: pointer; }
+.actions button[aria-pressed="true"] { background: #e2ead6; border-color: #7c9569; }
+.actions button:disabled { opacity: .5; cursor: default; }
+.actions button:focus-visible { outline: 2px solid #527b3c; outline-offset: 2px; }
+.scroll { max-width: 100%; overflow-x: auto; }
+.panel table { width: 100%; border-collapse: collapse; font-size: .7rem; text-align: right; font-variant-numeric: tabular-nums; }
+.panel caption { text-align: left; font-size: .7rem; color: #58654e; padding-bottom: .4rem; }
+.panel th, .panel td { border-bottom: 1px solid #dfe5d7; padding: .4rem .3rem; white-space: nowrap; }
+.panel th:first-child { text-align: left; }
+.panel th small { display: block; font-weight: 400; color: #64705a; margin-top: .15rem; }
+.panel .memory { font-size: .72rem; }

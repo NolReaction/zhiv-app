@@ -31,10 +31,14 @@ export type PleskMind = {
   stage: MindStage; age: number; queue: MindStage[]; noticePending: boolean; greetAfter: number;
   tradePending: boolean; tradeAfter: number;
   trafficWaiting: boolean; home: PleskHomeState; walkAfter: number; socialVisit?: PleskSocialVisit;
+  /** Optional travel keeps its goal through short traffic, then avoids only the failed stop. */
+  walkBlockedFor: number; walkBlockedX: number; walkBlockedY: number;
+  avoidStopId: string | null; avoidStopUntil: number; leisureStep: number;
   basketSpecies?: FishSpeciesId; castTarget?: WorldPoint;
   scene: FixedWorldScene; available: boolean; observation: PleskObservation;
 };
-export const PLESK_MIND_LIMITS = { maxDelta: 1, transitions: 8, recent: 6, basket: 3, tradeInterval: 180 } as const;
+export const PLESK_MIND_LIMITS = { maxDelta: 1, transitions: 8, recent: 6, basket: 3, tradeInterval: 180,
+  leisurePatience: 8, leisureCooldown: 45 } as const;
 const clamp = (n: number) => Math.max(0, Math.min(1, Number.isFinite(n) ? n : 0));
 function random(mind: PleskMind) { mind.seed = (Math.imul(mind.seed, 1664525) + 1013904223) >>> 0; return mind.seed / 4294967296; }
 function observe(mind: PleskMind) {
@@ -52,6 +56,8 @@ export function createPleskMind(scene: FixedWorldScene, seed = 0x706c6573): Ples
     stage: { action: "idle", duration: 1, target: places.base }, age: 0, queue: [], noticePending: false, greetAfter: 0,
     tradePending: false, tradeAfter: PLESK_MIND_LIMITS.tradeInterval, trafficWaiting: false,
     home: { phase: "outside", progress: 0, nextAt: 160, until: 0 }, walkAfter: 75,
+    walkBlockedFor: 0, walkBlockedX: places.base.position.x, walkBlockedY: places.base.position.y,
+    avoidStopId: null, avoidStopUntil: 0, leisureStep: 0,
     scene, available: true, observation: {} as PleskObservation };
   observe(mind); return mind;
 }
@@ -70,6 +76,36 @@ function routeBetween(places: PleskPlaces, from: string, target: PleskStop): For
     if (tradeToRest) return reversePleskTrail(tradeToRest);
     if (toRest && toTrade) return measurePleskTrail([...toRest.points].reverse().concat(toTrade.points.slice(1)));
   }
+}
+
+function leisureStops(mind: PleskMind, places: PleskPlaces): PleskStop[] {
+  const stops = [places.rest, places.base, places.trade].filter((stop): stop is PleskStop => !!stop);
+  const offset = mind.leisureStep % Math.max(1, stops.length);
+  return stops.slice(offset).concat(stops.slice(0, offset)).filter(stop =>
+    Math.hypot(stop.position.x - mind.position.x, stop.position.y - mind.position.y) > PLESK.size * .35
+    && !(stop.id === mind.avoidStopId && mind.elapsed < mind.avoidStopUntil));
+}
+const optionalTravel = (mind: PleskMind) => Boolean(mind.stage.trail && !mind.socialVisit && !passageYields.has(mind)
+  && (mind.intent === "walk" && mind.home.phase === "outside" || mind.home.phase === "approach")
+  && !mind.stage.caught && !mind.stage.deposit && !mind.stage.sell && !mind.stage.outcome);
+function resetWalkWait(mind: PleskMind) {
+  mind.walkBlockedFor = 0; mind.walkBlockedX = mind.position.x; mind.walkBlockedY = mind.position.y;
+}
+/** Cancels only a harmless voluntary approach. Real casts, catches, sales and
+ * accepted neighbour visits retain their own complete action sequence. */
+function pauseOptionalTravel(mind: PleskMind, failed: boolean) {
+  if (failed) {
+    mind.avoidStopId = mind.stage.target.id; mind.avoidStopUntil = mind.elapsed + PLESK_MIND_LIMITS.leisureCooldown;
+    mind.walkAfter = Math.max(mind.walkAfter, mind.elapsed + 15);
+  }
+  if (mind.home.phase === "approach") {
+    mind.home.phase = "outside"; mind.home.nextAt = mind.elapsed + PLESK_MIND_LIMITS.leisureCooldown;
+  }
+  const target = { id: "plesk-leisure-pause", position: { ...mind.position } };
+  mind.stopId = target.id; mind.intent = "look"; mind.queue = []; mind.age = 0; mind.trafficWaiting = false;
+  mind.stage = { action: "idle", target, duration: failed ? 3 : .05 };
+  mind.reason = failed ? "Подход долго занят. Передохнёт здесь и позже выберет другое место." : "Откладывает прогулку ради гостя или укрытия от непогоды.";
+  resetWalkWait(mind);
 }
 
 function selectIntent(mind: PleskMind, places: PleskPlaces, env: PleskEnvironment): { intent: PleskIntent; reason: string; home?: boolean } {
@@ -94,7 +130,7 @@ function selectIntent(mind: PleskMind, places: PleskPlaces, env: PleskEnvironmen
     && (mind.elapsed >= mind.home.nextAt || env.rain > .6 || env.dusk > .72)) candidates.push({ intent: "rest", home: true, score: 7,
     reason: env.rain > .6 ? "Дождь усилился, пора убрать снасти и укрыться дома." : env.dusk > .72
       ? "Стемнело, возвращается в свой домик." : "Хочет заглянуть домой и просушить снасти." });
-  if (!mind.catchCount && mind.elapsed >= mind.walkAfter && env.rain < .3 && env.dusk < .65 && (places.trade || places.rest))
+  if (!mind.catchCount && mind.elapsed >= mind.walkAfter && env.rain < .3 && env.dusk < .65 && leisureStops(mind, places).length)
     candidates.push({ intent: "walk", score: 3, reason: "Прогуляется от пирса к лавке и проверит, не пришли ли соседи." });
   for (const item of candidates) {
     item.score += random(mind) * .18;
@@ -111,8 +147,10 @@ function decide(mind: PleskMind, places: PleskPlaces, env: PleskEnvironment) {
   if (choice.home && beginPleskHome(mind, places)) return;
   const current = [places.base, places.trade, places.rest].find(stop => stop?.id === mind.stopId)
     ?? { id: mind.stopId, position: { ...mind.position } };
-  const walks = [places.trade, places.rest, places.base].filter((stop): stop is PleskStop => !!stop && stop.id !== mind.stopId);
-  const wander = walks[Math.floor(random(mind) * walks.length)] ?? current;
+  const wander = leisureStops(mind, places)[0] ?? current;
+  // Keep the existing fishing draw sequence independent of which optional
+  // shore stop the personal rhythm selected.
+  random(mind);
   const target = choice.intent === "fish" ? places.base : choice.intent === "trade" ? places.trade! : choice.intent === "walk" ? wander
     : choice.intent === "rest" || choice.intent === "tackle" ? places.rest ?? places.base : current;
   const stages: MindStage[] = [];
@@ -144,7 +182,20 @@ function decide(mind: PleskMind, places: PleskPlaces, env: PleskEnvironment) {
     add("greet", 2.5, { direction: places.tradeDirection });
     add("trade", 24 + random(mind) * 12, { direction: places.tradeDirection, sell: true });
     add("idle", 2, { direction: places.tradeDirection });
-  } else if (choice.intent === "walk") { mind.walkAfter = mind.elapsed + 90; add("idle", 6 + random(mind) * 4, { direction: "front" }); }
+  } else if (choice.intent === "walk") {
+    mind.leisureStep++; mind.walkAfter = mind.elapsed + 75 + mind.leisureStep % 3 * 15;
+    if (target.id === places.rest?.id) {
+      mind.reason = "Идёт к своему месту у берега поправить снасти и передохнуть.";
+      add("idle", 2 + random(mind) * 2, { direction: "front", variation: "check" });
+      add("rest", 6 + random(mind) * 4, { direction: "front" });
+    } else if (target.id === places.base.id) {
+      mind.reason = "Возвращается к пирсу присмотреться к воде перед новым забросом.";
+      add("idle", 5 + random(mind) * 3, { direction: places.direction, variation: "calm" });
+    } else {
+      mind.reason = "Заглянет к прилавку, проверит снасти и посмотрит, не пришли ли соседи.";
+      add("idle", 4 + random(mind) * 3, { direction: places.tradeDirection, variation: "check" });
+    }
+  }
   else if (choice.intent === "rest") add("rest", 10 + (1 - mind.needs.energy) * 22 + random(mind) * 5, { direction: "front" });
   else if (choice.intent === "tackle") { add("idle", 3, { direction: "front", variation: "check" }); add("idle", 3 + random(mind) * 3, { direction: "left" }); }
   else if (choice.intent === "greet") {
@@ -153,7 +204,7 @@ function decide(mind: PleskMind, places: PleskPlaces, env: PleskEnvironment) {
   mind.queue = stages; startNext(mind);
 }
 
-function startNext(mind: PleskMind) { mind.stage = mind.queue.shift()!; mind.age = 0; mind.trafficWaiting = false; }
+function startNext(mind: PleskMind) { mind.stage = mind.queue.shift()!; mind.age = 0; mind.trafficWaiting = false; resetWalkWait(mind); }
 function finishStage(mind: PleskMind) {
   const stage = mind.stage;
   if (stage.trail) { mind.position = { ...stage.target.position }; mind.stopId = stage.target.id; }
@@ -179,6 +230,7 @@ function acceptScene(mind: PleskMind, scene: FixedWorldScene, places: PleskPlace
     mind.available = pleskHomeGeometryMatches(mind, scene, places); return mind.available;
   }
   const targets = [places.base, places.trade, places.rest, pleskPersonalHome(scene, places.nav)?.stop,
+    ...(mind.stage.target.id === "plesk-leisure-pause" ? [mind.stage.target] : []),
     ...(mind.socialVisit || mind.stage.target.id.startsWith("plesk-social") ? [mind.stage.target] : [])];
   const yielding = passageYields.get(mind);
   mind.available = isWalkable(places.nav, mind.position)
@@ -217,7 +269,7 @@ export function requestPleskWalk(mind: PleskMind | null, scene: FixedWorldScene,
   const trail = pleskRouteFrom(places, mind.position, target);
   if (!trail || trail.length > PLESK.speed * 45) return false;
   mind.intent = "walk"; mind.reason = "Прогуливается у рыбацкого берега."; mind.queue = [];
-  mind.stage = { action: "walk", target, trail, duration: pleskTravelTime(trail) }; mind.age = 0; return true;
+  mind.stage = { action: "walk", target, trail, duration: pleskTravelTime(trail) }; mind.age = 0; resetWalkWait(mind); return true;
 }
 
 export function advancePleskMind(mind: PleskMind | null, scene: FixedWorldScene, dt: number, environment: PleskEnvironment): void {
@@ -230,6 +282,8 @@ export function advancePleskMind(mind: PleskMind | null, scene: FixedWorldScene,
   if (homeTime >= step - 1e-8) { observe(mind); return; }
   if (mind.socialVisit && mind.socialVisit.phase !== "return" && (mind.noticePending || mind.tradePending || mind.elapsed >= mind.socialVisit.until))
     cancelPleskSocialVisit(mind);
+  if (optionalTravel(mind) && (mind.noticePending || mind.tradePending
+    || mind.home.phase === "outside" && (environment.rain > .6 || environment.dusk > .72))) pauseOptionalTravel(mind, false);
   // A conversation owns no doorway or work route. Yielding changes the visible
   // action to walking, so the social director releases the exchange next tick.
   if (!passageYields.has(mind)) beginPassageYield(mind, places, environment.occupants,
@@ -297,6 +351,11 @@ export function advancePleskMind(mind: PleskMind | null, scene: FixedWorldScene,
         mind.needs.energy = clamp(mind.needs.energy - remaining * .0014);
         mind.needs.patience = clamp(mind.needs.patience + remaining * .013);
         mind.needs.social = clamp(mind.needs.social + remaining * .002);
+        if (optionalTravel(mind)) {
+          mind.walkBlockedFor += remaining;
+          if (mind.walkBlockedFor >= PLESK_MIND_LIMITS.leisurePatience && environment.rain < .6 && environment.dusk < .72)
+            pauseOptionalTravel(mind, true);
+        }
         remaining = 0; break;
       }
       mind.trafficWaiting = false;
@@ -305,7 +364,10 @@ export function advancePleskMind(mind: PleskMind | null, scene: FixedWorldScene,
     mind.needs.energy = clamp(mind.needs.energy + slice * (action === "rest" ? .018 : action === "walk" ? -.0035 : -.0014));
     mind.needs.patience = clamp(mind.needs.patience + slice * (action === "fish" ? -.008 : ["idle", "rest", "pack"].includes(action) ? .013 : -.001));
     mind.needs.social = clamp(mind.needs.social + slice * (action === "trade" || action === "greet" ? -.016 : .002));
-    if (mind.stage.trail) { const point = samplePleskTrail(mind.stage.trail, mind.age); mind.position = { x: point.x, y: point.y }; }
+    if (mind.stage.trail) {
+      const point = samplePleskTrail(mind.stage.trail, mind.age); mind.position = { x: point.x, y: point.y };
+      if (Math.hypot(mind.position.x - mind.walkBlockedX, mind.position.y - mind.walkBlockedY) > PLESK.size * .1) resetWalkWait(mind);
+    }
     if (mind.age >= mind.stage.duration - 1e-8) {
       transitions++; finishStage(mind);
       if (finishPleskSocialStage(mind)) continue;

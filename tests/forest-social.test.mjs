@@ -225,8 +225,8 @@ test("still-mode expiry updates cooldowns without autonomous conversations or pe
 });
 
 test("authored scripts stay whole, alternate real participants and fit a finite meeting", () => {
-  assert.equal(FOREST_CONVERSATIONS.length, 190);
-  assert.equal(new Set(FOREST_CONVERSATIONS.map(topic => topic.id)).size, 190);
+  assert.equal(FOREST_CONVERSATIONS.length, 193);
+  assert.equal(new Set(FOREST_CONVERSATIONS.map(topic => topic.id)).size, 193);
   const base = FOREST_CONVERSATIONS.filter(topic => !topic.purpose && !FOREST_CONTEXT_CONVERSATIONS.includes(topic));
   assert.equal(base.length, 78, "all original complete stories remain present");
   const lines = Object.values(FOREST_ANIMAL_LINES).flat();

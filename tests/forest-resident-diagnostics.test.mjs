@@ -40,3 +40,45 @@ test("an unopened inspector does no sampling, active snapshots throttle and disp
   store.clear("dev:scene:2"); assert.equal(store.getSnapshot(), null); assert.equal(calls, 4);
   off(); store.report(unread, [], "account", true); assert.equal(calls, 4);
 });
+
+test("journal ownership, pause and inspector teardown preserve capture isolation without background sampling", () => {
+  const store = createResidentDiagnosticsStore(), owner = {}, passive = {}, source = state();
+  store.setRecording(true); assert.equal(store.getViewSnapshot().journal.recording, false); assert.equal(store.exportReport(), null);
+  const off = store.subscribe(() => {}); assert.equal(store.isObserved(), true);
+  store.report(source, [], "private-account-key", true, { owner, settings: { weather: "clear" } }); store.setRecording(true);
+  const before = store.getViewSnapshot();
+  store.report({ get elapsed() { assert.fail("paused reports cannot read/age the scene"); } }, [], "private-account-key", true, { owner, paused: true });
+  assert.equal(store.getViewSnapshot(), before);
+  store.clear("private-account-key", passive); assert.equal(store.getViewSnapshot(), before);
+  source.elapsed += .5; source.villagers.residents.lopukh.intent = "home";
+  store.report(source, [], "private-account-key", true, { owner }); assert.ok(store.getViewSnapshot().journal.events.length > before.journal.events.length);
+  const previousCapture = store.getViewSnapshot().journal.capture;
+  store.report(source, [], "private-account-key", true, { owner: passive });
+  assert.ok(store.getViewSnapshot().journal.capture > previousCapture);
+  assert.ok(store.getViewSnapshot().journal.events.every(event => event.kind === "initial"));
+  source.elapsed = 0; store.report(source, [], "private-account-key", true, { owner: passive });
+  assert.equal(store.getViewSnapshot().journal.elapsed, 0);
+  off(); assert.equal(store.isObserved(), false); assert.equal(store.getSnapshot(), null); assert.equal(store.exportReport(), null);
+  const remount = store.subscribe(() => {}); assert.equal(store.getViewSnapshot().journal.recording, false); assert.equal(store.getViewSnapshot().journal.events.length, 0);
+  store.report(source, [], "new-account-key", true, { owner: {} });
+  assert.ok(!store.exportReport().json.includes("private-account-key")); remount();
+});
+
+test("rounded display clocks cannot imitate a rollback or bypass capture throttling", () => {
+  const store = createResidentDiagnosticsStore(), source = state(), owner = {};
+  const off = store.subscribe(() => {}); source.elapsed = .55;
+  store.report(source, [], "account", true, { owner }); store.setRecording(true);
+  const before = store.getViewSnapshot(), report = store.exportReport();
+  assert.equal(before.diagnostics.elapsed, .6, "only the presentation clock rounds");
+  for (const elapsed of [.55, .55, .58, .60, NaN, Infinity, -.1]) {
+    source.elapsed = elapsed; store.report(source, [], "account", true, { owner });
+    assert.equal(store.getViewSnapshot(), before); assert.deepEqual(store.exportReport(), report);
+  }
+  source.elapsed = 1.05; store.report(source, [], "account", true, { owner });
+  assert.equal(store.getViewSnapshot().journal.capture, before.journal.capture);
+  assert.notEqual(store.getViewSnapshot(), before, "half a raw second admits the next sample");
+  source.elapsed = .55; store.report(source, [], "account", true, { owner });
+  assert.ok(store.getViewSnapshot().journal.capture > before.journal.capture, "a genuine clock rollback starts a new capture");
+  assert.ok(store.getViewSnapshot().journal.events.every(event => event.kind === "initial"));
+  off();
+});

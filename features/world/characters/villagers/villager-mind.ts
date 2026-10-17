@@ -1,5 +1,5 @@
 import type { ForestVillagerFrame, ForestVillagerId } from "@/features/world/characters/forest-villager-types";
-import { isWalkable } from "@/features/world/navigation/navigation";
+import { canTraverse, createWorldNavigation, isWalkable } from "@/features/world/navigation/navigation";
 import { canTraverseResidents, residentClearance, residentRouteIntent,
   type ResidentOccupant } from "@/features/world/navigation/resident-traffic";
 import type { FixedWorldScene, WorldPoint } from "@/features/world/tiled/types";
@@ -13,6 +13,8 @@ import { selectVillagerRoute as select, setVillagerAction as setAction, stopVill
 import { advanceWoodcutterCycle, beginWoodcutterCycle, woodcutterLoaded, WOODCUTTER_CYCLE_LIMITS } from "./woodcutter-cycle";
 import { advanceVillagerDoor, approachVillagerDoor, validVillagerDoor, villagerDoorOpacity } from "./villager-doorway";
 import { tryVillagerHome } from "./villager-home-routine";
+import { resumeVillagerGoal } from "./villager-goal";
+import { advanceVillagerHabit } from "./villager-habits";
 export { FOREST_VILLAGER_LIMITS } from "./villager-state";
 export { requestForestVillagerHome } from "./villager-home-routine";
 export type { ForestVillagerMind, ForestVillagersState, ForestVillagerConfiguration, ForestVillagerEnvironment } from "./villager-state";
@@ -27,6 +29,7 @@ export function createForestVillagers(scene: FixedWorldScene): ForestVillagersSt
     doorPhase: "outside", doorProgress: 0, door: null, doorPurpose: "rest", outdoorUntil: id === "leaftail" ? 0 : 145 + index * 30, recentStops: [],
     woodwork: id === "lopukh" ? createWoodcutterCycle() : null,
     job: false, jobKey: "", socialVisit: null, noticePending: false,
+    goal: null, failedStops: [], habit: null, habitAfter: 24 + index * 9, habitCycles: 0, checkedDelivery: 0, postWorkWalk: false,
   }])) as Record<ForestVillagerId, ForestVillagerMind>;
   return { scene, confirmed: false, buildings: {}, residents, production: null,
     arrivalPending: false, arrivalPhase: "waiting", arrivalCompleted: false, leaftailReady: null };
@@ -41,11 +44,13 @@ export function rehydrateForestVillagers(scene: FixedWorldScene, previous?: Fore
     const clone: ForestVillagerMind = { ...mind, position: { ...mind.position },
       target: mind.target ? { ...mind.target, position: { ...mind.target.position }, lookAt: { ...mind.target.lookAt } } : null,
       socialVisit: null, recentStops: [...mind.recentStops],
+      goal: mind.goal ? { ...mind.goal, target: { ...mind.goal.target, position: { ...mind.goal.target.position }, lookAt: { ...mind.goal.target.lookAt } } } : null,
+      failedStops: mind.failedStops.map(stop => ({ ...stop })), habit: mind.habit ? { ...mind.habit } : null,
       woodwork: mind.woodwork ? { ...mind.woodwork, ...(mind.woodwork.lastDelivery
         ? { lastDelivery: { ...mind.woodwork.lastDelivery, position: { ...mind.woodwork.lastDelivery.position } } } : {}),
         ...(mind.woodwork.deliveries ? { deliveries: mind.woodwork.deliveries.map(delivery => ({ ...delivery, position: { ...delivery.position } })) } : {}) }
         : id === "lopukh" ? createWoodcutterCycle() : null };
-    if (mind.socialVisit) { stop(clone, "idle"); clone.wait = 3; }
+    if (mind.socialVisit) { stop(clone, "idle"); clone.wait = 3; clone.goal = null; clone.habit = null; }
     return [id, clone];
   })) as Record<ForestVillagerId, ForestVillagerMind>;
   const state = { ...previous, residents, buildings: { ...previous.buildings },
@@ -63,6 +68,10 @@ function synchronizeJobs(state: ForestVillagersState, now: number) {
       && Date.parse(job.finishesAt) > now).sort((a, b) => a.id.localeCompare(b.id))[0];
     const key = job ? `${state.production?.ownerPublicId}:${job.id}` : "";
     if (key === mind.jobKey) continue;
+    if (id === "kamneshmyg") mind.postWorkWalk = Boolean(mind.job && !job && state.production?.jobs.some(previous =>
+      `${state.production?.ownerPublicId}:${previous.id}` === mind.jobKey && Date.parse(previous.finishesAt) <= now));
+    if (mind.postWorkWalk) mind.habitAfter = mind.elapsed;
+    mind.goal = null; mind.habit = null;
     mind.jobKey = key; mind.job = !!job; mind.socialVisit = null; mind.noticePending = false;
     if (!mind.available || id === "kamneshmyg" && state.arrivalPhase !== "complete") continue;
     const places = forestVillagerPlaces(state.scene, id);
@@ -222,6 +231,10 @@ export function advanceForestVillagers(state: ForestVillagersState, scene: Fixed
       if (mind.job && id === "kamneshmyg" && mind.doorPhase === "outside" && places.door && mind.wait <= 0)
         approachVillagerDoor(mind, places, occupants);
       tryVillagerHome(mind, places, environment, occupants);
+      if ((weather || mind.fatigue >= .7) && mind.doorPhase === "outside" && !mind.job && !mind.socialVisit
+        && (mind.goal?.intent === "wander" || mind.habit)) {
+        mind.goal = null; mind.habit = null; stop(mind, "inspect"); mind.wait = 0;
+      }
       if (advanceVillagerDoor(mind, places, step, occupants, weather, environment.socialHolds?.includes(id))) continue;
       const optionalHold = Boolean(environment.socialHolds?.includes(id) || environment.wildlifeHolds?.includes(id) || mind.socialVisit);
       if (yieldForestVillagerPassage(mind, places, occupants, { optionalHold,
@@ -239,6 +252,10 @@ export function advanceForestVillagers(state: ForestVillagersState, scene: Fixed
       setAction(mind, "greet"); mind.socialNeed = 0; continue;
     }
     if (!arriving && advanceWoodcutterCycle(mind, scene, places, step, occupants)) continue;
+    if (!arriving && !mind.job && !mind.socialVisit && !mind.noticePending && !environment.socialHolds?.includes(id)) {
+      if (resumeVillagerGoal(mind, places, occupants)
+        || !weather && mind.fatigue < .7 && advanceVillagerHabit(mind, places, occupants)) continue;
+    }
     if (mind.route) {
       setAction(mind, woodcutterLoaded(mind) || mind.afterWalk === "carry" ? "carry" : "walk");
       walk(mind, places, step, occupants, arriving);
@@ -263,10 +280,10 @@ export function advanceForestVillagers(state: ForestVillagersState, scene: Fixed
       else if (mind.wait <= 0) select(mind, places, places.work, "work", "work", occupants);
       continue;
     }
-    if (mind.noticePending) { mind.noticePending = false; setAction(mind, "greet"); mind.wait = FOREST_VILLAGER_LIMITS.greeting; }
+    if (mind.noticePending) { mind.noticePending = false; mind.habit = null; setAction(mind, "greet"); mind.wait = FOREST_VILLAGER_LIMITS.greeting; }
     if (mind.action === "rest") mind.fatigue = Math.max(0, mind.fatigue - step * .045);
     else mind.fatigue = Math.min(1, mind.fatigue + step * profile.fatigue * .003);
-    mind.socialNeed = Math.min(1, mind.socialNeed + step * .007);
+    mind.socialNeed = Math.min(1, mind.socialNeed + step * (id === "lopukh" ? .009 : id === "kamneshmyg" ? .0045 : .006));
     if (mind.action === "work" || mind.action === "trade") mind.workNeed = Math.max(0, mind.workNeed - step * .045);
     else mind.workNeed = Math.min(1, mind.workNeed + step * .012);
     mind.wait -= step;
@@ -309,16 +326,20 @@ export function requestForestVillagerVisit(state: ForestVillagersState, scene: F
   if (!mind.available || state.scene !== scene || !places || mind.job || woodcutterLoaded(mind) || mind.socialVisit || mind.doorPhase !== "outside" || id === "kamneshmyg" && state.arrivalPhase !== "complete"
     || !Number.isFinite(target.position.x) || !Number.isFinite(target.position.y) || !Number.isFinite(target.size) || target.size <= 0) return false;
   const gap = residentClearance(profile.size, target.size) + 8;
+  const conversationNavigation = createWorldNavigation(scene, Math.min(profile.size, target.size) * .1);
+  if (!conversationNavigation) return false;
   const heading = Math.atan2(mind.position.y - target.position.y, mind.position.x - target.position.x);
   const candidates = (target.approach ? [{ id: `${id}:social:${target.id}`, position: { ...target.approach }, lookAt: { ...target.position } }]
     : [0, Math.PI / 4, -Math.PI / 4, Math.PI / 2, -Math.PI / 2, Math.PI].map(offset => ({
     id: `${id}:social:${target.id}`, position: { x: target.position.x + Math.cos(heading + offset) * gap,
       y: target.position.y + Math.sin(heading + offset) * gap }, lookAt: { ...target.position },
   }))).filter(stop => isWalkable(places.navigation, stop.position)
+    && canTraverse(conversationNavigation, stop.position, target.approach ?? target.position)
     && canTraverseResidents(stop.position, stop.position, profile.size, occupants, id));
   const route = forestVillagerRoute(places, mind.position, candidates, profile.size);
   if (!route || route.route.length > profile.speed * FOREST_VILLAGER_LIMITS.visitSeconds) return false;
   if (mind.woodwork) mind.woodwork.phase = "idle";
+  mind.goal = null; mind.habit = null;
   mind.socialVisit = { targetId: target.id, anchor: { ...target.position } }; mind.target = route.target;
   mind.outdoorUntil = Math.max(mind.outdoorUntil, mind.elapsed + FOREST_VILLAGER_LIMITS.visitSeconds);
   mind.intent = "social"; mind.afterWalk = "greet"; mind.route = route.route; mind.distance = 0; mind.speed = 0;

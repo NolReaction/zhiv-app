@@ -1,19 +1,26 @@
 import type { ForestSocialEnvironment, ForestSocialState, ForestSpeaker } from "./forest-social";
 import type { ForestConversation } from "./forest-conversations";
+import { rememberForestPromiseOutcome } from "./forest-social-continuity";
+import { forestSocialPairKey } from "./forest-social-context";
 import type { ForestSocialFollowupRequest } from "./forest-social-context";
 
-export type ForestSocialFollowup = ForestSocialFollowupRequest & { topicId: string;
+export type ForestSocialFollowup = ForestSocialFollowupRequest & { topicId: string; pair?: string;
   phase: "queued" | "approach" | "inspect"; age: number };
 export const FOREST_SOCIAL_FOLLOWUP_LIMITS = { queued: 8, approach: 45, inspect: 3,
   quiet: 240, history: 8 } as const;
-export function queueForestSocialFollowup(state: ForestSocialState, topic?: ForestConversation): void {
+export function queueForestSocialFollowup(state: ForestSocialState, topic?: ForestConversation,
+  participants?: readonly [ForestSpeaker, ForestSpeaker]): void {
   if (!topic?.followup || state.followup) return;
+  const pair = forestSocialPairKey(topic.followup.speaker, topic.followup.host);
+  if (forestSocialPairKey(...topic.pair.split("-") as [ForestSpeaker, ForestSpeaker]) !== pair
+    || participants && forestSocialPairKey(...participants) !== pair) return;
   state.followup = { ...topic.followup, id: `forest-followup-${state.sequence}-${topic.id}`,
-    topicId: topic.id, phase: "queued", age: 0 };
+    topicId: topic.id, pair, phase: "queued", age: 0 };
 }
 export function finishForestSocialFollowup(state: ForestSocialState, env: ForestSocialEnvironment,
   status: "completed" | "interrupted" | "blocked"): void {
   const followup = state.followup; if (!followup) return;
+  rememberForestPromiseOutcome(state, followup, status);
   if (followup.phase !== "queued") env.cancelFollowup?.(followup.speaker);
   state.lastFollowupResult = { speaker: followup.speaker, kind: followup.kind, status, at: state.elapsed };
   state.followup = null;

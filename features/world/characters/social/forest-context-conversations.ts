@@ -90,8 +90,22 @@ export const FOREST_CONTEXT_CONVERSATIONS: readonly ForestConversation[] = [
     { speaker: "leaftail", text: "Спасибо, что окошко осмотрел." }, { speaker: "builder", text: "Посмотрел снаружи. Ремонт не начинал." },
     { speaker: "leaftail", text: "Теперь хоть ясно, где цепляется." }, { speaker: "builder", text: "Да. А пока закрывай без рывка." },
   ] },
+  { id: "window-builder-unfinished", pair: "builder-leaftail", purpose: "window",
+    continuation: { kind: "inspect-window", result: "unfinished" }, lines: [
+    { speaker: "leaftail", text: "С окошком пока не закончили?" }, { speaker: "builder", text: "Осмотр отложил. Раму не трогал." },
+    { speaker: "leaftail", text: "Хорошо, буду открывать без рывка." }, { speaker: "builder", text: "Да. Спешка здесь не поможет." },
+  ] },
+  { id: "window-woodpile-lopukh-remembered", pair: "lopukh-leaftail", purpose: "window", condition: "woodpile-checked", lines: [
+    { speaker: "leaftail", text: "До поленницы добрался?" }, { speaker: "lopukh", text: "Да. Осмотрел место, где кладу брёвна." },
+    { speaker: "leaftail", text: "Вот и дело после разговора." }, { speaker: "lopukh", text: "Теперь можно спокойно передохнуть." },
+  ] },
+  { id: "window-woodpile-lopukh-unfinished", pair: "lopukh-leaftail", purpose: "window",
+    continuation: { kind: "check-woodpile", result: "unfinished" }, lines: [
+    { speaker: "leaftail", text: "Поленницу осмотреть получилось?" }, { speaker: "lopukh", text: "Пока нет. Пришлось отложить." },
+    { speaker: "leaftail", text: "Тогда не буду считать дело готовым." }, { speaker: "lopukh", text: "Верно. Сначала нужно дойти." },
+  ] },
   { id: "woodpile-lopukh-remembered", pair: "lopukh-leaftail", purpose: "trade", condition: "woodpile-checked", lines: [
-    { speaker: "leaftail", text: "У поленницы всё спокойно?" }, { speaker: "lopukh", text: "Посмотрел. Проход оставлен свободным." },
+    { speaker: "leaftail", text: "У поленницы всё спокойно?" }, { speaker: "lopukh", text: "Осмотрел место, где кладу брёвна." },
     { speaker: "leaftail", text: "С мешком теперь не придётся петлять." }, { speaker: "lopukh", text: "Тропинка нужна всем соседям." },
   ] },
 ];

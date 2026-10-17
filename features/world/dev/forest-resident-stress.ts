@@ -12,7 +12,7 @@ import { syncForestProduction } from "@/features/world/state/economy/economy-pro
 import type { WorldDevSceneRequest } from "./forest-scene-preview";
 
 export type ResidentStress = { phase: "prepare" | "carry-approach" | "narrow-approach" | "staging" | "crossing" | "blocked-door" | "clearing-door" | "hauling" | "talking" | "working";
-  goals?: readonly [WorldPoint, WorldPoint]; nextAt?: number; since: number; sawCarry: boolean; sawBlockedDoor: boolean; initialCycles: number; workStarted: boolean };
+  goals?: readonly [WorldPoint, WorldPoint]; nextAt?: number; meetingAttempts?: number; since: number; sawCarry: boolean; sawBlockedDoor: boolean; initialCycles: number; workStarted: boolean };
 export type StressResult = { status: "running" | "complete" | "blocked"; message: string };
 const distance = (a: WorldPoint, b: WorldPoint) => Math.hypot(a.x - b.x, a.y - b.y);
 const done = (message: string): StressResult => ({ status: "complete", message });
@@ -71,14 +71,23 @@ export function advanceResidentStress(state: ForestSessionState, scene: FixedWor
   const bunny = state.villagers?.residents.lopukh, mole = state.villagers?.residents.kamneshmyg;
   if (!bunny?.available || !mole?.available) return blocked("Нужны открытые Лопоух и Камнешмыг.");
   hold(state);
+  if (request.scenario === "work-interruption") {
+    // This rehearsal owns one chosen pair. Finishing a lost approach must not
+    // enable an unrelated ambient exchange to replace the result under test.
+    state.social.nextEncounterAt = Math.max(state.social.nextEncounterAt, state.social.elapsed + 120);
+    state.social.nextPassingAt = Math.max(state.social.nextPassingAt ?? 0, state.social.elapsed + 120);
+  }
   if (stress.phase === "prepare") {
     for (const id of ["lopukh", "kamneshmyg"] as const) if (state.villagers!.residents[id].doorPhase !== "outside") {
       noticeForestVillager(state.villagers!, id); return running("Участники выходят из своих домов.");
     }
     if (bunny.job || mole.job || bunny.route || mole.route) return running("Участники заканчивают прежний безопасный переход.");
     if (request.scenario === "work-interruption") {
+      if ((stress.meetingAttempts ?? 0) >= 3) return blocked("Выбранная пара не смогла закончить подход за три попытки.");
       if (!requestForestSocialVisit(state.social, request.actor, request.target!, environment.social)) return running("Ждёт готовности собеседника.");
-      stress.phase = "talking"; return running("Жители встречаются и начинают настоящий разговор.");
+      stress.meetingAttempts = (stress.meetingAttempts ?? 0) + 1;
+      stress.phase = "talking";
+      return running("Жители встречаются и начинают настоящий разговор.");
     }
     const places = forestVillagerPlaces(scene, "lopukh");
     const goals = request.scenario === "occupied-door" ? places?.door && [places.door.approach.position, { ...mole.position }] as const
@@ -143,9 +152,21 @@ export function advanceResidentStress(state: ForestSessionState, scene: FixedWor
       return done("Лопоух пронёс бревно навстречу соседу, разгрузил и закончил цикл.");
     return running(stress.sawCarry ? "Бревно и сосед движутся встречными путями." : "Лопоух подходит к дереву.");
   }
-  if (stress.phase === "talking" && state.social.meeting?.phase === "talk" && state.social.current) {
-    if (!injectWork(state, request, environment.now)) return blocked("Тестовое поручение разрешено только в изолированной DEV-копии.");
-    stress.workStarted = true; stress.phase = "working"; return running("Во время беседы пришло тестовое рабочее поручение.");
+  if (stress.phase === "talking") {
+    const meeting = state.social.meeting;
+    const intended = meeting?.guest === request.actor && meeting.host === request.target;
+    if (!intended) {
+      // The rehearsal wrapper already schedules this controller every .8s.
+      // nextAt belongs to that wrapper and has just been moved into the future.
+      stress.phase = "prepare";
+      return running("Прежний подход прерван; повторяет встречу выбранной пары.");
+    }
+    if (meeting.phase === "talk" && state.social.current
+      && [request.actor, request.target].includes(state.social.current.speaker)) {
+      if (!injectWork(state, request, environment.now)) return blocked("Тестовое поручение разрешено только в изолированной DEV-копии.");
+      stress.workStarted = true; stress.phase = "working"; return running("Во время беседы пришло тестовое рабочее поручение.");
+    }
+    return running("Выбранные жители подходят друг к другу перед разговором.");
   }
   if (stress.phase === "working") {
     const worker = state.villagers!.residents[request.actor as "lopukh" | "kamneshmyg"];

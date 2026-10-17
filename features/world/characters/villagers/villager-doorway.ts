@@ -22,6 +22,7 @@ export function approachVillagerDoor(mind: ForestVillagerMind, places: VillagerP
   if (!places.door || !selectVillagerRoute(mind, places, [places.door.approach], mind.job ? "work" : "home", "idle", occupants)) return false;
   mind.door = places.door; mind.doorPhase = "approach"; mind.doorProgress = 0; mind.socialVisit = null;
   mind.doorPurpose = mind.job ? "work" : "rest";
+  mind.goal = null; mind.habit = null;
   if (mind.woodwork) mind.woodwork.phase = "idle";
   return true;
 }

@@ -29,9 +29,11 @@ export type BuilderMind = {
   sleepProgress: number;
   sleepHome: BuilderHome | null;
   homeNextAt: number; homeUntil: number; homeReason: "night" | "break" | null;
+  /** A failed voluntary destination cools down without affecting work or doors. */
+  idleAvoid: { id: string; until: number } | null;
 };
 export const BUILDER_MIND_LIMITS = { maxDelta: 1, workCycle: 2.2, workRoutine: 8.8, finish: 1.4,
-  greeting: 2, trafficPatience: 2.4, doorSeconds: 1.2, acceleration: BUILDER.size * 1.6 } as const;
+  greeting: 2, inspection: 2.6, idleRetry: 30, trafficPatience: 2.4, doorSeconds: 1.2, acceleration: BUILDER.size * 1.6 } as const;
 const length = (a: WorldPoint, b: WorldPoint) => Math.hypot(a.x - b.x, a.y - b.y);
 const idleYieldAfter = new WeakMap<BuilderMind, number>();
 const trafficStalls = new WeakMap<BuilderMind, { startedAt: number; position: WorldPoint }>();
@@ -45,7 +47,7 @@ export function createBuilderMind(scene: FixedWorldScene, options: { awaitConstr
     action: "idle", ready: false, job: null, jobKey: "", target: places.rest,
     route: null, distance: 0, speed: 0, walked: 0, wait: 8, wanderIndex: 0, decisions: 0, blocked: false,
     noticePending: false, greetAfter: 0, constructionPending: options.awaitConstruction === true, trafficWaiting: false, socialVisit: null,
-    sleepPhase: "awake", sleepProgress: 0, sleepHome: null, homeNextAt: 180, homeUntil: 0, homeReason: null };
+    sleepPhase: "awake", sleepProgress: 0, sleepHome: null, homeNextAt: 180, homeUntil: 0, homeReason: null, idleAvoid: null };
 }
 
 function action(mind: BuilderMind, value: BuilderAction) {
@@ -57,7 +59,8 @@ function settle(mind: BuilderMind) {
   mind.route = null; mind.distance = 0; mind.speed = 0; mind.trafficWaiting = false;
   if (mind.target) mind.direction = builderDirection(mind.target.lookAt.x - mind.position.x, mind.target.lookAt.y - mind.position.y);
   action(mind, mind.job && !mind.ready ? "work" : "idle");
-  mind.wait = 8 + mind.wanderIndex % 3 * 3;
+  mind.wait = 7 + (mind.wanderIndex * 3 + mind.decisions) % 4 * 3;
+  if (!mind.job && mind.sleepPhase === "awake" && mind.target?.id.startsWith("builder-look-")) action(mind, "inspect");
   if (mind.sleepPhase === "approach" && mind.sleepHome && mind.target?.id === "builder-home"
     && length(mind.position, mind.sleepHome.entry) < .001) {
     mind.sleepPhase = "enter"; mind.sleepProgress = 0; action(mind, "walk");
@@ -124,17 +127,11 @@ function sample(path: SteeringPath, at: number) {
   return { position: { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }, direction: builderDirection(b.x - a.x, b.y - a.y) };
 }
 
-/** An idle destination has no gameplay ownership. Give up that destination
- * when two walkers need each other's space instead of waiting face to face.
- * A stalled free walk can also release an unreachable approach to a free goal.
- * Work shifts and social reservations retain ownership of their destinations. */
-function yieldIdleDestination(mind: BuilderMind, places: BuilderPlaces, occupants?: readonly ResidentOccupant[], stalled = false): boolean {
-  if (mind.job || mind.socialVisit || mind.sleepPhase !== "awake" || !mind.target || !stalled && canTraverseResidents(mind.target.position, mind.target.position, BUILDER.size, occupants, BUILDER.id)
+/** Short traffic waits retain the original goal. Only a continuous failed
+ * approach gives up optional ownership, with a cooldown before choosing it again. */
+function yieldIdleDestination(mind: BuilderMind, places: BuilderPlaces, occupants?: readonly ResidentOccupant[]): boolean {
+  if (mind.job || mind.socialVisit || mind.sleepPhase !== "awake" || !mind.target || mind.target.id === "builder-yield"
     || mind.elapsed < (idleYieldAfter.get(mind) ?? 0)) return false;
-  // A neighbour already stepping aside owns a finite escape. Do not respond by
-  // abandoning our destination as well; keep the bounded stall fallback below.
-  if (!stalled && occupants?.some(other => other.moving && other.intent?.priority === 0
-    && !canTraverseResidents(mind.target!.position, mind.target!.position, BUILDER.size, [other], BUILDER.id))) return false;
   idleYieldAfter.set(mind, mind.elapsed + RESIDENT_TRAFFIC_LIMITS.retry);
   const nearest = (occupants ?? []).slice(0, RESIDENT_TRAFFIC_LIMITS.occupants)
     .filter(other => other.id !== BUILDER.id && Number.isFinite(other.position.x) && Number.isFinite(other.position.y))
@@ -147,10 +144,17 @@ function yieldIdleDestination(mind: BuilderMind, places: BuilderPlaces, occupant
       y: mind.position.y + Math.sin(away + offset) * step };
     if (!canTraverse(places.navigation, mind.position, position)
       || !canTraverseResidents(mind.position, position, BUILDER.size, occupants, BUILDER.id)) continue;
+    mind.idleAvoid = { id: mind.target.id, until: mind.elapsed + BUILDER_MIND_LIMITS.idleRetry };
     beginRoute(mind, places, [{ id: "builder-yield", position, lookAt: { ...nearest.position } }]);
     return !mind.blocked;
   }
-  return false;
+  // A fully occupied pocket may have no legal escape at all. Defer this
+  // voluntary goal where the feet actually are; this is no arrival or work.
+  mind.idleAvoid = { id: mind.target.id, until: mind.elapsed + BUILDER_MIND_LIMITS.idleRetry };
+  mind.route = null; mind.target = null; mind.distance = 0; mind.speed = 0;
+  mind.trafficWaiting = false; mind.blocked = false; mind.wait = 3;
+  trafficStalls.delete(mind); passageYields.delete(mind); action(mind, "idle");
+  return true;
 }
 
 function walk(mind: BuilderMind, places: BuilderPlaces, dt: number, occupants?: readonly ResidentOccupant[]) {
@@ -177,14 +181,13 @@ function walk(mind: BuilderMind, places: BuilderPlaces, dt: number, occupants?: 
       stall = { startedAt: mind.elapsed, position: { ...mind.position } };
       trafficStalls.set(mind, stall);
     }
-    if (yieldIdleDestination(mind, places, occupants)) return;
     const detour = traffic.path;
     // A stopped neighbour can seal a narrow passage even when our final goal is
     // empty. Try the usual detour first; a free builder eventually walks aside
     // instead of retrying this cosmetic journey forever. Tiny braking steps at
     // the clearance boundary do not restart the patience clock.
     if (!detour && mind.elapsed - stall.startedAt >= BUILDER_MIND_LIMITS.trafficPatience
-      && yieldIdleDestination(mind, places, occupants, true)) return;
+      && yieldIdleDestination(mind, places, occupants)) return;
     mind.speed = 0; mind.trafficWaiting = true;
     if (detour && detour.length > 1) {
       const distances = [0];
@@ -262,6 +265,7 @@ export function rehydrateBuilderMind(scene: FixedWorldScene, previous: BuilderMi
   if (!next || !previous || !places) return next;
   next.elapsed = previous.elapsed; next.homeNextAt = previous.homeNextAt;
   next.homeUntil = previous.homeUntil; next.homeReason = previous.homeReason;
+  next.idleAvoid = previous.idleAvoid ? { ...previous.idleAvoid } : null;
   if (indoors(previous)) {
     next.position = { ...previous.position }; next.direction = previous.direction;
     next.sleepPhase = previous.sleepPhase; next.sleepProgress = previous.sleepProgress; next.sleepHome = previous.sleepHome;
@@ -350,7 +354,9 @@ export function advanceBuilderMind(mind: BuilderMind | null, scene: FixedWorldSc
   if (indoors(mind)) { advanceDoor(mind, places, step, environment.occupants); return; }
   if (mind.action === "finish") {
     if (mind.age >= BUILDER_MIND_LIMITS.finish) {
-      action(mind, mind.route ? "walk" : "idle");
+      // The confirmed work has ended at these actual exterior feet. Take one
+      // short look at its result before following the already checked return.
+      action(mind, "inspect");
       if (!mind.route) mind.wait = 6;
     }
     return;
@@ -358,6 +364,21 @@ export function advanceBuilderMind(mind: BuilderMind | null, scene: FixedWorldSc
   if (!mind.job && !mind.socialVisit && !environment.socialHold && !mind.noticePending
     && mind.sleepPhase === "awake" && mind.elapsed >= mind.homeNextAt && places.home) approachHome(mind, places, "break");
   yieldRequestedPassage(mind, places, environment.occupants);
+  if (!mind.job && mind.sleepPhase === "awake") {
+    if (mind.noticePending && mind.elapsed >= mind.greetAfter) {
+      mind.noticePending = false; mind.greetAfter = mind.elapsed + 15; mind.direction = "front";
+      mind.speed = 0; action(mind, "greet"); return;
+    }
+    if (mind.action === "greet") {
+      if (mind.age >= BUILDER_MIND_LIMITS.greeting) { action(mind, mind.route ? "walk" : "idle"); mind.wait = 6; }
+      return;
+    }
+    if (environment.socialHold && !mind.socialVisit && mind.target?.id !== "builder-yield") { mind.speed = 0; return; }
+    if (mind.action === "inspect") {
+      if (mind.age < BUILDER_MIND_LIMITS.inspection) return;
+      action(mind, mind.route ? "walk" : "idle");
+    }
+  }
   if (mind.route) { walk(mind, places, step, environment.occupants); return; }
   if (mind.sleepPhase === "approach") {
     mind.wait -= step;
@@ -366,13 +387,6 @@ export function advanceBuilderMind(mind: BuilderMind | null, scene: FixedWorldSc
   }
   if (mind.job) return; // Including a finished order awaiting confirmed collection.
   if (mind.socialVisit) return; // The social director releases this finite visit.
-  if (mind.action === "greet") {
-    if (mind.age >= BUILDER_MIND_LIMITS.greeting) { action(mind, "idle"); mind.wait = 6; }
-    return;
-  }
-  if (mind.noticePending && mind.elapsed >= mind.greetAfter) {
-    mind.noticePending = false; mind.greetAfter = mind.elapsed + 15; mind.direction = "front"; action(mind, "greet"); return;
-  }
   // A host waits for the neighbour he agreed to meet. Work, doorways,
   // passage requests and a player's greeting keep their earlier priority.
   if (environment.socialHold) return;
@@ -382,7 +396,8 @@ export function advanceBuilderMind(mind: BuilderMind | null, scene: FixedWorldSc
   // path searches run every animation frame or keep retrying an active job.
   mind.wanderIndex = (mind.wanderIndex + 1) % places.wander.length;
   const candidates = places.wander.slice(mind.wanderIndex).concat(places.wander.slice(0, mind.wanderIndex))
-    .filter(stop => length(stop.position, mind.position) > BUILDER.size * .35);
+    .filter(stop => length(stop.position, mind.position) > BUILDER.size * .35
+      && (mind.idleAvoid?.id !== stop.id || mind.elapsed >= mind.idleAvoid.until));
   beginRoute(mind, places, candidates);
 }
 

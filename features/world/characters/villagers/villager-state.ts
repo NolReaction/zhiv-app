@@ -17,6 +17,9 @@ export type WoodcutterCycle = { phase: "idle" | "chop" | "haul" | "unload" | "re
   deliveries?: { position: WorldPoint; sequence: number }[] };
 export const createWoodcutterCycle = (): WoodcutterCycle => ({ phase: "idle", elapsed: 0, failures: 0,
   retryAt: 0, completedCycles: 0, chopSeconds: 8 });
+export type VillagerGoal = { target: VillagerStop; intent: "wander" | "home"; afterWalk: ForestVillagerAction;
+  startedAt: number; retries: number; retryAt: number; blockedFor: number; phase: "walking" | "waiting" };
+export type VillagerHabit = { kind: "woodpile" | "post-work-walk" | "shop-inspection"; phase: "walk" | "inspect"; until: number };
 export type ForestVillagerMind = {
   id: ForestVillagerId; available: boolean; initialized: boolean; position: WorldPoint; direction: PixelDirection;
   action: ForestVillagerAction; age: number; elapsed: number; walked: number; wait: number;
@@ -29,6 +32,9 @@ export type ForestVillagerMind = {
   outdoorUntil: number; recentStops: string[];
   woodwork: WoodcutterCycle | null;
   job: boolean; jobKey: string; socialVisit: { targetId: string; anchor: WorldPoint } | null; noticePending: boolean;
+  /** Finite voluntary plans never own work, conversations or doorway travel. */
+  goal: VillagerGoal | null; failedStops: { id: string; until: number }[];
+  habit: VillagerHabit | null; habitAfter: number; habitCycles: number; checkedDelivery: number; postWorkWalk: boolean;
 };
 export type ForestVillagersState = {
   scene: FixedWorldScene; confirmed: boolean; buildings: Readonly<Record<string, number>>;

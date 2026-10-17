@@ -6,6 +6,7 @@ import { canTraverseResidents, residentRequestingPassage, residentWalkingStep, r
 import type { WorldPoint } from "@/features/world/tiled/types";
 import { FOREST_VILLAGER_PROFILES, forestVillagerRoute, villagerDistance, type VillagerPlaces, type VillagerStop } from "./villager-navigation";
 import { FOREST_VILLAGER_LIMITS, type ForestVillagerMind } from "./villager-state";
+import { blockVillagerGoal, coolVillagerStops, rememberVillagerGoal, villagerGoalEligible } from "./villager-goal";
 
 export const villagerDirection = (a: WorldPoint, b: WorldPoint): PixelDirection => Math.abs(b.x - a.x) > Math.abs(b.y - a.y)
   ? b.x > a.x ? "right" : "left" : b.y > a.y ? "front" : "back";
@@ -16,17 +17,22 @@ export function stopVillager(mind: ForestVillagerMind, action: ForestVillagerAct
   mind.route = null; mind.distance = 0; mind.speed = 0; mind.trafficWaiting = false; mind.stalledAt = null;
   if (mind.target) mind.direction = villagerDirection(mind.position, mind.target.lookAt);
   setVillagerAction(mind, action); mind.wait = FOREST_VILLAGER_LIMITS.decisionSeconds;
+  if (mind.goal && villagerDistance(mind.position, mind.goal.target.position) < .1) mind.goal = null;
 }
 export function selectVillagerRoute(mind: ForestVillagerMind, places: VillagerPlaces, candidates: readonly VillagerStop[],
   intent: ForestVillagerMind["intent"], afterWalk: ForestVillagerAction, occupants?: readonly ResidentOccupant[]): boolean {
   const profile = FOREST_VILLAGER_PROFILES[mind.id];
-  const free = candidates.filter(stop => canTraverseResidents(stop.position, stop.position, profile.size, occupants, mind.id));
+  const voluntary = villagerGoalEligible(mind) && (intent === "wander" || intent === "home");
+  const choices = voluntary ? candidates.filter(stop => !mind.failedStops.some(failed => failed.id === stop.id && failed.until > mind.elapsed)) : candidates;
+  if (!choices.length) return false;
+  const free = choices.filter(stop => canTraverseResidents(stop.position, stop.position, profile.size, occupants, mind.id));
   const selected = forestVillagerRoute(places, mind.position, free, profile.size, intent === "wander" ? profile.speed * 18 : Infinity);
   mind.decisions++; mind.wait = FOREST_VILLAGER_LIMITS.decisionSeconds;
-  if (!selected) return false;
+  if (!selected) { if (voluntary) coolVillagerStops(mind, free.length ? free.slice(0, 4) : choices.slice(0, 4), free.length ? 36 : 4); return false; }
   mind.target = selected.target; mind.route = selected.route; mind.distance = 0; mind.speed = 0; mind.trafficWaiting = false;
   mind.intent = intent; mind.afterWalk = afterWalk;
   mind.recentStops = [...mind.recentStops.filter(id => id !== selected.target.id), selected.target.id].slice(-3);
+  rememberVillagerGoal(mind);
   if (mind.route.length < .001) stopVillager(mind, afterWalk);
   else setVillagerAction(mind, afterWalk === "carry" || afterWalk === "unload" ? "carry" : "walk");
   return true;
@@ -49,6 +55,7 @@ export function yieldForestVillagerPassage(mind: ForestVillagerMind, places: Vil
   if (!position || !selectVillagerRoute(mind, places, [{ id: `${mind.id}:yield`, position, lookAt: requester.position }],
     "yield", mind.woodwork?.phase === "haul" ? "carry" : "idle", occupants)) return false;
   mind.socialVisit = null;
+  mind.habit = null;
   if (mind.woodwork) mind.woodwork.retryAt = mind.elapsed + 3;
   return true;
 }
@@ -94,8 +101,9 @@ export function walkForestVillager(mind: ForestVillagerMind, places: VillagerPla
         target: path.points.at(-1)!, size: profile.size, occupants, selfId: mind.id, time: mind.elapsed }, position);
       if (!traffic.clear) {
         mind.trafficWaiting = true; mind.speed = 0; mind.stalledAt ??= mind.elapsed;
+        if (blockVillagerGoal(mind, dt)) return;
         const woodCycle = mind.woodwork && mind.woodwork.phase !== "idle";
-        if (!running && !mind.socialVisit && (!mind.job || woodCycle) && mind.elapsed - mind.stalledAt > 2.4) {
+        if (!mind.goal && !running && !mind.socialVisit && (!mind.job || woodCycle) && mind.elapsed - mind.stalledAt! > 2.4) {
           if (woodCycle) { mind.woodwork!.failures++; mind.woodwork!.retryAt = mind.elapsed + 3; }
           stopVillager(mind, mind.woodwork?.phase === "haul" ? "carry" : "idle"); mind.wait = 3; return;
         }

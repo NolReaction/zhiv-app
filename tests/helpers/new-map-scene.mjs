@@ -50,6 +50,8 @@ async function modules(override) {
       ...await vite.ssrLoadModule("/features/world/scene/art.ts"),
       ...await vite.ssrLoadModule("/features/world/scene/presentation.ts"),
       ...await vite.ssrLoadModule("/features/world/dev/world-dev-store.ts"),
+      ...await vite.ssrLoadModule("/features/world/dev/forest-resident-diagnostics.ts"),
+      ...await vite.ssrLoadModule("/features/world/dev/forest-performance-profiler.ts"),
       ...await vite.ssrLoadModule("/features/world/dev/world-lighting-editor-store.ts"),
       ...await vite.ssrLoadModule("/features/world/dev/world-lighting-editor-map.ts"),
       ...await vite.ssrLoadModule("/features/world/dev/world-studio-keyboard.ts"),

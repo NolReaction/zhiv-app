@@ -1,4 +1,5 @@
 import { FOREST_CONTEXT_CONVERSATIONS } from "./forest-context-conversations";
+import type { ForestConversationContinuation } from "./forest-social-continuity";
 import type { ForestConversationCondition, ForestSocialFollowupRequest } from "./forest-social-context";
 import type { ForestSpeaker } from "./forest-social";
 import { FOREST_VILLAGER_CONVERSATIONS } from "./forest-villager-conversations";
@@ -12,6 +13,7 @@ export type ForestConversation = {
   purpose?: Exclude<ForestSocialPurpose, "neighbour">;
   condition?: ForestConversationCondition; siteId?: string;
   followup?: Omit<ForestSocialFollowupRequest, "id">;
+  continuation?: ForestConversationContinuation;
   lines: readonly { speaker: ForestSpeaker; text: string }[];
 };
 

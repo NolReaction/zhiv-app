@@ -100,6 +100,7 @@ import { drawLeaftailWindowResident } from "@/features/world/characters/leaftail
 import { leaftailBoatArrivalFrame, leaftailBoatArrivalOccupant } from "@/features/world/characters/leaftail/leaftail-boat-arrival";
 import { drawLeaftailBoatArrival } from "@/features/world/characters/leaftail/leaftail-boat-painter";
 import { residentDiagnosticsStore } from "@/features/world/dev/forest-resident-diagnostics";
+import { forestPerformanceProfiler } from "@/features/world/dev/forest-performance-profiler";
 import { residentScenePresentation } from "./resident-scene-presentation";
 import { residentSceneSocialContext, residentSceneFollowups } from "./resident-scene-social";
 import { syncSceneMerchantArrival, advanceSceneMerchantArrival, announceSceneMerchantArrival } from "./resident-scene-arrival";
@@ -197,6 +198,14 @@ function actorFrame(elapsed: number, reacting: boolean, still: boolean, preview?
 export function paintNewMap(context: CanvasRenderingContext2D, images: ReadonlyMap<string, HTMLImageElement>,
   options: SceneOptions, elapsed: number, reacting: boolean, timestamp = options.serverNow ?? 0,
   dusk = Number(options.dusk), preview?: NewMapPaintPreview) {
+  const timing = forestPerformanceProfiler.begin("render", options.devRehearsal ? "rehearsal" : "world");
+  try { paintNewMapFrame(context, images, options, elapsed, reacting, timestamp, dusk, preview); }
+  finally { forestPerformanceProfiler.end(timing); }
+}
+
+function paintNewMapFrame(context: CanvasRenderingContext2D, images: ReadonlyMap<string, HTMLImageElement>,
+  options: SceneOptions, elapsed: number, reacting: boolean, timestamp: number,
+  dusk: number, preview?: NewMapPaintPreview) {
   const dev = preview?.state, still = reducedMotion(options, dev);
   const currentLevels = accountSceneLevels(TILED_WORLD, options.worldState?.houseLevel, dev, options.economyBuildings);
   const authoredWorld = preview?.scene ?? previewWorldScene(TILED_WORLD, currentLevels);
@@ -413,6 +422,15 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   let audioCamera: WorldAudioCamera | undefined;
   let session = connect();
   let state = session.state;
+  const residentDiagnosticsOwner = {};
+
+  function reportResidents() {
+    // The arguments themselves sample every actor. Keep that work behind the
+    // open-inspector gate, rather than relying on report() to discard it later.
+    if (!WORLD_DEV_ENABLED || !residentDiagnosticsStore.isObserved() || options.backgrounded || !session.isOwner() || !active()) return;
+    residentDiagnosticsStore.report(state, residentOccupants(), options.presenceKey ?? "forest", true,
+      { owner: residentDiagnosticsOwner, paused: false, settings: dev, rehearsal: options.devRehearsal ?? null });
+  }
 
   function ensureWater() {
     // WaterExclusions do not participate in the account-memory fingerprint.
@@ -446,12 +464,15 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   }
 
   function advanceWater(step: number, environment: { rain: number; dusk: number }) {
+    const timing = forestPerformanceProfiler.begin("water", options.devRehearsal ? "rehearsal" : "world");
+    try {
     if (!world.water?.surfaces.length || dev?.waterSurface === false) { waterContacts(false); return; }
     const water = ensureWater();
     waterContacts(true, environment);
     const wind = dev?.waterWind === "calm" ? 0 : dev?.waterWind === "breeze" ? .45 : dev?.waterWind === "windy" ? 1 : undefined;
     advanceForestWaterDynamics(water, step, { rain: environment.rain,
       wind: forestWaterWind({ ...environment, elapsed: state.elapsed, wind }) });
+    } finally { forestPerformanceProfiler.end(timing); }
   }
 
   const explorationNow = () => economicTimestamp + (options.devRehearsal ? state.elapsed * 1000
@@ -638,6 +659,8 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       : partner === "plesk" ? state.pleskMind?.position : partner ? state.villagers?.residents[partner]?.position : undefined;
   }
   function residentOccupants() {
+    const timing = forestPerformanceProfiler.begin("occupancy", options.devRehearsal ? "rehearsal" : "world");
+    try {
     const occupants = forestResidentOccupants(state, world, { heroVisible: dev?.showHero !== false && !actorAway(), heroScale: dev?.heroScale,
       heroManual: Boolean(state.animation || state.reaction > 0 || dev?.pose && dev.pose !== "auto"),
       fishing: forestJourneyFishingFrame(state, world), mining: forestJourneyMiningFrame(state, world),
@@ -645,6 +668,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     const arriving = state.leaftailBoat && leaftailBoatArrivalOccupant(state.leaftailBoat);
     if (arriving) occupants.push(arriving);
     return occupants;
+    } finally { forestPerformanceProfiler.end(timing); }
   }
   /** Speech uses the same visible feet as traffic; hidden portals and work
    * animations cannot leave a floating caption at an old clearing coordinate. */
@@ -831,6 +855,8 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   }
 
   function connect(timestamp = Number.isFinite(options.serverNow) ? options.serverNow! : Date.now(), allowPersistence = true) {
+    const timing = forestPerformanceProfiler.begin("ai", options.devRehearsal ? "rehearsal" : "world");
+    try {
     const connected = connectForestSession(options.presenceKey, world, options.view ?? "circle",
       timestamp, Number(options.dusk), ownerChanged => {
         if (disposed) return;
@@ -843,6 +869,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
         awaitBuilderConstruction: options.economyConstruction !== undefined });
     if (!allowPersistence || options.devRehearsal || forestPersistenceOverridden(dev, levels)) connected.suspendPersistence();
     return connected;
+    } finally { forestPerformanceProfiler.end(timing); }
   }
   function clearingMustContinue() {
     const current = clearingActivityFrame(state.clearing);
@@ -949,6 +976,8 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     state.fishingPreview = { id, startedAt: state.elapsed };
   }
   function syncOwner() {
+    const timing = forestPerformanceProfiler.begin("ai", options.devRehearsal ? "rehearsal" : "world");
+    try {
     session.configure(options.view ?? "circle", active(), true);
     if (WORLD_DEV_ENABLED && session.isOwner()) {
       const resident = dev?.residentPreview;
@@ -969,10 +998,11 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     if (session.isOwner()) {
       residentSceneSocialContext(state, explorationNow());
       advanceForestSocial(state.social, 0, socialEnvironment());
-      residentDiagnosticsStore.report(state, residentOccupants(), options.presenceKey ?? "forest", WORLD_DEV_ENABLED && !options.backgrounded);
+      reportResidents();
     }
     updateObservation(true);
     updateAudio();
+    } finally { forestPerformanceProfiler.end(timing); }
   }
   function rehearsalEnvironment() {
     return { social: socialEnvironment(), occupants: residentOccupants(), birds: visibleBirds(), now: explorationNow(),
@@ -1001,6 +1031,8 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       state.reaction = Math.max(0, state.reaction - step);
       const environment = forestAtmosphereState(world, atmosphereOptions(options, state.timestamp, state.dusk, { state: dev }));
       state.wetness = updateForestWetness(state.wetness, environment.rain, step);
+      const aiTiming = forestPerformanceProfiler.begin("ai", options.devRehearsal ? "rehearsal" : "world");
+      try {
       syncConstruction(); syncVillagers(); syncExploration(); syncGarden(); syncCooking();
       residentSceneSocialContext(state, explorationNow());
       advanceForestSocial(state.social, step, socialEnvironment());
@@ -1020,6 +1052,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       }
       const manual = Boolean(state.animation || state.reaction > 0 || dev?.pose && dev.pose !== "auto" || dev?.showHero === false);
       advanceForestDirector(state, step, directorOptions(manual));
+      } finally { forestPerformanceProfiler.end(aiTiming); }
       const stimulus = state.director.stimulus;
       const resident = state.pleskMind ? pleskMindFrame(state.pleskMind, world, false) : null;
       const birdVisitors = [
@@ -1042,7 +1075,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
         if (feedback) worldDevStore.reportScene(feedback.id, feedback.phase, feedback.message);
       }
       updateAudio(true);
-      residentDiagnosticsStore.report(state, residentOccupants(), options.presenceKey ?? "forest", WORLD_DEV_ENABLED && !options.backgrounded);
+      reportResidents();
       previous = now; session.publish();
     }
     if (active() && session.isOwner()) frame = requestAnimationFrame(tick);
@@ -1097,7 +1130,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
   function dispose() {
     if (disposed) return;
     disposed = true; artworkVersion++; stop(); clearForestTreeInteractions(trees); unsubscribe(); unsubscribeAudioDebug(); unsubscribeLightingEditor(); audio.dispose(); observer.disconnect(); art = null;
-    residentDiagnosticsStore.clear(options.presenceKey ?? "forest");
+    residentDiagnosticsStore.clear(options.presenceKey ?? "forest", residentDiagnosticsOwner);
     document.removeEventListener("visibilitychange", visibilityChanged); session.release({ retain: !options.devRehearsal });
   }
   function prepareArtwork() {
@@ -1152,7 +1185,8 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
           // share mutable feet/clocks with a background view of old geometry.
           // Targets and route geometry are immutable; progress lives on mind.
           if (builder && freshBuilder) {
-            state.builderMind = { ...builder, position: { ...builder.position } };
+            state.builderMind = { ...builder, position: { ...builder.position },
+              idleAvoid: builder.idleAvoid ? { ...builder.idleAvoid } : null };
             if (state.builderMind.socialVisit) cancelForestSocial(state.social, { ...socialEnvironment(), builder: state.builderMind });
           }
         }

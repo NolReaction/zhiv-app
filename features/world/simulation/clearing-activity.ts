@@ -69,6 +69,23 @@ export type ClearingActivityFrame = WorldPoint & {
 const temporaryNavigation = new WeakMap<ClearingActivityState, { base: WorldNavigation; key: string; current: WorldNavigation }>();
 const parkedPropWait = new WeakMap<ClearingActivityState, { navigation: WorldNavigation; route: ClearingRoute; stage: ClearingStage }>();
 const passageYieldAfter = new WeakMap<ClearingActivityState, number>();
+const roamingWait = new WeakMap<ClearingActivityState, { id: string; since: number }>();
+const roamingTrafficStall = new WeakMap<ClearingActivityState, { id: string; since: number; position: WorldPoint }>();
+const roamingDeferred = new WeakMap<ClearingActivityState, { id: string; until: number }[]>();
+export const CLEARING_ROAM_LIMITS = { occupiedWait: 6, passageWait: 12, deferred: 24, memories: 8 } as const;
+
+function deferredRoamingGoals(state: ClearingActivityState) {
+  const recent = (roamingDeferred.get(state) ?? []).filter(item => item.until > state.elapsed);
+  roamingDeferred.set(state, recent);
+  return new Set(recent.map(item => item.id));
+}
+function deferRoamingGoal(state: ClearingActivityState, id: string) {
+  const recent = (roamingDeferred.get(state) ?? []).filter(item => item.id !== id && item.until > state.elapsed);
+  recent.push({ id, until: state.elapsed + CLEARING_ROAM_LIMITS.deferred });
+  roamingDeferred.set(state, recent.slice(-CLEARING_ROAM_LIMITS.memories));
+  roamingWait.delete(state);
+  roamingTrafficStall.delete(state);
+}
 
 export function baseClearingNavigation(state: ClearingActivityState): WorldNavigation | null {
   const previous = temporaryNavigation.get(state);
@@ -384,12 +401,16 @@ function navigatedRoute(state: ClearingActivityState, input: WorldPoint[], id: s
 }
 function beginFreeWalk(state: ClearingActivityState, points: WorldPoint[], purpose: NonNullable<ClearingActivityState["freePurpose"]>,
   activity: ForestInterest["activity"] = "look", id: string = purpose) {
+  roamingWait.delete(state);
+  roamingTrafficStall.delete(state);
   state.freeRoute = navigatedRoute(state, points, id, activity, false, purpose !== "interaction-exit");
   state.freePurpose = purpose; state.stage = "free-walk"; state.stageElapsed = 0; state.distance = 0;
   state.navigationRetryAt = 0;
   state.speed = 0; state.routeIndex = -1; state.routeKind = "clearing"; state.steps = []; state.attentionResume = null;
 }
 function settleClearing(state: ClearingActivityState) {
+  roamingWait.delete(state);
+  roamingTrafficStall.delete(state);
   state.stage = "clearing"; state.stageElapsed = 0; state.speed = 0; state.distance = 0;
   state.freeRoute = null; state.freePurpose = null; state.routeIndex = -1; state.steps = [];
   state.waitSeconds = 2.8 + random(state) * 3;
@@ -767,8 +788,18 @@ function advanceWalk(state: ClearingActivityState, dt: number, options: Clearing
   if (free && state.freePurpose === "roam" && route.activity !== "bush" && !state.requestedPoint && !state.activeInteraction) {
     const target = route.points.at(-1)!;
     if (!canTraverseResidents(target, target, options.residentSize ?? state.size, options.occupants, "mochlik")) {
+      // A neighbour can occupy an already chosen destination for a moment.
+      // Keep this exact intention before deferring it; no path search or reward
+      // runs while waiting, and player/work reservations use their own owner.
+      const waiting = roamingWait.get(state);
+      if (!waiting || waiting.id !== route.id) roamingWait.set(state, { id: route.id, since: state.elapsed });
+      if (state.elapsed - (roamingWait.get(state)!.since) < CLEARING_ROAM_LIMITS.occupiedWait) {
+        state.speed = 0; state.behavior.reason = "roaming-place-waiting"; return;
+      }
+      deferRoamingGoal(state, route.id);
       releaseOccupiedRoamingGoal(state, route.id); return;
     }
+    roamingWait.delete(state);
   }
   const waiting = parkedPropWait.get(state);
   if (waiting?.navigation === state.navigation && waiting.route === route && waiting.stage === state.stage) {
@@ -820,6 +851,18 @@ function advanceWalk(state: ClearingActivityState, dt: number, options: Clearing
     : { clear: canTraverseResidents(state.position, sample.position, options.residentSize ?? state.size, options.occupants, "mochlik"), path: undefined };
   if (!traffic.clear) {
     state.speed = 0;
+    if (free && state.freePurpose === "roam" && route.id !== "resident-yield" && route.activity !== "bush"
+      && !state.requestedPoint && !state.activeInteraction) {
+      let stalled = roamingTrafficStall.get(state);
+      if (!stalled || stalled.id !== route.id || distance(stalled.position, state.position) > state.size * .1) {
+        stalled = { id: route.id, since: state.elapsed, position: { ...state.position } };
+        roamingTrafficStall.set(state, stalled);
+      }
+      if (state.elapsed - stalled.since >= CLEARING_ROAM_LIMITS.passageWait) {
+        deferRoamingGoal(state, route.id); releaseOccupiedRoamingGoal(state, route.id);
+        state.behavior.reason = "roaming-passage-deferred"; return;
+      }
+    }
     if (!detourResidents(state, route, options, traffic.path)) state.behavior.reason = "waiting-for-resident";
     return;
   }
@@ -945,9 +988,12 @@ export function advanceClearingActivity(state: ClearingActivityState, delta: num
       const goal = chooseForestGoal(state.navigation, state.interests, state.behavior, {
         position: state.position, size: state.size, elapsed: state.elapsed, awakeUntil: state.awakeUntil,
         dusk: options.dusk, rain: options.rain, random: () => random(state),
+        avoidIds: deferredRoamingGoals(state),
       });
-      if (goal && !canTraverseResidents(goal.position, goal.position, options.residentSize ?? state.size, options.occupants, "mochlik"))
+      if (goal && !canTraverseResidents(goal.position, goal.position, options.residentSize ?? state.size, options.occupants, "mochlik")) {
+        deferRoamingGoal(state, goal.id);
         releaseOccupiedRoamingGoal(state, goal.id);
+      }
       else if (goal) beginFreeWalk(state, goal.path, "roam", goal.activity, goal.id);
       else startActivity(state, options);
       return;

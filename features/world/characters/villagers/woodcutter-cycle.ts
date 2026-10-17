@@ -17,7 +17,7 @@ export function beginWoodcutterCycle(mind: ForestVillagerMind, places: VillagerP
     || !cycle || !plan || woodcutterLoaded(mind)) return false;
   cycle.phase = "chop"; cycle.elapsed = 0; cycle.failures = 0; cycle.retryAt = mind.elapsed;
   cycle.chopSeconds = options.chopSeconds === 0 ? 0 : WOODCUTTER_CYCLE_LIMITS.chop;
-  mind.socialVisit = null;
+  mind.socialVisit = null; mind.goal = null; mind.habit = null;
   const workIndex = Number.isSafeInteger(options.workIndex) && options.workIndex! >= 0 ? options.workIndex! : cycle.completedCycles;
   const started = selectVillagerRoute(mind, places, rotate(plan.work, workIndex), "work", "work", occupants);
   if (!started) { cycle.failures++; cycle.retryAt = mind.elapsed + WOODCUTTER_CYCLE_LIMITS.retry; setVillagerAction(mind, "inspect"); }

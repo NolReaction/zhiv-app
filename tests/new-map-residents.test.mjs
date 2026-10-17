@@ -1242,7 +1242,8 @@ test("confirmed construction geometry keeps builder feet through server hydratio
     hitArea: site.hitArea.map(point => ({ ...point, x: point.x - 10 })),
     collision: site.collision.map(point => ({ ...point, x: point.x - 10 })),
   } });
-  const { mountHabitat, connectForestSession, forgetForestSession, previewWorldScene, TILED_WORLD, ApiError } = await modules(authored);
+  const { mountHabitat, connectForestSession, forgetForestSession, previewWorldScene, TILED_WORLD, ApiError,
+    BUILDER_MIND_LIMITS, builderLocalPlaces, canTraverse } = await modules(authored);
   const env = browser(), views = [], probes = [];
   try {
     for (const mode of ["claim", "speedup", "speedup-on-route"]) {
@@ -1326,9 +1327,31 @@ test("confirmed construction geometry keeps builder feet through server hydratio
       const atHandoff = structuredClone(current);
       circle.configure({ ...completed, view: "circle", backgrounded: true }); await flush();
       assert.deepEqual(target.state.builderMind, atHandoff, "the late second camera cannot rewind the builder or replay completion");
-      clock.advance(2);
-      assert.notDeepEqual(current.position, feet, "the same worker visibly walks back after his completion nod");
-      assert.ok(distanceBetween(current.position, feet) <= 34 * 2, "there is no hidden return teleport");
+      const returnNavigation = builderLocalPlaces(targetMap).navigation;
+      const checkedStep = () => {
+        const before = { ...current.position };
+        clock.step();
+        assert.ok(distanceBetween(current.position, before) <= 34 * .05 + 1e-7, "return feet keep their normal walking speed");
+        assert.ok(canTraverse(returnNavigation, before, current.position), "each return step respects the accepted building geometry");
+      };
+      const untilChecked = (predicate, message, seconds) => {
+        for (let tick = 0; tick < seconds * 20 && !predicate(); tick++) checkedStep();
+        assert.ok(predicate(), `${message}: ${current.action}, age=${current.age}, elapsed=${current.elapsed}`);
+      };
+      if (mode !== "speedup-on-route") {
+        untilChecked(() => current.action === "inspect", "the actual completion nod becomes an exterior inspection", BUILDER_MIND_LIMITS.finish + .2);
+        assert.deepEqual(current.position, feet, "the completion nod and inspection use the same hydrated feet");
+        const inspectionAge = current.age;
+        for (let tick = 0; tick < 40; tick++) checkedStep();
+        assert.equal(current.action, "inspect");
+        assert.ok(current.age >= inspectionAge + 1.9 && current.age < BUILDER_MIND_LIMITS.inspection);
+        assert.deepEqual(current.position, feet, "the worker visibly inspects the completed exterior before leaving");
+        untilChecked(() => current.action === "walk", "the finite inspection releases its prechecked return path", BUILDER_MIND_LIMITS.inspection + .2);
+      }
+      const beforeReturn = { ...current.position };
+      for (let tick = 0; tick < 40; tick++) checkedStep();
+      assert.notDeepEqual(current.position, feet, "the same worker visibly walks back after his completion inspection");
+      assert.ok(distanceBetween(current.position, beforeReturn) <= 34 * 2, "there is no hidden return teleport");
       world.dispose(); circle.dispose(); source.release(); target.release(); forgetForestSession(key); await pump();
     }
   } finally { views.forEach(view => view.dispose()); probes.forEach(probe => probe.release()); env.restore(); }

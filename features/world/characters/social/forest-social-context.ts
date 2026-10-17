@@ -1,3 +1,4 @@
+import { forestSocialPairKey, forestConversationContinuation, forestConversationOutcome, pruneForestPromiseOutcomes } from "./forest-social-continuity";
 import type { ForestConversation } from "./forest-conversations";
 import type { ForestSocialPurpose } from "./forest-purpose-conversations";
 import type { ForestSocialActor, ForestSocialState, ForestSpeaker } from "./forest-social";
@@ -16,7 +17,7 @@ export type ForestConversationCondition = "recent-pair" | "window-inspected" | "
   | "construction" | "wood" | "mining" | "fishing";
 export const FOREST_SOCIAL_CONTEXT_LIMITS = { facts: 8, seenFacts: 24, pairMemories: 15,
   pairTopics: 3, eventStories: 24, factLife: 300, familiarLife: 600 } as const;
-export const forestSocialPairKey = (first: ForestSpeaker, second: ForestSpeaker) => [first, second].sort().join(":");
+export { forestSocialPairKey } from "./forest-social-continuity";
 function valid(event: ForestSocialContextEvent): boolean {
   return typeof event?.id === "string" && event.id.length > 0 && event.id.length <= 160
     && (event.kind === "construction" ? typeof event.siteId === "string" && event.siteId.length > 0
@@ -25,6 +26,7 @@ function valid(event: ForestSocialContextEvent): boolean {
         && ["mochlik", "plesk", "builder", "lopukh", "kamneshmyg", "leaftail"].includes(event.speaker));
 }
 export function observeForestSocialContext(state: ForestSocialState, context?: ForestSocialContext): void {
+  pruneForestPromiseOutcomes(state);
   if (!state.contextFacts?.length && !context?.events?.length) return;
   const facts = state.contextFacts ?? (state.contextFacts = []), seen = state.seenContextFacts ?? (state.seenContextFacts = []);
   for (const event of (context?.events ?? []).slice(0, FOREST_SOCIAL_CONTEXT_LIMITS.facts)) {
@@ -55,11 +57,12 @@ export function eligibleForestConversations(topics: readonly ForestConversation[
     && forestSocialPairKey(...topic.pair.split("-") as [ForestSpeaker, ForestSpeaker]) === pair
     && (purpose === "passing" ? topic.purpose === "passing" : topic.purpose !== "passing"
       && (!topic.purpose || topic.purpose === purpose))
+    && (!forestConversationContinuation(topic) || Boolean(forestConversationOutcome(topic, state, guest.id, host.id)))
     && (!topic.followup || canFollowup && (state.followupAfter?.[topic.followup.speaker] ?? 0) <= state.elapsed
       && !(state.followupHistory ?? []).includes(topic.id))
     && (!topic.condition || topic.condition === "recent-pair" && Boolean(memory && state.elapsed - memory.at < FOREST_SOCIAL_CONTEXT_LIMITS.familiarLife)
-      || topic.condition === "window-inspected" && state.lastFollowupResult?.kind === "inspect-window" && state.lastFollowupResult.status === "completed" && state.elapsed - state.lastFollowupResult.at < FOREST_SOCIAL_CONTEXT_LIMITS.familiarLife
-      || topic.condition === "woodpile-checked" && state.lastFollowupResult?.kind === "check-woodpile" && state.lastFollowupResult.status === "completed" && state.elapsed - state.lastFollowupResult.at < FOREST_SOCIAL_CONTEXT_LIMITS.familiarLife
+      || (topic.condition === "window-inspected" || topic.condition === "woodpile-checked")
+        && Boolean(forestConversationOutcome(topic, state, guest.id, host.id))
       || Boolean(forestConversationFact(topic, state, guest.id, host.id))));
 }
 export function rememberForestConversation(state: ForestSocialState, topic: ForestConversation,

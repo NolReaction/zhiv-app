@@ -11,7 +11,9 @@ const { createForestSocial, advanceForestSocial, requestForestSocialVisit, fores
   forestSocialPartner, forestSocialWaitingHost } = await vite.ssrLoadModule("/features/world/characters/social/forest-social.ts");
 const { FOREST_PURPOSE_CONVERSATIONS } = await vite.ssrLoadModule("/features/world/characters/social/forest-purpose-conversations.ts");
 const { forestLeaftailWindow } = await vite.ssrLoadModule("/features/world/characters/social/forest-leaftail-window.ts");
-const { createWorldNavigation, isWalkable } = await vite.ssrLoadModule("/features/world/navigation/navigation.ts");
+const { createWorldNavigation, isWalkable, canTraverse } = await vite.ssrLoadModule("/features/world/navigation/navigation.ts");
+const { previewWorldScene, initialPreviewLevels } = await vite.ssrLoadModule("/features/world/tiled/preview-state.ts");
+const { forestVillagerPlaces } = await vite.ssrLoadModule("/features/world/characters/villagers/villager-navigation.ts");
 const { TILED_WORLD } = await vite.ssrLoadModule("/features/world/scene/presentation.ts");
 const rect = (x, y, w, h) => [{ x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }];
 const scene = { id: "social-opportunities", width: 500, height: 320, sites: [], paths: [], destinations: [],
@@ -187,4 +189,53 @@ test("actual caravan window annotation has a safe exterior footstop without modi
   assert.equal(JSON.stringify(TILED_WORLD), before);
   assert.equal(forestLeaftailWindow({ ...TILED_WORLD, sites: [] }), null);
   assert.equal(forestLeaftailWindow({ ...TILED_WORLD, navigation: undefined }), null);
+});
+
+
+test("actual quarry neighbours use their own short sightline profile instead of rejecting the smaller miner's safe feet", () => {
+  const world = previewWorldScene(TILED_WORLD, { ...initialPreviewLevels(TILED_WORLD), home: 3, quarry: 1, woodlot: 1 });
+  const hostPosition = forestVillagerPlaces(world, "kamneshmyg").home.position;
+  const guestPosition = { x: 677.5858467, y: 274.8510622 };
+  const heroNavigation = createWorldNavigation(world), conversationNavigation = createWorldNavigation(world, Math.min(44, 42) * .1);
+  assert.equal(heroNavigation.radius, 5); assert.equal(conversationNavigation.radius, 4.2);
+  assert.equal(isWalkable(heroNavigation, guestPosition), true);
+  assert.equal(isWalkable(heroNavigation, hostPosition), false, "the default hero radius excludes this legitimate authored miner stop");
+  assert.equal(canTraverse(heroNavigation, guestPosition, hostPosition), false);
+  assert.equal(isWalkable(conversationNavigation, guestPosition), true); assert.equal(isWalkable(conversationNavigation, hostPosition), true);
+  assert.equal(canTraverse(conversationNavigation, guestPosition, hostPosition), true);
+  const state = createForestSocial("quarry-profile"), guest = actor("lopukh", guestPosition.x, { position: guestPosition });
+  const host = actor("kamneshmyg", hostPosition.x, { position: { ...hostPosition }, size: 42 });
+  let status = "approach";
+  const env = { scene: world, builder: null, actors: [guest, host],
+    requestVisit() { return true; }, cancelVisit() { status = null; }, visitStatus() { return status; } };
+  const feet = structuredClone([guest.position, host.position]), geometry = JSON.stringify(world);
+  assert.equal(requestForestSocialVisit(state, "lopukh", "kamneshmyg", env), true); assert.equal(state.meeting.phase, "approach");
+  status = "arrived"; advanceForestSocial(state, 0, env);
+  assert.equal(state.meeting.phase, "talk"); assert.equal(state.current.speaker === "lopukh" || state.current.speaker === "kamneshmyg", true);
+  assert.deepEqual([guest.position, host.position], feet, "a conversation sightline never changes either resident's locomotion profile or coordinates");
+  for (let at = 0; at < 25; at++) advanceForestSocial(state, 1, env);
+  assert.equal(state.lastMeetingResult.status, "completed"); assert.equal(JSON.stringify(world), geometry);
+  const direct = createForestSocial("quarry-direct");
+  assert.equal(requestForestSocialVisit(direct, "lopukh", "kamneshmyg", { scene: world, builder: null, actors: [guest, host] }), true);
+  assert.equal(direct.meeting.phase, "talk", "already nearby neighbours use the same profile as approached neighbours");
+});
+
+test("the smaller conversation profile still rejects solid walls and water, including a callback claiming arrival", () => {
+  for (const obstruction of ["wall", "water"]) {
+    const separated = structuredClone(scene);
+    if (obstruction === "wall") separated.navigation.obstacles.push({ id: "solid-wall", points: rect(103, 0, 10, 320) });
+    else separated.water = { surfaces: [{ id: "river", points: rect(103, 0, 10, 320) }], exclusions: [] };
+    const guest = actor("lopukh", 90), host = actor("kamneshmyg", 126, { size: 42 });
+    const navigation = createWorldNavigation(separated, 4.2);
+    assert.equal(isWalkable(navigation, guest.position), true); assert.equal(isWalkable(navigation, host.position), true);
+    assert.equal(canTraverse(navigation, guest.position, host.position), false, obstruction);
+    const direct = createForestSocial(`direct-${obstruction}`);
+    assert.equal(requestForestSocialVisit(direct, "lopukh", "kamneshmyg", { scene: separated, builder: null, actors: [guest, host] }), false);
+    const state = createForestSocial(`arrival-${obstruction}`); let status = "approach";
+    const env = { scene: separated, builder: null, actors: [guest, host], requestVisit() { return true; },
+      cancelVisit() { status = null; }, visitStatus() { return status; } };
+    assert.equal(requestForestSocialVisit(state, "lopukh", "kamneshmyg", env), true);
+    status = "arrived"; advanceForestSocial(state, 0, env);
+    assert.equal(state.meeting, null); assert.equal(state.current, null); assert.equal(state.lastMeetingResult.status, "interrupted");
+  }
 });

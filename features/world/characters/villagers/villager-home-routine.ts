@@ -26,6 +26,8 @@ export function tryVillagerHome(mind: ForestVillagerMind, places: VillagerPlaces
     || mind.intent === "yield" && mind.route || mind.woodwork && mind.woodwork.phase !== "idle"
     || mind.elapsed < mind.retryAt) return false;
   if (!villagerShelterWeather(env) && mind.elapsed < mind.outdoorUntil && mind.fatigue < .7) return false;
+  if ((mind.goal?.intent === "wander" || mind.habit || mind.route && mind.intent === "wander")
+    && !villagerShelterWeather(env) && mind.fatigue < .7) return false;
   mind.retryAt = mind.elapsed + 6;
   return approachVillagerDoor(mind, places, occupants);
 }

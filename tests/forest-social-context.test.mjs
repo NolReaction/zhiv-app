@@ -44,8 +44,8 @@ test("purposeful visits keep ordinary complete stories and have additional role-
     else assert.ok(pool.every(item => item.purpose === "window"), "an indoor window host never receives an outdoor-only story");
     assert.ok(pool.every(item => item.purpose !== "passing"));
   }
-  assert.equal(FOREST_CONTEXT_CONVERSATIONS.length, 82);
-  assert.equal(FOREST_CONVERSATIONS.reduce((sum, item) => sum + item.lines.length, 0), 712);
+  assert.equal(FOREST_CONTEXT_CONVERSATIONS.length, 85);
+  assert.equal(FOREST_CONVERSATIONS.reduce((sum, item) => sum + item.lines.length, 0), 724);
 });
 
 test("a receiving fisher and an indoor window host keep conversation content grounded in their actual activity", () => {
