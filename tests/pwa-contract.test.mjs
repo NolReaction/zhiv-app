@@ -299,6 +299,24 @@ test("keeps identity and check-ins out of the offline cache", async () => {
   assert.match(serviceWorker, /key\.startsWith\(CACHE_PREFIX\)/);
 });
 
+test("private API requests bypass both poisoned offline caches in every fetch mode", async () => {
+  const harness = await createServiceWorkerHarness();
+  setShellResponses(harness, "private-boundaries");
+  await prepareOfflineShell(harness);
+  const shell = await harness.caches.open(await harness.currentCacheName());
+  const assets = await harness.caches.open("zhiv-assets-v1");
+  const paths = ["/api/v1/me", "/api/v1/economy", "/api/v1/economy/market", "/api/v1/economy/barter",
+    "/api/v1/world", "/api/v1/world/forest-memory", "/api/v1/game/progress", "/api/v1/game/rewards",
+    "/api/v1/presence", "/api/v1/check-ins", "/api/v1/admin/users", "/api/v1/auth/account"];
+  for (const path of paths) {
+    for (const cache of [shell, assets]) await cache.put(path, new Response("previous account's private data"));
+    for (const mode of ["navigate", "cors", "same-origin"])
+      assert.equal(await harness.dispatchFetch(path, mode), null, `${path} must go straight to the authenticated network`);
+  }
+  assert.equal(harness.calls.fetch.some(url => new URL(url).pathname.startsWith("/api/")), false,
+    "the worker neither fetches nor replays private data; the browser handles the request normally");
+});
+
 test("offline product and other pages never receive the cached game at the wrong URL", async () => {
   const harness = await createServiceWorkerHarness();
   const shell = setShellResponses(harness, "public-site");

@@ -31,7 +31,7 @@ function shelf(ownerPublicId = owner) {
 }
 const result = (snapshot = state(1), replayed = false) => ({ state: snapshot, message: "Предложение сохранено", acceptedRevision: 1, replayed, offer: offer() });
 function transport(overrides = {}) {
-  return { get: async () => state(), send: async () => ({ ...result(), listing: null }), market: async () => ({ listings: [], mine: [], nextCursor: null, serverTime: new Date(now).toISOString() }),
+  return { get: async () => state(), send: async () => ({ ...result(), listing: null }), market: async () => ({ ownerPublicId: owner, listings: [], mine: [], nextCursor: null, serverTime: new Date(now).toISOString() }),
     trade: async () => result(), barter: async () => shelf(), barterTrade: async () => result(), ...overrides };
 }
 function storage() { const data = new Map(); return { data, getItem: key => data.get(key) ?? null, setItem: (key, value) => data.set(key, value), removeItem: key => data.delete(key) }; }

@@ -42,7 +42,7 @@ DECLARE
         'direct_person_favorites', 'direct_requests', 'game_presence_accounts', 'game_presence_daily',
         'game_tap_collection_metadata', 'identity_bootstrap_keys', 'managed_promo_codes', 'notification_batches',
         'notification_preferences', 'notification_subscriptions', 'player_feedback',
-        'player_feedback_actions', 'private_person_nicknames', 'promo_redemptions',
+        'player_feedback_actions', 'player_security_observations', 'private_person_nicknames', 'promo_redemptions',
         'recipient_sharing_preferences', 'user_incidents', 'user_status_write_keys', 'user_timezone_write_keys'
     ];
     -- Only obsolete gameplay events are removed; check-in reminders stay intact.
@@ -63,17 +63,17 @@ BEGIN
     IF actual_tables IS DISTINCT FROM expected_tables THEN
         RAISE EXCEPTION 'Unexpected application tables. Game reset cancelled; review the schema first.';
     END IF;
-    -- V59 adds the tutorial payout marker to an already-cleared table; retained data is unchanged.
+    -- V60 observations and their app_users summary survive gameplay-only resets.
     -- Any later migration must be reviewed, including columns on retained tables.
-    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 59
+    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 60
         OR NOT (
             ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
-                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,59) AS expected(version))
+                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,60) AS expected(version))
             OR ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
-                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL','58:SQL','59:SQL']
+                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL','58:SQL','59:SQL','60:SQL']
         )
         OR EXISTS (SELECT 1 FROM public.flyway_schema_history WHERE NOT success) THEN
-        RAISE EXCEPTION 'Expected successfully applied migrations through V59. Game reset cancelled.';
+        RAISE EXCEPTION 'Expected successfully applied migrations through V60. Game reset cancelled.';
     END IF;
 
     IF apply_mode THEN

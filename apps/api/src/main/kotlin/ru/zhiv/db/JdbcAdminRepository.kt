@@ -199,7 +199,7 @@ class JdbcAdminRepository(private val source: DataSource, private val config: Ad
         pagination(offset, limit)
         if (query.length > 100 || query.any(Char::isISOControl)) invalid()
         val order = when (sort) {
-            "review" -> "u.tap_signal_at DESC NULLS LAST, u.tap_watchlisted DESC, u.created_at DESC, u.id"
+            "review" -> "greatest(u.tap_signal_at,u.security_signal_at) DESC NULLS LAST, u.tap_watchlisted DESC, u.created_at DESC, u.id"
             "created" -> "u.created_at DESC, u.id"
             "activity" -> "u.last_check_in_at DESC NULLS LAST, u.created_at DESC, u.id"
             "taps" -> "COALESCE(g.lifetime_taps,0) DESC, u.created_at DESC, u.id"
@@ -228,7 +228,7 @@ class JdbcAdminRepository(private val source: DataSource, private val config: Ad
                 r.getLong("check_in_count"), r.getLong("friend_count"), r.getLong("lifetime_taps"), r.getLong("best_series"),
                 r.getLong("monthly_taps"), r.getBoolean("leaderboard_opt_in"), r.getLong("active_sessions"),
                 (r.getArray("login_methods").array as Array<*>).map { it.toString() }, r.getString("public_id") in config.allowedPublicIds,
-                r.getString("tag_text")?.let { PlayerTag(it, r.getString("tag_color")) }, r.time("banned_at"), r.getBoolean("tap_watchlisted"), r.time("tap_signal_at"))
+                r.getString("tag_text")?.let { PlayerTag(it, r.getString("tag_color")) }, r.time("banned_at"), r.getBoolean("tap_watchlisted"), r.time("tap_signal_at"), r.time("security_signal_at"))
         }
         AdminUsers(now.toInstant().toString(), total, offset, limit, users)
     }
@@ -350,8 +350,38 @@ class JdbcAdminRepository(private val source: DataSource, private val config: Ad
                 r.getString("tag_text")?.let { PlayerTag(it,r.getString("tag_color")) },r.time("banned_at"),
                 r.getString("ban_reason"),r.getBoolean("tap_watchlisted"),
                 r.getString("state")?.let { worldJson.decodeFromString<WorldState>(it) } ?: WorldState(),
-                r.getLong("revision"),r.time("server_time")!!,r.time("tap_signal_at"))
+                r.getLong("revision"),r.time("server_time")!!,r.time("tap_signal_at"), r.time("security_signal_at"))
         } ?: fail("ADMIN_USER_NOT_FOUND","Профиль не найден",404)
+    }
+
+    override suspend fun security(sessionHash: ByteArray, targetPublicId: String): AdminSecurityObservations = tx(readOnlySnapshot = true) { c ->
+        actor(c, sessionHash)
+        data class Target(val id: UUID, val watchlisted: Boolean, val tapAt: String?, val securityAt: String?)
+        val target = c.one("SELECT id,tap_watchlisted,tap_signal_at,security_signal_at FROM app_users WHERE public_id=? AND deleted_at IS NULL", targetPublicId) {
+            Target(it.getObject(1, UUID::class.java),it.getBoolean(2),it.time("tap_signal_at"),it.time("security_signal_at"))
+        } ?: fail("ADMIN_USER_NOT_FOUND","Профиль не найден",404)
+        val manualReason = if (!target.watchlisted) null else {
+            c.one("""SELECT action,reason FROM admin_actions WHERE target_public_id=?
+                AND action IN ('watch','unwatch') AND changed ORDER BY created_at DESC,request_id DESC LIMIT 1""",targetPublicId) {
+                it.getString("reason").takeIf { _ -> it.getString("action")=="watch" }
+            } ?: "Наблюдение ранее включено вручную, при объединении профилей или по длительной активности; точная причина не сохранена"
+        }
+        val at = now(c)
+        val signals = c.rows("SELECT * FROM player_security_observations WHERE user_id=? ORDER BY last_at DESC,code LIMIT 3",target.id) { r ->
+            val kind = SecurityObservationKind.valueOf(r.getString("code"))
+            val expiredContext = r.getObject("activated_at") == null && kind.windowMinutes?.let {
+                at.isAfter(r.getObject("window_started_at",OffsetDateTime::class.java).plusMinutes(it.toLong()))
+            } == true
+            val status = when {
+                r.getObject("activated_at") != null -> "active"
+                r.getLong("pending_count") > 0 -> "context"
+                else -> "reviewed"
+            }
+            AdminSecuritySignal(kind.name,kind.reason,status=status,count=r.getLong("total_count"),pendingCount=if(expiredContext) 0 else r.getLong("pending_count"),
+                threshold=kind.threshold,windowMinutes=kind.windowMinutes,firstAt=r.time("first_at")!!,lastAt=r.time("last_at")!!,
+                lastAction=r.getString("last_action"),lastRequestId=r.getObject("last_request_id").toString(),reviewedAt=r.time("reviewed_at"))
+        }
+        AdminSecurityObservations(targetPublicId,at.toInstant().toString(),target.watchlisted,manualReason,target.tapAt,target.securityAt,signals)
     }
 
     override suspend fun managePlayer(sessionHash: ByteArray, targetPublicId: String, requestId: UUID, request: AdminPlayerCommand): AdminPlayerReceipt = tx { c ->
@@ -389,7 +419,12 @@ class JdbcAdminRepository(private val source: DataSource, private val config: Ad
                 updated
             }
             "unban" -> c.update("UPDATE app_users SET banned_at=NULL,ban_reason=NULL WHERE id=? AND banned_at IS NOT NULL",target)>0
-            "clear_signal" -> c.update("UPDATE app_users SET tap_signal_at=NULL WHERE id=? AND tap_signal_at IS NOT NULL",target)>0
+            "clear_signal" -> {
+                val signals = c.update("""UPDATE player_security_observations SET activated_at=NULL,pending_count=0,reviewed_at=clock_timestamp(),
+                    window_started_at=clock_timestamp() WHERE user_id=? AND (activated_at IS NOT NULL OR pending_count>0)""",target)
+                val flags = c.update("UPDATE app_users SET tap_signal_at=NULL,security_signal_at=NULL WHERE id=? AND (tap_signal_at IS NOT NULL OR security_signal_at IS NOT NULL)",target)
+                signals>0 || flags>0
+            }
             "watch", "unwatch" -> c.update("UPDATE app_users SET tap_watchlisted=? WHERE id=? AND tap_watchlisted<>?",request.action=="watch",target,request.action=="watch")>0
             "set_tag" -> c.update("""UPDATE app_users SET tag_text=?,tag_color=? WHERE id=?
                 AND (tag_text IS DISTINCT FROM ?::text OR tag_color IS DISTINCT FROM ?::text)""",

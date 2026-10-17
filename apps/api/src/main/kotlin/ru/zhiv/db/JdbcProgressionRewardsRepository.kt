@@ -39,7 +39,7 @@ class JdbcProgressionRewardsRepository(private val source: DataSource) : Progres
                 recordMergedAchievements(c,current.id,now.atOffset(ZoneOffset.UTC))
                 val result=block(c,current,now)
                 c.commit(); result
-            } catch(error: Exception) { c.rollback(); throw error }
+            } catch(error: Exception) { c.rollback(); recordRejectedSecurityObservation(c, error); throw error }
         }
     }
     private fun daily(c: Connection,user: UUID): DailyRewardsState = c.economyRows(
@@ -76,13 +76,17 @@ class JdbcProgressionRewardsRepository(private val source: DataSource) : Progres
                 Receipt(it.getString(1),original.copy(reward=original.reward.copy(coins=EconomyMoney.nominal(original.reward.coins,it.getInt(4)),
                     pearls=EconomyMoney.pearls(original.reward.pearls,it.getInt(5)))),it.getLong(3)) }.firstOrNull()
             if(previous!=null) {
-                if(previous.signature!=signature) rewardFailure("REWARD_REQUEST_CONFLICT","Этот запрос уже использован для другой награды")
+                if(previous.signature!=signature) {
+                    if (semanticRewardTamper(previous.signature, command)) requestTamper(a.id,"reward:${command.kind}",key,
+                        "REWARD_REQUEST_CONFLICT","Этот запрос уже использован для другой награды")
+                    rewardFailure("REWARD_REQUEST_CONFLICT","Этот запрос уже использован для другой награды")
+                }
                 return@transaction ProgressionRewardResult(command.requestId,view(c,a,now),economyView(c,a.id,a.publicId,now),previous.revision,true,previous.claim)
             }
             if(c.economyRows("""SELECT 1 FROM economy_commands WHERE user_id=? AND request_id=?
                 UNION ALL SELECT 1 FROM economy_market_receipts WHERE user_id=? AND request_id=?
                 UNION ALL SELECT 1 FROM economy_barter_receipts WHERE user_id=? AND request_id=?""",a.id,key,a.id,key,a.id,key) { true }.isNotEmpty())
-                economyFailure("ECONOMY_REQUEST_CONFLICT","Этот запрос уже использован для другого действия")
+                requestTamper(a.id,"reward:${command.kind}",key)
             val current=view(c,a,now)
             val claim=if(command.kind=="daily") {
                 if(!current.daily.claimable) rewardFailure("DAILY_REWARD_COOLDOWN","Следующая награда пока недоступна")

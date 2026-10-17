@@ -300,6 +300,7 @@ export const economyMarketListingSchema = z.object({
   createdAt: z.string().datetime(), closedAt: z.string().datetime().nullable(), owned: z.boolean(), feeBps: count.max(10000).default(0),
 });
 export const marketViewSchema = z.object({
+  ownerPublicId: z.string().min(1).max(40),
   listings: z.array(economyMarketListingSchema).max(12), mine: z.array(economyMarketListingSchema).max(10),
   nextCursor: z.null(), serverTime: z.string().datetime(),
   tradeBudget: z.object({ buysUsed: count, salesUsed: count, limit: count, resetsAt: z.string().datetime(), feeBps: count.max(10000),

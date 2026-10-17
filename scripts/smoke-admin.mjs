@@ -174,7 +174,7 @@ assert.equal(new Set([...users.data.users, ...secondPage.data.users].map((user) 
 const adminRow = (await api("GET", "/api/v1/admin/users?q=" + admin.publicId, { cookie: admin.cookie })).data.users[0];
 assert.equal(adminRow.isAdmin, true);
 assert.deepEqual(adminRow.loginMethods, ["email"]);
-assert.deepEqual(Object.keys(adminRow).sort(), ["activeSessions", "bannedAt", "bestSeries", "checkInCount", "createdAt", "displayName", "friendCount", "isAdmin", "lastCheckInAt", "leaderboardOptIn", "lifetimeTaps", "loginMethods", "monthlyTaps", "publicId", "tag", "tapSignalAt", "watchlisted"]);
+assert.deepEqual(Object.keys(adminRow).sort(), ["activeSessions", "bannedAt", "bestSeries", "checkInCount", "createdAt", "displayName", "friendCount", "isAdmin", "lastCheckInAt", "leaderboardOptIn", "lifetimeTaps", "loginMethods", "monthlyTaps", "publicId", "securitySignalAt", "tag", "tapSignalAt", "watchlisted"]);
 assert.equal(adminRow.tag, null);
 assert.equal(adminRow.bannedAt, null);
 assert.equal(adminRow.tapSignalAt, null);
@@ -237,7 +237,8 @@ const playerPath = `/api/v1/admin/users/${target.publicId}/player`;
 const managePath = `/api/v1/admin/users/${target.publicId}/manage`;
 const clicksPath = `/api/v1/admin/users/${target.publicId}/tap-activity`;
 const historyPath = `/api/v1/admin/users/${target.publicId}/tap-history`;
-for (const privatePath of [playerPath, clicksPath, historyPath]) {
+const securityPath = `/api/v1/admin/users/${target.publicId}/security`;
+for (const privatePath of [playerPath, clicksPath, historyPath, securityPath]) {
   await api("GET", privatePath, { expected: 401 });
   await api("GET", privatePath, { cookie: ordinary.cookie, expected: 403 });
 }
@@ -286,6 +287,34 @@ assert.equal((await api("GET", playerPath, { cookie: admin.cookie })).data.watch
 await api("POST", managePath, { cookie: admin.cookie, body: management("unwatch") });
 assert.equal((await api("GET", playerPath, { cookie: admin.cookie })).data.watchlisted, false);
 
+// Confirm actual denied-command recording through HTTPS and the restricted SQL role.
+const securityInitial = await api("GET", securityPath, { cookie: admin.cookie });
+assert.equal(securityInitial.data.publicId, target.publicId);
+assert.equal(securityInitial.headers["cache-control"], "no-store");
+assert.deepEqual(securityInitial.data.signals, []);
+await resumePresence(unbannedCookie);
+const economyBefore = (await api("GET", "/api/v1/economy", { cookie: unbannedCookie })).data;
+const sale = { requestId: randomUUID(), ownerPublicId: target.publicId, expectedRevision: economyBefore.revision,
+  action: "sell", targetId: "wood", quantity: 1 };
+const acceptedSale = await api("POST", "/api/v1/economy/commands", { cookie: unbannedCookie, body: sale });
+assert.equal((await api("POST", "/api/v1/economy/commands", { cookie: unbannedCookie, body: sale })).data.replayed, true);
+assert.deepEqual((await api("GET", securityPath, { cookie: admin.cookie })).data.signals, []);
+const changedSale = { ...sale, quantity: 2 };
+for (let attempt = 0; attempt < 2; attempt++)
+  assert.equal((await api("POST", "/api/v1/economy/commands", { cookie: unbannedCookie, body: changedSale, expected: 409 })).data.code, "ECONOMY_REQUEST_CONFLICT");
+const observation = (await api("GET", securityPath, { cookie: admin.cookie })).data.signals.find(signal => signal.code === "ECONOMY_REQUEST_TAMPER");
+assert.equal(observation.count, 1);
+assert.equal(observation.status, "active");
+assert.equal(observation.lastRequestId, sale.requestId);
+assert.ok(observation.reason.length > 0);
+const unchangedEconomy = (await api("GET", "/api/v1/economy", { cookie: unbannedCookie })).data;
+assert.deepEqual(unchangedEconomy.wallet, acceptedSale.data.state.wallet);
+assert.equal(unchangedEconomy.revision, acceptedSale.data.state.revision);
+await api("POST", managePath, { cookie: admin.cookie, body: management("clear_signal") });
+const reviewedSecurity = (await api("GET", securityPath, { cookie: admin.cookie })).data;
+assert.equal(reviewedSecurity.securitySignalAt, null);
+assert.equal(reviewedSecurity.signals.find(signal => signal.code === "ECONOMY_REQUEST_TAMPER").status, "reviewed");
+
 // Two 15-second scrapes are required for rate(). The API cache lasts 10 seconds.
 // Keep a hard wall-clock deadline and print only the readiness result, not raw metrics.
 const deadline = performance.now() + 60_000;
@@ -313,4 +342,4 @@ while (performance.now() < deadline) {
   await delay(Math.max(0, Math.min(2_000, deadline - performance.now())));
 }
 assert.ok(monitoringReady, "Real API/node scrapes and CPU, memory, disk values must appear within 60 seconds");
-console.log("Admin production smoke passed: authorization, restricted SQL grants, tags, bans, tap telemetry, idempotent audit, internal metrics and real host monitoring.");
+console.log("Admin production smoke passed: authorization, restricted SQL grants, tags, bans, tap telemetry, security observation recording and review, idempotent audit, internal metrics and real host monitoring.");

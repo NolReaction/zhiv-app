@@ -268,6 +268,7 @@ export function createEconomySession(owner: string | null, transport: Transport,
     try {
       const result = await transport.market(request.signal);
       if (!valid(generation) || sequence !== marketSequence) return;
+      if (result.ownerPublicId !== owner) { onSessionLost(); return; }
       publish({ market: result, marketError: null, marketSyncError: null });
     } catch (error) {
       if (!valid(generation) || sequence !== marketSequence) return;

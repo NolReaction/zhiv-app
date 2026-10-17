@@ -22,6 +22,7 @@ function enterGame(p) {
 
 const economy = await vite.ssrLoadModule("/lib/dev/economy-store.ts");
 const model = await vite.ssrLoadModule("/features/economy/domain/model.ts");
+const { createEconomySession } = await vite.ssrLoadModule("/features/economy/sync/session.ts");
 const { GET } = await vite.ssrLoadModule("/app/api/v1/economy/route.ts");
 const { POST } = await vite.ssrLoadModule("/app/api/v1/economy/commands/route.ts");
 const { GET: marketGET } = await vite.ssrLoadModule("/app/api/v1/economy/market/route.ts");
@@ -46,6 +47,55 @@ test("local economy routes require account cookies and never cache private state
   assert.equal(response.status, 200); assert.equal(response.headers.get("Cache-Control"), "no-store");
   const body = await response.json(); assert.equal(body.ownerPublicId, p.me.user.publicId); assert.equal(model.economyViewSchema.safeParse(body).success, true);
   assert.equal((await GET(read("?ownerPublicId=someone"))).status, 400);
+});
+
+test("a stale tab cannot publish the new cookie owner's private market after another tab switches accounts", async () => {
+  const first = player(), observed = []; let lost = 0;
+  const session = createEconomySession(first.me.user.publicId, {
+    get: async () => (await GET(read())).json(),
+    market: async () => {
+      const response = await marketGET(read("/market"));
+      assert.equal(response.headers.get("Cache-Control"), "no-store");
+      return model.marketViewSchema.parse(await response.json());
+    },
+    send: async () => assert.fail("A read cannot mutate the economy"),
+    trade: async () => assert.fail("A read cannot trade"),
+  }, () => lost++);
+  const unsubscribe = session.subscribe(() => observed.push(session.getSnapshot().market?.ownerPublicId));
+  const stop = session.activate();
+  try {
+    await session.refresh(); await session.refreshMarket();
+    const original = session.getSnapshot().market;
+    assert.equal(original.ownerPublicId, first.me.user.publicId);
+    const second = player();
+    economy.getDevEconomy(second.token);
+    globalThis.__zhivDevEconomyStore.profiles.get(second.me.user.publicId).state.buildings.home = 4;
+    const replacement = model.marketViewSchema.parse(await (await marketGET(read("/market"))).json());
+    assert.equal(replacement.ownerPublicId, second.me.user.publicId);
+    assert.ok(replacement.tradeBudget.limit > original.tradeBudget.limit);
+    await session.refreshMarket();
+    assert.equal(lost, 1, "a valid response for a different cookie owner invalidates the stale session");
+    assert.equal(session.getSnapshot().market, original, "foreign private listings and turnover never enter the retained view");
+    assert.equal(observed.includes(second.me.user.publicId), false);
+  } finally { stop(); unsubscribe(); }
+});
+
+test("two authenticated accounts cannot replay another owner's command or claim its private job", async () => {
+  const first = player(), original = command(first);
+  const started = await (await POST(post(original))).json();
+  const second = player(), before = economy.getDevEconomy(second.token);
+  const foreignEnvelope = await POST(post(original));
+  assert.equal(foreignEnvelope.status, 409);
+  assert.equal((await foreignEnvelope.json()).code, "ECONOMY_OWNER_CHANGED");
+  const stolenClaim = await POST(post({ ...command(second), action: "claim_job", targetId: started.state.jobs[0].id }));
+  assert.equal(stolenClaim.status, 409);
+  assert.equal((await stolenClaim.json()).code, "ECONOMY_JOB_GONE");
+  const after = economy.getDevEconomy(second.token), unchangedFirst = economy.getDevEconomy(first.token);
+  for (const key of ["revision", "wallet", "inventory", "jobs"])
+    assert.deepEqual(after[key], before[key], `rejected foreign commands leave ${key} unchanged`);
+  for (const key of ["revision", "wallet", "inventory", "jobs"])
+    assert.deepEqual(unchangedFirst[key], started.state[key], `the victim's ${key} remains unchanged`);
+  assert.equal(globalThis.__zhivDevEconomyStore.profiles.get(second.me.user.publicId).receipts.size, 0);
 });
 
 test("POST validates payload then atomically replays its original receipt", async () => {

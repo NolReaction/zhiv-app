@@ -88,6 +88,7 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
                 result
             } catch (error: Exception) {
                 c.rollback()
+                recordRejectedSecurityObservation(c, error)
                 throw error
             }
         }
@@ -190,7 +191,7 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
                 JOIN app_users u ON u.id=l.seller_id WHERE l.status='active' AND l.seller_id=?
                 ORDER BY l.created_at DESC,l.id DESC LIMIT ?""", user.id, config.maxListings) { listing(it, user.id).listing }
             val usage = readEconomyTradeUsage(c, user.id, at)
-            EconomyMarketView(selected.take(limit), mine, serverTime=at.toString(), showcase=EconomyMarketShowcase(
+            EconomyMarketView(user.publicId, selected.take(limit), mine, serverTime=at.toString(), showcase=EconomyMarketShowcase(
                 selection.refreshAt.toString(), config.showcaseSlots, config.showcasePerSeller, config.showcaseRefreshSeconds),
                 tradeBudget=EconomyMarketTradeBudget(usage.buys, usage.sales,
                     EconomyMarketRules.dailyTradeLimit(state.buildings["home"] ?: 1), economyTradeResetsAt(at),
@@ -218,14 +219,16 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
             val receipt = c.economyRows("""SELECT signature,message,accepted_revision FROM economy_market_receipts
                 WHERE user_id=? AND request_id=?""", user.id, requestId) { Receipt(it.getString(1), it.getString(2), it.getLong(3)) }.firstOrNull()
             if (receipt != null) {
-                if (receipt.signature != signature)
-                    throw AuthFailure("ECONOMY_REQUEST_CONFLICT", "Запрос уже использован для другого действия", 409)
+                if (receipt.signature != signature) {
+                    if (semanticEconomyTamper(receipt.signature, command)) requestTamper(user.id, "market:${command.action}", requestId)
+                    throw AuthFailure("ECONOMY_REQUEST_CONFLICT", "Этот запрос уже использован для другого действия", 409)
+                }
                 return@transaction EconomyResult(economyView(c, user.id, user.publicId, now(c)), receipt.message, receipt.revision, true)
             }
             if (c.economyRows("SELECT 1 FROM economy_commands WHERE user_id=? AND request_id=?", user.id, requestId) { true }.isNotEmpty())
-                throw AuthFailure("ECONOMY_REQUEST_CONFLICT", "Запрос уже использован для другого действия", 409)
+                requestTamper(user.id, "market:${command.action}", requestId)
             if (c.economyRows("SELECT 1 FROM economy_barter_receipts WHERE user_id=? AND request_id=? UNION ALL SELECT 1 FROM game_reward_claims WHERE user_id=? AND request_id=?", user.id, requestId, user.id, requestId) { true }.isNotEmpty())
-                throw AuthFailure("ECONOMY_REQUEST_CONFLICT", "Запрос уже использован для другого действия", 409)
+                requestTamper(user.id, "market:${command.action}", requestId)
             val before = readEconomyProfile(c, user.id)
             if (before.revision != command.expectedRevision)
                 throw AuthFailure("ECONOMY_REVISION_CONFLICT", "Хозяйство уже изменилось. Обновите его и повторите действие.", 409)
@@ -242,7 +245,12 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
                     if (row.seller != seller) throw AuthFailure("ECONOMY_MARKET_NOT_ACTIVE", "Объявление изменилось", 409)
                     if (row.listing.status != "active") throw AuthFailure("ECONOMY_MARKET_NOT_ACTIVE", "Объявление уже закрыто", 409)
                     if (command.action == "buy_listing") buy(c, user.id, before.state, row, command)
-                    else cancel(c, user.id, before.state, row)
+                    else {
+                        if (row.seller != user.id) throw ObservedSecurityFailure(user.id,
+                            ru.zhiv.admin.SecurityObservationKind.MARKET_OWNERSHIP_DENIED, "market:cancel_listing", requestId,
+                            "ECONOMY_MARKET_OWNER", "Отменить объявление может только продавец", 403)
+                        cancel(c, user.id, before.state, row)
+                    }
                 }
                 else -> error("Validated market action")
             }

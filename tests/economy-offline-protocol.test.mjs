@@ -78,6 +78,57 @@ test("a real committed start with a lost ACK replays its frozen envelope after r
   assert.equal(restored.getSnapshot().pendingProductionCount, 0); deactivate();
 });
 
+test("a persisted catalog v10 queue survives v11 deployment and a lost replay ACK without adopting cached prices or rewards", async () => {
+  const f = fixture(), legacy = structuredClone(f.read()), head = f.command("start_production", "make_planks");
+  legacy.catalog.version = 10;
+  const oldRecipe = legacy.catalog.recipes.find(recipe => recipe.id === "make_planks");
+  oldRecipe.cost.items = {}; oldRecipe.rewards = { planks: 99 }; oldRecipe.seconds = 1;
+  const tail = { requestId: crypto.randomUUID(), targetId: "make_planks" };
+  const accepted = f.apply(head);
+  f.cache.setItem(productionJournalKey(f.owner), JSON.stringify({ version: 1, owner: f.owner, snapshot: legacy,
+    entries: [{ requestId: head.requestId, targetId: head.targetId, command: head }, tail] }));
+  const dropped = f.create({ send: input => {
+    const replay = f.apply(input);
+    assert.equal(replay.replayed, true); assert.equal(replay.acceptedRevision, accepted.acceptedRevision);
+    throw Error("ACK lost again while the deployed app recovers its old queue");
+  } });
+  const stop = dropped.activate(); await dropped.refresh();
+  assert.deepEqual(f.saved().entries[0].command, head);
+  assert.equal(f.saved().entries.length, 2); assert.equal(f.read().jobs.length, 1); stop();
+  const restored = f.create(), deactivate = restored.activate();
+  try {
+    await restored.refresh();
+    assert.deepEqual(f.sent.slice(0, 2), [head, head], "the deployed app never rebases the old sent envelope");
+    assert.equal(f.sent[2].requestId, tail.requestId);
+    assert.equal(f.sent[2].expectedRevision, accepted.acceptedRevision);
+    assert.equal(f.read().inventory.wood, 2); assert.equal(f.read().inventory.planks, undefined);
+    assert.equal(f.read().jobs.length, 2); assert.equal(f.row.receipts.size, 2);
+    for (const job of f.read().jobs) {
+      assert.deepEqual(job.cost.items, { wood: 1 }); assert.deepEqual(job.rewards, { planks: 1 });
+      assert.equal(Date.parse(job.finishesAt), instant + 120_000);
+      assert.equal(job.catalogVersion, 11);
+    }
+    assert.equal(restored.getSnapshot().snapshot.catalog.version, 11);
+    assert.deepEqual(f.saved().entries, []);
+  } finally { deactivate(); }
+});
+
+test("moving the client wall clock to the future cannot advance server production or claim its reward", async t => {
+  const f = fixture(), session = f.create(), stop = session.activate(); await session.refresh();
+  try {
+    assert.equal(session.act("start_production", "make_planks"), true); await flush();
+    const confirmed = session.getSnapshot().snapshot, job = confirmed.jobs[0];
+    t.mock.method(Date, "now", () => Date.parse("2099-01-01T00:00:00.000Z"));
+    assert.ok(Math.abs(session.now() - instant) < 5000, "the server clock advances with monotonic elapsed time");
+    // The local API runs in this process; restore its clock before crossing the server boundary.
+    t.mock.restoreAll();
+    assert.throws(() => f.apply(f.command("claim_job", job.id)), error => error.body?.code === "ECONOMY_JOB_NOT_READY");
+    assert.equal(f.read().inventory.planks, undefined); assert.equal(f.read().jobs.length, 1);
+    assert.equal(f.row.receipts.size, 1); assert.equal(f.read().revision, confirmed.revision);
+    assert.equal(Date.parse(f.read().jobs[0].finishesAt), instant + 120_000);
+  } finally { stop(); t.mock.restoreAll(); }
+});
+
 test("a stale sent head is never rebased and remaining intents revalidate against real external spending", async () => {
   const f = fixture(), deliver = deferred();
   const session = f.create({ send: async (input, attempt) => { if (attempt === 1) await deliver.promise; return f.apply(input); } });

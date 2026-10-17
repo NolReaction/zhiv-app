@@ -1,0 +1,32 @@
+.panel { display: grid; gap: 14px; min-width: 0; }
+.heading h3 { margin: 0 0 8px; font-size: 18px; }
+.heading p, .hint { margin: 0; color: #b7c2af; font-size: 13px; line-height: 1.55; }
+.overview { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.overview > span { display: grid; align-content: space-between; gap: 6px; padding: 10px; border: 1px solid #46513e; border-radius: 10px; color: #c4cebc; font-size: 12px; overflow-wrap: anywhere; }
+.overview strong { color: #f1f4eb; font-size: 22px; }
+.manual, .tapSignal, .clear { padding: 14px; border: 1px solid #46513e; border-radius: 10px; background: #242e20; overflow-wrap: anywhere; }
+.manual p, .tapSignal p { margin: 8px 0 12px; line-height: 1.55; }
+.tapSignal { border-color: #977342; background: #332c20; }
+.clear p { margin-top: 10px; }
+.signal { border: 1px solid #46513e; border-radius: 10px; overflow: hidden; min-width: 0; }
+.signal[data-status="active"] { border-color: #977342; background: #332c20; }
+.signal summary { display: flex; align-items: center; gap: 12px; justify-content: space-between; padding: 14px; cursor: pointer; min-height: 48px; }
+.signal summary > span:first-child { display: grid; gap: 6px; min-width: 0; }
+.signal summary::before { content: "+"; color: #b7c2af; font-size: 20px; flex-shrink: 0; }
+.signal[open] summary::before { content: "−"; }
+.signal summary > span:first-child { flex: 1; }
+.status { color: #c4cebc; font-size: 12px; }
+.count { color: #d9e9c9; font-size: 12px; text-align: right; }
+.signalBody { padding: 0 14px 14px; min-width: 0; overflow-wrap: anywhere; }
+.signalBody > p { margin: 0 0 14px; line-height: 1.55; }
+.facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0 0 14px; }
+.facts div { min-width: 0; }
+.facts dt { margin-bottom: 4px; color: #b7c2af; font-size: 12px; }
+.facts dd { margin: 0; line-height: 1.5; }
+.fullWidth { grid-column: 1 / -1; }
+.panel code { font-size: 12px; overflow-wrap: anywhere; }
+.summaryButton { display: flex; flex-wrap: wrap; gap: 5px; padding: 8px 0; border: 0; background: transparent; color: #f0d59c; cursor: pointer; text-align: left; font-size: 12px; line-height: 1.5; }
+.summaryButton span { padding: 3px 7px; border: 1px solid #82683d; border-radius: 6px; background: #372f21; }
+.summaryButton small { width: 100%; text-decoration: underline; color: #c4cebc; }
+.summaryButton:focus-visible, .signal summary:focus-visible { outline: 2px solid #c5e1a4; outline-offset: 3px; }
+@media (max-width: 400px) { .facts { grid-template-columns: minmax(0, 1fr); } .signal summary { flex-wrap: wrap; gap: 8px; } .count { width: 100%; text-align: left; padding-left: 20px; } .overview > span { padding: 8px; } }

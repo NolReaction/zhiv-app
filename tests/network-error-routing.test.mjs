@@ -63,7 +63,7 @@ test("market and barter network markers clear independently without hiding defin
   let monotonic = 1000, marketFailure = new Error("Market offline"), barterFailure = new Error("Barter offline");
   globalThis.performance = { now: () => monotonic };
   const session = createEconomySession(owner, { get: async () => economyState(), send: async () => assert.fail(), trade: async () => assert.fail(),
-    market: async () => { if (marketFailure) throw marketFailure; return { listings: [], mine: [], nextCursor: null, serverTime: time }; },
+    market: async () => { if (marketFailure) throw marketFailure; return { ownerPublicId: owner, listings: [], mine: [], nextCursor: null, serverTime: time }; },
     barter: async () => { if (barterFailure) throw barterFailure; return { ownerPublicId: owner }; },
   }, () => assert.fail());
   const stop = session.activate();

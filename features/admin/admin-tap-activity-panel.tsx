@@ -74,7 +74,7 @@ export function AdminTapActivityPanel({ initialTarget, refreshVersion, onManage,
     <div className={styles.search}><label>Найти игрока по имени или ID<input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Например ABCD-EFGH-JKLM" maxLength={100} /></label></div>
     {searchError && <p role="alert" className={styles.error}>{searchError}</p>}
     <div className={styles.results}>{players.map(player => <button key={player.publicId} aria-pressed={target?.publicId === player.publicId} onClick={() => { setTarget(player); setError(""); }}>
-      <PlayerName name={player.displayName} tag={player.tag} /> · {player.publicId}{player.tapSignalAt ? " · проверить клики" : ""}{player.watchlisted && <span className={styles.watchBadge}>Наблюдение</span>}
+      <PlayerName name={player.displayName} tag={player.tag} /> · {player.publicId}{player.tapSignalAt ? " · проверить клики" : ""}{player.securitySignalAt ? " · проверить операции" : ""}{player.watchlisted && <span className={styles.watchBadge}>Наблюдение</span>}
     </button>)}</div>
     {!players.length && !searchError && <p className={styles.hint}>По этому запросу игроков не найдено.</p>}
     {!target ? <p>Выберите игрока. Здесь появятся нажатия за полчаса, сутки или неделю.</p> : <>

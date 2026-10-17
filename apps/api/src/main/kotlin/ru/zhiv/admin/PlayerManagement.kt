@@ -11,7 +11,7 @@ internal fun validAdminReason(reason: String): Boolean =
 @Serializable data class AdminPlayer(
     val publicId: String, val displayName: String, val tag: PlayerTag?, val bannedAt: String?,
     val banReason: String?, val watchlisted: Boolean, val world: WorldState, val revision: Long,
-    val serverTime: String, val tapSignalAt: String? = null,
+    val serverTime: String, val tapSignalAt: String? = null, val securitySignalAt: String? = null,
 )
 @Serializable data class AdminPlayerCommand(
     val requestId: String, val confirmationPublicId: String, val reason: String, val action: String,

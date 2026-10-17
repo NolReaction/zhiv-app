@@ -15,7 +15,7 @@ const state = (revision = 0, ownerPublicId = owner) => ({ ownerPublicId, revisio
   jobs: [], migration: { version: 1, coinsGranted: 0, woodGranted: 0, stoneGranted: 0 }, catalog: economyCatalog, completedExplorations: 0 });
 const result = snapshot => ({ state: snapshot, message: "DEV: готово", acceptedRevision: snapshot.revision, replayed: false });
 const transport = overrides => ({ get: async () => state(), send: async () => result(state(1)),
-  market: async () => ({ listings: [], mine: [], nextCursor: null, serverTime: new Date(now).toISOString() }), trade: async () => result(state(1)), ...overrides });
+  market: async () => ({ ownerPublicId: owner, listings: [], mine: [], nextCursor: null, serverTime: new Date(now).toISOString() }), trade: async () => result(state(1)), ...overrides });
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const receiptKey = id => `zhiv:economy:pending:v1:${id}`;
 const receipt = (overrides = {}) => ({ kind: "dev", command: { requestId: crypto.randomUUID(), ownerPublicId: owner, expectedRevision: 0,

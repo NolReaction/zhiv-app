@@ -64,7 +64,7 @@ class JdbcEconomyBarterRepository(private val source: DataSource) : EconomyBarte
                 val result = block(c)
                 c.commit()
                 result
-            } catch (error: Exception) { c.rollback(); throw error }
+            } catch (error: Exception) { c.rollback(); recordRejectedSecurityObservation(c, error); throw error }
         }
     }
 
@@ -171,14 +171,17 @@ class JdbcEconomyBarterRepository(private val source: DataSource) : EconomyBarte
                 Receipt(it.getString(1), it.getString(2), it.getLong(3), economyJson.decodeFromString<EconomyBarterOffer>(it.getString(4)))
             }.firstOrNull()
             if (receipt != null) {
-                if (receipt.signature != signature) throw AuthFailure("ECONOMY_REQUEST_CONFLICT", "Запрос уже использован для другого действия", 409)
+                if (receipt.signature != signature) {
+                    if (semanticBarterTamper(receipt.signature, command)) requestTamper(user.id, "barter:${command.action}", requestId)
+                    throw AuthFailure("ECONOMY_REQUEST_CONFLICT", "Этот запрос уже использован для другого действия", 409)
+                }
                 return@transaction EconomyBarterResult(economyView(c, user.id, user.publicId, now(c)), receipt.message, receipt.revision, true, receipt.offer)
             }
             if (c.economyRows("""SELECT 1 FROM economy_commands WHERE user_id=? AND request_id=?
                 UNION ALL SELECT 1 FROM economy_market_receipts WHERE user_id=? AND request_id=?
                 UNION ALL SELECT 1 FROM game_reward_claims WHERE user_id=? AND request_id=? LIMIT 1""",
                 user.id, requestId, user.id, requestId, user.id, requestId) { true }.isNotEmpty())
-                throw AuthFailure("ECONOMY_REQUEST_CONFLICT", "Запрос уже использован для другого действия", 409)
+                requestTamper(user.id, "barter:${command.action}", requestId)
             val before = readEconomyProfile(c, user.id)
             if (before.revision != command.expectedRevision)
                 throw AuthFailure("ECONOMY_REVISION_CONFLICT", "Хозяйство уже изменилось. Обновите его и повторите действие.", 409)
@@ -192,7 +195,12 @@ class JdbcEconomyBarterRepository(private val source: DataSource) : EconomyBarte
                 if (row.seller != seller || row.offer.status != "active")
                     throw AuthFailure("ECONOMY_BARTER_NOT_ACTIVE", "Предложение уже закрыто", 409)
                 if (command.action == "accept_offer") accept(c, user.id, before.state, row)
-                else cancel(c, user.id, before.state, row)
+                else {
+                    if (row.seller != user.id) throw ObservedSecurityFailure(user.id,
+                        ru.zhiv.admin.SecurityObservationKind.BARTER_OWNERSHIP_DENIED, "barter:cancel_offer", requestId,
+                        "ECONOMY_BARTER_OWNER", "Снять предложение может только его автор", 403)
+                    cancel(c, user.id, before.state, row)
+                }
             }
             val view = economyView(c, user.id, user.publicId, now(c))
             c.economyUpdate("""INSERT INTO economy_barter_receipts(user_id,request_id,signature,message,accepted_revision,offer)

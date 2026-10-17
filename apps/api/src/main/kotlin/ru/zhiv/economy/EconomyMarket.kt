@@ -32,6 +32,7 @@ data class EconomyMarketTradeBudget(
 
 @Serializable
 data class EconomyMarketView(
+    val ownerPublicId: String,
     val listings: List<EconomyMarketListing>,
     val mine: List<EconomyMarketListing>,
     val nextCursor: String? = null,

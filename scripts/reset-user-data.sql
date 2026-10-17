@@ -22,7 +22,7 @@ DECLARE
         'notification_preferences', 'notification_subscriptions', 'notification_events', 'notification_batches',
         'promo_redemptions',
         'game_achievements', 'game_achievement_tiers', 'game_items', 'game_monthly_scores', 'game_profiles', 'game_sessions', 'game_tap_activity_minutes', 'game_tap_activity_seconds',
-        'identity_bootstrap_keys', 'player_feedback', 'player_feedback_actions', 'private_person_nicknames', 'recipient_sharing_preferences',
+        'identity_bootstrap_keys', 'player_feedback', 'player_feedback_actions', 'player_security_observations', 'private_person_nicknames', 'recipient_sharing_preferences',
         'user_incidents', 'user_status_write_keys', 'user_timezone_write_keys', 'world_commands', 'world_ledger', 'world_profiles'
     ];
     expected_tables text[];
@@ -40,19 +40,19 @@ BEGIN
     IF actual_tables IS DISTINCT FROM expected_tables THEN
         RAISE EXCEPTION 'Unexpected application tables. Reset cancelled; review the schema first.';
     END IF;
-    -- V59 adds the tutorial payout marker to an already-cleared table; the inventory is unchanged.
+    -- V60 adds bounded per-user security observations; full user deletion clears them too.
     -- Keep this explicit: every new schema must be reviewed before destructive reset.
     -- A known admin-history upgrade can install V50 after V51/V52.
     -- Verify either complete history by version, independently of install order.
-    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 59
+    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 60
         OR NOT (
             ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
-                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,59) AS expected(version))
+                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,60) AS expected(version))
             OR ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
-                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL','58:SQL','59:SQL']
+                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL','58:SQL','59:SQL','60:SQL']
         )
         OR EXISTS (SELECT 1 FROM public.flyway_schema_history WHERE NOT success) THEN
-        RAISE EXCEPTION 'Expected successfully applied migrations through V59. Reset cancelled.';
+        RAISE EXCEPTION 'Expected successfully applied migrations through V60. Reset cancelled.';
     END IF;
     SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank) INTO migration_history
     FROM public.flyway_schema_history h;

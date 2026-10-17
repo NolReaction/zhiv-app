@@ -347,7 +347,7 @@ export function getDevEconomyMarket(token: string | undefined, options: { cursor
   const listings = !unlocked || !selection ? [] : selection.ids.map(id => store().listings.get(id))
     .filter((item): item is Listing => !!item && item.status === "active" && compatibleMarketSeller(value.state.buildings.home ?? 1, item.sellerPublicId) && marketListingEligible(item, known)
       && lookupDevUser(token, item.sellerPublicId).kind === "ok").slice(0, limit).map(item => publicListing(item, owner, token));
-  return { listings, mine, serverTime: new Date(now).toISOString(), nextCursor: null, tradeBudget: tradeBudget(owner, value.state, now),
+  return { ownerPublicId: owner, listings, mine, serverTime: new Date(now).toISOString(), nextCursor: null, tradeBudget: tradeBudget(owner, value.state, now),
     showcase: { refreshAt: new Date(selection?.refreshAt ?? now + config.showcaseRefreshSeconds * 1000).toISOString(),
       slots: config.showcaseSlots, maxPerSeller: config.showcasePerSeller, refreshSeconds: config.showcaseRefreshSeconds } };
 }

@@ -147,6 +147,13 @@ jobs:
               exit 1
             fi
           done
+          security_report="apps/api/build/test-results/test/TEST-ru.zhiv.db.JdbcSecurityObservationsIntegrationTest.xml"
+          test -s "${security_report}"
+          grep --quiet --extended-regexp 'tests="[1-9][0-9]*"' "${security_report}"
+          if grep --quiet '<skipped' "${security_report}"; then
+            echo "Security observations must run with real PostgreSQL." >&2
+            exit 1
+          fi
 
       - name: Upload backend test reports on failure
         if: failure()
@@ -210,6 +217,18 @@ jobs:
               if (response.status !== 503 || (await response.json()).code !== "DEV_API_DISABLED")
                 throw new Error("Production web must not serve its development API");
             }).catch(error => { console.error(error.message); process.exit(1); });'
+          docker compose -f deploy/compose.yml exec -T web node -e '
+            (async () => {
+              for (const method of ["GET", "POST"]) {
+                const response = await fetch("http://127.0.0.1:3000/api/dev/world-studio", {
+                  method, headers: { Origin: "http://127.0.0.1:3000", "Content-Type": "application/json" },
+                  ...(method === "POST" ? { body: "{}" } : {}),
+                });
+                const data = await response.json();
+                if (response.status !== 404 || data.available !== false || response.headers.get("cache-control") !== "no-store")
+                  throw new Error("Production web must not expose studio project files");
+              }
+            })().catch(error => { console.error(error.message); process.exit(1); });'
 
       - name: Exercise the isolated production API
         run: node scripts/smoke-production.mjs

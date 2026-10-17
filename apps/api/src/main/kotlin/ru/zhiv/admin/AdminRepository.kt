@@ -36,7 +36,7 @@ data class AdminUser(
     val monthlyTaps: Long, val leaderboardOptIn: Boolean, val activeSessions: Long,
     val loginMethods: List<String>, val isAdmin: Boolean,
     val tag: PlayerTag? = null, val bannedAt: String? = null, val watchlisted: Boolean = false,
-    val tapSignalAt: String? = null,
+    val tapSignalAt: String? = null, val securitySignalAt: String? = null,
 )
 @Serializable
 data class AdminUsers(val serverTime: String, val total: Long, val offset: Int, val limit: Int, val users: List<AdminUser>)
@@ -62,6 +62,7 @@ data class AdminGrantRequest(val requestId: String, val confirmationPublicId: St
 data class AdminGrantReceipt(val requestId: String, val kind: String, val rewardId: String, val granted: Boolean, val createdAt: String)
 
 interface AdminRepository {
+    suspend fun security(sessionHash: ByteArray, targetPublicId: String): AdminSecurityObservations = throw UnsupportedOperationException()
     suspend fun grantEconomy(sessionHash: ByteArray, targetPublicId: String, requestId: UUID, request: AdminEconomyGrantRequest): AdminEconomyGrantReceipt = throw UnsupportedOperationException()
     suspend fun analytics(sessionHash: ByteArray, query: AdminAnalyticsQuery = AdminAnalyticsQuery()): AdminAnalytics = throw UnsupportedOperationException()
     suspend fun analyticsEvents(sessionHash: ByteArray, query: AdminAnalyticsEventsQuery = AdminAnalyticsEventsQuery()): AdminAnalyticsEvents = throw UnsupportedOperationException()

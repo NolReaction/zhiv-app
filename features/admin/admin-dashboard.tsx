@@ -2,6 +2,7 @@
 
 import { PlayerName } from "@/components/player-name";
 import { AdminPlayerDialog } from "./admin-player-dialog";
+import { AdminSecuritySummary } from "./admin-security-panel";
 import { AdminTapActivityPanel } from "./admin-tap-activity-panel";
 import { type AdminEconomyTarget } from "./admin-economy-panel";
 import { AdminEconomyWorkspace, type AdminHistoryRequest } from "./admin-analytics-panel";
@@ -35,7 +36,7 @@ import { ApiError } from "@/lib/check-in-api";
 import { createUuidV4 } from "@/lib/browser-uuid";
 import {
   getAdminAccess, getAdminAudit, getAdminMonitoring, getAdminOverview, getAdminUsers,
-  revokeAdminSessions,
+  revokeAdminSessions, verifyAdminActor,
   type AdminAccess, type AdminAudit, type AdminMonitoring, type AdminOverview,
   type AdminUser, type AdminUsers,
 } from "@/features/admin/admin-api";
@@ -212,7 +213,7 @@ function UsersTable({ data, access, busy, onPage, onRevoke, onRewards, onManage,
     {data.users.length === 0 ? <Empty>Пользователи не найдены. Попробуйте другое имя или ID.</Empty> : <Table className={styles.userTable}>
       <TableHeader><TableRow><TableHead>Пользователь</TableHead><TableHead>Последняя отметка</TableHead><TableHead>Отметки / друзья</TableHead><TableHead>Игра</TableHead><TableHead>Сеансы</TableHead><TableHead><span className={styles.srOnly}>Действия</span></TableHead></TableRow></TableHeader>
       <TableBody>{data.users.map(user => <TableRow key={user.publicId}>
-        <TableCell><div className={styles.userIdentity}><strong><PlayerName name={user.displayName} tag={user.tag} /></strong>{user.bannedAt && <span className={styles.warning}>Бан</span>}{user.tapSignalAt && <span className={styles.warning}>Проверить клики</span>}{user.watchlisted && <span className={styles.watchBadge}>Наблюдение</span>}{user.isAdmin && <span className={styles.adminBadge}>Админ</span>}</div><code>{user.publicId}</code><small>Создан {time(user.createdAt, true)}</small></TableCell>
+        <TableCell><div className={styles.userIdentity}><strong><PlayerName name={user.displayName} tag={user.tag} /></strong>{user.bannedAt && <span className={styles.warning}>Бан</span>}{user.isAdmin && <span className={styles.adminBadge}>Админ</span>}</div><AdminSecuritySummary user={user} onOpen={() => onManage(user)} /><code>{user.publicId}</code><small>Создан {time(user.createdAt, true)}</small></TableCell>
         <TableCell>{user.lastCheckInAt ? time(user.lastCheckInAt) : "Ещё не отмечался"}<small>UTC</small></TableCell>
         <TableCell><strong>{count(user.checkInCount)}</strong> отметок<small>{count(user.friendCount)} друзей</small></TableCell>
         <TableCell><strong>{count(user.lifetimeTaps)}</strong> тапов<small>Месяц {count(user.monthlyTaps)} · рекорд ×{count(user.bestSeries)}</small><small>{user.leaderboardOptIn ? "Участвует в рейтинге" : "Рейтинг скрыт"}</small></TableCell>
@@ -369,18 +370,21 @@ export function AdminDashboard() {
           ownerRef.current = identity.publicId;
         }
         setAccess(identity); setAccessStatus("allowed");
+        async function publish<T>(read: Promise<T>, commit: (value: T) => void) {
+          const value = await read;
+          if (!active || signal.aborted) return;
+          await verifyAdminActor(identity.publicId, signal);
+          if (active && !signal.aborted && ownerRef.current === identity.publicId) commit(value);
+        }
         if (tab === "overview") {
-          const value = await getAdminOverview(days, signal);
-          if (active && !signal.aborted) setOverview({ key: String(days), value });
+          await publish(getAdminOverview(days, signal), value => setOverview({ key: String(days), value }));
         } else if (tab === "users") {
-          const value = await getAdminUsers({ q: query, sort, offset: usersOffset, limit: PAGE_SIZE }, signal);
-          if (active && !signal.aborted) setUsers({ key: JSON.stringify([query, sort, usersOffset]), value });
+          await publish(getAdminUsers({ q: query, sort, offset: usersOffset, limit: PAGE_SIZE }, signal),
+            value => setUsers({ key: JSON.stringify([query, sort, usersOffset]), value }));
         } else if (tab === "monitoring") {
-          const value = await getAdminMonitoring(signal, rangeMinutes);
-          if (active && !signal.aborted) setMonitoring({ key: String(rangeMinutes), value });
+          await publish(getAdminMonitoring(signal, rangeMinutes), value => setMonitoring({ key: String(rangeMinutes), value }));
         } else if (tab === "audit") {
-          const value = await getAdminAudit({ offset: auditOffset, limit: PAGE_SIZE }, signal);
-          if (active && !signal.aborted) setAudit({ key: String(auditOffset), value });
+          await publish(getAdminAudit({ offset: auditOffset, limit: PAGE_SIZE }, signal), value => setAudit({ key: String(auditOffset), value }));
         }
         if (active && !signal.aborted) setLoadError(null);
       } catch (error) {
@@ -400,10 +404,10 @@ export function AdminDashboard() {
     const onVisibility = () => {
       if (document.visibilityState === "visible") void load();
     };
-    document.addEventListener("visibilitychange", onVisibility);
+    document.addEventListener("visibilitychange", onVisibility); window.addEventListener("focus", onVisibility);
     return () => {
       active = false; controller?.abort(); window.clearInterval(timer);
-      document.removeEventListener("visibilitychange", onVisibility);
+      document.removeEventListener("visibilitychange", onVisibility); window.removeEventListener("focus", onVisibility);
     };
   }, [tab, days, rangeMinutes, query, sort, usersOffset, auditOffset, refreshVersion, clearData, closeAccess]);
 
@@ -509,7 +513,7 @@ export function AdminDashboard() {
           <footer className={styles.footer}><span><span className={styles.liveDot} />Обновление видимых разделов: клики каждые 10 с, аналитика каждые 60 с, операции и промокоды вручную, остальные каждые 30 с</span><span>Время и периоды указаны в UTC, сроки промокодов указаны в МСК</span></footer>
         </Tabs>
       </div>
-      {playerTarget && <AdminPlayerDialog key={playerTarget.publicId} target={playerTarget} actorPublicId={access.publicId} onAccessLost={closeAccess} onClose={() => setPlayerTarget(null)} onChanged={requestRefresh} />}
+      {playerTarget && <AdminPlayerDialog key={`${access.publicId}:${playerTarget.publicId}`} target={playerTarget} actorPublicId={access.publicId} onAccessLost={closeAccess} onClose={() => setPlayerTarget(null)} onChanged={requestRefresh} />}
       {economyTarget && <AdminEconomyDialog key={`${access.publicId}:${economyTarget.publicId}`} target={economyTarget} actorPublicId={access.publicId} onAccessLost={closeAccess} onClose={() => setEconomyTarget(null)} onHistory={target => { setEconomyTarget(null); setHistoryRequest(current => ({ target, version: (current?.version ?? 0) + 1 })); setTab("economy"); }} />}
       {rewardTarget && <AdminRewardsDialog key={rewardTarget.publicId} target={rewardTarget} actorPublicId={access.publicId}
         onClose={() => setRewardTarget(null)} onAccessLost={closeAccess}

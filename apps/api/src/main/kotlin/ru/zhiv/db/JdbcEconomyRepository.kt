@@ -179,7 +179,7 @@ class JdbcEconomyRepository(private val source: DataSource) : EconomyRepository 
                 val result = block(c, current, now)
                 c.commit()
                 result
-            } catch (error: Exception) { c.rollback(); throw error }
+            } catch (error: Exception) { c.rollback(); recordRejectedSecurityObservation(c, error); throw error }
         }
     }
 
@@ -199,15 +199,18 @@ class JdbcEconomyRepository(private val source: DataSource) : EconomyRepository 
                 Receipt(it.getString(1), it.getString(2), it.getLong(3))
             }.firstOrNull()
             if (receipt != null) {
-                if (receipt.signature != signature) economyFailure("ECONOMY_REQUEST_CONFLICT", "Этот запрос уже использован для другого действия")
+                if (receipt.signature != signature) {
+                    if (semanticEconomyTamper(receipt.signature, command)) requestTamper(actor.id, "economy:${command.action}", requestId)
+                    throw AuthFailure("ECONOMY_REQUEST_CONFLICT", "Этот запрос уже использован для другого действия", 409)
+                }
                 return@transaction EconomyResult(economyView(c, actor.id, actor.publicId, now), receipt.message, receipt.revision, true)
             }
             if (c.economyRows("SELECT 1 FROM economy_market_receipts WHERE user_id=? AND request_id=?", actor.id, requestId) { true }.isNotEmpty())
-                economyFailure("ECONOMY_REQUEST_CONFLICT", "Этот запрос уже использован для другого действия")
+                requestTamper(actor.id, "economy:${command.action}", requestId)
             if (c.economyRows("SELECT 1 FROM economy_barter_receipts WHERE user_id=? AND request_id=?", actor.id, requestId) { true }.isNotEmpty())
-                economyFailure("ECONOMY_REQUEST_CONFLICT", "Этот запрос уже использован для другого действия")
+                requestTamper(actor.id, "economy:${command.action}", requestId)
             if (c.economyRows("SELECT 1 FROM game_reward_claims WHERE user_id=? AND request_id=?", actor.id, requestId) { true }.isNotEmpty())
-                economyFailure("ECONOMY_REQUEST_CONFLICT", "Этот запрос уже использован для другого действия")
+                requestTamper(actor.id, "economy:${command.action}", requestId)
             val before = readEconomyProfile(c, actor.id)
             if (before.revision != command.expectedRevision) economyFailure("ECONOMY_REVISION_CONFLICT", "Хозяйство уже изменилось. Обновите состояние и повторите действие.")
             if (EconomyRules.commandUsesActor(command) && c.economyRows(
