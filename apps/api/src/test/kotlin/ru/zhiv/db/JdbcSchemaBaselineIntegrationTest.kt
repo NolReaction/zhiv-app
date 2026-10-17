@@ -60,7 +60,8 @@ class JdbcSchemaBaselineIntegrationTest {
             WHERE schemaname='public' AND tablename<>'flyway_schema_history' ORDER BY tablename""")
         return tables.mapValues { (table, _) ->
             require(table.matches(Regex("[a-z_]+")))
-            scalar(source, "SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb)::text FROM public.\"$table\" t")
+            val row = if (table == "app_users") "(to_jsonb(t)-'security_signal_at')" else "to_jsonb(t)"
+            scalar(source, "SELECT COALESCE(jsonb_agg($row ORDER BY ($row)::text),'[]'::jsonb)::text FROM public.\"$table\" t")
         }
     }
 
@@ -202,9 +203,10 @@ class JdbcSchemaBaselineIntegrationTest {
             val data = tableData(source)
             val earlierHistory = history(source)
             DatabaseFactory.migrate(source)
+            assertEquals("0", scalar(source, "SELECT count(*) FROM app_users WHERE security_signal_at IS NOT NULL"), "V60 must not invent security flags for existing accounts")
             assertEquals(data, tableData(source).filterKeys { it in data }, "Adding a baseline must not rewrite existing records")
-            assertEquals(mapOf("managed_promo_codes" to "[]"), tableData(source).filterKeys { it !in data },
-                "The admin migration only adds empty campaign configuration to the historical schema")
+            assertEquals(mapOf("managed_promo_codes" to "[]", "player_security_observations" to "[]"), tableData(source).filterKeys { it !in data },
+                "New campaign configuration and security observations start empty on the historical schema")
             assertEquals(earlierHistory, scalar(source,
                 "SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank)::text FROM flyway_schema_history h WHERE version::int<=48"))
             assertEquals("60", scalar(source, "SELECT count(*) FROM flyway_schema_history WHERE success AND type='SQL'"))
@@ -215,6 +217,7 @@ class JdbcSchemaBaselineIntegrationTest {
             assertEquals(second.publicId, people.people.single().user.publicId)
             val upgradedHistory = history(source)
             DatabaseFactory.migrate(source)
+            assertEquals("0", scalar(source, "SELECT count(*) FROM app_users WHERE security_signal_at IS NOT NULL"), "V60 must not invent security flags for existing accounts")
             assertEquals(upgradedHistory, history(source))
             assertEquals(data, tableData(source).filterKeys { it in data })
         }

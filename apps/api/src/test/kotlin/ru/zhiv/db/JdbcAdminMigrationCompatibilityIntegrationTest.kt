@@ -49,6 +49,7 @@ class JdbcAdminMigrationCompatibilityIntegrationTest {
         // All balances, jobs, identities, receipts and admin data remain exact.
         val row = if (table == "economy_profiles")
             "((to_jsonb(t)-'revision'-'updated_at') || jsonb_build_object('state',t.state-'marketSlots'-'unlockedItems'-'itemUnlockVersion'))"
+        else if (table == "app_users") "(to_jsonb(t)-'security_signal_at')"
         else "to_jsonb(t)"
         scalar(source, "SELECT coalesce(jsonb_agg($row ORDER BY ($row)::text),'[]'::jsonb)::text FROM $table t")
     }
@@ -96,6 +97,7 @@ class JdbcAdminMigrationCompatibilityIntegrationTest {
             val revisions = economyRevisions(source)
             val adminHistory = installedAdminHistory(source)
             migrateWithLegacyAdminHistory(source)
+            assertEquals("0", scalar(source, "SELECT count(*) FROM app_users WHERE security_signal_at IS NOT NULL"), "V60 must not invent security flags for existing accounts")
             assertEquals(before, population(source)); assertEquals(base, history(source, "version::integer<=49"))
             assertEquals(revisions.mapValues { it.value + 1 }, economyRevisions(source), "V55 advances each profile exactly once")
             assertEquals(adminHistory, installedAdminHistory(source), "Only version and script may change in historical admin rows")
@@ -106,6 +108,7 @@ class JdbcAdminMigrationCompatibilityIntegrationTest {
             val after = history(source)
             DatabaseFactory.migrate(source)
             migrateWithLegacyAdminHistory(source)
+            assertEquals("0", scalar(source, "SELECT count(*) FROM app_users WHERE security_signal_at IS NOT NULL"), "V60 must not invent security flags for existing accounts")
             assertEquals(after, history(source)); assertEquals(before, population(source))
             assertEquals(revisions.mapValues { it.value + 1 }, economyRevisions(source), "Restart never repeats the V55 fence")
         }
@@ -121,6 +124,7 @@ class JdbcAdminMigrationCompatibilityIntegrationTest {
             assertTrue(normalizeLegacyAdminMigrationHistory(source))
             assertEquals(normalized, history(source), "A resumed normalization never rewrites already normalized rows")
             migrateWithLegacyAdminHistory(source)
+            assertEquals("0", scalar(source, "SELECT count(*) FROM app_users WHERE security_signal_at IS NOT NULL"), "V60 must not invent security flags for existing accounts")
             assertEquals(before, population(source))
             assertFalse(normalizeLegacyAdminMigrationHistory(source))
             assertEquals("1", scalar(source, "SELECT count(*) FROM flyway_schema_history WHERE version='50'"))
@@ -132,6 +136,7 @@ class JdbcAdminMigrationCompatibilityIntegrationTest {
             legacy(source, 50)
             val adminHistory = installedAdminHistory(source)
             migrateWithLegacyAdminHistory(source)
+            assertEquals("0", scalar(source, "SELECT count(*) FROM app_users WHERE security_signal_at IS NOT NULL"), "V60 must not invent security flags for existing accounts")
             assertEquals(adminHistory, scalar(source, """SELECT
                 jsonb_agg(to_jsonb(h)-'version'-'script' ORDER BY installed_rank)::text FROM flyway_schema_history h
                 WHERE script='V51__admin_economy_grants.sql'"""))
@@ -167,6 +172,7 @@ class JdbcAdminMigrationCompatibilityIntegrationTest {
             val before = history(source)
             assertFalse(normalizeLegacyAdminMigrationHistory(source)); assertEquals(before, history(source))
             migrateWithLegacyAdminHistory(source)
+            assertEquals("0", scalar(source, "SELECT count(*) FROM app_users WHERE security_signal_at IS NOT NULL"), "V60 must not invent security flags for existing accounts")
             assertEquals("60", scalar(source, "SELECT max(version::integer)::text FROM flyway_schema_history"))
             val after = history(source)
             assertFalse(normalizeLegacyAdminMigrationHistory(source)); assertEquals(after, history(source))
@@ -176,12 +182,14 @@ class JdbcAdminMigrationCompatibilityIntegrationTest {
     @Test fun `fresh baseline and subsequent canonical migrations need no history normalization`() {
         DatabaseFactory.create(config()).use { source ->
             migrateWithLegacyAdminHistory(source)
+            assertEquals("0", scalar(source, "SELECT count(*) FROM app_users WHERE security_signal_at IS NOT NULL"), "V60 must not invent security flags for existing accounts")
             assertEquals("12", scalar(source, "SELECT count(*) FROM flyway_schema_history"))
             assertEquals("B49__current_schema.sql", scalar(source,
                 "SELECT script FROM flyway_schema_history WHERE type='SQL_BASELINE'"))
             val before = history(source)
             assertFalse(normalizeLegacyAdminMigrationHistory(source))
             migrateWithLegacyAdminHistory(source)
+            assertEquals("0", scalar(source, "SELECT count(*) FROM app_users WHERE security_signal_at IS NOT NULL"), "V60 must not invent security flags for existing accounts")
             assertEquals(before, history(source), "The baseline and all original checksums remain exact on restart")
             execute(source, "UPDATE flyway_schema_history SET checksum=checksum+1 WHERE type='SQL_BASELINE'")
             val altered = history(source)

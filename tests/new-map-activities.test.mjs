@@ -90,7 +90,7 @@ test("authored clearing routes move the rendered pet, its hit area and camera ta
   } finally { engine?.dispose(); scene?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
 });
 
-test("greetings, reduced motion and hidden tabs pause an outing without catch-up jumps", async () => {
+test("body greetings preserve an outing while reduced motion and hidden tabs pause it without catch-up jumps", async () => {
   const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore } = await modules({ paths: [clearingPath] });
   const env = browser(); let scene, probe;
   try {
@@ -101,14 +101,17 @@ test("greetings, reduced motion and hidden tabs pause an outing without catch-up
     probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 0, 0, () => {});
     const home = scene.position(), clock = sceneClock(env);
     clock.until(() => distanceBetween(scene.position(), home) > 10, "the hero has left its spawn");
-    const greetedAt = scene.position();
-    scene.notice(); clock.advance(.8);
-    assert.deepEqual(scene.position(), greetedAt, "greeting freezes translation at the actual location");
-    assert.equal(activities.at(-1), "greet");
-    clock.until(() => distanceBetween(scene.position(), greetedAt) > 0, "the finite greeting returns to its interrupted route", 80);
+    const greetedAt = scene.position(), clearing = probe.state.clearing;
+    const route = clearing.freeRoute, routeIndex = clearing.routeIndex, intention = clearing.behavior.mind.intention;
+    scene.notice();
+    assert.deepEqual(scene.position(), greetedAt, "the body tap itself never displaces the actor");
+    assert.equal(clearing.freeRoute, route); assert.equal(clearing.routeIndex, routeIndex);
+    assert.equal(clearing.behavior.mind.intention, intention, "feedback cannot replace the current outing's intention");
+    assert.equal(probe.state.pendingAttention, false);
+    clock.advance(.2);
     assert.equal(activities.at(-1), "idle");
     assert.ok(distanceBetween(scene.position(), greetedAt) > 0 && distanceBetween(scene.position(), greetedAt) < 3,
-      "the outing continues from the same spot after greeting");
+      "the outing keeps walking at normal speed while the finite speech acknowledges the tap");
 
     scene.configure({ ...initial, reducedMotion: true });
     const still = scene.position(), travelTime = probe.state.clearing.elapsed;
@@ -263,7 +266,7 @@ test("a DEV mushroom interaction cannot consume a prop while its hero is hidden"
   } finally { scene?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
 });
 
-test("tapping a held mushroom finishes putting it back before greeting and repeated taps do not restart cleanup", async () => {
+test("body taps preserve the held mushroom and its original finite eating routine without duplicating the prop", async () => {
   const { mountHabitat, worldDevStore, pixelSprite, connectForestSession, TILED_WORLD } = await modules();
   const env = browser(); let scene, probe;
   try {
@@ -287,19 +290,26 @@ test("tapping a held mushroom finishes putting it back before greeting and repea
     assert.equal(frozen.body.args[0], beforeStill.body.args[0], "reduced motion keeps the current holding pose");
     assert.deepEqual(heldRectangles(frozen), heldRectangles(beforeStill), "reduced motion freezes the held prop instead of hiding it");
     scene.configure(initial); clock.step();
+    const routine = probe.state.life.routine, intention = probe.state.clearing.behavior.mind.intention;
+    const sequence = probe.state.life.sequence, age = routine.elapsed;
     scene.notice();
     assert.equal(sample().hasPose("hold"), true, "the touch does not instantly discard the held object");
-    for (let i = 0; i < 16; i++) { scene.notice(); clock.step(); }
-    assert.equal(probe.state.life.routine, null, "repeat touches cannot keep restarting the finite put-back animation");
-    const restored = probe.state.life.mushrooms.find(mushroom => mushroom.id === id);
-    assert.equal(restored.growth, 1); assert.equal(restored.regrowIn, 0);
-    const response = new Set();
-    for (let i = 0; i < 32; i++) {
-      const hero = sample();
-      for (const pose of ["greet", "wonder", "jump", "blink", "idle"]) if (hero.hasPose(pose)) response.add(pose);
-      clock.step();
+    assert.equal(probe.state.life.routine, routine); assert.equal(routine.elapsed, age);
+    assert.equal(routine.interrupting, undefined); assert.equal(probe.state.pendingAttention, false);
+    assert.equal(probe.state.clearing.behavior.mind.intention, intention);
+    for (let i = 0; i < 16; i++) {
+      scene.notice(); clock.step();
+      assert.equal(probe.state.life.routine, routine);
+      assert.equal(routine.interrupting, undefined, "body taps cannot start the explicit cancellation path");
     }
-    assert.ok(response.has("greet") || response.has("wonder") || response.has("jump"), "the queued touch response runs after the prop is safe");
+    assert.ok(routine.elapsed > age, "feedback never resets or suspends the original routine's clock");
+    clock.until(() => {
+      if (!probe.state.life.routine) return true;
+      scene.notice(); assert.equal(probe.state.life.routine, routine); return false;
+    }, "the same eating routine finishes naturally despite repeated body taps", 100);
+    const consumed = probe.state.life.mushrooms.find(mushroom => mushroom.id === id);
+    assert.ok(consumed.growth < 1 && consumed.regrowIn > 0, "a consumed mushroom is not restored by a greeting");
+    assert.equal(probe.state.life.sequence, sequence + 1, "the original routine finishes exactly once");
     assert.deepEqual(scene.position(), { x: fixture.actor.spawn.x, y: fixture.actor.spawn.y - fixture.actor.size / 2 });
   } finally { scene?.dispose(); probe?.release(); worldDevStore.reset(); env.restore(); }
 });
@@ -465,7 +475,13 @@ test("home waking interrupts entry, respects hidden heroes, and supports a still
     assert.equal(scene.wakeHomeResident(), false, "opening a home while its resident is outdoors has no attention side effect");
     worldDevStore.triggerLife("home-sleep");
     clock.until(() => probe.state.clearing.stage === "entering", "the resident starts crossing the doorway", 600);
-    const entering = scene.position();
+    const entering = scene.position(), entryProgress = probe.state.clearing.doorProgress;
+    const entryIntention = probe.state.clearing.behavior.mind.intention;
+    scene.notice();
+    assert.equal(probe.state.clearing.stage, "entering", "ordinary body feedback preserves the active doorway route");
+    assert.equal(probe.state.clearing.doorProgress, entryProgress);
+    assert.equal(probe.state.clearing.behavior.mind.intention, entryIntention);
+    assert.deepEqual(scene.position(), entering);
     assert.equal(scene.wakeHomeResident(), true);
     assert.equal(probe.state.clearing.stage, "exiting");
     assert.deepEqual(scene.position(), entering, "an interrupted entry reverses at its current position");
@@ -826,14 +842,18 @@ test("a real insect is painted once through contact, camera handoff, pause and a
     const still = structuredClone(probe.state); clock.step(60_000); assert.deepEqual(probe.state, still);
     const coordinates = probe.state.fauna.entities.map(({ id, x, y }) => ({ id, x, y }));
     world.notice();
-    assert.equal(probe.state.fauna.encounter, null);
+    assert.equal(probe.state.fauna.encounter, reservation);
+    assert.equal(reservation.phase, "perch");
+    assert.equal(probe.state.pendingAttention, false);
     assert.deepEqual(probe.state.fauna.entities.map(({ id, x, y }) => ({ id, x, y })), coordinates,
-      "a static greeting releases the paw constraint at the insect's exact world position");
+      "a still body tap preserves the same perched insect at its exact world position");
     clock.step(60_000);
     assert.deepEqual(probe.state.fauna.entities.map(({ id, x, y }) => ({ id, x, y })), coordinates);
     worldDevStore.patch({ reducedMotion: "off" }); clock.advance(.1);
-    assert.equal(partner.mode, "depart");
+    assert.equal(partner.mode, "perch"); assert.equal(probe.state.fauna.encounter, reservation);
     assert.ok(distanceBetween(partner, coordinates.find(entity => entity.id === partner.id)) < 1.2);
+    clock.until(() => probe.state.fauna.encounter === null, "the preserved encounter releases its real insect naturally", 80);
+    assert.equal(partner.mode, "depart");
     assert.deepEqual(probe.state.fauna.entities.map(entity => entity.id), ids);
     assert.equal(probe.state.fauna.entities.find(entity => entity.id === partner.id), partner);
     env.visibility(true); const hidden = structuredClone(probe.state); clock.step(60_000); assert.deepEqual(probe.state, hidden);
@@ -842,7 +862,7 @@ test("a real insect is painted once through contact, camera handoff, pause and a
   } finally { scenes.forEach(scene => scene.dispose()); probe?.release(); worldDevStore.reset(); env.restore(); }
 });
 
-test("visible taps let the same insect depart before the actor greets and repeated taps cannot restart release", async () => {
+test("visible body taps preserve the same insect until its natural finite departure without restarting contact", async () => {
   const { mountHabitat, connectForestSession, TILED_WORLD, worldDevStore, clearingActivityFrame } = await modules({ habitats: livingHabitats });
   const env = browser(); let scene, probe;
   try {
@@ -853,12 +873,21 @@ test("visible taps let the same insect depart before the actor greets and repeat
     const clock = sceneClock(env); worldDevStore.triggerLife("butterfly");
     clock.until(() => probe.state.fauna.encounter?.phase === "perch", "the real butterfly reaches contact");
     const partner = probe.state.fauna.entities.find(entity => entity.id === probe.state.fauna.encounter.entityId);
-    const point = { x: partner.x, y: partner.y }, feet = scene.position();
-    scene.notice(); assert.equal(probe.state.pendingAttention, true);
+    const point = { x: partner.x, y: partner.y }, feet = scene.position(), encounter = probe.state.fauna.encounter;
+    const intention = probe.state.clearing.behavior.mind.intention, age = encounter.elapsed;
+    scene.notice(); assert.equal(probe.state.pendingAttention, false);
+    assert.equal(probe.state.fauna.encounter, encounter); assert.equal(encounter.elapsed, age);
+    assert.equal(probe.state.clearing.behavior.mind.intention, intention);
     assert.deepEqual({ x: partner.x, y: partner.y }, point, "the tap does not teleport the perched body");
     for (let index = 0; index < 13; index++) { scene.notice(); clock.step(); }
+    assert.equal(probe.state.fauna.encounter, encounter); assert.equal(encounter.phase, "perch");
+    assert.ok(encounter.elapsed > age, "repeated feedback cannot reset the encounter clock");
+    clock.until(() => {
+      if (!probe.state.fauna.encounter) return true;
+      scene.notice(); assert.equal(probe.state.fauna.encounter, encounter); return false;
+    }, "the same visitor reaches its natural release even under continued body taps", 70);
     assert.equal(probe.state.fauna.encounter, null); assert.equal(probe.state.pendingAttention, false);
-    assert.equal(partner.mode, "depart"); assert.equal(clearingActivityFrame(probe.state.clearing).attention, true);
+    assert.equal(partner.mode, "depart"); assert.equal(clearingActivityFrame(probe.state.clearing).attention, false);
     assert.deepEqual(scene.position(), feet);
     assert.equal(probe.state.life.routine, null);
     assert.equal(probe.state.fauna.entities.find(entity => entity.id === partner.id), partner);

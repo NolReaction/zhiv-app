@@ -34,6 +34,7 @@ class JdbcReleaseUpgradeIntegrationTest {
         require(table.matches(Regex("[a-z_]+")))
         // Compare historical data while separately checking V38/V50/V51/V55 metadata.
         val row = when (table) {
+            "app_users" -> "(to_jsonb(t)-'security_signal_at')"
             "game_achievements" -> "(to_jsonb(t)-'reward_eligible')"
             "admin_actions" -> "(to_jsonb(t)-'accepted_revision')"
             "economy_profiles" -> "((to_jsonb(t)-'revision'-'updated_at') || jsonb_build_object('state',t.state-'marketSlots'-'unlockedItems'-'itemUnlockVersion'))"
@@ -88,14 +89,16 @@ class JdbcReleaseUpgradeIntegrationTest {
             val oldHistorySql = "SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank)::text FROM flyway_schema_history h WHERE version::int<=50"
             val oldHistory = scalar(source, oldHistorySql)
             DatabaseFactory.migrate(source)
+            assertEquals("0", scalar(source, "SELECT count(*) FROM app_users WHERE security_signal_at IS NOT NULL"), "V60 must not invent security flags for existing accounts")
             assertEquals(before, legacyData(source, tables), "Existing audit, receipts, sessions and balances are unchanged")
             assertEquals((beforeEconomyRevision + 1).toString(), scalar(source,
                 "SELECT revision::text FROM economy_profiles WHERE user_id='${player.id}'"), "V55 advances the profile fence exactly once")
             assertEquals("2", scalar(source, "SELECT count(*) FROM admin_actions WHERE accepted_revision IS NULL"))
             assertEquals(oldHistory, scalar(source, oldHistorySql))
-            assertEquals("58", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
+            assertEquals("60", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             assertEquals(receipt, repository.grantReward(token.hash, player.publicId, requestId, reward))
             DatabaseFactory.migrate(source)
+            assertEquals("0", scalar(source, "SELECT count(*) FROM app_users WHERE security_signal_at IS NOT NULL"), "V60 must not invent security flags for existing accounts")
             assertEquals(before, legacyData(source, tables))
             val grant = ru.zhiv.admin.AdminEconomyGrantRequest(UUID.randomUUID().toString(), player.publicId, "Компенсация после обновления", coins = 25)
             assertTrue(repository.grantEconomy(token.hash, player.publicId, UUID.fromString(grant.requestId), grant).changed)
@@ -126,6 +129,7 @@ class JdbcReleaseUpgradeIntegrationTest {
             val beforePreferences=scalar(source,preferenceSql)
             val beforeQueue=legacyData(source,listOf("notification_events"))
             DatabaseFactory.migrate(source)
+            assertEquals("0", scalar(source, "SELECT count(*) FROM app_users WHERE security_signal_at IS NOT NULL"), "V60 must not invent security flags for existing accounts")
             assertEquals(beforePreferences,scalar(source,preferenceSql),"Existing choices, presence and timestamps are preserved")
             assertEquals(beforeQueue,legacyData(source,listOf("notification_events")),"Pending reminders keep their state and retry time")
             assertEquals("1",scalar(source,"""SELECT count(*) FROM notification_events
@@ -135,6 +139,7 @@ class JdbcReleaseUpgradeIntegrationTest {
             assertEquals(preferences,repository.snapshot(token.hash,legacy.publicId).preferences)
             assertFalse(repository.snapshot(otherToken.hash,explicit.publicId).preferences.rateLimitsEnabled)
             DatabaseFactory.migrate(source)
+            assertEquals("0", scalar(source, "SELECT count(*) FROM app_users WHERE security_signal_at IS NOT NULL"), "V60 must not invent security flags for existing accounts")
             assertEquals(preferences,repository.snapshot(token.hash,legacy.publicId).preferences)
         }
     }
@@ -162,13 +167,14 @@ class JdbcReleaseUpgradeIntegrationTest {
             val historySql = "SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank)::text FROM flyway_schema_history h WHERE version::int<=44"
             val history = scalar(source, historySql)
             DatabaseFactory.migrate(source)
+            assertEquals("0", scalar(source, "SELECT count(*) FROM app_users WHERE security_signal_at IS NOT NULL"), "V60 must not invent security flags for existing accounts")
             assertEquals(before, legacyData(source, preservedTables))
             assertEquals(expectedProfile, scalar(source, """SELECT jsonb_build_object(
                 'state',state-'marketSlots'-'unlockedItems'-'itemUnlockVersion',
                 'immutable',to_jsonb(e)-'state'-'revision'-'updated_at','revision',revision)::text
                 FROM economy_profiles e WHERE user_id='${player.id}'"""), "V55 changes only knowledge metadata and its revision fence")
             assertEquals(history, scalar(source, historySql))
-            assertEquals("58", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
+            assertEquals("60", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             for (table in listOf("game_presence_clients", "game_presence_accounts", "game_presence_daily"))
                 assertEquals("0", scalar(source, "SELECT count(*) FROM $table"))
             val presence = JdbcPresenceRepository(source)
@@ -176,6 +182,7 @@ class JdbcReleaseUpgradeIntegrationTest {
             assertEquals("active", resumed.status)
             assertEquals(0L, resumed.onlineTodaySeconds, "historical online time must never be invented")
             DatabaseFactory.migrate(source)
+            assertEquals("0", scalar(source, "SELECT count(*) FROM app_users WHERE security_signal_at IS NOT NULL"), "V60 must not invent security flags for existing accounts")
             assertEquals(player.publicId, identity.findBySession(token.hash)?.publicId)
         }
     }
@@ -210,12 +217,14 @@ class JdbcReleaseUpgradeIntegrationTest {
             val historySql = "SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank)::text FROM flyway_schema_history h WHERE version::int<=30"
             val beforeHistory = scalar(source, historySql)
             DatabaseFactory.migrate(source)
+            assertEquals("0", scalar(source, "SELECT count(*) FROM app_users WHERE security_signal_at IS NOT NULL"), "V60 must not invent security flags for existing accounts")
             assertEquals(before, legacyData(source, unchangedTables))
             assertEquals(beforeHistory, scalar(source, historySql))
-            assertEquals("58", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
+            assertEquals("60", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM forest_memory"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM forest_memory_receipts"))
             DatabaseFactory.migrate(source)
+            assertEquals("0", scalar(source, "SELECT count(*) FROM app_users WHERE security_signal_at IS NOT NULL"), "V60 must not invent security flags for existing accounts")
             assertEquals(before, legacyData(source, unchangedTables))
             assertEquals(player.publicId, identities.findBySession(token.hash)?.publicId)
             val memory = JdbcForestMemoryRepository(source)
@@ -271,10 +280,11 @@ class JdbcReleaseUpgradeIntegrationTest {
             val oldHistory = scalar(source, historySql)
 
             DatabaseFactory.migrate(source)
+            assertEquals("0", scalar(source, "SELECT count(*) FROM app_users WHERE security_signal_at IS NOT NULL"), "V60 must not invent security flags for existing accounts")
             assertEquals(before, legacyData(source, unchangedTables), "Only the explicitly converted world profile may change")
             assertEquals("true", scalar(source, "SELECT bool_and(reward_eligible)::text FROM game_achievements"), "Existing ownership keeps its finite reward eligibility")
             assertEquals(oldHistory, scalar(source, historySql), "Existing migration records/checksums must stay intact")
-            assertEquals("58", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
+            assertEquals("60", scalar(source, "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM player_feedback"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM player_feedback_actions"))
             assertEquals("0", scalar(source, "SELECT count(*) FROM forest_memory"))
@@ -283,6 +293,7 @@ class JdbcReleaseUpgradeIntegrationTest {
                 FROM game_tap_collection_metadata m JOIN flyway_schema_history h ON h.version='28' AND h.success"""))
             val upgradedHistory = scalar(source, "SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank)::text FROM flyway_schema_history h")
             DatabaseFactory.migrate(source)
+            assertEquals("0", scalar(source, "SELECT count(*) FROM app_users WHERE security_signal_at IS NOT NULL"), "V60 must not invent security flags for existing accounts")
             assertEquals(before, legacyData(source, unchangedTables), "Repeated startup must not reapply economy effects")
             assertEquals(upgradedHistory, scalar(source, "SELECT jsonb_agg(to_jsonb(h) ORDER BY installed_rank)::text FROM flyway_schema_history h"))
 
@@ -358,6 +369,7 @@ class JdbcReleaseUpgradeIntegrationTest {
                     EconomyMoney.redenominate(initialized), "Historical initializers predate the permanent-knowledge marker")
             }
             DatabaseFactory.migrate(source)
+            assertEquals("0", scalar(source, "SELECT count(*) FROM app_users WHERE security_signal_at IS NOT NULL"), "V60 must not invent security flags for existing accounts")
             assertEquals(23L, source.connection.use { readEconomyProfile(it, player.id).revision }, "V40 and V41 convert once; V55 fences inherited knowledge once")
             val economy = JdbcEconomyRepository(source)
             val upgraded = economy.snapshot(token.hash)

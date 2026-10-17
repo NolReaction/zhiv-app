@@ -20,6 +20,7 @@ import ru.zhiv.admin.AdminConfig
 import ru.zhiv.admin.AdminPlayerCommand
 import ru.zhiv.admin.SecurityObservationKind
 import ru.zhiv.auth.AuthFailure
+import ru.zhiv.auth.LoginFlow
 import ru.zhiv.config.AppConfig
 import ru.zhiv.economy.*
 import ru.zhiv.installZhivApi
@@ -176,8 +177,23 @@ class JdbcSecurityObservationsIntegrationTest {
         repeat(25) { record(p,SecurityObservationKind.ECONOMY_REQUEST_TAMPER,action="economy:sell") }
         val lengths=source.connection.use { c -> c.economyRows("SELECT cardinality(recent_request_ids) FROM player_security_observations WHERE user_id=?",p.id){it.getInt(1)} }
         assertTrue(lengths.all { it<=16 });assertTrue(lengths.size<=3)
-        execute("DELETE FROM app_users WHERE id=?",p.id)
+        // Real account deletion is a tombstone: live sessions and retained audit
+        // rows intentionally prevent directly deleting this established account.
+        val browser=tokens.issue().hash;val subject=UUID.randomUUID().toString();val auth=JdbcAuthRepository(source)
+        execute("INSERT INTO account_login_identities(provider,subject,user_id) VALUES ('vk',?,?)",subject,p.id)
+        val proof=LoginFlow(tokens.issue().hash,browser,"vk","account",p.hash,null,null,"pkce",null,null,"delete","current")
+        auth.create(proof);auth.recordAccountProof(auth.takeVk(proof.tokenHash,browser),subject)
+        auth.deleteAccount(p.hash,browser,tokens.issue().hash)
         assertEquals(0,source.connection.use { c -> c.economyRows("SELECT count(*) FROM player_security_observations WHERE user_id=?",p.id){it.getInt(1)}.single() })
+        assertTrue(source.connection.use { c -> c.economyRows("SELECT deleted_at IS NOT NULL AND security_signal_at IS NULL FROM app_users WHERE id=?",p.id){it.getBoolean(1)}.single() })
+
+        // Independently verify the FK cascade with a minimal parent that has no
+        // unrelated sessions or permanent account records.
+        val bare=Player(UUID.randomUUID(),"0000-0000-0060",tokens.issue().hash,"unused")
+        execute("INSERT INTO app_users(id,public_id,display_name) VALUES (?,?,?)",bare.id,bare.publicId,"Cascade fixture")
+        record(bare,SecurityObservationKind.ECONOMY_REQUEST_TAMPER,action="economy:sell")
+        execute("DELETE FROM app_users WHERE id=?",bare.id)
+        assertEquals(0,source.connection.use { c -> c.economyRows("SELECT count(*) FROM player_security_observations WHERE user_id=?",bare.id){it.getInt(1)}.single() })
     }
 
     @Test fun `unwatch leaves automatic evidence and old manual reason cannot describe a later legacy observation`()=runBlocking<Unit> {

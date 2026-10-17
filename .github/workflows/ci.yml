@@ -154,6 +154,16 @@ jobs:
             echo "Security observations must run with real PostgreSQL." >&2
             exit 1
           fi
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          reports = [ET.parse(path).getroot() for path in Path('apps/api/build/test-results/test').glob('TEST-*.xml')]
+          totals = {key: sum(int(report.get(key, '0')) for report in reports) for key in ('tests', 'failures', 'errors', 'skipped')}
+          passed = totals['tests'] - totals['failures'] - totals['errors'] - totals['skipped']
+          print(f"Backend verification: {passed} passed, {totals['skipped']} skipped, {totals['failures']} failures, {totals['errors']} errors.")
+          security = next(report for report in reports if report.get('name') == 'ru.zhiv.db.JdbcSecurityObservationsIntegrationTest')
+          print(f"Security observations PostgreSQL: {security.get('tests')} tests, {security.get('skipped', '0')} skipped.")
+          PY
 
       - name: Upload backend test reports on failure
         if: failure()

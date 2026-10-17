@@ -1290,7 +1290,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     // A still scene has no RAF: repaint once when its actual glyph metrics arrive.
     if (loaded && visible()) draw();
   });
-  function notice() {
+  function notice(preserveActivity = true) {
     if (disposed || !session.isSimulationAllowed()) return;
     noticeSpeech("mochlik");
     if (active()) session.publish();
@@ -1301,7 +1301,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       resume(); return;
     }
     const still = reducedMotion(options, dev), manualPose = Boolean(state.animation || dev?.pose && dev.pose !== "auto");
-    const preservedActivity = noticeForestDirector(state, still || manualPose, { preserveActivity: true });
+    const preservedActivity = noticeForestDirector(state, still || manualPose, { preserveActivity });
     // Static accessibility / explicit DEV poses use a bounded feedback timer.
     if (!preservedActivity && (still || manualPose) && state.reaction <= 0) state.reaction = REACTION_SECONDS;
     if (active()) session.publish(); resume();
@@ -1377,11 +1377,12 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
       if (active()) applyPendingTime();
       prepareArtwork(); resize(); if (active()) draw(); resume();
     },
-    notice,
+    notice: () => notice(),
     wakeHomeResident() {
       if (disposed || exploring() || dev?.showHero === false || dev?.showBuildings === false
         || !session.isSimulationAllowed() || !["entering", "home-sleep"].includes(state.clearing.stage)) return false;
-      notice();
+      // A deliberate home wake reverses an unfinished entry; body taps keep its route.
+      notice(false);
       return true;
     },
     hitPet(x, y) {
