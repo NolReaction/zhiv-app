@@ -1,0 +1,60 @@
+.finale { width: 100%; min-width: 0; }
+.finale * { box-sizing: border-box; }
+.congratulations { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 7px 7px 10px; text-align: center; }
+.trophy { display: grid; position: relative; place-items: center; width: 70px; height: 70px; margin-bottom: 2px; border: 1px solid #c1ac70; border-radius: 50%; color: #8c6426; background: radial-gradient(circle at 40% 30%, #fff3be, #ddcc91); box-shadow: 0 4px 14px #8c723326, inset 0 0 0 5px #fff6d344; }
+.trophySprout { position: absolute; right: -3px; bottom: 2px; color: #4a7541; }
+.eyebrow { color: #7a6638; font-size: 10px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; }
+.finale .title { display: block; margin: 0; color: #344e39; font-size: clamp(21px, 5vw, 26px); line-height: 1.2; font-weight: 700; letter-spacing: -.025em; }
+.finale .description { max-width: 295px; margin: 1px 0 0; color: #485b43; font-size: 12px; line-height: 1.6; }
+.finale .aside { max-width: 290px; margin: 0 0 4px; color: #697055; font-size: 11px; line-height: 1.5; }
+.finale.finale .button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; min-height: 44px; margin: 0; padding: 9px 11px; border: 1px solid #77896b; border-radius: 9px; color: #e4e6cd; background: #293e31; font: inherit; font-size: 11px; line-height: 1.3; cursor: pointer; touch-action: manipulation; }
+.finale.finale .button:hover { color: #fff4cf; background: #38543c; }
+.finale.finale .button:focus-visible { outline: 2px solid #e2bf72; outline-offset: 2px; }
+.finale.finale .primary { padding-inline: 17px; border-color: #41633f; color: #fff3d3; background: #466347; font-size: 12px; font-weight: 600; }
+.cinema { min-width: 0; overflow: hidden; border: 1px solid #3e5747; border-radius: 13px; background: #12251d; box-shadow: inset 0 1px #f5e5a30c; }
+.cinemaHeading { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; padding: 12px 12px 10px; color: #c7b97f; }
+.finale .cinemaHeading h3 { display: block; flex: 1; min-width: 125px; margin: 0; color: #eee6c5; font-size: 12px; font-weight: 600; line-height: 1.4; outline: none; }
+.episode { color: #a4b49c; font-size: 9px; }
+.screen { --screen-height: clamp(170px, 40dvh, 280px); position: relative; height: var(--screen-height); overflow: hidden; isolation: isolate; border-block: 1px solid #51624466; color: #eae4c7; background: radial-gradient(ellipse at 50% 80%, #2b4835 0%, #152b22 45%, #0d1c16 100%); }
+.screen::before, .screen::after { position: absolute; z-index: 2; right: 0; left: 0; height: 28px; content: ""; pointer-events: none; }
+.screen::before { top: 0; background: linear-gradient(#0e2018, #0e201800); }
+.screen::after { bottom: 0; background: linear-gradient(#12271c00, #12271c); }
+.reel { position: absolute; top: 0; right: 0; left: 0; padding: 8px 15px 18px; animation: homeCredits 56s linear both; will-change: transform; text-align: center; }
+.opening { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 20px 0 44px; }
+.opening svg, .closing svg { color: #a4c18a; }
+.opening strong { color: #f1e3ad; font-size: 27px; font-weight: 600; letter-spacing: -.03em; }
+.opening span { color: #b7c3a9; font-size: 11px; }
+.finale .credits { display: flex; flex-direction: column; gap: 29px; margin: 0; padding: 0; list-style: none; }
+.credits li { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.credits li > span, .closing > span { color: #bac6ad; font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
+.credits li > strong, .closing > strong { color: #fff0c8; font-size: 17px; font-weight: 550; line-height: 1.3; }
+.closing { display: flex; flex-direction: column; align-items: center; gap: 13px; margin-top: 43px; padding-block: 10px 32px; }
+.finale .closing p { max-width: 240px; margin: 6px 0 4px; color: #bac6ad; font-size: 11px; line-height: 1.65; }
+.closing b { margin-top: 7px; color: #e9dfb7; font-size: 12px; font-weight: 500; line-height: 1.7; }
+.endCard { display: flex; position: absolute; z-index: 1; inset: 0; flex-direction: column; align-items: center; justify-content: center; gap: 15px; padding: 22px; background: #14291f; text-align: center; }
+.endCard svg { color: #a4c18a; }
+.endCard > strong { color: #f6e8b8; font-size: 21px; font-weight: 600; }
+.finale .endCard > p { max-width: 220px; margin: 0; color: #c5ceb5; font-size: 12px; line-height: 1.65; }
+.finale .hint { min-height: 30px; margin: 0; padding: 10px 12px 0; color: #b7c4ab; font-size: 10px; line-height: 1.5; }
+.controls { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 9px 10px 11px; }
+.finale.finale .back { margin-left: auto; border-color: transparent; background: transparent; }
+.screen[data-static] { overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #8b9d75 #172b20; }
+.screen[data-static] .reel { position: relative; animation: none; transform: none; will-change: auto; }
+.screen[data-static]:focus-visible { outline: 2px solid #e2bf72; outline-offset: -4px; }
+.screen[data-static]::before, .screen[data-static]::after { display: none; }
+@keyframes homeCredits { from { transform: translateY(var(--screen-height)); } to { transform: translateY(-100%); } }
+@media (max-width: 380px) {
+  .cinemaHeading { padding: 10px; }
+  .episode { display: none; }
+  .controls { gap: 5px; padding: 8px; }
+  .finale.finale .button { padding-inline: 8px; font-size: 10px; }
+  .finale.finale .primary { font-size: 12px; }
+  .credits li > strong, .closing > strong { font-size: 16px; }
+}
+@media (max-height: 540px) { .screen { --screen-height: clamp(130px, 35dvh, 190px); } .congratulations { gap: 7px; } .trophy { width: 54px; height: 54px; } }
+@media (prefers-reduced-motion: reduce) {
+  .screen { overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #8b9d75 #172b20; }
+  .reel { position: relative; animation: none; transform: none; will-change: auto; }
+  .screen::before, .screen::after { display: none; }
+}
+@media (forced-colors: active) { .cinema, .screen, .finale.finale .button { border-color: ButtonText; } .screen::before, .screen::after { display: none; } }

@@ -152,6 +152,41 @@ test("a maximum-level pantry reports real capacity and does not offer another up
   assert.ok(!buttons(html).some(button => /Улучшить|Начать обустройство/.test(button.text)));
 });
 
+test("the claimed maximum home offers a playful finale instead of another-level instructions", () => {
+  const maximum = Math.max(...economyCatalog.buildings.find(building => building.id === "home").levels.map(level => level.level));
+  const snapshot = state({ buildings: { home: maximum, warehouse: 1 } }), before = structuredClone(snapshot);
+  const html = render("home", { snapshot });
+  assert.match(text(html), /Поздравляем! Вы прошли игру\./);
+  assert.match(html, /data-home-finale="celebration"/);
+  assert.ok(buttons(html).some(button => button.text.trim() === "Смотреть титры"));
+  assert.ok(buttons(html).some(button => button.text.trim() === "В лес!"));
+  assert.doesNotMatch(text(html), /Новый уровень открывает|Все улучшения получены/);
+  assert.deepEqual(snapshot, before, "the celebration never mutates progress or rewards");
+});
+
+test("a pending final upgrade and a newly added catalog tier never trigger credits early", () => {
+  const home = economyCatalog.buildings.find(building => building.id === "home");
+  const maximum = Math.max(...home.levels.map(level => level.level));
+  for (const finishesAt of [now + 60_000, now]) {
+    const html = render("home", { snapshot: state({ buildings: { home: maximum - 1, warehouse: 1 },
+      jobs: [construction({ targetLevel: maximum, finishesAt: new Date(finishesAt).toISOString() })] }) });
+    assert.doesNotMatch(html, /data-home-finale|Смотреть титры|Вы прошли игру/);
+    assert.match(html, /aria-label="Ход улучшения"/);
+  }
+  const expanded = state({ buildings: { home: maximum, warehouse: 1 } });
+  const catalogHome = expanded.catalog.buildings.find(building => building.id === "home");
+  catalogHome.levels.push({ ...catalogHome.levels.at(-1), level: maximum + 1 });
+  assert.doesNotMatch(render("home", { snapshot: expanded }), /data-home-finale|Вы прошли игру/);
+});
+
+test("maximum workshops, storage and restorations retain their own completion state", () => {
+  for (const building of economyCatalog.buildings.filter(building => building.id !== "home")) {
+    const maximum = Math.max(...building.levels.map(level => level.level));
+    const html = render(building.id, { snapshot: state({ buildings: { home: 5, warehouse: 1, [building.id]: maximum } }) });
+    assert.doesNotMatch(html, /data-home-finale|Смотреть титры|Вы прошли игру/);
+  }
+});
+
 test("late pantry expansion has three distinct relic counters and no house, building or coin gate", () => {
   const snapshot = state({ buildings: { home: 1, warehouse: 9 }, wallet: { coins: 0, pearls: 0 }, inventory: { ancient_core: 10, moon_crystal: 3, living_resin: 3 } });
   const html = render("warehouse", { snapshot });
