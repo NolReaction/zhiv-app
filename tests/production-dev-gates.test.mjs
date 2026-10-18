@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readdir } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
@@ -58,12 +58,67 @@ async function apiRoutes(directory = "app/api") {
   return paths;
 }
 
-test("every standalone web API entrypoint rejects production before accessing local identity or game data", async () => {
+test("only the public weather GET bypasses dev gates, with coarse coordinates and no account/game dependency", async () => {
+  const savedFetch = globalThis.fetch;
+  let providerCalls = 0, route;
+  try {
+    globalThis.fetch = async (url, init) => {
+      providerCalls++;
+      assert.equal(url, "https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=55&lon=38");
+      assert.equal(init.credentials, "omit");
+      assert.equal(new Headers(init.headers).has("cookie"), false);
+      assert.equal(new Headers(init.headers).has("authorization"), false);
+      const currentHour = Math.floor(Date.now() / 3_600_000) * 3_600_000;
+      return Response.json({ properties: {
+        meta: { updated_at: new Date(currentHour).toISOString() },
+        timeseries: [{ time: new Date(currentHour).toISOString(), data: {
+          instant: { details: { air_temperature: 12, cloud_area_fraction: 40 } },
+          next_1_hours: { summary: { symbol_code: "partlycloudy_day" } },
+        } }],
+      } }, { headers: { Expires: new Date(Date.now() + 3_600_000).toUTCString() } });
+    };
+    route = await vite.ssrLoadModule("/app/api/v1/earth/weather/route.ts");
+  } finally { globalThis.fetch = savedFetch; }
+  const httpMethods = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"];
+  assert.deepEqual(httpMethods.filter(method => typeof route[method] === "function"), ["GET"],
+    "the public exception must not grow additional exported methods");
+  for (const legacy of [false, true]) await withEnvironment("production", legacy, async () => {
+    const response = await route.GET(new Request("https://example.test/api/v1/earth/weather?lat=55&lng=38", {
+      headers: { Cookie: "session=test-account", Authorization: "<test-identity>" },
+    }));
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.provider, "met-norway");
+    assert.equal(body.temperatureC, 12);
+    assert.equal(body.stale, false);
+    assert.equal(Number.isFinite(Date.parse(body.staleUntil)), true);
+    assert.match(response.headers.get("cache-control"), /^public, max-age=\d+, must-revalidate$/);
+    assert.equal(response.headers.has("set-cookie"), false);
+    assert.equal("user" in body || "account" in body || "game" in body, false);
+    for (const query of ["lat=55.75&lng=38", "lat=55&lng=38&userId=player", "lat=55&lat=54&lng=38", "lat=90&lng=38"]) {
+      const invalid = await route.GET(new Request(`https://example.test/api/v1/earth/weather?${query}`));
+      assert.equal(invalid.status, 400);
+      assert.equal((await invalid.json()).error, "invalid_coordinates");
+      assert.equal(invalid.headers.get("cache-control"), "no-store");
+    }
+  });
+  assert.equal(providerCalls, 1, "cache reuse and rejected precision never use local identity or fetch extra data");
+  const imports = source => [...source.matchAll(/from\s+["']([^"']+)["']/g)].map(match => match[1]);
+  assert.deepEqual(imports(await readFile(`${root}/app/api/v1/earth/weather/route.ts`, "utf8")), ["@/lib/server/earth-weather"]);
+  assert.deepEqual(imports(await readFile(`${root}/lib/server/earth-weather.ts`, "utf8")), ["@/lib/earth-weather-contract"],
+    "the public adapter must remain independent from account/game/dev modules");
+});
+
+test("every account/game API entrypoint still rejects production except the exact public weather GET", async () => {
   const routes = await Promise.all((await apiRoutes()).map(async path => ({ path, module: await vite.ssrLoadModule(`/${path}`) })));
-  let checked = 0;
+  let checked = 0, publicWeatherGets = 0;
   await withEnvironment("production", true, async () => {
     for (const { path, module } of routes) for (const method of ["GET", "POST", "PUT", "PATCH", "DELETE"]) {
       if (typeof module[method] !== "function") continue;
+      if (path === "app/api/v1/earth/weather/route.ts" && method === "GET") {
+        publicWeatherGets++;
+        continue;
+      }
       const request = new Request(`https://example.test/${path.slice(4, -9)}`, {
         method, headers: { "Content-Type": "application/json", Origin: "https://example.test" },
         ...(["POST", "PUT", "PATCH"].includes(method) ? { body: JSON.stringify({ action: "dev_grant_resources" }) } : {}),
@@ -78,5 +133,6 @@ test("every standalone web API entrypoint rejects production before accessing lo
       checked++;
     }
   });
+  assert.equal(publicWeatherGets, 1, "exactly the weather GET is excluded from development-only gates");
   assert.ok(checked >= 45, "all exported HTTP methods are exercised, not just the shared guard");
 });

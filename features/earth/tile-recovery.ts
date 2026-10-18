@@ -66,6 +66,8 @@ export function createEarthTileRecovery(options: RecoveryOptions) {
   let busy = false;
   let retryTimer: unknown = null;
   let watchdogTimer: unknown = null;
+  let watchdogActive = false;
+  let watchdogEpoch = 0;
   let previousProgress = options.readState().progress;
   let lastProgressAt = clock.now();
 
@@ -77,6 +79,21 @@ export function createEarthTileRecovery(options: RecoveryOptions) {
   function cancelRetry() {
     if (retryTimer !== null) clock.clearTimeout(retryTimer);
     retryTimer = null;
+  }
+  function cancelWatchdog() {
+    watchdogEpoch += 1;
+    if (watchdogTimer !== null) clock.clearTimeout(watchdogTimer);
+    watchdogTimer = null;
+    watchdogActive = false;
+  }
+  function scheduleWatchdog() {
+    if (watchdogTimer !== null || controller.signal.aborted) return;
+    const epoch = ++watchdogEpoch;
+    watchdogTimer = clock.setTimeout(() => {
+      if (controller.signal.aborted || epoch !== watchdogEpoch) return;
+      watchdogTimer = null;
+      check();
+    }, WATCHDOG_INTERVAL);
   }
   function allowed(state: EarthTileRecoveryState) {
     return state.enabled && state.visible && state.online && !state.moving;
@@ -136,6 +153,18 @@ export function createEarthTileRecovery(options: RecoveryOptions) {
     if (settled) settledRevision += 1;
     const state = options.readState();
     const now = clock.now();
+    if (!state.enabled || !state.visible) {
+      lastProgressAt = now;
+      cancelRetry();
+      cancelWatchdog();
+      return;
+    }
+    if (!watchdogActive) {
+      watchdogActive = true;
+      // Time spent in another section/background is never a visible tile stall.
+      lastProgressAt = now;
+    }
+    scheduleWatchdog();
     if (state.progress !== previousProgress) {
       previousProgress = state.progress;
       lastProgressAt = now;
@@ -170,12 +199,7 @@ export function createEarthTileRecovery(options: RecoveryOptions) {
     scheduleRetry();
   }
 
-  function heartbeat() {
-    if (controller.signal.aborted) return;
-    check();
-    if (!controller.signal.aborted) watchdogTimer = clock.setTimeout(heartbeat, WATCHDOG_INTERVAL);
-  }
-  watchdogTimer = clock.setTimeout(heartbeat, WATCHDOG_INTERVAL);
+  check();
 
   return {
     check,
@@ -212,8 +236,7 @@ export function createEarthTileRecovery(options: RecoveryOptions) {
     dispose() {
       controller.abort();
       cancelRetry();
-      if (watchdogTimer !== null) clock.clearTimeout(watchdogTimer);
-      watchdogTimer = null;
+      cancelWatchdog();
       failures.clear();
     },
   };

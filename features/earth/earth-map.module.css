@@ -98,5 +98,5 @@
 @media (prefers-reduced-motion: reduce) { .controls button, .infoButton, .infoToggle > span, .infoToggle > span::before { transition: none; } .controls button[aria-busy="true"] svg { animation: none; } }
 
 .root[data-lighting="evening"] { background: radial-gradient(ellipse at 35% 42%, #202d53, #10172d 55%, #070d1a 90%); }
-.weatherBadge { position: absolute; z-index: 2; bottom: calc(var(--earth-navigation-clearance, 84px) + 74px); left: var(--earth-overlay-left, 16px); display: inline-flex; align-items: center; gap: 7px; max-width: calc(100% - 92px); margin: 0; padding: 8px 11px; border: 1px solid #d9efcd25; border-radius: 14px; color: #e3edda; background: #153b32ed; font-size: 11px; line-height: 1.5; pointer-events: none; }
+.weatherBadge { position: absolute; z-index: 2; bottom: calc(var(--earth-navigation-clearance, 84px) + 100px); left: var(--earth-overlay-left, 16px); display: inline-flex; align-items: center; gap: 7px; max-width: calc(100% - 92px); margin: 0; padding: 8px 11px; border: 1px solid #d9efcd25; border-radius: 14px; color: #e3edda; background: #153b32ed; font-size: 11px; line-height: 1.5; pointer-events: none; }
 .weatherBadge > span { color: #ebdcaa; font-size: 17px; }

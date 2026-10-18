@@ -38,6 +38,7 @@ export function createEarthGlobeScene(map: LibreMap, MarkerConstructor: typeof M
     const visible = ready && foreground && !document.hidden;
     const animate = visible && !motionPreference?.matches;
     weather.setVisible(visible);
+    weather.setMotionEnabled(animate);
     const globeMotion = animate && map.getZoom() < EARTH_SCENE_MOTION_MAX_ZOOM;
     clouds.setVisible(visible);
     landmarks.setVisible(visible);
@@ -48,16 +49,20 @@ export function createEarthGlobeScene(map: LibreMap, MarkerConstructor: typeof M
   const onClick = (event: MapMouseEvent) => { ocean.ripple(event.point, elapsed); };
   clouds.update(0);
   clouds.setVisible(false);
+  // The weather renderer updates its cell visibility on move. Reconcile after
+  // it so a street-level pan also pauses/resumes our shared clock immediately.
+  map.on("move", synchronize);
   map.on("zoom", synchronize);
   map.on("click", onClick);
   document.addEventListener("visibilitychange", synchronize);
   motionPreference?.addEventListener("change", synchronize);
 
   return {
-    setVisible(value: boolean) { foreground = value; synchronize(); },
-    setWeather(value: EarthWeatherSnapshot | null) { weather.setWeather(value); synchronize(); },
-    setReady(value: boolean) { ready = value; synchronize(); },
+    setVisible(value: boolean) { if (disposed) return; foreground = value; synchronize(); },
+    setWeather(value: EarthWeatherSnapshot | null) { if (disposed) return; weather.setWeather(value); synchronize(); },
+    setReady(value: boolean) { if (disposed) return; ready = value; synchronize(); },
     setLighting(value: EarthLightingMode) {
+      if (disposed) return;
       lighting.setMode(value, map.getCenter());
       synchronize();
     },
@@ -65,6 +70,7 @@ export function createEarthGlobeScene(map: LibreMap, MarkerConstructor: typeof M
       if (disposed) return;
       disposed = true;
       clock.dispose();
+      map.off("move", synchronize);
       map.off("zoom", synchronize);
       map.off("click", onClick);
       document.removeEventListener("visibilitychange", synchronize);

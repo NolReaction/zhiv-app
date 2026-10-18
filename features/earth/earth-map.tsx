@@ -23,7 +23,7 @@ import { createEarthGlobeScene } from "./globe-scene";
 import type { EarthLightingMode } from "./globe-lighting";
 import { createEarthTileLoadingOverlay } from "./tile-loading-overlay";
 import { createEarthStars } from "./earth-stars";
-import { createEarthWeatherController, createEarthWeatherProvider, type EarthWeatherState } from "./weather";
+import { createEarthWeatherController, createEarthWeatherProvider, type EarthWeatherSnapshot, type EarthWeatherState } from "./weather";
 import { EARTH_WEATHER_ATTRIBUTION } from "@/lib/earth-weather-contract";
 import "maplibre-gl/dist/maplibre-gl.css";
 import styles from "./earth-map.module.css";
@@ -179,6 +179,7 @@ export function EarthMap({ position, active, visible, onReadyChange, focusReques
     let tileOverlay: ReturnType<typeof createEarthTileLoadingOverlay> | null = null;
     let stars: ReturnType<typeof createEarthStars> | null = null;
     let weather: ReturnType<typeof createEarthWeatherController> | null = null;
+    let weatherSnapshot: EarthWeatherSnapshot | null = null;
     let map: LibreMap | null = null;
     let marker: Marker | null = null;
     let disposeMarkerMotion: (() => void) | null = null;
@@ -221,8 +222,7 @@ export function EarthMap({ position, active, visible, onReadyChange, focusReques
           interruptedDownloads = false;
           // Fresh vector actors recover requests aborted while the section was
           // hidden. Keep this Map, the camera, terrain and decorative sources.
-          refreshEarthTileSource(map, { sourceId: "earth-streets" });
-          map.setSourceTileLodParams(4, 2, "earth-streets");
+          if (refreshEarthTileSource(map, { sourceId: "earth-streets" })) map.setSourceTileLodParams(4, 2, "earth-streets");
         }
         resize();
       }
@@ -350,13 +350,15 @@ export function EarthMap({ position, active, visible, onReadyChange, focusReques
         stars = createEarthStars(current, element!, lightingModeRef.current);
         starsRef.current = stars;
         weather = createEarthWeatherController({ provider: createEarthWeatherProvider(), onState: state => {
-          if (cancelled) return;
+          if (cancelled || attemptFailed) return;
           setWeatherState(state);
-          scene?.setWeather(state.status === "ready" || state.status === "stale" ? state.snapshot : null);
+          weatherSnapshot = state.status === "ready" || state.status === "stale" ? state.snapshot : null;
+          scene?.setWeather(weatherSnapshot);
         } });
         weatherControllerRef.current = weather;
         weather.setEnabled(weatherEnabledRef.current);
         const updateWeatherView = () => {
+          if (cancelled || attemptFailed) return;
           const center = current.getCenter();
           weather?.setView({ longitude: center.lng, latitude: center.lat, zoom: current.getZoom() });
         };
@@ -457,10 +459,16 @@ export function EarthMap({ position, active, visible, onReadyChange, focusReques
           scene?.dispose();
           scene = createEarthGlobeScene(current, sdk.Marker, lightingModeRef.current);
           sceneRef.current = scene;
+          scene.setWeather(weatherSnapshot);
           scene.setReady(initialReady);
           scene.setVisible(foreground);
         });
         for (const eventName of ["sourcedataloading", "sourcedata", "sourcedataabort"] as const) current.on(eventName, event => {
+          if (cancelled || attemptFailed) return;
+          // A worker can ask for a tile after the visibility handler has already
+          // aborted the request scope, without ever increasing cache.pending.
+          if (eventName === "sourcedataloading" && event.sourceId === "earth-streets" && initialReady
+            && (!activeRef.current || !visibleRef.current || document.hidden)) interruptedDownloads = true;
           tileOverlay?.observe(event);
           if (foreground) tileOverlay?.refresh();
         });

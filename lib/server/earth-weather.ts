@@ -12,11 +12,12 @@ const MAX_BODY_BYTES = 512 * 1024;
 const MAX_STALE_MS = 6 * HOUR;
 const CLIENT_TTL_MS = 15 * MINUTE;
 
-type Forecast = Omit<EarthWeatherResponse, "provider" | "latitude" | "longitude" | "updatedAt" | "expiresAt" | "stale"> & { time: number };
+type Forecast = Omit<EarthWeatherResponse, "provider" | "latitude" | "longitude" | "updatedAt" | "expiresAt" | "staleUntil" | "stale"> & { time: number };
 interface Entry {
   forecasts: Forecast[];
   updatedAt: string;
   validUntil: number;
+  revalidateAfter: number;
   lastModified: string | null;
 }
 interface Dependencies {
@@ -96,7 +97,7 @@ async function readBoundedJson(response: Response): Promise<unknown> {
 function retryUntil(value: string | null, now: number, fallback: number) {
   if (value !== null) {
     const seconds = Number(value);
-    if (value.trim() && Number.isFinite(seconds) && seconds >= 0) return now + seconds * 1000;
+    if (value.trim() && Number.isFinite(seconds) && seconds >= 0 && Number.isFinite(now + seconds * 1000)) return now + seconds * 1000;
     const date = Date.parse(value);
     if (Number.isFinite(date) && date > now) return date;
   }
@@ -105,8 +106,8 @@ function retryUntil(value: string | null, now: number, fallback: number) {
 
 function validUntil(response: Response, now: number) {
   const expires = Date.parse(response.headers.get("Expires") ?? "");
-  // A missing/already expired header must not cause a tight revalidation loop.
-  return Number.isFinite(expires) && expires > now ? expires : now + CLIENT_TTL_MS;
+  // Preserve an expired provider deadline: a cooldown must never make stale data fresh.
+  return Number.isFinite(expires) ? expires : now;
 }
 
 function errorResponse(error: EarthWeatherErrorResponse["error"], status: number, retryMs = 0): Response {
@@ -141,7 +142,8 @@ export function createEarthWeatherHandler(dependencies: Dependencies = {}) {
         return null;
       }
       if (response.status === 304 && previous) {
-        const refreshed = { ...previous, validUntil: validUntil(response, receivedAt) };
+        const expiry = validUntil(response, receivedAt);
+        const refreshed = { ...previous, validUntil: expiry, revalidateAfter: Math.max(expiry, receivedAt + MINUTE) };
         cache.delete(key); cache.set(key, refreshed);
         return refreshed;
       }
@@ -152,7 +154,8 @@ export function createEarthWeatherHandler(dependencies: Dependencies = {}) {
       }
       const parsed = parseForecasts(await readBoundedJson(response));
       const lastModified = response.headers.get("Last-Modified");
-      const entry = { ...parsed, validUntil: validUntil(response, receivedAt), lastModified: lastModified && lastModified.length <= 128 && Number.isFinite(Date.parse(lastModified)) ? lastModified : null };
+      const expiry = validUntil(response, receivedAt);
+      const entry = { ...parsed, validUntil: expiry, revalidateAfter: Math.max(expiry, receivedAt + MINUTE), lastModified: lastModified && lastModified.length <= 128 && Number.isFinite(Date.parse(lastModified)) ? lastModified : null };
       cache.delete(key); cache.set(key, entry);
       return entry;
     } catch {
@@ -166,18 +169,20 @@ export function createEarthWeatherHandler(dependencies: Dependencies = {}) {
 
   function snapshot(entry: Entry, latitude: number, longitude: number): Response | null {
     const time = now(), stale = entry.validUntil <= time;
-    if (time > entry.validUntil + MAX_STALE_MS) return null;
     // Select a current model hour even when HTTP 304 reused the same forecast run.
     const forecast = entry.forecasts.findLast(item => item.time <= time) ?? entry.forecasts[0];
-    if (!forecast || forecast.time < time - 3 * HOUR || forecast.time > time + HOUR) return null;
-    const clientExpiry = stale ? time + MINUTE : Math.min(entry.validUntil, time + CLIENT_TTL_MS, forecast.time + HOUR);
+    if (!forecast || forecast.time > time + HOUR) return null;
+    const staleUntil = Math.min(entry.validUntil + MAX_STALE_MS, forecast.time + 3 * HOUR);
+    if (time >= staleUntil) return null;
+    const clientExpiry = stale ? Math.min(time + MINUTE, staleUntil)
+      : Math.max(time, Math.min(entry.validUntil, time + CLIENT_TTL_MS, forecast.time + HOUR));
     const maxAge = Math.max(0, Math.floor((clientExpiry - time) / 1000));
     const body: EarthWeatherResponse = {
       provider: "met-norway", latitude, longitude,
       condition: forecast.condition, temperatureC: forecast.temperatureC,
       cloudCoverPercent: forecast.cloudCoverPercent, precipitationNextHourMm: forecast.precipitationNextHourMm,
       windSpeedMps: forecast.windSpeedMps, forecastAt: forecast.forecastAt, updatedAt: entry.updatedAt,
-      expiresAt: new Date(clientExpiry).toISOString(), isDay: forecast.isDay, stale,
+      expiresAt: new Date(clientExpiry).toISOString(), staleUntil: new Date(staleUntil).toISOString(), isDay: forecast.isDay, stale,
     };
     return Response.json(body, { headers: {
       "Cache-Control": `public, max-age=${maxAge}, must-revalidate`,
@@ -196,9 +201,9 @@ export function createEarthWeatherHandler(dependencies: Dependencies = {}) {
     if (latitude < -89 || latitude > 89 || longitude < -180 || longitude > 179) return errorResponse("invalid_coordinates", 400);
     const key = `${latitude},${longitude}`, time = now();
     let entry = cache.get(key);
-    if (entry && time < entry.validUntil) {
+    if (entry && time < entry.revalidateAfter) {
       cache.delete(key); cache.set(key, entry);
-      return snapshot(entry, latitude, longitude) ?? errorResponse("weather_unavailable", 503, entry.validUntil - time);
+      return snapshot(entry, latitude, longitude) ?? errorResponse("weather_unavailable", 503, entry.revalidateAfter - time);
     }
     const pending = inFlight.get(key);
     if (pending) {
@@ -209,9 +214,12 @@ export function createEarthWeatherHandler(dependencies: Dependencies = {}) {
     if (time < blockedUntil) return entry && snapshot(entry, latitude, longitude) || errorResponse("weather_busy", 429, blockedUntil - time);
     if (!entry && cache.size + inFlight.size >= MAX_CELLS) {
       // Evict only expired cells. Dropping fresh entries would defeat the provider's Expires rule.
-      const expired = [...cache].find(([candidate, value]) => value.validUntil <= time && !inFlight.has(candidate));
+      const expired = [...cache].find(([candidate, value]) => value.revalidateAfter <= time && !inFlight.has(candidate));
       if (expired) cache.delete(expired[0]);
-      else return errorResponse("weather_busy", 429, Math.max(1000, Math.min(...[...cache.values()].map(value => value.validUntil)) - time));
+      else {
+        const nextExpiry = Math.min(...[...cache.values()].map(value => value.revalidateAfter));
+        return errorResponse("weather_busy", 429, Number.isFinite(nextExpiry) ? Math.max(1000, nextExpiry - time) : 1000);
+      }
     }
     nextRequestAt = time + 1000;
     const operation = Promise.resolve().then(() => refresh(key, latitude, longitude, entry));

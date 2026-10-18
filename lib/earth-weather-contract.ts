@@ -16,6 +16,8 @@ export interface EarthWeatherResponse {
   forecastAt: string;
   updatedAt: string;
   expiresAt: string;
+  /** Absolute deadline for displaying this forecast after a failed refresh. */
+  staleUntil: string;
   /** Only known when the provider's symbol has an explicit _day/_night suffix. */
   isDay: boolean | null;
   stale: boolean;

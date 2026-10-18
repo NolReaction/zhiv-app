@@ -3,10 +3,12 @@ export type { EarthWeatherCondition } from "@/lib/earth-weather-contract";
 
 export const EARTH_WEATHER_MIN_ZOOM = 3;
 export const EARTH_WEATHER_CACHE_TTL_MS = 15 * 60_000;
+export const EARTH_WEATHER_MAX_STALE_MS = 6 * 60 * 60_000;
 export const EARTH_WEATHER_MIN_INTERVAL_MS = 60_000;
 export const EARTH_WEATHER_CACHE_LIMIT = 16;
 const REQUEST_TIMEOUT_MS = 12_000;
 const VIEW_SETTLE_MS = 450;
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
 export type EarthWeatherArea = { readonly key: string; readonly longitude: number; readonly latitude: number };
 export type EarthWeatherSnapshot = {
@@ -21,6 +23,7 @@ export type EarthWeatherSnapshot = {
   readonly updatedAt: number;
   readonly fetchedAt: number;
   readonly expiresAt: number;
+  readonly staleUntil: number;
   readonly isDay: boolean | null;
   readonly stale: boolean;
 };
@@ -64,7 +67,7 @@ export function createEarthWeatherCache(): EarthWeatherCache {
       while (entries.size > EARTH_WEATHER_CACHE_LIMIT) entries.delete(entries.keys().next().value!);
     },
     nextRequestAt: () => nextRequestAt,
-    reserve(value) { nextRequestAt = value; },
+    reserve(value) { if (Number.isFinite(value)) nextRequestAt = Math.max(nextRequestAt, value); },
   };
 }
 
@@ -87,7 +90,8 @@ function validReading(value: EarthWeatherReading): boolean {
     && (value.cloudCoverPercent === null || (Number.isFinite(value.cloudCoverPercent) && value.cloudCoverPercent >= 0 && value.cloudCoverPercent <= 100))
     && (value.precipitationMm === null || (Number.isFinite(value.precipitationMm) && value.precipitationMm >= 0 && value.precipitationMm <= 1_000))
     && (value.windSpeedMps === null || (Number.isFinite(value.windSpeedMps) && value.windSpeedMps >= 0 && value.windSpeedMps <= 150))
-    && [value.forecastAt, value.updatedAt, value.expiresAt].every(Number.isFinite)
+    && [value.forecastAt, value.updatedAt, value.expiresAt, value.staleUntil].every(Number.isFinite)
+    && value.staleUntil >= value.expiresAt
     && (value.isDay === null || typeof value.isDay === "boolean") && typeof value.stale === "boolean";
 }
 
@@ -108,15 +112,17 @@ export function createEarthWeatherProvider({ fetch: fetcher = fetch, now = Date.
       const response = await fetcher(`/api/v1/earth/weather?lat=${area.latitude}&lng=${area.longitude}`, {
         signal, credentials: "same-origin", headers: { Accept: "application/json" },
       });
-      const raw: unknown = await response.json();
+      // A reverse proxy can return a non-JSON error and still supply Retry-After.
+      const raw: unknown = await response.json().catch(() => null);
       if (!response.ok) {
         const retryHeader = response.headers.get("Retry-After");
         const seconds = retryHeader?.trim() ? Number(retryHeader) : NaN;
         const retryDate = retryHeader ? Date.parse(retryHeader) : NaN;
         const bodySeconds = raw && typeof raw === "object" && "retryAfterSeconds" in raw ? raw.retryAfterSeconds : null;
-        const retryAt = Number.isFinite(seconds) && seconds >= 0 ? now() + seconds * 1_000
+        const afterSeconds = (delay: number) => Math.min(Number.MAX_SAFE_INTEGER, now() + delay * 1_000);
+        const retryAt = Number.isFinite(seconds) && seconds >= 0 ? afterSeconds(seconds)
           : Number.isFinite(retryDate) ? retryDate
-            : typeof bodySeconds === "number" && Number.isFinite(bodySeconds) && bodySeconds >= 0 ? now() + bodySeconds * 1_000 : null;
+            : typeof bodySeconds === "number" && Number.isFinite(bodySeconds) && bodySeconds >= 0 ? afterSeconds(bodySeconds) : null;
         throw new WeatherRequestError(retryAt);
       }
       const value = raw as Partial<EarthWeatherResponse> | null;
@@ -129,6 +135,7 @@ export function createEarthWeatherProvider({ fetch: fetcher = fetch, now = Date.
         forecastAt: typeof value.forecastAt === "string" ? Date.parse(value.forecastAt) : NaN,
         updatedAt: typeof value.updatedAt === "string" ? Date.parse(value.updatedAt) : NaN,
         expiresAt: typeof value.expiresAt === "string" ? Date.parse(value.expiresAt) : NaN,
+        staleUntil: typeof value.staleUntil === "string" ? Date.parse(value.staleUntil) : NaN,
         isDay: value.isDay!, stale: value.stale!,
       };
       if (!validReading(reading)) throw new Error("Invalid weather reading");
@@ -189,13 +196,25 @@ export function createEarthWeatherController({ provider, onState, cache = shared
   }
   function after(delay: number, callback: () => void) {
     clearTimer();
-    timer = schedule(() => { timer = null; callback(); }, Math.max(1, delay));
+    // Browsers and Node turn overflowing timeout delays into near-immediate
+    // callbacks. A long provider backoff is checked in safe-sized intervals.
+    timer = schedule(() => { timer = null; callback(); }, Math.max(1, Math.min(MAX_TIMER_DELAY_MS, delay)));
+  }
+  function cachedWeather(key: string) {
+    const cached = cache.get(key);
+    return cached && now() < cached.staleUntil ? cached : null;
+  }
+  function waitUntil(requestAt: number, cached: EarthWeatherSnapshot | null) {
+    // The old forecast must disappear at its absolute deadline, including when
+    // Retry-After keeps the next request farther into the future.
+    after(Math.min(requestAt, cached?.staleUntil ?? Infinity) - now(), () => reconcile());
   }
   function failure(key: string) {
-    const cached = cache.get(key) ?? null;
+    const cached = cachedWeather(key);
     const retryAt = Math.max(cache.nextRequestAt(), now() + EARTH_WEATHER_CACHE_TTL_MS);
+    cache.reserve(retryAt);
     publish(cached ? "stale" : "error", cached, retryAt, "Не удалось обновить прогноз.");
-    after(retryAt - now(), () => reconcile());
+    waitUntil(retryAt, cached);
   }
   function load(key: string, target: EarthWeatherArea) {
     if (!provider || disposed || !enabled || !visible || area?.key !== target.key) return;
@@ -210,22 +229,27 @@ export function createEarthWeatherController({ provider, onState, cache = shared
       failure(key);
     }, REQUEST_TIMEOUT_MS);
     request = { controller, deadline, version: currentVersion };
-    const cached = cache.get(key) ?? null;
+    const cached = cachedWeather(key);
     publish(cached ? "stale" : "loading", cached);
+    if (cached) after(cached.staleUntil - now(), () => {
+      if (request?.version === currentVersion) publish("loading");
+    });
     Promise.resolve().then(() => {
       if (controller.signal.aborted) throw new Error("Weather request cancelled");
       return provider.fetchWeather(target, controller.signal);
     }).then(reading => {
       if (disposed || request?.version !== currentVersion || controller.signal.aborted) return;
-      if (!validReading(reading)) throw new Error("Invalid weather reading");
+      if (!validReading(reading) || reading.staleUntil <= now()) throw new Error("Invalid weather reading");
       cancel(deadline);
       request = null;
       const fetchedAt = now();
+      const expiresAt = Math.min(reading.expiresAt, fetchedAt + EARTH_WEATHER_CACHE_TTL_MS);
       const snapshot: EarthWeatherSnapshot = { ...reading, area: target, fetchedAt,
         stale: reading.stale || reading.expiresAt <= fetchedAt,
         // The proxy already respects upstream Expires. Its shorter boundary may
         // select a new forecast hour, so the browser must not extend that TTL.
-        expiresAt: Math.min(reading.expiresAt, fetchedAt + EARTH_WEATHER_CACHE_TTL_MS) };
+        expiresAt,
+        staleUntil: Math.min(reading.staleUntil, expiresAt + EARTH_WEATHER_MAX_STALE_MS) };
       cache.put(key, snapshot);
       publish(snapshot.stale ? "stale" : "ready", snapshot);
       after(snapshot.expiresAt - now(), () => reconcile());
@@ -244,7 +268,7 @@ export function createEarthWeatherController({ provider, onState, cache = shared
     if (!visible) return;
     if (!provider) { publish("error", null, null, "Источник прогноза пока недоступен."); return; }
     const key = `${provider.id}:${area.key}`;
-    const cached = cache.get(key) ?? null;
+    const cached = cachedWeather(key);
     const time = now();
     if (cached && time < cached.expiresAt) {
       publish(cached.stale ? "stale" : "ready", cached);
@@ -255,7 +279,7 @@ export function createEarthWeatherController({ provider, onState, cache = shared
     const requestAt = Math.max(cache.nextRequestAt(), time + settleMs);
     if (requestAt > time) {
       publish(cached ? "stale" : "waiting", cached, requestAt);
-      after(requestAt - time, () => reconcile());
+      waitUntil(requestAt, cached);
       return;
     }
     clearTimer();

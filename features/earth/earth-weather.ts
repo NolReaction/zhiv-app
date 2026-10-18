@@ -19,6 +19,7 @@ export function createEarthWeather(map: LibreMap, MarkerConstructor: typeof Mark
   let visible = false;
   let disposed = false;
   let drawing = false;
+  let motionEnabled = true;
   let elapsedMs = 0;
   let lastFrame = -1;
   let anchor: [number, number] | null = null;
@@ -70,7 +71,7 @@ export function createEarthWeather(map: LibreMap, MarkerConstructor: typeof Mark
 
   function paintFrame() {
     if (!drawing || !art || !snapshot || disposed) return;
-    const frame = Math.floor(elapsedMs / FRAME_MS);
+    const frame = motionEnabled ? Math.floor(elapsedMs / FRAME_MS) : 0;
     if (frame === lastFrame) return;
     lastFrame = frame;
     const time = frame * FRAME_MS;
@@ -131,7 +132,13 @@ export function createEarthWeather(map: LibreMap, MarkerConstructor: typeof Mark
 
   map.on("move", reconcile);
   return {
-    hasMotion() { return drawing && snapshot?.condition !== "clear"; },
+    hasMotion() { return !disposed && motionEnabled && drawing && snapshot?.condition !== "clear"; },
+    setMotionEnabled(value: boolean) {
+      if (disposed || motionEnabled === value) return;
+      motionEnabled = value;
+      lastFrame = -1;
+      paintFrame();
+    },
     setWeather(value: EarthWeatherSnapshot | null) {
       if (disposed || snapshot === value) return;
       snapshot = value;
@@ -144,13 +151,14 @@ export function createEarthWeather(map: LibreMap, MarkerConstructor: typeof Mark
       reconcile();
     },
     update(value: number) {
-      if (disposed || !Number.isFinite(value) || value < 0) return;
+      if (disposed || !motionEnabled || !Number.isFinite(value) || value < 0) return;
       elapsedMs = value;
       paintFrame();
     },
     dispose() {
       if (disposed) return;
       disposed = true;
+      drawing = false;
       map.off("move", reconcile);
       art?.marker.remove();
       art = null;

@@ -22,6 +22,7 @@ function fakeClock() {
     setTimeout(callback, delay) { const id = ++sequence; timers.set(id, { callback, due: now + delay }); return id; },
     clearTimeout(id) { timers.delete(id); },
     count: () => timers.size,
+    callbacks: () => [...timers.values()].map(timer => timer.callback),
     async advance(milliseconds) {
       const until = now + milliseconds;
       for (;;) {
@@ -150,6 +151,48 @@ test("hidden, offline, and moving maps postpone repairs without spending their r
   assert.equal(s.calls.length, 1);
 });
 
+test("hidden and disabled maps have no watchdog and returning starts exactly one fresh visible stall budget", async t => {
+  for (const property of ["visible", "enabled"]) {
+    const s = fixture({ state: { [property]: false, ready: false, pending: 1 } });
+    t.after(() => s.recovery.dispose());
+    assert.equal(s.clock.count(), 0, "inactive creation schedules no heartbeat");
+    await s.clock.advance(120_000);
+    s.state[property] = true;
+    s.recovery.check(); s.recovery.check();
+    assert.equal(s.clock.count(), 1, "repeated return checks do not duplicate the watchdog");
+    const lateHeartbeat = s.clock.callbacks()[0];
+    s.state[property] = false; s.recovery.check();
+    assert.equal(s.clock.count(), 0, "retention cancels its heartbeat immediately");
+    await s.clock.advance(120_000);
+    lateHeartbeat();
+    assert.equal(s.clock.count(), 0, "a cancelled callback cannot wake a dormant map");
+    s.state[property] = true; s.recovery.check();
+    lateHeartbeat();
+    assert.equal(s.clock.count(), 1, "an old generation cannot replace the return heartbeat");
+    await s.clock.advance(20_000);
+    assert.equal(s.calls.length, 0, "background time is excluded from the visible stall budget");
+    await s.clock.advance(2_200);
+    assert.equal(s.calls.length, 1, "the resumed watchdog still repairs a sustained visible stall");
+    s.recovery.dispose(); lateHeartbeat();
+    assert.equal(s.clock.count(), 0);
+  }
+});
+
+test("retention cancels both retry and heartbeat, then resumes one bounded repair", async t => {
+  const s = fixture(); t.after(() => s.recovery.dispose());
+  s.recovery.reportFailure({ sourceId: "streets", tile: tile() });
+  assert.equal(s.clock.count(), 2);
+  s.state.visible = false; s.recovery.check();
+  assert.equal(s.clock.count(), 0);
+  await s.clock.advance(120_000);
+  assert.equal(s.calls.length, 0);
+  s.state.visible = true; s.recovery.check(); s.recovery.check();
+  assert.equal(s.clock.count(), 2, "return has one heartbeat and one retry");
+  await s.clock.advance(1_200);
+  assert.equal(s.calls.length, 1);
+  assert.equal(s.clock.count(), 1);
+});
+
 test("the watchdog waits for sustained lack of progress and does not replace the map", async t => {
   const s = fixture({ state: { ready: false, pending: 1 } }); t.after(() => s.recovery.dispose());
   await s.clock.advance(20_000); assert.equal(s.calls.length, 0);
@@ -162,6 +205,7 @@ test("the watchdog waits for sustained lack of progress and does not replace the
 
 test("progress and disabled initial preparation postpone the watchdog", async t => {
   const s = fixture({ state: { enabled: false, ready: false, pending: 1 } }); t.after(() => s.recovery.dispose());
+  assert.equal(s.clock.count(), 0);
   s.recovery.reportFailure({ sourceId: "streets" });
   await s.clock.advance(120_000); assert.equal(s.calls.length, 0);
   s.state.enabled = true; s.recovery.check();
