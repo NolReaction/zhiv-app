@@ -14,17 +14,35 @@ const { FishingRodIcon } = await vite.ssrLoadModule("/features/world/activities/
 const { drawFishingRod } = await vite.ssrLoadModule("/features/world/activities/fishing/fishing-rod-painter.ts");
 
 test("rod identities have different physical sections, grips and reel silhouettes even without color", () => {
-  const geometry = new Set(), counts = new Set();
+  const geometry = new Set();
   for (const rodId of FISHING_ROD_IDS) {
     const shapes = fishingRodShapes(rodId);
     geometry.add(JSON.stringify(shapes.map(shape => Object.fromEntries(Object.entries(shape).filter(([key]) => !["fill", "stroke"].includes(key))))));
-    counts.add(shapes.length);
     assert.ok(shapes.some(shape => shape.kind === "ellipse"), "every model has its own reel geometry");
     assert.ok(Object.isFrozen(fishingRodAppearance(rodId)));
   }
-  assert.equal(geometry.size, FISHING_ROD_IDS.length); assert.equal(counts.size, FISHING_ROD_IDS.length);
+  assert.equal(geometry.size, FISHING_ROD_IDS.length);
   for (const value of [undefined, null, {}, "unknown", "constructor", "__proto__"]) assert.equal(fishingRodId(value), "reed_rod");
   assert.deepEqual(fishingRodShapes("unknown"), fishingRodShapes("reed_rod"));
+});
+
+test("travelling rods have different solid grips and reel bodies while their cranks keep the existing hand path", () => {
+  const plainSolids = shapes => shapes.filter(shape => shape.fill && !["wrap", "highlight", "metal"].includes(shape.fill))
+    .map(shape => JSON.stringify(Object.fromEntries(Object.entries(shape).filter(([key]) => !["fill", "stroke", "width"].includes(key)))));
+  const newModels = ["traveller_rod", "marsh_rod", "dusk_rod"];
+  for (const rodId of newModels) for (const side of [-1, 1]) for (const detailScale of [.45, 1]) {
+    const reel = { x: -.025, y: .06 * side }, crank = 1.2;
+    const options = { length: .82, side, detailScale, reel, crank };
+    const shapes = fishingRodShapes(rodId, options), solids = plainSolids(shapes);
+    assert.equal(fishingRodId(rodId), rodId);
+    for (const other of FISHING_ROD_IDS.filter(other => other !== rodId)) {
+      assert.notDeepEqual(solids, plainSolids(fishingRodShapes(other, options)), `${rodId} cannot be a recoloured ${other}`);
+    }
+    const crankKnob = shapes.at(-1);
+    assert.equal(crankKnob.kind, "ellipse");
+    assert.ok(Math.abs(crankKnob.x - (reel.x + Math.cos(crank) * .035 * detailScale)) < 1e-10);
+    assert.ok(Math.abs(crankKnob.y - (reel.y + Math.sin(crank) * .025 * detailScale)) < 1e-10);
+  }
 });
 
 test("river and tide remain different solid silhouettes without decorative wraps, rings or colors", () => {

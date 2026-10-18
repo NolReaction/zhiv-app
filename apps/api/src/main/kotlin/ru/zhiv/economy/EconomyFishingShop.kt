@@ -21,11 +21,11 @@ object EconomyFishingShops {
     private fun candidates(state: EconomyState): List<Candidate> {
         val spec = checkNotNull(EconomyRules.catalog.fishing)
         val home = state.buildings["home"] ?: 1
-        return spec.rods.filter { it.price > 0 && it.requiredHomeLevel <= home && it.id !in state.fishing.ownedRods }
+        return spec.rods.filter { it.shop != "leaftail" && it.price > 0 && it.requiredHomeLevel <= home && it.id !in state.fishing.ownedRods }
             .map { Candidate("rod", it.id, it.price, 1, it.rarity, 1) } +
-            spec.hooks.filter { it.price > 0 && it.requiredHomeLevel <= home && it.id !in state.fishing.ownedHooks }
+            spec.hooks.filter { it.shop != "leaftail" && it.price > 0 && it.requiredHomeLevel <= home && it.id !in state.fishing.ownedHooks }
                 .map { Candidate("hook", it.id, it.price, 1, it.rarity, 1) } +
-            spec.baits.filter { it.requiredHomeLevel <= home }
+            spec.baits.filter { it.shop != "leaftail" && it.requiredHomeLevel <= home }
                 .map { Candidate("bait", it.itemId, it.price, spec.shop.baitStock, it.rarity, rarityWeight.getValue(it.rarity)) } +
             // Ordinary kitchen stock neither reveals nor sells the rare collection.
             spec.classes.filter { it.rarity == "common" }

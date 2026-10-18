@@ -8,6 +8,7 @@ import { ItemIcon } from "@/features/items/item-icon";
 import { getAudioRuntime } from "@/features/audio/runtime/audio-service";
 import { playUiCue } from "@/features/audio/ui/audio-lifecycle";
 import type { MapObjectSelection, WorldPlace } from "@/features/world/scene/map-engine";
+import type { WorldState } from "@/features/world/domain/model";
 import type { WorldHelpContext } from "@/features/world/ui/help/world-help-types";
 import { economyLocalSellPrice, economyLocalSaleMinimumQuantity, economyLocalSaleLimit } from "@/features/economy/domain/local-sale";
 import { canStartTutorialWorkshop } from "@/features/economy/domain/workshop-starter";
@@ -36,6 +37,7 @@ export type WorldObjectMenuProps = {
   tutorialWorkshop?: boolean;
   /** Confirmed house access and the completed introduction of this account. */
   leaftailAvailable?: boolean;
+  appearance?: WorldState["equipment"];
   guideRoot?: RefObject<HTMLElement | null>;
   selection: MapObjectSelection;
   economy: EconomyController;
@@ -117,7 +119,7 @@ export function WorldObjectSale({ economy, itemId, onCollapse }: { economy: Read
   </section>;
 }
 
-function ObjectMenuBody({ guide, tutorialWorkshop = false, leaftailAvailable = false, guideRoot: guideRootRef, selection, economy, isOnline, onClose, onBack, onReturnFocus, bounds, onNavigate, onExplore, onOpenPantry, initialStationId, initialRecipeId, constructionGoal, onOpenGoal, onOpenHelp, onHelpContextChange }: WorldObjectMenuProps) {
+function ObjectMenuBody({ appearance, guide, tutorialWorkshop = false, leaftailAvailable = false, guideRoot: guideRootRef, selection, economy, isOnline, onClose, onBack, onReturnFocus, bounds, onNavigate, onExplore, onOpenPantry, initialStationId, initialRecipeId, constructionGoal, onOpenGoal, onOpenHelp, onHelpContextChange }: WorldObjectMenuProps) {
   const collection = useGardenCollection();
   const seenHarvest = useRef(collection?.request?.requestId);
   useEffect(() => {
@@ -250,7 +252,7 @@ function ObjectMenuBody({ guide, tutorialWorkshop = false, leaftailAvailable = f
     {guide}
     <div ref={menuBody} className={styles.body} id={hasStationTabs ? `${headingId}-content` : undefined} role={hasStationTabs ? "tabpanel" : undefined} aria-labelledby={hasStationTabs ? `${headingId}-${stationId}` : undefined}>
       {state && !definition.future && selection.place !== "leaftail-caravan" && constructionGoal && onOpenGoal && <ConstructionGoalSummary state={state} constructionGoal={constructionGoal} onOpenGoal={onOpenGoal} navigation={navigation} compact />}
-      {selection.place === "leaftail-caravan" ? <WorldLeaftailMarket economy={economy} isOnline={isOnline !== false} introduced={leaftailAvailable} /> : definition.future ? <>
+      {selection.place === "leaftail-caravan" ? <WorldLeaftailMarket appearance={appearance} economy={economy} isOnline={isOnline !== false} introduced={leaftailAvailable} /> : definition.future ? <>
         <div className={styles.future}><LockKeyhole size={22} aria-hidden="true" /><p>{definition.future}</p></div>
       </> : !state ? <div className={styles.loading}><RefreshCw size={17} aria-hidden="true" /><p>{economy.error ?? "Открываем ваше хозяйство…"}</p>{economy.error && <button type="button" className={styles.textButton} disabled={economy.busy || cooldown > 0} onClick={() => void economy.retry()}>{cooldown ? `Повторить через ${cooldown} с` : "Попробовать ещё раз"}</button>}</div> : <>
         {!economy.syncError && (economy.error || economy.uncertain) && <div className={styles.error} role="alert"><p>{economy.uncertain ? "Проверяем последнее действие. Новые заказы доступны после подтверждения." : economy.error}</p><button type="button" className={styles.textButton} disabled={economy.busy || cooldown > 0} onClick={() => void economy.retry()}><RefreshCw size={12} aria-hidden="true" />{cooldown ? `Повторить через ${cooldown} с` : economy.uncertain ? "Проверить результат" : "Повторить"}</button></div>}

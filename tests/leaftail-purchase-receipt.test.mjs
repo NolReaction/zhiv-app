@@ -39,7 +39,7 @@ test("a receipt freezes accepted item names, actual bundle delta and wallet debi
   after.catalog.leaftailShop.offers.find(item => item.id === "stone_bundle").priceCoins = 12345;
   const receipt = localLeaftailPurchaseFromReceipt(before, result(after), sent);
   assert.deepEqual(receipt, { id: sent.requestId, ownerPublicId: owner, revision: 1, coins: 800,
-    items: [{ itemId: "stone", name: after.catalog.items.find(item => item.id === "stone").name, quantity: 10 }] });
+    kind: "item", destination: "pantry", items: [{ itemId: "stone", name: after.catalog.items.find(item => item.id === "stone").name, quantity: 10 }] });
   const name = receipt.items[0].name;
   after.catalog.items.find(item => item.id === "stone").name = "Новая цена и название";
   after.inventory.stone = 500;
@@ -150,4 +150,113 @@ test("the merchant renders frozen names, quantity and debit, with no exact succe
   assert.doesNotMatch(render({}, false), /data-leaftail-receipt|В кладовую: Камень ×10/);
   const fallback = render({ localLeaftailPurchase: undefined });
   assert.match(fallback, /Покупка отправлена в кладовую\./); assert.doesNotMatch(fallback, /Потрачено/);
+});
+
+
+const kinds = [
+  ["wardrobe", "trail_hat", "wardrobe", "Покупка у Листохвоста добавлена в гардероб"],
+  ["rod", "traveller_rod", "tackle", "Удочка у Листохвоста добавлена в коллекцию"],
+  ["hook", "braided_hook", "tackle", "Крючок у Листохвоста добавлен в коллекцию"],
+  ["bait", "spice_bait", "pantry", message],
+];
+function mixedPurchase(kind, itemId, successMessage) {
+  const before = state();
+  before.wallet.coins = 100000;
+  before.wardrobe = ["moss", "amber_scarf"];
+  before.fishing = { ownedRods: ["reed_rod"], ownedHooks: ["bare_hook"], equippedRodId: "reed_rod", equippedHookId: "bare_hook", equippedBaitId: null, catches: {} };
+  const spec = before.catalog.leaftailShop;
+  const offer = [...spec.offers, ...(spec.travelOffers ?? [])].find(offer => offer.kind === kind && offer.itemId === itemId);
+  assert.ok(offer, `${kind}:${itemId} must be a real catalog offer`);
+  const after = structuredClone(before), quantity = offer.quantity ?? 1;
+  after.revision++;
+  after.wallet.coins -= offer.priceCoins;
+  after.leaftailShop.purchased[offer.id] = 1;
+  if (kind === "wardrobe") after.wardrobe.push(itemId);
+  else if (kind === "rod") after.fishing.ownedRods.push(itemId);
+  else if (kind === "hook") after.fishing.ownedHooks.push(itemId);
+  else after.inventory[itemId] = (after.inventory[itemId] ?? 0) + quantity;
+  const sent = { ...command(), targetId: `${cycle}:${offer.id}`, totalPrice: offer.priceCoins };
+  return { before, after, sent, accepted: { ...result(after), message: successMessage }, quantity, offer };
+}
+
+test("mixed purchases prove their exact destination without mistaking permanent ownership for pantry quantities", () => {
+  for (const [kind, itemId, destination, successMessage] of kinds) {
+    const { before, after, sent, accepted, quantity } = mixedPurchase(kind, itemId, successMessage);
+    const receipt = localLeaftailPurchaseFromReceipt(before, accepted, sent);
+    assert.equal(receipt.kind, kind); assert.equal(receipt.destination, destination);
+    assert.equal(receipt.items.length, 1); assert.equal(receipt.items[0].itemId, itemId); assert.equal(receipt.items[0].quantity, quantity);
+    assert.equal(receipt.coins, sent.totalPrice);
+    assert.equal(after.fishing.equippedRodId, before.fishing.equippedRodId, "purchase never equips gear");
+    const unchanged = structuredClone(after);
+    if (kind === "wardrobe") unchanged.wardrobe = before.wardrobe;
+    else if (kind === "rod") unchanged.fishing.ownedRods = before.fishing.ownedRods;
+    else if (kind === "hook") unchanged.fishing.ownedHooks = before.fishing.ownedHooks;
+    else unchanged.inventory = before.inventory;
+    assert.equal(localLeaftailPurchaseFromReceipt(before, { ...accepted, state: unchanged }, sent), null);
+    if (destination !== "pantry") {
+      const duplicateBefore = structuredClone(before);
+      if (kind === "wardrobe") duplicateBefore.wardrobe.push(itemId);
+      else if (kind === "rod") duplicateBefore.fishing.ownedRods.push(itemId);
+      else duplicateBefore.fishing.ownedHooks.push(itemId);
+      assert.equal(localLeaftailPurchaseFromReceipt(duplicateBefore, accepted, sent), null, "already-owned cannot count as a fresh purchase");
+    } else {
+      const inflated = structuredClone(after); inflated.inventory[itemId]++;
+      assert.equal(localLeaftailPurchaseFromReceipt(before, { ...accepted, state: inflated }, sent), null, "broad unrelated deltas cannot prove the offered quantity");
+    }
+  }
+});
+
+test("mixed receipt UI names permanent destinations and source-specific fallback without pantry misinformation", () => {
+  for (const [kind, itemId, destination, successMessage] of kinds) {
+    const { before, after, sent, accepted } = mixedPurchase(kind, itemId, successMessage);
+    const receipt = localLeaftailPurchaseFromReceipt(before, accepted, sent);
+    const ready = { snapshot: after, snapshotConfirmed: true, now, retryAt: 0, busy: false, uncertain: false,
+      directActionsAvailable: true, pendingProductionCount: 0, notice: successMessage, localLeaftailPurchase: receipt };
+    const render = patch => renderToStaticMarkup(React.createElement(WorldLeaftailMarket,
+      { economy: { ...ready, ...patch }, isOnline: true, introduced: true }));
+    const html = render({});
+    assert.ok(html.includes(receipt.items[0].name)); assert.ok(html.includes(`Потрачено ${receipt.coins.toLocaleString("ru-RU")} монет.`));
+    assert.match(html, destination === "wardrobe" ? /В гардероб:/ : destination === "tackle" ? /В ваши снасти:/ : /В кладовую:/);
+    const fallback = render({ localLeaftailPurchase: undefined });
+    assert.doesNotMatch(fallback, /Потрачено/);
+    if (destination !== "pantry") assert.doesNotMatch(fallback, /Покупка отправлена в кладовую/);
+    // Other merchant/general wardrobe notices may use the same destination, but must not resurrect this receipt.
+    assert.doesNotMatch(render({ notice: "Удочка добавлена в коллекцию" }), /data-leaftail-receipt/);
+  }
+});
+
+test("quote guards allow full-pantry permanent goods, reject owned after delivery reset, and enforce per-offer home gates", async () => {
+  const { leaftailPurchaseReason } = await vite.ssrLoadModule("/features/economy/ui/market/world-leaftail-market.tsx");
+  for (const [kind, itemId, destination, successMessage] of kinds) {
+    const { before, offer } = mixedPurchase(kind, itemId, successMessage);
+    before.storage.available = 0;
+    const economy = { snapshot: before, snapshotConfirmed: true, now, retryAt: 0, busy: false, uncertain: false,
+      directActionsAvailable: true, pendingProductionCount: 0 };
+    const quote = { owner, revision: before.revision, targetId: `${cycle}:${offer.id}`, itemId, kind, price: offer.priceCoins, quantity: offer.quantity ?? 1 };
+    const reason = leaftailPurchaseReason(economy, quote, true);
+    if (destination === "pantry") assert.match(reason, /Не хватает места/);
+    else assert.equal(reason, null);
+    assert.match(leaftailPurchaseReason(economy, { ...quote, kind: kind === "rod" ? "hook" : "rod" }, true), /Поставка изменилась/);
+    before.storage.available = 100;
+    before.buildings.home = 2;
+    assert.match(leaftailPurchaseReason(economy, quote, true), /Листохвост в путешествии/);
+    before.buildings.home = 3;
+    if (kind !== "bait") {
+      if (kind === "wardrobe") before.wardrobe.push(itemId);
+      else if (kind === "rod") before.fishing.ownedRods.push(itemId);
+      else before.fishing.ownedHooks.push(itemId);
+      economy.now += 86400000;
+      quote.targetId = `${cycle + 1}:${offer.id}`;
+      assert.match(leaftailPurchaseReason(economy, quote, true), /Уже есть/);
+    }
+  }
+  const { before } = mixedPurchase("rod", "dusk_rod", "Удочка у Листохвоста добавлена в коллекцию");
+  const shop = before.catalog.leaftailShop;
+  const offer = [...shop.offers, ...(shop.travelOffers ?? [])].find(item => item.itemId === "dusk_rod");
+  const economy = { snapshot: before, snapshotConfirmed: true, now, retryAt: 0, busy: false, uncertain: false,
+    directActionsAvailable: true, pendingProductionCount: 0 };
+  const quote = { owner, revision: before.revision, targetId: `${cycle}:${offer.id}`, itemId: offer.itemId, kind: "rod", price: offer.priceCoins, quantity: 1 };
+  assert.match(leaftailPurchaseReason(economy, quote, true), /Нужен дом 4-го уровня/);
+  before.buildings.home = 4;
+  assert.equal(leaftailPurchaseReason(economy, quote, true), null);
 });

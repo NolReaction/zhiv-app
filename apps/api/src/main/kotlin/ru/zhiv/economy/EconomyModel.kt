@@ -47,28 +47,38 @@ internal val economyBerryItemIds = setOf("berries", "strawberries", "blueberries
     val weight: Int? = null, val affinity: Int? = null, val buyPrice: Long, val requiredHookId: String? = null)
 @Serializable data class EconomyRodSpec(val id: String, val name: String, val description: String, val price: Long, val rareBonus: Int = 0,
     val rarity: String = "common", val requiredHomeLevel: Int = 1, val rarityWeights: Map<String, Int>? = null,
-    val classOddsBps: Map<String, Int>? = null) {
+    val classOddsBps: Map<String, Int>? = null, val shop: String = "plesk") {
+    init { require(shop in setOf("plesk", "leaftail")) }
     init {
         require(classOddsBps == null || (classOddsBps.keys == setOf("common", "uncommon", "rare", "epic", "legendary") &&
             classOddsBps.values.all { it in 0..10000 } && classOddsBps.values.sum() == 10000))
     }
 }
 @Serializable data class EconomyHookSpec(val id: String, val name: String, val description: String, val price: Long, val rareBonus: Int = 0,
-    val rarity: String = "common", val requiredHomeLevel: Int = 1, val rarityWeights: Map<String, Int>? = null)
+    val rarity: String = "common", val requiredHomeLevel: Int = 1, val rarityWeights: Map<String, Int>? = null, val shop: String = "plesk") {
+    init { require(shop in setOf("plesk", "leaftail")) }
+}
 @Serializable data class EconomyBaitSpec(val itemId: String, val description: String, val price: Long, val rareBonus: Int = 0,
-    val rarity: String = "common", val requiredHomeLevel: Int = 1, val rarityWeights: Map<String, Int>? = null)
+    val rarity: String = "common", val requiredHomeLevel: Int = 1, val rarityWeights: Map<String, Int>? = null, val shop: String = "plesk") {
+    init { require(shop in setOf("plesk", "leaftail")) }
+}
 @Serializable data class EconomyFishingOffer(val id: String, val kind: String, val itemId: String, val unitPrice: Long, val remaining: Long)
 @Serializable data class EconomyFishingShop(val id: String, val openedAt: String, val refreshAt: String, val refreshPricePearls: Long, val offers: List<EconomyFishingOffer>)
 @Serializable data class EconomyLeaftailShopState(val cycle: Long = -1, val purchased: Map<String, Int> = emptyMap()) {
     init { require(cycle in -1L..ECONOMY_MAX_REVISION && purchased.all { (id, amount) -> id.length in 1..80 && amount in 0..1 }) }
 }
-@Serializable data class EconomyLeaftailOffer(val id: String, val itemId: String, val priceCoins: Long, val stock: Int = 1, val quantity: Long = 1) {
+@Serializable data class EconomyLeaftailOffer(val id: String, val itemId: String, val priceCoins: Long, val stock: Int = 1, val quantity: Long = 1,
+    val kind: String = "item", val requiredHomeLevel: Int = 1) {
+    init { require(kind in setOf("item", "wardrobe", "rod", "hook", "bait") && requiredHomeLevel in 1..5) }
     init { require(id.length in 1..60 && itemId.length in 1..80 && priceCoins in 1L..ECONOMY_MAX_BALANCE && stock == 1 && quantity in 1L..100L) }
 }
-@Serializable data class EconomyLeaftailShopConfig(val requiredHomeLevel: Int, val refreshSeconds: Long, val offers: List<EconomyLeaftailOffer>) {
+@Serializable data class EconomyLeaftailShopConfig(val requiredHomeLevel: Int, val refreshSeconds: Long, val offers: List<EconomyLeaftailOffer>,
+    val travelOffers: List<EconomyLeaftailOffer> = emptyList()) {
     init {
-        require(requiredHomeLevel in 1..5 && refreshSeconds == 86400L && offers.size in 1..12)
-        require(offers.map { it.id }.distinct().size == offers.size && offers.map { it.itemId }.distinct().size == offers.size)
+        require(requiredHomeLevel in 1..5 && refreshSeconds == 86400L && offers.size in 1..12 && offers.all { it.kind == "item" })
+        val combined = offers + travelOffers
+        require(combined.size <= 32 && combined.map { it.id }.distinct().size == combined.size &&
+            combined.map { "${it.kind}:${it.itemId}" }.distinct().size == combined.size)
     }
 }
 internal val fishingShopRarities = listOf("common", "uncommon", "rare", "epic", "legendary")

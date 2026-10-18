@@ -99,6 +99,35 @@ test("candidate percentages describe exact loadout odds including automatic inco
   assert.deepEqual(economy.calls, []);
 });
 
+test("mixed-purpose travelling gear names both directions and previews both exact class changes", () => {
+  const economy = controller();
+  economy.snapshot.fishing.ownedRods.push("traveller_rod", "marsh_rod", "dusk_rod");
+  economy.snapshot.fishing.ownedHooks.push("braided_hook", "dusk_hook");
+  economy.snapshot.inventory.spice_bait = 5; economy.snapshot.inventory.dusk_bait = 5;
+  const props = propsFor(economy);
+  for (const [kind, itemId, targets, label] of [
+    ["rod", "traveller_rod", ["uncommon", "rare"], "Для необычной и редкой рыбы"],
+    ["rod", "marsh_rod", ["common", "epic"], "Для обычной и эпической рыбы"],
+    ["rod", "dusk_rod", ["epic", "legendary"], "Для эпической и легендарной рыбы"],
+    ["hook", "braided_hook", ["uncommon", "rare"], "Бонус для необычной и редкой рыбы"],
+    ["hook", "dusk_hook", ["epic", "legendary"], "Бонус для эпической и легендарной рыбы"],
+    ["bait", "spice_bait", ["uncommon", "rare"], "Бонус для необычной и редкой рыбы"],
+    ["bait", "dusk_bait", ["epic", "legendary"], "Бонус для эпической и легендарной рыбы"],
+  ]) {
+    const view = open(props, kind), candidate = fishingTackleOptions(economy.snapshot, kind).find(entry => entry.id === itemId);
+    assert.equal(candidate.direction, label); assert.deepEqual(candidate.targets, targets);
+    const html = renderToStaticMarkup(option(view, itemId));
+    assert.ok(html.includes(label));
+    const expected = fishingClassOdds(economy.snapshot, economy.snapshot.catalog.fishing, candidate.override);
+    for (const target of targets) {
+      assert.ok(html.includes(`data-tackle-odds="${target}"`));
+      const formatted = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(expected.find(row => row.rarity === target).probability * 100);
+      assert.ok(html.includes(`${formatted}%`));
+    }
+  }
+  assert.deepEqual(economy.calls, [], "previewing mixed purposes cannot equip or spend anything");
+});
+
 test("one explicit item tap equips exactly once, closes the picker and awaits confirmed stock", () => {
   for (const [kind, id] of [["rod", "reed_rod"], ["hook", "barbed_hook"], ["bait", "none"]]) {
     const economy = controller(), before = structuredClone(economy.snapshot), props = propsFor(economy), view = open(props, kind);

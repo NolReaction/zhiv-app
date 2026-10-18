@@ -116,6 +116,29 @@ test("fishing shop cannot introduce buy-sell arbitrage or meaningless tackle spe
   assert.throws(() => auditEconomyProgression(invalid), /class probabilities/);
 });
 
+test("mixed travelling tackle keeps specialist limits and needs a real merchant source", () => {
+  const explicitPlesk = readEconomyCatalog();
+  for (const kind of ["rods", "hooks", "baits"]) for (const entry of explicitPlesk.fishing[kind]) {
+    if (entry.shop !== "leaftail") entry.shop = "plesk";
+  }
+  assert.doesNotThrow(() => auditEconomyProgression(explicitPlesk), "an explicit Pleska source has the same old specialist contract");
+  const shares = (common, uncommon, rare, epic, legendary) => ({ common, uncommon, rare, epic, legendary });
+  for (const [mutate, expected] of [
+    [c => { c.fishing.rods.find(rod => rod.id === "willow_rod").classOddsBps = shares(1000, 4000, 4000, 1000, 0); }, /strongly target its named class/],
+    [c => { c.fishing.rods.find(rod => rod.id === "traveller_rod").classOddsBps = shares(1000, 2000, 6000, 1000, 0); }, /two useful directions/],
+    [c => { c.fishing.rods.find(rod => rod.id === "dusk_rod").classOddsBps = shares(2000, 2000, 2000, 2000, 2000); }, /two useful directions/],
+    [c => { c.fishing.hooks.find(hook => hook.id === "braided_hook").rarityWeights.uncommon = 150; }, /two weaker-than-specialist/],
+    [c => { c.fishing.baits.find(bait => bait.itemId === "spice_bait").rarityWeights.uncommon = 100; }, /two weaker-than-specialist/],
+    [c => { c.fishing.baits.find(bait => bait.itemId === "dusk_bait").rarityWeights.common = 90; }, /two weaker-than-specialist/],
+    [c => { c.fishing.rods.find(rod => rod.id === "dusk_rod").shop = "unknown"; }, /Unknown fishing gear merchant/],
+    [c => { c.leaftailShop.travelOffers = c.leaftailShop.travelOffers.filter(offer => offer.itemId !== "spice_bait"); }, /actual matching merchant offer/],
+    [c => { c.leaftailShop.travelOffers.find(offer => offer.itemId === "dusk_rod").priceCoins--; }, /preserve its catalog price/],
+  ]) {
+    const catalog = readEconomyCatalog(); mutate(catalog);
+    assert.throws(() => auditEconomyProgression(catalog), expected);
+  }
+});
+
 
 test("local-sale audit protects processing margins and rejects a zero recovery payout", () => {
   const lowSmokedPrice = readEconomyCatalog();

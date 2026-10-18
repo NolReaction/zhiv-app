@@ -189,8 +189,9 @@ export function commandDevEconomy(token: string | undefined, input: EconomyComma
     && economyCatalog.fishing?.routeIds.includes(command.targetId);
   const message = applyEconomyCommand(next, command, now, () => fishing ? crypto.randomUUID() : command.requestId, reserved, randomInt);
   assertEconomyStorageTransition(value.state, next, reserved);
+  const wardrobeChanged = JSON.stringify(value.state.wardrobe) !== JSON.stringify(next.wardrobe);
   const result = commit(owner, value, next, command, message, now);
-  if (command.action === "buy_wardrobe_item") syncDevWorldWardrobe(token, next.wardrobe ?? [], now);
+  if (wardrobeChanged) syncDevWorldWardrobe(token, next.wardrobe ?? [], now);
   return result;
 }
 /** QA tools mutate the same server snapshot and receipt ledger as ordinary play. */

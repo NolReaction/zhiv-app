@@ -25,6 +25,8 @@ const fund = p => { read(p); stored(p).wallet.coins = 100_000;
 test("old snapshots and profiles receive a free starter rod, never retroactive catch records", () => {
   const p = player(), snapshot = read(p);
   const old = structuredClone(snapshot); delete old.fishing; delete old.catalog.fishing;
+  // A catalog from before fishing also predates the mixed travel-tackle delivery.
+  delete old.catalog.leaftailShop.travelOffers;
   // Before fishing existed, catalogs had neither selectable fish ingredients nor the food extension.
   delete old.food; delete old.residentOrders; delete old.catalog.food;
   for (const recipe of old.catalog.recipes) delete recipe.fishInput;

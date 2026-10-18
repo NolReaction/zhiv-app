@@ -584,22 +584,36 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       if (!shop) return fail("ECONOMY_LEAFTAIL_UNAVAILABLE", "Листохвост пока не открыл лавку");
       requireHome(state, shop.requiredHomeLevel);
       const offer = shop.offers.find(item => item.targetId === command.targetId);
-      const item = offer && economyCatalog.items.find(item => item.id === offer.itemId);
-      if (!offer || !item || (item.category === "special" ? offer.quantity !== 1 : !["wood", "stone", "fiber"].includes(item.id)
-        || !item.tradable || offer.priceCoins !== 2 * item.baseSellPrice * offer.quantity))
-        return fail("ECONOMY_LEAFTAIL_SHOP_CHANGED", "Поставка Листохвоста изменилась. Проверьте прилавок");
+      if (!offer) return fail("ECONOMY_LEAFTAIL_SHOP_CHANGED", "Поставка Листохвоста изменилась. Проверьте прилавок");
+      requireHome(state, offer.requiredHomeLevel);
+      const item = offer.kind === "item" && economyCatalog.items.find(item => item.id === offer.itemId);
+      const clothing = offer.kind === "wardrobe" && wardrobeItems.find(item => item.id === offer.itemId && !item.starter && !item.purchase && item.sparks === 0);
+      const rod = offer.kind === "rod" && economyCatalog.fishing?.rods.find(item => item.id === offer.itemId && item.shop === "leaftail");
+      const hook = offer.kind === "hook" && economyCatalog.fishing?.hooks.find(item => item.id === offer.itemId && item.shop === "leaftail");
+      const bait = offer.kind === "bait" && economyCatalog.fishing?.baits.find(item => item.itemId === offer.itemId && item.shop === "leaftail");
+      const gear = rod || hook || bait;
+      if (item ? (item.category === "special" ? item.tradable || offer.quantity !== 1 : !["wood", "stone", "fiber"].includes(item.id)
+        || !item.tradable || offer.priceCoins !== 2 * item.baseSellPrice * offer.quantity)
+        : clothing ? offer.quantity !== 1 : !gear || offer.priceCoins !== gear.price * offer.quantity || !bait && offer.quantity !== 1)
+        return fail("ECONOMY_LEAFTAIL_SHOP_CHANGED", "Этот товар пока недоступен");
       if (command.totalPrice !== offer.priceCoins)
         return fail("ECONOMY_LEAFTAIL_PRICE_CHANGED", "Цена изменилась. Проверьте предложение Листохвоста");
       if (offer.remaining < 1) return fail("ECONOMY_LEAFTAIL_STOCK", "Сегодня этот предмет уже куплен. Дождитесь новой поставки");
+      if (offer.owned) return fail(clothing ? "ECONOMY_WARDROBE_OWNED" : "ECONOMY_FISHING_OWNED",
+        clothing ? "Эта вещь уже есть в гардеробе" : "Эта снасть уже есть в коллекции");
       if (state.wallet.coins < offer.priceCoins) return fail("ECONOMY_RESOURCES", "Не хватает монет");
-      const inventory = { ...state.inventory, [offer.itemId]: (state.inventory[offer.itemId] ?? 0) + offer.quantity };
-      assertEconomyStorageTransition(state, { ...state, inventory }, reservedItems);
-      const stock = leaftailShopStock(state, now);
+      const inventory = item || bait ? { ...state.inventory, [offer.itemId]: (state.inventory[offer.itemId] ?? 0) + offer.quantity } : state.inventory;
+      if (item || bait) assertEconomyStorageTransition(state, { ...state, inventory }, reservedItems);
+      const stock = leaftailShopStock(state, now), current = fishingState(state);
       // Every validation precedes the debit; the caller commits state and its receipt atomically.
       state.wallet.coins -= offer.priceCoins;
       state.inventory = inventory;
+      if (clothing) state.wardrobe = wardrobeOwned(state.wardrobe, [clothing.id]);
+      if (rod) state.fishing = { ...current, ownedRods: [...current.ownedRods, rod.id] };
+      if (hook) state.fishing = { ...current, ownedHooks: [...current.ownedHooks, hook.id] };
       state.leaftailShop = { cycle: stock.cycle, purchased: { ...stock.purchased, [offer.id]: (stock.purchased[offer.id] ?? 0) + 1 } };
-      return "Покупка у Листохвоста отправлена в кладовую";
+      return clothing ? "Покупка у Листохвоста добавлена в гардероб" : rod ? "Удочка у Листохвоста добавлена в коллекцию"
+        : hook ? "Крючок у Листохвоста добавлен в коллекцию" : "Покупка у Листохвоста отправлена в кладовую";
     }
     case "buy_wardrobe_item": {
       const item = wardrobeItems.find(item => item.purchase && wardrobePurchaseTarget(item) === command.targetId);
@@ -619,9 +633,9 @@ function applyEconomyTransition(state: EconomyState, command: EconomyCommand, no
       if (!shop || fishingShopExpired(shop, now)) return fail("ECONOMY_FISHING_SHOP_CHANGED", "Предложения обновились. Загляните в лавку ещё раз");
       const offer = shop.offers.find(item => item.id === command.targetId);
       if (!offer) return fail("ECONOMY_FISHING_SHOP_CHANGED", "Этого предложения уже нет. Загляните в лавку ещё раз");
-      const rod = offer.kind === "rod" ? catalog.rods.find(item => item.id === offer.itemId) : undefined;
-      const hook = offer.kind === "hook" ? catalog.hooks.find(item => item.id === offer.itemId) : undefined;
-      const bait = offer.kind === "bait" ? catalog.baits.find(item => item.itemId === offer.itemId) : undefined;
+      const rod = offer.kind === "rod" ? catalog.rods.find(item => item.id === offer.itemId && item.shop !== "leaftail") : undefined;
+      const hook = offer.kind === "hook" ? catalog.hooks.find(item => item.id === offer.itemId && item.shop !== "leaftail") : undefined;
+      const bait = offer.kind === "bait" ? catalog.baits.find(item => item.itemId === offer.itemId && item.shop !== "leaftail") : undefined;
       const fish = offer.kind === "fish" ? fishClassForItem(offer.itemId, catalog) : undefined;
       if (!rod && !hook && !bait && fish?.rarity !== "common") return fail("ECONOMY_FISHING_ITEM", "Плёска не продаёт этот предмет");
       requireHome(state, (rod ?? hook ?? bait)?.requiredHomeLevel ?? 1);

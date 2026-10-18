@@ -69,6 +69,8 @@ test("new outfits preserve the face, planted feet and individual front/back deta
     { palette: "ember", head: "acorn_cap", neck: "forest_bandana" },
     { palette: "heather", head: "knitted_cap", neck: "river_scarf" },
     { palette: "frost", head: "moon_crown", neck: "moon_scarf" },
+    { palette: "dune_moss", head: "trail_hat", neck: "sea_neckerchief" },
+    { palette: "storm_moss", head: "rain_hood", neck: "sunset_scarf" },
   ];
   for (const outfit of outfits) for (const direction of ["front", "back", "left", "right"]) {
     for (const pose of ["idle", "walk", "stretch", "reach", "hold", "chew", "fish", "sleep"]) for (let frame = 0; frame < 4; frame++) {
@@ -89,12 +91,34 @@ test("new outfits preserve the face, planted feet and individual front/back deta
 
 test("body and interaction painters share a safe palette for every new moss colour", async () => {
   const { mossPalette } = await vite.ssrLoadModule("/features/mochlik/appearance-palette.ts");
-  for (const id of ["moss", "fern", "autumn", "heather", "frost", "ember"]) {
+  for (const id of ["moss", "fern", "autumn", "heather", "frost", "ember", "dune_moss", "storm_moss"]) {
     const palette = mossPalette(id);
     const sprite = pixelSprite("idle", "back", 0, { palette: id, head: null, neck: null });
     for (const color of Object.values(palette)) assert.ok([...sprite.pixels.values()].includes(color));
   }
   for (const id of [undefined, "unknown", "constructor", "__proto__"]) assert.equal(mossPalette(id), mossPalette("moss"));
+});
+
+test("travel wearables keep their own visible colours and never cover fishing eyes or planted feet", () => {
+  const pieces = [
+    { slot: "head", id: "trail_hat", color: "#a98a56" },
+    { slot: "head", id: "rain_hood", color: "#55788b" },
+    { slot: "neck", id: "sea_neckerchief", color: "#4d91a4" },
+    { slot: "neck", id: "sunset_scarf", color: "#cd7652" },
+  ];
+  for (const piece of pieces) for (const direction of ["front", "back", "left", "right"]) {
+    const appearance = { palette: "moss", head: null, neck: null, [piece.slot]: piece.id };
+    const still = pixelSprite("idle", direction, 0, appearance);
+    assert.ok([...still.pixels.values()].includes(piece.color), `${piece.id} has its own visible drawing from ${direction}`);
+    for (const pose of ["fish", "fishing-walk", "reach", "present"]) for (const crouch of [0, 3, 6]) {
+      const rig = { gardening: true, crouch, lean: direction === "left" ? -2 : 2, fishingStance: true };
+      const plain = pixelSprite(pose, direction, 0, { palette: "moss", head: null, neck: null }, rig);
+      const dressed = pixelSprite(pose, direction, 0, appearance, rig);
+      const eyes = sprite => [...sprite.pixels].filter(([, color]) => color === "#30291d");
+      assert.deepEqual(eyes(dressed), eyes(plain), `${piece.id} leaves the fishing gaze clear`);
+      assert.deepEqual(pixelSpriteContact(dressed), pixelSpriteContact(plain), `${piece.id} keeps the same grounded feet`);
+    }
+  }
 });
 
 test("sprite cache is bounded, reuses hot frames and normalizes frame input", () => {

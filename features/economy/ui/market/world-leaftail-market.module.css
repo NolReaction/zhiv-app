@@ -35,3 +35,20 @@
 .success p + p { margin-top: 3px; }
 .recovery { padding: 9px; border-radius: 8px; background: #ead1b2; color: #86432d; font-size: 11px; }
 @media (max-width: 360px) { .offerBottom { flex-wrap: wrap; } .offerBottom > small { flex: 1 1 100%; } .shop.shop .buy { min-height: 44px; } }
+.tabs { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+.shop.shop .tabs button { padding: 5px 3px; font-size: 10px; }
+.hint { margin-bottom: 7px !important; line-height: 1.4; }
+.clothes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.clothes .offer { display: flex; flex-direction: column; padding: 8px; }
+.clothes .item { flex: 1; flex-direction: column; align-items: flex-start; gap: 5px; }
+.clothes .item > div { gap: 4px; }
+.clothes .item strong { font-size: 11px; }
+.clothes .item small { line-height: 1.35; font-size: 9px; }
+.clothes .offerBottom { flex-direction: column; align-items: stretch; gap: 5px; }
+.clothes .offerBottom > small { flex: none; font-size: 9px; }
+.shop.shop .clothes .buy { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 3px; min-height: 44px; padding: 5px 3px; font-size: 10px; }
+.fitting { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 5px; border-radius: 8px; background: #dedfc0; }
+.fitting canvas { flex: 0 0 100px; width: 100px; height: 100px; }
+.fitting > div { min-width: 0; }
+.fitting p { margin-top: 4px; font-size: 10px; }
+.fitting small { display: block; margin-top: 4px; color: #656c51; font-size: 9px; }

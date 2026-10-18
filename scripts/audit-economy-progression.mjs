@@ -158,6 +158,19 @@ export function auditEconomyProgression(catalog) {
     for (const hook of fishing.hooks) assert(Number.isSafeInteger(hook.price) && hook.price >= 0 && Number.isSafeInteger(hook.rareBonus) && hook.rareBonus >= 0, "Invalid hook price or bonus");
     const rarity = new Set(["common", "uncommon", "rare", "epic", "legendary"]);
     const validGear = gear => rarity.has(gear.rarity) && Number.isInteger(gear.requiredHomeLevel) && gear.requiredHomeLevel >= 1 && gear.requiredHomeLevel <= 5;
+    const merchantGearLevel = (entry, kind) => {
+      assert(entry.shop === undefined || entry.shop === "plesk" || entry.shop === "leaftail", "Unknown fishing gear merchant");
+      if (entry.shop !== "leaftail") return entry.requiredHomeLevel;
+      const spec = catalog.leaftailShop, itemId = entry.id ?? entry.itemId;
+      const offer = [...(spec?.offers ?? []), ...(spec?.travelOffers ?? [])].find(offer => offer.itemId === itemId && offer.kind === kind);
+      assert(spec && offer && Number.isInteger(spec.requiredHomeLevel) && spec.requiredHomeLevel >= 3,
+        "Leaftail gear needs an actual matching merchant offer");
+      const quantity = offer.quantity ?? 1;
+      assert(Number.isSafeInteger(quantity) && quantity > 0 && (kind === "bait" || quantity === 1)
+        && offer.priceCoins === entry.price * quantity && offer.stock === 1,
+      "Leaftail gear offer must preserve its catalog price and bounded stock");
+      return Math.max(entry.requiredHomeLevel, spec.requiredHomeLevel, offer.requiredHomeLevel ?? 1);
+    };
     for (const rod of fishing.rods) assert(Number.isSafeInteger(rod.price) && rod.price >= 0 && Number.isSafeInteger(rod.rareBonus) && rod.rareBonus >= 0 && validGear(rod), "Invalid rod price, bonus or progression");
     unique(fishing.hooks ?? [], "hook");
     assert(fishing.hooks?.some(hook => hook.id === "bare_hook" && hook.price === 0 && hook.rareBonus === 0), "Starter hook must remain free");
@@ -184,14 +197,19 @@ export function auditEconomyProgression(catalog) {
       assert(Number.isSafeInteger(bait.price) && bait.price > items.get(bait.itemId).baseSellPrice, "Bait buy-sell arbitrage");
       assert(validGear(bait), "Invalid bait rarity or progression");
       itemUses.add(bait.itemId); // One stack unit is consumed by a special fishing departure.
-      merchantItems.push(bait.itemId);
+      merchantItems.push({ itemId: bait.itemId, requiredHomeLevel: merchantGearLevel(bait, "bait") });
     }
     for (const rod of fishing.rods) {
       assert(rod.classOddsBps && Object.keys(rod.classOddsBps).length === rarity.size
         && [...rarity].every(id => Number.isSafeInteger(rod.classOddsBps[id]) && rod.classOddsBps[id] >= 0 && rod.classOddsBps[id] <= 10000)
         && Object.values(rod.classOddsBps).reduce((sum, value) => sum + value, 0) === 10000,
       "Each rod needs five class probabilities adding to 100%");
-      assert(rod.classOddsBps[rod.rarity] >= 5000, "An arcade rod must strongly target its named class");
+      const requiredHomeLevel = merchantGearLevel(rod, "rod");
+      if (rod.shop === "leaftail") {
+        const shares = Object.values(rod.classOddsBps).sort((a, b) => b - a);
+        assert(requiredHomeLevel >= 3 && shares[0] <= 5000 && shares[1] >= 3000 && shares[0] + shares[1] >= 6000,
+          "A travelling rod needs two useful directions without replacing a class specialist");
+      } else assert(rod.classOddsBps[rod.rarity] >= 5000, "An arcade rod must strongly target its named class");
       assert(rod.rarity === "legendary" || rod.classOddsBps.legendary === 0, "Only legendary rods open legendary fish");
     }
     const gear = [...fishing.hooks, ...fishing.baits];
@@ -200,9 +218,17 @@ export function auditEconomyProgression(catalog) {
     for (const list of [fishing.hooks]) {
       assert.equal(new Set(list.map(entry => JSON.stringify([...rarity].map(id => entry.rarityWeights[id])))).size, list.length, "Durable tackle must have distinct specializations");
     }
-    for (const entry of gear) for (const id of rarity) assert.equal(entry.rarityWeights[id],
-      entry.id === "bare_hook" || id !== entry.rarity ? 100 : entry.id === "round_hook" ? 125 : 150,
-      "Hooks and bait boost only their named class; normalization adjusts other shares");
+    for (const entry of gear) {
+      const requiredHomeLevel = merchantGearLevel(entry, entry.id ? "hook" : "bait");
+      if (entry.shop === "leaftail") {
+        const boosted = [...rarity].filter(id => entry.rarityWeights[id] > 100);
+        assert(requiredHomeLevel >= 3 && boosted.length === 2 && boosted.includes(entry.rarity)
+          && [...rarity].every(id => boosted.includes(id) ? entry.rarityWeights[id] < 150 : entry.rarityWeights[id] === 100),
+        "Travelling hooks and bait need exactly two weaker-than-specialist class boosts");
+      } else for (const id of rarity) assert.equal(entry.rarityWeights[id],
+        entry.id === "bare_hook" || id !== entry.rarity ? 100 : entry.id === "round_hook" ? 125 : 150,
+        "Hooks and bait boost only their named class; normalization adjusts other shares");
+    }
     assert.deepEqual(Object.keys(fishing.collectionDrawsByRoute ?? {}).sort(), [...fishing.routeIds].sort(), "Every fishing route needs a class draw budget");
     for (const [routeId, draws] of Object.entries(fishing.collectionDrawsByRoute ?? {})) {
       const route = catalog.explorations.find(route => route.id === routeId);
@@ -308,11 +334,10 @@ export function auditEconomyProgression(catalog) {
     if (rare && completed.home >= rare.requiredHomeLevel && catalog.explorations.some(route => hasRequirements(route) && hasMaterials(route.cost))) {
       for (const item of rare.itemIds) if (!obtainable.has(item)) { obtainable.add(item); changed = true; }
     }
-    // Repeatable free produce supplies coins; each eligible rotating offer has positive probability.
+    // Repeatable free produce supplies coins; each eligible shop offer can eventually be bought.
     // This does not assume another player supplies a missing progression material.
-    if ([...obtainable].some(id => items.get(id)?.tradable)) for (const item of merchantItems) {
-      const bait = catalog.fishing.baits.find(b => b.itemId === item);
-      if (completed.home >= (bait?.requiredHomeLevel ?? 1) && !obtainable.has(item)) { obtainable.add(item); changed = true; }
+    if ([...obtainable].some(id => items.get(id)?.tradable)) for (const { itemId, requiredHomeLevel } of merchantItems) {
+      if (completed.home >= requiredHomeLevel && !obtainable.has(itemId)) { obtainable.add(itemId); changed = true; }
     }
     if (catalog.fishing && catalog.explorations.some(route => catalog.fishing.routeIds.includes(route.id) && hasRequirements(route) && hasMaterials(route.cost))) {
       for (const fish of [...catalog.fishing.fish, ...catalog.fishing.classes]) {

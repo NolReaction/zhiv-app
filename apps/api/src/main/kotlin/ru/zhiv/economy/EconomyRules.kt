@@ -74,9 +74,7 @@ object EconomyRules {
         require(catalog.items.map { it.id }.distinct().size == catalog.items.size)
         require(catalog.items.all { if (it.category == "special") it.baseSellPrice == 0L && !it.tradable else it.baseSellPrice > 0L })
         catalog.leaftailShop?.let { shop ->
-            require(shop.offers.all { offer -> catalog.items.any { item -> item.id == offer.itemId &&
-                (if (item.category == "special") !item.tradable && offer.quantity == 1L
-                else item.id in setOf("wood", "stone", "fiber") && item.tradable && offer.priceCoins == 2L * item.baseSellPrice * offer.quantity) } })
+            require((shop.offers + shop.travelOffers).all { EconomyLeaftailShops.validOffer(catalog, it) })
         }
         require(catalog.buildings.map { it.id }.distinct().size == catalog.buildings.size)
         require(catalog.recipes.map { it.id }.distinct().size == catalog.recipes.size)
@@ -641,9 +639,9 @@ object EconomyRules {
                     economyFailure("ECONOMY_FISHING_SHOP_CHANGED", "Предложения обновились. Загляните в лавку ещё раз")
                 val offer = shop.offers.find { it.id == command.targetId }
                     ?: economyFailure("ECONOMY_FISHING_SHOP_CHANGED", "Этого предложения уже нет. Загляните в лавку ещё раз")
-                val rod = spec.rods.find { offer.kind == "rod" && it.id == offer.itemId }
-                val hook = spec.hooks.find { offer.kind == "hook" && it.id == offer.itemId }
-                val bait = spec.baits.find { offer.kind == "bait" && it.itemId == offer.itemId }
+                val rod = spec.rods.find { offer.kind == "rod" && it.id == offer.itemId && it.shop != "leaftail" }
+                val hook = spec.hooks.find { offer.kind == "hook" && it.id == offer.itemId && it.shop != "leaftail" }
+                val bait = spec.baits.find { offer.kind == "bait" && it.itemId == offer.itemId && it.shop != "leaftail" }
                 val fish = spec.classes.find { offer.kind == "fish" && it.itemId == offer.itemId && it.rarity == "common" }
                 if (rod == null && hook == null && bait == null && fish == null) economyFailure("ECONOMY_FISHING_ITEM", "Плёска не продаёт этот предмет")
                 requireHome(state, rod?.requiredHomeLevel ?: hook?.requiredHomeLevel ?: bait?.requiredHomeLevel ?: 1)

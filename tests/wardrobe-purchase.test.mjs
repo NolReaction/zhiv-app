@@ -68,7 +68,8 @@ test("old clothes cannot be repurchased and unknown, free, reward and fishing it
   assert.throws(() => issue(p, command(p, "fern")), { code: "ECONOMY_WARDROBE_OWNED" });
   const before = economy.getDevEconomy(p.token, now);
   assert.ok(before.wardrobe.includes("explorer_cap")); assert.ok(!before.wardrobe.includes("willow_rod"));
-  for (const targetId of ["coins:moss", "coins:explorer_cap", "coins:willow_rod", "coins:fish", "coins:__proto__", "pearls:fern", "fern"])
+  for (const targetId of ["coins:moss", "coins:explorer_cap", "coins:willow_rod", "coins:fish", "coins:__proto__", "pearls:fern", "fern",
+    ...["trail_hat", "rain_hood", "sea_neckerchief", "sunset_scarf", "dune_moss", "storm_moss"].flatMap(id => [`coins:${id}`, `pearls:${id}`, id])])
     assert.throws(() => issue(p, command(p, "heather", { targetId })), { code: "ECONOMY_WARDROBE_ITEM" });
   assert.deepEqual(economy.getDevEconomy(p.token, now), before);
 });

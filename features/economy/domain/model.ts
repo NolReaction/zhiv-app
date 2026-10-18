@@ -1,6 +1,7 @@
 import { z } from "zod";
 import catalogJson from "@/apps/api/src/main/resources/world/economy-catalog.json";
 import { hasGardenBerryReward } from "./garden-berries";
+import { wardrobeItems } from "@/features/world/domain/wardrobe";
 
 import { ECONOMY_MAX_BALANCE, ECONOMY_MAX_PEARLS, ECONOMY_MAX_ITEMS, ECONOMY_PEARL_SCALE } from "./money";
 export { ECONOMY_MAX_BALANCE, ECONOMY_MAX_PEARLS, ECONOMY_MAX_ITEMS, ECONOMY_CURRENCY_SCALE, ECONOMY_PEARL_SCALE } from "./money";
@@ -62,12 +63,12 @@ export const economyFishingCatalogSchema = z.object({
   fish: z.array(z.object({ itemId: id, description: z.string(), rarity: z.enum(["common", "uncommon", "rare", "epic", "legendary"]),
     weight: count.positive().max(10000).nullish(), affinity: count.max(10).nullish(), buyPrice: balance.positive(), requiredHookId: id.nullish() })).min(1).max(100),
   rods: z.array(z.object({ id, name: z.string(), description: z.string(), price: balance, rareBonus: count.max(100), rarityWeights: rarityWeights.nullish(),
-    classOddsBps: fishingRodClassOdds.nullish(),
+    classOddsBps: fishingRodClassOdds.nullish(), shop: z.enum(["plesk", "leaftail"]).default("plesk"),
     rarity: z.enum(["common", "uncommon", "rare", "epic", "legendary"]).default("common"), requiredHomeLevel: count.positive().max(5).default(1) })).min(1).max(100),
-  hooks: z.array(z.object({ id, name: z.string(), description: z.string(), price: balance, rareBonus: count.max(100), rarityWeights: rarityWeights.nullish(),
+  hooks: z.array(z.object({ id, name: z.string(), description: z.string(), shop: z.enum(["plesk", "leaftail"]).default("plesk"), price: balance, rareBonus: count.max(100), rarityWeights: rarityWeights.nullish(),
     rarity: z.enum(["common", "uncommon", "rare", "epic", "legendary"]).default("common"), requiredHomeLevel: count.positive().max(5).default(1) })).min(1).max(100)
-    .default([{ id: "bare_hook", name: "Простой крючок", description: "Начальная снасть без дополнительных усилений.", price: 0, rareBonus: 0, rarity: "common", requiredHomeLevel: 1 }]),
-  baits: z.array(z.object({ itemId: id, description: z.string(), price: balance.positive(), rareBonus: count.max(100), rarityWeights: rarityWeights.nullish(),
+    .default([{ id: "bare_hook", name: "Простой крючок", description: "Начальная снасть без дополнительных усилений.", price: 0, rareBonus: 0, rarity: "common", requiredHomeLevel: 1, shop: "plesk" }]),
+  baits: z.array(z.object({ itemId: id, description: z.string(), shop: z.enum(["plesk", "leaftail"]).default("plesk"), price: balance.positive(), rareBonus: count.max(100), rarityWeights: rarityWeights.nullish(),
     rarity: z.enum(["common", "uncommon", "rare", "epic", "legendary"]).default("common"), requiredHomeLevel: count.positive().max(5).default(1) })).max(100),
 });
 export const economyRareDropsSchema = z.object({ version: z.literal(1), requiredHomeLevel: count.positive().max(5),
@@ -127,6 +128,8 @@ export const economyFoodCatalogSchema = z.object({
     })).min(1).max(1000),
   }).refine(orders => orders.replacementSeconds <= orders.refreshSeconds && orders.completionSeconds <= orders.refreshSeconds),
 });
+const economyLeaftailOfferSchema = z.object({ id: id.max(60), itemId: id, priceCoins: balance.positive(), stock: z.literal(1), quantity: count.min(1).max(100).default(1),
+  kind: z.enum(["item", "wardrobe", "rod", "hook", "bait"]).default("item"), requiredHomeLevel: count.min(1).max(5).default(1) });
 export const economyCatalogSchema = z.object({
   stageOrders: z.array(z.object({ homeLevel: count.min(1).max(4), orders: z.array(economyResidentOrderTermsSchema).min(1).max(100),
     intervalSeconds: count.max(31_536_000).default(0), completionRewards: quantities.default({}) }))
@@ -141,7 +144,8 @@ export const economyCatalogSchema = z.object({
     slots: z.number().int().min(2).max(3), requiredHomeLevel: z.number().int().min(1).max(5), pricePearls: count.positive().max(ECONOMY_MAX_PEARLS),
   })).max(2).refine(upgrades => upgrades.every((upgrade, index) => upgrade.slots === index + 2)) }).default({ upgrades: [] }),
   leaftailShop: z.object({ requiredHomeLevel: count.min(1).max(5), refreshSeconds: z.literal(86400),
-    offers: z.array(z.object({ id: id.max(60), itemId: id, priceCoins: balance.positive(), stock: z.literal(1), quantity: count.min(1).max(100).default(1) })).min(1).max(12),
+    offers: z.array(economyLeaftailOfferSchema).min(1).max(12),
+    travelOffers: z.array(economyLeaftailOfferSchema).max(32).default([]),
   }).optional(),
   rareDrops: economyRareDropsSchema.optional(),
   fishing: economyFishingCatalogSchema.optional(),
@@ -182,12 +186,20 @@ export const economyCatalogSchema = z.object({
   const fishIds = new Set(catalog.fishing?.fish.map(fish => fish.itemId) ?? []);
   const buildingIds = new Set(catalog.buildings.map(building => building.id));
   const invalid = (message: string) => context.addIssue({ code: z.ZodIssueCode.custom, message });
-  const leafOffers = catalog.leaftailShop?.offers ?? [];
-  if (new Set(leafOffers.map(offer => offer.id)).size !== leafOffers.length
-    || new Set(leafOffers.map(offer => offer.itemId)).size !== leafOffers.length
-    || leafOffers.some(offer => !catalog.items.some(item => item.id === offer.itemId && (item.category === "special" ? offer.quantity === 1
-      : ["wood", "stone", "fiber"].includes(item.id) && item.tradable && offer.priceCoins === 2 * item.baseSellPrice * offer.quantity))))
-    invalid("Leaftail offers require distinct special items or base-material bundles at twice their catalog value");
+  const leafOffers = [...(catalog.leaftailShop?.offers ?? []), ...(catalog.leaftailShop?.travelOffers ?? [])];
+  if (leafOffers.length > 32 || catalog.leaftailShop?.offers.some(offer => offer.kind !== "item")
+    || new Set(leafOffers.map(offer => offer.id)).size !== leafOffers.length
+    || new Set(leafOffers.map(offer => `${offer.kind}:${offer.itemId}`)).size !== leafOffers.length
+    || leafOffers.some(offer => {
+      if (offer.kind === "item") return !catalog.items.some(item => item.id === offer.itemId && (item.category === "special" ? !item.tradable && offer.quantity === 1
+        : ["wood", "stone", "fiber"].includes(item.id) && item.tradable && offer.priceCoins === 2 * item.baseSellPrice * offer.quantity));
+      if (offer.kind === "wardrobe") return offer.quantity !== 1 || !wardrobeItems.some(item => item.id === offer.itemId && !item.starter && !item.purchase && item.sparks === 0);
+      const gear = offer.kind === "rod" ? catalog.fishing?.rods.find(item => item.id === offer.itemId)
+        : offer.kind === "hook" ? catalog.fishing?.hooks.find(item => item.id === offer.itemId)
+        : catalog.fishing?.baits.find(item => item.itemId === offer.itemId);
+      return !gear || gear.shop !== "leaftail" || offer.priceCoins !== gear.price * offer.quantity
+        || offer.kind !== "bait" && offer.quantity !== 1;
+    })) invalid("Leaftail offers require valid exclusive clothing, tackle or non-profitable material bundles");
   if (catalog.fishing) {
     const fishing = catalog.fishing;
     if (fishing.classes.some(group => !itemIds.has(group.itemId) || fishIds.has(group.itemId)

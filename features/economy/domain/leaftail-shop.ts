@@ -1,6 +1,6 @@
 import { economyCatalog, type EconomyCatalog, type EconomyLeaftailShop, type EconomyState } from "./model";
 
-type ShopState = Pick<EconomyState, "buildings" | "leaftailShop">;
+type ShopState = Pick<EconomyState, "buildings" | "leaftailShop"> & Partial<Pick<EconomyState, "fishing" | "wardrobe">>;
 
 export const leaftailTravelMessage = (requiredHomeLevel: number) =>
   `Листохвост в путешествии. Вернётся, когда дом достигнет ${requiredHomeLevel}-го уровня.`;
@@ -20,8 +20,19 @@ export function leaftailShopView(state: ShopState, now: number, catalog: Economy
   const stock = leaftailShopStock(state, now, catalog);
   return { cycle: stock.cycle, refreshAt: (stock.cycle + 1) * spec.refreshSeconds * 1000,
     requiredHomeLevel: spec.requiredHomeLevel, unlocked: (state.buildings.home ?? 1) >= spec.requiredHomeLevel,
-    offers: spec.offers.map(offer => ({ ...offer, targetId: `${stock.cycle}:${offer.id}`,
-      quantity: offer.quantity ?? 1,
-      section: catalog.items.find(item => item.id === offer.itemId)?.category === "special" ? "finds" as const : "supplies" as const,
-      remaining: Math.max(0, offer.stock - (stock.purchased[offer.id] ?? 0)) })) };
+    offers: [...spec.offers, ...(spec.travelOffers ?? [])].map(offer => {
+      const kind = offer.kind ?? "item";
+      const gear = kind === "rod" ? catalog.fishing?.rods.find(item => item.id === offer.itemId)
+        : kind === "hook" ? catalog.fishing?.hooks.find(item => item.id === offer.itemId)
+        : kind === "bait" ? catalog.fishing?.baits.find(item => item.itemId === offer.itemId) : undefined;
+      const requiredHomeLevel = Math.max(spec.requiredHomeLevel, offer.requiredHomeLevel ?? 1, gear?.requiredHomeLevel ?? 1);
+      const owned = kind === "wardrobe" ? Boolean(state.wardrobe?.includes(offer.itemId))
+        : kind === "rod" ? Boolean(state.fishing?.ownedRods.includes(offer.itemId))
+        : kind === "hook" ? Boolean(state.fishing?.ownedHooks.includes(offer.itemId)) : false;
+      return { ...offer, kind, targetId: `${stock.cycle}:${offer.id}`, quantity: offer.quantity ?? 1,
+        requiredHomeLevel, unlocked: (state.buildings.home ?? 1) >= requiredHomeLevel, owned,
+        section: kind === "wardrobe" ? "wardrobe" as const : kind !== "item" ? "tackle" as const
+          : catalog.items.find(item => item.id === offer.itemId)?.category === "special" ? "finds" as const : "supplies" as const,
+        remaining: Math.max(0, offer.stock - (stock.purchased[offer.id] ?? 0)) };
+    }) };
 }

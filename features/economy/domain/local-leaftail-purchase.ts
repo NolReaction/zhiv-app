@@ -1,12 +1,15 @@
+import { wardrobeItems } from "@/features/world/domain/wardrobe";
 import type { EconomyCommand, EconomyResult, EconomyView } from "./model";
 
 export type LocalLeaftailPurchase = Readonly<{
   id: string; ownerPublicId: string; revision: number; coins: number;
+  kind: "item" | "wardrobe" | "rod" | "hook" | "bait";
+  destination: "pantry" | "wardrobe" | "tackle";
   items: readonly Readonly<{ itemId: string; name: string; quantity: number }>[];
 }>;
 
-/** Freeze the exact local purchase, rather than rebuilding its receipt from a
- * later delivery, catalog or wallet. A replay needs the original before state. */
+/** Freeze the accepted local quote and exact ownership/inventory change. Neither
+ * a later GET nor a replay without its original before state proves a purchase. */
 export function localLeaftailPurchaseFromReceipt(before: EconomyView | null, result: EconomyResult,
   command: EconomyCommand): LocalLeaftailPurchase | null {
   const after = result.state;
@@ -22,13 +25,27 @@ export function localLeaftailPurchaseFromReceipt(before: EconomyView | null, res
   const previousPurchased = before.leaftailShop?.cycle === stock?.cycle ? before.leaftailShop.purchased[offerId ?? ""] ?? 0 : 0;
   if (!offerId || !Number.isSafeInteger(previousPurchased) || previousPurchased < 0
     || stock.purchased[offerId] !== previousPurchased + 1) return null;
-  const items = Object.entries(after.inventory).flatMap(([itemId, quantity]) => {
-    const previous = before.inventory[itemId] ?? 0;
-    if (![previous, quantity].every(value => Number.isSafeInteger(value) && value >= 0) || quantity <= previous) return [];
-    const item = after.catalog.items.find(item => item.id === itemId);
-    return item ? [Object.freeze({ itemId, name: item.name, quantity: quantity - previous })] : [];
-  });
-  if (!items.length) return null;
+  const spec = before.catalog.leaftailShop;
+  const offer = spec && [...spec.offers, ...(spec.travelOffers ?? [])].find(item => item.id === offerId);
+  if (!offer || offer.priceCoins !== coins) return null;
+  const { itemId } = offer, kind = offer.kind ?? "item", quantity = offer.quantity ?? 1;
+  if (!Number.isSafeInteger(quantity) || quantity < 1) return null;
+  let name: string | undefined;
+  if (kind === "wardrobe") {
+    if (quantity !== 1 || before.wardrobe?.includes(itemId) || !after.wardrobe?.includes(itemId)) return null;
+    name = wardrobeItems.find(item => item.id === itemId)?.name;
+  } else if (kind === "rod" || kind === "hook") {
+    const previous = kind === "rod" ? before.fishing?.ownedRods : before.fishing?.ownedHooks;
+    const owned = kind === "rod" ? after.fishing?.ownedRods : after.fishing?.ownedHooks;
+    if (quantity !== 1 || previous?.includes(itemId) || !owned?.includes(itemId)) return null;
+    name = (kind === "rod" ? after.catalog.fishing?.rods : after.catalog.fishing?.hooks)?.find(item => item.id === itemId)?.name;
+  } else {
+    const previous = before.inventory[itemId] ?? 0, current = after.inventory[itemId] ?? 0;
+    if (![previous, current].every(value => Number.isSafeInteger(value) && value >= 0) || current - previous !== quantity) return null;
+    name = after.catalog.items.find(item => item.id === itemId)?.name;
+  }
+  if (!name) return null;
   return Object.freeze({ id: command.requestId, ownerPublicId: after.ownerPublicId, revision: result.acceptedRevision,
-    coins, items: Object.freeze(items) });
+    coins, kind, destination: kind === "wardrobe" ? "wardrobe" : kind === "rod" || kind === "hook" ? "tackle" : "pantry",
+    items: Object.freeze([Object.freeze({ itemId, name, quantity })]) });
 }

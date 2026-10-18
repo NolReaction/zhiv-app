@@ -27,6 +27,17 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
 const storage = () => { const values = new Map(); return { getItem: key => values.get(key) ?? null,
   setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) }; };
 
+test("travel bait reports only its accepted bundle and permanent purchases do not masquerade as pantry gains", () => {
+  const before = { ...state(), leaftailShop: { cycle: 100, purchased: {} } };
+  const after = { ...state(1, [], { spice_bait: 5 }), leaftailShop: { cycle: 100, purchased: { spice_bait: 1 } } };
+  const event = inventoryGainFromReceipt(before, result(after), command("buy_leaftail_item", "100:spice_bait"));
+  assert.deepEqual(event.items, [{ itemId: "spice_bait", quantity: 5 }]);
+  for (const item of ["trail_hat", "traveller_rod", "braided_hook"]) {
+    assert.equal(inventoryGainFromReceipt(before, result({ ...after, inventory: { [item]: 1 } }),
+      command("buy_leaftail_item", `100:${item}`)), null);
+  }
+});
+
 test("confirmed fishing feedback draws exact saved species while economic items stay rarity classes", () => {
   const trip = { ...job("exploration", { fish_silverfin: 2, fish_rudd: 1, fish_mooncarp: 1, ancient_core: 1 }),
     fishing: { rodId: "willow_rod", hookId: "bare_hook", baitId: null, fishId: "fish_silverfin", catchRevealed: true } };

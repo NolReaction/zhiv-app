@@ -52,6 +52,74 @@ export const equipmentArt: Record<string, ReactNode> = {
   heather: mossShade("heather"),
   frost: mossShade("frost"),
   ember: mossShade("ember"),
+  dune_moss: mossShade("dune_moss"),
+  storm_moss: mossShade("storm_moss"),
+  trail_hat: <>
+    <path d="M4 28c7-5 32-5 40 0 4 7-6 13-20 13S0 35 4 28Z" fill="#a98a56" />
+    <path d="m12 29 3-18 8-3 10 3 4 18c-7 4-18 4-25 0Z" fill="#c8b17c" />
+    <path d="m13 23-1 6c7 4 18 4 25 0l-1-6c-7 3-16 3-23 0Z" fill="#69583c" />
+    <path d="M6 29c7 5 28 5 36 0m-21-16 5-1 4 1" fill="none" stroke="#e0cc98" />
+    <path d="M28 24h7v6h-7Z" fill="#d7c584" strokeWidth="1.3" />
+    <path d="M30 26h3v2h-3Z" fill="#69583c" stroke="none" />
+  </>,
+  rain_hood: <>
+    <path d="M7 37 10 17C12 1 36 1 39 17l3 20-11 7H18Z" fill="#55788b" />
+    <path d="M25 9c-8 2-13 9-13 18l5 9h15l5-9c0-9-5-16-12-18Z" fill="#3c5668" />
+    <path d="M24 11c-7 2-10 9-10 17l5 7h11l5-7c0-8-4-15-11-17Z" fill="#c4d3ca" />
+    <path d="M24 7v6m-7 23-3 6m18-6 4 6" fill="none" stroke="#90a9ad" strokeWidth="2.2" />
+    <path d="m16 34 8 5 9-5-3 10H19Z" fill="#55788b" />
+    <path d="m21 37-2 9m8-9 3 9" fill="none" stroke="#d1c79a" strokeWidth="1.5" />
+  </>,
+  sea_neckerchief: <>
+    <path d="M7 14c8-8 27-8 35 0L25 39Z" fill="#4d91a4" />
+    <path d="m11 15 14 19 13-19M16 14l9 12 8-12" fill="none" stroke="#dce6d0" strokeWidth="2" />
+    <path d="m21 28-7 15 9-2 2-10 4 12 9 1-9-16Z" fill="#4d91a4" />
+    <path d="m18 39 4-7m9 9-3-9" fill="none" stroke="#dce6d0" strokeWidth="1.5" />
+    <path d="m23 27 6 1-1 7-6-1Z" fill="#e7d3a0" />
+  </>,
+  sunset_scarf: <>
+    {scarf("#cd7652", "#efba79", "#894e47")}
+    <path d="m14 28 8 3m-9 3 8 3m5-1 8 1m-8 3 7 1" fill="none" stroke="#efba79" strokeWidth="2" />
+  </>,
+  braided_hook: <>
+    <path d="M23 7v22c0 14 18 14 18 1V21l-7 8" fill="none" stroke="#789187" strokeWidth="5" />
+    <path d="M23 8v21c0 10 14 11 15 2" fill="none" stroke="#c2d2bf" strokeWidth="1.5" />
+    <circle cx="23" cy="7" r="5" fill="#b5ad8a" />
+    <circle cx="23" cy="7" r="2" fill="#eef0d8" strokeWidth="1" />
+    <circle cx="14" cy="10" r="3" fill="#b5ad8a" />
+    <circle cx="14" cy="10" r="1" fill="#eef0d8" stroke="none" />
+    <path d="m16 12 5-2" stroke="#b5ad8a" strokeWidth="2" />
+    <path d="m16 14 14 4m-14 0 14 4m-14 0 14 4" stroke="#b88b59" strokeWidth="3" />
+    <path d="m18 14 8 11m-3-10 3 3m-9 6 4 5" stroke="#647b58" strokeWidth="1.7" />
+  </>,
+  dusk_hook: <>
+    <path d="M19 8v22c0 15 21 15 21 0V20l-8 9" fill="none" stroke="#76738c" strokeWidth="5" />
+    <path d="M20 10v20c0 10 16 11 17 1" fill="none" stroke="#c6bedb" strokeWidth="1.5" />
+    <circle cx="19" cy="8" r="5" fill="#a99fc4" />
+    <circle cx="19" cy="8" r="2" fill="#e4dfec" strokeWidth="1" />
+    <path d="M13 17h12v7H13Z" fill="#7e8177" />
+    <path d="m15 18 7 4m-7 0 7-4" stroke="#d0c69d" strokeWidth="1.3" />
+    <path d="M9 24c-7 1-7 11 0 13-3-4-3-9 0-13Z" fill="#d8cda2" strokeWidth="1" />
+  </>,
+  spice_bait: <>
+    <path d="m15 16-5 18c-2 10 29 10 28 0l-5-18Z" fill="#b56f4e" />
+    <path d="m14 8 10 3 10-3-3 10H17Z" fill="#dab77c" />
+    <path d="M16 18c5 3 12 3 16 0m-10 1 3 6 5-2" fill="none" stroke="#72533a" strokeWidth="2.3" />
+    <path d="m16 30 4-3 3 3-3 4Zm12-4 4 1-1 4-4-1Z" fill="#efd18f" stroke="#886445" strokeWidth="1.3" />
+    <path d="m25 34 3-1 2 3-3 2Zm-9 3 3 1" fill="#dfad68" stroke="#886445" strokeWidth="1.3" />
+    <path d="m24 27 2-2 3 2-2 3Zm9 7 2 1-1 3-2-1Z" fill="#bc513c" strokeWidth="1" />
+    <path d="m7 14 1-4m32 10 3-1m-4-7 1-4" fill="none" stroke="#cd9760" strokeWidth="2" />
+  </>,
+  dusk_bait: <>
+    <path d="M24 25C11 9 2 15 8 25c3 5 10 6 16 3m1-4c9-18 22-13 17-2-2 5-10 8-17 6" fill="#9c8cae" />
+    <path d="M11 20c4 1 8 4 12 7m5-1c4-5 7-7 11-8" fill="none" stroke="#d2c6d7" strokeWidth="1.5" />
+    <path d="m26 25-7 13 7 6 6-14Z" fill="#79768f" />
+    <path d="m20 35 9 3m-7-7 9 3" stroke="#cbc0c8" strokeWidth="1.5" />
+    <path d="m20 39 4 6 5-2-3-4Z" fill="#b88b59" strokeWidth="1" />
+    <circle cx="27" cy="24" r="4" fill="#b3a68c" />
+    <path d="m27 20-2-6m6 8 5-3m-9 15 8 3m-13-4-7 1" fill="none" stroke="#777385" strokeWidth="1.5" />
+    <path d="m38 33-2 4 2 4c-6-1-6-7 0-8Z" fill="#e3d5a5" strokeWidth="1" />
+  </>,
   river_scarf: scarf("#6299b1", "#c1e0dd", "#426d85"),
   moon_scarf: <>
     {scarf("#b7afd7", "#ddd4ee", "#7b739b")}

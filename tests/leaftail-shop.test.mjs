@@ -145,8 +145,8 @@ test('purchase UI revalidates the displayed account revision, cycle, funds, onli
   assert.match(leaftailPurchaseReason({ ...ready, snapshot: { ...state, wallet: { ...state.wallet, coins: 0 } } }, q, true), /Не хватает/);
   assert.match(leaftailPurchaseReason({ ...ready, snapshot: { ...state, storage: { ...state.storage, available: 0 } } }, q, true), /мест[оа]/);
   const html = renderToStaticMarkup(React.createElement(WorldLeaftailMarket, { economy: ready, isOnline: true, introduced: true }));
-  assert.equal((html.match(/data-leaftail-item=/g) ?? []).length, 3); assert.match(html, /03:00 МСК/);
-  assert.match(html, /role="tab"[^>]*aria-selected="true"[^>]*>Находки/);
+  assert.equal((html.match(/data-leaftail-item=/g) ?? []).length, 6); assert.match(html, /03:00 МСК/);
+  assert.match(html, /role="tab"[^>]*aria-selected="true"[^>]*>Одежда/);
   assert.match(html, />Припасы<\/button>/);
   assert.doesNotMatch(html, /жемчуг|Заказы жителей|Редкие товары появятся/);
 });
@@ -187,7 +187,8 @@ test('a schema-valid cached far-future delivery cannot crash the merchant or rep
   const unconfirmed = { ...controller(state), snapshotConfirmed: false };
   const html = renderToStaticMarkup(React.createElement(WorldLeaftailMarket, { economy: unconfirmed, isOnline: true, introduced: true }));
   assert.match(html, /Проверяем время новой поставки/);
-  assert.equal((html.match(/disabled=""/g) ?? []).length, 3);
+  assert.equal((html.match(/data-leaftail-purchase=/g) ?? []).length, 6, "cached clothing can be previewed without granting or buying it");
+  assert.doesNotMatch(html, /Подтвердить/);
   assert.equal(shop.leaftailShopView(state, now).cycle, Number.MAX_SAFE_INTEGER);
   assert.equal(shop.leaftailShopView(state, now).offers.find(item => item.itemId === 'living_resin').remaining, 0);
   assert.match(leaftailPurchaseReason(unconfirmed, quote(state), true), /подтверждения/);
@@ -220,6 +221,7 @@ test('retained stock and confirmation callbacks cannot buy after the current res
       const visit = element => { if (React.isValidElement(element)) { nodes.push(element); React.Children.forEach(element.props.children, visit); } };
       visit(tree); return { tree, nodes };
     };
+    render(true).nodes.find(element => element.props.role === 'tab' && element.props.children === 'Находки').props.onClick();
     const purchase = render(true).nodes.find(element => element.props['data-leaftail-purchase'] === 'living_resin');
     purchase.props.onClick();
     const confirm = render(true).nodes.find(element => element.type === 'button' && element.props.children?.[0] === 'Подтвердить');

@@ -167,22 +167,42 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
   if (appearance && pose !== "sleep" && pose !== "drowsy") {
     if (appearance.neck) {
       const scarf = appearance.neck === "berry_scarf" ? "#b96374" : appearance.neck === "river_scarf" ? "#6299b1"
-        : appearance.neck === "forest_bandana" ? "#77905f" : appearance.neck === "moon_scarf" ? "#b7afd7" : "#e2a44d";
+        : appearance.neck === "forest_bandana" ? "#77905f" : appearance.neck === "moon_scarf" ? "#b7afd7"
+          : appearance.neck === "sea_neckerchief" ? "#4d91a4" : appearance.neck === "sunset_scarf" ? "#cd7652" : "#e2a44d";
       const neckY = 31 + bob + Math.round((headOffset - bob) / 3);
       const knotX = direction === "left" ? 18 : 28;
       rect(14, neckY, 21, 3, "#65492f"); rect(15, neckY, 19, 2, scarf);
-      if (appearance.neck === "forest_bandana") {
+      if (appearance.neck === "sea_neckerchief") {
+        // The sailor's white piping and short double knot remain readable at map zoom.
+        rect(15, neckY, 19, 1, "#dce6d0");
+        if (direction === "back") { rect(20, neckY + 2, 9, 2, scarf); rect(22, neckY + 4, 5, 2, "#dce6d0"); }
+        else { rect(knotX - 2, neckY + 2, 3, 4, scarf); rect(knotX + 2, neckY + 2, 3, 5, scarf); rect(knotX, neckY + 1, 2, 2, "#e7d3a0"); }
+      } else if (appearance.neck === "forest_bandana") {
         if (direction === "back") { rect(28, neckY + 2, 4, 2, "#aaba80"); rect(30, neckY + 3, 2, 2, scarf); }
         else { rect(19, neckY + 2, 11, 2, scarf); rect(21, neckY + 4, 7, 2, scarf); rect(23, neckY + 6, 3, 1, "#aaba80"); }
       } else if (direction !== "back") {
         rect(knotX, neckY + 2, 4, 6 + (walking ? frame % 2 : 0), scarf);
         if (appearance.neck === "river_scarf") rect(knotX, neckY + 5, 4, 1, "#c1e0dd");
         if (appearance.neck === "moon_scarf") { rect(knotX + 1, neckY + 4, 2, 2, "#f2e5ba"); rect(17, neckY, 4, 1, "#ddd4ee"); }
+        if (appearance.neck === "sunset_scarf") { rect(16, neckY, 17, 1, "#efba79"); rect(knotX, neckY + 4, 4, 1, "#efba79"); rect(knotX, neckY + 6, 1, 2, "#894e47"); rect(knotX + 3, neckY + 6, 1, 2, "#894e47"); }
       }
     }
     if (appearance.head) {
       const hatY = headOffset;
-      if (appearance.head === "acorn_cap") {
+      if (appearance.head === "trail_hat") {
+        // A low weathered crown and broad brim, distinct from the collection hat.
+        rect(12, 8 + hatY, 26, 3, "#69583c"); rect(13, 8 + hatY, 24, 2, "#c8b17c");
+        rect(17, 3 + hatY, 16, 5, "#a98a56"); rect(20, 1 + hatY, 10, 3, "#c8b17c");
+        rect(17, 6 + hatY, 16, 2, "#69583c");
+        if (direction !== "back") { rect(direction === "left" ? 17 : 29, 6 + hatY, 3, 2, "#d7c584"); }
+      } else if (appearance.head === "rain_hood") {
+        // The open hood keeps its side panels outside both turning eye glyphs.
+        rect(16, 3 + hatY, 18, 6, "#3c5668"); rect(19, 1 + hatY, 12, 6, "#55788b");
+        rect(14, 7 + hatY, 22, 4, "#55788b"); rect(16, 8 + hatY, 18, 2, "#90a9ad");
+        rect(12, 10 + hatY, 3, 11, "#3c5668"); rect(34, 10 + hatY, 3, 11, "#3c5668");
+        rect(13, 11 + hatY, 2, 9, "#55788b"); rect(34, 11 + hatY, 2, 9, "#55788b");
+        if (direction === "back") { rect(15, 10 + hatY, 19, 12, "#55788b"); rect(24, 8 + hatY, 1, 12, "#90a9ad"); }
+      } else if (appearance.head === "acorn_cap") {
         // Low rounded acorn cup; the stem follows the crown while bending.
         rect(14, 7 + hatY, 22, 3, "#654b36"); rect(16, 4 + hatY, 18, 4, "#996743");
         rect(20, 2 + hatY, 10, 3, "#bb8652"); rect(24, Math.max(0, hatY), 3, 3, "#654b36");

@@ -16,11 +16,11 @@ function candidates(state: ShopState): Candidate[] {
   const catalog = economyCatalog.fishing!;
   const home = state.buildings.home ?? 1, current = fishingState(state);
   return [
-    ...catalog.rods.filter(item => item.price > 0 && item.requiredHomeLevel <= home && !current.ownedRods.includes(item.id))
+    ...catalog.rods.filter(item => item.shop !== "leaftail" && item.price > 0 && item.requiredHomeLevel <= home && !current.ownedRods.includes(item.id))
       .map(item => ({ kind: "rod" as const, itemId: item.id, unitPrice: item.price, remaining: 1, rarity: item.rarity, weight: 1 })),
-    ...catalog.hooks.filter(item => item.price > 0 && item.requiredHomeLevel <= home && !current.ownedHooks.includes(item.id))
+    ...catalog.hooks.filter(item => item.shop !== "leaftail" && item.price > 0 && item.requiredHomeLevel <= home && !current.ownedHooks.includes(item.id))
       .map(item => ({ kind: "hook" as const, itemId: item.id, unitPrice: item.price, remaining: 1, rarity: item.rarity, weight: 1 })),
-    ...catalog.baits.filter(item => item.requiredHomeLevel <= home)
+    ...catalog.baits.filter(item => item.shop !== "leaftail" && item.requiredHomeLevel <= home)
       .map(item => ({ kind: "bait" as const, itemId: item.itemId, unitPrice: item.price, remaining: catalog.shop.baitStock,
         rarity: item.rarity, weight: rarityWeight[item.rarity] })),
     // Ordinary fish is a stable kitchen staple; purchases never open collection species.

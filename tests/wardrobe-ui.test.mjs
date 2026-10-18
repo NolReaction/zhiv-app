@@ -57,6 +57,19 @@ test("wardrobe separates owned cosmetics from sale, supports category and curren
   const html = renderToStaticMarkup(list); assert.match(html, /Лунный венок/); assert.doesNotMatch(html, /Шарф|Жёлудевая/);
 });
 
+test("travel collection is hidden from general sales and becomes equipable in owned wardrobe", () => {
+  const h = harness(), travel = ["trail_hat", "rain_hood", "sea_neckerchief", "sunset_scarf", "dune_moss", "storm_moss"];
+  const names = ["Дорожная шляпа", "Капюшон дождя", "Морской платок", "Шарф заката", "Мох дюн", "Грозовой мох"];
+  let view = shop(h);
+  for (const name of names) assert.ok(!view.html.includes(name), "Leaftail exclusives are absent from the general shop");
+  h.world.snapshot.state.inventory.push(...travel); h.economy.snapshot.wardrobe.push(...travel);
+  button(view, "Мои вещи").props.onClick(); view = h.render();
+  for (const name of names) assert.ok(view.html.includes(name), "confirmed travel collection appears in owned wardrobe");
+  button(view, "Капюшон дождя").props.onClick(); view = h.render();
+  button(view, "Надеть").props.onClick(); assert.deepEqual(h.equips, [["equip", "rain_hood"]]);
+  assert.deepEqual(h.calls, [], "equipping does not issue a second purchase");
+});
+
 test("purchase confirms the currency quote once and waits for authoritative wardrobe before equipping", () => {
   const h = harness(); let view = shop(h);
   button(view, "Купить").props.onClick(); assert.deepEqual(h.calls, []); view = h.render();

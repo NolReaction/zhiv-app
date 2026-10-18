@@ -17,7 +17,7 @@ export const worldStations: Partial<Record<WorldPlace, WorldStationDefinition>> 
   quarry: { label: "Шахта", stationIds: ["quarry"] },
   bridge: { label: "Мост", stationIds: ["bridge"] },
   lighthouse: { label: "Маяк", stationIds: ["lighthouse"] },
-  "leaftail-caravan": { label: "Лавка Листохвоста", stationIds: [], status: "Торговец находками" },
+  "leaftail-caravan": { label: "Лавка Листохвоста", stationIds: [], status: "Путник и торговец" },
   "lopukh-home": { label: "Дом Лопоуха", stationIds: ["woodlot"] },
 };
 export function worldPlaceForStation(stationId: string): WorldPlace | null {

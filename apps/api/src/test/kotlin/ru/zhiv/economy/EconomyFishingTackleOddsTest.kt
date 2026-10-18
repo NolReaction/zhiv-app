@@ -19,12 +19,22 @@ class EconomyFishingTackleOddsTest {
             "willow_rod" to listOf(1500, 2000, 6000, 500, 0),
             "tide_rod" to listOf(1000, 1000, 1500, 6500, 0),
             "starfall_rod" to listOf(500, 1000, 1000, 1500, 6000),
+            "traveller_rod" to listOf(1000, 4000, 4000, 1000, 0),
+            "marsh_rod" to listOf(5000, 500, 500, 4000, 0),
+            "dusk_rod" to listOf(500, 1000, 2000, 3500, 3000),
         )
         assertEquals(expected.keys, spec.rods.map { it.id }.toSet())
         for (rod in spec.rods) {
             assertEquals(expected.getValue(rod.id), rarities.map { checkNotNull(rod.classOddsBps)[it] })
             assertEquals(expected.getValue(rod.id), EconomyRules.fishingClassWeights(rod.id, null).map { it.second })
         }
+    }
+
+    @Test fun `travel tackle boosts its two intended classes without changing other raw weights`() {
+        assertEquals(listOf(1000, 6760, 6760, 1000, 0),
+            EconomyRules.fishingClassWeights("traveller_rod", "spice_bait", "braided_hook").map { it.second })
+        assertEquals(listOf(500, 1000, 2000, 5687, 4875),
+            EconomyRules.fishingClassWeights("dusk_rod", "dusk_bait", "dusk_hook").map { it.second })
     }
 
     @Test fun `rod probability model rejects missing extra negative oversized and unnormalised classes`() {

@@ -217,6 +217,54 @@
         "currency": "pearls",
         "amount": 350
       }
+    },
+    {
+      "id": "trail_hat",
+      "name": "Дорожная шляпа",
+      "slot": "head",
+      "color": "#a98a56",
+      "sparks": 0,
+      "starter": false
+    },
+    {
+      "id": "rain_hood",
+      "name": "Капюшон дождя",
+      "slot": "head",
+      "color": "#55788b",
+      "sparks": 0,
+      "starter": false
+    },
+    {
+      "id": "sea_neckerchief",
+      "name": "Морской платок",
+      "slot": "neck",
+      "color": "#4d91a4",
+      "sparks": 0,
+      "starter": false
+    },
+    {
+      "id": "sunset_scarf",
+      "name": "Шарф заката",
+      "slot": "neck",
+      "color": "#cd7652",
+      "sparks": 0,
+      "starter": false
+    },
+    {
+      "id": "dune_moss",
+      "name": "Мох дюн",
+      "slot": "palette",
+      "color": "#b7a875",
+      "sparks": 0,
+      "starter": false
+    },
+    {
+      "id": "storm_moss",
+      "name": "Грозовой мох",
+      "slot": "palette",
+      "color": "#687b91",
+      "sparks": 0,
+      "starter": false
     }
   ],
   "finds": [

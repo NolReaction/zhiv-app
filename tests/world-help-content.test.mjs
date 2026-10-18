@@ -43,11 +43,14 @@ test("help keeps durable topic links and separates concise answers into six usef
   assert.deepEqual(worldHelpTopics(true), worldHelpTopics(false), "old presentation argument must not hide released rules");
 });
 
-test("Leaftail help explains the catalog prices, personal daily stock and both shop entrances", () => {
+test("Leaftail help explains mixed stock, permanent ownership and both shop entrances", () => {
   const spec = economyCatalog.leaftailShop, text = answer("leaftail-shop");
   assert.match(text, new RegExp(`с дома ${spec.requiredHomeLevel}`, "i"));
   assert.match(text, /домик Листохвоста.*Персонажи/);
-  for (const offer of spec.offers) assert.ok(text.includes(`${economyCatalog.items.find(item => item.id === offer.itemId).name}${offer.quantity > 1 ? ` × ${offer.quantity}` : ""}: ${offer.priceCoins.toLocaleString("ru-RU")} монет`));
+  for (const section of ["Одежде", "Снастях", "Припасы", "Находки"]) assert.ok(text.includes(section));
+  assert.match(text, /остаются навсегда без повторной оплаты/);
+  assert.match(text, /наживка требуют места в кладовой/);
+  assert.match(text, /Сумеречные снасти - с дома 4/);
   assert.match(text, /Остаток личный/);
   assert.match(text, /00:00 UTC \(03:00 МСК\)/);
   assert.match(text, /подтвердите покупку/);
