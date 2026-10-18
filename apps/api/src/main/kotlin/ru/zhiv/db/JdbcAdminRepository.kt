@@ -385,7 +385,7 @@ class JdbcAdminRepository(private val source: DataSource, private val config: Ad
         else if (kind == "achievement") c.update("INSERT INTO game_achievements(user_id,achievement_id,unlocked_at,reward_eligible) VALUES (?,?,?,false) ON CONFLICT DO NOTHING",target,rewardId,instant)>0
         else c.update("INSERT INTO $table(user_id,$column,unlocked_at) VALUES (?,?,?) ON CONFLICT DO NOTHING",target,rewardId,instant)>0
         if (granted && request.delivery == "notify") insertAdminMail(c, target, "admin:$requestId", "admin_grant",
-            request.playerMessage?.title ?: "Подарок от команды",
+            request.playerMessage?.title ?: "Подарок от автора",
             request.playerMessage?.body ?: "Награда уже добавлена в профиль. Состав указан ниже.", true, instant,
             if (kind == "item") MailAttachments(gameItems = listOf(rewardId)) else MailAttachments(achievements = listOf(rewardId)))
         c.one("""
@@ -524,7 +524,7 @@ class JdbcAdminRepository(private val source: DataSource, private val config: Ad
         }
         if (changed && request.delivery == "notify" && mailAttachments?.let { it.worldItems.isNotEmpty() || it.finds.isNotEmpty() } == true)
             insertAdminMail(c, target, "admin:$requestId", "admin_grant",
-            request.playerMessage?.title ?: "Подарок от команды",
+            request.playerMessage?.title ?: "Подарок от автора",
             request.playerMessage?.body ?: "Подарок уже добавлен в профиль. Состав указан ниже.", true, now(c), checkNotNull(mailAttachments))
         c.one("""INSERT INTO admin_actions(request_id,actor_user_id,target_user_id,actor_public_id,target_public_id,action,reason,affected_sessions,payload,changed)
             VALUES (?,?,?,?,?,?,?,?,?::jsonb,?) RETURNING created_at""",

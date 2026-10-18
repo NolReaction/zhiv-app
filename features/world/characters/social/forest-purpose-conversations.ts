@@ -1,7 +1,7 @@
 import type { ForestConversation } from "./forest-conversations";
 import type { ForestSpeaker } from "./forest-social";
 
-export type ForestSocialPurpose = "neighbour" | "fish" | "trade" | "window" | "passing";
+export type ForestSocialPurpose = "neighbour" | "fish" | "trade" | "window" | "passing" | "welcome";
 export type ForestPurposeConversation = ForestConversation & { purpose: Exclude<ForestSocialPurpose, "neighbour"> };
 
 const fishQuestions: readonly [ForestSpeaker, string, string, string, string][] = [

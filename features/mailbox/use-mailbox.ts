@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
-import { getMailbox, markMailRead } from "./api";
+import { getMailbox, markMailRead, claimMailGift } from "./api";
 import { createMailboxSession } from "./session";
 
 function browserStorage() { try { return typeof window === "undefined" ? undefined : window.localStorage; } catch { return undefined; } }
@@ -12,6 +12,7 @@ export function useMailbox({ ownerPublicId, isOnline, enabled = true, onSessionL
   const session = useMemo(() => createMailboxSession(ownerPublicId, {
     list: (cursor, signal) => ownerPublicId ? getMailbox(ownerPublicId, cursor, signal) : Promise.reject(new Error("Войдите в профиль")),
     read: (id, signal) => ownerPublicId ? markMailRead(ownerPublicId, id, signal) : Promise.reject(new Error("Войдите в профиль")),
+    claim: (id, signal) => ownerPublicId ? claimMailGift(ownerPublicId, id, signal) : Promise.reject(new Error("Войдите в профиль")),
   }, undefined, browserStorage()), [ownerPublicId]);
   useEffect(() => { session.setSessionLost(() => { if (currentOwner.current === ownerPublicId) onSessionLost?.(); }); }, [session, ownerPublicId, onSessionLost]);
   useEffect(() => { session.setReceived(() => { if (currentOwner.current === ownerPublicId) onReceived?.(); }); }, [session, ownerPublicId, onReceived]);
@@ -34,6 +35,7 @@ export function useMailbox({ ownerPublicId, isOnline, enabled = true, onSessionL
     isActive: () => currentOwner.current === ownerPublicId && session.isActive(),
     isAvailable: () => currentOwner.current === ownerPublicId && session.isAvailable(),
     open: () => { if (currentOwner.current === ownerPublicId) session.open(); },
+    claimGift: (id: string) => currentOwner.current === ownerPublicId ? session.claimGift(id) : Promise.resolve(),
     claimNotification: (id: string) => currentOwner.current === ownerPublicId && session.claimNotification(id),
   }), [session, ownerPublicId]);
   return { ...view, ...actions, isOnline };

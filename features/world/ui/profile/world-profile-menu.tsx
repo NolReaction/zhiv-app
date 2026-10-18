@@ -14,6 +14,7 @@ import { useForestObservation, type ForestObservation } from "@/features/world/s
 import { takeOverForestSession } from "@/features/world/state/forest-session";
 import { WorldMoodDialog } from "./world-mood-dialog";
 import { WorldProfileFriends, type WorldFriendsState } from "./world-profile-friends";
+import { WorldTapHintSetting } from "./world-tap-hint-setting";
 import styles from "./world-profile-menu.module.css";
 
 export type WorldProfileTab = "profile" | "friends" | "settings";
@@ -23,6 +24,7 @@ type Props = {
   world: WorldController;
   economy: EconomyController;
   presenceKey: string;
+  ownerPublicId: string;
   displayName: string;
   level: number;
   bestStreakDays: number;
@@ -64,7 +66,7 @@ export function WorldProfileMenu(props: Props) {
   return <WorldProfileSession key={`${props.presenceKey}:${props.initialTab ?? "profile"}`} {...props} />;
 }
 
-function WorldProfileSession({ presenceKey, ...props }: Props) {
+function WorldProfileSession({ presenceKey, ownerPublicId, ...props }: Props) {
   const observation = useForestObservation(presenceKey);
   const [activeTab, setActiveTab] = useState<WorldProfileTab>(props.initialTab === "mood" ? "profile" : props.initialTab ?? "profile");
   const [moodOpen, setMoodOpen] = useState(props.initialTab === "mood");
@@ -83,6 +85,7 @@ function WorldProfileSession({ presenceKey, ...props }: Props) {
   } : undefined;
   return <>
     <WorldProfileContent {...props} observation={observation} onCall={call} callPulse={callPulse}
+      tapHintSetting={<WorldTapHintSetting owner={ownerPublicId} tone="forest" />}
       activeTab={activeTab} onTabChange={setActiveTab} idPrefix={idPrefix} onTakeOver={() => takeOverForestSession(presenceKey)}
       onOpenMood={() => setMoodOpen(true)} moodTriggerRef={moodTrigger}
       guideOpen={guideOpen} onToggleGuide={() => setGuideOpen(value => !value)}
@@ -96,7 +99,7 @@ function WorldProfileSession({ presenceKey, ...props }: Props) {
 /** Pure contents keep map focus ownership separate from data subscriptions. */
 export function WorldProfileContent({ world, economy, displayName, level, bestStreakDays, observation, onCall, onTakeOver,
   rewards, callPulse = 0, initialTab = "profile", activeTab = initialTab === "mood" ? "profile" : initialTab, onTabChange, idPrefix = "world-profile",
-  friends, onOpenPeople, onOpenOnboarding, onboardingStatus, guideOpen = false, onToggleGuide, onOpenMood, moodTriggerRef }: Omit<Props, "presenceKey"> & {
+  friends, onOpenPeople, onOpenOnboarding, onboardingStatus, guideOpen = false, onToggleGuide, onOpenMood, moodTriggerRef, tapHintSetting }: Omit<Props, "presenceKey" | "ownerPublicId"> & {
   observation: ForestObservation | null;
   guideOpen?: boolean;
   onToggleGuide?: () => void;
@@ -107,6 +110,7 @@ export function WorldProfileContent({ world, economy, displayName, level, bestSt
   idPrefix?: string;
   onOpenMood?: () => void;
   moodTriggerRef?: RefObject<HTMLButtonElement | null>;
+  tapHintSetting?: ReactNode;
 }) {
   const state = world.snapshot?.state;
   const houseLevel = economy.snapshot?.buildings.home ?? state?.houseLevel;
@@ -175,7 +179,7 @@ export function WorldProfileContent({ world, economy, displayName, level, bestSt
         </div>}
       </>}
       {activeTab === "friends" && <WorldProfileFriends friends={friends} onOpenPeople={onOpenPeople} />}
-      {activeTab === "settings" && <AudioSettingsPanel tone="forest" />}
+      {activeTab === "settings" && <><AudioSettingsPanel tone="forest" />{tapHintSetting}</>}
     </div>
     {!memoryWarning && memory}
   </div>;

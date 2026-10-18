@@ -54,7 +54,20 @@ export function isTutorialOrderId(id: string, catalog = economyCatalog): boolean
 export function newTutorialOrder(catalog = economyCatalog): EconomyTutorialOrder {
   const terms = catalog.onboarding?.residentOrder;
   return { version: 3, step: 0, ingredientsClaimed: true, completed: false,
+    firstHarvestPrepared: false,
     terms: terms ? copyTerms(terms) : null };
+}
+/** Account-owned first harvest aid, independent of the local lesson or its replay.
+ * The start command consumes it before cancellation or another request can reuse it.
+ * Old profiles with harvested berries or an existing crop keep their ordinary jobs. */
+export function canPrepareTutorialHarvest(state: Pick<EconomyState, "tutorialOrder" | "buildings" | "inventory" | "jobs" | "progression">,
+  recipeId: string, quantity = 1): boolean {
+  const progress = tutorialOrderProgress(state);
+  return recipeId === "grow_berries" && quantity === 1 && progress.version === 3 && progress.ingredientsClaimed
+    && !progress.completed && progress.step === 0 && !progress.firstHarvestPrepared
+    && progress.terms?.id === TUTORIAL_ORDER_ID && progress.terms.items.berries === 1 && Object.keys(progress.terms.items).length === 1
+    && state.buildings.home === 1 && !(state.inventory.berries > 0) && !(state.progression?.recipes?.grow_berries > 0)
+    && !state.jobs.some(job => job.kind === "production" && job.targetId === "garden");
 }
 /** A pre-claim quote or a frozen accepted request. This order never rotates or expires. */
 export function tutorialResidentOrder(state: TutorialSource, catalog = state.catalog ?? economyCatalog): ResidentOrderOffer | null {

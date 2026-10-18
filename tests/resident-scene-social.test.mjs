@@ -127,3 +127,28 @@ for (const speaker of ["builder", "lopukh"]) test(`the ${speaker} followup uses 
   assert.equal(mind.socialVisit, null); assert.equal(adapter.followupStatus(speaker), null); assert.deepEqual(mind.position, arrived);
   assert.deepEqual(scene, sceneBefore, "no authored collision or tile is edited for the inspection");
 });
+
+
+test("only actual arrival transitions queue one welcome, while seen restore and owner replacement never replay it", () => {
+  const state = factsState();
+  state.villagers.arrivalPhase = "complete"; state.leaftailBoat = { completed: true, route: null };
+  residentSceneSocialContext(state, now);
+  assert.equal(state.social.welcomes, undefined, "seen restoration is not a new meeting");
+  state.villagers.arrivalPhase = "running"; residentSceneSocialContext(state, now);
+  state.villagers.arrivalPhase = "greeting"; residentSceneSocialContext(state, now);
+  assert.equal(state.social.welcomes, undefined, "the newcomer must actually finish his arrival");
+  state.villagers.arrivalPhase = "complete"; residentSceneSocialContext(state, now);
+  assert.deepEqual(state.social.welcomes.map(item => item.resident), ["kamneshmyg"]);
+  state.leaftailBoat = { completed: false, route: {} }; residentSceneSocialContext(state, now);
+  assert.equal(state.social.welcomes.length, 1);
+  state.leaftailBoat.completed = true; residentSceneSocialContext(state, now);
+  assert.deepEqual(state.social.welcomes.map(item => item.resident), ["kamneshmyg", "leaftail"]);
+  for (let i = 0; i < 20; i++) residentSceneSocialContext(state, now);
+  assert.equal(state.social.welcomes.length, 2, "camera reads never queue another guest");
+  state.social = createForestSocial("after-hydration"); residentSceneSocialContext(state, now);
+  assert.equal(state.social.welcomes, undefined, "session facts do not replay already observed arrivals into a restored director");
+  state.economyResidents = access(500, levels, [], "new-owner");
+  state.villagers.arrivalPhase = "complete"; state.leaftailBoat = { completed: true, route: null };
+  residentSceneSocialContext(state, now);
+  assert.equal(state.social.welcomes, undefined);
+});

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { leaftailArrivalCanStart } from "@/features/world/domain/leaftail-arrival-onboarding";
 import type { MarketUnlockOnboardingCourse } from "@/features/world/domain/market-unlock-onboarding";
 import { createLeaftailArrivalStore } from "./leaftail-arrival-storage";
@@ -11,6 +11,7 @@ function browserStorage() {
 
 export function useLeaftailArrival(owner: string, options: { unlocked: boolean; enabled: boolean; onboarding: MarketUnlockOnboardingCourse }) {
   const store = useMemo(() => createLeaftailArrivalStore(owner, browserStorage()), [owner]);
+  const [completionNotice, setCompletionNotice] = useState<object | null>(null);
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot);
   const allowed = leaftailArrivalCanStart({ loaded: state.loaded, ...options });
   const current = useRef({ store, allowed });
@@ -21,9 +22,15 @@ export function useLeaftailArrival(owner: string, options: { unlocked: boolean; 
     window.addEventListener("storage", restore);
     return () => window.removeEventListener("storage", restore);
   }, [store]);
-  const complete = useCallback(() => { if (current.current.store === store) store.complete(); }, [store]);
-  const dismiss = useCallback(() => { if (current.current.store === store && current.current.allowed) store.dismiss(); }, [store]);
+  const complete = useCallback(() => {
+    if (current.current.store !== store) return;
+    store.complete(); setCompletionNotice(store);
+  }, [store]);
+  const dismiss = useCallback(() => {
+    if (current.current.store !== store || !current.current.allowed) return;
+    store.dismiss(); setCompletionNotice(null);
+  }, [store]);
   const seen = Boolean(state.progress?.arrived);
   return { loaded: state.loaded, seen, enabled: allowed && !seen,
-    open: allowed && !state.progress?.dismissed, complete, dismiss };
+    open: allowed && (completionNotice === store || !state.progress?.dismissed), complete, dismiss };
 }

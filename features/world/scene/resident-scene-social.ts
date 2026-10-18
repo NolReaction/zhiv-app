@@ -1,5 +1,6 @@
 import type { ForestSessionState } from "@/features/world/state/forest-session";
 import type { ForestSocialContext, ForestSocialContextEvent, ForestSocialFollowupRequest } from "@/features/world/characters/social/forest-social";
+import { queueForestSocialWelcome } from "@/features/world/characters/social/forest-social-welcome";
 import { forestLeaftailWindow } from "@/features/world/characters/social/forest-leaftail-window";
 import { requestBuilderVisit, cancelBuilderVisit } from "@/features/world/characters/builder/builder-mind";
 import { forestVillagerPlaces } from "@/features/world/characters/villagers/villager-navigation";
@@ -11,6 +12,7 @@ import { constructionMapPlace } from "./construction-map-anchor";
 export type ResidentSceneFacts = {
   owner?: string; revision: number; buildings: Record<string, number>;
   jobs: Map<string, { finish: number; kind: "wood" | "mining" }>;
+  minerWelcomeArmed?: boolean; observedWelcomes?: string[];
   fish: number; wood: number; sequence: number; events: ForestSocialContextEvent[];
 };
 const factsFor = (state: ForestSessionState): ResidentSceneFacts => state.residentSceneFacts ??= {
@@ -29,7 +31,7 @@ export function residentSceneSocialContext(state: ForestSessionState, now: numbe
       facts.owner = access.ownerPublicId; facts.revision = -1; facts.jobs.clear(); facts.events = [];
       facts.fish = state.pleskMind?.catchCount ?? 0;
       facts.wood = state.villagers?.residents.lopukh.woodwork?.completedCycles ?? 0;
-      facts.sequence = 0;
+      facts.sequence = 0; facts.minerWelcomeArmed = false; facts.observedWelcomes = [];
     }
     if (access.revision > facts.revision) {
       if (!first) for (const [station, level] of Object.entries(access.buildings)) {
@@ -50,6 +52,18 @@ export function residentSceneSocialContext(state: ForestSessionState, now: numbe
         facts.jobs.delete(id);
       }
     }
+  }
+  // Restore uses `complete` directly. Only an observed physical approach can
+  // arm a miner welcome; boat restore has no real route. These session facts
+  // survive camera handoffs, and never infer an arrival from house/quarry levels.
+  const phase = state.villagers?.arrivalPhase;
+  if (phase === "running" || phase === "greeting") facts.minerWelcomeArmed = true;
+  const welcomed = facts.observedWelcomes ??= [];
+  for (const resident of ["kamneshmyg", "leaftail"] as const) {
+    const arrived = resident === "kamneshmyg" ? facts.minerWelcomeArmed && phase === "complete"
+      : state.leaftailBoat?.completed && Boolean(state.leaftailBoat.route);
+    if (!arrived || welcomed.includes(resident)) continue;
+    welcomed.push(resident); queueForestSocialWelcome(state.social, resident);
   }
   const fish = state.pleskMind?.catchCount ?? 0, wood = state.villagers?.residents.lopukh.woodwork?.completedCycles ?? 0;
   if (fish > facts.fish) emit({ id: `catch:${++facts.sequence}`, kind: "fishing", speaker: "plesk" });

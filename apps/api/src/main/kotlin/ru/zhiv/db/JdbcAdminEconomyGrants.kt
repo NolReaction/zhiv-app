@@ -40,7 +40,7 @@ internal fun grantAdminEconomy(c: Connection, target: UUID, requestId: UUID, req
             rods = next.fishing.ownedRods.filterNot { it in before.state.fishing.ownedRods },
             hooks = next.fishing.ownedHooks.filterNot { it in before.state.fishing.ownedHooks })
     if (request.delivery == "notify" && additions != MailAttachments()) insertAdminMail(c, target, "admin:$requestId", "admin_grant",
-        request.playerMessage?.title ?: "Подарок от команды",
+        request.playerMessage?.title ?: "Подарок от автора",
         request.playerMessage?.body ?: "Начисление уже применено. Состав указан ниже.", true, now.atOffset(ZoneOffset.UTC), additions)
     return true to (before.revision + 1)
 }
@@ -60,7 +60,7 @@ internal fun adjustAdminEconomy(c: Connection, target: UUID, requestId: UUID, re
         next.wallet.coins - before.state.wallet.coins, next.wallet.pearls - before.state.wallet.pearls)
     if (request.delivery == "notify") insertAdminMail(c, target, "admin:$requestId", "balance_correction",
         request.playerMessage?.title ?: "Поправка кошелька",
-        request.playerMessage?.body ?: "Баланс обновлён командой поддержки. Изменения указаны ниже.", true, now.atOffset(ZoneOffset.UTC),
+        request.playerMessage?.body ?: "Я обновил баланс. Изменения указаны ниже.", true, now.atOffset(ZoneOffset.UTC),
         MailAttachments(coins = next.wallet.coins - before.state.wallet.coins,
             pearls = (next.wallet.pearls - before.state.wallet.pearls) / 2L))
     return before.revision + 1

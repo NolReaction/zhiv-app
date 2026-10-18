@@ -9,7 +9,7 @@ after(() => vite.close());
 const { createMailboxSession } = await vite.ssrLoadModule("/features/mailbox/session.ts");
 const { createMailNotificationLedger, mailNotificationKey, MAIL_NOTIFICATION_LIMIT } = await vite.ssrLoadModule("/features/mailbox/notification-ledger.ts");
 const { mailboxPageSchema, mailMessageSchema } = await vite.ssrLoadModule("/features/mailbox/model.ts");
-const { getMailbox, markMailRead } = await vite.ssrLoadModule("/features/mailbox/api.ts");
+const { getMailbox, markMailRead, claimMailGift } = await vite.ssrLoadModule("/features/mailbox/api.ts");
 const { ApiError } = await vite.ssrLoadModule("/lib/check-in-api.ts");
 const owner = "7K3P-2Q9M-W8ZR", other = "7K3P-2Q9M-W8ZS", instant = "2026-10-18T12:00:00.000Z";
 const message = (index = 1, patch = {}) => ({ id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
@@ -47,6 +47,50 @@ test("mail API binds GET and read to the expected owner, bypasses caches and rej
   globalThis.fetch = async () => Response.json(page([], { ownerPublicId: other }));
   await assert.rejects(getMailbox(owner, null), error => error.status === 401);
   await assert.rejects(markMailRead(owner, "../foreign"), error => error.status === 400);
+});
+
+test("explicit gift claim is owner-bound and pending retries share one letter ID without auto-claiming on read", async () => {
+  const gift = { pearls: 100, claimedAt: null }, welcome = message(1, { gift, attachments: null }), wait = deferred(), calls = [];
+  let refreshed = 0;
+  const session = createMailboxSession(owner, { list: async () => page([welcome]), read: async id => result(id),
+    claim: (id, signal) => { calls.push({ id, signal }); return wait.promise; } });
+  session.setReceived(() => refreshed++); const stop = session.activate();
+  try {
+    session.open(); await session.refresh(); session.select(welcome.id); await session.messageVisible(welcome.id);
+    assert.equal(calls.length, 0); assert.equal(refreshed, 0);
+    const pending = session.claimGift(welcome.id); await session.claimGift(welcome.id);
+    assert.equal(calls.length, 1); assert.deepEqual(session.getSnapshot().claimingIds, [welcome.id]);
+    const claimedAt = "2026-10-18T12:01:00Z";
+    wait.resolve({ ownerPublicId: owner, id: welcome.id, gift: { pearls: 100, claimedAt }, serverTime: claimedAt }); await pending;
+    assert.equal(session.getSnapshot().selected.gift.claimedAt, claimedAt); assert.equal(refreshed, 1);
+    await session.refresh(); assert.equal(session.getSnapshot().selected.gift.claimedAt, claimedAt, "stale GET cannot restore the claim button");
+    await session.claimGift(welcome.id); assert.equal(calls.length, 1); assert.equal(refreshed, 1);
+  } finally { stop(); }
+});
+
+test("a lost or aborted claim reconciles the wallet once when a later owner-bound GET sees the persisted gift", async () => {
+  let committed = false, refreshed = 0;
+  const welcome = message(1, { gift: { pearls: 100, claimedAt: null } }), claimedAt = "2026-10-18T12:01:00Z";
+  const session = createMailboxSession(owner, { list: async () => page([{ ...welcome, gift: { pearls: 100, claimedAt: committed ? claimedAt : null } }]),
+    read: async id => result(id), claim: async () => { committed = true; throw new TypeError("Response lost after commit"); } });
+  session.setReceived(() => refreshed++); const stop = session.activate();
+  try {
+    session.open(); await session.refresh(); session.select(welcome.id); await session.claimGift(welcome.id);
+    assert.equal(refreshed, 0); assert.ok(session.getSnapshot().claimError); assert.deepEqual(session.getSnapshot().claimingIds, []);
+    await session.refresh(); assert.equal(session.getSnapshot().selected.gift.claimedAt, claimedAt); assert.equal(refreshed, 1);
+    await session.refresh(); assert.equal(refreshed, 1, "polling a settled gift must not repeatedly refresh all game snapshots");
+  } finally { stop(); }
+});
+
+test("foreign and disposed claim replies cannot publish gifts or refresh another account", async () => {
+  const welcome = message(1, { gift: { pearls: 100, claimedAt: null } }), wait = deferred(); let refreshed = 0, lost = 0;
+  const session = createMailboxSession(owner, { list: async () => page([welcome]), read: async id => result(id), claim: () => wait.promise }, () => lost++);
+  session.setReceived(() => refreshed++); const stop = session.activate(); session.open(); await session.refresh(); session.select(welcome.id);
+  const pending = session.claimGift(welcome.id); stop();
+  wait.resolve({ ownerPublicId: other, id: welcome.id, gift: { pearls: 100, claimedAt: instant }, serverTime: instant }); await pending;
+  assert.equal(refreshed, 0); assert.equal(lost, 0); assert.equal(session.getSnapshot().opened, false);
+  globalThis.fetch = async () => Response.json({ ownerPublicId: other, id: welcome.id, gift: { pearls: 100, claimedAt: instant }, serverTime: instant });
+  await assert.rejects(claimMailGift(owner, welcome.id), error => error.status === 401);
 });
 
 test("listing and selecting a letter cannot mark it read before its actual detail is visible", async () => {

@@ -52,11 +52,16 @@ class EconomyFirstStageTest {
     }
 
     @Test fun `two berry jobs and one strawberry job occupy three independent slots until claimed`() {
-        var state = EconomyRules.initial().copy(productionSlots = mapOf("garden" to 3),
+        val initial = EconomyRules.initial()
+        // This case covers ordinary parallel production after the first-harvest
+        // aid; EconomyFirstHarvestTest checks its exact 1 ms interval separately.
+        var state = initial.copy(productionSlots = mapOf("garden" to 3),
+            tutorialOrder = initial.tutorialOrder.copy(firstHarvestPrepared = true),
             progression = EconomyProgression(recipes = mapOf("cook_compote" to 1L)))
         for (recipe in listOf("grow_berries", "grow_berries", "grow_strawberries")) state = apply(state, "start_production", recipe)
         assertEquals(listOf(60L, 60L, 300L), state.jobs.map { Instant.parse(it.finishesAt).epochSecond - now.epochSecond })
         assertEquals(3, state.jobs.map { it.id }.distinct().size)
+        assertTrue(state.tutorialOrder.firstHarvestPrepared)
         assertEquals("ECONOMY_BUILDING_BUSY", assertFailsWith<AuthFailure> {
             apply(state, "start_production", "grow_berries", now.plusSeconds(600)) }.code)
     }

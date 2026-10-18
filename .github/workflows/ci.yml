@@ -154,12 +154,12 @@ jobs:
             echo "Security observations must run with real PostgreSQL." >&2
             exit 1
           fi
-          for suite in JdbcMailRepositoryIntegrationTest JdbcAdminEconomyGrantsIntegrationTest; do
+          for suite in JdbcMailRepositoryIntegrationTest JdbcAdminEconomyGrantsIntegrationTest JdbcFirstHarvestIntegrationTest; do
             mail_report="apps/api/build/test-results/test/TEST-ru.zhiv.db.${suite}.xml"
             test -s "${mail_report}"
             grep --quiet --extended-regexp 'tests="[1-9][0-9]*"' "${mail_report}"
             if grep --quiet '<skipped' "${mail_report}"; then
-              echo "Mail and signed economy adjustments must run with real PostgreSQL: ${suite}." >&2
+              echo "Mail, signed economy adjustments and first harvest must run with real PostgreSQL: ${suite}." >&2
               exit 1
             fi
           done

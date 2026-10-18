@@ -213,3 +213,53 @@ test("the merchant arrival guide tracks a finite body contour and keeps HUD clea
       assert.equal(leaftailArrivalGuideTarget(bad), undefined);
   } finally { await vite.close(); }
 });
+
+
+test("the actual boat handover invites one old neighbour through a real Tiled route and never repeats the introduction", async () => {
+  const { mountHabitat, connectForestSession, forgetForestSession, TILED_WORLD, worldDevStore,
+    accountSceneLevels, previewWorldScene, forestVillagerPlaces, canTraverse } = await modules(structuredClone(authored));
+  const env = browser(), owner = "merchant-first-welcome", key = `zhiv:mochlik:presence:${owner}`;
+  let scene, probe;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: true });
+    const initial = { ...options, reducedMotion: false, view: "world", serverNow: 100_000, presenceKey: key,
+      economyBuildings: { home: 3, quarry: 0, woodlot: 1 }, economyResidents: access(owner, 1, 3),
+      residentArrival: { seen: true, enabled: false, onComplete: assert.fail },
+      merchantArrival: { seen: false, enabled: true, onComplete() {} } };
+    const canvas = env.surface(); scene = mountHabitat(canvas, initial, callback()); await finishVillagerArtwork(env);
+    const effective = previewWorldScene(TILED_WORLD, accountSceneLevels(TILED_WORLD, undefined, worldDevStore.getSnapshot(), initial.economyBuildings));
+    probe = connectForestSession(key, effective, "circle", 100_000, 0, () => {});
+    const state = probe.state, rabbit = state.villagers.residents.lopukh, clock = sceneClock(env);
+    // Keep an actual idle established neighbour available, as in the ordinary
+    // social runtime tests. The new arrival and entire visit still run normally.
+    rabbit.route = null; rabbit.action = "idle"; rabbit.intent = "wander"; rabbit.wait = 10_000;
+    state.social.nextEncounterAt = state.social.nextPassingAt = state.social.nextAnimalAt = 10_000;
+    state.clearing.waitSeconds = state.director.nextDecisionAt = 10_000;
+    until(clock, () => state.leaftailBoat?.completed, "a genuine boat arrival completes before any welcome", [canvas]);
+    assert.equal(state.social.meeting, null); assert.equal(state.villagers.residents.leaftail.action, "inspect");
+    until(clock, () => state.social.meeting?.purpose === "welcome", "one available neighbour accepts the first introduction", [canvas], 400);
+    assert.equal(state.social.meeting.host, "leaftail"); assert.equal(state.social.meeting.phase, "approach");
+    const guest = state.social.meeting.guest;
+    assert.equal(guest, "lopukh", "the nearby idle resident visits, without recruiting the player");
+    const start = { ...rabbit.position }, navigation = forestVillagerPlaces(state.villagers.scene, "lopukh").navigation;
+    let previous = start; const heard = new Map();
+    until(clock, () => {
+      assert.ok(canTraverse(navigation, previous, rabbit.position));
+      assert.ok(distanceBetween(previous, rabbit.position) <= 39 * .05 + 1e-7);
+      previous = { ...rabbit.position };
+      return state.social.meeting?.phase === "talk";
+    }, "the established resident reaches the newcomer's genuine outdoor feet", [canvas], 400);
+    assert.ok(distanceBetween(start, rabbit.position) > 10);
+    until(clock, () => {
+      for (const line of scene.speechFrames()) heard.set(line.id, line);
+      return !state.social.meeting;
+    }, "the finite first introduction completes and releases both residents", [canvas], 700);
+    assert.equal(state.social.lastMeetingResult?.purpose, "welcome"); assert.equal(state.social.lastMeetingResult?.status, "completed");
+    assert.equal(heard.size, 4); assert.ok([...heard.values()].some(line => /запас тишины/.test(line.text)));
+    assert.equal(rabbit.socialVisit, null); assert.deepEqual(state.social.welcomedResidents, ["leaftail"]);
+    scene.configure({ ...initial, merchantArrival: { ...initial.merchantArrival, seen: true, enabled: false } });
+    await finishVillagerArtwork(env);
+    for (let i = 0; i < 80; i++) tick(clock, [canvas]);
+    assert.equal(state.social.meeting, null); assert.equal(state.social.welcomes.length, 0, "seen refresh does not gather the neighbours again");
+  } finally { scene?.dispose(); probe?.release(); forgetForestSession(key); worldDevStore.reset(); env.restore(); }
+});

@@ -41,6 +41,13 @@ fun Route.mailRoutes(repository: MailRepository,codec: TokenCodec,config: AppCon
                 ?.takeIf { it.toString()==call.parameters["id"] } ?: invalidMail()
             call.respond(repository.read(hash,call.receive<MailReadRequest>().expectedOwnerPublicId,id))
         } }
+        rateLimit(RateLimitName("mail-write")) { post("/{id}/claim") {
+            val hash=call.mailSession(config,codec,writing=true)
+            val id=runCatching { UUID.fromString(call.parameters["id"]) }.getOrNull()
+                ?.takeIf { it.toString()==call.parameters["id"] } ?: invalidMail()
+            if(call.request.queryParameters.names().isNotEmpty()) invalidMail()
+            call.respond(repository.claim(hash,call.receive<MailReadRequest>().expectedOwnerPublicId,id))
+        } }
     }
     route("/api/v1/admin/mail/broadcast") {
         install(RequestBodyLimit) { bodyLimit { 16_384 } }

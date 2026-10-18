@@ -79,6 +79,16 @@
 .coach[data-guide-coach='world'][data-inline='false'] { --coach-side-inset: max(12px, env(safe-area-inset-left), env(safe-area-inset-right)); left: var(--coach-side-inset); right: var(--coach-side-inset); width: min(384px, calc(100vw - var(--coach-side-inset) * 2)); margin-inline: auto; bottom: calc(var(--quick-bottom, 70px) + 20px); max-height: min(260px, 45dvh); }
 .dockSlot { flex: 0 0 auto; min-height: 0; padding: 6px 8px; }
 .dockSlot:empty { display: none; }
+/* Completion has no step counter: keep its gift separate from the portrait and
+   share one compact footer row between the main action and quiet controls. */
+.coach[data-guide-step='completion-reward'] .copy { padding: 10px 12px 8px; }
+.coach[data-guide-step='completion-reward'] .intro { min-height: 58px; }
+.coach[data-guide-step='completion-reward'] .header { position: static; width: auto; height: auto; min-height: 25px; padding: 0; margin: 0 0 4px; overflow: visible; clip-path: none; }
+.coach[data-guide-step='completion-reward'] .messageText { margin: 0; }
+.coach[data-guide-step='completion-reward'] .copy > ul { margin: 8px 0 4px; padding: 10px; gap: 12px 20px; border: 1px solid #c3c99c; border-radius: 12px; background: #e7eccf; }
+.coach[data-guide-step='completion-reward'] .footer { display: flex; align-items: center; gap: 8px; padding: 8px 10px; }
+.coach[data-guide-step='completion-reward'] .controls { flex: 0 0 auto; }
+.coach[data-guide-step='completion-reward'] .footer > .controls + .actions { flex: 1 1 auto; min-width: 0; margin: 0; }
 @media (max-width: 360px) {
   .coach .character { flex-basis: 40px; width: 40px; }
   .title { font-size: 16px; }

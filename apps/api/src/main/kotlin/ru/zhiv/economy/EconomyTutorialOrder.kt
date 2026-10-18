@@ -9,12 +9,24 @@ import kotlinx.serialization.Serializable
 @Serializable data class EconomyTutorialOrder(
     val ingredientsClaimed: Boolean = false, val completed: Boolean = false, val terms: EconomyResidentOrderTemplate? = null,
     val version: Int = 1, val step: Int = 0,
+    val firstHarvestPrepared: Boolean = false,
 ) { init { require(version in 1..3 && step in 0..4) } }
 
 /** A single teaching request, followed by the separate first-house course. */
 object EconomyTutorialOrders {
     const val ID = "tutorial_first_order"
     val legacyStageIds = setOf("tutorial_wood_order", "tutorial_compote_order", "tutorial_planks_order")
+
+    /** Server-owned aid, consumed by the first successful start, never by local replay. */
+    fun canPrepareFirstHarvest(state: EconomyState, recipeId: String, quantity: Long): Boolean {
+        val progress = normalize(state).tutorialOrder
+        return recipeId == "grow_berries" && quantity == 1L && progress.version == 3 && progress.ingredientsClaimed &&
+            !progress.completed && progress.step == 0 && !progress.firstHarvestPrepared &&
+            progress.terms?.id == ID && progress.terms.items == mapOf("berries" to 1L) &&
+            state.buildings["home"] == 1 && (state.inventory["berries"] ?: 0L) == 0L &&
+            (state.progression.recipes["grow_berries"] ?: 0L) == 0L &&
+            state.jobs.none { it.kind == "production" && it.targetId == "garden" }
+    }
 
     /** Read projection only; the next successful mutation persists it without another payout. */
     fun normalize(state: EconomyState, catalog: EconomyCatalog = EconomyRules.catalog): EconomyState {
@@ -89,17 +101,19 @@ object EconomyTutorialOrders {
 
     /** Merging never reopens rewarded progress, including an already accepted legacy request. */
     fun merge(a: EconomyTutorialOrder, b: EconomyTutorialOrder): EconomyTutorialOrder {
+        val firstHarvestPrepared = a.firstHarvestPrepared || b.firstHarvestPrepared
         val legacy = listOf(a, b).filter { it.version == 1 && (it.ingredientsClaimed || it.completed) }
         if (legacy.isNotEmpty()) {
             val chosen = legacy.firstOrNull { it.completed } ?: legacy.first()
             return chosen.copy(ingredientsClaimed = true, completed = legacy.any { it.completed },
+                firstHarvestPrepared = firstHarvestPrepared,
                 terms = chosen.terms ?: legacy.firstNotNullOfOrNull { it.terms })
         }
         if (a.version >= 2 || b.version >= 2) {
             val current = listOf(a, b).filter { it.version >= 2 }
             val chosen = current.maxWith(compareBy<EconomyTutorialOrder> { it.completed }.thenBy { it.step })
-            return chosen.copy(ingredientsClaimed = true, completed = current.any { it.completed })
+            return chosen.copy(ingredientsClaimed = true, completed = current.any { it.completed }, firstHarvestPrepared = firstHarvestPrepared)
         }
-        return a.copy(terms = a.terms ?: b.terms)
+        return a.copy(terms = a.terms ?: b.terms, firstHarvestPrepared = firstHarvestPrepared)
     }
 }

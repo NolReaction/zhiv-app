@@ -220,10 +220,11 @@ test("sandbox: mail query and read tampering cannot expose or mark another accou
   for (const rawId of injections) await rejected(await read(victim, victim.me.user.publicId, rawId), [400]);
   for (const body of [{ expectedOwnerPublicId: victim.me.user.publicId, coins: 1_000_000 }, { expectedOwnerPublicId: victim.me.user.publicId, readAt: "1970-01-01T00:00:00Z" }])
     await rejected(await read(victim, victim.me.user.publicId, id, body), [400]);
-  const pending = await accepted(await list(victim, own)); assert.equal(pending.unreadCount, 1); assert.equal(pending.messages[0].readAt, null);
+  const pending = await accepted(await list(victim, own)); assert.equal(pending.unreadCount, 2); assert.equal(pending.messages.find(message => message.id === id).readAt, null);
+  assert.equal(pending.messages.find(message => message.gift).gift.claimedAt, null);
   const acknowledgements = await Promise.all(Array.from({ length: 20 }, () => read(victim, victim.me.user.publicId).then(accepted)));
   assert.equal(new Set(acknowledgements.map(result => result.readAt)).size, 1);
-  assert.equal((await accepted(await list(victim, own))).unreadCount, 0);
+  assert.equal((await accepted(await list(victim, own))).unreadCount, 1);
   assert.deepEqual(saved(actor), actorBefore); assert.deepEqual(saved(victim), victimBefore);
   t.diagnostic(`${4 + queries.length + injections.length + 2} rejected mail attacks, 20 overlapping read acknowledgements; balances unchanged including attachments`);
 });
@@ -240,10 +241,10 @@ test("sandbox: mailbox enforces actual streamed bytes, handles disconnects and r
   for (const text of ["{", '{"expectedOwnerPublicId":', "[1,2,3]", "null", "{\"__proto__\":{\"polluted\":true}}"])
     await rejected(await invoke(text), [400]);
   await rejected(await invoke({ expectedOwnerPublicId: actor.me.user.publicId }, { "Content-Type": "application/jsonp" }), [415]);
-  const before = mail.getDevMail(actor.token, actor.me.user.publicId, undefined).value; assert.equal(before.unreadCount, 1);
+  const before = mail.getDevMail(actor.token, actor.me.user.publicId, undefined).value; assert.equal(before.unreadCount, 2);
   const valid = JSON.stringify({ expectedOwnerPublicId: actor.me.user.publicId });
   const chunked = new ReadableStream({ start(controller) { for (const character of valid) controller.enqueue(encoder.encode(character)); controller.close(); } });
-  const result = await accepted(await invoke(chunked)); assert.equal(result.unreadCount, 0); assert.equal(Object.prototype.polluted, undefined);
+  const result = await accepted(await invoke(chunked)); assert.equal(result.unreadCount, 1); assert.equal(Object.prototype.polluted, undefined);
   t.diagnostic("8 malformed or interrupted stream cases, then a valid one-byte-chunk request");
 });
 

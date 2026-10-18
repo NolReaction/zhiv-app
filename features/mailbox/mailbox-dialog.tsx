@@ -8,9 +8,10 @@ import type { MailboxController } from "./use-mailbox";
 import styles from "./mailbox.module.css";
 
 const dateLabel = (value: string) => new Date(value).toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
-const typeLabel = (message: MailMessage) => message.type === "admin_grant" ? "Подарок от команды" : message.type === "balance_correction" ? "Изменение хозяйства" : message.type === "event" ? "Событие" : "От команды игры";
-export function MailLetter({ message, reading, readError, available, onRetry }: {
+const typeLabel = (message: MailMessage) => message.gift ? "От автора игры" : message.type === "admin_grant" ? "Подарок от автора" : message.type === "balance_correction" ? "Изменение хозяйства" : message.type === "event" ? "Событие" : "От автора игры";
+export function MailLetter({ message, reading, readError, available, onRetry, claiming = false, claimError = null, onClaim }: {
   message: MailMessage; reading: boolean; readError: string | null; available: boolean; onRetry: () => void;
+  claiming?: boolean; claimError?: string | null; onClaim?: () => void;
 }) {
   const attachments = message.attachments;
   const contents = attachments ? [attachments.coins ? `${attachments.coins > 0 ? "+" : ""}${attachments.coins.toLocaleString("ru-RU")} монет` : null,
@@ -28,6 +29,13 @@ export function MailLetter({ message, reading, readError, available, onRetry }: 
     <div className={styles.letterBody}>{message.body}</div>
     {contents.length > 0 && <aside className={styles.attachments}><strong><Gift size={17} aria-hidden="true" />Изменения уже применены</strong>
       <ul>{contents.map((text, index) => <li key={index}>{text}</li>)}</ul></aside>}
+    {message.gift && <aside className={styles.welcomeGift} aria-label="Подарок от автора">
+      <div><Gift size={25} aria-hidden="true" /><span><strong>100 жемчужин</strong><small>Для первых приключений</small></span></div>
+      {message.gift.claimedAt ? <p role="status"><Check size={16} aria-hidden="true" />Подарок получен</p>
+        : <button type="button" disabled={!available || claiming || !onClaim} onClick={onClaim}>{claiming ? "Получаем…" : "Забрать подарок"}</button>}
+      {claimError && <p className={styles.error} role="status">{claimError}</p>}
+      {!message.gift.claimedAt && !available && <small>Подключись к интернету, чтобы забрать подарок.</small>}
+    </aside>}
     <footer className={styles.readStatus} aria-live="polite">{message.readAt ? <><Check size={14} aria-hidden="true" />Прочитано</> : reading ? "Сохраняем отметку прочтения…" : !available ? "Подключитесь, чтобы сохранить прочтение." : "Письмо открыто"}</footer>
     {readError && <div className={styles.error} role="status"><p>{readError}</p><button type="button" disabled={!available || reading} onClick={onRetry}>Повторить отметку</button></div>}
   </article>;
@@ -39,13 +47,14 @@ export function MailboxPanel({ mailbox }: { mailbox: MailboxController }) {
     if (opened && available && selectedId && !readAt) void messageVisible(selectedId);
   }, [opened, available, selectedId, readAt, messageVisible]);
   if (selected) return <MailLetter message={selected} reading={mailbox.readingIds.includes(selected.id)} readError={mailbox.readError}
-    available={mailbox.available} onRetry={() => void mailbox.messageVisible(selected.id)} />;
+    available={mailbox.available} onRetry={() => void mailbox.messageVisible(selected.id)}
+    claiming={mailbox.claimingIds?.includes(selected.id)} claimError={mailbox.claimError} onClaim={() => void mailbox.claimGift(selected.id)} />;
   return <div className={styles.inbox} aria-busy={mailbox.loading || mailbox.loadingMore}>
     {!mailbox.available && <p className={styles.offline} role="status">Для обновления почты нужен интернет и открытая вкладка.</p>}
     {mailbox.error && <p className={styles.error} role="status">{mailbox.error}</p>}
     {mailbox.messages.length === 0 ? <div className={styles.empty}><MailOpen size={40} aria-hidden="true" />
       <strong>{mailbox.loading ? "Проверяем почтовый ящик…" : mailbox.loaded ? "Пока тихо" : "Заглянем в почтовый ящик"}</strong>
-      <p>{mailbox.loaded ? "Здесь сохраняются письма команды и новости о событиях." : "Письма появятся после подключения к серверу."}</p></div>
+      <p>{mailbox.loaded ? "Здесь сохраняются письма автора и новости о событиях." : "Письма появятся после подключения к серверу."}</p></div>
       : <ul className={styles.letters} aria-label="Письма">{mailbox.messages.map(message => <li key={message.id}>
         <button type="button" data-mail-id={message.id} data-unread={!message.readAt || undefined} onClick={() => mailbox.select(message.id)}>
           <span className={styles.letterIcon}>{message.readAt ? <MailOpen size={20} aria-hidden="true" /> : <Mail size={20} aria-hidden="true" />}</span>

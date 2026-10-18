@@ -33,6 +33,14 @@
 .attachments { border-top: 1px dashed #8b966a; padding-top: 14px; font: 12px/1.6 system-ui; }
 .attachments strong { display: flex; align-items: center; gap: 7px; font-weight: 600; }
 .attachments ul { padding-left: 20px; }
+.welcomeGift { display: grid; gap: 14px; padding: 17px; border: 1px solid #a48b55; border-radius: 14px; background: #f9efcf; }
+.welcomeGift > div { display: flex; align-items: center; gap: 12px; }
+.welcomeGift span { display: grid; gap: 3px; }
+.welcomeGift strong { font-size: 17px; }
+.welcomeGift small { color: #65704b; font-size: 11px; line-height: 1.5; }
+.welcomeGift button { min-height: 44px; padding: 10px 14px; border: 1px solid #4b6038; border-radius: 11px; background: #40572f; color: #fff7dc; font-size: 14px; font-weight: 650; cursor: pointer; }
+.dialog .welcomeGift button:focus-visible { outline: 2px solid #304c28; outline-offset: 3px; }
+.welcomeGift p { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 12px; line-height: 1.5; }
 .readStatus { display: flex; align-items: center; gap: 5px; margin-top: 18px; color: #65704b; font: 11px/1.5 system-ui; }
 .letter .error { color: #765235; }
 .letter .error button { border-color: #8d956c66; }

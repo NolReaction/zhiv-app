@@ -18,7 +18,7 @@ export function MailboxNotifications({ mailbox }: { mailbox: MailboxController }
       if (disposed || !isAvailable() || !claimNotification(id)) return;
       shown = true;
       toast.custom(() => <div className={styles.notification} role="status"><Mail size={22} aria-hidden="true" />
-      <div><strong>Вам пришло письмо</strong><p>Новое сообщение команды в вашей почте.</p>
+      <div><strong>Вам пришло письмо</strong><p>Новое сообщение автора игры в вашей почте.</p>
         <button type="button" onClick={() => { if (isAvailable()) open(); toast.dismiss(toastId); }}>Открыть почту</button></div>
       <button type="button" aria-label="Закрыть уведомление о письме" onClick={() => toast.dismiss(toastId)}><X size={17} aria-hidden="true" /></button></div>,
       { id: toastId, duration: 12_000 });

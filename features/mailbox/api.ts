@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { ApiError } from "@/lib/check-in-api";
 import { retryAfterMs, withRequestDeadline } from "@/lib/request-deadline";
-import { mailboxPageSchema, mailReadResultSchema } from "./model";
+import { mailboxPageSchema, mailReadResultSchema, mailClaimResultSchema } from "./model";
 
 async function request<T>(path: string, owner: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>, signal?: AbortSignal, body?: unknown) {
   return withRequestDeadline(10_000, signal, async requestSignal => {
@@ -29,4 +29,8 @@ export function getMailbox(owner: string, cursor: string | null, signal?: AbortS
 export function markMailRead(owner: string, id: string, signal?: AbortSignal) {
   if (!z.string().uuid().safeParse(id).success) return Promise.reject(new ApiError("Письмо не найдено", 400));
   return request(`/api/v1/mail/${encodeURIComponent(id)}/read`, owner, mailReadResultSchema, signal, { expectedOwnerPublicId: owner });
+}
+export function claimMailGift(owner: string, id: string, signal?: AbortSignal) {
+  if (!z.string().uuid().safeParse(id).success) return Promise.reject(new ApiError("Письмо не найдено", 400));
+  return request(`/api/v1/mail/${encodeURIComponent(id)}/claim`, owner, mailClaimResultSchema, signal, { expectedOwnerPublicId: owner });
 }

@@ -63,17 +63,17 @@ BEGIN
     IF actual_tables IS DISTINCT FROM expected_tables THEN
         RAISE EXCEPTION 'Unexpected application tables. Game reset cancelled; review the schema first.';
     END IF;
-    -- V61 account mail, broadcast receipts, and pending mail delivery survive gameplay-only resets.
+    -- V62 welcome claim timestamps, account mail, broadcast receipts, and pending mail delivery survive gameplay-only resets.
     -- Any later migration must be reviewed, including columns on retained tables.
-    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 61
+    IF (SELECT max(version::integer) FROM public.flyway_schema_history) IS DISTINCT FROM 62
         OR NOT (
             ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
-                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,61) AS expected(version))
+                = ARRAY(SELECT version::text || ':SQL' FROM generate_series(1,62) AS expected(version))
             OR ARRAY(SELECT version || ':' || type FROM public.flyway_schema_history ORDER BY version::integer)
-                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL','58:SQL','59:SQL','60:SQL','61:SQL']
+                = ARRAY['49:SQL_BASELINE','50:SQL','51:SQL','52:SQL','53:SQL','54:SQL','55:SQL','56:SQL','57:SQL','58:SQL','59:SQL','60:SQL','61:SQL','62:SQL']
         )
         OR EXISTS (SELECT 1 FROM public.flyway_schema_history WHERE NOT success) THEN
-        RAISE EXCEPTION 'Expected successfully applied migrations through V61. Game reset cancelled.';
+        RAISE EXCEPTION 'Expected successfully applied migrations through V62. Game reset cancelled.';
     END IF;
 
     IF apply_mode THEN

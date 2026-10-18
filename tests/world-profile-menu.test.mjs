@@ -12,6 +12,7 @@ const { WorldProfileContent, WorldProfileMenu } = await vite.ssrLoadModule("/fea
 const { getAudioRuntime } = await vite.ssrLoadModule("/features/audio/runtime/audio-service.ts");
 const { AUDIO_BUSES } = await vite.ssrLoadModule("/features/audio/domain/types.ts");
 const { WorldMoodModule } = await vite.ssrLoadModule("/features/world/ui/profile/world-mood-module.tsx");
+const { WorldTapHintSetting } = await vite.ssrLoadModule("/features/world/ui/profile/world-tap-hint-setting.tsx");
 const { BOOK_COLLECTION_COUNT } = await vite.ssrLoadModule("/features/world/domain/collection-book.ts");
 const { newWorldState, worldCatalog } = await vite.ssrLoadModule("/features/world/domain/model.ts");
 const { newEconomyState } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
@@ -231,11 +232,15 @@ test("friends tab receives parent data and navigation without claiming friend pr
 });
 
 test("settings are available inline in their own profile tab without a nested audio dialog", () => {
-  const view = profile({ activeTab: "settings", idPrefix: "settings-test" });
+  const view = profile({ activeTab: "settings", idPrefix: "settings-test",
+    tapHintSetting: createElement(WorldTapHintSetting, { owner: "profile-player", tone: "forest" }) });
   const panel = view.elements.find(element => element.props.role === "tabpanel");
   assert.equal(panel.props.id, "settings-test-panel-settings");
   assert.equal(panel.props["aria-labelledby"], "settings-test-tab-settings");
   assert.match(view.markup, /Звуки игры/);
+  assert.match(view.markup, /Подсказки нажатия/);
+  assert.match(view.markup, /role="switch"[^>]*aria-checked="true"|aria-checked="true"[^>]*role="switch"/);
+  assert.match(view.markup, /Сами объекты и подсветка обучения останутся доступны/);
   assert.equal((view.markup.match(/type="range"/g) ?? []).length, AUDIO_BUSES.length + 1);
   assert.doesNotMatch(view.markup, /role="dialog"|Достижения Мохлика|Самочувствие Мохлика/);
   const defaultView = profile();

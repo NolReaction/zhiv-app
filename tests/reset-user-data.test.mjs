@@ -15,9 +15,23 @@ test("the destructive reset explicitly reviews the latest migration", () => {
   assert.equal(reviewedVersion, latestVersion, "Review the new schema and update reset-user-data.sql before release");
   assert.doesNotMatch(reset, /ORDER BY installed_rank DESC LIMIT 1/,
     "An admin compatibility upgrade can apply V50 after V52; installation order cannot identify the schema version");
-  assert.match(reset, /generate_series\(1,61\)/);
+  assert.match(reset, /generate_series\(1,62\)/);
   assert.match(reset, /49:SQL_BASELINE/);
   assert.match(reset, /WHERE NOT success/);
+});
+
+test("fresh database reset and its CI verifier accept the complete current baseline chain", async () => {
+  const baseline = files.filter(file => file.prefix === "B").toSorted((a, b) => b.version - a.version)[0];
+  assert.ok(baseline);
+  const expected = [`${baseline.version}:SQL_BASELINE:true`, ...files.filter(file => file.prefix === "V" && file.version > baseline.version)
+    .toSorted((a, b) => a.version - b.version).map(file => `${file.version}:SQL:true`)];
+  for (const path of ["scripts/reset-database.sh", "scripts/verify-reset-database-ci.py"]) {
+    const source = await readFile(new URL(`../${path}`, import.meta.url), "utf8");
+    const reviewed = source.match(/ARRAY\['\d+:SQL_BASELINE:true'[^\]]*\]/)?.[0];
+    assert.ok(reviewed, `${path}: the rebuilt database must have an explicit reviewed baseline history`);
+    assert.deepEqual([...reviewed.matchAll(/'([^']+)'/g)].map(match => match[1]), expected,
+      `${path}: review every new migration before accepting a rebuilt database`);
+  }
 });
 
 test("the reset inventory covers every migrated user table and preserves global configuration", async () => {

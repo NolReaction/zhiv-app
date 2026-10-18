@@ -6,7 +6,7 @@ import { createServer } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const vite = await createServer({ appType: "custom", configFile: false, root, resolve: { alias: { "@": root } }, server: { middlewareMode: true, hmr: false, ws: false } });
 after(() => vite.close());
-const { mapGuideCamera, minerArrivalGuideTarget, drawMapGuideTarget } = await vite.ssrLoadModule("/features/world/scene/map-guide-target.ts");
+const { mapGuideCamera, minerArrivalGuideTarget, leaftailArrivalGuideTarget, drawMapGuideTarget } = await vite.ssrLoadModule("/features/world/scene/map-guide-target.ts");
 const { observeMapGuideInset } = await vite.ssrLoadModule("/features/world/scene/map-guide-inset.ts");
 const { worldToScreen } = await vite.ssrLoadModule("/features/world/scene/camera.ts");
 const { interactiveMapObjects } = await vite.ssrLoadModule("/features/world/scene/site-interactions.ts");
@@ -60,13 +60,26 @@ function paintedGuide(elapsed, reducedMotion = false) {
     beginPath() {}, closePath() {}, moveTo(x, y) { path.push([x, y]); }, lineTo(x, y) { path.push([x, y]); },
     stroke() { strokes.push({ alpha: this.globalAlpha, width: this.lineWidth, color: this.strokeStyle }); },
   };
-  const target = minerArrivalGuideTarget({ x: 650, y: 250, size: 42 });
+  const target = { ...minerArrivalGuideTarget({ x: 650, y: 250, size: 42 }), id: "tutorial-building" };
   const original = structuredClone(target);
   drawMapGuideTarget(context, target, { x: 650, y: 250, zoom: 2 }, { width: 393, height: 665 }, elapsed, reducedMotion);
   assert.deepEqual(target, original, "the authored click and framing geometry is never animated");
   assert.equal(context.globalAlpha, .8, "guide paint restores the caller's canvas state");
   return { path, strokes };
 }
+
+test("both new residents keep camera framing without painting an arrival square", () => {
+  for (const target of [minerArrivalGuideTarget, leaftailArrivalGuideTarget]) {
+    const object = target({ x: 650, y: 250, size: 42 }), original = structuredClone(object);
+    assert.ok(object.hitArea.length >= 3);
+    assert.ok(mapGuideCamera(object, { width: 393, height: 665 }, authored, { top: 120, bottom: 220 }).zoom > 0);
+    for (const still of [false, true]) {
+      const context = new Proxy({}, { get() { throw new Error("resident framing must not paint a square"); } });
+      drawMapGuideTarget(context, object, { x: 650, y: 250, zoom: 2 }, { width: 393, height: 665 }, 1, still);
+      assert.deepEqual(object, original);
+    }
+  }
+});
 
 test("map guide slowly pulses bright paint on the existing active clock with stable geometry", () => {
   const bright = paintedGuide(0), dim = paintedGuide(.9), next = paintedGuide(1.8);

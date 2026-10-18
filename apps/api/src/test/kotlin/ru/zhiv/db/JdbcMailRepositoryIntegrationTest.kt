@@ -70,12 +70,12 @@ class JdbcMailRepositoryIntegrationTest {
 
     @Test fun `inbox owner and read rights are checked on the server and duplicate read preserves the first time`()=runBlocking<Unit> {
         val a=player();val b=player();val repository=repo();val id=mail(a,notify=true)
-        assertEquals(1L,repository.inbox(a.hash,a.publicId,null,20).unreadCount)
+        assertEquals(2L,repository.inbox(a.hash,a.publicId,null,20).unreadCount)
         assertEquals("MAIL_OWNER_CHANGED",assertFailsWith<AuthFailure>{repository.inbox(a.hash,b.publicId,null,20)}.code)
         assertEquals("MAIL_NOT_FOUND",assertFailsWith<AuthFailure>{repository.read(b.hash,b.publicId,id)}.code)
         assertEquals("MAIL_OWNER_CHANGED",assertFailsWith<AuthFailure>{repository.read(a.hash,b.publicId,id)}.code)
         val first=repository.read(a.hash,a.publicId,id)
-        assertEquals(0L,first.unreadCount);assertEquals(first.readAt,repository.read(a.hash,a.publicId,id).readAt)
+        assertEquals(1L,first.unreadCount);assertEquals(first.readAt,repository.read(a.hash,a.publicId,id).readAt)
         assertNull(repository.inbox(a.hash,a.publicId,null,20).latestUnreadNotification)
         execute("UPDATE app_sessions SET revoked_at=clock_timestamp() WHERE token_hash=?",a.hash)
         assertEquals("UNAUTHORIZED",assertFailsWith<AuthFailure>{repository.inbox(a.hash,a.publicId,null,20)}.code)
@@ -85,10 +85,10 @@ class JdbcMailRepositoryIntegrationTest {
         val a=player();val repository=repo();val important=mail(a,notify=true,at=time.minusDays(1))
         repeat(25){mail(a,at=time)}
         val first=repository.inbox(a.hash,a.publicId,null,20)
-        assertEquals(26L,first.unreadCount);assertEquals(20,first.messages.size);assertEquals(important.toString(),first.latestUnreadNotification!!.id)
+        assertEquals(27L,first.unreadCount);assertEquals(20,first.messages.size);assertEquals(important.toString(),first.latestUnreadNotification!!.id)
         assertFalse(first.messages.any { it.id==important.toString() })
         val next=repository.inbox(a.hash,a.publicId,first.nextCursor,20)
-        assertEquals(6,next.messages.size);assertNull(next.nextCursor);assertEquals(26,(first.messages+next.messages).map { it.id }.distinct().size)
+        assertEquals(7,next.messages.size);assertNull(next.nextCursor);assertEquals(27,(first.messages+next.messages).map { it.id }.distinct().size)
         assertEquals(important.toString(),next.latestUnreadNotification!!.id)
         mail(a,at=time.plusDays(1))
         assertEquals(next.messages,repository.inbox(a.hash,a.publicId,first.nextCursor,20).messages)
@@ -166,9 +166,9 @@ class JdbcMailRepositoryIntegrationTest {
             assertEquals(receipt,repository.broadcast(admin.hash,request))
             assertEquals(1L,count("SELECT count(*) FROM admin_actions WHERE request_id=? AND changed",UUID.fromString(request.requestId)))
             assertEquals(1L,count("SELECT count(*) FROM admin_mail_broadcasts WHERE request_id=?",UUID.fromString(request.requestId)))
+            assertEquals(2L,repository.inbox(recipient.hash,recipient.publicId,null,20).unreadCount)
+            repository.read(recipient.hash,recipient.publicId,UUID.fromString(repository.inbox(recipient.hash,recipient.publicId,null,20).messages.single { it.gift==null }.id))
             assertEquals(1L,repository.inbox(recipient.hash,recipient.publicId,null,20).unreadCount)
-            repository.read(recipient.hash,recipient.publicId,UUID.fromString(repository.inbox(recipient.hash,recipient.publicId,null,20).messages.single().id))
-            assertEquals(0L,repository.inbox(recipient.hash,recipient.publicId,null,20).unreadCount)
         }
     }
 
@@ -177,7 +177,7 @@ class JdbcMailRepositoryIntegrationTest {
         val request=broadcast("players",listOf(a.publicId,b.publicId))
         val receipt=repository.broadcast(admin.hash,request)
         assertEquals(receipt,repository.broadcast(admin.hash,request.copy(publicIds=request.publicIds.reversed())))
-        assertTrue(repository.inbox(admin.hash,admin.publicId,null,20).messages.isEmpty())
+        assertNotNull(repository.inbox(admin.hash,admin.publicId,null,20).messages.single().gift)
         val future="0000-0000-0061";val empty=broadcast("players",listOf(future));val ignored=repository.broadcast(admin.hash,empty)
         assertEquals(0L,ignored.recipientCount);assertFalse(ignored.changed)
         execute("INSERT INTO app_users(public_id,display_name) VALUES (?,'Позже')",future)
@@ -202,9 +202,9 @@ class JdbcMailRepositoryIntegrationTest {
             mergePlayerMail(c,a.id,b.id);c.commit()
         }
         val inbox=repo().inbox(a.hash,a.publicId,null,20)
-        assertEquals(setOf(kept.toString(),transferred.toString()),inbox.messages.map { it.id }.toSet())
-        assertNotNull(inbox.messages.single { it.id==kept.toString() }.readAt);assertEquals(1L,inbox.unreadCount)
-        assertTrue(repo().inbox(b.hash,b.publicId,null,20).messages.isEmpty())
+        assertEquals(setOf(kept.toString(),transferred.toString()),inbox.messages.filter { it.gift==null }.map { it.id }.toSet())
+        assertNotNull(inbox.messages.single { it.id==kept.toString() }.readAt);assertEquals(2L,inbox.unreadCount)
+        assertNotNull(repo().inbox(b.hash,b.publicId,null,20).messages.single().gift)
         assertEquals(0L,count("SELECT count(*) FROM notification_events WHERE category='mail'"))
     }
 
@@ -236,5 +236,100 @@ class JdbcMailRepositoryIntegrationTest {
             header(HttpHeaders.Cookie,"${config.cookieName}=${admin.raw}");header(HttpHeaders.Origin,"http://localhost");contentType(ContentType.Application.Json);setBody(Json.encodeToString(request))}
         assertEquals(HttpStatusCode.OK,sent.status)
         assertFalse(client.get(path){header(HttpHeaders.Cookie,cookie)}.bodyAsText().contains(request.reason))
+    }
+
+    @Test fun `welcome delivery and reading never pay while concurrent explicit claims credit 100 visible pearls once`()=runBlocking<Unit> {
+        val a=player();val repository=repo();val economy=JdbcEconomyRepository(source)
+        val before=economy.snapshot(a.hash)
+        val welcome=repository.inbox(a.hash,a.publicId,null,20).messages.single()
+        assertEquals(WELCOME_MAIL_TITLE,welcome.title);assertTrue(welcome.body.contains("Я делаю эту игру один"))
+        assertEquals(100L,welcome.gift!!.pearls);assertNull(welcome.gift.claimedAt);assertNull(welcome.attachments)
+        repository.read(a.hash,a.publicId,UUID.fromString(welcome.id))
+        assertEquals(before.wallet.pearls,economy.snapshot(a.hash).wallet.pearls)
+        val replies=coroutineScope { (1..8).map { async(Dispatchers.IO) { repository.claim(a.hash,a.publicId,UUID.fromString(welcome.id)) } }.awaitAll() }
+        assertEquals(1,replies.map { it.gift.claimedAt }.distinct().size);assertTrue(replies.all { it.gift.pearls==100L })
+        val paid=economy.snapshot(a.hash)
+        assertEquals(before.wallet.pearls+200L,paid.wallet.pearls);assertEquals(before.revision+1,paid.revision)
+        assertEquals(1L,count("SELECT count(*) FROM economy_ledger WHERE user_id=? AND source_key='mail:welcome:v1' AND pearls=200",a.id))
+        val repeat=repository.claim(a.hash,a.publicId,UUID.fromString(welcome.id))
+        assertEquals(replies[0].gift,repeat.gift);assertEquals(paid.revision,economy.snapshot(a.hash).revision)
+        assertEquals(welcome.id,repository.inbox(a.hash,a.publicId,null,20).messages.single().id)
+    }
+
+    @Test fun `ordinary audit attachments and foreign IDs cannot claim and a full wallet rolls back the gift fence`()=runBlocking<Unit> {
+        val a=player();val b=player();val repository=repo();val economy=JdbcEconomyRepository(source)
+        val before=economy.snapshot(a.hash);val welcome=repository.inbox(a.hash,a.publicId,null,20).messages.single()
+        val id=UUID.fromString(welcome.id)
+        assertEquals("MAIL_OWNER_CHANGED",assertFailsWith<AuthFailure>{repository.claim(a.hash,b.publicId,id)}.code)
+        assertEquals("MAIL_NOT_FOUND",assertFailsWith<AuthFailure>{repository.claim(b.hash,b.publicId,id)}.code)
+        val receipt=source.connection.use { c ->
+            val made=insertAdminMail(c,a.id,"admin:${UUID.randomUUID()}","admin_grant","Подарок от автора","Уже начислено",false,time,MailAttachments(pearls=100))
+            c.commit();made
+        }
+        assertEquals("MAIL_NOT_FOUND",assertFailsWith<AuthFailure>{repository.claim(a.hash,a.publicId,receipt)}.code)
+        execute("UPDATE economy_profiles SET state=jsonb_set(state,'{wallet,pearls}','50000000000'::jsonb) WHERE user_id=?",a.id)
+        assertEquals("ECONOMY_CAPACITY",assertFailsWith<AuthFailure>{repository.claim(a.hash,a.publicId,id)}.code)
+        assertNull(repository.inbox(a.hash,a.publicId,null,20).messages.single { it.id==welcome.id }.gift!!.claimedAt)
+        assertEquals(0L,count("SELECT count(*) FROM economy_ledger WHERE user_id=? AND source_key='mail:welcome:v1'",a.id))
+        assertEquals(before.revision,economy.snapshot(a.hash).revision)
+        execute("UPDATE economy_profiles SET state=jsonb_set(state,'{wallet,pearls}',to_jsonb(?::bigint)) WHERE user_id=?",before.wallet.pearls,a.id)
+        repository.claim(a.hash,a.publicId,id)
+        assertEquals(before.wallet.pearls+200L,economy.snapshot(a.hash).wallet.pearls)
+    }
+
+    @Test fun `claimed welcome is retained across economy recreation and either merge direction cannot reopen it`()=runBlocking<Unit> {
+        val repository=repo();val economy=JdbcEconomyRepository(source)
+        for(claimTarget in listOf(false,true)) {
+            val target=player();val sourcePlayer=player()
+            val kept=repository.inbox(target.hash,target.publicId,null,20).messages.single()
+            val incoming=repository.inbox(sourcePlayer.hash,sourcePlayer.publicId,null,20).messages.single()
+            val paid=if(claimTarget) target else sourcePlayer
+            repository.claim(paid.hash,paid.publicId,UUID.fromString(if(claimTarget) kept.id else incoming.id))
+            val targetBefore=economy.snapshot(target.hash)
+            source.connection.use { c ->
+                c.economyRows("SELECT id FROM app_users WHERE id IN (?,?) ORDER BY id FOR NO KEY UPDATE",target.id,sourcePlayer.id){true}
+                mergePlayerMail(c,target.id,sourcePlayer.id);c.commit()
+            }
+            val merged=repository.inbox(target.hash,target.publicId,null,20).messages.single()
+            assertEquals(kept.id,merged.id);assertNotNull(merged.gift!!.claimedAt)
+            repository.claim(target.hash,target.publicId,UUID.fromString(kept.id))
+            assertEquals(targetBefore.wallet.pearls,economy.snapshot(target.hash).wallet.pearls)
+            execute("DELETE FROM economy_profiles WHERE user_id=?",target.id)
+            val reset=economy.snapshot(target.hash)
+            repository.claim(target.hash,target.publicId,UUID.fromString(kept.id))
+            assertEquals(reset.wallet.pearls,economy.snapshot(target.hash).wallet.pearls)
+            assertEquals(reset.revision,economy.snapshot(target.hash).revision)
+        }
+    }
+
+    @Test fun `expired revoked banned and deleted sessions cannot collect a welcome gift`()=runBlocking<Unit> {
+        val repository=repo()
+        for(state in listOf("expired","revoked","banned","deleted")) {
+            val a=player();val welcome=repository.inbox(a.hash,a.publicId,null,20).messages.single()
+            when(state) {
+                "expired" -> execute("UPDATE app_sessions SET expires_at=clock_timestamp()-interval '1 second' WHERE token_hash=?",a.hash)
+                "revoked" -> execute("UPDATE app_sessions SET revoked_at=clock_timestamp() WHERE token_hash=?",a.hash)
+                "banned" -> execute("UPDATE app_users SET banned_at=clock_timestamp(),ban_reason='Проверка запрета' WHERE id=?",a.id)
+                else -> execute("UPDATE app_users SET deleted_at=clock_timestamp() WHERE id=?",a.id)
+            }
+            assertEquals("UNAUTHORIZED",assertFailsWith<AuthFailure>{repository.claim(a.hash,a.publicId,UUID.fromString(welcome.id))}.code)
+            assertEquals(0L,count("SELECT count(*) FROM economy_ledger WHERE user_id=? AND source_key='mail:welcome:v1'",a.id))
+        }
+    }
+
+    @Test fun `claim HTTP rejects changed fixed gift fields and foreign origins before granting`()=testApplication {
+        val a=runBlocking{player()};val repository=repo();val welcome=runBlocking{repository.inbox(a.hash,a.publicId,null,20).messages.single()}
+        application { installZhivApi(identities,identities,config,playerMail=repository) }
+        val cookie="${config.cookieName}=${a.raw}";val path="/api/v1/mail/${welcome.id}/claim"
+        val body=Json.encodeToString(MailReadRequest(a.publicId))
+        for(extra in listOf("\"pearls\":10000","\"gift\":{\"pearls\":10000}","\"requestId\":\"${UUID.randomUUID()}\"")) {
+            assertEquals(HttpStatusCode.BadRequest,client.post(path) { header(HttpHeaders.Cookie,cookie);header(HttpHeaders.Origin,"http://localhost")
+                contentType(ContentType.Application.Json);setBody(body.dropLast(1)+","+extra+"}") }.status)
+        }
+        assertEquals(HttpStatusCode.Forbidden,client.post(path) { header(HttpHeaders.Cookie,cookie);header(HttpHeaders.Origin,"https://evil.example")
+            contentType(ContentType.Application.Json);setBody(body) }.status)
+        assertEquals(0L,count("SELECT count(*) FROM economy_ledger WHERE user_id=? AND source_key='mail:welcome:v1'",a.id))
+        val result=client.post(path) { header(HttpHeaders.Cookie,cookie);header(HttpHeaders.Origin,"http://localhost");contentType(ContentType.Application.Json);setBody(body) }
+        assertEquals(HttpStatusCode.OK,result.status);assertEquals("no-store",result.headers[HttpHeaders.CacheControl])
     }
 }

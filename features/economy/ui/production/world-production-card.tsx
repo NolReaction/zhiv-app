@@ -8,6 +8,7 @@ import { worldCostShortfalls, worldProductionReason, type WorldRecipe } from "@/
 import { ProductIcon, itemName, number } from "@/features/economy/ui/shared/world-economy-parts";
 import { worldRecipeDuration } from "@/features/economy/ui/stations/world-recipe-groups";
 import { fishStockRequirements, fishSelectionMatches, type FishSelection } from "@/features/economy/domain/fish-stock";
+import { canPrepareTutorialHarvest } from "@/features/economy/domain/tutorial-order";
 import { WorldFishSelection } from "@/features/economy/ui/fishing/world-fish-selection";
 import styles from "./world-production-card.module.css";
 
@@ -31,6 +32,8 @@ export function WorldProductionCard({ economy, recipe, focused = false, onHelpCo
   const detailId = useId();
   const results = Object.entries(recipe.rewards);
   const title = results.length === 1 ? itemName(state, results[0][0]) : recipe.name.split(" · ")[0];
+  const firstHarvest = canPrepareTutorialHarvest(state, recipe.id);
+  const duration = firstHarvest ? "Сразу · первый урожай" : worldRecipeDuration(recipe.seconds);
   const reason = worldProductionReason(state, recipe, 1);
   const costs = [...(recipe.cost.coins > 0 ? [["coins", recipe.cost.coins] as const] : []), ...Object.entries(recipe.cost.items)];
   const hasFish = Object.keys(fishStockRequirements(recipe.cost.items, state.catalog.fishing)).length > 0;
@@ -42,6 +45,7 @@ export function WorldProductionCard({ economy, recipe, focused = false, onHelpCo
       ? `Результат: ${results.map(([id, amount]) => `${itemName(state, id)} ×${number(amount)}`).join(", ")}.` : "",
     costs.length ? `Понадобится: ${costs.map(([id, amount]) => `${id === "coins" ? "Монеты" : itemName(state, id)} ×${number(amount)}`).join(", ")}.` : "",
     reason,
+    firstHarvest ? "Первый учебный урожай созреет сразу. Сбор Мохликом остаётся обычным; помощь доступна один раз." : "",
     meal ? `Скорость вылазки +${number(meal.heroSpeedBps / 100)}%, стройки +${number(meal.builderSpeedBps / 100)}%.` : "",
   ].filter(Boolean).join(" ");
   const context = () => onHelpContextChange?.({ intent: "production", stationId: recipe.buildingId, recipeId: recipe.id, quantity: 1 });
@@ -99,14 +103,14 @@ export function WorldProductionCard({ economy, recipe, focused = false, onHelpCo
   return <div className={styles.entry} data-production-product={Object.keys(recipe.rewards).sort().join(":")}>
     <button ref={button} type="button" className={styles.card} data-recipe={recipe.id} data-recipe-product={results[0]?.[0]}
       data-recipe-order data-recipe-focused={focused || undefined} data-blocked={Boolean(reason) || (durableProduction ? productionLocked(economy) : locked(economy)) || undefined}
-      aria-label={`Произвести: ${title}, ${worldRecipeDuration(recipe.seconds)}`}
+      aria-label={`Произвести: ${title}, ${duration}`}
       aria-describedby={[description ? detailId : "", notice ? noticeId : ""].filter(Boolean).join(" ") || undefined}
       title={restriction ?? undefined} onFocus={context} onClick={() => start()}>
       <span className={styles.header} data-production-header data-production-mixed={results.length > 1 || undefined}>
         <span className={styles.outputs}>{results.map(([id, amount]) => <span key={id}><ProductIcon state={state} itemId={id} size={30} />{(amount !== 1 || results.length > 1) && <b>×{number(amount)}</b>}</span>)}</span>
         <strong title={title}>{title}</strong>
       </span>
-      <span className={styles.time}><Clock3 size={12} aria-hidden="true" />{worldRecipeDuration(recipe.seconds)}{restriction && <LockKeyhole className={styles.lock} size={12} aria-hidden="true" />}</span>
+      <span className={styles.time}><Clock3 size={12} aria-hidden="true" />{duration}{restriction && <LockKeyhole className={styles.lock} size={12} aria-hidden="true" />}</span>
       <span className={styles.details}>
         {costs.length > 0 && <span className={styles.costs} data-production-inputs aria-label="Понадобится">{costs.map(([id, amount]) => {
           const available = id === "coins" ? state.wallet.coins : state.inventory[id] ?? 0;

@@ -32,6 +32,7 @@ import { createMapAnchorStore } from "./map-anchor-store";
 import { observeMapGuideInset } from "./map-guide-inset";
 import { useGardenCollection } from "@/features/economy/integration/garden-collection-context";
 import { ForestSpeechAnnouncements } from "@/features/world/characters/social/forest-speech";
+import { useTapHintPreference } from "@/features/world/state/use-tap-hint-preferences";
 import styles from "@/features/world/world.module.css";
 
 type Props = { tutorialActive?: boolean; suspended?: boolean; hideJourneyStatus?: boolean; economyJourney?: EconomySceneJourney | null; cancelledExplorations?: readonly string[]; economyBuildings?: EconomySceneBuildings | null; economyProduction?: EconomySceneProduction | null; economyConstruction?: EconomySceneConstruction | null; economyResidents?: EconomySceneResidents | null; residentArrival?: ResidentArrivalPresentation; merchantArrival?: ResidentArrivalPresentation; state: WorldState; gifts: readonly string[]; items?: readonly GameItemId[]; timeZone: string; now: number; owner: string; bestStreakDays: number; wakeSignal: number; onPlace: (place: WorldPlace, selection?: MapObjectSelection) => void;
@@ -43,6 +44,7 @@ type Props = { tutorialActive?: boolean; suspended?: boolean; hideJourneyStatus?
   guidePlace?: MapObjectPlace | null;
   topHud: RefObject<HTMLElement | null>; bottomHud: RefObject<HTMLElement | null> };
 export function WorldScene({ tutorialActive = false, suspended = false, hideJourneyStatus = false, constructionEconomy, onOpenConstruction, onOpenProduction, hideConstructionStatus = false, economyJourney, cancelledExplorations, economyBuildings, economyProduction, economyConstruction, economyResidents, residentArrival, merchantArrival, state, gifts, items, timeZone, now, owner, bestStreakDays, wakeSignal, onPlace, onResident, onReady, selectedObjectId, onObjectSelection, openObjectRequest, guidePlace, topHud, bottomHud }: Props) {
+  const { showTapHints } = useTapHintPreference(owner);
   const garden = useGardenCollection();
   const canvas = useRef<HTMLCanvasElement>(null), speechCanvas = useRef<HTMLCanvasElement>(null), root = useRef<HTMLDivElement>(null);
   const engine = useRef<Awaited<ReturnType<typeof createMapEngine>> | null>(null);
@@ -173,10 +175,10 @@ export function WorldScene({ tutorialActive = false, suspended = false, hideJour
     <canvas ref={speechCanvas} className={styles.speechCanvas} aria-hidden="true" />
     <ForestSpeechAnnouncements key={`speech:${owner}`} owner={owner} />
     {!ready && <div className={styles.sceneLoading} role="status"><p>{!error && <LoaderCircle className={styles.loadingSpinner} size={23} />}{error ?? "Загружаем лес и Мохлика…"}</p>{error && <button onClick={() => loader.current?.retry()}>Повторить загрузку</button>}</div>}
-    {WORLD_PRESENTATION.rebuilding ? <div className={styles.mapAnchors} hidden={!ready} role="group" aria-label="Объекты на карте">
+    {WORLD_PRESENTATION.rebuilding ? <div className={styles.mapAnchors} data-tap-hints={showTapHints} hidden={!ready} role="group" aria-label="Объекты на карте">
       {objects.map(({ id, place, label }) => <button key={id} data-map-anchor data-object-id={id} data-kind={place}
         onClick={event => { if (event.detail === 0) engine.current?.activateObject(id); }} aria-label={`Открыть: ${label}`} aria-expanded={selectedObjectId === id} title={label} />)}
-    </div> : <div className={styles.mapAnchors} hidden={!ready}>
+    </div> : <div className={styles.mapAnchors} data-tap-hints={showTapHints} hidden={!ready}>
       <button data-map-anchor data-kind="house" data-x={MAP_PLACES.house.marker.x} data-y={MAP_PLACES.house.marker.y} onClick={() => onPlace("house")} aria-label={`Домик ${state.houseLevel} уровня. Улучшить`} title="Домик" />
       <button data-map-anchor data-kind="bush" data-x={MAP_PLACES.bush.marker.x} data-y={MAP_PLACES.bush.marker.y} onClick={() => engine.current?.visitBush()} aria-label="Позвать Мохлика к кустику" title="Кустик" />
       <button data-map-anchor data-kind="cave" data-x={MAP_PLACES.cave.marker.x} data-y={MAP_PLACES.cave.marker.y} onClick={() => onPlace("cave")} aria-label="Войти в пещеру" title="Пещера" />

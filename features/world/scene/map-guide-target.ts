@@ -1,7 +1,7 @@
 import { clampCamera, worldToScreen, type Camera, type VerticalCameraInsets, type Viewport } from "./camera";
 import type { MapInteractiveObject } from "./site-interactions";
 
-/** The arrival highlight follows the resident's full body, including his helmet. */
+/** Camera framing follows the resident's full body, including his helmet. */
 export function minerArrivalGuideTarget(point: { x: number; y: number; size: number }): MapInteractiveObject | undefined {
   if (![point.x, point.y, point.size].every(Number.isFinite) || point.size <= 0) return;
   const radius = point.size * .7, top = point.y - point.size * 1.1, bottom = point.y + point.size * .12;
@@ -32,7 +32,9 @@ export function mapGuideCamera(object: MapInteractiveObject, view: Viewport, bou
 /** Paint in screen pixels so the contour stays legible while the player pans or pinches. */
 export function drawMapGuideTarget(context: CanvasRenderingContext2D, object: MapInteractiveObject,
   camera: Camera, view: Viewport, elapsedSeconds = 0, reducedMotion = false) {
-  if (object.hitArea.length < 3) return;
+  // Arrival geometry remains available to the camera and hit handling; a box
+  // around a living neighbour is deliberately not painted.
+  if (["kamneshmyg-arrival", "leaftail-arrival"].includes(object.id) || object.hitArea.length < 3) return;
   const points = object.hitArea.map(point => worldToScreen(point, camera, view));
   context.save();
   context.beginPath();

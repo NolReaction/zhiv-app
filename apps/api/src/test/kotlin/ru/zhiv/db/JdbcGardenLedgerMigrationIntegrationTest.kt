@@ -53,7 +53,7 @@ class JdbcGardenLedgerMigrationIntegrationTest {
             assertEquals("23514", assertFailsWith<SQLException> { insert("start_garden_collection", basket(3)) }.sqlState)
 
             DatabaseFactory.migrate(source)
-            assertEquals("61", scalar(source, "SELECT max(version::int)::text FROM flyway_schema_history"))
+            assertEquals("62", scalar(source, "SELECT max(version::int)::text FROM flyway_schema_history"))
             assertEquals(oldHistory, history(source), "Earlier migration metadata remains byte-for-byte unchanged")
             assertEquals(oldLedger, scalar(source, "SELECT jsonb_agg(to_jsonb(l) ORDER BY source_key)::text FROM economy_ledger l"))
             for (kind in listOf("start_garden_collection", "claim_garden_collection"))

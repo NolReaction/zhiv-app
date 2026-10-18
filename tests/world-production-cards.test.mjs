@@ -14,6 +14,7 @@ const { WorldExpeditionSector, ExpeditionRouteDetails } = await vite.ssrLoadModu
 const { economyCatalog } = await vite.ssrLoadModule("/features/economy/domain/model.ts");
 const { economyStorage } = await vite.ssrLoadModule("/features/economy/domain/rules.ts");
 const { worldRecipeGroups } = await vite.ssrLoadModule("/features/economy/ui/stations/world-recipe-groups.ts");
+const { newTutorialOrder } = await vite.ssrLoadModule("/features/economy/domain/tutorial-order.ts");
 after(() => vite.close());
 
 const now = Date.parse("2026-10-03T12:00:00Z");
@@ -35,6 +36,18 @@ function cardBlocked(html) {
   assert.ok(match, "Missing one-tap product card");
   return /data-blocked="true"/.test(match[1]);
 }
+
+test("first raspberry card explains instant aid once and reverts to the catalog duration after it is used", () => {
+  const economy = controller({ buildings: { home: 1, garden: 1, warehouse: 1 }, tutorialOrder: newTutorialOrder(),
+    progression: { recipes: {}, routes: {}, buildings: {} } });
+  const fresh = renderCard("grow_berries", economy);
+  assert.match(fresh, /Сразу · первый урожай/);
+  assert.match(fresh, /Сбор Мохликом остаётся обычным; помощь доступна один раз/);
+  economy.snapshot.tutorialOrder.firstHarvestPrepared = true;
+  const replay = renderCard("grow_berries", economy);
+  assert.doesNotMatch(replay, /Сразу · первый урожай/);
+  assert.match(replay, /aria-label="Произвести: Малина, 1 мин"/);
+});
 
 test("fish cooking retains its catalog class cost and never substitutes a more valuable rarity", () => {
   const calls = [], economy = controller({ buildings: { home: 5, dryer: 5, warehouse: 1 }, inventory: { fish_common: 2, fish_legendary: 1 } },

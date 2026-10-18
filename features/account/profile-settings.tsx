@@ -7,13 +7,14 @@ import { SharingSwitch as Switch } from "@/components/sharing-switch";
 import { AudioSettingsPanel } from "@/features/audio/ui/audio-settings";
 import { NotificationSettingsPanel, type NotificationSettingsExit } from "@/features/notifications/notification-settings";
 import { useSectionGuideLauncherPreference } from "@/features/onboarding/use-section-guide-preferences";
+import { WorldTapHintSetting } from "@/features/world/ui/profile/world-tap-hint-setting";
 import styles from "./profile-settings.module.css";
 
 const screens = [
   { id: "installation", title: "Установить приложение", description: "Значок на экране и инструкция для вашего браузера", icon: Smartphone },
   { id: "notifications", title: "Уведомления", description: "События, тихие часы и частота сообщений", icon: Bell },
   { id: "audio", title: "Звук", description: "Музыка, окружение и громкость игры", icon: Volume2 },
-  { id: "appearance", title: "Внешний вид", description: "Простой вид и кнопка подсказок", icon: Settings2 },
+  { id: "appearance", title: "Внешний вид", description: "Простой вид, подсказки и ромбики на карте", icon: Settings2 },
 ] as const;
 
 type SettingsScreen = typeof screens[number]["id"];
@@ -97,6 +98,7 @@ export function ProfileSettings({ ownerPublicId, isOnline, onSessionLost, simple
         <label htmlFor="section-guide-launcher"><strong>Кнопка «Что здесь делать?»</strong><span>Кнопка ручного запуска подсказок в разделах игры. Продолжение приостановленной подсказки доступно и со скрытой кнопкой.</span></label>
         <Switch id="section-guide-launcher" checked={showSectionGuideLauncher} onCheckedChange={setShowSectionGuideLauncher} data-audio-cue="ui.click" />
       </div>
+      <WorldTapHintSetting owner={ownerPublicId} />
       <p className={styles.hint}>Настройки сохраняются на этом устройстве.</p>
     </section>}
   </div>;

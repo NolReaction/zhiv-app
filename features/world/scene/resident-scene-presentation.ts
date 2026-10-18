@@ -2,7 +2,6 @@ import type { ForestSessionState } from "@/features/world/state/forest-session";
 import type { FixedWorldScene } from "@/features/world/tiled/types";
 import type { ResidentHomeIndicator } from "@/features/world/characters/resident-home-effects";
 import type { LopukhWoodpileFrame } from "@/features/world/characters/lopukh/lopukh-woodpile-painter";
-import { leaftailWindowResidentFrame } from "@/features/world/characters/leaftail/leaftail-window-painter";
 
 /** Read-only presentation of the same indoor states used by occupancy/hits. */
 export function residentScenePresentation(state: ForestSessionState, scene: FixedWorldScene) {
@@ -18,9 +17,6 @@ export function residentScenePresentation(state: ForestSessionState, scene: Fixe
     if (mind?.available && mind.doorPhase === "inside" && !mind.job)
       addHome(id, id === "lopukh" ? "lopukh-home" : id === "kamneshmyg" ? "quarry" : "leaftail-caravan");
   }
-  const leaf = state.villagers?.residents.leaftail;
-  const speaking = state.social.current?.speaker === "leaftail";
-  const window = leaf?.available && leaf.doorPhase === "inside" ? leaftailWindowResidentFrame(scene, state.elapsed, speaking) : null;
   const woodwork = state.villagers?.residents.lopukh.woodwork;
   const deliveries = woodwork?.deliveries ?? (woodwork?.lastDelivery ? [woodwork.lastDelivery] : []);
   const woodpiles: LopukhWoodpileFrame[] = [];
@@ -31,5 +27,5 @@ export function residentScenePresentation(state: ForestSessionState, scene: Fixe
     if (pile) pile.deliveries++;
     else woodpiles.push({ position: { ...delivery.position }, deliveries: 1 });
   }
-  return { homes, window, woodpiles };
+  return { homes, window: null, woodpiles };
 }

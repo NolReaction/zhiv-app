@@ -10,7 +10,7 @@ import type { EconomyController } from "@/features/economy/sync/use-economy";
 import { isBerryProduction, berryCollectionStatus } from "@/features/economy/integration/garden-collection";
 import { useGardenCollection } from "@/features/economy/integration/garden-collection-context";
 import { canStartTutorialWorkshop } from "@/features/economy/domain/workshop-starter";
-import { TUTORIAL_ORDER_ID, tutorialOrderProgress, tutorialResidentOrder } from "@/features/economy/domain/tutorial-order";
+import { canPrepareTutorialHarvest, TUTORIAL_ORDER_ID, tutorialOrderProgress, tutorialResidentOrder } from "@/features/economy/domain/tutorial-order";
 import { worldConstructionReason, worldDuration, worldProductionReason } from "@/features/economy/ui/shared/world-stations";
 import { worldRecipeDuration, worldRecipeGroups } from "@/features/economy/ui/stations/world-recipe-groups";
 import { TutorialOrderContents, WorkshopRetry, WorkshopConstructionContents, tutorialWorkshopAction } from "./world-onboarding-cards";
@@ -125,6 +125,7 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
   const recipe = snapshot ? worldRecipeGroups(snapshot, snapshot.catalog.recipes.filter(item => item.buildingId === "garden"))
     .find(group => (group.recipe.rewards.berries ?? 0) > 0)?.recipe : undefined;
   const reason = recipe && snapshot ? worldProductionReason(snapshot, recipe, 1) : null;
+  const firstHarvest = Boolean(recipe && snapshot && canPrepareTutorialHarvest(snapshot, recipe.id));
   const cropReady = Boolean(tracked && economy.now >= Date.parse(tracked.finishesAt));
   const reminder = progress?.status === "completed" && (cropReady || Boolean(harvestOwner && harvestOwner === snapshot?.ownerPublicId));
   const advance = (next: WorldOnboardingStepId, completeCurrent = true) => { onCloseSurface(); setVisited(null); setSaleOwner(null); props.onStep(next, completeCurrent); };
@@ -268,7 +269,7 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
     base.target = surface.garden ? '[data-place="garden"] [data-recipe-product="berries"]' : undefined;
     base.text = surface.garden ? "Нажми на малину, чтобы сразу начать выращивание. Одно место даёт один предмет; его время показано в карточке. До получения готового урожая место остаётся занятым."
       : "Начнём с настоящего урожая. Я показал ягодный куст на карте. Нажми на выделенный куст, чтобы открыть его меню.";
-    base.summary = surface.garden ? "Нажми на карточку малины: она сразу начнёт расти." : "Нажми на выделенный ягодный куст на карте. Затем нажми на малину.";
+    base.summary = surface.garden ? firstHarvest ? "Нажми на малину: первый учебный урожай созреет сразу." : "Нажми на карточку малины: она сразу начнёт расти." : "Нажми на выделенный ягодный куст на карте. Затем нажми на малину.";
     base.primary = undefined;
   }
   if (current === "grow" || reminder || harvestForOrder) {
@@ -279,13 +280,14 @@ export function WorldOnboarding(props: WorldOnboardingProps) {
       : crop ? berry?.growing ? "Ягоды растут сами. Можно продолжать знакомство - о сборе напомню."
       : berry?.collecting ? "Сбор уже начат. Дождись, пока я отнесу урожай в кладовую."
       : `Нажми «${berry?.button ?? "Собрать"}» у ягод и дождись, пока я отнесу урожай в кладовую.`
-      : recipe ? "Нажми на карточку малины. Дождись подтверждения выращивания."
+      : recipe ? firstHarvest ? "Нажми на малину: первый урожай созреет сразу, и можно отправиться за ним." : "Нажми на карточку малины. Дождись подтверждения выращивания."
       : "Рецепты ещё загружаются. Можно отложить этот шаг.";
     base.text = harvested ? "Получение подтверждено: ягоды попали в кладовую. Ты прошёл весь путь - выбрал рецепт, вырастил и собрал урожай."
       : crop ? berry?.growing ? `Заказ появился в хозяйстве. До урожая ещё ${worldDuration(Math.max(1, Math.ceil((Date.parse(crop.finishesAt) - economy.now) / 1000)))}. Можно закрыть карту: ягоды продолжат расти.`
       : berry?.collecting ? "Я собираю урожай и несу его в кладовую. Сбор сохранён: после возвращения в игру его можно продолжить."
       : `Нажми «${berry?.button ?? "Собрать"}» у ягод. ${berry && berry.count > 1 ? "Все созревшие ягоды заберу за один подход. " : ""}Я подойду к кусту и отнесу урожай в кладовую.`
-      : recipe ? `Одно нажатие на малину даёт ${recipe.rewards.berries ?? 0} предмет за ${worldRecipeDuration(recipe.seconds)}. ${recipe.cost.coins === 0 && !Object.keys(recipe.cost.items).length ? "Монеты и материалы не нужны." : "Стоимость уже показана в карточке."} Нажми на карточку, когда будешь готов начать.`
+      : recipe ? firstHarvest ? "Первый учебный урожай созреет сразу. Нажми на малину, затем отправь Мохлика собрать её. Эта помощь доступна один раз на аккаунт; повтор обучения её не возвращает."
+      : `Одно нажатие на малину даёт ${recipe.rewards.berries ?? 0} предмет за ${worldRecipeDuration(recipe.seconds)}. ${recipe.cost.coins === 0 && !Object.keys(recipe.cost.items).length ? "Монеты и материалы не нужны." : "Стоимость уже показана в карточке."} Нажми на карточку, когда будешь готов начать.`
       : "Сначала нужно загрузить рецепты хозяйства. Пока можно осмотреть карту или вернуться к этому шагу позже.";
     base.hint = harvested ? "Теперь так же можно создавать другие продукты и материалы."
       : crop && berry?.growing ? "После знакомства я напомню о сборе на карте, когда урожай созреет. Ждать здесь не нужно."

@@ -6,6 +6,8 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import ru.zhiv.admin.AdminConfig
 import ru.zhiv.auth.AuthFailure
+import ru.zhiv.economy.ECONOMY_MAX_PEARLS
+import ru.zhiv.economy.EconomyMoney
 import ru.zhiv.mail.*
 import java.sql.Connection
 import java.sql.ResultSet
@@ -49,7 +51,9 @@ internal fun insertAdminMail(c: Connection,user: UUID,sourceKey: String,type: St
  * existing target IDs win, and push capabilities are never recreated here. */
 internal fun mergePlayerMail(c: Connection,target: UUID,source: UUID) {
     c.economyUpdate("""UPDATE player_mail_messages kept SET read_at=CASE WHEN kept.read_at IS NULL THEN incoming.read_at
-        WHEN incoming.read_at IS NULL THEN kept.read_at ELSE least(kept.read_at,incoming.read_at) END
+        WHEN incoming.read_at IS NULL THEN kept.read_at ELSE least(kept.read_at,incoming.read_at) END,
+        welcome_claimed_at=CASE WHEN kept.welcome_claimed_at IS NULL THEN incoming.welcome_claimed_at
+        WHEN incoming.welcome_claimed_at IS NULL THEN kept.welcome_claimed_at ELSE least(kept.welcome_claimed_at,incoming.welcome_claimed_at) END
         FROM player_mail_messages incoming WHERE kept.user_id=? AND incoming.user_id=? AND kept.source_key=incoming.source_key""",target,source)
     c.economyUpdate("""DELETE FROM player_mail_messages incoming USING player_mail_messages kept
         WHERE incoming.user_id=? AND kept.user_id=? AND incoming.source_key=kept.source_key""",source,target)
@@ -87,11 +91,12 @@ class JdbcMailRepository(private val source: DataSource,private val adminConfig:
     }
     private fun unread(c: Connection,user: UUID): Long=c.economyRows("SELECT count(*) FROM player_mail_messages WHERE user_id=? AND read_at IS NULL",user) { it.getLong(1) }.single()
     private fun message(r: ResultSet)=MailMessage(r.getObject("id").toString(),r.getString("type"),r.getString("title"),r.getString("body"),
-        r.mailTime("created_at")!!,r.mailTime("read_at"),r.getBoolean("notify"),r.getString("attachments")?.let { mailJson.decodeFromString<MailAttachments>(it) })
+        r.mailTime("created_at")!!,r.mailTime("read_at"),r.getBoolean("notify"),r.getString("attachments")?.let { mailJson.decodeFromString<MailAttachments>(it) },
+        if(r.getString("source_key")==WELCOME_MAIL_SOURCE) MailGift(claimedAt=r.mailTime("welcome_claimed_at")) else null)
     override suspend fun inbox(sessionHash: ByteArray,expectedOwnerPublicId: String,cursor: String?,limit: Int): MailboxPage {
         validateMailOwner(expectedOwnerPublicId);if(limit !in 1..50) invalidMail()
         val after=MailCursor.decode(cursor)
-        return tx(readOnly=true) { c ->
+        val (page,hasWelcome)=tx(readOnly=true) { c ->
             val actor=actor(c,sessionHash);owner(actor,expectedOwnerPublicId)
             val values=mutableListOf<Any?>(actor.id)
             if(after!=null) { values+=after.at.atOffset(ZoneOffset.UTC);values+=after.id }
@@ -103,7 +108,49 @@ class JdbcMailRepository(private val source: DataSource,private val adminConfig:
             val next=if(messages.size>limit) page.last().let { MailCursor(java.time.Instant.parse(it.createdAt),UUID.fromString(it.id)).encode() } else null
             val notify=c.economyRows("""SELECT id,created_at FROM player_mail_messages WHERE user_id=? AND notify AND read_at IS NULL
                 ORDER BY created_at DESC,id DESC LIMIT 1""",actor.id) { MailNotification(it.getObject(1).toString(),it.mailTime("created_at")!!) }.firstOrNull()
-            MailboxPage(actor.publicId,unread(c,actor.id),page,next,now(c).toInstant().toString(),notify)
+            MailboxPage(actor.publicId,unread(c,actor.id),page,next,now(c).toInstant().toString(),notify) to
+                c.economyRows("SELECT 1 FROM player_mail_messages WHERE user_id=? AND source_key=?",actor.id,WELCOME_MAIL_SOURCE){true}.isNotEmpty()
+        }
+        if(hasWelcome) return page
+        // Normal polling remains a read-only, lock-free snapshot. Only first
+        // delivery obtains the shared account lock and rechecks its live session.
+        tx { c ->
+            val current=lockedActor(c,sessionHash,expectedOwnerPublicId)
+            insertAdminMail(c,current.id,WELCOME_MAIL_SOURCE,"event",WELCOME_MAIL_TITLE,WELCOME_MAIL_BODY,false,now(c))
+        }
+        return inbox(sessionHash,expectedOwnerPublicId,cursor,limit)
+    }
+    private fun lockedActor(c: Connection,hash: ByteArray,expected: String): Actor {
+        val initial=actor(c,hash);owner(initial,expected)
+        c.economyRows("SELECT id FROM app_users WHERE id=? FOR NO KEY UPDATE",initial.id){true}
+        val current=actor(c,hash,lockSession=true);owner(current,expected)
+        if(current.id!=initial.id) mailFailure("MAIL_OWNER_CHANGED","Открыт другой профиль. Обновите почту.",409)
+        return current
+    }
+    override suspend fun claim(sessionHash: ByteArray,expectedOwnerPublicId: String,id: UUID): MailClaimResult {
+        validateMailOwner(expectedOwnerPublicId)
+        return tx { c ->
+            val current=lockedActor(c,sessionHash,expectedOwnerPublicId)
+            val letter=c.economyRows("""SELECT * FROM player_mail_messages WHERE id=? AND user_id=? AND source_key=? AND type='event' AND attachments IS NULL""",
+                id,current.id,WELCOME_MAIL_SOURCE,read=::message).firstOrNull()
+                ?: mailFailure("MAIL_NOT_FOUND","Письмо с подарком не найдено",404)
+            val at=now(c)
+            val claimedAt=letter.gift!!.claimedAt ?: run {
+                ensureEconomyProfile(c,current.id)
+                val before=readEconomyProfile(c,current.id)
+                val normalized=EconomyMoney.redenominate(before.state)
+                // Same visible-to-stored conversion as administrative grants.
+                val units=WELCOME_MAIL_PEARLS*2L
+                if(normalized.wallet.pearls>ECONOMY_MAX_PEARLS-units)
+                    mailFailure("ECONOMY_CAPACITY","В кошельке пока нет места для подарка",409)
+                saveEconomyProfile(c,current.id,normalized.copy(wallet=normalized.wallet.copy(pearls=normalized.wallet.pearls+units)))
+                c.economyUpdate("""INSERT INTO economy_ledger(user_id,source_key,kind,pearls,items)
+                    VALUES (?,'mail:welcome:v1','welcome_mail',?,'{}'::jsonb)""",current.id,units)
+                c.economyRows("UPDATE player_mail_messages SET welcome_claimed_at=? WHERE id=? AND user_id=? RETURNING welcome_claimed_at",at,id,current.id) {
+                    it.mailTime("welcome_claimed_at")!!
+                }.single()
+            }
+            MailClaimResult(current.publicId,id.toString(),MailGift(claimedAt=claimedAt),at.toInstant().toString())
         }
     }
     override suspend fun read(sessionHash: ByteArray,expectedOwnerPublicId: String,id: UUID): MailReadResult {

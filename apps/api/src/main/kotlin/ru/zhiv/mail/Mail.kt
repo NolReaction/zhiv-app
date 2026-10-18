@@ -15,21 +15,27 @@ fun validPlayerMailMessage(value: PlayerMailMessage): Boolean = value.title == v
     value.title.codePointCount(0,value.title.length) in 1..120 && value.body.codePointCount(0,value.body.length) in 1..2000 &&
     !hasUserTextControls(value.title) && !hasUserTextControls(value.body,multiline=true)
 
-/** A receipt of an already applied change. There is no mail claim operation. */
+/** A receipt of an already applied change. These attachments are never claimable. */
 @Serializable data class MailAttachments(
     val coins: Long = 0, val pearls: Long = 0, val items: Map<String,Long> = emptyMap(),
     val buildings: Map<String,Int> = emptyMap(), val worldItems: List<String> = emptyList(), val finds: List<String> = emptyList(),
     val productionSlots: Map<String,Int> = emptyMap(), val rods: List<String> = emptyList(), val hooks: List<String> = emptyList(),
     val gameItems: List<String> = emptyList(), val achievements: List<String> = emptyList(),
 )
+@Serializable data class MailGift(val pearls: Long = WELCOME_MAIL_PEARLS, val claimedAt: String? = null)
+const val WELCOME_MAIL_PEARLS = 100L
+const val WELCOME_MAIL_SOURCE = "welcome:v1"
+const val WELCOME_MAIL_TITLE = "Добро пожаловать в мой лес!"
+const val WELCOME_MAIL_BODY = "Привет! Я очень рад, что ты начал играть в «Я Живой».\n\nЯ делаю эту игру один и прошёл большой путь, чтобы всё заработало как надо. Спасибо, что заглянул в мой лес!\n\nОставил тебе 100 жемчужин для первых приключений. Забери их ниже.\n\nДмитрий, автор «Я Живой»"
 @Serializable data class MailMessage(val id: String, val type: String, val title: String, val body: String,
-    val createdAt: String, val readAt: String?, val notify: Boolean, val attachments: MailAttachments? = null)
+    val createdAt: String, val readAt: String?, val notify: Boolean, val attachments: MailAttachments? = null, val gift: MailGift? = null)
 @Serializable data class MailNotification(val id: String, val createdAt: String)
 @Serializable data class MailboxPage(val ownerPublicId: String, val unreadCount: Long, val messages: List<MailMessage>,
     val nextCursor: String?, val serverTime: String, val latestUnreadNotification: MailNotification?)
 @Serializable data class MailReadRequest(val expectedOwnerPublicId: String)
 @Serializable data class MailReadResult(val ownerPublicId: String, val id: String, val readAt: String,
     val unreadCount: Long, val serverTime: String)
+@Serializable data class MailClaimResult(val ownerPublicId: String, val id: String, val gift: MailGift, val serverTime: String)
 @Serializable data class AdminMailBroadcastRequest(val requestId: String, val reason: String, val title: String, val body: String,
     val audience: String, val publicIds: List<String> = emptyList(), val notify: Boolean, val confirmation: String)
 @Serializable data class AdminMailBroadcastReceipt(val requestId: String, val recipientCount: Long, val createdAt: String, val changed: Boolean)
@@ -67,6 +73,7 @@ internal data class MailCursor(val at: Instant, val id: UUID) {
 interface MailRepository {
     suspend fun inbox(sessionHash: ByteArray, expectedOwnerPublicId: String, cursor: String? = null, limit: Int = 20): MailboxPage
     suspend fun read(sessionHash: ByteArray, expectedOwnerPublicId: String, id: UUID): MailReadResult
+    suspend fun claim(sessionHash: ByteArray, expectedOwnerPublicId: String, id: UUID): MailClaimResult
     suspend fun broadcast(sessionHash: ByteArray, request: AdminMailBroadcastRequest): AdminMailBroadcastReceipt
     suspend fun broadcastHistory(sessionHash: ByteArray, offset: Int = 0, limit: Int = 20): AdminMailBroadcastHistory
 }

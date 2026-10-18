@@ -86,8 +86,9 @@ export const economyResidentOrderTermsSchema = z.object({
 export const economyTutorialOrderSchema = z.object({
   version: z.union([z.literal(1), z.literal(2), z.literal(3)]).default(1), step: count.max(4).default(0),
   ingredientsClaimed: z.boolean().default(false), completed: z.boolean().default(false),
+  firstHarvestPrepared: z.boolean().default(false),
   terms: economyResidentOrderTermsSchema.nullable().default(null),
-}).default({ version: 1, step: 0, ingredientsClaimed: false, completed: false, terms: null });
+}).default({ version: 1, step: 0, ingredientsClaimed: false, completed: false, firstHarvestPrepared: false, terms: null });
 export type EconomyTutorialOrder = z.infer<typeof economyTutorialOrderSchema>;
 export const economyStageOrderProgressSchema = z.object({
   step: count.max(100).default(0), completed: z.boolean().default(false),

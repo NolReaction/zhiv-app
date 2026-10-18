@@ -44,7 +44,7 @@ import { advanceBirdReactions, applyBirdReactions } from "@/features/world/envir
 import { drawForestBird, drawForestButterfly, drawForestFirefly, type ForestBird } from "@/features/world/environment/wildlife/forest-wildlife";
 import { faunaBehindHero } from "@/features/world/environment/wildlife/forest-fauna-depth";
 import { drawForestResidents, forestResidentAt, forestResidentFrames } from "@/features/world/characters/forest-residents";
-import { forestPointOccluded, forestVisibleSiteAt, withForestOcclusion, withForestSiteOcclusion } from "./forest-occlusion";
+import { forestPointOccluded, forestVisibleSiteAt, withForestOcclusion } from "./forest-occlusion";
 import { drawLivingWorldDebug, type LivingWorldDebugSnapshot } from "@/features/world/dev/living-world-debug";
 import { connectForestSession } from "@/features/world/state/forest-session";
 import { publishForestObservation } from "@/features/world/state/forest-observer";
@@ -96,7 +96,6 @@ import { drawWorldAudioDebug } from "@/features/world/audio/world-audio-debug";
 import { worldArtworkUrls } from "./world-artwork";
 import { drawResidentHomeIndicator } from "@/features/world/characters/resident-home-effects";
 import { drawLopukhWoodpile } from "@/features/world/characters/lopukh/lopukh-woodpile-painter";
-import { drawLeaftailWindowResident } from "@/features/world/characters/leaftail/leaftail-window-painter";
 import { leaftailBoatArrivalFrame, leaftailBoatArrivalOccupant } from "@/features/world/characters/leaftail/leaftail-boat-arrival";
 import { drawLeaftailBoatArrival } from "@/features/world/characters/leaftail/leaftail-boat-painter";
 import { residentDiagnosticsStore } from "@/features/world/dev/forest-resident-diagnostics";
@@ -309,13 +308,6 @@ function paintNewMapFrame(context: CanvasRenderingContext2D, images: ReadonlyMap
     },
     options: { levels: selectedLevels, night: false, debug: dev?.debug ?? false, selectedSiteId: null,
       reducedMotion: still, showBuildings: dev?.showBuildings, buildingShadow: dev?.buildingShadow } });
-  if (preview?.residentPresentation?.window && dev?.showBuildings !== false) {
-    const window = preview.residentPresentation.window;
-    const site = world.sites.find(site => site.id === "leaftail-caravan");
-    if (site) withForestSiteOcclusion(context, world, site, target => drawLeaftailWindowResident(target, window, still), {
-      x: window.position.x - window.width / 2, y: window.position.y - window.height / 2, width: window.width, height: window.height,
-    });
-  }
   drawForestCampfires(context, behindFires, elapsed, still);
   paintProduction(false);
   drawForestGardenPlants(context, world, life?.garden);

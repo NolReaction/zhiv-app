@@ -9,9 +9,10 @@ function handOverMerchant(state: ForestSessionState) {
   const boat = state.leaftailBoat, mind = state.villagers?.residents.leaftail;
   if (!boat?.completed || !boat.route || !mind) return;
   // The ordinary mind takes over the same real feet after the complete landing
-  // and greeting. A restored 'seen' preference uses normal home initialization.
+  // and greeting. A short outside pause lets one free neighbour approach.
+  // A restored 'seen' preference uses normal home initialization.
   mind.position = { ...boat.position }; mind.initialized = true; mind.direction = boat.direction;
-  mind.action = "greet"; mind.age = 0; mind.wait = 4; mind.doorPhase = "outside";
+  mind.action = "inspect"; mind.age = 0; mind.wait = 8; mind.doorPhase = "outside";
   mind.door = null; mind.route = null; mind.target = null; mind.socialVisit = null;
   mind.noticePending = false; mind.distance = 0; mind.speed = 0;
   mind.outdoorUntil = mind.elapsed + 40;

@@ -26,6 +26,18 @@ test("an empty real mailbox presents an honest server-loading or empty state wit
     available: true, loading: false, loadingMore: false, loaded: true, error: null, nextCursor: null } }));
   assert.match(html, /Пока тихо/); assert.doesNotMatch(html, /Уважаемый|Подарок от команды|Письмо команды/);
 });
+test("welcome gift has an explicit manual button and confirmed claimed state while ordinary attachments stay applied receipts", () => {
+  const props = { message: letter({ type: "event", title: "Привет", body: "Я делаю эту игру один.", attachments: null,
+    gift: { pearls: 100, claimedAt: null } }), reading: false, readError: null, available: true, onRetry() {}, onClaim() {} };
+  const available = renderToStaticMarkup(createElement(MailLetter, props));
+  assert.match(available, /От автора игры/); assert.match(available, /100 жемчужин/); assert.match(available, /Забрать подарок/);
+  assert.doesNotMatch(available, /Изменения уже применены|команд/);
+  const offline = renderToStaticMarkup(createElement(MailLetter, { ...props, available: false }));
+  assert.match(offline, /disabled=""/); assert.match(offline, /Подключись к интернету/);
+  const claimed = renderToStaticMarkup(createElement(MailLetter, { ...props, message: { ...props.message,
+    gift: { pearls: 100, claimedAt: "2026-10-18T12:00:00Z" } } }));
+  assert.match(claimed, /Подарок получен/); assert.doesNotMatch(claimed, /Забрать подарок/);
+});
 test("mail dialog keeps long text inside its scroll area and unread animation respects reduced motion", async () => {
   const [css, hud] = await Promise.all([readFile(new URL("../features/mailbox/mailbox.module.css", import.meta.url), "utf8"),
     readFile(new URL("../features/world/world-map-hud.module.css", import.meta.url), "utf8")]);

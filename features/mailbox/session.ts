@@ -1,23 +1,27 @@
 import { ApiError } from "@/lib/check-in-api";
-import type { MailMessage, MailNotification, MailboxPage, MailReadResult } from "./model";
+import type { MailMessage, MailNotification, MailboxPage, MailReadResult, MailClaimResult } from "./model";
 import { compareMailInstants, createMailNotificationLedger } from "./notification-ledger";
 
 type Transport = { list: (cursor: string | null, signal: AbortSignal) => Promise<MailboxPage>;
-  read: (id: string, signal: AbortSignal) => Promise<MailReadResult> };
+  read: (id: string, signal: AbortSignal) => Promise<MailReadResult>;
+  claim?: (id: string, signal: AbortSignal) => Promise<MailClaimResult> };
 type View = { ownerPublicId: string | null; messages: readonly MailMessage[]; unreadCount: number; nextCursor: string | null;
   loaded: boolean; loading: boolean; loadingMore: boolean; available: boolean; error: string | null; readError: string | null;
-  opened: boolean; selected: MailMessage | null; readingIds: readonly string[]; notification: MailNotification | null };
+  opened: boolean; selected: MailMessage | null; readingIds: readonly string[]; claimingIds: readonly string[];
+  claimError: string | null; notification: MailNotification | null };
 const MAX_MESSAGES = 200;
 export function createMailboxSession(owner: string | null, transport: Transport, onSessionLost: () => void = () => {},
   storage?: Pick<Storage, "getItem" | "setItem">) {
   let view: View = { ownerPublicId: owner, messages: [], unreadCount: 0, nextCursor: null, loaded: false, loading: false,
-    loadingMore: false, available: false, error: null, readError: null, opened: false, selected: null, readingIds: [], notification: null };
+    loadingMore: false, available: false, error: null, readError: null, opened: false, selected: null, readingIds: [], claimingIds: [], claimError: null, notification: null };
   let active = false, available = true, generation = 0, readVersion = 0, lastRefresh = -Infinity, retryAt = 0;
   let loading: Promise<void> | null = null, loadingMore: Promise<void> | null = null;
   let countConfirmedAt: string | null = null;
   let onReceived: () => void = () => {};
   const received = new Set<string>();
+  const receivedClaims = new Set<string>();
   const requests = new Set<AbortController>(), reads = new Map<string, AbortController>(), listeners = new Set<() => void>();
+  const claims = new Map<string, AbortController>(), claimed = new Map<string, MailClaimResult["gift"]>();
   const acknowledged = new Map<string, string>(), ledger = owner ? createMailNotificationLedger(owner, storage) : null;
   const publish = (patch: Partial<View>) => { view = { ...view, ...patch }; listeners.forEach(listener => listener()); };
   const valid = (token: number) => active && available && generation === token;
@@ -27,8 +31,8 @@ export function createMailboxSession(owner: string | null, transport: Transport,
     loseSession(); return true;
   }
   function invalidate() {
-    ++generation; requests.forEach(request => request.abort()); requests.clear(); reads.clear(); loading = loadingMore = null;
-    publish({ loading: false, loadingMore: false, readingIds: [] });
+    ++generation; requests.forEach(request => request.abort()); requests.clear(); reads.clear(); claims.clear(); loading = loadingMore = null;
+    publish({ loading: false, loadingMore: false, readingIds: [], claimingIds: [] });
   }
   function loseSession() {
     active = false; invalidate();
@@ -45,7 +49,8 @@ export function createMailboxSession(owner: string | null, transport: Transport,
   }
   function mergeMessage(message: MailMessage) {
     const readAt = acknowledged.get(message.id) ?? view.messages.find(previous => previous.id === message.id)?.readAt;
-    return readAt && !message.readAt ? { ...message, readAt } : message;
+    const gift = claimed.get(message.id) ?? view.messages.find(previous => previous.id === message.id)?.gift;
+    return { ...message, ...(readAt && !message.readAt ? { readAt } : {}), ...(gift?.claimedAt && !message.gift?.claimedAt ? { gift } : {}) };
   }
   async function fetchPage(cursor: string | null) {
     if (!canAct()) return;
@@ -66,12 +71,15 @@ export function createMailboxSession(owner: string | null, transport: Transport,
       publish({ messages, selected, nextCursor: page.nextCursor, loaded: true,
         ...(adoptCount ? { unreadCount: page.unreadCount } : {}),
         ...(!cursor ? { notification: eligibleNotification && !ledger?.seen(candidate) ? candidate : null } : {}) });
+      const giftChanged = incoming.some(message => message.gift?.claimedAt && !receivedClaims.has(message.id));
+      for (const message of incoming) if (message.gift?.claimedAt) receivedClaims.add(message.id);
+      while (receivedClaims.size > MAX_MESSAGES) receivedClaims.delete(receivedClaims.values().next().value!);
       if (!cursor) {
-        const changed = incoming.some(message => message.attachments && !received.has(message.id));
+        const changed = giftChanged || incoming.some(message => message.attachments && !received.has(message.id));
         for (const message of incoming) received.add(message.id);
         while (received.size > MAX_MESSAGES) received.delete(received.values().next().value!);
         if (changed) onReceived();
-      }
+      } else if (giftChanged) onReceived();
     } catch (error) { if (valid(token)) fail(error); }
     finally { requests.delete(request); if (valid(token)) publish(cursor ? { loadingMore: false } : { loading: false }); }
   }
@@ -108,6 +116,28 @@ export function createMailboxSession(owner: string | null, transport: Transport,
     } catch (error) { if (valid(token)) fail(error, true); }
     finally { requests.delete(request); if (reads.get(id) === request) reads.delete(id); if (valid(token)) publish({ readingIds: [...reads.keys()] }); }
   }
+  async function claimGift(id: string) {
+    if (!canAct() || !view.opened || view.selected?.id !== id || !view.selected.gift || view.selected.gift.claimedAt || claims.has(id) || !transport.claim || performance.now() < retryAt) return;
+    const token = generation, request = new AbortController(); requests.add(request); claims.set(id, request);
+    publish({ claimingIds: [...claims.keys()], claimError: null });
+    try {
+      const result = await transport.claim(id, request.signal);
+      if (!valid(token) || rejectOwner(result)) return;
+      if (result.id !== id) throw new ApiError("Ответ другого письма отклонён. Обновите почту.", 502);
+      claimed.set(id, result.gift);
+      receivedClaims.add(id);
+      if (claimed.size > MAX_MESSAGES) claimed.delete(claimed.keys().next().value!);
+      if (receivedClaims.size > MAX_MESSAGES) receivedClaims.delete(receivedClaims.values().next().value!);
+      const update = (message: MailMessage) => message.id === id ? { ...message, gift: result.gift } : message;
+      publish({ messages: view.messages.map(update), selected: view.selected ? update(view.selected) : null, claimError: null });
+      onReceived();
+    } catch (error) {
+      if (valid(token)) {
+        fail(error);
+        if (canAct()) publish({ claimError: error instanceof ApiError ? error.message : "Ответ не получен. Повтори получение: подарок начислится только один раз." });
+      }
+    } finally { requests.delete(request); if (claims.get(id) === request) claims.delete(id); if (valid(token)) publish({ claimingIds: [...claims.keys()] }); }
+  }
   return {
     getSnapshot: () => view, subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     isActive: () => active, isAvailable: canAct,
@@ -121,8 +151,8 @@ export function createMailboxSession(owner: string | null, transport: Transport,
     setReceived(callback: () => void) { onReceived = callback; },
     open() { if (!active || !owner) return; publish({ opened: true, selected: null, readError: null }); void refresh(); },
     close() { publish({ opened: false, selected: null, readError: null }); },
-    select(id: string) { const message = view.messages.find(message => message.id === id); if (active && view.opened && message) publish({ selected: message, readError: null }); },
-    back() { publish({ selected: null, readError: null }); }, refresh, refreshSoft: () => refresh(false), loadMore, messageVisible,
+    select(id: string) { const message = view.messages.find(message => message.id === id); if (active && view.opened && message) publish({ selected: message, readError: null, claimError: null }); },
+    back() { publish({ selected: null, readError: null, claimError: null }); }, refresh, refreshSoft: () => refresh(false), loadMore, messageVisible, claimGift,
     claimNotification(id: string) {
       if (!canAct() || view.notification?.id !== id) return false;
       return ledger?.claim(view.notification) ?? false;

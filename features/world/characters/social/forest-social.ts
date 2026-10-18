@@ -1,3 +1,5 @@
+import { forestWelcomeCandidates, forestWelcomeConversation, rememberForestWelcome, FOREST_WELCOME_LIMITS,
+  type ForestWelcomeRequest, type ForestWelcomeResident } from "./forest-social-welcome";
 import { cancelBuilderVisit, requestBuilderVisit, type BuilderMind } from "@/features/world/characters/builder/builder-mind";
 import { forestAnimalLines, forestClickLines } from "./forest-social-dialogue";
 import { FOREST_CONVERSATIONS, type ForestConversation } from "./forest-conversations";
@@ -48,7 +50,7 @@ export type ForestSocialEnvironment = { scene: FixedWorldScene; builder: Builder
 type Line = { speaker: ForestSpeaker; text: string };
 type Meeting = { anchor: WorldPoint; guestAnchor: WorldPoint; host: ForestSpeaker;
   guest: ForestSpeaker; visit: "builder" | "resident" | null; phase: "approach" | "talk"; age: number;
-  purpose?: ForestSocialPurpose; approach?: WorldPoint; hostContext?: ForestSpeechContext; topicId?: string; continuationId?: string };
+  welcome?: ForestWelcomeResident; purpose?: ForestSocialPurpose; approach?: WorldPoint; hostContext?: ForestSpeechContext; topicId?: string; continuationId?: string };
 export type ForestSocialState = {
   elapsed: number; seed: number; sequence: number;
   nextEncounterAt: number; nextAnimalAt: number; nextManualAt: number;
@@ -58,6 +60,7 @@ export type ForestSocialState = {
   meeting: Meeting | null;
   passingPairs?: string[]; passingAfter?: Partial<Record<ForestSpeaker, number>>; pairAfter?: Record<string, number>;
   nextPassingAt?: number;
+  welcomes?: ForestWelcomeRequest[]; welcomedResidents?: ForestWelcomeResident[];
   contextFacts?: ForestSocialFact[]; seenContextFacts?: string[]; eventStoryHistory?: string[];
   pairMemories?: { pair: string; at: number; topics: string[] }[];
   promiseOutcomes?: ForestPromiseOutcome[];
@@ -182,7 +185,7 @@ function nearbyTopic(topic: ForestConversation, env: ForestSocialEnvironment, an
 function beginConversation(state: ForestSocialState, env: ForestSocialEnvironment): void {
   const meeting = state.meeting!;
   const guest = actor(env, meeting.guest)!, host = actor(env, meeting.host)!;
-  const eligible = eligibleForestConversations(FOREST_CONVERSATIONS, state, guest, host,
+  const eligible = meeting.welcome ? [forestWelcomeConversation(meeting.welcome, guest.id)] : eligibleForestConversations(FOREST_CONVERSATIONS, state, guest, host,
     meeting.purpose ?? "neighbour", Boolean(env.requestFollowup && env.cancelFollowup && env.followupStatus))
     .filter(topic => nearbyTopic(topic, env, meeting.anchor) && (!topic.weather
       || topic.weather === "night" && (env.dusk ?? 0) > .55
@@ -201,6 +204,7 @@ function beginConversation(state: ForestSocialState, env: ForestSocialEnvironmen
   if (contextual.length && random(state) < .8) choices = contextual;
   else if (purposeful.length && random(state) < .65) choices = purposeful;
   const topic = choices[Math.floor(random(state) * choices.length)];
+  if (meeting.welcome) rememberForestWelcome(state, meeting.welcome);
   meeting.topicId = topic.id;
   meeting.continuationId = forestConversationOutcome(topic, state, guest.id, host.id)?.id;
   rememberForestConversation(state, topic, guest.id, host.id);
@@ -254,7 +258,7 @@ function visitKind(guest: ForestSocialActor, host: ForestSocialActor, env: Fores
   return env.requestVisit && env.cancelVisit && env.visitStatus ? "resident" : null;
 }
 function startVisit(state: ForestSocialState, guest: ForestSocialActor, host: ForestSocialActor,
-  env: ForestSocialEnvironment, visit: Meeting["visit"]): boolean {
+  env: ForestSocialEnvironment, visit: Meeting["visit"], welcome?: ForestWelcomeResident): boolean {
   if (visit === "builder") {
     if (!requestBuilderVisit(env.builder, env.scene, host, env.occupants)) return false;
   } else if (visit === "resident") {
@@ -267,7 +271,7 @@ function startVisit(state: ForestSocialState, guest: ForestSocialActor, host: Fo
   }
   state.meeting = { anchor: { ...host.position }, guestAnchor: { ...guest.position },
     host: host.id, guest: guest.id, visit, phase: visit ? "approach" : "talk", age: 0,
-    purpose: purposeOf(host), hostContext: host.context,
+    ...(welcome ? { welcome } : {}), purpose: welcome ? "welcome" : purposeOf(host), hostContext: host.context,
     ...(host.approach ? { approach: { ...host.approach } } : {}) };
   if (state.meeting.phase === "talk") beginConversation(state, env);
   return Boolean(state.meeting);
@@ -284,6 +288,18 @@ export function requestForestSocialVisit(state: ForestSocialState, guestId: Fore
   const visit = visitKind(guest, host, env);
   if (!visit && distance(guest.position, host.approach ?? host.position) > (host.window ? 12 : Math.max(75, (guest.size + host.size) * 1.1))) return false;
   return startVisit(state, guest, host, env, visit);
+}
+
+function inviteNewResident(state: ForestSocialState, env: ForestSocialEnvironment): void {
+  const residents = env.actors.map(item => actor(env, item.id)).filter((item): item is ForestSocialActor => Boolean(item));
+  const candidates = forestWelcomeCandidates(state, residents);
+  if (!candidates || !candidates.guests.length) return;
+  const { request, host, guests } = candidates;
+  request.after = state.elapsed + FOREST_WELCOME_LIMITS.retry; request.attempts++;
+  for (const guest of guests.slice(0, FOREST_SOCIAL_LIMITS.navigationAttempts)) {
+    const visit = visitKind(guest, host, env);
+    if (visit && startVisit(state, guest, host, env, visit, request.resident)) return;
+  }
 }
 
 function inviteNeighbours(state: ForestSocialState, env: ForestSocialEnvironment): void {
@@ -382,6 +398,8 @@ export function advanceForestSocial(state: ForestSocialState, dt: number, env: F
     remember(state.seenEvents, key, FOREST_SOCIAL_LIMITS.historyEvents);
     if (!animalEvent && actor(env, event.speaker)) animalEvent = event;
   }
+  if (!state.current && !state.queue.length && !state.meeting && !state.followup && env.ambient !== false
+    && state.elapsed >= state.nextManualAt && (env.rain ?? 0) < .35 && (env.dusk ?? 0) < .65) inviteNewResident(state, env);
   passingNeighbours(state, env, !state.current && !state.queue.length && !state.meeting && !state.followup && env.ambient !== false
     && state.elapsed >= state.nextManualAt && (env.rain ?? 0) < .35 && (env.dusk ?? 0) < .65);
   if (state.current || state.queue.length || state.meeting || state.followup || env.ambient === false) return;

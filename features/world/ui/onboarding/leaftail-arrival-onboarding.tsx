@@ -18,8 +18,8 @@ export function LeaftailArrivalOnboarding({ open, arrived, worldElement, onMeet,
     return () => { cancelAnimationFrame(frame); observer.disconnect(); };
   }, [open, worldElement]);
   return <GuideCoach open={open && visible} flow="world" stepId="leaftail-arrival" title={arrived ? "Листохвост вернулся!" : "Лодка с находками!"} pose="greet"
-    summary={arrived ? "Листохвост добрался до своей лавки. Теперь здесь можно покупать находки и припасы." : "Дом достиг 3-го уровня, и Листохвост возвращается из путешествия по реке."}
-    text="Торговец привёз интересные вещи для поселения. Его лавка находится в фургончике. Соседи могут заглядывать к нему в окно, а сам он иногда выходит прогуляться."
+    summary={arrived ? "Листохвост вернулся из путешествия! Теперь открыт рынок товаров: находки и припасы в его фургончике." : "Дом достиг 3-го уровня, и Листохвост возвращается из путешествия по реке."}
+    text="Ворчливый Листохвост привёз находки из дальних краёв. Вещи он бережёт, а с соседями знакомится без лишней суеты. Когда он дома, над фургончиком виден значок."
     hint={arrived ? "Открой лавку, чтобы посмотреть привезённые вещи." : "Он причалит, сойдёт на берег и сам дойдёт до фургона. Подсказку можно закрыть."}
     targetRoot={worldElement} onPause={onDismiss} onSkip={onDismiss}
     primary={arrived ? { label: "К лавке", onClick: onMeet } : { label: "Понятно", onClick: onDismiss }}

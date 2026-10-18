@@ -112,7 +112,7 @@ test("actual Pleska enters home, paints floating fish and has no body, tap or oc
   } finally { scene?.dispose(); probe?.release(); forgetForestSession(key); worldDevStore.reset(); env.restore(); }
 });
 
-test("real caravan window portrait survives its owner's silhouette and still disappears behind a foreground tree", () => {
+test("the indoor caravan keeps its home effect without a window face or outdoor duplicate", () => {
   const env = browser();
   try {
     const levels = { ...live.initialPreviewLevels(live.TILED_WORLD), home: 3, quarry: 1 };
@@ -120,22 +120,18 @@ test("real caravan window portrait survives its owner's silhouette and still dis
     live.configureForestVillagers(villagers, scene, { confirmed: true, buildings: levels, arrivalSeen: true, leaftailReady: true });
     const merchant = villagers.residents.leaftail;
     for (let tick = 0; tick < 400 && merchant.doorPhase !== "inside"; tick++) live.advanceForestVillagers(villagers, scene, .1, {});
-    assert.equal(merchant.doorPhase, "inside", "the actual caravan owns the merchant's real indoor state");
+    assert.equal(merchant.doorPhase, "inside");
     const state = { elapsed: 2, villagers, pleskMind: null, social: { current: { speaker: "leaftail" } } };
-    const before = JSON.stringify({ state, scene }), presentation = residentScenePresentation(state, scene), point = presentation.window?.position;
-    assert.ok(point); assert.equal(presentation.window.speaking, true);
-    const ownMask = scene.occluders.find(mask => mask.when?.siteId === "leaftail-caravan" && contains(mask.points, point));
-    assert.ok(ownMask && point.y < ownMask.frontY, "the fixture exercises the mask that previously erased the face");
-    const visible = paintPresentation(scene, presentation);
-    assert.equal(visible.portraits.length, 1); assert.equal(visible.portraits[0].visible, true);
-    const blocked = { ...scene, occluders: [...scene.occluders, { id: "test-foreground-tree", frontY: scene.height,
-      points: rectangle(point.x - 10, point.y - 10, 20, 20) }] };
-    const hidden = paintPresentation(blocked, presentation);
-    assert.equal(hidden.portraits.length, 1); assert.equal(hidden.portraits[0].visible, false,
-      "excluding the window's own caravan must not bypass another foreground contour");
+    const before = JSON.stringify({ state, scene }), presentation = residentScenePresentation(state, scene);
+    assert.equal(presentation.window, null);
+    const cue = presentation.homes.find(home => home.id === "leaftail");
+    assert.ok(cue); assert.ok(residentHomeParticles(cue, false).length);
+    const painted = paintPresentation(scene, presentation);
+    assert.equal(painted.portraits.length, 0, "the actual painter does not draw a caravan portrait");
+    assert.ok(painted.paints.length > 0, "the existing overhead home effect is still painted");
     assert.equal(live.forestVillagerFrames(villagers).some(frame => frame.id === "leaftail"), false);
     assert.equal(live.forestVillagerOccupants(villagers).some(actor => actor.id === "leaftail"), false);
-    assert.equal(JSON.stringify({ state, scene }), before, "painting and clipping do not move the resident or edit authored scenery");
+    assert.equal(JSON.stringify({ state, scene }), before, "presentation never moves feet or edits authored scenery");
   } finally { env.restore(); }
 });
 

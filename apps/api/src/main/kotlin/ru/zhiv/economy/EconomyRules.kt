@@ -399,18 +399,21 @@ object EconomyRules {
                 if (state.jobs.count { it.targetId == recipe.buildingId && it.kind == "production" } >= productionSlotCount(state, recipe.buildingId))
                     economyFailure("ECONOMY_BUILDING_BUSY", "Все места производства заняты. Заберите готовый результат")
                 requireJobCapacity(state)
+                val firstHarvest = EconomyTutorialOrders.canPrepareFirstHarvest(state, recipe.id, command.quantity)
                 val cost = EconomyCost(recipe.cost.coins * command.quantity, recipe.cost.items.mapValues { it.value * command.quantity })
                 val spent = spend(state, cost, command.fishSelection)
                 val beforeStock = EconomyFishStock.normalized(state).orEmpty()
                 val afterStock = EconomyFishStock.normalized(spent).orEmpty()
                 val fishStockCost = beforeStock.mapValues { (id, amount) -> amount - (afterStock[id] ?: 0L) }.filterValues { it > 0L }
                 val job = EconomyJob(command.requestId, "production", recipe.buildingId, recipe.id,
-                    startedAt = now.toString(), finishesAt = now.plusSeconds(recipe.seconds * command.quantity).toString(),
+                    startedAt = now.toString(), finishesAt = (if (firstHarvest) now.plusMillis(1) else now.plusSeconds(recipe.seconds * command.quantity)).toString(),
                     rewards = recipe.rewards.mapValues { it.value * command.quantity }, cost = cost, catalogVersion = catalog.version,
                     collection = recipe.collection?.let { EconomyCollection(it.kind, it.seconds, null, null) },
                     fishStockCost = fishStockCost.takeIf { it.isNotEmpty() })
                 requireRewardCapacity(state, job.rewards)
-                spent.copy(jobs = state.jobs + job) to "Производство началось. Результат дождётся вас."
+                spent.copy(jobs = state.jobs + job, tutorialOrder = spent.tutorialOrder.copy(
+                    firstHarvestPrepared = spent.tutorialOrder.firstHarvestPrepared || firstHarvest)) to
+                    if (firstHarvest) "Первый учебный урожай созрел. Отправьте Мохлика собрать малину" else "Производство началось. Результат дождётся вас."
             }
             "buy_production_slot" -> {
                 if (!productionStationSupported(command.targetId)) economyFailure("ECONOMY_PRODUCTION_STATION", "В этой постройке нет мест производства")

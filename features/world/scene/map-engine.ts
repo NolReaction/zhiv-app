@@ -325,6 +325,10 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
         : habitat.siteAnchor?.(node.dataset.siteId ?? "")
         : { x: Number(node.dataset.x), y: Number(node.dataset.y) };
       if (!anchor) { if (node.style.visibility !== "hidden") node.style.visibility = "hidden"; continue; }
+      // Only the decorative diamond follows zoom. Its accessible touch target
+      // and the authored world hit area keep their existing dimensions.
+      const hintDetail = camera.zoom < .5 ? "far" : camera.zoom < 1 ? "distant" : "near";
+      if (node.dataset.tapHintDetail !== hintDetail) node.dataset.tapHintDetail = hintDetail;
       const point = worldToScreen(anchor, camera, view);
       const transform = `translate(${Math.round(point.x)}px, ${Math.round(point.y)}px) translate(-50%, -50%)`;
       if (node.style.transform !== transform) node.style.transform = transform;

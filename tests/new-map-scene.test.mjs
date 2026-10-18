@@ -361,7 +361,13 @@ test("authored buildings and planned ruins open their place without selecting du
     for (const anchor of anchors) {
       assert.equal(anchor.style.visibility, "visible");
       assert.match(anchor.style.transform, /^translate\(/);
+      assert.equal(anchor.dataset.tapHintDetail, "far", "overview hides decorative diamonds while retaining shortcuts");
     }
+    for (let zoom = 0; zoom < 3; zoom++) engine.control("in");
+    assert.equal(anchors[0].dataset.tapHintDetail, "distant", "intermediate zoom uses a smaller diamond");
+    for (let zoom = 0; zoom < 3; zoom++) engine.control("in");
+    assert.equal(anchors[0].dataset.tapHintDetail, "near");
+    engine.control("overview");
     const tap = site => {
       const event = { pointerId: 1, pointerType: "mouse", button: 0,
         clientX: site.anchor.x * 400 / fixture.width, clientY: (site.anchor.y - 50) * 400 / fixture.height };

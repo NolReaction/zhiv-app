@@ -10,6 +10,7 @@ import ru.zhiv.config.AppConfig
 import ru.zhiv.auth.AuthFailure
 import ru.zhiv.economy.EconomyCommand
 import ru.zhiv.economy.EconomyRules
+import ru.zhiv.mail.WELCOME_MAIL_SOURCE
 import ru.zhiv.forest.ForestMemoryCommand
 import ru.zhiv.world.WorldCommand
 import ru.zhiv.world.WorldState
@@ -126,18 +127,24 @@ class JdbcGameProgressResetIntegrationTest {
                 INSERT INTO game_presence_daily(user_id,day,online_millis)
                   VALUES ('10000000-0000-4000-8000-000000000001','2026-10-01',1000);
             """.trimIndent())
+            val hash = ByteArray(32) { 0x12.toByte() }
+            val mailbox = JdbcMailRepository(source)
+            val welcome = mailbox.inbox(hash, "0000-0000-0001").messages.single { it.gift != null }
+            val welcomeId = UUID.fromString(welcome.id)
+            val gift = mailbox.claim(hash, "0000-0000-0001", welcomeId)
+            assertTrue(gift.gift.claimedAt != null)
             val before = snapshot(source)
             val preview = reset()
             assertEquals(0, preview.exitCode, preview.stderr)
             assertEquals(before, snapshot(source), "No-argument SQL invocation must be read only")
 
-            execute(source, "UPDATE flyway_schema_history SET version='62' WHERE version='61'")
+            execute(source, "UPDATE flyway_schema_history SET version='63' WHERE version='62'")
             val unreviewed = snapshot(source)
             val wrongVersion = reset(true)
             assertNotEquals(0, wrongVersion.exitCode)
-            assertTrue(wrongVersion.stderr.contains("Expected successfully applied migrations through V61"), wrongVersion.stderr)
+            assertTrue(wrongVersion.stderr.contains("Expected successfully applied migrations through V62"), wrongVersion.stderr)
             assertEquals(unreviewed, snapshot(source), "An unreviewed migration must fail before deletion")
-            execute(source, "UPDATE flyway_schema_history SET version='61' WHERE version='62'")
+            execute(source, "UPDATE flyway_schema_history SET version='62' WHERE version='63'")
 
             execute(source, "CREATE TABLE ci_unreviewed_game_reset_guard(value text)")
             val unexpected = snapshot(source)
@@ -151,7 +158,7 @@ class JdbcGameProgressResetIntegrationTest {
             assertNotEquals(0, overflow.exitCode)
             assertTrue(overflow.stderr.contains("exhausted revision fence"), overflow.stderr)
             assertEquals(exhausted, snapshot(source))
-            execute(source, "UPDATE economy_profiles SET revision=9")
+            execute(source, "UPDATE economy_profiles SET revision=10")
 
             // A trigger silently modifying a kept row must cause a full rollback.
             execute(source, """
@@ -195,8 +202,17 @@ class JdbcGameProgressResetIntegrationTest {
                     }
                 }
             }
-            val hash = ByteArray(32) { 0x12.toByte() }
-            for (oldRevision in listOf(0L, 9L, 40L)) {
+            val retainedGift = mailbox.inbox(hash, "0000-0000-0001").messages.single { it.gift != null }
+            assertEquals(welcome.id, retainedGift.id)
+            assertEquals(gift.gift.claimedAt, retainedGift.gift!!.claimedAt)
+            assertEquals(gift.gift, mailbox.claim(hash, "0000-0000-0001", welcomeId).gift)
+            source.connection.use { connection ->
+                val unchanged = readEconomyProfile(connection, UUID.fromString("10000000-0000-4000-8000-000000000001"))
+                assertEquals(41L, unchanged.revision, "A retained welcome receipt cannot issue a fresh post-reset grant")
+                assertEquals(EconomyRules.initial().wallet, unchanged.state.wallet)
+                assertEquals(1L, connection.economyRows("SELECT count(*) FROM player_mail_messages WHERE source_key=?", WELCOME_MAIL_SOURCE) { it.getLong(1) }.single())
+            }
+            for (oldRevision in listOf(0L, 9L, 10L, 40L)) {
                 val old = EconomyCommand(UUID.randomUUID().toString(), "0000-0000-0001", oldRevision, "sell", "wood")
                 assertEquals("ECONOMY_REVISION_CONFLICT", assertFailsWith<AuthFailure> {
                     JdbcEconomyRepository(source).command(hash, old)
