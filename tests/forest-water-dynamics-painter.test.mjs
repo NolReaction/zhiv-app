@@ -192,7 +192,8 @@ test("leaf artwork follows physical lift and submersion without changing physics
   assert.deepEqual(water, before);
   assert.ok(floating.operations.some(([kind, x, y]) => kind === "translate" && x === leaf.x && y === leaf.y - leaf.bob), "wave height lifts the visible blade");
   assert.ok(floating.vectorPaints.some(paint => paint.path.filter(part => part[0] === "quadratic").length >= 6), "veins and a curved stem are present");
-  assert.ok(floating.vectorPaints.every(paint => paint.clips === 4), "leaf, veins and shadow share shoreline and exclusions");
+  assert.ok(floating.clips.length > 0 && floating.vectorPaints.every(paint => paint.clips === floating.clips.length),
+    "leaf, veins and shadow share the complete shoreline and exclusion mask");
   assert.equal(floating.globalAlpha, 1);
   leaf.submersion = .8;
   const dipped = context(); drawForestWaterDynamics(dipped, world, water, { dusk: .3 });
