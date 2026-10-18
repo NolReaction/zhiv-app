@@ -19,7 +19,7 @@ test("cartoon style validates against installed MapLibre and owns no remote rast
   const style = createCartoonEarthStyle(source);
   assert.deepEqual(validateStyleMin(style).map(error => error.message), []);
   assert.deepEqual(style.projection, { type: "globe" }, "sources start with globe subdivision instead of rebuilding after a Mercator frame");
-  assert.ok(style.layers.length <= 32);
+  assert.ok(style.layers.length <= 40, "overview effects keep a bounded native layer budget");
   assert.deepEqual(style.sources[EARTH_VECTOR_SOURCE], source);
   assert.equal(style.glyphs, undefined);
   assert.equal(style.sprite, undefined);
@@ -48,7 +48,7 @@ test("glacier/lake detail and world labels are local and bounded, and do not add
 
 test("3D uses one opaque building layer from the existing source and only at close zoom", () => {
   const style = createCartoonEarthStyle(source);
-  const extrusions = style.layers.filter(layer => layer.type === "fill-extrusion");
+  const extrusions = style.layers.filter(layer => layer.type === "fill-extrusion" && layer["source-layer"] === "building");
   assert.equal(extrusions.length, 1);
   const layer = extrusions[0];
   assert.equal(layer.id, EARTH_BUILDINGS_3D_LAYER);

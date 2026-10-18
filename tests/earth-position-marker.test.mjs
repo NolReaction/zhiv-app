@@ -44,7 +44,9 @@ test("reopening the map paints independent marker canvases from the same cached 
   assert.equal(firstCanvas.drawn.source.parent, null);
   assert.equal(firstCanvas.width, 48);
   assert.equal(firstCanvas.height, 48);
-  assert.deepEqual(first.attributes, { role: "img", "aria-label": "Вы здесь" });
+  assert.equal(first.tag, "button");
+  assert.equal(first.type, "button");
+  assert.deepEqual(first.attributes, { "aria-label": "Вы здесь. Поздороваться с Мохликом" });
   assert.equal(first.children[0].attributes["aria-hidden"], "true");
 });
 
@@ -52,14 +54,14 @@ test("precision updates remain accessible without repainting the marker or expos
   const marker = createEarthPositionMarker();
   const original = marker.children[0].children[0];
   updateEarthPositionMarkerLabel(marker, 25.7);
-  assert.equal(marker.attributes["aria-label"], "Вы здесь · точность ±26 м");
-  assert.equal(marker.title, marker.attributes["aria-label"]);
+  assert.equal(marker.attributes["aria-label"], "Вы здесь · точность ±26 м. Поздороваться с Мохликом");
+  assert.match(marker.title, /Вы здесь · точность ±26 м/);
   updateEarthPositionMarkerLabel(marker, 12_500);
   assert.match(marker.attributes["aria-label"], /12,5 км/);
   assert.equal(marker.children[0].children[0], original);
   for (const invalid of [undefined, NaN, Infinity, -1]) {
     updateEarthPositionMarkerLabel(marker, invalid);
-    assert.equal(marker.attributes["aria-label"], "Вы здесь");
+    assert.equal(marker.attributes["aria-label"], "Вы здесь. Поздороваться с Мохликом");
   }
 });
 
@@ -67,7 +69,7 @@ test("a device without Canvas2D still gets a labelled location pin", () => {
   canvasAvailable = false;
   try {
     const marker = createEarthPositionMarker();
-    assert.equal(marker.attributes["aria-label"], "Вы здесь");
+    assert.equal(marker.attributes["aria-label"], "Вы здесь. Поздороваться с Мохликом");
     assert.equal(marker.children[0].children[0].tag, "span");
     assert.equal(marker.children[0].children[0].textContent, "🌱");
   } finally {

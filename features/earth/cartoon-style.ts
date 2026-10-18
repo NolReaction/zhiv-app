@@ -6,6 +6,9 @@ import { EARTH_OVERVIEW_SOURCE, earthOverviewData } from "./globe-overview";
 import { createEarthBuildingLayer } from "./building-style";
 import { earthLandMaterialLayer } from "./land-material";
 import { EARTH_COAST_SOURCE, createEarthCoastlineData, earthCoastMaterialLayers } from "./coast-material";
+import { EARTH_BIOME_SOURCE, createEarthBiomeOverview } from "./globe-biomes";
+import { earthOceanBackgroundLayer, earthOceanWaterLayer } from "./globe-ocean";
+import { earthLightingSources, earthLightingLayers } from "./globe-lighting";
 
 export const EARTH_LAND_SOURCE = "earth-local-land";
 export const EARTH_VECTOR_SOURCE = "earth-streets";
@@ -25,9 +28,11 @@ export function createCartoonEarthStyle(vector: VectorSourceSpecification): Styl
   const p = EARTH_PALETTE;
   const details = { source: EARTH_VECTOR_SOURCE, minzoom: 4 };
   const coast = earthCoastMaterialLayers();
+  const biomes = createEarthBiomeOverview();
   const textLayout = { "text-field": names, "text-font": ["Arial", "sans-serif"], "text-max-width": 9, "text-padding": 5 };
   const layers: LayerSpecification[] = [
     { id: "earth-ocean", type: "background", paint: { "background-color": p.ocean } },
+    earthOceanBackgroundLayer(),
     { id: "earth-ocean-grid", type: "line", source: EARTH_OVERVIEW_SOURCE, maxzoom: 3,
       filter: ["==", ["get", "kind"], "grid"],
       paint: { "line-color": "#c4ece1", "line-width": 0.7,
@@ -41,6 +46,7 @@ export function createCartoonEarthStyle(vector: VectorSourceSpecification): Styl
       filter: ["==", ["get", "kind"], "ice"], paint: { "fill-color": p.ice, "fill-antialias": false } },
     { id: "earth-overview-lakes", type: "fill", source: EARTH_OVERVIEW_SOURCE,
       filter: ["==", ["get", "kind"], "lake"], paint: { "fill-color": p.ocean, "fill-antialias": false } },
+    earthOceanWaterLayer("earth-overview-lake-waves", EARTH_OVERVIEW_SOURCE, undefined, ["==", ["get", "kind"], "lake"]),
     { id: "earth-detail-land", type: "fill", ...details, "source-layer": EARTH_TILE_BASE_LAYER,
       paint: { "fill-color": p.land, "fill-antialias": false } },
     earthLandMaterialLayer("earth-detail-land-material", EARTH_VECTOR_SOURCE, EARTH_TILE_BASE_LAYER),
@@ -54,6 +60,7 @@ export function createCartoonEarthStyle(vector: VectorSourceSpecification): Styl
       paint: { "fill-color": p.park, "fill-opacity": 0.6 } },
     { id: "earth-water", type: "fill", ...details, "source-layer": "water",
       filter: ["!=", ["get", "brunnel"], "tunnel"], paint: { "fill-color": p.ocean, "fill-antialias": false } },
+    earthOceanWaterLayer("earth-water-waves", EARTH_VECTOR_SOURCE, "water", ["!=", ["get", "brunnel"], "tunnel"]),
     { id: "earth-rivers", type: "line", ...details, minzoom: 8, "source-layer": "waterway",
       layout: { "line-cap": "round", "line-join": "round" },
       paint: { "line-color": p.ocean, "line-width": zoomWidth(0.4, 5) } },
@@ -79,6 +86,8 @@ export function createCartoonEarthStyle(vector: VectorSourceSpecification): Styl
     { id: "earth-buildings", type: "fill", ...details, minzoom: 14, "source-layer": "building",
       paint: { "fill-color": p.building, "fill-outline-color": p.buildingEdge } },
     createEarthBuildingLayer(EARTH_VECTOR_SOURCE, p.building),
+    ...biomes.layers,
+    ...earthLightingLayers(),
     { id: "earth-continent-names", type: "symbol", source: EARTH_OVERVIEW_SOURCE, maxzoom: 2.6,
       filter: ["==", ["get", "kind"], "continent"],
       layout: { ...textLayout, "text-font": ["Arial Bold", "Arial", "sans-serif"], "text-size": 13,
@@ -126,6 +135,8 @@ export function createCartoonEarthStyle(vector: VectorSourceSpecification): Styl
       [EARTH_VECTOR_SOURCE]: { ...vector },
       [EARTH_OVERVIEW_SOURCE]: { type: "geojson", data: earthOverviewData, maxzoom: 0, tolerance: 0, buffer: 0 },
       [EARTH_COAST_SOURCE]: { type: "geojson", data: createEarthCoastlineData(land as FeatureCollection<Polygon>), maxzoom: 0, tolerance: 0, buffer: 0 },
+      [EARTH_BIOME_SOURCE]: biomes.source,
+      ...earthLightingSources(),
     }, layers,
   };
 }

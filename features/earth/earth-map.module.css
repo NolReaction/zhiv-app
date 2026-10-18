@@ -72,6 +72,10 @@
 .storageDetails button, .infoAction { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 9px 12px; border: 1px solid #d9efcd30; border-radius: 12px; background: #c5dfb910; color: #e7f3da; font: inherit; font-size: 11px; cursor: pointer; }
 .storageDetails button:disabled, .infoAction:disabled { opacity: .5; cursor: default; }
 .infoRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; color: #d8eac7; font-size: 12px; line-height: 1.5; }
+.lightingModes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px; border: 1px solid #d9efcd20; border-radius: 16px; background: #0b2924; }
+.lightingModes button { min-height: 44px; padding: 7px 8px; border: 1px solid transparent; border-radius: 11px; color: #b4cbb0; background: transparent; font: inherit; font-size: 12px; cursor: pointer; }
+.lightingModes button[aria-pressed="true"] { color: #edf6da; border-color: #dae6ad38; background: #355a43; box-shadow: 0 2px 6px #001e2429; }
+.lightingModes button:hover { color: #edf6da; }
 .infoToggle { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 52px; height: 44px; padding: 0; border: 0; border-radius: 13px; background: transparent; cursor: pointer; }
 .infoToggle > span { position: relative; display: block; width: 42px; height: 24px; border-radius: 999px; background: #627e6d; box-shadow: inset 0 0 0 1px #d9efcd22; transition: background 160ms ease; }
 .infoToggle > span::before { position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #edf5e7; box-shadow: 0 1px 4px #082b2550; content: ""; transition: transform 160ms ease, background 160ms ease; }

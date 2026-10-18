@@ -17,6 +17,10 @@ import { createEarthPositionMarker, updateEarthPositionMarkerLabel } from "./pos
 import { installEarthMaterialImages, registerEarthMaterialImage } from "./land-material";
 import { EarthAttribution } from "./earth-attribution";
 import { installEarthGlobeCamera } from "./globe-camera";
+import { EARTH_OCEAN_MATERIAL_IMAGE, registerEarthOceanMaterialImage } from "./globe-ocean";
+import { bindEarthPositionMarkerMotion } from "./marker-motion";
+import { createEarthGlobeScene } from "./globe-scene";
+import type { EarthLightingMode } from "./globe-lighting";
 import "maplibre-gl/dist/maplibre-gl.css";
 import styles from "./earth-map.module.css";
 
@@ -81,12 +85,19 @@ export function EarthMap({ position, active, focusRequest, isOnline, onLocate, l
   const [tileStatus, setTileStatus] = useState<EarthTileRecoveryStatus>("idle");
   const [buildings3d, setBuildings3d] = useState(true);
   const buildings3dRef = useRef(buildings3d);
+  const [lightingMode, setLightingMode] = useState<EarthLightingMode>("auto");
+  const lightingModeRef = useRef(lightingMode);
+  const sceneRef = useRef<ReturnType<typeof createEarthGlobeScene> | null>(null);
   const infoButton = useRef<HTMLButtonElement>(null);
   const infoHeading = useRef<HTMLHeadingElement>(null);
   const cache = useSyncExternalStore(earthResourceCache.subscribe, earthResourceCache.getSnapshot, earthResourceCache.getSnapshot);
   const phaseRef = useRef(phase);
   const activeRef = useRef(active);
   useEffect(() => { phaseRef.current = phase; }, [phase]);
+  useEffect(() => {
+    lightingModeRef.current = lightingMode;
+    sceneRef.current?.setLighting(lightingMode);
+  }, [lightingMode]);
   useEffect(() => { if (infoOpen) infoHeading.current?.focus({ preventScroll: true }); }, [infoOpen]);
   useEffect(() => {
     buildings3dRef.current = buildings3d;
@@ -138,6 +149,8 @@ export function EarthMap({ position, active, focusRequest, isOnline, onLocate, l
     const controller = new AbortController();
     let map: LibreMap | null = null;
     let marker: Marker | null = null;
+    let disposeMarkerMotion: (() => void) | null = null;
+    let scene: ReturnType<typeof createEarthGlobeScene> | null = null;
     let initialReady = false;
     let attemptFailed = false;
     let styleReady = false;
@@ -167,6 +180,7 @@ export function EarthMap({ position, active, focusRequest, isOnline, onLocate, l
       controller.abort();
       window.clearTimeout(timeout);
       map?.stop();
+      scene?.setReady(false);
       setFailure(message);
       setPhase("failed");
     }
@@ -194,6 +208,7 @@ export function EarthMap({ position, active, focusRequest, isOnline, onLocate, l
         initialReady = true;
         window.clearTimeout(timeout);
         setPhase("ready");
+        scene?.setReady(true);
       }
     }
     function scheduleReadyCheck() {
@@ -260,7 +275,9 @@ export function EarthMap({ position, active, focusRequest, isOnline, onLocate, l
         });
         const current = map;
         restoreGlobeCamera = installEarthGlobeCamera(current);
-        installEarthMaterialImages(current);
+        installEarthMaterialImages(current, id => {
+          if (id === EARTH_OCEAN_MATERIAL_IMAGE) registerEarthOceanMaterialImage(current);
+        });
         mapRef.current = current;
         tileRecovery = createEarthTileRecovery({
           readState: () => {
@@ -312,6 +329,8 @@ export function EarthMap({ position, active, focusRequest, isOnline, onLocate, l
           const source = current.getSource<GeoJSONSource>(EARTH_ACCURACY_SOURCE);
           source?.setData(positionAccuracyData(value));
           if (!value) {
+            disposeMarkerMotion?.();
+            disposeMarkerMotion = null;
             marker?.remove();
             marker = null;
             return;
@@ -321,6 +340,7 @@ export function EarthMap({ position, active, focusRequest, isOnline, onLocate, l
             marker = new sdk.Marker({ element: createEarthPositionMarker(), anchor: "bottom",
               pitchAlignment: "viewport", rotationAlignment: "viewport", subpixelPositioning: true, opacityWhenCovered: 0 })
               .setLngLat([value.longitude, value.latitude]).addTo(current);
+            disposeMarkerMotion = bindEarthPositionMarkerMotion(current, marker.getElement());
           }
           marker.setLngLat([value.longitude, value.latitude]);
           updateEarthPositionMarkerLabel(marker.getElement(), value.accuracy);
@@ -330,6 +350,7 @@ export function EarthMap({ position, active, focusRequest, isOnline, onLocate, l
         current.on("style.load", () => {
           if (cancelled) return;
           registerEarthMaterialImage(current);
+          registerEarthOceanMaterialImage(current);
           styleReady = true;
           // Style replacement discards projection, atmosphere and our own layers.
           current.setProjection({ type: "globe" });
@@ -347,6 +368,10 @@ export function EarthMap({ position, active, focusRequest, isOnline, onLocate, l
             paint: { "line-color": "#166f70", "line-opacity": 0.75, "line-width": 1.5 },
           });
           syncPosition(latestPosition.current);
+          scene?.dispose();
+          scene = createEarthGlobeScene(current, sdk.Marker, lightingModeRef.current);
+          sceneRef.current = scene;
+          scene.setReady(initialReady);
         });
         current.on("dataloading", scheduleReadyCheck);
         current.on("dataabort", () => {
@@ -404,7 +429,10 @@ export function EarthMap({ position, active, focusRequest, isOnline, onLocate, l
       document.removeEventListener("visibilitychange", visibilityChanged);
       canvas?.removeEventListener("webglcontextlost", contextLost);
       syncPositionRef.current = null;
+      disposeMarkerMotion?.();
       marker?.remove();
+      scene?.dispose();
+      if (sceneRef.current === scene) sceneRef.current = null;
       map?.stop();
       restoreGlobeCamera?.();
       if (map) {
@@ -457,6 +485,11 @@ export function EarthMap({ position, active, focusRequest, isOnline, onLocate, l
       <header className={styles.infoHeader}><h2 ref={infoHeading} tabIndex={-1} id="earth-info-title">О карте</h2>
         <button type="button" className={styles.infoClose} aria-label="Закрыть настройки карты" onClick={() => { onInfoOpenChange(false); infoButton.current?.focus({ preventScroll: true }); }}><X size={18} aria-hidden="true" /></button></header>
       <section className={styles.infoSection}><h3>Вид карты</h3>
+        <div className={styles.lightingModes} role="group" aria-label="Освещение глобуса">
+          {([ ["auto", "Авто"], ["day", "День"], ["evening", "Вечер"] ] as const).map(([value, label]) =>
+            <button key={value} type="button" aria-pressed={lightingMode === value} onClick={() => setLightingMode(value)}>{label}</button>)}
+        </div>
+        <p>{lightingMode === "auto" ? "Светлая и тёмная стороны следуют времени суток. Облачка, волны и природные миниатюры оживляют Землю при отдалении." : lightingMode === "evening" ? "Тёплый закат и огоньки городов. Вечер остаётся на выбранной стороне Земли." : "Светлый глобус, чтобы рассмотреть все детали."}</p>
         <div className={styles.infoRow}><span id="earth-buildings-label">Объёмные здания</span>
           <button type="button" className={styles.infoToggle} role="switch" aria-checked={buildings3d} aria-labelledby="earth-buildings-label" onClick={() => setBuildings3d(value => !value)}><span aria-hidden="true" /></button></div>
         <p>Появляются при приближении к улицам. Наклоните карту двумя пальцами или перетаскивайте её с зажатой правой кнопкой мыши.</p>

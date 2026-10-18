@@ -62,9 +62,11 @@ export function registerEarthMaterialImage(map: MaterialMap): void {
 }
 
 /** Install immediately after map construction; resolve only our known local pattern. */
-export function installEarthMaterialImages(map: MaterialMap & Pick<LibreMap, "setMissingStyleImageResolver">): void {
+export function installEarthMaterialImages(map: MaterialMap & Pick<LibreMap, "setMissingStyleImageResolver">,
+  resolveOtherImage?: (id: string) => void): void {
   map.setMissingStyleImageResolver(id => {
     if (id === EARTH_LAND_MATERIAL_IMAGE) registerEarthMaterialImage(map);
+    else resolveOtherImage?.(id);
   });
 }
 
