@@ -158,18 +158,24 @@ test("a fishing lean turns the gaze and torso while both planted paws retain the
   }
 });
 
-test("shore fishing eyes use equal compact rounded glyphs with two-pixel caps instead of isolated cross tips", () => {
-  for (const direction of ["front", "left", "right"]) for (const pose of ["fish", "wonder", "present"]) {
-    const sprite = pixelSprite(pose, direction, 0, undefined, { gardening: true, crouch: 1, fishingStance: true });
+test("ordinary and fishing eyes share equal compact glyphs without isolated tips at camera zoom", () => {
+  const rigs = [undefined, { gardening: true, crouch: 1, lean: -2 }, { gardening: true, crouch: 1, fishingStance: true }];
+  for (const rig of rigs) for (const direction of ["front", "left", "right"]) for (const pose of ["idle", "walk", "reach", "wonder", "fish", ...(rig?.gardening ? ["present"] : [])]) for (let frame = 0; frame < 4; frame++) {
+    const sprite = pixelSprite(pose, direction, frame, undefined, rig);
     const eyes = [...sprite.pixels].filter(([, color]) => color === "#30291d").map(([key]) => key.split(":").map(Number));
     const columns = [...new Set(eyes.map(([x]) => x))].sort((a, b) => a - b);
     const groups = [columns.filter(x => x < columns[0] + 4), columns.filter(x => x >= columns[0] + 4)];
+    const glyphs = [];
     for (const group of groups) {
       assert.equal(group.length, 3, "each open eye remains three source pixels wide");
+      const points = eyes.filter(([x]) => group.includes(x));
+      const left = Math.min(...points.map(([x]) => x)), top = Math.min(...points.map(([, y]) => y));
+      glyphs.push(points.map(([x, y]) => [x - left, y - top]).sort(([ax, ay], [bx, by]) => ay - by || ax - bx));
       const rows = new Map();
-      for (const [, y] of eyes.filter(([x]) => group.includes(x))) rows.set(y, (rows.get(y) ?? 0) + 1);
+      for (const [, y] of points) rows.set(y, (rows.get(y) ?? 0) + 1);
       assert.equal(rows.size, pose === "wonder" ? 6 : 5);
       assert.ok([...rows.values()].every(count => count >= 2), "neither cap nor a highlighted interior row has a lone protruding pixel");
     }
+    assert.deepEqual(glyphs[0], glyphs[1], "the two eyes keep the same cap and highlight placement in every frame and rig");
   }
 });

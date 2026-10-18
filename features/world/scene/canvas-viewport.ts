@@ -7,14 +7,20 @@ export function canvasWorldViewport(ctx: CanvasRenderingContext2D): WorldBounds 
   if (!t || !canvas) return null;
   const determinant = t.a * t.d - t.b * t.c;
   if (!Number.isFinite(determinant) || Math.abs(determinant) < 1e-12
-    || ![t.e, t.f, canvas.width, canvas.height].every(Number.isFinite)) return null;
-  const points = [[0, 0], [canvas.width, 0], [0, canvas.height], [canvas.width, canvas.height]].map(([x, y]) => ({
-    x: (t.d * (x - t.e) - t.c * (y - t.f)) / determinant,
-    y: (-t.b * (x - t.e) + t.a * (y - t.f)) / determinant,
-  }));
-  const x = Math.min(...points.map(point => point.x)), y = Math.min(...points.map(point => point.y));
-  return { x, y, width: Math.max(...points.map(point => point.x)) - x,
-    height: Math.max(...points.map(point => point.y)) - y };
+    || !Number.isFinite(t.e) || !Number.isFinite(t.f)
+    || !Number.isFinite(canvas.width) || !Number.isFinite(canvas.height)) return null;
+  // An inverse affine rectangle is a parallelogram. Its two edge vectors give
+  // the same conservative envelope as four inverse points, without temporary
+  // arrays/points in every world paint (including high-rate camera gestures).
+  const originX = (t.c * t.f - t.d * t.e) / determinant;
+  const originY = (t.b * t.e - t.a * t.f) / determinant;
+  const horizontalX = t.d * canvas.width / determinant, horizontalY = -t.b * canvas.width / determinant;
+  const verticalX = -t.c * canvas.height / determinant, verticalY = t.a * canvas.height / determinant;
+  const x = originX + Math.min(0, horizontalX) + Math.min(0, verticalX);
+  const y = originY + Math.min(0, horizontalY) + Math.min(0, verticalY);
+  const width = Math.abs(horizontalX) + Math.abs(verticalX), height = Math.abs(horizontalY) + Math.abs(verticalY);
+  return Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(width) && Number.isFinite(height)
+    ? { x, y, width, height } : null;
 }
 
 /** Bounds already include Tiled's image rotation. Padding retains soft shadows

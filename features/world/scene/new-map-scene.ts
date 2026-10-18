@@ -7,6 +7,7 @@ import { initialPreviewLevels, previewSiteVisual, previewWorldScene } from "@/fe
 import type { FixedWorldScene, PreviewLevels, SiteVisual, WorldPoint } from "@/features/world/tiled/types";
 import { drawGroundedHero } from "./grounding";
 import { drawBuildingDetails } from "./building-details";
+import { worldFrameDue } from "./frame-timing";
 import { drawForestAtmosphere, forestAtmosphereState, FOREST_BIRD_FLIGHT_DURATION, type ForestAtmosphereOptions } from "@/features/world/environment/weather/forest-atmosphere";
 import { drawForestWater, forestWaterContactsFrame, isForestWater } from "@/features/world/environment/water/forest-water";
 import { createForestWaterDynamics, advanceForestWaterDynamics, disturbForestWater, touchForestWater, type ForestWaterDynamics } from "@/features/world/environment/water/forest-water-dynamics";
@@ -1053,7 +1054,7 @@ export function mountNewMapScene(canvas: HTMLCanvasElement, initial: SceneOption
     if (!active() || !session.isOwner() || reducedMotion(options, dev)) return;
     if (options.devRehearsal && state.devSceneRehearsal && ["complete", "blocked", "stopped"].includes(state.devSceneRehearsal.preview.phase)) return;
     if (!previous) previous = now;
-    if (now - previous >= 1000 / 30) {
+    if (worldFrameDue(now, previous)) {
       const step = Math.min((now - previous) / 1000, .05);
       state.elapsed += step; state.timestamp += step * 1000;
       if (state.birdStarted !== null && state.elapsed - state.birdStarted >= FOREST_BIRD_FLIGHT_DURATION) state.birdStarted = null;

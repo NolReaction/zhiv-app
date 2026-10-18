@@ -824,6 +824,36 @@ test("pointer bursts share the next animation frame and read layout once per ges
   } finally { engine?.dispose(); worldDevStore.reset(); env.restore(); }
 });
 
+test("60Hz browser frames keep both world presentation and simulation near 30Hz without changing actual time", async () => {
+  const { createMapEngine, worldDevStore, connectForestSession, TILED_WORLD } = await modules();
+  const env = browser(); let engine, probe;
+  try {
+    worldDevStore.patch({ ...quietClearing, autoLife: false });
+    const canvas = env.surface(393, 852);
+    const initial = { ...options, reducedMotion: false, serverNow: 100_000, presenceKey: "cadence-account" };
+    const loading = createMapEngine(canvas, initial, assert.fail, []);
+    env.finish(); await flush(); engine = await loading;
+    probe = connectForestSession(initial.presenceKey, TILED_WORLD, "circle", 0, 0, () => {});
+    const paints = () => canvas.calls.filter(call => call.method === "fillRect"
+      && call.args[0] === 0 && call.args[1] === 0 && call.args[2] === 393 && call.args[3] === 852).length;
+    const before = paints(), elapsed = probe.state.elapsed;
+    let simulationFrames = 0, previousElapsed = elapsed;
+    for (let frame = 1; frame <= 120; frame++) {
+      env.tick(frame * 1000 / 60);
+      if (probe.state.elapsed !== previousElapsed) { simulationFrames++; previousElapsed = probe.state.elapsed; }
+    }
+    assert.equal(paints() - before, 60, "the map presents on every second 60Hz frame rather than waiting for a third");
+    assert.equal(simulationFrames, 59, "the shared simulation uses the same cadence after its initial clock sample");
+    approximately(probe.state.elapsed - elapsed, 118 / 60, "simulation integrates actual elapsed timestamps");
+    engine.update({ ...initial, reducedMotion: true });
+    assert.equal(env.frames.size, 0, "reduced motion still stops both autonomous loops");
+    const frozen = probe.state.elapsed;
+    dragMap(canvas, 20, 10);
+    assert.equal(probe.state.elapsed, frozen, "manual camera motion never advances the frozen simulation");
+    assert.equal(env.frames.size, 0, "a requested camera paint does not restart autonomous animation");
+  } finally { probe?.release(); engine?.dispose(); worldDevStore.reset(); env.restore(); }
+});
+
 test("construction anchor projection can be suspended until a visible timer or completion effect needs it", async () => {
   const { createMapEngine, worldDevStore } = await modules({ sites: [clearingHome] });
   const env = browser(); let engine;
@@ -847,6 +877,67 @@ test("construction anchor projection can be suspended until a visible timer or c
     const count = samples.length;
     dragMap(canvas, 10, 10);
     assert.equal(samples.length, count, "disabling a completed overlay stops subsequent camera notifications");
+  } finally { engine?.dispose(); worldDevStore.reset(); env.restore(); }
+});
+
+test("stationary camera invalidates construction projections when badge height or measured HUD changes", async () => {
+  const { createMapEngine, worldDevStore } = await modules({ sites: [clearingHome] });
+  const env = browser(); let engine;
+  try {
+    worldDevStore.patch(quietClearing);
+    const canvas = env.surface(400), samples = [], top = { offsetHeight: 40 };
+    let markerHeight = 44;
+    const loading = createMapEngine(canvas, options, assert.fail, [], undefined, { top },
+      { objectMarkerHeight: () => markerHeight, onObjectAnchorsChange: anchors => samples.push(anchors) });
+    env.finish(); await flush(); env.finishPath("/test-residence.webp"); engine = await loading;
+    engine.control("home"); canvas.flushFrame();
+    assert.equal(samples.at(-1)[0].objectId, "home");
+    const before = samples.length;
+    engine.control("home"); engine.refreshObjectAnchors();
+    assert.equal(samples.length, before, "unchanged camera and markers do not republish the overlay");
+    markerHeight = 88; engine.refreshObjectAnchors();
+    assert.deepEqual(samples.at(-1), [], "a taller shared production badge cannot overlap the HUD");
+    markerHeight = 44; engine.refreshObjectAnchors();
+    assert.equal(samples.at(-1)[0].objectId, "home", "a compact badge returns without moving the camera");
+    top.offsetHeight = 80; env.resize(top);
+    assert.deepEqual(samples.at(-1), [], "measured HUD resize invalidates stationary projections");
+    top.offsetHeight = 40; env.resize(top);
+    assert.equal(samples.at(-1)[0].objectId, "home");
+    worldDevStore.patch({ showBuildings: false });
+    assert.deepEqual(samples.at(-1), [], "hidden artwork removes its projection");
+    worldDevStore.patch({ showBuildings: true });
+    assert.equal(samples.at(-1)[0].objectId, "home", "restoring artwork invalidates the hidden object list");
+  } finally { engine?.dispose(); worldDevStore.reset(); env.restore(); }
+});
+
+test("HUD-only resize retains backing surfaces while viewport and DPR changes keep full resolution", async () => {
+  const { createMapEngine, worldDevStore } = await modules();
+  const env = browser(); let engine;
+  try {
+    worldDevStore.patch(quietClearing);
+    const canvas = env.surface(393, 852), speech = env.surface(393, 852), top = { offsetHeight: 40 };
+    const writes = [];
+    for (const [name, surface] of [["map", canvas], ["speech", speech]]) for (const dimension of ["width", "height"]) {
+      let value = surface[dimension];
+      Object.defineProperty(surface, dimension, { get: () => value,
+        set(next) { writes.push([name, dimension, next]); value = next; }, configurable: true });
+    }
+    window.devicePixelRatio = 3;
+    const loading = createMapEngine(canvas, options, assert.fail, [], undefined, { top }, {}, speech);
+    env.finish(); await flush(); engine = await loading;
+    assert.equal(canvas.width, 786); assert.equal(canvas.height, 1704, "existing DPR 2 cap is preserved");
+    assert.equal(speech.width, canvas.width); assert.equal(speech.height, canvas.height);
+    const initialWrites = writes.length;
+    env.resize(canvas); top.offsetHeight = 80; env.resize(top);
+    assert.equal(writes.length, initialWrites, "equal dimensions never discard/reallocate the map or speech surfaces");
+    canvas.clientWidth = 852; canvas.clientHeight = 393; env.resize(canvas);
+    assert.equal(canvas.width, 1704); assert.equal(canvas.height, 786);
+    assert.equal(speech.width, canvas.width); assert.equal(speech.height, canvas.height);
+    window.devicePixelRatio = 1; env.resize(canvas);
+    assert.equal(canvas.width, 852); assert.equal(canvas.height, 393);
+    canvas.clientWidth = 2560; canvas.clientHeight = 1440; window.devicePixelRatio = 3; env.resize(canvas);
+    assert.equal(canvas.width, 2200, "large viewports retain the existing bounded physical size");
+    assert.equal(canvas.height, Math.round(1440 * 2200 / 2560));
   } finally { engine?.dispose(); worldDevStore.reset(); env.restore(); }
 });
 

@@ -1,4 +1,4 @@
-import { worldToScreen, type Camera, type VerticalCameraInsets, type Viewport } from "./camera";
+import { worldToScreen, type Camera, type Point, type VerticalCameraInsets, type Viewport } from "./camera";
 import type { MapInteractiveObject, MapObjectPlace } from "./site-interactions";
 
 export type MapObjectScreenAnchor = {
@@ -18,6 +18,23 @@ const constructionPlaces: Readonly<Record<string, MapObjectPlace>> = {
   garden: "garden", woodlot: "lopukh-home", quarry: "quarry", dryer: "campfire",
   bridge: "bridge", lighthouse: "lighthouse",
 };
+// Tiled/preview contours are immutable: selecting a different building level or
+// applying a studio draft replaces the contour. Camera motion changes only its
+// screen projection, so retain its world-space roof without rescanning points.
+const contourRoofs = new WeakMap<MapInteractiveObject["hitArea"], Point>();
+
+function contourRoof(points: MapInteractiveObject["hitArea"]): Point {
+  let roof = contourRoofs.get(points);
+  if (!roof) {
+    let left = Infinity, right = -Infinity, top = Infinity;
+    for (const point of points) {
+      left = Math.min(left, point.x); right = Math.max(right, point.x); top = Math.min(top, point.y);
+    }
+    roof = { x: (left + right) / 2, y: top };
+    contourRoofs.set(points, roof);
+  }
+  return roof;
+}
 
 /** Interior stations belong to their real map host; no invented coordinates. */
 export function constructionMapPlace(stationId: string): MapObjectPlace | null {
@@ -28,8 +45,7 @@ export function constructionMapPlace(stationId: string): MapObjectPlace | null {
 export function projectConstructionAnchor(object: MapInteractiveObject, camera: Camera, view: Viewport,
   insets: VerticalCameraInsets = { top: 0, bottom: 0 }, markerHeight: number = CONSTRUCTION_MARKER.height): MapObjectScreenAnchor | null {
   if (!object.hitArea.length) return null;
-  const xs = object.hitArea.map(point => point.x), ys = object.hitArea.map(point => point.y);
-  const roof = worldToScreen({ x: (Math.min(...xs) + Math.max(...xs)) / 2, y: Math.min(...ys) }, camera, view);
+  const roof = worldToScreen(contourRoof(object.hitArea), camera, view);
   const { width, gap, margin } = CONSTRUCTION_MARKER;
   const height = Number.isFinite(markerHeight) ? Math.max(CONSTRUCTION_MARKER.height, markerHeight) : CONSTRUCTION_MARKER.height;
   const y = Math.round(roof.y - gap);

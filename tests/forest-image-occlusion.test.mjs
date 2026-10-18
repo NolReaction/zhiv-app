@@ -31,7 +31,7 @@ const scene = (terrain = [], sites = [], occluders = [mask("tree", { x: 40, y: 3
   terrain, sites, occluders, paths: [], lights: [], focus: { x: 0, y: 0, width: 200, height: 200 },
 });
 function raster(width = 200, height = 200) {
-  const canvas = occlusionRaster(width, height), ctx = canvas.getContext("2d"), draw = ctx.drawImage;
+  const canvas = occlusionRaster(width, height), ctx = canvas.getContext("2d");
   ctx.transform = (a, b, c, d, e, f) => {
     const m = ctx.getTransform();
     ctx.setTransform(m.a * a + m.c * b, m.b * a + m.d * b,
@@ -40,13 +40,6 @@ function raster(width = 200, height = 200) {
   ctx.translate = (x, y) => ctx.transform(1, 0, 0, 1, x, y);
   ctx.scale = (x, y) => ctx.transform(x, 0, 0, y, 0, 0);
   ctx.rotate = angle => ctx.transform(Math.cos(angle), Math.sin(angle), -Math.sin(angle), Math.cos(angle), 0, 0);
-  ctx.drawImage = function (source, ...args) {
-    if (args.length === 8) {
-      assert.deepEqual(args.slice(0, 4), [0, 0, source.width, source.height], "this fixture only draws complete source images");
-      return draw.call(this, source, ...args.slice(4));
-    }
-    return draw.call(this, source, ...args);
-  };
   return canvas;
 }
 function withRasterDocument(run) {

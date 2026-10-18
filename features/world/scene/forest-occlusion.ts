@@ -98,8 +98,14 @@ function feathered(ctx: CanvasRenderingContext2D, masks: Mask[], bounds: WorldBo
   }
   const textures = masks.map(forestOcclusionTexture);
   if (textures.some(texture => !texture)) return false;
-  if (layer.canvas.width !== width) layer.canvas.width = width;
-  if (layer.canvas.height !== height) layer.canvas.height = height;
+  // Buildings, props and residents share this surface. Shrinking it to every
+  // subject's size reallocates the backing store several times per frame.
+  // Retain capacity while preserving the existing per-camera memory bound.
+  const capacityWidth = Math.max(layer.canvas.width, width), capacityHeight = Math.max(layer.canvas.height, height);
+  const canGrow = capacityWidth <= 2048 && capacityHeight <= 2048 && capacityWidth * capacityHeight <= 1024 * 1024;
+  const nextWidth = canGrow ? capacityWidth : width, nextHeight = canGrow ? capacityHeight : height;
+  if (layer.canvas.width !== nextWidth) layer.canvas.width = nextWidth;
+  if (layer.canvas.height !== nextHeight) layer.canvas.height = nextHeight;
   const target = layer.ctx;
   target.setTransform(1, 0, 0, 1, 0, 0); target.clearRect(0, 0, width, height);
   target.save(); layer.busy = true;
@@ -121,7 +127,9 @@ function feathered(ctx: CanvasRenderingContext2D, masks: Mask[], bounds: WorldBo
     try {
       ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1;
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(layer.canvas, x, y);
+      // Only the active rectangle was cleared; never copy retained pixels
+      // outside it from an earlier, larger subject.
+      ctx.drawImage(layer.canvas, 0, 0, width, height, x, y, width, height);
     } finally { ctx.restore(); }
   } finally { target.restore(); layer.busy = false; }
   return true;

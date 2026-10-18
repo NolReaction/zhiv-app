@@ -18,6 +18,7 @@ import { mapObjectAt, type MapObjectPlace, type MapInteractiveObject } from "./s
 import { projectConstructionAnchor, type MapObjectScreenAnchor } from "./construction-map-anchor";
 import { drawMapGuideTarget, mapGuideCamera, minerArrivalGuideTarget, leaftailArrivalGuideTarget } from "./map-guide-target";
 import { createMapSceneRehearsal } from "./map-scene-rehearsal";
+import { worldFrameDue } from "./frame-timing";
 export class MapLoadError extends Error {
   constructor(public stage: "map" | "character", public cause: unknown) { super("Не удалось загрузить лес"); }
 }
@@ -81,6 +82,8 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   let travelled = 0, multiTouch = false, cancelled = false;
   let selectedObjectId: string | null = null, selectionKey: string | null = null;
   let anchorsKey = "";
+  let anchorProjection: { objects: readonly MapInteractiveObject[]; camera: Camera; width: number; height: number;
+    top: number; bottom: number; markerHeights: (number | undefined)[] } | null = null;
   let objectAnchorsEnabled = interactions.objectAnchorsEnabled ?? true;
   let readyResolve!: () => void, readyReject!: (error: unknown) => void;
   const habitatReady = new Promise<void>((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
@@ -233,13 +236,31 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
   function updateObjectAnchors(objects: readonly MapInteractiveObject[]) {
     if (disposed || !objectAnchorsEnabled || !interactions.onObjectAnchorsChange) return;
     if (editingLight()) {
+      anchorProjection = null;
       if (anchorsKey !== "lighting-editor") { anchorsKey = "lighting-editor"; interactions.onObjectAnchorsChange([]); }
       return;
     }
-    const projected = objects.flatMap(object => {
-      const anchor = projectConstructionAnchor(object, camera, view, cameraInsets, interactions.objectMarkerHeight?.(object.place));
-      return anchor ? [anchor] : [];
-    });
+    // Timers may change their actual height without moving the camera. Sample
+    // those small values, but leave unchanged geometry/projections alone during
+    // ambient frames. Tiled/preview objects keep their identity until replaced.
+    const previous = anchorProjection;
+    const markerHeights = previous?.objects === objects ? previous.markerHeights : [];
+    let unchanged = Boolean(previous && previous.objects === objects && previous.camera.x === camera.x
+      && previous.camera.y === camera.y && previous.camera.zoom === camera.zoom && previous.width === view.width
+      && previous.height === view.height && previous.top === cameraInsets.top && previous.bottom === cameraInsets.bottom);
+    for (let index = 0; index < objects.length; index++) {
+      const height = interactions.objectMarkerHeight?.(objects[index].place);
+      if (markerHeights[index] !== height) unchanged = false;
+      markerHeights[index] = height;
+    }
+    if (unchanged) return;
+    anchorProjection = { objects, camera: { ...camera }, width: view.width, height: view.height,
+      top: cameraInsets.top, bottom: cameraInsets.bottom, markerHeights };
+    const projected: MapObjectScreenAnchor[] = [];
+    for (let index = 0; index < objects.length; index++) {
+      const anchor = projectConstructionAnchor(objects[index], camera, view, cameraInsets, markerHeights[index]);
+      if (anchor) projected.push(anchor);
+    }
     const key = JSON.stringify(projected);
     if (key !== anchorsKey) { anchorsKey = key; interactions.onObjectAnchorsChange(projected); }
   }
@@ -354,7 +375,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     }
     // Input updates the camera immediately, but a burst of pointer events gets
     // one paint in the next browser frame, shared with ambient animation.
-    if (redrawPending || !paused() && time - last >= 1000 / 30) {
+    if (redrawPending || !paused() && worldFrameDue(time, last)) {
       draw(); last = time;
     }
     if (!motionReduced() && !paused() && !raf) raf = requestAnimationFrame(tick);
@@ -381,8 +402,15 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     // safe-area padding and avoids entrance transforms changing the pan limits.
     cameraInsets = { top: cameraHud.top?.offsetHeight ?? 0, bottom: cameraHud.bottom?.offsetHeight ?? 0 };
     const scale = Math.min(window.devicePixelRatio || 1, 2, 2200 / Math.max(view.width, view.height));
-    canvas.width = Math.round(view.width * scale); canvas.height = Math.round(view.height * scale);
-    if (speechCanvas) { speechCanvas.width = canvas.width; speechCanvas.height = canvas.height; }
+    const width = Math.round(view.width * scale), height = Math.round(view.height * scale);
+    // A HUD-only ResizeObserver notification changes camera insets, not the
+    // backing surface. Reassigning even equal dimensions discards that surface.
+    if (canvas.width !== width) canvas.width = width;
+    if (canvas.height !== height) canvas.height = height;
+    if (speechCanvas) {
+      if (speechCanvas.width !== width) speechCanvas.width = width;
+      if (speechCanvas.height !== height) speechCanvas.height = height;
+    }
     const guideTarget = framing === "guide" ? currentGuideTarget() : undefined;
     if (restoreStudioViewport && editingLight()) {
       // Selection focus may extend the full camera beyond a world edge to keep
@@ -632,7 +660,7 @@ export async function createMapEngine(canvas: HTMLCanvasElement, initial: SceneO
     },
     setObjectAnchorsEnabled(enabled: boolean) {
       if (disposed || enabled === objectAnchorsEnabled) return;
-      objectAnchorsEnabled = enabled; anchorsKey = "";
+      objectAnchorsEnabled = enabled; anchorsKey = ""; anchorProjection = null;
       if (enabled) requestDraw();
       else interactions.onObjectAnchorsChange?.([]);
     },

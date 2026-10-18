@@ -91,6 +91,25 @@ test("construction marker clears measured HUD bounds and disappears when its roo
   assert.equal(nearEdge.x + nearEdge.pointerOffset, 20, "its pointer still identifies the visible roof");
 });
 
+test("camera movement reuses immutable roof geometry while a replacement contour takes effect immediately", () => {
+  let reads = 0;
+  const points = [[100, 200], [220, 230], [180, 280]].map(([x, y]) => ({
+    get x() { reads++; return x; }, get y() { reads++; return y; },
+  }));
+  const object = { id: "home", place: "house", hitArea: points };
+  const view = { width: 400, height: 600 }, camera = { x: 200, y: 300, zoom: 1 };
+  assert.equal(projectConstructionAnchor(object, camera, view).y, 190);
+  const preparedReads = reads;
+  for (let step = 1; step <= 120; step++) {
+    const anchor = projectConstructionAnchor(object, { ...camera, x: camera.x + step / 4 }, view);
+    assert.equal(anchor.x, Math.round(160 - step / 4));
+  }
+  assert.equal(reads, preparedReads, "120 camera positions do not rescan the immutable contour");
+  const next = { ...object, hitArea: [{ x: 100, y: 160 }, { x: 220, y: 280 }] };
+  assert.equal(projectConstructionAnchor(next, camera, view).y, 150, "new artwork immediately supplies its own roof");
+  assert.equal(projectConstructionAnchor({ ...object, hitArea: [] }, camera, view), null);
+});
+
 test("finished construction remains visible and ready without applying its level", () => {
   const economy = controller([construction], Date.parse(construction.finishesAt));
   const html = markup(economy);

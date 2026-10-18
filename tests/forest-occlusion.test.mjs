@@ -292,6 +292,36 @@ test("mask textures are shared across cameras while each camera reuses its bound
   });
 });
 
+test("alternating subject sizes retain camera buffer capacity without copying stale pixels", () => {
+  withRasterDocument(allocated => {
+    const target = occlusionRaster(), ctx = target.getContext("2d"), shape = scene();
+    const large = { x: 20, y: 20, width: 140, height: 120 }, small = { x: 20, y: 20, width: 30, height: 40 };
+    const paint = bounds => withForestOcclusion(ctx, shape, actor,
+      scratch => scratch.fillRect(bounds.x, bounds.y, bounds.width, bounds.height), bounds);
+    paint(large);
+    const buffer = ctx.drawCalls.at(-1).source;
+    assert.ok(allocated.includes(buffer));
+    const initial = [buffer.width, buffer.height], initialResizes = buffer.resizeCount;
+    for (let frame = 0; frame < 6; frame++) {
+      target.getContext("2d").clearRect();
+      paint(small);
+      assert.deepEqual([buffer.width, buffer.height], initial);
+      assert.equal(target.alpha(25, 25), 1, "the current subject remains visible outside the mask");
+      assert.equal(target.alpha(45, 45), 0, "the same inward mask still hides the subject");
+      assert.equal(target.alpha(110, 80), 0, "pixels retained beyond the active rectangle cannot leak into the next subject");
+      const copy = ctx.drawCalls.at(-1);
+      assert.equal(copy.sw, copy.w); assert.equal(copy.sh, copy.h);
+      assert.ok(copy.sw < buffer.width, "composition copies only the smaller active region");
+      paint(large);
+      assert.deepEqual([buffer.width, buffer.height], initial);
+    }
+    assert.equal(buffer.resizeCount, initialResizes, "alternating building/resident sizes never reset the backing store");
+    assert.ok(buffer.width <= 2048 && buffer.height <= 2048 && buffer.width * buffer.height <= 1024 * 1024);
+    assert.equal(allocated.filter(canvas => canvas.getContext("2d").strokeCalls === 0).length, 1,
+      "the camera retains one subject buffer");
+  });
+});
+
 test("a failed sprite draw restores the scratch layer and never damages previously painted world pixels", () => {
   withRasterDocument(() => {
     const target = occlusionRaster(), ctx = target.getContext("2d"), shape = scene();

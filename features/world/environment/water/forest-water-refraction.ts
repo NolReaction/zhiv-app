@@ -39,7 +39,17 @@ export function drawForestWaterRefraction(ctx: CanvasRenderingContext2D, scene: 
   const source = terrain.imagePlacement ?? terrain.bounds;
   if (source.width <= 0 || source.height <= 0) return;
   const sx = imageWidth / source.width, sy = imageHeight / source.height;
-  ctx.save(); clipForestWaterRenderMask(ctx, mask, visible);
+  // The cached patches already certify their entire enclosing circle against
+  // exact shoreline/exclusion edges. Reapplying a complex water clip to every
+  // image patch forces unnecessary raster work while panning. A changed scene
+  // using an older solver still needs its own exact clip until synchronized.
+  const water = scene.water;
+  const certified = water && state.geometry.surfaces.length === water.surfaces.length
+    && state.geometry.exclusions.length === water.exclusions.length
+    && state.geometry.surfaces.every((polygon, index) => polygon.points === water.surfaces[index].points)
+    && state.geometry.exclusions.every((polygon, index) => polygon.points === water.exclusions[index].points);
+  ctx.save();
+  if (!certified) clipForestWaterRenderMask(ctx, mask, visible);
   ctx.imageSmoothingEnabled = true; ctx.globalAlpha *= .72;
   for (const patch of waterPatches(state)) {
     if (!visible(patch)) continue;
