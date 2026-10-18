@@ -1,0 +1,18 @@
+3D models used by «Я живой» / Earth map
+
+Eiffel Tower
+Original title: ( FREE ) La tour Eiffel
+Author: SDC PERFORMANCE™️
+Author profile: https://sketchfab.com/Lambo_SC04
+Source: https://sketchfab.com/3d-models/free-la-tour-eiffel-8553f94d06e24cb4b0fde1080f281674
+License: Creative Commons Attribution 4.0 International (CC BY 4.0)
+License URL: https://creativecommons.org/licenses/by/4.0/
+
+The supplied GLB declares the author, source and license above in asset.extras.
+Changes for this application: simplified geometry, applied node transforms,
+changed coordinate axes, normalized the base/height, and prepared vertex lighting.
+The author does not endorse this application.
+
+The original source and preparation instructions are retained in the project:
+https://github.com/NolReaction/zhiv-app/tree/earth/art/earth/models/eiffel-tower
+https://github.com/NolReaction/zhiv-app/blob/earth/docs/development/earth-models.md

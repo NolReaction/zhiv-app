@@ -60,6 +60,7 @@ export function createEarthGlobeScene(map: LibreMap, MarkerConstructor: typeof M
   motionPreference?.addEventListener("change", synchronize);
 
   return {
+    setBuildingsEnabled(value: boolean) { if (disposed) return; landmarks.setBuildingsEnabled(value); },
     setVisible(value: boolean) { if (disposed) return; foreground = value; synchronize(); },
     setWeather(value: EarthWeatherSnapshot | null) { if (disposed) return; weather.setWeather(value); synchronize(); },
     setReady(value: boolean) { if (disposed) return; ready = value; synchronize(); },

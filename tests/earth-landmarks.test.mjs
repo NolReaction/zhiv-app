@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 import { createServer } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -10,13 +11,15 @@ after(() => vite.close());
 const { createEarthLandmarks } = await vite.ssrLoadModule("/features/earth/globe-landmarks.ts");
 const { EARTH_LANDMARKS } = await vite.ssrLoadModule("/features/earth/landmark-catalog.ts");
 
-function scene({ zoom = 1.8, projectionScale = 8, width = 2_880, height = 1_440, failAttachmentAt = -1 } = {}) {
+function scene({ zoom = 1.8, projectionScale = 8, width = 2_880, height = 1_440, failAttachmentAt = -1,
+  modelEnvironment = null, withGpu = false, geographicBounds = null, pitch = 0 } = {}) {
   const markers = [];
   const elements = [];
   const listeners = new Map();
   const projected = [];
   const layers = new Map();
   const points = new Map();
+  let groundOffset = 0;
   let writes = 0;
   const emit = type => { for (const callback of listeners.get(type) ?? []) callback(); };
   const ownerDocument = {
@@ -58,13 +61,34 @@ function scene({ zoom = 1.8, projectionScale = 8, width = 2_880, height = 1_440,
       return this.createElement(tag);
     },
   };
-  const container = { ownerDocument, clientWidth: width, clientHeight: height };
+  const container = { ownerDocument, clientWidth: width, clientHeight: height, dataset: {} };
+  // Native MapLibre initializes its custom layer before it can request assets.
+  const buffers = new Map(), boundBuffers = new Map();
+  const gl = {
+    ARRAY_BUFFER: 1, ELEMENT_ARRAY_BUFFER: 2, BUFFER_SIZE: 3,
+    createBuffer: () => ({}), createVertexArray: () => ({}), bindVertexArray() {},
+    bindBuffer(target, value) { boundBuffers.set(target, value); },
+    bufferData(target, value) { buffers.set(boundBuffers.get(target), value.byteLength); },
+    getBufferParameter(target) { return buffers.get(boundBuffers.get(target)) ?? 0; },
+    createProgram: () => ({}), createShader: () => ({}), getShaderParameter: () => true, getProgramParameter: () => true,
+    getUniformLocation: () => ({}), shaderSource() {}, compileShader() {}, attachShader() {}, linkProgram() {}, deleteShader() {},
+    enableVertexAttribArray() {}, vertexAttribPointer() {}, useProgram() {}, disable() {}, enable() {}, depthMask() {}, blendFunc() {},
+    uniform1f() {}, uniform2fv() {}, uniform4fv() {}, uniformMatrix4fv() {}, drawElements() {}, drawArrays() {},
+    deleteBuffer() {}, deleteVertexArray() {}, deleteProgram() {},
+  };
+  const identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+  const projection = { mainMatrix: identity, fallbackMatrix: identity, tileMercatorCoords: [0, 0, 1, 1], clippingPlane: [0, 0, 1, 0], projectionTransition: 1 };
   const map = {
     getContainer: () => container,
     getZoom: () => zoom,
+    getBounds: geographicBounds ? () => ({ getWest: () => geographicBounds.west, getEast: () => geographicBounds.east,
+      getSouth: () => geographicBounds.south, getNorth: () => geographicBounds.north }) : undefined,
+    getPitch: () => pitch,
+    getVerticalFieldOfView: () => 36.86989764584402,
+    getPadding: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
     getLayer: id => layers.get(id),
-    addLayer(layer, before) { layers.set(layer.id, { ...layer, before }); },
-    removeLayer: id => layers.delete(id),
+    addLayer(layer, before) { layers.set(layer.id, { ...layer, before }); if (withGpu) layer.onAdd(map, gl); },
+    removeLayer(id) { if (withGpu) layers.get(id)?.onRemove(map, gl); layers.delete(id); },
     triggerRepaint() {},
     project(location) {
       projected.push([...location]);
@@ -73,6 +97,14 @@ function scene({ zoom = 1.8, projectionScale = 8, width = 2_880, height = 1_440,
         x: (longitude + 180) * projectionScale,
         y: (90 - latitude) * projectionScale,
       };
+    },
+    unproject([x, y]) {
+      for (const [location, point] of points) {
+        if (point.x === x && point.y === y) {
+          const [lng, lat] = location.split(",").map(Number); return { lng: lng + groundOffset, lat };
+        }
+      }
+      return { lng: x / projectionScale - 180 + groundOffset, lat: 90 - y / projectionScale };
     },
     on(type, callback) {
       if (!listeners.has(type)) listeners.set(type, new Set());
@@ -107,10 +139,15 @@ function scene({ zoom = 1.8, projectionScale = 8, width = 2_880, height = 1_440,
     remove() { this.removed++; }
   }
   return {
-    create: () => createEarthLandmarks(map, Marker),
+    create: () => createEarthLandmarks(map, Marker, { modelEnvironment }),
     markers, elements, listeners, projected, container, emit, layers,
+    render() {
+      for (const layer of layers.values()) layer.render(gl, { shaderData: { variantName: "globe", define: "#define GLOBE", vertexShaderPrelude: "" },
+        defaultProjectionData: projection, getProjectionData: () => projection });
+    },
     element(id) { return markers.find(marker => marker.options.element.dataset.earthLandmark === id).options.element; },
     setZoom(value) { zoom = value; emit("move"); },
+    setGroundOffset(value) { groundOffset = value; emit("move"); },
     setPoint(id, point) {
       points.set(EARTH_LANDMARKS.find(landmark => landmark.id === id).location.join(","), point);
     },
@@ -365,4 +402,112 @@ test("a failed partial attachment cleans up every created marker and DOM listene
   assert.ok(state.markers.every(marker => marker.removed === 1));
   assert.equal(state.listeners.size, 0);
   assert.ok(state.elements.every(element => element.handlers.size === 0));
+});
+
+function preparedEnvironment() {
+  const requests = [], signals = [];
+  return { requests, signals, environment: {
+    async fetch(input, init) {
+      const path = String(input).split("?")[0];
+      assert.match(path, /^\/earth\/models\/eiffel-tower\/(overview|detail)\.elm$/);
+      requests.push(path);
+      signals.push(init.signal);
+      return new Response(readFileSync(new URL(`../public${path}`, import.meta.url)));
+    },
+    sha256: null,
+    schedule: () => 0,
+    cancel() {},
+  } };
+}
+async function settleModel() {
+  for (let turn = 0; turn < 10; turn++) await new Promise(resolve => setImmediate(resolve));
+}
+
+test("street Eiffel loads only when nearby and becomes an accessible target after the prepared model is ready", async () => {
+  const asset = preparedEnvironment();
+  const state = scene({ zoom: 16, width: 390, height: 844, modelEnvironment: asset.environment, withGpu: true });
+  state.setPoint("eiffel-tower", { x: 195, y: 600 });
+  const landmarks = state.create();
+  assert.deepEqual(asset.requests, []);
+  const tower = state.element("eiffel-tower");
+  landmarks.setVisible(true);
+  assertHidden(tower);
+  await settleModel();
+  assert.deepEqual(asset.requests, ["/earth/models/eiffel-tower/detail.elm"]);
+  assertHidden(tower);
+  state.render();
+  assert.equal(tower.disabled, false);
+  assert.equal(tower.tabIndex, 0);
+  for (const marker of state.markers) {
+    if (marker.options.element !== tower) assertHidden(marker.options.element);
+  }
+  tower.dispatch("click");
+  assert.deepEqual(openLabels(state), ["eiffel-tower"]);
+  state.setZoom(8);
+  assertHidden(tower);
+  state.setZoom(16);
+  assert.equal(tower.disabled, false);
+  assert.equal(asset.requests.length, 1, "returning reuses the one decoded model");
+  landmarks.setVisible(false);
+  assertHidden(tower);
+  landmarks.dispose();
+});
+
+test("street culling rejects a distant or far-side ground anchor before fetching the model", async () => {
+  const asset = preparedEnvironment();
+  const state = scene({ zoom: 16, width: 390, height: 844, modelEnvironment: asset.environment, withGpu: true });
+  state.setPoint("eiffel-tower", { x: 100_000, y: 600 });
+  const landmarks = state.create();
+  landmarks.setVisible(true);
+  await settleModel();
+  assert.deepEqual(asset.requests, []);
+  state.setGroundOffset(180);
+  state.setPoint("eiffel-tower", { x: 195, y: 600 });
+  state.emit("move");
+  await settleModel();
+  assert.deepEqual(asset.requests, [], "a front-side round trip is required independently of SDK marker classes");
+  state.setGroundOffset(-720);
+  await settleModel();
+  assert.equal(asset.requests.length, 1, "equivalent wrapped longitudes still refer to the same monument");
+  state.render();
+  assert.equal(state.element("eiffel-tower").disabled, false);
+  landmarks.dispose();
+});
+
+test("the buildings toggle cancels street loading and interaction while atlas miniatures remain available", async () => {
+  const asset = preparedEnvironment();
+  const state = scene({ zoom: 16, width: 390, height: 844, modelEnvironment: asset.environment, withGpu: true });
+  state.setPoint("eiffel-tower", { x: 195, y: 600 });
+  const landmarks = state.create(), tower = state.element("eiffel-tower");
+  landmarks.setBuildingsEnabled(false); landmarks.setVisible(true);
+  await settleModel(); assert.deepEqual(asset.requests, []); assertHidden(tower);
+  landmarks.setBuildingsEnabled(true); assert.equal(asset.requests.length, 1);
+  landmarks.setBuildingsEnabled(false);
+  assert.equal(asset.signals[0].aborted, true, "disabling buildings immediately aborts the street request");
+  await settleModel(); state.render(); assertHidden(tower);
+  landmarks.setBuildingsEnabled(true); await settleModel(); state.render();
+  assert.equal(asset.requests.length, 2); assert.equal(tower.disabled, false);
+  tower.dispatch("click"); landmarks.setBuildingsEnabled(false); assertHidden(tower);
+  state.setZoom(2.5); assert.equal(tower.disabled, false, "the independent globe miniature remains interactive");
+  landmarks.dispose();
+});
+
+test("high-pitch street culling retains a visible roof when its geographic base is far below the viewport", async () => {
+  const asset = preparedEnvironment();
+  const tower = EARTH_LANDMARKS.find(item => item.id === "eiffel-tower");
+  // At pitch60, 330m height and mobile390x844/zoom16, the ground can project
+  // to y1437 while the upper300m projects to y773 inside the viewport. A
+  // 330m screen radius rejected it; ground bounds padded in metres retain it.
+  const geographicBounds = { west: tower.location[0] - .004, east: tower.location[0] + .004,
+    south: tower.location[1] + .003, north: tower.location[1] + .02 };
+  const state = scene({ zoom: 16, width: 390, height: 844, pitch: 60, geographicBounds,
+    modelEnvironment: asset.environment, withGpu: true });
+  state.setPoint("eiffel-tower", { x: 195, y: 1437.42 });
+  const landmarks = state.create(); landmarks.setVisible(true); await settleModel(); state.render();
+  assert.equal(asset.requests.length, 1, "a potentially visible roof gets its bounded detail model");
+  assert.equal(state.container.dataset.earthEiffelModelDraw, "uploaded");
+  assertHidden(state.element("eiffel-tower"), "the offscreen ground has no keyboard target");
+  geographicBounds.west += 1; geographicBounds.east += 1; state.emit("move"); state.render();
+  assert.equal(state.container.dataset.earthEiffelModelDraw, "none", "a distant geographic viewport culls the retained model");
+  landmarks.dispose();
 });

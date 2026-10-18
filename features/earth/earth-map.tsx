@@ -17,6 +17,7 @@ import { EARTH_BUILDINGS_3D_LAYER } from "./building-style";
 import { createEarthPositionMarker, updateEarthPositionMarkerLabel } from "./position-marker";
 import { installEarthMaterialImages, registerEarthMaterialImage } from "./land-material";
 import { EarthAttribution } from "./earth-attribution";
+import { EarthModelCredits } from "./earth-model-credits";
 import { installEarthGlobeCamera } from "./globe-camera";
 import { EARTH_OCEAN_MATERIAL_IMAGE, registerEarthOceanMaterialImage } from "./globe-ocean";
 import { bindEarthPositionMarkerMotion } from "./marker-motion";
@@ -157,6 +158,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
   useEffect(() => { if (infoOpen && visible) infoHeading.current?.focus({ preventScroll: true }); }, [infoOpen, visible]);
   useEffect(() => {
     buildings3dRef.current = buildings3d;
+    sceneRef.current?.setBuildingsEnabled(buildings3d);
     const current = mapRef.current;
     if (current?.getLayer(EARTH_BUILDINGS_3D_LAYER)) current.setLayoutProperty(EARTH_BUILDINGS_3D_LAYER, "visibility", buildings3d ? "visible" : "none");
   }, [buildings3d]);
@@ -534,6 +536,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
           scene?.dispose();
           scene = createEarthGlobeScene(current, sdk.Marker, lightingModeRef.current, eveningCenterRef.current ?? undefined);
           sceneRef.current = scene;
+          scene.setBuildingsEnabled(buildings3dRef.current);
           scene.setWeather(weatherSnapshot);
           scene.setReady(initialReady);
           scene.setVisible(foreground);
@@ -720,6 +723,7 @@ export function EarthMap({ position, active, visible, onReadyChange, cameraSessi
       </p><p>Данные OpenStreetMap распространяются по <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">ODbL</a>, дизайн схемы OpenMapTiles · <a href="https://github.com/openmaptiles/openmaptiles/blob/master/LICENSE.md" target="_blank" rel="noreferrer">CC BY 4.0</a>. Natural Earth · общественное достояние. Оформление карты изменено для «Я живой».</p>
         <p>Движок: <a href={`${EARTH_RUNTIME_DIRECTORY}/LICENSE.txt`} target="_blank" rel="noreferrer">MapLibre GL JS и лицензии компонентов</a>.</p>
       </section>
+      <section className={styles.infoSection}><h3>3D-модели</h3><EarthModelCredits /></section>
     </section>}
   </div>;
 }

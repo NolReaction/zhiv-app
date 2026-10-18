@@ -17,6 +17,7 @@ test("map data credits show each required source once with its canonical link", 
   assert.deepEqual(links.map(link => [link.props.children, link.props.href]), [
     ["© OpenStreetMap", "https://www.openstreetmap.org/copyright"],
     ["OpenMapTiles", "https://openmaptiles.org/"],
+    ["3D-модели", "/earth/models/CREDITS.txt"],
   ]);
   const html = renderToStaticMarkup(tree);
   assert.equal((html.match(/>© OpenStreetMap</g) || []).length, 1);

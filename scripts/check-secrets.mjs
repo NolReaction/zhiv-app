@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const MAX_TEXT_BYTES = 4 * 1024 * 1024;
-const BINARY_EXTENSION = /\.(?:png|jpe?g|webp|gif|ico|woff2?|ttf|otf|mp[34]|ogg|wav|pdf|zip|gz|jar)$/i;
+const BINARY_EXTENSION = /\.(?:png|jpe?g|webp|gif|ico|woff2?|ttf|otf|mp[34]|ogg|wav|pdf|zip|gz|jar|glb)$/i;
 const TOKEN_RULES = [
   ["private-key", /-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----/g],
   ["github-token", /\b(?:gh[pousr]_[A-Za-z0-9]{36,255}|github_pat_[A-Za-z0-9_]{40,255})\b/g],
@@ -72,8 +72,12 @@ export function scanSecretText(file, text) {
 function git(cwd, args, options = {}) {
   return execFileSync("git", args, { cwd, maxBuffer: 280 * 1024 * 1024, ...options });
 }
-function knownBinaryHeader(file, bytes) {
+function knownBinaryHeader(file, bytes, size) {
   if (!BINARY_EXTENSION.test(file)) return false;
+  // GLB's fixed 12-byte header includes the complete container length. An
+  // extension or magic prefix alone must not exempt oversized disguised text.
+  if (/\.glb$/i.test(file)) return bytes.length >= 12 && bytes.readUInt32LE(0) === 0x46546c67
+    && bytes.readUInt32LE(4) === 2 && Number.isSafeInteger(size) && bytes.readUInt32LE(8) === size;
   const ascii = bytes.toString("latin1");
   return bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) ||
     (bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255) ||
@@ -108,8 +112,9 @@ export function checkRepositorySecrets(cwd, { history = false } = {}) {
       // Do not follow a tracked symlink out of the repository into local credentials.
       const resolved = realpathSync(absolute);
       if (resolved !== root && !resolved.startsWith(root + path.sep)) throw new Error("Tracked symlink points outside repository");
-      if (statSync(absolute).size > MAX_TEXT_BYTES) {
-        if (knownBinaryHeader(file, fileHeader(absolute))) { counters.knownBinary++; continue; }
+      const size = statSync(absolute).size;
+      if (size > MAX_TEXT_BYTES) {
+        if (knownBinaryHeader(file, fileHeader(absolute), size)) { counters.knownBinary++; continue; }
         throw new Error(`Text scan size limit: ${JSON.stringify(file)}`);
       }
       inspect(counters, findings, file, readFileSync(absolute));
@@ -127,7 +132,7 @@ export function checkRepositorySecrets(cwd, { history = false } = {}) {
       if (type !== "blob") continue;
       const file = names.get(object);
       if (Number(size) > MAX_TEXT_BYTES) {
-        if (BINARY_EXTENSION.test(file) && knownBinaryHeader(file, git(root, ["cat-file", "blob", object]).subarray(0, 16))) { counters.knownBinary++; continue; }
+        if (BINARY_EXTENSION.test(file) && knownBinaryHeader(file, git(root, ["cat-file", "blob", object]).subarray(0, 16), Number(size))) { counters.knownBinary++; continue; }
         throw new Error(`History text scan size limit: ${JSON.stringify(file)}`);
       }
       blobs.push({ object, file, size: Number(size) });
