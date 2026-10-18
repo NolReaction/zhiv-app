@@ -3,6 +3,7 @@ import { createEarthClouds } from "./globe-clouds";
 import { createEarthOceanMotion } from "./globe-ocean";
 import { createEarthLightingController, type EarthLightingMode } from "./globe-lighting";
 import { createEarthSceneClock } from "./scene-clock";
+import { createEarthLandmarks } from "./globe-landmarks";
 
 export const EARTH_SCENE_MOTION_MAX_ZOOM = 4.2;
 
@@ -11,6 +12,7 @@ export function createEarthGlobeScene(map: LibreMap, MarkerConstructor: typeof M
   const clouds = createEarthClouds(map, MarkerConstructor);
   const ocean = createEarthOceanMotion(map, MarkerConstructor);
   const lighting = createEarthLightingController(map, { mode, center: map.getCenter() });
+  const landmarks = createEarthLandmarks(map, MarkerConstructor);
   const motionPreference = typeof window.matchMedia === "function" ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
   let ready = false;
   let disposed = false;
@@ -32,6 +34,7 @@ export function createEarthGlobeScene(map: LibreMap, MarkerConstructor: typeof M
     const visible = ready && !document.hidden;
     const animate = visible && !motionPreference?.matches && map.getZoom() < EARTH_SCENE_MOTION_MAX_ZOOM;
     clouds.setVisible(visible);
+    landmarks.setVisible(visible);
     ocean.setEnabled(animate);
     clock.setRunning(animate);
     if (visible) lighting.update(Date.now());
@@ -61,6 +64,7 @@ export function createEarthGlobeScene(map: LibreMap, MarkerConstructor: typeof M
       clouds.dispose();
       ocean.dispose();
       lighting.dispose();
+      landmarks.dispose();
     },
   };
 }

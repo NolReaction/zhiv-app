@@ -1,0 +1,47 @@
+.marker {
+  position: absolute;
+  width: 56px;
+  height: 64px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  appearance: none;
+  cursor: pointer;
+  user-select: none;
+  z-index: 1;
+  -webkit-tap-highlight-color: transparent;
+}
+.marker:disabled, .marker:global(.maplibregl-marker-covered) { pointer-events: none; }
+.marker[data-selected="true"] { z-index: 2; }
+.marker:focus-visible { outline: none; }
+.marker:focus-visible .visual { filter: drop-shadow(0 0 2px #effacf) drop-shadow(0 0 2px #173e35); }
+.visual { position: absolute; inset: 0; pointer-events: none; }
+.visual > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  /* The common artwork foot is y=112 in a 120-unit viewBox. Scaling keeps that
+     exact ground point at the SDK's bottom anchor instead of lifting it. */
+  transform: scale(var(--landmark-scale, 1)) translateY(6.666667%);
+  transform-origin: 50% 100%;
+}
+.label {
+  position: absolute;
+  bottom: calc(var(--landmark-label-height, 64px) + 6px);
+  left: 50%;
+  width: max-content;
+  max-width: 190px;
+  padding: 7px 10px;
+  border: 1px solid #e6efc999;
+  border-radius: 12px;
+  color: #eaf4dc;
+  background: #183e35f5;
+  box-shadow: 0 4px 14px #001e2440;
+  font: 600 11px/1.35 Arial, sans-serif;
+  text-align: center;
+  transform: translateX(calc(-50% + var(--landmark-label-shift, 0px)));
+  pointer-events: none;
+}
+.label[hidden] { display: none; }
+.label[data-placement="below"] { top: calc(100% + 6px); bottom: auto; }

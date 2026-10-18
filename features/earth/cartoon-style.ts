@@ -6,7 +6,6 @@ import { EARTH_OVERVIEW_SOURCE, earthOverviewData } from "./globe-overview";
 import { createEarthBuildingLayer } from "./building-style";
 import { earthLandMaterialLayer } from "./land-material";
 import { EARTH_COAST_SOURCE, createEarthCoastlineData, earthCoastMaterialLayers } from "./coast-material";
-import { EARTH_BIOME_SOURCE, createEarthBiomeOverview } from "./globe-biomes";
 import { earthOceanBackgroundLayer, earthOceanWaterLayer } from "./globe-ocean";
 import { earthLightingSources, earthLightingLayers } from "./globe-lighting";
 
@@ -28,7 +27,6 @@ export function createCartoonEarthStyle(vector: VectorSourceSpecification): Styl
   const p = EARTH_PALETTE;
   const details = { source: EARTH_VECTOR_SOURCE, minzoom: 4 };
   const coast = earthCoastMaterialLayers();
-  const biomes = createEarthBiomeOverview();
   const textLayout = { "text-field": names, "text-font": ["Arial", "sans-serif"], "text-max-width": 9, "text-padding": 5 };
   const layers: LayerSpecification[] = [
     { id: "earth-ocean", type: "background", paint: { "background-color": p.ocean } },
@@ -86,7 +84,6 @@ export function createCartoonEarthStyle(vector: VectorSourceSpecification): Styl
     { id: "earth-buildings", type: "fill", ...details, minzoom: 14, "source-layer": "building",
       paint: { "fill-color": p.building, "fill-outline-color": p.buildingEdge } },
     createEarthBuildingLayer(EARTH_VECTOR_SOURCE, p.building),
-    ...biomes.layers,
     ...earthLightingLayers(),
     { id: "earth-continent-names", type: "symbol", source: EARTH_OVERVIEW_SOURCE, maxzoom: 2.6,
       filter: ["==", ["get", "kind"], "continent"],
@@ -135,7 +132,6 @@ export function createCartoonEarthStyle(vector: VectorSourceSpecification): Styl
       [EARTH_VECTOR_SOURCE]: { ...vector },
       [EARTH_OVERVIEW_SOURCE]: { type: "geojson", data: earthOverviewData, maxzoom: 0, tolerance: 0, buffer: 0 },
       [EARTH_COAST_SOURCE]: { type: "geojson", data: createEarthCoastlineData(land as FeatureCollection<Polygon>), maxzoom: 0, tolerance: 0, buffer: 0 },
-      [EARTH_BIOME_SOURCE]: biomes.source,
       ...earthLightingSources(),
     }, layers,
   };

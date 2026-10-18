@@ -489,7 +489,8 @@ export function EarthMap({ position, active, focusRequest, isOnline, onLocate, l
           {([ ["auto", "Авто"], ["day", "День"], ["evening", "Вечер"] ] as const).map(([value, label]) =>
             <button key={value} type="button" aria-pressed={lightingMode === value} onClick={() => setLightingMode(value)}>{label}</button>)}
         </div>
-        <p>{lightingMode === "auto" ? "Светлая и тёмная стороны следуют времени суток. Облачка, волны и природные миниатюры оживляют Землю при отдалении." : lightingMode === "evening" ? "Тёплый закат и огоньки городов. Вечер остаётся на выбранной стороне Земли." : "Светлый глобус, чтобы рассмотреть все детали."}</p>
+        <p>{lightingMode === "auto" ? "Светлая и тёмная стороны следуют времени суток. Облачка и волны оживляют Землю при отдалении." : lightingMode === "evening" ? "Тёплый закат и огоньки городов. Вечер остаётся на выбранной стороне Земли." : "Светлый глобус, чтобы рассмотреть все детали."}</p>
+        <p>Миниатюры достопримечательностей стоят на своих географических местах. Нажмите на любую, чтобы узнать название. Близкие объекты появляются по мере приближения, перед улицами миниатюры исчезают.</p>
         <div className={styles.infoRow}><span id="earth-buildings-label">Объёмные здания</span>
           <button type="button" className={styles.infoToggle} role="switch" aria-checked={buildings3d} aria-labelledby="earth-buildings-label" onClick={() => setBuildings3d(value => !value)}><span aria-hidden="true" /></button></div>
         <p>Появляются при приближении к улицам. Наклоните карту двумя пальцами или перетаскивайте её с зажатой правой кнопкой мыши.</p>
