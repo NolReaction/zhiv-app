@@ -146,7 +146,7 @@ class JdbcGuestWorldRepositoryIntegrationTest {
         assertEquals("ECONOMY_MARKET_HOME_BAND",assertFailsWith<AuthFailure>{worlds.purchase(buyer.hash,circle,buy(buyer,lot))}.code)
         edit(seller){it.copy(buildings=it.buildings + ("home" to 2))}
         edit(buyer){it.copy(inventory=mapOf("berries" to 50L))}
-        assertEquals("ECONOMY_CAPACITY",assertFailsWith<AuthFailure>{worlds.purchase(buyer.hash,circle,buy(buyer,lot))}.code)
+        assertEquals("ECONOMY_STORAGE_FULL",assertFailsWith<AuthFailure>{worlds.purchase(buyer.hash,circle,buy(buyer,lot))}.code)
         edit(buyer){it.copy(inventory=mapOf("berries" to 20L))}
         execute("INSERT INTO economy_market_daily_turnover(user_id,trade_day,buys_value) VALUES (?,(clock_timestamp() AT TIME ZONE 'UTC')::date,2400)",buyer.id)
         assertEquals("ECONOMY_MARKET_DAILY_LIMIT",assertFailsWith<AuthFailure>{worlds.purchase(buyer.hash,circle,buy(buyer,lot))}.code)
