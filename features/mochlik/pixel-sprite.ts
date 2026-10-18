@@ -107,6 +107,8 @@ export function pixelSprite(pose: PixelPose, direction: PixelDirection, frame: n
     oval(8, faceY + 2 + earOffset, 4, 6, c.moss); rect(5, faceY + 2 + earOffset, 2, 4, c.mossLight);
     oval(37, faceY - 3 - earOffset, 7, 10, c.shade); oval(37, faceY - 4 - earOffset, 6, 9, c.cream);
     oval(38, faceY - 2 - earOffset, 4, 6, c.moss); rect(39, faceY - 3 - earOffset, 2, 4, c.mossLight);
+    // Opaque lining seals the gap above the head without painting over the face.
+    if (appearance?.head === "rain_hood" && direction !== "back") rect(13, 7 + headOffset, 23, 7, "#3c5668");
     oval(24, faceY, 13, 12, c.shade); oval(24, faceY - 1, 12, 11, direction === "back" ? c.moss : c.cream);
     if (direction === "back") {
       rect(20, faceY - 8, 6, 3, c.mossLight); rect(17, faceY - 3, 3, 3, c.mossLight);
