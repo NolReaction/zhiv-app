@@ -139,6 +139,7 @@ private val diagnosticErrorCodes = actionableAuthFailures + setOf(
     "GAME_ACTIVE_ELSEWHERE", "GAME_SESSION_EXPIRED", "GAME_SESSION_GONE", "GAME_SESSION_CONFLICT", "GAME_SESSION_LIMIT",
     "GAME_SEQUENCE_CONFLICT", "GAME_OWNER_CHANGED", "GAME_PERMIT_CLOSED", "GAME_PACING", "GAME_QUEUE_EXPIRED",
     "ADMIN_PROTECTED_ACCOUNT", "ADMIN_REQUEST_CONFLICT", "ADMIN_USER_NOT_FOUND",
+    "GUEST_WORLD_UNAVAILABLE", "INVALID_GUEST_WORLD_QUERY",
 )
 
 private fun safeErrorCode(code: String): String = code.takeIf { it in diagnosticErrorCodes } ?: "UNKNOWN_ERROR"
@@ -163,6 +164,7 @@ private val operationTemplates = listOf(
     "/api/v1/auth/account/lifecycle", "/api/v1/auth/account/email", "/api/v1/auth/account/merge/preview",
     "/api/v1/auth/account/merge/confirm", "/api/v1/auth/account/profile",
     "/api/v1/users/{publicId}", "/api/v1/people", "/api/v1/people/{circleId}",
+    "/api/v1/people/{circleId}/world", "/api/v1/people/{circleId}/world/market/commands",
     "/api/v1/people/{circleId}/nickname", "/api/v1/people/{circleId}/favorite", "/api/v1/people/{circleId}/sharing",
     "/api/v1/direct-requests", "/api/v1/direct-requests/{requestId}/accept",
     "/api/v1/direct-requests/{requestId}/reject", "/api/v1/direct-requests/{requestId}/cancel",

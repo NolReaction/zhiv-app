@@ -199,28 +199,44 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
         }
     }
 
-    override suspend fun command(sessionHash: ByteArray, command: EconomyCommand): EconomyResult {
+    override suspend fun command(sessionHash: ByteArray, command: EconomyCommand): EconomyResult =
+        commandInternal(sessionHash, command, null)
+
+    internal suspend fun friendPurchase(sessionHash: ByteArray, circleId: UUID, command: EconomyCommand): EconomyResult {
+        if (command.action != "buy_listing") throw AuthFailure("INVALID_ECONOMY_COMMAND", "В лавке друга можно купить выставленную партию", 400)
+        return commandInternal(sessionHash, command, circleId)
+    }
+
+    private suspend fun commandInternal(sessionHash: ByteArray, command: EconomyCommand, circleId: UUID?): EconomyResult {
         EconomyMarketRules.validate(command)
         return transaction { c ->
             val initial = actor(c, sessionHash)
+            val guest = circleId?.let { requireGuestWorldAccess(c, sessionHash, it) }
             // Read the immutable seller before locking; account merges cancel, never reassign, active lots.
             val listingId = if (command.action == "create_listing") null else UUID.fromString(command.targetId)
             val seller = listingId?.let { id -> c.economyRows("SELECT seller_id FROM economy_market_listings WHERE id=?", id) {
                 it.getObject(1, UUID::class.java)
             }.firstOrNull() }
+            // Validate the expected friend even on an idempotent replay; a receipt never authorizes a different seller.
+            if (guest != null && (guest.viewerId != initial.id || guest.sellerId != seller))
+                throw AuthFailure("GUEST_WORLD_UNAVAILABLE", "Мир друга недоступен", 404)
             // Use PostgreSQL's UUID ordering, matching account lifecycle and social writers.
             c.economyRows("SELECT id FROM app_users WHERE id IN (?,?) ORDER BY id FOR NO KEY UPDATE", initial.id, seller ?: initial.id) { true }
             val user = actor(c, sessionHash)
             if (user.id != initial.id || user.publicId != command.ownerPublicId)
                 throw AuthFailure("ECONOMY_OWNER_CHANGED", "Открыт другой профиль. Обновите хозяйство.", 409)
+            if (circleId != null && requireGuestWorldAccess(c,sessionHash,circleId).sellerId != seller)
+                throw AuthFailure("GUEST_WORLD_UNAVAILABLE", "Мир друга недоступен", 404)
             ensureEconomyProfile(c, user.id)
-            val signature = economyJson.encodeToString(command.copy(fishSelection = command.fishSelection?.toSortedMap()))
+            val signature = (circleId?.let { "friend:$it:" } ?: "") +
+                economyJson.encodeToString(command.copy(fishSelection = command.fishSelection?.toSortedMap()))
             val requestId = UUID.fromString(command.requestId)
             val receipt = c.economyRows("""SELECT signature,message,accepted_revision FROM economy_market_receipts
                 WHERE user_id=? AND request_id=?""", user.id, requestId) { Receipt(it.getString(1), it.getString(2), it.getLong(3)) }.firstOrNull()
             if (receipt != null) {
                 if (receipt.signature != signature) {
-                    if (semanticEconomyTamper(receipt.signature, command)) requestTamper(user.id, "market:${command.action}", requestId)
+                    if (semanticEconomyTamper(receipt.signature.removePrefix(circleId?.let { "friend:$it:" } ?: ""), command))
+                        requestTamper(user.id, "market:${command.action}", requestId)
                     throw AuthFailure("ECONOMY_REQUEST_CONFLICT", "Этот запрос уже использован для другого действия", 409)
                 }
                 return@transaction EconomyResult(economyView(c, user.id, user.publicId, now(c)), receipt.message, receipt.revision, true)
@@ -244,7 +260,7 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
                         ?: throw AuthFailure("ECONOMY_MARKET_NOT_FOUND", "Объявление не найдено", 404)
                     if (row.seller != seller) throw AuthFailure("ECONOMY_MARKET_NOT_ACTIVE", "Объявление изменилось", 409)
                     if (row.listing.status != "active") throw AuthFailure("ECONOMY_MARKET_NOT_ACTIVE", "Объявление уже закрыто", 409)
-                    if (command.action == "buy_listing") buy(c, user.id, before.state, row, command)
+                    if (command.action == "buy_listing") buy(c, user.id, before.state, row, command, personalShowcase = circleId != null)
                     else {
                         if (row.seller != user.id) throw ObservedSecurityFailure(user.id,
                             ru.zhiv.admin.SecurityObservationKind.MARKET_OWNERSHIP_DENIED, "market:cancel_listing", requestId,
@@ -287,7 +303,7 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
         return "Партия выставлена на рынок"
     }
 
-    private fun buy(c: Connection, user: UUID, state: EconomyState, row: ListingRow, command: EconomyCommand): String {
+    private fun buy(c: Connection, user: UUID, state: EconomyState, row: ListingRow, command: EconomyCommand, personalShowcase: Boolean = false): String {
         if (row.seller == user) throw AuthFailure("ECONOMY_MARKET_SELF_TRADE", "Нельзя купить свою партию", 409)
         val lot = row.listing
         if (lot.quantity != command.quantity || lot.totalPrice != command.totalPrice)
@@ -295,9 +311,11 @@ class JdbcEconomyMarketRepository(private val source: DataSource) : EconomyMarke
         if (EconomyRules.catalog.items.none { it.id == lot.itemId && it.tradable })
             throw AuthFailure("ECONOMY_MARKET_ITEM", "Торговля этим предметом приостановлена", 409)
         val at = now(c)
-        val selection = readShowcase(c, user)
-        if (selection == null || !at.isBefore(selection.refreshAt) || UUID.fromString(lot.id) !in selection.ids)
-            throw AuthFailure("ECONOMY_MARKET_SHOWCASE_CHANGED", "Предложение вне текущей витрины. Обновите лавку.", 409)
+        if (!personalShowcase) {
+            val selection = readShowcase(c, user)
+            if (selection == null || !at.isBefore(selection.refreshAt) || UUID.fromString(lot.id) !in selection.ids)
+                throw AuthFailure("ECONOMY_MARKET_SHOWCASE_CHANGED", "Предложение вне текущей витрины. Обновите лавку.", 409)
+        }
         if (!EconomyMarketRules.eligible(lot.itemId, lot.quantity, lot.totalPrice, state))
             throw AuthFailure("ECONOMY_MARKET_ITEM_LOCKED", "Предмет ещё не открыт в вашем хозяйстве или цена устарела", 409)
         if (state.wallet.coins < lot.totalPrice) throw AuthFailure("ECONOMY_RESOURCES", "Недостаточно монет", 409)
